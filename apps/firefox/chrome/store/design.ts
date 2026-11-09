@@ -3,12 +3,12 @@
 // The actor's limits are handled here: a frame's guard has no timeout (every frame guarded is unguarded on every exit),
 // a second arm may leave the first pending (never armed twice, stale answers dropped by generation), and its stop may
 // throw or hang (timed out, then the top window is unguarded).
-import type { ApiCalque, ContexteCalque, ElementAffiche, EtatDesign, LotAffiche, ResultatExtension } from "../../shared/api";
-import type { IdFenetre } from "../../shared/modele";
-import { HAUTEUR_BARRE_SITE } from "../../shared/sites";
+import type { OverlayApi, OverlayContext, ShownElement, DesignState, BatchShown, ExtensionResult } from "../../shared/api";
+import type { WindowId } from "../../shared/modele";
+import { SITE_BAR_HEIGHT } from "../../shared/sites";
 import type { DesignContext } from "../../../../packages/noyau/src/design/remarques";
-import { choisirCibleDesign } from "../../core/design/premier-plan";
-import type { SuiviDesign } from "../../noyau/design";
+import { chooseDesignTarget } from "../../core/design/premier-plan";
+import type { DesignTracking } from "../../noyau/design";
 import { CAPTURE_WARNING_SITE, DESIGN_ID_MAX, ID_PROJECT, INVALID_REQUEST, NOTHING_AIMED, REMARK_TEXT_MAX, UNAVAILABLE_DESIGN, UNAVAILABLE_DESIGN_SITE } from "../../shared/design-guards";
 import type { AgentHost } from "../agent/host";
 import type { apps as Apps } from "./apps";
@@ -35,32 +35,32 @@ import type { SiteApps } from "./sites";
 import type { Store } from "./store";
 import type { WindowRegistry } from "./windows";
 
-export type DesignTarget = { type: "fenetre"; fenetreId: IdFenetre } | { type: "app"; dossier: string } | { type: "site"; id: string };
+export type DesignTarget = { type: "fenetre"; fenetreId: WindowId } | { type: "app"; dossier: string } | { type: "site"; id: string };
 
 export interface DesignOverlays {
-  show(key: string, win: Window, place: { x: number; y: number; width: number; height: number }, ctx: ContexteCalque): void;
-  hide(key: string, mode: ContexteCalque["mode"]): void;
+  show(key: string, win: Window, place: { x: number; y: number; width: number; height: number }, ctx: OverlayContext): void;
+  hide(key: string, mode: OverlayContext["mode"]): void;
   forget(key: string): void;
   /** The main window's cart column: its « Fermer » (App.svelte decides what it stops). */
   onColumnClosed(t: DesignTarget, cb: () => void): () => void;
 }
 
 export interface DesignService {
-  etat(t: DesignTarget): Promise<EtatDesign>;
+  etat(t: DesignTarget): Promise<DesignState>;
   toggle(t: DesignTarget): Promise<void>;
   /** ⇧⌘D in `win`: the design target of that window; a site app's sign-in window: the avis in the app's bar. */
   shortcut(win: Window): void;
   stop(t: DesignTarget): Promise<void>;
   /** The bubble's « Ajouter ». */
-  add(t: DesignTarget, texte: string): Promise<ResultatExtension>;
+  add(t: DesignTarget, texte: string): Promise<ExtensionResult>;
   /** Bubble Annuler/Escape, message click, cart « Fermer ». */
   cancel(t: DesignTarget): void;
   openCart(t: DesignTarget): Promise<void>;
   relire(t: DesignTarget): Promise<void>;
   /** What the target's overlay shows: the first of `modes` it has (the bubble, then the cart, then the message). */
-  overlayContext(t: DesignTarget, modes?: ContexteCalque["mode"][]): ContexteCalque | null;
+  overlayContext(t: DesignTarget, modes?: OverlayContext["mode"][]): OverlayContext | null;
   /** Hides one overlay of the target: the message's timeout, the cart column closed by its window. */
-  closeOverlay(t: DesignTarget, mode: ContexteCalque["mode"]): void;
+  closeOverlay(t: DesignTarget, mode: OverlayContext["mode"]): void;
   /** The target's window closed. */
   forget(t: DesignTarget): void;
   onChange(cb: () => void): () => void;
@@ -83,7 +83,7 @@ interface View {
 interface Session {
   target: DesignTarget;
   key: string;
-  projet: SuiviDesign["projet"];
+  projet: DesignTracking["projet"];
   browser: any;
   win: Window;
   /** The page's WindowGlobalParent when the mode started: the only one armed, read and captured. */
@@ -151,12 +151,12 @@ export function createDesign(o: {
   apps: typeof Apps;
   sites: Pick<SiteApps, "designView" | "infoNotice" | "controller" | "onClosed">;
   dispatch: Store["dispatch"];
-  mainWindow(): Promise<IdFenetre | undefined>;
-  toFront(f: IdFenetre): void;
+  mainWindow(): Promise<WindowId | undefined>;
+  toFront(f: WindowId): void;
 }): DesignService {
   const sessions = new Map<string, Session>();
   /** Calques.contexte: what each key's overlay shows, the bubble first, then the cart, then the message. */
-  const contexts = new Map<string, Partial<Record<ContexteCalque["mode"], ContexteCalque>>>();
+  const contexts = new Map<string, Partial<Record<OverlayContext["mode"], OverlayContext>>>();
   /** Each key's last openCart or close of its cart: an openCart that a close overtook shows nothing. */
   const cartAsks = new Map<string, number>();
   const askCart = (key: string) => {
@@ -191,7 +191,7 @@ export function createDesign(o: {
   const pageOf = (b: any) => b.browsingContext?.currentWindowGlobal;
   /** The project of the page's own document (`wgp`, the one armed), never of the <browser>'s address, which a commit moves first. */
   const suivi = (t: DesignTarget, v: View, wgp: any = pageOf(v.browser)) =>
-    o.agent.request<SuiviDesign | null>(
+    o.agent.request<DesignTracking | null>(
       "design.suivi",
       t.type === "fenetre" ? { url: String(wgp?.documentURI?.spec ?? "") } : t.type === "app" ? { projet: "app-" + t.dossier } : { projet: "site-" + t.id },
     );
@@ -202,14 +202,14 @@ export function createDesign(o: {
     s.browser.focus();
   };
 
-  const hide = (key: string, mode: ContexteCalque["mode"]) => {
+  const hide = (key: string, mode: OverlayContext["mode"]) => {
     const c = contexts.get(key);
     if (!c?.[mode]) return;
     delete c[mode];
     service.overlays.hide(key, mode);
     notify();
   };
-  const show = (key: string, win: Window, place: { x: number; y: number; width: number; height: number }, ctx: ContexteCalque) => {
+  const show = (key: string, win: Window, place: { x: number; y: number; width: number; height: number }, ctx: OverlayContext) => {
     const same = JSON.stringify(contexts.get(key)?.[ctx.mode]) === JSON.stringify(ctx);
     contexts.set(key, { ...contexts.get(key), [ctx.mode]: ctx });
     service.overlays.show(key, win, place, ctx);
@@ -315,7 +315,7 @@ export function createDesign(o: {
       const s = sessions.get(cleCible(t));
       const v = s ? null : view(t);
       // A host that does not answer rejects: the button keeps its last state.
-      const r = s ? await o.agent.request<SuiviDesign | null>("design.suivi", { projet: s.projet.projet }) : v ? await suivi(t, v) : null;
+      const r = s ? await o.agent.request<DesignTracking | null>("design.suivi", { projet: s.projet.projet }) : v ? await suivi(t, v) : null;
       const projet = r?.projet ?? s?.projet ?? null;
       if (!projet) return { actif: false, projet: null, indisponible: t.type === "site" ? UNAVAILABLE_DESIGN_SITE : UNAVAILABLE_DESIGN, destination: null, sansDestination: null, panier: 0, nom: "" };
       // A site app: its project is known even where the mode does not start (card, sign-in page, fullscreen).
@@ -398,10 +398,10 @@ export function createDesign(o: {
 
     shortcut(win) {
       const doc = win.document.documentElement;
-      const fenetreId = (win as any).webaiosWindow?.fenetreId as IdFenetre | undefined;
+      const fenetreId = (win as any).webaiosWindow?.fenetreId as WindowId | undefined;
       const main = !!fenetreId && o.windows.get(fenetreId)?.window === win;
       const appli = o.apps.dossierOf(win);
-      const choix = choisirCibleDesign({
+      const choix = chooseDesignTarget({
         appli,
         site: doc.getAttribute("webaios-site") ?? undefined,
         petiteDeSite: doc.getAttribute("webaios-site-small") ?? undefined,
@@ -430,9 +430,9 @@ export function createDesign(o: {
       const s = sessions.get(cleCible(t));
       const attente = s?.attente;
       if (!s || !attente) return { ok: false, erreur: NOTHING_AIMED };
-      let r: ResultatExtension;
+      let r: ExtensionResult;
       try {
-        r = await o.agent.request<ResultatExtension>("design.ajouter", { projet: s.projet.projet, texte, contexte: attente.contexte, capture: attente.capture });
+        r = await o.agent.request<ExtensionResult>("design.ajouter", { projet: s.projet.projet, texte, contexte: attente.contexte, capture: attente.capture });
       } catch (e) {
         // Spec §5.10: the call's error, the mode stays.
         return { ok: false, erreur: e instanceof Error ? e.message : String(e) };
@@ -465,7 +465,7 @@ export function createDesign(o: {
       if (!v || !r || cartAsks.get(cleCible(t)) !== n) return;
       const [l, h] = [v.win.innerWidth, v.win.innerHeight];
       // A site app's cart starts under its bar.
-      const y = t.type === "site" ? HAUTEUR_BARRE_SITE + MARGE : MARGE;
+      const y = t.type === "site" ? SITE_BAR_HEIGHT + MARGE : MARGE;
       const place = { x: Math.max(0, l - MARGE - LARGEUR_PANIER), y, width: Math.min(LARGEUR_PANIER, l), height: Math.max(0, h - y - MARGE) };
       show(cleCible(t), v.win, place, { mode: "panier", message: null, projet: r.projet.projet, etiquette: "", source: null, destination: r.destination, sansDestination: r.sansDestination, avertissement: null });
     },
@@ -517,9 +517,9 @@ export function createDesign(o: {
 // Trust boundary: the frame is a system-principal chrome document, so it could reach the chrome itself; this API is a
 // convention for the UI, and the real guards are these chrome-side checks and the host's.
 export function overlayApi(
-  o: { design: DesignService; host: Pick<AgentHost, "request" | "on">; modes?: ContexteCalque["mode"][]; annuler?: () => void },
+  o: { design: DesignService; host: Pick<AgentHost, "request" | "on">; modes?: OverlayContext["mode"][]; annuler?: () => void },
   t: DesignTarget,
-): ApiCalque {
+): OverlayApi {
   const allowed = (p: unknown): p is string => typeof p === "string" && ID_PROJECT.test(p) && o.design.overlayContext(t)?.projet === p;
   const id = (x: unknown): x is string => typeof x === "string" && x.length <= DESIGN_ID_MAX;
   // Spec §5.10, the host stopped: PanierDesign reads again after a failed send and would show a rejected read as an
@@ -537,15 +537,15 @@ export function overlayApi(
       return o.design.add(t, texte);
     },
     annuler: () => (o.annuler ? o.annuler() : o.design.cancel(t)),
-    panier: async (p) => (allowed(p) ? read<ElementAffiche[]>("design.panier", p) : []),
-    lots: async (p) => (allowed(p) ? read<LotAffiche[]>("design.lots", p) : []),
+    panier: async (p) => (allowed(p) ? read<ShownElement[]>("design.panier", p) : []),
+    lots: async (p) => (allowed(p) ? read<BatchShown[]>("design.lots", p) : []),
     async retirer(p, x) {
       if (allowed(p) && id(x)) await o.host.request("design.retirer", { projet: p, id: x });
     },
     async traite(p, lot) {
       if (allowed(p) && id(lot)) await o.host.request("design.traite", { projet: p, lot });
     },
-    envoyer: async (p) => (allowed(p) ? o.host.request<ResultatExtension>("design.envoyer", { projet: p }) : { ok: false, erreur: INVALID_REQUEST }),
+    envoyer: async (p) => (allowed(p) ? o.host.request<ExtensionResult>("design.envoyer", { projet: p }) : { ok: false, erreur: INVALID_REQUEST }),
     surChange(cb) {
       // accueil.change: sent at each kernel start (noyau/host.ts), so a restarted host's cart is read again.
       const offs = [...["design.change", "accueil.change"].map((m) => o.host.on(m, () => cb())), o.design.onChange(cb)];

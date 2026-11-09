@@ -1,8 +1,8 @@
 // Agent app windows: one window per running app, the app's page alone, in
 // its own container (`webaios-app-<dossier>`), kept on its origin (http://localhost:<port>) by the request guard and
 // the view policy of sites.ts. The host (noyau/applications.ts) owns the apps; this module owns their windows.
-import type { EtatDesign } from "../../shared/api";
-import type { Cadre, EtatAcces } from "../../shared/modele";
+import type { DesignState } from "../../shared/api";
+import type { Cadre, AccessState } from "../../shared/modele";
 import { dossierValide } from "./app-folder";
 import { HOST_EXITED, type AgentHost } from "../agent/host";
 import type { DesignService } from "./design";
@@ -32,16 +32,16 @@ let dataDir = "";
 /** After quit-application-granted, a window closing is the quit's, never the user's (spike S8). */
 let quitting = false;
 const closeListeners = new Set<() => void>();
-let access: () => EtatAcces = () => ({ agent: "L'agent", onglets: {} });
+let access: () => AccessState = () => ({ agent: "L'agent", onglets: {} });
 let design: Pick<DesignService, "etat" | "toggle" | "openCart" | "relire"> | null = null;
 
 /** What the badge frame of an app window gets from the chrome (ui/badge-api.ts copies every value it hands over). */
 export interface BadgeChrome {
-  acces: { etat(): EtatAcces; couper(id: unknown, droit: unknown): void };
-  surAcces(cb: (e: EtatAcces) => void): () => void;
+  acces: { etat(): AccessState; couper(id: unknown, droit: unknown): void };
+  surAcces(cb: (e: AccessState) => void): () => void;
   pastilleTaille(ouverte: unknown): void;
   /** Its window's design mode (target `app`, from the window, never from the frame). */
-  design: { etat(): Promise<EtatDesign>; basculer(): void; panier(): void; relire(): void };
+  design: { etat(): Promise<DesignState>; basculer(): void; panier(): void; relire(): void };
 }
 
 // Badge sizes: closed, the WebAiOs button alone or with the agent's access; open, its bubble or menu.
@@ -298,7 +298,7 @@ export const apps = {
     const id = "app:" + dossier;
     const target = { type: "app" as const, dossier };
     // Never another tab's access.
-    const own = (): EtatAcces => {
+    const own = (): AccessState => {
       const e = access();
       const t = e.onglets[id];
       return { agent: e.agent, onglets: t ? { [id]: t } : {} };
@@ -309,7 +309,7 @@ export const apps = {
       const [width, height] = opened ? BADGE.open : t && (t.lecture || t.droits.length > 0) ? BADGE.withAccess : BADGE.closed;
       size(width, height);
     };
-    const listeners = new Set<(e: EtatAcces) => void>();
+    const listeners = new Set<(e: AccessState) => void>();
     const changed = () => {
       place();
       for (const cb of listeners)
@@ -384,7 +384,7 @@ const redirects = {
  * Started with the store: the host the windows report to, the main window tab for what leaves an app, the agent's
  * access (the badges) and the design mode of each app window.
  */
-export function bindApps(agent: AgentHost, openInTab: (url: string) => void, dir: string, o: { access: () => EtatAcces; design: NonNullable<typeof design> }): void {
+export function bindApps(agent: AgentHost, openInTab: (url: string) => void, dir: string, o: { access: () => AccessState; design: NonNullable<typeof design> }): void {
   host = agent;
   dataDir = dir;
   openTab = openInTab;

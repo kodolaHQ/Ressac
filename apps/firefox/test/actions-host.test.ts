@@ -18,7 +18,7 @@ import {
   type LaunchResult,
 } from "../../../packages/noyau/src/index";
 import { actionImageAllowed, createActionsHost, linkAllowed, MESSAGE_SANS_NOYAU, readShownActions, trashAction } from "../noyau/actions";
-import { SchemaAccord, SchemaIdAction, SchemaSaisieAction } from "../shared/api";
+import { SchemaAccord, SchemaIdAction, ActionInputSchema } from "../shared/api";
 
 const DEBUT = "2026-10-31T10:00:00.000Z";
 const dirs: string[] = [];
@@ -52,7 +52,7 @@ describe("input schemas", () => {
     const accord = { id: "gitlab", profil: "defaut", compte: ["gitlab.com"], publiques: [] };
     const ok = (sc: { safeParse: (v: unknown) => { success: boolean } }, vs: unknown[]) => vs.map((v) => sc.safeParse(v).success);
     expect(ok(SchemaIdAction, ["gitlab", "a-1", "", "Git_Lab", "../x", "a".repeat(60), "a".repeat(61), 3, null])).toEqual([true, true, false, false, false, true, false, false, false]);
-    expect(ok(SchemaSaisieAction, [null, "", "x".repeat(2000), "x".repeat(2001), 4, undefined])).toEqual([true, true, true, false, false, false]);
+    expect(ok(ActionInputSchema, [null, "", "x".repeat(2000), "x".repeat(2001), 4, undefined])).toEqual([true, true, true, false, false, false]);
     expect(ok(SchemaAccord, [accord, { ...accord, extra: 1 }, { ...accord, id: "../x" }, { ...accord, profil: "" }, { ...accord, compte: [""] }, { ...accord, publiques: Array(101).fill("a.b") }, null])).toEqual([true, false, false, false, false, false, false]);
   });
 });

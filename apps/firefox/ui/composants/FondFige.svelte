@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, untrack } from "svelte";
-  import type { IdOnglet } from "../../shared/modele";
+  import type { TabId } from "../../shared/modele";
   import { api } from "../etat.svelte";
   import { modale } from "./modale.svelte";
 
@@ -8,7 +8,7 @@
    * Background of a window modal: the page shown at opening (`ongletId`, null: none, or a panel hides it), frozen
    * and blurred, under a veil. `surPret`: the capture is taken (or abandoned), the modal can show.
    */
-  let { ongletId, surPret }: { ongletId: IdOnglet | null; surPret: () => void } = $props();
+  let { ongletId, surPret }: { ongletId: TabId | null; surPret: () => void } = $props();
 
   /** Beyond that, the page fades without a capture: the modal must not wait. */
   const ATTENTE_APERCU_MS = 1000;

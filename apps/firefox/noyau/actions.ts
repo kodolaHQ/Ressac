@@ -22,7 +22,7 @@ import {
   type LaunchResult,
   type ResumeExecution,
 } from "../../../packages/noyau/src/index.ts";
-import type { ActionAffichee } from "../shared/actions.ts";
+import type { ActionShown } from "../shared/actions.ts";
 import type { Accord } from "../shared/api.ts";
 import { urlOuvrable } from "../ui/accueil-profils.ts";
 
@@ -50,8 +50,8 @@ export async function actionImageAllowed(
   // An action rewritten without account may keep results read with it: a grant still there is enough to refuse.
   const accords = await lireAccords(o.dossierActions).catch(() => null);
   if (!accords || Object.hasOwn(accords, id)) return false;
-  const [resultat, exec] = await Promise.all([readResult(o.dossierActions, id, execution), lireExecution(join(o.dossierActions, id), execution)]);
-  return !!resultat && !!exec && chainsOf(resultat.resultats).has(url);
+  const [result, exec] = await Promise.all([readResult(o.dossierActions, id, execution), lireExecution(join(o.dossierActions, id), execution)]);
+  return !!result && !!exec && chainsOf(result.resultats).has(url);
 }
 
 /** A link of an action's page opens only if its address is, as is, in the run's results, in http(s). */
@@ -62,21 +62,21 @@ export async function linkAllowed(dossierActions: string, id: string, execution:
 }
 
 /** The action's folder goes to actions/.corbeille (nothing is destroyed), then `oublier` drops its grant and data. */
-export async function trashAction(c: SpacePaths, id: string, oublier: (id: string) => Promise<void>): Promise<void> {
+export async function trashAction(c: SpacePaths, id: string, forget: (id: string) => Promise<void>): Promise<void> {
   if (!ID_ACTION.test(id)) throw new Error(`id d'action invalide : ${id}`);
-  const corbeille = join(c.actions, ".corbeille");
-  await mkdir(corbeille, { recursive: true });
-  await rename(join(c.actions, id), join(corbeille, `${id}-${Date.now()}`));
-  await oublier(id);
+  const trash = join(c.actions, ".corbeille");
+  await mkdir(trash, { recursive: true });
+  await rename(join(c.actions, id), join(trash, `${id}-${Date.now()}`));
+  await forget(id);
 }
 
 /** The disk's actions, ready to show: declaration, grant and last real run. Read without the kernel. */
-export async function readShownActions(c: SpacePaths, dossierActions: string): Promise<ActionAffichee[]> {
+export async function readShownActions(c: SpacePaths, dossierActions: string): Promise<ActionShown[]> {
   const [lues, accords] = await Promise.all([lireActions(c), lireAccords(dossierActions).catch(() => ({}) as Record<string, unknown>)]);
   return Promise.all(
-    lues.map(async (a): Promise<ActionAffichee> => {
-      const derniere = (await listerExecutions(join(dossierActions, a.id))).find((e) => !e.essai && !e.id.endsWith("-essai"));
-      const dernier = derniere ? { execution: derniere.id, debut: derniere.debut, statut: derniere.statut } : null;
+    lues.map(async (a): Promise<ActionShown> => {
+      const last = (await listerExecutions(join(dossierActions, a.id))).find((e) => !e.essai && !e.id.endsWith("-essai"));
+      const dernier = last ? { execution: last.id, debut: last.debut, statut: last.statut } : null;
       if ("erreur" in a) return { id: a.id, nom: a.id, description: "", motsCles: [], saisie: null, compte: [], publiques: [], accord: false, dernier, erreur: a.erreur };
       const d = a.declaration;
       return {
@@ -107,78 +107,78 @@ export function createActionsHost(o: {
 }) {
   const now = o.maintenant ?? Date.now;
   /** Per action, the last launch refused without writing anything: the page cannot read it on disk, `liste` gives it. */
-  const refusLancement = new Map<string, { erreur: string; quand: string }>();
+  const launchDenial = new Map<string, { erreur: string; quand: string }>();
   // Kept on disk next to the runs: a refusal survives a restart.
-  const fichierRefus = join(o.dossierActions, "refus-lancement.json");
-  const charge = readFile(fichierRefus, "utf8").then(
+  const denialFile = join(o.dossierActions, "refus-lancement.json");
+  const charge = readFile(denialFile, "utf8").then(
     (t) => {
       const lu: unknown = JSON.parse(t);
       if (typeof lu !== "object" || lu === null) return;
       for (const [id, v] of Object.entries(lu)) {
-        const { erreur, quand } = (v ?? {}) as { erreur?: unknown; quand?: unknown };
-        if (typeof erreur === "string" && typeof quand === "string") refusLancement.set(id, { erreur, quand });
+        const { erreur: error, quand: when } = (v ?? {}) as { erreur?: unknown; quand?: unknown };
+        if (typeof error === "string" && typeof when === "string") launchDenial.set(id, { erreur: error, quand: when });
       }
     },
     () => {},
   );
-  let ecriture = Promise.resolve();
-  const enregistrerRefus = () => {
-    const t = JSON.stringify(Object.fromEntries(refusLancement));
-    ecriture = ecriture
+  let writing = Promise.resolve();
+  const recordDenial = () => {
+    const t = JSON.stringify(Object.fromEntries(launchDenial));
+    writing = writing
       .then(() => mkdir(o.dossierActions, { recursive: true }))
-      .then(() => writeFile(fichierRefus, t))
+      .then(() => writeFile(denialFile, t))
       .catch((e) => console.error("[webaios] refus des actions non enregistrés :", e));
   };
   /** Followed launches, per action: a deletion forgets them, their end notes nothing (action made again under the same id). */
-  const lancementsSuivis = new Map<string, Set<Promise<LaunchResult>>>();
-  const suivreLancement = (id: string, fin: Promise<LaunchResult>): Promise<LaunchResult> => {
-    const pret = charge.then(() => refusLancement.delete(id) && enregistrerRefus());
-    const suivis = lancementsSuivis.get(id) ?? new Set();
-    lancementsSuivis.set(id, suivis.add(fin));
+  const trackedLaunches = new Map<string, Set<Promise<LaunchResult>>>();
+  const followLaunch = (id: string, fin: Promise<LaunchResult>): Promise<LaunchResult> => {
+    const ready = charge.then(() => launchDenial.delete(id) && recordDenial());
+    const tracked = trackedLaunches.get(id) ?? new Set();
+    trackedLaunches.set(id, tracked.add(fin));
     return fin.then(async (r) => {
-      await pret;
-      const suivi = lancementsSuivis.get(id)?.delete(fin) ?? false;
-      if (lancementsSuivis.get(id)?.size === 0) lancementsSuivis.delete(id);
-      if (suivi && !r.execution) {
-        refusLancement.set(id, { erreur: r.erreur ?? "L'action n'a pas pu être lancée", quand: new Date(now()).toISOString() });
-        enregistrerRefus();
+      await ready;
+      const tracking = trackedLaunches.get(id)?.delete(fin) ?? false;
+      if (trackedLaunches.get(id)?.size === 0) trackedLaunches.delete(id);
+      if (tracking && !r.execution) {
+        launchDenial.set(id, { erreur: r.erreur ?? "L'action n'a pas pu être lancée", quand: new Date(now()).toISOString() });
+        recordDenial();
         o.surChange();
       }
       return r;
     });
   };
   const lire = (id: string) => lireAction(o.chemins, id);
-  const nomDe = (a: ActionLue) => ("erreur" in a ? a.id : a.declaration.nom);
+  const nameOf = (a: ActionLue) => ("erreur" in a ? a.id : a.declaration.nom);
   let actionsCourantes = new Set<string>();
   return {
-    async liste(): Promise<ActionAffichee[]> {
+    async liste(): Promise<ActionShown[]> {
       await charge;
       return (await readShownActions(o.chemins, o.dossierActions)).map((a) => {
-        const r = refusLancement.get(a.id);
+        const r = launchDenial.get(a.id);
         return r && (!a.dernier || a.dernier.debut < r.quand) ? { ...a, refus: r.erreur } : a;
       });
     },
     /** Reads the action without launching it: `lancer` says whether the chrome should launch it after opening its page. */
-    async preparer(id: string, saisie: string | null): Promise<Prepared> {
+    async preparer(id: string, input: string | null): Promise<Prepared> {
       const noyau = o.noyau();
       if (!noyau) return { ok: false, erreur: MESSAGE_SANS_NOYAU };
       const a = await lire(id);
       if (!a) return { ok: false, erreur: ACTION_UNKNOWN };
       const d = noyau.actions.direct();
-      const tourne = d.courantes.some((x) => x.action === id) || d.enAttente.some((x) => x.action === id);
+      const running = d.courantes.some((x) => x.action === id) || d.enAttente.some((x) => x.action === id);
       // Required input missing: the page opens with its field to fill, nothing is launched.
-      const saisieManque = !("erreur" in a) && !!a.declaration.saisie && !saisie?.trim();
-      return { ok: true, nom: nomDe(a), lancer: !tourne && !saisieManque };
+      const inputMissing = !("erreur" in a) && !!a.declaration.saisie && !input?.trim();
+      return { ok: true, nom: nameOf(a), lancer: !running && !inputMissing };
     },
     /** The action's name for « Voir le workflow », read without the kernel. */
     async nom(id: string): Promise<string | null> {
       const a = await lire(id);
-      return a ? nomDe(a).slice(0, 60) : null;
+      return a ? nameOf(a).slice(0, 60) : null;
     },
-    async lancer(id: string, saisie: string | null): Promise<LaunchResult> {
+    async lancer(id: string, input: string | null): Promise<LaunchResult> {
       const noyau = o.noyau();
       if (!noyau) return { statut: "invalide", erreur: MESSAGE_SANS_NOYAU };
-      return suivreLancement(id, noyau.actions.lancer(id, { ...(saisie?.trim() ? { saisie } : {}), declencheur: "manuelle" }).fin);
+      return followLaunch(id, noyau.actions.lancer(id, { ...(input?.trim() ? { saisie: input } : {}), declencheur: "manuelle" }).fin);
     },
     arreter(id: string): void {
       o.noyau()?.actions.arreter(id);
@@ -227,16 +227,16 @@ export function createActionsHost(o: {
       o.noyau()?.actions.arreter(id);
       // Removed from disk too: an action made again under the same id would find this refusal at the next start.
       await charge;
-      if (refusLancement.delete(id)) enregistrerRefus();
-      lancementsSuivis.delete(id);
-      const oublier = async (x: string) => {
+      if (launchDenial.delete(id)) recordDenial();
+      trackedLaunches.delete(id);
+      const forget = async (x: string) => {
         const noyau = o.noyau();
         if (noyau) return noyau.actions.refuserAccord(x);
         await retirerAccord(o.dossierActions, x);
         await deleteDataAction(o.dossierActions, x);
       };
       try {
-        await trashAction(o.chemins, id, oublier);
+        await trashAction(o.chemins, id, forget);
         return { ok: true };
       } catch (e) {
         console.error(`[webaios] action ${id} non supprimée :`, e);
@@ -246,9 +246,9 @@ export function createActionsHost(o: {
     /** A finished action has a new last result (written outside the watched space): the list reads again. */
     directVu(e: ActionsState): void {
       const courantes = new Set(e.courantes.map((c) => c.action));
-      const quitte = [...actionsCourantes].some((a) => !courantes.has(a));
+      const quit = [...actionsCourantes].some((a) => !courantes.has(a));
       actionsCourantes = courantes;
-      if (quitte) o.surChange();
+      if (quit) o.surChange();
     },
   };
 }

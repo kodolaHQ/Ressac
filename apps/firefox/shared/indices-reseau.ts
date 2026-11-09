@@ -7,22 +7,22 @@
  *
  * No imports: the guard serialized into the served copy must pull nothing else.
  */
-export const MOTIF_INDICES_RESEAU = "<\\s*link(?![a-z0-9-])|http-equiv|speculationrules";
+export const NETWORK_HINTS_PATTERN = "<\\s*link(?![a-z0-9-])|http-equiv|speculationrules";
 
 /**
  * Decodes what can hide a `<` in an attribute (`srcdoc="&lt;link …"`, including nested: `&amp;lt;`) before
  * looking for the pattern. A false positive (the word in a text) only refuses the display: the agent rewrites it.
  */
-export function contientIndiceReseau(html: string): boolean {
-  let avant: string;
+export function containsNetworkHint(html: string): boolean {
+  let before: string;
   let x = html;
   do {
-    avant = x;
-    x = x.replace(/&(?:#(\d+)|#x([0-9a-f]+)|(lt|gt|amp|quot|apos));?/gi, (_m, dec?: string, hex?: string, nom?: string) => {
-      if (nom) return ({ lt: "<", gt: ">", amp: "&", quot: '"', apos: "'" } as Record<string, string>)[nom.toLowerCase()]!;
+    before = x;
+    x = x.replace(/&(?:#(\d+)|#x([0-9a-f]+)|(lt|gt|amp|quot|apos));?/gi, (_m, dec?: string, hex?: string, name?: string) => {
+      if (name) return ({ lt: "<", gt: ">", amp: "&", quot: '"', apos: "'" } as Record<string, string>)[name.toLowerCase()]!;
       const n = dec !== undefined ? Number(dec) : parseInt(hex!, 16);
       return n > 0 && n <= 0x10ffff ? String.fromCodePoint(n) : String.fromCharCode(0xfffd);
     });
-  } while (x !== avant);
-  return new RegExp(MOTIF_INDICES_RESEAU, "i").test(x);
+  } while (x !== before);
+  return new RegExp(NETWORK_HINTS_PATTERN, "i").test(x);
 }

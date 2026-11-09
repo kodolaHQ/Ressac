@@ -1,7 +1,7 @@
-import { PROFIL_DEFAUT, type Espace, type IdEspace, type IdProfil, type ProfilConnexion } from "../../shared/modele";
+import { DEFAULT_PROFILE, type Space, type SpaceId, type ProfileId, type ConnectionProfile } from "../../shared/modele";
 
 /** Choice of a space's sign-in profile, as `creerEspace` and `reglerEspace` receive it. */
-export type ChoixProfil = IdProfil | "nouveau";
+export type ChoixProfil = ProfileId | "nouveau";
 
 /** No profile chosen yet: a new space does not preselect one, the user chooses (« Créer » waits). */
 export const PROFIL_A_CHOISIR = "";
@@ -17,7 +17,7 @@ export interface OptionProfil {
  * other space. « Son propre profil » keeps the space's current profile if it is the only one using it (creating a
  * new one would erase its sign-ins).
  */
-export function optionsProfil(espaces: Espace[], profils: ProfilConnexion[], espaceId: IdEspace | null): OptionProfil[] {
+export function optionsProfil(espaces: Space[], profils: ConnectionProfile[], espaceId: SpaceId | null): OptionProfil[] {
   const regle = espaces.find((e) => e.id === espaceId);
   const autres = espaces.filter((e) => e.id !== espaceId);
   const propre: ChoixProfil = regle && !autres.some((e) => e.profil === regle.profil) ? regle.profil : "nouveau";
@@ -29,12 +29,12 @@ export function optionsProfil(espaces: Espace[], profils: ProfilConnexion[], esp
 }
 
 /** Deleting this space erases its sign-ins: it is the last one using a profile other than the default. */
-export function perdConnexions(espaces: Espace[], espace: Espace): boolean {
-  return espace.profil !== PROFIL_DEFAUT && !espaces.some((e) => e.id !== espace.id && e.profil === espace.profil);
+export function perdConnexions(espaces: Space[], espace: Space): boolean {
+  return espace.profil !== DEFAULT_PROFILE && !espaces.some((e) => e.id !== espace.id && e.profil === espace.profil);
 }
 
 /** Setting space `espaceId` to profile `choix` erases its sign-ins: it leaves a profile it was the last one on. */
-export function choixPerdConnexions(espaces: Espace[], espaceId: IdEspace | null, choix: ChoixProfil): boolean {
+export function choixPerdConnexions(espaces: Space[], espaceId: SpaceId | null, choix: ChoixProfil): boolean {
   const espace = espaces.find((e) => e.id === espaceId);
   return !!espace && choix !== espace.profil && perdConnexions(espaces, espace);
 }

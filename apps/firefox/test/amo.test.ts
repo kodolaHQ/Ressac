@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AMO_URL, ErreurSignature, SIGNATURE_LENTE, lireCleAmo, signatureImpossible, signatureRefusee, signer } from "../noyau/extensions/amo";
-import { addonIdDe, manifesteFirefox, refusFirefox, zipper } from "../noyau/extensions/copie-firefox";
+import { AMO_URL, SignatureError, SLOW_SIGNATURE, readAmoKey, signatureImpossible, deniedSignature, signer } from "../noyau/extensions/amo";
+import { addonIdDe, firefoxManifest, firefoxDenial, zipper } from "../noyau/extensions/copie-firefox";
 import { DEFAULT_GUARDS, prepareCopy } from "../../../packages/noyau/src/index.ts";
 import { startFakeAmo } from "./fake-amo";
 
@@ -56,12 +56,12 @@ describe("AMO client", () => {
       const amo = await fake(o);
       const a = await xpiDe("t@agent.webaios", "1.0.0.1");
       const e = await signer({ ...a, guid: "t@agent.webaios", version: "1.0.0.1", cle, base: amo.url, pasMs: 10, ...extra }).then(() => null, (x) => x);
-      expect(e).toBeInstanceOf(ErreurSignature);
+      expect(e).toBeInstanceOf(SignatureError);
       expect(e.message).not.toContain(cle.secret);
       return e.message;
     };
-    expect(await erreur({ refus: "Invalid manifest" })).toBe(signatureRefusee("Invalid manifest"));
-    expect(await erreur({ delaiMs: 5000 }, { delai: 200 })).toBe(SIGNATURE_LENTE);
+    expect(await erreur({ refus: "Invalid manifest" })).toBe(deniedSignature("Invalid manifest"));
+    expect(await erreur({ delaiMs: 5000 }, { delai: 200 })).toBe(SLOW_SIGNATURE);
     expect(await erreur({ erreurSondage: 403 }, { delai: 300 })).toBe(signatureImpossible("HTTP 403"));
     expect(await erreur({ erreurHttp: 500 })).toBe(signatureImpossible("HTTP 500"));
   });
@@ -71,8 +71,8 @@ describe("AMO client", () => {
     const a = await xpiDe("t@agent.webaios", "1.0.0.1");
     const debut = Date.now();
     const e = await signer({ ...a, guid: "t@agent.webaios", version: "1.0.0.1", cle, base: amo.url, pasMs: 10, delai: 5000 }).then(() => null, (x) => x);
-    expect(e).toBeInstanceOf(ErreurSignature);
-    expect(e.message.startsWith(signatureRefusee(""))).toBe(true);
+    expect(e).toBeInstanceOf(SignatureError);
+    expect(e.message.startsWith(deniedSignature(""))).toBe(true);
     expect(e.message).toContain("disabled");
     expect(Date.now() - debut).toBeLessThan(2000);
   });
@@ -86,7 +86,7 @@ describe("AMO client", () => {
     const spy = vi.spyOn(console, "error").mockImplementation((...a) => void erreurs.push(a));
     const warn = vi.spyOn(console, "warn").mockImplementation((...a) => void erreurs.push(a));
     const debut = Date.now();
-    expect(await lireCleAmo({}, { commande: lent, delai: 200 })).toBeNull();
+    expect(await readAmoKey({}, { commande: lent, delai: 200 })).toBeNull();
     expect(Date.now() - debut).toBeLessThan(5000);
     spy.mockRestore();
     warn.mockRestore();
@@ -94,14 +94,14 @@ describe("AMO client", () => {
   });
 
   it("keys: test env, absent", async () => {
-    expect(await lireCleAmo({ WEBAIOS_TEST_AMO_URL: "x", WEBAIOS_TEST_AMO_CLES: "e:s" })).toEqual({ emetteur: "e", secret: "s" });
-    expect(await lireCleAmo({ WEBAIOS_TEST_AMO_URL: "x", WEBAIOS_TEST_AMO_CLES: "user:1:abc:s" })).toEqual({ emetteur: "user:1:abc", secret: "s" });
-    expect(await lireCleAmo({ WEBAIOS_TEST_AMO_URL: "x" })).toBeNull();
+    expect(await readAmoKey({ WEBAIOS_TEST_AMO_URL: "x", WEBAIOS_TEST_AMO_CLES: "e:s" })).toEqual({ emetteur: "e", secret: "s" });
+    expect(await readAmoKey({ WEBAIOS_TEST_AMO_URL: "x", WEBAIOS_TEST_AMO_CLES: "user:1:abc:s" })).toEqual({ emetteur: "user:1:abc", secret: "s" });
+    expect(await readAmoKey({ WEBAIOS_TEST_AMO_URL: "x" })).toBeNull();
   });
 
   // Real AMO, under the owner's account: a real guarded copy of an agent extension, version 1 (new add-on) then 2 (existing one).
   it.skipIf(process.env.WEBAIOS_AMO !== "1")("real AMO: signs a guarded agent copy, then a second version", { timeout: 40 * 60_000 }, async () => {
-    const k = await lireCleAmo({});
+    const k = await readAmoKey({});
     if (!k) throw new Error("AMO keys absent from the keychain");
     const d = mkdtempSync(join(tmpdir(), "webaios-amo-real-"));
     dirs.push(d);
@@ -127,9 +127,9 @@ describe("AMO client", () => {
       const r = await prepareCopy({ source, cible: staging, dossierGardes: DEFAULT_GUARDS });
       expect(r.analyse.refus).toEqual([]);
       const brut = JSON.parse(readFileSync(join(staging, "manifest.json"), "utf8"));
-      expect(refusFirefox(brut, readdirSync(staging, { recursive: true }) as string[])).toEqual([]);
+      expect(firefoxDenial(brut, readdirSync(staging, { recursive: true }) as string[])).toEqual([]);
       const f = /^importScripts\("webaios-garde-fond\.js", ("(?:[^"\\]|\\.)*")\);$/m.exec(readFileSync(join(staging, "webaios-fond.js"), "utf8"));
-      const manifeste = manifesteFirefox(brut, dossier, n, f ? (JSON.parse(f[1]!) as string) : undefined);
+      const manifeste = firefoxManifest(brut, dossier, n, f ? (JSON.parse(f[1]!) as string) : undefined);
       writeFileSync(join(staging, "manifest.json"), JSON.stringify(manifeste, null, 2));
       const xpi = join(d, `${n}.xpi`);
       const sortie = join(d, `${n}.signe.xpi`);

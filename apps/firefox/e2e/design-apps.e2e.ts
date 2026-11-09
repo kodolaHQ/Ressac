@@ -4,7 +4,7 @@ import { createServer } from "node:http";
 import os from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { urlRelecture } from "../shared/modele";
+import { reviewUrl } from "../shared/modele";
 import { testActor } from "./agent-extensions";
 import { agentInput, APPS_ENV, appWindowExpr, inAppView, killFakeApps, launchEssai, rowButton, rowMenu, rowState, writeProject } from "./apps";
 import { startDesignServers, trustedMouse } from "./design";
@@ -155,7 +155,7 @@ async function add(text: string): Promise<void> {
   await expect.poll(cart, { timeout: 10_000 }).toBe(n + 1);
   await expect.poll(hosts, { timeout: 10_000 }).toBe(1);
 }
-const reviewTabs = async () => Object.values((await state(m)).onglets).filter((o) => o.url === urlRelecture("app-essai"));
+const reviewTabs = async () => Object.values((await state(m)).onglets).filter((o) => o.url === reviewUrl("app-essai"));
 
 it("design.spec.ts:426 an app window launched from the Applications page: the WebAiOs badge, Mode design, the bubble in its overlay, Panier", async () => {
   const fenetreId = (await state(m)).fenetres[0]!.id;

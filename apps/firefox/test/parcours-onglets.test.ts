@@ -1,16 +1,16 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import type { Action, PanneauOnglets } from "../shared/api";
-import type { EtatNavigateur } from "../shared/modele";
-import { appliquer } from "../core/etat/actions";
-import { etatInitial } from "../core/etat/etat-initial";
-import { ParcoursOnglets } from "../core/parcours-onglets";
+import type { Action, TabsPanel } from "../shared/api";
+import type { BrowserState } from "../shared/modele";
+import { apply } from "../core/etat/actions";
+import { initialState } from "../core/etat/etat-initial";
+import { TabCycle } from "../core/parcours-onglets";
 
 let n = 0;
 const genId = () => `g${++n}`;
-let e: EtatNavigateur;
+let e: BrowserState;
 let F: string;
-let p: ParcoursOnglets;
-let envoyer: ReturnType<typeof vi.fn<(f: string, panneau: PanneauOnglets | null) => void>>;
+let p: TabCycle;
+let envoyer: ReturnType<typeof vi.fn<(f: string, panneau: TabsPanel | null) => void>>;
 let capturer: ReturnType<typeof vi.fn<(f: string) => Promise<void>>>;
 let rendreFocus: ReturnType<typeof vi.fn<(f: string) => void>>;
 /** Active tab at the moment focus is returned (it must be after the tab change). */
@@ -18,7 +18,7 @@ let actifAuFocus: (string | null | undefined)[];
 let focalisee: boolean;
 
 const agir = (a: Action) => {
-  e = appliquer(e, a, genId);
+  e = apply(e, a, genId);
   p.surEtat(e);
 };
 const ouvrir = (url: string) => {
@@ -34,14 +34,14 @@ const dernierEnvoi = () => envoyer.mock.calls.at(-1)?.[1];
 beforeEach(() => {
   vi.useFakeTimers();
   n = 0;
-  e = etatInitial(genId);
+  e = initialState(genId);
   F = e.fenetres[0]!.id;
   envoyer = vi.fn();
   capturer = vi.fn(async () => {});
   actifAuFocus = [];
   rendreFocus = vi.fn(() => void actifAuFocus.push(actif()));
   focalisee = true;
-  p = new ParcoursOnglets({ etat: () => e, agir, envoyer, apercu: (id) => (id === "sans" ? null : `apercu-${id}`), capturer, rendreFocus, estFocalisee: () => focalisee });
+  p = new TabCycle({ etat: () => e, agir, envoyer, apercu: (id) => (id === "sans" ? null : `apercu-${id}`), capturer, rendreFocus, estFocalisee: () => focalisee });
   p.surEtat(e);
 });
 afterEach(() => vi.useRealTimers());
@@ -219,7 +219,7 @@ test("essential of a sibling space (same key): confirmed without changing space"
 test("card without a preview: apercu null", () => {
   const a = ouvrir("https://a.fr");
   ouvrir("https://b.fr");
-  p = new ParcoursOnglets({ etat: () => e, agir, envoyer, apercu: (id) => (id === a ? null : `apercu-${id}`), capturer, rendreFocus, estFocalisee: () => true });
+  p = new TabCycle({ etat: () => e, agir, envoyer, apercu: (id) => (id === a ? null : `apercu-${id}`), capturer, rendreFocus, estFocalisee: () => true });
   p.surEtat(e);
   p.parcourir(F, 1);
   vi.advanceTimersByTime(250);

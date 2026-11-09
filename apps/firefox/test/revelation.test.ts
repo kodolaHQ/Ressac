@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { masquer, REVELATION_INITIALE, surZone, zoneGauche, zoneSortie, type Revelation, type ZoneGauche } from "../shared/revelation";
+import { masquer, INITIAL_REVEAL, surZone, zoneGauche, zoneSortie, type Revelation, type ZoneGauche } from "../shared/revelation";
 
 /** Replays mouse positions (px from the left edge); a requested hide is applied right away. */
-function parcours(xs: number[], depart: Revelation = REVELATION_INITIALE): boolean[] {
+function parcours(xs: number[], depart: Revelation = INITIAL_REVEAL): boolean[] {
   let r = depart;
   return xs.map((x) => {
     const zone = zoneGauche(x);

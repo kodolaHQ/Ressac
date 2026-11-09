@@ -3,12 +3,12 @@
   import BarreSite from "./BarreSite.svelte";
   import CadreAccueil from "../SiteHomeFrame.svelte";
   import CarteAccordSite from "./CarteAccordSite.svelte";
-  import type { EtatFenetreSite } from "../../shared/sites";
+  import type { SiteWindowState } from "../../shared/sites";
   import type { ApiSite } from "../../shared/api";
 
   /** The only API of this page: the main process knows which app it is the interface of. */
   const api = (window as unknown as { webaios: { site: ApiSite } }).webaios.site;
-  let etat = $state<EtatFenetreSite | null>(null);
+  let etat = $state<SiteWindowState | null>(null);
 
   onMount(() => {
     const fin = api.surEtat((e) => (etat = e));

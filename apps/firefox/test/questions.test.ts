@@ -1,10 +1,10 @@
 import { expect, it } from "vitest";
-import { etatInitial } from "../core/etat/etat-initial";
+import { initialState } from "../core/etat/etat-initial";
 import { Questions } from "../chrome/agent/questions";
 import { createStore } from "../chrome/store/store";
 
 it("a question already stale when asked (tab gone) is refused at once, without a card", async () => {
-  const store = createStore(etatInitial());
+  const store = createStore(initialState());
   const questions = new Questions(store);
   const fenetre = store.state.fenetres[0]!.id;
   const answer = questions.ask({ id: "gone", titre: "A", url: "https://a.test/", espace: "" }, fenetre);
@@ -13,7 +13,7 @@ it("a question already stale when asked (tab gone) is refused at once, without a
 });
 
 it("a question of a closed window moves to the other, or is refused without one", async () => {
-  const store = createStore(etatInitial());
+  const store = createStore(initialState());
   const questions = new Questions(store);
   const a = store.state.fenetres[0]!.id;
   store.dispatch({ type: "ouvrirFenetre", id: "b" });
@@ -29,7 +29,7 @@ it("a question of a closed window moves to the other, or is refused without one"
 });
 
 it("an extension card: Activer answers accepte with the card's empreinte; a renforcée one needs confirme", async () => {
-  const store = createStore(etatInitial());
+  const store = createStore(initialState());
   const questions = new Questions(store);
   const fenetre = store.state.fenetres[0]!.id;
   const espace = store.state.espaces[0]!;
@@ -56,7 +56,7 @@ it("an extension card: Activer answers accepte with the card's empreinte; a renf
 });
 
 it("a site's question waits without a delay; it falls (« retiree ») on its signal or when its tab closes", async () => {
-  const store = createStore(etatInitial());
+  const store = createStore(initialState());
   const questions = new Questions(store);
   const fenetre = store.state.fenetres[0]!.id;
   store.dispatch({ type: "ouvrirOnglet", fenetreId: fenetre, url: "https://a.test/", activer: true }, () => "t");
@@ -81,7 +81,7 @@ it("a site's question waits without a delay; it falls (« retiree ») on its sig
 });
 
 it("the dev tools card answers the ticked rights, [] on a refusal, on its signal or when its tab goes to another site", async () => {
-  const store = createStore(etatInitial());
+  const store = createStore(initialState());
   const questions = new Questions(store);
   const fenetre = store.state.fenetres[0]!.id;
   store.dispatch({ type: "ouvrirOnglet", fenetreId: fenetre, url: "https://a.test/", activer: true }, () => "t");
@@ -108,7 +108,7 @@ it("the dev tools card answers the ticked rights, [] on a refusal, on its signal
 });
 
 it("the widget data card: the origin per kind; Autoriser answers true; a site app's dev tools card falls when its window closes", async () => {
-  const store = createStore(etatInitial());
+  const store = createStore(initialState());
   let open = [{ id: "vidola", url: "https://vidola.test/" }];
   const questions = new Questions(store, () => open);
   const fenetre = store.state.fenetres[0]!.id;
@@ -134,7 +134,7 @@ it("the widget data card: the origin per kind; Autoriser answers true; a site ap
 });
 
 it("a card on an agent app window falls when the window closes or goes to another origin (a relaunch on another port)", async () => {
-  const store = createStore(etatInitial());
+  const store = createStore(initialState());
   let open = [{ dossier: "essai", url: "http://localhost:15280/" }];
   const questions = new Questions(store, () => [], () => open);
   const fenetre = store.state.fenetres[0]!.id;

@@ -1,11 +1,11 @@
 <script lang="ts">
-  import type { EtatFenetre } from "../shared/modele";
+  import type { WindowState } from "../shared/modele";
   import { api } from "../ui/etat.svelte";
   import type { AddonButton, PendingUpdate } from "../chrome/window/addons";
 
   // The add-on buttons of the active window (chrome/window/addons.ts), copied into this document like ui/api.ts does.
   // `fenetre` only opens the agent's Extensions page: the window announces changes itself (onChange, every tab switch).
-  let { fenetre }: { fenetre: EtatFenetre } = $props();
+  let { fenetre }: { fenetre: WindowState } = $props();
   const addons = window.parent.webaiosWindow!.addons;
   let buttons = $state<AddonButton[]>(structuredClone(addons.buttons()));
   let updates = $state<PendingUpdate[]>(structuredClone(addons.updates()));

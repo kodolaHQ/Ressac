@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { ActionApplication, ApplicationAffichee, ListeApplications } from "../../shared/api";
-  import { confirmerOubli, confirmerSuppressionSite, OUBLIER_MEMOIRE, type ActionSite, type SiteAffiche } from "../../shared/sites";
+  import type { ActionApplication, ApplicationShown, ApplicationList } from "../../shared/api";
+  import { confirmForget, confirmerSuppressionSite, FORGET_MEMORY, type ActionSite, type ShownSite } from "../../shared/sites";
   import { api } from "../etat.svelte";
   import Icone from "./Icone.svelte";
   import ProjetsExternes from "./ProjetsExternes.svelte";
@@ -9,8 +9,8 @@
   type Filtre = "tout" | "application" | "poc" | "sans-fiche" | "en-marche" | "arretee" | "erreur";
 
   /** Running in the panel's sense: everything that is neither stopped nor in error. */
-  const active = (a: ApplicationAffichee) => a.etat === "en-marche" || a.etat === "lancement" || a.etat === "preparation";
-  const FILTRES: Record<Filtre, (a: ApplicationAffichee) => boolean> = {
+  const active = (a: ApplicationShown) => a.etat === "en-marche" || a.etat === "lancement" || a.etat === "preparation";
+  const FILTRES: Record<Filtre, (a: ApplicationShown) => boolean> = {
     tout: () => true,
     application: (a) => a.type === "application",
     poc: (a) => a.type === "poc",
@@ -40,21 +40,21 @@
     },
   ];
 
-  let donnees = $state<ListeApplications>({ atelier: "ok", applications: [] });
+  let donnees = $state<ApplicationList>({ atelier: "ok", applications: [] });
   let chargee = $state(false);
   let filtre = $state<Filtre>("tout");
   let texte = $state("");
   let champ: HTMLInputElement;
   let requete = 0;
   /** Project whose deletion awaits the user's confirmation. */
-  let aSupprimer = $state<ApplicationAffichee | null>(null);
+  let aSupprimer = $state<ApplicationShown | null>(null);
 
   /** The site apps (« Sites » section): re-read on each change of the list or of their state. */
-  let sites = $state<SiteAffiche[]>([]);
+  let sites = $state<ShownSite[]>([]);
   let requeteSites = 0;
   /** Site app whose forgetting or deletion awaits the user's confirmation. */
-  let siteAOublier = $state<SiteAffiche | null>(null);
-  let siteASupprimer = $state<SiteAffiche | null>(null);
+  let siteAOublier = $state<ShownSite | null>(null);
+  let siteASupprimer = $state<ShownSite | null>(null);
 
   async function chargerSites() {
     const n = ++requeteSites;
@@ -67,7 +67,7 @@
     return api.sites.surChange(() => void chargerSites());
   });
 
-  const agirSite = (s: SiteAffiche, action: ActionSite) => api.sites.agir(s.id, action);
+  const agirSite = (s: ShownSite, action: ActionSite) => api.sites.agir(s.id, action);
   const lignesSites = $derived.by(() => {
     const cherche = texte.trim().toLowerCase();
     return sites.filter((s) => !cherche || [s.nom, s.id, s.domaine ?? "", s.description].some((x) => x.toLowerCase().includes(cherche)));
@@ -127,7 +127,7 @@
     return d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
   }
 
-  function details(a: ApplicationAffichee): string {
+  function details(a: ApplicationShown): string {
     const morceaux: string[] = [TYPES[a.type]];
     if (a.origine) morceaux.push(`depuis ${a.origine.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")}`);
     morceaux.push(a.port !== undefined && active(a) ? `port ${a.port}` : quand(a.creeLe));
@@ -152,10 +152,10 @@
     return raison.split("\n")[0];
   }
 
-  const agir = (a: ApplicationAffichee, action: ActionApplication) => api.applications.agir(a.dossier, action);
+  const agir = (a: ApplicationShown, action: ActionApplication) => api.applications.agir(a.dossier, action);
 
   /** Visible buttons and ⋯ menu entries depending on the state (spec §5). */
-  function actions(a: ApplicationAffichee): { boutons: { libelle: string; action: ActionApplication; lance?: boolean }[]; menu: EntreeMenu[] } {
+  function actions(a: ApplicationShown): { boutons: { libelle: string; action: ActionApplication; lance?: boolean }[]; menu: EntreeMenu[] } {
     const entree = (libelle: string, action: ActionApplication): EntreeMenu => ({
       libelle,
       agir: () => (action === "supprimer" ? (aSupprimer = a) : agir(a, action)),
@@ -284,7 +284,7 @@
                   <button data-testid="site-{s.id}-ouvrir" onclick={() => agirSite(s, "ouvrir")}>Ouvrir</button>
                 {/if}
                 <button data-testid="site-{s.id}-modifier" onclick={() => agirSite(s, "modifier")}>Modifier avec l'agent</button>
-                <button data-testid="site-{s.id}-oublier" onclick={() => (siteAOublier = s)}>{OUBLIER_MEMOIRE}</button>
+                <button data-testid="site-{s.id}-oublier" onclick={() => (siteAOublier = s)}>{FORGET_MEMORY}</button>
                 <button data-testid="site-{s.id}-dossier" onclick={() => agirSite(s, "dossier")}>Afficher le dossier</button>
                 <button data-testid="site-{s.id}-relire" onclick={() => agirSite(s, "relire")}>Relire</button>
                 <button data-testid="site-{s.id}-supprimer" onclick={() => (siteASupprimer = s)}>Supprimer</button>
@@ -303,7 +303,7 @@
   {@const cible = siteAOublier}
   <div class="voile">
     <div class="confirmation" role="alertdialog" aria-modal="true" data-testid="confirmation-oubli-site">
-      <p>{confirmerOubli(cible.nom)}</p>
+      <p>{confirmForget(cible.nom)}</p>
       <div class="boutons">
         <button onclick={() => (siteAOublier = null)}>Annuler</button>
         <button

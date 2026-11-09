@@ -3,33 +3,33 @@ import { chmodSync, existsSync, mkdtempSync, readdirSync, readFileSync, writeFil
 import fsp from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { appliquer } from "../../core/etat/actions";
-import { etatInitial } from "../../core/etat/etat-initial";
-import { chargerSession, EnregistreurSession } from "../../core/etat/persistance";
-import type { EtatNavigateur } from "../../shared/modele";
+import { apply } from "../../core/etat/actions";
+import { initialState } from "../../core/etat/etat-initial";
+import { chargerSession, SessionRecorder } from "../../core/etat/persistance";
+import type { BrowserState } from "../../shared/modele";
 
 const dossier = () => mkdtempSync(join(tmpdir(), "webaios-session-"));
 const mis_de_cote = (d: string, suffixe: string) => readdirSync(d).filter((f) => f.startsWith("session.json.") && f.endsWith(suffixe));
 const attendre = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-function etatRiche(): EtatNavigateur {
+function etatRiche(): BrowserState {
   let n = 0;
   const g = () => `g${++n}`;
-  let e = etatInitial(g);
+  let e = initialState(g);
   const F = e.fenetres[0]!.id;
-  e = appliquer(e, { type: "ouvrirOnglet", fenetreId: F, url: "https://a.test/" }, g);
-  e = appliquer(e, { type: "ouvrirOnglet", fenetreId: F, url: "https://b.test/" }, g);
+  e = apply(e, { type: "ouvrirOnglet", fenetreId: F, url: "https://a.test/" }, g);
+  e = apply(e, { type: "ouvrirOnglet", fenetreId: F, url: "https://b.test/" }, g);
   const [a, b] = Object.keys(e.onglets);
-  e = appliquer(e, { type: "majOnglet", id: a!, champs: { titre: "A", zoom: 1.2, chargement: true, peutReculer: true, plante: true } }, g);
-  e = appliquer(e, { type: "epinglerOnglet", id: b! }, g);
-  e = appliquer(e, { type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut" }, g);
+  e = apply(e, { type: "majOnglet", id: a!, champs: { titre: "A", zoom: 1.2, chargement: true, peutReculer: true, plante: true } }, g);
+  e = apply(e, { type: "epinglerOnglet", id: b! }, g);
+  e = apply(e, { type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut" }, g);
   return e;
 }
 
 test("round trip: identical, apart from volatile fields reset to defaults", async () => {
   const d = dossier();
   const etat = etatRiche();
-  const enr = new EnregistreurSession(d);
+  const enr = new SessionRecorder(d);
   enr.planifier(etat);
   await enr.vider();
   const relu = await chargerSession(d);
@@ -41,7 +41,7 @@ test("round trip: identical, apart from volatile fields reset to defaults", asyn
 });
 
 /** The same state as a browser from before configurable spaces saved it (version 1). */
-function enV1(etat: EtatNavigateur): unknown {
+function enV1(etat: BrowserState): unknown {
   const { profils: _profils, ...reste } = structuredClone(etat);
   return { ...reste, version: 1, espaces: reste.espaces.map(({ prive: _prive, profil: _profil, ...e }) => e) };
 }
@@ -64,9 +64,9 @@ test("session v2 with a private space and a second sign-in profile: identical ro
   const d = dossier();
   let n = 100;
   const g = () => `h${++n}`;
-  const etat = appliquer(etatRiche(), { type: "creerEspace", nom: "Banque", icone: "🏦", prive: true, profil: "nouveau" }, g);
+  const etat = apply(etatRiche(), { type: "creerEspace", nom: "Banque", icone: "🏦", prive: true, profil: "nouveau" }, g);
   expect(etat.profils).toHaveLength(2);
-  const enr = new EnregistreurSession(d);
+  const enr = new SessionRecorder(d);
   enr.planifier(etat);
   await enr.vider();
   const relu = await chargerSession(d);
@@ -77,7 +77,7 @@ test("session v2 with a private space and a second sign-in profile: identical ro
 
 test("a session saved before the windows' frame loads (frame = null)", async () => {
   const d = dossier();
-  const ancienne = structuredClone(etatInitial()) as unknown as { fenetres: Record<string, unknown>[] };
+  const ancienne = structuredClone(initialState()) as unknown as { fenetres: Record<string, unknown>[] };
   for (const f of ancienne.fenetres) delete f.cadre;
   writeFileSync(join(d, "session.json"), JSON.stringify(ancienne));
   const e = await chargerSession(d);
@@ -135,7 +135,7 @@ test("unreadable session (permissions) → initial state, and the next save does
   chmodSync(chemin, 0o000);
   const e = await chargerSession(d);
   expect(e.onglets).toEqual({});
-  const enr = new EnregistreurSession(d, 0);
+  const enr = new SessionRecorder(d, 0);
   enr.planifier(e);
   await enr.vider();
   const [garde] = mis_de_cote(d, ".illisible");
@@ -152,7 +152,7 @@ test("inconsistent state (no space) → initial state", async () => {
 test("planifier batches writes (3 close calls → 1 write)", async () => {
   const d = dossier();
   const espion = vi.spyOn(fsp, "rename");
-  const enr = new EnregistreurSession(d, 50);
+  const enr = new SessionRecorder(d, 50);
   const e = etatRiche();
   enr.planifier(e);
   enr.planifier(e);
@@ -165,7 +165,7 @@ test("planifier batches writes (3 close calls → 1 write)", async () => {
 test("atomic write: goes through a temporary file then rename", async () => {
   const d = dossier();
   const espion = vi.spyOn(fsp, "rename");
-  const enr = new EnregistreurSession(d);
+  const enr = new SessionRecorder(d);
   enr.planifier(etatRiche());
   await enr.vider();
   expect(espion.mock.calls[0]![0]).toMatch(/session\.json\..*tmp$/);
@@ -175,7 +175,7 @@ test("atomic write: goes through a temporary file then rename", async () => {
 
 test("vider() writes the pending state immediately; with nothing pending, does nothing", async () => {
   const d = dossier();
-  const enr = new EnregistreurSession(d, 10_000);
+  const enr = new SessionRecorder(d, 10_000);
   await enr.vider();
   expect(existsSync(join(d, "session.json"))).toBe(false);
   enr.planifier(etatRiche());
@@ -185,9 +185,9 @@ test("vider() writes the pending state immediately; with nothing pending, does n
 
 test("vider() waits for the write in progress: nothing is lost on exit, no temporary file remains", async () => {
   const d = dossier();
-  const enr = new EnregistreurSession(d, 10_000);
+  const enr = new SessionRecorder(d, 10_000);
   const a = etatRiche();
-  const b = appliquer(a, { type: "choisirMoteur", moteur: "qwant" });
+  const b = apply(a, { type: "choisirMoteur", moteur: "qwant" });
   enr.planifier(a);
   const premiere = enr.vider(); // write in progress…
   const sortie = enr.vider(); // …the exit has nothing pending any more, but must wait
@@ -203,7 +203,7 @@ test("vider() waits for the write in progress: nothing is lost on exit, no tempo
 test("a failed write leaves no temporary file and the state is rewritten on the next vider()", async () => {
   const d = dossier();
   const espion = vi.spyOn(fsp, "rename").mockRejectedValueOnce(new Error("disque plein"));
-  const enr = new EnregistreurSession(d, 10_000);
+  const enr = new SessionRecorder(d, 10_000);
   enr.planifier(etatRiche());
   await enr.vider();
   expect(readdirSync(d)).toEqual([]);
@@ -216,8 +216,8 @@ test("a tab's load error is not saved", async () => {
   const d = dossier();
   let e = etatRiche();
   const id = Object.keys(e.onglets)[0]!;
-  e = appliquer(e, { type: "majOnglet", id, champs: { erreur: "ERR_NAME_NOT_RESOLVED" } });
-  const enr = new EnregistreurSession(d);
+  e = apply(e, { type: "majOnglet", id, champs: { erreur: "ERR_NAME_NOT_RESOLVED" } });
+  const enr = new SessionRecorder(d);
   enr.planifier(e);
   await enr.vider();
   expect((await chargerSession(d)).onglets[id]?.erreur).toBeNull();
@@ -225,7 +225,7 @@ test("a tab's load error is not saved", async () => {
 
 test("a session saved without profilAgent loads with claude", async () => {
   const d = dossier();
-  const ancienne = structuredClone(etatInitial()) as unknown as { reglages: Record<string, unknown> };
+  const ancienne = structuredClone(initialState()) as unknown as { reglages: Record<string, unknown> };
   delete ancienne.reglages.profilAgent;
   writeFileSync(join(d, "session.json"), JSON.stringify(ancienne));
   const e = await chargerSession(d);
@@ -235,7 +235,7 @@ test("a session saved without profilAgent loads with claude", async () => {
 
 test("a session saved without agent panel width loads with 420", async () => {
   const d = dossier();
-  const ancienne = structuredClone(etatInitial()) as unknown as { reglages: Record<string, unknown> };
+  const ancienne = structuredClone(initialState()) as unknown as { reglages: Record<string, unknown> };
   delete ancienne.reglages.largeurPanneauAgent;
   writeFileSync(join(d, "session.json"), JSON.stringify(ancienne));
   const e = await chargerSession(d);

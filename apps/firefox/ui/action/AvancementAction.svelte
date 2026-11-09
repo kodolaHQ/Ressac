@@ -1,7 +1,7 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import type { DirectAction } from "@webaios/noyau";
-  import { EN_ATTENTE, lectureDe, MISE_EN_PAGE } from "../../shared/actions";
+  import { PENDING, lectureDe, MISE_EN_PAGE } from "../../shared/actions";
   import { api } from "../etat.svelte";
 
   /**
@@ -40,7 +40,7 @@
 
 <section class="avancement" data-testid="avancement-action" aria-live="polite">
   {#if enAttente && !courante}
-    <p class="attente" data-testid="en-attente">{EN_ATTENTE}</p>
+    <p class="attente" data-testid="en-attente">{PENDING}</p>
   {/if}
   {#if courante}
     <ol>

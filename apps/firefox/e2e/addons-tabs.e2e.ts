@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import type { EtatNavigateur, Onglet } from "../shared/modele";
+import type { BrowserState, Tab } from "../shared/modele";
 import { button, cleanupXpis, installAddon, options, probe, uninstallAddon } from "./addons";
 import { dispatch, inWindow, newWindow, state, waitFor, waitReady } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
@@ -27,7 +27,7 @@ afterEach(() => w?.close());
 
 const win = async () => (await state(m)).fenetres[0]!;
 
-async function waitState<T>(read: (s: EtatNavigateur) => T, ok: (v: T) => boolean, ms = 10_000): Promise<T> {
+async function waitState<T>(read: (s: BrowserState) => T, ok: (v: T) => boolean, ms = 10_000): Promise<T> {
   const deadline = Date.now() + ms;
   for (;;) {
     const v = read(await state(m));
@@ -36,7 +36,7 @@ async function waitState<T>(read: (s: EtatNavigateur) => T, ok: (v: T) => boolea
     await new Promise((r) => setTimeout(r, 100));
   }
 }
-const tabWith = (part: string) => waitState((s) => Object.values(s.onglets).find((o) => o.url.includes(part)), (o) => !!o) as Promise<Onglet>;
+const tabWith = (part: string) => waitState((s) => Object.values(s.onglets).find((o) => o.url.includes(part)), (o) => !!o) as Promise<Tab>;
 const selectedId = () => m.execute<string | null>("return gBrowser.selectedTab.getAttribute('webaios-tab-id')");
 /** A chrome script returning `expr` about the about:addons page `win` of WebAiOs tab `id` (it lives in the parent process). */
 const onPage = (id: string, expr: string) =>

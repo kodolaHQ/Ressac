@@ -1,6 +1,6 @@
 import { expect, test, vi } from "vitest";
 import { WorkshopError } from "@webaios/noyau";
-import { REGROUPEMENT_MS, SessionsAgent, TAMPON_MAX, Tampon, type SessionLike } from "../../core/agent/sessions";
+import { GROUPING_MS, SessionsAgent, TAMPON_MAX, Tampon, type SessionLike } from "../../core/agent/sessions";
 
 class FausseSession implements SessionLike {
   active = true;
@@ -62,7 +62,7 @@ test("starting twice opens only one session; the second call returns the buffer"
   expect(etats()).toEqual([{ etat: "actif" }]);
   expect(envois.filter((e) => e.canal === "donnees").map((e) => e.v)).toEqual(["bonjour"]);
   // Output waiting to be sent is already in the returned buffer: no duplicate afterwards.
-  await new Promise((r) => setTimeout(r, REGROUPEMENT_MS * 3));
+  await new Promise((r) => setTimeout(r, GROUPING_MS * 3));
   expect(envois.filter((e) => e.canal === "donnees")).toHaveLength(1);
 });
 
@@ -73,7 +73,7 @@ test("the agent's output goes out in batches: several close chunks, a single sen
     await gestion.demarrer("F", taille);
     for (const d of ["a", "b", "c"]) sessions[0]!.emettre(d);
     expect(envois.filter((e) => e.canal === "donnees")).toEqual([]);
-    vi.advanceTimersByTime(REGROUPEMENT_MS);
+    vi.advanceTimersByTime(GROUPING_MS);
     expect(envois.filter((e) => e.canal === "donnees").map((e) => e.v)).toEqual(["abc"]);
   } finally {
     vi.useRealTimers();

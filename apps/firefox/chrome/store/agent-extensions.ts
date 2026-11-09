@@ -1,13 +1,13 @@
 import type { Scope } from "../../../../packages/noyau/src/index.ts";
 import type { CarteExtension } from "../../shared/extensions";
-import { hotePermisAgent, urlPermiseAgent } from "../../core/extensions/reseau";
-import type { EtatAcces, IdFenetre, IdProfil } from "../../shared/modele";
+import { agentAllowedHost, agentAllowedUrl } from "../../core/extensions/reseau";
+import type { AccessState, WindowId, ProfileId } from "../../shared/modele";
 import type { Handler } from "../../shared/rpc";
 import type { AgentHost } from "../agent/host";
 import type { Questions } from "../agent/questions";
 import { existingContainer } from "./containers";
 import { createWatchdog } from "./crash-watchdog";
-import { niveauConsole, PLANTAGES_MAX } from "../../core/extensions/consoles";
+import { consoleLevel, PLANTAGES_MAX } from "../../core/extensions/consoles";
 import type { Store } from "./store";
 import type { WindowRegistry } from "./windows";
 
@@ -34,7 +34,7 @@ const BACKGROUND_PAGE = "/_generated_background_page.html";
 export const SCOPES_WAIT_MS = 5_000;
 
 export type CheckKind = "urlPermise" | "hotePermis" | "estOnglet";
-type Scopes = Record<string, { cle: string; accord: Scope; profils: IdProfil[]; actif: boolean }>;
+type Scopes = Record<string, { cle: string; accord: Scope; profils: ProfileId[]; actif: boolean }>;
 
 export interface AgentExtensions {
   /** The requests the kernel host sends about its extensions (extensions.*, navigateur.espaces). */
@@ -46,7 +46,7 @@ export interface AgentExtensions {
   /** Settled once a host sent the grants (extensions.portees), or after SCOPES_WAIT_MS: then check refuses what it does not know. */
   scopesKnown(): Promise<void>;
   /** The bar lists an agent add-on only where it runs; any other everywhere. */
-  shownIn(addonId: string, profil: IdProfil, prive: boolean): boolean;
+  shownIn(addonId: string, profil: ProfileId, prive: boolean): boolean;
   /** `cb` after each new set of grants (extensions.portees). */
   onScopes(cb: () => void): () => void;
   /** The extension actor's checkpoints (window.__webaios), for the add-on id read from the page's principal. */
@@ -56,7 +56,7 @@ export interface AgentExtensions {
 }
 
 /** Firefox's side of the agent's extensions: the kernel host decides, this installs, enables, disables, uninstalls. */
-export function createAgentExtensions(store: Store, windows: WindowRegistry, questions: Questions, host: () => AgentHost, access: () => EtatAcces): AgentExtensions {
+export function createAgentExtensions(store: Store, windows: WindowRegistry, questions: Questions, host: () => AgentHost, access: () => AccessState): AgentExtensions {
   // The add-on changes this module is making, as `<addonId> <quoi>`: only those AddonManager events are ours. A removal
   // in about:addons while we install or reload the same add-on is still the user's (an install fires no uninstall event).
   const ours = new Set<string>();
@@ -128,7 +128,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
       return f ? questions.askExtension(p.carte, f, signal) : { accepte: false, empreinte: p.carte.empreinte, retiree: true };
     },
     // The console unlock card, in that window if still open, else the active one; no window: it falls at once.
-    "extensions.deblocage": (p: { nom: string; espaces: string[]; raison: string; agent: string; fenetre: IdFenetre | null }, signal) => {
+    "extensions.deblocage": (p: { nom: string; espaces: string[]; raison: string; agent: string; fenetre: WindowId | null }, signal) => {
       const f = p.fenetre && windows.get(p.fenetre) ? p.fenetre : windows.active();
       return f ? questions.askConsole(p, f, signal) : "retiree";
     },
@@ -205,7 +205,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
   // them (rechargerOngletsAgent), whatever the extension's state now: switched off there, its scripts still run.
   const ran = new Map<string, Set<any>>();
   /** Reloads the tabs of `profils` that `addonId` (every agent extension if null) ran in; forgets the closed ones. */
-  const reloadTabs = (addonId: string | null, profils: readonly IdProfil[]) => {
+  const reloadTabs = (addonId: string | null, profils: readonly ProfileId[]) => {
     const containers = new Set(profils.map(existingContainer).filter((c) => c !== null));
     for (const [id, tabs] of ran)
       for (const tab of tabs) {
@@ -216,7 +216,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
         }
       }
   };
-  handlers["extensions.rechargerOnglets"] = (p: { addonId: string; profils: IdProfil[] }) => {
+  handlers["extensions.rechargerOnglets"] = (p: { addonId: string; profils: ProfileId[] }) => {
     if (typeof p?.addonId === "string" && Array.isArray(p.profils)) reloadTabs(p.addonId, p.profils);
   };
 
@@ -238,7 +238,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
 
   // Once per extension and profile; a request that fails (no host) is sent again on the next check.
   const maskedSent = new Set<string>();
-  const masked = (addonId: string, profil: IdProfil) => {
+  const masked = (addonId: string, profil: ProfileId) => {
     const key = `${addonId}|${profil}`;
     if (maskedSent.has(key)) return;
     maskedSent.add(key);
@@ -261,11 +261,11 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
         } catch {
           return false;
         }
-        return u.protocol === "moz-extension:" ? u.host === host : urlPermiseAgent(u.href, scope.accord, "");
+        return u.protocol === "moz-extension:" ? u.host === host : agentAllowedUrl(u.href, scope.accord, "");
       }
       case "hotePermis": {
         const spec = tabOf(value)?.linkedBrowser?.currentURI?.spec;
-        return typeof spec === "string" && hotePermisAgent(spec, scope.accord);
+        return typeof spec === "string" && agentAllowedHost(spec, scope.accord);
       }
       case "estOnglet": {
         // A WebAiOs tab of a non-private space, in the container of a profile where the extension is active (spec choice
@@ -308,7 +308,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
       const url = wgp?.topWindowContext?.documentURI?.spec;
       onglet = t && !t.espace.prive && typeof url === "string" ? { ongletId: t.onglet.id, url } : { ongletId: null, url: "" };
     }
-    const m = { horodatage: Date.now(), niveau: niveauConsole(d.niveau === "warn" ? "warning" : d.niveau), texte: d.texte.slice(0, CONSOLE_TEXT_MAX) };
+    const m = { horodatage: Date.now(), niveau: consoleLevel(d.niveau === "warn" ? "warning" : d.niveau), texte: d.texte.slice(0, CONSOLE_TEXT_MAX) };
     host().notify("extensions.console", { addonId: d.addonId, m, onglet });
   }
 

@@ -1,7 +1,7 @@
 import { createServer, type AddressInfo } from "node:net";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Action } from "../shared/api";
-import type { EtatNavigateur } from "../shared/modele";
+import type { BrowserState } from "../shared/modele";
 import { dispatch, state, waitFor } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
@@ -36,7 +36,7 @@ const win = async () => (await state(m)).fenetres[0]!;
 const open = async (path: string, extra: Partial<Extract<Action, { type: "ouvrirOnglet" }>> = {}) =>
   opened({ type: "ouvrirOnglet", fenetreId: (await win()).id, url: server.url + path, ...extra });
 
-function waitState<T>(read: (s: EtatNavigateur) => T, ok: (v: T) => boolean, ms = 10_000): Promise<T> {
+function waitState<T>(read: (s: BrowserState) => T, ok: (v: T) => boolean, ms = 10_000): Promise<T> {
   return (async () => {
     const deadline = Date.now() + ms;
     for (;;) {

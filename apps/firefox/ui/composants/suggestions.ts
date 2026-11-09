@@ -1,4 +1,4 @@
-import type { ActionAffichee } from "../../shared/actions";
+import type { ActionShown } from "../../shared/actions";
 
 export const SUGGESTIONS_MAX = 5;
 
@@ -10,7 +10,7 @@ export function normaliser(t: string): string {
 }
 
 /** The whole name, its words and the keywords, normalized. */
-function termes(a: ActionAffichee): string[] {
+function termes(a: ActionShown): string[] {
   const nom = normaliser(a.nom);
   return [...new Set([nom, ...nom.split(/[^\p{L}\p{N}]+/u).filter(Boolean), ...a.motsCles.map(normaliser).filter(Boolean)])];
 }
@@ -25,7 +25,7 @@ function resteApres(texte: string, terme: string): string | null {
 }
 
 /** The actions matching the new tab's text: by name or keyword, or, with an input, « terme reste-de-la-saisie ». */
-export function suggestionsActions(texte: string, actions: ActionAffichee[]): Suggestion[] {
+export function suggestionsActions(texte: string, actions: ActionShown[]): Suggestion[] {
   const q = normaliser(texte);
   if (!q) return [];
   const brut = texte.trim();

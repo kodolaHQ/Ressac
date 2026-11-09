@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Execution } from "@webaios/noyau";
-  import type { ActionAffichee } from "../../shared/actions";
+  import type { ActionShown } from "../../shared/actions";
   import { api } from "../etat.svelte";
   import Icone from "./Icone.svelte";
 
@@ -15,14 +15,14 @@
   /** Same text as the kernel (actions/executer.ts). */
   const saisieRequise = (libelle: string) => `Saisie requise : ${libelle}`;
 
-  let liste = $state<ActionAffichee[]>([]);
+  let liste = $state<ActionShown[]>([]);
   let chargee = $state(false);
   let requete = 0;
   /** Action whose input is asked inline (« Lancer »), and what the user types in it. */
   let saisieDe = $state<string | null>(null);
   let saisie = $state("");
   /** Action whose deletion awaits the user's confirmation. */
-  let aConfirmer = $state<{ action: ActionAffichee; genre: "supprimer" | "accord" } | null>(null);
+  let aConfirmer = $state<{ action: ActionShown; genre: "supprimer" | "accord" } | null>(null);
   /** Refusal returned by the main process (open, delete), shown above the list. */
   let refus = $state<string | null>(null);
 
@@ -39,7 +39,7 @@
     return api.actions.surChange(() => void charger());
   });
 
-  async function lancer(a: ActionAffichee, texte: string | null) {
+  async function lancer(a: ActionShown, texte: string | null) {
     refus = null;
     // Input required and empty: the field stays open with its message, nothing is launched.
     if (a.saisie && !texte?.trim()) {
@@ -51,14 +51,14 @@
     if (!r.ok) refus = r.erreur;
   }
 
-  function demanderLancement(a: ActionAffichee) {
+  function demanderLancement(a: ActionShown) {
     if (a.saisie) {
       saisieDe = saisieDe === a.id ? null : a.id;
       saisie = "";
     } else void lancer(a, null);
   }
 
-  async function confirmer(c: { action: ActionAffichee; genre: "supprimer" | "accord" }) {
+  async function confirmer(c: { action: ActionShown; genre: "supprimer" | "accord" }) {
     aConfirmer = null;
     refus = null;
     if (c.genre === "accord") await api.actions.refuserAccord(c.action.id);
@@ -72,7 +72,7 @@
   /** « 30 oct. 08:00 » */
   const quand = (iso: string) => new Date(iso).toLocaleString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
-  const dernier = (a: ActionAffichee) => (a.dernier ? `${STATUTS[a.dernier.statut]} · ${quand(a.dernier.debut)}` : "Jamais lancée");
+  const dernier = (a: ActionShown) => (a.dernier ? `${STATUTS[a.dernier.statut]} · ${quand(a.dernier.debut)}` : "Jamais lancée");
 </script>
 
 <section class="actions" data-testid="page-actions" aria-label="Actions">

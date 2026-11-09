@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { createContext, runInContext, runInNewContext } from "node:vm";
 import { expect, test, vi } from "vitest";
 import type { Scope } from "@webaios/noyau";
-import { hotePermisAgent, motifCouvre, urlPermiseAgent } from "../../core/extensions/reseau";
+import { agentAllowedHost, patternCovers, agentAllowedUrl } from "../../core/extensions/reseau";
 
 const ID = "a".repeat(32);
 const AUTRE = "b".repeat(32);
@@ -16,44 +16,44 @@ const accord: Scope = {
 };
 
 test("reseau host allowed; hotes host allowed; other host, data:, javascript:, file: refused; chrome-extension:// of another extension refused", () => {
-  expect(urlPermiseAgent("https://api.accorde.test/x?y=1", accord, ID)).toBe(true);
-  expect(urlPermiseAgent("http://api.accorde.test/", accord, ID)).toBe(true);
-  expect(urlPermiseAgent("https://www.hote.test/page", accord, ID)).toBe(true);
-  expect(urlPermiseAgent("https://hote.test/", accord, ID)).toBe(true);
-  expect(urlPermiseAgent("http://127.0.0.1:8123/cache.html", accord, ID)).toBe(true);
-  expect(urlPermiseAgent(`chrome-extension://${ID}/page.html`, accord, ID)).toBe(true);
+  expect(agentAllowedUrl("https://api.accorde.test/x?y=1", accord, ID)).toBe(true);
+  expect(agentAllowedUrl("http://api.accorde.test/", accord, ID)).toBe(true);
+  expect(agentAllowedUrl("https://www.hote.test/page", accord, ID)).toBe(true);
+  expect(agentAllowedUrl("https://hote.test/", accord, ID)).toBe(true);
+  expect(agentAllowedUrl("http://127.0.0.1:8123/cache.html", accord, ID)).toBe(true);
+  expect(agentAllowedUrl(`chrome-extension://${ID}/page.html`, accord, ID)).toBe(true);
 
-  expect(urlPermiseAgent("https://autre.test/", accord, ID)).toBe(false);
-  expect(urlPermiseAgent("https://accorde.test/", accord, ID)).toBe(false);
-  expect(urlPermiseAgent("https://hote.test.autre.test/", accord, ID)).toBe(false);
-  expect(urlPermiseAgent("https://www.hote.test@autre.test/", accord, ID)).toBe(false);
-  expect(urlPermiseAgent("https://u:p@api.accorde.test/", accord, ID)).toBe(false);
-  expect(urlPermiseAgent("data:text/html,<p>x</p>", accord, ID)).toBe(false);
-  expect(urlPermiseAgent("javascript:alert(1)", accord, ID)).toBe(false);
-  expect(urlPermiseAgent("file:///etc/passwd", accord, ID)).toBe(false);
-  expect(urlPermiseAgent(`blob:chrome-extension://${ID}/x`, accord, ID)).toBe(false);
-  expect(urlPermiseAgent("ftp://api.accorde.test/", accord, ID)).toBe(false);
-  expect(urlPermiseAgent(`chrome-extension://${AUTRE}/page.html`, accord, ID)).toBe(false);
-  expect(urlPermiseAgent("pas une adresse", accord, ID)).toBe(false);
+  expect(agentAllowedUrl("https://autre.test/", accord, ID)).toBe(false);
+  expect(agentAllowedUrl("https://accorde.test/", accord, ID)).toBe(false);
+  expect(agentAllowedUrl("https://hote.test.autre.test/", accord, ID)).toBe(false);
+  expect(agentAllowedUrl("https://www.hote.test@autre.test/", accord, ID)).toBe(false);
+  expect(agentAllowedUrl("https://u:p@api.accorde.test/", accord, ID)).toBe(false);
+  expect(agentAllowedUrl("data:text/html,<p>x</p>", accord, ID)).toBe(false);
+  expect(agentAllowedUrl("javascript:alert(1)", accord, ID)).toBe(false);
+  expect(agentAllowedUrl("file:///etc/passwd", accord, ID)).toBe(false);
+  expect(agentAllowedUrl(`blob:chrome-extension://${ID}/x`, accord, ID)).toBe(false);
+  expect(agentAllowedUrl("ftp://api.accorde.test/", accord, ID)).toBe(false);
+  expect(agentAllowedUrl(`chrome-extension://${AUTRE}/page.html`, accord, ID)).toBe(false);
+  expect(agentAllowedUrl("pas une adresse", accord, ID)).toBe(false);
 });
 
 test("Chrome patterns: scheme, subdomain wildcard, port, path", () => {
   const u = (x: string) => new URL(x);
-  expect(motifCouvre("<all_urls>", u("https://x.test/"))).toBe(true);
-  expect(motifCouvre("*://x.test/*", u("http://x.test/a"))).toBe(true);
-  expect(motifCouvre("https://x.test/*", u("http://x.test/a"))).toBe(false);
-  expect(motifCouvre("https://x.test/docs/*", u("https://x.test/docs/a"))).toBe(true);
-  expect(motifCouvre("https://x.test/docs/*", u("https://x.test/autre"))).toBe(false);
-  expect(motifCouvre("https://x.test:8443/*", u("https://x.test:8443/"))).toBe(true);
-  expect(motifCouvre("https://x.test:8443/*", u("https://x.test/"))).toBe(false);
-  expect(motifCouvre("https://*/*", u("https://n.importe.quoi/"))).toBe(true);
-  expect(motifCouvre("<all_urls>", u("file:///x"))).toBe(false);
+  expect(patternCovers("<all_urls>", u("https://x.test/"))).toBe(true);
+  expect(patternCovers("*://x.test/*", u("http://x.test/a"))).toBe(true);
+  expect(patternCovers("https://x.test/*", u("http://x.test/a"))).toBe(false);
+  expect(patternCovers("https://x.test/docs/*", u("https://x.test/docs/a"))).toBe(true);
+  expect(patternCovers("https://x.test/docs/*", u("https://x.test/autre"))).toBe(false);
+  expect(patternCovers("https://x.test:8443/*", u("https://x.test:8443/"))).toBe(true);
+  expect(patternCovers("https://x.test:8443/*", u("https://x.test/"))).toBe(false);
+  expect(patternCovers("https://*/*", u("https://n.importe.quoi/"))).toBe(true);
+  expect(patternCovers("<all_urls>", u("file:///x"))).toBe(false);
 });
 
 test("hotePermisAgent: only the granted hosts (not reseau)", () => {
-  expect(hotePermisAgent("https://www.hote.test/", accord)).toBe(true);
-  expect(hotePermisAgent("https://api.accorde.test/", accord)).toBe(false);
-  expect(hotePermisAgent("about:blank", accord)).toBe(false);
+  expect(agentAllowedHost("https://www.hote.test/", accord)).toBe(true);
+  expect(agentAllowedHost("https://api.accorde.test/", accord)).toBe(false);
+  expect(agentAllowedHost("about:blank", accord)).toBe(false);
 });
 
 // --- The guard (packages/noyau/extensions/webaios-garde-fond.js), run in a separate context.

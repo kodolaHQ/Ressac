@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { RenderedBlock, RenderedPage } from "@webaios/noyau";
-  import { AUCUN_RESULTAT, MENTION_SECOURS } from "../../shared/actions";
+  import { NO_RESULT, FALLBACK_MENTION } from "../../shared/actions";
   import CadreComposant from "../ActionComponentFrame.svelte";
   import Cartes from "./blocs/Cartes.svelte";
   import Champs from "./blocs/Champs.svelte";
@@ -72,7 +72,7 @@
 {/snippet}
 
 <div class="page-action" data-testid="rendu-page">
-  {#if page.secours}<p class="pa-mention" data-testid="mention-secours">{MENTION_SECOURS}</p>{/if}
-  {#if page.blocs.length === 0}<p class="pa-vide">{AUCUN_RESULTAT}</p>{/if}
+  {#if page.secours}<p class="pa-mention" data-testid="mention-secours">{FALLBACK_MENTION}</p>{/if}
+  {#if page.blocs.length === 0}<p class="pa-vide">{NO_RESULT}</p>{/if}
   <div class="pa-blocs">{@render liste(page.blocs)}</div>
 </div>

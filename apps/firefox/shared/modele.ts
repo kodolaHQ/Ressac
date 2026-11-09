@@ -6,21 +6,21 @@ export const URL_APPLICATIONS = "webaios://applications";
 /** Internal Extensions page (Store and agent), displayed by the UI. */
 export const URL_EXTENSIONS = "webaios://extensions";
 /** Internal « Voir le workflow » page of a widget: `webaios://workflow/<widget id>`. */
-export const PREFIXE_WORKFLOW = "webaios://workflow/";
-export const urlWorkflow = (id: string) => PREFIXE_WORKFLOW + id;
+export const WORKFLOW_PREFIX = "webaios://workflow/";
+export const urlWorkflow = (id: string) => WORKFLOW_PREFIX + id;
 /** The widget of a « Voir le workflow » page, or null if the URL is not one. */
 export function widgetDeUrlWorkflow(url: string): string | null {
-  if (!url.startsWith(PREFIXE_WORKFLOW)) return null;
-  const id = url.slice(PREFIXE_WORKFLOW.length);
+  if (!url.startsWith(WORKFLOW_PREFIX)) return null;
+  const id = url.slice(WORKFLOW_PREFIX.length);
   return /^[a-z0-9-]{1,100}$/.test(id) ? id : null;
 }
 /** Internal « Voir le workflow » page of an action: `webaios://workflow/action/<action id>`. */
-export const PREFIXE_WORKFLOW_ACTION = "webaios://workflow/action/";
+export const WORKFLOW_ACTION_PREFIX = "webaios://workflow/action/";
 const ID_ACTION = /^[a-z0-9-]{1,60}$/;
 /** What a « Voir le workflow » page opens (widget or action), or null if the URL is not one. */
-export function cibleDeUrlWorkflow(url: string): Owner | null {
-  if (url.startsWith(PREFIXE_WORKFLOW_ACTION)) {
-    const id = url.slice(PREFIXE_WORKFLOW_ACTION.length);
+export function workflowUrlTarget(url: string): Owner | null {
+  if (url.startsWith(WORKFLOW_ACTION_PREFIX)) {
+    const id = url.slice(WORKFLOW_ACTION_PREFIX.length);
     return ID_ACTION.test(id) ? { type: "action", id } : null;
   }
   const widget = widgetDeUrlWorkflow(url);
@@ -29,44 +29,44 @@ export function cibleDeUrlWorkflow(url: string): Owner | null {
 /** Internal « Actions » page: the list of actions. */
 export const URL_ACTIONS = "webaios://actions";
 /** Page of an action: `webaios://action/<id>` (the latest result) or `webaios://action/<id>/<execution>`. */
-export const PREFIXE_ACTION = "webaios://action/";
+export const ACTION_PREFIX = "webaios://action/";
 const ID_EXECUTION = /^[0-9TZ-]+(?:-essai)?$/;
-export const urlAction = (id: string, execution?: string) => PREFIXE_ACTION + id + (execution ? `/${execution}` : "");
+export const urlAction = (id: string, execution?: string) => ACTION_PREFIX + id + (execution ? `/${execution}` : "");
 /** The action (and execution) of an action page, or null if the URL is not one (never a path). */
 export function actionDeUrl(url: string): { id: string; execution: string | null } | null {
-  if (!url.startsWith(PREFIXE_ACTION)) return null;
-  const [id, execution, ...reste] = url.slice(PREFIXE_ACTION.length).split("/");
-  if (reste.length || !id || !ID_ACTION.test(id)) return null;
+  if (!url.startsWith(ACTION_PREFIX)) return null;
+  const [id, execution, ...rest] = url.slice(ACTION_PREFIX.length).split("/");
+  if (rest.length || !id || !ID_ACTION.test(id)) return null;
   if (execution === undefined) return { id, execution: null };
   return execution.length <= 64 && ID_EXECUTION.test(execution) ? { id, execution } : null;
 }
 /** An internal page (`webaios:`) has no view: the UI displays it, like the blank page. */
-export const aUneVue = (url: string) => !url.startsWith("webaios:");
+export const hasView = (url: string) => !url.startsWith("webaios:");
 
 /** The site displayed for a request: the origin's host, or the text as is if it is not one (about:blank…). */
-export function siteDe(origine: string): string {
+export function siteDe(origin: string): string {
   try {
-    return new URL(origine).host || origine;
+    return new URL(origin).host || origin;
   } catch {
-    return origine;
+    return origin;
   }
 }
 
-export type IdOnglet = string;
+export type TabId = string;
 
 /** The agent's access to tabs, with the name of the agent holding it. */
-export interface EtatAcces {
+export interface AccessState {
   agent: string;
-  onglets: Record<IdOnglet, TabAccessState>;
+  onglets: Record<TabId, TabAccessState>;
 }
-export type IdEspace = string;
-export type IdFenetre = string;
-export type MoteurRecherche = "google" | "duckduckgo" | "qwant";
+export type SpaceId = string;
+export type WindowId = string;
+export type SearchEngine = "google" | "duckduckgo" | "qwant";
 
-export interface Onglet {
-  id: IdOnglet;
-  fenetreId: IdFenetre;
-  espaceId: IdEspace;
+export interface Tab {
+  id: TabId;
+  fenetreId: WindowId;
+  espaceId: SpaceId;
   url: string;
   titre: string;
   favicon: string | null;
@@ -85,7 +85,7 @@ export interface Onglet {
 }
 
 /** Persistent favorite displayed in the sidebar even without an open tab (Arc/Zen model). */
-export interface Favori {
+export interface Favorite {
   id: string;
   url: string;
   titre: string;
@@ -93,26 +93,26 @@ export interface Favori {
 }
 
 /** A login profile: cookies, signed-in accounts and site permissions (one Chromium session). */
-export type IdProfil = string;
+export type ProfileId = string;
 /** The login profile from before configurable spaces (partition `persist:webaios`). */
-export const PROFIL_DEFAUT: IdProfil = "defaut";
-export interface ProfilConnexion {
-  id: IdProfil;
+export const DEFAULT_PROFILE: ProfileId = "defaut";
+export interface ConnectionProfile {
+  id: ProfileId;
 }
 
-export interface Espace {
-  id: IdEspace;
+export interface Space {
+  id: SpaceId;
   nom: string;
   icone: string;
-  epingles: Favori[];
+  epingles: Favorite[];
   /** Invisible to the agent: its tabs are neither listed, nor read, nor kept. */
   prive: boolean;
-  profil: IdProfil;
+  profil: ProfileId;
 }
 
-export interface FermeRecemment {
+export interface RecentlyClosed {
   url: string;
-  espaceId: IdEspace;
+  espaceId: SpaceId;
 }
 
 /** Size and position of a window on screen, in points. */
@@ -123,31 +123,31 @@ export interface Cadre {
   hauteur: number;
 }
 
-export interface EtatFenetre {
-  id: IdFenetre;
-  espaceActif: IdEspace;
+export interface WindowState {
+  id: WindowId;
+  espaceActif: SpaceId;
   /** Normal tabs of this window, per space. */
-  ordre: Record<IdEspace, IdOnglet[]>;
-  actif: Record<IdEspace, IdOnglet | null>;
+  ordre: Record<SpaceId, TabId[]>;
+  actif: Record<SpaceId, TabId | null>;
   compact: boolean;
   panneauAgentOuvert: boolean;
   /** 20 at most, most recent first. */
-  fermesRecemment: FermeRecemment[];
+  fermesRecemment: RecentlyClosed[];
   /** Last known frame; null until the window has been moved or resized. */
   cadre: Cadre | null;
 }
 
-export interface EtatNavigateur {
+export interface BrowserState {
   version: 2;
   /** Au moins un espace. */
-  espaces: Espace[];
+  espaces: Space[];
   /** The login profiles used by at least one space. */
-  profils: ProfilConnexion[];
+  profils: ConnectionProfile[];
   /** Shared by all spaces and all windows. */
-  essentiels: Favori[];
-  onglets: Record<IdOnglet, Onglet>;
-  fenetres: EtatFenetre[];
-  reglages: { moteur: MoteurRecherche; /** Profil d'agent (fichier .webaios/profils/<id>.json). */ profilAgent: string;
+  essentiels: Favorite[];
+  onglets: Record<TabId, Tab>;
+  fenetres: WindowState[];
+  reglages: { moteur: SearchEngine; /** Profil d'agent (fichier .webaios/profils/<id>.json). */ profilAgent: string;
     /** Width of the agent panel, in pixels (the user sets it by dragging its left edge). */
     largeurPanneauAgent: number;
   };
@@ -157,37 +157,37 @@ export interface EtatNavigateur {
  * Two spaces with the same key can share a tab (an essential): same login profile, same privacy.
  * An unknown space has a key of its own, which matches no existing space.
  */
-export function cleEspace(etat: EtatNavigateur, espaceId: IdEspace): string {
-  const espace = etat.espaces.find((e) => e.id === espaceId);
-  return espace ? `${espace.profil}|${espace.prive}` : `\0inconnu|${espaceId}`;
+export function spaceKey(state: BrowserState, spaceId: SpaceId): string {
+  const space = state.espaces.find((e) => e.id === spaceId);
+  return space ? `${space.profil}|${space.prive}` : `\0inconnu|${spaceId}`;
 }
 
 /** The tab is in a private space; an unknown space counts as private. */
-export function ongletPrive(etat: EtatNavigateur, onglet: Onglet): boolean {
-  return etat.espaces.find((e) => e.id === onglet.espaceId)?.prive ?? true;
+export function privateTab(state: BrowserState, tab: Tab): boolean {
+  return state.espaces.find((e) => e.id === tab.espaceId)?.prive ?? true;
 }
 
 /** The login profiles in use: those of the state and those of its spaces. Only a profile outside this set is erased. */
-export function profilsEnUsage(etat: Pick<EtatNavigateur, "profils" | "espaces">): Set<IdProfil> {
-  return new Set([...etat.profils.map((p) => p.id), ...etat.espaces.map((e) => e.profil)]);
+export function profilesInUse(state: Pick<BrowserState, "profils" | "espaces">): Set<ProfileId> {
+  return new Set([...state.profils.map((p) => p.id), ...state.espaces.map((e) => e.profil)]);
 }
 
 /**
  * The space where to count a visit (and the kept text) of the tab: the one that displays it in its window — a shared
  * essential is seen in the active space —, otherwise its own. Private if that space or the tab's is (unknown: private).
  */
-export function contexteHistorique(etat: EtatNavigateur, id: IdOnglet): { espaceId: IdEspace; prive: boolean } | null {
-  const o = etat.onglets[id];
+export function historyContext(state: BrowserState, id: TabId): { espaceId: SpaceId; prive: boolean } | null {
+  const o = state.onglets[id];
   if (!o) return null;
-  const f = etat.fenetres.find((x) => x.id === o.fenetreId);
-  const espaceId = f && f.actif[f.espaceActif] === id ? f.espaceActif : o.espaceId;
-  const prive = (etat.espaces.find((e) => e.id === espaceId)?.prive ?? true) || ongletPrive(etat, o);
-  return { espaceId, prive };
+  const f = state.fenetres.find((x) => x.id === o.fenetreId);
+  const spaceId = f && f.actif[f.espaceActif] === id ? f.espaceActif : o.espaceId;
+  const isPrivate = (state.espaces.find((e) => e.id === spaceId)?.prive ?? true) || privateTab(state, o);
+  return { espaceId: spaceId, prive: isPrivate };
 }
 
 /** The tab's login profile, that of its space (the default profile if the space is unknown). */
-export function profilDOnglet(etat: EtatNavigateur, onglet: Onglet): IdProfil {
-  return etat.espaces.find((e) => e.id === onglet.espaceId)?.profil ?? PROFIL_DEFAUT;
+export function tabProfile(state: BrowserState, tab: Tab): ProfileId {
+  return state.espaces.find((e) => e.id === tab.espaceId)?.profil ?? DEFAULT_PROFILE;
 }
 
 /** A history page: one row per URL and per space (`espaceId` empty: no space, old visits). */
@@ -203,7 +203,7 @@ export interface Visite {
   retenu: boolean;
 }
 
-export interface Telechargement {
+export interface Download {
   id: string;
   nom: string;
   chemin: string;
@@ -235,8 +235,8 @@ export type Decision = "autoriser" | "refuser";
 /** The outcome of a question: the user's decision, or « retiree » if it lapsed without their answer (timeout, stale…). */
 export type Issue = Decision | "retiree";
 /** A question asked to the user: one or two permissions (camera and microphone together), a single answer. */
-export interface Demande {
-  ongletId: IdOnglet | null;
+export interface Request {
+  ongletId: TabId | null;
   origine: string;
   permissions: Permission[];
   /** « ouvrir-application »: the link to hand to another application (mailto:, zoommtg:…). */
@@ -250,9 +250,9 @@ export interface Demande {
   /** « donnees-widget »: the id of the site app the agent wants to see (its pages and its memory), instead of a widget. */
   site?: string;
   /** « lire-onglet »: the question is displayed only in this window (otherwise, according to `ongletId`). */
-  fenetreId?: IdFenetre;
+  fenetreId?: WindowId;
   /** « lire-onglet » and « outils-dev »: the targeted tab; if it is closed, the question is refused. */
-  cible?: IdOnglet;
+  cible?: TabId;
   /** « outils-dev »: the rights requested by the agent, pre-checked. */
   droits?: DroitDev[];
   /** « console-extension »: the spaces of the profiles where the extension is active (what the unlock covers). */
@@ -264,39 +264,39 @@ export interface Demande {
   /** « extension »: the grant card, displayed as text. */
   extension?: CarteExtension;
 }
-export interface DemandeEnAttente extends Demande {
+export interface PendingRequest extends Request {
   id: string;
 }
 
 /** Bounds of the agent panel width: enough for a readable terminal, never the whole window. */
-export const LARGEUR_AGENT_MIN = 280;
-export const LARGEUR_AGENT_MAX = 1000;
+export const AGENT_WIDTH_MIN = 280;
+export const AGENT_WIDTH_MAX = 1000;
 
 /** Compact mode: the sidebar reappears when the mouse enters this strip of the left edge (px). */
 export const BORD_REVELATION = 16;
 /** …or when it leaves the page through the left from this distance: a fast gesture skips the strip. */
 export const SORTIE_GAUCHE = 60;
 /** Width of the sidebar (px), that of its column in App.svelte. */
-export const LARGEUR_BARRE = 240;
+export const BAR_WIDTH = 240;
 /** Once revealed, the bar stays open as long as the mouse does not go beyond its width by more than this margin (px). */
-export const MARGE_BARRE = 40;
+export const BAR_MARGIN = 40;
 
 /** A project's Review page (plan 17): `webaios://relecture/<project>`, one per project and per window. */
-export const PREFIXE_RELECTURE = "webaios://relecture/";
+export const REVIEW_PREFIX = "webaios://relecture/";
 /** Copy of the kernel's `ID_PROJET` (the UI does not import its values); a test checks that they match. */
-const ID_PROJET_PAGE = /^(app-[A-Za-z0-9][A-Za-z0-9._-]*|ext-[0-9a-f]{16}|demo-\d{1,5}|site-[a-z0-9][a-z0-9-]{0,59})$/;
-export const urlRelecture = (projet: string) => PREFIXE_RELECTURE + projet;
+const PAGE_PROJECT_ID = /^(app-[A-Za-z0-9][A-Za-z0-9._-]*|ext-[0-9a-f]{16}|demo-\d{1,5}|site-[a-z0-9][a-z0-9-]{0,59})$/;
+export const reviewUrl = (project: string) => REVIEW_PREFIX + project;
 /** The project of a Review page, or null if the URL is not one (never a path). */
-export function projetDeUrlRelecture(url: string): string | null {
-  if (!url.startsWith(PREFIXE_RELECTURE)) return null;
-  const p = url.slice(PREFIXE_RELECTURE.length);
-  return ID_PROJET_PAGE.test(p) ? p : null;
+export function reviewUrlProject(url: string): string | null {
+  if (!url.startsWith(REVIEW_PREFIX)) return null;
+  const p = url.slice(REVIEW_PREFIX.length);
+  return PAGE_PROJECT_ID.test(p) ? p : null;
 }
 /** Context lines loaded at once by « déplier » on the Review page. */
-export const LIGNES_DEPLIEES = 20;
+export const EXPANDED_LINES = 20;
 /** What the Review page displays in place of a file that cannot be displayed (copies of `FICHIER_BINAIRE`/`FICHIER_TROP_GROS`). */
-export const NON_AFFICHABLE = { binaire: "fichier binaire", "trop-gros": "fichier trop gros pour la relecture" } as const;
+export const NOT_DISPLAYABLE = { binaire: "fichier binaire", "trop-gros": "fichier trop gros pour la relecture" } as const;
 /** What a comment displays when its lines changed (copy of the kernel's `LIGNE_CHANGEE`). */
-export const LIGNE_CHANGEE_PAGE = "la ligne a changé";
+export const PAGE_LINE_CHANGED = "la ligne a changé";
 /** A comment covers displayed lines of a single block of the diff, without a gap (page and main process). */
-export const PLAGE_HORS_BLOC = "Un commentaire porte sur des lignes d'un seul bloc du diff.";
+export const RANGE_OUTSIDE_BLOCK = "Un commentaire porte sur des lignes d'un seul bloc du diff.";

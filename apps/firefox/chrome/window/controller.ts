@@ -1,8 +1,8 @@
-import type { MessageParcours, Panneau, PanneauOnglets, Raccourci } from "../../shared/api";
-import { cibleDeUrlWorkflow, contexteHistorique, LARGEUR_AGENT_MAX, LARGEUR_AGENT_MIN, LARGEUR_BARRE, type Cadre, type EtatNavigateur, type IdFenetre, type IdOnglet } from "../../shared/modele";
-import { versUrl } from "../../core/adresse";
-import { ParcoursOnglets } from "../../core/parcours-onglets";
-import { versNieme } from "../../core/raccourcis";
+import type { TabCycleMessage, Panel, TabsPanel, ShortcutAction } from "../../shared/api";
+import { workflowUrlTarget, historyContext, AGENT_WIDTH_MAX, AGENT_WIDTH_MIN, BAR_WIDTH, type Cadre, type BrowserState, type WindowId, type TabId } from "../../shared/modele";
+import { toUrl } from "../../core/adresse";
+import { TabCycle } from "../../core/parcours-onglets";
+import { toNth } from "../../core/raccourcis";
 import { zoneGauche, zoneSortie, type ZoneGauche } from "../../shared/revelation";
 import type { WebAiOsStore } from "../store";
 import { createAddons, type WindowAddons } from "./addons";
@@ -15,24 +15,24 @@ import { TabSync } from "./tabs";
 import { trackVisits } from "./visits";
 
 export interface WindowController {
-  readonly fenetreId: IdFenetre;
+  readonly fenetreId: WindowId;
   readonly store: WebAiOsStore;
   /** versUrl(input, moteur); a tab with a XUL tab loads it, one without gets majOnglet{url}; null opens a new tab. */
-  navigate(ongletId: IdOnglet | null, input: string): void;
+  navigate(ongletId: TabId | null, input: string): void;
   /**
    * The agent's naviguer: an http(s) URL loaded with a content principal of the tab's container, without taking the
    * keyboard (the user may be typing in the agent panel). A tab without a XUL tab gets majOnglet{url}, loaded the same
    * way when TabSync creates its XUL tab.
    */
-  navigateForAgent(ongletId: IdOnglet, url: string): void;
+  navigateForAgent(ongletId: TabId, url: string): void;
   /** The browser of a tab for the agent, its XUL tab created in the background if needed and loaded (TabSync.ensure). */
-  ensure(ongletId: IdOnglet): Promise<any>;
-  command(ongletId: IdOnglet, c: "reculer" | "avancer" | "recharger" | "rechargerSansCache" | "arreter"): void;
+  ensure(ongletId: TabId): Promise<any>;
+  command(ongletId: TabId, c: "reculer" | "avancer" | "recharger" | "rechargerSansCache" | "arreter"): void;
   /**
    * A tab the user closes. A page with unsaved changes (beforeunload) gets « Quitter ce site ? »
    * first; a page that does not answer within 5 s is closed anyway. A crashed tab or one without a XUL tab closes now.
    */
-  closeTab(ongletId: IdOnglet): Promise<void>;
+  closeTab(ongletId: TabId): Promise<void>;
   /** Keyboard back to the displayed page (no-op when no web page is displayed). */
   focusPage(): void;
   /**
@@ -58,13 +58,13 @@ export interface WindowController {
   /** Opens the agent panel if it is closed (never closes it), gives it the keyboard and tells the UIs ("agent"). */
   openAgent(): void;
   /** Shortcuts the UI handles (⌘T, ⌘L, ⌘W). */
-  onShortcut(cb: (r: Raccourci) => void): () => void;
+  onShortcut(cb: (r: ShortcutAction) => void): () => void;
   /** ⌘Y, ⇧⌘J (a second press closes it, the UI toggles). */
-  onPanel(cb: (p: Panneau) => void): () => void;
+  onPanel(cb: (p: Panel) => void): () => void;
   /** The ⌃Tab panel to show (null: closed). */
-  onTabPanel(cb: (p: PanneauOnglets | null) => void): () => void;
+  onTabPanel(cb: (p: TabsPanel | null) => void): () => void;
   /** Mouse, Escape and ⌃ release from the ⌃Tab panel. */
-  tabSwitch(m: MessageParcours): void;
+  tabSwitch(m: TabCycleMessage): void;
   /** The sidebar's add-on strip: buttons, pins, popups and pending updates. */
   readonly addons: WindowAddons;
 }
@@ -75,10 +75,10 @@ export function createController(
   frame: HTMLIFrameElement,
   agentFrame: HTMLIFrameElement,
   store: WebAiOsStore,
-  fenetreId: IdFenetre,
+  fenetreId: WindowId,
 ): WindowController {
   const tabs = new TabSync(gBrowser, store, fenetreId);
-  trackVisits(gBrowser, store.history, (id) => contexteHistorique(store.state, id));
+  trackVisits(gBrowser, store.history, (id) => historyContext(store.state, id));
   // Prompts and add-on popups anchor on the sidebar, Firefox's toolbar being hidden (the action anchor: add-on popups).
   const anchors = setupAnchors(window, frame);
   routeAddonsManager(window, store, fenetreId, tabs);
@@ -115,8 +115,8 @@ export function createController(
     { once: true },
   );
   // The agent panel: --webaios-agent is its width when open, 0 when closed (the page and the UI make room for it).
-  const agentOpen = (state: EtatNavigateur) => !!state.fenetres.find((x) => x.id === fenetreId)?.panneauAgentOuvert;
-  const showAgent = (state: EtatNavigateur) => {
+  const agentOpen = (state: BrowserState) => !!state.fenetres.find((x) => x.id === fenetreId)?.panneauAgentOuvert;
+  const showAgent = (state: BrowserState) => {
     const open = agentOpen(state);
     // Closed while the terminal had the keyboard (⌘J, ✦): it goes back to the page, or to the UI when no page shows.
     if (!open && document.activeElement === agentFrame) {
@@ -124,7 +124,7 @@ export function createController(
       else frame.focus();
     }
     agentFrame.hidden = !open;
-    const width = Math.min(LARGEUR_AGENT_MAX, Math.max(LARGEUR_AGENT_MIN, state.reglages.largeurPanneauAgent));
+    const width = Math.min(AGENT_WIDTH_MAX, Math.max(AGENT_WIDTH_MIN, state.reglages.largeurPanneauAgent));
     document.documentElement.style.setProperty("--webaios-agent", open ? `${width}px` : "0px");
     // Laid out now: the panel focuses its terminal right after this change, which needs the iframe visible.
     agentFrame.getBoundingClientRect();
@@ -140,23 +140,23 @@ export function createController(
   window.addEventListener("TabSwitchDone", () => {
     if (!tabs.displayed()) frame.focus();
   });
-  const browserOf = (id: IdOnglet) => tabs.tab(id)?.linkedBrowser;
+  const browserOf = (id: TabId) => tabs.tab(id)?.linkedBrowser;
   /**
    * A crashed browser loads nothing: any navigation or command on a crashed tab puts a new XUL tab in its place, at `url`
    * or the tab's own (a crashed page comes back by loading it again). Back/forward history is lost with it.
    */
-  const revive = (id: IdOnglet, url?: string): boolean => {
+  const revive = (id: TabId, url?: string): boolean => {
     if (!store.state.onglets[id]?.plante) return false;
     tabs.recreate(id);
     store.dispatch({ type: "majOnglet", id, champs: { plante: false, ...(url ? { url } : {}) } });
     return true;
   };
-  const shortcutListeners = new Set<(r: Raccourci) => void>();
-  const panelKeyListeners = new Set<(p: Panneau) => void>();
-  const panelListeners = new Set<(p: PanneauOnglets | null) => void>();
+  const shortcutListeners = new Set<(r: ShortcutAction) => void>();
+  const panelKeyListeners = new Set<(p: Panel) => void>();
+  const panelListeners = new Set<(p: TabsPanel | null) => void>();
   const leftZoneListeners = new Set<(z: ZoneGauche) => void>();
   // ⌃Tab: recent order and the walk in progress. No page previews in step 2: cards show the icon.
-  const walk = new ParcoursOnglets({
+  const walk = new TabCycle({
     etat: () => store.state,
     agir: (a) => store.dispatch(a),
     envoyer: (_, p) => {
@@ -189,7 +189,7 @@ export function createController(
       for (const cb of panelKeyListeners) cb(s.p);
     } else if (s.type === "rouvrir") store.dispatch({ type: "rouvrirOngletFerme", fenetreId });
     else if (s.type === "nieme") {
-      const action = versNieme(state, fenetreId, s.n);
+      const action = toNth(state, fenetreId, s.n);
       if (action) store.dispatch(action);
     } else if (s.type === "espace") {
       const espace = state.espaces[s.n - 1];
@@ -200,7 +200,7 @@ export function createController(
     else if (s.type === "agent") {
       // On a widget's builder tab: its Agent tab, beside the open panel (the agent shows in that tab). An action's
       // workflow tab shows the internal page (not ported): the plain toggle.
-      if (active && cibleDeUrlWorkflow(state.onglets[active]?.url ?? "")?.type === "widget") return controller.openAgent();
+      if (active && workflowUrlTarget(state.onglets[active]?.url ?? "")?.type === "widget") return controller.openAgent();
       // Toggle, then, opened from a web page, the keyboard goes to the terminal.
       store.dispatch({ type: "basculerPanneauAgent", fenetreId });
       if (agentOpen(store.state)) {
@@ -280,8 +280,8 @@ export function createController(
   const canCloseWindow = window.CanCloseWindow;
   window.CanCloseWindow = () => (quit && !quit.data) || canCloseWindow();
   /** Tabs whose page is being asked: a second ⌘W must not ask again. */
-  const asking = new Set<IdOnglet>();
-  let sidebarWidth = LARGEUR_BARRE;
+  const asking = new Set<TabId>();
+  let sidebarWidth = BAR_WIDTH;
   for (const id of [...FIREFOX_KEYS, ...FIREFOX_COMMANDS]) document.getElementById(id)?.setAttribute("disabled", "true");
   // The macOS menu bar fires View › Sidebar items by their own key (⇧⌘H) even with the <key> disabled; WebAiOs has
   // no native sidebar, so every item is off, including the ones SidebarController adds or re-enables later.
@@ -300,7 +300,7 @@ export function createController(
     fenetreId,
     store,
     navigate(ongletId, input) {
-      const url = versUrl(input, store.state.reglages.moteur);
+      const url = toUrl(input, store.state.reglages.moteur);
       if (!url) return;
       if (!ongletId) return void store.dispatch({ type: "ouvrirOnglet", fenetreId, url });
       if (revive(ongletId, url)) return;
@@ -379,7 +379,7 @@ export function createController(
       frame.toggleAttribute("over", full === "window");
     },
     setSidebarColumn(shown) {
-      sidebarWidth = shown ? LARGEUR_BARRE : 0;
+      sidebarWidth = shown ? BAR_WIDTH : 0;
       document.documentElement.style.setProperty("--webaios-sidebar", `${sidebarWidth}px`);
     },
     setSidebarVisible(visible) {

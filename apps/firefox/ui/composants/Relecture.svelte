@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import type { Commentaire, DiffFichier as Diff, FichierModifie, VueRelecture } from "../../shared/api";
+  import type { Commentaire, DiffFichier as Diff, FichierModifie, ReviewView } from "../../shared/api";
   import { api } from "../etat.svelte";
   import DiffFichier from "./DiffFichier.svelte";
 
@@ -15,7 +15,7 @@
   let { projet, ongletId }: { projet: string; ongletId: string } = $props();
   let jeton = $state<string | null>(null);
 
-  let vue = $state<VueRelecture | null>(null);
+  let vue = $state<ReviewView | null>(null);
   let choisi = $state<string | null>(null);
   let diff = $state<Diff | null>(null);
   let erreurDiff = $state<string | null>(null);
@@ -45,7 +45,7 @@
   }
 
   /** A received comparison (opening, « Rafraîchir », « Marquer comme relu »): its token, its files, its comments. */
-  async function montrer(v: VueRelecture) {
+  async function montrer(v: ReviewView) {
     ++requeteCommentaires;
     vue = v;
     commentaires = v.etat === "ok" ? v.commentaires : [];

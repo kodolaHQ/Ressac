@@ -1,6 +1,6 @@
 <script lang="ts">
   import Icone from "./Icone.svelte";
-  import type { Telechargement } from "../../shared/modele";
+  import type { Download } from "../../shared/modele";
   import { api, telechargements } from "../etat.svelte";
 
   let { fermer }: { fermer: () => void } = $props();
@@ -12,7 +12,7 @@
     return `${(octets / 1024 ** 3).toFixed(2)} Go`;
   }
 
-  const LIBELLES: Record<Telechargement["etat"], string> = {
+  const LIBELLES: Record<Download["etat"], string> = {
     "en-cours": "En cours",
     termine: "Terminé",
     annule: "Annulé",

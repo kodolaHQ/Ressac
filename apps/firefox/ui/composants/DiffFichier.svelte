@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Commentaire, DiffFichier } from "../../shared/api";
-  import { LIGNES_DEPLIEES, NON_AFFICHABLE, PLAGE_HORS_BLOC } from "../../shared/modele";
+  import { EXPANDED_LINES, NOT_DISPLAYABLE, RANGE_OUTSIDE_BLOCK } from "../../shared/modele";
   import { api } from "../etat.svelte";
   import CommentaireRelecture from "./CommentaireRelecture.svelte";
 
@@ -58,7 +58,7 @@
     erreur = null;
     if (etendre && selection) {
       if (selection.bloc !== bloc) {
-        erreur = PLAGE_HORS_BLOC;
+        erreur = RANGE_OUTSIDE_BLOCK;
         selection = { ...selection, bout: selection.ancre };
         return;
       }
@@ -162,7 +162,7 @@
     if (!r || charge !== null) return;
     charge = i;
     try {
-      const fin = r.fin === null ? r.debut + LIGNES_DEPLIEES - 1 : Math.min(r.fin, r.debut + LIGNES_DEPLIEES - 1);
+      const fin = r.fin === null ? r.debut + EXPANDED_LINES - 1 : Math.min(r.fin, r.debut + EXPANDED_LINES - 1);
       const textes = await api.relecture.lignes(projet, jeton, diff.chemin, r.debut, fin);
       const deja = intervalles[i]?.lignes ?? [];
       const nouvelles = textes.map((texte, k) => ({ marque: " " as const, texte, nouveau: r.debut + k, ancien: r.debut + k + r.decalage }));
@@ -235,7 +235,7 @@
   <h3 class="chemin">{diff.chemin}</h3>
   {#each places.ailleurs as c (c.id)}<CommentaireRelecture {projet} commentaire={c} {surChange} />{/each}
   {#if diff.affichable !== true}
-    <p class="non-affichable">{NON_AFFICHABLE[diff.affichable]}</p>
+    <p class="non-affichable">{NOT_DISPLAYABLE[diff.affichable]}</p>
   {:else if diff.blocs.length === 0}
     <p class="non-affichable">Aucune ligne modifiée.</p>
   {:else}

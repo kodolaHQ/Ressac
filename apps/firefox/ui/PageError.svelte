@@ -1,9 +1,9 @@
 <script lang="ts">
   // The page's error and crash messages.
-  import type { Onglet } from "../shared/modele";
+  import type { Tab } from "../shared/modele";
   import { api } from "../ui/etat.svelte";
 
-  let { onglet }: { onglet: Onglet } = $props();
+  let { onglet }: { onglet: Tab } = $props();
 </script>
 
 {#if onglet.erreur}

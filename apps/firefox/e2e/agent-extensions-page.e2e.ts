@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { ecrireExtensionAgent } from "./extensions/fixtures";
-import { DESACTIVEE_PLANTAGES } from "../shared/extensions-messages";
+import { DISABLED_CRASHES } from "../shared/extensions-messages";
 import { button, cleanupXpis, installAddon } from "./addons";
 import { agentAddons, grant, launchWithAmo, openTab } from "./agent-extensions";
 import { state, waitFor } from "./firefox";
@@ -287,14 +287,14 @@ describe("crashes", () => {
     const m = w.marionette;
     await waitActive(m, `${id}@agent.webaios`, false);
     expect(registry(w.dataDir).extensions[`agent:${id}`]).toMatchObject({ profils: ["defaut"], desactivee: { raison: "plantages" } });
-    expect((await w.call("lister_extensions")).texte).toContain(DESACTIVEE_PLANTAGES);
+    expect((await w.call("lister_extensions")).texte).toContain(DISABLED_CRASHES);
     await openPage(m);
     await waitRow(m, nom, true);
-    expect(await row(m, nom)).toContain(DESACTIVEE_PLANTAGES);
+    expect(await row(m, nom)).toContain(DISABLED_CRASHES);
     await rowButton(m, nom, "Réactiver");
     await waitActive(m, `${id}@agent.webaios`, true);
     expect(registry(w.dataDir).extensions[`agent:${id}`]).toMatchObject({ profils: ["defaut"], desactivee: null });
-    await waitUi(m, `return ![...doc.querySelectorAll(arguments[0])].some((l) => l.textContent.includes(arguments[1]))`, [LIGNE, DESACTIVEE_PLANTAGES]);
+    await waitUi(m, `return ![...doc.querySelectorAll(arguments[0])].some((l) => l.textContent.includes(arguments[1]))`, [LIGNE, DISABLED_CRASHES]);
   }
 
   it("a background that throws at load three times is disabled", { timeout: 120_000 }, async () => {

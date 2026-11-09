@@ -1,5 +1,5 @@
 import { expect, test, vi } from "vitest";
-import { SondeDocker } from "../../core/applications/sonde";
+import { DockerProbe } from "../../core/applications/sonde";
 
 /** A probe that the test finishes by hand. */
 function sondeManuelle() {
@@ -13,7 +13,7 @@ test("valeur() never waits for the probe, and only starts one at a time", async 
   const { sonder, finir } = sondeManuelle();
   const surChange = vi.fn();
   let t = 0;
-  const s = new SondeDocker({ sonder, surChange, fraicheurMs: 5000, maintenant: () => t });
+  const s = new DockerProbe({ sonder, surChange, fraicheurMs: 5000, maintenant: () => t });
   expect(s.valeur()).toBe("ok");
   expect(s.valeur()).toBe("ok");
   expect(sonder).toHaveBeenCalledTimes(1);
@@ -36,7 +36,7 @@ test("valeur() never waits for the probe, and only starts one at a time", async 
 
 test("a probe that fails counts as docker-absent", async () => {
   const surChange = vi.fn();
-  const s = new SondeDocker({ sonder: () => Promise.reject(new Error("x")), surChange });
+  const s = new DockerProbe({ sonder: () => Promise.reject(new Error("x")), surChange });
   s.valeur();
   await attendre();
   expect(s.valeur()).toBe("docker-absent");

@@ -1,17 +1,17 @@
 import type { Action } from "../shared/api";
-import type { EtatNavigateur } from "../shared/modele";
+import type { BrowserState } from "../shared/modele";
 import type { Marionette } from "./marionette";
 import { pressKeys, waitUi } from "./ui";
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 
 /** The current state (chrome context). */
-export async function state(m: Marionette): Promise<EtatNavigateur> {
+export async function state(m: Marionette): Promise<BrowserState> {
   return m.execute(`return (async () => (await ChromeUtils.importESModule("${STORE}").ready).state)();`);
 }
 
 /** Dispatches an action through the store and returns the new state. */
-export async function dispatch(m: Marionette, action: Action): Promise<EtatNavigateur> {
+export async function dispatch(m: Marionette, action: Action): Promise<BrowserState> {
   return m.execute(`return (async () => (await ChromeUtils.importESModule("${STORE}").ready).dispatch(arguments[0]))();`, [action]);
 }
 

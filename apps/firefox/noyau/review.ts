@@ -25,23 +25,23 @@ import {
   type ExternalRegistry,
   type Remarques,
 } from "../../../packages/noyau/src/index.ts";
-import type { ResultatExtension, VueRelecture } from "../shared/api.ts";
-import { PLAGE_HORS_BLOC } from "../shared/modele.ts";
+import type { ExtensionResult, ReviewView } from "../shared/api.ts";
+import { RANGE_OUTSIDE_BLOCK } from "../shared/modele.ts";
 
 /** Reason shown for a project the review does not know (demo, forgotten external project, vanished folder). */
-export const PROJET_INCONNU = "projet inconnu";
+export const UNKNOWN_PROJECT = "projet inconnu";
 /** Most lines one `lignes` call returns (the page asks for 20 at a time). */
 export const LIGNES_MAX = 200;
 /** Most comparisons kept per project (a page may show a comparison older than the latest). */
-export const COMPARAISONS_GARDEES = 8;
+export const KEPT_COMPARISONS = 8;
 /** A page asks for a comparison that is no longer kept (or never made). */
-export const COMPARAISON_INCONNUE = "Cette comparaison n'est plus gardée : Rafraîchis la relecture.";
+export const UNKNOWN_COMPARISON = "Cette comparaison n'est plus gardée : Rafraîchis la relecture.";
 /** A comparison's token: its two trees (reviewed, current). */
-export const JETON_RELECTURE = /^[0-9a-f]{40}:[0-9a-f]{40}$/;
-const jetonDe = (c: Comparison) => `${c.arbreRelu}:${c.arbreCourant}`;
-export { PLAGE_HORS_BLOC };
+export const REVIEW_TOKEN = /^[0-9a-f]{40}:[0-9a-f]{40}$/;
+const tokenOf = (c: Comparison) => `${c.arbreRelu}:${c.arbreCourant}`;
+export { RANGE_OUTSIDE_BLOCK };
 /** "Send" with no unresolved comment. */
-export const AUCUN_COMMENTAIRE = "Aucun commentaire à envoyer.";
+export const NO_COMMENT = "Aucun commentaire à envoyer.";
 
 /**
  * A comment's lines, read from the kept diff: those of a single block whose position (new number, that of the next
@@ -53,9 +53,9 @@ export function lignesDuBloc(diff: DiffFile, debut: number, fin: number): Commen
     const lignes = b.lignes.map((l, i) => ({ marque: l.marque, texte: l.texte, position: newPosition(b, i) }));
     const dedans = lignes.filter((l) => l.position >= debut && l.position <= fin);
     const positions = new Set(dedans.map((l) => l.position));
-    let complet = true;
-    for (let n = debut; n <= fin && complet; n++) complet = positions.has(n);
-    if (complet) return dedans.map(({ marque, texte }) => ({ marque, texte }));
+    let full = true;
+    for (let n = debut; n <= fin && full; n++) full = positions.has(n);
+    if (full) return dedans.map(({ marque, texte: text }) => ({ marque, texte: text }));
   }
   return null;
 }
@@ -194,8 +194,8 @@ export class ReviewService {
       const d = p.slice(4);
       const dossier = await this.dossierApp(d);
       if (!dossier) return null;
-      const nom = (await this.o.applis?.().catch(() => []))?.find((a) => a.dossier === d)?.nom ?? d;
-      return { nom, dossier };
+      const name = (await this.o.applis?.().catch(() => []))?.find((a) => a.dossier === d)?.nom ?? d;
+      return { nom: name, dossier };
     }
     if (p.startsWith("ext-")) {
       const e = this.o.registre()?.projets().find((x) => `ext-${x.id}` === p);
@@ -205,8 +205,8 @@ export class ReviewService {
       const id = p.slice(5);
       const dossier = await this.dossierSite(id);
       if (!dossier) return null;
-      const nom = (await this.o.sites?.().catch(() => []))?.find((s) => s.id === id)?.nom ?? id;
-      return { nom, dossier };
+      const name = (await this.o.sites?.().catch(() => []))?.find((s) => s.id === id)?.nom ?? id;
+      return { nom: name, dossier };
     }
     return null;
   }
@@ -215,63 +215,63 @@ export class ReviewService {
    * With the token of a kept comparison: that one, without comparing again (a remounted page shows the same thing).
    * Without a token (or if it is no longer kept): a new comparison, kept at the head.
    */
-  async ouvrir(p: ProjectId, jeton?: string): Promise<VueRelecture> {
-    const projet = await this.projet(p);
-    if (!projet) {
+  async ouvrir(p: ProjectId, token?: string): Promise<ReviewView> {
+    const project = await this.projet(p);
+    if (!project) {
       this.comparaisons.delete(p);
-      return { etat: "indisponible", nom: p, raison: PROJET_INCONNU };
+      return { etat: "indisponible", nom: p, raison: UNKNOWN_PROJECT };
     }
     try {
-      let g = jeton ? this.comparaisons.get(p)?.find((x) => x.jeton === jeton) : undefined;
+      let g = token ? this.comparaisons.get(p)?.find((x) => x.jeton === token) : undefined;
       if (!g) {
-        const depot = this.depot(p, projet.dossier);
-        const comparaison = await depot.comparer();
-        g = { jeton: jetonDe(comparaison), depot, comparaison };
-        const autres = (this.comparaisons.get(p) ?? []).filter((x) => x.jeton !== g!.jeton);
-        this.comparaisons.set(p, [g, ...autres].slice(0, COMPARAISONS_GARDEES));
+        const depot = this.depot(p, project.dossier);
+        const comparison = await depot.comparer();
+        g = { jeton: tokenOf(comparison), depot, comparaison: comparison };
+        const others = (this.comparaisons.get(p) ?? []).filter((x) => x.jeton !== g!.jeton);
+        this.comparaisons.set(p, [g, ...others].slice(0, KEPT_COMPARISONS));
       }
-      const commentaires = await this.recollerTout(p, g);
+      const comments = await this.recollerTout(p, g);
       return {
-        etat: "ok", nom: projet.nom, jeton: g.jeton, comparaison: { fichiers: g.comparaison.fichiers }, commentaires,
+        etat: "ok", nom: project.nom, jeton: g.jeton, comparaison: { fichiers: g.comparaison.fichiers }, commentaires: comments,
         ...this.destination(await this.suivi(p)),
       };
     } catch (e) {
-      if (e instanceof ReviewError) return { etat: "indisponible", nom: projet.nom, raison: e.raison };
+      if (e instanceof ReviewError) return { etat: "indisponible", nom: project.nom, raison: e.raison };
       console.error(`[relecture] comparaison de ${p} :`, e);
-      return { etat: "indisponible", nom: projet.nom, raison: "la comparaison a échoué" };
+      return { etat: "indisponible", nom: project.nom, raison: "la comparaison a échoué" };
     }
   }
 
-  private garde(p: ProjectId, jeton: string, chemin: string) {
-    const g = this.comparaisons.get(p)?.find((x) => x.jeton === jeton);
-    if (!g) throw new Error(COMPARAISON_INCONNUE);
-    const f = g.comparaison.fichiers.find((x) => x.chemin === chemin);
+  private garde(p: ProjectId, token: string, path: string) {
+    const g = this.comparaisons.get(p)?.find((x) => x.jeton === token);
+    if (!g) throw new Error(UNKNOWN_COMPARISON);
+    const f = g.comparaison.fichiers.find((x) => x.chemin === path);
     if (!f) throw new Error("fichier absent de la relecture");
     return { ...g, fichier: f };
   }
 
   /** The comparison of a kept token ("Marquer comme relu" keeps the tree the page showed). */
-  comparaison(p: ProjectId, jeton: string): { depot: ReviewStore; comparaison: Comparison } | null {
-    return this.comparaisons.get(p)?.find((x) => x.jeton === jeton) ?? null;
+  comparaison(p: ProjectId, token: string): { depot: ReviewStore; comparaison: Comparison } | null {
+    return this.comparaisons.get(p)?.find((x) => x.jeton === token) ?? null;
   }
 
-  async fichier(p: ProjectId, jeton: string, chemin: string): Promise<DiffFile> {
-    const g = this.garde(p, jeton, chemin);
-    const diff = await g.depot.fichier(g.comparaison, chemin);
+  async fichier(p: ProjectId, token: string, path: string): Promise<DiffFile> {
+    const g = this.garde(p, token, path);
+    const diff = await g.depot.fichier(g.comparaison, path);
     // Not displayable: its comments stay as they are.
-    if (diff.affichable === true) await this.commentairesDe(p).recollerFichier(chemin, diff);
+    if (diff.affichable === true) await this.commentairesDe(p).recollerFichier(path, diff);
     return diff;
   }
 
   /** Lines of the current version (never of a deleted or non-displayable file). */
-  async lignes(p: ProjectId, jeton: string, chemin: string, debut: number, fin: number): Promise<string[]> {
-    const g = this.garde(p, jeton, chemin);
+  async lignes(p: ProjectId, token: string, path: string, debut: number, fin: number): Promise<string[]> {
+    const g = this.garde(p, token, path);
     if (g.fichier.statut === "supprime" || g.fichier.affichable !== true) return [];
     const a = Math.max(1, Math.floor(debut));
     const b = Math.min(Math.floor(fin), a + LIGNES_MAX - 1);
     if (b < a) return [];
     // One more line: if it is missing, the end of the file is reached and its last "\n" does not make an empty line.
-    const l = await g.depot.lignes(g.comparaison.arbreCourant, chemin, a, b + 1);
+    const l = await g.depot.lignes(g.comparaison.arbreCourant, path, a, b + 1);
     if (l.length > b - a + 1) return l.slice(0, b - a + 1);
     return l.at(-1) === "" ? l.slice(0, -1) : l;
   }
@@ -291,29 +291,29 @@ export class ReviewService {
    * unchanged since) or not displayable stay as they are: nothing says their lines changed.
    */
   private async recollerTout(p: ProjectId, g: { depot: ReviewStore; comparaison: Comparison }): Promise<Comment[]> {
-    const commentaires = this.commentairesDe(p);
-    const fichiers = new Set((await commentaires.liste()).map((c) => c.fichier));
-    for (const chemin of fichiers) {
-      const f = g.comparaison.fichiers.find((x) => x.chemin === chemin);
+    const comments = this.commentairesDe(p);
+    const files = new Set((await comments.liste()).map((c) => c.fichier));
+    for (const path of files) {
+      const f = g.comparaison.fichiers.find((x) => x.chemin === path);
       if (!f || f.affichable !== true) continue;
-      const diff = await g.depot.fichier(g.comparaison, chemin).catch(() => null);
-      if (diff && diff.affichable === true) await commentaires.recollerFichier(chemin, diff);
+      const diff = await g.depot.fichier(g.comparaison, path).catch(() => null);
+      if (diff && diff.affichable === true) await comments.recollerFichier(path, diff);
     }
-    return commentaires.liste();
+    return comments.liste();
   }
 
   /** The followed project (destination of the send); null for an unknown project. */
   private async suivi(p: ProjectId): Promise<TrackedProject | null> {
-    const projet = await this.projet(p);
-    if (!projet) return null;
-    if (p.startsWith("app-")) return { type: "app", projet: p, dossier: p.slice(4), nom: projet.nom };
-    if (p.startsWith("site-")) return projectForSite(p.slice(5), projet.nom);
+    const project = await this.projet(p);
+    if (!project) return null;
+    if (p.startsWith("app-")) return { type: "app", projet: p, dossier: p.slice(4), nom: project.nom };
+    if (p.startsWith("site-")) return projectForSite(p.slice(5), project.nom);
     const e = this.o.registre()?.projets().find((x) => `ext-${x.id}` === p);
     return e ? { type: "externe", projet: p, dossier: e.dossier, nom: e.nom, client: e.client } : null;
   }
 
   private destination(s: TrackedProject | null): { destination: string | null; sansDestination: string | null } {
-    if (!s) return { destination: null, sansDestination: PROJET_INCONNU };
+    if (!s) return { destination: null, sansDestination: UNKNOWN_PROJECT };
     const d = destinationDe(s, this.o.registre()?.clients() ?? []);
     return "libelle" in d ? { destination: d.libelle, sansDestination: null } : { destination: null, sansDestination: d.indisponible };
   }
@@ -324,13 +324,13 @@ export class ReviewService {
   }
 
   /** A comment on lines `debut`..`fin` of a file of the token's comparison, read here from the kept diff. */
-  async commenter(p: ProjectId, jeton: string, c: { fichier: string; debut: number; fin: number; texte: string }): Promise<ResultatExtension> {
+  async commenter(p: ProjectId, token: string, c: { fichier: string; debut: number; fin: number; texte: string }): Promise<ExtensionResult> {
     try {
       if (c.texte.trim() === "") return { ok: false, erreur: EMPTY_REMARK };
-      const g = this.garde(p, jeton, c.fichier);
+      const g = this.garde(p, token, c.fichier);
       const diff = await g.depot.fichier(g.comparaison, c.fichier);
       const lignes = diff.affichable === true ? lignesDuBloc(diff, c.debut, c.fin) : null;
-      if (!lignes) return { ok: false, erreur: PLAGE_HORS_BLOC };
+      if (!lignes) return { ok: false, erreur: RANGE_OUTSIDE_BLOCK };
       await this.commentairesDe(p).ajouter({ fichier: c.fichier, debut: c.debut, fin: c.fin, lignes, texte: c.texte });
       return { ok: true };
     } catch (e) {
@@ -338,12 +338,12 @@ export class ReviewService {
     }
   }
 
-  modifierCommentaire(p: ProjectId, id: string, texte: string): Promise<void> {
-    return this.commentairesDe(p).modifier(id, texte);
+  modifierCommentaire(p: ProjectId, id: string, text: string): Promise<void> {
+    return this.commentairesDe(p).modifier(id, text);
   }
 
-  resoudre(p: ProjectId, id: string, resolu: boolean): Promise<void> {
-    return this.commentairesDe(p).resoudre(id, resolu);
+  resoudre(p: ProjectId, id: string, resolved: boolean): Promise<void> {
+    return this.commentairesDe(p).resoudre(id, resolved);
   }
 
   supprimerCommentaire(p: ProjectId, id: string): Promise<void> {
@@ -351,26 +351,26 @@ export class ReviewService {
   }
 
   /** The unresolved comments (already-sent ones included) become a batch for the agent or the connected Claude Code. */
-  async envoyer(p: ProjectId): Promise<ResultatExtension> {
+  async envoyer(p: ProjectId): Promise<ExtensionResult> {
     try {
       const s = await this.suivi(p);
-      if (!s) return { ok: false, erreur: PROJET_INCONNU };
+      if (!s) return { ok: false, erreur: UNKNOWN_PROJECT };
       let destination: { destination: "agent" | "mcp"; client?: string } = { destination: "agent" };
       if (s.type === "externe") {
         const d = destinationDe(s, this.o.registre()?.clients() ?? []);
         if ("indisponible" in d || s.client === null) return { ok: false, erreur: SANS_CLIENT };
         destination = { destination: "mcp", client: s.client };
       }
-      const commentaires = this.commentairesDe(p);
-      const a = await commentaires.aEnvoyer();
-      if (a.length === 0) return { ok: false, erreur: AUCUN_COMMENTAIRE };
+      const comments = this.commentairesDe(p);
+      const a = await comments.aEnvoyer();
+      if (a.length === 0) return { ok: false, erreur: NO_COMMENT };
       const lot = await this.o.remarques.envoyerRelecture(
         p,
         a.map((c) => ({ texte: c.texte, contexte: { fichier: c.fichier, debut: c.debut, fin: c.fin, lignes: c.lignes } })),
         destination,
       );
       // A comment edited during the send stays "not sent": its new text did not go.
-      await commentaires.marquerEnvoyesSiInchanges(a.map((c) => ({ id: c.id, texte: c.texte })));
+      await comments.marquerEnvoyesSiInchanges(a.map((c) => ({ id: c.id, texte: c.texte })));
       await this.o.envoyer(s, lot);
       return { ok: true };
     } catch (e) {
@@ -383,9 +383,9 @@ export class ReviewService {
    * review. Resolved comments go; the project's kept comparisons drop (another page can no longer keep an older tree);
    * then a new comparison.
    */
-  async relu(p: ProjectId, jeton: string): Promise<VueRelecture> {
-    const g = this.comparaison(p, jeton);
-    if (!g) throw new Error(COMPARAISON_INCONNUE);
+  async relu(p: ProjectId, token: string): Promise<ReviewView> {
+    const g = this.comparaison(p, token);
+    if (!g) throw new Error(UNKNOWN_COMPARISON);
     await g.depot.retenir(g.comparaison.arbreCourant);
     await this.commentairesDe(p).apresRelu();
     this.comparaisons.delete(p);

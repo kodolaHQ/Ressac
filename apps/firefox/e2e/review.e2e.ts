@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, expect, it } from "vitest";
-import { urlRelecture } from "../shared/modele";
+import { reviewUrl } from "../shared/modele";
 import { dispatch, inWindow, newWindow, state, waitFor } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
@@ -58,7 +58,7 @@ const REMOVED = `${tid("ligne-diff")}.retrait`;
 const context = () => inUi<number[]>(m, `return [...doc.querySelectorAll('${tid("ligne-diff")}.contexte')].map((l) => Number(l.dataset.nouveau))`);
 const waitContext = (n: number[]) => expect.poll(context, { timeout: 10_000 }).toEqual(n);
 /** The tabs of the Review page of `projet`, every window together. */
-const reviewTabs = async (projet: string) => Object.values((await state(m)).onglets).filter((o) => o.url === urlRelecture(projet));
+const reviewTabs = async (projet: string) => Object.values((await state(m)).onglets).filter((o) => o.url === reviewUrl(projet));
 const tabsOf = (f: { ordre: Record<string, string[]> }) => Object.values(f.ordre).flat();
 
 /** « Relire » of the projet-externe line, on the Applications page; waits for the Review page. */

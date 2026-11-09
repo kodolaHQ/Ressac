@@ -13,7 +13,7 @@ import {
   type PageLue,
   type BrowserBridge,
 } from "../../../packages/noyau/src/index.ts";
-import type { Historique } from "../core/historique.ts";
+import type { History } from "../core/historique.ts";
 import type { Rpc } from "../shared/rpc.ts";
 
 /** The kernel's browser bridge, answered by Firefox over JSON-RPC. Only the private-tab mirror lives here. */
@@ -26,19 +26,19 @@ export class RemoteBridge implements BrowserBridge {
 
   constructor(
     private readonly rpc: Rpc,
-    h?: Pick<Historique, "rechercherPourAgent" | "texteRetenu">,
+    h?: Pick<History, "rechercherPourAgent" | "texteRetenu">,
     /** Answered from the host's mirror of the open site apps (synchronous in PontNavigateur). */
     private readonly sitePermis: (site: string, url: string) => boolean = () => false,
   ) {
     if (h)
       this.historique = {
         // The kernel checked the ISO dates and bounded the limit.
-        chercher: async ({ requete, depuis, jusqua, limite }) =>
+        chercher: async ({ requete: request, depuis: from, jusqua: until, limite: limit }) =>
           h.rechercherPourAgent({
-            requete,
-            limite,
-            ...(depuis !== undefined ? { depuis: new Date(depuis) } : {}),
-            ...(jusqua !== undefined ? { jusqua: new Date(jusqua) } : {}),
+            requete: request,
+            limite: limit,
+            ...(from !== undefined ? { depuis: new Date(from) } : {}),
+            ...(until !== undefined ? { jusqua: new Date(until) } : {}),
           }),
         lire: async (url) => h.texteRetenu(url),
       };
@@ -67,7 +67,7 @@ export class RemoteBridge implements BrowserBridge {
   ongletActif = () => this.call<TabInfo | null>("ongletActif", []);
   listerOnglets = () => this.call<TabInfo[]>("listerOnglets", []);
   lireTexte = (id: string) => this.call<{ texte: string; selection?: string }>("lireTexte", [id]);
-  ouvrirOnglet = (url: string, espace?: string) => this.call<TabInfo>("ouvrirOnglet", espace === undefined ? [url] : [url, espace]);
+  ouvrirOnglet = (url: string, space?: string) => this.call<TabInfo>("ouvrirOnglet", space === undefined ? [url] : [url, space]);
   naviguer = (id: string, url: string) => this.call<void | "en-attente">("naviguer", [id, url]);
   capturer = async (id: string) => Buffer.from(await this.call<string>("capturer", [id]), "base64");
   demanderAutorisation = (o: TabInfo) => this.call<boolean>("demanderAutorisation", [o]);
@@ -126,10 +126,10 @@ export class RemoteBridge implements BrowserBridge {
   private readonly lecturesMenagees = new Map<string, ChangeHost>();
 
   lirePageInvisible = async (url: string, o: OptionsLecturePage): Promise<PageLue> => {
-    const { signal, changerHote, ...options } = o;
-    if (!changerHote) return this.call<PageLue>("lirePageInvisible", [url, options], signal);
+    const { signal, changerHote: changeHost, ...options } = o;
+    if (!changeHost) return this.call<PageLue>("lirePageInvisible", [url, options], signal);
     const id = crypto.randomUUID();
-    this.lecturesMenagees.set(id, changerHote);
+    this.lecturesMenagees.set(id, changeHost);
     try {
       return await this.call<PageLue>("lirePageInvisible", [url, { ...options, menagee: id }], signal);
     } finally {
@@ -138,9 +138,9 @@ export class RemoteBridge implements BrowserBridge {
   };
 
   /** Firefox asks to wait for another site's turn: answered when the kernel's Menagement lets the read go. */
-  changerHote(lecture: string, hote: string): Promise<void> {
+  changerHote(lecture: string, host: string): Promise<void> {
     const f = this.lecturesMenagees.get(lecture);
-    return f ? f(hote) : Promise.reject(new Error("Lecture inconnue"));
+    return f ? f(host) : Promise.reject(new Error("Lecture inconnue"));
   }
 
   lireHtmlInvisible = (url: string, o: { adressesLocales?: boolean; signal?: AbortSignal }) => {

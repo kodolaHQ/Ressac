@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { DUREE_MIN_REPRISE_S, ECART_POSITION_MS, RECUL_REPRISE_S, SuiviReprise } from "../../core/reprise";
+import { MIN_RESUME_DURATION_S, POSITION_GAP_MS, RESUME_BACKOFF_S, ResumeTracking } from "../../core/reprise";
 
 /** A tracker with a test clock and the position the main process returns. */
 function suivi(connue: number | null = null) {
@@ -10,7 +10,7 @@ function suivi(connue: number | null = null) {
   let maintenant = 0;
   let reponse: (p: number | null) => void = () => {};
   let differee = false;
-  const s = new SuiviReprise({
+  const s = new ResumeTracking({
     noter: (t, duree, fin) => {
       notes.push([t, duree]);
       fins.push(fin);
@@ -35,7 +35,7 @@ function suivi(connue: number | null = null) {
 }
 
 test("the plan's values", () => {
-  expect([DUREE_MIN_REPRISE_S, ECART_POSITION_MS, RECUL_REPRISE_S]).toEqual([60, 10_000, 5]);
+  expect([MIN_RESUME_DURATION_S, POSITION_GAP_MS, RESUME_BACKOFF_S]).toEqual([60, 10_000, 5]);
 });
 
 test("timeupdate every second for 35 s: 4 noter (0, 10, 20, 30 s)", async () => {
@@ -132,7 +132,7 @@ test("nothing is noted before the resume is settled: a timeupdate at 0 s does no
 
 test("a request that fails: nothing resumed, the tracking continues", async () => {
   const notes: number[] = [];
-  const s = new SuiviReprise({ noter: (t) => void notes.push(t), demander: () => Promise.reject(new Error("x")), maintenant: () => 0 });
+  const s = new ResumeTracking({ noter: (t) => void notes.push(t), demander: () => Promise.reject(new Error("x")), maintenant: () => 0 });
   const cle = {};
   expect(await s.surEvenement("play", { currentTime: 0, duration: 1500, cle })).toBeNull();
   await s.surEvenement("pause", { currentTime: 4, duration: 1500, cle });

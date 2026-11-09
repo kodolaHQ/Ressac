@@ -1,6 +1,6 @@
-import type { SiteAffiche } from "../shared/sites";
-import type { ApiWebaios, EtatPanneauAgent, ListeApplications, ResultatExtension, WidgetAffiche } from "../shared/api";
-import type { LigneExtension, LigneExtensionEspace } from "../shared/extensions";
+import type { ShownSite } from "../shared/sites";
+import type { ApiWebaios, AgentPanelState, ApplicationList, ExtensionResult, ShownWidget } from "../shared/api";
+import type { LigneExtension, SpaceExtensionLine } from "../shared/extensions";
 import type { HomeTheme } from "../../../packages/noyau/src/accueil/theme.ts";
 import type { FreePlacement } from "../../../packages/noyau/src/accueil/schemas.ts";
 import type { Execution, ResumeExecution } from "../../../packages/noyau/src/workflows/executions.ts";
@@ -9,13 +9,13 @@ import { dossierValide } from "../chrome/store/app-folder";
 import type { WindowController } from "../chrome/window/controller";
 import { oublierWidget, preparerWidget } from "../chrome/window/widget-frame";
 import { profilsLisibles, profilsPourAccord, urlOuvrable } from "./accueil-profils";
-import { ACTIONS_EN_ESPACE_PRIVE } from "../shared/actions";
+import { ACTIONS_IN_PRIVATE_SPACE } from "../shared/actions";
 import { createActionsApi, espaceActifPrive, type ActionsFirefox } from "./actions-api";
 import { createDesignApi, createExternesApi, createRelectureApi } from "./design-api";
 
 /** What the Firefox page reads: the widgets, plus the theme the ApiWebaios type does not carry. */
 export interface AccueilLu {
-  widgets: WidgetAffiche[];
+  widgets: ShownWidget[];
   theme: HomeTheme | null;
 }
 
@@ -53,7 +53,7 @@ const MESSAGE_AGENT_ARRETE = "Le service des widgets ne répond pas (agent arrê
  * its resource:// URL. The widgets served last time and gone now lose their substitution and their copies.
  */
 export async function servirAffichages(
-  widgets: WidgetAffiche[],
+  widgets: ShownWidget[],
   dataDir: string,
   prepares: Set<string>,
   outil: {
@@ -92,13 +92,13 @@ export function createApi(win: WindowController): ApiFirefox {
   /** When this window last opened a widget link: a display cannot make links leave in a burst. */
   let dernierLien = 0;
   /** States this document makes itself: the host did not start, or stopped. */
-  const localStates = new Set<(e: EtatPanneauAgent) => void>();
+  const localStates = new Set<(e: AgentPanelState) => void>();
   /** The widgets whose display this document prepared: the others' substitutions and copies are cleared. */
   const prepares = new Set<string>();
   const failed = (message: string) => localStates.forEach((cb) => cb({ etat: "erreur", message }));
   /** An extension action in the kernel host; its answer copied into this realm, a failure given back as text. */
   const extension = (method: string, params: Record<string, unknown>) =>
-    host.request<ResultatExtension>(method, params).then((r) => structuredClone(r), (e) => ({ ok: false as const, erreur: e instanceof Error ? e.message : String(e) }));
+    host.request<ExtensionResult>(method, params).then((r) => structuredClone(r), (e) => ({ ok: false as const, erreur: e instanceof Error ? e.message : String(e) }));
   /** A host request answered in this realm; `fallback` when the host does not answer (no agent). */
   const ask = <T>(method: string, params: unknown, fallback: T): Promise<T> => host.request<T>(method, params).then((r) => structuredClone(r), () => fallback);
   /** An action's builder in a window whose active space is private (or unknown), read at the moment of asking. */
@@ -233,7 +233,7 @@ export function createApi(win: WindowController): ApiFirefox {
     // The agent's applications, kept by the kernel host (its windows through the chrome). The host checks every action
     // with SchemaActionApplication; « Afficher le dossier » is the chrome's (one path segment), « Relire » the UI's.
     applications: {
-      liste: () => ask<ListeApplications>("applications.liste", undefined, { atelier: "ok", applications: [] }),
+      liste: () => ask<ApplicationList>("applications.liste", undefined, { atelier: "ok", applications: [] }),
       surChange(callback) {
         // A host that started again, or the chrome's resync, sent no change: the list is read again.
         const offs = [host.on("applications.change", () => callback()), host.on(HOST_EXITED, () => callback()), host.on("accueil.change", () => callback())];
@@ -258,7 +258,7 @@ export function createApi(win: WindowController): ApiFirefox {
     // The site apps, kept by the kernel host (its window actions go through the chrome); « Afficher le dossier » and
     // « Relire » are the UI's own.
     sites: {
-      liste: () => ask<SiteAffiche[]>("sites.liste", undefined, []),
+      liste: () => ask<ShownSite[]>("sites.liste", undefined, []),
       surChange(callback) {
         // A host that started again, or the chrome's resync, sent no change: the list is read again.
         const offs = [host.on("sites.change", () => callback()), host.on(HOST_EXITED, () => callback()), host.on("accueil.change", () => callback())];
@@ -289,7 +289,7 @@ export function createApi(win: WindowController): ApiFirefox {
     surVoletFerme: (callback) => untilUnload(win.store.design.overlays.onColumnClosed({ type: "fenetre", fenetreId: fenetre }, () => callback())),
     // The agent's extensions, kept by the kernel host: what the reused space modal, empty page and command bar call.
     extensions: {
-      pourEspace: (espaceId) => host.request<LigneExtensionEspace[]>("extensions.pourEspace", { espaceId }).then((l) => structuredClone(l), () => []),
+      pourEspace: (espaceId) => host.request<SpaceExtensionLine[]>("extensions.pourEspace", { espaceId }).then((l) => structuredClone(l), () => []),
       basculer: (cle, espaceId, actif) => extension("extensions.basculer", { cle, espaceId, actif, fenetre }),
       surChange: (callback) => untilUnload(host.on("extensions.change", () => callback())),
       // The Extensions page: the agent's extensions only (decision 8); AMO add-ons stay in about:addons.
@@ -310,17 +310,17 @@ export function createApi(win: WindowController): ApiFirefox {
       lire: async (cible) => (privateAction(cible) ? null : ask("workflow.lire", { cible }, null).then((r) => (privateAction(cible) ? null : r))),
       enregistrer: async (cible, brouillon) =>
         privateAction(cible)
-          ? { ok: false, erreur: ACTIONS_EN_ESPACE_PRIVE, avertissements: [] }
+          ? { ok: false, erreur: ACTIONS_IN_PRIVATE_SPACE, avertissements: [] }
           : ask("workflow.enregistrer", { cible, brouillon }, { ok: false, erreur: MESSAGE_AGENT_ARRETE, avertissements: [] }),
       lireCode: async (cible, nom) =>
         privateAction(cible)
-          ? { erreur: ACTIONS_EN_ESPACE_PRIVE }
-          : ask("workflow.lireCode", { cible, nom }, { erreur: MESSAGE_AGENT_ARRETE }).then((r) => (privateAction(cible) ? { erreur: ACTIONS_EN_ESPACE_PRIVE } : r)),
+          ? { erreur: ACTIONS_IN_PRIVATE_SPACE }
+          : ask("workflow.lireCode", { cible, nom }, { erreur: MESSAGE_AGENT_ARRETE }).then((r) => (privateAction(cible) ? { erreur: ACTIONS_IN_PRIVATE_SPACE } : r)),
       enregistrerCode: async (cible, nom, texte) =>
-        privateAction(cible) ? { ok: false, erreur: ACTIONS_EN_ESPACE_PRIVE } : ask("workflow.enregistrerCode", { cible, nom, texte }, { ok: false, erreur: MESSAGE_AGENT_ARRETE }),
+        privateAction(cible) ? { ok: false, erreur: ACTIONS_IN_PRIVATE_SPACE } : ask("workflow.enregistrerCode", { cible, nom, texte }, { ok: false, erreur: MESSAGE_AGENT_ARRETE }),
       rejouer: async (cible, execution, bloc) =>
-        privateAction(cible) ? { ok: false, erreur: ACTIONS_EN_ESPACE_PRIVE } : ask("workflow.rejouer", { cible, execution, bloc }, { ok: false, erreur: MESSAGE_AGENT_ARRETE }),
-      lancer: async (cible, saisie) => (privateAction(cible) ? { erreur: ACTIONS_EN_ESPACE_PRIVE } : ask("workflow.lancer", { cible, saisie: saisie ?? null }, {})),
+        privateAction(cible) ? { ok: false, erreur: ACTIONS_IN_PRIVATE_SPACE } : ask("workflow.rejouer", { cible, execution, bloc }, { ok: false, erreur: MESSAGE_AGENT_ARRETE }),
+      lancer: async (cible, saisie) => (privateAction(cible) ? { erreur: ACTIONS_IN_PRIVATE_SPACE } : ask("workflow.lancer", { cible, saisie: saisie ?? null }, {})),
       selection(cible, bloc) {
         // The host keeps it in memory only: resent on `acces`, which a host sends once its kernel has started (and on policy
         // changes, harmless: the same selection again).

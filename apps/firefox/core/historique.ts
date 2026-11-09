@@ -6,14 +6,14 @@ import type { Visite } from "../shared/modele";
 
 export type { HistoryResult as ResultatHistorique, Visite };
 
-const COLONNES = `url, titre, derniere_visite AS derniereVisite, visites, espace_id AS espaceId, prive,
+const COLUMNS = `url, titre, derniere_visite AS derniereVisite, visites, espace_id AS espaceId, prive,
   EXISTS (SELECT 1 FROM textes t WHERE t.url = visites.url AND t.espace_id = visites.espace_id) AS retenu`;
 
 /** Limits of the browsing memory (spec §6.3). */
-export const TEXTE_MAX = 20_000; // characters per page
+export const TEXT_MAX = 20_000; // characters per page
 export const RETENTION_JOURS = 183;
-export const PLAFOND_OCTETS = 1_000_000_000; // UTF-8 de `texte`, toutes pages confondues
-const LIMITE_AGENT = { defaut: 20, max: 50 };
+export const BYTES_CAP = 1_000_000_000; // UTF-8 de `texte`, toutes pages confondues
+const AGENT_LIMIT = { defaut: 20, max: 50 };
 /** Words of the excerpt returned to the agent (64 at most for FTS5): about 300 characters. */
 const MOTS_EXTRAIT = 54;
 
@@ -21,7 +21,7 @@ const MOTS_EXTRAIT = 54;
 const plier = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 
 /** Browsing history: one row per URL and per space, in `<profile>/historique.sqlite`. */
-export class Historique {
+export class History {
   private db: DatabaseSync;
   private req: Record<
     | "noter" | "majTitre" | "rechercher" | "rechercherDistinctes" | "recents" | "effacerDepuis" | "toutEffacer" | "rendrePrive"
@@ -32,10 +32,10 @@ export class Historique {
   >;
   private plafondOctets: number;
 
-  constructor(chemin: string, options: { plafondOctets?: number } = {}) {
-    this.plafondOctets = options.plafondOctets ?? PLAFOND_OCTETS;
-    mkdirSync(dirname(chemin), { recursive: true });
-    this.db = new DatabaseSync(chemin);
+  constructor(path: string, options: { plafondOctets?: number } = {}) {
+    this.plafondOctets = options.plafondOctets ?? BYTES_CAP;
+    mkdirSync(dirname(path), { recursive: true });
+    this.db = new DatabaseSync(path);
     this.db.exec("PRAGMA journal_mode = WAL;");
     this.migrer();
     this.db.function("plier", { deterministic: true }, (s) => plier(String(s)));
@@ -46,18 +46,18 @@ export class Historique {
           visites = CASE WHEN prive = 1 AND excluded.prive = 0 THEN 1 ELSE visites + 1 END, prive = excluded.prive`),
       majTitre: this.db.prepare("UPDATE visites SET titre = ? WHERE url = ? AND espace_id = ?"),
       rechercher: this.db.prepare(`
-        SELECT ${COLONNES} FROM visites
+        SELECT ${COLUMNS} FROM visites
         WHERE plier(url) LIKE ? ESCAPE '\\' OR plier(titre) LIKE ? ESCAPE '\\'
         ORDER BY visites DESC, derniere_visite DESC LIMIT ?`),
       // A single row per URL, the best ranked, chosen in SQL so that the LIMIT counts URLs.
       rechercherDistinctes: this.db.prepare(`
-        SELECT ${COLONNES} FROM (
+        SELECT ${COLUMNS} FROM (
           SELECT *, ROW_NUMBER() OVER (PARTITION BY url ORDER BY visites DESC, derniere_visite DESC) AS rang FROM visites
           WHERE plier(url) LIKE ? ESCAPE '\\' OR plier(titre) LIKE ? ESCAPE '\\'
         ) AS visites
         WHERE rang = 1
         ORDER BY visites DESC, derniere_visite DESC LIMIT ?`),
-      recents: this.db.prepare(`SELECT ${COLONNES} FROM visites ORDER BY derniere_visite DESC LIMIT ?`),
+      recents: this.db.prepare(`SELECT ${COLUMNS} FROM visites ORDER BY derniere_visite DESC LIMIT ?`),
       effacerDepuis: this.db.prepare("DELETE FROM visites WHERE derniere_visite >= ?"),
       toutEffacer: this.db.prepare("DELETE FROM visites"),
       rendrePrive: this.db.prepare("UPDATE visites SET prive = 1 WHERE espace_id = ?"),
@@ -94,8 +94,8 @@ export class Historique {
 
   /** Creates the table, or migrates the old one (`url` key alone): rows kept, space `""` (none), non-private. */
   private migrer(): void {
-    const colonnes = (this.db.prepare("PRAGMA table_info(visites)").all() as { name: string }[]).map((c) => c.name);
-    const nouvelle = `(
+    const columns = (this.db.prepare("PRAGMA table_info(visites)").all() as { name: string }[]).map((c) => c.name);
+    const fresh = `(
         url TEXT NOT NULL,
         espace_id TEXT NOT NULL,
         titre TEXT NOT NULL,
@@ -106,10 +106,10 @@ export class Historique {
       )`;
     this.db.exec("BEGIN");
     try {
-      if (colonnes.length === 0) this.db.exec(`CREATE TABLE visites ${nouvelle}`);
-      else if (!colonnes.includes("espace_id")) {
+      if (columns.length === 0) this.db.exec(`CREATE TABLE visites ${fresh}`);
+      else if (!columns.includes("espace_id")) {
         this.db.exec(`
-          CREATE TABLE visites_v2 ${nouvelle};
+          CREATE TABLE visites_v2 ${fresh};
           INSERT INTO visites_v2 (url, espace_id, titre, derniere_visite, visites, prive)
             SELECT url, '', titre, derniere_visite, visites, 0 FROM visites;
           DROP TABLE visites;
@@ -157,18 +157,18 @@ export class Historique {
   }
 
   /** The title often arrives after the navigation: it completes the visit without counting a new one. */
-  majTitre(url: string, espaceId: string, titre: string): void {
+  majTitre(url: string, spaceId: string, titre: string): void {
     if (!this.db.isOpen) return;
-    this.req.majTitre.run(titre, url, espaceId);
-    this.req.majTitreTexte.run(titre, url, espaceId, titre);
+    this.req.majTitre.run(titre, url, spaceId);
+    this.req.majTitreTexte.run(titre, url, spaceId, titre);
   }
 
   /** The space became private: all its already recorded visits become so, and their kept text is forgotten. */
-  rendrePrive(espaceId: string): void {
+  rendrePrive(spaceId: string): void {
     if (!this.db.isOpen) return;
     this.transaction(() => {
-      this.req.rendrePrive.run(espaceId);
-      this.req.oublierTextesEspace.run(espaceId);
+      this.req.rendrePrive.run(spaceId);
+      this.req.oublierTextesEspace.run(spaceId);
     });
   }
 
@@ -176,32 +176,32 @@ export class Historique {
   retenir(r: { url: string; espaceId: string; titre: string; texte: string; date?: Date }): void {
     if (!this.db.isOpen) return;
     if (this.req.estPrive.get(r.url, r.espaceId)) return; // defense: nothing is kept from a private visit
-    let texte = r.texte.slice(0, TEXTE_MAX);
-    if (/[\uD800-\uDBFF]$/.test(texte)) texte = texte.slice(0, -1); // no half character
+    let text = r.texte.slice(0, TEXT_MAX);
+    if (/[\uD800-\uDBFF]$/.test(text)) text = text.slice(0, -1); // no half character
     const date = (r.date ?? new Date()).toISOString();
-    this.req.retenir.run(r.url, r.espaceId, r.titre, date, texte, Buffer.byteLength(texte, "utf8"));
+    this.req.retenir.run(r.url, r.espaceId, r.titre, date, text, Buffer.byteLength(text, "utf8"));
   }
 
   /** Forgets a visit's text without erasing the visit. */
-  oublierTexte(url: string, espaceId: string): void {
+  oublierTexte(url: string, spaceId: string): void {
     if (!this.db.isOpen) return;
-    this.req.oublierTexte.run(url, espaceId);
+    this.req.oublierTexte.run(url, spaceId);
   }
 
   /** Forgets text older than RETENTION_JOURS days, then the oldest while the total exceeds the cap. */
-  purger(maintenant = new Date()): void {
+  purger(now = new Date()): void {
     if (!this.db.isOpen) return;
     this.transaction(() => {
-      this.req.purgerAvant.run(new Date(maintenant.getTime() - RETENTION_JOURS * 86_400_000).toISOString());
+      this.req.purgerAvant.run(new Date(now.getTime() - RETENTION_JOURS * 86_400_000).toISOString());
       let total = Number((this.req.totalOctets.get() as { total: number }).total);
       if (total <= this.plafondOctets) return;
-      const aOublier: number[] = [];
+      const toForget: number[] = [];
       for (const l of this.req.textesAnciens.iterate() as Iterable<{ id: number; octets: number }>) {
         if (total <= this.plafondOctets) break;
-        aOublier.push(l.id);
+        toForget.push(l.id);
         total -= l.octets;
       }
-      for (const id of aOublier) this.req.oublierTexteId.run(id);
+      for (const id of toForget) this.req.oublierTexteId.run(id);
     });
   }
 
@@ -220,40 +220,40 @@ export class Historique {
    */
   rechercherPourAgent(q: { requete: string; depuis?: Date; jusqua?: Date; limite?: number }): HistoryResult[] {
     if (!this.db.isOpen) return [];
-    const limite = Math.max(1, Math.min(LIMITE_AGENT.max, Math.floor(q.limite ?? LIMITE_AGENT.defaut)));
-    const periode = { depuis: q.depuis?.toISOString() ?? "", jusqua: q.jusqua?.toISOString() ?? "\uffff" };
+    const limit = Math.max(1, Math.min(AGENT_LIMIT.max, Math.floor(q.limite ?? AGENT_LIMIT.defaut)));
+    const period = { depuis: q.depuis?.toISOString() ?? "", jusqua: q.jusqua?.toISOString() ?? "\uffff" };
     const mots = q.requete.split(/\s+/).filter(Boolean);
     // Each word is a quoted FTS phrase: no query operator is interpreted.
     const fts = mots.map((m) => `"${m.replaceAll('"', '""')}"`).join(" OR ");
     const motifs = Object.fromEntries(mots.map((m, i) => [`m${i}`, `%${plier(m).replace(/[\\%_]/g, (c) => `\\${c}`)}%`]));
-    const dansPeriode = "v.prive = 0 AND v.derniere_visite >= :depuis AND v.derniere_visite <= :jusqua";
+    const inPeriod = "v.prive = 0 AND v.derniere_visite >= :depuis AND v.derniere_visite <= :jusqua";
     const parTitreOuUrl = mots.length
       ? mots.map((_, i) => `plier(v.url) LIKE :m${i} ESCAPE '\\' OR plier(v.titre) LIKE :m${i} ESCAPE '\\'`).join(" OR ")
       : "1";
-    const trouves = mots.length
+    const found = mots.length
       ? `SELECT t.url, t.id, bm25(textes_fts) AS score FROM textes_fts
            JOIN textes t ON t.id = textes_fts.rowid
            JOIN visites v ON v.url = t.url AND v.espace_id = t.espace_id
-           WHERE textes_fts MATCH :fts AND ${dansPeriode}`
+           WHERE textes_fts MATCH :fts AND ${inPeriod}`
       : "SELECT NULL AS url, NULL AS id, NULL AS score WHERE 0";
     const lignes = this.db
       .prepare(`
-        WITH trouves AS MATERIALIZED (${trouves}),
+        WITH trouves AS MATERIALIZED (${found}),
         candidates AS (
           SELECT url, MIN(score) AS score FROM (
             SELECT url, score FROM trouves
-            UNION ALL SELECT v.url, NULL FROM visites v WHERE ${dansPeriode} AND (${parTitreOuUrl})
+            UNION ALL SELECT v.url, NULL FROM visites v WHERE ${inPeriod} AND (${parTitreOuUrl})
           ) GROUP BY url
         )
         SELECT c.url, c.score,
           (SELECT id FROM trouves t WHERE t.url = c.url ORDER BY t.score LIMIT 1) AS id,
-          (SELECT MAX(v.derniere_visite) FROM visites v WHERE v.url = c.url AND ${dansPeriode}) AS recente
+          (SELECT MAX(v.derniere_visite) FROM visites v WHERE v.url = c.url AND ${inPeriod}) AS recente
         FROM candidates c
         ORDER BY c.score IS NULL, c.score, recente DESC
         LIMIT :limite`)
-      .all({ ...periode, ...motifs, ...(mots.length ? { fts } : {}), limite }) as { url: string; id: number | null }[];
+      .all({ ...period, ...motifs, ...(mots.length ? { fts } : {}), limite: limit }) as { url: string; id: number | null }[];
     return lignes.map(({ url, id }) => {
-      const visites = this.req.visitesDe.all({ url, ...periode }) as { titre: string; date: string; visites: number }[];
+      const visites = this.req.visitesDe.all({ url, ...period }) as { titre: string; date: string; visites: number }[];
       const extrait = id === null ? undefined : (this.req.extrait.get(fts, id) as { extrait: string } | undefined);
       return {
         url,
@@ -266,15 +266,15 @@ export class Historique {
   }
 
   /** Substring insensitive to case and accents on the URL and title; `%`, `_` and `\` are literal. */
-  rechercher(texte: string, limite = 50, distinctes = false): Visite[] {
+  rechercher(text: string, limit = 50, distinct = false): Visite[] {
     if (!this.db.isOpen) return [];
-    const motif = `%${plier(texte).replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
-    return this.lignes(this.req[distinctes ? "rechercherDistinctes" : "rechercher"].all(motif, motif, limite));
+    const motif = `%${plier(text).replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+    return this.lignes(this.req[distinct ? "rechercherDistinctes" : "rechercher"].all(motif, motif, limit));
   }
 
-  recents(limite = 100): Visite[] {
+  recents(limit = 100): Visite[] {
     if (!this.db.isOpen) return [];
-    return this.lignes(this.req.recents.all(limite));
+    return this.lignes(this.req.recents.all(limit));
   }
 
   private lignes(brutes: Record<string, unknown>[]): Visite[] {
@@ -282,12 +282,12 @@ export class Historique {
   }
 
   /** Erases the visits and kept text since `depuis` (everything without a date), and the text whose visit is erased. */
-  effacer(depuis?: Date): void {
+  effacer(from?: Date): void {
     if (!this.db.isOpen) return;
     this.transaction(() => {
-      if (depuis) {
-        this.req.effacerDepuis.run(depuis.toISOString());
-        this.req.effacerTextesDepuis.run(depuis.toISOString());
+      if (from) {
+        this.req.effacerDepuis.run(from.toISOString());
+        this.req.effacerTextesDepuis.run(from.toISOString());
         this.req.effacerTextesOrphelins.run();
       } else {
         this.req.toutEffacer.run();

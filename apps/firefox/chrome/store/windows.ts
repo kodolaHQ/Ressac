@@ -1,52 +1,52 @@
-import type { EtatNavigateur, IdFenetre } from "../../shared/modele";
+import type { BrowserState, WindowId } from "../../shared/modele";
 import type { WindowController } from "../window/controller";
 import type { Store } from "./store";
 
 /** Pure: which state window a new Firefox window takes (decision 1), or null to create one. */
 export function pickWindow(
-  state: EtatNavigateur,
-  o: { bound: ReadonlySet<IdFenetre>; kept: IdFenetre | null; opening: readonly IdFenetre[] },
-): IdFenetre | null {
-  const free = (id: IdFenetre | null) => !!id && !o.bound.has(id) && state.fenetres.some((f) => f.id === id);
+  state: BrowserState,
+  o: { bound: ReadonlySet<WindowId>; kept: WindowId | null; opening: readonly WindowId[] },
+): WindowId | null {
+  const free = (id: WindowId | null) => !!id && !o.bound.has(id) && state.fenetres.some((f) => f.id === id);
   return o.opening.find(free) ?? (free(o.kept) ? o.kept : null) ?? state.fenetres.find((f) => free(f.id))?.id ?? null;
 }
 
 export interface WindowRegistry {
   /** Binds a new full browser window; creates a state window (ouvrirFenetre, espaceId of active()) when pickWindow gives null. Bound before any dispatch. */
-  claim(win: Window): { fenetreId: IdFenetre; first: boolean };
+  claim(win: Window): { fenetreId: WindowId; first: boolean };
   /** The window is gone: calls onRelease first; among others, fermerFenetre; the last one, or any while
    *  Services.startup.shuttingDown, stays in the state (kept: the next claim takes it back). */
-  release(fenetreId: IdFenetre): void;
+  release(fenetreId: WindowId): void;
   /** Decision 3. undefined while no WebAiOs window is open. */
-  active(): IdFenetre | undefined;
+  active(): WindowId | undefined;
   /** The open window and its controller, if any. */
-  get(fenetreId: IdFenetre): { window: Window; controller: WindowController } | undefined;
+  get(fenetreId: WindowId): { window: Window; controller: WindowController } | undefined;
 }
 
 /** One full Firefox window per state window, and the kept ones. */
 export function createWindowRegistry(o: {
   store: Store;
   open(): Window | undefined;
-  onRelease(fenetreId: IdFenetre): void;
+  onRelease(fenetreId: WindowId): void;
   /** A bound window came to the front: active() may have changed. */
-  onActivate?(fenetreId: IdFenetre): void;
+  onActivate?(fenetreId: WindowId): void;
 }): WindowRegistry {
   const { store } = o;
-  const bound = new Map<IdFenetre, Window>();
-  let kept: IdFenetre | null = null;
-  let opening: IdFenetre[] = [];
+  const bound = new Map<WindowId, Window>();
+  let kept: WindowId | null = null;
+  let opening: WindowId[] = [];
   let claimed = false;
-  let lastActive: IdFenetre | undefined;
+  let lastActive: WindowId | undefined;
 
   // A state window whose Firefox window is gone: among other open windows it leaves the state, the last one is kept
   // (macOS: the Dock or ⌘N bring it back). While quitting every window stays, for the restore.
-  const forget = (id: IdFenetre) => {
+  const forget = (id: WindowId) => {
     if (!Services.startup.shuttingDown && bound.size > 0) store.dispatch({ type: "fermerFenetre", id });
     else kept = id;
   };
 
   // A state window with no Firefox window (restored, or added by an action) gets one, unless kept closed (macOS).
-  const openMissing = (state: EtatNavigateur) => {
+  const openMissing = (state: BrowserState) => {
     if (!claimed || Services.startup.shuttingDown) return;
     opening = opening.filter((id) => !bound.has(id) && state.fenetres.some((f) => f.id === id));
     for (const f of state.fenetres)
@@ -77,7 +77,7 @@ export function createWindowRegistry(o: {
         if (kept === fenetreId) kept = null;
         bound.set(fenetreId, win);
       } else {
-        const id: IdFenetre = crypto.randomUUID();
+        const id: WindowId = crypto.randomUUID();
         const from = registry.active();
         const espaceId = store.state.fenetres.find((f) => f.id === from)?.espaceActif;
         bound.set(id, win);

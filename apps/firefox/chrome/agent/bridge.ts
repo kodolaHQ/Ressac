@@ -1,7 +1,7 @@
 import { navigationOutsideSite, TabNotFound, PrivateTab, type DroitDev, type TabInfo, type OptionsLecturePage } from "../shims/noyau";
-import type { EtatNavigateur, IdFenetre, Onglet } from "../../shared/modele";
-import { ongletPrive, PREFIXE_WORKFLOW } from "../../shared/modele";
-import { changementsPolitique, infosOnglets, ongletActifDe, ongletApplication, ongletSite, origineDe, PREFIXE_SITE, resoudreEspace } from "../../core/agent/pont";
+import type { BrowserState, WindowId, Tab } from "../../shared/modele";
+import { privateTab, WORKFLOW_PREFIX } from "../../shared/modele";
+import { changementsPolitique, tabInfos, activeTabOf, appTab, siteTab, originOf, SITE_PREFIX, resolveSpace } from "../../core/agent/pont";
 import type { Handler } from "../../shared/rpc";
 import type { AgentApps } from "../store/apps";
 import type { DevTools } from "../store/devtools";
@@ -18,22 +18,22 @@ const PREFIXE_APP = "app:";
 /** As the page actor. */
 const TEXT_MAX = 100_000;
 
-const internal = (o: Onglet) => o.url.startsWith("webaios:");
+const internal = (o: Tab) => o.url.startsWith("webaios:");
 
 /** What the host's bridge mirrors for its two synchronous methods (estPrive, ongletActifPrive). */
-function privateMirror(state: EtatNavigateur, windows: WindowRegistry): { prives: string[]; actifPrive: boolean } {
-  const isPrivate = (o: Onglet | undefined) => !!o && !internal(o) && ongletPrive(state, o);
+function privateMirror(state: BrowserState, windows: WindowRegistry): { prives: string[]; actifPrive: boolean } {
+  const isPrivate = (o: Tab | undefined) => !!o && !internal(o) && privateTab(state, o);
   const f = state.fenetres.find((x) => x.id === windows.active());
   const active = f && f.actif[f.espaceActif];
   return { prives: Object.values(state.onglets).filter(isPrivate).map((o) => o.id), actifPrive: isPrivate(active ? state.onglets[active] : undefined) };
 }
 
 /** Each window's active tab URL, for `workflow_ouvert`: only a workflow page, never a web URL (null otherwise). */
-function activeWorkflows(state: EtatNavigateur): Record<IdFenetre, string | null> {
-  const r: Record<IdFenetre, string | null> = {};
+function activeWorkflows(state: BrowserState): Record<WindowId, string | null> {
+  const r: Record<WindowId, string | null> = {};
   for (const f of state.fenetres) {
     const url = state.onglets[f.actif[f.espaceActif] ?? ""]?.url;
-    r[f.id] = url?.startsWith(PREFIXE_WORKFLOW) ? url : null;
+    r[f.id] = url?.startsWith(WORKFLOW_PREFIX) ? url : null;
   }
   return r;
 }
@@ -55,15 +55,15 @@ export function bridgeHandlers(
     return m;
   };
   /** Throws OngletPrive for a tab in a private space: a call that crosses the switch to private reads nothing. */
-  const tab = (id: string): Onglet => {
+  const tab = (id: string): Tab => {
     const state = store.state;
     const o = state.onglets[id];
     if (!o) throw new TabNotFound(id);
-    if (ongletPrive(state, o)) throw new PrivateTab(id);
+    if (privateTab(state, o)) throw new PrivateTab(id);
     return o;
   };
   /** A tab whose page can be read: Firefox's crash or error page is not the page. */
-  const loadedTab = (id: string): Onglet => {
+  const loadedTab = (id: string): Tab => {
     const o = tab(id);
     if (o.plante) throw new Error("La page a planté : rechargez-la.");
     if (o.erreur) throw new Error("La page n'a pas pu être chargée.");
@@ -78,14 +78,14 @@ export function bridgeHandlers(
     const browser = await windowOf(id).controller.ensure(id);
     loadedTab(id); // crashed or failed while it loaded
     const r = await read(browser);
-    const origin = origineDe(before.url);
-    if (origineDe(tab(id).url) !== origin || origineDe(browser.currentURI.spec) !== origin)
+    const origin = originOf(before.url);
+    if (originOf(tab(id).url) !== origin || originOf(browser.currentURI.spec) !== origin)
       throw new Error("L'onglet a changé de site pendant la lecture : rien n'est rendu.");
     return r;
   };
   /** The view of a site app window (`site:<id>`) or of an agent app window (`app:<dossier>`); null for any other id. */
   const windowView = (id: string) =>
-    id.startsWith(PREFIXE_SITE) ? sites.viewFor(id.slice(PREFIXE_SITE.length)) : id.startsWith(PREFIXE_APP) ? apps.viewFor(id.slice(PREFIXE_APP.length)) : null;
+    id.startsWith(SITE_PREFIX) ? sites.viewFor(id.slice(SITE_PREFIX.length)) : id.startsWith(PREFIXE_APP) ? apps.viewFor(id.slice(PREFIXE_APP.length)) : null;
   /**
    * Reads the view of a site app or agent app window: never a site app's bar, home or card, nor an app's badge or
    * overlay. Closed, before or during the read: OngletIntrouvable (a clean answer). Undefined for
@@ -125,25 +125,25 @@ export function bridgeHandlers(
     const state = store.state;
     const f = state.fenetres.find((x) => x.id === windows.active()) ?? state.fenetres[0];
     if (!f) throw new Error("Aucune fenêtre ouverte");
-    const espaceId = resoudreEspace(state, f, espace);
+    const espaceId = resolveSpace(state, f, espace);
     if (state.espaces.find((e) => e.id === espaceId)?.prive ?? true) throw new Error("Impossible d'ouvrir un onglet ici : l'espace actif est privé.");
     const id = crypto.randomUUID();
     store.dispatch({ type: "ouvrirOnglet", fenetreId: f.id, url, espaceId, activer: true, ouvertParAgent: true }, () => id);
     if (!store.state.onglets[id]) throw new Error(`Impossible d'ouvrir ${url}`);
     store.dispatch({ type: "activerOnglet", id }); // also switches to its space
-    return infosOnglets(store.state).find((o) => o.id === id)!;
+    return tabInfos(store.state).find((o) => o.id === id)!;
   };
 
   return {
     // Decision 3: no window open (the last one kept), no active tab.
-    ongletActif: ([fenetre]: [IdFenetre?] = []) => ongletActifDe(store.state, fenetre ?? windows.active()),
-    listerOnglets: () => [...infosOnglets(store.state), ...apps.forAgent().map(ongletApplication), ...sites.forAgent().map(ongletSite)],
+    ongletActif: ([fenetre]: [WindowId?] = []) => activeTabOf(store.state, fenetre ?? windows.active()),
+    listerOnglets: () => [...tabInfos(store.state), ...apps.forAgent().map(appTab), ...sites.forAgent().map(siteTab)],
     ouvrirOnglet: openTab,
     naviguer: ([id, url]: [string, string]) => {
-      if (id.startsWith(PREFIXE_SITE)) {
-        if (!sites.viewFor(id.slice(PREFIXE_SITE.length))) throw new TabNotFound(id);
+      if (id.startsWith(SITE_PREFIX)) {
+        if (!sites.viewFor(id.slice(SITE_PREFIX.length))) throw new TabNotFound(id);
         // Never a tab instead: off the app's domains nothing loads (the kernel checked it already).
-        const r = sites.navigateForAgent(id.slice(PREFIXE_SITE.length), url);
+        const r = sites.navigateForAgent(id.slice(SITE_PREFIX.length), url);
         if (r === "refuse") throw new Error(navigationOutsideSite(url));
         return r === "en-attente" ? r : undefined;
       }
@@ -208,7 +208,7 @@ export function trackState(store: Store, host: AgentHost, windows: WindowRegistr
     // Opening the agent panel on a tab gives it to the agent and pre-fills its context.
     for (const f of state.fenetres) {
       const opened = f.panneauAgentOuvert && !previous.fenetres.find((x) => x.id === f.id)?.panneauAgentOuvert;
-      const onglet = opened && ongletActifDe(state, f.id);
+      const onglet = opened && activeTabOf(state, f.id);
       if (onglet) host.notify("agent.panneauOuvert", { fenetre: f.id, onglet });
     }
     if (state.reglages.profilAgent !== previous.reglages.profilAgent)

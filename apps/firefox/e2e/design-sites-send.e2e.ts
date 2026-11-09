@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
-import { urlRelecture } from "../shared/modele";
+import { reviewUrl } from "../shared/modele";
 import { THIRD_PARTY_SITE_WARNING } from "../../../packages/noyau/src/design/remarques";
 import { testActor } from "./agent-extensions";
 import { calqueOf, inStore, openSite, siteKey, siteMouse, toSite, TUNING_PAGE, tuningDeclaration, viewExpr, viewPoint, AUTRE_PAGE, CONNEXION_PAGE } from "./design-sites";
@@ -86,7 +86,7 @@ async function chevron(t: string) {
 const inCalque = <R = unknown>(body: string, args: unknown[] = []) => calqueOf<R>(m, ID, body, args);
 const bubbleText = () => inCalque<string | null>(`return doc.querySelector('${tid("bulle-design")}')?.textContent ?? null;`);
 const designKey = () => siteKey(m, ID, "d", ["Meta", "Shift"]);
-const reviewTabs = async () => Object.values((await state(m)).onglets).filter((o) => o.url === urlRelecture(`site-${ID}`));
+const reviewTabs = async () => Object.values((await state(m)).onglets).filter((o) => o.url === reviewUrl(`site-${ID}`));
 
 /** ⇧⌘D in tuning's window: the mode on, the viewfinder armed. */
 async function modeOn() {

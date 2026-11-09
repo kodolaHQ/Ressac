@@ -1,12 +1,12 @@
 <script lang="ts">
   import Icone from "./Icone.svelte";
-  import type { EtatFenetre } from "../../shared/modele";
+  import type { WindowState } from "../../shared/modele";
   import { accesDe, api, etat, fermerOnglet } from "../etat.svelte";
   import PastilleAcces from "./PastilleAcces.svelte";
   import IconeSite from "./IconeSite.svelte";
   import { ouvrirMenu } from "./menu.svelte";
 
-  let { fenetre }: { fenetre: EtatFenetre } = $props();
+  let { fenetre }: { fenetre: WindowState } = $props();
   const ordre = $derived(fenetre.ordre[fenetre.espaceActif] ?? []);
   const actif = $derived(fenetre.actif[fenetre.espaceActif]);
   /** Drop point: before or after the hovered tab, depending on the half under the mouse (the line shows it). */

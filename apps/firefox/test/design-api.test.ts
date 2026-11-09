@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Action } from "../shared/api";
 import { HOST_EXITED, HOST_STOPPED, type AgentHost } from "../chrome/agent/host";
-import { raisonEchec } from "../shared/design-guards";
+import { failureReason } from "../shared/design-guards";
 import { createExternesApi, createRelectureApi } from "../ui/design-api";
 
 /** A fake kernel host: answers by method (a missing one rejects, as a stopped host does), notes every call. */
@@ -48,8 +48,8 @@ describe("createExternesApi", () => {
 
   it("a host that rejects gives the off shape with raisonEchec", async () => {
     const { api } = setup();
-    expect(await api.liste()).toEqual({ serveur: { etat: "eteint", raison: raisonEchec(new Error(HOST_STOPPED)) }, projets: [], clients: [] });
-    expect(raisonEchec(new Error(HOST_STOPPED))).toBe(`Le MCP externe n'a pas pu démarrer : ${HOST_STOPPED}`);
+    expect(await api.liste()).toEqual({ serveur: { etat: "eteint", raison: failureReason(new Error(HOST_STOPPED)) }, projets: [], clients: [] });
+    expect(failureReason(new Error(HOST_STOPPED))).toBe(`Le MCP externe n'a pas pu démarrer : ${HOST_STOPPED}`);
   });
 
   it("a rejected brancher rejects with the host's message", async () => {

@@ -1,13 +1,13 @@
 <script lang="ts">
-  import type { ApiSite, EtatDesign } from "../../shared/api";
-  import type { EtatFenetreSite } from "../../shared/sites";
+  import type { ApiSite, DesignState } from "../../shared/api";
+  import type { SiteWindowState } from "../../shared/sites";
 
   // The app's design mode (plan 18): ✎ (⌘⇧D), its counter, and the « Panier » / « Relire ce projet » chevron. A list
   // under the bar would be hidden by the site's view: both entries unfold in the bar, in place of the title
   // (`menuOuvert`, read by the bar), and fold back on choice, on Escape, on a click elsewhere in the bar or after 5 s.
-  let { api, etat, menuOuvert = $bindable(false) }: { api: ApiSite; etat: EtatFenetreSite; menuOuvert?: boolean } = $props();
+  let { api, etat, menuOuvert = $bindable(false) }: { api: ApiSite; etat: SiteWindowState; menuOuvert?: boolean } = $props();
   const DUREE_MENU_MS = 5000;
-  let design = $state<EtatDesign | null>(null);
+  let design = $state<DesignState | null>(null);
   let racine = $state<HTMLElement | null>(null);
   let lecture = 0;
 

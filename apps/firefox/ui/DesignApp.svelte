@@ -1,9 +1,9 @@
 <script lang="ts">
-  import type { ApiCalque, ContexteCalque } from "../shared/api";
+  import type { OverlayApi, OverlayContext } from "../shared/api";
   import PanierDesign from "./composants/PanierDesign.svelte";
 
-  const api = window.webaios as unknown as ApiCalque;
-  let contexte = $state<ContexteCalque | null>(null);
+  const api = window.webaios as unknown as OverlayApi;
+  let contexte = $state<OverlayContext | null>(null);
   let texte = $state("");
   let erreur = $state<string | null>(null);
   let champ = $state<HTMLTextAreaElement>();

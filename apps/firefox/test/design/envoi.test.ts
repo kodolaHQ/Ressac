@@ -1,6 +1,6 @@
 import { expect, test, vi } from "vitest";
 import { spacePaths, type Lot, type TrackedProject } from "@webaios/noyau";
-import { AUCUNE_FENETRE, creerEnvoi } from "../../core/design/envoi";
+import { NO_WINDOW, createSend } from "../../core/design/envoi";
 
 const lot: Lot = {
   id: "20261102T101500Z-ab12",
@@ -28,7 +28,7 @@ function monter() {
     donnerLeTerminal: vi.fn(),
     devant: vi.fn(),
   };
-  return { o, envoyer: creerEnvoi(o) };
+  return { o, envoyer: createSend(o) };
 }
 
 test("app: preRemplir receives the agent's window and the text, never a \r; external: preRemplir is not called", async () => {
@@ -52,14 +52,14 @@ test("without a main window: a window is reopened and receives the text; if none
   const { o, envoyer } = monter();
   o.fenetreAgent.mockReturnValueOnce(undefined as never);
   const rouvrir = vi.fn();
-  const avecRouvrir = creerEnvoi({ ...o, rouvrir });
+  const avecRouvrir = createSend({ ...o, rouvrir });
   await avecRouvrir({ type: "demo", projet: "demo-15283", port: 15283 }, lot);
   expect(rouvrir).toHaveBeenCalledTimes(1);
   expect(o.preRemplir).toHaveBeenCalledWith("f7", expect.stringContaining("[remarques de l'utilisateur"));
   o.preRemplir.mockClear();
   o.fenetreAgent.mockReturnValue(undefined as never);
-  await expect(avecRouvrir({ type: "demo", projet: "demo-15283", port: 15283 }, lot)).rejects.toThrow(AUCUNE_FENETRE);
-  await expect(envoyer({ type: "demo", projet: "demo-15283", port: 15283 }, lot)).rejects.toThrow(AUCUNE_FENETRE);
+  await expect(avecRouvrir({ type: "demo", projet: "demo-15283", port: 15283 }, lot)).rejects.toThrow(NO_WINDOW);
+  await expect(envoyer({ type: "demo", projet: "demo-15283", port: 15283 }, lot)).rejects.toThrow(NO_WINDOW);
   expect(o.preRemplir).not.toHaveBeenCalled();
 });
 

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ApiDesign, ElementAffiche, LotAffiche } from "../../shared/api";
+  import type { ApiDesign, ShownElement, BatchShown } from "../../shared/api";
 
   /** A project's basket: its remarks, and sending to its destination. */
   let {
@@ -16,10 +16,10 @@
     fermer?: () => void;
   } = $props();
 
-  let elements = $state<ElementAffiche[]>([]);
+  let elements = $state<ShownElement[]>([]);
   let erreur = $state<string | null>(null);
   let envoi = $state(false);
-  let lots = $state<LotAffiche[]>([]);
+  let lots = $state<BatchShown[]>([]);
   let requete = 0;
 
   async function relire() {

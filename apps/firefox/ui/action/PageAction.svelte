@@ -1,7 +1,7 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import type { ActionsState, PageAction, ResumeExecution } from "@webaios/noyau";
-  import { ACTION_INCONNUE, AUCUN_RESULTAT, RESULTAT_DISPARU, type ActionAffichee } from "../../shared/actions";
+  import { ACTION_UNKNOWN, NO_RESULT, RESULT_GONE, type ActionShown } from "../../shared/actions";
   import CarteAccordCompte from "../composants/CarteAccordCompte.svelte";
   import { api } from "../etat.svelte";
   import AvancementAction from "./AvancementAction.svelte";
@@ -16,7 +16,7 @@
   let { id, execution }: { id: string; execution: string | null } = $props();
 
   /** undefined: not read yet; null: the action does not exist (or no longer). */
-  let action = $state<ActionAffichee | null | undefined>(undefined);
+  let action = $state<ActionShown | null | undefined>(undefined);
   /** undefined: not read yet; null: no result (never run, or the requested run no longer exists). */
   let lue = $state<PageAction | null | undefined>(undefined);
   let precedentes = $state<ResumeExecution[] | null>(null);
@@ -153,7 +153,7 @@
 
 <div class="defile" data-testid="page-action">
   {#if action === null}
-    <p class="message erreur" data-testid="erreur-action">{ACTION_INCONNUE}</p>
+    <p class="message erreur" data-testid="erreur-action">{ACTION_UNKNOWN}</p>
   {:else if action}
     <EnTeteAction
       nom={action.nom}
@@ -184,7 +184,7 @@
       {/if}
       {#if lue === null && execution !== null}
         <div class="message disparu" data-testid="resultat-disparu">
-          <p>{RESULTAT_DISPARU}</p>
+          <p>{RESULT_GONE}</p>
           {#if precedentes && precedentes.length > 0}
             <button data-testid="voir-dernier-resultat" onclick={() => choisir(precedentes![0]!.id)}>Voir le dernier résultat</button>
           {/if}
@@ -192,7 +192,7 @@
       {:else if lue === null && !derniereSansResultat && !action.saisie && !besoinAccord && !erreurAffichee}
         <p class="message" data-testid="pas-de-resultat">Pas encore de résultat</p>
       {:else if lue?.page?.vide}
-        <p class="message" data-testid="aucun-resultat">{AUCUN_RESULTAT}</p>
+        <p class="message" data-testid="aucun-resultat">{NO_RESULT}</p>
       {:else if lue?.page}
         <RenduPage page={lue.page} action={id} execution={lue.execution} />
       {/if}

@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { versUrl } from "../core/adresse";
+import { toUrl } from "../core/adresse";
 
 test.each([
   ["https://github.com", "https://github.com/"],
@@ -11,22 +11,22 @@ test.each([
   ["file:///Users/t/doc.pdf", "file:///Users/t/doc.pdf"],
   ["about:blank", "about:blank"],
   ["fr.wikipedia.org/wiki/Arc", "https://fr.wikipedia.org/wiki/Arc"],
-])("%s → %s", (saisie, attendu) => expect(versUrl(saisie, "google")).toBe(attendu));
+])("%s → %s", (saisie, attendu) => expect(toUrl(saisie, "google")).toBe(attendu));
 
 test("free text → search with the chosen engine", () => {
-  expect(versUrl("svelte 5 runes", "google")).toBe("https://www.google.com/search?q=svelte%205%20runes");
-  expect(versUrl("svelte", "duckduckgo")).toBe("https://duckduckgo.com/?q=svelte");
-  expect(versUrl("c'est quoi ?", "qwant")).toBe(`https://www.qwant.com/?q=${encodeURIComponent("c'est quoi ?")}`);
+  expect(toUrl("svelte 5 runes", "google")).toBe("https://www.google.com/search?q=svelte%205%20runes");
+  expect(toUrl("svelte", "duckduckgo")).toBe("https://duckduckgo.com/?q=svelte");
+  expect(toUrl("c'est quoi ?", "qwant")).toBe(`https://www.qwant.com/?q=${encodeURIComponent("c'est quoi ?")}`);
 });
 
 test("javascript: refused, whatever the case", () => {
-  expect(versUrl("javascript:alert(1)", "google")).toBeNull();
-  expect(versUrl("  JavaScript:alert(1)", "google")).toBeNull();
+  expect(toUrl("javascript:alert(1)", "google")).toBeNull();
+  expect(toUrl("  JavaScript:alert(1)", "google")).toBeNull();
 });
 
-test("empty entry → null", () => expect(versUrl("   ", "google")).toBeNull());
+test("empty entry → null", () => expect(toUrl("   ", "google")).toBeNull());
 
 test("an invalid URL (« http:// » alone) → search instead of an exception", () => {
-  expect(versUrl("http://", "google")).toBe("https://www.google.com/search?q=http%3A%2F%2F");
-  expect(versUrl("https://exa mple.com", "google")).toBe("https://www.google.com/search?q=https%3A%2F%2Fexa%20mple.com");
+  expect(toUrl("http://", "google")).toBe("https://www.google.com/search?q=http%3A%2F%2F");
+  expect(toUrl("https://exa mple.com", "google")).toBe("https://www.google.com/search?q=https%3A%2F%2Fexa%20mple.com");
 });

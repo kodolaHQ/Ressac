@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Commentaire } from "../../shared/api";
-  import { LIGNE_CHANGEE_PAGE } from "../../shared/modele";
+  import { PAGE_LINE_CHANGED } from "../../shared/modele";
   import { api } from "../etat.svelte";
 
   /** A review comment under its lines: its text as is (Markdown not rendered), its state, its actions. */
@@ -31,7 +31,7 @@
     <span class="plage">{c.debut === c.fin ? `Ligne ${c.debut}` : `Lignes ${c.debut}–${c.fin}`}</span>
     {#if c.envoye}<span class="etat">envoyé</span>{/if}
     {#if c.resolu}<span class="etat">résolu</span>{/if}
-    {#if c.ligneChangee}<span class="etat change">{LIGNE_CHANGEE_PAGE}</span>{/if}
+    {#if c.ligneChangee}<span class="etat change">{PAGE_LINE_CHANGED}</span>{/if}
   </div>
   {#if edition !== null}
     <textarea bind:value={edition} rows="3" aria-label="Texte du commentaire"></textarea>

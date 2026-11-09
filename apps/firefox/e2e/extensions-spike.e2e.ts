@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, it } from "vitest";
-import { AMO_URL, lireCleAmo, signer } from "../noyau/extensions/amo";
+import { AMO_URL, readAmoKey, signer } from "../noyau/extensions/amo";
 import { DEFAULT_GUARDS, prepareCopy } from "../../../packages/noyau/src/extensions/copie.ts";
 import { writeXpi, type Fixture } from "./addons";
 import { dispatch, state, waitFor } from "./firefox";
@@ -289,7 +289,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("agent extensions spike", () => {
   afterAll(() => server?.close());
 
   it.skipIf(!process.env.WEBAIOS_AMO)("S1: real unlisted signing on addons.mozilla.org", { timeout: 90 * 60_000 }, async () => {
-    const keys = await lireCleAmo({});
+    const keys = await readAmoKey({});
     if (!keys) return note("S1", "not done: keys absent");
     note("S1 issuer", keys.emetteur.replace(/[^:]+$/, "…"));
     note("S1 guid", SPIKE_ID);

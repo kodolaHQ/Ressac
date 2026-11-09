@@ -4,7 +4,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { rectCapture, scriptViseur } from "../../core/design/viseur";
+import { rectCapture, viewfinderScript } from "../../core/design/viseur";
 import { dispatch, state, waitFor, waitReady } from "../firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "../launch";
 import type { Marionette } from "../marionette";
@@ -60,7 +60,7 @@ const FRAMED = DESIGN.replace("</body>", '<iframe id="cadre" style="width:300px;
  * (`__viseurChoisir`). Everything else (hover, Escape, swallowing, stop) is unchanged.
  */
 function guardedScript(): string {
-  let s = scriptViseur();
+  let s = viewfinderScript();
   const edits: [string, string][] = [
     ['      window.removeEventListener("click", surClic, true);\n', ""],
     ["if (globalThis.__viseurArret === arret) delete globalThis.__viseurArret;", "if (globalThis.__viseurArret === arret) { delete globalThis.__viseurArret; delete globalThis.__viseurChoisir; }"],
@@ -158,7 +158,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
   const inPage = <T = any>(code: string) => ask<T>("page", { code });
   const probe = <T = any>(code: string) => ask<T>("probe", { code });
   /** Arms the viewfinder; `result()` waits for its answer ({ r } or { e } when the query is rejected). */
-  const arm = () => chrome(m, `window.__spikeArm = ${ACTOR}.sendQuery("arm", { code: arguments[0] }).then((r) => ({ r }), (e) => ({ e: String(e) })); return true;`, [scriptViseur()]);
+  const arm = () => chrome(m, `window.__spikeArm = ${ACTOR}.sendQuery("arm", { code: arguments[0] }).then((r) => ({ r }), (e) => ({ e: String(e) })); return true;`, [viewfinderScript()]);
   const result = () => chrome<{ r?: any; e?: string }>(m, "return window.__spikeArm;");
   /** The S1 fix: armed with the guard on the chrome event handler. */
   const armG = () => chrome(m, `window.__spikeArm = ${ACTOR}.sendQuery("armGuarded", { code: arguments[0] }).then((r) => ({ r }), (e) => ({ e: String(e) })); return true;`, [guardedScript()]);

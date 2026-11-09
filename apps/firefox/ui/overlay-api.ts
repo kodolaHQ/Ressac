@@ -1,4 +1,4 @@
-import type { ApiCalque } from "../shared/api";
+import type { OverlayApi } from "../shared/api";
 import { local } from "./design-api";
 
 // The chrome outlives this document: a listener into a dead document would throw on every call.
@@ -11,7 +11,7 @@ const untilWindowUnload = (unsubscribe: () => void) => {
  * The API of a design overlay frame (DesignApp.svelte), on what the chrome set on the frame
  * (chrome/window/design-overlays.ts): every answer copied into this realm, every rejection made again here.
  */
-export function wrapOverlayApi(raw: ApiCalque, untilUnload: (unsubscribe: () => void) => () => void = untilWindowUnload): ApiCalque {
+export function wrapOverlayApi(raw: OverlayApi, untilUnload: (unsubscribe: () => void) => () => void = untilWindowUnload): OverlayApi {
   const copy = <T>(call: () => Promise<T>): Promise<T> =>
     Promise.resolve()
       .then(call)

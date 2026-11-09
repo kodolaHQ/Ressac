@@ -6,8 +6,8 @@
 // Kept small: the build copies this file, so any change here needs a rebuild of the app (build:ui).
 import type { WebAiOsStore } from "../store";
 import type { InjectionCadre } from "../../shared/sites";
-import type { ReponseMemoire } from "../../core/sites/injection";
-import { EVENEMENTS_VIDEO, SuiviReprise } from "../../core/reprise";
+import type { MemoryResponse } from "../../core/sites/injection";
+import { VIDEO_EVENTS, ResumeTracking } from "../../core/reprise";
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 // Keep in sync with store/sites.ts SITE_FRAMES.
@@ -43,7 +43,7 @@ function relayErrors(): void {
  * frame's address, place and view come from this actor's WindowGlobalParent.
  */
 export class WebAiOsSiteParent extends JSWindowActorParent {
-  async receiveMessage(m: { name: string; data?: unknown }): Promise<InjectionCadre | ReponseMemoire | number | null> {
+  async receiveMessage(m: { name: string; data?: unknown }): Promise<InjectionCadre | MemoryResponse | number | null> {
     if (!["injection", "memoire", "erreur", "position", "reprise"].includes(m.name)) return null;
     const { sites } = (await ChromeUtils.importESModule(STORE).ready) as WebAiOsStore;
     if (m.name === "injection") return sites.frameInjection(this.manager);
@@ -139,7 +139,7 @@ export class WebAiOsSiteChild extends JSWindowActorChild {
     if (this.resumed) return;
     this.resumed = true;
     const win = this.contentWindow as any;
-    const suivi = new SuiviReprise({
+    const suivi = new ResumeTracking({
       noter: (t, duree, fin) => this.sendAsyncMessage("position", { t, duree, fin }),
       demander: async (duree) => {
         try {
@@ -151,7 +151,7 @@ export class WebAiOsSiteChild extends JSWindowActorChild {
       },
       maintenant: () => Date.now(),
     });
-    for (const type of EVENEMENTS_VIDEO)
+    for (const type of VIDEO_EVENTS)
       win.addEventListener(
         type,
         (e: any) => {

@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { appliquer } from "../core/etat/actions";
-import { etatInitial } from "../core/etat/etat-initial";
+import { apply } from "../core/etat/actions";
+import { initialState } from "../core/etat/etat-initial";
 import { createStore } from "../chrome/store/store";
 import { createWindowRegistry, pickWindow } from "../chrome/store/windows";
 
 // Three state windows: a, b, c.
-const state = ["b", "c"].reduce((s, id) => appliquer(s, { type: "ouvrirFenetre", id }), etatInitial(() => "a"));
+const state = ["b", "c"].reduce((s, id) => apply(s, { type: "ouvrirFenetre", id }), initialState(() => "a"));
 const [a, b, c] = state.fenetres.map((f) => f.id) as [string, string, string];
 
 describe("pickWindow", () => {
@@ -34,7 +34,7 @@ describe("createWindowRegistry", () => {
 
   it("a window opened for the state that closes before claiming leaves it; the last real window then keeps its tabs", () => {
     // A restored session: a (with a tab) and b.
-    const restored = appliquer(appliquer(etatInitial(() => "a"), { type: "ouvrirFenetre", id: "b" }), { type: "ouvrirOnglet", fenetreId: "a", url: "https://a.test/" }, () => "t");
+    const restored = apply(apply(initialState(() => "a"), { type: "ouvrirFenetre", id: "b" }), { type: "ouvrirOnglet", fenetreId: "a", url: "https://a.test/" }, () => "t");
     const store = createStore(restored);
     const opened: Window[] = [];
     const windows = createWindowRegistry({ store, open: () => opened[opened.push(fakeWindow()) - 1], onRelease: () => {} });

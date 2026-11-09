@@ -1,15 +1,15 @@
 import { HTML_MAX, MARGE_CAPTURE, STYLES_UTILES, TRUNCATED, type DesignContext } from "@webaios/noyau";
 
-export interface CaptureViseur extends Omit<DesignContext, "source"> {
+export interface ViewfinderCapture extends Omit<DesignContext, "source"> {
   rect: { x: number; y: number; largeur: number; hauteur: number };
 }
-type RectCss = CaptureViseur["rect"];
+type RectCss = ViewfinderCapture["rect"];
 
 /**
  * Isolated world code: sets up the targeter, resolves with the click's capture (or null: Esc, stop). The stop is exposed
  * in a variable of the isolated world (`__viseurArret`), invisible to the page. The page sees no mouse event.
  */
-export function scriptViseur(): string {
+export function viewfinderScript(): string {
   return `(() => {
   if (typeof globalThis.__viseurArret === "function") globalThis.__viseurArret();
   // A new arming removes the click swallowing left by the previous capture: it has its own listeners.
@@ -128,10 +128,10 @@ export function scriptViseur(): string {
  * CSS rect of the element widened by the margin, in view pixels (× zoom), bounded to the view and rounded, then shifted by
  * `decalage` (the position of a frame in its page).
  */
-export function rectCapture(rect: RectCss, vue: { largeur: number; hauteur: number }, zoom: number, decalage = { x: 0, y: 0 }): { x: number; y: number; width: number; height: number } {
+export function rectCapture(rect: RectCss, view: { largeur: number; hauteur: number }, zoom: number, offset = { x: 0, y: 0 }): { x: number; y: number; width: number; height: number } {
   const gauche = Math.max(0, Math.round(rect.x * zoom - MARGE_CAPTURE));
-  const haut = Math.max(0, Math.round(rect.y * zoom - MARGE_CAPTURE));
-  const droite = Math.min(Math.round(vue.largeur * zoom), Math.round((rect.x + rect.largeur) * zoom + MARGE_CAPTURE));
-  const bas = Math.min(Math.round(vue.hauteur * zoom), Math.round((rect.y + rect.hauteur) * zoom + MARGE_CAPTURE));
-  return { x: gauche + Math.round(decalage.x * zoom), y: haut + Math.round(decalage.y * zoom), width: Math.max(0, droite - gauche), height: Math.max(0, bas - haut) };
+  const top = Math.max(0, Math.round(rect.y * zoom - MARGE_CAPTURE));
+  const right = Math.min(Math.round(view.largeur * zoom), Math.round((rect.x + rect.largeur) * zoom + MARGE_CAPTURE));
+  const bas = Math.min(Math.round(view.hauteur * zoom), Math.round((rect.y + rect.hauteur) * zoom + MARGE_CAPTURE));
+  return { x: gauche + Math.round(offset.x * zoom), y: top + Math.round(offset.y * zoom), width: Math.max(0, right - gauche), height: Math.max(0, bas - top) };
 }

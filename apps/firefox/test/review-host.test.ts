@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { SITE_CAPTURE_WARNING, HTML_MAX, PROJECT_ID, DESIGN_UNAVAILABLE, SITE_DESIGN_UNAVAILABLE, Remarques, TRUNCATED, type SpacePaths, type Lot, type TrackedProject } from "../../../packages/noyau/src/index";
-import { PLAGE_HORS_BLOC } from "../shared/modele";
-import { COMPARAISON_INCONNUE, ReviewService } from "../noyau/review";
+import { RANGE_OUTSIDE_BLOCK } from "../shared/modele";
+import { UNKNOWN_COMPARISON, ReviewService } from "../noyau/review";
 import * as g from "../shared/design-guards";
 
 const dirs: string[] = [];
@@ -74,8 +74,8 @@ describe("review service", () => {
     s.write("quatre\n");
     expect(await s.service.ouvrir(EXT, v1.jeton)).toMatchObject({ etat: "ok", jeton: v1.jeton });
     expect(await added(v1.jeton)).toEqual(["deux"]);
-    await expect(s.service.fichier(EXT, unknown, "a.txt")).rejects.toThrow(COMPARAISON_INCONNUE);
-    await expect(s.service.lignes(EXT, unknown, "a.txt", 1, 2)).rejects.toThrow(COMPARAISON_INCONNUE);
+    await expect(s.service.fichier(EXT, unknown, "a.txt")).rejects.toThrow(UNKNOWN_COMPARISON);
+    await expect(s.service.lignes(EXT, unknown, "a.txt", 1, 2)).rejects.toThrow(UNKNOWN_COMPARISON);
   });
 
   it("keeps at most 8 comparisons per project: the oldest drops", async () => {
@@ -86,7 +86,7 @@ describe("review service", () => {
       s.write(`v${i}\n`);
       tokens.push(ok(await s.service.ouvrir(EXT)).jeton);
     }
-    await expect(s.service.fichier(EXT, tokens[0]!, "a.txt")).rejects.toThrow(COMPARAISON_INCONNUE);
+    await expect(s.service.fichier(EXT, tokens[0]!, "a.txt")).rejects.toThrow(UNKNOWN_COMPARISON);
     expect((await s.service.fichier(EXT, tokens[1]!, "a.txt")).chemin).toBe("a.txt");
   }, 20_000);
 
@@ -94,10 +94,10 @@ describe("review service", () => {
     const s = prepare();
     const v = await opened(s, text(), text(5, 25));
     const c = (debut: number, fin: number, texte: string, j = v.jeton) => s.service.commenter(EXT, j, { fichier: "a.txt", debut, fin, texte });
-    expect(await c(5, 25, "trop large")).toEqual({ ok: false, erreur: PLAGE_HORS_BLOC });
-    expect(await c(1, 3, "hors du diff")).toEqual({ ok: false, erreur: PLAGE_HORS_BLOC });
+    expect(await c(5, 25, "trop large")).toEqual({ ok: false, erreur: RANGE_OUTSIDE_BLOCK });
+    expect(await c(1, 3, "hors du diff")).toEqual({ ok: false, erreur: RANGE_OUTSIDE_BLOCK });
     expect(await c(4, 5, "  ")).toMatchObject({ ok: false });
-    expect(await c(4, 5, "x", unknown)).toEqual({ ok: false, erreur: COMPARAISON_INCONNUE });
+    expect(await c(4, 5, "x", unknown)).toEqual({ ok: false, erreur: UNKNOWN_COMPARISON });
     expect(await c(4, 5, "bien")).toEqual({ ok: true });
     const [first] = await s.service.commentaires(EXT);
     expect(first).toMatchObject({ fichier: "a.txt", debut: 4, fin: 5, texte: "bien", envoye: false, resolu: false });
@@ -110,8 +110,8 @@ describe("review service", () => {
     s.write("autre\n", "b.txt");
     const after = ok(await s.service.relu(EXT, v.jeton));
     expect(after.comparaison.fichiers.map((f) => f.chemin)).toEqual(["b.txt"]);
-    await expect(s.service.relu(EXT, v.jeton)).rejects.toThrow(COMPARAISON_INCONNUE);
-    await expect(s.service.relu(EXT, unknown)).rejects.toThrow(COMPARAISON_INCONNUE);
+    await expect(s.service.relu(EXT, v.jeton)).rejects.toThrow(UNKNOWN_COMPARISON);
+    await expect(s.service.relu(EXT, unknown)).rejects.toThrow(UNKNOWN_COMPARISON);
   });
 
   it("relu drops resolved comments and keeps the others", async () => {
@@ -250,7 +250,7 @@ describe("review service", () => {
     await s.service.effacer("site-tuning");
     expect(existsSync(join(s.relecture, "site-tuning.git"))).toBe(false);
     expect(existsSync(join(s.relecture, "site-tuning.commentaires.json"))).toBe(false);
-    await expect(s.service.fichier("site-tuning", v.jeton, "site.json")).rejects.toThrow(COMPARAISON_INCONNUE);
+    await expect(s.service.fichier("site-tuning", v.jeton, "site.json")).rejects.toThrow(UNKNOWN_COMPARISON);
     expect(await s.service.commentaires("site-tuning")).toEqual([]);
     await s.service.assurer("site-tuning");
     expect(await s.service.ouvrir("site-tuning")).toMatchObject({ etat: "ok", comparaison: { fichiers: [] } });
@@ -280,8 +280,8 @@ describe("design guards", () => {
     expect(g.ID_PROJECT.source).toBe(PROJECT_ID.source);
     expect(g.REVIEW_TOKEN.source).toBe("^[0-9a-f]{40}:[0-9a-f]{40}$");
     expect(g.REMARK_TEXT_MAX).toBe(4000);
-    expect(g.raisonEchec(new Error("x"))).toBe("Le MCP externe n'a pas pu démarrer : x");
-    expect(g.raisonEchec("y")).toBe("Le MCP externe n'a pas pu démarrer : y");
+    expect(g.failureReason(new Error("x"))).toBe("Le MCP externe n'a pas pu démarrer : x");
+    expect(g.failureReason("y")).toBe("Le MCP externe n'a pas pu démarrer : y");
     expect([g.EXTERNAL_ID.source, g.CLIENT_ID.source, g.REVIEW_PATH_MAX, g.COMMENT_ID.source, g.CLIENT_NAME_MAX]).toEqual(["^[0-9a-f]{16}$", "^[0-9a-f-]{8,64}$", 4096, "^c-[0-9a-f]{8}$", 200]);
   });
 
@@ -308,7 +308,7 @@ describe("design guards", () => {
   it("design texts and bounds are kernel's", () => {
     expect(g.UNAVAILABLE_DESIGN).toBe(DESIGN_UNAVAILABLE);
     expect([g.UNAVAILABLE_DESIGN_SITE, g.CAPTURE_WARNING_SITE]).toEqual([SITE_DESIGN_UNAVAILABLE, SITE_CAPTURE_WARNING]);
-    expect([g.HTML_MAX, g.TRONQUE]).toEqual([HTML_MAX, TRUNCATED]);
+    expect([g.HTML_MAX, g.TRUNCATED]).toEqual([HTML_MAX, TRUNCATED]);
     expect([g.INVALID_REQUEST, g.NOTHING_AIMED, g.DESIGN_ID_MAX]).toEqual(["Demande invalide", "Aucun élément visé.", 64]);
   });
 

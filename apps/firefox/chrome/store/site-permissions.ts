@@ -1,12 +1,12 @@
-import type { Decision, IdFenetre, IdOnglet, IdProfil, Issue, Permission } from "../../shared/modele";
-import { PROFIL_DEFAUT } from "../../shared/modele";
+import type { Decision, WindowId, TabId, ProfileId, Issue, Permission } from "../../shared/modele";
+import { DEFAULT_PROFILE } from "../../shared/modele";
 
 export type SitePermission = Permission | "partage-ecran" | "drm" | "midi";
 
 export interface SiteRequest {
-  ongletId: IdOnglet | null;
-  fenetreId: IdFenetre | null;
-  profil: IdProfil;
+  ongletId: TabId | null;
+  fenetreId: WindowId | null;
+  profil: ProfileId;
   origine: string;
   kind: string;
   mediaTypes?: readonly string[];
@@ -20,9 +20,9 @@ export interface SitePermissions {
   /** true = granted. Unknown kind: false, no question. */
   handle(r: SiteRequest): Promise<boolean>;
   /** Synchronous, from the remembered decisions. */
-  check(profil: IdProfil, origine: string, kind: string, mediaType?: string): boolean;
-  forget(profil: IdProfil, origine: string): Promise<void>;
-  removeProfile(profil: IdProfil): Promise<void>;
+  check(profil: ProfileId, origine: string, kind: string, mediaType?: string): boolean;
+  forget(profil: ProfileId, origine: string): Promise<void>;
+  removeProfile(profil: ProfileId): Promise<void>;
 }
 
 interface Files {
@@ -50,7 +50,7 @@ function translate(kind: string, mediaTypes: readonly string[] = []): SitePermis
 const key = (origine: string, p: SitePermission) => `${origine} ${p}`;
 
 /** `permissions.json` for the default profile. */
-const fileOf = (dir: string, id: IdProfil) => `${dir}/${id === PROFIL_DEFAUT ? "permissions.json" : `permissions-${id}.json`}`;
+const fileOf = (dir: string, id: ProfileId) => `${dir}/${id === DEFAULT_PROFILE ? "permissions.json" : `permissions-${id}.json`}`;
 
 /** A flat record of "autoriser" | "refuser". */
 function parse(text: string): Record<string, Decision> | null {
@@ -83,13 +83,13 @@ const defaultFiles: Files = {
 /** Site permissions: asked once per (profile, origin, permission), kept in the profile's permissions file and mirrored into Firefox. */
 export function createSitePermissions(o: {
   dataDir: string;
-  profiles: () => IdProfil[];
-  ask: (d: { ongletId: IdOnglet | null; fenetreId: IdFenetre | null; origine: string; permissions: SitePermission[]; lien?: string }, signal?: AbortSignal) => Promise<Issue>;
-  firefox: { set(profil: IdProfil, origine: string, p: SitePermission, d: Decision): void; remove(profil: IdProfil | null, origine: string | null): void };
+  profiles: () => ProfileId[];
+  ask: (d: { ongletId: TabId | null; fenetreId: WindowId | null; origine: string; permissions: SitePermission[]; lien?: string }, signal?: AbortSignal) => Promise<Issue>;
+  firefox: { set(profil: ProfileId, origine: string, p: SitePermission, d: Decision): void; remove(profil: ProfileId | null, origine: string | null): void };
   files?: Files;
 }): SitePermissions {
   const files = o.files ?? defaultFiles;
-  const memo = new Map<IdProfil, Record<string, Decision>>();
+  const memo = new Map<ProfileId, Record<string, Decision>>();
   const pending = new Map<string, Promise<Issue>>();
   let writes: Promise<void> = Promise.resolve();
   // A mirror failure (e.g. a hand-edited origin Firefox cannot parse) skips that entry, never the whole store.
@@ -100,10 +100,10 @@ export function createSitePermissions(o: {
       console.warn("[site-permissions] not mirrored into Firefox:", e);
     }
   };
-  const of = (profil: IdProfil) => memo.get(profil) ?? memo.set(profil, {}).get(profil)!;
+  const of = (profil: ProfileId) => memo.get(profil) ?? memo.set(profil, {}).get(profil)!;
 
   // Writes are chained so two decisions never race on the temporary file.
-  const save = (profil: IdProfil) => {
+  const save = (profil: ProfileId) => {
     const text = JSON.stringify(of(profil), null, 2);
     writes = writes.then(() => files.write(fileOf(o.dataDir, profil), text)).catch((e) => console.error("[site-permissions] write failed:", e));
     return writes;
@@ -112,7 +112,7 @@ export function createSitePermissions(o: {
   const ready = (async () => {
     // Firefox starts empty: it is rebuilt from the files, so nothing it kept on its own outlives them.
     mirror(() => o.firefox.remove(null, null));
-    for (const profil of new Set([PROFIL_DEFAUT, ...o.profiles()])) {
+    for (const profil of new Set([DEFAULT_PROFILE, ...o.profiles()])) {
       const path = fileOf(o.dataDir, profil);
       const text = await files.read(path);
       if (text === null) continue;

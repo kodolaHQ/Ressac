@@ -1,9 +1,9 @@
-import type { IdEspace } from "../../shared/modele";
+import type { SpaceId } from "../../shared/modele";
 import type { ChoixProfil } from "./profilsEspace";
 
 /** Settings of a space in progress in the modal (`id` null: a new space). */
 export interface BrouillonEspace {
-  id: IdEspace | null;
+  id: SpaceId | null;
   nom: string;
   icone: string;
   prive: boolean;

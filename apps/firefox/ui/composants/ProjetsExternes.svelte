@@ -1,8 +1,8 @@
 <script lang="ts">
-  import type { EtatExternes } from "../../shared/api";
+  import type { ExternalsState } from "../../shared/api";
   import { api } from "../etat.svelte";
 
-  let etat = $state<EtatExternes | null>(null);
+  let etat = $state<ExternalsState | null>(null);
   let requete = 0;
   /** Client name input before the command; null when the form is closed. */
   let nom = $state<string | null>(null);

@@ -1,16 +1,16 @@
 import { beforeEach, expect, test } from "vitest";
 import type { Action } from "../shared/api";
-import type { EtatNavigateur } from "../shared/modele";
-import { appliquer } from "../core/etat/actions";
-import { etatInitial } from "../core/etat/etat-initial";
-import { avancer, demarrer, fenetreVisible, noterUtilisation, ordreRecent, retirer } from "../core/recents";
+import type { BrowserState } from "../shared/modele";
+import { apply } from "../core/etat/actions";
+import { initialState } from "../core/etat/etat-initial";
+import { advance, start, visibleWindow, noteUsage, recentOrder, retirer } from "../core/recents";
 
 let n = 0;
 const genId = () => `g${++n}`;
-let e: EtatNavigateur;
+let e: BrowserState;
 let F: string;
 const ag = (a: Action | null) => {
-  if (a) e = appliquer(e, a, genId);
+  if (a) e = apply(e, a, genId);
 };
 const ouvrir = (url: string) => {
   ag({ type: "ouvrirOnglet", fenetreId: F, url });
@@ -19,7 +19,7 @@ const ouvrir = (url: string) => {
 
 beforeEach(() => {
   n = 0;
-  e = etatInitial(genId);
+  e = initialState(genId);
   F = e.fenetres[0]!.id;
 });
 
@@ -29,26 +29,26 @@ test("ordreRecent: active first, history, then the rest; closed ignored", () => 
   const c = ouvrir("https://c.fr");
   const d = ouvrir("https://d.fr");
   ag({ type: "activerOnglet", id: b });
-  expect(ordreRecent(e, F, [c, a])).toEqual([b, c, a, d]);
+  expect(recentOrder(e, F, [c, a])).toEqual([b, c, a, d]);
   ag({ type: "fermerOnglet", id: c });
-  expect(ordreRecent(e, F, [c, a])).toEqual([b, a, d]);
+  expect(recentOrder(e, F, [c, a])).toEqual([b, a, d]);
 });
 
 test("noterUtilisation", () => {
-  expect(noterUtilisation(["a", "b", "c"], "c")).toEqual(["c", "a", "b"]);
-  expect(noterUtilisation(["a"], "z")).toEqual(["z", "a"]);
+  expect(noteUsage(["a", "b", "c"], "c")).toEqual(["c", "a", "b"]);
+  expect(noteUsage(["a"], "z")).toEqual(["z", "a"]);
 });
 
 test("demarrer", () => {
-  expect(demarrer(["a"], 1)).toBeNull();
-  expect(demarrer(["a", "b", "c"], 1)!.selection).toBe(1);
-  expect(demarrer(["a", "b", "c"], -1)!.selection).toBe(2);
+  expect(start(["a"], 1)).toBeNull();
+  expect(start(["a", "b", "c"], 1)!.selection).toBe(1);
+  expect(start(["a", "b", "c"], -1)!.selection).toBe(2);
 });
 
 test("avancer boucle", () => {
-  const p = demarrer(["a", "b", "c"], 1)!;
-  expect(avancer(avancer(p, 1), 1).selection).toBe(0);
-  expect(avancer(avancer(p, -1), -1).selection).toBe(2);
+  const p = start(["a", "b", "c"], 1)!;
+  expect(advance(advance(p, 1), 1).selection).toBe(0);
+  expect(advance(advance(p, -1), -1).selection).toBe(2);
 });
 
 test("retirer", () => {
@@ -61,7 +61,7 @@ test("retirer", () => {
 
 test("fenetreVisible", () => {
   const liste = Array.from({ length: 10 }, (_, i) => String(i));
-  expect(fenetreVisible({ liste, selection: 0 })).toEqual({ debut: 0, fin: 7 });
-  expect(fenetreVisible({ liste, selection: 9 })).toEqual({ debut: 3, fin: 10 });
-  expect(fenetreVisible({ liste: liste.slice(0, 4), selection: 2 })).toEqual({ debut: 0, fin: 4 });
+  expect(visibleWindow({ liste, selection: 0 })).toEqual({ debut: 0, fin: 7 });
+  expect(visibleWindow({ liste, selection: 9 })).toEqual({ debut: 3, fin: 10 });
+  expect(visibleWindow({ liste: liste.slice(0, 4), selection: 2 })).toEqual({ debut: 0, fin: 4 });
 });

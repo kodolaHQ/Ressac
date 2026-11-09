@@ -1,10 +1,10 @@
 <script lang="ts">
   import Icone from "./Icone.svelte";
   import { ouvrirMenu } from "./menu.svelte";
-  import type { EtatFenetre, Visite } from "../../shared/modele";
+  import type { WindowState, Visite } from "../../shared/modele";
   import { api } from "../etat.svelte";
 
-  let { fenetre, fermer }: { fenetre: EtatFenetre; fermer: () => void } = $props();
+  let { fenetre, fermer }: { fenetre: WindowState; fermer: () => void } = $props();
   let texte = $state("");
   let visites = $state<Visite[]>([]);
   let choixEffacer = $state(false);

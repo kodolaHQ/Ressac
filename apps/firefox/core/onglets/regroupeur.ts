@@ -1,20 +1,20 @@
 /** Groups repeated requests by key: `faire(cle)` happens only once, `delaiMs` after the last one. */
-export function creerRegroupeur(delaiMs: number, faire: (cle: string) => void) {
-  const minuteurs = new Map<string, ReturnType<typeof setTimeout>>();
+export function createGrouper(delayMs: number, make: (key: string) => void) {
+  const timers = new Map<string, ReturnType<typeof setTimeout>>();
   return {
-    planifier(cle: string): void {
-      clearTimeout(minuteurs.get(cle));
-      minuteurs.set(
-        cle,
+    planifier(key: string): void {
+      clearTimeout(timers.get(key));
+      timers.set(
+        key,
         setTimeout(() => {
-          minuteurs.delete(cle);
-          faire(cle);
-        }, delaiMs),
+          timers.delete(key);
+          make(key);
+        }, delayMs),
       );
     },
-    oublier(cle: string): void {
-      clearTimeout(minuteurs.get(cle));
-      minuteurs.delete(cle);
+    oublier(key: string): void {
+      clearTimeout(timers.get(key));
+      timers.delete(key);
     },
   };
 }

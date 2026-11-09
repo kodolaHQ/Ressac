@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { EtatDesign } from "../shared/api";
+  import type { DesignState } from "../shared/api";
   import { acces, accesDe } from "./acces.svelte";
   import PastilleAcces from "./composants/PastilleAcces.svelte";
 
@@ -8,7 +8,7 @@
   const etat = $derived(accesDe(id));
   const api = window.webaios as unknown as import("../shared/api").ApiPastille;
   let menuOuvert = $state(false);
-  let design = $state<EtatDesign | null>(null);
+  let design = $state<DesignState | null>(null);
   let racine = $state<HTMLElement>();
   // The view grows while the bubble or the menu is open, and only gets in the app's way during that time.
   $effect(() => api.pastilleTaille(acces.bullesOuvertes > 0 || menuOuvert));

@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Action } from "../shared/api";
-import type { Espace } from "../shared/modele";
+import type { Space } from "../shared/modele";
 import { dispatch, state, waitFor } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
@@ -29,7 +29,7 @@ afterEach(async () => {
 
 const spaces = async () => (await state(m)).espaces;
 const fenetreId = async () => (await state(m)).fenetres[0]!.id;
-async function create(nom: string, icone: string, prive: boolean, profil: string): Promise<Espace> {
+async function create(nom: string, icone: string, prive: boolean, profil: string): Promise<Space> {
   await dispatch(m, { type: "creerEspace", nom, icone, prive, profil, fenetreId: await fenetreId() } as Action);
   return (await spaces()).find((e) => e.nom === nom)!;
 }
@@ -73,7 +73,7 @@ async function openSettings(id: string): Promise<void> {
   await click(m, '[role="menuitem"]', { text: "Réglages" });
   await modalOpen("Réglages de l'espace");
 }
-async function waitSpaces<T>(read: (e: Espace[]) => T, ok: (v: T) => boolean): Promise<T> {
+async function waitSpaces<T>(read: (e: Space[]) => T, ok: (v: T) => boolean): Promise<T> {
   const deadline = Date.now() + 10_000;
   for (;;) {
     const v = read(await spaces());

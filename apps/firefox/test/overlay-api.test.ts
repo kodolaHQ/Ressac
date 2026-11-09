@@ -1,17 +1,17 @@
 import vm from "node:vm";
 import { describe, expect, it } from "vitest";
-import type { ApiCalque, ContexteCalque } from "../shared/api";
+import type { OverlayApi, OverlayContext } from "../shared/api";
 import { overlayApi, type DesignService } from "../chrome/store/design";
 import { INVALID_REQUEST, REMARK_TEXT_MAX } from "../shared/design-guards";
 import { wrapOverlayApi } from "../ui/overlay-api";
 
 const T = { type: "fenetre" as const, fenetreId: "F" };
-const ctx = (mode: ContexteCalque["mode"], projet: string): ContexteCalque => ({
+const ctx = (mode: OverlayContext["mode"], projet: string): OverlayContext => ({
   mode, message: null, projet, etiquette: "input#email.champ", source: null, destination: "l'agent", sansDestination: null, avertissement: null,
 });
 
 /** A fake service (its overlay showing `shown`) and host; every call noted. */
-function setup(shown: Partial<Record<ContexteCalque["mode"], ContexteCalque>> = { bulle: ctx("bulle", "demo-15308") }) {
+function setup(shown: Partial<Record<OverlayContext["mode"], OverlayContext>> = { bulle: ctx("bulle", "demo-15308") }) {
   const calls: string[] = [];
   const design = {
     overlayContext: (_t, modes = ["bulle", "panier", "message"]) => modes.map((m) => shown[m]).find(Boolean) ?? null,
@@ -96,7 +96,7 @@ describe("overlayApi", () => {
 
 describe("wrapOverlayApi", () => {
   const foreign = vm.runInNewContext("({ Error, value: { a: [1] } })") as { Error: ErrorConstructor; value: { a: number[] } };
-  const raw = (o: Partial<ApiCalque>) => ({ ...o }) as ApiCalque;
+  const raw = (o: Partial<OverlayApi>) => ({ ...o }) as OverlayApi;
 
   it("an answer is a copy, never the chrome's object", async () => {
     const shown = ctx("bulle", "demo-15308");

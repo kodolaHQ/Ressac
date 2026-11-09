@@ -1,20 +1,20 @@
 import { randomUUID } from "node:crypto";
-import { PROFIL_DEFAUT, type EtatNavigateur } from "../../shared/modele";
+import { DEFAULT_PROFILE, type BrowserState } from "../../shared/modele";
 
-export function etatInitial(genId: () => string = randomUUID): EtatNavigateur {
-  const espace = genId();
+export function initialState(genId: () => string = randomUUID): BrowserState {
+  const space = genId();
   return {
     version: 2,
-    espaces: [{ id: espace, nom: "Perso", icone: "🏠", epingles: [], prive: false, profil: PROFIL_DEFAUT }],
-    profils: [{ id: PROFIL_DEFAUT }],
+    espaces: [{ id: space, nom: "Perso", icone: "🏠", epingles: [], prive: false, profil: DEFAULT_PROFILE }],
+    profils: [{ id: DEFAULT_PROFILE }],
     essentiels: [],
     onglets: {},
     fenetres: [
       {
         id: genId(),
-        espaceActif: espace,
-        ordre: { [espace]: [] },
-        actif: { [espace]: null },
+        espaceActif: space,
+        ordre: { [space]: [] },
+        actif: { [space]: null },
         compact: false,
         panneauAgentOuvert: false,
         fermesRecemment: [],

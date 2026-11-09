@@ -1,31 +1,31 @@
 import { expect, test } from "vitest";
 import {
-  adresseChangee,
-  adresseInchangee,
-  adresseIntrouvable,
-  confirmerOubli,
+  urlChanged,
+  urlUnchanged,
+  urlNotFound,
+  confirmForget,
   confirmerSuppressionSite,
-  lienBloque,
-  MessageDeLAccueil,
-  modifierAvecAgent,
-  titreAccordRetouches,
+  blockedLink,
+  HomeMessage,
+  editWithAgent,
+  tweaksGrantTitle,
 } from "../../shared/sites";
 
 test("messages of a site app's window", () => {
-  expect(lienBloque("pub.localhost")).toBe("Lien vers pub.localhost bloqué");
-  expect(adresseIntrouvable("adresses.localhost")).toBe("Adresse introuvable sur adresses.localhost");
-  expect(adresseChangee("Vidola", "vidola-b.localhost")).toBe("Vidola a changé d'adresse : vidola-b.localhost. Il faudra peut-être te reconnecter.");
-  expect(adresseInchangee("Vidola")).toBe("Vidola ne répond pas, et sa page de référence donne toujours la même adresse");
-  expect(titreAccordRetouches("Vidola")).toBe("Autoriser les retouches de « Vidola » ?");
-  expect(confirmerOubli("Vidola")).toBe("Oublier tout ce que « Vidola » a retenu (séries, positions des vidéos) ?");
+  expect(blockedLink("pub.localhost")).toBe("Lien vers pub.localhost bloqué");
+  expect(urlNotFound("adresses.localhost")).toBe("Adresse introuvable sur adresses.localhost");
+  expect(urlChanged("Vidola", "vidola-b.localhost")).toBe("Vidola a changé d'adresse : vidola-b.localhost. Il faudra peut-être te reconnecter.");
+  expect(urlUnchanged("Vidola")).toBe("Vidola ne répond pas, et sa page de référence donne toujours la même adresse");
+  expect(tweaksGrantTitle("Vidola")).toBe("Autoriser les retouches de « Vidola » ?");
+  expect(confirmForget("Vidola")).toBe("Oublier tout ce que « Vidola » a retenu (séries, positions des vidéos) ?");
   expect(confirmerSuppressionSite("Vidola")).toBe("Supprimer « Vidola » ? Sa connexion et sa mémoire sont effacées, son dossier va à la corbeille.");
-  expect(modifierAvecAgent("vidola")).toBe("Appli de site ~/WebAiOs/sites/vidola/ : ");
+  expect(editWithAgent("vidola")).toBe("Appli de site ~/WebAiOs/sites/vidola/ : ");
 });
 
 test("MessageDeLAccueil: the three allowed messages", () => {
-  expect(MessageDeLAccueil.parse({ type: "pret" })).toEqual({ type: "pret" });
-  expect(MessageDeLAccueil.parse({ type: "ouvrir", adresse: "/series/the-bear" })).toEqual({ type: "ouvrir", adresse: "/series/the-bear" });
-  expect(MessageDeLAccueil.parse({ type: "image", n: 3, url: "https://vidola-a.localhost/a.jpg" })).toEqual({ type: "image", n: 3, url: "https://vidola-a.localhost/a.jpg" });
+  expect(HomeMessage.parse({ type: "pret" })).toEqual({ type: "pret" });
+  expect(HomeMessage.parse({ type: "ouvrir", adresse: "/series/the-bear" })).toEqual({ type: "ouvrir", adresse: "/series/the-bear" });
+  expect(HomeMessage.parse({ type: "image", n: 3, url: "https://vidola-a.localhost/a.jpg" })).toEqual({ type: "image", n: 3, url: "https://vidola-a.localhost/a.jpg" });
 });
 
 test("MessageDeLAccueil: the rest is refused", () => {
@@ -43,6 +43,6 @@ test("MessageDeLAccueil: the rest is refused", () => {
     { type: "image", n: 1, url: "x".repeat(4097) },
     { type: "image", n: 1 },
   ]) {
-    expect(MessageDeLAccueil.safeParse(m).success).toBe(false);
+    expect(HomeMessage.safeParse(m).success).toBe(false);
   }
 });

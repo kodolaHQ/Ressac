@@ -1,7 +1,7 @@
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
-import type { EtatPanneauAgent } from "../../shared/api";
+import type { AgentPanelState } from "../../shared/api";
 import { api } from "../etat.svelte";
 
 /**
@@ -11,7 +11,7 @@ import { api } from "../etat.svelte";
  */
 
 /** What the window's agent shows (preparing, active, error…), the same for all hosts. */
-export const agent = $state<{ etat: EtatPanneauAgent }>({ etat: { etat: "preparation" } });
+export const agent = $state<{ etat: AgentPanelState }>({ etat: { etat: "preparation" } });
 
 let terminal: Terminal | undefined;
 let ajustement: FitAddon | undefined;

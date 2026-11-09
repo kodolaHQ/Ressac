@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { CONSOLE_MAX, ConsolesExtensions, FENETRE_PLANTAGES_MS, PLANTAGES_MAX } from "../../core/extensions/consoles";
+import { CONSOLE_MAX, ConsolesExtensions, CRASH_WINDOW_MS, PLANTAGES_MAX } from "../../core/extensions/consoles";
 
 const ID = "a".repeat(32);
 const AUTRE = "b".repeat(32);
@@ -7,7 +7,7 @@ const AUTRE = "b".repeat(32);
 test("values: 500 messages, 3 crashes in 60 s", () => {
   expect(CONSOLE_MAX).toBe(500);
   expect(PLANTAGES_MAX).toBe(3);
-  expect(FENETRE_PLANTAGES_MS).toBe(60_000);
+  expect(CRASH_WINDOW_MS).toBe(60_000);
 });
 
 test("501 messages: the last 500", () => {

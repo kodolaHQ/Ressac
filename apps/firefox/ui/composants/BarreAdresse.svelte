@@ -3,10 +3,10 @@
   import BoutonDesign from "./BoutonDesign.svelte";
   import PastilleAcces from "./PastilleAcces.svelte";
   import Icone from "./Icone.svelte";
-  import type { EtatFenetre, Visite } from "../../shared/modele";
+  import type { WindowState, Visite } from "../../shared/modele";
   import { accesDe, api, etat } from "../etat.svelte";
 
-  let { fenetre }: { fenetre: EtatFenetre } = $props();
+  let { fenetre }: { fenetre: WindowState } = $props();
   const onglet = $derived.by(() => {
     const id = fenetre.actif[fenetre.espaceActif];
     return id ? etat.valeur?.onglets[id] : undefined;

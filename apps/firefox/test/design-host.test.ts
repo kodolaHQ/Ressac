@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { spacePaths, ReviewStore, reviewStore, SPACE_FOLDER, PORT_MCP_EXTERNE, externalProject, EMPTY_REMARK, SANS_CLIENT } from "../../../packages/noyau/src/index";
-import { AUCUNE_FENETRE } from "../core/design/envoi";
-import { createDesignHost, DESIGN_METHODS, externalMcpPort, sourceTexte, type DesignHost, type SuiviDesign } from "../noyau/design";
+import { NO_WINDOW } from "../core/design/envoi";
+import { createDesignHost, DESIGN_METHODS, externalMcpPort, textSource, type DesignHost, type DesignTracking } from "../noyau/design";
 import { INVALID_REQUEST } from "../shared/design-guards";
 import { ReviewService } from "../noyau/review";
 
@@ -181,7 +181,7 @@ describe("design host", { timeout: 20_000 }, () => {
   it("fenetreAgent gives null: AUCUNE_FENETRE, and the batch stays written", async () => {
     const s = prepare({ fenetre: null, sites: [{ id: "tuning", nom: "Tuning" }] });
     await siteWithComment(s);
-    expect(await s.design.handlers["relecture.envoyer"]!({ projet: "site-tuning" })).toEqual({ ok: false, erreur: AUCUNE_FENETRE });
+    expect(await s.design.handlers["relecture.envoyer"]!({ projet: "site-tuning" })).toEqual({ ok: false, erreur: NO_WINDOW });
     expect(s.preRemplir).not.toHaveBeenCalled();
     expect(readdirSync(join(s.chemins.interne, "remarques", "site-tuning")).filter((n) => existsSync(join(s.chemins.interne, "remarques", "site-tuning", n, "lot.json")))).toHaveLength(1);
   });
@@ -309,7 +309,7 @@ describe("design host, the carts", { timeout: 20_000 }, () => {
     const ext = `ext-${(await liste(s.design)).projets[0]!.id}`;
     return { ...s, ext, h: s.design.handlers };
   }
-  const suivi = (h: DesignHost["handlers"], p: unknown) => h["design.suivi"]!(p) as Promise<SuiviDesign | null>;
+  const suivi = (h: DesignHost["handlers"], p: unknown) => h["design.suivi"]!(p) as Promise<DesignTracking | null>;
 
   it("design.suivi of a demo, an app running on its port, an external project's port, and nothing elsewhere", async () => {
     const { h, ext } = await withProjects();
@@ -422,6 +422,6 @@ describe("design host, the carts", { timeout: 20_000 }, () => {
   });
 
   it("sourceTexte joins the file and the line", () => {
-    expect(sourceTexte({ fichier: "a", ligne: 2 })).toBe("a:2");
+    expect(textSource({ fichier: "a", ligne: 2 })).toBe("a:2");
   });
 });

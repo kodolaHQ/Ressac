@@ -1,11 +1,11 @@
-import type { ProfilPourAccord } from "../shared/api";
-import type { EtatNavigateur, IdFenetre } from "../shared/modele";
+import type { ProfileForGrant } from "../shared/api";
+import type { BrowserState, WindowId } from "../shared/modele";
 
 // Pure rules of the reads and the home page: the sidebar bundle cannot import
 // node:net.
 
 /** The sign-in profiles a read may use: those of the state that no private space uses. */
-export function profilsLisibles(etat: Pick<EtatNavigateur, "profils" | "espaces">): string[] {
+export function profilsLisibles(etat: Pick<BrowserState, "profils" | "espaces">): string[] {
   const prives = new Set(etat.espaces.filter((e) => e.prive).map((e) => e.profil));
   return etat.profils.map((p) => p.id).filter((id) => !prives.has(id));
 }
@@ -14,7 +14,7 @@ export function profilsLisibles(etat: Pick<EtatNavigateur, "profils" | "espaces"
  * The profiles a grant may use: never a private space's (even shared with a non-private space).
  * Checked by default: the window's active space's, if it is readable.
  */
-export function profilsPourAccord(etat: Pick<EtatNavigateur, "profils" | "espaces" | "fenetres">, fenetreId: IdFenetre | undefined): ProfilPourAccord[] {
+export function profilsPourAccord(etat: Pick<BrowserState, "profils" | "espaces" | "fenetres">, fenetreId: WindowId | undefined): ProfileForGrant[] {
   const fenetre = etat.fenetres.find((f) => f.id === fenetreId);
   const actif = fenetre ? etat.espaces.find((e) => e.id === fenetre.espaceActif)?.profil : undefined;
   return profilsLisibles(etat).map((id) => {

@@ -1,15 +1,15 @@
 <script lang="ts">
   import { commande } from "./commande.svelte";
   import { onMount, tick, untrack } from "svelte";
-  import { LONGUEUR_RAISON_DEBLOCAGE, texteDeblocageConsole } from "../../shared/extensions-messages";
-  import { siteDe, type DemandeEnAttente, type IdOnglet } from "../../shared/modele";
+  import { UNLOCK_REASON_LENGTH, unlockedConsoleText } from "../../shared/extensions-messages";
+  import { siteDe, type PendingRequest, type TabId } from "../../shared/modele";
   import { api } from "../etat.svelte";
   import DemandeExtension from "./DemandeExtension.svelte";
   import DemandeOutilsDev from "./DemandeOutilsDev.svelte";
   import FondFige from "./FondFige.svelte";
 
   /** `ongletId`: the page shown at opening, captured for the background (null: none, or a panel hides it). */
-  let { demande, ongletId }: { demande: DemandeEnAttente; ongletId: IdOnglet | null } = $props();
+  let { demande, ongletId }: { demande: PendingRequest; ongletId: TabId | null } = $props();
 
   /** Enter only authorizes a card visible for at least this delay: a keystroke meant for the page is not a grant. */
   const DELAI_ENTREE_MS = 400;
@@ -33,7 +33,7 @@
   const nomExtension = $derived((demande.titre ?? demande.origine).slice(0, 60));
   /** The spaces the unlock covers: names given by the user, shown as text and bounded. */
   const espacesExtension = $derived((demande.espaces ?? []).slice(0, 20).map((e) => e.slice(0, 60)));
-  const raisonAgent = $derived((demande.raison ?? "").slice(0, LONGUEUR_RAISON_DEBLOCAGE));
+  const raisonAgent = $derived((demande.raison ?? "").slice(0, UNLOCK_REASON_LENGTH));
   const site = $derived(siteDe(demande.origine));
 
   // A single opening for the whole queue: following requests replace the content, the page stays hidden.
@@ -144,7 +144,7 @@
         {/if}
       {:else if consoleExtension}
         <div class="lecture" data-testid="demande-console-extension">
-          <p>{texteDeblocageConsole(nomExtension, espacesExtension)}</p>
+          <p>{unlockedConsoleText(nomExtension, espacesExtension)}</p>
           {#if raisonAgent}<p class="raison">Raison donnée par {demande.agent ?? "l'agent"} : « {raisonAgent} »</p>{/if}
           <div class="actions">
             <!-- Enter refuses: showing the agent what an extension reads on unshared tabs takes a real click. -->

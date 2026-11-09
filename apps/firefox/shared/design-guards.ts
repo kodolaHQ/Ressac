@@ -15,7 +15,7 @@ export const COMMENT_ID = /^c-[0-9a-f]{8}$/;
 export const REMARK_TEXT_MAX = 4000;
 
 /** Copy of externes.ts's raisonEchec. */
-export const raisonEchec = (e: unknown): string => `Le MCP externe n'a pas pu démarrer : ${e instanceof Error ? e.message : String(e)}`;
+export const failureReason = (e: unknown): string => `Le MCP externe n'a pas pu démarrer : ${e instanceof Error ? e.message : String(e)}`;
 
 const positive = (n: unknown): n is number => typeof n === "number" && Number.isSafeInteger(n) && n >= 1;
 
@@ -54,9 +54,9 @@ export function checkResolved(r: unknown): boolean {
   return r;
 }
 
-export function checkClientName(nom: unknown): string {
-  if (typeof nom !== "string" || nom.length > 200) throw new Error("Nom invalide");
-  return nom;
+export function checkClientName(name: unknown): string {
+  if (typeof name !== "string" || name.length > 200) throw new Error("Nom invalide");
+  return name;
 }
 
 /** The design texts: the kernel's INDISPONIBLE_DESIGN, the invalid input's, the cart's. */
@@ -70,7 +70,7 @@ export const NOTHING_AIMED = "Aucun élément visé.";
 export const DESIGN_ID_MAX = 64;
 /** Copies of kernel's HTML_MAX and TRONQUE: a context's html is at most a cut one. */
 export const HTML_MAX = 4096;
-export const TRONQUE = "… [tronqué]";
+export const TRUNCATED = "… [tronqué]";
 /** A capture's PNG, decoded (mine: an element's capture is far smaller). */
 export const CAPTURE_MAX = 8 * 1024 * 1024;
 export const URL_MAX = 8192;
@@ -86,10 +86,10 @@ const invalid = (): never => {
 /** viseur.ts's propreCapture rules (a bad shape refuses the context) and sourceSaine's (a bad source field is dropped), rebuilt with known keys only. */
 export function checkDesignContext(c: unknown): DesignContext {
   if (!record(c) || !record(c.vue) || !record(c.voisinage) || !record(c.styles)) return invalid();
-  const { selecteur, etiquette, html, adresse, vue, voisinage, styles, source } = c as Record<string, any>;
-  if (![vue.largeur, vue.hauteur].every(finite)) return invalid();
-  if (![selecteur, etiquette, adresse, voisinage.parent].every((x) => str(x)) || !str(html, HTML_MAX + TRONQUE.length)) return invalid();
-  if (!Array.isArray(voisinage.freres) || !voisinage.freres.every((f: unknown) => str(f))) return invalid();
+  const { selecteur: selector, etiquette, html, adresse: url, vue: view, voisinage: surroundings, styles, source } = c as Record<string, any>;
+  if (![view.largeur, view.hauteur].every(finite)) return invalid();
+  if (![selector, etiquette, url, surroundings.parent].every((x) => str(x)) || !str(html, HTML_MAX + TRUNCATED.length)) return invalid();
+  if (!Array.isArray(surroundings.freres) || !surroundings.freres.every((f: unknown) => str(f))) return invalid();
   if (!Object.values(styles).every((x) => str(x))) return invalid();
   // As sourceSaine: a bad file gives no source, a bad line or column is dropped; the remark stays.
   const src: DesignContext["source"] =
@@ -97,9 +97,9 @@ export function checkDesignContext(c: unknown): DesignContext {
       ? null
       : { fichier: source.fichier, ...(positiveInt(source.ligne) ? { ligne: source.ligne } : {}), ...(positiveInt(source.colonne) ? { colonne: source.colonne } : {}) };
   return {
-    selecteur, etiquette, html, adresse,
-    vue: { largeur: vue.largeur, hauteur: vue.hauteur },
-    voisinage: { parent: voisinage.parent, freres: [...voisinage.freres] },
+    selecteur: selector, etiquette, html, adresse: url,
+    vue: { largeur: view.largeur, hauteur: view.hauteur },
+    voisinage: { parent: surroundings.parent, freres: [...surroundings.freres] },
     styles: { ...styles },
     source: src,
   };

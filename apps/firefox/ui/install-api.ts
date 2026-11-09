@@ -1,5 +1,5 @@
 import { createApi, type ApiFirefox } from "./api";
-import type { ApiCalque } from "../shared/api";
+import type { OverlayApi } from "../shared/api";
 import { createBadgeApi } from "./badge-api";
 import { wrapOverlayApi } from "./overlay-api";
 import { createSiteApi, inertWebaios } from "./site-api";
@@ -19,7 +19,7 @@ if (params.has("site")) {
   if (!overlay) throw new Error("WebAiOs badge loaded before its window controller");
   window.webaios = inertWebaios(createBadgeApi(overlay.api)) as ApiFirefox;
 } else if (params.has("calque")) {
-  const overlay = (window.frameElement as (Element & { webaiosOverlay?: { api: ApiCalque } }) | null)?.webaiosOverlay;
+  const overlay = (window.frameElement as (Element & { webaiosOverlay?: { api: OverlayApi } }) | null)?.webaiosOverlay;
   if (!overlay) throw new Error("WebAiOs design overlay loaded before its window controller");
   window.webaios = inertWebaios(wrapOverlayApi(overlay.api)) as ApiFirefox;
 } else {

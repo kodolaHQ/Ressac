@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ReviewStore, reviewStore, externalProject, ExternalRegistry, Remarques } from "@webaios/noyau";
-import { demarrerExternes } from "../../core/design/externes";
+import { startExternals } from "../../core/design/externes";
 
 const dossiers: string[] = [];
 const services: { arreter(): Promise<void> }[] = [];
@@ -18,7 +18,7 @@ async function preparer(port: number) {
   const dossiersDesign = { remarquesEspace: join(racine, "espace", ".webaios", "remarques"), prive: join(racine, "prive") };
   mkdirSync(dossiersDesign.prive, { recursive: true });
   const registre = await ExternalRegistry.ouvrir(dossiersDesign.prive);
-  const service = await demarrerExternes({
+  const service = await startExternals({
     registre, remarques: new Remarques({ dossiers: dossiersDesign }), dossiers: dossiersDesign, port, plages: [],
     racineEspace: join(racine, "espace"), maison: racine, notifier: () => undefined,
   });

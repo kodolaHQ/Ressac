@@ -3,7 +3,7 @@ import { mkdtemp } from "node:fs/promises";
 import os from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { urlRelecture } from "../shared/modele";
+import { reviewUrl } from "../shared/modele";
 import { APPS_ENV, appRow, appWindowExpr, closeAppsPage, inAppView, launchEssai, rowButton, rowMenuItems, writeProject, type AppsPage } from "./apps";
 import { dispatch, state, waitFor, waitReady } from "./firefox";
 import { launchWebAiOs } from "./launch";
@@ -44,7 +44,7 @@ async function cutAccess(m: Marionette, dossier: string): Promise<void> {
 }
 /** The access the badge's own api gives, its tab ids. */
 const badgeAccess = (m: Marionette, dossier: string) => inBadge<string[]>(m, dossier, "return Object.keys((await f.contentWindow.webaios.acces.etat()).onglets);");
-const reviewTabs = async (m: Marionette, projet: string) => Object.values((await state(m)).onglets).filter((o) => o.url === urlRelecture(projet));
+const reviewTabs = async (m: Marionette, projet: string) => Object.values((await state(m)).onglets).filter((o) => o.url === reviewUrl(projet));
 
 describe("one WebAiOs, essai and autre launched in each test", () => {
   let p: AppsPage;
@@ -225,7 +225,7 @@ describe("one WebAiOs, essai and autre launched in each test", () => {
     // The UI refuses a folder name a shell would not take, and a project without manifest, before any page.
     await inUi(m, "ui.webaios.applications.agir('../x', 'relire'); ui.webaios.applications.agir('vieux', 'relire'); return 1;");
     await sleep(500);
-    expect(Object.values((await state(m)).onglets).filter((o) => o.url.startsWith(urlRelecture("app-"))).length).toBe(1);
+    expect(Object.values((await state(m)).onglets).filter((o) => o.url.startsWith(reviewUrl("app-"))).length).toBe(1);
   });
 
   // relecture.spec.ts:168

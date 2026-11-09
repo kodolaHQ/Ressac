@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { LigneExtension } from "../../shared/extensions";
-  import { activeDans, CONSOLE_DEBLOQUEE_PAGE, DESACTIVEE_PLANTAGES, DESACTIVEE_PORTEE } from "../../shared/extensions-messages";
-  import type { ResultatExtension } from "../../shared/api";
+  import { activeDans, CONSOLE_UNLOCKED_PAGE, DISABLED_CRASHES, DISABLED_SCOPE } from "../../shared/extensions-messages";
+  import type { ExtensionResult } from "../../shared/api";
   import { api } from "../etat.svelte";
 
   // Everything from a manifest or a console is shown as text (never {@html}): it is data.
@@ -29,7 +29,7 @@
     return api.extensions.surChange(() => void charger());
   });
 
-  async function faire(p: Promise<ResultatExtension>) {
+  async function faire(p: Promise<ExtensionResult>) {
     message = null;
     const r = await p;
     if (!r.ok) message = r.erreur;
@@ -85,7 +85,7 @@
           <span class="doux">{l.source === "store" ? "Chrome Web Store" : "Écrite par l'agent"} · {l.version}</span>
         </div>
         {#if l.desactivee}<p class="alerte">{l.desactivee}</p>{/if}
-        {#if l.consoleDebloquee}<p class="alerte" data-testid="console-debloquee">{CONSOLE_DEBLOQUEE_PAGE}</p>{/if}
+        {#if l.consoleDebloquee}<p class="alerte" data-testid="console-debloquee">{CONSOLE_UNLOCKED_PAGE}</p>{/if}
         {#if l.majEnAttente}<p class="doux">Mise à jour {l.majEnAttente} en attente de ton accord.</p>{/if}
         <p>Droits : {l.droits.length ? l.droits.join(" · ") : "aucun"}</p>
         <p>Sites : {l.tousLesSites ? "tous les sites" : l.sites.length ? l.sites.join(", ") : "aucun"}</p>
@@ -110,10 +110,10 @@
         {/if}
         <div class="actions">
           {#if l.majEnAttente}<button onclick={() => void faire(api.extensions.revoir(l.cle))}>Revoir la mise à jour</button>{/if}
-          {#if l.source === "agent" && l.desactivee === DESACTIVEE_PORTEE}
+          {#if l.source === "agent" && l.desactivee === DISABLED_SCOPE}
             <button onclick={() => void faire(api.extensions.revoir(l.cle))}>Revoir l'accord</button>
           {/if}
-          {#if l.desactivee === DESACTIVEE_PLANTAGES}<button onclick={() => void faire(api.extensions.reactiver(l.cle))}>Réactiver</button>{/if}
+          {#if l.desactivee === DISABLED_CRASHES}<button onclick={() => void faire(api.extensions.reactiver(l.cle))}>Réactiver</button>{/if}
           {#if l.consoleDebloquee}<button onclick={() => void faire(api.extensions.couperDeblocage(l.cle))}>Couper le déblocage</button>{/if}
           <button disabled={l.espaces.length === 0 && l.applis.length === 0} onclick={() => void faire(api.extensions.desactiverPartout(l.cle))}>Désactiver partout</button>
           <button onclick={() => (aSupprimer = l)}>Supprimer</button>

@@ -4,9 +4,9 @@
 import type { TweaksRead } from "../../../../packages/noyau/src/sites/lire";
 import { relativeUrl } from "../../../../packages/noyau/src/sites/adresses";
 import GARDE from "../../../../packages/noyau/extensions/webaios-garde-page.js?raw";
-import { sourceRetouche, type InjectionCadre } from "../../shared/sites";
-import { ajouterConsoleRetouche, injectionPour, repriseDansCadre, type ErreurRetouche, type ReponseMemoire } from "../../core/sites/injection";
-import { REFUS_MEMOIRE } from "../../noyau/site-memory";
+import { tweakSource, type InjectionCadre } from "../../shared/sites";
+import { addTweakConsole, injectionPour, repriseDansCadre, type TweakError, type MemoryResponse } from "../../core/sites/injection";
+import { MEMORY_DENIAL } from "../../noyau/site-memory";
 import type { SiteChrome } from "../../noyau/sites";
 
 /** What these decisions need of an open app (store/sites.ts OpenSite). */
@@ -16,7 +16,7 @@ export interface FrameSite {
   /** The app view's <browser>. */
   view: any;
   /** The tweaks' console, kept until the window closes. */
-  erreurs: ErreurRetouche[];
+  erreurs: TweakError[];
 }
 
 /** The open app whose view is this frame's top <browser>, or undefined (a sign-in window of the same container, a tab). */
@@ -61,8 +61,8 @@ export function frameInjection(wgp: any, s: FrameSite | undefined, adressesLocal
  * The actor's "memoire": only the view's main document, on the app's domains, with the grant; the host checks the
  * request's shape and does the memory work (noyau/site-memory.ts).
  */
-export async function frameMemory(wgp: any, s: FrameSite | undefined, demande: unknown, request: (p: object) => Promise<ReponseMemoire>): Promise<ReponseMemoire> {
-  const refus: ReponseMemoire = { ok: false, erreur: REFUS_MEMOIRE };
+export async function frameMemory(wgp: any, s: FrameSite | undefined, demande: unknown, request: (p: object) => Promise<MemoryResponse>): Promise<MemoryResponse> {
+  const refus: MemoryResponse = { ok: false, erreur: MEMORY_DENIAL };
   if (!s || s.site.accordRequis) return refus;
   const f = frameOf(wgp, s.view);
   const adresse = f?.principal ? relativeUrl(f.url, s.site.domaines) : null;
@@ -80,9 +80,9 @@ export async function frameMemory(wgp: any, s: FrameSite | undefined, demande: u
 export function frameError(s: FrameSite | undefined, e: unknown): void {
   if (!s || !e || typeof e !== "object") return;
   const { texte, source, ligne } = e as { texte?: unknown; source?: unknown; ligne?: unknown };
-  if (typeof texte !== "string" || typeof source !== "string" || !source.startsWith(sourceRetouche(s.site.id, ""))) return;
+  if (typeof texte !== "string" || typeof source !== "string" || !source.startsWith(tweakSource(s.site.id, ""))) return;
   const l = typeof ligne === "number" && Number.isInteger(ligne) && ligne > 0 ? ligne : 0;
-  ajouterConsoleRetouche(s.erreurs, { texte, source: l ? `${source}:${l}` : source }, new Date().toISOString());
+  addTweakConsole(s.erreurs, { texte, source: l ? `${source}:${l}` : source }, new Date().toISOString());
 }
 
 /**

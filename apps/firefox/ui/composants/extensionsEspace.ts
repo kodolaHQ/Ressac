@@ -1,11 +1,11 @@
-import type { Espace, IdEspace, IdProfil } from "../../shared/modele";
+import type { Space, SpaceId, ProfileId } from "../../shared/modele";
 
 /** What must be known about an extension to warn: where it is active. */
 export interface ExtensionDuProfil {
   cle: string;
   nom: string;
   source: "store" | "agent";
-  profils: IdProfil[];
+  profils: ProfileId[];
 }
 
 /**
@@ -15,8 +15,8 @@ export interface ExtensionDuProfil {
  * which the main process disables as soon as a space of the profile is private.
  */
 export function avertissements(
-  b: { id: IdEspace | null; prive: boolean; profil: IdProfil },
-  espaces: Espace[],
+  b: { id: SpaceId | null; prive: boolean; profil: ProfileId },
+  espaces: Space[],
   lignes: ExtensionDuProfil[],
 ): { privePartage: string[]; agentDesactivees: string[] } {
   const actives = lignes.filter((l) => l.profils.includes(b.profil));

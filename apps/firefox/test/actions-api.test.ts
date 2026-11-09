@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ACTIONS_EN_ESPACE_PRIVE } from "../shared/actions";
+import { ACTIONS_IN_PRIVATE_SPACE } from "../shared/actions";
 import type { Action } from "../shared/api";
-import type { EtatNavigateur } from "../shared/modele";
-import { appliquer } from "../core/etat/actions";
-import { etatInitial } from "../core/etat/etat-initial";
+import type { BrowserState } from "../shared/modele";
+import { apply } from "../core/etat/actions";
+import { initialState } from "../core/etat/etat-initial";
 import { HOST_EXITED, type AgentHost } from "../chrome/agent/host";
 import { createActionsApi, espaceActifPrive } from "../ui/actions-api";
 
@@ -39,12 +39,12 @@ function fakeHost(answers: Record<string, (p: any) => unknown> = {}) {
 function setup(answers: Record<string, (p: any) => unknown> = {}) {
   let n = 0;
   const genId = () => `g${++n}`;
-  let etat: EtatNavigateur = etatInitial(genId);
+  let etat: BrowserState = initialState(genId);
   const F = etat.fenetres[0]!.id;
   const dispatched: Action[] = [];
   const dispatch = (a: Action) => {
     dispatched.push(a);
-    etat = appliquer(etat, a, genId);
+    etat = apply(etat, a, genId);
   };
   const fake = fakeHost(answers);
   const media = { image: vi.fn(async (_url: string): Promise<string | null> => "data:image/png;base64,"), serve: vi.fn(async (nom: string): Promise<string | null> => `resource://webaios-composant-${nom}/composant-1.html`), release: vi.fn(async (_nom: string) => {}) };
@@ -60,9 +60,9 @@ function setup(answers: Record<string, (p: any) => unknown> = {}) {
     });
   const turnPrivate = (f = F) => {
     const e = etat.espaces.find((x) => x.id === etat.fenetres.find((w) => w.id === f)!.espaceActif)!;
-    etat = appliquer(etat, { type: "reglerEspace", id: e.id, nom: e.nom, icone: e.icone, prive: true, profil: e.profil }, genId);
+    etat = apply(etat, { type: "reglerEspace", id: e.id, nom: e.nom, icone: e.icone, prive: true, profil: e.profil }, genId);
   };
-  return { F, api, dispatched, turnPrivate, media, unload: () => unloads.forEach((f) => f()), ...fake, etat: () => etat, set: (s: EtatNavigateur) => (etat = s), genId };
+  return { F, api, dispatched, turnPrivate, media, unload: () => unloads.forEach((f) => f()), ...fake, etat: () => etat, set: (s: BrowserState) => (etat = s), genId };
 }
 
 type Api = ReturnType<typeof createActionsApi>;
@@ -72,12 +72,12 @@ afterEach(() => vi.restoreAllMocks());
 describe("espaceActifPrive", () => {
   it("is false only for a window whose active space is private", () => {
     const { F, etat, turnPrivate, genId } = setup();
-    const cases: [EtatNavigateur, string][] = [[etat(), F], [etat(), "inconnue"]];
+    const cases: [BrowserState, string][] = [[etat(), F], [etat(), "inconnue"]];
     const sansEspace = { ...etat(), espaces: [] };
     cases.push([sansEspace, F]);
     turnPrivate();
     cases.push([etat(), F]);
-    cases.push([appliquer(etat(), { type: "creerEspace", nom: "B", icone: "🅱", prive: false, profil: "defaut", fenetreId: F }, genId), F]);
+    cases.push([apply(etat(), { type: "creerEspace", nom: "B", icone: "🅱", prive: false, profil: "defaut", fenetreId: F }, genId), F]);
     const got = cases.map(([s, f]) => espaceActifPrive(s, f));
     expect(got).toEqual([false, true, true, true, false]);
   });
@@ -93,7 +93,7 @@ describe("createActionsApi", () => {
     const direct = vi.fn();
     a.surDirect(direct);
     expect(await a.liste()).toEqual([]);
-    expect(await a.lancer("gitlab", null)).toEqual({ statut: "invalide", erreur: ACTIONS_EN_ESPACE_PRIVE });
+    expect(await a.lancer("gitlab", null)).toEqual({ statut: "invalide", erreur: ACTIONS_IN_PRIVATE_SPACE });
     a.arreter("gitlab");
     expect(await a.page("gitlab", null)).toBeNull();
     expect(await a.executions("gitlab")).toEqual([]);
@@ -101,7 +101,7 @@ describe("createActionsApi", () => {
     expect(await a.direct()).toEqual(NONE);
     await a.ouvrirLien("gitlab", "2026-10-31T08-00-00-000Z", "https://a.test/");
     expect(await a.profilsPourAccord()).toEqual([]);
-    expect(await a.accorder({ id: "gitlab", profil: "defaut", compte: ["gitlab.com"], publiques: [] })).toEqual({ ok: false, erreur: ACTIONS_EN_ESPACE_PRIVE });
+    expect(await a.accorder({ id: "gitlab", profil: "defaut", compte: ["gitlab.com"], publiques: [] })).toEqual({ ok: false, erreur: ACTIONS_IN_PRIVATE_SPACE });
     await a.voirWorkflow("gitlab");
     emit("actions.direct", { courantes: [{ action: "gitlab" }], enAttente: [] });
     expect(calls).toEqual([]);
@@ -182,9 +182,9 @@ describe("createActionsApi", () => {
 
   it("accorder never uses a private space's profile, read again at the grant", async () => {
     const { F, api, calls, etat, set, genId } = setup({ "actions.accorder": () => ({ ok: true }) });
-    set(appliquer(etat(), { type: "creerEspace", nom: "Banque", icone: "🏦", prive: true, profil: "nouveau", fenetreId: F }, genId));
+    set(apply(etat(), { type: "creerEspace", nom: "Banque", icone: "🏦", prive: true, profil: "nouveau", fenetreId: F }, genId));
     const banque = etat().espaces.find((e) => e.prive)!.profil;
-    set(appliquer(etat(), { type: "activerEspace", fenetreId: F, id: etat().espaces[0]!.id }, genId));
+    set(apply(etat(), { type: "activerEspace", fenetreId: F, id: etat().espaces[0]!.id }, genId));
     const a = api(F);
     expect(await a.accorder({ id: "gitlab", profil: banque, compte: ["gitlab.com"], publiques: [] })).toEqual({ ok: false, erreur: "Ce profil ne peut pas servir à un accord" });
     expect(calls).toEqual([]);
@@ -200,7 +200,7 @@ describe("createActionsApi", () => {
       ["actions.executions", [{ id: "x" }], (b: Api) => b.executions("gitlab"), []],
       ["actions.execution", { id: "x" }, (b: Api) => b.execution("gitlab", "x"), null],
       ["actions.direct", running, (b: Api) => b.direct(), NONE],
-      ["actions.lancer", { statut: "reussie", execution: "x" }, (b: Api) => b.lancer("gitlab", null), { statut: "invalide", erreur: ACTIONS_EN_ESPACE_PRIVE }],
+      ["actions.lancer", { statut: "reussie", execution: "x" }, (b: Api) => b.lancer("gitlab", null), { statut: "invalide", erreur: ACTIONS_IN_PRIVATE_SPACE }],
       ["actions.nom", "GitLab", (b: Api) => b.voirWorkflow("gitlab"), undefined],
       ["actions.lienPermis", true, (b: Api) => b.ouvrirLien("gitlab", "x", "https://gitlab.com/1"), undefined],
       ["actions.imagePermise", true, (b: Api) => b.image("gitlab", "x", "https://img.test/a.png"), null],
@@ -225,9 +225,9 @@ describe("createActionsApi", () => {
       "actions.direct": () => running,
       "actions.imagePermise": () => true,
     });
-    set(appliquer(etat(), { type: "ouvrirFenetre" }, genId));
+    set(apply(etat(), { type: "ouvrirFenetre" }, genId));
     const P = etat().fenetres[1]!.id;
-    set(appliquer(etat(), { type: "creerEspace", nom: "Banque", icone: "🏦", prive: true, profil: "nouveau", fenetreId: P }, genId));
+    set(apply(etat(), { type: "creerEspace", nom: "Banque", icone: "🏦", prive: true, profil: "nouveau", fenetreId: P }, genId));
     expect(espaceActifPrive(etat(), F)).toBe(false);
     expect(espaceActifPrive(etat(), P)).toBe(true);
     const pub = api(F);
@@ -379,7 +379,7 @@ describe("createActionsApi", () => {
     let turn = () => {};
     const s = setup({ "actions.accorder": () => (turn(), { ok: true }) });
     turn = () => s.turnPrivate();
-    expect(await s.api(s.F).accorder({ id: "gitlab", profil: "defaut", compte: ["gitlab.com"], publiques: [] })).toEqual({ ok: false, erreur: ACTIONS_EN_ESPACE_PRIVE });
+    expect(await s.api(s.F).accorder({ id: "gitlab", profil: "defaut", compte: ["gitlab.com"], publiques: [] })).toEqual({ ok: false, erreur: ACTIONS_IN_PRIVATE_SPACE });
   });
   // Review Focus 1
   it("a window turned private while the host reads opens and launches nothing", async () => {
@@ -387,7 +387,7 @@ describe("createActionsApi", () => {
     const s = setup({ "actions.preparer": () => (turn(), { ok: true, nom: "GitLab", lancer: true }), "actions.lancer": () => ({ statut: "reussie", execution: "x" }) });
     turn = () => s.turnPrivate();
     s.dispatched.length = 0;
-    expect(await s.api(s.F).ouvrir("gitlab", null)).toEqual({ ok: false, erreur: ACTIONS_EN_ESPACE_PRIVE });
+    expect(await s.api(s.F).ouvrir("gitlab", null)).toEqual({ ok: false, erreur: ACTIONS_IN_PRIVATE_SPACE });
     await new Promise((r) => setTimeout(r, 0));
     expect(s.calls.map((c) => c.method)).toEqual(["actions.preparer"]);
     expect(s.dispatched).toEqual([]);
@@ -433,7 +433,7 @@ describe("createActionsApi", () => {
     expect(await a.ouvrir("gitlab", null)).toEqual({ ok: true });
     const page = Object.values(etat().onglets)[0]!;
     // Another tab comes first; opening again goes back to the action's page.
-    set(appliquer(etat(), { type: "ouvrirOnglet", fenetreId: F, url: "https://a.test/" }, genId));
+    set(apply(etat(), { type: "ouvrirOnglet", fenetreId: F, url: "https://a.test/" }, genId));
     expect(await a.ouvrir("gitlab", null)).toEqual({ ok: true });
     expect(Object.values(etat().onglets).filter((o) => o.url.startsWith("webaios://action/"))).toHaveLength(1);
     expect(etat().fenetres[0]!.actif[etat().fenetres[0]!.espaceActif]).toBe(page.id);
@@ -486,8 +486,8 @@ describe("createActionsApi", () => {
     calls.length = 0;
     turnPrivate();
     await a.refuserAccord("gitlab");
-    expect(await a.supprimer("gitlab")).toEqual({ ok: false, erreur: ACTIONS_EN_ESPACE_PRIVE });
-    expect(await a.ouvrir("gitlab", null)).toEqual({ ok: false, erreur: ACTIONS_EN_ESPACE_PRIVE });
+    expect(await a.supprimer("gitlab")).toEqual({ ok: false, erreur: ACTIONS_IN_PRIVATE_SPACE });
+    expect(await a.ouvrir("gitlab", null)).toEqual({ ok: false, erreur: ACTIONS_IN_PRIVATE_SPACE });
     expect(calls).toEqual([]);
   });
 

@@ -1,12 +1,12 @@
-import type { ApplicationAffichee } from "../../shared/api";
-import type { IdOnglet, Visite } from "../../shared/modele";
-import type { ActionAffichee } from "../../shared/actions";
-import type { SiteAffiche } from "../../shared/sites";
+import type { ApplicationShown } from "../../shared/api";
+import type { TabId, Visite } from "../../shared/modele";
+import type { ActionShown } from "../../shared/actions";
+import type { ShownSite } from "../../shared/sites";
 import { normaliser, suggestionsActions } from "./suggestions";
 
-export type OngletSource = { id: IdOnglet; titre: string; url: string; favicon: string | null };
+export type OngletSource = { id: TabId; titre: string; url: string; favicon: string | null };
 export type AppliSource = { genre: "projet" | "site"; id: string; nom: string; action: "ouvrir" | "lancer"; favicon: string | null };
-export type SourcesCommande = { actions: ActionAffichee[]; onglets: OngletSource[]; applis: AppliSource[]; historique: Visite[] };
+export type SourcesCommande = { actions: ActionShown[]; onglets: OngletSource[]; applis: AppliSource[]; historique: Visite[] };
 export type LigneCommande =
   | { type: "defaut"; texte: string; libelle: string }
   /** `parametre`: the label of the input the action declares (null: it expects none). */
@@ -20,7 +20,7 @@ export const LIMITES = { actions: 3, onglets: 3, applis: 3, historique: 5 } as c
 export const LIMITES_VIDE = { actions: 4, onglets: 5 } as const;
 
 /** The actions offered with an empty field: the most recently launched first, then the others by name; invalid ones dropped. */
-function actionsRecentes(actions: ActionAffichee[]): ActionAffichee[] {
+function actionsRecentes(actions: ActionShown[]): ActionShown[] {
   return actions
     .filter((a) => !a.erreur)
     .sort((x, y) => (y.dernier?.debut ?? "").localeCompare(x.dernier?.debut ?? "") || normaliser(x.nom).localeCompare(normaliser(y.nom)))
@@ -31,7 +31,7 @@ function actionsRecentes(actions: ActionAffichee[]): ActionAffichee[] {
  * The command bar's rows, in order: default, actions, tabs, apps, history. Empty field: home first (Enter leads
  * there), then actions and the open tabs, without the shown tab (`ongletAffiche`).
  */
-export function lignesCommande(texte: string, sources: SourcesCommande, urlActive: string | null, ongletAffiche: IdOnglet | null = null): LigneCommande[] {
+export function lignesCommande(texte: string, sources: SourcesCommande, urlActive: string | null, ongletAffiche: TabId | null = null): LigneCommande[] {
   const t = texte.trim();
   const libelle = !t ? "Page d'accueil" : /^\S+\.\S+$/.test(t) ? `Ouvrir ${t}` : `Rechercher « ${t} »`;
   const lignes: LigneCommande[] = [{ type: "defaut", texte: t, libelle }];
@@ -98,11 +98,11 @@ export function parametreParDefaut(url: string | null | undefined): string {
 /** The length the actions service accepts for an input (SchemaSaisieAction). */
 export const PARAMETRE_MAX = 2000;
 
-export function appliSourceDeProjet(a: ApplicationAffichee): AppliSource | null {
+export function appliSourceDeProjet(a: ApplicationShown): AppliSource | null {
   if (a.type === "sans-fiche") return null;
   return { genre: "projet", id: a.dossier, nom: a.nom, action: a.etat === "en-marche" ? "ouvrir" : "lancer", favicon: a.favicon ?? null };
 }
 
-export function appliSourceDeSite(s: SiteAffiche): AppliSource {
+export function appliSourceDeSite(s: ShownSite): AppliSource {
   return { genre: "site", id: s.id, nom: s.nom, action: "ouvrir", favicon: s.icone };
 }

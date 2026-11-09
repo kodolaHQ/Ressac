@@ -1,11 +1,11 @@
-import type { EtatDesign } from "../../shared/api";
+import type { DesignState } from "../../shared/api";
 import { api } from "../etat.svelte";
 
 /**
  * The design mode of the tab shown in this window (re-read on each broadcast change, and when the tab or its address
  * changes), and the basket requested by « Panier » (open even outside the mode).
  */
-export const design = $state<{ etat: EtatDesign | null; panierDemande: boolean }>({ etat: null, panierDemande: false });
+export const design = $state<{ etat: DesignState | null; panierDemande: boolean }>({ etat: null, panierDemande: false });
 
 let requete = 0;
 export async function relireDesign(): Promise<void> {

@@ -1,8 +1,8 @@
 import { expect, test } from "vitest";
-import type { Espace, EtatFenetre, EtatNavigateur, IdEspace, IdProfil } from "../shared/modele";
+import type { Space, WindowState, BrowserState, SpaceId, ProfileId } from "../shared/modele";
 import { profilsPourAccord, urlOuvrable } from "../ui/accueil-profils";
 
-const espace = (id: string, nom: string, profil: IdProfil, prive = false): Espace => ({
+const espace = (id: string, nom: string, profil: ProfileId, prive = false): Space => ({
   id,
   nom,
   icone: "",
@@ -11,7 +11,7 @@ const espace = (id: string, nom: string, profil: IdProfil, prive = false): Espac
   profil,
 });
 
-const fenetre = (id: string, espaceActif: IdEspace): EtatFenetre => ({
+const fenetre = (id: string, espaceActif: SpaceId): WindowState => ({
   id,
   espaceActif,
   ordre: {},
@@ -22,8 +22,8 @@ const fenetre = (id: string, espaceActif: IdEspace): EtatFenetre => ({
   cadre: null,
 });
 
-const etat = (espaces: Espace[], profils: IdProfil[], fenetres: EtatFenetre[]) =>
-  ({ espaces, profils: profils.map((id) => ({ id })), fenetres }) as Pick<EtatNavigateur, "profils" | "espaces" | "fenetres">;
+const etat = (espaces: Space[], profils: ProfileId[], fenetres: WindowState[]) =>
+  ({ espaces, profils: profils.map((id) => ({ id })), fenetres }) as Pick<BrowserState, "profils" | "espaces" | "fenetres">;
 
 test("a profile used by a private space is excluded, even shared with a non-private space", () => {
   const s = etat(

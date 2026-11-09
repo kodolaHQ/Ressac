@@ -1,6 +1,6 @@
 import { ACTION_UNKNOWN as ACTION_INCONNUE_NOYAU, NO_RESULT as AUCUN_RESULTAT_NOYAU, FALLBACK_MENTION as MENTION_SECOURS_NOYAU } from "@webaios/noyau";
 import { expect, test } from "vitest";
-import { ACTION_INCONNUE, AUCUN_RESULTAT, MENTION_SECOURS } from "../../shared/actions";
+import { ACTION_UNKNOWN, NO_RESULT, FALLBACK_MENTION } from "../../shared/actions";
 import { trierLignes } from "../../ui/action/tri";
 
 const lignes = (...v: string[]) => v.map((x) => ({ c: x }));
@@ -31,7 +31,7 @@ test("does not modify the given list", () => {
 });
 
 test("the page's messages are the kernel's", () => {
-  expect(MENTION_SECOURS).toBe(MENTION_SECOURS_NOYAU);
-  expect(ACTION_INCONNUE).toBe(ACTION_INCONNUE_NOYAU);
-  expect(AUCUN_RESULTAT).toBe(AUCUN_RESULTAT_NOYAU);
+  expect(FALLBACK_MENTION).toBe(MENTION_SECOURS_NOYAU);
+  expect(ACTION_UNKNOWN).toBe(ACTION_INCONNUE_NOYAU);
+  expect(NO_RESULT).toBe(AUCUN_RESULTAT_NOYAU);
 });

@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { etatInitial } from "../core/etat/etat-initial";
+import { initialState } from "../core/etat/etat-initial";
 import { createStore } from "../chrome/store/store";
 
 describe("createStore", () => {
   it("returns the same object and notifies nobody when an action changes nothing", () => {
-    const store = createStore(etatInitial());
+    const store = createStore(initialState());
     const listener = vi.fn();
     store.subscribe(listener);
     const before = store.state;
@@ -13,7 +13,7 @@ describe("createStore", () => {
   });
 
   it("applies an action and passes (new, previous) to subscribers", () => {
-    const initial = etatInitial();
+    const initial = initialState();
     const store = createStore(initial);
     const listener = vi.fn();
     store.subscribe(listener);
@@ -23,7 +23,7 @@ describe("createStore", () => {
   });
 
   it("clones the action: mutating it afterwards changes nothing", () => {
-    const store = createStore(etatInitial());
+    const store = createStore(initialState());
     const action = { type: "ouvrirOnglet" as const, fenetreId: store.state.fenetres[0]!.id, url: "https://a.test" };
     store.dispatch(action, () => "t1");
     action.url = "https://evil.test";
@@ -31,7 +31,7 @@ describe("createStore", () => {
   });
 
   it("unsubscribes", () => {
-    const store = createStore(etatInitial());
+    const store = createStore(initialState());
     const listener = vi.fn();
     store.subscribe(listener)();
     store.dispatch({ type: "ouvrirOnglet", fenetreId: store.state.fenetres[0]!.id, url: "x" }, () => "t1");
@@ -39,7 +39,7 @@ describe("createStore", () => {
   });
 
   it("a throwing listener neither skips the next ones nor fails the dispatch", () => {
-    const store = createStore(etatInitial());
+    const store = createStore(initialState());
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const next = vi.fn();
     store.subscribe(() => {

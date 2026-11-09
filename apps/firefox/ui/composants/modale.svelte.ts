@@ -1,5 +1,5 @@
 import type { Bornes } from "../../shared/api";
-import type { DemandeEnAttente } from "../../shared/modele";
+import type { PendingRequest } from "../../shared/modele";
 
 /**
  * Modal for an agent request, mounted at window level. `masqueurs`: number of mounted frozen backgrounds (modal,
@@ -12,7 +12,7 @@ export const modale = $state<{ masqueurs: number; zone: Bornes | null }>({ masqu
  * The agent's requests (read, dev tools, widget data) and the extensions' grant cards open as a modal; those from
  * sites stay a banner.
  */
-export const estDemandeAgent = (d: DemandeEnAttente) =>
+export const estDemandeAgent = (d: PendingRequest) =>
   d.permissions.includes("lire-onglet") ||
   d.permissions.includes("outils-dev") ||
   d.permissions.includes("donnees-widget") ||

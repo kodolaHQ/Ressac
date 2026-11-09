@@ -8,7 +8,7 @@ import path from "node:path";
 import { afterAll, afterEach, expect, it } from "vitest";
 import { SPACE_FOLDER } from "../../../packages/noyau/src/design/externes";
 import { HOST_STOPPED } from "../chrome/agent/host";
-import { raisonEchec } from "../shared/design-guards";
+import { failureReason } from "../shared/design-guards";
 import { waitFor } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
@@ -290,7 +290,7 @@ it("after a host restart the server comes back on the same port and the same tok
   process.kill((await hostPid())!, "SIGKILL");
   await waitFor<number | null>(m, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).agent.pid)();`, (pid) => pid === null);
   // While no host runs: the reason, and « Brancher » greyed.
-  await waitText(tid("raison-externes"), raisonEchec(new Error(HOST_STOPPED)));
+  await waitText(tid("raison-externes"), failureReason(new Error(HOST_STOPPED)));
   expect(await brancherDisabled()).toBe(true);
   await storeEval("await store.agent.ensure();");
   await waitCount(tid("raison-externes"), 0, 30_000);

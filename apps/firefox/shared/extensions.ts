@@ -3,20 +3,20 @@ import type { SourceExtension } from "@webaios/noyau";
 // In a module with no dependency on the kernel: the UI imports them (the kernel does not enter its bundle).
 export {
   activeDans,
-  APPLI_FERMEE,
-  AUCUNE_EXTENSION_SITE,
-  CONSOLE_DEBLOQUEE_PAGE,
-  DESACTIVEE_PLANTAGES,
-  DESACTIVEE_PORTEE,
-  DOMAINES_CHANGES_EXTENSION,
-  GERER_EXTENSIONS,
-  LONGUEUR_RAISON_DEBLOCAGE,
-  texteDeblocageConsole,
-  VOIT_LES_PAGES_SITE,
+  APP_CLOSED as APPLI_FERMEE,
+  NO_SITE_EXTENSION as AUCUNE_EXTENSION_SITE,
+  CONSOLE_UNLOCKED_PAGE as CONSOLE_DEBLOQUEE_PAGE,
+  DISABLED_CRASHES as DESACTIVEE_PLANTAGES,
+  DISABLED_SCOPE as DESACTIVEE_PORTEE,
+  EXTENSION_CHANGED_DOMAINS as DOMAINES_CHANGES_EXTENSION,
+  MANAGE_EXTENSIONS as GERER_EXTENSIONS,
+  UNLOCK_REASON_LENGTH as LONGUEUR_RAISON_DEBLOCAGE,
+  unlockedConsoleText as texteDeblocageConsole,
+  SEES_SITE_PAGES as VOIT_LES_PAGES_SITE,
 } from "./extensions-messages";
 
 /** A row of the « Extensions » section of a space's settings (everything is displayed as text there). */
-export interface LigneExtensionEspace {
+export interface SpaceExtensionLine {
   cle: string;
   nom: string;
   source: "store" | "agent";
@@ -62,7 +62,7 @@ export interface CarteExtension {
 }
 
 /** The card's answer: `empreinte` is that of the shown scope (the first card, if the request joined it). */
-export interface ReponseAccord {
+export interface GrantResponse {
   accepte: boolean;
   empreinte: string;
   /** The card dropped (or was not shown) without an answer from the user. */
@@ -111,7 +111,7 @@ export interface LigneExtensionSite {
 }
 
 /** A window's bar: the extensions loaded in the profile of its active space. */
-export interface BarreExtensions {
+export interface ExtensionsBar {
   /** Partition of the profile's session (`partition` attribute of the `<button is="browser-action">`). */
   partition: string;
   /** Id of the tab displayed for the library (its `webContents.id`), or null. */

@@ -2,14 +2,14 @@ import { z } from "zod";
 import { validFolder, ID_EXECUTION, ID_SITE, type Application, type Warning, type CatalogueBloc, type DeclarationWidget, type DirectState, type DraftRead, type SaveResult, type AttemptResult, type DroitDev, type AiState, type WidgetState, type Execution, type ResumeExecution, type ActionsState, type PageAction, type LaunchResult, type Owner } from "@webaios/noyau";
 import type { BatchState, ProjectId, ExternalProject, TrackedProject } from "@webaios/noyau";
 import { PROJECT_ID, type Comment, type DiffFile, type ModifiedFile } from "@webaios/noyau";
-import type { ActionAffichee } from "./actions";
-import type { ActionSite, EtatFenetreSite, MessageVersLAccueil, SiteAffiche } from "./sites";
-import type { BarreExtensions, LigneExtension, LigneExtensionEspace, LigneExtensionSite } from "./extensions";
+import type { ActionShown } from "./actions";
+import type { ActionSite, SiteWindowState, MessageToHome, ShownSite } from "./sites";
+import type { ExtensionsBar, LigneExtension, SpaceExtensionLine, LigneExtensionSite } from "./extensions";
 import type { ZoneGauche } from "./revelation";
-import type { Decision, DemandeEnAttente, EtatAcces, EtatNavigateur, IdEspace, IdFenetre, IdOnglet, Telechargement, Visite } from "./modele";
+import type { Decision, PendingRequest, AccessState, BrowserState, SpaceId, WindowId, TabId, Download, Visite } from "./modele";
 
 const id = z.string().min(1);
-const moteur = z.enum(["google", "duckduckgo", "qwant"]);
+const engine = z.enum(["google", "duckduckgo", "qwant"]);
 
 /** The actions, validated at the entry of the main process: the schema is the source of the type. */
 export const SchemaAction = z.discriminatedUnion("type", [
@@ -92,7 +92,7 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("ouvrirActions"), fenetreId: id }),
   /** Automatic opening and closing of the panel by the home page (not an action of the user). */
   z.object({ type: z.literal("panneauAgentAccueil"), fenetreId: id, ouvert: z.boolean() }),
-  z.object({ type: z.literal("choisirMoteur"), moteur }),
+  z.object({ type: z.literal("choisirMoteur"), moteur: engine }),
   z.object({ type: z.literal("choisirProfilAgent"), profil: z.string().regex(/^[\w-]+$/).max(64) }),
   z.object({ type: z.literal("largeurPanneauAgent"), largeur: z.number().finite() }),
   /** Activates this window's project Review page, or opens it (one per project and per window). */
@@ -100,78 +100,78 @@ export const SchemaAction = z.discriminatedUnion("type", [
 ]);
 export type Action = z.infer<typeof SchemaAction>;
 
-export const SchemaCommande = z.union([
+export const CommandSchema = z.union([
   z.object({ ongletId: id, c: z.enum(["reculer", "avancer", "recharger", "rechargerSansCache", "arreter", "finRecherche", "outils"]) }),
   z.object({ ongletId: id, c: z.object({ zoom: z.enum(["plus", "moins", "zero"]) }) }),
   z.object({ ongletId: id, c: z.object({ chercher: z.string(), suivant: z.boolean().optional(), precedent: z.boolean().optional() }) }),
 ]);
-export type CommandeOnglet = z.infer<typeof SchemaCommande>["c"];
+export type TabCommand = z.infer<typeof CommandSchema>["c"];
 
 export const SchemaBornes = z.object({ x: z.number(), y: z.number(), largeur: z.number(), hauteur: z.number() });
 export type Bornes = z.infer<typeof SchemaBornes>;
 
-export type Panneau = "historique" | "telechargements";
+export type Panel = "historique" | "telechargements";
 /**
  * Menu shortcuts meant for the UI (the web page often has focus). `fermerOnglet`: ⌘W on the builder,
  * which first asks whether some code is unsaved.
  */
-export type Raccourci = "rechercher" | "chercherSuivant" | "chercherPrecedent" | "adresse" | "commande" | "agent" | "fermerOnglet";
-export interface ResultatRecherche {
-  ongletId: IdOnglet;
+export type ShortcutAction = "rechercher" | "chercherSuivant" | "chercherPrecedent" | "adresse" | "commande" | "agent" | "fermerOnglet";
+export interface SearchResult {
+  ongletId: TabId;
   actif: number;
   total: number;
 }
 
 /** The API the UI gets as `window.webaios` (ui/install-api.ts). */
 export interface ApiWebaios {
-  fenetreId: IdFenetre;
+  fenetreId: WindowId;
   agir(action: Action): void;
-  surEtat(rappel: (e: EtatNavigateur) => void): () => void;
+  surEtat(rappel: (e: BrowserState) => void): () => void;
   /** `ongletId` null: the input opens a new tab (blank page). */
-  naviguer(ongletId: IdOnglet | null, saisie: string): void;
-  commande(ongletId: IdOnglet, c: CommandeOnglet): void;
+  naviguer(tabId: TabId | null, input: string): void;
+  commande(tabId: TabId, c: TabCommand): void;
   bornesContenu(b: Bornes): void;
   /** macOS: the window buttons follow the sidebar (hidden with it in compact mode). */
   boutonsFenetre(visibles: boolean): void;
   /** Compact mode: over a web page, the mouse changes zone relative to the left edge (see revelation.ts). */
   surZoneGauche(rappel: (zone: ZoneGauche) => void): () => void;
   /** The menu asks to open a UI panel (⌘Y…). */
-  surPanneau(rappel: (p: Panneau) => void): () => void;
-  surRaccourci(rappel: (r: Raccourci) => void): () => void;
-  surResultatRecherche(rappel: (r: ResultatRecherche) => void): () => void;
+  surPanneau(rappel: (p: Panel) => void): () => void;
+  surRaccourci(rappel: (r: ShortcutAction) => void): () => void;
+  surResultatRecherche(rappel: (r: SearchResult) => void): () => void;
   /** HTML fullscreen (video…): the UI fades away. */
-  surPleinEcran(rappel: (actif: boolean) => void): () => void;
+  surPleinEcran(rappel: (active: boolean) => void): () => void;
   historique: {
     /** `distinctes`: a single row per URL (address bar); otherwise one per URL and per space. */
-    rechercher(texte: string, limite?: number, distinctes?: boolean): Promise<Visite[]>;
+    rechercher(text: string, limit?: number, distinct?: boolean): Promise<Visite[]>;
     recents(): Promise<Visite[]>;
     /** `depuis`: ISO date; absent, the whole history. */
-    effacer(depuis?: string): Promise<void>;
+    effacer(from?: string): Promise<void>;
     /** Forgets the text kept for a visit (a URL in a space), without deleting the visit. */
-    oublierTexte(url: string, espaceId: string): Promise<void>;
+    oublierTexte(url: string, spaceId: string): Promise<void>;
   };
   telechargements: {
-    liste(): Promise<Telechargement[]>;
+    liste(): Promise<Download[]>;
     ouvrir(id: string): void;
     montrer(id: string): void;
     annuler(id: string): void;
   };
-  surTelechargements(rappel: (liste: Telechargement[]) => void): () => void;
+  surTelechargements(rappel: (list: Download[]) => void): () => void;
   permissions: {
-    enAttente(): Promise<DemandeEnAttente[]>;
+    enAttente(): Promise<PendingRequest[]>;
     /** `o.confirme`: the « Je comprends » box of a hardened extension card is checked. */
     repondre(id: string, decision: Decision, droits?: DroitDev[], o?: { confirme?: boolean }): void;
   };
-  surPermissions(rappel: (liste: DemandeEnAttente[]) => void): () => void;
+  surPermissions(rappel: (list: PendingRequest[]) => void): () => void;
   /**
    * A modal opens: the keyboard returns to the UI, and the page shown by `ongletId` is captured (reduced JPEG data URL)
    * to stay visible, blurred, behind the modal. null: no page to show, or capture failed.
    */
-  apercuPage(ongletId: IdOnglet | null): Promise<string | null>;
+  apercuPage(tabId: TabId | null): Promise<string | null>;
   /** This window's ⌃Tab panel: sent 200 ms after the first ⌃Tab if ⌃ is still held; null closes it. */
-  surPanneauOnglets(rappel: (p: PanneauOnglets | null) => void): () => void;
+  surPanneauOnglets(rappel: (p: TabsPanel | null) => void): () => void;
   /** The ⌃Tab panel acts on the current cycle (no effect outside a cycle). */
-  parcoursOnglets(m: MessageParcours): void;
+  parcoursOnglets(m: TabCycleMessage): void;
   /** The command bar closes: the keyboard goes back to the displayed page (as soon as the UI shows it again). */
   rendreFocusPage(): void;
   /** This window's agent terminal. */
@@ -181,20 +181,20 @@ export interface ApiWebaios {
     ecrire(d: string): void;
     redimensionner(t: TailleTerminal): void;
     surDonnees(rappel: (d: string) => void): () => void;
-    surEtat(rappel: (e: EtatPanneauAgent) => void): () => void;
+    surEtat(rappel: (e: AgentPanelState) => void): () => void;
     /** Available agent profiles (the choice goes through the choisirProfilAgent action). */
     profils(): Promise<{ id: string; nom: string }[]>;
   };
   /** The agent's access to tabs (badges and bubble to cut it). */
   acces: {
-    etat(): Promise<EtatAcces>;
-    couper(id: IdOnglet, droit?: DroitDev): void;
+    etat(): Promise<AccessState>;
+    couper(id: TabId, droit?: DroitDev): void;
   };
   /** The agent's access to a tab changed: the full state is broadcast again. */
-  surAcces(rappel: (e: EtatAcces) => void): () => void;
+  surAcces(rappel: (e: AccessState) => void): () => void;
   /** Home page: the widgets of the agent space's accueil/widgets. */
   accueil: {
-    lire(): Promise<WidgetAffiche[]>;
+    lire(): Promise<ShownWidget[]>;
     /** A widget, its layout, its data or its state changed: re-read. */
     surChange(rappel: () => void): () => void;
     /** New layout (all placed widgets); refused if a placement leaves the grid or targets an unknown id. */
@@ -207,7 +207,7 @@ export interface ApiWebaios {
      */
     ouvrir(url: string, id: string): void;
     /** Login profiles a grant can use (never a private space's). */
-    profilsPourAccord(): Promise<ProfilPourAccord[]>;
+    profilsPourAccord(): Promise<ProfileForGrant[]>;
     /**
      * The user authorizes the widget to read with their account, in this profile. `compte` and `publiques`: exactly what the
      * card showed them; refused (with the error) if the declaration changed since.
@@ -229,29 +229,29 @@ export interface ApiWebaios {
   workflow: {
     catalogue(): Promise<CatalogueBloc[]>;
     /** null: unknown widget or action, or without a workflow. */
-    lire(cible: Owner): Promise<EditionWorkflow | null>;
-    enregistrer(cible: Owner, brouillon: Brouillon): Promise<SaveResult & { avertissements: Warning[] }>;
-    lireCode(cible: Owner, nom: string): Promise<{ texte: string } | { absent: true } | { erreur: string }>;
-    enregistrerCode(cible: Owner, nom: string, texte: string): Promise<{ ok: true } | { ok: false; erreur: string }>;
+    lire(target: Owner): Promise<EditionWorkflow | null>;
+    enregistrer(target: Owner, draft: Draft): Promise<SaveResult & { avertissements: Warning[] }>;
+    lireCode(target: Owner, name: string): Promise<{ texte: string } | { absent: true } | { erreur: string }>;
+    enregistrerCode(target: Owner, name: string, text: string): Promise<{ ok: true } | { ok: false; erreur: string }>;
     /** A trial; for an action, its page shows in the preview, never as the latest result. */
-    rejouer(cible: Owner, execution: string, bloc: string): Promise<AttemptResult>;
+    rejouer(target: Owner, execution: string, bloc: string): Promise<AttemptResult>;
     /**
      * Starts a real execution now; returns its id (absent if the agent is stopped or nothing ran). An action
      * receives `saisie` and may return the refusal (`erreur`: required input, required grant…).
      */
-    lancer(cible: Owner, saisie?: string | null): Promise<{ execution?: string; erreur?: string }>;
+    lancer(target: Owner, input?: string | null): Promise<{ execution?: string; erreur?: string }>;
     /** The block selected in this window's builder (for workflow_ouvert). */
-    selection(cible: Owner, bloc: string | null): void;
+    selection(target: Owner, bloc: string | null): void;
     /** The executions of the running widgets (those of actions: `actions.direct`). */
     direct(): Promise<DirectState>;
     surDirect(rappel: (e: DirectState) => void): () => void;
   };
   /** Local AI (Kev and Gemma) of the harvests. */
   ia: {
-    etat(): Promise<EtatIaAffiche>;
+    etat(): Promise<LocalAiStateShown>;
     /** Downloads Kev and Gemma (several gigabytes): only on a click by the user. */
     installer(): Promise<{ ok: boolean; erreur?: string }>;
-    surEtat(rappel: (e: EtatIaAffiche) => void): () => void;
+    surEtat(rappel: (e: LocalAiStateShown) => void): () => void;
     /** A line of the install output. */
     surProgres(rappel: (ligne: string) => void): () => void;
   };
@@ -260,16 +260,16 @@ export interface ApiWebaios {
    * (`ACTIONS_EN_ESPACE_PRIVE`, or nothing: `[]`, `null`).
    */
   actions: {
-    liste(): Promise<ActionAffichee[]>;
+    liste(): Promise<ActionShown[]>;
     /** An action, a component or a latest result changed: re-read. */
     surChange(rappel: () => void): () => void;
     /**
      * Choosing a suggestion: the action's page opens (or the one showing the running execution) and the action is
      * started, unless it is already running or its required input is missing.
      */
-    ouvrir(id: string, saisie: string | null): Promise<{ ok: true } | { ok: false; erreur: string }>;
+    ouvrir(id: string, input: string | null): Promise<{ ok: true } | { ok: false; erreur: string }>;
     /** « Relancer » from the page: returns the outcome of the execution, when it ends. */
-    lancer(id: string, saisie: string | null): Promise<LaunchResult>;
+    lancer(id: string, input: string | null): Promise<LaunchResult>;
     arreter(id: string): void;
     /** This result (null: the latest), without rerunning anything; null if there is none. */
     page(id: string, execution: string | null): Promise<PageAction | null>;
@@ -281,7 +281,7 @@ export interface ApiWebaios {
     /** A link from the page: opened in a tab only if the address appears as is in the results. */
     ouvrirLien(id: string, execution: string, url: string): void;
     /** Login profiles a grant can use (never a private space's). */
-    profilsPourAccord(): Promise<ProfilPourAccord[]>;
+    profilsPourAccord(): Promise<ProfileForGrant[]>;
     /** As for a widget; nothing is started (the user reruns from the page). */
     accorder(a: Accord): Promise<{ ok: true } | { ok: false; erreur: string }>;
     /** Removes the grant and erases executions, results and memory. */
@@ -293,14 +293,14 @@ export interface ApiWebaios {
   };
   /** Applications page (projects of the agent's space). */
   applications: {
-    liste(): Promise<ListeApplications>;
+    liste(): Promise<ApplicationList>;
     /** A project or an app's state changed: re-read. */
     surChange(rappel: () => void): () => void;
     agir(dossier: string, action: ActionApplication): void;
   };
   /** « Sites » section of the Applications page: the site apps of the agent's space. */
   sites: {
-    liste(): Promise<SiteAffiche[]>;
+    liste(): Promise<ShownSite[]>;
     /** A site app appeared, changed, opened or closed: re-read. */
     surChange(rappel: () => void): () => void;
     agir(id: string, action: ActionSite): void;
@@ -310,11 +310,11 @@ export interface ApiWebaios {
      * Installs a Chrome Web Store extension (its page address or id) in this window's active space, after the
      * grant card. Unreadable input: « Adresse ou identifiant du Chrome Web Store attendu ».
      */
-    installerStore(saisie: string): Promise<{ ok: true } | { ok: false; erreur: string }>;
+    installerStore(input: string): Promise<{ ok: true } | { ok: false; erreur: string }>;
     /** The installed or granted extensions, and the agent's folders never granted, seen from this space. */
-    pourEspace(espaceId: IdEspace): Promise<LigneExtensionEspace[]>;
+    pourEspace(spaceId: SpaceId): Promise<SpaceExtensionLine[]>;
     /** Enables or disables an extension in this space's profile (the agent without a grant goes through the card). */
-    basculer(cle: string, espaceId: IdEspace, actif: boolean): Promise<{ ok: true } | { ok: false; erreur: string }>;
+    basculer(key: string, spaceId: SpaceId, active: boolean): Promise<{ ok: true } | { ok: false; erreur: string }>;
     /** The extension registry changed (or their errors): re-read. */
     surChange(rappel: () => void): () => void;
     /** All the registry's extensions (Extensions page). */
@@ -322,38 +322,38 @@ export interface ApiWebaios {
     /** Is « Désactiver toutes les extensions » in force? */
     coupees(): Promise<boolean>;
     /** The extensions loaded in the profile of this window's active space. */
-    barre(): Promise<BarreExtensions>;
-    epingler(cle: string, oui: boolean): Promise<ResultatExtension>;
+    barre(): Promise<ExtensionsBar>;
+    epingler(key: string, yes: boolean): Promise<ExtensionResult>;
     /** Removed from all profiles (the grant stays). */
-    desactiverPartout(cle: string): Promise<ResultatExtension>;
+    desactiverPartout(key: string): Promise<ExtensionResult>;
     /** Store: uninstalled; agent: grant and copy erased (the agent's folder stays). */
-    supprimer(cle: string): Promise<ResultatExtension>;
+    supprimer(key: string): Promise<ExtensionResult>;
     /** « Désactiver toutes les extensions »: nothing is loaded while it is true, even after a restart. */
-    toutCouper(oui: boolean): Promise<ResultatExtension>;
+    toutCouper(yes: boolean): Promise<ExtensionResult>;
     /** The card of the pending update (Store) or of the widened scope (agent), in this window. */
-    revoir(cle: string): Promise<ResultatExtension>;
+    revoir(key: string): Promise<ExtensionResult>;
     /** An extension disabled for its crashes starts again (where it was active). */
-    reactiver(cle: string): Promise<ResultatExtension>;
+    reactiver(key: string): Promise<ExtensionResult>;
     /** « Couper le déblocage » of an agent extension's console. */
-    couperDeblocage(cle: string): Promise<ResultatExtension>;
+    couperDeblocage(key: string): Promise<ExtensionResult>;
   };
   /** Design mode of this window's active tab, and baskets of notes. */
   design: ApiDesign;
   externes: ApiExternes;
-  relecture: ApiRelecture;
+  relecture: ReviewApi;
 }
 
 
-export type ResultatExtension = { ok: true } | { ok: false; erreur: string };
+export type ExtensionResult = { ok: true } | { ok: false; erreur: string };
 
 /** An app as the page displays it: what the manager says, and what the browser kept of it. */
-export type ApplicationAffichee = Application & { favicon?: string; dernierLancement?: string };
-export interface ListeApplications {
+export type ApplicationShown = Application & { favicon?: string; dernierLancement?: string };
+export interface ApplicationList {
   atelier: "ok" | "docker-absent";
-  applications: ApplicationAffichee[];
+  applications: ApplicationShown[];
 }
 /** A single path segment: no separator, no `.`/`..`, no NUL. */
-const segmentValide = (d: string) => d !== "" && d !== "." && d !== ".." && !/[/\\\0]/.test(d);
+const validSegment = (d: string) => d !== "" && d !== "." && d !== ".." && !/[/\\\0]/.test(d);
 /** Possible actions on a « Sans fiche » project whose folder name cannot be launched (`My Project`, `_tmp`…). */
 const SUR_TOUT_DOSSIER = new Set(["deboguer", "supprimer", "dossier"]);
 
@@ -362,7 +362,7 @@ export const SchemaActionApplication = z
     dossier: z.string(),
     action: z.enum(["lancer", "arreter", "relancer", "ouvrir", "deboguer", "supprimer", "promouvoir", "dossier", "relire"]),
   })
-  .refine(({ dossier, action }) => (SUR_TOUT_DOSSIER.has(action) ? segmentValide(dossier) : validFolder(dossier)));
+  .refine(({ dossier, action }) => (SUR_TOUT_DOSSIER.has(action) ? validSegment(dossier) : validFolder(dossier)));
 export type ActionApplication = z.infer<typeof SchemaActionApplication>["action"];
 
 /** An action on a site app: its id follows `ID_SITE` (never a path). */
@@ -372,29 +372,29 @@ export const SchemaActionSite = z.object({
 });
 
 /** A card of the ⌃Tab panel: `apercu` is a JPEG data URL, null if the tab was never captured. */
-export interface CartePanneauOnglets {
-  id: IdOnglet;
+export interface TabsPanelCard {
+  id: TabId;
   titre: string;
   favicon: string | null;
   apercu: string | null;
 }
 /** ⌃Tab panel: at most 7 cards (sliding window), `selection` is an index into `cartes`. */
-export interface PanneauOnglets {
-  cartes: CartePanneauOnglets[];
+export interface TabsPanel {
+  cartes: TabsPanelCard[];
   selection: number;
 }
 /** Messages from the ⌃Tab panel to the main process (Esc, click, hover, Tab on the UI's keyboard). */
-export const SchemaMessageParcours = z.discriminatedUnion("type", [
+export const WalkMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("valider") }),
   z.object({ type: z.literal("annuler") }),
   z.object({ type: z.literal("choisir"), id }),
   z.object({ type: z.literal("survoler"), id }),
   z.object({ type: z.literal("avancer"), delta: z.union([z.literal(1), z.literal(-1)]) }),
 ]);
-export type MessageParcours = z.infer<typeof SchemaMessageParcours>;
+export type TabCycleMessage = z.infer<typeof WalkMessageSchema>;
 
 /** What a window's agent panel shows. */
-export type EtatPanneauAgent =
+export type AgentPanelState =
   | { etat: "preparation" }
   | { etat: "docker-absent" }
   | { etat: "erreur"; message: string }
@@ -405,9 +405,9 @@ const idWidget = z.string().regex(/^[a-z0-9-]+$/).max(100);
 /** Id of an action (name of its folder under `~/WebAiOs/actions`). */
 export const SchemaIdAction = z.string().regex(/^[a-z0-9-]{1,60}$/);
 /** Input of an action coming from the UI: bounded here, cut by the kernel. */
-export const SchemaSaisieAction = z.string().max(2000).nullable();
+export const ActionInputSchema = z.string().max(2000).nullable();
 /** What the builder opens: a widget's workflow or an action's. */
-export const SchemaCible = z.discriminatedUnion("type", [
+export const TargetSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("widget"), id: idWidget }).strict(),
   z.object({ type: z.literal("action"), id: SchemaIdAction }).strict(),
 ]);
@@ -418,14 +418,14 @@ export const SchemaCible = z.discriminatedUnion("type", [
  */
 export const SchemaBlocWorkflow = z.string().min(1).max(200);
 /** Name of a widget code file: a `.mjs` at the root of its folder. */
-export const SchemaNomCode = z.string().regex(/^[a-z0-9-]+\.mjs$/).max(64);
+export const NameCodeSchema = z.string().regex(/^[a-z0-9-]+\.mjs$/).max(64);
 /** Text of a `.mjs`: 256 KB at most (in bytes, as on write). */
 export const SchemaCodeWorkflow = z.string().max(256 * 1024).refine((t) => new TextEncoder().encode(t).length <= 256 * 1024, "code trop gros");
 /**
  * Builder draft: bounded but not necessarily valid for the engine (`enregistrerWorkflow` answers).
  * The parameters stay free: the engine validates them.
  */
-export const SchemaBrouillon = z.object({
+export const DraftSchema = z.object({
   version: z.literal(1),
   blocs: z
     .array(
@@ -442,20 +442,20 @@ export const SchemaBrouillon = z.object({
 });
 
 /** The block selected in a window's builder, and the workflow (widget or action) where it is. */
-export type SelectionConstructeur = { widget: string; bloc: string | null } | { action: string; bloc: string | null };
+export type BuilderSelection = { widget: string; bloc: string | null } | { action: string; bloc: string | null };
 /**
  * The block selected in the builder: an invalid block becomes « none » (`workflow_ouvert` never shows
  * the old one); null, message ignored, if the target is invalid.
  */
-export function selectionConstructeur(v: unknown): SelectionConstructeur | null {
+export function builderSelection(v: unknown): BuilderSelection | null {
   const o = v as { cible?: unknown; bloc?: unknown } | null;
-  const cible = SchemaCible.safeParse(o?.cible);
-  if (!cible.success) return null;
+  const target = TargetSchema.safeParse(o?.cible);
+  if (!target.success) return null;
   const r = SchemaBlocWorkflow.safeParse(o?.bloc);
   const bloc = r.success ? r.data : null;
-  return cible.data.type === "widget" ? { widget: cible.data.id, bloc } : { action: cible.data.id, bloc };
+  return target.data.type === "widget" ? { widget: target.data.id, bloc } : { action: target.data.id, bloc };
 }
-export type Brouillon = z.infer<typeof SchemaBrouillon>;
+export type Draft = z.infer<typeof DraftSchema>;
 
 export type EditionWorkflow = DraftRead & {
   avertissements: Warning[];
@@ -481,9 +481,9 @@ export type EditionWorkflow = DraftRead & {
 };
 /** Id of an execution: its ISO start without « : » or « . » (never a path). */
 export const SchemaIdExecution = z.string().regex(ID_EXECUTION).max(64);
-const domaine = z.string().min(1).max(253);
+const domain = z.string().min(1).max(253);
 export const SchemaAccord = z
-  .object({ id: idWidget, profil: z.string().min(1).max(200), compte: z.array(domaine).max(100), publiques: z.array(domaine).max(100) })
+  .object({ id: idWidget, profil: z.string().min(1).max(200), compte: z.array(domain).max(100), publiques: z.array(domain).max(100) })
   .strict();
 export type Accord = z.infer<typeof SchemaAccord>;
 export const SchemaTailleTerminal = z.object({ cols: z.number().int().min(2).max(1000), rows: z.number().int().min(2).max(1000) });
@@ -499,7 +499,7 @@ export interface Placement {
 }
 
 /** A home page widget, as the UI displays it. */
-export type WidgetAffiche =
+export type ShownWidget =
   | {
       id: string;
       nom: string;
@@ -523,7 +523,7 @@ export type WidgetAffiche =
     }
   | { id: string; erreur: string; placement: Placement };
 
-export interface ProfilPourAccord {
+export interface ProfileForGrant {
   id: string;
   /** « Profil de « Perso, Travail » »: the spaces that use it. */
   libelle: string;
@@ -532,7 +532,7 @@ export interface ProfilPourAccord {
 }
 
 /** State of the local AI for the indicator; `verification`: what is in place (absent if not checked). */
-export interface EtatIaAffiche {
+export interface LocalAiStateShown {
   etat: AiState;
   erreur?: string;
   verification?: { kev: boolean; uv: boolean; ollama: boolean; gemma: boolean };
@@ -541,9 +541,9 @@ export interface EtatIaAffiche {
 /** What an app window's badge UI gets (ui/badge-api.ts): the agent's access and its app's design mode. */
 export type ApiPastille = Pick<ApiWebaios, "acces" | "surAcces"> & {
   /** Asks the main process to enlarge (bubble open) or shrink the badge's view. */
-  pastilleTaille(ouverte: boolean): void;
+  pastilleTaille(opened: boolean): void;
   /** The design mode of the app window; « Panier » opens it in the window's overlay. */
-  design: { etat(): Promise<EtatDesign>; basculer(): void; panier(): void; relire(): void };
+  design: { etat(): Promise<DesignState>; basculer(): void; panier(): void; relire(): void };
 };
 
 /**
@@ -551,8 +551,8 @@ export type ApiPastille = Pick<ApiWebaios, "acces" | "surAcces"> & {
  * the sender, never by what the UI says.
  */
 export interface ApiSite {
-  etat(): Promise<EtatFenetreSite | null>;
-  surEtat(rappel: (e: EtatFenetreSite) => void): () => void;
+  etat(): Promise<SiteWindowState | null>;
+  surEtat(rappel: (e: SiteWindowState) => void): () => void;
   /** « Entrer dans le site »: the site view, loaded on the start address the first time only. */
   entrer(): void;
   /** ⌂: back to the home screen, the site page stays loaded underneath. */
@@ -569,16 +569,16 @@ export interface ApiSite {
    * no: the next view without tweaks or resume, for this opening only (the card comes back at the next one).
    * `empreinte`: that of the clicked card; if the rights changed since, nothing is granted and the card comes back up to date.
    */
-  accorder(oui: boolean, empreinte: string): Promise<void>;
+  accorder(yes: boolean, hash: string): Promise<void>;
   /** For the home screen: the app's memory and its resume positions (read), and the current domain. */
-  memoire(): Promise<MessageVersLAccueil & { type: "memoire" }>;
+  memoire(): Promise<MessageToHome & { type: "memoire" }>;
   /** Each change of the app's memory; returns the unsubscribe. */
-  surMemoire(rappel: (m: MessageVersLAccueil & { type: "memoire" }) => void): () => void;
+  surMemoire(rappel: (m: MessageToHome & { type: "memoire" }) => void): () => void;
   /**
    * The home asks for a site address (relative or on one of its domains): the site view goes there, on the
    * current domain. False if it is refused, or if another was just opened (one per `ECART_OUVERTURE_ACCUEIL_MS`).
    */
-  ouvrir(adresse: string): Promise<boolean>;
+  ouvrir(url: string): Promise<boolean>;
   /** An image of an app domain, loaded with its session, as `data:`; null if it is refused. */
   image(url: string): Promise<string | null>;
   /** The bar's « Extensions » menu (plan 16): the Store extensions, enabled for this app only. */
@@ -586,9 +586,9 @@ export interface ApiSite {
     /** The Store extensions, and their state in this app. */
     liste(): Promise<LigneExtensionSite[]>;
     /** The switch: the site view is reloaded after a success (the already loaded page only). */
-    basculer(cle: string, actif: boolean): Promise<ResultatExtension>;
+    basculer(key: string, active: boolean): Promise<ExtensionResult>;
     /** Partition `persist:site-<id>`, tab = id of the view in « site » view (otherwise null), and the loaded extensions. */
-    barre(): Promise<BarreExtensions>;
+    barre(): Promise<ExtensionsBar>;
     /** `CANAUX.extensionsChange`; returns the unsubscribe. */
     surChange(rappel: () => void): () => void;
     /** The Extensions page, in a main window. */
@@ -603,7 +603,7 @@ export interface ApiSite {
    * the sender. `surChange` only listens to `CANAUX.designChange` (the counter follows), without any action.
    */
   design: {
-    etat(): Promise<EtatDesign>;
+    etat(): Promise<DesignState>;
     basculer(): void;
     relire(): void;
     ouvrirPanier(): void;
@@ -612,7 +612,7 @@ export interface ApiSite {
 }
 
 /** The design mode of a target (a window's active tab, or an app window). */
-export interface EtatDesign {
+export interface DesignState {
   actif: boolean;
   projet: TrackedProject | null;
   /** Reason why design mode is not offered here; null if it is. */
@@ -627,7 +627,7 @@ export interface EtatDesign {
   nom: string;
 }
 /** A note as the basket and the history display it: text, never HTML. */
-export interface ElementAffiche {
+export interface ShownElement {
   id: string;
   type: "design" | "relecture";
   etiquette: string;
@@ -635,28 +635,28 @@ export interface ElementAffiche {
   source: string | null;
   traite: { quand: string; note?: string } | null;
 }
-export interface LotAffiche {
+export interface BatchShown {
   id: string;
   cree: string;
   etat: BatchState;
   destination: "agent" | "mcp";
-  elements: ElementAffiche[];
+  elements: ShownElement[];
 }
 export interface ApiDesign {
-  etat(): Promise<EtatDesign>;
+  etat(): Promise<DesignState>;
   /** ⌘⇧D: no effect where the mode is unavailable. */
   basculer(): void;
-  panier(projet: ProjectId): Promise<ElementAffiche[]>;
-  retirer(projet: ProjectId, id: string): Promise<void>;
-  envoyer(projet: ProjectId): Promise<ResultatExtension>;
-  lots(projet: ProjectId): Promise<LotAffiche[]>;
-  traite(projet: ProjectId, lot: string): Promise<void>;
+  panier(project: ProjectId): Promise<ShownElement[]>;
+  retirer(project: ProjectId, id: string): Promise<void>;
+  envoyer(project: ProjectId): Promise<ExtensionResult>;
+  lots(project: ProjectId): Promise<BatchShown[]>;
+  traite(project: ProjectId, lot: string): Promise<void>;
   /** « Relire ce projet » (`app` and `externe` projects). */
   relire(): void;
   surChange(rappel: () => void): () => void;
 }
 /** What the overlay shows: a note's bubble (targeted element) or an app window's basket. */
-export interface ContexteCalque {
+export interface OverlayContext {
   /** « message »: why ⌘⇧D does nothing in the tab (empty project, never a basket). */
   mode: "bulle" | "panier" | "message";
   /** The text of the « message » mode; null elsewhere. */
@@ -670,25 +670,25 @@ export interface ContexteCalque {
   avertissement: string | null;
 }
 /** The single API of the design mode overlay (`design.html`); the main process recognizes its target by the sender. */
-export type ApiCalque = {
-  contexte(): Promise<ContexteCalque | null>;
-  ajouter(texte: string): Promise<ResultatExtension>;
+export type OverlayApi = {
+  contexte(): Promise<OverlayContext | null>;
+  ajouter(text: string): Promise<ExtensionResult>;
   /** Esc or « Annuler » in the bubble; « Fermer » of the basket. */
   annuler(): void;
 } & Pick<ApiDesign, "panier" | "retirer" | "envoyer" | "lots" | "traite" | "surChange">;
 /** Text of a note: bounded at the entry of the main process. */
-export const TEXTE_REMARQUE_MAX = 4000;
+export const REMARK_TEXT_MAX = 4000;
 
 /** « Projets externes » section of the Applications page: the external MCP, its projects and its clients (never a token). */
-export interface EtatExternes {
+export interface ExternalsState {
   serveur: { etat: "pret"; port: number } | { etat: "eteint"; raison: string };
   projets: (ExternalProject & { client: string | null; nomClient: string | null })[];
   clients: { id: string; nom: string; cree: string }[];
 }
 export interface ApiExternes {
-  liste(): Promise<EtatExternes>;
+  liste(): Promise<ExternalsState>;
   /** The command to copy into Claude Code's terminal: the token appears there only once. */
-  brancher(nom: string): Promise<{ commande: string }>;
+  brancher(name: string): Promise<{ commande: string }>;
   revoquer(id: string): Promise<void>;
   oublier(id: string): Promise<void>;
   /** « Relire »: the project's review page. */
@@ -697,7 +697,7 @@ export interface ApiExternes {
 }
 
 /** Review page: what it shows of a project (the diff since the last review), or why it cannot. */
-export type VueRelecture =
+export type ReviewView =
   | {
       etat: "ok"; nom: string; jeton: string; comparaison: { fichiers: ModifiedFile[] }; commentaires: Comment[];
       /** Who the comments go to (« l'agent », « Claude Code (…) »); otherwise why they cannot be sent. */
@@ -705,25 +705,25 @@ export type VueRelecture =
     }
   | { etat: "indisponible"; nom: string; raison: string };
 export type { DiffFile as DiffFichier, ModifiedFile as FichierModifie, Comment as Commentaire };
-export interface ApiRelecture {
+export interface ReviewApi {
   /**
    * Compares the project to its last review and returns the token of that comparison (kept by the main process).
    * With the token of a comparison still kept: that one, without comparing again; « Rafraîchir » does not pass one.
    */
-  ouvrir(projet: ProjectId, jeton?: string): Promise<VueRelecture>;
+  ouvrir(project: ProjectId, token?: string): Promise<ReviewView>;
   /** The diff of one file of the token's comparison (never another path); a token no longer kept is refused. */
-  fichier(projet: ProjectId, jeton: string, chemin: string): Promise<DiffFile>;
+  fichier(project: ProjectId, token: string, path: string): Promise<DiffFile>;
   /** Lines `debut`..`fin` (from 1) of the current version of a file of the token's comparison. */
-  lignes(projet: ProjectId, jeton: string, chemin: string, debut: number, fin: number): Promise<string[]>;
+  lignes(project: ProjectId, token: string, path: string, debut: number, fin: number): Promise<string[]>;
   /** The project's comments, as saved. */
-  commentaires(projet: ProjectId): Promise<Comment[]>;
+  commentaires(project: ProjectId): Promise<Comment[]>;
   /** A comment on lines of a single block of the token's diff; the lines are read by the main process. */
-  commenter(projet: ProjectId, jeton: string, c: { fichier: string; debut: number; fin: number; texte: string }): Promise<ResultatExtension>;
-  modifierCommentaire(projet: ProjectId, id: string, texte: string): Promise<void>;
-  resoudre(projet: ProjectId, id: string, resolu: boolean): Promise<void>;
-  supprimerCommentaire(projet: ProjectId, id: string): Promise<void>;
+  commenter(project: ProjectId, token: string, c: { fichier: string; debut: number; fin: number; texte: string }): Promise<ExtensionResult>;
+  modifierCommentaire(project: ProjectId, id: string, text: string): Promise<void>;
+  resoudre(project: ProjectId, id: string, resolved: boolean): Promise<void>;
+  supprimerCommentaire(project: ProjectId, id: string): Promise<void>;
   /** Unresolved comments go out as one batch (agent: pre-filled, never sent; external: MCP queue). */
-  envoyer(projet: ProjectId): Promise<ResultatExtension>;
+  envoyer(project: ProjectId): Promise<ExtensionResult>;
   /** « Marquer comme relu »: keeps the tree shown by the token's comparison, then returns a new comparison. */
-  relu(projet: ProjectId, jeton: string): Promise<VueRelecture>;
+  relu(project: ProjectId, token: string): Promise<ReviewView>;
 }

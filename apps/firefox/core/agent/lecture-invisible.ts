@@ -1,24 +1,24 @@
 import { localUrl } from "@webaios/noyau";
-import type { EtatNavigateur, IdProfil } from "../../shared/modele";
+import type { BrowserState, ProfileId } from "../../shared/modele";
 
 /** At most 2 MB of rendered HTML for an invisible HTML read. */
 export const HTML_MAX = 2 * 1024 * 1024;
 
 /** The login profiles a read can use: those of the state that no private space uses. */
-export function profilsLisibles(etat: Pick<EtatNavigateur, "profils" | "espaces">): IdProfil[] {
-  const prives = new Set(etat.espaces.filter((e) => e.prive).map((e) => e.profil));
-  return etat.profils.map((p) => p.id).filter((id) => !prives.has(id));
+export function readableProfiles(state: Pick<BrowserState, "profils" | "espaces">): ProfileId[] {
+  const privates = new Set(state.espaces.filter((e) => e.prive).map((e) => e.profil));
+  return state.profils.map((p) => p.id).filter((id) => !privates.has(id));
 }
 
 /** A comparable host name: lowercase, without a trailing dot (`exemple.test.` is `exemple.test`). */
-const normaliser = (hote: string) => hote.toLowerCase().replace(/\.+$/, "");
+const normalize = (host: string) => host.toLowerCase().replace(/\.+$/, "");
 
 /**
  * The URL may be loaded: http(s) only, never an address of the machine or the local network (except
  * `adressesLocales`, tests only); with `domaines`, its host must be exactly one of them, as the
  * kernel checks (packages/noyau/src/widgets/recolte.ts, `verifierUrl`): a subdomain is not allowed there.
  */
-export function urlPermise(brute: string, domaines: readonly string[] | undefined, adressesLocales = false): boolean {
+export function allowedUrl(brute: string, domains: readonly string[] | undefined, localUrls = false): boolean {
   let u: URL;
   try {
     u = new URL(brute);
@@ -26,11 +26,11 @@ export function urlPermise(brute: string, domaines: readonly string[] | undefine
     return false;
   }
   if (u.protocol !== "http:" && u.protocol !== "https:") return false;
-  if (!adressesLocales && localUrl(u.hostname)) return false;
-  return !domaines || domaines.map(normaliser).includes(normaliser(u.hostname));
+  if (!localUrls && localUrl(u.hostname)) return false;
+  return !domains || domains.map(normalize).includes(normalize(u.hostname));
 }
 
-interface PartiesLues {
+interface PartsRead {
   titre: unknown;
   texte: unknown;
   liens: unknown;
@@ -44,67 +44,67 @@ interface PartiesLues {
  * line by line: the same price or the same label from one item to the next stays. Links are merged by address, with
  * the longest text seen. The title is that of the final read. The caps then apply, at formatting.
  */
-export function cumulerParties(releves: unknown[]): PartiesLues {
+export function accumulateParts(readings: unknown[]): PartsRead {
   let lignes: string[] = [];
   const liens = new Map<string, string>();
   let titre: unknown = "";
   let precedent: string[] | null = null;
-  for (const r of releves) {
-    const p = (r ?? {}) as Partial<PartiesLues>;
+  for (const r of readings) {
+    const p = (r ?? {}) as Partial<PartsRead>;
     titre = p.titre ?? titre;
-    const ici = String(p.texte ?? "").split("\n");
-    if (precedent === null) lignes = [...ici];
-    else lignes = ajouterSuite(lignes, precedent, ici);
-    precedent = ici;
+    const here = String(p.texte ?? "").split("\n");
+    if (precedent === null) lignes = [...here];
+    else lignes = addNext(lignes, precedent, here);
+    precedent = here;
     for (const l of Array.isArray(p.liens) ? (p.liens as unknown[]) : []) {
       const brut = (l as { url?: unknown; texte?: unknown } | null) ?? {};
       if (typeof brut.url !== "string") continue;
-      const texte = String(brut.texte ?? "");
-      if (texte.length > (liens.get(brut.url)?.length ?? -1)) liens.set(brut.url, texte);
+      const text = String(brut.texte ?? "");
+      if (text.length > (liens.get(brut.url)?.length ?? -1)) liens.set(brut.url, text);
     }
   }
-  return { titre, texte: lignes.join("\n"), liens: [...liens].map(([url, texte]) => ({ url, texte })) };
+  return { titre, texte: lignes.join("\n"), liens: [...liens].map(([url, text]) => ({ url, texte: text })) };
 }
 
 /** Trailing lines of the previous snapshot that can be ignored for the realignment (« Chargement… », « Voir plus » button). */
-const FIN_IGNOREE = 3;
+const IGNORED_END = 3;
 
 /** `cumul` completed with what `ici` shows anew compared to `avant`, the previous snapshot. */
-function ajouterSuite(cumul: string[], avant: string[], ici: string[]): string[] {
+function addNext(total: string[], before: string[], here: string[]): string[] {
   // Header: the first common lines.
   let debut = 0;
-  while (debut < ici.length && debut < avant.length && ici[debut] === avant[debut]) debut++;
+  while (debut < here.length && debut < before.length && here[debut] === before[debut]) debut++;
   // Footer: the last common lines, but only as long as the line before is also the same. Otherwise the
   // list's last price, identical by chance from one screen to the next, would be taken for footer.
   let pied = 0;
   const dernier = (t: string[], k: number) => t[t.length - 1 - k];
   while (
-    ici.length - pied - 1 > debut &&
-    avant.length - pied - 1 > debut &&
-    dernier(ici, pied) === dernier(avant, pied) &&
-    dernier(ici, pied + 1) === dernier(avant, pied + 1)
+    here.length - pied - 1 > debut &&
+    before.length - pied - 1 > debut &&
+    dernier(here, pied) === dernier(before, pied) &&
+    dernier(here, pied + 1) === dernier(before, pied + 1)
   ) {
     pied++;
   }
-  const listeAvant = avant.slice(debut, avant.length - pied);
-  const liste = ici.slice(debut, ici.length - pied);
+  const listBefore = before.slice(debut, before.length - pied);
+  const list = here.slice(debut, here.length - pied);
   // The realignment: the longest end of the previous list (give or take a few lines) that starts the new list.
-  let commun = 0;
-  for (let ignorees = 0; ignorees <= Math.min(FIN_IGNOREE, listeAvant.length) && commun === 0; ignorees++) {
-    const fin = listeAvant.length - ignorees;
+  let common = 0;
+  for (let ignored = 0; ignored <= Math.min(IGNORED_END, listBefore.length) && common === 0; ignored++) {
+    const fin = listBefore.length - ignored;
     // A single common line after ignored lines can be so by chance: at least two are then needed.
-    for (let k = Math.min(fin, liste.length); k > (ignorees > 0 ? 1 : 0); k--) {
-      let pareil = true;
-      for (let j = 0; j < k && pareil; j++) pareil = listeAvant[fin - k + j] === liste[j];
-      if (pareil) {
-        commun = k;
+    for (let k = Math.min(fin, list.length); k > (ignored > 0 ? 1 : 0); k--) {
+      let same = true;
+      for (let j = 0; j < k && same; j++) same = listBefore[fin - k + j] === list[j];
+      if (same) {
+        common = k;
         break;
       }
     }
   }
-  const suite = liste.slice(commun);
-  if (suite.length === 0) return cumul;
+  const suite = list.slice(common);
+  if (suite.length === 0) return total;
   // Before the footer already kept, if it ends the accumulation.
-  const piedGarde = pied > 0 && cumul.slice(-pied).every((l, i) => l === ici[ici.length - pied + i]) ? pied : 0;
-  return [...cumul.slice(0, cumul.length - piedGarde), ...suite, ...cumul.slice(cumul.length - piedGarde)];
+  const footer = pied > 0 && total.slice(-pied).every((l, i) => l === here[here.length - pied + i]) ? pied : 0;
+  return [...total.slice(0, total.length - footer), ...suite, ...total.slice(total.length - footer)];
 }

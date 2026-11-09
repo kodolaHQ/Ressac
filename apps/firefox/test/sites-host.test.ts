@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { accorderSite, spacePaths, DeclarationSite, lireAccordsSites, SiteMemory } from "../../../packages/noyau/src/index";
-import { modifierAvecAgent } from "../shared/sites";
-import { createSites, demandeAccord, empreinteDroits, SiteSouvenirs, type SitesChrome } from "../noyau/sites";
+import { editWithAgent } from "../shared/sites";
+import { createSites, grantRequest, rightsHash, SiteSouvenirs, type SitesChrome } from "../noyau/sites";
 import { SchemaActionSite } from "../shared/api";
 
 // A gate on lireSite: while armed, the next call waits (a slow read, for the deletion race).
@@ -240,7 +240,7 @@ describe("agir", () => {
   it("modifier pre-fills the agent terminal; relire and dossier do nothing here", async () => {
     const m = mount();
     await m.sites.agir("vidola", "modifier", "f1");
-    expect(m.preRemplir).toHaveBeenCalledWith("f1", modifierAvecAgent("vidola"));
+    expect(m.preRemplir).toHaveBeenCalledWith("f1", editWithAgent("vidola"));
     await m.sites.agir("vidola", "relire", "f1");
     await m.sites.agir("vidola", "dossier", "f1");
     expect(m.preRemplir).toHaveBeenCalledTimes(1);
@@ -539,13 +539,13 @@ describe("site rights, card and memory", () => {
   it("empreinteDroits follows the rights only", () => {
     const d = DeclarationSite.parse(demandee);
     // Rights drift: another sign-in domain changes it; a description does not.
-    expect(empreinteDroits(DeclarationSite.parse({ ...demandee, connexion: ["autre.example"] }))).not.toBe(empreinteDroits(d));
-    expect(empreinteDroits(DeclarationSite.parse({ ...demandee, description: "autre" }))).toBe(empreinteDroits(d));
+    expect(rightsHash(DeclarationSite.parse({ ...demandee, connexion: ["autre.example"] }))).not.toBe(rightsHash(d));
+    expect(rightsHash(DeclarationSite.parse({ ...demandee, description: "autre" }))).toBe(rightsHash(d));
   });
 
   it("demandeAccord gives the card (e2e 43): rights, files without duplicates, followed domains, hash", () => {
     const d = DeclarationSite.parse(demandee);
-    const carte = demandeAccord({ id: "vidola", declaration: d, aAccueil: false, domaines: ["vidola-a.example", "VIDOLA-C.example"], depart: "https://vidola-a.example/", accordRequis: true });
+    const carte = grantRequest({ id: "vidola", declaration: d, aAccueil: false, domaines: ["vidola-a.example", "VIDOLA-C.example"], depart: "https://vidola-a.example/", accordRequis: true });
     expect(carte).toEqual({
       nom: "Vidola",
       domaines: ["vidola-a.example", "vidola-b.example"],
@@ -555,7 +555,7 @@ describe("site rights, card and memory", () => {
       fichiers: ["a.js", "cacher.css"],
       correspond: ["/serie/*"],
       suivis: ["vidola-c.example"],
-      empreinte: empreinteDroits(d),
+      empreinte: rightsHash(d),
     });
   });
 

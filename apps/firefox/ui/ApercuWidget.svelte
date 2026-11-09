@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack } from "svelte";
-  import type { WidgetAffiche } from "../shared/api";
+  import type { ShownWidget } from "../shared/api";
   import { api } from "../ui/etat.svelte";
   import { ECART_PX, RANGEE_PX } from "../ui/grille";
   import { donneesApercu } from "../ui/constructeur/apercu";
@@ -16,7 +16,7 @@
 
   /** Width of a home column at its maximum width (1200 px, 12 columns). */
   const COLONNE_PX = 89;
-  let widget = $state.raw<WidgetAffiche | null>(null);
+  let widget = $state.raw<ShownWidget | null>(null);
 
   $effect(() => untrack(() => {
     let n = 0;

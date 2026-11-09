@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick, untrack } from "svelte";
-  import type { EtatFenetre, Onglet } from "../../shared/modele";
+  import type { WindowState, Tab } from "../../shared/modele";
   import { api, etat } from "../etat.svelte";
   import { fermerCommande, commande, focusPageVide } from "./commande.svelte";
   import {
@@ -17,8 +17,8 @@
     type OngletSource,
     type SourcesCommande,
   } from "./commande";
-  import { ongletsParcourables } from "../../shared/onglets-parcourables";
-  import type { ActionAffichee } from "../../shared/actions";
+  import { walkableTabs } from "../../shared/onglets-parcourables";
+  import type { ActionShown } from "../../shared/actions";
   import type { Visite } from "../../shared/modele";
   import IconeSite from "./IconeSite.svelte";
   import Icone, { type NomIcone } from "./Icone.svelte";
@@ -33,8 +33,8 @@
     cede,
     fermerPanneau,
   }: {
-    fenetre: EtatFenetre;
-    ongletActif: Onglet | undefined;
+    fenetre: WindowState;
+    ongletActif: Tab | undefined;
     /** The ⌃Tab panel is open on top: it keeps Escape. */
     cede: boolean;
     /** Closes the interface panel (history…) laid over the page. */
@@ -43,7 +43,7 @@
 
   // Actions are not available in a private space (a missing space counts as private), like on the empty page.
   const enPrive = $derived(etat.valeur?.espaces.find((e) => e.id === fenetre.espaceActif)?.prive ?? true);
-  let actions = $state.raw<ActionAffichee[]>([]);
+  let actions = $state.raw<ActionShown[]>([]);
   let projets = $state.raw<AppliSource[]>([]);
   let sites = $state.raw<AppliSource[]>([]);
   let historique = $state.raw<Visite[]>([]);
@@ -76,7 +76,7 @@
   const onglets = $derived.by<OngletSource[]>(() => {
     const e = etat.valeur;
     if (!e) return [];
-    return ongletsParcourables(e, fenetre.id).flatMap((id) => {
+    return walkableTabs(e, fenetre.id).flatMap((id) => {
       const o = e.onglets[id];
       return o ? [{ id: o.id, titre: o.titre, url: o.url, favicon: o.favicon }] : [];
     });

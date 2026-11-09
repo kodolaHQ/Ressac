@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ProfilPourAccord } from "../shared/api";
+  import type { ProfileForGrant } from "../shared/api";
 
   let {
     sujet,
@@ -16,12 +16,12 @@
     domaines: string[];
     publiques: string[];
     /** The profiles offered (never a private space's), read by the subject's service. */
-    profilsPourAccord: () => Promise<ProfilPourAccord[]>;
+    profilsPourAccord: () => Promise<ProfileForGrant[]>;
     autoriser: (profil: string) => void;
     fermer: () => void;
   } = $props();
 
-  let profils = $state<ProfilPourAccord[] | null>(null);
+  let profils = $state<ProfileForGrant[] | null>(null);
   let erreur = $state<string | null>(null);
   let choisi = $state<string | null>(null);
 

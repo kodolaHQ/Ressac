@@ -1,4 +1,4 @@
-import type { Telechargement } from "../../shared/modele";
+import type { Download } from "../../shared/modele";
 
 /** The fields of Firefox's Download that the list reads (pure: no Firefox global). */
 export interface DownloadLike {
@@ -14,15 +14,15 @@ export interface DownloadLike {
 }
 
 /** succeeded → termine, error → interrompu (blocked files too), canceled → annule, else en-cours; total 0 without progress. */
-export function toItem(id: string, d: DownloadLike): Telechargement {
+export function toItem(id: string, d: DownloadLike): Download {
   const etat = d.succeeded ? "termine" : d.error ? "interrompu" : d.canceled ? "annule" : "en-cours";
   return { id, nom: d.target.path.split(/[\\/]/).pop() ?? "", chemin: d.target.path, recus: d.currentBytes, total: d.hasProgress ? d.totalBytes : 0, etat };
 }
 
 export interface DownloadsList {
   /** Newest first (startTime). */
-  list(): Telechargement[];
-  onChange(cb: (l: Telechargement[]) => void): () => void;
+  list(): Download[];
+  onChange(cb: (l: Download[]) => void): () => void;
   /** termine only: download.launch() with the system's app. */
   open(id: string): void;
   /** download.showContainingDirectory(). */
@@ -41,7 +41,7 @@ export async function createDownloads(refused: (userContextId: number) => boolea
   const { Downloads } = ChromeUtils.importESModule("resource://gre/modules/Downloads.sys.mjs");
   const downloads = new Set<FirefoxDownload>();
   const ids = new WeakMap<FirefoxDownload, string>();
-  const listeners = new Set<(l: Telechargement[]) => void>();
+  const listeners = new Set<(l: Download[]) => void>();
   const idOf = (d: FirefoxDownload) => ids.get(d) ?? (ids.set(d, crypto.randomUUID()), ids.get(d)!);
   const list = () =>
     [...downloads].sort((a, b) => b.startTime.getTime() - a.startTime.getTime()).map((d) => toItem(idOf(d), d));

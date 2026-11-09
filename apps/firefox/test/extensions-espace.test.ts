@@ -1,8 +1,8 @@
 import { expect, test } from "vitest";
-import type { Espace } from "../shared/modele";
+import type { Space } from "../shared/modele";
 import { avertissements } from "../ui/composants/extensionsEspace";
 
-const espace = (id: string, nom: string, profil: string, prive = false): Espace => ({ id, nom, icone: "📁", epingles: [], prive, profil }) as Espace;
+const espace = (id: string, nom: string, profil: string, prive = false): Space => ({ id, nom, icone: "📁", epingles: [], prive, profil }) as Space;
 const espaces = [espace("e1", "Perso", "defaut"), espace("e2", "Lecture", "defaut"), espace("e3", "Banque", "banque")];
 const agent = { cle: "agent:cacheur", nom: "Cacheur", source: "agent" as const, profils: ["defaut"] };
 const store = { cle: `store:${"a".repeat(32)}`, nom: "Bloqueur", source: "store" as const, profils: ["defaut"] };

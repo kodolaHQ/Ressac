@@ -11,8 +11,8 @@ export type { ChangeHost } from "../../../../packages/noyau/src/workflows/menage
 export type { PageLue } from "../../../../packages/noyau/src/workflows/protocole";
 // Copied: design/remarques.ts imports node:crypto and node:fs. What core/design/viseur.ts imports, so it
 // loads as is in the store (test/shims.test.ts compares them with the originals).
-import { HTML_MAX, TRONQUE } from "../../shared/design-guards";
-export { HTML_MAX, TRONQUE as TRUNCATED };
+import { HTML_MAX, TRUNCATED } from "../../shared/design-guards";
+export { HTML_MAX, TRUNCATED as TRUNCATED };
 export const MARGE_CAPTURE = 16;
 export const VIEWFINDER_WORLD = 1999;
 export const STYLES_UTILES = [
@@ -22,5 +22,5 @@ export const STYLES_UTILES = [
   "border-radius", "display", "position",
 ] as const;
 export function truncateHtml(html: string): string {
-  return html.length > HTML_MAX ? html.slice(0, HTML_MAX) + TRONQUE : html;
+  return html.length > HTML_MAX ? html.slice(0, HTML_MAX) + TRUNCATED : html;
 }

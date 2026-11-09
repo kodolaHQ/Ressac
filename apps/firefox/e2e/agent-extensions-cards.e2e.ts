@@ -5,7 +5,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { Action } from "../shared/api";
 import { ecrireExtensionAgent } from "./extensions/fixtures";
 import { CONSOLE_BACKGROUND_HIDDEN, CONSOLE_FOND_OBSERVE, EXTENSION_CONSOLE_PREFIX } from "../../../packages/noyau/src/index";
-import { signatureRefusee } from "../noyau/extensions/amo";
+import { deniedSignature } from "../noyau/extensions/amo";
 import { agentAddons, launchWithAmo, openTab } from "./agent-extensions";
 import { dispatch, newWindow, state, waitFor, waitWindowCount } from "./firefox";
 import type { LaunchedWebAiOs } from "./launch";
@@ -145,7 +145,7 @@ describe("the agent's tools and their card", () => {
     const w = await launch({ amo: { refus: "Validation failed: eval" } });
     ecrireExtensionAgent(w.racine, "fond", FOND_SEUL);
     const r = await activerParLAgent(w, "fond", "Fond de l'agent");
-    expect(r).toBe(signatureRefusee("Validation failed: eval"));
+    expect(r).toBe(deniedSignature("Validation failed: eval"));
     expect(r).not.toContain("test-secret");
     expect(await agentAddons(w.marionette)).toEqual([]);
     expect(registry(w.dataDir)).toEqual({});

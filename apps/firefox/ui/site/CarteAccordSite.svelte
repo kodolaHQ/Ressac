@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { AUTORISER, SANS_RETOUCHES, titreAccordRetouches, type DemandeAccordSite } from "../../shared/sites";
+  import { AUTORISER, NO_TWEAKS, tweaksGrantTitle, type SiteGrantRequest } from "../../shared/sites";
 
   /**
    * The grant card for the app's tweaks, in its window: what the agent asks for (domains, sign-in, frames,
    * resume) and what it injects. Everything comes from site.json, written by the agent: shown as text, never as HTML.
    */
-  let { accord, accorder }: { accord: DemandeAccordSite; accorder: (oui: boolean, empreinte: string) => Promise<void> } = $props();
+  let { accord, accorder }: { accord: SiteGrantRequest; accorder: (oui: boolean, empreinte: string) => Promise<void> } = $props();
   let enCours = $state(false);
 
   const choisir = (oui: boolean) => {
@@ -18,7 +18,7 @@
 
 <section class="zone" data-testid="site-zone-accord">
   <div class="carte" role="dialog" aria-labelledby="titre-accord-site" data-testid="carte-accord-site">
-    <h2 id="titre-accord-site">{titreAccordRetouches(accord.nom)}</h2>
+    <h2 id="titre-accord-site">{tweaksGrantTitle(accord.nom)}</h2>
     <dl>
       <dt>Domaines</dt>
       <dd data-testid="accord-site-domaines">{accord.domaines.join(", ")}</dd>
@@ -46,7 +46,7 @@
     {#if accord.reprise}<p data-testid="accord-site-reprise">Reprend les vidéos à la minute</p>{/if}
     <p class="doux">Ses retouches voient et modifient les pages de ces domaines. Une image ajoutée à la page peut encore envoyer des données à un autre site.</p>
     <div class="boutons">
-      <button data-testid="refuser-site" disabled={enCours} onclick={() => choisir(false)}>{SANS_RETOUCHES}</button>
+      <button data-testid="refuser-site" disabled={enCours} onclick={() => choisir(false)}>{NO_TWEAKS}</button>
       <button data-testid="accorder-site" class="principal" disabled={enCours} onclick={() => choisir(true)}>{AUTORISER}</button>
     </div>
   </div>

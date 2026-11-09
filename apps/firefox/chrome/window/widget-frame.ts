@@ -1,4 +1,4 @@
-import { MOTIF_INDICES_RESEAU, contientIndiceReseau } from "../../shared/indices-reseau";
+import { NETWORK_HINTS_PATTERN, containsNetworkHint } from "../../shared/indices-reseau";
 
 /**
  * The widgets' CSP: a resource:// file cannot carry a response header, so the CSP is
@@ -219,7 +219,7 @@ function gardeWidget(motif: string): void {
 }
 
 /** The guard's `<script>`, injected into the served copy after the CSP meta: the page parser runs it first. */
-const SCRIPT_GARDE = `<script>(${gardeWidget.toString()})(${JSON.stringify(MOTIF_INDICES_RESEAU)});</script>`;
+const SCRIPT_GARDE = `<script>(${gardeWidget.toString()})(${JSON.stringify(NETWORK_HINTS_PATTERN)});</script>`;
 
 /** Whitespace, leading comments and an optional doctype: everything the guard must be inserted after. */
 const PREFIXE_DOC = /^\s*(?:<!--[\s\S]*?-->\s*)*(?:<!doctype[^>]*>\s*)?/i;
@@ -230,7 +230,7 @@ const PREFIXE_DOC = /^\s*(?:<!--[\s\S]*?-->\s*)*(?:<!doctype[^>]*>\s*)?/i;
  * HTML contains a network hint.
  */
 export function affichageServi(html: string, csp = CSP_WIDGET, extra = ""): string {
-  if (contientIndiceReseau(html)) return AFFICHAGE_REFUSE;
+  if (containsNetworkHint(html)) return AFFICHAGE_REFUSE;
   const prefixe = html.match(PREFIXE_DOC)?.[0] ?? "";
   const meta = `<meta http-equiv="Content-Security-Policy" content="${csp}">`;
   return `${prefixe}${meta}${SCRIPT_GARDE}${extra}${html.slice(prefixe.length)}`;

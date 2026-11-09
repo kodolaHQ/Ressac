@@ -1,7 +1,7 @@
-import type { Panneau, Raccourci } from "../../shared/api";
+import type { Panel, ShortcutAction } from "../../shared/api";
 
 export type Shortcut =
-  | { type: "raccourci"; r: Extract<Raccourci, "commande" | "adresse" | "fermerOnglet"> }
+  | { type: "raccourci"; r: Extract<ShortcutAction, "commande" | "adresse" | "fermerOnglet"> }
   | { type: "rouvrir" }
   | { type: "nieme"; n: number }
   | { type: "espace"; n: number }
@@ -12,7 +12,7 @@ export type Shortcut =
   /** ⇧⌘S: the sidebar's compact mode (menu item « Mode compact »). */
   | { type: "compact" }
   /** ⌘Y, ⇧⌘J: a UI panel (menu items « Historique » and « Téléchargements »). */
-  | { type: "panneau"; p: Panneau }
+  | { type: "panneau"; p: Panel }
   /** ⌘N, ⇧⌘W: a WebAiOs window, through Firefox's own window opening and closing (the window registry binds them). */
   | { type: "fenetre" }
   | { type: "fermerFenetre" }

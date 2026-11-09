@@ -1,15 +1,15 @@
 import { beforeEach, expect, test } from "vitest";
-import { appliquer } from "../../core/etat/actions";
-import { etatInitial } from "../../core/etat/etat-initial";
+import { apply } from "../../core/etat/actions";
+import { initialState } from "../../core/etat/etat-initial";
 import { SchemaAction, type Action } from "../../shared/api";
-import { cleEspace, contexteHistorique, ongletPrive, profilsEnUsage, profilDOnglet, aUneVue, URL_ACTIONS, URL_APPLICATIONS, URL_EXTENSIONS, urlAction, urlWorkflow, type EtatNavigateur, type Onglet } from "../../shared/modele";
+import { spaceKey, historyContext, privateTab, profilesInUse, tabProfile, hasView, URL_ACTIONS, URL_APPLICATIONS, URL_EXTENSIONS, urlAction, urlWorkflow, type BrowserState, type Tab } from "../../shared/modele";
 
 let n = 0;
 const genId = () => `g${++n}`;
-let e: EtatNavigateur;
+let e: BrowserState;
 let F: string; // window
 let P: string; // space « Perso »
-const ag = (a: Action) => (e = appliquer(e, a, genId));
+const ag = (a: Action) => (e = apply(e, a, genId));
 const fen = () => e.fenetres.find((f) => f.id === F)!;
 const ordre = (esp = P) => fen().ordre[esp] ?? [];
 const actif = (esp = P) => fen().actif[esp] ?? null;
@@ -28,7 +28,7 @@ function gelerProfond<T>(o: T): T {
 
 beforeEach(() => {
   n = 0;
-  e = etatInitial(genId);
+  e = initialState(genId);
   F = e.fenetres[0]!.id;
   P = e.espaces[0]!.id;
 });
@@ -377,10 +377,10 @@ test("reglerEspace: an essential shared by two private spaces stays private when
   expect(e.onglets[g]!.espaceId).toBe(pro);
   expect(actif(pro)).toBe(g);
   expect(actif(banque.id)).toBeNull();
-  expect(ongletPrive(e, e.onglets[g]!)).toBe(true);
+  expect(privateTab(e, e.onglets[g]!)).toBe(true);
   // No tab is displayed under a key different from its owner's.
   for (const [esp, id] of Object.entries(fen().actif))
-    if (id) expect(cleEspace(e, esp)).toBe(cleEspace(e, e.onglets[id]!.espaceId));
+    if (id) expect(spaceKey(e, esp)).toBe(spaceKey(e, e.onglets[id]!.espaceId));
 });
 
 test("reglerEspace: several spaces display the tab under the old key, the first in space order takes it back", () => {
@@ -407,40 +407,40 @@ test("contexteHistorique: a shared essential counts in the space that displays i
   ag({ type: "ajouterEssentiel", id: g });
   ag({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut", fenetreId: F });
   const B = e.espaces[1]!.id;
-  expect(contexteHistorique(e, g)).toEqual({ espaceId: P, prive: false });
+  expect(historyContext(e, g)).toEqual({ espaceId: P, prive: false });
   ag({ type: "ouvrirFavori", fenetreId: F, genre: "essentiel", id: e.essentiels[0]!.id });
   expect(e.onglets[g]!.espaceId).toBe(P);
-  expect(contexteHistorique(e, g)).toEqual({ espaceId: B, prive: false });
+  expect(historyContext(e, g)).toEqual({ espaceId: B, prive: false });
   // Back in Perso, which also displays it: the visit returns there.
   ag({ type: "activerEspace", fenetreId: F, id: P });
-  expect(contexteHistorique(e, g)).toEqual({ espaceId: P, prive: false });
+  expect(historyContext(e, g)).toEqual({ espaceId: P, prive: false });
   // Displayed in an unknown space: private, to be safe.
   const bizarre = structuredClone(e);
   const f = bizarre.fenetres[0]!;
   f.espaceActif = "disparu";
   f.actif["disparu"] = g;
-  expect(contexteHistorique(bizarre, g)).toEqual({ espaceId: "disparu", prive: true });
-  expect(contexteHistorique(e, "inexistant")).toBeNull();
+  expect(historyContext(bizarre, g)).toEqual({ espaceId: "disparu", prive: true });
+  expect(historyContext(e, "inexistant")).toBeNull();
 });
 
 test("cleEspace, ongletPrive, profilDOnglet", () => {
   ag({ type: "creerEspace", nom: "Banque", icone: "🏦", prive: true, profil: "nouveau" });
   const banque = e.espaces[1]!;
-  expect(cleEspace(e, P)).toBe("defaut|false");
-  expect(cleEspace(e, banque.id)).toBe(`${banque.profil}|true`);
-  expect(cleEspace(e, "inconnu")).not.toBe(cleEspace(e, P));
+  expect(spaceKey(e, P)).toBe("defaut|false");
+  expect(spaceKey(e, banque.id)).toBe(`${banque.profil}|true`);
+  expect(spaceKey(e, "inconnu")).not.toBe(spaceKey(e, P));
   ag({ type: "activerEspace", fenetreId: F, id: banque.id });
   const idO = ouvrir("https://banque.test/");
   const o = e.onglets[idO]!;
-  expect(ongletPrive(e, o)).toBe(true);
-  expect(profilDOnglet(e, o)).toBe(banque.profil);
+  expect(privateTab(e, o)).toBe(true);
+  expect(tabProfile(e, o)).toBe(banque.profil);
   ag({ type: "activerEspace", fenetreId: F, id: P });
   const idP = ouvrir("https://a.test/");
   const p = e.onglets[idP]!;
-  expect(ongletPrive(e, p)).toBe(false);
-  expect(profilDOnglet(e, p)).toBe("defaut");
-  const orphelin: Onglet = { ...p, espaceId: "disparu" };
-  expect(ongletPrive(e, orphelin)).toBe(true);
+  expect(privateTab(e, p)).toBe(false);
+  expect(tabProfile(e, p)).toBe("defaut");
+  const orphelin: Tab = { ...p, espaceId: "disparu" };
+  expect(privateTab(e, orphelin)).toBe(true);
 });
 
 test("supprimerEspace closes its tabs and switches the windows", () => {
@@ -492,14 +492,14 @@ test("cadrerFenetre keeps the size and position; unknown window → same referen
   ag({ type: "cadrerFenetre", id: F, cadre: { x: 10, y: 20, largeur: 800, hauteur: 600 } });
   expect(fen().cadre).toEqual({ x: 10, y: 20, largeur: 800, hauteur: 600 });
   const avant = e;
-  expect(appliquer(e, { type: "cadrerFenetre", id: "inconnue", cadre: { x: 0, y: 0, largeur: 1, hauteur: 1 } }, genId)).toBe(avant);
+  expect(apply(e, { type: "cadrerFenetre", id: "inconnue", cadre: { x: 0, y: 0, largeur: 1, hauteur: 1 } }, genId)).toBe(avant);
 });
 
 test("majOnglet with no change → same reference (nothing to rebroadcast)", () => {
   const a = ouvrir("https://a.test/");
   ag({ type: "majOnglet", id: a, champs: { titre: "A", chargement: true } });
   const avant = e;
-  expect(appliquer(e, { type: "majOnglet", id: a, champs: { titre: "A", chargement: true } }, genId)).toBe(avant);
+  expect(apply(e, { type: "majOnglet", id: a, champs: { titre: "A", chargement: true } }, genId)).toBe(avant);
 });
 
 test("majOnglet only touches the given fields; unknown id → same reference", () => {
@@ -608,7 +608,7 @@ test("ouvrirApplications reuses the window's existing tab", () => {
 
 test("ouvrirExtensions opens or activates the page, like ouvrirApplications", () => {
   expect(URL_EXTENSIONS).toBe("webaios://extensions");
-  expect(aUneVue(URL_EXTENSIONS)).toBe(false);
+  expect(hasView(URL_EXTENSIONS)).toBe(false);
   ouvrir("https://a.test/");
   ag({ type: "ouvrirExtensions", fenetreId: F });
   const pages = () => Object.values(e.onglets).filter((o) => o.url === URL_EXTENSIONS);
@@ -737,12 +737,12 @@ test("ouvrirWorkflow of an action opens webaios://workflow/action/<id>", () => {
 test("profilsEnUsage: by identifier, spaces included", () => {
   const copie = structuredClone(e);
   copie.espaces[0]!.profil = "autre";
-  expect(profilsEnUsage(copie)).toEqual(new Set(["defaut", "autre"]));
+  expect(profilesInUse(copie)).toEqual(new Set(["defaut", "autre"]));
 });
 
 // Plan 17, task 11: a project's review page.
 test("ouvrirRelecture opens webaios://relecture/app-essai titled « Relecture — Essai »; a second call returns to the same tab", async () => {
-  const { urlRelecture } = await import("../../shared/modele");
+  const { reviewUrl: urlRelecture } = await import("../../shared/modele");
   ag({ type: "ouvrirRelecture", fenetreId: F, projet: "app-essai", nom: "Essai" });
   const pages = () => Object.values(e.onglets).filter((o) => o.url === "webaios://relecture/app-essai");
   expect(pages()).toHaveLength(1);
@@ -756,7 +756,7 @@ test("ouvrirRelecture opens webaios://relecture/app-essai titled « Relecture �
 });
 
 test("projetDeUrlRelecture refuses webaios://relecture/../x and webaios://relecture/app-", async () => {
-  const { projetDeUrlRelecture } = await import("../../shared/modele");
+  const { reviewUrlProject: projetDeUrlRelecture } = await import("../../shared/modele");
   const { PROJECT_ID: ID_PROJET } = await import("@webaios/noyau");
   expect(projetDeUrlRelecture("webaios://relecture/../x")).toBeNull();
   expect(projetDeUrlRelecture("webaios://relecture/app-")).toBeNull();
@@ -765,10 +765,10 @@ test("projetDeUrlRelecture refuses webaios://relecture/../x and webaios://relect
   expect(projetDeUrlRelecture("webaios://relecture/app-essai")).toBe("app-essai");
   expect(projetDeUrlRelecture("webaios://relecture/ext-0123456789abcdef")).toBe("ext-0123456789abcdef");
   // The UI copies follow the kernel.
-  const { NON_AFFICHABLE } = await import("../../shared/modele");
+  const { NOT_DISPLAYABLE: NON_AFFICHABLE } = await import("../../shared/modele");
   const { BINARY_FILE: FICHIER_BINAIRE, FILE_TOO_BIG: FICHIER_TROP_GROS } = await import("@webaios/noyau");
   expect(NON_AFFICHABLE).toEqual({ binaire: FICHIER_BINAIRE, "trop-gros": FICHIER_TROP_GROS });
-  const { LIGNE_CHANGEE_PAGE } = await import("../../shared/modele");
+  const { PAGE_LINE_CHANGED: LIGNE_CHANGEE_PAGE } = await import("../../shared/modele");
   const { LINE_CHANGED: LIGNE_CHANGEE } = await import("@webaios/noyau");
   expect(LIGNE_CHANGEE_PAGE).toBe(LIGNE_CHANGEE);
   for (const p of ["app-essai", "app-.x", "ext-0123456789abcdef", "ext-0123", "demo-15283", "demo-", "app-a/b", "site-tuning", "site-", "site-A", "site-../x"])

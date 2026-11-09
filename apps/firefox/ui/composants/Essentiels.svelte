@@ -1,16 +1,16 @@
 <script lang="ts">
-  import type { EtatFenetre, Favori } from "../../shared/modele";
+  import type { WindowState, Favorite } from "../../shared/modele";
   import { api, etat } from "../etat.svelte";
   import IconeSite from "./IconeSite.svelte";
   import { ouvrirMenu } from "./menu.svelte";
 
-  let { fenetre, grand = false }: { fenetre: EtatFenetre; grand?: boolean } = $props();
+  let { fenetre, grand = false }: { fenetre: WindowState; grand?: boolean } = $props();
   const actif = $derived.by(() => {
     const id = fenetre.actif[fenetre.espaceActif];
     return id ? etat.valeur?.onglets[id]?.lien?.id : undefined;
   });
 
-  function ouvrir(f: Favori) {
+  function ouvrir(f: Favorite) {
     api.agir({ type: "ouvrirFavori", fenetreId: fenetre.id, genre: "essentiel", id: f.id });
   }
 </script>

@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { etatInitial } from "../core/etat/etat-initial";
+import { initialState } from "../core/etat/etat-initial";
 import { createDevTools, geckoToCpuProfile, TEXTE_REVOQUE } from "../chrome/store/devtools";
 import { createStore } from "../chrome/store/store";
 import type { WindowRegistry } from "../chrome/store/windows";
@@ -32,7 +32,7 @@ let execute: () => Promise<unknown> = async () => ({ result: 1 });
 
 /** A store with tab "t"; `ensure` gives the tab's browser (rejects by default: no DevTools client then). */
 function setup(o: { isPrivate?: boolean; ensure?: (id: string) => Promise<unknown> } = {}) {
-  const store = createStore(etatInitial());
+  const store = createStore(initialState());
   store.dispatch({ type: "ouvrirOnglet", fenetreId: store.state.fenetres[0]!.id, url: "http://127.0.0.1:5300/", activer: true }, () => "t");
   const loaded: string[] = [];
   const ensure = o.ensure ?? (() => Promise.reject(new Error("no browser")));

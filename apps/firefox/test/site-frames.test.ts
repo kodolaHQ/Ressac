@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { DeclarationSite, type TweaksRead } from "../../../packages/noyau/src/index";
-import { CONSOLE_RETOUCHES_TOTAL, ERREURS_RETOUCHES_MAX, type InjectionCadre } from "../shared/sites";
-import type { ErreurRetouche } from "../core/sites/injection";
-import { REFUS_MEMOIRE } from "../noyau/site-memory";
+import { CONSOLE_TWEAKS_TOTAL, MAX_TWEAK_ERRORS, type InjectionCadre } from "../shared/sites";
+import type { TweakError } from "../core/sites/injection";
+import { MEMORY_DENIAL } from "../noyau/site-memory";
 import type { SiteChrome } from "../noyau/sites";
 
 const { frameError, framePosition, frameResume, frameInjection, frameMemory, siteOfFrame } = await import("../chrome/store/site-frames");
@@ -36,7 +36,7 @@ function browser(url: string) {
 function app(o: { accordRequis?: boolean; id?: string; url?: string } = {}) {
   const v = browser(o.url ?? PAGE);
   const site = { id: o.id ?? "vidola", declaration, aAccueil: false, domaines: ["vidola-a.example", "vidola-b.example"], depart: "https://vidola-b.example/", accordRequis: o.accordRequis ?? false } as SiteChrome;
-  return { v, s: { site, retouches, view: v.el, erreurs: [] as ErreurRetouche[] } };
+  return { v, s: { site, retouches, view: v.el, erreurs: [] as TweakError[] } };
 }
 
 describe("frameInjection", () => {
@@ -104,7 +104,7 @@ describe("frameMemory", () => {
   it("refused to a sub-frame, the sign-in window, a page off the site, without the grant, and a non-object request", async () => {
     const request = vi.fn(async () => ({ ok: true as const }));
     const { v, s } = app();
-    const refus = { ok: false, erreur: REFUS_MEMOIRE };
+    const refus = { ok: false, erreur: MEMORY_DENIAL };
     const sub = v.frame(PAGE);
     expect(await frameMemory(sub, siteOfFrame(sub, [s]), demande, request)).toEqual(refus);
     const small = browser(PAGE);
@@ -139,11 +139,11 @@ describe("the tweaks' console", () => {
 
   it("is bounded: 50 messages at most, the total text bounded", () => {
     const { s } = app();
-    for (let i = 0; i < ERREURS_RETOUCHES_MAX + 10; i++) frameError(s, err("webaios-retouche://vidola/a.js", `e${i}`));
-    expect(s.erreurs).toHaveLength(ERREURS_RETOUCHES_MAX);
+    for (let i = 0; i < MAX_TWEAK_ERRORS + 10; i++) frameError(s, err("webaios-retouche://vidola/a.js", `e${i}`));
+    expect(s.erreurs).toHaveLength(MAX_TWEAK_ERRORS);
     expect(s.erreurs[0]!.texte).toBe("e10");
     for (let i = 0; i < 40; i++) frameError(s, err("webaios-retouche://vidola/a.js", "x".repeat(5000)));
-    expect(s.erreurs.reduce((t, e) => t + e.texte.length, 0)).toBeLessThanOrEqual(CONSOLE_RETOUCHES_TOTAL);
+    expect(s.erreurs.reduce((t, e) => t + e.texte.length, 0)).toBeLessThanOrEqual(CONSOLE_TWEAKS_TOTAL);
   });
 });
 

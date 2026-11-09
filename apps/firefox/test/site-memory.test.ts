@@ -3,14 +3,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, expect, test } from "vitest";
 import { KEY_INVALID, SiteMemory, VALEUR_NON_JSON } from "../../../packages/noyau/src/index";
-import { creerPositions, memoireOp, REFUS_MEMOIRE } from "../noyau/site-memory";
+import { createPositions, memoryOp, MEMORY_DENIAL } from "../noyau/site-memory";
 
 // The site memory, on the host's memoireOp: the sender checks
 // (sub-frame, sign-in window, page off the site, no grant) are the chrome's, in site-frames.test.ts.
 
 let memoire: SiteMemory;
 let refusee: boolean;
-const op = (d: object) => memoireOp(async () => {
+const op = (d: object) => memoryOp(async () => {
   if (refusee) throw new Error("appli de site en cours de suppression : vidola");
   return memoire;
 }, { id: "vidola", adresse: "/series/x", ...d });
@@ -36,14 +36,14 @@ test("the memory's named refusals (key, non-JSON value)", async () => {
 
 test("a malformed request is refused, nothing written", async () => {
   for (const d of [{ op: "effacer", cle: "x" }, { op: "lire", cle: 3 }, { op: "retenir", cle: "x", valeur: 1, adresse: 4 }, { op: "retenir", cle: "x", valeur: 1, id: null }])
-    expect(await op(d)).toEqual({ ok: false, erreur: REFUS_MEMOIRE });
-  for (const d of [null, "x", 3]) expect(await memoireOp(async () => memoire, d)).toEqual({ ok: false, erreur: REFUS_MEMOIRE });
+    expect(await op(d)).toEqual({ ok: false, erreur: MEMORY_DENIAL });
+  for (const d of [null, "x", 3]) expect(await memoryOp(async () => memoire, d)).toEqual({ ok: false, erreur: MEMORY_DENIAL });
   expect(memoire.contenu().valeurs).toEqual({});
 });
 
 test("memory refused by the service (app being deleted): the memory's refusal, nothing written", async () => {
   refusee = true;
-  for (const o of ["retenir", "lire", "oublier"]) expect(await op({ op: o, cle: "x", valeur: 1 })).toEqual({ ok: false, erreur: REFUS_MEMOIRE });
+  for (const o of ["retenir", "lire", "oublier"]) expect(await op({ op: o, cle: "x", valeur: 1 })).toEqual({ ok: false, erreur: MEMORY_DENIAL });
   expect(memoire.contenu().valeurs).toEqual({});
 });
 
@@ -53,7 +53,7 @@ test("memory refused by the service (app being deleted): the memory's refusal, n
 let accorde: boolean;
 let horloge: number;
 let differes: { f: () => void; ms: number }[];
-let positions: ReturnType<typeof creerPositions>;
+let positions: ReturnType<typeof createPositions>;
 let dossier: string;
 const flush = () => new Promise((r) => setTimeout(r));
 const cadre = "1:10";
@@ -68,7 +68,7 @@ beforeEach(async () => {
   differes = [];
   dossier = mkdtempSync(join(tmpdir(), "site-positions-"));
   memoire = await SiteMemory.ouvrir(dossier, "vidola");
-  positions = creerPositions({ memoire: async () => memoire, accorde: () => accorde, maintenant: () => horloge, differer: (f, ms) => void differes.push({ f, ms }) });
+  positions = createPositions({ memoire: async () => memoire, accorde: () => accorde, maintenant: () => horloge, differer: (f, ms) => void differes.push({ f, ms }) });
 });
 
 test("position: noted under the page's address, from the player's frame as from the page's", async () => {

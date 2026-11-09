@@ -1,8 +1,8 @@
 import { expect, test } from "vitest";
-import type { Espace } from "../shared/modele";
+import type { Space } from "../shared/modele";
 import { choixPerdConnexions, optionsProfil, perdConnexions, PROFIL_A_CHOISIR } from "../ui/composants/profilsEspace";
 
-const espace = (id: string, nom: string, profil: string): Espace => ({ id, nom, icone: "📁", epingles: [], prive: false, profil });
+const espace = (id: string, nom: string, profil: string): Space => ({ id, nom, icone: "📁", epingles: [], prive: false, profil });
 const profils = [{ id: "defaut" }, { id: "p1" }, { id: "p2" }];
 
 test("new space: « Nouveau profil » creates one, then each used profile with all its spaces", () => {

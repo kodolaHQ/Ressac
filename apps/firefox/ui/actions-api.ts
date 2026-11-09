@@ -1,6 +1,6 @@
-import { ACTIONS_EN_ESPACE_PRIVE } from "../shared/actions";
+import { ACTIONS_IN_PRIVATE_SPACE } from "../shared/actions";
 import type { Action, ApiWebaios } from "../shared/api";
-import type { EtatNavigateur, IdFenetre } from "../shared/modele";
+import type { BrowserState, WindowId } from "../shared/modele";
 import { HOST_EXITED, type AgentHost } from "../chrome/agent/host";
 import type { WebAiOsStore } from "../chrome/store";
 import { profilsLisibles, profilsPourAccord } from "./accueil-profils";
@@ -9,7 +9,7 @@ import { profilsLisibles, profilsPourAccord } from "./accueil-profils";
 // links, the direct feed's filter and the grant profiles. The disk and kernel half is the host's (noyau/actions.ts).
 
 /** A missing window or space counts as private. */
-export function espaceActifPrive(etat: Pick<EtatNavigateur, "espaces" | "fenetres">, f: IdFenetre): boolean {
+export function espaceActifPrive(etat: Pick<BrowserState, "espaces" | "fenetres">, f: WindowId): boolean {
   const fenetre = etat.fenetres.find((x) => x.id === f);
   return !fenetre || (etat.espaces.find((e) => e.id === fenetre.espaceActif)?.prive ?? true);
 }
@@ -26,10 +26,10 @@ const MESSAGE_SANS_NOYAU = "Le service des actions ne répond pas (agent arrêt�
 const NO_ACTION = () => ({ courantes: [], enAttente: [] });
 
 export function createActionsApi(o: {
-  state: () => EtatNavigateur | undefined;
+  state: () => BrowserState | undefined;
   dispatch: (a: Action) => void;
   host: AgentHost;
-  fenetre: IdFenetre;
+  fenetre: WindowId;
   untilUnload: (unsubscribe: () => void) => () => void;
   media: WebAiOsStore["actionMedia"];
 }): ActionsFirefox {
@@ -39,7 +39,7 @@ export function createActionsApi(o: {
     const s = o.state();
     return !s || espaceActifPrive(s, fenetre);
   };
-  const refus = { ok: false as const, erreur: ACTIONS_EN_ESPACE_PRIVE };
+  const refus = { ok: false as const, erreur: ACTIONS_IN_PRIVATE_SPACE };
   /** The host stopped or did not answer a request: the next `acces` reads again (afterRestart). */
   let hostDown = false;
   /** The `acces` handled so far: a refusal answered before one of them but handled after it still reads again. */
@@ -120,7 +120,7 @@ export function createActionsApi(o: {
       if (p.lancer) host.request("actions.lancer", { id, saisie }).catch((e) => ((hostDown = true), console.error(`[webaios] action ${id} :`, e)));
       return { ok: true };
     },
-    lancer: (id, saisie) => ask("actions.lancer", { id, saisie }, () => ({ statut: "invalide" as const, erreur: prive() ? ACTIONS_EN_ESPACE_PRIVE : MESSAGE_SANS_NOYAU })),
+    lancer: (id, saisie) => ask("actions.lancer", { id, saisie }, () => ({ statut: "invalide" as const, erreur: prive() ? ACTIONS_IN_PRIVATE_SPACE : MESSAGE_SANS_NOYAU })),
     arreter(id) {
       if (!prive()) host.notify("actions.arreter", { id });
     },

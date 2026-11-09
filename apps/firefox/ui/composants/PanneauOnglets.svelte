@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { PanneauOnglets } from "../../shared/api";
+  import type { TabsPanel } from "../../shared/api";
   import { api } from "../etat.svelte";
   import IconeSite from "./IconeSite.svelte";
 
@@ -7,7 +7,7 @@
    * ⌃Tab panel: recent tabs as preview cards, the selection outlined. The main process holds the traversal (order,
    * selection, ⌃ release); the panel only displays it and sends back mouse, Escape and ⌃ release.
    */
-  let { panneau }: { panneau: PanneauOnglets } = $props();
+  let { panneau }: { panneau: TabsPanel } = $props();
 
   const envoyer = api.parcoursOnglets;
 

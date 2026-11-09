@@ -8,40 +8,40 @@ const run = promisify(execFile);
 
 export const AMO_URL = "https://addons.mozilla.org";
 /** 3 x the slowest signing measured (298 s, plan 25 spike): AMO signs in 2.5 to 5 minutes. */
-export const DELAI_SIGNATURE_MS = 900_000;
+export const SIGNATURE_DELAY_MS = 900_000;
 
-export const CLES_ABSENTES = "Clés AMO absentes : ajoute-les au trousseau macOS (service « webaios-amo »). Rien n'est parti chez Mozilla.";
-export const signatureRefusee = (m: string) => "Signature refusée par addons.mozilla.org : " + m.slice(0, 2000);
-export const SIGNATURE_LENTE = "Signature trop longue : addons.mozilla.org n'a pas rendu le module à temps. Réessaie recharger_extension.";
+export const KEYS_ABSENT = "Clés AMO absentes : ajoute-les au trousseau macOS (service « webaios-amo »). Rien n'est parti chez Mozilla.";
+export const deniedSignature = (m: string) => "Signature refusée par addons.mozilla.org : " + m.slice(0, 2000);
+export const SLOW_SIGNATURE = "Signature trop longue : addons.mozilla.org n'a pas rendu le module à temps. Réessaie recharger_extension.";
 export const signatureImpossible = (m: string) => "Signature impossible (réseau ou addons.mozilla.org) : " + m;
 export const VERSION_QUATRE = "version : trois nombres au plus (WebAiOs ajoute le quatrième)";
 export const GECKO_ID = "browser_specific_settings.gecko.id refusé : WebAiOs pose l'identifiant";
 export const STORE_ABSENT = "Le Chrome Web Store n'est pas pris en charge : installe tes modules depuis addons.mozilla.org.";
 
-export interface CleAmo {
+export interface AmoKey {
   emetteur: string;
   secret: string;
 }
 
 /** How long a keychain read may take (a locked keychain waits on a macOS prompt): past it, the keys count as absent. */
-export const DELAI_TROUSSEAU_MS = 10_000;
+export const KEYCHAIN_DELAY_MS = 10_000;
 
 /**
  * Test: WEBAIOS_TEST_AMO_URL set → WEBAIOS_TEST_AMO_CLES ("emetteur:secret") or null; else the keychain (service webaios-amo),
  * null when absent or too slow. `commande` and `delai` are only there for tests.
  */
-export async function lireCleAmo(env: NodeJS.ProcessEnv = process.env, o: { commande?: string; delai?: number } = {}): Promise<CleAmo | null> {
+export async function readAmoKey(env: NodeJS.ProcessEnv = process.env, o: { commande?: string; delai?: number } = {}): Promise<AmoKey | null> {
   if (env.WEBAIOS_TEST_AMO_URL) {
-    const cles = env.WEBAIOS_TEST_AMO_CLES;
+    const keys = env.WEBAIOS_TEST_AMO_CLES;
     // The issuer itself holds colons (user:<id>:<hash>): the secret is what follows the last one.
-    const i = cles?.lastIndexOf(":") ?? -1;
-    return cles && i > 0 && i < cles.length - 1 ? { emetteur: cles.slice(0, i), secret: cles.slice(i + 1) } : null;
+    const i = keys?.lastIndexOf(":") ?? -1;
+    return keys && i > 0 && i < keys.length - 1 ? { emetteur: keys.slice(0, i), secret: keys.slice(i + 1) } : null;
   }
   try {
-    const securite = (args: string[]) => run(o.commande ?? "security", ["find-generic-password", "-s", "webaios-amo", ...args], { timeout: o.delai ?? DELAI_TROUSSEAU_MS });
-    const [{ stdout: attrs }, { stdout: secret }] = await Promise.all([securite([]), securite(["-w"])]);
-    const emetteur = /"acct"<blob>="([^"]*)"/.exec(attrs)?.[1];
-    return emetteur && secret.trim() ? { emetteur, secret: secret.trim() } : null;
+    const security = (args: string[]) => run(o.commande ?? "security", ["find-generic-password", "-s", "webaios-amo", ...args], { timeout: o.delai ?? KEYCHAIN_DELAY_MS });
+    const [{ stdout: attrs }, { stdout: secret }] = await Promise.all([security([]), security(["-w"])]);
+    const issuer = /"acct"<blob>="([^"]*)"/.exec(attrs)?.[1];
+    return issuer && secret.trim() ? { emetteur: issuer, secret: secret.trim() } : null;
   } catch {
     // Absent, refused or timed out: the error holds the command's output, so it is never logged.
     return null;
@@ -49,7 +49,7 @@ export async function lireCleAmo(env: NodeJS.ProcessEnv = process.env, o: { comm
 }
 
 /** A fresh HS256 JWT, valid 60 s. Never logged. */
-function jeton(k: CleAmo): string {
+function token(k: AmoKey): string {
   const b64 = (b: Buffer | string) => Buffer.from(b).toString("base64url");
   const iat = Math.floor(Date.now() / 1000);
   const tete = b64(JSON.stringify({ alg: "HS256", typ: "JWT" }));
@@ -57,7 +57,7 @@ function jeton(k: CleAmo): string {
   return `${tete}.${corps}.${b64(createHmac("sha256", k.secret).update(`${tete}.${corps}`).digest())}`;
 }
 
-export class ErreurSignature extends Error {}
+export class SignatureError extends Error {}
 
 /**
  * The `web-ext sign` v5 flow: upload (unlisted), wait for validation, create the add-on (PUT, unknown guid) or a
@@ -68,7 +68,7 @@ export async function signer(o: {
   xpi: string;
   guid: string;
   version: string;
-  cle: CleAmo;
+  cle: AmoKey;
   base: string;
   signal?: AbortSignal;
   sortie: string;
@@ -76,82 +76,82 @@ export async function signer(o: {
   pasMs?: number;
 }): Promise<void> {
   const api = `${o.base}/api/v5`;
-  const fin = Date.now() + (o.delai ?? DELAI_SIGNATURE_MS);
+  const fin = Date.now() + (o.delai ?? SIGNATURE_DELAY_MS);
   const pas = o.pasMs ?? 2000;
   const addon = `/addons/addon/${encodeURIComponent(o.guid)}/`;
 
-  async function amo(methode: string, chemin: string, corps?: FormData | object): Promise<{ status: number; body: any }> {
+  async function amo(method: string, path: string, corps?: FormData | object): Promise<{ status: number; body: any }> {
     let res: Response;
     try {
-      res = await fetch(chemin.startsWith("http") ? chemin : api + chemin, {
-        method: methode,
-        headers: { Authorization: `JWT ${jeton(o.cle)}`, ...(corps && !(corps instanceof FormData) ? { "Content-Type": "application/json" } : {}) },
+      res = await fetch(path.startsWith("http") ? path : api + path, {
+        method: method,
+        headers: { Authorization: `JWT ${token(o.cle)}`, ...(corps && !(corps instanceof FormData) ? { "Content-Type": "application/json" } : {}) },
         body: corps instanceof FormData ? corps : corps ? JSON.stringify(corps) : undefined,
         signal: o.signal,
       });
     } catch (e) {
       if (o.signal?.aborted) throw e;
-      throw new ErreurSignature(signatureImpossible((e as Error).message));
+      throw new SignatureError(signatureImpossible((e as Error).message));
     }
-    if (res.status >= 500) throw new ErreurSignature(signatureImpossible(`HTTP ${res.status}`));
-    const texte = await res.text();
-    let body: unknown = texte;
+    if (res.status >= 500) throw new SignatureError(signatureImpossible(`HTTP ${res.status}`));
+    const text = await res.text();
+    let body: unknown = text;
     try {
-      body = JSON.parse(texte);
+      body = JSON.parse(text);
     } catch {}
     return { status: res.status, body };
   }
-  const refus = (r: { status: number; body: any }) => new ErreurSignature(signatureRefusee(typeof r.body === "string" ? r.body : JSON.stringify(r.body)));
-  const attendre = async () => {
-    if (Date.now() + pas > fin) throw new ErreurSignature(SIGNATURE_LENTE);
+  const denial = (r: { status: number; body: any }) => new SignatureError(deniedSignature(typeof r.body === "string" ? r.body : JSON.stringify(r.body)));
+  const wait = async () => {
+    if (Date.now() + pas > fin) throw new SignatureError(SLOW_SIGNATURE);
     o.signal?.throwIfAborted();
     await new Promise<void>((resolve, reject) => {
-      const fini = () => (clearTimeout(t), o.signal?.removeEventListener("abort", annule), resolve());
-      const annule = () => (clearTimeout(t), reject(o.signal!.reason));
-      const t = setTimeout(fini, pas);
-      o.signal?.addEventListener("abort", annule, { once: true });
+      const finished = () => (clearTimeout(t), o.signal?.removeEventListener("abort", cancelled), resolve());
+      const cancelled = () => (clearTimeout(t), reject(o.signal!.reason));
+      const t = setTimeout(finished, pas);
+      o.signal?.addEventListener("abort", cancelled, { once: true });
     });
   };
 
   const form = new FormData();
   form.append("upload", new Blob([await readFile(o.xpi)]), path.basename(o.xpi));
   form.append("channel", "unlisted");
-  const envoi = await amo("POST", "/addons/upload/", form);
-  if (envoi.status >= 300) throw refus(envoi);
-  let u = envoi.body;
+  const sending = await amo("POST", "/addons/upload/", form);
+  if (sending.status >= 300) throw denial(sending);
+  let u = sending.body;
   while (!u.processed) {
-    await attendre();
+    await wait();
     const r = await amo("GET", `/addons/upload/${u.uuid}/`);
-    if (r.status >= 300) throw new ErreurSignature(signatureImpossible(`HTTP ${r.status}`));
+    if (r.status >= 300) throw new SignatureError(signatureImpossible(`HTTP ${r.status}`));
     u = r.body;
   }
   if (!u.valid) {
     const messages: { type?: string; message?: string }[] = u.validation?.messages ?? [];
-    const erreurs = messages.filter((m) => m.type === "error");
-    throw new ErreurSignature(signatureRefusee((erreurs.length ? erreurs : messages).map((m) => m.message).join(" ; ")));
+    const errors = messages.filter((m) => m.type === "error");
+    throw new SignatureError(deniedSignature((errors.length ? errors : messages).map((m) => m.message).join(" ; ")));
   }
 
-  const existe = await amo("GET", addon);
-  if (existe.status !== 404 && existe.status >= 300) throw refus(existe);
-  const cree = existe.status === 404 ? await amo("PUT", addon, { version: { upload: u.uuid } }) : await amo("POST", `${addon}versions/`, { upload: u.uuid });
-  if (cree.status >= 300) throw refus(cree);
+  const exists = await amo("GET", addon);
+  if (exists.status !== 404 && exists.status >= 300) throw denial(exists);
+  const cree = exists.status === 404 ? await amo("PUT", addon, { version: { upload: u.uuid } }) : await amo("POST", `${addon}versions/`, { upload: u.uuid });
+  if (cree.status >= 300) throw denial(cree);
 
   let v: any;
   for (;;) {
     const r = await amo("GET", `${addon}versions/v${o.version}/`);
     // A 404 may just mean the version is not visible yet.
-    if (r.status >= 300 && r.status !== 404) throw new ErreurSignature(signatureImpossible(`HTTP ${r.status}`));
+    if (r.status >= 300 && r.status !== 404) throw new SignatureError(signatureImpossible(`HTTP ${r.status}`));
     v = r.body;
     if (v?.file?.status === "public") break;
     // Rejected after validation (disabled…): it will never turn public.
-    if (v?.file?.status && v.file.status !== "unreviewed") throw refus(r);
-    await attendre();
+    if (v?.file?.status && v.file.status !== "unreviewed") throw denial(r);
+    await wait();
   }
-  const dl = await fetch(v.file.url, { headers: { Authorization: `JWT ${jeton(o.cle)}` }, signal: o.signal }).catch((e) => {
+  const dl = await fetch(v.file.url, { headers: { Authorization: `JWT ${token(o.cle)}` }, signal: o.signal }).catch((e) => {
     if (o.signal?.aborted) throw e;
-    throw new ErreurSignature(signatureImpossible((e as Error).message));
+    throw new SignatureError(signatureImpossible((e as Error).message));
   });
-  if (!dl.ok) throw new ErreurSignature(signatureImpossible(`HTTP ${dl.status}`));
+  if (!dl.ok) throw new SignatureError(signatureImpossible(`HTTP ${dl.status}`));
   await mkdir(path.dirname(o.sortie), { recursive: true });
   await writeFile(o.sortie, Buffer.from(await dl.arrayBuffer()));
 }

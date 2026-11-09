@@ -1,4 +1,4 @@
-import type { IdFenetre, IdOnglet, IdProfil } from "../../shared/modele";
+import type { WindowId, TabId, ProfileId } from "../../shared/modele";
 import type { SitePermissions, SiteRequest } from "./site-permissions";
 
 const { Integration } = ChromeUtils.importESModule("resource://gre/modules/Integration.sys.mjs");
@@ -39,7 +39,7 @@ function watchGone(browser: any, cb: () => void): () => void {
 export function registerPermissionHooks(o: {
   sitePermissions: SitePermissions;
   /** The WebAiOs tab behind a browser (a popup's: its opener's tab), or null. */
-  tabOf(browser: any): { ongletId: IdOnglet; fenetreId: IdFenetre; profil: IdProfil } | null;
+  tabOf(browser: any): { ongletId: TabId; fenetreId: WindowId; profil: ProfileId } | null;
   isInvisible(browser: any): boolean;
 }): () => void {
   /**

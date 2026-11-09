@@ -1,12 +1,12 @@
-import { contexteHistorique, type IdOnglet, type Visite } from "../../shared/modele";
-import { espacesDevenusPrives } from "../../core/agent/pont";
+import { historyContext, type TabId, type Visite } from "../../shared/modele";
+import { spacesBecamePrivate } from "../../core/agent/pont";
 import type { AgentHost } from "../agent/host";
 import type { Store } from "./store";
 
 export interface History {
   /** A committed top-level navigation of a WebAiOs tab; private and space read from the state now. http(s) only. */
-  visit(id: IdOnglet, url: string, titre: string): void;
-  title(id: IdOnglet, url: string, titre: string): void;
+  visit(id: TabId, url: string, titre: string): void;
+  title(id: TabId, url: string, titre: string): void;
   /** The agent's memory of a page: dropped by the kernel for a private visit or a loopback URL. */
   retain(r: { url: string; espaceId: string; titre: string; texte: string }): void;
   /** Never rejects: [] while the host is down. */
@@ -22,9 +22,9 @@ const historisable = (url: string) => /^https?:\/\//.test(url);
 export function createHistory(store: Store, host: AgentHost): History {
   // A space turned private keeps its visits but marks them, even while no agent runs.
   store.subscribe((state, previous) => {
-    for (const espaceId of espacesDevenusPrives(previous, state)) host.notify("historique.rendrePrive", { espaceId });
+    for (const espaceId of spacesBecamePrivate(previous, state)) host.notify("historique.rendrePrive", { espaceId });
   });
-  const context = (id: IdOnglet, url: string) => (historisable(url) ? contexteHistorique(store.state, id) : null);
+  const context = (id: TabId, url: string) => (historisable(url) ? historyContext(store.state, id) : null);
   const ask = <T>(method: string, params: unknown, none: T) => host.request<T>(method, params).catch(() => none);
   return {
     visit(id, url, titre) {

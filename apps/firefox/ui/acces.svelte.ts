@@ -1,6 +1,6 @@
 import type { TabAccessState } from "@webaios/noyau";
 import type { ApiPastille } from "../shared/api";
-import type { EtatAcces } from "../shared/modele";
+import type { AccessState } from "../shared/modele";
 
 /**
  * The only part of the API shared by a window's interface and an app window's badge (whose preload exposes nothing
@@ -12,7 +12,7 @@ export const apiAcces: Pick<ApiPastille, "acces" | "surAcces"> = window.webaios;
 export const acces = $state<{ liste: Record<string, TabAccessState>; agent: string; bullesOuvertes: number }>({ liste: {}, agent: "L'agent", bullesOuvertes: 0 });
 
 let diffuse = false; // a broadcast is newer than the initial reply: the reply is ignored
-const appliquerAcces = (e: EtatAcces) => {
+const appliquerAcces = (e: AccessState) => {
   acces.liste = e.onglets;
   acces.agent = e.agent;
 };

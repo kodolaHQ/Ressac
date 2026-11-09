@@ -1,10 +1,10 @@
 <script lang="ts">
-  import type { DemandeEnAttente } from "../../shared/modele";
+  import type { PendingRequest } from "../../shared/modele";
   import type { CarteExtension } from "../../shared/extensions";
   import { api } from "../etat.svelte";
 
   // Everything from the manifest (name, version, sites, domains) is shown as text, never interpreted.
-  let { demande, carte }: { demande: DemandeEnAttente; carte: CarteExtension } = $props();
+  let { demande, carte }: { demande: PendingRequest; carte: CarteExtension } = $props();
 
   // Strengthened grant: « Activer » (and Enter, which clicks the primary button) has no effect until the box is checked.
   let compris = $state(false);

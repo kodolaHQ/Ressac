@@ -1,8 +1,8 @@
 import { expect, test } from "vitest";
-import type { ActionAffichee } from "../shared/actions";
+import type { ActionShown } from "../shared/actions";
 import { normaliser, suggestionsActions, SUGGESTIONS_MAX } from "../ui/composants/suggestions";
 
-const action = (id: string, nom: string, o: Partial<ActionAffichee> = {}): ActionAffichee => ({
+const action = (id: string, nom: string, o: Partial<ActionShown> = {}): ActionShown => ({
   id,
   nom,
   description: "",

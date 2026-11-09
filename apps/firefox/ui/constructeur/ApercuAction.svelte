@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { PageAction } from "@webaios/noyau";
-  import { AUCUN_RESULTAT } from "../../shared/actions";
+  import { NO_RESULT } from "../../shared/actions";
   import RenduPage from "../action/RenduPage.svelte";
   import { api } from "../etat.svelte";
   import type { Executions } from "./executions.svelte";
@@ -40,7 +40,7 @@
   {:else if lue === null || !lue.page}
     <p class="doux">{lue?.erreur ?? "Pas de page pour cette exécution."}</p>
   {:else if lue.page.vide}
-    <p class="doux">{AUCUN_RESULTAT}</p>
+    <p class="doux">{NO_RESULT}</p>
   {:else}
     <div class="page">
       <RenduPage page={lue.page} action={id} execution={lue.execution} composants={false} />

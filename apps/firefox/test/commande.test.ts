@@ -1,11 +1,11 @@
 import { expect, test } from "vitest";
-import type { ActionAffichee } from "../shared/actions";
-import type { ApplicationAffichee } from "../shared/api";
+import type { ActionShown } from "../shared/actions";
+import type { ApplicationShown } from "../shared/api";
 import type { Visite } from "../shared/modele";
-import type { SiteAffiche } from "../shared/sites";
+import type { ShownSite } from "../shared/sites";
 import { appliSourceDeProjet, appliSourceDeSite, demandeParametre, lignesCommande, parametreParDefaut, titreAvant, type AppliSource, type OngletSource, type SourcesCommande } from "../ui/composants/commande";
 
-const action = (id: string, nom: string): ActionAffichee => ({ id, nom, description: "", motsCles: [], saisie: null, compte: [], publiques: [], accord: true, dernier: null });
+const action = (id: string, nom: string): ActionShown => ({ id, nom, description: "", motsCles: [], saisie: null, compte: [], publiques: [], accord: true, dernier: null });
 const onglet = (id: string, titre: string, url = `https://${id}.fr/`): OngletSource => ({ id, titre, url, favicon: null });
 const visite = (url: string, titre = url): Visite => ({ url, titre, derniereVisite: "2026-01-01T00:00:00Z", visites: 1, espaceId: "e", prive: false, retenu: false });
 const appli = (id: string, nom: string): AppliSource => ({ genre: "site", id, nom, action: "ouvrir", favicon: null });
@@ -55,7 +55,7 @@ test("history without the active URL", () => {
   expect(h.map((x) => (x as { url: string }).url)).toEqual(["https://d.fr/"]);
 });
 
-const projet = (o: Partial<ApplicationAffichee>): ApplicationAffichee => ({ dossier: "d", nom: "N", type: "application", creeLe: "", etat: "en-marche", favicon: "f.png", ...o }) as ApplicationAffichee;
+const projet = (o: Partial<ApplicationShown>): ApplicationShown => ({ dossier: "d", nom: "N", type: "application", creeLe: "", etat: "en-marche", favicon: "f.png", ...o }) as ApplicationShown;
 
 test("appliSourceDeProjet", () => {
   expect(appliSourceDeProjet(projet({ type: "sans-fiche" }))).toBeNull();
@@ -64,11 +64,11 @@ test("appliSourceDeProjet", () => {
 });
 
 test("appliSourceDeSite", () => {
-  const s: SiteAffiche = { id: "s", nom: "S", description: "", domaine: null, icone: "i.png", ouverte: false };
+  const s: ShownSite = { id: "s", nom: "S", description: "", domaine: null, icone: "i.png", ouverte: false };
   expect(appliSourceDeSite(s)).toEqual({ genre: "site", id: "s", nom: "S", action: "ouvrir", favicon: "i.png" });
 });
 
-const avecSaisie = (id: string, nom: string, libelle: string): ActionAffichee => ({ ...action(id, nom), saisie: { libelle } });
+const avecSaisie = (id: string, nom: string, libelle: string): ActionShown => ({ ...action(id, nom), saisie: { libelle } });
 
 test("an action that expects an entry carries its label; typed with its entry, it no longer asks for one", () => {
   const S: SourcesCommande = { ...VIDE, actions: [avecSaisie("r", "Résumé YouTube", "Vidéo"), action("t", "Résumé tickets")] };
@@ -100,7 +100,7 @@ test("default parameter: the web address displayed without an anchor, nothing fo
 });
 
 test("empty field: the home first, then the actions (last launched first) and the open tabs without the displayed tab", () => {
-  const lancee = (id: string, nom: string, debut: string): ActionAffichee => ({ ...action(id, nom), dernier: { execution: debut, debut, statut: "reussie" } as ActionAffichee["dernier"] });
+  const lancee = (id: string, nom: string, debut: string): ActionShown => ({ ...action(id, nom), dernier: { execution: debut, debut, statut: "reussie" } as ActionShown["dernier"] });
   const S: SourcesCommande = {
     actions: [action("b", "Bravo"), lancee("z", "Zulu", "2026-11-02T10:00:00Z"), action("a", "Alpha"), { ...action("x", "Cassée"), erreur: "invalide" }, avecSaisie("r", "Résumé", "Vidéo"), action("c", "Charlie")],
     onglets: [1, 2, 3, 4, 5, 6, 7].map((i) => onglet(`o${i}`, `Onglet ${i}`)),

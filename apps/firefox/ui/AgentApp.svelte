@@ -4,7 +4,7 @@
   import PanneauAgent from "../ui/composants/PanneauAgent.svelte";
   import { focusAgent } from "../ui/composants/agent.svelte";
   import { api, etat, fenetreCourante } from "../ui/etat.svelte";
-  import { LARGEUR_AGENT_MAX, LARGEUR_AGENT_MIN } from "../shared/modele";
+  import { AGENT_WIDTH_MAX, AGENT_WIDTH_MIN } from "../shared/modele";
 
   const win = window.parent.webaiosWindow!;
   const fenetre = $derived(fenetreCourante());
@@ -63,8 +63,8 @@
     debut ??= window.innerWidth;
     const reelle = voulue - debut + window.innerWidth;
     // Always room for the page: 300 px at least beside the sidebar.
-    const max = Math.min(LARGEUR_AGENT_MAX, window.parent.innerWidth - win.sidebarWidth() - 300);
-    const largeur = Math.round(Math.max(LARGEUR_AGENT_MIN, Math.min(max, reelle)));
+    const max = Math.min(AGENT_WIDTH_MAX, window.parent.innerWidth - win.sidebarWidth() - 300);
+    const largeur = Math.round(Math.max(AGENT_WIDTH_MIN, Math.min(max, reelle)));
     win.setAgentWidth(largeur);
     if (fin) {
       debut = null;

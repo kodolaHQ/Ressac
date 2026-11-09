@@ -1,8 +1,8 @@
-import { origineDe, PREFIXE_SITE } from "../../core/agent/pont";
+import { originOf, SITE_PREFIX } from "../../core/agent/pont";
 
 /** An agent app window seen as a tab: `app:<dossier>`. */
 const PREFIXE_APP = "app:";
-import { TamponOnglet, textePile } from "../../core/outils-dev/tampon";
+import { TabBuffer, stackText } from "../../core/outils-dev/tampon";
 import type { FirefoxSnapshot, CpuProfile } from "../../../../packages/noyau/src/outils-dev/resumes";
 import { TabNotFound, PrivateTab, type BrowserDevTools, type NetworkRequest, type JsResult } from "../shims/noyau";
 import type { Store } from "./store";
@@ -51,7 +51,7 @@ export interface DevTools {
 interface Session {
   commands: any;
   browser: any;
-  buffer: TamponOnglet;
+  buffer: TabBuffer;
   /** Network resources by id, oldest first: Firefox updates them in place (status, timings, sizes). */
   requests: Map<string, any>;
   /** Headers asked once a request is over. */
@@ -126,7 +126,7 @@ const stackFrames = (stack: unknown) => ({
     .map((m) => ({ functionName: m[1]!, url: m[2]!, lineNumber: Number(m[3]) - 1, columnNumber: Number(m[4]) - 1 })),
 });
 const withStack = (message: string, frames: ReturnType<typeof callFrames>) => {
-  const pile = textePile(frames);
+  const pile = stackText(frames);
   return pile && !message.includes("\n    at ") ? `${message}\n${pile}` : message;
 };
 
@@ -135,7 +135,7 @@ const fromExtension = (file: unknown, frames: Frame[] | null | undefined) =>
   String(file ?? "").startsWith(EXTENSION) || !!frames?.some((f) => f.filename?.startsWith(EXTENSION));
 
 /** A console or error resource into the tab's buffer, as the protocol's events it reads. */
-function feedConsole(buffer: TamponOnglet, r: any, TYPES: any): void {
+function feedConsole(buffer: TabBuffer, r: any, TYPES: any): void {
   if (r.resourceType === TYPES.CONSOLE_MESSAGE) {
     if (fromExtension(r.filename, r.stacktrace)) return;
     buffer.evenement("Runtime.consoleAPICalled", {
@@ -293,13 +293,13 @@ export function createDevTools(o: {
 }): DevTools {
   /** The top-level reload of the agent's dev tools; on a site app it is WebAiOs's load, so the M1 net spares it under the home. */
   const reloadTop = (id: string, s: { commands: any }, noCache: boolean) => {
-    if (id.startsWith(PREFIXE_SITE)) o.sites?.markWanted(id.slice(PREFIXE_SITE.length));
+    if (id.startsWith(SITE_PREFIX)) o.sites?.markWanted(id.slice(SITE_PREFIX.length));
     return s.commands.targetCommand.reloadTopLevelTarget(noCache);
   };
   /** A site app or agent app window, not a tab of the state. */
-  const isWindow = (id: string) => id.startsWith(PREFIXE_SITE) || id.startsWith(PREFIXE_APP);
+  const isWindow = (id: string) => id.startsWith(SITE_PREFIX) || id.startsWith(PREFIXE_APP);
   const siteView = (id: string) =>
-    id.startsWith(PREFIXE_SITE) ? o.sites?.viewFor(id.slice(PREFIXE_SITE.length)) : id.startsWith(PREFIXE_APP) ? o.apps?.viewFor(id.slice(PREFIXE_APP.length)) : undefined;
+    id.startsWith(SITE_PREFIX) ? o.sites?.viewFor(id.slice(SITE_PREFIX.length)) : id.startsWith(PREFIXE_APP) ? o.apps?.viewFor(id.slice(PREFIXE_APP.length)) : undefined;
   /** The page's address now: the app view's for a site app or agent app window, the tab's otherwise. */
   const urlOf = (id: string) => String((isWindow(id) ? siteView(id)?.browser.currentURI?.spec : o.store.state.onglets[id]?.url) ?? "");
   const entries = new Map<string, { browser: any; origin: string | null; session: Promise<Session> }>();
@@ -349,10 +349,10 @@ export function createDevTools(o: {
     const s: Session = {
       commands,
       browser,
-      buffer: new TamponOnglet(),
+      buffer: new TabBuffer(),
       requests: new Map(),
       headers: new Map(),
-      origin: origineDe(browser.currentURI.spec),
+      origin: originOf(browser.currentURI.spec),
       nextTarget: next(),
       rejectNext: (e) => rejectNext(e),
       dropped: false,
@@ -383,7 +383,7 @@ export function createDevTools(o: {
             if (r.resourceType === TYPES.DOCUMENT_EVENT) {
               if (r.name !== "will-navigate" || r.targetFront?.isTopLevel === false) continue;
               // Same site: the messages stay, marked. Another site: they are worth nothing, the session goes.
-              if (origineDe(String(r.newURI ?? "")) === s.origin) s.buffer.rechargement();
+              if (originOf(String(r.newURI ?? "")) === s.origin) s.buffer.rechargement();
               else return ((s.siteChanged = true), dropMe());
             } else if (r.resourceType === TYPES.NETWORK_EVENT) {
               if (String(r.url ?? "").startsWith(EXTENSION)) continue;
@@ -429,14 +429,14 @@ export function createDevTools(o: {
     if (gen !== generation) throw new Error(TEXTE_REVOQUE);
     let e = entries.get(id);
     // Moved to another window (another browser), or on another site without its will-navigate heard (bfcache…).
-    if (e && (e.browser !== browser || origineDe(browser.currentURI.spec) !== e.origin)) {
+    if (e && (e.browser !== browser || originOf(browser.currentURI.spec) !== e.origin)) {
       drop(id);
       e = undefined;
     }
     if (!e) {
       const entry: { browser: any; origin: string | null; session: Promise<Session> } = {
         browser,
-        origin: origineDe(browser.currentURI.spec),
+        origin: originOf(browser.currentURI.spec),
         session: attach(win, browser, () => {
           if (entries.get(id) === entry) drop(id);
         }),
@@ -570,7 +570,7 @@ export function createDevTools(o: {
           }),
         ]);
         // The code may have taken the page to another site: its answer is not worth anything there.
-        if (s.dropped && origineDe(urlOf(id)) !== s.origin) throw new Error(TEXTE_SITE_CHANGE);
+        if (s.dropped && originOf(urlOf(id)) !== s.origin) throw new Error(TEXTE_SITE_CHANGE);
         return r;
       } finally {
         clearTimeout(timer);
@@ -582,7 +582,7 @@ export function createDevTools(o: {
       const s = await session(id);
       // Resolves at dom-complete (note D4); a page that never finishes still answers.
       await Promise.race([reloadTop(id, s, !!sansCache), sleep(NAVIGATION_TIMEOUT_MS)]);
-      if (s.dropped && origineDe(urlOf(id)) !== s.origin) throw new Error(TEXTE_SITE_CHANGE);
+      if (s.dropped && originOf(urlOf(id)) !== s.origin) throw new Error(TEXTE_SITE_CHANGE);
     },
     /** Gecko's profiler on the tab's process only (note D5), converted to a .cpuprofile; always stopped once started here. */
     async profiler(id: string, opts: { dureeMs?: number; recharger?: boolean }, signal?: AbortSignal) {

@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, expect, it } from "vitest";
 import { SANS_CLIENT } from "../../../packages/noyau/src/design/projets";
-import { LIGNE_CHANGEE_PAGE as LIGNE_CHANGEE, PLAGE_HORS_BLOC, urlRelecture } from "../shared/modele";
+import { PAGE_LINE_CHANGED as LIGNE_CHANGEE, RANGE_OUTSIDE_BLOCK, reviewUrl } from "../shared/modele";
 import { state, waitFor } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
@@ -170,7 +170,7 @@ it("Shift+click from line 13 to 16: the comment covers 13–16; a range over two
     // From line 13 (first block) to line 25 (second block): refused.
     await click(m, plus(13));
     await shiftPlus(25);
-    await waitUi(m, "return doc.querySelector(arguments[0])?.textContent === arguments[1]", [tid("erreur-commentaire"), PLAGE_HORS_BLOC]);
+    await waitUi(m, "return doc.querySelector(arguments[0])?.textContent === arguments[1]", [tid("erreur-commentaire"), RANGE_OUTSIDE_BLOCK]);
     expect(await count(`${tid("ligne-diff")}.choisie`)).toBe(1);
     await click(m, `${FORM} button`, { text: "Annuler" });
     await waitCount(FORM, 0);
@@ -298,7 +298,7 @@ it("after « Révoquer », envoyer-commentaires is disabled, with SANS_CLIENT as
     await click(m, plus(15));
     await comment("Une remarque");
     expect(await inUi(m, "return doc.querySelector(arguments[0]).disabled", [SEND])).toBe(false);
-    const review = Object.values((await state(m)).onglets).find((o) => o.url === urlRelecture(`ext-${p.id}`))!.id;
+    const review = Object.values((await state(m)).onglets).find((o) => o.url === reviewUrl(`ext-${p.id}`))!.id;
     await openApplications(m);
     await click(m, `${tid("client-externe")} button`, { text: "Révoquer" });
     await waitCount(tid("client-externe"), 0);

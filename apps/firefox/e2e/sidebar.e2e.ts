@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Action } from "../shared/api";
-import type { EtatNavigateur } from "../shared/modele";
+import type { BrowserState } from "../shared/modele";
 import { dispatch, state, waitFor } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
@@ -33,7 +33,7 @@ async function open(path: string, extra: Partial<Extract<Action, { type: "ouvrir
   const after = await dispatch(m, { type: "ouvrirOnglet", fenetreId: (await win()).id, url: server.url + path, ...extra });
   return Object.keys(after.onglets).find((id) => !before.has(id))!;
 }
-async function waitState<T>(read: (s: EtatNavigateur) => T, ok: (v: T) => boolean, ms = 10_000): Promise<T> {
+async function waitState<T>(read: (s: BrowserState) => T, ok: (v: T) => boolean, ms = 10_000): Promise<T> {
   const deadline = Date.now() + ms;
   for (;;) {
     const v = read(await state(m));

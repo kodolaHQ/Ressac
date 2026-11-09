@@ -3,15 +3,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, expect, test } from "vitest";
-import { Historique } from "../core/historique";
+import { History } from "../core/historique";
 
-let h: Historique;
+let h: History;
 let chemin: string;
 const date = (iso: string) => new Date(iso);
 
 beforeEach(() => {
   chemin = join(mkdtempSync(join(tmpdir(), "webaios-hist-")), "historique.sqlite");
-  h = new Historique(chemin);
+  h = new History(chemin);
 });
 afterEach(() => h.fermer());
 
@@ -68,7 +68,7 @@ test("special characters (% _ ') in the search are treated literally", () => {
 test("history survives reopening the file", () => {
   h.noter({ espaceId: "", prive: false, url: "https://a.fr/", titre: "A" });
   h.fermer();
-  h = new Historique(chemin);
+  h = new History(chemin);
   expect(h.recents().map((v) => v.url)).toEqual(["https://a.fr/"]);
 });
 
@@ -126,12 +126,12 @@ test("old schema (url key alone): rows kept, empty space, non-private", () => {
   db.exec(`CREATE TABLE visites (url TEXT PRIMARY KEY, titre TEXT NOT NULL, derniere_visite TEXT NOT NULL, visites INTEGER NOT NULL DEFAULT 1);
     INSERT INTO visites VALUES ('https://vieux.fr/', 'Vieux', '2026-01-01T00:00:00.000Z', 3);`);
   db.close();
-  h = new Historique(vieux);
+  h = new History(vieux);
   expect(h.recents()).toEqual([{ url: "https://vieux.fr/", titre: "Vieux", derniereVisite: "2026-01-01T00:00:00.000Z", visites: 3, espaceId: "", prive: false, retenu: false }]);
   h.noter({ url: "https://vieux.fr/", titre: "Vieux", espaceId: "A", prive: false });
   expect(h.recents()).toHaveLength(2);
   h.fermer();
-  h = new Historique(vieux); // already migrated: reopening changes nothing
+  h = new History(vieux); // already migrated: reopening changes nothing
   expect(h.recents()).toHaveLength(2);
 });
 
@@ -208,7 +208,7 @@ test("purger erases text older than 183 days and keeps the 182-day-old one", () 
 
 test("beyond the cap, purger erases the oldest text first", () => {
   h.fermer();
-  h = new Historique(chemin, { plafondOctets: 25 });
+  h = new History(chemin, { plafondOctets: 25 });
   visiter("https://1.fr/", "1", "a".repeat(10), { date: "2026-10-01T00:00:00Z" });
   visiter("https://2.fr/", "2", "é".repeat(5), { date: "2026-10-02T00:00:00Z" }); // 10 bytes in UTF-8
   visiter("https://3.fr/", "3", "c".repeat(10), { date: "2026-10-03T00:00:00Z" });
@@ -314,7 +314,7 @@ test("an empty query returns the most recent non-private visits", () => {
 test("retained text survives reopening the file", () => {
   visiter("https://a.fr/", "A", "persistant");
   h.fermer();
-  h = new Historique(chemin);
+  h = new History(chemin);
   expect(h.rechercherPourAgent({ requete: "persistant" }).map((r) => r.url)).toEqual(["https://a.fr/"]);
 });
 

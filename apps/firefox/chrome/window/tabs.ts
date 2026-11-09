@@ -1,6 +1,6 @@
 import type { Action } from "../../shared/api";
-import type { EtatNavigateur, IdFenetre, IdOnglet, Onglet } from "../../shared/modele";
-import { aUneVue, profilDOnglet } from "../../shared/modele";
+import type { BrowserState, WindowId, TabId, Tab } from "../../shared/modele";
+import { hasView, tabProfile } from "../../shared/modele";
 import type { WebAiOsStore } from "../store";
 
 export const TAB_ID = "webaios-tab-id";
@@ -22,11 +22,11 @@ type Champs = Extract<Action, { type: "majOnglet" }>["champs"];
  * never removed) while no web page is displayed. Page events come back as majOnglet; tabs opened by pages and add-ons are adopted.
  */
 export class TabSync {
-  private readonly tabs = new Map<IdOnglet, any>();
+  private readonly tabs = new Map<TabId, any>();
   private parking: any;
   private creating = false;
   /** While a popup's link opens here: the WebAiOs tab behind the popup. */
-  private fromPopup: IdOnglet | undefined;
+  private fromPopup: TabId | undefined;
   /** While an add-on opens a tab here (tabs.create, its options page): they load with its principal. */
   private fromAddon = false;
   /** While TabSync selects or removes a XUL tab: what Firefox selects then is not the user's choice. */
@@ -37,7 +37,7 @@ export class TabSync {
   constructor(
     private readonly gBrowser: any,
     private readonly store: WebAiOsStore,
-    private readonly fenetreId: IdFenetre,
+    private readonly fenetreId: WindowId,
   ) {
     this.park(gBrowser.tabs[0]);
     // A popup's link reaches this window with no opener tab, only its popup's browser (TabOpen fires inside addTab).
@@ -115,7 +115,7 @@ export class TabSync {
   }
 
   /** The XUL tab of a WebAiOs tab, if it has one. */
-  tab(id: IdOnglet): any {
+  tab(id: TabId): any {
     return this.tabs.get(id);
   }
 
@@ -123,7 +123,7 @@ export class TabSync {
    * The browser of a WebAiOs tab for the agent, even one never displayed: its XUL tab is created in the background
    * (not selected), then loaded (15 s at most).
    */
-  async ensure(id: IdOnglet): Promise<any> {
+  async ensure(id: TabId): Promise<any> {
     const state = this.store.state;
     const o = state.onglets[id];
     if (!o) throw new Error(`Onglet introuvable : ${id}`);
@@ -154,15 +154,15 @@ export class TabSync {
   }
 
   /** The WebAiOs tab displayed in the window, or null when the parking tab is. */
-  displayed(): IdOnglet | null {
+  displayed(): TabId | null {
     return this.gBrowser.selectedTab.getAttribute(TAB_ID);
   }
 
-  sync(state: EtatNavigateur): void {
+  sync(state: BrowserState): void {
     const f = state.fenetres.find((x) => x.id === this.fenetreId);
     const active = f && f.actif[f.espaceActif];
     const onglet = active ? state.onglets[active] : undefined;
-    const web = onglet && aUneVue(onglet.url) ? onglet : undefined;
+    const web = onglet && hasView(onglet.url) ? onglet : undefined;
     // Gone, or now in another container: the page reopens from scratch at the same URL.
     for (const [id, tab] of [...this.tabs]) {
       const o = state.onglets[id];
@@ -175,16 +175,16 @@ export class TabSync {
   }
 
   /** Drops the XUL tab of `id` (a crashed browser cannot reload): the next sync creates a new one at the tab's URL. */
-  recreate(id: IdOnglet): void {
+  recreate(id: TabId): void {
     const tab = this.tabs.get(id);
     if (tab) this.remove(id, tab);
   }
 
-  private containerOf(state: EtatNavigateur, o: Onglet): number {
-    return this.store.containerFor(profilDOnglet(state, o));
+  private containerOf(state: BrowserState, o: Tab): number {
+    return this.store.containerFor(tabProfile(state, o));
   }
 
-  private create(state: EtatNavigateur, o: Onglet): void {
+  private create(state: BrowserState, o: Tab): void {
     this.creating = true;
     try {
       const userContextId = this.containerOf(state, o);
@@ -201,7 +201,7 @@ export class TabSync {
     }
   }
 
-  private remove(id: IdOnglet, tab: any): void {
+  private remove(id: TabId, tab: any): void {
     this.tabs.delete(id); // first: onClose then knows we closed it
     this.select(() => this.gBrowser.removeTab(tab, { skipPermitUnload: true, animate: false }));
   }
@@ -252,7 +252,7 @@ export class TabSync {
     // A page's tab opens next to its source; an add-on's in the window's active space.
     const f = this.store.state.fenetres.find((x) => x.id === this.fenetreId);
     const apres = opener ?? f?.actif[f.espaceActif];
-    const id: IdOnglet = crypto.randomUUID();
+    const id: TabId = crypto.randomUUID();
     tab.setAttribute(TAB_ID, id);
     this.tabs.set(id, tab);
     // Firefox selects a foreground tab right after TabOpen, in the same task: read it once that is done.

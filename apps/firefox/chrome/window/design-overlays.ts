@@ -1,4 +1,4 @@
-import type { ContexteCalque } from "../../shared/api";
+import type { OverlayContext } from "../../shared/api";
 import type { AgentHost } from "../agent/host";
 import { overlayApi, type DesignOverlays, type DesignService, type DesignTarget } from "../store/design";
 import { cleCible, DUREE_MESSAGE_MS } from "../store/design-copies";
@@ -14,7 +14,7 @@ const SRC = "chrome://browser/content/webaios/sidebar.html?calque";
 /** Spike S3's cart column of a main window: the page shrinks by it (window.css, --webaios-panier). */
 export const COLUMN_WIDTH = 300;
 
-type Mode = ContexteCalque["mode"];
+type Mode = OverlayContext["mode"];
 type Place = { x: number; y: number; width: number; height: number };
 type Frame = HTMLIFrameElement & { webaiosOverlay?: unknown };
 

@@ -1,8 +1,8 @@
 <script lang="ts">
   import { commande } from "./commande.svelte";
   import { onMount, untrack } from "svelte";
-  import type { LigneExtensionEspace } from "../../shared/extensions";
-  import type { IdFenetre, IdOnglet } from "../../shared/modele";
+  import type { SpaceExtensionLine } from "../../shared/extensions";
+  import type { WindowId, TabId } from "../../shared/modele";
   import { api, etat } from "../etat.svelte";
   import { avertissements } from "./extensionsEspace";
   import FondFige from "./FondFige.svelte";
@@ -13,7 +13,7 @@
    * Creation or settings of a space: the `reglagesEspace` draft, mounted as long as it exists. `ongletId`: the page
    * shown at opening, captured for the background (null: none, or a panel hides it).
    */
-  let { fenetreId, ongletId }: { fenetreId: IdFenetre; ongletId: IdOnglet | null } = $props();
+  let { fenetreId, ongletId }: { fenetreId: WindowId; ongletId: TabId | null } = $props();
   // The draft is shared state: the fields modify it in place.
   const brouillon = untrack(() => reglagesEspace.brouillon)!;
 
@@ -28,7 +28,7 @@
   const perdConnexions = $derived(choixPerdConnexions(espaces, brouillon.id, brouillon.profil));
 
   // Extensions: the rows seen from the space's saved profile (an existing space only).
-  let lignes = $state<LigneExtensionEspace[] | null>(null);
+  let lignes = $state<SpaceExtensionLine[] | null>(null);
   let erreurExtension = $state<string | null>(null);
   const enregistre = $derived(espaces.find((e) => e.id === brouillon.id));
   const profilChange = $derived(!!enregistre && brouillon.profil !== enregistre.profil);
@@ -45,7 +45,7 @@
     void cleLignes;
     void chargerLignes();
   });
-  async function basculer(l: LigneExtensionEspace, champ: HTMLInputElement) {
+  async function basculer(l: SpaceExtensionLine, champ: HTMLInputElement) {
     if (brouillon.id === null) return;
     erreurExtension = null;
     const r = await api.extensions.basculer(l.cle, brouillon.id, champ.checked);

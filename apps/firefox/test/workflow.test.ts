@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { aUneVue, urlWorkflow, URL_APPLICATIONS, widgetDeUrlWorkflow } from "../shared/modele";
+import { hasView, urlWorkflow, URL_APPLICATIONS, widgetDeUrlWorkflow } from "../shared/modele";
 
 test("urlWorkflow and widgetDeUrlWorkflow: round trip, nothing else", () => {
   expect(urlWorkflow("meteo")).toBe("webaios://workflow/meteo");
@@ -9,7 +9,7 @@ test("urlWorkflow and widgetDeUrlWorkflow: round trip, nothing else", () => {
 });
 
 test("a webaios://workflow/… page has no view", () => {
-  expect(aUneVue(urlWorkflow("meteo"))).toBe(false);
-  expect(aUneVue(URL_APPLICATIONS)).toBe(false);
-  expect(aUneVue("https://a.test/")).toBe(true);
+  expect(hasView(urlWorkflow("meteo"))).toBe(false);
+  expect(hasView(URL_APPLICATIONS)).toBe(false);
+  expect(hasView("https://a.test/")).toBe(true);
 });

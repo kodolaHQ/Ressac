@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { DELAI_GESTE_MS, gardienGestes } from "../shared/geste-widget";
+import { GESTURE_DELAY_MS, gestureGuard } from "../shared/geste-widget";
 
 function horloge() {
   const h = { t: 10_000, maintenant: () => h.t };
@@ -7,13 +7,13 @@ function horloge() {
 }
 
 test("without a real gesture, no link", () => {
-  const g = gardienGestes<string>(horloge().maintenant);
+  const g = gestureGuard<string>(horloge().maintenant);
   expect(g.accepter("f1", "meteo")).toBe(false);
 });
 
 test("a recent gesture from the right widget accepts a single link", () => {
   const h = horloge();
-  const g = gardienGestes<string>(h.maintenant);
+  const g = gestureGuard<string>(h.maintenant);
   g.geste("f1", "meteo");
   h.t += 400;
   expect(g.accepter("f1", "meteo")).toBe(true);
@@ -21,14 +21,14 @@ test("a recent gesture from the right widget accepts a single link", () => {
 });
 
 test("a gesture from another widget refuses, and does not use it up", () => {
-  const g = gardienGestes<string>(horloge().maintenant);
+  const g = gestureGuard<string>(horloge().maintenant);
   g.geste("f1", "meteo");
   expect(g.accepter("f1", "actus")).toBe(false);
   expect(g.accepter("f1", "meteo")).toBe(true);
 });
 
 test("a gesture from another window does not count", () => {
-  const g = gardienGestes<string>(horloge().maintenant);
+  const g = gestureGuard<string>(horloge().maintenant);
   g.geste("f2", "meteo");
   expect(g.accepter("f1", "meteo")).toBe(false);
   expect(g.accepter("f2", "meteo")).toBe(true);
@@ -36,8 +36,8 @@ test("a gesture from another window does not count", () => {
 
 test("a gesture older than 1,500 ms refuses", () => {
   const h = horloge();
-  const g = gardienGestes<string>(h.maintenant);
-  expect(DELAI_GESTE_MS).toBe(1500);
+  const g = gestureGuard<string>(h.maintenant);
+  expect(GESTURE_DELAY_MS).toBe(1500);
   g.geste("f1", "meteo");
   h.t += 1400;
   expect(g.accepter("f1", "meteo")).toBe(true);

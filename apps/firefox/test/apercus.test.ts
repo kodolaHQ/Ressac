@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { creerRegroupeur } from "../core/onglets/regroupeur";
+import { createGrouper } from "../core/onglets/regroupeur";
 
 describe("regroupeur", () => {
   beforeEach(() => vi.useFakeTimers());
@@ -7,7 +7,7 @@ describe("regroupeur", () => {
 
   it("groups two close schedulings into a single call", () => {
     const faire = vi.fn();
-    const r = creerRegroupeur(1000, faire);
+    const r = createGrouper(1000, faire);
     r.planifier("a");
     vi.advanceTimersByTime(500);
     r.planifier("a");
@@ -20,7 +20,7 @@ describe("regroupeur", () => {
 
   it("forgetting before the deadline cancels the call", () => {
     const faire = vi.fn();
-    const r = creerRegroupeur(1000, faire);
+    const r = createGrouper(1000, faire);
     r.planifier("a");
     r.oublier("a");
     vi.advanceTimersByTime(5000);

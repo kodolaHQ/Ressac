@@ -1,19 +1,19 @@
 import fs from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
-import { PROFIL_DEFAUT, type EtatNavigateur } from "../../shared/modele";
-import { etatInitial } from "./etat-initial";
+import { DEFAULT_PROFILE, type BrowserState } from "../../shared/modele";
+import { initialState } from "./etat-initial";
 
-const FICHIER = "session.json";
+const FILE = "session.json";
 
-const SchemaFavori = z.object({ id: z.string(), url: z.string(), titre: z.string(), favicon: z.string().nullable() });
+const FavoriteSchema = z.object({ id: z.string(), url: z.string(), titre: z.string(), favicon: z.string().nullable() });
 
-const SchemaEspaceV1 = z.object({ id: z.string(), nom: z.string(), icone: z.string(), epingles: z.array(SchemaFavori) });
+const SpaceV1Schema = z.object({ id: z.string(), nom: z.string(), icone: z.string(), epingles: z.array(FavoriteSchema) });
 
 /** The fields common to versions 1 and 2. */
-const SchemaCommun = z
+const CommonSchema = z
   .object({
-    essentiels: z.array(SchemaFavori),
+    essentiels: z.array(FavoriteSchema),
     onglets: z.record(
       z.string(),
       z.object({
@@ -48,10 +48,10 @@ const SchemaCommun = z
   });
 
 /** Version 1: before private spaces and login profiles. */
-const SchemaV1 = SchemaCommun.extend({ version: z.literal(1), espaces: z.array(SchemaEspaceV1).min(1) });
-const SchemaV2 = SchemaCommun.extend({
+const SchemaV1 = CommonSchema.extend({ version: z.literal(1), espaces: z.array(SpaceV1Schema).min(1) });
+const SchemaV2 = CommonSchema.extend({
   version: z.literal(2),
-  espaces: z.array(SchemaEspaceV1.extend({ prive: z.boolean(), profil: z.string().min(1) })).min(1),
+  espaces: z.array(SpaceV1Schema.extend({ prive: z.boolean(), profil: z.string().min(1) })).min(1),
   profils: z.array(z.object({ id: z.string().min(1) })),
 });
 const SchemaSession = z.discriminatedUnion("version", [SchemaV1, SchemaV2]);
@@ -60,60 +60,60 @@ const SchemaSession = z.discriminatedUnion("version", [SchemaV1, SchemaV2]);
 function enV2(lu: z.infer<typeof SchemaSession>): z.infer<typeof SchemaV2> {
   if (lu.version === 2) {
     // A login profile used by a space is always listed: otherwise it would be taken for a profile to erase.
-    const manquants = [...new Set(lu.espaces.map((e) => e.profil))].filter((id) => !lu.profils.some((p) => p.id === id));
-    return manquants.length ? { ...lu, profils: [...lu.profils, ...manquants.map((id) => ({ id }))] } : lu;
+    const missing = [...new Set(lu.espaces.map((e) => e.profil))].filter((id) => !lu.profils.some((p) => p.id === id));
+    return missing.length ? { ...lu, profils: [...lu.profils, ...missing.map((id) => ({ id }))] } : lu;
   }
   // The earlier spaces stay visible to the agent, on the always-used partition: no login is lost.
-  return { ...lu, version: 2, espaces: lu.espaces.map((e) => ({ ...e, prive: false, profil: PROFIL_DEFAUT })), profils: [{ id: PROFIL_DEFAUT }] };
+  return { ...lu, version: 2, espaces: lu.espaces.map((e) => ({ ...e, prive: false, profil: DEFAULT_PROFILE })), profils: [{ id: DEFAULT_PROFILE }] };
 }
 
 /** A tab's volatile fields are not saved: they restart from their default value. */
-const VOLATILS = { chargement: false, peutReculer: false, peutAvancer: false, plante: false, erreur: null };
+const VOLATILE = { chargement: false, peutReculer: false, peutAvancer: false, plante: false, erreur: null };
 
 /** Sets the session file aside under a unique name: the next save will not overwrite it. Returns that name. */
-async function mettreDeCote(chemin: string, raison: "corrompu" | "illisible"): Promise<string | null> {
-  const horodatage = new Date().toISOString().replace(/[:.]/g, "-");
+async function setAside(path: string, reason: "corrompu" | "illisible"): Promise<string | null> {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   for (let i = 0; ; i++) {
-    const nom = `${chemin}.${horodatage}${i ? `-${i}` : ""}.${raison}`;
+    const name = `${path}.${timestamp}${i ? `-${i}` : ""}.${reason}`;
     try {
-      await fs.access(nom);
+      await fs.access(name);
     } catch {
-      return fs.rename(chemin, nom).then(
-        () => nom,
-        (e) => (console.error(`[session] impossible de garder ${chemin} de côté :`, e), null),
+      return fs.rename(path, name).then(
+        () => name,
+        (e) => (console.error(`[session] impossible de garder ${path} de côté :`, e), null),
       );
     }
   }
 }
 
 /** `garde` receives the name under which an unreadable session was set aside, to tell the user. */
-export async function chargerSession(dossier: string, garde?: (chemin: string) => void): Promise<EtatNavigateur> {
-  const chemin = join(dossier, FICHIER);
-  let texte: string;
+export async function chargerSession(dossier: string, kept?: (path: string) => void): Promise<BrowserState> {
+  const path = join(dossier, FILE);
+  let text: string;
   try {
-    texte = await fs.readFile(chemin, "utf8");
+    text = await fs.readFile(path, "utf8");
   } catch (e) {
     // Absent: first launch. Otherwise (permissions…), keep it rather than overwrite it at the next save.
-    const nom = (e as NodeJS.ErrnoException).code !== "ENOENT" && (await mettreDeCote(chemin, "illisible"));
-    if (nom) garde?.(nom);
-    return etatInitial();
+    const name = (e as NodeJS.ErrnoException).code !== "ENOENT" && (await setAside(path, "illisible"));
+    if (name) kept?.(name);
+    return initialState();
   }
   try {
-    const lu = enV2(SchemaSession.parse(JSON.parse(texte)));
+    const lu = enV2(SchemaSession.parse(JSON.parse(text)));
     return {
       ...lu,
-      onglets: Object.fromEntries(Object.entries(lu.onglets).map(([id, o]) => [id, { ...o, ...VOLATILS }])),
+      onglets: Object.fromEntries(Object.entries(lu.onglets).map(([id, o]) => [id, { ...o, ...VOLATILE }])),
     };
   } catch {
-    const nom = await mettreDeCote(chemin, "corrompu");
-    if (nom) garde?.(nom);
-    return etatInitial();
+    const name = await setAside(path, "corrompu");
+    if (name) kept?.(name);
+    return initialState();
   }
 }
 
 /** Saves the session at most once per `delaiMs`, atomically (temporary file + rename). */
-export class EnregistreurSession {
-  private enAttente: EtatNavigateur | null = null;
+export class SessionRecorder {
+  private enAttente: BrowserState | null = null;
   private minuterie: NodeJS.Timeout | undefined;
   /** Chained writes, never simultaneous. */
   private ecriture: Promise<void> = Promise.resolve();
@@ -124,8 +124,8 @@ export class EnregistreurSession {
     private readonly delaiMs = 500,
   ) {}
 
-  planifier(etat: EtatNavigateur): void {
-    this.enAttente = etat;
+  planifier(state: BrowserState): void {
+    this.enAttente = state;
     this.minuterie ??= setTimeout(() => void this.vider(), this.delaiMs);
   }
 
@@ -133,38 +133,38 @@ export class EnregistreurSession {
   vider(): Promise<void> {
     clearTimeout(this.minuterie);
     this.minuterie = undefined;
-    const etat = this.enAttente;
+    const state = this.enAttente;
     this.enAttente = null;
-    if (etat) {
+    if (state) {
       this.ecriture = this.ecriture
-        .then(() => this.ecrire(etat))
+        .then(() => this.ecrire(state))
         .catch((e) => {
           console.error("[session] écriture impossible :", e);
           // Retried at the next write or at exit, unless a more recent state is already there.
-          this.enAttente ??= etat;
+          this.enAttente ??= state;
         });
     }
     return this.ecriture;
   }
 
-  private async ecrire(etat: EtatNavigateur): Promise<void> {
-    const onglets = Object.fromEntries(
-      Object.entries(etat.onglets).map(([id, { chargement, peutReculer, peutAvancer, plante, erreur, ...reste }]) => [id, reste]),
+  private async ecrire(state: BrowserState): Promise<void> {
+    const tabs = Object.fromEntries(
+      Object.entries(state.onglets).map(([id, { chargement: load, peutReculer: canGoBack, peutAvancer: canAdvance, plante: crashes, erreur: error, ...rest }]) => [id, rest]),
     );
-    const cible = join(this.dossier, FICHIER);
-    const temporaire = `${cible}.${process.pid}.${++this.numero}.tmp`;
+    const target = join(this.dossier, FILE);
+    const temp = `${target}.${process.pid}.${++this.numero}.tmp`;
     await fs.mkdir(this.dossier, { recursive: true });
     try {
-      const fichier = await fs.open(temporaire, "w");
+      const file = await fs.open(temp, "w");
       try {
-        await fichier.writeFile(JSON.stringify({ ...etat, onglets }, null, 2));
-        await fichier.sync(); // on disk before the rename: a power cut does not leave an empty file
+        await file.writeFile(JSON.stringify({ ...state, onglets: tabs }, null, 2));
+        await file.sync(); // on disk before the rename: a power cut does not leave an empty file
       } finally {
-        await fichier.close();
+        await file.close();
       }
-      await fs.rename(temporaire, cible);
+      await fs.rename(temp, target);
     } catch (e) {
-      await fs.rm(temporaire, { force: true });
+      await fs.rm(temp, { force: true });
       throw e;
     }
   }

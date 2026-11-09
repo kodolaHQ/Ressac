@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { grantCovers, grantNeeded, DeclarationSite, type TweaksRead } from "@webaios/noyau";
-import { CONSOLE_RETOUCHES_TOTAL, type InjectionCadre } from "../../shared/sites";
-import { ajouterConsoleRetouche, injectionPour, repriseDansCadre, type SiteOuvrable } from "../../core/sites/injection";
+import { CONSOLE_TWEAKS_TOTAL, type InjectionCadre } from "../../shared/sites";
+import { addTweakConsole, injectionPour, repriseDansCadre, type OpenableSite } from "../../core/sites/injection";
 
 const GARDE = "/* garde */";
 const declaration = DeclarationSite.parse({
@@ -15,7 +15,7 @@ const declaration = DeclarationSite.parse({
   ],
   reprise: true,
 });
-const site: SiteOuvrable = {
+const site: OpenableSite = {
   id: "vidola",
   declaration,
   aAccueil: false,
@@ -122,16 +122,16 @@ test("a grant covering fewer rights than the declaration (frames added): no inje
 });
 
 test("tweaks console: text truncated to 2000 characters, source to 500, total bounded, 50 at most, never verified", () => {
-  const l: ReturnType<typeof ajouterConsoleRetouche> = [];
-  ajouterConsoleRetouche(l, { texte: "a".repeat(10_000), source: "webaios-retouche://vidola/" + "b".repeat(1000) }, "t");
+  const l: ReturnType<typeof addTweakConsole> = [];
+  addTweakConsole(l, { texte: "a".repeat(10_000), source: "webaios-retouche://vidola/" + "b".repeat(1000) }, "t");
   expect(l[0]!.texte).toHaveLength(2000);
   expect(l[0]!.source).toHaveLength(500);
   expect(l[0]!.sourceVerifiee).toBe(false);
-  for (let n = 0; n < 100; n++) ajouterConsoleRetouche(l, { texte: `${n}`.padEnd(2000, "x"), source: "s" }, "t");
-  expect(l.reduce((t, e) => t + e.texte.length, 0)).toBeLessThanOrEqual(CONSOLE_RETOUCHES_TOTAL);
+  for (let n = 0; n < 100; n++) addTweakConsole(l, { texte: `${n}`.padEnd(2000, "x"), source: "s" }, "t");
+  expect(l.reduce((t, e) => t + e.texte.length, 0)).toBeLessThanOrEqual(CONSOLE_TWEAKS_TOTAL);
   expect(l.at(-1)!.texte.startsWith("99")).toBe(true);
-  const petits: ReturnType<typeof ajouterConsoleRetouche> = [];
-  for (let n = 0; n < 80; n++) ajouterConsoleRetouche(petits, { texte: `${n}`, source: "s" }, "t");
+  const petits: ReturnType<typeof addTweakConsole> = [];
+  for (let n = 0; n < 80; n++) addTweakConsole(petits, { texte: `${n}`, source: "s" }, "t");
   expect(petits).toHaveLength(50);
   expect(petits[0]!.texte).toBe("30");
 });

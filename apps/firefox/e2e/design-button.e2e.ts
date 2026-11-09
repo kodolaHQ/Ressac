@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { SANS_CLIENT } from "../../../packages/noyau/src/design/projets";
-import { urlRelecture } from "../shared/modele";
+import { reviewUrl } from "../shared/modele";
 import { UNAVAILABLE_DESIGN } from "../shared/design-guards";
 import { openTab, testActor } from "./agent-extensions";
 import { startDesignServers, trustedMouse } from "./design";
@@ -325,7 +325,7 @@ describe("an external project", () => {
     await p?.client.close().catch(() => undefined);
   });
 
-  const reviewTabs = async () => Object.values((await state(m)).onglets).filter((o) => o.url === urlRelecture(projet()));
+  const reviewTabs = async () => Object.values((await state(m)).onglets).filter((o) => o.url === reviewUrl(projet()));
 
   it("relecture.spec.ts:168 Relire ce projet of an external project's tab, twice: one Review page, no second tab", async () => {
     await activate(tab);

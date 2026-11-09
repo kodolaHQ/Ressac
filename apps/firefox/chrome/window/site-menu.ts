@@ -2,15 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { IdFenetre } from "../../shared/modele";
-import { profilDOnglet } from "../../shared/modele";
+import type { WindowId } from "../../shared/modele";
+import { tabProfile } from "../../shared/modele";
 import type { WebAiOsStore } from "../store";
 
 /**
  * The « Navigation » menu entry « Oublier les autorisations de ce site » (oublierAutorisations): forgets the
  * active tab's origin in its space's profile. A menu in this window's menu bar, before « Fenêtre » (spike P9).
  */
-export function mountSiteMenu(win: Window, store: WebAiOsStore, fenetreId: IdFenetre): void {
+export function mountSiteMenu(win: Window, store: WebAiOsStore, fenetreId: WindowId): void {
   const doc = win.document as Document & { createXULElement(tag: string): Element };
   const menu = doc.createXULElement("menu");
   menu.setAttribute("label", "Navigation");
@@ -23,7 +23,7 @@ export function mountSiteMenu(win: Window, store: WebAiOsStore, fenetreId: IdFen
     const tab = f && store.state.onglets[f.actif[f.espaceActif] ?? ""];
     if (!tab) return;
     try {
-      void store.sitePermissions.forget(profilDOnglet(store.state, tab), new URL(tab.url).origin);
+      void store.sitePermissions.forget(tabProfile(store.state, tab), new URL(tab.url).origin);
     } catch {
       // A URL without an origin: nothing to forget.
     }

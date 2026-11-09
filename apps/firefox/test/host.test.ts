@@ -7,12 +7,12 @@ import { createInterface } from "node:readline";
 import { afterEach, describe, expect, it } from "vitest";
 import { NO_WORKFLOW_OPEN, CONSOLE_UNLOCKED, CONSOLE_BACKGROUND_HIDDEN, CONSOLE_FOND_OBSERVE, REQUEST_REMOVED, PRIVATE_PROFILE_ERROR, hiddenTabs, navigationOutsideSite } from "../../../packages/noyau/src/index";
 import { PRIVATE_TEXT } from "../../../packages/noyau/src/mcp/pont";
-import { DESACTIVEE_PLANTAGES } from "../shared/extensions-messages";
+import { DISABLED_CRASHES } from "../shared/extensions-messages";
 import { hostPath, nodePath, tsxPath } from "../scripts/paths";
 import { createRpc, type Handler, type Rpc } from "../shared/rpc";
-import { installationImpossible, RIEN_A_REVOIR } from "../noyau/extensions/agent";
-import { CLES_ABSENTES, signatureRefusee } from "../noyau/extensions/amo";
-import type { CarteExtension, ReponseAccord } from "../shared/extensions";
+import { installationImpossible, NOTHING_TO_REVIEW } from "../noyau/extensions/agent";
+import { KEYS_ABSENT, deniedSignature } from "../noyau/extensions/amo";
+import type { CarteExtension, GrantResponse } from "../shared/extensions";
 import { startFakeAmo } from "./fake-amo";
 import { appelerOutil } from "./mcp";
 
@@ -442,7 +442,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
       recharges: [] as unknown[],
       /** Every extensions.redemarrer request (an unchanged reload). */
       redemarrages: [] as string[],
-      reponse: (c: CarteExtension): ReponseAccord => ({ accepte: true, empreinte: c.empreinte }),
+      reponse: (c: CarteExtension): GrantResponse => ({ accepte: true, empreinte: c.empreinte }),
       handlers: {} as Record<string, Handler>,
     };
     f.handlers = {
@@ -565,7 +565,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     h = launch(await fakeAmo({ refus: "Validation failed: eval" }), f, { dataDir: h.dataDir });
     const r = await outil(h, "recharger_extension", { id: "ma-ext" });
     expect(r).toContain("etat : refusee");
-    expect(r).toContain(signatureRefusee("Validation failed: eval"));
+    expect(r).toContain(deniedSignature("Validation failed: eval"));
     expect(r).not.toContain("test-secret");
     expect(JSON.parse(readFileSync(join(h.dataDir, "extensions", "signes", "ma-ext.json"), "utf8")).version).toBe("1.0.0.1");
     expect(f.installs).toHaveLength(1);
@@ -822,7 +822,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const h = launch(amo, f, { prepare: source, cles: false });
     const r = await outil(h, "demander_extension", { id: "ma-ext" });
     expect(r).toContain("Clés AMO absentes");
-    expect(r).toBe(CLES_ABSENTES);
+    expect(r).toBe(KEYS_ABSENT);
     expect(f.cartes).toEqual([]);
     expect(amo.envois).toEqual([]);
   });
@@ -899,7 +899,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const f = firefox();
     const h = launch(amo, f, { prepare: source });
     expect(await outil(h, "demander_extension", { id: "ma-ext" })).toBe("Activée dans « Perso ».");
-    expect(await h.rpc.request("extensions.revoir", { cle: "agent:ma-ext", fenetre: "f1" })).toEqual({ ok: false, erreur: RIEN_A_REVOIR });
+    expect(await h.rpc.request("extensions.revoir", { cle: "agent:ma-ext", fenetre: "f1" })).toEqual({ ok: false, erreur: NOTHING_TO_REVIEW });
     source(h.dataDir, { hotes: [HOTE, "https://exemple.com/*"] });
     expect(await outil(h, "recharger_extension", { id: "ma-ext" })).toContain("etat : desactivee");
     expect(await h.rpc.request("extensions.revoir", { cle: "agent:ma-ext", fenetre: "f1" })).toEqual({ ok: true });
@@ -970,8 +970,8 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     h.rpc.notify("extensions.plantage", { addonId: ID });
     await until(() => f.activations.at(-1)?.actif === false);
     expect(entree(h.dataDir)).toMatchObject({ profils: ["defaut"], desactivee: { raison: "plantages" } });
-    expect(await outil(h, "lister_extensions")).toContain(`erreurs : ${DESACTIVEE_PLANTAGES}`);
-    expect((await h.rpc.request<{ desactivee: string | null }[]>("extensions.liste"))[0]!.desactivee).toBe(DESACTIVEE_PLANTAGES);
+    expect(await outil(h, "lister_extensions")).toContain(`erreurs : ${DISABLED_CRASHES}`);
+    expect((await h.rpc.request<{ desactivee: string | null }[]>("extensions.liste"))[0]!.desactivee).toBe(DISABLED_CRASHES);
     expect(await h.rpc.request("extensions.reactiver", { cle: "agent:ma-ext" })).toEqual({ ok: true });
     expect(entree(h.dataDir)).toMatchObject({ desactivee: null });
     expect(f.activations.at(-1)).toEqual({ addonId: ID, actif: true });

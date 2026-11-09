@@ -1,16 +1,16 @@
 <script lang="ts">
   import Icone from "./Icone.svelte";
-  import type { Espace, EtatFenetre } from "../../shared/modele";
+  import type { Space, WindowState } from "../../shared/modele";
   import { api, etat } from "../etat.svelte";
   import { ouvrirMenu } from "./menu.svelte";
   import { perdConnexions, PROFIL_A_CHOISIR } from "./profilsEspace";
   import { reglagesEspace } from "./reglagesEspace.svelte";
 
-  let { fenetre }: { fenetre: EtatFenetre } = $props();
+  let { fenetre }: { fenetre: WindowState } = $props();
   /** Space to delete awaiting confirmation (it contains tabs, or it takes sign-ins with it). */
-  let aSupprimer = $state<{ espace: Espace; onglets: number; connexions: boolean } | null>(null);
+  let aSupprimer = $state<{ espace: Space; onglets: number; connexions: boolean } | null>(null);
 
-  function supprimer(espace: Espace) {
+  function supprimer(espace: Space) {
     const n = Object.values(etat.valeur?.onglets ?? {}).filter((o) => o.espaceId === espace.id).length;
     const connexions = perdConnexions(etat.valeur?.espaces ?? [], espace);
     if (n > 0 || connexions) aSupprimer = { espace, onglets: n, connexions };
@@ -18,7 +18,7 @@
   }
 
   // A setting keeps the space's current profile (alone or shared); a new space has none: the user chooses.
-  const regler = (espace: Espace) =>
+  const regler = (espace: Space) =>
     (reglagesEspace.brouillon = { id: espace.id, nom: espace.nom, icone: espace.icone, prive: espace.prive, profil: espace.profil });
   function creer() {
     reglagesEspace.brouillon = { id: null, nom: "", icone: "📁", prive: false, profil: PROFIL_A_CHOISIR };

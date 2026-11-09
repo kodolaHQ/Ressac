@@ -1,11 +1,11 @@
 import { WorkshopError } from "@webaios/noyau";
-import type { EtatPanneauAgent, TailleTerminal } from "../../shared/api";
-import type { IdFenetre } from "../../shared/modele";
+import type { AgentPanelState, TailleTerminal } from "../../shared/api";
+import type { WindowId } from "../../shared/modele";
 
 /** Output kept per window, returned when the UI reloads: enough to find the conversation again. */
 export const TAMPON_MAX = 200_000;
 /** The agent's output goes to the UI in batches: one IPC message per burst, not per pty chunk. */
-export const REGROUPEMENT_MS = 8;
+export const GROUPING_MS = 8;
 
 /** The last characters of an output, kept in chunks: appending never copies the whole buffer. */
 export class Tampon {
@@ -21,13 +21,13 @@ export class Tampon {
     while (this.longueur > this.max) {
       this.coupe = true;
       const premier = this.morceaux[0]!;
-      const enTrop = this.longueur - this.max;
-      if (premier.length <= enTrop) {
+      const tooMany = this.longueur - this.max;
+      if (premier.length <= tooMany) {
         this.morceaux.shift();
         this.longueur -= premier.length;
       } else {
-        this.morceaux[0] = premier.slice(enTrop);
-        this.longueur -= enTrop;
+        this.morceaux[0] = premier.slice(tooMany);
+        this.longueur -= tooMany;
       }
     }
   }
@@ -71,19 +71,19 @@ interface Entree {
 
 /** One agent session per window (spec §8): it survives tab changes and the panel closing. */
 export class SessionsAgent {
-  private entrees = new Map<IdFenetre, Entree>();
+  private entrees = new Map<WindowId, Entree>();
 
   constructor(
     private readonly o: {
-      ouvrir: (f: IdFenetre, t: TailleTerminal) => Promise<SessionLike>;
-      envoyer: (f: IdFenetre, canal: "donnees" | "etat", v: string | EtatPanneauAgent) => void;
+      ouvrir: (f: WindowId, t: TailleTerminal) => Promise<SessionLike>;
+      envoyer: (f: WindowId, canal: "donnees" | "etat", v: string | AgentPanelState) => void;
       /** The user submits a message (Enter) in this window's terminal. */
-      surEnvoi?: (f: IdFenetre) => void;
+      surEnvoi?: (f: WindowId) => void;
     },
   ) {}
 
   /** Idempotent: an active session returns its state and its buffer; otherwise a new session starts. */
-  demarrer(f: IdFenetre, taille: TailleTerminal): Promise<void> {
+  demarrer(f: WindowId, taille: TailleTerminal): Promise<void> {
     let e = this.entrees.get(f);
     if (!e) this.entrees.set(f, (e = { tampon: new Tampon(TAMPON_MAX), aEnvoyer: "", taille }));
     const entree = e;
@@ -111,7 +111,7 @@ export class SessionsAgent {
           s.surDonnees((d) => {
             entree.tampon.ajouter(d);
             entree.aEnvoyer += d;
-            entree.minuterie ??= setTimeout(() => this.envoyerSortie(f, entree), REGROUPEMENT_MS);
+            entree.minuterie ??= setTimeout(() => this.envoyerSortie(f, entree), GROUPING_MS);
           });
           s.surFin((code) => {
             // Session replaced (relancerTout): its end is not that of the displayed conversation.
@@ -139,7 +139,7 @@ export class SessionsAgent {
     return entree.demarrage;
   }
 
-  private envoyerSortie(f: IdFenetre, e: Entree): void {
+  private envoyerSortie(f: WindowId, e: Entree): void {
     const d = e.aEnvoyer;
     this.annulerEnvoi(e);
     if (d && this.entrees.get(f) === e) this.o.envoyer(f, "donnees", d);
@@ -151,11 +151,11 @@ export class SessionsAgent {
     e.aEnvoyer = "";
   }
 
-  active(f: IdFenetre): boolean {
+  active(f: WindowId): boolean {
     return this.entrees.get(f)?.session?.active ?? false;
   }
 
-  ecrire(f: IdFenetre, d: string): void {
+  ecrire(f: WindowId, d: string): void {
     const session = this.entrees.get(f)?.session;
     if (!session) return;
     session.ecrire(d);
@@ -167,19 +167,19 @@ export class SessionsAgent {
    * becomes so (a single pending text per window, the last wins). `ecrit` is called just before writing,
    * session open: an access granted there survives the policy's reset by the session opening.
    */
-  preRemplir(f: IdFenetre, texte: string, ecrit?: () => void): void {
+  preRemplir(f: WindowId, text: string, written?: () => void): void {
     let e = this.entrees.get(f);
-    if (e?.session?.active) return this.ecrirePreRemplissage(e.session, texte, ecrit);
+    if (e?.session?.active) return this.ecrirePreRemplissage(e.session, text, written);
     if (!e) this.entrees.set(f, (e = { tampon: new Tampon(TAMPON_MAX), aEnvoyer: "", taille: { cols: 80, rows: 24 } }));
-    e.preRemplissage = { texte, ...(ecrit ? { ecrit } : {}) };
+    e.preRemplissage = { texte: text, ...(written ? { ecrit: written } : {}) };
   }
 
-  private ecrirePreRemplissage(s: SessionLike, texte: string, ecrit?: () => void): void {
-    ecrit?.();
-    s.ecrire(texte);
+  private ecrirePreRemplissage(s: SessionLike, text: string, written?: () => void): void {
+    written?.();
+    s.ecrire(text);
   }
 
-  redimensionner(f: IdFenetre, t: TailleTerminal): void {
+  redimensionner(f: WindowId, t: TailleTerminal): void {
     const e = this.entrees.get(f);
     if (e) e.taille = t;
     e?.session?.redimensionner(t.cols, t.rows);
@@ -187,20 +187,20 @@ export class SessionsAgent {
 
   /** Profile change: every window that had an agent gets a new one, at the same size. */
   async relancerTout(): Promise<void> {
-    const anciennes = [...this.entrees];
+    const olds = [...this.entrees];
     // New entries: a startup still in progress on the old kernel will be abandoned when it arrives.
     this.entrees.clear();
-    for (const [, e] of anciennes) {
+    for (const [, e] of olds) {
       this.annulerEnvoi(e);
       const s = e.session;
       e.session = undefined;
       void s?.arreter();
     }
-    await Promise.all(anciennes.map(([f, e]) => this.demarrer(f, e.taille)));
+    await Promise.all(olds.map(([f, e]) => this.demarrer(f, e.taille)));
   }
 
   /** Hands control back once the agent is stopped in the container. */
-  async fermerFenetre(f: IdFenetre): Promise<void> {
+  async fermerFenetre(f: WindowId): Promise<void> {
     const e = this.entrees.get(f);
     if (e) this.annulerEnvoi(e);
     this.entrees.delete(f);

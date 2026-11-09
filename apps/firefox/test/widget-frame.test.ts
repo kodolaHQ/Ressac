@@ -2,9 +2,9 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpath
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { WidgetAffiche } from "../shared/api";
+import type { ShownWidget } from "../shared/api";
 import { AFFICHAGE_REFUSE, CSP_WIDGET, affichageServi, cheminCopie, oublierWidget, preparerWidget, urlAffichage } from "../chrome/window/widget-frame";
-import { MOTIF_INDICES_RESEAU } from "../shared/indices-reseau";
+import { NETWORK_HINTS_PATTERN } from "../shared/indices-reseau";
 import { servirAffichages } from "../ui/api";
 
 let racine: string;
@@ -161,7 +161,7 @@ describe("servirAffichages", () => {
       preparer: async (_d: string, id: string) => `resource://webaios-widget-${id}/affichage-1.html`,
       oublier: async (_d: string, id: string) => void oublies.push(id),
     };
-    const w = (id: string) => ({ id, src: `resource://webaios-widget-${id}/affichage-1.html` }) as unknown as WidgetAffiche;
+    const w = (id: string) => ({ id, src: `resource://webaios-widget-${id}/affichage-1.html` }) as unknown as ShownWidget;
     await servirAffichages([w("a"), w("b")], "/data", prepares, outil);
     expect(prepares).toEqual(new Set(["a", "b"]));
     expect(oublies).toEqual([]);
@@ -186,7 +186,7 @@ describe("affichageServi", () => {
     expect(servi.indexOf("<title>")).toBeGreaterThan(finGarde);
     expect(servi.indexOf("<script>document.title")).toBeGreaterThan(finGarde);
     // The network-hint rule is passed to the guard.
-    expect(servi).toContain(JSON.stringify(MOTIF_INDICES_RESEAU));
+    expect(servi).toContain(JSON.stringify(NETWORK_HINTS_PATTERN));
     // The serialized script is valid JavaScript (compiled, not run).
     const debut = servi.indexOf("<script>") + "<script>".length;
     expect(() => new Function(servi.slice(debut, finGarde))).not.toThrow();

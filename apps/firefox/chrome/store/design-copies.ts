@@ -1,12 +1,12 @@
 // The design mode's pure pieces: core/design/viseur.ts's scriptViseur, adapted for the actor's guard, and the checks
 // on what comes back from the page.
 import type { DesignContext } from "../../../../packages/noyau/src/design/remarques";
-import type { CibleDesign } from "../../core/design/premier-plan";
-import { scriptViseur, type CaptureViseur } from "../../core/design/viseur";
+import type { DesignTarget } from "../../core/design/premier-plan";
+import { viewfinderScript, type ViewfinderCapture } from "../../core/design/viseur";
 import { truncateHtml } from "../shims/noyau";
 
 export { rectCapture } from "../../core/design/viseur";
-export type { CaptureViseur };
+export type { ViewfinderCapture as CaptureViseur };
 
 export const SOURCE_TIMEOUT_MS = 1500;
 
@@ -28,7 +28,7 @@ export const LARGEUR_PANIER = 340;
 export const DUREE_MESSAGE_MS = 4000;
 
 /** Key of a target, also the argument of its overlay. */
-export const cleCible = (c: CibleDesign): string =>
+export const cleCible = (c: DesignTarget): string =>
   c.type === "fenetre" ? `fenetre:${c.fenetreId}` : c.type === "app" ? `app:${c.dossier}` : `site:${c.id}`;
 
 /**
@@ -36,7 +36,7 @@ export const cleCible = (c: CibleDesign): string =>
  * to the window, and never above `hautMin` (the bottom of a site app's bar).
  */
 export function placeBulle(
-  rect: CaptureViseur["rect"],
+  rect: ViewfinderCapture["rect"],
   zoom: number,
   bornes: Rectangle,
   fenetre: [number, number],
@@ -58,7 +58,7 @@ export function placeBulle(
  * Hover, Escape, swallowing and stop stay scriptViseur's code. Throws when scriptViseur's text changes.
  */
 export function firefoxViewfinderScript(): string {
-  let s = scriptViseur();
+  let s = viewfinderScript();
   const edits: [string, string][] = [
     ['      window.removeEventListener("click", surClic, true);\n', ""],
     ["if (globalThis.__viseurArret === arret) delete globalThis.__viseurArret;", "if (globalThis.__viseurArret === arret) { delete globalThis.__viseurArret; delete globalThis.__viseurChoisir; }"],
@@ -81,14 +81,14 @@ const chaine = (c: unknown, max = 1_000_000): c is string => typeof c === "strin
 const entierPositif = (n: unknown): n is number => typeof n === "number" && Number.isInteger(n) && n > 0;
 
 /** The isolated world is safe, but the shape is checked anyway: null if it is not the expected one. */
-function propreCapture(v: unknown): CaptureViseur | null {
-  const c = v as Partial<CaptureViseur> | null;
+function propreCapture(v: unknown): ViewfinderCapture | null {
+  const c = v as Partial<ViewfinderCapture> | null;
   if (!c || typeof c !== "object" || !c.rect || !c.vue || !c.voisinage || !c.styles) return null;
   if (![c.rect.x, c.rect.y, c.rect.largeur, c.rect.hauteur, c.vue.largeur, c.vue.hauteur].every(fini)) return null;
   if (![c.selecteur, c.etiquette, c.html, c.adresse, c.voisinage.parent].every((x) => chaine(x))) return null;
   if (!Array.isArray(c.voisinage.freres) || !c.voisinage.freres.every((f) => chaine(f))) return null;
   if (!Object.values(c.styles).every((x) => chaine(x))) return null;
-  return c as CaptureViseur;
+  return c as ViewfinderCapture;
 }
 
 /** What comes from the page's world is never trusted: short file, positive integer numbers, the rest is dropped. */
@@ -99,7 +99,7 @@ function sourceSaine(r: unknown): DesignContext["source"] {
 }
 
 /** The viewfinder script's answer: the shape checked, the html cut. */
-export function cleanCapture(v: unknown): CaptureViseur | null {
+export function cleanCapture(v: unknown): ViewfinderCapture | null {
   const c = propreCapture(v);
   return c ? { ...c, html: truncateHtml(c.html) } : null;
 }

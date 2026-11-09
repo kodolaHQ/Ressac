@@ -1,10 +1,10 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import type { DroitDev } from "@webaios/noyau";
-  import { siteDe, type DemandeEnAttente } from "../../shared/modele";
+  import { siteDe, type PendingRequest } from "../../shared/modele";
   import { api } from "../etat.svelte";
 
-  let { demande }: { demande: DemandeEnAttente } = $props();
+  let { demande }: { demande: PendingRequest } = $props();
 
   // The four rights, in the card's order. `sensible`: the warning shown below.
   const DROITS: { droit: DroitDev; icone: string; nom: string; detail: string; sensible?: string }[] = [

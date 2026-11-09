@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { IdFenetre } from "../../shared/modele";
+import type { WindowId } from "../../shared/modele";
 import type { WebAiOsStore } from "../store";
 import type { SiteWindowController } from "../store/sites";
 import { setupAnchors, type Anchors, type Rect } from "./anchor";
@@ -60,7 +60,7 @@ export function createAddons(o: {
   tabs: TabSync;
   anchors: Anchors;
   store: WebAiOsStore;
-  fenetreId: IdFenetre;
+  fenetreId: WindowId;
 }): WindowAddons {
   const activeSpace = () => {
     const f = o.store.state.fenetres.find((x) => x.id === o.fenetreId);

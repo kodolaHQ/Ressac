@@ -1,6 +1,6 @@
-import type { Decision, EtatAcces, IdFenetre, IdProfil } from "../../shared/modele";
-import { ongletPrive, profilDOnglet, profilsEnUsage } from "../../shared/modele";
-import { chargerSession, EnregistreurSession } from "../../core/etat/persistance";
+import type { Decision, AccessState, WindowId, ProfileId } from "../../shared/modele";
+import { privateTab, tabProfile, profilesInUse } from "../../shared/modele";
+import { chargerSession, SessionRecorder } from "../../core/etat/persistance";
 import { bridgeHandlers, sendMirror, trackState } from "../agent/bridge";
 import { createHost, HOST_EXITED, type AgentHost } from "../agent/host";
 import { readHtml, readPage } from "../agent/invisible";
@@ -22,7 +22,7 @@ import { bindSites, sites, type SiteApps } from "./sites";
 import { createStore, type Store } from "./store";
 import { createWindowRegistry, type WindowRegistry } from "./windows";
 import { installUiNetwork, isUiDocument, type UiNetworkState } from "./ui-network";
-import { gardienGestes } from "../../shared/geste-widget";
+import { gestureGuard } from "../../shared/geste-widget";
 
 const { AsyncShutdown } = ChromeUtils.importESModule("resource://gre/modules/AsyncShutdown.sys.mjs");
 const { BrowserWindowTracker } = ChromeUtils.importESModule("resource:///modules/BrowserWindowTracker.sys.mjs");
@@ -33,7 +33,7 @@ export interface WebAiOsStore extends Store {
   readonly setAside: string | null;
   flush(): Promise<void>;
   /** userContextId of a login profile: 0 for PROFIL_DEFAUT, an internal container otherwise (created on first use). */
-  containerFor(profile: IdProfil): number;
+  containerFor(profile: ProfileId): number;
   /** The Node host running the kernel, started with the store. */
   readonly agent: AgentHost;
   /** The noted visits, kept by the kernel host. */
@@ -49,7 +49,7 @@ export interface WebAiOsStore extends Store {
   /** The agent's extensions as Firefox add-ons, installed and switched as the kernel host says. */
   readonly agentExtensions: AgentExtensions;
   /** The agent's access to tabs, as the host last sent it (no access while no host runs). */
-  readonly access: EtatAcces;
+  readonly access: AccessState;
   /** The agent's dev tools on tabs, owned by the running kernel. */
   readonly devtools: DevTools;
   /** The site apps' windows (never WebAiOs windows), opened and closed as the host asks. */
@@ -59,7 +59,7 @@ export interface WebAiOsStore extends Store {
   /** The design mode of each main window's tab and agent app window (spec §5.4-5.5). */
   readonly design: DesignService;
   /** The real clicks in a widget's display: each lets that widget open one link (recorded by the UI's chrome listener). */
-  readonly gestesWidgets: ReturnType<typeof gardienGestes<string>>;
+  readonly gestesWidgets: ReturnType<typeof gestureGuard<string>>;
   /** Invisible page reads (the bridge's lirePageInvisible / lireHtmlInvisible), exposed for the e2e tests. */
   readPage(url: string, o: OptionsLecturePage, signal?: AbortSignal): Promise<PageLue>;
   readHtml(url: string, o: { adressesLocales?: boolean }, signal?: AbortSignal): Promise<{ url: string; html: string }>;
@@ -93,19 +93,19 @@ const FIREFOX_TYPES: Partial<Record<SitePermission, string[]>> = {
 };
 const MIRRORED = new Set(Object.values(FIREFOX_TYPES).flat());
 
-const principalOf = (profile: IdProfil, origin: string, create: boolean) => {
+const principalOf = (profile: ProfileId, origin: string, create: boolean) => {
   const userContextId = create ? containerFor(profile) : existingContainer(profile);
   return userContextId === null ? null : Services.scriptSecurityManager.createContentPrincipal(Services.io.newURI(origin), userContextId ? { userContextId } : {});
 };
 
 /** Mirrors the decisions into Firefox's permission manager: without it a page reads "default" after an allow (spike P6). */
 const firefoxPermissions = {
-  set(profile: IdProfil, origin: string, p: SitePermission, d: Decision) {
+  set(profile: ProfileId, origin: string, p: SitePermission, d: Decision) {
     const principal = principalOf(profile, origin, true);
     for (const type of FIREFOX_TYPES[p] ?? []) Services.perms.addFromPrincipal(principal, type, d === "autoriser" ? Services.perms.ALLOW_ACTION : Services.perms.DENY_ACTION, Services.perms.EXPIRE_NEVER);
   },
   /** (null, null): every origin of every container. (profile, null): a whole container. (profile, origin): one origin. */
-  remove(profile: IdProfil | null, origin: string | null) {
+  remove(profile: ProfileId | null, origin: string | null) {
     if (profile === null) return MIRRORED.forEach((type) => Services.perms.removeByType(type));
     const id = existingContainer(profile);
     if (id === null) return;
@@ -120,7 +120,7 @@ const firefoxPermissions = {
 const dataDir =
   Services.env.get("WEBAIOS_DATA_DIR") || PathUtils.join(Services.dirsvc.get("Home", Ci.nsIFile).path, "WebAiOs-firefox", "data");
 
-const gestesWidgets = gardienGestes<string>();
+const gestesWidgets = gestureGuard<string>();
 
 let uiNetState: UiNetworkState;
 
@@ -158,7 +158,7 @@ async function start(): Promise<WebAiOsStore> {
   apps.onClosed(() => questions.dropStale());
   const sitePermissions = createSitePermissions({
     dataDir,
-    profiles: () => [...profilsEnUsage(store.state)],
+    profiles: () => [...profilesInUse(store.state)],
     ask: (d, signal) => questions.askSite(d, signal),
     firefox: firefoxPermissions,
   });
@@ -168,16 +168,16 @@ async function start(): Promise<WebAiOsStore> {
       const win = browser.ownerDocument.defaultView;
       const ongletId = win?.gBrowser?.getTabForBrowser(browser)?.getAttribute("webaios-tab-id") ?? win?.webaiosPopupSource;
       const onglet = ongletId ? store.state.onglets[ongletId] : undefined;
-      return onglet ? { ongletId, fenetreId: onglet.fenetreId, profil: profilDOnglet(store.state, onglet) } : null;
+      return onglet ? { ongletId, fenetreId: onglet.fenetreId, profil: tabProfile(store.state, onglet) } : null;
     },
     isInvisible: (browser) => browser.getAttribute("messagemanagergroup") === "webaios-reading",
   });
-  const recorder = new EnregistreurSession(dataDir);
+  const recorder = new SessionRecorder(dataDir);
   const flush = () => recorder.vider();
   store.subscribe((state, previous) => {
     recorder.planifier(state);
-    const used = profilsEnUsage(state);
-    for (const id of profilsEnUsage(previous)) if (!used.has(id)) {
+    const used = profilesInUse(state);
+    for (const id of profilesInUse(previous)) if (!used.has(id)) {
         try {
           void sitePermissions.removeProfile(id);
           removeContainer(id);
@@ -267,7 +267,7 @@ async function start(): Promise<WebAiOsStore> {
     onActivate: () => refreshMirror(),
   });
   // The agent's access to tabs, as the host last sent it (no access while no host runs).
-  let access: EtatAcces = { agent: "L'agent", onglets: {} };
+  let access: AccessState = { agent: "L'agent", onglets: {} };
   const agentExtensions = createAgentExtensions(store, windows, questions, () => agent, () => access);
   const devtools = createDevTools({
     store,
@@ -276,11 +276,11 @@ async function start(): Promise<WebAiOsStore> {
     apps,
     isPrivate: (id) => {
       const o = store.state.onglets[id];
-      return !!o && ongletPrive(store.state, o);
+      return !!o && privateTab(store.state, o);
     },
   });
   // The last main window; with none open, one opens first.
-  async function mainWindow(): Promise<IdFenetre | undefined> {
+  async function mainWindow(): Promise<WindowId | undefined> {
     if (!windows.active()) {
       const win = BrowserWindowTracker.openWindow();
       await new Promise<void>((ok) => {
@@ -297,7 +297,7 @@ async function start(): Promise<WebAiOsStore> {
     }
     return windows.active();
   }
-  const toFront = (fenetreId: IdFenetre) => {
+  const toFront = (fenetreId: WindowId) => {
     const win = windows.get(fenetreId)?.window;
     if (!win) return;
     if (win.windowState === win.STATE_MINIMIZED) (win as any).restore();
@@ -313,7 +313,7 @@ async function start(): Promise<WebAiOsStore> {
       ...apps.handlers,
       // A review batch for the agent (noyau/design.ts): its window, then its panel with the keyboard, in front.
       "design.fenetreAgent": async () => (await mainWindow()) ?? null,
-      "design.donnerAgent": ([fenetre]: [IdFenetre]) => {
+      "design.donnerAgent": ([fenetre]: [WindowId]) => {
         windows.get(fenetre)?.controller.openAgent();
         toFront(fenetre);
       },
@@ -347,7 +347,7 @@ async function start(): Promise<WebAiOsStore> {
   const downloads = await createDownloads(isSiteContainer);
   refreshMirror = trackState(store, agent, windows);
   // Registered before any UI listener: the UI reads `access` once it is updated.
-  agent.on("acces", (e: EtatAcces) => (access = e));
+  agent.on("acces", (e: AccessState) => (access = e));
   agent.on(HOST_EXITED, () => {
     access = { agent: access.agent, onglets: {} };
     // Its kernel is gone: nothing stays attached for it, and its apps' windows close (its successor stops the orphans).

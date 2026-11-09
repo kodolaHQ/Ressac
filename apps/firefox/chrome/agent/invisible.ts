@@ -1,5 +1,5 @@
-import type { IdProfil } from "../../shared/modele";
-import { cumulerParties, HTML_MAX, profilsLisibles, urlPermise } from "../../core/agent/lecture-invisible";
+import type { ProfileId } from "../../shared/modele";
+import { accumulateParts, HTML_MAX, readableProfiles, allowedUrl } from "../../core/agent/lecture-invisible";
 import { ProfileDenied, type OptionsLecturePage, type PageLue } from "../shims/noyau";
 import { containerFor } from "../store/containers";
 import type { Store } from "../store/store";
@@ -194,9 +194,9 @@ async function load<T>(
 ): Promise<T> {
   const { profil, domaines } = o;
   const allowLocal = o.adressesLocales === true;
-  const allowed = (u: string) => urlPermise(u, domaines, true) && (allowLocal || !localLiteral(hostOf(u)));
+  const allowed = (u: string) => allowedUrl(u, domaines, true) && (allowLocal || !localLiteral(hostOf(u)));
   const checkProfile = () => {
-    if (profil !== null && !profilsLisibles(store.state).includes(profil)) throw new ProfileDenied(profil);
+    if (profil !== null && !readableProfiles(store.state).includes(profil)) throw new ProfileDenied(profil);
   };
   checkProfile();
   if (!allowed(url)) throw new Error(`Adresse refusée pour une lecture : ${hostOf(url)}`);
@@ -218,7 +218,7 @@ async function load<T>(
         if (jumps > 0 && Date.now() >= deadline) throw new Error(TROP_LENTE);
         if (profil === null && publicId === undefined) await untilSignal(clearContainer((publicId = takePublic())), signal);
         // Not raced with the signal: the browser must exist to be closed; readIn rejects at once if it aborted meanwhile.
-        opened = await createBrowser(publicId ?? containerFor(profil as IdProfil), { private: profil === null });
+        opened = await createBrowser(publicId ?? containerFor(profil as ProfileId), { private: profil === null });
         deadline ||= Date.now() + DELAI_TOTAL_MS;
         const page = await readIn(opened.browser, target, { allowed, allowLocal, paced }, reading, deadline, signal, screens);
         // The profile went to a private space during the read: what was read does not leave.
@@ -292,7 +292,7 @@ export function readPage(
   return load(store, url, o, signal, {
     read: (actor) => actor.sendQuery("read", bounds),
     shape: (u, raw) => shapePage(u, (raw ?? { titre: "", texte: "", liens: [] }) as Parts, bounds),
-    cumulate: cumulerParties,
+    cumulate: accumulateParts,
   }, screens, waitHost);
 }
 

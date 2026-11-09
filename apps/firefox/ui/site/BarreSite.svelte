@@ -2,10 +2,10 @@
   import Icone from "../composants/Icone.svelte";
   import BoutonDesignSite from "./BoutonDesignSite.svelte";
   import BoutonsExtensionsSite from "../SiteAddonsStrip.svelte";
-  import { HAUTEUR_BARRE_SITE, CHERCHER_ADRESSE, lienBloque, OUVRIR_DANS_UN_ONGLET, type EtatFenetreSite } from "../../shared/sites";
+  import { SITE_BAR_HEIGHT, SEARCH_URL, blockedLink, OPEN_IN_A_TAB, type SiteWindowState } from "../../shared/sites";
   import type { ApiSite } from "../../shared/api";
 
-  let { etat, api }: { etat: EtatFenetreSite; api: ApiSite } = $props();
+  let { etat, api }: { etat: SiteWindowState; api: ApiSite } = $props();
   /** macOS: the window buttons are in the bar, on the left. */
   const mac = navigator.userAgent.includes("Mac");
   const surSite = $derived(etat.vue === "site");
@@ -14,7 +14,7 @@
 </script>
 
 <!-- The background is draggable (moves the window); each button and the mention are clickable (no-drag). -->
-<header data-testid="barre-site" class:mac style:height="{HAUTEUR_BARRE_SITE}px">
+<header data-testid="barre-site" class:mac style:height="{SITE_BAR_HEIGHT}px">
   <nav>
     <button data-testid="site-precedent" aria-label="Reculer" disabled={!surSite || !etat.peutReculer} onclick={() => api.precedent()}><Icone nom="reculer" /></button>
     <button data-testid="site-suivant" aria-label="Avancer" disabled={!surSite || !etat.peutAvancer} onclick={() => api.suivant()}><Icone nom="avancer" /></button>
@@ -30,13 +30,13 @@
     {/if}
   </div>
   {#if etat.suivi && surSite}
-    <button data-testid="site-chercher-adresse" class="chercher" disabled={etat.recherche} aria-busy={etat.recherche} onclick={() => api.chercherAdresse()}>{CHERCHER_ADRESSE}</button>
+    <button data-testid="site-chercher-adresse" class="chercher" disabled={etat.recherche} aria-busy={etat.recherche} onclick={() => api.chercherAdresse()}>{SEARCH_URL}</button>
   {/if}
   {#if etat.avis}
     <div data-testid="site-avis" class="avis" data-genre={etat.avis.genre} role="status">
       {#if etat.avis.genre === "lien-bloque"}
-        <span>{lienBloque(etat.avis.domaine)}</span>
-        <button data-testid="site-ouvrir-onglet" onclick={() => api.ouvrirBloque()}>{OUVRIR_DANS_UN_ONGLET}</button>
+        <span>{blockedLink(etat.avis.domaine)}</span>
+        <button data-testid="site-ouvrir-onglet" onclick={() => api.ouvrirBloque()}>{OPEN_IN_A_TAB}</button>
       {:else}
         <span>{etat.avis.texte}</span>
       {/if}

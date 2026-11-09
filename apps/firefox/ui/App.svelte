@@ -24,10 +24,10 @@
   import { menu } from "../ui/composants/menu.svelte";
   import { reglagesEspace } from "../ui/composants/reglagesEspace.svelte";
   import { acces, api, demandeDe, etat, fenetreCourante, fermerOnglet } from "../ui/etat.svelte";
-  import { actionDeUrl, aUneVue, cibleDeUrlWorkflow, projetDeUrlRelecture, URL_ACTIONS, URL_APPLICATIONS, URL_EXTENSIONS } from "../shared/modele";
-  import { ACTIONS_EN_ESPACE_PRIVE } from "../shared/actions";
-  import { masquer, REVELATION_INITIALE, surZone, type ZoneGauche } from "../shared/revelation";
-  import type { Panneau, PanneauOnglets as TabPanel } from "../shared/api";
+  import { actionDeUrl, hasView, workflowUrlTarget, reviewUrlProject, URL_ACTIONS, URL_APPLICATIONS, URL_EXTENSIONS } from "../shared/modele";
+  import { ACTIONS_IN_PRIVATE_SPACE } from "../shared/actions";
+  import { masquer, INITIAL_REVEAL, surZone, type ZoneGauche } from "../shared/revelation";
+  import type { Panel, TabsPanel as TabPanel } from "../shared/api";
   import type { ApiFirefox } from "./api";
   import InternalPage from "./InternalPage.svelte";
   import PageError from "./PageError.svelte";
@@ -43,20 +43,20 @@
     return id ? etat.valeur?.onglets[id] : undefined;
   });
   // A crashed or failed page shows our message instead (the window parks its <browser>).
-  const pageWeb = $derived(!!ongletActif && aUneVue(ongletActif.url) && !ongletActif.plante && !ongletActif.erreur);
+  const pageWeb = $derived(!!ongletActif && hasView(ongletActif.url) && !ongletActif.plante && !ongletActif.erreur);
   /** The history or downloads panel over the content area (⌘Y, ⇧⌘J, the sidebar's button); another tab closes it. */
-  let panneau = $state<Panneau | null>(null);
+  let panneau = $state<Panel | null>(null);
   const fermerPanneau = () => {
     panneau = null;
     api.rendreFocusPage();
   };
-  const basculerPanneau = (p: Panneau) => (panneau === p ? fermerPanneau() : (panneau = p));
+  const basculerPanneau = (p: Panel) => (panneau === p ? fermerPanneau() : (panneau = p));
   /** A widget's or an action's workflow builder is the active tab. */
-  const cibleConstructeur = $derived(ongletActif ? cibleDeUrlWorkflow(ongletActif.url) : null);
+  const cibleConstructeur = $derived(ongletActif ? workflowUrlTarget(ongletActif.url) : null);
   // An action's page launches nothing when opened. Refused when the tab's space (or the one shown)
   // is private; a space not found counts as private.
   const pageAction = $derived(ongletActif ? actionDeUrl(ongletActif.url) : null);
-  const projetRelecture = $derived(ongletActif ? projetDeUrlRelecture(ongletActif.url) : null);
+  const projetRelecture = $derived(ongletActif ? reviewUrlProject(ongletActif.url) : null);
   const actionEnPrive = $derived.by(() => {
     const espaces = etat.valeur?.espaces ?? [];
     const prive = (id: string | undefined) => espaces.find((e) => e.id === id)?.prive ?? true;
@@ -147,7 +147,7 @@
   // The controller reports the mouse everywhere in the window; the decision is in revelation.ts.
   const compact = $derived(fenetre?.compact ?? false);
   let revelee = $state(false);
-  let armee = REVELATION_INITIALE.armee;
+  let armee = INITIAL_REVEAL.armee;
   let zone: ZoneGauche = "loin";
   let minuterie: ReturnType<typeof setTimeout> | undefined;
   const barreVisible = $derived(!compact || revelee);
@@ -215,19 +215,19 @@
       <Applications />
     {:else if ongletActif?.url === URL_ACTIONS}
       {#if actionEnPrive}
-        <p class="plante" data-testid="action-espace-prive">{ACTIONS_EN_ESPACE_PRIVE}</p>
+        <p class="plante" data-testid="action-espace-prive">{ACTIONS_IN_PRIVATE_SPACE}</p>
       {:else}
         <Actions />
       {/if}
     {:else if cibleConstructeur}
       {#if cibleConstructeur.type === "action" && actionEnPrive}
-        <p class="plante" data-testid="action-espace-prive">{ACTIONS_EN_ESPACE_PRIVE}</p>
+        <p class="plante" data-testid="action-espace-prive">{ACTIONS_IN_PRIVATE_SPACE}</p>
       {:else}
         {#key `${cibleConstructeur.type}:${cibleConstructeur.id}`}<WorkflowBuilder cible={cibleConstructeur} />{/key}
       {/if}
     {:else if pageAction}
       {#if actionEnPrive}
-        <p class="plante" data-testid="action-espace-prive">{ACTIONS_EN_ESPACE_PRIVE}</p>
+        <p class="plante" data-testid="action-espace-prive">{ACTIONS_IN_PRIVATE_SPACE}</p>
       {:else}
         {#key `${pageAction.id}/${pageAction.execution}`}<PageAction id={pageAction.id} execution={pageAction.execution} />{/key}
       {/if}

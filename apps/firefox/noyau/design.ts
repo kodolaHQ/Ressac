@@ -8,9 +8,9 @@ import {
   destinationDe, batchState, PORT_MCP_EXTERNE, containerRanges, demoProject, projectForUrl, projectForAppWindow, projectForSite, ExternalRegistry, Remarques,
   EMPTY_REMARK, SANS_CLIENT, type Application, type SpacePaths, type DesignContext, type Element, type ProjectId, type Lot, type TrackedProject,
 } from "../../../packages/noyau/src/index.ts";
-import { demarrerExternes, raisonEchec, type ServiceExternes } from "../core/design/externes.ts";
-import { creerEnvoi } from "../core/design/envoi.ts";
-import type { ElementAffiche, EtatExternes, LotAffiche, ResultatExtension } from "../shared/api.ts";
+import { startExternals, failureReason, type ServiceExternes } from "../core/design/externes.ts";
+import { createSend } from "../core/design/envoi.ts";
+import type { ShownElement, ExternalsState, BatchShown, ExtensionResult } from "../shared/api.ts";
 import { ReviewService } from "./review.ts";
 import {
   checkCapture, checkClientName, checkComment, checkDesignContext, checkLines, checkPath, checkProject, checkResolved, checkText, checkToken, CLIENT_ID,
@@ -20,24 +20,24 @@ import {
 /** The external MCP port: the asked one, else 5279; a bad value gives NaN, which the server refuses. */
 export const externalMcpPort = (v: string | undefined): number => Number(v ?? PORT_MCP_EXTERNE);
 
-export function sourceTexte(s: DesignContext["source"]): string | null {
+export function textSource(s: DesignContext["source"]): string | null {
   if (!s) return null;
   return s.ligne !== undefined ? `${s.fichier}:${s.ligne}` : s.fichier;
 }
 
-export function elementAffiche(e: Element): ElementAffiche {
+export function shownElement(e: Element): ShownElement {
   const base = { id: e.id, type: e.type, texte: e.texte, traite: e.traite ?? null };
   return e.type === "design"
-    ? { ...base, etiquette: e.contexte.etiquette, source: sourceTexte(e.contexte.source) }
+    ? { ...base, etiquette: e.contexte.etiquette, source: textSource(e.contexte.source) }
     : { ...base, etiquette: `${e.contexte.fichier}:${e.contexte.debut}-${e.contexte.fin}`, source: e.contexte.fichier };
 }
 
-export function lotAffiche(l: Lot): LotAffiche {
-  return { id: l.id, cree: l.cree, etat: batchState(l), destination: l.destination, elements: l.elements.map(elementAffiche) };
+export function batchShown(l: Lot): BatchShown {
+  return { id: l.id, cree: l.cree, etat: batchState(l), destination: l.destination, elements: l.elements.map(shownElement) };
 }
 
 /** A followed project as the chrome shows it: its cart count, its destination, its name (ServiceDesign.etat). */
-export interface SuiviDesign {
+export interface DesignTracking {
   projet: TrackedProject;
   panier: number;
   destination: string | null;
@@ -73,8 +73,8 @@ export function createDesignHost(o: {
   sites(): Promise<{ id: string; nom: string }[]>;
   /** Every agent app, running or not (their first snapshot, their name on the Review page). */
   applis(): Promise<Application[]>;
-  preRemplir(fenetre: string, texte: string): void;
-  chrome: { fenetreAgent(): Promise<string | null>; donnerAgent(fenetre: string): void };
+  preRemplir(win: string, text: string): void;
+  chrome: { fenetreAgent(): Promise<string | null>; donnerAgent(win: string): void };
   notifier(n: { titre: string; texte: string }): void;
   diffuser(): void;
 }): DesignHost {
@@ -82,16 +82,16 @@ export function createDesignHost(o: {
   // repositories and batches go under <dataDir>/design, never mounted in the container.
   const dossiers = { remarquesEspace: join(o.chemins.interne, "remarques"), prive: join(o.dataDir, "design") };
   const remarques = new Remarques({ dossiers });
-  let registre: ExternalRegistry | null = null;
+  let registry: ExternalRegistry | null = null;
   let externes: ServiceExternes | null = null;
-  let echec: string | null = null;
+  let failure: string | null = null;
 
   // The batch sent to the agent: one pre-filled line in its session, never sent. The chrome reopens a window if needed
   // and design.donnerAgent brings it to the front.
-  const envoiLot = async (p: TrackedProject, lot: Lot): Promise<void> => {
+  const batchSend = async (p: TrackedProject, lot: Lot): Promise<void> => {
     if (p.type === "externe") return;
     const f = await o.chrome.fenetreAgent();
-    await creerEnvoi({
+    await createSend({
       chemins: o.chemins,
       fenetreAgent: () => f ?? undefined,
       dossierLot: (pr, l) => remarques.dossierLot(pr, l),
@@ -100,7 +100,7 @@ export function createDesignHost(o: {
       devant: () => {},
     })(p, lot);
   };
-  const review = new ReviewService({ dossiers, chemins: o.chemins, registre: () => registre, applis: o.applis, sites: o.sites, remarques, envoyer: envoiLot });
+  const review = new ReviewService({ dossiers, chemins: o.chemins, registre: () => registry, applis: o.applis, sites: o.sites, remarques, envoyer: batchSend });
 
   // The apps with a manifest, then the site apps, each through the review's queue.
   const takeOver = () => {
@@ -127,10 +127,10 @@ export function createDesignHost(o: {
   remarques.surChange(o.diffuser);
   const started = ExternalRegistry.ouvrir(dossiers.prive)
     .then((r) => {
-      registre = r;
+      registry = r;
       r.surChange(o.diffuser);
       // Never another port when this one is held.
-      return demarrerExternes({
+      return startExternals({
         registre: r,
         remarques,
         dossiers,
@@ -147,13 +147,13 @@ export function createDesignHost(o: {
     })
     .catch((e) => {
       console.error("[design] projets externes indisponibles :", e);
-      echec = raisonEchec(e);
+      failure = failureReason(e);
       o.diffuser();
     });
 
   // The design service's project logic: applis() is the running apps with a port.
   const running = async () => (await o.applis()).flatMap((a) => (a.etat === "en-marche" && a.port !== undefined ? [{ dossier: a.dossier, nom: a.nom, port: a.port }] : []));
-  const projetSuivi = async (p: ProjectId): Promise<TrackedProject | null> => {
+  const trackedProject = async (p: ProjectId): Promise<TrackedProject | null> => {
     if (p.startsWith("app-")) {
       const dossier = p.slice(4);
       return projectForAppWindow(dossier, (await running()).find((a) => a.dossier === dossier)?.nom ?? dossier);
@@ -164,75 +164,75 @@ export function createDesignHost(o: {
       return site ? projectForSite(id, site.nom) : null;
     }
     if (p.startsWith("demo-")) return { type: "demo", projet: demoProject(Number(p.slice(5))), port: Number(p.slice(5)) };
-    const e = registre?.projets().find((x) => `ext-${x.id}` === p);
+    const e = registry?.projets().find((x) => `ext-${x.id}` === p);
     return e ? { type: "externe", projet: p, dossier: e.dossier, nom: e.nom, client: e.client } : null;
   };
   const destination = (p: TrackedProject) => {
-    const d = destinationDe(p, registre?.clients() ?? []);
+    const d = destinationDe(p, registry?.clients() ?? []);
     return "libelle" in d ? { destination: d.libelle, sansDestination: null } : { destination: null, sansDestination: d.indisponible };
   };
-  const suivi = async (p: Params): Promise<SuiviDesign | null> => {
-    let projet: TrackedProject | null;
+  const tracking = async (p: Params): Promise<DesignTracking | null> => {
+    let project: TrackedProject | null;
     if (typeof p?.url === "string" && p.url.length <= URL_MAX)
-      projet = projectForUrl(p.url, { appsLancees: await running(), plages: containerRanges(process.env.WEBAIOS_PORTS_APPS), externes: registre?.projets() ?? [] });
-    else if (p?.url === undefined && p?.projet !== undefined) projet = await projetSuivi(checkProject(p.projet));
+      project = projectForUrl(p.url, { appsLancees: await running(), plages: containerRanges(process.env.WEBAIOS_PORTS_APPS), externes: registry?.projets() ?? [] });
+    else if (p?.url === undefined && p?.projet !== undefined) project = await trackedProject(checkProject(p.projet));
     else throw new Error(INVALID_REQUEST);
-    if (!projet) return null;
-    const panier = (await remarques.panier(projet.projet)).length;
-    return { projet, panier, ...destination(projet), nom: projet.type === "demo" ? `localhost:${projet.port}` : projet.nom };
+    if (!project) return null;
+    const basket = (await remarques.panier(project.projet)).length;
+    return { projet: project, panier: basket, ...destination(project), nom: project.type === "demo" ? `localhost:${project.port}` : project.nom };
   };
-  const erreur = (e: unknown): ResultatExtension => ({ ok: false, erreur: e instanceof Error ? e.message : String(e) });
-  const ajouter = async (p: Params): Promise<ResultatExtension> => {
-    let projet: ProjectId, contexte: DesignContext, capture: Buffer | null;
-    const texte = p?.texte;
+  const error = (e: unknown): ExtensionResult => ({ ok: false, erreur: e instanceof Error ? e.message : String(e) });
+  const add = async (p: Params): Promise<ExtensionResult> => {
+    let project: ProjectId, context: DesignContext, capture: Buffer | null;
+    const text = p?.texte;
     try {
-      if (typeof texte !== "string" || texte.length > REMARK_TEXT_MAX) throw new Error(INVALID_REQUEST);
-      projet = checkProject(p?.projet);
-      contexte = checkDesignContext(p?.contexte);
+      if (typeof text !== "string" || text.length > REMARK_TEXT_MAX) throw new Error(INVALID_REQUEST);
+      project = checkProject(p?.projet);
+      context = checkDesignContext(p?.contexte);
       capture = checkCapture(p?.capture);
       // A forgotten external project gets no cart.
-      if (!(await projetSuivi(projet))) throw new Error(INVALID_REQUEST);
+      if (!(await trackedProject(project))) throw new Error(INVALID_REQUEST);
     } catch {
       return { ok: false, erreur: INVALID_REQUEST };
     }
-    if (texte.trim() === "") return { ok: false, erreur: EMPTY_REMARK };
+    if (text.trim() === "") return { ok: false, erreur: EMPTY_REMARK };
     try {
-      await remarques.ajouterAuPanier(projet, { texte, contexte, capture });
+      await remarques.ajouterAuPanier(project, { texte: text, contexte: context, capture });
       return { ok: true };
     } catch (e) {
-      return erreur(e);
+      return error(e);
     }
   };
   // The design service's send, with a site snapshot before the first batch.
-  const envoyer = async (p: Params): Promise<ResultatExtension> => {
-    if (!projetId(p?.projet)) return { ok: false, erreur: INVALID_REQUEST };
-    const projet = await projetSuivi(p.projet);
-    if (!projet) return { ok: false, erreur: SANS_CLIENT };
+  const send = async (p: Params): Promise<ExtensionResult> => {
+    if (!projectId(p?.projet)) return { ok: false, erreur: INVALID_REQUEST };
+    const project = await trackedProject(p.projet);
+    if (!project) return { ok: false, erreur: SANS_CLIENT };
     let dest: { destination: "agent" | "mcp"; client?: string } = { destination: "agent" };
-    if (projet.type === "externe") {
-      const d = destinationDe(projet, registre?.clients() ?? []);
-      if ("indisponible" in d || projet.client === null) return { ok: false, erreur: SANS_CLIENT };
-      dest = { destination: "mcp", client: projet.client };
+    if (project.type === "externe") {
+      const d = destinationDe(project, registry?.clients() ?? []);
+      if ("indisponible" in d || project.client === null) return { ok: false, erreur: SANS_CLIENT };
+      dest = { destination: "mcp", client: project.client };
     }
     try {
-      const lot = await remarques.envoyerPanier(projet.projet, dest);
-      if (projet.type === "site") await review.assurer(projet.projet).catch(() => undefined);
-      await envoiLot(projet, lot);
+      const lot = await remarques.envoyerPanier(project.projet, dest);
+      if (project.type === "site") await review.assurer(project.projet).catch(() => undefined);
+      await batchSend(project, lot);
       return { ok: true };
     } catch (e) {
-      return erreur(e);
+      return error(e);
     }
   };
   const id = (v: unknown): v is string => typeof v === "string" && v.length <= DESIGN_ID_MAX;
-  const projetId = (v: unknown): v is ProjectId => typeof v === "string" && ID_PROJECT.test(v);
+  const projectId = (v: unknown): v is ProjectId => typeof v === "string" && ID_PROJECT.test(v);
 
   const handlers: Record<(typeof DESIGN_METHODS)[number], (p: Params) => unknown> = {
-    "externes.liste": (): EtatExternes =>
-      externes?.etat() ?? { serveur: { etat: "eteint", raison: echec ?? "Le MCP externe démarre" }, projets: [], clients: [] },
+    "externes.liste": (): ExternalsState =>
+      externes?.etat() ?? { serveur: { etat: "eteint", raison: failure ?? "Le MCP externe démarre" }, projets: [], clients: [] },
     "externes.brancher": (p) => {
-      const nom = checkClientName(p?.nom);
-      if (!externes) throw new Error(echec ?? "Le MCP externe démarre");
-      return externes.brancher(nom);
+      const name = checkClientName(p?.nom);
+      if (!externes) throw new Error(failure ?? "Le MCP externe démarre");
+      return externes.brancher(name);
     },
     // A bad id does nothing.
     "externes.revoquer": async (p) => {
@@ -243,44 +243,44 @@ export function createDesignHost(o: {
       await externes?.oublier(p.id);
       review.oublier(`ext-${p.id}`);
     },
-    "externes.nom": (p) => (typeof p?.id === "string" ? (registre?.projets().find((x) => x.id === p.id)?.nom ?? null) : null),
+    "externes.nom": (p) => (typeof p?.id === "string" ? (registry?.projets().find((x) => x.id === p.id)?.nom ?? null) : null),
     "relecture.ouvrir": (p) => review.ouvrir(checkProject(p?.projet), p?.jeton === undefined || p.jeton === null ? undefined : checkToken(p.jeton)),
     "relecture.fichier": (p) => review.fichier(checkProject(p?.projet), checkToken(p?.jeton), checkPath(p?.chemin)),
     "relecture.lignes": (p) => {
-      const projet = checkProject(p?.projet);
+      const project = checkProject(p?.projet);
       const [debut, fin] = checkLines(p?.debut, p?.fin);
-      return review.lignes(projet, checkToken(p?.jeton), checkPath(p?.chemin), debut, fin);
+      return review.lignes(project, checkToken(p?.jeton), checkPath(p?.chemin), debut, fin);
     },
     "relecture.commentaires": (p) => review.commentaires(checkProject(p?.projet)),
     "relecture.commenter": (p) => {
-      const projet = checkProject(p?.projet);
+      const project = checkProject(p?.projet);
       const c = p?.c;
       if (typeof c !== "object" || c === null) throw new Error("lignes invalides");
       const x = c as Record<string, unknown>;
       const [debut, fin] = checkLines(x.debut, x.fin);
-      return review.commenter(projet, checkToken(p?.jeton), { fichier: checkPath(x.fichier), debut, fin, texte: checkText(x.texte) });
+      return review.commenter(project, checkToken(p?.jeton), { fichier: checkPath(x.fichier), debut, fin, texte: checkText(x.texte) });
     },
     "relecture.modifierCommentaire": (p) => review.modifierCommentaire(checkProject(p?.projet), checkComment(p?.id), checkText(p?.texte)),
     "relecture.resoudre": (p) => {
-      const projet = checkProject(p?.projet);
-      const resolu = checkResolved(p?.resolu);
-      return review.resoudre(projet, checkComment(p?.id), resolu);
+      const project = checkProject(p?.projet);
+      const resolved = checkResolved(p?.resolu);
+      return review.resoudre(project, checkComment(p?.id), resolved);
     },
     "relecture.supprimerCommentaire": (p) => review.supprimerCommentaire(checkProject(p?.projet), checkComment(p?.id)),
     "relecture.envoyer": (p) => review.envoyer(checkProject(p?.projet)),
     "relecture.relu": (p) => review.relu(checkProject(p?.projet), checkToken(p?.jeton)),
-    "design.suivi": suivi,
-    "design.ajouter": ajouter,
+    "design.suivi": tracking,
+    "design.ajouter": add,
     // A bad project or id answers an empty list, or nothing.
-    "design.panier": async (p) => (projetId(p?.projet) ? (await remarques.panier(p.projet)).map(elementAffiche) : []),
-    "design.lots": async (p) => (projetId(p?.projet) ? (await remarques.lots(p.projet)).map(lotAffiche) : []),
+    "design.panier": async (p) => (projectId(p?.projet) ? (await remarques.panier(p.projet)).map(shownElement) : []),
+    "design.lots": async (p) => (projectId(p?.projet) ? (await remarques.lots(p.projet)).map(batchShown) : []),
     "design.retirer": async (p) => {
-      if (projetId(p?.projet) && id(p?.id)) await remarques.retirerDuPanier(p.projet, p.id);
+      if (projectId(p?.projet) && id(p?.id)) await remarques.retirerDuPanier(p.projet, p.id);
     },
     "design.traite": async (p) => {
-      if (projetId(p?.projet) && id(p?.lot)) await remarques.marquerLotTraite(p.projet, p.lot);
+      if (projectId(p?.projet) && id(p?.lot)) await remarques.marquerLotTraite(p.projet, p.lot);
     },
-    "design.envoyer": envoyer,
+    "design.envoyer": send,
   };
 
   return {

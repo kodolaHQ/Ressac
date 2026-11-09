@@ -1,13 +1,13 @@
 import { catalogueBlocs, validateWorkflow, implicitWorkflow } from "@webaios/noyau";
 import { expect, test } from "vitest";
-import type { Brouillon, EditionWorkflow } from "../../shared/api";
+import type { Draft, EditionWorkflow } from "../../shared/api";
 import { MODELE_CODE, parametresNeufs, placeLibre } from "../../ui/constructeur/ajout";
 import { regler, relier } from "../../ui/constructeur/brouillon";
 import { creerEdition, Edition, EN_ATTENTE_DU_CHOIX, oublierEditions, type Depot } from "../../ui/constructeur/edition.svelte";
 
 const bloc = (id: string, type: string, parametres: Record<string, unknown> = {}) => ({ id, type, position: { x: 0, y: 0 }, parametres });
 /** Workflow shipped without positions. */
-const livre = (): Brouillon => ({
+const livre = (): Draft => ({
   version: 1,
   blocs: [bloc("garder", "code", { source: "a.mjs" }), bloc("tri", "ia.trier", { question: "?", texte: "{t}" }), bloc("sortie", "sortie", { vers: "widget" })],
   liens: [
@@ -31,7 +31,7 @@ function faux(initial: unknown, fichiers: Record<string, string> = {}) {
     suspendu: false,
   };
   const enAttente: (() => void)[] = [];
-  const ecritures: Brouillon[] = [];
+  const ecritures: Draft[] = [];
   const lecture = (): EditionWorkflow | null => {
     if (etat.introuvable) return null;
     const brut = etat.lisible ? structuredClone(etat.disque) : null;
@@ -149,7 +149,7 @@ test("relire: the echo of a save is ignored; an agent version is adopted without
   await e.relire();
   await attendre();
   expect(e.bandeau).toBeNull();
-  const agent = structuredClone(f.etat.disque) as Brouillon;
+  const agent = structuredClone(f.etat.disque) as Draft;
   agent.blocs[0]!.parametres = { source: "b.mjs" };
   f.etat.disque = agent;
   await e.relire();
@@ -263,7 +263,7 @@ test("I1: a gesture during the banner writes nothing and the banner stays; « Ga
   expect(f.ecritures).toEqual([]);
   expect(e.bandeau).toBe("proposer");
   expect(e.etatEnregistrement).toEqual({ invalide: EN_ATTENTE_DU_CHOIX });
-  expect((f.etat.disque as Brouillon).blocs[0]!.parametres).toEqual({ source: "b.mjs" });
+  expect((f.etat.disque as Draft).blocs[0]!.parametres).toEqual({ source: "b.mjs" });
   e.garderLaMienne();
   await attendre();
   expect(e.bandeau).toBeNull();
@@ -293,7 +293,7 @@ test("I2: ⌘Z after the first move of a workflow without layout puts the block 
   e.annuler();
   await attendre();
   expect(e.positions.tri).toEqual({ x: 260, y: 0 });
-  expect((f.etat.disque as Brouillon).blocs.find((b) => b.id === "tri")!.position).toEqual({ x: 0, y: 0 });
+  expect((f.etat.disque as Draft).blocs.find((b) => b.id === "tri")!.position).toEqual({ x: 0, y: 0 });
   e.retablir();
   expect(e.positions.tri).toEqual({ x: 300, y: 40 });
 });
@@ -423,7 +423,7 @@ test("N2: « Prendre sa version » before the end of an in-flight save also drop
 test("T10: keystrokes in the same field (same merge key) make a single history entry", async () => {
   const f = faux(livre());
   const e = await ouverte(f);
-  const seuil = (s: number) => (b: Brouillon) => regler(b, "tri", { ...b.blocs.find((x) => x.id === "tri")!.parametres, seuil: s });
+  const seuil = (s: number) => (b: Draft) => regler(b, "tri", { ...b.blocs.find((x) => x.id === "tri")!.parametres, seuil: s });
   e.modifier(seuil(0.6), "tri/seuil/1");
   await attendre();
   e.modifier(seuil(0.7), "tri/seuil/1");

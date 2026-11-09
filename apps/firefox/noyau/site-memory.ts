@@ -1,33 +1,33 @@
 import type { SiteMemory } from "../../../packages/noyau/src/index.ts";
-import type { ReponseMemoire } from "../core/sites/injection.ts";
+import type { MemoryResponse } from "../core/sites/injection.ts";
 
 // The host's side of the site apps' injection channels (core/sites/injection.ts): the chrome checks the sender
 // (the app view's main document), the grant and the relative address, the host does the memory work.
 
 /** The refusal of a memory request from anywhere but the app's main page. */
-export const REFUS_MEMOIRE = "Mémoire de l'appli : seulement depuis la page principale de l'appli";
+export const MEMORY_DENIAL = "Mémoire de l'appli : seulement depuis la page principale de l'appli";
 
-type DemandeMemoire = { op: "retenir"; cle: string; valeur: unknown } | { op: "lire" | "oublier"; cle: string };
+type MemoryRequest = { op: "retenir"; cle: string; valeur: unknown } | { op: "lire" | "oublier"; cle: string };
 
 /** The request's shape, or null. */
-function demandeMemoire(d: unknown): DemandeMemoire | null {
+function memoryRequest(d: unknown): MemoryRequest | null {
   if (!d || typeof d !== "object") return null;
-  const { op, cle } = d as { op?: unknown; cle?: unknown };
-  if (typeof cle !== "string") return null;
-  if (op === "retenir") return { op, cle, valeur: (d as { valeur?: unknown }).valeur };
-  return op === "lire" || op === "oublier" ? { op, cle } : null;
+  const { op, cle: key } = d as { op?: unknown; cle?: unknown };
+  if (typeof key !== "string") return null;
+  if (op === "retenir") return { op, cle: key, valeur: (d as { valeur?: unknown }).valeur };
+  return op === "lire" || op === "oublier" ? { op, cle: key } : null;
 }
 
 /**
  * `sites.memoireOp {id, adresse, op, cle, valeur?}`: the memory work past the sender checks. `memoire(id)`
  * rejects while the app is being deleted: nothing is read or written then.
  */
-export async function memoireOp(memoire: (id: string) => Promise<SiteMemory>, brute: unknown): Promise<ReponseMemoire> {
+export async function memoryOp(memory: (id: string) => Promise<SiteMemory>, brute: unknown): Promise<MemoryResponse> {
   const p = brute && typeof brute === "object" ? (brute as { id?: unknown; adresse?: unknown }) : {};
-  const d = demandeMemoire(brute);
-  if (typeof p.id !== "string" || typeof p.adresse !== "string" || !d) return { ok: false, erreur: REFUS_MEMOIRE };
-  const m = await memoire(p.id).catch(() => null);
-  if (!m) return { ok: false, erreur: REFUS_MEMOIRE };
+  const d = memoryRequest(brute);
+  if (typeof p.id !== "string" || typeof p.adresse !== "string" || !d) return { ok: false, erreur: MEMORY_DENIAL };
+  const m = await memory(p.id).catch(() => null);
+  if (!m) return { ok: false, erreur: MEMORY_DENIAL };
   if (d.op === "retenir") {
     const r = m.retenir(d.cle, d.valeur, p.adresse);
     return r.ok ? { ok: true } : r;
@@ -38,23 +38,23 @@ export async function memoireOp(memoire: (id: string) => Promise<SiteMemory>, br
 }
 
 /** Same video within 2 s of duration; a frame's position noted at most once a second. */
-export const ECART_DUREE_REPRISE_S = 2;
-export const ECART_NOTE_CADRE_MS = 1000;
+export const RESUME_DURATION_GAP_S = 2;
+export const FRAME_NOTE_GAP_MS = 1000;
 /** A frame key is "<browsingContext.id>:<innerWindowId>", from the chrome; anything longer is not one. */
 const CADRE_MAX = 64;
 
-const fini = (x: unknown): x is number => typeof x === "number" && Number.isFinite(x);
+const finished = (x: unknown): x is number => typeof x === "number" && Number.isFinite(x);
 /** Same video: durations within `ECART_DUREE_REPRISE_S`. */
-const memeDuree = (a: number, b: number) => Math.abs(a - b) <= ECART_DUREE_REPRISE_S;
+const sameDuration = (a: number, b: number) => Math.abs(a - b) <= RESUME_DURATION_GAP_S;
 
-type Cible = { id: string; adresse: string };
-const cibleDe = (p: { id?: unknown; adresse?: unknown }): Cible | null => (typeof p.id === "string" && typeof p.adresse === "string" ? { id: p.id, adresse: p.adresse } : null);
+type Target = { id: string; adresse: string };
+const targetOf = (p: { id?: unknown; adresse?: unknown }): Target | null => (typeof p.id === "string" && typeof p.adresse === "string" ? { id: p.id, adresse: p.adresse } : null);
 
 /**
  * The position and reprise channels past their sender checks, which the chrome made (view,
  * grant, repriseDansCadre) and whose page address it gives. The host checks the grant again at each write.
  */
-export function creerPositions(o: {
+export function createPositions(o: {
   memoire(id: string): Promise<SiteMemory>;
   accorde(id: string): boolean;
   /** Clock and timer (tests). */
@@ -64,8 +64,8 @@ export function creerPositions(o: {
   /** Per app: « Oublier » and « Supprimer » change it, and any note received before (delayed write included) is dropped. */
   const generations = new Map<string, number>();
   const generation = (id: string) => generations.get(id) ?? 0;
-  const maintenant = o.maintenant ?? Date.now;
-  const differer = o.differer ?? ((f: () => void, ms: number) => void setTimeout(f, ms));
+  const now = o.maintenant ?? Date.now;
+  const defer = o.differer ?? ((f: () => void, ms: number) => void setTimeout(f, ms));
   /** Per app, per frame: when its last note was written, and the last one that came too early (written at the second's end). */
   const cadres = new Map<string, Map<string, { derniere: number; enAttente: (() => void) | null }>>();
 
@@ -76,54 +76,54 @@ export function creerPositions(o: {
      */
     async position(brute: unknown): Promise<void> {
       const p = brute && typeof brute === "object" ? (brute as { id?: unknown; cadre?: unknown; adresse?: unknown; t?: unknown; duree?: unknown; fin?: unknown }) : {};
-      const cible = cibleDe(p);
-      if (!cible || typeof p.cadre !== "string" || p.cadre.length > CADRE_MAX || !fini(p.t) || !fini(p.duree) || !o.accorde(cible.id)) return;
-      const { t, duree } = p;
+      const target = targetOf(p);
+      if (!target || typeof p.cadre !== "string" || p.cadre.length > CADRE_MAX || !finished(p.t) || !finished(p.duree) || !o.accorde(target.id)) return;
+      const { t, duree: duration } = p;
       const fin = p.fin === true;
-      const generationRecue = generation(cible.id);
-      const ecrire = () =>
-        o.memoire(cible.id).then(
+      const generationReceived = generation(target.id);
+      const write = () =>
+        o.memoire(target.id).then(
           (m) => {
             // Forgotten or deleted since the note, or grant withdrawn: nothing is written.
-            if (generation(cible.id) !== generationRecue || !o.accorde(cible.id)) return;
-            const retenue = m.position(cible.adresse);
-            if (retenue && !memeDuree(retenue.duree, duree)) return;
-            m.noterPosition(cible.adresse, t, duree);
+            if (generation(target.id) !== generationReceived || !o.accorde(target.id)) return;
+            const kept = m.position(target.adresse);
+            if (kept && !sameDuration(kept.duree, duration)) return;
+            m.noterPosition(target.adresse, t, duration);
           },
           (err) => console.error("[sites] position non notée :", err),
         );
-      let parCadre = cadres.get(cible.id);
-      if (!parCadre) cadres.set(cible.id, (parCadre = new Map()));
-      const heure = maintenant();
-      const etat = parCadre.get(p.cadre);
-      if (!etat) {
+      let parCadre = cadres.get(target.id);
+      if (!parCadre) cadres.set(target.id, (parCadre = new Map()));
+      const hour = now();
+      const state = parCadre.get(p.cadre);
+      if (!state) {
         // shortcut: frame keys live until the app closes (fermee), one per document that noted; fine for a session's videos.
-        parCadre.set(p.cadre, { derniere: heure, enAttente: null });
-        return ecrire();
+        parCadre.set(p.cadre, { derniere: hour, enAttente: null });
+        return write();
       }
-      if (fin || heure - etat.derniere >= ECART_NOTE_CADRE_MS) {
-        etat.derniere = heure;
-        etat.enAttente = null;
-        return ecrire();
+      if (fin || hour - state.derniere >= FRAME_NOTE_GAP_MS) {
+        state.derniere = hour;
+        state.enAttente = null;
+        return write();
       }
-      const attendait = etat.enAttente !== null;
-      etat.enAttente = ecrire;
-      if (attendait) return;
-      differer(() => {
-        const f = etat.enAttente;
-        etat.enAttente = null;
+      const awaited = state.enAttente !== null;
+      state.enAttente = write;
+      if (awaited) return;
+      defer(() => {
+        const f = state.enAttente;
+        state.enAttente = null;
         if (!f) return;
-        etat.derniere = maintenant();
+        state.derniere = now();
         void f();
-      }, ECART_NOTE_CADRE_MS - (heure - etat.derniere));
+      }, FRAME_NOTE_GAP_MS - (hour - state.derniere));
     },
     /** The page's kept position, for any video of the same duration that asks (recreated player, « Lecteur 2 », reload). */
     async reprise(brute: unknown): Promise<number | null> {
       const p = brute && typeof brute === "object" ? (brute as { id?: unknown; adresse?: unknown; duree?: unknown }) : {};
-      const cible = cibleDe(p);
-      if (!cible || !fini(p.duree) || p.duree <= 0 || !o.accorde(cible.id)) return null;
-      const retenue = (await o.memoire(cible.id).catch(() => null))?.position(cible.adresse);
-      return retenue && memeDuree(retenue.duree, p.duree) ? retenue.t : null;
+      const target = targetOf(p);
+      if (!target || !finished(p.duree) || p.duree <= 0 || !o.accorde(target.id)) return null;
+      const kept = (await o.memoire(target.id).catch(() => null))?.position(target.adresse);
+      return kept && sameDuration(kept.duree, p.duree) ? kept.t : null;
     },
     /** Drops the notes of the app received so far (those waiting for their second included). */
     annulerNotes(id: string): void {

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { EtatFenetre } from "../../shared/modele";
+  import type { WindowState } from "../../shared/modele";
   import { onMount, untrack } from "svelte";
   import { focusPageVide } from "./commande.svelte";
   import { api, etat } from "../etat.svelte";
@@ -7,9 +7,9 @@
   import Essentiels from "./Essentiels.svelte";
   import SuggestionsActions from "./SuggestionsActions.svelte";
   import { suggestionsActions } from "./suggestions";
-  import type { ActionAffichee } from "../../shared/actions";
+  import type { ActionShown } from "../../shared/actions";
 
-  let { fenetre }: { fenetre: EtatFenetre } = $props();
+  let { fenetre }: { fenetre: WindowState } = $props();
   let saisie = $state("");
   let champ: HTMLInputElement;
 
@@ -22,7 +22,7 @@
   // Actions are not available in a private space (a missing space counts as private): the list is then not even
   // requested.
   const enPrive = $derived(etat.valeur?.espaces.find((e) => e.id === fenetre.espaceActif)?.prive ?? true);
-  let actions = $state.raw<ActionAffichee[]>([]);
+  let actions = $state.raw<ActionShown[]>([]);
   let derniere = 0;
   $effect(() => {
     if (enPrive) {

@@ -1,11 +1,11 @@
 import { grantStrengthened, scopeHash, scopeLabels, type ManifestAnalysis } from "../../../../packages/noyau/src/index.ts";
 import type { CarteExtension } from "../../shared/extensions.ts";
-import type { Espace } from "../../shared/modele.ts";
+import type { Space } from "../../shared/modele.ts";
 
 /** The grant card of an agent extension, to activate it in `espace` (pure). */
 export function carteDe(
   a: ManifestAnalysis,
-  o: { cle: string; espace: Espace; espaces: Espace[]; maj?: { de: string }; remplaceAussi?: string[] },
+  o: { cle: string; espace: Space; espaces: Space[]; maj?: { de: string }; remplaceAussi?: string[] },
 ): CarteExtension {
   const p = a.portee;
   return {
@@ -28,17 +28,17 @@ export function carteDe(
 }
 
 // Shown on the Extensions page as « Non pris en charge ».
-const DROITS_NON_PRIS = ["activeTab", "nativeMessaging", "userScripts", "sidePanel", "identity", "tabCapture", "desktopCapture", "pageCapture", "debugger", "proxy", "ttsEngine", "tts"];
-const CLES_NON_PRISES: Record<string, string> = { side_panel: "sidePanel", devtools_page: "devtools_page", omnibox: "omnibox", chrome_url_overrides: "chrome_url_overrides" };
+const UNSUPPORTED_RIGHTS = ["activeTab", "nativeMessaging", "userScripts", "sidePanel", "identity", "tabCapture", "desktopCapture", "pageCapture", "debugger", "proxy", "ttsEngine", "tts"];
+const KEYS_NOT_TAKEN: Record<string, string> = { side_panel: "sidePanel", devtools_page: "devtools_page", omnibox: "omnibox", chrome_url_overrides: "chrome_url_overrides" };
 
 /** What the manifest asks for that WebAiOs does not support, in list order, without duplicates (pure). */
-export function nonPrisEnCharge(manifeste: unknown): string[] {
-  if (typeof manifeste !== "object" || manifeste === null) return [];
-  const m = manifeste as Record<string, unknown>;
+export function unsupported(manifest: unknown): string[] {
+  if (typeof manifest !== "object" || manifest === null) return [];
+  const m = manifest as Record<string, unknown>;
   const droits = new Set<string>();
   for (const champ of ["permissions", "optional_permissions"])
     if (Array.isArray(m[champ])) for (const d of m[champ] as unknown[]) if (typeof d === "string") droits.add(d);
-  const r: string[] = DROITS_NON_PRIS.filter((d) => droits.has(d));
-  for (const [cle, nom] of Object.entries(CLES_NON_PRISES)) if (Object.hasOwn(m, cle) && !r.includes(nom)) r.push(nom);
+  const r: string[] = UNSUPPORTED_RIGHTS.filter((d) => droits.has(d));
+  for (const [key, name] of Object.entries(KEYS_NOT_TAKEN)) if (Object.hasOwn(m, key) && !r.includes(name)) r.push(name);
   return r;
 }

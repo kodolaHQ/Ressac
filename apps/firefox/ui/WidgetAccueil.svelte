@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { WidgetAffiche } from "../shared/api";
+  import type { ShownWidget } from "../shared/api";
   import type { FreePlacement } from "../../../packages/noyau/src/accueil/schemas";
   import CadreWidget from "./CadreWidget.svelte";
   import Icone from "../ui/composants/Icone.svelte";
@@ -19,7 +19,7 @@
     recolter,
     voirWorkflow,
   }: {
-    widget: WidgetAffiche;
+    widget: ShownWidget;
     /** The place shown (the preview's during a drag). */
     placement: FreePlacement;
     /** A drag or resize is under way on the grid: the frame does not capture the mouse. */

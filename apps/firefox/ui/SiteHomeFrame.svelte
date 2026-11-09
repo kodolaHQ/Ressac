@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { ENTRER_DANS_LE_SITE, MessageDeLAccueil, type MessageVersLAccueil } from "../shared/sites";
+  import { ENTER_THE_SITE, HomeMessage, type MessageToHome } from "../shared/sites";
   import type { ApiSite } from "../shared/api";
 
   /**
@@ -28,7 +28,7 @@
   }
 
   /** Opaque origin: the target can only be « * »; only this frame's document receives. */
-  const envoyer = (m: MessageVersLAccueil) => {
+  const envoyer = (m: MessageToHome) => {
     if (ours()) cadre?.contentWindow?.postMessage(m, "*");
   };
 
@@ -52,7 +52,7 @@
       } catch {
         return;
       }
-      const r = MessageDeLAccueil.safeParse(data);
+      const r = HomeMessage.safeParse(data);
       if (!r.success) return;
       const m = r.data;
       if (m.type === "pret") void api.memoire().then(envoyer, () => {});
@@ -93,7 +93,7 @@
 <section class="accueil" data-testid="site-zone-accueil">
   <iframe bind:this={cadre} data-testid="site-cadre-accueil" title="Accueil de l'appli" sandbox="allow-scripts" src={src ?? "about:blank"}></iframe>
   <footer>
-    <button data-testid="site-entrer" onclick={() => api.entrer()}>{ENTRER_DANS_LE_SITE}</button>
+    <button data-testid="site-entrer" onclick={() => api.entrer()}>{ENTER_THE_SITE}</button>
   </footer>
 </section>
 

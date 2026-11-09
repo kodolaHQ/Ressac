@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { WidgetAffiche } from "../shared/api";
+  import type { ShownWidget } from "../shared/api";
   import type { FreePlacement } from "../../../packages/noyau/src/accueil/schemas";
   import type { HomeTheme } from "../../../packages/noyau/src/accueil/theme";
   import { api } from "../ui/etat.svelte";
@@ -15,7 +15,7 @@
   const TAILLES_LIBRES = { min: { l: 1, h: 1 }, max: { l: LARGEUR_LIBRE, h: 1000 } };
 
   // Replaced as a whole on each read: no deep proxy (the data goes to the frames as is).
-  let widgets = $state.raw<WidgetAffiche[]>([]);
+  let widgets = $state.raw<ShownWidget[]>([]);
   let theme = $state.raw<HomeTheme | null>(null);
   /** The first read is done: the empty screen does not flash before it. */
   let charge = $state(false);
@@ -83,9 +83,9 @@
 
   /** Widgets whose read with the user's account was refused, during this page session. */
   let refuses = $state<Record<string, true>>({});
-  let aRetirer = $state<WidgetAffiche | null>(null);
-  let accordPour = $state<Extract<WidgetAffiche, { compte: string[] }> | null>(null);
-  const nom = (w: WidgetAffiche) => ("nom" in w ? w.nom : w.id);
+  let aRetirer = $state<ShownWidget | null>(null);
+  let accordPour = $state<Extract<ShownWidget, { compte: string[] }> | null>(null);
+  const nom = (w: ShownWidget) => ("nom" in w ? w.nom : w.id);
 
   // Drag and resize: a live free preview, then the layout sent on release.
   let largeurPx = $state(0);
@@ -97,7 +97,7 @@
   const placements = $derived(new Map((apercu ?? widgets.map((w) => w.placement)).map((p) => [p.id, p])));
   const hauteur = $derived(Math.max(0, ...[...placements.values()].map((p) => p.y + p.h)));
 
-  function commencer(w: WidgetAffiche, mode: "deplacer" | "taille", e: PointerEvent) {
+  function commencer(w: ShownWidget, mode: "deplacer" | "taille", e: PointerEvent) {
     if (e.button !== 0) return;
     e.preventDefault();
     const depart = widgets.map((x) => x.placement);

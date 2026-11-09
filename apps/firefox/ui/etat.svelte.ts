@@ -1,5 +1,5 @@
 import type { ApiWebaios } from "../shared/api";
-import { cibleDeUrlWorkflow, type DemandeEnAttente, type EtatFenetre, type EtatNavigateur, type IdOnglet, type Onglet, type Telechargement } from "../shared/modele";
+import { workflowUrlTarget, type PendingRequest, type WindowState, type BrowserState, type TabId, type Tab, type Download } from "../shared/modele";
 import { cleCible } from "./constructeur/cible";
 import { confirmerFermeture, garderCodesDe } from "./constructeur/codes.svelte";
 
@@ -7,21 +7,21 @@ import { confirmerFermeture, garderCodesDe } from "./constructeur/codes.svelte";
 export const api = (window as unknown as { webaios: ApiWebaios }).webaios;
 
 /** Local copy of the state broadcast by the main process; only modified through `api.agir`. */
-export const etat = $state<{ valeur: EtatNavigateur | null }>({ valeur: null });
+export const etat = $state<{ valeur: BrowserState | null }>({ valeur: null });
 
 api.surEtat((e) => {
   etat.valeur = e;
   // The unsaved code of a builder whose tab is gone, by any path, is dropped.
   garderCodesDe(
     Object.values(e.onglets).flatMap((o) => {
-      const cible = o.fenetreId === api.fenetreId ? cibleDeUrlWorkflow(o.url) : null;
+      const cible = o.fenetreId === api.fenetreId ? workflowUrlTarget(o.url) : null;
       return cible ? [cleCible(cible)] : [];
     }),
   );
 });
 
 /** The state of the window showing this interface. */
-export function fenetreCourante(): EtatFenetre | undefined {
+export function fenetreCourante(): WindowState | undefined {
   return etat.valeur?.fenetres.find((f) => f.id === api.fenetreId);
 }
 
@@ -29,9 +29,9 @@ export function fenetreCourante(): EtatFenetre | undefined {
  * Closing a tab wanted by the user (button, menu, middle click, ⌘W): a widget's builder with unsaved code asks first,
  * unless another tab of the window shows the same builder.
  */
-export function fermerOnglet(id: IdOnglet): void {
+export function fermerOnglet(id: TabId): void {
   const o = etat.valeur?.onglets[id];
-  const cible = o ? cibleDeUrlWorkflow(o.url) : null;
+  const cible = o ? workflowUrlTarget(o.url) : null;
   if (o && cible) {
     const autre = Object.values(etat.valeur!.onglets).some((x) => x.id !== id && x.fenetreId === o.fenetreId && x.url === o.url);
     if (!autre && !confirmerFermeture(cleCible(cible))) return;
@@ -40,7 +40,7 @@ export function fermerOnglet(id: IdOnglet): void {
 }
 
 /** The session's downloads, most recent first. */
-export const telechargements = $state<{ liste: Telechargement[] }>({ liste: [] });
+export const telechargements = $state<{ liste: Download[] }>({ liste: [] });
 
 api.surTelechargements((liste) => {
   telechargements.liste = liste;
@@ -50,7 +50,7 @@ void api.telechargements.liste().then((liste) => {
 });
 
 /** Site permission questions, awaiting an answer. */
-export const demandes = $state<{ liste: DemandeEnAttente[] }>({ liste: [] });
+export const demandes = $state<{ liste: PendingRequest[] }>({ liste: [] });
 
 api.surPermissions((liste) => {
   demandes.liste = liste;
@@ -64,7 +64,7 @@ void api.permissions.enAttente().then((liste) => {
  * that opened it (ongletId); with no known tab, on the active tab. An agent question targets a window (its own),
  * whatever the shown tab.
  */
-export function demandeDe(fenetre: EtatFenetre | undefined, onglet: Onglet | undefined): DemandeEnAttente | undefined {
+export function demandeDe(fenetre: WindowState | undefined, onglet: Tab | undefined): PendingRequest | undefined {
   return demandes.liste.find((d) => (d.fenetreId ? d.fenetreId === fenetre?.id : d.ongletId === null || d.ongletId === onglet?.id));
 }
 

@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "vitest";
 import { readUrlState, type DeclarationSite } from "@webaios/noyau";
-import { INTERVALLE_SUIVI_MS } from "../../shared/sites";
-import { SuiviAdresse } from "../../core/sites/suivi";
+import { TRACKING_INTERVAL_MS } from "../../shared/sites";
+import { UrlTracking } from "../../core/sites/suivi";
 
 const declaration: DeclarationSite = {
   nom: "Vidola",
@@ -22,7 +22,7 @@ function suivi(liens: string[] | Error) {
   const dossierSites = mkdtempSync(join(tmpdir(), "webaios-suivi-"));
   let maintenant = 1_000_000;
   let lectures = 0;
-  const s = new SuiviAdresse({
+  const s = new UrlTracking({
     lireLiens: async (_page, signal) => {
       signaux.push(signal);
       lectures++;
@@ -37,7 +37,7 @@ function suivi(liens: string[] | Error) {
 }
 
 test("the plan's interval is one minute", () => {
-  expect(INTERVALLE_SUIVI_MS).toBe(60_000);
+  expect(TRACKING_INTERVAL_MS).toBe(60_000);
 });
 
 test("links with vidola-b: change, etat.actuel vidola-b", async () => {
@@ -111,7 +111,7 @@ test("a failed read counts in the interval: 30 s later, trop-tot", async () => {
 test("the cancellation signal is passed to the read; a cancelled read gives introuvable and changes nothing", async () => {
   const dossierSites = mkdtempSync(join(tmpdir(), "webaios-suivi-"));
   const controle = new AbortController();
-  const s = new SuiviAdresse({
+  const s = new UrlTracking({
     lireLiens: (_p, signal) => new Promise((_ok, non) => signal?.addEventListener("abort", () => non(new Error("annulée")))),
     dossierSites,
     adressesLocales: false,

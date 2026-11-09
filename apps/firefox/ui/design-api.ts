@@ -1,5 +1,5 @@
-import type { Action, ApiDesign, ApiWebaios, ElementAffiche, EtatExternes, LotAffiche, ResultatExtension } from "../shared/api";
-import type { IdFenetre } from "../shared/modele";
+import type { Action, ApiDesign, ApiWebaios, ShownElement, ExternalsState, BatchShown, ExtensionResult } from "../shared/api";
+import type { WindowId } from "../shared/modele";
 import { HOST_EXITED, type AgentHost } from "../chrome/agent/host";
 import type { WindowController } from "../chrome/window/controller";
 import {
@@ -16,7 +16,7 @@ import {
   EXTERNAL_ID,
   ID_PROJECT,
   INVALID_REQUEST,
-  raisonEchec,
+  failureReason,
 } from "../shared/design-guards";
 
 // The section « Projets externes » and the Review page over the kernel host's externes.* and relecture.* RPCs, with
@@ -27,7 +27,7 @@ export const local = (e: unknown): Error => new Error(typeof (e as Error | null)
 
 export function createExternesApi(o: {
   host: Pick<AgentHost, "request" | "on">;
-  fenetre: IdFenetre;
+  fenetre: WindowId;
   dispatch: (a: Action) => void;
   untilUnload: (f: () => void) => () => void;
 }): ApiWebaios["externes"] {
@@ -40,9 +40,9 @@ export function createExternesApi(o: {
   return {
     // A host that does not answer: the off server with its reason (spec §5.10).
     liste: () =>
-      host.request<EtatExternes>("externes.liste").then(
+      host.request<ExternalsState>("externes.liste").then(
         (v) => structuredClone(v),
-        (e) => ({ serveur: { etat: "eteint" as const, raison: raisonEchec(local(e)) }, projets: [], clients: [] }),
+        (e) => ({ serveur: { etat: "eteint" as const, raison: failureReason(local(e)) }, projets: [], clients: [] }),
       ),
     surChange(cb) {
       // accueil.change: the host sends it at each kernel start.
@@ -141,15 +141,15 @@ export function createDesignApi(o: { win: WindowController; untilUnload: (f: () 
     etat,
     basculer: () => void design.toggle(t),
     relire: () => void design.relire(t),
-    panier: async (p) => ((await allowed(p)) ? copy(host.request<ElementAffiche[]>("design.panier", { projet: p })) : []),
-    lots: async (p) => ((await allowed(p)) ? copy(host.request<LotAffiche[]>("design.lots", { projet: p })) : []),
+    panier: async (p) => ((await allowed(p)) ? copy(host.request<ShownElement[]>("design.panier", { projet: p })) : []),
+    lots: async (p) => ((await allowed(p)) ? copy(host.request<BatchShown[]>("design.lots", { projet: p })) : []),
     async retirer(p, x) {
       if ((await allowed(p)) && id(x)) await copy(host.request("design.retirer", { projet: p, id: x }));
     },
     async traite(p, lot) {
       if ((await allowed(p)) && id(lot)) await copy(host.request("design.traite", { projet: p, lot }));
     },
-    envoyer: async (p) => ((await allowed(p)) ? copy(host.request<ResultatExtension>("design.envoyer", { projet: p })) : { ok: false, erreur: INVALID_REQUEST }),
+    envoyer: async (p) => ((await allowed(p)) ? copy(host.request<ExtensionResult>("design.envoyer", { projet: p })) : { ok: false, erreur: INVALID_REQUEST }),
     surChange(cb) {
       // accueil.change: the host sends it at each kernel start.
       const offs = [...["design.change", HOST_EXITED, "accueil.change"].map((m) => host.on(m, () => cb())), design.onChange(() => cb())];

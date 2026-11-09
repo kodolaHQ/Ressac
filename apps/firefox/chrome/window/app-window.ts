@@ -1,6 +1,6 @@
 // An agent app's window: browser.xhtml opened by store/apps.ts without a toolbar, marked from its creation, never a
 // WebAiOs main window. One <browser> (the app view, in the app's container), Firefox's tabs and toolbars hidden.
-import { memeOrigine, TAILLE_FAVICON } from "../../core/applications/favicon";
+import { sameOrigin, TAILLE_FAVICON } from "../../core/applications/favicon";
 import { cutFrameNetwork } from "./frame-network";
 import { FIREFOX_COMMANDS, FIREFOX_KEYS, shortcutFor } from "./keys";
 import { protectView } from "./site-window";
@@ -144,7 +144,7 @@ export function setupAppWindow(win: Window, dossier: string): void {
       onLinkIconAvailable(_browser: unknown, iconURL: unknown, originalURL: unknown) {
         if (typeof iconURL !== "string" || !iconURL.startsWith("data:image/") || iconURL.length > TAILLE_FAVICON) return;
         const source = String(originalURL ?? "");
-        if (memeOrigine(source, app.origin) || source.startsWith("data:image/")) apps.note(win, { favicon: iconURL });
+        if (sameOrigin(source, app.origin) || source.startsWith("data:image/")) apps.note(win, { favicon: iconURL });
       },
     });
     // Each new top document: the host's policy follows it. A page kept in the bfcache would come back without a request

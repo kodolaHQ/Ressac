@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { PROFIL_DEFAUT } from "../shared/modele";
-import { appliquer } from "../core/etat/actions";
-import { etatInitial } from "../core/etat/etat-initial";
+import { DEFAULT_PROFILE } from "../shared/modele";
+import { apply } from "../core/etat/actions";
+import { initialState } from "../core/etat/etat-initial";
 import { validFolder as noyau } from "../../../packages/noyau/src/applications/manifeste";
 import { dossierValide } from "../chrome/store/app-folder";
 
@@ -10,9 +10,9 @@ import { dossierValide } from "../chrome/store/app-folder";
 // no profile id may start like the other two, or a profile would share an app's cookies (spike S8).
 describe("container names", () => {
   it("no login profile id starts with app- or site-", () => {
-    let s = etatInitial();
-    for (let n = 0; n < 50; n++) s = appliquer(s, { type: "creerEspace", nom: `e${n}`, icone: "x", prive: false, profil: "nouveau" });
-    const ids = [PROFIL_DEFAUT, ...s.profils.map((p) => p.id)];
+    let s = initialState();
+    for (let n = 0; n < 50; n++) s = apply(s, { type: "creerEspace", nom: `e${n}`, icone: "x", prive: false, profil: "nouveau" });
+    const ids = [DEFAULT_PROFILE, ...s.profils.map((p) => p.id)];
     expect(ids.length).toBeGreaterThan(50);
     for (const id of ids) expect(id).not.toMatch(/^(app|site)-/);
   });

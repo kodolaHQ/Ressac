@@ -1,8 +1,8 @@
-import type { IdFenetre } from "../../shared/modele";
+import type { WindowId } from "../../shared/modele";
 
-export type CibleDesign = { type: "fenetre"; fenetreId: IdFenetre } | { type: "app"; dossier: string } | { type: "site"; id: string };
+export type DesignTarget = { type: "fenetre"; fenetreId: WindowId } | { type: "app"; dossier: string } | { type: "site"; id: string };
 
-export type ChoixDesign = { type: "cible"; cible: CibleDesign } | { type: "avis-site"; id: string } | { type: "rien" };
+export type DesignChoice = { type: "cible"; cible: DesignTarget } | { type: "avis-site"; id: string } | { type: "rien" };
 
 /**
  * The window targeted by ⌘⇧D, according to what is in the foreground (spec §4.3): an agent app window, then a
@@ -10,7 +10,7 @@ export type ChoixDesign = { type: "cible"; cible: CibleDesign } | { type: "avis-
  * nothing switches); another window that is not a main window targets nothing (never the tab of the main
  * window that is behind); otherwise, the active main window.
  */
-export function choisirCibleDesign(o: { appli?: string; site?: string; petiteDeSite?: string; autreFenetre: boolean; fenetreActive?: IdFenetre }): ChoixDesign {
+export function chooseDesignTarget(o: { appli?: string; site?: string; petiteDeSite?: string; autreFenetre: boolean; fenetreActive?: WindowId }): DesignChoice {
   if (o.appli) return { type: "cible", cible: { type: "app", dossier: o.appli } };
   if (o.site) return { type: "cible", cible: { type: "site", id: o.site } };
   if (o.petiteDeSite) return { type: "avis-site", id: o.petiteDeSite };

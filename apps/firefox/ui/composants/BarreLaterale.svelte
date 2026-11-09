@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { Panneau } from "../../shared/api";
-  import { URL_ACTIONS, URL_APPLICATIONS, cibleDeUrlWorkflow, type EtatFenetre } from "../../shared/modele";
+  import type { Panel } from "../../shared/api";
+  import { URL_ACTIONS, URL_APPLICATIONS, workflowUrlTarget, type WindowState } from "../../shared/modele";
   import { api, etat, telechargements } from "../etat.svelte";
   import BarreAdresse from "./BarreAdresse.svelte";
   import Essentiels from "./Essentiels.svelte";
@@ -16,9 +16,9 @@
     basculerPanneau,
     agentDuConstructeur,
   }: {
-    fenetre: EtatFenetre;
+    fenetre: WindowState;
     cachee?: boolean;
-    basculerPanneau?: (p: Panneau) => void;
+    basculerPanneau?: (p: Panel) => void;
     /** ✦ on a builder tab: its « Agent » tab (instead of the side panel). */
     agentDuConstructeur?: () => void;
   } = $props();
@@ -34,7 +34,7 @@
   });
   const lienActif = $derived(ongletActif?.lien?.id);
   // In the builder, the agent has its « Agent » tab: ✦ shows it there (like ⌘J), the side panel does not appear.
-  const constructeur = $derived(!!ongletActif && cibleDeUrlWorkflow(ongletActif.url) !== null);
+  const constructeur = $derived(!!ongletActif && workflowUrlTarget(ongletActif.url) !== null);
 </script>
 
 <aside class="barre" data-testid="barre-laterale" hidden={cachee}>

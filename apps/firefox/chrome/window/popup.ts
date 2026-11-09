@@ -1,10 +1,10 @@
-import type { IdOnglet } from "../../shared/modele";
+import type { TabId } from "../../shared/modele";
 
 /**
  * The WebAiOs tab behind a popup: its opener's tab, or, for a popup opened by a popup (the steps of a sign-in),
  * the tab behind that one. None once the opener and its tab are gone.
  */
-function popupSource(win: Window): IdOnglet | undefined {
+function popupSource(win: Window): TabId | undefined {
   let bc = win.gBrowser.selectedBrowser.browsingContext?.opener?.top;
   while (bc) {
     const browser = bc.embedderElement;

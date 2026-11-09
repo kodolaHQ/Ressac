@@ -1,18 +1,18 @@
-import type { IdProfil } from "../../shared/modele";
-import { PROFIL_DEFAUT } from "../../shared/modele";
+import type { ProfileId } from "../../shared/modele";
+import { DEFAULT_PROFILE } from "../../shared/modele";
 
 const { ContextualIdentityService } = ChromeUtils.importESModule("moz-src:///toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs");
 
 /** Internal identity name of a login profile's container. */
-export const internalName = (id: IdProfil) => `userContextIdInternal.webaios-${id}`;
+export const internalName = (id: ProfileId) => `userContextIdInternal.webaios-${id}`;
 
 /**
  * userContextId of a login profile: 0 for the default one, else a private container (invisible to add-ons) created on first use.
  * Not a policy identity: Firefox's enterprise policies (SitePolicies) wipe every policy identity they do not list.
  * shortcut: pushes onto ContextualIdentityService._identities, no public API makes a private non-policy identity; recheck after a Firefox upgrade.
  */
-export function containerFor(profile: IdProfil): number {
-  if (profile === PROFIL_DEFAUT) return 0;
+export function containerFor(profile: ProfileId): number {
+  if (profile === DEFAULT_PROFILE) return 0;
   const name = internalName(profile);
   const found = ContextualIdentityService.getPrivateIdentity(name);
   if (found) return found.userContextId;
@@ -24,13 +24,13 @@ export function containerFor(profile: IdProfil): number {
 }
 
 /** userContextId of a login profile's container if it exists (0 for the default one), else null: never creates one. */
-export function existingContainer(profile: IdProfil): number | null {
-  if (profile === PROFIL_DEFAUT) return 0;
+export function existingContainer(profile: ProfileId): number | null {
+  if (profile === DEFAULT_PROFILE) return 0;
   return ContextualIdentityService.getPrivateIdentity(internalName(profile))?.userContextId ?? null;
 }
 
 /** Removes the container of a login profile and wipes its cookies and storage, as removePolicyIdentity does. */
-export function removeContainer(profile: IdProfil): void {
+export function removeContainer(profile: ProfileId): void {
   const { _identities: list } = ContextualIdentityService;
   const index = list.findIndex((i: { public: boolean; name: string }) => !i.public && i.name === internalName(profile));
   if (index === -1) return;
@@ -54,7 +54,7 @@ function hasPrefix(userContextId: number, prefix: string): boolean {
 export const isSiteContainer = (userContextId: number): boolean => hasPrefix(userContextId, "site-");
 
 /** Wipes a container's cookies and storage (waited for, as invisible.ts's clearContainer), then drops its identity. */
-async function wipe(profile: IdProfil): Promise<void> {
+async function wipe(profile: ProfileId): Promise<void> {
   const userContextId = existingContainer(profile);
   if (userContextId === null) return;
   await new Promise<void>((ok) => Services.clearData.deleteDataFromOriginAttributesPattern({ userContextId }, { onDataDeleted: () => ok() }));
