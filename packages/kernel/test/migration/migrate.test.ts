@@ -300,6 +300,21 @@ describe("migrateKernel refuses", () => {
     expect(docker.calls).toEqual([]);
   });
 
+  it("data already in the new format (store marker only): left as is, even its own names that match old ones", async () => {
+    const { root } = await oldDataDir(null);
+    const dataDir = join(root, "new");
+    const widget = join(dataDir, "workspace", "home", "widgets", "veille");
+    mkdirSync(widget, { recursive: true });
+    const workflow = JSON.stringify({ version: 1, blocks: [{ id: "avis", type: "ai.write", params: { field: "avis", prompt: "{titre}" } }], links: [] });
+    writeFileSync(join(widget, "workflow.json"), workflow);
+    writeFileSync(join(dataDir, ".format-version"), JSON.stringify({ store: 2 }));
+    const docker = fakeDocker();
+    expect(await migrateKernel({ dataDir, docker, now })).toEqual({ status: "already", report: null });
+    expect(readFileSync(join(widget, "workflow.json"), "utf8")).toBe(workflow);
+    expect(await readMarker(dataDir)).toEqual({ store: 2, kernel: 2 });
+    expect(docker.calls).toEqual([]);
+  });
+
   it("a folder linked out of the data folder: never read nor written through", async () => {
     const { root, dataDir } = await oldDataDir();
     mkdirSync(join(root, "elsewhere"));

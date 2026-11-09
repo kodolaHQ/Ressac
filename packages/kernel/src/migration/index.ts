@@ -52,11 +52,17 @@ export async function migrateKernel(o: {
     // A new data folder: nothing to migrate; the store half writes its marker first.
     return { status: "already", report: null };
   }
+  const reportFile = join(o.dataDir, REPORT_FILE);
+  // No old data (and no cut run, which leaves its report): the data is already in the new format. Renaming it again
+  // would rename the user's own names that match old ones (a workflow field `avis`, a `{titre}` template).
+  if (!old && (await kind(reportFile)) === null) {
+    await writeMarkerHalf(o.dataDir, "kernel", KNOWN_FORMAT);
+    return { status: "already", report: null };
+  }
   for (const name of ["espace", "workspace"]) {
     // A linked workspace would make every step write outside the data folder.
     if ((await kind(join(o.dataDir, name))) === "other") throw new Error(`${join(o.dataDir, name)} n'est pas un dossier (lien ?) : rien n'est migré.`);
   }
-  const reportFile = join(o.dataDir, REPORT_FILE);
   const ctx: Ctx = {
     dataDir: o.dataDir,
     workspace: join(o.dataDir, "workspace"),
