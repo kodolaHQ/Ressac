@@ -9,7 +9,7 @@ const other = "http://autre-pub.localhost/x";
 
 function watched() {
   const sent: (string | null)[] = [];
-  const n = blockedNotice(() => sent.push(n.notice?.kind === "lien-bloque" ? n.notice.domain : null));
+  const n = blockedNotice(() => sent.push(n.notice?.kind === "link-blocked" ? n.notice.domain : null));
   return { n, sent };
 }
 
@@ -24,7 +24,7 @@ it("twenty alternated blocks over 1.2 s: at most 3 broadcasts, the last one pub.
   expect(sent.length).toBeGreaterThanOrEqual(1);
   expect(sent.length).toBeLessThanOrEqual(3);
   expect(sent.at(-1)).toBe("pub.localhost");
-  expect(n.notice).toEqual({ kind: "lien-bloque", domain: "pub.localhost" });
+  expect(n.notice).toEqual({ kind: "link-blocked", domain: "pub.localhost" });
 });
 
 it("one mention per domain; the last URL is kept for « Ouvrir dans un onglet »", () => {

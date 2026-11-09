@@ -13,8 +13,8 @@ export function routeAddonsManager(win: Window, store: WebAiOsStore, windowId: W
     const f = state.windows.find((x) => x.id === windowId);
     const existing = f && (f.order[f.activeSpace] ?? []).find((id) => state.tabs[id]?.url.startsWith("about:addons"));
     const id: TabId = existing || crypto.randomUUID();
-    if (existing) store.dispatch({ type: "activerOnglet", id });
-    else store.dispatch({ type: "ouvrirOnglet", windowId: windowId, url: "about:addons" }, () => id);
+    if (existing) store.dispatch({ type: "activateTab", id });
+    else store.dispatch({ type: "openTab", windowId: windowId, url: "about:addons" }, () => id);
     const browser = await tabs.ensure(id);
     // The page defines loadView once its script ran, after the load ensure waits for may have ended.
     for (const end = Date.now() + 5000; typeof browser.contentWindow?.loadView !== "function" && Date.now() < end; )

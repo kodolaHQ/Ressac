@@ -73,7 +73,7 @@ export function firefoxManifest(m: Record<string, unknown>, folder: string, n: n
 
 let file: Promise<unknown> = Promise.resolve();
 
-/** amo-versions.json in `dossier`: the counter of `id` + 1, written (atomic rename) before it is returned; never lowered nor cleared. */
+/** amo-versions.json in `folder`: the counter of `id` + 1, written (atomic rename) before it is returned; never lowered nor cleared. */
 export function nextVersion(folder: string, id: string): Promise<number> {
   const next = file.then(async () => {
     const file = path.join(folder, "amo-versions.json");

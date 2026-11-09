@@ -7,16 +7,16 @@ const { spawn, spawnSync } = require("node:child_process");
 
 const args = process.argv.slice(2);
 const env = process.env;
-const echec = env.FAUX_DOCKER_ECHEC === "1";
+const echec = env.FAKE_DOCKER_FAILURE === "1";
 const sortir = (code, out = "", err = "") => {
   if (out) process.stdout.write(out);
   if (err) process.stderr.write(err);
   process.exit(code);
 };
 
-// FAUX_DOCKER_LENT: Docker that is starting up, `docker info` only answers after 8 s.
-if (args[0] === "info" && env.FAUX_DOCKER_LENT === "1") Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 8_000);
-if (args[0] === "info") sortir(env.FAUX_DOCKER_ABSENT === "1" ? 1 : 0);
+// FAKE_DOCKER_SLOW: Docker that is starting up, `docker info` only answers after 8 s.
+if (args[0] === "info" && env.FAKE_DOCKER_SLOW === "1") Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 8_000);
+if (args[0] === "info") sortir(env.FAKE_DOCKER_ABSENT === "1" ? 1 : 0);
 if (args[0] === "inspect") {
   if (echec) sortir(1, "", "No such object");
   const format = args[2] ?? "";

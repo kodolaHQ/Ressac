@@ -73,7 +73,7 @@ const invoke = async (name: string, args: Record<string, unknown>) => {
   const r = await client!.callTool({ name, arguments: args });
   return (r.content as { type: string; text?: string }[]).map((c) => c.text ?? "").join("\n");
 };
-const devRequests = () => bridge.calls.filter((a) => a.method === "demanderOutilsDev");
+const devRequests = () => bridge.calls.filter((a) => a.method === "askDevTools");
 
 test("without pont.outilsDev, no dev tool is listed", async () => {
   await start({ devTools: false });
@@ -153,7 +153,7 @@ test("built (app:todo): read_console and run_js without a request", async () => 
   expect(await invoke("run_js", { id: "app:todo", code: "1 + 1" })).toBe(JSON.stringify({ code: "1 + 1" }));
   expect(await invoke("run_js", { id: "app:todo", code: "throw boom" })).toContain("Exception : boom");
   expect(await invoke("reload", { id: "app:todo", no_cache: true })).toContain("rechargé");
-  expect(bridge.calls.some((a) => a.method === "recharger" && a.args[1] === true)).toBe(true);
+  expect(bridge.calls.some((a) => a.method === "reload" && a.args[1] === true)).toBe(true);
   expect(devRequests()).toHaveLength(0);
 });
 
@@ -194,7 +194,7 @@ test("read_network on a third-party tab masks Cookie and access_token; on a buil
 test("profile_performance: on a third-party site, the .cpuprofile stays outside the space (reference profile:…); a built one writes under /workspace", async () => {
   await start({ grantDev: ["performance"] });
   const r = await invoke("profile_performance", { id: "github", duration_s: 2 });
-  expect(bridge.calls.find((a) => a.method === "profiler")!.args[1]).toEqual({ durationMs: 2000 });
+  expect(bridge.calls.find((a) => a.method === "profile")!.args[1]).toEqual({ durationMs: 2000 });
   expect(r).toContain("calculer");
   expect(r).toContain("Nodes : 42");
   const reference = /Profil : (profile:\S+\.cpuprofile)$/.exec(r)?.[1];
@@ -251,7 +251,7 @@ test("memory_snapshot then compare_memory", async () => {
 test("cut during memory_snapshot (bloquer: true): answer « Accès coupé par l'utilisateur. », no file left", async () => {
   await start({ grantDev: ["performance"], block: true });
   const call = invoke("memory_snapshot", { id: "github" });
-  await vi.waitFor(() => expect(bridge.calls.some((a) => a.method === "instantaneMemoire")).toBe(true));
+  await vi.waitFor(() => expect(bridge.calls.some((a) => a.method === "memorySnapshot")).toBe(true));
   expect(policy.state().github?.running).toBe(true);
   policy.cut("github", "performance");
   expect(await call).toBe(CUT);
@@ -322,14 +322,14 @@ test("DevToolsTracking: attaches at the first right, detaches when everything is
   await vi.waitFor(() => expect(tracking!.attaches.has("github")).toBe(true));
   policy.grantDev(github, ["network"], []);
   await new Promise((r) => setTimeout(r, 20));
-  expect(callsOf("attacher", "github")).toBe(1);
+  expect(callsOf("attach", "github")).toBe(1);
 
   policy.cut("github", "console");
   await new Promise((r) => setTimeout(r, 20));
   expect(tracking.attaches.has("github")).toBe(true);
   policy.cut("github");
   await vi.waitFor(() => expect(tracking!.attaches.has("github")).toBe(false));
-  expect(callsOf("detacher", "github")).toBe(1);
+  expect(callsOf("detach", "github")).toBe(1);
 
   // The user opened their tools on Gmail
   bridge.occupy("gmail");
@@ -429,7 +429,7 @@ test("read_console and read_network: at most 100,000 characters, the most recent
 test("site change during memory_snapshot: « L'onglet a changé de site : accès retiré. »", async () => {
   await start({ grantDev: ["performance"], block: true });
   const call = invoke("memory_snapshot", { id: "github" });
-  await vi.waitFor(() => expect(bridge.calls.some((a) => a.method === "instantaneMemoire")).toBe(true));
+  await vi.waitFor(() => expect(bridge.calls.some((a) => a.method === "memorySnapshot")).toBe(true));
   await bridge.navigate("github", "https://autre.example/");
   policy.tabNavigated("github", "https://autre.example/");
   expect(await call).toBe("L'onglet a changé de site : accès retiré.");
@@ -449,7 +449,7 @@ test("the site changes between the grant and the call: the bridge is not called"
     return listTool();
   };
   expect(await invoke("run_js", { id: "app:todo", code: "1" })).toBe("L'onglet a changé de site : accès retiré.");
-  expect(bridge.calls.some((a) => a.method === "executer")).toBe(false);
+  expect(bridge.calls.some((a) => a.method === "run")).toBe(false);
 });
 
 test("an error after the profile is written also erases the file", async () => {
@@ -559,20 +559,20 @@ test("read_console masks the tokens in URLs in the messages and stacks of a thir
 test("DevToolsTracking: a tab that keeps its rights on another origin (relaunched app) is detached then reattached", async () => {
   await start();
   tracking = new DevToolsTracking(policy, bridge.devTools!, () => bridge.listTabs());
-  const calls = () => bridge.calls.filter((a) => ["attacher", "detacher"].includes(a.method) && a.args[0] === "app:todo").map((a) => a.method);
+  const calls = () => bridge.calls.filter((a) => ["attach", "detach"].includes(a.method) && a.args[0] === "app:todo").map((a) => a.method);
   policy.built(appTodo);
-  await vi.waitFor(() => expect(calls()).toEqual(["attacher"]));
+  await vi.waitFor(() => expect(calls()).toEqual(["attach"]));
   // relaunched on another port: the window navigates, it is built again on its new origin
   await bridge.navigate("app:todo", "http://localhost:5290/");
   policy.tabNavigated("app:todo", "http://localhost:5290/");
   policy.built({ ...appTodo, url: "http://localhost:5290/" });
-  await vi.waitFor(() => expect(calls()).toEqual(["attacher", "detacher", "attacher"]));
+  await vi.waitFor(() => expect(calls()).toEqual(["attach", "detach", "attach"]));
   expect(tracking.attaches.has("app:todo")).toBe(true);
   // same origin, other page: nothing moves
   await bridge.navigate("app:todo", "http://localhost:5290/autre");
   policy.tabNavigated("app:todo", "http://localhost:5290/autre");
   await new Promise((r) => setTimeout(r, 20));
-  expect(calls()).toEqual(["attacher", "detacher", "attacher"]);
+  expect(calls()).toEqual(["attach", "detach", "attach"]);
 });
 
 test("private space: each dev tool answers PRIVATE_TEXT, without a card or a debugger call", async () => {
@@ -595,13 +595,13 @@ test("private space: each dev tool answers PRIVATE_TEXT, without a card or a deb
     expect(r.isError, name).toBeFalsy();
   }
   expect(devRequests()).toHaveLength(0);
-  expect(bridge.calls.filter((a) => !["listerOnglets"].includes(a.method))).toEqual([]);
+  expect(bridge.calls.filter((a) => !["listTabs"].includes(a.method))).toEqual([]);
 });
 
 test("private space during a call: it is cut and answers PRIVATE_TEXT", async () => {
   await start({ grantDev: ["performance"], block: true });
   const r = invoke("profile_performance", { id: "github", duration_s: 30 });
-  await vi.waitFor(() => expect(bridge.calls.some((a) => a.method === "profiler")).toBe(true));
+  await vi.waitFor(() => expect(bridge.calls.some((a) => a.method === "profile")).toBe(true));
   bridge.makePrivate("github");
   policy.tabClosed("github"); // what the browser does when the tab becomes private
   expect(await r).toBe(PRIVATE_TEXT);
@@ -609,7 +609,7 @@ test("private space during a call: it is cut and answers PRIVATE_TEXT", async ()
 
 // ——— Site app windows: the app's grant AND the dev tools' ———
 
-const siteCards = () => bridge.calls.filter((a) => a.method === "demanderDonneesWidget");
+const siteCards = () => bridge.calls.filter((a) => a.method === "askWidgetData");
 
 test("read_console with the site's grant but without a dev right: refused", async () => {
   await start({ grantDev: [], site: true });
@@ -620,7 +620,7 @@ test("read_console with the site's grant but without a dev right: refused", asyn
   expect(siteCards()).toHaveLength(0);
   expect(bridge.calls.some((a) => a.method === "console")).toBe(false);
   expect(await invoke("read_network", { id: "site:vidola" })).toBe(DENIAL);
-  expect(bridge.calls.some((a) => a.method === "reseau")).toBe(false);
+  expect(bridge.calls.some((a) => a.method === "network")).toBe(false);
 });
 
 test("read_console with the dev right but without the site's grant: the app's card, refused → refused, without a tools card", async () => {

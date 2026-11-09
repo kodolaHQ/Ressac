@@ -157,7 +157,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
           userContextId: browser.getAttribute("usercontextid"),
           identity: ContextualIdentityService.getPrivateIdentity("userContextIdInternal.webaios-site-vidola")?.userContextId ?? null,
           barSrc: win.document.getElementById("webaios-site-bar")?.src,
-          fenetres: store.state.fenetres.length,
+          fenetres: store.state.windows.length,
           focusIsSite: Services.focus.activeWindow === win,
           activeIsMain: store.windows.get(store.windows.active())?.window === main,
           topWindowIsSite: BrowserWindowTracker.getTopWindow() === win,
@@ -307,7 +307,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
     const dir = path.join(w.dataDir, "webaios-sites", "vidola");
     await mkdir(dir, { recursive: true });
     await writeFile(path.join(dir, "index.html"), served);
-    const memory = { type: "memoire", values: { "encours.the-bear": { value: { title: "The Bear", episode: "S2E4" }, url: "/serie/the-bear?e=4", when: new Date().toISOString() } }, positions: {}, domain: "vidola-a.localhost" };
+    const memory = { type: "memory", values: { "encours.the-bear": { value: { title: "The Bear", episode: "S2E4" }, url: "/serie/the-bear?e=4", when: new Date().toISOString() } }, positions: {}, domain: "vidola-a.localhost" };
     note(
       "(d) frame",
       await inSiteBar(
@@ -327,7 +327,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
           got.root.push({ detail: e.detail, fromFrame });
           let m;
           try { m = JSON.parse(e.detail); } catch {}
-          if (fromFrame && m?.type === "pret") home.contentWindow.postMessage(arguments[1], "*");
+          if (fromFrame && m?.type === "ready") home.contentWindow.postMessage(arguments[1], "*");
         }, true, true);
         doc.documentElement.append(home);
         home.src = "resource://webaios-site-vidola/index.html";
@@ -340,7 +340,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
         [dir, memory],
       ),
     );
-    // A real click on « Reprendre »: its parent.postMessage({type: "ouvrir"}) reaches the chrome, a trusted pointerdown with it.
+    // A real click on « Reprendre »: its parent.postMessage({type: "open"}) reaches the chrome, a trusted pointerdown with it.
     note(
       "(d) click",
       await inSiteBar(

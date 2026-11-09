@@ -45,7 +45,7 @@
     // The action is idempotent: sending it again until the state reflects it toggles nothing.
     const ask = (v: boolean) => {
       expected = v;
-      api.dispatch({ type: "panneauAgentAccueil", windowId: f.id, open: v });
+      api.dispatch({ type: "homeAgentPanel", windowId: f.id, open: v });
     };
     if (onHome && !isOpen && !panelClosedOnHome) {
       openedByHome = true;
@@ -68,7 +68,7 @@
     win.setAgentWidth(width);
     if (end) {
       start = null;
-      api.dispatch({ type: "largeurPanneauAgent", width: width });
+      api.dispatch({ type: "agentPanelWidth", width: width });
     }
   }
 </script>

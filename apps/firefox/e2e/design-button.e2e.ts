@@ -41,7 +41,7 @@ async function boot(env: Record<string, string> = {}): Promise<void> {
   await m.setContext("chrome");
   await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
   await resolveLocalHosts(m, ["localhost"]);
-  await waitFor(m, `return (async () => { const d = (await ChromeUtils.importESModule("${STORE}").ready).design; return d.etat({ type: "fenetre", fenetreId: window.webaiosWindow.fenetreId }).then(() => true, () => false); })();`, (v) => v === true, 30_000);
+  await waitFor(m, `return (async () => { const d = (await ChromeUtils.importESModule("${STORE}").ready).design; return d.state({ type: "fenetre", windowId: window.webaiosWindow.windowId }).then(() => true, () => false); })();`, (v) => v === true, 30_000);
 }
 
 beforeAll(async () => {
@@ -59,10 +59,10 @@ afterAll(async () => {
 /** Runs `body` with `d` the design service, `t` the current window's target, `store` the store. */
 const svc = <R = unknown>(body: string, args: unknown[] = []) =>
   m.execute<R>(
-    `return (async (args) => { const store = await ChromeUtils.importESModule("${STORE}").ready, d = store.design; const t = { type: "fenetre", fenetreId: window.webaiosWindow.fenetreId }; ${body} })([...arguments]);`,
+    `return (async (args) => { const store = await ChromeUtils.importESModule("${STORE}").ready, d = store.design; const t = { type: "fenetre", windowId: window.webaiosWindow.windowId }; ${body} })([...arguments]);`,
     args,
   );
-const designState = () => svc<{ active: boolean; basket: number; project: { project: string } | null }>("return await d.etat(t);");
+const designState = () => svc<{ active: boolean; basket: number; project: { project: string } | null }>("return await d.state(t);");
 const hosts = () => inBrowser<number>(m, B, `return document.querySelectorAll("webaios-viseur").length;`);
 const button = () =>
   inUi<{ disabled: boolean; title: string; pressed: string; count: string | null } | null>(
@@ -79,7 +79,7 @@ async function open(url: string): Promise<string> {
   return id;
 }
 const activate = async (id: string) => {
-  await dispatch(m, { type: "activerOnglet", id });
+  await dispatch(m, { type: "activateTab", id });
   await waitFor(m, `return gBrowser.selectedTab.getAttribute("webaios-tab-id") === ${JSON.stringify(id)};`, (v) => v === true);
   await m.execute(`${B}.focus();`);
 };
@@ -273,11 +273,11 @@ describe("on the demo", () => {
     const a = (await m.command<{ value: string }>("WebDriver:GetWindowHandle")).value;
     await open(`${demo.page}/`);
     await modeOn();
-    const fa = await m.execute<string>("return window.webaiosWindow.fenetreId;");
+    const fa = await m.execute<string>("return window.webaiosWindow.windowId;");
     const b = await newWindow(m);
     const fb = await inWindow(m, b, async () => {
-      const f = await m.execute<string>("return window.webaiosWindow.fenetreId;");
-      await dispatch(m, { type: "ouvrirOnglet", windowId: f, url: `${demo.page}/x` });
+      const f = await m.execute<string>("return window.webaiosWindow.windowId;");
+      await dispatch(m, { type: "openTab", windowId: f, url: `${demo.page}/x` });
       await waitFor(m, "return !gBrowser.selectedBrowser.webProgress.isLoadingDocument && gBrowser.selectedBrowser.currentURI.spec.endsWith('/x')", (v) => v === true);
       await m.execute(`${B}.focus();`);
       // B in front: A's mode stays.
@@ -304,7 +304,7 @@ describe("on the demo", () => {
     await waitWindowCount(m, 1);
     await m.command("WebDriver:SwitchToWindow", { handle: b, focus: false });
     expect(a).not.toBe(b);
-    expect(await svc<boolean>("return d.etat({ type: 'fenetre', fenetreId: args[0] }).then((e) => e.actif);", [fa])).toBe(false);
+    expect(await svc<boolean>("return d.state({ type: 'fenetre', windowId: args[0] }).then((e) => e.actif);", [fa])).toBe(false);
     expect((await designState()).active).toBe(true);
     expect(await hosts()).toBe(1);
     await modeOff();

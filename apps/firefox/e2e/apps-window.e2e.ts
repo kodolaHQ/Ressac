@@ -63,8 +63,8 @@ const viewAt = (m: Marionette, url: string) =>
 const tabUrls = async (m: Marionette) => Object.values((await state(m)).tabs).map((o) => o.url);
 const win = async (m: Marionette) => (await state(m)).windows[0]!.id;
 const act = async (m: Marionette, folder: string, action: string) =>
-  inStore(m, `await store.agent.request("applications.agir", { dossier: arguments[0], action: arguments[1], fenetre: arguments[2] });`, [folder, action, await win(m)]);
-const list = (m: Marionette) => inStore<{ apps: { folder: string; state: string; port?: number; favicon?: string }[] }>(m, `return await store.agent.request("applications.liste");`);
+  inStore(m, `await store.agent.request("apps.act", { folder: arguments[0], action: arguments[1], window: arguments[2] });`, [folder, action, await win(m)]);
+const list = (m: Marionette) => inStore<{ apps: { folder: string; state: string; port?: number; favicon?: string }[] }>(m, `return await store.agent.request("apps.list");`);
 /** The view is still on `url` and its page was not replaced (window.marque kept). */
 async function stays(m: Marionette, url: string, what: string) {
   await sleep(700);
@@ -263,7 +263,7 @@ describe("one WebAiOs, the app launched in each test", () => {
     await waitFor(m, `const b = ${otherWin}?.gBrowser.selectedBrowser; return !!b && b.currentURI.spec === "http://localhost:${other}/" && !b.webProgress.isLoadingDocument;`, (v) => v === true, 15_000);
     expect(await inAppView(m, "autre", read)).toEqual(none);
     // A tab of the main window on the app's own origin (the default container): sees nothing, and sets its own.
-    await inStore(m, `store.dispatch({ type: "ouvrirOnglet", fenetreId: store.state.fenetres[0].id, url: arguments[0] });`, [`${attempt}page2`]);
+    await inStore(m, `store.dispatch({ type: "openTab", windowId: store.state.windows[0].id, url: arguments[0] });`, [`${attempt}page2`]);
     await waitFor(m, `return gBrowser.selectedBrowser.currentURI.spec === ${JSON.stringify(`${attempt}page2`)} && !gBrowser.selectedBrowser.webProgress.isLoadingDocument;`, (v) => v === true);
     expect(await inBrowser(m, "gBrowser.selectedBrowser", read)).toEqual(none);
     await inBrowser(m, "gBrowser.selectedBrowser", "document.cookie = 'tab=1; max-age=3600; path=/'; localStorage.k = 'tab'; return 1;");

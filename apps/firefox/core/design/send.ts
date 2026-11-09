@@ -6,7 +6,7 @@ export interface SendOptions {
   /** The main window the agent considers active. */
   agentWindow(): WindowId | undefined;
   batchFolder(p: ProjectId, batch: string): string;
-  /** `agent.preRemplir`: opens the panel and puts the text in the input, without sending it. */
+  /** `prefill`: opens the panel and puts the text in the input, without sending it. */
   prefill(f: WindowId, text: string): void;
   /** Like ⌘J: the agent's terminal takes the keyboard. */
   giveTerminal(f: WindowId): void;

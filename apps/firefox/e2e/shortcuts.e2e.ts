@@ -33,7 +33,7 @@ const activeId = async () => {
 };
 async function open(path: string): Promise<string> {
   const before = new Set(Object.keys((await state(m)).tabs));
-  const after = await dispatch(m, { type: "ouvrirOnglet", windowId: (await win()).id, url: server.url + path });
+  const after = await dispatch(m, { type: "openTab", windowId: (await win()).id, url: server.url + path });
   return Object.keys(after.tabs).find((id) => !before.has(id))!;
 }
 async function waitState<T>(read: (s: BrowserState) => T, ok: (v: T) => boolean, ms = 10_000): Promise<T> {
@@ -83,9 +83,9 @@ describe("WebAiOs shortcuts", () => {
 
   it("⌃2 activates the second space", async () => {
     const first = (await win()).activeSpace;
-    await dispatch(m, { type: "creerEspace", name: "Boulot", icon: "💼", private: false, profile: "defaut", windowId: (await win()).id });
+    await dispatch(m, { type: "createSpace", name: "Boulot", icon: "💼", private: false, profile: "default", windowId: (await win()).id });
     const second = (await win()).activeSpace;
-    await dispatch(m, { type: "activerEspace", windowId: (await win()).id, id: first });
+    await dispatch(m, { type: "activateSpace", windowId: (await win()).id, id: first });
     await pressKeys(m, "Control+2");
     await waitState((s) => s.windows[0]!.activeSpace, (e) => e === second);
   });
@@ -93,7 +93,7 @@ describe("WebAiOs shortcuts", () => {
   it("Firefox's next/previous tab keys do not leave the space", async () => {
     const a = await open("/a.html");
     await waitTitle(a, "Page A");
-    await dispatch(m, { type: "creerEspace", name: "Boulot", icon: "💼", private: false, profile: "defaut", windowId: (await win()).id });
+    await dispatch(m, { type: "createSpace", name: "Boulot", icon: "💼", private: false, profile: "default", windowId: (await win()).id });
     const second = (await win()).activeSpace;
     const b = await open("/b.html");
     await waitTitle(b, "Page B");
@@ -122,7 +122,7 @@ describe("WebAiOs shortcuts", () => {
     const a = await open("/a.html");
     await open("/b.html");
     const c = await open("/texte.html");
-    await dispatch(m, { type: "activerOnglet", id: a });
+    await dispatch(m, { type: "activateTab", id: a });
     await focusPage();
     await pressKeys(m, "Meta+9");
     await waitState((s) => s.windows[0]!.active[s.windows[0]!.activeSpace], (id) => id === c);

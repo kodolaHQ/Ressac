@@ -202,7 +202,7 @@ async function until<T>(read: () => T | Promise<T>, ms = 10_000): Promise<T> {
 /** Opens `url` in a WebAiOs tab and waits until the selected browser shows it; returns the WebAiOs tab id. */
 async function open(m: Marionette, url: string): Promise<string> {
   const before = new Set(Object.keys((await state(m)).tabs));
-  const s = await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url });
+  const s = await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url });
   await waitFor(m, `return gBrowser.selectedBrowser.currentURI.spec === ${JSON.stringify(url)} && !gBrowser.selectedBrowser.webProgress.isLoadingDocument`, (v) => v === true);
   return Object.keys(s.tabs).find((id) => !before.has(id))!;
 }
@@ -516,7 +516,7 @@ setTimeout(() => { throw new Error("s6-uncaught-${label}"); }, 50);
       await waitFor(m, `return !!window.webaiosWindow.addons.buttons().find((b) => b.id === ${JSON.stringify(f.id)})?.enabled`, (v) => v === true);
       await m.execute(`window.webaiosWindow.addons.click(arguments[0], { x: 0, y: 0, width: 24, height: 24 });`, [f.id]);
       await until(() => notes(server.paths, "s5-popup").length > 0);
-      await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url: `${server.url}/texte.html?options` });
+      await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url: `${server.url}/texte.html?options` });
       await until(() => notes(server.paths, "s5-options").length > 0);
       for (const label of ["background", "popup", "options"]) note(`S5 ${label}`, notes(server.paths, `s5-${label}`));
       note("S6 start after pages", await m.execute(START_CONSOLE));

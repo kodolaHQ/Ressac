@@ -14,11 +14,11 @@ if (params.has("site")) {
   const site = window.parent.webaiosSiteWindow;
   if (!site) throw new Error("WebAiOs site bar loaded before its window controller");
   window.webaios = inertWebaios({ site: createSiteApi(site) }) as ApiFirefox;
-} else if (params.has("pastille")) {
+} else if (params.has("badge")) {
   const overlay = (window.frameElement as (Element & { webaiosOverlay?: { api: BadgeChrome } }) | null)?.webaiosOverlay;
   if (!overlay) throw new Error("WebAiOs badge loaded before its window controller");
   window.webaios = inertWebaios(createBadgeApi(overlay.api)) as ApiFirefox;
-} else if (params.has("calque")) {
+} else if (params.has("overlay")) {
   const overlay = (window.frameElement as (Element & { webaiosOverlay?: { api: OverlayApi } }) | null)?.webaiosOverlay;
   if (!overlay) throw new Error("WebAiOs design overlay loaded before its window controller");
   window.webaios = inertWebaios(wrapOverlayApi(overlay.api)) as ApiFirefox;

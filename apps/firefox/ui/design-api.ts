@@ -40,33 +40,33 @@ export function createExternalApi(o: {
   return {
     // A host that does not answer: the off server with its reason (spec §5.10).
     list: () =>
-      host.request<ExternalsState>("externes.liste").then(
+      host.request<ExternalsState>("external.list").then(
         (v) => structuredClone(v),
-        (e) => ({ server: { state: "eteint" as const, reason: failureReason(local(e)) }, projects: [], clients: [] }),
+        (e) => ({ server: { state: "off" as const, reason: failureReason(local(e)) }, projects: [], clients: [] }),
       ),
     onChange(cb) {
       // accueil.change: the host sends it at each kernel start.
-      const offs = ["externes.change", HOST_EXITED, "accueil.change"].map((m) => host.on(m, () => cb()));
+      const offs = ["external.change", HOST_EXITED, "home.change"].map((m) => host.on(m, () => cb()));
       return o.untilUnload(() => offs.forEach((f) => f()));
     },
     async connect(name) {
       const n = checkClientName(name);
-      return host.request<{ command: string }>("externes.brancher", { name: n }).then(
+      return host.request<{ command: string }>("external.connect", { name: n }).then(
         (r) => structuredClone(r),
         (e) => Promise.reject(local(e)),
       );
     },
     async revoke(id) {
-      if (typeof id === "string" && CLIENT_ID.test(id)) await call("externes.revoquer", { id });
+      if (typeof id === "string" && CLIENT_ID.test(id)) await call("external.revoke", { id });
     },
     async forget(id) {
-      if (typeof id === "string" && EXTERNAL_ID.test(id)) await call("externes.oublier", { id });
+      if (typeof id === "string" && EXTERNAL_ID.test(id)) await call("external.forget", { id });
     },
     review(id) {
       if (typeof id !== "string" || !EXTERNAL_ID.test(id)) return;
-      void host.request<string | null>("externes.nom", { id }).then(
+      void host.request<string | null>("external.name", { id }).then(
         (name) => {
-          if (typeof name === "string") o.dispatch({ type: "ouvrirRelecture", windowId: o.window, project: "ext-" + id, name: name.slice(0, 80) });
+          if (typeof name === "string") o.dispatch({ type: "openReview", windowId: o.window, project: "ext-" + id, name: name.slice(0, 80) });
         },
         (e) => console.error("[webaios] externes.nom :", local(e).message),
       );
@@ -83,41 +83,41 @@ export function createReviewApi(o: { host: Pick<AgentHost, "request"> }): ApiWeb
     );
   return {
     async open(project, token) {
-      return ask("relecture.ouvrir", { project: checkProject(project), token: token === undefined || token === null ? null : checkToken(token) });
+      return ask("review.open", { project: checkProject(project), token: token === undefined || token === null ? null : checkToken(token) });
     },
     async file(project, token, path) {
-      return ask("relecture.fichier", { project: checkProject(project), token: checkToken(token), path: checkPath(path) });
+      return ask("review.file", { project: checkProject(project), token: checkToken(token), path: checkPath(path) });
     },
     async lines(project, token, path, start, end) {
       const p = checkProject(project);
       [start, end] = checkLines(start, end);
-      return ask("relecture.lignes", { project: p, token: checkToken(token), path: checkPath(path), start: start, end: end });
+      return ask("review.lines", { project: p, token: checkToken(token), path: checkPath(path), start: start, end: end });
     },
     async comments(project) {
-      return ask("relecture.commentaires", { project: checkProject(project) });
+      return ask("review.comments", { project: checkProject(project) });
     },
     async comment(project, token, c) {
       const p = checkProject(project);
       if (typeof c !== "object" || c === null) throw new Error("lignes invalides");
       const [start, end] = checkLines(c.start, c.end);
-      return ask("relecture.commenter", { project: p, token: checkToken(token), c: { file: checkPath(c.file), start: start, end: end, text: checkText(c.text) } });
+      return ask("review.comment", { project: p, token: checkToken(token), c: { file: checkPath(c.file), start: start, end: end, text: checkText(c.text) } });
     },
     async editComment(project, id, text) {
-      return ask("relecture.modifierCommentaire", { project: checkProject(project), id: checkComment(id), text: checkText(text) });
+      return ask("review.editComment", { project: checkProject(project), id: checkComment(id), text: checkText(text) });
     },
     async resolve(project, id, resolved) {
       const p = checkProject(project);
       const r = checkResolved(resolved);
-      return ask("relecture.resoudre", { project: p, id: checkComment(id), resolved: r });
+      return ask("review.resolve", { project: p, id: checkComment(id), resolved: r });
     },
-    async supprimerCommentaire(project, id) {
-      return ask("relecture.supprimerCommentaire", { project: checkProject(project), id: checkComment(id) });
+    async deleteComment(project, id) {
+      return ask("review.deleteComment", { project: checkProject(project), id: checkComment(id) });
     },
     async send(project) {
-      return ask("relecture.envoyer", { project: checkProject(project) });
+      return ask("review.send", { project: checkProject(project) });
     },
     async reviewed(project, token) {
-      return ask("relecture.relu", { project: checkProject(project), token: checkToken(token) });
+      return ask("review.reviewed", { project: checkProject(project), token: checkToken(token) });
     },
   };
 }
@@ -141,18 +141,18 @@ export function createDesignApi(o: { win: WindowController; untilUnload: (f: () 
     state: appState,
     toggle: () => void design.toggle(t),
     review: () => void design.review(t),
-    basket: async (p) => ((await allowed(p)) ? copy(host.request<ShownElement[]>("design.panier", { project: p })) : []),
-    batches: async (p) => ((await allowed(p)) ? copy(host.request<BatchShown[]>("design.lots", { project: p })) : []),
+    basket: async (p) => ((await allowed(p)) ? copy(host.request<ShownElement[]>("design.basket", { project: p })) : []),
+    batches: async (p) => ((await allowed(p)) ? copy(host.request<BatchShown[]>("design.batches", { project: p })) : []),
     async remove(p, x) {
-      if ((await allowed(p)) && id(x)) await copy(host.request("design.retirer", { project: p, id: x }));
+      if ((await allowed(p)) && id(x)) await copy(host.request("design.remove", { project: p, id: x }));
     },
     async handled(p, batch) {
-      if ((await allowed(p)) && id(batch)) await copy(host.request("design.traite", { project: p, batch: batch }));
+      if ((await allowed(p)) && id(batch)) await copy(host.request("design.handled", { project: p, batch: batch }));
     },
-    send: async (p) => ((await allowed(p)) ? copy(host.request<ExtensionResult>("design.envoyer", { project: p })) : { ok: false, error: INVALID_REQUEST }),
+    send: async (p) => ((await allowed(p)) ? copy(host.request<ExtensionResult>("design.send", { project: p })) : { ok: false, error: INVALID_REQUEST }),
     onChange(cb) {
       // accueil.change: the host sends it at each kernel start.
-      const offs = [...["design.change", HOST_EXITED, "accueil.change"].map((m) => host.on(m, () => cb())), design.onChange(() => cb())];
+      const offs = [...["design.change", HOST_EXITED, "home.change"].map((m) => host.on(m, () => cb())), design.onChange(() => cb())];
       return o.untilUnload(() => offs.forEach((f) => f()));
     },
   };

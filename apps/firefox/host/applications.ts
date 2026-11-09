@@ -47,7 +47,7 @@ export function createApplicationsHost(o: {
 }): ApplicationsHost {
   // Under <dataDir>, never in <dataDir>/espace that the container mounts.
   const memory = new SiteRecords(o.dataDir, 500, "apps.json");
-  /** Open windows, by dossier: their last known title and address (the chrome tells, `applications.navigation`). */
+  /** Open windows, by dossier: their last known title and address (the chrome tells, `apps.navigation`). */
   const windows = new Map<string, { title: string; url: string }>();
   /** Launches in progress per folder: a relaunched app goes through « arretee » without its window having to close. */
   const running = new Map<string, number>();
@@ -144,23 +144,23 @@ export function createApplicationsHost(o: {
   const act = (folder: string, action: z.infer<typeof SchemaActionApplication>["action"], win: WindowId): void => {
     switch (action) {
       // Relaunch = launch a running or errored app: the manager first stops the running instance.
-      case "lancer":
-      case "relancer":
+      case "launch":
+      case "relaunch":
         void manager.launch(folder).catch(report(folder, "lancée"));
         return;
-      case "arreter":
+      case "stop":
         void manager.stop(folder).catch(report(folder, "arrêtée"));
         return;
-      case "ouvrir":
+      case "open":
         void o.chrome.show(folder).catch(report(folder, "montrée"));
         return;
-      case "supprimer":
+      case "delete":
         void remove(folder).catch(report(folder, "supprimée"));
         return;
-      case "promouvoir":
+      case "promote":
         void writeType(o.paths, folder, "app").then(o.broadcast).catch(report(folder, "promue"));
         return;
-      case "deboguer":
+      case "debug":
         void debug(folder, win).catch(report(folder, "déboguée"));
         return;
       // « dossier » and « relire » are the chrome's and the page's (plan 35a tasks 4 and 5).
@@ -168,10 +168,10 @@ export function createApplicationsHost(o: {
   };
 
   type Params = { [k: string]: unknown } | null | undefined;
-  const folderOf = (p: Params) => (typeof p?.dossier === "string" && validFolder(p.dossier) ? p.dossier : undefined);
+  const folderOf = (p: Params) => (typeof p?.folder === "string" && validFolder(p.folder) ? p.folder : undefined);
 
   const handlers: Record<string, (p: Params) => unknown> = {
-    "applications.liste": async (): Promise<ApplicationList> => {
+    "apps.list": async (): Promise<ApplicationList> => {
       const applications = await manager.list();
       return {
         workshop: docker.value(),
@@ -182,12 +182,12 @@ export function createApplicationsHost(o: {
       };
     },
     // A bad input does nothing.
-    "applications.agir": (p) => {
+    "apps.act": (p) => {
       const a = SchemaActionApplication.safeParse(p);
-      if (a.success && typeof p?.fenetre === "string") act(a.data.folder, a.data.action, p.fenetre);
+      if (a.success && typeof p?.window === "string") act(a.data.folder, a.data.action, p.window);
     },
     // The agent's access to « app:<dossier> » goes with the window; closed by the user, the app stops.
-    "applications.fenetreFermee": (p) => {
+    "apps.windowClosed": (p) => {
       const folder = folderOf(p);
       if (!folder) return;
       windows.delete(folder);
@@ -195,10 +195,10 @@ export function createApplicationsHost(o: {
       if (p?.byUser === true) void manager.stop(folder).catch(report(folder, "arrêtée"));
     },
     // An app window always shows what the agent built: « construite » again on its new origin.
-    "applications.navigation": (p) => {
+    "apps.navigation": (p) => {
       const folder = folderOf(p);
       if (!folder || typeof p?.url !== "string" || !windows.has(folder)) return;
-      const f = { title: typeof p.titre === "string" ? p.titre : "", url: p.url };
+      const f = { title: typeof p.title === "string" ? p.title : "", url: p.url };
       windows.set(folder, f);
       const policy = o.policy();
       if (!policy) return;
@@ -206,10 +206,10 @@ export function createApplicationsHost(o: {
       policy.built(appTab({ folder: folder, ...f }));
     },
     // The chrome checked the favicon already: checked again here (data:image/, 64 KB at most).
-    "applications.noter": (p) => {
+    "apps.note": (p) => {
       const folder = folderOf(p);
       if (!folder) return;
-      const frame = FrameSchema.safeParse(p?.cadre);
+      const frame = FrameSchema.safeParse(p?.frame);
       if (frame.success) memory.note(folder, { frame: frame.data });
       const favicon = p?.favicon;
       if (typeof favicon !== "string" || !favicon.startsWith("data:image/") || favicon.length > FAVICON_SIZE || memory.read(folder).favicon === favicon) return;

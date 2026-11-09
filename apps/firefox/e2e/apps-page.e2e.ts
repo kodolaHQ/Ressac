@@ -24,7 +24,7 @@ const pageText = () => inUi<string>(p!.m, "return doc.querySelector(arguments[0]
 const rowText = (folder: string) => inUi<string>(p!.m, "return doc.querySelector(arguments[0])?.textContent ?? ''", [appRow(folder)]);
 const filterText = (id: string) => inUi<string | null>(p!.m, "return doc.querySelector(arguments[0])?.textContent.replace(/\\s+/g, ' ').trim() ?? null", [`[data-testid="filtre-${id}"]`]);
 const rows = (n: number, ms = 10_000) => waitUi(p!.m, `return doc.querySelectorAll('[data-testid^="appli-"]').length === arguments[0];`, [n], ms);
-const pageTabs = async () => Object.values((await state(p!.m)).tabs).filter((o) => o.url === "webaios://applications").length;
+const pageTabs = async () => Object.values((await state(p!.m)).tabs).filter((o) => o.url === "webaios://apps").length;
 const windowId = async () => (await state(p!.m)).windows[0]!.id;
 const appWindows = () => p!.m.execute<number>(`return [...Services.wm.getEnumerator("navigator:browser")].filter((w) => w.document.documentElement.hasAttribute("webaios-app")).length;`);
 /** A mouse move through the widget, as an OS one (compact.e2e.ts). */
@@ -47,14 +47,14 @@ describe("Applications page", () => {
     await pressKeys(m, "Meta+Shift+a");
     await sleep(300);
     expect(await pageTabs()).toBe(1);
-    await dispatch(m, { type: "ouvrirOnglet", windowId: await windowId(), url: "about:blank", activate: true });
+    await dispatch(m, { type: "openTab", windowId: await windowId(), url: "about:blank", activate: true });
     await pageShown(false);
     await click(m, '[data-testid="bouton-applications"]');
     await pageShown(true);
     expect(await pageTabs()).toBe(1);
     // From another space: the window's page comes back, in its space.
     const s = await state(m);
-    await dispatch(m, { type: "creerEspace", name: "Boulot", icon: "💼", private: false, profile: s.spaces[0]!.profile, windowId: s.windows[0]!.id });
+    await dispatch(m, { type: "createSpace", name: "Boulot", icon: "💼", private: false, profile: s.spaces[0]!.profile, windowId: s.windows[0]!.id });
     await pageShown(false);
     await pressKeys(m, "Meta+Shift+a");
     await pageShown(true);
@@ -68,7 +68,7 @@ describe("Applications page", () => {
   it("compact mode: the Applications page takes the whole room, the bar comes back on the left", async () => {
     p = await openAppsPage(BLOCK);
     const m = p.m;
-    await dispatch(m, { type: "basculerCompact", windowId: await windowId() });
+    await dispatch(m, { type: "toggleCompact", windowId: await windowId() });
     await waitUi(m, `return doc.querySelector('[data-testid="barre-laterale"]').parentElement.inert;`);
     const box = await inUi<{ top: number; left: number }>(
       m,
@@ -202,7 +202,7 @@ describe("Applications page", () => {
     await pageShown(true);
     await rows(3);
     expect(await m.execute<boolean>(`return [...Services.wm.getEnumerator("navigator:browser")].some((w) => w.gBrowser.browsers.some((b) => b.currentURI.spec.startsWith("webaios:")));`)).toBe(false);
-    const recents = await inUi<{ url: string }[]>(m, "return await ui.webaios.historique.recents();");
+    const recents = await inUi<{ url: string }[]>(m, "return await ui.webaios.history.recent();");
     expect(recents.some((v) => v.url.startsWith("webaios:"))).toBe(false);
   });
 });

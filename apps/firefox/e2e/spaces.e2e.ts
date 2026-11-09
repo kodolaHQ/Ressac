@@ -30,7 +30,7 @@ afterEach(async () => {
 const spaces = async () => (await state(m)).spaces;
 const windowId = async () => (await state(m)).windows[0]!.id;
 async function create(name: string, icon: string, isPrivate: boolean, profile: string): Promise<Space> {
-  await dispatch(m, { type: "creerEspace", name: name, icon: icon, private: isPrivate, profile: profile, windowId: await windowId() } as Action);
+  await dispatch(m, { type: "createSpace", name: name, icon: icon, private: isPrivate, profile: profile, windowId: await windowId() } as Action);
   return (await spaces()).find((e) => e.name === name)!;
 }
 const button = (id: string) => `[data-testid="espace-${id}"]`;
@@ -119,11 +119,11 @@ describe("space settings", () => {
     await pressKeys(m, "Enter");
     await modalClosed();
     const fresh = await waitSpaces((l) => l.find((e) => e.name === "Neuf")?.profile, (p) => !!p);
-    expect([work.profile, "defaut", "nouveau"]).not.toContain(fresh);
+    expect([work.profile, "default", "nouveau"]).not.toContain(fresh);
   });
 
   it("“Réglages” shows the space's values; private and its own profile are saved", async () => {
-    const bank = await create("Banque", "💶", false, "defaut");
+    const bank = await create("Banque", "💶", false, "default");
     await click(m, button(bank.id), { button: 2 });
     await waitUi(m, "return doc.querySelectorAll('[role=\"menuitem\"]').length");
     expect(await inUi(m, "return [...doc.querySelectorAll('[role=\"menuitem\"]')].map((e) => e.textContent.trim())")).not.toContain("Renommer");
@@ -146,7 +146,7 @@ describe("space settings", () => {
     await click(m, `${MODAL} button[type="submit"]`, { text: "Enregistrer" });
     await modalClosed();
     const saved = await waitSpaces((l) => l.find((e) => e.id === bank.id)!, (e) => e.private);
-    expect(saved.profile).not.toBe("defaut");
+    expect(saved.profile).not.toBe("default");
     // Reopened, the modal shows its own profile.
     await openSettings(bank.id);
     expect(await fields()).toMatchObject({ private: true, chosen: "Son propre profil" });
@@ -177,7 +177,7 @@ describe("space settings", () => {
   });
 
   it("a private space's button carries a padlock", async () => {
-    const secret = await create("Secret", "🕵️", true, "defaut");
+    const secret = await create("Secret", "🕵️", true, "default");
     const home = (await spaces())[0]!;
     await waitUi(m, "return doc.querySelector(arguments[0])?.dataset.prive === 'true'", [button(secret.id)]);
     expect(await inUi(m, "return doc.querySelector(arguments[0]).textContent", [button(secret.id)])).toContain("🔒");
@@ -189,7 +189,7 @@ describe("space settings", () => {
 
   it("deleting a profile's last space warns that its logins will be lost, even without tabs", async () => {
     // Shares the default profile, no tab: deleted without confirmation.
-    const sets = await create("Jeux", "🎮", false, "defaut");
+    const sets = await create("Jeux", "🎮", false, "default");
     await click(m, button(sets.id), { button: 2 });
     await click(m, '[role="menuitem"]', { text: "Supprimer" });
     await waitSpaces((l) => l.some((e) => e.id === sets.id), (v) => !v);
@@ -213,10 +213,10 @@ describe("space settings", () => {
   it("changing a space's profile reloads its tabs in the new container, and wipes the old profile no space uses any more", async () => {
     const tab = "return { ctx: gBrowser.selectedTab.userContextId, url: gBrowser.selectedBrowser.currentURI.spec, title: gBrowser.selectedBrowser.contentTitle }";
     // The default profile gets the cookie essai=1.
-    await dispatch(m, { type: "ouvrirOnglet", windowId: await windowId(), url: server.url + "/cookie" });
+    await dispatch(m, { type: "openTab", windowId: await windowId(), url: server.url + "/cookie" });
     await waitFor<{ title: string }>(m, tab, (t) => t.title === "cookie");
     const work = await create("Travail", "💼", false, "nouveau");
-    await dispatch(m, { type: "ouvrirOnglet", windowId: await windowId(), url: server.url + "/lire-cookie" });
+    await dispatch(m, { type: "openTab", windowId: await windowId(), url: server.url + "/lire-cookie" });
     const before = await waitFor<{ ctx: number; title: string }>(m, tab, (t) => t.title === "aucun");
     expect(before.ctx).not.toBe(0);
     // A cookie of the old profile, set by its page.

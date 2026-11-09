@@ -7,15 +7,15 @@ const state = (profiles: string[], spaces: { profile: string; private: boolean }
 
 test("readableProfiles excludes a private space's profiles, even shared with a non-private space", () => {
   const e = state(
-    ["defaut", "travail", "secret", "libre"],
+    ["default", "travail", "secret", "libre"],
     [
-      { profile: "defaut", private: false },
+      { profile: "default", private: false },
       { profile: "travail", private: false },
       { profile: "travail", private: true },
       { profile: "secret", private: true },
     ],
   );
-  expect(readableProfiles(e)).toEqual(["defaut", "libre"]);
+  expect(readableProfiles(e)).toEqual(["default", "libre"]);
 });
 
 test("urlPermise: http(s) only; with domains, the exact host (trailing dot ignored), like the kernel", () => {

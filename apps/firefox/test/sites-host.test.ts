@@ -84,7 +84,7 @@ function mount(gateOpen?: { reached: () => void; open: Promise<void> }, readLink
   const chrome: SitesChrome = {
     open: async (...a) => {
       calls.open.push(a);
-      log.push("ouvrir");
+      log.push("open");
       if (gateOpen) {
         gateOpen.reached();
         await gateOpen.open;
@@ -136,7 +136,7 @@ describe("chercherAdresse", () => {
       ["cherche", "suivi", true],
       ["cherche", "suivi", false],
       ["adresseChangee", "suivi", ["vidola-a.example", "vidola-b.example"], "https://vidola-b.example/", "https://vidola-b.example/serie/1"],
-      ["avis", "suivi", { kind: "adresse-changee", text: NOTICE_CHANGED }],
+      ["avis", "suivi", { kind: "url-changed", text: NOTICE_CHANGED }],
     ]);
     expect(JSON.parse(readFileSync(join(m.dataDir, "sites", "suivi", "url.json"), "utf8"))).toMatchObject({ current: "vidola-b.example", previous: ["vidola-a.example"] });
     expect(m.sites.openSites.get("suivi")).toMatchObject({ domains: ["vidola-a.example", "vidola-b.example"], start: "https://vidola-b.example/" });
@@ -159,7 +159,7 @@ describe("chercherAdresse", () => {
     await m.sites.openById("suivi");
     await m.sites.lookupAddress("suivi", null);
     const first = m.calls.tracking.filter((c) => c[0] === "avis");
-    expect(first).toEqual([["avis", "suivi", { kind: "introuvable", text: "Adresse introuvable sur adresses.example" }]]);
+    expect(first).toEqual([["avis", "suivi", { kind: "not-found", text: "Adresse introuvable sur adresses.example" }]]);
     await m.sites.lookupAddress("suivi", null);
     expect(readLinks).toHaveBeenCalledTimes(1);
     expect(m.calls.tracking.filter((c) => c[0] === "avis")).toEqual([...first, ...first]);
@@ -192,7 +192,7 @@ describe("chercherAdresse", () => {
     await m.sites.openById("suivi");
     void m.sites.lookupAddress("suivi", null);
     await vi.waitFor(() => expect(signal).toBeDefined());
-    await m.sites.dispatch("suivi", "supprimer", "f1");
+    await m.sites.dispatch("suivi", "delete", "f1");
     expect(signal!.aborted).toBe(true);
   });
 });
@@ -239,10 +239,10 @@ describe("ouvrirParId", () => {
 describe("agir", () => {
   it("modifier pre-fills the agent terminal; relire and dossier do nothing here", async () => {
     const m = mount();
-    await m.sites.dispatch("vidola", "modifier", "f1");
+    await m.sites.dispatch("vidola", "edit", "f1");
     expect(m.prefill).toHaveBeenCalledWith("f1", editWithAgent("vidola"));
-    await m.sites.dispatch("vidola", "relire", "f1");
-    await m.sites.dispatch("vidola", "dossier", "f1");
+    await m.sites.dispatch("vidola", "review", "f1");
+    await m.sites.dispatch("vidola", "folder", "f1");
     expect(m.prefill).toHaveBeenCalledTimes(1);
     expect(m.log).toEqual([]);
   });
@@ -256,11 +256,11 @@ describe("agir", () => {
     expect(existsSync(file)).toBe(true);
     await m.sites.openById("vidola");
     const before = await m.sites.homeMemory("vidola");
-    expect(before).toMatchObject({ type: "memoire", domain: "vidola-a.example" });
+    expect(before).toMatchObject({ type: "memory", domain: "vidola-a.example" });
     expect(Object.keys(before!.values)).toEqual(["serie"]);
-    await m.sites.dispatch("vidola", "oublier", "f1");
+    await m.sites.dispatch("vidola", "forget", "f1");
     expect(existsSync(file)).toBe(false);
-    await vi.waitFor(() => expect(m.memories.at(-1)).toMatchObject({ id: "vidola", message: { type: "memoire", values: {} } }));
+    await vi.waitFor(() => expect(m.memories.at(-1)).toMatchObject({ id: "vidola", message: { type: "memory", values: {} } }));
     expect(readdirSync(join(m.paths.sites, "vidola")).sort()).toEqual(["garde.txt", "site.json"]);
   });
 
@@ -271,7 +271,7 @@ describe("agir", () => {
     writeFileSync(join(m.dataDir, "sites", "vidola", "url.json"), "{}");
     m.sites.note("vidola", { favicon: "data:x" });
     await m.sites.openById("vidola");
-    await m.sites.dispatch("vidola", "supprimer", "f1");
+    await m.sites.dispatch("vidola", "delete", "f1");
     expect(m.log.filter((j) => /^(fermer|effacer)/.test(j))).toEqual(["fermer vidola", "effacer vidola"]);
     expect(existsSync(join(m.dataDir, "sites", "vidola"))).toBe(false);
     expect(Object.hasOwn(await readSiteGrants(m.dataDir), "vidola")).toBe(false);
@@ -289,7 +289,7 @@ describe("agir", () => {
   it("a failed trash shows its text on the row", async () => {
     const m = mount();
     writeFileSync(join(m.paths.sites, ".trash"), "un fichier, pas un dossier");
-    await m.sites.dispatch("vidola", "supprimer", "f1");
+    await m.sites.dispatch("vidola", "delete", "f1");
     const line = (await m.sites.list()).find((s) => s.id === "vidola")!;
     expect(line.actionError).toBe("Dossier non mis à la corbeille : la connexion et la mémoire sont effacées, le dossier reste.");
     expect(existsSync(join(m.paths.sites, "vidola"))).toBe(true);
@@ -297,9 +297,9 @@ describe("agir", () => {
 
   it("refuses a path id and a refused id; an unknown folder is neither forgotten nor deleted", async () => {
     const m = mount();
-    await m.sites.dispatch("../x", "supprimer", "f1");
-    await m.sites.dispatch("MonSite", "supprimer", "f1");
-    await m.sites.dispatch("inconnu", "supprimer", "f1");
+    await m.sites.dispatch("../x", "delete", "f1");
+    await m.sites.dispatch("MonSite", "delete", "f1");
+    await m.sites.dispatch("inconnu", "delete", "f1");
     expect(m.log).toEqual([]);
     expect(existsSync(join(m.paths.sites, ".trash"))).toBe(false);
     expect(existsSync(join(m.paths.sites, "MonSite"))).toBe(true);
@@ -311,8 +311,8 @@ describe("agir", () => {
     gate.armed = true;
     const opening = m.sites.openById("vidola");
     await wasReached;
-    const a = m.sites.dispatch("vidola", "supprimer", "f1");
-    const b = m.sites.dispatch("vidola", "supprimer", "f1");
+    const a = m.sites.dispatch("vidola", "delete", "f1");
+    const b = m.sites.dispatch("vidola", "delete", "f1");
     gate.open!();
     expect(await opening).toBe(false);
     await Promise.all([a, b]);
@@ -330,7 +330,7 @@ describe("deleting while the chrome opens the window", () => {
     const m = mount({ reached: () => wasReached(), open: new Promise<void>((ok) => (release = ok)) });
     const opening = m.sites.openById("vidola");
     await reached;
-    const deletion = m.sites.dispatch("vidola", "supprimer", "f1");
+    const deletion = m.sites.dispatch("vidola", "delete", "f1");
     await vi.waitFor(() => expect(m.log).toContain("effacer vidola"));
     release();
     expect(await opening).toBe(false);
@@ -425,7 +425,7 @@ describe("tweaks", () => {
     expect(await m.sites.resume({ id: "vidola", url: "/episode/4", duration: 91 })).toBe(70);
     // A second note too soon waits; « Oublier » (the real action) drops it, the memory stays empty.
     void note(75);
-    await m.sites.dispatch("vidola", "oublier", "f1");
+    await m.sites.dispatch("vidola", "forget", "f1");
     await new Promise((r) => setTimeout(r, 1300));
     expect((await m.sites.tools.memory("vidola"))!.positions).toEqual({});
     m.sites.closed("vidola");
@@ -442,7 +442,7 @@ describe("accorder", () => {
     writeFileSync(join(m.paths.sites, "vidola", "tweaks", "a.js"), "window.a = 1");
     await m.sites.openById("vidola");
     const site = m.sites.openSites.get("vidola")!;
-    m.setView("accord");
+    m.setView("grant");
     return { m, site };
   }
   const grants = (m: { dataDir: string }) => readSiteGrants(m.dataDir);
@@ -484,7 +484,7 @@ describe("accorder", () => {
 
   it("an app that is not open grants nothing", async () => {
     const m = mount();
-    m.setView("accord");
+    m.setView("grant");
     await m.sites.grant("vidola", true, "0".repeat(64));
     expect(await grants(m)).toEqual({});
     expect(m.calls.after).toEqual([]);
@@ -494,7 +494,7 @@ describe("accorder", () => {
     const { m, site } = await opened();
     let release!: () => void;
     m.keep(new Promise<void>((ok) => (release = ok)));
-    const deletion = m.sites.dispatch("vidola", "supprimer", "f1");
+    const deletion = m.sites.dispatch("vidola", "delete", "f1");
     await vi.waitFor(() => expect(m.log).toContain("fermer vidola"));
     await m.sites.grant("vidola", true, site.request.hash);
     release();
@@ -560,12 +560,12 @@ describe("site rights, card and memory", () => {
   });
 
   it("SchemaActionSite accepts a plain id with a known action only", () => {
-    const vs = [{ id: "vidola", action: "supprimer" }, { id: "../x", action: "supprimer" }, { id: "Vidola", action: "ouvrir" }, { id: "a", action: "autre" }, { id: ".corbeille", action: "relire" }];
+    const vs = [{ id: "vidola", action: "delete" }, { id: "../x", action: "delete" }, { id: "Vidola", action: "open" }, { id: "a", action: "autre" }, { id: ".corbeille", action: "review" }];
     expect(vs.map((v) => SchemaActionSite.safeParse(v).success)).toEqual([true, false, false, false, false]);
   });
 
   it("SiteRecords has its public methods and writes indented JSON of the whole map", async () => {
-    for (const n of ["lire", "noter", "oublier", "vider"]) expect(typeof (SiteRecords.prototype as unknown as Record<string, unknown>)[n]).toBe("function");
+    for (const n of ["read", "note", "forget", "clear"]) expect(typeof (SiteRecords.prototype as unknown as Record<string, unknown>)[n]).toBe("function");
     const folder = mkdtempSync(join(tmpdir(), "souvenirs-"));
     cleanup.push(() => rmSync(folder, { recursive: true, force: true }));
     const s = new SiteRecords(folder);

@@ -83,23 +83,23 @@ const invalid = (): never => {
   throw new Error(INVALID_REQUEST);
 };
 
-/** viewfinder.ts's cleanCapture rules (a bad shape refuses the context) and sourceSaine's (a bad source field is dropped), rebuilt with known keys only. */
+/** viewfinder.ts's cleanCapture rules (a bad shape refuses the context) and healthySource's (a bad source field is dropped), rebuilt with known keys only. */
 export function checkDesignContext(c: unknown): DesignContext {
-  if (!record(c) || !record(c.vue) || !record(c.voisinage) || !record(c.styles)) return invalid();
-  const { selecteur: selector, etiquette: label, html, adresse: url, vue: view, voisinage: surroundings, styles, source } = c as Record<string, any>;
-  if (![view.largeur, view.hauteur].every(finite)) return invalid();
+  if (!record(c) || !record(c.view) || !record(c.neighborhood) || !record(c.styles)) return invalid();
+  const { selector, label, html, url, view, neighborhood: surroundings, styles, source } = c as Record<string, any>;
+  if (![view.width, view.height].every(finite)) return invalid();
   if (![selector, label, url, surroundings.parent].every((x) => str(x)) || !str(html, HTML_MAX + TRUNCATED.length)) return invalid();
-  if (!Array.isArray(surroundings.freres) || !surroundings.freres.every((f: unknown) => str(f))) return invalid();
+  if (!Array.isArray(surroundings.siblings) || !surroundings.siblings.every((f: unknown) => str(f))) return invalid();
   if (!Object.values(styles).every((x) => str(x))) return invalid();
-  // As sourceSaine: a bad file gives no source, a bad line or column is dropped; the remark stays.
+  // As healthySource: a bad file gives no source, a bad line or column is dropped; the remark stays.
   const src: DesignContext["source"] =
-    !record(source) || !str(source.fichier, 1024) || source.fichier === ""
+    !record(source) || !str(source.file, 1024) || source.file === ""
       ? null
-      : { file: source.fichier, ...(positiveInt(source.ligne) ? { line: source.ligne } : {}), ...(positiveInt(source.colonne) ? { column: source.colonne } : {}) };
+      : { file: source.file, ...(positiveInt(source.line) ? { line: source.line } : {}), ...(positiveInt(source.column) ? { column: source.column } : {}) };
   return {
-    selector: selector, label: label, html, url: url,
-    view: { width: view.largeur, height: view.hauteur },
-    neighborhood: { parent: surroundings.parent, siblings: [...surroundings.freres] },
+    selector, label, html, url,
+    view: { width: view.width, height: view.height },
+    neighborhood: { parent: surroundings.parent, siblings: [...surroundings.siblings] },
     styles: { ...styles },
     source: src,
   };

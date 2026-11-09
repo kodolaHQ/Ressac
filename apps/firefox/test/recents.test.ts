@@ -13,7 +13,7 @@ const ag = (a: Action | null) => {
   if (a) e = apply(e, a, genId);
 };
 const open = (url: string) => {
-  ag({ type: "ouvrirOnglet", windowId: F, url });
+  ag({ type: "openTab", windowId: F, url });
   return Object.keys(e.tabs).at(-1)!;
 };
 
@@ -28,9 +28,9 @@ test("recentOrder: active first, history, then the rest; closed ignored", () => 
   const b = open("https://b.fr");
   const c = open("https://c.fr");
   const d = open("https://d.fr");
-  ag({ type: "activerOnglet", id: b });
+  ag({ type: "activateTab", id: b });
   expect(recentOrder(e, F, [c, a])).toEqual([b, c, a, d]);
-  ag({ type: "fermerOnglet", id: c });
+  ag({ type: "closeTab", id: c });
   expect(recentOrder(e, F, [c, a])).toEqual([b, a, d]);
 });
 
@@ -39,7 +39,7 @@ test("noteUsage", () => {
   expect(noteUsage(["a"], "z")).toEqual(["z", "a"]);
 });
 
-test("demarrer", () => {
+test("start", () => {
   expect(start(["a"], 1)).toBeNull();
   expect(start(["a", "b", "c"], 1)!.selection).toBe(1);
   expect(start(["a", "b", "c"], -1)!.selection).toBe(2);

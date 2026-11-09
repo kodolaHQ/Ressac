@@ -44,7 +44,7 @@
     <div class="actions">
       <button onclick={() => (edit = c.text)}>Modifier</button>
       <button onclick={() => void act(() => api.review.resolve(project, c.id, !c.resolved))}>{c.resolved ? "Rouvrir" : "Résoudre"}</button>
-      <button onclick={() => void act(() => api.review.supprimerCommentaire(project, c.id))}>Supprimer</button>
+      <button onclick={() => void act(() => api.review.deleteComment(project, c.id))}>Supprimer</button>
     </div>
   {/if}
   {#if error}<p class="erreur">{error}</p>{/if}

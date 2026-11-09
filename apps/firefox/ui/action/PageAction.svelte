@@ -122,7 +122,7 @@
         cardOpen = true;
       } else if (execution !== null && r.run && r.run !== execution) {
         // The page showed a specific result: it switches to this one.
-        api.dispatch({ type: "ouvrirAction", windowId: api.windowId, id, name: action.name, run: r.run });
+        api.dispatch({ type: "openAction", windowId: api.windowId, id, name: action.name, run: r.run });
       }
     } catch (e) {
       launchError = e instanceof Error ? e.message : String(e);
@@ -148,7 +148,7 @@
     if (action && !grantNeed && (!action.input || input.trim())) void launchAction();
   }
 
-  const choose = (e: string) => action && api.dispatch({ type: "ouvrirAction", windowId: api.windowId, id, name: action.name, run: e });
+  const choose = (e: string) => action && api.dispatch({ type: "openAction", windowId: api.windowId, id, name: action.name, run: e });
 </script>
 
 <div class="defile" data-testid="page-action">

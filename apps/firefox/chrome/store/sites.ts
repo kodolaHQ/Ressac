@@ -52,8 +52,8 @@ export interface SiteWindowController {
   blocked(url: string): void;
   /** « Ouvrir dans un onglet »: the last blocked link, in the last main window (its active space); the mention falls. */
   openBlocked(): void;
-  memory(): Promise<(MessageToHome & { type: "memoire" }) | null>;
-  onMemory(cb: (m: MessageToHome & { type: "memoire" }) => void): () => void;
+  memory(): Promise<(MessageToHome & { type: "memory" }) | null>;
+  onMemory(cb: (m: MessageToHome & { type: "memory" }) => void): () => void;
   /**
    * The home screen asks for an address: on the current domain, just after a real
    * gesture in the home (consumed), one per HOME_OPEN_GAP_MS; false if refused.
@@ -131,7 +131,7 @@ let openTab: (url: string) => void = () => {};
 let design: Pick<DesignService, "state" | "toggle" | "review" | "openCart" | "onChange"> | null = null;
 /** The last real presses in each app's home (one allows one open). */
 const gestures = gestureGuard<string>();
-const memoryListeners = new Map<string, Set<(m: MessageToHome & { type: "memoire" }) => void>>();
+const memoryListeners = new Map<string, Set<(m: MessageToHome & { type: "memory" }) => void>>();
 /** Told after an app's window closed (the agent's questions on `site:<id>` fall). */
 const closeListeners = new Set<() => void>();
 
@@ -158,7 +158,7 @@ function block(s: OpenSite, url: string): void {
 /** The address follow: only an app that declares suiviAdresse; the host reads the reference page. */
 function follow(s: OpenSite, url: string | null): void {
   if (!s.site.declaration.urlTracking || open.get(s.site.id) !== s) return;
-  host?.notify("sites.chercher", { id: s.site.id, url });
+  host?.notify("sites.lookup", { id: s.site.id, url });
 }
 
 /** A reload is a load WebAiOs started too (measured: the system principal): the follow aims at the page reloaded. */
@@ -343,7 +343,7 @@ export function frameOf(win: Window): FrameBounds | null {
 
 function noteFrame(s: OpenSite): void {
   const frame = frameOf(s.window);
-  if (frame) host?.notify("sites.noter", { id: s.site.id, frame: frame });
+  if (frame) host?.notify("sites.note", { id: s.site.id, frame: frame });
 }
 
 function stateOf(s: OpenSite): SiteWindowState {
@@ -359,7 +359,7 @@ function stateOf(s: OpenSite): SiteWindowState {
     tracking: s.site.declaration.urlTracking !== undefined,
     search: s.searching,
     notice: s.notice.notice ?? s.hostNotice,
-    grant: s.viewState === "accord" ? s.site.request : null,
+    grant: s.viewState === "grant" ? s.site.request : null,
   };
 }
 
@@ -373,7 +373,7 @@ function nextView(s: OpenSite): void {
     loadInView(s, to);
   }
   // The agent asked for an address during the card: that is what the user sees, even if the app has a home.
-  if (s.site.hasHome && !agent) s.viewState = "accueil";
+  if (s.site.hasHome && !agent) s.viewState = "home";
   else {
     s.viewState = "site";
     if (!s.loaded) loadInView(s, s.site.start);
@@ -398,17 +398,17 @@ function controllerOf(s: OpenSite): SiteWindowController {
     },
     async grant(yes, hash) {
       if (open.get(id) !== s || typeof yes !== "boolean" || typeof hash !== "string" || hash.length > 128) return;
-      await host?.request("sites.accorder", { id, yes: yes, hash: hash });
+      await host?.request("sites.grant", { id, yes: yes, hash: hash });
     },
     enter() {
-      if (s.viewState === "accord") return;
+      if (s.viewState === "grant") return;
       s.viewState = "site";
       if (!s.loaded) loadInView(s, s.site.start);
       broadcast(s);
     },
     home() {
-      if (!s.site.hasHome || s.viewState === "accord") return;
-      s.viewState = "accueil";
+      if (!s.site.hasHome || s.viewState === "grant") return;
+      s.viewState = "home";
       broadcast(s);
     },
     back() {
@@ -433,7 +433,7 @@ function controllerOf(s: OpenSite): SiteWindowController {
       broadcast(s);
       openTab(url);
     },
-    memory: () => host?.request<(MessageToHome & { type: "memoire" }) | null>("sites.memoireAccueil", { id }).catch(() => null) ?? Promise.resolve(null),
+    memory: () => host?.request<(MessageToHome & { type: "memory" }) | null>("sites.homeMemory", { id }).catch(() => null) ?? Promise.resolve(null),
     onMemory(cb) {
       let set = memoryListeners.get(id);
       if (!set) memoryListeners.set(id, (set = new Set()));
@@ -446,7 +446,7 @@ function controllerOf(s: OpenSite): SiteWindowController {
       if (now - s.lastHomeOpen < HOME_OPEN_GAP_MS) return false;
       const url = urlOnDomain(address, httpHost(s.site.start) ?? "", s.site.domains, s.site.start, { localAddresses: !!context(s).localAddresses });
       // Without a recent real gesture nothing opens: a home that asks on load would send back to the site at each ⌂.
-      if (!url || !gestures.accept(id, id) || s.viewState !== "accueil") return false;
+      if (!url || !gestures.accept(id, id) || s.viewState !== "home") return false;
       loadInView(s, url);
       s.viewState = "site";
       broadcast(s);
@@ -480,7 +480,7 @@ function controllerOf(s: OpenSite): SiteWindowController {
       openCart: () => void design!.openCart({ type: "site", id }),
       onChange(cb) {
         // accueil.change: sent at each kernel start, so a restarted host is read again.
-        const offs = [...["design.change", "accueil.change", HOST_EXITED].map((m) => host!.on(m, () => cb())), design!.onChange(cb)];
+        const offs = [...["design.change", "home.change", HOST_EXITED].map((m) => host!.on(m, () => cb())), design!.onChange(cb)];
         return () => offs.forEach((f) => f());
       },
     },
@@ -529,7 +529,7 @@ function attach(s: OpenSite, browser: any): void {
     const icon = win.gBrowser.getIcon(win.gBrowser.selectedTab);
     if (typeof icon !== "string" || !icon.startsWith("data:image/") || icon.length > ICON_MAX || icon === favicon) return;
     favicon = icon;
-    host?.notify("sites.noter", { id, favicon });
+    host?.notify("sites.note", { id, favicon });
   });
   // The frame is noted as it moves (MozUpdateWindowPos, chrome only), is resized and closes; the host writes it later.
   let pending: number | undefined;
@@ -566,7 +566,7 @@ function closed(s: OpenSite): void {
   if (open.get(id) !== s) return;
   open.delete(id);
   memoryListeners.delete(id);
-  host?.notify("sites.ferme", { id });
+  host?.notify("sites.closed", { id });
   for (const cb of closeListeners)
     try {
       cb();
@@ -602,7 +602,7 @@ export const sites = {
     marker.setPropertyAsAString(SITE_WINDOW_KEY, site.id);
     const win = openInContainer(userContextId, marker, frameFeatures(frame));
     // The card first if the tweaks need their grant: the view loads nothing until it is answered (nextView).
-    const s: OpenSite = { site, tweaks: tweaks, errors: [], userContextId, window: win, view: null, viewState: site.grantRequired ? "accord" : site.hasHome ? "accueil" : "site", toLoad: null, agentToLoad: false, loaded: false, listeners: new Set(), small: new Set(), blocked: [], notice: blockedNotice(() => broadcast(s)), home: null, lastHomeOpen: -Infinity, target: null, searching: false, hostNotice: null, wantNext: false, wanted: false };
+    const s: OpenSite = { site, tweaks: tweaks, errors: [], userContextId, window: win, view: null, viewState: site.grantRequired ? "grant" : site.hasHome ? "home" : "site", toLoad: null, agentToLoad: false, loaded: false, listeners: new Set(), small: new Set(), blocked: [], notice: blockedNotice(() => broadcast(s)), home: null, lastHomeOpen: -Infinity, target: null, searching: false, hostNotice: null, wantNext: false, wanted: false };
     open.set(site.id, s);
     byContainer.set(userContextId, s);
     publishOpen();
@@ -656,14 +656,14 @@ export const sites = {
     let reloaded = false;
     // The hash is that of the rights asked (rightsHash).
     const grown = before.request.hash !== site.request.hash;
-    if (site.grantRequired && s.viewState !== "accord" && (!before.grantRequired || grown)) {
-      s.viewState = "accord";
+    if (site.grantRequired && s.viewState !== "grant" && (!before.grantRequired || grown)) {
+      s.viewState = "grant";
       if (s.loaded) {
         reloadView(s);
         reloaded = true;
       }
-    } else if (s.viewState === "accord" && !site.grantRequired) nextView(s);
-    else if (s.viewState === "accueil" && !site.hasHome) nextView(s);
+    } else if (s.viewState === "grant" && !site.grantRequired) nextView(s);
+    else if (s.viewState === "home" && !site.hasHome) nextView(s);
     s.window.gBrowser?.updateTitlebar();
     broadcast(s);
     return reloaded;
@@ -671,7 +671,7 @@ export const sites = {
   /** The choice made on the card (the grant, if given, is already kept in `site`). Nothing if the card is not shown. */
   afterGrant(id: string, site: SiteChrome | null): void {
     const s = open.get(id);
-    if (!s || s.window.closed || s.viewState !== "accord") return;
+    if (!s || s.window.closed || s.viewState !== "grant") return;
     if (site) s.site = site;
     // The grant given does not cover today's declaration (site.json rewritten meanwhile): the card stays.
     if (site?.grantRequired) return broadcast(s);
@@ -709,15 +709,15 @@ export const sites = {
     const s = siteOfFrame(wgp, open.values());
     return frameInjection(wgp, s, !!(s && context(s).localAddresses));
   },
-  /** The site actor's "erreur": a tweak's error in the frame of this WindowGlobalParent. */
+  /** The site actor's "error": a tweak's error in the frame of this WindowGlobalParent. */
   frameError(wgp: any, e: unknown): void {
     frameError(siteOfFrame(wgp, open.values()), e);
   },
-  /** The site actor's "memoire", for the frame of this WindowGlobalParent: relayed to the host. */
+  /** The site actor's "memory", for the frame of this WindowGlobalParent: relayed to the host. */
   frameMemory(wgp: any, request: unknown) {
     return frameMemory(wgp, siteOfFrame(wgp, open.values()), request, (p) => {
       if (!host) return Promise.reject(new Error("no host"));
-      return host.request("sites.memoireOp", p);
+      return host.request("sites.memoryOp", p);
     });
   },
   /** The site actor's "position": a video's position, relayed to the host. */
@@ -728,7 +728,7 @@ export const sites = {
   /** The site actor's "reprise": the position to resume, from the host. */
   frameResume(wgp: any, duration: unknown): Promise<number | null> {
     const s = siteOfFrame(wgp, open.values());
-    return frameResume(wgp, s, duration, !!(s && context(s).localAddresses), (q) => (host ? host.request<number | null>("sites.reprise", q) : Promise.resolve(null)));
+    return frameResume(wgp, s, duration, !!(s && context(s).localAddresses), (q) => (host ? host.request<number | null>("sites.resume", q) : Promise.resolve(null)));
   },
   /** « Afficher le dossier »: the app's folder shown in the file manager. */
   revealSite(id: string): void {
@@ -769,7 +769,7 @@ export const sites = {
     };
     let home: HTMLIFrameElement | null = null;
     let bounds = rect(s.view);
-    if (s.viewState === "accueil") {
+    if (s.viewState === "home") {
       const bar = win.document.getElementById("webaios-site-bar") as HTMLIFrameElement | null;
       const f = bar?.contentDocument?.querySelector('[data-testid="site-cadre-accueil"]') as HTMLIFrameElement | null;
       const spec = f?.contentDocument?.documentURI;
@@ -783,7 +783,7 @@ export const sites = {
     const host = httpHost(url);
     const available =
       !win.document.documentElement.hasAttribute("inDOMFullscreen") &&
-      (s.viewState === "accueil"
+      (s.viewState === "home"
         ? home !== null
         : s.viewState === "site" && openDecision(url, context(s)) === "dans-l-appli" && host !== null && !hostInSite(host, context(s).login));
     return { win, name: s.site.declaration.name, viewState: s.viewState, browser: s.view, home, bounds, available };
@@ -791,7 +791,7 @@ export const sites = {
   /** A passing mention in the bar, gone after DUREE_AVIS_INFO_MS or at the next page; never over a blocked link's. */
   infoNotice(id: string, text: string): void {
     const s = open.get(id);
-    if (!s || s.window.closed || s.notice.notice?.kind === "lien-bloque") return;
+    if (!s || s.window.closed || s.notice.notice?.kind === "link-blocked") return;
     const notice: BarNotice = { kind: "info", text: text };
     s.hostNotice = notice;
     broadcast(s);
@@ -805,7 +805,7 @@ export const sites = {
   navigateForAgent(id: string, url: string): "loaded" | "pending" | "refused" {
     const s = open.get(id);
     if (!s?.view || s.window.closed || openDecision(url, context(s)) !== "dans-l-appli") return "refused";
-    if (s.viewState === "accord") {
+    if (s.viewState === "grant") {
       s.toLoad = url;
       s.agentToLoad = true;
       return "pending";
@@ -867,39 +867,39 @@ export const sites = {
   },
   /** The host's requests (host/sites.ts SitesChrome), positional params. */
   handlers: {
-    "sites.ouvrir": ([site, frame, tweaks]: [SiteChrome, FrameBounds | null, TweaksRead]) => sites.open(site, frame, tweaks),
-    "sites.fermer": ([id]: [string]) => sites.close(id),
-    "sites.effacer": ([id]: [string]) => sites.erase(id),
-    "sites.mettreAJour": ([site, tweaks]: [SiteChrome, TweaksRead]) => sites.update(site, tweaks),
-    "sites.rechargerVue": ([id]: [string]) => sites.reloadView(id),
-    "sites.erreurs": ([id]: [string]) => sites.errors(id),
-    "sites.vue": ([id]: [string]) => sites.viewOf(id),
-    "sites.apresAccord": ([id, site]: [string, SiteChrome | null]) => sites.afterGrant(id, site),
-    "sites.rediffuser": ([id]: [string]) => sites.rebroadcast(id),
-    "sites.ouvertes": () => sites.openIds(),
+    "sites.open": ([site, frame, tweaks]: [SiteChrome, FrameBounds | null, TweaksRead]) => sites.open(site, frame, tweaks),
+    "sites.close": ([id]: [string]) => sites.close(id),
+    "sites.erase": ([id]: [string]) => sites.erase(id),
+    "sites.update": ([site, tweaks]: [SiteChrome, TweaksRead]) => sites.update(site, tweaks),
+    "sites.reloadView": ([id]: [string]) => sites.reloadView(id),
+    "sites.errors": ([id]: [string]) => sites.errors(id),
+    "sites.view": ([id]: [string]) => sites.viewOf(id),
+    "sites.afterGrant": ([id, site]: [string, SiteChrome | null]) => sites.afterGrant(id, site),
+    "sites.rebroadcast": ([id]: [string]) => sites.rebroadcast(id),
+    "sites.openIds": () => sites.openIds(),
     // The home's files changed: served again; the bar's home frame reads homeUrl on the state broadcast.
     // Address follow.
-    "sites.cherche": ([id, yes]: [string, boolean]) => {
+    "sites.lookingUp": ([id, yes]: [string, boolean]) => {
       const s = open.get(id);
       if (!s || s.window.closed) return;
       s.searching = yes;
       broadcast(s);
     },
-    "sites.avis": ([id, a]: [string, BarNotice | null]) => {
+    "sites.notice": ([id, a]: [string, BarNotice | null]) => {
       const s = open.get(id);
       if (!s || s.window.closed) return;
       s.notice.clear();
       s.hostNotice = a;
       broadcast(s);
     },
-    "sites.adresseChangee": ([id, domains, start, to]: [string, string[], string, string]) => {
+    "sites.urlChanged": ([id, domains, start, to]: [string, string[], string, string]) => {
       const s = open.get(id);
       if (!s || s.window.closed) return;
       // The card's « suivis »: the domains added by the follow (the host recomputes the same list).
       const declared = new Set(s.site.declaration.domains.map((x) => x.toLowerCase()));
       const tracked = [...new Set(domains.map((x) => x.toLowerCase()).filter((x) => !declared.has(x)))];
       s.site = { ...s.site, domains: domains, start: start, request: { ...s.site.request, tracked: tracked } };
-      if (s.viewState === "accord") {
+      if (s.viewState === "grant") {
         // The card is shown: the view loads nothing before the choice; a page already loaded was on the old domain.
         if (s.loaded) {
           s.toLoad = to;
@@ -910,7 +910,7 @@ export const sites = {
       loadInView(s, to);
       broadcast(s);
     },
-    "sites.accueilChange": ([id]: [string]) => {
+    "sites.homeChange": ([id]: [string]) => {
       const s = open.get(id);
       if (!s || s.window.closed) return;
       s.home = null;
@@ -927,7 +927,7 @@ export function bindSites(agent: AgentHost, dir: string, openInTab: (url: string
   dataDir = dir;
   openTab = openInTab;
   design = d;
-  agent.on("sites.memoire", (p: { id?: unknown; message?: MessageToHome & { type: "memoire" } }) => {
+  agent.on("sites.memory", (p: { id?: unknown; message?: MessageToHome & { type: "memory" } }) => {
     if (typeof p?.id !== "string" || !p.message) return;
     for (const cb of memoryListeners.get(p.id) ?? []) cb(p.message);
   });

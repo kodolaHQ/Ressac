@@ -33,8 +33,8 @@ async function opened(action: Action): Promise<string> {
 }
 
 const win = async () => (await state(m)).windows[0]!;
-const open = async (path: string, extra: Partial<Extract<Action, { type: "ouvrirOnglet" }>> = {}) =>
-  opened({ type: "ouvrirOnglet", windowId: (await win()).id, url: server.url + path, ...extra });
+const open = async (path: string, extra: Partial<Extract<Action, { type: "openTab" }>> = {}) =>
+  opened({ type: "openTab", windowId: (await win()).id, url: server.url + path, ...extra });
 
 function waitState<T>(read: (s: BrowserState) => T, ok: (v: T) => boolean, ms = 10_000): Promise<T> {
   return (async () => {
@@ -137,7 +137,7 @@ const windowCount = () => m.execute<number>("return [...Services.wm.getEnumerato
 describe("window controller", () => {
   it("loads a tab opened by dispatch and reports its title", async () => {
     // Records every URL the state gives the tab: the XUL tab's initial about:blank must not leak into it.
-    await m.execute(`window.urls = new Set(); window.webaiosWindow.store.subscribe((s) => { for (const o of Object.values(s.onglets)) urls.add(o.url); });`);
+    await m.execute(`window.urls = new Set(); window.webaiosWindow.store.subscribe((s) => { for (const o of Object.values(s.tabs)) urls.add(o.url); });`);
     const id = await open("/a.html");
     await waitTitle(id, "Page A");
     await waitState((s) => s.tabs[id]!.loading, (c) => c === false);
@@ -152,7 +152,7 @@ describe("window controller", () => {
     await m.execute("webaiosWindow.navigate(arguments[0], arguments[1])", [id, server.url + "/b.html"]);
     await waitTitle(id, "Page B");
     expect((await state(m)).tabs[id]!.canGoBack).toBe(true);
-    await m.execute("webaiosWindow.command(arguments[0], 'reculer')", [id]);
+    await m.execute("webaiosWindow.command(arguments[0], 'back')", [id]);
     await waitTitle(id, "Page A");
   });
 
@@ -162,7 +162,7 @@ describe("window controller", () => {
     expect(await markedTabs()).toBe(1);
     expect((await selected()).id).toBe(a);
     const b = (await win()).order[(await win()).activeSpace]![1]!;
-    await dispatch(m, { type: "activerOnglet", id: b });
+    await dispatch(m, { type: "activateTab", id: b });
     await waitTitle(b, "Page B");
     expect(await markedTabs()).toBe(2);
     expect((await selected()).id).toBe(b);
@@ -199,7 +199,7 @@ describe("window controller", () => {
 
   it("keeps a link opened in a space with its own profile in that space and container", async () => {
     const windowId = (await win()).id;
-    await dispatch(m, { type: "creerEspace", name: "Pro", icon: "💼", private: false, profile: "nouveau", windowId: windowId });
+    await dispatch(m, { type: "createSpace", name: "Pro", icon: "💼", private: false, profile: "nouveau", windowId: windowId });
     const space = (await win()).activeSpace;
     const a = await open("/a.html");
     await waitTitle(a, "Page A");
@@ -219,7 +219,7 @@ describe("window controller", () => {
     expect(Object.keys((await state(m)).tabs)).toHaveLength(0);
     const a = await open("/a.html");
     await waitTitle(a, "Page A");
-    await dispatch(m, { type: "fermerOnglet", id: a });
+    await dispatch(m, { type: "closeTab", id: a });
     await new Promise((r) => setTimeout(r, 1_000));
     expect(Object.keys((await state(m)).tabs)).toHaveLength(0);
     expect(await selected()).toEqual({ id: null, parking: true });
@@ -236,10 +236,10 @@ describe("window controller", () => {
     const a = await open("/a.html");
     const b = await open("/b.html");
     await waitTitle(b, "Page B");
-    await dispatch(m, { type: "activerOnglet", id: a });
+    await dispatch(m, { type: "activateTab", id: a });
     await waitTitle(a, "Page A");
     expect(await markedTabs()).toBe(2);
-    await dispatch(m, { type: "fermerOnglet", id: a });
+    await dispatch(m, { type: "closeTab", id: a });
     expect(await markedTabs()).toBe(1);
     expect((await selected()).id).toBe(b);
   });
@@ -247,10 +247,10 @@ describe("window controller", () => {
   it("switching spaces shows the active tab of each space", async () => {
     const first = (await win()).activeSpace;
     const a = await open("/a.html");
-    await dispatch(m, { type: "creerEspace", name: "Pro", icon: "💼", private: false, profile: "defaut", windowId: (await win()).id });
+    await dispatch(m, { type: "createSpace", name: "Pro", icon: "💼", private: false, profile: "default", windowId: (await win()).id });
     const b = await open("/b.html");
     expect((await selected()).id).toBe(b);
-    await dispatch(m, { type: "activerEspace", windowId: (await win()).id, id: first });
+    await dispatch(m, { type: "activateSpace", windowId: (await win()).id, id: first });
     expect((await selected()).id).toBe(a);
   });
 
@@ -258,7 +258,7 @@ describe("window controller", () => {
     const windowId = (await win()).id;
     const spaceA = (await win()).activeSpace;
     await waitTitle(await open("/cookie"), "cookie");
-    await dispatch(m, { type: "creerEspace", name: "B", icon: "🅱", private: false, profile: "nouveau", windowId: windowId });
+    await dispatch(m, { type: "createSpace", name: "B", icon: "🅱", private: false, profile: "nouveau", windowId: windowId });
     const spaceB = (await win()).activeSpace;
     const profileB = (await state(m)).spaces.find((e) => e.id === spaceB)!.profile;
     await waitTitle(await open("/lire-cookie"), "aucun");
@@ -266,11 +266,11 @@ describe("window controller", () => {
     const containerB = await m.execute<number>("return gBrowser.selectedTab.userContextId");
     const cookiesB = `return Services.cookies.getCookiesWithOriginAttributes(JSON.stringify({ userContextId: ${containerB} })).length`;
     expect(await m.execute(cookiesB)).toBe(1);
-    await dispatch(m, { type: "activerEspace", windowId: windowId, id: spaceA });
+    await dispatch(m, { type: "activateSpace", windowId: windowId, id: spaceA });
     await waitTitle(await open("/lire-cookie"), "essai=1");
-    await dispatch(m, { type: "supprimerEspace", id: spaceB });
+    await dispatch(m, { type: "deleteSpace", id: spaceB });
     await waitFor(m, cookiesB, (n) => n === 0, 3_000);
-    await dispatch(m, { type: "creerEspace", name: "C", icon: "©", private: false, profile: "nouveau", windowId: windowId });
+    await dispatch(m, { type: "createSpace", name: "C", icon: "©", private: false, profile: "nouveau", windowId: windowId });
     await waitTitle(await open("/lire-cookie"), "aucun");
     const gone = await m.execute<boolean>(`
       const { ContextualIdentityService } = ChromeUtils.importESModule("moz-src:///toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs");
@@ -292,7 +292,7 @@ describe("window controller", () => {
     const a = await open("/a.html");
     await waitTitle(a, "Page A");
     const windowId = (await win()).id;
-    await dispatch(m, { type: "creerEspace", name: "B", icon: "🅱", private: false, profile: "defaut", windowId: windowId });
+    await dispatch(m, { type: "createSpace", name: "B", icon: "🅱", private: false, profile: "default", windowId: windowId });
     const spaceB = (await win()).activeSpace;
     const b = await open("/b.html");
     await waitTitle(b, "Page B");
@@ -331,7 +331,7 @@ describe("window controller", () => {
     await waitTitle(a, "Popup source");
     await click(a, "#ouvrir-reste");
     await waitFor(m, `return ${POPUPS}.length`, (n) => n === 1);
-    await dispatch(m, { type: "fermerOnglet", id: a });
+    await dispatch(m, { type: "closeTab", id: a });
     // Step 1 opens step 2, then closes itself.
     await inPopup("popup-reste", async () => {
       await m.setContext("content");
@@ -360,7 +360,7 @@ describe("window controller", () => {
     const host = new URL(server.url).host;
     await waitFor(m, `return ${POPUPS}[0].document.title`, (t) => t === `${host} — Connexion`);
     // Another tab shown meanwhile: the link still goes right after the popup's source.
-    await dispatch(m, { type: "activerOnglet", id: other });
+    await dispatch(m, { type: "activateTab", id: other });
     await waitTitle(other, "Page A");
     await clickInPopup("popup-reste", "#lien-blank");
     const f = await waitState((s) => s.windows[0]!, (f) => f.order[f.activeSpace]!.length === 3);
@@ -405,7 +405,7 @@ describe("window controller", () => {
   });
 
   it("an unreachable page shows an error message and Recharger", async () => {
-    const id = await opened({ type: "ouvrirOnglet", windowId: (await win()).id, url: "http://127.0.0.1:1/" });
+    const id = await opened({ type: "openTab", windowId: (await win()).id, url: "http://127.0.0.1:1/" });
     const text = await waitUi<string>(m, `const t = ${CONTENT_TEXT}; return t.includes("Impossible d'ouvrir cette page.") && t;`);
     expect(text).toMatch(/NS_ERROR_[A-Z_]+/);
     expect(text).toContain("http://127.0.0.1:1/");
@@ -419,7 +419,7 @@ describe("window controller", () => {
         srv.close(() => resolve(port));
       });
     });
-    const refused = await opened({ type: "ouvrirOnglet", windowId: (await win()).id, url: `http://127.0.0.1:${closed}/` });
+    const refused = await opened({ type: "openTab", windowId: (await win()).id, url: `http://127.0.0.1:${closed}/` });
     await waitState((s) => s.tabs[refused]?.error, (e) => e === "NS_ERROR_CONNECTION_REFUSED");
     expect(await missingApi(m)).toEqual([]);
   });
@@ -492,7 +492,7 @@ describe("leaving a page with unsaved changes", () => {
     // Every active tab of the state, from here on: no chrome script runs while the prompt is open.
     await m.execute(`const c = window.webaiosWindow;
       window.actives = [];
-      c.store.subscribe((s) => { const f = s.fenetres.find((x) => x.id === c.fenetreId); window.actives.push(f.actif[f.espaceActif]); });`);
+      c.store.subscribe((s) => { const f = s.windows.find((x) => x.id === c.windowId); window.actives.push(f.active[f.activeSpace]); });`);
     // The sidebar's close button on the form's row.
     await m.execute("window.webaiosWindow.closeTab(arguments[0])", [id]);
     const deadline = Date.now() + 5_000;

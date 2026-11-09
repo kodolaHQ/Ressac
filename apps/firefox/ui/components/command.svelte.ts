@@ -1,12 +1,12 @@
 import { api } from "../state.svelte";
 
 /**
- * Command bar (⌘T, ⌘L). `mode`: "nouveau" opens in a new tab, "actif" replaces the active tab's page. `texte`:
+ * Command bar (⌘T, ⌘L). `mode`: "new" opens in a new tab, "active" replaces the active tab's page. `texte`:
  * starting input. Each opening creates a new object: reopening midway resets the input.
  */
-export const command = $state<{ open: null | { mode: "nouveau" | "actif"; text: string } }>({ open: null });
+export const command = $state<{ open: null | { mode: "new" | "active"; text: string } }>({ open: null });
 
-export function openCommand(mode: "nouveau" | "actif", text = ""): void {
+export function openCommand(mode: "new" | "active", text = ""): void {
   command.open = { mode, text: text };
 }
 

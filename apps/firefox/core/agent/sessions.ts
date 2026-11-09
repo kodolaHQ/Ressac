@@ -65,7 +65,7 @@ interface Entry {
   startup?: Promise<void>;
   /** Last terminal size, to reopen the session identically (relancerTout). */
   size: TerminalSize;
-  /** Text to put in the input as soon as the session is active (see preRemplir). */
+  /** Text to put in the input as soon as the session is active (see prefill). */
   prefill?: { text: string; written?: () => void };
 }
 
@@ -76,7 +76,7 @@ export class SessionsAgent {
   constructor(
     private readonly o: {
       open: (f: WindowId, t: TerminalSize) => Promise<SessionLike>;
-      send: (f: WindowId, channel: "donnees" | "etat", v: string | AgentPanelState) => void;
+      send: (f: WindowId, channel: "data" | "state", v: string | AgentPanelState) => void;
       /** The user submits a message (Enter) in this window's terminal. */
       onSend?: (f: WindowId) => void;
     },
@@ -90,17 +90,17 @@ export class SessionsAgent {
     entry.size = size;
     if (entry.session?.active) {
       entry.session.resize(size.cols, size.rows);
-      this.o.send(f, "etat", { state: "actif" });
+      this.o.send(f, "state", { state: "active" });
       // The buffer already contains the pending output: it is not sent a second time.
       this.cancelSend(entry);
       const buffer = entry.buffer.text();
-      if (buffer) this.o.send(f, "donnees", buffer);
+      if (buffer) this.o.send(f, "data", buffer);
       return Promise.resolve();
     }
     if (entry.startup) return entry.startup;
     entry.buffer.clear();
     this.cancelSend(entry);
-    this.o.send(f, "etat", { state: "preparation" });
+    this.o.send(f, "state", { state: "preparing" });
     entry.startup = this.o
       .open(f, size)
       .then(
@@ -118,9 +118,9 @@ export class SessionsAgent {
             if (entry.session !== s) return;
             this.sendOutput(f, entry);
             entry.session = undefined;
-            this.o.send(f, "etat", { state: "termine", code });
+            this.o.send(f, "state", { state: "done", code });
           });
-          this.o.send(f, "etat", { state: "actif" });
+          this.o.send(f, "state", { state: "active" });
           const p = entry.prefill;
           entry.prefill = undefined;
           if (p) this.writePrefill(s, p.text, p.written);
@@ -130,8 +130,8 @@ export class SessionsAgent {
           if (this.inputs.get(f) !== entry) return;
           this.o.send(
             f,
-            "etat",
-            err instanceof WorkshopError && err.state === "docker-absent" ? { state: "docker-absent" } : { state: "erreur", message: err.message },
+            "state",
+            err instanceof WorkshopError && err.state === "docker-absent" ? { state: "docker-absent" } : { state: "error", message: err.message },
           );
         },
       )
@@ -142,7 +142,7 @@ export class SessionsAgent {
   private sendOutput(f: WindowId, e: Entry): void {
     const d = e.toSend;
     this.cancelSend(e);
-    if (d && this.inputs.get(f) === e) this.o.send(f, "donnees", d);
+    if (d && this.inputs.get(f) === e) this.o.send(f, "data", d);
   }
 
   private cancelSend(e: Entry): void {

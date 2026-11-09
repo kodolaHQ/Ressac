@@ -58,14 +58,14 @@ let probeServer: Server;
 /** A component that sends height `px` on each message, and tries a link (components open none). */
 const sized = (px: number) => `<!doctype html><meta charset="utf-8"><script>
   addEventListener("message", (e) => {
-    if (e.data?.type !== "composant") return;
-    try { webaiosOuvrir("https://exemple.invalide/from-component"); } catch {}
-    parent.postMessage({ type: "hauteur", px: ${px} }, "*");
+    if (e.data?.type !== "component") return;
+    try { webaiosOpen("https://exemple.invalide/from-component"); } catch {}
+    parent.postMessage({ type: "height", px: ${px} }, "*");
   });
 </script>`;
 const FRAME = tid("cadre-composant");
 const closeTabs = async () => {
-  for (const id of Object.keys((await state(m)).tabs)) await dispatch(m, { type: "fermerOnglet", id } as Action);
+  for (const id of Object.keys((await state(m)).tabs)) await dispatch(m, { type: "closeTab", id } as Action);
 };
 
 beforeAll(async () => {
@@ -291,22 +291,22 @@ describe("action page rendering", () => {
     expect(Object.values((await state(m)).tabs).some((o) => o.url.includes("from-component"))).toBe(false);
     /** Dispatches a bridge event on the frame's window, as a component's own code could, with any detail. */
     const send = (detail: unknown) =>
-      inUi(m, "const w = doc.querySelector(arguments[0]).contentDocument.defaultView; w.dispatchEvent(new w.CustomEvent('webaios-composant', { detail: arguments[1] }));", [FRAME, detail]);
+      inUi(m, "const w = doc.querySelector(arguments[0]).contentDocument.defaultView; w.dispatchEvent(new w.CustomEvent('webaios-component', { detail: arguments[1] }));", [FRAME, detail]);
     await send(JSON.stringify({ type: "autre", px: 900 }));
-    await send({ type: "hauteur", px: 700 });
-    await send(JSON.stringify({ type: "hauteur", px: "800" }));
+    await send({ type: "height", px: 700 });
+    await send(JSON.stringify({ type: "height", px: "800" }));
     await send("{not json");
     await new Promise((r) => setTimeout(r, 300));
     expect(await height()).toBe(400);
     // The bridge's own path, clamped.
-    await send(JSON.stringify({ type: "hauteur", px: 5000 }));
+    await send(JSON.stringify({ type: "height", px: 5000 }));
     await waitUi(m, "return Math.round(doc.querySelector(arguments[0]).getBoundingClientRect().height) === 2000;", [FRAME]);
-    await send(JSON.stringify({ type: "hauteur", px: 1 }));
+    await send(JSON.stringify({ type: "height", px: 1 }));
     await waitUi(m, "return Math.round(doc.querySelector(arguments[0]).getBoundingClientRect().height) === 20;", [FRAME]);
     // A document that is not the current copy (as the old one) does not count.
     await inUi(m, "doc.querySelector(arguments[0]).setAttribute('src', 'about:blank');", [FRAME]);
     await waitUi(m, "return doc.querySelector(arguments[0]).contentDocument?.documentURI === 'about:blank';", [FRAME]);
-    await send(JSON.stringify({ type: "hauteur", px: 600 }));
+    await send(JSON.stringify({ type: "height", px: 600 }));
     await new Promise((r) => setTimeout(r, 300));
     expect(await height()).toBe(20);
     await closeTabs();

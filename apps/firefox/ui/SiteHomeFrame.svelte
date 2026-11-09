@@ -55,15 +55,15 @@
       const r = HomeMessage.safeParse(data);
       if (!r.success) return;
       const m = r.data;
-      if (m.type === "pret") void api.memory().then(send, () => {});
-      else if (m.type === "ouvrir") void api.open(m.url).catch(() => {});
+      if (m.type === "ready") void api.memory().then(send, () => {});
+      else if (m.type === "open") void api.open(m.url).catch(() => {});
       else
         void api.image(m.url).then(
           (data) => send({ type: "image", n: m.n, data }),
           () => send({ type: "image", n: m.n, data: null }),
         );
     };
-    // The window root sees the events of the window's in-process frames, the `pret` sent while the home is parsed too.
+    // The window root sees the events of the window's in-process frames, the `ready` sent while the home is parsed too.
     const root = (window as unknown as { windowRoot: EventTarget }).windowRoot;
     (root.addEventListener as (t: string, l: EventListener, c: boolean, untrusted: boolean) => void)("webaios-home", onMessage, true, true);
     // An iframe of this chrome page never gets `load`: DOMFrameContentLoaded comes once the home's scripts have run.

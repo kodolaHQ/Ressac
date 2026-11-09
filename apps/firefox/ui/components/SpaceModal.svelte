@@ -90,8 +90,8 @@
     const name = draft.name.trim();
     const icon = draft.icon.trim() || "📁";
     const { id, private: isPrivate, profile: profile } = draft;
-    if (id === null) api.dispatch({ type: "creerEspace", name: name, icon: icon, private: isPrivate, profile: profile, windowId: windowId });
-    else api.dispatch({ type: "reglerEspace", id, name: name, icon: icon, private: isPrivate, profile: profile });
+    if (id === null) api.dispatch({ type: "createSpace", name: name, icon: icon, private: isPrivate, profile: profile, windowId: windowId });
+    else api.dispatch({ type: "updateSpace", id, name: name, icon: icon, private: isPrivate, profile: profile });
     close();
   }
 

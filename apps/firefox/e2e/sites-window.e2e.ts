@@ -41,7 +41,7 @@ async function launch(): Promise<void> {
 const inStore = <T = unknown>(body: string, args: unknown[] = []) =>
   m.execute<T>(`return (async () => { const store = await ChromeUtils.importESModule("${STORE}").ready; ${body} })();`, args);
 /** « Ouvrir » on the app's row, as the Applications page sends it: through the host, which asks the chrome. */
-const openSite = (id = "vidola") => inStore(`await store.agent.request("sites.agir", { id: arguments[0], action: "ouvrir", fenetre: store.state.fenetres[0].id });`, [id]);
+const openSite = (id = "vidola") => inStore(`await store.agent.request("sites.act", { id: arguments[0], action: "open", window: store.state.windows[0].id });`, [id]);
 const viewAt = (u: string, expr = view) =>
   waitFor(m, `const b = ${expr}; return !!b && b.currentURI.spec === ${JSON.stringify(u)} && !b.webProgress.isLoadingDocument;`, (v) => v === true, 15_000);
 async function openAndWait(p = "/"): Promise<void> {
@@ -229,7 +229,7 @@ describe("site app window", () => {
     await inStore(`store.containerFor("profil-essai");`);
     for (const c of [null, "userContextIdInternal.webaios-site-autre", "userContextIdInternal.webaios-profil-essai"]) expect(await cookies(c), String(c)).toEqual([]);
     await sleep(2000);
-    expect(await inUi(m, "return await ui.webaios.historique.rechercher('vidola', 50, false);")).toEqual([]);
+    expect(await inUi(m, "return await ui.webaios.history.search('vidola', 50, false);")).toEqual([]);
     expect(Object.values((await state(m)).tabs).some((o) => o.url.includes("vidola"))).toBe(false);
   });
 
@@ -250,7 +250,7 @@ describe("site app window", () => {
   it("closed before its startup is done (a very fast ⌘W): the host no longer says « Ouverte »", async () => {
     // Closed in the same turn as the open: before delayedStartupPromise, so before the view is attached.
     const attached = await inStore<boolean>(
-      `await store.agent.request("sites.agir", { id: "vidola", action: "ouvrir", fenetre: store.state.fenetres[0].id });
+      `await store.agent.request("sites.act", { id: "vidola", action: "open", window: store.state.windows[0].id });
        const win = store.sites.windowOf("vidola");
        const attached = !!win.webaiosSiteProgress;
        win.close();
@@ -258,7 +258,7 @@ describe("site app window", () => {
     );
     expect(attached).toBe(false);
     await waitFor(m, `return !${site};`, (v) => v === true);
-    const opened = () => inStore<boolean | undefined>(`return (await store.agent.request("sites.liste")).find((s) => s.id === "vidola")?.ouverte;`);
+    const opened = () => inStore<boolean | undefined>(`return (await store.agent.request("sites.list")).find((s) => s.id === "vidola")?.ouverte;`);
     await expect.poll(opened, { timeout: 10_000 }).toBe(false);
   });
 
@@ -270,7 +270,7 @@ describe("site app window", () => {
     await inSiteView(m, "vidola", "location.href = '/fichier'; return 1;");
     await expect.poll(() => server.requests.some((r) => r.path === "/fichier")).toBe(true);
     await sleep(1500);
-    expect(await inUi(m, "return (await ui.webaios.telechargements.liste()).length;")).toBe(0);
+    expect(await inUi(m, "return (await ui.webaios.downloads.list()).length;")).toBe(0);
     expect(await m.execute(`return (async () => { const { Downloads } = ChromeUtils.importESModule("resource://gre/modules/Downloads.sys.mjs"); return (await (await Downloads.getList(Downloads.ALL)).getAll()).length; })();`)).toBe(0);
     expect(readdirSync(dl)).toEqual([]);
   });
@@ -278,7 +278,7 @@ describe("site app window", () => {
   it("the site window is never a WebAiOs window", async () => {
     const f = (await state(m)).windows[0]!;
     // ⌃Tab needs two tabs to walk.
-    for (const u of [server.url("compte.localhost", "/connexion"), server.url("pub.localhost", "/x")]) await dispatch(m, { type: "ouvrirOnglet", windowId: f.id, url: u });
+    for (const u of [server.url("compte.localhost", "/connexion"), server.url("pub.localhost", "/x")]) await dispatch(m, { type: "openTab", windowId: f.id, url: u });
     const tabs = await mainTabs();
     await openAndWait();
     expect((await state(m)).windows.map((x) => x.id)).toEqual([f.id]);

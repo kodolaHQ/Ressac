@@ -49,7 +49,7 @@ async function run(actionsFolder: string, id: string, results: unknown, start = 
 
 describe("input schemas", () => {
   it("accept and refuse these ids, inputs and grants", () => {
-    const grant = { id: "gitlab", profile: "defaut", account: ["gitlab.com"], public: [] };
+    const grant = { id: "gitlab", profile: "default", account: ["gitlab.com"], public: [] };
     const ok = (sc: { safeParse: (v: unknown) => { success: boolean } }, vs: unknown[]) => vs.map((v) => sc.safeParse(v).success);
     expect(ok(SchemaIdAction, ["gitlab", "a-1", "", "Git_Lab", "../x", "a".repeat(60), "a".repeat(61), 3, null])).toEqual([true, true, false, false, false, true, false, false, false]);
     expect(ok(ActionInputSchema, [null, "", "x".repeat(2000), "x".repeat(2001), 4, undefined])).toEqual([true, true, true, false, false, false]);
@@ -71,7 +71,7 @@ describe("actionImageAllowed", () => {
     const { c, actionsFolder: actionsFolder } = space({ rewritten: { name: "Réécrite", sources: { web: true } } });
     const image = "https://img.test/a.jpg";
     const ex = await run(actionsFolder, "reecrite", { snapshot: image });
-    await giveGrant(actionsFolder, "reecrite", { domains: ["gitlab.com"], public: [], profile: "defaut" });
+    await giveGrant(actionsFolder, "reecrite", { domains: ["gitlab.com"], public: [], profile: "default" });
     expect(await actionImageAllowed({ actionsFolder: actionsFolder, readAction: (id) => readAction(c, id) }, "reecrite", ex, image)).toBe(false);
   });
 });
@@ -288,8 +288,8 @@ describe("lancer, refusals and deletion", () => {
 
   it("accorder answers the kernel's refusal as an error", async () => {
     const { h, create: create } = host();
-    expect(await h.grant({ id: "gitlab", profile: "defaut", account: ["gitlab.com"], public: [] })).toEqual({ ok: true });
-    expect(await create(null).grant({ id: "gitlab", profile: "defaut", account: [], public: [] })).toEqual({ ok: false, error: NO_KERNEL_MESSAGE });
+    expect(await h.grant({ id: "gitlab", profile: "default", account: ["gitlab.com"], public: [] })).toEqual({ ok: true });
+    expect(await create(null).grant({ id: "gitlab", profile: "default", account: [], public: [] })).toEqual({ ok: false, error: NO_KERNEL_MESSAGE });
   });
 });
 

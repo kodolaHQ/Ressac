@@ -103,7 +103,7 @@ function closeStray(browser: any): void {
 function closed(a: OpenApp): void {
   if (open.get(a.folder) === a) {
     open.delete(a.folder);
-    host?.notify("applications.fenetreFermee", { folder: a.folder, byUser: !a.wanted && !quitting });
+    host?.notify("apps.windowClosed", { folder: a.folder, byUser: !a.wanted && !quitting });
   }
   told();
 }
@@ -217,7 +217,7 @@ export const apps = {
   navigated(win: Window, url: string): void {
     const a = [...open.values()].find((x) => x.window === win);
     if (!a) return;
-    host?.notify("applications.navigation", { folder: a.folder, url, title: apps.titleOf(a) });
+    host?.notify("apps.navigation", { folder: a.folder, url, title: apps.titleOf(a) });
     told();
   },
   /** The frame (resize, move, close) and a kept favicon, for the host's memory. */
@@ -225,8 +225,8 @@ export const apps = {
     const a = [...open.values()].find((x) => x.window === win);
     if (!a) return;
     const frame = o.frame ? frameOf(win) : null;
-    if (frame) host?.notify("applications.noter", { folder: a.folder, frame: frame });
-    if (o.favicon) host?.notify("applications.noter", { folder: a.folder, favicon: o.favicon });
+    if (frame) host?.notify("apps.note", { folder: a.folder, frame: frame });
+    if (o.favicon) host?.notify("apps.note", { folder: a.folder, favicon: o.favicon });
   },
   titleOf(a: Pick<OpenApp, "name" | "view">): string {
     return String(a.view?.contentTitle ?? "").trim() || a.name;
@@ -319,7 +319,7 @@ export const apps = {
           console.error("[apps] badge listener failed:", e);
         }
     };
-    const offs = [host?.on("acces", changed), host?.on(HOST_EXITED, changed)];
+    const offs = [host?.on("access", changed), host?.on(HOST_EXITED, changed)];
     win.addEventListener("unload", () => offs.forEach((f) => f?.()), { once: true });
     place();
     return {
@@ -327,7 +327,7 @@ export const apps = {
         state: own,
         // Its own app's access only.
         cut: (cut, right) => {
-          if (cut === id && (right === undefined || typeof right === "string")) host?.notify("politique.couper", { id, right: right });
+          if (cut === id && (right === undefined || typeof right === "string")) host?.notify("policy.cut", { id, right: right });
         },
       },
       onAccess(cb) {
@@ -351,10 +351,10 @@ export const apps = {
   },
   /** The host's requests (host/applications.ts chrome), positional params. */
   handlers: {
-    "apps.ouvrir": ([a, frame]: [{ folder: string; name: string; port: number }, FrameBounds | null]) => apps.open(a, frame),
-    "apps.fermer": ([folder]: [string]) => apps.close(folder),
-    "apps.montrer": ([folder]: [string]) => apps.show(folder),
-    "apps.effacer": ([folder]: [string]) => apps.erase(folder),
+    "apps.open": ([a, frame]: [{ folder: string; name: string; port: number }, FrameBounds | null]) => apps.open(a, frame),
+    "apps.close": ([folder]: [string]) => apps.close(folder),
+    "apps.show": ([folder]: [string]) => apps.show(folder),
+    "apps.erase": ([folder]: [string]) => apps.erase(folder),
   },
 };
 

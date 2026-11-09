@@ -30,7 +30,7 @@ async function waitRuns(id: string, n: number): Promise<void> {
 async function setPrivate(isPrivate: boolean): Promise<void> {
   const s = await state(m);
   const e = s.spaces.find((x) => x.id === s.windows[0]!.activeSpace)!;
-  if (e.private !== isPrivate) await dispatch(m, { type: "reglerEspace", id: e.id, name: e.name, icon: e.icon, private: isPrivate, profile: e.profile } as Action);
+  if (e.private !== isPrivate) await dispatch(m, { type: "updateSpace", id: e.id, name: e.name, icon: e.icon, private: isPrivate, profile: e.profile } as Action);
 }
 /** Opens the « Actions » page of the sidebar. */
 async function openActionsPage(): Promise<void> {
@@ -40,7 +40,7 @@ async function openActionsPage(): Promise<void> {
 /** The window's tabs closed, the space public again. */
 async function fresh(): Promise<void> {
   await setPrivate(false);
-  for (const id of Object.keys((await state(m)).tabs)) await dispatch(m, { type: "fermerOnglet", id } as Action);
+  for (const id of Object.keys((await state(m)).tabs)) await dispatch(m, { type: "closeTab", id } as Action);
 }
 /** « Tickets » (keywords, last result) and « Leboncoin » (input, never launched). */
 async function writeTwoActions(d: string): Promise<void> {
@@ -95,7 +95,7 @@ describe("the Actions page", () => {
           await writeRunnableAction(d, id, { name: "Avec compte", account: ["127.0.0.1"], code: "export default async () => [{ page: { titre: 'x' } }];" });
           await writeResult(d, id, EXECUTION, YESTERDAY, "Secret");
         }
-        const grant = { domains: ["127.0.0.1"], public: [], profile: "defaut" };
+        const grant = { domains: ["127.0.0.1"], public: [], profile: "default" };
         await writeFile(path.join(actionsDataDir(d), "grants.json"), JSON.stringify({ account: grant, grant: grant }));
         // actions.spec.ts:1122
         await mkdir(path.join(d, "workspace", "actions", "cassee"), { recursive: true });

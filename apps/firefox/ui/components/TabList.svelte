@@ -19,7 +19,7 @@
     if (!id) return;
     // deplacerOnglet counts without the moved tab: coming from above shifts the target by one.
     const position = index + (after ? 1 : 0);
-    api.dispatch({ type: "deplacerOnglet", id, index: order.indexOf(id) < position ? position - 1 : position });
+    api.dispatch({ type: "moveTab", id, index: order.indexOf(id) < position ? position - 1 : position });
   }
 </script>
 
@@ -45,13 +45,13 @@
         }}
         ondragleave={() => (hover = null)}
         ondrop={(e) => drop(e, index)}
-        onclick={() => api.dispatch({ type: "activerOnglet", id })}
-        onkeydown={(e) => (e.key === "Enter" || e.key === " ") && api.dispatch({ type: "activerOnglet", id })}
+        onclick={() => api.dispatch({ type: "activateTab", id })}
+        onkeydown={(e) => (e.key === "Enter" || e.key === " ") && api.dispatch({ type: "activateTab", id })}
         onauxclick={(e) => e.button === 1 && closeTab(id)}
         oncontextmenu={(e) =>
           openMenu(e, [
-            { label: "Épingler", dispatch: () => api.dispatch({ type: "epinglerOnglet", id }) },
-            { label: "Ajouter aux essentiels", dispatch: () => api.dispatch({ type: "ajouterEssentiel", id }) },
+            { label: "Épingler", dispatch: () => api.dispatch({ type: "pinTab", id }) },
+            { label: "Ajouter aux essentiels", dispatch: () => api.dispatch({ type: "addEssential", id }) },
             { label: "Fermer", dispatch: () => closeTab(id) },
           ])}
       >

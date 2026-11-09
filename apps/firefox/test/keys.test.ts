@@ -6,19 +6,19 @@ const key = (key: string, code: string, mods: { meta?: boolean; ctrl?: boolean; 
 
 describe("shortcutFor", () => {
   it("maps the menu accelerators", () => {
-    expect(key("t", "KeyT", { meta: true })).toEqual({ type: "raccourci", r: "commande" });
-    expect(key("l", "KeyL", { meta: true })).toEqual({ type: "raccourci", r: "adresse" });
-    expect(key("w", "KeyW", { meta: true })).toEqual({ type: "raccourci", r: "fermerOnglet" });
-    expect(key("T", "KeyT", { meta: true, shift: true })).toEqual({ type: "rouvrir" });
-    expect(key("[", "BracketLeft", { meta: true })).toEqual({ type: "naviguer", c: "reculer" });
-    expect(key("]", "BracketRight", { meta: true })).toEqual({ type: "naviguer", c: "avancer" });
-    expect(key("r", "KeyR", { meta: true })).toEqual({ type: "naviguer", c: "recharger" });
-    expect(key("R", "KeyR", { meta: true, shift: true })).toEqual({ type: "naviguer", c: "rechargerSansCache" });
+    expect(key("t", "KeyT", { meta: true })).toEqual({ type: "shortcut", r: "command" });
+    expect(key("l", "KeyL", { meta: true })).toEqual({ type: "shortcut", r: "address" });
+    expect(key("w", "KeyW", { meta: true })).toEqual({ type: "shortcut", r: "closeTab" });
+    expect(key("T", "KeyT", { meta: true, shift: true })).toEqual({ type: "reopen" });
+    expect(key("[", "BracketLeft", { meta: true })).toEqual({ type: "navigate", c: "back" });
+    expect(key("]", "BracketRight", { meta: true })).toEqual({ type: "navigate", c: "forward" });
+    expect(key("r", "KeyR", { meta: true })).toEqual({ type: "navigate", c: "reload" });
+    expect(key("R", "KeyR", { meta: true, shift: true })).toEqual({ type: "navigate", c: "reloadHard" });
   });
 
   it("⌘N opens a window, ⇧⌘W closes it", () => {
-    expect(key("n", "KeyN", { meta: true })).toEqual({ type: "fenetre" });
-    expect(key("W", "KeyW", { meta: true, shift: true })).toEqual({ type: "fermerFenetre" });
+    expect(key("n", "KeyN", { meta: true })).toEqual({ type: "window" });
+    expect(key("W", "KeyW", { meta: true, shift: true })).toEqual({ type: "closeWindow" });
     // The native menu items lead to the window registry; only their keys are ours.
     expect(FIREFOX_KEYS).toContain("key_closeWindow");
     expect(FIREFOX_COMMANDS).not.toContain("cmd_newNavigator");
@@ -26,20 +26,20 @@ describe("shortcutFor", () => {
   });
 
   it("reads digits on the physical key", () => {
-    expect(key("3", "Digit3", { meta: true })).toEqual({ type: "nieme", n: 3 });
+    expect(key("3", "Digit3", { meta: true })).toEqual({ type: "nth", n: 3 });
     // AZERTY: ⌘1 types “&”.
-    expect(key("&", "Digit1", { meta: true })).toEqual({ type: "nieme", n: 1 });
-    expect(key("2", "Digit2", { ctrl: true })).toEqual({ type: "espace", n: 2 });
+    expect(key("&", "Digit1", { meta: true })).toEqual({ type: "nth", n: 1 });
+    expect(key("2", "Digit2", { ctrl: true })).toEqual({ type: "space", n: 2 });
     expect(key("0", "Digit0", { meta: true })).toBeNull();
   });
 
   it("walks the tabs with ⌃Tab", () => {
-    expect(key("Tab", "Tab", { ctrl: true })).toEqual({ type: "parcourir", delta: 1 });
-    expect(key("Tab", "Tab", { ctrl: true, shift: true })).toEqual({ type: "parcourir", delta: -1 });
+    expect(key("Tab", "Tab", { ctrl: true })).toEqual({ type: "cycle", delta: 1 });
+    expect(key("Tab", "Tab", { ctrl: true, shift: true })).toEqual({ type: "cycle", delta: -1 });
   });
 
   it("swallows Firefox's other tab keys, which walk every space's tabs", () => {
-    const swallowed = { type: "ignorer" };
+    const swallowed = { type: "ignore" };
     expect(key("PageDown", "PageDown", { ctrl: true })).toEqual(swallowed);
     expect(key("PageUp", "PageUp", { ctrl: true })).toEqual(swallowed);
     // ⌃⇧PageUp/PageDown move the tab among them.
@@ -57,8 +57,8 @@ describe("shortcutFor", () => {
   });
 
   it("⌘Y opens the history, ⇧⌘J the downloads", () => {
-    expect(key("y", "KeyY", { meta: true })).toEqual({ type: "panneau", p: "historique" });
-    expect(key("J", "KeyJ", { meta: true, shift: true })).toEqual({ type: "panneau", p: "telechargements" });
+    expect(key("y", "KeyY", { meta: true })).toEqual({ type: "panel", p: "history" });
+    expect(key("J", "KeyJ", { meta: true, shift: true })).toEqual({ type: "panel", p: "downloads" });
     expect(FIREFOX_KEYS).toEqual(expect.arrayContaining(["key_gotoHistory", "showAllHistoryKb", "manBookmarkKb"]));
     expect(FIREFOX_COMMANDS).toEqual(expect.arrayContaining(["Browser:ShowAllHistory", "Browser:ShowAllBookmarks", "Tools:Downloads"]));
   });
@@ -71,7 +71,7 @@ describe("shortcutFor", () => {
   });
 
   it("⇧⌘A opens the Applications page, not Firefox's add-ons", () => {
-    expect(key("A", "KeyA", { meta: true, shift: true })).toEqual({ type: "applications" });
+    expect(key("A", "KeyA", { meta: true, shift: true })).toEqual({ type: "apps" });
     expect(key("a", "KeyA", { meta: true })).toBeNull();
     expect(FIREFOX_KEYS).toContain("key_openAddons");
   });

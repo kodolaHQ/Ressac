@@ -13,7 +13,7 @@ const ag = (a: Action | null) => {
   if (a) e = apply(e, a, genId);
 };
 const open = (url: string) => {
-  ag({ type: "ouvrirOnglet", windowId: F, url });
+  ag({ type: "openTab", windowId: F, url });
   return Object.keys(e.tabs).at(-1)!;
 };
 const active = () => {
@@ -29,11 +29,11 @@ beforeEach(() => {
 
 test("⌘1…⌘9: the space's pinned come before the tabs, open or not", () => {
   const p = open("https://epingle.fr");
-  ag({ type: "epinglerOnglet", id: p });
+  ag({ type: "pinTab", id: p });
   const favorite = e.spaces[0]!.pinned[0]!.id;
-  ag({ type: "fermerOnglet", id: p }); // the favorite stays, without a tab
+  ag({ type: "closeTab", id: p }); // the favorite stays, without a tab
   const a = open("https://a.fr");
-  expect(toNth(e, F, 1)).toEqual({ type: "ouvrirFavori", windowId: F, kind: "epingle", id: favorite });
+  expect(toNth(e, F, 1)).toEqual({ type: "openFavorite", windowId: F, kind: "pinned", id: favorite });
   ag(toNth(e, F, 1));
   expect(e.tabs[active()!]?.link?.id).toBe(favorite);
   ag(toNth(e, F, 2));
@@ -49,6 +49,6 @@ test("⌘2 activates the second; ⌘9 the last; beyond the list, nothing", () =>
   ag(toNth(e, F, 9));
   expect(active()).toBe(c);
   expect(toNth(e, F, 5)).toBeNull();
-  ag({ type: "activerOnglet", id: a });
+  ag({ type: "activateTab", id: a });
   expect(active()).toBe(a);
 });

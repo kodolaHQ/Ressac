@@ -29,13 +29,13 @@
   onpointermovecapture={notePlace}
   onkeyup={(e) => {
     // Redundant with the interface's `before-input-event` (no effect outside a traversal): the panel never stays stuck.
-    if (e.key === "Control") send({ type: "valider" });
+    if (e.key === "Control") send({ type: "confirm" });
   }}
   onkeydowncapture={(e) => {
     if (e.key === "Escape") {
       e.preventDefault();
       e.stopImmediatePropagation();
-      send({ type: "annuler" });
+      send({ type: "cancel" });
     }
     // ⌃Tab and ⌃⇧Tab: the menu accelerator already advances the traversal, interface focus included. Nothing to send here
     // (it would be a double step), and above all no preventDefault: a key consumed by the page no longer reaches the menu.
@@ -51,8 +51,8 @@
       tabindex="-1"
       aria-selected={i === panel.selection}
       title={card.title}
-      onpointermove={() => moved && i !== panel.selection && send({ type: "survoler", id: card.id })}
-      onclick={() => send({ type: "choisir", id: card.id })}
+      onpointermove={() => moved && i !== panel.selection && send({ type: "hover", id: card.id })}
+      onclick={() => send({ type: "choose", id: card.id })}
     >
       <div class="apercu">
         {#if card.preview}

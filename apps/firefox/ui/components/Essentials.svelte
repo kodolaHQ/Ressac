@@ -11,7 +11,7 @@
   });
 
   function open(f: Favorite) {
-    api.dispatch({ type: "ouvrirFavori", windowId: win.id, kind: "essentiel", id: f.id });
+    api.dispatch({ type: "openFavorite", windowId: win.id, kind: "essential", id: f.id });
   }
 </script>
 
@@ -24,7 +24,7 @@
   ondragover={(e) => e.dataTransfer?.types.includes("application/x-webaios-onglet") && e.preventDefault()}
   ondrop={(e) => {
     const id = e.dataTransfer?.getData("application/x-webaios-onglet");
-    if (id) api.dispatch({ type: "ajouterEssentiel", id });
+    if (id) api.dispatch({ type: "addEssential", id });
   }}
 >
   {#each appState.value?.essentials ?? [] as favorite (favorite.id)}
@@ -33,7 +33,7 @@
       class:actif={favorite.id === active}
       title={favorite.title}
       onclick={() => open(favorite)}
-      oncontextmenu={(e) => openMenu(e, [{ label: "Retirer", dispatch: () => api.dispatch({ type: "retirerEssentiel", favoriteId: favorite.id }) }])}
+      oncontextmenu={(e) => openMenu(e, [{ label: "Retirer", dispatch: () => api.dispatch({ type: "removeEssential", favoriteId: favorite.id }) }])}
     >
       <SiteIcon favicon={favorite.favicon} title={favorite.title} size={large ? 32 : 18} />
     </button>

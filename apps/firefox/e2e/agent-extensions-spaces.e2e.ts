@@ -87,11 +87,11 @@ const activeSpace = async (m: Marionette) => {
 };
 async function setPrivate(m: Marionette, isPrivate: boolean): Promise<void> {
   const e = await activeSpace(m);
-  await dispatch(m, { type: "reglerEspace", id: e.id, name: e.name, icon: e.icon, private: isPrivate, profile: e.profile } as Action);
+  await dispatch(m, { type: "updateSpace", id: e.id, name: e.name, icon: e.icon, private: isPrivate, profile: e.profile } as Action);
 }
 async function setSpacePrivate(m: Marionette, id: string): Promise<void> {
   const e = (await state(m)).spaces.find((x) => x.id === id)!;
-  await dispatch(m, { type: "reglerEspace", id: e.id, name: e.name, icon: e.icon, private: true, profile: e.profile } as Action);
+  await dispatch(m, { type: "updateSpace", id: e.id, name: e.name, icon: e.icon, private: true, profile: e.profile } as Action);
 }
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const hostPid = (m: Marionette) => m.execute<number | null>(`return (async () => (await ChromeUtils.importESModule("${STORE}").ready).agent.pid)();`);
@@ -124,7 +124,7 @@ describe("agent extensions per space", () => {
     await waitActive(m, "cacheur@agent.webaios", true);
     const a = await openTab(m, `${server.url}/cache.html`);
     expect(await poll(() => display(m, a), (v) => v === "none,block")).toBe("none,block");
-    await dispatch(m, { type: "creerEspace", name: "B", icon: "🅱️", private: false, profile: "nouveau", windowId: (await state(m)).windows[0]!.id } as Action);
+    await dispatch(m, { type: "createSpace", name: "B", icon: "🅱️", private: false, profile: "nouveau", windowId: (await state(m)).windows[0]!.id } as Action);
     const b = await openTab(m, `${server.url}/cache.html`);
     expect((await state(m)).tabs[b]!.spaceId).not.toBe((await state(m)).tabs[a]!.spaceId);
     await new Promise((r) => setTimeout(r, 3000));
@@ -142,7 +142,7 @@ describe("agent extensions per space", () => {
         const p = doc.querySelector('[data-testid="panneau-extensions"]');
         return p ? p.textContent : null;`);
     expect(await listed()).toContain("Cacheur");
-    await dispatch(m, { type: "creerEspace", name: "B", icon: "🅱️", private: false, profile: "nouveau", windowId: (await state(m)).windows[0]!.id } as Action);
+    await dispatch(m, { type: "createSpace", name: "B", icon: "🅱️", private: false, profile: "nouveau", windowId: (await state(m)).windows[0]!.id } as Action);
     await openTab(m, `${server.url}/cache.html`);
     await waitUi(m, `return !doc.querySelector('[data-testid="panneau-extensions"]')?.textContent.includes("Cacheur") || null`);
     expect(await listed()).not.toContain("Cacheur");
@@ -162,7 +162,7 @@ describe("agent extensions per space", () => {
     await openSettings(m, e.id);
     for (const name of ["cacheur", "jamais-accordee"]) expect(await line(m, name)).toMatchObject({ disabled: true, text: expect.stringContaining(PRIVATE_PROFILE_ERROR) });
     // The kernel refuses too, without the switch.
-    expect(await inUi(m, "return ui.webaios.extensions.basculer('agent:cacheur', arguments[0], true).then((r) => JSON.parse(JSON.stringify(r)))", [e.id])).toEqual({
+    expect(await inUi(m, "return ui.webaios.extensions.toggle('agent:cacheur', arguments[0], true).then((r) => JSON.parse(JSON.stringify(r)))", [e.id])).toEqual({
       ok: false,
       error: PRIVATE_PROFILE_ERROR,
     });
@@ -175,7 +175,7 @@ describe("agent extensions per space", () => {
     await waitActive(m, "cacheur@agent.webaios", true);
     await until(() => registry(w.dataDir)["agent:cacheur"]?.addonId === "cacheur@agent.webaios");
     const personal = await activeSpace(m);
-    await dispatch(m, { type: "creerEspace", name: "Lecture", icon: "📚", private: false, profile: "defaut", windowId: (await state(m)).windows[0]!.id } as Action);
+    await dispatch(m, { type: "createSpace", name: "Lecture", icon: "📚", private: false, profile: "default", windowId: (await state(m)).windows[0]!.id } as Action);
     await openSettings(m, personal.id);
     expect(await line(m, "Cacheur de l'agent")).toMatchObject({ checked: true, text: expect.stringContaining("Active aussi dans « Lecture » (même profil)") });
     const shown = (id: string) => inUi<string | null>(m, `return doc.querySelector('[data-testid="${id}"]')?.textContent ?? null`);
@@ -199,7 +199,7 @@ describe("agent extensions per space", () => {
     const m = w.marionette;
     await waitActive(m, "cacheur@agent.webaios", true);
     // Without the modal: the creerEspace action, as another window would send it.
-    await dispatch(m, { type: "creerEspace", name: "Secret", icon: "🔒", private: true, profile: "defaut", windowId: (await state(m)).windows[0]!.id } as Action);
+    await dispatch(m, { type: "createSpace", name: "Secret", icon: "🔒", private: true, profile: "default", windowId: (await state(m)).windows[0]!.id } as Action);
     await waitActive(m, "cacheur@agent.webaios", false);
     await until(() => registry(w.dataDir)["agent:cacheur"]?.profiles.length === 0);
   });
@@ -246,10 +246,10 @@ describe("agent extensions per space", () => {
     const spaceA = (await activeSpace(m)).id;
     const a = await openTab(m, `${server.url}/a.html`);
     expect(await poll(() => ticks(m, a), (n) => n > 2)).toBeGreaterThan(2);
-    await dispatch(m, { type: "creerEspace", name: "B", icon: "🅱️", private: false, profile: "nouveau", windowId: (await state(m)).windows[0]!.id } as Action);
+    await dispatch(m, { type: "createSpace", name: "B", icon: "🅱️", private: false, profile: "nouveau", windowId: (await state(m)).windows[0]!.id } as Action);
     const spaceB = (await activeSpace(m)).id;
     const toggle = (space: string, active: boolean) =>
-      inUi(m, "return ui.webaios.extensions.basculer('agent:tic', arguments[0], arguments[1]).then((r) => JSON.parse(JSON.stringify(r)))", [space, active]);
+      inUi(m, "return ui.webaios.extensions.toggle('agent:tic', arguments[0], arguments[1]).then((r) => JSON.parse(JSON.stringify(r)))", [space, active]);
     expect(await toggle(spaceB, true)).toEqual({ ok: true });
     expect(await toggle(spaceA, false)).toEqual({ ok: true });
     await waitActive(m, "tic@agent.webaios", true);

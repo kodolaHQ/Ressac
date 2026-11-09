@@ -66,7 +66,7 @@ const downloads = () =>
 const windows = () => m.execute<number>("return [...Services.wm.getEnumerator(null)].length");
 async function newSpace(isPrivate: boolean): Promise<string> {
   const before = (await state(m)).spaces.map((e) => e.id);
-  const s = await dispatch(m, { type: "creerEspace", name: isPrivate ? "Privé" : "Compte", icon: "🔒", private: isPrivate, profile: "nouveau" } as Action);
+  const s = await dispatch(m, { type: "createSpace", name: isPrivate ? "Privé" : "Compte", icon: "🔒", private: isPrivate, profile: "nouveau" } as Action);
   return s.spaces.find((e) => !before.includes(e.id))!.profile;
 }
 
@@ -120,7 +120,7 @@ it("a read with a profile used by a private space → ProfileDenied", async () =
 it("aborting the signal ends the read and closes the windowless browser", async () => {
   await m.execute(
     `const c = new AbortController();
-     window.__reading = { c, p: ChromeUtils.importESModule("${STORE}").ready.then((s) => s.readPage(arguments[0], { profil: null }, c.signal)).then(() => "lue", (e) => e.name) };`,
+     window.__reading = { c, p: ChromeUtils.importESModule("${STORE}").ready.then((s) => s.readPage(arguments[0], { profile: null }, c.signal)).then(() => "lue", (e) => e.name) };`,
     [`${page.url}/lent`],
   );
   for (const deadline = Date.now() + 10_000; !page.paths.includes("/lent"); await new Promise((r) => setTimeout(r, 100)))
@@ -185,7 +185,7 @@ describe("add-ons", () => {
     const mark = await installAddon(m, marker());
     try {
       // Positive control: a normal tab on the same page does get the mark, so its absence below means something.
-      await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url: `${page.url}/texte.html` });
+      await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url: `${page.url}/texte.html` });
       await waitFor(
         m,
         `return (async () => {

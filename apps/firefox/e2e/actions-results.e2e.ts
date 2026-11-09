@@ -71,7 +71,7 @@ describe("action results", () => {
     const card = tid("carte-accord");
     await q.waitText(`${card} :is(h1, h2, h3, h4)`, "Autoriser l'action « Courrier » à lire avec ton compte");
     expect((await q.text(`${card} ${tid("accord-compte")}`))?.trim()).toBe("Cette action veut lire 127.0.0.1 avec ton compte, connecté avec le profil choisi.");
-    expect(await q.value(`${card} input[type="radio"]:checked`)).toBe("defaut");
+    expect(await q.value(`${card} input[type="radio"]:checked`)).toBe("default");
     // Nothing runs until the grant.
     await new Promise((r) => setTimeout(r, 500));
     expect(await runsOnDisk(w.dataDir, "courrier")).toEqual([]);
@@ -90,7 +90,7 @@ describe("action results", () => {
     await waitUi(m, "return !!doc.querySelector(arguments[0]);", [tid("avancement-action")], 30_000);
     // Closing the tab does not stop the run.
     const tab = Object.values((await state(m)).tabs).find((o) => o.url.startsWith("webaios://action/pages"))!;
-    await dispatch(m, { type: "fermerOnglet", id: tab.id });
+    await dispatch(m, { type: "closeTab", id: tab.id });
     // The tabs of this file's earlier tests stay open: another action's page may show now, never this one.
     await waitUi(m, "return doc.querySelector(arguments[0])?.textContent !== 'Pages';", [tid("nom-action")]);
     expect(Object.values((await state(m)).tabs).some((o) => o.url.startsWith("webaios://action/pages"))).toBe(false);
@@ -99,7 +99,7 @@ describe("action results", () => {
       await new Promise((r) => setTimeout(r, 200));
     }
     const execution = (await runsOnDisk(w.dataDir, "pages"))[0]!.replace(/\.json$/, "");
-    await waitUi(m, "return ui.webaios.actions.direct().then((d) => d.courantes.length === 0);", [], 30_000);
+    await waitUi(m, "return ui.webaios.actions.live().then((d) => d.courantes.length === 0);", [], 30_000);
     await openAction(m, "pages", "Pages");
     await waitUi(m, "return !!doc.querySelector(arguments[0]);", [tid("rendu-page")], 30_000);
     await click(m, tid("resultats-precedents"));
@@ -118,7 +118,7 @@ describe("action results", () => {
     await click(m, tid("voir-dernier-resultat"));
     await q.waitText(tid("bloc-titre"), "Dernier");
     await q.waitCount(tid("resultat-disparu"), 0);
-    await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url: "webaios://action/inconnue" });
+    await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url: "webaios://action/inconnue" });
     await q.waitText(tid("erreur-action"), "Action inconnue");
     expect(servers.ollama.prompts.length).toBe(prompts);
     expect(await runsOnDisk(w.dataDir, "annonces")).toEqual([`${LAST}.json`]);
@@ -131,8 +131,8 @@ describe("action results", () => {
     const prompts = servers.ollama.prompts.length;
     const s = await state(m);
     const e = s.spaces.find((x) => x.id === s.windows[0]!.activeSpace)!;
-    await dispatch(m, { type: "reglerEspace", id: e.id, name: e.name, icon: e.icon, private: true, profile: e.profile } as Action);
-    await dispatch(m, { type: "ouvrirOnglet", windowId: s.windows[0]!.id, url: "webaios://action/x" });
+    await dispatch(m, { type: "updateSpace", id: e.id, name: e.name, icon: e.icon, private: true, profile: e.profile } as Action);
+    await dispatch(m, { type: "openTab", windowId: s.windows[0]!.id, url: "webaios://action/x" });
     await q.waitText(tid("action-espace-prive"), "Les actions ne sont pas disponibles dans un espace privé");
     expect(await q.count(tid("page-action"))).toBe(0);
     expect(await inUi(m, "return doc.body.textContent.includes('Secret');")).toBe(false);

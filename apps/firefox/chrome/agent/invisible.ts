@@ -23,7 +23,7 @@ const READING_MS = 250;
 const SCROLL_MAX = 20;
 const MAX_HOPS = 5;
 
-/** Waits for the turn of a host (the host's `lecture.changerHote`). */
+/** Waits for the turn of a host (the host's `read.changeHost`). */
 type WaitHost = (reading: string, host: string, signal?: AbortSignal) => Promise<void>;
 
 /** A paced read stopped at a document of another site: to resume on `target` after that site's turn. */

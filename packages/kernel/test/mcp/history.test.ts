@@ -47,8 +47,8 @@ afterEach(async () => {
 
 const text = (r: Awaited<ReturnType<Client["callTool"]>>) =>
   (r.content as { type: string; text?: string }[]).map((c) => c.text ?? "").join("\n");
-const historyCalls = () => bridge.calls.filter((a) => a.method === "chercherHistorique").map((a) => a.args[0]);
-const requests = () => bridge.calls.filter((a) => a.method === "demanderAutorisation" || a.method === "demanderOutilsDev").length;
+const historyCalls = () => bridge.calls.filter((a) => a.method === "history.find").map((a) => a.args[0]);
+const requests = () => bridge.calls.filter((a) => a.method === "askPermission" || a.method === "askDevTools").length;
 
 test("without history in the bridge: the tools do not exist", async () => {
   const c = await start();

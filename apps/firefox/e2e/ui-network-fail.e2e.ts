@@ -49,7 +49,7 @@ describe("the observer failing to install", () => {
   it("the observer failing to install: no UI frame gets its src", { timeout: 120_000 }, async () => {
     const { m } = l;
     await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true, 30_000);
-    await m.execute(`return (async () => { const store = await ChromeUtils.importESModule("${STORE}").ready; await store.agent.request("sites.agir", { id: "failsite", action: "ouvrir", fenetre: store.state.fenetres[0].id }); })();`);
+    await m.execute(`return (async () => { const store = await ChromeUtils.importESModule("${STORE}").ready; await store.agent.request("sites.act", { id: "failsite", action: "open", window: store.state.windows[0].id }); })();`);
     // The app's view still loads (a content browser): its window is up.
     await expect.poll(() => net.hits.some((h) => h.label === "failsite.localhost" && h.path === "/page"), { timeout: 20_000 }).toBe(true);
     await sleep(3000);
@@ -60,7 +60,7 @@ describe("the observer failing to install", () => {
     expect(uris).toEqual(["about:blank", "about:blank", "about:blank"]);
     expect(await consoleWith(m, "[ui-network] the UI's network guard is missing")).not.toEqual([]);
     // A tab still loads.
-    await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url: `http://127.0.0.1:${HTTP}/temoin`, activate: true });
+    await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url: `http://127.0.0.1:${HTTP}/temoin`, activate: true });
     await expect.poll(() => net.hits.some((h) => h.path === "/temoin"), { timeout: 15_000 }).toBe(true);
   });
 });

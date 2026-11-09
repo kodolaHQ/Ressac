@@ -84,15 +84,15 @@ afterAll(async () => {
   for (const d of dirs) await rm(d, { recursive: true, force: true });
 });
 afterEach(async () => {
-  await inStore(m, `for (const id of arguments[0]) { await store.design.stop({ type: "site", id }); store.design.closeOverlay({ type: "site", id }, "panier"); } return 1;`, [IDS]);
+  await inStore(m, `for (const id of arguments[0]) { await store.design.stop({ type: "site", id }); store.design.closeOverlay({ type: "site", id }, "basket"); } return 1;`, [IDS]);
 });
 
 const state = (id: string) => inStore<{ active: boolean; project: { project: string } | null; unavailable: string | null; basket: number }>(m, "return await store.design.etat(arguments[0]);", [T(id)]);
 const toggle = (id: string) => inStore(m, "await store.design.toggle(arguments[0]); return 1;", [T(id)]);
 const add = (id: string, text: string) => inStore<{ ok: boolean }>(m, "return await store.design.add(arguments[0], arguments[1]);", [T(id), text]);
 const bubble = (id: string) =>
-  inStore<{ label: string; source: string | null; warning: string | null; project: string } | null>(m, 'return store.design.overlayContext(arguments[0], ["bulle"]);', [T(id)]);
-const cart = (id: string) => inStore<number>(m, `return (await store.agent.request("design.suivi", { projet: "site-" + arguments[0] })).panier;`, [id]);
+  inStore<{ label: string; source: string | null; warning: string | null; project: string } | null>(m, 'return store.design.overlayContext(arguments[0], ["bubble"]);', [T(id)]);
+const cart = (id: string) => inStore<number>(m, `return (await store.agent.request("design.tracking", { project: "site-" + arguments[0] })).basket;`, [id]);
 const hosts = (id: string) => inSiteView<number>(m, id, `return document.getElementsByTagName("webaios-viseur").length;`).catch(() => -1);
 const overlayRect = (id: string) => overlayOf<{ x: number; y: number; width: number; height: number }>(m, id, "const r = f.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height };");
 const notice = (id: string) => inStore<{ kind: string; text?: string } | null>(m, "return store.sites.controller(arguments[0]).state().avis;", [id]);
@@ -102,7 +102,7 @@ const geometry = (id: string) =>
     `const b = ${viewExpr(id)}, r = b.getBoundingClientRect(), win = ${siteExpr(id)}; return { x: r.x, y: r.y, width: r.width, height: r.height, w: win.innerWidth, h: win.innerHeight, z: b.fullZoom };`,
   );
 const cssRect = (id: string, sel: string) =>
-  inSiteView<{ x: number; y: number; width: number; height: number }>(m, id, `const r = document.querySelector(${JSON.stringify(sel)}).getBoundingClientRect(); return { x: r.x, y: r.y, largeur: r.width, hauteur: r.height };`);
+  inSiteView<{ x: number; y: number; width: number; height: number }>(m, id, `const r = document.querySelector(${JSON.stringify(sel)}).getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height };`);
 
 /** Toggles the mode on (the viewfinder in the page), then a trusted click at `p` (read before): the bubble. */
 async function aimAt(id: string, p: { x: number; y: number }) {
@@ -206,7 +206,7 @@ describe("design mode, site target, the view", () => {
 
   it("the capture shows the page only", async () => {
     await toSite(m, "vidola", "/design");
-    const rc = rectCapture(await cssRect("vidola", "#cible"), (await view<{ width: number; height: number }>("vidola", "({ largeur: innerWidth, hauteur: innerHeight })"))!, 1);
+    const rc = rectCapture(await cssRect("vidola", "#cible"), (await view<{ width: number; height: number }>("vidola", "({ width: innerWidth, height: innerHeight })"))!, 1);
     // A magenta chrome cover over #cible (clicks pass through it).
     await m.execute(
       `const win = ${siteExpr("vidola")}, b = ${viewExpr("vidola")}.getBoundingClientRect(), [rc] = arguments;
@@ -357,10 +357,10 @@ describe("design mode, site target, the view", () => {
     expect(Date.now() - t0).toBeGreaterThanOrEqual(4500);
     // A blocked link's mention carries « Ouvrir dans un onglet »: the info never replaces it.
     await inStore(m, "store.sites.controller(arguments[0]).blocked(arguments[1]); return 1;", ["tuning", "http://ailleurs.localhost/"]);
-    expect((await notice("tuning"))?.kind).toBe("lien-bloque");
+    expect((await notice("tuning"))?.kind).toBe("link-blocked");
     await toggle("tuning");
     await sleep(300);
-    expect((await notice("tuning"))?.kind).toBe("lien-bloque");
+    expect((await notice("tuning"))?.kind).toBe("link-blocked");
     expect(await hosts("tuning")).toBe(0);
   });
 
@@ -371,7 +371,7 @@ describe("design mode, site target, the view", () => {
     await sleep(300);
     try {
       const r = await cssRect("vidola", "#cible");
-      const viewOf = (await view<{ width: number; height: number }>("vidola", "({ largeur: innerWidth, hauteur: innerHeight })"))!;
+      const viewOf = (await view<{ width: number; height: number }>("vidola", "({ width: innerWidth, height: innerHeight })"))!;
       const p = await viewPoint(m, "vidola", "#cible");
       const g = await geometry("vidola");
       expect(g.z).toBe(1.5);

@@ -107,7 +107,7 @@ export function registerPermissionHooks(o: {
       } catch {}
     };
     const mediaTypes = [...(d.videoInputDevices.length && !screen ? ["video"] : []), ...(d.audioInputDevices.length ? ["audio"] : [])];
-    calls.set(d.callID, ask(this.browsingContext.top.embedderElement, frame, screen ? { kind: "partage-ecran" } : { kind: "media", mediaTypes }, respond));
+    calls.set(d.callID, ask(this.browsingContext.top.embedderElement, frame, screen ? { kind: "screen-share" } : { kind: "media", mediaTypes }, respond));
   };
 
   // A link to another application: Firefox's own dialog never shows (spike P5).

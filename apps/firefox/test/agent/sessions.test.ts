@@ -47,7 +47,7 @@ function prepare(open?: () => Promise<SessionLike>) {
     send: (f, channel, v) => sends.push({ f, channel: channel, v }),
     onSend: (f) => messages.push(f),
   });
-  const states = (f = "F") => sends.filter((e) => e.f === f && e.channel === "etat").map((e) => e.v);
+  const states = (f = "F") => sends.filter((e) => e.f === f && e.channel === "state").map((e) => e.v);
   return { management: manager, sessions, sends: sends, states: states, messages };
 }
 const size = { cols: 80, rows: 24 };
@@ -59,11 +59,11 @@ test("starting twice opens only one session; the second call returns the buffer"
   sends.length = 0;
   await manager.start("F", size);
   expect(sessions).toHaveLength(1);
-  expect(states()).toEqual([{ state: "actif" }]);
-  expect(sends.filter((e) => e.channel === "donnees").map((e) => e.v)).toEqual(["bonjour"]);
+  expect(states()).toEqual([{ state: "active" }]);
+  expect(sends.filter((e) => e.channel === "data").map((e) => e.v)).toEqual(["bonjour"]);
   // Output waiting to be sent is already in the returned buffer: no duplicate afterwards.
   await new Promise((r) => setTimeout(r, GROUPING_MS * 3));
-  expect(sends.filter((e) => e.channel === "donnees")).toHaveLength(1);
+  expect(sends.filter((e) => e.channel === "data")).toHaveLength(1);
 });
 
 test("the agent's output goes out in batches: several close chunks, a single send", async () => {
@@ -72,9 +72,9 @@ test("the agent's output goes out in batches: several close chunks, a single sen
     const { management: manager, sessions, sends: sends } = prepare();
     await manager.start("F", size);
     for (const d of ["a", "b", "c"]) sessions[0]!.emit(d);
-    expect(sends.filter((e) => e.channel === "donnees")).toEqual([]);
+    expect(sends.filter((e) => e.channel === "data")).toEqual([]);
     vi.advanceTimersByTime(GROUPING_MS);
-    expect(sends.filter((e) => e.channel === "donnees").map((e) => e.v)).toEqual(["abc"]);
+    expect(sends.filter((e) => e.channel === "data").map((e) => e.v)).toEqual(["abc"]);
   } finally {
     vi.useRealTimers();
   }
@@ -100,17 +100,17 @@ test("the buffer cuts a newline-free output exactly at the character", () => {
 test("Docker absent → docker-absent; other error → error with message", async () => {
   const absent = prepare(() => Promise.reject(new WorkshopError("docker-absent")));
   await absent.management.start("F", size);
-  expect(absent.states()).toEqual([{ state: "preparation" }, { state: "docker-absent" }]);
+  expect(absent.states()).toEqual([{ state: "preparing" }, { state: "docker-absent" }]);
   const broken = prepare(() => Promise.reject(new Error("x")));
   await broken.management.start("F", size);
-  expect(broken.states().at(-1)).toEqual({ state: "erreur", message: "x" });
+  expect(broken.states().at(-1)).toEqual({ state: "error", message: "x" });
 });
 
 test("agent end → termine; demarrer starts a new session", async () => {
   const { management: manager, sessions, states: states } = prepare();
   await manager.start("F", size);
   sessions[0]!.finish(3);
-  expect(states().at(-1)).toEqual({ state: "termine", code: 3 });
+  expect(states().at(-1)).toEqual({ state: "done", code: 3 });
   expect(manager.active("F")).toBe(false);
   await manager.start("F", size);
   expect(sessions).toHaveLength(2);
@@ -171,7 +171,7 @@ test("relancerTout stops every session and reopens one at the same size, without
   expect(old.active).toBe(false);
   expect(sessions).toHaveLength(2);
   expect(sizes[1]).toEqual({ cols: 100, rows: 30 });
-  expect(sends.filter((e) => e.channel === "etat").map((e) => e.v)).toEqual([{ state: "preparation" }, { state: "actif" }]);
+  expect(sends.filter((e) => e.channel === "state").map((e) => e.v)).toEqual([{ state: "preparing" }, { state: "active" }]);
   expect(manager.active("F")).toBe(true);
 });
 
@@ -193,7 +193,7 @@ test("relancerTout during a start: the failure of the old start does not overwri
   await manager.relaunchAll();
   fail(new Error("kernel stopped"));
   await old;
-  expect(sends.filter((e) => e.channel === "etat").at(-1)?.v).toEqual({ state: "actif" });
+  expect(sends.filter((e) => e.channel === "state").at(-1)?.v).toEqual({ state: "active" });
   expect(manager.active("F")).toBe(true);
 });
 

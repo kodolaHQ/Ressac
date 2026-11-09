@@ -39,7 +39,7 @@ class FakeTools implements ExtensionsTools {
     return this.requestResponse;
   }
   async reload(id: string) {
-    this.calls.push({ method: "recharger", args: [id] });
+    this.calls.push({ method: "reload", args: [id] });
     return { state: "disabled" as const, detail: ["Désactivée : elle demande plus de droits qu'accordé"] };
   }
   async console(id: string, from?: number) {

@@ -12,7 +12,7 @@ import { callTool } from "./mcp";
 import { LINES, reviewedRef, writeAppJs } from "./review";
 import { inUi, waitUi } from "./ui";
 
-// Plan 35a Task 5: the app window's badge (AppBadge.svelte in sidebar.html?pastille=) and the
+// Plan 35a Task 5: the app window's badge (AppBadge.svelte in sidebar.html?badge=) and the
 // agent apps' review, plus the security
 // checks of spike S8 on the real code.
 
@@ -43,7 +43,7 @@ async function cutAccess(m: Marionette, folder: string): Promise<void> {
   await expect.poll(() => inBadge(m, folder, `return doc.querySelectorAll('[data-testid="pastille-acces"]').length;`), { timeout: 10_000 }).toBe(0);
 }
 /** The access the badge's own api gives, its tab ids. */
-const badgeAccess = (m: Marionette, folder: string) => inBadge<string[]>(m, folder, "return Object.keys((await f.contentWindow.webaios.acces.etat()).onglets);");
+const badgeAccess = (m: Marionette, folder: string) => inBadge<string[]>(m, folder, "return Object.keys((await f.contentWindow.webaios.access.state()).tabs);");
 const reviewTabs = async (m: Marionette, project: string) => Object.values((await state(m)).tabs).filter((o) => o.url === reviewUrl(project));
 
 describe("one WebAiOs, essai and autre launched in each test", () => {
@@ -174,7 +174,7 @@ describe("one WebAiOs, essai and autre launched in each test", () => {
     await launched("autre");
     await callTool(p.dataDir, "read_tab", { id: "app:essai" });
     // What a change sends: each badge hears only its own app.
-    const listen = (d: string) => inBadge(m, d, "const w = f.contentWindow; w.heard = []; w.webaios.surAcces((e) => w.heard.push(Object.keys(e.onglets).join(','))); return 1;");
+    const listen = (d: string) => inBadge(m, d, "const w = f.contentWindow; w.heard = []; w.webaios.onAccess((e) => w.heard.push(Object.keys(e.tabs).join(','))); return 1;");
     await listen("essai");
     await listen("autre");
     await cutAccess(m, "autre");
@@ -187,7 +187,7 @@ describe("one WebAiOs, essai and autre launched in each test", () => {
     expect(new Set(await heard("essai"))).toEqual(new Set(["app:essai"]));
     expect(new Set(await heard("autre"))).toEqual(new Set([""]));
     // Security: a badge cuts only its own app's access.
-    await inBadge(m, "autre", `f.contentWindow.webaios.acces.couper("app:essai"); return 1;`);
+    await inBadge(m, "autre", `f.contentWindow.webaios.access.cut("app:essai"); return 1;`);
     await sleep(700);
     await sized(m, "essai", 88, 28);
     expect(await badgeAccess(m, "essai")).toEqual(["app:essai"]);
@@ -199,13 +199,13 @@ describe("one WebAiOs, essai and autre launched in each test", () => {
       m,
       "essai",
       `const w = f.contentWindow;
-       const e = await w.webaios.acces.etat();
-       const t = e.onglets["app:essai"];
-       return { etat: Object.getPrototypeOf(e) === w.Object.prototype, onglets: Object.getPrototypeOf(e.onglets) === w.Object.prototype, tab: !!t && Object.getPrototypeOf(t) === w.Object.prototype };`,
+       const e = await w.webaios.access.state();
+       const t = e.tabs["app:essai"];
+       return { state: Object.getPrototypeOf(e) === w.Object.prototype, tabs: Object.getPrototypeOf(e.tabs) === w.Object.prototype, tab: !!t && Object.getPrototypeOf(t) === w.Object.prototype };`,
     );
     expect(realms).toEqual({ state: true, tabs: true, tab: true });
     // A change sent to the badge is a copy too.
-    await inBadge(m, "essai", "const w = f.contentWindow; w.copies = []; w.webaios.surAcces((x) => w.copies.push(Object.getPrototypeOf(x) === w.Object.prototype && Object.getPrototypeOf(x.onglets) === w.Object.prototype)); return 1;");
+    await inBadge(m, "essai", "const w = f.contentWindow; w.copies = []; w.webaios.onAccess((x) => w.copies.push(Object.getPrototypeOf(x) === w.Object.prototype && Object.getPrototypeOf(x.tabs) === w.Object.prototype)); return 1;");
     await cutAccess(m, "essai");
     await expect.poll(() => inBadge<boolean[]>(m, "essai", "return [...f.contentWindow.copies];"), { timeout: 10_000 }).toContain(true);
     expect((await inBadge<boolean[]>(m, "essai", "return [...f.contentWindow.copies];"))!.every(Boolean)).toBe(true);
@@ -214,7 +214,7 @@ describe("one WebAiOs, essai and autre launched in each test", () => {
   // relecture.spec.ts:65 (its opening part)
   it("Relire of the essai card opens the Review page on app-essai; a project without manifest has no Relire", async () => {
     const windowId = (await state(m)).windows[0]!.id;
-    await dispatch(m, { type: "ouvrirApplications", windowId: windowId });
+    await dispatch(m, { type: "openApps", windowId: windowId });
     await waitUi(m, `return !!doc.querySelector(${JSON.stringify(appRow("vieux"))})`);
     expect(await inUi<string[]>(m, `return [...doc.querySelectorAll(arguments[0])].map((b) => b.textContent.trim());`, [`${appRow("vieux")} button`])).not.toContain("Relire");
     expect(await rowMenuItems(m, "vieux")).not.toContain("Relire");
@@ -223,7 +223,7 @@ describe("one WebAiOs, essai and autre launched in each test", () => {
     await waitUi(m, "return !!doc.querySelector('[data-testid=\"page-relecture\"]')", [], 15_000);
     await expect.poll(async () => (await reviewTabs(m, "app-essai")).map((o) => o.title), { timeout: 10_000 }).toEqual(["Relecture — Essai"]);
     // The UI refuses a folder name a shell would not take, and a project without manifest, before any page.
-    await inUi(m, "ui.webaios.applications.agir('../x', 'relire'); ui.webaios.applications.agir('vieux', 'relire'); return 1;");
+    await inUi(m, "ui.webaios.apps.act('../x', 'review'); ui.webaios.apps.act('vieux', 'review'); return 1;");
     await sleep(500);
     expect(Object.values((await state(m)).tabs).filter((o) => o.url.startsWith(reviewUrl("app-"))).length).toBe(1);
   });

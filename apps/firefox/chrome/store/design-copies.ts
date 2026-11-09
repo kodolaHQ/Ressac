@@ -113,18 +113,18 @@ export function sourceExpression(selector: string): string {
       const el = document.querySelector(${JSON.stringify(selector)});
       if (!el) return null;
       const ds = el.getAttribute("data-source");
-      if (ds) { const m = /^(.*?):(\\d+)(?::(\\d+))?$/.exec(ds); return m ? { fichier: m[1], ligne: Number(m[2]), ...(m[3] ? { colonne: Number(m[3]) } : {}) } : { fichier: ds }; }
+      if (ds) { const m = /^(.*?):(\\d+)(?::(\\d+))?$/.exec(ds); return m ? { file: m[1], line: Number(m[2]), ...(m[3] ? { column: Number(m[3]) } : {}) } : { file: ds }; }
       const ch = el.getAttribute("data-inspector-relative-path"), li = el.getAttribute("data-inspector-line");
-      if (ch && li) return { fichier: ch, ligne: Number(li) };
+      if (ch && li) return { file: ch, line: Number(li) };
       const loc = el.__svelte_meta && el.__svelte_meta.loc;
-      if (loc && loc.file) return { fichier: loc.file, ligne: loc.line, colonne: loc.column };
+      if (loc && loc.file) return { file: loc.file, line: loc.line, column: loc.column };
       const vue = el.__vueParentComponent && el.__vueParentComponent.type && el.__vueParentComponent.type.__file;
-      if (vue) return { fichier: vue };
+      if (vue) return { file: vue };
       const cle = Object.keys(el).find((k) => k.startsWith("__reactFiber$"));
       if (cle) {
         let f = el[cle];
         for (let i = 0; f && i < 50; i++, f = f.return)
-          if (f._debugSource && f._debugSource.fileName) return { fichier: f._debugSource.fileName, ligne: f._debugSource.lineNumber };
+          if (f._debugSource && f._debugSource.fileName) return { file: f._debugSource.fileName, line: f._debugSource.lineNumber };
       }
       return null;
     } catch { return null; }

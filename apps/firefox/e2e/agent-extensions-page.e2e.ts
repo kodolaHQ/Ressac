@@ -161,7 +161,7 @@ describe("the Extensions page", () => {
     expect(text).not.toContain("1.2.0.1");
     expect(text).toContain("Droits : ");
     expect(text).toContain(`Sites : ${HOST}`);
-    expect(text).toContain(`« ${(await activeSpace(m)).name} » (profil defaut)`);
+    expect(text).toContain(`« ${(await activeSpace(m)).name} » (profil default)`);
     await rowButton(m, "Cacheur de l'agent", "Détails");
     await waitUi(m, `return !!doc.querySelector('${LINE} [data-testid="details-extension"]')`);
     expect(await missingApi(m)).toEqual([]);
@@ -189,7 +189,7 @@ describe("the Extensions page", () => {
     await waitActive(m, "cacheur@agent.webaios", false);
     expect(registry(first.dataDir).allCut).toBe(true);
     // Disabled, never uninstalled (decision 4): its grant stays.
-    expect(registry(first.dataDir).extensions["agent:cacheur"]?.profiles).toEqual(["defaut"]);
+    expect(registry(first.dataDir).extensions["agent:cacheur"]?.profiles).toEqual(["default"]);
     await first.close();
 
     const w = await launch({ dirs: { dataDir: first.dataDir, profile: first.profile } });
@@ -286,14 +286,14 @@ describe("crashes", () => {
   async function disabledThenReactivated(w: Launched, id: string, name: string): Promise<void> {
     const m = w.marionette;
     await waitActive(m, `${id}@agent.webaios`, false);
-    expect(registry(w.dataDir).extensions[`agent:${id}`]).toMatchObject({ profiles: ["defaut"], disabled: { reason: "crashes" } });
+    expect(registry(w.dataDir).extensions[`agent:${id}`]).toMatchObject({ profiles: ["default"], disabled: { reason: "crashes" } });
     expect((await w.call("list_extensions")).text).toContain(DISABLED_CRASHES);
     await openPage(m);
     await waitRow(m, name, true);
     expect(await row(m, name)).toContain(DISABLED_CRASHES);
     await rowButton(m, name, "Réactiver");
     await waitActive(m, `${id}@agent.webaios`, true);
-    expect(registry(w.dataDir).extensions[`agent:${id}`]).toMatchObject({ profiles: ["defaut"], disabled: null });
+    expect(registry(w.dataDir).extensions[`agent:${id}`]).toMatchObject({ profiles: ["default"], disabled: null });
     await waitUi(m, `return ![...doc.querySelectorAll(arguments[0])].some((l) => l.textContent.includes(arguments[1]))`, [LINE, DISABLED_CRASHES]);
   }
 

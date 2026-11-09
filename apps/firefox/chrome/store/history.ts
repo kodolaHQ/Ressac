@@ -22,23 +22,23 @@ const historizable = (url: string) => /^https?:\/\//.test(url);
 export function createHistory(store: Store, host: AgentHost): History {
   // A space turned private keeps its visits but marks them, even while no agent runs.
   store.subscribe((state, previous) => {
-    for (const spaceId of spacesBecamePrivate(previous, state)) host.notify("historique.rendrePrive", { spaceId: spaceId });
+    for (const spaceId of spacesBecamePrivate(previous, state)) host.notify("history.makePrivate", { spaceId: spaceId });
   });
   const context = (id: TabId, url: string) => (historizable(url) ? historyContext(store.state, id) : null);
   const ask = <T>(method: string, params: unknown, none: T) => host.request<T>(method, params).catch(() => none);
   return {
     visit(id, url, title) {
       const c = context(id, url);
-      if (c) host.notify("historique.noter", { url, title: title || url, ...c });
+      if (c) host.notify("history.record", { url, title: title || url, ...c });
     },
     title(id, url, title) {
       const c = context(id, url);
-      if (c) host.notify("historique.titre", { url, spaceId: c.spaceId, title: title });
+      if (c) host.notify("history.title", { url, spaceId: c.spaceId, title: title });
     },
-    retain: (r) => host.notify("historique.retenir", r),
-    search: (text, limit, distinct) => ask("historique.rechercher", { text: text, limit: limit, distinct: distinct }, []),
-    recent: () => ask("historique.recents", {}, []),
-    clear: (from) => ask("historique.effacer", { since: from }, undefined),
-    forgetText: (url, spaceId) => ask("historique.oublierTexte", { url, spaceId: spaceId }, undefined),
+    retain: (r) => host.notify("history.keep", r),
+    search: (text, limit, distinct) => ask("history.search", { text: text, limit: limit, distinct: distinct }, []),
+    recent: () => ask("history.recent", {}, []),
+    clear: (from) => ask("history.clear", { since: from }, undefined),
+    forgetText: (url, spaceId) => ask("history.forgetText", { url, spaceId: spaceId }, undefined),
   };
 }

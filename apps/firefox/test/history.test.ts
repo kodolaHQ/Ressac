@@ -123,8 +123,8 @@ test("old schema (url key alone): rows kept, empty space, non-private", () => {
   h.close();
   const old = join(mkdtempSync(join(tmpdir(), "webaios-hist-")), "history.sqlite");
   const db = new DatabaseSync(old);
-  db.exec(`CREATE TABLE visites (url TEXT PRIMARY KEY, titre TEXT NOT NULL, derniere_visite TEXT NOT NULL, visites INTEGER NOT NULL DEFAULT 1);
-    INSERT INTO visites VALUES ('https://vieux.fr/', 'Vieux', '2026-01-01T00:00:00.000Z', 3);`);
+  db.exec(`CREATE TABLE visits (url TEXT PRIMARY KEY, title TEXT NOT NULL, last_visit TEXT NOT NULL, visits INTEGER NOT NULL DEFAULT 1);
+    INSERT INTO visits VALUES ('https://vieux.fr/', 'Vieux', '2026-01-01T00:00:00.000Z', 3);`);
   db.close();
   h = new History(old);
   expect(h.recents()).toEqual([{ url: "https://vieux.fr/", title: "Vieux", lastVisit: "2026-01-01T00:00:00.000Z", visits: 3, spaceId: "", private: false, kept: false }]);
@@ -135,7 +135,7 @@ test("old schema (url key alone): rows kept, empty space, non-private", () => {
   expect(h.recents()).toHaveLength(2);
 });
 
-test("rechercher in distinct mode: a URL seen in two spaces comes out once, and the limit counts URLs", () => {
+test("search in distinct mode: a URL seen in two spaces comes out once, and the limit counts URLs", () => {
   h.note({ url: "https://a.fr/", title: "page", spaceId: "A", private: false });
   h.note({ url: "https://a.fr/", title: "page", spaceId: "B", private: false });
   h.note({ url: "https://b.fr/", title: "page", spaceId: "A", private: false });
@@ -143,7 +143,7 @@ test("rechercher in distinct mode: a URL seen in two spaces comes out once, and 
   expect(h.search("page", 2, true).map((v) => v.url).sort()).toEqual(["https://a.fr/", "https://b.fr/"]);
 });
 
-test("rechercher in distinct mode keeps per URL the most visited row, then the most recent, in order and within the limit", () => {
+test("search in distinct mode keeps per URL the most visited row, then the most recent, in order and within the limit", () => {
   const note = (url: string, spaceId: string, times: number, iso: string) => {
     for (let i = 0; i < times; i++) h.note({ url, title: "page", spaceId: spaceId, private: false, date: date(iso) });
   };

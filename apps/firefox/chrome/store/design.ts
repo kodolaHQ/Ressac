@@ -192,7 +192,7 @@ export function createDesign(o: {
   /** The project of the page's own document (`wgp`, the one armed), never of the <browser>'s address, which a commit moves first. */
   const tracking = (t: DesignTarget, v: View, wgp: any = pageOf(v.browser)) =>
     o.agent.request<DesignTracking | null>(
-      "design.suivi",
+      "design.tracking",
       t.type === "fenetre" ? { url: String(wgp?.documentURI?.spec ?? "") } : t.type === "app" ? { project: "app-" + t.folder } : { project: "site-" + t.id },
     );
   const current = (s: Session, g: number) => sessions.get(s.key) === s && s.generation === g;
@@ -287,7 +287,7 @@ export function createDesign(o: {
     const bounds = { x: b.x, y: b.y, width: b.width, height: b.height };
     const win: [number, number] = [s.win.innerWidth, s.win.innerHeight];
     const place = bubbleSlot(rect, s.browser.fullZoom ?? 1, bounds, win, site ? { minHeight: bounds.y, height: SITE_BUBBLE_SIZE.height } : s.home ? { minHeight: bounds.y } : {});
-    show(s.key, s.win, place, { mode: "bulle", message: null, project: s.project.project, label: context.label, source: sourceText(source), ...s.destination, warning: site ? CAPTURE_WARNING_SITE : null });
+    show(s.key, s.win, place, { mode: "bubble", message: null, project: s.project.project, label: context.label, source: sourceText(source), ...s.destination, warning: site ? CAPTURE_WARNING_SITE : null });
   }
 
   /** A throw anywhere after the arm (a bug, a window gone mid-way): the session stops, its frames unguarded. */
@@ -315,7 +315,7 @@ export function createDesign(o: {
       const s = sessions.get(targetKey(t));
       const v = s ? null : view(t);
       // A host that does not answer rejects: the button keeps its last state.
-      const r = s ? await o.agent.request<DesignTracking | null>("design.suivi", { project: s.project.project }) : v ? await tracking(t, v) : null;
+      const r = s ? await o.agent.request<DesignTracking | null>("design.tracking", { project: s.project.project }) : v ? await tracking(t, v) : null;
       const project = r?.project ?? s?.project ?? null;
       if (!project) return { active: false, project: null, unavailable: t.type === "site" ? UNAVAILABLE_DESIGN_SITE : UNAVAILABLE_DESIGN, destination: null, noDestination: null, basket: 0, name: "" };
       // A site app: its project is known even where the mode does not start (card, sign-in page, fullscreen).
@@ -421,7 +421,7 @@ export function createDesign(o: {
       s.armed = false;
       s.cleanup();
       unguardFrames(s);
-      hide(s.key, "bulle");
+      hide(s.key, "bubble");
       notify();
       await disarm(s);
     },
@@ -432,14 +432,14 @@ export function createDesign(o: {
       if (!s || !waiting) return { ok: false, error: NOTHING_AIMED };
       let r: ExtensionResult;
       try {
-        r = await o.agent.request<ExtensionResult>("design.ajouter", { project: s.project.project, text: text, context: waiting.context, capture: waiting.capture });
+        r = await o.agent.request<ExtensionResult>("design.add", { project: s.project.project, text: text, context: waiting.context, capture: waiting.capture });
       } catch (e) {
         // Spec §5.10: the call's error, the mode stays.
         return { ok: false, error: e instanceof Error ? e.message : String(e) };
       }
       if (!r.ok || sessions.get(s.key) !== s || s.pending !== waiting) return r;
       s.pending = null;
-      hide(s.key, "bulle");
+      hide(s.key, "bubble");
       giveKeyboard(s);
       void armSafe(s);
       return r;
@@ -450,10 +450,10 @@ export function createDesign(o: {
       const s = sessions.get(key);
       if (!s?.pending) {
         hide(key, "message");
-        return hide(key, "panier");
+        return hide(key, "basket");
       }
       s.pending = null;
-      hide(key, "bulle");
+      hide(key, "bubble");
       giveKeyboard(s);
       void armSafe(s);
     },
@@ -467,7 +467,7 @@ export function createDesign(o: {
       // A site app's cart starts under its bar.
       const y = t.type === "site" ? SITE_BAR_HEIGHT + MARGIN : MARGIN;
       const place = { x: Math.max(0, l - MARGIN - BASKET_WIDTH), y, width: Math.min(BASKET_WIDTH, l), height: Math.max(0, h - y - MARGIN) };
-      show(targetKey(t), v.win, place, { mode: "panier", message: null, project: r.project.project, label: "", source: null, destination: r.destination, noDestination: r.noDestination, warning: null });
+      show(targetKey(t), v.win, place, { mode: "basket", message: null, project: r.project.project, label: "", source: null, destination: r.destination, noDestination: r.noDestination, warning: null });
     },
 
     async review(t) {
@@ -476,11 +476,11 @@ export function createDesign(o: {
       if (!r || r.project.type === "demo") return;
       const windowId = t.type === "fenetre" ? t.windowId : await o.mainWindow();
       if (!windowId) return;
-      o.dispatch({ type: "ouvrirRelecture", windowId: windowId, project: r.project.project, name: r.name.slice(0, 80) });
+      o.dispatch({ type: "openReview", windowId: windowId, project: r.project.project, name: r.name.slice(0, 80) });
       if (t.type !== "fenetre") o.toFront(windowId);
     },
 
-    overlayContext(t, modes = ["bulle", "panier", "message"]) {
+    overlayContext(t, modes = ["bubble", "basket", "message"]) {
       const c = contexts.get(targetKey(t));
       for (const mode of modes) if (c?.[mode]) return c[mode];
       return null;
@@ -488,7 +488,7 @@ export function createDesign(o: {
 
     closeOverlay(t, mode) {
       const key = targetKey(t);
-      if (mode === "panier") askCart(key);
+      if (mode === "basket") askCart(key);
       hide(key, mode);
     },
 
@@ -512,7 +512,7 @@ export function createDesign(o: {
 /**
  * An overlay frame's OverlayApi: its target is the chrome's, never an id the frame sends.
  * A project is allowed only if it is the one the overlay shows (projetPermis); the host checks every bound again.
- * `modes`: what this frame shows. `annuler`: the frame's own (the cart column's « Fermer »), else the service's cancel.
+ * `modes`: what this frame shows. `cancel`: the frame's own (the cart column's « Fermer »), else the service's cancel.
  */
 // Trust boundary: the frame is a system-principal chrome document, so it could reach the chrome itself; this API is a
 // convention for the UI, and the real guards are these chrome-side checks and the host's.
@@ -537,18 +537,18 @@ export function overlayApi(
       return o.design.add(t, text);
     },
     cancel: () => (o.cancel ? o.cancel() : o.design.cancel(t)),
-    basket: async (p) => (allowed(p) ? read<ShownElement[]>("design.panier", p) : []),
-    batches: async (p) => (allowed(p) ? read<BatchShown[]>("design.lots", p) : []),
+    basket: async (p) => (allowed(p) ? read<ShownElement[]>("design.basket", p) : []),
+    batches: async (p) => (allowed(p) ? read<BatchShown[]>("design.batches", p) : []),
     async remove(p, x) {
-      if (allowed(p) && id(x)) await o.host.request("design.retirer", { project: p, id: x });
+      if (allowed(p) && id(x)) await o.host.request("design.remove", { project: p, id: x });
     },
     async handled(p, batch) {
-      if (allowed(p) && id(batch)) await o.host.request("design.traite", { project: p, batch: batch });
+      if (allowed(p) && id(batch)) await o.host.request("design.handled", { project: p, batch: batch });
     },
-    send: async (p) => (allowed(p) ? o.host.request<ExtensionResult>("design.envoyer", { project: p }) : { ok: false, error: INVALID_REQUEST }),
+    send: async (p) => (allowed(p) ? o.host.request<ExtensionResult>("design.send", { project: p }) : { ok: false, error: INVALID_REQUEST }),
     onChange(cb) {
       // accueil.change: sent at each kernel start (host/host.ts), so a restarted host's cart is read again.
-      const offs = [...["design.change", "accueil.change"].map((m) => o.host.on(m, () => cb())), o.design.onChange(cb)];
+      const offs = [...["design.change", "home.change"].map((m) => o.host.on(m, () => cb())), o.design.onChange(cb)];
       return () => offs.forEach((f) => f());
     },
   };

@@ -17,11 +17,11 @@ export const alertObserver = {
 };
 
 /**
- * The kernel host is Node and cannot call Cc: it sends `accueil.notification` over the RPC. The alert goes through the
+ * The kernel host is Node and cannot call Cc: it sends `home.notification` over the RPC. The alert goes through the
  * system alerts service only (note P4: `Services.alerts` does not exist, and the XUL fallback opens a window).
  */
 export function registerHomeNotifications(agent: Pick<AgentHost, "on">): () => void {
-  return agent.on("accueil.notification", (n: { title?: unknown; text?: unknown }) => {
+  return agent.on("home.notification", (n: { title?: unknown; text?: unknown }) => {
     try {
       const alert = Cc["@mozilla.org/alert-notification;1"].createInstance(Ci.nsIAlertNotification);
       // A unique name: an alert with the same name replaces the previous one.

@@ -86,7 +86,7 @@ describe("action runs", () => {
     // The button is greyed while it runs; one more launch (the agent, another window) gives the same run.
     expect(await disabled(tid("relancer-action"))).toBe(true);
     // Each lancer resolves at the run's end (15-38 s): started in the page, awaited outside the 30 s script timeout.
-    await inUi(m, "ui.__r = null; Promise.all([ui.webaios.actions.lancer('pages-c', null), ui.webaios.actions.lancer('pages-c', null)]).then((r) => (ui.__r = JSON.parse(JSON.stringify(r))));");
+    await inUi(m, "ui.__r = null; Promise.all([ui.webaios.actions.launch('pages-c', null), ui.webaios.actions.launch('pages-c', null)]).then((r) => (ui.__r = JSON.parse(JSON.stringify(r))));");
     const [a, b] = await waitUi<{ run?: string }[]>(m, "return ui.__r;", [], 90_000);
     expect(a!.run).toBeTruthy();
     expect(b!.run).toBe(a!.run);

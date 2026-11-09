@@ -45,7 +45,7 @@ describe("prompts anchor on the sidebar", () => {
   async function open(path: string): Promise<string> {
     const before = new Set(Object.keys((await state(m)).tabs));
     const url = server.url + path;
-    const s = await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url });
+    const s = await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url });
     await waitFor(m, `return gBrowser.selectedBrowser.currentURI.spec === ${JSON.stringify(url)} && !gBrowser.selectedBrowser.webProgress.isLoadingDocument`, (v) => v === true);
     return Object.keys(s.tabs).find((id) => !before.has(id))!;
   }
@@ -121,13 +121,13 @@ describe("prompts anchor on the sidebar", () => {
     const a = await open("/texte.html");
     const b = await open("/a.html");
     const selected = (id: string) => `gBrowser.selectedTab.getAttribute("webaios-tab-id") === ${JSON.stringify(id)}`;
-    await dispatch(m, { type: "activerOnglet", id: a });
+    await dispatch(m, { type: "activateTab", id: a });
     await waitFor(m, `return ${selected(a)}`, (v) => v === true);
     const browserA = `gBrowser.tabs.find((t) => t.getAttribute("webaios-tab-id") === ${JSON.stringify(a)}).linkedBrowser`;
     await m.execute(`return (async () => { ${HELPERS} ${SHOW_PERMISSIONS} })();`);
-    await dispatch(m, { type: "activerOnglet", id: b });
+    await dispatch(m, { type: "activateTab", id: b });
     await waitFor(m, `return PopupNotifications.panel.state === "closed" && ${selected(b)}`, (v) => v === true);
-    await dispatch(m, { type: "activerOnglet", id: a });
+    await dispatch(m, { type: "activateTab", id: a });
     const r = await m.execute<any>(`return (async () => {
       ${HELPERS}
       await until(() => PopupNotifications.panel.state === "open");

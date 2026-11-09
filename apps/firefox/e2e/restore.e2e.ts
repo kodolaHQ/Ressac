@@ -54,15 +54,15 @@ describe("restore at startup", () => {
     const windowId = (await win(m)).id;
     const open = async (p: string, enable = false) => {
       const before = new Set(Object.keys((await state(m)).tabs));
-      const after = await dispatch(m, { type: "ouvrirOnglet", windowId: windowId, url: server.url + p, activate: enable });
+      const after = await dispatch(m, { type: "openTab", windowId: windowId, url: server.url + p, activate: enable });
       return Object.keys(after.tabs).find((id) => !before.has(id))!;
     };
     const a = await open("/a.html");
     const b = await open("/b.html");
     await open("/texte.html", true);
-    await dispatch(m, { type: "epinglerOnglet", id: a });
-    await dispatch(m, { type: "ajouterEssentiel", id: b });
-    await dispatch(m, { type: "creerEspace", name: "Boulot", icon: "💼", private: false, profile: "defaut", windowId: windowId } as Action);
+    await dispatch(m, { type: "pinTab", id: a });
+    await dispatch(m, { type: "addEssential", id: b });
+    await dispatch(m, { type: "createSpace", name: "Boulot", icon: "💼", private: false, profile: "default", windowId: windowId } as Action);
     const work = (await state(m)).spaces.find((e) => e.name === "Boulot")!;
     const c = await open("/b.html?n=1", true);
     await newWindow(m);
@@ -82,7 +82,7 @@ describe("restore at startup", () => {
       seen.push(
         await inWindow(m, handle, async () => {
           await waitReady(m);
-          const id = await m.execute<string>("return window.webaiosWindow.fenetreId");
+          const id = await m.execute<string>("return window.webaiosWindow.windowId");
           const pair = await inUi(m, `return [doc.querySelector('[data-testid^="espace-"][aria-current="true"]')?.textContent.trim(), doc.querySelectorAll('[data-testid^="onglet-"]').length]`);
           return { handle, id, pair };
         }),
@@ -113,7 +113,7 @@ describe("restore at startup", () => {
     let m = await start();
     const windowId = (await win(m)).id;
     await m.execute("window.resizeTo(1000, 700)");
-    const width = `return (async () => (await ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready).state.fenetres.find((f) => f.id === ${JSON.stringify(windowId)})?.cadre?.largeur)();`;
+    const width = `return (async () => (await ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready).state.windows.find((f) => f.id === ${JSON.stringify(windowId)})?.frame?.width)();`;
     await waitFor(m, width, (v) => v === 1000);
     await quit();
 
@@ -125,13 +125,13 @@ describe("restore at startup", () => {
     fresh();
     let m = await start();
     const windowId = (await win(m)).id;
-    await dispatch(m, { type: "creerEspace", name: "Propre", icon: "🔒", private: false, profile: "nouveau", windowId: windowId } as Action);
+    await dispatch(m, { type: "createSpace", name: "Propre", icon: "🔒", private: false, profile: "nouveau", windowId: windowId } as Action);
     const open = async (p: string) => {
       const before = new Set(Object.keys((await state(m)).tabs));
-      const after = await dispatch(m, { type: "ouvrirOnglet", windowId: windowId, url: server.url + p });
+      const after = await dispatch(m, { type: "openTab", windowId: windowId, url: server.url + p });
       return Object.keys(after.tabs).find((id) => !before.has(id))!;
     };
-    const title = (id: string, t: string) => waitFor(m, `return (async () => (await ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready).state.onglets[${JSON.stringify(id)}]?.titre)();`, (v) => v === t);
+    const title = (id: string, t: string) => waitFor(m, `return (async () => (await ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready).state.tabs[${JSON.stringify(id)}]?.title)();`, (v) => v === t);
     await title(await open("/cookie"), "cookie");
     await quit();
 
@@ -146,7 +146,7 @@ describe("restore at startup", () => {
     await m.execute(
       `return (async () => {
         const store = await ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready;
-        for (let i = 0; i < 100; i++) store.dispatch({ type: "ouvrirOnglet", fenetreId: arguments[0], url: arguments[1] + "/b.html?n=" + i, activer: i === 99 });
+        for (let i = 0; i < 100; i++) store.dispatch({ type: "openTab", windowId: arguments[0], url: arguments[1] + "/b.html?n=" + i, activer: i === 99 });
         await store.flush();
       })();`,
       [windowId, server.url],
@@ -159,14 +159,14 @@ describe("restore at startup", () => {
     expect(f.order[f.activeSpace]).toHaveLength(100);
     expect(await marked(m)).toBe(1);
     expect(await m.execute<number>("return gBrowser.tabs.length")).toBe(2);
-    await dispatch(m, { type: "activerOnglet", id: f.order[f.activeSpace]![0]! });
+    await dispatch(m, { type: "activateTab", id: f.order[f.activeSpace]![0]! });
     await waitFor(m, "return gBrowser.tabs.filter((t) => t.hasAttribute('webaios-tab-id')).length", (n) => n === 2);
   });
 
   it("keeps the chosen search engine and uses it from ⌘T", async () => {
     fresh();
     let m = await start();
-    await dispatch(m, { type: "choisirMoteur", engine: "duckduckgo" });
+    await dispatch(m, { type: "chooseEngine", engine: "duckduckgo" });
     await quit();
 
     m = await start();
@@ -186,7 +186,7 @@ describe("restore at startup", () => {
   it("a change made right before quitting survives (no wait for the 500 ms recorder)", async () => {
     fresh();
     let m = await start();
-    await dispatch(m, { type: "choisirMoteur", engine: "qwant" });
+    await dispatch(m, { type: "chooseEngine", engine: "qwant" });
     await quit(); // straight after the dispatch
     m = await start();
     expect((await state(m)).settings.engine).toBe("qwant");
@@ -203,7 +203,7 @@ describe("restore at startup", () => {
       tabs: {
         "o-a": tab("o-a", `${server.url}/a.html`),
         "o-b": tab("o-b", `${server.url}/b.html`),
-        "o-c": tab("o-c", `${server.url}/texte.html`, { type: "essentiel", id: "fav-c" }),
+        "o-c": tab("o-c", `${server.url}/texte.html`, { type: "essential", id: "fav-c" }),
       },
       windows: [
         { id: "f1", activeSpace: "e1", order: { e1: ["o-a", "o-b"] }, active: { e1: "o-b" }, compact: false, agentPanelOpen: false, recentlyClosed: [], frame: null },
@@ -219,10 +219,10 @@ describe("restore at startup", () => {
     for (const end = Date.now() + 10_000; (await read()).version !== 2; await new Promise((r) => setTimeout(r, 100)))
       if (Date.now() > end) throw new Error("the session was not rewritten as v2");
     const written = await read();
-    expect(written.profils).toEqual([{ id: "defaut" }]);
-    expect(Object.keys(written.onglets).sort()).toEqual(["o-a", "o-b", "o-c"]);
-    expect(written.essentiels).toEqual(v1.essentials);
-    expect(written.onglets["o-c"].lien).toEqual({ type: "essentiel", id: "fav-c" });
+    expect(written.profiles).toEqual([{ id: "default" }]);
+    expect(Object.keys(written.tabs).sort()).toEqual(["o-a", "o-b", "o-c"]);
+    expect(written.essentials).toEqual(v1.essentials);
+    expect(written.tabs["o-c"].link).toEqual({ type: "essential", id: "fav-c" });
     // The essential opens on its tab from before, in the default container.
     await click(m, '[data-testid="favori-fav-c"]');
     const shown = await waitFor<{ url: string; title: string; ctx: number }>(
@@ -234,12 +234,12 @@ describe("restore at startup", () => {
     expect(Object.keys((await state(m)).tabs)).toHaveLength(3);
   });
 
-  it("an unreadable session: one notification, with the .corrompu path", async () => {
+  it("an unreadable session: one notification, with the .corrupt path", async () => {
     fresh();
     dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
     await writeFile(path.join(dataDir, "session.json"), "{ not json");
     const m = await start();
-    const aside = (await readdir(dataDir)).find((n) => n.endsWith(".corrompu"))!;
+    const aside = (await readdir(dataDir)).find((n) => n.endsWith(".corrupt"))!;
     const text = await waitFor<string[]>(
       m,
       `return (async () => { const nb = window.gNotificationBox; return [...nb.allNotifications].filter((n) => n.getAttribute("value") === "webaios-session-set-aside").map((n) => n.label?.textContent ?? n.messageText?.textContent ?? n.label ?? ""); })();`,

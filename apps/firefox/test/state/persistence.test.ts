@@ -17,12 +17,12 @@ function richState(): BrowserState {
   const g = () => `g${++n}`;
   let e = initialState(g);
   const F = e.windows[0]!.id;
-  e = apply(e, { type: "ouvrirOnglet", windowId: F, url: "https://a.test/" }, g);
-  e = apply(e, { type: "ouvrirOnglet", windowId: F, url: "https://b.test/" }, g);
+  e = apply(e, { type: "openTab", windowId: F, url: "https://a.test/" }, g);
+  e = apply(e, { type: "openTab", windowId: F, url: "https://b.test/" }, g);
   const [a, b] = Object.keys(e.tabs);
-  e = apply(e, { type: "majOnglet", id: a!, fields: { title: "A", zoom: 1.2, loading: true, canGoBack: true, crashed: true } }, g);
-  e = apply(e, { type: "epinglerOnglet", id: b! }, g);
-  e = apply(e, { type: "creerEspace", name: "Boulot", icon: "💼", private: false, profile: "defaut" }, g);
+  e = apply(e, { type: "updateTab", id: a!, fields: { title: "A", zoom: 1.2, loading: true, canGoBack: true, crashed: true } }, g);
+  e = apply(e, { type: "pinTab", id: b! }, g);
+  e = apply(e, { type: "createSpace", name: "Boulot", icon: "💼", private: false, profile: "default" }, g);
   return e;
 }
 
@@ -52,19 +52,19 @@ test("session v1 → v2: non-private spaces on the default sign-in profile, tabs
   writeFileSync(join(d, "session.json"), JSON.stringify(toV1(state)));
   const e = await loadSession(d);
   expect(e.version).toBe(2);
-  expect(e.profiles).toEqual([{ id: "defaut" }]);
-  for (const space of e.spaces) expect(space).toMatchObject({ private: false, profile: "defaut" });
+  expect(e.profiles).toEqual([{ id: "default" }]);
+  for (const space of e.spaces) expect(space).toMatchObject({ private: false, profile: "default" });
   const expected = structuredClone(state);
   for (const o of Object.values(expected.tabs)) Object.assign(o, { loading: false, canGoBack: false, canGoForward: false, crashed: false, error: null });
   expect(e).toEqual(expected);
-  expect(set_aside(d, ".corrompu")).toEqual([]);
+  expect(set_aside(d, ".corrupt")).toEqual([]);
 });
 
 test("session v2 with a private space and a second sign-in profile: identical round trip", async () => {
   const d = folder();
   let n = 100;
   const g = () => `h${++n}`;
-  const state = apply(richState(), { type: "creerEspace", name: "Banque", icon: "🏦", private: true, profile: "nouveau" }, g);
+  const state = apply(richState(), { type: "createSpace", name: "Banque", icon: "🏦", private: true, profile: "nouveau" }, g);
   expect(state.profiles).toHaveLength(2);
   const recorder = new SessionRecorder(d);
   recorder.schedule(state);
@@ -82,7 +82,7 @@ test("a session saved before the windows' frame loads (frame = null)", async () 
   writeFileSync(join(d, "session.json"), JSON.stringify(old));
   const e = await loadSession(d);
   expect(e.windows[0]!.frame).toBeNull();
-  expect(set_aside(d, ".corrompu")).toEqual([]);
+  expect(set_aside(d, ".corrupt")).toEqual([]);
 });
 
 test("missing file → initial state", async () => {
@@ -91,12 +91,12 @@ test("missing file → initial state", async () => {
   expect(e.windows).toHaveLength(1);
 });
 
-test("invalid JSON → initial state and old file set aside (….corrompu)", async () => {
+test("invalid JSON → initial state and old file set aside (….corrupt)", async () => {
   const d = folder();
   writeFileSync(join(d, "session.json"), "{ pas du json");
   const e = await loadSession(d);
   expect(e.tabs).toEqual({});
-  const [kept] = set_aside(d, ".corrompu");
+  const [kept] = set_aside(d, ".corrupt");
   expect(readFileSync(join(d, kept!), "utf8")).toBe("{ pas du json");
 });
 
@@ -107,7 +107,7 @@ test("corrupted session: the name of the file set aside is returned to warn the 
   expect(kept).not.toHaveBeenCalled();
   writeFileSync(join(d, "session.json"), "{ pas du json");
   await loadSession(d, kept);
-  expect(kept).toHaveBeenCalledWith(join(d, set_aside(d, ".corrompu")[0]!));
+  expect(kept).toHaveBeenCalledWith(join(d, set_aside(d, ".corrupt")[0]!));
 });
 
 test("unknown version → initial state and file set aside", async () => {
@@ -115,7 +115,7 @@ test("unknown version → initial state and file set aside", async () => {
   writeFileSync(join(d, "session.json"), JSON.stringify({ ...richState(), version: 3 }));
   const e = await loadSession(d);
   expect(e.tabs).toEqual({});
-  expect(set_aside(d, ".corrompu")).toHaveLength(1);
+  expect(set_aside(d, ".corrupt")).toHaveLength(1);
 });
 
 test("two corrupted sessions in a row: the second does not overwrite the first", async () => {
@@ -124,7 +124,7 @@ test("two corrupted sessions in a row: the second does not overwrite the first",
   await loadSession(d);
   writeFileSync(join(d, "session.json"), "second");
   await loadSession(d);
-  const guards = set_aside(d, ".corrompu").map((f) => readFileSync(join(d, f), "utf8"));
+  const guards = set_aside(d, ".corrupt").map((f) => readFileSync(join(d, f), "utf8"));
   expect(guards.sort()).toEqual(["premier", "second"]);
 });
 
@@ -138,9 +138,9 @@ test("unreadable session (permissions) → initial state, and the next save does
   const recorder = new SessionRecorder(d, 0);
   recorder.schedule(e);
   await recorder.clear();
-  const [kept] = set_aside(d, ".illisible");
+  const [kept] = set_aside(d, ".unreadable");
   chmodSync(join(d, kept!), 0o600);
-  expect(Object.keys(JSON.parse(readFileSync(join(d, kept!), "utf8")).onglets)).toHaveLength(2);
+  expect(Object.keys(JSON.parse(readFileSync(join(d, kept!), "utf8")).tabs)).toHaveLength(2);
 });
 
 test("inconsistent state (no space) → initial state", async () => {
@@ -187,7 +187,7 @@ test("vider() waits for the write in progress: nothing is lost on exit, no tempo
   const d = folder();
   const recorder = new SessionRecorder(d, 10_000);
   const a = richState();
-  const b = apply(a, { type: "choisirMoteur", engine: "qwant" });
+  const b = apply(a, { type: "chooseEngine", engine: "qwant" });
   recorder.schedule(a);
   const first = recorder.clear(); // write in progress…
   const output = recorder.clear(); // …the exit has nothing pending any more, but must wait
@@ -195,7 +195,7 @@ test("vider() waits for the write in progress: nothing is lost on exit, no tempo
   expect(existsSync(join(d, "session.json"))).toBe(true);
   recorder.schedule(b);
   await Promise.all([recorder.clear(), recorder.clear(), first]);
-  expect(JSON.parse(readFileSync(join(d, "session.json"), "utf8")).reglages.moteur).toBe("qwant");
+  expect(JSON.parse(readFileSync(join(d, "session.json"), "utf8")).settings.engine).toBe("qwant");
   const { readdirSync } = await import("node:fs");
   expect(readdirSync(d).filter((f) => f.endsWith(".tmp"))).toEqual([]);
 });
@@ -208,7 +208,7 @@ test("a failed write leaves no temporary file and the state is rewritten on the 
   await recorder.clear();
   expect(readdirSync(d)).toEqual([]);
   await recorder.clear();
-  expect(Object.keys(JSON.parse(readFileSync(join(d, "session.json"), "utf8")).onglets)).toHaveLength(2);
+  expect(Object.keys(JSON.parse(readFileSync(join(d, "session.json"), "utf8")).tabs)).toHaveLength(2);
   spy.mockRestore();
 });
 
@@ -216,7 +216,7 @@ test("a tab's load error is not saved", async () => {
   const d = folder();
   let e = richState();
   const id = Object.keys(e.tabs)[0]!;
-  e = apply(e, { type: "majOnglet", id, fields: { error: "ERR_NAME_NOT_RESOLVED" } });
+  e = apply(e, { type: "updateTab", id, fields: { error: "ERR_NAME_NOT_RESOLVED" } });
   const recorder = new SessionRecorder(d);
   recorder.schedule(e);
   await recorder.clear();
@@ -230,7 +230,7 @@ test("a session saved without profilAgent loads with claude", async () => {
   writeFileSync(join(d, "session.json"), JSON.stringify(old));
   const e = await loadSession(d);
   expect(e.settings.agentProfile).toBe("claude");
-  expect(set_aside(d, ".corrompu")).toEqual([]);
+  expect(set_aside(d, ".corrupt")).toEqual([]);
 });
 
 test("a session saved without agent panel width loads with 420", async () => {
@@ -240,7 +240,7 @@ test("a session saved without agent panel width loads with 420", async () => {
   writeFileSync(join(d, "session.json"), JSON.stringify(old));
   const e = await loadSession(d);
   expect(e.settings.agentPanelWidth).toBe(420);
-  expect(set_aside(d, ".corrompu")).toEqual([]);
+  expect(set_aside(d, ".corrupt")).toEqual([]);
 });
 
 test("session v2 where a space uses an unlisted sign-in profile: the profile is added to the list", async () => {
@@ -249,6 +249,6 @@ test("session v2 where a space uses an unlisted sign-in profile: the profile is 
   state.spaces[1]!.profile = "orphelin";
   writeFileSync(join(d, "session.json"), JSON.stringify(state));
   const reviewed = await loadSession(d);
-  expect(reviewed.profiles).toEqual([{ id: "defaut" }, { id: "orphelin" }]);
+  expect(reviewed.profiles).toEqual([{ id: "default" }, { id: "orphelin" }]);
   expect(reviewed.spaces[1]!.profile).toBe("orphelin");
 });

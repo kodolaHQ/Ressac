@@ -38,14 +38,14 @@ export async function actionImage(url: string): Promise<string | null> {
 
 /**
  * The site home's bridge (homeBridge) for a component: `parent` becomes a frozen object whose postMessage dispatches
- * `webaios-composant` on the frame's window, its detail the message as JSON; `Components` is hidden. Self-contained, serialized with toString().
+ * `webaios-component` on the frame's window, its detail the message as JSON; `Components` is hidden. Self-contained, serialized with toString().
  */
 export function componentBridge(): void {
   const w = window as unknown as Record<string, any>;
   const stringify = JSON.stringify;
   const Custom = w.CustomEvent;
   const dispatch = w.dispatchEvent.bind(w);
-  w.parent = Object.freeze({ postMessage: (m: unknown) => void dispatch(new Custom("webaios-composant", { detail: stringify(m) })) });
+  w.parent = Object.freeze({ postMessage: (m: unknown) => void dispatch(new Custom("webaios-component", { detail: stringify(m) })) });
   // Firefox's leftover web `Components` (`interfaces` only): hidden, a component page never sees it.
   Object.defineProperty(w, "Components", { value: undefined, configurable: false, writable: false });
 }

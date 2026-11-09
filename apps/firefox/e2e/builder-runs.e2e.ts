@@ -268,12 +268,12 @@ afterAll(async () => {
 });
 afterEach(async () => {
   expect(await missingApi(m)).toEqual([]);
-  for (const o of Object.values((await state(m)).tabs)) if (o.url.startsWith("webaios://workflow/")) await dispatch(m, { type: "fermerOnglet", id: o.id });
+  for (const o of Object.values((await state(m)).tabs)) if (o.url.startsWith("webaios://workflow/")) await dispatch(m, { type: "closeTab", id: o.id });
 });
 
 /** Back to the home page of the window. */
 async function home(): Promise<void> {
-  await dispatch(m, { type: "afficherPageVide", windowId: (await state(m)).windows[0]!.id });
+  await dispatch(m, { type: "showBlankPage", windowId: (await state(m)).windows[0]!.id });
   await waitUi(m, "return !!doc.querySelector('[data-testid=\"widget-lancer\"]')");
 }
 
@@ -308,7 +308,7 @@ const textOf = (css: string) => inUi<string | null>(m, `return ${el(css)}?.textC
 const shown = (css: string) => inUi<string>(m, `return ${el(`${css} iframe`)}?.contentDocument?.getElementById("donnees")?.textContent ?? ""`);
 const preview = () => shown(tid("apercu-widget"));
 const homeData = (id: string) => shown(tid(`widget-${id}`));
-const harvest = (id: string) => inUi(m, "ui.webaios.accueil.recolter(arguments[0])", [id]);
+const harvest = (id: string) => inUi(m, "ui.webaios.home.harvest(arguments[0])", [id]);
 const runs = async (id: string) => (existsSync(executionsOf(id)) ? (await readdir(executionsOf(id))).filter((f) => f.endsWith(".json")).sort() : []);
 
 /** A trusted mouse gesture on the centre of `css`: down, moves to (+dx, +dy) in `steps`, up. */

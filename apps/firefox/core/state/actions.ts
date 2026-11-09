@@ -140,7 +140,7 @@ function unlink(d: Draft, favoriteId: string) {
 }
 
 /** Turns a normal tab into a tab linked to a new favorite. */
-function linkToFavorite(d: Draft, genId: () => string, o: Tab, type: "essentiel" | "epingle"): Favorite {
+function linkToFavorite(d: Draft, genId: () => string, o: Tab, type: "essential" | "pinned"): Favorite {
   const favorite: Favorite = { id: genId(), url: o.url, title: o.title, favicon: o.favicon };
   o.link = { type, id: favorite.id };
   const f = win(d, o.windowId);
@@ -209,11 +209,11 @@ function deleteTab(d: Draft, o: Tab) {
 
 function handle(d: Draft, a: Action, genId: () => string): boolean {
   switch (a.type) {
-    case "ouvrirOnglet": {
+    case "openTab": {
       const f = win(d, a.windowId);
       return !!f && !!open(d, genId, f, a);
     }
-    case "fermerOnglet": {
+    case "closeTab": {
       const o = d.tabs[a.id];
       if (!o) return false;
       const f = win(d, o.windowId);
@@ -221,7 +221,7 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       deleteTab(d, o);
       return true;
     }
-    case "activerOnglet": {
+    case "activateTab": {
       const o = d.tabs[a.id];
       const f = o && win(d, o.windowId);
       if (!o || !f) return false;
@@ -229,7 +229,7 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       if (!a.keepSpace) f.activeSpace = o.spaceId;
       return true;
     }
-    case "deplacerOnglet": {
+    case "moveTab": {
       const o = d.tabs[a.id];
       const f = o && win(d, o.windowId);
       if (!o || !f) return false;
@@ -239,7 +239,7 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       f.order[o.spaceId] = l;
       return true;
     }
-    case "rouvrirOngletFerme": {
+    case "reopenClosedTab": {
       const f = win(d, a.windowId);
       const [last, ...rest] = f?.recentlyClosed ?? [];
       if (!f || !last) return false;
@@ -249,20 +249,20 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       f.activeSpace = space;
       return true;
     }
-    case "majOnglet": {
+    case "updateTab": {
       const o = d.tabs[a.id];
       // Pages often emit the same values: nothing changed, nothing to rebroadcast.
       if (!o || Object.entries(a.fields).every(([k, v]) => o[k as keyof Tab] === v)) return false;
       Object.assign(o, a.fields);
       return true;
     }
-    case "ouvrirFavori": {
+    case "openFavorite": {
       const f = win(d, a.windowId);
       if (!f) return false;
       const favoriteSpace =
-        a.kind === "essentiel" ? f.activeSpace : d.spaces.find((e) => e.pinned.some((x) => x.id === a.id))?.id;
+        a.kind === "essential" ? f.activeSpace : d.spaces.find((e) => e.pinned.some((x) => x.id === a.id))?.id;
       const favorite =
-        a.kind === "essentiel"
+        a.kind === "essential"
           ? d.essentials.find((x) => x.id === a.id)
           : d.spaces.flatMap((e) => e.pinned).find((x) => x.id === a.id);
       if (!favorite || !favoriteSpace) return false;
@@ -272,7 +272,7 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
         (o) =>
           o.windowId === f.id &&
           o.link?.id === favorite.id &&
-          (a.kind === "essentiel" ? spaceKey(d, o.spaceId) === spaceKey(d, favoriteSpace) : o.spaceId === favoriteSpace),
+          (a.kind === "essential" ? spaceKey(d, o.spaceId) === spaceKey(d, favoriteSpace) : o.spaceId === favoriteSpace),
       );
       const o =
         existing ??
@@ -288,33 +288,33 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       f.activeSpace = favoriteSpace;
       return true;
     }
-    case "epinglerOnglet": {
+    case "pinTab": {
       const o = d.tabs[a.id];
       const space = o && d.spaces.find((e) => e.id === o.spaceId);
       if (!o || o.link || !space) return false;
-      space.pinned.push(linkToFavorite(d, genId, o, "epingle"));
+      space.pinned.push(linkToFavorite(d, genId, o, "pinned"));
       return true;
     }
-    case "ajouterEssentiel": {
+    case "addEssential": {
       const o = d.tabs[a.id];
       if (!o || o.link) return false;
-      d.essentials.push(linkToFavorite(d, genId, o, "essentiel"));
+      d.essentials.push(linkToFavorite(d, genId, o, "essential"));
       return true;
     }
-    case "desepingler": {
+    case "unpin": {
       const space = d.spaces.find((e) => e.id === a.spaceId);
       if (!space?.pinned.some((x) => x.id === a.favoriteId)) return false;
       space.pinned = space.pinned.filter((x) => x.id !== a.favoriteId);
       unlink(d, a.favoriteId);
       return true;
     }
-    case "retirerEssentiel": {
+    case "removeEssential": {
       if (!d.essentials.some((x) => x.id === a.favoriteId)) return false;
       d.essentials = d.essentials.filter((x) => x.id !== a.favoriteId);
       unlink(d, a.favoriteId);
       return true;
     }
-    case "creerEspace": {
+    case "createSpace": {
       const profile = requestedProfile(d, genId, a.profile);
       if (!profile) return false;
       const space = genId();
@@ -327,7 +327,7 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       if (f) f.activeSpace = space;
       return true;
     }
-    case "reglerEspace": {
+    case "updateSpace": {
       const space = d.spaces.find((e) => e.id === a.id);
       if (!space) return false;
       if (space.name === a.name && space.icon === a.icon && space.private === a.private && space.profile === a.profile) return false;
@@ -340,7 +340,7 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       dropIncompatible(d);
       return true;
     }
-    case "supprimerEspace": {
+    case "deleteSpace": {
       if (d.spaces.length <= 1 || !d.spaces.some((e) => e.id === a.id)) return false;
       d.spaces = d.spaces.filter((e) => e.id !== a.id);
       for (const o of Object.values(d.tabs)) if (o.spaceId === a.id) delete d.tabs[o.id];
@@ -355,13 +355,13 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       removeUnusedProfiles(d);
       return true;
     }
-    case "activerEspace": {
+    case "activateSpace": {
       const f = win(d, a.windowId);
       if (!f || !d.spaces.some((e) => e.id === a.id)) return false;
       f.activeSpace = a.id;
       return true;
     }
-    case "ouvrirFenetre": {
+    case "openWindow": {
       const space = a.spaceId && d.spaces.some((e) => e.id === a.spaceId) ? a.spaceId : d.spaces[0]!.id;
       d.windows.push({
         id: a.id ?? genId(),
@@ -375,7 +375,7 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       });
       return true;
     }
-    case "fermerFenetre": {
+    case "closeWindow": {
       const closed = win(d, a.id);
       if (d.windows.length <= 1 || !closed) return false;
       d.windows = d.windows.filter((f) => f.id !== a.id);
@@ -391,72 +391,72 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       for (const o of Object.values(d.tabs)) if (o.windowId === a.id) delete d.tabs[o.id];
       return true;
     }
-    case "cadrerFenetre": {
+    case "frameWindow": {
       const f = win(d, a.id);
       if (!f) return false;
       f.frame = a.frame;
       return true;
     }
-    case "afficherPageVide": {
+    case "showBlankPage": {
       const f = win(d, a.windowId);
       if (!f || f.active[f.activeSpace] == null) return false;
       f.active[f.activeSpace] = null;
       return true;
     }
-    case "basculerCompact": {
+    case "toggleCompact": {
       const f = win(d, a.windowId);
       if (!f) return false;
       f.compact = !f.compact;
       return true;
     }
-    case "basculerPanneauAgent": {
+    case "toggleAgentPanel": {
       const f = win(d, a.windowId);
       if (!f) return false;
       f.agentPanelOpen = !f.agentPanelOpen;
       return true;
     }
     // A single Applications page per window: go back to it (in its space) rather than open a second one.
-    case "ouvrirApplications":
+    case "openApps":
       return openInternalPage(d, genId, a.windowId, URL_APPLICATIONS, "Applications");
-    case "ouvrirExtensions":
+    case "openExtensions":
       return openInternalPage(d, genId, a.windowId, URL_EXTENSIONS, "Extensions");
     // Likewise, a single « Voir le workflow » page per widget and per window.
-    case "ouvrirWorkflow":
+    case "openWorkflow":
       return openInternalPage(d, genId, a.windowId, a.owner === "action" ? WORKFLOW_ACTION_PREFIX + a.id : urlWorkflow(a.id), `Workflow — ${a.name}`);
     // A single page per action and per window (whatever result is shown), and a single « Actions » page.
-    case "ouvrirAction":
+    case "openAction":
       return openAction(d, genId, a);
-    case "ouvrirActions":
+    case "openActions":
       return openInternalPage(d, genId, a.windowId, URL_ACTIONS, "Actions");
     // Opening the panel on a tab gives it to the agent: the home page opens it only if it is still displayed.
-    case "panneauAgentAccueil": {
+    case "homeAgentPanel": {
       const f = win(d, a.windowId);
       if (!f || f.agentPanelOpen === a.open || (a.open && f.active[f.activeSpace])) return false;
       f.agentPanelOpen = a.open;
       return true;
     }
-    case "choisirMoteur": {
+    case "chooseEngine": {
       d.settings.engine = a.engine;
       return true;
     }
-    case "choisirProfilAgent": {
+    case "chooseAgentProfile": {
       if (d.settings.agentProfile === a.profile) return false;
       d.settings.agentProfile = a.profile;
       return true;
     }
-    case "largeurPanneauAgent": {
+    case "agentPanelWidth": {
       const width = Math.round(Math.min(AGENT_WIDTH_MAX, Math.max(AGENT_WIDTH_MIN, a.width)));
       if (d.settings.agentPanelWidth === width) return false;
       d.settings.agentPanelWidth = width;
       return true;
     }
     // A single Review page per project and per window.
-    case "ouvrirRelecture":
+    case "openReview":
       return openInternalPage(d, genId, a.windowId, reviewUrl(a.project), `Relecture — ${a.name}`);
   }
 }
 
-/** The only way to evolve the state: pure, never mutates `etat`. */
+/** The only way to evolve the state: pure, never mutates `state`. */
 export function apply(state: BrowserState, action: Action, genId: () => string = randomUUID): BrowserState {
   const draft = structuredClone(state);
   return handle(draft, action, genId) ? draft : state;

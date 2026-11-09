@@ -29,8 +29,8 @@ async function prepare(port: number) {
 test("a start that fails other than by a taken port (invalid port): off, with the reason", async () => {
   const { service } = await prepare(Number("abc"));
   const state = service.state().server;
-  expect(state.state).toBe("eteint");
-  if (state.state === "eteint") expect(state.reason).toMatch(/^Le MCP externe n'a pas pu démarrer : /);
+  expect(state.state).toBe("off");
+  if (state.state === "off") expect(state.reason).toMatch(/^Le MCP externe n'a pas pu démarrer : /);
   await expect(service.connect("x")).rejects.toThrow(/n'a pas pu démarrer/);
 });
 

@@ -55,56 +55,56 @@ test("two chercher in 30 s: the second « trop-tot », a single read", async () 
   const t = tracking(["https://vidola-b.example/"]);
   expect((await t.s.find("vidola", declaration)).t).toBe("change");
   t.forward(30_000);
-  expect((await t.s.find("vidola", declaration)).t).toBe("trop-tot");
+  expect((await t.s.find("vidola", declaration)).t).toBe("too-soon");
   expect(t.reads()).toBe(1);
   t.forward(31_000);
-  expect((await t.s.find("vidola", declaration)).t).not.toBe("trop-tot");
+  expect((await t.s.find("vidola", declaration)).t).not.toBe("too-soon");
   expect(t.reads()).toBe(2);
 });
 
 test("two chercher at the same time: a single read", async () => {
   const t = tracking(["https://vidola-b.example/"]);
   const [a, b] = await Promise.all([t.s.find("vidola", declaration), t.s.find("vidola", declaration)]);
-  expect([a.t, b.t].sort()).toEqual(["change", "trop-tot"]);
+  expect([a.t, b.t].sort()).toEqual(["change", "too-soon"]);
   expect(t.reads()).toBe(1);
 });
 
 test("no valid link (http, local, page domain): introuvable, state unchanged", async () => {
   const t = tracking(["http://vidola-b.example/", "https://127.0.0.1/vidola", "https://vidola.adresses.example/", "https://tiers.example/vidola", "javascript:alert(1)"]);
-  expect((await t.s.find("vidola", declaration)).t).toBe("introuvable");
+  expect((await t.s.find("vidola", declaration)).t).toBe("not-found");
   expect(await readUrlState(t.sitesFolder, "vidola")).toBeNull();
 });
 
 test("the found link is the current domain: inchangee", async () => {
   const t = tracking(["https://vidola-a.example/"]);
-  expect((await t.s.find("vidola", declaration)).t).toBe("inchangee");
+  expect((await t.s.find("vidola", declaration)).t).toBe("unchanged");
   expect(await readUrlState(t.sitesFolder, "vidola")).toBeNull();
 });
 
 test("read that throws: introuvable", async () => {
   const t = tracking(new Error("page de référence muette"));
-  expect((await t.s.find("vidola", declaration)).t).toBe("introuvable");
+  expect((await t.s.find("vidola", declaration)).t).toBe("not-found");
 });
 
 test("two apps do not limit each other", async () => {
   const t = tracking(["https://vidola-b.example/"]);
   await t.s.find("un", declaration);
-  expect((await t.s.find("deux", declaration)).t).not.toBe("trop-tot");
+  expect((await t.s.find("deux", declaration)).t).not.toBe("too-soon");
 });
 
 test("after a first change, a link to the current address is inchangee (compared to actuel, not to the declared address)", async () => {
   const t = tracking(["https://vidola-b.example/"]);
   expect((await t.s.find("vidola", declaration)).t).toBe("change");
   t.forward(61_000);
-  expect((await t.s.find("vidola", declaration)).t).toBe("inchangee");
+  expect((await t.s.find("vidola", declaration)).t).toBe("unchanged");
   expect((await readUrlState(t.sitesFolder, "vidola"))?.current).toBe("vidola-b.example");
 });
 
 test("a failed read counts in the interval: 30 s later, trop-tot", async () => {
   const t = tracking(new Error("muette"));
-  expect((await t.s.find("vidola", declaration)).t).toBe("introuvable");
+  expect((await t.s.find("vidola", declaration)).t).toBe("not-found");
   t.forward(30_000);
-  expect((await t.s.find("vidola", declaration)).t).toBe("trop-tot");
+  expect((await t.s.find("vidola", declaration)).t).toBe("too-soon");
   expect(t.reads()).toBe(1);
 });
 
@@ -119,6 +119,6 @@ test("the cancellation signal is passed to the read; a cancelled read gives intr
   });
   const r = s.find("vidola", declaration, control.signal);
   control.abort();
-  expect((await r).t).toBe("introuvable");
+  expect((await r).t).toBe("not-found");
   expect(await readUrlState(sitesFolder, "vidola")).toBeNull();
 });

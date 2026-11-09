@@ -47,7 +47,7 @@ async function poll<T>(read: () => Promise<T>, ok: (v: T) => boolean, ms = 10_00
 async function setActiveSpacePrivate(isPrivate: boolean): Promise<void> {
   const s = await state(m);
   const e = s.spaces.find((x) => x.id === s.windows[0]!.activeSpace)!;
-  await dispatch(m, { type: "reglerEspace", id: e.id, name: e.name, icon: e.icon, private: isPrivate, profile: e.profile } as Action);
+  await dispatch(m, { type: "updateSpace", id: e.id, name: e.name, icon: e.icon, private: isPrivate, profile: e.profile } as Action);
 }
 
 it("at startup the kernel prepares its space in the data dir and MCP answers", async () => {
@@ -56,7 +56,7 @@ it("at startup the kernel prepares its space in the data dir and MCP answers", a
 });
 
 it("list_tabs shows a tab not shared yet as « onglet non partagé »", async () => {
-  await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url: `${server.url}/a.html` });
+  await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url: `${server.url}/a.html` });
   await loaded("/a.html");
   const { text: text } = await call("list_tabs");
   expect(text).toContain("onglet non partagé");
@@ -213,7 +213,7 @@ it("read_tab on a tab that failed to load answers an error, not Firefox's error 
 
 it("search_history finds a page by a word of its text; read_history returns it as data", async () => {
   const url = `${server.url}/texte.html`;
-  await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url });
+  await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url });
   // « chat » is only in the body: neither the title nor the URL.
   const found = await poll(() => call("search_history", { query: "chat" }).then((r) => r.text), (t) => t.includes(`Texte · ${url} · `), 15_000);
   expect(found).toContain("1 visite");
@@ -227,11 +227,11 @@ it("search_history: a page seen only in a private space is not found", async () 
   await setActiveSpacePrivate(true);
   const url = `${server.url}/texte.html`;
   const windowId = (await state(m)).windows[0]!.id;
-  await dispatch(m, { type: "ouvrirOnglet", windowId: windowId, url });
+  await dispatch(m, { type: "openTab", windowId: windowId, url });
   await loaded("/texte.html");
-  await dispatch(m, { type: "creerEspace", name: "Travail", icon: "💼", private: false, profile: "defaut", windowId: windowId });
+  await dispatch(m, { type: "createSpace", name: "Travail", icon: "💼", private: false, profile: "default", windowId: windowId });
   const b = `${server.url}/b.html`;
-  await dispatch(m, { type: "ouvrirOnglet", windowId: windowId, url: b });
+  await dispatch(m, { type: "openTab", windowId: windowId, url: b });
   // B, seen after in a non-private space, is retained: a capture of the private page would have happened by then.
   await poll(() => call("read_history", { url: b }).then((r) => r.text), (t) => t.includes(`URL : ${b}`), 15_000);
   expect((await call("search_history", { query: "chat" })).text).toBe("Rien trouvé dans l'historique.");

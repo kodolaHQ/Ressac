@@ -31,7 +31,7 @@ const ID = "0123456789abcdef";
 
 describe("createExternalApi", () => {
   it("an invalid id or name never reaches the host", async () => {
-    const { api, calls } = setup({ "externes.brancher": () => ({ command: "x" }), "externes.revoquer": () => undefined, "externes.oublier": () => undefined, "externes.nom": () => "n" });
+    const { api, calls } = setup({ "external.connect": () => ({ command: "x" }), "external.revoke": () => undefined, "external.forget": () => undefined, "external.name": () => "n" });
     await expect(api.connect(42 as unknown as string)).rejects.toThrow("Nom invalide");
     await expect(api.connect("x".repeat(201))).rejects.toThrow("Nom invalide");
     await api.revoke("../x");
@@ -43,12 +43,12 @@ describe("createExternalApi", () => {
     expect(calls).toEqual([]);
     await api.revoke("abcdef01-2345");
     await api.forget(ID);
-    expect(calls.map((c) => c.method)).toEqual(["externes.revoquer", "externes.oublier"]);
+    expect(calls.map((c) => c.method)).toEqual(["external.revoke", "external.forget"]);
   });
 
   it("a host that rejects gives the off shape with failureReason", async () => {
     const { api } = setup();
-    expect(await api.list()).toEqual({ server: { state: "eteint", reason: failureReason(new Error(HOST_STOPPED)) }, projects: [], clients: [] });
+    expect(await api.list()).toEqual({ server: { state: "off", reason: failureReason(new Error(HOST_STOPPED)) }, projects: [], clients: [] });
     expect(failureReason(new Error(HOST_STOPPED))).toBe(`Le MCP externe n'a pas pu démarrer : ${HOST_STOPPED}`);
   });
 
@@ -61,21 +61,21 @@ describe("createExternalApi", () => {
     const { api, emit } = setup();
     const cb = vi.fn();
     const off = api.onChange(cb);
-    emit("externes.change");
+    emit("external.change");
     emit(HOST_EXITED, { message: HOST_STOPPED });
-    emit("accueil.change");
+    emit("home.change");
     expect(cb).toHaveBeenCalledTimes(3);
     off();
-    emit("externes.change");
+    emit("external.change");
     expect(cb).toHaveBeenCalledTimes(3);
   });
 
   it("relire dispatches ouvrirRelecture with the name cut to 80 characters; null does nothing", async () => {
     const name = "é".repeat(100);
-    const { api, dispatched, calls } = setup({ "externes.nom": (p) => (p.id === ID ? name : null) });
+    const { api, dispatched, calls } = setup({ "external.name": (p) => (p.id === ID ? name : null) });
     api.review(ID);
     await vi.waitFor(() => expect(dispatched).toHaveLength(1));
-    expect(dispatched[0]).toEqual({ type: "ouvrirRelecture", windowId: "F", project: "ext-" + ID, name: name.slice(0, 80) });
+    expect(dispatched[0]).toEqual({ type: "openReview", windowId: "F", project: "ext-" + ID, name: name.slice(0, 80) });
     api.review("fedcba9876543210");
     await vi.waitFor(() => expect(calls).toHaveLength(2));
     await new Promise((r) => setTimeout(r, 0));
@@ -116,7 +116,7 @@ describe("createReviewApi", () => {
       ["texte invalide", () => api.editComment(P, C, 42 as unknown as string)],
       ["résolu invalide", () => api.resolve(P, C, "oui" as unknown as boolean)],
       ["commentaire invalide", () => api.resolve(P, "../c", true)],
-      ["commentaire invalide", () => api.supprimerCommentaire(P, "c-0123abcde")],
+      ["commentaire invalide", () => api.deleteComment(P, "c-0123abcde")],
       ["projet invalide", () => api.send("app-")],
       ["jeton invalide", () => api.reviewed(P, T + "0")],
     ];
@@ -127,7 +127,7 @@ describe("createReviewApi", () => {
   it("valid inputs go to the handler of the same name, with named parameters; ouvrir without a token passes jeton: null", async () => {
     const { api, calls } = review();
     const c = { file: "dossier é/a b.js", start: 1, end: 2, text: "t" };
-    expect(await api.open(P)).toEqual({ method: "relecture.ouvrir", params: { project: P, token: null } });
+    expect(await api.open(P)).toEqual({ method: "review.open", params: { project: P, token: null } });
     await api.open(P, T);
     await api.file(P, T, "app.js");
     await api.lines(P, T, "app.js", 1, 11);
@@ -135,21 +135,21 @@ describe("createReviewApi", () => {
     await api.comment(P, T, c);
     await api.editComment(P, C, "u");
     await api.resolve(P, C, false);
-    await api.supprimerCommentaire(P, C);
+    await api.deleteComment(P, C);
     await api.send(P);
     await api.reviewed(P, T);
     expect(calls).toEqual([
-      { method: "relecture.ouvrir", params: { project: P, token: null } },
-      { method: "relecture.ouvrir", params: { project: P, token: T } },
-      { method: "relecture.fichier", params: { project: P, token: T, path: "app.js" } },
-      { method: "relecture.lignes", params: { project: P, token: T, path: "app.js", start: 1, end: 11 } },
-      { method: "relecture.commentaires", params: { project: P } },
-      { method: "relecture.commenter", params: { project: P, token: T, c } },
-      { method: "relecture.modifierCommentaire", params: { project: P, id: C, text: "u" } },
-      { method: "relecture.resoudre", params: { project: P, id: C, resolved: false } },
-      { method: "relecture.supprimerCommentaire", params: { project: P, id: C } },
-      { method: "relecture.envoyer", params: { project: P } },
-      { method: "relecture.relu", params: { project: P, token: T } },
+      { method: "review.open", params: { project: P, token: null } },
+      { method: "review.open", params: { project: P, token: T } },
+      { method: "review.file", params: { project: P, token: T, path: "app.js" } },
+      { method: "review.lines", params: { project: P, token: T, path: "app.js", start: 1, end: 11 } },
+      { method: "review.comments", params: { project: P } },
+      { method: "review.comment", params: { project: P, token: T, c } },
+      { method: "review.editComment", params: { project: P, id: C, text: "u" } },
+      { method: "review.resolve", params: { project: P, id: C, resolved: false } },
+      { method: "review.deleteComment", params: { project: P, id: C } },
+      { method: "review.send", params: { project: P } },
+      { method: "review.reviewed", params: { project: P, token: T } },
     ]);
   });
 
@@ -158,7 +158,7 @@ describe("createReviewApi", () => {
     const api = createReviewApi({
       host: {
         request: async (method: string) => {
-          if (method === "relecture.envoyer") throw new Error("projet inconnu");
+          if (method === "review.send") throw new Error("projet inconnu");
           return answer;
         },
       } as Pick<AgentHost, "request">,

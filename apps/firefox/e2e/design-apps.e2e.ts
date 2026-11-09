@@ -67,19 +67,19 @@ afterEach(async () => {
   await waitFor(m, `return [...Services.wm.getEnumerator("navigator:browser")].filter((w) => w.document.documentElement.hasAttribute("webaios-app")).length;`, (n) => n === 0);
   await waitFor(m, "for (const t of gBrowser.tabs.slice(1)) gBrowser.removeTab(t); return gBrowser.tabs.length;", (n) => n === 1);
   // Each test starts with an empty cart.
-  await svc(`for (const e of await store.agent.request("design.panier", { projet: "app-essai" })) await store.agent.request("design.retirer", { projet: "app-essai", id: e.id }); return 1;`);
+  await svc(`for (const e of await store.agent.request("design.basket", { project: "app-essai" })) await store.agent.request("design.remove", { project: "app-essai", id: e.id }); return 1;`);
 });
 
 /** Runs `body` with `d` the design service, `t` the essai app's target, `main` Marionette's current (main) window's, `store` the store. */
 const svc = <R = unknown>(body: string, args: unknown[] = []) =>
   m.execute<R>(
     `return (async (args) => { const store = await ChromeUtils.importESModule("${STORE}").ready, d = store.design; const t = { type: "app", dossier: "essai" };
-     const main = { type: "fenetre", fenetreId: window.webaiosWindow?.fenetreId }; ${body} })([...arguments]);`,
+     const main = { type: "fenetre", windowId: window.webaiosWindow?.windowId }; ${body} })([...arguments]);`,
     args,
   );
-const designState = () => svc<{ active: boolean; basket: number; project: { project: string } | null }>("return await d.etat(t);");
+const designState = () => svc<{ active: boolean; basket: number; project: { project: string } | null }>("return await d.state(t);");
 /** The host's cart of app-essai (whether its window is open or not). */
-const cart = () => svc<number>(`return (await store.agent.request("design.suivi", { projet: "app-essai" })).panier;`);
+const cart = () => svc<number>(`return (await store.agent.request("design.tracking", { project: "app-essai" })).basket;`);
 const hosts = () => inAppView<number>(m, "essai", `return document.querySelectorAll("webaios-viseur").length;`).catch(() => -1);
 
 /** The essai window's chrome handle (Marionette's chrome context), waited for. */
@@ -159,7 +159,7 @@ const reviewTabs = async () => Object.values((await state(m)).tabs).filter((o) =
 
 it("design.spec.ts:426 an app window launched from the Applications page: the WebAiOs badge, Mode design, the bubble in its overlay, Panier", async () => {
   const windowId = (await state(m)).windows[0]!.id;
-  await dispatch(m, { type: "ouvrirApplications", windowId: windowId });
+  await dispatch(m, { type: "openApps", windowId: windowId });
   await rowButton(m, "essai", "Lancer");
   await rowState(m, "essai", "running", 15_000);
   await expect.poll(() => inAppView<string>(m, "essai", "return document.title;").catch(() => null), { timeout: 15_000 }).toBe("Inscription");
@@ -215,7 +215,7 @@ it("relecture.spec.ts:168 Relire ce projet from essai's badge, twice, then Relir
     await expect.poll(async () => (await reviewTabs()).map((o) => o.title), { timeout: 10_000 }).toEqual(["Relecture — Essai"]);
   }
   expect((await reviewTabs())[0]!.windowId).toBe((await state(m)).windows[0]!.id);
-  await dispatch(m, { type: "ouvrirApplications", windowId: (await state(m)).windows[0]!.id });
+  await dispatch(m, { type: "openApps", windowId: (await state(m)).windows[0]!.id });
   await rowMenu(m, "essai", "Relire");
   await waitUi(m, `return !!doc.querySelector('${tid("page-relecture")}')`, [], 15_000);
   await sleep(500);
@@ -223,7 +223,7 @@ it("relecture.spec.ts:168 Relire ce projet from essai's badge, twice, then Relir
 });
 
 it("⇧⌘D in the app window toggles its own mode, never the main window's tab", async () => {
-  await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url: `${demo.page}/` });
+  await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url: `${demo.page}/` });
   await waitFor(m, `return ${VIEW}.currentURI.spec.startsWith(${JSON.stringify(demo.page)}) && !${VIEW}.webProgress.isLoadingDocument;`, (v) => v === true, 15_000);
   await launched();
   const handles = (await windowHandles(m)).length;
@@ -233,7 +233,7 @@ it("⇧⌘D in the app window toggles its own mode, never the main window's tab"
   });
   await expect.poll(async () => (await designState()).active, { timeout: 10_000 }).toBe(true);
   await expect.poll(hosts, { timeout: 10_000 }).toBe(1);
-  expect((await svc<{ active: boolean }>("return await d.etat(main);")).active).toBe(false);
+  expect((await svc<{ active: boolean }>("return await d.state(main);")).active).toBe(false);
   expect(await svc("return d.overlayContext(main);")).toBeNull();
   expect(await inBrowser<number>(m, VIEW, `return document.querySelectorAll("webaios-viseur").length;`)).toBe(0);
   // Firefox's « bookmark all tabs » stays off in the app window.
@@ -242,14 +242,14 @@ it("⇧⌘D in the app window toggles its own mode, never the main window's tab"
   await inApp(() => pressKeys(m, "Meta+Shift+d"));
   await expect.poll(async () => (await designState()).active, { timeout: 10_000 }).toBe(false);
   await expect.poll(hosts, { timeout: 10_000 }).toBe(0);
-  expect((await svc<{ active: boolean }>("return await d.etat(main);")).active).toBe(false);
+  expect((await svc<{ active: boolean }>("return await d.state(main);")).active).toBe(false);
 });
 
 it("the source is read in an app window", async () => {
   await launched();
   await modeOn();
   await aim("p[data-source]", "p");
-  expect(await svc("return d.overlayContext(t, ['bulle'])?.source;")).toBe("src/Inscription.svelte:12");
+  expect(await svc("return d.overlayContext(t, ['bubble'])?.source;")).toBe("src/Inscription.svelte:12");
   expect(await bubbleText()).toContain("src/Inscription.svelte:12");
   await inApp(() => pressKeys(m, "Escape"));
   await expect.poll(bubbleText, { timeout: 10_000 }).toBeNull();
@@ -283,7 +283,7 @@ it("a relaunch on another port, closing the window, stopping the app: each stops
   await modeOn();
   await aim("#email", "input#email.champ");
   await add("Une remarque");
-  await svc("await store.agent.request('applications.agir', { dossier: 'essai', action: 'relancer', fenetre: main.fenetreId }); return 1;");
+  await svc("await store.agent.request('apps.act', { folder: 'essai', action: 'relaunch', window: main.windowId }); return 1;");
   await loadedAt(`http://localhost:${BLOCK[0]}/`);
   await expect.poll(async () => (await designState()).active, { timeout: 10_000 }).toBe(false);
   expect(await hosts()).toBe(0);

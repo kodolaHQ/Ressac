@@ -19,7 +19,7 @@
     <button data-testid="site-precedent" aria-label="Reculer" disabled={!onSite || !appState.canGoBack} onclick={() => api.previous()}><Icon name="back" /></button>
     <button data-testid="site-suivant" aria-label="Avancer" disabled={!onSite || !appState.canGoForward} onclick={() => api.next()}><Icon name="forward" /></button>
     {#if appState.hasHome}
-      <button data-testid="site-accueil" aria-label="Accueil de l'appli" aria-pressed={appState.viewState === "accueil"} disabled={appState.viewState === "accord"} onclick={() => api.home()}><Icon name="home" /></button>
+      <button data-testid="site-accueil" aria-label="Accueil de l'appli" aria-pressed={appState.viewState === "home"} disabled={appState.viewState === "grant"} onclick={() => api.home()}><Icon name="home" /></button>
     {/if}
     <button data-testid="site-recharger" aria-label="Recharger" disabled={!onSite} onclick={() => api.reload()}><Icon name="reload" /></button>
   </nav>
@@ -34,7 +34,7 @@
   {/if}
   {#if appState.notice}
     <div data-testid="site-avis" class="avis" data-genre={appState.notice.kind} role="status">
-      {#if appState.notice.kind === "lien-bloque"}
+      {#if appState.notice.kind === "link-blocked"}
         <span>{blockedLink(appState.notice.domain)}</span>
         <button data-testid="site-ouvrir-onglet" onclick={() => api.openBlocked()}>{OPEN_IN_A_TAB}</button>
       {:else}

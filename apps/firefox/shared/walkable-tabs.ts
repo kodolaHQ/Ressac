@@ -9,10 +9,10 @@ export function walkableTabs(state: BrowserState, windowId: WindowId): TabId[] {
   const key = spaceKey(state, space.id);
   const opened = Object.values(state.tabs).filter((o) => o.windowId === f.id);
   const essentials = state.essentials.flatMap((fav) =>
-    opened.filter((o) => o.link?.type === "essentiel" && o.link.id === fav.id && spaceKey(state, o.spaceId) === key).map((o) => o.id),
+    opened.filter((o) => o.link?.type === "essential" && o.link.id === fav.id && spaceKey(state, o.spaceId) === key).map((o) => o.id),
   );
   const pinned = space.pinned.flatMap((fav) =>
-    opened.filter((o) => o.link?.type === "epingle" && o.link.id === fav.id && o.spaceId === space.id).map((o) => o.id),
+    opened.filter((o) => o.link?.type === "pinned" && o.link.id === fav.id && o.spaceId === space.id).map((o) => o.id),
   );
   const seen = new Set<TabId>();
   return [...essentials, ...pinned, ...(f.order[space.id] ?? [])].filter((id) => !seen.has(id) && !!seen.add(id) && !!state.tabs[id]);

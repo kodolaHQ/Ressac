@@ -28,9 +28,9 @@ afterEach(async () => {
 });
 
 const win = async () => (await state(m)).windows[0]!;
-async function open(path: string, extra: Partial<Extract<Action, { type: "ouvrirOnglet" }>> = {}): Promise<string> {
+async function open(path: string, extra: Partial<Extract<Action, { type: "openTab" }>> = {}): Promise<string> {
   const before = new Set(Object.keys((await state(m)).tabs));
-  const after = await dispatch(m, { type: "ouvrirOnglet", windowId: (await win()).id, url: server.url + path, ...extra });
+  const after = await dispatch(m, { type: "openTab", windowId: (await win()).id, url: server.url + path, ...extra });
   return Object.keys(after.tabs).find((id) => !before.has(id))!;
 }
 async function waitState<T>(read: (s: BrowserState) => T, ok: (v: T) => boolean, ms = 10_000): Promise<T> {
@@ -171,7 +171,7 @@ describe("WebAiOs sidebar", () => {
     await waitShown((t) => t.ids.length === 0);
     const pinned = '[data-testid="epingles"] [data-testid^="favori-"]';
     expect(await count(pinned)).toBe(1);
-    await dispatch(m, { type: "creerEspace", name: "Boulot", icon: "💼", private: false, profile: "defaut", windowId: (await win()).id });
+    await dispatch(m, { type: "createSpace", name: "Boulot", icon: "💼", private: false, profile: "default", windowId: (await win()).id });
     await waitUi(m, "return doc.querySelectorAll(arguments[0]).length === 0", [pinned]);
   });
 
@@ -182,7 +182,7 @@ describe("WebAiOs sidebar", () => {
     await click(m, '[role="menuitem"]', { text: "Ajouter aux essentiels" });
     const essentials = '[data-testid="essentiels"] [data-testid^="favori-"]';
     await waitUi(m, "return doc.querySelectorAll(arguments[0]).length === 1", [essentials]);
-    await dispatch(m, { type: "creerEspace", name: "Boulot", icon: "💼", private: false, profile: "defaut", windowId: (await win()).id });
+    await dispatch(m, { type: "createSpace", name: "Boulot", icon: "💼", private: false, profile: "default", windowId: (await win()).id });
     const work = (await win()).activeSpace;
     await waitUi(m, "return doc.querySelector(arguments[0])?.getAttribute('aria-current') === 'true'", [`[data-testid="espace-${work}"]`]);
     expect(await count(essentials)).toBe(1);
@@ -192,7 +192,7 @@ describe("WebAiOs sidebar", () => {
     const home = (await win()).activeSpace;
     const a = await open("/a.html");
     const p = await open("/plante.html", { activate: false });
-    await dispatch(m, { type: "creerEspace", name: "Boulot", icon: "💼", private: false, profile: "defaut", windowId: (await win()).id });
+    await dispatch(m, { type: "createSpace", name: "Boulot", icon: "💼", private: false, profile: "default", windowId: (await win()).id });
     const work = (await win()).activeSpace;
     const b = await open("/b.html");
     expect(await waitShown((t) => t.ids.length === 1)).toEqual({ ids: [b], current: b });
@@ -220,7 +220,7 @@ describe("WebAiOs sidebar", () => {
     expect(await pixel(m, 900, 400)).toEqual([255, 0, 0]);
     expect(`rgb(${(await pixel(m, 100, 400)).join(", ")})`).toBe(bar);
     // The empty page covers the page: the UI paints above Firefox's tab box.
-    await dispatch(m, { type: "afficherPageVide", windowId: (await win()).id });
+    await dispatch(m, { type: "showBlankPage", windowId: (await win()).id });
     const empty = await waitUi<string>(m, "const p = doc.querySelector('[data-testid=\"page-vide\"]'); return p && ui.getComputedStyle(p.parentElement).backgroundColor");
     for (let i = 0; i < 50 && `rgb(${(await pixel(m, 900, 400)).join(", ")})` !== empty; i++) await new Promise((r) => setTimeout(r, 100));
     expect(`rgb(${(await pixel(m, 900, 400)).join(", ")})`).toBe(empty);
@@ -228,7 +228,7 @@ describe("WebAiOs sidebar", () => {
 
   it("shows an internal webaios: page as not yet available", async () => {
     // An internal page WebAiOs-Firefox does not know (the Review page, used here before plan 34, is migrated).
-    await dispatch(m, { type: "ouvrirOnglet", windowId: (await win()).id, url: "webaios://inconnue" });
+    await dispatch(m, { type: "openTab", windowId: (await win()).id, url: "webaios://inconnue" });
     const text = await waitUi<string>(m, "return doc.querySelector('[data-testid=\"page-interne\"]')?.textContent");
     expect(text).toBe("Pas encore disponible dans WebAiOs-Firefox.");
     expect(await m.execute("return document.getElementById('webaios-sidebar').hasAttribute('full')")).toBe(true);

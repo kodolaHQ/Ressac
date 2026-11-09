@@ -102,7 +102,7 @@ const principalOf = (profile: ProfileId, origin: string, create: boolean) => {
 const firefoxPermissions = {
   set(profile: ProfileId, origin: string, p: SitePermission, d: Decision) {
     const principal = principalOf(profile, origin, true);
-    for (const type of FIREFOX_TYPES[p] ?? []) Services.perms.addFromPrincipal(principal, type, d === "autoriser" ? Services.perms.ALLOW_ACTION : Services.perms.DENY_ACTION, Services.perms.EXPIRE_NEVER);
+    for (const type of FIREFOX_TYPES[p] ?? []) Services.perms.addFromPrincipal(principal, type, d === "allow" ? Services.perms.ALLOW_ACTION : Services.perms.DENY_ACTION, Services.perms.EXPIRE_NEVER);
   },
   /** (null, null): every origin of every container. (profile, null): a whole container. (profile, origin): one origin. */
   remove(profile: ProfileId | null, origin: string | null) {
@@ -257,7 +257,7 @@ async function start(): Promise<WebAiOsStore> {
     open: () => BrowserWindowTracker.openWindow(),
     // The window's agent session stops with it; its questions go to the active window, or are refused.
     onRelease: (win) => {
-      agent.notify("agent.fermerFenetre", { window: win });
+      agent.notify("agent.closeWindow", { window: win });
       // Its id comes back if it was the last window (kept): no overlay or cart context stays for it.
       design.forget({ type: "fenetre", windowId: win });
       questions.windowClosed(win, windows.active());
@@ -312,8 +312,8 @@ async function start(): Promise<WebAiOsStore> {
       ...sites.handlers,
       ...apps.handlers,
       // A review batch for the agent (host/design.ts): its window, then its panel with the keyboard, in front.
-      "design.fenetreAgent": async () => (await mainWindow()) ?? null,
-      "design.donnerAgent": ([win]: [WindowId]) => {
+      "design.agentWindow": async () => (await mainWindow()) ?? null,
+      "design.giveAgent": ([win]: [WindowId]) => {
         windows.get(win)?.controller.openAgent();
         toFront(win);
       },
@@ -321,10 +321,10 @@ async function start(): Promise<WebAiOsStore> {
     onStart: (notify) => {
       sendMirror(store, windows, notify);
       // A rendrePrive sent while no host ran was dropped: replayed (idempotent) so no private space stays searchable.
-      for (const e of store.state.spaces) if (e.private) notify("historique.rendrePrive", { spaceId: e.id });
+      for (const e of store.state.spaces) if (e.private) notify("history.makePrivate", { spaceId: e.id });
       agentExtensions.hostStarted();
       // Its sites handlers are up: the host asks which app windows are open (sites.ouvertes).
-      notify("sites.pret");
+      notify("sites.ready");
     },
   });
   // « Ouvrir dans un onglet » of a site app: a tab of the last main window, in its active space, brought to the front
@@ -334,7 +334,7 @@ async function start(): Promise<WebAiOsStore> {
     if (!/^https?:\/\//.test(url)) return;
     const windowId = await mainWindow();
     if (!windowId) return;
-    store.dispatch({ type: "ouvrirOnglet", windowId: windowId, url });
+    store.dispatch({ type: "openTab", windowId: windowId, url });
     toFront(windowId);
   };
   const design = createDesign({ agent, windows, apps, sites, dispatch: store.dispatch, mainWindow, toFront });
@@ -347,7 +347,7 @@ async function start(): Promise<WebAiOsStore> {
   const downloads = await createDownloads(isSiteContainer);
   refreshMirror = trackState(store, agent, windows);
   // Registered before any UI listener: the UI reads `access` once it is updated.
-  agent.on("acces", (e: AccessState) => (access = e));
+  agent.on("access", (e: AccessState) => (access = e));
   agent.on(HOST_EXITED, () => {
     access = { agent: access.agent, tabs: {} };
     // Its kernel is gone: nothing stays attached for it, and its apps' windows close (its successor stops the orphans).

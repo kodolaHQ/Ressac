@@ -28,7 +28,7 @@ export const KEYCHAIN_DELAY_MS = 10_000;
 
 /**
  * Test: WEBAIOS_TEST_AMO_URL set → WEBAIOS_TEST_AMO_KEYS ("emetteur:secret") or null; else the keychain (service webaios-amo),
- * null when absent or too slow. `commande` and `delai` are only there for tests.
+ * null when absent or too slow. `command` and `delai` are only there for tests.
  */
 export async function readAmoKey(env: NodeJS.ProcessEnv = process.env, o: { command?: string; delay?: number } = {}): Promise<AmoKey | null> {
   if (env.WEBAIOS_TEST_AMO_URL) {

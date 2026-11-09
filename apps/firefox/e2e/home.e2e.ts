@@ -149,7 +149,7 @@ const DISPLAY_DATA = `<!doctype html><meta charset="utf-8"><pre id="donnees"></p
     // L'origine d'un cadre sandbox est opaque : event.source n'est pas parent côté page (mesuré). Le message
     // vient du chrome, seul à connaître ce cadre : on ne vérifie que son type.
     if (!e.data || e.data.type !== "widget") return;
-    document.getElementById("donnees").textContent = JSON.stringify(e.data.donnees);
+    document.getElementById("donnees").textContent = JSON.stringify(e.data.data);
   });
 </script>`;
 
@@ -175,8 +175,8 @@ describe("the home page", () => {
       name: "Lien",
       display: `<!doctype html><meta charset="utf-8"><title>lien</title><button id="go">ouvrir</button>
 <script>
-  webaiosOuvrir("https://exemple.invalid/auto");
-  document.getElementById("go").onclick = () => webaiosOuvrir("https://exemple.invalid/clic");
+  webaiosOpen("https://exemple.invalid/auto");
+  document.getElementById("go").onclick = () => webaiosOpen("https://exemple.invalid/clic");
 </script>`,
     });
     // A widget that reads with the account: the grant banner shows as long as no grant is given. Its harvest only reads
@@ -232,7 +232,7 @@ describe("the home page", () => {
     const now = new Date().toISOString();
     await writeJson(STATE(dataDir, "retrait"), { status: "ok", lastUpdate: now, lastAttempt: now });
     await writeJson(DATA(dataDir, "retrait"), { old: "compte" });
-    await writeJson(GRANTS(dataDir), { removal: { domains: ["exemple.invalid"], public: [], profile: "defaut" } });
+    await writeJson(GRANTS(dataDir), { removal: { domains: ["exemple.invalid"], public: [], profile: "default" } });
     await writeLayout(dataDir, [
       { id: "alpha", x: 0, y: 0, w: 250, h: 180 },
       { id: "beta", x: 500, y: 0, w: 250, h: 180 },
@@ -265,7 +265,7 @@ describe("the home page", () => {
     );
     expect(titles).toEqual(["Alpha", "Beta", "Refus", "Lien", "Compte", "Sans accord", "Lent", "Échec", "Veille", "Retrait"]);
     const src = await inUi(m, `return doc.querySelector('[data-testid="widget-alpha"] iframe')?.getAttribute("src") ?? "";`);
-    expect(src).toMatch(/^resource:\/\/webaios-widget-alpha\/affichage-\d+\.html$/);
+    expect(src).toMatch(/^resource:\/\/webaios-widget-alpha\/display-\d+\.html$/);
     // The frame is isolated: the widget's document does not have the sidebar's system principal (opaque origin, sandbox).
     const system = await waitUi<string>(
       m,
@@ -287,10 +287,10 @@ describe("the home page", () => {
   });
 
   it("a tall home page keeps the favourites whole, above the widgets", async () => {
-    const s = await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url: "https://exemple.invalid/favori" });
+    const s = await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url: "https://exemple.invalid/favori" });
     const tab = Object.entries(s.tabs).find(([, o]) => o.url.includes("/favori"))![0];
-    await dispatch(m, { type: "ajouterEssentiel", id: tab });
-    await dispatch(m, { type: "fermerOnglet", id: tab });
+    await dispatch(m, { type: "addEssential", id: tab });
+    await dispatch(m, { type: "closeTab", id: tab });
     const r = await waitUi<{ bottom: number; home: number; scrolled: boolean }>(
       m,
       `const f = doc.querySelector('[data-testid="essentiels-page-vide"] [data-testid^="favori-"]');
@@ -385,7 +385,7 @@ describe("the home page", () => {
     // The opening activated a tab: the home is no longer mounted (EmptyPage). We close it again for what follows.
     const tab = Object.entries((await state(m)).tabs).find(([, o]) => o.url.includes("exemple.invalid/clic"))?.[0];
     expect(tab).toBeDefined();
-    await dispatch(m, { type: "fermerOnglet", id: tab! });
+    await dispatch(m, { type: "closeTab", id: tab! });
     await waitUi(m, `return !!doc.querySelector('[data-testid="accueil"]') && !!doc.querySelector('[data-testid="widget-alpha"]');`, [], 15_000);
   });
 
@@ -414,11 +414,11 @@ describe("the home page", () => {
       `const rs = [...doc.querySelectorAll('[data-testid="carte-accord"] input[type="radio"]')];
        return rs.length ? rs.map((r) => [r.value, r.checked]) : null;`,
     );
-    expect(profiles).toEqual([["defaut", true]]);
+    expect(profiles).toEqual([["default", true]]);
     await click(m, '[data-testid="carte-accord"] button', { text: "Autoriser" });
     // The grant names the shown domains and the chosen profile; the harvest starts and its data reaches the frame.
-    const grant = await wait(() => readGrants(dataDir), (a) => a.compte?.profile === "defaut", "l'écriture de l'accord");
-    expect(grant.compte).toEqual({ domains: ["exemple.invalid"], public: [], profile: "defaut" });
+    const grant = await wait(() => readGrants(dataDir), (a) => a.compte?.profile === "default", "l'écriture de l'accord");
+    expect(grant.compte).toEqual({ domains: ["exemple.invalid"], public: [], profile: "default" });
     await wait(() => (existsSync(DATA(dataDir, "compte")) ? readJson<unknown>(DATA(dataDir, "compte")) : Promise.resolve(null)), (d) => d !== null, "les données de la récolte");
     expect(await readJson(DATA(dataDir, "compte"))).toEqual({ seen: "compte" });
     await wait(() => dataText(m, "compte"), (t) => t === '{"vu":"compte"}', "les données dans le cadre");
@@ -428,7 +428,7 @@ describe("the home page", () => {
   it("Refuser does not come back: the banner stays hidden after the page is reread", async () => {
     await waitUi(m, `return !!doc.querySelector('[data-testid="widget-sans-accord"] [data-testid="bandeau-accord"]');`, [], 15_000);
     // A grant and data from before (as after another profile): the denial must really erase them.
-    await writeJson(GRANTS(dataDir), { ...(await readGrants(dataDir)), "sans-accord": { domains: ["exemple.invalid"], public: [], profile: "defaut" } });
+    await writeJson(GRANTS(dataDir), { ...(await readGrants(dataDir)), "sans-accord": { domains: ["exemple.invalid"], public: [], profile: "default" } });
     await writeJson(DATA(dataDir, "sans-accord"), { secret: "du compte" });
     await click(m, '[data-testid="widget-sans-accord"] [data-testid="bandeau-accord"] button', { text: "Refuser" });
     expect(await waitUi(m, `return !doc.querySelector('[data-testid="widget-sans-accord"] [data-testid="bandeau-accord"]');`)).toBe(true);
@@ -459,7 +459,7 @@ describe("the home page", () => {
     // The new request offers a profile again.
     await click(m, '[data-testid="widget-compte"] [data-testid="bandeau-accord"] button', { text: "Autoriser…" });
     const profiles = await waitUi<[string, boolean][]>(m, `const rs = [...doc.querySelectorAll('[data-testid="carte-accord"] input[type="radio"]')]; return rs.length ? rs.map((r) => [r.value, r.checked]) : null;`);
-    expect(profiles.map(([id]) => id)).toContain("defaut");
+    expect(profiles.map(([id]) => id)).toContain("default");
     await click(m, '[data-testid="carte-accord"] button', { text: "Annuler" });
   });
 

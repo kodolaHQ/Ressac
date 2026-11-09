@@ -78,7 +78,7 @@ describe("WebAiOs-Firefox foundation", () => {
     // The home page opens the 420 px agent panel.
     await waitFor(w.marionette, rect, (r: { left: number; width: number } | null) => r?.left === 0 && r.width === 1280 - 420);
     const f = (await state(w.marionette)).windows[0]!;
-    await dispatch(w.marionette, { type: "ouvrirOnglet", windowId: f.id, url: "data:text/html,<title>t</title>t" });
+    await dispatch(w.marionette, { type: "openTab", windowId: f.id, url: "data:text/html,<title>t</title>t" });
     await waitFor(w.marionette, rect, (r: { width: number } | null) => r?.width === 240);
   });
 

@@ -65,13 +65,13 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("actions spike", () => {
       f.style.cssText = "position: fixed; left: 0; top: 0; width: 400px; height: 300px; border: none";
       const got = [];
       const listener = (e) => got.push({ detail: e.detail, fromFrame: e.target === f.contentWindow });
-      ui.windowRoot.addEventListener("webaios-composant", listener, true, true);
+      ui.windowRoot.addEventListener("webaios-component", listener, true, true);
       doc.documentElement.append(f);
       f.src = src;
       for (let i = 0; i < 100 && !(f.contentDocument?.documentURI === src && f.contentDocument.readyState === "complete"); i++) await new Promise((r) => setTimeout(r, 100));
-      f.contentWindow.postMessage({ type: "composant", props: arguments[1], theme: "clair", largeur: 400 }, "*");
+      f.contentWindow.postMessage({ type: "component", props: arguments[1], theme: "light", width: 400 }, "*");
       await new Promise((r) => setTimeout(r, arguments[2]));
-      ui.windowRoot.removeEventListener("webaios-composant", listener, true);
+      ui.windowRoot.removeEventListener("webaios-component", listener, true);
       const fd = f.contentDocument;
       const out = { src, loaded: fd?.documentURI, origin: fd?.defaultView.origin, csp: !!fd?.querySelector('meta[http-equiv="Content-Security-Policy"]'),
         titre: fd?.getElementById("titre")?.textContent ?? null, rects: fd ? fd.querySelectorAll("rect").length : -1,
@@ -90,7 +90,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("actions spike", () => {
     expect(r.titre).toBe("Ventes");
     expect(r.rects).toBe(2);
     const heights = r.got.filter((g: any) => g.fromFrame).map((g: any) => JSON.parse(g.detail));
-    expect(heights.some((h: any) => h.type === "hauteur" && h.px > 0)).toBe(true);
+    expect(heights.some((h: any) => h.type === "height" && h.px > 0)).toBe(true);
     // Released: the substitution and the copies are gone.
     const after = await chrome(
       m,

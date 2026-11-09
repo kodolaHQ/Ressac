@@ -8,7 +8,7 @@ describe("createStore", () => {
     const listener = vi.fn();
     store.subscribe(listener);
     const before = store.state;
-    expect(store.dispatch({ type: "activerOnglet", id: "nope" })).toBe(before);
+    expect(store.dispatch({ type: "activateTab", id: "nope" })).toBe(before);
     expect(listener).not.toHaveBeenCalled();
   });
 
@@ -17,14 +17,14 @@ describe("createStore", () => {
     const store = createStore(initial);
     const listener = vi.fn();
     store.subscribe(listener);
-    store.dispatch({ type: "ouvrirOnglet", windowId: initial.windows[0]!.id, url: "https://a.test" }, () => "t1");
+    store.dispatch({ type: "openTab", windowId: initial.windows[0]!.id, url: "https://a.test" }, () => "t1");
     expect(store.state.tabs["t1"]?.url).toBe("https://a.test");
     expect(listener).toHaveBeenCalledWith(store.state, initial);
   });
 
   it("clones the action: mutating it afterwards changes nothing", () => {
     const store = createStore(initialState());
-    const action = { type: "ouvrirOnglet" as const, windowId: store.state.windows[0]!.id, url: "https://a.test" };
+    const action = { type: "openTab" as const, windowId: store.state.windows[0]!.id, url: "https://a.test" };
     store.dispatch(action, () => "t1");
     action.url = "https://evil.test";
     expect(store.state.tabs["t1"]?.url).toBe("https://a.test");
@@ -34,7 +34,7 @@ describe("createStore", () => {
     const store = createStore(initialState());
     const listener = vi.fn();
     store.subscribe(listener)();
-    store.dispatch({ type: "ouvrirOnglet", windowId: store.state.windows[0]!.id, url: "x" }, () => "t1");
+    store.dispatch({ type: "openTab", windowId: store.state.windows[0]!.id, url: "x" }, () => "t1");
     expect(listener).not.toHaveBeenCalled();
   });
 
@@ -46,7 +46,7 @@ describe("createStore", () => {
       throw new Error("dead window");
     });
     store.subscribe(next);
-    store.dispatch({ type: "ouvrirOnglet", windowId: store.state.windows[0]!.id, url: "x" }, () => "t1");
+    store.dispatch({ type: "openTab", windowId: store.state.windows[0]!.id, url: "x" }, () => "t1");
     expect(next).toHaveBeenCalled();
     expect(error).toHaveBeenCalled();
     error.mockRestore();

@@ -94,25 +94,25 @@
         data-testid="profil-agent"
         aria-label="Profil d'agent"
         value={agentProfile}
-        onchange={(e) => api.dispatch({ type: "choisirProfilAgent", profile: e.currentTarget.value })}
+        onchange={(e) => api.dispatch({ type: "chooseAgentProfile", profile: e.currentTarget.value })}
       >
         {#each profiles as p (p.id)}<option value={p.id}>{p.name}</option>{/each}
       </select>
     </header>
   {/if}
-  {#if appState.state === "preparation"}
+  {#if appState.state === "preparing"}
     <p class="message">Préparation de l'agent… (la première fois, la construction du conteneur prend quelques minutes)</p>
   {:else if appState.state === "docker-absent"}
     <p class="message">Docker n'est pas lancé. La navigation fonctionne ; seul l'agent est indisponible.</p>
     <button onclick={terminalAgent.reset}>Réessayer</button>
-  {:else if appState.state === "erreur"}
+  {:else if appState.state === "error"}
     <p class="message">L'agent n'a pas pu démarrer : {appState.message}</p>
     <button onclick={terminalAgent.reset}>Réessayer</button>
-  {:else if appState.state === "termine"}
+  {:else if appState.state === "done"}
     <p class="message">L'agent s'est arrêté.</p>
     <button onclick={terminalAgent.reset}>Relancer</button>
   {/if}
-  <div class="terminal" bind:this={hostEl} class:masque={appState.state !== "actif" && appState.state !== "termine"}></div>
+  <div class="terminal" bind:this={hostEl} class:masque={appState.state !== "active" && appState.state !== "done"}></div>
 </section>
 
 <style>

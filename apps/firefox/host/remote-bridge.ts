@@ -64,22 +64,22 @@ export class RemoteBridge implements BrowserBridge {
     }
   }
 
-  activeTab = () => this.call<TabInfo | null>("ongletActif", []);
-  listTabs = () => this.call<TabInfo[]>("listerOnglets", []);
-  readText = (id: string) => this.call<{ text: string; selection?: string }>("lireTexte", [id]);
-  openTab = (url: string, space?: string) => this.call<TabInfo>("ouvrirOnglet", space === undefined ? [url] : [url, space]);
-  navigate = (id: string, url: string) => this.call<void | "pending">("naviguer", [id, url]);
-  capture = async (id: string) => Buffer.from(await this.call<string>("capturer", [id]), "base64");
-  askPermission = (o: TabInfo) => this.call<boolean>("demanderAutorisation", [o]);
+  activeTab = () => this.call<TabInfo | null>("activeTab", []);
+  listTabs = () => this.call<TabInfo[]>("listTabs", []);
+  readText = (id: string) => this.call<{ text: string; selection?: string }>("readText", [id]);
+  openTab = (url: string, space?: string) => this.call<TabInfo>("openTab", space === undefined ? [url] : [url, space]);
+  navigate = (id: string, url: string) => this.call<void | "pending">("navigate", [id, url]);
+  capture = async (id: string) => Buffer.from(await this.call<string>("capture", [id]), "base64");
+  askPermission = (o: TabInfo) => this.call<boolean>("askPermission", [o]);
   // Taken down (signal) when a new conversation starts: no rights.
   askDevTools = (o: TabInfo, d: { rights: DevRight[]; reason: string; agent: string }, signal?: AbortSignal) =>
-    this.call<DevRight[]>("demanderOutilsDev", [o, d], signal).catch((e) => {
+    this.call<DevRight[]>("askDevTools", [o, d], signal).catch((e) => {
       if (signal?.aborted) return [];
       throw e;
     });
   // The kernel keeps the grant for the conversation and takes the card down (signal) when a new one starts: refused then.
   askWidgetData = (o: { id: string; name: string; agent: string; kind?: "action" | "site" }, signal?: AbortSignal) =>
-    this.call<boolean>("demanderDonneesWidget", [o], signal).catch((e) => {
+    this.call<boolean>("askWidgetData", [o], signal).catch((e) => {
       if (signal?.aborted) return false;
       throw e;
     });
@@ -95,9 +95,9 @@ export class RemoteBridge implements BrowserBridge {
     // Without an owner's token Firefox refuses every call.
     ...this.devToolsFor(Promise.resolve("")),
     owner: () => {
-      const token = this.call<{ token: string }>("outilsDev.owner", []).then((r) => r.token);
+      const token = this.call<{ token: string }>("devtools.owner", []).then((r) => r.token);
       token.catch(() => {});
-      return { ...this.devToolsFor(token), release: () => void token.then((t) => this.rpc.notify("outilsDev.release", [t]), () => {}) };
+      return { ...this.devToolsFor(token), release: () => void token.then((t) => this.rpc.notify("devtools.release", [t]), () => {}) };
     },
   };
 
@@ -107,7 +107,7 @@ export class RemoteBridge implements BrowserBridge {
       (method: keyof BrowserDevTools) =>
       async (...a: unknown[]): Promise<any> => {
         const signal = a.at(-1) instanceof AbortSignal ? (a.pop() as AbortSignal) : undefined;
-        return this.call("outilsDev.call", [await token, method, a], signal);
+        return this.call("devtools.call", [await token, method, a], signal);
       };
     return {
       attach: f("attach"),
@@ -122,16 +122,16 @@ export class RemoteBridge implements BrowserBridge {
     };
   }
 
-  /** The waits of the paced reads in progress, by the id Firefox echoes back (`lecture.changerHote`). */
+  /** The waits of the paced reads in progress, by the id Firefox echoes back (`read.changeHost`). */
   private readonly pacedReads = new Map<string, ChangeHost>();
 
   readPageInvisible = async (url: string, o: PageReadOptions): Promise<ReadPage> => {
     const { signal, changeHost: changeHost, ...options } = o;
-    if (!changeHost) return this.call<ReadPage>("lirePageInvisible", [url, options], signal);
+    if (!changeHost) return this.call<ReadPage>("readPageInvisible", [url, options], signal);
     const id = crypto.randomUUID();
     this.pacedReads.set(id, changeHost);
     try {
-      return await this.call<ReadPage>("lirePageInvisible", [url, { ...options, pacedId: id }], signal);
+      return await this.call<ReadPage>("readPageInvisible", [url, { ...options, pacedId: id }], signal);
     } finally {
       this.pacedReads.delete(id);
     }
@@ -145,6 +145,6 @@ export class RemoteBridge implements BrowserBridge {
 
   readHtmlInvisible = (url: string, o: { localAddresses?: boolean; signal?: AbortSignal }) => {
     const { signal, ...options } = o;
-    return this.call<{ url: string; html: string }>("lireHtmlInvisible", [url, options], signal);
+    return this.call<{ url: string; html: string }>("readHtmlInvisible", [url, options], signal);
   };
 }

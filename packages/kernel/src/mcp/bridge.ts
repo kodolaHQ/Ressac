@@ -94,7 +94,7 @@ export interface BrowserBridge {
   readPageInvisible?(url: string, o: PageReadOptions): Promise<ReadPage>;
   /**
    * The HTML of a public page (`document.documentElement.outerHTML`, 2 MB at most): always the public session,
-   * emptied before the read, never a profile or an account. Same guards as `lirePageInvisible` (http(s), local address
+   * emptied before the read, never a profile or an account. Same guards as `readPageInvisible` (http(s), local address
    * refused unless `adressesLocales`), same 30 s limit, same abandonment through `signal`; `url` is the final
    * address, which must remain allowed.
    */
@@ -135,7 +135,7 @@ export interface NetworkRequest {
   error?: string;
 }
 
-/** Result of `executer`: the value already serialized (JSON or preview), not truncated; the kernel truncates. */
+/** Result of `run`: the value already serialized (JSON or preview), not truncated; the kernel truncates. */
 export type JsResult = { value: string } | { exception: string };
 
 /** What the browser gives to inspect a tab. */

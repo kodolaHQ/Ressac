@@ -44,7 +44,7 @@ async function toTab(url) {
   if (!/^https?:\/\//.test(url)) return;
   log.routed.push(url);
   const store = await ChromeUtils.importESModule(STORE).ready;
-  store.dispatch({ type: "ouvrirOnglet", fenetreId: store.state.fenetres[0].id, url });
+  store.dispatch({ type: "openTab", fenetreId: store.state.fenetres[0].id, url });
 }
 
 function closeStray(browser) {

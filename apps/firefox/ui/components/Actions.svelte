@@ -22,7 +22,7 @@
   let inputOf = $state<string | null>(null);
   let input = $state("");
   /** Action whose deletion awaits the user's confirmation. */
-  let toConfirm = $state<{ action: ActionShown; kind: "supprimer" | "accord" } | null>(null);
+  let toConfirm = $state<{ action: ActionShown; kind: "delete" | "grant" } | null>(null);
   /** Refusal returned by the main process (open, delete), shown above the list. */
   let denial = $state<string | null>(null);
 
@@ -58,10 +58,10 @@
     } else void launch(a, null);
   }
 
-  async function confirm(c: { action: ActionShown; kind: "supprimer" | "accord" }) {
+  async function confirm(c: { action: ActionShown; kind: "delete" | "grant" }) {
     toConfirm = null;
     denial = null;
-    if (c.kind === "accord") await api.actions.denyGrant(c.action.id);
+    if (c.kind === "grant") await api.actions.denyGrant(c.action.id);
     else {
       const r = await api.actions.supprimer(c.action.id);
       if (!r.ok) denial = r.error;
@@ -114,8 +114,8 @@
               <button data-testid="lancer-{a.id}" onclick={() => requestLaunch(a)}><Icon name="actions" size={12} /> Lancer</button>
             {/if}
             <button data-testid="voir-workflow-{a.id}" onclick={() => api.actions.viewWorkflow(a.id)}>Voir le workflow</button>
-            {#if a.grant}<button data-testid="retirer-accord-{a.id}" onclick={() => (toConfirm = { action: a, kind: "accord" })}>Retirer l'accord</button>{/if}
-            <button data-testid="supprimer-{a.id}" onclick={() => (toConfirm = { action: a, kind: "supprimer" })}>Supprimer</button>
+            {#if a.grant}<button data-testid="retirer-accord-{a.id}" onclick={() => (toConfirm = { action: a, kind: "grant" })}>Retirer l'accord</button>{/if}
+            <button data-testid="supprimer-{a.id}" onclick={() => (toConfirm = { action: a, kind: "delete" })}>Supprimer</button>
           </div>
         </li>
       {/each}
@@ -128,14 +128,14 @@
   {@const target = c.action}
   <div class="voile" data-testid="voile-suppression-action">
     <div class="confirmation" role="alertdialog" aria-modal="true" data-testid="confirmation-suppression-action">
-      {#if c.kind === "accord"}
+      {#if c.kind === "grant"}
         <p>Retirer l'accord de « {target.name} » ? Ses exécutions, ses résultats et sa mémoire seront effacés.</p>
       {:else}
         <p>Supprimer « {target.name} » ? Son dossier ira dans la corbeille ; ses résultats et son accord seront effacés.</p>
       {/if}
       <div class="confirmer-boutons">
         <button data-testid="annuler-suppression-action" onclick={() => (toConfirm = null)}>Annuler</button>
-        <button class="confirmer" data-testid="confirmer-suppression-action" onclick={() => void confirm(c)}>{c.kind === "accord" ? "Retirer l'accord" : "Supprimer"}</button>
+        <button class="confirmer" data-testid="confirmer-suppression-action" onclick={() => void confirm(c)}>{c.kind === "grant" ? "Retirer l'accord" : "Supprimer"}</button>
       </div>
     </div>
   </div>

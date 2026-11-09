@@ -77,7 +77,7 @@ export class WidgetSpikeParent extends JSWindowActorParent {
       const mod = ChromeUtils.importESModule("${STORE}");
       store = { import: "ok", ready: typeof mod.ready };
       mod.ready.then(
-        (s) => this.sendAsyncMessage("store", { ok: true, dataDir: s.dataDir, profils: s.state.profils.map((p) => p.id) }),
+        (s) => this.sendAsyncMessage("store", { ok: true, dataDir: s.dataDir, profils: s.state.profiles.map((p) => p.id) }),
         (e) => this.sendAsyncMessage("store", { ok: false, err: String(e).slice(0, 200) }),
       );
     } catch (e) {
@@ -522,7 +522,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
         m,
         `
         const s = await ChromeUtils.importESModule("${STORE}").ready;
-        return { dataDir: s.dataDir, pid: s.agent.pid, hostStarted: s.agent.pid !== null, profils: s.state.profils.map((p) => p.id) };`,
+        return { dataDir: s.dataDir, pid: s.agent.pid, hostStarted: s.agent.pid !== null, profils: s.state.profiles.map((p) => p.id) };`,
       ),
     );
     const tree = async (dir: string) => readdir(dir).catch(() => []);
@@ -535,19 +535,19 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
 
   it("P7: an invisible read with a profile's container, without a permission banner; the Docker atelier", { timeout: 180_000 }, async () => {
     const before = (await state(m)).spaces.map((e) => e.id);
-    await dispatch(m, { type: "creerEspace", name: "Spike", icon: "🧪", private: false, profile: "nouveau", windowId: (await state(m)).windows[0]!.id });
+    await dispatch(m, { type: "createSpace", name: "Spike", icon: "🧪", private: false, profile: "nouveau", windowId: (await state(m)).windows[0]!.id });
     const space = (await state(m)).spaces.filter((e) => !before.includes(e.id));
     const profile = space[0]?.profile;
     const uc = await chrome(m, `return (await ChromeUtils.importESModule("${STORE}").ready).containerFor(arguments[0]);`, [profile]);
     note("P7 profile", { profile: profile, userContextId: uc });
 
     // A cookie set in the profile's space: the invisible read with that profile must see it, a public read must not.
-    await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url: `${pages.url}/p?set=${encodeURIComponent(`spike=${profile}`)}`, spaceId: space[0]!.id, activate: true } as Action);
+    await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url: `${pages.url}/p?set=${encodeURIComponent(`spike=${profile}`)}`, spaceId: space[0]!.id, activate: true } as Action);
     await sleep(1500);
     const read = (url: string, o: unknown) =>
       chrome<{ title?: string; err?: string }>(m, `
         const s = await ChromeUtils.importESModule("${STORE}").ready;
-        try { const p = await s.readPage(arguments[0], arguments[1]); return { titre: p.titre }; } catch (e) { return { err: String(e && e.message || e).slice(0, 200) }; }`, [url, o]);
+        try { const p = await s.readPage(arguments[0], arguments[1]); return { title: p.title }; } catch (e) { return { err: String(e && e.message || e).slice(0, 200) }; }`, [url, o]);
     note("P7 invisible read, same profile", await read(`${pages.url}/p`, { profile: profile, localAddresses: true }));
     note("P7 invisible read, public container", await read(`${pages.url}/p`, { profile: null, localAddresses: true }));
     note("P7 permission request in a read, and the banner", {

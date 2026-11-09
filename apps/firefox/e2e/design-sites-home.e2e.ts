@@ -95,13 +95,13 @@ afterAll(async () => {
   for (const d of dirs) await rm(d, { recursive: true, force: true });
 });
 afterEach(async () => {
-  await inStore(m, `for (const id of arguments[0]) { await store.design.stop({ type: "site", id }); store.design.closeOverlay({ type: "site", id }, "panier"); } return 1;`, [IDS]);
+  await inStore(m, `for (const id of arguments[0]) { await store.design.stop({ type: "site", id }); store.design.closeOverlay({ type: "site", id }, "basket"); } return 1;`, [IDS]);
 });
 
 const state = (id: string) => inStore<{ active: boolean; basket: number }>(m, "return await store.design.etat(arguments[0]);", [T(id)]);
 const toggle = (id: string) => inStore(m, "await store.design.toggle(arguments[0]); return 1;", [T(id)]);
 const add = (id: string, text: string) => inStore<{ ok: boolean }>(m, "return await store.design.add(arguments[0], arguments[1]);", [T(id), text]);
-const bubble = (id: string) => inStore<{ label: string; source: string | null; warning: string | null } | null>(m, 'return store.design.overlayContext(arguments[0], ["bulle"]);', [T(id)]);
+const bubble = (id: string) => inStore<{ label: string; source: string | null; warning: string | null } | null>(m, 'return store.design.overlayContext(arguments[0], ["bubble"]);', [T(id)]);
 const view = (id: string) => inStore<string | null>(m, "return store.sites.viewOf(arguments[0]);", [id]);
 /** `body` with `f` the home's frame, `hdoc` its document and `hwin` its window (chrome access). */
 const inHome = <T = unknown>(id: string, body: string, args: unknown[] = []) =>
@@ -257,7 +257,7 @@ describe("design mode on a site app's home", () => {
         `(() => {
          const t = (f) => { try { f(); return "ran"; } catch (e) { return "throws:" + String(e).slice(0, 90); } };
          return { parentLocation: t(() => { parent.location = "about:blank"; }), topHref: t(() => { top.location.href = "about:blank"; }), parentHref: t(() => { parent.location.href = "about:blank"; }),
-           topReplace: t(() => top.location.replace("about:blank")), postMessage: t(() => parent.postMessage({ type: "ouvrir", url: "about:blank" }, "*")) };
+           topReplace: t(() => top.location.replace("about:blank")), postMessage: t(() => parent.postMessage({ type: "open", url: "about:blank" }, "*")) };
        })()`,
       ],
     );

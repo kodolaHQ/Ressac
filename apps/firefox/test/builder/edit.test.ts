@@ -77,7 +77,7 @@ async function opened(f: ReturnType<typeof fake>): Promise<Edit> {
 test("opening a workflow shipped without positions lays it out in columns and writes nothing", async () => {
   const f = fake(shipped());
   const e = await opened(f);
-  expect(e.loading).toBe("pret");
+  expect(e.loading).toBe("ready");
   expect(e.recordingState).toBe("enregistre");
   expect(e.positions).toEqual({ garder: { x: 0, y: 0 }, tri: { x: 260, y: 0 }, sortie: { x: 520, y: 0 } });
   e.reorder();
@@ -197,7 +197,7 @@ test("relire: cut-off JSON → « illisible » banner without touching the canva
   f.state.notFound = true;
   await e.review();
   expect(e.draft).toBe(before);
-  expect(e.loading).toBe("pret");
+  expect(e.loading).toBe("ready");
   f.state.notFound = false;
   await e.review();
   expect(e.banner).toBeNull();
@@ -206,7 +206,7 @@ test("relire: cut-off JSON → « illisible » banner without touching the canva
 test("on first open: not found, or unreadable with the error", async () => {
   const absent = fake(shipped());
   absent.state.notFound = true;
-  expect((await opened(absent)).loading).toBe("introuvable");
+  expect((await opened(absent)).loading).toBe("not-found");
   const cut = fake(shipped());
   cut.state.readable = false;
   expect((await opened(cut)).loading).toEqual({ unreadable: "Workflow invalide : JSON coupé" });

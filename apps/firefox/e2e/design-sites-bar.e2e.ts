@@ -52,11 +52,11 @@ afterAll(async () => {
 });
 afterEach(async () => {
   await inStore(m, `if (store.agent.__real) { store.agent.request = store.agent.__real; delete store.agent.__real; }
-    for (const id of arguments[0]) { await store.design.stop({ type: "site", id }); store.design.closeOverlay({ type: "site", id }, "panier"); } return 1;`, [IDS]);
+    for (const id of arguments[0]) { await store.design.stop({ type: "site", id }); store.design.closeOverlay({ type: "site", id }, "basket"); } return 1;`, [IDS]);
 });
 
 const state = (id: string) => inStore<{ active: boolean; unavailable: string | null; basket: number }>(m, "return await store.design.etat(arguments[0]);", [T(id)]);
-const bubble = (id: string) => inStore<{ label: string } | null>(m, 'return store.design.overlayContext(arguments[0], ["bulle"]);', [T(id)]);
+const bubble = (id: string) => inStore<{ label: string } | null>(m, 'return store.design.overlayContext(arguments[0], ["bubble"]);', [T(id)]);
 const hosts = (id: string) => inSiteView<number>(m, id, `return document.getElementsByTagName("webaios-viseur").length;`).catch(() => -1);
 const view = <T = unknown>(id: string, expr: string) => inSiteView<T>(m, id, `return ${expr};`).catch(() => null);
 const overlayTop = (id: string) => overlayOf<number>(m, id, "return f.getBoundingClientRect().y;");
@@ -293,7 +293,7 @@ it("mode on, bubble open, 3 s idle: at most 4 design.suivi calls", async () => {
   await aim("tuning", "#banniere", "div#banniere.cookies");
   await sleep(500);
   const wrap = `window.__suivi = 0; const real = (store.agent.__real ??= store.agent.request);
-    store.agent.request = (method, p) => (method === "design.suivi" && window.__suivi++, real.call(store.agent, method, p)); return 1;`;
+    store.agent.request = (method, p) => (method === "design.tracking" && window.__suivi++, real.call(store.agent, method, p)); return 1;`;
   const count = () => inStore<number>(m, "return window.__suivi;");
   await inStore(m, wrap);
   await sleep(3000);
@@ -317,7 +317,7 @@ it("fullscreen while the host answers the toggle: the mode does not start", asyn
      const real = (store.agent.__real ??= store.agent.request);
      store.agent.request = (method, p) => {
        const r = real.call(store.agent, method, p);
-       if (method !== "design.suivi" || window.__held) return r;
+       if (method !== "design.tracking" || window.__held) return r;
        window.__held = true;
        return window.__release.then(() => r);
      };

@@ -129,12 +129,12 @@
   );
   $effect(() =>
     api.onShortcut((r) => {
-      if (r === "fermerOnglet") {
+      if (r === "closeTab") {
         if (activeTab) closeTab(activeTab.id);
-      } else if (r === "commande") openCommand("nouveau");
-      else if (r === "adresse") {
-        if (activeTab) openCommand("actif", activeTab.url);
-        else openCommand("nouveau");
+      } else if (r === "command") openCommand("new");
+      else if (r === "address") {
+        if (activeTab) openCommand("active", activeTab.url);
+        else openCommand("new");
       } else if (r === "agent" && builderTarget) builderAgent();
     }),
   );
@@ -201,9 +201,9 @@
     {/if}
   </div>
   <main class="contenu" class:opaque={!pageWeb || !!panel} data-testid="zone-contenu">
-    {#if winState && panel === "historique"}
+    {#if winState && panel === "history"}
       <History window={winState} close={closePanel} />
-    {:else if panel === "telechargements"}
+    {:else if panel === "downloads"}
       <Downloads close={closePanel} />
     {:else if winState && !activeTab}
       <EmptyPage window={winState} />

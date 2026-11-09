@@ -6,7 +6,7 @@ import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 
 /** Writes `<dataDir>/extensions/state.json` (WebAiOs's registry) with a grant on `agent:<id>`, before a launch. */
-export function grant(dataDir: string, id: string, grant: unknown, profiles: string[] = ["defaut"]): void {
+export function grant(dataDir: string, id: string, grant: unknown, profiles: string[] = ["default"]): void {
   mkdirSync(path.join(dataDir, "extensions"), { recursive: true });
   const entry = { source: "agent", addonId: null, name: id, version: "1.0.0", grant: grant, profiles: profiles, pinned: false, modifiedAt: null, disabled: null, pendingUpdate: null, seenVersions: {} };
   writeFileSync(path.join(dataDir, "extensions", "state.json"), JSON.stringify({ version: 1, allCut: false, extensions: { [`agent:${id}`]: entry } }));
@@ -64,7 +64,7 @@ const NAVIGABLES = "chrome://remote/content/shared/NavigableManager.sys.mjs";
 /** Opens `url` in a WebAiOs tab, waits until it is loaded; returns the tab id. */
 export async function openTab(m: Marionette, url: string): Promise<string> {
   const before = new Set(Object.keys((await state(m)).tabs));
-  const s = await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url });
+  const s = await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url });
   await waitFor(m, "return !gBrowser.selectedBrowser.webProgress.isLoadingDocument && gBrowser.selectedBrowser.currentURI.spec !== 'about:blank'", (v) => v === true);
   return Object.keys(s.tabs).find((id) => !before.has(id))!;
 }

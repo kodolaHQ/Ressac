@@ -146,7 +146,7 @@ export async function openAppsPage(
   await waitReady(m);
   await expect.poll(() => existsSync(join(dataDir, "workspace", ".webaios", "mcp.json")), { timeout: 15_000 }).toBe(true);
   if (o.page ?? true) {
-    await dispatch(m, { type: "ouvrirApplications", windowId: (await state(m)).windows[0]!.id });
+    await dispatch(m, { type: "openApps", windowId: (await state(m)).windows[0]!.id });
     await waitUi(m, "return !!doc.querySelector('[data-testid=\"page-applications\"]')");
   }
   return { w, m, dataDir, profile };

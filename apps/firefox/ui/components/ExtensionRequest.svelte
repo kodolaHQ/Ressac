@@ -78,12 +78,12 @@
 
   <!-- Enter refuses (Refuser is the primary button): enabling an extension takes a real click. -->
   <div class="actions">
-    <button data-principal onclick={() => api.permissions.reply(request.id, "refuser")}>Refuser</button>
+    <button data-principal onclick={() => api.permissions.reply(request.id, "deny")}>Refuser</button>
     <button
       class="autoriser"
       disabled={blocked}
       aria-describedby={blocked ? "carte-extension-raison" : undefined}
-      onclick={() => api.permissions.reply(request.id, "autoriser", undefined, { confirmed: included })}>Activer</button
+      onclick={() => api.permissions.reply(request.id, "allow", undefined, { confirmed: included })}>Activer</button
     >
     {#if blocked}<span id="carte-extension-raison" class="lecteur">Coche « Je comprends » pour pouvoir l'activer.</span>{/if}
   </div>

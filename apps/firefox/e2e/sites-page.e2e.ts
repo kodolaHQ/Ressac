@@ -69,7 +69,7 @@ async function launch(o: { prepare?: (dataDir: string) => void; page?: boolean }
   return { dataDir, profile };
 }
 async function openPage(): Promise<void> {
-  await dispatch(m, { type: "ouvrirApplications", windowId: (await state(m)).windows[0]!.id });
+  await dispatch(m, { type: "openApps", windowId: (await state(m)).windows[0]!.id });
   await waitUi(m, "return !!doc.querySelector('[data-testid=\"page-applications\"]')");
 }
 const row = (id: string) => `[data-testid="site-${id}"]`;

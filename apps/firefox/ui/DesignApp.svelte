@@ -14,7 +14,7 @@
     const c = await api.context().catch(() => null);
     if (n !== request) return;
     // A new bubble (another element) starts from an empty text.
-    if (c?.mode !== "bulle" || context?.mode !== "bulle" || c.label !== context.label || c.source !== context.source) {
+    if (c?.mode !== "bubble" || context?.mode !== "bubble" || c.label !== context.label || c.source !== context.source) {
       text = "";
       error = null;
     }
@@ -24,7 +24,7 @@
   api.onChange(() => void reread());
 
   $effect(() => {
-    if (context?.mode === "bulle" && field) field.focus();
+    if (context?.mode === "bubble" && field) field.focus();
   });
 
   async function add() {
@@ -44,7 +44,7 @@
   }
 </script>
 
-{#if context?.mode === "bulle"}
+{#if context?.mode === "bubble"}
   <div class="bulle" data-testid="bulle-design" role="dialog" aria-label="Remarque sur l'élément">
     <div class="tete">
       <code class="etiquette">{context.label}</code>
@@ -62,7 +62,7 @@
   <!-- Not interactive: only a click closes it (like the next keystroke, on the main process side). -->
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
   <div class="message" data-testid="message-design" role="status" onclick={() => api.cancel()}>{context.message}</div>
-{:else if context?.mode === "panier"}
+{:else if context?.mode === "basket"}
   <div class="volet">
     <DesignBasket {api} project={context.project} destination={context.destination} noDestination={context.noDestination} close={() => api.cancel()} />
   </div>

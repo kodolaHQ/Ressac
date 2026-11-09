@@ -152,7 +152,7 @@
 
 <svelte:window onpointermove={move} onpointerup={() => finish(false)} onpointercancel={() => finish(true)} />
 
-<section class="accueil" style={styleTheme} data-testid="accueil" data-theme={theme ? "agent" : "defaut"}>
+<section class="accueil" style={styleTheme} data-testid="accueil" data-theme={theme ? "agent" : "default"}>
   {#if widgets.length}
     <div class="grille" class:geste={inGesture} bind:clientWidth={widthPx} style:height="{height}px">
       {#each widgets as widget (widget.id)}
@@ -179,7 +179,7 @@
               api.home.denyGrant(widget.id);
             }}
             harvest={() => act(widget.id, () => api.home.harvest(widget.id))}
-            viewWorkflow={() => "name" in widget && api.dispatch({ type: "ouvrirWorkflow", windowId: api.windowId, id: widget.id, name: widget.name })}
+            viewWorkflow={() => "name" in widget && api.dispatch({ type: "openWorkflow", windowId: api.windowId, id: widget.id, name: widget.name })}
           />
         </div>
       {/each}

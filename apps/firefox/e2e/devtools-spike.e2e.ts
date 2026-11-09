@@ -90,7 +90,7 @@ let opened = 0;
 /** Opens `url` (made unique) in a WebAiOs tab of the first window and waits for its script; the browser is window.spikeBrowsers[name]. */
 async function open(m: Marionette, name: string, page: string): Promise<void> {
   const url = `${page}${page.includes("?") ? "&" : "?"}k=${++opened}`;
-  await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url });
+  await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url });
   await waitFor(
     m,
     `const b = gBrowser.browsers.findLast((b) => b.currentURI.spec === ${JSON.stringify(url)} && b.contentTitle === "loaded");

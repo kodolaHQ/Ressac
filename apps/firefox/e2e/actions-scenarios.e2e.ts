@@ -152,14 +152,14 @@ beforeAll(async () => {
     code: `export default async () => ({ taches: [{ nom: "Alpha", etat: "ouvert" }, { nom: "Bravo", etat: "fermé" }] });`,
   });
   for (const id of ["un", "deux", "trois"]) await writePagesAction(d, site, id, `Pages ${id}`);
-  const grant = { domains: ["127.0.0.1"], public: [], profile: "defaut" };
+  const grant = { domains: ["127.0.0.1"], public: [], profile: "default" };
   await mkdir(actionsDataDir(d), { recursive: true });
   await writeFile(path.join(actionsDataDir(d), "grants.json"), JSON.stringify({ hostile: grant, [TICKETS]: grant }));
-  for (const id of ["annonces-leboncoin", "hostile", TICKETS, "taches", "un", "deux", "trois"]) await waitUi(m, "return (await ui.webaios.actions.liste()).some((a) => a.id === arguments[0]);", [id], 30_000);
+  for (const id of ["annonces-leboncoin", "hostile", TICKETS, "taches", "un", "deux", "trois"]) await waitUi(m, "return (await ui.webaios.actions.list()).some((a) => a.id === arguments[0]);", [id], 30_000);
 }, 90_000);
 beforeEach(async () => {
   servers.reset();
-  for (const id of Object.keys((await state(m)).tabs)) await dispatch(m, { type: "fermerOnglet", id } as Action);
+  for (const id of Object.keys((await state(m)).tabs)) await dispatch(m, { type: "closeTab", id } as Action);
 });
 afterAll(async () => {
   expect(await missingApi(m)).toEqual([]);
@@ -245,12 +245,12 @@ describe("action scenarios", () => {
   it("three actions launched: the third says « En attente : deux actions tournent déjà », then runs", { timeout: 150_000 }, async () => {
     servers.settings.siteSlownessMs = 3000;
     // The first two, launched as the agent or the Actions page would (without waiting for their end).
-    await inUi(m, "void ui.webaios.actions.lancer('un', null); void ui.webaios.actions.lancer('deux', null);");
-    await waitUi(m, "return (await ui.webaios.actions.direct()).courantes.length === 2;", [], 30_000);
+    await inUi(m, "void ui.webaios.actions.launch('un', null); void ui.webaios.actions.launch('deux', null);");
+    await waitUi(m, "return (await ui.webaios.actions.live()).courantes.length === 2;", [], 30_000);
     await openAction(m, "trois", "Pages trois");
     await click(m, tid("relancer-action"));
     await q.waitText(tid("en-attente"), "En attente : deux actions tournent déjà", 30_000);
-    const feed = await inUi<{ running: { action: string }[]; waiting: { action: string }[] }>(m, "return JSON.parse(JSON.stringify(await ui.webaios.actions.direct()));");
+    const feed = await inUi<{ running: { action: string }[]; waiting: { action: string }[] }>(m, "return JSON.parse(JSON.stringify(await ui.webaios.actions.live()));");
     expect(feed.waiting.map((a) => a.action)).toEqual(["trois"]);
     expect(feed.running.map((a) => a.action).sort()).toEqual(["deux", "un"]);
     // A slot frees up: the third runs, then shows its page.
@@ -332,7 +332,7 @@ describe("action scenarios", () => {
       ],
     };
     const since = servers.site.log.length;
-    await dispatch(m, { type: "ouvrirAction", windowId: (await state(m)).windows[0]!.id, id: "hostile", name: "Hostile" });
+    await dispatch(m, { type: "openAction", windowId: (await state(m)).windows[0]!.id, id: "hostile", name: "Hostile" });
     await visible(tid("page-action"), 10_000);
     await click(m, tid("relancer-action"));
     const page = tid("rendu-page");

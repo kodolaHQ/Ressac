@@ -13,10 +13,10 @@
   }
 
   const LABELS: Record<Download["state"], string> = {
-    "en-cours": "En cours",
-    termine: "Terminé",
-    annule: "Annulé",
-    interrompu: "Interrompu",
+    "in-progress": "En cours",
+    done: "Terminé",
+    canceled: "Annulé",
+    interrupted: "Interrompu",
   };
 </script>
 
@@ -33,14 +33,14 @@
         <div class="infos">
           <span class="nom">{t.name}</span>
           <span class="detail">
-            {LABELS[t.state]} · {t.state === "en-cours" && t.total ? `${size(t.received)} sur ${size(t.total)}` : size(t.received)}
+            {LABELS[t.state]} · {t.state === "in-progress" && t.total ? `${size(t.received)} sur ${size(t.total)}` : size(t.received)}
           </span>
-          {#if t.state === "en-cours"}
+          {#if t.state === "in-progress"}
             <progress max={t.total || undefined} value={t.total ? t.received : undefined}></progress>
           {/if}
         </div>
-        {#if t.state === "termine"}<button onclick={() => api.downloads.open(t.id)}>Ouvrir</button>{/if}
-        {#if t.state === "en-cours"}<button onclick={() => api.downloads.cancel(t.id)}>Annuler</button>{/if}
+        {#if t.state === "done"}<button onclick={() => api.downloads.open(t.id)}>Ouvrir</button>{/if}
+        {#if t.state === "in-progress"}<button onclick={() => api.downloads.cancel(t.id)}>Annuler</button>{/if}
         <button onclick={() => api.downloads.show(t.id)}>Afficher dans le Finder</button>
       </li>
     {:else}

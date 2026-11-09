@@ -1,7 +1,7 @@
 import type { Decision, WindowId, TabId, ProfileId, Outcome, Permission } from "../../shared/model";
 import { DEFAULT_PROFILE } from "../../shared/model";
 
-export type SitePermission = Permission | "partage-ecran" | "drm" | "midi";
+export type SitePermission = Permission | "screen-share" | "drm" | "midi";
 
 export interface SiteRequest {
   tabId: TabId | null;
@@ -32,9 +32,9 @@ interface Files {
 }
 
 const NO_REQUEST = new Set(["fullscreen", "clipboard-sanitized-write"]);
-const SIMPLE = new Set(["notifications", "geolocation", "drm", "midi", "partage-ecran"]);
+const SIMPLE = new Set(["notifications", "geolocation", "drm", "midi", "screen-share"]);
 /** Asked every time, never remembered. */
-const NOT_KEPT = new Set<SitePermission>(["partage-ecran", "ouvrir-application"]);
+const NOT_KEPT = new Set<SitePermission>(["screen-share", "open-app"]);
 
 /** The kernel's permission names, plus the three new kinds; [] = unknown. */
 function translate(kind: string, mediaTypes: readonly string[] = []): SitePermission[] {
@@ -52,11 +52,11 @@ const key = (origin: string, p: SitePermission) => `${origin} ${p}`;
 /** `permissions.json` for the default profile. */
 const fileOf = (dir: string, id: ProfileId) => `${dir}/${id === DEFAULT_PROFILE ? "permissions.json" : `permissions-${id}.json`}`;
 
-/** A flat record of "autoriser" | "refuser". */
+/** A flat record of "allow" | "deny". */
 function parse(text: string): Record<string, Decision> | null {
   try {
     const v: unknown = JSON.parse(text);
-    if (v && typeof v === "object" && !Array.isArray(v) && Object.values(v).every((d) => d === "autoriser" || d === "refuser")) return v as Record<string, Decision>;
+    if (v && typeof v === "object" && !Array.isArray(v) && Object.values(v).every((d) => d === "allow" || d === "deny")) return v as Record<string, Decision>;
   } catch {
     // Unreadable JSON: treated as invalid below.
   }
@@ -138,11 +138,11 @@ export function createSitePermissions(o: {
       // Handing a link to another application: asked every time, with the link in view.
       if (r.kind === "openExternal") {
         if (!r.link) return false;
-        return (await o.ask({ tabId: tabId, windowId: windowId, origin: origin, permissions: ["ouvrir-application"], link: r.link }, signal)) === "autoriser";
+        return (await o.ask({ tabId: tabId, windowId: windowId, origin: origin, permissions: ["open-app"], link: r.link }, signal)) === "allow";
       }
       const permissions = translate(r.kind, r.mediaTypes);
       if (permissions.length === 0) return false;
-      if (permissions.every((p) => NOT_KEPT.has(p))) return (await o.ask({ tabId: tabId, windowId: windowId, origin: origin, permissions }, signal)) === "autoriser";
+      if (permissions.every((p) => NOT_KEPT.has(p))) return (await o.ask({ tabId: tabId, windowId: windowId, origin: origin, permissions }, signal)) === "allow";
       const decisions = of(r.profile);
       const k = (p: SitePermission) => `${r.profile}\n${key(origin, p)}`;
       const unknown = permissions.filter((p) => !decisions[key(origin, p)]);
@@ -155,7 +155,7 @@ export function createSitePermissions(o: {
         void answer.then((d) => {
           done();
           // Withdrawn without an answer (tab closed): refused this time, asked again next time.
-          if (d === "retiree") return;
+          if (d === "withdrawn") return;
           for (const p of fresh) decisions[key(origin, p)] = d;
           // The profile was removed while the question was open: the answer holds for this request only.
           if (memo.get(r.profile) !== decisions) return;
@@ -164,12 +164,12 @@ export function createSitePermissions(o: {
         }, done);
       }
       await Promise.all(unknown.map((p) => pending.get(k(p))));
-      return permissions.every((p) => decisions[key(origin, p)] === "autoriser");
+      return permissions.every((p) => decisions[key(origin, p)] === "allow");
     },
     check(profile, origin, kind, mediaType) {
       if (NO_REQUEST.has(kind)) return true;
       const permissions = translate(kind, mediaType ? [mediaType] : []);
-      return permissions.length > 0 && permissions.every((p) => memo.get(profile)?.[key(origin, p)] === "autoriser");
+      return permissions.length > 0 && permissions.every((p) => memo.get(profile)?.[key(origin, p)] === "allow");
     },
     async forget(profile, origin) {
       await ready;

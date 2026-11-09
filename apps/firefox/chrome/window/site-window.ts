@@ -156,8 +156,8 @@ export function setupSiteWindow(win: Window, id: string): SiteWindowController |
     if (!s) return;
     e.preventDefault();
     e.stopImmediatePropagation();
-    if (s.type === "fenetre") win.OpenBrowserWindow();
-    else if (s.type === "fermerFenetre" || (s.type === "raccourci" && s.r === "fermerOnglet")) win.close();
+    if (s.type === "window") win.OpenBrowserWindow();
+    else if (s.type === "closeWindow" || (s.type === "shortcut" && s.r === "closeTab")) win.close();
     else if (s.type === "design") designShortcut(win);
   };
   win.addEventListener("keydown", onKeyDown, true);

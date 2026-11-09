@@ -71,8 +71,8 @@ function startHost(env: Record<string, string> = {}, prepare?: (dataDir: string)
       readText: ([id]: [string]) => ({ text: `texte de ${id}` }),
       capture: () => png,
       askPermission: () => true,
-      "agent.donnees": (p: { d: string }) => void (data += p.d),
-      "agent.etat": (p: { e: unknown }) => void states.push(p.e),
+      "agent.data": (p: { data: string }) => void (data += p.data),
+      "agent.state": (p: { state: unknown }) => void states.push(p.state),
       ...o.handlers,
     },
   });
@@ -122,18 +122,18 @@ describe("agent host", { timeout: 30_000 }, () => {
     let e: { server: { state: string; port?: number } } | undefined;
     const end = Date.now() + 10_000;
     while (Date.now() < end) {
-      e = await h.rpc.request("externes.liste");
-      if (e!.server.state === "pret") break;
+      e = await h.rpc.request("external.list");
+      if (e!.server.state === "ready") break;
       await new Promise((r) => setTimeout(r, 50));
     }
-    expect(e?.server.state).toBe("pret");
+    expect(e?.server.state).toBe("ready");
     expect(e?.server.port).toBeGreaterThan(0);
     expect(existsSync(join(h.root, ".webaios", "mcp.json"))).toBe(false);
   });
 
   it("creates the space and MCP config, list_tabs goes through Firefox", async () => {
     const h = startHost();
-    expect(await h.rpc.request("demarrer", { agentProfile: "claude" })).toEqual({ agent: expect.any(String) });
+    expect(await h.rpc.request("start", { agentProfile: "claude" })).toEqual({ agent: expect.any(String) });
     expect(existsSync(join(h.root, ".webaios", "mcp.json"))).toBe(true);
     const r = await callMcpTool(h.root, "list_tabs");
     expect(r.text).toContain("onglet non partagé");
@@ -141,39 +141,39 @@ describe("agent host", { timeout: 30_000 }, () => {
 
   it("a private tab is hidden from the agent", async () => {
     const h = startHost();
-    await h.rpc.request("demarrer", { agentProfile: "claude" });
+    await h.rpc.request("start", { agentProfile: "claude" });
     expect((await callMcpTool(h.root, "read_tab", { id: "t3" })).text).not.toBe(PRIVATE_TEXT);
-    h.rpc.notify("prives", { privateTabs: ["t3"], activePrivate: true });
-    await h.rpc.request("acces.etat"); // stdin is read in order: the notification is applied
+    h.rpc.notify("privateTabs", { privateTabs: ["t3"], activePrivate: true });
+    await h.rpc.request("access.state"); // stdin is read in order: the notification is applied
     expect((await callMcpTool(h.root, "read_tab", { id: "t3" })).text).toBe(PRIVATE_TEXT);
     expect((await callMcpTool(h.root, "current_page")).text).toBe(PRIVATE_TEXT);
   });
 
   it("capture_screen returns the PNG Firefox sent", async () => {
     const h = startHost();
-    await h.rpc.request("demarrer", { agentProfile: "claude" });
+    await h.rpc.request("start", { agentProfile: "claude" });
     expect((await callMcpTool(h.root, "capture_screen", { id: "t1" })).image).toBe(png);
   });
 
   it("the terminal reaches the fake agent", async () => {
     const h = startHost();
-    await h.rpc.request("demarrer", { agentProfile: "claude" });
-    await h.rpc.request("agent.demarrer", { window: "f1", size: { cols: 80, rows: 24 } });
+    await h.rpc.request("start", { agentProfile: "claude" });
+    await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
     await until(() => h.data().includes("faux agent prêt>"));
-    h.rpc.notify("agent.ecrire", { window: "f1", d: "bonjour\r" });
+    h.rpc.notify("agent.write", { window: "f1", data: "bonjour\r" });
     await until(() => h.data().includes("bonjour"));
   });
 
   it("a repeat demarrer with the same profile keeps the kernel and its sessions", async () => {
     const h = startHost();
-    await h.rpc.request("demarrer", { agentProfile: "claude" });
-    await h.rpc.request("agent.demarrer", { window: "f1", size: { cols: 80, rows: 24 } });
+    await h.rpc.request("start", { agentProfile: "claude" });
+    await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
     await until(() => h.data().includes("faux agent prêt>"));
     const mcp = readFileSync(join(h.root, ".webaios", "mcp.json"), "utf8");
     const stops = readFileSync(join(h.root, "faux-docker-arrets.log"), "utf8"); // start-up orphan sweep only
-    expect(await h.rpc.request("demarrer", { agentProfile: "claude" })).toEqual({ agent: expect.any(String) });
+    expect(await h.rpc.request("start", { agentProfile: "claude" })).toEqual({ agent: expect.any(String) });
     expect(readFileSync(join(h.root, ".webaios", "mcp.json"), "utf8")).toBe(mcp);
-    h.rpc.notify("agent.ecrire", { window: "f1", d: "encore\r" });
+    h.rpc.notify("agent.write", { window: "f1", data: "encore\r" });
     await until(() => h.data().includes("encore"));
     expect(readFileSync(join(h.root, "faux-docker-arrets.log"), "utf8")).toBe(stops);
   });
@@ -182,45 +182,45 @@ describe("agent host", { timeout: 30_000 }, () => {
     const h = startHost();
     mkdirSync(join(h.root, ".webaios", "profiles"), { recursive: true });
     writeFileSync(join(h.root, ".webaios", "profiles", "autre.json"), JSON.stringify({ id: "autre", name: "Autre", interactive: ["a"], nonInteractive: ["a"], mcpConfig: "claude-json" }));
-    const started = h.rpc.request("demarrer", { agentProfile: "claude" });
-    expect((await h.rpc.request<{ id: string }[]>("agent.profils")).map((p) => p.id)).toEqual(["autre", "claude"]);
+    const started = h.rpc.request("start", { agentProfile: "claude" });
+    expect((await h.rpc.request<{ id: string }[]>("agent.profiles")).map((p) => p.id)).toEqual(["autre", "claude"]);
     await started;
   });
 
   it("demarrer with another profile restarts the sessions", async () => {
     const h = startHost();
-    await h.rpc.request("demarrer", { agentProfile: "claude" });
+    await h.rpc.request("start", { agentProfile: "claude" });
     const profiles = join(h.root, ".webaios", "profiles");
     writeFileSync(join(profiles, "autre.json"), readFileSync(join(profiles, "claude.json"), "utf8").replace('"id": "claude"', '"id": "autre"'));
-    await h.rpc.request("agent.demarrer", { window: "f1", size: { cols: 80, rows: 24 } });
+    await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
     await until(() => h.data().includes("faux agent prêt>"));
     const stops = join(h.root, "faux-docker-arrets.log");
     const before = readFileSync(stops, "utf8");
     h.states.length = 0;
-    await h.rpc.request("demarrer", { agentProfile: "autre" });
-    await until(() => h.states.some((e) => (e as { state: string }).state === "actif"));
+    await h.rpc.request("start", { agentProfile: "autre" });
+    await until(() => h.states.some((e) => (e as { state: string }).state === "active"));
     // The old session was stopped in the container.
     await until(() => readFileSync(stops, "utf8").slice(before.length).includes("webaios-session-"));
   });
 
   it("docker absent → etat docker-absent", async () => {
     const h = startHost({ FAKE_DOCKER_ABSENT: "1" });
-    await h.rpc.request("demarrer", { agentProfile: "claude" });
-    await h.rpc.request("agent.demarrer", { window: "f1", size: { cols: 80, rows: 24 } });
+    await h.rpc.request("start", { agentProfile: "claude" });
+    await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
     await until(() => h.states.some((e) => (e as { state: string }).state === "docker-absent"));
   });
 
   it("a console.log in the host never reaches stdout", async () => {
     const h = startHost();
     h.rpc.notify("debug.log", { text: "bruit-sur-stdout" });
-    expect(await h.rpc.request("acces.etat")).toEqual({ agent: expect.any(String), tabs: {} });
+    expect(await h.rpc.request("access.state")).toEqual({ agent: expect.any(String), tabs: {} });
     expect(h.stderr()).toContain("bruit-sur-stdout");
   });
 
   it("uses its own docker container", async () => {
     const h = startHost();
-    await h.rpc.request("demarrer", { agentProfile: "claude" });
-    await h.rpc.request("agent.demarrer", { window: "f1", size: { cols: 80, rows: 24 } });
+    await h.rpc.request("start", { agentProfile: "claude" });
+    await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
     await until(() => h.data().includes("faux agent prêt>"));
     const lignes = readFileSync(h.log, "utf8").split("\n");
     expect(lignes.some((l) => l.includes("webaios-workshop-firefox"))).toBe(true);
@@ -229,8 +229,8 @@ describe("agent host", { timeout: 30_000 }, () => {
 
   it("publishes its own port range, 5300-5319", async () => {
     const h = startHost({ FAKE_DOCKER_NO_CONTAINER: "1" });
-    await h.rpc.request("demarrer", { agentProfile: "claude" });
-    await h.rpc.request("agent.demarrer", { window: "f1", size: { cols: 80, rows: 24 } });
+    await h.rpc.request("start", { agentProfile: "claude" });
+    await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
     await until(() => h.data().includes("faux agent prêt>"));
     const run = readFileSync(h.log, "utf8").split("\n").find((l) => l.startsWith("run -d"));
     expect(run).toContain("127.0.0.1:5300-5319:5300-5319");
@@ -239,32 +239,32 @@ describe("agent host", { timeout: 30_000 }, () => {
 
   it("arreter stops sessions, then the process exits 0", async () => {
     const h = startHost();
-    await h.rpc.request("demarrer", { agentProfile: "claude" });
-    await h.rpc.request("agent.demarrer", { window: "f1", size: { cols: 80, rows: 24 } });
+    await h.rpc.request("start", { agentProfile: "claude" });
+    await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
     await until(() => h.data().includes("faux agent prêt>"));
-    await h.rpc.request("arreter");
+    await h.rpc.request("stop");
     expect(await h.exited).toBe(0);
     expect(readFileSync(join(h.root, "faux-docker-arrets.log"), "utf8")).toContain("webaios-session");
   });
 
   it("open_workflow: the window's selection on its open workflow, forgotten when the window closes", async () => {
     const h = startHost();
-    await h.rpc.request("demarrer", { agentProfile: "claude" });
+    await h.rpc.request("start", { agentProfile: "claude" });
     const sessions = join(h.root, ".webaios", "sessions");
     /** Starts an agent session for w1 and returns its own MCP config (its token names the window). */
     const session = async () => {
       const before = existsSync(sessions) ? readdirSync(sessions) : [];
-      await h.rpc.request("agent.demarrer", { window: "w1", size: { cols: 80, rows: 24 } });
+      await h.rpc.request("agent.start", { window: "w1", size: { cols: 80, rows: 24 } });
       let config: string | undefined;
       await until(() => !!(config = existsSync(sessions) ? readdirSync(sessions).find((f) => !before.includes(f)) : undefined));
       return join(sessions, config!);
     };
     const first = await session();
     h.rpc.notify("workflow.selection", { window: "w1", target: { type: "widget", id: "veille" }, block: "tri" });
-    h.rpc.notify("fenetres.actives", { w1: "webaios://workflow/veille" });
-    await h.rpc.request("acces.etat"); // stdin is read in order: the notifications are applied
+    h.rpc.notify("windows.active", { w1: "webaios://workflow/veille" });
+    await h.rpc.request("access.state"); // stdin is read in order: the notifications are applied
     expect((await callMcpTool(h.root, "open_workflow", {}, first)).text).toBe(JSON.stringify({ widget: "veille", block: "tri" }));
-    h.rpc.notify("agent.fermerFenetre", { window: "w1" });
+    h.rpc.notify("agent.closeWindow", { window: "w1" });
     await until(() => !existsSync(first));
     expect((await callMcpTool(h.root, "open_workflow", {}, await session())).text).toBe(NO_WORKFLOW_OPEN);
   });
@@ -274,12 +274,12 @@ describe("agent host", { timeout: 30_000 }, () => {
     const target = { type: "widget", id: "veille" };
     const bad = { type: "widget", id: "../x" };
     const failure = { ok: false, error: "Argument invalide" };
-    expect(await h.rpc.request("workflow.lire", { target: bad })).toBeNull();
-    expect(await h.rpc.request("workflow.enregistrer", { target: target, draft: { version: 2 } })).toEqual({ ...failure, warnings: [] });
-    expect(await h.rpc.request("workflow.lireCode", { target: target, name: "Tri.mjs" })).toEqual({ error: "Argument invalide" });
-    expect(await h.rpc.request("workflow.enregistrerCode", { target: target, name: "tri.mjs", text: 1 })).toEqual(failure);
-    expect(await h.rpc.request("workflow.rejouer", { target: target, run: "x/y", block: "tri" })).toEqual(failure);
-    expect(await h.rpc.request("workflow.lancer", { target: bad })).toEqual({});
+    expect(await h.rpc.request("workflow.read", { target: bad })).toBeNull();
+    expect(await h.rpc.request("workflow.save", { target: target, draft: { version: 2 } })).toEqual({ ...failure, warnings: [] });
+    expect(await h.rpc.request("workflow.readCode", { target: target, name: "Tri.mjs" })).toEqual({ error: "Argument invalide" });
+    expect(await h.rpc.request("workflow.saveCode", { target: target, name: "tri.mjs", text: 1 })).toEqual(failure);
+    expect(await h.rpc.request("workflow.replay", { target: target, run: "x/y", block: "tri" })).toEqual(failure);
+    expect(await h.rpc.request("workflow.run", { target: bad })).toEqual({});
   });
 
   it("adresseSitePermise follows the open app's domains, false once it is closed", async () => {
@@ -294,25 +294,25 @@ describe("agent host", { timeout: 30_000 }, () => {
         listTabs: () => [...tabs, site],
         askWidgetData: () => true,
         navigate: ([, url]: [string, string]) => void navigations.push(url),
-        "sites.ouvertes": () => ["vidola"],
+        "sites.openIds": () => ["vidola"],
       },
     });
-    await h.rpc.request("demarrer", { agentProfile: "claude" });
-    await h.rpc.request("sites.pret");
+    await h.rpc.request("start", { agentProfile: "claude" });
+    await h.rpc.request("sites.ready");
     const navigate = (url: string) => callMcpTool(h.root, "navigate", { id: "site:vidola", url });
     expect((await navigate("https://vidola.test/film/2")).text).toBe("Appli de site site:vidola → https://vidola.test/film/2");
     // Sign-in domains and other sites are not the app's: nothing loads.
     expect(await navigate("https://compte.test/connexion")).toEqual({ text: navigationOutsideSite("https://compte.test/connexion"), error: true });
     expect(await navigate("https://pub.test/x")).toEqual({ text: navigationOutsideSite("https://pub.test/x"), error: true });
-    h.rpc.notify("sites.ferme", { id: "vidola" });
-    await h.rpc.request("acces.etat"); // stdin is read in order: the notification is applied
+    h.rpc.notify("sites.closed", { id: "vidola" });
+    await h.rpc.request("access.state"); // stdin is read in order: the notification is applied
     expect(await navigate("https://vidola.test/film/3")).toEqual({ text: navigationOutsideSite("https://vidola.test/film/3"), error: true });
     expect(navigations).toEqual(["https://vidola.test/film/2"]);
   });
 
   it("stdin closed → the host exits", async () => {
     const h = startHost();
-    await h.rpc.request("demarrer", { agentProfile: "claude" });
+    await h.rpc.request("start", { agentProfile: "claude" });
     h.child.stdin.end();
     expect(await h.exited).toBe(0);
   });
@@ -320,27 +320,27 @@ describe("agent host", { timeout: 30_000 }, () => {
 
 describe("history", { timeout: 30_000 }, () => {
   const visit = (h: Host, url: string, title: string, o: { private?: boolean; spaceId?: string } = {}) =>
-    h.rpc.notify("historique.noter", { url, title: title, spaceId: o.spaceId ?? "e1", private: o.private ?? false });
+    h.rpc.notify("history.record", { url, title: title, spaceId: o.spaceId ?? "e1", private: o.private ?? false });
 
   // A notification runs a microtask after its line, a request at once: a round trip lets the notifications before it land.
-  const settle = (h: Host) => h.rpc.request("acces.etat");
+  const settle = (h: Host) => h.rpc.request("access.state");
 
   it("noted visits are searched, cleared and survive the agent's kernel", async () => {
     // No docker, no demarrer: the history must not need the agent's kernel.
     const h = startHost();
     visit(h, "https://a.test/", "Page A");
-    h.rpc.notify("historique.titre", { url: "https://a.test/", spaceId: "e1", title: "Page A bis" });
+    h.rpc.notify("history.title", { url: "https://a.test/", spaceId: "e1", title: "Page A bis" });
     await settle(h);
-    expect(await h.rpc.request("historique.rechercher", { text: "page a" })).toEqual([
+    expect(await h.rpc.request("history.search", { text: "page a" })).toEqual([
       expect.objectContaining({ title: "Page A bis", visits: 1, private: false }),
     ]);
-    await h.rpc.request("historique.effacer", {});
-    expect(await h.rpc.request("historique.recents", {})).toEqual([]);
+    await h.rpc.request("history.clear", {});
+    expect(await h.rpc.request("history.recent", {})).toEqual([]);
   });
 
   it("search_history finds a non-private visit, never a private one", async () => {
     const h = startHost();
-    await h.rpc.request("demarrer", { agentProfile: "claude" });
+    await h.rpc.request("start", { agentProfile: "claude" });
     visit(h, "https://a.test/", "Alpha");
     visit(h, "https://b.test/", "Alpha privé", { private: true });
     await settle(h);
@@ -352,15 +352,15 @@ describe("history", { timeout: 30_000 }, () => {
 
   it("retained text is found by the agent, never for a loopback URL", async () => {
     const h = startHost();
-    await h.rpc.request("demarrer", { agentProfile: "claude" });
+    await h.rpc.request("start", { agentProfile: "claude" });
     visit(h, "https://a.test/", "Alpha");
-    h.rpc.notify("historique.retenir", { url: "https://a.test/", spaceId: "e1", title: "Alpha", text: "Le chat dort" });
+    h.rpc.notify("history.keep", { url: "https://a.test/", spaceId: "e1", title: "Alpha", text: "Le chat dort" });
     visit(h, "http://127.0.0.1/x", "Local");
-    h.rpc.notify("historique.retenir", { url: "http://127.0.0.1/x", spaceId: "e1", title: "Local", text: "Le chien veille" });
+    h.rpc.notify("history.keep", { url: "http://127.0.0.1/x", spaceId: "e1", title: "Local", text: "Le chien veille" });
     await settle(h);
     expect((await callMcpTool(h.root, "search_history", { query: "chat" })).text).toContain("a.test");
     expect((await callMcpTool(h.root, "read_history", { url: "https://a.test/" })).text).toContain("Le chat dort");
-    const recents = (await h.rpc.request("historique.recents", {})) as { url: string; kept: boolean }[];
+    const recents = (await h.rpc.request("history.recent", {})) as { url: string; kept: boolean }[];
     expect(recents.find((v) => v.url === "http://127.0.0.1/x")?.kept).toBe(false);
   });
 
@@ -368,10 +368,10 @@ describe("history", { timeout: 30_000 }, () => {
     // A directory where the SQLite file should be: opening it throws.
     const h = startHost({}, (d) => mkdirSync(join(d, "history.sqlite")));
     visit(h, "https://a.test/", "Page A");
-    expect(await h.rpc.request("historique.recents", {})).toEqual([]);
-    expect(await h.rpc.request("historique.rechercher", { text: "page" })).toEqual([]);
-    await h.rpc.request("demarrer", { agentProfile: "claude" });
-    await h.rpc.request("agent.demarrer", { window: "f1", size: { cols: 80, rows: 24 } });
+    expect(await h.rpc.request("history.recent", {})).toEqual([]);
+    expect(await h.rpc.request("history.search", { text: "page" })).toEqual([]);
+    await h.rpc.request("start", { agentProfile: "claude" });
+    await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
     await until(() => h.data().includes("faux agent prêt>"));
     expect(h.stderr()).toContain("historique");
   });
@@ -379,9 +379,9 @@ describe("history", { timeout: 30_000 }, () => {
   it("a space turned private marks its visits", async () => {
     const h = startHost();
     visit(h, "https://a.test/", "Page A");
-    h.rpc.notify("historique.rendrePrive", { spaceId: "e1" });
+    h.rpc.notify("history.makePrivate", { spaceId: "e1" });
     await settle(h);
-    expect(await h.rpc.request("historique.recents", {})).toEqual([expect.objectContaining({ spaceId: "e1", private: true })]);
+    expect(await h.rpc.request("history.recent", {})).toEqual([expect.objectContaining({ spaceId: "e1", private: true })]);
   });
 });
 
@@ -408,7 +408,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     writeFileSync(join(dir, "fond.js"), "console.log('fond');\n");
     writeFileSync(join(dir, "cache.css"), o.css ?? "#cache-moi { display: none }\n");
   };
-  const grant = (dataDir: string, profiles = ["defaut"], grant: unknown = GRANT) => {
+  const grant = (dataDir: string, profiles = ["default"], grant: unknown = GRANT) => {
     mkdirSync(join(dataDir, "extensions"), { recursive: true });
     const entry = { source: "agent", addonId: null, name: "Cacheur", version: "1.0.0", grant: grant, profiles: profiles, pinned: false, modifiedAt: null, disabled: null, pendingUpdate: null, seenVersions: {} };
     writeFileSync(join(dataDir, "extensions", "state.json"), JSON.stringify({ version: 1, allCut: false, extensions: { "agent:ma-ext": entry } }));
@@ -433,7 +433,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
       uninstalls: uninstalls,
       presents: present,
       broken: false,
-      spaces: [{ id: "e1", name: "Perso", profile: "defaut", private: false }] as { id: string; name: string; profile: string; private: boolean }[],
+      spaces: [{ id: "e1", name: "Perso", profile: "default", private: false }] as { id: string; name: string; profile: string; private: boolean }[],
       /** The grant cards asked, and the answer given to each (default: Activer). */
       cards: [] as ExtensionCard[],
       /** Every extensions.portees notification, in order. */
@@ -446,7 +446,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
       handlers: {} as Record<string, Handler>,
     };
     f.handlers = {
-      "extensions.installer": (p: { addonId: string; xpi: string; temporary: boolean; version: string; active: boolean }) => {
+      "extensions.install": (p: { addonId: string; xpi: string; temporary: boolean; version: string; active: boolean }) => {
         calls.push({ version: p.version, active: p.active });
         if ((!p.active && !present.has(p.addonId)) || present.get(p.addonId) === p.version) return null;
         if (f.broken) throw new Error("boom");
@@ -455,13 +455,13 @@ describe("agent extensions", { timeout: 60_000 }, () => {
         present.set(p.addonId, p.version);
         return { version: p.version };
       },
-      "extensions.activer": (p: { addonId: string; active: boolean }) => void activations.push(p),
-      "extensions.redemarrer": (p: { addonId: string }) => void f.restarts.push(p.addonId),
-      "extensions.desinstaller": (p: { addonId: string }) => void (uninstalls.push(p.addonId), present.delete(p.addonId)),
-      "extensions.accord": (p: { card: ExtensionCard }) => (f.cards.push(p.card), f.answer(p.card)),
-      "navigateur.espaces": () => ({ spaces: f.spaces, windows: [{ id: "f1", activeSpace: "e1" }], foreground: "f1" }),
-      "extensions.portees": (p: Record<string, unknown>) => void f.scopes.push(p),
-      "extensions.rechargerOnglets": (p: unknown) => void f.reloads.push(p),
+      "extensions.enable": (p: { addonId: string; active: boolean }) => void activations.push(p),
+      "extensions.restart": (p: { addonId: string }) => void f.restarts.push(p.addonId),
+      "extensions.uninstall": (p: { addonId: string }) => void (uninstalls.push(p.addonId), present.delete(p.addonId)),
+      "extensions.grant": (p: { card: ExtensionCard }) => (f.cards.push(p.card), f.answer(p.card)),
+      "browser.spaces": () => ({ spaces: f.spaces, windows: [{ id: "f1", activeSpace: "e1" }], foreground: "f1" }),
+      "extensions.scopes": (p: Record<string, unknown>) => void f.scopes.push(p),
+      "extensions.reloadTabs": (p: unknown) => void f.reloads.push(p),
       "extensions.amo": () => [{ id: "amo@exemple.org", name: "Module d'AMO", version: "2.0", active: true }],
     };
     return f;
@@ -476,11 +476,11 @@ describe("agent extensions", { timeout: 60_000 }, () => {
   };
   /** An agent tool, once the kernel runs. */
   const tool = async (h: Host, name: string, args: Record<string, unknown> = {}) => {
-    await h.rpc.request("demarrer", { agentProfile: "claude" });
+    await h.rpc.request("start", { agentProfile: "claude" });
     return (await callMcpTool(h.root, name, args)).text;
   };
   const stop = async (h: Host) => {
-    await h.rpc.request("arreter");
+    await h.rpc.request("stop");
     await h.exited;
   };
   const prepare = (d: string) => (source(d), grant(d));
@@ -489,19 +489,19 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const amo = await fakeAmo();
     const f = firefox();
     let h = launch(amo, f, { prepare });
-    await h.rpc.request("extensions.pret", {});
+    await h.rpc.request("extensions.ready", {});
     expect(amo.sends.map((e) => [e.guid, e.version])).toEqual([[ID, "1.0.0.1"]]);
     expect(f.installs).toEqual([expect.objectContaining({ addonId: ID, version: "1.0.0.1", temporary: true })]);
     expect(f.activations).toEqual([{ addonId: ID, active: true }]);
     expect(entry(h.dataDir)).toMatchObject({ addonId: ID, grant: GRANT, disabled: null });
     // Sent first at startup (before the install), then after each registry change.
-    const scope = { [ID]: { key: "agent:ma-ext", grant: GRANT, profiles: ["defaut"], active: true } };
+    const scope = { [ID]: { key: "agent:ma-ext", grant: GRANT, profiles: ["default"], active: true } };
     expect(f.scopes[0]).toEqual(scope);
     expect(f.scopes.at(-1)).toEqual(scope);
     await stop(h);
 
     h = launch(amo, f, { dataDir: h.dataDir });
-    await h.rpc.request("extensions.pret", {});
+    await h.rpc.request("extensions.ready", {});
     expect(amo.sends).toHaveLength(1);
     expect(f.installs).toHaveLength(2);
     expect(f.installs[1]).toMatchObject({ version: "1.0.0.1", sha: f.installs[0]!.sha });
@@ -511,7 +511,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const amo = await fakeAmo();
     const f = firefox();
     const h = launch(amo, f, { prepare });
-    await h.rpc.request("extensions.pret", {});
+    await h.rpc.request("extensions.ready", {});
     expect(f.installs[0]!.manifest.background).toEqual({ scripts: ["webaios-background-guard.js", "fond.js"] });
     expect(f.installs[0]!.manifest.browser_specific_settings.gecko.id).toBe(ID);
   });
@@ -520,19 +520,19 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const amo = await fakeAmo();
     const f = firefox();
     let h = launch(amo, f, { prepare });
-    await h.rpc.request("extensions.pret", {});
+    await h.rpc.request("extensions.ready", {});
     await stop(h);
     source(h.dataDir, { css: "#cache-moi, #reste { display: none }\n" });
     h = launch(amo, f, { dataDir: h.dataDir });
-    await h.rpc.request("extensions.pret", {});
+    await h.rpc.request("extensions.ready", {});
     expect(f.installs.map((i) => i.version)).toEqual(["1.0.0.1", "1.0.0.2"]);
-    expect(entry(h.dataDir).desactivee).toBeNull();
+    expect(entry(h.dataDir).disabled).toBeNull();
     await stop(h);
 
     source(h.dataDir, { hosts: [HOST, "https://exemple.com/*"] });
     f.activations.length = 0;
     h = launch(amo, f, { dataDir: h.dataDir });
-    await h.rpc.request("extensions.pret", {});
+    await h.rpc.request("extensions.ready", {});
     expect(amo.sends).toHaveLength(2);
     expect(f.installs).toHaveLength(2);
     expect(entry(h.dataDir)).toMatchObject({ grant: GRANT, disabled: { reason: "scope-widened" } });
@@ -543,7 +543,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const amo = await fakeAmo({ delayMs: 500 });
     const f = firefox();
     const h = launch(amo, f, { prepare });
-    await h.rpc.request("demarrer", { agentProfile: "claude" });
+    await h.rpc.request("start", { agentProfile: "claude" });
     const [a, b] = await Promise.all([tool(h, "reload_extension", { id: "ma-ext" }), tool(h, "reload_extension", { id: "ma-ext" })]);
     expect([a, b]).toEqual(["state : reloaded", "state : reloaded"]);
     expect(amo.sends.map((e) => e.version)).toEqual(["1.0.0.1"]);
@@ -559,7 +559,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
   it("a failed signature leaves the running version", async () => {
     const f = firefox();
     let h = launch(await fakeAmo(), f, { prepare });
-    await h.rpc.request("extensions.pret", {});
+    await h.rpc.request("extensions.ready", {});
     await stop(h);
     source(h.dataDir, { css: "#reste { display: none }\n" });
     h = launch(await fakeAmo({ denial: "Validation failed: eval" }), f, { dataDir: h.dataDir });
@@ -576,14 +576,14 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const amo = await fakeAmo();
     const f = firefox();
     let h = launch(amo, f, { prepare });
-    await h.rpc.request("extensions.pret", {});
-    h.rpc.notify("extensions.horsWebaios", { addonId: ID, what: "desinstallee" });
+    await h.rpc.request("extensions.ready", {});
+    h.rpc.notify("extensions.outsideWebaios", { addonId: ID, what: "uninstalled" });
     await until(() => entry(h.dataDir) === undefined);
     await until(() => JSON.stringify(f.scopes.at(-1)) === "{}");
     expect(existsSync(join(h.dataDir, "extensions", "signed", "ma-ext.xpi"))).toBe(false);
     await stop(h);
     h = launch(amo, f, { dataDir: h.dataDir });
-    await h.rpc.request("extensions.pret", {});
+    await h.rpc.request("extensions.ready", {});
     expect(f.installs).toHaveLength(1);
     expect(JSON.parse(readFileSync(join(h.dataDir, "extensions", "amo-versions.json"), "utf8"))).toEqual({ "ma-ext": 1 });
   });
@@ -595,10 +595,10 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     // The chrome finds the add-on no longer pending uninstall (Undo): it keeps it and answers false.
     f.handlers["extensions.uninstall"] = (p: unknown) => (requests.push(p), false);
     const h = launch(amo, f, { prepare });
-    await h.rpc.request("extensions.pret", {});
-    await h.rpc.request("extensions.horsWebaios", { addonId: ID, what: "desinstallee" });
+    await h.rpc.request("extensions.ready", {});
+    await h.rpc.request("extensions.outsideWebaios", { addonId: ID, what: "uninstalled" });
     expect(requests).toEqual([{ addonId: ID, unlessUndone: true }]);
-    expect(entry(h.dataDir)).toMatchObject({ grant: GRANT, profiles: ["defaut"] });
+    expect(entry(h.dataDir)).toMatchObject({ grant: GRANT, profiles: ["default"] });
     expect(existsSync(join(h.dataDir, "extensions", "signed", "ma-ext.xpi"))).toBe(true);
   });
 
@@ -606,14 +606,14 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const amo = await fakeAmo();
     const f = firefox();
     let h = launch(amo, f, { prepare });
-    await h.rpc.request("extensions.pret", {});
+    await h.rpc.request("extensions.ready", {});
     await stop(h);
     grant(h.dataDir, []);
     source(h.dataDir, { css: "#cache-moi, #reste { display: none }\n" });
     h = launch(amo, f, { dataDir: h.dataDir });
-    await h.rpc.request("extensions.pret", {});
+    await h.rpc.request("extensions.ready", {});
     expect(amo.sends.map((e) => e.version)).toEqual(["1.0.0.1"]);
-    expect(await h.rpc.request("extensions.basculer", { key: "agent:ma-ext", spaceId: "e1", active: true, window: null })).toEqual({ ok: true });
+    expect(await h.rpc.request("extensions.toggle", { key: "agent:ma-ext", spaceId: "e1", active: true, window: null })).toEqual({ ok: true });
     expect(amo.sends.map((e) => e.version)).toEqual(["1.0.0.1", "1.0.0.2"]);
     expect(f.installs.at(-1)).toMatchObject({ version: "1.0.0.2" });
     expect(f.activations.at(-1)).toEqual({ addonId: ID, active: true });
@@ -623,33 +623,33 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const amo = await fakeAmo();
     const f = firefox();
     const h = launch(amo, f, { prepare });
-    await h.rpc.request("extensions.pret", {});
+    await h.rpc.request("extensions.ready", {});
     const registry = () => JSON.parse(readFileSync(join(h.dataDir, "extensions", "state.json"), "utf8"));
-    await h.rpc.request("extensions.aTourne", { addonId: ID, profile: "defaut", readable: true });
-    expect(entry(h.dataDir)?.consoleMasquee).toBeUndefined();
-    for (let i = 0; i < 2; i++) await h.rpc.request("extensions.aTourne", { addonId: ID, profile: "defaut", readable: false });
-    await h.rpc.request("extensions.aTourne", { addonId: "autre@mozilla.org", profile: "defaut", readable: false });
-    expect(entry(h.dataDir)?.consoleMasquee).toEqual(["defaut"]);
-    expect(registry().consolesMasquees).toEqual([ID]);
+    await h.rpc.request("extensions.ran", { addonId: ID, profile: "default", readable: true });
+    expect(entry(h.dataDir)?.hiddenConsole).toBeUndefined();
+    for (let i = 0; i < 2; i++) await h.rpc.request("extensions.ran", { addonId: ID, profile: "default", readable: false });
+    await h.rpc.request("extensions.ran", { addonId: "autre@mozilla.org", profile: "default", readable: false });
+    expect(entry(h.dataDir)?.hiddenConsole).toEqual(["default"]);
+    expect(registry().hiddenConsoles).toEqual([ID]);
     // Never emptied: it outlives « Supprimer ».
-    h.rpc.notify("extensions.horsWebaios", { addonId: ID, what: "desinstallee" });
+    h.rpc.notify("extensions.outsideWebaios", { addonId: ID, what: "uninstalled" });
     await until(() => entry(h.dataDir) === undefined);
-    expect(registry().consolesMasquees).toEqual([ID]);
+    expect(registry().hiddenConsoles).toEqual([ID]);
   });
 
   it("console: content-script messages from unreadable tabs are counted, background masked once it ran there", async () => {
     const amo = await fakeAmo();
     const f = firefox();
     // No site nor observing right: its background's console shows until it runs in a tab the agent cannot read.
-    const h = launch(amo, f, { prepare: (d) => grant(d, ["defaut"], { ...GRANT, hosts: [], scripts: false }) });
-    await h.rpc.request("demarrer", { agentProfile: "claude" });
+    const h = launch(amo, f, { prepare: (d) => grant(d, ["default"], { ...GRANT, hosts: [], scripts: false }) });
+    await h.rpc.request("start", { agentProfile: "claude" });
     const m = (text: string) => ({ timestamp: Date.now(), level: "log", text: text });
-    h.rpc.notify("extensions.console", { addonId: ID, m: m("fond démarré"), tab: null });
+    h.rpc.notify("extensions.console", { addonId: ID, message: m("fond démarré"), tab: null });
     // The user gives t1 to the agent; t2 is not shared; null: no WebAiOs tab (a reading, a private space).
-    await h.rpc.request("agent.envoi", { tab: tabs[0] });
-    h.rpc.notify("extensions.console", { addonId: ID, m: m("contenu:/a.html"), tab: { tabId: "t2", url: tabs[1]!.url } });
-    h.rpc.notify("extensions.console", { addonId: ID, m: m("contenu:/lecture"), tab: { tabId: null, url: "" } });
-    h.rpc.notify("extensions.console", { addonId: ID, m: m("contenu:/b.html"), tab: { tabId: "t1", url: tabs[0]!.url } });
+    await h.rpc.request("agent.send", { tab: tabs[0] });
+    h.rpc.notify("extensions.console", { addonId: ID, message: m("contenu:/a.html"), tab: { tabId: "t2", url: tabs[1]!.url } });
+    h.rpc.notify("extensions.console", { addonId: ID, message: m("contenu:/lecture"), tab: { tabId: null, url: "" } });
+    h.rpc.notify("extensions.console", { addonId: ID, message: m("contenu:/b.html"), tab: { tabId: "t1", url: tabs[0]!.url } });
     let t = await tool(h, "extension_console", { id: "ma-ext" });
     expect(t).toContain("fond démarré");
     expect(t).toContain("contenu:/b.html");
@@ -657,7 +657,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     expect(t).not.toContain("contenu:/lecture");
     expect(t).toContain(hiddenTabs(2));
     expect(t).not.toContain(CONSOLE_BACKGROUND_HIDDEN);
-    await h.rpc.request("extensions.aTourne", { addonId: ID, profile: "defaut", readable: false });
+    await h.rpc.request("extensions.ran", { addonId: ID, profile: "default", readable: false });
     t = await tool(h, "extension_console", { id: "agent:ma-ext" });
     expect(t).toContain(CONSOLE_BACKGROUND_HIDDEN);
     expect(t).not.toContain("fond démarré");
@@ -668,11 +668,11 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const amo = await fakeAmo();
     const f = firefox();
     const requests: unknown[] = [];
-    let outcome = "autoriser";
+    let outcome = "allow";
     f.handlers["extensions.unlock"] = (p: unknown) => (requests.push(p), outcome);
     const h = launch(amo, f, { prepare });
-    await h.rpc.request("extensions.pret", {});
-    h.rpc.notify("extensions.console", { addonId: ID, m: { timestamp: Date.now(), level: "log", text: "fond démarré" }, tab: null });
+    await h.rpc.request("extensions.ready", {});
+    h.rpc.notify("extensions.console", { addonId: ID, message: { timestamp: Date.now(), level: "log", text: "fond démarré" }, tab: null });
     // A site: its background is always masked (observing right).
     expect(await tool(h, "extension_console", { id: "ma-ext" })).toContain(OBSERVED_BACKGROUND_CONSOLE);
     expect(await tool(h, "unlock_console", { id: "ma-ext", reason: "r".repeat(300) })).toContain("Console débloquée");
@@ -689,7 +689,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     expect(t).not.toContain("fond démarré");
     expect(t).toContain(OBSERVED_BACKGROUND_CONSOLE);
     // Refused: « Déblocage refusé ».
-    outcome = "refuser";
+    outcome = "deny";
     expect(await tool(h, "unlock_console", { id: "ma-ext", reason: "r" })).toBe("Refusée par l'utilisateur.");
   });
 
@@ -697,7 +697,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const amo = await fakeAmo();
     const f = firefox();
     const h = launch(amo, f, { prepare: (d) => (source(d), grant(d, [])) });
-    await h.rpc.request("extensions.pret", {});
+    await h.rpc.request("extensions.ready", {});
     expect(amo.sends).toHaveLength(1);
     expect(f.calls.length).toBeGreaterThan(0);
     expect(f.calls.every((a) => a.active === false)).toBe(true);
@@ -710,7 +710,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const amo = await fakeAmo();
     const f = firefox();
     const h = launch(amo, f, { prepare });
-    await h.rpc.request("extensions.pret", { outsideWebaios: [{ addonId: ID, what: "desinstallee" }] });
+    await h.rpc.request("extensions.ready", { outsideWebaios: [{ addonId: ID, what: "uninstalled" }] });
     expect(f.installs).toEqual([]);
     expect(amo.sends).toEqual([]);
     expect(entry(h.dataDir)).toBeUndefined();
@@ -721,10 +721,10 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const f = firefox();
     // A directory where the registry should be: reading it throws.
     const h = launch(amo, f, { prepare: (d) => (source(d), mkdirSync(join(d, "extensions", "state.json"), { recursive: true })) });
-    await expect(h.rpc.request("extensions.pret", {})).rejects.toThrow();
+    await expect(h.rpc.request("extensions.ready", {})).rejects.toThrow();
     rmSync(join(h.dataDir, "extensions", "state.json"), { recursive: true });
     grant(h.dataDir);
-    await h.rpc.request("extensions.pret", {});
+    await h.rpc.request("extensions.ready", {});
     expect(f.installs).toHaveLength(1);
   });
 
@@ -741,48 +741,48 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const amo = await fakeAmo();
     const f = firefox();
     const h = launch(amo, f, { prepare });
-    await h.rpc.request("extensions.pret", {});
-    h.rpc.notify("extensions.profilsPrives", { privateTabs: ["autre"] });
+    await h.rpc.request("extensions.ready", {});
+    h.rpc.notify("extensions.privateProfiles", { profiles: ["autre"] });
     f.spaces[0]!.private = true;
-    h.rpc.notify("extensions.profilsPrives", { privateTabs: ["defaut"] });
+    h.rpc.notify("extensions.privateProfiles", { profiles: ["default"] });
     await until(() => f.activations.at(-1)?.active === false);
-    expect(entry(h.dataDir).profils).toEqual([]);
-    expect(f.reloads).toEqual([{ addonId: ID, profiles: ["defaut"] }]);
+    expect(entry(h.dataDir).profiles).toEqual([]);
+    expect(f.reloads).toEqual([{ addonId: ID, profiles: ["default"] }]);
   });
 
   it("pourEspace and basculer: the space's lines; off then on in the same profile, at once; refused in a private one", async () => {
     const amo = await fakeAmo();
     const f = firefox();
-    f.spaces.push({ id: "e2", name: "Lecture", profile: "defaut", private: false }, { id: "e3", name: "Secret", profile: "secret", private: true });
+    f.spaces.push({ id: "e2", name: "Lecture", profile: "default", private: false }, { id: "e3", name: "Secret", profile: "secret", private: true });
     const h = launch(amo, f, { prepare: (d) => (prepare(d), mkdirSync(join(d, "workspace", "extensions", "jamais"), { recursive: true })) });
-    await h.rpc.request("extensions.pret", {});
-    const line = { key: "agent:ma-ext", name: "Cacheur", source: "agent", active: true, alsoIn: ["Lecture"], greyedOut: null, profiles: ["defaut"] };
+    await h.rpc.request("extensions.ready", {});
+    const line = { key: "agent:ma-ext", name: "Cacheur", source: "agent", active: true, alsoIn: ["Lecture"], greyedOut: null, profiles: ["default"] };
     const never = { key: "agent:jamais", name: "jamais", source: "agent", active: false, alsoIn: [], greyedOut: null, profiles: [] };
-    expect(await h.rpc.request("extensions.pourEspace", { spaceId: "e1" })).toEqual([line, never]);
-    expect(await h.rpc.request("extensions.pourEspace", { spaceId: "e3" })).toEqual([
+    expect(await h.rpc.request("extensions.forSpace", { spaceId: "e1" })).toEqual([line, never]);
+    expect(await h.rpc.request("extensions.forSpace", { spaceId: "e3" })).toEqual([
       { ...line, active: false, alsoIn: [], greyedOut: PRIVATE_PROFILE_ERROR },
       { ...never, greyedOut: PRIVATE_PROFILE_ERROR },
     ]);
-    expect(await h.rpc.request("extensions.basculer", { key: "agent:ma-ext", spaceId: "e3", active: true })).toEqual({ ok: false, error: PRIVATE_PROFILE_ERROR });
-    expect(await h.rpc.request("extensions.basculer", { key: "agent:ma-ext", spaceId: "e1", active: false })).toEqual({ ok: true });
-    expect(entry(h.dataDir).profils).toEqual([]);
+    expect(await h.rpc.request("extensions.toggle", { key: "agent:ma-ext", spaceId: "e3", active: true })).toEqual({ ok: false, error: PRIVATE_PROFILE_ERROR });
+    expect(await h.rpc.request("extensions.toggle", { key: "agent:ma-ext", spaceId: "e1", active: false })).toEqual({ ok: true });
+    expect(entry(h.dataDir).profiles).toEqual([]);
     expect(f.activations.at(-1)).toEqual({ addonId: ID, active: false });
-    expect(await h.rpc.request("extensions.basculer", { key: "agent:ma-ext", spaceId: "e2", active: true })).toEqual({ ok: true });
-    expect(entry(h.dataDir).profils).toEqual(["defaut"]);
+    expect(await h.rpc.request("extensions.toggle", { key: "agent:ma-ext", spaceId: "e2", active: true })).toEqual({ ok: true });
+    expect(entry(h.dataDir).profiles).toEqual(["default"]);
     expect(f.activations.at(-1)).toEqual({ addonId: ID, active: true });
     expect(f.cards).toEqual([]);
     // Never granted: through its card.
     f.answer = (c) => ({ accepted: false, hash: c.hash });
-    expect(await h.rpc.request("extensions.basculer", { key: "agent:jamais", spaceId: "e1", active: true })).toMatchObject({ ok: false });
+    expect(await h.rpc.request("extensions.toggle", { key: "agent:jamais", spaceId: "e1", active: true })).toMatchObject({ ok: false });
   });
 
   it("a profile used by a private space is taken out of the grant's profiles", async () => {
     const amo = await fakeAmo();
     const f = firefox();
     f.spaces.push({ id: "e2", name: "Secret", profile: "secret", private: true });
-    const h = launch(amo, f, { prepare: (d) => (source(d), grant(d, ["defaut", "secret"])) });
-    await h.rpc.request("extensions.pret", {});
-    expect(entry(h.dataDir).profils).toEqual(["defaut"]);
+    const h = launch(amo, f, { prepare: (d) => (source(d), grant(d, ["default", "secret"])) });
+    await h.rpc.request("extensions.ready", {});
+    expect(entry(h.dataDir).profiles).toEqual(["default"]);
   });
 
   it("request_extension: refused, nothing sent; Activer: signed and installed, then granted, « Activée »", async () => {
@@ -792,7 +792,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const grant = f.handlers["extensions.grant"]!;
     const install = f.handlers["extensions.install"]!;
     const withoutGrant: boolean[] = [];
-    const notGranted = () => !existsSync(join(h.dataDir, "extensions", "state.json")) || !entry(h.dataDir)?.accord;
+    const notGranted = () => !existsSync(join(h.dataDir, "extensions", "state.json")) || !entry(h.dataDir)?.grant;
     f.handlers["extensions.grant"] = (p, s) => (withoutGrant.push(notGranted()), grant(p, s));
     f.handlers["extensions.install"] = (p, s) => (withoutGrant.push(notGranted()), install(p, s));
     const h = launch(amo, f, { prepare: source });
@@ -805,7 +805,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     expect(f.installs).toEqual([expect.objectContaining({ version: "1.0.0.1" })]);
     // Two cards, the signed install; then appliquer's call (same version: a no-op) once granted.
     expect(withoutGrant).toEqual([true, true, true, false]);
-    expect(entry(h.dataDir)).toMatchObject({ addonId: ID, grant: GRANT, profiles: ["defaut"], disabled: null });
+    expect(entry(h.dataDir)).toMatchObject({ addonId: ID, grant: GRANT, profiles: ["default"], disabled: null });
     expect(f.activations.at(-1)).toEqual({ addonId: ID, active: true });
     // Already granted and active there: nothing asked again.
     expect(await tool(h, "request_extension", { id: "ma-ext" })).toBe("Activée dans « Perso ».");
@@ -866,12 +866,12 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     f.handlers["extensions.amo"] = () => {
       throw new Error("AddonManager absent");
     };
-    const h = launch(amo, f, { prepare: (d) => grant(d, ["defaut"], { ...GRANT, hosts: [], scripts: false }) });
-    await h.rpc.request("demarrer", { agentProfile: "claude" });
+    const h = launch(amo, f, { prepare: (d) => grant(d, ["default"], { ...GRANT, hosts: [], scripts: false }) });
+    await h.rpc.request("start", { agentProfile: "claude" });
     const m = (text: string) => ({ timestamp: Date.now(), level: "error", text: text });
-    h.rpc.notify("extensions.console", { addonId: ID, m: m("fond cassé"), tab: null });
+    h.rpc.notify("extensions.console", { addonId: ID, message: m("fond cassé"), tab: null });
     // From a tab the agent cannot read: never in its list.
-    h.rpc.notify("extensions.console", { addonId: ID, m: m("contenu cassé"), tab: { tabId: "t2", url: tabs[1]!.url } });
+    h.rpc.notify("extensions.console", { addonId: ID, message: m("contenu cassé"), tab: { tabId: "t2", url: tabs[1]!.url } });
     const t = await tool(h, "list_extensions");
     expect(t).toContain("agent:ma-ext · Cacheur · 1.0.0 · agent · actives dans : Perso · erreurs : fond cassé");
     expect(t).not.toContain("contenu cassé");
@@ -887,7 +887,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     writeFileSync(path, JSON.stringify({ ...JSON.parse(before), permissions: ["nativeMessaging"] }));
     expect(await tool(h, "reload_extension", { id: "ma-ext" })).toContain("state : refused");
     expect(await tool(h, "list_extensions")).toContain("erreurs : Droit refusé : nativeMessaging");
-    const page = await h.rpc.request<{ errors: string[] }[]>("extensions.liste");
+    const page = await h.rpc.request<{ errors: string[] }[]>("extensions.list");
     expect(page[0]!.errors.join()).toContain("Droit refusé : nativeMessaging");
     writeFileSync(path, before);
     expect(await tool(h, "reload_extension", { id: "ma-ext" })).toBe("state : reloaded");
@@ -899,10 +899,10 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const f = firefox();
     const h = launch(amo, f, { prepare: source });
     expect(await tool(h, "request_extension", { id: "ma-ext" })).toBe("Activée dans « Perso ».");
-    expect(await h.rpc.request("extensions.revoir", { key: "agent:ma-ext", window: "f1" })).toEqual({ ok: false, error: NOTHING_TO_REVIEW });
+    expect(await h.rpc.request("extensions.review", { key: "agent:ma-ext", window: "f1" })).toEqual({ ok: false, error: NOTHING_TO_REVIEW });
     source(h.dataDir, { hosts: [HOST, "https://exemple.com/*"] });
     expect(await tool(h, "reload_extension", { id: "ma-ext" })).toContain("state : disabled");
-    expect(await h.rpc.request("extensions.revoir", { key: "agent:ma-ext", window: "f1" })).toEqual({ ok: true });
+    expect(await h.rpc.request("extensions.review", { key: "agent:ma-ext", window: "f1" })).toEqual({ ok: true });
     expect(f.cards).toHaveLength(2);
     expect(f.cards[1]).toMatchObject({ spaceId: "e1", sites: [HOST, "https://exemple.com/*"] });
     expect(entry(h.dataDir)).toMatchObject({ grant: { hosts: [HOST, "https://exemple.com/*"] }, disabled: null });
@@ -920,10 +920,10 @@ describe("agent extensions", { timeout: 60_000 }, () => {
       return install(p, s);
     };
     const h = launch(amo, f, { prepare });
-    await h.rpc.request("extensions.pret", {});
+    await h.rpc.request("extensions.ready", {});
     source(h.dataDir, { hosts: [HOST, "https://exemple.com/*"] });
     expect(await tool(h, "request_extension", { id: "ma-ext", space: "Travail" })).toBe(PRIVATE_PROFILE_ERROR);
-    expect(entry(h.dataDir)).toMatchObject({ grant: GRANT, profiles: ["defaut"], disabled: { reason: "scope-widened" } });
+    expect(entry(h.dataDir)).toMatchObject({ grant: GRANT, profiles: ["default"], disabled: { reason: "scope-widened" } });
     expect(f.activations.at(-1)).toEqual({ addonId: ID, active: false });
   });
 
@@ -952,7 +952,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const h = launch(amo, f, { prepare: source });
     const call = tool(h, "request_extension", { id: "ma-ext" });
     await until(() => f.cards.length === 1);
-    await h.rpc.request("agent.demarrer", { window: "f1", size: { cols: 80, rows: 24 } });
+    await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
     expect(await call).toBe(REQUEST_REMOVED);
     expect(amo.sends).toEqual([]);
     expect(existsSync(join(h.dataDir, "extensions", "state.json")) && entry(h.dataDir)).toBeFalsy();
@@ -964,20 +964,20 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const h = launch(amo, f, { prepare: source });
     expect(await tool(h, "request_extension", { id: "ma-ext" })).toBe("Activée dans « Perso ».");
     // Not an agent extension, or not one of its keys: never counted.
-    for (const addonId of ["autre@exemple.org", "../x@agent.webaios", 3]) h.rpc.notify("extensions.plantage", { addonId });
-    for (let i = 0; i < 2; i++) h.rpc.notify("extensions.plantage", { addonId: ID });
+    for (const addonId of ["autre@exemple.org", "../x@agent.webaios", 3]) h.rpc.notify("extensions.crash", { addonId });
+    for (let i = 0; i < 2; i++) h.rpc.notify("extensions.crash", { addonId: ID });
     expect(await tool(h, "list_extensions")).toContain("erreurs : aucune");
-    h.rpc.notify("extensions.plantage", { addonId: ID });
+    h.rpc.notify("extensions.crash", { addonId: ID });
     await until(() => f.activations.at(-1)?.active === false);
-    expect(entry(h.dataDir)).toMatchObject({ profiles: ["defaut"], disabled: { reason: "crashes" } });
+    expect(entry(h.dataDir)).toMatchObject({ profiles: ["default"], disabled: { reason: "crashes" } });
     expect(await tool(h, "list_extensions")).toContain(`erreurs : ${DISABLED_CRASHES}`);
-    expect((await h.rpc.request<{ disabled: string | null }[]>("extensions.liste"))[0]!.disabled).toBe(DISABLED_CRASHES);
-    expect(await h.rpc.request("extensions.reactiver", { key: "agent:ma-ext" })).toEqual({ ok: true });
+    expect((await h.rpc.request<{ disabled: string | null }[]>("extensions.list"))[0]!.disabled).toBe(DISABLED_CRASHES);
+    expect(await h.rpc.request("extensions.reenable", { key: "agent:ma-ext" })).toEqual({ ok: true });
     expect(entry(h.dataDir)).toMatchObject({ disabled: null });
     expect(f.activations.at(-1)).toEqual({ addonId: ID, active: true });
     expect(await tool(h, "list_extensions")).toContain("erreurs : aucune");
     // The count starts again: two more crashes do not disable it.
-    for (let i = 0; i < 2; i++) h.rpc.notify("extensions.plantage", { addonId: ID });
+    for (let i = 0; i < 2; i++) h.rpc.notify("extensions.crash", { addonId: ID });
     expect(await tool(h, "list_extensions")).toContain("erreurs : aucune");
   });
   it("crashes seen while no host ran come with extensions.pret, counted at their own time", async () => {
@@ -986,9 +986,9 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const h = launch(amo, f, { prepare });
     const t = Date.now();
     // Three crashes, but spread over more than a minute: not disabled.
-    await h.rpc.request("extensions.pret", { crashes: [-130_000, -50_000, -20_000].map((d) => ({ addonId: ID, at: t + d })) });
+    await h.rpc.request("extensions.ready", { crashes: [-130_000, -50_000, -20_000].map((d) => ({ addonId: ID, at: t + d })) });
     expect(entry(h.dataDir)).toMatchObject({ disabled: null });
-    h.rpc.notify("extensions.plantage", { addonId: ID, at: t + 1000 });
+    h.rpc.notify("extensions.crash", { addonId: ID, at: t + 1000 });
     await until(() => f.activations.at(-1)?.active === false);
     expect(entry(h.dataDir)).toMatchObject({ disabled: { reason: "crashes" } });
   });
@@ -1018,22 +1018,22 @@ createServer((req, res) => {
     const chrome = { openings: [] as { folder: string; name: string; port: number }[], erased: [] as string[], changes: 0 };
     const h = startHost({ ...APPS, ...env }, writeAttempt, {
       handlers: {
-        "apps.ouvrir": ([a]: [{ folder: string; name: string; port: number }]) => void chrome.openings.push(a),
-        "apps.fermer": () => undefined,
-        "apps.montrer": () => true,
-        "apps.effacer": ([d]: [string]) => void chrome.erased.push(d),
-        "applications.change": () => void chrome.changes++,
+        "apps.open": ([a]: [{ folder: string; name: string; port: number }]) => void chrome.openings.push(a),
+        "apps.close": () => undefined,
+        "apps.show": () => true,
+        "apps.erase": ([d]: [string]) => void chrome.erased.push(d),
+        "apps.change": () => void chrome.changes++,
         ...handlers,
       },
     });
     return { h, chrome };
   };
-  const list = (h: Host) => h.rpc.request<List>("applications.liste");
+  const list = (h: Host) => h.rpc.request<List>("apps.list");
   const attempt = async (h: Host) => (await list(h)).apps.find((a) => a.folder === "essai");
-  const act = (h: Host, action: string, folder = "essai") => h.rpc.notify("applications.agir", { folder: folder, action, window: "f1" });
+  const act = (h: Host, action: string, folder = "essai") => h.rpc.notify("apps.act", { folder: folder, action, window: "f1" });
   const stops = (h: Host) => (existsSync(join(h.root, "faux-docker-arrets.log")) ? readFileSync(join(h.root, "faux-docker-arrets.log"), "utf8") : "");
   const launched = async (h: Host, chrome: { openings: unknown[] }) => {
-    act(h, "lancer");
+    act(h, "launch");
     await until(() => chrome.openings.length > 0, 20_000);
     expect((await attempt(h))?.state).toBe("running");
   };
@@ -1064,11 +1064,11 @@ createServer((req, res) => {
     const { h, chrome } = startApps();
     await launched(h, chrome);
     const before = stops(h);
-    h.rpc.notify("applications.fenetreFermee", { folder: "essai", byUser: false });
+    h.rpc.notify("apps.windowClosed", { folder: "essai", byUser: false });
     await new Promise((r) => setTimeout(r, 500));
     expect(stops(h).slice(before.length)).not.toContain("WEBAIOS_APP=essai");
     expect((await attempt(h))?.state).toBe("running");
-    h.rpc.notify("applications.fenetreFermee", { folder: "essai", byUser: true });
+    h.rpc.notify("apps.windowClosed", { folder: "essai", byUser: true });
     await until(() => stops(h).slice(before.length).includes("WEBAIOS_APP=essai"));
     expect((await attempt(h))?.state).toBe("stopped");
   });
@@ -1077,8 +1077,8 @@ createServer((req, res) => {
     const { h, chrome } = startApps({}, {});
     mkdirSync(join(h.root, "x"), { recursive: true });
     await launched(h, chrome);
-    act(h, "supprimer");
-    act(h, "supprimer", "../x");
+    act(h, "delete");
+    act(h, "delete", "../x");
     await new Promise((r) => setTimeout(r, 500));
     await list(h);
     expect(existsSync(join(h.root, "projects", "essai", "webaios.json"))).toBe(true);
@@ -1089,9 +1089,9 @@ createServer((req, res) => {
   it("supprimer erases the folder, the memory and asks apps.effacer", async () => {
     const { h, chrome } = startApps();
     const memory = join(h.dataDir, "apps.json");
-    h.rpc.notify("applications.noter", { folder: "essai", frame: { x: 1, y: 2, width: 300, height: 200 } });
+    h.rpc.notify("apps.note", { folder: "essai", frame: { x: 1, y: 2, width: 300, height: 200 } });
     await until(() => existsSync(memory) && readFileSync(memory, "utf8").includes("essai"));
-    act(h, "supprimer");
+    act(h, "delete");
     await until(() => !existsSync(join(h.root, "projects", "essai")));
     await until(() => chrome.erased.length > 0);
     expect(chrome.erased).toEqual(["essai"]);
@@ -1104,22 +1104,22 @@ createServer((req, res) => {
   it("noter keeps a data:image favicon of 64 KB at most", async () => {
     const { h, chrome } = startApps();
     const favicon = "data:image/png;base64," + "A".repeat(1000);
-    h.rpc.notify("applications.noter", { folder: "essai", favicon });
+    h.rpc.notify("apps.note", { folder: "essai", favicon });
     await until(() => chrome.changes > 0);
     expect((await attempt(h))?.favicon).toBe(favicon);
     const too = "data:image/png;base64," + "A".repeat(64 * 1024);
     for (const f of [too, "data:text/html,<b>x</b>", "https://exemple.test/favicon.ico", 3])
-      h.rpc.notify("applications.noter", { folder: "essai", favicon: f });
+      h.rpc.notify("apps.note", { folder: "essai", favicon: f });
     expect((await attempt(h))?.favicon).toBe(favicon);
   });
 
   it("deboguer pre-fills the window's agent and opens its panel", async () => {
     const given: unknown[] = [];
-    const { h } = startApps({}, { "design.donnerAgent": (p: unknown) => void given.push(p) });
-    await h.rpc.request("demarrer", { agentProfile: "claude" });
-    await h.rpc.request("agent.demarrer", { window: "f1", size: { cols: 80, rows: 24 } });
+    const { h } = startApps({}, { "design.giveAgent": (p: unknown) => void given.push(p) });
+    await h.rpc.request("start", { agentProfile: "claude" });
+    await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
     await until(() => h.data().includes("faux agent prêt>"));
-    act(h, "deboguer");
+    act(h, "debug");
     await until(() => h.data().includes("essai"));
     await until(() => given.length > 0);
     expect(given).toEqual([["f1"]]);
@@ -1127,8 +1127,8 @@ createServer((req, res) => {
 
   it("the host stops the apps and the sessions on stdin close", async () => {
     const { h, chrome } = startApps();
-    await h.rpc.request("demarrer", { agentProfile: "claude" });
-    await h.rpc.request("agent.demarrer", { window: "f1", size: { cols: 80, rows: 24 } });
+    await h.rpc.request("start", { agentProfile: "claude" });
+    await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
     await until(() => h.data().includes("faux agent prêt>"));
     await launched(h, chrome);
     const before = stops(h).length;
@@ -1142,8 +1142,8 @@ createServer((req, res) => {
 
   it("a slow apps stop at quit does not hold back the sessions' stop", async () => {
     const { h, chrome } = startApps({ FAKE_DOCKER_SLOW_APP_STOP: "4" });
-    await h.rpc.request("demarrer", { agentProfile: "claude" });
-    await h.rpc.request("agent.demarrer", { window: "f1", size: { cols: 80, rows: 24 } });
+    await h.rpc.request("start", { agentProfile: "claude" });
+    await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
     await until(() => h.data().includes("faux agent prêt>"));
     await launched(h, chrome);
     const before = stops(h).length;
@@ -1155,8 +1155,8 @@ createServer((req, res) => {
 
   it("a failed apps stop at quit still stops the sessions", async () => {
     const { h } = startApps({ WEBAIOS_TEST_APPS_STOP_FAILS: "1" });
-    await h.rpc.request("demarrer", { agentProfile: "claude" });
-    await h.rpc.request("agent.demarrer", { window: "f1", size: { cols: 80, rows: 24 } });
+    await h.rpc.request("start", { agentProfile: "claude" });
+    await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
     await until(() => h.data().includes("faux agent prêt>"));
     const before = stops(h).length;
     h.child.stdin.end();
@@ -1171,11 +1171,11 @@ createServer((req, res) => {
     expect(portRange("15280-15284")).toEqual([15280, 15284]);
     expect(appTab({ folder: "essai", title: "T", url: "http://localhost:15280/" })).toEqual({ id: "app:essai", title: "T", url: "http://localhost:15280/", space: "", app: "essai" });
     const accepted = (folder: unknown, action: string) => SchemaActionApplication.safeParse({ folder: folder, action }).success;
-    expect([["essai", "lancer"], ["../x", "supprimer"], ["My Project", "supprimer"], ["My Project", "lancer"], [".", "deboguer"], ["essai", "autre"], [3, "lancer"]].map(([d, a]) => accepted(d, a as string))).toEqual([true, false, true, false, false, false, false]);
-    expect(SchemaActionApplication.shape.action.options).toEqual(["lancer", "arreter", "relancer", "ouvrir", "deboguer", "supprimer", "promouvoir", "dossier", "relire"]);
+    expect([["essai", "launch"], ["../x", "delete"], ["My Project", "delete"], ["My Project", "launch"], [".", "debug"], ["essai", "autre"], [3, "launch"]].map(([d, a]) => accepted(d, a as string))).toEqual([true, false, true, false, false, false, false]);
+    expect(SchemaActionApplication.shape.action.options).toEqual(["launch", "stop", "relaunch", "open", "debug", "delete", "promote", "folder", "review"]);
     // Only these actions take a folder name that is not a launchable one; none takes a path.
     for (const action of SchemaActionApplication.shape.action.options) {
-      const anyName = ["deboguer", "supprimer", "dossier"].includes(action);
+      const anyName = ["debug", "delete", "folder"].includes(action);
       expect(["essai", "My Project", ".."].map((d) => accepted(d, action)), action).toEqual([true, anyName, false]);
     }
   });

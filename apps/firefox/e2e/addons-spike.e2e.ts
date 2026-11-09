@@ -86,7 +86,7 @@ async function ready(m: Marionette): Promise<void> {
 /** Opens `url` in a WebAiOs tab and waits until the selected browser shows it; returns the WebAiOs tab id. */
 async function open(m: Marionette, url: string): Promise<string> {
   const before = new Set(Object.keys((await state(m)).tabs));
-  const s = await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url });
+  const s = await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url });
   await waitFor(m, `return gBrowser.selectedBrowser.currentURI.spec === ${JSON.stringify(url)} && !gBrowser.selectedBrowser.webProgress.isLoadingDocument`, (v) => v === true);
   return Object.keys(s.tabs).find((id) => !before.has(id))!;
 }
@@ -303,7 +303,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("add-on spike", () => {
       const reached = () => server.paths.includes("/fichier.txt");
       server.paths.length = 0;
       note("S3 mark in a normal tab", await probeMark(m, `${server.url}/texte.html`, false));
-      await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url: `${server.url}/fichier.txt` });
+      await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url: `${server.url}/fichier.txt` });
       await new Promise((r) => setTimeout(r, 1500));
       note("S3 normal tab, blocked request reached the server", reached());
       server.paths.length = 0;
@@ -316,7 +316,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("add-on spike", () => {
 
     it("S6: about:addons in a WebAiOs tab", async () => {
       await m.execute(`window.spikeEmLoaded = 0; Services.obs.addObserver(() => window.spikeEmLoaded++, "EM-loaded");`);
-      const s = await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url: "about:addons" });
+      const s = await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url: "about:addons" });
       const tabId = Object.entries(s.tabs).find(([, o]) => o.url === "about:addons")?.[0];
       await new Promise((r) => setTimeout(r, 2000));
       const after = (await state(m)).tabs[tabId!];

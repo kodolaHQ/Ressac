@@ -33,8 +33,8 @@ export const confirmSiteDeletion = (name: string) =>
 export const editWithAgent = (id: string) => `Appli de site ~/WebAiOs/sites/${id}/ : `;
 
 export type BarNotice =
-  | { kind: "lien-bloque"; domain: string } // the blocked URL stays in the main process
-  | { kind: "adresse-changee" | "introuvable" | "inchangee"; text: string }
+  | { kind: "link-blocked"; domain: string } // the blocked URL stays in the main process
+  | { kind: "url-changed" | "not-found" | "unchanged"; text: string }
   /** A transient notice (design mode unavailable here…), cleared after `DUREE_AVIS_INFO_MS` or at the next page. */
   | { kind: "info"; text: string };
 
@@ -58,7 +58,7 @@ export type SiteGrantRequest = {
 export type SiteWindowState = {
   id: string;
   name: string;
-  viewState: "accord" | "accueil" | "site";
+  viewState: "grant" | "home" | "site";
   hasHome: boolean;
   domain: string;
   canGoBack: boolean;
@@ -82,14 +82,14 @@ export const HOME_OPEN_GAP_MS = 1000;
 
 /** What the home (isolated frame, the agent's code) may request: nothing else is relayed. */
 export const HomeMessage = z.discriminatedUnion("type", [
-  z.strictObject({ type: z.literal("pret") }),
-  z.strictObject({ type: z.literal("ouvrir"), url: z.string().max(HOME_URL_MAX) }),
+  z.strictObject({ type: z.literal("ready") }),
+  z.strictObject({ type: z.literal("open"), url: z.string().max(HOME_URL_MAX) }),
   z.strictObject({ type: z.literal("image"), n: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER), url: z.string().max(HOME_URL_MAX) }),
 ]);
 export type HomeMessage = z.infer<typeof HomeMessage>;
 
 export type MessageToHome =
-  | { type: "memoire"; values: Record<string, MemoryEntry>; positions: Record<string, PositionVideo>; domain: string }
+  | { type: "memory"; values: Record<string, MemoryEntry>; positions: Record<string, PositionVideo>; domain: string }
   | { type: "image"; n: number; data: string | null };
 
 /** Console errors of the tweaks kept per open app (the most recent). */
@@ -110,4 +110,4 @@ export type FrameInjection = { css: string[]; js: { code: string; name: string }
 
 export type ShownSite = { id: string; name: string; description: string; domain: string | null; icon: string | null; open: boolean; error?: string; actionError?: string; noActions?: true };
 
-export type ActionSite = "ouvrir" | "modifier" | "oublier" | "dossier" | "supprimer" | "relire";
+export type ActionSite = "open" | "edit" | "forget" | "folder" | "delete" | "review";

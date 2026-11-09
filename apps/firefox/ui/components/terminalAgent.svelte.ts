@@ -11,7 +11,7 @@ import { api } from "../state.svelte";
  */
 
 /** What the window's agent shows (preparing, active, error…), the same for all hosts. */
-export const agent = $state<{ state: AgentPanelState }>({ state: { state: "preparation" } });
+export const agent = $state<{ state: AgentPanelState }>({ state: { state: "preparing" } });
 
 let terminal: Terminal | undefined;
 let adjustment: FitAddon | undefined;
@@ -22,7 +22,7 @@ const hosts: HTMLElement[] = [];
 
 // A restarting session (Relancer, profile change) clears the previous one's screen.
 const endState = api.agent.onState((e) => {
-  if (e.state === "preparation" && agent.state.state !== "preparation") terminal?.reset();
+  if (e.state === "preparing" && agent.state.state !== "preparing") terminal?.reset();
   agent.state = e;
 });
 let dataEnd: (() => void) | undefined;

@@ -222,7 +222,7 @@ it("the host stopped: ✎ keeps its last state, ⌘⇧D does nothing, Ajouter sh
     await inOverlay(`doc.querySelector("button.ajouter").click(); return 1;`);
     await expect.poll(() => inOverlay<string | null>(`return doc.querySelector('[role="alert"]')?.textContent ?? null;`), { timeout: 10_000 }).toBeTruthy();
     expect(await bubbleText()).toContain("a#lien");
-    expect(await inStore(m, "return store.design.overlayContext(arguments[0])?.mode ?? null;", [T])).toBe("bulle");
+    expect(await inStore(m, "return store.design.overlayContext(arguments[0])?.mode ?? null;", [T])).toBe("bubble");
     expect((await bar()).pressed).toBe("true");
   } finally {
     await startHost(n);

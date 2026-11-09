@@ -1,14 +1,14 @@
 #!/bin/sh
-# Wraps the fake docker (fake-docker.cjs): logs each call to $FAUX_DOCKER_JOURNAL, then maps the Firefox container name
+# Wraps the fake docker (fake-docker.cjs): logs each call to $FAKE_DOCKER_LOG, then maps the Firefox container name
 # back to the one the fake knows (it locates `docker exec` arguments by the literal "webaios-workshop").
-[ -n "$FAUX_DOCKER_JOURNAL" ] && printf '%s\n' "$*" >> "$FAUX_DOCKER_JOURNAL"
-# FAUX_DOCKER_SANS_CONTENEUR=1: no container until `run -d` (tests read its arguments); with FAUX_DOCKER_RUN_ECHOUE=1,
+[ -n "$FAKE_DOCKER_LOG" ] && printf '%s\n' "$*" >> "$FAKE_DOCKER_LOG"
+# FAKE_DOCKER_NO_CONTAINER=1: no container until `run -d` (tests read its arguments); with FAKE_DOCKER_RUN_FAILED=1,
 # the first `run -d` fails like a port already taken.
-if [ "$FAUX_DOCKER_SANS_CONTENEUR" = 1 ]; then
+if [ "$FAKE_DOCKER_NO_CONTAINER" = 1 ]; then
   marque="$WEBAIOS_ROOT/faux-docker-conteneur"
   [ "$1" = inspect ] && [ ! -e "$marque" ] && exit 1
   if [ "$1 $2" = "run -d" ]; then
-    if [ "$FAUX_DOCKER_RUN_ECHOUE" = 1 ] && [ ! -e "$marque.echec" ]; then
+    if [ "$FAKE_DOCKER_RUN_FAILED" = 1 ] && [ ! -e "$marque.echec" ]; then
       : > "$marque.echec"
       echo "Bind for 127.0.0.1:5300 failed: port is already allocated" >&2
       exit 125
@@ -16,10 +16,10 @@ if [ "$FAUX_DOCKER_SANS_CONTENEUR" = 1 ]; then
     : > "$marque"
   fi
 fi
-# FAUX_DOCKER_ARRET_APP_LENT=<s>: one app's stop (its kill script names WEBAIOS_APP=<folder>, not the orphan sweep's
+# FAKE_DOCKER_SLOW_APP_STOP=<s>: one app's stop (its kill script names WEBAIOS_APP=<folder>, not the orphan sweep's
 # WEBAIOS_APP=.*) answers that late, like a slow docker.
-if [ -n "$FAUX_DOCKER_ARRET_APP_LENT" ]; then
-  case "$*" in *"WEBAIOS_APP=.*"*) ;; *WEBAIOS_APP=*kill*) sleep "$FAUX_DOCKER_ARRET_APP_LENT" ;; esac
+if [ -n "$FAKE_DOCKER_SLOW_APP_STOP" ]; then
+  case "$*" in *"WEBAIOS_APP=.*"*) ;; *WEBAIOS_APP=*kill*) sleep "$FAKE_DOCKER_SLOW_APP_STOP" ;; esac
 fi
 for a; do
   shift

@@ -33,18 +33,18 @@ const tabUrls = async () => Object.values((await state(m)).tabs).map((o) => o.ur
 async function setPrivate(isPrivate: boolean): Promise<void> {
   const s = await state(m);
   const e = s.spaces.find((x) => x.id === s.windows[0]!.activeSpace)!;
-  if (e.private !== isPrivate) await dispatch(m, { type: "reglerEspace", id: e.id, name: e.name, icon: e.icon, private: isPrivate, profile: e.profile } as Action);
+  if (e.private !== isPrivate) await dispatch(m, { type: "updateSpace", id: e.id, name: e.name, icon: e.icon, private: isPrivate, profile: e.profile } as Action);
 }
 /** A web page of the local server shown in a new tab; resolves once its title is in the state. */
 async function openPage(p: string, title: string): Promise<string> {
   const url = pages.url + p;
-  await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url });
+  await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url });
   for (const deadline = Date.now() + 10_000; !Object.values((await state(m)).tabs).some((o) => o.url === url && o.title === title); await new Promise((r) => setTimeout(r, 100)))
     if (Date.now() > deadline) throw new Error(`${url} not loaded`);
   return url;
 }
 /** The action is in the list the kernel gives. */
-const listed = (id: string) => waitUi(m, "return (await ui.webaios.actions.liste()).some((a) => a.id === arguments[0]);", [id], 30_000);
+const listed = (id: string) => waitUi(m, "return (await ui.webaios.actions.list()).some((a) => a.id === arguments[0]);", [id], 30_000);
 /** Opens the empty page (« Nouvel onglet »), its field focused. */
 async function emptyPage(): Promise<void> {
   await click(m, tid("nouvel-onglet"));
@@ -79,19 +79,19 @@ beforeAll(async () => {
   await writeAction(d, "resume", { name: "Résumé vidéo", input: { label: "Vidéo" } });
   await writeAction(d, "page-action", { name: "Page action" });
   for (const id of ["tickets", "leboncoin", "sans-workflow", "resume", "page-action"]) await listed(id);
-  // Counts the `actions.liste` the UI asks the host for.
+  // Counts the `actions.list` the UI asks the host for.
   await m.execute(`return (async () => {
     const agent = (await ChromeUtils.importESModule("${STORE}").ready).agent;
     const request = agent.request.bind(agent);
     window.webaiosListCalls = 0;
-    agent.request = (method, params) => (method === "actions.liste" && window.webaiosListCalls++, request(method, params));
+    agent.request = (method, params) => (method === "actions.list" && window.webaiosListCalls++, request(method, params));
   })();`);
 }, 90_000);
 beforeEach(async () => {
   servers.reset();
   if (await inUi(m, "return !!doc.querySelector(arguments[0]);", [tid("barre-commande")])) await pressKeys(m, "Escape");
   await setPrivate(false);
-  for (const id of Object.keys((await state(m)).tabs)) await dispatch(m, { type: "fermerOnglet", id } as Action);
+  for (const id of Object.keys((await state(m)).tabs)) await dispatch(m, { type: "closeTab", id } as Action);
 });
 afterAll(async () => {
   expect(await missingApi(m)).toEqual([]);
@@ -299,7 +299,7 @@ describe("launching from the command bar", () => {
     await setPrivate(true);
     await openBar();
     await fill("saisie-commande", "Zorglub");
-    await q.waitCount(lines("defaut"), 1);
+    await q.waitCount(lines("default"), 1);
     await new Promise((r) => setTimeout(r, 500));
     expect(await q.count(lines("action"))).toBe(0);
   });

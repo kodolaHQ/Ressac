@@ -67,7 +67,7 @@ const HOME = `<!doctype html><meta charset="utf-8"><title>Accueil</title>
 <style>body{margin:0;background:#fff;height:900px} #cible{position:absolute;left:40px;top:60px;width:120px;height:40px;background:rgb(0,200,0)}</style>
 <div id="cible" data-source="src/Accueil.svelte:7">cible</div>
 <p id="nue" style="position:absolute;left:40px;top:160px">nue</p>
-<script>parent.postMessage({ type: "pret" }, "*");</script>`;
+<script>parent.postMessage({ type: "ready" }, "*");</script>`;
 
 let server: Awaited<ReturnType<typeof startSitesServer>>;
 let w: LaunchedWebAiOs;
@@ -122,7 +122,7 @@ const siteKey = (key: string) =>
 
 async function openApp(): Promise<void> {
   if (!(await inStore<boolean>(`return store.sites.openIds().includes(arguments[0]);`, [ID])))
-    await inStore(`await store.agent.request("sites.agir", { id: arguments[0], action: "ouvrir", fenetre: store.state.fenetres[0].id });`, [ID]);
+    await inStore(`await store.agent.request("sites.act", { id: arguments[0], action: "open", window: store.state.windows[0].id });`, [ID]);
   await expect.poll(viewOf, { timeout: 15_000 }).not.toBeNull();
 }
 
@@ -137,7 +137,7 @@ async function toSite(): Promise<void> {
 /** The home in the bar, shown and loaded from its served copy. */
 async function toHome(): Promise<void> {
   await openApp();
-  if ((await viewOf()) !== "accueil") await inStore(`store.sites.controller(arguments[0]).home();`, [ID]);
+  if ((await viewOf()) !== "home") await inStore(`store.sites.controller(arguments[0]).home();`, [ID]);
   await expect
     .poll(() => inSiteBar<string | null>(m, ID, `const h = doc.querySelector('[data-testid="site-cadre-accueil"]'); const d = h?.contentDocument; return d?.readyState === "complete" && d.getElementById("cible") ? String(d.documentURI) : null;`), { timeout: 15_000 })
     .toMatch(/^resource:\/\/webaios-site-/);
@@ -438,7 +438,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
       m,
       ID,
       `const s = win.__s6, stop = arguments[0]; s.states = []; s.seen.length = 0;
-       s.offState = win.webaiosSiteWindow.onState((e) => { s.states.push(e.vue); if (e.vue !== "accueil") s.stop(stop); });
+       s.offState = win.webaiosSiteWindow.onState((e) => { s.states.push(e.viewState); if (e.viewState !== "home") s.stop(stop); });
        s.arm(arguments[1]); return 1;`,
       [STOP_SCRIPT, firefoxViewfinderScript()],
     );
@@ -474,8 +474,8 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
     note("S7 places", { dims, top, clamped, unclamped, cart });
     expect(clamped.y).toBeGreaterThanOrEqual(barBottom);
 
-    // The real overlay page (sidebar.html?calque, DesignApp) in the site window, on an OverlayApi the chrome sets.
-    const show = (mode: "bulle" | "panier", place: { x: number; y: number; width: number; height: number }) =>
+    // The real overlay page (sidebar.html?overlay, DesignApp) in the site window, on an OverlayApi the chrome sets.
+    const show = (mode: "bubble" | "basket", place: { x: number; y: number; width: number; height: number }) =>
       m.execute(
         `return (async ([mode, p]) => {
            const win = ${SITE}, doc = win.document;
@@ -486,7 +486,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
            doc.getElementById("browser").append(f);
            const ctx = { mode, message: null, projet: "site-vidola", etiquette: "input#email.champ", source: null, destination: null, sansDestination: null, avertissement: mode === "bulle" ? "Capture d'un site tiers" : null };
            f.webaiosOverlay = { api: { contexte: async () => ctx, ajouter: async () => ({ ok: true }), annuler: () => {}, panier: async () => [], lots: async () => [], retirer: async () => {}, traite: async () => {}, envoyer: async () => ({ ok: true }), surChange: () => () => {} } };
-           f.src = "chrome://browser/content/webaios/sidebar.html?calque";
+           f.src = "chrome://browser/content/webaios/sidebar.html?overlay";
            for (let i = 0; i < 100 && !(f.contentDocument?.readyState === "complete" && f.contentDocument.body?.textContent.trim()); i++) await new Promise((r) => setTimeout(r, 50));
            return { uri: f.contentDocument?.documentURI, text: f.contentDocument?.body?.textContent.trim().slice(0, 60) };
          })(arguments);`,
@@ -518,7 +518,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
     const by = dims.bar[1]! + dims.bar[3]! / 2;
 
     const before = await shotAt([[top.x + top.width / 2, top.y + 30], [top.x + top.width / 2, by]]);
-    const bubble = await show("bulle", top);
+    const bubble = await show("bubble", top);
     const bubbleCheck = await check(top);
     const afterBubble = await shotAt([[top.x + top.width / 2, top.y + 30], [top.x + top.width / 2, by]]);
     note("S7 bubble", { loaded: bubble, ...(bubbleCheck as object), paint: { before, after: afterBubble } });
@@ -529,7 +529,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
     expect(bc.barGot.length).toBe(1);
     expect(afterBubble[1]).toBe(before[1]);
 
-    const basket = await show("panier", cart);
+    const basket = await show("basket", cart);
     const cartCheck = await check(cart);
     note("S7 cart", { loaded: basket, ...(cartCheck as object) });
     const cc = cartCheck as typeof bc;
@@ -543,7 +543,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
     await expect.poll(() => m.execute(`return ${SITE}.document.documentElement.hasAttribute("webaios-site-home");`)).toBe(true);
     const homeRect = await inSiteBar<number[]>(m, ID, `const b = win.document.getElementById("webaios-site-bar").getBoundingClientRect(), h = doc.querySelector('[data-testid="site-cadre-accueil"]').getBoundingClientRect(); return [b.left + h.left, b.top + h.top, h.width, h.height];`);
     const onHome = bubbleSlot({ x: 40, y: 60, width: 120, height: 40 }, 1, { x: homeRect[0]!, y: homeRect[1]!, width: homeRect[2]!, height: homeRect[3]! }, [l!, h!], { minHeight: homeRect[1]! });
-    await show("bulle", onHome);
+    await show("bubble", onHome);
     const homeCheck = await check(onHome);
     note("S7 bubble over the home", { homeRect, onHome, ...(homeCheck as object) });
     const hc = homeCheck as typeof bc;

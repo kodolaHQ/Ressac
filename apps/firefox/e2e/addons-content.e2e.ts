@@ -24,7 +24,7 @@ const ready = (m: Marionette) =>
 /** Opens `path` in a WebAiOs tab, waits until it is loaded; returns the tab id. */
 async function open(m: Marionette, path: string): Promise<string> {
   const before = new Set(Object.keys((await state(m)).tabs));
-  const s = await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url: server.url + path });
+  const s = await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url: server.url + path });
   await waitFor(m, "return !gBrowser.selectedBrowser.webProgress.isLoadingDocument && gBrowser.selectedBrowser.currentURI.spec !== 'about:blank'", (v) => v === true);
   return Object.keys(s.tabs).find((id) => !before.has(id))!;
 }

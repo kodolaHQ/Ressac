@@ -61,7 +61,7 @@ const lastSessionConfig = () =>
 async function setPrivate(isPrivate: boolean): Promise<void> {
   const s = await state(m);
   const e = s.spaces.find((x) => x.id === s.windows[0]!.activeSpace)!;
-  if (e.private !== isPrivate) await dispatch(m, { type: "reglerEspace", id: e.id, name: e.name, icon: e.icon, private: isPrivate, profile: e.profile } as Action);
+  if (e.private !== isPrivate) await dispatch(m, { type: "updateSpace", id: e.id, name: e.name, icon: e.icon, private: isPrivate, profile: e.profile } as Action);
 }
 
 /** Opens the action's builder from its page (« Voir le workflow »), once the kernel serves the actions. */
@@ -165,7 +165,7 @@ describe("the builder of an action", () => {
     await writeGitlab("gitlab-c", "un");
     await openActionBuilder("gitlab-c");
     // A real run, launched from the page (its input: « webaios »). Not awaited in the script: a run may outlast its timeout.
-    await inUi(m, "void ui.webaios.actions.lancer('gitlab-c', 'webaios');");
+    await inUi(m, "void ui.webaios.actions.launch('gitlab-c', 'webaios');");
     const [file] = await poll(() => runsOnDisk(w.dataDir, "gitlab-c"), (l) => l.length === 1, "the real run");
     const origin = file!.replace(/\.json$/, "");
     const run = await poll(() => readJson(path.join(actionsDataDir(w.dataDir), "gitlab-c", "runs", file!)), (e) => e.status !== "running", "its end", 60_000);
@@ -192,7 +192,7 @@ describe("the builder of an action", () => {
     await click(m, tid(`execution-${origin}`));
     await q.waitContains(preview, "ticket-webaios-un", 30_000);
     // The action's last result stays the real run: its page does not show the trial.
-    expect(await inUi(m, "return ui.webaios.actions.page('gitlab-c', null).then((p) => p?.execution);")).toBe(origin);
+    expect(await inUi(m, "return ui.webaios.actions.page('gitlab-c', null).then((p) => p?.run);")).toBe(origin);
     await openAction(m, "gitlab-c", NAME);
     await q.waitContains(`${tid("page-action")} ${tid("rendu-page")}`, "ticket-webaios-un", 30_000);
     expect(await q.text(tid("page-action"))).not.toContain("ticket-webaios-deux");
@@ -212,8 +212,8 @@ describe("the builder of an action", () => {
         await inUi(
           m,
           `const c = arguments[0], wf = ui.webaios.workflow;
-          return Promise.all([wf.lire(c), wf.enregistrer(c, { version: 1, blocks: [], links: [] }), wf.lireCode(c, "lire.mjs"), wf.enregistrerCode(c, "lire.mjs", "x"),
-            wf.rejouer(c, "2026-10-31T08-00-00-000Z", "lire"), wf.lancer(c, "webaios")]).then((r) => JSON.parse(JSON.stringify(r)));`,
+          return Promise.all([wf.read(c), wf.save(c, { version: 1, blocks: [], links: [] }), wf.readCode(c, "lire.mjs"), wf.saveCode(c, "lire.mjs", "x"),
+            wf.replay(c, "2026-10-31T08-00-00-000Z", "lire"), wf.run(c, "webaios")]).then((r) => JSON.parse(JSON.stringify(r)));`,
           [target],
         ),
       ).toEqual([

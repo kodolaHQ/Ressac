@@ -6,13 +6,13 @@ import type { Visit } from "../shared/model";
 
 export type { HistoryResult, Visit };
 
-const COLUMNS = `url, titre, derniere_visite AS derniereVisite, visites, espace_id AS espaceId, prive,
-  EXISTS (SELECT 1 FROM textes t WHERE t.url = visites.url AND t.espace_id = visites.espace_id) AS retenu`;
+const COLUMNS = `url, title, last_visit AS lastVisit, visits, space_id AS spaceId, private,
+  EXISTS (SELECT 1 FROM texts t WHERE t.url = visits.url AND t.space_id = visits.space_id) AS kept`;
 
 /** Limits of the browsing memory (spec §6.3). */
 export const TEXT_MAX = 20_000; // characters per page
 export const RETENTION_DAYS = 183;
-export const BYTES_CAP = 1_000_000_000; // UTF-8 de `texte`, toutes pages confondues
+export const BYTES_CAP = 1_000_000_000; // UTF-8 of `text`, all pages together
 const AGENT_LIMIT = { default: 20, max: 50 };
 /** Words of the excerpt returned to the agent (64 at most for FTS5): about 300 characters. */
 const SNIPPET_WORDS = 54;
@@ -27,7 +27,7 @@ export class History {
     | "note" | "updateTitle" | "search" | "searchDistinct" | "recents" | "eraseSince" | "clearAll" | "makePrivate"
     | "keep" | "updateTitleText" | "isPrivate" | "forgetText" | "forgetSpaceTexts" | "eraseTextsSince"
     | "eraseOrphanTexts" | "clearAllTexts" | "purgeBefore" | "totalBytes" | "oldTexts" | "forgetTextId"
-    | "keptText" | "visitesDe" | "excerpt",
+    | "keptText" | "visitsOf" | "excerpt",
     StatementSync
   >;
   private byteCap: number;
@@ -38,111 +38,111 @@ export class History {
     this.db = new DatabaseSync(path);
     this.db.exec("PRAGMA journal_mode = WAL;");
     this.migrate();
-    this.db.function("plier", { deterministic: true }, (s) => fold(String(s)));
+    this.db.function("fold", { deterministic: true }, (s) => fold(String(s)));
     this.req = {
       note: this.db.prepare(`
-        INSERT INTO visites (url, espace_id, titre, derniere_visite, prive) VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT (url, espace_id) DO UPDATE SET titre = excluded.titre, derniere_visite = excluded.derniere_visite,
-          visites = CASE WHEN prive = 1 AND excluded.prive = 0 THEN 1 ELSE visites + 1 END, prive = excluded.prive`),
-      updateTitle: this.db.prepare("UPDATE visites SET titre = ? WHERE url = ? AND espace_id = ?"),
+        INSERT INTO visits (url, space_id, title, last_visit, private) VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT (url, space_id) DO UPDATE SET title = excluded.title, last_visit = excluded.last_visit,
+          visits = CASE WHEN private = 1 AND excluded.private = 0 THEN 1 ELSE visits + 1 END, private = excluded.private`),
+      updateTitle: this.db.prepare("UPDATE visits SET title = ? WHERE url = ? AND space_id = ?"),
       search: this.db.prepare(`
-        SELECT ${COLUMNS} FROM visites
-        WHERE plier(url) LIKE ? ESCAPE '\\' OR plier(titre) LIKE ? ESCAPE '\\'
-        ORDER BY visites DESC, derniere_visite DESC LIMIT ?`),
+        SELECT ${COLUMNS} FROM visits
+        WHERE fold(url) LIKE ? ESCAPE '\\' OR fold(title) LIKE ? ESCAPE '\\'
+        ORDER BY visits DESC, last_visit DESC LIMIT ?`),
       // A single row per URL, the best ranked, chosen in SQL so that the LIMIT counts URLs.
       searchDistinct: this.db.prepare(`
         SELECT ${COLUMNS} FROM (
-          SELECT *, ROW_NUMBER() OVER (PARTITION BY url ORDER BY visites DESC, derniere_visite DESC) AS rang FROM visites
-          WHERE plier(url) LIKE ? ESCAPE '\\' OR plier(titre) LIKE ? ESCAPE '\\'
-        ) AS visites
-        WHERE rang = 1
-        ORDER BY visites DESC, derniere_visite DESC LIMIT ?`),
-      recents: this.db.prepare(`SELECT ${COLUMNS} FROM visites ORDER BY derniere_visite DESC LIMIT ?`),
-      eraseSince: this.db.prepare("DELETE FROM visites WHERE derniere_visite >= ?"),
-      clearAll: this.db.prepare("DELETE FROM visites"),
-      makePrivate: this.db.prepare("UPDATE visites SET prive = 1 WHERE espace_id = ?"),
+          SELECT *, ROW_NUMBER() OVER (PARTITION BY url ORDER BY visits DESC, last_visit DESC) AS rank_ FROM visits
+          WHERE fold(url) LIKE ? ESCAPE '\\' OR fold(title) LIKE ? ESCAPE '\\'
+        ) AS visits
+        WHERE rank_ = 1
+        ORDER BY visits DESC, last_visit DESC LIMIT ?`),
+      recents: this.db.prepare(`SELECT ${COLUMNS} FROM visits ORDER BY last_visit DESC LIMIT ?`),
+      eraseSince: this.db.prepare("DELETE FROM visits WHERE last_visit >= ?"),
+      clearAll: this.db.prepare("DELETE FROM visits"),
+      makePrivate: this.db.prepare("UPDATE visits SET private = 1 WHERE space_id = ?"),
       keep: this.db.prepare(`
-        INSERT INTO textes (url, espace_id, titre, date, texte, octets) VALUES (?, ?, ?, ?, ?, ?)
-        ON CONFLICT (url, espace_id) DO UPDATE SET titre = excluded.titre, date = excluded.date, texte = excluded.texte,
-          octets = excluded.octets`),
-      updateTitleText: this.db.prepare("UPDATE textes SET titre = ? WHERE url = ? AND espace_id = ? AND titre <> ?"),
-      isPrivate: this.db.prepare("SELECT 1 FROM visites WHERE url = ? AND espace_id = ? AND prive = 1"),
-      forgetText: this.db.prepare("DELETE FROM textes WHERE url = ? AND espace_id = ?"),
-      forgetSpaceTexts: this.db.prepare("DELETE FROM textes WHERE espace_id = ?"),
-      eraseTextsSince: this.db.prepare("DELETE FROM textes WHERE date >= ?"),
+        INSERT INTO texts (url, space_id, title, date, text, bytes) VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT (url, space_id) DO UPDATE SET title = excluded.title, date = excluded.date, text = excluded.text,
+          bytes = excluded.bytes`),
+      updateTitleText: this.db.prepare("UPDATE texts SET title = ? WHERE url = ? AND space_id = ? AND title <> ?"),
+      isPrivate: this.db.prepare("SELECT 1 FROM visits WHERE url = ? AND space_id = ? AND private = 1"),
+      forgetText: this.db.prepare("DELETE FROM texts WHERE url = ? AND space_id = ?"),
+      forgetSpaceTexts: this.db.prepare("DELETE FROM texts WHERE space_id = ?"),
+      eraseTextsSince: this.db.prepare("DELETE FROM texts WHERE date >= ?"),
       eraseOrphanTexts: this.db.prepare(
-        "DELETE FROM textes WHERE NOT EXISTS (SELECT 1 FROM visites v WHERE v.url = textes.url AND v.espace_id = textes.espace_id)",
+        "DELETE FROM texts WHERE NOT EXISTS (SELECT 1 FROM visits v WHERE v.url = texts.url AND v.space_id = texts.space_id)",
       ),
-      clearAllTexts: this.db.prepare("DELETE FROM textes"),
-      purgeBefore: this.db.prepare("DELETE FROM textes WHERE date < ?"),
-      totalBytes: this.db.prepare("SELECT COALESCE(SUM(octets), 0) AS total FROM textes"),
-      oldTexts: this.db.prepare("SELECT id, octets FROM textes ORDER BY date, id"),
-      forgetTextId: this.db.prepare("DELETE FROM textes WHERE id = ?"),
+      clearAllTexts: this.db.prepare("DELETE FROM texts"),
+      purgeBefore: this.db.prepare("DELETE FROM texts WHERE date < ?"),
+      totalBytes: this.db.prepare("SELECT COALESCE(SUM(bytes), 0) AS total FROM texts"),
+      oldTexts: this.db.prepare("SELECT id, bytes FROM texts ORDER BY date, id"),
+      forgetTextId: this.db.prepare("DELETE FROM texts WHERE id = ?"),
       keptText: this.db.prepare(`
-        SELECT t.url, t.titre, t.date, t.texte FROM textes t
-        JOIN visites v ON v.url = t.url AND v.espace_id = t.espace_id AND v.prive = 0
+        SELECT t.url, t.title, t.date, t.text FROM texts t
+        JOIN visits v ON v.url = t.url AND v.space_id = t.space_id AND v.private = 0
         WHERE t.url = ? ORDER BY t.date DESC LIMIT 1`),
-      visitesDe: this.db.prepare(`
-        SELECT titre, derniere_visite AS date, visites FROM visites
-        WHERE url = :url AND prive = 0 AND derniere_visite >= :depuis AND derniere_visite <= :jusqua
-        ORDER BY derniere_visite DESC`),
+      visitsOf: this.db.prepare(`
+        SELECT title, last_visit AS date, visits FROM visits
+        WHERE url = :url AND private = 0 AND last_visit >= :since AND last_visit <= :until
+        ORDER BY last_visit DESC`),
       excerpt: this.db.prepare(
-        `SELECT snippet(textes_fts, 2, '', '', '…', ${SNIPPET_WORDS}) AS extrait FROM textes_fts WHERE textes_fts MATCH ? AND rowid = ?`,
+        `SELECT snippet(texts_fts, 2, '', '', '…', ${SNIPPET_WORDS}) AS excerpt FROM texts_fts WHERE texts_fts MATCH ? AND rowid = ?`,
       ),
     };
   }
 
   /** Creates the table, or migrates the old one (`url` key alone): rows kept, space `""` (none), non-private. */
   private migrate(): void {
-    const columns = (this.db.prepare("PRAGMA table_info(visites)").all() as { name: string }[]).map((c) => c.name);
+    const columns = (this.db.prepare("PRAGMA table_info(visits)").all() as { name: string }[]).map((c) => c.name);
     const fresh = `(
         url TEXT NOT NULL,
-        espace_id TEXT NOT NULL,
-        titre TEXT NOT NULL,
-        derniere_visite TEXT NOT NULL,
-        visites INTEGER NOT NULL DEFAULT 1,
-        prive INTEGER NOT NULL DEFAULT 0,
-        PRIMARY KEY (url, espace_id)
+        space_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        last_visit TEXT NOT NULL,
+        visits INTEGER NOT NULL DEFAULT 1,
+        private INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (url, space_id)
       )`;
     this.db.exec("BEGIN");
     try {
-      if (columns.length === 0) this.db.exec(`CREATE TABLE visites ${fresh}`);
-      else if (!columns.includes("espace_id")) {
+      if (columns.length === 0) this.db.exec(`CREATE TABLE visits ${fresh}`);
+      else if (!columns.includes("space_id")) {
         this.db.exec(`
-          CREATE TABLE visites_v2 ${fresh};
-          INSERT INTO visites_v2 (url, espace_id, titre, derniere_visite, visites, prive)
-            SELECT url, '', titre, derniere_visite, visites, 0 FROM visites;
-          DROP TABLE visites;
-          ALTER TABLE visites_v2 RENAME TO visites;`);
+          CREATE TABLE visits_v2 ${fresh};
+          INSERT INTO visits_v2 (url, space_id, title, last_visit, visits, private)
+            SELECT url, '', title, last_visit, visits, 0 FROM visits;
+          DROP TABLE visits;
+          ALTER TABLE visits_v2 RENAME TO visits;`);
       }
-      this.db.exec("CREATE INDEX IF NOT EXISTS visites_date ON visites (derniere_visite)");
-      // Kept text: one row per URL and per space. The FTS5 index reads its content from `textes` (nothing is stored
+      this.db.exec("CREATE INDEX IF NOT EXISTS visits_date ON visits (last_visit)");
+      // Kept text: one row per URL and per space. The FTS5 index reads its content from `texts` (nothing is stored
       // twice); the triggers keep it up to date whichever method writes or erases.
       this.db.exec(`
-        CREATE TABLE IF NOT EXISTS textes (
+        CREATE TABLE IF NOT EXISTS texts (
           id INTEGER PRIMARY KEY,
           url TEXT NOT NULL,
-          espace_id TEXT NOT NULL,
-          titre TEXT NOT NULL,
+          space_id TEXT NOT NULL,
+          title TEXT NOT NULL,
           date TEXT NOT NULL,
-          texte TEXT NOT NULL,
-          octets INTEGER NOT NULL,
-          UNIQUE (url, espace_id)
+          text TEXT NOT NULL,
+          bytes INTEGER NOT NULL,
+          UNIQUE (url, space_id)
         );
-        CREATE INDEX IF NOT EXISTS textes_date ON textes (date);
-        CREATE INDEX IF NOT EXISTS textes_espace ON textes (espace_id);
-        CREATE VIRTUAL TABLE IF NOT EXISTS textes_fts USING fts5(
-          titre, url, texte, content = 'textes', content_rowid = 'id', tokenize = "unicode61 remove_diacritics 2"
+        CREATE INDEX IF NOT EXISTS texts_date ON texts (date);
+        CREATE INDEX IF NOT EXISTS texts_space ON texts (space_id);
+        CREATE VIRTUAL TABLE IF NOT EXISTS texts_fts USING fts5(
+          title, url, text, content = 'texts', content_rowid = 'id', tokenize = "unicode61 remove_diacritics 2"
         );
-        CREATE TRIGGER IF NOT EXISTS textes_ajout AFTER INSERT ON textes BEGIN
-          INSERT INTO textes_fts (rowid, titre, url, texte) VALUES (new.id, new.titre, new.url, new.texte);
+        CREATE TRIGGER IF NOT EXISTS texts_insert AFTER INSERT ON texts BEGIN
+          INSERT INTO texts_fts (rowid, title, url, text) VALUES (new.id, new.title, new.url, new.text);
         END;
-        CREATE TRIGGER IF NOT EXISTS textes_retrait AFTER DELETE ON textes BEGIN
-          INSERT INTO textes_fts (textes_fts, rowid, titre, url, texte) VALUES ('delete', old.id, old.titre, old.url, old.texte);
+        CREATE TRIGGER IF NOT EXISTS texts_delete AFTER DELETE ON texts BEGIN
+          INSERT INTO texts_fts (texts_fts, rowid, title, url, text) VALUES ('delete', old.id, old.title, old.url, old.text);
         END;
-        CREATE TRIGGER IF NOT EXISTS textes_maj AFTER UPDATE ON textes BEGIN
-          INSERT INTO textes_fts (textes_fts, rowid, titre, url, texte) VALUES ('delete', old.id, old.titre, old.url, old.texte);
-          INSERT INTO textes_fts (rowid, titre, url, texte) VALUES (new.id, new.titre, new.url, new.texte);
+        CREATE TRIGGER IF NOT EXISTS texts_update AFTER UPDATE ON texts BEGIN
+          INSERT INTO texts_fts (texts_fts, rowid, title, url, text) VALUES ('delete', old.id, old.title, old.url, old.text);
+          INSERT INTO texts_fts (rowid, title, url, text) VALUES (new.id, new.title, new.url, new.text);
         END;`);
       this.db.exec("COMMIT");
     } catch (e) {
@@ -172,7 +172,7 @@ export class History {
     });
   }
 
-  /** Keeps a page's text (truncated to TEXTE_MAX characters), replacing that of the previous visit. */
+  /** Keeps a page's text (truncated to TEXT_MAX characters), replacing that of the previous visit. */
   keep(r: { url: string; spaceId: string; title: string; text: string; date?: Date }): void {
     if (!this.db.isOpen) return;
     if (this.req.isPrivate.get(r.url, r.spaceId)) return; // defense: nothing is kept from a private visit
@@ -212,7 +212,7 @@ export class History {
   }
 
   /**
-   * Search for the agent, made of non-private visits only (within [depuis, jusqua]), one row per URL.
+   * Search for the agent, made of non-private visits only (within [since, until]), one row per URL.
    * Each word of the query is searched separately (OR): in the kept text, the title and the URL through the full-text
    * index, and as a folded substring in the title and URL of any visit (a visit without text is found too).
    * Ranking: pages found by the index first (bm25, then the most recent), then those found by their
@@ -226,34 +226,34 @@ export class History {
     // Each word is a quoted FTS phrase: no query operator is interpreted.
     const fts = words.map((m) => `"${m.replaceAll('"', '""')}"`).join(" OR ");
     const patterns = Object.fromEntries(words.map((m, i) => [`m${i}`, `%${fold(m).replace(/[\\%_]/g, (c) => `\\${c}`)}%`]));
-    const inPeriod = "v.prive = 0 AND v.derniere_visite >= :depuis AND v.derniere_visite <= :jusqua";
+    const inPeriod = "v.private = 0 AND v.last_visit >= :since AND v.last_visit <= :until";
     const byTitleOrUrl = words.length
-      ? words.map((_, i) => `plier(v.url) LIKE :m${i} ESCAPE '\\' OR plier(v.titre) LIKE :m${i} ESCAPE '\\'`).join(" OR ")
+      ? words.map((_, i) => `fold(v.url) LIKE :m${i} ESCAPE '\\' OR fold(v.title) LIKE :m${i} ESCAPE '\\'`).join(" OR ")
       : "1";
     const found = words.length
-      ? `SELECT t.url, t.id, bm25(textes_fts) AS score FROM textes_fts
-           JOIN textes t ON t.id = textes_fts.rowid
-           JOIN visites v ON v.url = t.url AND v.espace_id = t.espace_id
-           WHERE textes_fts MATCH :fts AND ${inPeriod}`
+      ? `SELECT t.url, t.id, bm25(texts_fts) AS score FROM texts_fts
+           JOIN texts t ON t.id = texts_fts.rowid
+           JOIN visits v ON v.url = t.url AND v.space_id = t.space_id
+           WHERE texts_fts MATCH :fts AND ${inPeriod}`
       : "SELECT NULL AS url, NULL AS id, NULL AS score WHERE 0";
     const lignes = this.db
       .prepare(`
-        WITH trouves AS MATERIALIZED (${found}),
+        WITH matches AS MATERIALIZED (${found}),
         candidates AS (
           SELECT url, MIN(score) AS score FROM (
-            SELECT url, score FROM trouves
-            UNION ALL SELECT v.url, NULL FROM visites v WHERE ${inPeriod} AND (${byTitleOrUrl})
+            SELECT url, score FROM matches
+            UNION ALL SELECT v.url, NULL FROM visits v WHERE ${inPeriod} AND (${byTitleOrUrl})
           ) GROUP BY url
         )
         SELECT c.url, c.score,
-          (SELECT id FROM trouves t WHERE t.url = c.url ORDER BY t.score LIMIT 1) AS id,
-          (SELECT MAX(v.derniere_visite) FROM visites v WHERE v.url = c.url AND ${inPeriod}) AS recente
+          (SELECT id FROM matches t WHERE t.url = c.url ORDER BY t.score LIMIT 1) AS id,
+          (SELECT MAX(v.last_visit) FROM visits v WHERE v.url = c.url AND ${inPeriod}) AS latest
         FROM candidates c
-        ORDER BY c.score IS NULL, c.score, recente DESC
-        LIMIT :limite`)
+        ORDER BY c.score IS NULL, c.score, latest DESC
+        LIMIT :limit`)
       .all({ ...period, ...patterns, ...(words.length ? { fts } : {}), limit: limit }) as { url: string; id: number | null }[];
     return lignes.map(({ url, id }) => {
-      const visits = this.req.visitesDe.all({ url, ...period }) as { title: string; date: string; visits: number }[];
+      const visits = this.req.visitsOf.all({ url, ...period }) as { title: string; date: string; visits: number }[];
       const snippet = id === null ? undefined : (this.req.excerpt.get(fts, id) as { excerpt: string } | undefined);
       return {
         url,
@@ -278,10 +278,10 @@ export class History {
   }
 
   private lines(raw: Record<string, unknown>[]): Visit[] {
-    return raw.map((l) => ({ ...l, private: l.prive === 1, kept: l.retenu === 1 }) as unknown as Visit);
+    return raw.map((l) => ({ ...l, private: l.private === 1, kept: l.kept === 1 }) as unknown as Visit);
   }
 
-  /** Erases the visits and kept text since `depuis` (everything without a date), and the text whose visit is erased. */
+  /** Erases the visits and kept text since `from` (everything without a date), and the text whose visit is erased. */
   erase(from?: Date): void {
     if (!this.db.isOpen) return;
     this.transaction(() => {

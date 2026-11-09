@@ -45,13 +45,13 @@
       copy = false;
     }
   }
-  const turnedOff = $derived(appState?.server.state === "eteint");
+  const turnedOff = $derived(appState?.server.state === "off");
 </script>
 
 <section class="externes" data-testid="projets-externes" aria-label="Projets externes">
   <h2 class="titre">Projets externes</h2>
   {#if appState}
-    {#if appState.server.state === "eteint"}
+    {#if appState.server.state === "off"}
       <p class="raison" data-testid="raison-externes">{appState.server.reason}</p>
     {/if}
     <ul>

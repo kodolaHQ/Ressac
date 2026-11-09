@@ -78,12 +78,12 @@ class FakeDevTools implements BrowserDevTools {
   }
 
   async attach(id: string) {
-    this.note("attacher", id);
+    this.note("attach", id);
     this.check(id);
   }
 
   async detach(id: string) {
-    this.note("detacher", id);
+    this.note("detach", id);
   }
 
   async console(id: string) {
@@ -93,40 +93,40 @@ class FakeDevTools implements BrowserDevTools {
   }
 
   async network(id: string) {
-    this.note("reseau", id);
+    this.note("network", id);
     this.check(id);
     return [...(this.networks.get(id) ?? [])];
   }
 
   async body(id: string, request: string) {
-    this.note("corps", id, request);
+    this.note("body", id, request);
     this.check(id);
     return { body: `Corps de ${request}`, base64: false };
   }
 
   async profile(id: string, o: { durationMs?: number; reload?: boolean }, signal: AbortSignal) {
-    this.note("profiler", id, o);
+    this.note("profile", id, o);
     this.check(id);
     if (this.block) return pending<{ profile: CpuProfile; metrics: Record<string, number> }>(signal);
     return { profile: PROFILE, metrics: { Nodes: 42 } };
   }
 
   async memorySnapshot(id: string, signal: AbortSignal) {
-    this.note("instantaneMemoire", id);
+    this.note("memorySnapshot", id);
     this.check(id);
     if (this.block) return pending<string>(signal);
     return heap(this.heapObjects);
   }
 
   async run(id: string, code: string, _signal: AbortSignal): Promise<JsResult> {
-    this.note("executer", id, code);
+    this.note("run", id, code);
     this.check(id);
     if (code.startsWith("throw ")) return { exception: `${code.slice(6)}\n    at <anonymous>:1:1` };
     return { value: JSON.stringify({ code }) };
   }
 
   async reload(id: string, noCache: boolean) {
-    this.note("recharger", id, noCache);
+    this.note("reload", id, noCache);
     this.check(id);
   }
 }
@@ -147,7 +147,7 @@ export class FakeBridge implements BrowserBridge {
   /** Suspended reads in progress, by URL: `relacher` lets them finish. */
   private readonly suspended = new Map<string, (() => void)[]>();
   askWidgetData?: (o: { id: string; name: string; agent: string; kind?: "action" | "site" }, signal?: AbortSignal) => Promise<boolean>;
-  /** Domains of each site app (id → domains), for `adresseSitePermise`. */
+  /** Domains of each site app (id → domains), for `siteUrlAllowed`. */
   private readonly sites: Record<string, string[]>;
   /** Site apps whose tweaks card is shown: navigating answers « pending ». */
   private readonly pendingSites: Set<string>;
@@ -155,16 +155,16 @@ export class FakeBridge implements BrowserBridge {
 
   /**
    * `outilsDev` provides the simulated dev tools; `accorderDev` also provides the consent card,
-   * which answers these rights. `bloquer`: profiles and snapshots only end on abandonment. `historique` provides
+   * which answers these rights. `bloquer`: profiles and snapshots only end on abandonment. `history` provides
    * the history: `chercher` returns `resultats` (at most `limite`), `lire` the page of `textes` at this URL, and
-   * `erreur`, if given, makes both fail. `lecture` provides `lirePageInvisible`: the page of `pages` at this URL
-   * (otherwise an empty page), `lireHtmlInvisible`: the HTML of `html` at this URL (otherwise ""), and ProfileDenied for a profile of `refuser`. A read (page or HTML) of a URL of `suspendues` only
-   * ends at `relacher(url)`, or at the abandonment of its `signal`: it is then noted « lectureAnnulee » and rejected with
+   * `error`, if given, makes both fail. `lecture` provides `readPageInvisible`: the page of `pages` at this URL
+   * (otherwise an empty page), `readHtmlInvisible`: the HTML of `html` at this URL (otherwise ""), and ProfileDenied for a profile of `deny`. A read (page or HTML) of a URL of `suspendues` only
+   * ends at `relacher(url)`, or at the abandonment of its `signal`: it is then noted « readCanceled » and rejected with
    * the signal's reason, like the real bridge that closes its window. `redirections` simulates a redirect:
    * the requested URL leads to the associated URL, and that page is the one returned; to another host, with
-   * `changerHote`, it waits for it first (noted « changerHote »). `donneesWidget` provides the
+   * `changeHost`, it waits for it first (noted « changeHost »). `donneesWidget` provides the
    * « donnees-widget » card (and that of a site app, `genre: "site"`), which answers this value. `sites`: the domains
-   * of each open site app (`site:<id>` tabs with `site` set), for `adresseSitePermise`.
+   * of each open site app (`site:<id>` tabs with `site` set), for `siteUrlAllowed`.
    */
   constructor(
     tabs: TabInfo[],
@@ -196,12 +196,12 @@ export class FakeBridge implements BrowserBridge {
       };
       this.history = {
         find: async (q) => {
-          this.note("chercherHistorique", { ...q });
+          this.note("history.find", { ...q });
           fail();
           return h.results.slice(0, q.limit).map((r) => ({ ...r }));
         },
         read: async (url) => {
-          this.note("lireHistorique", url);
+          this.note("history.read", url);
           fail();
           const p = h.texts?.find((x) => x.url === url);
           return p ? { ...p } : null;
@@ -220,7 +220,7 @@ export class FakeBridge implements BrowserBridge {
           };
           const cancel = () => {
             this.suspended.set(url, (this.suspended.get(url) ?? []).filter((f) => f !== end));
-            this.note("lectureAnnulee", url);
+            this.note("readCanceled", url);
             ko(signal!.reason);
           };
           this.suspended.set(url, [...(this.suspended.get(url) ?? []), end]);
@@ -228,21 +228,21 @@ export class FakeBridge implements BrowserBridge {
         });
       };
       this.readPageInvisible = async (url, { signal, changeHost: changeHost, ...l }) => {
-        this.note("lirePageInvisible", url, { ...l });
+        this.note("readPageInvisible", url, { ...l });
         await wait(url, signal);
         if (l.profile !== null && reading.deny?.includes(l.profile)) throw new ProfileDenied(l.profile);
         const finalUrl = reading.redirects?.[url] ?? url;
-        // Like the real bridge: a redirect to another host waits for `changerHote` before going out.
+        // Like the real bridge: a redirect to another host waits for `changeHost` before going out.
         const host = new URL(finalUrl).hostname;
         if (changeHost && host !== new URL(url).hostname) {
-          this.note("changerHote", host);
+          this.note("changeHost", host);
           await changeHost(host);
         }
         const p = reading.pages.find((x) => x.url === finalUrl);
         return p ? structuredClone(p) : { url: finalUrl, title: "", text: "", links: [] };
       };
       this.readHtmlInvisible = async (url, { signal, ...l }) => {
-        this.note("lireHtmlInvisible", url, { ...l });
+        this.note("readHtmlInvisible", url, { ...l });
         await wait(url, signal);
         return { url, html: reading.html?.[url] ?? "" };
       };
@@ -250,14 +250,14 @@ export class FakeBridge implements BrowserBridge {
     const widgetData = o.widgetData;
     if (widgetData !== undefined) {
       this.askWidgetData = async (d) => {
-        this.note("demanderDonneesWidget", { ...d });
+        this.note("askWidgetData", { ...d });
         return widgetData;
       };
     }
     const giveGrant = o.grantDev;
     if (giveGrant) {
       this.askDevTools = async (tab, d) => {
-        this.note("demanderOutilsDev", { ...tab }, d);
+        this.note("askDevTools", { ...tab }, d);
         return [...giveGrant];
       };
     }
@@ -277,7 +277,7 @@ export class FakeBridge implements BrowserBridge {
 
   /** Like the real browser: the host is a domain of the open app or one of their subdomains. */
   siteUrlAllowed(site: string, url: string): boolean {
-    this.note("adresseSitePermise", site, url);
+    this.note("siteUrlAllowed", site, url);
     if (!this.tabs.some((x) => x.site === site)) return false;
     let host: string;
     try {
@@ -348,23 +348,23 @@ export class FakeBridge implements BrowserBridge {
   }
 
   async activeTab() {
-    this.note("ongletActif");
+    this.note("activeTab");
     return this.tabs.find((x) => x.id === this.active && !this.privateTabs.has(x.id)) ?? null;
   }
 
   async listTabs() {
-    this.note("listerOnglets");
+    this.note("listTabs");
     return this.tabs.filter((x) => !this.privateTabs.has(x.id)).map((x) => ({ ...x }));
   }
 
   async readText(id: string) {
-    this.note("lireTexte", id);
+    this.note("readText", id);
     const o = this.find(id);
     return { text: `Texte de ${o.title} (${o.url})` };
   }
 
   async openTab(url: string, space?: string) {
-    this.note("ouvrirOnglet", url, space);
+    this.note("openTab", url, space);
     const o = { id: `agent-${++this.counter}`, title: url, url, space: space ?? "perso" };
     this.tabs.push(o);
     this.active = o.id;
@@ -372,20 +372,20 @@ export class FakeBridge implements BrowserBridge {
   }
 
   async navigate(id: string, url: string): Promise<void | "pending"> {
-    this.note("naviguer", id, url);
+    this.note("navigate", id, url);
     const o = this.find(id);
     if (o.site !== undefined && this.pendingSites.has(o.site)) return "pending";
     o.url = url;
   }
 
   async capture(id: string) {
-    this.note("capturer", id);
+    this.note("capture", id);
     this.find(id);
     return PNG;
   }
 
   async askPermission(o: TabInfo) {
-    this.note("demanderAutorisation", o.id);
+    this.note("askPermission", o.id);
     return this.allow;
   }
 }

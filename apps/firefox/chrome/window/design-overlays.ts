@@ -4,13 +4,13 @@ import { overlayApi, type DesignOverlays, type DesignService, type DesignTarget 
 import { targetKey, MESSAGE_DURATION_MS } from "../store/design-copies";
 import { cutFrameNetwork } from "./frame-network";
 
-// The design mode's overlays as chrome frames of sidebar.html?calque (spike S3): an html:iframe in
+// The design mode's overlays as chrome frames of sidebar.html?overlay (spike S3): an html:iframe in
 // #browser, over the remote page, transparent. Outside its rectangle the page keeps the mouse and the wheel. The page
 // cannot see it (the view is remote), and it gets only its target's OverlayApi, set by the chrome on the frame.
 // Bundled in the store (it outlives each window): every frame is made in the window `show` names.
 
 const XHTML = "http://www.w3.org/1999/xhtml";
-const SRC = "chrome://browser/content/webaios/sidebar.html?calque";
+const SRC = "chrome://browser/content/webaios/sidebar.html?overlay";
 /** Spike S3's cart column of a main window: the page shrinks by it (window.css, --webaios-panier). */
 export const COLUMN_WIDTH = 300;
 
@@ -36,9 +36,9 @@ export function createOverlays(o: { design: DesignService; host: Pick<AgentHost,
   const targetOf = (key: string): DesignTarget =>
     key.startsWith("fenetre:") ? { type: "fenetre", windowId: key.slice(8) } : key.startsWith("site:") ? { type: "site", id: key.slice(5) } : { type: "app", folder: key.slice(4) };
   const main = (key: string) => key.startsWith("fenetre:");
-  const inColumn = (key: string, mode: Mode) => mode === "panier" && main(key);
+  const inColumn = (key: string, mode: Mode) => mode === "basket" && main(key);
   /** Calques.contexte's order; a main window's cart is in its column. */
-  const overlayModes = (key: string): Mode[] => (main(key) ? ["bulle", "message"] : ["bulle", "panier", "message"]);
+  const overlayModes = (key: string): Mode[] => (main(key) ? ["bubble", "message"] : ["bubble", "basket", "message"]);
 
   const columnClosed = (key: string) => {
     for (const cb of closedListeners.get(key) ?? [])
@@ -60,10 +60,10 @@ export function createOverlays(o: { design: DesignService; host: Pick<AgentHost,
     doc.getElementById("browser")!.append(f);
     const mayLoad = cutFrameNetwork(f);
     const t = targetOf(key);
-    const api = kind === "panel" ? overlayApi({ ...o, modes: ["panier"], cancel: () => columnClosed(key) }, t) : overlayApi({ ...o, modes: overlayModes(key) }, t);
+    const api = kind === "panel" ? overlayApi({ ...o, modes: ["basket"], cancel: () => columnClosed(key) }, t) : overlayApi({ ...o, modes: overlayModes(key) }, t);
     f.webaiosOverlay = { api };
     // A bubble shown while the frame still loads: the keyboard once its document is there.
-    if (kind === "overlay") f.addEventListener("load", () => ov.places.bulle && f.focus());
+    if (kind === "overlay") f.addEventListener("load", () => ov.places.bubble && f.focus());
     if (mayLoad) f.src = SRC;
     ov[kind] = f;
     return f;
@@ -98,7 +98,7 @@ export function createOverlays(o: { design: DesignService; host: Pick<AgentHost,
         return;
       }
       // A bubble opens: the message has no reason to stay (Calques.montrerBulle).
-      if (ctx.mode === "bulle" && ov.places.message) o.design.closeOverlay(t, "message");
+      if (ctx.mode === "bubble" && ov.places.message) o.design.closeOverlay(t, "message");
       ov.places[ctx.mode] = place;
       const f = frame(key, ov, "overlay");
       if (ctx.mode === "message") {
@@ -110,7 +110,7 @@ export function createOverlays(o: { design: DesignService; host: Pick<AgentHost,
         ov.offKeys = () => win.removeEventListener("keydown", close, true);
       }
       layout(key, ov);
-      if (ctx.mode === "bulle") f.focus();
+      if (ctx.mode === "bubble") f.focus();
     },
 
     hide(key, mode) {

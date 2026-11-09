@@ -11,7 +11,7 @@ const DISPLAY = `<!doctype html><meta charset="utf-8"><pre id="donnees"></pre>
 <script>
   addEventListener("message", (e) => {
     if (!e.data || e.data.type !== "widget") return;
-    document.getElementById("donnees").textContent = JSON.stringify(e.data.donnees);
+    document.getElementById("donnees").textContent = JSON.stringify(e.data.data);
   });
 </script>`;
 

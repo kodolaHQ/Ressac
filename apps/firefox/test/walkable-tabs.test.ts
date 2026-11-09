@@ -13,7 +13,7 @@ const ag = (a: Action | null) => {
   if (a) e = apply(e, a, genId);
 };
 const open = (url: string) => {
-  ag({ type: "ouvrirOnglet", windowId: F, url });
+  ag({ type: "openTab", windowId: F, url });
   return Object.keys(e.tabs).at(-1)!;
 };
 
@@ -28,16 +28,16 @@ test("walkableTabs: bar order, closed pinned absent, essential first, other spac
   const b = open("https://b.fr");
   const c = open("https://c.fr");
   const p = open("https://p.fr");
-  ag({ type: "epinglerOnglet", id: p });
+  ag({ type: "pinTab", id: p });
   const q = open("https://q.fr");
-  ag({ type: "epinglerOnglet", id: q });
-  ag({ type: "fermerOnglet", id: q });
+  ag({ type: "pinTab", id: q });
+  ag({ type: "closeTab", id: q });
   const ess = open("https://ess.fr");
-  ag({ type: "ajouterEssentiel", id: ess });
+  ag({ type: "addEssential", id: ess });
   expect(walkableTabs(e, F)).toEqual([ess, p, a, b, c]);
 
   const espace0 = e.windows[0]!.activeSpace;
-  ag({ type: "creerEspace", name: "Autre", icon: "x", private: false, profile: "nouveau", windowId: F });
+  ag({ type: "createSpace", name: "Autre", icon: "x", private: false, profile: "nouveau", windowId: F });
   const other = e.windows[0]!.activeSpace;
   expect(other).not.toBe(espace0);
   const z = open("https://z.fr");

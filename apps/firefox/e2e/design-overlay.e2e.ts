@@ -14,8 +14,8 @@ import { inBrowser, resolveLocalHosts } from "./sites";
 import { click, inUi, pressKeys, typeText } from "./ui";
 import { uiRefusals } from "./ui-network";
 
-// Plan 35b Task 3: the design overlay (sidebar.html?calque), its bubble and the main window's cart column, driven by
-// api.design.basculer() in the UI (⌘⇧D comes with Task 4). The demo is 127.0.0.1:15308, in this file's block 15305-15309.
+// Plan 35b Task 3: the design overlay (sidebar.html?overlay), its bubble and the main window's cart column, driven by
+// api.design.toggle() in the UI (⌘⇧D comes with Task 4). The demo is 127.0.0.1:15308, in this file's block 15305-15309.
 
 const PORT = 15308;
 const PROJECT = `demo-${PORT}`;
@@ -38,7 +38,7 @@ async function boot(): Promise<void> {
   await m.setContext("chrome");
   await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
   await resolveLocalHosts(m, ["localhost"]);
-  await waitFor(m, `return (async () => { const d = (await ChromeUtils.importESModule("${STORE}").ready).design; return d.etat({ type: "fenetre", fenetreId: window.webaiosWindow.fenetreId }).then(() => true, () => false); })();`, (v) => v === true, 30_000);
+  await waitFor(m, `return (async () => { const d = (await ChromeUtils.importESModule("${STORE}").ready).design; return d.state({ type: "fenetre", windowId: window.webaiosWindow.windowId }).then(() => true, () => false); })();`, (v) => v === true, 30_000);
 }
 
 beforeAll(async () => {
@@ -57,12 +57,12 @@ afterAll(async () => {
 /** Runs `body` with `d` the design service, `t` this window's target, `store` the store. */
 const svc = <R = unknown>(body: string, args: unknown[] = []) =>
   m.execute<R>(
-    `return (async (args) => { const store = await ChromeUtils.importESModule("${STORE}").ready, d = store.design; const t = { type: "fenetre", fenetreId: window.webaiosWindow.fenetreId }; ${body} })([...arguments]);`,
+    `return (async (args) => { const store = await ChromeUtils.importESModule("${STORE}").ready, d = store.design; const t = { type: "fenetre", windowId: window.webaiosWindow.windowId }; ${body} })([...arguments]);`,
     args,
   );
-const state = () => svc<{ active: boolean; basket: number; project: { project: string } | null }>("return await d.etat(t);");
-/** The UI's own api.design.basculer(), as ✎ will call it. */
-const toggle = () => inUi(m, "ui.webaios.design.basculer(); return 1;");
+const state = () => svc<{ active: boolean; basket: number; project: { project: string } | null }>("return await d.state(t);");
+/** The UI's own api.design.toggle(), as ✎ will call it. */
+const toggle = () => inUi(m, "ui.webaios.design.toggle(); return 1;");
 const inPage = <T = unknown>(script: string) => inBrowser<T>(m, B, script);
 const hosts = () => inPage<number>(`return document.querySelectorAll("webaios-viseur").length;`);
 
@@ -148,7 +148,7 @@ describe("design overlay", () => {
       `return ["webaios-design-calque", "webaios-design-volet"].map((id) => { const f = document.getElementById(id), ds = f?.frameLoader?.docShell;
          return ds ? { dns: ds.allowDNSPrefetch, mail: ds.appType === Ci.nsIDocShell.APP_TYPE_MAIL, uri: f.contentDocument?.documentURI } : null; });`,
     );
-    const page = { dns: false, mail: true, uri: "chrome://browser/content/webaios/sidebar.html?calque" };
+    const page = { dns: false, mail: true, uri: "chrome://browser/content/webaios/sidebar.html?overlay" };
     expect(cut).toEqual([page, page]);
     await m.execute(
       `for (const id of ["webaios-design-calque", "webaios-design-volet"]) { const d = document.getElementById(id).contentDocument, i = d.createElement("img");
@@ -188,7 +188,7 @@ describe("design overlay", () => {
     await svc(`window.__calls = []; const real = (store.agent.__real ??= store.agent.request); store.agent.request = (method, p) => (window.__calls.push(method), real.call(store.agent, method, p)); return 1;`);
     try {
       await sleep(3000);
-      const calls = await m.execute<string[]>(`return window.__calls.filter((c) => ["design.suivi", "design.panier", "design.lots"].includes(c));`);
+      const calls = await m.execute<string[]>(`return window.__calls.filter((c) => ["design.tracking", "design.basket", "design.batches"].includes(c));`);
       expect(calls.length).toBeLessThan(20);
     } finally {
       await svc("if (store.agent.__real) store.agent.request = store.agent.__real; return 1;");
@@ -269,23 +269,23 @@ describe("design overlay", () => {
     try {
       const answers = await m.execute<unknown[]>(
         `const api = document.getElementById("webaios-design-volet").contentWindow.webaios;
-         return Promise.all([api.panier("demo-15307"), api.lots("app-autre"), api.envoyer("demo-15307"), api.retirer("demo-15307", "e"), api.traite("demo-15307", "l")]);`,
+         return Promise.all([api.basket("demo-15307"), api.batches("app-autre"), api.send("demo-15307"), api.remove("demo-15307", "e"), api.handled("demo-15307", "l")]);`,
       );
       expect(answers).toEqual([[], [], { ok: false, error: INVALID_REQUEST }, null, null]);
       // The column's own reads of its project go on; nothing ever asked for another project.
-      expect(await m.execute<string[]>(`return window.__calls.filter((c) => c.startsWith("design.") && !c.startsWith("design.suivi") && !c.endsWith(" ${PROJECT}"));`)).toEqual([]);
-      const own = await m.execute<unknown[]>(`return document.getElementById("webaios-design-volet").contentWindow.webaios.panier(arguments[0]);`, [PROJECT]);
+      expect(await m.execute<string[]>(`return window.__calls.filter((c) => c.startsWith("design.") && !c.startsWith("design.tracking") && !c.endsWith(" ${PROJECT}"));`)).toEqual([]);
+      const own = await m.execute<unknown[]>(`return document.getElementById("webaios-design-volet").contentWindow.webaios.basket(arguments[0]);`, [PROJECT]);
       expect(own.length).toBeGreaterThan(0);
-      expect(await m.execute<string[]>("return window.__calls;")).toContain(`design.panier ${PROJECT}`);
+      expect(await m.execute<string[]>("return window.__calls;")).toContain(`design.basket ${PROJECT}`);
     } finally {
       await svc("if (store.agent.__real) store.agent.request = store.agent.__real; return 1;");
     }
     // The target is the chrome's: the frame's address names none, and the overlay cannot reach the page's document.
     const overlay = await m.execute<{ search: string[]; page: unknown }>(
       `const f = document.getElementById("webaios-design-volet").contentWindow, c = document.getElementById("webaios-design-calque")?.contentWindow;
-       return { search: [f.location.search, c ? c.location.search : "?calque"], page: f.parent.gBrowser.selectedBrowser.contentDocument };`,
+       return { search: [f.location.search, c ? c.location.search : "?overlay"], page: f.parent.gBrowser.selectedBrowser.contentDocument };`,
     );
-    expect(overlay).toEqual({ search: ["?calque", "?calque"], page: null });
+    expect(overlay).toEqual({ search: ["?overlay", "?overlay"], page: null });
     // The page sees no overlay: it is its own top, with no frame element, no api, no frame of ours.
     expect(await inPage("return { top: window.top === window, parent: window.parent === window, frame: window.frameElement, api: typeof window.webaios, frames: window.frames.length };")).toEqual({
       top: true, parent: true, frame: null, api: "undefined", frames: 0,
@@ -363,14 +363,14 @@ describe("design overlay", () => {
     await click(m, "button.ajouter", { frame: "overlay" });
     await expect.poll(() => frameOf<string | null>("webaios-design-calque", `return doc.querySelector('[role="alert"]')?.textContent ?? null;`).then((f) => f?.v ?? null), { timeout: 10_000 }).toBeTruthy();
     expect(await bubbleShown()).toBe(true);
-    expect(await svc("return d.overlayContext(t)?.mode ?? null;")).toBe("bulle");
+    expect(await svc("return d.overlayContext(t)?.mode ?? null;")).toBe("bubble");
     // Réessayer: the host starts again; the UI reads its design state again by itself (the test never asks it).
-    await svc(`window.__etats = []; const real = (d.__realEtat ??= d.etat); d.etat = (x) => real.call(d, x).then((e) => (window.__etats.push(e.actif), e)); return 1;`);
+    await svc(`window.__etats = []; const real = (d.__realState ??= d.state); d.state = (x) => real.call(d, x).then((e) => (window.__etats.push(e.actif), e)); return 1;`);
     try {
       await svc("await store.agent.ensure(); return 1;");
       await expect.poll(() => m.execute<boolean[]>("return window.__etats;"), { timeout: 30_000 }).toContain(true);
     } finally {
-      await svc("if (d.__realEtat) d.etat = d.__realEtat; return 1;");
+      await svc("if (d.__realEtat) d.state = d.__realEtat; return 1;");
     }
     await pressKeys(m, "Escape");
     await modeOff();

@@ -219,7 +219,7 @@ export class ReviewService {
     const project = await this.project(p);
     if (!project) {
       this.comparisons.delete(p);
-      return { state: "indisponible", name: p, reason: UNKNOWN_PROJECT };
+      return { state: "unavailable", name: p, reason: UNKNOWN_PROJECT };
     }
     try {
       let g = token ? this.comparisons.get(p)?.find((x) => x.token === token) : undefined;
@@ -236,9 +236,9 @@ export class ReviewService {
         ...this.destination(await this.tracking(p)),
       };
     } catch (e) {
-      if (e instanceof ReviewError) return { state: "indisponible", name: project.name, reason: e.reason };
+      if (e instanceof ReviewError) return { state: "unavailable", name: project.name, reason: e.reason };
       console.error(`[relecture] comparaison de ${p} :`, e);
-      return { state: "indisponible", name: project.name, reason: "la comparaison a échoué" };
+      return { state: "unavailable", name: project.name, reason: "la comparaison a échoué" };
     }
   }
 
@@ -346,7 +346,7 @@ export class ReviewService {
     return this.commentsOf(p).resolve(id, resolved);
   }
 
-  supprimerCommentaire(p: ProjectId, id: string): Promise<void> {
+  deleteComment(p: ProjectId, id: string): Promise<void> {
     return this.commentsOf(p).supprimer(id);
   }
 

@@ -13,9 +13,9 @@ export interface AgentHost {
   notify(method: string, params?: unknown): void;
   /** A notification from the host. */
   on(method: string, cb: (params: any) => void): () => void;
-  /** Starts the host if it is not running, then its kernel (`demarrer`, a no-op when it already runs on that profile). */
+  /** Starts the host if it is not running, then its kernel (`start`, a no-op when it already runs on that profile). */
   ensure(): Promise<void>;
-  /** `arreter` (5 s at most), then the process is killed. */
+  /** `stop` (5 s at most), then the process is killed. */
   stop(): Promise<void>;
   /** The host's pid while it runs (tests check it is gone after quitting). */
   readonly pid: number | null;
@@ -104,13 +104,13 @@ export function createHost(o: {
         current = spawn();
         current.catch(() => (current = null));
       }
-      await host.request("demarrer", { agentProfile: o.agentProfile() });
+      await host.request("start", { agentProfile: o.agentProfile() });
     },
     async stop() {
       const r = await current?.catch(() => null);
       if (!r) return;
       const timeout = new Promise((resolve) => setTimeout(resolve, STOP_TIMEOUT_MS));
-      await Promise.race([r.rpc.request("arreter").then(() => r.proc.wait()), timeout]).catch(() => {});
+      await Promise.race([r.rpc.request("stop").then(() => r.proc.wait()), timeout]).catch(() => {});
       await r.proc.kill();
     },
     get pid() {

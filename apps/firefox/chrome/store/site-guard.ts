@@ -46,8 +46,8 @@ export function blockedNotice(broadcast: () => void): BlockedNotice {
       // Nothing to open in a tab: refused without a mention.
       if (!domain) return;
       url = u;
-      if (notice?.kind === "lien-bloque" && notice.domain === domain) return;
-      notice = { kind: "lien-bloque", domain: domain };
+      if (notice?.kind === "link-blocked" && notice.domain === domain) return;
+      notice = { kind: "link-blocked", domain: domain };
       if (timer) return;
       const wait = sent + NOTICE_GAP_MS - Date.now();
       if (wait <= 0) send();
@@ -56,7 +56,7 @@ export function blockedNotice(broadcast: () => void): BlockedNotice {
     take() {
       const u = url;
       url = null;
-      if (notice?.kind === "lien-bloque") notice = null;
+      if (notice?.kind === "link-blocked") notice = null;
       return u;
     },
     clear() {

@@ -24,7 +24,7 @@ describe("state store", () => {
 
   it("saves a change to session.json within 2 s", async () => {
     const s = await state(w.marionette);
-    await dispatch(w.marionette, { type: "ouvrirOnglet", windowId: s.windows[0]!.id, url: "https://exemple.test/" });
+    await dispatch(w.marionette, { type: "openTab", windowId: s.windows[0]!.id, url: "https://exemple.test/" });
     const file = path.join(w.dataDir, "session.json");
     // Waits for the content, not the file: an earlier save may already have written it, without the tab.
     const urls = async () =>
@@ -38,7 +38,7 @@ describe("state store", () => {
       const store = await ChromeUtils.importESModule("${STORE}").ready;
       const { ContextualIdentityService } = ChromeUtils.importESModule("moz-src:///toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs");
       const a = store.containerFor("p1");
-      return { def: store.containerFor("defaut"), a, b: store.containerFor("p1"),
+      return { def: store.containerFor("default"), a, b: store.containerFor("p1"),
         named: ContextualIdentityService.getPrivateIdentity("userContextIdInternal.webaios-p1")?.userContextId === a,
         leaked: ContextualIdentityService.getPublicIdentities().some((i) => i.name?.startsWith("webaios-")) };
     })();`);
@@ -94,14 +94,14 @@ describe("unreadable session", () => {
     await rm(dataDir, { recursive: true, force: true });
   });
 
-  it("is set aside as session.json.<date>.corrompu", async () => {
+  it("is set aside as session.json.<date>.corrupt", async () => {
     const aside = await waitFor<string | null>(
       w!.marionette,
       `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).setAside)();`,
       (v) => v !== null,
     );
-    expect(path.basename(aside!)).toMatch(/^session\.json\..+\.corrompu$/);
-    expect((await readdir(dataDir)).filter((n) => n.endsWith(".corrompu"))).toEqual([path.basename(aside!)]);
+    expect(path.basename(aside!)).toMatch(/^session\.json\..+\.corrupt$/);
+    expect((await readdir(dataDir)).filter((n) => n.endsWith(".corrupt"))).toEqual([path.basename(aside!)]);
     expect((await state(w!.marionette)).spaces).toHaveLength(1);
   });
 });

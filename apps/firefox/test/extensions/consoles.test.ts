@@ -122,5 +122,5 @@ test("unlocked: nothing is hidden nor counted", () => {
   expect(r).toMatchObject({ hidden: 0, hiddenBackground: false, observedBackground: false, unlocked: true });
   expect(r.messages.map((m) => m.text)).toEqual(["fond", "caché"]);
   expect(c.errorsForAgent(ID, { unlocked: true, unreadableRunning: true, observer: true })).toEqual(["fond"]);
-  expect(Object.keys(r.messages[1]!).sort()).toEqual(["horodatage", "niveau", "texte"]);
+  expect(Object.keys(r.messages[1]!).sort()).toEqual(["level", "text", "timestamp"]);
 });

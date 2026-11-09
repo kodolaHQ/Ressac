@@ -111,7 +111,7 @@ describe("site permissions", () => {
   /** Opens `/p?do=<what>` (made unique) of `base` in a WebAiOs tab of the first window; returns its tab id once loaded. */
   async function open(base: string, what: string, o: { auto?: boolean; extra?: string } = { auto: true }): Promise<string> {
     const url = `${base}/p?do=${what}${o.auto ? "&auto" : ""}${o.extra ?? ""}&k=${++opened}`;
-    const s = await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url });
+    const s = await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url });
     const id = Object.entries(s.tabs).find(([, t]) => t.url === url)![0];
     await waitFor(m, `return !!${browser(id)}?.contentTitle`, (v) => v === true);
     return id;
@@ -172,9 +172,9 @@ describe("site permissions", () => {
     // Back to one window on the first space, no question left over.
     await chrome(`
       const s = await ChromeUtils.importESModule("${STORE}").ready;
-      for (const q of s.questions.pending()) s.questions.answer(q.id, "refuser");
+      for (const q of s.questions.pending()) s.questions.answer(q.id, "deny");
       for (const w of [...Services.wm.getEnumerator("navigator:browser")]) if (w !== window) w.close();
-      s.dispatch({ type: "activerEspace", fenetreId: s.state.fenetres[0].id, id: s.state.espaces[0].id });`);
+      s.dispatch({ type: "activateSpace", windowId: s.state.windows[0].id, id: s.state.spaces[0].id });`);
     for (const f of firefox as unknown[]) expect(f).toEqual({ panel: "closed", notifications: [] });
   });
 
@@ -219,7 +219,7 @@ describe("site permissions", () => {
     await reload(id);
     expect(await result(id)).toEqual({ ok: { lat: 48.8566 } });
     expect(await banner()).toBeNull();
-    expect(await saved()).toMatchObject({ [`${base} geolocation`]: "autoriser" });
+    expect(await saved()).toMatchObject({ [`${base} geolocation`]: "allow" });
   });
 
   it("the same origin in a space of another profile is asked again", async () => {
@@ -228,7 +228,7 @@ describe("site permissions", () => {
     await waitBanner((t) => t !== null);
     await answer("Autoriser");
     expect(await result(first)).toEqual({ ok: "granted" });
-    await dispatch(m, { type: "creerEspace", name: "Autre", icon: "🅰", private: false, profile: "nouveau", windowId: (await state(m)).windows[0]!.id });
+    await dispatch(m, { type: "createSpace", name: "Autre", icon: "🅰", private: false, profile: "nouveau", windowId: (await state(m)).windows[0]!.id });
     const id = await open(base, "notif");
     expect(await waitBanner((t) => t !== null)).toMatch(/^127\.0\.0\.1:\d+ veut vous envoyer des notifications$/);
     await answer("Refuser");
@@ -239,7 +239,7 @@ describe("site permissions", () => {
     const base = await origin();
     const id = await open(base, "notif");
     await waitBanner((t) => t !== null);
-    await dispatch(m, { type: "fermerOnglet", id });
+    await dispatch(m, { type: "closeTab", id });
     await waitFor(m, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).questions.pending().length)();`, (n) => n === 0);
     expect(await saved()).not.toHaveProperty(`${base} notifications`);
     await open(base, "notif");
@@ -287,7 +287,7 @@ describe("site permissions", () => {
   it("an invisible read that asks for notifications: denied, without a banner", async () => {
     const base = await origin();
     const read = await chrome<{ title: string }>(
-      `const s = await ChromeUtils.importESModule("${STORE}").ready; return s.readPage(arguments[0], { profil: null, adressesLocales: true });`,
+      `const s = await ChromeUtils.importESModule("${STORE}").ready; return s.readPage(arguments[0], { profile: null, localAddresses: true });`,
       [`${base}/p?do=notif&auto`],
     );
     expect(read.title).toBe('done:{"ok":"default"}');
@@ -317,7 +317,7 @@ describe("site permissions", () => {
 
   it("a private space: same questions, kept by its profile", async () => {
     const base = await origin();
-    await dispatch(m, { type: "creerEspace", name: "Privé", icon: "🔒", private: true, profile: "nouveau", windowId: (await state(m)).windows[0]!.id });
+    await dispatch(m, { type: "createSpace", name: "Privé", icon: "🔒", private: true, profile: "nouveau", windowId: (await state(m)).windows[0]!.id });
     const s = await state(m);
     const profile = s.spaces.find((e) => e.name === "Privé")!.profile;
     const id = await open(base, "notif");
@@ -328,7 +328,7 @@ describe("site permissions", () => {
     expect(await result(id)).toEqual({ ok: "granted" });
     expect(await banner()).toBeNull();
     const kept = await readFile(path.join(dirs.dataDir, `permissions-${profile}.json`), "utf8").then(JSON.parse);
-    expect(kept).toEqual({ [`${base} notifications`]: "autoriser" });
+    expect(kept).toEqual({ [`${base} notifications`]: "allow" });
     expect(await saved()).not.toHaveProperty(`${base} notifications`);
   });
 
@@ -338,7 +338,7 @@ describe("site permissions", () => {
     await waitBanner((t) => t !== null);
     await open(base, "none");
     await waitBanner((t) => t === null);
-    await dispatch(m, { type: "activerOnglet", id: asking });
+    await dispatch(m, { type: "activateTab", id: asking });
     expect(await waitBanner((t) => t !== null)).toMatch(/^127\.0\.0\.1:\d+ veut vous envoyer des notifications$/);
   });
 
@@ -360,7 +360,7 @@ describe("site permissions", () => {
     await reload(id);
     expect(await result(id)).toEqual({ ok: ["audio", "video"] });
     expect(await banner()).toBeNull();
-    expect(await saved()).toMatchObject({ [`${base} media-camera`]: "autoriser", [`${base} media-micro`]: "autoriser" });
+    expect(await saved()).toMatchObject({ [`${base} media-camera`]: "allow", [`${base} media-micro`]: "allow" });
     // Refused: NotAllowedError, kept too.
     const other = await open(await origin(), "both");
     await waitBanner((t) => t !== null);
@@ -377,7 +377,7 @@ describe("site permissions", () => {
     expect(await waitBanner((t) => t !== null)).toBe(`site2.localhost:${port} veut utiliser votre caméra`);
     await answer("Autoriser");
     expect(await result(id)).toEqual({ ok: ["video"] });
-    expect(await saved()).toMatchObject({ [`${frame} media-camera`]: "autoriser" });
+    expect(await saved()).toMatchObject({ [`${frame} media-camera`]: "allow" });
     expect(await saved()).not.toHaveProperty(`${base} media-camera`);
   });
 
@@ -434,7 +434,7 @@ describe("site permissions", () => {
     await reload(id);
     expect(await result(id)).toEqual({ ok: "org.w3.clearkey" });
     expect(await banner()).toBeNull();
-    expect(await saved()).toMatchObject({ [`${base} drm`]: "autoriser" });
+    expect(await saved()).toMatchObject({ [`${base} drm`]: "allow" });
   });
 
   it("MIDI: the banner, then navigator.requestMIDIAccess() succeeds; no module in about:addons", { timeout: 60_000 }, async () => {
@@ -477,7 +477,7 @@ describe("site permissions", () => {
   it("a deleted profile: its permissions.json and its decisions in Firefox disappear", { timeout: 60_000 }, async () => {
     const base = await origin();
     const windowId = (await state(m)).windows[0]!.id;
-    await dispatch(m, { type: "creerEspace", name: "Jetable", icon: "🗑", private: false, profile: "nouveau", windowId: windowId });
+    await dispatch(m, { type: "createSpace", name: "Jetable", icon: "🗑", private: false, profile: "nouveau", windowId: windowId });
     const space = (await state(m)).spaces.find((e) => e.name === "Jetable")!;
     const file = path.join(dirs.dataDir, `permissions-${space.profile}.json`);
     const id = await open(base, "notif");
@@ -487,7 +487,7 @@ describe("site permissions", () => {
     const inFirefox = () => chrome<number>(`return Services.perms.all.filter((p) => p.type === "desktop-notification" && p.principal.originNoSuffix === arguments[0] && p.principal.originAttributes.userContextId > 0).length;`, [base]);
     expect(await inFirefox()).toBe(1);
     expect(await readFile(file, "utf8").then(JSON.parse)).toHaveProperty(`${base} notifications`);
-    await dispatch(m, { type: "supprimerEspace", id: space.id });
+    await dispatch(m, { type: "deleteSpace", id: space.id });
     await until(() => access(file).then(() => false, () => true));
     expect(await inFirefox()).toBe(0);
   });
@@ -511,7 +511,7 @@ describe("site permissions", () => {
     expect(await result(id)).toEqual({ ok: "granted" });
     await w.close();
     await launch(false);
-    expect(await saved()).toMatchObject({ [`${base} notifications`]: "autoriser" });
+    expect(await saved()).toMatchObject({ [`${base} notifications`]: "allow" });
     // Firefox answers before any question: the page reads it without asking.
     expect(await result(await open(base, "perm"))).toEqual({ ok: "granted" });
     expect(await banner()).toBeNull();

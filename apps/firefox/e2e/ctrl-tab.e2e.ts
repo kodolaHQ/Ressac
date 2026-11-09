@@ -33,7 +33,7 @@ const activeId = async () => {
 };
 async function open(path: string): Promise<string> {
   const before = new Set(Object.keys((await state(m)).tabs));
-  const after = await dispatch(m, { type: "ouvrirOnglet", windowId: (await win()).id, url: server.url + path });
+  const after = await dispatch(m, { type: "openTab", windowId: (await win()).id, url: server.url + path });
   return Object.keys(after.tabs).find((id) => !before.has(id))!;
 }
 async function waitState<T>(read: (s: BrowserState) => T, ok: (v: T) => boolean, ms = 10_000): Promise<T> {
@@ -152,7 +152,7 @@ describe("⌃Tab", () => {
     await pressKeys(m, "Control+Tab");
     await waitActive(a);
     // Held, with the panel, from the swallowing page again.
-    await dispatch(m, { type: "activerOnglet", id: s });
+    await dispatch(m, { type: "activateTab", id: s });
     await focusPage();
     await keyDown(m, "Control");
     await pressKeys(m, "Tab");

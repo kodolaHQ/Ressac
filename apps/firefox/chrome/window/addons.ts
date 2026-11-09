@@ -88,7 +88,7 @@ export function createAddons(o: {
       },
     ],
     manage: () => void (o.win as any).BrowserAddonUI.openAddonsMgr(ADDONS_LIST),
-    findMore: () => void o.store.dispatch({ type: "ouvrirOnglet", windowId: o.windowId, url: "https://addons.mozilla.org/fr/firefox/" }),
+    findMore: () => void o.store.dispatch({ type: "openTab", windowId: o.windowId, url: "https://addons.mozilla.org/fr/firefox/" }),
   });
 }
 

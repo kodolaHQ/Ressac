@@ -4,8 +4,8 @@ import { isActionKey } from "./target";
 
 export type SourceExecutions = Pick<ApiWebaios["home"], "runs" | "run">;
 /**
- * « ▶ Lancer », « Rejouer depuis ce bloc » and live tracking, addressed by the workflow's key (`targetKey`). `lancer`
- * returns an action's refusal (`erreur`); a widget's never returns one.
+ * « ▶ Lancer », « Rejouer depuis ce bloc » and live tracking, addressed by the workflow's key (`targetKey`). `launch`
+ * returns an action's refusal (`error`); a widget's never returns one.
  */
 export type Launcher = {
   launch(key: string, input?: string | null): Promise<{ run?: string; error?: string }>;
@@ -100,7 +100,7 @@ export class Executions {
     if (before && (!after || after.start !== before.start || after.kind !== before.kind)) void this.load().catch(() => {});
   }
 
-  /** `relire`: a missing detail makes the list be re-read once (the run is probably gone). */
+  /** `review`: a missing detail makes the list be re-read once (the run is probably gone). */
   private async loadList(reread: boolean): Promise<void> {
     const n = ++this.listRequest;
     const l = await this.source.runs(this.widget);
@@ -167,7 +167,7 @@ export class Executions {
     await this.load();
   }
 
-  /** false: the chosen run's detail could not be read (`introuvable`). */
+  /** false: the chosen run's detail could not be read (`not-found`). */
   private async loadDetail(): Promise<boolean> {
     const r = this.chosen;
     const n = ++this.detailRequest;

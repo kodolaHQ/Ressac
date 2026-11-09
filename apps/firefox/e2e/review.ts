@@ -25,7 +25,7 @@ export const modified = (...n: number[]) => LINES.map((l, i) => (n.includes(i + 
 
 /** The Applications page of the first window, with its « Projets externes » section. */
 export async function openApplications(m: Marionette): Promise<void> {
-  await dispatch(m, { type: "ouvrirApplications", windowId: (await state(m)).windows[0]!.id });
+  await dispatch(m, { type: "openApps", windowId: (await state(m)).windows[0]!.id });
   await waitUi(m, "return !!doc.querySelector('[data-testid=\"projets-externes\"]')");
 }
 

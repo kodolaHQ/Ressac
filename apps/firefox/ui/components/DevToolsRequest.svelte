@@ -38,8 +38,8 @@
     </label>
   {/each}
   <div class="actions">
-    <button onclick={() => api.permissions.reply(request.id, "refuser")}>Refuser</button>
-    <button class="autoriser" data-principal onclick={() => api.permissions.reply(request.id, "autoriser", $state.snapshot(checked))}>Autoriser la sélection</button>
+    <button onclick={() => api.permissions.reply(request.id, "deny")}>Refuser</button>
+    <button class="autoriser" data-principal onclick={() => api.permissions.reply(request.id, "allow", $state.snapshot(checked))}>Autoriser la sélection</button>
   </div>
   <div class="note">Valable pour cette conversation · tombe si l'onglet change de site</div>
 </div>

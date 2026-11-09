@@ -16,9 +16,9 @@ it("a question of a closed window moves to the other, or is refused without one"
   const store = createStore(initialState());
   const questions = new Questions(store);
   const a = store.state.windows[0]!.id;
-  store.dispatch({ type: "ouvrirFenetre", id: "b" });
-  store.dispatch({ type: "ouvrirOnglet", windowId: a, url: "https://a.test/", activate: true }, () => "t");
-  store.dispatch({ type: "ouvrirOnglet", windowId: "b", url: "https://b.test/", activate: true }, () => "u");
+  store.dispatch({ type: "openWindow", id: "b" });
+  store.dispatch({ type: "openTab", windowId: a, url: "https://a.test/", activate: true }, () => "t");
+  store.dispatch({ type: "openTab", windowId: "b", url: "https://b.test/", activate: true }, () => "u");
   const answer = questions.ask({ id: "t", title: "A", url: "https://a.test/", space: "" }, a);
   expect(questions.pending()).toMatchObject([{ windowId: a, tabId: "t" }]);
   questions.windowClosed(a, "b");
@@ -39,15 +39,15 @@ it("an extension card: Activer answers accepte with the card's empreinte; a renf
   };
   let answer = questions.askExtension(card, win);
   expect(questions.pending()).toMatchObject([{ windowId: win, tabId: null, permissions: ["extension"], extension: card }]);
-  questions.answer(questions.pending()[0]!.id, "autoriser");
+  questions.answer(questions.pending()[0]!.id, "allow");
   expect(await answer).toEqual({ accepted: true, hash: card.hash });
 
   answer = questions.askExtension({ ...card, hardened: true }, win);
-  questions.answer(questions.pending()[0]!.id, "autoriser");
+  questions.answer(questions.pending()[0]!.id, "allow");
   expect(await answer).toEqual({ accepted: false, hash: card.hash });
 
   answer = questions.askExtension({ ...card, hardened: true }, win);
-  questions.answer(questions.pending()[0]!.id, "autoriser", { confirmed: true });
+  questions.answer(questions.pending()[0]!.id, "allow", { confirmed: true });
   expect(await answer).toEqual({ accepted: true, hash: card.hash });
 
   // Its space gone: the card falls, « retirée ».
@@ -55,28 +55,28 @@ it("an extension card: Activer answers accepte with the card's empreinte; a renf
   expect(questions.pending()).toEqual([]);
 });
 
-it("a site's question waits without a delay; it falls (« retiree ») on its signal or when its tab closes", async () => {
+it("a site's question waits without a delay; it falls (`withdrawn`) on its signal or when its tab closes", async () => {
   const store = createStore(initialState());
   const questions = new Questions(store);
   const win = store.state.windows[0]!.id;
-  store.dispatch({ type: "ouvrirOnglet", windowId: win, url: "https://a.test/", activate: true }, () => "t");
+  store.dispatch({ type: "openTab", windowId: win, url: "https://a.test/", activate: true }, () => "t");
   const site = { tabId: "t", windowId: win, origin: "https://a.test", permissions: ["notifications" as const] };
   let answer = questions.askSite(site);
   // A site question: on its tab only (no fenetreId), shown as a banner.
   expect(questions.pending()).toEqual([{ id: expect.any(String), tabId: "t", origin: "https://a.test", permissions: ["notifications"] }]);
-  questions.answer(questions.pending()[0]!.id, "autoriser");
-  expect(await answer).toBe("autoriser");
+  questions.answer(questions.pending()[0]!.id, "allow");
+  expect(await answer).toBe("allow");
 
   const ac = new AbortController();
   answer = questions.askSite(site, ac.signal);
   ac.abort();
-  expect(await answer).toBe("retiree");
+  expect(await answer).toBe("withdrawn");
   expect(questions.pending()).toEqual([]);
 
   answer = questions.askSite(site);
-  store.dispatch({ type: "fermerOnglet", id: "t" });
-  expect(await answer).toBe("retiree");
-  expect(await questions.askSite(site)).toBe("retiree");
+  store.dispatch({ type: "closeTab", id: "t" });
+  expect(await answer).toBe("withdrawn");
+  expect(await questions.askSite(site)).toBe("withdrawn");
   expect(questions.pending()).toEqual([]);
 });
 
@@ -84,16 +84,16 @@ it("the dev tools card answers the ticked rights, [] on a refusal, on its signal
   const store = createStore(initialState());
   const questions = new Questions(store);
   const win = store.state.windows[0]!.id;
-  store.dispatch({ type: "ouvrirOnglet", windowId: win, url: "https://a.test/", activate: true }, () => "t");
+  store.dispatch({ type: "openTab", windowId: win, url: "https://a.test/", activate: true }, () => "t");
   const o = { id: "t", title: "A", url: "https://a.test/", space: "" };
   const d = { rights: ["console" as const, "network" as const], reason: "Pourquoi.", agent: "Claude Code" };
   let answer = questions.askDevTools(o, d, win);
-  expect(questions.pending()).toMatchObject([{ target: "t", origin: "https://a.test", permissions: ["outils-dev"], ...d }]);
-  questions.answer(questions.pending()[0]!.id, "autoriser", undefined, ["console"]);
+  expect(questions.pending()).toMatchObject([{ target: "t", origin: "https://a.test", permissions: ["devtools"], ...d }]);
+  questions.answer(questions.pending()[0]!.id, "allow", undefined, ["console"]);
   expect(await answer).toEqual(["console"]);
 
   answer = questions.askDevTools(o, d, win);
-  questions.answer(questions.pending()[0]!.id, "refuser", undefined, ["console"]);
+  questions.answer(questions.pending()[0]!.id, "deny", undefined, ["console"]);
   expect(await answer).toEqual([]);
 
   const ac = new AbortController();
@@ -102,7 +102,7 @@ it("the dev tools card answers the ticked rights, [] on a refusal, on its signal
   expect(await answer).toEqual([]);
 
   answer = questions.askDevTools(o, d, win);
-  store.dispatch({ type: "majOnglet", id: "t", fields: { url: "https://b.test/" } });
+  store.dispatch({ type: "updateTab", id: "t", fields: { url: "https://b.test/" } });
   expect(await answer).toEqual([]);
   expect(questions.pending()).toEqual([]);
 });
@@ -118,11 +118,11 @@ it("the widget data card: the origin per kind; Autoriser answers true; a site ap
     questions.askWidgetData({ id: "vidola", name: "Vidola", agent: "Claude", kind: "site" }, win),
   ];
   expect(questions.pending()).toMatchObject([
-    { origin: "webaios-widget://meteo", permissions: ["donnees-widget"], title: "Météo", widget: "meteo", agent: "Claude", windowId: win },
+    { origin: "webaios-widget://meteo", permissions: ["widget-data"], title: "Météo", widget: "meteo", agent: "Claude", windowId: win },
     { origin: "webaios://action/envoi", action: "envoi" },
     { origin: "webaios-site://vidola", site: "vidola" },
   ]);
-  for (const q of questions.pending()) questions.answer(q.id, "autoriser");
+  for (const q of questions.pending()) questions.answer(q.id, "allow");
   expect(await Promise.all(kinds)).toEqual([true, true, true]);
 
   const rights = questions.askDevTools({ id: "site:vidola", title: "Vidola", url: "https://vidola.test/", space: "" }, { rights: ["console"], reason: "r", agent: "Claude" }, win);

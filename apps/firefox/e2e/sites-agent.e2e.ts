@@ -35,7 +35,7 @@ const flemmix = () => ({ name: "Flemmix", url: url("/", "flemmix.localhost"), do
 const call = (name: string, args: Record<string, unknown> = {}) => callTool(dataDir, name, args);
 const inStore = <T = unknown>(body: string, args: unknown[] = []) =>
   m.execute<T>(`return (async () => { const store = await ChromeUtils.importESModule("${STORE}").ready; ${body} })();`, args);
-const openSite = (id = "vidola") => inStore(`await store.agent.request("sites.agir", { id: arguments[0], action: "ouvrir", fenetre: store.state.fenetres[0].id });`, [id]);
+const openSite = (id = "vidola") => inStore(`await store.agent.request("sites.act", { id: arguments[0], action: "open", window: store.state.windows[0].id });`, [id]);
 const viewUrl = (id = "vidola") => m.execute<string>(`const u = ${siteWindowExpr(id)}?.gBrowser?.selectedBrowser.currentURI?.spec ?? ""; return u === "about:blank" ? "" : u;`);
 const view = <T = unknown>(expr: string, id = "vidola") => inSiteView<T>(m, id, `return ${expr};`).catch(() => null);
 const tabUrls = async () => Object.values((await state(m)).tabs).map((o) => o.url);
@@ -202,7 +202,7 @@ describe("the agent on a site app window", () => {
     await gone(CARD);
 
     // Deleted then made again under the same id, as it was: the grant is taken back, the card comes back.
-    await inStore(`await store.agent.request("sites.agir", { id: "vidola", action: "supprimer", fenetre: store.state.fenetres[0].id });`);
+    await inStore(`await store.agent.request("sites.act", { id: "vidola", action: "delete", window: store.state.windows[0].id });`);
     await expect.poll(() => siteWindowCount(m, "vidola"), { timeout: 10_000 }).toBe(0);
     await expect.poll(() => existsSync(path.join(dataDir, "workspace", "sites", "vidola")), { timeout: 10_000 }).toBe(false);
     writeSite(dataDir, "vidola", { declaration: vidola(["vidola-a.localhost", "mail.localhost"]) });
@@ -287,7 +287,7 @@ describe("the agent on a site app window", () => {
       writeSite(dataDir, "vidola", { declaration: vidola(), files: { "home/index.html": "<p>accueil</p>" } });
     });
     await openSite();
-    const view = () => m.execute<string>(`return ${siteWindowExpr("vidola")}.webaiosSiteWindow.state().vue;`);
+    const view = () => m.execute<string>(`return ${siteWindowExpr("vidola")}.webaiosSiteWindow.state().viewState;`);
     const film = url("/film/2");
     const navigating = call("navigate", { id: "site:vidola", url: film });
     await cardText();
@@ -298,7 +298,7 @@ describe("the agent on a site app window", () => {
     await expect.poll(hits, { timeout: 10_000 }).toBe(1);
     await m.execute(`${siteWindowExpr("vidola")}.webaiosSiteWindow.home()`);
     const before = hits();
-    expect(await view()).toBe("accueil");
+    expect(await view()).toBe("home");
     const reloading = call("reload", { id: "site:vidola" });
     await waitUi<string>(m, `return doc.querySelector(${JSON.stringify(DEVTOOLS)})?.textContent`, [], 15_000);
     await answer("Autoriser la sélection", DEVTOOLS);

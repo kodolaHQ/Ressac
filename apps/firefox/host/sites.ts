@@ -76,7 +76,7 @@ export interface SitesChrome {
   /** The tweaks' console of the open app. */
   errors(id: string): Promise<TweakError[]>;
   /** The view the window shows, or null if it is not open. */
-  view(id: string): Promise<"accueil" | "accord" | "site" | null>;
+  view(id: string): Promise<"home" | "grant" | "site" | null>;
   /** The choice made on the card: `s` null for « Ouvrir sans retouches ». */
   afterGrant(id: string, s: SiteChrome | null): Promise<void>;
   /** The state broadcast again (the card up to date). */
@@ -96,14 +96,14 @@ export interface SitesHost {
   agentList(): Promise<(ShownSite & { hash?: string })[]>;
   openById(id: string): Promise<boolean>;
   dispatch(id: string, action: ActionSite, win: string): Promise<void>;
-  homeMemory(id: string): Promise<(MessageToHome & { type: "memoire" }) | null>;
+  homeMemory(id: string): Promise<(MessageToHome & { type: "memory" }) | null>;
   note(id: string, x: { frame?: FrameBounds; favicon?: string }): void;
   closed(id: string): void;
   /** « Autoriser » / « Ouvrir sans retouches » on the card. */
   grant(id: string, yes: boolean, hash: string): Promise<void>;
   /** `webaiosSite` of an open app's main page; the chrome checked the sender, the grant and the address. */
   memoryOp(request: unknown): Promise<MemoryResponse>;
-  /** A video position of an open app's page (`sites.position`), and the position to resume (`sites.reprise`); the chrome checked the frame. */
+  /** A video position of an open app's page (`sites.position`), and the position to resume (`sites.resume`); the chrome checked the frame. */
   position(request: unknown): Promise<void>;
   resume(request: unknown): Promise<number | null>;
   /** « Chercher la nouvelle adresse », or a site that does not answer (`url`: the page aimed at, else the start address). */
@@ -240,8 +240,8 @@ export function createSites(o: {
   /** The list or the state of the site apps changed (`sites.change`). */
   broadcast(): void;
   prefill(win: string, text: string): void;
-  /** A home screen memory change (`sites.memoire`), for the subscribed window. */
-  notifyMemory(id: string, message: MessageToHome & { type: "memoire" }): void;
+  /** A home screen memory change (`sites.memory`), for the subscribed window. */
+  notifyMemory(id: string, message: MessageToHome & { type: "memory" }): void;
   /** The app's window closed. */
   onClosed?(id: string): void;
   /** « Supprimer » begins: the agent's grant on the app falls. */
@@ -253,7 +253,7 @@ export function createSites(o: {
   const siteRecords = new SiteRecords(o.dataDir);
   const memories = new Map<string, Promise<SiteMemory>>();
   const reading = { localAddresses: o.localAddresses };
-  /** Windows open in the chrome: kept by `ouvrir`/`fermee`, recomputed by `resynchroniser`. */
+  /** Windows open in the chrome: kept by `open`/`fermee`, recomputed by `resynchroniser`. */
   let opened = new Set<string>();
   /** The open apps as last sent to the chrome, and their tweaks' files. */
   const openSites = new Map<string, SiteChrome>();
@@ -341,7 +341,7 @@ export function createSites(o: {
       searches.set(id, control);
       o.chrome.search(id, true);
     }
-    const r = await tracking.find(id, d, control.signal).catch((): { t: "introuvable" } => ({ t: "introuvable" }));
+    const r = await tracking.find(id, d, control.signal).catch((): { t: "not-found" } => ({ t: "not-found" }));
     if (!running) {
       if (searches.get(id) === control) searches.delete(id);
       if (!control.signal.aborted) o.chrome.search(id, false);
@@ -354,15 +354,15 @@ export function createSites(o: {
       o.chrome.notice(id, a);
     };
     switch (r.t) {
-      case "trop-tot": {
+      case "too-soon": {
         const last = lastNotices.get(id);
         if (last) o.chrome.notice(id, last);
         return;
       }
-      case "introuvable":
-        return notify({ kind: "introuvable", text: urlNotFound(host(d.urlTracking.page) ?? d.urlTracking.page) });
-      case "inchangee":
-        return notify({ kind: "inchangee", text: urlUnchanged(d.name) });
+      case "not-found":
+        return notify({ kind: "not-found", text: urlNotFound(host(d.urlTracking.page) ?? d.urlTracking.page) });
+      case "unchanged":
+        return notify({ kind: "unchanged", text: urlUnchanged(d.name) });
       case "change": {
         // Today's declaration (site.json may have been read again during the reading).
         const decl = current.declaration;
@@ -375,7 +375,7 @@ export function createSites(o: {
         const site = { ...current, domains: domains, start: start };
         openSites.set(id, { ...site, request: grantRequest(site) });
         o.chrome.urlChanged(id, domains, start, to);
-        notify({ kind: "adresse-changee", text: urlChanged(d.name, r.domain) });
+        notify({ kind: "url-changed", text: urlChanged(d.name, r.domain) });
         // The home shows the new domain.
         if (subscriptions.has(id)) void memory(id).then((m) => memoryMessage(id, m)).then((msg) => o.notifyMemory(id, msg), () => {});
       }
@@ -449,9 +449,9 @@ export function createSites(o: {
     return host(startUrl(lu.declaration, await readUrlState(sitesFolder, id))) ?? "";
   }
 
-  const memoryMessage = async (id: string, m: SiteMemory): Promise<MessageToHome & { type: "memoire" }> => {
+  const memoryMessage = async (id: string, m: SiteMemory): Promise<MessageToHome & { type: "memory" }> => {
     const { values: values, positions } = m.content();
-    return { type: "memoire", values: values, positions, domain: await currentDomain(id) };
+    return { type: "memory", values: values, positions, domain: await currentDomain(id) };
   };
 
   /** The app's folder exists, and it is a real folder (never a link). */
@@ -593,19 +593,19 @@ export function createSites(o: {
       if (!ID_SITE.test(id)) return;
       actionErrors.delete(id);
       switch (a) {
-        case "ouvrir":
+        case "open":
           if (!(await openById(id))) console.warn(`[sites] ${id} ne peut pas s'ouvrir`);
           return;
-        case "modifier":
+        case "edit":
           o.prefill(win, editWithAgent(id));
           return;
-        case "oublier":
+        case "forget":
           return forgetSite(id);
-        case "supprimer":
+        case "delete":
           return remove(id);
-        // "dossier" and "relire" are the UI's: no host work here.
-        case "dossier":
-        case "relire":
+        // "folder" and "review" are the UI's: no host work here.
+        case "folder":
+        case "review":
           return;
       }
     },
@@ -665,7 +665,7 @@ export function createSites(o: {
     async grant(id, yes, hash) {
       // Taken before any wait: site.json may grow between the card and the click.
       const shown = openSites.get(id);
-      if (!shown || deletions.has(id) || (await o.chrome.view(id)) !== "accord") return;
+      if (!shown || deletions.has(id) || (await o.chrome.view(id)) !== "grant") return;
       if (!yes) return o.chrome.afterGrant(id, null);
       // Granted only if its rights are the clicked card's (the agent picks its moment).
       const d = shown.declaration;

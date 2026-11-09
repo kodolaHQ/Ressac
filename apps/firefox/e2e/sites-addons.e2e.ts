@@ -90,10 +90,10 @@ const withCard = (): SiteTest => ({
 
 const inStore = <T = unknown>(body: string, args: unknown[] = []) =>
   m.execute<T>(`return (async () => { const store = await ChromeUtils.importESModule("${STORE}").ready; ${body} })();`, args);
-const openSite = (id: string) => inStore(`await store.agent.request("sites.agir", { id: arguments[0], action: "ouvrir", fenetre: store.state.fenetres[0].id });`, [id]);
+const openSite = (id: string) => inStore(`await store.agent.request("sites.act", { id: arguments[0], action: "open", window: store.state.windows[0].id });`, [id]);
 const viewUrl = (id = "vidola") => m.execute<string>(`const u = ${siteWindowExpr(id)}?.gBrowser?.selectedBrowser.currentURI?.spec ?? ""; return u === "about:blank" ? "" : u;`);
 const view = <T = unknown>(expr: string, id = "vidola") => inSiteView<T>(m, id, `return ${expr};`).catch(() => null);
-const siteState = (id = "vidola") => m.execute<{ view: string }>(`return JSON.parse(JSON.stringify(${siteWindowExpr(id)}.webaiosSiteWindow.state()));`);
+const siteState = (id = "vidola") => m.execute<{ viewState: string }>(`return JSON.parse(JSON.stringify(${siteWindowExpr(id)}.webaiosSiteWindow.state()));`);
 const stripButtons = (id = "vidola") => inSiteBar<number>(m, id, `return doc.querySelectorAll(${JSON.stringify(STRIP_BUTTON)}).length;`);
 const tabCount = (id = "vidola") => m.execute<number>(`return ${siteWindowExpr(id)}.gBrowser.tabs.length;`);
 const popupExpr = (id: string) => `${siteWindowExpr(id)}.document.querySelector("browser.webextension-popup-browser")`;
@@ -202,7 +202,7 @@ describe("add-ons in a site app window", () => {
     await installAddon(m, probe());
     // Home.
     await openSite("tube");
-    await expect.poll(() => siteState("tube").then((s) => s.view), { timeout: 15_000 }).toBe("accueil");
+    await expect.poll(() => siteState("tube").then((s) => s.viewState), { timeout: 15_000 }).toBe("home");
     await new Promise((r) => setTimeout(r, 500));
     expect(await stripButtons("tube")).toBe(0);
     const enabled = (id: string) => m.execute<boolean[]>(`return ${siteWindowExpr(id)}.webaiosSiteWindow.addons.buttons().map((b) => b.enabled);`);
@@ -213,7 +213,7 @@ describe("add-ons in a site app window", () => {
     await expect.poll(() => stripButtons("tube"), { timeout: 10_000 }).toBe(0);
     // Grant card.
     await openSite("carte");
-    await expect.poll(() => siteState("carte").then((s) => s.view), { timeout: 15_000 }).toBe("accord");
+    await expect.poll(() => siteState("carte").then((s) => s.viewState), { timeout: 15_000 }).toBe("grant");
     await new Promise((r) => setTimeout(r, 500));
     expect(await stripButtons("carte")).toBe(0);
     expect(await enabled("carte")).toEqual([false]);
@@ -223,27 +223,27 @@ describe("add-ons in a site app window", () => {
     await start({ sites: { tube: withHome() } });
     await installAddon(m, probe());
     await openSite("tube");
-    await expect.poll(() => siteState("tube").then((s) => s.view), { timeout: 15_000 }).toBe("accueil");
+    await expect.poll(() => siteState("tube").then((s) => s.viewState), { timeout: 15_000 }).toBe("home");
     await m.execute(`${siteWindowExpr("tube")}.webaiosSiteWindow.enter()`);
     await expect.poll(() => viewUrl("tube"), { timeout: 15_000 }).toBe(url("/pubs"));
     await expect.poll(() => view("document.readyState", "tube"), { timeout: 10_000 }).toBe("complete");
     // The popup opened on the « site » view stays open once back on the home.
     await openPopup("tube");
     await m.execute(`${siteWindowExpr("tube")}.webaiosSiteWindow.home()`);
-    expect((await siteState("tube")).view).toBe("accueil");
+    expect((await siteState("tube")).viewState).toBe("home");
     server.requests.splice(0);
     expect(await order({ op: "update", url: url("/film/2") }, "tube")).toEqual({ error: REFUSED });
     await new Promise((r) => setTimeout(r, 500));
     expect(server.requests.filter((r) => r.host === "vidola-a.localhost")).toEqual([]);
     expect(await viewUrl("tube")).toBe(url("/pubs"));
-    expect((await siteState("tube")).view).toBe("accueil");
+    expect((await siteState("tube")).viewState).toBe("home");
   });
 
   it("on the home screen, tabs.reload and tabs.goBack of the view send no request; the view stays where it is", async () => {
     await start({ sites: { tube: withHome() } });
     await installAddon(m, probe());
     await openSite("tube");
-    await expect.poll(() => siteState("tube").then((s) => s.view), { timeout: 15_000 }).toBe("accueil");
+    await expect.poll(() => siteState("tube").then((s) => s.viewState), { timeout: 15_000 }).toBe("home");
     await m.execute(`${siteWindowExpr("tube")}.webaiosSiteWindow.enter()`);
     await expect.poll(() => viewUrl("tube"), { timeout: 15_000 }).toBe(url("/pubs"));
     await view(`(location.href = ${JSON.stringify(url("/film/2"))}, 1)`, "tube");
@@ -257,7 +257,7 @@ describe("add-ons in a site app window", () => {
     await new Promise((r) => setTimeout(r, 1000));
     expect(server.requests.filter((r) => r.host === "vidola-a.localhost")).toEqual([]);
     expect(await viewUrl("tube")).toBe(url("/film/2"));
-    expect((await siteState("tube")).view).toBe("accueil");
+    expect((await siteState("tube")).viewState).toBe("home");
   });
 
   it("windows.remove of the app's window is refused (extensions-sites.spec.ts peutFermerFenetre, sessions.ts:594)", async () => {
@@ -379,7 +379,7 @@ describe("the agent and the app's add-ons", () => {
       return !!(await AddonManager.getAddonByID("cacheur@agent.webaios"))?.isActive;
     })();`, (v) => v === true, 30_000);
     // Witness: in a tab of the space, its sheet hides the banner.
-    await inStore(`store.dispatch({ type: "ouvrirOnglet", fenetreId: store.state.fenetres[0].id, url: arguments[0] });`, [url("/pubs?onglet")]);
+    await inStore(`store.dispatch({ type: "openTab", windowId: store.state.windows[0].id, url: arguments[0] });`, [url("/pubs?onglet")]);
     await waitFor(m, "return gBrowser.selectedBrowser.currentURI.spec", (u) => u === url("/pubs?onglet"), 15_000);
     const inTab = () => inBrowser<string>(m, "gBrowser.selectedBrowser", "return getComputedStyle(document.getElementById('banniere')).display;").catch(() => null);
     await expect.poll(inTab, { timeout: 15_000 }).toBe("none");

@@ -61,7 +61,7 @@ export async function linkAllowed(actionsFolder: string, id: string, execution: 
   return !!r && chainsOf(r.results).has(url);
 }
 
-/** The action's folder goes to actions/.trash (nothing is destroyed), then `oublier` drops its grant and data. */
+/** The action's folder goes to actions/.trash (nothing is destroyed), then `forget` drops its grant and data. */
 export async function trashAction(c: SpacePaths, id: string, forget: (id: string) => Promise<void>): Promise<void> {
   if (!ID_ACTION.test(id)) throw new Error(`id d'action invalide : ${id}`);
   const trash = join(c.actions, ".trash");
@@ -158,7 +158,7 @@ export function createActionsHost(o: {
         return r && (!a.last || a.last.start < r.when) ? { ...a, denial: r.error } : a;
       });
     },
-    /** Reads the action without launching it: `lancer` says whether the chrome should launch it after opening its page. */
+    /** Reads the action without launching it: `launch` says whether the chrome should launch it after opening its page. */
     async prepare(id: string, input: string | null): Promise<Prepared> {
       const kernel = o.kernel();
       if (!kernel) return { ok: false, error: NO_KERNEL_MESSAGE };
@@ -185,7 +185,7 @@ export function createActionsHost(o: {
     },
     async page(id: string, execution: string | null): Promise<PageAction | null> {
       const kernel = o.kernel();
-      // Refused, not null (« no result »): a page read before the kernel started reads again on its first `acces`.
+      // Refused, not null (« no result »): a page read before the kernel started reads again on its first `access`.
       if (!kernel) throw new Error(NO_KERNEL_MESSAGE);
       return (await kernel.actions.page(id, execution)) ?? null;
     },

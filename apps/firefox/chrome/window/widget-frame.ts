@@ -172,7 +172,7 @@ function widgetGuard(pattern: string): void {
   }
   // Firefox: a sandboxed resource frame cannot post to its chrome parent (measured: Permission denied to access
   // property "postMessage"). The widget's link goes through this page-world helper, a custom event the chrome listens for.
-  w.webaiosOuvrir = (url: unknown) => w.dispatchEvent(new CustomEvent("webaios-ouvrir", { detail: String(url) }));
+  w.webaiosOpen = (url: unknown) => w.dispatchEvent(new CustomEvent("webaios-open", { detail: String(url) }));
   // Last: see the comment on widgetGuard.
   const absents = [
     "RTCPeerConnection",

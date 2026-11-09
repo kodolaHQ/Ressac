@@ -14,7 +14,7 @@ const engine = z.enum(["google", "duckduckgo", "qwant"]);
 /** The actions, validated at the entry of the main process: the schema is the source of the type. */
 export const SchemaAction = z.discriminatedUnion("type", [
   z.object({
-    type: z.literal("ouvrirOnglet"),
+    type: z.literal("openTab"),
     windowId: id,
     url: z.string(),
     spaceId: id.optional(),
@@ -22,13 +22,13 @@ export const SchemaAction = z.discriminatedUnion("type", [
     openedByAgent: z.boolean().optional(),
     after: id.optional(),
   }),
-  z.object({ type: z.literal("fermerOnglet"), id }),
+  z.object({ type: z.literal("closeTab"), id }),
   // garderEspace: the tab becomes its space's tab without the window changing space (an extension's request).
-  z.object({ type: z.literal("activerOnglet"), id, keepSpace: z.boolean().optional() }),
-  z.object({ type: z.literal("deplacerOnglet"), id, index: z.number().int() }),
-  z.object({ type: z.literal("rouvrirOngletFerme"), windowId: id }),
+  z.object({ type: z.literal("activateTab"), id, keepSpace: z.boolean().optional() }),
+  z.object({ type: z.literal("moveTab"), id, index: z.number().int() }),
+  z.object({ type: z.literal("reopenClosedTab"), windowId: id }),
   z.object({
-    type: z.literal("majOnglet"),
+    type: z.literal("updateTab"),
     id,
     fields: z
       .object({
@@ -44,33 +44,33 @@ export const SchemaAction = z.discriminatedUnion("type", [
       })
       .partial(),
   }),
-  z.object({ type: z.literal("ouvrirFavori"), windowId: id, kind: z.enum(["essentiel", "epingle"]), id }),
-  z.object({ type: z.literal("epinglerOnglet"), id }),
-  z.object({ type: z.literal("desepingler"), spaceId: id, favoriteId: id }),
-  z.object({ type: z.literal("ajouterEssentiel"), id }),
-  z.object({ type: z.literal("retirerEssentiel"), favoriteId: id }),
+  z.object({ type: z.literal("openFavorite"), windowId: id, kind: z.enum(["essential", "pinned"]), id }),
+  z.object({ type: z.literal("pinTab"), id }),
+  z.object({ type: z.literal("unpin"), spaceId: id, favoriteId: id }),
+  z.object({ type: z.literal("addEssential"), id }),
+  z.object({ type: z.literal("removeEssential"), favoriteId: id }),
   /** `profil`: an existing login profile, or « nouveau » to create one specific to the space. */
-  z.object({ type: z.literal("creerEspace"), name: z.string().min(1), icon: z.string().min(1), private: z.boolean(), profile: id, windowId: id.optional() }),
-  z.object({ type: z.literal("reglerEspace"), id, name: z.string().min(1), icon: z.string().min(1), private: z.boolean(), profile: id }),
-  z.object({ type: z.literal("supprimerEspace"), id }),
-  z.object({ type: z.literal("activerEspace"), windowId: id, id }),
-  z.object({ type: z.literal("ouvrirFenetre"), id: id.optional(), spaceId: id.optional() }),
-  z.object({ type: z.literal("fermerFenetre"), id }),
+  z.object({ type: z.literal("createSpace"), name: z.string().min(1), icon: z.string().min(1), private: z.boolean(), profile: id, windowId: id.optional() }),
+  z.object({ type: z.literal("updateSpace"), id, name: z.string().min(1), icon: z.string().min(1), private: z.boolean(), profile: id }),
+  z.object({ type: z.literal("deleteSpace"), id }),
+  z.object({ type: z.literal("activateSpace"), windowId: id, id }),
+  z.object({ type: z.literal("openWindow"), id: id.optional(), spaceId: id.optional() }),
+  z.object({ type: z.literal("closeWindow"), id }),
   z.object({
-    type: z.literal("cadrerFenetre"),
+    type: z.literal("frameWindow"),
     id,
     frame: z.object({ x: z.number(), y: z.number(), width: z.number().positive(), height: z.number().positive() }),
   }),
-  z.object({ type: z.literal("afficherPageVide"), windowId: id }),
-  z.object({ type: z.literal("basculerCompact"), windowId: id }),
-  z.object({ type: z.literal("basculerPanneauAgent"), windowId: id }),
+  z.object({ type: z.literal("showBlankPage"), windowId: id }),
+  z.object({ type: z.literal("toggleCompact"), windowId: id }),
+  z.object({ type: z.literal("toggleAgentPanel"), windowId: id }),
   /** Activates the Applications page of the active space, or opens it. */
-  z.object({ type: z.literal("ouvrirApplications"), windowId: id }),
+  z.object({ type: z.literal("openApps"), windowId: id }),
   /** Activates this window's Extensions page, or opens it (like Applications). */
-  z.object({ type: z.literal("ouvrirExtensions"), windowId: id }),
+  z.object({ type: z.literal("openExtensions"), windowId: id }),
   /** Activates the « Voir le workflow » page of widget `id` in this window, or opens it. */
   z.object({
-    type: z.literal("ouvrirWorkflow"),
+    type: z.literal("openWorkflow"),
     windowId: id,
     id: z.string().regex(/^[a-z0-9-]+$/).max(100),
     name: z.string().max(60),
@@ -82,27 +82,27 @@ export const SchemaAction = z.discriminatedUnion("type", [
    * or opens it; `execution` shows that result there.
    */
   z.object({
-    type: z.literal("ouvrirAction"),
+    type: z.literal("openAction"),
     windowId: id,
     id: z.string().regex(/^[a-z0-9-]{1,60}$/),
     name: z.string().max(60),
     run: z.string().regex(ID_EXECUTION).max(64).optional(),
   }),
   /** Activates this window's « Actions » page, or opens it. */
-  z.object({ type: z.literal("ouvrirActions"), windowId: id }),
+  z.object({ type: z.literal("openActions"), windowId: id }),
   /** Automatic opening and closing of the panel by the home page (not an action of the user). */
-  z.object({ type: z.literal("panneauAgentAccueil"), windowId: id, open: z.boolean() }),
-  z.object({ type: z.literal("choisirMoteur"), engine: engine }),
-  z.object({ type: z.literal("choisirProfilAgent"), profile: z.string().regex(/^[\w-]+$/).max(64) }),
-  z.object({ type: z.literal("largeurPanneauAgent"), width: z.number().finite() }),
+  z.object({ type: z.literal("homeAgentPanel"), windowId: id, open: z.boolean() }),
+  z.object({ type: z.literal("chooseEngine"), engine: engine }),
+  z.object({ type: z.literal("chooseAgentProfile"), profile: z.string().regex(/^[\w-]+$/).max(64) }),
+  z.object({ type: z.literal("agentPanelWidth"), width: z.number().finite() }),
   /** Activates this window's project Review page, or opens it (one per project and per window). */
-  z.object({ type: z.literal("ouvrirRelecture"), windowId: id, project: z.string().regex(PROJECT_ID), name: z.string().max(80) }),
+  z.object({ type: z.literal("openReview"), windowId: id, project: z.string().regex(PROJECT_ID), name: z.string().max(80) }),
 ]);
 export type Action = z.infer<typeof SchemaAction>;
 
 export const CommandSchema = z.union([
-  z.object({ tabId: id, c: z.enum(["reculer", "avancer", "recharger", "rechargerSansCache", "arreter", "finRecherche", "outils"]) }),
-  z.object({ tabId: id, c: z.object({ zoom: z.enum(["plus", "moins", "zero"]) }) }),
+  z.object({ tabId: id, c: z.enum(["back", "forward", "reload", "reloadHard", "stop", "endFind", "devtools"]) }),
+  z.object({ tabId: id, c: z.object({ zoom: z.enum(["in", "out", "reset"]) }) }),
   z.object({ tabId: id, c: z.object({ find: z.string(), next: z.boolean().optional(), previous: z.boolean().optional() }) }),
 ]);
 export type TabCommand = z.infer<typeof CommandSchema>["c"];
@@ -110,12 +110,12 @@ export type TabCommand = z.infer<typeof CommandSchema>["c"];
 export const BoundsSchema = z.object({ x: z.number(), y: z.number(), width: z.number(), height: z.number() });
 export type BoundsRange = z.infer<typeof BoundsSchema>;
 
-export type Panel = "historique" | "telechargements";
+export type Panel = "history" | "downloads";
 /**
  * Menu shortcuts meant for the UI (the web page often has focus). `closeTab`: ⌘W on the builder,
  * which first asks whether some code is unsaved.
  */
-export type ShortcutAction = "rechercher" | "chercherSuivant" | "chercherPrecedent" | "adresse" | "commande" | "agent" | "fermerOnglet";
+export type ShortcutAction = "search" | "searchNext" | "searchPrevious" | "address" | "command" | "agent" | "closeTab";
 export interface SearchResult {
   tabId: TabId;
   active: number;
@@ -237,12 +237,12 @@ export interface ApiWebaios {
     replay(target: Owner, execution: string, block: string): Promise<AttemptResult>;
     /**
      * Starts a real execution now; returns its id (absent if the agent is stopped or nothing ran). An action
-     * receives `saisie` and may return the refusal (`erreur`: required input, required grant…).
+     * receives `saisie` and may return the refusal (`error`: required input, required grant…).
      */
     launch(target: Owner, input?: string | null): Promise<{ run?: string; error?: string }>;
     /** The block selected in this window's builder (for open_workflow). */
     selection(target: Owner, block: string | null): void;
-    /** The executions of the running widgets (those of actions: `actions.direct`). */
+    /** The executions of the running widgets (those of actions: `actions.live`). */
     direct(): Promise<DirectState>;
     onLive(callback: (e: DirectState) => void): () => void;
   };
@@ -355,12 +355,12 @@ export interface ApplicationList {
 /** A single path segment: no separator, no `.`/`..`, no NUL. */
 const validSegment = (d: string) => d !== "" && d !== "." && d !== ".." && !/[/\\\0]/.test(d);
 /** Possible actions on a « Sans fiche » project whose folder name cannot be launched (`My Project`, `_tmp`…). */
-const WHOLE_FOLDER_ACTIONS = new Set(["deboguer", "supprimer", "dossier"]);
+const WHOLE_FOLDER_ACTIONS = new Set(["debug", "delete", "folder"]);
 
 export const SchemaActionApplication = z
   .object({
     folder: z.string(),
-    action: z.enum(["lancer", "arreter", "relancer", "ouvrir", "deboguer", "supprimer", "promouvoir", "dossier", "relire"]),
+    action: z.enum(["launch", "stop", "relaunch", "open", "debug", "delete", "promote", "folder", "review"]),
   })
   .refine(({ folder: folder, action }) => (WHOLE_FOLDER_ACTIONS.has(action) ? validSegment(folder) : validFolder(folder)));
 export type ActionApplication = z.infer<typeof SchemaActionApplication>["action"];
@@ -368,7 +368,7 @@ export type ActionApplication = z.infer<typeof SchemaActionApplication>["action"
 /** An action on a site app: its id follows `ID_SITE` (never a path). */
 export const SchemaActionSite = z.object({
   id: z.string().regex(ID_SITE),
-  action: z.enum(["ouvrir", "modifier", "oublier", "dossier", "supprimer", "relire"]),
+  action: z.enum(["open", "edit", "forget", "folder", "delete", "review"]),
 });
 
 /** A card of the ⌃Tab panel: `apercu` is a JPEG data URL, null if the tab was never captured. */
@@ -385,21 +385,21 @@ export interface TabsPanel {
 }
 /** Messages from the ⌃Tab panel to the main process (Esc, click, hover, Tab on the UI's keyboard). */
 export const WalkMessageSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("valider") }),
-  z.object({ type: z.literal("annuler") }),
-  z.object({ type: z.literal("choisir"), id }),
-  z.object({ type: z.literal("survoler"), id }),
-  z.object({ type: z.literal("avancer"), delta: z.union([z.literal(1), z.literal(-1)]) }),
+  z.object({ type: z.literal("confirm") }),
+  z.object({ type: z.literal("cancel") }),
+  z.object({ type: z.literal("choose"), id }),
+  z.object({ type: z.literal("hover"), id }),
+  z.object({ type: z.literal("advance"), delta: z.union([z.literal(1), z.literal(-1)]) }),
 ]);
 export type TabCycleMessage = z.infer<typeof WalkMessageSchema>;
 
 /** What a window's agent panel shows. */
 export type AgentPanelState =
-  | { state: "preparation" }
+  | { state: "preparing" }
   | { state: "docker-absent" }
-  | { state: "erreur"; message: string }
-  | { state: "actif" }
-  | { state: "termine"; code: number };
+  | { state: "error"; message: string }
+  | { state: "active" }
+  | { state: "done"; code: number };
 
 const idWidget = z.string().regex(/^[a-z0-9-]+$/).max(100);
 /** Id of an action (name of its folder under `~/WebAiOs/actions`). */
@@ -571,9 +571,9 @@ export interface ApiSite {
    */
   grant(yes: boolean, hash: string): Promise<void>;
   /** For the home screen: the app's memory and its resume positions (read), and the current domain. */
-  memory(): Promise<MessageToHome & { type: "memoire" }>;
+  memory(): Promise<MessageToHome & { type: "memory" }>;
   /** Each change of the app's memory; returns the unsubscribe. */
-  onMemory(callback: (m: MessageToHome & { type: "memoire" }) => void): () => void;
+  onMemory(callback: (m: MessageToHome & { type: "memory" }) => void): () => void;
   /**
    * The home asks for a site address (relative or on one of its domains): the site view goes there, on the
    * current domain. False if it is refused, or if another was just opened (one per `HOME_OPEN_GAP_MS`).
@@ -658,7 +658,7 @@ export interface ApiDesign {
 /** What the overlay shows: a note's bubble (targeted element) or an app window's basket. */
 export interface OverlayContext {
   /** « message »: why ⌘⇧D does nothing in the tab (empty project, never a basket). */
-  mode: "bulle" | "panier" | "message";
+  mode: "bubble" | "basket" | "message";
   /** The text of the « message » mode; null elsewhere. */
   message: string | null;
   project: ProjectId;
@@ -681,7 +681,7 @@ export const REMARK_TEXT_MAX = 4000;
 
 /** « Projets externes » section of the Applications page: the external MCP, its projects and its clients (never a token). */
 export interface ExternalsState {
-  server: { state: "pret"; port: number } | { state: "eteint"; reason: string };
+  server: { state: "ready"; port: number } | { state: "off"; reason: string };
   projects: (ExternalProject & { client: string | null; clientName: string | null })[];
   clients: { id: string; name: string; created: string }[];
 }
@@ -703,7 +703,7 @@ export type ReviewView =
       /** Who the comments go to (« l'agent », « Claude Code (…) »); otherwise why they cannot be sent. */
       destination: string | null; noDestination: string | null;
     }
-  | { state: "indisponible"; name: string; reason: string };
+  | { state: "unavailable"; name: string; reason: string };
 export type { DiffFile, ModifiedFile, Comment as DiffComment };
 export interface ReviewApi {
   /**
@@ -713,7 +713,7 @@ export interface ReviewApi {
   open(project: ProjectId, token?: string): Promise<ReviewView>;
   /** The diff of one file of the token's comparison (never another path); a token no longer kept is refused. */
   file(project: ProjectId, token: string, path: string): Promise<DiffFile>;
-  /** Lines `debut`..`fin` (from 1) of the current version of a file of the token's comparison. */
+  /** Lines `start`..`end` (from 1) of the current version of a file of the token's comparison. */
   lines(project: ProjectId, token: string, path: string, start: number, end: number): Promise<string[]>;
   /** The project's comments, as saved. */
   comments(project: ProjectId): Promise<Comment[]>;
@@ -721,7 +721,7 @@ export interface ReviewApi {
   comment(project: ProjectId, token: string, c: { file: string; start: number; end: number; text: string }): Promise<ExtensionResult>;
   editComment(project: ProjectId, id: string, text: string): Promise<void>;
   resolve(project: ProjectId, id: string, resolved: boolean): Promise<void>;
-  supprimerCommentaire(project: ProjectId, id: string): Promise<void>;
+  deleteComment(project: ProjectId, id: string): Promise<void>;
   /** Unresolved comments go out as one batch (agent: pre-filled, never sent; external: MCP queue). */
   send(project: ProjectId): Promise<ExtensionResult>;
   /** « Marquer comme relu »: keeps the tree shown by the token's comparison, then returns a new comparison. */

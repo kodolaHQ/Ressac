@@ -66,7 +66,7 @@ export function closeAppPopup(win: Window): boolean {
 }
 
 /**
- * The badge: a transparent chrome frame over the view's top right corner, sidebar.html?pastille=.
+ * The badge: a transparent chrome frame over the view's top right corner, sidebar.html?badge=.
  * The page cannot see it (the view is remote); it gets only its app's access, through `webaiosOverlay`.
  */
 function addBadge(win: Window, apps: Apps, folder: string): void {
@@ -82,7 +82,7 @@ function addBadge(win: Window, apps: Apps, folder: string): void {
   if (!api) return;
   doc.getElementById("browser")!.append(frame);
   frame.webaiosOverlay = { api };
-  if (cutFrameNetwork(frame)) frame.src = "chrome://browser/content/webaios/sidebar.html?pastille=" + encodeURIComponent("app:" + folder);
+  if (cutFrameNetwork(frame)) frame.src = "chrome://browser/content/webaios/sidebar.html?badge=" + encodeURIComponent("app:" + folder);
 }
 
 /** Run at the window's DOMContentLoaded, before anything could claim it; the view is attached once Firefox's startup is done. */
@@ -105,9 +105,9 @@ export function setupAppWindow(win: Window, folder: string): void {
       if (!s) return;
       e.preventDefault();
       e.stopImmediatePropagation();
-      if (s.type === "fenetre") win.OpenBrowserWindow();
-      else if (s.type === "fermerFenetre" || (s.type === "raccourci" && s.r === "fermerOnglet")) win.close();
-      else if (s.type === "naviguer" && (s.c === "recharger" || s.c === "rechargerSansCache")) win.gBrowser.selectedBrowser.reload();
+      if (s.type === "window") win.OpenBrowserWindow();
+      else if (s.type === "closeWindow" || (s.type === "shortcut" && s.r === "closeTab")) win.close();
+      else if (s.type === "navigate" && (s.c === "reload" || s.c === "reloadHard")) win.gBrowser.selectedBrowser.reload();
       else if (s.type === "design") void ChromeUtils.importESModule(STORE).ready.then((store: import("../store").WebAiOsStore) => store.design.shortcut(win));
     },
     true,

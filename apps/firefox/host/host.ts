@@ -124,7 +124,7 @@ const accessState = () => ({ agent: kernel?.agent ?? "L'agent", tabs: kernel?.po
 const broadcastAccess = () => {
   accessTimer ??= setTimeout(() => {
     accessTimer = undefined;
-    rpc.notify("acces", accessState());
+    rpc.notify("access", accessState());
   }, 50);
 };
 
@@ -136,7 +136,7 @@ const ai = new LocalAi({ folder: join(dataDir, "local-ai"), run: defaultRunner, 
 const notify = (n: { title: string; text: string }) => {
   const file = process.env.WEBAIOS_TEST_NOTIFICATIONS;
   if (file) return void appendFileSync(file, JSON.stringify({ title: n.title, text: n.text }) + "\n");
-  rpc.notify("accueil.notification", { title: n.title, text: n.text });
+  rpc.notify("home.notification", { title: n.title, text: n.text });
 };
 
 const launchKernel = (profileId: string): Promise<Kernel | null> => {
@@ -155,7 +155,7 @@ const launchKernel = (profileId: string): Promise<Kernel | null> => {
     apps: apps.manager,
     openWorkflow: (f) => workflowOpen(actives.get(f), selections.get(f)),
     // Widgets and actions wrote something, or a grant changed: the page reads again.
-    onChange: () => rpc.notify("accueil.change"),
+    onChange: () => rpc.notify("home.change"),
     notify: notify,
     ...(process.env.WEBAIOS_TEST_LOCAL_ADDRESSES === "1" ? { localAddresses: true } : {}),
     ...(duckduckgo ? { searchUrl: duckduckgo } : {}),
@@ -163,22 +163,22 @@ const launchKernel = (profileId: string): Promise<Kernel | null> => {
     (n) => {
       kernel = n;
       const offPolicy = n.policy.onChange(broadcastAccess);
-      const offDirect = n.onLive((e) => rpc.notify("workflow.direct", e));
+      const offDirect = n.onLive((e) => rpc.notify("workflow.live", e));
       const offActions = n.actions.onLive((e) => {
-        rpc.notify("actions.direct", e);
+        rpc.notify("actions.live", e);
         actions.directSeen(e);
       });
       unsubscribe = () => (offPolicy(), offDirect(), offActions());
       // A widget added or rewritten, a placement made in another window, a theme: the page reads again.
-      // Unguarded, a watch failure would reject `pret` and every host method with it.
+      // Unguarded, a watch failure would reject `ready` and every host method with it.
       try {
-        homeStop = n.watchHome(() => rpc.notify("accueil.change"));
+        homeStop = n.watchHome(() => rpc.notify("home.change"));
       } catch (e) {
         console.error("[webaios] la surveillance de l'accueil n'a pas démarré :", e);
       }
       broadcastAccess();
       // Each kernel start (a restart included): what the pages read while it was down is read again.
-      rpc.notify("accueil.change");
+      rpc.notify("home.change");
       return n;
     },
     (e: Error) => {
@@ -245,12 +245,12 @@ const sessions = new SessionsAgent({
   },
   // The user talks to the agent from the tab on screen: it is given to the agent.
   onSend: (f) => {
-    rpc.request<TabInfo | null>("ongletActif", [f]).then(
+    rpc.request<TabInfo | null>("activeTab", [f]).then(
       (o) => o && kernel?.policy.userInteraction(o),
       () => {},
     );
   },
-  send: (win, channel, v) => rpc.notify(channel === "donnees" ? "agent.donnees" : "agent.etat", channel === "donnees" ? { window: win, d: v } : { window: win, e: v }),
+  send: (win, channel, v) => rpc.notify(channel === "data" ? "agent.data" : "agent.state", channel === "data" ? { window: win, data: v } : { window: win, state: v }),
 });
 
 const rpc = createRpc({
@@ -262,8 +262,8 @@ const rpc = createRpc({
       return changeProfile(p.agentProfile);
     },
     changeProfile: (p: { agentProfile: string }) => changeProfile(p.agentProfile),
-    "agent.demarrer": (p: { window: string; size: TerminalSize }) => sessions.start(p.window, p.size),
-    "agent.profils": async () => {
+    "agent.start": (p: { window: string; size: TerminalSize }) => sessions.start(p.window, p.size),
+    "agent.profiles": async () => {
       // The kernel writes the default profile while it starts: the panel may ask before that.
       await ready;
       try {
@@ -272,10 +272,10 @@ const rpc = createRpc({
         return [];
       }
     },
-    "acces.etat": accessState,
+    "access.state": accessState,
     // Home page: the widgets of espace/home/widgets, their data and state, the validated theme,
     // with the free placement (version 3).
-    "accueil.lire": async () => {
+    "home.read": async () => {
       const n = await ready;
       if (!n) return { widgets: [], theme: null };
       try {
@@ -300,7 +300,7 @@ const rpc = createRpc({
         return { widgets: [], theme: null };
       }
     },
-    "accueil.placer": async (p: { placements?: unknown }) => {
+    "home.place": async (p: { placements?: unknown }) => {
       try {
         // A placement needs no kernel: the space's folders are enough.
         const ids = (await readHome(paths, widgetsFolder)).widgets.map((w) => w.id);
@@ -308,10 +308,10 @@ const rpc = createRpc({
       } catch (e) {
         console.error("[webaios] disposition non écrite :", e);
         // The UI already showed the gesture's preview: it re-reads the old layout instead of leaving it on screen.
-        rpc.notify("accueil.change");
+        rpc.notify("home.change");
       }
     },
-    "accueil.retirer": (p: { id?: unknown }) => {
+    "home.remove": (p: { id?: unknown }) => {
       const id = typeof p?.id === "string" ? p.id : "";
       // The grant and the data read with the account leave with the widget (through the kernel, which also writes the grants).
       void removeWidget(paths, id, async (w) => {
@@ -320,11 +320,11 @@ const rpc = createRpc({
         await removeGrant(widgetsFolder, w);
         await deleteData(widgetsFolder, w);
       }).then(
-        () => rpc.notify("accueil.change"),
+        () => rpc.notify("home.change"),
         (e) => console.error(`[webaios] widget ${id} non retiré :`, e),
       );
     },
-    "accueil.accorder": async (p: { id: string; profile: string; account: string[]; public: string[] }) => {
+    "home.grant": async (p: { id: string; profile: string; account: string[]; public: string[] }) => {
       const n = await ready;
       if (!n) return { ok: false as const, error: AGENT_STOPPED_MESSAGE };
       try {
@@ -334,33 +334,33 @@ const rpc = createRpc({
       } catch (e) {
         console.error(`[webaios] accord du widget ${p?.id} :`, e);
         // The UI re-reads the page: the new request is displayed.
-        rpc.notify("accueil.change");
+        rpc.notify("home.change");
         return { ok: false as const, error: (e as Error).message };
       }
     },
-    "accueil.refuserAccord": async (p: { id?: unknown }) => {
+    "home.denyGrant": async (p: { id?: unknown }) => {
       const n = await ready;
       if (!n || typeof p?.id !== "string") return;
       await n.denyGrant(p.id).catch((e) => console.error(`[webaios] retrait de l'accord du widget ${p.id} :`, e));
     },
-    "accueil.recolter": async (p: { id?: unknown }) => {
+    "home.harvest": async (p: { id?: unknown }) => {
       const n = await ready;
       if (!n || typeof p?.id !== "string") return;
       await n.harvestNow(p.id).catch((e) => console.error(`[webaios] récolte du widget ${p.id} :`, e));
     },
     // Read without the kernel, like the home page: the executions, outside the space.
-    "accueil.executions": (p: { id?: unknown }) => executionsWidget(widgetsFolder, typeof p?.id === "string" ? p.id : ""),
-    "accueil.execution": (p: { id?: unknown; run?: unknown }) =>
+    "home.runs": (p: { id?: unknown }) => executionsWidget(widgetsFolder, typeof p?.id === "string" ? p.id : ""),
+    "home.run": (p: { id?: unknown; run?: unknown }) =>
       executionWidget(widgetsFolder, typeof p?.id === "string" ? p.id : "", typeof p?.run === "string" ? p.run : ""),
     // The workflow builder: inputs checked with the shared
     // schemas, a bad one answered with INVALID_ARGUMENT's shape. The private-space refusal of an action is the chrome's (api.ts).
-    "workflow.catalogue": () => blockCatalog(),
-    "workflow.lire": (p: { target?: unknown }) => {
+    "workflow.catalog": () => blockCatalog(),
+    "workflow.read": (p: { target?: unknown }) => {
       const target = TargetSchema.safeParse(p?.target);
       if (!target.success) return null;
       return target.data.type === "widget" ? readEdit(widgetsContext, target.data.id) : readActionEdit(actionsContext, target.data.id);
     },
-    "workflow.enregistrer": (p: { target?: unknown; draft?: unknown }) => {
+    "workflow.save": (p: { target?: unknown; draft?: unknown }) => {
       const target = TargetSchema.safeParse(p?.target);
       const draft = DraftSchema.safeParse(p?.draft);
       if (!target.success || !draft.success) return { ...INVALID_ARGUMENT, warnings: [] };
@@ -368,13 +368,13 @@ const rpc = createRpc({
       if (target.data.type === "action") return writes.inSeries(`action:${id}`, () => saveActionEdit(actionsContext, id, draft.data));
       return writes.inSeries(id, () => saveEdit(widgetsContext, id, draft.data));
     },
-    "workflow.lireCode": (p: { target?: unknown; name?: unknown }) => {
+    "workflow.readCode": (p: { target?: unknown; name?: unknown }) => {
       const target = TargetSchema.safeParse(p?.target);
       const name = NameCodeSchema.safeParse(p?.name);
       if (!target.success || !name.success) return { error: INVALID_ARGUMENT.error };
       return target.data.type === "widget" ? readCode(paths, target.data.id, name.data) : readActionCode(paths, target.data.id, name.data);
     },
-    "workflow.enregistrerCode": (p: { target?: unknown; name?: unknown; text?: unknown }) => {
+    "workflow.saveCode": (p: { target?: unknown; name?: unknown; text?: unknown }) => {
       const target = TargetSchema.safeParse(p?.target);
       const name = NameCodeSchema.safeParse(p?.name);
       const text = SchemaCodeWorkflow.safeParse(p?.text);
@@ -383,7 +383,7 @@ const rpc = createRpc({
       if (target.data.type === "action") return writes.inSeries(`action:${id}`, () => saveActionCode(paths, id, name.data, text.data));
       return writes.inSeries(id, () => saveCode(paths, id, name.data, text.data));
     },
-    "workflow.rejouer": async (p: { target?: unknown; run?: unknown; block?: unknown }) => {
+    "workflow.replay": async (p: { target?: unknown; run?: unknown; block?: unknown }) => {
       const target = TargetSchema.safeParse(p?.target);
       const execution = SchemaIdExecution.safeParse(p?.run);
       const block = WorkflowBlockSchema.safeParse(p?.block);
@@ -400,7 +400,7 @@ const rpc = createRpc({
         : { ok: false as const, error: r.error ?? "Rejeu impossible" };
     },
     // Bad input or no kernel: {} (the page then selects no run); a failed run throws nothing.
-    "workflow.lancer": async (p: { target?: unknown; input?: unknown }) => {
+    "workflow.run": async (p: { target?: unknown; input?: unknown }) => {
       const target = TargetSchema.safeParse(p?.target);
       const input = ActionInputSchema.safeParse(p?.input ?? null);
       if (!target.success || !input.success) return {};
@@ -423,76 +423,76 @@ const rpc = createRpc({
         return {};
       }
     },
-    "workflow.direct": async () => (await ready)?.direct() ?? { running: [], waiting: [] },
+    "workflow.live": async () => (await ready)?.direct() ?? { running: [], waiting: [] },
     // A bad selection is ignored.
     "workflow.selection": (p: { window?: unknown; target?: unknown; block?: unknown }) => {
       const s = builderSelection(p);
       if (s && typeof p?.window === "string") selections.set(p.window, s);
     },
     // Replaces the whole mirror: a window absent or without a workflow page is forgotten.
-    "fenetres.actives": (p: Record<string, unknown> | null) => {
+    "windows.active": (p: Record<string, unknown> | null) => {
       actives = new Map(Object.entries(p ?? {}).filter((e): e is [string, string] => typeof e[1] === "string"));
     },
     // Actions: what touches the kernel and the disk (the chrome keeps the window state). Inputs checked with the shared
     // schemas; a bad one gets an empty answer.
-    "actions.liste": () => actions.list(),
-    "actions.preparer": (p: { id?: unknown; input?: unknown }) =>
+    "actions.list": () => actions.list(),
+    "actions.prepare": (p: { id?: unknown; input?: unknown }) =>
       idAction(p?.id) && ActionInputSchema.safeParse(p.input ?? null).success ? actions.prepare(p.id, (p.input ?? null) as string | null) : { ok: false, error: ACTION_UNKNOWN },
-    "actions.nom": (p: { id?: unknown }) => (idAction(p?.id) ? actions.name(p.id) : null),
-    "actions.lancer": (p: { id?: unknown; input?: unknown }) =>
+    "actions.name": (p: { id?: unknown }) => (idAction(p?.id) ? actions.name(p.id) : null),
+    "actions.launch": (p: { id?: unknown; input?: unknown }) =>
       idAction(p?.id) && ActionInputSchema.safeParse(p.input ?? null).success
         ? actions.launch(p.id, (p.input ?? null) as string | null)
         : { status: "invalid", error: "Demande invalide" },
-    "actions.arreter": (p: { id?: unknown }) => void (idAction(p?.id) && actions.stop(p.id)),
+    "actions.stop": (p: { id?: unknown }) => void (idAction(p?.id) && actions.stop(p.id)),
     "actions.page": (p: { id?: unknown; run?: unknown }) =>
       idAction(p?.id) && (p.run === null || executionAction(p.run)) ? actions.page(p.id, p.run) : null,
-    "actions.executions": (p: { id?: unknown }) => (idAction(p?.id) ? actions.runs(p.id) : []),
-    "actions.execution": (p: { id?: unknown; run?: unknown }) => (idAction(p?.id) && executionAction(p.run) ? actions.run(p.id, p.run) : null),
-    "actions.direct": () => actions.direct(),
-    "actions.lienPermis": (p: { id?: unknown; run?: unknown; url?: unknown }) =>
+    "actions.runs": (p: { id?: unknown }) => (idAction(p?.id) ? actions.runs(p.id) : []),
+    "actions.run": (p: { id?: unknown; run?: unknown }) => (idAction(p?.id) && executionAction(p.run) ? actions.run(p.id, p.run) : null),
+    "actions.live": () => actions.direct(),
+    "actions.linkAllowed": (p: { id?: unknown; run?: unknown; url?: unknown }) =>
       idAction(p?.id) && executionAction(p.run) && urlAction(p.url) ? actions.linkAllowed(p.id, p.run, p.url) : false,
-    "actions.imagePermise": (p: { id?: unknown; run?: unknown; url?: unknown }) =>
+    "actions.imageAllowed": (p: { id?: unknown; run?: unknown; url?: unknown }) =>
       idAction(p?.id) && executionAction(p.run) && urlAction(p.url) ? actions.imageAllowed(p.id, p.run, p.url) : false,
-    "actions.accorder": (p: unknown) => {
+    "actions.grant": (p: unknown) => {
       const r = GrantSchema.safeParse(p);
       return r.success && idAction(r.data.id) ? actions.grant(r.data) : { ok: false, error: "Demande d'accord invalide" };
     },
-    "actions.refuserAccord": (p: { id?: unknown }) => (idAction(p?.id) ? actions.denyGrant(p.id) : undefined),
-    "actions.supprimer": (p: { id?: unknown }) => (idAction(p?.id) ? actions.supprimer(p.id) : { ok: false, error: "Demande invalide" }),
+    "actions.denyGrant": (p: { id?: unknown }) => (idAction(p?.id) ? actions.denyGrant(p.id) : undefined),
+    "actions.delete": (p: { id?: unknown }) => (idAction(p?.id) ? actions.supprimer(p.id) : { ok: false, error: "Demande invalide" }),
     // Site apps (the window is the chrome's). A bad action is ignored.
     // The open apps are known again: the Applications page reads them (it read « fermée » while the host was down).
-    "sites.pret": () => sites.resync().then(() => rpc.notify("sites.change")),
-    "sites.liste": () => sites.list(),
-    "sites.agir": (p: { id?: unknown; action?: unknown; window?: unknown }) => {
+    "sites.ready": () => sites.resync().then(() => rpc.notify("sites.change")),
+    "sites.list": () => sites.list(),
+    "sites.act": (p: { id?: unknown; action?: unknown; window?: unknown }) => {
       const a = SchemaActionSite.safeParse(p);
       if (a.success && typeof p?.window === "string") return sites.dispatch(a.data.id, a.data.action, p.window);
     },
-    "sites.memoireAccueil": (p: { id?: unknown }) => (typeof p?.id === "string" ? sites.homeMemory(p.id) : null),
-    "sites.noter": (p: { id?: unknown; frame?: FrameBounds; favicon?: unknown }) => {
+    "sites.homeMemory": (p: { id?: unknown }) => (typeof p?.id === "string" ? sites.homeMemory(p.id) : null),
+    "sites.note": (p: { id?: unknown; frame?: FrameBounds; favicon?: unknown }) => {
       if (typeof p?.id === "string") sites.note(p.id, { ...(p.frame ? { frame: p.frame } : {}), ...(typeof p.favicon === "string" ? { favicon: p.favicon } : {}) });
     },
-    "sites.memoireOp": (p: unknown) => sites.memoryOp(p),
+    "sites.memoryOp": (p: unknown) => sites.memoryOp(p),
     "sites.position": (p: unknown) => sites.position(p),
-    "sites.reprise": (p: unknown) => sites.resume(p),
-    "sites.chercher": (p: { id?: unknown; url?: unknown }) => {
+    "sites.resume": (p: unknown) => sites.resume(p),
+    "sites.lookup": (p: { id?: unknown; url?: unknown }) => {
       if (typeof p?.id === "string" && (p.url === null || typeof p.url === "string")) return sites.lookupAddress(p.id, p.url);
     },
-    "sites.accorder": (p: { id?: unknown; yes?: unknown; hash?: unknown }) => {
+    "sites.grant": (p: { id?: unknown; yes?: unknown; hash?: unknown }) => {
       if (typeof p?.id === "string" && typeof p.yes === "boolean" && typeof p.hash === "string") return sites.grant(p.id, p.yes, p.hash);
     },
-    "sites.ferme": (p: { id?: unknown }) => {
+    "sites.closed": (p: { id?: unknown }) => {
       if (typeof p?.id === "string") sites.closed(p.id);
     },
-    "historique.noter": (p: Parameters<InstanceType<typeof History>["note"]>[0]) => hist?.note(p),
-    "historique.titre": (p: { url: string; spaceId: string; title: string }) => hist?.updateTitle(p.url, p.spaceId, p.title),
-    "historique.retenir": (p: { url: string; spaceId: string; title: string; text: string }) => {
+    "history.record": (p: Parameters<InstanceType<typeof History>["note"]>[0]) => hist?.note(p),
+    "history.title": (p: { url: string; spaceId: string; title: string }) => hist?.updateTitle(p.url, p.spaceId, p.title),
+    "history.keep": (p: { url: string; spaceId: string; title: string; text: string }) => {
       if (keepable(p.url)) hist?.keep({ ...p, text: String(p.text) });
     },
-    "historique.rendrePrive": (p: { spaceId: string }) => hist?.makePrivate(p.spaceId),
-    "historique.rechercher": (p: { text: string; limit?: number; distinct?: boolean }) => hist?.search(p.text, p.limit, p.distinct) ?? [],
-    "historique.recents": () => hist?.recents() ?? [],
-    "historique.effacer": (p: { since?: string }) => hist?.erase(p.since ? new Date(p.since) : undefined),
-    "historique.oublierTexte": (p: { url: string; spaceId: string }) => hist?.forgetText(p.url, p.spaceId),
+    "history.makePrivate": (p: { spaceId: string }) => hist?.makePrivate(p.spaceId),
+    "history.search": (p: { text: string; limit?: number; distinct?: boolean }) => hist?.search(p.text, p.limit, p.distinct) ?? [],
+    "history.recent": () => hist?.recents() ?? [],
+    "history.clear": (p: { since?: string }) => hist?.erase(p.since ? new Date(p.since) : undefined),
+    "history.forgetText": (p: { url: string; spaceId: string }) => hist?.forgetText(p.url, p.spaceId),
     stop: async () => {
       try {
         await stop();
@@ -501,26 +501,26 @@ const rpc = createRpc({
         setImmediate(() => writeStdout("", () => process.exit(0)));
       }
     },
-    "agent.ecrire": (p: { window: string; d: string }) => sessions.write(p.window, p.d),
-    "agent.redimensionner": (p: { window: string; size: TerminalSize }) => sessions.resize(p.window, p.size),
-    "agent.fermerFenetre": (p: { window: string }) => {
+    "agent.write": (p: { window: string; data: string }) => sessions.write(p.window, p.data),
+    "agent.resize": (p: { window: string; size: TerminalSize }) => sessions.resize(p.window, p.size),
+    "agent.closeWindow": (p: { window: string }) => {
       selections.delete(p.window);
       actives.delete(p.window);
       void sessions.closeWindow(p.window);
     },
     privateTabs: (p: { privateTabs: string[]; activePrivate: boolean }) => bridge.setPrivate(p),
-    "politique.navigue": (p: { id: string; url: string }) => kernel?.policy.tabNavigated(p.id, p.url),
-    "politique.ferme": (p: { id: string }) => kernel?.policy.tabClosed(p.id),
-    "politique.couper": (p: { id: string; right?: Parameters<Kernel["policy"]["cut"]>[1] }) => kernel?.policy.cut(p.id, p.right),
-    "agent.envoi": (p: { tab: TabInfo | null }) => void (p.tab && kernel?.policy.userInteraction(p.tab)),
+    "policy.navigated": (p: { id: string; url: string }) => kernel?.policy.tabNavigated(p.id, p.url),
+    "policy.closed": (p: { id: string }) => kernel?.policy.tabClosed(p.id),
+    "policy.cut": (p: { id: string; right?: Parameters<Kernel["policy"]["cut"]>[1] }) => kernel?.policy.cut(p.id, p.right),
+    "agent.send": (p: { tab: TabInfo | null }) => void (p.tab && kernel?.policy.userInteraction(p.tab)),
     // Opening the panel on a tab gives it to the agent and pre-fills the context, without sending it.
-    "agent.panneauOuvert": (p: { window: string; tab: TabInfo }) => {
+    "agent.panelOpened": (p: { window: string; tab: TabInfo }) => {
       kernel?.policy.userInteraction(p.tab);
       if (sessions.active(p.window)) sessions.write(p.window, contextPrefix(p.tab.title, p.tab.url));
     },
     // Sent by the chrome on each host start, with the about:addons changes seen while no host ran (applied first:
     // never reinstalled); answered when every granted extension is handled. A failed start is retried by the next one.
-    "extensions.pret": async (p: { outsideWebaios?: { addonId: string; what: "desinstallee" | "desactivee" }[]; crashes?: { addonId?: unknown; at?: unknown }[] }) => {
+    "extensions.ready": async (p: { outsideWebaios?: { addonId: string; what: "uninstalled" | "disabled" }[]; crashes?: { addonId?: unknown; at?: unknown }[] }) => {
       for (const c of Array.isArray(p?.crashes) ? p.crashes : []) extensions.crash(c?.addonId, c?.at);
       for (const h of p?.outsideWebaios ?? []) await extensions.outsideWebaios(h.addonId, h.what);
       return (extensionsStartup ??= extensions.start().catch((e) => {
@@ -528,46 +528,46 @@ const rpc = createRpc({
         throw e;
       }));
     },
-    "extensions.horsWebaios": (p: { addonId: string; what: "desinstallee" | "desactivee" }) =>
+    "extensions.outsideWebaios": (p: { addonId: string; what: "uninstalled" | "disabled" }) =>
       extensions.outsideWebaios(p.addonId, p.what),
-    "extensions.aTourne": (p: { addonId: string; profile: string; readable: boolean }) => extensions.ran(p.addonId, p.profile, p.readable),
+    "extensions.ran": (p: { addonId: string; profile: string; readable: boolean }) => extensions.ran(p.addonId, p.profile, p.readable),
     // A content script's message is readable only from a tab the agent can read as it is noted:
-    // ongletLisibleParAgent): asked of the policy here, which knows an agent-opened tab before Firefox hears of it.
-    "extensions.console": (p: { addonId?: unknown; m?: unknown; tab?: { tabId?: unknown; url?: unknown } | null }) => {
+    // tabReadableByAgent): asked of the policy here, which knows an agent-opened tab before Firefox hears of it.
+    "extensions.console": (p: { addonId?: unknown; message?: unknown; tab?: { tabId?: unknown; url?: unknown } | null }) => {
       const o = p?.tab;
       const readable = !!o && typeof o.tabId === "string" && typeof o.url === "string" && kernel?.policy.canRead({ id: o.tabId, url: o.url, title: "", space: "" }) === true;
-      extensions.noteConsole(p?.addonId, p?.m, o ? { readable: readable } : null);
+      extensions.noteConsole(p?.addonId, p?.message, o ? { readable: readable } : null);
     },
-    "extensions.plantage": (p: { addonId?: unknown; at?: unknown }) => extensions.crash(p?.addonId, p?.at),
-    "extensions.profilsPrives": (p: { privateTabs?: unknown }) =>
-      extensions.privateProfiles(Array.isArray(p?.privateTabs) ? p.privateTabs.filter((x): x is string => typeof x === "string") : []),
-    "extensions.pourEspace": (p: { spaceId?: unknown }) => (typeof p?.spaceId === "string" ? extensions.forSpace(p.spaceId) : []),
-    "extensions.basculer": (p: { key?: unknown; spaceId?: unknown; active?: unknown; window?: unknown }) =>
+    "extensions.crash": (p: { addonId?: unknown; at?: unknown }) => extensions.crash(p?.addonId, p?.at),
+    "extensions.privateProfiles": (p: { profiles?: unknown }) =>
+      extensions.privateProfiles(Array.isArray(p?.profiles) ? p.profiles.filter((x): x is string => typeof x === "string") : []),
+    "extensions.forSpace": (p: { spaceId?: unknown }) => (typeof p?.spaceId === "string" ? extensions.forSpace(p.spaceId) : []),
+    "extensions.toggle": (p: { key?: unknown; spaceId?: unknown; active?: unknown; window?: unknown }) =>
       typeof p?.key === "string" && typeof p.spaceId === "string"
         ? extensions.toggle(p.key, p.spaceId, p.active === true, typeof p.window === "string" ? p.window : null)
         : { ok: false, error: "Paramètres invalides" },
     // The Extensions page (the agent's extensions only, decision 8).
-    "extensions.liste": () => extensions.entries(),
-    "extensions.coupees": () => extensions.cut(),
-    "extensions.supprimer": (p: { key?: unknown }) => byKey(p, (key) => extensions.deletePage(key)),
-    "extensions.desactiverPartout": (p: { key?: unknown }) => byKey(p, (key) => extensions.disableEverywhere(key)),
-    "extensions.reactiver": (p: { key?: unknown }) => byKey(p, (key) => extensions.reactivate(key)),
-    "extensions.couperDeblocage": (p: { key?: unknown }) => byKey(p, (key) => extensions.cutUnlock(key)),
-    "extensions.revoir": (p: { key?: unknown; window?: unknown }) =>
+    "extensions.list": () => extensions.entries(),
+    "extensions.allCut": () => extensions.cut(),
+    "extensions.remove": (p: { key?: unknown }) => byKey(p, (key) => extensions.deletePage(key)),
+    "extensions.disableEverywhere": (p: { key?: unknown }) => byKey(p, (key) => extensions.disableEverywhere(key)),
+    "extensions.reenable": (p: { key?: unknown }) => byKey(p, (key) => extensions.reactivate(key)),
+    "extensions.cutUnlock": (p: { key?: unknown }) => byKey(p, (key) => extensions.cutUnlock(key)),
+    "extensions.review": (p: { key?: unknown; window?: unknown }) =>
       byKey(p, (key) => extensions.review(key, typeof p.window === "string" ? p.window : null)),
-    "extensions.toutCouper": (p: { yes?: unknown }) => extensions.cutAll(p?.yes === true),
-    "extensions.installerStore": () => ({ ok: false, error: STORE_ABSENT }),
+    "extensions.cutAll": (p: { yes?: unknown }) => extensions.cutAll(p?.yes === true),
+    "extensions.installStore": () => ({ ok: false, error: STORE_ABSENT }),
     // The RPC signal is ignored on purpose: the kernel's Pacing hands the lane back (partie=false) when the read has already ended, and rpc.ts drops a late answer.
-    "lecture.changerHote": (p: { read: string; host: string }) => bridge.changeHost(p.read, p.host),
+    "read.changeHost": (p: { read: string; host: string }) => bridge.changeHost(p.read, p.host),
     // Tests only: a paced read through a Pacing shared by the calls, as a workflow's web widget does.
     ...(process.env.WEBAIOS_TEST_PACED_READ === "1"
       ? {
-          "test.lectureMenagee": ({ url }: { url: string }) =>
+          "test.pacedRead": ({ url }: { url: string }) =>
             testPacing.read(new URL(url).hostname, (ch) => bridge.readPageInvisible(url, { profile: null, changeHost: ch })),
         }
       : {}),
     // The agent's applications (host/applications.ts): `apps` is made after the RPC, below.
-    ...Object.fromEntries(["applications.liste", "applications.agir", "applications.fenetreFermee", "applications.navigation", "applications.noter"].map((k) => [k, (p: unknown) => apps.handlers[k]!(p)])),
+    ...Object.fromEntries(["apps.list", "apps.act", "apps.windowClosed", "apps.navigation", "apps.note"].map((k) => [k, (p: unknown) => apps.handlers[k]!(p)])),
     // Design mode's host side (host/design.ts): `design` is made after `sites`, below.
     ...Object.fromEntries(DESIGN_METHODS.map((k) => [k, (p: unknown) => design.handlers[k]!(p)])),
     ...(process.env.WEBAIOS_HOST_TEST === "1" ? { "debug.log": (p: { text: string }) => console.log(p.text) } : {}),
@@ -585,20 +585,20 @@ const sites = createSites({
   dataDir,
   localAddresses: process.env.WEBAIOS_TEST_LOCAL_ADDRESSES === "1",
   chrome: {
-    open: (s, frame, tweaks) => rpc.request("sites.ouvrir", [s, frame, tweaks]),
-    close: (id) => rpc.request("sites.fermer", [id]),
-    erase: (id) => rpc.request("sites.effacer", [id]),
-    update: (s, tweaks) => rpc.request("sites.mettreAJour", [s, tweaks]),
-    reloadView: (id) => rpc.request("sites.rechargerVue", [id]),
-    errors: (id) => rpc.request("sites.erreurs", [id]),
-    view: (id) => rpc.request("sites.vue", [id]),
-    afterGrant: (id, s) => rpc.request("sites.apresAccord", [id, s]),
-    rebroadcast: (id) => rpc.request("sites.rediffuser", [id]),
-    openSites: () => rpc.request("sites.ouvertes"),
-    homeChange: (id) => rpc.notify("sites.accueilChange", [id]),
-    search: (id, yes) => rpc.notify("sites.cherche", [id, yes]),
-    notice: (id, a) => rpc.notify("sites.avis", [id, a]),
-    urlChanged: (id, domains, start, to) => rpc.notify("sites.adresseChangee", [id, domains, start, to]),
+    open: (s, frame, tweaks) => rpc.request("sites.open", [s, frame, tweaks]),
+    close: (id) => rpc.request("sites.close", [id]),
+    erase: (id) => rpc.request("sites.erase", [id]),
+    update: (s, tweaks) => rpc.request("sites.update", [s, tweaks]),
+    reloadView: (id) => rpc.request("sites.reloadView", [id]),
+    errors: (id) => rpc.request("sites.errors", [id]),
+    view: (id) => rpc.request("sites.view", [id]),
+    afterGrant: (id, s) => rpc.request("sites.afterGrant", [id, s]),
+    rebroadcast: (id) => rpc.request("sites.rebroadcast", [id]),
+    openSites: () => rpc.request("sites.openIds"),
+    homeChange: (id) => rpc.notify("sites.homeChange", [id]),
+    search: (id, yes) => rpc.notify("sites.lookingUp", [id, yes]),
+    notice: (id, a) => rpc.notify("sites.notice", [id, a]),
+    urlChanged: (id, domains, start, to) => rpc.notify("sites.urlChanged", [id, domains, start, to]),
   },
   // The public read (a throwaway container, no profile): never the app's cookies nor the user's.
   readLinks: async (page, signal) =>
@@ -609,7 +609,7 @@ const sites = createSites({
     design.sitesChanged();
   },
   prefill: (f, t) => sessions.prefill(f, t),
-  notifyMemory: (id, message) => rpc.notify("sites.memoire", { id, message }),
+  notifyMemory: (id, message) => rpc.notify("sites.memory", { id, message }),
   // The agent loses its dev tools on the closed window; the app's grant holds for the conversation, until « Supprimer »
   // (an app made again under the same id asks for its card again).
   onClosed: (id) => kernel?.policy.tabClosed(`site:${id}`),
@@ -627,10 +627,10 @@ const apps = createApplicationsHost({
   dataDir,
   workshop: workshop,
   chrome: {
-    open: (a, frame) => rpc.request("apps.ouvrir", [a, frame]),
-    close: (folder) => rpc.request("apps.fermer", [folder]),
-    show: (folder) => rpc.request("apps.montrer", [folder]),
-    erase: (folder) => rpc.request("apps.effacer", [folder]),
+    open: (a, frame) => rpc.request("apps.open", [a, frame]),
+    close: (folder) => rpc.request("apps.close", [folder]),
+    show: (folder) => rpc.request("apps.show", [folder]),
+    erase: (folder) => rpc.request("apps.erase", [folder]),
   },
   // The tab is given to the agent when the text is written, then the panel opens.
   debug: (f, text, access) => {
@@ -643,13 +643,13 @@ const apps = createApplicationsHost({
           if (tab) kernel?.policy.userInteraction(tab);
         }),
     );
-    rpc.notify("design.donnerAgent", [f]);
+    rpc.notify("design.giveAgent", [f]);
   },
   policy: () => kernel?.policy ?? null,
   // The Applications page reads the list again; design mode too (the running apps' ports may have changed); the review
   // takes a new app's first snapshot.
   broadcast: () => {
-    rpc.notify("applications.change");
+    rpc.notify("apps.change");
     rpc.notify("design.change");
     design.appsChanged();
   },
@@ -663,9 +663,9 @@ const design = createDesignHost({
   // Every app (apps.liste() keeps the running ones only).
   siteApps: () => apps.manager.list(),
   prefill: (f, t) => sessions.prefill(f, t),
-  chrome: { agentWindow: () => rpc.request("design.fenetreAgent"), giveAgent: (f) => rpc.notify("design.donnerAgent", [f]) },
+  chrome: { agentWindow: () => rpc.request("design.agentWindow"), giveAgent: (f) => rpc.notify("design.giveAgent", [f]) },
   notify: notify,
-  broadcast: () => (rpc.notify("externes.change"), rpc.notify("design.change")),
+  broadcast: () => (rpc.notify("external.change"), rpc.notify("design.change")),
 });
 // Actions: the kernel and disk half; the chrome keeps the window state (private spaces, tabs, pace of links).
 const actions = createActionsHost({ paths: paths, actionsFolder: actionsFolder, kernel: () => kernel, onChange: () => rpc.notify("actions.change") });
@@ -676,7 +676,7 @@ try {
 } catch (e) {
   console.error("[webaios] la surveillance des actions n'a pas démarré :", e);
 }
-// The chrome may not answer yet (its handlers come up later): it calls "sites.pret" once it does.
+// The chrome may not answer yet (its handlers come up later): it calls "sites.ready" once it does.
 void sites.resync().catch(() => {});
 let extensionsStartup: Promise<void> | undefined;
 

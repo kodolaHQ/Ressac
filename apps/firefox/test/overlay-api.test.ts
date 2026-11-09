@@ -11,16 +11,16 @@ const ctx = (mode: OverlayContext["mode"], project: string): OverlayContext => (
 });
 
 /** A fake service (its overlay showing `shown`) and host; every call noted. */
-function setup(shown: Partial<Record<OverlayContext["mode"], OverlayContext>> = { bulle: ctx("bulle", "demo-15308") }) {
+function setup(shown: Partial<Record<OverlayContext["mode"], OverlayContext>> = { bubble: ctx("bubble", "demo-15308") }) {
   const calls: string[] = [];
   const design = {
-    overlayContext: (_t, modes = ["bulle", "panier", "message"]) => modes.map((m) => shown[m]).find(Boolean) ?? null,
+    overlayContext: (_t, modes = ["bubble", "basket", "message"]) => modes.map((m) => shown[m]).find(Boolean) ?? null,
     add: async (_t, text) => (calls.push(`add:${text.length}`), { ok: true }),
     cancel: () => void calls.push("cancel"),
     onChange: () => () => {},
   } as Partial<DesignService> as DesignService;
   const host = {
-    request: async <T>(method: string, params?: unknown): Promise<T> => (calls.push(`${method} ${JSON.stringify(params)}`), (method === "design.envoyer" ? { ok: true } : []) as T),
+    request: async <T>(method: string, params?: unknown): Promise<T> => (calls.push(`${method} ${JSON.stringify(params)}`), (method === "design.send" ? { ok: true } : []) as T),
     on: () => () => {},
   };
   return { design, host, calls };
@@ -51,7 +51,7 @@ describe("overlayApi", () => {
     await api.basket("demo-15308");
     await api.remove("demo-15308", "e1");
     expect(await api.send("demo-15308")).toEqual({ ok: true });
-    expect(calls).toEqual(['design.panier {"projet":"demo-15308"}', 'design.retirer {"projet":"demo-15308","id":"e1"}', 'design.envoyer {"projet":"demo-15308"}']);
+    expect(calls).toEqual(['design.basket {"project":"demo-15308"}', 'design.remove {"project":"demo-15308","id":"e1"}', 'design.send {"project":"demo-15308"}']);
   });
 
   it("spec §5.10 the host stopped: the cart and batches last read stand; never read, the rejection passes; its restart reads again", async () => {
@@ -61,7 +61,7 @@ describe("overlayApi", () => {
     const host = {
       request: async <T>(method: string): Promise<T> => {
         if (down) throw new Error("hôte arrêté");
-        return (method === "design.panier" ? [{ id: "e1" }] : [{ id: "l1" }]) as T;
+        return (method === "design.basket" ? [{ id: "e1" }] : [{ id: "l1" }]) as T;
       },
       on: (m: string) => (on.push(m), () => {}),
     };
@@ -71,7 +71,7 @@ describe("overlayApi", () => {
     expect(await api.basket("demo-15308")).toEqual([{ id: "e1" }]);
     await expect(api.batches("demo-15308")).rejects.toThrow("hôte arrêté");
     api.onChange(() => {});
-    expect(on).toEqual(["design.change", "accueil.change"]);
+    expect(on).toEqual(["design.change", "home.change"]);
   });
 
   it("a message (project '') allows no cart at all", async () => {
@@ -81,12 +81,12 @@ describe("overlayApi", () => {
   });
 
   it("each frame reads its own modes; the column's annuler is its own", async () => {
-    const { design, host, calls } = setup({ bulle: ctx("bulle", "demo-15308"), panier: ctx("panier", "demo-15308") });
+    const { design, host, calls } = setup({ bubble: ctx("bubble", "demo-15308"), basket: ctx("basket", "demo-15308") });
     let closed = 0;
-    const column = overlayApi({ design, host, modes: ["panier"], cancel: () => closed++ }, T);
-    const overlay = overlayApi({ design, host, modes: ["bulle", "message"] }, T);
-    expect((await column.context())?.mode).toBe("panier");
-    expect((await overlay.context())?.mode).toBe("bulle");
+    const column = overlayApi({ design, host, modes: ["basket"], cancel: () => closed++ }, T);
+    const overlay = overlayApi({ design, host, modes: ["bubble", "message"] }, T);
+    expect((await column.context())?.mode).toBe("basket");
+    expect((await overlay.context())?.mode).toBe("bubble");
     column.cancel();
     expect([closed, calls]).toEqual([1, []]);
     overlay.cancel();
@@ -99,7 +99,7 @@ describe("wrapOverlayApi", () => {
   const raw = (o: Partial<OverlayApi>) => ({ ...o }) as OverlayApi;
 
   it("an answer is a copy, never the chrome's object", async () => {
-    const shown = ctx("bulle", "demo-15308");
+    const shown = ctx("bubble", "demo-15308");
     const api = wrapOverlayApi(raw({ context: async () => shown, basket: async () => foreign.value as never }), (f) => f);
     const c = await api.context();
     expect(c).toEqual(shown);

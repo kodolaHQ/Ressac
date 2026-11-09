@@ -80,7 +80,7 @@
       {/each}
     </ul>
     <button class="gerer" onclick={act(() => addons.manage())}>Gérer les extensions</button>
-    <button class="gerer" onclick={act(() => api.dispatch({ type: "ouvrirExtensions", windowId: win.id }))}>Extensions de l'agent</button>
+    <button class="gerer" onclick={act(() => api.dispatch({ type: "openExtensions", windowId: win.id }))}>Extensions de l'agent</button>
     <button class="gerer" onclick={act(() => addons.findMore())}>Trouver des modules</button>
   </div>
 {/if}

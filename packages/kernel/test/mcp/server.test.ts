@@ -34,7 +34,7 @@ async function start(allow: boolean) {
 }
 const text = (r: Awaited<ReturnType<Client["callTool"]>>) =>
   (r.content as { type: string; text?: string }[]).map((c) => c.text ?? "").join("\n");
-const requests = () => bridge.calls.filter((a) => a.method === "demanderAutorisation").length;
+const requests = () => bridge.calls.filter((a) => a.method === "askPermission").length;
 
 beforeEach(() => start(false));
 afterEach(async () => {
@@ -86,7 +86,7 @@ test("read_tab on Gmail: request, refusal → normal answer", async () => {
   const r = await client.callTool({ name: "read_tab", arguments: { id: "gmail" } });
   expect(r.isError).toBeFalsy();
   expect(text(r)).toBe("Accès refusé par l'utilisateur à cet onglet.");
-  expect(bridge.calls.some((a) => a.method === "lireTexte")).toBe(false);
+  expect(bridge.calls.some((a) => a.method === "readText")).toBe(false);
 });
 
 test("request accepted → access remembered (no second request)", async () => {
@@ -128,7 +128,7 @@ test("private space: read_tab, capture_screen and navigate answer PRIVATE_TEXT, 
   }
   expect(PRIVATE_TEXT).toBe("Cet onglet est dans un espace privé : l'agent n'y a pas accès.");
   expect(requests()).toBe(0);
-  expect(bridge.calls.some((a) => ["lireTexte", "capturer", "naviguer"].includes(a.method))).toBe(false);
+  expect(bridge.calls.some((a) => ["readText", "capture", "navigate"].includes(a.method))).toBe(false);
 });
 
 test("private space: even an access granted before no longer reads the tab", async () => {
@@ -148,17 +148,17 @@ test("private space: current_page on the private active tab answers PRIVATE_TEXT
 
 test("private space during the question: « Autoriser » does not deliver the tab", async () => {
   bridge.askPermission = async (o) => {
-    bridge.calls.push({ method: "demanderAutorisation", args: [o.id] });
+    bridge.calls.push({ method: "askPermission", args: [o.id] });
     bridge.makePrivate("gmail");
     return true;
   };
   expect(text(await client.callTool({ name: "read_tab", arguments: { id: "gmail" } }))).toBe(PRIVATE_TEXT);
-  expect(bridge.calls.some((a) => a.method === "lireTexte")).toBe(false);
+  expect(bridge.calls.some((a) => a.method === "readText")).toBe(false);
 });
 
 test("open_tab then read_tab on that tab → no request", async () => {
   const id = text(await client.callTool({ name: "open_tab", arguments: { url: "http://localhost:5280" } }));
-  expect(bridge.calls.at(-1)).toEqual({ method: "ouvrirOnglet", args: ["http://localhost:5280", undefined] });
+  expect(bridge.calls.at(-1)).toEqual({ method: "openTab", args: ["http://localhost:5280", undefined] });
   const r = await client.callTool({ name: "read_tab", arguments: { id: id.trim() } });
   expect(text(r)).toContain("localhost:5280");
   expect(requests()).toBe(0);
@@ -167,7 +167,7 @@ test("open_tab then read_tab on that tab → no request", async () => {
 test("navigate and capture_screen require access", async () => {
   const denial = await client.callTool({ name: "navigate", arguments: { id: "gmail", url: "https://evil.test" } });
   expect(text(denial)).toBe("Accès refusé par l'utilisateur à cet onglet.");
-  expect(bridge.calls.some((a) => a.method === "naviguer")).toBe(false);
+  expect(bridge.calls.some((a) => a.method === "navigate")).toBe(false);
   policy.userInteraction(github);
   const img = await client.callTool({ name: "capture_screen", arguments: { id: "github" } });
   expect((img.content as { type: string }[])[0]!.type).toBe("image");
@@ -186,7 +186,7 @@ test("open_tab and navigate refuse non-http(s) URLs", async () => {
   expect(
     (await client.callTool({ name: "navigate", arguments: { id: "github", url: "javascript:alert(1)" } })).isError,
   ).toBe(true);
-  expect(bridge.calls.some((a) => a.method === "ouvrirOnglet" || a.method === "naviguer")).toBe(false);
+  expect(bridge.calls.some((a) => a.method === "openTab" || a.method === "navigate")).toBe(false);
 });
 
 test("without an active tab → Aucun onglet actif.", async () => {
@@ -213,7 +213,7 @@ test("open_tab on an outside site then read_tab → authorization request", asyn
 test("two simultaneous reads of a private tab → a single request", async () => {
   let release!: (v: boolean) => void;
   bridge.askPermission = async (o) => {
-    bridge.calls.push({ method: "demanderAutorisation", args: [o.id] });
+    bridge.calls.push({ method: "askPermission", args: [o.id] });
     return new Promise<boolean>((ok) => (release = ok));
   };
   const a = client.callTool({ name: "read_tab", arguments: { id: "gmail" } });
@@ -250,7 +250,7 @@ test("tab moved to another site during the question: « Autoriser » does not de
   };
   const r = await client.callTool({ name: "read_tab", arguments: { id: "gmail" } });
   expect(text(r)).toBe("Accès refusé par l'utilisateur à cet onglet.");
-  expect(bridge.calls.some((a) => a.method === "lireTexte")).toBe(false);
+  expect(bridge.calls.some((a) => a.method === "readText")).toBe(false);
 });
 
 // --- Application tools ---
@@ -319,14 +319,14 @@ test("navigate an app window to another site: tab opened, the window and its acc
   await withApplications(fakeApp({ state: "running", port: 5280 }), [appTodo]);
   await client.callTool({ name: "launch_app", arguments: { folder: "todo" } });
   const r = await client.callTool({ name: "navigate", arguments: { id: "app:todo", url: "https://exemple.test/" } });
-  const isOpen = bridge.calls.find((a) => a.method === "ouvrirOnglet");
+  const isOpen = bridge.calls.find((a) => a.method === "openTab");
   expect(isOpen?.args[0]).toBe("https://exemple.test/");
-  expect(bridge.calls.some((a) => a.method === "naviguer")).toBe(false);
+  expect(bridge.calls.some((a) => a.method === "navigate")).toBe(false);
   expect(text(r)).toMatch(/^L'application ne quitte pas son adresse : https:\/\/exemple\.test\/ ouvert dans l'onglet \S+\.$/);
   expect(text(await client.callTool({ name: "read_tab", arguments: { id: "app:todo" } }))).toContain("Texte de Todo");
   // On its own origin, the window navigates.
   await client.callTool({ name: "navigate", arguments: { id: "app:todo", url: "http://localhost:5280/autre" } });
-  expect(bridge.calls.find((a) => a.method === "naviguer")?.args).toEqual(["app:todo", "http://localhost:5280/autre"]);
+  expect(bridge.calls.find((a) => a.method === "navigate")?.args).toEqual(["app:todo", "http://localhost:5280/autre"]);
   expect(requests()).toBe(0);
 });
 
@@ -407,7 +407,7 @@ async function withWidgets(widgets: WidgetsTools, o: { widgetData?: boolean } = 
     }),
   );
 }
-const dataCards = () => bridge.calls.filter((a) => a.method === "demanderDonneesWidget");
+const dataCards = () => bridge.calls.filter((a) => a.method === "askWidgetData");
 
 test("harvest_widget on a public widget returns status and data", async () => {
   const { tools: tools, harvests: harvests } = fakeWidgets();
@@ -899,7 +899,7 @@ async function withSite(o: { widgetData?: boolean; allow?: boolean; window?: Tab
     }),
   );
 }
-const siteCards = () => bridge.calls.filter((a) => a.method === "demanderDonneesWidget");
+const siteCards = () => bridge.calls.filter((a) => a.method === "askWidgetData");
 const bridgeCalls = (m: string) => bridge.calls.filter((a) => a.method === m);
 
 test("list_tabs without a grant: « site:vidola · Vidola · vidola-a.example · appli de site », no page URL", async () => {
@@ -913,7 +913,7 @@ test("list_tabs without a grant: « site:vidola · Vidola · vidola-a.example ·
   expect(lignes.find((l) => l.startsWith("site:vidola"))).not.toContain("/film/1");
   expect(t).not.toContain("ep=3");
   expect(siteCards()).toHaveLength(0);
-  expect(bridgeCalls("demanderAutorisation")).toHaveLength(0);
+  expect(bridgeCalls("askPermission")).toHaveLength(0);
 });
 
 test("list_tabs with the app's grant: the line of a readable tab (page URL), always marked appli de site", async () => {
@@ -928,12 +928,12 @@ test("read_tab on a site app: the site-kind card; refusal → DENIAL_TEXT, nothi
   const r = await client.callTool({ name: "read_tab", arguments: { id: "site:vidola" } });
   expect(text(r)).toBe(DENIAL_TEXT);
   expect(siteCards().map((c) => c.args[0])).toEqual([{ id: "vidola", name: "Vidola", agent: "Claude", kind: "site" }]);
-  expect(bridgeCalls("demanderAutorisation")).toHaveLength(0);
-  expect(bridgeCalls("lireTexte")).toHaveLength(0);
+  expect(bridgeCalls("askPermission")).toHaveLength(0);
+  expect(bridgeCalls("readText")).toHaveLength(0);
   expect(policy.grantedSiteRead("vidola")).toBe(false);
   // capture_screen refused likewise (a new card: the first was refused).
   expect(text(await client.callTool({ name: "capture_screen", arguments: { id: "site:vidola" } }))).toBe(DENIAL_TEXT);
-  expect(bridgeCalls("capturer")).toHaveLength(0);
+  expect(bridgeCalls("capture")).toHaveLength(0);
 });
 
 test("read_tab on a site app: grant → the text, and capture_screen without a second card", async () => {
@@ -978,9 +978,9 @@ test("site.json rewritten, the new card refused: nothing is read, captured or na
   expect(text(await client.callTool({ name: "read_tab", arguments: { id: "site:vidola" } }))).toBe(DENIAL_TEXT);
   expect(text(await client.callTool({ name: "capture_screen", arguments: { id: "site:vidola" } }))).toBe(DENIAL_TEXT);
   expect(text(await client.callTool({ name: "navigate", arguments: { id: "site:vidola", url: "https://vidola-a.example/film/2" } }))).toBe(DENIAL_TEXT);
-  expect(bridgeCalls("lireTexte")).toHaveLength(0);
-  expect(bridgeCalls("capturer")).toHaveLength(0);
-  expect(bridgeCalls("naviguer")).toHaveLength(0);
+  expect(bridgeCalls("readText")).toHaveLength(0);
+  expect(bridgeCalls("capture")).toHaveLength(0);
+  expect(bridgeCalls("navigate")).toHaveLength(0);
 });
 
 test("app deleted then recreated with the same id (same declaration): the grant is removed, a new card", async () => {
@@ -1018,14 +1018,14 @@ test("navigate to https://pub.example: navigationOutsideSite, no tab opened; to 
   await withSite({ widgetData: true });
   const outside = await client.callTool({ name: "navigate", arguments: { id: "site:vidola", url: "https://pub.example/" } });
   expect(text(outside)).toBe(navigationOutsideSite("https://pub.example/"));
-  expect(bridgeCalls("naviguer")).toHaveLength(0);
-  expect(bridgeCalls("ouvrirOnglet")).toHaveLength(0);
+  expect(bridgeCalls("navigate")).toHaveLength(0);
+  expect(bridgeCalls("openTab")).toHaveLength(0);
   // The app's grant first (one card), then the address.
   expect(siteCards()).toHaveLength(1);
   const inside = await client.callTool({ name: "navigate", arguments: { id: "site:vidola", url: "https://vidola-a.example/film/2" } });
   expect(inside.isError).toBeFalsy();
-  expect(bridgeCalls("naviguer").map((a) => a.args)).toEqual([["site:vidola", "https://vidola-a.example/film/2"]]);
-  expect(bridgeCalls("ouvrirOnglet")).toHaveLength(0);
+  expect(bridgeCalls("navigate").map((a) => a.args)).toEqual([["site:vidola", "https://vidola-a.example/film/2"]]);
+  expect(bridgeCalls("openTab")).toHaveLength(0);
   // The grant holds for the conversation: no second card.
   expect(siteCards()).toHaveLength(1);
 });
@@ -1036,8 +1036,8 @@ test("navigate outside the site without a grant: the app's card first; refused �
   expect(text(r)).toBe(DENIAL_TEXT);
   expect(r.isError).toBeFalsy();
   expect(siteCards()).toHaveLength(1);
-  expect(bridgeCalls("adresseSitePermise")).toHaveLength(0);
-  expect(bridgeCalls("naviguer")).toHaveLength(0);
+  expect(bridgeCalls("siteUrlAllowed")).toHaveLength(0);
+  expect(bridgeCalls("navigate")).toHaveLength(0);
 });
 
 test("navigate during the tweaks card: PENDING_SITE_NAVIGATION, never « fait »", async () => {
@@ -1045,7 +1045,7 @@ test("navigate during the tweaks card: PENDING_SITE_NAVIGATION, never « fait »
   const r = await client.callTool({ name: "navigate", arguments: { id: "site:vidola", url: "https://vidola-a.example/film/2" } });
   expect(text(r)).toBe(PENDING_SITE_NAVIGATION);
   expect(text(r)).not.toContain("→");
-  expect(bridgeCalls("naviguer")).toHaveLength(1);
+  expect(bridgeCalls("navigate")).toHaveLength(1);
 });
 
 test("list_tabs without a grant: the app's current domain, never the host of the displayed page (login domain)", async () => {
@@ -1072,7 +1072,7 @@ test("the pending site app card is withdrawn by a new conversation; its late ans
   reply(true);
   expect(text(await call)).toBe(DENIAL_TEXT);
   expect(policy.grantedSiteRead("vidola")).toBe(false);
-  expect(bridgeCalls("lireTexte")).toHaveLength(0);
+  expect(bridgeCalls("readText")).toHaveLength(0);
 });
 
 /** The held app card: its signal, and what is needed to answer it. */
@@ -1093,7 +1093,7 @@ test("site.json rewritten during the card (other hash): « Autoriser » delivers
   bridge.editTab("site:vidola", { hash: "autre" });
   c.reply!(true);
   expect(text(await call)).toBe(DENIAL_TEXT);
-  expect(bridgeCalls("lireTexte")).toHaveLength(0);
+  expect(bridgeCalls("readText")).toHaveLength(0);
 });
 
 test("app deleted during its card: the card is withdrawn, counts as a refusal, and its late answer grants nothing", async () => {
@@ -1106,7 +1106,7 @@ test("app deleted during its card: the card is withdrawn, counts as a refusal, a
   c.reply!(true);
   expect(text(await call)).toBe(DENIAL_TEXT);
   expect(policy.grantedSiteRead("vidola", "e1")).toBe(false);
-  expect(bridgeCalls("lireTexte")).toHaveLength(0);
+  expect(bridgeCalls("readText")).toHaveLength(0);
 });
 
 test("navigate in a site app without a grant: DENIAL_TEXT, nothing loaded", async () => {
@@ -1114,8 +1114,8 @@ test("navigate in a site app without a grant: DENIAL_TEXT, nothing loaded", asyn
   const r = await client.callTool({ name: "navigate", arguments: { id: "site:vidola", url: "https://vidola-a.example/film/2" } });
   expect(text(r)).toBe(DENIAL_TEXT);
   expect(siteCards()).toHaveLength(1);
-  expect(bridgeCalls("naviguer")).toHaveLength(0);
-  expect(bridgeCalls("ouvrirOnglet")).toHaveLength(0);
+  expect(bridgeCalls("navigate")).toHaveLength(0);
+  expect(bridgeCalls("openTab")).toHaveLength(0);
 });
 
 test("navigate in a site app without a browser to check the address: refused", async () => {
@@ -1123,7 +1123,7 @@ test("navigate in a site app without a browser to check the address: refused", a
   (bridge as { siteUrlAllowed?: unknown }).siteUrlAllowed = undefined;
   const r = await client.callTool({ name: "navigate", arguments: { id: "site:vidola", url: "https://vidola-a.example/film/2" } });
   expect(text(r)).toBe(navigationOutsideSite("https://vidola-a.example/film/2"));
-  expect(bridgeCalls("naviguer")).toHaveLength(0);
+  expect(bridgeCalls("navigate")).toHaveLength(0);
 });
 
 // ——— Site app tools: list_sites, open_site, site_memory, tweak_errors ———

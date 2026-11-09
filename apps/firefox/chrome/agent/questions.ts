@@ -46,7 +46,7 @@ export class Questions {
     for (const [id, q] of this.open)
       if (this.stale(q.request)) {
         this.open.delete(id);
-        q.reply("retiree");
+        q.reply("withdrawn");
         changed = true;
       }
     if (changed) this.changed();
@@ -55,7 +55,7 @@ export class Questions {
   /** Shows the card in the window and waits for the answer; false after QUESTION_DELAY_MS, or when `signal` aborts. */
   ask(o: TabInfo, windowId: WindowId, signal?: AbortSignal): Promise<boolean> {
     const tabId = activeTabOf(this.store.state, windowId)?.id ?? null;
-    const fields = { tabId: tabId, windowId: windowId, origin: originOf(o.url), permissions: ["lire-onglet" as const], title: o.title, target: o.id };
+    const fields = { tabId: tabId, windowId: windowId, origin: originOf(o.url), permissions: ["read-tab" as const], title: o.title, target: o.id };
     // Already stale (tab closed, private, gone elsewhere): no card, which no state change would ever take down.
     if (this.stale({ id: "", ...fields })) return Promise.resolve(false);
     return waitForResponse((reply) => this.post(fields, reply), QUESTION_DELAY_MS, signal);
@@ -67,7 +67,7 @@ export class Questions {
    */
   askDevTools(o: TabInfo, d: { rights: DevRight[]; reason: string; agent: string }, windowId: WindowId, signal?: AbortSignal): Promise<DevRight[]> {
     const tabId = activeTabOf(this.store.state, windowId)?.id ?? null;
-    const fields = { tabId: tabId, windowId: windowId, origin: originOf(o.url), permissions: ["outils-dev" as const], title: o.title, target: o.id, rights: d.rights, reason: d.reason, agent: d.agent };
+    const fields = { tabId: tabId, windowId: windowId, origin: originOf(o.url), permissions: ["devtools" as const], title: o.title, target: o.id, rights: d.rights, reason: d.reason, agent: d.agent };
     if (this.stale({ id: "", ...fields })) return Promise.resolve([]);
     return waitForRights((reply) => this.post(fields, reply), QUESTION_DELAY_MS, signal);
   }
@@ -78,7 +78,7 @@ export class Questions {
    */
   askWidgetData(o: { id: string; name: string; agent: string; kind?: "action" | "site" }, windowId: WindowId, signal?: AbortSignal): Promise<boolean> {
     const tabId = activeTabOf(this.store.state, windowId)?.id ?? null;
-    const fields = { tabId: tabId, windowId: windowId, permissions: ["donnees-widget" as const], title: o.name, agent: o.agent };
+    const fields = { tabId: tabId, windowId: windowId, permissions: ["widget-data" as const], title: o.name, agent: o.agent };
     const target =
       o.kind === "action"
         ? { origin: `webaios://action/${o.id}`, action: o.id }
@@ -95,20 +95,20 @@ export class Questions {
   async askExtension(card: ExtensionCard, windowId: WindowId, signal?: AbortSignal): Promise<GrantResponse> {
     const fields = { tabId: null, windowId: windowId, origin: card.key, permissions: ["extension" as const], extension: card };
     const outcome = staleQuestion({ id: "", ...fields }, this.store.state)
-      ? "retiree"
+      ? "withdrawn"
       : await waitForOutcome((reply) => this.post(fields, reply), QUESTION_DELAY_MS, signal);
-    return { accepted: outcome === "autoriser", hash: card.hash, ...(outcome === "retiree" ? { removed: true } : {}) };
+    return { accepted: outcome === "allow", hash: card.hash, ...(outcome === "withdrawn" ? { removed: true } : {}) };
   }
 
   /** The console unlock card of an agent extension: Refuser is the default; it falls after QUESTION_DELAY_MS or on `signal`. */
   askConsole(o: { name: string; spaces: string[]; reason: string; agent: string }, windowId: WindowId, signal?: AbortSignal): Promise<Outcome> {
-    const fields = { tabId: null, windowId: windowId, origin: o.name, permissions: ["console-extension" as const], title: o.name, reason: o.reason, agent: o.agent, spaces: o.spaces };
+    const fields = { tabId: null, windowId: windowId, origin: o.name, permissions: ["extension-console" as const], title: o.name, reason: o.reason, agent: o.agent, spaces: o.spaces };
     return waitForOutcome((reply) => this.post(fields, reply), QUESTION_DELAY_MS, signal);
   }
 
   /**
    * A site's question, shown as the banner on its tab: no delay, it waits for the answer; it falls
-   * (« retiree ») on `signal` or when its tab closes. `fenetreId` is not kept: site questions with one
+   * (`withdrawn`) on `signal` or when its tab closes. `windowId` is not kept: site questions with one
    * would show them on every tab of the window and move them with a closed window.
    */
   askSite(
@@ -117,7 +117,7 @@ export class Questions {
   ): Promise<Outcome> {
     // The three Firefox-only kinds are not kernel Permissions: the UI never shows a site question (isAgentRequest).
     const fields = { tabId: d.tabId, origin: d.origin, permissions: d.permissions as Permission[], ...(d.link ? { link: d.link } : {}) };
-    if (staleQuestion({ id: "", ...fields }, this.store.state)) return Promise.resolve("retiree");
+    if (staleQuestion({ id: "", ...fields }, this.store.state)) return Promise.resolve("withdrawn");
     return waitForOutcome((reply) => this.post(fields, reply), Infinity, signal);
   }
 
@@ -139,7 +139,7 @@ export class Questions {
       if (to) q.request = { ...q.request, windowId: to, tabId: activeTabOf(this.store.state, to)?.id ?? null };
       else {
         this.open.delete(id);
-        q.reply("retiree");
+        q.reply("withdrawn");
       }
     }
     if (changed) this.changed();

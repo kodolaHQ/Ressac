@@ -55,7 +55,7 @@ async function until<T>(f: () => Promise<T> | T, ok: (v: T) => boolean, ms = 10_
 }
 
 const list = (d: DesignHost) => d.handlers["external.list"]!(undefined) as Promise<Ext>;
-const ready = (d: DesignHost) => until(() => list(d), (e) => e.server.state !== "eteint" || e.server.reason !== "Le MCP externe démarre");
+const ready = (d: DesignHost) => until(() => list(d), (e) => e.server.state !== "off" || e.server.reason !== "Le MCP externe démarre");
 
 /** Connects a real MCP client with the token of « Brancher » and calls a tool, like a Claude Code would. */
 async function callTool(d: DesignHost, name: string, args: Record<string, unknown>) {
@@ -201,7 +201,7 @@ describe("design host", { timeout: 20_000 }, () => {
   it("a start that fails otherwise than a held port (bad port): off, with the reason", async () => {
     const s = prepare({ port: externalMcpPort("abc") });
     const e = await ready(s.design);
-    expect(e.server.state).toBe("eteint");
+    expect(e.server.state).toBe("off");
     expect(e.server.reason).toMatch(/^Le MCP externe n'a pas pu démarrer : /);
     await expect(s.design.handlers["external.connect"]!({ name: "x" })).rejects.toThrow(/n'a pas pu démarrer/);
   });

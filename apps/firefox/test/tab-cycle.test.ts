@@ -22,7 +22,7 @@ const act = (a: Action) => {
   p.onState(e);
 };
 const open = (url: string) => {
-  act({ type: "ouvrirOnglet", windowId: F, url });
+  act({ type: "openTab", windowId: F, url });
   return Object.keys(e.tabs).at(-1)!;
 };
 const active = () => {
@@ -51,9 +51,9 @@ const threeTabs = () => {
   const a = open("https://a.fr");
   const b = open("https://b.fr");
   const c = open("https://c.fr");
-  act({ type: "activerOnglet", id: a });
-  act({ type: "activerOnglet", id: b });
-  act({ type: "activerOnglet", id: c });
+  act({ type: "activateTab", id: a });
+  act({ type: "activateTab", id: b });
+  act({ type: "activateTab", id: c });
   vi.runAllTimers();
   capture.mockClear();
   return { a, b, c };
@@ -122,11 +122,11 @@ test("tab closed during the walk: selection within bounds, then end when one is 
   const { a, b, c } = threeTabs();
   p.browse(F, -1); // selection on a, the last one
   vi.advanceTimersByTime(250);
-  act({ type: "fermerOnglet", id: a });
+  act({ type: "closeTab", id: a });
   const panel = lastSend()!;
   expect(panel.cards.map((x) => x.id)).toEqual([c, b]);
   expect(panel.selection).toBe(1);
-  act({ type: "fermerOnglet", id: b });
+  act({ type: "closeTab", id: b });
   expect(lastSend()).toBeNull();
   send.mockClear();
   p.keyReleased(F);
@@ -158,25 +158,25 @@ test("interface messages: hover, choose, advance, confirm", () => {
   const { a, b, c } = threeTabs();
   p.browse(F, 1);
   vi.advanceTimersByTime(250);
-  p.message(F, { type: "survoler", id: a });
+  p.message(F, { type: "hover", id: a });
   expect(lastSend()!.selection).toBe(2);
-  p.message(F, { type: "avancer", delta: 1 });
+  p.message(F, { type: "advance", delta: 1 });
   expect(lastSend()!.selection).toBe(0);
-  p.message(F, { type: "valider" });
+  p.message(F, { type: "confirm" });
   expect(active()).toBe(c);
   expect(lastSend()).toBeNull();
 
   p.browse(F, 1);
   vi.advanceTimersByTime(250);
-  p.message(F, { type: "choisir", id: b });
+  p.message(F, { type: "choose", id: b });
   expect(active()).toBe(b);
   expect(lastSend()).toBeNull();
 
   // An id outside the list is ignored.
   p.browse(F, 1);
-  p.message(F, { type: "choisir", id: "inconnu" });
+  p.message(F, { type: "choose", id: "inconnu" });
   expect(active()).toBe(b);
-  p.message(F, { type: "annuler" });
+  p.message(F, { type: "cancel" });
 });
 
 test("active tab change: capture scheduled 1 s later, without waiting", () => {
@@ -184,7 +184,7 @@ test("active tab change: capture scheduled 1 s later, without waiting", () => {
   open("https://b.fr");
   vi.runAllTimers();
   capture.mockClear();
-  act({ type: "activerOnglet", id: a });
+  act({ type: "activateTab", id: a });
   expect(capture).not.toHaveBeenCalled();
   vi.advanceTimersByTime(1000);
   expect(capture).toHaveBeenCalledWith(F);
@@ -192,7 +192,7 @@ test("active tab change: capture scheduled 1 s later, without waiting", () => {
 
 test("sliding panel: 7 cards at most, relative selection", () => {
   const ids = Array.from({ length: 9 }, (_, i) => open(`https://${i}.fr`));
-  for (const id of ids) act({ type: "activerOnglet", id });
+  for (const id of ids) act({ type: "activateTab", id });
   p.browse(F, -1); // the oldest, index 8
   vi.advanceTimersByTime(250);
   const panel = lastSend()!;
@@ -202,10 +202,10 @@ test("sliding panel: 7 cards at most, relative selection", () => {
 
 test("essential of a sibling space (same key): confirmed without changing space", () => {
   const ess = open("https://ess.fr");
-  act({ type: "ajouterEssentiel", id: ess });
+  act({ type: "addEssential", id: ess });
   const spaceA = e.windows[0]!.activeSpace;
   const a = e.spaces.find((x) => x.id === spaceA)!;
-  act({ type: "creerEspace", name: "B", icon: "b", private: a.private, profile: a.profile, windowId: F });
+  act({ type: "createSpace", name: "B", icon: "b", private: a.private, profile: a.profile, windowId: F });
   const spaceB = e.windows[0]!.activeSpace;
   expect(spaceB).not.toBe(spaceA);
   const x = open("https://x.fr");
@@ -251,14 +251,14 @@ test("focus returned to the displayed page after a walk with a panel (confirmed 
   // Cancelled (Esc) with a panel: focus returned to the tab that stayed displayed.
   p.browse(F, 1);
   vi.advanceTimersByTime(250);
-  p.message(F, { type: "annuler" });
+  p.message(F, { type: "cancel" });
   expect(returnFocus).toHaveBeenCalledTimes(2);
   expect(activeOnFocus).toEqual([c, c]);
 
   // Chosen by a click: same.
   p.browse(F, 1);
   vi.advanceTimersByTime(250);
-  p.message(F, { type: "choisir", id: a });
+  p.message(F, { type: "choose", id: a });
   expect(activeOnFocus).toEqual([c, c, a]);
 });
 
@@ -292,10 +292,10 @@ test("window without focus (devtools…): immediate switch, no walk nor timer", 
 
 test("window without focus: an essential of a sibling space opens through its favorite", () => {
   const ess = open("https://ess.fr");
-  act({ type: "ajouterEssentiel", id: ess });
+  act({ type: "addEssential", id: ess });
   const spaceA = e.windows[0]!.activeSpace;
   const a = e.spaces.find((x) => x.id === spaceA)!;
-  act({ type: "creerEspace", name: "B", icon: "b", private: a.private, profile: a.profile, windowId: F });
+  act({ type: "createSpace", name: "B", icon: "b", private: a.private, profile: a.profile, windowId: F });
   const spaceB = e.windows[0]!.activeSpace;
   open("https://x.fr");
   focused = false;

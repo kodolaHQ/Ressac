@@ -65,7 +65,7 @@ const B_JS = 'webaiosSite.retenir("b", 1).then(() => (document.documentElement.d
 
 const inStore = <T = unknown>(body: string, args: unknown[] = []) =>
   m.execute<T>(`return (async () => { const store = await ChromeUtils.importESModule("${STORE}").ready; ${body} })();`, args);
-const openSite = (id: string) => inStore(`await store.agent.request("sites.agir", { id: arguments[0], action: "ouvrir", fenetre: store.state.fenetres[0].id });`, [id]);
+const openSite = (id: string) => inStore(`await store.agent.request("sites.act", { id: arguments[0], action: "open", window: store.state.windows[0].id });`, [id]);
 const viewUrl = (id: string) => m.execute<string | null>(`return ${siteWindowExpr(id)}?.gBrowser?.selectedBrowser.currentURI?.spec ?? null;`);
 /** An expression in app `id`'s view (its `frame`-th frame), null while it cannot run. */
 const view = <T = unknown>(expr: string, o: { id?: string; frame?: number } = {}) => inSiteView<T>(m, o.id ?? "vidola", `return ${expr};`, { frame: o.frame }).catch(() => null);
@@ -250,7 +250,7 @@ describe("tweaks", () => {
     await inStore(`const request = store.agent.request;
       store.__memoryCalls = [];
       store.__request = request;
-      store.agent.request = (method, params, signal) => (method === "sites.memoireOp" ? (store.__memoryCalls.push(params), Promise.reject(new Error("panne"))) : request.call(store.agent, method, params, signal));`);
+      store.agent.request = (method, params, signal) => (method === "sites.memoryOp" ? (store.__memoryCalls.push(params), Promise.reject(new Error("panne"))) : request.call(store.agent, method, params, signal));`);
     try {
       expect(await command("lire")).toMatch(/^refus:/);
       expect(await inStore<number>(`return store.__memoryCalls.length;`)).toBe(1);
@@ -274,7 +274,7 @@ describe("tweaks", () => {
       writeFileSync(grants, JSON.stringify(grant()));
       try {
         await openSite("vidola");
-        await expect.poll(() => inStore<string | null>(`return store.sites.viewOf("vidola");`), { timeout: 15_000 }).toBe("accord");
+        await expect.poll(() => inStore<string | null>(`return store.sites.viewOf("vidola");`), { timeout: 15_000 }).toBe("grant");
         await sleep(300);
         // The card blocks the view: it loads nothing.
         expect(await m.execute<string>(`return ${siteWindowExpr("vidola")}.gBrowser.selectedBrowser.currentURI.spec;`)).toBe("about:blank");

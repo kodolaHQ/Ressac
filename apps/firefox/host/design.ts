@@ -59,10 +59,10 @@ export interface DesignHost {
 type Params = { [k: string]: unknown } | null | undefined;
 
 export const DESIGN_METHODS = [
-  "externes.liste", "externes.brancher", "externes.revoquer", "externes.oublier", "externes.nom",
-  "relecture.ouvrir", "relecture.fichier", "relecture.lignes", "relecture.commentaires", "relecture.commenter",
-  "relecture.modifierCommentaire", "relecture.resoudre", "relecture.supprimerCommentaire", "relecture.envoyer", "relecture.relu",
-  "design.suivi", "design.ajouter", "design.panier", "design.lots", "design.retirer", "design.traite", "design.envoyer",
+  "external.list", "external.connect", "external.revoke", "external.forget", "external.name",
+  "review.open", "review.file", "review.lines", "review.comments", "review.comment",
+  "review.editComment", "review.resolve", "review.deleteComment", "review.send", "review.reviewed",
+  "design.tracking", "design.add", "design.basket", "design.batches", "design.remove", "design.handled", "design.send",
 ] as const;
 
 export function createDesignHost(o: {
@@ -175,7 +175,7 @@ export function createDesignHost(o: {
     let project: TrackedProject | null;
     if (typeof p?.url === "string" && p.url.length <= URL_MAX)
       project = projectForUrl(p.url, { launchedApps: await running(), ranges: containerRanges(process.env.WEBAIOS_APP_PORTS), external: registry?.projects() ?? [] });
-    else if (p?.url === undefined && p?.projet !== undefined) project = await trackedProject(checkProject(p.projet));
+    else if (p?.url === undefined && p?.project !== undefined) project = await trackedProject(checkProject(p.project));
     else throw new Error(INVALID_REQUEST);
     if (!project) return null;
     const basket = (await remarks.basket(project.project)).length;
@@ -184,11 +184,11 @@ export function createDesignHost(o: {
   const error = (e: unknown): ExtensionResult => ({ ok: false, error: e instanceof Error ? e.message : String(e) });
   const add = async (p: Params): Promise<ExtensionResult> => {
     let project: ProjectId, context: DesignContext, capture: Buffer | null;
-    const text = p?.texte;
+    const text = p?.text;
     try {
       if (typeof text !== "string" || text.length > REMARK_TEXT_MAX) throw new Error(INVALID_REQUEST);
-      project = checkProject(p?.projet);
-      context = checkDesignContext(p?.contexte);
+      project = checkProject(p?.project);
+      context = checkDesignContext(p?.context);
       capture = checkCapture(p?.capture);
       // A forgotten external project gets no cart.
       if (!(await trackedProject(project))) throw new Error(INVALID_REQUEST);
@@ -205,8 +205,8 @@ export function createDesignHost(o: {
   };
   // The design service's send, with a site snapshot before the first batch.
   const send = async (p: Params): Promise<ExtensionResult> => {
-    if (!projectId(p?.projet)) return { ok: false, error: INVALID_REQUEST };
-    const project = await trackedProject(p.projet);
+    if (!projectId(p?.project)) return { ok: false, error: INVALID_REQUEST };
+    const project = await trackedProject(p.project);
     if (!project) return { ok: false, error: NO_CLIENT };
     let dest: { destination: "agent" | "mcp"; client?: string } = { destination: "agent" };
     if (project.type === "externe") {
@@ -227,60 +227,60 @@ export function createDesignHost(o: {
   const projectId = (v: unknown): v is ProjectId => typeof v === "string" && ID_PROJECT.test(v);
 
   const handlers: Record<(typeof DESIGN_METHODS)[number], (p: Params) => unknown> = {
-    "externes.liste": (): ExternalsState =>
-      externals?.state() ?? { server: { state: "eteint", reason: failure ?? "Le MCP externe démarre" }, projects: [], clients: [] },
-    "externes.brancher": (p) => {
-      const name = checkClientName(p?.nom);
+    "external.list": (): ExternalsState =>
+      externals?.state() ?? { server: { state: "off", reason: failure ?? "Le MCP externe démarre" }, projects: [], clients: [] },
+    "external.connect": (p) => {
+      const name = checkClientName(p?.name);
       if (!externals) throw new Error(failure ?? "Le MCP externe démarre");
       return externals.connect(name);
     },
     // A bad id does nothing.
-    "externes.revoquer": async (p) => {
+    "external.revoke": async (p) => {
       if (typeof p?.id === "string" && CLIENT_ID.test(p.id)) await externals?.revoke(p.id);
     },
-    "externes.oublier": async (p) => {
+    "external.forget": async (p) => {
       if (typeof p?.id !== "string" || !EXTERNAL_ID.test(p.id)) return;
       await externals?.forget(p.id);
       review.forget(`ext-${p.id}`);
     },
-    "externes.nom": (p) => (typeof p?.id === "string" ? (registry?.projects().find((x) => x.id === p.id)?.name ?? null) : null),
-    "relecture.ouvrir": (p) => review.open(checkProject(p?.projet), p?.jeton === undefined || p.jeton === null ? undefined : checkToken(p.jeton)),
-    "relecture.fichier": (p) => review.file(checkProject(p?.projet), checkToken(p?.jeton), checkPath(p?.chemin)),
-    "relecture.lignes": (p) => {
-      const project = checkProject(p?.projet);
-      const [start, end] = checkLines(p?.debut, p?.fin);
-      return review.lines(project, checkToken(p?.jeton), checkPath(p?.chemin), start, end);
+    "external.name": (p) => (typeof p?.id === "string" ? (registry?.projects().find((x) => x.id === p.id)?.name ?? null) : null),
+    "review.open": (p) => review.open(checkProject(p?.project), p?.token === undefined || p.token === null ? undefined : checkToken(p.token)),
+    "review.file": (p) => review.file(checkProject(p?.project), checkToken(p?.token), checkPath(p?.path)),
+    "review.lines": (p) => {
+      const project = checkProject(p?.project);
+      const [start, end] = checkLines(p?.start, p?.end);
+      return review.lines(project, checkToken(p?.token), checkPath(p?.path), start, end);
     },
-    "relecture.commentaires": (p) => review.comments(checkProject(p?.projet)),
-    "relecture.commenter": (p) => {
-      const project = checkProject(p?.projet);
+    "review.comments": (p) => review.comments(checkProject(p?.project)),
+    "review.comment": (p) => {
+      const project = checkProject(p?.project);
       const c = p?.c;
       if (typeof c !== "object" || c === null) throw new Error("lignes invalides");
       const x = c as Record<string, unknown>;
-      const [start, end] = checkLines(x.debut, x.fin);
-      return review.comment(project, checkToken(p?.jeton), { file: checkPath(x.fichier), start: start, end: end, text: checkText(x.texte) });
+      const [start, end] = checkLines(x.start, x.end);
+      return review.comment(project, checkToken(p?.token), { file: checkPath(x.file), start: start, end: end, text: checkText(x.text) });
     },
-    "relecture.modifierCommentaire": (p) => review.editComment(checkProject(p?.projet), checkComment(p?.id), checkText(p?.texte)),
-    "relecture.resoudre": (p) => {
-      const project = checkProject(p?.projet);
-      const resolved = checkResolved(p?.resolu);
+    "review.editComment": (p) => review.editComment(checkProject(p?.project), checkComment(p?.id), checkText(p?.text)),
+    "review.resolve": (p) => {
+      const project = checkProject(p?.project);
+      const resolved = checkResolved(p?.resolved);
       return review.resolve(project, checkComment(p?.id), resolved);
     },
-    "relecture.supprimerCommentaire": (p) => review.supprimerCommentaire(checkProject(p?.projet), checkComment(p?.id)),
-    "relecture.envoyer": (p) => review.send(checkProject(p?.projet)),
-    "relecture.relu": (p) => review.reviewed(checkProject(p?.projet), checkToken(p?.jeton)),
-    "design.suivi": tracking,
-    "design.ajouter": add,
+    "review.deleteComment": (p) => review.deleteComment(checkProject(p?.project), checkComment(p?.id)),
+    "review.send": (p) => review.send(checkProject(p?.project)),
+    "review.reviewed": (p) => review.reviewed(checkProject(p?.project), checkToken(p?.token)),
+    "design.tracking": tracking,
+    "design.add": add,
     // A bad project or id answers an empty list, or nothing.
-    "design.panier": async (p) => (projectId(p?.projet) ? (await remarks.basket(p.projet)).map(shownElement) : []),
-    "design.lots": async (p) => (projectId(p?.projet) ? (await remarks.batches(p.projet)).map(batchShown) : []),
-    "design.retirer": async (p) => {
-      if (projectId(p?.projet) && id(p?.id)) await remarks.removeFromBasket(p.projet, p.id);
+    "design.basket": async (p) => (projectId(p?.project) ? (await remarks.basket(p.project)).map(shownElement) : []),
+    "design.batches": async (p) => (projectId(p?.project) ? (await remarks.batches(p.project)).map(batchShown) : []),
+    "design.remove": async (p) => {
+      if (projectId(p?.project) && id(p?.id)) await remarks.removeFromBasket(p.project, p.id);
     },
-    "design.traite": async (p) => {
-      if (projectId(p?.projet) && id(p?.lot)) await remarks.markBatchHandled(p.projet, p.lot);
+    "design.handled": async (p) => {
+      if (projectId(p?.project) && id(p?.batch)) await remarks.markBatchHandled(p.project, p.batch);
     },
-    "design.envoyer": send,
+    "design.send": send,
   };
 
   return {

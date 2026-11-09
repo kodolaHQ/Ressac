@@ -13,8 +13,8 @@ export const modal = $state<{ maskers: number; zone: BoundsRange | null }>({ mas
  * sites stay a banner.
  */
 export const isAgentRequest = (d: PendingRequest) =>
-  d.permissions.includes("lire-onglet") ||
-  d.permissions.includes("outils-dev") ||
-  d.permissions.includes("donnees-widget") ||
+  d.permissions.includes("read-tab") ||
+  d.permissions.includes("devtools") ||
+  d.permissions.includes("widget-data") ||
   d.permissions.includes("extension") ||
-  d.permissions.includes("console-extension");
+  d.permissions.includes("extension-console");

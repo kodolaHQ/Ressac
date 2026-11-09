@@ -14,7 +14,7 @@
     const n = Object.values(appState.value?.tabs ?? {}).filter((o) => o.spaceId === space.id).length;
     const logins = losesConnections(appState.value?.spaces ?? [], space);
     if (n > 0 || logins) toDelete = { space: space, tabs: n, logins };
-    else api.dispatch({ type: "supprimerEspace", id: space.id });
+    else api.dispatch({ type: "deleteSpace", id: space.id });
   }
 
   // A setting keeps the space's current profile (alone or shared); a new space has none: the user chooses.
@@ -37,7 +37,7 @@
       <button
         class="danger"
         onclick={() => {
-          api.dispatch({ type: "supprimerEspace", id: space.id });
+          api.dispatch({ type: "deleteSpace", id: space.id });
           toDelete = null;
         }}>Supprimer</button
       >
@@ -51,7 +51,7 @@
       aria-current={space.id === win.activeSpace ? "true" : undefined}
       title={space.private ? `${space.name} (privé)` : space.name}
       data-prive={space.private || undefined}
-      onclick={() => api.dispatch({ type: "activerEspace", windowId: win.id, id: space.id })}
+      onclick={() => api.dispatch({ type: "activateSpace", windowId: win.id, id: space.id })}
       oncontextmenu={(e) =>
         openMenu(e, [
           { label: "Réglages", dispatch: () => set(space) },

@@ -11,7 +11,7 @@ import { validFolder } from "../chrome/store/app-folder";
 describe("container names", () => {
   it("no login profile id starts with app- or site-", () => {
     let s = initialState();
-    for (let n = 0; n < 50; n++) s = apply(s, { type: "creerEspace", name: `e${n}`, icon: "x", private: false, profile: "nouveau" });
+    for (let n = 0; n < 50; n++) s = apply(s, { type: "createSpace", name: `e${n}`, icon: "x", private: false, profile: "nouveau" });
     const ids = [DEFAULT_PROFILE, ...s.profiles.map((p) => p.id)];
     expect(ids.length).toBeGreaterThan(50);
     for (const id of ids) expect(id).not.toMatch(/^(app|site)-/);

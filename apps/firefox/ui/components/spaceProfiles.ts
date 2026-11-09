@@ -1,6 +1,6 @@
 import { DEFAULT_PROFILE, type Space, type SpaceId, type ProfileId, type ConnectionProfile } from "../../shared/model";
 
-/** Choice of a space's sign-in profile, as `creerEspace` and `reglerEspace` receive it. */
+/** Choice of a space's sign-in profile, as `createSpace` and `updateSpace` receive it. */
 export type ProfileChoice = ProfileId | "nouveau";
 
 /** No profile chosen yet: a new space does not preselect one, the user chooses (« Créer » waits). */

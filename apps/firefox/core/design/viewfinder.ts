@@ -108,11 +108,11 @@ export function viewfinderScript(): string {
       const styles = {};
       for (const p of STYLES) styles[p] = cs.getPropertyValue(p);
       fin({
-        selecteur: selecteurDe(el), etiquette: nom(el),
+        selector: selecteurDe(el), label: nom(el),
         html: html.length > HTML_MAX ? html.slice(0, HTML_MAX) + TRONQUE : html,
-        voisinage: { parent: parent ? nom(parent) : "", freres },
-        styles, rect: { x: r.x, y: r.y, largeur: r.width, hauteur: r.height },
-        adresse: location.href, vue: { largeur: innerWidth, hauteur: innerHeight },
+        neighborhood: { parent: parent ? nom(parent) : "", siblings: freres },
+        styles, rect: { x: r.x, y: r.y, width: r.width, height: r.height },
+        url: location.href, view: { width: innerWidth, height: innerHeight },
       });
     };
     for (const t of TYPES_VISEE) window.addEventListener(t, surSouris, true);

@@ -165,7 +165,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
   const resultIn = (ms: number) => Promise.race([result(), sleep(ms).then(() => "pending" as const)]);
 
   async function open(url: string) {
-    await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url });
+    await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url });
     await waitFor(m, `return gBrowser.selectedBrowser.currentURI.spec === ${JSON.stringify(url)} && !gBrowser.selectedBrowser.webProgress.isLoadingDocument`, (v) => v === true);
     await chrome(m, "gBrowser.selectedBrowser.focus();");
   }
@@ -208,9 +208,9 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
     await mouse("#envoyer");
     const c = await result();
     note("S1 capture #envoyer", { ...c.r, html: c.r?.html?.slice(0, 60), styles: Object.keys(c.r?.styles ?? {}).length });
-    expect(c.r?.selecteur).toBe("#envoyer");
+    expect(c.r?.selector).toBe("#envoyer");
     expect(c.r?.html.startsWith("<button")).toBe(true);
-    expect(c.r?.adresse).toBe(`${base}/`);
+    expect(c.r?.url).toBe(`${base}/`);
     expect(await inPage("window.reactions")).toEqual([]);
     expect(await ask("hosts")).toBe(0);
     expect(await inPage("Object.keys(window).sort()")).toEqual(keys);
@@ -219,7 +219,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
     await arm();
     await sleep(100);
     await mouse("#lien");
-    expect((await result()).r?.selecteur).toBe("#lien");
+    expect((await result()).r?.selector).toBe("#lien");
     await sleep(500);
     expect(await inPage("location.href")).toBe(`${base}/`);
     expect(await inPage("window.reactions")).toEqual([]);
@@ -229,8 +229,8 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
     await sleep(100);
     await mouse("li:nth-child(2)");
     const li = (await result()).r;
-    note("S1 li", { selector: li?.selecteur, siblings: li?.voisinage?.freres });
-    expect(await inPage(`(() => { const l = document.querySelectorAll(${JSON.stringify(li?.selecteur)}); return l.length === 1 && l[0].textContent === "deux"; })()`)).toBe(true);
+    note("S1 li", { selector: li?.selector, siblings: li?.neighborhood?.siblings });
+    expect(await inPage(`(() => { const l = document.querySelectorAll(${JSON.stringify(li?.selector)}); return l.length === 1 && l[0].textContent === "deux"; })()`)).toBe(true);
   });
 
   it("S1: middle click, right click and double click never reach the page", async () => {
@@ -247,7 +247,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
     expect(after.href).toBe(`${base}/`);
     expect(after.tabs).toBe(0);
     await mouse("#envoyer", { count: 2 });
-    expect((await result()).r?.selecteur).toBe("#envoyer");
+    expect((await result()).r?.selector).toBe("#envoyer");
     await sleep(300);
     expect(await inPage("window.reactions")).toEqual([]);
   });
@@ -260,7 +260,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
     await sleep(300);
     expect(await ask("hosts")).toBe(1);
     await mouse("#email");
-    expect((await result()).r?.selecteur).toBe("#email");
+    expect((await result()).r?.selector).toBe("#email");
   });
 
   it("S1: Escape (trusted key) ends with null, nothing left in the DOM nor in the page's globals", async () => {
@@ -306,7 +306,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
     await mouse("#email", { move: true });
     await mouse("#envoyer");
     const c = await result();
-    const seen = { selector: c.r?.selecteur, hooked: await inPage("window.hooked"), early: await inPage("window.early"), reactions: await inPage("window.reactions"), fakeStop: await inPage("window.fakeStop"), front: await ask("front") };
+    const seen = { selector: c.r?.selector, hooked: await inPage("window.hooked"), early: await inPage("window.early"), reactions: await inPage("window.reactions"), fakeStop: await inPage("window.fakeStop"), front: await ask("front") };
     note("S1 hostile page", seen);
     expect(seen.selector).toBe("#envoyer");
     expect(seen.hooked).toEqual([]);
@@ -338,7 +338,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
     await arm();
     await sleep(100);
     await mouse("#email");
-    expect((await result()).r?.selecteur).toBe("#email");
+    expect((await result()).r?.selector).toBe("#email");
     // After the capture's 500 ms swallow, clicks reach the page again.
     await sleep(600);
     await mouse("#email");
@@ -365,9 +365,9 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
     const frame = await ask("frame");
     await mouse("#b");
     const c = await result();
-    note("S1 csp", { frame, selector: c.r?.selecteur, e: c.e, styles: Object.keys(c.r?.styles ?? {}).length });
+    note("S1 csp", { frame, selector: c.r?.selector, e: c.e, styles: Object.keys(c.r?.styles ?? {}).length });
     expect(frame?.cadre.display).toBe("block");
-    expect(c.r?.selecteur).toBe("#b");
+    expect(c.r?.selector).toBe("#b");
     expect(await ask("hosts")).toBe(0);
   });
 
@@ -394,7 +394,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
     await mouse("#envoyer", { count: 2 });
     const c = await result();
     await sleep(300);
-    const seen = { selector: c.r?.selecteur, frame: frame?.cadre.display, label: frame?.etiquette.text, page: await inPage(PAGE_SAW), midRight, newTabs: (await chrome(m, "return gBrowser.tabs.length;")) - tabs, href: await inPage("location.href"), guard: await ask("guardSeen"), hooked: await inPage("window.hooked"), listeners0, armedListeners };
+    const seen = { selector: c.r?.selector, frame: frame?.cadre.display, label: frame?.etiquette.text, page: await inPage(PAGE_SAW), midRight, newTabs: (await chrome(m, "return gBrowser.tabs.length;")) - tabs, href: await inPage("location.href"), guard: await ask("guardSeen"), hooked: await inPage("window.hooked"), listeners0, armedListeners };
     note("S1 fix hostile page", seen);
     expect(seen.selector).toBe("#envoyer");
     expect(seen.frame).toBe("block");
@@ -444,7 +444,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
     await armG();
     await sleep(100);
     await mouse("#email");
-    expect((await result()).r?.selecteur).toBe("#email");
+    expect((await result()).r?.selector).toBe("#email");
     out.just = await ask("listeners");
     await sleep(600);
     out.afterCapture = await ask("listeners");
@@ -496,11 +496,11 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
     const a = { hosts: await ask("hosts"), process: (await ask("info")).remoteType };
     await mouse("#envoyer");
     const r = await result();
-    note("S1 fix two tabs", { tabA, b, a, selector: r.r?.selecteur });
+    note("S1 fix two tabs", { tabA, b, a, selector: r.r?.selector });
     expect(b.page.reactions).toContain("click:email");
     expect(b.hosts).toBe(0);
     expect(a.hosts).toBe(1);
-    expect(r.r?.selecteur).toBe("#envoyer");
+    expect(r.r?.selector).toBe("#envoyer");
   });
 
   it("S1 fix (b): a click in a same-origin frame", async () => {
@@ -578,16 +578,16 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
       await sleep(100);
       await mouse("#cible");
       const c = (await result()).r;
-      expect(c?.selecteur).toBe("#cible");
+      expect(c?.selector).toBe("#cible");
       // rectCapture works in view pixels (× zoom); drawSnapshot takes page CSS pixels: back to CSS, the
       // scale gives the device pixels (zoom × dpr), as capturePage does.
-      const dip = rectCapture(c.rect, c.vue, zoom);
+      const dip = rectCapture(c.rect, c.view, zoom);
       const css = { x: dip.x / zoom, y: dip.y / zoom, width: dip.width / zoom, height: dip.height / zoom };
       const scrollY = await inPage<number>("scrollY");
       const viewSnap = await snapshot(css, zoom * dpr, { drawView: true, samples: [[Math.floor((dip.width * dpr) / 2), Math.floor((dip.height * dpr) / 2)], [2, 2]] });
       const pageSnap = await snapshot({ ...css, y: css.y + scrollY }, zoom * dpr, { samples: [[Math.floor((dip.width * dpr) / 2), Math.floor((dip.height * dpr) / 2)], [2, 2]] });
       const expected = { width: Math.round(dip.width * dpr), height: Math.round(dip.height * dpr) };
-      out.push({ zoom, dpr, rect: c.rect, viewState: c.vue, dip, scrollY, expected, view: { png: viewSnap.png, center: viewSnap.samples[0], corner: viewSnap.samples[1] }, page: { png: pageSnap.png, center: pageSnap.samples[0], corner: pageSnap.samples[1] } });
+      out.push({ zoom, dpr, rect: c.rect, viewState: c.view, dip, scrollY, expected, view: { png: viewSnap.png, center: viewSnap.samples[0], corner: viewSnap.samples[1] }, page: { png: pageSnap.png, center: pageSnap.samples[0], corner: pageSnap.samples[1] } });
     }
     note("S2 rectCapture", out);
     for (const o of out as any[]) {

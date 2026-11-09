@@ -4,7 +4,7 @@ import { hasView, urlWorkflow, URL_APPLICATIONS, widgetOfWorkflowUrl } from "../
 test("urlWorkflow and widgetOfWorkflowUrl: round trip, nothing else", () => {
   expect(urlWorkflow("meteo")).toBe("webaios://workflow/meteo");
   expect(widgetOfWorkflowUrl("webaios://workflow/meteo")).toBe("meteo");
-  for (const url of ["webaios://workflow/", "webaios://workflow/../etat", "webaios://workflow/A", "webaios://applications", "https://workflow/meteo", "webaios://workflow/a/b"])
+  for (const url of ["webaios://workflow/", "webaios://workflow/../etat", "webaios://workflow/A", "webaios://apps", "https://workflow/meteo", "webaios://workflow/a/b"])
     expect(widgetOfWorkflowUrl(url), url).toBeNull();
 });
 

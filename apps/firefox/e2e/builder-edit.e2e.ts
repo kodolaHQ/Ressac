@@ -158,12 +158,12 @@ afterEach(async () => {
   // The sidebar's own confirm back (answerConfirm replaced it).
   await inUi(m, "if (ui.realConfirm) ui.confirm = ui.realConfirm; delete ui.realConfirm; delete ui.questions;");
   // Every builder is named « Veille »: one builder tab at a time, so « Workflow — Veille » is this test's.
-  for (const o of Object.values((await state(m)).tabs)) if (o.url.startsWith("webaios://workflow/")) await dispatch(m, { type: "fermerOnglet", id: o.id });
+  for (const o of Object.values((await state(m)).tabs)) if (o.url.startsWith("webaios://workflow/")) await dispatch(m, { type: "closeTab", id: o.id });
 });
 
 /** Back to the home page of the window. */
 async function home(): Promise<void> {
-  await dispatch(m, { type: "afficherPageVide", windowId: (await state(m)).windows[0]!.id });
+  await dispatch(m, { type: "showBlankPage", windowId: (await state(m)).windows[0]!.id });
   await waitUi(m, "return !!doc.querySelector('[data-testid=\"widget-veille\"]')");
 }
 
@@ -760,7 +760,7 @@ describe("the workflow builder", () => {
     await click(m, '[data-testid="confirmation-retrait"] button', { text: "Retirer" });
     await waitUi(m, `return !doc.querySelector('[data-testid="widget-gone"]')`);
     // The home page hides it at once; the host moves its folder to the trash, then says the home page changed.
-    await waitUi(m, `return !(await ui.webaios.accueil.lire()).widgets.some((w) => w.id === "gone")`);
+    await waitUi(m, `return !(await ui.webaios.home.read()).widgets.some((w) => w.id === "gone")`);
     await sleep(300);
     expect(Object.values((await state(m)).tabs).some((o) => o.url === "webaios://workflow/gone")).toBe(true);
 

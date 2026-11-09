@@ -156,8 +156,8 @@ it("Oublier: the line goes, with ext-<id>.git and its comments under <dataDir>/d
     writeAppJs(p.folder, modified(2));
     const project = `ext-${p.id}`;
     const r = await storeEval<{ ok: boolean }>(
-      `const v = await store.agent.request("relecture.ouvrir", { projet: arguments[0] });
-       return store.agent.request("relecture.commenter", { projet: arguments[0], jeton: v.jeton, c: { fichier: "app.js", debut: 2, fin: 2, texte: "Plus court" } });`,
+      `const v = await store.agent.request("review.open", { project: arguments[0] });
+       return store.agent.request("review.comment", { project: arguments[0], token: v.token, c: { file: "app.js", start: 2, end: 2, text: "Plus court" } });`,
       [project],
     );
     expect(r.ok).toBe(true);

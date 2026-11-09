@@ -22,7 +22,7 @@
     /** ✦ on a builder tab: its « Agent » tab (instead of the side panel). */
     builderAgent?: () => void;
   } = $props();
-  const running = $derived(downloads.list.filter((t) => t.state === "en-cours"));
+  const running = $derived(downloads.list.filter((t) => t.state === "in-progress"));
   const progression = $derived.by(() => {
     const total = running.reduce((s, t) => s + t.total, 0);
     return total ? running.reduce((s, t) => s + t.received, 0) / total : 0;
@@ -47,7 +47,7 @@
       ondragover={(e) => e.dataTransfer?.types.includes("application/x-webaios-onglet") && e.preventDefault()}
       ondrop={(e) => {
         const id = e.dataTransfer?.getData("application/x-webaios-onglet");
-        if (id) api.dispatch({ type: "epinglerOnglet", id });
+        if (id) api.dispatch({ type: "pinTab", id });
       }}
     >
       {#each space?.pinned ?? [] as favorite (favorite.id)}
@@ -55,9 +55,9 @@
           <button
             data-testid="favori-{favorite.id}"
             class:actif={favorite.id === activeLink}
-            onclick={() => api.dispatch({ type: "ouvrirFavori", windowId: win.id, kind: "epingle", id: favorite.id })}
+            onclick={() => api.dispatch({ type: "openFavorite", windowId: win.id, kind: "pinned", id: favorite.id })}
             oncontextmenu={(e) =>
-              openMenu(e, [{ label: "Retirer", dispatch: () => api.dispatch({ type: "desepingler", spaceId: win.activeSpace, favoriteId: favorite.id }) }])}
+              openMenu(e, [{ label: "Retirer", dispatch: () => api.dispatch({ type: "unpin", spaceId: win.activeSpace, favoriteId: favorite.id }) }])}
           >
             <SiteIcon favicon={favorite.favicon} title={favorite.title} />
             <span>{favorite.title}</span>
@@ -67,7 +67,7 @@
     </ul>
     <div class="espace" data-testid="titre-espace">{space?.icon} {space?.name}</div>
     <TabList window={win} />
-    <button class="nouveau" data-testid="nouvel-onglet" onclick={() => api.dispatch({ type: "afficherPageVide", windowId: win.id })}><Icon name="plus" size={14} /> Nouvel onglet</button>
+    <button class="nouveau" data-testid="nouvel-onglet" onclick={() => api.dispatch({ type: "showBlankPage", windowId: win.id })}><Icon name="plus" size={14} /> Nouvel onglet</button>
   </div>
   <footer>
     <SpaceSelector window={win} />
@@ -77,7 +77,7 @@
       aria-label="Agent (⌘J)"
       title="Agent (⌘J)"
       aria-pressed={!builder && win.agentPanelOpen}
-      onclick={() => (builder ? builderAgent?.() : api.dispatch({ type: "basculerPanneauAgent", windowId: win.id }))}><Icon name="agent" /></button
+      onclick={() => (builder ? builderAgent?.() : api.dispatch({ type: "toggleAgentPanel", windowId: win.id }))}><Icon name="agent" /></button
     >
     <button
       class="outil"
@@ -85,7 +85,7 @@
       aria-label="Applications (⇧⌘A)"
       title="Applications (⇧⌘A)"
       aria-pressed={activeTab?.url === URL_APPLICATIONS}
-      onclick={() => api.dispatch({ type: "ouvrirApplications", windowId: win.id })}><Icon name="apps" /></button
+      onclick={() => api.dispatch({ type: "openApps", windowId: win.id })}><Icon name="apps" /></button
     >
     <button
       class="outil"
@@ -93,10 +93,10 @@
       aria-label="Actions"
       title="Actions"
       aria-pressed={activeTab?.url === URL_ACTIONS}
-      onclick={() => api.dispatch({ type: "ouvrirActions", windowId: win.id })}><Icon name="actions" /></button
+      onclick={() => api.dispatch({ type: "openActions", windowId: win.id })}><Icon name="actions" /></button
     >
     {#if downloads.list.length}
-      <button class="telechargements" aria-label="Téléchargements" title="Téléchargements" onclick={() => togglePanel?.("telechargements")}>
+      <button class="telechargements" aria-label="Téléchargements" title="Téléchargements" onclick={() => togglePanel?.("downloads")}>
         <Icon name="download" />
         {#if running.length}<span class="pastille" style:--p={progression}></span>{/if}
       </button>

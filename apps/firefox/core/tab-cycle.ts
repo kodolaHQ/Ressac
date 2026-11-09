@@ -84,21 +84,21 @@ export class TabCycle {
     const c = this.cycle.get(windowId);
     if (!c) return;
     switch (m.type) {
-      case "valider":
+      case "confirm":
         return this.keyReleased(windowId);
-      case "annuler":
+      case "cancel":
         return this.cancel(windowId);
-      case "choisir":
+      case "choose":
         if (c.p.list.includes(m.id)) this.finish(windowId, m.id);
         return;
-      case "survoler": {
+      case "hover": {
         const i = c.p.list.indexOf(m.id);
         if (i < 0 || i === c.p.selection) return;
         c.p = { ...c.p, selection: i };
         if (c.visible) this.sendPanel(windowId, c);
         return;
       }
-      case "avancer":
+      case "advance":
         return this.browse(windowId, m.delta);
     }
   }
@@ -167,7 +167,7 @@ export class TabCycle {
    */
   private activation(windowId: WindowId, id: TabId): Action {
     const link = this.o.state().tabs[id]?.link;
-    return link?.type === "essentiel" ? { type: "ouvrirFavori", windowId: windowId, kind: "essentiel", id: link.id } : { type: "activerOnglet", id };
+    return link?.type === "essential" ? { type: "openFavorite", windowId: windowId, kind: "essential", id: link.id } : { type: "activateTab", id };
   }
 
   private sendPanel(windowId: WindowId, c: InProgress): void {

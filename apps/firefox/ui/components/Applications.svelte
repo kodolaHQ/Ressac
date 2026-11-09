@@ -158,39 +158,39 @@
   function actions(a: ApplicationShown): { buttons: { label: string; action: ActionApplication; launched?: boolean }[]; menu: MenuEntry[] } {
     const entry = (label: string, action: ActionApplication): MenuEntry => ({
       label: label,
-      dispatch: () => (action === "supprimer" ? (toDelete = a) : act(a, action)),
+      dispatch: () => (action === "delete" ? (toDelete = a) : act(a, action)),
     });
-    const promote = a.type === "poc" ? [entry("Passer en application", "promouvoir")] : [];
-    if (a.type === "no-manifest") return { buttons: [{ label: "Déboguer", action: "deboguer" }], menu: [entry("Supprimer", "supprimer")] };
+    const promote = a.type === "poc" ? [entry("Passer en application", "promote")] : [];
+    if (a.type === "no-manifest") return { buttons: [{ label: "Déboguer", action: "debug" }], menu: [entry("Supprimer", "delete")] };
     switch (a.state) {
       case "preparing":
       case "launching":
-        return { buttons: [{ label: "Arrêter", action: "arreter" }], menu: [entry("Déboguer", "deboguer"), entry("Relire", "relire")] };
+        return { buttons: [{ label: "Arrêter", action: "stop" }], menu: [entry("Déboguer", "debug"), entry("Relire", "review")] };
       case "running":
         return {
           buttons: [
-            { label: "Ouvrir", action: "ouvrir" },
-            { label: "Arrêter", action: "arreter" },
+            { label: "Ouvrir", action: "open" },
+            { label: "Arrêter", action: "stop" },
           ],
-          menu: [entry("Relancer", "relancer"), entry("Déboguer", "deboguer"), entry("Relire", "relire")],
+          menu: [entry("Relancer", "relaunch"), entry("Déboguer", "debug"), entry("Relire", "review")],
         };
       case "error":
         return {
           buttons: [
-            { label: "Relancer", action: "relancer", launched: true },
-            { label: "Déboguer", action: "deboguer" },
-            { label: "Relire", action: "relire" },
+            { label: "Relancer", action: "relaunch", launched: true },
+            { label: "Déboguer", action: "debug" },
+            { label: "Relire", action: "review" },
           ],
-          menu: [entry("Supprimer", "supprimer"), ...promote],
+          menu: [entry("Supprimer", "delete"), ...promote],
         };
       case "stopped":
         return {
           buttons: [
-            { label: "Lancer", action: "lancer", launched: true },
-            { label: "Déboguer", action: "deboguer" },
-            { label: "Relire", action: "relire" },
+            { label: "Lancer", action: "launch", launched: true },
+            { label: "Déboguer", action: "debug" },
+            { label: "Relire", action: "review" },
           ],
-          menu: [entry("Supprimer", "supprimer"), ...promote, entry("Afficher le dossier", "dossier")],
+          menu: [entry("Supprimer", "delete"), ...promote, entry("Afficher le dossier", "folder")],
         };
     }
   }
@@ -281,12 +281,12 @@
               {#if !s.noActions}
               <div class="actions">
                 {#if s.error === undefined}
-                  <button data-testid="site-{s.id}-ouvrir" onclick={() => actSite(s, "ouvrir")}>Ouvrir</button>
+                  <button data-testid="site-{s.id}-ouvrir" onclick={() => actSite(s, "open")}>Ouvrir</button>
                 {/if}
-                <button data-testid="site-{s.id}-modifier" onclick={() => actSite(s, "modifier")}>Modifier avec l'agent</button>
+                <button data-testid="site-{s.id}-modifier" onclick={() => actSite(s, "edit")}>Modifier avec l'agent</button>
                 <button data-testid="site-{s.id}-oublier" onclick={() => (siteToForget = s)}>{FORGET_MEMORY}</button>
-                <button data-testid="site-{s.id}-dossier" onclick={() => actSite(s, "dossier")}>Afficher le dossier</button>
-                <button data-testid="site-{s.id}-relire" onclick={() => actSite(s, "relire")}>Relire</button>
+                <button data-testid="site-{s.id}-dossier" onclick={() => actSite(s, "folder")}>Afficher le dossier</button>
+                <button data-testid="site-{s.id}-relire" onclick={() => actSite(s, "review")}>Relire</button>
                 <button data-testid="site-{s.id}-supprimer" onclick={() => (siteToDelete = s)}>Supprimer</button>
               </div>
               {/if}
@@ -312,7 +312,7 @@
           onclick={() => {
             const s = target;
             siteToForget = null;
-            actSite(s, "oublier");
+            actSite(s, "forget");
           }}>Oublier</button
         >
       </div>
@@ -333,7 +333,7 @@
           onclick={() => {
             const s = target;
             siteToDelete = null;
-            actSite(s, "supprimer");
+            actSite(s, "delete");
           }}>Supprimer</button
         >
       </div>
@@ -353,7 +353,7 @@
           onclick={() => {
             const a = target; // {@const} is re-read: after toDelete = null, cible is null
             toDelete = null;
-            act(a, "supprimer");
+            act(a, "delete");
           }}>Supprimer</button
         >
       </div>

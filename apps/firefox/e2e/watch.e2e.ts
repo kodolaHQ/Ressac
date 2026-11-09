@@ -466,7 +466,7 @@ it('the Gmail widget (account, harvest.mjs) updates as before; with "web": true 
   };
   await writeWidget(dataDir, "gmail", gmail);
   // The grant, already given.
-  await writeJson(path.join(dataDir, "widgets", "grants.json"), { gmail: { domains: ["127.0.0.1"], public: [], profile: "defaut" } });
+  await writeJson(path.join(dataDir, "widgets", "grants.json"), { gmail: { domains: ["127.0.0.1"], public: [], profile: "default" } });
   const m = await launchWatch();
   await harvest(m, "gmail");
   await untilEqual(() => shown(m, "gmail"), '{"titre":"Court"}', 20_000);

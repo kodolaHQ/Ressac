@@ -95,7 +95,7 @@ export function createApi(win: WindowController): ApiFirefox {
   const localStates = new Set<(e: AgentPanelState) => void>();
   /** The widgets whose display this document prepared: the others' substitutions and copies are cleared. */
   const prepares = new Set<string>();
-  const failed = (message: string) => localStates.forEach((cb) => cb({ state: "erreur", message }));
+  const failed = (message: string) => localStates.forEach((cb) => cb({ state: "error", message }));
   /** An extension action in the kernel host; its answer copied into this realm, a failure given back as text. */
   const extension = (method: string, params: Record<string, unknown>) =>
     host.request<ExtensionResult>(method, params).then((r) => structuredClone(r), (e) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) }));
@@ -106,7 +106,7 @@ export function createApi(win: WindowController): ApiFirefox {
   const api: Partial<ApiFirefox> = {
     windowId: win.windowId,
     // A tab the user closes may ask first (beforeunload).
-    dispatch: (action) => void (action.type === "fermerOnglet" ? win.closeTab(action.id) : win.store.dispatch(action)),
+    dispatch: (action) => void (action.type === "closeTab" ? win.closeTab(action.id) : win.store.dispatch(action)),
     onState(callback) {
       // The state lives in the store's realm: the UI always gets its own copy, made in this realm.
       const send = () => callback(structuredClone(win.store.state));
@@ -123,28 +123,28 @@ export function createApi(win: WindowController): ApiFirefox {
         // Starts the host again if it stopped (Réessayer after a crash).
         host
           .ensure()
-          .then(() => host.request("agent.demarrer", { window: windowId, size: size }))
+          .then(() => host.request("agent.start", { window: windowId, size: size }))
           .catch((e) => failed(e instanceof Error ? e.message : String(e)));
       },
-      write: (d) => host.notify("agent.ecrire", { window: windowId, d }),
-      resize: (size) => host.notify("agent.redimensionner", { window: windowId, size: size }),
-      onData: (callback) => untilUnload(host.on("agent.donnees", (p) => p.fenetre === windowId && callback(String(p.d)))),
+      write: (d) => host.notify("agent.write", { window: windowId, data: d }),
+      resize: (size) => host.notify("agent.resize", { window: windowId, size: size }),
+      onData: (callback) => untilUnload(host.on("agent.data", (p) => p.window === windowId && callback(String(p.data)))),
       onState(callback) {
         localStates.add(callback);
-        const offState = host.on("agent.etat", (p) => p.fenetre === windowId && callback(structuredClone(p.e)));
-        const offExit = host.on(HOST_EXITED, (p) => callback({ state: "erreur", message: p.message }));
+        const offState = host.on("agent.state", (p) => p.window === windowId && callback(structuredClone(p.state)));
+        const offExit = host.on(HOST_EXITED, (p) => callback({ state: "error", message: p.message }));
         return untilUnload(() => {
           localStates.delete(callback);
           offState();
           offExit();
         });
       },
-      profiles: () => host.request<{ id: string; name: string }[]>("agent.profils").then((p) => structuredClone(p), () => []),
+      profiles: () => host.request<{ id: string; name: string }[]>("agent.profiles").then((p) => structuredClone(p), () => []),
     },
     tabCycle: (m) => win.tabSwitch(m),
     navigate: (id, input) => win.navigate(id, input),
     // shortcut: zoom, find in page and devtools are out of step 2 and do nothing.
-    command: (id, c) => void (typeof c === "string" && c !== "finRecherche" && c !== "outils" && win.command(id, c)),
+    command: (id, c) => void (typeof c === "string" && c !== "endFind" && c !== "devtools" && win.command(id, c)),
     returnFocusToPage: () => win.focusPage(),
     pagePreview: async () => null,
     // The visits live in the kernel host: the UI gets copies made in this realm.
@@ -170,11 +170,11 @@ export function createApi(win: WindowController): ApiFirefox {
     onPermissions: (callback) => untilUnload(win.store.questions.onChange((l) => callback(structuredClone(l)))),
     access: {
       state: async () => structuredClone(win.store.access),
-      cut: (id, right) => host.notify("politique.couper", { id, right: right }),
+      cut: (id, right) => host.notify("policy.cut", { id, right: right }),
     },
     onAccess(callback) {
       const send = () => callback(structuredClone(win.store.access));
-      const offAccess = host.on("acces", send);
+      const offAccess = host.on("access", send);
       const offExit = host.on(HOST_EXITED, send);
       return untilUnload(() => {
         offAccess();
@@ -186,7 +186,7 @@ export function createApi(win: WindowController): ApiFirefox {
       read: async () => {
         let r: HomeRead;
         try {
-          r = structuredClone((await host.request<HomeRead>("accueil.lire")) ?? { widgets: [], theme: null });
+          r = structuredClone((await host.request<HomeRead>("home.read")) ?? { widgets: [], theme: null });
         } catch {
           // The host did not answer: an empty list is not evidence that the widgets are gone.
           return { widgets: [], theme: null };
@@ -194,10 +194,10 @@ export function createApi(win: WindowController): ApiFirefox {
         await serveDisplays(r.widgets, win.store.dataDir, prepares);
         return r;
       },
-      onChange: (callback) => untilUnload(host.on("accueil.change", () => callback())),
-      place: (placements) => host.notify("accueil.placer", { placements }),
+      onChange: (callback) => untilUnload(host.on("home.change", () => callback())),
+      place: (placements) => host.notify("home.place", { placements }),
       gesture: (id) => win.store.widgetGestures.gesture(windowId, id),
-      remove: (id) => host.notify("accueil.retirer", { id }),
+      remove: (id) => host.notify("home.remove", { id }),
       open: (url, id) => {
         // Only just after a real click in this widget's display (one link per click), and one per second at most: a
         // display that would burst links could make data leave.
@@ -206,26 +206,26 @@ export function createApi(win: WindowController): ApiFirefox {
         if (now - lastLink < 1000) return console.warn("[webaios] lien de widget ignoré (trop rapproché) :", url);
         if (!openableUrl(url)) return console.warn("[webaios] lien de widget refusé :", url);
         lastLink = now;
-        win.store.dispatch({ type: "ouvrirOnglet", windowId: windowId, url, activate: true });
+        win.store.dispatch({ type: "openTab", windowId: windowId, url, activate: true });
       },
       profilesForGrant: async () => profilesForGrant(win.store.state, windowId),
       grant: async (a) => {
         // The state is read again at the moment of the grant: never a private space's profile.
         if (!readableProfiles(win.store.state).includes(a.profile)) return { ok: false as const, error: "Ce profil ne peut pas servir à un accord" };
-        return host.request<{ ok: true } | { ok: false; error: string }>("accueil.accorder", a).then(
+        return host.request<{ ok: true } | { ok: false; error: string }>("home.grant", a).then(
           (r) => structuredClone(r),
           (e) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) }),
         );
       },
-      denyGrant: (id) => host.notify("accueil.refuserAccord", { id }),
-      harvest: (id) => host.notify("accueil.recolter", { id }),
+      denyGrant: (id) => host.notify("home.denyGrant", { id }),
+      harvest: (id) => host.notify("home.harvest", { id }),
       runs: (id) =>
-        host.request<ResumeExecution[]>("accueil.executions", { id }).then(
+        host.request<ResumeExecution[]>("home.runs", { id }).then(
           (v) => structuredClone(v),
           () => [],
         ),
       run: (id, run) =>
-        host.request<Execution | null>("accueil.execution", { id, execution: run }).then(
+        host.request<Execution | null>("home.run", { id, run }).then(
           (v) => structuredClone(v),
           () => null,
         ),
@@ -233,46 +233,46 @@ export function createApi(win: WindowController): ApiFirefox {
     // The agent's applications, kept by the kernel host (its windows through the chrome). The host checks every action
     // with SchemaActionApplication; « Afficher le dossier » is the chrome's (one path segment), « Relire » the UI's.
     apps: {
-      list: () => ask<ApplicationList>("applications.liste", undefined, { workshop: "ok", apps: [] }),
+      list: () => ask<ApplicationList>("apps.list", undefined, { workshop: "ok", apps: [] }),
       onChange(callback) {
         // A host that started again, or the chrome's resync, sent no change: the list is read again.
-        const offs = [host.on("applications.change", () => callback()), host.on(HOST_EXITED, () => callback()), host.on("accueil.change", () => callback())];
+        const offs = [host.on("apps.change", () => callback()), host.on(HOST_EXITED, () => callback()), host.on("home.change", () => callback())];
         return untilUnload(() => offs.forEach((f) => f()));
       },
       dispatch(folder, action) {
-        if (action === "dossier") return win.store.apps.reveal(folder);
+        if (action === "folder") return win.store.apps.reveal(folder);
         // The app's Review page, under its name; a project without manifest has none.
-        if (action === "relire") {
+        if (action === "review") {
           if (!validFolder(folder)) return;
           return void api.apps!.list()
             .then((l) => {
               const a = l.apps.find((x) => x.folder === folder);
-              if (a && a.type !== "no-manifest") win.store.dispatch({ type: "ouvrirRelecture", windowId: windowId, project: "app-" + folder, name: a.name.slice(0, 80) });
+              if (a && a.type !== "no-manifest") win.store.dispatch({ type: "openReview", windowId: windowId, project: "app-" + folder, name: a.name.slice(0, 80) });
             })
             .catch((e) => console.error("[webaios] app review :", e));
         }
         // « Déboguer »: the host pre-fills the terminal and opens the panel (design.donnerAgent).
-        host.notify("applications.agir", { folder: folder, action, window: windowId });
+        host.notify("apps.act", { folder: folder, action, window: windowId });
       },
     },
     // The site apps, kept by the kernel host (its window actions go through the chrome); « Afficher le dossier » and
     // « Relire » are the UI's own.
     sites: {
-      list: () => ask<ShownSite[]>("sites.liste", undefined, []),
+      list: () => ask<ShownSite[]>("sites.list", undefined, []),
       onChange(callback) {
         // A host that started again, or the chrome's resync, sent no change: the list is read again.
-        const offs = [host.on("sites.change", () => callback()), host.on(HOST_EXITED, () => callback()), host.on("accueil.change", () => callback())];
+        const offs = [host.on("sites.change", () => callback()), host.on(HOST_EXITED, () => callback()), host.on("home.change", () => callback())];
         return untilUnload(() => offs.forEach((f) => f()));
       },
       dispatch(id, action) {
-        if (action === "dossier") return win.store.sites.revealSite(id);
+        if (action === "folder") return win.store.sites.revealSite(id);
         // The app's Review page, under its name.
-        if (action === "relire")
+        if (action === "review")
           return void api.sites!.list()
-            .then((l) => win.store.dispatch({ type: "ouvrirRelecture", windowId: windowId, project: "site-" + id, name: (l.find((s) => s.id === id)?.name ?? id).slice(0, 80) }))
+            .then((l) => win.store.dispatch({ type: "openReview", windowId: windowId, project: "site-" + id, name: (l.find((s) => s.id === id)?.name ?? id).slice(0, 80) }))
             .catch((e) => console.error("[webaios] site review :", e));
-        host.notify("sites.agir", { id, action, window: windowId });
-        if (action === "modifier") win.openAgent();
+        host.notify("sites.act", { id, action, window: windowId });
+        if (action === "edit") win.openAgent();
       },
     },
     // The section « Projets externes »: the external MCP server, kept by the kernel host.
@@ -284,55 +284,55 @@ export function createApi(win: WindowController): ApiFirefox {
     designPanel(isOpen) {
       const t = { type: "fenetre" as const, windowId: windowId };
       if (isOpen === true) void win.store.design.openCart(t);
-      else if (isOpen === false) win.store.design.closeOverlay(t, "panier");
+      else if (isOpen === false) win.store.design.closeOverlay(t, "basket");
     },
     onPanelClosed: (callback) => untilUnload(win.store.design.overlays.onColumnClosed({ type: "fenetre", windowId: windowId }, () => callback())),
     // The agent's extensions, kept by the kernel host: what the reused space modal, empty page and command bar call.
     extensions: {
-      forSpace: (spaceId) => host.request<SpaceExtensionLine[]>("extensions.pourEspace", { spaceId: spaceId }).then((l) => structuredClone(l), () => []),
-      toggle: (key, spaceId, active) => extension("extensions.basculer", { key: key, spaceId: spaceId, active: active, window: windowId }),
+      forSpace: (spaceId) => host.request<SpaceExtensionLine[]>("extensions.forSpace", { spaceId: spaceId }).then((l) => structuredClone(l), () => []),
+      toggle: (key, spaceId, active) => extension("extensions.toggle", { key: key, spaceId: spaceId, active: active, window: windowId }),
       onChange: (callback) => untilUnload(host.on("extensions.change", () => callback())),
       // The Extensions page: the agent's extensions only (decision 8); AMO add-ons stay in about:addons.
-      list: () => host.request<ExtensionLine[]>("extensions.liste").then((l) => structuredClone(l), () => []),
-      cut: () => host.request<boolean>("extensions.coupees").then((b) => b === true, () => false),
-      disableEverywhere: (key) => extension("extensions.desactiverPartout", { key: key }),
-      supprimer: (key) => extension("extensions.supprimer", { key: key }),
-      cutAll: (yes) => extension("extensions.toutCouper", { yes: yes }),
-      review: (key) => extension("extensions.revoir", { key: key, window: windowId }),
-      reactivate: (key) => extension("extensions.reactiver", { key: key }),
-      cutUnlock: (key) => extension("extensions.couperDeblocage", { key: key }),
-      installStore: () => extension("extensions.installerStore", {}),
+      list: () => host.request<ExtensionLine[]>("extensions.list").then((l) => structuredClone(l), () => []),
+      cut: () => host.request<boolean>("extensions.allCut").then((b) => b === true, () => false),
+      disableEverywhere: (key) => extension("extensions.disableEverywhere", { key: key }),
+      supprimer: (key) => extension("extensions.remove", { key: key }),
+      cutAll: (yes) => extension("extensions.cutAll", { yes: yes }),
+      review: (key) => extension("extensions.review", { key: key, window: windowId }),
+      reactivate: (key) => extension("extensions.reenable", { key: key }),
+      cutUnlock: (key) => extension("extensions.cutUnlock", { key: key }),
+      installStore: () => extension("extensions.installStore", {}),
     } as Partial<ApiWebaios["extensions"]> as ApiWebaios["extensions"],
     // The workflow builder: its reads and writes in the kernel host. An action's is refused in a private space with the
     // shapes of the builder's answers; its reads are checked again once answered.
     workflow: {
-      catalog: () => ask("workflow.catalogue", undefined, []),
-      read: async (target) => (privateAction(target) ? null : ask("workflow.lire", { target: target }, null).then((r) => (privateAction(target) ? null : r))),
+      catalog: () => ask("workflow.catalog", undefined, []),
+      read: async (target) => (privateAction(target) ? null : ask("workflow.read", { target: target }, null).then((r) => (privateAction(target) ? null : r))),
       save: async (target, draft) =>
         privateAction(target)
           ? { ok: false, error: ACTIONS_IN_PRIVATE_SPACE, warnings: [] }
-          : ask("workflow.enregistrer", { target: target, draft: draft }, { ok: false, error: AGENT_STOPPED_MESSAGE, warnings: [] }),
+          : ask("workflow.save", { target: target, draft: draft }, { ok: false, error: AGENT_STOPPED_MESSAGE, warnings: [] }),
       readCode: async (target, name) =>
         privateAction(target)
           ? { error: ACTIONS_IN_PRIVATE_SPACE }
-          : ask("workflow.lireCode", { target: target, name: name }, { error: AGENT_STOPPED_MESSAGE }).then((r) => (privateAction(target) ? { error: ACTIONS_IN_PRIVATE_SPACE } : r)),
+          : ask("workflow.readCode", { target: target, name: name }, { error: AGENT_STOPPED_MESSAGE }).then((r) => (privateAction(target) ? { error: ACTIONS_IN_PRIVATE_SPACE } : r)),
       saveCode: async (target, name, text) =>
-        privateAction(target) ? { ok: false, error: ACTIONS_IN_PRIVATE_SPACE } : ask("workflow.enregistrerCode", { target: target, name: name, text: text }, { ok: false, error: AGENT_STOPPED_MESSAGE }),
+        privateAction(target) ? { ok: false, error: ACTIONS_IN_PRIVATE_SPACE } : ask("workflow.saveCode", { target: target, name: name, text: text }, { ok: false, error: AGENT_STOPPED_MESSAGE }),
       replay: async (target, run, block) =>
-        privateAction(target) ? { ok: false, error: ACTIONS_IN_PRIVATE_SPACE } : ask("workflow.rejouer", { target: target, execution: run, block: block }, { ok: false, error: AGENT_STOPPED_MESSAGE }),
-      launch: async (target, input) => (privateAction(target) ? { error: ACTIONS_IN_PRIVATE_SPACE } : ask("workflow.lancer", { target: target, input: input ?? null }, {})),
+        privateAction(target) ? { ok: false, error: ACTIONS_IN_PRIVATE_SPACE } : ask("workflow.replay", { target: target, run: run, block: block }, { ok: false, error: AGENT_STOPPED_MESSAGE }),
+      launch: async (target, input) => (privateAction(target) ? { error: ACTIONS_IN_PRIVATE_SPACE } : ask("workflow.run", { target: target, input: input ?? null }, {})),
       selection(target, block) {
-        // The host keeps it in memory only: resent on `acces`, which a host sends once its kernel has started (and on policy
+        // The host keeps it in memory only: resent on `access`, which a host sends once its kernel has started (and on policy
         // changes, harmless: the same selection again).
-        if (!lastSelection) untilUnload(host.on("acces", () => host.notify("workflow.selection", lastSelection)));
+        if (!lastSelection) untilUnload(host.on("access", () => host.notify("workflow.selection", lastSelection)));
         lastSelection = { window: windowId, target: target, block: block };
         host.notify("workflow.selection", lastSelection);
       },
-      direct: () => ask("workflow.direct", undefined, { running: [], waiting: [] }),
+      direct: () => ask("workflow.live", undefined, { running: [], waiting: [] }),
       onLive(callback) {
         // A host that stopped or started again sent no feed meanwhile: the runs are read again.
         const again = () => void api.workflow!.direct().then(callback);
-        const offs = [host.on("workflow.direct", (e) => callback(structuredClone(e))), host.on(HOST_EXITED, again), host.on("accueil.change", again)];
+        const offs = [host.on("workflow.live", (e) => callback(structuredClone(e))), host.on(HOST_EXITED, again), host.on("home.change", again)];
         return untilUnload(() => offs.forEach((f) => f()));
       },
     },

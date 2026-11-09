@@ -952,7 +952,7 @@ describe("agent extensions: content scripts", () => {
   it("in an invisible read of the same profile, data-agent-vu is absent and executeScript to it is refused; in a tab of that profile it is present", async () => {
     const w = await launchGuard();
     const m = w.marionette;
-    // adressesLocales: hote.test only resolves through the test proxy (the read's local guard would refuse it).
+    // localAddresses: hote.test only resolves through the test proxy (the read's local guard would refuse it).
     // The read's browser, caught on its request, and the id Firefox's tabTracker gives it.
     await m.execute(`window.readingTabId = null;
       const o = (subject) => {
@@ -965,7 +965,7 @@ describe("agent extensions: content scripts", () => {
       Services.obs.addObserver(o, "http-on-modify-request");`);
     await m.execute(`window.reading = null;
       ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready
-        .then((s) => s.readPage("https://hote.test/lecture", { profil: "defaut", domaines: ["hote.test"], adressesLocales: true }))
+        .then((s) => s.readPage("https://hote.test/lecture", { profile: "default", domains: ["hote.test"], localAddresses: true }))
         .then((p) => (window.reading = { ok: p }), (e) => (window.reading = { err: String(e?.message ?? e) }));`);
     const readingTabId = await waitFor<number | null>(m, "return window.readingTabId", (v) => v !== null);
     // While the read is open (its image is slow): executeScript from the background, then the tabs it may see.
@@ -1106,7 +1106,7 @@ noter();`,
     expect((await poll(() => seenByAgent(m, tab), (v) => v?.ecoute === true))?.ecoute).toBe(true);
     const registry = () => JSON.parse(readFileSync(path.join(w.dataDir, "extensions", "state.json"), "utf8"));
     await until(() => registry().consolesMasquees?.includes("garde@agent.webaios"));
-    expect(registry().extensions["agent:garde"].consoleMasquee).toEqual(["defaut"]);
+    expect(registry().extensions["agent:garde"].consoleMasquee).toEqual(["default"]);
     expect(registry().consolesMasquees).toEqual(["garde@agent.webaios"]);
   });
 });

@@ -38,7 +38,7 @@ const nothingToPub = () => server.requests.filter((r) => r.host === "pub.localho
 const inStore = <T = unknown>(body: string, args: unknown[] = []) =>
   m.execute<T>(`return (async () => { const store = await ChromeUtils.importESModule("${STORE}").ready; ${body} })();`, args);
 /** « Ouvrir » on the app's row, as the Applications page sends it: through the host, which rereads site.json. */
-const openSite = (id = "vidola") => inStore(`await store.agent.request("sites.agir", { id: arguments[0], action: "ouvrir", fenetre: store.state.fenetres[0]?.id ?? null });`, [id]);
+const openSite = (id = "vidola") => inStore(`await store.agent.request("sites.act", { id: arguments[0], action: "open", window: store.state.windows[0]?.id ?? null });`, [id]);
 const viewAt = (u: string, expr = view) =>
   waitFor(m, `const b = ${expr}; return !!b && b.currentURI.spec === ${JSON.stringify(u)} && !b.webProgress.isLoadingDocument;`, (v) => v === true, 15_000);
 const viewUrl = () => m.execute<string>(`return ${view}.currentURI.spec;`);
@@ -452,7 +452,7 @@ describe("site app navigation", () => {
   it("Open in a tab targets the last main window; Firefox tab commands are inert in the app", { timeout: 60_000 }, async () => {
     const first = (await m.command<{ value: string }>("WebDriver:GetWindowHandle")).value;
     const second = await newWindow(m);
-    const idOf = (h: string) => inWindow(m, h, () => m.execute<string>(`return window.webaiosWindow.fenetreId;`));
+    const idOf = (h: string) => inWindow(m, h, () => m.execute<string>(`return window.webaiosWindow.windowId;`));
     const ids = { [first]: await idOf(first), [second]: await idOf(second) };
     const before = new Set(await windowHandles(m));
     await openAndWait();
@@ -470,7 +470,7 @@ describe("site app navigation", () => {
       const tab = Object.values(s.tabs).find((o) => o.url === pub("/x") && o.windowId === ids[target])!;
       // In that window's active space.
       expect(tab.spaceId).toBe(s.windows.find((f) => f.id === ids[target])!.activeSpace);
-      for (const o of Object.values(s.tabs)) if (o.url === pub("/x")) await inStore(`store.dispatch({ type: "fermerOnglet", id: arguments[0] });`, [o.id]);
+      for (const o of Object.values(s.tabs)) if (o.url === pub("/x")) await inStore(`store.dispatch({ type: "closeTab", id: arguments[0] });`, [o.id]);
     }
     // Firefox's tab, address and history keys in the app: no tab anywhere, the view does not move, the bar stays the way.
     await inSiteView(m, "vidola", "document.getElementById('film-ici').click(); return 1;", { gesture: true });

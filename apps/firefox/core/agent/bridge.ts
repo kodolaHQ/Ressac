@@ -79,7 +79,7 @@ export function staleQuestion(d: PendingRequest, state: BrowserState): boolean {
   // Moved into a private space: the agent no longer has access there, the question is moot.
   if (tab && privateTab(state, tab)) return true;
   // The rights cover the site the user saw: the tab went elsewhere, the card drops.
-  if (tab && (d.permissions.includes("outils-dev") || d.permissions.includes("lire-onglet")) && originOf(tab.url) !== d.origin) return true;
+  if (tab && (d.permissions.includes("devtools") || d.permissions.includes("read-tab")) && originOf(tab.url) !== d.origin) return true;
   return !d.windowId && d.tabId !== null && !state.tabs[d.tabId];
 }
 
@@ -88,7 +88,7 @@ export function staleQuestion(d: PendingRequest, state: BrowserState): boolean {
  * carries the « Je comprends » box checked (`confirme`); otherwise it is a refusal, whatever the UI shows.
  */
 export function allowedDecision(d: PendingRequest, decision: Decision, confirmed?: boolean): Decision {
-  if (decision === "autoriser" && d.extension?.hardened && confirmed !== true) return "refuser";
+  if (decision === "allow" && d.extension?.hardened && confirmed !== true) return "deny";
   return decision;
 }
 
@@ -114,11 +114,11 @@ export function waitForResponse(
   delayMs = QUESTION_DELAY_MS,
   signal?: AbortSignal,
 ): Promise<boolean> {
-  return waitForOutcome(ask, delayMs, signal).then((d) => d === "autoriser");
+  return waitForOutcome(ask, delayMs, signal).then((d) => d === "allow");
 }
 
 /**
- * Like `waitForResponse`, but tells whether the question lapsed without an answer from the user (« retiree »: delay, `signal`,
+ * Like `waitForResponse`, but tells whether the question lapsed without an answer from the user (`withdrawn`: delay, `signal`,
  * or withdrawn by whoever asked it).
  */
 export function waitForOutcome(
@@ -126,7 +126,7 @@ export function waitForOutcome(
   delayMs = QUESTION_DELAY_MS,
   signal?: AbortSignal,
 ): Promise<Outcome> {
-  if (signal?.aborted) return Promise.resolve("retiree");
+  if (signal?.aborted) return Promise.resolve("withdrawn");
   return new Promise((ok) => {
     let finished = false;
     const reply = (d: Outcome) => {
@@ -139,7 +139,7 @@ export function waitForOutcome(
     const abandon = () => {
       if (finished) return;
       remove();
-      reply("retiree");
+      reply("withdrawn");
     };
     // `Infinity`: no delay (a question coming from a click by the user waits for their answer).
     const timer = Number.isFinite(delayMs) ? setTimeout(abandon, delayMs) : undefined;
@@ -165,12 +165,12 @@ export function waitForRights(
       finished = true;
       clearTimeout(timer);
       signal?.removeEventListener("abort", abandon);
-      ok(d === "autoriser" ? rights : []);
+      ok(d === "allow" ? rights : []);
     };
     const abandon = () => {
       if (finished) return;
       remove();
-      reply("refuser");
+      reply("deny");
     };
     const timer = setTimeout(abandon, delayMs);
     const remove = ask(reply);
@@ -195,7 +195,7 @@ export function siteTab(s: { id: string; name: string; url: string; domain: stri
 export function staleSiteQuestion(d: PendingRequest, opened: { id: string; url: string }[]): boolean {
   if (!d.target?.startsWith(SITE_PREFIX)) return false;
   const site = opened.find((s) => SITE_PREFIX + s.id === d.target);
-  return !site || (d.permissions.includes("outils-dev") && originOf(site.url) !== d.origin);
+  return !site || (d.permissions.includes("devtools") && originOf(site.url) !== d.origin);
 }
 
 /** An app's window seen as an `app:<folder>` tab by the agent. */

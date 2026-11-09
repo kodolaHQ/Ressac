@@ -166,10 +166,10 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("the UI's network, spikes S1–S3", 
     await waitFor(m, `const f = document.getElementById("webaios-sidebar").contentDocument.querySelector('[data-testid="widget-${id}"] iframe'); return f?.contentDocument?.body?.textContent ?? "";`, (t: string) => t.includes(marker), 20_000);
   }
   async function closeTabs(): Promise<void> {
-    for (const id of Object.keys((await state(m)).tabs)) await dispatch(m, { type: "fermerOnglet", id } as never);
+    for (const id of Object.keys((await state(m)).tabs)) await dispatch(m, { type: "closeTab", id } as never);
   }
   async function openTab(url: string): Promise<void> {
-    await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url } as never);
+    await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url } as never);
     await waitFor(m, `return gBrowser.selectedBrowser.currentURI.spec === ${JSON.stringify(url)} && !gBrowser.selectedBrowser.webProgress.isLoadingDocument`, (v) => v === true, 15_000);
   }
 
@@ -401,11 +401,11 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("the UI's network, spikes S1–S3", 
     const opened = await m
       .execute(
         `return (async () => { const store = await ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready;
-         return await store.agent.request("sites.agir", { id: "netsite", action: "ouvrir", fenetre: store.state.fenetres[0].id }); })();`,
+         return await store.agent.request("sites.act", { id: "netsite", action: "open", window: store.state.windows[0].id }); })();`,
       )
       .then((v) => v, (e) => `ERR ${e}`);
     const bar = await waitFor(m, `const w = ${site}; const b = w?.document.getElementById("webaios-site-bar")?.contentDocument; const h = b?.querySelector('[data-testid="site-cadre-accueil"]')?.contentDocument; return { bar: b?.documentURI ?? null, home: h?.documentURI ?? null, view: w?.gBrowser.selectedBrowser.currentURI.spec ?? null };`, (v: any) => !!v.bar && !!v.home, 20_000).catch((e) => String(e));
-    const list = await m.execute(`return (async () => { const store = await ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready; return await store.agent.request("sites.liste"); })();`).catch((e) => String(e));
+    const list = await m.execute(`return (async () => { const store = await ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready; return await store.agent.request("sites.list"); })();`).catch((e) => String(e));
     note("S2 site app opened", { opened, bar, list: list });
 
     const p0 = await s2Phase("p0");
@@ -426,7 +426,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("the UI's network, spikes S1–S3", 
     await sleep(1500);
     witness.read = await m.execute(
       `return (async () => { const s = await ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready;
-       try { const r = await s.readPage(arguments[0], { profil: null, adressesLocales: true }); return r.titre; } catch (e) { return "ERR " + e; } })();`,
+       try { const r = await s.readPage(arguments[0], { profile: null, localAddresses: true }); return r.title; } catch (e) { return "ERR " + e; } })();`,
       [`http://wt-read.${SFX}:${HTTP}/page`],
     );
 witness.siteView = await m.execute(`const b = ${site}?.gBrowser.selectedBrowser; if (!b) return null; b.loadURI(Services.io.newURI(arguments[0]), { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() }); return true;`, [`http://netsite.localhost:${HTTP}/page`]).catch((e) => String(e));

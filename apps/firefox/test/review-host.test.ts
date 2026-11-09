@@ -176,7 +176,7 @@ describe("review service", () => {
     expect(existsSync(join(s.projects, "essai", ".git"))).toBe(false);
     expect(readdirSync(s.review).filter((n) => n.endsWith(".git"))).toEqual([`${EXT}.git`]);
     expect((await s.service.project("ext-ffffffffffffffff"))).toBeNull();
-    expect(await s.service.open("ext-ffffffffffffffff")).toMatchObject({ state: "indisponible", reason: "projet inconnu" });
+    expect(await s.service.open("ext-ffffffffffffffff")).toMatchObject({ state: "unavailable", reason: "projet inconnu" });
   });
 
   it("a site folder that is a symlink gives null and creates no repository", async () => {
@@ -190,7 +190,7 @@ describe("review service", () => {
       expect(await s.service.project("site-tuning")).toBeNull();
       await s.service.handleSites(["tuning"]);
       await s.service.ensure("site-tuning");
-      expect(await s.service.open("site-tuning")).toMatchObject({ state: "indisponible", reason: "projet inconnu" });
+      expect(await s.service.open("site-tuning")).toMatchObject({ state: "unavailable", reason: "projet inconnu" });
       expect(existsSync(join(s.review, "site-tuning.git"))).toBe(false);
     }
   });

@@ -14,7 +14,7 @@ const REFUSED: Record<string, string> = {
 };
 const errorName = (code: string | null) => (code ? (REFUSED[code] ?? code) : "Erreur");
 
-type Champs = Extract<Action, { type: "majOnglet" }>["fields"];
+type Champs = Extract<Action, { type: "updateTab" }>["fields"];
 
 /**
  * Keeps the XUL tabs of one window in line with its WebAiOs tabs: a XUL tab is created when its
@@ -226,7 +226,7 @@ export class TabSync {
       const state = this.store.state;
       const f = state.windows.find((x) => x.id === this.windowId);
       // Not yet in the state: a tab being adopted, its ouvrirOnglet follows.
-      if (f && state.tabs[id] && f.active[f.activeSpace] !== id) this.store.dispatch({ type: "activerOnglet", id });
+      if (f && state.tabs[id] && f.active[f.activeSpace] !== id) this.store.dispatch({ type: "activateTab", id });
     });
   }
 
@@ -236,7 +236,7 @@ export class TabSync {
 
   private update(tab: any, fields: Champs): void {
     const id = tab?.getAttribute(TAB_ID);
-    if (id && this.tabs.get(id) === tab) this.store.dispatch({ type: "majOnglet", id, fields });
+    if (id && this.tabs.get(id) === tab) this.store.dispatch({ type: "updateTab", id, fields });
   }
 
   private onOpen(tab: any): void {
@@ -260,7 +260,7 @@ export class TabSync {
       if (this.tabs.get(id) !== tab) return;
       // The URL addTab is loading: sync replaces a tab opened in another container than its space's before it loads.
       const url = tab.linkedBrowser.userTypedValue || (tab.linkedBrowser.currentURI?.spec ?? "about:blank");
-      this.store.dispatch({ type: "ouvrirOnglet", windowId: this.windowId, url, after: after, activate: tab.selected }, () => id);
+      this.store.dispatch({ type: "openTab", windowId: this.windowId, url, after: after, activate: tab.selected }, () => id);
     });
   }
 
@@ -282,7 +282,7 @@ export class TabSync {
     // A tab we did not remove ourselves: the page closed itself (window.close()).
     if (id && this.tabs.get(id) === tab) {
       this.tabs.delete(id);
-      this.store.dispatch({ type: "fermerOnglet", id });
+      this.store.dispatch({ type: "closeTab", id });
     }
   }
 }

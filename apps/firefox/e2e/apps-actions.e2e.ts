@@ -30,7 +30,7 @@ const rowShown = (folder: string, ms = 10_000) => waitUi(p!.m, "return !!doc.que
 const rowText = (folder: string) => inUi<string>(p!.m, "return doc.querySelector(arguments[0])?.textContent ?? ''", [appRow(folder)]);
 const filterText = (id: string) => inUi<string | null>(p!.m, "return doc.querySelector(arguments[0])?.textContent.replace(/\\s+/g, ' ').trim() ?? null", [`[data-testid="filtre-${id}"]`]);
 /** The page's own api call, as the component makes it. */
-const act = (folder: string, action: string) => inUi(p!.m, "ui.webaios.applications.agir(arguments[0], arguments[1]);", [folder, action]);
+const act = (folder: string, action: string) => inUi(p!.m, "ui.webaios.apps.act(arguments[0], arguments[1]);", [folder, action]);
 const panelOpen = async () => !!(await state(p!.m)).windows[0]!.agentPanelOpen;
 /** The app's container (`userContextIdInternal.webaios-app-<dossier>`), or null. */
 const container = (folder: string) =>

@@ -28,8 +28,8 @@ const DISPLAY = `<!doctype html><meta charset="utf-8">
   addEventListener("message", (e) => {
     if (!e.data || e.data.type !== "widget") return;
     n++;
-    document.getElementById("donnees").textContent = JSON.stringify(e.data.donnees);
-    document.getElementById("statut").textContent = e.data.etat.statut;
+    document.getElementById("donnees").textContent = JSON.stringify(e.data.data);
+    document.getElementById("statut").textContent = e.data.state.status;
     document.getElementById("messages").textContent = String(n);
   });
 </script>`;
@@ -140,7 +140,7 @@ const DNS_SCRIPT =
   "create:TypeError inner:TypeError srcdoc:TypeError meta:TypeError image:passé ancre:passé createDocument:TypeError importNode:TypeError htmlDocument:TypeError fragment:TypeError execCommand:TypeError srcdocEntites:TypeError";
 
 /**
- * Links a person presses: #l opens its address in a tab through webaiosOuvrir (the click handler), #p is a plain link,
+ * Links a person presses: #l opens its address in a tab through webaiosOpen (the click handler), #p is a plain link,
  * #s an SVG link. The display's own capture listener tries to stop every mousedown before the chrome sees it.
  */
 /**
@@ -186,7 +186,7 @@ const linksDisplay = `<!doctype html><meta charset="utf-8"><title>lien</title>
 <script>
   addEventListener("mousedown", (e) => e.stopImmediatePropagation(), true);
   const l = document.getElementById("l");
-  l.addEventListener("click", (e) => { e.preventDefault(); l.dataset.clicks = String(Number(l.dataset.clicks || 0) + 1); webaiosOuvrir("http://${host("ouvert")}/ouvert"); });
+  l.addEventListener("click", (e) => { e.preventDefault(); l.dataset.clicks = String(Number(l.dataset.clicks || 0) + 1); webaiosOpen("http://${host("ouvert")}/ouvert"); });
 </script>`;
 
 describe("the UI's network", () => {
@@ -237,7 +237,7 @@ describe("the UI's network", () => {
   async function closeTab(part: string, id: string): Promise<void> {
     const tab = Object.entries((await state(m)).tabs).find(([, o]) => o.url.includes(part))?.[0];
     expect(tab, part).toBeDefined();
-    await dispatch(m, { type: "fermerOnglet", id: tab! });
+    await dispatch(m, { type: "closeTab", id: tab! });
     await expect.poll(() => m.execute(`return !!${widgetDoc(id)}?.body?.firstChild;`), { timeout: 15_000 }).toBe(true);
   }
 
@@ -394,7 +394,7 @@ describe("the UI's network", () => {
       [SFX],
     );
     // The witness: a tab's navigation resolves its name.
-    await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url: `http://temoin.${SFX}:${HTTP}/`, activate: true });
+    await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url: `http://temoin.${SFX}:${HTTP}/`, activate: true });
     await expect.poll(() => net.hits.some((h) => h.label === "temoin"), { timeout: 15_000 }).toBe(true);
     await closeTab("temoin.", "sonde");
     await sleep(3000);
@@ -404,7 +404,7 @@ describe("the UI's network", () => {
   it("the five UI frames are cut before they load", { timeout: 120_000 }, async () => {
     await expect.poll(() => existsSync(path.join(dataDir, "workspace", ".webaios", "mcp.json")), { timeout: 15_000 }).toBe(true);
     await launchAttempt(dataDir);
-    await m.execute(`return (async () => { const store = await ChromeUtils.importESModule("${STORE}").ready; await store.agent.request("sites.agir", { id: "netsite", action: "ouvrir", fenetre: store.state.fenetres[0].id }); })();`);
+    await m.execute(`return (async () => { const store = await ChromeUtils.importESModule("${STORE}").ready; await store.agent.request("sites.act", { id: "netsite", action: "open", window: store.state.windows[0].id }); })();`);
     const frames = () =>
       m.execute(
         `${CUT} const site = ${siteWindowExpr("netsite")}, app = ${appWindowExpr("essai")};
@@ -412,7 +412,7 @@ describe("the UI's network", () => {
                   badge: cut(app?.document.getElementById("webaios-app-badge")), drag: document.getElementById("webaios-sidebar").contentWindow.docShell.windowDraggingAllowed };`,
       );
     const page = (p: string) => ({ dns: false, mail: true, uri: `chrome://browser/content/webaios/${p}` });
-    await expect.poll(frames, { timeout: 20_000 }).toEqual({ sidebar: page("sidebar.html"), agent: page("agent.html"), bar: page("sidebar.html?site=netsite"), badge: page("sidebar.html?pastille=app%3Aessai"), drag: true });
+    await expect.poll(frames, { timeout: 20_000 }).toEqual({ sidebar: page("sidebar.html"), agent: page("agent.html"), bar: page("sidebar.html?site=netsite"), badge: page("sidebar.html?badge=app%3Aessai"), drag: true });
   });
 
   it("the badge and the site bar are cut; their loads are refused", { timeout: 60_000 }, async () => {
@@ -440,7 +440,7 @@ describe("the UI's network", () => {
   // accueil.spec.ts:883
   it("a favicon shows in the tab list, fetched by the tab, never by the UI (the UI has no network)", { timeout: 60_000 }, async () => {
     const refused0 = (await uiRefusals(m)).length;
-    await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url: `http://${host("icone")}/avec-icone`, activate: true });
+    await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url: `http://${host("icone")}/avec-icone`, activate: true });
     let id = "";
     await expect.poll(async () => (id = Object.entries((await state(m)).tabs).find(([, o]) => o.url.includes("/avec-icone"))?.[0] ?? ""), { timeout: 10_000 }).not.toBe("");
     const icon = () =>
@@ -460,20 +460,20 @@ describe("the UI's network", () => {
     const refused0 = (await uiRefusals(m)).length;
     const windowId = (await state(m)).windows[0]!.id;
     const seen = (name: string) => net.hits.filter((h) => h.label === name).map((h) => `${h.method} ${h.path}`);
-    await dispatch(m, { type: "ouvrirOnglet", windowId: windowId, url: `http://${host("tab-page")}/page`, activate: true });
+    await dispatch(m, { type: "openTab", windowId: windowId, url: `http://${host("tab-page")}/page`, activate: true });
     await expect
       .poll(() => seen("tab-page"), { timeout: 15_000 })
       .toEqual(expect.arrayContaining(["GET /page", "GET /s2/witness/img", "GET /s2/witness/fetch", "UPGRADE /s2/witness/ws", "POST /s2/witness/beacon"]));
     await closeTab("tab-page.", "sonde");
     const tcp0 = net.tcp.length;
     const udp0 = net.udp.length;
-    await dispatch(m, { type: "ouvrirOnglet", windowId: windowId, url: `http://${host("tab-rtc")}/rtc`, activate: true });
+    await dispatch(m, { type: "openTab", windowId: windowId, url: `http://${host("tab-rtc")}/rtc`, activate: true });
     const result = await waitFor(m, `const b = gBrowser.selectedBrowser; return b.currentURI.spec.includes("/rtc") && b.contentTitle.startsWith("{") ? b.contentTitle : "";`, (v: string) => v !== "", 20_000);
     expect({ tcp: tcpSince(tcp0) > 0, udp: net.udp.length - udp0 > 0 }, result).toEqual({ tcp: true, udp: true });
     await closeTab("tab-rtc.", "sonde");
     const read = await m.execute<string>(
       `return (async () => { const s = await ChromeUtils.importESModule("${STORE}").ready;
-       try { return (await s.readPage(arguments[0], { profil: null, adressesLocales: true })).titre; } catch (e) { return "ERR " + e; } })();`,
+       try { return (await s.readPage(arguments[0], { profile: null, localAddresses: true })).title; } catch (e) { return "ERR " + e; } })();`,
       [`http://${host("lu")}/page`],
     );
     expect(read).toBe("page");
@@ -487,7 +487,7 @@ describe("the UI's network", () => {
     const hits0 = net.hits.length;
     await m.execute(
       `return (async () => { const store = await ChromeUtils.importESModule("${STORE}").ready;
-       for (const id of ["netsite", "netsite-accueil"]) await store.agent.request("sites.agir", { id, action: "ouvrir", fenetre: store.state.fenetres[0].id }); })();`,
+       for (const id of ["netsite", "netsite-accueil"]) await store.agent.request("sites.act", { id, action: "open", window: store.state.windows[0].id }); })();`,
     );
     await expect
       .poll(() => net.hits.slice(hits0).filter((h) => h.label === "netsite.localhost").map((h) => `${h.method} ${h.path}`), { timeout: 20_000 })
@@ -651,7 +651,7 @@ describe("the UI's network", () => {
   it("a press on a tab's link still warms up its connection", { timeout: 60_000 }, async () => {
     const tcp0 = net.tcp.length;
     const url = `http://${host("tab-link")}/link?h=${encodeURIComponent(`http://tab-md.${SFX}:15366/`)}`;
-    await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url, activate: true });
+    await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url, activate: true });
     await expect.poll(() => net.hits.some((h) => h.label === "tab-link"), { timeout: 15_000 }).toBe(true);
     await waitFor(m, `const b = gBrowser.selectedBrowser; return b.currentURI.spec === ${JSON.stringify(url)} && !b.webProgress.isLoadingDocument;`, (v) => v === true, 15_000);
     await sleep(500);

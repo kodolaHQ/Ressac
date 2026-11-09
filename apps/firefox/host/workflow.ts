@@ -185,7 +185,7 @@ export async function saveCode(paths: SpacePaths, id: string, name: string, text
 
 type ActionContext = { paths: SpacePaths; actionsFolder: string };
 
-/** `action.json` read, and the action's (confined) folder; null: unknown action; `erreur`: unreadable declaration. */
+/** `action.json` read, and the action's (confined) folder; null: unknown action; `error`: unreadable declaration. */
 async function declarationAction(paths: SpacePaths, id: string): Promise<{ declaration: DeclarationAction; folder: string } | { error: string } | null> {
   const folder = await actionFolder(paths, id);
   const a = folder ? await readAction(paths, id) : null;

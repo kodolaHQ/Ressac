@@ -76,14 +76,14 @@ export const BARS = `<!doctype html>
     return e;
   };
   addEventListener("message", (m) => {
-    if (m.data?.type !== "composant") return;
-    const { props, theme, largeur } = m.data;
-    document.body.className = theme === "sombre" ? "sombre" : "";
+    if (m.data?.type !== "component") return;
+    const { props, theme, width } = m.data;
+    document.body.className = theme === "dark" ? "sombre" : "";
     document.getElementById("titre").textContent = props.titre ?? "";
     const valeurs = (Array.isArray(props.valeurs) ? props.valeurs : []).slice(0, 12)
       .map((v) => ({ libelle: String(v?.libelle ?? ""), valeur: Number(v?.valeur) || 0 }));
     const max = Math.max(1, ...valeurs.map((v) => v.valeur));
-    const w = Math.max(200, largeur || 400), h = 24, marge = 110;
+    const w = Math.max(200, width || 400), h = 24, marge = 110;
     const svg = document.getElementById("graphique");
     svg.replaceChildren();
     svg.setAttribute("viewBox", \`0 0 \${w} \${valeurs.length * h}\`);
@@ -96,7 +96,7 @@ export const BARS = `<!doctype html>
         el("text", { x: marge + long + 6, y: i * h + 15, fill: "currentColor" }, String(v.valeur)),
       );
     });
-    parent.postMessage({ type: "hauteur", px: document.documentElement.scrollHeight }, "*");
+    parent.postMessage({ type: "height", px: document.documentElement.scrollHeight }, "*");
   });
 </script>
 `;
@@ -143,7 +143,7 @@ export async function writeActionWithResult(
 /** Opens action `id`'s page in a tab of the first window, once the kernel serves it: nothing is launched. */
 export async function openActionPage(m: Marionette, id: string, name: string, run = EXECUTION): Promise<void> {
   await waitUi(m, "return ui.webaios.actions.page(arguments[0], arguments[1]).then((p) => p !== null);", [id, run], 30_000);
-  await dispatch(m, { type: "ouvrirAction", windowId: (await state(m)).windows[0]!.id, id, name: name, run });
+  await dispatch(m, { type: "openAction", windowId: (await state(m)).windows[0]!.id, id, name: name, run });
   await waitUi(m, `return !!doc.querySelector('[data-testid="rendu-page"]');`, [], 30_000);
 }
 
@@ -152,12 +152,12 @@ export const WITHOUT_KERNEL = "Le service des actions ne r√©pond pas (agent arr√
 
 /** Waits until the kernel serves the actions: an unknown action is then refused as such. */
 export async function waitKernel(m: Marionette): Promise<void> {
-  await waitUi(m, "return ui.webaios.actions.lancer('inconnue-du-test', null).then((r) => r.erreur !== arguments[0]);", [WITHOUT_KERNEL], 30_000);
+  await waitUi(m, "return ui.webaios.actions.launch('inconnue-du-test', null).then((r) => r.erreur !== arguments[0]);", [WITHOUT_KERNEL], 30_000);
 }
 
 /** Opens the action's page (its last result, or `execution`) without launching anything. */
 export async function openAction(m: Marionette, id: string, name: string, run?: string): Promise<void> {
-  await dispatch(m, { type: "ouvrirAction", windowId: (await state(m)).windows[0]!.id, id, name: name, ...(run ? { run } : {}) });
+  await dispatch(m, { type: "openAction", windowId: (await state(m)).windows[0]!.id, id, name: name, ...(run ? { run } : {}) });
   await waitUi(m, `return !!doc.querySelector('[data-testid="page-action"]');`, [], 10_000);
 }
 
@@ -216,7 +216,7 @@ export async function writeResult(dataDir: string, id: string, run: string, star
   );
   await writeFile(
     path.join(data, "results", `${run}.json`),
-    JSON.stringify({ version: 1, execution: run, input: input, results: { title: title }, plan: { blocks: [{ component: "title", props: { text: title } }] }, fallback: false, empty: false }),
+    JSON.stringify({ version: 1, run: run, input: input, results: { title: title }, plan: { blocks: [{ component: "title", props: { text: title } }] }, fallback: false, empty: false }),
   );
 }
 

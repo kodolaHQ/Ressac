@@ -33,7 +33,7 @@ const shown = () => waitFor(m, "return !document.getElementById('webaios-agent')
 const hidden = () => waitFor(m, "return document.getElementById('webaios-agent').hidden", (v) => v === true);
 /** Opens a tab and waits for its page; the panel the home page opened closes. */
 async function openTab(path: string): Promise<void> {
-  await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url: `${server.url}${path}` });
+  await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url: `${server.url}${path}` });
   await waitFor(
     m,
     `return gBrowser.selectedBrowser.currentURI.spec.endsWith(${JSON.stringify(path)}) && !gBrowser.selectedBrowser.webProgress.isLoadingDocument`,
@@ -66,7 +66,7 @@ const retryButton = () => waitUi(m, "return [...doc.querySelectorAll('button')].
 
 it("without Docker, browsing works", async () => {
   await launch({ FAKE_DOCKER_ABSENT: "1" });
-  await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url: `${server.url}/a.html` });
+  await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url: `${server.url}/a.html` });
   await waitFor(m, "return gBrowser.selectedBrowser.contentTitle", (v) => v === "Page A");
 });
 
@@ -374,7 +374,7 @@ describe("one agent session per window", () => {
     const active = () => m.execute<string>(`return (async () => (await ChromeUtils.importESModule("${STORE}").ready).windows.active())()`);
     const focus = async (h: string) => {
       await m.command("WebDriver:SwitchToWindow", { handle: h, focus: true });
-      const id = await m.execute<string>("return window.webaiosWindow.fenetreId");
+      const id = await m.execute<string>("return window.webaiosWindow.windowId");
       for (const end = Date.now() + 10_000; (await active()) !== id; await new Promise((r) => setTimeout(r, 100)))
         if (Date.now() > end) throw new Error("the window did not become active");
       return id;
@@ -383,14 +383,14 @@ describe("one agent session per window", () => {
     const b = await inWindow(m, second, async () => {
       await shown();
       await terminalShows("faux agent prêt>");
-      return m.execute<string>("return window.webaiosWindow.fenetreId");
+      return m.execute<string>("return window.webaiosWindow.windowId");
     });
-    await dispatch(m, { type: "ouvrirOnglet", windowId: b, url: `${server.url}/texte.html` });
-    await dispatch(m, { type: "basculerPanneauAgent", windowId: b });
+    await dispatch(m, { type: "openTab", windowId: b, url: `${server.url}/texte.html` });
+    await dispatch(m, { type: "toggleAgentPanel", windowId: b });
     // A, focused: a tab in a private space; the private mirror is computed while A is active.
     const idA = await focus(a);
-    const s = await dispatch(m, { type: "creerEspace", name: "Secret", icon: "🔒", private: true, profile: "defaut", windowId: idA });
-    await dispatch(m, { type: "ouvrirOnglet", windowId: idA, url: `${server.url}/a.html`, spaceId: s.spaces.at(-1)!.id });
+    const s = await dispatch(m, { type: "createSpace", name: "Secret", icon: "🔒", private: true, profile: "default", windowId: idA });
+    await dispatch(m, { type: "openTab", windowId: idA, url: `${server.url}/a.html`, spaceId: s.spaces.at(-1)!.id });
     // Both pages loaded: no late title change may refresh the mirror after the focus.
     for (const end = Date.now() + 10_000; ; await new Promise((r) => setTimeout(r, 100))) {
       const titles = Object.values((await state(m)).tabs).map((o) => o.title).sort();

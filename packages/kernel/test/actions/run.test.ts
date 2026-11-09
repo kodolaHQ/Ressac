@@ -288,7 +288,7 @@ describe("runAction", () => {
     const b = await prepare("gitlab", GITLAB, CODE_GITLAB, { suspended: ["https://gitlab.com/tickets"] });
     await gitlabGrant(b);
     const end = runAction(options(b, "gitlab"));
-    await waitUntil(() => b.bridge.calls.some((a) => a.method === "lirePageInvisible"));
+    await waitUntil(() => b.bridge.calls.some((a) => a.method === "readPageInvisible"));
     await removeGrant(b.actionsFolder, "gitlab");
     b.bridge.release("https://gitlab.com/tickets");
     const r = await end;
@@ -303,7 +303,7 @@ describe("runAction", () => {
       suspended: ["https://gitlab.com/tickets"],
     });
     const end = runAction(options(b, "public"));
-    await waitUntil(() => b.bridge.calls.some((a) => a.method === "lirePageInvisible"));
+    await waitUntil(() => b.bridge.calls.some((a) => a.method === "readPageInvisible"));
     await rm(b.folder, { recursive: true, force: true });
     b.bridge.release("https://gitlab.com/tickets");
     const r = await end;
@@ -358,7 +358,7 @@ describe("runAction", () => {
     });
     const stop = new AbortController();
     const end = runAction(options(b, "public", { signal: stop.signal }));
-    await waitUntil(() => b.bridge.calls.some((a) => a.method === "lirePageInvisible"));
+    await waitUntil(() => b.bridge.calls.some((a) => a.method === "readPageInvisible"));
     stop.abort();
     const r = await end;
     expect(r).toMatchObject({ status: "interrupted", error: ACTION_STOPPED, kernelError: true });
@@ -387,7 +387,7 @@ describe("runAction", () => {
     });
     const stop = new AbortController();
     const end = runAction(options(b, "public", { signal: stop.signal, interrupted: () => true }));
-    await waitUntil(() => b.bridge.calls.some((a) => a.method === "lirePageInvisible"));
+    await waitUntil(() => b.bridge.calls.some((a) => a.method === "readPageInvisible"));
     stop.abort();
     const r = await end;
     expect(r.status).toBe("interrupted");

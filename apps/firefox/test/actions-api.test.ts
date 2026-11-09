@@ -60,7 +60,7 @@ function setup(answers: Record<string, (p: any) => unknown> = {}) {
     });
   const turnPrivate = (f = F) => {
     const e = state.spaces.find((x) => x.id === state.windows.find((w) => w.id === f)!.activeSpace)!;
-    state = apply(state, { type: "reglerEspace", id: e.id, name: e.name, icon: e.icon, private: true, profile: e.profile }, genId);
+    state = apply(state, { type: "updateSpace", id: e.id, name: e.name, icon: e.icon, private: true, profile: e.profile }, genId);
   };
   return { F, api, dispatched, turnPrivate, media, unload: () => unloads.forEach((f) => f()), ...fake, state: () => state, set: (s: BrowserState) => (state = s), genId };
 }
@@ -77,7 +77,7 @@ describe("activeSpacePrivate", () => {
     cases.push([withoutSpace, F]);
     turnPrivate();
     cases.push([state(), F]);
-    cases.push([apply(state(), { type: "creerEspace", name: "B", icon: "🅱", private: false, profile: "defaut", windowId: F }, genId), F]);
+    cases.push([apply(state(), { type: "createSpace", name: "B", icon: "🅱", private: false, profile: "default", windowId: F }, genId), F]);
     const got = cases.map(([s, f]) => activeSpacePrivate(s, f));
     expect(got).toEqual([false, true, true, true, false]);
   });
@@ -86,7 +86,7 @@ describe("activeSpacePrivate", () => {
 describe("createActionsApi", () => {
   // actions.test.ts:381
   it("every actions call is refused in a private space", async () => {
-    const { F, api, dispatched, calls, turnPrivate, emit } = setup({ "actions.liste": () => [{ id: "gitlab" }], "actions.lienPermis": () => true, "actions.nom": () => "GitLab" });
+    const { F, api, dispatched, calls, turnPrivate, emit } = setup({ "actions.list": () => [{ id: "gitlab" }], "actions.linkAllowed": () => true, "actions.name": () => "GitLab" });
     turnPrivate();
     dispatched.length = 0;
     const a = api(F);
@@ -101,9 +101,9 @@ describe("createActionsApi", () => {
     expect(await a.direct()).toEqual(NONE);
     await a.openLink("gitlab", "2026-10-31T08-00-00-000Z", "https://a.test/");
     expect(await a.profilesForGrant()).toEqual([]);
-    expect(await a.grant({ id: "gitlab", profile: "defaut", account: ["gitlab.com"], public: [] })).toEqual({ ok: false, error: ACTIONS_IN_PRIVATE_SPACE });
+    expect(await a.grant({ id: "gitlab", profile: "default", account: ["gitlab.com"], public: [] })).toEqual({ ok: false, error: ACTIONS_IN_PRIVATE_SPACE });
     await a.viewWorkflow("gitlab");
-    emit("actions.direct", { running: [{ action: "gitlab" }], waiting: [] });
+    emit("actions.live", { running: [{ action: "gitlab" }], waiting: [] });
     expect(calls).toEqual([]);
     expect(dispatched).toEqual([]);
     expect(direct).not.toHaveBeenCalled();
@@ -112,7 +112,7 @@ describe("createActionsApi", () => {
   // actions.test.ts:437
   it("ouvrirLien opens an active tab for an address of the results, one per second at most", async () => {
     const allowed = new Set(["https://gitlab.com/1", "https://gitlab.com/2"]);
-    const { F, api, dispatched } = setup({ "actions.lienPermis": (p) => allowed.has(p.url) });
+    const { F, api, dispatched } = setup({ "actions.linkAllowed": (p) => allowed.has(p.url) });
     let now = 10_000;
     vi.spyOn(Date, "now").mockImplementation(() => now);
     const a = api(F);
@@ -124,14 +124,14 @@ describe("createActionsApi", () => {
     now += 1000;
     await a.openLink("gitlab", ex, "https://gitlab.com/2");
     expect(dispatched).toEqual([
-      { type: "ouvrirOnglet", windowId: F, url: "https://gitlab.com/1", activate: true },
-      { type: "ouvrirOnglet", windowId: F, url: "https://gitlab.com/2", activate: true },
+      { type: "openTab", windowId: F, url: "https://gitlab.com/1", activate: true },
+      { type: "openTab", windowId: F, url: "https://gitlab.com/2", activate: true },
     ]);
   });
 
   it("two links within a second open one tab", async () => {
     let answer: (v: boolean) => void = () => {};
-    const { F, api, dispatched, calls } = setup({ "actions.lienPermis": () => new Promise<boolean>((ok) => (answer = ok)) });
+    const { F, api, dispatched, calls } = setup({ "actions.linkAllowed": () => new Promise<boolean>((ok) => (answer = ok)) });
     const a = api(F);
     const ex = "2026-10-31T08-00-00-000Z";
     // The second click comes while the host still checks the first link.
@@ -140,24 +140,24 @@ describe("createActionsApi", () => {
     answer(true);
     await Promise.all([first, second]);
     expect(dispatched.map((d) => (d as { url: string }).url)).toEqual(["https://gitlab.com/1"]);
-    expect(calls.filter((c) => c.method === "actions.lienPermis")).toHaveLength(1);
+    expect(calls.filter((c) => c.method === "actions.linkAllowed")).toHaveLength(1);
   });
 
   it("a link absent from the results opens nothing", async () => {
-    const { F, api, dispatched, calls } = setup({ "actions.lienPermis": (p) => p.url === "https://gitlab.com/1" });
+    const { F, api, dispatched, calls } = setup({ "actions.linkAllowed": (p) => p.url === "https://gitlab.com/1" });
     const a = api(F);
     const ex = "2026-10-31T08-00-00-000Z";
     await a.openLink("gitlab", ex, "https://gitlab.com/3");
-    expect(calls).toEqual([{ method: "actions.lienPermis", params: { id: "gitlab", run: ex, url: "https://gitlab.com/3" } }]);
+    expect(calls).toEqual([{ method: "actions.linkAllowed", params: { id: "gitlab", run: ex, url: "https://gitlab.com/3" } }]);
     expect(dispatched).toEqual([]);
     // A refused link does not use up the second: an allowed one right after opens.
     await a.openLink("gitlab", ex, "https://gitlab.com/1");
-    expect(dispatched).toEqual([{ type: "ouvrirOnglet", windowId: F, url: "https://gitlab.com/1", activate: true }]);
+    expect(dispatched).toEqual([{ type: "openTab", windowId: F, url: "https://gitlab.com/1", activate: true }]);
   });
 
   // actions.test.ts:452
   it("voirWorkflow opens the builder on the action; lancer and arreter go to the kernel", async () => {
-    const { F, api, calls, state: state } = setup({ "actions.nom": (p) => (p.id === "gitlab" ? "GitLab" : null), "actions.lancer": () => ({ status: "succeeded", run: "x" }) });
+    const { F, api, calls, state: state } = setup({ "actions.name": (p) => (p.id === "gitlab" ? "GitLab" : null), "actions.launch": () => ({ status: "succeeded", run: "x" }) });
     const a = api(F);
     await a.viewWorkflow("gitlab");
     expect(Object.values(state().tabs)[0]).toMatchObject({ url: "webaios://workflow/action/gitlab", title: "Workflow — GitLab" });
@@ -165,9 +165,9 @@ describe("createActionsApi", () => {
     expect(Object.values(state().tabs)).toHaveLength(1);
     expect(await a.launch("leboncoin", "clio")).toEqual({ status: "succeeded", run: "x" });
     a.stop("leboncoin");
-    expect(calls.filter((c) => c.method === "actions.lancer" || c.method === "actions.arreter")).toEqual([
-      { method: "actions.lancer", params: { id: "leboncoin", input: "clio" } },
-      { method: "actions.arreter", params: { id: "leboncoin" } },
+    expect(calls.filter((c) => c.method === "actions.launch" || c.method === "actions.stop")).toEqual([
+      { method: "actions.launch", params: { id: "leboncoin", input: "clio" } },
+      { method: "actions.stop", params: { id: "leboncoin" } },
     ]);
   });
 
@@ -181,29 +181,29 @@ describe("createActionsApi", () => {
   });
 
   it("accorder never uses a private space's profile, read again at the grant", async () => {
-    const { F, api, calls, state: state, set, genId } = setup({ "actions.accorder": () => ({ ok: true }) });
-    set(apply(state(), { type: "creerEspace", name: "Banque", icon: "🏦", private: true, profile: "nouveau", windowId: F }, genId));
+    const { F, api, calls, state: state, set, genId } = setup({ "actions.grant": () => ({ ok: true }) });
+    set(apply(state(), { type: "createSpace", name: "Banque", icon: "🏦", private: true, profile: "nouveau", windowId: F }, genId));
     const bank = state().spaces.find((e) => e.private)!.profile;
-    set(apply(state(), { type: "activerEspace", windowId: F, id: state().spaces[0]!.id }, genId));
+    set(apply(state(), { type: "activateSpace", windowId: F, id: state().spaces[0]!.id }, genId));
     const a = api(F);
     expect(await a.grant({ id: "gitlab", profile: bank, account: ["gitlab.com"], public: [] })).toEqual({ ok: false, error: "Ce profil ne peut pas servir à un accord" });
     expect(calls).toEqual([]);
-    expect(await a.grant({ id: "gitlab", profile: "defaut", account: ["gitlab.com"], public: [] })).toEqual({ ok: true });
-    expect((await a.profilesForGrant()).map((p) => p.id)).toEqual(["defaut"]);
+    expect(await a.grant({ id: "gitlab", profile: "default", account: ["gitlab.com"], public: [] })).toEqual({ ok: true });
+    expect((await a.profilesForGrant()).map((p) => p.id)).toEqual(["default"]);
   });
 
   it("a window turned private while the host answers gets nothing and dispatches nothing", async () => {
     const running = { running: [{ action: "gitlab" }], waiting: [] };
     const cases = [
-      ["actions.liste", [{ id: "gitlab" }], (b: Api) => b.list(), []],
+      ["actions.list", [{ id: "gitlab" }], (b: Api) => b.list(), []],
       ["actions.page", { run: "x" }, (b: Api) => b.page("gitlab", null), null],
-      ["actions.executions", [{ id: "x" }], (b: Api) => b.runs("gitlab"), []],
-      ["actions.execution", { id: "x" }, (b: Api) => b.run("gitlab", "x"), null],
-      ["actions.direct", running, (b: Api) => b.direct(), NONE],
-      ["actions.lancer", { status: "succeeded", run: "x" }, (b: Api) => b.launch("gitlab", null), { status: "invalid", error: ACTIONS_IN_PRIVATE_SPACE }],
-      ["actions.nom", "GitLab", (b: Api) => b.viewWorkflow("gitlab"), undefined],
-      ["actions.lienPermis", true, (b: Api) => b.openLink("gitlab", "x", "https://gitlab.com/1"), undefined],
-      ["actions.imagePermise", true, (b: Api) => b.image("gitlab", "x", "https://img.test/a.png"), null],
+      ["actions.runs", [{ id: "x" }], (b: Api) => b.runs("gitlab"), []],
+      ["actions.run", { id: "x" }, (b: Api) => b.run("gitlab", "x"), null],
+      ["actions.live", running, (b: Api) => b.direct(), NONE],
+      ["actions.launch", { status: "succeeded", run: "x" }, (b: Api) => b.launch("gitlab", null), { status: "invalid", error: ACTIONS_IN_PRIVATE_SPACE }],
+      ["actions.name", "GitLab", (b: Api) => b.viewWorkflow("gitlab"), undefined],
+      ["actions.linkAllowed", true, (b: Api) => b.openLink("gitlab", "x", "https://gitlab.com/1"), undefined],
+      ["actions.imageAllowed", true, (b: Api) => b.image("gitlab", "x", "https://img.test/a.png"), null],
     ] as const;
     for (const [method, value, call, empty] of cases) {
       let turn = () => {};
@@ -220,14 +220,14 @@ describe("createActionsApi", () => {
   it("a private window gets no direct feed, list, page or image", async () => {
     const running = { running: [{ action: "gitlab", start: START, input: null, attempt: false, step: "workflow", blocks: {} }], waiting: [] };
     const { F, api, calls, emit, state: state, set, genId, media } = setup({
-      "actions.liste": () => [{ id: "gitlab" }],
+      "actions.list": () => [{ id: "gitlab" }],
       "actions.page": () => ({ run: "x" }),
-      "actions.direct": () => running,
-      "actions.imagePermise": () => true,
+      "actions.live": () => running,
+      "actions.imageAllowed": () => true,
     });
-    set(apply(state(), { type: "ouvrirFenetre" }, genId));
+    set(apply(state(), { type: "openWindow" }, genId));
     const P = state().windows[1]!.id;
-    set(apply(state(), { type: "creerEspace", name: "Banque", icon: "🏦", private: true, profile: "nouveau", windowId: P }, genId));
+    set(apply(state(), { type: "createSpace", name: "Banque", icon: "🏦", private: true, profile: "nouveau", windowId: P }, genId));
     expect(activeSpacePrivate(state(), F)).toBe(false);
     expect(activeSpacePrivate(state(), P)).toBe(true);
     const pub = api(F);
@@ -236,12 +236,12 @@ describe("createActionsApi", () => {
     const seenPriv = vi.fn();
     pub.onLive(seenPub);
     priv.onLive(seenPriv);
-    emit("actions.direct", running);
+    emit("actions.live", running);
     expect(seenPub).toHaveBeenCalledWith(running);
     expect(seenPriv).not.toHaveBeenCalled();
     // A host that started again: the feed is read again, only for the public window.
     emit(HOST_EXITED, { message: "stop" });
-    emit("acces");
+    emit("access");
     await vi.waitFor(() => expect(seenPub).toHaveBeenCalledTimes(2));
     expect(seenPriv).not.toHaveBeenCalled();
     calls.length = 0;
@@ -259,11 +259,11 @@ describe("createActionsApi", () => {
 
   it("image: the host is asked first; a refusal or a stopped host loads nothing; a window turned private during the load gets null", async () => {
     let allowed = false;
-    const s = setup({ "actions.imagePermise": () => allowed });
+    const s = setup({ "actions.imageAllowed": () => allowed });
     const b = s.api(s.F);
     // An address absent from the results (the host refuses): no load.
     expect(await b.image("gitlab", "x", "https://img.test/absent.png")).toBeNull();
-    expect(s.calls).toEqual([{ method: "actions.imagePermise", params: { id: "gitlab", run: "x", url: "https://img.test/absent.png" } }]);
+    expect(s.calls).toEqual([{ method: "actions.imageAllowed", params: { id: "gitlab", run: "x", url: "https://img.test/absent.png" } }]);
     expect(s.media.image).not.toHaveBeenCalled();
     allowed = true;
     expect(await b.image("gitlab", "x", "https://img.test/a.png")).toBe("data:image/png;base64,");
@@ -280,13 +280,13 @@ describe("createActionsApi", () => {
     const cb = vi.fn();
     const off = api(F).onChange(cb);
     emit("actions.change");
-    emit("accueil.change");
+    emit("home.change");
     expect(cb).toHaveBeenCalledTimes(2);
     // The page keeps its last read while no host runs; the first acces after the exit reads again, later ones do not.
     emit(HOST_EXITED, { message: "stop" });
     expect(cb).toHaveBeenCalledTimes(2);
-    emit("acces");
-    emit("acces");
+    emit("access");
+    emit("access");
     expect(cb).toHaveBeenCalledTimes(3);
     off();
     emit("actions.change");
@@ -299,7 +299,7 @@ describe("createActionsApi", () => {
       if (!up) throw new Error("Le noyau de l'agent s'est arrêté.");
       return v;
     };
-    const { F, api, turnPrivate } = setup({ "actions.liste": answer([{ id: "gitlab" }]), "actions.page": answer({ run: "x" }), "actions.executions": answer([{ id: "x" }]), "actions.direct": answer({ running: [{ action: "gitlab" }], waiting: [] }) });
+    const { F, api, turnPrivate } = setup({ "actions.list": answer([{ id: "gitlab" }]), "actions.page": answer({ run: "x" }), "actions.runs": answer([{ id: "x" }]), "actions.live": answer({ running: [{ action: "gitlab" }], waiting: [] }) });
     const a = api(F);
     await Promise.all([a.list(), a.page("gitlab", null), a.runs("gitlab"), a.direct()]);
     up = false;
@@ -317,11 +317,11 @@ describe("createActionsApi", () => {
   it("a page opened while the host is down reads again on the next acces", async () => {
     let up = false;
     const { F, api, emit } = setup({
-      "actions.liste": () => {
+      "actions.list": () => {
         if (!up) throw new Error("Le noyau de l'agent s'est arrêté.");
         return [{ id: "gitlab" }];
       },
-      "actions.direct": () => NONE,
+      "actions.live": () => NONE,
     });
     const a = api(F);
     const change = vi.fn();
@@ -331,12 +331,12 @@ describe("createActionsApi", () => {
     // The page's first read: no host answers, and this API saw no exit.
     expect(await a.list()).toEqual([]);
     up = true;
-    emit("acces");
+    emit("access");
     expect(change).toHaveBeenCalledTimes(1);
     await vi.waitFor(() => expect(direct).toHaveBeenCalledTimes(1));
     expect(await a.list()).toEqual([{ id: "gitlab" }]);
     // A later acces, with no failure in between: nothing more.
-    emit("acces");
+    emit("access");
     expect(change).toHaveBeenCalledTimes(1);
   });
 
@@ -351,19 +351,19 @@ describe("createActionsApi", () => {
     const read = a.page("annonces", null);
     await vi.waitFor(() => expect(deny).toBeTypeOf("function"));
     deny(new Error("Le service des actions ne répond pas (agent arrêté ?)"));
-    emit("acces");
+    emit("access");
     expect(await read).toBeNull();
     expect(change).toHaveBeenCalledTimes(1);
   });
 
   it("acces without a preceding exit does not read again", async () => {
-    const { F, api, emit, calls } = setup({ "actions.direct": () => NONE });
+    const { F, api, emit, calls } = setup({ "actions.live": () => NONE });
     const change = vi.fn();
     const direct = vi.fn();
     const a = api(F);
     a.onChange(change);
     a.onLive(direct);
-    emit("acces");
+    emit("access");
     await new Promise((r) => setTimeout(r, 0));
     expect(change).not.toHaveBeenCalled();
     expect(direct).not.toHaveBeenCalled();
@@ -372,24 +372,24 @@ describe("createActionsApi", () => {
 
   it("accorder: a stopped host is a missing kernel; a window turned private meanwhile is refused", async () => {
     const stopped = setup();
-    expect(await stopped.api(stopped.F).grant({ id: "gitlab", profile: "defaut", account: ["gitlab.com"], public: [] })).toEqual({
+    expect(await stopped.api(stopped.F).grant({ id: "gitlab", profile: "default", account: ["gitlab.com"], public: [] })).toEqual({
       ok: false,
       error: "Le service des actions ne répond pas (agent arrêté ?)",
     });
     let turn = () => {};
-    const s = setup({ "actions.accorder": () => (turn(), { ok: true }) });
+    const s = setup({ "actions.grant": () => (turn(), { ok: true }) });
     turn = () => s.turnPrivate();
-    expect(await s.api(s.F).grant({ id: "gitlab", profile: "defaut", account: ["gitlab.com"], public: [] })).toEqual({ ok: false, error: ACTIONS_IN_PRIVATE_SPACE });
+    expect(await s.api(s.F).grant({ id: "gitlab", profile: "default", account: ["gitlab.com"], public: [] })).toEqual({ ok: false, error: ACTIONS_IN_PRIVATE_SPACE });
   });
   // Review Focus 1
   it("a window turned private while the host reads opens and launches nothing", async () => {
     let turn = () => {};
-    const s = setup({ "actions.preparer": () => (turn(), { ok: true, name: "GitLab", launch: true }), "actions.lancer": () => ({ status: "succeeded", run: "x" }) });
+    const s = setup({ "actions.prepare": () => (turn(), { ok: true, name: "GitLab", launch: true }), "actions.launch": () => ({ status: "succeeded", run: "x" }) });
     turn = () => s.turnPrivate();
     s.dispatched.length = 0;
     expect(await s.api(s.F).open("gitlab", null)).toEqual({ ok: false, error: ACTIONS_IN_PRIVATE_SPACE });
     await new Promise((r) => setTimeout(r, 0));
-    expect(s.calls.map((c) => c.method)).toEqual(["actions.preparer"]);
+    expect(s.calls.map((c) => c.method)).toEqual(["actions.prepare"]);
     expect(s.dispatched).toEqual([]);
   });
 
@@ -400,11 +400,11 @@ describe("createActionsApi", () => {
     if (!a) return { ok: false, error: "Action inconnue" };
     return { ok: true, name: a[0], launch: !running.includes(p.id) && !(a[1] && !p.input?.trim()) };
   };
-  const launched = (calls: { method: string; params: unknown }[]) => calls.filter((c) => c.method === "actions.lancer").map((c) => c.params);
+  const launched = (calls: { method: string; params: unknown }[]) => calls.filter((c) => c.method === "actions.launch").map((c) => c.params);
 
   // actions.test.ts:402
   it("ouvrir opens the action's page titled with its name, then launches it", async () => {
-    const { F, api, calls, state: state } = setup({ "actions.preparer": prepare(), "actions.lancer": () => ({ status: "succeeded", run: "x" }) });
+    const { F, api, calls, state: state } = setup({ "actions.prepare": prepare(), "actions.launch": () => ({ status: "succeeded", run: "x" }) });
     const a = api(F);
     expect(await a.open("gitlab", null)).toEqual({ ok: true });
     const tabs = Object.values(state().tabs);
@@ -417,7 +417,7 @@ describe("createActionsApi", () => {
 
   // actions.test.ts:413
   it("ouvrir without the required input opens the page and launches nothing; an unknown action is refused", async () => {
-    const { F, api, calls, state: state } = setup({ "actions.preparer": prepare() });
+    const { F, api, calls, state: state } = setup({ "actions.prepare": prepare() });
     const a = api(F);
     expect(await a.open("leboncoin", null)).toEqual({ ok: true });
     expect(await a.open("leboncoin", "  ")).toEqual({ ok: true });
@@ -428,12 +428,12 @@ describe("createActionsApi", () => {
 
   // actions.test.ts:423
   it("ouvrir on a running action opens its page and launches nothing", async () => {
-    const { F, api, calls, state: state, set, genId } = setup({ "actions.preparer": prepare(["gitlab"]) });
+    const { F, api, calls, state: state, set, genId } = setup({ "actions.prepare": prepare(["gitlab"]) });
     const a = api(F);
     expect(await a.open("gitlab", null)).toEqual({ ok: true });
     const page = Object.values(state().tabs)[0]!;
     // Another tab comes first; opening again goes back to the action's page.
-    set(apply(state(), { type: "ouvrirOnglet", windowId: F, url: "https://a.test/" }, genId));
+    set(apply(state(), { type: "openTab", windowId: F, url: "https://a.test/" }, genId));
     expect(await a.open("gitlab", null)).toEqual({ ok: true });
     expect(Object.values(state().tabs).filter((o) => o.url.startsWith("webaios://action/"))).toHaveLength(1);
     expect(state().windows[0]!.active[state().windows[0]!.activeSpace]).toBe(page.id);
@@ -445,14 +445,14 @@ describe("createActionsApi", () => {
     expect(await stopped.api(stopped.F).open("gitlab", null)).toEqual({ ok: false, error: "Le service des actions ne répond pas (agent arrêté ?)" });
     expect(stopped.dispatched).toEqual([]);
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
-    const s = setup({ "actions.preparer": prepare() });
+    const s = setup({ "actions.prepare": prepare() });
     const a = s.api(s.F);
     const change = vi.fn();
     a.onChange(change);
     expect(await a.open("gitlab", null)).toEqual({ ok: true });
     await vi.waitFor(() => expect(error).toHaveBeenCalled());
     // The host did not answer the launch: its next start reads the page again.
-    s.emit("acces");
+    s.emit("access");
     expect(change).toHaveBeenCalledTimes(1);
   });
 
@@ -464,10 +464,10 @@ describe("createActionsApi", () => {
     };
     const { F, api, calls, turnPrivate } = setup({
       "actions.page": answer({ run: "x" }),
-      "actions.executions": answer([{ id: "x" }]),
-      "actions.liste": answer([{ id: "gitlab" }]),
-      "actions.refuserAccord": answer(undefined),
-      "actions.supprimer": answer({ ok: true }),
+      "actions.runs": answer([{ id: "x" }]),
+      "actions.list": answer([{ id: "gitlab" }]),
+      "actions.denyGrant": answer(undefined),
+      "actions.delete": answer({ ok: true }),
     });
     const a = api(F);
     await Promise.all([a.page("gitlab", null), a.runs("gitlab"), a.list()]);
@@ -482,7 +482,7 @@ describe("createActionsApi", () => {
     up = false;
     expect(await a.list()).toEqual([]);
     expect(await a.supprimer("gitlab")).toEqual({ ok: false, error: "Le service des actions ne répond pas (agent arrêté ?)" });
-    expect(calls.filter((c) => c.method === "actions.refuserAccord" || c.method === "actions.supprimer").map((c) => c.params)).toEqual([{ id: "gitlab" }, { id: "gitlab" }, { id: "gitlab" }]);
+    expect(calls.filter((c) => c.method === "actions.denyGrant" || c.method === "actions.delete").map((c) => c.params)).toEqual([{ id: "gitlab" }, { id: "gitlab" }, { id: "gitlab" }]);
     calls.length = 0;
     turnPrivate();
     await a.denyGrant("gitlab");

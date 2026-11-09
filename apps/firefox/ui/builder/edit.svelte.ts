@@ -9,8 +9,8 @@ import { forgetRunChoices } from "./executions.svelte";
 type Position = { x: number; y: number };
 export type Validation = { ok: true } | { ok: false; error: string; block?: string };
 export type SaveState = "enregistre" | "en-cours" | { invalid: string; block?: string } | { error: string };
-/** `illisible`: `workflow.json` is not readable at opening (truncated JSON…); `introuvable`: neither widget nor harvest. */
-export type Load = "chargement" | "pret" | "introuvable" | { unreadable: string };
+/** `unreadable`: `workflow.json` is not readable at opening (truncated JSON…); `not-found`: neither widget nor harvest. */
+export type Load = "loading" | "ready" | "not-found" | { unreadable: string };
 /** Reading and writing the workflow, addressed by the workflow's key (`targetKey`). */
 export type Depot = {
   read(key: string): ReturnType<ApiWebaios["workflow"]["read"]>;
@@ -27,7 +27,7 @@ const sameJson = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringif
 
 /**
  * The editing state of a widget's workflow in this window: draft, history, validation, saving. Only a gesture from
- * the user goes through `modifier` (and so saves): opening, re-reading, rearranging or selecting never write.
+ * the user goes through `edit` (and so saves): opening, re-reading, rearranging or selecting never write.
  */
 export class Edit {
   draft = $state.raw<Draft | null>(null);
@@ -39,7 +39,7 @@ export class Edit {
   banner = $state<null | "proposer" | "illisible">(null);
   /** Displayed positions: the draft's, or the automatic layout of a workflow that has none. */
   positions = $state.raw<Record<string, Position>>({});
-  loading = $state.raw<Load>("chargement");
+  loading = $state.raw<Load>("loading");
   widget = $state.raw<NonNullable<WorkflowEdit["widget"]> | null>(null);
   /** What the action whose workflow this is declares; null for a widget. */
   action = $state.raw<NonNullable<WorkflowEdit["action"]> | null>(null);
@@ -65,14 +65,14 @@ export class Edit {
     private readonly repo: Depot,
   ) {}
 
-  /** First read; afterwards, `relire`. */
+  /** First read; afterwards, `review`. */
   async open(): Promise<void> {
-    if (this.loading !== "chargement") return this.review();
+    if (this.loading !== "loading") return this.review();
     const n = ++this.read;
     const l = await this.repo.read(this.id);
     if (n !== this.read) return;
     if (!l) {
-      this.loading = "introuvable";
+      this.loading = "not-found";
       return;
     }
     this.load(l);
@@ -92,7 +92,7 @@ export class Edit {
     this.lastKnown = disk;
     this.positions = shownPositions(disk, null);
     this.adoptRead(disk, l);
-    this.loading = "pret";
+    this.loading = "ready";
   }
 
   /** Shows `disque` as read (validation and warnings of the disk); writes nothing. */
@@ -117,8 +117,8 @@ export class Edit {
     if (!l) return;
     this.widget = l.widget ?? null;
     this.action = l.action ?? null;
-    if (this.loading !== "pret" || !this.draft || !this.history) {
-      this.loading = "chargement";
+    if (this.loading !== "ready" || !this.draft || !this.history) {
+      this.loading = "loading";
       this.load(l);
       return;
     }
@@ -287,7 +287,7 @@ export class Edit {
   }
 
   /**
-   * `historique`: return to a past state; without a layout, it takes the automatic layout again (not the displayed
+   * `history`: return to a past state; without a layout, it takes the automatic layout again (not the displayed
    * positions, which would keep the undone move).
    */
   private apply(b: Draft, hist = false): void {

@@ -122,8 +122,8 @@ describe("profile containers", () => {
       await m.setContext("chrome");
       await waitReady(m);
       const windowId = (await state(m)).windows[0]!.id;
-      await dispatch(m, { type: "creerEspace", name: "B", icon: "🅱", private: false, profile: "nouveau", windowId: windowId });
-      await dispatch(m, { type: "ouvrirOnglet", windowId: windowId, url: `${server.url}/a.html` });
+      await dispatch(m, { type: "createSpace", name: "B", icon: "🅱", private: false, profile: "nouveau", windowId: windowId });
+      await dispatch(m, { type: "openTab", windowId: windowId, url: `${server.url}/a.html` });
       const names = `return ${CIS}._identities.filter((i) => i.name?.startsWith("userContextIdInternal.webaios-")).length;`;
       await waitFor(m, names, (n) => n === 1);
       await installAddon(m, identities(server.url));

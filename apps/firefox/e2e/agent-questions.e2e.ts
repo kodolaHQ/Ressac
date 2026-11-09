@@ -35,7 +35,7 @@ const call = (name: string, args: Record<string, unknown> = {}) => callTool(w.da
 /** Opens a user tab (not the agent's) and returns its id once its page is loaded. */
 async function openTab(path: string, enable = true): Promise<string> {
   const before = new Set(Object.keys((await state(m)).tabs));
-  const s = await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url: `${server.url}${path}`, activate: enable } as Action);
+  const s = await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url: `${server.url}${path}`, activate: enable } as Action);
   const id = Object.keys(s.tabs).find((x) => !before.has(x))!;
   if (enable)
     await waitFor(m, `return gBrowser.tabs.some((t) => t.linkedBrowser.currentURI.spec.endsWith(${JSON.stringify(path)}) && !t.linkedBrowser.webProgress.isLoadingDocument)`, (v) => v === true);
@@ -60,7 +60,7 @@ it("the card covers the whole window, agent panel included, and gives the termin
   const id = await openTab("/a.html");
   // The panel opened on another tab: only that one is shared with the agent.
   await openTab("/b.html");
-  if (!(await state(m)).windows[0]!.agentPanelOpen) await dispatch(m, { type: "basculerPanneauAgent", windowId: (await state(m)).windows[0]!.id });
+  if (!(await state(m)).windows[0]!.agentPanelOpen) await dispatch(m, { type: "toggleAgentPanel", windowId: (await state(m)).windows[0]!.id });
   await waitFor(m, "return document.getElementById('webaios-agent').getBoundingClientRect().width", (v: number) => v > 0);
   await m.execute("document.getElementById('webaios-agent').focus()");
   expect(await m.execute("return document.activeElement?.id")).toBe("webaios-agent");
@@ -105,7 +105,7 @@ it("a tab closed during the question: refused, card gone", async () => {
   const id = await openTab("/a.html");
   const reading = call("read_tab", { id });
   await cardText();
-  await dispatch(m, { type: "fermerOnglet", id });
+  await dispatch(m, { type: "closeTab", id });
   expect((await reading).text).toBe(REFUSED);
   await cardGone();
 });
@@ -116,7 +116,7 @@ it("a tab moved to a private space during the question: refused, card gone", asy
   await cardText();
   const s = await state(m);
   const e = s.spaces.find((x) => x.id === s.windows[0]!.activeSpace)!;
-  await dispatch(m, { type: "reglerEspace", id: e.id, name: e.name, icon: e.icon, private: true, profile: e.profile } as Action);
+  await dispatch(m, { type: "updateSpace", id: e.id, name: e.name, icon: e.icon, private: true, profile: e.profile } as Action);
   const r = await reading;
   expect(r.text).not.toContain("Le chat dort");
   expect(r.text).toBe(REFUSED);
@@ -148,7 +148,7 @@ const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 async function handlesById(): Promise<Record<string, string>> {
   const r: Record<string, string> = {};
   for (const h of await m.command<string[]>("WebDriver:GetWindowHandles"))
-    r[await inWindow(m, h, () => m.execute<string>("return window.webaiosWindow.fenetreId"))] = h;
+    r[await inWindow(m, h, () => m.execute<string>("return window.webaiosWindow.windowId"))] = h;
   return r;
 }
 const activeId = () => m.execute<string>(`return (async () => (await ChromeUtils.importESModule("${STORE}").ready).windows.active())()`);
@@ -203,7 +203,7 @@ describe("several windows", () => {
   it("a new agent session in another window resets access: the agent asks again", async () => {
     const id = await openTab("/texte.html");
     // Opening the panel on the tab gives it to the agent.
-    if (!(await state(m)).windows[0]!.agentPanelOpen) await dispatch(m, { type: "basculerPanneauAgent", windowId: (await state(m)).windows[0]!.id });
+    if (!(await state(m)).windows[0]!.agentPanelOpen) await dispatch(m, { type: "toggleAgentPanel", windowId: (await state(m)).windows[0]!.id });
     await waitFor(m, "return !document.getElementById('webaios-agent').hidden", (v) => v === true);
     expect((await call("read_tab", { id })).text).toContain("Le chat dort");
     const second = await newWindow(m);
@@ -229,7 +229,7 @@ describe("several windows", () => {
     const other = Object.keys(handles).find((x) => x !== active)!;
     // The tab lives in the window that stays: closing the card's window must not close it.
     const before = new Set(Object.keys((await state(m)).tabs));
-    const s = await dispatch(m, { type: "ouvrirOnglet", windowId: other, url: `${server.url}/a.html` });
+    const s = await dispatch(m, { type: "openTab", windowId: other, url: `${server.url}/a.html` });
     const id = Object.keys(s.tabs).find((x) => !before.has(x))!;
     let settled = 0;
     const reading = call("read_tab", { id }).finally(() => (settled = Date.now()));

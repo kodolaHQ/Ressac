@@ -2,7 +2,7 @@ import type { DevRight, TabAccessState, Owner } from "@webaios/kernel";
 import type { ExtensionCard } from "./extensions";
 
 /** Internal Applications page: a tab without a web page, displayed by the UI. */
-export const URL_APPLICATIONS = "webaios://applications";
+export const URL_APPLICATIONS = "webaios://apps";
 /** Internal Extensions page (Store and agent), displayed by the UI. */
 export const URL_EXTENSIONS = "webaios://extensions";
 /** Internal « Voir le workflow » page of a widget: `webaios://workflow/<widget id>`. */
@@ -71,7 +71,7 @@ export interface Tab {
   title: string;
   favicon: string | null;
   /** Link to a persistent favorite: the tab materializes an essential or a pinned tab. */
-  link: { type: "essentiel" | "epingle"; id: string } | null;
+  link: { type: "essential" | "pinned"; id: string } | null;
   openedByAgent: boolean;
   loading: boolean;
   canGoBack: boolean;
@@ -95,7 +95,7 @@ export interface Favorite {
 /** A login profile: cookies, signed-in accounts and site permissions (one Chromium session). */
 export type ProfileId = string;
 /** The login profile from before configurable spaces (partition `persist:webaios`). */
-export const DEFAULT_PROFILE: ProfileId = "defaut";
+export const DEFAULT_PROFILE: ProfileId = "default";
 export interface ConnectionProfile {
   id: ProfileId;
 }
@@ -209,7 +209,7 @@ export interface Download {
   path: string;
   received: number;
   total: number; // 0 si inconnu
-  state: "en-cours" | "termine" | "annule" | "interrompu";
+  state: "in-progress" | "done" | "canceled" | "interrupted";
 }
 
 export type Permission =
@@ -219,21 +219,21 @@ export type Permission =
   | "geolocation"
   | "fullscreen"
   | "clipboard-sanitized-write"
-  | "ouvrir-application"
+  | "open-app"
   /** The agent wants to read a tab the user did not give it (spec §8.2). */
-  | "lire-onglet"
+  | "read-tab"
   /** The agent asks for developer-tools rights on a tab (consent card). */
-  | "outils-dev"
+  | "devtools"
   /** The agent wants to see the data of a widget read with the user's account (for the current conversation). */
-  | "donnees-widget"
+  | "widget-data"
   /** Enable (or update) an extension: the grant card, coming from a click by the user or by the agent. */
   | "extension"
   /** The agent wants to see the whole console of one of its extensions (temporary unlock, until it is done). */
-  | "console-extension"
-  | "autre";
-export type Decision = "autoriser" | "refuser";
-/** The outcome of a question: the user's decision, or « retiree » if it lapsed without their answer (timeout, stale…). */
-export type Outcome = Decision | "retiree";
+  | "extension-console"
+  | "other";
+export type Decision = "allow" | "deny";
+/** The outcome of a question: the user's decision, or `withdrawn` if it lapsed without their answer (timeout, stale…). */
+export type Outcome = Decision | "withdrawn";
 /** A question asked to the user: one or two permissions (camera and microphone together), a single answer. */
 export interface Request {
   tabId: TabId | null;
@@ -281,8 +281,8 @@ export const BAR_WIDTH = 240;
 /** Once revealed, the bar stays open as long as the mouse does not go beyond its width by more than this margin (px). */
 export const BAR_MARGIN = 40;
 
-/** A project's Review page (plan 17): `webaios://relecture/<project>`, one per project and per window. */
-export const REVIEW_PREFIX = "webaios://relecture/";
+/** A project's Review page (plan 17): `webaios://review/<project>`, one per project and per window. */
+export const REVIEW_PREFIX = "webaios://review/";
 /** Copy of the kernel's `PROJECT_ID` (the UI does not import its values); a test checks that they match. */
 const PAGE_PROJECT_ID = /^(app-[A-Za-z0-9][A-Za-z0-9._-]*|ext-[0-9a-f]{16}|demo-\d{1,5}|site-[a-z0-9][a-z0-9-]{0,59})$/;
 export const reviewUrl = (project: string) => REVIEW_PREFIX + project;

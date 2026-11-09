@@ -69,8 +69,8 @@ async function reread(): Promise<void> {
 
 /** Back to the Applications page of the current window (its tab, activated again). */
 async function backToApplications(): Promise<void> {
-  const windowId = await m.execute<string>("return window.webaiosWindow.fenetreId");
-  await dispatch(m, { type: "ouvrirApplications", windowId: windowId });
+  const windowId = await m.execute<string>("return window.webaiosWindow.windowId");
+  await dispatch(m, { type: "openApps", windowId: windowId });
   await waitUi(m, `return !!doc.querySelector('${tid("projets-externes")}') && !doc.querySelector('${PAGE}')`);
 }
 

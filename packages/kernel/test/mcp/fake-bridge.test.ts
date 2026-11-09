@@ -12,7 +12,7 @@ test("lecture.html returns the URL's HTML and records the call", async () => {
     html: "<html>résultats</html>",
   });
   expect(await bridge.readHtmlInvisible!("https://autre.test/", { localAddresses: true })).toEqual({ url: "https://autre.test/", html: "" });
-  expect(bridge.calls.filter((a) => a.method === "lireHtmlInvisible").map((a) => a.args)).toEqual([
+  expect(bridge.calls.filter((a) => a.method === "readHtmlInvisible").map((a) => a.args)).toEqual([
     ["https://html.duckduckgo.com/html/?q=a", {}],
     ["https://autre.test/", { localAddresses: true }],
   ]);

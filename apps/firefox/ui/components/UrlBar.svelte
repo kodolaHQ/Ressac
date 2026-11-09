@@ -70,19 +70,19 @@
 </script>
 
 <div class="navigation">
-  <button aria-label="Reculer" disabled={!tab?.canGoBack} onclick={() => tab && api.command(tab.id, "reculer")}><Icon name="back" /></button>
-  <button aria-label="Avancer" disabled={!tab?.canGoForward} onclick={() => tab && api.command(tab.id, "avancer")}><Icon name="forward" /></button>
+  <button aria-label="Reculer" disabled={!tab?.canGoBack} onclick={() => tab && api.command(tab.id, "back")}><Icon name="back" /></button>
+  <button aria-label="Avancer" disabled={!tab?.canGoForward} onclick={() => tab && api.command(tab.id, "forward")}><Icon name="forward" /></button>
   {#if tab?.loading}
-    <button aria-label="Arrêter" onclick={() => api.command(tab.id, "arreter")}><Icon name="close" /></button>
+    <button aria-label="Arrêter" onclick={() => api.command(tab.id, "stop")}><Icon name="close" /></button>
   {:else}
-    <button aria-label="Recharger" disabled={!tab} onclick={() => tab && api.command(tab.id, "recharger")}><Icon name="reload" /></button>
+    <button aria-label="Recharger" disabled={!tab} onclick={() => tab && api.command(tab.id, "reload")}><Icon name="reload" /></button>
   {/if}
   <button
     class="compact"
     aria-label={win.compact ? "Quitter le mode compact" : "Mode compact"}
     title={win.compact ? "Quitter le mode compact (⌘⇧S)" : "Mode compact (⌘⇧S)"}
     aria-pressed={win.compact}
-    onclick={() => api.dispatch({ type: "basculerCompact", windowId: win.id })}><Icon name="bar" /></button>
+    onclick={() => api.dispatch({ type: "toggleCompact", windowId: win.id })}><Icon name="bar" /></button>
   <DesignButton />
 </div>
 <div class="ligne">

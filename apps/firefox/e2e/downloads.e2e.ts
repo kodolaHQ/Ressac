@@ -38,7 +38,7 @@ afterEach(async () => {
 async function openPage(): Promise<() => Promise<unknown>> {
   const before = new Set(Object.keys((await state(m)).tabs));
   const f = (await state(m)).windows[0]!.id;
-  const s = await dispatch(m, { type: "ouvrirOnglet", windowId: f, url: `${server.url}/telecharger.html` });
+  const s = await dispatch(m, { type: "openTab", windowId: f, url: `${server.url}/telecharger.html` });
   const id = Object.keys(s.tabs).find((i) => !before.has(i))!;
   await waitFor(m, "return gBrowser.selectedBrowser.currentURI.spec.endsWith('/telecharger.html') && !gBrowser.selectedBrowser.webProgress.isLoadingDocument", (v) => v === true);
   return async () => {
@@ -60,15 +60,15 @@ const until = async (ok: () => boolean, ms = 10_000) => {
   for (const end = Date.now() + ms; !ok(); await new Promise((r) => setTimeout(r, 100))) if (Date.now() > end) throw new Error("timed out");
 };
 const rows = () => inUi<string[]>(m, `return [...doc.querySelectorAll('[data-testid="telechargement"]')].map((e) => e.dataset.etat)`);
-const list = () => inUi<number>(m, "return (await ui.webaios.telechargements.liste()).length");
-const unfinished = () => inUi<number>(m, "return (await ui.webaios.telechargements.liste()).filter((t) => t.etat === 'en-cours').length");
+const list = () => inUi<number>(m, "return (await ui.webaios.downloads.list()).length");
+const unfinished = () => inUi<number>(m, "return (await ui.webaios.downloads.list()).filter((t) => t.state === 'in-progress').length");
 
 describe("downloads", () => {
   it("a file from the test server arrives, ends « termine »; the second gets Firefox's free name", async () => {
     const click1 = await openPage();
     await click1();
     await until(() => existsSync(join(dl, "fichier.txt")));
-    await waitUi(m, "return (await ui.webaios.telechargements.liste()).some((t) => t.etat === 'termine')");
+    await waitUi(m, "return (await ui.webaios.downloads.list()).some((t) => t.state === 'done')");
     await click1();
     await until(() => existsSync(join(dl, "fichier(1).txt")));
     expect(readFileSync(join(dl, "fichier.txt"), "utf8")).toContain("Bonjour");
@@ -77,9 +77,9 @@ describe("downloads", () => {
     const first = await inUi<{ state: string; text: string; show: boolean }>(
       m,
       `const e = doc.querySelector('[data-testid="telechargement"]');
-       return { etat: e.dataset.etat, text: e.textContent, show: [...e.querySelectorAll("button")].some((b) => b.textContent.includes("Afficher dans le Finder")) };`,
+       return { state: e.dataset.etat, text: e.textContent, show: [...e.querySelectorAll("button")].some((b) => b.textContent.includes("Afficher dans le Finder")) };`,
     );
-    expect(first.state).toBe("termine");
+    expect(first.state).toBe("done");
     expect(first.text).toContain("fichier(1).txt");
     expect(first.show).toBe(true);
   });
@@ -89,7 +89,7 @@ describe("downloads", () => {
     const click1 = await openPage();
     await click1();
     await until(() => existsSync(join(dl, "fichier.txt")));
-    await waitUi(m, "return (await ui.webaios.telechargements.liste()).some((t) => t.etat === 'termine')");
+    await waitUi(m, "return (await ui.webaios.downloads.list()).some((t) => t.state === 'done')");
     expect(await m.execute<string | null>(`return document.getElementById("downloadsPanel")?.state ?? null`)).not.toBe("open");
     expect((await windowHandles(m)).length).toBe(windows);
   });
@@ -106,18 +106,18 @@ describe("downloads", () => {
       [`${server.url}/fichier-lent`, join(dl, "lent.bin")],
     );
     await click(m, 'button[aria-label="Téléchargements"]');
-    await waitUi(m, `return doc.querySelector('[data-testid="telechargement"]')?.dataset.etat === "en-cours" && !!doc.querySelector("button.telechargements .pastille")`);
+    await waitUi(m, `return doc.querySelector('[data-testid="telechargement"]')?.dataset.etat === "in-progress" && !!doc.querySelector("button.telechargements .pastille")`);
     await click(m, '[data-testid="telechargement"] button', { text: "Annuler" });
-    await waitUi(m, `return doc.querySelector('[data-testid="telechargement"]')?.dataset.etat === "annule" && !doc.querySelector(".pastille")`);
+    await waitUi(m, `return doc.querySelector('[data-testid="telechargement"]')?.dataset.etat === "canceled" && !doc.querySelector(".pastille")`);
     await click1();
-    await waitUi(m, `return doc.querySelector('[data-testid="telechargement"]')?.dataset.etat === "termine"`);
-    expect(await rows()).toEqual(["termine", "annule"]);
+    await waitUi(m, `return doc.querySelector('[data-testid="telechargement"]')?.dataset.etat === "done"`);
+    expect(await rows()).toEqual(["done", "canceled"]);
   });
 
   it("both windows show the button and the same list", async () => {
     const click1 = await openPage();
     await click1();
-    await waitUi(m, "return (await ui.webaios.telechargements.liste()).some((t) => t.etat === 'termine')");
+    await waitUi(m, "return (await ui.webaios.downloads.list()).some((t) => t.state === 'done')");
     const other = await newWindow(m);
     await inWindow(m, other, async () => {
       await waitUi(m, `return !!doc.querySelector('button[aria-label="Téléchargements"]')`);

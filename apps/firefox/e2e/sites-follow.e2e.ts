@@ -45,7 +45,7 @@ const addressFile = (id: string) => {
 
 const inStore = <T = unknown>(body: string, args: unknown[] = []) =>
   m.execute<T>(`return (async () => { const store = await ChromeUtils.importESModule("${STORE}").ready; ${body} })();`, args);
-const openSite = (id: string) => inStore(`await store.agent.request("sites.agir", { id: arguments[0], action: "ouvrir", fenetre: store.state.fenetres[0].id });`, [id]);
+const openSite = (id: string) => inStore(`await store.agent.request("sites.act", { id: arguments[0], action: "open", window: store.state.windows[0].id });`, [id]);
 const viewUrl = (id: string) => m.execute<string | null>(`return ${siteWindowExpr(id)}?.gBrowser?.selectedBrowser.currentURI?.spec ?? null;`);
 const viewAt = (id: string, u: string) => expect.poll(() => viewUrl(id), { timeout: 20_000 }).toBe(u);
 const stable = (id: string) => expect.poll(() => inSiteView(m, id, "return document.readyState;").catch(() => null), { timeout: 15_000 }).toBe("complete");

@@ -5,7 +5,7 @@ import { bannerText } from "./banner-text";
 
 const XHTML = "http://www.w3.org/1999/xhtml";
 /** These open as the UI's modal (as modal.svelte.ts's isAgentRequest, not importable here: it holds runes). */
-const AGENT = ["lire-onglet", "outils-dev", "donnees-widget", "extension", "console-extension"];
+const AGENT = ["read-tab", "devtools", "widget-data", "extension", "extension-console"];
 
 /**
  * The site question of the displayed tab, above the page, which moves down by its height
@@ -26,13 +26,13 @@ export function mountSiteBanner(win: Window, store: WebAiOsStore, windowId: Wind
   deny.textContent = "Refuser";
   const allow = el("button");
   allow.textContent = "Autoriser";
-  allow.className = "autoriser";
+  allow.className = "allow";
   banner.append(text, deny, allow);
   doc.getElementById("browser")!.append(banner);
 
   let shown: PendingRequest | undefined;
-  deny.addEventListener("click", () => shown && store.questions.answer(shown.id, "refuser"));
-  allow.addEventListener("click", () => shown && store.questions.answer(shown.id, "autoriser"));
+  deny.addEventListener("click", () => shown && store.questions.answer(shown.id, "deny"));
+  allow.addEventListener("click", () => shown && store.questions.answer(shown.id, "allow"));
   const render = () => {
     const f = store.state.windows.find((x) => x.id === windowId);
     const active = f?.active[f.activeSpace];

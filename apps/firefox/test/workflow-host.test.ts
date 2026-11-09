@@ -124,9 +124,9 @@ describe("fenetres.actives mirror", () => {
     const notify = (m: string, p: unknown) => void sent.push([m, p]);
     sendMirror(store, windows, notify);
     trackState(store, { notify, request: () => Promise.resolve() } as unknown as Parameters<typeof trackState>[1], windows);
-    store.dispatch({ type: "ouvrirOnglet", windowId: f, url: "webaios://workflow/veille" }, () => "t1");
-    store.dispatch({ type: "ouvrirOnglet", windowId: f, url: "https://x.test/" }, () => "t2");
-    expect(sent.filter(([m]) => m === "fenetres.actives").map(([, p]) => p)).toEqual([{ [f]: null }, { [f]: "webaios://workflow/veille" }, { [f]: null }]);
+    store.dispatch({ type: "openTab", windowId: f, url: "webaios://workflow/veille" }, () => "t1");
+    store.dispatch({ type: "openTab", windowId: f, url: "https://x.test/" }, () => "t2");
+    expect(sent.filter(([m]) => m === "windows.active").map(([, p]) => p)).toEqual([{ [f]: null }, { [f]: "webaios://workflow/veille" }, { [f]: null }]);
   });
 });
 

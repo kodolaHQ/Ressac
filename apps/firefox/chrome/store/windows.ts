@@ -41,7 +41,7 @@ export function createWindowRegistry(o: {
   // A state window whose Firefox window is gone: among other open windows it leaves the state, the last one is kept
   // (macOS: the Dock or ⌘N bring it back). While quitting every window stays, for the restore.
   const forget = (id: WindowId) => {
-    if (!Services.startup.shuttingDown && bound.size > 0) store.dispatch({ type: "fermerFenetre", id });
+    if (!Services.startup.shuttingDown && bound.size > 0) store.dispatch({ type: "closeWindow", id });
     else kept = id;
   };
 
@@ -81,7 +81,7 @@ export function createWindowRegistry(o: {
         const from = registry.active();
         const spaceId = store.state.windows.find((f) => f.id === from)?.activeSpace;
         bound.set(id, win);
-        store.dispatch({ type: "ouvrirFenetre", id, ...(spaceId ? { spaceId: spaceId } : {}) });
+        store.dispatch({ type: "openWindow", id, ...(spaceId ? { spaceId: spaceId } : {}) });
         windowId = id;
       }
       const id = windowId;

@@ -128,9 +128,9 @@ export function bridgeHandlers(
     const spaceId = resolveSpace(state, f, space);
     if (state.spaces.find((e) => e.id === spaceId)?.private ?? true) throw new Error("Impossible d'ouvrir un onglet ici : l'espace actif est privé.");
     const id = crypto.randomUUID();
-    store.dispatch({ type: "ouvrirOnglet", windowId: f.id, url, spaceId: spaceId, activate: true, openedByAgent: true }, () => id);
+    store.dispatch({ type: "openTab", windowId: f.id, url, spaceId: spaceId, activate: true, openedByAgent: true }, () => id);
     if (!store.state.tabs[id]) throw new Error(`Impossible d'ouvrir ${url}`);
-    store.dispatch({ type: "activerOnglet", id }); // also switches to its space
+    store.dispatch({ type: "activateTab", id }); // also switches to its space
     return tabInfos(store.state).find((o) => o.id === id)!;
   };
 
@@ -178,12 +178,12 @@ export function bridgeHandlers(
       return f ? questions.askWidgetData(o, f, signal) : false;
     },
     readPageInvisible: ([url, o]: [string, PageReadOptions & { pacedId?: string }], signal) =>
-      readPage(store, url, o, signal, (reading, hostName, s) => host().request("lecture.changerHote", { read: reading, host: hostName }, s)),
+      readPage(store, url, o, signal, (reading, hostName, s) => host().request("read.changeHost", { read: reading, host: hostName }, s)),
     readHtmlInvisible: ([url, o]: [string, { localAddresses?: boolean }], signal) => readHtml(store, url, o ?? {}, signal),
     // The kernel's dev tools (RemoteBridge.outilsDev): one owner per kernel start, its token on every call.
-    "outilsDev.owner": () => devtools.owner(),
-    "outilsDev.call": ([token, method, args]: Parameters<DevTools["call"]>, signal) => devtools.call(token, method, args, signal),
-    "outilsDev.release": ([token]: [string]) => devtools.release(String(token)),
+    "devtools.owner": () => devtools.owner(),
+    "devtools.call": ([token, method, args]: Parameters<DevTools["call"]>, signal) => devtools.call(token, method, args, signal),
+    "devtools.release": ([token]: [string]) => devtools.release(String(token)),
   };
 }
 
@@ -196,29 +196,29 @@ export function trackState(store: Store, host: AgentHost, windows: WindowRegistr
   let workflows = JSON.stringify(activeWorkflows(store.state));
   const refresh = () => {
     const next = JSON.stringify(privateMirror(store.state, windows));
-    if (next !== mirror) host.notify("prives", JSON.parse((mirror = next)));
+    if (next !== mirror) host.notify("privateTabs", JSON.parse((mirror = next)));
     const nextWorkflows = JSON.stringify(activeWorkflows(store.state));
-    if (nextWorkflows !== workflows) host.notify("fenetres.actives", JSON.parse((workflows = nextWorkflows)));
+    if (nextWorkflows !== workflows) host.notify("windows.active", JSON.parse((workflows = nextWorkflows)));
   };
   store.subscribe((state, previous) => {
     refresh();
     const { navigated: navigated, closed: closed } = policyChanges(previous, state);
-    for (const n of navigated) host.notify("politique.navigue", n);
-    for (const id of closed) host.notify("politique.ferme", { id });
+    for (const n of navigated) host.notify("policy.navigated", n);
+    for (const id of closed) host.notify("policy.closed", { id });
     // Opening the agent panel on a tab gives it to the agent and pre-fills its context.
     for (const f of state.windows) {
       const opened = f.agentPanelOpen && !previous.windows.find((x) => x.id === f.id)?.agentPanelOpen;
       const tab = opened && activeTabOf(state, f.id);
-      if (tab) host.notify("agent.panneauOuvert", { window: f.id, tab: tab });
+      if (tab) host.notify("agent.panelOpened", { window: f.id, tab: tab });
     }
     if (state.settings.agentProfile !== previous.settings.agentProfile)
-      host.request("changerProfil", { agentProfile: state.settings.agentProfile }).catch((e) => console.error("[agent] profile change failed:", e));
+      host.request("changeProfile", { agentProfile: state.settings.agentProfile }).catch((e) => console.error("[agent] profile change failed:", e));
   });
   return refresh;
 }
 
 /** The private and workflow mirrors a new host starts from. */
 export const sendMirror = (store: Store, windows: WindowRegistry, notify: (method: string, params: unknown) => void) => {
-  notify("prives", privateMirror(store.state, windows));
-  notify("fenetres.actives", activeWorkflows(store.state));
+  notify("privateTabs", privateMirror(store.state, windows));
+  notify("windows.active", activeWorkflows(store.state));
 };

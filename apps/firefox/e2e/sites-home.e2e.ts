@@ -60,7 +60,7 @@ const PROBE = `<script>
   });
 </script>`;
 const HOME = SITE_HOME + PROBE;
-const AUTO = HOME.replace('parent.postMessage({ type: "pret" }, "*");', 'parent.postMessage({ type: "pret" }, "*"); parent.postMessage({ type: "ouvrir", adresse: "/serie/the-bear?e=9" }, "*");');
+const AUTO = HOME.replace('parent.postMessage({ type: "ready" }, "*");', 'parent.postMessage({ type: "ready" }, "*"); parent.postMessage({ type: "open", url: "/serie/the-bear?e=9" }, "*");');
 
 let server: Awaited<ReturnType<typeof startSitesServer>>;
 let w: LaunchedWebAiOs;
@@ -71,7 +71,7 @@ let profile: string;
 const url = (p: string, host = "vidola-a.localhost") => server.url(host, p);
 const inStore = <T = unknown>(body: string, args: unknown[] = []) =>
   m.execute<T>(`return (async () => { const store = await ChromeUtils.importESModule("${STORE}").ready; ${body} })();`, args);
-const openSite = (id: string) => inStore(`await store.agent.request("sites.agir", { id: arguments[0], action: "ouvrir", fenetre: store.state.fenetres[0].id });`, [id]);
+const openSite = (id: string) => inStore(`await store.agent.request("sites.act", { id: arguments[0], action: "open", window: store.state.windows[0].id });`, [id]);
 
 /** The view's address ("" before any load) and whether it shows (not under the home screen). */
 const viewState = (id: string) =>
@@ -247,7 +247,7 @@ describe("site app home screen", () => {
 
   it("it asks for « /serie/the-bear?e=4 »: the site view goes there on the current domain", async () => {
     await openHome("demenage");
-    await expect.poll(async () => ((await received("demenage")) ?? []).find((x) => x.type === "memoire")).toMatchObject({ domain: "vidola-b.localhost" });
+    await expect.poll(async () => ((await received("demenage")) ?? []).find((x) => x.type === "memory")).toMatchObject({ domain: "vidola-b.localhost" });
     await clickOpen("demenage", "/serie/the-bear?e=4");
     await expect.poll(async () => (await viewState("demenage"))?.url, { timeout: 10_000 }).toBe(url("/serie/the-bear?e=4", "vidola-b.localhost"));
     expect((await viewState("demenage"))!.visible).toBe(true);
@@ -258,9 +258,9 @@ describe("site app home screen", () => {
     await openHome();
     // After a real click in the home: refused all the same.
     for (const address of ["javascript:alert(1)", "//pub.localhost/x", "https://pub.localhost/", url("/x", "pub.localhost"), "/\\pub.localhost/x", "x".repeat(2001)]) await clickOpen("vidola", address);
-    await ask("vidola", { type: "ouvrir", url: "javascript:alert(1)" });
+    await ask("vidola", { type: "open", url: "javascript:alert(1)" });
     // The same refusals through the bar's API (what the relay calls).
-    const api = (a: string) => inSiteBar<boolean>(m, "vidola", "return await doc.defaultView.webaios.site.ouvrir(arguments[0]);", [a]);
+    const api = (a: string) => inSiteBar<boolean>(m, "vidola", "return await doc.defaultView.webaios.site.open(arguments[0]);", [a]);
     expect(await api("javascript:alert(1)")).toBe(false);
     expect(await api("https://pub.localhost/")).toBe(false);
     await sleep(500);
@@ -372,7 +372,7 @@ describe("site app home screen", () => {
   it("an « ouvrir » sent as the home loads is refused; the same after a click in the home opens", async () => {
     await openHome("auto");
     // Without a gesture, even asked again by the home's code (a click it simulates included): nothing opens.
-    await ask("auto", { type: "ouvrir", url: "/serie/the-bear?e=9" });
+    await ask("auto", { type: "open", url: "/serie/the-bear?e=9" });
     await inHome("auto", `home.contentDocument.getElementById("ouvrir").click(); return true;`);
     await sleep(1500);
     expect(await viewState("auto")).toEqual({ url: "", visible: false });
@@ -391,7 +391,7 @@ describe("site app home screen", () => {
     const real = `resource://${new URL(await inHome<string>("vidola", "return home.src;")).host}`;
     server.define("pub.localhost", "/sonde", "<title>sonde</title><p>sonde</p>");
     const probeFn = url("/sonde", "pub.localhost");
-    await inStore(`store.dispatch({ type: "ouvrirOnglet", fenetreId: store.state.fenetres[0].id, url: arguments[0], activer: true });`, [probeFn]);
+    await inStore(`store.dispatch({ type: "openTab", windowId: store.state.windows[0].id, url: arguments[0], activate: true });`, [probeFn]);
     await expect.poll(() => m.execute<boolean>(`const b = gBrowser.selectedBrowser; return b.currentURI.spec === arguments[0] && !b.webProgress.isLoadingDocument;`, [probeFn]), { timeout: 15_000 }).toBe(true);
     // The former forms (the id as host, a counter), the substitution root, and the copy actually served.
     const guessable = ["resource://webaios-site-vidola", "resource://webaios-site-vidola/1", "resource://webaios-site-vidola/2"];

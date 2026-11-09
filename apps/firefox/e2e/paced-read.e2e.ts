@@ -83,7 +83,7 @@ const paced = (url: string) =>
   m.execute<Outcome>(
     `return (async () => {
       const s = await ChromeUtils.importESModule("${STORE}").ready;
-      try { const ok = await s.agent.request("test.lectureMenagee", { url: arguments[0] }); return { ok, at: Date.now() }; }
+      try { const ok = await s.agent.request("test.pacedRead", { url: arguments[0] }); return { ok, at: Date.now() }; }
       catch (e) { return { err: String(e?.message ?? e), at: Date.now() }; }
     })();`,
     [url],
@@ -93,7 +93,7 @@ const plain = (url: string) =>
   m.execute<Outcome>(
     `return (async () => {
       const s = await ChromeUtils.importESModule("${STORE}").ready;
-      try { const ok = await s.readPage(arguments[0], { profil: null }); return { ok, at: Date.now() }; }
+      try { const ok = await s.readPage(arguments[0], { profile: null }); return { ok, at: Date.now() }; }
       catch (e) { return { err: String(e?.message ?? e), at: Date.now() }; }
     })();`,
     [url],

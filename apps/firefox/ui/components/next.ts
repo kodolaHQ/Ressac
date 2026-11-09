@@ -43,7 +43,7 @@ function retryHour(hours: readonly string[], now: Date, appState: NextState | un
  * The next run of a fixed-hours widget (« HH:MM », local time) after `maintenant`: « aujourd'hui 19:00 » or
  * « demain 07:00 »; null without hours. The current minute's hour is past (it is already running). With a
  * frequency (`minutes`) too, the nearer of the two: `derniereMaj + minutes` (right away if it is past or without
- * data). With `etat`, the scheduler's rules after a failure: the frequency of a widget in error also waits 15 min
+ * data). With `state`, the scheduler's rules after a failure: the frequency of a widget in error also waits 15 min
  * since the last attempt, and a failed fixed hour is retried (see `reessaiHeure`).
  */
 export function nextRun(

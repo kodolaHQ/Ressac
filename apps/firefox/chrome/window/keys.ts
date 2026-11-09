@@ -1,48 +1,48 @@
 import type { Panel, ShortcutAction } from "../../shared/api";
 
 export type Shortcut =
-  | { type: "raccourci"; r: Extract<ShortcutAction, "commande" | "adresse" | "fermerOnglet"> }
-  | { type: "rouvrir" }
-  | { type: "nieme"; n: number }
-  | { type: "espace"; n: number }
-  | { type: "naviguer"; c: "reculer" | "avancer" | "recharger" | "rechargerSansCache" }
-  | { type: "parcourir"; delta: 1 | -1 }
+  | { type: "shortcut"; r: Extract<ShortcutAction, "command" | "address" | "closeTab"> }
+  | { type: "reopen" }
+  | { type: "nth"; n: number }
+  | { type: "space"; n: number }
+  | { type: "navigate"; c: "back" | "forward" | "reload" | "reloadHard" }
+  | { type: "cycle"; delta: 1 | -1 }
   /** ⌘J: the agent panel (menu item « Panneau agent »). */
   | { type: "agent" }
   /** ⇧⌘S: the sidebar's compact mode (menu item « Mode compact »). */
   | { type: "compact" }
   /** ⌘Y, ⇧⌘J: a UI panel (menu items « Historique » and « Téléchargements »). */
-  | { type: "panneau"; p: Panel }
+  | { type: "panel"; p: Panel }
   /** ⌘N, ⇧⌘W: a WebAiOs window, through Firefox's own window opening and closing (the window registry binds them). */
-  | { type: "fenetre" }
-  | { type: "fermerFenetre" }
+  | { type: "window" }
+  | { type: "closeWindow" }
   /** ⇧⌘A: the Applications page (menu item « Applications »), not Firefox's add-ons. */
-  | { type: "applications" }
+  | { type: "apps" }
   /** ⇧⌘D: the design mode of the window in front (menu item « Mode design »), not Firefox's « bookmark all tabs ». */
   | { type: "design" }
   /** Firefox's next/previous tab keys walk every XUL tab, other spaces' too: consumed, nothing done. */
-  | { type: "ignorer" };
+  | { type: "ignore" };
 
 type Keys = { key: string; code: string; metaKey: boolean; ctrlKey: boolean; shiftKey: boolean; altKey: boolean };
 
 const COMMAND: Record<string, Shortcut> = {
-  t: { type: "raccourci", r: "commande" },
-  l: { type: "raccourci", r: "adresse" },
-  w: { type: "raccourci", r: "fermerOnglet" },
-  "[": { type: "naviguer", c: "reculer" },
-  "]": { type: "naviguer", c: "avancer" },
-  r: { type: "naviguer", c: "recharger" },
-  n: { type: "fenetre" },
+  t: { type: "shortcut", r: "command" },
+  l: { type: "shortcut", r: "address" },
+  w: { type: "shortcut", r: "closeTab" },
+  "[": { type: "navigate", c: "back" },
+  "]": { type: "navigate", c: "forward" },
+  r: { type: "navigate", c: "reload" },
+  n: { type: "window" },
   j: { type: "agent" },
-  y: { type: "panneau", p: "historique" },
+  y: { type: "panel", p: "history" },
 };
 const SHIFT_COMMAND: Record<string, Shortcut> = {
-  t: { type: "rouvrir" },
-  r: { type: "naviguer", c: "rechargerSansCache" },
-  w: { type: "fermerFenetre" },
-  j: { type: "panneau", p: "telechargements" },
+  t: { type: "reopen" },
+  r: { type: "navigate", c: "reloadHard" },
+  w: { type: "closeWindow" },
+  j: { type: "panel", p: "downloads" },
   s: { type: "compact" },
-  a: { type: "applications" },
+  a: { type: "apps" },
   d: { type: "design" },
 };
 
@@ -54,15 +54,15 @@ export function shortcutFor(e: Keys): Shortcut | null {
     (e.metaKey && e.altKey && !e.ctrlKey && !e.shiftKey && e.key.startsWith("Arrow")) ||
     (e.metaKey && !e.altKey && !e.ctrlKey && (e.key === "{" || e.key === "}"))
   )
-    return { type: "ignorer" };
+    return { type: "ignore" };
   if (e.altKey || (e.metaKey && e.ctrlKey)) return null;
   const digit = !e.shiftKey && /^Digit([1-9])$/.exec(e.code)?.[1];
   if (e.ctrlKey) {
-    if (e.key === "Tab") return { type: "parcourir", delta: e.shiftKey ? -1 : 1 };
-    return digit ? { type: "espace", n: Number(digit) } : null;
+    if (e.key === "Tab") return { type: "cycle", delta: e.shiftKey ? -1 : 1 };
+    return digit ? { type: "space", n: Number(digit) } : null;
   }
   if (!e.metaKey) return null;
-  if (digit) return { type: "nieme", n: Number(digit) };
+  if (digit) return { type: "nth", n: Number(digit) };
   return (e.shiftKey ? SHIFT_COMMAND : COMMAND)[e.key.toLowerCase()] ?? null;
 }
 

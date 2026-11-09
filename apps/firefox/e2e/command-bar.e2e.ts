@@ -45,7 +45,7 @@ const activeId = async () => {
 };
 async function open(path: string): Promise<string> {
   const before = new Set(Object.keys((await state(m)).tabs));
-  const after = await dispatch(m, { type: "ouvrirOnglet", windowId: (await win()).id, url: server.url + path });
+  const after = await dispatch(m, { type: "openTab", windowId: (await win()).id, url: server.url + path });
   return Object.keys(after.tabs).find((id) => !before.has(id))!;
 }
 async function waitState<T>(read: (s: BrowserState) => T, ok: (v: T) => boolean, ms = 10_000): Promise<T> {
@@ -70,7 +70,7 @@ async function type(text: string): Promise<void> {
 const selectedType = () => inUi<string | undefined>(m, "return doc.querySelector('[data-testid=\"ligne-commande\"][aria-selected=\"true\"]')?.dataset.type");
 /** The history has `part` (a visit is noted a moment after the load). */
 const visited = (part: string) =>
-  waitUi(m, "return (await ui.webaios.historique.rechercher(arguments[0], 5, true)).length > 0", [part], 15_000);
+  waitUi(m, "return (await ui.webaios.history.search(arguments[0], 5, true)).length > 0", [part], 15_000);
 async function withPageA(): Promise<string> {
   const a = await open("/a.html");
   await waitTitle(a, "Page A");
@@ -153,7 +153,7 @@ describe("Command bar", () => {
       await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
       await waitUi(m, "return !!doc.querySelector('[data-testid=\"barre-laterale\"]')");
       await resolveLocalHosts(m, ["vidola-a.localhost"]);
-      await waitUi(m, "return (await ui.webaios.sites.liste()).some((s) => s.id === 'vidola')", [], 30_000);
+      await waitUi(m, "return (await ui.webaios.sites.list()).some((s) => s.id === 'vidola')", [], 30_000);
       await pressKeys(m, "Meta+t");
       await type("Vidola");
       await waitUi(m, "return doc.querySelectorAll('[data-testid=\"ligne-commande\"][data-type=\"appli\"]').length === 1");
@@ -229,7 +229,7 @@ describe("Command bar", () => {
     await open("/b.html");
     await pressKeys(m, "Meta+t");
     await waitBar(true);
-    await dispatch(m, { type: "activerOnglet", id: a });
+    await dispatch(m, { type: "activateTab", id: a });
     await waitBar(false);
   });
 
@@ -259,11 +259,11 @@ describe("Command bar", () => {
     await pressKeys(m, "Meta+t");
     await type("Page A");
     await waitUi(m, "return doc.querySelectorAll('[data-testid=\"ligne-commande\"][data-type=\"onglet\"]').length === 1");
-    expect(await selectedType()).toBe("defaut");
+    expect(await selectedType()).toBe("default");
     await pressKeys(m, "ArrowUp");
     expect(await selectedType()).toBe("onglet");
     await pressKeys(m, "ArrowDown");
-    expect(await selectedType()).toBe("defaut");
+    expect(await selectedType()).toBe("default");
   });
 
   it("Tab and ⇧Tab keep the keyboard in the field", async () => {
@@ -307,7 +307,7 @@ describe("Command bar", () => {
   // barre-commande.spec.ts:284
   it("an empty ⌘T: the actions, then the other open tabs, not the shown one; Enter shows the empty page", async () => {
     await writeAction(w.dataDir, "sans-workflow", { name: "Zorglub" });
-    await waitUi(m, "return (await ui.webaios.actions.liste()).length > 0", [], 30_000);
+    await waitUi(m, "return (await ui.webaios.actions.list()).length > 0", [], 30_000);
     await withPageA();
     const b = await open("/b.html");
     await waitTitle(b, "Page B");
@@ -453,7 +453,7 @@ describe("Command bar", () => {
     const id = await open("/b.html");
     await waitTitle(id, "Page B");
     await visited("b.html");
-    await inUi(m, "ui.webaios.naviguer(arguments[0], arguments[1])", [id, server.url + "/a.html"]);
+    await inUi(m, "ui.webaios.navigate(arguments[0], arguments[1])", [id, server.url + "/a.html"]);
     await waitTitle(id, "Page A");
     await pressKeys(m, "Meta+t");
     await type("b.html");
@@ -470,12 +470,12 @@ describe("Command bar", () => {
   it("a URL visited in two spaces is offered once", async () => {
     const a = await open("/a.html");
     await waitTitle(a, "Page A");
-    await dispatch(m, { type: "creerEspace", name: "Travail", icon: "💼", private: false, profile: "defaut", windowId: (await win()).id });
+    await dispatch(m, { type: "createSpace", name: "Travail", icon: "💼", private: false, profile: "default", windowId: (await win()).id });
     const b = await open("/a.html");
     await waitTitle(b, "Page A");
-    await waitUi(m, "return (await ui.webaios.historique.recents()).length === 2", [], 15_000);
+    await waitUi(m, "return (await ui.webaios.history.recent()).length === 2", [], 15_000);
     // Open tabs hide their own history line: close both.
-    for (const id of [a, b]) await dispatch(m, { type: "fermerOnglet", id });
+    for (const id of [a, b]) await dispatch(m, { type: "closeTab", id });
     await pressKeys(m, "Meta+t");
     await type("page a");
     await waitUi(m, `return doc.querySelectorAll('[data-testid="ligne-commande"][data-type="historique"]').length === 1`);

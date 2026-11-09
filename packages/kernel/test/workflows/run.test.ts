@@ -393,7 +393,7 @@ describe("executerWorkflow", () => {
     expect(r.issue).toEqual({ t: "stop", status: "grant-required", error: "Accord requis pour lire avec ton compte : app.daily.dev" });
     expect(r.run).toMatchObject({ status: "grant-required", error: "Accord requis pour lire avec ton compte : app.daily.dev", kernelError: true });
     expect(r.run.blocks[0]!.status).toBe("failed");
-    expect(bridge.calls.filter((a) => a.method === "lirePageInvisible")).toHaveLength(0);
+    expect(bridge.calls.filter((a) => a.method === "readPageInvisible")).toHaveLength(0);
     expect(b.deleted).toEqual(["essai", "essai"]);
   });
 
@@ -433,7 +433,7 @@ describe("executerWorkflow", () => {
     const r = await runWorkflow(b.ctx, b.infra);
     expect(r.issue).toEqual({ t: "stop", status: "grant-required", error: "Accord requis pour lire avec ton compte : app.daily.dev" });
     expect(r.run.status).toBe("grant-required");
-    expect(bridge.calls.filter((a) => a.method === "lirePageInvisible")).toHaveLength(1);
+    expect(bridge.calls.filter((a) => a.method === "readPageInvisible")).toHaveLength(1);
     expect(b.deleted).toEqual(["essai", "essai"]);
   });
 
@@ -442,7 +442,7 @@ describe("executerWorkflow", () => {
     const b = await bench(chain("a"), { "a.mjs": `export default async (e, w) => (await w.readPage("https://app.daily.dev/", { account: true })).text;` }, { account: ["app.daily.dev"], grant: { profile: "perso" }, bridge: bridge });
     const r = await runWorkflow(b.ctx, b.infra);
     expect(r.issue).toMatchObject({ t: "end", output: { value: "articles" } });
-    expect(bridge.calls.find((a) => a.method === "lirePageInvisible")!.args).toEqual(["https://app.daily.dev/", { profile: "perso", domains: ["app.daily.dev"], localAddresses: true }]);
+    expect(bridge.calls.find((a) => a.method === "readPageInvisible")!.args).toEqual(["https://app.daily.dev/", { profile: "perso", domains: ["app.daily.dev"], localAddresses: true }]);
   });
 
   it("lirePage with defiler: the bridge receives it (with or without an account); 0 passes nothing; outside 0 to 20, refused", async () => {
@@ -462,7 +462,7 @@ describe("executerWorkflow", () => {
     );
     const r = await runWorkflow(b.ctx, b.infra);
     expect(r.issue).toMatchObject({ t: "end", output: { value: ["ok", "ok", "ok", "refus: Arguments invalides pour readPage"] } });
-    expect(bridge.calls.filter((a) => a.method === "lirePageInvisible").map((a) => a.args)).toEqual([
+    expect(bridge.calls.filter((a) => a.method === "readPageInvisible").map((a) => a.args)).toEqual([
       ["https://app.daily.dev/a", { profile: null, domains: ["app.daily.dev"], localAddresses: true, scroll: 8 }],
       ["https://app.daily.dev/b", { profile: "perso", domains: ["app.daily.dev"], localAddresses: true, scroll: 2 }],
       ["https://app.daily.dev/c", { profile: null, domains: ["app.daily.dev"], localAddresses: true }],
@@ -492,7 +492,7 @@ describe("executerWorkflow", () => {
     expect(page).toMatch(/^refus: .*non déclaré/);
     expect(declare).toBe("ok");
     expect(web.requests).toHaveLength(1);
-    expect(bridge.calls.filter((a) => a.method === "lirePageInvisible")).toHaveLength(0);
+    expect(bridge.calls.filter((a) => a.method === "readPageInvisible")).toHaveLength(0);
   });
 
   it("timeout exceeded: in-flight AI calls are abandoned", async () => {
@@ -752,7 +752,7 @@ describe("executerWorkflow: web search and open reads", () => {
     b.ctx.sources = { ...b.ctx.sources, ...(o.web !== undefined ? { web: o.web } : {}) };
     b.infra.pacing = o.pacing ?? fakePacing().pacing;
     b.infra.searchUrl = BASE;
-    return { b, bridge: bridge, html: () => bridge.calls.filter((a) => a.method === "lireHtmlInvisible") };
+    return { b, bridge: bridge, html: () => bridge.calls.filter((a) => a.method === "readHtmlInvisible") };
   }
   const value = (r: Awaited<ReturnType<typeof runWorkflow>>) => (r.issue.t === "end" ? r.issue.output.value : r.issue);
   /** Code that makes these calls one after the other and returns, for each, the result or « erreur: <message> ». */
@@ -876,7 +876,7 @@ describe("executerWorkflow: web search and open reads", () => {
     const output = value(r) as string[];
     expect(output.slice(0, 100).every((x) => x === "ok")).toBe(true);
     expect(output.slice(100)).toEqual([`erreur: ${TOO_MANY_READS}`, `erreur: ${TOO_MANY_READS}`]);
-    expect(bridge.calls.filter((a) => a.method === "lirePageInvisible")).toHaveLength(40);
+    expect(bridge.calls.filter((a) => a.method === "readPageInvisible")).toHaveLength(40);
     expect(web.requests).toHaveLength(60);
     // Each goes through the throttle, per host: 1 s between two reads of the same host.
     expect(spy).toHaveBeenCalledTimes(100);
@@ -913,7 +913,7 @@ describe("executerWorkflow: web search and open reads", () => {
     expect(value(r)).toEqual(["https://b.example/1", "https://www.b.example/2", "https://www.a.example/x"]);
     // b.example read just before: the redirect waits 1 s. a.example, released at the redirect, does not make
     // the 3rd read wait, redirected to the same site (www.).
-    expect(bridge.calls.filter((a) => a.method === "changerHote").map((a) => a.args[0])).toEqual(["www.b.example", "www.a.example"]);
+    expect(bridge.calls.filter((a) => a.method === "changeHost").map((a) => a.args[0])).toEqual(["www.b.example", "www.a.example"]);
     expect(waits).toEqual([1000]);
   });
 
@@ -984,7 +984,7 @@ describe("executerWorkflow: web search and open reads", () => {
     );
     const r = await runWorkflow(b.ctx, b.infra);
     expect(value(r)).toBe("fini");
-    expect(bridge.calls.filter((a) => a.method === "lirePageInvisible")).toHaveLength(150);
+    expect(bridge.calls.filter((a) => a.method === "readPageInvisible")).toHaveLength(150);
     expect(read).not.toHaveBeenCalled();
     expect(search).not.toHaveBeenCalled();
   });
@@ -1003,7 +1003,7 @@ describe("executerWorkflow: web search and open reads", () => {
     t += 10_000;
     for (const ok of pending.splice(0)) ok();
     await new Promise((ok) => setTimeout(ok, 20));
-    expect(bridge.calls.filter((a) => a.method === "lirePageInvisible").map((a) => a.args[0])).toEqual(["https://pages.example/1"]);
+    expect(bridge.calls.filter((a) => a.method === "readPageInvisible").map((a) => a.args[0])).toEqual(["https://pages.example/1"]);
   });
 
   it("end of the run: a search still queued does not leave", async () => {
@@ -1051,7 +1051,7 @@ describe("executerWorkflow: a stop cancels the reads in progress", () => {
       responses: () => received.join("").split("\n").filter((l) => l.includes(`"t":"answer"`)),
     };
   };
-  const cancelledList = (bridge: FakeBridge) => bridge.calls.filter((a) => a.method === "lectureAnnulee").map((a) => a.args[0]);
+  const cancelledList = (bridge: FakeBridge) => bridge.calls.filter((a) => a.method === "readCanceled").map((a) => a.args[0]);
   const value = (r: Awaited<ReturnType<typeof runWorkflow>>) => (r.issue.t === "end" ? r.issue.output.value : r.issue);
 
   it("timeout exceeded: pages (public, with an account) and fetch in progress cancelled, nothing comes back to the container", async () => {
@@ -1085,7 +1085,7 @@ describe("executerWorkflow: a stop cancels the reads in progress", () => {
     const b = await bench(chain("a"), {}, { bridge: bridge, launch: c.launch });
     const rOther = runWorkflow(other.ctx, other.infra);
     const r = runWorkflow(b.ctx, b.infra);
-    await vi.waitFor(() => expect(bridge.calls.filter((a) => a.method === "lirePageInvisible")).toHaveLength(2));
+    await vi.waitFor(() => expect(bridge.calls.filter((a) => a.method === "readPageInvisible")).toHaveLength(2));
     c.kill();
     expect((await r).issue.t).toBe("failure");
     await vi.waitFor(() => expect(cancelledList(bridge)).toEqual(["https://pages.example/a"]));

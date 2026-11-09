@@ -265,7 +265,7 @@ describe("FileActions", () => {
       },
     });
     const a = f.launch("public", { input: null, trigger: "manual" });
-    await waitUntil(() => bridge.calls.some((x) => x.method === "lirePageInvisible"));
+    await waitUntil(() => bridge.calls.some((x) => x.method === "readPageInvisible"));
     await f.stopAll();
     const r = await a.end;
     expect(r.status).toBe("interrupted");

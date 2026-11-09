@@ -3,8 +3,8 @@
    * An agent component in a sandboxed opaque frame (`sandbox="allow-scripts"`),
    * served from its sanitized resource:// copy (chrome/store/action-media.ts), served again on each actions.change (the
    * agent may have rewritten it: a new mtime, a new URL). It gets its props, the theme and its width by message; its
-   * `parent.postMessage` reaches the chrome as a `webaios-composant` event (the copy's bridge), listened on the window
-   * root. It can only ask for its height; anything else, a `webaiosOuvrir` link included, is ignored.
+   * `parent.postMessage` reaches the chrome as a `webaios-component` event (the copy's bridge), listened on the window
+   * root. It can only ask for its height; anything else, a `webaiosOpen` link included, is ignored.
    */
   let { name: name, props }: { name: string; props: Record<string, unknown> } = $props();
 
@@ -16,10 +16,10 @@
   let width = $state(0);
   let height = $state(150);
   const sombre = matchMedia("(prefers-color-scheme: dark)");
-  let theme = $state<"clair" | "sombre">(sombre.matches ? "sombre" : "clair");
+  let theme = $state<"light" | "dark">(sombre.matches ? "dark" : "light");
 
   $effect(() => {
-    const follow = () => (theme = sombre.matches ? "sombre" : "clair");
+    const follow = () => (theme = sombre.matches ? "dark" : "light");
     sombre.addEventListener("change", follow);
     return () => sombre.removeEventListener("change", follow);
   });
@@ -29,7 +29,7 @@
 
   function send() {
     // Opaque origin: « * » is the only possible target; only the current copy receives.
-    if (ours()) iframe?.contentWindow?.postMessage({ type: "composant", props: $state.snapshot(props), theme, width: width }, "*");
+    if (ours()) iframe?.contentWindow?.postMessage({ type: "component", props: $state.snapshot(props), theme, width: width }, "*");
   }
   // On each change (the load goes through DOMFrameContentLoaded).
   $effect(() => {
@@ -80,17 +80,17 @@
       }
       if (typeof d !== "object" || d === null) return;
       const { type, px } = d as { type?: unknown; px?: unknown };
-      if (type !== "hauteur" || typeof px !== "number" || !Number.isFinite(px)) return;
+      if (type !== "height" || typeof px !== "number" || !Number.isFinite(px)) return;
       height = Math.round(Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, px)));
     };
     // The window root sees the events of the window's in-process frames (SiteHomeFrame.svelte); untrusted ones too.
     const root = (window as unknown as { windowRoot: EventTarget }).windowRoot;
-    (root.addEventListener as (t: string, l: EventListener, c: boolean, untrusted: boolean) => void)("webaios-composant", onMessage, true, true);
+    (root.addEventListener as (t: string, l: EventListener, c: boolean, untrusted: boolean) => void)("webaios-component", onMessage, true, true);
     // An iframe of this chrome page never gets `load`: DOMFrameContentLoaded comes once the component's scripts have run.
     const onLoaded = (e: Event) => iframe && e.target === iframe && send();
     document.addEventListener("DOMFrameContentLoaded", onLoaded, true);
     return () => {
-      root.removeEventListener("webaios-composant", onMessage, true);
+      root.removeEventListener("webaios-component", onMessage, true);
       document.removeEventListener("DOMFrameContentLoaded", onLoaded, true);
     };
   });

@@ -23,7 +23,7 @@ const CommonSchema = z
         url: z.string(),
         title: z.string(),
         favicon: z.string().nullable(),
-        link: z.object({ type: z.enum(["essentiel", "epingle"]), id: z.string() }).nullable(),
+        link: z.object({ type: z.enum(["essential", "pinned"]), id: z.string() }).nullable(),
         openedByAgent: z.boolean(),
         zoom: z.number(),
       }),
@@ -71,7 +71,7 @@ function toV2(lu: z.infer<typeof SchemaSession>): z.infer<typeof SchemaV2> {
 const VOLATILE = { loading: false, canGoBack: false, canGoForward: false, crashed: false, error: null };
 
 /** Sets the session file aside under a unique name: the next save will not overwrite it. Returns that name. */
-async function setAside(path: string, reason: "corrompu" | "illisible"): Promise<string | null> {
+async function setAside(path: string, reason: "corrupt" | "unreadable"): Promise<string | null> {
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   for (let i = 0; ; i++) {
     const name = `${path}.${timestamp}${i ? `-${i}` : ""}.${reason}`;
@@ -86,7 +86,7 @@ async function setAside(path: string, reason: "corrompu" | "illisible"): Promise
   }
 }
 
-/** `garde` receives the name under which an unreadable session was set aside, to tell the user. */
+/** `kept` receives the name under which an unreadable session was set aside, to tell the user. */
 export async function loadSession(folder: string, kept?: (path: string) => void): Promise<BrowserState> {
   const path = join(folder, FILE);
   let text: string;
@@ -94,7 +94,7 @@ export async function loadSession(folder: string, kept?: (path: string) => void)
     text = await fs.readFile(path, "utf8");
   } catch (e) {
     // Absent: first launch. Otherwise (permissions…), keep it rather than overwrite it at the next save.
-    const name = (e as NodeJS.ErrnoException).code !== "ENOENT" && (await setAside(path, "illisible"));
+    const name = (e as NodeJS.ErrnoException).code !== "ENOENT" && (await setAside(path, "unreadable"));
     if (name) kept?.(name);
     return initialState();
   }
@@ -105,7 +105,7 @@ export async function loadSession(folder: string, kept?: (path: string) => void)
       tabs: Object.fromEntries(Object.entries(lu.tabs).map(([id, o]) => [id, { ...o, ...VOLATILE }])),
     };
   } catch {
-    const name = await setAside(path, "corrompu");
+    const name = await setAside(path, "corrupt");
     if (name) kept?.(name);
     return initialState();
   }

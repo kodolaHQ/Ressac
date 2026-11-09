@@ -140,7 +140,7 @@ const readBridge = (deny: string[] = [], redirects?: Record<string, string>) =>
     },
   });
 
-const readCalls = (p: FakeBridge) => p.calls.filter((a) => a.method === "lirePageInvisible");
+const readCalls = (p: FakeBridge) => p.calls.filter((a) => a.method === "readPageInvisible");
 
 async function harvest(ctx: Context, o: { ai?: LocalAi | Pick<LocalAi, "kev" | "gemma">; bridge?: FakeBridge; delayMs?: number } = {}) {
   return runHarvest({

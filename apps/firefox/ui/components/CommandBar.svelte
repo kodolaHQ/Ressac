@@ -110,8 +110,8 @@
   let paramValue = $state("");
   let paramField: HTMLInputElement | undefined = $state();
 
-  const mode = $derived(command.open?.mode ?? "nouveau");
-  const lignes: CommandLine[] = $derived(commandLines(text, sources, mode === "actif" ? (activeTab?.url ?? null) : null, activeTab?.id ?? null));
+  const mode = $derived(command.open?.mode ?? "new");
+  const lignes: CommandLine[] = $derived(commandLines(text, sources, mode === "active" ? (activeTab?.url ?? null) : null, activeTab?.id ?? null));
   // A late source may shorten the list: the selection stays on a row that exists (the first otherwise).
   const chosen = $derived(rawChosen >= 0 && rawChosen < lignes.length ? rawChosen : 0);
   const choose = (i: number) => (rawChosen = i);
@@ -133,16 +133,16 @@
     denial = "";
     void tick().then(() => {
       field?.focus();
-      if (o.mode === "actif") field?.select();
+      if (o.mode === "active") field?.select();
     });
   });
 
   /** The only function that acts: a chosen row (Enter or click). */
   function run(l: CommandLine) {
-    const target = mode === "actif" ? (activeTab?.id ?? null) : null;
-    if (l.type === "defaut" && l.text === "") {
+    const target = mode === "active" ? (activeTab?.id ?? null) : null;
+    if (l.type === "default" && l.text === "") {
       // Home: no effect if it is already shown; an interface panel laid over it closes.
-      api.dispatch({ type: "afficherPageVide", windowId: win.id });
+      api.dispatch({ type: "showBlankPage", windowId: win.id });
       closePanel();
       closeCommand();
       // Already on home, it is not remounted: its field takes the keyboard back (and takes it when mounting otherwise).
@@ -154,14 +154,14 @@
       else launchAction(l.id, l.input);
       return;
     }
-    if (l.type === "defaut") api.navigate(target, l.text);
-    else if (l.type === "historique") api.navigate(target, l.url);
-    else if (l.type === "onglet") {
+    if (l.type === "default") api.navigate(target, l.text);
+    else if (l.type === "history") api.navigate(target, l.url);
+    else if (l.type === "tab") {
       // Like the sidebar and ⌃Tab: an essential opens through its favorite (its tab may belong to a sibling space).
       const link = appState.value?.tabs[l.tab.id]?.link;
-      api.dispatch(link?.type === "essentiel" ? { type: "ouvrirFavori", windowId: win.id, kind: "essentiel", id: link.id } : { type: "activerOnglet", id: l.tab.id });
-    } else if (l.app.kind === "projet") api.apps.dispatch(l.app.id, l.app.action);
-    else api.sites.dispatch(l.app.id, "ouvrir");
+      api.dispatch(link?.type === "essential" ? { type: "openFavorite", windowId: win.id, kind: "essential", id: link.id } : { type: "activateTab", id: l.tab.id });
+    } else if (l.app.kind === "project") api.apps.dispatch(l.app.id, l.app.action);
+    else api.sites.dispatch(l.app.id, "open");
     closeCommand(true);
   }
 
@@ -258,18 +258,18 @@
   }
 
   const label = (l: CommandLine): string =>
-    l.type === "defaut" ? l.label : l.type === "action" ? l.name : l.type === "onglet" ? l.tab.title : l.type === "appli" ? l.app.name : l.title || l.url;
+    l.type === "default" ? l.label : l.type === "action" ? l.name : l.type === "tab" ? l.tab.title : l.type === "app" ? l.app.name : l.title || l.url;
   // History keeps no favicon: the site's, at the usual address (except in a private visit, nothing leaves).
   const visitFavicon = (url: string): string | null =>
     /^https?:\/\//i.test(url) && hist.some((v) => v.url === url && !v.private) ? `${new URL(url).origin}/favicon.ico` : null;
   const favicon = (l: CommandLine): string | null =>
-    l.type === "onglet" ? l.tab.favicon : l.type === "appli" ? l.app.favicon : l.type === "historique" ? visitFavicon(l.url) : null;
+    l.type === "tab" ? l.tab.favicon : l.type === "app" ? l.app.favicon : l.type === "history" ? visitFavicon(l.url) : null;
   const badgeText = (l: CommandLine): string =>
-    l.type === "action" ? "Action" : l.type === "onglet" ? "Onglet" : l.type === "appli" ? "Appli" : l.type === "historique" ? "Historique" : "";
+    l.type === "action" ? "Action" : l.type === "tab" ? "Onglet" : l.type === "app" ? "Appli" : l.type === "history" ? "Historique" : "";
   const detail = (l: CommandLine): string =>
-    l.type === "onglet"
+    l.type === "tab"
       ? l.tab.url
-      : l.type === "historique"
+      : l.type === "history"
         ? l.url
         : l.type === "action"
           ? l.input !== null
@@ -277,7 +277,7 @@
             : (l.param ?? "")
           : "";
   const pictogram = (l: CommandLine): IconName =>
-    l.type === "defaut"
+    l.type === "default"
       ? l.text === ""
         ? "home"
         : /^\S+\.\S+$/.test(l.text)
@@ -285,9 +285,9 @@
           : "find"
       : l.type === "action"
         ? "actions"
-        : l.type === "onglet"
+        : l.type === "tab"
           ? "tab"
-          : l.type === "appli"
+          : l.type === "app"
             ? "apps"
             : "clock";
 </script>

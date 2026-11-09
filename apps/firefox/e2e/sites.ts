@@ -101,21 +101,21 @@ export const SITE_HOME = `<!doctype html><meta charset="utf-8"><title>Accueil</t
 <script>
   window.recus = [];
   window.adresse = "/";
-  document.getElementById("ouvrir").addEventListener("click", () => parent.postMessage({ type: "ouvrir", adresse: window.adresse }, "*"));
+  document.getElementById("ouvrir").addEventListener("click", () => parent.postMessage({ type: "open", url: window.adresse }, "*"));
   addEventListener("message", (e) => {
     window.recus.push(e.data);
-    if (e.data && e.data.type === "memoire") {
+    if (e.data && e.data.type === "memory") {
       const ul = document.getElementById("series");
       ul.textContent = "";
-      for (const [cle, v] of Object.entries(e.data.valeurs)) {
+      for (const [cle, v] of Object.entries(e.data.values)) {
         const li = document.createElement("li");
-        li.textContent = cle + " : " + v.valeur.titre + " " + v.adresse;
+        li.textContent = cle + " : " + v.value.titre + " " + v.url;
         ul.append(li);
       }
-      document.getElementById("domaine").textContent = e.data.domaine;
+      document.getElementById("domaine").textContent = e.data.domain;
     }
   });
-  parent.postMessage({ type: "pret" }, "*");
+  parent.postMessage({ type: "ready" }, "*");
 </script>`;
 
 /** Chrome-context expression: the window of site app `id` (the attribute set by setupSiteWindow), or undefined. */

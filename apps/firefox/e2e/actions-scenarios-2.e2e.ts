@@ -53,7 +53,7 @@ async function quit(m: Marionette): Promise<void> {
   w = undefined;
 }
 
-const direct = (m: Marionette) => inUi<{ running: { action: string }[]; waiting: { action: string }[] }>(m, "return JSON.parse(JSON.stringify(await ui.webaios.actions.direct()));");
+const direct = (m: Marionette) => inUi<{ running: { action: string }[]; waiting: { action: string }[] }>(m, "return JSON.parse(JSON.stringify(await ui.webaios.actions.live()));");
 
 /** Polls `read` until `ok` accepts it; fails with the last value. */
 async function until<T>(read: () => T | Promise<T>, ok: (v: T) => boolean, ms = 30_000): Promise<T> {
@@ -97,8 +97,8 @@ const WIDGET_DISPLAY = `<!doctype html><meta charset="utf-8">
 <script>
   addEventListener("message", (e) => {
     if (!e.data || e.data.type !== "widget") return;
-    document.getElementById("donnees").textContent = JSON.stringify(e.data.donnees);
-    document.getElementById("statut").textContent = e.data.etat.statut;
+    document.getElementById("donnees").textContent = JSON.stringify(e.data.data);
+    document.getElementById("statut").textContent = e.data.state.status;
   });
 </script>`;
 const widgetsDir = (id: string) => path.join(dirs.dataDir, "widgets", id);
@@ -164,12 +164,12 @@ it("the Gmail widget (account, harvest.mjs) and a watch update as before while a
   // « Up to date, hour of the day done »: the watch does not harvest by itself.
   const now = new Date().toISOString();
   await writeFile(path.join(widgetsDir("veille"), "state.json"), JSON.stringify({ status: "ok", lastUpdate: now, lastAttempt: now, hours: { done: "9999-12-31T23:59", failures: null } }));
-  await writeFile(path.join(dirs.dataDir, "widgets", "grants.json"), JSON.stringify({ gmail: { domains: ["127.0.0.1"], public: [], profile: "defaut" } }));
+  await writeFile(path.join(dirs.dataDir, "widgets", "grants.json"), JSON.stringify({ gmail: { domains: ["127.0.0.1"], public: [], profile: "default" } }));
   await writePagesAction(dirs.dataDir, site);
   const { m } = await launch(1400);
   await untilEqual(() => shown(m, "gmail"), '{"exemple":"gmail"}');
   await waitKernel(m);
-  await inUi(m, "void ui.webaios.actions.lancer('pages', null);");
+  await inUi(m, "void ui.webaios.actions.launch('pages', null);");
   const running = async () => (await direct(m)).running.map((c) => c.action);
   await untilEqual(running, ["pages"]);
 

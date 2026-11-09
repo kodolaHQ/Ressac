@@ -60,7 +60,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
   // The add-on changes this module is making, as `<addonId> <quoi>`: only those AddonManager events are ours. A removal
   // in about:addons while we install or reload the same add-on is still the user's (an install fires no uninstall event).
   const ours = new Set<string>();
-  const own = async <T>(addonId: string, what: "desinstallee" | "desactivee", f: () => Promise<T>): Promise<T> => {
+  const own = async <T>(addonId: string, what: "uninstalled" | "disabled", f: () => Promise<T>): Promise<T> => {
     const key = `${addonId} ${what}`;
     ours.add(key);
     try {
@@ -79,12 +79,12 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
 
   const handlers: Record<string, Handler> = {
     // Inactive (decision 4): never installed fresh; an upgrade keeps the disabled state, so it is disabled first.
-    "extensions.installer": async (p: { addonId: string; xpi: string; temporary: boolean; version: string; active: boolean }) => {
+    "extensions.install": async (p: { addonId: string; xpi: string; temporary: boolean; version: string; active: boolean }) => {
       const id = agentId(p.addonId);
       const present = await AddonManager.getAddonByID(id);
       if (!p.active && !present) return null;
       if (present && present.version === p.version) return { version: present.version };
-      return own(id, "desactivee", async () => {
+      return own(id, "disabled", async () => {
         if (!p.active && !present.userDisabled) await present.disable();
         let path = p.xpi;
         if (p.temporary) {
@@ -104,40 +104,40 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
       });
     },
     // reload_extension on an unchanged copy: the running add-on restarts as is (disable then enable), nothing re-signed.
-    "extensions.redemarrer": async (p: { addonId: string }) => {
+    "extensions.restart": async (p: { addonId: string }) => {
       const addon = await AddonManager.getAddonByID(agentId(p.addonId));
-      if (addon?.isActive) await own(addon.id, "desactivee", () => addon.reload());
+      if (addon?.isActive) await own(addon.id, "disabled", () => addon.reload());
     },
-    "extensions.activer": async (p: { addonId: string; active: boolean }) => {
+    "extensions.enable": async (p: { addonId: string; active: boolean }) => {
       const addon = await AddonManager.getAddonByID(agentId(p.addonId));
       if (!addon || addon.userDisabled === !p.active) return;
-      await own(addon.id, "desactivee", () => (p.active ? addon.enable() : addon.disable()));
+      await own(addon.id, "disabled", () => (p.active ? addon.enable() : addon.disable()));
     },
     // `unlessUndone`: a removal from about:addons; kept (false) only if its Undo came. An add-on present again without an
     // Undo was installed back by the kernel before the removal reached it: uninstalled again.
-    "extensions.desinstaller": async (p: { addonId: string; unlessUndone?: boolean }) => {
+    "extensions.uninstall": async (p: { addonId: string; unlessUndone?: boolean }) => {
       const addon = await AddonManager.getAddonByID(agentId(p.addonId));
       if (addon && p.unlessUndone && undone.has(addon.id)) return false;
       // An immediate uninstall still finishing: Firefox completes it.
-      if (addon && !uninstalling.has(addon.id)) await own(addon.id, "desinstallee", () => addon.uninstall());
+      if (addon && !uninstalling.has(addon.id)) await own(addon.id, "uninstalled", () => addon.uninstall());
       return true;
     },
     // The grant card, in that window if still open, else the active one; no window: it falls at once.
-    "extensions.accord": (p: { card: ExtensionCard; window: string | null }, signal) => {
+    "extensions.grant": (p: { card: ExtensionCard; window: string | null }, signal) => {
       const f = p.window && windows.get(p.window) ? p.window : windows.active();
       return f ? questions.askExtension(p.card, f, signal) : { accepted: false, hash: p.card.hash, removed: true };
     },
     // The console unlock card, in that window if still open, else the active one; no window: it falls at once.
-    "extensions.deblocage": (p: { name: string; spaces: string[]; reason: string; agent: string; window: WindowId | null }, signal) => {
+    "extensions.unlock": (p: { name: string; spaces: string[]; reason: string; agent: string; window: WindowId | null }, signal) => {
       const f = p.window && windows.get(p.window) ? p.window : windows.active();
-      return f ? questions.askConsole(p, f, signal) : "retiree";
+      return f ? questions.askConsole(p, f, signal) : "withdrawn";
     },
     // Firefox's own add-ons for list_extensions (decision 7): AMO extensions, not the agent's, nor built-in, system or hidden ones.
     "extensions.amo": async () =>
       (await AddonManager.getAddonsByTypes(["extension"]))
         .filter((a: { id: string; isBuiltin: boolean; isSystem: boolean; hidden: boolean }) => !a.id.endsWith(SUFFIX) && !a.isBuiltin && !a.isSystem && !a.hidden)
         .map((a: { id: string; name: string; version: string; isActive: boolean }) => ({ id: a.id, name: a.name, version: a.version, active: a.isActive })),
-    "navigateur.espaces": () => ({
+    "browser.spaces": () => ({
       spaces: store.state.spaces,
       windows: store.state.windows.filter((f) => windows.get(f.id)).map((f) => ({ id: f.id, activeSpace: f.activeSpace })),
       foreground: windows.active() ?? null,
@@ -145,10 +145,10 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
   };
 
   // about:addons changes not acknowledged by a host: sent again with the next extensions.pret, so none is lost while no host runs.
-  const pending = new Map<string, "desinstallee" | "desactivee">();
-  const send = (addonId: string, what: "desinstallee" | "desactivee") =>
+  const pending = new Map<string, "uninstalled" | "disabled">();
+  const send = (addonId: string, what: "uninstalled" | "disabled") =>
     host()
-      .request("extensions.horsWebaios", { addonId, what: what })
+      .request("extensions.outsideWebaios", { addonId, what: what })
       .then(() => pending.get(addonId) === what && pending.delete(addonId))
       .catch(() => {});
   AddonManager.addAddonListener({
@@ -157,16 +157,16 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
     onUninstalling: (a: { id: string; temporarilyInstalled: boolean; pendingOperations: number }) => {
       undone.delete(a.id);
       if (!(a.pendingOperations & AddonManager.PENDING_UNINSTALL)) uninstalling.add(a.id);
-      outside(a, "desinstallee");
+      outside(a, "uninstalled");
     },
     onUninstalled: (a: { id: string; temporarilyInstalled: boolean }) => {
       uninstalling.delete(a.id);
-      outside(a, "desinstallee");
+      outside(a, "uninstalled");
     },
     onOperationCancelled: (a: { id: string }) => void undone.add(a.id),
-    onDisabled: (a: { id: string; temporarilyInstalled: boolean }) => outside(a, "desactivee"),
+    onDisabled: (a: { id: string; temporarilyInstalled: boolean }) => outside(a, "disabled"),
   });
-  function outside(addon: { id: string; temporarilyInstalled: boolean }, what: "desinstallee" | "desactivee") {
+  function outside(addon: { id: string; temporarilyInstalled: boolean }, what: "uninstalled" | "disabled") {
     // Quitting unloads temporary add-ons: not a choice made in about:addons.
     if (!addon.id.endsWith(SUFFIX) || ours.has(`${addon.id} ${what}`) || (addon.temporarilyInstalled && Services.startup.shuttingDown)) return;
     pending.set(addon.id, what);
@@ -223,7 +223,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
   // A profile turned private: its agent-script tabs reload here at once, host or not; the kernel takes it out of the
   // registry (extensions.profilsPrives, sent at each change of that set, and at each host start).
   const privateProfiles = () => [...new Set(store.state.spaces.filter((e) => e.private).map((e) => e.profile))].sort();
-  const sendPrivate = () => host().notify("extensions.profilsPrives", { privateTabs: privateProfiles() });
+  const sendPrivate = () => host().notify("extensions.privateProfiles", { profiles: privateProfiles() });
   let lastPrivate = privateProfiles();
   store.subscribe((state, previous) => {
     const now = privateProfiles();
@@ -243,7 +243,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
     if (maskedSent.has(key)) return;
     maskedSent.add(key);
     host()
-      .request("extensions.aTourne", { addonId, profile: profile, readable: false })
+      .request("extensions.ran", { addonId, profile: profile, readable: false })
       .catch(() => maskedSent.delete(key));
   };
 
@@ -309,7 +309,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
       tabModel = t && !t.space.private && typeof url === "string" ? { tabId: t.tab.id, url } : { tabId: null, url: "" };
     }
     const m = { timestamp: Date.now(), level: consoleLevel(d.level === "warn" ? "warning" : d.level), text: d.text.slice(0, CONSOLE_TEXT_MAX) };
-    host().notify("extensions.console", { addonId: d.addonId, m, tab: tabModel });
+    host().notify("extensions.console", { addonId: d.addonId, message: m, tab: tabModel });
   }
 
   // The network guard beyond the copy's CSP: every http(s) request an agent
@@ -363,7 +363,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
     const mine = crashesPending.filter((x) => x.addonId === addonId);
     if (mine.length > MAX_CRASHES) crashesPending.splice(crashesPending.indexOf(mine[0]!), 1);
     host()
-      .request("extensions.plantage", c)
+      .request("extensions.crash", c)
       .then(() => crashesPending.includes(c) && crashesPending.splice(crashesPending.indexOf(c), 1))
       .catch(() => {});
   });
@@ -390,7 +390,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
       const sent = [...pending].map(([addonId, what]) => ({ addonId, what: what }));
       const crashes = [...crashesPending];
       host()
-        .request("extensions.pret", { outsideWebaios: sent, crashes: crashes })
+        .request("extensions.ready", { outsideWebaios: sent, crashes: crashes })
         .then(
           () => {
             sent.forEach((h) => pending.get(h.addonId) === h.what && pending.delete(h.addonId));

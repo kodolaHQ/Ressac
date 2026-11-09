@@ -15,7 +15,7 @@
 {:else if tab.crashed}
   <div class="plante">
     <p>Cette page a planté.</p>
-    <button onclick={() => api.command(tab.id, "recharger")}>Recharger</button>
+    <button onclick={() => api.command(tab.id, "reload")}>Recharger</button>
   </div>
 {/if}
 

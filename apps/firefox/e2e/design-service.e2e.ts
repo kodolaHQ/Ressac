@@ -49,7 +49,7 @@ async function boot(prefs: Record<string, string | number | boolean> = {}): Prom
     return 1;
   })();`);
   // The host answers design.suivi (not "projet" for a parking tab: null, or a rejection while it starts).
-  await waitFor(mm, `return (async () => { const d = (await ChromeUtils.importESModule("${STORE}").ready).design; return d.etat({ type: "fenetre", fenetreId: window.webaiosWindow.fenetreId }).then(() => true, () => false); })();`, (v) => v === true, 30_000);
+  await waitFor(mm, `return (async () => { const d = (await ChromeUtils.importESModule("${STORE}").ready).design; return d.state({ type: "fenetre", windowId: window.webaiosWindow.windowId }).then(() => true, () => false); })();`, (v) => v === true, 30_000);
   return l;
 }
 
@@ -67,10 +67,10 @@ afterAll(async () => {
 /** Runs `body` with `d` the design service and `t` this window's target; `args` are `args`. */
 const svc = <R = unknown>(body: string, args: unknown[] = []) =>
   m.execute<R>(
-    `return (async (args) => { const d = (await ChromeUtils.importESModule("${STORE}").ready).design; const t = { type: "fenetre", fenetreId: window.webaiosWindow.fenetreId }; ${body} })([...arguments]);`,
+    `return (async (args) => { const d = (await ChromeUtils.importESModule("${STORE}").ready).design; const t = { type: "fenetre", windowId: window.webaiosWindow.windowId }; ${body} })([...arguments]);`,
     args,
   );
-const state = () => svc<{ active: boolean; basket: number; unavailable: string | null; project: { project: string } | null }>("return await d.etat(t);");
+const state = () => svc<{ active: boolean; basket: number; unavailable: string | null; project: { project: string } | null }>("return await d.state(t);");
 const toggle = () => svc("await d.toggle(t); return 1;");
 const stopMode = () => svc("await d.stop(t); return 1;");
 const add = (text: string) => svc<{ ok: boolean; error?: string }>("return await d.add(t, args[0]);", [text]);
@@ -82,7 +82,7 @@ async function open(p: string, base = servers.page): Promise<void> {
 const inPage = <T = unknown>(script: string) => inBrowser<T>(m, B, script);
 const hosts = () => inPage<number>(`return document.querySelectorAll("webaios-viseur").length;`);
 const bubbles = () => m.execute<{ place: { x: number; y: number; width: number; height: number }; ctx: { label: string; source: string | null; project: string; mode: string } }[]>(
-  `return window.__overlay.filter((e) => e.op === "show" && e.ctx.mode === "bulle");`,
+  `return window.__overlay.filter((e) => e.op === "show" && e.ctx.mode === "bubble");`,
 );
 
 /** Toggles the mode on, waits for the viewfinder, clicks `sel` as a person: the bubble shown. */
@@ -207,7 +207,7 @@ describe("design service", () => {
   it("toggle on the demo, a trusted click on #email: the bubble context names input#email.champ, its place is bubbleSlot's", async () => {
     await open("/");
     const b = await aim("#email");
-    expect(b.ctx).toMatchObject({ mode: "bulle", label: "input#email.champ", project: `demo-${PORT}` });
+    expect(b.ctx).toMatchObject({ mode: "bubble", label: "input#email.champ", project: `demo-${PORT}` });
     const r = await inPage<{ x: number; y: number; width: number; height: number }>(`const r = document.querySelector("#email").getBoundingClientRect(); return { x: r.x, y: r.y, largeur: r.width, hauteur: r.height };`);
     const g = await m.execute<{ z: number; x: number; y: number; width: number; height: number; w: number; h: number }>(
       `const r = ${B}.getBoundingClientRect(); return { z: ${B}.fullZoom, x: r.x, y: r.y, width: r.width, height: r.height, w: window.innerWidth, h: window.innerHeight };`,
@@ -220,7 +220,7 @@ describe("design service", () => {
     await svc("d.cancel(t); return 1;");
     await expect.poll(hosts, { timeout: 10_000 }).toBe(1);
     // Only the bubble: the UI's cart column (Task 3) shows while the mode is on.
-    expect(await svc('return d.overlayContext(t, ["bulle", "message"]);')).toBeNull();
+    expect(await svc('return d.overlayContext(t, ["bubble", "message"]);')).toBeNull();
     await stopMode();
     expect(await hosts()).toBe(0);
     expect((await state()).active).toBe(false);
@@ -430,8 +430,8 @@ describe("design service", () => {
   it("closing the last window forgets its overlay context: reopened, the context is fresh", async () => {
     await open("/");
     await svc("await d.openCart(t); return 1;");
-    expect(await svc("return d.overlayContext(t)?.mode ?? null;")).toBe("panier");
-    const id = await m.execute<string>("return window.webaiosWindow.fenetreId;");
+    expect(await svc("return d.overlayContext(t)?.mode ?? null;")).toBe("basket");
+    const id = await m.execute<string>("return window.webaiosWindow.windowId;");
     // A module timer outlives the window: once it is gone, it reopens one as the Dock would.
     await m.execute(
       `const { setTimeout } = ChromeUtils.importESModule("resource://gre/modules/Timer.sys.mjs");
@@ -445,7 +445,7 @@ describe("design service", () => {
     await m.command("WebDriver:SwitchToWindow", { handle: reopened, focus: false });
     await waitReady(m);
     await waitFor(m, "return !!window.webaiosWindow;", (v) => v === true);
-    expect(await m.execute("return window.webaiosWindow.fenetreId;")).toBe(id);
+    expect(await m.execute("return window.webaiosWindow.windowId;")).toBe(id);
     expect(await svc("return d.overlayContext(t);")).toBeNull();
     // The recorder lived in the closed window: set again for the tests after.
     await m.execute(`return (async () => { const d = (await ChromeUtils.importESModule("${STORE}").ready).design;
@@ -457,7 +457,7 @@ describe("design service", () => {
   it("the host stopped: toggle does nothing, etat rejects", async () => {
     await open("/");
     await m.execute(`return (async () => { await (await ChromeUtils.importESModule("${STORE}").ready).agent.stop(); return 1; })();`);
-    expect(await svc("return await d.etat(t).then(() => 'resolved', (e) => 'rejected');")).toBe("rejected");
+    expect(await svc("return await d.state(t).then(() => 'resolved', (e) => 'rejected');")).toBe("rejected");
     await toggle();
     await sleep(500);
     expect(await hosts()).toBe(0);

@@ -43,7 +43,7 @@ beforeAll(async () => {
   await m.setContext("chrome");
   await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
   await resolveLocalHosts(m, ["localhost"]);
-  await waitFor(m, `return (async () => { const d = (await ChromeUtils.importESModule("${STORE}").ready).design; return d.etat({ type: "fenetre", fenetreId: window.webaiosWindow.fenetreId }).then(() => true, () => false); })();`, (v) => v === true, 30_000);
+  await waitFor(m, `return (async () => { const d = (await ChromeUtils.importESModule("${STORE}").ready).design; return d.state({ type: "fenetre", windowId: window.webaiosWindow.windowId }).then(() => true, () => false); })();`, (v) => v === true, 30_000);
 }, 120_000);
 afterAll(async () => {
   await w?.close();
@@ -55,10 +55,10 @@ afterAll(async () => {
 /** Runs `body` with `d` the design service, `t` the current window's target, `store` the store. */
 const svc = <R = unknown>(body: string, args: unknown[] = []) =>
   m.execute<R>(
-    `return (async (args) => { const store = await ChromeUtils.importESModule("${STORE}").ready, d = store.design; const t = { type: "fenetre", fenetreId: window.webaiosWindow.fenetreId }; ${body} })([...arguments]);`,
+    `return (async (args) => { const store = await ChromeUtils.importESModule("${STORE}").ready, d = store.design; const t = { type: "fenetre", windowId: window.webaiosWindow.windowId }; ${body} })([...arguments]);`,
     args,
   );
-const state = () => svc<{ active: boolean; basket: number }>("return await d.etat(t);");
+const state = () => svc<{ active: boolean; basket: number }>("return await d.state(t);");
 const hosts = () => inBrowser<number>(m, B, `return document.querySelectorAll("webaios-viseur").length;`);
 
 async function open(url: string): Promise<string> {
@@ -67,7 +67,7 @@ async function open(url: string): Promise<string> {
   return id;
 }
 const activate = async (id: string) => {
-  await dispatch(m, { type: "activerOnglet", id });
+  await dispatch(m, { type: "activateTab", id });
   await waitFor(m, `return gBrowser.selectedTab.getAttribute("webaios-tab-id") === ${JSON.stringify(id)};`, (v) => v === true);
   await m.execute(`${B}.focus();`);
 };
@@ -164,7 +164,7 @@ describe("to the agent", () => {
     await svc("await store.agent.stop(); return 1;");
     await click(m, tid("envoyer-remarques"), { frame: "panel" });
     await expect.poll(alertText, { timeout: 10_000 }).toBeTruthy();
-    expect(await svc("return d.overlayContext(t, ['panier'])?.mode ?? null;")).toBe("panier");
+    expect(await svc("return d.overlayContext(t, ['basket'])?.mode ?? null;")).toBe("basket");
     await sleep(500);
     expect(await alertText()).toBeTruthy();
     expect(await cartCount()).toBe(1);

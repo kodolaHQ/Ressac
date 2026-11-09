@@ -71,7 +71,7 @@ const viewOf = (m: Marionette, id: string) => inStore<string | null>(m, `return 
 /** App `id`'s window opened by the agent's sites.agir (or already open). */
 export async function openSite(m: Marionette, id: string): Promise<void> {
   if (!(await inStore<boolean>(m, `return store.sites.openIds().includes(arguments[0]);`, [id])))
-    await inStore(m, `await store.agent.request("sites.agir", { id: arguments[0], action: "ouvrir", fenetre: store.state.fenetres[0].id });`, [id]);
+    await inStore(m, `await store.agent.request("sites.act", { id: arguments[0], action: "open", window: store.state.windows[0].id });`, [id]);
   await expect.poll(() => viewOf(m, id), { timeout: 15_000 }).not.toBeNull();
 }
 
@@ -79,7 +79,7 @@ export async function openSite(m: Marionette, id: string): Promise<void> {
 export async function toSite(m: Marionette, id: string, path = "/"): Promise<string> {
   await openSite(m, id);
   if ((await viewOf(m, id)) !== "site") await inStore(m, `store.sites.controller(arguments[0]).enter();`, [id]);
-  const target = await inStore<string>(m, `return new URL(arguments[1], store.sites.siteOf(arguments[0]).depart).href;`, [id, path]);
+  const target = await inStore<string>(m, `return new URL(arguments[1], store.sites.siteOf(arguments[0]).start).href;`, [id, path]);
   await expect.poll(() => m.execute(`return ${viewExpr(id)}?.currentURI.spec ?? null;`), { timeout: 15_000 }).not.toBeNull();
   if ((await m.execute(`return ${viewExpr(id)}.currentURI.spec;`)) !== target) await inStore(m, `return store.sites.navigateForAgent(arguments[0], arguments[1]);`, [id, target]);
   await expect.poll(() => m.execute(`const b = ${viewExpr(id)}; return b.currentURI.spec === arguments[0] && !b.webProgress.isLoadingDocument;`, [target]), { timeout: 15_000 }).toBe(true);
@@ -90,7 +90,7 @@ export async function toSite(m: Marionette, id: string, path = "/"): Promise<str
 /** The home in the bar of app `id`, shown and loaded from its served copy. */
 export async function toHome(m: Marionette, id: string): Promise<void> {
   await openSite(m, id);
-  if ((await viewOf(m, id)) !== "accueil") await inStore(m, `store.sites.controller(arguments[0]).home();`, [id]);
+  if ((await viewOf(m, id)) !== "home") await inStore(m, `store.sites.controller(arguments[0]).home();`, [id]);
   await expect
     .poll(() => inSiteBar<string | null>(m, id, `const h = doc.querySelector('[data-testid="site-cadre-accueil"]'); const d = h?.contentDocument; return d?.readyState === "complete" ? String(d.documentURI) : null;`), { timeout: 15_000 })
     .toMatch(/^resource:\/\/webaios-site-/);

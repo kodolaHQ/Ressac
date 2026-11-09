@@ -64,13 +64,13 @@ export async function startExternals(o: {
         return { project: r.project, ...(r.readable ? {} : { warning: UNREADABLE_WARNING }) };
       },
     });
-    serverState = { state: "pret", port: server.port };
+    serverState = { state: "ready", port: server.port };
   } catch (e) {
     // Port taken or any other error: the section says so, never « démarre » endlessly.
-    if ((e as NodeJS.ErrnoException).code === "EADDRINUSE") serverState = { state: "eteint", reason: portTaken(o.port) };
+    if ((e as NodeJS.ErrnoException).code === "EADDRINUSE") serverState = { state: "off", reason: portTaken(o.port) };
     else {
       console.error("[externes] démarrage impossible :", e);
-      serverState = { state: "eteint", reason: failureReason(e) };
+      serverState = { state: "off", reason: failureReason(e) };
     }
   }
 
@@ -84,7 +84,7 @@ export async function startExternals(o: {
       };
     },
     connect: async (name) => {
-      if (serverState.state !== "pret") throw new Error(serverState.reason);
+      if (serverState.state !== "ready") throw new Error(serverState.reason);
       const clean = name.trim().slice(0, NAME_MAX) || DEFAULT_NAME;
       const { token: token } = await o.registry.connect(clean);
       return { command: pluggedCommand(serverState.port, token) };

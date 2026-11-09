@@ -5,7 +5,7 @@ import { createStore } from "../chrome/store/store";
 import { createWindowRegistry, pickWindow } from "../chrome/store/windows";
 
 // Three state windows: a, b, c.
-const state = ["b", "c"].reduce((s, id) => apply(s, { type: "ouvrirFenetre", id }), initialState(() => "a"));
+const state = ["b", "c"].reduce((s, id) => apply(s, { type: "openWindow", id }), initialState(() => "a"));
 const [a, b, c] = state.windows.map((f) => f.id) as [string, string, string];
 
 describe("pickWindow", () => {
@@ -34,7 +34,7 @@ describe("createWindowRegistry", () => {
 
   it("a window opened for the state that closes before claiming leaves it; the last real window then keeps its tabs", () => {
     // A restored session: a (with a tab) and b.
-    const restored = apply(apply(initialState(() => "a"), { type: "ouvrirFenetre", id: "b" }), { type: "ouvrirOnglet", windowId: "a", url: "https://a.test/" }, () => "t");
+    const restored = apply(apply(initialState(() => "a"), { type: "openWindow", id: "b" }), { type: "openTab", windowId: "a", url: "https://a.test/" }, () => "t");
     const store = createStore(restored);
     const opened: Window[] = [];
     const windows = createWindowRegistry({ store, open: () => opened[opened.push(fakeWindow()) - 1], onRelease: () => {} });

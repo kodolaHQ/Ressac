@@ -126,7 +126,7 @@ function brokenLink(e: ExtensionsState, key: string, link: UnlockLink): boolean 
 /** Decision 4: installed but disabled unless granted, active in a profile, not disabled, and not everything cut. */
 const activeIn = (e: ExtensionsState, x: ExtensionEntry | undefined) => !!x?.grant && x.profiles.length > 0 && !x.disabled && !e.allCut;
 
-/** What the chrome's guard checkpoints read (`extensions.portees`): each granted agent extension by its add-on id. */
+/** What the chrome's guard checkpoints read (`extensions.scopes`): each granted agent extension by its add-on id. */
 export type Scopes = Record<string, { key: string; grant: Scope; profiles: string[]; active: boolean }>;
 export function scopesOf(e: ExtensionsState): Scopes {
   const r: Scopes = {};
@@ -165,7 +165,7 @@ export class ExtensionsAgent {
   /** Startup (decision 5): leftovers deleted, every granted one recopied, signed again only if its source changed, then installed. */
   async start(): Promise<void> {
     // First: the chrome's checkpoints wait for it (an add-on kept by Firefox starts before this host).
-    this.o.rpc.notify("extensions.portees", scopesOf(await readExtensionsState(this.o.folder)));
+    this.o.rpc.notify("extensions.scopes", scopesOf(await readExtensionsState(this.o.folder)));
     for (const [sub, rest] of [
       ["copies", /\.(tmp|ancienne|pending)$/],
       ["signed", /\.(pending|upload)\.xpi$/],
@@ -188,7 +188,7 @@ export class ExtensionsAgent {
   }
 
   /**
-   * Copy, sign, install. The scope must stay within `accord` (broadened: disabled, grant kept). `demarrage`: an unchanged
+   * Copy, sign, install. The scope must stay within `grant` (broadened: disabled, grant kept). `demarrage`: an unchanged
    * source reinstalls the kept signed .xpi without sending anything. A failure before the install leaves the registry
    * and the running version untouched.
    */
@@ -232,7 +232,7 @@ export class ExtensionsAgent {
     this.consoles.note(addonId, { timestamp: x.timestamp, level: x.level!, text: x.text }, o ? { readable: o.readable === true } : undefined);
   }
 
-  /** A crash the chrome saw (`extensions.plantage`, or queued in `extensions.pret`; spike S7): the `PLANTAGES_MAX`-th in `FENETRE_PLANTAGES_MS` disables it everywhere. */
+  /** A crash the chrome saw (`extensions.crash`, or queued in `extensions.ready`; spike S7): the `PLANTAGES_MAX`-th in `FENETRE_PLANTAGES_MS` disables it everywhere. */
   crash(addonId: unknown, at?: unknown): void {
     if (typeof addonId !== "string" || !addonId.endsWith(ID_SUFFIX) || !this.key(addonId.slice(0, -ID_SUFFIX.length))) return;
     // When the chrome saw it (a crash queued while no host ran), never later than now.
@@ -304,8 +304,8 @@ export class ExtensionsAgent {
         link: link,
         waits: 0,
         answer: this.o.rpc
-          .request<Outcome>("extensions.deblocage", request, AbortSignal.any([removal.signal, this.stopSignal.signal]))
-          .catch((): Outcome => "retiree")
+          .request<Outcome>("extensions.unlock", request, AbortSignal.any([removal.signal, this.stopSignal.signal]))
+          .catch((): Outcome => "withdrawn")
           .finally(() => {
             if (this.unlockCards.get(key) === fresh) this.unlockCards.delete(key);
           }),
@@ -317,7 +317,7 @@ export class ExtensionsAgent {
     opened.waits++;
     // This call dropped (new conversation) takes the card down only if it is the last one waiting for it.
     let giveUp: () => void = () => {};
-    const abandon = new Promise<Outcome>((ok) => (giveUp = () => ok("retiree")));
+    const abandon = new Promise<Outcome>((ok) => (giveUp = () => ok("withdrawn")));
     let gone = false;
     const from = () => {
       if (gone) return;
@@ -337,8 +337,8 @@ export class ExtensionsAgent {
         opened.waits--;
       }
     }
-    if (outcome === "retiree") return { ok: false, error: REQUEST_REMOVED, removed: true };
-    if (outcome !== "autoriser") return { ok: false, error: UNLOCK_DENIED, denied: true };
+    if (outcome === "withdrawn") return { ok: false, error: REQUEST_REMOVED, removed: true };
+    if (outcome !== "allow") return { ok: false, error: UNLOCK_DENIED, denied: true };
     // The state may have changed during the card: checked again on « yes », against what the card showed.
     const after = await readExtensionsState(this.o.folder);
     if (unlockDenial(after, privateProfilesOf(await this.browser()), key) || brokenLink(after, key, opened.link)) return { ok: false, error: UNLOCK_CHANGED };
@@ -592,13 +592,13 @@ export class ExtensionsAgent {
     return e.ok ? { ok: true } : { ok: false, error: e.error };
   }
 
-  /** The card in the chrome (`extensions.accord`); fallen, aborted or unanswerable: « retirée », never a refusal. */
+  /** The card in the chrome (`extensions.grant`); fallen, aborted or unanswerable: « retirée », never a refusal. */
   private async askGrant(key: string, card: ExtensionCard, win: string | null, signal?: AbortSignal): Promise<GrantResponse> {
     const removal = new AbortController();
     this.cards.set(key, removal);
     try {
       const signals = [removal.signal, this.stopSignal.signal, ...(signal ? [signal] : [])];
-      return await this.o.rpc.request<GrantResponse>("extensions.accord", { card: card, window: win }, AbortSignal.any(signals));
+      return await this.o.rpc.request<GrantResponse>("extensions.grant", { card: card, window: win }, AbortSignal.any(signals));
     } catch {
       return { accepted: false, hash: card.hash, removed: true };
     } finally {
@@ -641,7 +641,7 @@ export class ExtensionsAgent {
     this.cards.get(key)?.abort();
     return this.queued(key, async () => {
       // Uninstalled first: an entry gone while the add-on stays installed would run without a grant.
-      const done = await this.o.rpc.request("extensions.desinstaller", outsideWebaios ? { addonId: addonIdOf(id), unlessUndone: true } : { addonId: addonIdOf(id) });
+      const done = await this.o.rpc.request("extensions.uninstall", outsideWebaios ? { addonId: addonIdOf(id), unlessUndone: true } : { addonId: addonIdOf(id) });
       if (done === false) return;
       await this.edit((e) => (key in e.extensions ? remove(e, key) : e));
       this.consoles.forget(addonIdOf(id));
@@ -652,11 +652,11 @@ export class ExtensionsAgent {
   }
 
   /** about:addons removed it (« Supprimer », grant deleted) or disabled it (« Désactiver partout ») (decision 6). */
-  async outsideWebaios(addonId: string, what: "desinstallee" | "desactivee"): Promise<void> {
+  async outsideWebaios(addonId: string, what: "uninstalled" | "disabled"): Promise<void> {
     if (!addonId.endsWith(ID_SUFFIX)) return;
     const key = this.key(addonId.slice(0, -ID_SUFFIX.length));
     if (!key || !(key in (await readExtensionsState(this.o.folder)).extensions)) return;
-    if (what === "desinstallee") return this.supprimer(key, true);
+    if (what === "uninstalled") return this.supprimer(key, true);
     await this.queued(key, () => this.edit((e) => (key in e.extensions ? disableEverywhere(e, key) : e)));
   }
 
@@ -680,7 +680,7 @@ export class ExtensionsAgent {
   }
 
   /**
-   * The chrome's private profiles (`extensions.profilsPrives`): each agent extension
+   * The chrome's private profiles (`extensions.privateProfiles`): each agent extension
    * active in one is taken out of it, the tabs of those profiles where it ran are reloaded (A7: its scripts stop), and
    * it is disabled where it is active nowhere else.
    */
@@ -693,7 +693,7 @@ export class ExtensionsAgent {
     for (const [key, profiles] of byKey) {
       const id = this.id(key);
       if (!id) continue;
-      this.o.rpc.notify("extensions.rechargerOnglets", { addonId: addonIdOf(id), profiles: profiles });
+      this.o.rpc.notify("extensions.reloadTabs", { addonId: addonIdOf(id), profiles: profiles });
       await this.queued(key, () => this.apply(id, key));
     }
   }
@@ -793,13 +793,13 @@ export class ExtensionsAgent {
     const privates = privateProfilesOf(await this.browser());
     const e = await changeExtensionsState(this.o.folder, change, () => privates);
     this.checkUnlocks(e, privates);
-    this.o.rpc.notify("extensions.portees", scopesOf(e));
+    this.o.rpc.notify("extensions.scopes", scopesOf(e));
     this.o.rpc.notify("extensions.change");
     return e;
   }
 
   private browser(): Promise<Browser> {
-    return this.o.rpc.request<Browser>("navigateur.espaces", {});
+    return this.o.rpc.request<Browser>("browser.spaces", {});
   }
 
   private async active(key: string): Promise<boolean> {
@@ -813,7 +813,7 @@ export class ExtensionsAgent {
     if (active && this.toSign.delete(key)) return this.signEnabled(id, key);
     const kept = await this.guard(id);
     if (kept) await this.install(id, join(this.o.folder, "signed", `${id}.xpi`), kept.version, active);
-    await this.o.rpc.request("extensions.activer", { addonId: addonIdOf(id), active: active });
+    await this.o.rpc.request("extensions.enable", { addonId: addonIdOf(id), active: active });
   }
 
   /** Active again after a startup that did not sign its changed source: signed now, else the kept version runs. */
@@ -838,13 +838,13 @@ export class ExtensionsAgent {
     return readFile(join(signs, `${id}.json`), "utf8").then((t) => JSON.parse(t) as { version: string; hash: string }, () => null);
   }
 
-  /** `actif` false: Firefox installs it only over a present add-on (disabled first), never fresh. */
+  /** `active` false: Firefox installs it only over a present add-on (disabled first), never fresh. */
   private install(id: string, xpi: string, version: string, active: boolean): Promise<{ version: string } | null> {
-    return this.o.rpc.request("extensions.installer", { addonId: addonIdOf(id), xpi, temporary: !!this.env.WEBAIOS_TEST_AMO_URL, version, active: active });
+    return this.o.rpc.request("extensions.install", { addonId: addonIdOf(id), xpi, temporary: !!this.env.WEBAIOS_TEST_AMO_URL, version, active: active });
   }
 
   /**
-   * `activer`: a grant card was accepted for `accord` (the scope shown) in `profil`: installed active, and only once
+   * `activer`: a grant card was accepted for `grant` (the scope shown) in `profil`: installed active, and only once
    * installed is the grant written (`connue`: an entry existed when the card was shown). A failure leaves no grant.
    */
   private async send(
@@ -856,7 +856,7 @@ export class ExtensionsAgent {
     const p = prepare ?? (await this.prepare(id));
     if (!p.ok) {
       // Only a missing folder stops the running version.
-      if (p.denial.includes(FOLDER_ABSENT)) await this.o.rpc.request("extensions.activer", { addonId: addonIdOf(id), active: false });
+      if (p.denial.includes(FOLDER_ABSENT)) await this.o.rpc.request("extensions.enable", { addonId: addonIdOf(id), active: false });
       return { ok: false, error: p.denial.map((r) => (r === FOLDER_ABSENT ? folderAbsent(id) : r)).join(" ; "), denial: p.denial };
     }
     const { analysis: analysis, hash: hash, staging } = p;
@@ -880,7 +880,7 @@ export class ExtensionsAgent {
     if (kept?.hash === hash) {
       await clear();
       // A reload still counts as a new start (modifieeLe: its console unlock ends).
-      if (!o.startup && !o.activate) await this.o.rpc.request("extensions.redemarrer", { addonId: addonIdOf(id) });
+      if (!o.startup && !o.activate) await this.o.rpc.request("extensions.restart", { addonId: addonIdOf(id) });
       else change = false;
     } else if (o.startup && kept && !(await this.activeAfterSend(key))) {
       // Active nowhere: nothing leaves for AMO; the kept version stays until it is activated again.
@@ -969,7 +969,7 @@ export class ExtensionsAgent {
   private async notGranted(id: string, key: string, scope: Scope): Promise<void> {
     try {
       const x = (await readExtensionsState(this.o.folder)).extensions[key];
-      if (!x) return void (await this.o.rpc.request("extensions.desinstaller", { addonId: addonIdOf(id) }));
+      if (!x) return void (await this.o.rpc.request("extensions.uninstall", { addonId: addonIdOf(id) }));
       if (!x.grant || widenedScope(x.grant, scope))
         await this.edit((e) => {
           const y = e.extensions[key];
@@ -979,7 +979,7 @@ export class ExtensionsAgent {
       await this.apply(id, key);
     } catch (e) {
       console.error(`[extensions] ${key} : accord non écrit, désactivée :`, e);
-      await this.o.rpc.request("extensions.activer", { addonId: addonIdOf(id), active: false }).catch(() => {});
+      await this.o.rpc.request("extensions.enable", { addonId: addonIdOf(id), active: false }).catch(() => {});
     }
   }
 

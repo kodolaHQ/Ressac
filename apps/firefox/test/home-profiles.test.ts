@@ -28,20 +28,20 @@ const state = (spaces: Space[], profiles: ProfileId[], windows: WindowState[]) =
 test("a profile used by a private space is excluded, even shared with a non-private space", () => {
   const s = state(
     [space("e1", "Perso", "perso"), space("e2", "Privé", "prive", true), space("e3", "Boulot", "perso", true)],
-    ["defaut", "perso", "prive"],
+    ["default", "perso", "prive"],
     [win("f1", "e1")],
   );
-  expect(profilesForGrant(s, "f1").map((p) => p.id)).toEqual(["defaut"]);
+  expect(profilesForGrant(s, "f1").map((p) => p.id)).toEqual(["default"]);
 });
 
 test("the window's active space's profile is ticked by default, if it is readable", () => {
   const s = state(
-    [space("e1", "Perso", "perso"), space("e2", "Boulot", "defaut"), space("e3", "Privé", "prive", true)],
-    ["defaut", "perso", "prive"],
+    [space("e1", "Perso", "perso"), space("e2", "Boulot", "default"), space("e3", "Privé", "prive", true)],
+    ["default", "perso", "prive"],
     [win("f1", "e1"), win("f2", "e3")],
   );
   expect(profilesForGrant(s, "f1")).toEqual([
-    { id: "defaut", label: "Profil de « Boulot »", isDefault: false },
+    { id: "default", label: "Profil de « Boulot »", isDefault: false },
     { id: "perso", label: "Profil de « Perso »", isDefault: true },
   ]);
   // The active space is private: its profile is excluded, so nothing is ticked.

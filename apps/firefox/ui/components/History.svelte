@@ -50,7 +50,7 @@
 
   function open(e: MouseEvent, url: string) {
     e.preventDefault();
-    api.dispatch({ type: "ouvrirOnglet", windowId: win.id, url });
+    api.dispatch({ type: "openTab", windowId: win.id, url });
     close();
   }
 

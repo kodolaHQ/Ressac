@@ -44,7 +44,7 @@ const player = (code: string, frame = 0) => view(`(() => { const v = document.ge
 const waitDuration = (duration: number, frame = 0) => expect.poll(() => player("v ? v.duration : 0", frame), { timeout: 15_000 }).toBe(duration);
 /** The player is put at `t` and paused (play then pause: the browser dispatches a trusted `pause` at `t`). */
 const seekThenPause = (t: number, frame = 0) => player(`(v.currentTime = ${t}, v.play().catch(() => {}), v.pause(), v.currentTime)`, frame);
-const openSite = (id: string) => inStore(`await store.agent.request("sites.agir", { id: arguments[0], action: "ouvrir", fenetre: store.state.fenetres[0].id });`, [id]);
+const openSite = (id: string) => inStore(`await store.agent.request("sites.act", { id: arguments[0], action: "open", window: store.state.windows[0].id });`, [id]);
 async function openAndWait(path: string, id = "vidola") {
   await openSite(id);
   await expect.poll(() => viewUrl(id), { timeout: 20_000 }).toBe(url(path));
@@ -140,7 +140,7 @@ describe("video resume", () => {
   it("without a grant (« Ouvrir sans retouches »): no position noted, nothing resumed (sites.spec.ts:1286)", async () => {
     await start({ grant: false, positions: { "/episode/4": { t: 70, duration: 90 } } });
     await openSite("vidola");
-    await expect.poll(() => inStore<string | null>(`return store.sites.viewOf("vidola");`), { timeout: 15_000 }).toBe("accord");
+    await expect.poll(() => inStore<string | null>(`return store.sites.viewOf("vidola");`), { timeout: 15_000 }).toBe("grant");
     await inSiteBar(m, "vidola", `doc.querySelector('[data-testid="refuser-site"]').click(); return true;`);
     await expect.poll(() => viewUrl("vidola"), { timeout: 20_000 }).toBe(url("/episode/4"));
     await waitDuration(90);

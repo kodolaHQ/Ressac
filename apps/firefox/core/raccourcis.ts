@@ -17,7 +17,7 @@ function shownElements(state: BrowserState, windowId: WindowId): { items: Elemen
 
 function toElement(windowId: WindowId, x: Element | undefined): Action | null {
   if (!x) return null;
-  return "tab" in x ? { type: "activerOnglet", id: x.tab } : { type: "ouvrirFavori", windowId: windowId, kind: "epingle", id: x.favorite };
+  return "tab" in x ? { type: "activateTab", id: x.tab } : { type: "openFavorite", windowId: windowId, kind: "pinned", id: x.favorite };
 }
 
 /** ⌘1…⌘8: n-th displayed item; ⌘9: the last. */

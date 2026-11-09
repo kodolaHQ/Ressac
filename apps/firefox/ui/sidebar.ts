@@ -11,14 +11,14 @@ import SiteWindow from "./SiteWindow.svelte";
 const params = new URLSearchParams(location.search);
 // sidebar.html?site=<id>: a site app window's bar (SiteWindow's styles lay out #app).
 if (params.has("site")) mount(SiteWindow, { target: document.body.appendChild(Object.assign(document.createElement("div"), { id: "app" })) });
-// sidebar.html?pastille=app:<dossier>: an app window's badge, over its page (transparent).
-// sidebar.html?calque: a design overlay, the bubble, the message or the cart (transparent).
-else if (params.has("pastille") || params.has("calque")) {
+// sidebar.html?badge=app:<dossier>: an app window's badge, over its page (transparent).
+// sidebar.html?overlay: a design overlay, the bubble, the message or the cart (transparent).
+else if (params.has("badge") || params.has("overlay")) {
   document.documentElement.style.background = "transparent";
   document.body.style.background = "transparent";
   const target = document.body.appendChild(Object.assign(document.createElement("div"), { id: "app" }));
-  if (params.has("calque")) mount(DesignApp, { target });
-  else mount(AppBadge, { target, props: { id: params.get("pastille") ?? "" } });
+  if (params.has("overlay")) mount(DesignApp, { target });
+  else mount(AppBadge, { target, props: { id: params.get("badge") ?? "" } });
 } else {
   // DesignButton's chevron opens the menu on click, and ContextMenu's window click listener would close it
   // at once (Applications.svelte stops the click for that reason): stopped here first, registered before the mount.

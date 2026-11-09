@@ -36,7 +36,7 @@ export function closeTab(id: TabId): void {
     const other = Object.values(appState.value!.tabs).some((x) => x.id !== id && x.windowId === o.windowId && x.url === o.url);
     if (!other && !confirmClose(targetKey(target))) return;
   }
-  api.dispatch({ type: "fermerOnglet", id });
+  api.dispatch({ type: "closeTab", id });
 }
 
 /** The session's downloads, most recent first. */

@@ -40,7 +40,7 @@ const grants = (): Record<string, unknown> => (existsSync(grantsFile()) ? JSON.p
 
 const inStore = <T = unknown>(body: string, args: unknown[] = []) =>
   m.execute<T>(`return (async () => { const store = await ChromeUtils.importESModule("${STORE}").ready; ${body} })();`, args);
-const openSite = (id = "vidola") => inStore(`await store.agent.request("sites.agir", { id: arguments[0], action: "ouvrir", fenetre: store.state.fenetres[0].id });`, [id]);
+const openSite = (id = "vidola") => inStore(`await store.agent.request("sites.act", { id: arguments[0], action: "open", window: store.state.windows[0].id });`, [id]);
 const viewUrl = (id = "vidola") => m.execute<string>(`const u = ${siteWindowExpr(id)}?.gBrowser?.selectedBrowser.currentURI?.spec ?? ""; return u === "about:blank" ? "" : u;`);
 /** The view's address, and whether it shows (the bar covers the window on the card and the home). */
 const viewState = (id = "vidola") =>
@@ -49,7 +49,7 @@ const viewState = (id = "vidola") =>
      const spec = win.gBrowser.selectedBrowser.currentURI?.spec ?? "";
      return { url: spec === "about:blank" ? "" : spec, visible: !win.document.documentElement.hasAttribute("webaios-site-home") };`,
   );
-const state = (id = "vidola") => m.execute<{ view: string; hasHome: boolean; grant: { hash: string; login: string[]; tracked: string[] } | null }>(`return JSON.parse(JSON.stringify(${siteWindowExpr(id)}.webaiosSiteWindow.state()));`);
+const state = (id = "vidola") => m.execute<{ viewState: string; hasHome: boolean; grant: { hash: string; login: string[]; tracked: string[] } | null }>(`return JSON.parse(JSON.stringify(${siteWindowExpr(id)}.webaiosSiteWindow.state()));`);
 const view = <T = unknown>(expr: string, o: { id?: string; frame?: number } = {}) => inSiteView<T>(m, o.id ?? "vidola", `return ${expr};`, { frame: o.frame }).catch(() => null);
 const shorts = () => view('getComputedStyle(document.getElementById("shorts")).display');
 const tweak = () => view("document.body.dataset.retouche ?? null");
@@ -215,7 +215,7 @@ describe("grant card", () => {
     expect(v1).toMatch(/^[0-9a-f]{64}$/);
     rewriteDeclaration(declaration({ login: ["compte.localhost", "evil.localhost"] }));
     await expect.poll(async () => (await state()).grant?.hash, { timeout: 10_000 }).not.toBe(v1);
-    await barApi(`await site.accorder(true, arguments[0]); return true;`, [v1]);
+    await barApi(`await site.grant(true, arguments[0]); return true;`, [v1]);
     await sleep(300);
     expect(grants().vidola).toBeFalsy();
     expect(await card("accord-site-connexion")).toContain("evil.localhost");
@@ -237,9 +237,9 @@ describe("grant card", () => {
 
   it("the choice is refused from the bar's invalid requests: a hash that is not a bounded string rejects, nothing is granted (sites.spec.ts:1149)", async () => {
     await openToCard();
-    const denial = await barApi<string>(`return site.accorder(true, "x".repeat(200)).then(() => "accepted", (e) => e.message);`);
+    const denial = await barApi<string>(`return site.grant(true, "x".repeat(200)).then(() => "accepted", (e) => e.message);`);
     expect(denial).toBe("invalid accord request");
-    const notBool = await barApi<string>(`return site.accorder("yes", "x").then(() => "accepted", (e) => e.message);`);
+    const notBool = await barApi<string>(`return site.grant("yes", "x").then(() => "accepted", (e) => e.message);`);
     expect(notBool).toBe("invalid accord request");
     await sleep(200);
     expect(grants().vidola).toBeFalsy();
@@ -266,7 +266,7 @@ describe("grant card", () => {
         try { r.push(t()); } catch (e) { r.push("blocked"); }
       }
       for (const target of [window.parent, window.top]) {
-        try { target.postMessage({ type: "accorder", oui: true, empreinte: ${JSON.stringify(hash)} }, "*"); } catch (e) {}
+        try { target.postMessage({ type: "grant", yes: true, hash: ${JSON.stringify(hash)} }, "*"); } catch (e) {}
       }
       return r;
     })()`;
@@ -276,7 +276,7 @@ describe("grant card", () => {
     await sleep(500);
     expect(grants().vidola).toBeFalsy();
     expect(await card()).not.toBeNull();
-    expect((await state()).view).toBe("accord");
+    expect((await state()).viewState).toBe("grant");
   });
 
   it("rewriting site.json to add a home while the card shows: the home comes after the choice, never before", async () => {
@@ -286,9 +286,9 @@ describe("grant card", () => {
     // A home-only change is not a reread: the declaration's rewrite is.
     rewriteDeclaration(declaration());
     await expect.poll(async () => (await state()).hasHome, { timeout: 10_000 }).toBe(true);
-    expect((await state()).view).toBe("accord");
+    expect((await state()).viewState).toBe("grant");
     await click("refuser-site");
-    await expect.poll(async () => (await state()).view, { timeout: 10_000 }).toBe("accueil");
+    await expect.poll(async () => (await state()).viewState, { timeout: 10_000 }).toBe("home");
   });
 });
 
@@ -303,16 +303,16 @@ describe("home frame", () => {
       }
       window.attaque = r;
       for (const target of [parent, top]) {
-        try { target.postMessage({ type: "accorder", oui: true, empreinte: e.data.empreinte }, "*"); } catch (err) {}
+        try { target.postMessage({ type: "grant", yes: true, hash: e.data.hash }, "*"); } catch (err) {}
       }
     });
-    parent.postMessage({ type: "pret" }, "*");
+    parent.postMessage({ type: "ready" }, "*");
   </script>`;
 
   it("a home frame cannot reach the controller nor post an grant (sites.spec.ts:1149)", async () => {
     writeSite(dataDir, "vidola", { declaration: declaration(), files: { ...FILES, "home/index.html": HOME } });
     await openToCard();
-    expect(await state().then((s) => s.view)).toBe("accord");
+    expect(await state().then((s) => s.viewState)).toBe("grant");
     const hash = (await state()).grant!.hash;
     // The home is not mounted while the card shows.
     expect(await inSiteBar(m, "vidola", `return doc.querySelector('[data-testid="site-cadre-accueil"]') ? 1 : 0;`)).toBe(0);
@@ -341,11 +341,11 @@ describe("home frame", () => {
   it("reopening an app whose home has gone: the view goes to the site (sites.spec.ts:1187)", async () => {
     writeSite(dataDir, "vidola", { declaration: { name: "Tube", url: url("/serie/the-bear"), domains: ["vidola-a.localhost"] }, files: { "home/index.html": "<p>accueil</p>" } });
     await openSite();
-    await expect.poll(async () => (await state()).view, { timeout: 15_000 }).toBe("accueil");
+    await expect.poll(async () => (await state()).viewState, { timeout: 15_000 }).toBe("home");
     rmSync(path.join(dataDir, "workspace", "sites", "vidola", "home"), { recursive: true });
     await openSite();
     await expect.poll(() => viewUrl(), { timeout: 15_000 }).toBe(url("/serie/the-bear"));
     expect((await viewState())?.visible).toBe(true);
-    expect((await state()).view).toBe("site");
+    expect((await state()).viewState).toBe("site");
   });
 });

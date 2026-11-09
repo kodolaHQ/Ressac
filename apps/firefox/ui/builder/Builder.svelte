@@ -212,12 +212,12 @@
     </aside>
   {/snippet}
 
-  {#if edit.loading === "chargement"}
+  {#if edit.loading === "loading"}
     <p class="doux message">Chargement…</p>
-  {:else if edit.loading === "introuvable" || typeof edit.loading === "object"}
+  {:else if edit.loading === "not-found" || typeof edit.loading === "object"}
     <!-- Without a canvas, the agent stays there: it is up to it to repair or write the workflow. -->
     <div class="corps">
-      {#if edit.loading === "introuvable"}
+      {#if edit.loading === "not-found"}
         <p class="doux message">
           {isAction ? "Cette action n'a pas de workflow (workflow.json), ou action.json est illisible." : "Ce widget n'a pas de workflow (ni workflow.json ni harvest.mjs)."}
         </p>

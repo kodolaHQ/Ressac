@@ -252,22 +252,22 @@ it("the same site in a private space: nothing of its tab in the attached tab's b
   /** Opens the demo with `?log=<log>` in that space, shown (a tab never shown is not loaded), and waits for its page. */
   const openIn = async (spaceId: string, log: string) => {
     const known = new Set(Object.keys((await state(m)).tabs));
-    const s = await dispatch(m, { type: "ouvrirOnglet", windowId: windowId, url: `${demo.url}/?log=${log}`, spaceId: spaceId, activate: true } as Action);
-    await dispatch(m, { type: "activerOnglet", id: Object.keys(s.tabs).find((x) => !known.has(x))! } as Action);
+    const s = await dispatch(m, { type: "openTab", windowId: windowId, url: `${demo.url}/?log=${log}`, spaceId: spaceId, activate: true } as Action);
+    await dispatch(m, { type: "activateTab", id: Object.keys(s.tabs).find((x) => !known.has(x))! } as Action);
     await waitFor(m, `return gBrowser.tabs.some((t) => t.linkedBrowser.currentURI.spec.endsWith("log=${log}") && t.linkedBrowser.contentTitle === "Démo")`, (v) => v === true);
   };
   try {
     // Same site, same container, private space.
-    const secret = (await dispatch(m, { type: "creerEspace", name: "Secret", icon: "🔒", private: true, profile: "defaut", windowId: windowId } as Action)).spaces.at(-1)!;
+    const secret = (await dispatch(m, { type: "createSpace", name: "Secret", icon: "🔒", private: true, profile: "default", windowId: windowId } as Action)).spaces.at(-1)!;
     await openIn(secret.id, "prive");
     // Same site, another tab of the same space.
     await openIn(home, "autre");
     // Same site, another container.
-    const other = (await dispatch(m, { type: "creerEspace", name: "Autre", icon: "🅱️", private: false, profile: "nouveau", windowId: windowId } as Action)).spaces.at(-1)!;
+    const other = (await dispatch(m, { type: "createSpace", name: "Autre", icon: "🅱️", private: false, profile: "nouveau", windowId: windowId } as Action)).spaces.at(-1)!;
     await openIn(other.id, "conteneur");
   } finally {
     // Back to the demo's space: the next tests open their demos there.
-    await dispatch(m, { type: "activerOnglet", id } as Action);
+    await dispatch(m, { type: "activateTab", id } as Action);
   }
   // The attached tab still hears itself.
   await tool("run_js", { id, code: "console.log('ici'); 1" });
@@ -282,7 +282,7 @@ it("a private space's tab: read_console answers PRIVATE_TEXT, without a card", a
   const id = await openDemo();
   const s = await state(m);
   const e = s.spaces.find((x) => x.id === s.tabs[id]!.spaceId)!;
-  const setPrivate = (isPrivate: boolean) => dispatch(m, { type: "reglerEspace", id: e.id, name: e.name, icon: e.icon, private: isPrivate, profile: e.profile } as Action);
+  const setPrivate = (isPrivate: boolean) => dispatch(m, { type: "updateSpace", id: e.id, name: e.name, icon: e.icon, private: isPrivate, profile: e.profile } as Action);
   await setPrivate(true);
   try {
     await poll(() => tool("read_console", { id }), (t) => t === PRIVATE_TEXT);
@@ -323,7 +323,7 @@ async function openThird(): Promise<string> {
   const url = `${third.url}/?tiers=${++thirdTabs}`;
   const s0 = await state(m);
   const known = new Set(Object.keys(s0.tabs));
-  const s = await dispatch(m, { type: "ouvrirOnglet", windowId: s0.windows[0]!.id, url, activate: true } as Action);
+  const s = await dispatch(m, { type: "openTab", windowId: s0.windows[0]!.id, url, activate: true } as Action);
   const id = Object.keys(s.tabs).find((x) => !known.has(x))!;
   await waitFor(m, `return gBrowser.tabs.some((t) => t.linkedBrowser.currentURI.spec === ${JSON.stringify(url)} && t.linkedBrowser.contentTitle === "Démo")`, (v) => v === true);
   return id;
@@ -450,8 +450,8 @@ it("read granted (Autoriser une fois): 👁 badge on the tab and in the address 
   await waitUi(m, `return !!doc.querySelector('${READ_CARD}')`);
   await click(m, `${READ_CARD} button`, { text: "Autoriser une fois" });
   await reading;
-  await waitUi(m, `return doc.querySelector(arguments[0])?.dataset.niveau === "lecture"`, [tabBadge(id)]);
-  await waitUi(m, `return doc.querySelector('form ${BADGE}')?.dataset.niveau === "lecture"`);
+  await waitUi(m, `return doc.querySelector(arguments[0])?.dataset.niveau === "read"`, [tabBadge(id)]);
+  await waitUi(m, `return doc.querySelector('form ${BADGE}')?.dataset.niveau === "read"`);
 });
 
 it("act granted: ⚡ badge", async () => {
@@ -500,7 +500,7 @@ it("cutting « Agir » during an run_js: the call answers the cut text", async (
   expect(await pending).toBe(TEXT_CUT);
   expect(Date.now() - t0).toBeLessThan(6000);
   // Console is kept: the badge goes back to 👁, still and quiet.
-  await waitUi(m, `const p = doc.querySelector(arguments[0]); return p?.dataset.niveau === "lecture" && !p.classList.contains("pulse")`, [tabBadge(id)]);
+  await waitUi(m, `const p = doc.querySelector(arguments[0]); return p?.dataset.niveau === "read" && !p.classList.contains("pulse")`, [tabBadge(id)]);
   await pressKeys(m, "Escape");
 }, 30_000);
 
@@ -513,7 +513,7 @@ it("space turned private: the badge disappears, the debugger is detached and the
   expect(await attached()).toContain(id);
   const s = await state(m);
   const e = s.spaces.find((x) => x.id === s.tabs[id]!.spaceId)!;
-  const setPrivate = (isPrivate: boolean) => dispatch(m, { type: "reglerEspace", id: e.id, name: e.name, icon: e.icon, private: isPrivate, profile: e.profile } as Action);
+  const setPrivate = (isPrivate: boolean) => dispatch(m, { type: "updateSpace", id: e.id, name: e.name, icon: e.icon, private: isPrivate, profile: e.profile } as Action);
   await setPrivate(true);
   try {
     await waitUi(m, `return !doc.querySelector('${BADGE}')`);
@@ -725,7 +725,7 @@ it("the host restarts: the new kernel does not see the old messages", async () =
   await poll(async () => (existsSync(config()) ? readFileSync(config(), "utf8") : oldConfig), (c) => c !== oldConfig, 20_000);
   // The new kernel knows nothing of this tab: given to the agent, then navigated by it (same page), it is its demo again.
   const url = `${demo.url}/`;
-  await m.execute(`return (async () => (await ChromeUtils.importESModule("${STORE}").ready).agent.notify("agent.envoi", { onglet: { id: arguments[0], url: arguments[1], title: "Démo", space: "" } }))();`, [id, url]);
+  await m.execute(`return (async () => (await ChromeUtils.importESModule("${STORE}").ready).agent.notify("agent.send", { onglet: { id: arguments[0], url: arguments[1], title: "Démo", space: "" } }))();`, [id, url]);
   await poll(() => tool("navigate", { id, url }), (t) => t.includes("→"));
   await poll(() => tool("run_js", { id, code: "console.log('new kernel'); 1" }), (t) => t === "1");
   const text = await poll(() => tool("read_console", { id }), (t) => t.includes("new kernel"));

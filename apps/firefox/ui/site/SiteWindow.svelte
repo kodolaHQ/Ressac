@@ -25,9 +25,9 @@
 {#if appState}
   <SiteBar state={appState} {api} />
   <!-- Under the bar: the site's view (set by the main process) in « site » view, home otherwise. -->
-  {#if appState.viewState === "accueil"}
+  {#if appState.viewState === "home"}
     <HomeFrame id={appState.id} {api} />
-  {:else if appState.viewState === "accord" && appState.grant}
+  {:else if appState.viewState === "grant" && appState.grant}
     <SiteGrantCard grant={appState.grant} onGrant={(yes, hash) => api.grant(yes, hash)} />
   {/if}
 {/if}

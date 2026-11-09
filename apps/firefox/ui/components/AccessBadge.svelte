@@ -3,7 +3,7 @@
   import AccessBubble from "./AccessBubble.svelte";
 
   let { id, state: appState }: { id: string; state: TabAccessState } = $props();
-  const level = $derived(appState.rights.includes("act") ? "act" : "lecture");
+  const level = $derived(appState.rights.includes("act") ? "act" : "read");
   let opened = $state(false);
   let root = $state<HTMLSpanElement>();
 
@@ -37,7 +37,7 @@
 <style>
   .racine { display: inline-flex; flex: none; -webkit-app-region: no-drag; }
   .pastille { all: unset; display: inline-flex; align-items: center; border-radius: 999px; padding: 1px 7px; font-size: 11px; font-weight: 600; cursor: pointer; }
-  .pastille[data-niveau="lecture"] { background: var(--acces-lecture-fond); color: var(--acces-lecture); }
+  .pastille[data-niveau="read"] { background: var(--acces-lecture-fond); color: var(--acces-lecture); }
   .pastille[data-niveau="act"] { background: var(--acces-agir-fond); color: var(--acces-agir); }
   .pastille.pulse { animation: bat 1s ease-in-out infinite; }
   @media (prefers-reduced-motion: reduce) {

@@ -106,7 +106,7 @@ describe("the agent's tools and their card", () => {
     writeAgentExtension(w.root, "fond", BACKGROUND_ONLY);
     const s = await state(m);
     const e = s.spaces.find((x) => x.id === s.windows[0]!.activeSpace)!;
-    await dispatch(m, { type: "reglerEspace", id: e.id, name: e.name, icon: e.icon, private: true, profile: e.profile } as Action);
+    await dispatch(m, { type: "updateSpace", id: e.id, name: e.name, icon: e.icon, private: true, profile: e.profile } as Action);
     expect((await w.call("request_extension", { id: "fond" })).text).toBe(PRIVATE_PROFILE_ERROR);
     expect(await inUi(m, `return !!doc.querySelector(${JSON.stringify(MODAL)})`)).toBe(false);
     expect(w.amo.sends).toEqual([]);
@@ -161,7 +161,7 @@ describe("the grant card", () => {
     w ??= await launch();
     const m = w.marionette;
     const s = await state(m);
-    const win = await m.execute<string>("return window.webaiosWindow.fenetreId");
+    const win = await m.execute<string>("return window.webaiosWindow.windowId");
     const space = s.spaces.find((e) => e.id === (champs.espaceId ?? s.windows.find((f) => f.id === win)!.activeSpace))!;
     const card = {
       key: "agent:essai", name: "Essai", source: "agent", version: "1.0.0", rights: ["Modifier l'apparence et le contenu des pages"],
@@ -224,7 +224,7 @@ describe("the grant card", () => {
     // A « yes » sent without the box (a compromised or buggy UI): refused.
     await m.execute(`return (async () => {
       const s = await ChromeUtils.importESModule("${STORE}").ready;
-      s.questions.answer(s.questions.pending()[0].id, "autoriser");
+      s.questions.answer(s.questions.pending()[0].id, "allow");
     })();`);
     expect((await wait()).accepted).toBe(false);
   });
@@ -273,10 +273,10 @@ describe("the grant card", () => {
 
   it("a card gone stale (space deleted) falls and counts as a refusal", async () => {
     const w = await launch();
-    const windowId = await w.marionette.execute<string>("return window.webaiosWindow.fenetreId");
-    const reading = (await dispatch(w.marionette, { type: "creerEspace", name: "Lecture", icon: "📚", private: false, profile: "defaut", windowId: windowId } as Action)).spaces.at(-1)!;
+    const windowId = await w.marionette.execute<string>("return window.webaiosWindow.windowId");
+    const reading = (await dispatch(w.marionette, { type: "createSpace", name: "Lecture", icon: "📚", private: false, profile: "default", windowId: windowId } as Action)).spaces.at(-1)!;
     const { m, wait: wait } = await withCard({ spaceId: reading.id }, w);
-    await dispatch(m, { type: "supprimerEspace", id: reading.id } as Action);
+    await dispatch(m, { type: "deleteSpace", id: reading.id } as Action);
     expect(await wait()).toMatchObject({ accepted: false, removed: true });
     await cardGone(m);
   });

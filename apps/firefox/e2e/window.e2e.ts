@@ -25,13 +25,13 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const pressClosing = (combo: string) => pressClosingIn(m, combo);
 async function openTab(win: string, path: string): Promise<string> {
   const before = new Set(Object.keys((await state(m)).tabs));
-  const after = await dispatch(m, { type: "ouvrirOnglet", windowId: win, url: server.url + path });
+  const after = await dispatch(m, { type: "openTab", windowId: win, url: server.url + path });
   return Object.keys(after.tabs).find((x) => !before.has(x))!;
 }
 const newWindow = () => newWindowIn(m);
 /**
  * Closes the only window, then, from a module timer (Marionette has no window to run in meanwhile): counts the browser
- * windows, dispatches `choisirMoteur`, counts again 300 ms later into the pref `webaios.test.closed`, and runs `reopen`.
+ * windows, dispatches `chooseEngine`, counts again 300 ms later into the pref `webaios.test.closed`, and runs `reopen`.
  */
 async function closeLastWindow(reopen: string): Promise<{ closed: number; afterEngine: number }> {
   const old = await handle();
@@ -44,7 +44,7 @@ async function closeLastWindow(reopen: string): Promise<{ closed: number; afterE
       window.close();
       setTimeout(() => {
         const closed = count();
-        store.dispatch({ type: "choisirMoteur", moteur: "qwant" });
+        store.dispatch({ type: "chooseEngine", engine: "qwant" });
         setTimeout(() => {
           Services.prefs.setStringPref("webaios.test.closed", JSON.stringify({ closed, afterEngine: count() }));
           ${reopen};
@@ -62,7 +62,7 @@ async function closeLastWindow(reopen: string): Promise<{ closed: number; afterE
 describe("the WebAiOs window", () => {
   it("⌘N opens a second WebAiOs window on the active space, with its own sidebar", async () => {
     const first = await windowId();
-    const s = await dispatch(m, { type: "creerEspace", name: "Travail", icon: "💼", private: false, profile: "defaut", windowId: first });
+    const s = await dispatch(m, { type: "createSpace", name: "Travail", icon: "💼", private: false, profile: "default", windowId: first });
     const space = s.spaces.at(-1)!.id;
     expect(s.windows[0]!.activeSpace).toBe(space);
     const other = await newWindow();
@@ -70,7 +70,7 @@ describe("the WebAiOs window", () => {
     expect(after.windows).toHaveLength(2);
     const id = await inWindow(m, other, async () => {
       expect(await m.execute("return document.documentElement.hasAttribute('webaios-main')")).toBe(true);
-      return m.execute<string>("return window.webaiosWindow.fenetreId");
+      return m.execute<string>("return window.webaiosWindow.windowId");
     });
     expect(id).not.toBe(first);
     expect(after.windows.find((f) => f.id === id)!.activeSpace).toBe(space);
@@ -83,7 +83,7 @@ describe("the WebAiOs window", () => {
   it("⇧⌘W closes one window among two: it leaves the state, its tabs go to the other's fermesRecemment", async () => {
     const first = await windowId();
     const other = await newWindow();
-    const id = await inWindow(m, other, () => m.execute<string>("return window.webaiosWindow.fenetreId"));
+    const id = await inWindow(m, other, () => m.execute<string>("return window.webaiosWindow.windowId"));
     const tab = await openTab(id, "/a.html");
     await inWindow(m, other, async () => {
       await waitFor(m, "return gBrowser.selectedTab.getAttribute('webaios-tab-id')", (v) => v === tab);
@@ -107,7 +107,7 @@ describe("the WebAiOs window", () => {
     const s = await state(m);
     expect(s.settings.engine).toBe("qwant");
     expect(s.windows.map((f) => f.id)).toEqual([id]);
-    expect(await m.execute("return window.webaiosWindow.fenetreId")).toBe(id);
+    expect(await m.execute("return window.webaiosWindow.windowId")).toBe(id);
     await waitUi(m, "return !!doc.querySelector(arguments[0])", [`[data-testid="onglet-${tab}"]`]);
     // It still follows the store.
     const next = await openTab(id, "/b.html");
@@ -119,7 +119,7 @@ describe("the WebAiOs window", () => {
     await closeLastWindow("Services.appShell.hiddenDOMWindow.OpenBrowserWindow()");
     await sleep(300);
     expect(await windowHandles(m)).toHaveLength(1);
-    expect(await m.execute("return window.webaiosWindow.fenetreId")).toBe(id);
+    expect(await m.execute("return window.webaiosWindow.windowId")).toBe(id);
     expect((await state(m)).windows.map((f) => f.id)).toEqual([id]);
   });
 
@@ -158,7 +158,7 @@ describe("the WebAiOs window", () => {
           setTimeout(() => {
             Services.prefs.setStringPref("webaios.test.private", JSON.stringify({
               adopted: p.document.documentElement.hasAttribute("webaios-main"),
-              fenetres: store.state.fenetres.map((f) => f.id),
+              fenetres: store.state.windows.map((f) => f.id),
             }));
             p.close();
             BrowserWindowTracker.openWindow();
@@ -179,7 +179,7 @@ describe("the WebAiOs window", () => {
     }
     expect(JSON.parse(await m.execute<string>(`return Services.prefs.getStringPref("webaios.test.private")`))).toEqual({ adopted: false, windows: [id] });
     // The kept window was not consumed: the next window takes it back.
-    expect(await m.execute("return window.webaiosWindow.fenetreId")).toBe(id);
+    expect(await m.execute("return window.webaiosWindow.windowId")).toBe(id);
     expect((await state(m)).windows.map((f) => f.id)).toEqual([id]);
   });
 

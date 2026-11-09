@@ -38,7 +38,7 @@
       if (n !== request) return;
       await show(v);
     } catch {
-      if (n === request) view = { state: "indisponible", name: "", reason: "la relecture n'a pas pu être ouverte" };
+      if (n === request) view = { state: "unavailable", name: "", reason: "la relecture n'a pas pu être ouverte" };
     } finally {
       if (n === request) running = false;
     }
@@ -150,7 +150,7 @@
     <button onclick={() => void load(false)} disabled={running}>Rafraîchir</button>
   </header>
   {#if message}<p class="message" data-testid="erreur-relecture">{message}</p>{/if}
-  {#if view?.state === "indisponible"}
+  {#if view?.state === "unavailable"}
     <p class="indisponible" data-testid="relecture-indisponible">Relecture indisponible : {view.reason}</p>
   {:else if view?.state === "ok"}
     <div class="corps">

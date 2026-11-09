@@ -58,7 +58,7 @@ export function frameInjection(wgp: any, s: FrameSite | undefined, localUrls: bo
 }
 
 /**
- * The actor's "memoire": only the view's main document, on the app's domains, with the grant; the host checks the
+ * The actor's "memory": only the view's main document, on the app's domains, with the grant; the host checks the
  * request's shape and does the memory work (host/site-memory.ts).
  */
 export async function frameMemory(wgp: any, s: FrameSite | undefined, sendRequest: unknown, request: (p: object) => Promise<MemoryResponse>): Promise<MemoryResponse> {
