@@ -259,7 +259,8 @@
 
 <style>
   /* Transparent so the web page under the iframe shows; the sidebar and the content area paint their own. */
-  :global(html, body) { background: transparent; }
+  /* :root raises specificity over SiteWindow's global html/body rule, in the same bundle in whatever order. */
+  :global(html:root, :root > body) { background: transparent; }
   /* Firefox's -webkit-app-region: the same areas. An overlay over the sidebar keeps its clicks. */
   .fenetre:not(.couverte) :global(.barre) { -moz-window-dragging: drag; }
   .fenetre :global(.barre :is(.navigation button, .ligne, .defilant, footer)) { -moz-window-dragging: no-drag; }
