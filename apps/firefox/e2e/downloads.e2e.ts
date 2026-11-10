@@ -59,7 +59,7 @@ async function openPage(): Promise<() => Promise<unknown>> {
 const until = async (ok: () => boolean, ms = 10_000) => {
   for (const end = Date.now() + ms; !ok(); await new Promise((r) => setTimeout(r, 100))) if (Date.now() > end) throw new Error("timed out");
 };
-const rows = () => inUi<string[]>(m, `return [...doc.querySelectorAll('[data-testid="telechargement"]')].map((e) => e.dataset.etat)`);
+const rows = () => inUi<string[]>(m, `return [...doc.querySelectorAll('[data-testid="download"]')].map((e) => e.dataset.state)`);
 const list = () => inUi<number>(m, "return (await ui.webaios.downloads.list()).length");
 const unfinished = () => inUi<number>(m, "return (await ui.webaios.downloads.list()).filter((t) => t.state === 'in-progress').length");
 
@@ -73,11 +73,11 @@ describe("downloads", () => {
     await until(() => existsSync(join(dl, "fichier(1).txt")));
     expect(readFileSync(join(dl, "fichier.txt"), "utf8")).toContain("Bonjour");
     await click(m, 'button[aria-label="Téléchargements"]');
-    await waitUi(m, `return doc.querySelectorAll('[data-testid="telechargements"] [data-testid="telechargement"]').length === 2`);
+    await waitUi(m, `return doc.querySelectorAll('[data-testid="downloads"] [data-testid="download"]').length === 2`);
     const first = await inUi<{ state: string; text: string; show: boolean }>(
       m,
-      `const e = doc.querySelector('[data-testid="telechargement"]');
-       return { state: e.dataset.etat, text: e.textContent, show: [...e.querySelectorAll("button")].some((b) => b.textContent.includes("Afficher dans le Finder")) };`,
+      `const e = doc.querySelector('[data-testid="download"]');
+       return { state: e.dataset.state, text: e.textContent, show: [...e.querySelectorAll("button")].some((b) => b.textContent.includes("Afficher dans le Finder")) };`,
     );
     expect(first.state).toBe("done");
     expect(first.text).toContain("fichier(1).txt");
@@ -106,11 +106,11 @@ describe("downloads", () => {
       [`${server.url}/fichier-lent`, join(dl, "lent.bin")],
     );
     await click(m, 'button[aria-label="Téléchargements"]');
-    await waitUi(m, `return doc.querySelector('[data-testid="telechargement"]')?.dataset.etat === "in-progress" && !!doc.querySelector("button.telechargements .pastille")`);
-    await click(m, '[data-testid="telechargement"] button', { text: "Annuler" });
-    await waitUi(m, `return doc.querySelector('[data-testid="telechargement"]')?.dataset.etat === "canceled" && !doc.querySelector(".pastille")`);
+    await waitUi(m, `return doc.querySelector('[data-testid="download"]')?.dataset.state === "in-progress" && !!doc.querySelector("button.downloads .pill")`);
+    await click(m, '[data-testid="download"] button', { text: "Annuler" });
+    await waitUi(m, `return doc.querySelector('[data-testid="download"]')?.dataset.state === "canceled" && !doc.querySelector(".pill")`);
     await click1();
-    await waitUi(m, `return doc.querySelector('[data-testid="telechargement"]')?.dataset.etat === "done"`);
+    await waitUi(m, `return doc.querySelector('[data-testid="download"]')?.dataset.state === "done"`);
     expect(await rows()).toEqual(["done", "canceled"]);
   });
 

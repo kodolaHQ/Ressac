@@ -5,8 +5,8 @@ import type { HomeTheme } from "../../../packages/kernel/src/home/theme";
 // #rrggbb must reach the style, even if the object was not validated.
 const COLOR = /^#[0-9a-f]{6}$/i;
 
-/** Theme key → suffix of the `--accueil-*` variable. */
-const COLORS = { background: "fond", card: "carte", text: "texte", mutedText: "texte-doux", accent: "accent", border: "bord" } as const;
+/** Theme key → suffix of the `--home-*` variable. */
+const COLORS = { background: "bg", card: "card", text: "text", mutedText: "text-muted", accent: "accent", border: "border" } as const;
 
 const FONTS = {
   system: '-apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif',
@@ -19,11 +19,11 @@ export function variablesTheme(t: HomeTheme | null): Record<string, string> {
   if (!t) return variables;
   for (const [key, suffix] of Object.entries(COLORS)) {
     const color = t[key as keyof typeof COLORS];
-    if (typeof color === "string" && COLOR.test(color)) variables[`--accueil-${suffix}`] = color;
+    if (typeof color === "string" && COLOR.test(color)) variables[`--home-${suffix}`] = color;
   }
-  if (Number.isInteger(t.radius) && t.radius! >= 0 && t.radius! <= 24) variables["--accueil-rayon"] = `${t.radius}px`;
-  if (Number.isInteger(t.spacing) && t.spacing! >= 0 && t.spacing! <= 24) variables["--accueil-espace"] = `${t.spacing}px`;
+  if (Number.isInteger(t.radius) && t.radius! >= 0 && t.radius! <= 24) variables["--home-radius"] = `${t.radius}px`;
+  if (Number.isInteger(t.spacing) && t.spacing! >= 0 && t.spacing! <= 24) variables["--home-spacing"] = `${t.spacing}px`;
   // hasOwn: « toString » or « constructor » must not pass for a font.
-  if (t.font && Object.hasOwn(FONTS, t.font)) variables["--accueil-police"] = FONTS[t.font];
+  if (t.font && Object.hasOwn(FONTS, t.font)) variables["--home-font"] = FONTS[t.font];
   return variables;
 }

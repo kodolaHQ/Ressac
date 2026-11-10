@@ -84,14 +84,14 @@
   });
 </script>
 
-<section class="agent" class:integre={builtIn} data-testid={builtIn ? "terminal-agent-integre" : "panneau-agent"} hidden={!visible} bind:this={section}>
+<section class="agent" class:built-in={builtIn} data-testid={builtIn ? "built-in-agent-terminal" : "agent-panel"} hidden={!visible} bind:this={section}>
   {#if !builtIn}
-    <div class="poignee" data-testid="poignee-agent" role="separator" aria-orientation="vertical" aria-label="Largeur du panneau agent" onpointerdown={tirer}></div>
+    <div class="handle" data-testid="agent-handle" role="separator" aria-orientation="vertical" aria-label="Largeur du panneau agent" onpointerdown={tirer}></div>
   {/if}
   {#if profileChoice}
     <header>
       <select
-        data-testid="profil-agent"
+        data-testid="agent-profile"
         aria-label="Profil d'agent"
         value={agentProfile}
         onchange={(e) => api.dispatch({ type: "chooseAgentProfile", profile: e.currentTarget.value })}
@@ -112,20 +112,20 @@
     <p class="message">L'agent s'est arrêté.</p>
     <button onclick={terminalAgent.reset}>Relancer</button>
   {/if}
-  <div class="terminal" bind:this={hostEl} class:masque={appState.state !== "active" && appState.state !== "done"}></div>
+  <div class="terminal" bind:this={hostEl} class:masked={appState.state !== "active" && appState.state !== "done"}></div>
 </section>
 
 <style>
-  .agent { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--fond-barre); border-left: 1px solid var(--bord); }
+  .agent { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--bg-bar); border-left: 1px solid var(--border); }
   .agent[hidden] { display: none; }
-  .agent.integre { flex: 1; border-left: none; }
-  .poignee { position: absolute; top: 0; bottom: 0; left: -3px; width: 6px; cursor: col-resize; z-index: 1; }
-  .poignee:hover, .poignee:active { background: color-mix(in srgb, var(--accent) 40%, transparent); }
-  .message { margin: 12px; color: var(--texte-doux); }
-  header { padding: 6px 8px; border-bottom: 1px solid var(--bord); }
-  select { padding: 2px 6px; border-radius: 6px; border: 1px solid var(--bord); background: var(--fond-actif); color: var(--texte); font-size: 12px; }
-  button { margin: 0 12px 12px; align-self: flex-start; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--bord); background: var(--fond-actif); color: var(--texte); }
+  .agent.built-in { flex: 1; border-left: none; }
+  .handle { position: absolute; top: 0; bottom: 0; left: -3px; width: 6px; cursor: col-resize; z-index: 1; }
+  .handle:hover, .handle:active { background: color-mix(in srgb, var(--accent) 40%, transparent); }
+  .message { margin: 12px; color: var(--text-muted); }
+  header { padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  select { padding: 2px 6px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-active); color: var(--text); font-size: 12px; }
+  button { margin: 0 12px 12px; align-self: flex-start; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-active); color: var(--text); }
   /* The terminal (terminalAgent) is placed in it absolutely, 6 px from the edge. */
   .terminal { position: relative; flex: 1; min-height: 0; background: #1e1e22; }
-  .terminal.masque { visibility: hidden; }
+  .terminal.masked { visibility: hidden; }
 </style>

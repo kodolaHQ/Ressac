@@ -16,9 +16,9 @@
 </script>
 
 <div
-  class="essentiels"
-  class:grand={large}
-  data-testid={large ? "essentiels-page-vide" : "essentiels"}
+  class="essentials"
+  class:large={large}
+  data-testid={large ? "essentials-empty-page" : "essentials"}
   role="group"
   aria-label="Essentiels"
   ondragover={(e) => e.dataTransfer?.types.includes("application/x-webaios-onglet") && e.preventDefault()}
@@ -29,8 +29,8 @@
 >
   {#each appState.value?.essentials ?? [] as favorite (favorite.id)}
     <button
-      data-testid="favori-{favorite.id}"
-      class:actif={favorite.id === active}
+      data-testid="favorite-{favorite.id}"
+      class:active={favorite.id === active}
       title={favorite.title}
       onclick={() => open(favorite)}
       oncontextmenu={(e) => openMenu(e, [{ label: "Retirer", dispatch: () => api.dispatch({ type: "removeEssential", favoriteId: favorite.id }) }])}
@@ -41,10 +41,10 @@
 </div>
 
 <style>
-  .essentiels { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; min-height: 8px; }
-  .essentiels.grand { grid-template-columns: repeat(auto-fill, 64px); justify-content: center; gap: 12px; }
-  button { all: unset; display: grid; place-content: center; height: 44px; border-radius: 10px; background: var(--fond-survol); }
-  .grand button { height: 64px; }
+  .essentials { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; min-height: 8px; }
+  .essentials.large { grid-template-columns: repeat(auto-fill, 64px); justify-content: center; gap: 12px; }
+  button { all: unset; display: grid; place-content: center; height: 44px; border-radius: 10px; background: var(--bg-hover); }
+  .large button { height: 64px; }
   /* Inside the box: the sidebar's scroll area clips what sticks out. */
-  button.actif { background: var(--fond-actif); outline: 1px solid var(--accent); outline-offset: -1px; }
+  button.active { background: var(--bg-active); outline: 1px solid var(--accent); outline-offset: -1px; }
 </style>

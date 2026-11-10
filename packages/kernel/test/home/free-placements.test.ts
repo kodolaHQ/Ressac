@@ -15,7 +15,7 @@ test("freeSizes converts 3 × 2 units to 250 ‰ × 180 px", () => {
   expect(freeSizes({ w: 3, h: 2 })).toEqual({ w: 250, h: 180 });
 });
 
-test("lireDispositionLibre reads version 3 and returns [] for version 2, a damaged file or an overlap", async () => {
+test("readFreeLayout reads version 3 and returns [] for version 2, a damaged file or an overlap", async () => {
   const c = await space();
   const widgets = [
     { id: "a", x: 0, y: 0, w: 500, h: 90 },

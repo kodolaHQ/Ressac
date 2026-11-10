@@ -42,11 +42,11 @@
   }}
 />
 
-<div class="panneau" data-testid="panneau-onglets" role="listbox" aria-label="Onglets récents">
+<div class="panel" data-testid="tabs-panel" role="listbox" aria-label="Onglets récents">
   {#each panel.cards as card, i (card.id)}
     <div
-      class="carte"
-      data-testid="carte-onglet"
+      class="card"
+      data-testid="tab-card"
       role="option"
       tabindex="-1"
       aria-selected={i === panel.selection}
@@ -54,23 +54,23 @@
       onpointermove={() => moved && i !== panel.selection && send({ type: "hover", id: card.id })}
       onclick={() => send({ type: "choose", id: card.id })}
     >
-      <div class="apercu">
+      <div class="preview">
         {#if card.preview}
           <img src={card.preview} alt="" />
         {:else}
-          <div class="secours"><SiteIcon favicon={card.favicon} title={card.title} size={40} /></div>
+          <div class="fallback"><SiteIcon favicon={card.favicon} title={card.title} size={40} /></div>
         {/if}
       </div>
-      <div class="legende">
+      <div class="legend">
         <SiteIcon favicon={card.favicon} title={card.title} />
-        <span class="titre">{card.title}</span>
+        <span class="title">{card.title}</span>
       </div>
     </div>
   {/each}
 </div>
 
 <style>
-  .panneau {
+  .panel {
     position: fixed;
     inset: 0;
     /* Above the modals (100): an agent request arriving during the traversal does not cover it. */
@@ -82,22 +82,22 @@
     padding: 16px;
     -webkit-app-region: no-drag;
   }
-  .carte {
+  .card {
     flex: 0 1 280px;
     min-width: 0;
     padding: 8px;
-    background: var(--fond-actif);
-    color: var(--texte);
+    background: var(--bg-active);
+    color: var(--text);
     border: 2px solid transparent;
     border-radius: 12px;
-    box-shadow: var(--ombre-modale);
+    box-shadow: var(--modal-shadow);
     cursor: pointer;
     outline: none;
   }
-  .carte[aria-selected="true"] { border-color: var(--accent); }
-  .apercu { aspect-ratio: 16 / 10; overflow: hidden; border-radius: 7px; background: var(--fond-barre); }
-  .apercu img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: top; }
-  .secours { display: grid; place-items: center; height: 100%; }
-  .legende { display: flex; align-items: center; gap: 6px; margin-top: 7px; font-size: 13px; }
-  .titre { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .card[aria-selected="true"] { border-color: var(--accent); }
+  .preview { aspect-ratio: 16 / 10; overflow: hidden; border-radius: 7px; background: var(--bg-bar); }
+  .preview img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: top; }
+  .fallback { display: grid; place-items: center; height: 100%; }
+  .legend { display: flex; align-items: center; gap: 6px; margin-top: 7px; font-size: 13px; }
+  .title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 </style>

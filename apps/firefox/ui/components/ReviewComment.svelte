@@ -26,12 +26,12 @@
   }
 </script>
 
-<div class="commentaire" class:resolu={c.resolved} data-testid="commentaire">
-  <div class="tete">
-    <span class="plage">{c.start === c.end ? `Ligne ${c.start}` : `Lignes ${c.start}–${c.end}`}</span>
-    {#if c.sent}<span class="etat">envoyé</span>{/if}
-    {#if c.resolved}<span class="etat">résolu</span>{/if}
-    {#if c.lineChanged}<span class="etat change">{PAGE_LINE_CHANGED}</span>{/if}
+<div class="comment" class:resolved={c.resolved} data-testid="comment">
+  <div class="head">
+    <span class="range">{c.start === c.end ? `Ligne ${c.start}` : `Lignes ${c.start}–${c.end}`}</span>
+    {#if c.sent}<span class="state">envoyé</span>{/if}
+    {#if c.resolved}<span class="state">résolu</span>{/if}
+    {#if c.lineChanged}<span class="state change">{PAGE_LINE_CHANGED}</span>{/if}
   </div>
   {#if edit !== null}
     <textarea bind:value={edit} rows="3" aria-label="Texte du commentaire"></textarea>
@@ -40,26 +40,26 @@
       <button onclick={() => void save()} disabled={edit.trim() === ""}>Enregistrer</button>
     </div>
   {:else}
-    <p class="texte">{c.text}</p>
+    <p class="text">{c.text}</p>
     <div class="actions">
       <button onclick={() => (edit = c.text)}>Modifier</button>
       <button onclick={() => void act(() => api.review.resolve(project, c.id, !c.resolved))}>{c.resolved ? "Rouvrir" : "Résoudre"}</button>
       <button onclick={() => void act(() => api.review.deleteComment(project, c.id))}>Supprimer</button>
     </div>
   {/if}
-  {#if error}<p class="erreur">{error}</p>{/if}
+  {#if error}<p class="error">{error}</p>{/if}
 </div>
 
 <style>
-  .commentaire { margin: 4px 8px 8px 106px; padding: 8px; border: 1px solid var(--bord); border-radius: 6px; background: var(--fond-barre); font-family: system-ui, sans-serif; font-size: 12px; display: flex; flex-direction: column; gap: 4px; }
-  .commentaire.resolu { opacity: 0.6; }
-  .tete { display: flex; gap: 6px; align-items: center; color: var(--texte-doux); font-size: 11px; }
-  .etat { padding: 0 6px; border-radius: 8px; border: 1px solid var(--bord); }
-  .etat.change { color: var(--en-erreur); border-color: var(--en-erreur); }
-  .texte { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
-  textarea { font: inherit; resize: vertical; padding: 6px; border: 1px solid var(--bord); border-radius: 4px; background: var(--fond); color: var(--texte); }
+  .comment { margin: 4px 8px 8px 106px; padding: 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-bar); font-family: system-ui, sans-serif; font-size: 12px; display: flex; flex-direction: column; gap: 4px; }
+  .comment.resolved { opacity: 0.6; }
+  .head { display: flex; gap: 6px; align-items: center; color: var(--text-muted); font-size: 11px; }
+  .state { padding: 0 6px; border-radius: 8px; border: 1px solid var(--border); }
+  .state.change { color: var(--in-error); border-color: var(--in-error); }
+  .text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+  textarea { font: inherit; resize: vertical; padding: 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--text); }
   .actions { display: flex; justify-content: flex-end; gap: 6px; }
-  button { padding: 2px 8px; border-radius: 6px; border: 1px solid var(--bord); background: var(--fond); color: var(--texte); font-size: 11px; }
-  button:hover:not(:disabled) { background: var(--fond-survol); }
-  .erreur { margin: 0; color: var(--en-erreur); }
+  button { padding: 2px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 11px; }
+  button:hover:not(:disabled) { background: var(--bg-hover); }
+  .error { margin: 0; color: var(--in-error); }
 </style>

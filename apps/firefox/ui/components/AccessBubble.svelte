@@ -43,32 +43,32 @@
 
 <svelte:window bind:innerWidth={windowW} bind:innerHeight={windowH} />
 
-<div class="bulle" tabindex="-1" use:subbody bind:clientHeight={height} data-testid="bulle-acces" role="dialog" aria-label="Accès de l'agent" style:left="{place.left}px" style:top="{place.top}px" style:width="{place.width}px">
+<div class="bubble" tabindex="-1" use:subbody bind:clientHeight={height} data-testid="access-bubble" role="dialog" aria-label="Accès de l'agent" style:left="{place.left}px" style:top="{place.top}px" style:width="{place.width}px">
   <h4>{access.agent} a accès à cet onglet</h4>
   <ul>
     {#if appState.read}
-      <li data-ligne="lecture"><span>👁 Lecture de la page</span></li>
+      <li data-line="read"><span>👁 Lecture de la page</span></li>
     {/if}
     {#each appState.rights as d (d)}
-      <li data-ligne={d}>
+      <li data-line={d}>
         <span>{RIGHTS[d].icon} {RIGHTS[d].name}</span>
-        <button class="couper-droit" data-droit={d} onclick={() => accessApi.access.cut(id, d)}>Couper</button>
+        <button class="cut-right" data-right={d} onclick={() => accessApi.access.cut(id, d)}>Couper</button>
       </li>
     {/each}
   </ul>
   <p>Cette conversation · tombe si l'onglet change de site</p>
-  <button class="couper" onclick={() => accessApi.access.cut(id)}>Couper l'accès</button>
+  <button class="cut" onclick={() => accessApi.access.cut(id)}>Couper l'accès</button>
 </div>
 
 <style>
-  .bulle { position: fixed; z-index: 30; box-sizing: border-box; padding: 10px; background: var(--fond-actif); color: var(--texte); border: 1px solid var(--bord); border-radius: 9px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); font-size: 12px; font-weight: 400; cursor: default; text-align: left; }
-  .bulle:focus { outline: none; }
+  .bubble { position: fixed; z-index: 30; box-sizing: border-box; padding: 10px; background: var(--bg-active); color: var(--text); border: 1px solid var(--border); border-radius: 9px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); font-size: 12px; font-weight: 400; cursor: default; text-align: left; }
+  .bubble:focus { outline: none; }
   h4 { margin: 0 0 6px; font-size: 12px; }
   ul { list-style: none; margin: 0 0 6px; padding: 0; }
   li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 3px 0; }
-  p { margin: 0 0 8px; color: var(--texte-doux); font-size: 11.5px; }
-  button { padding: 3px 9px; border-radius: 6px; border: 1px solid var(--bord); background: var(--fond-barre); color: var(--texte); font-size: 11.5px; font-weight: 600; }
-  button:hover { background: var(--fond-survol); }
-  .couper { display: block; width: 100%; padding: 5px; background: var(--acces-couper); border-color: var(--acces-couper); color: white; font-size: 12px; }
-  .couper:hover { background: var(--acces-couper-survol); }
+  p { margin: 0 0 8px; color: var(--text-muted); font-size: 11.5px; }
+  button { padding: 3px 9px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); font-size: 11.5px; font-weight: 600; }
+  button:hover { background: var(--bg-hover); }
+  .cut { display: block; width: 100%; padding: 5px; background: var(--access-cut); border-color: var(--access-cut); color: white; font-size: 12px; }
+  .cut:hover { background: var(--access-cut-hover); }
 </style>

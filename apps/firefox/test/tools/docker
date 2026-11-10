@@ -5,15 +5,15 @@
 # FAKE_DOCKER_NO_CONTAINER=1: no container until `run -d` (tests read its arguments); with FAKE_DOCKER_RUN_FAILED=1,
 # the first `run -d` fails like a port already taken.
 if [ "$FAKE_DOCKER_NO_CONTAINER" = 1 ]; then
-  marque="$WEBAIOS_ROOT/faux-docker-conteneur"
-  [ "$1" = inspect ] && [ ! -e "$marque" ] && exit 1
+  mark="$WEBAIOS_ROOT/fake-docker-container"
+  [ "$1" = inspect ] && [ ! -e "$mark" ] && exit 1
   if [ "$1 $2" = "run -d" ]; then
-    if [ "$FAKE_DOCKER_RUN_FAILED" = 1 ] && [ ! -e "$marque.echec" ]; then
-      : > "$marque.echec"
+    if [ "$FAKE_DOCKER_RUN_FAILED" = 1 ] && [ ! -e "$mark.failed" ]; then
+      : > "$mark.failed"
       echo "Bind for 127.0.0.1:5300 failed: port is already allocated" >&2
       exit 125
     fi
-    : > "$marque"
+    : > "$mark"
   fi
 fi
 # FAKE_DOCKER_SLOW_APP_STOP=<s>: one app's stop (its kill script names WEBAIOS_APP=<folder>, not the orphan sweep's

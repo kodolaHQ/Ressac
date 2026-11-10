@@ -32,7 +32,7 @@ const bridge = new Proxy(fake, {
 // Widgets' and actions' data: outside the workspace, in a temporary folder (no browser profile here).
 const kernel = await createKernel({ bridge: bridge, widgetsFolder: join(tmpdir(), "webaios-dev-widgets"), actionsFolder: join(tmpdir(), "webaios-dev-actions") });
 log = join(kernel.paths.internal, "dev-pont.log");
-console.log(`Espace : ${kernel.paths.root}\nAppels du navigateur factice : tail -f ${log}\nCtrl-] pour quitter.\n`);
+console.log(`Space: ${kernel.paths.root}\nFake browser calls: tail -f ${log}\nCtrl-] to quit.\n`);
 
 let session;
 try {
@@ -49,7 +49,7 @@ const quit = async (code: number) => {
   if (process.stdin.isTTY) process.stdin.setRawMode(false);
   session.stop();
   await kernel.stop();
-  console.log(`\nAppels reçus : ${fake.calls.map((a) => a.method).join(", ") || "aucun"}`);
+  console.log(`\nCalls received: ${fake.calls.map((a) => a.method).join(", ") || "none"}`);
   process.exit(code);
 };
 

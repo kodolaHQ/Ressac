@@ -40,41 +40,41 @@
   const hour = (iso: string) => new Date(iso).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "medium" });
 </script>
 
-<section class="sortie" data-testid="sortie-bloc">
+<section class="output" data-testid="block-output">
   <h3>À l'exécution choisie</h3>
   {#if !chosen}
-    <p class="doux">Aucune exécution pour l'instant.</p>
+    <p class="muted">Aucune exécution pour l'instant.</p>
   {:else}
-    <p class="doux">{hour(chosen.start)} · {chosen.trigger}{chosen.attempt ? " (essai)" : ""}</p>
+    <p class="muted">{hour(chosen.start)} · {chosen.trigger}{chosen.attempt ? " (essai)" : ""}</p>
     {#if notFound}
-      <p class="doux" data-testid="execution-introuvable">Cette exécution n'est plus lisible.</p>
+      <p class="muted" data-testid="execution-missing">Cette exécution n'est plus lisible.</p>
     {:else if execution?.id !== chosen.id}
-      <p class="doux">Chargement…</p>
+      <p class="muted">Chargement…</p>
     {:else if !trace}
-      <p class="doux">Ce bloc n'était pas dans cette exécution.</p>
+      <p class="muted">Ce bloc n'était pas dans cette exécution.</p>
     {:else}
       <dl>
         <dt>Statut</dt>
-        <dd data-testid="statut-bloc">{LABELS[trace.status] ?? trace.status}</dd>
+        <dd data-testid="block-status">{LABELS[trace.status] ?? trace.status}</dd>
         {#if duration(trace.start, trace.end)}<dt>Durée</dt><dd>{duration(trace.start, trace.end)}</dd>{/if}
         <dt>Éléments</dt>
         <dd>{trace.items ?? "—"}</dd>
       </dl>
       {#if trace.status === "resumed" && execution.attempt}
-        <p class="doux" data-testid="sortie-reprise">Sortie reprise de l'exécution {execution.attempt.origin}</p>
+        <p class="muted" data-testid="resumed-output">Sortie reprise de l'exécution {execution.attempt.origin}</p>
       {/if}
-      {#if trace.error}<p class="erreur" data-testid="erreur-bloc">{trace.error}</p>{/if}
+      {#if trace.error}<p class="error" data-testid="block-run-error">{trace.error}</p>{/if}
       {#if trace.log.length > 0}
         <details>
           <summary>Journal ({trace.log.length})</summary>
-          <pre data-testid="journal-bloc">{trace.log.join("\n")}</pre>
+          <pre data-testid="block-log">{trace.log.join("\n")}</pre>
         </details>
       {/if}
       {#if trace.output !== undefined || trace.outputTruncated}
         {#key key}
-          <details data-testid="sortie-repliable" open={opened} ontoggle={(e) => (openedOn = e.currentTarget.open ? key : null)}>
+          <details data-testid="collapsible-output" open={opened} ontoggle={(e) => (openedOn = e.currentTarget.open ? key : null)}>
             <summary>Sortie{trace.outputTruncated ? " (tronquée)" : ""}</summary>
-            {#if opened}<pre data-testid="sortie-json">{json}</pre>{/if}
+            {#if opened}<pre data-testid="json-output">{json}</pre>{/if}
           </details>
         {/key}
       {/if}
@@ -83,14 +83,14 @@
 </section>
 
 <style>
-  .sortie { margin-top: 16px; padding-top: 10px; border-top: 1px solid var(--bord); font-size: 12px; }
+  .output { margin-top: 16px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 12px; }
   h3 { margin: 0 0 6px; font-size: 12px; font-weight: 600; }
-  .doux { margin: 0 0 6px; color: var(--texte-doux); }
+  .muted { margin: 0 0 6px; color: var(--text-muted); }
   dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 0 0 6px; }
-  dt { color: var(--texte-doux); }
+  dt { color: var(--text-muted); }
   dd { margin: 0; }
-  .erreur { margin: 0 0 6px; color: var(--en-erreur); white-space: pre-wrap; word-break: break-word; }
+  .error { margin: 0 0 6px; color: var(--in-error); white-space: pre-wrap; word-break: break-word; }
   details { margin-top: 4px; }
-  summary { cursor: pointer; color: var(--texte-doux); }
-  pre { margin: 4px 0 0; padding: 6px 8px; max-height: 320px; overflow: auto; border-radius: 6px; background: var(--fond); font-size: 11px; white-space: pre-wrap; word-break: break-word; }
+  summary { cursor: pointer; color: var(--text-muted); }
+  pre { margin: 4px 0 0; padding: 6px 8px; max-height: 320px; overflow: auto; border-radius: 6px; background: var(--bg); font-size: 11px; white-space: pre-wrap; word-break: break-word; }
 </style>

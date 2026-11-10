@@ -141,7 +141,7 @@ export class Executions {
       if (execution !== undefined) this.keep(execution);
       else if (r.error) this.denial = r.error;
     } catch (e) {
-      console.error(`[webaios] exécution du widget ${this.widget} :`, e);
+      console.error(`[webaios] run of widget ${this.widget}:`, e);
     } finally {
       this.request = false;
     }

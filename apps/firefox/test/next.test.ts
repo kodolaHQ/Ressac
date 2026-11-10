@@ -23,7 +23,7 @@ test("the nearest of the upcoming hours, whatever their order; the current hour 
   expect(nextRun(["00:00"], a(23, 59))).toBe("demain 00:00");
 });
 
-test("minutes and hours: the nearest of the two (derniereMaj + minutes, or the next hour)", () => {
+test("minutes and hours: the nearest of the two (lastUpdate + minutes, or the next hour)", () => {
   const update = (h: number, m = 0) => a(h, m).toISOString();
   // Frequency nearer than the hour.
   expect(nextRun(["19:00"], a(8), { minutes: 120, lastUpdate: update(7, 30) })).toBe("aujourd'hui 09:30");

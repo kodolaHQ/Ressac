@@ -10,8 +10,8 @@
 </script>
 
 {#if link.url === null}
-  <span class="pa-texte">{link.text}</span>
+  <span class="pa-text">{link.text}</span>
 {:else}
   {@const url = link.url}
-  <button type="button" class="pa-lien" title={url} onclick={() => api.actions.openLink(ctx.action, ctx.run, url)}>{link.text || url}</button>
+  <button type="button" class="pa-link" title={url} onclick={() => api.actions.openLink(ctx.action, ctx.run, url)}>{link.text || url}</button>
 {/if}

@@ -24,14 +24,14 @@
   const ariaSort = (field: string) => (sorting?.field !== field ? "none" : sorting.direction === "asc" ? "ascending" : "descending");
 </script>
 
-<div data-testid="bloc-tableau">
-  <div class="pa-defile">
-    <table class="pa-tableau">
+<div data-testid="block-table">
+  <div class="pa-scroll">
+    <table class="pa-table">
       <thead>
         <tr>
           {#each p.columns as c, i (i)}
             <th scope="col" aria-sort={ariaSort(c.field)}>
-              <button type="button" onclick={() => sort(c.field)}>{c.label}</button>{#if sorting?.field === c.field}<span class="sens" aria-hidden="true">{sorting.direction === "asc" ? "▲" : "▼"}</span>{/if}
+              <button type="button" onclick={() => sort(c.field)}>{c.label}</button>{#if sorting?.field === c.field}<span class="direction" aria-hidden="true">{sorting.direction === "asc" ? "▲" : "▼"}</span>{/if}
             </th>
           {/each}
           {#if withLink}<th scope="col">Lien</th>{/if}
@@ -42,7 +42,7 @@
           {#if s.value !== null}<tr><th scope="rowgroup" colspan={p.columns.length + (withLink ? 1 : 0)}>{s.value}</th></tr>{/if}
           {#each s.items as l, j (j)}
             <tr>
-              {#each p.columns as c, k (k)}<td class="pa-texte">{cell(l, c.field)}</td>{/each}
+              {#each p.columns as c, k (k)}<td class="pa-text">{cell(l, c.field)}</td>{/each}
               {#if withLink}<td>{#if l.link}<PageLink link={l.link} {ctx} />{/if}</td>{/if}
             </tr>
           {/each}
@@ -50,5 +50,5 @@
       {/each}
     </table>
   </div>
-  {#if p.others > 0}<p class="pa-autres">{andOthers(p.others)}</p>{/if}
+  {#if p.others > 0}<p class="pa-others">{andOthers(p.others)}</p>{/if}
 </div>

@@ -264,9 +264,9 @@ export class FakeBridge implements BrowserBridge {
   }
 
   /** Tab fields changed (for example the `empreinte` of a site app whose site.json was rewritten). */
-  editTab(id: string, champs: Partial<TabInfo>): void {
+  editTab(id: string, changes: Partial<TabInfo>): void {
     const o = this.tabs.find((x) => x.id === id);
-    if (o) Object.assign(o, champs);
+    if (o) Object.assign(o, changes);
   }
 
   /** The tab (or site app window) closes. */

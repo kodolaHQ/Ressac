@@ -1,7 +1,7 @@
 import { DEFAULT_PROFILE, type Space, type SpaceId, type ProfileId, type ConnectionProfile } from "../../shared/model";
 
 /** Choice of a space's sign-in profile, as `createSpace` and `updateSpace` receive it. */
-export type ProfileChoice = ProfileId | "nouveau";
+export type ProfileChoice = ProfileId | "new";
 
 /** No profile chosen yet: a new space does not preselect one, the user chooses (« Créer » waits). */
 export const PROFILE_TO_CHOOSE = "";
@@ -20,7 +20,7 @@ export interface ProfileOption {
 export function profileOptions(spaces: Space[], profiles: ConnectionProfile[], spaceId: SpaceId | null): ProfileOption[] {
   const rule = spaces.find((e) => e.id === spaceId);
   const others = spaces.filter((e) => e.id !== spaceId);
-  const clean: ProfileChoice = rule && !others.some((e) => e.profile === rule.profile) ? rule.profile : "nouveau";
+  const clean: ProfileChoice = rule && !others.some((e) => e.profile === rule.profile) ? rule.profile : "new";
   const shared = profiles.flatMap((p) => {
     const names = others.filter((e) => e.profile === p.id).map((e) => e.name);
     return names.length > 0 ? [{ value: p.id, label: `Partagé avec « ${names.join(", ")} »` }] : [];

@@ -67,58 +67,58 @@
 
 <svelte:window onkeydown={(e) => e.key === "Escape" && close()} />
 
-<section class="historique" data-testid="historique" aria-label="Historique">
+<section class="history" data-testid="history" aria-label="Historique">
   <header>
     <h1>Historique</h1>
     <input bind:this={field} type="search" bind:value={text} placeholder="Rechercher dans l'historique" spellcheck="false" />
-    <div class="effacer">
+    <div class="clear">
       <button onclick={() => (clearChoice = !clearChoice)}>Effacer l'historique</button>
       {#if clearChoice}
-        <div class="choix">
+        <div class="choice">
           <button onclick={() => clear(new Date(Date.now() - 3600_000))}>Dernière heure</button>
           <button onclick={() => clear(dayStart())}>Aujourd'hui</button>
           <button onclick={() => clear()}>Tout</button>
         </div>
       {/if}
     </div>
-    <button class="fermer" aria-label="Fermer l'historique" onclick={close}><Icon name="close" size={12} /></button>
+    <button class="close" aria-label="Fermer l'historique" onclick={close}><Icon name="close" size={12} /></button>
   </header>
   {#each groups as g (g.day)}
     <h2>{g.day}</h2>
     <ul>
       {#each g.visits as v (`${v.spaceId}|${v.url}`)}
-        <li data-prive={v.private ? "true" : undefined} data-retenu={v.kept ? "true" : undefined}>
+        <li data-private={v.private ? "true" : undefined} data-kept={v.kept ? "true" : undefined}>
           <a href={v.url} onclick={(e) => open(e, v.url)} oncontextmenu={(e) => visitMenu(e, v)}>
-            <span class="heure">{new Date(v.lastVisit).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</span>
-            {#if v.private}<span class="cadenas" title="Espace privé" aria-label="Espace privé">🔒</span>{/if}
-            <span class="titre">{v.title}</span>
-            {#if v.kept}<span class="retenu" title="Texte retenu pour l'agent" aria-label="Texte retenu pour l'agent">🧠</span>{/if}
+            <span class="time">{new Date(v.lastVisit).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</span>
+            {#if v.private}<span class="padlock" title="Espace privé" aria-label="Espace privé">🔒</span>{/if}
+            <span class="title">{v.title}</span>
+            {#if v.kept}<span class="kept" title="Texte retenu pour l'agent" aria-label="Texte retenu pour l'agent">🧠</span>{/if}
             <span class="url">{v.url}</span>
           </a>
         </li>
       {/each}
     </ul>
   {:else}
-    <p class="vide">{text ? "Aucun résultat." : "L'historique est vide."}</p>
+    <p class="empty">{text ? "Aucun résultat." : "L'historique est vide."}</p>
   {/each}
 </section>
 
 <style>
-  .historique { height: 100%; overflow-y: auto; box-sizing: border-box; padding: 24px 32px; color: var(--texte); }
+  .history { height: 100%; overflow-y: auto; box-sizing: border-box; padding: 24px 32px; color: var(--text); }
   header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
   h1 { font-size: 18px; margin: 0; }
-  header input { flex: 1; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--bord); background: var(--fond-barre); color: var(--texte); outline: none; }
-  header button { padding: 6px 10px; border-radius: 6px; border: 1px solid var(--bord); background: var(--fond-barre); color: var(--texte); }
-  .fermer { border: none; background: none; }
-  .effacer { position: relative; }
-  .choix { position: absolute; right: 0; top: 110%; display: flex; flex-direction: column; gap: 2px; padding: 4px; background: var(--fond-actif); border-radius: 6px; z-index: 1; }
-  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--texte-doux); margin: 20px 0 6px; }
+  header input { flex: 1; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); outline: none; }
+  header button { padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); }
+  .close { border: none; background: none; }
+  .clear { position: relative; }
+  .choice { position: absolute; right: 0; top: 110%; display: flex; flex-direction: column; gap: 2px; padding: 4px; background: var(--bg-active); border-radius: 6px; z-index: 1; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); margin: 20px 0 6px; }
   ul { list-style: none; margin: 0; padding: 0; }
   a { display: flex; gap: 12px; padding: 6px 8px; border-radius: 6px; color: inherit; text-decoration: none; }
-  a:hover { background: var(--fond-survol); }
-  .heure { color: var(--texte-doux); font-variant-numeric: tabular-nums; }
-  .retenu { font-size: 11px; opacity: 0.7; }
-  .titre { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .url { margin-left: auto; color: var(--texte-doux); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40%; }
-  .vide { color: var(--texte-doux); }
+  a:hover { background: var(--bg-hover); }
+  .time { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+  .kept { font-size: 11px; opacity: 0.7; }
+  .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .url { margin-left: auto; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40%; }
+  .empty { color: var(--text-muted); }
 </style>

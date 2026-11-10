@@ -147,7 +147,7 @@ describe("source.feed", () => {
     expect(r.terminal).toEqual({ t: "failure", error: "Aucun article récupéré" });
   });
 
-  it("source.flux with siErreur echouer: a failing feed fails the block", async () => {
+  it("source.flux with onError echouer: a failing feed fails the block", async () => {
     const r = await launch({
       workflow: feedBlock(["https://lobste.rs/rss", "https://b.fr/rss"], { onError: "fail" }),
       reply: replyStream({ "https://lobste.rs/rss": RSS }),
@@ -251,7 +251,7 @@ describe("ai.sort", () => {
     expect(r.terminal.data).toEqual([{ title: "C", source: "c.fr", score: 0.95 }]);
   });
 
-  it("ia.trier: a non-finite score is an element failure; siErreur echouer fails the block", async () => {
+  it("ia.trier: a non-finite score is an element failure; onError echouer fails the block", async () => {
     const reply = (a: Call) => ({ ok: { q: { type: "noul", noul: a.a.state.startsWith("Titre : B") ? "beaucoup" : notes[a.a.state] } } });
     const r = await launch({ workflow: sort({ field: "note" }), files: list(elements).files, config: { interests: "Rust" }, reply: reply });
     expect(r.blockEnd("tri").status).toBe("partial");
@@ -288,7 +288,7 @@ describe("ai.write", () => {
     expect(json.terminal).toEqual({ t: "end", data: { in: "Hello" } });
   });
 
-  it("ia.rediger per element: texteMax cuts {page.text} to 12000, empty response = element without champ, reutiliser by url avoids the call", async () => {
+  it("ia.rediger per element: texteMax cuts {page.text} to 12000, empty response = element without champ, reuse by url avoids the call", async () => {
     const elements = [
       { url: "https://a.fr/1", page: { text: "x".repeat(13_000) } },
       { url: "https://a.fr/2", page: { text: "rien à dire" } },

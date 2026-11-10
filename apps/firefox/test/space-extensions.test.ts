@@ -7,7 +7,7 @@ const spaces = [space("e1", "Perso", "default"), space("e2", "Lecture", "default
 const agent = { key: "agent:cacheur", name: "Cacheur", source: "agent" as const, profiles: ["default"] };
 const store = { key: `store:${"a".repeat(32)}`, name: "Bloqueur", source: "store" as const, profiles: ["default"] };
 
-test("private draft on a profile where an extension runs in another space: privePartage", () => {
+test("private draft on a profile where an extension runs in another space: privateShared", () => {
   const a = warnings({ id: "e1", private: true, profile: "default" }, spaces, [store]);
   expect(a.sharedPrivate).toEqual(["Lecture"]);
   // A new private space (id null) on a shared profile: all the profile's spaces.
@@ -17,7 +17,7 @@ test("private draft on a profile where an extension runs in another space: prive
   expect(warnings({ id: "e3", private: true, profile: "banque" }, spaces, [store]).sharedPrivate).toEqual([]);
 });
 
-test("draft turned private with an active agent extension: agentDesactivees", () => {
+test("draft turned private with an active agent extension: agentDisabled", () => {
   const a = warnings({ id: "e1", private: true, profile: "default" }, spaces, [agent, store]);
   expect(a.agentDisabled).toEqual(["Cacheur"]);
   // An agent extension active in another profile is not concerned.

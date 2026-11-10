@@ -30,7 +30,7 @@ async function start(): Promise<Marionette> {
   const m = w.marionette;
   await m.setContext("chrome");
   await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
-  await waitUi(m, "return !!doc.querySelector('[data-testid=\"barre-laterale\"]')");
+  await waitUi(m, "return !!doc.querySelector('[data-testid=\"sidebar\"]')");
   return m;
 }
 /** Quits the way a user would, then forgets the instance (the folders stay for the next start). */
@@ -83,7 +83,7 @@ describe("restore at startup", () => {
         await inWindow(m, handle, async () => {
           await waitReady(m);
           const id = await m.execute<string>("return window.webaiosWindow.windowId");
-          const pair = await inUi(m, `return [doc.querySelector('[data-testid^="espace-"][aria-current="true"]')?.textContent.trim(), doc.querySelectorAll('[data-testid^="onglet-"]').length]`);
+          const pair = await inUi(m, `return [doc.querySelector('[data-testid^="space-"][aria-current="true"]')?.textContent.trim(), doc.querySelectorAll('[data-testid^="tab-"]').length]`);
           return { handle, id, pair };
         }),
       );
@@ -125,7 +125,7 @@ describe("restore at startup", () => {
     fresh();
     let m = await start();
     const windowId = (await win(m)).id;
-    await dispatch(m, { type: "createSpace", name: "Propre", icon: "🔒", private: false, profile: "nouveau", windowId: windowId } as Action);
+    await dispatch(m, { type: "createSpace", name: "Propre", icon: "🔒", private: false, profile: "new", windowId: windowId } as Action);
     const open = async (p: string) => {
       const before = new Set(Object.keys((await state(m)).tabs));
       const after = await dispatch(m, { type: "openTab", windowId: windowId, url: server.url + p });
@@ -177,7 +177,7 @@ describe("restore at startup", () => {
       Services.obs.addObserver({ observe(ch) { ch.QueryInterface(Ci.nsIChannel); if (ch.URI.host === "duckduckgo.com") { window.webaiosRequests.push(ch.URI.spec); ch.cancel(Cr.NS_ERROR_ABORT); } } }, "http-on-modify-request");
     `);
     await pressKeys(m, "Meta+t");
-    await waitUi(m, "return doc.activeElement?.dataset.testid === 'saisie-commande'");
+    await waitUi(m, "return doc.activeElement?.dataset.testid === 'command-input'");
     await inUi(m, `const f = doc.activeElement; f.value = "chat"; f.dispatchEvent(new ui.Event("input", { bubbles: true }));`);
     await pressKeys(m, "Enter");
     await waitFor(m, "return window.webaiosRequests", (r: string[]) => r.includes("https://duckduckgo.com/?q=chat"));

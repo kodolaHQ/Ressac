@@ -61,7 +61,7 @@ const space = () => path.join(w.dataDir, "workspace");
 const remarksDir = () => path.join(space(), ".webaios", "remarks", `site-${ID}`);
 const batches = () => (existsSync(remarksDir()) ? readdirSync(remarksDir()).filter((n) => BATCH.test(n)) : []);
 const agentInput = () => {
-  const f = path.join(space(), "faux-agent-entree.txt");
+  const f = path.join(space(), "fake-agent-input.txt");
   return existsSync(f) ? readFileSync(f, "utf8") : "";
 };
 const TERMINAL = "(doc.querySelector('.xterm-rows')?.textContent ?? '').replace(/\\u00a0/g, ' ')";
@@ -73,8 +73,8 @@ const bar = () =>
   inSiteBar<{ pressed: string | null; count: string | null; grant: boolean }>(
     m,
     ID,
-    `return { pressed: doc.querySelector('${tid("site-bouton-design")}')?.getAttribute("aria-pressed") ?? null,
-       count: doc.querySelector('${tid("site-compteur-panier")}')?.textContent ?? null, grant: !!doc.querySelector('${tid("carte-accord-site")}') };`,
+    `return { pressed: doc.querySelector('${tid("site-design-button")}')?.getAttribute("aria-pressed") ?? null,
+       count: doc.querySelector('${tid("site-basket-counter")}')?.textContent ?? null, grant: !!doc.querySelector('${tid("site-grant-card")}') };`,
   );
 const clickBar = (t: string) => inSiteBar(m, ID, `doc.querySelector('${tid(t)}').click(); return 1;`);
 /** A chevron entry: the chevron, then its entry `t`. */
@@ -84,7 +84,7 @@ async function chevron(t: string) {
   await clickBar(t);
 }
 const inOverlay = <R = unknown>(body: string, args: unknown[] = []) => overlayOf<R>(m, ID, body, args);
-const bubbleText = () => inOverlay<string | null>(`return doc.querySelector('${tid("bulle-design")}')?.textContent ?? null;`);
+const bubbleText = () => inOverlay<string | null>(`return doc.querySelector('${tid("design-bubble")}')?.textContent ?? null;`);
 const designKey = () => siteKey(m, ID, "d", ["Meta", "Shift"]);
 const reviewTabs = async () => Object.values((await state(m)).tabs).filter((o) => o.url === reviewUrl(`site-${ID}`));
 
@@ -115,9 +115,9 @@ async function escape() {
 }
 /** « Panier » of the chevron, then « Envoyer » in the overlay. */
 async function sendFromCart(label: string) {
-  await chevron("site-menu-design-panier");
-  await expect.poll(() => inOverlay<string | null>(`return doc.querySelector('${tid("envoyer-remarques")}')?.textContent ?? null;`), { timeout: 10_000 }).toBe(label);
-  await inOverlay(`doc.querySelector('${tid("envoyer-remarques")}').click(); return 1;`);
+  await chevron("site-menu-design-basket");
+  await expect.poll(() => inOverlay<string | null>(`return doc.querySelector('${tid("send-remarks")}')?.textContent ?? null;`), { timeout: 10_000 }).toBe(label);
+  await inOverlay(`doc.querySelector('${tid("send-remarks")}').click(); return 1;`);
 }
 
 // design-sites.spec.ts:408
@@ -131,7 +131,7 @@ it("two remarks on tuning then send from the cart: text pre-filled without Enter
   await sendFromCart("Envoyer 2 remarques à l'agent");
   // The agent's panel opens in the main window.
   await waitFor(m, "return !document.getElementById('webaios-agent').hidden", (v) => v === true);
-  await waitUi(m, `return ${TERMINAL}.includes("faux agent prêt>")`, [], 20_000, "agent");
+  await waitUi(m, `return ${TERMINAL}.includes("fake agent ready>")`, [], 20_000, "agent");
   await expect.poll(agentInput, { timeout: 15_000 }).toMatch(/^\[remarques de .+ — appli de site "Tuning" \(\/workspace\/sites\/tuning\/\) : site tiers/);
   expect(agentInput()).toContain("/workspace/.webaios/remarks/site-tuning/");
   await sleep(300);
@@ -143,7 +143,7 @@ it("two remarks on tuning then send from the cart: text pre-filled without Enter
   expect(batch.warning).toBe(THIRD_PARTY_SITE_WARNING);
   expect(readdirSync(path.join(remarksDir(), batchList[0]!)).filter((n) => n.endsWith(".png"))).toHaveLength(2);
   await expect.poll(async () => (await bar()).count, { timeout: 10_000 }).toBeNull();
-  await expect.poll(() => inOverlay<number>(`return doc.querySelectorAll('${tid("remarque-panier")}').length;`), { timeout: 10_000 }).toBe(0);
+  await expect.poll(() => inOverlay<number>(`return doc.querySelectorAll('${tid("basket-remark")}').length;`), { timeout: 10_000 }).toBe(0);
   // relecture.assurer took the first photo before the send.
   expect(existsSync(reviewedRef(w.dataDir, `site-${ID}`))).toBe(true);
 });
@@ -176,19 +176,19 @@ it("after site.json and the tweak changed, « Relire ce projet » of the chevron
   writeFileSync(path.join(space(), "sites", ID, "site.json"), JSON.stringify({ ...tuningDeclaration(url), description: "Sans bannière" }));
   writeFileSync(path.join(space(), "sites", ID, "tweaks", "tuning.css"), "#banniere { display: none } /* 2 */");
   await openSite(m, ID);
-  await chevron("site-menu-design-relire");
-  const PAGE = tid("page-relecture");
+  await chevron("site-menu-design-review");
+  const PAGE = tid("review-page");
   await waitUi(m, `return !!doc.querySelector('${PAGE}')`, [], 15_000);
-  await waitUi(m, `return doc.querySelectorAll('${tid("fichier-relecture")}').length === 2`, [], 15_000);
-  const names = await inUi<string[]>(m, `return [...doc.querySelectorAll('${tid("fichier-relecture")} .nom-fichier')].map((e) => e.textContent).sort();`);
+  await waitUi(m, `return doc.querySelectorAll('${tid("review-file")}').length === 2`, [], 15_000);
+  const names = await inUi<string[]>(m, `return [...doc.querySelectorAll('${tid("review-file")} .file-name')].map((e) => e.textContent).sort();`);
   expect(names).toEqual(["site.json", "tweaks/tuning.css"]);
   expect((await reviewTabs()).map((o) => o.title)).toEqual(["Relecture — Tuning"]);
   // Another tab, then « Relire ce projet » again: the same page comes back.
   await openApplications(m);
   await waitUi(m, `return !doc.querySelector('${PAGE}')`);
-  await chevron("site-menu-design-relire");
+  await chevron("site-menu-design-review");
   await waitUi(m, `return !!doc.querySelector('${PAGE}')`, [], 15_000);
-  await waitUi(m, `return doc.querySelectorAll('${tid("fichier-relecture")}').length === 2`, [], 15_000);
+  await waitUi(m, `return doc.querySelectorAll('${tid("review-file")}').length === 2`, [], 15_000);
   expect(await reviewTabs()).toHaveLength(1);
 });
 
@@ -219,7 +219,7 @@ it("the host stopped: ✎ keeps its last state, ⌘⇧D does nothing, Ajouter sh
   try {
     await sleep(500);
     expect(await bar()).toMatchObject({ pressed: "true", count: n ? String(n) : null });
-    await inOverlay(`doc.querySelector("button.ajouter").click(); return 1;`);
+    await inOverlay(`doc.querySelector("button.add-button").click(); return 1;`);
     await expect.poll(() => inOverlay<string | null>(`return doc.querySelector('[role="alert"]')?.textContent ?? null;`), { timeout: 10_000 }).toBeTruthy();
     expect(await bubbleText()).toContain("a#lien");
     expect(await inStore(m, "return store.design.overlayContext(arguments[0])?.mode ?? null;", [T])).toBe("bubble");
@@ -248,8 +248,8 @@ it("Supprimer with a remark in the cart and a batch sent: remarks and review rep
   await modeOn();
   await remark("#films", "li.affiche", "affiches plus grandes", "1");
   await openApplications(m);
-  await click(m, tid(`site-${ID}-supprimer`));
-  await click(m, tid("confirmer-suppression-site"));
+  await click(m, tid(`site-${ID}-delete`));
+  await click(m, tid("confirm-site-delete"));
   await waitUi(m, `return !doc.querySelector('${tid(`site-${ID}`)}')`, [], 15_000);
   await expect.poll(() => existsSync(remarksDir()), { timeout: 15_000 }).toBe(false);
   await expect.poll(() => existsSync(path.join(review, `site-${ID}.git`)), { timeout: 15_000 }).toBe(false);
@@ -260,7 +260,7 @@ it("Supprimer with a remark in the cart and a batch sent: remarks and review rep
   await expect.poll(() => existsSync(reviewedRef(w.dataDir, `site-${ID}`)), { timeout: 15_000 }).toBe(true);
   expect(readFileSync(reviewedRef(w.dataDir, `site-${ID}`), "utf8")).not.toBe(old);
   await openSite(m, ID);
-  await expect.poll(() => inSiteBar(m, ID, `return !!doc.querySelector('${tid("site-bouton-design")}');`), { timeout: 10_000 }).toBe(true);
+  await expect.poll(() => inSiteBar(m, ID, `return !!doc.querySelector('${tid("site-design-button")}');`), { timeout: 10_000 }).toBe(true);
   expect((await bar()).count).toBeNull();
   expect((await designState()).basket).toBe(0);
 });

@@ -11,7 +11,7 @@ import { click, inUi, missingApi, pressKeys, typeText, waitUi } from "./ui";
 
 // The agent's « Read permission » questions, and the dev tools' access badge.
 const REFUSED = "Accès refusé par l'utilisateur à cet onglet.";
-const CARD = '[data-testid="demande-permission"]';
+const CARD = '[data-testid="permission-request"]';
 
 let server: Awaited<ReturnType<typeof startServer>>;
 let w: LaunchedWebAiOs;
@@ -27,7 +27,7 @@ beforeEach(async () => {
   for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
     if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
   // The home page's panel starts the agent's session, which takes back every access: tools are called after it.
-  await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('prêt>')", [], 20_000, "agent");
+  await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
 });
 afterEach(() => w?.close());
 
@@ -125,7 +125,7 @@ it("a tab moved to a private space during the question: refused, card gone", asy
 
 it("the access badge shows on a tab the agent reads and Couper removes it", async () => {
   const id = await openTab("/texte.html");
-  const badge = `[data-testid="onglet-${id}"] [data-testid="pastille-acces"]`;
+  const badge = `[data-testid="tab-${id}"] [data-testid="access-pill"]`;
   expect(await inUi(m, `return !!doc.querySelector(arguments[0])`, [badge])).toBe(false);
   const reading = call("read_tab", { id });
   await cardText();
@@ -133,8 +133,8 @@ it("the access badge shows on a tab the agent reads and Couper removes it", asyn
   await reading;
   await waitUi(m, `return !!doc.querySelector(arguments[0])`, [badge]);
   await click(m, badge);
-  await click(m, '[data-testid="bulle-acces"] button', { text: "Couper l'accès" });
-  await waitUi(m, `return !doc.querySelector(arguments[0]) && !doc.querySelector('[data-testid="bulle-acces"]')`, [badge]);
+  await click(m, '[data-testid="access-bubble"] button', { text: "Couper l'accès" });
+  await waitUi(m, `return !doc.querySelector(arguments[0]) && !doc.querySelector('[data-testid="access-bubble"]')`, [badge]);
   // Cut: reading asks again.
   const again = call("read_tab", { id });
   await cardText();
@@ -157,7 +157,7 @@ const hasCard = (h: string) => inWindow(m, h, () => inUi<boolean>(m, `return !!d
 /** The ✦ button (what ⌘J does too), then waits for the panel to show or hide. */
 async function togglePanel(): Promise<void> {
   const was = await m.execute<boolean>("return !document.getElementById('webaios-agent').hidden");
-  await click(m, '[data-testid="bouton-agent"]');
+  await click(m, '[data-testid="agent-button"]');
   await waitFor(m, "return !document.getElementById('webaios-agent').hidden", (v) => v === !was);
 }
 
@@ -181,7 +181,7 @@ it("sending a message from a tab shares it", async () => {
   await click(m, ".xterm-screen", { frame: "agent" });
   await typeText(m, "salut");
   await pressKeys(m, "Enter");
-  await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.replace(/\\u00a0/g, ' ').includes('reçu: salut')", [], 10_000, "agent");
+  await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.replace(/\\u00a0/g, ' ').includes('received: salut')", [], 10_000, "agent");
   expect((await call("current_page")).text).toContain("Le chat dort");
   expect(await inUi(m, `return !!doc.querySelector(${JSON.stringify(CARD)})`)).toBe(false);
 });
@@ -207,7 +207,7 @@ describe("several windows", () => {
     await waitFor(m, "return !document.getElementById('webaios-agent').hidden", (v) => v === true);
     expect((await call("read_tab", { id })).text).toContain("Le chat dort");
     const second = await newWindow(m);
-    await inWindow(m, second, () => waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('prêt>')", [], 20_000, "agent"));
+    await inWindow(m, second, () => waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent"));
     const reading = call("read_tab", { id });
     const handles = Object.values(await handlesById());
     // One window at a time: Marionette has a single current window.

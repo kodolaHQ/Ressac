@@ -75,7 +75,7 @@ const invoke = async (name: string, args: Record<string, unknown>) => {
 };
 const devRequests = () => bridge.calls.filter((a) => a.method === "askDevTools");
 
-test("without pont.outilsDev, no dev tool is listed", async () => {
+test("without bridge.outilsDev, no dev tool is listed", async () => {
   await start({ devTools: false });
   const names = (await client!.listTools()).tools.map((t) => t.name);
   expect(names).not.toContain("read_console");
@@ -83,7 +83,7 @@ test("without pont.outilsDev, no dev tool is listed", async () => {
   expect(names).toHaveLength(6);
 });
 
-test("with pont.outilsDev, the nine dev tools are listed", async () => {
+test("with bridge.outilsDev, the nine dev tools are listed", async () => {
   await start();
   const names = (await client!.listTools()).tools.map((t) => t.name);
   expect(names).toEqual(
@@ -129,7 +129,7 @@ test("request_devtools: only the granted rights are returned; the unchecked ones
   expect(devRequests()).toHaveLength(1);
 });
 
-test("after politique.interactionUtilisateur, the refused right can be asked again", async () => {
+test("after policy.interactionUtilisateur, the refused right can be asked again", async () => {
   await start({ grantDev: [] });
   expect(await invoke("read_console", { id: "github" })).toBe(DENIAL);
   expect(await invoke("read_console", { id: "github" })).toBe(DENIAL);
@@ -139,7 +139,7 @@ test("after politique.interactionUtilisateur, the refused right can be asked aga
   expect(devRequests()).toHaveLength(2);
 });
 
-test("without demanderOutilsDev on the bridge: immediate refusal", async () => {
+test("without askDevTools on the bridge: immediate refusal", async () => {
   await start();
   expect(await invoke("read_console", { id: "github" })).toBe(DENIAL);
   expect(bridge.askDevTools).toBeUndefined();

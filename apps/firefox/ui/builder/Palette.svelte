@@ -33,15 +33,15 @@
 <nav class="palette" aria-label="Blocs">
   {#each families as [family, blocks] (family)}
     <section>
-      <button class="famille" aria-expanded={!collapsed[family]} onclick={() => (collapsed[family] = !collapsed[family])}>
-        <span class="chevron" class:replie={collapsed[family]}>▾</span>{family}
+      <button class="family" aria-expanded={!collapsed[family]} onclick={() => (collapsed[family] = !collapsed[family])}>
+        <span class="chevron" class:folded={collapsed[family]}>▾</span>{family}
       </button>
       {#if !collapsed[family]}
         <ul>
           {#each blocks as c (c.type)}
             <li>
               <button
-                class="bloc"
+                class="block"
                 draggable={!grayed(c.type)}
                 disabled={grayed(c.type)}
                 data-testid="palette-{c.type}"
@@ -64,13 +64,13 @@
 </nav>
 
 <style>
-  .palette { width: 190px; flex: none; overflow-y: auto; padding: 8px; box-sizing: border-box; border-right: 1px solid var(--bord); background: var(--fond-barre); }
+  .palette { width: 190px; flex: none; overflow-y: auto; padding: 8px; box-sizing: border-box; border-right: 1px solid var(--border); background: var(--bg-bar); }
   section + section { margin-top: 6px; }
-  .famille { all: unset; box-sizing: border-box; width: 100%; display: flex; align-items: center; gap: 4px; padding: 4px; cursor: pointer; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--texte-doux); }
+  .family { all: unset; box-sizing: border-box; width: 100%; display: flex; align-items: center; gap: 4px; padding: 4px; cursor: pointer; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
   .chevron { display: inline-block; transition: transform 0.1s; }
-  .chevron.replie { transform: rotate(-90deg); }
+  .chevron.folded { transform: rotate(-90deg); }
   ul { list-style: none; margin: 0; padding: 0; }
-  .bloc { all: unset; box-sizing: border-box; width: 100%; padding: 6px 8px; border-radius: 6px; cursor: grab; font-size: 13px; color: var(--texte); }
-  .bloc:hover:not(:disabled) { background: var(--fond-survol); }
-  .bloc:disabled { cursor: default; opacity: 0.45; }
+  .block { all: unset; box-sizing: border-box; width: 100%; padding: 6px 8px; border-radius: 6px; cursor: grab; font-size: 13px; color: var(--text); }
+  .block:hover:not(:disabled) { background: var(--bg-hover); }
+  .block:disabled { cursor: default; opacity: 0.45; }
 </style>

@@ -216,7 +216,7 @@ test("policyChanges: a tab whose space becomes private is closed for the agent; 
 
 test("an essential shared by two private spaces stays invisible to the agent when its owner stops being private", () => {
   const { e, ag, F } = prepare();
-  ag({ type: "createSpace", name: "Banque", icon: "🏦", private: true, profile: "nouveau", windowId: F });
+  ag({ type: "createSpace", name: "Banque", icon: "🏦", private: true, profile: "new", windowId: F });
   const bank = e().spaces.find((x) => x.name === "Banque")!;
   ag({ type: "openTab", windowId: F, url: "https://mail.google.com/" });
   const gmail = Object.values(e().tabs).find((o) => o.url === "https://mail.google.com/")!.id;

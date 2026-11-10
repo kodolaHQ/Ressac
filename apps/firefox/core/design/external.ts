@@ -58,7 +58,7 @@ export async function startExternals(o: {
           const id = externalProject(r.project.id);
           void new ReviewStore({ repo: reviewStore(o.folders, id), folder: r.project.folder })
             .ensureReference()
-            .catch((e) => console.error("[externes] première photo de relecture impossible :", e));
+            .catch((e) => console.error("[external] first review snapshot failed:", e));
         }
         if (r.first) o.notify({ title: "WebAiOs", text: `${client.name} a branché le projet ${r.project.name}` });
         return { project: r.project, ...(r.readable ? {} : { warning: UNREADABLE_WARNING }) };
@@ -69,7 +69,7 @@ export async function startExternals(o: {
     // Port taken or any other error: the section says so, never « démarre » endlessly.
     if ((e as NodeJS.ErrnoException).code === "EADDRINUSE") serverState = { state: "off", reason: portTaken(o.port) };
     else {
-      console.error("[externes] démarrage impossible :", e);
+      console.error("[external] start failed:", e);
       serverState = { state: "off", reason: failureReason(e) };
     }
   }

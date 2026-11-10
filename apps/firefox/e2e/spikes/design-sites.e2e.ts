@@ -139,7 +139,7 @@ async function toHome(): Promise<void> {
   await openApp();
   if ((await viewOf()) !== "home") await inStore(`store.sites.controller(arguments[0]).home();`, [ID]);
   await expect
-    .poll(() => inSiteBar<string | null>(m, ID, `const h = doc.querySelector('[data-testid="site-cadre-accueil"]'); const d = h?.contentDocument; return d?.readyState === "complete" && d.getElementById("cible") ? String(d.documentURI) : null;`), { timeout: 15_000 })
+    .poll(() => inSiteBar<string | null>(m, ID, `const h = doc.querySelector('[data-testid="site-home-frame"]'); const d = h?.contentDocument; return d?.readyState === "complete" && d.getElementById("cible") ? String(d.documentURI) : null;`), { timeout: 15_000 })
     .toMatch(/^resource:\/\/webaios-site-/);
 }
 
@@ -293,7 +293,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
       m,
       ID,
       `const CU = Components.utils;
-       const home = doc.querySelector('[data-testid="site-cadre-accueil"]');
+       const home = doc.querySelector('[data-testid="site-home-frame"]');
        const hdoc = home.contentDocument, hwin = hdoc.defaultView;
        const sb = CU.Sandbox(hdoc.nodePrincipal, { sandboxPrototype: hwin, wantXrays: true, wantComponents: false, sameZoneAs: hwin, sandboxName: "spike S6 viseur" });
        Object.defineProperty(sb, "Components", { value: undefined });
@@ -443,13 +443,13 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
       [STOP_SCRIPT, firefoxViewfinderScript()],
     );
     await expect.poll(async () => (await state()).hosts, { timeout: 5000 }).toBe(1);
-    const enter = await inSiteBar<{ x: number; y: number }>(m, ID, `const b = win.document.getElementById("webaios-site-bar").getBoundingClientRect(), e = doc.querySelector('[data-testid="site-entrer"]').getBoundingClientRect(); return { x: b.left + e.left + e.width / 2, y: b.top + e.top + e.height / 2 };`);
+    const enter = await inSiteBar<{ x: number; y: number }>(m, ID, `const b = win.document.getElementById("webaios-site-bar").getBoundingClientRect(), e = doc.querySelector('[data-testid="site-enter"]').getBoundingClientRect(); return { x: b.left + e.left + e.width / 2, y: b.top + e.top + e.height / 2 };`);
     await siteMouse(enter);
     await expect.poll(viewOf, { timeout: 5000 }).toBe("site");
     await sleep(300);
     const stopped = await state();
     const states = await inSiteBar(m, ID, `const s = win.__s6; s.offState(); return { states: s.states, stopped: s.stopped, homeShown: win.document.documentElement.hasAttribute("webaios-site-home"),
-      homeFrames: doc.querySelectorAll('[data-testid="site-cadre-accueil"]').length };`);
+      homeFrames: doc.querySelectorAll('[data-testid="site-home-frame"]').length };`);
     note("S6 enter the site", { ...(states as object), ...stopped });
     // The click was the bar's: the guard on the home's frame never saw it.
     expect(stopped.seen.filter((x: string) => x.includes(":home:"))).toEqual([]);
@@ -541,7 +541,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
     // On the home, the bar's document covers the window (position fixed, z-index 3): the overlay must still be on top.
     await inStore(`store.sites.controller(arguments[0]).home();`, [ID]);
     await expect.poll(() => m.execute(`return ${SITE}.document.documentElement.hasAttribute("webaios-site-home");`)).toBe(true);
-    const homeRect = await inSiteBar<number[]>(m, ID, `const b = win.document.getElementById("webaios-site-bar").getBoundingClientRect(), h = doc.querySelector('[data-testid="site-cadre-accueil"]').getBoundingClientRect(); return [b.left + h.left, b.top + h.top, h.width, h.height];`);
+    const homeRect = await inSiteBar<number[]>(m, ID, `const b = win.document.getElementById("webaios-site-bar").getBoundingClientRect(), h = doc.querySelector('[data-testid="site-home-frame"]').getBoundingClientRect(); return [b.left + h.left, b.top + h.top, h.width, h.height];`);
     const onHome = bubbleSlot({ x: 40, y: 60, width: 120, height: 40 }, 1, { x: homeRect[0]!, y: homeRect[1]!, width: homeRect[2]!, height: homeRect[3]! }, [l!, h!], { minHeight: homeRect[1]! });
     await show("bubble", onHome);
     const homeCheck = await check(onHome);

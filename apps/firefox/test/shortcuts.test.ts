@@ -3,7 +3,7 @@ import type { Action } from "../shared/api";
 import type { BrowserState } from "../shared/model";
 import { apply } from "../core/state/actions";
 import { initialState } from "../core/state/initial-state";
-import { toNth } from "../core/raccourcis";
+import { toNth } from "../core/shortcuts";
 
 let n = 0;
 const genId = () => `g${++n}`;

@@ -89,7 +89,7 @@
 
   // Drag and resize: a live free preview, then the layout sent on release.
   let widthPx = $state(0);
-  let gesture: { id: string; mode: "deplacer" | "taille"; x0: number; y0: number; start: FreePlacement[]; p0: FreePlacement; sizes: { min: { w: number; h: number }; max: { w: number; h: number } } } | null =
+  let gesture: { id: string; mode: "move" | "resize"; x0: number; y0: number; start: FreePlacement[]; p0: FreePlacement; sizes: { min: { w: number; h: number }; max: { w: number; h: number } } } | null =
     null;
   let inGesture = $state(false);
   let preview = $state.raw<FreePlacement[] | null>(null);
@@ -97,7 +97,7 @@
   const placements = $derived(new Map((preview ?? widgets.map((w) => w.placement)).map((p) => [p.id, p])));
   const height = $derived(Math.max(0, ...[...placements.values()].map((p) => p.y + p.h)));
 
-  function commencer(w: ShownWidget, mode: "deplacer" | "taille", e: PointerEvent) {
+  function beginGesture(w: ShownWidget, mode: "move" | "resize", e: PointerEvent) {
     if (e.button !== 0) return;
     e.preventDefault();
     const start = widgets.map((x) => x.placement);
@@ -123,7 +123,7 @@
     const dx = widthPx > 0 ? ((e.clientX - g.x0) / widthPx) * FREE_WIDTH : 0;
     const dy = e.clientY - g.y0;
     const others = g.start.filter((q) => q.id !== g.id);
-    const p = g.mode === "deplacer"
+    const p = g.mode === "move"
       ? moveFree({ p: g.p0, x: g.p0.x + dx, y: g.p0.y + dy, others: others, widthPx: widthPx })
       : resizeFree({ p: g.p0, w: g.p0.w + dx, h: g.p0.h + dy, min: g.sizes.min, max: g.sizes.max, others: others });
     preview = g.start.map((q) => (q.id === g.id ? p : q));
@@ -152,9 +152,9 @@
 
 <svelte:window onpointermove={move} onpointerup={() => finish(false)} onpointercancel={() => finish(true)} />
 
-<section class="accueil" style={styleTheme} data-testid="accueil" data-theme={theme ? "agent" : "default"}>
+<section class="home" style={styleTheme} data-testid="home" data-theme={theme ? "agent" : "default"}>
   {#if widgets.length}
-    <div class="grille" class:geste={inGesture} bind:clientWidth={widthPx} style:height="{height}px">
+    <div class="grid" class:gesture={inGesture} bind:clientWidth={widthPx} style:height="{height}px">
       {#each widgets as widget (widget.id)}
         {@const p = placements.get(widget.id) ?? widget.placement}
         <div
@@ -170,7 +170,7 @@
             gesture={inGesture}
             warning={warnings[widget.id] ?? null}
             denied={!!refuses[widget.id]}
-            start={(mode, e) => commencer(widget, mode, e)}
+            start={(mode, e) => beginGesture(widget, mode, e)}
             remove={() => (toRemove = widget)}
             allow={() => "account" in widget && (grantFor = widget)}
             deny={() => {
@@ -191,7 +191,7 @@
       {/each}
     </div>
   {:else if onLoaded}
-    <p class="vide" data-testid="accueil-vide">Aucun widget pour l'instant. Demande à l'agent de créer le premier.</p>
+    <p class="empty" data-testid="home-empty">Aucun widget pour l'instant. Demande à l'agent de créer le premier.</p>
   {/if}
 </section>
 
@@ -229,13 +229,13 @@
 
 {#if toRemove}
   {@const target = toRemove}
-  <div class="voile">
-    <div class="confirmation" role="alertdialog" aria-modal="true" data-testid="confirmation-retrait">
+  <div class="veil">
+    <div class="confirmation" role="alertdialog" aria-modal="true" data-testid="removal-confirmation">
       <p>Retirer « {name(target)} » de la page d'accueil ?</p>
-      <div class="boutons">
+      <div class="buttons">
         <button onclick={() => (toRemove = null)}>Annuler</button>
         <button
-          class="principal"
+          class="main"
           onclick={() => {
             const id = target.id; // {@const} is re-read: after aRetirer = null, cible is null
             toRemove = null;
@@ -250,38 +250,38 @@
 
 <style>
   /* The agent theme variables, set on this root only; without a theme, the application's. */
-  .accueil {
-    --accueil-fond: var(--fond);
-    --accueil-carte: var(--fond-barre);
-    --accueil-texte: var(--texte);
-    --accueil-texte-doux: var(--texte-doux);
-    --accueil-accent: var(--accent);
-    --accueil-bord: var(--bord);
-    --accueil-rayon: 12px;
-    --accueil-espace: 12px;
-    --accueil-police: inherit;
+  .home {
+    --home-bg: var(--bg);
+    --home-card: var(--bg-bar);
+    --home-text: var(--text);
+    --home-text-muted: var(--text-muted);
+    --home-accent: var(--accent);
+    --home-border: var(--border);
+    --home-radius: 12px;
+    --home-spacing: 12px;
+    --home-font: inherit;
     box-sizing: border-box;
     width: 100%;
     margin: 0;
     padding: 16px;
-    background: var(--accueil-fond);
-    color: var(--accueil-texte);
-    font-family: var(--accueil-police);
+    background: var(--home-bg);
+    color: var(--home-text);
+    font-family: var(--home-font);
   }
   /* Free placement: left/width in thousandths of the width, top/height in pixels. */
-  .grille { position: relative; }
-  .case { position: absolute; padding: calc(var(--accueil-espace) / 2); box-sizing: border-box; }
-  .grille.geste { user-select: none; }
+  .grid { position: relative; }
+  .case { position: absolute; padding: calc(var(--home-spacing) / 2); box-sizing: border-box; }
+  .grid.gesture { user-select: none; }
   /* During a gesture, the widget frames must not capture the mouse. */
-  .grille.geste :global(iframe) { pointer-events: none; }
-  .guide { position: absolute; z-index: 4; pointer-events: none; background: var(--accueil-accent); opacity: 0.6; }
+  .grid.gesture :global(iframe) { pointer-events: none; }
+  .guide { position: absolute; z-index: 4; pointer-events: none; background: var(--home-accent); opacity: 0.6; }
   .guide-x { top: 0; bottom: 0; width: 1px; }
   .guide-y { left: 0; right: 0; height: 1px; }
-  .vide { margin: 24px 0; text-align: center; font-size: 13px; color: var(--accueil-texte-doux); }
-  .voile { position: fixed; inset: 0; display: grid; place-content: center; background: rgb(0 0 0 / 0.35); z-index: 10; }
-  .confirmation { padding: 16px 20px; border-radius: 10px; background: var(--fond-barre); border: 1px solid var(--bord); color: var(--texte); }
+  .empty { margin: 24px 0; text-align: center; font-size: 13px; color: var(--home-text-muted); }
+  .veil { position: fixed; inset: 0; display: grid; place-content: center; background: rgb(0 0 0 / 0.35); z-index: 10; }
+  .confirmation { padding: 16px 20px; border-radius: 10px; background: var(--bg-bar); border: 1px solid var(--border); color: var(--text); }
   .confirmation p { margin: 0 0 14px; }
-  .boutons { display: flex; justify-content: flex-end; gap: 8px; }
-  .boutons button { padding: 6px 12px; border-radius: 6px; border: 1px solid var(--bord); background: var(--fond); color: var(--texte); }
-  .boutons .principal { background: var(--accent); border-color: var(--accent); color: white; }
+  .buttons { display: flex; justify-content: flex-end; gap: 8px; }
+  .buttons button { padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+  .buttons .main { background: var(--accent); border-color: var(--accent); color: white; }
 </style>

@@ -57,7 +57,7 @@ describe("createExternalApi", () => {
     await expect(api.connect("Claude Code")).rejects.toThrow(HOST_STOPPED);
   });
 
-  it("surChange calls back on externes.change, a host exit and the chrome's accueil.change", () => {
+  it("onChange calls back on externes.change, a host exit and the chrome's accueil.change", () => {
     const { api, emit } = setup();
     const cb = vi.fn();
     const off = api.onChange(cb);
@@ -70,7 +70,7 @@ describe("createExternalApi", () => {
     expect(cb).toHaveBeenCalledTimes(3);
   });
 
-  it("relire dispatches ouvrirRelecture with the name cut to 80 characters; null does nothing", async () => {
+  it("relire dispatches openReview with the name cut to 80 characters; null does nothing", async () => {
     const name = "é".repeat(100);
     const { api, dispatched, calls } = setup({ "external.name": (p) => (p.id === ID ? name : null) });
     api.review(ID);

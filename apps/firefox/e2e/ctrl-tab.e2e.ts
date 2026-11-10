@@ -16,7 +16,7 @@ beforeEach(async () => {
   m = w.marionette;
   await m.setContext("chrome");
   await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
-  await waitUi(m, "return !!doc.querySelector('[data-testid=\"barre-laterale\"]')");
+  await waitUi(m, "return !!doc.querySelector('[data-testid=\"sidebar\"]')");
 });
 afterEach(async () => {
   try {
@@ -48,16 +48,16 @@ async function waitState<T>(read: (s: BrowserState) => T, ok: (v: T) => boolean,
 const waitActive = (id: string) => waitState((s) => s.windows[0]!.active[s.windows[0]!.activeSpace], (a) => a === id);
 const waitTitle = (id: string, title: string) => waitState((s) => s.tabs[id]?.title, (t) => t === title);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const PANEL = '[data-testid="panneau-onglets"]';
+const PANEL = '[data-testid="tabs-panel"]';
 const panelShown = () => inUi<boolean>(m, `return !!doc.querySelector('${PANEL}')`);
 const waitPanel = (shown: boolean) => waitUi(m, `return !!doc.querySelector('${PANEL}') === arguments[0]`, [shown]);
 /** Index of the selected card, and the card count. */
 const cards = () =>
-  inUi<[number, number]>(m, `const c = [...doc.querySelectorAll('${PANEL} [data-testid="carte-onglet"]')]; return [c.findIndex((e) => e.getAttribute("aria-selected") === "true"), c.length];`);
+  inUi<[number, number]>(m, `const c = [...doc.querySelectorAll('${PANEL} [data-testid="tab-card"]')]; return [c.findIndex((e) => e.getAttribute("aria-selected") === "true"), c.length];`);
 const waitCards = (selected: number, count: number) =>
   waitUi(
     m,
-    `const c = [...doc.querySelectorAll('${PANEL} [data-testid="carte-onglet"]')]; return c.length === arguments[1] && c[arguments[0]]?.getAttribute("aria-selected") === "true";`,
+    `const c = [...doc.querySelectorAll('${PANEL} [data-testid="tab-card"]')]; return c.length === arguments[1] && c[arguments[0]]?.getAttribute("aria-selected") === "true";`,
     [selected, count],
   );
 /** The displayed web page has the keyboard. */
@@ -131,7 +131,7 @@ describe("⌃Tab", () => {
   it("over the command bar, Escape closes the panel only", async () => {
     const [, , c] = await threeTabs();
     await pressKeys(m, "Meta+t");
-    await waitUi(m, "return doc.activeElement?.dataset.testid === 'saisie-commande'");
+    await waitUi(m, "return doc.activeElement?.dataset.testid === 'command-input'");
     await keyDown(m, "Control");
     await pressKeys(m, "Tab");
     await waitCards(1, 3);
@@ -139,7 +139,7 @@ describe("⌃Tab", () => {
     await waitPanel(false);
     await keyUp(m, "Control");
     await sleep(300);
-    expect(await inUi<boolean>(m, "return !!doc.querySelector('[data-testid=\"barre-commande\"]')")).toBe(true);
+    expect(await inUi<boolean>(m, "return !!doc.querySelector('[data-testid=\"command-bar\"]')")).toBe(true);
     expect(await activeId()).toBe(c);
     expect(await pageFocused()).toBe(false);
   });
@@ -173,7 +173,7 @@ describe("⌃Tab", () => {
     await waitCards(1, 3);
     const box = await inUi<{ x: number; y: number }>(
       m,
-      `const r = doc.querySelector('${PANEL} [data-testid="carte-onglet"]').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 };`,
+      `const r = doc.querySelector('${PANEL} [data-testid="tab-card"]').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 };`,
     );
     await pressKeys(m, "Escape");
     await waitPanel(false);

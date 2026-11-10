@@ -7,36 +7,36 @@
   const config = $derived(widget ? JSON.stringify(widget.config ?? null, null, 2) : "");
 </script>
 
-<section class="widget" data-testid="panneau-widget">
+<section class="widget" data-testid="widget-panel">
   {#if widget}
-    <p class="nom" data-testid="widget-nom">{widget.name}</p>
+    <p class="name" data-testid="widget-name">{widget.name}</p>
     <dl>
       <dt>Domaines avec compte</dt>
-      <dd data-testid="widget-compte">{widget.account.length ? widget.account.join(", ") : "aucun"}</dd>
+      <dd data-testid="widget-account">{widget.account.length ? widget.account.join(", ") : "aucun"}</dd>
       <dt>Domaines publics</dt>
-      <dd data-testid="widget-publiques">{widget.public.length ? widget.public.join(", ") : "aucun"}</dd>
+      <dd data-testid="widget-public">{widget.public.length ? widget.public.join(", ") : "aucun"}</dd>
     </dl>
-    {#if widget.web}<p class="ligne" data-testid="widget-web">Accès au web : ouvert</p>{/if}
+    {#if widget.web}<p class="line" data-testid="widget-web">Accès au web : ouvert</p>{/if}
     {#if widget.harvest?.hours.length}
-      <p class="ligne" data-testid="widget-heures">Heures prévues : {widget.harvest.hours.join(", ")}</p>
+      <p class="line" data-testid="widget-hours">Heures prévues : {widget.harvest.hours.join(", ")}</p>
     {/if}
-    {#if widget.harvest?.maxDurationMinutes}<p class="ligne">Durée maximale : {widget.harvest.maxDurationMinutes} min</p>{/if}
-    {#if widget.harvest?.notify}<p class="ligne">Notification à la fin : oui</p>{/if}
-    <p class="libelle">Configuration</p>
+    {#if widget.harvest?.maxDurationMinutes}<p class="line">Durée maximale : {widget.harvest.maxDurationMinutes} min</p>{/if}
+    {#if widget.harvest?.notify}<p class="line">Notification à la fin : oui</p>{/if}
+    <p class="label">Configuration</p>
     <pre data-testid="widget-config">{config}</pre>
   {/if}
-  <p class="doux">Pour changer les sources ou la configuration, demande-le à l'agent.</p>
-  <p class="doux">Sélectionne un bloc pour voir ses réglages.</p>
+  <p class="muted">Pour changer les sources ou la configuration, demande-le à l'agent.</p>
+  <p class="muted">Sélectionne un bloc pour voir ses réglages.</p>
 </section>
 
 <style>
   .widget { font-size: 12px; }
-  .nom { margin: 0 0 8px; font-size: 14px; font-weight: 600; word-break: break-word; }
+  .name { margin: 0 0 8px; font-size: 14px; font-weight: 600; word-break: break-word; }
   dl { display: grid; grid-template-columns: 1fr; gap: 2px; margin: 0 0 8px; }
-  dt { color: var(--texte-doux); }
+  dt { color: var(--text-muted); }
   dd { margin: 0 0 6px; word-break: break-word; }
-  .ligne { margin: 0 0 6px; }
-  .libelle { margin: 0; color: var(--texte-doux); }
-  pre { margin: 4px 0 10px; padding: 6px 8px; max-height: 260px; overflow: auto; border-radius: 6px; background: var(--fond); font-size: 11px; white-space: pre-wrap; word-break: break-word; }
-  .doux { margin: 0 0 6px; color: var(--texte-doux); }
+  .line { margin: 0 0 6px; }
+  .label { margin: 0; color: var(--text-muted); }
+  pre { margin: 4px 0 10px; padding: 6px 8px; max-height: 260px; overflow: auto; border-radius: 6px; background: var(--bg); font-size: 11px; white-space: pre-wrap; word-break: break-word; }
+  .muted { margin: 0 0 6px; color: var(--text-muted); }
 </style>

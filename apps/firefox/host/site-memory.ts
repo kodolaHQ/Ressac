@@ -90,7 +90,7 @@ export function createPositions(o: {
             if (kept && !sameDuration(kept.duration, duration)) return;
             m.notePosition(target.url, t, duration);
           },
-          (err) => console.error("[sites] position non notée :", err),
+          (err) => console.error("[sites] position not noted:", err),
         );
       let byFrame = frames.get(target.id);
       if (!byFrame) frames.set(target.id, (byFrame = new Map()));

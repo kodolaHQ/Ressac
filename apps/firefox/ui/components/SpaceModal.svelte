@@ -128,42 +128,42 @@
 <svelte:window onkeydown={clavier} />
 
 <!-- Under the command bar, nothing in the modal can take focus (native Tab from the page body). -->
-<div class="modale" class:prete={ready} data-testid="modale-espace" inert={!!command.open}>
+<div class="modal" class:ready={ready} data-testid="space-modal" inert={!!command.open}>
   <FrozenBackground tabId={tabId} onReady={() => (ready = true)} />
-  <div class="carte" bind:this={card} role="dialog" aria-modal="true" aria-labelledby="titre-espace">
+  <div class="card" bind:this={card} role="dialog" aria-modal="true" aria-labelledby="space-title">
     <form onsubmit={validate}>
-      <h2 id="titre-espace">{fresh ? "Nouvel espace" : "Réglages de l'espace"}</h2>
-      <div class="champ">
-        <input class="icone" bind:value={draft.icon} aria-label="Icône" maxlength="4" />
+      <h2 id="space-title">{fresh ? "Nouvel espace" : "Réglages de l'espace"}</h2>
+      <div class="field">
+        <input class="icon" bind:value={draft.icon} aria-label="Icône" maxlength="4" />
         <input bind:this={nameField} bind:value={draft.name} aria-label="Nom de l'espace" placeholder="Nom" />
       </div>
-      <div class="bloc">
-        <label class="case"><input type="checkbox" bind:checked={draft.private} aria-describedby="note-prive" /> <b>Espace privé</b></label>
-        <p class="note" id="note-prive">L'agent ne voit pas ces onglets, ne lit rien, n'a pas les outils de développement, et rien n'est retenu dans sa mémoire.</p>
+      <div class="block">
+        <label class="case"><input type="checkbox" bind:checked={draft.private} aria-describedby="private-note" /> <b>Espace privé</b></label>
+        <p class="note" id="private-note">L'agent ne voit pas ces onglets, ne lit rien, n'a pas les outils de développement, et rien n'est retenu dans sa mémoire.</p>
       </div>
-      <div class="bloc">
-        <label class="libelle" for="profil-espace">Profil de connexion</label>
-        <select id="profil-espace" bind:value={draft.profile} aria-describedby="note-profil">
+      <div class="block">
+        <label class="label" for="space-profile">Profil de connexion</label>
+        <select id="space-profile" bind:value={draft.profile} aria-describedby="profile-note">
           {#if fresh}<option value={PROFILE_TO_CHOOSE} disabled>Choisir un profil…</option>{/if}
           {#each options as o (o.value)}
             <option value={o.value}>{o.label}</option>
           {/each}
         </select>
-        <p class="note" id="note-profil">
+        <p class="note" id="profile-note">
           Cookies, comptes connectés, autorisations des sites. Changer de profil : les onglets de l'espace se rechargent, tu devras peut-être te reconnecter.
         </p>
-        {#if losesConnections}<p class="note alerte" role="alert" data-testid="perte-connexions">Les connexions de cet espace seront perdues.</p>{/if}
+        {#if losesConnections}<p class="note alert" role="alert" data-testid="connections-lost">Les connexions de cet espace seront perdues.</p>{/if}
       </div>
       {#if !fresh}
-        <div class="bloc" data-testid="extensions-espace">
-          <span class="libelle">Extensions</span>
+        <div class="block" data-testid="space-extensions">
+          <span class="label">Extensions</span>
           {#if profileChanged}
             <p class="note">Enregistre d'abord le changement de profil pour régler ses extensions.</p>
           {:else if lines && lines.length === 0}
             <p class="note">Aucune extension installée.</p>
           {:else if lines}
             {#each lines as l (l.key)}
-              <div class="extension" data-testid="extension-ligne" data-cle={l.key}>
+              <div class="extension" data-testid="extension-row" data-key={l.key}>
                 <label class="case">
                   <input type="checkbox" role="switch" checked={l.active} disabled={l.greyedOut !== null} onchange={(e) => void toggle(l, e.currentTarget)} />
                   <b>{l.name}</b>
@@ -174,73 +174,73 @@
               </div>
             {/each}
           {/if}
-          {#if extensionError}<p class="note alerte" role="alert" data-testid="erreur-extension">{extensionError}</p>{/if}
+          {#if extensionError}<p class="note alert" role="alert" data-testid="extension-error">{extensionError}</p>{/if}
           {#if draft.private && warned.sharedPrivate.length > 0}
-            <p class="note" data-testid="avertissement-extensions-prive">
+            <p class="note" data-testid="private-extensions-warning">
               Cet espace privé partage son profil avec « {warned.sharedPrivate.join(", ")} » : les extensions actives dans ce profil tournent aussi ici. Pour qu'elles n'y tournent jamais, donne-lui son propre profil.
             </p>
           {/if}
           {#if warned.agentDisabled.length > 0}
-            <p class="note alerte" data-testid="extensions-desactivees">En enregistrant, ces extensions de l'agent seront désactivées pour ce profil : {warned.agentDisabled.join(", ")}. Les onglets ouverts où elles tournent seront rechargés.</p>
+            <p class="note alert" data-testid="extensions-disabled">En enregistrant, ces extensions de l'agent seront désactivées pour ce profil : {warned.agentDisabled.join(", ")}. Les onglets ouverts où elles tournent seront rechargés.</p>
           {/if}
         </div>
       {/if}
       <div class="actions">
         <button type="button" onclick={close}>Annuler</button>
-        <button type="submit" class="principal" disabled={!valid}>{fresh ? "Créer" : "Enregistrer"}</button>
+        <button type="submit" class="main" disabled={!valid}>{fresh ? "Créer" : "Enregistrer"}</button>
       </div>
     </form>
   </div>
 </div>
 
 <style>
-  .modale { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 16px; -webkit-app-region: no-drag; }
-  .carte {
+  .modal { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 16px; -webkit-app-region: no-drag; }
+  .card {
     position: relative;
     width: min(400px, 100%);
     max-height: calc(100vh - 32px);
     overflow-y: auto;
     padding: 16px 18px;
-    background: var(--fond-actif);
-    color: var(--texte);
-    border: 1px solid var(--bord);
+    background: var(--bg-active);
+    color: var(--text);
+    border: 1px solid var(--border);
     border-radius: 12px;
-    box-shadow: var(--ombre-modale);
+    box-shadow: var(--modal-shadow);
     font-size: 13px;
     line-height: 1.45;
     opacity: 0;
     transform: translateY(6px) scale(0.98);
     transition: opacity 120ms ease-out, transform 120ms ease-out;
   }
-  .prete .carte { opacity: 1; transform: none; }
+  .ready .card { opacity: 1; transform: none; }
   @media (prefers-reduced-motion: reduce) {
-    .carte { transition: none; transform: none; }
+    .card { transition: none; transform: none; }
   }
   form { display: flex; flex-direction: column; gap: 10px; margin: 0; }
   h2 { margin: 0; font-size: 15px; }
-  .champ { display: flex; gap: 6px; }
+  .field { display: flex; gap: 6px; }
   input:not([type="checkbox"]), select {
     min-width: 0;
     padding: 5px 7px;
     border-radius: 6px;
-    border: 1px solid var(--bord);
-    background: var(--fond);
-    color: var(--texte);
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
     font: inherit;
   }
-  .champ input { flex: 1; }
-  .champ .icone { flex: none; width: 2.5em; text-align: center; }
+  .field input { flex: 1; }
+  .field .icon { flex: none; width: 2.5em; text-align: center; }
   select { width: 100%; }
-  .bloc { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--bord); padding-top: 10px; }
+  .block { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--border); padding-top: 10px; }
   .case { display: flex; align-items: center; gap: 6px; }
-  .libelle { font-size: 11.5px; color: var(--texte-doux); }
-  .note { margin: 0; font-size: 11.5px; color: var(--texte-doux); }
+  .label { font-size: 11.5px; color: var(--text-muted); }
+  .note { margin: 0; font-size: 11.5px; color: var(--text-muted); }
   .extension { display: flex; flex-direction: column; gap: 2px; }
-  .source { font-size: 11px; color: var(--texte-doux); }
-  .alerte { color: var(--texte); font-weight: 600; }
+  .source { font-size: 11px; color: var(--text-muted); }
+  .alert { color: var(--text); font-weight: 600; }
   .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
-  button { padding: 6px 12px; border-radius: 7px; border: 1px solid var(--bord); background: var(--fond-barre); color: var(--texte); font-weight: 600; font-size: 12.5px; }
+  button { padding: 6px 12px; border-radius: 7px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); font-weight: 600; font-size: 12.5px; }
   button:disabled { opacity: 0.5; }
   button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .principal { background: var(--accent); border-color: var(--accent); color: white; }
+  .main { background: var(--accent); border-color: var(--accent); color: white; }
 </style>

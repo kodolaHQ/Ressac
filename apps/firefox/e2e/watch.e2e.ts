@@ -58,7 +58,7 @@ const settings = {
   /** Ad pages (n) whose read fails (connection cut). */
   failingPages: new Set<number>(),
   /** The file the fake DuckDuckGo serves. */
-  ddg: "resultats.html",
+  ddg: "results.html",
   /** The fake Gemma's answer delay. */
   gemmaDelayMs: 0,
 };
@@ -112,7 +112,7 @@ let dataDir: string;
 let launched: LaunchedWebAiOs[] = [];
 beforeEach(async () => {
   settings.failingPages.clear();
-  settings.ddg = "resultats.html";
+  settings.ddg = "results.html";
   settings.gemmaDelayMs = 0;
   dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-watch-"));
 });
@@ -248,7 +248,7 @@ const shown = (m: Marionette, id: string) =>
   inUi<string>(m, `return doc.querySelector('[data-testid="widget-' + arguments[0] + '"] iframe')?.contentDocument?.getElementById("donnees")?.textContent ?? "";`, [id]);
 /** The widget's « mise à jour… n / t » badge, or null. */
 const progress = (m: Marionette, id: string) =>
-  inUi<string | null>(m, `return doc.querySelector('[data-testid="widget-' + arguments[0] + '"] [data-testid="progression"]')?.textContent ?? null;`, [id]);
+  inUi<string | null>(m, `return doc.querySelector('[data-testid="widget-' + arguments[0] + '"] [data-testid="progress"]')?.textContent ?? null;`, [id]);
 const widgetText = (m: Marionette, id: string) => inUi<string>(m, `return doc.querySelector('[data-testid="widget-' + arguments[0] + '"]')?.textContent ?? "";`, [id]);
 
 /** « Mettre à jour maintenant » from the widget's menu. */
@@ -443,7 +443,7 @@ it("DuckDuckGo shows a check: a single request sent, notice without reliability,
   await untilEqual(notifications, [NOTIFICATION]);
 
   // DuckDuckGo answers again: the ads failed in `fiabilite` come back, this time with their reliability.
-  settings.ddg = "resultats.html";
+  settings.ddg = "results.html";
   const second = await runWatch(m);
   expect(second.status).toBe("succeeded");
   const again = watchData()!;

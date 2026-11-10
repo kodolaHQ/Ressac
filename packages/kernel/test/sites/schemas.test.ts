@@ -25,7 +25,7 @@ const messages = (v: unknown) => {
   return r.success ? [] : r.error.issues.map((i) => i.message);
 };
 
-test("the Vidola example (domains, suiviAdresse, tweaks with frames, reprise) is accepted", () => {
+test("the Vidola example (domains, addressTracking, tweaks with frames, reprise) is accepted", () => {
   const r = DeclarationSite.safeParse(vidola);
   expect(r.success).toBe(true);
   if (r.success) expect(r.data.login).toEqual([]);
@@ -96,7 +96,7 @@ test("checkSiteDeclaration: https only, never a local address", () => {
   expect(checkSiteDeclaration(decl({ urlTracking: { page: "https://127.0.0.1/", pattern: "vidola" } }), strict)).toBe(HTTPS_ONLY);
 });
 
-test("checkSiteDeclaration: with adressesLocales, http of a local host is allowed", () => {
+test("checkSiteDeclaration: with localAddresses, http of a local host is allowed", () => {
   const d = decl({ url: "http://vidola-a.localhost:5000/", domains: ["vidola-a.localhost"], urlTracking: { page: "http://adresses.localhost:5001/", pattern: "vidola" } });
   expect(checkSiteDeclaration(d, { localAddresses: true })).toBeNull();
   expect(checkSiteDeclaration(d, strict)).toBe(HTTPS_ONLY);

@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { unsupported } from "../../host/extensions/card.ts";
 
-test("nonPrisEnCharge lists activeTab, nativeMessaging, userScripts, sidePanel present in the manifest", () => {
+test("notSupported lists activeTab, nativeMessaging, userScripts, sidePanel present in the manifest", () => {
   expect(unsupported({ permissions: ["storage", "activeTab", "userScripts"], optional_permissions: ["nativeMessaging"], side_panel: { default_path: "p.html" } })).toEqual([
     "activeTab",
     "nativeMessaging",

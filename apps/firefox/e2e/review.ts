@@ -26,27 +26,27 @@ export const modified = (...n: number[]) => LINES.map((l, i) => (n.includes(i + 
 /** The Applications page of the first window, with its « Projets externes » section. */
 export async function openApplications(m: Marionette): Promise<void> {
   await dispatch(m, { type: "openApps", windowId: (await state(m)).windows[0]!.id });
-  await waitUi(m, "return !!doc.querySelector('[data-testid=\"projets-externes\"]')");
+  await waitUi(m, "return !!doc.querySelector('[data-testid=\"external-projects\"]')");
 }
 
 const COMMAND = /http:\/\/127\.0\.0\.1:(\d+)\/mcp-external --header "Authorization: Bearer ([0-9a-f]{64})"/;
 
 /** « Brancher un Claude Code » (named `nom` if given), then the command shown, read with a regex. */
 export async function connectClient(m: Marionette, name?: string): Promise<{ command: string; port: number; token: string }> {
-  await waitUi(m, "return doc.querySelector('[data-testid=\"brancher-externe\"]')?.disabled === false", [], 15_000);
-  await click(m, '[data-testid="brancher-externe"]');
+  await waitUi(m, "return doc.querySelector('[data-testid=\"connect-external\"]')?.disabled === false", [], 15_000);
+  await click(m, '[data-testid="connect-external"]');
   if (name !== undefined)
     await waitUi(
       m,
-      `const i = doc.querySelector('[data-testid="nom-brancher"]');
+      `const i = doc.querySelector('[data-testid="connect-name"]');
        if (!i) return false;
        i.value = arguments[0];
        i.dispatchEvent(new ui.Event("input", { bubbles: true }));
        return true;`,
       [name],
     );
-  await click(m, '[data-testid="valider-brancher"]');
-  const command = await waitUi<string>(m, "return doc.querySelector('[data-testid=\"commande-branchement\"]')?.textContent ?? null");
+  await click(m, '[data-testid="confirm-connect"]');
+  const command = await waitUi<string>(m, "return doc.querySelector('[data-testid=\"connect-command\"]')?.textContent ?? null");
   const r = COMMAND.exec(command);
   if (!r) throw new Error(`no connection command in: ${command}`);
   return { command: command, port: Number(r[1]), token: r[2]! };
@@ -77,7 +77,7 @@ export async function declareProject(
   const { port, token: token } = await connectClient(m);
   const client = await mcpClient(port, token);
   await client.callTool({ name: "declare_project", arguments: { folder: folder, ports: o.ports ?? [18765] } });
-  await waitUi(m, "return !!doc.querySelector('[data-testid=\"projet-externe\"]')", [], 15_000);
+  await waitUi(m, "return !!doc.querySelector('[data-testid=\"external-project\"]')", [], 15_000);
   const id = createHash("sha256").update(folder).digest("hex").slice(0, 16);
   for (const deadline = Date.now() + 15_000; o.snapshot !== false && !existsSync(reviewedRef(o.dataDir, `ext-${id}`)); await new Promise((r) => setTimeout(r, 100)))
     if (Date.now() > deadline) throw new Error(`no first review snapshot of ext-${id}`);
@@ -108,7 +108,7 @@ export function readNotifications(file: string): { title: string; text: string }
  * page's other buttons (« Envoyer… », « Marquer comme relu ») stay disabled, so a click on them does nothing.
  */
 export async function refreshReview(m: Marionette): Promise<void> {
-  const sel = '[data-testid="page-relecture"] button';
+  const sel = '[data-testid="review-page"] button';
   const enabled = "return [...doc.querySelectorAll(arguments[0])].some((b) => b.textContent.includes('Rafraîchir') && !b.disabled)";
   await waitUi(m, enabled, [sel], 15_000);
   await click(m, sel, { text: "Rafraîchir" });

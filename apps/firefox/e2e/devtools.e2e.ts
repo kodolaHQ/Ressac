@@ -87,7 +87,7 @@ beforeAll(async () => {
   await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
   await kernelUp();
   // The home page's panel starts the agent's session, which takes back every access: tools are called after it.
-  await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('prêt>')", [], 20_000, "agent");
+  await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
   before = await listening(m, w);
 }, 90_000);
 afterAll(async () => {
@@ -119,7 +119,7 @@ async function openDemo(query = ""): Promise<string> {
   return id;
 }
 
-const noCard = async () => expect(await inUi(m, `return !!doc.querySelector('[data-testid="demande-permission"], [data-testid="demande-outils-dev"]')`)).toBe(false);
+const noCard = async () => expect(await inUi(m, `return !!doc.querySelector('[data-testid="permission-request"], [data-testid="devtools-request"]')`)).toBe(false);
 
 it("demo: read_console returns the console.log and the uncaught error with its stack, without a card", async () => {
   const id = await openDemo();
@@ -263,7 +263,7 @@ it("the same site in a private space: nothing of its tab in the attached tab's b
     // Same site, another tab of the same space.
     await openIn(home, "autre");
     // Same site, another container.
-    const other = (await dispatch(m, { type: "createSpace", name: "Autre", icon: "🅱️", private: false, profile: "nouveau", windowId: windowId } as Action)).spaces.at(-1)!;
+    const other = (await dispatch(m, { type: "createSpace", name: "Autre", icon: "🅱️", private: false, profile: "new", windowId: windowId } as Action)).spaces.at(-1)!;
     await openIn(other.id, "conteneur");
   } finally {
     // Back to the demo's space: the next tests open their demos there.
@@ -310,11 +310,11 @@ it("changing site empties the buffers", async () => {
 });
 
 // The consent card, on a tab the user opened on a third-party site.
-const CARD = '[data-testid="demande-outils-dev"]';
-const MODAL = '[data-testid="modale-demande"]';
-const READ_CARD = '[data-testid="demande-permission"]';
-const BADGE = '[data-testid="pastille-acces"]';
-const BUBBLE = '[data-testid="bulle-acces"]';
+const CARD = '[data-testid="devtools-request"]';
+const MODAL = '[data-testid="request-modal"]';
+const READ_CARD = '[data-testid="permission-request"]';
+const BADGE = '[data-testid="access-pill"]';
+const BUBBLE = '[data-testid="access-bubble"]';
 const DENIAL = "Accès refusé par l'utilisateur à cet outil sur cet onglet.";
 let thirdTabs = 0;
 
@@ -331,7 +331,7 @@ async function openThird(): Promise<string> {
 const cardText = () => waitUi<string>(m, `return doc.querySelector('${CARD}')?.textContent`);
 const cardGone = () => waitUi(m, `return !doc.querySelector('${MODAL}')`);
 const answerCard = (button: "Refuser" | "Autoriser la sélection") => click(m, `${CARD} button`, { text: button });
-const checked = (right: string) => inUi<boolean>(m, `return doc.querySelector('${CARD} input[data-droit="${right}"]').checked`);
+const checked = (right: string) => inUi<boolean>(m, `return doc.querySelector('${CARD} input[data-right="${right}"]').checked`);
 /** Asks `droits` on the tab and allows them all on the card. */
 async function grant(id: string, rights: string[]): Promise<string> {
   const pending = tool("request_devtools", { id, rights: rights, reason: "Essai de la pastille." });
@@ -339,14 +339,14 @@ async function grant(id: string, rights: string[]): Promise<string> {
   await answerCard("Autoriser la sélection");
   return pending;
 }
-const tabBadge = (id: string) => `[data-testid="onglet-${id}"] ${BADGE}`;
+const tabBadge = (id: string) => `[data-testid="tab-${id}"] ${BADGE}`;
 /** Clicks the tab's badge, scrolled into view first: the tab list grows with every test. */
 async function clickBadge(id: string): Promise<void> {
   await waitUi(m, "const b = doc.querySelector(arguments[0]); b?.scrollIntoView({ block: 'center' }); return !!b;", [tabBadge(id)]);
   await click(m, tabBadge(id));
 }
 /** The card has the keyboard, and Enter is armed. */
-const armed = () => waitUi(m, `return !!doc.querySelector('${MODAL}[data-armee]') && !!doc.activeElement?.closest('${MODAL}')`);
+const armed = () => waitUi(m, `return !!doc.querySelector('${MODAL}[data-armed]') && !!doc.activeElement?.closest('${MODAL}')`);
 
 it("third-party tab: read_console shows the card with « Console et erreurs » ticked and the reason; Autoriser la sélection → messages returned", async () => {
   const id = await openThird();
@@ -370,8 +370,8 @@ it("unticking Réseau in a console+reseau request: only console is granted; the 
   expect(text).toContain("« Le bouton ne réagit pas. »");
   expect(text).toContain("peut contenir des données de connexion");
   expect(await checked("console")).toBe(true);
-  await click(m, `${CARD} input[data-droit="network"]`);
-  await waitUi(m, `return !doc.querySelector('${CARD} input[data-droit="network"]').checked`);
+  await click(m, `${CARD} input[data-right="network"]`);
+  await waitUi(m, `return !doc.querySelector('${CARD} input[data-right="network"]').checked`);
   await answerCard("Autoriser la sélection");
   expect(await pending).toBe("Droits accordés : console\nRefusés : network");
   expect(await tool("read_network", { id })).toBe(DENIAL);
@@ -450,14 +450,14 @@ it("read granted (Autoriser une fois): 👁 badge on the tab and in the address 
   await waitUi(m, `return !!doc.querySelector('${READ_CARD}')`);
   await click(m, `${READ_CARD} button`, { text: "Autoriser une fois" });
   await reading;
-  await waitUi(m, `return doc.querySelector(arguments[0])?.dataset.niveau === "read"`, [tabBadge(id)]);
-  await waitUi(m, `return doc.querySelector('form ${BADGE}')?.dataset.niveau === "read"`);
+  await waitUi(m, `return doc.querySelector(arguments[0])?.dataset.level === "read"`, [tabBadge(id)]);
+  await waitUi(m, `return doc.querySelector('form ${BADGE}')?.dataset.level === "read"`);
 });
 
 it("act granted: ⚡ badge", async () => {
   const id = await openThird();
   await grant(id, ["act"]);
-  await waitUi(m, `const p = doc.querySelector(arguments[0]); return p?.dataset.niveau === "act" && p.textContent.includes("⚡")`, [tabBadge(id)]);
+  await waitUi(m, `const p = doc.querySelector(arguments[0]); return p?.dataset.level === "act" && p.textContent.includes("⚡")`, [tabBadge(id)]);
 });
 
 it("click on the badge: the bubble lists the rights; Couper on « console » removes that right (read_console asks again)", async () => {
@@ -466,8 +466,8 @@ it("click on the badge: the bubble lists the rights; Couper on « console » rem
   await clickBadge(id);
   const bubble = await waitUi<string>(m, `return doc.querySelector('${BUBBLE}')?.textContent`);
   for (const t of ["Console et erreurs", "Réseau", "Cette conversation · tombe si l'onglet change de site"]) expect(bubble).toContain(t);
-  await click(m, `${BUBBLE} button[data-droit="console"]`);
-  await waitUi(m, `return !doc.querySelector('${BUBBLE} button[data-droit="console"]') && !!doc.querySelector('${BUBBLE} button[data-droit="network"]')`);
+  await click(m, `${BUBBLE} button[data-right="console"]`);
+  await waitUi(m, `return !doc.querySelector('${BUBBLE} button[data-right="console"]') && !!doc.querySelector('${BUBBLE} button[data-right="network"]')`);
   await pressKeys(m, "Escape");
   await waitUi(m, `return !doc.querySelector('${BUBBLE}')`);
   const pending = tool("read_console", { id });
@@ -496,18 +496,18 @@ it("cutting « Agir » during an run_js: the call answers the cut text", async (
   // The badge pulses while the call runs.
   await waitUi(m, `return !!doc.querySelector(arguments[0])?.classList.contains("pulse")`, [tabBadge(id)]);
   await clickBadge(id);
-  await click(m, `${BUBBLE} button[data-droit="act"]`);
+  await click(m, `${BUBBLE} button[data-right="act"]`);
   expect(await pending).toBe(TEXT_CUT);
   expect(Date.now() - t0).toBeLessThan(6000);
   // Console is kept: the badge goes back to 👁, still and quiet.
-  await waitUi(m, `const p = doc.querySelector(arguments[0]); return p?.dataset.niveau === "read" && !p.classList.contains("pulse")`, [tabBadge(id)]);
+  await waitUi(m, `const p = doc.querySelector(arguments[0]); return p?.dataset.level === "read" && !p.classList.contains("pulse")`, [tabBadge(id)]);
   await pressKeys(m, "Escape");
 }, 30_000);
 
 it("space turned private: the badge disappears, the debugger is detached and the tools answer private without a card", async () => {
   const id = await openThird();
   await grant(id, ["console", "act"]);
-  await waitUi(m, `return doc.querySelector(arguments[0])?.dataset.niveau === "act"`, [tabBadge(id)]);
+  await waitUi(m, `return doc.querySelector(arguments[0])?.dataset.level === "act"`, [tabBadge(id)]);
   const attached = () => m.execute<string[]>(`return (async () => (await ChromeUtils.importESModule("${STORE}").ready).devtools.attached())();`);
   await tool("read_console", { id });
   expect(await attached()).toContain(id);
@@ -542,10 +542,10 @@ it("Esc refuses the devtools card; Enter allows the selection", async () => {
     expect(await inUi(m, `return !!doc.activeElement?.closest('${MODAL}')`)).toBe(true);
   }
   // Space unticks « Réseau » without answering; Enter, on the box, allows the selection.
-  await inUi(m, `doc.querySelector('${CARD} input[data-droit="network"]').focus()`);
+  await inUi(m, `doc.querySelector('${CARD} input[data-right="network"]').focus()`);
   await pressKeys(m, " ");
-  await waitUi(m, `return !doc.querySelector('${CARD} input[data-droit="network"]').checked`);
-  expect(await inUi(m, `return !!doc.querySelector('${MODAL}[data-armee]')`)).toBe(true);
+  await waitUi(m, `return !doc.querySelector('${CARD} input[data-right="network"]').checked`);
+  expect(await inUi(m, `return !!doc.querySelector('${MODAL}[data-armed]')`)).toBe(true);
   await pressKeys(m, "Enter");
   expect(await pending).toBe("Droits accordés : console\nRefusés : network");
   await cardGone();

@@ -259,12 +259,12 @@ function builtIn(name: string, p: Record<string, unknown>, ctx: Context): Record
     }
     case "fields": {
       const object = objectOf(valueFor(p.object, ctx).value);
-      const champs = a(p, "fields")
+      const fieldList = a(p, "fields")
         ? columnsOf(p.fields).slice(0, 12).map((c) => ({ label: c.label, value: text(readPath(object, c.field)) }))
         : Object.keys(object).filter((k) => primitive(object[k])).map((k) => ({ label: cut(k), value: text(object[k]) }));
-      const others = Math.max(0, champs.length - ELEMENTS_MAX);
+      const others = Math.max(0, fieldList.length - ELEMENTS_MAX);
       ctx.cuts += others;
-      return { fields: champs.slice(0, ELEMENTS_MAX), others: others };
+      return { fields: fieldList.slice(0, ELEMENTS_MAX), others: others };
     }
     case "tags": {
       if (a(p, "values")) {

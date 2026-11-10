@@ -22,8 +22,8 @@ afterEach(async () => {
 const pageShown = (shown: boolean) => waitUi(p!.m, "return !!doc.querySelector(arguments[0]) === arguments[1]", [PAGE, shown]);
 const pageText = () => inUi<string>(p!.m, "return doc.querySelector(arguments[0])?.textContent ?? ''", [PAGE]);
 const rowText = (folder: string) => inUi<string>(p!.m, "return doc.querySelector(arguments[0])?.textContent ?? ''", [appRow(folder)]);
-const filterText = (id: string) => inUi<string | null>(p!.m, "return doc.querySelector(arguments[0])?.textContent.replace(/\\s+/g, ' ').trim() ?? null", [`[data-testid="filtre-${id}"]`]);
-const rows = (n: number, ms = 10_000) => waitUi(p!.m, `return doc.querySelectorAll('[data-testid^="appli-"]').length === arguments[0];`, [n], ms);
+const filterText = (id: string) => inUi<string | null>(p!.m, "return doc.querySelector(arguments[0])?.textContent.replace(/\\s+/g, ' ').trim() ?? null", [`[data-testid="filter-${id}"]`]);
+const rows = (n: number, ms = 10_000) => waitUi(p!.m, `return doc.querySelectorAll('[data-testid^="app-"]').length === arguments[0];`, [n], ms);
 const pageTabs = async () => Object.values((await state(p!.m)).tabs).filter((o) => o.url === "webaios://apps").length;
 const windowId = async () => (await state(p!.m)).windows[0]!.id;
 const appWindows = () => p!.m.execute<number>(`return [...Services.wm.getEnumerator("navigator:browser")].filter((w) => w.document.documentElement.hasAttribute("webaios-app")).length;`);
@@ -35,7 +35,7 @@ const moveMouse = (x: number) =>
     [x],
   );
 const search = (text: string) =>
-  inUi(p!.m, `const i = doc.querySelector('[data-testid="recherche-applications"]'); i.value = arguments[0]; i.dispatchEvent(new ui.Event("input", { bubbles: true }));`, [text]);
+  inUi(p!.m, `const i = doc.querySelector('[data-testid="applications-search"]'); i.value = arguments[0]; i.dispatchEvent(new ui.Event("input", { bubbles: true }));`, [text]);
 
 describe("Applications page", () => {
   // applications.spec.ts:290
@@ -49,7 +49,7 @@ describe("Applications page", () => {
     expect(await pageTabs()).toBe(1);
     await dispatch(m, { type: "openTab", windowId: await windowId(), url: "about:blank", activate: true });
     await pageShown(false);
-    await click(m, '[data-testid="bouton-applications"]');
+    await click(m, '[data-testid="applications-button"]');
     await pageShown(true);
     expect(await pageTabs()).toBe(1);
     // From another space: the window's page comes back, in its space.
@@ -69,7 +69,7 @@ describe("Applications page", () => {
     p = await openAppsPage(BLOCK);
     const m = p.m;
     await dispatch(m, { type: "toggleCompact", windowId: await windowId() });
-    await waitUi(m, `return doc.querySelector('[data-testid="barre-laterale"]').parentElement.inert;`);
+    await waitUi(m, `return doc.querySelector('[data-testid="sidebar"]').parentElement.inert;`);
     const box = await inUi<{ top: number; left: number }>(
       m,
       `const h = doc.querySelector(arguments[0]).querySelector("h2").getBoundingClientRect(); const f = frame.getBoundingClientRect();
@@ -79,7 +79,7 @@ describe("Applications page", () => {
     expect(box.top).toBeLessThan(40);
     expect(box.left).toBe(0);
     await moveMouse(3);
-    await waitUi(m, `return !doc.querySelector('[data-testid="barre-laterale"]').parentElement.inert;`);
+    await waitUi(m, `return !doc.querySelector('[data-testid="sidebar"]').parentElement.inert;`);
     await waitUi(m, `return !!doc.querySelector('[aria-label="Quitter le mode compact"]');`);
   });
 
@@ -88,7 +88,7 @@ describe("Applications page", () => {
     p = await openAppsPage(BLOCK);
     await rows(3);
     for (const [filter, text] of [
-      ["tout", "Tout 3"],
+      ["all", "Tout 3"],
       ["app", "Applications 1"],
       ["poc", "POC et tests 1"],
       ["no-manifest", "Sans fiche 1"],
@@ -108,10 +108,10 @@ describe("Applications page", () => {
     p = await openAppsPage(BLOCK);
     const m = p.m;
     await rows(3);
-    await click(m, '[data-testid="filtre-poc"]');
+    await click(m, '[data-testid="filter-poc"]');
     await rows(1);
     expect(await rowText("zod")).not.toBe("");
-    await click(m, '[data-testid="filtre-tout"]');
+    await click(m, '[data-testid="filter-all"]');
     await search("colin");
     await rows(1);
     expect(await rowText("zod")).not.toBe("");
@@ -149,7 +149,7 @@ describe("Applications page", () => {
     await sleep(500);
     writeProject(p.dataDir, "nouveau", { manifest: { name: "Nouveau" } });
     await waitUi(p.m, "return !!doc.querySelector(arguments[0])", [appRow("nouveau")]);
-    await expect.poll(() => filterText("tout"), { timeout: 10_000 }).toBe("Tout 4");
+    await expect.poll(() => filterText("all"), { timeout: 10_000 }).toBe("Tout 4");
   });
 
   // applications.spec.ts:387

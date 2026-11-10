@@ -172,7 +172,7 @@ describe("ExternalRegistry", () => {
     expect((await readdir(c.private)).some((f) => f.startsWith("external-projects.json.damaged-"))).toBe(true);
   });
 
-  test("oublier removes the project; surChange is called after each write", async () => {
+  test("oublier removes the project; onChange is called after each write", async () => {
     const c = await frame();
     const r = await ExternalRegistry.open(c.private);
     let n = 0;

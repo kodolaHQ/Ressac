@@ -139,14 +139,14 @@ export function createActionsApi(o: {
       if (isPrivate()) return;
       const now = Date.now();
       // A page that would open links in a burst (to make data leave): one per second at most.
-      if (now - lastLink < 1000) return console.warn("[webaios] lien d'action ignoré (trop rapproché) :", url);
+      if (now - lastLink < 1000) return console.warn("[webaios] action link ignored (too soon):", url);
       // Taken now: a second click while the host checks this link is too close. A refused link gives the second back.
       const before = lastLink;
       lastLink = now;
       const allowed = await ask("actions.linkAllowed", { id, run, url }, () => false);
       if (allowed !== true || isPrivate()) {
         if (lastLink === now) lastLink = before;
-        if (allowed !== true) console.warn("[webaios] lien d'action refusé :", url);
+        if (allowed !== true) console.warn("[webaios] action link refused:", url);
         return;
       }
       o.dispatch({ type: "openTab", windowId: win, url, activate: true });
@@ -171,7 +171,7 @@ export function createActionsApi(o: {
       // The host stops the run first, then erases the grant and the results.
       await host.request("actions.denyGrant", { id }).then(
         () => forget(id),
-        (e) => ((hostDown = true), console.error(`[webaios] retrait de l'accord de l'action ${id} :`, e)),
+        (e) => ((hostDown = true), console.error(`[webaios] grant removal of action ${id}:`, e)),
       );
     },
     async delete(id) {

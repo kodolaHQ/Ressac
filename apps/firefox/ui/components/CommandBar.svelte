@@ -308,18 +308,18 @@
 />
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-<div class="fond" onclick={(e) => e.target === e.currentTarget && closeCommand(true)}>
+<div class="background" onclick={(e) => e.target === e.currentTarget && closeCommand(true)}>
   <!-- A click in the box outside the field (margin, rows, refusal) does not take its focus; a row's click still acts. -->
-  <div class="boite" data-testid="barre-commande" role="dialog" aria-label="Barre de commande" tabindex="-1" onmousedown={(e) => !(e.target instanceof HTMLInputElement) && e.preventDefault()}>
+  <div class="box" data-testid="command-bar" role="dialog" aria-label="Barre de commande" tabindex="-1" onmousedown={(e) => !(e.target instanceof HTMLInputElement) && e.preventDefault()}>
     {#if param}
-      <div class="ligne-parametre">
-        <span class="pastille" data-testid="pastille-commande"><Icon name="actions" size={13} />{param.name}</span>
+      <div class="param-line">
+        <span class="pill" data-testid="command-pill"><Icon name="actions" size={13} />{param.name}</span>
         <input
           bind:this={paramField}
           bind:value={paramValue}
           oninput={() => (denial = "")}
           onkeydown={paramKey}
-          data-testid="parametre-commande"
+          data-testid="command-param"
           placeholder={param.label}
           aria-label={param.label}
           maxlength={PARAM_MAX}
@@ -327,32 +327,32 @@
           autocomplete="off"
         />
       </div>
-      <p class="aide" data-testid="aide-parametre">{param.label} · Entrée pour lancer · Échap pour revenir</p>
-      {#if denial}<p class="refus" data-testid="refus-commande">{denial}</p>{/if}
+      <p class="help" data-testid="param-help">{param.label} · Entrée pour lancer · Échap pour revenir</p>
+      {#if denial}<p class="refusal" data-testid="command-refusal">{denial}</p>{/if}
     {:else}
     <input
       bind:this={field}
       bind:value={text}
       oninput={() => (choose(0), (denial = ""))}
       onkeydown={key}
-      data-testid="saisie-commande"
+      data-testid="command-input"
       placeholder="Rechercher ou saisir une adresse"
       spellcheck="false"
       autocomplete="off"
     />
-    {#if denial}<p class="refus" data-testid="refus-commande">{denial}</p>{/if}
+    {#if denial}<p class="refusal" data-testid="command-refusal">{denial}</p>{/if}
     <ul role="listbox">
       {#each lines as l, i (i)}
         {@const title = titleBefore(lines, i)}
-        {#if title}<li role="presentation" class="section" data-testid="section-commande">{title}</li>{/if}
-        <li role="option" aria-selected={i === chosen} data-testid="ligne-commande" data-type={l.type}>
-          <button type="button" tabindex="-1" class:choisie={i === chosen} onmousemove={() => choose(i)} onclick={() => run(l)}>
-            <span class="pictogramme" data-type={l.type}>
+        {#if title}<li role="presentation" class="section" data-testid="command-section">{title}</li>{/if}
+        <li role="option" aria-selected={i === chosen} data-testid="command-row" data-type={l.type}>
+          <button type="button" tabindex="-1" class:chosen-one={i === chosen} onmousemove={() => choose(i)} onclick={() => run(l)}>
+            <span class="pictogram" data-type={l.type}>
               {#if favicon(l)}<SiteIcon favicon={favicon(l)} title={label(l)} />{:else}<Icon name={pictogram(l)} size={14} />{/if}
             </span>
-            <span class="libelle">{label(l)}</span>
+            <span class="label">{label(l)}</span>
             {#if detail(l)}<span class="detail">{detail(l)}</span>{/if}
-            {#if badgeText(l)}<span class="etiquette">{badgeText(l)}</span>{/if}
+            {#if badgeText(l)}<span class="tag">{badgeText(l)}</span>{/if}
           </button>
         </li>
       {/each}
@@ -362,35 +362,35 @@
 </div>
 
 <style>
-  .fond { position: fixed; inset: 0; display: flex; justify-content: center; align-items: flex-start; padding: 14vh 16px 0; -webkit-app-region: no-drag; }
-  .boite {
+  .background { position: fixed; inset: 0; display: flex; justify-content: center; align-items: flex-start; padding: 14vh 16px 0; -webkit-app-region: no-drag; }
+  .box {
     width: min(640px, 100%);
     max-height: 70vh;
     overflow-y: auto;
     padding: 8px;
-    background: var(--fond-actif);
-    color: var(--texte);
-    border: 1px solid var(--bord);
+    background: var(--bg-active);
+    color: var(--text);
+    border: 1px solid var(--border);
     border-radius: 12px;
-    box-shadow: var(--ombre-modale);
+    box-shadow: var(--modal-shadow);
     font-size: 14px;
   }
-  input { width: 100%; box-sizing: border-box; padding: 10px 12px; font: inherit; font-size: 16px; color: var(--texte); background: var(--fond); border: 1px solid var(--bord); border-radius: 8px; outline: none; }
+  input { width: 100%; box-sizing: border-box; padding: 10px 12px; font: inherit; font-size: 16px; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 8px; outline: none; }
   input:focus { border-color: var(--accent); }
   ul { list-style: none; margin: 6px 0 0; padding: 0; }
   button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 7px 10px; border: 0; border-radius: 8px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-  button.choisie { background: var(--fond); }
-  .libelle { flex: none; max-width: 70%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .refus { margin: 6px 2px 0; color: var(--en-erreur); font-size: 13px; }
-  .section { margin: 10px 10px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.02em; color: var(--texte-doux); }
+  button.chosen-one { background: var(--bg); }
+  .label { flex: none; max-width: 70%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .refusal { margin: 6px 2px 0; color: var(--in-error); font-size: 13px; }
+  .section { margin: 10px 10px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.02em; color: var(--text-muted); }
   .section:first-child { margin-top: 4px; }
-  .pictogramme { display: grid; place-items: center; flex: none; width: 24px; height: 24px; border-radius: 6px; background: var(--fond); color: var(--texte-doux); }
-  button.choisie .pictogramme { background: var(--fond-actif); }
-  .pictogramme[data-type="action"] { color: var(--accent); }
-  .ligne-parametre { display: flex; align-items: center; gap: 8px; padding: 4px 4px 4px 8px; background: var(--fond); border: 1px solid var(--accent); border-radius: 8px; }
-  .ligne-parametre input { border: 0; padding: 6px 4px; background: none; }
-  .pastille { display: inline-flex; align-items: center; gap: 5px; flex: none; max-width: 45%; padding: 3px 8px; border-radius: 6px; background: var(--fond-actif); color: var(--accent); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .aide { margin: 8px 4px 2px; font-size: 12px; color: var(--texte-doux); }
-  .etiquette { margin-left: auto; flex: none; opacity: 0.5; font-size: 11px; }
+  .pictogram { display: grid; place-items: center; flex: none; width: 24px; height: 24px; border-radius: 6px; background: var(--bg); color: var(--text-muted); }
+  button.chosen-one .pictogram { background: var(--bg-active); }
+  .pictogram[data-type="action"] { color: var(--accent); }
+  .param-line { display: flex; align-items: center; gap: 8px; padding: 4px 4px 4px 8px; background: var(--bg); border: 1px solid var(--accent); border-radius: 8px; }
+  .param-line input { border: 0; padding: 6px 4px; background: none; }
+  .pill { display: inline-flex; align-items: center; gap: 5px; flex: none; max-width: 45%; padding: 3px 8px; border-radius: 6px; background: var(--bg-active); color: var(--accent); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .help { margin: 8px 4px 2px; font-size: 12px; color: var(--text-muted); }
+  .tag { margin-left: auto; flex: none; opacity: 0.5; font-size: 11px; }
   .detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.6; font-size: 12px; }
 </style>

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { tempFolder } from "../helpers/temp.js";
 import { ReviewComments, EMPTY_REMARK, rejoin, type Comment } from "../../src/review/comments.js";
-import { parserDiff } from "../../src/review/diff.js";
+import { parseDiff } from "../../src/review/diff.js";
 
 const ctx = (lines: string[]) => lines.map((t) => ` ${t}`);
 function patch(start: number, lines: string[]): string {
@@ -16,32 +16,32 @@ const L = (mark: " " | "+" | "-", text: string) => ({ mark: mark, text: text });
 
 describe("recoller", () => {
   test("same content, shifted 5 lines by an addition above: re-attached 5 lines lower, ligneChangee false", () => {
-    const blocks = parserDiff(patch(15, ctx(["a", "b", "c"])));
+    const blocks = parseDiff(patch(15, ctx(["a", "b", "c"])));
     const r = rejoin(com(10, [L(" ", "b"), L(" ", "c")]), blocks);
     expect([r.start, r.end, r.lineChanged]).toEqual([16, 17, false]);
   });
   test("two identical windows: the one closest to the old start wins", () => {
-    const blocks = parserDiff(patch(1, ctx(["x", "y", "z", "x", "y"])));
+    const blocks = parseDiff(patch(1, ctx(["x", "y", "z", "x", "y"])));
     expect(rejoin(com(5, [L(" ", "x"), L(" ", "y")]), blocks).start).toBe(4);
     expect(rejoin(com(1, [L(" ", "x"), L(" ", "y")]), blocks).start).toBe(1);
   });
   test("modified content: attached to the closest line, ligneChangee true", () => {
-    const blocks = parserDiff(patch(1, ctx(["a", "b", "c", "d"])));
+    const blocks = parseDiff(patch(1, ctx(["a", "b", "c", "d"])));
     const r = rejoin(com(3, [L(" ", "autre")]), blocks);
     expect([r.start, r.end, r.lineChanged]).toEqual([3, 3, true]);
   });
   test("3-line range with one changed: brought back to one line, ligneChangee true", () => {
-    const blocks = parserDiff(patch(1, ctx(["a", "b", "CHANGE", "d"])));
+    const blocks = parseDiff(patch(1, ctx(["a", "b", "CHANGE", "d"])));
     const r = rejoin(com(1, [L(" ", "a"), L(" ", "b"), L(" ", "c")]), blocks);
     expect([r.start, r.end, r.lineChanged]).toEqual([1, 1, true]);
   });
   test("comment on a « - » line: found again as long as the deletion is displayed", () => {
-    const blocks = parserDiff("@@ -1,3 +1,2 @@\n a\n-b\n c\n");
+    const blocks = parseDiff("@@ -1,3 +1,2 @@\n a\n-b\n c\n");
     const r = rejoin(com(2, [L("-", "b")]), blocks);
     expect([r.start, r.lineChanged]).toEqual([2, false]);
   });
   test("window compared on the text alone: a « + » line that became context after a review is found again, ligneChangee false", () => {
-    const blocks = parserDiff(patch(20, ctx(["x", "nouveau", "y"])));
+    const blocks = parseDiff(patch(20, ctx(["x", "nouveau", "y"])));
     const r = rejoin({ ...com(15, [L("+", "nouveau"), L(" ", "y")]), lineChanged: true }, blocks);
     expect([r.start, r.end, r.lineChanged]).toEqual([21, 22, false]);
   });

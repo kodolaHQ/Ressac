@@ -86,7 +86,7 @@ const inHome = <T = unknown>(id: string, body: string, args: unknown[] = []) =>
   inSiteBar<T>(
     m,
     id,
-    `const home = doc.querySelector('[data-testid="site-cadre-accueil"]');
+    `const home = doc.querySelector('[data-testid="site-home-frame"]');
      const fw = home?.contentDocument?.defaultView?.wrappedJSObject;
      if (!fw || !String(home.contentDocument.documentURI).startsWith("resource://webaios-site-")) return null;
      ${body}`,
@@ -125,7 +125,7 @@ async function realClick(id: string, selector: string): Promise<void> {
     if (!found) throw new Error(`no window for ${id}`);
     const [x, y] = await m.execute<[number, number]>(
       `const bar = document.getElementById("webaios-site-bar");
-       const home = bar.contentDocument.querySelector('[data-testid="site-cadre-accueil"]');
+       const home = bar.contentDocument.querySelector('[data-testid="site-home-frame"]');
        const b = bar.getBoundingClientRect(), h = home.getBoundingClientRect(), e = home.contentDocument.querySelector(arguments[0]).getBoundingClientRect();
        return [Math.round(b.left + h.left + e.left + e.width / 2), Math.round(b.top + h.top + e.top + e.height / 2)];`,
       [selector],
@@ -218,17 +218,17 @@ afterEach(async () => {
 describe("site app home screen", () => {
   it("with a home: the site view stays hidden; « Entrer dans le site » loads the start once, ⌂ comes back without reloading", async () => {
     await openSite("tube");
-    await expect.poll(() => inSiteBar(m, "tube", `return doc.querySelector('[data-testid="site-entrer"]')?.textContent ?? null;`), { timeout: 10_000 }).toBe("Entrer dans le site");
+    await expect.poll(() => inSiteBar(m, "tube", `return doc.querySelector('[data-testid="site-enter"]')?.textContent ?? null;`), { timeout: 10_000 }).toBe("Entrer dans le site");
     await expect.poll(async () => (await viewState("tube"))?.visible).toBe(false);
     expect((await viewState("tube"))!.url).toBe("");
-    await barClick("tube", "site-entrer");
+    await barClick("tube", "site-enter");
     await expect.poll(async () => (await viewState("tube"))?.url, { timeout: 10_000 }).toBe(url("/"));
     expect((await viewState("tube"))!.visible).toBe(true);
     await expect.poll(() => inSiteView(m, "tube", "return document.readyState;").catch(() => null)).toBe("complete");
     await inSiteView(m, "tube", "window.marque = 7; return 1;");
-    await barClick("tube", "site-accueil");
+    await barClick("tube", "site-home");
     await expect.poll(async () => (await viewState("tube"))?.visible).toBe(false);
-    await barClick("tube", "site-entrer");
+    await barClick("tube", "site-enter");
     await expect.poll(async () => (await viewState("tube"))?.visible).toBe(true);
     expect(await inSiteView(m, "tube", "return window.marque;")).toBe(7);
   });
@@ -242,7 +242,7 @@ describe("site app home screen", () => {
     expect(await inHome("vidola", `return home.contentDocument.getElementById("domaine").textContent;`)).toBe("vidola-a.localhost");
     // Opaque origin, the guard in place (no WebRTC, WebTransport nor XSLT), no WebAiOs API.
     expect(await inHome("vidola", `return [fw.origin, typeof fw.RTCPeerConnection, typeof fw.WebTransport, typeof fw.XSLTProcessor, typeof fw.webaios];`)).toEqual(["null", "undefined", "undefined", "undefined", "undefined"]);
-    expect(await inSiteBar(m, "vidola", `return doc.querySelector('[data-testid="site-entrer"]').textContent;`)).toBe("Entrer dans le site");
+    expect(await inSiteBar(m, "vidola", `return doc.querySelector('[data-testid="site-enter"]').textContent;`)).toBe("Entrer dans le site");
   });
 
   it("it asks for « /serie/the-bear?e=4 »: the site view goes there on the current domain", async () => {
@@ -275,7 +275,7 @@ describe("site app home screen", () => {
     await openHome();
     await clickOpen("vidola", "/serie/the-bear?e=1");
     await expect.poll(async () => (await viewState("vidola"))?.url, { timeout: 10_000 }).toBe(url("/serie/the-bear?e=1"));
-    await barClick("vidola", "site-accueil");
+    await barClick("vidola", "site-home");
     await expect.poll(async () => (await viewState("vidola"))?.visible).toBe(false);
     await homeReady("vidola");
     await clickOpen("vidola", "/serie/the-bear?e=2");
@@ -325,7 +325,7 @@ describe("site app home screen", () => {
     await same("lien");
     // Any other load of the frame (here put there by the chrome) is cancelled before it starts.
     for (const target of ["x.svg", "img/logo.png"]) {
-      await inSiteBar(m, "vidola", `const h = doc.querySelector('[data-testid="site-cadre-accueil"]'); h.contentWindow.location.href = new URL(arguments[0], h.src).href; return 1;`, [target]);
+      await inSiteBar(m, "vidola", `const h = doc.querySelector('[data-testid="site-home-frame"]'); h.contentWindow.location.href = new URL(arguments[0], h.src).href; return 1;`, [target]);
       await same(`chrome ${target}`);
     }
     expect(server.requests).toEqual([]);
@@ -357,12 +357,12 @@ describe("site app home screen", () => {
     await expect.poll(async () => (await viewState("vidola"))?.url, { timeout: 10_000 }).toBe(u);
     await expect.poll(() => inSiteView(m, "vidola", "return document.readyState;").catch(() => null)).toBe("complete");
     await inSiteView(m, "vidola", "window.marque = 7; return 1;");
-    await barClick("vidola", "site-accueil");
+    await barClick("vidola", "site-home");
     await expect.poll(async () => (await viewState("vidola"))?.visible).toBe(false);
     // The home comes back (a new frame) and reads the memory again.
     await expect.poll(() => inHome("vidola", `return home.contentDocument.getElementById("series").textContent;`)).toContain("The Bear");
     const before = server.requests.length;
-    await barClick("vidola", "site-entrer");
+    await barClick("vidola", "site-enter");
     await expect.poll(async () => (await viewState("vidola"))?.visible).toBe(true);
     expect((await viewState("vidola"))!.url).toBe(u);
     expect(await inSiteView(m, "vidola", "return window.marque;")).toBe(7);
@@ -380,7 +380,7 @@ describe("site app home screen", () => {
     // A real WebDriver click in the frame opens; ⌂ does not go back to the site: the home reloaded asks again, to no effect.
     await clickOpen("auto", "/serie/the-bear?e=4");
     await expect.poll(async () => (await viewState("auto"))?.url, { timeout: 10_000 }).toBe(url("/serie/the-bear?e=4"));
-    await barClick("auto", "site-accueil");
+    await barClick("auto", "site-home");
     await expect.poll(async () => (await viewState("auto"))?.visible).toBe(false);
     await sleep(2000);
     expect(await viewState("auto")).toEqual({ visible: false, url: url("/serie/the-bear?e=4") });

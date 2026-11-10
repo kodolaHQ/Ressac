@@ -49,7 +49,7 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("unpin"), spaceId: id, favoriteId: id }),
   z.object({ type: z.literal("addEssential"), id }),
   z.object({ type: z.literal("removeEssential"), favoriteId: id }),
-  /** `profil`: an existing login profile, or « nouveau » to create one specific to the space. */
+  /** `profile`: an existing login profile, or "new" to create one specific to the space. */
   z.object({ type: z.literal("createSpace"), name: z.string().min(1), icon: z.string().min(1), private: z.boolean(), profile: id, windowId: id.optional() }),
   z.object({ type: z.literal("updateSpace"), id, name: z.string().min(1), icon: z.string().min(1), private: z.boolean(), profile: id }),
   z.object({ type: z.literal("deleteSpace"), id }),
@@ -192,14 +192,14 @@ export interface ApiWebaios {
   };
   /** The agent's access to a tab changed: the full state is broadcast again. */
   onAccess(callback: (e: AccessState) => void): () => void;
-  /** Home page: the widgets of the agent space's accueil/widgets. */
+  /** Home page: the widgets of the agent space's home/widgets. */
   home: {
     read(): Promise<ShownWidget[]>;
     /** A widget, its layout, its data or its state changed: re-read. */
     onChange(callback: () => void): () => void;
     /** New layout (all placed widgets); refused if a placement leaves the grid or targets an unknown id. */
     place(placements: Placement[]): void;
-    /** Puts the widget in the trash (accueil/.corbeille) and removes its grant. */
+    /** Puts the widget in the trash (home/.trash) and removes its grant. */
     remove(id: string): void;
     /**
      * Link requested by the display of widget `id`: http(s) only, in a tab of this window. Opened only

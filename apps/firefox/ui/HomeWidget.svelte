@@ -12,7 +12,7 @@
     gesture: gesture,
     warning: warning,
     denied: denied,
-    start: commencer,
+    start: beginGesture,
     remove: remove,
     allow: allow,
     deny: deny,
@@ -28,7 +28,7 @@
     warning: string | null;
     /** The user refused the read with their account: the banner does not come back. */
     denied: boolean;
-    start: (mode: "deplacer" | "taille", e: PointerEvent) => void;
+    start: (mode: "move" | "resize", e: PointerEvent) => void;
     remove: () => void;
     allow: () => void;
     deny: () => void;
@@ -65,32 +65,32 @@
   function handle(e: PointerEvent) {
     if (e.target instanceof Element && e.target.closest("button")) return;
     menuOpen = false;
-    commencer("deplacer", e);
+    beginGesture("move", e);
   }
 </script>
 
-<article class="widget" class:geste={gesture} data-testid="widget-{widget.id}">
+<article class="widget" class:gesture={gesture} data-testid="widget-{widget.id}">
   <!-- The header is the drag handle: the widget's frame swallows the mouse events. -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <header onpointerdown={handle}>
     {#if "error" in widget}
-      <p class="illisible">Widget « {widget.id} » illisible : {widget.error}</p>
+      <p class="unreadable">Widget « {widget.id} » illisible : {widget.error}</p>
     {:else}
-      <h2 data-testid="titre-widget">{widget.name}</h2>
+      <h2 data-testid="widget-title">{widget.name}</h2>
       {#if widget.state.status === "running"}
         {#if widget.state.progress}
-          <span class="badge" data-testid="progression">mise à jour… {widget.state.progress.done} / {widget.state.progress.total}</span>
+          <span class="badge" data-testid="progress">mise à jour… {widget.state.progress.done} / {widget.state.progress.total}</span>
         {:else}
           <span class="badge">mise à jour…</span>
         {/if}
       {:else if widget.state.status === "error"}
-        <span class="badge echec" title={widget.state.log ?? ""}
+        <span class="badge failure" title={widget.state.log ?? ""}
           >échec du {date(widget.state.lastAttempt)} : {widget.state.error ?? "erreur inconnue"}</span
         >
       {:else if widget.state.status === "workshop-stopped"}
-        <span class="badge echec">mise à jour impossible : atelier arrêté</span>
+        <span class="badge failure">mise à jour impossible : atelier arrêté</span>
       {:else if next}
-        <span class="badge doux" data-testid="prochaine">prochaine : {next}</span>
+        <span class="badge muted" data-testid="next-run">prochaine : {next}</span>
       {/if}
     {/if}
     <div class="actions">
@@ -98,7 +98,7 @@
         <Icon name="options" size={14} />
       </button>
       {#if menuOpen}
-        <div class="liste" role="menu">
+        <div class="list" role="menu">
           {#if !("error" in widget)}
             <button role="menuitem" onclick={() => ((menuOpen = false), harvest())}>Mettre à jour maintenant</button>
             {#if widget.hasHarvest}
@@ -112,7 +112,7 @@
   </header>
   {#if !("error" in widget)}
     {#if widget.state.status === "grant-required" && !denied}
-      <div class="bandeau" data-testid="bandeau-accord">
+      <div class="banner" data-testid="grant-banner">
         <span
           >Ce widget veut lire {widget.account.join(", ")} avec ton compte{#if widget.public.length}, et pourra contacter : {widget.public.join(", ")}{:else}, et ne contactera aucun autre site{/if}.</span
         >
@@ -120,7 +120,7 @@
         <button onclick={deny}>Refuser</button>
       </div>
     {/if}
-    {#if warning}<p class="avertissement">{warning}</p>{/if}
+    {#if warning}<p class="warning">{warning}</p>{/if}
     <WidgetFrame
       {widget}
       data={widget.data ?? widget.example}
@@ -128,10 +128,10 @@
       state={{ status: widget.state.status, lastUpdate: widget.state.lastUpdate }}
     />
   {:else if warning}
-    <p class="avertissement">{warning}</p>
+    <p class="warning">{warning}</p>
   {/if}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="poignee-taille" data-testid="poignee-taille" title="Redimensionner" onpointerdown={(e) => ((menuOpen = false), commencer("taille", e))}></div>
+  <div class="resize-handle" data-testid="resize-handle" title="Redimensionner" onpointerdown={(e) => ((menuOpen = false), beginGesture("resize", e))}></div>
 </article>
 
 <style>
@@ -141,12 +141,12 @@
     flex-direction: column;
     height: 100%;
     box-sizing: border-box;
-    border: 1px solid var(--accueil-bord);
-    border-radius: var(--accueil-rayon);
-    background: var(--accueil-carte);
+    border: 1px solid var(--home-border);
+    border-radius: var(--home-radius);
+    background: var(--home-card);
     box-shadow: 0 2px 10px rgb(0 0 0 / 0.12);
     overflow: hidden;
-    color: var(--accueil-texte);
+    color: var(--home-text);
   }
   /* Softer shadow on a light background. */
   @media (prefers-color-scheme: light) {
@@ -154,24 +154,24 @@
   }
   header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: grab; user-select: none; min-height: 20px; }
   h2 { margin: 0; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .badge { font-size: 11px; color: var(--accueil-accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-  .badge.doux { color: var(--accueil-texte-doux); }
-  .badge.echec, .illisible, .avertissement { color: var(--en-erreur); }
-  .illisible { margin: 0; font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
+  .badge { font-size: 11px; color: var(--home-accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .badge.muted { color: var(--home-text-muted); }
+  .badge.failure, .unreadable, .warning { color: var(--in-error); }
+  .unreadable { margin: 0; font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
   .actions { position: relative; margin-left: auto; }
-  .menu { all: unset; width: 22px; height: 22px; display: grid; place-content: center; border-radius: 4px; color: var(--accueil-texte-doux); cursor: pointer; }
-  .menu:hover { background: var(--fond-survol); }
-  .liste { position: absolute; right: 0; top: 24px; z-index: 3; display: flex; flex-direction: column; min-width: 190px; padding: 4px; border-radius: 8px; border: 1px solid var(--accueil-bord); background: var(--accueil-carte); box-shadow: var(--ombre-modale); }
-  .liste button { all: unset; padding: 6px 10px; border-radius: 4px; font-size: 13px; color: var(--accueil-texte); cursor: pointer; }
-  .liste button:hover { background: var(--fond-survol); }
-  .bandeau { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 12px; font-size: 12px; background: var(--fond-survol); }
-  .bandeau button { padding: 3px 10px; border-radius: 6px; border: 1px solid var(--accueil-bord); background: var(--accueil-fond); color: var(--accueil-texte); font-size: 12px; cursor: pointer; }
-  .bandeau button:first-of-type { background: var(--accueil-accent); border-color: var(--accueil-accent); color: white; }
-  .avertissement { margin: 0; padding: 4px 12px; font-size: 12px; }
+  .menu { all: unset; width: 22px; height: 22px; display: grid; place-content: center; border-radius: 4px; color: var(--home-text-muted); cursor: pointer; }
+  .menu:hover { background: var(--bg-hover); }
+  .list { position: absolute; right: 0; top: 24px; z-index: 3; display: flex; flex-direction: column; min-width: 190px; padding: 4px; border-radius: 8px; border: 1px solid var(--home-border); background: var(--home-card); box-shadow: var(--modal-shadow); }
+  .list button { all: unset; padding: 6px 10px; border-radius: 4px; font-size: 13px; color: var(--home-text); cursor: pointer; }
+  .list button:hover { background: var(--bg-hover); }
+  .banner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 12px; font-size: 12px; background: var(--bg-hover); }
+  .banner button { padding: 3px 10px; border-radius: 6px; border: 1px solid var(--home-border); background: var(--home-bg); color: var(--home-text); font-size: 12px; cursor: pointer; }
+  .banner button:first-of-type { background: var(--home-accent); border-color: var(--home-accent); color: white; }
+  .warning { margin: 0; padding: 4px 12px; font-size: 12px; }
   /* During a drag, the frame (in WidgetFrame) does not capture the mouse. */
-  .geste :global(iframe) { pointer-events: none; }
+  .gesture :global(iframe) { pointer-events: none; }
   /* The handle only shows on card hover (the most sober look). */
-  .poignee-taille { position: absolute; right: 0; bottom: 0; width: 14px; height: 14px; cursor: nwse-resize; z-index: 2; opacity: 0;
-    background: linear-gradient(135deg, transparent 50%, var(--accueil-texte-doux) 50%, var(--accueil-texte-doux) 60%, transparent 60%, transparent 75%, var(--accueil-texte-doux) 75%, var(--accueil-texte-doux) 85%, transparent 85%); }
-  .widget:hover .poignee-taille { opacity: 1; }
+  .resize-handle { position: absolute; right: 0; bottom: 0; width: 14px; height: 14px; cursor: nwse-resize; z-index: 2; opacity: 0;
+    background: linear-gradient(135deg, transparent 50%, var(--home-text-muted) 50%, var(--home-text-muted) 60%, transparent 60%, transparent 75%, var(--home-text-muted) 75%, var(--home-text-muted) 85%, transparent 85%); }
+  .widget:hover .resize-handle { opacity: 1; }
 </style>

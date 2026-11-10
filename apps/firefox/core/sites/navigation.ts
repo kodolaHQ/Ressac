@@ -25,18 +25,18 @@ function webHost(url: string, localUrls: boolean): string | null {
 }
 
 /** Main page: followed to the site or its login, blocked elsewhere (notice in the bar). */
-export function decisionNavigation(url: string, c: NavigationContext): "suivre" | "bloquer" {
+export function decisionNavigation(url: string, c: NavigationContext): "follow" | "block" {
   const host = webHost(url, c.localAddresses === true);
-  return host !== null && (hostInSite(host, c.domains) || hostInSite(host, c.login)) ? "suivre" : "bloquer";
+  return host !== null && (hostInSite(host, c.domains) || hostInSite(host, c.login)) ? "follow" : "block";
 }
 
 /**
  * `window.open` and `target=_blank`: to the site, the app's view goes there; to the login, a small window of the
  * same session; the rest (ads, `about:blank` included) is blocked, never opened in a tab.
  */
-export function openDecision(url: string, c: NavigationContext): "dans-l-appli" | "petite-fenetre" | "bloquer" {
+export function openDecision(url: string, c: NavigationContext): "in-app" | "small-window" | "block" {
   const host = webHost(url, c.localAddresses === true);
-  if (host === null) return "bloquer";
-  if (hostInSite(host, c.domains)) return "dans-l-appli";
-  return hostInSite(host, c.login) ? "petite-fenetre" : "bloquer";
+  if (host === null) return "block";
+  if (hostInSite(host, c.domains)) return "in-app";
+  return hostInSite(host, c.login) ? "small-window" : "block";
 }

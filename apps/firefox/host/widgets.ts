@@ -122,7 +122,7 @@ export function placeWidgets(c: SpacePaths, placements: readonly FreePlacement[]
 }
 
 /**
- * The user removes a widget: its folder goes to accueil/.trash (nothing is destroyed), its place is freed and
+ * The user removes a widget: its folder goes to home/.trash (nothing is destroyed), its place is freed and
  * `forget` removes its grant and its data (a widget recreated under the same id must not inherit the grant).
  */
 export async function removeWidget(c: SpacePaths, id: string, forget: (id: string) => Promise<void>): Promise<void> {

@@ -28,7 +28,7 @@ const read = (file: string) => (existsSync(file) ? readFileSync(file, "utf8") : 
 const TERMINAL = "return (doc.querySelector('.xterm-rows')?.textContent ?? '').replace(/\\u00a0/g, ' ')";
 const terminalShows = (text: string, ms = 20_000) => waitUi(m, `${TERMINAL}.includes(arguments[0])`, [text], ms, "agent");
 const terminalText = () => inUi<string>(m, TERMINAL, [], "agent");
-const toggleWithButton = () => click(m, '[data-testid="bouton-agent"]');
+const toggleWithButton = () => click(m, '[data-testid="agent-button"]');
 const shown = () => waitFor(m, "return !document.getElementById('webaios-agent').hidden", (v) => v === true);
 const hidden = () => waitFor(m, "return document.getElementById('webaios-agent').hidden", (v) => v === true);
 /** Opens a tab and waits for its page; the panel the home page opened closes. */
@@ -61,7 +61,7 @@ it("the home page opens the panel, which runs the fake agent", async () => {
 
 const SESSION_CONFIG = /^\/workspace\/\.webaios\/sessions\/[0-9a-f]{16}\.json$/;
 const panelShows = (text: string, ms = 20_000) =>
-  waitUi(m, "return doc.querySelector('[data-testid=\"panneau-agent\"]').textContent.includes(arguments[0])", [text], ms, "agent");
+  waitUi(m, "return doc.querySelector('[data-testid=\"agent-panel\"]').textContent.includes(arguments[0])", [text], ms, "agent");
 const retryButton = () => waitUi(m, "return [...doc.querySelectorAll('button')].some((b) => b.textContent === 'Réessayer')", [], 10_000, "agent");
 
 it("without Docker, browsing works", async () => {
@@ -89,15 +89,15 @@ it("a huge output does not freeze the UI", async () => {
   // 1 MB later, the command has scrolled off the screen and the prompt is back at the bottom.
   await waitUi(m, `const t = ${TERMINAL.slice("return ".length)}; return !t.includes("received: flood") && t.includes("ready>")`, [], 20_000, "agent");
   expect(read(join(w!.dataDir, "workspace", "fake-agent-input.txt"))).toContain("flood\r");
-  await click(m, '[data-testid="nouvel-onglet"]');
-  await waitUi(m, "return !!doc.querySelector('[data-testid=\"page-vide\"]')", [], 10_000);
+  await click(m, '[data-testid="new-tab"]');
+  await waitUi(m, "return !!doc.querySelector('[data-testid=\"empty-page\"]')", [], 10_000);
 });
 
 it("a container that cannot start → error and Réessayer", async () => {
   await launch({ FAKE_DOCKER_FAILURE: "1" });
   await shown();
   await panelShows("L'agent n'a pas pu démarrer :");
-  await panelShows("échec simulé");
+  await panelShows("simulated failure");
   await retryButton();
 });
 
@@ -114,7 +114,7 @@ it("a second profile in .webaios/profiles appears in the panel; choosing it rest
     await terminalShows("fake agent ready>");
     const pidFile = join(dataDir, "workspace", "fake-agent-pid");
     const first = read(pidFile);
-    const select = '[data-testid="profil-agent"]';
+    const select = '[data-testid="agent-profile"]';
     expect(await waitUi(m, "const o = [...(doc.querySelector(arguments[0])?.options ?? [])].map((x) => x.textContent.trim()); return o.length && o", [select], 10_000, "agent")).toEqual([
       "Autre",
       "Claude Code",
@@ -123,7 +123,7 @@ it("a second profile in .webaios/profiles appears in the panel; choosing it rest
     await waitFor(m, "return 1", () => read(pidFile) !== "" && read(pidFile) !== first, 20_000);
     expect(JSON.parse(read(join(dataDir, "workspace", "fake-agent-args.json")))).toEqual(["autre-agent", "--mcp", expect.stringMatching(SESSION_CONFIG)]);
     await terminalShows("fake agent ready>");
-    expect(await inUi(m, "return doc.querySelector('[data-testid=\"panneau-agent\"]').textContent", [], "agent")).not.toContain("L'agent s'est arrêté.");
+    expect(await inUi(m, "return doc.querySelector('[data-testid=\"agent-panel\"]').textContent", [], "agent")).not.toContain("L'agent s'est arrêté.");
   } finally {
     await w?.close();
     rmSync(dataDir, { recursive: true, force: true });
@@ -134,7 +134,7 @@ it("a single profile: no profile menu", async () => {
   await launch();
   await shown();
   await terminalShows("fake agent ready>");
-  expect(await inUi(m, "return doc.querySelectorAll('[data-testid=\"profil-agent\"]').length", [], "agent")).toBe(0);
+  expect(await inUi(m, "return doc.querySelectorAll('[data-testid=\"agent-profile\"]').length", [], "agent")).toBe(0);
 });
 
 it("the ✦ button opens and closes the panel", async () => {
@@ -216,10 +216,10 @@ it("agent quits → Relancer starts a new one", async () => {
   const pidFile = join(w!.dataDir, "workspace", "fake-agent-pid");
   const first = read(pidFile);
   await send("quit");
-  await waitUi(m, "return doc.querySelector('[data-testid=\"panneau-agent\"]').textContent.includes(\"L'agent s'est arrêté.\")", [], 10_000, "agent");
+  await waitUi(m, "return doc.querySelector('[data-testid=\"agent-panel\"]').textContent.includes(\"L'agent s'est arrêté.\")", [], 10_000, "agent");
   await click(m, "button", { text: "Relancer", frame: "agent" });
   await waitFor(m, "return 1", () => read(pidFile) !== "" && read(pidFile) !== first, 20_000);
-  await waitUi(m, "return !doc.querySelector('[data-testid=\"panneau-agent\"]').textContent.includes(\"L'agent s'est arrêté.\")", [], 10_000, "agent");
+  await waitUi(m, "return !doc.querySelector('[data-testid=\"agent-panel\"]').textContent.includes(\"L'agent s'est arrêté.\")", [], 10_000, "agent");
 });
 
 it("closing and reopening the panel keeps the conversation", async () => {
@@ -239,7 +239,7 @@ it("Docker absent → message and Réessayer", async () => {
   await shown();
   await waitUi(
     m,
-    "return doc.querySelector('[data-testid=\"panneau-agent\"]').textContent.includes(\"Docker n'est pas lancé. La navigation fonctionne ; seul l'agent est indisponible.\")",
+    "return doc.querySelector('[data-testid=\"agent-panel\"]').textContent.includes(\"Docker n'est pas lancé. La navigation fonctionne ; seul l'agent est indisponible.\")",
     [],
     20_000,
     "agent",
@@ -303,7 +303,7 @@ describe("one agent session per window", () => {
       if (Date.now() > deadline) throw new Error(`the agent ${pid} still runs`);
       await new Promise((r) => setTimeout(r, 100));
     }
-    const log = join(w!.dataDir, "workspace", "faux-docker-arrets.log");
+    const log = join(w!.dataDir, "workspace", "fake-docker-stops.log");
     for (const end = Date.now() + 10_000; !/webaios-session-[0-9a-f]+\.pid[\s\S]*signaler KILL/.test(read(log)); await new Promise((r) => setTimeout(r, 100)))
       if (Date.now() > end) throw new Error(`no kill logged: ${read(log)}`);
   };

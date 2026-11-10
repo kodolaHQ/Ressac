@@ -15,7 +15,7 @@ beforeEach(async () => {
   m = w.marionette;
   await m.setContext("chrome");
   await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
-  await waitUi(m, "return !!doc.querySelector('[data-testid=\"barre-laterale\"]')");
+  await waitUi(m, "return !!doc.querySelector('[data-testid=\"sidebar\"]')");
 });
 afterEach(async () => {
   try {
@@ -33,12 +33,12 @@ const layout = () =>
   inUi<{ page: number; pageWidth: number; window: number; frame: number; sidebar: boolean }>(
     m,
     `const page = gBrowser.selectedBrowser.getBoundingClientRect();
-     return { page: page.left, pageWidth: page.width, window: window.innerWidth, frame: frame.getBoundingClientRect().width, sidebar: !doc.querySelector('[data-testid="barre-laterale"]').parentElement.inert };`,
+     return { page: page.left, pageWidth: page.width, window: window.innerWidth, frame: frame.getBoundingClientRect().width, sidebar: !doc.querySelector('[data-testid="sidebar"]').parentElement.inert };`,
   );
 const waitSidebar = (shown: boolean) =>
   waitUi(
     m,
-    `return doc.querySelector('[data-testid="barre-laterale"]').parentElement.inert === !arguments[0]
+    `return doc.querySelector('[data-testid="sidebar"]').parentElement.inert === !arguments[0]
        && (frame.hasAttribute("full") || frame.getBoundingClientRect().width === (arguments[0] ? 240 : 0));`,
     [shown],
   );
@@ -134,7 +134,7 @@ describe("compact mode", () => {
     await waitSidebar(false);
     const shown = await inUi<{ frame: number; left: number; free: number }>(
       m,
-      `return { frame: frame.getBoundingClientRect().width, left: doc.querySelector('[data-testid="zone-contenu"]').getBoundingClientRect().left,
+      `return { frame: frame.getBoundingClientRect().width, left: doc.querySelector('[data-testid="content-zone"]').getBoundingClientRect().left,
         free: document.getElementById("webaios-agent").getBoundingClientRect().left };`,
     );
     expect(shown).toMatchObject({ frame: shown.free, left: 0 });

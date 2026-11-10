@@ -123,7 +123,7 @@
 </script>
 
 <div
-  class="canevas"
+  class="canvas"
   bind:this={zone}
   role="application"
   aria-label="Canevas du workflow"
@@ -158,6 +158,6 @@
 </div>
 
 <style>
-  .canevas { position: relative; width: 100%; height: 100%; min-width: 0; min-height: 0; }
-  .canevas :global(.svelte-flow) { --xy-background-color: var(--fond); }
+  .canvas { position: relative; width: 100%; height: 100%; min-width: 0; min-height: 0; }
+  .canvas :global(.svelte-flow) { --xy-background-color: var(--bg); }
 </style>

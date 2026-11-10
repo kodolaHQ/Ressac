@@ -34,7 +34,7 @@ async function setPrivate(isPrivate: boolean): Promise<void> {
 }
 /** Opens the « Actions » page of the sidebar. */
 async function openActionsPage(): Promise<void> {
-  await click(m, tid("bouton-actions"));
+  await click(m, tid("actions-button"));
   await visible(tid("page-actions"));
 }
 /** The window's tabs closed, the space public again. */
@@ -80,7 +80,7 @@ describe("the Actions page without actions", () => {
     await openActionsPage();
     await q.waitContains(tid("page-actions"), "Aucune action. Demande à l'agent de t'en créer une.");
     await setPrivate(true);
-    await q.waitText(tid("action-espace-prive"), "Les actions ne sont pas disponibles dans un espace privé");
+    await q.waitText(tid("action-private-space"), "Les actions ne sont pas disponibles dans un espace privé");
     expect(await q.count(tid("page-actions"))).toBe(0);
   });
 });
@@ -109,30 +109,30 @@ describe("the Actions page", () => {
   // actions.spec.ts:995
   it("the page lists two actions with their keywords and last result", async () => {
     await openActionsPage();
-    await q.waitContains(tid("ligne-action-tickets"), NAME_TICKETS);
-    expect(await q.text(tid("mots-cles-tickets"))).toBe("gitlab, tickets");
-    expect(await q.text(tid("dernier-tickets"))).toContain("Réussie");
-    expect(await q.text(tid("ligne-action-leboncoin"))).toContain("Leboncoin");
-    expect(await q.text(tid("dernier-leboncoin"))).toContain("Jamais lancée");
+    await q.waitContains(tid("action-row-tickets"), NAME_TICKETS);
+    expect(await q.text(tid("keywords-tickets"))).toBe("gitlab, tickets");
+    expect(await q.text(tid("latest-tickets"))).toContain("Réussie");
+    expect(await q.text(tid("action-row-leboncoin"))).toContain("Leboncoin");
+    expect(await q.text(tid("latest-leboncoin"))).toContain("Jamais lancée");
     // No grant: no « Retirer l'accord ».
-    expect(await q.count(tid("retirer-accord-tickets"))).toBe(0);
+    expect(await q.count(tid("remove-grant-tickets"))).toBe(0);
   });
 
   // actions.spec.ts:1016
   it("Lancer opens the action's page; an action with input asks for it inline first", { timeout: 120_000 }, async () => {
     await openActionsPage();
-    await click(m, tid("lancer-tickets"));
+    await click(m, tid("launch-tickets"));
     await visible(tid("page-action"));
     await waitRuns("tickets", 2);
     await openActionsPage();
-    await click(m, tid("lancer-leboncoin"));
-    const field = tid("saisie-leboncoin");
+    await click(m, tid("launch-leboncoin"));
+    const field = tid("input-leboncoin");
     await visible(field);
     expect(await q.count(tid("page-action"))).toBe(0);
     // Empty input: nothing launched, the field stays with its message.
     await inUi(m, "doc.querySelector(arguments[0]).focus();", [field]);
     await pressKeys(m, "Enter");
-    await q.waitText(tid("refus-actions"), "Saisie requise : Recherche");
+    await q.waitText(tid("actions-refusal"), "Saisie requise : Recherche");
     await visible(field);
     expect(await q.count(tid("page-action"))).toBe(0);
     expect(await runsOnDisk(w.dataDir, "leboncoin")).toHaveLength(0);
@@ -145,22 +145,22 @@ describe("the Actions page", () => {
   // actions.spec.ts:1048
   it("« Voir le workflow » opens the action's builder", async () => {
     await openActionsPage();
-    await click(m, tid("voir-workflow-tickets"));
-    await waitUi(m, "return !!doc.querySelector('[data-testid^=\"onglet-\"]') && [...doc.querySelectorAll('[data-testid^=\"onglet-\"]')].some((e) => e.textContent.includes(arguments[0]));", [
+    await click(m, tid("show-workflow-tickets"));
+    await waitUi(m, "return !!doc.querySelector('[data-testid^=\"tab-\"]') && [...doc.querySelectorAll('[data-testid^=\"tab-\"]')].some((e) => e.textContent.includes(arguments[0]));", [
       `Workflow — ${NAME_TICKETS}`,
     ]);
     expect(Object.values((await state(m)).tabs).filter((o) => o.url === "webaios://workflow/action/tickets")).toHaveLength(1);
-    await visible(tid("constructeur"));
+    await visible(tid("builder"));
   });
 
   // actions.spec.ts:1063
   it("Supprimer: the folder goes to actions/.corbeille, the grant and results are erased, the line goes", async () => {
     await openActionsPage();
-    await visible(tid("retirer-accord-compte"));
-    await click(m, tid("supprimer-compte"));
-    await q.waitContains(tid("confirmation-suppression-action"), "Avec compte");
+    await visible(tid("remove-grant-compte"));
+    await click(m, tid("delete-compte"));
+    await q.waitContains(tid("action-delete-confirmation"), "Avec compte");
     // The confirmation covers the whole window, its drag regions included (the last matching rule gives the value).
-    for (const id of ["voile-suppression-action", "confirmation-suppression-action"]) {
+    for (const id of ["action-delete-veil", "action-delete-confirmation"]) {
       const dragging = await inUi<string>(
         m,
         `const el = doc.querySelector(arguments[0]);
@@ -175,39 +175,39 @@ describe("the Actions page", () => {
       expect(dragging, id).toBe("no-drag");
     }
     // Annuler deletes nothing.
-    await click(m, tid("annuler-suppression-action"));
-    await visible(tid("ligne-action-compte"));
-    await click(m, tid("supprimer-compte"));
-    await click(m, tid("confirmer-suppression-action"));
-    await q.waitCount(tid("ligne-action-compte"), 0);
+    await click(m, tid("cancel-action-delete"));
+    await visible(tid("action-row-compte"));
+    await click(m, tid("delete-compte"));
+    await click(m, tid("confirm-action-delete"));
+    await q.waitCount(tid("action-row-compte"), 0);
     expect((await readdir(path.join(w.dataDir, "workspace", "actions", ".trash"))).some((f) => f.startsWith("compte-"))).toBe(true);
     expect(existsSync(path.join(w.dataDir, "workspace", "actions", "compte"))).toBe(false);
     expect(existsSync(path.join(actionsDataDir(w.dataDir), "compte"))).toBe(false);
     expect(Object.keys(JSON.parse(await readFile(path.join(actionsDataDir(w.dataDir), "grants.json"), "utf8")))).not.toContain("compte");
-    await visible(tid("ligne-action-tickets"));
+    await visible(tid("action-row-tickets"));
   });
 
   // actions.spec.ts:1097
   it("removing the grant: the button goes, results erased", async () => {
     const result = path.join(actionsDataDir(w.dataDir), "accord", "results", `${EXECUTION}.json`);
     await openActionsPage();
-    await click(m, tid("retirer-accord-accord"));
+    await click(m, tid("remove-grant-accord"));
     // Annuler keeps the grant and the results.
-    await click(m, tid("annuler-suppression-action"));
-    await visible(tid("retirer-accord-accord"));
+    await click(m, tid("cancel-action-delete"));
+    await visible(tid("remove-grant-accord"));
     expect(existsSync(result)).toBe(true);
-    await click(m, tid("retirer-accord-accord"));
-    await click(m, tid("confirmer-suppression-action"));
-    await q.waitCount(tid("retirer-accord-accord"), 0);
-    await q.waitContains(tid("dernier-accord"), "Jamais lancée");
+    await click(m, tid("remove-grant-accord"));
+    await click(m, tid("confirm-action-delete"));
+    await q.waitCount(tid("remove-grant-accord"), 0);
+    await q.waitContains(tid("latest-accord"), "Jamais lancée");
     expect(existsSync(result)).toBe(false);
   });
 
   // actions.spec.ts:1122
   it("a broken action.json shows its error", async () => {
     await openActionsPage();
-    await q.waitContains(tid("erreur-cassee"), "action.json");
-    expect(await q.count(tid("lancer-cassee"))).toBe(0);
-    await visible(tid("ligne-action-tickets"));
+    await q.waitContains(tid("error-cassee"), "action.json");
+    expect(await q.count(tid("launch-cassee"))).toBe(0);
+    await visible(tid("action-row-tickets"));
   });
 });

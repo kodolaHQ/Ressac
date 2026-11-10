@@ -45,21 +45,21 @@ async function launch(o: { prepare?: (dataDir: string) => void } = {}): Promise<
 }
 
 const tid = (id: string) => `[data-testid="${id}"]`;
-const PAGE = tid("page-relecture");
-const SEND = tid("envoyer-commentaires");
-const COMMENT = tid("commentaire");
-const FORM = tid("formulaire-commentaire");
-const line = (n: number) => `${tid("ligne-diff")}[data-nouveau="${n}"]`;
-const extra = (n: number) => `${line(n)} ${tid("ajouter-commentaire")}`;
+const PAGE = tid("review-page");
+const SEND = tid("send-comments");
+const COMMENT = tid("comment");
+const FORM = tid("comment-form");
+const line = (n: number) => `${tid("diff-line")}[data-new="${n}"]`;
+const extra = (n: number) => `${line(n)} ${tid("add-comment")}`;
 const count = (selector: string) => inUi<number>(m, "return doc.querySelectorAll(arguments[0]).length", [selector]);
 const waitCount = (selector: string, n: number, ms = 10_000) => waitUi(m, "return doc.querySelectorAll(arguments[0]).length === arguments[1]", [selector, n], ms);
 const text = (selector: string) => inUi<string | null>(m, "return doc.querySelector(arguments[0])?.textContent ?? null", [selector]);
 const waitText = (selector: string, t: string, ms = 10_000) => waitUi(m, "return doc.querySelector(arguments[0])?.textContent.includes(arguments[1])", [selector, t], ms);
 /** The new line number of the diff line just above the first comment (the line it hangs under). */
-const commentUnder = () => inUi<string | null>(m, `return doc.querySelector('${COMMENT}')?.previousElementSibling?.dataset.nouveau ?? null`);
-const openFile = (path: string) => click(m, tid("fichier-relecture"), { text: path });
+const commentUnder = () => inUi<string | null>(m, `return doc.querySelector('${COMMENT}')?.previousElementSibling?.dataset.new ?? null`);
+const openFile = (path: string) => click(m, tid("review-file"), { text: path });
 const refresh = () => refreshReview(m);
-const ADDED = `${tid("ligne-diff")}.ajout`;
+const ADDED = `${tid("diff-line")}.added`;
 
 /** A Shift+click on the + of line `n`: its mousedown, as DiffFile reads it (the click helper has no modifiers). */
 async function shiftPlus(n: number): Promise<void> {
@@ -84,7 +84,7 @@ async function comment(text: string): Promise<void> {
 
 /** « Relire » of the projet-externe line, on the Applications page; waits for the Review page. */
 async function reread(): Promise<void> {
-  await click(m, `${tid("projet-externe")} button`, { text: "Relire" });
+  await click(m, `${tid("external-project")} button`, { text: "Relire" });
   await waitUi(m, `return !!doc.querySelector('${PAGE}')`);
 }
 
@@ -99,7 +99,7 @@ async function pageOnAppJs(...n: number[]) {
 }
 
 const agentInput = () => {
-  const f = path.join(w!.dataDir, "workspace", "faux-agent-entree.txt");
+  const f = path.join(w!.dataDir, "workspace", "fake-agent-input.txt");
   return existsSync(f) ? readFileSync(f, "utf8") : "";
 };
 const TERMINAL = "(doc.querySelector('.xterm-rows')?.textContent ?? '').replace(/\\u00a0/g, ' ')";
@@ -123,7 +123,7 @@ async function siteOnAppJs(): Promise<void> {
   await launch({ prepare: (d) => writeSite(d, "essai", SITE) });
   await expect.poll(() => existsSync(path.join(w!.dataDir, "design", "review", "site-essai.git", "refs", "webaios", "relu")), { timeout: 15_000 }).toBe(true);
   writeAppJs(path.join(w!.dataDir, "workspace", "sites", "essai"), modified(15));
-  await click(m, tid("site-essai-relire"));
+  await click(m, tid("site-essai-review"));
   await waitUi(m, `return !!doc.querySelector('${PAGE}')`);
   await openFile("app.js");
   await waitCount(ADDED, 1);
@@ -162,7 +162,7 @@ it("Shift+click from line 13 to 16: the comment covers 13–16; a range over two
   try {
     await click(m, extra(13));
     await shiftPlus(16);
-    await waitCount(`${tid("ligne-diff")}.choisie`, 5);
+    await waitCount(`${tid("diff-line")}.selected`, 5);
     await comment("tout ce passage");
     await waitCount(COMMENT, 1);
     expect(await text(COMMENT)).toContain("Lignes 13–16");
@@ -170,8 +170,8 @@ it("Shift+click from line 13 to 16: the comment covers 13–16; a range over two
     // From line 13 (first block) to line 25 (second block): refused.
     await click(m, extra(13));
     await shiftPlus(25);
-    await waitUi(m, "return doc.querySelector(arguments[0])?.textContent === arguments[1]", [tid("erreur-commentaire"), RANGE_OUTSIDE_BLOCK]);
-    expect(await count(`${tid("ligne-diff")}.choisie`)).toBe(1);
+    await waitUi(m, "return doc.querySelector(arguments[0])?.textContent === arguments[1]", [tid("comment-error"), RANGE_OUTSIDE_BLOCK]);
+    expect(await count(`${tid("diff-line")}.selected`)).toBe(1);
     await click(m, `${FORM} button`, { text: "Annuler" });
     await waitCount(FORM, 0);
     expect(await count(COMMENT)).toBe(1);
@@ -215,11 +215,11 @@ it("Résoudre then « Marquer comme relu »: no file left, the resolved comment 
     await inUi(m, `[...[...doc.querySelectorAll('${COMMENT}')].find((c) => c.textContent.includes("à résoudre")).querySelectorAll("button")].find((b) => b.textContent === "Résoudre").click()`);
     await waitUi(m, `return [...doc.querySelectorAll('${COMMENT}')].find((c) => c.textContent.includes("à résoudre"))?.textContent.includes("résolu")`);
     await waitUi(m, "return doc.querySelector(arguments[0])?.textContent === arguments[1]", [SEND, "Envoyer 1 commentaire à Claude Code (Claude Code)"]);
-    await click(m, tid("marquer-relu"));
-    await waitCount(tid("fichier-relecture"), 0);
-    await waitCount(tid("commentaire-relecture"), 1);
-    expect(await text(tid("commentaire-relecture"))).toContain("reste ouvert");
-    expect(await text(tid("commentaire-relecture"))).toContain("app.js");
+    await click(m, tid("mark-read"));
+    await waitCount(tid("review-file"), 0);
+    await waitCount(tid("review-comment"), 1);
+    expect(await text(tid("review-comment"))).toContain("reste ouvert");
+    expect(await text(tid("review-comment"))).toContain("app.js");
     expect(await text(PAGE)).not.toContain("à résoudre");
   } finally {
     await p.client.close();
@@ -291,7 +291,7 @@ it("no file of the external project (registries, repository, batches) appears un
 });
 
 // externes.spec.ts:209 (the Review part)
-it("after « Révoquer », envoyer-commentaires is disabled, with NO_CLIENT as its title", async () => {
+it("after « Révoquer », send-comments is disabled, with NO_CLIENT as its title", async () => {
   await launch();
   const p = await pageOnAppJs(15);
   try {
@@ -300,9 +300,9 @@ it("after « Révoquer », envoyer-commentaires is disabled, with NO_CLIENT as i
     expect(await inUi(m, "return doc.querySelector(arguments[0]).disabled", [SEND])).toBe(false);
     const review = Object.values((await state(m)).tabs).find((o) => o.url === reviewUrl(`ext-${p.id}`))!.id;
     await openApplications(m);
-    await click(m, `${tid("client-externe")} button`, { text: "Révoquer" });
-    await waitCount(tid("client-externe"), 0);
-    await click(m, tid(`onglet-${review}`));
+    await click(m, `${tid("external-client")} button`, { text: "Révoquer" });
+    await waitCount(tid("external-client"), 0);
+    await click(m, tid(`tab-${review}`));
     await waitCount(PAGE, 1);
     await refresh();
     await waitUi(m, "const b = doc.querySelector(arguments[0]); return b?.disabled && b.title === arguments[1]", [SEND, NO_CLIENT]);
@@ -319,8 +319,8 @@ it("deleting the site app erases its review repo and comments", { timeout: 60_00
   const review = path.join(w!.dataDir, "design", "review");
   await expect.poll(() => existsSync(path.join(review, "site-essai.comments.json")), { timeout: 10_000 }).toBe(true);
   await openApplications(m);
-  await click(m, tid("site-essai-supprimer"));
-  await click(m, tid("confirmer-suppression-site"));
+  await click(m, tid("site-essai-delete"));
+  await click(m, tid("confirm-site-delete"));
   await expect
     .poll(() => existsSync(path.join(review, "site-essai.git")) || existsSync(path.join(review, "site-essai.comments.json")), { timeout: 15_000 })
     .toBe(false);
@@ -334,7 +334,7 @@ it("a path with spaces and accents shows its diff and takes a comment", async ()
     mkdirSync(path.join(p.folder, "dossier é"));
     writeFileSync(path.join(p.folder, "dossier é", "a b.js"), "const a = 1;\nconst b = 2;\n");
     await reread();
-    await waitUi(m, `return [...doc.querySelectorAll('${tid("fichier-relecture")} .nom-fichier')].some((e) => e.textContent === "dossier é/a b.js")`);
+    await waitUi(m, `return [...doc.querySelectorAll('${tid("review-file")} .file-name')].some((e) => e.textContent === "dossier é/a b.js")`);
     await openFile("dossier é/a b.js");
     await waitText(line(2), "const b = 2;");
     await click(m, extra(2));

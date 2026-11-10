@@ -21,7 +21,7 @@
   // svelte-ignore state_referenced_locally
   const id = block.id;
 
-  const champs = $derived(shownFields(catalog, block.params));
+  const fieldList = $derived(shownFields(catalog, block.params));
   /** Text of the fields being edited (focus); the others show the block's value. */
   let inputs = $state<Record<string, string>>({});
   /** Text at focus, then at the last save: a field left unchanged writes nothing. */
@@ -87,11 +87,11 @@
   const fieldText = (f: FormField) => inputs[f.name] ?? textOf(f, block.params[f.name]);
 </script>
 
-<div class="formulaire">
-  <label class="champ">
-    <span class="libelle">Nom</span>
+<div class="form">
+  <label class="field">
+    <span class="label">Nom</span>
     <input
-      data-testid="nom-bloc"
+      data-testid="block-name-field"
       value={inputs[NAME] ?? block.name ?? ""}
       placeholder={id}
       maxlength="60"
@@ -100,27 +100,27 @@
       onblur={() => quit(NAME)}
     />
   </label>
-  <div class="champ">
-    <span class="libelle">Identifiant</span>
-    <code data-testid="id-bloc">{id}</code>
+  <div class="field">
+    <span class="label">Identifiant</span>
+    <code data-testid="block-id">{id}</code>
   </div>
 
-  {#each champs as f (f.name)}
+  {#each fieldList as f (f.name)}
     {#if f.kind === "checkbox"}
-      <label class="champ case">
+      <label class="field case">
         <input
           type="checkbox"
-          data-testid="champ-{f.name}"
+          data-testid="field-{f.name}"
           checked={entryOf(f, block.params) === true}
           onchange={(e) => choose(f, e.currentTarget.checked)}
         />
-        <span class="libelle">{f.label}</span>
+        <span class="label">{f.label}</span>
       </label>
     {:else if f.kind === "choice"}
       {@const v = block.params[f.name]}
-      <label class="champ">
-        <span class="libelle">{f.label}{f.required ? " *" : ""}</span>
-        <select data-testid="champ-{f.name}" value={typeof v === "string" ? v : ""} onchange={(e) => choose(f, e.currentTarget.value)}>
+      <label class="field">
+        <span class="label">{f.label}{f.required ? " *" : ""}</span>
+        <select data-testid="field-{f.name}" value={typeof v === "string" ? v : ""} onchange={(e) => choose(f, e.currentTarget.value)}>
           {#if f.required && typeof v !== "string"}<option value="" disabled>— choisir —</option>{/if}
           {#if !f.required}<option value="">Par défaut{f.default === undefined ? "" : ` (${textOf(f, f.default)})`}</option>{/if}
           {#each f.choices ?? [] as c (c)}<option value={c}>{c}</option>{/each}
@@ -128,15 +128,15 @@
         </select>
       </label>
     {:else}
-      <label class="champ">
-        <span class="libelle">
+      <label class="field">
+        <span class="label">
           {f.label}{f.required ? " *" : ""}
-          {#if f.kind === "template"}<span class="marque" title="Les {'{chemins}'} sont remplacés par les valeurs reçues">gabarit</span>{/if}
+          {#if f.kind === "template"}<span class="mark" title="Les {'{chemins}'} sont remplacés par les valeurs reçues">gabarit</span>{/if}
         </span>
         {#if f.kind === "number"}
           <input
             type="number"
-            data-testid="champ-{f.name}"
+            data-testid="field-{f.name}"
             min={f.min}
             max={f.max}
             step={f.integer ? 1 : "any"}
@@ -156,7 +156,7 @@
           />
         {:else if f.kind === "text"}
           <input
-            data-testid="champ-{f.name}"
+            data-testid="field-{f.name}"
             value={fieldText(f)}
             placeholder={textOf(f, f.default)}
             spellcheck="false"
@@ -166,7 +166,7 @@
           />
         {:else}
           <textarea
-            data-testid="champ-{f.name}"
+            data-testid="field-{f.name}"
             rows={f.kind === "texts" ? 3 : 2}
             value={fieldText(f)}
             placeholder={f.kind === "texts" ? "Une valeur par ligne" : textOf(f, f.default)}
@@ -178,24 +178,24 @@
         {/if}
       </label>
       {#if f.kind === "template" && available && available.length > 0}
-        <p class="aide" data-testid="disponibles-{f.name}">Champs disponibles : {available.map((c) => `{${c}}`).join(" ")}</p>
+        <p class="help" data-testid="available-{f.name}">Champs disponibles : {available.map((c) => `{${c}}`).join(" ")}</p>
       {/if}
     {/if}
-    {#if f.help}<p class="aide">{f.help}</p>{/if}
+    {#if f.help}<p class="help">{f.help}</p>{/if}
   {/each}
 </div>
 
 <style>
-  .formulaire { display: flex; flex-direction: column; gap: 4px; }
-  .champ { display: flex; flex-direction: column; gap: 3px; margin-top: 6px; font-size: 12px; }
-  .champ.case { flex-direction: row; align-items: center; gap: 6px; }
-  .libelle { color: var(--texte-doux); display: flex; align-items: center; gap: 6px; }
-  .marque { font-size: 10px; padding: 0 5px; border-radius: 4px; background: var(--fond-actif); color: var(--texte); }
+  .form { display: flex; flex-direction: column; gap: 4px; }
+  .field { display: flex; flex-direction: column; gap: 3px; margin-top: 6px; font-size: 12px; }
+  .field.case { flex-direction: row; align-items: center; gap: 6px; }
+  .label { color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
+  .mark { font-size: 10px; padding: 0 5px; border-radius: 4px; background: var(--bg-active); color: var(--text); }
   input:not([type="checkbox"]), select, textarea {
-    box-sizing: border-box; width: 100%; padding: 5px 7px; border-radius: 6px; border: 1px solid var(--bord);
-    background: var(--fond); color: var(--texte); font: inherit; font-size: 12px;
+    box-sizing: border-box; width: 100%; padding: 5px 7px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--text); font: inherit; font-size: 12px;
   }
   textarea { resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-  code { font-size: 12px; color: var(--texte); word-break: break-all; }
-  .aide { margin: 0; font-size: 11px; color: var(--texte-doux); word-break: break-word; }
+  code { font-size: 12px; color: var(--text); word-break: break-all; }
+  .help { margin: 0; font-size: 11px; color: var(--text-muted); word-break: break-word; }
 </style>

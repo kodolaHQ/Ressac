@@ -36,7 +36,7 @@ export function actionsDirect(e: ActionsState): DirectState {
     running: e.running.map(
       (c): DirectWidget => ({
         widget: ACTION_PREFIX + c.action,
-        kind: c.attempt ? "essai" : "execution",
+        kind: c.attempt ? "attempt" : "execution",
         start: c.start,
         blocks: Object.fromEntries(Object.entries(c.blocks).map(([id, b]) => [id, { status: b.status, items: b.items }])),
       }),

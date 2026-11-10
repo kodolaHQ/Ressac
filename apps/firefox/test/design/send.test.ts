@@ -31,7 +31,7 @@ function mount() {
   return { o, send: createSend(o) };
 }
 
-test("app: preRemplir receives the agent's window and the text, never a \r; external: preRemplir is not called", async () => {
+test("app: prefill receives the agent's window and the text, never a \r; external: prefill is not called", async () => {
   const { o, send: send } = mount();
   await send({ type: "app", project: "app-essai", folder: "essai", name: "Essai" }, batch);
   expect(o.prefill).toHaveBeenCalledTimes(1);
@@ -63,7 +63,7 @@ test("without a main window: a window is reopened and receives the text; if none
   expect(o.prefill).not.toHaveBeenCalled();
 });
 
-test("site: preRemplir receives the site app, its folder and the batch path, without \\r or \\n", async () => {
+test("site: prefill receives the site app, its folder and the batch path, without \\r or \\n", async () => {
   const { o, send: send } = mount();
   await send({ type: "site", project: "site-tuning", id: "tuning", name: "Tuning" }, { ...batch, project: "site-tuning" });
   expect(o.prefill).toHaveBeenCalledTimes(1);

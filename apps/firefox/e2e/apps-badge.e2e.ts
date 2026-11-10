@@ -23,7 +23,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const inBadge = <T = unknown>(m: Marionette, folder: string, body: string, args: unknown[] = []) =>
   m.execute<T>(
     `return (async () => { const win = ${appWindowExpr(folder)}; const f = win?.document.getElementById("webaios-app-badge"); const doc = f?.contentDocument;
-     if (!doc?.querySelector('[data-testid="pastille-webaios"]')) return null; ${body} })();`,
+     if (!doc?.querySelector('[data-testid="webaios-pill"]')) return null; ${body} })();`,
     args,
   );
 /** The badge frame's place in its window: [right margin, top, width, height]. */
@@ -38,9 +38,9 @@ const clickBadge = (m: Marionette, folder: string, selector: string, text?: stri
     .toBe(true);
 /** The agent's access to app `dossier`, cut from its badge. */
 async function cutAccess(m: Marionette, folder: string): Promise<void> {
-  await clickBadge(m, folder, '[data-testid="pastille-acces"]');
-  await clickBadge(m, folder, '[data-testid="bulle-acces"] button.couper');
-  await expect.poll(() => inBadge(m, folder, `return doc.querySelectorAll('[data-testid="pastille-acces"]').length;`), { timeout: 10_000 }).toBe(0);
+  await clickBadge(m, folder, '[data-testid="access-pill"]');
+  await clickBadge(m, folder, '[data-testid="access-bubble"] button.cut');
+  await expect.poll(() => inBadge(m, folder, `return doc.querySelectorAll('[data-testid="access-pill"]').length;`), { timeout: 10_000 }).toBe(0);
 }
 /** The access the badge's own api gives, its tab ids. */
 const badgeAccess = (m: Marionette, folder: string) => inBadge<string[]>(m, folder, "return Object.keys((await f.contentWindow.webaios.access.state()).tabs);");
@@ -139,7 +139,7 @@ describe("one WebAiOs, essai and autre launched in each test", () => {
     await launched();
     await cutAccess(m, "essai");
     await sized(m, "essai", 48, 28);
-    await clickBadge(m, "essai", '[data-testid="pastille-webaios"]');
+    await clickBadge(m, "essai", '[data-testid="webaios-pill"]');
     await sized(m, "essai", 300, 320);
     expect(await inBadge(m, "essai", `return [...doc.querySelectorAll('[role="menuitem"]')].map((e) => e.textContent.trim());`)).toEqual(["Mode design ⌘⇧D", "Panier (0)", "Relire ce projet"]);
     await inBadge(m, "essai", `f.contentWindow.dispatchEvent(new f.contentWindow.KeyboardEvent("keydown", { key: "Escape", bubbles: true })); return 1;`);
@@ -163,7 +163,7 @@ describe("one WebAiOs, essai and autre launched in each test", () => {
   it("agent access to the app shows in its badge, 88×28", async () => {
     await launched();
     await expect.poll(async () => (await callTool(p.dataDir, "read_tab", { id: "app:essai" })).text, { timeout: 10_000 }).toContain("Titre : Essai essai");
-    await expect.poll(() => inBadge(m, "essai", `return doc.querySelectorAll('[data-testid="pastille-acces"]').length;`), { timeout: 10_000 }).toBe(1);
+    await expect.poll(() => inBadge(m, "essai", `return doc.querySelectorAll('[data-testid="access-pill"]').length;`), { timeout: 10_000 }).toBe(1);
     await sized(m, "essai", 88, 28);
     expect(await badgeAccess(m, "essai")).toEqual(["app:essai"]);
   });
@@ -220,7 +220,7 @@ describe("one WebAiOs, essai and autre launched in each test", () => {
     expect(await rowMenuItems(m, "vieux")).not.toContain("Relire");
     await inUi(m, "doc.body.dispatchEvent(new ui.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); return 1;");
     await rowButton(m, "essai", "Relire");
-    await waitUi(m, "return !!doc.querySelector('[data-testid=\"page-relecture\"]')", [], 15_000);
+    await waitUi(m, "return !!doc.querySelector('[data-testid=\"review-page\"]')", [], 15_000);
     await expect.poll(async () => (await reviewTabs(m, "app-essai")).map((o) => o.title), { timeout: 10_000 }).toEqual(["Relecture — Essai"]);
     // The UI refuses a folder name a shell would not take, and a project without manifest, before any page.
     await inUi(m, "ui.webaios.apps.act('../x', 'review'); ui.webaios.apps.act('vieux', 'review'); return 1;");
@@ -232,7 +232,7 @@ describe("one WebAiOs, essai and autre launched in each test", () => {
   it("Relire ce projet from the badge opens the same page in the main window, without a second tab", async () => {
     await launched();
     for (let i = 0; i < 2; i++) {
-      await clickBadge(m, "essai", '[data-testid="pastille-webaios"]');
+      await clickBadge(m, "essai", '[data-testid="webaios-pill"]');
       await clickBadge(m, "essai", '[role="menuitem"]', "Relire ce projet");
       await expect.poll(async () => (await reviewTabs(m, "app-essai")).map((o) => o.title), { timeout: 10_000 }).toEqual(["Relecture — Essai"]);
     }

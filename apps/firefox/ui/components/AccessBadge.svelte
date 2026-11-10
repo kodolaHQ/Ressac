@@ -9,18 +9,18 @@
 
   /** A click elsewhere (outside the badge and its bubble) or Escape closes the bubble. */
   function outside(e: PointerEvent) {
-    if (opened && !root?.contains(e.target as Node) && !(e.target as Element).closest?.('[data-testid="bulle-acces"]')) opened = false;
+    if (opened && !root?.contains(e.target as Node) && !(e.target as Element).closest?.('[data-testid="access-bubble"]')) opened = false;
   }
 </script>
 
 <svelte:window onpointerdown={outside} onblur={() => (opened = false)} onkeydown={(e) => e.key === "Escape" && (opened = false)} />
 
-<span class="racine" bind:this={root}>
+<span class="root" bind:this={root}>
   <button
-    class="pastille"
+    class="pill"
     class:pulse={appState.running}
-    data-testid="pastille-acces"
-    data-niveau={level}
+    data-testid="access-pill"
+    data-level={level}
     aria-label="Accès de l'agent à cet onglet"
     aria-expanded={opened}
     draggable="false"
@@ -35,13 +35,13 @@
 </span>
 
 <style>
-  .racine { display: inline-flex; flex: none; -webkit-app-region: no-drag; }
-  .pastille { all: unset; display: inline-flex; align-items: center; border-radius: 999px; padding: 1px 7px; font-size: 11px; font-weight: 600; cursor: pointer; }
-  .pastille[data-niveau="read"] { background: var(--acces-lecture-fond); color: var(--acces-lecture); }
-  .pastille[data-niveau="act"] { background: var(--acces-agir-fond); color: var(--acces-agir); }
-  .pastille.pulse { animation: bat 1s ease-in-out infinite; }
+  .root { display: inline-flex; flex: none; -webkit-app-region: no-drag; }
+  .pill { all: unset; display: inline-flex; align-items: center; border-radius: 999px; padding: 1px 7px; font-size: 11px; font-weight: 600; cursor: pointer; }
+  .pill[data-level="read"] { background: var(--access-read-bg); color: var(--access-read); }
+  .pill[data-level="act"] { background: var(--access-act-bg); color: var(--access-act); }
+  .pill.pulse { animation: bat 1s ease-in-out infinite; }
   @media (prefers-reduced-motion: reduce) {
-    .pastille.pulse { animation: none; outline: 2px solid currentColor; outline-offset: 1px; }
+    .pill.pulse { animation: none; outline: 2px solid currentColor; outline-offset: 1px; }
   }
   @keyframes bat { 50% { opacity: 0.35; } }
 </style>

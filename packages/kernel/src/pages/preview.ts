@@ -39,11 +39,11 @@ function describe(v: unknown): string {
     if (v.length === 0) return "liste (0)";
     const sample = v.slice(0, SAMPLE);
     if (sample.every(isObject)) {
-      const champs = new Map<string, string>();
+      const fieldList = new Map<string, string>();
       for (const e of sample) {
-        for (const k of Object.keys(e).slice(0, KEYS_MAX)) if (!champs.has(k)) champs.set(k, kindOf(e[k]));
+        for (const k of Object.keys(e).slice(0, KEYS_MAX)) if (!fieldList.has(k)) fieldList.set(k, kindOf(e[k]));
       }
-      const detail = [...champs].slice(0, KEYS_MAX).map(([k, t]) => `${cut(k, 40)}: ${t}`).join(", ");
+      const detail = [...fieldList].slice(0, KEYS_MAX).map(([k, t]) => `${cut(k, 40)}: ${t}`).join(", ");
       return `liste (${v.length}) d'objets { ${detail} }`;
     }
     const natures = new Set(sample.map(kindOf));

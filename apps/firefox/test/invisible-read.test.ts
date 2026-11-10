@@ -18,7 +18,7 @@ test("readableProfiles excludes a private space's profiles, even shared with a n
   expect(readableProfiles(e)).toEqual(["default", "libre"]);
 });
 
-test("urlPermise: http(s) only; with domains, the exact host (trailing dot ignored), like the kernel", () => {
+test("urlAllowed: http(s) only; with domains, the exact host (trailing dot ignored), like the kernel", () => {
   expect(allowedUrl("https://exemple.test/a", undefined)).toBe(true);
   expect(allowedUrl("javascript:alert(1)", undefined)).toBe(false);
   expect(allowedUrl("pas une url", undefined)).toBe(false);
@@ -30,7 +30,7 @@ test("urlPermise: http(s) only; with domains, the exact host (trailing dot ignor
   expect(allowedUrl("data:text/html,x", ["exemple.test"])).toBe(false);
 });
 
-test("urlPermise refuses local addresses, except for the tests option", () => {
+test("urlAllowed refuses local addresses, except for the tests option", () => {
   for (const u of ["http://localhost./", "http://localhost:11434/api", "http://127.0.0.1:11434/", "http://192.168.1.1/", "http://[::1]/", "http://10.0.0.2/", "http://box.local/"]) {
     expect(allowedUrl(u, undefined), u).toBe(false);
     expect(allowedUrl(u, undefined, true), u).toBe(true);

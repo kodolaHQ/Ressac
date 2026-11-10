@@ -76,7 +76,7 @@ test("closing an inactive tab does not change the active one", () => {
   expect(active()).toBe(b);
 });
 
-test("ouvrirOnglet with apres inserts right after; a new tab has default values", () => {
+test("openTab with apres inserts right after; a new tab has default values", () => {
   const a = open("https://a.test/");
   const b = open("https://b.test/");
   const c = open("https://c.test/", { after: a });
@@ -105,12 +105,12 @@ test("link opened from a tab of a background space: it stays in that space; from
   expect(e.tabs[m]!.spaceId).toBe(D);
 });
 
-test("tab opened by the agent: ouvertParAgent true", () => {
+test("tab opened by the agent: openedByAgent true", () => {
   const a = open("http://localhost:5280/", { openedByAgent: true });
   expect(e.tabs[a]!.openedByAgent).toBe(true);
 });
 
-test("deplacerOnglet reorders (clamped index)", () => {
+test("moveTab reorders (clamped index)", () => {
   const a = open("https://a.test/");
   const b = open("https://b.test/");
   const c = open("https://c.test/");
@@ -120,7 +120,7 @@ test("deplacerOnglet reorders (clamped index)", () => {
   expect(order()).toEqual([a, b, c]);
 });
 
-test("rouvrirOngletFerme reopens the most recent one and removes it from the stack; stack limited to 20", () => {
+test("reopenClosedTab reopens the most recent one and removes it from the stack; stack limited to 20", () => {
   for (let i = 0; i < 25; i++) ag({ type: "closeTab", id: open(`https://${i}.test/`) });
   expect(fen().recentlyClosed).toHaveLength(20);
   expect(fen().recentlyClosed[0]).toEqual({ url: "https://24.test/", spaceId: P });
@@ -129,7 +129,7 @@ test("rouvrirOngletFerme reopens the most recent one and removes it from the sta
   expect(fen().recentlyClosed[0]!.url).toBe("https://23.test/");
 });
 
-test("rouvrirOngletFerme with an empty stack changes nothing", () => {
+test("reopenClosedTab with an empty stack changes nothing", () => {
   const before = e;
   ag({ type: "reopenClosedTab", windowId: F });
   expect(e).toBe(before);
@@ -146,7 +146,7 @@ test("pinning a tab creates a favorite in the space and the tab leaves ordre", (
   expect(active()).toBe(a);
 });
 
-test("closing a pinned tab: the favorite stays, nothing enters fermesRecemment", () => {
+test("closing a pinned tab: the favorite stays, nothing enters recentlyClosed", () => {
   const a = open("https://a.test/");
   ag({ type: "pinTab", id: a });
   ag({ type: "closeTab", id: a });
@@ -155,7 +155,7 @@ test("closing a pinned tab: the favorite stays, nothing enters fermesRecemment",
   expect(active()).toBeNull();
 });
 
-test("ouvrirFavori creates the linked tab then reuses it", () => {
+test("openFavorite creates the linked tab then reuses it", () => {
   const a = open("https://a.test/");
   ag({ type: "pinTab", id: a });
   const favId = e.spaces[0]!.pinned[0]!.id;
@@ -218,7 +218,7 @@ test("deleting the origin space of an essential open elsewhere: the other space 
   expect(remaining === null || !!e.tabs[remaining]).toBe(true);
 });
 
-test("activerEspace keeps each space's own active tab", () => {
+test("activateSpace keeps each space's own active tab", () => {
   const a = open("https://a.test/");
   ag({ type: "createSpace", name: "Boulot", icon: "💼", private: false, profile: "default" });
   const B = e.spaces[1]!.id;
@@ -231,7 +231,7 @@ test("activerEspace keeps each space's own active tab", () => {
   expect(active(B)).toBe(b);
 });
 
-test("activerOnglet of another space switches the active space", () => {
+test("activateTab of another space switches the active space", () => {
   ag({ type: "createSpace", name: "Boulot", icon: "💼", private: false, profile: "default", windowId: F });
   const B = e.spaces[1]!.id;
   const b = open("https://b.test/");
@@ -240,7 +240,7 @@ test("activerOnglet of another space switches the active space", () => {
   expect(fen().activeSpace).toBe(B);
 });
 
-test("activerOnglet garderEspace: the tab becomes its space's, the window stays on its own", () => {
+test("activateTab keepSpace: the tab becomes its space's, the window stays on its own", () => {
   ag({ type: "createSpace", name: "Boulot", icon: "💼", private: false, profile: "default", windowId: F });
   const B = e.spaces[1]!.id;
   const b1 = open("https://b1.test/");
@@ -251,49 +251,49 @@ test("activerOnglet garderEspace: the tab becomes its space's, the window stays 
   expect(active(B)).toBe(b1);
 });
 
-test("reglerEspace changes the name and the icon", () => {
+test("updateSpace changes the name and the icon", () => {
   ag({ type: "updateSpace", id: P, name: "Maison", icon: "🏡", private: false, profile: "default" });
   expect(e.spaces[0]).toMatchObject({ name: "Maison", icon: "🏡", private: false, profile: "default" });
 });
 
-test("reglerEspace with no change leaves the state unchanged", () => {
+test("updateSpace with no change leaves the state unchanged", () => {
   const before = e;
   ag({ type: "updateSpace", id: P, name: "Perso", icon: "🏠", private: false, profile: "default" });
   expect(e).toBe(before);
 });
 
-test("creerEspace with a new sign-in profile: a fresh profile; with an existing profile: it is reused", () => {
-  ag({ type: "createSpace", name: "Banque", icon: "🏦", private: true, profile: "nouveau" });
+test("createSpace with a new sign-in profile: a fresh profile; with an existing profile: it is reused", () => {
+  ag({ type: "createSpace", name: "Banque", icon: "🏦", private: true, profile: "new" });
   const bank = e.spaces[1]!;
   expect(bank).toMatchObject({ name: "Banque", private: true });
   expect(bank.profile).not.toBe("default");
-  expect(bank.profile).not.toBe("nouveau");
+  expect(bank.profile).not.toBe("new");
   expect(e.profiles).toEqual([{ id: "default" }, { id: bank.profile }]);
   ag({ type: "createSpace", name: "Comptes", icon: "📒", private: false, profile: bank.profile });
   expect(e.spaces[2]!.profile).toBe(bank.profile);
   expect(e.profiles).toHaveLength(2);
 });
 
-test("creerEspace on an unknown sign-in profile is refused", () => {
+test("createSpace on an unknown sign-in profile is refused", () => {
   const before = e;
   ag({ type: "createSpace", name: "X", icon: "❓", private: false, profile: "inconnu" });
   expect(e).toBe(before);
 });
 
-test("reglerEspace that leaves a sign-in profile unused removes it, including the default profile", () => {
-  ag({ type: "createSpace", name: "Banque", icon: "🏦", private: false, profile: "nouveau" });
+test("updateSpace that leaves a sign-in profile unused removes it, including the default profile", () => {
+  ag({ type: "createSpace", name: "Banque", icon: "🏦", private: false, profile: "new" });
   const bank = e.spaces[1]!;
   ag({ type: "updateSpace", id: bank.id, name: "Banque", icon: "🏦", private: false, profile: "default" });
   expect(e.profiles).toEqual([{ id: "default" }]);
-  ag({ type: "updateSpace", id: bank.id, name: "Banque", icon: "🏦", private: false, profile: "nouveau" });
+  ag({ type: "updateSpace", id: bank.id, name: "Banque", icon: "🏦", private: false, profile: "new" });
   const fresh = e.spaces[1]!.profile;
   ag({ type: "updateSpace", id: P, name: "Perso", icon: "🏠", private: false, profile: fresh });
   expect(e.profiles).toEqual([{ id: fresh }]);
   expect(e.spaces.every((x) => x.profile === fresh)).toBe(true);
 });
 
-test("supprimerEspace removes the sign-in profile it was the only one using", () => {
-  ag({ type: "createSpace", name: "Banque", icon: "🏦", private: false, profile: "nouveau" });
+test("deleteSpace removes the sign-in profile it was the only one using", () => {
+  ag({ type: "createSpace", name: "Banque", icon: "🏦", private: false, profile: "new" });
   const bank = e.spaces[1]!;
   ag({ type: "deleteSpace", id: bank.id });
   expect(e.profiles).toEqual([{ id: "default" }]);
@@ -323,7 +323,7 @@ test("essential opened in a space with another key (private or other profile): a
   expect(Object.keys(e.tabs)).toHaveLength(2);
 });
 
-test("reglerEspace that changes a space's key: the tab that a space of the old key displays comes back to it", () => {
+test("updateSpace that changes a space's key: the tab that a space of the old key displays comes back to it", () => {
   const a = open("https://mail.google.com/");
   ag({ type: "addEssential", id: a });
   ag({ type: "createSpace", name: "Boulot", icon: "💼", private: false, profile: "default", windowId: F });
@@ -336,7 +336,7 @@ test("reglerEspace that changes a space's key: the tab that a space of the old k
   expect(active(P)).toBeNull();
 });
 
-test("reglerEspace that changes a space's key: a tab that no other space displays stays with it, the others let go of it", () => {
+test("updateSpace that changes a space's key: a tab that no other space displays stays with it, the others let go of it", () => {
   const a = open("https://mail.google.com/");
   ag({ type: "addEssential", id: a });
   ag({ type: "createSpace", name: "Boulot", icon: "💼", private: false, profile: "default", windowId: F });
@@ -351,7 +351,7 @@ test("reglerEspace that changes a space's key: a tab that no other space display
   expect(active(C)).toBeNull();
 });
 
-test("reglerEspace: pointers of other spaces that stayed compatible are kept", () => {
+test("updateSpace: pointers of other spaces that stayed compatible are kept", () => {
   const a = open("https://mail.google.com/");
   ag({ type: "addEssential", id: a });
   ag({ type: "createSpace", name: "Boulot", icon: "💼", private: false, profile: "default", windowId: F });
@@ -361,9 +361,9 @@ test("reglerEspace: pointers of other spaces that stayed compatible are kept", (
   expect(active(B)).toBe(a);
 });
 
-test("reglerEspace: an essential shared by two private spaces stays private when its owner no longer is", () => {
+test("updateSpace: an essential shared by two private spaces stays private when its owner no longer is", () => {
   // « Banque » and « Banque pro », private on the same profile; the Gmail tab belongs to Banque, also displayed in Banque pro.
-  ag({ type: "createSpace", name: "Banque", icon: "🏦", private: true, profile: "nouveau", windowId: F });
+  ag({ type: "createSpace", name: "Banque", icon: "🏦", private: true, profile: "new", windowId: F });
   const bank = e.spaces[1]!;
   const g = open("https://mail.google.com/");
   ag({ type: "addEssential", id: g });
@@ -383,8 +383,8 @@ test("reglerEspace: an essential shared by two private spaces stays private when
     if (id) expect(spaceKey(e, space)).toBe(spaceKey(e, e.tabs[id]!.spaceId));
 });
 
-test("reglerEspace: several spaces display the tab under the old key, the first in space order takes it back", () => {
-  ag({ type: "createSpace", name: "Banque", icon: "🏦", private: true, profile: "nouveau", windowId: F });
+test("updateSpace: several spaces display the tab under the old key, the first in space order takes it back", () => {
+  ag({ type: "createSpace", name: "Banque", icon: "🏦", private: true, profile: "new", windowId: F });
   const bank = e.spaces[1]!;
   const g = open("https://mail.google.com/");
   ag({ type: "addEssential", id: g });
@@ -424,7 +424,7 @@ test("historyContext: a shared essential counts in the space that displays it, o
 });
 
 test("spaceKey, privateTab, tabProfile", () => {
-  ag({ type: "createSpace", name: "Banque", icon: "🏦", private: true, profile: "nouveau" });
+  ag({ type: "createSpace", name: "Banque", icon: "🏦", private: true, profile: "new" });
   const bank = e.spaces[1]!;
   expect(spaceKey(e, P)).toBe("default|false");
   expect(spaceKey(e, bank.id)).toBe(`${bank.profile}|true`);
@@ -443,7 +443,7 @@ test("spaceKey, privateTab, tabProfile", () => {
   expect(privateTab(e, orphan)).toBe(true);
 });
 
-test("supprimerEspace closes its tabs and switches the windows", () => {
+test("deleteSpace closes its tabs and switches the windows", () => {
   ag({ type: "createSpace", name: "Boulot", icon: "💼", private: false, profile: "default", windowId: F });
   const B = e.spaces[1]!.id;
   const b = open("https://b.test/");
@@ -460,7 +460,7 @@ test("deleting the last space is refused", () => {
   expect(e).toBe(before);
 });
 
-test("ouvrirFenetre on a given space; fermerFenetre deletes its tabs", () => {
+test("openWindow on a given space; closeWindow deletes its tabs", () => {
   ag({ type: "createSpace", name: "Boulot", icon: "💼", private: false, profile: "default" });
   const B = e.spaces[1]!.id;
   ag({ type: "openWindow", id: "f2", spaceId: B });
@@ -479,7 +479,7 @@ test("closing the last window does not change the state", () => {
   expect(e).toBe(before);
 });
 
-test("basculerCompact, basculerPanneauAgent, choisirMoteur", () => {
+test("toggleCompact, toggleAgentPanel, chooseEngine", () => {
   ag({ type: "toggleCompact", windowId: F });
   ag({ type: "toggleAgentPanel", windowId: F });
   ag({ type: "chooseEngine", engine: "qwant" });
@@ -487,7 +487,7 @@ test("basculerCompact, basculerPanneauAgent, choisirMoteur", () => {
   expect(e.settings.engine).toBe("qwant");
 });
 
-test("cadrerFenetre keeps the size and position; unknown window → same reference", () => {
+test("frameWindow keeps the size and position; unknown window → same reference", () => {
   expect(fen().frame).toBeNull();
   ag({ type: "frameWindow", id: F, frame: { x: 10, y: 20, width: 800, height: 600 } });
   expect(fen().frame).toEqual({ x: 10, y: 20, width: 800, height: 600 });
@@ -495,14 +495,14 @@ test("cadrerFenetre keeps the size and position; unknown window → same referen
   expect(apply(e, { type: "frameWindow", id: "inconnue", frame: { x: 0, y: 0, width: 1, height: 1 } }, genId)).toBe(before);
 });
 
-test("majOnglet with no change → same reference (nothing to rebroadcast)", () => {
+test("updateTab with no change → same reference (nothing to rebroadcast)", () => {
   const a = open("https://a.test/");
   ag({ type: "updateTab", id: a, fields: { title: "A", loading: true } });
   const before = e;
   expect(apply(e, { type: "updateTab", id: a, fields: { title: "A", loading: true } }, genId)).toBe(before);
 });
 
-test("majOnglet only touches the given fields; unknown id → same reference", () => {
+test("updateTab only touches the given fields; unknown id → same reference", () => {
   const a = open("https://a.test/");
   ag({ type: "updateTab", id: a, fields: { title: "A", loading: true } });
   expect(e.tabs[a]).toMatchObject({ title: "A", loading: true, url: "https://a.test/" });
@@ -531,14 +531,14 @@ test("appliquer never mutates the input state", () => {
   }).not.toThrow();
 });
 
-test("afficherPageVide: the space no longer has an active tab, its tabs remain", () => {
+test("showBlankPage: the space no longer has an active tab, its tabs remain", () => {
   const a = open("https://a.fr");
   ag({ type: "showBlankPage", windowId: F });
   expect(active()).toBeNull();
   expect(order()).toEqual([a]);
 });
 
-test("fermerFenetre: its tabs (all spaces) go into the remaining window's recently closed, ⇧⌘T reopens them", () => {
+test("closeWindow: its tabs (all spaces) go into the remaining window's recently closed, ⇧⌘T reopens them", () => {
   ag({ type: "openWindow", id: "F2" });
   ag({ type: "openTab", windowId: "F2", url: "https://x.fr" });
   ag({ type: "createSpace", name: "Boulot", icon: "💼", private: false, profile: "default", windowId: "F2" });
@@ -549,13 +549,13 @@ test("fermerFenetre: its tabs (all spaces) go into the remaining window's recent
   expect(Object.values(e.tabs).map((o) => o.url)).toEqual(["https://y.fr"]);
 });
 
-test("choisirProfilAgent changes the setting (claude by default)", () => {
+test("chooseAgentProfile changes the setting (claude by default)", () => {
   expect(e.settings.agentProfile).toBe("claude");
   ag({ type: "chooseAgentProfile", profile: "autre" });
   expect(e.settings.agentProfile).toBe("autre");
 });
 
-test("panneauAgentAccueil: opens only on the home page (otherwise the tab would be given to the agent); always closes", () => {
+test("homeAgentPanel: opens only on the home page (otherwise the tab would be given to the agent); always closes", () => {
   open("https://a.test/");
   const before = e;
   ag({ type: "homeAgentPanel", windowId: F, open: true });
@@ -570,7 +570,7 @@ test("panneauAgentAccueil: opens only on the home page (otherwise the tab would 
   expect(fen().agentPanelOpen).toBe(false);
 });
 
-test("largeurPanneauAgent: 420 by default, kept, clamped between 280 and 1000", () => {
+test("agentPanelWidth: 420 by default, kept, clamped between 280 and 1000", () => {
   expect(e.settings.agentPanelWidth).toBe(420);
   ag({ type: "agentPanelWidth", width: 612.4 });
   expect(e.settings.agentPanelWidth).toBe(612);
@@ -580,7 +580,7 @@ test("largeurPanneauAgent: 420 by default, kept, clamped between 280 and 1000", 
   expect(e.settings.agentPanelWidth).toBe(1000);
 });
 
-test("ouvrirApplications reuses the window's existing tab", () => {
+test("openApps reuses the window's existing tab", () => {
   open("https://a.test/");
   ag({ type: "openApps", windowId: F });
   const pages = () => Object.values(e.tabs).filter((o) => o.url === URL_APPLICATIONS);
@@ -606,7 +606,7 @@ test("ouvrirApplications reuses the window's existing tab", () => {
   expect(active()).toBe(page.id);
 });
 
-test("ouvrirExtensions opens or activates the page, like ouvrirApplications", () => {
+test("openExtensions opens or activates the page, like openApps", () => {
   expect(URL_EXTENSIONS).toBe("webaios://extensions");
   expect(hasView(URL_EXTENSIONS)).toBe(false);
   open("https://a.test/");
@@ -629,7 +629,7 @@ test("ouvrirExtensions opens or activates the page, like ouvrirApplications", ()
   expect(fen().activeSpace).toBe(P);
 });
 
-test("ouvrirWorkflow opens a titled webaios://workflow/<id> tab, then returns to it instead of opening a second one", () => {
+test("openWorkflow opens a titled webaios://workflow/<id> tab, then returns to it instead of opening a second one", () => {
   open("https://a.test/");
   ag({ type: "openWorkflow", windowId: F, id: "meteo", name: "Météo" });
   const pages = (id = "meteo") => Object.values(e.tabs).filter((o) => o.url === urlWorkflow(id));
@@ -703,7 +703,7 @@ test("openAction finds the action's tab in another space of the window; with exe
 test("openAction neither opens nor finds anything in a private space", () => {
   ag({ type: "openAction", windowId: F, id: "gitlab", name: "GitLab" });
   const page = Object.keys(e.tabs).at(-1)!;
-  ag({ type: "createSpace", name: "Banque", icon: "🏦", private: true, profile: "nouveau", windowId: F });
+  ag({ type: "createSpace", name: "Banque", icon: "🏦", private: true, profile: "new", windowId: F });
   const bank = fen().activeSpace;
   // The non-private space's tab is found; the window goes back there.
   ag({ type: "openAction", windowId: F, id: "gitlab", name: "GitLab" });
@@ -716,7 +716,7 @@ test("openAction neither opens nor finds anything in a private space", () => {
   expect(e).toBe(before);
 });
 
-test("ouvrirActions opens the single « Actions » page, then returns to it", () => {
+test("openActions opens the single « Actions » page, then returns to it", () => {
   ag({ type: "openActions", windowId: F });
   const pages = () => Object.values(e.tabs).filter((o) => o.url === URL_ACTIONS);
   expect(pages()).toHaveLength(1);
@@ -727,7 +727,7 @@ test("ouvrirActions opens the single « Actions » page, then returns to it", ()
   expect(active()).toBe(pages()[0]!.id);
 });
 
-test("ouvrirWorkflow of an action opens webaios://workflow/action/<id>", () => {
+test("openWorkflow of an action opens webaios://workflow/action/<id>", () => {
   ag({ type: "openWorkflow", windowId: F, id: "gitlab", name: "GitLab", owner: "action" });
   expect(Object.values(e.tabs)[0]).toMatchObject({ url: "webaios://workflow/action/gitlab", title: "Workflow — GitLab" });
   ag({ type: "openWorkflow", windowId: F, id: "gitlab", name: "GitLab" });
@@ -741,7 +741,7 @@ test("profilesInUse: by identifier, spaces included", () => {
 });
 
 // Plan 17, task 11: a project's review page.
-test("ouvrirRelecture opens webaios://review/app-essai titled « Relecture — Essai »; a second call returns to the same tab", async () => {
+test("openReview opens webaios://review/app-essai titled « Relecture — Essai »; a second call returns to the same tab", async () => {
   const { reviewUrl } = await import("../../shared/model");
   ag({ type: "openReview", windowId: F, project: "app-essai", name: "Essai" });
   const pages = () => Object.values(e.tabs).filter((o) => o.url === "webaios://review/app-essai");

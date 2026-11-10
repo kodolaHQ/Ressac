@@ -37,23 +37,23 @@
 <svelte:window onkeydown={key} />
 
 <section class="code">
-  <div class="tete">
-    <span class="titre">Code <code>{name}</code></span>
-    {#if file.unsaved}<span class="non-enregistre" data-testid="code-non-enregistre">Code non enregistré</span>{/if}
-    <button data-testid="enregistrer-code" disabled={!file.unsaved || file.recording || file.disk === undefined} onclick={() => file.save()}
+  <div class="head">
+    <span class="title">Code <code>{name}</code></span>
+    {#if file.unsaved}<span class="unsaved" data-testid="code-unsaved">Code non enregistré</span>{/if}
+    <button data-testid="save-code" disabled={!file.unsaved || file.recording || file.disk === undefined} onclick={() => file.save()}
       >Enregistrer le code</button
     >
   </div>
   {#if file.changedOnDisk}
-    <div class="bandeau" role="status" data-testid="code-change">
+    <div class="banner" role="status" data-testid="code-change">
       <span>Le fichier a changé sur le disque</span>
-      <button data-testid="recharger-code" onclick={() => file.reload()}>Recharger</button>
-      <button data-testid="garder-code" onclick={() => file.keepMine()}>Garder le mien</button>
+      <button data-testid="reload-code" onclick={() => file.reload()}>Recharger</button>
+      <button data-testid="keep-code" onclick={() => file.keepMine()}>Garder le mien</button>
     </div>
   {/if}
-  {#if file.error}<p class="erreur" data-testid="erreur-code">{file.error}</p>{/if}
+  {#if file.error}<p class="error" data-testid="code-error">{file.error}</p>{/if}
   <textarea
-    data-testid="editeur-code"
+    data-testid="code-editor"
     spellcheck="false"
     autocomplete="off"
     autocapitalize="off"
@@ -66,17 +66,17 @@
 
 <style>
   .code { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
-  .tete { display: flex; align-items: center; gap: 8px; font-size: 12px; }
-  .titre { flex: 1; color: var(--texte-doux); }
-  .non-enregistre { color: var(--en-cours); }
-  button { padding: 3px 8px; border-radius: 6px; border: 1px solid var(--bord); background: var(--fond-barre); color: var(--texte); font-size: 12px; }
+  .head { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+  .title { flex: 1; color: var(--text-muted); }
+  .unsaved { color: var(--in-progress); }
+  button { padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); font-size: 12px; }
   button:disabled { opacity: 0.5; }
-  .bandeau { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 6px; background: var(--fond-actif); font-size: 12px; }
-  .bandeau span { flex: 1; }
-  .erreur { margin: 0; color: var(--en-erreur); font-size: 12px; white-space: pre-wrap; word-break: break-word; }
+  .banner { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 6px; background: var(--bg-active); font-size: 12px; }
+  .banner span { flex: 1; }
+  .error { margin: 0; color: var(--in-error); font-size: 12px; white-space: pre-wrap; word-break: break-word; }
   textarea {
     box-sizing: border-box; width: 100%; min-height: 220px; resize: vertical; padding: 8px; border-radius: 6px;
-    border: 1px solid var(--bord); background: var(--fond); color: var(--texte); tab-size: 2;
+    border: 1px solid var(--border); background: var(--bg); color: var(--text); tab-size: 2;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.45;
   }
 </style>

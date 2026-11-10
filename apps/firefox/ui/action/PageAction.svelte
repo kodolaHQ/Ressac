@@ -72,7 +72,7 @@
         review = setTimeout(() => void load(), 2000);
       }
     } catch (e) {
-      console.error(`[webaios] page de l'action ${id} :`, e);
+      console.error(`[webaios] page of action ${id}:`, e);
     }
   }
 
@@ -151,9 +151,9 @@
   const choose = (e: string) => action && api.dispatch({ type: "openAction", windowId: api.windowId, id, name: action.name, run: e });
 </script>
 
-<div class="defile" data-testid="page-action">
+<div class="scrolled" data-testid="page-action">
   {#if action === null}
-    <p class="message erreur" data-testid="erreur-action">{ACTION_UNKNOWN}</p>
+    <p class="message error" data-testid="action-error">{ACTION_UNKNOWN}</p>
   {:else if action}
     <ActionHeader
       name={action.name}
@@ -170,29 +170,29 @@
     {#if running}
       {#key current?.start}<ActionProgress current={current} waiting={pending} stop={() => api.actions.stop(id)} />{/key}
     {:else}
-      {#if action.error}<p class="message erreur">{action.error}</p>{/if}
+      {#if action.error}<p class="message error">{action.error}</p>{/if}
       {#if grantNeed}
-        <div class="message accord" data-testid="accord-requis">
+        <div class="message grant" data-testid="grant-required">
           <p>Accord requis pour lire avec ton compte : {action.account.join(", ")}</p>
           <button onclick={() => (cardOpen = true)}>Autoriser…</button>
         </div>
       {/if}
       {#if shownError}
-        <p class="message erreur" data-testid="erreur-action">{shownError}</p>
+        <p class="message error" data-testid="action-error">{shownError}</p>
       {:else if lastWithoutResult?.error ?? loaded?.error}
-        <p class="message erreur" data-testid="erreur-action">{lastWithoutResult?.error ?? loaded?.error}</p>
+        <p class="message error" data-testid="action-error">{lastWithoutResult?.error ?? loaded?.error}</p>
       {/if}
       {#if loaded === null && execution !== null}
-        <div class="message disparu" data-testid="resultat-disparu">
+        <div class="message gone" data-testid="result-gone">
           <p>{RESULT_GONE}</p>
           {#if previous && previous.length > 0}
-            <button data-testid="voir-dernier-resultat" onclick={() => choose(previous![0]!.id)}>Voir le dernier résultat</button>
+            <button data-testid="show-latest-result" onclick={() => choose(previous![0]!.id)}>Voir le dernier résultat</button>
           {/if}
         </div>
       {:else if loaded === null && !lastWithoutResult && !action.input && !grantNeed && !shownError}
-        <p class="message" data-testid="pas-de-resultat">Pas encore de résultat</p>
+        <p class="message" data-testid="nothing-found">Pas encore de résultat</p>
       {:else if loaded?.page?.empty}
-        <p class="message" data-testid="aucun-resultat">{NO_RESULT}</p>
+        <p class="message" data-testid="no-result">{NO_RESULT}</p>
       {:else if loaded?.page}
         <PageRender page={loaded.page} action={id} run={loaded.run} />
       {/if}
@@ -212,13 +212,13 @@
 </div>
 
 <style>
-  .defile { position: absolute; inset: 0; overflow: auto; }
-  .message { max-width: 960px; box-sizing: border-box; margin: 16px auto 0; padding: 0 24px; color: var(--texte-doux); font-size: 14px; }
-  .erreur { color: var(--en-erreur); overflow-wrap: anywhere; }
-  .disparu { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
-  .disparu p { margin: 0; }
-  .disparu button { padding: 5px 10px; border-radius: 6px; border: 1px solid var(--bord); background: var(--fond-barre); color: var(--texte); font: inherit; }
-  .accord { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
-  .accord p { margin: 0; color: var(--texte); }
-  .accord button { padding: 5px 10px; border-radius: 6px; border: 1px solid var(--bord); background: var(--fond-barre); color: var(--texte); font: inherit; }
+  .scrolled { position: absolute; inset: 0; overflow: auto; }
+  .message { max-width: 960px; box-sizing: border-box; margin: 16px auto 0; padding: 0 24px; color: var(--text-muted); font-size: 14px; }
+  .error { color: var(--in-error); overflow-wrap: anywhere; }
+  .gone { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .gone p { margin: 0; }
+  .gone button { padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); font: inherit; }
+  .grant { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .grant p { margin: 0; color: var(--text); }
+  .grant button { padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); font: inherit; }
 </style>

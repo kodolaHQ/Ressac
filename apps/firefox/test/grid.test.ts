@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { COLUMNS, move, GAP_PX, ROW_PX, resize, type Placement } from "../ui/grille";
+import { COLUMNS, move, GAP_PX, ROW_PX, resize, type Placement } from "../ui/grid";
 
 const p = (id: string, x: number, y: number, w: number, h: number): Placement => ({ id, x, y, w, h });
 const sizes = { min: { w: 2, h: 2 }, max: { w: 6, h: 4 } };

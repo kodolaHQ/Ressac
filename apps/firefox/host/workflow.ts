@@ -139,7 +139,7 @@ export async function readEdit(c: Context, id: string): Promise<WorkflowEdit | n
       },
     };
   } catch (e) {
-    console.error(`[webaios] lecture du workflow du widget ${id} :`, e);
+    console.error(`[webaios] reading the workflow of widget ${id}:`, e);
     return null;
   }
 }
@@ -158,7 +158,7 @@ export async function saveEdit(c: Context, id: string, raw: unknown): Promise<Sa
     });
     return { ...r, warnings: r.ok ? warningsOf(raw, d.declaration) : [] };
   } catch (e) {
-    console.error(`[webaios] enregistrement du workflow du widget ${id} :`, e);
+    console.error(`[webaios] saving the workflow of widget ${id}:`, e);
     return { ok: false, error: UNREADABLE_MESSAGE, warnings: [] };
   }
 }
@@ -176,7 +176,7 @@ export async function saveCode(paths: SpacePaths, id: string, name: string, text
   try {
     return await storeCode(folder, name, text);
   } catch (e) {
-    console.error(`[webaios] code du widget ${id} :`, e);
+    console.error(`[webaios] code of widget ${id}:`, e);
     return { ok: false, error: UNREADABLE_MESSAGE };
   }
 }
@@ -225,7 +225,7 @@ export async function readActionEdit(c: ActionContext, id: string): Promise<Work
       },
     };
   } catch (e) {
-    console.error(`[webaios] lecture du workflow de l'action ${id} :`, e);
+    console.error(`[webaios] reading the workflow of action ${id}:`, e);
     return null;
   }
 }
@@ -244,7 +244,7 @@ export async function saveActionEdit(c: ActionContext, id: string, raw: unknown)
     });
     return { ...r, warnings: r.ok ? actionWarnings(raw, d.declaration) : [] };
   } catch (e) {
-    console.error(`[webaios] enregistrement du workflow de l'action ${id} :`, e);
+    console.error(`[webaios] saving the workflow of action ${id}:`, e);
     return { ok: false, error: UNREADABLE_MESSAGE, warnings: [] };
   }
 }
@@ -262,7 +262,7 @@ export async function saveActionCode(paths: SpacePaths, id: string, name: string
   try {
     return await storeCode(folder, name, text);
   } catch (e) {
-    console.error(`[webaios] code de l'action ${id} :`, e);
+    console.error(`[webaios] code of action ${id}:`, e);
     return { ok: false, error: UNREADABLE_MESSAGE };
   }
 }

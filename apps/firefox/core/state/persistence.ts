@@ -66,7 +66,7 @@ async function setAside(path: string, reason: "corrupt" | "unreadable"): Promise
     } catch {
       return fs.rename(path, name).then(
         () => name,
-        (e) => (console.error(`[session] impossible de garder ${path} de côté :`, e), null),
+        (e) => (console.error(`[session] could not set ${path} aside:`, e), null),
       );
     }
   }
@@ -125,7 +125,7 @@ export class SessionRecorder {
       this.writing = this.writing
         .then(() => this.write(state))
         .catch((e) => {
-          console.error("[session] écriture impossible :", e);
+          console.error("[session] write failed:", e);
           // Retried at the next write or at exit, unless a more recent state is already there.
           this.waiting ??= state;
         });

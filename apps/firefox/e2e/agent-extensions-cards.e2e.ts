@@ -15,8 +15,8 @@ import { startServer } from "./server";
 import { click, inUi, pressKeys, waitUi } from "./ui";
 
 // The agent's extension tools and their card (posed straight through the store's Questions; its answer is written to a file).
-const MODAL = '[data-testid="modale-demande"]';
-const CARD = '[data-testid="demande-extension"]';
+const MODAL = '[data-testid="request-modal"]';
+const CARD = '[data-testid="extension-request"]';
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const HOST = "http://127.0.0.1/*";
 const PRIVATE_PROFILE_ERROR = "Donne à cet espace privé son propre profil pour y utiliser des extensions de l'agent";
@@ -31,7 +31,7 @@ const LOG = {
   "contenu.js": 'console.log("contenu:" + location.pathname);\n',
 };
 const HIDDEN = "message(s) masqué(s) : venus d'onglets que tu ne peux pas lire";
-const UNLOCK = '[data-testid="demande-console-extension"]';
+const UNLOCK = '[data-testid="extension-console-request"]';
 const hider = (matches: string[]) => ({ manifest_version: 3, name: "Cacheur de l'agent", version: "1.0.0", content_scripts: [{ matches, css: ["cache.css"] }] });
 
 const dirs: string[] = [];
@@ -51,7 +51,7 @@ async function launch(o: { amo?: Parameters<typeof launchWithAmo>[0]["amo"] } = 
   const config = path.join(dataDir, "workspace", ".webaios", "mcp.json");
   for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
     if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
-  await waitUi(w.marionette, "return doc.querySelector('.xterm-rows')?.textContent.includes('prêt>')", [], 20_000, "agent");
+  await waitUi(w.marionette, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
   return { ...w, root: path.join(dataDir, "workspace"), call: (name: string, args: Record<string, unknown> = {}) => callTool(dataDir, name, args) };
 }
 
@@ -157,16 +157,16 @@ describe("the grant card", () => {
    * A card in the current window for its active space (or `espaceId`), posed through the store; `reponse()` is its
    * GrantResponse once answered (written to a file: the window may be gone by then).
    */
-  async function withCard(champs: Record<string, unknown> = {}, w?: Awaited<ReturnType<typeof launch>>) {
+  async function withCard(overrides: Record<string, unknown> = {}, w?: Awaited<ReturnType<typeof launch>>) {
     w ??= await launch();
     const m = w.marionette;
     const s = await state(m);
     const win = await m.execute<string>("return window.webaiosWindow.windowId");
-    const space = s.spaces.find((e) => e.id === (champs.spaceId ?? s.windows.find((f) => f.id === win)!.activeSpace))!;
+    const space = s.spaces.find((e) => e.id === (overrides.spaceId ?? s.windows.find((f) => f.id === win)!.activeSpace))!;
     const card = {
       key: "agent:essai", name: "Essai", source: "agent", version: "1.0.0", rights: ["Modifier l'apparence et le contenu des pages"],
       sites: ["https://exemple.com/*"], allSites: false, network: [], hardened: false, space: space.name, spaceId: space.id,
-      otherSpaces: [], alsoReplaces: [], update: null, hash: "0".repeat(64), ...champs,
+      otherSpaces: [], alsoReplaces: [], update: null, hash: "0".repeat(64), ...overrides,
     };
     const file = path.join(w.dataDir, "reponse.json");
     await m.execute(
@@ -187,12 +187,12 @@ describe("the grant card", () => {
   }
   /** The card has the keyboard and Enter is armed. */
   const armed = (m: Marionette) =>
-    waitUi(m, `return !!doc.querySelector('${MODAL}[data-armee]') && !!doc.activeElement?.closest('${MODAL}') && document.activeElement?.id === "webaios-sidebar"`);
+    waitUi(m, `return !!doc.querySelector('${MODAL}[data-armed]') && !!doc.activeElement?.closest('${MODAL}') && document.activeElement?.id === "webaios-sidebar"`);
 
   it("an agent card without network says « Elle ne peut rien envoyer vers internet. »", async () => {
     const { m, wait: wait } = await withCard({ otherSpaces: ["Lecture"], alsoReplaces: ["Travail", "Achats"] });
     const c = await cardText(m);
-    expect(await inUi(m, `return doc.querySelector('[data-testid="carte-extension-remplace"]').textContent`)).toBe(
+    expect(await inUi(m, `return doc.querySelector('[data-testid="extension-card-replaces"]').textContent`)).toBe(
       "La nouvelle version remplacera aussi celle de « Travail », « Achats ».",
     );
     for (const t of [
@@ -208,7 +208,7 @@ describe("the grant card", () => {
       expect(c).toContain(t);
     expect(c).toMatch(/Activer\s*« Essai »\s*dans « .+ » \?/);
     expect(c).not.toContain("l'agent pourra voir");
-    expect(await inUi(m, `return doc.querySelectorAll('[data-testid="carte-extension-tous-sites"], [data-testid="carte-extension-confirmer"]').length`)).toBe(0);
+    expect(await inUi(m, `return doc.querySelectorAll('[data-testid="extension-card-all-sites"], [data-testid="extension-card-confirm"]').length`)).toBe(0);
     await enable(m);
     expect((await wait()).accepted).toBe(true);
     await cardGone(m);
@@ -231,16 +231,16 @@ describe("the grant card", () => {
 
   it("renforcée: the box ticked, Activer activates", async () => {
     const { m, wait: wait } = await withCard({ hardened: true, allSites: true, sites: ["<all_urls>"] });
-    await click(m, '[data-testid="carte-extension-confirmer"]');
-    await waitUi(m, `return doc.querySelector('[data-testid="carte-extension-confirmer"]').checked`);
+    await click(m, '[data-testid="extension-card-confirm"]');
+    await waitUi(m, `return doc.querySelector('[data-testid="extension-card-confirm"]').checked`);
     await enable(m);
     expect((await wait()).accepted).toBe(true);
   });
 
   it("Enter refuses an extension card, even renforcée and ticked", async () => {
     const { m, wait: wait } = await withCard({ hardened: true, allSites: true, sites: ["<all_urls>"] });
-    await click(m, '[data-testid="carte-extension-confirmer"]');
-    await waitUi(m, `return doc.querySelector('[data-testid="carte-extension-confirmer"]').checked`);
+    await click(m, '[data-testid="extension-card-confirm"]');
+    await waitUi(m, `return doc.querySelector('[data-testid="extension-card-confirm"]').checked`);
     await armed(m);
     await pressKeys(m, "Enter");
     expect((await wait()).accepted).toBe(false);
@@ -334,7 +334,7 @@ describe("the console", () => {
     );
     expect(card).toContain("le script de contenu ne trouve pas le bouton");
     // Refuser is the default button (Enter).
-    expect(await inUi(m, `return [...doc.querySelectorAll('${UNLOCK} button')].find((b) => b.textContent.includes("Refuser")).hasAttribute("data-principal")`)).toBe(true);
+    expect(await inUi(m, `return [...doc.querySelectorAll('${UNLOCK} button')].find((b) => b.textContent.includes("Refuser")).hasAttribute("data-main")`)).toBe(true);
     await click(m, `${UNLOCK} button`, { text: "Débloquer" });
     expect((await call).text).toContain("Console débloquée");
     let text = await consoleUntil(w, "journal", "contenu:/a.html");

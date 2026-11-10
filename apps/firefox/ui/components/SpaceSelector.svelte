@@ -32,7 +32,7 @@
       {#if tabs > 0}Supprimer l'espace « {space.name} » et ses {tabs} onglet{tabs > 1 ? "s" : ""} ?{:else}Supprimer l'espace « {space.name} » ?{/if}
       {#if connexions}Les connexions de cet espace seront perdues.{/if}
     </p>
-    <div class="boutons">
+    <div class="buttons">
       <button onclick={() => (toDelete = null)}>Annuler</button>
       <button
         class="danger"
@@ -44,34 +44,34 @@
     </div>
   </div>
 {/if}
-<nav class="espaces">
+<nav class="spaces">
   {#each appState.value?.spaces ?? [] as space (space.id)}
     <button
-      data-testid="espace-{space.id}"
+      data-testid="space-{space.id}"
       aria-current={space.id === win.activeSpace ? "true" : undefined}
       title={space.private ? `${space.name} (privé)` : space.name}
-      data-prive={space.private || undefined}
+      data-private={space.private || undefined}
       onclick={() => api.dispatch({ type: "activateSpace", windowId: win.id, id: space.id })}
       oncontextmenu={(e) =>
         openMenu(e, [
           { label: "Réglages", dispatch: () => set(space) },
           ...((appState.value?.spaces.length ?? 0) > 1 ? [{ label: "Supprimer", dispatch: () => remove(space) }] : []),
         ])}
-      >{space.icon}{#if space.private}<span class="cadenas" aria-hidden="true">🔒</span>{/if}</button
+      >{space.icon}{#if space.private}<span class="padlock" aria-hidden="true">🔒</span>{/if}</button
     >
   {/each}
-  <button data-testid="nouvel-espace" title="Nouvel espace" onclick={create}><Icon name="plus" /></button>
+  <button data-testid="new-space" title="Nouvel espace" onclick={create}><Icon name="plus" /></button>
 </nav>
 
 <style>
-  .espaces { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 0; }
-  .espaces button { all: unset; width: 28px; height: 28px; display: grid; place-content: center; border-radius: 6px; color: var(--texte-doux); position: relative; }
-  .espaces button:hover { background: var(--fond-survol); }
-  .espaces button[aria-current="true"] { background: var(--fond-actif); }
-  .cadenas { position: absolute; right: -3px; bottom: -3px; font-size: 9px; line-height: 1; }
-  .confirmation { padding: 8px; border-radius: 6px; background: var(--fond-actif); color: var(--texte); -webkit-app-region: no-drag; }
+  .spaces { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 0; }
+  .spaces button { all: unset; width: 28px; height: 28px; display: grid; place-content: center; border-radius: 6px; color: var(--text-muted); position: relative; }
+  .spaces button:hover { background: var(--bg-hover); }
+  .spaces button[aria-current="true"] { background: var(--bg-active); }
+  .padlock { position: absolute; right: -3px; bottom: -3px; font-size: 9px; line-height: 1; }
+  .confirmation { padding: 8px; border-radius: 6px; background: var(--bg-active); color: var(--text); -webkit-app-region: no-drag; }
   .confirmation p { margin: 0 0 8px; }
-  .boutons { display: flex; justify-content: flex-end; gap: 6px; }
-  .boutons button { padding: 4px 8px; border-radius: 4px; border: 1px solid var(--bord); background: var(--fond); color: var(--texte); }
-  .boutons .danger { background: #c0392b; border-color: #c0392b; color: white; }
+  .buttons { display: flex; justify-content: flex-end; gap: 6px; }
+  .buttons button { padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+  .buttons .danger { background: #c0392b; border-color: #c0392b; color: white; }
 </style>

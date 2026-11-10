@@ -148,9 +148,9 @@ function linkToFavorite(d: Draft, genId: () => string, o: Tab, type: "essential"
   return favorite;
 }
 
-/** The requested login profile: « nouveau » creates one; an unknown profile gives null. */
+/** The requested login profile: "new" creates one; an unknown profile gives null. */
 function requestedProfile(d: Draft, genId: () => string, profile: ProfileId): ProfileId | null {
-  if (profile === "nouveau") {
+  if (profile === "new") {
     const id = genId();
     d.profiles.push({ id });
     return id;

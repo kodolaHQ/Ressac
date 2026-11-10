@@ -33,8 +33,8 @@
     z-index: 10;
     width: 160px;
     padding: 4px;
-    background: var(--fond-actif);
-    border: 1px solid var(--bord);
+    background: var(--bg-active);
+    border: 1px solid var(--border);
     border-radius: 6px;
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
     -webkit-app-region: no-drag;
@@ -45,7 +45,7 @@
     width: calc(100% - 12px);
     padding: 5px 6px;
     border-radius: 4px;
-    color: var(--texte);
+    color: var(--text);
   }
-  button:hover { background: var(--fond-survol); }
+  button:hover { background: var(--bg-hover); }
 </style>

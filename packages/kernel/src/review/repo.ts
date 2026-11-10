@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { access, appendFile, constants, mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { parserDiff, type Block } from "./diff.js";
+import { parseDiff, type Block } from "./diff.js";
 
 export const GIT_REQUIRED = "git est nécessaire";
 export const ACCESS_DENIED = "accès refusé";
@@ -231,7 +231,7 @@ export class ReviewStore {
       if (!f) throw new Error(`fichier absent de la comparaison : ${path}`);
       if (f.displayable !== true) return { path: path, status: f.status, displayable: f.displayable, blocks: [] };
       const patch = await this.g(["diff-tree", "-p", `-U${DIFF_CONTEXT}`, "--no-color", "--no-ext-diff", "--no-textconv", "--no-renames", c.reviewedTree, c.currentTree, "--", `:(literal)${path}`]);
-      return { path: path, status: f.status, displayable: true, blocks: parserDiff(patch) };
+      return { path: path, status: f.status, displayable: true, blocks: parseDiff(patch) };
     });
   }
 

@@ -31,7 +31,7 @@ export { WORKSHOP_STOPPED_ERROR, INTERNAL_HARVEST_ERROR, type AttemptResult };
 /** A block of the run in progress, from its traces. */
 export type DirectBlock = { status: "running" | "succeeded" | "partial" | "failed"; items: number | null };
 /** A run (real, or builder try) that is running right now. */
-export type DirectWidget = { widget: string; kind: "execution" | "essai"; start: string; blocks: Record<string, DirectBlock> };
+export type DirectWidget = { widget: string; kind: "execution" | "attempt"; start: string; blocks: Record<string, DirectBlock> };
 /**
  * `courants`: the runs that are running (one per lane at most, in the order they started). `enAttente`:
  * widgets with a request (manual harvest, try) waiting for its turn.
@@ -260,7 +260,7 @@ export class WidgetsScheduler {
 
   /** A background error must never bring the browser down. */
   private inBackground(o: { onLaunch: boolean }): void {
-    this.check(o).catch((e) => console.error("[webaios] récolte des widgets :", e));
+    this.check(o).catch((e) => console.error("[webaios] widgets harvest:", e));
   }
 
   /**
@@ -290,7 +290,7 @@ export class WidgetsScheduler {
    * goes into the other one without losing its turn in the widget.
    */
   private inItsLane<T>(id: string, f: (w: WidgetRead | undefined) => Promise<T>): Promise<T> {
-    return this.only(id, "a-choisir", async (route): Promise<T | OtherRoute> => {
+    return this.only(id, "pick", async (route): Promise<T | OtherRoute> => {
       const w = (await this.widgets()).find((x) => x.id === id);
       if (w && routeOf(w) !== route) return new OtherRoute(routeOf(w));
       return f(w);
@@ -320,7 +320,7 @@ export class WidgetsScheduler {
         const before = e.before && e.before.status !== "running" && e.before.status !== "grant-required" ? e.before : { status: "ok" as const };
         return { ...before, lastUpdate: e.lastUpdate, lastAttempt: e.lastAttempt, ...(e.hours ? { hours: e.hours } : {}) };
       }).catch((e) => {
-        console.error(`[webaios] état du widget ${d.name} :`, e);
+        console.error(`[webaios] state of widget ${d.name}:`, e);
         return null;
       });
       if (!restored) continue;
@@ -332,7 +332,7 @@ export class WidgetsScheduler {
     try {
       this.o.onChange?.();
     } catch (e) {
-      console.error("[webaios] remise des états au démarrage :", e);
+      console.error("[webaios] states reset at startup:", e);
     }
   }
 
@@ -372,7 +372,7 @@ export class WidgetsScheduler {
         return true;
       });
       if (route === "long") {
-        task.catch((e) => console.error(`[webaios] récolte du widget ${id} :`, e));
+        task.catch((e) => console.error(`[webaios] harvest of widget ${id}:`, e));
         continue;
       }
       if (await task) harvests.push(id);
@@ -435,17 +435,17 @@ export class WidgetsScheduler {
    * Runs `f` for widget `id`, after the end of any previous request of this widget, whatever its lane
    * (`dureeMaxMinutes` may have changed while it was running). Its place is taken right away: the order of a
    * widget's requests is kept. The request only enters its lane once the widget is free: it does not hold the other
-   * widgets there while waiting. `"a-choisir"`: the lane is read at that moment; if `f` returns `AutreVoie` (changed during
+   * widgets there while waiting. `"pick"`: the lane is read at that moment; if `f` returns `OtherRoute` (changed during
    * the wait for the lane), the request goes into the other one, still at its turn in the widget.
    */
-  private only<T>(id: string, route: Route | "a-choisir", f: (route: Route) => Promise<T | OtherRoute>): Promise<T> {
+  private only<T>(id: string, route: Route | "pick", f: (route: Route) => Promise<T | OtherRoute>): Promise<T> {
     // A request whose lane is not yet chosen counts as long: a check does not wait for it.
     let counted = route !== "short";
     if (counted) this.countLong(id, 1);
     const previous = this.perWidget.get(id) ?? Promise.resolve();
     const task = previous.then(async () => {
       try {
-        let v = route === "a-choisir" ? await this.currentRoute(id) : route;
+        let v = route === "pick" ? await this.currentRoute(id) : route;
         for (;;) {
           if (counted !== (v === "long")) {
             counted = v === "long";
@@ -533,7 +533,7 @@ export class WidgetsScheduler {
       this.o.onChange?.();
       return state?.hours ?? null;
     } catch (e) {
-      console.error(`[webaios] suivi des heures du widget ${id} :`, e);
+      console.error(`[webaios] hours tracking of widget ${id}:`, e);
       return null;
     }
   }
@@ -553,7 +553,7 @@ export class WidgetsScheduler {
     } catch (e) {
       // The harvest may have written en-cours before failing (disk, container…): the widget must not stay there. The exception's
       // text is not kept (it may quote what the widget read): only a fixed kernel message is.
-      console.error(`[webaios] récolte du widget ${w.id} :`, e);
+      console.error(`[webaios] harvest of widget ${w.id}:`, e);
       state = this.stopped
         ? before
         : // `derniereTentative` is always the start of the attempt, as in the harvest.
@@ -582,7 +582,7 @@ export class WidgetsScheduler {
       const title = w.declaration.name.replace(/[\p{Cc}\p{Cf}]/gu, " ").replace(/\s+/g, " ").trim() || w.id;
       this.o.notify({ widget: w.id, title: title, text: notificationText(fresh) });
     } catch (e) {
-      console.error(`[webaios] notification du widget ${w.id} :`, e);
+      console.error(`[webaios] notification of widget ${w.id}:`, e);
     }
   }
 
@@ -626,13 +626,13 @@ export class WidgetsScheduler {
         try {
           return await this.follow(
             id,
-            "essai",
+            "attempt",
             (onTrace, ai) => this.o.harvestAttempt({ ...this.harvestOptions(w, onTrace, ai), trigger: "replay", origin: origin, start: start }),
             (r) => (r.ok ? r.run : undefined),
           );
         } catch (e) {
           // The exception's text may quote what the widget read: only a fixed kernel message is returned.
-          console.error(`[webaios] essai du widget ${id} :`, e);
+          console.error(`[webaios] trial of widget ${id}:`, e);
           return { ok: false, error: INTERNAL_HARVEST_ERROR };
         }
       });

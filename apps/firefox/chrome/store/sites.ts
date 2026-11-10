@@ -78,7 +78,7 @@ export interface SiteDesignView {
   viewState: SiteWindowState["viewState"];
   /** The app view's <browser>. */
   browser: any;
-  /** The home's frame (data-testid site-cadre-accueil in the bar) when the home is shown and shows this app's served copy (homePage), else null. */
+  /** The home's frame (data-testid site-home-frame in the bar) when the home is shown and shows this app's served copy (homePage), else null. */
   home: HTMLIFrameElement | null;
   /** Where to aim, in the site window's coordinates: the home frame's (bar rect + frame rect), else the view's. */
   bounds: { x: number; y: number; width: number; height: number };
@@ -224,10 +224,10 @@ const observer = {
       // goBack or goForward (no fixupAndLoadURIString to refuse them, see site-window.ts) is cancelled before it is sent.
       // The page's own navigations wait for « Entrer » too; Firefox's add-ons run in every app (§4.9).
       if (inView && s.viewState !== "site" && !s.wanted) {
-        console.warn(`[sites] chargement arrêté dans la vue (vue ${s.viewState}, non voulu) : ${url.slice(0, 80)}`);
+        console.warn(`[sites] load stopped in the view (view ${s.viewState}, unwanted): ${url.slice(0, 80)}`);
         return void ch.cancel(Cr.NS_BINDING_ABORTED);
       }
-      if (decisionNavigation(url, ctx) === "suivre") return;
+      if (decisionNavigation(url, ctx) === "follow") return;
       ch.cancel(Cr.NS_BINDING_ABORTED);
       // A sign-in window's refused page is not mentioned.
       if (inView) block(s, url);
@@ -242,10 +242,10 @@ const observer = {
       return closeStray(bc?.top?.embedderElement);
     }
     const d = openDecision(url, ctx);
-    if (d === "petite-fenetre") return void s.small.add(browserId);
+    if (d === "small-window") return void s.small.add(browserId);
     ch.cancel(Cr.NS_BINDING_ABORTED);
     closeStray(bc?.top?.embedderElement);
-    if (d === "dans-l-appli") loadInView(s, url);
+    if (d === "in-app") loadInView(s, url);
     else block(s, url);
   },
 };
@@ -300,7 +300,7 @@ const viewPolicy = {
     if (li.externalContentPolicyType !== Ci.nsIContentPolicy.TYPE_DOCUMENT || location.schemeIs("http") || location.schemeIs("https") || li.loadErrorPage) return accept;
     const browserId = li.browsingContext?.browserId;
     if (!browserId || (![...open.values()].some((s) => s.view?.browserId === browserId) && !apps.isAppView(browserId))) return accept;
-    console.warn(`[sites] chargement arrêté dans la vue (hors du web) : ${String(location.spec).slice(0, 80)}`);
+    console.warn(`[sites] load stopped in the view (not the web): ${String(location.spec).slice(0, 80)}`);
     return Ci.nsIContentPolicy.REJECT_REQUEST;
   },
   shouldProcess: () => Ci.nsIContentPolicy.ACCEPT,
@@ -738,7 +738,7 @@ export const sites = {
       f.initWithPath(PathUtils.join(dataDir, "workspace", "sites", id));
       f.reveal();
     } catch (e) {
-      console.warn("[sites] dossier non affiché :", e);
+      console.warn("[sites] folder not shown:", e);
     }
   },
   /**
@@ -771,7 +771,7 @@ export const sites = {
     let bounds = rect(s.view);
     if (s.viewState === "home") {
       const bar = win.document.getElementById("webaios-site-bar") as HTMLIFrameElement | null;
-      const f = bar?.contentDocument?.querySelector('[data-testid="site-cadre-accueil"]') as HTMLIFrameElement | null;
+      const f = bar?.contentDocument?.querySelector('[data-testid="site-home-frame"]') as HTMLIFrameElement | null;
       const spec = f?.contentDocument?.documentURI;
       if (bar && f && spec && spec !== "about:blank" && homePage(id, { spec })) {
         home = f;
@@ -785,7 +785,7 @@ export const sites = {
       !win.document.documentElement.hasAttribute("inDOMFullscreen") &&
       (s.viewState === "home"
         ? home !== null
-        : s.viewState === "site" && openDecision(url, context(s)) === "dans-l-appli" && host !== null && !hostInSite(host, context(s).login));
+        : s.viewState === "site" && openDecision(url, context(s)) === "in-app" && host !== null && !hostInSite(host, context(s).login));
     return { win, name: s.site.declaration.name, viewState: s.viewState, browser: s.view, home, bounds, available };
   },
   /** A passing mention in the bar, gone after DUREE_AVIS_INFO_MS or at the next page; never over a blocked link's. */
@@ -804,7 +804,7 @@ export const sites = {
   /** A load WebAiOs wants, on the app's domains only; kept for after the card. */
   navigateForAgent(id: string, url: string): "loaded" | "pending" | "refused" {
     const s = open.get(id);
-    if (!s?.view || s.window.closed || openDecision(url, context(s)) !== "dans-l-appli") return "refused";
+    if (!s?.view || s.window.closed || openDecision(url, context(s)) !== "in-app") return "refused";
     if (s.viewState === "grant") {
       s.toLoad = url;
       s.agentToLoad = true;
@@ -844,15 +844,15 @@ export const sites = {
     if (s) attach(s, browser);
   },
   /** window.open, target=_blank and links opened in a tab or a window: the app view, a sign-in window, or blocked. */
-  routeOpen(id: string, url: string): "dans-l-appli" | "petite-fenetre" | "bloquer" {
+  routeOpen(id: string, url: string): "in-app" | "small-window" | "block" {
     const s = open.get(id);
-    if (!s) return "bloquer";
+    if (!s) return "block";
     const d = openDecision(url, context(s));
-    if (d === "dans-l-appli") loadInView(s, url);
-    if (d === "bloquer") block(s, url);
+    if (d === "in-app") loadInView(s, url);
+    if (d === "block") block(s, url);
     // Not Firefox's fall-through window: it would have every feature (a toolbar, so getTopWindow() would pick it).
     // shortcut: this window has no opener; upgrade if a sign-in opened by window.open without features needs one.
-    if (d === "petite-fenetre") smallUrls.set(openInContainer(s.userContextId, null, "width=500,height=650"), url);
+    if (d === "small-window") smallUrls.set(openInContainer(s.userContextId, null, "width=500,height=650"), url);
     return d;
   },
   /** The address a sign-in window opened by routeOpen loads, once (setupSiteSmallWindow). */

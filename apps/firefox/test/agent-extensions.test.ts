@@ -32,7 +32,7 @@ const tabElement = (id: number, t: FakeTab) => {
   if (!tabElements.has(id))
     tabElements.set(id, {
       hasAttribute: (a: string) => t.attrs.includes(a),
-      getAttribute: (a: string) => (t.attrs.includes(a) ? `onglet-${id}` : null),
+      getAttribute: (a: string) => (t.attrs.includes(a) ? `tab-${id}` : null),
       userContextId: t.ctx ?? 0,
       isConnected: true,
       linkedBrowser: { currentURI: { spec: t.url }, get innerWindowID() { return t.doc ?? 1; }, reload: () => reloads.push(id) },
@@ -80,7 +80,7 @@ async function load(
     { id: "e2", private: true, profile: "secret" },
     { id: "e3", private: false, profile: "autre" },
   ];
-  const tabMap = Object.fromEntries([1, 2, 3, 4, 5, 6].map((n) => [`onglet-${n}`, { id: `onglet-${n}`, spaceId: n === 5 ? "e2" : n === 6 ? "e3" : "e1" }]));
+  const tabMap = Object.fromEntries([1, 2, 3, 4, 5, 6].map((n) => [`tab-${n}`, { id: `tab-${n}`, spaceId: n === 5 ? "e2" : n === 6 ? "e3" : "e1" }]));
   type State = { spaces: typeof spaces; tabs: typeof tabMap };
   const listeners: ((state: State, previous: State) => void)[] = [];
   const store = { state: { spaces: spaces, tabs: tabMap } as State, subscribe: (l: (state: State, previous: State) => void) => void listeners.push(l) };
@@ -174,7 +174,7 @@ describe("agent extension checkpoints", () => {
   it("check: isTab is false in a private space; a tab the agent cannot read sends extensions.aTourne once per profile", async () => {
     const requests: unknown[][] = [];
     const tab = { attrs: ["webaios-tab-id"], url: "https://hote.test/a" };
-    const x = await load({ 1: tab, 2: tab, 5: tab }, { read: ["onglet-1"], requests });
+    const x = await load({ 1: tab, 2: tab, 5: tab }, { read: ["tab-1"], requests });
     grant(x);
     expect(x.check(ID, "isTab", 5)).toBe(false);
     expect(x.check(ID, "isTab", 1)).toBe(true);

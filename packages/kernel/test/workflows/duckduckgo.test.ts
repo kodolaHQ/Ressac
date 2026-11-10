@@ -5,8 +5,8 @@ import { extractResults, searchUrl } from "../../src/workflows/duckduckgo.js";
 const page = (name: string) => readFileSync(new URL(`./fixtures/duckduckgo/${name}`, import.meta.url), "utf8");
 
 describe("extractResults", () => {
-  it("resultats.html: 9 results in order, the ad dropped, javascript: dropped, uddg decoded, entities decoded", () => {
-    const r = extractResults(page("resultats.html"), 20);
+  it("results.html: 9 results in order, the ad dropped, javascript: dropped, uddg decoded, entities decoded", () => {
+    const r = extractResults(page("results.html"), 20);
     if (!("results" in r)) throw new Error("attendu : des résultats");
     expect(r.results).toHaveLength(9);
     expect(r.results.map((x) => x.url)).not.toContain("https://annonce.example/pub");
@@ -23,22 +23,22 @@ describe("extractResults", () => {
   });
 
   it("nombre 3: the first 3", () => {
-    const all = extractResults(page("resultats.html"), 20);
-    const three = extractResults(page("resultats.html"), 3);
+    const all = extractResults(page("results.html"), 20);
+    const three = extractResults(page("results.html"), 3);
     if (!("results" in all) || !("results" in three)) throw new Error("attendu");
     expect(three.results).toEqual(all.results.slice(0, 3));
   });
 
-  it("aucun-resultat.html: empty list", () => {
-    expect(extractResults(page("aucun-resultat.html"), 5)).toEqual({ results: [] });
+  it("no-results.html: empty list", () => {
+    expect(extractResults(page("no-results.html"), 5)).toEqual({ results: [] });
   });
 
   it("verification.html : refus", () => {
     expect(extractResults(page("verification.html"), 5)).toEqual({ denial: true });
   });
 
-  it("changee.html : illisible", () => {
-    expect(extractResults(page("changee.html"), 5)).toEqual({ unreadable: true });
+  it("changed.html: unreadable", () => {
+    expect(extractResults(page("changed.html"), 5)).toEqual({ unreadable: true });
   });
 
   it("duplicate urls are dropped", () => {

@@ -133,7 +133,7 @@ describe("interpreter (in the container)", () => {
     expect(r.code).toBe(1);
   });
 
-  it("liste.nouveaux keeps only the never-seen keys and retains at most 5000 keys", async () => {
+  it("list.new keeps only the never-seen keys and retains at most 5000 keys", async () => {
     const olds = Array.from({ length: 5000 }, (_, i) => `k${i}`);
     const r = await launch({
       workflow: {
@@ -156,7 +156,7 @@ describe("interpreter (in the container)", () => {
     expect(keys).toContain("k3");
   });
 
-  it("liste.nouveaux: a duplicate in the same list is not new; a long key is kept cut to 500 characters", async () => {
+  it("list.new: a duplicate in the same list is not new; a long key is kept cut to 500 characters", async () => {
     const lengthy = "u".repeat(800);
     const r = await launch({
       workflow: {
@@ -337,7 +337,7 @@ describe("interpreter: replay from a block", () => {
     expect(r.blockEnd("sortie")).toBeUndefined();
   });
 
-  it("with replay, the interpreter ignores the received memory: liste.nouveaux lets everything through, reutiliser reuses nothing, no block returns a memory", async () => {
+  it("with replay, the interpreter ignores the received memory: list.new lets everything through, reuse reuses nothing, no block returns a memory", async () => {
     // The kernel sends an empty memory for a trial; the interpreter does not rely on it: even a received memory
     // (including that of a block not relaunched) is neither read nor returned.
     const computed: string[] = [];
@@ -551,7 +551,7 @@ describe("interpreter: per-element blocks", () => {
     expect(r.blockEnd("double")).toMatchObject({ status: "succeeded" });
   });
 
-  it("per element « option »: without parElement, executer runs once on the whole input", async () => {
+  it("per element « option »: without perItem, executer runs once on the whole input", async () => {
     const r = await run({
       entry: list(3),
       blocks: [{ id: "b", type: "test.option", params: { perItem: false, field: "x" } }, { id: "sortie", type: "output" }],
@@ -576,7 +576,7 @@ describe("interpreter: per-element blocks", () => {
     expect(r.blockEnd("b")).toMatchObject({ status: "failed", error: "liste attendue en entrée" });
   });
 
-  it("per element: a failing element is skipped, the block ends partial; siErreur echouer fails the block", async () => {
+  it("per element: a failing element is skipped, the block ends partial; onError echouer fails the block", async () => {
     const registry = {
       "test.x": {
         perItem: "always",
@@ -765,7 +765,7 @@ describe("interpreter: per-element blocks", () => {
     expect(absent.blockEnd("b")).toMatchObject({ status: "failed" });
   });
 
-  it("reutiliser reuses the memory's value without a call and stores the new ones", async () => {
+  it("reuse reuses the memory's value without a call and stores the new ones", async () => {
     const computed: string[] = [];
     const r = await run({
       entry: [{ url: "https://a.fr/1" }, { url: "https://a.fr/2" }, { url: null }],
@@ -796,7 +796,7 @@ describe("interpreter: per-element blocks", () => {
     });
   });
 
-  it("reutiliser keeps at most 2 MB per block, forgetting the oldest", async () => {
+  it("reuse keeps at most 2 MB per block, forgetting the oldest", async () => {
     const big = "x".repeat(600 * 1024);
     const r = await run({
       entry: list(5).map((e) => ({ ...e, key: `k${e.n}` })),
@@ -905,7 +905,7 @@ describe("interpreter: web.chercher", () => {
     expect(r.blockEnd("cherche")).toMatchObject({ status: "succeeded" });
   });
 
-  it("ceiling reached: the remaining elements without champ, partial block, even with siErreur echouer", async () => {
+  it("ceiling reached: the remaining elements without champ, partial block, even with onError echouer", async () => {
     let n = 0;
     const r = await launch({
       workflow: workflow({ onError: "fail" }),
@@ -982,7 +982,7 @@ describe("interpreter: web.chercher", () => {
     expect(logOf(r, "cherche")).toEqual(["élément 2 : valeur absente : query"]);
   });
 
-  it("SEARCH_DENIED on an element with siErreur echouer: the block fails", async () => {
+  it("SEARCH_DENIED on an element with onError echouer: the block fails", async () => {
     const r = await launch({
       workflow: workflow({ onError: "fail" }),
       files: files,
@@ -1027,13 +1027,13 @@ describe("interpreter: web.chercher", () => {
   });
 });
 
-describe("interpreter: dated memory (garderJours)", () => {
+describe("interpreter: dated memory (keepDays)", () => {
   const NOW = "2026-10-29T10:00:00.000Z";
   const ago = (days: number) => new Date(Date.parse(NOW) - days * 86_400_000).toISOString();
   const fresh = (entry: unknown[], memory: unknown, params: Record<string, unknown> = {}) =>
     newList.run({ input: entry, params: { key: "url", ...params }, memory: memory, log: () => {}, now: NOW });
 
-  it("a key seen 31 days ago with garderJours 30 becomes new again; at 29 days, not", async () => {
+  it("a key seen 31 days ago with keepDays 30 becomes new again; at 29 days, not", async () => {
     const r = await fresh([{ url: "vieille" }, { url: "recente" }], [["vieille", ago(31)], ["recente", ago(29)], ["oubliee", ago(31)]], {
       keepDays: 30,
     });
@@ -1043,7 +1043,7 @@ describe("interpreter: dated memory (garderJours)", () => {
     expect(r.memory).toEqual([["vieille", NOW], ["recente", NOW]]);
   });
 
-  it("without garderJours, a 400-day-old key stays seen", async () => {
+  it("without keepDays, a 400-day-old key stays seen", async () => {
     const r = await fresh([{ url: "a" }, { url: "b" }], [["a", ago(400)], ["autre", ago(400)]]);
     expect(r.output).toEqual([{ url: "b" }]);
     expect(r.newKeys).toEqual(["b"]);
@@ -1063,7 +1063,7 @@ describe("interpreter: dated memory (garderJours)", () => {
     expect(r.memory).toEqual([["b", NOW], ["a", NOW], ["c", NOW]]);
   });
 
-  it("in the container, liste.nouveaux receives maintenant from the debut line and returns a dated memory", async () => {
+  it("in the container, list.new receives now from the start line and returns a dated memory", async () => {
     const r = await launch({
       workflow: {
         version: 1,
@@ -1087,7 +1087,7 @@ describe("interpreter: dated memory (garderJours)", () => {
     },
   });
 
-  it("reutiliser with garderJours 30: 31-day value recomputed, 29-day one reused without a call and its date kept", async () => {
+  it("reuse with keepDays 30: 31-day value recomputed, 29-day one reused without a call and its date kept", async () => {
     const computed: string[] = [];
     const r = await run({
       entry: [{ url: "vieille" }, { url: "recente" }],
@@ -1109,7 +1109,7 @@ describe("interpreter: dated memory (garderJours)", () => {
     ]);
   });
 
-  it("without garderJours, reutiliser reuses a 400-day value", async () => {
+  it("without keepDays, reuse reuses a 400-day value", async () => {
     const computed: string[] = [];
     const r = await run({
       entry: [{ url: "a" }],
@@ -1121,7 +1121,7 @@ describe("interpreter: dated memory (garderJours)", () => {
     expect(r.result!.memory.b!.value).toEqual({ reused: [["a", "très ancien", ago(400)]] });
   });
 
-  it("old [cle, valeur] pairs of reutiliser reused without a call", async () => {
+  it("old [cle, valeur] pairs of reuse reused without a call", async () => {
     const computed: string[] = [];
     const r = await run({
       entry: [{ url: "a" }],
@@ -1134,7 +1134,7 @@ describe("interpreter: dated memory (garderJours)", () => {
     expect(r.result!.memory.b!.value).toEqual({ reused: [["b", "autre", NOW], ["a", "ancien", NOW]] });
   });
 
-  it("reutiliser: two elements with the same key processed at the same time make only one call", async () => {
+  it("reuse: two elements with the same key processed at the same time make only one call", async () => {
     let calls = 0;
     const r = await run({
       entry: [{ model: "Clio", n: 1 }, { model: "Clio", n: 2 }, { model: "208", n: 3 }],
@@ -1159,7 +1159,7 @@ describe("interpreter: dated memory (garderJours)", () => {
     expect(r.blockEnd("b")).toMatchObject({ status: "succeeded" });
   });
 
-  it("reutiliser: if the in-progress computation of the same key fails, the second element computes itself", async () => {
+  it("reuse: if the in-progress computation of the same key fails, the second element computes itself", async () => {
     const launched: number[] = [];
     const r = await run({
       entry: [{ model: "Clio", n: 1 }, { model: "Clio", n: 2 }],
@@ -1510,7 +1510,7 @@ describe("interpreter: progressive run", () => {
     expect(memories(r)).toEqual([]);
   });
 
-  it("reutiliser: if the in-progress computation of the same key is refused by the kernel, the second element does not relaunch it", async () => {
+  it("reuse: if the in-progress computation of the same key is refused by the kernel, the second element does not relaunch it", async () => {
     const launched: number[] = [];
     const r = await run({
       entry: [{ model: "Clio", n: 1 }, { model: "Clio", n: 2 }],
@@ -1708,7 +1708,7 @@ describe("interpreter: streaming chain", () => {
     );
   });
 
-  it("without auFilDeLEau: calls and traces block by block, identical to today", async () => {
+  it("without streaming: calls and traces block by block, identical to today", async () => {
     const events: AppEvent[] = [];
     const r = await run({ progressive: true, entry: list(3), blocks: CHAIN_BLOCKS({}), registry: chainRegistry(events) });
     expect(r.error).toBeNull();
@@ -1731,7 +1731,7 @@ describe("interpreter: streaming chain", () => {
     expect(publications(r)).toEqual([]);
   });
 
-  it("trial (replay) of an auFilDeLEau workflow: block by block, no publication", async () => {
+  it("trial (replay) of an streaming workflow: block by block, no publication", async () => {
     const events: AppEvent[] = [];
     const r = await run({
       progressive: true,
@@ -1748,7 +1748,7 @@ describe("interpreter: streaming chain", () => {
     expect(publications(r)).toEqual([]);
   });
 
-  it("auFilDeLEau behind liste.garder: no publication, output at the end", async () => {
+  it("streaming behind liste.garder: no publication, output at the end", async () => {
     const events: AppEvent[] = [];
     const [sheet, reliability, notice, s] = CHAIN_BLOCKS();
     const r = await run({
@@ -1784,7 +1784,7 @@ describe("interpreter: streaming chain", () => {
     ]);
   });
 
-  it("siErreur echouer in the chain: the block concerned fails, the others of the chain end partial, then memory and error", async () => {
+  it("onError echouer in the chain: the block concerned fails, the others of the chain end partial, then memory and error", async () => {
     const r = await run({
       progressive: true,
       entry: list(4),
@@ -1927,7 +1927,7 @@ describe("interpreter: streaming chain", () => {
     expect(r.log("nv").join("\n")).toContain("n'est plus dans les éléments");
   });
 
-  it("in the container: progressive debut and auFilDeLEau output, the publication lines come before fin", async () => {
+  it("in the container: progressive debut and streaming output, the publication lines come before fin", async () => {
     const r = await launch({
       workflow: {
         version: 1,

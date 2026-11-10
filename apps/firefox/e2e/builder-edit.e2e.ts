@@ -188,14 +188,14 @@ const waitText = (testid: string, t: string) => waitUi(m, `return ${q(testid)}?.
 const waitContains = (testid: string, t: string) => waitUi(m, `return !!${q(testid)}?.textContent.includes(arguments[0])`, [t]);
 const waitCount = (testid: string, n: number) => waitUi(m, `return doc.querySelectorAll('[data-testid="${testid}"]').length === arguments[0]`, [n]);
 const waitValue = (testid: string, v: string) => waitUi(m, `return ${q(testid)}?.value === arguments[0]`, [v]);
-const saved = () => waitText("etat-enregistrement", "Enregistré");
+const saved = () => waitText("save-status", "Enregistré");
 
 /** Drags a link from block `from`'s output to block `to`'s input (trusted mouse events, in steps). */
 async function link(from: string, to: string): Promise<void> {
   await inUi(
     m,
     `const centre = (s) => { const r = doc.querySelector(s).getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; };
-     const ends = () => [...centre('[data-testid="noeud-' + arguments[0] + '"] .svelte-flow__handle.source'), ...centre('[data-testid="noeud-' + arguments[1] + '"] .svelte-flow__handle.target')];
+     const ends = () => [...centre('[data-testid="node-' + arguments[0] + '"] .svelte-flow__handle.source'), ...centre('[data-testid="node-' + arguments[1] + '"] .svelte-flow__handle.target')];
      // A block just added is measured, then the view may move: wait until both ends stay put.
      let before = "";
      for (let i = 0; i < 50 && before !== JSON.stringify(ends()); i++) { before = JSON.stringify(ends()); await new Promise((r) => setTimeout(r, 100)); }
@@ -218,7 +218,7 @@ async function fill(testid: string, v: string): Promise<void> {
 }
 
 /** Clicks the builder's heading: the keyboard leaves any field, for the canvas's ⌘Z. */
-const clickHeading = () => click(m, '[data-testid="constructeur"] h1');
+const clickHeading = () => click(m, '[data-testid="builder"] h1');
 
 /** Replaces the sidebar's `confirm`: nothing shows, questions are noted, the answer is `answer`. */
 const answerConfirm = (answer: boolean) =>
@@ -269,7 +269,7 @@ describe("the workflow builder", () => {
     await waitUi(m, "return !!doc.querySelector('[data-testid=\"widget-veille\"] iframe')");
     const before = await snapshot(widgetDir(dataDir, "veille"));
     await openBuilder(m, "veille");
-    await waitUi(m, "return doc.querySelector('[data-testid=\"constructeur\"] h1')?.textContent === 'Veille'");
+    await waitUi(m, "return doc.querySelector('[data-testid=\"builder\"] h1')?.textContent === 'Veille'");
     const ids = ["page", "liens", "tri", "textes", "sortie"];
     expect((await waitUi<string[] | false>(m, "const n = [...doc.querySelectorAll('.svelte-flow__node')]; return n.length === 5 && n.map((x) => x.dataset.id)")) as string[]).toEqual(
       expect.arrayContaining(ids),
@@ -277,20 +277,20 @@ describe("the workflow builder", () => {
     expect((await nodes(m)).sort()).toEqual([...ids].sort());
     const boxes = await inUi<Box[]>(
       m,
-      "return arguments[0].map((id) => { const r = doc.querySelector('[data-testid=\"noeud-' + id + '\"]').getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; })",
+      "return arguments[0].map((id) => { const r = doc.querySelector('[data-testid=\"node-' + id + '\"]').getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; })",
       [ids],
     );
-    const links = await inUi<string>(m, "return doc.querySelector('[data-testid=\"noeud-liens\"]').textContent");
+    const links = await inUi<string>(m, "return doc.querySelector('[data-testid=\"node-liens\"]').textContent");
     expect(links).toContain("Liens de la page");
     expect(links).toContain("code");
     // One column per rank, left to right, no overlap.
     for (let i = 1; i < boxes.length; i++) expect(boxes[i]!.x).toBeGreaterThan(boxes[i - 1]!.x + boxes[i - 1]!.width / 2);
     for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) expect(overlap(boxes[i]!, boxes[j]!)).toBe(false);
-    expect(await waitUi(m, "return doc.querySelector('[data-testid=\"etat-enregistrement\"]')?.textContent.trim() === 'Enregistré'")).toBe(true);
+    expect(await waitUi(m, "return doc.querySelector('[data-testid=\"save-status\"]')?.textContent.trim() === 'Enregistré'")).toBe(true);
 
     // Selecting and reorganising write nothing either.
-    await click(m, '[data-testid="noeud-tri"]');
-    await click(m, '[data-testid="reorganiser"]');
+    await click(m, '[data-testid="node-tri"]');
+    await click(m, '[data-testid="rearrange"]');
     await new Promise((r) => setTimeout(r, 1000));
     expect(await snapshot(widgetDir(dataDir, "veille"))).toEqual(before);
   });
@@ -317,16 +317,16 @@ describe("the workflow builder", () => {
     await home();
     await openBuilder(m, "veille");
     const panelShown = () => m.execute<boolean>("return !document.getElementById('webaios-agent').hidden");
-    const agentTab = () => inUi<string | null>(m, "return doc.querySelector('[data-testid=\"onglet-agent\"]')?.getAttribute('aria-selected')");
+    const agentTab = () => inUi<string | null>(m, "return doc.querySelector('[data-testid=\"agent-tab\"]')?.getAttribute('aria-selected')");
     // Leaving the home page closed the panel it had opened.
     await waitFor(m, "return document.getElementById('webaios-agent').hidden", (v) => v === true);
     expect(await agentTab()).toBe("false");
     await pressKeys(m, "Meta+j");
     await waitFor(m, "return !document.getElementById('webaios-agent').hidden", (v) => v === true);
-    expect(await waitUi(m, "return doc.querySelector('[data-testid=\"onglet-agent\"]')?.getAttribute('aria-selected') === 'true'")).toBe(true);
+    expect(await waitUi(m, "return doc.querySelector('[data-testid=\"agent-tab\"]')?.getAttribute('aria-selected') === 'true'")).toBe(true);
     expect(await m.execute("return document.activeElement?.id")).toBe("webaios-agent");
     await pressKeys(m, "Meta+j");
-    await click(m, '[data-testid="bouton-agent"]');
+    await click(m, '[data-testid="agent-button"]');
     await new Promise((r) => setTimeout(r, 300));
     expect(await panelShown()).toBe(true);
     expect(await agentTab()).toBe("true");
@@ -334,15 +334,15 @@ describe("the workflow builder", () => {
 
   it("adding a block through the palette makes it « Non enregistré : … entrée manquante »; linking it saves it", async () => {
     await builder("add");
-    await waitCount("noeud-tri", 1);
+    await waitCount("node-tri", 1);
     // The output already exists: it is not offered.
     expect(await count("palette-sortie")).toBe(0);
 
     await click(m, '[data-testid="palette-list.keep"]');
-    await waitCount("noeud-list-keep", 1);
-    await waitContains("etat-enregistrement", "Non enregistré : ");
-    await waitContains("etat-enregistrement", "entrée manquante");
-    expect(await inUi(m, `return ${q("noeud-list-keep")}.classList.contains("en-erreur")`)).toBe(true);
+    await waitCount("node-list-keep", 1);
+    await waitContains("save-status", "Non enregistré : ");
+    await waitContains("save-status", "entrée manquante");
+    expect(await inUi(m, `return ${q("node-list-keep")}.classList.contains("in-error")`)).toBe(true);
     expect(await readWorkflow(dataDir, "add")).toEqual(WATCH_WORKFLOW);
 
     await link("tri", "list-keep");
@@ -358,29 +358,29 @@ describe("the workflow builder", () => {
   it("⌘Z undoes the addition and saves again", async () => {
     await builder("undo");
     await click(m, '[data-testid="palette-list.keep"]');
-    await waitCount("noeud-list-keep", 1);
+    await waitCount("node-list-keep", 1);
     await link("tri", "list-keep");
     await saved();
     expect((await readWorkflow(dataDir, "undo")).blocks.map((x: { id: string }) => x.id)).toContain("list-keep");
 
     // Undoing the link: the block is invalid again, nothing is written.
     await pressKeys(m, "Meta+z");
-    await waitContains("etat-enregistrement", "entrée manquante");
+    await waitContains("save-status", "entrée manquante");
     expect((await readWorkflow(dataDir, "undo")).links).toContainEqual({ from: "tri", to: "list-keep" });
     // Undoing the add: the workflow is valid again and saved again, without the block.
     await pressKeys(m, "Meta+z");
-    await waitCount("noeud-list-keep", 0);
+    await waitCount("node-list-keep", 0);
     await saved();
     await poll(async () => (await readWorkflow(dataDir, "undo")).blocks.map((x: { id: string }) => x.id), ["page", "liens", "tri", "textes", "sortie"]);
     // Redo does it again.
     await pressKeys(m, "Meta+Shift+z");
-    await waitCount("noeud-list-keep", 1);
+    await waitCount("node-list-keep", 1);
   });
 
   it("adding a Code block writes its .mjs file (template that returns its input) and saves the workflow", async () => {
     await builder("add-code");
     await click(m, '[data-testid="palette-code"]');
-    await waitCount("noeud-code", 1);
+    await waitCount("node-code", 1);
     await saved();
     expect(await readFile(path.join(widgetDir(dataDir, "add-code"), "code.mjs"), "utf8")).toBe("export default async (input, webaios) => {\n  return input;\n};\n");
     const block = (await readWorkflow(dataDir, "add-code")).blocks.find((x: { id: string }) => x.id === "code");
@@ -396,17 +396,17 @@ describe("the workflow builder", () => {
 
     await openBuilder(m, "run");
     expect(Object.values((await state(m)).tabs).map((o) => o.title)).toContain("Workflow — Veille");
-    await waitContains("noeud-tri", "Tri par Kev");
-    await waitContains("noeud-tri", "ai.sort");
+    await waitContains("node-tri", "Tri par Kev");
+    await waitContains("node-tri", "ai.sort");
     // Two links out of the code, one after the sort.
-    await waitText("pastille-liens", "2");
-    await waitText("pastille-tri", "1");
-    expect(await inUi(m, `return ${q("pastille-tri")}.classList.contains("ok")`)).toBe(true);
+    await waitText("pill-liens", "2");
+    await waitText("pill-tri", "1");
+    expect(await inUi(m, `return ${q("pill-tri")}.classList.contains("ok")`)).toBe(true);
 
-    await waitUi(m, `return ${q("lancer")}?.disabled === false`);
-    await click(m, '[data-testid="lancer"]');
+    await waitUi(m, `return ${q("launch")}?.disabled === false`);
+    await click(m, '[data-testid="launch"]');
     await poll(async () => (await readdir(executions)).length, 2, 20_000);
-    await waitUi(m, `return ${q("lancer")}?.disabled === false`, [], 20_000);
+    await waitUi(m, `return ${q("launch")}?.disabled === false`, [], 20_000);
     const last = (await readdir(executions)).sort().at(-1)!;
     expect((await readJson(path.join(executions, last))).trigger).toBe("manual");
     // Running does not write the workflow.
@@ -415,19 +415,19 @@ describe("the workflow builder", () => {
 
   it("a widget with only harvest.mjs opens as an implicit workflow (recolte → sortie) without creating a workflow.json", async () => {
     await home();
-    await waitUi(m, `return !!doc.querySelector('[data-testid="widget-compte"] [data-testid="bandeau-accord"]')?.textContent.includes("127.0.0.1")`);
+    await waitUi(m, `return !!doc.querySelector('[data-testid="widget-compte"] [data-testid="grant-banner"]')?.textContent.includes("127.0.0.1")`);
     const dir = widgetDir(dataDir, "compte");
     const before = await snapshot(dir);
     await openBuilder(m, "compte");
-    await waitContains("noeud-harvest", "code");
-    await waitContains("noeud-output", "output");
+    await waitContains("node-harvest", "code");
+    await waitContains("node-output", "output");
     await saved();
     const boxes = await inUi<Box[]>(
       m,
-      "return ['harvest', 'output'].map((id) => { const r = doc.querySelector('[data-testid=\"noeud-' + id + '\"]').getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; })",
+      "return ['harvest', 'output'].map((id) => { const r = doc.querySelector('[data-testid=\"node-' + id + '\"]').getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; })",
     );
     expect(overlap(boxes[0]!, boxes[1]!)).toBe(false);
-    await click(m, '[data-testid="noeud-harvest"]');
+    await click(m, '[data-testid="node-harvest"]');
     await sleep(800);
     expect((await readdir(dir)).includes("workflow.json")).toBe(false);
     expect(await snapshot(dir)).toEqual(before);
@@ -435,84 +435,84 @@ describe("the workflow builder", () => {
 
   it("an invalid workflow.json opens with its error and does not run; unreadable, it says so", async () => {
     await builder("cycle");
-    await waitContains("etat-enregistrement", "Non enregistré : Workflow invalide : ");
-    await waitContains("etat-enregistrement", "cycle");
-    expect(await inUi(m, `return ${q("noeud-a")}.classList.contains("en-erreur")`)).toBe(true);
-    expect(await inUi(m, `return ${q("lancer")}.disabled`)).toBe(true);
+    await waitContains("save-status", "Non enregistré : Workflow invalide : ");
+    await waitContains("save-status", "cycle");
+    expect(await inUi(m, `return ${q("node-a")}.classList.contains("in-error")`)).toBe(true);
+    expect(await inUi(m, `return ${q("launch")}.disabled`)).toBe(true);
 
     await builder("casse");
-    await waitContains("workflow-illisible", "Workflow invalide : ");
-    expect(await inUi(m, `return ${q("lancer")}.disabled`)).toBe(true);
+    await waitContains("workflow-unreadable", "Workflow invalide : ");
+    expect(await inUi(m, `return ${q("launch")}.disabled`)).toBe(true);
   });
 
   it("Suppr deletes the selection but never the output", async () => {
     await builder("suppr");
-    await click(m, '[data-testid="noeud-sortie"]');
+    await click(m, '[data-testid="node-sortie"]');
     await pressKeys(m, "Delete");
     await sleep(300);
-    expect(await count("noeud-sortie")).toBe(1);
+    expect(await count("node-sortie")).toBe(1);
     expect(await readWorkflow(dataDir, "suppr")).toEqual(WATCH_WORKFLOW);
     // With another block selected too: it alone goes (the output, without input, makes the draft invalid).
-    await click(m, '[data-testid="noeud-textes"]');
+    await click(m, '[data-testid="node-textes"]');
     await keyDown(m, "Meta");
     await inUi(
       m,
-      `const r = ${q("noeud-sortie")}.getBoundingClientRect();
+      `const r = ${q("node-sortie")}.getBoundingClientRect();
        for (const type of ["mousedown", "mouseup"]) ui.synthesizeMouseEvent(type, r.left + r.width / 2, r.top + r.height / 2, { button: 0, clickCount: 1, modifiers: Ci.nsIDOMWindowUtils.MODIFIER_META });`,
     );
     await keyUp(m, "Meta");
     await pressKeys(m, "Delete");
-    await waitCount("noeud-textes", 0);
-    expect(await count("noeud-sortie")).toBe(1);
-    await waitContains("etat-enregistrement", "entrée manquante");
+    await waitCount("node-textes", 0);
+    expect(await count("node-sortie")).toBe(1);
+    await waitContains("save-status", "entrée manquante");
     expect(await readWorkflow(dataDir, "suppr")).toEqual(WATCH_WORKFLOW);
   });
 
   it("⌘Z typed in a text field does not undo the canvas", async () => {
     await builder("field");
     await click(m, '[data-testid="palette-list.keep"]');
-    await waitCount("noeud-list-keep", 1);
-    await click(m, '[data-testid="barre-adresse"]');
+    await waitCount("node-list-keep", 1);
+    await click(m, '[data-testid="address-bar"]');
     await typeText(m, "abc");
     await pressKeys(m, "Meta+z");
     await sleep(300);
-    expect(await count("noeud-list-keep")).toBe(1);
+    expect(await count("node-list-keep")).toBe(1);
     // Out of the field, ⌘Z undoes the add.
     await clickHeading();
     await pressKeys(m, "Meta+z");
-    await waitCount("noeud-list-keep", 0);
+    await waitCount("node-list-keep", 0);
   });
 
   it("the agent rewrites workflow.json during an invalid draft: banner, « Garder la mienne » then « Prendre sa version »", async () => {
     await builder("agent");
     const file = path.join(widgetDir(dataDir, "agent"), "workflow.json");
     await click(m, '[data-testid="palette-list.keep"]');
-    await waitContains("etat-enregistrement", "entrée manquante");
+    await waitContains("save-status", "entrée manquante");
 
     await writeAsAgent("agent", withThreshold(0.7));
-    await waitCount("bandeau-fichier", 1);
+    await waitCount("file-banner", 1);
     // A gesture during the banner does not overwrite the agent's version.
     await link("tri", "list-keep");
     await sleep(500);
-    expect(await count("bandeau-fichier")).toBe(1);
+    expect(await count("file-banner")).toBe(1);
     expect(await thresholdOf("agent")).toBe(0.7);
     // Keep mine: my draft (linked, so valid) replaces the agent's version.
-    await click(m, '[data-testid="garder-mienne"]');
-    await waitCount("bandeau-fichier", 0);
+    await click(m, '[data-testid="keep-mine"]');
+    await waitCount("file-banner", 0);
     await saved();
     await poll(() => thresholdOf("agent"), 0.5);
     expect((await readWorkflow(dataDir, "agent")).links).toContainEqual({ from: "tri", to: "list-keep" });
 
     // A new invalid draft, a new agent version: taking it drops the draft, writing nothing.
     await click(m, '[data-testid="palette-list.keep"]');
-    await waitCount("noeud-list-keep-2", 1);
+    await waitCount("node-list-keep-2", 1);
     await writeAsAgent("agent", withThreshold(0.9));
-    await waitCount("bandeau-fichier", 1);
+    await waitCount("file-banner", 1);
     const before = (await stat(file)).mtimeMs;
-    await click(m, '[data-testid="prendre-version"]');
-    await waitCount("bandeau-fichier", 0);
-    await waitCount("noeud-list-keep-2", 0);
-    await waitCount("noeud-list-keep", 0);
+    await click(m, '[data-testid="take-version"]');
+    await waitCount("file-banner", 0);
+    await waitCount("node-list-keep-2", 0);
+    await waitCount("node-list-keep", 0);
     await saved();
     await sleep(500);
     expect((await stat(file)).mtimeMs).toBe(before);
@@ -524,28 +524,28 @@ describe("the workflow builder", () => {
     await writeFile(memory, JSON.stringify({ version: 1, blocks: { tri: { type: "ai.sort", value: { seen: ["a"] } }, textes: { type: "code", value: { seen: ["b"] } } } }));
     await builder("seuil");
     // No block selected: the widget's panel, read only.
-    await waitContains("panneau-widget", "Pour changer les sources ou la configuration, demande-le à l'agent.");
+    await waitContains("widget-panel", "Pour changer les sources ou la configuration, demande-le à l'agent.");
     await waitContains("widget-config", `"url": "${site.url}/liens"`);
 
-    await click(m, '[data-testid="noeud-tri"]');
-    await waitValue("nom-bloc", "Tri par Kev");
-    expect(await inUi(m, `return doc.querySelector('[data-testid="volet-bloc"] [data-testid="id-bloc"]')?.textContent`)).toBe("tri");
-    expect(await value("champ-question")).toBe("Parle d'IA ?");
+    await click(m, '[data-testid="node-tri"]');
+    await waitValue("block-name-field", "Tri par Kev");
+    expect(await inUi(m, `return doc.querySelector('[data-testid="block-pane"] [data-testid="block-id"]')?.textContent`)).toBe("tri");
+    expect(await value("field-question")).toBe("Parle d'IA ?");
     // ia.trier always scores item by item: its « per item » fields are there, without a parElement box.
-    expect(await count("champ-onError")).toBe(1);
-    expect(await count("champ-perItem")).toBe(0);
+    expect(await count("field-onError")).toBe(1);
+    expect(await count("field-perItem")).toBe(0);
     // Selecting writes nothing.
     await sleep(500);
     expect(await readWorkflow(dataDir, "seuil")).toEqual(WATCH_WORKFLOW);
 
     // An unreadable entry (« - ») writes nothing; left, the field shows the block's value again.
-    await click(m, '[data-testid="champ-threshold"]');
+    await click(m, '[data-testid="field-threshold"]');
     await pressKeys(m, "Meta+a");
     await typeText(m, "-");
     await pressKeys(m, "Tab");
-    await waitValue("champ-threshold", "0.5");
+    await waitValue("field-threshold", "0.5");
     // A number is not saved while typing (« 0. » would erase the memory): Enter or focus loss.
-    await fill("champ-threshold", "0.7");
+    await fill("field-threshold", "0.7");
     await sleep(700);
     expect(await thresholdOf("seuil")).toBe(0.5);
     expect(Object.keys((await readJson(memory)).blocks)).toEqual(["tri", "textes"]);
@@ -554,12 +554,12 @@ describe("the workflow builder", () => {
     await saved();
     await poll(async () => Object.keys((await readJson(memory)).blocks), ["textes"]);
     // Back to the value at focus after a save is saved too.
-    await fill("champ-threshold", "0.5");
+    await fill("field-threshold", "0.5");
     await pressKeys(m, "Tab");
     await poll(() => thresholdOf("seuil"), 0.5);
-    expect(await value("champ-threshold")).toBe("0.5");
+    expect(await value("field-threshold")).toBe("0.5");
     // ⌘Z (out of the field) undoes one field edit at once.
-    await fill("champ-threshold", "0.8");
+    await fill("field-threshold", "0.8");
     await pressKeys(m, "Tab");
     await poll(() => thresholdOf("seuil"), 0.8);
     await clickHeading();
@@ -569,21 +569,21 @@ describe("the workflow builder", () => {
 
   it("a {config.inconnu} template shows a warning and saves anyway", async () => {
     await builder("gabarit");
-    await click(m, '[data-testid="noeud-tri"]');
+    await click(m, '[data-testid="node-tri"]');
     const questionOf = async () => (await readWorkflow(dataDir, "gabarit")).blocks.find((b: { id: string }) => b.id === "tri").params.question;
-    await fill("champ-question", "{config.inconnu} ?");
+    await fill("field-question", "{config.inconnu} ?");
     // Saved after 400 ms without typing, keeping the focus.
     await poll(questionOf, "{config.inconnu} ?");
-    await waitContains("avertissement-tri", "config.inconnu absent de la configuration du widget");
-    expect(await inUi(m, `return ${q("noeud-tri")}.classList.contains("avertit")`)).toBe(true);
+    await waitContains("warning-tri", "config.inconnu absent de la configuration du widget");
+    expect(await inUi(m, `return ${q("node-tri")}.classList.contains("warns")`)).toBe(true);
     await saved();
     // Back to the text at focus, in the same session, is saved: the warning goes.
-    await fill("champ-question", "Parle d'IA ?");
+    await fill("field-question", "Parle d'IA ?");
     await poll(questionOf, "Parle d'IA ?");
-    await waitCount("avertissement-tri", 0);
+    await waitCount("warning-tri", 0);
     // A pending entry when switching blocks is saved on its block, not on the new one.
-    await fill("champ-question", "Parle de cuisine ?");
-    await click(m, '[data-testid="noeud-liens"]');
+    await fill("field-question", "Parle de cuisine ?");
+    await click(m, '[data-testid="node-liens"]');
     await poll(questionOf, "Parle de cuisine ?");
     // (The first gesture froze the positions shown: only the position is added.)
     const { position: _p, ...links } = (await readWorkflow(dataDir, "gabarit")).blocks.find((b: { id: string }) => b.id === "liens");
@@ -593,53 +593,53 @@ describe("the workflow builder", () => {
   it("a code block's code is only written with Enregistrer le code; ⌘S too", async () => {
     await builder("code");
     const code = path.join(widgetDir(dataDir, "code"), "liens.mjs");
-    await click(m, '[data-testid="noeud-liens"]');
-    await waitValue("editeur-code", "export default async (page) => page.links;");
-    expect(await count("code-non-enregistre")).toBe(0);
+    await click(m, '[data-testid="node-liens"]');
+    await waitValue("code-editor", "export default async (page) => page.links;");
+    expect(await count("code-unsaved")).toBe(0);
 
-    await fill("editeur-code", "export default async (page) => page.links.slice(0, 1);");
-    await waitText("code-non-enregistre", "Code non enregistré");
+    await fill("code-editor", "export default async (page) => page.links.slice(0, 1);");
+    await waitText("code-unsaved", "Code non enregistré");
     await sleep(800);
     expect(await readFile(code, "utf8")).toBe("export default async (page) => page.links;");
-    await click(m, '[data-testid="enregistrer-code"]');
+    await click(m, '[data-testid="save-code"]');
     await poll(() => readFile(code, "utf8"), "export default async (page) => page.links.slice(0, 1);");
-    await waitCount("code-non-enregistre", 0);
+    await waitCount("code-unsaved", 0);
 
-    await fill("editeur-code", "export default async (page) => page.links.slice(0, 2);");
+    await fill("code-editor", "export default async (page) => page.links.slice(0, 2);");
     await pressKeys(m, "Meta+s");
     await poll(() => readFile(code, "utf8"), "export default async (page) => page.links.slice(0, 2);");
-    await waitCount("code-non-enregistre", 0);
+    await waitCount("code-unsaved", 0);
     // The workflow was not touched.
     expect(await readWorkflow(dataDir, "code")).toEqual(WATCH_WORKFLOW);
 
     // A draft: switching blocks asks; refused, the block stays; accepted, the draft is kept for the way back.
-    await fill("editeur-code", "// brouillon");
+    await fill("code-editor", "// brouillon");
     expect(await closeHeld()).toBe(true);
     await answerConfirm(false);
-    await click(m, '[data-testid="noeud-tri"]');
+    await click(m, '[data-testid="node-tri"]');
     await sleep(300);
     expect(await questions()).toHaveLength(1);
-    expect(await value("nom-bloc")).toBe("Liens de la page");
+    expect(await value("block-name-field")).toBe("Liens de la page");
     await answerConfirm(true);
-    await click(m, '[data-testid="noeud-tri"]');
-    await waitValue("nom-bloc", "Tri par Kev");
-    await click(m, '[data-testid="noeud-liens"]');
-    await waitValue("editeur-code", "// brouillon");
-    expect(await count("code-non-enregistre")).toBe(1);
+    await click(m, '[data-testid="node-tri"]');
+    await waitValue("block-name-field", "Tri par Kev");
+    await click(m, '[data-testid="node-liens"]');
+    await waitValue("code-editor", "// brouillon");
+    expect(await count("code-unsaved")).toBe(1);
 
     // The agent writes the file during the draft: banner, the draft stays shown.
     await writeFile(code, "export default async (page) => page.links; // agent");
     await waitContains("code-change", "Le fichier a changé sur le disque");
-    expect(await value("editeur-code")).toBe("// brouillon");
-    await click(m, '[data-testid="garder-code"]');
+    expect(await value("code-editor")).toBe("// brouillon");
+    await click(m, '[data-testid="keep-code"]');
     await waitCount("code-change", 0);
 
     // Closing the tab (button or ⌘W) asks too; refused, it stays; accepted, it closes and the draft is dropped.
-    const builderTabs = () => inUi<number>(m, `return [...doc.querySelectorAll('[data-testid^="onglet-"]')].filter((e) => e.textContent.includes("Workflow — Veille")).length`);
+    const builderTabs = () => inUi<number>(m, `return [...doc.querySelectorAll('[data-testid^="tab-"]')].filter((e) => e.textContent.includes("Workflow — Veille")).length`);
     const closeButton = () =>
       inUi(
         m,
-        `const tab = [...doc.querySelectorAll('[data-testid^="onglet-"]')].find((e) => e.textContent.includes("Workflow — Veille"));
+        `const tab = [...doc.querySelectorAll('[data-testid^="tab-"]')].find((e) => e.textContent.includes("Workflow — Veille"));
          const b = tab.querySelector('button[aria-label="Fermer l\\'onglet"]');
          b.scrollIntoView({ block: "center" });
          const r = b.getBoundingClientRect();
@@ -656,7 +656,7 @@ describe("the workflow builder", () => {
     expect(await builderTabs()).toBe(1);
     await answerConfirm(true);
     await closeButton();
-    await waitUi(m, `return ![...doc.querySelectorAll('[data-testid^="onglet-"]')].some((e) => e.textContent.includes("Workflow — Veille"))`);
+    await waitUi(m, `return ![...doc.querySelectorAll('[data-testid^="tab-"]')].some((e) => e.textContent.includes("Workflow — Veille"))`);
     expect(await closeHeld()).toBe(false);
     expect(await readFile(code, "utf8")).toBe("export default async (page) => page.links; // agent");
   });
@@ -698,23 +698,23 @@ describe("the workflow builder", () => {
     );
     await builder("img");
     const images = await inUi<number>(m, "return doc.querySelectorAll('img').length");
-    await waitText("pastille-liens", "1");
+    await waitText("pill-liens", "1");
 
-    await click(m, '[data-testid="noeud-liens"]');
-    const inOutput = (s: string) => `doc.querySelector('[data-testid="sortie-bloc"] ${s}')`;
-    await waitUi(m, `return ${inOutput('[data-testid="statut-bloc"]')}?.textContent.trim() === "réussi"`);
-    await waitContains("sortie-bloc", "1,5 s");
-    await click(m, '[data-testid="sortie-bloc"] summary', { text: "Journal (1)" });
-    await waitUi(m, `return ${inOutput('[data-testid="journal-bloc"]')}?.textContent === arguments[0]`, [trap]);
+    await click(m, '[data-testid="node-liens"]');
+    const inOutput = (s: string) => `doc.querySelector('[data-testid="block-output"] ${s}')`;
+    await waitUi(m, `return ${inOutput('[data-testid="block-status"]')}?.textContent.trim() === "réussi"`);
+    await waitContains("block-output", "1,5 s");
+    await click(m, '[data-testid="block-output"] summary', { text: "Journal (1)" });
+    await waitUi(m, `return ${inOutput('[data-testid="block-log"]')}?.textContent === arguments[0]`, [trap]);
     // The output is formatted only once opened.
-    expect(await count("sortie-json")).toBe(0);
-    await click(m, '[data-testid="sortie-bloc"] [data-testid="sortie-repliable"] summary');
-    await waitContains("sortie-json", '"text": "<img src=x onerror=');
+    expect(await count("json-output")).toBe(0);
+    await click(m, '[data-testid="block-output"] [data-testid="collapsible-output"] summary');
+    await waitContains("json-output", '"text": "<img src=x onerror=');
 
-    await click(m, '[data-testid="noeud-tri"]');
-    await waitText("erreur-bloc", trap);
+    await click(m, '[data-testid="node-tri"]');
+    await waitText("block-run-error", trap);
     // The upstream output's fields (liens) and the config are offered to templates.
-    await waitText("disponibles-text", "Champs disponibles : {text} {url} {config.url}");
+    await waitText("available-text", "Champs disponibles : {text} {url} {config.url}");
 
     expect(await inUi(m, "return doc.querySelectorAll('img').length")).toBe(images);
     expect(await inUi(m, `return doc.querySelectorAll('img[src="x"]').length`)).toBe(0);
@@ -724,12 +724,12 @@ describe("the workflow builder", () => {
   it("⌘W with unsaved code asks first", async () => {
     await builder("close");
     const code = path.join(widgetDir(dataDir, "close"), "liens.mjs");
-    await click(m, '[data-testid="noeud-liens"]');
-    await waitValue("editeur-code", "export default async (page) => page.links;");
-    await click(m, '[data-testid="editeur-code"]');
+    await click(m, '[data-testid="node-liens"]');
+    await waitValue("code-editor", "export default async (page) => page.links;");
+    await click(m, '[data-testid="code-editor"]');
     await pressKeys(m, "Meta+ArrowDown");
     await typeText(m, " ");
-    await waitCount("code-non-enregistre", 1);
+    await waitCount("code-unsaved", 1);
     const tabs = async () => Object.values((await state(m)).tabs).filter((o) => o.url === "webaios://workflow/close").length;
 
     // Firefox shows the sidebar's confirm() as a modal prompt (a WebDriver user prompt), with the confirm's text.
@@ -737,8 +737,8 @@ describe("the workflow builder", () => {
     expect(await promptText()).toBe("Le code de liens.mjs n'est pas enregistré. Fermer quand même ? Il sera perdu.");
     await m.command("WebDriver:DismissAlert");
     expect(await tabs()).toBe(1);
-    expect(await value("editeur-code")).toBe("export default async (page) => page.links; ");
-    expect(await count("code-non-enregistre")).toBe(1);
+    expect(await value("code-editor")).toBe("export default async (page) => page.links; ");
+    expect(await count("code-unsaved")).toBe(1);
 
     await pressKeysLater("Meta+w");
     expect(await promptText()).toContain("liens.mjs");
@@ -750,14 +750,14 @@ describe("the workflow builder", () => {
   it("a widget removed while its builder is open is forgotten", async () => {
     await builder("gone");
     await click(m, '[data-testid="palette-list.keep"]');
-    await waitCount("noeud-list-keep", 1);
-    await waitContains("etat-enregistrement", "entrée manquante");
+    await waitCount("node-list-keep", 1);
+    await waitContains("save-status", "entrée manquante");
 
     // Removed from the home page, its builder tab still open behind.
     await home();
     await click(m, '[data-testid="widget-gone"] button[aria-label="Options du widget"]');
     await click(m, '[data-testid="widget-gone"] [role="menuitem"]', { text: "Retirer" });
-    await click(m, '[data-testid="confirmation-retrait"] button', { text: "Retirer" });
+    await click(m, '[data-testid="removal-confirmation"] button', { text: "Retirer" });
     await waitUi(m, `return !doc.querySelector('[data-testid="widget-gone"]')`);
     // The home page hides it at once; the host moves its folder to the trash, then says the home page changed.
     await waitUi(m, `return !(await ui.webaios.home.read()).widgets.some((w) => w.id === "gone")`);

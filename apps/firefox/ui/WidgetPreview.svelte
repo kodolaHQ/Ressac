@@ -2,7 +2,7 @@
   import { untrack } from "svelte";
   import type { ShownWidget } from "../shared/api";
   import { api } from "./state.svelte";
-  import { GAP_PX, ROW_PX } from "./grille";
+  import { GAP_PX, ROW_PX } from "./grid";
   import { previewData } from "./builder/preview";
   import type { Executions } from "./builder/executions.svelte";
   import WidgetFrame from "./WidgetFrame.svelte";
@@ -42,11 +42,11 @@
   const height = $derived(Math.min(360, size.h * ROW_PX + (size.h - 1) * GAP_PX));
 </script>
 
-<div class="apercu" data-testid="apercu-widget">
+<div class="preview" data-testid="widget-preview">
   {#if !shown || !preview}
-    <p class="doux">{widget && "error" in widget ? `Widget illisible : ${widget.error}` : "Chargement…"}</p>
+    <p class="muted">{widget && "error" in widget ? `Widget illisible : ${widget.error}` : "Chargement…"}</p>
   {:else}
-    <div class="cadre" style:width="{width}px" style:height="{height}px">
+    <div class="frame" style:width="{width}px" style:height="{height}px">
       <WidgetFrame
         widget={shown}
         data={preview.data}
@@ -54,13 +54,13 @@
         state={{ status: shown.state.status, lastUpdate: shown.state.lastUpdate }}
       />
     </div>
-    {#if preview.mention}<p class="doux mention" data-testid="apercu-mention">Aperçu : données non gardées dans cette exécution</p>{/if}
+    {#if preview.mention}<p class="muted mention" data-testid="mention-preview">Aperçu : données non gardées dans cette exécution</p>{/if}
   {/if}
 </div>
 
 <style>
-  .apercu { position: absolute; left: 12px; bottom: 12px; z-index: 4; display: flex; flex-direction: column; gap: 4px; padding: 6px; border-radius: 10px; border: 1px solid var(--bord); background: var(--fond-barre); box-shadow: var(--ombre-modale); max-width: calc(100% - 24px); }
-  .cadre { display: flex; max-width: 100%; border-radius: 6px; overflow: hidden; }
-  .doux { margin: 0; font-size: 11px; color: var(--texte-doux); }
+  .preview { position: absolute; left: 12px; bottom: 12px; z-index: 4; display: flex; flex-direction: column; gap: 4px; padding: 6px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-bar); box-shadow: var(--modal-shadow); max-width: calc(100% - 24px); }
+  .frame { display: flex; max-width: 100%; border-radius: 6px; overflow: hidden; }
+  .muted { margin: 0; font-size: 11px; color: var(--text-muted); }
   .mention { max-width: 260px; }
 </style>

@@ -169,7 +169,7 @@ async function serveNow(dataDir: string, id: string): Promise<string | null> {
     current.set(id, substitution(key));
     return `resource://${substitution(key)}/index.html`;
   } catch (e) {
-    console.error(`[sites] accueil de ${id} non servi :`, e);
+    console.error(`[sites] home of ${id} not served:`, e);
     return null;
   }
 }

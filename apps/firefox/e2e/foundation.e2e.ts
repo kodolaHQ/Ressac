@@ -63,7 +63,7 @@ describe("WebAiOs-Firefox foundation", () => {
       const frame = document.getElementById("webaios-sidebar");
       if (!frame) return null;
       for (let i = 0; i < 100; i++) {
-        const el = frame.contentDocument?.querySelector('[data-testid="barre-laterale"]');
+        const el = frame.contentDocument?.querySelector('[data-testid="sidebar"]');
         if (el) return { ns: el.namespaceURI, text: el.textContent };
         await new Promise((r) => setTimeout(r, 100));
       }

@@ -46,7 +46,7 @@ function queued<T>(key: string, work: () => Promise<T>): Promise<T> {
 }
 
 /**
- * The site changed domain: `nouveau` becomes the current one, the old current one (failing that the host of the declared address)
+ * The site changed domain: `fresh` becomes the current one, the old current one (failing that the host of the declared address)
  * joins the old ones without duplicates. The writes of a same site go one after the other.
  */
 export function changeUrl(sitesFolder: string, id: string, d: DeclarationSite, fresh: string): Promise<UrlState> {

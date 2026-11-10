@@ -263,7 +263,7 @@ export async function prepareWidget(dataDir: string, id: string): Promise<string
   try {
     const real = await confinedCopiesFolder(dataDir, id);
     if (!real) {
-      console.warn(`[widget] dossier de copies de ${id} hors de <dataDir>/webaios-widgets : refusé`);
+      console.warn(`[widget] copies folder of ${id} outside <dataDir>/webaios-widgets: refused`);
       return null;
     }
     const copy = PathUtils.join(real, `display-${mtime}.html`);
@@ -283,7 +283,7 @@ export async function prepareWidget(dataDir: string, id: string): Promise<string
     }
     substitute(id, folder);
   } catch (e) {
-    console.error(`[widget] copie de ${id} impossible :`, e);
+    console.error(`[widget] copy of ${id} failed:`, e);
     return null;
   }
   return displayUrl(id, mtime);

@@ -139,7 +139,7 @@ export class ReviewService {
       await this.repo(p, folder).ensureReference();
     } catch (e) {
       // git missing, folder unreadable or gone: the page will say so when opened.
-      if (!(e instanceof ReviewError)) console.error(`[relecture] prise en charge de ${p} :`, e);
+      if (!(e instanceof ReviewError)) console.error(`[review] tracking of ${p}:`, e);
     }
   }
 
@@ -237,7 +237,7 @@ export class ReviewService {
       };
     } catch (e) {
       if (e instanceof ReviewError) return { state: "unavailable", name: project.name, reason: e.reason };
-      console.error(`[relecture] comparaison de ${p} :`, e);
+      console.error(`[review] comparison of ${p}:`, e);
       return { state: "unavailable", name: project.name, reason: "la comparaison a échoué" };
     }
   }

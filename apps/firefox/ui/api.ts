@@ -201,10 +201,10 @@ export function createApi(win: WindowController): ApiFirefox {
       open: (url, id) => {
         // Only just after a real click in this widget's display (one link per click), and one per second at most: a
         // display that would burst links could make data leave.
-        if (!win.store.widgetGestures.accept(windowId, id)) return console.warn("[webaios] lien de widget ignoré (pas de clic dans le widget) :", url);
+        if (!win.store.widgetGestures.accept(windowId, id)) return console.warn("[webaios] widget link ignored (no click in the widget):", url);
         const now = Date.now();
-        if (now - lastLink < 1000) return console.warn("[webaios] lien de widget ignoré (trop rapproché) :", url);
-        if (!openableUrl(url)) return console.warn("[webaios] lien de widget refusé :", url);
+        if (now - lastLink < 1000) return console.warn("[webaios] widget link ignored (too soon):", url);
+        if (!openableUrl(url)) return console.warn("[webaios] widget link refused:", url);
         lastLink = now;
         win.store.dispatch({ type: "openTab", windowId: windowId, url, activate: true });
       },
@@ -282,11 +282,11 @@ export function createApi(win: WindowController): ApiFirefox {
     // The design mode of this window's tab; its cart column is a chrome frame (chrome/window/design-overlays.ts).
     design: createDesignApi({ win, untilUnload }),
     designPanel(isOpen) {
-      const t = { type: "fenetre" as const, windowId: windowId };
+      const t = { type: "window" as const, windowId: windowId };
       if (isOpen === true) void win.store.design.openCart(t);
       else if (isOpen === false) win.store.design.closeOverlay(t, "basket");
     },
-    onPanelClosed: (callback) => untilUnload(win.store.design.overlays.onColumnClosed({ type: "fenetre", windowId: windowId }, () => callback())),
+    onPanelClosed: (callback) => untilUnload(win.store.design.overlays.onColumnClosed({ type: "window", windowId: windowId }, () => callback())),
     // The agent's extensions, kept by the kernel host: what the reused space modal, empty page and command bar call.
     extensions: {
       forSpace: (spaceId) => host.request<SpaceExtensionLine[]>("extensions.forSpace", { spaceId: spaceId }).then((l) => structuredClone(l), () => []),

@@ -92,7 +92,7 @@ export async function toHome(m: Marionette, id: string): Promise<void> {
   await openSite(m, id);
   if ((await viewOf(m, id)) !== "home") await inStore(m, `store.sites.controller(arguments[0]).home();`, [id]);
   await expect
-    .poll(() => inSiteBar<string | null>(m, id, `const h = doc.querySelector('[data-testid="site-cadre-accueil"]'); const d = h?.contentDocument; return d?.readyState === "complete" ? String(d.documentURI) : null;`), { timeout: 15_000 })
+    .poll(() => inSiteBar<string | null>(m, id, `const h = doc.querySelector('[data-testid="site-home-frame"]'); const d = h?.contentDocument; return d?.readyState === "complete" ? String(d.documentURI) : null;`), { timeout: 15_000 })
     .toMatch(/^resource:\/\/webaios-site-/);
 }
 
@@ -140,7 +140,7 @@ export const homePoint = (m: Marionette, id: string, sel: string) =>
   inSiteBar<{ x: number; y: number }>(
     m,
     id,
-    `const b = win.document.getElementById("webaios-site-bar").getBoundingClientRect(), f = doc.querySelector('[data-testid="site-cadre-accueil"]');
+    `const b = win.document.getElementById("webaios-site-bar").getBoundingClientRect(), f = doc.querySelector('[data-testid="site-home-frame"]');
      const h = f.getBoundingClientRect(), e = f.contentDocument.querySelector(arguments[0]).getBoundingClientRect();
      return { x: b.left + h.left + f.clientLeft + e.left + e.width / 2, y: b.top + h.top + f.clientTop + e.top + e.height / 2 };`,
     [sel],

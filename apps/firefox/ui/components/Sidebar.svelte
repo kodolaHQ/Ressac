@@ -37,13 +37,13 @@
   const builder = $derived(!!activeTab && workflowUrlTarget(activeTab.url) !== null);
 </script>
 
-<aside class="barre" data-testid="barre-laterale" hidden={hidden}>
+<aside class="bar" data-testid="sidebar" hidden={hidden}>
   <UrlBar window={win} />
-  <div class="defilant">
+  <div class="scrolling">
     <Essentials window={win} />
     <ul
-      class="epingles"
-      data-testid="epingles"
+      class="pinned"
+      data-testid="pinned"
       ondragover={(e) => e.dataTransfer?.types.includes("application/x-webaios-onglet") && e.preventDefault()}
       ondrop={(e) => {
         const id = e.dataTransfer?.getData("application/x-webaios-onglet");
@@ -53,8 +53,8 @@
       {#each space?.pinned ?? [] as favorite (favorite.id)}
         <li>
           <button
-            data-testid="favori-{favorite.id}"
-            class:actif={favorite.id === activeLink}
+            data-testid="favorite-{favorite.id}"
+            class:active={favorite.id === activeLink}
             onclick={() => api.dispatch({ type: "openFavorite", windowId: win.id, kind: "pinned", id: favorite.id })}
             oncontextmenu={(e) =>
               openMenu(e, [{ label: "Retirer", dispatch: () => api.dispatch({ type: "unpin", spaceId: win.activeSpace, favoriteId: favorite.id }) }])}
@@ -65,71 +65,71 @@
         </li>
       {/each}
     </ul>
-    <div class="espace" data-testid="titre-espace">{space?.icon} {space?.name}</div>
+    <div class="space" data-testid="space-title">{space?.icon} {space?.name}</div>
     <TabList window={win} />
-    <button class="nouveau" data-testid="nouvel-onglet" onclick={() => api.dispatch({ type: "showBlankPage", windowId: win.id })}><Icon name="plus" size={14} /> Nouvel onglet</button>
+    <button class="new" data-testid="new-tab" onclick={() => api.dispatch({ type: "showBlankPage", windowId: win.id })}><Icon name="plus" size={14} /> Nouvel onglet</button>
   </div>
   <footer>
     <SpaceSelector window={win} />
     <button
-      class="outil"
-      data-testid="bouton-agent"
+      class="tool"
+      data-testid="agent-button"
       aria-label="Agent (⌘J)"
       title="Agent (⌘J)"
       aria-pressed={!builder && win.agentPanelOpen}
       onclick={() => (builder ? builderAgent?.() : api.dispatch({ type: "toggleAgentPanel", windowId: win.id }))}><Icon name="agent" /></button
     >
     <button
-      class="outil"
-      data-testid="bouton-applications"
+      class="tool"
+      data-testid="applications-button"
       aria-label="Applications (⇧⌘A)"
       title="Applications (⇧⌘A)"
       aria-pressed={activeTab?.url === URL_APPLICATIONS}
       onclick={() => api.dispatch({ type: "openApps", windowId: win.id })}><Icon name="apps" /></button
     >
     <button
-      class="outil"
-      data-testid="bouton-actions"
+      class="tool"
+      data-testid="actions-button"
       aria-label="Actions"
       title="Actions"
       aria-pressed={activeTab?.url === URL_ACTIONS}
       onclick={() => api.dispatch({ type: "openActions", windowId: win.id })}><Icon name="actions" /></button
     >
     {#if downloads.list.length}
-      <button class="telechargements" aria-label="Téléchargements" title="Téléchargements" onclick={() => togglePanel?.("downloads")}>
+      <button class="downloads" aria-label="Téléchargements" title="Téléchargements" onclick={() => togglePanel?.("downloads")}>
         <Icon name="download" />
-        {#if running.length}<span class="pastille" style:--p={progression}></span>{/if}
+        {#if running.length}<span class="pill" style:--p={progression}></span>{/if}
       </button>
     {/if}
   </footer>
 </aside>
 
 <style>
-  .barre {
+  .bar {
     display: flex;
     flex-direction: column;
     min-height: 0;
     padding: 10px 8px 0;
-    background: var(--fond-barre);
+    background: var(--bg-bar);
     -webkit-app-region: drag;
   }
-  .barre[hidden] { display: none; }
-  .defilant { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; margin-top: 14px; -webkit-app-region: no-drag; }
-  .barre :global(nav) { -webkit-app-region: no-drag; }
-  .epingles { list-style: none; margin: 0; padding: 0; min-height: 8px; }
-  .epingles button { all: unset; display: flex; align-items: center; gap: 8px; width: calc(100% - 16px); height: 34px; padding: 0 8px; border-radius: 8px; color: var(--texte); }
-  .epingles button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .epingles button:hover { background: var(--fond-survol); }
-  .epingles button.actif { background: var(--fond-actif); }
+  .bar[hidden] { display: none; }
+  .scrolling { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; margin-top: 14px; -webkit-app-region: no-drag; }
+  .bar :global(nav) { -webkit-app-region: no-drag; }
+  .pinned { list-style: none; margin: 0; padding: 0; min-height: 8px; }
+  .pinned button { all: unset; display: flex; align-items: center; gap: 8px; width: calc(100% - 16px); height: 34px; padding: 0 8px; border-radius: 8px; color: var(--text); }
+  .pinned button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pinned button:hover { background: var(--bg-hover); }
+  .pinned button.active { background: var(--bg-active); }
   footer { display: flex; align-items: flex-end; gap: 4px; -webkit-app-region: no-drag; }
   footer :global(nav) { flex: 1; }
-  .telechargements { all: unset; position: relative; width: 28px; height: 28px; margin-bottom: 8px; display: grid; place-content: center; border-radius: 6px; color: var(--texte-doux); }
-  .telechargements:hover { background: var(--fond-survol); }
-  .outil { all: unset; -webkit-app-region: no-drag; width: 28px; height: 28px; margin-bottom: 8px; display: grid; place-content: center; border-radius: 6px; color: var(--texte-doux); }
-  .outil:hover { background: var(--fond-survol); }
-  .outil[aria-pressed="true"] { color: var(--accent); }
-  .pastille { position: absolute; inset: 3px; border-radius: 50%; background: conic-gradient(var(--accent) calc(var(--p) * 360deg), transparent 0); mask: radial-gradient(circle, transparent 55%, black 56%); }
-  .espace { padding: 10px 8px 0; font-size: 12px; font-weight: 600; color: var(--texte-doux); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: none; }
-  .nouveau { all: unset; display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 8px; border-radius: 8px; color: var(--texte-doux); }
-  .nouveau:hover { background: var(--fond-survol); }
+  .downloads { all: unset; position: relative; width: 28px; height: 28px; margin-bottom: 8px; display: grid; place-content: center; border-radius: 6px; color: var(--text-muted); }
+  .downloads:hover { background: var(--bg-hover); }
+  .tool { all: unset; -webkit-app-region: no-drag; width: 28px; height: 28px; margin-bottom: 8px; display: grid; place-content: center; border-radius: 6px; color: var(--text-muted); }
+  .tool:hover { background: var(--bg-hover); }
+  .tool[aria-pressed="true"] { color: var(--accent); }
+  .pill { position: absolute; inset: 3px; border-radius: 50%; background: conic-gradient(var(--accent) calc(var(--p) * 360deg), transparent 0); mask: radial-gradient(circle, transparent 55%, black 56%); }
+  .space { padding: 10px 8px 0; font-size: 12px; font-weight: 600; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: none; }
+  .new { all: unset; display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 8px; border-radius: 8px; color: var(--text-muted); }
+  .new:hover { background: var(--bg-hover); }
 </style>

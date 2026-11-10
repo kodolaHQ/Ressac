@@ -26,7 +26,7 @@
 :root[webaios-main][inDOMFullscreen] {
   --webaios-sidebar: 0px !important;
   --webaios-agent: 0px !important;
-  --webaios-panier: 0px !important;
+  --webaios-basket: 0px !important;
 }
 
 /* The UI column on the left; `full` (overlays, empty page) covers the whole window. In compact mode the sidebar floats
@@ -84,8 +84,8 @@
   /* Below the site question's banner, --webaios-banner high (0 without one). */
   margin-top: var(--webaios-banner, 0px);
   margin-inline-start: var(--webaios-sidebar, 240px);
-  /* The design mode's cart column, --webaios-panier wide (unset when closed), sits between the page and the agent panel. */
-  margin-inline-end: calc(var(--webaios-agent, 0px) + var(--webaios-panier, 0px));
+  /* The design mode's cart column, --webaios-basket wide (unset when closed), sits between the page and the agent panel. */
+  margin-inline-end: calc(var(--webaios-agent, 0px) + var(--webaios-basket, 0px));
 }
 
 /* The design mode's cart column (chrome/window/design-overlays.ts): the whole height of the page's area, left of the
@@ -95,7 +95,7 @@
   /* Not bottom: 0, which leaves an iframe at its intrinsic 150 px. */
   height: calc(100% - var(--webaios-banner, 0px));
   right: var(--webaios-agent, 0px);
-  width: var(--webaios-panier, 0px);
+  width: var(--webaios-basket, 0px);
 }
 
 /* Firefox's separator under its hidden toolbar: the page goes up to the window's top edge. */
@@ -105,11 +105,11 @@
 
 /* A site's question, above the page; colours from the UI's theme.css. */
 :root[webaios-main] #webaios-banner {
-  --fond-actif: #3d3d47;
-  --fond-barre: #26262c;
-  --texte: #e8e8ee;
+  --bg-active: #3d3d47;
+  --bg-bar: #26262c;
+  --text: #e8e8ee;
   --accent: #8b7cf6;
-  --bord: #3a3a42;
+  --border: #3a3a42;
   position: fixed;
   top: 0;
   left: var(--webaios-sidebar, 240px);
@@ -119,18 +119,18 @@
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  background: var(--fond-actif);
-  border-bottom: 1px solid var(--bord);
-  color: var(--texte);
+  background: var(--bg-active);
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
   font: message-box;
 }
 
 @media (prefers-color-scheme: light) {
   :root[webaios-main] #webaios-banner {
-    --fond-actif: #cfcfd8;
-    --fond-barre: #e9e9ee;
-    --texte: #1e1e22;
-    --bord: #d0d0d8;
+    --bg-active: #cfcfd8;
+    --bg-bar: #e9e9ee;
+    --text: #1e1e22;
+    --border: #d0d0d8;
   }
 }
 
@@ -145,12 +145,12 @@
 :root[webaios-main] #webaios-banner button {
   padding: 4px 10px;
   border-radius: 6px;
-  border: 1px solid var(--bord);
-  background: var(--fond-barre);
-  color: var(--texte);
+  border: 1px solid var(--border);
+  background: var(--bg-bar);
+  color: var(--text);
 }
 
-:root[webaios-main] #webaios-banner button.autoriser {
+:root[webaios-main] #webaios-banner button.allow {
   background: var(--accent);
   border-color: var(--accent);
   color: white;

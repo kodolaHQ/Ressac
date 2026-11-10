@@ -47,7 +47,7 @@ test("generateToken: 64 hexadecimal characters, different at each call", () => {
   expect(generateToken()).not.toBe(generateToken());
 });
 
-test("urlConteneur passe par host.docker.internal", () => {
+test("containerUrl goes through host.docker.internal", () => {
   expect(server.containerUrl).toBe(`http://host.docker.internal:${server.port}/mcp`);
 });
 
@@ -467,7 +467,7 @@ test("widget_data on a public widget: data without a card; unknown widget: error
   expect(text(r)).toContain("Widget inconnu : absent");
 });
 
-test("widget_data without a possible card (no demanderDonneesWidget): refusal", async () => {
+test("widget_data without a possible card (no askWidgetData): refusal", async () => {
   const { tools: tools } = fakeWidgets();
   await withWidgets(tools);
   const t = text(await client.callTool({ name: "widget_data", arguments: { id: "daily" } }));

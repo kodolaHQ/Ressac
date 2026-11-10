@@ -117,7 +117,7 @@ export function serveComponent(dataDir: string, name: string): Promise<string | 
       substitute(name, copies);
       return `resource://${substitution(name)}/${file}`;
     } catch (e) {
-      console.error(`[actions] composant ${name} non servi :`, e);
+      console.error(`[actions] component ${name} not served:`, e);
       return null;
     }
   });

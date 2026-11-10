@@ -68,7 +68,7 @@ const PREFS = {
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const NAVIGABLES = "chrome://remote/content/shared/NavigableManager.sys.mjs";
-const BANNER = '[data-testid="demande-permission"]';
+const BANNER = '[data-testid="permission-request"]';
 
 /** A server of PAGE: each test takes fresh origins, so no earlier decision answers for it. */
 async function startPages(): Promise<{ url: string; port: number; handled: string[]; close(): Promise<void> }> {
@@ -105,7 +105,7 @@ describe("site permissions", () => {
     await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
     // The home page's agent session settles first: quitting during its start-up leaves writers in the data dir. A
     // restart shows the restored tabs, not the home page.
-    if (first) await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('prêt>')", [], 20_000, "agent");
+    if (first) await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
   }
 
   /** Opens `/p?do=<what>` (made unique) of `base` in a WebAiOs tab of the first window; returns its tab id once loaded. */
@@ -228,7 +228,7 @@ describe("site permissions", () => {
     await waitBanner((t) => t !== null);
     await answer("Autoriser");
     expect(await result(first)).toEqual({ ok: "granted" });
-    await dispatch(m, { type: "createSpace", name: "Autre", icon: "🅰", private: false, profile: "nouveau", windowId: (await state(m)).windows[0]!.id });
+    await dispatch(m, { type: "createSpace", name: "Autre", icon: "🅰", private: false, profile: "new", windowId: (await state(m)).windows[0]!.id });
     const id = await open(base, "notif");
     expect(await waitBanner((t) => t !== null)).toMatch(/^127\.0\.0\.1:\d+ veut vous envoyer des notifications$/);
     await answer("Refuser");
@@ -317,7 +317,7 @@ describe("site permissions", () => {
 
   it("a private space: same questions, kept by its profile", async () => {
     const base = await origin();
-    await dispatch(m, { type: "createSpace", name: "Privé", icon: "🔒", private: true, profile: "nouveau", windowId: (await state(m)).windows[0]!.id });
+    await dispatch(m, { type: "createSpace", name: "Privé", icon: "🔒", private: true, profile: "new", windowId: (await state(m)).windows[0]!.id });
     const s = await state(m);
     const profile = s.spaces.find((e) => e.name === "Privé")!.profile;
     const id = await open(base, "notif");
@@ -477,7 +477,7 @@ describe("site permissions", () => {
   it("a deleted profile: its permissions.json and its decisions in Firefox disappear", { timeout: 60_000 }, async () => {
     const base = await origin();
     const windowId = (await state(m)).windows[0]!.id;
-    await dispatch(m, { type: "createSpace", name: "Jetable", icon: "🗑", private: false, profile: "nouveau", windowId: windowId });
+    await dispatch(m, { type: "createSpace", name: "Jetable", icon: "🗑", private: false, profile: "new", windowId: windowId });
     const space = (await state(m)).spaces.find((e) => e.name === "Jetable")!;
     const file = path.join(dirs.dataDir, `permissions-${space.profile}.json`);
     const id = await open(base, "notif");

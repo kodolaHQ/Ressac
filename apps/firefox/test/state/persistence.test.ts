@@ -44,7 +44,7 @@ test("session v3 with a private space and a second sign-in profile: identical ro
   const d = folder();
   let n = 100;
   const g = () => `h${++n}`;
-  const state = apply(richState(), { type: "createSpace", name: "Banque", icon: "🏦", private: true, profile: "nouveau" }, g);
+  const state = apply(richState(), { type: "createSpace", name: "Banque", icon: "🏦", private: true, profile: "new" }, g);
   expect(state.profiles).toHaveLength(2);
   const recorder = new SessionRecorder(d);
   recorder.schedule(state);
@@ -203,10 +203,10 @@ test("a tab's load error is not saved", async () => {
   expect((await loadSession(d)).tabs[id]?.error).toBeNull();
 });
 
-test("a session saved without profilAgent loads with claude", async () => {
+test("a session saved without agentProfile loads with claude", async () => {
   const d = folder();
   const old = structuredClone(initialState()) as unknown as { settings: Record<string, unknown> };
-  delete old.settings.profilAgent;
+  delete old.settings.agentProfile;
   writeFileSync(join(d, "session.json"), JSON.stringify(old));
   const e = await loadSession(d);
   expect(e.settings.agentProfile).toBe("claude");
@@ -216,7 +216,7 @@ test("a session saved without profilAgent loads with claude", async () => {
 test("a session saved without agent panel width loads with 420", async () => {
   const d = folder();
   const old = structuredClone(initialState()) as unknown as { settings: Record<string, unknown> };
-  delete old.settings.largeurPanneauAgent;
+  delete old.settings.agentPanelWidth;
   writeFileSync(join(d, "session.json"), JSON.stringify(old));
   const e = await loadSession(d);
   expect(e.settings.agentPanelWidth).toBe(420);

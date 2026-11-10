@@ -41,7 +41,7 @@ async function boot(env: Record<string, string> = {}): Promise<void> {
   await m.setContext("chrome");
   await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
   await resolveLocalHosts(m, ["localhost"]);
-  await waitFor(m, `return (async () => { const d = (await ChromeUtils.importESModule("${STORE}").ready).design; return d.state({ type: "fenetre", windowId: window.webaiosWindow.windowId }).then(() => true, () => false); })();`, (v) => v === true, 30_000);
+  await waitFor(m, `return (async () => { const d = (await ChromeUtils.importESModule("${STORE}").ready).design; return d.state({ type: "window", windowId: window.webaiosWindow.windowId }).then(() => true, () => false); })();`, (v) => v === true, 30_000);
 }
 
 beforeAll(async () => {
@@ -59,7 +59,7 @@ afterAll(async () => {
 /** Runs `body` with `d` the design service, `t` the current window's target, `store` the store. */
 const svc = <R = unknown>(body: string, args: unknown[] = []) =>
   m.execute<R>(
-    `return (async (args) => { const store = await ChromeUtils.importESModule("${STORE}").ready, d = store.design; const t = { type: "fenetre", windowId: window.webaiosWindow.windowId }; ${body} })([...arguments]);`,
+    `return (async (args) => { const store = await ChromeUtils.importESModule("${STORE}").ready, d = store.design; const t = { type: "window", windowId: window.webaiosWindow.windowId }; ${body} })([...arguments]);`,
     args,
   );
 const designState = () => svc<{ active: boolean; basket: number; project: { project: string } | null }>("return await d.state(t);");
@@ -67,8 +67,8 @@ const hosts = () => inBrowser<number>(m, B, `return document.querySelectorAll("w
 const button = () =>
   inUi<{ disabled: boolean; title: string; pressed: string; count: string | null } | null>(
     m,
-    `const b = doc.querySelector('${tid("bouton-design")}');
-     return b && { disabled: b.disabled, title: b.title, pressed: b.getAttribute("aria-pressed"), count: b.querySelector('${tid("compteur-panier")}')?.textContent ?? null };`,
+    `const b = doc.querySelector('${tid("design-button")}');
+     return b && { disabled: b.disabled, title: b.title, pressed: b.getAttribute("aria-pressed"), count: b.querySelector('${tid("basket-counter")}')?.textContent ?? null };`,
   );
 const pressed = async () => (await button())?.pressed;
 
@@ -102,7 +102,7 @@ const columnShown = async () => (await frameOf("webaios-design-volet"))?.shown ?
 const sendButton = () =>
   frameOf<{ text: string; disabled: boolean; cart: string } | null>(
     "webaios-design-volet",
-    `const b = doc?.querySelector('${tid("envoyer-remarques")}'); return b && { text: b.textContent, disabled: b.disabled, cart: doc.querySelector('${tid("panier-design")}').textContent };`,
+    `const b = doc?.querySelector('${tid("send-remarks")}'); return b && { text: b.textContent, disabled: b.disabled, cart: doc.querySelector('${tid("design-basket")}').textContent };`,
   ).then((f) => f?.v ?? null);
 
 /** The chevron's menu entries; the menu stays open. */
@@ -128,7 +128,7 @@ async function remark(text: string) {
   await trustedMouse(m, B, "#email");
   await expect.poll(() => frameOf<string | null>("webaios-design-calque", "return doc.activeElement?.localName ?? null;").then((f) => f?.v), { timeout: 10_000 }).toBe("textarea");
   await typeText(m, text);
-  await click(m, "button.ajouter", { frame: "overlay" });
+  await click(m, "button.add-button", { frame: "overlay" });
   await expect.poll(async () => (await designState()).basket, { timeout: 10_000 }).toBe(n + 1);
 }
 
@@ -234,10 +234,10 @@ describe("on the demo", () => {
     await expect.poll(pressed, { timeout: 10_000 }).toBe("false");
     expect(await hosts()).toBe(0);
     // The button does the same.
-    await click(m, tid("bouton-design"));
+    await click(m, tid("design-button"));
     await expect.poll(pressed, { timeout: 10_000 }).toBe("true");
     await expect.poll(hosts, { timeout: 10_000 }).toBe(1);
-    await click(m, tid("bouton-design"));
+    await click(m, tid("design-button"));
     await expect.poll(pressed, { timeout: 10_000 }).toBe("false");
     await expect.poll(hosts, { timeout: 10_000 }).toBe(0);
     expect((await button())?.count).toBe("1");
@@ -257,7 +257,7 @@ describe("on the demo", () => {
     await sleep(500);
     expect(await columnShown()).toBe(true);
     // « Fermer »: Panier is cleared, so the next mode's end closes the column.
-    await click(m, 'button.fermer', { frame: "panel" });
+    await click(m, 'button.close', { frame: "panel" });
     await expect.poll(columnShown, { timeout: 10_000 }).toBe(false);
     await sleep(500);
     expect(await columnShown()).toBe(false);
@@ -304,7 +304,7 @@ describe("on the demo", () => {
     await waitWindowCount(m, 1);
     await m.command("WebDriver:SwitchToWindow", { handle: b, focus: false });
     expect(a).not.toBe(b);
-    expect(await svc<boolean>("return d.state({ type: 'fenetre', windowId: args[0] }).then((e) => e.active);", [fa])).toBe(false);
+    expect(await svc<boolean>("return d.state({ type: 'window', windowId: args[0] }).then((e) => e.active);", [fa])).toBe(false);
     expect((await designState()).active).toBe(true);
     expect(await hosts()).toBe(1);
     await modeOff();
@@ -334,7 +334,7 @@ describe("an external project", () => {
     await click(m, '[role="menuitem"]', { text: "Relire ce projet" });
     await expect.poll(async () => (await reviewTabs()).length, { timeout: 10_000 }).toBe(1);
     const review = (await reviewTabs())[0]!;
-    await expect.poll(() => inUi<boolean>(m, `return !!doc.querySelector('${tid("page-relecture")}');`), { timeout: 10_000 }).toBe(true);
+    await expect.poll(() => inUi<boolean>(m, `return !!doc.querySelector('${tid("review-page")}');`), { timeout: 10_000 }).toBe(true);
     await activate(tab);
     await expect.poll(button, { timeout: 10_000 }).toMatchObject({ disabled: false });
     await chevron();
@@ -352,8 +352,8 @@ describe("an external project", () => {
     expect((await sendButton())!.text).toContain("Claude Code");
     await modeOff();
     await openApplications(m);
-    await click(m, `${tid("client-externe")} button`, { text: "Révoquer" });
-    await expect.poll(() => inUi<number>(m, `return doc.querySelectorAll('${tid("client-externe")}').length;`), { timeout: 10_000 }).toBe(0);
+    await click(m, `${tid("external-client")} button`, { text: "Révoquer" });
+    await expect.poll(() => inUi<number>(m, `return doc.querySelectorAll('${tid("external-client")}').length;`), { timeout: 10_000 }).toBe(0);
     await activate(tab);
     await modeOn();
     await expect.poll(sendButton, { timeout: 10_000 }).toMatchObject({ disabled: true });
@@ -365,8 +365,8 @@ describe("an external project", () => {
     await activate(tab);
     await expect.poll(button, { timeout: 10_000 }).toMatchObject({ disabled: false });
     await openApplications(m);
-    await click(m, `${tid("projet-externe")} button`, { text: "Oublier" });
-    await expect.poll(() => inUi<number>(m, `return doc.querySelectorAll('${tid("projet-externe")}').length;`), { timeout: 10_000 }).toBe(0);
+    await click(m, `${tid("external-project")} button`, { text: "Oublier" });
+    await expect.poll(() => inUi<number>(m, `return doc.querySelectorAll('${tid("external-project")}').length;`), { timeout: 10_000 }).toBe(0);
     await activate(tab);
     await expect.poll(button, { timeout: 10_000 }).toMatchObject({ disabled: true, title: UNAVAILABLE_DESIGN });
   });
@@ -381,7 +381,7 @@ describe("without git", () => {
     try {
       await open(`${ext.page}/`);
       await expect.poll(button, { timeout: 10_000 }).toMatchObject({ disabled: false });
-      await click(m, tid("bouton-design"));
+      await click(m, tid("design-button"));
       await expect.poll(pressed, { timeout: 10_000 }).toBe("true");
       await expect.poll(hosts, { timeout: 10_000 }).toBe(1);
       await modeOff();

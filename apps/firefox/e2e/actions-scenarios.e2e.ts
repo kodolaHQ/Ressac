@@ -84,19 +84,19 @@ const newStatuses = async (id: string, before: number) => (await runStatuses(w.d
 
 /** What the tickets page shows: a figure, the box, one table section per priority (actions.spec.ts:1205). */
 async function waitTicketsPage(): Promise<void> {
-  const page = tid("rendu-page");
+  const page = tid("page-render");
   await visible(page, 60_000);
-  await q.waitText(`${page} ${tid("bloc-chiffre")} .valeur`, "2", 30_000);
-  expect(await q.text(`${page} ${tid("bloc-chiffre")}`)).toContain("Tickets urgents");
-  const box = (await q.text(`${page} ${tid("bloc-encadre")}`)) ?? "";
+  await q.waitText(`${page} ${tid("block-figure")} .value`, "2", 30_000);
+  expect(await q.text(`${page} ${tid("block-figure")}`)).toContain("Tickets urgents");
+  const box = (await q.text(`${page} ${tid("block-callout")}`)) ?? "";
   for (const t of ["À traiter d'abord", "Connexion impossible", "Fuite mémoire du worker"]) expect(box).toContain(t);
   expect(box).not.toContain("Facture en double");
-  const table = `${page} ${tid("bloc-tableau")}`;
+  const table = `${page} ${tid("block-table")}`;
   expect(await inUi(m, "return [...doc.querySelectorAll(arguments[0])].map((e) => e.textContent.trim());", [`${table} th[scope="rowgroup"]`])).toEqual(["urgent", "normale", "basse"]);
   const second = await inUi<string>(m, "return doc.querySelectorAll(arguments[0])[1]?.textContent ?? '';", [`${table} tbody`]);
   expect(second).toContain("Facture en double");
   expect(second).toContain("Export CSV lent");
-  expect(await q.count(`${page} ${tid("mention-secours")}`)).toBe(0);
+  expect(await q.count(`${page} ${tid("fallback-mention")}`)).toBe(0);
 }
 
 const tabUrls = async () => Object.values((await state(m)).tabs).map((o) => o.url);
@@ -174,17 +174,17 @@ describe("action scenarios", () => {
     servers.settings.plan = TICKETS_PLAN;
     const before = (await runsOnDisk(w.dataDir, TICKETS)).length;
     const from = servers.ollama.prompts.length;
-    await click(m, tid("nouvel-onglet"));
-    await waitUi(m, "return !!doc.querySelector(arguments[0]);", [tid("page-vide")]);
-    await click(m, tid("saisie-page-vide"));
-    await inUi(m, `const f = doc.querySelector(arguments[0]); f.focus(); f.value = arguments[1]; f.dispatchEvent(new ui.Event("input", { bubbles: true }));`, [tid("saisie-page-vide"), "git"]);
+    await click(m, tid("new-tab"));
+    await waitUi(m, "return !!doc.querySelector(arguments[0]);", [tid("empty-page")]);
+    await click(m, tid("empty-page-input"));
+    await inUi(m, `const f = doc.querySelector(arguments[0]); f.focus(); f.value = arguments[1]; f.dispatchEvent(new ui.Event("input", { bubbles: true }));`, [tid("empty-page-input"), "git"]);
     await q.waitContains(tid("suggestions-actions"), "Tickets GitLab");
     await pressKeys(m, "ArrowDown");
     await pressKeys(m, "Enter");
     await visible(tid("page-action"));
-    await q.waitContains(tid("avancement-action"), "Lecture de 127.0.0.1…", 30_000);
+    await q.waitContains(tid("action-progress"), "Lecture de 127.0.0.1…", 30_000);
     await waitTicketsPage();
-    await q.waitCount(tid("avancement-action"), 0);
+    await q.waitCount(tid("action-progress"), 0);
     // One layout request: the (bounded) results and the action's instruction, between their marks.
     const prompts = layoutPrompts(from);
     expect(prompts).toHaveLength(1);
@@ -198,7 +198,7 @@ describe("action scenarios", () => {
     servers.settings.plan = TICKETS_PLAN;
     const before = await runsOnDisk(w.dataDir, TICKETS);
     await openAction(m, TICKETS, "Tickets GitLab");
-    await click(m, tid("relancer-action"));
+    await click(m, tid("relaunch-action"));
     // The page may already show an earlier test's tickets: wait for this run's end on disk.
     for (const deadline = Date.now() + 60_000; JSON.stringify(await newStatuses(TICKETS, before.length)) !== '["succeeded"]'; await sleep(200))
       if (Date.now() > deadline) throw new Error(`no finished run: ${JSON.stringify(await newStatuses(TICKETS, before.length))}`);
@@ -208,15 +208,15 @@ describe("action scenarios", () => {
     // The next day, no ticket left: the page says so, without asking Gemma anything.
     servers.settings.tickets = [];
     const from = servers.ollama.prompts.length;
-    await waitUi(m, "return doc.querySelector(arguments[0])?.disabled === false;", [tid("relancer-action")]);
-    await click(m, tid("relancer-action"));
-    await q.waitText(tid("aucun-resultat"), "Aucun résultat", 60_000);
+    await waitUi(m, "return doc.querySelector(arguments[0])?.disabled === false;", [tid("relaunch-action")]);
+    await click(m, tid("relaunch-action"));
+    await q.waitText(tid("no-result"), "Aucun résultat", 60_000);
     expect(await runsOnDisk(w.dataDir, TICKETS)).toHaveLength(before.length + 2);
     expect(servers.ollama.prompts.length).toBe(from);
 
     // Yesterday's result, reopened from the previous results: nothing is launched, Gemma is not called again.
-    await click(m, tid("resultats-precedents"));
-    await click(m, tid(`resultat-${yesterday}`));
+    await click(m, tid("previous-results"));
+    await click(m, tid(`result-${yesterday}`));
     await waitTicketsPage();
     await sleep(500);
     expect(servers.ollama.prompts.length).toBe(from);
@@ -228,10 +228,10 @@ describe("action scenarios", () => {
     servers.settings.plan = "Voici la page : { blocs: [titre";
     const from = servers.ollama.prompts.length;
     await openAction(m, "taches", "Tâches");
-    await click(m, tid("relancer-action"));
-    const page = tid("rendu-page");
+    await click(m, tid("relaunch-action"));
+    const page = tid("page-render");
     await visible(page, 60_000);
-    await q.waitText(`${page} ${tid("mention-secours")}`, "mise en page simple", 30_000);
+    await q.waitText(`${page} ${tid("fallback-mention")}`, "mise en page simple", 30_000);
     expect(await q.text(page)).toContain("Alpha");
     expect(await q.text(page)).toContain("Bravo");
     // Two attempts, the second with the refusal's reason.
@@ -248,15 +248,15 @@ describe("action scenarios", () => {
     await inUi(m, "void ui.webaios.actions.launch('un', null); void ui.webaios.actions.launch('deux', null);");
     await waitUi(m, "return (await ui.webaios.actions.live()).running.length === 2;", [], 30_000);
     await openAction(m, "trois", "Pages trois");
-    await click(m, tid("relancer-action"));
-    await q.waitText(tid("en-attente"), "En attente : deux actions tournent déjà", 30_000);
+    await click(m, tid("relaunch-action"));
+    await q.waitText(tid("pending"), "En attente : deux actions tournent déjà", 30_000);
     const feed = await inUi<{ running: { action: string }[]; waiting: { action: string }[] }>(m, "return JSON.parse(JSON.stringify(await ui.webaios.actions.live()));");
     expect(feed.waiting.map((a) => a.action)).toEqual(["trois"]);
     expect(feed.running.map((a) => a.action).sort()).toEqual(["deux", "un"]);
     // A slot frees up: the third runs, then shows its page.
-    await q.waitCount(tid("en-attente"), 0, 60_000);
-    await visible(tid("rendu-page"), 60_000);
-    await q.waitContains(tid("bloc-liste"), "Page 3", 30_000);
+    await q.waitCount(tid("pending"), 0, 60_000);
+    await visible(tid("page-render"), 60_000);
+    await q.waitContains(tid("block-list"), "Page 3", 30_000);
     for (const id of ["un", "deux", "trois"])
       for (const deadline = Date.now() + 60_000; JSON.stringify(await runStatuses(w.dataDir, id)) !== '["succeeded"]'; await sleep(200))
         if (Date.now() > deadline) throw new Error(`${id}: ${JSON.stringify(await runStatuses(w.dataDir, id))}`);
@@ -282,31 +282,31 @@ describe("action scenarios", () => {
     servers.images.seen.length = 0;
     const since = servers.site.log.length;
     // The empty page: type, ↓, Enter.
-    await click(m, tid("nouvel-onglet"));
-    await waitUi(m, "return !!doc.querySelector(arguments[0]);", [tid("page-vide")]);
-    await click(m, tid("saisie-page-vide"));
+    await click(m, tid("new-tab"));
+    await waitUi(m, "return !!doc.querySelector(arguments[0]);", [tid("empty-page")]);
+    await click(m, tid("empty-page-input"));
     await inUi(m, `const f = doc.querySelector(arguments[0]); f.focus(); f.value = arguments[1]; f.dispatchEvent(new ui.Event("input", { bubbles: true }));`, [
-      tid("saisie-page-vide"),
+      tid("empty-page-input"),
       "leboncoin clio lyon",
     ]);
     await q.waitContains(tid("suggestions-actions"), "Annonces Leboncoin");
     await pressKeys(m, "ArrowDown");
     await pressKeys(m, "Enter");
     await visible(tid("page-action"));
-    const cards = tid("bloc-cartes");
+    const cards = tid("block-cards");
     await visible(cards, 60_000);
     // The input, encoded, in the address read; and kept in the header.
     expect(servers.site.log.slice(since)).toContain("/leboncoin/recherche?text=clio%20lyon");
-    expect(await q.value(tid("saisie-action"))).toBe("clio lyon");
+    expect(await q.value(tid("action-input-box"))).toBe("clio lyon");
     // The cheapest first, each with its photo, loaded through the anonymous channel.
-    expect(await inUi(m, "return [...doc.querySelectorAll(arguments[0])].map((e) => e.textContent);", [`${cards} .pa-carte .titre`])).toEqual(["Renault Clio 3", "Renault Clio 4"]);
+    expect(await inUi(m, "return [...doc.querySelectorAll(arguments[0])].map((e) => e.textContent);", [`${cards} .pa-card .title`])).toEqual(["Renault Clio 3", "Renault Clio 4"]);
     await waitUi(
       m,
       "const i = [...doc.querySelectorAll(arguments[0])]; return i.length === 2 && i.every((x) => x.src.startsWith('data:image/') && x.complete && x.naturalWidth === 1);",
       [`${cards} img`],
       15_000,
     );
-    expect(await q.count(`${cards} ${tid("image-neutre")}`)).toBe(0);
+    expect(await q.count(`${cards} ${tid("neutral-image")}`)).toBe(0);
     const seen = servers.images.seen.filter((s) => s.path !== "/cookie");
     expect(seen.map((s) => `https:/${s.path}`).sort()).toEqual([adPhoto(1), adPhoto(2)]);
     // Neither the default container's cookie nor a referrer went with them.
@@ -334,20 +334,20 @@ describe("action scenarios", () => {
     const since = servers.site.log.length;
     await dispatch(m, { type: "openAction", windowId: (await state(m)).windows[0]!.id, id: "hostile", name: "Hostile" });
     await visible(tid("page-action"), 10_000);
-    await click(m, tid("relancer-action"));
-    const page = tid("rendu-page");
+    await click(m, tid("relaunch-action"));
+    const page = tid("page-render");
     await visible(page, 60_000);
-    expect(await q.count(`${page} ${tid("mention-secours")}`)).toBe(0);
+    expect(await q.count(`${page} ${tid("fallback-mention")}`)).toBe(0);
     // The title as text, no HTML element.
-    await q.waitText(`${page} ${tid("bloc-titre")}`, title);
+    await q.waitText(`${page} ${tid("block-title")}`, title);
     expect(await q.count(`${page} img`)).toBe(0);
     // The composed link is dropped; the other is only text; the card has neither link nor image.
-    expect(await q.count(`${page} ${tid("bloc-lien")}`)).toBe(1);
-    expect(await q.text(`${page} ${tid("bloc-lien")}`)).toBe("Voir le jeton");
-    expect(await q.count(`${page} a, ${page} button.pa-lien`)).toBe(0);
-    const cards = `${page} ${tid("bloc-cartes")}`;
+    expect(await q.count(`${page} ${tid("block-link")}`)).toBe(1);
+    expect(await q.text(`${page} ${tid("block-link")}`)).toBe("Voir le jeton");
+    expect(await q.count(`${page} a, ${page} button.pa-link`)).toBe(0);
+    const cards = `${page} ${tid("block-cards")}`;
     expect(await q.text(cards)).toContain("Connexion impossible");
-    await visible(`${cards} ${tid("image-neutre")}`);
+    await visible(`${cards} ${tid("neutral-image")}`);
     await click(m, `${cards} *`, { text: "Connexion impossible" });
     await sleep(1000);
     // Nothing left: neither to the test server, nor to the image's address, and no tab opened to the leak.

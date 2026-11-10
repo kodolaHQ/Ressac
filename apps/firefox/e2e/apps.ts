@@ -79,9 +79,9 @@ export const appWindowExpr = (folder: string) =>
 export const inAppView = <T>(m: Marionette, folder: string, script: string, o: { frame?: number; gesture?: boolean } = {}): Promise<T> =>
   inBrowser<T>(m, `${appWindowExpr(folder)}.gBrowser.selectedBrowser`, script, o);
 
-/** The fake docker's stop scripts so far (`<dataDir>/workspace/faux-docker-arrets.log`). */
+/** The fake docker's stop scripts so far (`<dataDir>/workspace/fake-docker-stops.log`). */
 export const stopsLog = (dataDir: string): string => {
-  const f = join(dataDir, "workspace", "faux-docker-arrets.log");
+  const f = join(dataDir, "workspace", "fake-docker-stops.log");
   return existsSync(f) ? readFileSync(f, "utf8") : "";
 };
 
@@ -89,7 +89,7 @@ export const stopsLog = (dataDir: string): string => {
 export function killFakeApps(dataDir: string): void {
   const dir = join(dataDir, "workspace");
   for (const f of existsSync(dir) ? readdirSync(dir) : [])
-    if (/^faux-docker-app-.*\.pid$/.test(f))
+    if (/^fake-docker-app-.*\.pid$/.test(f))
       try {
         process.kill(-Number(readFileSync(join(dir, f), "utf8")), "SIGKILL");
       } catch {
@@ -107,9 +107,9 @@ export async function answers(port: number): Promise<boolean> {
   }
 }
 
-/** What the fake agent got as input (`<dataDir>/workspace/faux-agent-entree.txt`): a pre-filled text without \r was never sent. */
+/** What the fake agent got as input (`<dataDir>/workspace/fake-agent-input.txt`): a pre-filled text without \r was never sent. */
 export const agentInput = (dataDir: string): string => {
-  const f = join(dataDir, "workspace", "faux-agent-entree.txt");
+  const f = join(dataDir, "workspace", "fake-agent-input.txt");
   return existsSync(f) ? readFileSync(f, "utf8") : "";
 };
 
@@ -162,11 +162,11 @@ export async function closeAppsPage(p: AppsPage | undefined): Promise<void> {
 }
 
 /** The page's app rows (`appli-<dossier>`). */
-export const rowCount = (m: Marionette): Promise<number> => inUi<number>(m, `return doc.querySelectorAll('[data-testid^="appli-"]').length;`);
-export const appRow = (folder: string) => `[data-testid="appli-${folder}"]`;
+export const rowCount = (m: Marionette): Promise<number> => inUi<number>(m, `return doc.querySelectorAll('[data-testid^="app-"]').length;`);
+export const appRow = (folder: string) => `[data-testid="app-${folder}"]`;
 /** Waits until row `dossier`'s data-etat is `etat`. */
 export const rowState = (m: Marionette, folder: string, state: string, ms = 10_000) =>
-  waitUi(m, "return doc.querySelector(arguments[0])?.dataset.etat === arguments[1]", [appRow(folder), state], ms);
+  waitUi(m, "return doc.querySelector(arguments[0])?.dataset.state === arguments[1]", [appRow(folder), state], ms);
 /** Clicks the row's button whose text contains `name`. */
 export const rowButton = (m: Marionette, folder: string, name: string) => click(m, `${appRow(folder)} .actions button`, { text: name });
 /** Opens the row's ⋯ menu and clicks its item `name`. */

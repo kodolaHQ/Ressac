@@ -17,7 +17,7 @@ beforeEach(async () => {
   m = w.marionette;
   await m.setContext("chrome");
   await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
-  await waitUi(m, "return !!doc.querySelector('[data-testid=\"barre-laterale\"]')");
+  await waitUi(m, "return !!doc.querySelector('[data-testid=\"sidebar\"]')");
 });
 afterEach(async () => {
   try {
@@ -33,8 +33,8 @@ async function create(name: string, icon: string, isPrivate: boolean, profile: s
   await dispatch(m, { type: "createSpace", name: name, icon: icon, private: isPrivate, profile: profile, windowId: await windowId() } as Action);
   return (await spaces()).find((e) => e.name === name)!;
 }
-const button = (id: string) => `[data-testid="espace-${id}"]`;
-const MODAL = '[data-testid="modale-espace"]';
+const button = (id: string) => `[data-testid="space-${id}"]`;
+const MODAL = '[data-testid="space-modal"]';
 const modalOpen = (title: string) => waitUi(m, "return doc.querySelector(arguments[0] + ' h2')?.textContent === arguments[1]", [MODAL, title]);
 const modalClosed = () => waitUi(m, "return !doc.querySelector(arguments[0])", [MODAL]);
 /** The modal's fields, as shown. */
@@ -85,8 +85,8 @@ async function waitSpaces<T>(read: (e: Space[]) => T, ok: (v: T) => boolean): Pr
 
 describe("space settings", () => {
   it("“+” opens “Nouvel espace”: not private, no profile chosen; “Créer” waits for the choice, then adds the space", async () => {
-    const work = await create("Travail", "💼", false, "nouveau");
-    await click(m, '[data-testid="nouvel-espace"]');
+    const work = await create("Travail", "💼", false, "new");
+    await click(m, '[data-testid="new-space"]');
     await modalOpen("Nouvel espace");
     expect(await fields()).toMatchObject({
       private: false,
@@ -111,7 +111,7 @@ describe("space settings", () => {
     await waitUi(m, "return doc.querySelector(arguments[0])?.getAttribute('aria-current') === 'true'", [button(sets!.id)]);
 
     // « Nouveau profil » makes a profile of its own.
-    await click(m, '[data-testid="nouvel-espace"]');
+    await click(m, '[data-testid="new-space"]');
     await modalOpen("Nouvel espace");
     await fill("Nom de l'espace", "Neuf");
     await choose("Nouveau profil");
@@ -119,7 +119,7 @@ describe("space settings", () => {
     await pressKeys(m, "Enter");
     await modalClosed();
     const fresh = await waitSpaces((l) => l.find((e) => e.name === "Neuf")?.profile, (p) => !!p);
-    expect([work.profile, "default", "nouveau"]).not.toContain(fresh);
+    expect([work.profile, "default", "new"]).not.toContain(fresh);
   });
 
   it("“Réglages” shows the space's values; private and its own profile are saved", async () => {
@@ -162,13 +162,13 @@ describe("space settings", () => {
     const before = await spaces();
     await openSettings(before[0]!.id);
     // The rest of the UI is inert behind the modal.
-    expect(await inUi(m, "return !!doc.querySelector('[data-testid=\"barre-laterale\"]').closest('[inert]')")).toBe(true);
+    expect(await inUi(m, "return !!doc.querySelector('[data-testid=\"sidebar\"]').closest('[inert]')")).toBe(true);
     await fill("Nom de l'espace", "Autre");
     await click(m, `${MODAL} input[type="checkbox"]`);
     await pressKeys(m, "Escape");
     await modalClosed();
     expect(await spaces()).toEqual(before);
-    await click(m, '[data-testid="nouvel-espace"]');
+    await click(m, '[data-testid="new-space"]');
     await modalOpen("Nouvel espace");
     await fill("Nom de l'espace", "Jeux");
     await pressKeys(m, "Escape");
@@ -179,9 +179,9 @@ describe("space settings", () => {
   it("a private space's button carries a padlock", async () => {
     const secret = await create("Secret", "🕵️", true, "default");
     const home = (await spaces())[0]!;
-    await waitUi(m, "return doc.querySelector(arguments[0])?.dataset.prive === 'true'", [button(secret.id)]);
+    await waitUi(m, "return doc.querySelector(arguments[0])?.dataset.private === 'true'", [button(secret.id)]);
     expect(await inUi(m, "return doc.querySelector(arguments[0]).textContent", [button(secret.id)])).toContain("🔒");
-    expect(await inUi(m, "return [doc.querySelector(arguments[0]).dataset.prive ?? null, doc.querySelector(arguments[0]).textContent]", [button(home.id)])).toEqual([
+    expect(await inUi(m, "return [doc.querySelector(arguments[0]).dataset.private ?? null, doc.querySelector(arguments[0]).textContent]", [button(home.id)])).toEqual([
       null,
       "🏠",
     ]);
@@ -195,7 +195,7 @@ describe("space settings", () => {
     await waitSpaces((l) => l.some((e) => e.id === sets.id), (v) => !v);
     expect(await inUi(m, "return doc.querySelectorAll('[role=alertdialog]').length")).toBe(0);
 
-    const work = await create("Travail", "💼", false, "nouveau");
+    const work = await create("Travail", "💼", false, "new");
     await click(m, button(work.id), { button: 2 });
     await click(m, '[role="menuitem"]', { text: "Supprimer" });
     const text = await waitUi<string>(m, "return doc.querySelector('[role=alertdialog]')?.textContent");
@@ -215,7 +215,7 @@ describe("space settings", () => {
     // The default profile gets the cookie essai=1.
     await dispatch(m, { type: "openTab", windowId: await windowId(), url: server.url + "/cookie" });
     await waitFor<{ title: string }>(m, tab, (t) => t.title === "cookie");
-    const work = await create("Travail", "💼", false, "nouveau");
+    const work = await create("Travail", "💼", false, "new");
     await dispatch(m, { type: "openTab", windowId: await windowId(), url: server.url + "/lire-cookie" });
     const before = await waitFor<{ ctx: number; title: string }>(m, tab, (t) => t.title === "aucun");
     expect(before.ctx).not.toBe(0);

@@ -144,7 +144,7 @@ export async function writeActionWithResult(
 export async function openActionPage(m: Marionette, id: string, name: string, run = EXECUTION): Promise<void> {
   await waitUi(m, "return ui.webaios.actions.page(arguments[0], arguments[1]).then((p) => p !== null);", [id, run], 30_000);
   await dispatch(m, { type: "openAction", windowId: (await state(m)).windows[0]!.id, id, name: name, run });
-  await waitUi(m, `return !!doc.querySelector('[data-testid="rendu-page"]');`, [], 30_000);
+  await waitUi(m, `return !!doc.querySelector('[data-testid="page-render"]');`, [], 30_000);
 }
 
 /** What the UI says when the actions service does not answer. */

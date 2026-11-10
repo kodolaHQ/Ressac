@@ -55,7 +55,7 @@ export async function readWorkflow(dataDir: string, id: string): Promise<any> {
 export async function openBuilder(m: Marionette, id: string): Promise<void> {
   await click(m, `[data-testid="widget-${id}"] button[aria-label="Options du widget"]`);
   await click(m, '[role="menuitem"]', { text: "Voir / modifier le workflow" });
-  await waitUi(m, "return !!doc.querySelector('[data-testid=\"constructeur\"]')");
+  await waitUi(m, "return !!doc.querySelector('[data-testid=\"builder\"]')");
 }
 
 /** The ids of the canvas's visible nodes. */

@@ -240,7 +240,7 @@ describe("review service", () => {
     expect(s.sent[0]!.project).toEqual({ type: "site", project: "site-tuning", id: "tuning", name: "Tuning" });
   });
 
-  it("effacer removes the repository and the comments file, and forgets the comparisons", async () => {
+  it("erase removes the repository and the comments file, and forgets the comparisons", async () => {
     const s = prepare();
     await s.service.handleSites(["tuning"]);
     writeFileSync(join(s.sites, "tuning", "site.json"), '{"a":1}\n');
@@ -256,7 +256,7 @@ describe("review service", () => {
     expect(await s.service.open("site-tuning")).toMatchObject({ state: "ok", comparison: { files: [] } });
   });
 
-  it("a snapshot taken between effacer and the trash is erased by the second effacer, also after the trash", async () => {
+  it("a snapshot taken between erase and the trash is erased by the second erase, also after the trash", async () => {
     const s = prepare();
     await s.service.handleSites(["tuning"]);
     const ref = join(s.review, "site-tuning.git", "refs", "webaios", "relu");

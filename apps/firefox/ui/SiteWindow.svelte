@@ -7,7 +7,7 @@
 
 <style>
   /* Firefox keeps its native title bar (browser.tabs.inTitlebar 0): no room to leave for the macOS window buttons. */
-  :global(body header.mac[data-testid="barre-site"]) {
+  :global(body header.mac[data-testid="site-bar"]) {
     padding-left: 8px;
   }
 </style>

@@ -323,7 +323,7 @@ describe("add-ons and what the agent adds to the app", () => {
       vidola: {
         declaration: series(),
         files: {
-          "tweaks/serie.js": `webaiosSite.remember("encours.the-bear", ${JSON.stringify(KEPT)}).then(() => (document.documentElement.dataset.retenu = "oui"));`,
+          "tweaks/serie.js": `webaiosSite.remember("encours.the-bear", ${JSON.stringify(KEPT)}).then(() => (document.documentElement.dataset.kept = "oui"));`,
           "tweaks/cacher.css": ".shorts { display: none; }",
         },
       },
@@ -337,7 +337,7 @@ describe("add-ons and what the agent adds to the app", () => {
     await expect.poll(() => stripButtons(), { timeout: 10_000 }).toBe(2);
     // The tweaks.
     expect(await view("getComputedStyle(document.getElementById('shorts')).display")).toBe("none");
-    await expect.poll(() => view("document.documentElement.dataset.retenu ?? null"), { timeout: 10_000 }).toBe("oui");
+    await expect.poll(() => view("document.documentElement.dataset.kept ?? null"), { timeout: 10_000 }).toBe("oui");
     await expect.poll(() => memory()?.values["encours.the-bear"] ?? null, { timeout: 10_000 }).toMatchObject({ value: KEPT, url: SERIES });
     // The resume (see sites-resume.e2e.ts: the headless browser decodes nothing, the position is currentTime as set).
     await expect.poll(() => view("document.getElementById('v').duration"), { timeout: 15_000 }).toBe(90);
@@ -355,7 +355,7 @@ describe("the agent and the app's add-ons", () => {
     const config = path.join(dataDir, "workspace", ".webaios", "mcp.json");
     for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
       if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
-    await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('prêt>')", [], 20_000, "agent");
+    await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
     const lines = (await callTool(dataDir, "list_tabs")).text.split("\n");
     expect(lines.filter((l) => l.includes("vidola-a.localhost"))).toEqual(["site:vidola · Vidola · vidola-a.localhost · appli de site"]);
     expect(Object.values((await state(m)).tabs).filter((o) => o.url.includes("vidola-a.localhost"))).toEqual([]);

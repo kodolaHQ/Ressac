@@ -47,20 +47,20 @@
 
 <span class="design" bind:this={root}>
   {#if menuOpen}
-    <span class="entrees" role="menu" aria-label="Mode design">
-      <button role="menuitem" data-testid="site-menu-design-panier" onclick={() => choose(() => api.design.openBasket())}>Panier</button>
-      <button role="menuitem" data-testid="site-menu-design-relire" onclick={() => choose(() => api.design.review())}>Relire ce projet</button>
+    <span class="entries" role="menu" aria-label="Mode design">
+      <button role="menuitem" data-testid="site-menu-design-basket" onclick={() => choose(() => api.design.openBasket())}>Panier</button>
+      <button role="menuitem" data-testid="site-menu-design-review" onclick={() => choose(() => api.design.review())}>Relire ce projet</button>
     </span>
   {/if}
   <button
-    class="bouton"
-    data-testid="site-bouton-design"
+    class="button"
+    data-testid="site-design-button"
     aria-label="Mode design"
     aria-pressed={active}
     disabled={unavailable}
     title={unavailable ? (design?.unavailable ?? "") : "Mode design (⌘⇧D)"}
     onclick={() => api.design.toggle()}
-    >✎{#if design && design.basket > 0}<span class="compteur" data-testid="site-compteur-panier">{design.basket}</span>{/if}</button
+    >✎{#if design && design.basket > 0}<span class="counter" data-testid="site-basket-counter">{design.basket}</span>{/if}</button
   >
   <!-- Always active: the basket and the review stay reachable where the mode does not start (home, card…). -->
   <button class="chevron" data-testid="site-menu-design" aria-label="Menu du mode design" aria-expanded={menuOpen} onclick={() => (menuOpen = !menuOpen)}>▾</button>
@@ -68,15 +68,15 @@
 
 <style>
   .design { display: inline-flex; align-items: center; gap: 2px; flex: none; -webkit-app-region: no-drag; }
-  .entrees { display: inline-flex; gap: 2px; margin-right: 4px; }
-  button { all: unset; height: 24px; display: grid; grid-auto-flow: column; align-items: center; gap: 3px; border-radius: 5px; color: var(--texte-doux); cursor: pointer; white-space: nowrap; -webkit-app-region: no-drag; }
-  .entrees button { padding: 0 8px; font-size: 12px; background: var(--fond-actif); color: var(--texte); }
-  .bouton { padding: 0 6px; }
+  .entries { display: inline-flex; gap: 2px; margin-right: 4px; }
+  button { all: unset; height: 24px; display: grid; grid-auto-flow: column; align-items: center; gap: 3px; border-radius: 5px; color: var(--text-muted); cursor: pointer; white-space: nowrap; -webkit-app-region: no-drag; }
+  .entries button { padding: 0 8px; font-size: 12px; background: var(--bg-active); color: var(--text); }
+  .button { padding: 0 6px; }
   .chevron { width: 14px; justify-content: center; font-size: 10px; }
-  button:hover:not(:disabled) { background: var(--fond-survol); color: var(--texte); }
+  button:hover:not(:disabled) { background: var(--bg-hover); color: var(--text); }
   button:disabled { opacity: 0.35; cursor: default; }
-  .bouton[aria-pressed="true"] { color: var(--accent); }
-  .chevron[aria-expanded="true"] { background: var(--fond-survol); color: var(--texte); }
-  .compteur { min-width: 14px; padding: 0 3px; box-sizing: border-box; border-radius: 7px; background: var(--accent); color: #fff; font-size: 10px; line-height: 14px; text-align: center; }
+  .button[aria-pressed="true"] { color: var(--accent); }
+  .chevron[aria-expanded="true"] { background: var(--bg-hover); color: var(--text); }
+  .counter { min-width: 14px; padding: 0 3px; box-sizing: border-box; border-radius: 7px; background: var(--accent); color: #fff; font-size: 10px; line-height: 14px; text-align: center; }
   button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 </style>

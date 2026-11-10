@@ -39,9 +39,9 @@ it("workshop stopped (no Docker): « Relancer » shows the error instead of noth
   const { w, m, q } = await launch({ FAKE_DOCKER_ABSENT: "1" });
   await writePagesAction(w.dataDir, servers.site.url);
   await openAction(m, "pages", "Pages");
-  await click(m, tid("relancer-action"));
-  await q.waitText(tid("erreur-action"), "Mise à jour impossible : atelier arrêté", 30_000);
-  await q.waitCount(tid("pas-de-resultat"), 0);
+  await click(m, tid("relaunch-action"));
+  await q.waitText(tid("action-error"), "Mise à jour impossible : atelier arrêté", 30_000);
+  await q.waitCount(tid("nothing-found"), 0);
   expect(await runsOnDisk(w.dataDir, "pages")).toEqual([]);
 });
 
@@ -58,8 +58,8 @@ describe("action results", () => {
     await writeRunnableAction(w.dataDir, "vide", { name: "Vide", code: "export default async () => ({ tickets: [] });" });
     const prompts = servers.ollama.prompts.length;
     await openAction(m, "vide", "Vide");
-    await click(m, tid("relancer-action"));
-    await q.waitText(tid("aucun-resultat"), "Aucun résultat", 30_000);
+    await click(m, tid("relaunch-action"));
+    await q.waitText(tid("no-result"), "Aucun résultat", 30_000);
     expect(servers.ollama.prompts.length).toBe(prompts);
     expect(await runsOnDisk(w.dataDir, "vide")).toHaveLength(1);
   });
@@ -68,16 +68,16 @@ describe("action results", () => {
   it("an account action without grant: the card, then the run after the grant", { timeout: 60_000 }, async () => {
     await writeRunnableAction(w.dataDir, "courrier", { name: "Courrier", account: ["127.0.0.1"], code: `export default async () => ({ messages: [{ sujet: "Bonjour" }] });` });
     await openAction(m, "courrier", "Courrier");
-    const card = tid("carte-accord");
+    const card = tid("grant-card");
     await q.waitText(`${card} :is(h1, h2, h3, h4)`, "Autoriser l'action « Courrier » à lire avec ton compte");
-    expect((await q.text(`${card} ${tid("accord-compte")}`))?.trim()).toBe("Cette action veut lire 127.0.0.1 avec ton compte, connecté avec le profil choisi.");
+    expect((await q.text(`${card} ${tid("grant-account")}`))?.trim()).toBe("Cette action veut lire 127.0.0.1 avec ton compte, connecté avec le profil choisi.");
     expect(await q.value(`${card} input[type="radio"]:checked`)).toBe("default");
     // Nothing runs until the grant.
     await new Promise((r) => setTimeout(r, 500));
     expect(await runsOnDisk(w.dataDir, "courrier")).toEqual([]);
     await click(m, `${card} button`, { text: "Autoriser" });
     await q.waitCount(card, 0);
-    await q.waitContains(tid("rendu-page"), "Bonjour", 30_000);
+    await q.waitContains(tid("page-render"), "Bonjour", 30_000);
     expect(await runsOnDisk(w.dataDir, "courrier")).toHaveLength(1);
   });
 
@@ -86,13 +86,13 @@ describe("action results", () => {
     servers.settings.siteSlownessMs = 1500;
     await writePagesAction(w.dataDir, servers.site.url);
     await openAction(m, "pages", "Pages");
-    await click(m, tid("relancer-action"));
-    await waitUi(m, "return !!doc.querySelector(arguments[0]);", [tid("avancement-action")], 30_000);
+    await click(m, tid("relaunch-action"));
+    await waitUi(m, "return !!doc.querySelector(arguments[0]);", [tid("action-progress")], 30_000);
     // Closing the tab does not stop the run.
     const tab = Object.values((await state(m)).tabs).find((o) => o.url.startsWith("webaios://action/pages"))!;
     await dispatch(m, { type: "closeTab", id: tab.id });
     // The tabs of this file's earlier tests stay open: another action's page may show now, never this one.
-    await waitUi(m, "return doc.querySelector(arguments[0])?.textContent !== 'Pages';", [tid("nom-action")]);
+    await waitUi(m, "return doc.querySelector(arguments[0])?.textContent !== 'Pages';", [tid("action-title")]);
     expect(Object.values((await state(m)).tabs).some((o) => o.url.startsWith("webaios://action/pages"))).toBe(false);
     for (const deadline = Date.now() + 60_000; (await runsOnDisk(w.dataDir, "pages")).length !== 1; ) {
       if (Date.now() > deadline) throw new Error("no run written");
@@ -101,9 +101,9 @@ describe("action results", () => {
     const execution = (await runsOnDisk(w.dataDir, "pages"))[0]!.replace(/\.json$/, "");
     await waitUi(m, "return ui.webaios.actions.live().then((d) => d.running.length === 0);", [], 30_000);
     await openAction(m, "pages", "Pages");
-    await waitUi(m, "return !!doc.querySelector(arguments[0]);", [tid("rendu-page")], 30_000);
-    await click(m, tid("resultats-precedents"));
-    await q.waitContains(tid(`resultat-${execution}`), "réussie");
+    await waitUi(m, "return !!doc.querySelector(arguments[0]);", [tid("page-render")], 30_000);
+    await click(m, tid("previous-results"));
+    await q.waitContains(tid(`result-${execution}`), "réussie");
   });
 
   // actions.spec.ts:773
@@ -113,13 +113,13 @@ describe("action results", () => {
     await writeResult(w.dataDir, "annonces", LAST, "2026-10-31T08:00:00.000Z", "Dernier");
     const prompts = servers.ollama.prompts.length;
     await openAction(m, "annonces", "Annonces", "2026-10-01T08-00-00-000Z");
-    await q.waitContains(tid("resultat-disparu"), "Ce résultat n'existe plus");
-    expect(await q.count(tid("rendu-page"))).toBe(0);
-    await click(m, tid("voir-dernier-resultat"));
-    await q.waitText(tid("bloc-titre"), "Dernier");
-    await q.waitCount(tid("resultat-disparu"), 0);
+    await q.waitContains(tid("result-gone"), "Ce résultat n'existe plus");
+    expect(await q.count(tid("page-render"))).toBe(0);
+    await click(m, tid("show-latest-result"));
+    await q.waitText(tid("block-title"), "Dernier");
+    await q.waitCount(tid("result-gone"), 0);
     await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url: "webaios://action/inconnue" });
-    await q.waitText(tid("erreur-action"), "Action inconnue");
+    await q.waitText(tid("action-error"), "Action inconnue");
     expect(servers.ollama.prompts.length).toBe(prompts);
     expect(await runsOnDisk(w.dataDir, "annonces")).toEqual([`${LAST}.json`]);
   });
@@ -133,7 +133,7 @@ describe("action results", () => {
     const e = s.spaces.find((x) => x.id === s.windows[0]!.activeSpace)!;
     await dispatch(m, { type: "updateSpace", id: e.id, name: e.name, icon: e.icon, private: true, profile: e.profile } as Action);
     await dispatch(m, { type: "openTab", windowId: s.windows[0]!.id, url: "webaios://action/x" });
-    await q.waitText(tid("action-espace-prive"), "Les actions ne sont pas disponibles dans un espace privé");
+    await q.waitText(tid("action-private-space"), "Les actions ne sont pas disponibles dans un espace privé");
     expect(await q.count(tid("page-action"))).toBe(0);
     expect(await inUi(m, "return doc.body.textContent.includes('Secret');")).toBe(false);
     await new Promise((r) => setTimeout(r, 500));

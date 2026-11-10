@@ -75,7 +75,7 @@ async function openPage(): Promise<void> {
 const row = (id: string) => `[data-testid="site-${id}"]`;
 const rowText = (id: string) => waitUi<string>(m, "return doc.querySelector(arguments[0])?.textContent ?? null", [row(id)]);
 const gone = (id: string) => waitUi(m, "return !doc.querySelector(arguments[0])", [row(id)]);
-const isOpen = (id: string, v: boolean) => waitUi(m, "return doc.querySelector(arguments[0])?.dataset.ouverte === arguments[1]", [row(id), String(v)]);
+const isOpen = (id: string, v: boolean) => waitUi(m, "return doc.querySelector(arguments[0])?.dataset.open === arguments[1]", [row(id), String(v)]);
 const windows = (id: string) => siteWindowCount(m, id);
 const inStore = <T = unknown>(body: string, args: unknown[] = []) =>
   m.execute<T>(`return (async () => { const store = await ChromeUtils.importESModule("${STORE}").ready; ${body} })();`, args);
@@ -95,7 +95,7 @@ const series = (id: string) =>
   inSiteBar<string | null>(
     m,
     id,
-    `const home = doc.querySelector('[data-testid="site-cadre-accueil"]');
+    `const home = doc.querySelector('[data-testid="site-home-frame"]');
      if (!String(home?.contentDocument?.documentURI).startsWith("resource://webaios-site-")) return null;
      return home.contentDocument.getElementById("series").textContent;`,
   );
@@ -112,7 +112,7 @@ const barClick = (id: string, testid: string) =>
   );
 /** « Entrer dans le site » and the site view's address. */
 async function enter(id: string, address: string): Promise<void> {
-  await barClick(id, "site-entrer");
+  await barClick(id, "site-enter");
   await waitFor(m, `const w = ${siteExpr(id)}; return w?.gBrowser.selectedBrowser.currentURI.spec;`, (v) => v === address, 15_000);
   await waitFor(m, `return ${siteExpr(id)}.gBrowser.selectedBrowser.contentDocument?.readyState ?? null;`, (v) => v === "complete").catch(() => {});
 }
@@ -136,9 +136,9 @@ describe("Applications page, Sites section", () => {
     expect(await rowText("vidola")).toContain("vidola-a.localhost");
     expect(await rowText("autre")).toContain("vidola-c.localhost");
     expect(await rowText("casse")).toContain("Sans fiche");
-    expect(await waitUi<string>(m, "return doc.querySelector('[data-testid=\"site-casse-erreur\"]')?.textContent")).toContain("site.json");
-    await inUi(m, `const f = doc.querySelector('[data-testid="recherche-applications"]'); f.value = "autre"; f.dispatchEvent(new ui.Event("input", { bubbles: true }));`);
-    await waitUi(m, `return doc.querySelectorAll('[data-testid^="site-"][data-ouverte]').length === 1`);
+    expect(await waitUi<string>(m, "return doc.querySelector('[data-testid=\"site-casse-error\"]')?.textContent")).toContain("site.json");
+    await inUi(m, `const f = doc.querySelector('[data-testid="applications-search"]'); f.value = "autre"; f.dispatchEvent(new ui.Event("input", { bubbles: true }));`);
+    await waitUi(m, `return doc.querySelectorAll('[data-testid^="site-"][data-open]').length === 1`);
     expect(await rowText("autre")).toContain("Autre");
   });
 
@@ -157,7 +157,7 @@ describe("Applications page, Sites section", () => {
 
   it("Ouvrir opens the app's window; the row turns « Ouverte »", async () => {
     await launch({ prepare: section });
-    await click(m, '[data-testid="site-vidola-ouvrir"]');
+    await click(m, '[data-testid="site-vidola-open"]');
     await waitFor(m, `return ${siteExpr("vidola")} !== undefined;`, (v) => v === true);
     await isOpen("vidola", true);
     expect(await windows("vidola")).toBe(1);
@@ -165,25 +165,25 @@ describe("Applications page, Sites section", () => {
 
   it("Modifier avec l'agent: the agent panel opens and its terminal holds « Appli de site ~/WebAiOs/sites/vidola/ : »", async () => {
     await launch({ prepare: section });
-    await click(m, '[data-testid="site-vidola-modifier"]');
+    await click(m, '[data-testid="site-vidola-edit"]');
     const text = "Appli de site ~/WebAiOs/sites/vidola/ :";
     await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes(arguments[0])", [text], 20_000, "agent");
   });
 
   it("Oublier ce que l'appli a retenu (confirmed): memory.json gone, the open home no longer shows the series", async () => {
     const { dataDir } = await launch({ prepare: (d) => (section(d), writeMemory(d)) });
-    await click(m, '[data-testid="site-vidola-ouvrir"]');
+    await click(m, '[data-testid="site-vidola-open"]');
     await waitFor(m, `return ${siteExpr("vidola")} !== undefined;`, (v) => v === true);
     await waitFor(m, "return 1", () => true);
     await expect.poll(() => series("vidola").catch(() => null), { timeout: 15_000 }).toBe("encours.the-bear : The Bear /serie/the-bear?e=4");
     // Cancel changes nothing.
-    await click(m, '[data-testid="site-vidola-oublier"]');
-    expect(await waitUi<string>(m, "return doc.querySelector('[data-testid=\"confirmation-oubli-site\"]')?.textContent")).toContain("Oublier tout ce que « Vidola » a retenu");
-    await click(m, '[data-testid="confirmation-oubli-site"] button', { text: "Annuler" });
-    await waitUi(m, "return !doc.querySelector('[data-testid=\"confirmation-oubli-site\"]')");
+    await click(m, '[data-testid="site-vidola-forget"]');
+    expect(await waitUi<string>(m, "return doc.querySelector('[data-testid=\"site-forget-confirmation\"]')?.textContent")).toContain("Oublier tout ce que « Vidola » a retenu");
+    await click(m, '[data-testid="site-forget-confirmation"] button', { text: "Annuler" });
+    await waitUi(m, "return !doc.querySelector('[data-testid=\"site-forget-confirmation\"]')");
     expect(existsSync(memory(dataDir))).toBe(true);
-    await click(m, '[data-testid="site-vidola-oublier"]');
-    await click(m, '[data-testid="confirmer-oubli-site"]');
+    await click(m, '[data-testid="site-vidola-forget"]');
+    await click(m, '[data-testid="confirm-site-forget"]');
     await expect.poll(() => existsSync(memory(dataDir)), { timeout: 10_000 }).toBe(false);
     await expect.poll(() => series("vidola"), { timeout: 10_000 }).toBe("");
     // The app's folder is not touched.
@@ -192,20 +192,20 @@ describe("Applications page, Sites section", () => {
 
   it("Supprimer (confirmed): cookie and memory gone, window closed, folder in sites/.corbeille, the row goes; an app recreated under the same id starts empty", async () => {
     const { dataDir } = await launch({ prepare: (d) => writeSite(d, "vidola", vidola(false)) });
-    await click(m, '[data-testid="site-vidola-ouvrir"]');
+    await click(m, '[data-testid="site-vidola-open"]');
     await waitFor(m, `return ${siteExpr("vidola")}?.gBrowser.selectedBrowser.currentURI.spec;`, (v) => v === url("/"), 15_000);
     await inSiteView(m, "vidola", "location.href = '/cookie'; return 1;");
     await expect.poll(() => cookies("vidola"), { timeout: 10_000 }).toContain("essai=vidola-a.localhost");
     writeMemory(dataDir);
     mkdirSync(path.join(dataDir, "sites", "vidola"), { recursive: true });
     writeFileSync(path.join(dataDir, "sites", "vidola", "url.json"), JSON.stringify({ current: "vidola-a.localhost", previous: [], since: null }));
-    await click(m, '[data-testid="site-vidola-supprimer"]');
-    expect(await waitUi<string>(m, "return doc.querySelector('[data-testid=\"confirmation-suppression-site\"]')?.textContent")).toContain("Supprimer « Vidola » ?");
-    await click(m, '[data-testid="confirmation-suppression-site"] button', { text: "Annuler" });
-    await waitUi(m, "return !doc.querySelector('[data-testid=\"confirmation-suppression-site\"]')");
+    await click(m, '[data-testid="site-vidola-delete"]');
+    expect(await waitUi<string>(m, "return doc.querySelector('[data-testid=\"site-delete-confirmation\"]')?.textContent")).toContain("Supprimer « Vidola » ?");
+    await click(m, '[data-testid="site-delete-confirmation"] button', { text: "Annuler" });
+    await waitUi(m, "return !doc.querySelector('[data-testid=\"site-delete-confirmation\"]')");
     expect(existsSync(path.join(dataDir, "workspace", "sites", "vidola"))).toBe(true);
-    await click(m, '[data-testid="site-vidola-supprimer"]');
-    await click(m, '[data-testid="confirmer-suppression-site"]');
+    await click(m, '[data-testid="site-vidola-delete"]');
+    await click(m, '[data-testid="confirm-site-delete"]');
     await gone("vidola");
     expect(await windows("vidola")).toBe(0);
     expect(await cookies("vidola")).toEqual([]);
@@ -216,7 +216,7 @@ describe("Applications page, Sites section", () => {
     // Recreated under the same id: no cookie, no memory, no kept address.
     writeSite(dataDir, "vidola", vidola(false));
     await rowText("vidola");
-    await click(m, '[data-testid="site-vidola-ouvrir"]');
+    await click(m, '[data-testid="site-vidola-open"]');
     await waitFor(m, `return ${siteExpr("vidola")}?.gBrowser.selectedBrowser.currentURI.spec;`, (v) => v === url("/"), 15_000);
     expect(await cookies("vidola")).toEqual([]);
     expect(existsSync(memory(dataDir))).toBe(false);
@@ -224,7 +224,7 @@ describe("Applications page, Sites section", () => {
 
   it("deleting an app: session (cookie, localStorage, IndexedDB) and memory gone; recreated, no cookie is sent, the storage is empty, the home has no series", async () => {
     const { dataDir } = await launch({ prepare: (d) => (writeSite(d, "vidola", vidola()), writeMemory(d)) });
-    await click(m, '[data-testid="site-vidola-ouvrir"]');
+    await click(m, '[data-testid="site-vidola-open"]');
     await expect.poll(() => series("vidola").catch(() => null), { timeout: 15_000 }).toContain("The Bear");
     await enter("vidola", url("/"));
     await inSiteView(m, "vidola", "location.href = '/cookie'; return 1;");
@@ -239,8 +239,8 @@ describe("Applications page, Sites section", () => {
     expect(await inSiteView(m, "vidola", `return indexedDB.databases().then((d) => d.map((x) => x.name));`)).toEqual(["essai"]);
     expect(existsSync(memory(dataDir))).toBe(true);
 
-    await click(m, '[data-testid="site-vidola-supprimer"]');
-    await click(m, '[data-testid="confirmer-suppression-site"]');
+    await click(m, '[data-testid="site-vidola-delete"]');
+    await click(m, '[data-testid="confirm-site-delete"]');
     await gone("vidola");
     expect(await windows("vidola")).toBe(0);
     expect(await cookies("vidola")).toEqual([]);
@@ -249,7 +249,7 @@ describe("Applications page, Sites section", () => {
     writeSite(dataDir, "vidola", vidola());
     await rowText("vidola");
     server.requests.splice(0);
-    await click(m, '[data-testid="site-vidola-ouvrir"]');
+    await click(m, '[data-testid="site-vidola-open"]');
     // The new home shows no series (the memory is new, empty).
     await expect.poll(() => series("vidola").catch(() => null), { timeout: 15_000 }).toBe("");
     await enter("vidola", url("/"));
@@ -263,7 +263,7 @@ describe("Applications page, Sites section", () => {
 
   it("after a host restart the open app stays Ouverte, its home keeps getting memory changes, and Supprimer still closes it", async () => {
     const { dataDir } = await launch({ prepare: (d) => (writeSite(d, "vidola", vidola()), writeMemory(d)) });
-    await click(m, '[data-testid="site-vidola-ouvrir"]');
+    await click(m, '[data-testid="site-vidola-open"]');
     await expect.poll(() => series("vidola").catch(() => null), { timeout: 15_000 }).toContain("The Bear");
     await isOpen("vidola", true);
     // « Réessayer »: the host stops, then starts again on the same data.
@@ -271,12 +271,12 @@ describe("Applications page, Sites section", () => {
     await isOpen("vidola", true);
     expect(await windows("vidola")).toBe(1);
     // The home's memory feed is back: forgetting what the app kept reaches the open home.
-    await click(m, '[data-testid="site-vidola-oublier"]');
-    await click(m, '[data-testid="confirmer-oubli-site"]');
+    await click(m, '[data-testid="site-vidola-forget"]');
+    await click(m, '[data-testid="confirm-site-forget"]');
     await expect.poll(() => series("vidola"), { timeout: 15_000 }).toBe("");
     expect(existsSync(memory(dataDir))).toBe(false);
-    await click(m, '[data-testid="site-vidola-supprimer"]');
-    await click(m, '[data-testid="confirmer-suppression-site"]');
+    await click(m, '[data-testid="site-vidola-delete"]');
+    await click(m, '[data-testid="confirm-site-delete"]');
     await gone("vidola");
     await waitFor(m, `return ${siteExpr("vidola")} === undefined;`, (v) => v === true);
     expect(await windows("vidola")).toBe(0);
@@ -288,7 +288,7 @@ describe("the agent's site tools", () => {
     const l = await launch({ prepare, page: false });
     const config = path.join(l.dataDir, "workspace", ".webaios", "mcp.json");
     for (const deadline = Date.now() + 20_000; !existsSync(config); await sleep(100)) if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
-    await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('prêt>')", [], 20_000, "agent");
+    await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
     return l;
   }
 
@@ -307,10 +307,10 @@ describe("the agent's site tools", () => {
     const { dataDir } = await withAgent((d) => (writeSite(d, "vidola", vidola()), writeMemory(d)));
     await expect.poll(async () => (await callTool(dataDir, "list_sites")).text, { timeout: 15_000 }).toContain("vidola");
     const memory = callTool(dataDir, "site_memory", { id: "vidola" });
-    const card = '[data-testid="demande-donnees-widget"]';
-    expect(await waitUi<string>(m, `return doc.querySelector(${JSON.stringify(`${card} [data-testid="demande-site"]`)})?.textContent`, [], 15_000)).toContain("« Vidola »");
+    const card = '[data-testid="widget-data-request"]';
+    expect(await waitUi<string>(m, `return doc.querySelector(${JSON.stringify(`${card} [data-testid="site-request"]`)})?.textContent`, [], 15_000)).toContain("« Vidola »");
     await click(m, `${card} button`, { text: "Refuser" });
     expect(await memory).toEqual({ text: SITE_DENIED, error: false });
-    await waitUi(m, "return !doc.querySelector('[data-testid=\"modale-demande\"]')");
+    await waitUi(m, "return !doc.querySelector('[data-testid=\"request-modal\"]')");
   });
 });

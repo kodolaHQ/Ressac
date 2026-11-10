@@ -6,12 +6,12 @@
   import ExternalProjects from "./ExternalProjects.svelte";
   import { openMenu, type MenuEntry } from "./menu.svelte";
 
-  type Filter = "tout" | "app" | "poc" | "no-manifest" | "running" | "stopped" | "error";
+  type Filter = "all" | "app" | "poc" | "no-manifest" | "running" | "stopped" | "error";
 
   /** Running in the panel's sense: everything that is neither stopped nor in error. */
   const active = (a: ApplicationShown) => a.state === "running" || a.state === "launching" || a.state === "preparing";
   const FILTERS: Record<Filter, (a: ApplicationShown) => boolean> = {
-    tout: () => true,
+    all: () => true,
     app: (a) => a.type === "app",
     poc: (a) => a.type === "poc",
     "no-manifest": (a) => a.type === "no-manifest",
@@ -24,7 +24,7 @@
     {
       title: "Type",
       filters: [
-        { id: "tout", label: "Tout" },
+        { id: "all", label: "Tout" },
         { id: "app", label: "Applications" },
         { id: "poc", label: "POC et tests" },
         { id: "no-manifest", label: "Sans fiche", ifPresent: true },
@@ -41,8 +41,8 @@
   ];
 
   let data = $state<ApplicationList>({ workshop: "ok", apps: [] });
-  let chargee = $state(false);
-  let filter = $state<Filter>("tout");
+  let loaded = $state(false);
+  let filter = $state<Filter>("all");
   let text = $state("");
   let field: HTMLInputElement;
   let request = 0;
@@ -78,7 +78,7 @@
     const r = await api.apps.list();
     if (n !== request) return;
     data = r;
-    chargee = true;
+    loaded = true;
   }
 
   $effect(() => {
@@ -89,7 +89,7 @@
 
   const account = (f: Filter) => data.apps.filter(FILTERS[f]).length;
   // A filter that disappears from the panel (no app in error anymore…) gives way to Tout.
-  const effectiveFilter = $derived(GROUPS.flatMap((g) => g.filters).some((x) => x.id === filter && (!x.ifPresent || account(x.id) > 0)) ? filter : "tout");
+  const effectiveFilter = $derived(GROUPS.flatMap((g) => g.filters).some((x) => x.id === filter && (!x.ifPresent || account(x.id) > 0)) ? filter : "all");
 
   /** Running first, then the most recent last launch, then the most recent creation. */
   const lines = $derived.by(() => {
@@ -197,42 +197,42 @@
 </script>
 
 <section class="applications" data-testid="page-applications" aria-label="Applications">
-  <nav class="volet" aria-label="Filtres">
+  <nav class="pane" aria-label="Filtres">
     {#each GROUPS as g (g.title)}
       <h2>{g.title}</h2>
       {#each g.filters.filter((x) => !x.ifPresent || account(x.id) > 0) as x (x.id)}
-        <button data-testid="filtre-{x.id}" class:actif={effectiveFilter === x.id} aria-pressed={effectiveFilter === x.id} onclick={() => (filter = x.id)}
+        <button data-testid="filter-{x.id}" class:active={effectiveFilter === x.id} aria-pressed={effectiveFilter === x.id} onclick={() => (filter = x.id)}
           >{x.label} <span class="n">{account(x.id)}</span></button
         >
       {/each}
     {/each}
   </nav>
-  <div class="principal">
-    <label class="recherche">
+  <div class="main">
+    <label class="search-box">
       <Icon name="find" size={14} />
-      <input bind:this={field} bind:value={text} type="search" data-testid="recherche-applications" placeholder="Chercher une appli…" spellcheck="false" />
+      <input bind:this={field} bind:value={text} type="search" data-testid="applications-search" placeholder="Chercher une appli…" spellcheck="false" />
     </label>
     {#if withoutDocker}
-      <p class="bandeau" role="status">Docker n'est pas lancé. La liste reste visible, mais aucune appli ne peut être lancée.</p>
+      <p class="banner" role="status">Docker n'est pas lancé. La liste reste visible, mais aucune appli ne peut être lancée.</p>
     {/if}
-    {#if chargee && data.apps.length === 0 && sites.length === 0}
-      <p class="vide">Rien ici pour l'instant. Demande à l'agent de tester un package ou de construire une app.</p>
+    {#if loaded && data.apps.length === 0 && sites.length === 0}
+      <p class="empty">Rien ici pour l'instant. Demande à l'agent de tester un package ou de construire une app.</p>
     {:else}
       <ul>
         {#each lines as a (a.folder)}
           {@const { buttons: buttons, menu } = actions(a)}
-          <li data-testid="appli-{a.folder}" data-etat={a.state}>
-            <span class="icone">
+          <li data-testid="app-{a.folder}" data-state={a.state}>
+            <span class="icon">
               {#if a.favicon}<img src={a.favicon} alt="" width="16" height="16" />{:else}✦{/if}
             </span>
-            <div class="nom">
+            <div class="name">
               <b>{a.name}</b>
               <span>{details(a)}</span>
             </div>
             {#if a.type === "no-manifest"}
-              <span class="etat" title={short(a.noManifest)}><span class="pastille stopped"></span>Sans fiche</span>
+              <span class="state" title={short(a.noManifest)}><span class="pill stopped"></span>Sans fiche</span>
             {:else}
-              <span class="etat" title={short(a.error)}><span class="pastille {a.state}"></span>{STATES[a.state]}</span>
+              <span class="state" title={short(a.error)}><span class="pill {a.state}"></span>{STATES[a.state]}</span>
             {/if}
             <div class="actions">
               {#each buttons as b (b.action)}
@@ -250,44 +250,44 @@
             </div>
           </li>
         {:else}
-          {#if siteRows.length === 0}<li class="aucune">Aucune appli ne correspond.</li>{/if}
+          {#if siteRows.length === 0}<li class="none">Aucune appli ne correspond.</li>{/if}
         {/each}
       </ul>
     {/if}
     {#if siteRows.length > 0}
       <section class="sites" data-testid="section-sites" aria-label="Sites">
-        <h2 class="titre-sites">Sites</h2>
+        <h2 class="sites-title">Sites</h2>
         <ul>
           {#each siteRows as s (s.id)}
-            <li data-testid="site-{s.id}" data-ouverte={s.open}>
-              <span class="icone">
+            <li data-testid="site-{s.id}" data-open={s.open}>
+              <span class="icon">
                 {#if s.icon}<img src={s.icon} alt="" width="16" height="16" />{:else}🌐{/if}
               </span>
-              <div class="nom">
+              <div class="name">
                 <b>{s.name}</b>
                 <span>{s.domain ?? s.id}</span>
               </div>
               {#if s.error !== undefined}
-                <span class="etat" title={s.error}><span class="pastille error"></span>Sans fiche</span>
+                <span class="state" title={s.error}><span class="pill error"></span>Sans fiche</span>
               {:else}
-                <span class="etat"><span class="pastille {s.open ? 'running' : 'stopped'}"></span>{s.open ? "Ouverte" : "Fermée"}</span>
+                <span class="state"><span class="pill {s.open ? 'running' : 'stopped'}"></span>{s.open ? "Ouverte" : "Fermée"}</span>
               {/if}
               {#if s.error !== undefined}
-                <span class="erreur-site" data-testid="site-{s.id}-erreur">{s.error}</span>
+                <span class="site-error" data-testid="site-{s.id}-error">{s.error}</span>
               {/if}
               {#if s.actionError}
-                <span class="erreur-site" data-testid="site-{s.id}-erreur-action" role="alert">{s.actionError}</span>
+                <span class="site-error" data-testid="site-{s.id}-action-error" role="alert">{s.actionError}</span>
               {/if}
               {#if !s.noActions}
               <div class="actions">
                 {#if s.error === undefined}
-                  <button data-testid="site-{s.id}-ouvrir" onclick={() => actSite(s, "open")}>Ouvrir</button>
+                  <button data-testid="site-{s.id}-open" onclick={() => actSite(s, "open")}>Ouvrir</button>
                 {/if}
-                <button data-testid="site-{s.id}-modifier" onclick={() => actSite(s, "edit")}>Modifier avec l'agent</button>
-                <button data-testid="site-{s.id}-oublier" onclick={() => (siteToForget = s)}>{FORGET_MEMORY}</button>
-                <button data-testid="site-{s.id}-dossier" onclick={() => actSite(s, "folder")}>Afficher le dossier</button>
-                <button data-testid="site-{s.id}-relire" onclick={() => actSite(s, "review")}>Relire</button>
-                <button data-testid="site-{s.id}-supprimer" onclick={() => (siteToDelete = s)}>Supprimer</button>
+                <button data-testid="site-{s.id}-edit" onclick={() => actSite(s, "edit")}>Modifier avec l'agent</button>
+                <button data-testid="site-{s.id}-forget" onclick={() => (siteToForget = s)}>{FORGET_MEMORY}</button>
+                <button data-testid="site-{s.id}-folder" onclick={() => actSite(s, "folder")}>Afficher le dossier</button>
+                <button data-testid="site-{s.id}-review" onclick={() => actSite(s, "review")}>Relire</button>
+                <button data-testid="site-{s.id}-delete" onclick={() => (siteToDelete = s)}>Supprimer</button>
               </div>
               {/if}
             </li>
@@ -301,14 +301,14 @@
 
 {#if siteToForget}
   {@const target = siteToForget}
-  <div class="voile">
-    <div class="confirmation" role="alertdialog" aria-modal="true" data-testid="confirmation-oubli-site">
+  <div class="veil">
+    <div class="confirmation" role="alertdialog" aria-modal="true" data-testid="site-forget-confirmation">
       <p>{confirmForget(target.name)}</p>
-      <div class="boutons">
+      <div class="buttons">
         <button onclick={() => (siteToForget = null)}>Annuler</button>
         <button
-          class="confirmer"
-          data-testid="confirmer-oubli-site"
+          class="confirm"
+          data-testid="confirm-site-forget"
           onclick={() => {
             const s = target;
             siteToForget = null;
@@ -322,14 +322,14 @@
 
 {#if siteToDelete}
   {@const target = siteToDelete}
-  <div class="voile">
-    <div class="confirmation" role="alertdialog" aria-modal="true" data-testid="confirmation-suppression-site">
+  <div class="veil">
+    <div class="confirmation" role="alertdialog" aria-modal="true" data-testid="site-delete-confirmation">
       <p>{confirmSiteDeletion(target.name)}</p>
-      <div class="boutons">
+      <div class="buttons">
         <button onclick={() => (siteToDelete = null)}>Annuler</button>
         <button
-          class="confirmer"
-          data-testid="confirmer-suppression-site"
+          class="confirm"
+          data-testid="confirm-site-delete"
           onclick={() => {
             const s = target;
             siteToDelete = null;
@@ -343,13 +343,13 @@
 
 {#if toDelete}
   {@const target = toDelete}
-  <div class="voile">
-    <div class="confirmation" role="alertdialog" aria-modal="true" data-testid="confirmation-suppression">
+  <div class="veil">
+    <div class="confirmation" role="alertdialog" aria-modal="true" data-testid="delete-confirmation">
       <p>Supprimer « {target.name} » ? Son dossier sera effacé.</p>
-      <div class="boutons">
+      <div class="buttons">
         <button onclick={() => (toDelete = null)}>Annuler</button>
         <button
-          class="confirmer"
+          class="confirm"
           onclick={() => {
             const a = target; // {@const} is re-read: after toDelete = null, cible is null
             toDelete = null;
@@ -362,44 +362,44 @@
 {/if}
 
 <style>
-  .applications { display: grid; grid-template-columns: 190px 1fr; height: 100%; color: var(--texte); }
-  .volet { display: flex; flex-direction: column; gap: 2px; padding: 20px 10px 20px; background: var(--fond-barre); border-right: 1px solid var(--bord); overflow-y: auto; }
-  h2 { margin: 12px 8px 6px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--texte-doux); }
+  .applications { display: grid; grid-template-columns: 190px 1fr; height: 100%; color: var(--text); }
+  .pane { display: flex; flex-direction: column; gap: 2px; padding: 20px 10px 20px; background: var(--bg-bar); border-right: 1px solid var(--border); overflow-y: auto; }
+  h2 { margin: 12px 8px 6px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
   h2:first-child { margin-top: 0; }
-  .volet button { all: unset; display: flex; justify-content: space-between; padding: 6px 8px; border-radius: 6px; }
-  .volet button:hover { background: var(--fond-survol); }
-  .volet button.actif { background: var(--fond-actif); }
-  .n { color: var(--texte-doux); font-variant-numeric: tabular-nums; }
-  .principal { min-width: 0; overflow-y: auto; padding: 20px 24px; }
-  .recherche { display: flex; align-items: center; gap: 8px; padding: 0 10px; margin-bottom: 14px; border: 1px solid var(--bord); border-radius: 8px; background: var(--fond-barre); color: var(--texte-doux); }
-  .recherche:focus-within { border-color: var(--accent); }
-  .recherche input { all: unset; flex: 1; padding: 8px 0; color: var(--texte); }
-  .bandeau { margin: 0 0 14px; padding: 8px 12px; border-radius: 8px; background: var(--fond-actif); }
+  .pane button { all: unset; display: flex; justify-content: space-between; padding: 6px 8px; border-radius: 6px; }
+  .pane button:hover { background: var(--bg-hover); }
+  .pane button.active { background: var(--bg-active); }
+  .n { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+  .main { min-width: 0; overflow-y: auto; padding: 20px 24px; }
+  .search-box { display: flex; align-items: center; gap: 8px; padding: 0 10px; margin-bottom: 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-bar); color: var(--text-muted); }
+  .search-box:focus-within { border-color: var(--accent); }
+  .search-box input { all: unset; flex: 1; padding: 8px 0; color: var(--text); }
+  .banner { margin: 0 0 14px; padding: 8px 12px; border-radius: 8px; background: var(--bg-active); }
   .sites { margin-top: 24px; }
-  .titre-sites { margin: 0 0 6px; }
-  .erreur-site { flex: 1; min-width: 0; font-size: 12px; color: var(--texte-doux); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .vide, .aucune { color: var(--texte-doux); }
+  .sites-title { margin: 0 0 6px; }
+  .site-error { flex: 1; min-width: 0; font-size: 12px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .empty, .none { color: var(--text-muted); }
   ul { list-style: none; margin: 0; padding: 0; }
-  li { display: flex; align-items: center; gap: 12px; padding: 10px 8px; border-bottom: 1px solid var(--bord); }
-  li.aucune { border: none; }
-  .icone { width: 28px; height: 28px; flex: none; display: grid; place-content: center; border-radius: 7px; background: var(--fond-survol); color: var(--texte-doux); }
-  .nom { flex: 1; min-width: 0; }
-  .nom b { display: block; font-weight: 600; }
-  .nom span { display: block; font-size: 12px; color: var(--texte-doux); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .etat { display: flex; align-items: center; gap: 6px; width: 170px; flex: none; font-size: 12px; white-space: nowrap; }
-  .pastille { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--arretee); }
-  .pastille.running { background: var(--en-marche); }
-  .pastille.launching, .pastille.preparing { background: var(--en-cours); }
-  .pastille.error { background: var(--en-erreur); }
+  li { display: flex; align-items: center; gap: 12px; padding: 10px 8px; border-bottom: 1px solid var(--border); }
+  li.none { border: none; }
+  .icon { width: 28px; height: 28px; flex: none; display: grid; place-content: center; border-radius: 7px; background: var(--bg-hover); color: var(--text-muted); }
+  .name { flex: 1; min-width: 0; }
+  .name b { display: block; font-weight: 600; }
+  .name span { display: block; font-size: 12px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .state { display: flex; align-items: center; gap: 6px; width: 170px; flex: none; font-size: 12px; white-space: nowrap; }
+  .pill { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--stopped); }
+  .pill.running { background: var(--running); }
+  .pill.launching, .pill.preparing { background: var(--in-progress); }
+  .pill.error { background: var(--in-error); }
   .actions { display: flex; gap: 6px; flex: none; }
-  .actions button { padding: 4px 10px; border-radius: 6px; border: 1px solid var(--bord); background: var(--fond-barre); color: var(--texte); font-size: 12px; }
-  .actions button:hover:not(:disabled) { background: var(--fond-survol); }
+  .actions button { padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); font-size: 12px; }
+  .actions button:hover:not(:disabled) { background: var(--bg-hover); }
   .actions button:disabled { opacity: 0.5; }
-  .voile { position: fixed; inset: 0; display: grid; place-content: center; background: rgb(0 0 0 / 0.35); z-index: 10; }
-  .confirmation { padding: 16px 20px; border-radius: 10px; background: var(--fond-barre); border: 1px solid var(--bord); color: var(--texte); }
+  .veil { position: fixed; inset: 0; display: grid; place-content: center; background: rgb(0 0 0 / 0.35); z-index: 10; }
+  .confirmation { padding: 16px 20px; border-radius: 10px; background: var(--bg-bar); border: 1px solid var(--border); color: var(--text); }
   .confirmation p { margin: 0 0 14px; }
-  .boutons { display: flex; justify-content: flex-end; gap: 8px; }
-  .boutons button { padding: 6px 12px; border-radius: 6px; border: 1px solid var(--bord); background: var(--fond); color: var(--texte); }
-  .boutons .confirmer { background: var(--accent); border-color: var(--accent); color: white; }
-  .actions .options { display: grid; place-content: center; padding: 4px 6px; border-color: transparent; background: none; color: var(--texte-doux); }
+  .buttons { display: flex; justify-content: flex-end; gap: 8px; }
+  .buttons button { padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+  .buttons .confirm { background: var(--accent); border-color: var(--accent); color: white; }
+  .actions .options { display: grid; place-content: center; padding: 4px 6px; border-color: transparent; background: none; color: var(--text-muted); }
 </style>

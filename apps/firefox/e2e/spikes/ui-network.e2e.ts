@@ -333,8 +333,8 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("the UI's network, spikes S1–S3", 
     // What APP_TYPE_MAIL changed that shows: the UI mounted again, the widget displayed, the agent panel, the drag flag.
     const visible = await chrome(
       `const ag = agent.contentDocument;
-       return { sidebarMounted: !!sb.querySelector('[data-testid="barre-laterale"]'), widgets: [...sb.querySelectorAll('[data-testid^="widget-"] iframe')].map((f) => f.contentDocument?.body?.textContent?.trim().slice(0, 30)),
-                agentMounted: !!ag.querySelector('[data-testid="panneau-agent"]'), sidebar: N.flags(sidebar), agent: N.flags(agent), windowDocShell: docShell.appType };`,
+       return { sidebarMounted: !!sb.querySelector('[data-testid="sidebar"]'), widgets: [...sb.querySelectorAll('[data-testid^="widget-"] iframe')].map((f) => f.contentDocument?.body?.textContent?.trim().slice(0, 30)),
+                agentMounted: !!ag.querySelector('[data-testid="agent-panel"]'), sidebar: N.flags(sidebar), agent: N.flags(agent), windowDocShell: docShell.appType };`,
     );
     note("S1 visible after reload with flags", visible);
 
@@ -368,7 +368,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("the UI's network, spikes S1–S3", 
        const wd = widget("sonde").contentDocument;
        const win = ${site};
        const bar = win?.document.getElementById("webaios-site-bar")?.contentDocument;
-       const home = bar?.querySelector('[data-testid="site-cadre-accueil"]')?.contentDocument;
+       const home = bar?.querySelector('[data-testid="site-home-frame"]')?.contentDocument;
        await step("sb", () => N.insertLoads(sb, p + "-sb", sfx));
        await step("ag", () => N.insertLoads(agent.contentDocument, p + "-ag", sfx));
        await step("wd", () => N.insertLoads(wd, p + "-wd", sfx));
@@ -404,7 +404,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("the UI's network, spikes S1–S3", 
          return await store.agent.request("sites.act", { id: "netsite", action: "open", window: store.state.windows[0].id }); })();`,
       )
       .then((v) => v, (e) => `ERR ${e}`);
-    const bar = await waitFor(m, `const w = ${site}; const b = w?.document.getElementById("webaios-site-bar")?.contentDocument; const h = b?.querySelector('[data-testid="site-cadre-accueil"]')?.contentDocument; return { bar: b?.documentURI ?? null, home: h?.documentURI ?? null, view: w?.gBrowser.selectedBrowser.currentURI.spec ?? null };`, (v: any) => !!v.bar && !!v.home, 20_000).catch((e) => String(e));
+    const bar = await waitFor(m, `const w = ${site}; const b = w?.document.getElementById("webaios-site-bar")?.contentDocument; const h = b?.querySelector('[data-testid="site-home-frame"]')?.contentDocument; return { bar: b?.documentURI ?? null, home: h?.documentURI ?? null, view: w?.gBrowser.selectedBrowser.currentURI.spec ?? null };`, (v: any) => !!v.bar && !!v.home, 20_000).catch((e) => String(e));
     const list = await m.execute(`return (async () => { const store = await ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready; return await store.agent.request("sites.list"); })();`).catch((e) => String(e));
     note("S2 site app opened", { opened, bar, list: list });
 

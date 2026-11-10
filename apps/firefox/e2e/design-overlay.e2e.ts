@@ -38,7 +38,7 @@ async function boot(): Promise<void> {
   await m.setContext("chrome");
   await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
   await resolveLocalHosts(m, ["localhost"]);
-  await waitFor(m, `return (async () => { const d = (await ChromeUtils.importESModule("${STORE}").ready).design; return d.state({ type: "fenetre", windowId: window.webaiosWindow.windowId }).then(() => true, () => false); })();`, (v) => v === true, 30_000);
+  await waitFor(m, `return (async () => { const d = (await ChromeUtils.importESModule("${STORE}").ready).design; return d.state({ type: "window", windowId: window.webaiosWindow.windowId }).then(() => true, () => false); })();`, (v) => v === true, 30_000);
 }
 
 beforeAll(async () => {
@@ -57,7 +57,7 @@ afterAll(async () => {
 /** Runs `body` with `d` the design service, `t` this window's target, `store` the store. */
 const svc = <R = unknown>(body: string, args: unknown[] = []) =>
   m.execute<R>(
-    `return (async (args) => { const store = await ChromeUtils.importESModule("${STORE}").ready, d = store.design; const t = { type: "fenetre", windowId: window.webaiosWindow.windowId }; ${body} })([...arguments]);`,
+    `return (async (args) => { const store = await ChromeUtils.importESModule("${STORE}").ready, d = store.design; const t = { type: "window", windowId: window.webaiosWindow.windowId }; ${body} })([...arguments]);`,
     args,
   );
 const state = () => svc<{ active: boolean; basket: number; project: { project: string } | null }>("return await d.state(t);");
@@ -80,10 +80,10 @@ const frameOf = <T = unknown>(id: "webaios-design-calque" | "webaios-design-vole
      return { shown: f.style.display !== "none" && r.width > 0, rect: { x: r.x, y: r.y, width: r.width, height: r.height }, v: (() => { ${body} })() };`,
     [id],
   );
-const bubbleText = async () => (await frameOf<string | null>("webaios-design-calque", `return doc?.querySelector('[data-testid="bulle-design"]')?.textContent ?? null;`))?.v ?? null;
+const bubbleText = async () => (await frameOf<string | null>("webaios-design-calque", `return doc?.querySelector('[data-testid="design-bubble"]')?.textContent ?? null;`))?.v ?? null;
 const bubbleShown = async () => (await frameOf("webaios-design-calque"))?.shown ?? false;
 const columnShown = async () => (await frameOf("webaios-design-volet"))?.shown ?? false;
-const cartLines = async () => (await frameOf<string[]>("webaios-design-volet", `return [...(doc?.querySelectorAll('[data-testid="remarque-panier"]') ?? [])].map((e) => e.textContent);`))?.v ?? [];
+const cartLines = async () => (await frameOf<string[]>("webaios-design-volet", `return [...(doc?.querySelectorAll('[data-testid="basket-remark"]') ?? [])].map((e) => e.textContent);`))?.v ?? [];
 const pageWidth = () => inPage<number>("return innerWidth;");
 
 /** The mode on through the UI, the viewfinder armed. */
@@ -109,7 +109,7 @@ async function remark(sel: string, label: string, text: string) {
   const n = (await state()).basket;
   await aim(sel, label);
   await typeText(m, text);
-  await click(m, "button.ajouter", { frame: "overlay" });
+  await click(m, "button.add-button", { frame: "overlay" });
   await expect.poll(async () => (await state()).basket, { timeout: 10_000 }).toBe(n + 1);
 }
 
@@ -309,7 +309,7 @@ describe("design overlay", () => {
     expect(f.rect).toEqual({ x: p.x, y: p.y, width: p.width, height: p.height });
     // Under the element as the chrome shows it (CSS px × zoom, from the view's edge).
     expect(f.rect.y).toBeGreaterThanOrEqual(g.y + (r.y + r.height) * 1.5);
-    await click(m, "button.annuler", { frame: "overlay" });
+    await click(m, "button.cancel", { frame: "overlay" });
     await expect.poll(bubbleShown, { timeout: 10_000 }).toBe(false);
     await modeOff();
     await m.execute(`${B}.fullZoom = 1;`);
@@ -324,7 +324,7 @@ describe("design overlay", () => {
     await sleep(300);
     expect(await bubbleShown()).toBe(true);
     await typeText(m, "reste");
-    await click(m, "button.ajouter", { frame: "overlay" });
+    await click(m, "button.add-button", { frame: "overlay" });
     await expect.poll(async () => (await state()).basket, { timeout: 10_000 }).toBe(n + 1);
     await expect.poll(hosts, { timeout: 10_000 }).toBe(1);
     expect((await state()).active).toBe(true);
@@ -360,7 +360,7 @@ describe("design overlay", () => {
     await aim("#email", "input#email.champ");
     await svc("await store.agent.stop(); return 1;");
     await typeText(m, "perdue");
-    await click(m, "button.ajouter", { frame: "overlay" });
+    await click(m, "button.add-button", { frame: "overlay" });
     await expect.poll(() => frameOf<string | null>("webaios-design-calque", `return doc.querySelector('[role="alert"]')?.textContent ?? null;`).then((f) => f?.v ?? null), { timeout: 10_000 }).toBeTruthy();
     expect(await bubbleShown()).toBe(true);
     expect(await svc("return d.overlayContext(t)?.mode ?? null;")).toBe("bubble");

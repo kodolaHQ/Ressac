@@ -21,7 +21,7 @@ let w: LaunchedWebAiOs;
 let m: Marionette;
 let q: ReturnType<typeof uiQueries>;
 
-const lines = (type: string) => `[data-testid="ligne-commande"][data-type="${type}"]`;
+const lines = (type: string) => `[data-testid="command-row"][data-type="${type}"]`;
 const focused = (testid: string) =>
   waitUi(m, "return doc.activeElement?.dataset.testid === arguments[0] && document.activeElement === document.getElementById('webaios-sidebar');", [testid]);
 /** Types `text` in the field with the keyboard (an input event, as Playwright's fill). */
@@ -47,15 +47,15 @@ async function openPage(p: string, title: string): Promise<string> {
 const listed = (id: string) => waitUi(m, "return (await ui.webaios.actions.list()).some((a) => a.id === arguments[0]);", [id], 30_000);
 /** Opens the empty page (« Nouvel onglet »), its field focused. */
 async function emptyPage(): Promise<void> {
-  await click(m, tid("nouvel-onglet"));
-  await waitUi(m, "return !!doc.querySelector(arguments[0]);", [tid("page-vide")]);
+  await click(m, tid("new-tab"));
+  await waitUi(m, "return !!doc.querySelector(arguments[0]);", [tid("empty-page")]);
   // With no tab left the empty page was already shown: a click gives its field the keyboard.
-  await click(m, tid("saisie-page-vide"));
-  await focused("saisie-page-vide");
+  await click(m, tid("empty-page-input"));
+  await focused("empty-page-input");
 }
 async function openBar(): Promise<void> {
   await pressKeys(m, "Meta+t");
-  await focused("saisie-commande");
+  await focused("command-input");
 }
 
 beforeAll(async () => {
@@ -89,7 +89,7 @@ beforeAll(async () => {
 }, 90_000);
 beforeEach(async () => {
   servers.reset();
-  if (await inUi(m, "return !!doc.querySelector(arguments[0]);", [tid("barre-commande")])) await pressKeys(m, "Escape");
+  if (await inUi(m, "return !!doc.querySelector(arguments[0]);", [tid("command-bar")])) await pressKeys(m, "Escape");
   await setPrivate(false);
   for (const id of Object.keys((await state(m)).tabs)) await dispatch(m, { type: "closeTab", id } as Action);
 });
@@ -104,11 +104,11 @@ describe("launching from the empty page", () => {
   // actions.spec.ts:847
   it("typing « git » shows the suggestion; ↓ then Enter opens the action page and launches", { timeout: 90_000 }, async () => {
     await emptyPage();
-    await fill("saisie-page-vide", "git");
+    await fill("empty-page-input", "git");
     await q.waitContains(tid("suggestions-actions"), NAME_TICKETS);
     expect(await q.text(tid("suggestions-actions"))).toContain("Rechercher");
     await pressKeys(m, "ArrowDown");
-    expect(await inUi(m, "return doc.querySelector(arguments[0]).getAttribute('aria-activedescendant');", [tid("saisie-page-vide")])).toMatch(/.+/);
+    expect(await inUi(m, "return doc.querySelector(arguments[0]).getAttribute('aria-activedescendant');", [tid("empty-page-input")])).toMatch(/.+/);
     await pressKeys(m, "Enter");
     await visible(tid("page-action"));
     for (const deadline = Date.now() + 60_000; (await runsOnDisk(w.dataDir, "tickets")).length !== 1; await new Promise((r) => setTimeout(r, 200)))
@@ -119,7 +119,7 @@ describe("launching from the empty page", () => {
   it("Escape closes the list; Enter searches « git » as before", async () => {
     const runs = (await runsOnDisk(w.dataDir, "tickets")).length;
     await emptyPage();
-    await fill("saisie-page-vide", "git");
+    await fill("empty-page-input", "git");
     await visible(tid("suggestions-actions"));
     await pressKeys(m, "Escape");
     await q.waitCount(tid("suggestions-actions"), 0);
@@ -132,7 +132,7 @@ describe("launching from the empty page", () => {
   // actions.spec.ts:882
   it("« exemple.org » with no match then Enter opens the address", async () => {
     await emptyPage();
-    await fill("saisie-page-vide", "exemple.org");
+    await fill("empty-page-input", "exemple.org");
     await new Promise((r) => setTimeout(r, 300));
     expect(await q.count(tid("suggestions-actions"))).toBe(0);
     await pressKeys(m, "Enter");
@@ -143,12 +143,12 @@ describe("launching from the empty page", () => {
   // actions.spec.ts:895
   it("« leboncoin » then Enter: the page with its input field, nothing launched", async () => {
     await emptyPage();
-    await fill("saisie-page-vide", "leboncoin");
+    await fill("empty-page-input", "leboncoin");
     await q.waitContains(tid("suggestions-actions"), "Leboncoin");
     await pressKeys(m, "ArrowDown");
     await pressKeys(m, "Enter");
     await visible(tid("page-action"));
-    await visible(tid("saisie-action"));
+    await visible(tid("action-input-box"));
     await new Promise((r) => setTimeout(r, 500));
     expect(await runsOnDisk(w.dataDir, "leboncoin")).toEqual([]);
   });
@@ -157,18 +157,18 @@ describe("launching from the empty page", () => {
   it("command bar: « leboncoin », Enter asks for the input; « clio », Enter launches with it", { timeout: 90_000 }, async () => {
     await emptyPage();
     await openBar();
-    await fill("saisie-commande", "leboncoin");
+    await fill("command-input", "leboncoin");
     await q.waitCount(lines("action"), 1);
     await pressKeys(m, "ArrowDown");
     await pressKeys(m, "Enter");
-    await focused("parametre-commande");
+    await focused("command-param");
     // On the empty page, no web page: nothing filled in.
-    expect(await q.value(tid("parametre-commande"))).toBe("");
-    expect(await inUi(m, "return doc.querySelector(arguments[0]).placeholder;", [tid("parametre-commande")])).toBe("Recherche");
-    await fill("parametre-commande", "clio");
+    expect(await q.value(tid("command-param"))).toBe("");
+    expect(await inUi(m, "return doc.querySelector(arguments[0]).placeholder;", [tid("command-param")])).toBe("Recherche");
+    await fill("command-param", "clio");
     await pressKeys(m, "Enter");
     await visible(tid("page-action"));
-    await q.waitCount(tid("barre-commande"), 0);
+    await q.waitCount(tid("command-bar"), 0);
     for (const deadline = Date.now() + 60_000; (await runsOnDisk(w.dataDir, "leboncoin")).length !== 1; await new Promise((r) => setTimeout(r, 200)))
       if (Date.now() > deadline) throw new Error("the leboncoin action did not run");
     const [file] = await runsOnDisk(w.dataDir, "leboncoin");
@@ -181,7 +181,7 @@ describe("launching from the empty page", () => {
     await m.execute("window.webaiosListCalls = 0;");
     await emptyPage();
     await writeRunnableAction(w.dataDir, "privee", { name: "Autre privee", code: "export default async () => [];" });
-    await fill("saisie-page-vide", "autre");
+    await fill("empty-page-input", "autre");
     await new Promise((r) => setTimeout(r, 1500));
     expect(await q.count(tid("suggestions-actions"))).toBe(0);
     expect(await listCalls()).toBe(0);
@@ -193,14 +193,14 @@ describe("launching from the empty page", () => {
     await m.execute("window.webaiosListCalls = 0;");
     await writeRunnableAction(w.dataDir, "nouvelle", { name: "Autre nouvelle", code: "export default async () => [];" });
     await waitFor(m, "return window.webaiosListCalls;", (n: number) => n > 0, 15_000);
-    await fill("saisie-page-vide", "autre");
+    await fill("empty-page-input", "autre");
     await q.waitContains(tid("suggestions-actions"), "Autre nouvelle");
   });
 
   // actions.spec.ts:968
   it("the suggestion list is not in a window drag region", async () => {
     await emptyPage();
-    await fill("saisie-page-vide", "git");
+    await fill("empty-page-input", "git");
     await visible(tid("suggestions-actions"));
     // getComputedStyle does not expose -moz-window-dragging: the last matching rule gives it, on the list or the nearest
     // ancestor that has one.
@@ -226,70 +226,70 @@ describe("launching from the command bar", () => {
   // barre-commande.spec.ts:194
   it("an action launches from the bar", async () => {
     await openBar();
-    await fill("saisie-commande", "Zorglub");
+    await fill("command-input", "Zorglub");
     await q.waitCount(lines("action"), 1);
     await pressKeys(m, "ArrowDown");
     await pressKeys(m, "Enter");
     await visible(tid("page-action"));
-    await q.waitCount(tid("barre-commande"), 0);
+    await q.waitCount(tid("command-bar"), 0);
   });
 
   // barre-commande.spec.ts:210
   it("an action waiting for its input: Enter asks for it, filled with the active URL all selected; Escape and ⌫ go back to the list", async () => {
     const url = await openPage("/a.html", "Page A");
     await openBar();
-    await fill("saisie-commande", "résumé");
+    await fill("command-input", "résumé");
     await q.waitCount(lines("action"), 1);
     await q.waitContains(lines("action"), "Vidéo");
     await pressKeys(m, "ArrowDown");
     await pressKeys(m, "Enter");
-    await q.waitText(tid("pastille-commande"), "Résumé vidéo");
-    await focused("parametre-commande");
-    expect(await inUi(m, "const f = doc.querySelector(arguments[0]); return [f.value, f.selectionStart, f.selectionEnd];", [tid("parametre-commande")])).toEqual([url, 0, url.length]);
+    await q.waitText(tid("command-pill"), "Résumé vidéo");
+    await focused("command-param");
+    expect(await inUi(m, "const f = doc.querySelector(arguments[0]); return [f.value, f.selectionStart, f.selectionEnd];", [tid("command-param")])).toEqual([url, 0, url.length]);
     expect(await q.count(lines("action"))).toBe(0);
     // Escape goes back to the list, the typed text intact, the bar stays open.
     await pressKeys(m, "Escape");
-    await focused("saisie-commande");
-    expect(await q.value(tid("saisie-commande"))).toBe("résumé");
-    expect(await q.count(tid("barre-commande"))).toBe(1);
+    await focused("command-input");
+    expect(await q.value(tid("command-input"))).toBe("résumé");
+    expect(await q.count(tid("command-bar"))).toBe(1);
     // The action stays chosen: Tab asks for it too; ⌫ clears the selection, then ⌫ on the empty field goes back.
     expect(await inUi(m, "return doc.querySelector(arguments[0]).getAttribute('aria-selected');", [lines("action")])).toBe("true");
     await pressKeys(m, "Tab");
-    await focused("parametre-commande");
-    expect(await q.value(tid("parametre-commande"))).toBe(url);
+    await focused("command-param");
+    expect(await q.value(tid("command-param"))).toBe(url);
     // Held, ⌫ clears the field without going back; released then pressed again, it goes back, text intact.
     await m.execute(`const tip = (window.webaiosTestTip ??= Cc["@mozilla.org/text-input-processor;1"].createInstance(Ci.nsITextInputProcessor));
       tip.beginInputTransactionForTests(window);
       tip.keydown(new KeyboardEvent("", { key: "Backspace", code: "Backspace" }));
       tip.keydown(new KeyboardEvent("", { key: "Backspace", code: "Backspace", repeat: true }));
       tip.keyup(new KeyboardEvent("", { key: "Backspace", code: "Backspace" }));`);
-    expect(await q.value(tid("parametre-commande"))).toBe("");
-    await focused("parametre-commande");
+    expect(await q.value(tid("command-param"))).toBe("");
+    await focused("command-param");
     await pressKeys(m, "Backspace");
-    await focused("saisie-commande");
-    expect(await q.value(tid("saisie-commande"))).toBe("résumé");
+    await focused("command-input");
+    expect(await q.value(tid("command-input"))).toBe("résumé");
     expect(Object.keys((await state(m)).tabs)).toHaveLength(1);
   });
 
   // barre-commande.spec.ts:253
   it("an action waiting for its input, typed with it (« résumé vidéo x »): launched without asking again", async () => {
     await openBar();
-    await fill("saisie-commande", "résumé vidéo https://y.fr/v");
+    await fill("command-input", "résumé vidéo https://y.fr/v");
     await q.waitContains(lines("action"), "« https://y.fr/v »");
     await pressKeys(m, "ArrowDown");
     await pressKeys(m, "Enter");
     await visible(tid("page-action"));
-    expect(await q.count(tid("parametre-commande"))).toBe(0);
+    expect(await q.count(tid("command-param"))).toBe(0);
   });
 
   // barre-commande.spec.ts:269
   it("lines are grouped under a title per section, each with its icon", async () => {
     await openPage("/a.html", "Page A");
     await openBar();
-    await fill("saisie-commande", "Page");
+    await fill("command-input", "Page");
     await q.waitCount(lines("tab"), 1);
-    await waitUi(m, "return [...doc.querySelectorAll(arguments[0])].map((e) => e.textContent).join() === 'Actions,Onglets ouverts';", [tid("section-commande")]);
-    expect(await inUi(m, "return [...doc.querySelectorAll(arguments[0])].map((l) => l.querySelectorAll('.pictogramme').length);", [tid("ligne-commande")])).toSatisfy((n: number[]) =>
+    await waitUi(m, "return [...doc.querySelectorAll(arguments[0])].map((e) => e.textContent).join() === 'Actions,Onglets ouverts';", [tid("command-section")]);
+    expect(await inUi(m, "return [...doc.querySelectorAll(arguments[0])].map((l) => l.querySelectorAll('.pictogram').length);", [tid("command-row")])).toSatisfy((n: number[]) =>
       n.length > 0 && n.every((x) => x === 1),
     );
   });
@@ -298,7 +298,7 @@ describe("launching from the command bar", () => {
   it("private space: no action offered", async () => {
     await setPrivate(true);
     await openBar();
-    await fill("saisie-commande", "Zorglub");
+    await fill("command-input", "Zorglub");
     await q.waitCount(lines("default"), 1);
     await new Promise((r) => setTimeout(r, 500));
     expect(await q.count(lines("action"))).toBe(0);
@@ -308,15 +308,15 @@ describe("launching from the command bar", () => {
   it("an action's input: the offered address follows the page that navigates, not once edited", async () => {
     const a = await openPage("/a.html", "Page A");
     await openBar();
-    await fill("saisie-commande", "résumé");
+    await fill("command-input", "résumé");
     await click(m, `${lines("action")} button`);
-    const field = tid("parametre-commande");
+    const field = tid("command-param");
     await waitUi(m, "return doc.querySelector(arguments[0])?.value === arguments[1];", [field, a]);
     const load = (url: string) =>
       m.execute("gBrowser.selectedBrowser.loadURI(Services.io.newURI(arguments[0]), { triggeringPrincipal: Services.scriptSecurityManager.createNullPrincipal({}) });", [url]);
     await load(pages.url + "/b.html");
     await waitUi(m, "return doc.querySelector(arguments[0])?.value === arguments[1];", [field, pages.url + "/b.html"]);
-    await fill("parametre-commande", "ma vidéo");
+    await fill("command-param", "ma vidéo");
     await load(a);
     await waitFor(m, "return gBrowser.selectedBrowser.currentURI.spec;", (u) => u === a);
     await new Promise((r) => setTimeout(r, 500));

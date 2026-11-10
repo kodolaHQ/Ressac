@@ -157,54 +157,54 @@
 
 <svelte:window onkeydown={key} />
 
-<div class="constructeur" data-testid="constructeur">
+<div class="builder" data-testid="builder">
   <header>
     <h1>{name}</h1>
-    <div class="onglets" role="tablist">
-      <button role="tab" aria-selected={view === "workflow"} class:actif={view === "workflow"} onclick={() => (view = "workflow")}>Workflow</button>
-      <button role="tab" data-testid="vue-executions" aria-selected={view === "runs"} class:actif={view === "runs"} onclick={() => (view = "runs")}
+    <div class="tabs" role="tablist">
+      <button role="tab" aria-selected={view === "workflow"} class:active={view === "workflow"} onclick={() => (view = "workflow")}>Workflow</button>
+      <button role="tab" data-testid="executions-view" aria-selected={view === "runs"} class:active={view === "runs"} onclick={() => (view = "runs")}
         >Exécutions</button
       >
     </div>
-    <span class="etat" class:invalide={edit.recordingState !== "saved" && edit.recordingState !== "saving"} data-testid="etat-enregistrement"
+    <span class="state" class:invalid={edit.recordingState !== "saved" && edit.recordingState !== "saving"} data-testid="save-status"
       >{appState}</span
     >
     <div class="actions">
-      <button data-testid="bouton-apercu" aria-pressed={previewOpen} onclick={() => (previewOpen = !previewOpen)}>{isAction ? "Aperçu de la page" : "Aperçu du widget"}</button>
-      <button data-testid="reorganiser" disabled={!edit.draft} onclick={reorganize}>Réorganiser</button>
-      <button class="lancer" data-testid="lancer" disabled={!edit.diskValid || runs.busy || edit.recordingState === "saving"} onclick={launch}>
+      <button data-testid="preview-button" aria-pressed={previewOpen} onclick={() => (previewOpen = !previewOpen)}>{isAction ? "Aperçu de la page" : "Aperçu du widget"}</button>
+      <button data-testid="rearrange" disabled={!edit.draft} onclick={reorganize}>Réorganiser</button>
+      <button class="launch" data-testid="launch" disabled={!edit.diskValid || runs.busy || edit.recordingState === "saving"} onclick={launch}>
         {runs.busy ? "Exécution…" : "▶ Lancer"}
       </button>
     </div>
   </header>
 
   {#if edit.banner}
-    <div class="bandeau" data-testid="bandeau-fichier" role="status">
+    <div class="banner" data-testid="file-banner" role="status">
       {#if edit.banner === "proposer"}
         <span>L'agent a modifié le workflow pendant que le tien n'était pas enregistré.</span>
-        <button data-testid="prendre-version" onclick={() => edit.takeDiskVersion()}>Prendre sa version</button>
-        <button data-testid="garder-mienne" onclick={() => edit.keepMine()}>Garder la mienne</button>
+        <button data-testid="take-version" onclick={() => edit.takeDiskVersion()}>Prendre sa version</button>
+        <button data-testid="keep-mine" onclick={() => edit.keepMine()}>Garder la mienne</button>
       {:else}
         <span>workflow.json est illisible sur le disque (l'agent est peut-être en train de l'écrire).</span>
-        <button data-testid="garder-mienne" onclick={() => edit.keepMine()}>Garder la mienne</button>
+        <button data-testid="keep-mine" onclick={() => edit.keepMine()}>Garder la mienne</button>
       {/if}
     </div>
   {/if}
 
   <!-- The right pane: « Bloc » (only with a canvas) and « Agent », the window's agent conversation. -->
   {#snippet pane(withBlock: boolean)}
-    <aside class="droite" class:agent={rightTab === "agent"} aria-label={rightTab === "agent" ? "Agent" : "Bloc"}>
-      <div class="onglets-droite" role="tablist">
+    <aside class="right" class:agent={rightTab === "agent"} aria-label={rightTab === "agent" ? "Agent" : "Bloc"}>
+      <div class="tabs-right" role="tablist">
         {#if withBlock}
-          <button role="tab" aria-selected={rightTab === "block"} class:actif={rightTab === "block"} onclick={() => (rightTab = "block")}>Bloc</button>
+          <button role="tab" aria-selected={rightTab === "block"} class:active={rightTab === "block"} onclick={() => (rightTab = "block")}>Bloc</button>
         {/if}
-        <button role="tab" data-testid="onglet-agent" aria-selected={rightTab === "agent"} class:actif={rightTab === "agent"} onclick={() => (rightTab = "agent")}
+        <button role="tab" data-testid="agent-tab" aria-selected={rightTab === "agent"} class:active={rightTab === "agent"} onclick={() => (rightTab = "agent")}
           >Agent</button
         >
       </div>
       {#if withBlock}
         <!-- The « Bloc » tab stays mounted, hidden: a setting or code being typed is not lost there. -->
-        <div class="volet-bloc" hidden={rightTab !== "block"}>
+        <div class="block-pane" hidden={rightTab !== "block"}>
           <BlockTab widget={id} editing={edit} {runs} catalog={byType} {selection} />
         </div>
       {/if}
@@ -213,25 +213,25 @@
   {/snippet}
 
   {#if edit.loading === "loading"}
-    <p class="doux message">Chargement…</p>
+    <p class="muted message">Chargement…</p>
   {:else if edit.loading === "not-found" || typeof edit.loading === "object"}
     <!-- Without a canvas, the agent stays there: it is up to it to repair or write the workflow. -->
-    <div class="corps">
+    <div class="body">
       {#if edit.loading === "not-found"}
-        <p class="doux message">
+        <p class="muted message">
           {isAction ? "Cette action n'a pas de workflow (workflow.json), ou action.json est illisible." : "Ce widget n'a pas de workflow (ni workflow.json ni harvest.mjs)."}
         </p>
       {:else}
-        <p class="erreur message" data-testid="workflow-illisible">{edit.loading.unreadable}</p>
+        <p class="error message" data-testid="workflow-unreadable">{edit.loading.unreadable}</p>
       {/if}
       {@render pane(false)}
     </div>
   {:else}
     <SvelteFlowProvider>
-      <div class="corps">
+      <div class="body">
         {#if view === "runs"}<RunList {runs} onchosen={() => (view = "workflow")} />{/if}
         <Palette catalog={catalog} hasOutput={hasOutput} web={edit.widget?.web ?? edit.action?.web ?? false} action={isAction} onadd={(type) => add(type)} />
-        <div class="zone-canevas">
+        <div class="canvas-zone">
           <Canvas
             bind:this={canvas}
             editing={edit}
@@ -253,16 +253,16 @@
   {/if}
 
   {#if request}
-    <div class="voile">
-      <div class="demande" data-testid="demande-saisie" role="dialog" aria-modal="true" aria-label="Lancer l'action">
+    <div class="veil">
+      <div class="request" data-testid="input-request" role="dialog" aria-modal="true" aria-label="Lancer l'action">
         <form onsubmit={confirmLaunch}>
           <label>
             <span>{request.label}</span>
-            <input data-testid="saisie-lancer" maxlength="200" bind:value={request.value} onkeydown={requestedKey} use:focus />
+            <input data-testid="launch-input" maxlength="200" bind:value={request.value} onkeydown={requestedKey} use:focus />
           </label>
-          <div class="boutons">
+          <div class="buttons">
             <button type="button" onclick={() => (request = null)}>Annuler</button>
-            <button type="submit" class="lancer" data-testid="confirmer-lancer" disabled={!request.value.trim()}>▶ Lancer</button>
+            <button type="submit" class="launch" data-testid="confirm-launch" disabled={!request.value.trim()}>▶ Lancer</button>
           </div>
         </form>
       </div>
@@ -271,42 +271,42 @@
 </div>
 
 <style>
-  .constructeur { position: relative; height: 100%; display: flex; flex-direction: column; color: var(--texte); min-height: 0; }
-  header { display: flex; align-items: center; gap: 16px; padding: 10px 16px; border-bottom: 1px solid var(--bord); flex-wrap: wrap; }
+  .builder { position: relative; height: 100%; display: flex; flex-direction: column; color: var(--text); min-height: 0; }
+  header { display: flex; align-items: center; gap: 16px; padding: 10px 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
   h1 { margin: 0; font-size: 16px; font-weight: 600; }
-  .onglets { display: flex; gap: 2px; }
-  .onglets button { padding: 4px 10px; border-radius: 6px; border: none; background: none; color: var(--texte-doux); }
-  .onglets button.actif { background: var(--fond-actif); color: var(--texte); }
-  .onglets button:disabled { opacity: 0.5; }
-  .etat { font-size: 12px; color: var(--texte-doux); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
-  .etat.invalide { color: var(--en-erreur); }
+  .tabs { display: flex; gap: 2px; }
+  .tabs button { padding: 4px 10px; border-radius: 6px; border: none; background: none; color: var(--text-muted); }
+  .tabs button.active { background: var(--bg-active); color: var(--text); }
+  .tabs button:disabled { opacity: 0.5; }
+  .state { font-size: 12px; color: var(--text-muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+  .state.invalid { color: var(--in-error); }
   .actions { display: flex; gap: 8px; margin-left: auto; }
-  .actions button { padding: 5px 10px; border-radius: 6px; border: 1px solid var(--bord); background: var(--fond-barre); color: var(--texte); }
+  .actions button { padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); }
   .actions button:disabled { opacity: 0.5; }
-  .actions .lancer { border-color: var(--accent); background: var(--accent); color: white; }
-  .bandeau { display: flex; align-items: center; gap: 10px; padding: 8px 16px; background: var(--fond-actif); font-size: 13px; }
-  .bandeau span { flex: 1; }
-  .corps { position: relative; flex: 1; display: flex; min-height: 0; }
-  .zone-canevas { position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; }
-  .droite { width: 320px; flex: none; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--bord); background: var(--fond-barre); }
+  .actions .launch { border-color: var(--accent); background: var(--accent); color: white; }
+  .banner { display: flex; align-items: center; gap: 10px; padding: 8px 16px; background: var(--bg-active); font-size: 13px; }
+  .banner span { flex: 1; }
+  .body { position: relative; flex: 1; display: flex; min-height: 0; }
+  .canvas-zone { position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; }
+  .right { width: 320px; flex: none; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--border); background: var(--bg-bar); }
   /* The side panel's width (--agent, set by App): the terminal keeps its columns when moving from one to the other. */
-  .droite.agent { width: var(--agent, 420px); }
-  .volet-bloc { flex: 1; display: flex; flex-direction: column; min-height: 0; }
-  .volet-bloc[hidden] { display: none; }
-  .onglets-droite { display: flex; gap: 2px; padding: 8px 12px 0; }
-  .onglets-droite button { padding: 4px 10px; border-radius: 6px; border: none; background: none; color: var(--texte-doux); }
-  .onglets-droite button.actif { background: var(--fond-actif); color: var(--texte); }
+  .right.agent { width: var(--agent, 420px); }
+  .block-pane { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  .block-pane[hidden] { display: none; }
+  .tabs-right { display: flex; gap: 2px; padding: 8px 12px 0; }
+  .tabs-right button { padding: 4px 10px; border-radius: 6px; border: none; background: none; color: var(--text-muted); }
+  .tabs-right button.active { background: var(--bg-active); color: var(--text); }
   .message { padding: 20px 24px; margin: 0; }
-  .corps > .message { flex: 1; min-width: 0; }
-  .doux { color: var(--texte-doux); }
-  .erreur { color: var(--en-erreur); white-space: pre-wrap; word-break: break-word; }
-  .voile { position: absolute; inset: 0; z-index: 10; display: flex; align-items: flex-start; justify-content: center; padding-top: 80px; background: rgba(0, 0, 0, 0.25); }
-  .demande form { display: flex; flex-direction: column; gap: 12px; }
-  .demande { width: 340px; max-width: calc(100% - 32px); padding: 16px; border-radius: 10px; border: 1px solid var(--bord); background: var(--fond-barre); box-shadow: var(--ombre-modale); font-size: 13px; }
-  .demande label { display: flex; flex-direction: column; gap: 6px; }
-  .demande input { padding: 6px 8px; border-radius: 6px; border: 1px solid var(--bord); background: var(--fond); color: var(--texte); font: inherit; }
-  .boutons { display: flex; justify-content: flex-end; gap: 8px; }
-  .boutons button { padding: 5px 10px; border-radius: 6px; border: 1px solid var(--bord); background: var(--fond-barre); color: var(--texte); }
-  .boutons button:disabled { opacity: 0.5; }
-  .boutons .lancer { border-color: var(--accent); background: var(--accent); color: white; }
+  .body > .message { flex: 1; min-width: 0; }
+  .muted { color: var(--text-muted); }
+  .error { color: var(--in-error); white-space: pre-wrap; word-break: break-word; }
+  .veil { position: absolute; inset: 0; z-index: 10; display: flex; align-items: flex-start; justify-content: center; padding-top: 80px; background: rgba(0, 0, 0, 0.25); }
+  .request form { display: flex; flex-direction: column; gap: 12px; }
+  .request { width: 340px; max-width: calc(100% - 32px); padding: 16px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-bar); box-shadow: var(--modal-shadow); font-size: 13px; }
+  .request label { display: flex; flex-direction: column; gap: 6px; }
+  .request input { padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit; }
+  .buttons { display: flex; justify-content: flex-end; gap: 8px; }
+  .buttons button { padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); }
+  .buttons button:disabled { opacity: 0.5; }
+  .buttons .launch { border-color: var(--accent); background: var(--accent); color: white; }
 </style>

@@ -2,7 +2,7 @@ import type { TabCycleMessage, Panel, TabsPanel, ShortcutAction } from "../../sh
 import { workflowUrlTarget, historyContext, AGENT_WIDTH_MAX, AGENT_WIDTH_MIN, BAR_WIDTH, type FrameBounds, type BrowserState, type WindowId, type TabId } from "../../shared/model";
 import { toUrl } from "../../core/url";
 import { TabCycle } from "../../core/tab-cycle";
-import { toNth } from "../../core/raccourcis";
+import { toNth } from "../../core/shortcuts";
 import { leftZone, exitZone, type LeftZone } from "../../shared/reveal";
 import type { WebAiOsStore } from "../store";
 import { createAddons, type WindowAddons } from "./addons";

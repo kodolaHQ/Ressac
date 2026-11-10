@@ -143,7 +143,7 @@ describe("lookupAddress", () => {
     expect(m.sites.openSites.get("suivi")!.request.tracked).toEqual(["vidola-b.example"]);
   });
 
-  it("nothing to follow (no suiviAdresse, not open, deleting): no reading", async () => {
+  it("nothing to follow (no addressTracking, not open, deleting): no reading", async () => {
     const readLinks = vi.fn(async () => ["https://vidola-b.example/"]);
     const m = mount(undefined, readLinks);
     await m.sites.openById("vidola");
@@ -197,7 +197,7 @@ describe("lookupAddress", () => {
   });
 });
 
-describe("liste", () => {
+describe("list", () => {
   it("shows the current domain, the error of a broken site.json, and no actions for a refused id", async () => {
     const m = mount();
     mkdirSync(join(m.dataDir, "sites", "vidola"), { recursive: true });
@@ -212,7 +212,7 @@ describe("liste", () => {
   });
 });
 
-describe("ouvrirParId", () => {
+describe("openById", () => {
   it("opens with domains, start address, home flag and the remembered frame; unknown or invalid ids do not call the chrome", async () => {
     const m = mount();
     m.sites.note("vidola", { frame: { x: 1, y: 2, width: 300, height: 400 } });

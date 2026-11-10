@@ -49,7 +49,7 @@ test("an invalid declaration or one that fails checkSiteDeclaration is an error"
   expect(await readSites(c, { localAddresses: true })).toHaveLength(3);
 });
 
-test("aAccueil true only with accueil/index.html", async () => {
+test("hasHome true only with accueil/index.html", async () => {
   const c = await space();
   await site(c, "avec", decl("Avec"));
   await mkdir(join(c.sites, "avec", "home"), { recursive: true });
@@ -95,7 +95,7 @@ test("readTweaks : contenus lus", async () => {
   expect(await readTweaks(withDeclaration(await readSite(c, "r", o)))).toEqual({ js: { "a.js": "A", "sous/b.js": "B" }, css: { "c.css": "C" } });
 });
 
-test("readTweaks : fichier absent, lien symbolique vers /etc/hosts, fichier de 300 Ko, total > 1 Mo", async () => {
+test("readTweaks: missing file, symbolic link to /etc/hosts, 300 KB file, total > 1 MB", async () => {
   const c = await space();
   await site(c, "r", decl("R", { tweaks: [{ matches: ["/*"], js: ["a.js"] }] }));
   const s = withDeclaration(await readSite(c, "r", o));

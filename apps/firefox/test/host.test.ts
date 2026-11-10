@@ -99,7 +99,7 @@ afterEach(async () => {
     }
     // A fake app left running would hold its test port.
     for (const f of existsSync(h.root) ? readdirSync(h.root) : [])
-      if (/^faux-docker-app-.*\.pid$/.test(f))
+      if (/^fake-docker-app-.*\.pid$/.test(f))
         try {
           process.kill(-Number(readFileSync(join(h.root, f), "utf8")), "SIGKILL");
         } catch {
@@ -159,7 +159,7 @@ describe("agent host", { timeout: 30_000 }, () => {
     const h = startHost();
     await h.rpc.request("start", { agentProfile: "claude" });
     await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
-    await until(() => h.data().includes("faux agent prêt>"));
+    await until(() => h.data().includes("fake agent ready>"));
     h.rpc.notify("agent.write", { window: "f1", data: "bonjour\r" });
     await until(() => h.data().includes("bonjour"));
   });
@@ -168,14 +168,14 @@ describe("agent host", { timeout: 30_000 }, () => {
     const h = startHost();
     await h.rpc.request("start", { agentProfile: "claude" });
     await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
-    await until(() => h.data().includes("faux agent prêt>"));
+    await until(() => h.data().includes("fake agent ready>"));
     const mcp = readFileSync(join(h.root, ".webaios", "mcp.json"), "utf8");
-    const stops = readFileSync(join(h.root, "faux-docker-arrets.log"), "utf8"); // start-up orphan sweep only
+    const stops = readFileSync(join(h.root, "fake-docker-stops.log"), "utf8"); // start-up orphan sweep only
     expect(await h.rpc.request("start", { agentProfile: "claude" })).toEqual({ agent: expect.any(String) });
     expect(readFileSync(join(h.root, ".webaios", "mcp.json"), "utf8")).toBe(mcp);
     h.rpc.notify("agent.write", { window: "f1", data: "encore\r" });
     await until(() => h.data().includes("encore"));
-    expect(readFileSync(join(h.root, "faux-docker-arrets.log"), "utf8")).toBe(stops);
+    expect(readFileSync(join(h.root, "fake-docker-stops.log"), "utf8")).toBe(stops);
   });
 
   it("agent.profils asked while the kernel starts lists the default profile it prepares", async () => {
@@ -193,8 +193,8 @@ describe("agent host", { timeout: 30_000 }, () => {
     const profiles = join(h.root, ".webaios", "profiles");
     writeFileSync(join(profiles, "autre.json"), readFileSync(join(profiles, "claude.json"), "utf8").replace('"id": "claude"', '"id": "autre"'));
     await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
-    await until(() => h.data().includes("faux agent prêt>"));
-    const stops = join(h.root, "faux-docker-arrets.log");
+    await until(() => h.data().includes("fake agent ready>"));
+    const stops = join(h.root, "fake-docker-stops.log");
     const before = readFileSync(stops, "utf8");
     h.states.length = 0;
     await h.rpc.request("start", { agentProfile: "autre" });
@@ -221,7 +221,7 @@ describe("agent host", { timeout: 30_000 }, () => {
     const h = startHost();
     await h.rpc.request("start", { agentProfile: "claude" });
     await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
-    await until(() => h.data().includes("faux agent prêt>"));
+    await until(() => h.data().includes("fake agent ready>"));
     const lines = readFileSync(h.log, "utf8").split("\n");
     expect(lines.some((l) => l.includes("webaios-workshop-firefox"))).toBe(true);
     expect(lines.filter((l) => / webaios-workshop( |$)/.test(l))).toEqual([]);
@@ -231,7 +231,7 @@ describe("agent host", { timeout: 30_000 }, () => {
     const h = startHost({ FAKE_DOCKER_NO_CONTAINER: "1" });
     await h.rpc.request("start", { agentProfile: "claude" });
     await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
-    await until(() => h.data().includes("faux agent prêt>"));
+    await until(() => h.data().includes("fake agent ready>"));
     const run = readFileSync(h.log, "utf8").split("\n").find((l) => l.startsWith("run -d"));
     expect(run).toContain("127.0.0.1:5300-5319:5300-5319");
     expect(run).toContain("WEBAIOS_PORTS=5300-5319");
@@ -241,10 +241,10 @@ describe("agent host", { timeout: 30_000 }, () => {
     const h = startHost();
     await h.rpc.request("start", { agentProfile: "claude" });
     await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
-    await until(() => h.data().includes("faux agent prêt>"));
+    await until(() => h.data().includes("fake agent ready>"));
     await h.rpc.request("stop");
     expect(await h.exited).toBe(0);
-    expect(readFileSync(join(h.root, "faux-docker-arrets.log"), "utf8")).toContain("webaios-session");
+    expect(readFileSync(join(h.root, "fake-docker-stops.log"), "utf8")).toContain("webaios-session");
   });
 
   it("open_workflow: the window's selection on its open workflow, forgotten when the window closes", async () => {
@@ -372,8 +372,8 @@ describe("history", { timeout: 30_000 }, () => {
     expect(await h.rpc.request("history.search", { text: "page" })).toEqual([]);
     await h.rpc.request("start", { agentProfile: "claude" });
     await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
-    await until(() => h.data().includes("faux agent prêt>"));
-    expect(h.stderr()).toContain("historique");
+    await until(() => h.data().includes("fake agent ready>"));
+    expect(h.stderr()).toContain("history");
   });
 
   it("a space turned private marks its visits", async () => {
@@ -1031,7 +1031,7 @@ createServer((req, res) => {
   const list = (h: Host) => h.rpc.request<List>("apps.list");
   const attempt = async (h: Host) => (await list(h)).apps.find((a) => a.folder === "essai");
   const act = (h: Host, action: string, folder = "essai") => h.rpc.notify("apps.act", { folder: folder, action, window: "f1" });
-  const stops = (h: Host) => (existsSync(join(h.root, "faux-docker-arrets.log")) ? readFileSync(join(h.root, "faux-docker-arrets.log"), "utf8") : "");
+  const stops = (h: Host) => (existsSync(join(h.root, "fake-docker-stops.log")) ? readFileSync(join(h.root, "fake-docker-stops.log"), "utf8") : "");
   const launched = async (h: Host, chrome: { openings: unknown[] }) => {
     act(h, "launch");
     await until(() => chrome.openings.length > 0, 20_000);
@@ -1118,7 +1118,7 @@ createServer((req, res) => {
     const { h } = startApps({}, { "design.giveAgent": (p: unknown) => void given.push(p) });
     await h.rpc.request("start", { agentProfile: "claude" });
     await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
-    await until(() => h.data().includes("faux agent prêt>"));
+    await until(() => h.data().includes("fake agent ready>"));
     act(h, "debug");
     await until(() => h.data().includes("essai"));
     await until(() => given.length > 0);
@@ -1129,7 +1129,7 @@ createServer((req, res) => {
     const { h, chrome } = startApps();
     await h.rpc.request("start", { agentProfile: "claude" });
     await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
-    await until(() => h.data().includes("faux agent prêt>"));
+    await until(() => h.data().includes("fake agent ready>"));
     await launched(h, chrome);
     const before = stops(h).length;
     h.child.stdin.end();
@@ -1144,7 +1144,7 @@ createServer((req, res) => {
     const { h, chrome } = startApps({ FAKE_DOCKER_SLOW_APP_STOP: "4" });
     await h.rpc.request("start", { agentProfile: "claude" });
     await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
-    await until(() => h.data().includes("faux agent prêt>"));
+    await until(() => h.data().includes("fake agent ready>"));
     await launched(h, chrome);
     const before = stops(h).length;
     h.child.stdin.end();
@@ -1157,12 +1157,12 @@ createServer((req, res) => {
     const { h } = startApps({ WEBAIOS_TEST_APPS_STOP_FAILS: "1" });
     await h.rpc.request("start", { agentProfile: "claude" });
     await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
-    await until(() => h.data().includes("faux agent prêt>"));
+    await until(() => h.data().includes("fake agent ready>"));
     const before = stops(h).length;
     h.child.stdin.end();
     expect(await h.exited).toBe(0);
     expect(stops(h).slice(before)).toContain("cat /tmp/webaios-session-");
-    expect(h.stderr()).toContain("arrêt des applis simulé");
+    expect(h.stderr()).toContain("simulated apps stop");
   });
 
   it("portRange, the app tab and SchemaActionApplication", async () => {

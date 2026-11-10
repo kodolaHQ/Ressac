@@ -5,7 +5,7 @@ import { overlayApi, type DesignService } from "../chrome/store/design";
 import { INVALID_REQUEST, REMARK_TEXT_MAX } from "../shared/design-guards";
 import { wrapOverlayApi } from "../ui/overlay-api";
 
-const T = { type: "fenetre" as const, windowId: "F" };
+const T = { type: "window" as const, windowId: "F" };
 const ctx = (mode: OverlayContext["mode"], project: string): OverlayContext => ({
   mode, message: null, project: project, label: "input#email.champ", source: null, destination: "l'agent", noDestination: null, warning: null,
 });

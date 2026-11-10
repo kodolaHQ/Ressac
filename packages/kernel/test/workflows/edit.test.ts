@@ -189,7 +189,7 @@ test("readDraft returns the JSON even invalid, null for a cut JSON, the implicit
   expect(await readDraft(files)).toMatchObject({ raw: null, validation: { ok: false } });
 });
 
-test("lireCode / enregistrerCode refuse ../x.mjs, x.js, an outgoing link, over 256 KB; a missing file returns absent", async () => {
+test("readCodeFile / storeCode refuse ../x.mjs, x.js, an outgoing link, over 256 KB; a missing file returns absent", async () => {
   for (const name of ["../x.mjs", "x.js", "A.mjs", "sous/x.mjs"]) {
     expect(await readCodeFile(files, name)).toHaveProperty("error");
     expect(await storeCode(files, name, "x")).toMatchObject({ ok: false });
@@ -216,7 +216,7 @@ test("lireCode / enregistrerCode refuse ../x.mjs, x.js, an outgoing link, over 2
   expect((await readdir(files)).filter((n) => n.endsWith(".tmp"))).toEqual([]);
 });
 
-test("changing liste.nouveaux's garderJours does not erase its memory; changing cle erases it", async () => {
+test("changing list.new's keepDays does not erase its memory; changing key erases it", async () => {
   const withKeep = (key: string, keepDays?: number) => {
     const w = wf(key);
     if (keepDays !== undefined) w.blocks[1]!.params = { key: key, keepDays: keepDays } as never;

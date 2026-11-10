@@ -9,7 +9,7 @@ process.stdout.write = process.stderr.write.bind(process.stderr) as typeof proce
 console.log = console.info = console.debug = console.error;
 // Firefox gone: its pipe breaks, and the end of stdin stops everything below.
 process.stdout.on("error", () => {});
-process.on("unhandledRejection", (e) => console.error("[webaios] rejet non géré :", e));
+process.on("unhandledRejection", (e) => console.error("[webaios] unhandled rejection:", e));
 
 process.env.WEBAIOS_CONTAINER ||= "webaios-workshop-firefox";
 // The existing container's name and host ports: renaming them would orphan it.
@@ -86,7 +86,7 @@ const hist = (() => {
     h.purge();
     return h;
   } catch (e) {
-    console.error("[webaios] l'historique n'a pas pu s'ouvrir :", e);
+    console.error("[webaios] the history could not open:", e);
     return undefined;
   }
 })();
@@ -174,7 +174,7 @@ const launchKernel = (profileId: string): Promise<Kernel | null> => {
       try {
         homeStop = n.watchHome(() => rpc.notify("home.change"));
       } catch (e) {
-        console.error("[webaios] la surveillance de l'accueil n'a pas démarré :", e);
+        console.error("[webaios] the home watch did not start:", e);
       }
       broadcastAccess();
       // Each kernel start (a restart included): what the pages read while it was down is read again.
@@ -222,8 +222,8 @@ const stop = () =>
     // Started first (spike S8) but not awaited before the others: a slow docker must not eat the 5 s quit delay
     // before the history is closed. Settled alone:
     // its failure never skips the stops below. WEBAIOS_TEST_APPS_STOP_FAILS: tests only.
-    const appsStopped = (process.env.WEBAIOS_TEST_APPS_STOP_FAILS === "1" ? Promise.reject(new Error("arrêt des applis simulé")) : apps.stop()).catch((e) =>
-      console.error("[webaios] les applis ne se sont pas arrêtées :", e),
+    const appsStopped = (process.env.WEBAIOS_TEST_APPS_STOP_FAILS === "1" ? Promise.reject(new Error("simulated apps stop")) : apps.stop()).catch((e) =>
+      console.error("[webaios] the apps did not stop:", e),
     );
     extensions.stop();
     await sessions.stopAll();
@@ -296,7 +296,7 @@ const rpc = createRpc({
         if (theme.error) console.warn(`[webaios] ${theme.error}`);
         return toShownWidgets({ state: state, placements, theme: theme.theme, mtimes });
       } catch (e) {
-        console.error("[webaios] page d'accueil illisible :", e);
+        console.error("[webaios] home page unreadable:", e);
         return { widgets: [], theme: null };
       }
     },
@@ -306,7 +306,7 @@ const rpc = createRpc({
         const ids = (await readHome(paths, widgetsFolder)).widgets.map((w) => w.id);
         await placeWidgets(paths, validatePlacements(p?.placements, ids));
       } catch (e) {
-        console.error("[webaios] disposition non écrite :", e);
+        console.error("[webaios] layout not written:", e);
         // The UI already showed the gesture's preview: it re-reads the old layout instead of leaving it on screen.
         rpc.notify("home.change");
       }
@@ -321,7 +321,7 @@ const rpc = createRpc({
         await deleteData(widgetsFolder, w);
       }).then(
         () => rpc.notify("home.change"),
-        (e) => console.error(`[webaios] widget ${id} non retiré :`, e),
+        (e) => console.error(`[webaios] widget ${id} not removed:`, e),
       );
     },
     "home.grant": async (p: { id: string; profile: string; account: string[]; public: string[] }) => {
@@ -332,7 +332,7 @@ const rpc = createRpc({
         await n.grant(p);
         return { ok: true as const };
       } catch (e) {
-        console.error(`[webaios] accord du widget ${p?.id} :`, e);
+        console.error(`[webaios] grant of widget ${p?.id}:`, e);
         // The UI re-reads the page: the new request is displayed.
         rpc.notify("home.change");
         return { ok: false as const, error: (e as Error).message };
@@ -341,12 +341,12 @@ const rpc = createRpc({
     "home.denyGrant": async (p: { id?: unknown }) => {
       const n = await ready;
       if (!n || typeof p?.id !== "string") return;
-      await n.denyGrant(p.id).catch((e) => console.error(`[webaios] retrait de l'accord du widget ${p.id} :`, e));
+      await n.denyGrant(p.id).catch((e) => console.error(`[webaios] grant removal of widget ${p.id}:`, e));
     },
     "home.harvest": async (p: { id?: unknown }) => {
       const n = await ready;
       if (!n || typeof p?.id !== "string") return;
-      await n.harvestNow(p.id).catch((e) => console.error(`[webaios] récolte du widget ${p.id} :`, e));
+      await n.harvestNow(p.id).catch((e) => console.error(`[webaios] harvest of widget ${p.id}:`, e));
     },
     // Read without the kernel, like the home page: the executions, outside the space.
     "home.runs": (p: { id?: unknown }) => executionsWidget(widgetsFolder, typeof p?.id === "string" ? p.id : ""),
@@ -419,7 +419,7 @@ const rpc = createRpc({
         const r = await n.harvestNow(id, "manual");
         return r.run === undefined ? {} : { run: r.run };
       } catch (e) {
-        console.error(`[webaios] exécution du widget ${id} :`, e);
+        console.error(`[webaios] run of widget ${id}:`, e);
         return {};
       }
     },
@@ -674,7 +674,7 @@ let actionsStop: (() => Promise<void>) | undefined;
 try {
   actionsStop = watchActions(paths, () => rpc.notify("actions.change"));
 } catch (e) {
-  console.error("[webaios] la surveillance des actions n'a pas démarré :", e);
+  console.error("[webaios] the actions watch did not start:", e);
 }
 // The chrome may not answer yet (its handlers come up later): it calls "sites.ready" once it does.
 void sites.resync().catch(() => {});

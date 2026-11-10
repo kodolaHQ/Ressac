@@ -5,7 +5,7 @@
   /**
    * A widget shown in its isolated frame: without allow-same-origin, the code written by the agent runs in an opaque
    * origin, with no access to the interface. It receives its data through postMessage; its links go through
-   * api.accueil.ouvrir.
+   * api.home.open.
    */
   let {
     widget,
@@ -115,18 +115,18 @@
 
 <svelte:window onmessage={onMessage} onfocusin={onFocusin} onblur={onBlur} />
 
-<div class="contenu" bind:clientWidth={width} bind:clientHeight={height}>
+<div class="content" bind:clientWidth={width} bind:clientHeight={height}>
   {#if widget.src}
     <!-- Without allow-same-origin: the code written by the agent runs in an opaque origin, with no access to the interface. -->
     <iframe bind:this={iframe} src={widget.src} title={widget.name} sandbox="allow-scripts"></iframe>
   {:else}
-    <p class="vide">L'agent n'a pas encore écrit l'affichage de ce widget.</p>
+    <p class="empty">L'agent n'a pas encore écrit l'affichage de ce widget.</p>
   {/if}
 </div>
 
 <style>
-  .contenu { flex: 1; min-height: 0; display: flex; }
+  .content { flex: 1; min-height: 0; display: flex; }
   /* The card background while loading: no white flash in dark mode. */
-  iframe { flex: 1; width: 100%; height: 100%; border: none; background: var(--accueil-carte); }
-  .vide { margin: 0; padding: 8px 12px; font-size: 12px; color: var(--accueil-texte-doux); }
+  iframe { flex: 1; width: 100%; height: 100%; border: none; background: var(--home-card); }
+  .empty { margin: 0; padding: 8px 12px; font-size: 12px; color: var(--home-text-muted); }
 </style>

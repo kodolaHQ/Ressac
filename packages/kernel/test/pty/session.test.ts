@@ -25,7 +25,7 @@ test("unsubscribing cuts the callbacks", async () => {
   expect(calls).toBe(0);
 });
 
-test("arreter also notifies the container (arreterDistant), only once", async () => {
+test("arreter also notifies the container (stopRemote), only once", async () => {
   let remotes = 0;
   const s = SessionAgent.start(["/bin/cat"], { cols: 80, rows: 24, stopRemote: () => void remotes++ });
   const end = new Promise<number>((ok) => s.onEnd(ok));

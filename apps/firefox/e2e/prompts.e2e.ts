@@ -55,19 +55,19 @@ describe("prompts anchor on the sidebar", () => {
     m = w.marionette;
     await m.setContext("chrome");
     await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
-    await waitUi(m, `return !!doc.querySelector('[data-testid="barre-adresse"]')`);
+    await waitUi(m, `return !!doc.querySelector('[data-testid="address-bar"]')`);
   });
   afterAll(() => w?.close());
 
   it("a site's geolocation request shows the WebAiOs banner, never Firefox's prompt", async () => {
     await open("/geo");
-    const banner = `const b = document.querySelector('[data-testid="demande-permission"]'); return b?.checkVisibility() ? b.querySelector("span").textContent : null;`;
+    const banner = `const b = document.querySelector('[data-testid="permission-request"]'); return b?.checkVisibility() ? b.querySelector("span").textContent : null;`;
     expect(await waitFor<string | null>(m, banner, (t) => t !== null)).toMatch(/^127\.0\.0\.1:\d+ veut connaître votre position$/);
     expect(await m.execute(`return { notification: !!PopupNotifications.getNotification("geolocation", gBrowser.selectedBrowser), state: PopupNotifications.panel.state };`)).toEqual({
       notification: false,
       state: "closed",
     });
-    await m.execute(`[...document.querySelectorAll('[data-testid="demande-permission"] button')].find((b) => b.textContent === "Refuser").click();`);
+    await m.execute(`[...document.querySelectorAll('[data-testid="permission-request"] button')].find((b) => b.textContent === "Refuser").click();`);
     await waitFor<string | null>(m, banner, (t) => t === null);
   });
 

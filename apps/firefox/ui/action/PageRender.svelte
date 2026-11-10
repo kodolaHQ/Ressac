@@ -57,7 +57,7 @@
     {:else if b.component === "link"}
       <Link p={p(b)} {ctx} />
     {:else if b.component === "group"}
-      <Group p={p(b)}><div class="pa-blocs">{@render list(b.blocks)}</div></Group>
+      <Group p={p(b)}><div class="pa-blocks">{@render list(b.blocks)}</div></Group>
     {:else if b.component === "columns"}
       <Columns>
         {#snippet left()}{@render list(b.left)}{/snippet}
@@ -66,13 +66,13 @@
     {:else if components}
       <ComponentFrame name={b.component} props={b.props} />
     {:else}
-      <div class="pa-composant-apercu" data-testid="bloc-{b.component}">{b.component}</div>
+      <div class="pa-component-preview" data-testid="block-{b.component}">{b.component}</div>
     {/if}
   {/each}
 {/snippet}
 
-<div class="page-action" data-testid="rendu-page">
-  {#if page.fallback}<p class="pa-mention" data-testid="mention-secours">{FALLBACK_MENTION}</p>{/if}
-  {#if page.blocks.length === 0}<p class="pa-vide">{NO_RESULT}</p>{/if}
-  <div class="pa-blocs">{@render list(page.blocks)}</div>
+<div class="page-action" data-testid="page-render">
+  {#if page.fallback}<p class="pa-mention" data-testid="fallback-mention">{FALLBACK_MENTION}</p>{/if}
+  {#if page.blocks.length === 0}<p class="pa-empty">{NO_RESULT}</p>{/if}
+  <div class="pa-blocks">{@render list(page.blocks)}</div>
 </div>

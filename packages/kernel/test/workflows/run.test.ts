@@ -726,7 +726,7 @@ describe("executerWorkflow: web search and open reads", () => {
   const BASE = "https://ddg.test/html/";
   const page = (name: string) => readFileSync(new URL(`./fixtures/duckduckgo/${name}`, import.meta.url), "utf8");
   const fixtureResults = (() => {
-    const r = extractResults(page("resultats.html"), 20);
+    const r = extractResults(page("results.html"), 20);
     if (!("results" in r)) throw new Error("attendu : des résultats");
     return r.results;
   })();
@@ -762,7 +762,7 @@ describe("executerWorkflow: web search and open reads", () => {
   it("chercherWeb returns the results of the recorded page, search url built on urlRecherche", async () => {
     const { b, html } = await webBench(afterwards([`w.searchWeb("clio fiabilité", { count: 3 })`]), {
       web: true,
-      html: { [searchUrl("clio fiabilité", BASE)]: page("resultats.html") },
+      html: { [searchUrl("clio fiabilité", BASE)]: page("results.html") },
     });
     const r = await runWorkflow(b.ctx, b.infra);
     expect(value(r)).toEqual([fixtureResults.slice(0, 3)]);
@@ -787,7 +787,7 @@ describe("executerWorkflow: web search and open reads", () => {
   });
 
   it("without web: WEB_REQUIRED, no call to the bridge", async () => {
-    const { b, bridge: bridge } = await webBench(afterwards([`w.searchWeb("x")`]), { html: { [searchUrl("x", BASE)]: page("resultats.html") } });
+    const { b, bridge: bridge } = await webBench(afterwards([`w.searchWeb("x")`]), { html: { [searchUrl("x", BASE)]: page("results.html") } });
     const r = await runWorkflow(b.ctx, b.infra);
     expect(value(r)).toEqual([`erreur: ${WEB_REQUIRED}`]);
     expect(bridge.calls).toEqual([]);
@@ -798,7 +798,7 @@ describe("executerWorkflow: web search and open reads", () => {
     const { b, html } = await webBench(afterwards([`w.searchWeb("x")`]), {
       web: true,
       account: ["mail.google.com"],
-      html: { [searchUrl("x", BASE)]: page("resultats.html") },
+      html: { [searchUrl("x", BASE)]: page("results.html") },
     });
     const r = await runWorkflow(b.ctx, b.infra);
     expect(value(r)).toEqual([`erreur: ${WEB_REQUIRED}`]);
@@ -810,7 +810,7 @@ describe("executerWorkflow: web search and open reads", () => {
     const { b, html } = await webBench(afterwards(Array.from({ length: 31 }, () => `w.searchWeb("clio", { count: 1 })`)), {
       web: true,
       pacing: pacing,
-      html: { [searchUrl("clio", BASE)]: page("resultats.html") },
+      html: { [searchUrl("clio", BASE)]: page("results.html") },
     });
     const r = await runWorkflow(b.ctx, b.infra);
     const output = value(r) as unknown[];
@@ -824,7 +824,7 @@ describe("executerWorkflow: web search and open reads", () => {
   it("check page: SEARCH_DENIED, then SEARCHES_STOPPED without a new read", async () => {
     const { b, html } = await webBench(afterwards([`w.searchWeb("a")`, `w.searchWeb("b")`]), {
       web: true,
-      html: { [searchUrl("a", BASE)]: page("verification.html"), [searchUrl("b", BASE)]: page("resultats.html") },
+      html: { [searchUrl("a", BASE)]: page("verification.html"), [searchUrl("b", BASE)]: page("results.html") },
     });
     const r = await runWorkflow(b.ctx, b.infra);
     expect(value(r)).toEqual([`erreur: ${SEARCH_DENIED}`, `erreur: ${SEARCHES_STOPPED}`]);
@@ -836,7 +836,7 @@ describe("executerWorkflow: web search and open reads", () => {
     const { b, html } = await webBench(
       `const essai = (p) => p.then((x) => x, (e) => "erreur: " + e.message);
       export default async (e, w) => Promise.all([essai(w.searchWeb("a")), essai(w.searchWeb("b"))]);`,
-      { web: true, pacing: pacing, html: { [searchUrl("a", BASE)]: page("verification.html"), [searchUrl("b", BASE)]: page("resultats.html") } },
+      { web: true, pacing: pacing, html: { [searchUrl("a", BASE)]: page("verification.html"), [searchUrl("b", BASE)]: page("results.html") } },
     );
     const r = await runWorkflow(b.ctx, b.infra);
     expect(value(r)).toEqual([`erreur: ${SEARCH_DENIED}`, `erreur: ${SEARCHES_STOPPED}`]);
@@ -849,7 +849,7 @@ describe("executerWorkflow: web search and open reads", () => {
   it("page changed: UNREADABLE_RESULTS, never an empty list; no result: empty list", async () => {
     const { b } = await webBench(afterwards([`w.searchWeb("a")`, `w.searchWeb("b")`]), {
       web: true,
-      html: { [searchUrl("a", BASE)]: page("changee.html"), [searchUrl("b", BASE)]: page("aucun-resultat.html") },
+      html: { [searchUrl("a", BASE)]: page("changed.html"), [searchUrl("b", BASE)]: page("no-results.html") },
     });
     const r = await runWorkflow(b.ctx, b.infra);
     expect(value(r)).toEqual([`erreur: ${UNREADABLE_RESULTS}`, []]);
@@ -1012,7 +1012,7 @@ describe("executerWorkflow: web search and open reads", () => {
     const pacing = new Pacing({ now: () => t, wait: () => new Promise<void>((ok) => pending.push(ok)) });
     const { b, html } = await webBench(
       `export default async (e, w) => { await w.searchWeb("a"); w.searchWeb("b").catch(() => {}); return "fini"; };`,
-      { web: true, pacing: pacing, html: { [searchUrl("a", BASE)]: page("resultats.html") } },
+      { web: true, pacing: pacing, html: { [searchUrl("a", BASE)]: page("results.html") } },
     );
     const r = await runWorkflow(b.ctx, b.infra);
     expect(value(r)).toBe("fini");
@@ -1110,7 +1110,7 @@ describe("executerWorkflow: a stop cancels the reads in progress", () => {
       allow: false,
       read: {
         pages: [{ url: "https://pages.example/2", title: "deux", text: "", links: [] }],
-        html: { [searchUrl("b", BASE)]: readFileSync(new URL("./fixtures/duckduckgo/aucun-resultat.html", import.meta.url), "utf8") },
+        html: { [searchUrl("b", BASE)]: readFileSync(new URL("./fixtures/duckduckgo/no-results.html", import.meta.url), "utf8") },
         suspended: ["https://pages.example/1", searchUrl("a", BASE)],
       },
     });
@@ -1271,7 +1271,7 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
     expect(outcome).toEqual({ t: "failure", error: "cassé", codeError: true });
   });
 
-  it("dureeMaxMinutes 30: debut carries limiteMs 1,800,000 and progressif, container launched with timeout 1830, delay 1,850 s", async () => {
+  it("maxDurationMinutes 30: debut carries limitMs 1,800,000 and progressif, container launched with timeout 1830, delay 1,850 s", async () => {
     const received: string[] = [];
     const b = await bench(watch(), {}, { launch: launcherSteps([{ t: "end", data: null }], { received: received }) });
     b.ctx.maxDurationMinutes = 30;
@@ -1284,7 +1284,7 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
     expect(delays).not.toContain(200_000);
   });
 
-  it("auFilDeLEau without dureeMaxMinutes: progressif without limiteMs; a trial is never progressive", async () => {
+  it("streaming without maxDurationMinutes: progressif without limitMs; a trial is never progressive", async () => {
     const received: string[] = [];
     const b = await bench(watch({ live: true }), {}, { launch: launcherSteps([{ t: "end", data: null }], { received: received }) });
     await runWorkflow(b.ctx, b.infra);
@@ -1371,7 +1371,7 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
     expect(r4.run.blocks.map((x) => x.status)).toEqual(["succeeded", "succeeded", "not-run", "not-run"]);
   });
 
-  it("publication relayed only during the chain and 5 s apart; ignored before the chain, for a trial, without auFilDeLEau, beyond 2 MB", async () => {
+  it("publication relayed only during the chain and 5 s apart; ignored before the chain, for a trial, without streaming, beyond 2 MB", async () => {
     const big = "x".repeat(2 * 1024 * 1024);
     const step = (advance: (ms: number) => () => void) => [
       blockStart("liste"), blockEnd("liste"),

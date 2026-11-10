@@ -182,7 +182,7 @@ describe("createActionsApi", () => {
 
   it("accorder never uses a private space's profile, read again at the grant", async () => {
     const { F, api, calls, state: state, set, genId } = setup({ "actions.grant": () => ({ ok: true }) });
-    set(apply(state(), { type: "createSpace", name: "Banque", icon: "🏦", private: true, profile: "nouveau", windowId: F }, genId));
+    set(apply(state(), { type: "createSpace", name: "Banque", icon: "🏦", private: true, profile: "new", windowId: F }, genId));
     const bank = state().spaces.find((e) => e.private)!.profile;
     set(apply(state(), { type: "activateSpace", windowId: F, id: state().spaces[0]!.id }, genId));
     const a = api(F);
@@ -227,7 +227,7 @@ describe("createActionsApi", () => {
     });
     set(apply(state(), { type: "openWindow" }, genId));
     const P = state().windows[1]!.id;
-    set(apply(state(), { type: "createSpace", name: "Banque", icon: "🏦", private: true, profile: "nouveau", windowId: P }, genId));
+    set(apply(state(), { type: "createSpace", name: "Banque", icon: "🏦", private: true, profile: "new", windowId: P }, genId));
     expect(activeSpacePrivate(state(), F)).toBe(false);
     expect(activeSpacePrivate(state(), P)).toBe(true);
     const pub = api(F);
@@ -275,7 +275,7 @@ describe("createActionsApi", () => {
     expect(await b.image("gitlab", "x", "https://img.test/a.png")).toBeNull();
   });
 
-  it("surChange calls back on actions.change and the home's resync; after a host exit, once on its kernel's start", () => {
+  it("onChange calls back on actions.change and the home's resync; after a host exit, once on its kernel's start", () => {
     const { F, api, emit } = setup();
     const cb = vi.fn();
     const off = api(F).onChange(cb);

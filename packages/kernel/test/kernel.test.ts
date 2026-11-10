@@ -50,7 +50,7 @@ test("createKernel initializes the space and writes mcp.json with host.docker.in
   expect(mcp.headers.Authorization).toMatch(/^Bearer [0-9a-f]{64}$/);
 });
 
-test("Docker absent: createKernel succeeds, workshopState → docker-absent, ouvrirSessionAgent throws WorkshopError", async () => {
+test("Docker absent: createKernel succeeds, workshopState → docker-absent, openAgentSession throws WorkshopError", async () => {
   const n = await createWithoutDocker();
   expect(await n.workshopState()).toBe("docker-absent");
   const error = await n.openAgentSession({ cols: 80, rows: 24 }).catch((e) => e);
@@ -200,7 +200,7 @@ test("kernel: arreter() stops the scheduler and the local AI", async () => {
   schedule.mockRestore();
 });
 
-test("kernel: lireAccueil reads the widgets; ia is null without local AI", async () => {
+test("kernel: readHome reads the widgets; ia is null without local AI", async () => {
   const root = await tempFolder();
   const { run: run } = fakeRunner([[/ info$/, { code: 1 }]]);
   kernel = await createKernel({ widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run });

@@ -14,7 +14,7 @@ const REFUSED: Record<string, string> = {
 };
 const errorName = (code: string | null) => (code ? (REFUSED[code] ?? code) : "Erreur");
 
-type Champs = Extract<Action, { type: "updateTab" }>["fields"];
+type TabFields = Extract<Action, { type: "updateTab" }>["fields"];
 
 /**
  * Keeps the XUL tabs of one window in line with its WebAiOs tabs: a XUL tab is created when its
@@ -230,11 +230,11 @@ export class TabSync {
     });
   }
 
-  private history(browser: any): Pick<Champs, "canGoBack" | "canGoForward"> {
+  private history(browser: any): Pick<TabFields, "canGoBack" | "canGoForward"> {
     return { canGoBack: browser.canGoBack, canGoForward: browser.canGoForward };
   }
 
-  private update(tab: any, fields: Champs): void {
+  private update(tab: any, fields: TabFields): void {
     const id = tab?.getAttribute(TAB_ID);
     if (id && this.tabs.get(id) === tab) this.store.dispatch({ type: "updateTab", id, fields });
   }

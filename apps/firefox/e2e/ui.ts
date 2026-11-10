@@ -2,8 +2,8 @@ import type { Marionette } from "./marionette";
 
 /** The UI iframes: the sidebar (`#webaios-sidebar`), the agent panel (`#webaios-agent`) and the design overlays, with what shows each is mounted. */
 const FRAMES = {
-  sidebar: { id: "webaios-sidebar", mounted: '[data-testid="barre-laterale"]' },
-  agent: { id: "webaios-agent", mounted: '[data-testid="panneau-agent"]' },
+  sidebar: { id: "webaios-sidebar", mounted: '[data-testid="sidebar"]' },
+  agent: { id: "webaios-agent", mounted: '[data-testid="agent-panel"]' },
   // The design mode's overlay (bubble, message) and a main window's cart column (chrome/window/design-overlays.ts).
   overlay: { id: "webaios-design-calque", mounted: "#app" },
   panel: { id: "webaios-design-volet", mounted: "#app" },

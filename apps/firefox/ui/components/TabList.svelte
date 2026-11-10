@@ -23,19 +23,19 @@
   }
 </script>
 
-<ul class="onglets" role="tablist" aria-orientation="vertical">
+<ul class="tabs" role="tablist" aria-orientation="vertical">
   {#each order as id, index (id)}
     {@const tab = appState.value?.tabs[id]}
     {@const agentRights = accessOf(id)}
     {#if tab}
       <li
-        data-testid="onglet-{id}"
+        data-testid="tab-{id}"
         role="tab"
         tabindex="0"
         aria-selected={id === active}
         aria-current={id === active ? "page" : undefined}
-        class:avant={hover?.index === index && !hover.after}
-        class:apres={hover?.index === index && hover.after}
+        class:before={hover?.index === index && !hover.after}
+        class:after={hover?.index === index && hover.after}
         draggable="true"
         ondragstart={(e) => e.dataTransfer?.setData("application/x-webaios-onglet", id)}
         ondragover={(e) => {
@@ -55,12 +55,12 @@
             { label: "Fermer", dispatch: () => closeTab(id) },
           ])}
       >
-        {#if tab.loading}<span class="roue" aria-label="Chargement"></span>{:else}<SiteIcon favicon={tab.favicon} title={tab.title} />{/if}
-        <span class="titre">{tab.title}</span>
+        {#if tab.loading}<span class="spinner" aria-label="Chargement"></span>{:else}<SiteIcon favicon={tab.favicon} title={tab.title} />{/if}
+        <span class="title">{tab.title}</span>
         {#if agentRights}<AccessBadge {id} state={agentRights} />{/if}
         {#if tab.openedByAgent}<span class="agent" title="Ouvert par l'agent">✦</span>{/if}
         <button
-          class="fermer"
+          class="close"
           aria-label="Fermer l'onglet"
           onclick={(e) => {
             e.stopPropagation();
@@ -73,16 +73,16 @@
 </ul>
 
 <style>
-  .onglets { list-style: none; margin: 0; padding: 0; }
-  li { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 8px; border-radius: 8px; color: var(--texte); cursor: default; }
-  li:hover { background: var(--fond-survol); }
-  li[aria-current="page"] { background: var(--fond-actif); }
-  li.avant { box-shadow: inset 0 2px 0 var(--accent); }
-  li.apres { box-shadow: inset 0 -2px 0 var(--accent); }
-  .titre { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tabs { list-style: none; margin: 0; padding: 0; }
+  li { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 8px; border-radius: 8px; color: var(--text); cursor: default; }
+  li:hover { background: var(--bg-hover); }
+  li[aria-current="page"] { background: var(--bg-active); }
+  li.before { box-shadow: inset 0 2px 0 var(--accent); }
+  li.after { box-shadow: inset 0 -2px 0 var(--accent); }
+  .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .agent { color: var(--accent); }
-  .fermer { all: unset; opacity: 0; padding: 0 4px; color: var(--texte-doux); }
-  li:hover .fermer { opacity: 1; }
-  .roue { width: 12px; height: 12px; margin: 2px; flex: none; border: 2px solid var(--texte-doux); border-top-color: transparent; border-radius: 50%; animation: tourne 0.8s linear infinite; }
+  .close { all: unset; opacity: 0; padding: 0 4px; color: var(--text-muted); }
+  li:hover .close { opacity: 1; }
+  .spinner { width: 12px; height: 12px; margin: 2px; flex: none; border: 2px solid var(--text-muted); border-top-color: transparent; border-radius: 50%; animation: tourne 0.8s linear infinite; }
   @keyframes tourne { to { transform: rotate(360deg); } }
 </style>

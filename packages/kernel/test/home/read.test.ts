@@ -85,7 +85,7 @@ test("a layout in the old format ({ ordre }) is ignored: everything is placed ag
   expect((await readHome(c, widgetsFolder)).layout).toHaveLength(2);
 });
 
-test("the data and the state come from dossierWidgets, never from the space", async () => {
+test("the data and the state come from widgetsFolder, never from the space", async () => {
   const { c, widgetsFolder: widgetsFolder } = await space();
   const state = { status: "error", lastUpdate: null, lastAttempt: "2026-10-28T07:00:00.000Z", error: "boum" };
   await writeWidget(c, "w", declarationWidget(), { "data.json": '{"piege":true}', "state.json": JSON.stringify({ ...state, error: "piège" }) });
@@ -100,7 +100,7 @@ test("the data and the state come from dossierWidgets, never from the space", as
   expect("state" in w1 && w1.state).toEqual(state);
 });
 
-test("example.json is read; aRecolte and aAffichage reflect the files present", async () => {
+test("example.json is read; hasHarvest and hasDisplay reflect the files present", async () => {
   const { c, widgetsFolder: widgetsFolder } = await space();
   await writeWidget(c, "nu");
   await writeWidget(c, "complet", declarationWidget(), { "example.json": '{"x":1}', "harvest.mjs": "export default async () => 1", "display.html": "<p>a</p>" });
@@ -111,7 +111,7 @@ test("example.json is read; aRecolte and aAffichage reflect the files present", 
   expect("declaration" in full && [full.example, full.hasHarvest, full.hasDisplay]).toEqual([{ x: 1 }, true, true]);
 });
 
-test("aRecolte true with workflow.json alone; aWorkflow says so", async () => {
+test("hasHarvest true with workflow.json alone; hasWorkflow says so", async () => {
   const { c, widgetsFolder: widgetsFolder } = await space();
   await writeWidget(c, "flux", declarationWidget(), { "workflow.json": '{"version":1,"blocs":[]}' });
   await writeWidget(c, "ancien", declarationWidget(), { "harvest.mjs": "export default async () => 1" });
@@ -132,7 +132,7 @@ test("a widget.json that is a symbolic link outside the folder is refused", asyn
   expect("error" in w).toBe(true);
 });
 
-test("dossier de widgets absent → accueil vide", async () => {
+test("widgets folder absent → empty home", async () => {
   const c = spacePaths(await tempFolder());
   expect(await readHome(c, await tempFolder())).toEqual({ layout: [], widgets: [] });
 });

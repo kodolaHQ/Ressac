@@ -67,7 +67,7 @@ test("lecteur.localhost sub-frame outside the declared frame patterns: nothing, 
   expect(withoutResume?.resume).toBe(false);
 });
 
-test("sub-frame matching cadres: js, bridge false", () => {
+test("sub-frame matching frames: js, bridge false", () => {
   const i = injectionFor(updateEntry(), { url: "https://www.lecteur.example/v/1", main: false, page: PAGE })!;
   expect(i.js).toEqual([{ code: "window.l = 1", name: "webaios-tweak://vidola/lecteur.js" }]);
   expect(i.guard).toBe(GUARD);
@@ -111,7 +111,7 @@ test("a file cited but absent from the cache is not injected", () => {
 test("a grant covering fewer rights than the declaration (frames added): no injection", () => {
   const extra = DeclarationSite.parse({ ...declaration, tweaks: [...declaration.tweaks, { matches: ["/x"], frames: ["https://*.autre.example/*"] }] });
   const grant = { domains: ["vidola-a.example"], login: ["compte.example"], frames: ["https://*.lecteur.example/*"], resume: true };
-  // What the service does: accorde = !accordRequis, accordRequis = grantNeeded && !grantCovers.
+  // What the service does: granted = !grantRequired, grantRequired = grantNeeded && !grantCovers.
   const required = grantNeeded(extra) && !grantCovers(grant, extra);
   expect(required).toBe(true);
   const o = { ...updateEntry(!required), site: { ...site, declaration: extra, grantRequired: required } };

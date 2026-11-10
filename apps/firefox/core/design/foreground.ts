@@ -1,8 +1,8 @@
 import type { WindowId } from "../../shared/model";
 
-export type DesignTarget = { type: "fenetre"; windowId: WindowId } | { type: "app"; folder: string } | { type: "site"; id: string };
+export type DesignTarget = { type: "window"; windowId: WindowId } | { type: "app"; folder: string } | { type: "site"; id: string };
 
-export type DesignChoice = { type: "cible"; target: DesignTarget } | { type: "avis-site"; id: string } | { type: "rien" };
+export type DesignChoice = { type: "target"; target: DesignTarget } | { type: "site-notice"; id: string } | { type: "none" };
 
 /**
  * The window targeted by ⌘⇧D, according to what is in the foreground (spec §4.3): an agent app window, then a
@@ -11,10 +11,10 @@ export type DesignChoice = { type: "cible"; target: DesignTarget } | { type: "av
  * window that is behind); otherwise, the active main window.
  */
 export function chooseDesignTarget(o: { app?: string; site?: string; siteSmall?: string; otherWindow: boolean; activeWindow?: WindowId }): DesignChoice {
-  if (o.app) return { type: "cible", target: { type: "app", folder: o.app } };
-  if (o.site) return { type: "cible", target: { type: "site", id: o.site } };
-  if (o.siteSmall) return { type: "avis-site", id: o.siteSmall };
-  if (o.otherWindow) return { type: "rien" };
-  if (o.activeWindow) return { type: "cible", target: { type: "fenetre", windowId: o.activeWindow } };
-  return { type: "rien" };
+  if (o.app) return { type: "target", target: { type: "app", folder: o.app } };
+  if (o.site) return { type: "target", target: { type: "site", id: o.site } };
+  if (o.siteSmall) return { type: "site-notice", id: o.siteSmall };
+  if (o.otherWindow) return { type: "none" };
+  if (o.activeWindow) return { type: "target", target: { type: "window", windowId: o.activeWindow } };
+  return { type: "none" };
 }

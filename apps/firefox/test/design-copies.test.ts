@@ -44,7 +44,7 @@ describe("design copies", () => {
 
   it("targetKey names a target; the site bubble has its size", () => {
     expect(SITE_BUBBLE_SIZE).toEqual({ width: 320, height: 190 });
-    expect(targetKey({ type: "fenetre", windowId: "f1" })).toBe("fenetre:f1");
+    expect(targetKey({ type: "window", windowId: "f1" })).toBe("window:f1");
     expect(targetKey({ type: "app", folder: "essai" })).toBe("app:essai");
     expect(targetKey({ type: "site", id: "tuning" })).toBe("site:tuning");
   });

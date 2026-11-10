@@ -84,7 +84,7 @@ test("deleteDataAction erases runs, results and memory", async () => {
   expect(await readResult(d, "a", id)).toBeNull();
 });
 
-test("oublierActionsDisparues erases the data and grant of an action whose folder disappeared, not the others", async () => {
+test("forgetGoneActions erases the data and grant of an action whose folder disappeared, not the others", async () => {
   const c = spacePaths(await tempFolder());
   const actionsFolder = await tempFolder();
   await mkdir(join(c.actions, "vivante"), { recursive: true });
@@ -101,7 +101,7 @@ test("oublierActionsDisparues erases the data and grant of an action whose folde
   expect(Object.keys(await readGrants(actionsFolder))).toEqual(["vivante"]);
 });
 
-test("oublierActionsDisparues: without an actions folder (space moved), data and grants stay", async () => {
+test("forgetGoneActions: without an actions folder (space moved), data and grants stay", async () => {
   const c = spacePaths(await tempFolder()); // c.actions does not exist
   const actionsFolder = await tempFolder();
   const e = execution(timestamp(0));
@@ -113,7 +113,7 @@ test("oublierActionsDisparues: without an actions folder (space moved), data and
   expect(Object.keys(await readGrants(actionsFolder))).toEqual(["x"]);
 });
 
-test("oublierActionsDisparues: a symbolic link named like the action is not the action", async () => {
+test("forgetGoneActions: a symbolic link named like the action is not the action", async () => {
   const c = spacePaths(await tempFolder());
   const actionsFolder = await tempFolder();
   await mkdir(c.actions, { recursive: true });

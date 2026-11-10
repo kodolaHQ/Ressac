@@ -174,7 +174,7 @@ const optionsOf = (ctx: Context) => ({
 const readJson = async (path: string) => JSON.parse(await readFile(path, "utf8"));
 
 describe("runHarvest", () => {
-  it("a successful harvest writes data.json and the ok state in dossierWidgets", async () => {
+  it("a successful harvest writes data.json and the ok state in widgetsFolder", async () => {
     const web = await webServer({ "/flux.json": (res) => { res.writeHead(200, { "content-type": "application/json" }); res.end('{"x":42}'); } });
     const kev = await fakeKev({ q: { type: "noul", noul: 0.8 } });
     const ollama = await fakeOllama("bonjour");
@@ -220,7 +220,7 @@ describe("runHarvest", () => {
     expect(ctx.commands[0]).toEqual(ctx.workshop.harvestCommand("meteo", ctx.widget.folder, ENGINE));
   });
 
-  it("commandeRecolte mounts the widget as :ro, cuts the network (--network none) and mounts nothing else from the space", async () => {
+  it("harvestCommand mounts the widget as :ro, cuts the network (--network none) and mounts nothing else from the space", async () => {
     const workshop = new Workshop({ paths: spacePaths("/Users/t/WebAiOs"), docker: "/usr/local/bin/docker" });
     const c = workshop.harvestCommand("meteo", "/Users/t/WebAiOs/home/widgets/meteo", "/app/docker/engine");
     expect(c).toEqual([
@@ -548,7 +548,7 @@ describe("runHarvest, widget with an account", () => {
     expect(readCalls(bridge)[0]!.args[1]).toEqual({ profile: null, domains: ["127.0.0.1"], localAddresses: true });
   });
 
-  it("without the adressesLocales option, the bridge does not receive adressesLocales (it then refuses local addresses)", async () => {
+  it("without the localAddresses option, the bridge does not receive localAddresses (it then refuses local addresses)", async () => {
     const ctx = await prepare("daily", `export default async (w) => (await w.readPage("https://app.daily.dev/")).title;`);
     const bridge = readBridge();
     const r = await runHarvest({ ...optionsOf(ctx), bridge: bridge, localAddresses: false });
@@ -1427,7 +1427,7 @@ describe("runHarvest, watch (publications as it goes, memory kept, novelties)", 
     expect(await readFile(memoryFile(ctx), "utf8")).toBe(before);
   });
 
-  it("widget with an account and auFilDeLEau: grant removed between two publications → data erased, accord-requis, nothing written anymore", async () => {
+  it("widget with an account and streaming: grant removed between two publications → data erased, accord-requis, nothing written anymore", async () => {
     const ctx = await prepare("veille", "", { account: ["app.daily.dev"], public: ["127.0.0.1"] });
     await inWatch(ctx, { live: true });
     await giveGrant(ctx.widgetsFolder, "veille", { domains: ["app.daily.dev"], public: ["127.0.0.1"], profile: "perso" });
@@ -1475,7 +1475,7 @@ describe("runHarvest, watch (publications as it goes, memory kept, novelties)", 
     expect((await readWidgetState(ctx.widgetsFolder, "veille")).status).toBe("grant-required");
   });
 
-  it("a trial of an auFilDeLEau widget writes neither data nor state (nor memory), even with dureeMaxMinutes; limiteMs sent, never progressive", async () => {
+  it("a trial of an streaming widget writes neither data nor state (nor memory), even with maxDurationMinutes; limitMs sent, never progressive", async () => {
     const ctx = await prepare("veille", "");
     await inWatch(ctx, { live: true, maxDurationMinutes: 30 });
     const { clock: h, forward: advance } = movableClock();

@@ -34,8 +34,8 @@ export function createOverlays(o: { design: DesignService; host: Pick<AgentHost,
   const closedListeners = new Map<string, Set<() => void>>();
   // The service's keys (targetKey), read back: the frame's target is the chrome's.
   const targetOf = (key: string): DesignTarget =>
-    key.startsWith("fenetre:") ? { type: "fenetre", windowId: key.slice(8) } : key.startsWith("site:") ? { type: "site", id: key.slice(5) } : { type: "app", folder: key.slice(4) };
-  const main = (key: string) => key.startsWith("fenetre:");
+    key.startsWith("window:") ? { type: "window", windowId: key.slice(7) } : key.startsWith("site:") ? { type: "site", id: key.slice(5) } : { type: "app", folder: key.slice(4) };
+  const main = (key: string) => key.startsWith("window:");
   const inColumn = (key: string, mode: Mode) => mode === "basket" && main(key);
   /** Calques.contexte's order; a main window's cart is in its column. */
   const overlayModes = (key: string): Mode[] => (main(key) ? ["bubble", "message"] : ["bubble", "basket", "message"]);
@@ -93,7 +93,7 @@ export function createOverlays(o: { design: DesignService; host: Pick<AgentHost,
       if (!ov) overlays.set(key, (ov = { win, places: {} }));
       const t = targetOf(key);
       if (inColumn(key, ctx.mode)) {
-        win.document.documentElement.style.setProperty("--webaios-panier", `${COLUMN_WIDTH}px`);
+        win.document.documentElement.style.setProperty("--webaios-basket", `${COLUMN_WIDTH}px`);
         frame(key, ov, "panel").style.display = "";
         return;
       }
@@ -118,7 +118,7 @@ export function createOverlays(o: { design: DesignService; host: Pick<AgentHost,
       if (!ov) return;
       if (inColumn(key, mode)) {
         if (ov.panel) ov.panel.style.display = "none";
-        if (!ov.win.closed) ov.win.document.documentElement.style.removeProperty("--webaios-panier");
+        if (!ov.win.closed) ov.win.document.documentElement.style.removeProperty("--webaios-basket");
         return;
       }
       delete ov.places[mode];
@@ -134,7 +134,7 @@ export function createOverlays(o: { design: DesignService; host: Pick<AgentHost,
       if (ov.win.closed) return;
       ov.overlay?.remove();
       ov.panel?.remove();
-      ov.win.document.documentElement.style.removeProperty("--webaios-panier");
+      ov.win.document.documentElement.style.removeProperty("--webaios-basket");
     },
 
     onColumnClosed(t, cb) {

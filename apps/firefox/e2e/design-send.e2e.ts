@@ -43,7 +43,7 @@ beforeAll(async () => {
   await m.setContext("chrome");
   await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
   await resolveLocalHosts(m, ["localhost"]);
-  await waitFor(m, `return (async () => { const d = (await ChromeUtils.importESModule("${STORE}").ready).design; return d.state({ type: "fenetre", windowId: window.webaiosWindow.windowId }).then(() => true, () => false); })();`, (v) => v === true, 30_000);
+  await waitFor(m, `return (async () => { const d = (await ChromeUtils.importESModule("${STORE}").ready).design; return d.state({ type: "window", windowId: window.webaiosWindow.windowId }).then(() => true, () => false); })();`, (v) => v === true, 30_000);
 }, 120_000);
 afterAll(async () => {
   await w?.close();
@@ -55,7 +55,7 @@ afterAll(async () => {
 /** Runs `body` with `d` the design service, `t` the current window's target, `store` the store. */
 const svc = <R = unknown>(body: string, args: unknown[] = []) =>
   m.execute<R>(
-    `return (async (args) => { const store = await ChromeUtils.importESModule("${STORE}").ready, d = store.design; const t = { type: "fenetre", windowId: window.webaiosWindow.windowId }; ${body} })([...arguments]);`,
+    `return (async (args) => { const store = await ChromeUtils.importESModule("${STORE}").ready, d = store.design; const t = { type: "window", windowId: window.webaiosWindow.windowId }; ${body} })([...arguments]);`,
     args,
   );
 const state = () => svc<{ active: boolean; basket: number }>("return await d.state(t);");
@@ -83,11 +83,11 @@ const frame = <T = unknown>(id: string, body: string) =>
   );
 const column = <T = unknown>(body: string) => frame<T>("webaios-design-volet", body);
 const bubble = <T = unknown>(body: string) => frame<T>("webaios-design-calque", body);
-const sendText = () => column<string | null>(`return doc?.querySelector('${tid("envoyer-remarques")}')?.textContent ?? null;`);
-const cartCount = () => column<number>(`return doc?.querySelectorAll('${tid("remarque-panier")}').length ?? 0;`);
+const sendText = () => column<string | null>(`return doc?.querySelector('${tid("send-remarks")}')?.textContent ?? null;`);
+const cartCount = () => column<number>(`return doc?.querySelectorAll('${tid("basket-remark")}').length ?? 0;`);
 const batchList = () =>
   column<{ state: string; text: string; handled: boolean }[]>(
-    `return [...(doc?.querySelectorAll('${tid("lot-envoye")}') ?? [])].map((l) => ({ state: l.dataset.etat, text: l.textContent, handled: [...l.querySelectorAll("button")].some((b) => b.textContent === "Traité") }));`,
+    `return [...(doc?.querySelectorAll('${tid("batch-sent")}') ?? [])].map((l) => ({ state: l.dataset.state, text: l.textContent, handled: [...l.querySelectorAll("button")].some((b) => b.textContent === "Traité") }));`,
   );
 const alertText = () => column<string | null>(`return doc?.querySelector('[role="alert"]')?.textContent ?? null;`);
 
@@ -109,16 +109,16 @@ async function remark(sel: string, label: string, text: string) {
   const n = (await state()).basket;
   await trustedMouse(m, B, sel);
   await expect
-    .poll(() => bubble<string | null>(`return doc?.querySelector('${tid("bulle-design")}')?.textContent ?? null;`), { timeout: 10_000 })
+    .poll(() => bubble<string | null>(`return doc?.querySelector('${tid("design-bubble")}')?.textContent ?? null;`), { timeout: 10_000 })
     .toContain(label);
   await expect.poll(() => bubble<string | null>("return doc?.activeElement?.localName ?? null;"), { timeout: 10_000 }).toBe("textarea");
   await typeText(m, text);
-  await click(m, "button.ajouter", { frame: "overlay" });
+  await click(m, "button.add-button", { frame: "overlay" });
   await expect.poll(async () => (await state()).basket, { timeout: 10_000 }).toBe(n + 1);
 }
 
 const agentInput = () => {
-  const f = path.join(w.dataDir, "workspace", "faux-agent-entree.txt");
+  const f = path.join(w.dataDir, "workspace", "fake-agent-input.txt");
   return existsSync(f) ? readFileSync(f, "utf8") : "";
 };
 const TERMINAL = "(doc.querySelector('.xterm-rows')?.textContent ?? '').replace(/\\u00a0/g, ' ')";
@@ -132,9 +132,9 @@ describe("to the agent", () => {
     await sleep(600);
     await remark("#envoyer", "button#envoyer", "Bouton en vert");
     await expect.poll(sendText, { timeout: 10_000 }).toBe("Envoyer 2 remarques à l'agent");
-    await click(m, tid("envoyer-remarques"), { frame: "panel" });
+    await click(m, tid("send-remarks"), { frame: "panel" });
     await waitFor(m, "return !document.getElementById('webaios-agent').hidden", (v) => v === true);
-    await waitUi(m, `return ${TERMINAL}.includes("faux agent prêt>")`, [], 20_000, "agent");
+    await waitUi(m, `return ${TERMINAL}.includes("fake agent ready>")`, [], 20_000, "agent");
     await expect.poll(agentInput, { timeout: 10_000 }).toMatch(new RegExp(`^\\[remarques de .+ — démo http://(localhost|127\\.0\\.0\\.1):${PORT} : 1\\) `));
     expect(agentInput()).toContain(`/workspace/.webaios/remarks/demo-${PORT}/`);
     await sleep(300);
@@ -149,7 +149,7 @@ describe("to the agent", () => {
     await expect.poll(batchList, { timeout: 10_000 }).toEqual([expect.objectContaining({ state: "pending", handled: true })]);
     expect((await batchList())![0]!.text).toContain("en attente");
     expect((await batchList())![0]!.text).toContain("input#email.champ");
-    await click(m, `${tid("lot-envoye")} button`, { frame: "panel", text: "Traité" });
+    await click(m, `${tid("batch-sent")} button`, { frame: "panel", text: "Traité" });
     await expect.poll(batchList, { timeout: 10_000 }).toEqual([expect.objectContaining({ state: "handled", handled: false })]);
     expect((await batchList())![0]!.text).toContain("traité");
     await modeOff();
@@ -162,7 +162,7 @@ describe("to the agent", () => {
     await expect.poll(sendText, { timeout: 10_000 }).toBe("Envoyer 1 remarque à l'agent");
     const before = agentInput();
     await svc("await store.agent.stop(); return 1;");
-    await click(m, tid("envoyer-remarques"), { frame: "panel" });
+    await click(m, tid("send-remarks"), { frame: "panel" });
     await expect.poll(alertText, { timeout: 10_000 }).toBeTruthy();
     expect(await svc("return d.overlayContext(t, ['basket'])?.mode ?? null;")).toBe("basket");
     await sleep(500);
@@ -196,7 +196,7 @@ describe("an external project", () => {
     await modeOn();
     await remark("#email", "input#email.champ", "Champ plus large");
     await expect.poll(sendText, { timeout: 10_000 }).toBe("Envoyer 1 remarque à Claude Code (Claude Code)");
-    await click(m, tid("envoyer-remarques"), { frame: "panel" });
+    await click(m, tid("send-remarks"), { frame: "panel" });
     await expect.poll(batchList, { timeout: 10_000 }).toEqual([expect.objectContaining({ state: "pending" })]);
     // Nothing in the agent's terminal: an external batch pre-fills nothing.
     await sleep(300);
@@ -222,7 +222,7 @@ describe("an external project", () => {
     await sleep(600);
     await remark("#envoyer", "button#envoyer", "Bouton en vert");
     await expect.poll(cartCount, { timeout: 10_000 }).toBe(2);
-    await click(m, tid("envoyer-remarques"), { frame: "panel" });
+    await click(m, tid("send-remarks"), { frame: "panel" });
     await expect.poll(cartCount, { timeout: 10_000 }).toBe(0);
     const text = textOf(await p.client.callTool({ name: "read_remarks", arguments: { folder: p.folder } }));
     expect(text).toContain("refuser une adresse sans domaine");
@@ -235,28 +235,28 @@ describe("an external project", () => {
     await activate(tab);
     await click(m, ".design .chevron");
     await click(m, '[role="menuitem"]', { text: "Relire ce projet" });
-    const PAGE = tid("page-relecture");
-    const ADDED = `${tid("ligne-diff")}.ajout`;
+    const PAGE = tid("review-page");
+    const ADDED = `${tid("diff-line")}.added`;
     await waitUi(m, `return !!doc.querySelector('${PAGE}')`, [], 15_000);
     await refreshReview(m);
-    await click(m, tid("fichier-relecture"), { text: "app.js" });
+    await click(m, tid("review-file"), { text: "app.js" });
     await waitUi(m, "return [...doc.querySelectorAll(arguments[0])].some((e) => e.textContent.includes('ligne 15 modifiée'))", [ADDED], 15_000);
-    await click(m, `${tid("ligne-diff")}[data-nouveau="15"] ${tid("ajouter-commentaire")}`);
+    await click(m, `${tid("diff-line")}[data-new="15"] ${tid("add-comment")}`);
     await waitUi(
       m,
-      `const t = doc.querySelector('${tid("formulaire-commentaire")} textarea');
+      `const t = doc.querySelector('${tid("comment-form")} textarea');
        if (!t) return false;
        t.value = "garder le mot Envoyer";
        t.dispatchEvent(new ui.Event("input", { bubbles: true }));
        return true;`,
     );
-    await click(m, `${tid("formulaire-commentaire")} button`, { text: "Commenter" });
-    await click(m, tid("envoyer-commentaires"));
-    await waitUi(m, `return doc.querySelector('${tid("commentaire")}')?.textContent.includes("envoyé")`, [], 15_000);
+    await click(m, `${tid("comment-form")} button`, { text: "Commenter" });
+    await click(m, tid("send-comments"));
+    await waitUi(m, `return doc.querySelector('${tid("comment")}')?.textContent.includes("envoyé")`, [], 15_000);
     const review = textOf(await p.client.callTool({ name: "read_remarks", arguments: { folder: p.folder } }));
     expect(review).toContain('Fichier : "app.js", lignes 15–15');
     expect(review).toContain("garder le mot Envoyer");
-    await click(m, tid("marquer-relu"));
-    await waitUi(m, `return doc.querySelectorAll('${tid("fichier-relecture")}').length === 0`, [], 15_000);
+    await click(m, tid("mark-read"));
+    await waitUi(m, `return doc.querySelectorAll('${tid("review-file")}').length === 0`, [], 15_000);
   });
 });

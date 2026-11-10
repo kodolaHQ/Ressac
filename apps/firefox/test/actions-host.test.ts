@@ -294,7 +294,7 @@ describe("lancer, refusals and deletion", () => {
 });
 
 describe("directVu", () => {
-  it("calls surChange once when a run leaves courantes", () => {
+  it("calls onChange once when a run leaves courantes", () => {
     const { h, changes } = host();
     const current = { action: "gitlab", start: START, input: null, attempt: false, step: "workflow", blocks: {} } as unknown as ActionsState["running"][number];
     h.directSeen({ running: [current], waiting: [] });

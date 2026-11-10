@@ -49,10 +49,10 @@ const openSite = (id: string) => inStore(`await store.agent.request("sites.act",
 const viewUrl = (id: string) => m.execute<string | null>(`return ${siteWindowExpr(id)}?.gBrowser?.selectedBrowser.currentURI?.spec ?? null;`);
 const viewAt = (id: string, u: string) => expect.poll(() => viewUrl(id), { timeout: 20_000 }).toBe(u);
 const stable = (id: string) => expect.poll(() => inSiteView(m, id, "return document.readyState;").catch(() => null), { timeout: 15_000 }).toBe("complete");
-const bar = <T = unknown>(id: string, body: string) => inSiteBar<T>(m, id, `if (!doc.querySelector('[data-testid="barre-site"]')) return null; ${body}`);
+const bar = <T = unknown>(id: string, body: string) => inSiteBar<T>(m, id, `if (!doc.querySelector('[data-testid="site-bar"]')) return null; ${body}`);
 const text = (id: string, testid: string) => bar<string | null>(id, `return doc.querySelector('[data-testid="${testid}"]')?.textContent ?? null;`);
 const expectText = (id: string, testid: string, expected: string) => expect.poll(() => text(id, testid), { timeout: 20_000 }).toBe(expected);
-const expectNotice = (id: string, host: string) => expect.poll(() => text(id, "site-avis"), { timeout: 20_000 }).toContain(`Lien vers ${host} bloqué`);
+const expectNotice = (id: string, host: string) => expect.poll(() => text(id, "site-notice"), { timeout: 20_000 }).toContain(`Lien vers ${host} bloqué`);
 const barClick = (id: string, testid: string) =>
   inSiteBar(
     m,
@@ -75,7 +75,7 @@ async function realClickInHome(id: string, selector: string): Promise<void> {
     if (!found) throw new Error(`no window for ${id}`);
     const [x, y] = await m.execute<[number, number]>(
       `const bar = document.getElementById("webaios-site-bar");
-       const home = bar.contentDocument.querySelector('[data-testid="site-cadre-accueil"]');
+       const home = bar.contentDocument.querySelector('[data-testid="site-home-frame"]');
        const b = bar.getBoundingClientRect(), h = home.getBoundingClientRect(), e = home.contentDocument.querySelector(arguments[0]).getBoundingClientRect();
        return [Math.round(b.left + h.left + e.left + e.width / 2), Math.round(b.top + h.top + e.top + e.height / 2)];`,
       [selector],
@@ -89,7 +89,7 @@ async function realClickInHome(id: string, selector: string): Promise<void> {
   }
 }
 const homeFrame = <T>(id: string, body: string) =>
-  inSiteBar<T>(m, id, `const home = doc.querySelector('[data-testid="site-cadre-accueil"]'); if (!home?.contentDocument?.getElementById("domaine")) return null; ${body}`);
+  inSiteBar<T>(m, id, `const home = doc.querySelector('[data-testid="site-home-frame"]'); if (!home?.contentDocument?.getElementById("domaine")) return null; ${body}`);
 
 /** Writes (and grants) app `id`, opens it. `open: false` leaves it closed. */
 async function setup(id: string, decl: object, files: Record<string, string> = {}, o: { grant?: boolean } = {}): Promise<void> {
@@ -150,8 +150,8 @@ describe("site app address follow", () => {
     server.cut("vidola-a.localhost");
     await openSite("t58");
     await viewAt("t58", b("/serie/the-bear"));
-    await expectText("t58", "site-avis", NOTICE_CHANGED);
-    await expectText("t58", "site-domaine", "vidola-b.localhost");
+    await expectText("t58", "site-notice", NOTICE_CHANGED);
+    await expectText("t58", "site-domain", "vidola-b.localhost");
     expect(addressFile("t58")).toMatchObject({ current: "vidola-b.localhost", previous: ["vidola-a.localhost"] });
     expect(referenceReads()).toBe(1);
     await inStore(`await store.sites.close("t58");`);
@@ -159,7 +159,7 @@ describe("site app address follow", () => {
     server.requests.splice(0);
     await openSite("t58");
     await viewAt("t58", b("/serie/the-bear"));
-    await expectText("t58", "site-domaine", "vidola-b.localhost");
+    await expectText("t58", "site-domain", "vidola-b.localhost");
     expect(referenceReads()).toBe(0);
     expect(server.requests.some((r) => r.host === "vidola-a.localhost")).toBe(false);
   });
@@ -175,11 +175,11 @@ describe("site app address follow", () => {
     server.cut("vidola-a.localhost");
     await openSite("t59");
     await expect.poll(() => homeFrame("t59", `return home.contentDocument.getElementById("series").textContent;`), { timeout: 15_000 }).toContain("The Bear");
-    await barClick("t59", "site-entrer");
+    await barClick("t59", "site-enter");
     await viewAt("t59", b("/serie/the-bear"));
-    await expectText("t59", "site-avis", NOTICE_CHANGED);
+    await expectText("t59", "site-notice", NOTICE_CHANGED);
     await expect.poll(() => inSiteView(m, "t59", 'return getComputedStyle(document.getElementById("shorts")).display;').catch(() => null), { timeout: 15_000 }).toBe("none");
-    await barClick("t59", "site-accueil");
+    await barClick("t59", "site-home");
     await expect.poll(() => homeFrame("t59", `return home.contentDocument.getElementById("domaine").textContent;`), { timeout: 15_000 }).toBe("vidola-b.localhost");
     await homeFrame("t59", `home.contentWindow.wrappedJSObject.adresse = "/serie/the-bear?e=4"; return true;`);
     await realClickInHome("t59", "#ouvrir");
@@ -189,7 +189,7 @@ describe("site app address follow", () => {
   it("vidola-a redirects to pub.localhost (a parked domain) on opening: the follow starts (sites.spec.ts:1420)", async () => {
     await setup("t60", declaration(a("/parque")));
     await openSite("t60");
-    await expectText("t60", "site-avis", NOTICE_CHANGED);
+    await expectText("t60", "site-notice", NOTICE_CHANGED);
     // The aimed path does not exist at vidola-b: it goes there anyway (the site answers there).
     await viewAt("t60", b("/parque"));
     expect(addressFile("t60")?.current).toBe("vidola-b.localhost");
@@ -211,8 +211,8 @@ describe("site app address follow", () => {
     await setup("t62", declaration());
     server.cut("vidola-a.localhost");
     await openSite("t62");
-    await expectText("t62", "site-avis", "Adresse introuvable sur adresses.localhost");
-    await expectText("t62", "site-domaine", "vidola-a.localhost");
+    await expectText("t62", "site-notice", "Adresse introuvable sur adresses.localhost");
+    await expectText("t62", "site-domain", "vidola-a.localhost");
     expect(addressFile("t62")).toBeNull();
     expect(server.requests.some((r) => r.host === "vidola-b.localhost" || r.host === "pub.localhost")).toBe(false);
   });
@@ -236,7 +236,7 @@ describe("site app address follow", () => {
     );
     expect(seen).toBe(2);
     server.requests.splice(0);
-    await barClick("t63", "site-chercher-adresse");
+    await barClick("t63", "site-search-address");
     await expect.poll(referenceReads, { timeout: 20_000 }).toBeGreaterThan(0);
     const reads = server.requests.filter((r) => r.host === "adresses.localhost");
     expect(reads.every((r) => r.cookie === undefined)).toBe(true);
@@ -246,10 +246,10 @@ describe("site app address follow", () => {
     reference(a("/"));
     await setup("t64", declaration(a("/")));
     await openAndWait("t64");
-    await expectText("t64", "site-chercher-adresse", "Chercher la nouvelle adresse");
-    await barClick("t64", "site-chercher-adresse");
-    await expectText("t64", "site-avis", UNCHANGED_NOTICE);
-    await barClick("t64", "site-chercher-adresse");
+    await expectText("t64", "site-search-address", "Chercher la nouvelle adresse");
+    await barClick("t64", "site-search-address");
+    await expectText("t64", "site-notice", UNCHANGED_NOTICE);
+    await barClick("t64", "site-search-address");
     await sleep(800);
     expect(referenceReads()).toBe(1);
   });
@@ -260,17 +260,17 @@ describe("site app address follow", () => {
     });
     await setup("t65", declaration(a("/")));
     await openAndWait("t65");
-    const state = () => bar<{ disabled: boolean; busy: string | null }>("t65", `const e = doc.querySelector('[data-testid="site-chercher-adresse"]'); return e && { disabled: e.disabled, busy: e.getAttribute("aria-busy") };`);
-    await barClick("t65", "site-chercher-adresse");
+    const state = () => bar<{ disabled: boolean; busy: string | null }>("t65", `const e = doc.querySelector('[data-testid="site-search-address"]'); return e && { disabled: e.disabled, busy: e.getAttribute("aria-busy") };`);
+    await barClick("t65", "site-search-address");
     await expect.poll(state, { timeout: 10_000 }).toEqual({ disabled: true, busy: "true" });
-    await expectText("t65", "site-avis", UNCHANGED_NOTICE);
+    await expectText("t65", "site-notice", UNCHANGED_NOTICE);
     await expect.poll(state, { timeout: 10_000 }).toEqual({ disabled: false, busy: "false" });
     // A blocked link replaces the notice; a click too early (no reading) gives the last result again.
     await inSiteView(m, "t65", "document.getElementById('pub').click(); return 1;", { gesture: true });
     await expectNotice("t65", "pub.localhost");
     server.requests.splice(0);
-    await barClick("t65", "site-chercher-adresse");
-    await expectText("t65", "site-avis", UNCHANGED_NOTICE);
+    await barClick("t65", "site-search-address");
+    await expectText("t65", "site-notice", UNCHANGED_NOTICE);
     expect(referenceReads()).toBe(0);
   });
 
@@ -279,7 +279,7 @@ describe("site app address follow", () => {
     await openAndWait("t66", "/film/2");
     await inSiteView(m, "t66", `location.href = ${JSON.stringify(pub("/x"))}; return 1;`, { gesture: true });
     await expectNotice("t66", "pub.localhost");
-    await barClick("t66", "site-chercher-adresse");
+    await barClick("t66", "site-search-address");
     await viewAt("t66", b("/film/2"));
   });
 
@@ -290,15 +290,15 @@ describe("site app address follow", () => {
     await openAndWait("t68", "/recharge");
     expect(referenceReads()).toBe(0);
     parked = true;
-    await barClick("t68", "site-recharger");
-    await expectText("t68", "site-avis", NOTICE_CHANGED);
+    await barClick("t68", "site-reload");
+    await expectText("t68", "site-notice", NOTICE_CHANGED);
     expect(referenceReads()).toBe(1);
     expect(server.requests.some((r) => r.host === "pub.localhost")).toBe(false);
   });
 
-  it("an app without suiviAdresse has no button (sites.spec.ts:1521)", async () => {
+  it("an app without addressTracking has no button (sites.spec.ts:1521)", async () => {
     await setup("t67", declaration(a("/"), { urlTracking: undefined }));
     await openAndWait("t67");
-    expect(await bar<number>("t67", `return doc.querySelectorAll('[data-testid="site-chercher-adresse"]').length + 1;`)).toBe(1);
+    expect(await bar<number>("t67", `return doc.querySelectorAll('[data-testid="site-search-address"]').length + 1;`)).toBe(1);
   });
 });

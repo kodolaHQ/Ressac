@@ -62,7 +62,7 @@ export interface OptionsAction {
   /** « Stop »: raised during the workflow, the run is interrupted; during the layout, the fallback one. */
   signal: AbortSignal;
   onTrace(t: TraceAction): void;
-  onStep(e: "mise-en-page"): void;
+  onStep(e: "layout"): void;
   /** A builder trial: replays from `depart` with the upstream outputs of run `origine`. */
   attempt?: { origin: string; start: string };
   /** True when the kernel stops: the run is then « interrupted » by WebAiOs, not by the user. */
@@ -235,7 +235,7 @@ export async function runAction(o: OptionsAction): Promise<LaunchResult> {
     return (await lost()) ?? conclusion();
   }
 
-  o.onStep("mise-en-page");
+  o.onStep("layout");
   const results = outcome.output.value;
   const catalog = [...BUILTIN_COMPONENTS, ...(await readAgentComponents(paths.components)).valid];
   const page = await layOut({
@@ -262,7 +262,7 @@ export async function runAction(o: OptionsAction): Promise<LaunchResult> {
     writtenResult = true;
   } catch (e) {
     // Too big (or disk): the run fails kernel-side, with no result.
-    console.error(`[webaios] résultat de l'action ${id} :`, message(e));
+    console.error(`[webaios] result of action ${id}:`, message(e));
     execution.status = "failed";
     execution.error = RESULT_TOO_BIG;
     execution.kernelError = true;

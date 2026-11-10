@@ -1,65 +1,65 @@
 :root {
-  --fond: #1e1e22;
-  --fond-barre: #26262c;
-  --fond-survol: #33333b;
-  --fond-actif: #3d3d47;
-  --texte: #e8e8ee;
-  --texte-doux: #9a9aa6;
+  --bg: #1e1e22;
+  --bg-bar: #26262c;
+  --bg-hover: #33333b;
+  --bg-active: #3d3d47;
+  --text: #e8e8ee;
+  --text-muted: #9a9aa6;
   --accent: #8b7cf6;
-  --bord: #3a3a42;
+  --border: #3a3a42;
   /* App states (badges) and destructive actions. */
-  --en-marche: #4fbf6a;
-  --en-cours: #e0a23a;
-  --en-erreur: #e5736b;
-  --arretee: #77777f;
+  --running: #4fbf6a;
+  --in-progress: #e0a23a;
+  --in-error: #e5736b;
+  --stopped: #77777f;
   /* Agent access badge: reads / inspects, acts. */
-  --acces-lecture: #7aa7ff;
-  --acces-lecture-fond: #2d6cdf33;
-  --acces-agir: #fbbf24;
-  --acces-agir-fond: #f59e0b33;
-  --acces-couper: #c2410c;
-  --acces-couper-survol: #ea580c;
+  --access-read: #7aa7ff;
+  --access-read-bg: #2d6cdf33;
+  --access-act: #fbbf24;
+  --access-act-bg: #f59e0b33;
+  --access-cut: #c2410c;
+  --access-cut-hover: #ea580c;
   /* Modals: the veil that darkens the window, the card's shadow. */
-  --voile: rgb(0 0 0 / 0.45);
-  --ombre-modale: 0 18px 50px rgb(0 0 0 / 0.5);
+  --veil: rgb(0 0 0 / 0.45);
+  --modal-shadow: 0 18px 50px rgb(0 0 0 / 0.5);
   /* Callouts of an action's page: info, notice, warning. */
-  --info-fond: #2d6cdf2e;
-  --avis-fond: #8b7cf62e;
-  --attention-fond: #e0a23a2e;
+  --info-bg: #2d6cdf2e;
+  --notice-bg: #8b7cf62e;
+  --attention-bg: #e0a23a2e;
   color-scheme: dark;
 }
 @media (prefers-color-scheme: light) {
   :root {
-    --fond: #f4f4f6;
-    --fond-barre: #e9e9ee;
-    --fond-survol: #dcdce3;
-    --fond-actif: #cfcfd8;
-    --texte: #1e1e22;
-    --texte-doux: #66667a;
-    --bord: #d0d0d8;
-    --en-marche: #2e9a4b;
-    --en-cours: #c27f12;
-    --en-erreur: #c9473e;
-    --arretee: #8e8e99;
-    --acces-lecture: #1f56c4;
-    --acces-lecture-fond: #2d6cdf26;
-    --acces-agir: #b45309;
-    --acces-agir-fond: #f59e0b30;
-  --acces-couper: #c2410c;
-  --acces-couper-survol: #9a3412;
-    --voile: rgb(20 20 30 / 0.32);
-    --ombre-modale: 0 18px 50px rgb(0 0 0 / 0.22);
-    --info-fond: #2d6cdf1a;
-    --avis-fond: #8b7cf61f;
-    --attention-fond: #c27f1224;
+    --bg: #f4f4f6;
+    --bg-bar: #e9e9ee;
+    --bg-hover: #dcdce3;
+    --bg-active: #cfcfd8;
+    --text: #1e1e22;
+    --text-muted: #66667a;
+    --border: #d0d0d8;
+    --running: #2e9a4b;
+    --in-progress: #c27f12;
+    --in-error: #c9473e;
+    --stopped: #8e8e99;
+    --access-read: #1f56c4;
+    --access-read-bg: #2d6cdf26;
+    --access-act: #b45309;
+    --access-act-bg: #f59e0b30;
+  --access-cut: #c2410c;
+  --access-cut-hover: #9a3412;
+    --veil: rgb(20 20 30 / 0.32);
+    --modal-shadow: 0 18px 50px rgb(0 0 0 / 0.22);
+    --info-bg: #2d6cdf1a;
+    --notice-bg: #8b7cf61f;
+    --attention-bg: #c27f1224;
     color-scheme: light;
   }
 }
 * { box-sizing: border-box; }
 html, body, #app { margin: 0; height: 100%; }
 body {
-  background: var(--fond);
-  color: var(--texte);
+  background: var(--bg);
+  color: var(--text);
   font: 13px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   user-select: none;
   overflow: hidden;

@@ -44,22 +44,22 @@ describe("action runs", () => {
     const prompts = servers.ollama.prompts.length;
     await openAction(m, "pages-a", "Pages");
     // Opening the page launches nothing.
-    await q.waitText(tid("pas-de-resultat"), "Pas encore de résultat");
-    await q.waitText(tid("nom-action"), "Pages");
+    await q.waitText(tid("nothing-found"), "Pas encore de résultat");
+    await q.waitText(tid("action-title"), "Pages");
     await new Promise((r) => setTimeout(r, 500));
     expect(await runsOnDisk(w.dataDir, "pages-a")).toEqual([]);
-    await click(m, tid("relancer-action"));
-    const progress = tid("avancement-action");
+    await click(m, tid("relaunch-action"));
+    const progress = tid("action-progress");
     await q.waitContains(progress, "Lecture de 127.0.0.1…", 30_000);
     // A block that reads no page: the catalogue's label (« Code »), never its id (« liste »).
-    await q.waitText(`${progress} ${tid("ligne-bloc")} .libelle`, "Code");
-    await q.waitText(`${progress} ${tid("compteur-bloc")}`, "3 / 3", 30_000);
-    await q.waitText(`${progress} ${tid("mise-en-page")}`, "Mise en page…", 30_000);
-    await visible(tid("rendu-page"));
-    await q.waitText(tid("bloc-titre"), "Pages lues");
-    expect(await q.text(tid("bloc-liste"))).toContain("Page 2");
+    await q.waitText(`${progress} ${tid("block-row")} .label`, "Code");
+    await q.waitText(`${progress} ${tid("block-counter")}`, "3 / 3", 30_000);
+    await q.waitText(`${progress} ${tid("layout")}`, "Mise en page…", 30_000);
+    await visible(tid("page-render"));
+    await q.waitText(tid("block-title"), "Pages lues");
+    expect(await q.text(tid("block-list"))).toContain("Page 2");
     await q.waitCount(progress, 0);
-    expect(await q.text(tid("heure-resultat"))).not.toBe("");
+    expect(await q.text(tid("result-time"))).not.toBe("");
     expect(servers.ollama.prompts.length).toBe(prompts + 1);
     expect(await runsOnDisk(w.dataDir, "pages-a")).toHaveLength(1);
   });
@@ -69,11 +69,11 @@ describe("action runs", () => {
     servers.settings.siteSlownessMs = 4000;
     await writePagesAction(w.dataDir, servers.site.url, "pages-b");
     await openAction(m, "pages-b", "Pages");
-    await click(m, tid("relancer-action"));
-    await q.waitContains(tid("avancement-action"), "Lecture de 127.0.0.1…", 30_000);
-    await click(m, tid("arreter-action"));
-    await q.waitText(tid("erreur-action"), "Arrêtée à ta demande", 30_000);
-    await q.waitCount(tid("avancement-action"), 0);
+    await click(m, tid("relaunch-action"));
+    await q.waitContains(tid("action-progress"), "Lecture de 127.0.0.1…", 30_000);
+    await click(m, tid("stop-action"));
+    await q.waitText(tid("action-error"), "Arrêtée à ta demande", 30_000);
+    await q.waitCount(tid("action-progress"), 0);
   });
 
   // actions.spec.ts:509
@@ -81,17 +81,17 @@ describe("action runs", () => {
     servers.settings.siteSlownessMs = 1500;
     await writePagesAction(w.dataDir, servers.site.url, "pages-c");
     await openAction(m, "pages-c", "Pages");
-    await click(m, tid("relancer-action"));
-    await visible(tid("avancement-action"));
+    await click(m, tid("relaunch-action"));
+    await visible(tid("action-progress"));
     // The button is greyed while it runs; one more launch (the agent, another window) gives the same run.
-    expect(await disabled(tid("relancer-action"))).toBe(true);
+    expect(await disabled(tid("relaunch-action"))).toBe(true);
     // Each lancer resolves at the run's end (15-38 s): started in the page, awaited outside the 30 s script timeout.
     await inUi(m, "ui.__r = null; Promise.all([ui.webaios.actions.launch('pages-c', null), ui.webaios.actions.launch('pages-c', null)]).then((r) => (ui.__r = JSON.parse(JSON.stringify(r))));");
     const [a, b] = await waitUi<{ run?: string }[]>(m, "return ui.__r;", [], 90_000);
     expect(a!.run).toBeTruthy();
     expect(b!.run).toBe(a!.run);
-    await visible(tid("rendu-page"), 90_000);
-    await waitUi(m, "return doc.querySelector(arguments[0])?.disabled === false;", [tid("relancer-action")]);
+    await visible(tid("page-render"), 90_000);
+    await waitUi(m, "return doc.querySelector(arguments[0])?.disabled === false;", [tid("relaunch-action")]);
     expect(await runsOnDisk(w.dataDir, "pages-c")).toHaveLength(1);
   });
 
@@ -104,15 +104,15 @@ describe("action runs", () => {
     await writeResult(w.dataDir, "annonces", TODAY, "2026-10-31T08:00:00.000Z", "Aujourd'hui", "208 paris");
     const prompts = servers.ollama.prompts.length;
     await openAction(m, "annonces", "Annonces");
-    await q.waitText(tid("bloc-titre"), "Aujourd'hui");
-    expect(await q.value(tid("saisie-action"))).toBe("208 paris");
-    await click(m, tid("resultats-precedents"));
-    const yesterday = tid(`resultat-${YESTERDAY}`);
+    await q.waitText(tid("block-title"), "Aujourd'hui");
+    expect(await q.value(tid("action-input-box"))).toBe("208 paris");
+    await click(m, tid("previous-results"));
+    const yesterday = tid(`result-${YESTERDAY}`);
     await q.waitContains(yesterday, "clio lyon");
     expect(await q.text(yesterday)).toContain("réussie");
     await click(m, yesterday);
-    await q.waitText(tid("bloc-titre"), "Hier");
-    await waitUi(m, "return doc.querySelector(arguments[0])?.value === 'clio lyon';", [tid("saisie-action")]);
+    await q.waitText(tid("block-title"), "Hier");
+    await waitUi(m, "return doc.querySelector(arguments[0])?.value === 'clio lyon';", [tid("action-input-box")]);
     await new Promise((r) => setTimeout(r, 500));
     expect(servers.ollama.prompts.length).toBe(prompts);
     expect(await runsOnDisk(w.dataDir, "annonces")).toEqual([`${YESTERDAY}.json`, `${TODAY}.json`]);
@@ -123,8 +123,8 @@ describe("action runs", () => {
     await writeRunnableAction(w.dataDir, "cassee", { name: "Cassée", code: `export default async () => { throw new Error("Site indisponible"); };` });
     const prompts = servers.ollama.prompts.length;
     await openAction(m, "cassee", "Cassée");
-    await click(m, tid("relancer-action"));
-    await q.waitContains(tid("erreur-action"), "Site indisponible", 30_000);
+    await click(m, tid("relaunch-action"));
+    await q.waitContains(tid("action-error"), "Site indisponible", 30_000);
     expect(servers.ollama.prompts.length).toBe(prompts);
   });
 
@@ -132,14 +132,14 @@ describe("action runs", () => {
   it("a refused launch with no run written (no workflow.json) shows the error, again after a reload", { timeout: 60_000 }, async () => {
     await writeAction(w.dataDir, "sans-workflow", { name: "Sans workflow" });
     await openAction(m, "sans-workflow", "Sans workflow");
-    await click(m, tid("relancer-action"));
-    await q.waitText(tid("erreur-action"), WITHOUT_WORKFLOW, 30_000);
-    await q.waitCount(tid("pas-de-resultat"), 0);
+    await click(m, tid("relaunch-action"));
+    await q.waitText(tid("action-error"), WITHOUT_WORKFLOW, 30_000);
+    await q.waitCount(tid("nothing-found"), 0);
     // Reloaded, the page still shows it (nothing is written on disk).
     await inUi(m, "ui.location.reload();");
-    await q.waitText(tid("erreur-action"), WITHOUT_WORKFLOW, 30_000);
-    await click(m, tid("relancer-action"));
-    await q.waitText(tid("erreur-action"), WITHOUT_WORKFLOW);
+    await q.waitText(tid("action-error"), WITHOUT_WORKFLOW, 30_000);
+    await click(m, tid("relaunch-action"));
+    await q.waitText(tid("action-error"), WITHOUT_WORKFLOW);
     expect(await runsOnDisk(w.dataDir, "sans-workflow")).toEqual([]);
   });
 
@@ -148,11 +148,11 @@ describe("action runs", () => {
     await writePagesAction(w.dataDir, servers.site.url, "pages-r");
     await writeResult(w.dataDir, "pages-r", "2026-10-31T08-00-00-000Z", "2026-10-31T08:00:00.000Z", "Avant");
     await openAction(m, "pages-r", "Pages");
-    await q.waitText(tid("bloc-titre"), "Avant");
+    await q.waitText(tid("block-title"), "Avant");
     // A run in progress when the host crashes: it goes with the host, and no feed says so.
     servers.settings.siteSlownessMs = 4000;
-    await click(m, tid("relancer-action"));
-    await q.waitContains(tid("avancement-action"), "Lecture de 127.0.0.1…", 30_000);
+    await click(m, tid("relaunch-action"));
+    await q.waitContains(tid("action-progress"), "Lecture de 127.0.0.1…", 30_000);
     // The host crashes under the open page (killed: no last notification), then starts again (the agent panel's
     // Réessayer, as builder-runs.e2e.ts does).
     process.kill((await m.execute<number>(`return (async () => (await ChromeUtils.importESModule("${STORE}").ready).agent.pid)();`))!, "SIGKILL");
@@ -160,17 +160,17 @@ describe("action runs", () => {
     // While no host runs, the page keeps its last read (its launch's end, refused, reads it again): the action and the
     // progress stay, no « Action inconnue ».
     await new Promise((r) => setTimeout(r, 1000));
-    expect(await q.text(tid("nom-action"))).toBe("Pages");
-    expect(await q.count(tid("avancement-action"))).toBe(1);
+    expect(await q.text(tid("action-title"))).toBe("Pages");
+    expect(await q.count(tid("action-progress"))).toBe(1);
     await m.execute(`return (async () => { await (await ChromeUtils.importESModule("${STORE}").ready).agent.ensure(); })();`);
     // Once the kernel runs again (`acces`), the feed is read again: nothing runs. Only that read clears the progress.
-    await q.waitCount(tid("avancement-action"), 0, 30_000);
+    await q.waitCount(tid("action-progress"), 0, 30_000);
     // The page works again without reopening the tab: a new run shows its progress, then its page.
     servers.settings.siteSlownessMs = 1500;
-    await waitUi(m, "return doc.querySelector(arguments[0])?.disabled === false;", [tid("relancer-action")]);
-    await click(m, tid("relancer-action"));
-    await q.waitContains(tid("avancement-action"), "Lecture de 127.0.0.1…", 30_000);
-    await q.waitText(tid("bloc-titre"), "Pages lues", 30_000);
-    await q.waitCount(tid("avancement-action"), 0);
+    await waitUi(m, "return doc.querySelector(arguments[0])?.disabled === false;", [tid("relaunch-action")]);
+    await click(m, tid("relaunch-action"));
+    await q.waitContains(tid("action-progress"), "Lecture de 127.0.0.1…", 30_000);
+    await q.waitText(tid("block-title"), "Pages lues", 30_000);
+    await q.waitCount(tid("action-progress"), 0);
   });
 });

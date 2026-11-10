@@ -16,7 +16,7 @@ beforeEach(async () => {
   m = w.marionette;
   await m.setContext("chrome");
   await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
-  await waitUi(m, "return !!doc.querySelector('[data-testid=\"barre-laterale\"]')");
+  await waitUi(m, "return !!doc.querySelector('[data-testid=\"sidebar\"]')");
 });
 afterEach(async () => {
   try {
@@ -46,11 +46,11 @@ async function waitState<T>(read: (s: BrowserState) => T, ok: (v: T) => boolean,
   }
 }
 const waitTitle = (id: string, title: string) => waitState((s) => s.tabs[id]?.title, (t) => t === title);
-const barOpen = () => inUi<boolean>(m, "return !!doc.querySelector('[data-testid=\"barre-commande\"]')");
-const waitBar = (open: boolean) => waitUi(m, "return !!doc.querySelector('[data-testid=\"barre-commande\"]') === arguments[0]", [open]);
+const barOpen = () => inUi<boolean>(m, "return !!doc.querySelector('[data-testid=\"command-bar\"]')");
+const waitBar = (open: boolean) => waitUi(m, "return !!doc.querySelector('[data-testid=\"command-bar\"]') === arguments[0]", [open]);
 /** Types `text` in the command bar field and presses Enter. */
 async function submit(text: string): Promise<void> {
-  await waitUi(m, "return doc.activeElement?.dataset.testid === 'saisie-commande'");
+  await waitUi(m, "return doc.activeElement?.dataset.testid === 'command-input'");
   await inUi(m, `const f = doc.activeElement; f.value = arguments[0]; f.dispatchEvent(new ui.Event("input", { bubbles: true }));`, [text]);
   await pressKeys(m, "Enter");
 }
@@ -145,7 +145,7 @@ describe("WebAiOs shortcuts", () => {
 
   // raccourcis.spec.ts:258
   it("⇧⌘J toggles the downloads panel", async () => {
-    const shown = (v: boolean) => waitUi(m, "return !!doc.querySelector('[data-testid=\"telechargements\"]') === arguments[0]", [v]);
+    const shown = (v: boolean) => waitUi(m, "return !!doc.querySelector('[data-testid=\"downloads\"]') === arguments[0]", [v]);
     const a = await open("/a.html");
     await waitTitle(a, "Page A");
     await pressKeys(m, "Meta+Shift+j");

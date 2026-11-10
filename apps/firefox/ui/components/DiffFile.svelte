@@ -176,25 +176,25 @@
     }
   }
 
-  const cls = (l: Line) => (l.mark === "+" ? "ajout" : l.mark === "-" ? "retrait" : "contexte");
+  const cls = (l: Line) => (l.mark === "+" ? "added" : l.mark === "-" ? "removed" : "context");
 </script>
 
 {#snippet row(l: Line)}
-  <div class="ligne {cls(l)}" data-testid="ligne-diff" data-ancien={l.old ?? ""} data-nouveau={l.new ?? ""}><span class="marge"></span><span class="num">{l.old ?? ""}</span><span class="num">{l.new ?? ""}</span><span class="code">{l.text}</span></div>
+  <div class="line {cls(l)}" data-testid="diff-line" data-old={l.old ?? ""} data-new={l.new ?? ""}><span class="margin"></span><span class="num">{l.old ?? ""}</span><span class="num">{l.new ?? ""}</span><span class="code">{l.text}</span></div>
 {/snippet}
 
 {#snippet blockRow(l: Line, block: number, k: number)}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
-    class="ligne {cls(l)}"
-    class:choisie={chosen(block, k)}
-    data-testid="ligne-diff"
-    data-ancien={l.old ?? ""}
-    data-nouveau={l.new ?? ""}
+    class="line {cls(l)}"
+    class:selected={chosen(block, k)}
+    data-testid="diff-line"
+    data-old={l.old ?? ""}
+    data-new={l.new ?? ""}
     onmouseenter={() => hover(block, k)}
-  ><span class="marge"><button
-        class="ajouter"
-        data-testid="ajouter-commentaire"
+  ><span class="margin"><button
+        class="add-button"
+        data-testid="add-comment"
         aria-label="Commenter la ligne {position(diff.blocks[block]!, k)}"
         title="Commenter (Maj+clic ou glisser : plusieurs lignes)"
         onmousedown={(e) => {
@@ -209,11 +209,11 @@
       ></span><span class="num">{l.old ?? ""}</span><span class="num">{l.new ?? ""}</span><span class="code">{l.text}</span></div>
   {#each places.under.get(`${block}:${k}`) ?? [] as c (c.id)}<ReviewComment project={project} comment={c} onChange={onChange} />{/each}
   {#if range && range.block === block && range.last === k}
-    <form class="formulaire" data-testid="formulaire-commentaire" onsubmit={(e) => { e.preventDefault(); void validate(); }}>
-      <div class="plage">{range.start === range.end ? `Ligne ${range.start}` : `Lignes ${range.start}–${range.end}`}</div>
+    <form class="form" data-testid="comment-form" onsubmit={(e) => { e.preventDefault(); void validate(); }}>
+      <div class="range">{range.start === range.end ? `Ligne ${range.start}` : `Lignes ${range.start}–${range.end}`}</div>
       <!-- svelte-ignore a11y_autofocus -->
       <textarea bind:value={text} rows="3" autofocus placeholder="DiffComment (texte simple, Markdown montré tel quel)" onkeydown={key}></textarea>
-      {#if error}<p class="erreur" data-testid="erreur-commentaire">{error}</p>{/if}
+      {#if error}<p class="error" data-testid="comment-error">{error}</p>{/if}
       <div class="actions">
         <button type="button" onclick={close}>Annuler</button>
         <button type="submit" disabled={sending || text.trim() === ""}>Commenter</button>
@@ -225,19 +225,19 @@
 {#snippet interval(i: number)}
   {#each intervals[i]?.lines ?? [] as l (l.new)}{@render row(l)}{/each}
   {#if remaining(i)}
-    <button class="deplier" data-testid="deplier-contexte" disabled={onLoaded !== null} onclick={() => void expand(i)}>Afficher les lignes cachées</button>
+    <button class="expand" data-testid="expand-context" disabled={onLoaded !== null} onclick={() => void expand(i)}>Afficher les lignes cachées</button>
   {/if}
 {/snippet}
 
 <svelte:window onmouseup={() => (dragged = false)} />
 
-<section class="diff" data-testid="diff-fichier" aria-label="Diff de {diff.path}">
-  <h3 class="chemin">{diff.path}</h3>
+<section class="diff" data-testid="diff-file" aria-label="Diff de {diff.path}">
+  <h3 class="path">{diff.path}</h3>
   {#each places.elsewhere as c (c.id)}<ReviewComment project={project} comment={c} onChange={onChange} />{/each}
   {#if diff.displayable !== true}
-    <p class="non-affichable">{NOT_DISPLAYABLE[diff.displayable]}</p>
+    <p class="not-displayable">{NOT_DISPLAYABLE[diff.displayable]}</p>
   {:else if diff.blocks.length === 0}
-    <p class="non-affichable">Aucune ligne modifiée.</p>
+    <p class="not-displayable">Aucune ligne modifiée.</p>
   {:else}
     <div class="code-diff">
       {#each diff.blocks as b, i (i)}
@@ -251,29 +251,29 @@
 
 <style>
   .diff { min-width: 0; }
-  .chemin { margin: 0 0 8px; font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
-  .non-affichable { color: var(--texte-doux); }
-  .code-diff { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; line-height: 1.5; border: 1px solid var(--bord); border-radius: 6px; overflow: auto; }
-  .ligne { display: grid; grid-template-columns: 18px 44px 44px 1fr; }
-  .ligne.choisie { box-shadow: inset 3px 0 0 var(--accent, #3b82f6); background: color-mix(in srgb, var(--accent, #3b82f6) 14%, transparent); }
-  .marge { display: flex; align-items: center; justify-content: center; }
-  .ajouter { width: 16px; height: 16px; padding: 0; border: none; border-radius: 4px; background: var(--accent, #3b82f6); color: white; font-size: 12px; line-height: 16px; cursor: pointer; opacity: 0; }
+  .path { margin: 0 0 8px; font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+  .not-displayable { color: var(--text-muted); }
+  .code-diff { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; line-height: 1.5; border: 1px solid var(--border); border-radius: 6px; overflow: auto; }
+  .line { display: grid; grid-template-columns: 18px 44px 44px 1fr; }
+  .line.selected { box-shadow: inset 3px 0 0 var(--accent, #3b82f6); background: color-mix(in srgb, var(--accent, #3b82f6) 14%, transparent); }
+  .margin { display: flex; align-items: center; justify-content: center; }
+  .add-button { width: 16px; height: 16px; padding: 0; border: none; border-radius: 4px; background: var(--accent, #3b82f6); color: white; font-size: 12px; line-height: 16px; cursor: pointer; opacity: 0; }
   /* The « + » through CSS: it does not enter the line's text. */
-  .ajouter::before { content: "+"; }
-  .ligne:hover .ajouter, .ajouter:focus-visible { opacity: 1; }
-  .formulaire { margin: 4px 8px 8px 106px; padding: 8px; border: 1px solid var(--bord); border-radius: 6px; background: var(--fond); font-family: system-ui, sans-serif; display: flex; flex-direction: column; gap: 6px; }
-  .formulaire textarea { font: inherit; font-size: 12px; resize: vertical; padding: 6px; border: 1px solid var(--bord); border-radius: 4px; background: var(--fond-barre); color: var(--texte); }
-  .plage { font-size: 11px; color: var(--texte-doux); }
-  .erreur { margin: 0; color: var(--en-erreur); font-size: 12px; }
+  .add-button::before { content: "+"; }
+  .line:hover .add-button, .add-button:focus-visible { opacity: 1; }
+  .form { margin: 4px 8px 8px 106px; padding: 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); font-family: system-ui, sans-serif; display: flex; flex-direction: column; gap: 6px; }
+  .form textarea { font: inherit; font-size: 12px; resize: vertical; padding: 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-bar); color: var(--text); }
+  .range { font-size: 11px; color: var(--text-muted); }
+  .error { margin: 0; color: var(--in-error); font-size: 12px; }
   .actions { display: flex; justify-content: flex-end; gap: 6px; }
-  .actions button { padding: 3px 10px; border-radius: 6px; border: 1px solid var(--bord); background: var(--fond-barre); color: var(--texte); font-size: 12px; }
-  .num { padding: 0 6px; text-align: right; color: var(--texte-doux); user-select: none; }
+  .actions button { padding: 3px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); font-size: 12px; }
+  .num { padding: 0 6px; text-align: right; color: var(--text-muted); user-select: none; }
   .code { white-space: pre; padding-left: 14px; position: relative; }
-  .code::before { position: absolute; left: 3px; color: var(--texte-doux); }
-  .ajout { background: color-mix(in srgb, var(--en-marche) 16%, transparent); }
-  .ajout .code::before { content: "+"; }
-  .retrait { background: color-mix(in srgb, var(--en-erreur) 16%, transparent); }
-  .retrait .code::before { content: "−"; }
-  .deplier { display: block; width: 100%; padding: 2px 8px; border: none; border-top: 1px solid var(--bord); border-bottom: 1px solid var(--bord); background: var(--fond-survol); color: var(--texte-doux); font-size: 11px; text-align: left; cursor: pointer; }
-  .deplier:hover:not(:disabled) { color: var(--texte); }
+  .code::before { position: absolute; left: 3px; color: var(--text-muted); }
+  .added { background: color-mix(in srgb, var(--running) 16%, transparent); }
+  .added .code::before { content: "+"; }
+  .removed { background: color-mix(in srgb, var(--in-error) 16%, transparent); }
+  .removed .code::before { content: "−"; }
+  .expand { display: block; width: 100%; padding: 2px 8px; border: none; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); background: var(--bg-hover); color: var(--text-muted); font-size: 11px; text-align: left; cursor: pointer; }
+  .expand:hover:not(:disabled) { color: var(--text); }
 </style>

@@ -28,7 +28,7 @@ beforeEach(async () => {
   for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
     if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
   // The home page's panel starts the agent's session, which takes back every access: tools are called after it.
-  await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('prêt>')", [], 20_000, "agent");
+  await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
 });
 afterEach(() => w?.close());
 
@@ -70,7 +70,7 @@ it("open_tab opens an active agent tab, readable and capturable", async () => {
   expect(s.tabs[id]?.openedByAgent).toBe(true);
   expect(s.windows[0]!.active[s.windows[0]!.activeSpace]).toBe(id);
   // Its sidebar row is the current one and carries the agent's ✦.
-  await waitUi(m, "const li = doc.querySelector(arguments[0]); return li?.getAttribute('aria-current') === 'page' && li.querySelector('.agent')?.textContent === '✦'", [`[data-testid="onglet-${id}"]`]);
+  await waitUi(m, "const li = doc.querySelector(arguments[0]); return li?.getAttribute('aria-current') === 'page' && li.querySelector('.agent')?.textContent === '✦'", [`[data-testid="tab-${id}"]`]);
   const parsed = await call("read_tab", { id });
   expect(parsed.text).toContain(`URL : ${server.url}/texte.html`);
   expect(parsed.text).toContain("Le chat dort");

@@ -144,11 +144,11 @@ async function start(): Promise<WebAiOsStore> {
   if (gmp.includes("%VERSION%")) Services.prefs.getDefaultBranch("").setCharPref("media.gmp-manager.url", gmp.replace("%VERSION%", Services.appinfo.platformVersion));
   // The widget displays' copies are a disposable cache: clearing them at startup never serves a copy made by an older
   // sanitizer (CSP_WIDGET, containsNetworkHint).
-  await IOUtils.remove(PathUtils.join(dataDir, "webaios-widgets"), { recursive: true, ignoreAbsent: true }).catch((e) => console.warn("[widget] copies non effacées :", e));
+  await IOUtils.remove(PathUtils.join(dataDir, "webaios-widgets"), { recursive: true, ignoreAbsent: true }).catch((e) => console.warn("[widget] copies not erasedes :", e));
   // The site apps' served home copies too (the same sanitizer).
-  await IOUtils.remove(PathUtils.join(dataDir, "webaios-sites"), { recursive: true, ignoreAbsent: true }).catch((e) => console.warn("[sites] copies non effacées :", e));
+  await IOUtils.remove(PathUtils.join(dataDir, "webaios-sites"), { recursive: true, ignoreAbsent: true }).catch((e) => console.warn("[sites] copies not erased :", e));
   // The agent components' copies too.
-  await IOUtils.remove(PathUtils.join(dataDir, "webaios-components"), { recursive: true, ignoreAbsent: true }).catch((e) => console.warn("[actions] copies non effacées :", e));
+  await IOUtils.remove(PathUtils.join(dataDir, "webaios-components"), { recursive: true, ignoreAbsent: true }).catch((e) => console.warn("[actions] copies not erfacées :", e));
   let setAside: string | null = null;
   const store = createStore(await loadSession(dataDir, (p) => (setAside = p)));
   const questions = new Questions(store, () => sites.forAgent(), () => apps.forAgent());
@@ -258,7 +258,7 @@ async function start(): Promise<WebAiOsStore> {
     onRelease: (win) => {
       agent.notify("agent.closeWindow", { window: win });
       // Its id comes back if it was the last window (kept): no overlay or cart context stays for it.
-      design.forget({ type: "fenetre", windowId: win });
+      design.forget({ type: "window", windowId: win });
       questions.windowClosed(win, windows.active());
       refreshMirror();
     },

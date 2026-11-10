@@ -146,8 +146,8 @@ const DISPLAY = (title: string) => `<!doctype html><meta charset="utf-8"><title>
 const DISPLAY_DATA = `<!doctype html><meta charset="utf-8"><pre id="donnees"></pre>
 <script>
   addEventListener("message", (e) => {
-    // L'origine d'un cadre sandbox est opaque : event.source n'est pas parent côté page (mesuré). Le message
-    // vient du chrome, seul à connaître ce cadre : on ne vérifie que son type.
+    // A sandboxed frame's origin is opaque: event.source is not parent on the page side (measured). The message
+    // comes from the chrome, the only one that knows this frame: only its type is checked.
     if (!e.data || e.data.type !== "widget") return;
     document.getElementById("donnees").textContent = JSON.stringify(e.data.data);
   });
@@ -258,7 +258,7 @@ describe("the home page", () => {
 
   it("the screen without a tab shows the folder's widgets, served by resource://webaios-widget-", async () => {
     const titles = await wait(
-      () => inUi<string[]>(m, `return [...doc.querySelectorAll('[data-testid="titre-widget"]')].map((e) => e.textContent);`),
+      () => inUi<string[]>(m, `return [...doc.querySelectorAll('[data-testid="widget-title"]')].map((e) => e.textContent);`),
       (ts) => ts.length === 10,
       "les dix widgets",
       15_000,
@@ -279,7 +279,7 @@ describe("the home page", () => {
   it("a widget added by the agent appears without restarting", async () => {
     await writeWidget(dataDir, "nouveau", { name: "Nouveau", display: DISPLAY("nouveau") });
     const titles = await wait(
-      () => inUi<string[]>(m, `return [...doc.querySelectorAll('[data-testid="titre-widget"]')].map((e) => e.textContent);`),
+      () => inUi<string[]>(m, `return [...doc.querySelectorAll('[data-testid="widget-title"]')].map((e) => e.textContent);`),
       (ts) => ts.includes("Nouveau"),
       "le widget ajouté",
     );
@@ -293,8 +293,8 @@ describe("the home page", () => {
     await dispatch(m, { type: "closeTab", id: tab });
     const r = await waitUi<{ bottom: number; home: number; scrolled: boolean }>(
       m,
-      `const f = doc.querySelector('[data-testid="essentiels-page-vide"] [data-testid^="favori-"]');
-       const a = doc.querySelector('[data-testid="accueil"]');
+      `const f = doc.querySelector('[data-testid="essentials-empty-page"] [data-testid^="favorite-"]');
+       const a = doc.querySelector('[data-testid="home"]');
        if (!f || !a?.querySelector('[data-testid="widget-retrait"]')) return null;
        const p = a.parentElement;
        return { bottom: f.getBoundingClientRect().bottom, home: a.getBoundingClientRect().top, scrolled: p.scrollHeight > p.clientHeight };`,
@@ -326,7 +326,7 @@ describe("the home page", () => {
 
   it("resizing stays within bounds and does not overflow on the right", async () => {
     // Declared max: 6 units wide (500 ‰) and 4 rows (360 px).
-    await drag(m, '[data-testid="widget-beta"] [data-testid="poignee-taille"]', 600, 300);
+    await drag(m, '[data-testid="widget-beta"] [data-testid="resize-handle"]', 600, 300);
     const after = await wait(
       () => readLayout(dataDir).catch(() => [] as PlacementTest[]),
       (ps) => {
@@ -350,7 +350,7 @@ describe("the home page", () => {
   });
 
   it("the agent's theme changes the home's colors; an invalid theme goes back to the default", async () => {
-    const background = () => inUi<string>(m, `return ui.getComputedStyle(doc.querySelector('[data-testid="accueil"]')).backgroundColor;`);
+    const background = () => inUi<string>(m, `return ui.getComputedStyle(doc.querySelector('[data-testid="home"]')).backgroundColor;`);
     const defaultValue = await background();
     await writeFile(path.join(HOME(dataDir), "theme.json"), JSON.stringify({ version: 1, background: "#101014", accent: "#8b7cf6", radius: 4 }));
     await wait(background, (c) => c === "rgb(16, 16, 20)", "le fond du thème");
@@ -386,7 +386,7 @@ describe("the home page", () => {
     const tab = Object.entries((await state(m)).tabs).find(([, o]) => o.url.includes("exemple.invalid/clic"))?.[0];
     expect(tab).toBeDefined();
     await dispatch(m, { type: "closeTab", id: tab! });
-    await waitUi(m, `return !!doc.querySelector('[data-testid="accueil"]') && !!doc.querySelector('[data-testid="widget-alpha"]');`, [], 15_000);
+    await waitUi(m, `return !!doc.querySelector('[data-testid="home"]') && !!doc.querySelector('[data-testid="widget-alpha"]');`, [], 15_000);
   });
 
   it("a widget display opens no Firefox window", async () => {
@@ -400,46 +400,46 @@ describe("the home page", () => {
   });
 
   it("the grant card: Autoriser keeps the chosen profile and starts the harvest with the account", async () => {
-    await waitUi(m, `return !!doc.querySelector('[data-testid="widget-compte"] [data-testid="bandeau-accord"]');`, [], 15_000);
+    await waitUi(m, `return !!doc.querySelector('[data-testid="widget-compte"] [data-testid="grant-banner"]');`, [], 15_000);
     expect(await widgetText(m, "compte")).toContain("exemple.invalid");
     // Nothing is read with the account until the user has granted.
     expect(existsSync(DATA(dataDir, "compte"))).toBe(false);
-    await click(m, '[data-testid="widget-compte"] [data-testid="bandeau-accord"] button', { text: "Autoriser…" });
-    const card = await waitUi<string>(m, `const c = doc.querySelector('[data-testid="carte-accord"]'); return c ? c.textContent : "";`);
+    await click(m, '[data-testid="widget-compte"] [data-testid="grant-banner"] button', { text: "Autoriser…" });
+    const card = await waitUi<string>(m, `const c = doc.querySelector('[data-testid="grant-card"]'); return c ? c.textContent : "";`);
     expect(card).toContain("exemple.invalid");
     expect(card).toContain("ne contactera aucun autre site");
     // The active space's profile (the default profile) is ticked.
     const profiles = await waitUi<[string, boolean][]>(
       m,
-      `const rs = [...doc.querySelectorAll('[data-testid="carte-accord"] input[type="radio"]')];
+      `const rs = [...doc.querySelectorAll('[data-testid="grant-card"] input[type="radio"]')];
        return rs.length ? rs.map((r) => [r.value, r.checked]) : null;`,
     );
     expect(profiles).toEqual([["default", true]]);
-    await click(m, '[data-testid="carte-accord"] button', { text: "Autoriser" });
+    await click(m, '[data-testid="grant-card"] button', { text: "Autoriser" });
     // The grant names the shown domains and the chosen profile; the harvest starts and its data reaches the frame.
     const grant = await wait(() => readGrants(dataDir), (a) => a.compte?.profile === "default", "l'écriture de l'accord");
     expect(grant.compte).toEqual({ domains: ["exemple.invalid"], public: [], profile: "default" });
     await wait(() => (existsSync(DATA(dataDir, "compte")) ? readJson<unknown>(DATA(dataDir, "compte")) : Promise.resolve(null)), (d) => d !== null, "les données de la récolte");
     expect(await readJson(DATA(dataDir, "compte"))).toEqual({ vu: "compte" });
     await wait(() => dataText(m, "compte"), (t) => t === '{"vu":"compte"}', "les données dans le cadre");
-    expect(await waitUi(m, `return !doc.querySelector('[data-testid="widget-compte"] [data-testid="bandeau-accord"]');`)).toBe(true);
+    expect(await waitUi(m, `return !doc.querySelector('[data-testid="widget-compte"] [data-testid="grant-banner"]');`)).toBe(true);
   });
 
   it("Refuser does not come back: the banner stays hidden after the page is reread", async () => {
-    await waitUi(m, `return !!doc.querySelector('[data-testid="widget-sans-accord"] [data-testid="bandeau-accord"]');`, [], 15_000);
+    await waitUi(m, `return !!doc.querySelector('[data-testid="widget-sans-accord"] [data-testid="grant-banner"]');`, [], 15_000);
     // A grant and data from before (as after another profile): the denial must really erase them.
     await writeJson(GRANTS(dataDir), { ...(await readGrants(dataDir)), "sans-accord": { domains: ["exemple.invalid"], public: [], profile: "default" } });
     await writeJson(DATA(dataDir, "sans-accord"), { secret: "du compte" });
-    await click(m, '[data-testid="widget-sans-accord"] [data-testid="bandeau-accord"] button', { text: "Refuser" });
-    expect(await waitUi(m, `return !doc.querySelector('[data-testid="widget-sans-accord"] [data-testid="bandeau-accord"]');`)).toBe(true);
+    await click(m, '[data-testid="widget-sans-accord"] [data-testid="grant-banner"] button', { text: "Refuser" });
+    expect(await waitUi(m, `return !doc.querySelector('[data-testid="widget-sans-accord"] [data-testid="grant-banner"]');`)).toBe(true);
     // An added widget forces a reread (accueil.change): the denial holds for the session, the banner does not come back.
     await writeWidget(dataDir, "temoin", { name: "Témoin", display: DISPLAY("témoin") });
     await wait(
-      () => inUi<string[]>(m, `return [...doc.querySelectorAll('[data-testid="titre-widget"]')].map((e) => e.textContent);`),
+      () => inUi<string[]>(m, `return [...doc.querySelectorAll('[data-testid="widget-title"]')].map((e) => e.textContent);`),
       (ts) => ts.includes("Témoin"),
       "la relecture après le refus",
     );
-    expect(await inUi<boolean>(m, `return !!doc.querySelector('[data-testid="widget-sans-accord"] [data-testid="bandeau-accord"]');`)).toBe(false);
+    expect(await inUi<boolean>(m, `return !!doc.querySelector('[data-testid="widget-sans-accord"] [data-testid="grant-banner"]');`)).toBe(false);
     await wait(() => readGrants(dataDir), (a) => a["sans-accord"] === undefined, "le retrait de l'accord refusé");
     await wait(async () => existsSync(DATA(dataDir, "sans-accord")), (present) => !present, "le retrait des données du refus");
     expect(await readJson<{ status: string }>(STATE(dataDir, "sans-accord"))).toMatchObject({ status: "grant-required" });
@@ -452,15 +452,15 @@ describe("the home page", () => {
     await writeJson(path.join(HOME(dataDir), "widgets", "compte", "widget.json"), { ...declaration, config: { lire: true, url: "https://exemple.invalid/x" } });
     await writeJson(GRANTS(dataDir), { ...(await readGrants(dataDir)), compte: { domains: ["exemple.invalid"], public: [], profile: "absent" } });
     await harvest(m, "compte");
-    await waitUi(m, `return !!doc.querySelector('[data-testid="widget-compte"] [data-testid="bandeau-accord"]');`, [], 20_000);
+    await waitUi(m, `return !!doc.querySelector('[data-testid="widget-compte"] [data-testid="grant-banner"]');`, [], 20_000);
     expect((await readGrants(dataDir)).compte).toBeUndefined();
     expect(existsSync(DATA(dataDir, "compte"))).toBe(false);
     expect(await readJson<{ status: string }>(STATE(dataDir, "compte"))).toMatchObject({ status: "grant-required" });
     // The new request offers a profile again.
-    await click(m, '[data-testid="widget-compte"] [data-testid="bandeau-accord"] button', { text: "Autoriser…" });
-    const profiles = await waitUi<[string, boolean][]>(m, `const rs = [...doc.querySelectorAll('[data-testid="carte-accord"] input[type="radio"]')]; return rs.length ? rs.map((r) => [r.value, r.checked]) : null;`);
+    await click(m, '[data-testid="widget-compte"] [data-testid="grant-banner"] button', { text: "Autoriser…" });
+    const profiles = await waitUi<[string, boolean][]>(m, `const rs = [...doc.querySelectorAll('[data-testid="grant-card"] input[type="radio"]')]; return rs.length ? rs.map((r) => [r.value, r.checked]) : null;`);
     expect(profiles.map(([id]) => id)).toContain("default");
-    await click(m, '[data-testid="carte-accord"] button', { text: "Annuler" });
+    await click(m, '[data-testid="grant-card"] button', { text: "Annuler" });
   });
 
   it("a manual harvest goes through « en cours » then fills the widget", async () => {
@@ -519,9 +519,9 @@ describe("the home page", () => {
     expect(existsSync(DATA(dataDir, "retrait"))).toBe(true);
     await click(m, '[data-testid="widget-retrait"] button[aria-label="Options du widget"]');
     await click(m, '[role="menuitem"]', { text: "Retirer" });
-    const confirmation = await waitUi<string>(m, `const d = doc.querySelector('[data-testid="confirmation-retrait"]'); return d ? d.textContent : "";`);
+    const confirmation = await waitUi<string>(m, `const d = doc.querySelector('[data-testid="removal-confirmation"]'); return d ? d.textContent : "";`);
     expect(confirmation).toContain("Retirer « Retrait » de la page d'accueil ?");
-    await click(m, '[data-testid="confirmation-retrait"] button', { text: "Retirer" });
+    await click(m, '[data-testid="removal-confirmation"] button', { text: "Retirer" });
     await waitUi(m, `return !doc.querySelector('[data-testid="widget-retrait"]');`, [], 15_000);
     const trash = await wait(
       () => readdir(path.join(HOME(dataDir), ".trash")).catch(() => [] as string[]),
@@ -545,7 +545,7 @@ describe("the home page", () => {
     const text = await wait(() => widgetText(m, "veille"), (t) => t.includes("Sans effet pour l'instant"), "l'avertissement sans effet", 12_000);
     expect(text).toContain("le service des widgets ne répond pas");
     // The widgets stay displayed, frames included.
-    expect(await inUi<string[]>(m, `return [...doc.querySelectorAll('[data-testid="titre-widget"]')].map((e) => e.textContent);`)).toContain("Veille");
+    expect(await inUi<string[]>(m, `return [...doc.querySelectorAll('[data-testid="widget-title"]')].map((e) => e.textContent);`)).toContain("Veille");
     await waitUi(m, `return !!doc.querySelector('[data-testid="widget-veille"] iframe');`);
   });
 
@@ -556,7 +556,7 @@ describe("the home page after a host restart", () => {
   let dataDir: string;
   let w: LaunchedWebAiOs;
   let m: Marionette;
-  const titles = () => inUi<string[]>(m, `return [...doc.querySelectorAll('[data-testid="titre-widget"]')].map((e) => e.textContent);`);
+  const titles = () => inUi<string[]>(m, `return [...doc.querySelectorAll('[data-testid="widget-title"]')].map((e) => e.textContent);`);
 
   beforeAll(async () => {
     dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-accueil-relance-"));
@@ -619,6 +619,6 @@ describe("the home page, workshop stopped", () => {
     expect(await readJson<{ status: string }>(STATE(dataDir, "veille"))).toMatchObject({ status: "workshop-stopped" });
     expect(await readJson(DATA(dataDir, "veille"))).toEqual({ old: true });
     // The page stays displayed.
-    expect(await inUi<string[]>(m, `return [...doc.querySelectorAll('[data-testid="titre-widget"]')].map((e) => e.textContent);`)).toEqual(["Veille"]);
+    expect(await inUi<string[]>(m, `return [...doc.querySelectorAll('[data-testid="widget-title"]')].map((e) => e.textContent);`)).toEqual(["Veille"]);
   });
 });

@@ -123,7 +123,7 @@ function memoryFront(state: "attached" | "detached") {
   return mem;
 }
 
-it("instantaneMemoire leaves a memory front attached by someone else (the person's Memory panel) attached", async () => {
+it("memorySnapshot leaves a memory front attached by someone else (the person's Memory panel) attached", async () => {
   const mem = memoryFront("attached");
   liveTarget = { isDestroyed: () => false, getFront: async () => mem };
   try {
@@ -137,7 +137,7 @@ it("instantaneMemoire leaves a memory front attached by someone else (the person
   }
 });
 
-it("two instantaneMemoire on one tab at once both answer, and the front they attached is detached after", async () => {
+it("two memorySnapshot on one tab at once both answer, and the front they attached is detached after", async () => {
   const mem = memoryFront("detached");
   liveTarget = { isDestroyed: () => false, getFront: async () => mem };
   try {
@@ -244,7 +244,7 @@ it("profiler on a page that never answers its Nodes count or memory measure: the
   expect(r!.metrics).not.toHaveProperty("JSHeapUsedSize");
 });
 
-it("instantaneMemoire on a page whose census never comes fails with « La page ne répond pas. »", async () => {
+it("memorySnapshot on a page whose census never comes fails with « La page ne répond pas. »", async () => {
   vi.useFakeTimers();
   const mem = { ...memoryFront("detached"), takeCensus: () => new Promise(() => {}) };
   liveTarget = { isDestroyed: () => false, getFront: async () => mem };

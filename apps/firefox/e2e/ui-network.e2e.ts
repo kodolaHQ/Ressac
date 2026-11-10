@@ -418,7 +418,7 @@ describe("the UI's network", () => {
   it("the badge and the site bar are cut; their loads are refused", { timeout: 60_000 }, async () => {
     const badge = `${appWindowExpr("essai")}.document.getElementById("webaios-app-badge")`;
     const size = () => m.execute<number[]>(`const r = ${badge}.getBoundingClientRect(); return [r.width, r.height];`);
-    await expect.poll(() => m.execute(`return !!${badge}.contentDocument.querySelector('[data-testid="pastille-webaios"]');`), { timeout: 15_000 }).toBe(true);
+    await expect.poll(() => m.execute(`return !!${badge}.contentDocument.querySelector('[data-testid="webaios-pill"]');`), { timeout: 15_000 }).toBe(true);
     // 88×28: 48×28 and the agent's access button (apps-badge.e2e.ts).
     await expect.poll(size, { timeout: 10_000 }).toEqual([88, 28]);
     await m.execute(
@@ -446,7 +446,7 @@ describe("the UI's network", () => {
     const icon = () =>
       m.execute<{ src: string; width: number } | null>(
         `const i = document.getElementById("webaios-sidebar").contentDocument.querySelector(arguments[0]); return i ? { src: i.src, width: i.complete ? i.naturalWidth : 0 } : null;`,
-        [`[data-testid="onglet-${id}"] img`],
+        [`[data-testid="tab-${id}"] img`],
       );
     await expect.poll(async () => (await icon())?.width, { timeout: 15_000 }).toBe(1);
     const src = (await icon())!.src;
@@ -514,7 +514,7 @@ describe("the UI's network", () => {
       await expect.poll(() => tcpSince(tcp0), { timeout: 10_000, message: name }).toBeGreaterThan(0);
     }
     // The opaque home of netsite-accueil is the UI's: its image is refused.
-    const home = `${siteWindowExpr("netsite-accueil")}?.document.getElementById("webaios-site-bar")?.contentDocument?.querySelector('[data-testid="site-cadre-accueil"]')?.contentDocument`;
+    const home = `${siteWindowExpr("netsite-accueil")}?.document.getElementById("webaios-site-bar")?.contentDocument?.querySelector('[data-testid="site-home-frame"]')?.contentDocument`;
     await expect.poll(() => m.execute(`return ${home}?.getElementById("h")?.textContent ?? null;`), { timeout: 15_000 }).toBe("accueil");
     await m.execute(`const d = ${home}; const i = d.createElement("img"); i.src = arguments[0]; d.body.append(i);`, [`http://${host("netsite-img")}/x.png`]);
     await sleep(3000);
@@ -639,7 +639,7 @@ describe("the UI's network", () => {
       );
     expect(await enterOn("#l")).toBe("l");
     await expect.poll(() => m.execute(`return ${widgetDoc("lien")}?.getElementById("l")?.dataset.clicks ?? "0";`), { timeout: 10_000 }).toBe("1");
-    await expect.poll(async () => (await consoleWith(m, "lien de widget ignoré")).length, { timeout: 10_000 }).toBeGreaterThan(0);
+    await expect.poll(async () => (await consoleWith(m, "widget link ignored")).length, { timeout: 10_000 }).toBeGreaterThan(0);
     expect(await enterOn("#p")).toBe("p");
     await sleep(3000);
     expect((await tabUrls()).filter((u) => u.includes("/ouvert"))).toEqual([]);

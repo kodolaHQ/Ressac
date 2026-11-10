@@ -38,7 +38,7 @@ const MOUSE = ["pointerdown", "pointerup", "mousedown", "mouseup", "click", "aux
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const T = (id: string) => ({ type: "site", id });
 const tid = (t: string) => `[data-testid="${t}"]`;
-const FRAME = tid("site-cadre-accueil");
+const FRAME = tid("site-home-frame");
 
 /** Spike S6's home (the agent's code): listens first on its window, keeps a global, a green target with a data-source; `fabricate` makes untrusted events. */
 const HOME = `<!doctype html><meta charset="utf-8"><title>Accueil</title>
@@ -118,7 +118,7 @@ const bar = (id: string) =>
   inSiteBar<{ pressed: string | null; count: string | null }>(
     m,
     id,
-    `return { pressed: doc.querySelector('${tid("site-bouton-design")}')?.getAttribute("aria-pressed") ?? null, count: doc.querySelector('${tid("site-compteur-panier")}')?.textContent ?? null };`,
+    `return { pressed: doc.querySelector('${tid("site-design-button")}')?.getAttribute("aria-pressed") ?? null, count: doc.querySelector('${tid("site-basket-counter")}')?.textContent ?? null };`,
   );
 const barPoint = (id: string, t: string) =>
   inSiteBar<{ x: number; y: number }>(
@@ -128,7 +128,7 @@ const barPoint = (id: string, t: string) =>
      return { x: b.left + r.left + r.width / 2, y: b.top + r.top + r.height / 2 };`,
   );
 const overlayTop = (id: string) => overlayOf<number>(m, id, "return f.getBoundingClientRect().y;");
-const bubbleText = (id: string) => overlayOf<string | null>(m, id, `return doc.querySelector('${tid("bulle-design")}')?.textContent ?? null;`);
+const bubbleText = (id: string) => overlayOf<string | null>(m, id, `return doc.querySelector('${tid("design-bubble")}')?.textContent ?? null;`);
 /** The home element's rectangle, in its frame's CSS pixels (as the viewfinder's capture). */
 const homeRect = (id: string, sel: string) =>
   inHome<{ x: number; y: number; width: number; height: number; view: { width: number; height: number } }>(
@@ -140,7 +140,7 @@ const projectFiles = (id: string) =>
   (readdirSync(w.dataDir, { recursive: true }) as string[]).filter((f) => f.includes(`site-${id}`) && !f.includes(".git")).map((f) => path.join(w.dataDir, f)).filter((f) => statSync(f).isFile());
 const pngs = (id: string) => projectFiles(id).filter((f) => f.endsWith(".png"));
 const agentInput = () => {
-  const f = path.join(w.dataDir, "workspace", "faux-agent-entree.txt");
+  const f = path.join(w.dataDir, "workspace", "fake-agent-input.txt");
   return existsSync(f) ? readFileSync(f, "utf8") : "";
 };
 
@@ -172,7 +172,7 @@ describe("design mode on a site app's home", () => {
     expect(await viewHosts("avec-accueil")).toBe(0);
     await siteMouse(m, "avec-accueil", await homePoint(m, "avec-accueil", "#titre"));
     await expect.poll(() => bubbleText("avec-accueil"), { timeout: 10_000 }).toContain("h1#titre");
-    expect(await overlayOf(m, "avec-accueil", `return doc.querySelectorAll('${tid("avertissement-bulle")}').length;`)).toBe(0);
+    expect(await overlayOf(m, "avec-accueil", `return doc.querySelectorAll('${tid("bubble-warning")}').length;`)).toBe(0);
     expect(await overlayTop("avec-accueil")).toBeGreaterThanOrEqual(36);
     await expect.poll(() => overlayOf(m, "avec-accueil", "return doc.activeElement?.localName ?? null;"), { timeout: 10_000 }).toBe("textarea");
     await overlayOf(m, "avec-accueil", `const t = doc.querySelector("textarea"); t.value = "Titre plus gros"; t.dispatchEvent(new f.contentWindow.Event("input", { bubbles: true })); return 1;`);
@@ -180,15 +180,15 @@ describe("design mode on a site app's home", () => {
     await expect.poll(async () => (await bar("avec-accueil")).count, { timeout: 10_000 }).toBe("1");
     await expect.poll(() => homeHosts("avec-accueil"), { timeout: 10_000 }).toBe(1);
     // « Entrer dans le site »: the view changes, the mode stops.
-    await siteMouse(m, "avec-accueil", await barPoint("avec-accueil", "site-entrer"));
+    await siteMouse(m, "avec-accueil", await barPoint("avec-accueil", "site-enter"));
     await expect.poll(async () => (await bar("avec-accueil")).pressed, { timeout: 10_000 }).toBe("false");
     await expect.poll(() => m.execute(`return ${viewExpr("avec-accueil")}.currentURI.spec;`), { timeout: 10_000 }).toBe(url("tuning-a.localhost", "/"));
     // The send: the pre-filled text points at accueil/ and tags the remark.
     await inSiteBar(m, "avec-accueil", `doc.querySelector('${tid("site-menu-design")}').click(); return 1;`);
-    await expect.poll(() => inSiteBar(m, "avec-accueil", `return !!doc.querySelector('${tid("site-menu-design-panier")}');`), { timeout: 10_000 }).toBe(true);
-    await inSiteBar(m, "avec-accueil", `doc.querySelector('${tid("site-menu-design-panier")}').click(); return 1;`);
-    await expect.poll(() => overlayOf(m, "avec-accueil", `return !!doc.querySelector('${tid("envoyer-remarques")}');`), { timeout: 10_000 }).toBe(true);
-    await overlayOf(m, "avec-accueil", `doc.querySelector('${tid("envoyer-remarques")}').click(); return 1;`);
+    await expect.poll(() => inSiteBar(m, "avec-accueil", `return !!doc.querySelector('${tid("site-menu-design-basket")}');`), { timeout: 10_000 }).toBe(true);
+    await inSiteBar(m, "avec-accueil", `doc.querySelector('${tid("site-menu-design-basket")}').click(); return 1;`);
+    await expect.poll(() => overlayOf(m, "avec-accueil", `return !!doc.querySelector('${tid("send-remarks")}');`), { timeout: 10_000 }).toBe(true);
+    await overlayOf(m, "avec-accueil", `doc.querySelector('${tid("send-remarks")}').click(); return 1;`);
     await expect.poll(agentInput, { timeout: 20_000 }).toContain("les remarques [accueil] visent son écran d'accueil, à changer dans home/");
     expect(agentInput()).toContain('1) [accueil] "h1#titre" : « Titre plus gros »');
     const dir = path.join(w.dataDir, "workspace", ".webaios", "remarks", "site-avec-accueil");
@@ -362,7 +362,7 @@ describe("design mode on a site app's home", () => {
     await toSite(m, "avec-accueil");
     await toggle("avec-accueil");
     await expect.poll(() => viewHosts("avec-accueil"), { timeout: 10_000 }).toBe(1);
-    await inSiteBar(m, "avec-accueil", `doc.querySelector('${tid("site-accueil")}').click(); return 1;`);
+    await inSiteBar(m, "avec-accueil", `doc.querySelector('${tid("site-home")}').click(); return 1;`);
     await expect.poll(async () => (await bar("avec-accueil")).pressed, { timeout: 10_000 }).toBe("false");
     await expect.poll(() => viewHosts("avec-accueil"), { timeout: 10_000 }).toBe(0);
     await toHome(m, "avec-accueil");

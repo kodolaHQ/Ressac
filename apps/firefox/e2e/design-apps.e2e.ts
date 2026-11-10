@@ -74,7 +74,7 @@ afterEach(async () => {
 const svc = <R = unknown>(body: string, args: unknown[] = []) =>
   m.execute<R>(
     `return (async (args) => { const store = await ChromeUtils.importESModule("${STORE}").ready, d = store.design; const t = { type: "app", folder: "essai" };
-     const main = { type: "fenetre", windowId: window.webaiosWindow?.windowId }; ${body} })([...arguments]);`,
+     const main = { type: "window", windowId: window.webaiosWindow?.windowId }; ${body} })([...arguments]);`,
     args,
   );
 const designState = () => svc<{ active: boolean; basket: number; project: { project: string } | null }>("return await d.state(t);");
@@ -109,7 +109,7 @@ const loadedAt = async (url: string) => {
 const badge = <T = unknown>(body: string, args: unknown[] = []) =>
   m.execute<T | null>(
     `return (async () => { const win = ${APP}; const f = win?.document.getElementById("webaios-app-badge"); const doc = f?.contentDocument;
-     if (!doc?.querySelector('[data-testid="pastille-webaios"]')) return null; ${body} })();`,
+     if (!doc?.querySelector('[data-testid="webaios-pill"]')) return null; ${body} })();`,
     args,
   );
 const badgeSize = () => badge<number[]>("const r = f.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)];");
@@ -119,7 +119,7 @@ const clickBadge = (selector: string, text?: string) =>
     .toBe(true);
 /** The badge's menu item `name`. */
 async function menu(name: string): Promise<void> {
-  await clickBadge(tid("pastille-webaios"));
+  await clickBadge(tid("webaios-pill"));
   await clickBadge('[role="menuitem"]', name);
 }
 
@@ -131,8 +131,8 @@ const overlay = <T = unknown>(body: string) =>
      const doc = f.contentDocument;
      return (() => { ${body} })();`,
   );
-const bubbleText = () => overlay<string | null>(`return doc.querySelector('${tid("bulle-design")}')?.textContent ?? null;`);
-const sendText = () => overlay<string | null>(`return doc.querySelector('${tid("envoyer-remarques")}')?.textContent ?? null;`);
+const bubbleText = () => overlay<string | null>(`return doc.querySelector('${tid("design-bubble")}')?.textContent ?? null;`);
+const sendText = () => overlay<string | null>(`return doc.querySelector('${tid("send-remarks")}')?.textContent ?? null;`);
 
 async function modeOn(): Promise<void> {
   await menu("Mode design");
@@ -150,7 +150,7 @@ async function add(text: string): Promise<void> {
   const n = await cart();
   await inApp(async () => {
     await typeText(m, text);
-    await click(m, "button.ajouter", { frame: "overlay" });
+    await click(m, "button.add-button", { frame: "overlay" });
   });
   await expect.poll(cart, { timeout: 10_000 }).toBe(n + 1);
   await expect.poll(hosts, { timeout: 10_000 }).toBe(1);
@@ -164,11 +164,11 @@ it("design.spec.ts:426 an app window launched from the Applications page: the We
   await rowState(m, "essai", "running", 15_000);
   await expect.poll(() => inAppView<string>(m, "essai", "return document.title;").catch(() => null), { timeout: 15_000 }).toBe("Inscription");
   // The app launched is « built »: the agent has access (88×28). Cut, the WebAiOs button stays alone (48×28).
-  await expect.poll(() => badge<number>(`return doc.querySelectorAll('${tid("pastille-acces")}').length;`), { timeout: 10_000 }).toBe(1);
+  await expect.poll(() => badge<number>(`return doc.querySelectorAll('${tid("access-pill")}').length;`), { timeout: 10_000 }).toBe(1);
   await expect.poll(badgeSize, { timeout: 10_000 }).toEqual([88, 28]);
-  await clickBadge(tid("pastille-acces"));
-  await clickBadge(`${tid("bulle-acces")} button.couper`);
-  await expect.poll(() => badge<number>(`return doc.querySelectorAll('${tid("pastille-acces")}').length;`), { timeout: 10_000 }).toBe(0);
+  await clickBadge(tid("access-pill"));
+  await clickBadge(`${tid("access-bubble")} button.cut`);
+  await expect.poll(() => badge<number>(`return doc.querySelectorAll('${tid("access-pill")}').length;`), { timeout: 10_000 }).toBe(0);
   await expect.poll(badgeSize, { timeout: 10_000 }).toEqual([48, 28]);
   await modeOn();
   await aim("#email", "input#email.champ");
@@ -178,8 +178,8 @@ it("design.spec.ts:426 an app window launched from the Applications page: the We
   // « Panier »: the overlay shows the app's cart, on the right, 340 px wide, 12 px from the edges; the page keeps its width.
   const width = await inAppView<number>(m, "essai", "return innerWidth;");
   await menu("Panier (1)");
-  await expect.poll(() => overlay<boolean>(`return !!doc.querySelector('${tid("panier-design")}');`), { timeout: 10_000 }).toBe(true);
-  expect(await overlay<number>(`return doc.querySelectorAll('${tid("remarque-panier")}').length;`)).toBe(1);
+  await expect.poll(() => overlay<boolean>(`return !!doc.querySelector('${tid("design-basket")}');`), { timeout: 10_000 }).toBe(true);
+  expect(await overlay<number>(`return doc.querySelectorAll('${tid("basket-remark")}').length;`)).toBe(1);
   await expect.poll(sendText, { timeout: 10_000 }).toBe("Envoyer 1 remarque à l'agent");
   expect(
     await m.execute(`const win = ${APP}, r = win.document.getElementById("webaios-design-calque").getBoundingClientRect(); return [Math.round(win.innerWidth - r.right), Math.round(r.top), Math.round(r.width), Math.round(win.innerHeight - r.bottom)];`),
@@ -196,13 +196,13 @@ it("design.spec.ts:529 app window essai: sending from the overlay pre-fills the 
   await menu("Panier (1)");
   await expect.poll(sendText, { timeout: 10_000 }).toBe("Envoyer 1 remarque à l'agent");
   const before = agentInput(dataDir);
-  await inApp(() => click(m, tid("envoyer-remarques"), { frame: "overlay" }));
+  await inApp(() => click(m, tid("send-remarks"), { frame: "overlay" }));
   await waitFor(m, "return !document.getElementById('webaios-agent').hidden", (v) => v === true);
   await expect.poll(() => agentInput(dataDir).slice(before.length), { timeout: 20_000 }).toContain("appli Essai (/workspace/projects/essai)");
   expect(agentInput(dataDir)).toContain("/workspace/.webaios/remarks/app-essai/");
   await sleep(300);
   expect(agentInput(dataDir)).not.toContain("\r");
-  await expect.poll(() => overlay<number>(`return doc.querySelectorAll('${tid("lot-envoye")}').length;`), { timeout: 10_000 }).toBe(1);
+  await expect.poll(() => overlay<number>(`return doc.querySelectorAll('${tid("batch-sent")}').length;`), { timeout: 10_000 }).toBe(1);
 });
 
 // relecture.spec.ts:168: no native menu item relire-projet (spec §5.7); its two
@@ -211,13 +211,13 @@ it("relecture.spec.ts:168 Relire ce projet from essai's badge, twice, then Relir
   await launched();
   for (let i = 0; i < 2; i++) {
     await menu("Relire ce projet");
-    await waitUi(m, `return !!doc.querySelector('${tid("page-relecture")}')`, [], 15_000);
+    await waitUi(m, `return !!doc.querySelector('${tid("review-page")}')`, [], 15_000);
     await expect.poll(async () => (await reviewTabs()).map((o) => o.title), { timeout: 10_000 }).toEqual(["Relecture — Essai"]);
   }
   expect((await reviewTabs())[0]!.windowId).toBe((await state(m)).windows[0]!.id);
   await dispatch(m, { type: "openApps", windowId: (await state(m)).windows[0]!.id });
   await rowMenu(m, "essai", "Relire");
-  await waitUi(m, `return !!doc.querySelector('${tid("page-relecture")}')`, [], 15_000);
+  await waitUi(m, `return !!doc.querySelector('${tid("review-page")}')`, [], 15_000);
   await sleep(500);
   expect((await reviewTabs()).map((o) => o.title)).toEqual(["Relecture — Essai"]);
 });
@@ -333,7 +333,7 @@ describe("no main window", () => {
     await expect.poll(async () => (await windowHandles(m)).includes(main), { timeout: 10_000 }).toBe(false);
     expect(await m.execute(`return [...Services.wm.getEnumerator("navigator:browser")].filter((w) => !w.document.documentElement.hasAttribute("webaios-app")).length;`)).toBe(0);
     const before = agentInput(dataDir);
-    await click(m, tid("envoyer-remarques"), { frame: "overlay" });
+    await click(m, tid("send-remarks"), { frame: "overlay" });
     await expect.poll(() => agentInput(dataDir).slice(before.length), { timeout: 30_000 }).toContain("appli Essai (/workspace/projects/essai)");
     await sleep(300);
     expect(agentInput(dataDir)).not.toContain("\r");

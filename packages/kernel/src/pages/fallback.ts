@@ -21,7 +21,7 @@ const LABEL_MAX = 60;
 const cut = (s: string, max: number) => (s.length > max ? s.slice(0, max - 1) + "…" : s);
 const block = (component: string, props: Record<string, unknown>): PlanBlock => ({ component: component, props });
 const keyValid = (k: string) => WORD.test(k);
-const byName = (champs: string[], names: string[]) => champs.find((c) => names.includes(c.toLowerCase()));
+const byName = (fieldList: string[], names: string[]) => fieldList.find((c) => names.includes(c.toLowerCase()));
 
 /** The plain fields (text, number, boolean) of a list of objects, in order of appearance. */
 function simpleFields(elements: Dict[]): { field: string; imageUrl: boolean; text: boolean }[] {
@@ -48,13 +48,13 @@ function listBlock(list: unknown[], ref: string): PlanBlock | null {
   if (sample.every(simple)) return block("tags", { values: ref });
   const objects = sample.filter(isObject);
   if (objects.length === 0) return null;
-  const champs = simpleFields(objects);
-  if (champs.length === 0) return null;
-  const names = champs.map((c) => c.field);
+  const fieldList = simpleFields(objects);
+  if (fieldList.length === 0) return null;
+  const names = fieldList.map((c) => c.field);
   const link = byName(names, LINK_NAMES);
-  const image = byName(names, IMAGE_NAMES) ?? champs.find((c) => c.imageUrl)?.field;
+  const image = byName(names, IMAGE_NAMES) ?? fieldList.find((c) => c.imageUrl)?.field;
   if (image) {
-    const texts = champs.filter((c) => c.text && c.field !== image && c.field !== link).map((c) => c.field);
+    const texts = fieldList.filter((c) => c.text && c.field !== image && c.field !== link).map((c) => c.field);
     const title = byName(texts, TITLE_NAMES) ?? texts[0] ?? names.find((n) => n !== image) ?? image;
     const subtitle = texts.find((c) => c !== title);
     const value = byName(names, VALUE_NAMES);

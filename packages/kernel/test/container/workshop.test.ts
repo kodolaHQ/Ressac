@@ -45,7 +45,7 @@ test("etat selon docker inspect", async () => {
   }
 });
 
-test("assurerDemarre on absent: build if the image is missing then run with the right arguments", async () => {
+test("ensureStarted on absent: build if the image is missing then run with the right arguments", async () => {
   let launched = false;
   const { run: runCall, calls: calls } = fakeRunner([
     [/ image inspect /, { code: 1 }],
@@ -68,7 +68,7 @@ test("assurerDemarre on absent: build if the image is missing then run with the 
   expect(run.args.slice(-2)).toEqual(["sleep", "infinity"]);
 });
 
-test("assurerDemarre on arrete → docker start", async () => {
+test("ensureStarted on arrete → docker start", async () => {
   let started = false;
   const { run: runCall, calls: calls } = fakeRunner([
     [/ inspect -f .*Mounts/, { code: 0, stdout: `${paths.root}|${dockerfileHash()}\n` }],
@@ -80,7 +80,7 @@ test("assurerDemarre on arrete → docker start", async () => {
   expect(calls.some((a) => a.args[0] === "run")).toBe(false);
 });
 
-test("commandeExec interactive and non-interactive", () => {
+test("execCommand interactive and non-interactive", () => {
   const a = new Workshop({ paths: paths, docker: "/opt/homebrew/bin/docker" });
   expect(a.execCommand(["claude"], { interactive: true })).toEqual([
     "/opt/homebrew/bin/docker", "exec", "-it", "-w", "/workspace", "webaios-workshop", "claude",
@@ -239,7 +239,7 @@ test("the stop script kills an agent that ignores HUP and TERM (claude intercept
   expect(() => process.kill(-agent.pid!, 0)).toThrow();
 }, 15_000);
 
-test("commandeApplication", () => {
+test("appCommand", () => {
   const a = new Workshop({ paths: paths, docker: "/opt/homebrew/bin/docker" });
   expect(a.appCommand("todo", "npx vite --port {port}", 5281)).toEqual([
     "/opt/homebrew/bin/docker", "exec", "-e", "WEBAIOS_APP=todo", "-e", "PORT=5281", "-w", "/workspace/projects/todo", "webaios-workshop",
@@ -248,7 +248,7 @@ test("commandeApplication", () => {
   ]);
 });
 
-test("arreterApplication only targets its own mark", async () => {
+test("stopApp only targets its own mark", async () => {
   const { run: runCall, calls: calls } = fakeRunner([]);
   await new Workshop({ paths: paths, docker: "docker", run: runCall }).stopApp("todo");
   const call = calls.find((x) => x.args[0] === "exec")!;
@@ -259,7 +259,7 @@ test("arreterApplication only targets its own mark", async () => {
   await expect(new Workshop({ paths: paths, docker: "docker", run: runCall }).stopApp("x'y")).rejects.toThrow();
 });
 
-test("arreterApplicationsOrphelines vise WEBAIOS_APP=.*", async () => {
+test("stopOrphanApps vise WEBAIOS_APP=.*", async () => {
   const { run: runCall, calls: calls } = fakeRunner([]);
   await new Workshop({ paths: paths, docker: "docker", run: runCall }).stopOrphanApps();
   const script = calls.find((x) => x.args[0] === "exec")!.args[4]!;
@@ -267,7 +267,7 @@ test("arreterApplicationsOrphelines vise WEBAIOS_APP=.*", async () => {
   expect(script).not.toContain("WEBAIOS_SESSION");
 });
 
-test("arreterApplication: the dot in a folder name is not a grep wildcard", async () => {
+test("stopApp: the dot in a folder name is not a grep wildcard", async () => {
   const { run: runCall, calls: calls } = fakeRunner([]);
   await new Workshop({ paths: paths, docker: "docker", run: runCall }).stopApp("my.app");
   const script = calls.find((x) => x.args[0] === "exec")!.args[4]!;
@@ -280,7 +280,7 @@ test("arreterApplication: the dot in a folder name is not a grep wildcard", asyn
   expect(await targets("WEBAIOS_APP=myxapp")).toBe(false);
 });
 
-test("commandeRecolte mounts the engine read-only and launches /opt/webaios/engine/harvester.mjs", () => {
+test("harvestCommand mounts the engine read-only and launches /opt/webaios/engine/harvester.mjs", () => {
   const workshop = new Workshop({ paths: paths, docker: "/usr/local/bin/docker" });
   const c = workshop.harvestCommand("meteo", "/Users/t/WebAiOs/home/widgets/meteo", "/app/docker/engine");
   expect(c).toEqual([
@@ -301,7 +301,7 @@ test("commandeRecolte mounts the engine read-only and launches /opt/webaios/engi
   expect(() => workshop.harvestCommand("meteo", "/d", "/app/x:y")).toThrow();
 });
 
-test("commandeRecolte of an action names the container webaios-action-<id>; of a widget, webaios-harvest-<id>", async () => {
+test("harvestCommand of an action names the container webaios-action-<id>; of a widget, webaios-harvest-<id>", async () => {
   const workshop = new Workshop({ paths: paths, docker: "/usr/local/bin/docker" });
   const name = (c: string[]) => c[c.indexOf("--name") + 1];
   expect(name(workshop.harvestCommand({ type: "action", id: "gitlab" }, "/d", "/app/docker/engine"))).toBe("webaios-action-gitlab");
@@ -318,7 +318,7 @@ test("commandeRecolte of an action names the container webaios-action-<id>; of a
   expect(calls).toEqual([["rm", "-f", "webaios-action-gitlab"], ["rm", "-f", "webaios-harvest-meteo"]]);
 });
 
-test("commandeRecolte with delaiS 1830: timeout -k 5 1830", () => {
+test("harvestCommand with delaiS 1830: timeout -k 5 1830", () => {
   const workshop = new Workshop({ paths: paths, docker: "/usr/local/bin/docker" });
   const c = workshop.harvestCommand("veille", "/d", "/app/docker/engine", 1830);
   const i = c.indexOf("timeout");

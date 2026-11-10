@@ -15,7 +15,7 @@ const grant: Scope = {
   allSitesScripts: false,
 };
 
-test("reseau host allowed; hotes host allowed; other host, data:, javascript:, file: refused; chrome-extension:// of another extension refused", () => {
+test("network host allowed; hosts host allowed; other host, data:, javascript:, file: refused; chrome-extension:// of another extension refused", () => {
   expect(agentAllowedUrl("https://api.accorde.test/x?y=1", grant, ID)).toBe(true);
   expect(agentAllowedUrl("http://api.accorde.test/", grant, ID)).toBe(true);
   expect(agentAllowedUrl("https://www.hote.test/page", grant, ID)).toBe(true);
@@ -50,7 +50,7 @@ test("Chrome patterns: scheme, subdomain wildcard, port, path", () => {
   expect(patternCovers("<all_urls>", u("file:///x"))).toBe(false);
 });
 
-test("agentAllowedHost: only the granted hosts (not reseau)", () => {
+test("agentAllowedHost: only the granted hosts (not network)", () => {
   expect(agentAllowedHost("https://www.hote.test/", grant)).toBe(true);
   expect(agentAllowedHost("https://api.accorde.test/", grant)).toBe(false);
   expect(agentAllowedHost("about:blank", grant)).toBe(false);
@@ -324,11 +324,11 @@ test("guard: replacing Promise.prototype.then, Function.prototype.apply, Array.i
       const vrai = Promise.prototype.then;
       // (a) then : toute suite reçoit true.
       Promise.prototype.then = function (ok, ko) { return vrai.call(this, ok && ((v) => ok(v === false || typeof v === "string" ? true : v)), ko); };
-      // (b) apply : l'original de l'API est volé et rappelé.
+      // (b) apply: the API's original is stolen and called again.
       const vole = [];
       const appliquer = Function.prototype.apply;
       Function.prototype.apply = function (t, a) { vole.push(this); return appliquer.call(this, t, a); };
-      // (c) Array.isArray qui change d'avis, itérateur de liste vide.
+      // (c) Array.isArray that changes its mind, empty list iterator.
       let n = 0;
       Array.isArray = () => n++ % 2 === 0;
       Array.prototype[Symbol.iterator] = function* () {};
@@ -492,7 +492,7 @@ test("guard: in an agent page (popup, options), the context is neither answered 
 test("guard: an index outside the table (poisoned prototypes, negative, fractional) never injects anything", async () => {
   const { ctx, calls: calls, emit: emit } = guardContext();
   // In the guard's world: what `table[n]` would read through the prototype chain for an n outside the table.
-  runInContext('const faux = { genre: "js", chemin: "hors-liste.js" }; ({}).__proto__[999] = faux; [].__proto__[5] = faux; ({}).__proto__["-1"] = faux; ({}).__proto__["1.5"] = faux;', ctx as object);
+  runInContext('const fake = { kind: "js", path: "hors-liste.js" }; ({}).__proto__[999] = fake; [].__proto__[5] = fake; ({}).__proto__["-1"] = fake; ({}).__proto__["1.5"] = fake;', ctx as object);
   for (const n of [999, 5, -1, 1.5]) {
     expect(await emit({ webaios: "context", files: [n] }, { tab: { id: 4 }, frameId: 0, documentId: "D" }), String(n)).toEqual({ tab: false });
   }

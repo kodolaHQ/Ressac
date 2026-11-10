@@ -47,7 +47,7 @@ export function setupAnchors(win: Window, frame: HTMLIFrameElement): Anchors {
   };
   // On the address bar as it is now (the sidebar moves and resizes); without one, along the iframe's top edge.
   const placePrompt = () => {
-    const bar = frame.contentDocument?.querySelector('[data-testid="barre-adresse"]');
+    const bar = frame.contentDocument?.querySelector('[data-testid="address-bar"]');
     place(prompt, bar?.getBoundingClientRect() ?? { x: 0, y: 0, width: frame.clientWidth, height: 0 });
     return prompt;
   };

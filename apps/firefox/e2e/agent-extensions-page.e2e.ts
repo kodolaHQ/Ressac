@@ -54,8 +54,8 @@ const BROKEN_POPUP = {
 };
 const PAGE = '[data-testid="page-extensions"]';
 const LINE = '[data-testid="extension-page"]';
-const CARD = '[data-testid="demande-extension"]';
-const UNLOCK = '[data-testid="demande-console-extension"]';
+const CARD = '[data-testid="extension-request"]';
+const UNLOCK = '[data-testid="extension-console-request"]';
 const HIDDEN = "message(s) masqué(s) : venus d'onglets que tu ne peux pas lire";
 
 let server: Awaited<ReturnType<typeof startServer>>;
@@ -82,7 +82,7 @@ async function launch(o: { prepare?: (root: string, dataDir: string) => void; ag
     const config = path.join(root, ".webaios", "mcp.json");
     for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
       if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
-    await waitUi(w.marionette, "return doc.querySelector('.xterm-rows')?.textContent.includes('prêt>')", [], 20_000, "agent");
+    await waitUi(w.marionette, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
   }
   return { ...w, ...d, root: root, call: (name: string, args: Record<string, unknown> = {}) => callTool(d.dataDir, name, args) };
 }
@@ -105,7 +105,7 @@ const activeSpace = async (m: Marionette) => {
 /** The strip's menu, then one of its buttons. */
 async function fromStrip(m: Marionette, text: string): Promise<void> {
   await click(m, '[data-testid="menu-extensions"]');
-  await click(m, '[data-testid="panneau-extensions"] button', { text });
+  await click(m, '[data-testid="extensions-panel"] button', { text });
 }
 /** Opens the Extensions page from the strip's « Extensions de l'agent ». */
 async function openPage(m: Marionette): Promise<void> {
@@ -128,7 +128,7 @@ async function rowButton(m: Marionette, name: string, text: string): Promise<voi
 /** Supprimer, then its confirmation. */
 async function remove(m: Marionette, name: string): Promise<void> {
   await rowButton(m, name, "Supprimer");
-  await click(m, '[data-testid="confirmation-suppression-extension"] button.confirmer');
+  await click(m, '[data-testid="extension-delete-confirmation"] button.confirm');
 }
 /** request_extension, then « Activer » on its card. */
 async function enabledByAgent(w: Launched, id: string, name: string): Promise<string> {
@@ -163,7 +163,7 @@ describe("the Extensions page", () => {
     expect(text).toContain(`Sites : ${HOST}`);
     expect(text).toContain(`« ${(await activeSpace(m)).name} » (profil default)`);
     await rowButton(m, "Cacheur de l'agent", "Détails");
-    await waitUi(m, `return !!doc.querySelector('${LINE} [data-testid="details-extension"]')`);
+    await waitUi(m, `return !!doc.querySelector('${LINE} [data-testid="extension-details"]')`);
     expect(await missingApi(m)).toEqual([]);
   });
 
@@ -185,8 +185,8 @@ describe("the Extensions page", () => {
     let m = first.marionette;
     await waitActive(m, "cacheur@agent.webaios", true);
     await openPage(m);
-    await click(m, '[data-testid="couper-extensions"]');
-    await waitUi(m, `return doc.querySelector('[data-testid="couper-extensions"]').checked`);
+    await click(m, '[data-testid="extensions-off"]');
+    await waitUi(m, `return doc.querySelector('[data-testid="extensions-off"]').checked`);
     await waitActive(m, "cacheur@agent.webaios", false);
     expect(registry(first.dataDir).allCut).toBe(true);
     // Disabled, never uninstalled (decision 4): its grant stays.
@@ -198,9 +198,9 @@ describe("the Extensions page", () => {
     await m.execute(`return (async () => { await (await ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready).agentExtensions.ready; })();`);
     expect((await agentAddons(m)).filter((a) => a.isActive)).toEqual([]);
     await openPage(m);
-    await waitUi(m, `return doc.querySelector('[data-testid="couper-extensions"]')?.checked`);
+    await waitUi(m, `return doc.querySelector('[data-testid="extensions-off"]')?.checked`);
     await waitRow(m, "Cacheur de l'agent", true);
-    await click(m, '[data-testid="couper-extensions"]');
+    await click(m, '[data-testid="extensions-off"]');
     await waitActive(m, "cacheur@agent.webaios", true);
     expect(registry(w.dataDir).allCut).toBe(false);
   });
@@ -256,9 +256,9 @@ describe("the Extensions page", () => {
       const call = w.call("unlock_console", { id: "journal", reason: "r" });
       await click(m, `${UNLOCK} button`, { text: "Débloquer" });
       expect((await call).text).toContain("Console débloquée");
-      await waitUi(m, `return doc.querySelector('${LINE} [data-testid="console-debloquee"]')?.textContent === "Console débloquée pour l'agent"`);
+      await waitUi(m, `return doc.querySelector('${LINE} [data-testid="console-unlocked"]')?.textContent === "Console débloquée pour l'agent"`);
     };
-    const closed = () => waitUi(m, `return !doc.querySelector('${LINE} [data-testid="console-debloquee"]')`);
+    const closed = () => waitUi(m, `return !doc.querySelector('${LINE} [data-testid="console-unlocked"]')`);
     await unlock();
     await rowButton(m, "Journal de l'agent", "Couper le déblocage");
     await closed();

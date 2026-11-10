@@ -38,36 +38,36 @@
   const MARKS = { running: "…", succeeded: "✓", partial: "≈", failed: "✗" } as const;
 </script>
 
-<section class="avancement" data-testid="avancement-action" aria-live="polite">
+<section class="progress" data-testid="action-progress" aria-live="polite">
   {#if pending && !current}
-    <p class="attente" data-testid="en-attente">{PENDING}</p>
+    <p class="waiting" data-testid="pending">{PENDING}</p>
   {/if}
   {#if current}
     <ol>
       {#each lines as l (l.id)}
-        <li class={l.status} data-testid="ligne-bloc">
-          <span class="marque" aria-hidden="true">{MARKS[l.status]}</span>
-          <span class="libelle">{label(l)}</span>
-          {#if l.account}<span class="compteur" data-testid="compteur-bloc">{l.account.done} / {l.account.total}</span>{/if}
+        <li class={l.status} data-testid="block-row">
+          <span class="mark" aria-hidden="true">{MARKS[l.status]}</span>
+          <span class="label">{label(l)}</span>
+          {#if l.account}<span class="counter" data-testid="block-counter">{l.account.done} / {l.account.total}</span>{/if}
         </li>
       {/each}
-      {#if current.step === "mise-en-page"}
-        <li class="running"><span class="marque" aria-hidden="true">…</span><span class="libelle" data-testid="mise-en-page">{PAGE_LAYOUT}</span></li>
+      {#if current.step === "layout"}
+        <li class="running"><span class="mark" aria-hidden="true">…</span><span class="label" data-testid="layout">{PAGE_LAYOUT}</span></li>
       {/if}
     </ol>
   {/if}
-  <button data-testid="arreter-action" onclick={stop}>Arrêter</button>
+  <button data-testid="stop-action" onclick={stop}>Arrêter</button>
 </section>
 
 <style>
-  .avancement { max-width: 960px; margin: 16px auto 0; padding: 0 24px; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; color: var(--texte); font-size: 13px; }
+  .progress { max-width: 960px; margin: 16px auto 0; padding: 0 24px; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; color: var(--text); font-size: 13px; }
   ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
   li { display: flex; gap: 8px; align-items: baseline; }
-  .marque { width: 1em; text-align: center; color: var(--texte-doux); }
-  li.running .marque { color: var(--en-cours); }
-  li.failed .marque { color: var(--en-erreur); }
-  .compteur { color: var(--texte-doux); font-variant-numeric: tabular-nums; }
-  .attente { margin: 0; color: var(--texte-doux); }
-  button { padding: 5px 10px; border-radius: 6px; border: 1px solid var(--bord); background: var(--fond-barre); color: var(--texte); font: inherit; }
-  button:hover { background: var(--fond-survol); }
+  .mark { width: 1em; text-align: center; color: var(--text-muted); }
+  li.running .mark { color: var(--in-progress); }
+  li.failed .mark { color: var(--in-error); }
+  .counter { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+  .waiting { margin: 0; color: var(--text-muted); }
+  button { padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); font: inherit; }
+  button:hover { background: var(--bg-hover); }
 </style>

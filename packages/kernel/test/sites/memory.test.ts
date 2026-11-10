@@ -133,7 +133,7 @@ test("two simultaneous retenir: both keys present", async () => {
   expect([m2.read("cadre1"), m2.read("cadre2")]).toEqual([1, 2]);
 });
 
-test("effacer: file absent, content empty, pending write cancelled, surChange notified", async () => {
+test("erase: file absent, content empty, pending write cancelled, onChange notified", async () => {
   const d = await tempFolder();
   const m = await open(d);
   m.keep("a", 1, null);
@@ -153,7 +153,7 @@ test("effacer: file absent, content empty, pending write cancelled, surChange no
   expect(calls).toBe(1);
 });
 
-test("surChange is notified on retenir, oublier, noterPosition", async () => {
+test("onChange is notified on retenir, oublier, noterPosition", async () => {
   const m = await open(await tempFolder());
   let calls = 0;
   m.onChange(() => calls++);

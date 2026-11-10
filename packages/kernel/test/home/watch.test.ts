@@ -6,7 +6,7 @@ import { spacePaths } from "../../src/paths.js";
 import { watchHome, watchActions } from "../../src/home/watch.js";
 import { tempFolder } from "../helpers/temp.js";
 
-test("surveillerAccueil calls the callback only once for a burst of writes", async () => {
+test("watchHome calls the callback only once for a burst of writes", async () => {
   const c = spacePaths(await tempFolder());
   await mkdir(join(c.widgets, "x"), { recursive: true });
   let calls = 0;

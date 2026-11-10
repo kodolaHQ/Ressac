@@ -37,7 +37,7 @@ test("the hash survives readMemory / writeMemory (R5); an old memory without a h
   expect(await readMemory(d)).toEqual(m);
 });
 
-test("paramsHash ignore garderJours", () => {
+test("paramsHash ignore keepDays", () => {
   expect(paramsHash({ key: "url", keepDays: 7 })).toBe(paramsHash({ key: "url" }));
   expect(paramsHash({ key: "url", keepDays: 7 })).toBe(paramsHash({ key: "url", keepDays: 30 }));
   expect(paramsHash({ key: "titre", keepDays: 7 })).not.toBe(paramsHash({ key: "url", keepDays: 7 }));

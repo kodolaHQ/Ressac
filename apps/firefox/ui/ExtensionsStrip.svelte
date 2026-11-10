@@ -4,7 +4,7 @@
   import type { AddonButton, PendingUpdate } from "../chrome/window/addons";
 
   // The add-on buttons of the active window (chrome/window/addons.ts), copied into this document like ui/api.ts does.
-  // `fenetre` only opens the agent's Extensions page: the window announces changes itself (onChange, every tab switch).
+  // `window` only opens the agent's Extensions page: the window announces changes itself (onChange, every tab switch).
   let { window: win }: { window: WindowState } = $props();
   const addons = window.parent.webaiosWindow!.addons;
   let buttons = $state<AddonButton[]>(structuredClone(addons.buttons()));
@@ -48,7 +48,7 @@
   </button>
 {/snippet}
 
-<div class="extensions" data-testid="barre-extensions">
+<div class="extensions" data-testid="extensions-bar">
   {#each pinned as b (b.id)}{@render button(b)}{/each}
   <button class="menu" data-testid="menu-extensions" aria-label="Extensions" title="Extensions" aria-expanded={open} onclick={() => (open = !open)}>
     ⧉{#if updates.length > 0}<span class="point"></span>{/if}
@@ -56,53 +56,53 @@
 </div>
 {#if open}
   <!-- In the sidebar, never over the page. -->
-  <div class="panneau" data-testid="panneau-extensions" role="region" aria-label="Extensions">
-    {#if buttons.length === 0}<p class="vide">Aucune extension active.</p>{/if}
+  <div class="panel" data-testid="extensions-panel" role="region" aria-label="Extensions">
+    {#if buttons.length === 0}<p class="empty">Aucune extension active.</p>{/if}
     <ul>
       {#each unpinned as b (b.id)}
-        <li data-testid="ligne-barre-extension">
+        <li data-testid="extension-bar-row">
           {@render button(b)}
-          <span class="nom">{b.name}</span>
-          <button class="lien" onclick={() => addons.pin(b.id, true)}>Épingler</button>
+          <span class="name">{b.name}</span>
+          <button class="link" onclick={() => addons.pin(b.id, true)}>Épingler</button>
         </li>
       {/each}
       {#each pinned as b (b.id)}
-        <li data-testid="ligne-barre-extension">
-          <span class="nom">{b.name}</span>
-          <button class="lien" onclick={() => addons.pin(b.id, false)}>Détacher</button>
+        <li data-testid="extension-bar-row">
+          <span class="name">{b.name}</span>
+          <button class="link" onclick={() => addons.pin(b.id, false)}>Détacher</button>
         </li>
       {/each}
       {#each updates as u (u.id)}
-        <li data-testid="maj-extension">
-          <span class="nom">{u.name} : mise à jour en attente de ton accord.</span>
-          <button class="lien" onclick={act(() => addons.reviewUpdate(u.id))}>Revoir la mise à jour</button>
+        <li data-testid="extension-update">
+          <span class="name">{u.name} : mise à jour en attente de ton accord.</span>
+          <button class="link" onclick={act(() => addons.reviewUpdate(u.id))}>Revoir la mise à jour</button>
         </li>
       {/each}
     </ul>
-    <button class="gerer" onclick={act(() => addons.manage())}>Gérer les extensions</button>
-    <button class="gerer" onclick={act(() => api.dispatch({ type: "openExtensions", windowId: win.id }))}>Extensions de l'agent</button>
-    <button class="gerer" onclick={act(() => addons.findMore())}>Trouver des modules</button>
+    <button class="manage" onclick={act(() => addons.manage())}>Gérer les extensions</button>
+    <button class="manage" onclick={act(() => api.dispatch({ type: "openExtensions", windowId: win.id }))}>Extensions de l'agent</button>
+    <button class="manage" onclick={act(() => addons.findMore())}>Trouver des modules</button>
   </div>
 {/if}
 
 <style>
   .extensions { display: flex; align-items: center; gap: 2px; flex: none; -webkit-app-region: no-drag; }
   .action { all: unset; position: relative; width: 24px; height: 24px; flex: none; border-radius: 5px; background-position: center; background-repeat: no-repeat; background-size: 16px; }
-  .action:hover:not(:disabled), .menu:hover { background-color: var(--fond-survol); }
+  .action:hover:not(:disabled), .menu:hover { background-color: var(--bg-hover); }
   .action:disabled { opacity: 0.4; }
   /* Without an icon: the first letter of the name. */
-  .action.no-icon::after { content: attr(data-letter); position: absolute; inset: 4px; display: grid; place-content: center; border-radius: 4px; background: var(--fond-actif); color: var(--texte); font-size: 10px; text-transform: uppercase; }
+  .action.no-icon::after { content: attr(data-letter); position: absolute; inset: 4px; display: grid; place-content: center; border-radius: 4px; background: var(--bg-active); color: var(--text); font-size: 10px; text-transform: uppercase; }
   .badge { position: absolute; right: 0; bottom: 0; padding: 0 2px; border-radius: 2px; font-size: 9px; line-height: 12px; pointer-events: none; }
-  .menu { all: unset; position: relative; width: 28px; height: 28px; display: grid; place-content: center; border-radius: 6px; color: var(--texte-doux); font-size: 18px; }
+  .menu { all: unset; position: relative; width: 28px; height: 28px; display: grid; place-content: center; border-radius: 6px; color: var(--text-muted); font-size: 18px; }
   .point { position: absolute; right: 4px; top: 4px; width: 7px; height: 7px; border-radius: 50%; background: #e5484d; }
   /* min-width: 0: without it a long name (nowrap) would widen the panel, a flexible item of the row, out of the bar. */
-  .panneau { -webkit-app-region: no-drag; flex-basis: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; margin-top: 6px; padding: 4px; border: 1px solid var(--bord); border-radius: 8px; background: var(--fond-actif); }
+  .panel { -webkit-app-region: no-drag; flex-basis: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; margin-top: 6px; padding: 4px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-active); }
   ul { list-style: none; margin: 0; padding: 0; }
   li { display: flex; align-items: center; gap: 6px; padding: 2px 4px; }
-  .nom { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--texte); }
-  .lien, .gerer { all: unset; padding: 2px 6px; border-radius: 5px; color: var(--texte-doux); font-size: 12px; }
-  .lien { flex: none; white-space: nowrap; }
-  .lien:hover, .gerer:hover { background: var(--fond-survol); color: var(--texte); }
-  .gerer { display: block; margin-top: 2px; }
-  .vide { margin: 4px; color: var(--texte-doux); font-size: 12px; }
+  .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+  .link, .manage { all: unset; padding: 2px 6px; border-radius: 5px; color: var(--text-muted); font-size: 12px; }
+  .link { flex: none; white-space: nowrap; }
+  .link:hover, .manage:hover { background: var(--bg-hover); color: var(--text); }
+  .manage { display: block; margin-top: 2px; }
+  .empty { margin: 4px; color: var(--text-muted); font-size: 12px; }
 </style>

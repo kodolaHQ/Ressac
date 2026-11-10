@@ -29,7 +29,7 @@ export const MESSAGE_DURATION_MS = 4000;
 
 /** Key of a target, also the argument of its overlay. */
 export const targetKey = (c: DesignTarget): string =>
-  c.type === "fenetre" ? `fenetre:${c.windowId}` : c.type === "app" ? `app:${c.folder}` : `site:${c.id}`;
+  c.type === "window" ? `window:${c.windowId}` : c.type === "app" ? `app:${c.folder}` : `site:${c.id}`;
 
 /**
  * Placement of the bubble in the window: below the element (CSS rect × zoom, shifted by the bounds of the page's view), bounded

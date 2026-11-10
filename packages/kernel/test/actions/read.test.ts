@@ -60,7 +60,7 @@ test("action.json over 64 KB or symbolic link: error", async () => {
   expect(a && "error" in a).toBe(true);
 });
 
-test("action.json lien symbolique : erreur", async () => {
+test("action.json as a symbolic link: error", async () => {
   const c = await space();
   const d = await ask(c, "lien", { name: "L", sources: {} });
   const elsewhere = join(await tempFolder(), "autre.json");
@@ -71,12 +71,12 @@ test("action.json lien symbolique : erreur", async () => {
   expect(a && "error" in a).toBe(true);
 });
 
-test("dossier d'actions absent : liste vide", async () => {
+test("actions folder absent: empty list", async () => {
   const c = spacePaths(await tempFolder());
   expect(await readActions(c)).toEqual([]);
 });
 
-test("actionWorkflow : harvest.mjs seul → absent ; workflow vers widget → invalide OUTPUT_PAGE_REQUIRED", async () => {
+test("actionWorkflow: harvest.mjs alone → absent; a workflow to a widget → invalid OUTPUT_PAGE_REQUIRED", async () => {
   const c = await space();
   await ask(c, "seul", { name: "S", sources: {} }, { "harvest.mjs": "export default 1" });
   await ask(c, "mauvaise", { name: "M", sources: {} }, { "workflow.json": workflow("widget") });

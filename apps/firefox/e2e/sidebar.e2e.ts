@@ -17,7 +17,7 @@ beforeEach(async () => {
   m = w.marionette;
   await m.setContext("chrome");
   await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
-  await waitUi(m, "return !!doc.querySelector('[data-testid=\"barre-laterale\"]')");
+  await waitUi(m, "return !!doc.querySelector('[data-testid=\"sidebar\"]')");
 });
 afterEach(async () => {
   try {
@@ -48,8 +48,8 @@ const waitTitle = (id: string, title: string) => waitState((s) => s.tabs[id]?.ti
 const shownTabs = () =>
   inUi<{ ids: string[]; current: string | null }>(
     m,
-    `const lis = [...doc.querySelectorAll('[data-testid^="onglet-"]')];
-     return { ids: lis.map((li) => li.dataset.testid.slice(7)), current: lis.find((li) => li.getAttribute("aria-current") === "page")?.dataset.testid.slice(7) ?? null };`,
+    `const lis = [...doc.querySelectorAll('[data-testid^="tab-"]')];
+     return { ids: lis.map((li) => li.dataset.testid.slice(4)), current: lis.find((li) => li.getAttribute("aria-current") === "page")?.dataset.testid.slice(4) ?? null };`,
   );
 const waitShown = (ok: (t: { ids: string[]; current: string | null }) => boolean) =>
   (async () => {
@@ -66,7 +66,7 @@ const count = (selector: string) => inUi<number>(m, "return doc.querySelectorAll
 const emptyPageFocused = () =>
   waitUi(
     m,
-    `return !!doc.querySelector('[data-testid="page-vide"]') && doc.activeElement?.dataset.testid === "saisie-page-vide"
+    `return !!doc.querySelector('[data-testid="empty-page"]') && doc.activeElement?.dataset.testid === "empty-page-input"
        && document.activeElement === document.getElementById("webaios-sidebar");`,
   );
 
@@ -87,22 +87,22 @@ describe("the sidebar's layout", () => {
     await waitUi(m, `return !frame.hasAttribute("full");`);
     const drag = await inUi<Record<string, string>>(
       m,
-      `${DRAGGING} return { allowed: frame.contentWindow.docShell.windowDraggingAllowed, sidebar: of(".barre"), button: of(".navigation button"), address: of(".ligne"), tabs: of(".defilant"), footer: of("footer") };`,
+      `${DRAGGING} return { allowed: frame.contentWindow.docShell.windowDraggingAllowed, sidebar: of(".bar"), button: of(".navigation button"), address: of(".line"), tabs: of(".scrolling"), footer: of("footer") };`,
     );
     expect(drag).toEqual({ allowed: true, sidebar: "drag", button: "no-drag", address: "no-drag", tabs: "no-drag", footer: "no-drag" });
     expect(await m.execute(`const r = gBrowser.selectedBrowser.getBoundingClientRect(); return [r.top, r.height - window.innerHeight];`)).toEqual([0, 0]);
     // Under an overlay the sidebar's area belongs to the overlay.
     await pressKeys(m, "Meta+t");
-    await waitUi(m, `${DRAGGING} return of(".barre") === "default";`);
+    await waitUi(m, `${DRAGGING} return of(".bar") === "default";`);
   });
 
   it("shows the extensions inside the address pill and the space above the tabs", async () => {
     const shown = await inUi<{ menuIn: boolean; pill: number; space: string; gap: number }>(
       m,
-      `const pill = doc.querySelector(".ligne").getBoundingClientRect(), menu = doc.querySelector('[data-testid="menu-extensions"]').getBoundingClientRect();
-       const tiles = doc.querySelector('[data-testid="essentiels"]').getBoundingClientRect();
+      `const pill = doc.querySelector(".line").getBoundingClientRect(), menu = doc.querySelector('[data-testid="menu-extensions"]').getBoundingClientRect();
+       const tiles = doc.querySelector('[data-testid="essentials"]').getBoundingClientRect();
        return { menuIn: menu.right <= pill.right && menu.top >= pill.top && menu.bottom <= pill.bottom, pill: pill.height, gap: tiles.top - pill.bottom,
-         space: doc.querySelector('[data-testid="titre-espace"]').textContent };`,
+         space: doc.querySelector('[data-testid="space-title"]').textContent };`,
     );
     const space = (await state(m)).spaces[0]!;
     expect(shown).toEqual({ menuIn: true, pill: 34, gap: 14, space: `${space.icon} ${space.name}` });
@@ -110,7 +110,7 @@ describe("the sidebar's layout", () => {
     await click(m, '[data-testid="menu-extensions"]');
     const panel = await waitUi<{ top: number; bottom: number } | null>(
       m,
-      `const p = doc.querySelector('[data-testid="panneau-extensions"]'); return p && { top: p.getBoundingClientRect().top, bottom: doc.querySelector("form").getBoundingClientRect().bottom };`,
+      `const p = doc.querySelector('[data-testid="extensions-panel"]'); return p && { top: p.getBoundingClientRect().top, bottom: doc.querySelector("form").getBoundingClientRect().bottom };`,
     );
     expect(panel!.top).toBeGreaterThanOrEqual(panel!.bottom);
   });
@@ -120,9 +120,9 @@ describe("WebAiOs sidebar", () => {
   it("“Nouvel onglet” shows the empty page with its field focused; Enter opens the address", async () => {
     const a = await open("/a.html");
     await waitTitle(a, "Page A");
-    await click(m, '[data-testid="nouvel-onglet"]');
+    await click(m, '[data-testid="new-tab"]');
     await emptyPageFocused();
-    await inUi(m, `const f = doc.querySelector('[data-testid="saisie-page-vide"]'); f.value = arguments[0]; f.dispatchEvent(new ui.Event("input", { bubbles: true }));`, [
+    await inUi(m, `const f = doc.querySelector('[data-testid="empty-page-input"]'); f.value = arguments[0]; f.dispatchEvent(new ui.Event("input", { bubbles: true }));`, [
       server.url + "/b.html",
     ]);
     await pressKeys(m, "Enter");
@@ -135,9 +135,9 @@ describe("WebAiOs sidebar", () => {
     const a = await open("/a.html");
     const b = await open("/b.html");
     const c = await open("/texte.html");
-    await click(m, `[data-testid="onglet-${b}"]`);
+    await click(m, `[data-testid="tab-${b}"]`);
     await waitShown((t) => t.current === b);
-    await click(m, `[data-testid="onglet-${b}"] button[aria-label="Fermer l'onglet"]`);
+    await click(m, `[data-testid="tab-${b}"] button[aria-label="Fermer l'onglet"]`);
     const shown = await waitShown((t) => t.ids.length === 2);
     expect(shown).toEqual({ ids: [a, c], current: c });
   });
@@ -152,7 +152,7 @@ describe("WebAiOs sidebar", () => {
       m,
       `const dt = new ui.DataTransfer();
        dt.setData("application/x-webaios-onglet", arguments[0]);
-       const target = doc.querySelector('[data-testid="onglet-' + arguments[1] + '"]');
+       const target = doc.querySelector('[data-testid="tab-' + arguments[1] + '"]');
        const r = target.getBoundingClientRect();
        for (const type of ["dragover", "drop"])
          target.dispatchEvent(new ui.DragEvent(type, { dataTransfer: dt, clientX: r.left + 10, clientY: r.top + 2, bubbles: true, cancelable: true }));`,
@@ -166,10 +166,10 @@ describe("WebAiOs sidebar", () => {
   it("right click → “Épingler” pins the tab in this space only", async () => {
     const a = await open("/a.html");
     await waitTitle(a, "Page A");
-    await click(m, `[data-testid="onglet-${a}"]`, { button: 2 });
+    await click(m, `[data-testid="tab-${a}"]`, { button: 2 });
     await click(m, '[role="menuitem"]', { text: "Épingler" });
     await waitShown((t) => t.ids.length === 0);
-    const pinned = '[data-testid="epingles"] [data-testid^="favori-"]';
+    const pinned = '[data-testid="pinned"] [data-testid^="favorite-"]';
     expect(await count(pinned)).toBe(1);
     await dispatch(m, { type: "createSpace", name: "Boulot", icon: "💼", private: false, profile: "default", windowId: (await win()).id });
     await waitUi(m, "return doc.querySelectorAll(arguments[0]).length === 0", [pinned]);
@@ -178,13 +178,13 @@ describe("WebAiOs sidebar", () => {
   it("an essential is visible in every space", async () => {
     const a = await open("/a.html");
     await waitTitle(a, "Page A");
-    await click(m, `[data-testid="onglet-${a}"]`, { button: 2 });
+    await click(m, `[data-testid="tab-${a}"]`, { button: 2 });
     await click(m, '[role="menuitem"]', { text: "Ajouter aux essentiels" });
-    const essentials = '[data-testid="essentiels"] [data-testid^="favori-"]';
+    const essentials = '[data-testid="essentials"] [data-testid^="favorite-"]';
     await waitUi(m, "return doc.querySelectorAll(arguments[0]).length === 1", [essentials]);
     await dispatch(m, { type: "createSpace", name: "Boulot", icon: "💼", private: false, profile: "default", windowId: (await win()).id });
     const work = (await win()).activeSpace;
-    await waitUi(m, "return doc.querySelector(arguments[0])?.getAttribute('aria-current') === 'true'", [`[data-testid="espace-${work}"]`]);
+    await waitUi(m, "return doc.querySelector(arguments[0])?.getAttribute('aria-current') === 'true'", [`[data-testid="space-${work}"]`]);
     expect(await count(essentials)).toBe(1);
   });
 
@@ -196,16 +196,16 @@ describe("WebAiOs sidebar", () => {
     const work = (await win()).activeSpace;
     const b = await open("/b.html");
     expect(await waitShown((t) => t.ids.length === 1)).toEqual({ ids: [b], current: b });
-    await click(m, `[data-testid="espace-${home}"]`);
+    await click(m, `[data-testid="space-${home}"]`);
     expect(await waitShown((t) => t.ids.length === 2)).toEqual({ ids: [a, p], current: a });
-    await click(m, `[data-testid="espace-${work}"]`);
+    await click(m, `[data-testid="space-${work}"]`);
     expect(await waitShown((t) => t.ids.length === 1)).toEqual({ ids: [b], current: b });
   });
 
   it("closing the last tab shows the empty page with its field focused", async () => {
     const a = await open("/a.html");
     await waitTitle(a, "Page A");
-    await click(m, `[data-testid="onglet-${a}"] button[aria-label="Fermer l'onglet"]`);
+    await click(m, `[data-testid="tab-${a}"] button[aria-label="Fermer l'onglet"]`);
     await emptyPageFocused();
   });
 
@@ -214,14 +214,14 @@ describe("WebAiOs sidebar", () => {
     await waitTitle(id, "icone");
     // The UI shrinks to its column once a web page is displayed.
     await waitFor(m, "return document.getElementById('webaios-sidebar').hasAttribute('full')", (v) => v === false);
-    const bar = await inUi<string>(m, "return ui.getComputedStyle(doc.querySelector('[data-testid=\"barre-laterale\"]')).backgroundColor");
+    const bar = await inUi<string>(m, "return ui.getComputedStyle(doc.querySelector('[data-testid=\"sidebar\"]')).backgroundColor");
     // The page may paint a moment after its title arrives.
     for (let i = 0; i < 50 && (await pixel(m, 900, 400)).join() !== "255,0,0"; i++) await new Promise((r) => setTimeout(r, 100));
     expect(await pixel(m, 900, 400)).toEqual([255, 0, 0]);
     expect(`rgb(${(await pixel(m, 100, 400)).join(", ")})`).toBe(bar);
     // The empty page covers the page: the UI paints above Firefox's tab box.
     await dispatch(m, { type: "showBlankPage", windowId: (await win()).id });
-    const empty = await waitUi<string>(m, "const p = doc.querySelector('[data-testid=\"page-vide\"]'); return p && ui.getComputedStyle(p.parentElement).backgroundColor");
+    const empty = await waitUi<string>(m, "const p = doc.querySelector('[data-testid=\"empty-page\"]'); return p && ui.getComputedStyle(p.parentElement).backgroundColor");
     for (let i = 0; i < 50 && `rgb(${(await pixel(m, 900, 400)).join(", ")})` !== empty; i++) await new Promise((r) => setTimeout(r, 100));
     expect(`rgb(${(await pixel(m, 900, 400)).join(", ")})`).toBe(empty);
   });
@@ -229,7 +229,7 @@ describe("WebAiOs sidebar", () => {
   it("shows an internal webaios: page as not yet available", async () => {
     // An internal page WebAiOs-Firefox does not know.
     await dispatch(m, { type: "openTab", windowId: (await win()).id, url: "webaios://inconnue" });
-    const text = await waitUi<string>(m, "return doc.querySelector('[data-testid=\"page-interne\"]')?.textContent");
+    const text = await waitUi<string>(m, "return doc.querySelector('[data-testid=\"internal-page\"]')?.textContent");
     expect(text).toBe("Pas encore disponible dans WebAiOs-Firefox.");
     expect(await m.execute("return document.getElementById('webaios-sidebar').hasAttribute('full')")).toBe(true);
   });
@@ -237,6 +237,6 @@ describe("WebAiOs sidebar", () => {
   it("shows the favicon a page declares", async () => {
     const id = await open("/icone");
     await waitTitle(id, "icone");
-    await waitUi(m, "const img = doc.querySelector(arguments[0]); return !!img && img.complete && img.naturalWidth > 0", [`[data-testid="onglet-${id}"] img`]);
+    await waitUi(m, "const img = doc.querySelector(arguments[0]); return !!img && img.complete && img.naturalWidth > 0", [`[data-testid="tab-${id}"] img`]);
   });
 });

@@ -1,8 +1,8 @@
 <script lang="ts">
-  let { p, testid = "bloc-chiffre" }: { p: { value: string; label: string }; testid?: string } = $props();
+  let { p, testid = "block-figure" }: { p: { value: string; label: string }; testid?: string } = $props();
 </script>
 
-<div class="pa-chiffre" data-testid={testid}>
-  <span class="valeur">{p.value || "—"}</span>
-  <span class="libelle">{p.label}</span>
+<div class="pa-figure" data-testid={testid}>
+  <span class="value">{p.value || "—"}</span>
+  <span class="label">{p.label}</span>
 </div>

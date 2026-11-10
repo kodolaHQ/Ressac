@@ -66,7 +66,7 @@
       const l = await api.review.comments(project);
       if (n === commentsRequest) comments = l;
     } catch {
-      // La liste reste celle d'avant.
+      // The list stays the previous one.
     }
   }
 
@@ -135,50 +135,50 @@
   const ofFile = $derived(diff ? comments.filter((c) => c.file === diff!.path) : []);
 </script>
 
-<section class="relecture" data-testid="page-relecture" aria-label="Relecture">
+<section class="review" data-testid="review-page" aria-label="Relecture">
   <header>
     <h2>{view?.name ?? ""}</h2>
     {#if view?.state === "ok"}
       {#if toSend > 0}
-        <button data-testid="envoyer-commentaires" disabled={running || view.destination === null} title={view.noDestination ?? ""}
+        <button data-testid="send-comments" disabled={running || view.destination === null} title={view.noDestination ?? ""}
           onclick={() => void sendComments()}
           >Envoyer {toSend} commentaire{toSend > 1 ? "s" : ""} à {view.destination ?? "personne"}</button
         >
       {/if}
-      <button data-testid="marquer-relu" disabled={running || token === null} onclick={() => void markReviewed()}>Marquer comme relu</button>
+      <button data-testid="mark-read" disabled={running || token === null} onclick={() => void markReviewed()}>Marquer comme relu</button>
     {/if}
     <button onclick={() => void load(false)} disabled={running}>Rafraîchir</button>
   </header>
-  {#if message}<p class="message" data-testid="erreur-relecture">{message}</p>{/if}
+  {#if message}<p class="message" data-testid="review-error">{message}</p>{/if}
   {#if view?.state === "unavailable"}
-    <p class="indisponible" data-testid="relecture-indisponible">Relecture indisponible : {view.reason}</p>
+    <p class="unavailable" data-testid="review-unavailable">Relecture indisponible : {view.reason}</p>
   {:else if view?.state === "ok"}
-    <div class="corps">
-      <nav class="liste" aria-label="Fichiers modifiés">
+    <div class="body">
+      <nav class="list" aria-label="Fichiers modifiés">
         {#if files.length === 0}
-          <p class="vide">Rien n'a changé depuis la dernière relecture.</p>
+          <p class="empty">Rien n'a changé depuis la dernière relecture.</p>
         {/if}
         {#each files as f (f.path)}
-          <button class="fichier" class:choisi={f.path === chosen} data-testid="fichier-relecture" aria-pressed={f.path === chosen}
+          <button class="file" class:chosen={f.path === chosen} data-testid="review-file" aria-pressed={f.path === chosen}
             title={LABELS[f.status]} onclick={() => void display(f.path)}
-            ><span class="statut {f.status}">{STATUSES[f.status]}</span><span class="nom-fichier">{f.path}</span><span class="compte">+{f.additions} −{f.deletions}</span></button
+            ><span class="status {f.status}">{STATUSES[f.status]}</span><span class="file-name">{f.path}</span><span class="account">+{f.additions} −{f.deletions}</span></button
           >
         {/each}
         {#if comments.length > 0}
           <h3>Commentaires</h3>
-          <ul class="commentaires">
+          <ul class="comments">
             {#each comments as c (c.id)}
-              <li data-testid="commentaire-relecture" class:resolu={c.resolved}>
-                <span class="ou">{c.file}:{c.start}{c.end !== c.start ? `–${c.end}` : ""}</span>
+              <li data-testid="review-comment" class:resolved={c.resolved}>
+                <span class="or">{c.file}:{c.start}{c.end !== c.start ? `–${c.end}` : ""}</span>
                 <span>{c.text}</span>
               </li>
             {/each}
           </ul>
         {/if}
       </nav>
-      <div class="centre">
+      <div class="center">
         {#if diffError}
-          <p class="vide">{diffError}</p>
+          <p class="empty">{diffError}</p>
         {:else if diff && token}
           {#key `${token}\n${diff.path}`}<DiffFile project={project} token={token} {diff} comments={ofFile} onChange={() => void reloadComments()} />{/key}
         {/if}
@@ -188,26 +188,26 @@
 </section>
 
 <style>
-  .relecture { height: 100%; display: flex; flex-direction: column; padding: 16px 20px; box-sizing: border-box; overflow: hidden; color: var(--texte); background: var(--fond); }
+  .review { height: 100%; display: flex; flex-direction: column; padding: 16px 20px; box-sizing: border-box; overflow: hidden; color: var(--text); background: var(--bg); }
   header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
   h2 { margin: 0; font-size: 16px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  h3 { margin: 16px 0 6px; font-size: 12px; color: var(--texte-doux); }
-  button { padding: 4px 10px; border-radius: 6px; border: 1px solid var(--bord); background: var(--fond-barre); color: var(--texte); font-size: 12px; }
-  button:hover:not(:disabled) { background: var(--fond-survol); }
-  .indisponible, .vide { color: var(--texte-doux); }
-  .message { margin: 0 0 8px; color: var(--en-erreur); font-size: 12px; }
-  .corps { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(180px, 260px) 1fr; gap: 16px; }
-  .liste { overflow: auto; display: flex; flex-direction: column; gap: 2px; }
-  .fichier { display: flex; align-items: center; gap: 8px; text-align: left; border: none; background: transparent; padding: 4px 6px; }
-  .fichier.choisi { background: var(--fond-actif); }
-  .statut { width: 12px; font-family: ui-monospace, Menlo, monospace; font-weight: 700; }
-  .statut.added { color: var(--en-marche); }
-  .statut.deleted { color: var(--en-erreur); }
-  .nom-fichier { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .compte { font-size: 11px; color: var(--texte-doux); white-space: nowrap; }
-  .commentaires { list-style: none; margin: 0; padding: 0; font-size: 12px; }
-  .commentaires li { padding: 4px 6px; border-bottom: 1px solid var(--bord); display: flex; flex-direction: column; }
-  .commentaires li.resolu { opacity: 0.6; }
-  .ou { color: var(--texte-doux); font-family: ui-monospace, Menlo, monospace; }
-  .centre { overflow: auto; min-width: 0; }
+  h3 { margin: 16px 0 6px; font-size: 12px; color: var(--text-muted); }
+  button { padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); font-size: 12px; }
+  button:hover:not(:disabled) { background: var(--bg-hover); }
+  .unavailable, .empty { color: var(--text-muted); }
+  .message { margin: 0 0 8px; color: var(--in-error); font-size: 12px; }
+  .body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(180px, 260px) 1fr; gap: 16px; }
+  .list { overflow: auto; display: flex; flex-direction: column; gap: 2px; }
+  .file { display: flex; align-items: center; gap: 8px; text-align: left; border: none; background: transparent; padding: 4px 6px; }
+  .file.chosen { background: var(--bg-active); }
+  .status { width: 12px; font-family: ui-monospace, Menlo, monospace; font-weight: 700; }
+  .status.added { color: var(--running); }
+  .status.deleted { color: var(--in-error); }
+  .file-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .account { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+  .comments { list-style: none; margin: 0; padding: 0; font-size: 12px; }
+  .comments li { padding: 4px 6px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; }
+  .comments li.resolved { opacity: 0.6; }
+  .or { color: var(--text-muted); font-family: ui-monospace, Menlo, monospace; }
+  .center { overflow: auto; min-width: 0; }
 </style>

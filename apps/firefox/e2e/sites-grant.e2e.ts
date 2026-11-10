@@ -55,8 +55,8 @@ const shorts = () => view('getComputedStyle(document.getElementById("shorts")).d
 const tweak = () => view("document.body.dataset.retouche ?? null");
 /** The card's text, or null while the bar shows no card. */
 const card = (testid?: string, id = "vidola") =>
-  inSiteBar<string | null>(m, id, `const c = doc.querySelector(${JSON.stringify(testid ? `[data-testid="${testid}"]` : '[data-testid="carte-accord-site"]')}); return c ? c.textContent : null;`);
-const heading = () => inSiteBar<string | null>(m, "vidola", `return doc.querySelector('[data-testid="carte-accord-site"] :is(h1,h2,h3)')?.textContent ?? null;`);
+  inSiteBar<string | null>(m, id, `const c = doc.querySelector(${JSON.stringify(testid ? `[data-testid="${testid}"]` : '[data-testid="site-grant-card"]')}); return c ? c.textContent : null;`);
+const heading = () => inSiteBar<string | null>(m, "vidola", `return doc.querySelector('[data-testid="site-grant-card"] :is(h1,h2,h3)')?.textContent ?? null;`);
 /** A click on a bar button, once there. */
 const click = (testid: string, id = "vidola") =>
   inSiteBar(m, id, `for (let i = 0; i < 100 && !doc.querySelector('[data-testid="' + arguments[0] + '"]'); i++) await new Promise((r) => setTimeout(r, 100)); doc.querySelector('[data-testid="' + arguments[0] + '"]').click(); return true;`, [testid]);
@@ -115,15 +115,15 @@ describe("grant card", () => {
   it("first open of an app with tweaks: the card lists domains, sign-in, files and resume; the site view is hidden and loads nothing (sites.spec.ts:1007)", async () => {
     await openToCard();
     expect(await heading()).toBe("Autoriser les retouches de « Vidola » ?");
-    expect(await card("accord-site-domaines")).toContain("vidola-a.localhost");
-    expect(await card("accord-site-connexion")).toContain("compte.localhost");
-    expect(await card("accord-site-cadres")).toContain(reader());
-    expect(await card("accord-site-fichiers")).toContain("a.js");
-    expect(await card("accord-site-fichiers")).toContain("cacher.css");
-    expect(await card("accord-site-reprise")).toBe("Reprend les vidéos à la minute");
+    expect(await card("site-grant-domains")).toContain("vidola-a.localhost");
+    expect(await card("site-grant-sign-in")).toContain("compte.localhost");
+    expect(await card("site-grant-frames")).toContain(reader());
+    expect(await card("site-grant-files")).toContain("a.js");
+    expect(await card("site-grant-files")).toContain("cacher.css");
+    expect(await card("site-grant-resume")).toBe("Reprend les vidéos à la minute");
     expect(await card()).toContain("Ses retouches voient et modifient les pages de ces domaines. Une image ajoutée à la page peut encore envoyer des données à un autre site.");
-    expect(await card("accorder-site")).toBe("Autoriser");
-    expect(await card("refuser-site")).toBe("Ouvrir sans retouches");
+    expect(await card("grant-site")).toBe("Autoriser");
+    expect(await card("refuse-site")).toBe("Ouvrir sans retouches");
     expect(await viewState()).toEqual({ url: "", visible: false });
     await sleep(300);
     expect(server.requests.filter((r) => r.host === "vidola-a.localhost")).toEqual([]);
@@ -131,7 +131,7 @@ describe("grant card", () => {
 
   it("Ouvrir sans retouches: the site opens, .shorts visible, no position noted; the card comes back at the next open (sites.spec.ts:1027)", async () => {
     await openToCard();
-    await click("refuser-site");
+    await click("refuse-site");
     await expect.poll(() => viewUrl(), { timeout: 15_000 }).toBe(url("/serie/the-bear"));
     await expect.poll(() => view("document.readyState")).toBe("complete");
     expect((await viewState())?.visible).toBe(true);
@@ -149,7 +149,7 @@ describe("grant card", () => {
 
   it("Autoriser: .shorts hidden; opening again does not ask again (sites.spec.ts:1046)", async () => {
     await openToCard();
-    await click("accorder-site");
+    await click("grant-site");
     await expect.poll(() => viewUrl(), { timeout: 15_000 }).toBe(url("/serie/the-bear"));
     await expect.poll(() => shorts(), { timeout: 10_000 }).toBe("none");
     await expect.poll(() => tweak()).toBe("oui");
@@ -163,7 +163,7 @@ describe("grant card", () => {
 
   it("changing the code of a.js: no card (sites.spec.ts:1063)", async () => {
     await openToCard();
-    await click("accorder-site");
+    await click("grant-site");
     await expect.poll(() => tweak(), { timeout: 15_000 }).toBe("oui");
     writeFileSync(path.join(dataDir, "workspace", "sites", "vidola", "tweaks", "a.js"), 'document.body.dataset.retouche = "v2";');
     await expect.poll(() => tweak(), { timeout: 10_000 }).toBe("v2");
@@ -173,12 +173,12 @@ describe("grant card", () => {
 
   it("adding a sign-in domain to site.json: the card comes back, nothing injected before the choice (sites.spec.ts:1074)", async () => {
     await openToCard();
-    await click("accorder-site");
+    await click("grant-site");
     await expect.poll(() => tweak(), { timeout: 15_000 }).toBe("oui");
     await view("(window.marque = 1, 1)");
     rewriteDeclaration(declaration({ login: ["compte.localhost", "autre-compte.localhost"] }));
     await expect.poll(() => card(), { timeout: 10_000 }).not.toBeNull();
-    expect(await card("accord-site-connexion")).toContain("autre-compte.localhost");
+    expect(await card("site-grant-sign-in")).toContain("autre-compte.localhost");
     expect((await viewState())?.visible).toBe(false);
     // The page is reloaded behind the card, without tweaks.
     await expect.poll(() => view("window.marque ?? null"), { timeout: 10_000 }).toBeNull();
@@ -187,14 +187,14 @@ describe("grant card", () => {
     expect(await tweak()).toBeNull();
     expect(await shorts()).toBe("block");
     // Allow again: the page reloads with its tweaks.
-    await click("accorder-site");
+    await click("grant-site");
     await expect.poll(() => shorts(), { timeout: 10_000 }).toBe("none");
     expect((await viewState())?.visible).toBe(true);
   });
 
   it("opening the open window again after the grant was removed: the card comes back, the page reloaded without tweaks (sites.spec.ts:1096)", async () => {
     await openToCard();
-    await click("accorder-site");
+    await click("grant-site");
     await expect.poll(() => shorts(), { timeout: 15_000 }).toBe("none");
     await view("(window.marque = 1, 1)");
     writeFileSync(grantsFile(), "{}");
@@ -218,10 +218,10 @@ describe("grant card", () => {
     await barApi(`await site.grant(true, arguments[0]); return true;`, [v1]);
     await sleep(300);
     expect(grants().vidola).toBeFalsy();
-    expect(await card("accord-site-connexion")).toContain("evil.localhost");
+    expect(await card("site-grant-sign-in")).toContain("evil.localhost");
     expect((await viewState())?.visible).toBe(false);
     // With the hash of the card up to date, the click grants.
-    await click("accorder-site");
+    await click("grant-site");
     await expect.poll(() => shorts(), { timeout: 15_000 }).toBe("none");
     expect((grants().vidola as { login: string[] }).login).toEqual(["compte.localhost", "evil.localhost"]);
   });
@@ -231,8 +231,8 @@ describe("grant card", () => {
     mkdirSync(dir, { recursive: true });
     writeFileSync(path.join(dir, "url.json"), JSON.stringify({ current: "vidola-b.localhost", previous: ["vidola-a.localhost"], since: new Date().toISOString() }));
     await openToCard();
-    expect(await card("accord-site-suivis")).toContain("vidola-b.localhost");
-    expect(await card("accord-site-suivis")).not.toContain("vidola-a.localhost");
+    expect(await card("site-grant-tracking")).toContain("vidola-b.localhost");
+    expect(await card("site-grant-tracking")).not.toContain("vidola-a.localhost");
   });
 
   it("the choice is refused from the bar's invalid requests: a hash that is not a bounded string rejects, nothing is granted (sites.spec.ts:1149)", async () => {
@@ -249,7 +249,7 @@ describe("grant card", () => {
   it("nothing in the site view, a sub-frame or the home frame reaches the bar's controller: nothing is granted (sites.spec.ts:1149)", async () => {
     // A live page behind the card: allowed once, then the grant removed and the app opened again.
     await openToCard();
-    await click("accorder-site");
+    await click("grant-site");
     await expect.poll(() => shorts(), { timeout: 15_000 }).toBe("none");
     await view(`(location.href = ${JSON.stringify(url("/lecteur"))}, 1)`);
     await expect.poll(() => viewUrl(), { timeout: 10_000 }).toBe(url("/lecteur"));
@@ -287,7 +287,7 @@ describe("grant card", () => {
     rewriteDeclaration(declaration());
     await expect.poll(async () => (await state()).hasHome, { timeout: 10_000 }).toBe(true);
     expect((await state()).viewState).toBe("grant");
-    await click("refuser-site");
+    await click("refuse-site");
     await expect.poll(async () => (await state()).viewState, { timeout: 10_000 }).toBe("home");
   });
 });
@@ -315,13 +315,13 @@ describe("home frame", () => {
     expect(await state().then((s) => s.viewState)).toBe("grant");
     const hash = (await state()).grant!.hash;
     // The home is not mounted while the card shows.
-    expect(await inSiteBar(m, "vidola", `return doc.querySelector('[data-testid="site-cadre-accueil"]') ? 1 : 0;`)).toBe(0);
-    await click("refuser-site");
+    expect(await inSiteBar(m, "vidola", `return doc.querySelector('[data-testid="site-home-frame"]') ? 1 : 0;`)).toBe(0);
+    await click("refuse-site");
     const home = (body: string) =>
       inSiteBar<unknown>(
         m,
         "vidola",
-        `const home = doc.querySelector('[data-testid="site-cadre-accueil"]');
+        `const home = doc.querySelector('[data-testid="site-home-frame"]');
          const fw = home?.contentDocument?.defaultView?.wrappedJSObject;
          if (!fw || !String(home.contentDocument.documentURI).startsWith("resource://webaios-site-")) return null;
          ${body}`,

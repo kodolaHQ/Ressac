@@ -78,7 +78,7 @@ test("failing read (neither absent nor damaged): the write fails without erasing
   expect(Object.keys(await readSiteGrants(p))).toEqual(["c"]);
 });
 
-test("empreinteLectureSite: name, domains and login; the order and case of the domains change nothing", () => {
+test("siteReadHash: name, domains and login; the order and case of the domains change nothing", () => {
   const updateEntry = { ...base, login: ["compte.example"] };
   const e = siteReadHash(updateEntry);
   expect(e).toMatch(/^[0-9a-f]{64}$/);

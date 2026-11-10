@@ -242,7 +242,7 @@ test("in-progress is relaunched at launch only", () => {
   expect(widgetOf({ ...w, hasHarvest: false, state: { ...w.state, status: "ok" } }, START, { onLaunch: true })).toBe(false);
 });
 
-test("recolterMaintenant waits for the harvest in progress: only one at a time", async () => {
+test("harvestNow waits for the harvest in progress: only one at a time", async () => {
   const { p, harvest: harvest } = await prepare();
   let inFlight = 0;
   let max = 0;
@@ -265,7 +265,7 @@ test("recolterMaintenant waits for the harvest in progress: only one at a time",
   expect(harvest).toHaveBeenCalledTimes(2);
 });
 
-test("recolterMaintenant on an unknown widget throws an error", async () => {
+test("harvestNow on an unknown widget throws an error", async () => {
   const { p } = await prepare();
   await expect(p.harvestNow("absent")).rejects.toThrow(/inconnu/);
 });
@@ -433,7 +433,7 @@ test("a widget with workflow.json without harvest.mjs is harvested when it is du
   expect(harvests.sort()).toEqual(["actus", "flux"]);
 });
 
-test("trigger: planifiee for the check, manuelle by default for recolterMaintenant, otherwise the requested one", async () => {
+test("trigger: planifiee for the check, manuelle by default for harvestNow, otherwise the requested one", async () => {
   const { p, harvest: harvest } = await prepare();
   await p.check({ onLaunch: true });
   await p.harvestNow("actus");
@@ -577,7 +577,7 @@ test("direct() shows the running widget, its kind and its blocks as traces come,
   await p.replay("actus", "o", "liste");
   const start = START.toISOString();
   expect(seen[0]).toEqual({
-    running: [{ widget: "actus", kind: "essai", start: start, blocks: { liste: { status: "running", items: null } } }],
+    running: [{ widget: "actus", kind: "attempt", start: start, blocks: { liste: { status: "running", items: null } } }],
     waiting: [],
   });
   expect(seen[1]!.running[0]!.blocks).toEqual({ liste: { status: "succeeded", items: 3 }, sortie: { status: "running", items: null } });
@@ -591,7 +591,7 @@ test("direct() shows the running widget, its kind and its blocks as traces come,
   expect(p.direct().running).toEqual([]);
 });
 
-test("enAttente lists a widget requested while another runs", async () => {
+test("waiting lists a widget requested while another runs", async () => {
   const { p, harvestAttempt: harvestAttempt, harvests: harvests } = await prepare();
   const end = deferred<void>();
   harvestAttempt.mockImplementation(async () => {
@@ -682,7 +682,7 @@ test("routeOf: long beyond LONG_ROUTE_MINUTES (3), short otherwise", async () =>
   expect([route("actus"), route("trois"), route("quatre"), route("fixe")]).toEqual(["short", "short", "long", "short"]);
 });
 
-test("a long run (dureeMaxMinutes 30) does not prevent a short widget from running", async () => {
+test("a long run (maxDurationMinutes 30) does not prevent a short widget from running", async () => {
   const { p, c, harvest: harvest } = await prepare();
   await writeWatch(c, "veille", 30);
   const r = keep(harvest, ["veille"]);
@@ -736,7 +736,7 @@ test("a long widget and its trial: never at the same time", async () => {
   expect(r.log.indexOf("fin veille")).toBeLessThan(r.log.indexOf("essai veille"));
 });
 
-test("dureeMaxMinutes changed from 30 to 2 during the run: the new request waits for the first to end", async () => {
+test("maxDurationMinutes changed from 30 to 2 during the run: the new request waits for the first to end", async () => {
   const { p, c, harvest: harvest, harvests: harvests } = await prepare();
   await writeWatch(c, "veille", 30);
   const r = keep(harvest, ["veille"]);
@@ -859,7 +859,7 @@ test("the AI goes through the dispatcher: each run has its view, calls reach the
   expect(calls).toHaveLength(3);
 });
 
-test("dureeMaxMinutes changed from 2 to 30 while a request waits: it goes into the long lane", async () => {
+test("maxDurationMinutes changed from 2 to 30 while a request waits: it goes into the long lane", async () => {
   const { p, c, harvest: harvest } = await prepare();
   await writeWatch(c, "veille", 2);
   const r = keep(harvest, ["veille"]);
@@ -1174,7 +1174,7 @@ test("abrupt stop: the state from before the run (error) is restored; clean stop
   expect(await readWidgetState(widgetsFolder, "actus")).toEqual(before);
 });
 
-test("a surChange callback that throws during the startup restore does not block the runs", async () => {
+test("a onChange callback that throws during the startup restore does not block the runs", async () => {
   const { widgetsFolder: widgetsFolder, harvests: harvests, relaunch: relaunch, p: first } = await prepare({ options: { onChange: () => { throw new Error("rappel"); } } });
   await first.stop();
   await writeWidgetState(widgetsFolder, "actus", { status: "running", lastUpdate: null, lastAttempt: null });
@@ -1189,7 +1189,7 @@ test("a surChange callback that throws during the startup restore does not block
   expect(harvests.length).toBeGreaterThan(0);
 });
 
-describe("notification de fin de veille", () => {
+describe("end-of-watch notification", () => {
   /** A « veille » widget that notifies, and a spy notifier; the fake harvest returns `nouveaux` (and `statut`). */
   async function prepareWatch(o: { notify?: boolean; newItems?: number; status?: WidgetState["status"]; noCallback?: boolean } = {}) {
     const notifications: NotificationWidget[] = [];
@@ -1272,7 +1272,7 @@ describe("notification de fin de veille", () => {
       expect(notify).toHaveBeenCalledTimes(1);
       expect(state.status).toBe("ok");
       expect((await readWidgetState(widgetsFolder, "veille")).status).toBe("ok");
-      expect(errors).toHaveBeenCalledWith(expect.stringContaining("notification du widget veille"), expect.any(Error));
+      expect(errors).toHaveBeenCalledWith(expect.stringContaining("notification of widget veille"), expect.any(Error));
     } finally {
       errors.mockRestore();
     }

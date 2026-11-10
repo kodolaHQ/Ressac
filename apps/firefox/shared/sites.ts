@@ -73,7 +73,7 @@ export type SiteWindowState = {
 /** Maximum length of an address requested by the home (open, image). */
 export const HOME_URL_MAX = 2000;
 
-/** Home screen scheme: `webaios-site://<id>/<path in accueil/>`. */
+/** Home screen scheme: `webaios-site://<id>/<path in home/>`. */
 export const SCHEMA_SITE = "webaios-site";
 /** Maximum size of a site image requested by the home (rendered as `data:`). */
 export const IMAGE_SITE_MAX = 2 * 1024 * 1024;

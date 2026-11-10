@@ -45,17 +45,17 @@
 </script>
 
 {#if context?.mode === "bubble"}
-  <div class="bulle" data-testid="bulle-design" role="dialog" aria-label="Remarque sur l'élément">
-    <div class="tete">
-      <code class="etiquette">{context.label}</code>
+  <div class="bubble" data-testid="design-bubble" role="dialog" aria-label="Remarque sur l'élément">
+    <div class="head">
+      <code class="tag">{context.label}</code>
       {#if context.source}<span class="source">{context.source}</span>{/if}
     </div>
-    {#if context.warning}<p class="avertissement" data-testid="avertissement-bulle">{context.warning}</p>{/if}
+    {#if context.warning}<p class="warning" data-testid="bubble-warning">{context.warning}</p>{/if}
     <textarea bind:this={field} bind:value={text} onkeydown={clavier} placeholder="Ta remarque sur cet élément" maxlength="4000"></textarea>
-    {#if error}<p class="erreur" role="alert">{error}</p>{/if}
+    {#if error}<p class="error" role="alert">{error}</p>{/if}
     <div class="actions">
-      <button class="annuler" onclick={() => api.cancel()}>Annuler</button>
-      <button class="ajouter" onclick={() => void add()}>Ajouter au panier <kbd>⌘↩</kbd></button>
+      <button class="cancel" onclick={() => api.cancel()}>Annuler</button>
+      <button class="add-button" onclick={() => void add()}>Ajouter au panier <kbd>⌘↩</kbd></button>
     </div>
   </div>
 {:else if context?.mode === "message"}
@@ -63,27 +63,27 @@
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
   <div class="message" data-testid="message-design" role="status" onclick={() => api.cancel()}>{context.message}</div>
 {:else if context?.mode === "basket"}
-  <div class="volet">
+  <div class="pane">
     <DesignBasket {api} project={context.project} destination={context.destination} noDestination={context.noDestination} close={() => api.cancel()} />
   </div>
 {/if}
 
 <style>
   :global(html), :global(body), :global(#app) { margin: 0; height: 100%; overflow: hidden; }
-  .bulle { box-sizing: border-box; height: 100%; display: flex; flex-direction: column; gap: 6px; padding: 8px; background: var(--fond-actif); color: var(--texte); border: 1px solid var(--accent); border-radius: 8px; font-size: 12px; }
-  .tete { display: flex; gap: 6px; align-items: baseline; min-width: 0; }
-  .etiquette { color: var(--accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .source { color: var(--texte-doux); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  textarea { flex: 1; resize: none; box-sizing: border-box; width: 100%; padding: 6px; border-radius: 5px; border: 1px solid var(--bord); background: var(--fond); color: var(--texte); font: inherit; outline: none; }
+  .bubble { box-sizing: border-box; height: 100%; display: flex; flex-direction: column; gap: 6px; padding: 8px; background: var(--bg-active); color: var(--text); border: 1px solid var(--accent); border-radius: 8px; font-size: 12px; }
+  .head { display: flex; gap: 6px; align-items: baseline; min-width: 0; }
+  .tag { color: var(--accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .source { color: var(--text-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  textarea { flex: 1; resize: none; box-sizing: border-box; width: 100%; padding: 6px; border-radius: 5px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit; outline: none; }
   textarea:focus { border-color: var(--accent); }
-  .avertissement { margin: 0; color: var(--texte-doux); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .erreur { margin: 0; color: var(--en-erreur); }
+  .warning { margin: 0; color: var(--text-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .error { margin: 0; color: var(--in-error); }
   .actions { display: flex; justify-content: flex-end; gap: 6px; }
   button { all: unset; cursor: pointer; padding: 4px 10px; border-radius: 5px; }
-  .annuler { color: var(--texte-doux); }
-  .annuler:hover { background: var(--fond-survol); color: var(--texte); }
-  .ajouter { background: var(--accent); color: #fff; font-weight: 600; }
+  .cancel { color: var(--text-muted); }
+  .cancel:hover { background: var(--bg-hover); color: var(--text); }
+  .add-button { background: var(--accent); color: #fff; font-weight: 600; }
   kbd { font: inherit; opacity: 0.8; margin-left: 4px; }
-  .message { box-sizing: border-box; height: 100%; display: flex; align-items: center; padding: 8px 12px; background: var(--fond-actif); color: var(--texte); border: 1px solid var(--bord); border-radius: 8px; font-size: 12px; line-height: 1.35; cursor: default; overflow: hidden; }
-  .volet { height: 100%; border-radius: 8px; overflow: hidden; }
+  .message { box-sizing: border-box; height: 100%; display: flex; align-items: center; padding: 8px 12px; background: var(--bg-active); color: var(--text); border: 1px solid var(--border); border-radius: 8px; font-size: 12px; line-height: 1.35; cursor: default; overflow: hidden; }
+  .pane { height: 100%; border-radius: 8px; overflow: hidden; }
 </style>

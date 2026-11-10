@@ -133,7 +133,7 @@ test("the process exits right away: error without waiting for the delay", async 
   expect(app.error).toContain("boum");
 });
 
-test("the port never answers: error after delaiPretMs, process stopped", async () => {
+test("the port never answers: error after readyDelayMs, process stopped", async () => {
   const c = await space();
   const { g, process: process, stops: stops } = prepare({ paths: c, probe: scriptedProbe({}) });
   const start = Date.now();
@@ -244,7 +244,7 @@ test("the project watching does not wait for the orphan cleanup (Docker starting
   await startup;
 });
 
-test("toutArreter also cancels a queued launch: nothing is launched after", async () => {
+test("stopAll also cancels a queued launch: nothing is launched after", async () => {
   const c = await space();
   const { g, process: process } = prepare({ paths: c, probe: scriptedProbe({}) });
   const first = g.launch("todo");
@@ -331,7 +331,7 @@ test("demarrer on a stopped container: nothing to stop", async () => {
   expect(stops()).toHaveLength(0);
 });
 
-test("toutArreter stops each running app", async () => {
+test("stopAll stops each running app", async () => {
   const c = await space({
     todo: '{"type":"app","launch":"x"}',
     autre: '{"type":"poc","launch":"y"}',

@@ -51,14 +51,14 @@
 </script>
 
 {#if preview && zone}
-  <div class="apercu" style:left="{zone.x}px" style:top="{zone.y}px" style:width="{zone.width}px" style:height="{zone.height}px">
-    <img data-testid="modale-apercu" src={preview} alt="" />
+  <div class="preview" style:left="{zone.x}px" style:top="{zone.y}px" style:width="{zone.width}px" style:height="{zone.height}px">
+    <img data-testid="preview-modal" src={preview} alt="" />
   </div>
 {/if}
-<div class="voile"></div>
+<div class="veil"></div>
 
 <style>
-  .apercu { position: fixed; overflow: hidden; }
-  .apercu img { display: block; width: 100%; height: 100%; object-fit: cover; filter: blur(8px); transform: scale(1.03); }
-  .voile { position: fixed; inset: 0; background: var(--voile); }
+  .preview { position: fixed; overflow: hidden; }
+  .preview img { display: block; width: 100%; height: 100%; object-fit: cover; filter: blur(8px); transform: scale(1.03); }
+  .veil { position: fixed; inset: 0; background: var(--veil); }
 </style>

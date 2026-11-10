@@ -114,9 +114,9 @@ for (const h of ["accorde.test", "autre.test"]) {
   try { new WebSocket("wss://" + h + "/sw-ws").onerror = () => {}; } catch {}
 }
 (async () => {
-  await essai("ongletRefuse", () => chrome.tabs.create({ url: "https://autre.test/onglet-refuse" }).then((t) => t && t.id));
+  await essai("ongletRefuse", () => chrome.tabs.create({ url: "https://autre.test/tab-refuse" }).then((t) => t && t.id));
   await essai("ongletDonnees", () => chrome.tabs.create({ url: "data:text/html,x" }).then((t) => t && t.id));
-  await essai("ongletPermis", () => chrome.tabs.create({ url: "https://hote.test/onglet-permis", active: false }).then((t) => typeof (t && t.id)));
+  await essai("ongletPermis", () => chrome.tabs.create({ url: "https://hote.test/tab-permis", active: false }).then((t) => typeof (t && t.id)));
   await essai("fenetreRefusee", () => chrome.windows.create({ url: "https://autre.test/fenetre-refusee" }).then(() => "ouverte"));
   const regle = (id, action) => ({ removeRuleIds: [id], addRules: [{ id, priority: 1, action, condition: { urlFilter: "/rien-" + id, resourceTypes: ["xmlhttprequest"] } }] });
   await essai("dnrRedirect", () => chrome.declarativeNetRequest.updateDynamicRules(regle(1, { type: "redirect", redirect: { url: "https://autre.test/" } })).then(() => "acceptee"));
@@ -247,21 +247,21 @@ document.title = JSON.stringify(vu);
   document.body.appendChild(doc);
   await new Promise((ok) => doc.addEventListener("load", ok, { once: true }));
   vu.srcdoc = await sonder(window[3], "srcdoc");
-  // contentWindow masqué sur l'élément : le cadre n'est atteint que par window[4], lu dans la même tâche.
+  // contentWindow hidden on the element: the frame is only reached through window[4], read in the same task.
   const masque = document.createElement("iframe");
   Object.defineProperty(masque, "contentWindow", { get: () => null });
   Object.defineProperty(masque, "contentDocument", { get: () => null });
   document.body.appendChild(masque);
   vu.masqueTot = typeof window[4].RTCPeerConnection;
   vu.masque = await sonder(window[4], "masque");
-  // Racine fantôme déclarative (setHTMLUnsafe), que attachShadow ne voit jamais.
+  // Declarative shadow root (setHTMLUnsafe), which attachShadow never sees.
   const declare = document.body.appendChild(document.createElement("div"));
   declare.setHTMLUnsafe('<div><template shadowrootmode="open"><iframe></iframe></template></div>');
   const dansDeclare = declare.firstElementChild.shadowRoot.querySelector("iframe");
   vu.declareTot = typeof dansDeclare.contentWindow.RTCPeerConnection;
   vu.declare = await sonder(dansDeclare.contentWindow, "declare");
-  // Même tâche, accès indexé seulement : racine déclarative (setHTMLUnsafe), cadre en clair par setHTMLUnsafe et par
-  // innerHTML. Puis toutes les fenêtres filles.
+  // Same task, indexed access only: declarative root (setHTMLUnsafe), plain frame through setHTMLUnsafe and through
+  // innerHTML. Then every child window.
   const avantDeclare = window.length;
   document.body.appendChild(document.createElement("div")).setHTMLUnsafe('<div><template shadowrootmode="open"><iframe></iframe></template></div><iframe></iframe>');
   vu.declareLongueur = window.length - avantDeclare;
@@ -270,7 +270,7 @@ document.title = JSON.stringify(vu);
   const avantInterieur = window.length;
   document.body.appendChild(document.createElement("div")).innerHTML = "<iframe></iframe>";
   vu.interieur = window.length > avantInterieur ? typeof window[avantInterieur].RTCPeerConnection : "absent";
-  // Par son nom : window.open("", nom) rend un cadre existant sans ouvrir de fenêtre, même dans une racine fermée.
+  // By its name: window.open("", name) returns an existing frame without opening a window, even in a closed root.
   document.body.appendChild(document.createElement("div")).setHTMLUnsafe('<div><template shadowrootmode="closed"><iframe name="nomme-ombre"></iframe></template></div><iframe name="nomme-clair"></iframe>');
   for (const nom of ["nomme-ombre", "nomme-clair"]) {
     let f = null;
@@ -279,8 +279,8 @@ document.title = JSON.stringify(vu);
     try { rtc = f ? typeof f.RTCPeerConnection : "absent"; } catch (e) { rtc = "inaccessible"; }
     vu[nom] = rtc;
   }
-  // Par son nom, sans window.open : document.open(url, nom, options) (forme à trois arguments), l'accès nommé
-  // (window[nom], frames[nom]). Chaque cadre nommé est neuf, dans une racine déclarative fermée.
+  // By its name, without window.open: document.open(url, name, options) (three-argument form), named access
+  // (window[name], frames[name]). Each named frame is new, in a closed declarative root.
   const parNom = (nom, prendre) => {
     document.body.appendChild(document.createElement("div")).setHTMLUnsafe('<div><template shadowrootmode="closed"><iframe name="' + nom + '"></iframe></template></div>');
     let f = null;
@@ -387,7 +387,7 @@ const NETWORK_GRANT = {
 const FORM_PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>formulaire</title></head><body>
 <form id="f" action="/envoi"><input type="text" id="texte" name="texte"><input type="password" id="mdp" name="mdp"></form>
 <script>document.getElementById("texte").value = "visible"; document.getElementById("mdp").value = "secret";
-// Comme React : la valeur recopiée dans l'attribut \`value\`.
+// Like React: the value copied into the \`value\` attribute.
 document.getElementById("texte").setAttribute("value", "visible"); document.getElementById("mdp").setAttribute("value", "secret");</script>
 </body></html>`;
 /** A page whose image delays the load end, so the invisible read stays open a few seconds. */
@@ -470,18 +470,18 @@ document.body.append(" AGENT-VU ");
 `,
   "vide.html": '<!doctype html><html><head><meta charset="utf-8"><title>vide</title></head><body>page de l\'agent</body></html>',
   "injecte.js": `document.getElementById("mdp").value + "|" + document.getElementById("texte").value;\n`,
-  "fond.js": `// Il tente de répondre « onglet » à la garde de page à sa place : le garde du fond ne le lui laisse pas voir.
+  "fond.js": `// It tries to answer « onglet » to the page guard in its place: the background guard does not let it see it.
 chrome.runtime.onMessage.addListener((m, _e, repondre) => {
   if (m && m.webaios === "context") repondre({ tab: true });
 });
-// Et par la méthode du prototype de l'événement, prise à part.
+// And through the event prototype's method, taken apart.
 let porteur = chrome.runtime.onMessage;
 while (porteur && !Object.prototype.hasOwnProperty.call(Object.getPrototypeOf(porteur) || {}, "addListener")) porteur = Object.getPrototypeOf(porteur);
 const ajouterNatif = porteur ? Object.getPrototypeOf(porteur).addListener : chrome.runtime.onMessage.addListener;
 ajouterNatif.call(chrome.runtime.onMessage, (m, _e, repondre) => {
   if (m && m.webaios === "context") repondre({ tab: true });
 });
-// Où sont les méthodes de l'événement, et sont-elles celles du garde (non configurables) ?
+// Where are the event's methods, and are they the guard's (non-configurable)?
 const porteurs = [];
 for (let o = chrome.runtime.onMessage; o && o !== Object.prototype; o = Object.getPrototypeOf(o)) {
   const d = Object.getOwnPropertyDescriptor(o, "addListener");
@@ -659,7 +659,7 @@ describe("agent extensions: network guard", () => {
     });
     // Firefox refuses a permission not in optional_permissions (which the copy refuses anyway).
     expect(r.permissionsDownloads).not.toEqual({ ok: true });
-    await until(() => hitsTo("hote.test", "/onglet-permis").length > 0);
+    await until(() => hitsTo("hote.test", "/tab-permis").length > 0);
     expect(hitsTo("autre.test")).toEqual([]);
   });
 
@@ -687,8 +687,8 @@ describe("agent extensions: network guard", () => {
       },
     });
     await until(() => hitsTo("autre.test", "/store-fetch").length > 0);
-    await openTab(m, "https://autre.test/onglet-site");
-    await until(() => hitsTo("autre.test", "/onglet-site").length > 0);
+    await openTab(m, "https://autre.test/tab-site");
+    await until(() => hitsTo("autre.test", "/tab-site").length > 0);
     await openTab(m, `${server.url}/pub.html?avec-agent`);
     const deadline = Date.now() + 10_000;
     while ((await m.execute<string>("return gBrowser.selectedBrowser.contentTitle")) !== "pub bloquée") {

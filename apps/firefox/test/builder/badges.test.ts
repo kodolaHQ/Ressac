@@ -12,5 +12,5 @@ test("badgesOf: the live replaces the status of the chosen run for the blocks in
 test("badgesOf: without live or without a run", () => {
   expect(badgesOf(exec, null).a).toEqual({ status: "succeeded", items: 3 });
   expect(badgesOf(null, null)).toEqual({});
-  expect(badgesOf(null, { widget: "w", kind: "essai", start: "d", blocks: { x: { status: "succeeded", items: 1 } } })).toEqual({ x: { status: "succeeded", items: 1 } });
+  expect(badgesOf(null, { widget: "w", kind: "attempt", start: "d", blocks: { x: { status: "succeeded", items: 1 } } })).toEqual({ x: { status: "succeeded", items: 1 } });
 });

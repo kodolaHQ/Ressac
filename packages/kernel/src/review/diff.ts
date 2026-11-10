@@ -4,7 +4,7 @@ export interface Block { oldStart: number; oldCount: number; newStart: number; n
 const HEADER = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
 
 /** Reads a unified patch (a single file): the file header is ignored, each « @@ » opens a block. */
-export function parserDiff(patch: string): Block[] {
+export function parseDiff(patch: string): Block[] {
   const blocks: Block[] = [];
   let current: Block | null = null;
   let old = 0;

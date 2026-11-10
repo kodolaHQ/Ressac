@@ -21,7 +21,7 @@ test("idExecution replaces : and . with -", () => {
   expect(idExecution("2026-10-29T08:00:01.234Z")).toBe("2026-10-29T08-00-01-234Z");
 });
 
-test("an output over 256 KB is kept truncated, as text, and marked sortieTronquee", async () => {
+test("an output over 256 KB is kept truncated, as text, and marked truncatedOutput", async () => {
   const d = await tempFolder();
   const big = { list: Array.from({ length: 40000 }, (_, i) => ({ i, t: "abcdefghij" })) };
   const e = execution(timestamp(0), [block("a", big), block("b", { small: 1 })]);

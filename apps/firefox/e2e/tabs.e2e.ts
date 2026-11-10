@@ -130,7 +130,7 @@ const crash = (id: string) =>
     [id],
   );
 /** The text of the UI's content area (an expression for waitUi). */
-const CONTENT_TEXT = `(doc.querySelector('[data-testid="zone-contenu"]')?.textContent ?? "")`;
+const CONTENT_TEXT = `(doc.querySelector('[data-testid="content-zone"]')?.textContent ?? "")`;
 
 const windowCount = () => m.execute<number>("return [...Services.wm.getEnumerator('navigator:browser')].length");
 
@@ -199,7 +199,7 @@ describe("window controller", () => {
 
   it("keeps a link opened in a space with its own profile in that space and container", async () => {
     const windowId = (await win()).id;
-    await dispatch(m, { type: "createSpace", name: "Pro", icon: "💼", private: false, profile: "nouveau", windowId: windowId });
+    await dispatch(m, { type: "createSpace", name: "Pro", icon: "💼", private: false, profile: "new", windowId: windowId });
     const space = (await win()).activeSpace;
     const a = await open("/a.html");
     await waitTitle(a, "Page A");
@@ -258,7 +258,7 @@ describe("window controller", () => {
     const windowId = (await win()).id;
     const spaceA = (await win()).activeSpace;
     await waitTitle(await open("/cookie"), "cookie");
-    await dispatch(m, { type: "createSpace", name: "B", icon: "🅱", private: false, profile: "nouveau", windowId: windowId });
+    await dispatch(m, { type: "createSpace", name: "B", icon: "🅱", private: false, profile: "new", windowId: windowId });
     const spaceB = (await win()).activeSpace;
     const profileB = (await state(m)).spaces.find((e) => e.id === spaceB)!.profile;
     await waitTitle(await open("/lire-cookie"), "aucun");
@@ -270,7 +270,7 @@ describe("window controller", () => {
     await waitTitle(await open("/lire-cookie"), "essai=1");
     await dispatch(m, { type: "deleteSpace", id: spaceB });
     await waitFor(m, cookiesB, (n) => n === 0, 3_000);
-    await dispatch(m, { type: "createSpace", name: "C", icon: "©", private: false, profile: "nouveau", windowId: windowId });
+    await dispatch(m, { type: "createSpace", name: "C", icon: "©", private: false, profile: "new", windowId: windowId });
     await waitTitle(await open("/lire-cookie"), "aucun");
     const gone = await m.execute<boolean>(`
       const { ContextualIdentityService } = ChromeUtils.importESModule("moz-src:///toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs");
@@ -382,9 +382,9 @@ describe("window controller", () => {
     await waitUi(m, `return ${CONTENT_TEXT}.includes("Cette page a planté.")`);
     expect(await selected()).toEqual({ id: null, parking: true });
     const a = await open("/a.html", { activate: false });
-    await waitUi(m, "return doc.querySelector('[data-testid=\"barre-laterale\"]').textContent.includes(arguments[0])", ["a.html"]);
+    await waitUi(m, "return doc.querySelector('[data-testid=\"sidebar\"]').textContent.includes(arguments[0])", ["a.html"]);
     expect((await state(m)).tabs[a]).toBeDefined();
-    await clickUi(m, '[data-testid="zone-contenu"] button', { text: "Recharger" });
+    await clickUi(m, '[data-testid="content-zone"] button', { text: "Recharger" });
     await waitUi(m, `return !${CONTENT_TEXT}.includes("Cette page a planté.")`);
     await waitFor(m, "return gBrowser.selectedTab.getAttribute('webaios-tab-id')", (v) => v === id);
     await waitState((s) => s.tabs[id]?.crashed, (p) => p === false);
@@ -409,7 +409,7 @@ describe("window controller", () => {
     const text = await waitUi<string>(m, `const t = ${CONTENT_TEXT}; return t.includes("Impossible d'ouvrir cette page.") && t;`);
     expect(text).toMatch(/NS_ERROR_[A-Z_]+/);
     expect(text).toContain("http://127.0.0.1:1/");
-    await waitUi(m, "return [...doc.querySelectorAll('[data-testid=\"zone-contenu\"] button')].some((b) => b.textContent === 'Recharger')");
+    await waitUi(m, "return [...doc.querySelectorAll('[data-testid=\"content-zone\"] button')].some((b) => b.textContent === 'Recharger')");
     expect(await selected()).toEqual({ id: null, parking: true });
     expect((await state(m)).tabs[id]?.loading).toBe(false);
     // A refused connection names its failed load's status (port 1 above is refused before any request).

@@ -7,8 +7,8 @@ const { spawn, spawnSync } = require("node:child_process");
 
 const args = process.argv.slice(2);
 const env = process.env;
-const echec = env.FAKE_DOCKER_FAILURE === "1";
-const sortir = (code, out = "", err = "") => {
+const failing = env.FAKE_DOCKER_FAILURE === "1";
+const quit = (code, out = "", err = "") => {
   if (out) process.stdout.write(out);
   if (err) process.stderr.write(err);
   process.exit(code);
@@ -16,85 +16,85 @@ const sortir = (code, out = "", err = "") => {
 
 // FAKE_DOCKER_SLOW: Docker that is starting up, `docker info` only answers after 8 s.
 if (args[0] === "info" && env.FAKE_DOCKER_SLOW === "1") Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 8_000);
-if (args[0] === "info") sortir(env.FAKE_DOCKER_ABSENT === "1" ? 1 : 0);
+if (args[0] === "info") quit(env.FAKE_DOCKER_ABSENT === "1" ? 1 : 0);
 if (args[0] === "inspect") {
-  if (echec) sortir(1, "", "No such object");
+  if (failing) quit(1, "", "No such object");
   const format = args[2] ?? "";
-  if (format.includes("State.Running")) sortir(0, "true\n");
+  if (format.includes("State.Running")) quit(0, "true\n");
   const dockerfile = join(__dirname, "..", "..", "..", "..", "packages", "kernel", "docker", "workshop.Dockerfile");
-  const empreinte = createHash("sha256").update(readFileSync(dockerfile)).digest("hex").slice(0, 12);
-  sortir(0, `${env.WEBAIOS_ROOT}|${empreinte}\n`);
+  const hash = createHash("sha256").update(readFileSync(dockerfile)).digest("hex").slice(0, 12);
+  quit(0, `${env.WEBAIOS_ROOT}|${hash}\n`);
 }
 /** PID of the `run` client of a harvest in progress, by container name. */
-const fichierRecolte = (nom) => join(env.WEBAIOS_ROOT, `faux-docker-${nom}.pid`);
+const harvestPidFile = (name) => join(env.WEBAIOS_ROOT, `fake-docker-${name}.pid`);
 
 /** A run's container: a widget's harvest or an action's run. */
-const estExecution = (nom) => (nom ?? "").startsWith("webaios-harvest-") || (nom ?? "").startsWith("webaios-action-");
+const isRun = (name) => (name ?? "").startsWith("webaios-harvest-") || (name ?? "").startsWith("webaios-action-");
 
 // A widget's harvest or an action's run (Workshop.harvestCommand):
 // `run -i --rm … --name webaios-harvest-<id> (or webaios-action-<id>) … node <harvester> /widget`.
 // The harvester runs on the Mac (node), with the host paths recovered from the `-v host:container`. The kernel
 // must cut the container's network: without `--network none`, the harvest fails.
-if (args[0] === "run" && args.includes("-i") && estExecution(args[args.indexOf("--name") + 1])) {
-  const reseau = args.indexOf("--network");
-  if (reseau < 0 || args[reseau + 1] !== "none") sortir(1, "", "faux docker : --network none manquant\n");
-  const montages = new Map();
+if (args[0] === "run" && args.includes("-i") && isRun(args[args.indexOf("--name") + 1])) {
+  const network = args.indexOf("--network");
+  if (network < 0 || args[network + 1] !== "none") quit(1, "", "fake docker: --network none missing\n");
+  const mounts = new Map();
   for (let i = 0; i < args.length; i++) {
     if (args[i] !== "-v") continue;
-    const [hote, conteneur] = args[++i].split(":");
-    montages.set(conteneur, hote);
+    const [host, container] = args[++i].split(":");
+    mounts.set(container, host);
   }
   // A path under a mounted folder (the engine: /opt/webaios/engine/harvester.mjs) is recovered by its prefix.
-  const versHote = (c) => {
-    if (montages.has(c)) return montages.get(c);
-    for (const [conteneur, hote] of montages) if (c.startsWith(conteneur + "/")) return hote + c.slice(conteneur.length);
+  const toHost = (c) => {
+    if (mounts.has(c)) return mounts.get(c);
+    for (const [container, host] of mounts) if (c.startsWith(container + "/")) return host + c.slice(container.length);
     return c;
   };
   const node = args.indexOf("node", args.indexOf("--name"));
-  const [harvester, widget] = args.slice(node + 1).map(versHote);
-  const enfant = spawn(process.execPath, [harvester, widget], { stdio: "inherit" });
+  const [harvester, widget] = args.slice(node + 1).map(toHost);
+  const child = spawn(process.execPath, [harvester, widget], { stdio: "inherit" });
   // Noted for `rm -f <name>`, which kills the container like the real docker (the `run` client then returns 137).
-  const fichier = fichierRecolte(args[args.indexOf("--name") + 1]);
-  writeFileSync(fichier, String(process.pid));
-  let tue = false;
+  const file = harvestPidFile(args[args.indexOf("--name") + 1]);
+  writeFileSync(file, String(process.pid));
+  let killed = false;
   for (const signal of ["SIGHUP", "SIGTERM", "SIGINT"])
     process.on(signal, () => {
-      tue = true;
-      enfant.kill("SIGKILL");
+      killed = true;
+      child.kill("SIGKILL");
     });
-  enfant.on("exit", (code) => {
-    rmSync(fichier, { force: true });
-    process.exit(tue ? 137 : (code ?? 1));
+  child.on("exit", (code) => {
+    rmSync(file, { force: true });
+    process.exit(killed ? 137 : (code ?? 1));
   });
   return;
 }
 // Forced removal of a run container (Workshop.deleteHarvest): the running harvester is killed.
-if (args[0] === "rm" && args[1] === "-f" && estExecution(args[2])) {
-  const fichier = fichierRecolte(args[2]);
-  if (existsSync(fichier)) {
+if (args[0] === "rm" && args[1] === "-f" && isRun(args[2])) {
+  const file = harvestPidFile(args[2]);
+  if (existsSync(file)) {
     try {
-      process.kill(Number(readFileSync(fichier, "utf8")), "SIGTERM");
+      process.kill(Number(readFileSync(file, "utf8")), "SIGTERM");
     } catch {
       // already finished
     }
   }
-  sortir(0);
+  quit(0);
 }
-if (args[0] === "run" && args[1] === "--rm") sortir(1);
-if (["image", "build", "run"].includes(args[0])) sortir(echec ? 1 : 0, "", echec ? "échec simulé" : "");
+if (args[0] === "run" && args[1] === "--rm") quit(1);
+if (["image", "build", "run"].includes(args[0])) quit(failing ? 1 : 0, "", failing ? "simulated failure" : "");
 /** PID of a launched app's group (its shell, group leader). */
-const fichierApp = (dossier) => join(env.WEBAIOS_ROOT, `faux-docker-app-${dossier}.pid`);
+const appPidFile = (folder) => join(env.WEBAIOS_ROOT, `fake-docker-app-${folder}.pid`);
 
 /** Kills the group of each app targeted by a stop script (`WEBAIOS_APP=<folder>` or `WEBAIOS_APP=.*`). */
-function arreterApplications(script) {
+function stopApps(script) {
   // The dot of a folder name is escaped for grep (`my\.app`).
-  const motif = /WEBAIOS_APP=(\.\*|(?:[A-Za-z0-9_-]|\\\.)+)/.exec(script)?.[1]?.replaceAll("\\.", ".");
-  if (!motif) return;
-  const fichiers =
-    motif === ".*"
-      ? readdirSync(env.WEBAIOS_ROOT).filter((f) => /^faux-docker-app-.*\.pid$/.test(f)).map((f) => join(env.WEBAIOS_ROOT, f))
-      : [fichierApp(motif)];
-  for (const f of fichiers) {
+  const pattern = /WEBAIOS_APP=(\.\*|(?:[A-Za-z0-9_-]|\\\.)+)/.exec(script)?.[1]?.replaceAll("\\.", ".");
+  if (!pattern) return;
+  const files =
+    pattern === ".*"
+      ? readdirSync(env.WEBAIOS_ROOT).filter((f) => /^fake-docker-app-.*\.pid$/.test(f)).map((f) => join(env.WEBAIOS_ROOT, f))
+      : [appPidFile(pattern)];
+  for (const f of files) {
     if (!existsSync(f)) continue;
     try {
       process.kill(-Number(readFileSync(f, "utf8")), "SIGTERM");
@@ -106,50 +106,50 @@ function arreterApplications(script) {
 }
 
 /**
- * Launch of an app (Workshop.commandeApplication): the shell runs on the Mac, /workspace becoming WEBAIOS_ROOT,
+ * Launch of an app (Workshop.appCommand): the shell runs on the Mac, /workspace becoming WEBAIOS_ROOT,
  * in its own group (like the container's processes, which the stop targets by their mark).
  */
-function lancerApplication(options, commande) {
+function launchApp(options, command) {
   const local = (s) => s.replaceAll("/workspace", env.WEBAIOS_ROOT);
-  const variables = {};
-  let dossier = "/workspace";
+  const vars = {};
+  let folder = "/workspace";
   for (let i = 0; i < options.length; i++) {
     if (options[i] === "-e") {
-      const [cle, ...valeur] = local(options[++i]).split("=");
-      variables[cle] = valeur.join("=");
-    } else if (options[i] === "-w") dossier = options[++i];
+      const [key, ...value] = local(options[++i]).split("=");
+      vars[key] = value.join("=");
+    } else if (options[i] === "-w") folder = options[++i];
   }
-  const [programme, ...reste] = commande.map(local);
-  const enfant = spawn(programme, reste, { cwd: local(dossier), env: { ...env, ...variables }, stdio: "inherit", detached: true });
-  writeFileSync(fichierApp(variables.WEBAIOS_APP), String(enfant.pid));
+  const [program, ...rest] = command.map(local);
+  const child = spawn(program, rest, { cwd: local(folder), env: { ...env, ...vars }, stdio: "inherit", detached: true });
+  writeFileSync(appPidFile(vars.WEBAIOS_APP), String(child.pid));
   for (const signal of ["SIGHUP", "SIGTERM", "SIGINT"])
     process.on(signal, () => {
       try {
-        process.kill(-enfant.pid, signal);
+        process.kill(-child.pid, signal);
       } catch {
         // already stopped
       }
     });
-  enfant.on("exit", (code) => process.exit(code ?? 1));
+  child.on("exit", (code) => process.exit(code ?? 1));
 }
 
 if (args[0] === "exec") {
   const options = args.slice(1, args.indexOf("webaios-workshop"));
-  let commande = args.slice(args.indexOf("webaios-workshop") + 1);
+  let command = args.slice(args.indexOf("webaios-workshop") + 1);
   if (options.some((o) => o.startsWith("WEBAIOS_APP="))) {
-    lancerApplication(options, commande);
+    launchApp(options, command);
     return;
   }
-  // Stop of a session or an app in the container (Workshop.arreterSession, arreterApplication…): noted for the
+  // Stop of a session or an app in the container (Workshop session and app stops…): noted for the
   // tests; the targeted apps are killed beforehand, the log is the proof of the stop.
-  if (commande[0] === "sh" && !commande[2].includes('exec "$@"')) {
-    arreterApplications(commande[2]);
-    appendFileSync(join(env.WEBAIOS_ROOT, "faux-docker-arrets.log"), `${commande[2]}\n`);
-    sortir(0);
+  if (command[0] === "sh" && !command[2].includes('exec "$@"')) {
+    stopApps(command[2]);
+    appendFileSync(join(env.WEBAIOS_ROOT, "fake-docker-stops.log"), `${command[2]}\n`);
+    quit(0);
   }
-  // Interactive session (Workshop.commandeSession): sh -c '<notes the PID>; exec "$@"' webaios-session <agent…>
-  if (commande[0] === "sh") commande = commande.slice(4);
-  const r = spawnSync(process.execPath, [join(__dirname, "fake-agent.mjs"), ...commande], { stdio: "inherit" });
+  // Interactive session (Workshop.sessionCommand): sh -c '<notes the PID>; exec "$@"' webaios-session <agent…>
+  if (command[0] === "sh") command = command.slice(4);
+  const r = spawnSync(process.execPath, [join(__dirname, "fake-agent.mjs"), ...command], { stdio: "inherit" });
   process.exit(r.status ?? 1);
 }
-sortir(0);
+quit(0);

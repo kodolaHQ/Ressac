@@ -8,7 +8,7 @@ const profiles = [{ id: "default" }, { id: "p1" }, { id: "p2" }];
 test("new space: « Nouveau profil » creates one, then each used profile with all its spaces", () => {
   const spaces = [space("a", "Perso", "default"), space("b", "Travail", "p1"), space("c", "Clients", "p1")];
   expect(profileOptions(spaces, profiles.slice(0, 2), null)).toEqual([
-    { value: "nouveau", label: "Nouveau profil" },
+    { value: "new", label: "Nouveau profil" },
     { value: "default", label: "Partagé avec « Perso »" },
     { value: "p1", label: "Partagé avec « Travail, Clients »" },
   ]);
@@ -26,7 +26,7 @@ test("settings: the space being set is not named, and a profile it alone has is 
 test("settings of a space that shares its profile: its own profile creates a new one", () => {
   const spaces = [space("a", "Perso", "default"), space("b", "Travail", "default")];
   expect(profileOptions(spaces, [{ id: "default" }], "b")).toEqual([
-    { value: "nouveau", label: "Son propre profil" },
+    { value: "new", label: "Son propre profil" },
     { value: "default", label: "Partagé avec « Perso »" },
   ]);
 });
@@ -34,7 +34,7 @@ test("settings of a space that shares its profile: its own profile creates a new
 test("a profile that no space uses is not offered", () => {
   const spaces = [space("a", "Perso", "p1")];
   expect(profileOptions(spaces, [{ id: "default" }, { id: "p1" }], null)).toEqual([
-    { value: "nouveau", label: "Nouveau profil" },
+    { value: "new", label: "Nouveau profil" },
     { value: "p1", label: "Partagé avec « Perso »" },
   ]);
 });
@@ -51,7 +51,7 @@ test("settings: leaving the last use of a non-default profile loses the sign-ins
   const spaces = [space("a", "Perso", "default"), space("b", "Travail", "p1"), space("c", "Clients", "p1"), space("d", "Banque", "p2")];
   expect(choiceLosesConnections(spaces, "d", "p2")).toBe(false);
   expect(choiceLosesConnections(spaces, "d", "default")).toBe(true);
-  expect(choiceLosesConnections(spaces, "d", "nouveau")).toBe(true);
+  expect(choiceLosesConnections(spaces, "d", "new")).toBe(true);
   // Shared profile: the other spaces keep it.
   expect(choiceLosesConnections(spaces, "b", "default")).toBe(false);
   // The default profile is never erased; a new space has nothing to lose.

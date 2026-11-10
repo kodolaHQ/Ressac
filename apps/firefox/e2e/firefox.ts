@@ -57,7 +57,7 @@ export async function inWindow<T>(m: Marionette, handle: string, fn: () => Promi
 /** The current window is WebAiOs: its controller, its parking tab and its sidebar are up. */
 export async function waitReady(m: Marionette): Promise<void> {
   await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
-  await waitUi(m, "return !!doc.querySelector('[data-testid=\"barre-laterale\"]')");
+  await waitUi(m, "return !!doc.querySelector('[data-testid=\"sidebar\"]')");
 }
 
 /** A key that closes the current window: its key-ups have no window left to go to. */

@@ -535,7 +535,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
 
   it("P7: an invisible read with a profile's container, without a permission banner; the Docker atelier", { timeout: 180_000 }, async () => {
     const before = (await state(m)).spaces.map((e) => e.id);
-    await dispatch(m, { type: "createSpace", name: "Spike", icon: "🧪", private: false, profile: "nouveau", windowId: (await state(m)).windows[0]!.id });
+    await dispatch(m, { type: "createSpace", name: "Spike", icon: "🧪", private: false, profile: "new", windowId: (await state(m)).windows[0]!.id });
     const space = (await state(m)).spaces.filter((e) => !before.includes(e.id));
     const profile = space[0]?.profile;
     const uc = await chrome(m, `return (await ChromeUtils.importESModule("${STORE}").ready).containerFor(arguments[0]);`, [profile]);

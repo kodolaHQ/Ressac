@@ -53,7 +53,7 @@ test("the agent navigates its demo tab to another port → access kept", () => {
   expect(p.canRead({ ...demo, url: "http://localhost:5281/" })).toBe(true);
 });
 
-test("reinitialiser removes everything; ongletFerme removes the tab", () => {
+test("reinitialiser removes everything; tabClosed removes the tab", () => {
   p.userInteraction(github);
   p.grant(gmail);
   p.tabClosed(gmail.id);
@@ -153,7 +153,7 @@ test("accorderDev: only the checked rights; they drop on site change, on close, 
   expect(p.devRights(github)).toEqual([]);
 });
 
-test("refusal: peutDemander false for a refused (tab, right) until interactionUtilisateur; another right stays requestable", () => {
+test("refusal: canAsk false for a refused (tab, right) until userInteraction; another right stays requestable", () => {
   p.grantDev(github, [], ["network"]);
   expect(p.canAsk(github.id, "network")).toBe(false);
   expect(p.canAsk(github.id, "console")).toBe(true);
@@ -201,7 +201,7 @@ test("etat(): reading, rights, built, enCours (utilisation true/false balanced)"
   expect(p.state()[demo.id]).toBeUndefined();
 });
 
-test("surChange called on each mutation, unsubscribe effective", () => {
+test("onChange called on each mutation, unsubscribe effective", () => {
   let n = 0;
   const stop = p.onChange(() => n++);
   p.userInteraction(github);
@@ -335,7 +335,7 @@ test("reading of a site app tied to the hash of its declaration: another hash do
   expect(p.grantedSiteRead("vidola", "e1")).toBe(false);
 });
 
-test("retirerLectureSite (app deleted): the grant drops, the badge follows; pending cards see it (retraitsLectureSite)", () => {
+test("retirerLectureSite (app deleted): the grant drops, the badge follows; pending cards see it (siteReadWithdrawals)", () => {
   p.grantSiteRead("vidola", "e1");
   p.grantSiteRead("youtube", "y");
   let n = 0;

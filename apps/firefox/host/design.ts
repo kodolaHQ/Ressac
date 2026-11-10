@@ -111,7 +111,7 @@ export function createDesignHost(o: {
     void o
       .sites()
       .then((l) => review.handleSites(l.map((s) => s.id)))
-      .catch((e) => console.error("[relecture] prise en charge des sites :", e));
+      .catch((e) => console.error("[review] site tracking:", e));
   };
   let takeOverTimer: NodeJS.Timeout | undefined;
   const takeOverSoon = () => {
@@ -290,8 +290,8 @@ export function createDesignHost(o: {
     siteDeleted: (id) => {
       const p = `site-${id}`;
       if (!ID_PROJECT.test(p)) return;
-      void remarks.forget(p).catch((e) => console.error(`[design] remarques de ${id} non effacées :`, e));
-      void review.erase(p).catch((e) => console.error(`[relecture] relecture de ${id} non effacée :`, e));
+      void remarks.forget(p).catch((e) => console.error(`[design] remarks of ${id} not erased:`, e));
+      void review.erase(p).catch((e) => console.error(`[review] review of ${id} not erased:`, e));
     },
     stop: async () => {
       clearInterval(purge);

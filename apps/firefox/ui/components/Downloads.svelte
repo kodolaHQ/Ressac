@@ -22,16 +22,16 @@
 
 <svelte:window onkeydown={(e) => e.key === "Escape" && close()} />
 
-<section class="telechargements" data-testid="telechargements" aria-label="Téléchargements">
+<section class="downloads" data-testid="downloads" aria-label="Téléchargements">
   <header>
     <h1>Téléchargements</h1>
-    <button class="fermer" aria-label="Fermer les téléchargements" onclick={close}><Icon name="close" size={12} /></button>
+    <button class="close" aria-label="Fermer les téléchargements" onclick={close}><Icon name="close" size={12} /></button>
   </header>
   <ul>
     {#each downloads.list as t (t.id)}
-      <li data-testid="telechargement" data-etat={t.state}>
+      <li data-testid="download" data-state={t.state}>
         <div class="infos">
-          <span class="nom">{t.name}</span>
+          <span class="name">{t.name}</span>
           <span class="detail">
             {LABELS[t.state]} · {t.state === "in-progress" && t.total ? `${size(t.received)} sur ${size(t.total)}` : size(t.received)}
           </span>
@@ -44,22 +44,22 @@
         <button onclick={() => api.downloads.show(t.id)}>Afficher dans le Finder</button>
       </li>
     {:else}
-      <p class="vide">Aucun téléchargement pendant cette session.</p>
+      <p class="empty">Aucun téléchargement pendant cette session.</p>
     {/each}
   </ul>
 </section>
 
 <style>
-  .telechargements { height: 100%; overflow-y: auto; box-sizing: border-box; padding: 24px 32px; color: var(--texte); }
+  .downloads { height: 100%; overflow-y: auto; box-sizing: border-box; padding: 24px 32px; color: var(--text); }
   header { display: flex; align-items: center; margin-bottom: 12px; }
   h1 { font-size: 18px; margin: 0; }
-  .fermer { margin-left: auto; border: none; background: none; color: var(--texte); }
+  .close { margin-left: auto; border: none; background: none; color: var(--text); }
   ul { list-style: none; margin: 0; padding: 0; }
-  li { display: flex; align-items: center; gap: 8px; padding: 10px 8px; border-bottom: 1px solid var(--bord); }
+  li { display: flex; align-items: center; gap: 8px; padding: 10px 8px; border-bottom: 1px solid var(--border); }
   .infos { flex: 1; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-  .nom { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .detail { font-size: 12px; color: var(--texte-doux); }
+  .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .detail { font-size: 12px; color: var(--text-muted); }
   progress { width: 100%; height: 4px; accent-color: var(--accent); }
-  li button { padding: 4px 8px; border-radius: 6px; border: 1px solid var(--bord); background: var(--fond-barre); color: var(--texte); }
-  .vide { color: var(--texte-doux); }
+  li button { padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); }
+  .empty { color: var(--text-muted); }
 </style>

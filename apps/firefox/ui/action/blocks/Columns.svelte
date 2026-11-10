@@ -5,7 +5,7 @@
   let { left: left, right: right }: { left: Snippet; right: Snippet } = $props();
 </script>
 
-<div class="pa-colonnes" data-testid="bloc-colonnes">
-  <div class="pa-blocs">{@render left()}</div>
-  <div class="pa-blocs">{@render right()}</div>
+<div class="pa-columns" data-testid="block-columns">
+  <div class="pa-blocks">{@render left()}</div>
+  <div class="pa-blocks">{@render right()}</div>
 </div>

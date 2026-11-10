@@ -85,12 +85,12 @@
     onclick={() => api.dispatch({ type: "toggleCompact", windowId: win.id })}><Icon name="bar" /></button>
   <DesignButton />
 </div>
-<div class="ligne">
+<div class="line">
 <form onsubmit={validate}>
   <input
     bind:this={field}
-    data-testid="barre-adresse"
-    class:avec-acces={agentRights}
+    data-testid="address-bar"
+    class:with-access={agentRights}
     value={input ?? (tab ? hostName(tab.url) : "")}
     placeholder="Rechercher ou saisir une adresse"
     spellcheck="false"
@@ -113,7 +113,7 @@
     aria-controls="suggestions"
     aria-autocomplete="list"
   />
-  {#if tab && agentRights}<span class="acces"><AccessBadge id={tab.id} state={agentRights} /></span>{/if}
+  {#if tab && agentRights}<span class="access"><AccessBadge id={tab.id} state={agentRights} /></span>{/if}
   {#if suggestions.length}
     <ul class="suggestions" id="suggestions" role="listbox">
       {#each suggestions as v, i (v.url)}
@@ -126,7 +126,7 @@
             go(v.url);
           }}
         >
-          <span class="titre">{v.title}</span>
+          <span class="title">{v.title}</span>
           <span class="url">{v.url}</span>
         </li>
       {/each}
@@ -138,23 +138,23 @@
 
 <style>
   .navigation { display: flex; gap: 2px; padding: 0 2px 6px 70px; -webkit-app-region: drag; }
-  .navigation button { all: unset; width: 26px; height: 24px; display: grid; place-content: center; border-radius: 5px; color: var(--texte-doux); -webkit-app-region: no-drag; }
-  .navigation button:hover:not(:disabled) { background: var(--fond-survol); color: var(--texte); }
+  .navigation button { all: unset; width: 26px; height: 24px; display: grid; place-content: center; border-radius: 5px; color: var(--text-muted); -webkit-app-region: no-drag; }
+  .navigation button:hover:not(:disabled) { background: var(--bg-hover); color: var(--text); }
   .navigation button:disabled { opacity: 0.35; }
   .navigation .compact { margin-left: auto; }
   .navigation .compact[aria-pressed="true"] { color: var(--accent); }
   /* The badge: a background under its first row (field and extensions), the extensions panel wraps to the line below. */
-  .ligne { position: relative; z-index: 1; display: flex; align-items: center; flex-wrap: wrap; -webkit-app-region: no-drag; }
-  .ligne::before { content: ""; position: absolute; z-index: -1; inset: 0 0 auto; height: 34px; box-sizing: border-box; border-radius: 10px; border: 1px solid transparent; background: var(--fond-survol); }
-  .ligne:has(input:focus)::before { border-color: var(--accent); background: var(--fond); }
-  .ligne :global(.extensions) { padding-right: 3px; }
+  .line { position: relative; z-index: 1; display: flex; align-items: center; flex-wrap: wrap; -webkit-app-region: no-drag; }
+  .line::before { content: ""; position: absolute; z-index: -1; inset: 0 0 auto; height: 34px; box-sizing: border-box; border-radius: 10px; border: 1px solid transparent; background: var(--bg-hover); }
+  .line:has(input:focus)::before { border-color: var(--accent); background: var(--bg); }
+  .line :global(.extensions) { padding-right: 3px; }
   form { position: relative; flex: 1; min-width: 80px; height: 34px; }
-  .acces { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); }
-  .suggestions { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 5; list-style: none; margin: 0; padding: 4px; background: var(--fond-actif); border: 1px solid var(--bord); border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35); }
-  .suggestions li { display: flex; flex-direction: column; padding: 5px 8px; border-radius: 5px; color: var(--texte); }
-  .suggestions li[aria-selected="true"], .suggestions li:hover { background: var(--fond-survol); }
+  .access { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); }
+  .suggestions { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 5; list-style: none; margin: 0; padding: 4px; background: var(--bg-active); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35); }
+  .suggestions li { display: flex; flex-direction: column; padding: 5px 8px; border-radius: 5px; color: var(--text); }
+  .suggestions li[aria-selected="true"], .suggestions li:hover { background: var(--bg-hover); }
   .suggestions span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .suggestions .url { font-size: 11px; color: var(--texte-doux); }
-  input { width: 100%; height: 100%; box-sizing: border-box; padding: 0 10px; border: none; background: none; color: var(--texte); outline: none; -webkit-app-region: no-drag; }
-  input.avec-acces { padding-right: 56px; }
+  .suggestions .url { font-size: 11px; color: var(--text-muted); }
+  input { width: 100%; height: 100%; box-sizing: border-box; padding: 0 10px; border: none; background: none; color: var(--text); outline: none; -webkit-app-region: no-drag; }
+  input.with-access { padding-right: 56px; }
 </style>

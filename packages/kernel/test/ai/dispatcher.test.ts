@@ -167,7 +167,7 @@ test("two priority actions share the slots in turn", async () => {
   expect(f.log).toEqual(["kev w1", "kev a1", "kev b1", "kev a2", "kev b2", "kev w2"]);
 });
 
-test("auDemarrage called at the real start, not when queued", async () => {
+test("atStartup called at the real start, not when queued", async () => {
   const f = fakeAi();
   const r = createAiDispatcher(f.ai, { concurrent: 1 });
   const first = r.for("a").gemma({ prompt: "1" });

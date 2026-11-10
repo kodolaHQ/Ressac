@@ -17,7 +17,7 @@ export function mountSiteBanner(win: Window, store: WebAiOsStore, windowId: Wind
   const el = <K extends keyof HTMLElementTagNameMap>(tag: K) => doc.createElementNS(XHTML, tag) as HTMLElementTagNameMap[K];
   const banner = el("div");
   banner.id = "webaios-banner";
-  banner.dataset.testid = "demande-permission";
+  banner.dataset.testid = "permission-request";
   banner.setAttribute("role", "alertdialog");
   banner.setAttribute("aria-label", "Demande d'autorisation");
   banner.hidden = true;

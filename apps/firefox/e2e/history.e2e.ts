@@ -175,7 +175,7 @@ describe("the agent's memory retains page text", () => {
     expect(await retained("texte.html")).toEqual([{ kept: true, private: false }]);
     await pressKeys(m, "Meta+y");
     await panelOpen(true);
-    await waitUi(m, `const l = [...doc.querySelectorAll(arguments[0] + " li")].find((e) => e.textContent.includes("texte.html") || e.textContent.includes("Texte")); return l?.dataset.retenu === "true" && !!l.querySelector(arguments[1])`, [PANEL, '[aria-label="Texte retenu pour l\'agent"]']);
+    await waitUi(m, `const l = [...doc.querySelectorAll(arguments[0] + " li")].find((e) => e.textContent.includes("texte.html") || e.textContent.includes("Texte")); return l?.dataset.kept === "true" && !!l.querySelector(arguments[1])`, [PANEL, '[aria-label="Texte retenu pour l\'agent"]']);
   });
 
   // Needs the rebuilt page actor (getParts): fails until `pnpm build:ui`. YouTube parts are covered by unit tests only
@@ -206,7 +206,7 @@ describe("the agent's memory retains page text", () => {
     await click(m, '[role="menuitem"]', { text: "Oublier le texte retenu" });
     await until(() => lines_("a.html"), (l) => l.length === 1 && !l[0]!.kept);
     expect(await lines_("a.html")).toEqual([{ kept: false, private: false }]);
-    await waitUi(m, `return ![...doc.querySelectorAll(arguments[0] + " li")].some((l) => l.dataset.retenu === "true")`, [PANEL]);
+    await waitUi(m, `return ![...doc.querySelectorAll(arguments[0] + " li")].some((l) => l.dataset.kept === "true")`, [PANEL]);
   });
 
   it("nothing from a page that failed", async () => {
@@ -235,16 +235,16 @@ describe("the agent's memory retains page text", () => {
   });
 });
 
-const PANEL = '[data-testid="historique"]';
+const PANEL = '[data-testid="history"]';
 const panelOpen = (open: boolean) => waitUi(m, `return !!doc.querySelector(arguments[0]) === arguments[1]`, [PANEL, open]);
-const panelLinks = () => inUi<string[]>(m, `return [...doc.querySelectorAll(arguments[0] + " a")].map((a) => a.querySelector(".titre").textContent)`, [PANEL]);
-const bar = () => waitUi(m, "return !!doc.querySelector('[data-testid=\"barre-commande\"]')");
+const panelLinks = () => inUi<string[]>(m, `return [...doc.querySelectorAll(arguments[0] + " a")].map((a) => a.querySelector(".title").textContent)`, [PANEL]);
+const bar = () => waitUi(m, "return !!doc.querySelector('[data-testid=\"command-bar\"]')");
 const field = async (text: string) => {
-  await waitUi(m, "return doc.activeElement?.dataset.testid === 'saisie-commande'");
+  await waitUi(m, "return doc.activeElement?.dataset.testid === 'command-input'");
   await inUi(m, `const f = doc.activeElement; f.value = arguments[0]; f.dispatchEvent(new ui.Event("input", { bubbles: true }));`, [text]);
 };
 const lines = (type: string) =>
-  inUi<string[]>(m, `return [...doc.querySelectorAll('[data-testid="ligne-commande"][data-type="' + arguments[0] + '"]')].map((l) => l.textContent)`, [type]);
+  inUi<string[]>(m, `return [...doc.querySelectorAll('[data-testid="command-row"][data-type="' + arguments[0] + '"]')].map((l) => l.textContent)`, [type]);
 /** a.html then b.html visited, the first tab closed. */
 async function visitedAB() {
   await open(`${base}/a.html`);
@@ -301,9 +301,9 @@ describe("history panel", () => {
     await pressKeys(m, "Meta+y");
     await panelOpen(true);
     const text = (sel: string) => inUi<string[]>(m, `return [...doc.querySelectorAll(arguments[0])].map((l) => l.textContent)`, [sel]);
-    expect(await text(`${PANEL} [data-prive="true"]`)).toHaveLength(2);
-    expect((await text(`${PANEL} [data-prive="true"]`)).find((t) => t.includes("Page B"))).toContain("🔒");
-    expect((await text(`${PANEL} [data-prive="false"]`)).filter((t) => t.includes("🔒"))).toEqual([]);
+    expect(await text(`${PANEL} [data-private="true"]`)).toHaveLength(2);
+    expect((await text(`${PANEL} [data-private="true"]`)).find((t) => t.includes("Page B"))).toContain("🔒");
+    expect((await text(`${PANEL} [data-private="false"]`)).filter((t) => t.includes("🔒"))).toEqual([]);
   });
 
   it("switching tab closes the panel", async () => {

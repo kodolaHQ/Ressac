@@ -10,12 +10,12 @@ export const STATUSES: Record<Execution["status"], string> = {
   "grant-required": "Accord requis",
 };
 /** Color of a run's badge: the same scale as the blocks. */
-export const TINTS: Record<Execution["status"], "ok" | "moyen" | "echec"> = {
+export const TINTS: Record<Execution["status"], "ok" | "warn" | "bad"> = {
   succeeded: "ok",
-  partial: "moyen",
-  "grant-required": "moyen",
-  failed: "echec",
-  interrupted: "echec",
+  partial: "warn",
+  "grant-required": "warn",
+  failed: "bad",
+  interrupted: "bad",
 };
 
 export const hour = (iso: string) => new Date(iso).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });

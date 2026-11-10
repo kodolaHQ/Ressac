@@ -22,7 +22,7 @@ beforeEach(async () => {
   m = w.marionette;
   await m.setContext("chrome");
   await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
-  await waitUi(m, "return !!doc.querySelector('[data-testid=\"barre-laterale\"]')");
+  await waitUi(m, "return !!doc.querySelector('[data-testid=\"sidebar\"]')");
 });
 afterEach(async () => {
   try {
@@ -34,7 +34,7 @@ afterEach(async () => {
 
 const BTN = '[data-testid="action-extension"]';
 const MENU = '[data-testid="menu-extensions"]';
-const PANEL = '[data-testid="panneau-extensions"]';
+const PANEL = '[data-testid="extensions-panel"]';
 const win = async () => (await state(m)).windows[0]!;
 async function open(path: string): Promise<void> {
   const url = server.url + path;
@@ -50,7 +50,7 @@ describe("add-on strip, sidebar", () => {
     await setPinned([ID]);
     await installAddon(m, button());
     await open("/texte.html");
-    await waitUi(m, `const b = doc.querySelector('[data-testid="barre-extensions"] ${BTN}'); return b && !b.disabled`);
+    await waitUi(m, `const b = doc.querySelector('[data-testid="extensions-bar"] ${BTN}'); return b && !b.disabled`);
     const b = await inUi<any>(m, `const b = doc.querySelector(${JSON.stringify(BTN)}); return { title: b.title, image: b.style.backgroundImage, noIcon: b.classList.contains("no-icon") };`);
     expect(b.title).toBe("Bouton de test");
     expect(b.image).toContain("moz-extension://");
@@ -90,11 +90,11 @@ describe("add-on strip, sidebar", () => {
   it("the menu lists an unpinned add-on; Épingler puts it on the bar", async () => {
     await installAddon(m, button());
     await openMenu();
-    const row = '[data-testid="ligne-barre-extension"]';
+    const row = '[data-testid="extension-bar-row"]';
     await waitUi(m, `const l = doc.querySelector(${JSON.stringify(row)}); return l?.querySelector(${JSON.stringify(BTN)}) && l.textContent.includes("Épingler")`);
-    expect(await inUi(m, `return doc.querySelectorAll('[data-testid="barre-extensions"] ${BTN}').length`)).toBe(0);
-    await click(m, `${row} .lien`, { text: "Épingler" });
-    await waitUi(m, `return doc.querySelectorAll('[data-testid="barre-extensions"] ${BTN}').length === 1`);
+    expect(await inUi(m, `return doc.querySelectorAll('[data-testid="extensions-bar"] ${BTN}').length`)).toBe(0);
+    await click(m, `${row} .link`, { text: "Épingler" });
+    await waitUi(m, `return doc.querySelectorAll('[data-testid="extensions-bar"] ${BTN}').length === 1`);
     expect(await m.execute("return Services.prefs.getStringPref('webaios.extensions.pinned')")).toContain(ID);
     await waitUi(m, `return doc.querySelector(${JSON.stringify(row)})?.textContent.includes("Détacher")`);
   });
@@ -103,7 +103,7 @@ describe("add-on strip, sidebar", () => {
     await installAddon(m, hider());
     await open("/texte.html");
     await openMenu();
-    const row = '[data-testid="ligne-barre-extension"]';
+    const row = '[data-testid="extension-bar-row"]';
     await waitUi(m, `return [...doc.querySelectorAll(${JSON.stringify(row)})].some((l) => l.textContent.includes("Cacheur") && l.querySelector(${JSON.stringify(BTN)})?.disabled)`);
   });
 
@@ -113,10 +113,10 @@ describe("add-on strip, sidebar", () => {
     const r = await waitUi<any>(
       m,
       `const panel = doc.querySelector(${JSON.stringify(PANEL)});
-       const line = panel?.querySelector('[data-testid="ligne-barre-extension"]');
+       const line = panel?.querySelector('[data-testid="extension-bar-row"]');
        if (!line) return null;
-       const b = line.querySelector(".lien"), nom = line.querySelector(".nom");
-       const side = doc.querySelector('[data-testid="barre-laterale"]').getBoundingClientRect();
+       const b = line.querySelector(".link"), nom = line.querySelector(".name");
+       const side = doc.querySelector('[data-testid="sidebar"]').getBoundingClientRect();
        const inside = (r, c) => r.left >= c.left - 0.5 && r.right <= c.right + 0.5;
        return {
          buttonWhole: b.scrollWidth <= b.clientWidth + 0.5,
@@ -130,7 +130,7 @@ describe("add-on strip, sidebar", () => {
 
   it("Gérer les extensions opens about:addons", async () => {
     await openMenu();
-    await click(m, `${PANEL} .gerer`, { text: "Gérer les extensions" });
+    await click(m, `${PANEL} .manage`, { text: "Gérer les extensions" });
     await waitUi(m, `return !doc.querySelector(${JSON.stringify(PANEL)})`);
     const f = await waitFor(m, "return window.webaiosWindow.store.state", (st: any) => Object.values(st.tabs).some((o: any) => o.url.startsWith("about:addons")));
     const fen = f.windows[0];
@@ -139,7 +139,7 @@ describe("add-on strip, sidebar", () => {
 
   it("Trouver des modules opens AMO in a tab", async () => {
     await openMenu();
-    await click(m, `${PANEL} .gerer`, { text: "Trouver des modules" });
+    await click(m, `${PANEL} .manage`, { text: "Trouver des modules" });
     await waitUi(m, `return !doc.querySelector(${JSON.stringify(PANEL)})`);
     const f = await waitFor(m, "return window.webaiosWindow.store.state", (st: any) => Object.values(st.tabs).some((o: any) => o.url === "https://addons.mozilla.org/fr/firefox/"));
     const tab: any = Object.values(f.tabs).find((o: any) => o.url === "https://addons.mozilla.org/fr/firefox/");
@@ -157,9 +157,9 @@ describe("add-on strip, sidebar", () => {
     );
     await waitUi(m, `return !!doc.querySelector('${MENU} .point')`);
     await openMenu();
-    const line = '[data-testid="maj-extension"]';
+    const line = '[data-testid="extension-update"]';
     await waitUi(m, `return doc.querySelector(${JSON.stringify(line)})?.textContent.includes("Bouton de test : mise à jour en attente de ton accord.")`);
-    await click(m, `${line} .lien`, { text: "Revoir la mise à jour" });
+    await click(m, `${line} .link`, { text: "Revoir la mise à jour" });
     await waitFor(m, "return window.reviewed", (l: string[]) => l.length === 1 && l[0] === ID);
   });
 });

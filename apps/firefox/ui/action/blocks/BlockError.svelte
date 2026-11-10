@@ -2,4 +2,4 @@
   let { message }: { message: string } = $props();
 </script>
 
-<div class="pa-erreur" data-testid="bloc-erreur" role="note">{message}</div>
+<div class="pa-error" data-testid="block-error" role="note">{message}</div>

@@ -28,7 +28,7 @@ beforeEach(async () => {
   m = w.marionette;
   await m.setContext("chrome");
   await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
-  await waitUi(m, "return !!doc.querySelector('[data-testid=\"barre-laterale\"]')");
+  await waitUi(m, "return !!doc.querySelector('[data-testid=\"sidebar\"]')");
 });
 afterEach(async () => {
   try {
@@ -58,16 +58,16 @@ async function waitState<T>(read: (s: BrowserState) => T, ok: (v: T) => boolean,
   }
 }
 const waitTitle = (id: string, title: string) => waitState((s) => s.tabs[id]?.title, (t) => t === title);
-const waitBar = (open: boolean) => waitUi(m, "return !!doc.querySelector('[data-testid=\"barre-commande\"]') === arguments[0]", [open]);
+const waitBar = (open: boolean) => waitUi(m, "return !!doc.querySelector('[data-testid=\"command-bar\"]') === arguments[0]", [open]);
 /** The bar's field has the keyboard: focused in the UI, and the UI iframe focused in the window. */
 const fieldFocused = () =>
-  waitUi(m, "return doc.activeElement?.dataset.testid === 'saisie-commande' && document.activeElement === document.getElementById('webaios-sidebar')");
-const fieldValue = () => inUi<string>(m, "return doc.querySelector('[data-testid=\"saisie-commande\"]').value");
+  waitUi(m, "return doc.activeElement?.dataset.testid === 'command-input' && document.activeElement === document.getElementById('webaios-sidebar')");
+const fieldValue = () => inUi<string>(m, "return doc.querySelector('[data-testid=\"command-input\"]').value");
 async function type(text: string): Promise<void> {
   await fieldFocused();
   await inUi(m, `const f = doc.activeElement; f.value = arguments[0]; f.dispatchEvent(new ui.Event("input", { bubbles: true }));`, [text]);
 }
-const selectedType = () => inUi<string | undefined>(m, "return doc.querySelector('[data-testid=\"ligne-commande\"][aria-selected=\"true\"]')?.dataset.type");
+const selectedType = () => inUi<string | undefined>(m, "return doc.querySelector('[data-testid=\"command-row\"][aria-selected=\"true\"]')?.dataset.type");
 /** The history has `part` (a visit is noted a moment after the load). */
 const visited = (part: string) =>
   waitUi(m, "return (await ui.webaios.history.search(arguments[0], 5, true)).length > 0", [part], 15_000);
@@ -79,23 +79,23 @@ async function withPageA(): Promise<string> {
 
 /** The empty page's field has the keyboard. */
 const emptyPageFocused = () =>
-  waitUi(m, "return doc.activeElement?.dataset.testid === 'saisie-page-vide' && document.activeElement === document.getElementById('webaios-sidebar')");
+  waitUi(m, "return doc.activeElement?.dataset.testid === 'empty-page-input' && document.activeElement === document.getElementById('webaios-sidebar')");
 const veilClick = () => inUi(m, `for (const type of ["mousedown", "mouseup"]) ui.synthesizeMouseEvent(type, 5, 5, { button: 0, clickCount: 1 });`);
 /** A click in the bar's box margin, off the field and the lines (6, 6: Gecko hit-tests 3, 3 outside the 12 px rounded corner). */
 const marginClick = () =>
   inUi(
     m,
-    `const r = doc.querySelector('[data-testid="barre-commande"]').getBoundingClientRect();
+    `const r = doc.querySelector('[data-testid="command-bar"]').getBoundingClientRect();
      for (const type of ["mousedown", "mouseup"]) ui.synthesizeMouseEvent(type, r.left + 6, r.top + 6, { button: 0, clickCount: 1 });`,
   );
-const cardInFocus = () => inUi<boolean>(m, "return !!doc.activeElement?.closest('[data-testid=\"modale-demande\"]')");
+const cardInFocus = () => inUi<boolean>(m, "return !!doc.activeElement?.closest('[data-testid=\"request-modal\"]')");
 /** The agent is up and a user tab (not shared with it) is shown: what makes it ask to read the tab. */
 async function withAgentAndTab(): Promise<string> {
   const config = join(w.dataDir, "workspace", ".webaios", "mcp.json");
   for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
     if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
   // The home page's panel starts the agent's session, which takes back every access: the tool is called after it.
-  await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('prêt>')", [], 20_000, "agent");
+  await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
   const id = await open("/texte.html");
   await waitTitle(id, "Texte");
   return id;
@@ -106,18 +106,18 @@ function readTab(id: string): Promise<unknown> {
   p.catch(() => {});
   return p;
 }
-const armedCard = () => waitUi(m, "return !!doc.querySelector('[data-testid=\"modale-demande\"][data-armee]')");
+const armedCard = () => waitUi(m, "return !!doc.querySelector('[data-testid=\"request-modal\"][data-armed]')");
 const pending = (p: Promise<unknown>, ms = 1500) => Promise.race([p.then(() => "answered"), new Promise((r) => setTimeout(() => r("pending"), ms))]);
 /** The card is still pending and still shown. */
 async function stillPending(reading: Promise<unknown>): Promise<void> {
   expect(await pending(reading)).toBe("pending");
-  expect(await inUi(m, "return !!doc.querySelector('[data-testid=\"modale-demande\"]')")).toBe(true);
+  expect(await inUi(m, "return !!doc.querySelector('[data-testid=\"request-modal\"]')")).toBe(true);
 }
 /** « Nouvel espace » open with a draft ready to be created; returns the space count. */
 async function newSpaceDraft(): Promise<number> {
   const count = (await state(m)).spaces.length;
-  const MODAL = '[data-testid="modale-espace"]';
-  await click(m, '[data-testid="nouvel-espace"]');
+  const MODAL = '[data-testid="space-modal"]';
+  await click(m, '[data-testid="new-space"]');
   await waitUi(m, "return doc.querySelector(arguments[0] + ' h2')?.textContent === 'Nouvel espace'", [MODAL]);
   await inUi(m, `const f = doc.querySelector(arguments[0] + ' [aria-label="Nom de l\\'espace"]'); f.value = "Jeux"; f.dispatchEvent(new ui.Event("input", { bubbles: true }));`, [MODAL]);
   await inUi(
@@ -130,7 +130,7 @@ async function newSpaceDraft(): Promise<number> {
 }
 async function draftKept(count: number): Promise<void> {
   await new Promise((r) => setTimeout(r, 500));
-  expect(await inUi(m, "return doc.querySelector('[data-testid=\"modale-espace\"] h2')?.textContent")).toBe("Nouvel espace");
+  expect(await inUi(m, "return doc.querySelector('[data-testid=\"space-modal\"] h2')?.textContent")).toBe("Nouvel espace");
   expect((await state(m)).spaces.length).toBe(count);
 }
 
@@ -151,13 +151,13 @@ describe("Command bar", () => {
       m = w.marionette;
       await m.setContext("chrome");
       await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
-      await waitUi(m, "return !!doc.querySelector('[data-testid=\"barre-laterale\"]')");
+      await waitUi(m, "return !!doc.querySelector('[data-testid=\"sidebar\"]')");
       await resolveLocalHosts(m, ["vidola-a.localhost"]);
       await waitUi(m, "return (await ui.webaios.sites.list()).some((s) => s.id === 'vidola')", [], 30_000);
       await pressKeys(m, "Meta+t");
       await type("Vidola");
-      await waitUi(m, "return doc.querySelectorAll('[data-testid=\"ligne-commande\"][data-type=\"app\"]').length === 1");
-      await click(m, '[data-testid="ligne-commande"][data-type="app"] button');
+      await waitUi(m, "return doc.querySelectorAll('[data-testid=\"command-row\"][data-type=\"app\"]').length === 1");
+      await click(m, '[data-testid="command-row"][data-type="app"] button');
       await waitFor(m, "return [...Services.wm.getEnumerator('navigator:browser')].some((w) => w.document.documentElement.getAttribute('webaios-site') === 'vidola')", (v) => v === true);
       expect(await siteWindowCount(m, "vidola")).toBe(1);
       await waitBar(false);
@@ -180,7 +180,7 @@ describe("Command bar", () => {
     await pressKeys(m, "Meta+t");
     await fieldFocused();
     await pressKeys(m, "Enter");
-    await waitUi(m, "return !!doc.querySelector('[data-testid=\"page-vide\"]')");
+    await waitUi(m, "return !!doc.querySelector('[data-testid=\"empty-page\"]')");
     await waitBar(false);
   });
 
@@ -247,7 +247,7 @@ describe("Command bar", () => {
     await waitTitle(b, "Page B");
     await pressKeys(m, "Meta+t");
     await type("Page A");
-    await waitUi(m, "return doc.querySelectorAll('[data-testid=\"ligne-commande\"][data-type=\"tab\"]').length === 1");
+    await waitUi(m, "return doc.querySelectorAll('[data-testid=\"command-row\"][data-type=\"tab\"]').length === 1");
     await pressKeys(m, "ArrowDown");
     await pressKeys(m, "Enter");
     await waitState((s) => s.windows[0]!.active[s.windows[0]!.activeSpace], (id) => id === a);
@@ -258,7 +258,7 @@ describe("Command bar", () => {
     await withPageA();
     await pressKeys(m, "Meta+t");
     await type("Page A");
-    await waitUi(m, "return doc.querySelectorAll('[data-testid=\"ligne-commande\"][data-type=\"tab\"]').length === 1");
+    await waitUi(m, "return doc.querySelectorAll('[data-testid=\"command-row\"][data-type=\"tab\"]').length === 1");
     expect(await selectedType()).toBe("default");
     await pressKeys(m, "ArrowUp");
     expect(await selectedType()).toBe("tab");
@@ -279,9 +279,9 @@ describe("Command bar", () => {
   it("with the bar open the window under it is inert", async () => {
     await pressKeys(m, "Meta+t");
     await fieldFocused();
-    expect(await inUi(m, "return doc.querySelector('.fenetre').hasAttribute('inert')")).toBe(true);
+    expect(await inUi(m, "return doc.querySelector('.window').hasAttribute('inert')")).toBe(true);
     await pressKeys(m, "Escape");
-    await waitUi(m, "return !doc.querySelector('.fenetre').hasAttribute('inert')");
+    await waitUi(m, "return !doc.querySelector('.window').hasAttribute('inert')");
   });
 
   it("over a web page, the page stays visible under the veil, darkened", async () => {
@@ -313,13 +313,13 @@ describe("Command bar", () => {
     await waitTitle(b, "Page B");
     await pressKeys(m, "Meta+t");
     await fieldFocused();
-    await waitUi(m, "return [...doc.querySelectorAll('[data-testid=\"section-commande\"]')].map((e) => e.textContent).join() === 'Actions,Onglets ouverts'");
-    expect(await inUi(m, "return [...doc.querySelectorAll('[data-testid=\"ligne-commande\"][data-type=\"action\"]')].map((e) => e.textContent).join()")).toContain("Zorglub");
-    expect(await inUi(m, "return [...doc.querySelectorAll('[data-testid=\"ligne-commande\"][data-type=\"tab\"]')].map((e) => e.textContent)")).toEqual([
+    await waitUi(m, "return [...doc.querySelectorAll('[data-testid=\"command-section\"]')].map((e) => e.textContent).join() === 'Actions,Onglets ouverts'");
+    expect(await inUi(m, "return [...doc.querySelectorAll('[data-testid=\"command-row\"][data-type=\"action\"]')].map((e) => e.textContent).join()")).toContain("Zorglub");
+    expect(await inUi(m, "return [...doc.querySelectorAll('[data-testid=\"command-row\"][data-type=\"tab\"]')].map((e) => e.textContent)")).toEqual([
       expect.stringContaining("Page A"),
     ]);
     await pressKeys(m, "Enter");
-    await waitUi(m, "return !!doc.querySelector('[data-testid=\"page-vide\"]')");
+    await waitUi(m, "return !!doc.querySelector('[data-testid=\"empty-page\"]')");
   });
 
   // barre-commande.spec.ts:430
@@ -350,9 +350,9 @@ describe("Command bar", () => {
     await pressKeys(m, "Meta+t");
     await fieldFocused();
     const reading = readTab(id);
-    await waitUi(m, "return !!doc.querySelector('[data-testid=\"modale-demande\"]')");
+    await waitUi(m, "return !!doc.querySelector('[data-testid=\"request-modal\"]')");
     await waitBar(false);
-    await waitUi(m, "return !!doc.activeElement?.closest('[data-testid=\"modale-demande\"]') && document.activeElement === document.getElementById('webaios-sidebar')");
+    await waitUi(m, "return !!doc.activeElement?.closest('[data-testid=\"request-modal\"]') && document.activeElement === document.getElementById('webaios-sidebar')");
     expect(await pending(reading, 300)).toBe("pending");
   });
 
@@ -411,7 +411,7 @@ describe("Command bar", () => {
     await fieldFocused();
     await inUi(m, "doc.activeElement?.blur()");
     for (const k of ["Enter", " ", "Enter"]) await pressKeys(m, k);
-    expect(await inUi(m, "return !!doc.querySelector('[data-testid=\"barre-commande\"]')")).toBe(true);
+    expect(await inUi(m, "return !!doc.querySelector('[data-testid=\"command-bar\"]')")).toBe(true);
     await stillPending(reading);
   });
 
@@ -445,7 +445,7 @@ describe("Command bar", () => {
     await visited("b.html");
     await pressKeys(m, "Meta+t");
     await type("b.html");
-    await waitUi(m, `return !!doc.querySelector('[data-testid="ligne-commande"][data-type="history"], [data-testid="ligne-commande"][data-type="tab"]')`);
+    await waitUi(m, `return !!doc.querySelector('[data-testid="command-row"][data-type="history"], [data-testid="command-row"][data-type="tab"]')`);
   });
 
   // barre-commande.spec.ts:374
@@ -457,9 +457,9 @@ describe("Command bar", () => {
     await waitTitle(id, "Page A");
     await pressKeys(m, "Meta+t");
     await type("b.html");
-    await waitUi(m, `return doc.querySelectorAll('[data-testid="ligne-commande"][data-type="history"]').length === 1`);
-    expect(await inUi(m, `return doc.querySelector('[data-testid="ligne-commande"][data-type="history"]').textContent`)).toContain("Page B");
-    expect(await inUi(m, `return doc.querySelectorAll('[data-testid="ligne-commande"][data-type="tab"]').length`)).toBe(0);
+    await waitUi(m, `return doc.querySelectorAll('[data-testid="command-row"][data-type="history"]').length === 1`);
+    expect(await inUi(m, `return doc.querySelector('[data-testid="command-row"][data-type="history"]').textContent`)).toContain("Page B");
+    expect(await inUi(m, `return doc.querySelectorAll('[data-testid="command-row"][data-type="tab"]').length`)).toBe(0);
     await pressKeys(m, "ArrowDown");
     await pressKeys(m, "Enter");
     const s = await waitState((s) => Object.values(s.tabs), (o) => o.length === 2 && o.some((t) => t.url.endsWith("/b.html")));
@@ -478,8 +478,8 @@ describe("Command bar", () => {
     for (const id of [a, b]) await dispatch(m, { type: "closeTab", id });
     await pressKeys(m, "Meta+t");
     await type("page a");
-    await waitUi(m, `return doc.querySelectorAll('[data-testid="ligne-commande"][data-type="history"]').length === 1`);
+    await waitUi(m, `return doc.querySelectorAll('[data-testid="command-row"][data-type="history"]').length === 1`);
     await new Promise((r) => setTimeout(r, 300));
-    expect(await inUi(m, `return doc.querySelectorAll('[data-testid="ligne-commande"][data-type="history"]').length`)).toBe(1);
+    expect(await inUi(m, `return doc.querySelectorAll('[data-testid="command-row"][data-type="history"]').length`)).toBe(1);
   });
 });

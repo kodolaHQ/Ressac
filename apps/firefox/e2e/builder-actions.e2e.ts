@@ -57,7 +57,7 @@ async function poll<T>(read: () => Promise<T> | T, ok: (v: T) => boolean, what: 
 const snapshot = (dir: string) => readdirSync(dir).map((f) => `${f}:${statSync(path.join(dir, f)).mtimeMs}`).sort();
 const readJson = async (file: string) => JSON.parse(await readFile(file, "utf8"));
 const lastSessionConfig = () =>
-  path.join(w.dataDir, "workspace", (JSON.parse(readFileSync(path.join(w.dataDir, "workspace", "faux-agent-args.json"), "utf8")) as string[]).at(-1)!.replace(/^\/workspace\//, ""));
+  path.join(w.dataDir, "workspace", (JSON.parse(readFileSync(path.join(w.dataDir, "workspace", "fake-agent-args.json"), "utf8")) as string[]).at(-1)!.replace(/^\/workspace\//, ""));
 async function setPrivate(isPrivate: boolean): Promise<void> {
   const s = await state(m);
   const e = s.spaces.find((x) => x.id === s.windows[0]!.activeSpace)!;
@@ -67,8 +67,8 @@ async function setPrivate(isPrivate: boolean): Promise<void> {
 /** Opens the action's builder from its page (« Voir le workflow »), once the kernel serves the actions. */
 async function openActionBuilder(id: string): Promise<void> {
   await openAction(m, id, NAME);
-  await click(m, tid("voir-workflow"));
-  await visible(tid("constructeur"));
+  await click(m, tid("show-workflow"));
+  await visible(tid("builder"));
 }
 
 beforeAll(async () => {
@@ -95,20 +95,20 @@ describe("the builder of an action", () => {
     await writeGitlab("gitlab-a");
     const before = snapshot(actionDir("gitlab-a"));
     await openActionBuilder("gitlab-a");
-    await waitUi(m, "return [...doc.querySelectorAll('[data-testid^=\"onglet-\"]')].filter((e) => e.textContent.includes(arguments[0])).length === 1;", [`Workflow — ${NAME}`]);
-    await q.waitText(`${tid("constructeur")} h1`, NAME);
-    await visible(tid("noeud-lire"));
-    await q.waitText(tid("etat-enregistrement"), "Enregistré");
+    await waitUi(m, "return [...doc.querySelectorAll('[data-testid^=\"tab-\"]')].filter((e) => e.textContent.includes(arguments[0])).length === 1;", [`Workflow — ${NAME}`]);
+    await q.waitText(`${tid("builder")} h1`, NAME);
+    await visible(tid("node-lire"));
+    await q.waitText(tid("save-status"), "Enregistré");
     // Nothing selected: the Action panel (read only) instead of the widget's.
-    const panel = tid("panneau-action");
+    const panel = tid("action-panel");
     await visible(panel);
-    expect(await q.count(tid("panneau-widget"))).toBe(0);
-    expect(await q.text(`${panel} ${tid("action-compte")}`)).toBe("aucun");
-    expect(await q.text(`${panel} ${tid("action-publiques")}`)).toBe("gitlab.com");
-    expect(await q.text(`${panel} ${tid("action-saisie")}`)).toBe("Projet");
-    expect(await q.text(`${panel} ${tid("action-mise-en-page")}`)).toBe(GITLAB_INSTRUCTION);
+    expect(await q.count(tid("widget-panel"))).toBe(0);
+    expect(await q.text(`${panel} ${tid("action-account")}`)).toBe("aucun");
+    expect(await q.text(`${panel} ${tid("action-public")}`)).toBe("gitlab.com");
+    expect(await q.text(`${panel} ${tid("action-input")}`)).toBe("Projet");
+    expect(await q.text(`${panel} ${tid("action-layout")}`)).toBe(GITLAB_INSTRUCTION);
     expect(await q.text(panel)).toContain("Durée maximale : 5 min");
-    expect(await q.text(tid("bouton-apercu"))).toBe("Aperçu de la page");
+    expect(await q.text(tid("preview-button"))).toBe("Aperçu de la page");
     // An action without web access: the palette says so for an action (action.json), not for a widget.
     const search = tid("palette-web.search");
     expect(await inUi(m, "return doc.querySelector(arguments[0]).disabled;", [search])).toBe(true);
@@ -117,10 +117,10 @@ describe("the builder of an action", () => {
     );
     // The agent knows it is the action's workflow, and the block chosen.
     // The window's agent session (the fake agent notes its arguments once started).
-    await poll(() => existsSync(path.join(w.dataDir, "workspace", "faux-agent-args.json")), (v) => v, "the agent session", 20_000);
+    await poll(() => existsSync(path.join(w.dataDir, "workspace", "fake-agent-args.json")), (v) => v, "the agent session", 20_000);
     const open = async () => (await callMcpTool(path.join(w.dataDir, "workspace"), "open_workflow", {}, lastSessionConfig())).text;
     await poll(open, (t) => t === '{"action":"gitlab-a","block":null}', "open_workflow", 20_000);
-    await click(m, tid("noeud-lire"));
+    await click(m, tid("node-lire"));
     await poll(open, (t) => t === '{"action":"gitlab-a","block":"lire"}', "open_workflow", 20_000);
     // Opening and selecting write nothing in the action's folder.
     expect(snapshot(actionDir("gitlab-a"))).toEqual(before);
@@ -130,21 +130,21 @@ describe("the builder of an action", () => {
   it("▶ Lancer asks for the input, then the run shows in the list", { timeout: 120_000 }, async () => {
     await writeGitlab("gitlab-b");
     await openActionBuilder("gitlab-b");
-    await q.waitContains(tid("constructeur"), "Aucune exécution pour l'instant.");
-    await click(m, tid("lancer"));
-    const ask = tid("demande-saisie");
+    await q.waitContains(tid("builder"), "Aucune exécution pour l'instant.");
+    await click(m, tid("launch"));
+    const ask = tid("input-request");
     await visible(ask);
     expect(await q.text(ask)).toContain("Projet");
     // Empty input: nothing is launched.
-    expect(await inUi(m, "return doc.querySelector(arguments[0]).disabled;", [tid("confirmer-lancer")])).toBe(true);
+    expect(await inUi(m, "return doc.querySelector(arguments[0]).disabled;", [tid("confirm-launch")])).toBe(true);
     // Escape closes the request without launching anything.
-    await waitUi(m, "return doc.activeElement === doc.querySelector(arguments[0]);", [tid("saisie-lancer")]);
+    await waitUi(m, "return doc.activeElement === doc.querySelector(arguments[0]);", [tid("launch-input")]);
     await pressKeys(m, "Escape");
     await q.waitCount(ask, 0);
     expect(await runsOnDisk(w.dataDir, "gitlab-b")).toEqual([]);
-    await click(m, tid("lancer"));
-    await waitUi(m, "return doc.activeElement === doc.querySelector(arguments[0]);", [tid("saisie-lancer")]);
-    await inUi(m, `const f = doc.querySelector(arguments[0]); f.value = "webaios"; f.dispatchEvent(new ui.Event("input", { bubbles: true }));`, [tid("saisie-lancer")]);
+    await click(m, tid("launch"));
+    await waitUi(m, "return doc.activeElement === doc.querySelector(arguments[0]);", [tid("launch-input")]);
+    await inUi(m, `const f = doc.querySelector(arguments[0]); f.value = "webaios"; f.dispatchEvent(new ui.Event("input", { bubbles: true }));`, [tid("launch-input")]);
     await pressKeys(m, "Enter");
     await q.waitCount(ask, 0);
     const [file] = await poll(() => runsOnDisk(w.dataDir, "gitlab-b"), (l) => l.length === 1, "one run");
@@ -153,11 +153,11 @@ describe("the builder of an action", () => {
     await visible(button);
     await waitUi(m, "return doc.querySelector(arguments[0]).getAttribute('aria-pressed') === 'true';", [button], 30_000);
     expect(await q.text(button)).toContain("Manuelle");
-    await q.waitText(tid("pastille-lire"), "1");
+    await q.waitText(tid("pill-lire"), "1");
     expect(await readJson(path.join(actionsDataDir(w.dataDir), "gitlab-b", "runs", file!))).toMatchObject({ trigger: "manual", input: "webaios", status: "succeeded" });
     // The preview shows this run's page (the agent's components are never loaded there).
-    await click(m, tid("bouton-apercu"));
-    await q.waitContains(tid("apercu-action"), "ticket-webaios-un", 30_000);
+    await click(m, tid("preview-button"));
+    await q.waitContains(tid("action-preview"), "ticket-webaios-un", 30_000);
   });
 
   // constructeur.spec.ts:1637
@@ -173,19 +173,19 @@ describe("the builder of an action", () => {
     await waitUi(m, "return doc.querySelector(arguments[0])?.getAttribute('aria-pressed') === 'true';", [tid(`execution-${origin}`)], 30_000);
     // The code changes: the trial shows it, the real run does not.
     await writeFile(path.join(actionDir("gitlab-c"), "lire.mjs"), codeGitlab("deux"));
-    await click(m, tid("noeud-lire"));
-    await waitUi(m, "return doc.querySelector(arguments[0])?.disabled === false;", [tid("rejouer")]);
-    await click(m, tid("rejouer"));
+    await click(m, tid("node-lire"));
+    await waitUi(m, "return doc.querySelector(arguments[0])?.disabled === false;", [tid("replay")]);
+    await click(m, tid("replay"));
     const trials = () => runsOnDisk(w.dataDir, "gitlab-c").then((l) => l.filter((f) => f.includes("-attempt")));
     const [trialFile] = await poll(trials, (l) => l.length === 1, "one trial");
     const trial = trialFile!.replace(/\.json$/, "");
     const button = tid(`execution-${trial}`);
     await q.waitContains(button, "essai", 30_000);
     await waitUi(m, "return doc.querySelector(arguments[0]).getAttribute('aria-pressed') === 'true';", [button], 30_000);
-    expect(await q.count(tid("refus-rejeu"))).toBe(0);
-    await click(m, tid("bouton-apercu"));
-    const preview = tid("apercu-action");
-    await visible(`${preview} ${tid("rendu-page")}`);
+    expect(await q.count(tid("replay-refusal"))).toBe(0);
+    await click(m, tid("preview-button"));
+    const preview = tid("action-preview");
+    await visible(`${preview} ${tid("page-render")}`);
     // The trial takes the original run's input.
     await q.waitContains(preview, "ticket-webaios-deux", 30_000);
     // Choosing the real run: the preview shows its page.
@@ -194,7 +194,7 @@ describe("the builder of an action", () => {
     // The action's last result stays the real run: its page does not show the trial.
     expect(await inUi(m, "return ui.webaios.actions.page('gitlab-c', null).then((p) => p?.run);")).toBe(origin);
     await openAction(m, "gitlab-c", NAME);
-    await q.waitContains(`${tid("page-action")} ${tid("rendu-page")}`, "ticket-webaios-un", 30_000);
+    await q.waitContains(`${tid("page-action")} ${tid("page-render")}`, "ticket-webaios-un", 30_000);
     expect(await q.text(tid("page-action"))).not.toContain("ticket-webaios-deux");
   });
 
@@ -203,8 +203,8 @@ describe("the builder of an action", () => {
     await openActionBuilder("gitlab-d");
     await setPrivate(true);
     try {
-      await q.waitText(tid("action-espace-prive"), "Les actions ne sont pas disponibles dans un espace privé");
-      expect(await q.count(tid("constructeur"))).toBe(0);
+      await q.waitText(tid("action-private-space"), "Les actions ne sont pas disponibles dans un espace privé");
+      expect(await q.count(tid("builder"))).toBe(0);
       // The API refuses too, with the same shapes, and writes nothing.
       const before = snapshot(actionDir("gitlab-d"));
       const target = { type: "action", id: "gitlab-d" };
@@ -231,6 +231,6 @@ describe("the builder of an action", () => {
       await setPrivate(false);
     }
     // Public again: the builder comes back.
-    await visible(tid("constructeur"));
+    await visible(tid("builder"));
   });
 });

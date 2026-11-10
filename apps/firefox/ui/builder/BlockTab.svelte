@@ -38,20 +38,20 @@
   const source = $derived(block?.type === "code" && typeof block.params.source === "string" ? block.params.source : null);
 </script>
 
-<div class="volet" data-testid="volet-bloc">
+<div class="pane" data-testid="block-pane">
   {#if block}
     {#key block.id}
       <h3><span>{c?.label ?? block.type}</span> <code>{block.type}</code></h3>
-      {#if error}<p class="erreur" data-testid="erreur-validation">{error}</p>{/if}
+      {#if error}<p class="error" data-testid="validation-error">{error}</p>{/if}
       {#if warnings.length > 0}
-        <ul class="avertissements" data-testid="avertissement-{block.id}">
+        <ul class="warnings" data-testid="warning-{block.id}">
           {#each warnings as a, i (i)}<li>⚠ {a.message}</li>{/each}
         </ul>
       {/if}
       {#if c}
         <BlockForm editing={edit} block={block} catalog={c} available={available} />
       {:else}
-        <p class="doux">Type de bloc inconnu : ses réglages ne s'éditent pas ici.</p>
+        <p class="muted">Type de bloc inconnu : ses réglages ne s'éditent pas ici.</p>
       {/if}
       {#if source}
         {#key source}<CodeEditor {widget} name={source} />{/key}
@@ -66,10 +66,10 @@
 </div>
 
 <style>
-  .volet { padding: 12px; overflow-y: auto; min-height: 0; flex: 1; color: var(--texte); }
+  .pane { padding: 12px; overflow-y: auto; min-height: 0; flex: 1; color: var(--text); }
   h3 { margin: 0 0 6px; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
-  h3 code { font-size: 11px; font-weight: 400; padding: 0 5px; border-radius: 4px; background: var(--fond-survol); color: var(--texte-doux); }
-  .erreur { margin: 0 0 6px; color: var(--en-erreur); font-size: 12px; white-space: pre-wrap; word-break: break-word; }
-  .avertissements { list-style: none; margin: 0 0 6px; padding: 0; color: var(--en-cours); font-size: 12px; word-break: break-word; }
-  .doux { color: var(--texte-doux); font-size: 12px; }
+  h3 code { font-size: 11px; font-weight: 400; padding: 0 5px; border-radius: 4px; background: var(--bg-hover); color: var(--text-muted); }
+  .error { margin: 0 0 6px; color: var(--in-error); font-size: 12px; white-space: pre-wrap; word-break: break-word; }
+  .warnings { list-style: none; margin: 0 0 6px; padding: 0; color: var(--in-progress); font-size: 12px; word-break: break-word; }
+  .muted { color: var(--text-muted); font-size: 12px; }
 </style>

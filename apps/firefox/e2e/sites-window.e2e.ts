@@ -52,7 +52,7 @@ async function openAndWait(p = "/"): Promise<void> {
 async function waitBar<T = unknown>(body: string, args: unknown[] = [], ms = 10_000): Promise<T> {
   const deadline = Date.now() + ms;
   for (;;) {
-    const v = await inSiteBar<T>(m, "vidola", `if (!doc.querySelector('[data-testid="barre-site"]')) return null; ${body}`, args);
+    const v = await inSiteBar<T>(m, "vidola", `if (!doc.querySelector('[data-testid="site-bar"]')) return null; ${body}`, args);
     if (v) return v;
     if (Date.now() > deadline) throw new Error(`timed out waiting in the site bar on: ${body}`);
     await sleep(100);
@@ -135,9 +135,9 @@ afterEach(async () => {
 describe("site app window", () => {
   it("opening without a home screen: the view shows the site, the bar shows « vidola-a.localhost »", async () => {
     await openAndWait();
-    await waitBar(`return doc.querySelector('[data-testid="site-domaine"]')?.textContent === "vidola-a.localhost";`);
-    expect(await inSiteBar(m, "vidola", `return doc.querySelector('[data-testid="site-nom"]').textContent;`)).toBe("Vidola");
-    expect(await inSiteBar(m, "vidola", `return doc.querySelectorAll('[data-testid="site-accueil"]').length;`)).toBe(0);
+    await waitBar(`return doc.querySelector('[data-testid="site-domain"]')?.textContent === "vidola-a.localhost";`);
+    expect(await inSiteBar(m, "vidola", `return doc.querySelector('[data-testid="site-name"]').textContent;`)).toBe("Vidola");
+    expect(await inSiteBar(m, "vidola", `return doc.querySelectorAll('[data-testid="site-home"]').length;`)).toBe(0);
     expect(await inSiteView(m, "vidola", "return document.title;")).toBe("Vidola A");
     // The window's title is the app's name, never the page's.
     expect(await m.execute(`return ${site}.document.title;`)).toBe("Vidola");
@@ -147,7 +147,7 @@ describe("site app window", () => {
     // The *.localhost host reached the loopback server, with its name.
     expect(server.requests.some((r) => r.host === "vidola-a.localhost" && r.path === "/")).toBe(true);
     // Firefox keeps its native title bar: no room left for the window buttons.
-    expect(await inSiteBar(m, "vidola", `return doc.defaultView.getComputedStyle(doc.querySelector('[data-testid="barre-site"]')).paddingLeft;`)).toBe("8px");
+    expect(await inSiteBar(m, "vidola", `return doc.defaultView.getComputedStyle(doc.querySelector('[data-testid="site-bar"]')).paddingLeft;`)).toBe("8px");
   });
 
   it("reopening makes no second window and does not reload", async () => {
@@ -194,19 +194,19 @@ describe("site app window", () => {
 
   it("back, forward and reload in the bar act on the site view", async () => {
     await openAndWait();
-    await waitBar(`return !!doc.querySelector('[data-testid="site-precedent"]');`);
-    expect(await disabled("site-precedent")).toBe(true);
+    await waitBar(`return !!doc.querySelector('[data-testid="site-back"]');`);
+    expect(await disabled("site-back")).toBe(true);
     // With a gesture: a page left without one may be skipped by back.
     await inSiteView(m, "vidola", "location.href = '/film/2'; return 1;", { gesture: true });
     await viewAt(url("/film/2"));
-    await waitBar(`return !doc.querySelector('[data-testid="site-precedent"]').disabled;`);
-    await barClick("site-precedent");
+    await waitBar(`return !doc.querySelector('[data-testid="site-back"]').disabled;`);
+    await barClick("site-back");
     await viewAt(url("/"));
-    await waitBar(`return !doc.querySelector('[data-testid="site-suivant"]').disabled;`);
-    await barClick("site-suivant");
+    await waitBar(`return !doc.querySelector('[data-testid="site-forward"]').disabled;`);
+    await barClick("site-forward");
     await viewAt(url("/film/2"));
     await inSiteView(m, "vidola", "window.marque = 1; return 1;");
-    await barClick("site-recharger");
+    await barClick("site-reload");
     await expect.poll(() => inSiteView(m, "vidola", "return window.marque === undefined && document.readyState === 'complete';").catch(() => false), { timeout: 10_000 }).toBe(true);
   });
 
@@ -289,8 +289,8 @@ describe("site app window", () => {
     // ⌃Tab in the main window walks its tabs only.
     await keyDown(m, "Control");
     await pressKeys(m, "Tab");
-    await waitUi(m, `return !!doc.querySelector('[data-testid="panneau-onglets"]');`);
-    const cards = await inUi<string[]>(m, `return [...doc.querySelectorAll('[data-testid="panneau-onglets"] [data-testid="carte-onglet"]')].map((c) => c.textContent);`);
+    await waitUi(m, `return !!doc.querySelector('[data-testid="tabs-panel"]');`);
+    const cards = await inUi<string[]>(m, `return [...doc.querySelectorAll('[data-testid="tabs-panel"] [data-testid="tab-card"]')].map((c) => c.textContent);`);
     await keyUp(m, "Control");
     expect(cards.some((t) => /vidola/i.test(t))).toBe(false);
     expect(await mainTabs()).toBe(tabs);

@@ -36,10 +36,10 @@ test("walkableTabs: bar order, closed pinned absent, essential first, other spac
   ag({ type: "addEssential", id: ess });
   expect(walkableTabs(e, F)).toEqual([ess, p, a, b, c]);
 
-  const espace0 = e.windows[0]!.activeSpace;
-  ag({ type: "createSpace", name: "Autre", icon: "x", private: false, profile: "nouveau", windowId: F });
+  const firstSpace = e.windows[0]!.activeSpace;
+  ag({ type: "createSpace", name: "Autre", icon: "x", private: false, profile: "new", windowId: F });
   const other = e.windows[0]!.activeSpace;
-  expect(other).not.toBe(espace0);
+  expect(other).not.toBe(firstSpace);
   const z = open("https://z.fr");
   expect(walkableTabs(e, F)).toEqual([z]);
 });

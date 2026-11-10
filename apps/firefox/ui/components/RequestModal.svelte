@@ -82,7 +82,7 @@
       // A focused button keeps its own action; everywhere else (checkboxes included), Enter authorizes.
       if (e.target instanceof HTMLElement && e.target.closest("button")) return;
       e.preventDefault();
-      if (!e.repeat) card.querySelector<HTMLButtonElement>("[data-principal]")?.click();
+      if (!e.repeat) card.querySelector<HTMLButtonElement>("[data-main]")?.click();
     } else if (e.key === "Tab") {
       // Focus does not leave the modal: Tab loops over its controls.
       const list = focusables();
@@ -100,7 +100,7 @@
 <svelte:window onkeydown={clavier} />
 
 <!-- Under the command bar, nothing in the modal can take focus (native Tab from the page body). -->
-<div class="modale" class:prete={ready} data-testid="modale-demande" data-armee={armed || undefined} inert={!!command.open}>
+<div class="modal" class:ready={ready} data-testid="request-modal" data-armed={armed || undefined} inert={!!command.open}>
   <FrozenBackground
     tabId={tabId}
     onReady={() => {
@@ -109,12 +109,12 @@
     }}
   />
   <div
-    class="carte"
+    class="card"
     bind:this={card}
     tabindex="-1"
     role="alertdialog"
     aria-modal="true"
-    aria-describedby={request.extension?.hardened ? "carte-extension-avertissement" : undefined}
+    aria-describedby={request.extension?.hardened ? "extension-card-warning" : undefined}
     aria-label={devTools
       ? "Demande d'accès aux outils de développement"
       : widgetData
@@ -137,42 +137,42 @@
           <ExtensionRequest request={request} card={request.extension} />
         {:else}
           <!-- Never set without a card; if it were, nothing activates without having been shown. -->
-          <div class="lecture">
+          <div class="reading">
             <p>Demande d'extension illisible.</p>
-            <div class="actions"><button data-principal onclick={deny}>Refuser</button></div>
+            <div class="actions"><button data-main onclick={deny}>Refuser</button></div>
           </div>
         {/if}
       {:else if consoleExtension}
-        <div class="lecture" data-testid="demande-console-extension">
+        <div class="reading" data-testid="extension-console-request">
           <p>{unlockedConsoleText(extensionName, extensionSpaces)}</p>
-          {#if agentReason}<p class="raison">Raison donnée par {request.agent ?? "l'agent"} : « {agentReason} »</p>{/if}
+          {#if agentReason}<p class="reason">Raison donnée par {request.agent ?? "l'agent"} : « {agentReason} »</p>{/if}
           <div class="actions">
             <!-- Enter refuses: showing the agent what an extension reads on unshared tabs takes a real click. -->
-            <button data-principal onclick={deny}>Refuser</button>
-            <button class="autoriser" onclick={() => api.permissions.answer(request.id, "allow")}>Débloquer</button>
+            <button data-main onclick={deny}>Refuser</button>
+            <button class="allow" onclick={() => api.permissions.answer(request.id, "allow")}>Débloquer</button>
           </div>
         </div>
       {:else if widgetData}
-        <div class="lecture" data-testid="demande-donnees-widget">
+        <div class="reading" data-testid="widget-data-request">
           {#if request.action !== undefined}
             <p>L'agent veut voir les résultats de l'action « {request.title ?? request.action} » (lus avec ton compte).</p>
           {:else if request.site !== undefined}
-            <p data-testid="demande-site">L'agent veut voir l'appli de site « {request.title ?? request.site} » (connectée à ton compte) : ses pages et sa mémoire, pour cette conversation.</p>
+            <p data-testid="site-request">L'agent veut voir l'appli de site « {request.title ?? request.site} » (connectée à ton compte) : ses pages et sa mémoire, pour cette conversation.</p>
           {:else}
             <p>L'agent veut voir les données du widget « {request.title ?? request.widget} » (lues avec ton compte).</p>
           {/if}
           <div class="actions">
             <!-- Enter refuses: showing the agent data read with the account takes a real click. -->
-            <button data-principal onclick={deny}>Refuser</button>
-            <button class="autoriser" onclick={() => api.permissions.answer(request.id, "allow")}>Autoriser pour cette conversation</button>
+            <button data-main onclick={deny}>Refuser</button>
+            <button class="allow" onclick={() => api.permissions.answer(request.id, "allow")}>Autoriser pour cette conversation</button>
           </div>
         </div>
       {:else}
-        <div class="lecture" data-testid="demande-permission">
+        <div class="reading" data-testid="permission-request">
           <p>L'agent veut lire l'onglet « {request.title ?? site} »</p>
           <div class="actions">
             <button onclick={deny}>Refuser</button>
-            <button class="autoriser" data-principal onclick={() => api.permissions.answer(request.id, "allow")}>Autoriser une fois</button>
+            <button class="allow" data-main onclick={() => api.permissions.answer(request.id, "allow")}>Autoriser une fois</button>
           </div>
         </div>
       {/if}
@@ -181,18 +181,18 @@
 </div>
 
 <style>
-  .modale { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 16px; -webkit-app-region: no-drag; }
-  .carte {
+  .modal { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 16px; -webkit-app-region: no-drag; }
+  .card {
     position: relative;
     width: min(440px, 100%);
     max-height: calc(100vh - 32px);
     overflow-y: auto;
     padding: 14px 18px;
-    background: var(--fond-actif);
-    color: var(--texte);
-    border: 1px solid var(--bord);
+    background: var(--bg-active);
+    color: var(--text);
+    border: 1px solid var(--border);
     border-radius: 12px;
-    box-shadow: var(--ombre-modale);
+    box-shadow: var(--modal-shadow);
     font-size: 13px;
     line-height: 1.45;
     outline: none;
@@ -200,14 +200,14 @@
     transform: translateY(6px) scale(0.98);
     transition: opacity 120ms ease-out, transform 120ms ease-out;
   }
-  .prete .carte { opacity: 1; transform: none; }
+  .ready .card { opacity: 1; transform: none; }
   @media (prefers-reduced-motion: reduce) {
-    .carte { transition: none; transform: none; }
+    .card { transition: none; transform: none; }
   }
-  .lecture p { margin: 0 0 12px; font-size: 14px; overflow-wrap: anywhere; }
-  .lecture p.raison { font-size: 13px; color: var(--texte-doux, inherit); }
+  .reading p { margin: 0 0 12px; font-size: 14px; overflow-wrap: anywhere; }
+  .reading p.reason { font-size: 13px; color: var(--text-muted, inherit); }
   .actions { display: flex; justify-content: flex-end; gap: 8px; }
-  button { padding: 6px 12px; border-radius: 7px; border: 1px solid var(--bord); background: var(--fond-barre); color: var(--texte); font-weight: 600; font-size: 12.5px; }
+  button { padding: 6px 12px; border-radius: 7px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); font-weight: 600; font-size: 12.5px; }
   button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .autoriser { background: var(--accent); border-color: var(--accent); color: white; }
+  .allow { background: var(--accent); border-color: var(--accent); color: white; }
 </style>

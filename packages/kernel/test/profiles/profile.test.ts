@@ -7,13 +7,13 @@ import { tempFolder } from "../helpers/temp.js";
 
 const claude = Profile.parse(JSON.parse(await readFile(join(import.meta.dirname, "../../templates/agent-profile.json"), "utf8")));
 
-test("buildCommand interactif remplace {mcpConfig}", () => {
+test("buildCommand, interactive, replaces {mcpConfig}", () => {
   expect(buildCommand(claude, "interactive", { mcpConfig: "/workspace/.webaios/mcp.json" })).toEqual([
     "claude", "--dangerously-skip-permissions", "--mcp-config", "/workspace/.webaios/mcp.json",
   ]);
 });
 
-test("nonInteractif: the instruction stays a single argument, even with spaces and quotes", () => {
+test("nonInteractive: the instruction stays a single argument, even with spaces and quotes", () => {
   const instruction = `Résume "ça" ; rm -rf /`;
   const cmd = buildCommand(claude, "nonInteractive", { prompt: instruction });
   expect(cmd.at(-1)).toBe(instruction);
@@ -24,7 +24,7 @@ test("variable manquante → erreur", () => {
   expect(() => buildCommand(claude, "interactive", {})).toThrow(/mcpConfig/);
 });
 
-test("a nonInteractif profile with {mcpConfig} is refused", () => {
+test("a nonInteractive profile with {mcpConfig} is refused", () => {
   const faulty = { ...claude, nonInteractive: ["x", "{mcpConfig}", "{consigne}"] };
   expect(() => buildCommand(faulty, "nonInteractive", { prompt: "c", mcpConfig: "/m" })).toThrow();
   expect(Profile.safeParse(faulty).success).toBe(false);

@@ -49,7 +49,7 @@ async function boot(prefs: Record<string, string | number | boolean> = {}): Prom
     return 1;
   })();`);
   // The host answers design.suivi (not "projet" for a parking tab: null, or a rejection while it starts).
-  await waitFor(mm, `return (async () => { const d = (await ChromeUtils.importESModule("${STORE}").ready).design; return d.state({ type: "fenetre", windowId: window.webaiosWindow.windowId }).then(() => true, () => false); })();`, (v) => v === true, 30_000);
+  await waitFor(mm, `return (async () => { const d = (await ChromeUtils.importESModule("${STORE}").ready).design; return d.state({ type: "window", windowId: window.webaiosWindow.windowId }).then(() => true, () => false); })();`, (v) => v === true, 30_000);
   return l;
 }
 
@@ -67,7 +67,7 @@ afterAll(async () => {
 /** Runs `body` with `d` the design service and `t` this window's target; `args` are `args`. */
 const svc = <R = unknown>(body: string, args: unknown[] = []) =>
   m.execute<R>(
-    `return (async (args) => { const d = (await ChromeUtils.importESModule("${STORE}").ready).design; const t = { type: "fenetre", windowId: window.webaiosWindow.windowId }; ${body} })([...arguments]);`,
+    `return (async (args) => { const d = (await ChromeUtils.importESModule("${STORE}").ready).design; const t = { type: "window", windowId: window.webaiosWindow.windowId }; ${body} })([...arguments]);`,
     args,
   );
 const state = () => svc<{ active: boolean; basket: number; unavailable: string | null; project: { project: string } | null }>("return await d.state(t);");

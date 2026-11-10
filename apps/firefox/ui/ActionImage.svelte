@@ -15,7 +15,7 @@
     if (near || !slot) return;
     // The page's scroll container as root, so the margin counts in it (an implicit root would clip at its edge).
     const io = new IntersectionObserver((entries) => entries.some((e) => e.isIntersecting) && (near = true), {
-      root: slot.closest(".defile"),
+      root: slot.closest(".scrolled"),
       rootMargin: "600px",
     });
     io.observe(slot);
@@ -42,5 +42,5 @@
 {#if url && data?.startsWith("data:")}
   <img class="pa-image" src={data} alt="" onerror={() => (data = null)} />
 {:else}
-  <div class="pa-image-neutre" data-testid="image-neutre" aria-hidden="true" bind:this={slot}></div>
+  <div class="pa-image-neutral" data-testid="neutral-image" aria-hidden="true" bind:this={slot}></div>
 {/if}

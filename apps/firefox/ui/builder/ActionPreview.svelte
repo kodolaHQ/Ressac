@@ -32,26 +32,26 @@
   });
 </script>
 
-<div class="apercu" data-testid="apercu-action">
+<div class="preview" data-testid="action-preview">
   {#if executions.chosen === null}
-    <p class="doux">Aucune exécution pour l'instant.</p>
+    <p class="muted">Aucune exécution pour l'instant.</p>
   {:else if loaded === undefined}
-    <p class="doux">Chargement…</p>
+    <p class="muted">Chargement…</p>
   {:else if loaded === null || !loaded.page}
-    <p class="doux">{loaded?.error ?? "Pas de page pour cette exécution."}</p>
+    <p class="muted">{loaded?.error ?? "Pas de page pour cette exécution."}</p>
   {:else if loaded.page.empty}
-    <p class="doux">{NO_RESULT}</p>
+    <p class="muted">{NO_RESULT}</p>
   {:else}
     <div class="page">
       <PageRender page={loaded.page} action={id} run={loaded.run} components={false} />
     </div>
   {/if}
-  {#if executions.chosen?.attempt}<p class="doux mention" data-testid="apercu-mention">Aperçu d'un essai : pas le dernier résultat de l'action</p>{/if}
+  {#if executions.chosen?.attempt}<p class="muted mention" data-testid="mention-preview">Aperçu d'un essai : pas le dernier résultat de l'action</p>{/if}
 </div>
 
 <style>
-  .apercu { position: absolute; left: 12px; bottom: 12px; z-index: 4; display: flex; flex-direction: column; gap: 4px; padding: 6px; border-radius: 10px; border: 1px solid var(--bord); background: var(--fond-barre); box-shadow: var(--ombre-modale); width: 480px; max-width: calc(100% - 24px); }
-  .page { max-height: 360px; overflow: auto; border-radius: 6px; background: var(--fond); zoom: 0.75; }
-  .doux { margin: 0; font-size: 11px; color: var(--texte-doux); }
+  .preview { position: absolute; left: 12px; bottom: 12px; z-index: 4; display: flex; flex-direction: column; gap: 4px; padding: 6px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-bar); box-shadow: var(--modal-shadow); width: 480px; max-width: calc(100% - 24px); }
+  .page { max-height: 360px; overflow: auto; border-radius: 6px; background: var(--bg); zoom: 0.75; }
+  .muted { margin: 0; font-size: 11px; color: var(--text-muted); }
   .mention { max-width: 360px; }
 </style>

@@ -33,6 +33,6 @@
 {/if}
 
 <style>
-  :global(html), :global(body) { margin: 0; height: 100%; background: var(--fond); color: var(--texte); font: 13px system-ui, sans-serif; overflow: hidden; }
+  :global(html), :global(body) { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px system-ui, sans-serif; overflow: hidden; }
   :global(#app) { display: flex; flex-direction: column; height: 100%; }
 </style>

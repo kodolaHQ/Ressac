@@ -207,7 +207,7 @@ async function ready(m: Marionette): Promise<void> {
   await m.setContext("chrome");
   await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
   // The home page's agent session settles first: quitting during its start-up leaves writers in the data dir.
-  await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('prêt>')", [], 20_000, "agent");
+  await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
 }
 
 const NAVIGABLES = "chrome://remote/content/shared/NavigableManager.sys.mjs";
@@ -516,7 +516,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site permissions spike", () => {
 
     // The same origin in a space of another profile (another container).
     const before = (await state(m)).spaces.map((e) => e.id);
-    await dispatch(m, { type: "createSpace", name: "Autre", icon: "🧪", private: false, profile: "nouveau", windowId: (await state(m)).windows[0]!.id } as Action);
+    await dispatch(m, { type: "createSpace", name: "Autre", icon: "🧪", private: false, profile: "new", windowId: (await state(m)).windows[0]!.id } as Action);
     note("P6 new space", (await state(m)).spaces.filter((e) => !before.includes(e.id)).map((e) => e.profile));
     await open(m, `${origin}/p?do=none&p6b`);
     const uc2 = await m.execute<number>("return window.spikeBrowser.contentPrincipal.originAttributes.userContextId");

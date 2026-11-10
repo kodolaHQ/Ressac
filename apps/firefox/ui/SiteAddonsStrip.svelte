@@ -37,9 +37,9 @@
 
 <style>
   .site-addon { all: unset; position: relative; width: 24px; height: 24px; flex: none; border-radius: 5px; background-position: center; background-repeat: no-repeat; background-size: 16px; -webkit-app-region: no-drag; }
-  .site-addon:hover:not(:disabled) { background-color: var(--fond-survol); }
+  .site-addon:hover:not(:disabled) { background-color: var(--bg-hover); }
   .site-addon:disabled { opacity: 0.4; }
   /* Without an icon: the first letter of the name. */
-  .site-addon.no-icon::after { content: attr(data-letter); position: absolute; inset: 4px; display: grid; place-content: center; border-radius: 4px; background: var(--fond-actif); color: var(--texte); font-size: 10px; text-transform: uppercase; }
+  .site-addon.no-icon::after { content: attr(data-letter); position: absolute; inset: 4px; display: grid; place-content: center; border-radius: 4px; background: var(--bg-active); color: var(--text); font-size: 10px; text-transform: uppercase; }
   .badge { position: absolute; right: 0; bottom: 0; padding: 0 2px; border-radius: 2px; font-size: 9px; line-height: 12px; pointer-events: none; }
 </style>

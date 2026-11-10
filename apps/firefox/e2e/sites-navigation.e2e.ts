@@ -49,7 +49,7 @@ async function openAndWait(id = "vidola", p = "/"): Promise<void> {
 async function waitBar<T = unknown>(body: string, id = "vidola", ms = 10_000): Promise<T> {
   const deadline = Date.now() + ms;
   for (;;) {
-    const v = await inSiteBar<T>(m, id, `if (!doc.querySelector('[data-testid="barre-site"]')) return null; ${body}`);
+    const v = await inSiteBar<T>(m, id, `if (!doc.querySelector('[data-testid="site-bar"]')) return null; ${body}`);
     if (v) return v;
     if (Date.now() > deadline) throw new Error(`timed out waiting in the site bar on: ${body}`);
     await sleep(100);
@@ -57,8 +57,8 @@ async function waitBar<T = unknown>(body: string, id = "vidola", ms = 10_000): P
 }
 /** Waits for the bar's « Lien vers <host> bloqué ». */
 const waitNotice = (host: string, id = "vidola") =>
-  waitBar(`return doc.querySelector('[data-testid="site-avis"]')?.textContent.includes(${JSON.stringify(`Lien vers ${host} bloqué`)});`, id);
-const noticeCount = () => inSiteBar<number>(m, "vidola", `return doc.querySelectorAll('[data-testid="site-avis"]').length;`);
+  waitBar(`return doc.querySelector('[data-testid="site-notice"]')?.textContent.includes(${JSON.stringify(`Lien vers ${host} bloqué`)});`, id);
+const noticeCount = () => inSiteBar<number>(m, "vidola", `return doc.querySelectorAll('[data-testid="site-notice"]').length;`);
 const barClick = (testid: string) =>
   waitBar(
     `const el = doc.querySelector('[data-testid="${testid}"]');
@@ -171,10 +171,10 @@ describe("site app navigation", () => {
     expect(await viewUrl()).toBe(url("/"));
     expect(await tabUrls()).toEqual(before);
     expect(server.requests.some((r) => r.host === "pub.localhost" && r.path === "/x")).toBe(false);
-    await barClick("site-ouvrir-onglet");
+    await barClick("site-open-tab");
     await expect.poll(tabUrls, { timeout: 10_000 }).toContain(pub("/x"));
     // The mention falls.
-    await waitBar(`return doc.querySelectorAll('[data-testid="site-avis"]').length === 0;`);
+    await waitBar(`return doc.querySelectorAll('[data-testid="site-notice"]').length === 0;`);
   });
 
   it("ten window.open to pub.localhost from the page and from a pub.localhost frame: no tab, no window more", async () => {
@@ -236,7 +236,7 @@ describe("site app navigation", () => {
     // A new page: the mention falls.
     await inSiteView(m, "vidola", "document.getElementById('film-ici').click(); return 1;", { gesture: true });
     await viewAt(url("/film/2"));
-    await waitBar(`return doc.querySelectorAll('[data-testid="site-avis"]').length === 0;`);
+    await waitBar(`return doc.querySelectorAll('[data-testid="site-notice"]').length === 0;`);
   });
 
   it("a page with <audio autoplay> plays without a gesture; a notification request is refused without a question", async () => {
@@ -259,7 +259,7 @@ describe("site app navigation", () => {
     expect(await inSiteView(m, "vidola", "return Notification.permission;")).toBe("default");
     await sleep(500);
     const asked = await m.execute(
-      `return [...Services.wm.getEnumerator("navigator:browser")].map((x) => ({ banner: !!x.document.querySelector('[data-testid="demande-permission"]')?.checkVisibility(), firefox: x.PopupNotifications._currentNotifications.map((n) => n.id) }));`,
+      `return [...Services.wm.getEnumerator("navigator:browser")].map((x) => ({ banner: !!x.document.querySelector('[data-testid="permission-request"]')?.checkVisibility(), firefox: x.PopupNotifications._currentNotifications.map((n) => n.id) }));`,
     );
     for (const a of asked as unknown[]) expect(a).toEqual({ banner: false, firefox: [] });
   });
@@ -321,10 +321,10 @@ describe("site app navigation", () => {
     // The agent removes vidola-b from site.json; the app is opened again (same window, new rules).
     writeSite(dataDir, "deux", { declaration: { ...vidola(), name: "Deux" } });
     await openSite("deux");
-    await waitBar(`return !doc.querySelector('[data-testid="site-precedent"]').disabled;`, "deux");
+    await waitBar(`return !doc.querySelector('[data-testid="site-back"]').disabled;`, "deux");
     server.requests.splice(0);
     await inSiteBar(m, "deux",
-      `const el = doc.querySelector('[data-testid="site-precedent"]'); const r = el.getBoundingClientRect();
+      `const el = doc.querySelector('[data-testid="site-back"]'); const r = el.getBoundingClientRect();
        for (const type of ["mousedown", "mouseup"]) doc.defaultView.synthesizeMouseEvent(type, r.left + r.width / 2, r.top + r.height / 2, { button: 0, clickCount: 1 });`);
     await waitNotice("vidola-b.localhost", "deux");
     await sleep(500);
@@ -465,7 +465,7 @@ describe("site app navigation", () => {
       await sleep(300);
       await inSiteView(m, "vidola", "document.getElementById('pub').click(); return 1;", { gesture: true });
       await waitNotice("pub.localhost");
-      await barClick("site-ouvrir-onglet");
+      await barClick("site-open-tab");
       const s = await expect.poll(async () => Object.values((await state(m)).tabs).find((o) => o.url === pub("/x") && o.windowId === ids[target]), { timeout: 10_000 }).toBeTruthy().then(() => state(m));
       const tab = Object.values(s.tabs).find((o) => o.url === pub("/x") && o.windowId === ids[target])!;
       // In that window's active space.
@@ -503,7 +503,7 @@ describe("site app navigation", () => {
     await waitFor(m, `return [...Services.wm.getEnumerator("navigator:browser")].filter((x) => x.document.documentElement.hasAttribute("webaios-main")).length;`, (v) => v === 0);
     await inSiteView(m, "vidola", "document.getElementById('pub').click(); return 1;", { gesture: true });
     await waitNotice("pub.localhost");
-    await barClick("site-ouvrir-onglet");
+    await barClick("site-open-tab");
     await waitFor(m, `return [...Services.wm.getEnumerator("navigator:browser")].filter((x) => x.document.documentElement.hasAttribute("webaios-main")).length;`, (v) => v === 1);
     await expect.poll(async () => {
       const s = await state(m);

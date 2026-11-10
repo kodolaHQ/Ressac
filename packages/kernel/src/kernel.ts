@@ -306,7 +306,7 @@ export async function createKernel(o: {
   const { widgetsFolder: widgetsFolder } = o;
   const { actionsFolder: actionsFolder } = o;
   // An action deleted (or put in the trash) since the last launch: its data and grant go.
-  await forgetGoneActions(paths, actionsFolder).catch((e) => console.error("[webaios] oubli des actions disparues :", e));
+  await forgetGoneActions(paths, actionsFolder).catch((e) => console.error("[webaios] forgetting gone actions:", e));
   const ai = o.ai ?? null;
   // Access specific to this kernel, closed with it: a harvest still in flight at shutdown does not relaunch Kev.
   const aiAccess = ai?.access() ?? null;
@@ -316,7 +316,7 @@ export async function createKernel(o: {
     try {
       o.onChange?.();
     } catch (e) {
-      console.error("[webaios] rappel des widgets :", e);
+      console.error("[webaios] widgets recall:", e);
     }
   };
   const widget = async (id: string): Promise<WidgetRead | undefined> =>
@@ -376,7 +376,7 @@ export async function createKernel(o: {
   try {
     // Session configs left by a crash: their tokens are worth nothing any more.
     // A failure does not prevent starting: dead tokens are harmless.
-    await rm(sessionsFolder(paths), { recursive: true, force: true }).catch((e) => console.error("[webaios] purge des configs de session :", e));
+    await rm(sessionsFolder(paths), { recursive: true, force: true }).catch((e) => console.error("[webaios] session configs purge:", e));
     await writeMcpConfig(paths, profile.mcpConfig, { url: server.containerUrl, token: token });
   } catch (e) {
     await server.stop();
@@ -445,7 +445,7 @@ export async function createKernel(o: {
         try {
           callback(e);
         } catch (err) {
-          console.error("[webaios] suivi des actions :", err);
+          console.error("[webaios] actions tracking:", err);
         }
       }
     },
@@ -537,7 +537,7 @@ export async function createKernel(o: {
         if (sessionToken === undefined) return Promise.resolve();
         server.closeSession(sessionToken);
         sessionToken = undefined;
-        return rm(configSession, { force: true }).catch((e) => console.error("[webaios] suppression de la config de session :", e));
+        return rm(configSession, { force: true }).catch((e) => console.error("[webaios] session config deletion:", e));
       };
       try {
         if (win !== undefined) {
@@ -581,7 +581,7 @@ export async function createKernel(o: {
       await giveGrant(widgetsFolder, id, { domains: [...account].sort(), public: [...publics].sort(), profile: profileName });
       report();
       // The harvest takes time: it follows in the background and reports its own changes.
-      scheduler.harvestNow(id).catch((e) => console.error("[webaios] récolte après accord :", e));
+      scheduler.harvestNow(id).catch((e) => console.error("[webaios] harvest after grant:", e));
     },
     async denyGrant(id) {
       await removeGrant(widgetsFolder, id);
@@ -607,7 +607,7 @@ export async function createKernel(o: {
       // No access at all: the cards still displayed are removed, and a late answer grants nothing.
       policy.reset();
       await Promise.all([scheduler.stop(), fileActions.stopAll()]);
-      await aiAccess?.close().catch((e) => console.error("[webaios] arrêt de l'IA locale :", e));
+      await aiAccess?.close().catch((e) => console.error("[webaios] local AI stop:", e));
       await server.stop();
       owner?.release();
     },

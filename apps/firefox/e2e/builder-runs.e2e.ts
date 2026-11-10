@@ -302,11 +302,11 @@ const waitVisible = (css: string) => waitTrue(`(() => { const e = ${el(css)}; if
 const waitClass = (css: string, c: string, ms?: number) => waitTrue(`!!${el(css)}?.classList.contains(${JSON.stringify(c)})`, ms);
 const waitPressed = (css: string) => waitTrue(`${el(css)}?.getAttribute("aria-pressed") === "true"`);
 const waitDisabled = (css: string, disabled: boolean, ms?: number) => waitTrue(`${el(css)}?.disabled === ${disabled}`, ms);
-const saved = () => waitText(tid("etat-enregistrement"), "Enregistré");
+const saved = () => waitText(tid("save-status"), "Enregistré");
 const textOf = (css: string) => inUi<string | null>(m, `return ${el(css)}?.textContent ?? null`);
 /** The text of the `#donnees` of an iframe in `css` (a home widget's or the preview's display). */
 const shown = (css: string) => inUi<string>(m, `return ${el(`${css} iframe`)}?.contentDocument?.getElementById("donnees")?.textContent ?? ""`);
-const preview = () => shown(tid("apercu-widget"));
+const preview = () => shown(tid("widget-preview"));
 const homeData = (id: string) => shown(tid(`widget-${id}`));
 const harvest = (id: string) => inUi(m, "ui.webaios.home.harvest(arguments[0])", [id]);
 const runs = async (id: string) => (existsSync(executionsOf(id)) ? (await readdir(executionsOf(id))).filter((f) => f.endsWith(".json")).sort() : []);
@@ -370,19 +370,19 @@ describe("the workflow builder's runs", () => {
     await home();
     await trackErrors();
     await builder("lancer");
-    await waitVisible(tid("noeud-textes"));
+    await waitVisible(tid("node-textes"));
     // No run: the preview shows the example, as the home page does.
-    await click(m, tid("bouton-apercu"));
+    await click(m, tid("preview-button"));
     await poll(preview, '{"example":"veille"}');
-    await waitCount(tid("apercu-mention"), 0);
+    await waitCount(tid("mention-preview"), 0);
 
-    await click(m, tid("lancer"));
-    await waitClass(tid("pastille-textes"), "en-cours", 20_000);
-    await waitText(tid("pastille-liens"), "2");
-    await waitDisabled(tid("lancer"), true);
-    await waitClass(tid("pastille-textes"), "ok", 20_000);
-    await waitText(tid("pastille-tri"), "1");
-    await waitDisabled(tid("lancer"), false);
+    await click(m, tid("launch"));
+    await waitClass(tid("pill-textes"), "in-progress", 20_000);
+    await waitText(tid("pill-liens"), "2");
+    await waitDisabled(tid("launch"), true);
+    await waitClass(tid("pill-textes"), "ok", 20_000);
+    await waitText(tid("pill-tri"), "1");
+    await waitDisabled(tid("launch"), false);
     const [id] = (await runs("lancer")).map((f) => f.replace(/\.json$/, ""));
     await waitPressed(tid(`execution-${id}`));
     await waitContains(tid(`execution-${id}`), "Manuelle");
@@ -400,10 +400,10 @@ describe("the workflow builder's runs", () => {
     await builder("rejouer");
     await waitPressed(tid(`execution-${origin}`));
     // Nothing selected: nothing to replay.
-    await waitDisabled(tid("rejouer"), true);
+    await waitDisabled(tid("replay"), true);
 
-    await click(m, tid("noeud-tri"));
-    const threshold = `${tid("volet-bloc")} ${tid("champ-threshold")}`;
+    await click(m, tid("node-tri"));
+    const threshold = `${tid("block-pane")} ${tid("field-threshold")}`;
     await fill(threshold, "0.05");
     await pressEnter();
     await poll(() => thresholdOf("rejouer"), 0.05);
@@ -418,29 +418,29 @@ describe("the workflow builder's runs", () => {
     // The harvest at launch did read the fake site: its log counts.
     expect(pages).toBeGreaterThan(0);
 
-    await click(m, tid("rejouer"));
+    await click(m, tid("replay"));
     await poll(async () => (await runs("rejouer")).length, 2, 20_000);
     const trial = (await runs("rejouer")).find((f) => f.includes("-attempt"))!.replace(/\.json$/, "");
     const button = tid(`execution-${trial}`);
     await waitContains(button, "essai");
     await waitPressed(button);
-    await waitCount(tid("refus-rejeu"), 0);
-    await waitClass(tid("pastille-liens"), "neutre");
-    await waitText(tid("pastille-tri"), "2");
-    await click(m, tid("bouton-apercu"));
+    await waitCount(tid("replay-refusal"), 0);
+    await waitClass(tid("pill-liens"), "neutral");
+    await waitText(tid("pill-tri"), "2");
+    await click(m, tid("preview-button"));
     await poll(preview, '{"liens":["Nouveau modèle IA","Recette de cuisine"]}');
-    await waitCount(tid("apercu-mention"), 0);
+    await waitCount(tid("mention-preview"), 0);
 
     // tri's output, opened on the trial, stays open when the trial is read again (the origin, then the trial).
-    const output = tid("sortie-bloc");
-    await click(m, `${output} ${tid("sortie-repliable")} summary`);
-    await waitVisible(`${output} ${tid("sortie-json")}`);
+    const output = tid("block-output");
+    await click(m, `${output} ${tid("collapsible-output")} summary`);
+    await waitVisible(`${output} ${tid("json-output")}`);
     await click(m, tid(`execution-${origin}`));
     await waitPressed(tid(`execution-${origin}`));
-    await waitCount(`${output} ${tid("sortie-json")}`, 0);
+    await waitCount(`${output} ${tid("json-output")}`, 0);
     await click(m, button);
     await waitPressed(button);
-    await waitVisible(`${output} ${tid("sortie-json")}`);
+    await waitVisible(`${output} ${tid("json-output")}`);
 
     // The page was not read again; neither the data, the memory nor the widget's state moved.
     expect(reads.get("rejouer")).toBe(pages);
@@ -449,8 +449,8 @@ describe("the workflow builder's runs", () => {
     expect(await content(path.join(dir, "state.json"))).toBe(before.state);
 
     // The « Exécutions » tab: all of them, the trial marked with its starting block; choosing one goes back to the canvas.
-    await click(m, tid("vue-executions"));
-    const list = tid("liste-executions");
+    await click(m, tid("executions-view"));
+    const list = tid("executions-list");
     await waitContains(`${list} ${tid(`execution-${trial}`)}`, "essai depuis « tri »");
     await waitContains(`${list} ${tid(`execution-${origin}`)}`, "Planifiée");
     await click(m, `${list} ${tid(`execution-${origin}`)}`);
@@ -462,15 +462,15 @@ describe("the workflow builder's runs", () => {
     // reused outputs come from the real run.
     await click(m, button);
     await waitPressed(button);
-    await click(m, tid("noeud-tri"));
+    await click(m, tid("node-tri"));
     for (const n of [3, 4]) {
-      await waitDisabled(tid("rejouer"), false);
-      await click(m, tid("rejouer"));
+      await waitDisabled(tid("replay"), false);
+      await click(m, tid("replay"));
       await poll(async () => (await runs("rejouer")).length, n, 20_000);
-      await waitCount(tid("refus-rejeu"), 0);
+      await waitCount(tid("replay-refusal"), 0);
       const last = (await runs("rejouer")).filter((f) => f.includes("-attempt")).at(-1)!.replace(/\.json$/, "");
       await waitPressed(tid(`execution-${last}`));
-      await waitText(tid("pastille-tri"), "2");
+      await waitText(tid("pill-tri"), "2");
       expect((await readJson(path.join(executionsOf("rejouer"), `${last}.json`))).attempt).toEqual({ start: "tri", origin: origin });
     }
     expect(reads.get("rejouer")).toBe(pages);
@@ -479,12 +479,12 @@ describe("the workflow builder's runs", () => {
   it("Rejouer from a block whose upstream output is truncated: message « Rejeu impossible : … tronquée … », no run added", async () => {
     await builder("tronque");
     await waitPressed(tid(`execution-${TRUNCATED}`));
-    await click(m, tid("noeud-tri"));
-    await click(m, tid("rejouer"));
-    await waitText(tid("refus-rejeu"), "Rejeu impossible : la sortie de « liens » a été tronquée dans cette exécution");
+    await click(m, tid("node-tri"));
+    await click(m, tid("replay"));
+    await waitText(tid("replay-refusal"), "Rejeu impossible : la sortie de « liens » a été tronquée dans cette exécution");
     await sleep(500);
     expect(await runs("tronque")).toEqual([`${TRUNCATED}.json`]);
-    await waitDisabled(tid("rejouer"), false);
+    await waitDisabled(tid("replay"), false);
   });
 
   it("during a run, Lancer and Rejouer are greyed out", async () => {
@@ -492,45 +492,45 @@ describe("the workflow builder's runs", () => {
     // Without a state: harvested at launch, it has a run to replay.
     await poll(() => homeData("grise"), '{"liens":["Nouveau modèle IA"]}', 20_000);
     await builder("grise");
-    await click(m, tid("noeud-tri"));
-    await waitDisabled(tid("rejouer"), false);
-    await waitDisabled(tid("lancer"), false);
+    await click(m, tid("node-tri"));
+    await waitDisabled(tid("replay"), false);
+    await waitDisabled(tid("launch"), false);
 
     // A run started elsewhere (the agent, the home page): the builder sees it live.
     await harvest("grise");
-    await waitDisabled(tid("lancer"), true);
-    await waitDisabled(tid("rejouer"), true);
-    await waitClass(tid("pastille-textes"), "en-cours", 20_000);
+    await waitDisabled(tid("launch"), true);
+    await waitDisabled(tid("replay"), true);
+    await waitClass(tid("pill-textes"), "in-progress", 20_000);
     // At the end, the view settles on the run written: no « en cours » badge any more.
-    await waitDisabled(tid("lancer"), false, 20_000);
-    await waitDisabled(tid("rejouer"), false);
-    await waitClass(tid("pastille-textes"), "ok");
-    await waitText(tid("pastille-tri"), "1");
+    await waitDisabled(tid("launch"), false, 20_000);
+    await waitDisabled(tid("replay"), false);
+    await waitClass(tid("pill-textes"), "ok");
+    await waitText(tid("pill-tri"), "1");
   });
 
   it("a widget with only harvest.mjs and an account: the builder shows recolte → sortie; opening, selecting, rearranging, choosing a run write nothing", async () => {
     const dir = widgetDir(dataDir, "gmail");
     await home();
     await trackErrors();
-    await waitContains(`${tid("widget-gmail")} ${tid("bandeau-accord")}`, "127.0.0.1");
+    await waitContains(`${tid("widget-gmail")} ${tid("grant-banner")}`, "127.0.0.1");
     // The home page settled: what it may have written at launch does not count.
     await sleep(1500);
     const before = { space: await snapshot(dir, true), data: await snapshot(dataOf("gmail"), true) };
     expect(before.data.some((f) => f.startsWith("state.json:"))).toBe(true);
 
     await openBuilder(m, "gmail");
-    await waitContains(tid("noeud-harvest"), "code");
-    await waitContains(tid("noeud-output"), "output");
+    await waitContains(tid("node-harvest"), "code");
+    await waitContains(tid("node-output"), "output");
     await saved();
     // The last run is chosen on opening.
     await waitPressed(tid(`execution-${GMAIL_RUNS[1]}`));
 
     // Selecting with a jittered click (under the 4 px drag threshold).
-    await drag(tid("noeud-harvest"), 2, 1, 1);
-    await waitVisible(tid("volet-bloc"));
-    await click(m, tid("noeud-output"));
+    await drag(tid("node-harvest"), 2, 1, 1);
+    await waitVisible(tid("block-pane"));
+    await click(m, tid("node-output"));
     // Reorganising, then choosing the other run.
-    await click(m, tid("reorganiser"));
+    await click(m, tid("rearrange"));
     await click(m, tid(`execution-${GMAIL_RUNS[0]}`));
     await waitPressed(tid(`execution-${GMAIL_RUNS[0]}`));
     await sleep(1500);
@@ -551,7 +551,7 @@ describe("the workflow builder's runs", () => {
 
     await builder("simple");
     // A real gesture: moving the output by 80 px.
-    await drag(tid("noeud-output"), 80, 40, 10);
+    await drag(tid("node-output"), 80, 40, 10);
     await poll(async () => existsSync(path.join(dir, "workflow.json")), true);
     await saved();
     const written = await readWorkflow(dataDir, "simple");
@@ -561,7 +561,7 @@ describe("the workflow builder's runs", () => {
     expect(await readFile(path.join(dir, "harvest.mjs"), "utf8")).toBe(SIMPLE_CODE);
 
     // The widget now goes through workflow.json: same data.
-    await click(m, tid("nouvel-onglet"));
+    await click(m, tid("new-tab"));
     await poll(() => homeData("simple"), '{"bon":true}');
     await harvest("simple");
     await poll(async () => (await runs("simple")).length, 2, 20_000);
@@ -576,20 +576,20 @@ describe("the workflow builder's runs", () => {
   it("the agent writes a cut-off workflow.json: the canvas stays, the banner says « illisible », the widget shows « Workflow invalide : … »", async () => {
     const file = path.join(widgetDir(dataDir, "coupe"), "workflow.json");
     await builder("coupe");
-    await waitVisible(tid("noeud-tri"));
+    await waitVisible(tid("node-tri"));
 
     // The agent writes without a temporary file: JSON cut in the middle.
     const cut = JSON.stringify(WATCH_WORKFLOW).slice(0, 120);
     await writeFile(file, cut);
-    await waitContains(tid("bandeau-fichier"), "illisible");
-    for (const id of ["page", "liens", "tri", "textes", "sortie"]) await waitVisible(tid(`noeud-${id}`));
-    await waitCount(tid("workflow-illisible"), 0);
+    await waitContains(tid("file-banner"), "illisible");
+    for (const id of ["page", "liens", "tri", "textes", "sortie"]) await waitVisible(tid(`node-${id}`));
+    await waitCount(tid("workflow-unreadable"), 0);
     await sleep(500);
     // The builder did not write over it.
     expect(await readFile(file, "utf8")).toBe(cut);
 
     // On the home page, the next harvest says so on the widget.
-    await click(m, tid("nouvel-onglet"));
+    await click(m, tid("new-tab"));
     await harvest("coupe");
     await waitContains(tid("widget-coupe"), "Workflow invalide : ", 20_000);
     expect((await readJson(path.join(dataOf("coupe"), "state.json"))).error).toMatch(/^Workflow invalide : /);
@@ -600,12 +600,12 @@ describe("the workflow builder's runs", () => {
     const before = await snapshot(widgetDir(dataDir, "grand"));
     await builder("grand");
     await saved();
-    await waitCount('[data-testid^="noeud-"]', 30);
+    await waitCount('[data-testid^="node-"]', 30);
     await sleep(500);
     const { view, boxes } = await inUi<{ view: Box; boxes: Box[] }>(
       m,
       `const box = (e) => { const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; };
-       return { view: box(doc.querySelector(".svelte-flow")), boxes: [...doc.querySelectorAll('[data-testid^="noeud-"]')].map(box) };`,
+       return { view: box(doc.querySelector(".svelte-flow")), boxes: [...doc.querySelectorAll('[data-testid^="node-"]')].map(box) };`,
     );
     for (const [i, a] of boxes.entries()) {
       expect(a.x, `node ${i} left of the view`).toBeGreaterThanOrEqual(view.x);
@@ -621,34 +621,34 @@ describe("the workflow builder's runs", () => {
   it("the Widget panel of a web widget shows « Accès au web : ouvert » and its hours; Chercher sur le web is added from the palette", async () => {
     const declaration = await readFile(path.join(widgetDir(dataDir, "web"), "widget.json"), "utf8");
     await builder("web");
-    const panel = tid("panneau-widget");
+    const panel = tid("widget-panel");
     await waitText(tid("widget-web"), "Accès au web : ouvert");
-    await waitText(tid("widget-heures"), "Heures prévues : 07:00, 19:00");
+    await waitText(tid("widget-hours"), "Heures prévues : 07:00, 19:00");
     await waitContains(panel, "Durée maximale : 30 min");
     await waitContains(panel, "Notification à la fin : oui");
 
     const search = tid("palette-web.search");
     await waitDisabled(search, false);
     await click(m, search);
-    await waitVisible(tid("noeud-web-search"));
-    await waitTrue(`!${el(tid("etat-enregistrement"))}.textContent.includes("doit déclarer")`);
+    await waitVisible(tid("node-web-search"));
+    await waitTrue(`!${el(tid("save-status"))}.textContent.includes("doit déclarer")`);
     // widget.json is never written by the builder.
     expect(await readFile(path.join(widgetDir(dataDir, "web"), "widget.json"), "utf8")).toBe(declaration);
   });
 
   it("in a widget without web, Chercher sur le web is greyed out; a web.chercher written by the agent renders « Non enregistré » / « Workflow invalide : web.chercher … »", async () => {
     await builder("sansweb");
-    await waitVisible(tid("noeud-tri"));
+    await waitVisible(tid("node-tri"));
     // Nothing about the web in the panel of a widget without access.
     await waitCount(tid("widget-web"), 0);
-    await waitCount(tid("widget-heures"), 0);
+    await waitCount(tid("widget-hours"), 0);
     const search = tid("palette-web.search");
     await waitDisabled(search, true);
     expect(await inUi(m, `return ${el(search)}.getAttribute("title")`)).toBe('Le widget doit déclarer "web": true : demande-le à l\'agent.');
     // Playwright's force click: the mouse on a disabled button.
     await click(m, search);
     await sleep(300);
-    await waitCount(tid("noeud-web-search"), 0);
+    await waitCount(tid("node-web-search"), 0);
 
     await writeAsAgent("sansweb", {
       version: 1,
@@ -658,41 +658,41 @@ describe("the workflow builder's runs", () => {
       ],
       links: [{ from: "chercher", to: "sortie" }],
     });
-    await waitVisible(tid("noeud-chercher"));
-    await waitContains(tid("etat-enregistrement"), "Non enregistré : ");
-    await waitContains(tid("etat-enregistrement"), 'Workflow invalide : web.search : le widget doit déclarer "web": true');
+    await waitVisible(tid("node-chercher"));
+    await waitContains(tid("save-status"), "Non enregistré : ");
+    await waitContains(tid("save-status"), 'Workflow invalide : web.search : le widget doit déclarer "web": true');
   });
 
-  it("auFilDeLEau behind Garder les N premiers: warning on the output", async () => {
+  it("streaming behind Garder les N premiers: warning on the output", async () => {
     await builder("fil");
-    await click(m, tid("noeud-sortie"));
-    await waitContains(tid("avertissement-sortie"), "rien à publier au fil de l'eau : l'entrée de la sortie n'est pas traitée élément par élément");
-    await waitClass(tid("noeud-sortie"), "avertit");
+    await click(m, tid("node-sortie"));
+    await waitContains(tid("warning-sortie"), "rien à publier au fil de l'eau : l'entrée de la sortie n'est pas traitée élément par élément");
+    await waitClass(tid("node-sortie"), "warns");
     await saved();
 
     // Unchecked, the box removes the key (absent = false): nothing else is written in the output.
-    const box = tid("champ-live");
+    const box = tid("field-live");
     await waitTrue(`${el(box)}?.checked === true`);
     await click(m, box);
     await poll(async () => (await readWorkflow(dataDir, "fil")).blocks.find((b: { id: string }) => b.id === "sortie").params, { to: "widget" });
-    await waitCount(tid("avertissement-sortie"), 0);
+    await waitCount(tid("warning-sortie"), 0);
   });
 
   it("the builder keeps working after a host restart", async () => {
     await builder("relance");
-    await waitVisible(tid("noeud-textes"));
+    await waitVisible(tid("node-textes"));
     // The host stops under the open builder (as home.e2e.ts does), then starts again (the agent panel's Réessayer).
     await agent("await agent.stop();");
     await waitFor<number | null>(m, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).agent.pid)();`, (pid) => pid === null);
     await agent("await agent.ensure();");
 
-    await waitDisabled(tid("lancer"), false);
-    await click(m, tid("lancer"));
-    await waitClass(tid("pastille-textes"), "en-cours", 20_000);
-    await waitDisabled(tid("lancer"), true);
-    await waitClass(tid("pastille-textes"), "ok", 20_000);
-    await waitText(tid("pastille-tri"), "1");
-    await waitDisabled(tid("lancer"), false);
+    await waitDisabled(tid("launch"), false);
+    await click(m, tid("launch"));
+    await waitClass(tid("pill-textes"), "in-progress", 20_000);
+    await waitDisabled(tid("launch"), true);
+    await waitClass(tid("pill-textes"), "ok", 20_000);
+    await waitText(tid("pill-tri"), "1");
+    await waitDisabled(tid("launch"), false);
     const all = await runs("relance");
     expect(all).toHaveLength(1);
     await waitPressed(tid(`execution-${all[0]!.replace(/\.json$/, "")}`));

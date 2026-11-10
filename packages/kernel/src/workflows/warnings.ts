@@ -57,9 +57,9 @@ export function warnWorkflow(
         if (host && !allowed.includes(host)) r.push({ block: b.id, message: `domaine non déclaré : ${host}` });
       }
     }
-    const champs = BLOCK_REGISTRY.get(b.type)?.fields.filter((c) => c.kind === "template") ?? [];
+    const fieldList = BLOCK_REGISTRY.get(b.type)?.fields.filter((c) => c.kind === "template") ?? [];
     const missing = new Set<string>();
-    for (const c of champs) {
+    for (const c of fieldList) {
       const v = b.params[c.name];
       if (typeof v !== "string") continue;
       // An optional marker (`{config.x?}`) does not need the value: it is never reported.
@@ -68,7 +68,7 @@ export function warnWorkflow(
       }
     }
     if (ctx.owner === "action" && ctx.input !== true) {
-      const hasInput = champs.some((c) => {
+      const hasInput = fieldList.some((c) => {
         const v = b.params[c.name];
         return typeof v === "string" && /\{input\??\}/.test(v);
       });

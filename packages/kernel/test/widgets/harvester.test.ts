@@ -168,8 +168,8 @@ describe("recolteur (implicit workflow of a lone harvest.mjs)", () => {
   });
 });
 
-describe("recolteur: duration limit (limiteMs)", () => {
-  it("limiteMs 1000: no more element launched after 1 s", async () => {
+describe("recolteur: duration limit (limitMs)", () => {
+  it("limitMs 1000: no more element launched after 1 s", async () => {
     // Fake clock: the deadline of the debut line received at 0, each element lasts 300 ms, two at a time.
     let now = 0;
     const launched: number[] = [];
@@ -203,7 +203,7 @@ describe("recolteur: duration limit (limiteMs)", () => {
     expect(traces).toContainEqual({ t: "log", block: "cherche", text: "temps écoulé : 16 élément(s) non lancé(s)" });
   });
 
-  it("in the container, limiteMs of the debut line is the deadline: 20 ms, elapsed during the list, no element launched", async () => {
+  it("in the container, limitMs of the debut line is the deadline: 20 ms, elapsed during the list, no element launched", async () => {
     const r = await launchWorkflow({
       workflow: {
         version: 1,
@@ -219,7 +219,7 @@ describe("recolteur: duration limit (limiteMs)", () => {
     expect(r.blockEnd("cherche")).toMatchObject({ status: "partial" });
   });
 
-  it("without limiteMs: 150 s as before", () => {
+  it("without limitMs: 150 s as before", () => {
     expect(GLOBAL_LIMIT_MS).toBe(150_000);
     expect(deadlineOf({ t: "start" }, 1_000)).toBe(151_000);
     expect(deadlineOf({ t: "start", limitMs: 1_000 }, 1_000)).toBe(2_000);

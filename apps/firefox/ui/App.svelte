@@ -148,7 +148,7 @@
   const compact = $derived(winState?.compact ?? false);
   let revealed = $state(false);
   let armed = INITIAL_REVEAL.armed;
-  let zone: LeftZone = "loin";
+  let zone: LeftZone = "far";
   let timer: ReturnType<typeof setTimeout> | undefined;
   const barVisible = $derived(!compact || revealed);
 
@@ -166,7 +166,7 @@
     // The access bubble is mounted outside the sidebar: while it is open, the sidebar stays.
     if (!revealed || access.openBubbles > 0) return;
     timer = setTimeout(() => {
-      if (zone !== "loin" || access.openBubbles > 0) return;
+      if (zone !== "far" || access.openBubbles > 0) return;
       const r = hide(zone);
       revealed = r.revealed;
       armed = r.armed;
@@ -174,7 +174,7 @@
   }
   // Once the bubble closes, hiding resumes if the mouse is already away from the sidebar.
   $effect(() => {
-    if (access.openBubbles === 0) untrack(() => zone === "loin" && scheduleHide());
+    if (access.openBubbles === 0) untrack(() => zone === "far" && scheduleHide());
   });
   $effect(() => api.onLeftZone(onMouseZone));
   $effect(() => win.setSidebarColumn(!compact));
@@ -191,16 +191,16 @@
      iframe again (TabSwitchDone), and the empty page takes the keyboard back. -->
 <svelte:window onfocus={() => document.activeElement === document.body && focusEmptyPage.n++} />
 
-<div class="fenetre" inert={!!agentRequest || !!spaceSettings.draft || !!command.open} class:compact class:couverte={overlay}>
-  <div class="colonne" class:repliee={!barVisible} inert={!barVisible}>
+<div class="window" inert={!!agentRequest || !!spaceSettings.draft || !!command.open} class:compact class:covered={overlay}>
+  <div class="column" class:folded-up={!barVisible} inert={!barVisible}>
     {#if winState}
       <!-- ✦ on a builder tab: the controller opens the panel and sends "agent", handled above. -->
       <Sidebar window={winState} togglePanel={togglePanel} builderAgent={() => win.openAgent()} />
     {:else}
-      <aside data-testid="barre-laterale"></aside>
+      <aside data-testid="sidebar"></aside>
     {/if}
   </div>
-  <main class="contenu" class:opaque={!pageWeb || !!panel} data-testid="zone-contenu">
+  <main class="content" class:opaque={!pageWeb || !!panel} data-testid="content-zone">
     {#if winState && panel === "history"}
       <History window={winState} close={closePanel} />
     {:else if panel === "downloads"}
@@ -215,19 +215,19 @@
       <Applications />
     {:else if activeTab?.url === URL_ACTIONS}
       {#if privateAction}
-        <p class="plante" data-testid="action-espace-prive">{ACTIONS_IN_PRIVATE_SPACE}</p>
+        <p class="crashed" data-testid="action-private-space">{ACTIONS_IN_PRIVATE_SPACE}</p>
       {:else}
         <Actions />
       {/if}
     {:else if builderTarget}
       {#if builderTarget.type === "action" && privateAction}
-        <p class="plante" data-testid="action-espace-prive">{ACTIONS_IN_PRIVATE_SPACE}</p>
+        <p class="crashed" data-testid="action-private-space">{ACTIONS_IN_PRIVATE_SPACE}</p>
       {:else}
         {#key `${builderTarget.type}:${builderTarget.id}`}<WorkflowBuilder target={builderTarget} />{/key}
       {/if}
     {:else if pageAction}
       {#if privateAction}
-        <p class="plante" data-testid="action-espace-prive">{ACTIONS_IN_PRIVATE_SPACE}</p>
+        <p class="crashed" data-testid="action-private-space">{ACTIONS_IN_PRIVATE_SPACE}</p>
       {:else}
         {#key `${pageAction.id}/${pageAction.run}`}<PageAction id={pageAction.id} run={pageAction.run} />{/key}
       {/if}
@@ -251,7 +251,7 @@
   {#if tabPanelReady}<TabsPanel panel={tabPanel} />{/if}
 {/if}
 {#if command.open && winState}
-  <div class="couche-commande">
+  <div class="command-layer">
     <FrozenBackground tabId={activeTab?.id ?? null} onReady={() => {}} />
     <CommandBar window={winState} activeTab={activeTab} yields={!!tabPanel} closePanel={() => (panel = null)} />
   </div>
@@ -261,33 +261,33 @@
   /* Transparent so the web page under the iframe shows; the sidebar and the content area paint their own. */
   :global(html, body) { background: transparent; }
   /* Firefox's -webkit-app-region: the same areas. An overlay over the sidebar keeps its clicks. */
-  .fenetre:not(.couverte) :global(.barre) { -moz-window-dragging: drag; }
-  .fenetre :global(.barre :is(.navigation button, .ligne, .defilant, footer)) { -moz-window-dragging: no-drag; }
+  .window:not(.covered) :global(.bar) { -moz-window-dragging: drag; }
+  .window :global(.bar :is(.navigation button, .line, .scrolling, footer)) { -moz-window-dragging: no-drag; }
   /* The Actions page's confirmation covers the window, its drag areas too (no-drag on its veil). */
-  .fenetre :global(:is([data-testid="voile-suppression-action"], [data-testid="confirmation-suppression-action"])) { -moz-window-dragging: no-drag; }
-  .couche-commande { position: fixed; inset: 0; z-index: 100; }
-  .fenetre {
+  .window :global(:is([data-testid="action-delete-veil"], [data-testid="action-delete-confirmation"])) { -moz-window-dragging: no-drag; }
+  .command-layer { position: fixed; inset: 0; z-index: 100; }
+  .window {
     display: grid;
     grid-template-columns: 240px 1fr;
     height: 100%;
   }
-  .fenetre.compact { grid-template-columns: 1fr; }
-  .colonne { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; min-height: 0; }
-  .compact .colonne {
+  .window.compact { grid-template-columns: 1fr; }
+  .column { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; min-height: 0; }
+  .compact .column {
     position: fixed;
     inset: 0 auto 0 0;
     z-index: 10;
     width: 240px;
-    border-right: 1px solid var(--bord);
+    border-right: 1px solid var(--border);
     transition: transform 200ms ease;
   }
-  .compact .repliee { transform: translateX(-100%); visibility: hidden; transition: transform 200ms ease, visibility 0s 200ms; }
+  .compact .folded-up { transform: translateX(-100%); visibility: hidden; transition: transform 200ms ease, visibility 0s 200ms; }
   @media (prefers-reduced-motion: reduce) {
-    .compact .colonne { transition: none; }
+    .compact .column { transition: none; }
   }
   /* The action page fills it (position: absolute), not the window. */
-  .contenu { position: relative; min-width: 0; min-height: 0; }
-  .opaque { background: var(--fond); }
+  .content { position: relative; min-width: 0; min-height: 0; }
+  .opaque { background: var(--bg); }
   /* The page's error and crash messages. */
-  .plante { display: grid; place-content: center; gap: 12px; height: 100%; text-align: center; color: var(--texte); }
+  .crashed { display: grid; place-content: center; gap: 12px; height: 100%; text-align: center; color: var(--text); }
 </style>

@@ -12,7 +12,7 @@ import { click, inUi, missingApi, pressKeys, waitUi } from "./ui";
 
 const BLOCK: [number, number] = [15290, 15294];
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const CONFIRM = '[data-testid="confirmation-suppression"]';
+const CONFIRM = '[data-testid="delete-confirmation"]';
 
 let p: AppsPage | undefined;
 afterEach(async () => {
@@ -28,7 +28,7 @@ const project = (folder: string) => path.join(p!.dataDir, "workspace", "projects
 const rowGone = (folder: string, ms = 10_000) => waitUi(p!.m, "return !doc.querySelector(arguments[0])", [appRow(folder)], ms);
 const rowShown = (folder: string, ms = 10_000) => waitUi(p!.m, "return !!doc.querySelector(arguments[0])", [appRow(folder)], ms);
 const rowText = (folder: string) => inUi<string>(p!.m, "return doc.querySelector(arguments[0])?.textContent ?? ''", [appRow(folder)]);
-const filterText = (id: string) => inUi<string | null>(p!.m, "return doc.querySelector(arguments[0])?.textContent.replace(/\\s+/g, ' ').trim() ?? null", [`[data-testid="filtre-${id}"]`]);
+const filterText = (id: string) => inUi<string | null>(p!.m, "return doc.querySelector(arguments[0])?.textContent.replace(/\\s+/g, ' ').trim() ?? null", [`[data-testid="filter-${id}"]`]);
 /** The page's own api call, as the component makes it. */
 const act = (folder: string, action: string) => inUi(p!.m, "ui.webaios.apps.act(arguments[0], arguments[1]);", [folder, action]);
 const panelOpen = async () => !!(await state(p!.m)).windows[0]!.agentPanelOpen;
@@ -68,7 +68,7 @@ describe("Applications page actions", () => {
     await confirmDelete("essai");
     await expect.poll(() => existsSync(project("essai")), { timeout: 10_000 }).toBe(false);
     await rowGone("essai");
-    expect(await inUi<number>(m, `return doc.querySelectorAll('[data-testid^="appli-"]').length;`)).toBe(2);
+    expect(await inUi<number>(m, `return doc.querySelectorAll('[data-testid^="app-"]').length;`)).toBe(2);
     await expect.poll(() => container("essai"), { timeout: 10_000 }).toBeNull();
   });
 
@@ -128,7 +128,7 @@ describe("Applications page actions", () => {
     expect(await panelOpen()).toBe(false);
     await rowButton(p.m, "essai", "Déboguer");
     await expect.poll(panelOpen, { timeout: 10_000 }).toBe(true);
-    await waitUi(p.m, "return doc.querySelector('.xterm-rows')?.textContent.includes('faux agent prêt>')", [], 20_000, "agent");
+    await waitUi(p.m, "return doc.querySelector('.xterm-rows')?.textContent.includes('fake agent ready>')", [], 20_000, "agent");
     await expect.poll(() => agentInput(p!.dataDir), { timeout: 10_000 }).toBe("[application : Essai — /workspace/projects/essai — journal : /workspace/.webaios/logs/essai.log] ");
     await sleep(300);
     expect(agentInput(p.dataDir)).not.toContain("\r");
@@ -153,7 +153,7 @@ describe("Applications page actions", () => {
     const read = await callTool(p.dataDir, "read_tab", { id: "app:essai" });
     expect(read.text).toContain("lien");
     for (const frame of ["sidebar", "agent"] as const)
-      expect(await inUi<number>(m, `return doc.querySelectorAll('[data-testid="demande-permission"]').length;`, [], frame)).toBe(0);
+      expect(await inUi<number>(m, `return doc.querySelectorAll('[data-testid="permission-request"]').length;`, [], frame)).toBe(0);
   });
 
   // applications.spec.ts:544
@@ -189,7 +189,7 @@ describe("Applications page actions", () => {
     await expect.poll(() => existsSync(project("essai")), { timeout: 15_000 }).toBe(false);
     // Well after Docker's answer (8 s after the click): no process was launched for the deleted app.
     await sleep(Math.max(0, clicked + 14_000 - Date.now()));
-    expect(existsSync(path.join(p.dataDir, "workspace", "faux-docker-app-essai.pid"))).toBe(false);
+    expect(existsSync(path.join(p.dataDir, "workspace", "fake-docker-app-essai.pid"))).toBe(false);
     expect(existsSync(project("essai"))).toBe(false);
   });
 });

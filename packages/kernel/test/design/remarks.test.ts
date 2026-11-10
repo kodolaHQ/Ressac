@@ -272,7 +272,7 @@ describe("Remarks", () => {
     expect(after.items.every((e) => e.handled)).toBe(true);
   });
 
-  test("oublier erases the project; surChange notifies cart and batches", async () => {
+  test("oublier erases the project; onChange notifies cart and batches", async () => {
     const { folders: folders, r } = await frame();
     const seen: string[] = [];
     const stop = r.onChange((p) => seen.push(p));

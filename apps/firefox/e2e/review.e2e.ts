@@ -44,18 +44,18 @@ async function launch(o: { env?: Record<string, string>; prepare?: (dataDir: str
 }
 
 const tid = (id: string) => `[data-testid="${id}"]`;
-const PAGE = tid("page-relecture");
+const PAGE = tid("review-page");
 const count = (selector: string) => inUi<number>(m, "return doc.querySelectorAll(arguments[0]).length", [selector]);
 const waitCount = (selector: string, n: number, ms = 10_000) => waitUi(m, "return doc.querySelectorAll(arguments[0]).length === arguments[1]", [selector, n], ms);
 const texts = (selector: string) => inUi<string[]>(m, "return [...doc.querySelectorAll(arguments[0])].map((e) => e.textContent)", [selector]);
 const waitTexts = (selector: string, t: string[], ms = 10_000) =>
   waitUi(m, "return JSON.stringify([...doc.querySelectorAll(arguments[0])].map((e) => e.textContent)) === arguments[1]", [selector, JSON.stringify(t)], ms);
-const fileRow = (path: string) => inUi<string | null>(m, `return [...doc.querySelectorAll('${tid("fichier-relecture")}')].find((e) => e.querySelector(".nom-fichier").textContent === arguments[0])?.textContent ?? null`, [path]);
-const openFile = (path: string) => click(m, tid("fichier-relecture"), { text: path });
-const ADDED = `${tid("ligne-diff")}.ajout`;
-const REMOVED = `${tid("ligne-diff")}.retrait`;
+const fileRow = (path: string) => inUi<string | null>(m, `return [...doc.querySelectorAll('${tid("review-file")}')].find((e) => e.querySelector(".file-name").textContent === arguments[0])?.textContent ?? null`, [path]);
+const openFile = (path: string) => click(m, tid("review-file"), { text: path });
+const ADDED = `${tid("diff-line")}.added`;
+const REMOVED = `${tid("diff-line")}.removed`;
 /** The new line numbers of the context lines shown. */
-const context = () => inUi<number[]>(m, `return [...doc.querySelectorAll('${tid("ligne-diff")}.contexte')].map((l) => Number(l.dataset.nouveau))`);
+const context = () => inUi<number[]>(m, `return [...doc.querySelectorAll('${tid("diff-line")}.context')].map((l) => Number(l.dataset.new))`);
 const waitContext = (n: number[]) => expect.poll(context, { timeout: 10_000 }).toEqual(n);
 /** The tabs of the Review page of `projet`, every window together. */
 const reviewTabs = async (project: string) => Object.values((await state(m)).tabs).filter((o) => o.url === reviewUrl(project));
@@ -63,7 +63,7 @@ const tabsOf = (f: { order: Record<string, string[]> }) => Object.values(f.order
 
 /** « Relire » of the projet-externe line, on the Applications page; waits for the Review page. */
 async function reread(): Promise<void> {
-  await click(m, `${tid("projet-externe")} button`, { text: "Relire" });
+  await click(m, `${tid("external-project")} button`, { text: "Relire" });
   await waitUi(m, `return !!doc.querySelector('${PAGE}')`);
 }
 
@@ -71,7 +71,7 @@ async function reread(): Promise<void> {
 async function backToApplications(): Promise<void> {
   const windowId = await m.execute<string>("return window.webaiosWindow.windowId");
   await dispatch(m, { type: "openApps", windowId: windowId });
-  await waitUi(m, `return !!doc.querySelector('${tid("projets-externes")}') && !doc.querySelector('${PAGE}')`);
+  await waitUi(m, `return !!doc.querySelector('${tid("external-projects")}') && !doc.querySelector('${PAGE}')`);
 }
 
 /** A declared project with line `n` of app.js changed, its Review page open on app.js. */
@@ -98,7 +98,7 @@ it("at start the first photo is taken (refs/webaios/relu under <dataDir>/design/
 });
 
 // relecture.spec.ts:65
-it("after changing app.js (line 15) and adding note.md: « Relire » opens page-relecture with app.js (~) and note.md (+); line 15 removed and added, 3 context lines each side", async () => {
+it("after changing app.js (line 15) and adding note.md: « Relire » opens review-page with app.js (~) and note.md (+); line 15 removed and added, 3 context lines each side", async () => {
   await launch();
   const p = await declareProject(m, { dataDir: w!.dataDir });
   try {
@@ -107,7 +107,7 @@ it("after changing app.js (line 15) and adding note.md: « Relire » opens page-
     await reread();
     const tabs = await reviewTabs(`ext-${p.id}`);
     expect(tabs.map((o) => o.title)).toEqual(["Relecture — mon-site"]);
-    await waitCount(tid("fichier-relecture"), 2);
+    await waitCount(tid("review-file"), 2);
     expect(await fileRow("app.js")).toContain("~");
     expect(await fileRow("app.js")).toContain("+1 −1");
     expect(await fileRow("note.md")).toContain("+");
@@ -123,14 +123,14 @@ it("after changing app.js (line 15) and adding note.md: « Relire » opens page-
 });
 
 // relecture.spec.ts:89
-it("deplier-contexte shows lines 1 to 11", async () => {
+it("expand-context shows lines 1 to 11", async () => {
   await launch();
   const p = await pageOnAppJs(15);
   try {
     await waitContext([12, 13, 14, 16, 17, 18]);
-    await click(m, tid("deplier-contexte"));
+    await click(m, tid("expand-context"));
     await waitContext([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 18]);
-    expect(await texts(`${tid("ligne-diff")}[data-nouveau="1"]`)).toEqual(["11ligne 1"]);
+    expect(await texts(`${tid("diff-line")}[data-new="1"]`)).toEqual(["11ligne 1"]);
   } finally {
     await p.client.close();
   }
@@ -144,8 +144,8 @@ it("logo.bin changed (a NUL byte): « fichier binaire »", async () => {
     writeFileSync(path.join(p.folder, "logo.bin"), Buffer.from([0x89, 0x00, 0x4e, 0x47]));
     await reread();
     await openFile("logo.bin");
-    await waitUi(m, `return doc.querySelector('${tid("diff-fichier")}')?.textContent.includes("fichier binaire")`);
-    expect(await count(tid("ligne-diff"))).toBe(0);
+    await waitUi(m, `return doc.querySelector('${tid("diff-file")}')?.textContent.includes("fichier binaire")`);
+    expect(await count(tid("diff-line"))).toBe(0);
   } finally {
     await p.client.close();
   }
@@ -162,9 +162,9 @@ it("a file changed while the page is open: nothing changes before « Rafraîchir
     await openFile("app.js");
     await new Promise((r) => setTimeout(r, 300));
     expect(await texts(ADDED)).toEqual(["15ligne 15 modifiée"]);
-    expect(await count(tid("fichier-relecture"))).toBe(1);
+    expect(await count(tid("review-file"))).toBe(1);
     await refreshReview(m);
-    await waitCount(tid("fichier-relecture"), 2);
+    await waitCount(tid("review-file"), 2);
     await waitTexts(ADDED, ["15ligne 15 modifiée", "25ligne 25 modifiée"]);
   } finally {
     await p.client.close();
@@ -181,9 +181,9 @@ it("changed, then another tab and back: the page shows the old diff until « Raf
     const s = await state(m);
     const apps = Object.values(s.tabs).find((o) => o.title === "Applications")!.id;
     const review = (await reviewTabs(`ext-${p.id}`))[0]!.id;
-    await click(m, tid(`onglet-${apps}`));
+    await click(m, tid(`tab-${apps}`));
     await waitCount(PAGE, 0);
-    await click(m, tid(`onglet-${review}`));
+    await click(m, tid(`tab-${review}`));
     await waitCount(PAGE, 1);
     await openFile("app.js");
     await waitTexts(ADDED, ["15ligne 15 modifiée"]);
@@ -229,8 +229,8 @@ it("reopening the shown file (a second click in the list) does not close the com
   await launch();
   const p = await pageOnAppJs(15);
   try {
-    await click(m, `${tid("ligne-diff")}[data-nouveau="15"] ${tid("ajouter-commentaire")}`);
-    const FORM = tid("formulaire-commentaire");
+    await click(m, `${tid("diff-line")}[data-new="15"] ${tid("add-comment")}`);
+    const FORM = tid("comment-form");
     await waitUi(
       m,
       `const t = doc.querySelector(arguments[0] + " textarea");
@@ -255,14 +255,14 @@ it("at start the site app's first photo exists under <dataDir>/design/review/sit
   });
   await expect.poll(() => existsSync(reviewedRef(w!.dataDir, "site-essai")), { timeout: 15_000 }).toBe(true);
   writeAppJs(path.join(w!.dataDir, "workspace", "sites", "essai"), modified(15));
-  await click(m, tid("site-essai-relire"));
+  await click(m, tid("site-essai-review"));
   await waitUi(m, `return !!doc.querySelector('${PAGE}')`);
   expect((await reviewTabs("site-essai")).map((o) => o.title)).toEqual(["Relecture — Essai"]);
-  await waitCount(tid("fichier-relecture"), 1);
+  await waitCount(tid("review-file"), 1);
   expect(await fileRow("app.js")).toContain("~");
   await openFile("app.js");
   await waitTexts(ADDED, ["15ligne 15 modifiée"]);
-  expect(await count(tid("page-interne"))).toBe(0);
+  expect(await count(tid("internal-page"))).toBe(0);
 });
 
 // Review Focus 3
@@ -273,29 +273,29 @@ it("forgetting a project under its open Review page: Rafraîchir says projet inc
     const project = `ext-${p.id}`;
     const review = (await reviewTabs(project))[0]!.id;
     // A comment, so that its file exists before « Oublier ».
-    await click(m, `${tid("ligne-diff")}[data-nouveau="15"] ${tid("ajouter-commentaire")}`);
+    await click(m, `${tid("diff-line")}[data-new="15"] ${tid("add-comment")}`);
     await waitUi(
       m,
-      `const t = doc.querySelector('${tid("formulaire-commentaire")} textarea');
+      `const t = doc.querySelector('${tid("comment-form")} textarea');
        if (!t) return false;
        t.value = "Plus court";
        t.dispatchEvent(new ui.Event("input", { bubbles: true }));
        return true;`,
     );
-    await click(m, `${tid("formulaire-commentaire")} button`, { text: "Commenter" });
-    await waitCount(tid("commentaire-relecture"), 1);
+    await click(m, `${tid("comment-form")} button`, { text: "Commenter" });
+    await waitCount(tid("review-comment"), 1);
     const reviewDir = path.join(w!.dataDir, "design", "review");
     const comments = path.join(reviewDir, `${project}.comments.json`);
     expect(existsSync(comments)).toBe(true);
     await backToApplications();
-    await click(m, `${tid("projet-externe")} button`, { text: "Oublier" });
-    await waitCount(tid("projet-externe"), 0);
+    await click(m, `${tid("external-project")} button`, { text: "Oublier" });
+    await waitCount(tid("external-project"), 0);
     await expect.poll(() => existsSync(path.join(reviewDir, `${project}.git`)) || existsSync(comments), { timeout: 10_000 }).toBe(false);
-    await click(m, tid(`onglet-${review}`));
+    await click(m, tid(`tab-${review}`));
     await waitCount(PAGE, 1);
     await refreshReview(m);
-    await waitUi(m, `return doc.querySelector('${tid("relecture-indisponible")}')?.textContent === "Relecture indisponible : projet inconnu"`);
-    expect(await count(tid("erreur-relecture"))).toBe(0);
+    await waitUi(m, `return doc.querySelector('${tid("review-unavailable")}')?.textContent === "Relecture indisponible : projet inconnu"`);
+    expect(await count(tid("review-error"))).toBe(0);
   } finally {
     await p.client.close();
   }

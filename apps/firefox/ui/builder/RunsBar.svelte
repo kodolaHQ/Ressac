@@ -26,55 +26,55 @@
   const elements = (n: number | null) => (n === null ? "" : `${n} élément${n > 1 ? "s" : ""}`);
 </script>
 
-<footer class="barre">
-  <div class="ligne">
+<footer class="bar">
+  <div class="line">
     <ul class="executions">
       {#each last as e (e.id)}
         <li>
           <button
             data-testid="execution-{e.id}"
-            class:actif={e.id === chosen}
+            class:active={e.id === chosen}
             aria-pressed={e.id === chosen}
             title={e.attempt ? `Essai depuis « ${e.attempt.start} »` : undefined}
             onclick={() => void executions.choose(e.id).catch(() => {})}
           >
-            <span class="pastille {TINTS[e.status]}"></span>
+            <span class="pill {TINTS[e.status]}"></span>
             <span>{hour(e.start)}</span>
-            <span class="doux">{TRIGGERS[e.trigger]}</span>
+            <span class="muted">{TRIGGERS[e.trigger]}</span>
             <span>{STATUSES[e.status]}</span>
-            {#if elements(outputElements(e, output))}<span class="doux">{elements(outputElements(e, output))}</span>{/if}
-            {#if e.attempt}<span class="essai">essai</span>{/if}
+            {#if elements(outputElements(e, output))}<span class="muted">{elements(outputElements(e, output))}</span>{/if}
+            {#if e.attempt}<span class="trial">essai</span>{/if}
           </button>
         </li>
       {:else}
-        <li class="doux vide">Aucune exécution pour l'instant.</li>
+        <li class="muted empty">Aucune exécution pour l'instant.</li>
       {/each}
     </ul>
     <button
-      class="rejouer"
-      data-testid="rejouer"
+      class="replay"
+      data-testid="replay"
       disabled={selection === null || chosen === null || executions.busy || !replayable}
       title={selection === null ? "Sélectionne un bloc" : undefined}
       onclick={() => selection !== null && void executions.replay(selection).catch(() => {})}>Rejouer depuis ce bloc</button
     >
   </div>
-  {#if executions.denial}<p class="refus" data-testid="refus-rejeu">{executions.denial}</p>{/if}
+  {#if executions.denial}<p class="refusal" data-testid="replay-refusal">{executions.denial}</p>{/if}
 </footer>
 
 <style>
-  .barre { flex: none; border-top: 1px solid var(--bord); background: var(--fond-barre); padding: 6px 12px; font-size: 12px; }
-  .ligne { display: flex; align-items: center; gap: 12px; }
+  .bar { flex: none; border-top: 1px solid var(--border); background: var(--bg-bar); padding: 6px 12px; font-size: 12px; }
+  .line { display: flex; align-items: center; gap: 12px; }
   .executions { flex: 1; min-width: 0; display: flex; gap: 6px; margin: 0; padding: 0; list-style: none; overflow-x: auto; }
-  .executions button { display: flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--bord); background: var(--fond); color: var(--texte); white-space: nowrap; font-size: 12px; }
-  .executions button.actif { border-color: var(--accent); background: var(--fond-actif); }
-  .pastille { width: 8px; height: 8px; border-radius: 50%; background: var(--arretee); flex: none; }
-  .pastille.ok { background: var(--en-marche); }
-  .pastille.moyen { background: var(--en-cours); }
-  .pastille.echec { background: var(--en-erreur); }
-  .essai { padding: 0 5px; border-radius: 4px; background: var(--fond-survol); color: var(--texte-doux); }
-  .rejouer { flex: none; padding: 5px 10px; border-radius: 6px; border: 1px solid var(--bord); background: var(--fond-barre); color: var(--texte); }
-  .rejouer:disabled { opacity: 0.5; }
-  .refus { margin: 6px 0 0; color: var(--en-erreur); white-space: pre-wrap; word-break: break-word; }
-  .doux { color: var(--texte-doux); }
-  .vide { padding: 4px 0; }
+  .executions button { display: flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); white-space: nowrap; font-size: 12px; }
+  .executions button.active { border-color: var(--accent); background: var(--bg-active); }
+  .pill { width: 8px; height: 8px; border-radius: 50%; background: var(--stopped); flex: none; }
+  .pill.ok { background: var(--running); }
+  .pill.warn { background: var(--in-progress); }
+  .pill.bad { background: var(--in-error); }
+  .trial { padding: 0 5px; border-radius: 4px; background: var(--bg-hover); color: var(--text-muted); }
+  .replay { flex: none; padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); }
+  .replay:disabled { opacity: 0.5; }
+  .refusal { margin: 6px 0 0; color: var(--in-error); white-space: pre-wrap; word-break: break-word; }
+  .muted { color: var(--text-muted); }
+  .empty { padding: 4px 0; }
 </style>

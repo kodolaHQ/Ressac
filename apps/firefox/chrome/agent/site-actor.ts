@@ -94,7 +94,7 @@ export class WebAiOsSiteChild extends JSWindowActorChild {
       try {
         win.windowUtils.loadSheetUsingURIString(`data:text/css;charset=utf-8,${encodeURIComponent(css)}`, win.windowUtils.AUTHOR_SHEET);
       } catch (e) {
-        console.error("[webaios] retouche CSS non posée :", e);
+        console.error("[webaios] CSS tweak not applied:", e);
       }
     if (i.resume === true) this.resume();
     if (i.js.length === 0 || typeof i.guard !== "string") return;

@@ -2,4 +2,4 @@
   let { p }: { p: { text: string } } = $props();
 </script>
 
-<p class="pa-paragraphe" data-testid="bloc-paragraphe">{p.text}</p>
+<p class="pa-paragraph" data-testid="block-paragraph">{p.text}</p>

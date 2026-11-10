@@ -106,7 +106,7 @@ async function ready(m: Marionette, agent = true): Promise<void> {
   await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
   if (!agent) return;
   // The home page's agent session settles first: quitting during its start-up leaves writers in the data dir.
-  await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('prêt>')", [], 20_000, "agent");
+  await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
 }
 
 /** Installs the .xpi at `file` without waiting for its start (a background that never ends would hang Addon:Install). */

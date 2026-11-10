@@ -77,26 +77,26 @@
 
 <section class="actions" data-testid="page-actions" aria-label="Actions">
   <h1>Actions</h1>
-  {#if denial}<p class="bandeau" role="status" data-testid="refus-actions">{denial}</p>{/if}
+  {#if denial}<p class="banner" role="status" data-testid="actions-refusal">{denial}</p>{/if}
   {#if chargee && list.length === 0}
-    <p class="vide">Aucune action. Demande à l'agent de t'en créer une.</p>
+    <p class="empty">Aucune action. Demande à l'agent de t'en créer une.</p>
   {:else}
     <ul>
       {#each list as a (a.id)}
-        <li data-testid="ligne-action-{a.id}">
-          <div class="nom">
+        <li data-testid="action-row-{a.id}">
+          <div class="name">
             <b>{a.name}</b>
             {#if a.error}
-              <span class="erreur" data-testid="erreur-{a.id}">{a.error}</span>
+              <span class="error" data-testid="error-{a.id}">{a.error}</span>
             {:else}
-              {#if a.keywords.length}<span data-testid="mots-cles-{a.id}">{a.keywords.join(", ")}</span>{/if}
-              <span class="dernier" data-testid="dernier-{a.id}">{last(a)}</span>
+              {#if a.keywords.length}<span data-testid="keywords-{a.id}">{a.keywords.join(", ")}</span>{/if}
+              <span class="latest" data-testid="latest-{a.id}">{last(a)}</span>
             {/if}
             {#if inputOf === a.id && a.input}
               <!-- svelte-ignore a11y_autofocus -->
               <input
-                class="saisie"
-                data-testid="saisie-{a.id}"
+                class="input"
+                data-testid="input-{a.id}"
                 placeholder={a.input.label}
                 aria-label={a.input.label}
                 spellcheck="false"
@@ -109,13 +109,13 @@
               />
             {/if}
           </div>
-          <div class="boutons">
+          <div class="buttons">
             {#if !a.error}
-              <button data-testid="lancer-{a.id}" onclick={() => requestLaunch(a)}><Icon name="actions" size={12} /> Lancer</button>
+              <button data-testid="launch-{a.id}" onclick={() => requestLaunch(a)}><Icon name="actions" size={12} /> Lancer</button>
             {/if}
-            <button data-testid="voir-workflow-{a.id}" onclick={() => api.actions.viewWorkflow(a.id)}>Voir le workflow</button>
-            {#if a.grant}<button data-testid="retirer-accord-{a.id}" onclick={() => (toConfirm = { action: a, kind: "grant" })}>Retirer l'accord</button>{/if}
-            <button data-testid="supprimer-{a.id}" onclick={() => (toConfirm = { action: a, kind: "delete" })}>Supprimer</button>
+            <button data-testid="show-workflow-{a.id}" onclick={() => api.actions.viewWorkflow(a.id)}>Voir le workflow</button>
+            {#if a.grant}<button data-testid="remove-grant-{a.id}" onclick={() => (toConfirm = { action: a, kind: "grant" })}>Retirer l'accord</button>{/if}
+            <button data-testid="delete-{a.id}" onclick={() => (toConfirm = { action: a, kind: "delete" })}>Supprimer</button>
           </div>
         </li>
       {/each}
@@ -126,40 +126,40 @@
 {#if toConfirm}
   {@const c = toConfirm}
   {@const target = c.action}
-  <div class="voile" data-testid="voile-suppression-action">
-    <div class="confirmation" role="alertdialog" aria-modal="true" data-testid="confirmation-suppression-action">
+  <div class="veil" data-testid="action-delete-veil">
+    <div class="confirmation" role="alertdialog" aria-modal="true" data-testid="action-delete-confirmation">
       {#if c.kind === "grant"}
         <p>Retirer l'accord de « {target.name} » ? Ses exécutions, ses résultats et sa mémoire seront effacés.</p>
       {:else}
         <p>Supprimer « {target.name} » ? Son dossier ira dans la corbeille ; ses résultats et son accord seront effacés.</p>
       {/if}
-      <div class="confirmer-boutons">
-        <button data-testid="annuler-suppression-action" onclick={() => (toConfirm = null)}>Annuler</button>
-        <button class="confirmer" data-testid="confirmer-suppression-action" onclick={() => void confirm(c)}>{c.kind === "grant" ? "Retirer l'accord" : "Supprimer"}</button>
+      <div class="confirm-buttons">
+        <button data-testid="cancel-action-delete" onclick={() => (toConfirm = null)}>Annuler</button>
+        <button class="confirm" data-testid="confirm-action-delete" onclick={() => void confirm(c)}>{c.kind === "grant" ? "Retirer l'accord" : "Supprimer"}</button>
       </div>
     </div>
   </div>
 {/if}
 
 <style>
-  .actions { height: 100%; overflow-y: auto; padding: 20px 24px; color: var(--texte); }
+  .actions { height: 100%; overflow-y: auto; padding: 20px 24px; color: var(--text); }
   h1 { margin: 0 0 14px; font-size: 18px; font-weight: 600; }
-  .bandeau { margin: 0 0 14px; padding: 8px 12px; border-radius: 8px; background: var(--fond-actif); }
-  .vide { color: var(--texte-doux); }
+  .banner { margin: 0 0 14px; padding: 8px 12px; border-radius: 8px; background: var(--bg-active); }
+  .empty { color: var(--text-muted); }
   ul { list-style: none; margin: 0; padding: 0; }
-  li { display: flex; align-items: center; gap: 12px; padding: 10px 8px; border-bottom: 1px solid var(--bord); }
-  .nom { flex: 1; min-width: 0; }
-  .nom b { display: block; font-weight: 600; }
-  .nom span { display: block; font-size: 12px; color: var(--texte-doux); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .nom .erreur { color: var(--en-erreur); white-space: normal; }
-  .saisie { all: unset; box-sizing: border-box; width: 100%; max-width: 360px; margin-top: 6px; padding: 5px 8px; border: 1px solid var(--bord); border-radius: 6px; background: var(--fond-barre); }
-  .saisie:focus { border-color: var(--accent); }
-  .boutons { display: flex; gap: 6px; flex: none; }
-  .boutons button, .confirmation button { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--bord); background: var(--fond-barre); color: var(--texte); font-size: 12px; }
-  .boutons button:hover { background: var(--fond-survol); }
-  .voile { position: fixed; inset: 0; -webkit-app-region: no-drag; display: grid; place-content: center; background: rgb(0 0 0 / 0.35); z-index: 10; }
-  .confirmation { max-width: 420px; padding: 16px 20px; border-radius: 10px; background: var(--fond-barre); border: 1px solid var(--bord); color: var(--texte); }
+  li { display: flex; align-items: center; gap: 12px; padding: 10px 8px; border-bottom: 1px solid var(--border); }
+  .name { flex: 1; min-width: 0; }
+  .name b { display: block; font-weight: 600; }
+  .name span { display: block; font-size: 12px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .name .error { color: var(--in-error); white-space: normal; }
+  .input { all: unset; box-sizing: border-box; width: 100%; max-width: 360px; margin-top: 6px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-bar); }
+  .input:focus { border-color: var(--accent); }
+  .buttons { display: flex; gap: 6px; flex: none; }
+  .buttons button, .confirmation button { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); font-size: 12px; }
+  .buttons button:hover { background: var(--bg-hover); }
+  .veil { position: fixed; inset: 0; -webkit-app-region: no-drag; display: grid; place-content: center; background: rgb(0 0 0 / 0.35); z-index: 10; }
+  .confirmation { max-width: 420px; padding: 16px 20px; border-radius: 10px; background: var(--bg-bar); border: 1px solid var(--border); color: var(--text); }
   .confirmation p { margin: 0 0 14px; }
-  .confirmer-boutons { display: flex; justify-content: flex-end; gap: 8px; }
-  .confirmation .confirmer { background: var(--accent); border-color: var(--accent); color: white; }
+  .confirm-buttons { display: flex; justify-content: flex-end; gap: 8px; }
+  .confirmation .confirm { background: var(--accent); border-color: var(--accent); color: white; }
 </style>

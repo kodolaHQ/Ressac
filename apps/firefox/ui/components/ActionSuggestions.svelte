@@ -27,10 +27,10 @@
   {/each}
   <li
     id="suggestion-action-{suggestions.length}"
-    class="habituelle"
+    class="usual"
     role="option"
     aria-selected={chosen === suggestions.length}
-    data-testid="suggestion-habituelle"
+    data-testid="usual-suggestion"
     onmousedown={(e) => {
       e.preventDefault();
       choose(suggestions.length);
@@ -41,9 +41,9 @@
 </ul>
 
 <style>
-  .suggestions-actions { -webkit-app-region: no-drag; list-style: none; margin: 4px 0 0; padding: 4px; border-radius: 10px; border: 1px solid var(--bord); background: var(--fond-barre); }
-  li { padding: 8px 12px; border-radius: 6px; cursor: pointer; color: var(--texte); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  li.habituelle { color: var(--texte-doux); }
-  li:hover { background: var(--fond-survol); }
-  li[aria-selected="true"] { background: var(--fond-actif); }
+  .suggestions-actions { -webkit-app-region: no-drag; list-style: none; margin: 4px 0 0; padding: 4px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-bar); }
+  li { padding: 8px 12px; border-radius: 6px; cursor: pointer; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  li.usual { color: var(--text-muted); }
+  li:hover { background: var(--bg-hover); }
+  li[aria-selected="true"] { background: var(--bg-active); }
 </style>

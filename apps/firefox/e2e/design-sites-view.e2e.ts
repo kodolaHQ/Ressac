@@ -255,7 +255,7 @@ describe("design mode, site target, the view", () => {
     const expected = bubbleSlot(r, 1, g, [g.w, g.h], { minHeight: 36, height: 190 });
     await expect.poll(() => overlayRect("tuning"), { timeout: 10_000 }).toEqual(expected);
     await expect
-      .poll(() => overlayOf(m, "tuning", `return doc.querySelector('[data-testid="avertissement-bulle"]')?.textContent ?? null;`), { timeout: 10_000 })
+      .poll(() => overlayOf(m, "tuning", `return doc.querySelector('[data-testid="bubble-warning"]')?.textContent ?? null;`), { timeout: 10_000 })
       .toBe(CAPTURE_WARNING_SITE);
     // A page's data-source is never read in a site app.
     await toSite(m, "vidola", "/design");
@@ -266,7 +266,7 @@ describe("design mode, site target, the view", () => {
   it("openCart of a site: the cart at y 48, 340 wide, 12 px from the right and the bottom", async () => {
     await toSite(m, "tuning");
     await inStore(m, "await store.design.openCart(arguments[0]); return 1;", [T("tuning")]);
-    await expect.poll(() => overlayOf(m, "tuning", `return !!doc.querySelector('[data-testid="panier-design"]');`), { timeout: 10_000 }).toBe(true);
+    await expect.poll(() => overlayOf(m, "tuning", `return !!doc.querySelector('[data-testid="design-basket"]');`), { timeout: 10_000 }).toBe(true);
     const g = await geometry("tuning");
     expect(await overlayRect("tuning")).toEqual({ x: g.w - 12 - 340, y: 48, width: 340, height: g.h - 48 - 12 });
   });

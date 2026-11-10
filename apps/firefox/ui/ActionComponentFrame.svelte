@@ -96,11 +96,11 @@
   });
 </script>
 
-<div data-testid="bloc-{name}" bind:clientWidth={width}>
+<div data-testid="block-{name}" bind:clientWidth={width}>
   <iframe
     bind:this={iframe}
-    class="pa-composant"
-    data-testid="cadre-composant"
+    class="pa-component"
+    data-testid="component-frame"
     title={name}
     src={src ?? "about:blank"}
     sandbox="allow-scripts"

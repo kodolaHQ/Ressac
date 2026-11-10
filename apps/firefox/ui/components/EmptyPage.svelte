@@ -89,7 +89,7 @@
   }
 </script>
 
-<div class="page-vide" data-testid="page-vide">
+<div class="empty-page" data-testid="empty-page">
   <form
     onsubmit={(e) => {
       e.preventDefault();
@@ -108,7 +108,7 @@
       onblur={() => (closed = true)}
       onfocus={() => (closed = false)}
       onkeydown={key}
-      data-testid="saisie-page-vide"
+      data-testid="empty-page-input"
       placeholder="Rechercher ou saisir une adresse"
       spellcheck="false"
       role={suggestions.length ? "combobox" : undefined}
@@ -119,18 +119,18 @@
     {#if suggestions.length}
       <SuggestionsActions {suggestions} usualLine={usualLine} chosen={chosen} choose={(i) => validate(i)} />
     {/if}
-    {#if denial}<p class="refus" data-testid="refus-action">{denial}</p>{/if}
+    {#if denial}<p class="refusal" data-testid="action-refusal">{denial}</p>{/if}
   </form>
   <Essentials window={win} large />
   <Home />
 </div>
 
 <style>
-  .page-vide { position: relative; display: flex; flex-direction: column; align-items: center; gap: 32px; padding-top: 12vh; height: 100%; box-sizing: border-box; overflow-y: auto; }
+  .empty-page { position: relative; display: flex; flex-direction: column; align-items: center; gap: 32px; padding-top: 12vh; height: 100%; box-sizing: border-box; overflow-y: auto; }
   form { width: min(560px, 80%); }
-  input { width: 100%; box-sizing: border-box; padding: 12px 16px; font-size: 16px; border-radius: 10px; border: 1px solid var(--bord); background: var(--fond-barre); color: var(--texte); outline: none; }
-  .refus { margin: 6px 4px 0; color: var(--en-erreur); font-size: 13px; }
+  input { width: 100%; box-sizing: border-box; padding: 12px 16px; font-size: 16px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); outline: none; }
+  .refusal { margin: 6px 4px 0; color: var(--in-error); font-size: 13px; }
   input:focus { border-color: var(--accent); }
   /* No shrink: its min-height lets the column crush it under tall widgets. */
-  .page-vide :global([data-testid="essentiels-page-vide"]) { width: min(560px, 80%); flex-shrink: 0; }
+  .empty-page :global([data-testid="essentials-empty-page"]) { width: min(560px, 80%); flex-shrink: 0; }
 </style>

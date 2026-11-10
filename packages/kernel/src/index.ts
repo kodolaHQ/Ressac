@@ -61,7 +61,7 @@ export { COMPONENT_HTML_MAX } from "./pages/agent-components.js";
 export * from "./sites/grants.js";
 export * from "./sites/tracking.js";
 export * from "./design/projects.js";
-export { parserDiff, newPosition, type Block as DiffBlock, type DiffLine } from "./review/diff.js";
+export { parseDiff, newPosition, type Block as DiffBlock, type DiffLine } from "./review/diff.js";
 export * from "./review/repo.js";
 export * from "./review/comments.js";
 export * from "./design/remarks.js";

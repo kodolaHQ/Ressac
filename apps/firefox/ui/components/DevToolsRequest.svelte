@@ -23,23 +23,23 @@
   const check = (right: DevRight, active: boolean) => (checked = active ? [...checked, right] : checked.filter((d) => d !== right));
 </script>
 
-<div data-testid="demande-outils-dev">
+<div data-testid="devtools-request">
   <h3>{request.agent ?? "L'agent"} veut accéder aux outils de développement</h3>
   <div class="site">🔒 {site} · onglet « {request.title ?? site} »</div>
-  <div class="raison">« {request.reason} »</div>
+  <div class="reason">« {request.reason} »</div>
   {#each RIGHTS as d (d.right)}
-    <label class="droit">
-      <input type="checkbox" data-droit={d.right} checked={checked.includes(d.right)} onchange={(e) => check(d.right, e.currentTarget.checked)} />
+    <label class="right-side">
+      <input type="checkbox" data-right={d.right} checked={checked.includes(d.right)} onchange={(e) => check(d.right, e.currentTarget.checked)} />
       <div>
         <b>{d.icon} {d.name}</b>
         <span>{d.detail}</span>
-        {#if d.sensitive}<div class="sensible">⚠ {d.sensitive}</div>{/if}
+        {#if d.sensitive}<div class="sensitive">⚠ {d.sensitive}</div>{/if}
       </div>
     </label>
   {/each}
   <div class="actions">
     <button onclick={() => api.permissions.answer(request.id, "deny")}>Refuser</button>
-    <button class="autoriser" data-principal onclick={() => api.permissions.answer(request.id, "allow", $state.snapshot(checked))}>Autoriser la sélection</button>
+    <button class="allow" data-main onclick={() => api.permissions.answer(request.id, "allow", $state.snapshot(checked))}>Autoriser la sélection</button>
   </div>
   <div class="note">Valable pour cette conversation · tombe si l'onglet change de site</div>
 </div>
@@ -47,14 +47,14 @@
 <style>
   h3 { margin: 0 0 4px; font-size: 15px; }
   .site { opacity: 0.7; font-size: 12px; margin-bottom: 10px; overflow-wrap: anywhere; }
-  .raison { background: var(--fond-barre); border-radius: 8px; padding: 8px 10px; font-size: 12px; margin-bottom: 10px; overflow-wrap: anywhere; }
-  .droit { display: flex; gap: 10px; align-items: flex-start; padding: 7px 0; border-top: 1px solid var(--bord); }
-  .droit input { margin-top: 3px; }
-  .droit b { display: block; font-size: 13px; }
-  .droit span { opacity: 0.7; font-size: 11.5px; }
-  .sensible { color: #fbbf24; font-size: 11px; font-weight: 600; }
+  .reason { background: var(--bg-bar); border-radius: 8px; padding: 8px 10px; font-size: 12px; margin-bottom: 10px; overflow-wrap: anywhere; }
+  .right-side { display: flex; gap: 10px; align-items: flex-start; padding: 7px 0; border-top: 1px solid var(--border); }
+  .right-side input { margin-top: 3px; }
+  .right-side b { display: block; font-size: 13px; }
+  .right-side span { opacity: 0.7; font-size: 11.5px; }
+  .sensitive { color: #fbbf24; font-size: 11px; font-weight: 600; }
   .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
-  button { padding: 6px 12px; border-radius: 7px; border: 1px solid var(--bord); background: var(--fond-barre); color: var(--texte); font-weight: 600; font-size: 12.5px; }
-  .autoriser { background: var(--accent); border-color: var(--accent); color: white; }
+  button { padding: 6px 12px; border-radius: 7px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); font-weight: 600; font-size: 12.5px; }
+  .allow { background: var(--accent); border-color: var(--accent); color: white; }
   .note { opacity: 0.55; font-size: 11px; margin-top: 10px; }
 </style>

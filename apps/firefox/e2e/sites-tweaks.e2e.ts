@@ -26,7 +26,7 @@ const racine = document.documentElement;
 racine.dataset.monde = JSON.stringify({ require: typeof require, ipcRenderer: typeof ipcRenderer, process: typeof process, pont: typeof webaiosSite,
   Components: typeof Components, ChromeUtils: typeof ChromeUtils, Services: typeof Services });
 document.body.dataset.retouche = "oui";
-webaiosSite.remember("encours.the-bear", { titre: "The Bear", episode: "S2E4" }).then(() => (racine.dataset.retenu = "oui"), (e) => (racine.dataset.retenu = "refus:" + e.message));
+webaiosSite.remember("encours.the-bear", { titre: "The Bear", episode: "S2E4" }).then(() => (racine.dataset.kept = "oui"), (e) => (racine.dataset.kept = "refus:" + e.message));
 const repondre = (p) => p.then((r) => (racine.dataset.resultat = "ok:" + r), (e) => (racine.dataset.resultat = "refus:" + (e && e.message)));
 document.addEventListener("essai", () => {
   const c = racine.dataset.commande;
@@ -61,7 +61,7 @@ const vidola = () => ({
 });
 /** The second app (Review Focus 2): its own domain, memory and console. */
 const other = () => ({ name: "Autre", url: url("/serie/b", "vidola-b.localhost"), domains: ["vidola-b.localhost"], tweaks: [{ matches: ["/serie/*"], js: ["b.js"] }] });
-const B_JS = 'webaiosSite.remember("b", 1).then(() => (document.documentElement.dataset.retenu = "oui")); throw new Error("erreur de B");';
+const B_JS = 'webaiosSite.remember("b", 1).then(() => (document.documentElement.dataset.kept = "oui")); throw new Error("erreur de B");';
 
 const inStore = <T = unknown>(body: string, args: unknown[] = []) =>
   m.execute<T>(`return (async () => { const store = await ChromeUtils.importESModule("${STORE}").ready; ${body} })();`, args);
@@ -157,7 +157,7 @@ describe("tweaks", () => {
 
   it('a JS tweak remembers encours.the-bear through webaiosSite.remember; the memory read by the test has adresse "/serie/the-bear" (sites.spec.ts:815)', async () => {
     await openAt("vidola", "/serie/the-bear");
-    await expect.poll(() => view("document.documentElement.dataset.retenu")).toBe("oui");
+    await expect.poll(() => view("document.documentElement.dataset.kept")).toBe("oui");
     await expect.poll(() => memory("vidola")?.values?.["encours.the-bear"] ?? null, { timeout: 5000 }).toMatchObject({ value: { titre: "The Bear", episode: "S2E4" }, url: "/serie/the-bear" });
     expect(await command("lire")).toBe('ok:{"titre":"The Bear","episode":"S2E4"}');
     // A non-JSON value: the memory's named refusal.
@@ -245,7 +245,7 @@ describe("tweaks", () => {
 
   it("the memory channel failing: the bridge rejects without asking again (one call) (sites.spec.ts:911)", async () => {
     await openAt("vidola", "/serie/the-bear");
-    await expect.poll(() => view("document.documentElement.dataset.retenu")).toBe("oui");
+    await expect.poll(() => view("document.documentElement.dataset.kept")).toBe("oui");
     // The relay to the host fails: the chrome's request to sites.memoryOp throws.
     await inStore(`const request = store.agent.request;
       store.__memoryCalls = [];
@@ -280,13 +280,13 @@ describe("tweaks", () => {
         expect(await m.execute<string>(`return ${siteWindowExpr("vidola")}.gBrowser.selectedBrowser.currentURI.spec;`)).toBe("about:blank");
         expect(server.requests.filter((r) => r.host === "vidola-a.localhost")).toEqual([]);
         // « Ouvrir sans retouches »: the page loads, and nothing of the agent is in it.
-        await inSiteBar(m, "vidola", `doc.querySelector('[data-testid="refuser-site"]').click(); return true;`);
+        await inSiteBar(m, "vidola", `doc.querySelector('[data-testid="refuse-site"]').click(); return true;`);
         await expect.poll(() => viewUrl("vidola"), { timeout: 15_000 }).toBe(url("/serie/the-bear"));
         await expect.poll(() => view("document.readyState")).toBe("complete");
         await sleep(300);
         expect(await view("document.body.dataset.retouche ?? null")).toBeNull();
         expect(await view('getComputedStyle(document.getElementById("shorts")).display')).toBe("block");
-        expect(await view("document.documentElement.dataset.retenu ?? null")).toBeNull();
+        expect(await view("document.documentElement.dataset.kept ?? null")).toBeNull();
       } finally {
         writeFileSync(grants, before);
       }
@@ -294,7 +294,7 @@ describe("tweaks", () => {
 
   it("the sign-in window gets no tweak, no webaiosSite and no resume (Review Focus 1)", async () => {
     await openAt("vidola", "/serie/the-bear");
-    await expect.poll(() => view("document.documentElement.dataset.retenu")).toBe("oui");
+    await expect.poll(() => view("document.documentElement.dataset.kept")).toBe("oui");
     await inStore(`store.sites.routeOpen("vidola", arguments[0]);`, [url("/connexion", "compte.localhost")]);
     const small = `[...Services.wm.getEnumerator("navigator:browser")].find((x) => x.document.documentElement.getAttribute("webaios-site-small") === "vidola")?.gBrowser.selectedBrowser`;
     await expect.poll(() => m.execute(`return ${small}?.currentURI?.spec ?? null;`), { timeout: 10_000 }).toBe(url("/connexion", "compte.localhost"));
@@ -303,14 +303,14 @@ describe("tweaks", () => {
     await expect.poll(() => m.execute(`const b = ${small}; return b && !b.webProgress.isLoadingDocument ? b.currentURI.spec : null;`), { timeout: 10_000 }).toBe(url("/serie/the-bear"));
     await expect.poll(() => inBrowser(m, small, "return document.readyState;").catch(() => null)).toBe("complete");
     await sleep(500);
-    expect(await inBrowser(m, small, 'return [document.body.dataset.retouche ?? null, document.documentElement.dataset.retenu ?? null, getComputedStyle(document.getElementById("shorts")).display];')).toEqual([null, null, "block"]);
+    expect(await inBrowser(m, small, 'return [document.body.dataset.retouche ?? null, document.documentElement.dataset.kept ?? null, getComputedStyle(document.getElementById("shorts")).display];')).toEqual([null, null, "block"]);
   });
 
   it("two open apps never share tweaks, memory or console (Review Focus 2)", async () => {
     await openAt("vidola", "/serie/the-bear");
     await openAt("autre", "/serie/b", "vidola-b.localhost");
-    await expect.poll(() => view("document.documentElement.dataset.retenu", { id: "autre" })).toBe("oui");
-    await expect.poll(() => view("document.documentElement.dataset.retenu")).toBe("oui");
+    await expect.poll(() => view("document.documentElement.dataset.kept", { id: "autre" })).toBe("oui");
+    await expect.poll(() => view("document.documentElement.dataset.kept")).toBe("oui");
     await go("/erreur");
     await expect.poll(async () => (await errors("autre")).map((e) => e.text).join("\n"), { timeout: 10_000 }).toContain("erreur de B");
     await expect.poll(async () => (await errors()).map((e) => e.text).join("\n"), { timeout: 10_000 }).toContain("retouche cassée");

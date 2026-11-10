@@ -35,7 +35,7 @@ import type { SiteApps } from "./sites";
 import type { Store } from "./store";
 import type { WindowRegistry } from "./windows";
 
-export type DesignTarget = { type: "fenetre"; windowId: WindowId } | { type: "app"; folder: string } | { type: "site"; id: string };
+export type DesignTarget = { type: "window"; windowId: WindowId } | { type: "app"; folder: string } | { type: "site"; id: string };
 
 export interface DesignOverlays {
   show(key: string, win: Window, place: { x: number; y: number; width: number; height: number }, ctx: OverlayContext): void;
@@ -176,7 +176,7 @@ export function createDesign(o: {
 
   /** The target's page, from the chrome only: the selected tab of a main window, or an agent app's view. */
   const view = (t: DesignTarget): View | null => {
-    if (t.type === "fenetre") {
+    if (t.type === "window") {
       const win = o.windows.get(t.windowId)?.window as any;
       const browser = win && !win.closed ? win.gBrowser?.selectedBrowser : null;
       return browser ? { browser, win } : null;
@@ -193,12 +193,12 @@ export function createDesign(o: {
   const tracking = (t: DesignTarget, v: View, wgp: any = pageOf(v.browser)) =>
     o.agent.request<DesignTracking | null>(
       "design.tracking",
-      t.type === "fenetre" ? { url: String(wgp?.documentURI?.spec ?? "") } : t.type === "app" ? { project: "app-" + t.folder } : { project: "site-" + t.id },
+      t.type === "window" ? { url: String(wgp?.documentURI?.spec ?? "") } : t.type === "app" ? { project: "app-" + t.folder } : { project: "site-" + t.id },
     );
   const current = (s: Session, g: number) => sessions.get(s.key) === s && s.generation === g;
 
   const giveKeyboard = (s: Session) => {
-    if (s.target.type !== "fenetre" && Services.env.get("WEBAIOS_INVISIBLE") !== "1" && !s.win.closed) s.win.focus();
+    if (s.target.type !== "window" && Services.env.get("WEBAIOS_INVISIBLE") !== "1" && !s.win.closed) s.win.focus();
     s.browser.focus();
   };
 
@@ -342,7 +342,7 @@ export function createDesign(o: {
       }
       if (!r || !wgp || sessions.has(key) || view(t)?.browser !== v.browser || pageOf(v.browser) !== wgp) {
         // A tab outside the followed projects (the host said so): why nothing happens, nothing injected.
-        if (r === null && t.type === "fenetre" && !sessions.has(key) && view(t)?.browser === v.browser) {
+        if (r === null && t.type === "window" && !sessions.has(key) && view(t)?.browser === v.browser) {
           const b = v.browser.getBoundingClientRect();
           const place = { x: b.x + b.width - MESSAGE_MARGIN - MESSAGE_WIDTH, y: b.y + MESSAGE_MARGIN, width: MESSAGE_WIDTH, height: MESSAGE_HEIGHT };
           show(key, v.win, place, { mode: "message", message: UNAVAILABLE_DESIGN, project: "", label: "", source: null, destination: null, noDestination: null, warning: null });
@@ -408,8 +408,8 @@ export function createDesign(o: {
         otherWindow: !main && !app,
         activeWindow: main ? windowId : undefined,
       });
-      if (choice.type === "avis-site") o.sites.infoNotice(choice.id, UNAVAILABLE_DESIGN_SITE);
-      else if (choice.type === "cible") void service.toggle(choice.target);
+      if (choice.type === "site-notice") o.sites.infoNotice(choice.id, UNAVAILABLE_DESIGN_SITE);
+      else if (choice.type === "target") void service.toggle(choice.target);
     },
 
     async stop(t) {
@@ -474,10 +474,10 @@ export function createDesign(o: {
       const v = view(t);
       const r = v ? await tracking(t, v).catch(() => null) : null;
       if (!r || r.project.type === "demo") return;
-      const windowId = t.type === "fenetre" ? t.windowId : await o.mainWindow();
+      const windowId = t.type === "window" ? t.windowId : await o.mainWindow();
       if (!windowId) return;
       o.dispatch({ type: "openReview", windowId: windowId, project: r.project.project, name: r.name.slice(0, 80) });
-      if (t.type !== "fenetre") o.toFront(windowId);
+      if (t.type !== "window") o.toFront(windowId);
     },
 
     overlayContext(t, modes = ["bubble", "basket", "message"]) {

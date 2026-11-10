@@ -187,7 +187,7 @@ export const apps = {
       f.initWithPath(path);
       f.reveal();
     } catch (e) {
-      console.warn("[apps] dossier non affiché :", e);
+      console.warn("[apps] folder not shown:", e);
     }
   },
   /** The host is gone: every app window closes, as wanted closes, and is forgotten at once (spec §13.8). */

@@ -9,7 +9,7 @@ import { tempFolder } from "../helpers/temp.js";
 const base = declarationWidget();
 const withHarvest = (harvest: unknown) => DeclarationWidget.safeParse({ ...base, harvest: harvest });
 
-test("web with an account is refused with WEB_WITH_ACCOUNT; lireAccueil shows the widget in error with that text", async () => {
+test("web with an account is refused with WEB_WITH_ACCOUNT; readHome shows the widget in error with that text", async () => {
   const r = DeclarationWidget.safeParse({ ...base, sources: { account: ["mail.test"], public: [], web: true } });
   expect(r.success).toBe(false);
   if (!r.success) {

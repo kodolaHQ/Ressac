@@ -174,7 +174,7 @@ export class SiteRecords {
     if (this.modified) {
       this.modified = false;
       const text = JSON.stringify(this.data, null, 2);
-      this.writing = this.writing.then(() => this.write(text)).catch((e) => console.error("[applications] mémoire non écrite :", e));
+      this.writing = this.writing.then(() => this.write(text)).catch((e) => console.error("[applications] memory not written:", e));
     }
     return this.writing;
   }
@@ -282,7 +282,7 @@ export function createSites(o: {
     memories
       .get(id)
       ?.then((m) => m.clear())
-      .catch((e) => console.error(`[sites] mémoire de ${id} non écrite :`, e));
+      .catch((e) => console.error(`[sites] memory of ${id} not written:`, e));
 
   /**
    * The app as it opens and its tweak files, or null (absent, invalid site.json, folder whose name
@@ -325,7 +325,7 @@ export function createSites(o: {
     if (parsed.declaration.tweaks.length === 0) return { js: {}, css: {} };
     const r = await readTweaks(parsed).catch((e: unknown) => ({ error: String(e) }));
     if (!("error" in r)) return r;
-    console.warn(`[sites] ${parsed.id} : retouches non injectées : ${r.error}`);
+    console.warn(`[sites] ${parsed.id}: tweaks not injected: ${r.error}`);
     return { js: {}, css: {} };
   }
 
@@ -412,7 +412,7 @@ export function createSites(o: {
       const reloaded = await o.chrome.update(p?.site ?? before, fresh);
       if (reviews.get(id) === n && !same && !reloaded) await o.chrome.reloadView(id);
     } catch (e) {
-      console.error(`[sites] ${id} non mise à jour :`, e);
+      console.error(`[sites] ${id} not updated:`, e);
     }
   }
 
@@ -426,7 +426,7 @@ export function createSites(o: {
       } else void reread(id);
     });
   } catch (e) {
-    console.error("[sites] surveillance non démarrée :", e);
+    console.error("[sites] watch not started:", e);
   }
 
   function memory(id: string): Promise<SiteMemory> {
@@ -512,7 +512,7 @@ export function createSites(o: {
         await mkdir(trash, { recursive: true });
         await rename(join(o.paths.sites, id), join(trash, `${id}-${Date.now()}`));
       } catch (e) {
-        console.error(`[sites] ${id} : dossier non mis à la corbeille :`, e);
+        console.error(`[sites] ${id}: folder not moved to the trash:`, e);
         actionErrors.set(id, "Dossier non mis à la corbeille : la connexion et la mémoire sont effacées, le dossier reste.");
       }
     } finally {
@@ -594,7 +594,7 @@ export function createSites(o: {
       actionErrors.delete(id);
       switch (a) {
         case "open":
-          if (!(await openById(id))) console.warn(`[sites] ${id} ne peut pas s'ouvrir`);
+          if (!(await openById(id))) console.warn(`[sites] ${id} cannot open`);
           return;
         case "edit":
           o.prefill(win, editWithAgent(id));
@@ -616,7 +616,7 @@ export function createSites(o: {
         if (opened.has(id)) subscribe(id, m);
         return await memoryMessage(id, m);
       } catch (e) {
-        console.error(`[sites] mémoire de ${id} indisponible :`, e);
+        console.error(`[sites] memory of ${id} unavailable:`, e);
         return null;
       }
     },
@@ -660,7 +660,7 @@ export function createSites(o: {
     openSites: openSites,
     urlAllowed(id, url) {
       const s = opened.has(id) ? openSites.get(id) : undefined;
-      return !!s && openDecision(url, { domains: s.domains, login: s.declaration.login ?? [], localAddresses: o.localAddresses }) === "dans-l-appli";
+      return !!s && openDecision(url, { domains: s.domains, login: s.declaration.login ?? [], localAddresses: o.localAddresses }) === "in-app";
     },
     async grant(id, yes, hash) {
       // Taken before any wait: site.json may grow between the card and the click.

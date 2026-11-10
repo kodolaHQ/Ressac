@@ -6,7 +6,7 @@ const message = (raw: unknown) => {
   return r.success ? null : r.error.issues.map((i) => i.message).join(" | ");
 };
 
-test("the GitLab example (gitlab.com account, motsCles, miseEnPage) is accepted", () => {
+test("the GitLab example (gitlab.com account, keywords, miseEnPage) is accepted", () => {
   const d = DeclarationAction.parse({
     name: "Mes merge requests",
     description: "Les merge requests qui m'attendent",
@@ -35,7 +35,7 @@ test("unknown key (recolte, tailles) refused", () => {
   expect(message({ name: "X", sources: {}, input: { label: "R", default: "x" } })).not.toBeNull();
 });
 
-test("11 keywords, 41-character label, dureeMaxMinutes 61 refused", () => {
+test("11 keywords, 41-character label, maxDurationMinutes 61 refused", () => {
   const base = { name: "X", sources: {} };
   expect(DeclarationAction.safeParse({ ...base, keywords: Array.from({ length: 10 }, (_, i) => `m${i}`) }).success).toBe(true);
   expect(DeclarationAction.safeParse({ ...base, keywords: Array.from({ length: 11 }, (_, i) => `m${i}`) }).success).toBe(false);

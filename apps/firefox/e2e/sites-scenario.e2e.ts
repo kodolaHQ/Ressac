@@ -95,7 +95,7 @@ const memory = (): { values: Record<string, { value: Record<string, unknown>; ur
   const f = path.join(dataDir, "sites", "vidola", "memory.json");
   return existsSync(f) ? JSON.parse(readFileSync(f, "utf8")) : null;
 };
-const bar = <T = unknown>(id: string, body: string) => inSiteBar<T>(m, id, `if (!doc.querySelector('[data-testid="barre-site"]') && !doc.querySelector('[data-testid="carte-accord-site"]')) return null; ${body}`);
+const bar = <T = unknown>(id: string, body: string) => inSiteBar<T>(m, id, `if (!doc.querySelector('[data-testid="site-bar"]') && !doc.querySelector('[data-testid="site-grant-card"]')) return null; ${body}`);
 const text = (id: string, testid: string) => bar<string | null>(id, `return doc.querySelector('[data-testid="${testid}"]')?.textContent ?? null;`);
 /** A trusted click (synthesizeMouseEvent from the bar) on a bar button, once there. */
 const barClick = (id: string, testid: string) =>
@@ -113,7 +113,7 @@ const inHome = <T = unknown>(body: string) =>
   inSiteBar<T>(
     m,
     "vidola",
-    `const home = doc.querySelector('[data-testid="site-cadre-accueil"]');
+    `const home = doc.querySelector('[data-testid="site-home-frame"]');
      const hd = home?.contentDocument;
      if (!hd || !String(hd.documentURI).startsWith("resource://webaios-site-")) return null;
      ${body}`,
@@ -137,7 +137,7 @@ async function clickSeriesCard(): Promise<void> {
     if (!found) throw new Error("no window for vidola");
     const [x, y] = await m.execute<[number, number]>(
       `const bar = document.getElementById("webaios-site-bar");
-       const home = bar.contentDocument.querySelector('[data-testid="site-cadre-accueil"]');
+       const home = bar.contentDocument.querySelector('[data-testid="site-home-frame"]');
        const b = bar.getBoundingClientRect(), h = home.getBoundingClientRect(), e = home.contentDocument.querySelector("#list button").getBoundingClientRect();
        return [Math.round(b.left + h.left + e.left + e.width / 2), Math.round(b.top + h.top + e.top + e.height / 2)];`,
     );
@@ -193,7 +193,7 @@ async function startVidola(grant: boolean) {
 
 /** Opened Vidola (grant given), enter the site, sign in, watch the episode until 1:10 then pause. */
 async function watch(host = "vidola-a.localhost") {
-  await barClick("vidola", "site-entrer");
+  await barClick("vidola", "site-enter");
   await waitUrl(url(host, "/"));
   await view("(location.href = '/connexion', 1)");
   await expect.poll(() => cookies("vidola"), { timeout: 10_000 }).toContain("session=user");
@@ -271,9 +271,9 @@ describe("end to end (AGENTS.md's examples)", () => {
     const tabs = await tabUrls();
     const windows = await browserWindows();
     await openSite("vidola");
-    await expect.poll(() => text("vidola", "carte-accord-site"), { timeout: 15_000 }).not.toBeNull();
-    expect(await text("vidola", "accord-site-domaines")).toContain("images.localhost");
-    await inSiteBar(m, "vidola", `doc.querySelector('[data-testid="accorder-site"]').click(); return true;`);
+    await expect.poll(() => text("vidola", "site-grant-card"), { timeout: 15_000 }).not.toBeNull();
+    expect(await text("vidola", "site-grant-domains")).toContain("images.localhost");
+    await inSiteBar(m, "vidola", `doc.querySelector('[data-testid="grant-site"]').click(); return true;`);
     await expect.poll(homeList, { timeout: 15_000 }).toBe("Aucune série en cours.");
     expect(await seriesCards()).toEqual([]);
     await watch();
@@ -282,7 +282,7 @@ describe("end to end (AGENTS.md's examples)", () => {
     await closeSiteWindow();
     await openSite("vidola");
     await waitSeriesCard(new RegExp(`^data:image/png;base64,${PNG.toString("base64").replace(/[+/]/g, "\\$&")}$`));
-    expect(await text("vidola", "carte-accord-site")).toBeNull();
+    expect(await text("vidola", "site-grant-card")).toBeNull();
     await clickSeriesCard();
     await expectResumed("vidola-a.localhost");
 
@@ -302,7 +302,7 @@ describe("end to end (AGENTS.md's examples)", () => {
     server.requests.splice(0);
     await openSite("vidola");
     await waitSeriesCard(/^data:image\/png;base64,/);
-    await barClick("vidola", "site-entrer");
+    await barClick("vidola", "site-enter");
     await expect.poll(() => viewUrl(), { timeout: 30_000 }).toBe(url("vidola-b.localhost", "/"));
     // vidola-a failed first, the reference page was read once and without a cookie, then vidola-b was reached without the sign-in.
     const names = server.requests.map((r) => `${r.host}${r.path}`);
@@ -314,9 +314,9 @@ describe("end to end (AGENTS.md's examples)", () => {
     expect(firstB).toBeGreaterThan(reference);
     expect(server.requests.filter((r) => r.host === "adresses.localhost").map((r) => ({ host: r.host, path: r.path, cookie: r.cookie }))).toEqual([{ host: "adresses.localhost", path: "/", cookie: undefined }]);
     expect(server.requests[firstB]!.cookie).toBeUndefined();
-    await expect.poll(() => text("vidola", "site-avis"), { timeout: 15_000 }).toBe("Vidola a changé d'adresse : vidola-b.localhost. Il faudra peut-être te reconnecter.");
-    expect(await text("vidola", "site-domaine")).toBe("vidola-b.localhost");
-    await barClick("vidola", "site-accueil");
+    await expect.poll(() => text("vidola", "site-notice"), { timeout: 15_000 }).toBe("Vidola a changé d'adresse : vidola-b.localhost. Il faudra peut-être te reconnecter.");
+    expect(await text("vidola", "site-domain")).toBe("vidola-b.localhost");
+    await barClick("vidola", "site-home");
     await expect.poll(() => m.execute<boolean>(`return ${siteWindowExpr("vidola")}.document.documentElement.hasAttribute("webaios-site-home");`)).toBe(true);
     await waitSeriesCard(/^data:image\/png;base64,/);
     await clickSeriesCard();
@@ -334,8 +334,8 @@ describe("end to end (AGENTS.md's examples)", () => {
         "youtube",
       );
     await openSite("youtube");
-    await expect.poll(() => text("youtube", "carte-accord-site"), { timeout: 15_000 }).not.toBeNull();
-    await inSiteBar(m, "youtube", `doc.querySelector('[data-testid="accorder-site"]').click(); return true;`);
+    await expect.poll(() => text("youtube", "site-grant-card"), { timeout: 15_000 }).not.toBeNull();
+    await inSiteBar(m, "youtube", `doc.querySelector('[data-testid="grant-site"]').click(); return true;`);
     await waitUrl(url("youtube.localhost", "/"), "youtube");
     await expect.poll(shelves, { timeout: 10_000 }).toEqual(["none", "none", "retiré", true]);
     // The menu is built later: the tweak's observer removes the late entry too.
@@ -353,7 +353,7 @@ describe("end to end (AGENTS.md's examples)", () => {
     await launch();
     await openSite("youtube");
     await waitUrl(url("youtube.localhost", "/"), "youtube");
-    expect(await text("youtube", "carte-accord-site")).toBeNull();
+    expect(await text("youtube", "site-grant-card")).toBeNull();
     await expect.poll(shelves, { timeout: 10_000 }).toEqual(["none", "none", "retiré", true]);
     expect(await cookies("youtube")).toContain("SID=abc");
     expect(server.requests.some((r) => r.host === "youtube.localhost" && r.path === "/" && r.cookie?.includes("SID=abc"))).toBe(true);
@@ -365,7 +365,7 @@ describe("end to end (AGENTS.md's examples)", () => {
     await startVidola(true);
     const tabs = await tabUrls();
     await openSite("vidola");
-    await barClick("vidola", "site-entrer");
+    await barClick("vidola", "site-enter");
     await waitUrl(url("vidola-a.localhost", "/"));
     // The app's own window is made: counted from here, with a probe on every window's tab opens.
     const windows = await browserWindows();
@@ -396,8 +396,8 @@ describe("end to end (AGENTS.md's examples)", () => {
       await stable();
     }
     // One mention, one notice bar.
-    await expect.poll(() => bar<number>("vidola", `return doc.querySelectorAll('[data-testid="site-avis"]').length;`), { timeout: 10_000 }).toBe(1);
-    const notice = (await text("vidola", "site-avis")) ?? "";
+    await expect.poll(() => bar<number>("vidola", `return doc.querySelectorAll('[data-testid="site-notice"]').length;`), { timeout: 10_000 }).toBe(1);
+    const notice = (await text("vidola", "site-notice")) ?? "";
     expect(notice).toContain("Lien vers pub.localhost bloqué");
     expect((notice.match(/Lien vers/g) ?? []).length).toBe(1);
     expect(server.requests.filter((r) => r.host === "pub.localhost" && r.path === "/popup")).toEqual([]);

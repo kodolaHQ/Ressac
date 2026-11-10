@@ -29,13 +29,13 @@
 <svelte:window onpointerdown={outside} onblur={() => (menuOpen = false)} onkeydown={(e) => e.key === "Escape" && (menuOpen = false)} />
 
 <main>
-  <div class="ligne">
+  <div class="line">
     {#if appState}<AccessBadge {id} state={appState} />{/if}
     <span class="webaios" bind:this={root}>
-      <button class="pastille" data-testid="pastille-webaios" aria-label="WebAiOs" aria-haspopup="menu" aria-expanded={menuOpen} onclick={toggleMenu}>✎</button>
+      <button class="pill" data-testid="webaios-pill" aria-label="WebAiOs" aria-haspopup="menu" aria-expanded={menuOpen} onclick={toggleMenu}>✎</button>
       {#if menuOpen}
         <div class="menu" role="menu">
-          <button role="menuitem" class:actif={design?.active} onclick={() => choose(() => api.design.toggle())}>Mode design <kbd>⌘⇧D</kbd></button>
+          <button role="menuitem" class:active={design?.active} onclick={() => choose(() => api.design.toggle())}>Mode design <kbd>⌘⇧D</kbd></button>
           <button role="menuitem" onclick={() => choose(() => api.design.basket())}>Panier ({design?.basket ?? 0})</button>
           <button role="menuitem" onclick={() => choose(() => api.design.review())}>Relire ce projet</button>
         </div>
@@ -46,13 +46,13 @@
 
 <style>
   main { display: flex; justify-content: flex-end; align-items: flex-start; height: 100%; }
-  .ligne { display: flex; align-items: center; gap: 6px; height: 28px; }
+  .line { display: flex; align-items: center; gap: 6px; height: 28px; }
   .webaios { position: relative; display: inline-flex; }
-  .pastille { all: unset; display: grid; place-content: center; width: 40px; height: 24px; border-radius: 999px; background: var(--fond-actif); color: var(--texte); font-size: 12px; cursor: pointer; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35); }
-  .pastille[aria-expanded="true"] { color: var(--accent); }
-  .menu { position: absolute; right: 0; top: 30px; width: 200px; padding: 4px; background: var(--fond-actif); border: 1px solid var(--bord); border-radius: 6px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35); }
-  .menu button { all: unset; display: flex; justify-content: space-between; box-sizing: border-box; width: 100%; padding: 5px 6px; border-radius: 4px; color: var(--texte); cursor: pointer; font-size: 13px; }
-  .menu button:hover { background: var(--fond-survol); }
-  .menu button.actif { color: var(--accent); }
-  kbd { font: inherit; color: var(--texte-doux); }
+  .pill { all: unset; display: grid; place-content: center; width: 40px; height: 24px; border-radius: 999px; background: var(--bg-active); color: var(--text); font-size: 12px; cursor: pointer; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35); }
+  .pill[aria-expanded="true"] { color: var(--accent); }
+  .menu { position: absolute; right: 0; top: 30px; width: 200px; padding: 4px; background: var(--bg-active); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35); }
+  .menu button { all: unset; display: flex; justify-content: space-between; box-sizing: border-box; width: 100%; padding: 5px 6px; border-radius: 4px; color: var(--text); cursor: pointer; font-size: 13px; }
+  .menu button:hover { background: var(--bg-hover); }
+  .menu button.active { color: var(--accent); }
+  kbd { font: inherit; color: var(--text-muted); }
 </style>

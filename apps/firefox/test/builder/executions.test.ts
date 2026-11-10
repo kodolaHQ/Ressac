@@ -174,9 +174,9 @@ test("occupe when the widget is among the current or waiting ones", async () => 
   expect(x.busy).toBe(false);
   expect(x.live).toBeNull();
   // Two runs at the same time (short lane and long lane): this widget is the second.
-  l.emit({ running: [watch, { widget: "w", kind: "essai", start: "d1", blocks: { tri: { status: "succeeded", items: 2 } } }], waiting: [] });
+  l.emit({ running: [watch, { widget: "w", kind: "attempt", start: "d1", blocks: { tri: { status: "succeeded", items: 2 } } }], waiting: [] });
   expect(x.busy).toBe(true);
-  expect(x.live).toMatchObject({ widget: "w", kind: "essai", start: "d1" });
+  expect(x.live).toMatchObject({ widget: "w", kind: "attempt", start: "d1" });
   l.emit({ running: [watch], waiting: ["autre", "w"] });
   expect(x.busy).toBe(true);
   expect(x.live).toBeNull();

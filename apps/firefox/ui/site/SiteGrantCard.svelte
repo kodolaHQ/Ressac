@@ -16,54 +16,54 @@
   };
 </script>
 
-<section class="zone" data-testid="site-zone-accord">
-  <div class="carte" role="dialog" aria-labelledby="titre-accord-site" data-testid="carte-accord-site">
-    <h2 id="titre-accord-site">{tweaksGrantTitle(grant.name)}</h2>
+<section class="zone" data-testid="site-grant-zone">
+  <div class="card" role="dialog" aria-labelledby="site-grant-title" data-testid="site-grant-card">
+    <h2 id="site-grant-title">{tweaksGrantTitle(grant.name)}</h2>
     <dl>
       <dt>Domaines</dt>
-      <dd data-testid="accord-site-domaines">{grant.domains.join(", ")}</dd>
+      <dd data-testid="site-grant-domains">{grant.domains.join(", ")}</dd>
       {#if grant.tracked.length}
         <dt>Adresses suivies</dt>
-        <dd data-testid="accord-site-suivis">{grant.tracked.join(", ")}</dd>
+        <dd data-testid="site-grant-tracking">{grant.tracked.join(", ")}</dd>
       {/if}
       {#if grant.login.length}
         <dt>Connexion</dt>
-        <dd data-testid="accord-site-connexion">{grant.login.join(", ")}</dd>
+        <dd data-testid="site-grant-sign-in">{grant.login.join(", ")}</dd>
       {/if}
       {#if grant.frames.length}
         <dt>Cadres</dt>
-        <dd data-testid="accord-site-cadres">
+        <dd data-testid="site-grant-frames">
           {#each grant.frames as c (c)}<code>{c}</code>{/each}
         </dd>
       {/if}
       {#if grant.files.length}
         <dt>Injecte</dt>
-        <dd data-testid="accord-site-fichiers">
+        <dd data-testid="site-grant-files">
           {#each grant.files as f (f)}<code>{f}</code>{/each}
         </dd>
       {/if}
     </dl>
-    {#if grant.resume}<p data-testid="accord-site-reprise">Reprend les vidéos à la minute</p>{/if}
-    <p class="doux">Ses retouches voient et modifient les pages de ces domaines. Une image ajoutée à la page peut encore envoyer des données à un autre site.</p>
-    <div class="boutons">
-      <button data-testid="refuser-site" disabled={running} onclick={() => choose(false)}>{NO_TWEAKS}</button>
-      <button data-testid="accorder-site" class="principal" disabled={running} onclick={() => choose(true)}>{ALLOW}</button>
+    {#if grant.resume}<p data-testid="site-grant-resume">Reprend les vidéos à la minute</p>{/if}
+    <p class="muted">Ses retouches voient et modifient les pages de ces domaines. Une image ajoutée à la page peut encore envoyer des données à un autre site.</p>
+    <div class="buttons">
+      <button data-testid="refuse-site" disabled={running} onclick={() => choose(false)}>{NO_TWEAKS}</button>
+      <button data-testid="grant-site" class="main" disabled={running} onclick={() => choose(true)}>{ALLOW}</button>
     </div>
   </div>
 </section>
 
 <style>
   .zone { flex: 1; display: grid; place-content: center; padding: 16px; min-height: 0; overflow: auto; }
-  .carte { width: min(480px, 90vw); padding: 16px 20px; border-radius: 10px; background: var(--fond-barre); border: 1px solid var(--bord); color: var(--texte); box-shadow: var(--ombre-modale); }
+  .card { width: min(480px, 90vw); padding: 16px 20px; border-radius: 10px; background: var(--bg-bar); border: 1px solid var(--border); color: var(--text); box-shadow: var(--modal-shadow); }
   h2 { margin: 0 0 12px; font-size: 15px; overflow-wrap: anywhere; }
   dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 12px; margin: 0 0 12px; font-size: 13px; }
-  dt { color: var(--texte-doux); }
+  dt { color: var(--text-muted); }
   dd { margin: 0; display: flex; flex-wrap: wrap; gap: 4px 8px; overflow-wrap: anywhere; min-width: 0; }
   code { font: 12px ui-monospace, monospace; overflow-wrap: anywhere; }
   p { margin: 0 0 12px; font-size: 13px; }
-  .doux { color: var(--texte-doux); }
-  .boutons { display: flex; justify-content: flex-end; gap: 8px; }
-  .boutons button { padding: 6px 12px; border-radius: 6px; border: 1px solid var(--bord); background: var(--fond); color: var(--texte); -webkit-app-region: no-drag; }
-  .boutons .principal { background: var(--accent); border-color: var(--accent); color: white; }
-  .boutons button:disabled { opacity: 0.5; }
+  .muted { color: var(--text-muted); }
+  .buttons { display: flex; justify-content: flex-end; gap: 8px; }
+  .buttons button { padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); -webkit-app-region: no-drag; }
+  .buttons .main { background: var(--accent); border-color: var(--accent); color: white; }
+  .buttons button:disabled { opacity: 0.5; }
 </style>

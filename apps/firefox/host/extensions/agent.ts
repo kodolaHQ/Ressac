@@ -147,7 +147,7 @@ export class ExtensionsAgent {
   private readonly env: NodeJS.ProcessEnv;
   /** The agent's extensions' consoles and crash counts, by add-on id, in memory. */
   private readonly consoles = new ConsolesExtensions({
-    onCrashes: (addonId) => void this.disableCrashes(addonId).catch((e: unknown) => console.error(`[extensions] ${addonId} non désactivée après ses plantages :`, e)),
+    onCrashes: (addonId) => void this.disableCrashes(addonId).catch((e: unknown) => console.error(`[extensions] ${addonId} not disabled after its crashes :`, e)),
   });
   /** Consoles unlocked for the agent, by key: in memory only (quitting ends them). */
   private readonly unlocks = new Map<string, UnlockLink>();
@@ -179,9 +179,9 @@ export class ExtensionsAgent {
         if (x.source !== "agent" || !x.grant) return;
         try {
           const r = await this.prepareAndInstall(key.slice("agent:".length), { grant: x.grant, startup: true });
-          if (!r.ok) console.warn(`[extensions] ${key} au démarrage : ${r.error}`);
+          if (!r.ok) console.warn(`[extensions] ${key} at startup: ${r.error}`);
         } catch (e) {
-          console.error(`[extensions] ${key} non installée au démarrage :`, e);
+          console.error(`[extensions] ${key} not installed at startup:`, e);
         }
       }),
     );
@@ -240,7 +240,7 @@ export class ExtensionsAgent {
     this.consoles.crash(addonId, typeof at === "number" && at <= now ? at : now);
   }
 
-  /** Disabled everywhere after crashes (`DESACTIVEE_PLANTAGES`), shown on the page with « Réactiver ». */
+  /** Disabled everywhere after crashes (`DISABLED_CRASHES`), shown on the page with « Réactiver ». */
   private async disableCrashes(addonId: string): Promise<void> {
     const key = this.key(addonId.slice(0, -ID_SUFFIX.length))!;
     const r = await this.writeKey(key, (e) => {
@@ -248,7 +248,7 @@ export class ExtensionsAgent {
       return x.disabled ? e : { ...e, extensions: { ...e.extensions, [key]: { ...x, disabled: { reason: "crashes" as const, at: new Date().toISOString() } } } };
     });
     if (!r.ok) throw new Error(r.error);
-    console.warn(`[extensions] ${key} désactivée : ${DISABLED_CRASHES}`);
+    console.warn(`[extensions] ${key} disabled: ${DISABLED_CRASHES}`);
   }
 
   /** `extension_console`: filtered (unlocked: whole); null if not in the registry. */
@@ -374,7 +374,7 @@ export class ExtensionsAgent {
       readExtensionsState(this.o.folder),
       // An extra source: the agent keeps its own rows if Firefox cannot list its add-ons.
       this.o.rpc.request<{ id: string; name: string; version: string; active: boolean }[]>("extensions.amo", {}).catch((e: unknown) => {
-        console.error("[extensions] modules d'AMO non listés :", e);
+        console.error("[extensions] AMO add-ons not listed:", e);
         return [];
       }),
     ]);
@@ -978,7 +978,7 @@ export class ExtensionsAgent {
         });
       await this.apply(id, key);
     } catch (e) {
-      console.error(`[extensions] ${key} : accord non écrit, désactivée :`, e);
+      console.error(`[extensions] ${key}: grant not written, disabled:`, e);
       await this.o.rpc.request("extensions.enable", { addonId: addonIdOf(id), active: false }).catch(() => {});
     }
   }

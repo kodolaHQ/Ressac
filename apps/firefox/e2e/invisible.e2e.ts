@@ -26,7 +26,7 @@ beforeAll(async () => {
   await m.setContext("chrome");
   await waitFor(m, "return !!window.webaiosWindow", (v) => v === true);
   // The home page's agent session settles first: quitting during its start-up leaves writers in the data dir.
-  await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('prêt>')", [], 20_000, "agent");
+  await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
   await m.execute(`Cc["@mozilla.org/network/native-dns-override;1"].getService(Ci.nsINativeDNSResolverOverride).addIPOverride("localtest.me", "::1");`);
   // Should a download slip through, it lands in the test's data dir, never in ~/Downloads.
   await m.execute(
@@ -66,7 +66,7 @@ const downloads = () =>
 const windows = () => m.execute<number>("return [...Services.wm.getEnumerator(null)].length");
 async function newSpace(isPrivate: boolean): Promise<string> {
   const before = (await state(m)).spaces.map((e) => e.id);
-  const s = await dispatch(m, { type: "createSpace", name: isPrivate ? "Privé" : "Compte", icon: "🔒", private: isPrivate, profile: "nouveau" } as Action);
+  const s = await dispatch(m, { type: "createSpace", name: isPrivate ? "Privé" : "Compte", icon: "🔒", private: isPrivate, profile: "new" } as Action);
   return s.spaces.find((e) => !before.includes(e.id))!.profile;
 }
 
@@ -83,7 +83,7 @@ it("reads a public page but its frame, image and fetch to localtest.me never rea
   expect((r as { ok: Page }).ok.text).toContain("Texte public");
 });
 
-it("with adressesLocales (tests only) nothing is guarded: the same frame, image and fetch reach the trap", async () => {
+it("with localAddresses (tests only) nothing is guarded: the same frame, image and fetch reach the trap", async () => {
   expect(await readPage(`${page.url}/sous-ressources?vers=${encodeURIComponent(trapBase)}`, { profile: null, localAddresses: true })).toHaveProperty("ok");
   expect([...trap.paths].sort()).toEqual(["/cadre", "/fetch", "/image"]);
 });

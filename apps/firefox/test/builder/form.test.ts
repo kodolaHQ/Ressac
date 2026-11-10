@@ -6,14 +6,14 @@ const catalog = (type: string) => blockCatalog().find((c) => c.type === type)!;
 const field = (type: string, name: string) => catalog(type).fields.find((c) => c.name === name)!;
 const names = (type: string, params: Record<string, unknown>) => shownFields(catalog(type), params).map((c) => c.name);
 
-test("the « only per item » fields only appear if parElement is ticked", () => {
+test("the « only per item » fields only appear if perItem is ticked", () => {
   expect(names("ai.write", {})).not.toContain("onError");
   expect(names("ai.write", { perItem: false })).not.toContain("reuse");
   expect(names("ai.write", { perItem: true })).toEqual(expect.arrayContaining(["onError", "budgetSeconds", "reuse"]));
   expect(names("ai.write", {})).toContain("perItem");
 });
 
-test("ia.trier (always item by item) shows siErreur, budget, reutiliser and a field without the parElement box", () => {
+test("ia.trier (always item by item) shows onError, budget, reuse and a field without the perItem box", () => {
   expect(names("ai.sort", {})).toEqual(expect.arrayContaining(["threshold", "field", "onError", "budgetSeconds", "reuse"]));
   expect(names("ai.sort", {})).not.toContain("perItem");
 });
@@ -50,7 +50,7 @@ test("a cleared required number changes nothing", () => {
   expect(paramsWith({ count: 10 }, field("list.keep", "count"), "")).toBeNull();
 });
 
-test("checkbox without a default value (auFilDeLEau): unticked, the key goes; ticked, true", () => {
+test("checkbox without a default value (streaming): unticked, the key goes; ticked, true", () => {
   const f = field("output", "live");
   expect(paramsWith({ to: "widget" }, f, true)).toEqual({ to: "widget", live: true });
   expect(paramsWith({ to: "widget", live: true }, f, false)).toEqual({ to: "widget" });

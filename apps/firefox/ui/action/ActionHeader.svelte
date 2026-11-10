@@ -58,7 +58,7 @@
   $effect(() => {
     if (!menuOpen) return;
     const close = (e: Event) => {
-      if (e instanceof KeyboardEvent ? e.key === "Escape" : !(e.target as Element | null)?.closest?.(".precedents")) menuOpen = false;
+      if (e instanceof KeyboardEvent ? e.key === "Escape" : !(e.target as Element | null)?.closest?.(".previous")) menuOpen = false;
     };
     window.addEventListener("pointerdown", close);
     window.addEventListener("keydown", close);
@@ -69,14 +69,14 @@
   });
 </script>
 
-<header class="entete">
-  <h1 data-testid="nom-action">{name}</h1>
-  <div class="commandes">
+<header class="header">
+  <h1 data-testid="action-title">{name}</h1>
+  <div class="commands">
     {#if inputLabel !== null}
-      <label class="saisie">
+      <label class="input">
         <span>{inputLabel}</span>
         <input
-          data-testid="saisie-action"
+          data-testid="action-input-box"
           bind:value={input}
           maxlength="200"
           onkeydown={(e) => {
@@ -88,14 +88,14 @@
         />
       </label>
     {/if}
-    <button class="principal" data-testid="relancer-action" disabled={busy || missingInput} onclick={validate}>
+    <button class="main" data-testid="relaunch-action" disabled={busy || missingInput} onclick={validate}>
       {alreadyLaunched ? "Relancer" : "Lancer"}
     </button>
-    <button data-testid="voir-workflow" onclick={seeWorkflow}>Voir le workflow</button>
-    {#if start}<span class="heure" data-testid="heure-resultat">{hour(start)}</span>{/if}
+    <button data-testid="show-workflow" onclick={seeWorkflow}>Voir le workflow</button>
+    {#if start}<span class="time" data-testid="result-time">{hour(start)}</span>{/if}
     {#if previous && previous.length > 0}
-      <div class="precedents">
-        <button data-testid="resultats-precedents" aria-haspopup="menu" aria-expanded={menuOpen} onclick={() => (menuOpen = !menuOpen)}>
+      <div class="previous">
+        <button data-testid="previous-results" aria-haspopup="menu" aria-expanded={menuOpen} onclick={() => (menuOpen = !menuOpen)}>
           Résultats précédents
         </button>
         {#if menuOpen}
@@ -103,15 +103,15 @@
             {#each previous as e (e.id)}
               <button
                 role="menuitem"
-                data-testid="resultat-{e.id}"
+                data-testid="result-{e.id}"
                 onclick={() => {
                   menuOpen = false;
                   choose(e.id);
                 }}
               >
                 <span>{hour(e.start)}</span>
-                {#if e.input}<span class="doux">{e.input}</span>{/if}
-                <span class="statut {e.status}">{STATUSES[e.status]}</span>
+                {#if e.input}<span class="muted">{e.input}</span>{/if}
+                <span class="status {e.status}">{STATUSES[e.status]}</span>
               </button>
             {/each}
           </div>
@@ -122,23 +122,23 @@
 </header>
 
 <style>
-  .entete { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; max-width: 960px; margin: 0 auto; padding: 20px 24px 0; color: var(--texte); }
+  .header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; max-width: 960px; margin: 0 auto; padding: 20px 24px 0; color: var(--text); }
   h1 { margin: 0; font-size: 18px; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
-  .commandes { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
-  .saisie { display: flex; align-items: center; gap: 6px; color: var(--texte-doux); }
-  .saisie input { width: 180px; padding: 5px 8px; border-radius: 6px; border: 1px solid var(--bord); background: var(--fond-barre); color: var(--texte); font: inherit; }
-  .saisie input:focus { outline: none; border-color: var(--accent); }
-  button { padding: 5px 10px; border-radius: 6px; border: 1px solid var(--bord); background: var(--fond-barre); color: var(--texte); font: inherit; }
-  button:hover:not(:disabled) { background: var(--fond-survol); }
+  .commands { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
+  .input { display: flex; align-items: center; gap: 6px; color: var(--text-muted); }
+  .input input { width: 180px; padding: 5px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); font: inherit; }
+  .input input:focus { outline: none; border-color: var(--accent); }
+  button { padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); font: inherit; }
+  button:hover:not(:disabled) { background: var(--bg-hover); }
   button:disabled { opacity: 0.5; }
-  .principal { background: var(--accent); border-color: var(--accent); color: white; }
-  .principal:hover:not(:disabled) { background: var(--accent); filter: brightness(1.1); }
-  .heure { color: var(--texte-doux); font-size: 12px; }
-  .precedents { position: relative; }
-  .menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 5; display: flex; flex-direction: column; min-width: 260px; max-height: 320px; overflow-y: auto; padding: 4px; border: 1px solid var(--bord); border-radius: 8px; background: var(--fond-barre); box-shadow: var(--ombre-modale); }
+  .main { background: var(--accent); border-color: var(--accent); color: white; }
+  .main:hover:not(:disabled) { background: var(--accent); filter: brightness(1.1); }
+  .time { color: var(--text-muted); font-size: 12px; }
+  .previous { position: relative; }
+  .menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 5; display: flex; flex-direction: column; min-width: 260px; max-height: 320px; overflow-y: auto; padding: 4px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-bar); box-shadow: var(--modal-shadow); }
   .menu button { display: flex; gap: 8px; align-items: baseline; border: none; background: none; text-align: left; white-space: nowrap; }
-  .menu button:hover { background: var(--fond-survol); }
-  .doux { color: var(--texte-doux); overflow: hidden; text-overflow: ellipsis; }
-  .statut { margin-left: auto; font-size: 12px; color: var(--texte-doux); }
-  .statut.echouee, .statut.interrompue, .statut.accord-requis { color: var(--en-erreur); }
+  .menu button:hover { background: var(--bg-hover); }
+  .muted { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; }
+  .status { margin-left: auto; font-size: 12px; color: var(--text-muted); }
+  .status.failed, .status.interrupted, .status.grant-required { color: var(--in-error); }
 </style>

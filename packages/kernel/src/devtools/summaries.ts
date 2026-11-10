@@ -124,12 +124,12 @@ export function summarizeSnapshot(json: string): MemorySummary {
     nodes: number[];
     strings: string[];
   };
-  const { node_fields: champs, node_types: nodeTypes } = raw.snapshot.meta;
-  const iType = champs.indexOf("type");
-  const iName = champs.indexOf("name");
-  const iSize = champs.indexOf("self_size");
+  const { node_fields: fieldList, node_types: nodeTypes } = raw.snapshot.meta;
+  const iType = fieldList.indexOf("type");
+  const iName = fieldList.indexOf("name");
+  const iSize = fieldList.indexOf("self_size");
   const typeNames = (nodeTypes[iType] as string[]) ?? [];
-  const step = champs.length;
+  const step = fieldList.length;
   const groups = new Map<string, { name: string; count: number; size: number }>();
   let total = 0;
   for (let i = 0; i + step <= raw.nodes.length; i += step) {

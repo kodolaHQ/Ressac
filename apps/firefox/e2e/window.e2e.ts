@@ -76,11 +76,11 @@ describe("the WebAiOs window", () => {
     expect(after.windows.find((f) => f.id === id)!.activeSpace).toBe(space);
     // Its sidebar acts on its own window.
     const tab = await openTab(id, "/a.html");
-    await inWindow(m, other, () => waitUi(m, "return !!doc.querySelector(arguments[0])", [`[data-testid="onglet-${tab}"]`]));
-    expect(await inUi(m, "return !!doc.querySelector(arguments[0])", [`[data-testid="onglet-${tab}"]`])).toBe(false);
+    await inWindow(m, other, () => waitUi(m, "return !!doc.querySelector(arguments[0])", [`[data-testid="tab-${tab}"]`]));
+    expect(await inUi(m, "return !!doc.querySelector(arguments[0])", [`[data-testid="tab-${tab}"]`])).toBe(false);
   });
 
-  it("⇧⌘W closes one window among two: it leaves the state, its tabs go to the other's fermesRecemment", async () => {
+  it("⇧⌘W closes one window among two: it leaves the state, its tabs go to the other's recentlyClosed", async () => {
     const first = await windowId();
     const other = await newWindow();
     const id = await inWindow(m, other, () => m.execute<string>("return window.webaiosWindow.windowId"));
@@ -96,7 +96,7 @@ describe("the WebAiOs window", () => {
     expect(after.windows[0]!.recentlyClosed[0]?.url).toBe(server.url + "/a.html");
   });
 
-  it("macOS: closing the last window keeps the app and its tabs in the state; no XUL tab is left; choisirMoteur does not reopen it; the Dock reopens it with its tabs listed", async () => {
+  it("macOS: closing the last window keeps the app and its tabs in the state; no XUL tab is left; chooseEngine does not reopen it; the Dock reopens it with its tabs listed", async () => {
     const id = await windowId();
     const tab = await openTab(id, "/a.html");
     await waitFor(m, "return gBrowser.selectedTab.getAttribute('webaios-tab-id')", (v) => v === tab);
@@ -108,7 +108,7 @@ describe("the WebAiOs window", () => {
     expect(s.settings.engine).toBe("qwant");
     expect(s.windows.map((f) => f.id)).toEqual([id]);
     expect(await m.execute("return window.webaiosWindow.windowId")).toBe(id);
-    await waitUi(m, "return !!doc.querySelector(arguments[0])", [`[data-testid="onglet-${tab}"]`]);
+    await waitUi(m, "return !!doc.querySelector(arguments[0])", [`[data-testid="tab-${tab}"]`]);
     // It still follows the store.
     const next = await openTab(id, "/b.html");
     await waitFor(m, "return gBrowser.selectedTab.getAttribute('webaios-tab-id')", (v) => v === next);

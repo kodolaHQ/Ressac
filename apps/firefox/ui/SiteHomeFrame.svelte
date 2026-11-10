@@ -90,17 +90,17 @@
   });
 </script>
 
-<section class="accueil" data-testid="site-zone-accueil">
-  <iframe bind:this={frame} data-testid="site-cadre-accueil" title="Accueil de l'appli" sandbox="allow-scripts" src={src ?? "about:blank"}></iframe>
+<section class="home" data-testid="site-home-zone">
+  <iframe bind:this={frame} data-testid="site-home-frame" title="Accueil de l'appli" sandbox="allow-scripts" src={src ?? "about:blank"}></iframe>
   <footer>
-    <button data-testid="site-entrer" onclick={() => api.enter()}>{ENTER_THE_SITE}</button>
+    <button data-testid="site-enter" onclick={() => api.enter()}>{ENTER_THE_SITE}</button>
   </footer>
 </section>
 
 <style>
-  .accueil { flex: 1; display: flex; flex-direction: column; min-height: 0; }
-  iframe { flex: 1; width: 100%; border: 0; min-height: 0; background: var(--fond); }
-  footer { display: flex; justify-content: center; padding: 10px 16px; border-top: 1px solid var(--bord); }
+  .home { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  iframe { flex: 1; width: 100%; border: 0; min-height: 0; background: var(--bg); }
+  footer { display: flex; justify-content: center; padding: 10px 16px; border-top: 1px solid var(--border); }
   button { all: unset; padding: 8px 16px; border-radius: 8px; background: var(--accent); color: white; font-weight: 600; cursor: default; -webkit-app-region: no-drag; }
   button:hover { filter: brightness(1.1); }
 </style>

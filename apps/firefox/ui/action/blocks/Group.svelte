@@ -4,7 +4,7 @@
   let { p, children }: { p: { title: string; collapsed: boolean }; children: Snippet } = $props();
 </script>
 
-<details class="pa-groupe" data-testid="bloc-groupe" open={!p.collapsed}>
-  <summary class="pa-texte">{p.title}</summary>
+<details class="pa-group" data-testid="block-group" open={!p.collapsed}>
+  <summary class="pa-text">{p.title}</summary>
   {@render children()}
 </details>

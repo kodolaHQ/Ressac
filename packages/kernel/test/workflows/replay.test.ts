@@ -130,7 +130,7 @@ test("a partial upstream output is reused", () => {
   expect(p.ok).toBe(true);
 });
 
-test("debutTropGros measures the start line with the outputs to reuse", () => {
+test("headTooBig measures the start line with the outputs to reuse", () => {
   const o = { previous: null, now: "2026-10-29T08:00:00.000Z", config: null, workflow: { blocks: [], links: [], order: [] } };
   const replay = (outputs: Record<string, unknown>) => ({ ...o, replay: { reruns: ["b"], outputs } });
   expect(startTooBig(o)).toBe(false);

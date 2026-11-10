@@ -24,8 +24,8 @@ const tic = (matches: string[]) => ({
   "manifest.json": { manifest_version: 3, name: "Tic de l'agent", version: "1.0.0", content_scripts: [{ matches, js: ["tic.js"] }] },
   "tic.js": 'let n = 0;\nsetInterval(() => document.documentElement.setAttribute("data-tic", String(++n)), 100);\n',
 });
-const MODAL = '[data-testid="modale-espace"]';
-const REQUEST = '[data-testid="modale-demande"]';
+const MODAL = '[data-testid="space-modal"]';
+const REQUEST = '[data-testid="request-modal"]';
 
 let server: Awaited<ReturnType<typeof startServer>>;
 beforeAll(async () => (server = await startServer()));
@@ -54,7 +54,7 @@ async function launch(prepare: (root: string, dataDir: string) => void = () => {
     const config = path.join(root, ".webaios", "mcp.json");
     for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
       if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
-    await waitUi(w.marionette, "return doc.querySelector('.xterm-rows')?.textContent.includes('prêt>')", [], 20_000, "agent");
+    await waitUi(w.marionette, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
   }
   return { ...w, root: root, call: (name: string, args: Record<string, unknown> = {}) => callTool(dataDir, name, args) };
 }
@@ -96,7 +96,7 @@ async function setSpacePrivate(m: Marionette, id: string): Promise<void> {
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const hostPid = (m: Marionette) => m.execute<number | null>(`return (async () => (await ChromeUtils.importESModule("${STORE}").ready).agent.pid)();`);
 async function openSettings(m: Marionette, spaceId: string): Promise<void> {
-  await click(m, `[data-testid="espace-${spaceId}"]`, { button: 2 });
+  await click(m, `[data-testid="space-${spaceId}"]`, { button: 2 });
   await click(m, '[role="menuitem"]', { text: "Réglages" });
   await waitUi(m, "return doc.querySelector(arguments[0] + ' h2')?.textContent === \"Réglages de l'espace\"", [MODAL]);
 }
@@ -104,7 +104,7 @@ async function openSettings(m: Marionette, spaceId: string): Promise<void> {
 const line = (m: Marionette, name: string) =>
   waitUi<{ checked: boolean; disabled: boolean; text: string }>(
     m,
-    `const l = [...doc.querySelectorAll(arguments[0] + ' [data-testid="extension-ligne"]')].find((x) => x.querySelector("b")?.textContent === arguments[1]);
+    `const l = [...doc.querySelectorAll(arguments[0] + ' [data-testid="extension-row"]')].find((x) => x.querySelector("b")?.textContent === arguments[1]);
      const s = l?.querySelector('[role="switch"]');
      return s && { checked: s.checked, disabled: s.disabled, text: l.textContent };`,
     [MODAL, name],
@@ -124,7 +124,7 @@ describe("agent extensions per space", () => {
     await waitActive(m, "cacheur@agent.webaios", true);
     const a = await openTab(m, `${server.url}/cache.html`);
     expect(await poll(() => display(m, a), (v) => v === "none,block")).toBe("none,block");
-    await dispatch(m, { type: "createSpace", name: "B", icon: "🅱️", private: false, profile: "nouveau", windowId: (await state(m)).windows[0]!.id } as Action);
+    await dispatch(m, { type: "createSpace", name: "B", icon: "🅱️", private: false, profile: "new", windowId: (await state(m)).windows[0]!.id } as Action);
     const b = await openTab(m, `${server.url}/cache.html`);
     expect((await state(m)).tabs[b]!.spaceId).not.toBe((await state(m)).tabs[a]!.spaceId);
     await new Promise((r) => setTimeout(r, 3000));
@@ -138,13 +138,13 @@ describe("agent extensions per space", () => {
     await openTab(m, `${server.url}/cache.html`);
     const listed = () =>
       waitUi(m, `
-        if (!doc.querySelector('[data-testid="panneau-extensions"]')) doc.querySelector('[data-testid="menu-extensions"]').click();
-        const p = doc.querySelector('[data-testid="panneau-extensions"]');
+        if (!doc.querySelector('[data-testid="extensions-panel"]')) doc.querySelector('[data-testid="menu-extensions"]').click();
+        const p = doc.querySelector('[data-testid="extensions-panel"]');
         return p ? p.textContent : null;`);
     expect(await listed()).toContain("Cacheur");
-    await dispatch(m, { type: "createSpace", name: "B", icon: "🅱️", private: false, profile: "nouveau", windowId: (await state(m)).windows[0]!.id } as Action);
+    await dispatch(m, { type: "createSpace", name: "B", icon: "🅱️", private: false, profile: "new", windowId: (await state(m)).windows[0]!.id } as Action);
     await openTab(m, `${server.url}/cache.html`);
-    await waitUi(m, `return !doc.querySelector('[data-testid="panneau-extensions"]')?.textContent.includes("Cacheur") || null`);
+    await waitUi(m, `return !doc.querySelector('[data-testid="extensions-panel"]')?.textContent.includes("Cacheur") || null`);
     expect(await listed()).not.toContain("Cacheur");
   });
 
@@ -179,13 +179,13 @@ describe("agent extensions per space", () => {
     await openSettings(m, personal.id);
     expect(await line(m, "Cacheur de l'agent")).toMatchObject({ checked: true, text: expect.stringContaining("Active aussi dans « Lecture » (même profil)") });
     const shown = (id: string) => inUi<string | null>(m, `return doc.querySelector('[data-testid="${id}"]')?.textContent ?? null`);
-    expect(await shown("avertissement-extensions-prive")).toBeNull();
-    expect(await shown("extensions-desactivees")).toBeNull();
+    expect(await shown("private-extensions-warning")).toBeNull();
+    expect(await shown("extensions-disabled")).toBeNull();
     await inUi(m, `doc.querySelector(arguments[0] + ' input[type="checkbox"]:not([role])').click()`, [MODAL]);
-    expect(await waitUi(m, `return doc.querySelector('[data-testid="avertissement-extensions-prive"]')?.textContent`)).toContain(
+    expect(await waitUi(m, `return doc.querySelector('[data-testid="private-extensions-warning"]')?.textContent`)).toContain(
       "Cet espace privé partage son profil avec « Lecture » : les extensions actives dans ce profil tournent aussi ici. Pour qu'elles n'y tournent jamais, donne-lui son propre profil.",
     );
-    expect(await shown("extensions-desactivees")).toContain(
+    expect(await shown("extensions-disabled")).toContain(
       "En enregistrant, ces extensions de l'agent seront désactivées pour ce profil : Cacheur de l'agent. Les onglets ouverts où elles tournent seront rechargés.",
     );
     await click(m, `${MODAL} button[type="submit"]`, { text: "Enregistrer" });
@@ -246,7 +246,7 @@ describe("agent extensions per space", () => {
     const spaceA = (await activeSpace(m)).id;
     const a = await openTab(m, `${server.url}/a.html`);
     expect(await poll(() => ticks(m, a), (n) => n > 2)).toBeGreaterThan(2);
-    await dispatch(m, { type: "createSpace", name: "B", icon: "🅱️", private: false, profile: "nouveau", windowId: (await state(m)).windows[0]!.id } as Action);
+    await dispatch(m, { type: "createSpace", name: "B", icon: "🅱️", private: false, profile: "new", windowId: (await state(m)).windows[0]!.id } as Action);
     const spaceB = (await activeSpace(m)).id;
     const toggle = (space: string, active: boolean) =>
       inUi(m, "return ui.webaios.extensions.toggle('agent:tic', arguments[0], arguments[1]).then((r) => JSON.parse(JSON.stringify(r)))", [space, active]);

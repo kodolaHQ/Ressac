@@ -75,13 +75,13 @@ it("session restore with an action tab: the last result shows, no run launched",
   let { m, q } = await launch();
   await waitKernel(m);
   await openAction(m, "annonces", "Annonces");
-  await q.waitText(tid("bloc-titre"), "Résultat gardé", 30_000);
+  await q.waitText(tid("block-title"), "Résultat gardé", 30_000);
   await quit(m);
 
   ({ m, q } = await launch());
   await waitUi(m, "return !!doc.querySelector(arguments[0]);", [tid("page-action")], 30_000);
-  await q.waitText(tid("bloc-titre"), "Résultat gardé", 30_000);
-  expect(await q.count(tid("avancement-action"))).toBe(0);
+  await q.waitText(tid("block-title"), "Résultat gardé", 30_000);
+  expect(await q.count(tid("action-progress"))).toBe(0);
   await sleep(1000);
   expect(await runsOnDisk(dirs.dataDir, "annonces")).toEqual([`${EXECUTION}.json`]);
   expect(await direct(m)).toEqual({ running: [], waiting: [] });
@@ -198,8 +198,8 @@ it("quitting during an action: after relaunch its run is « interrompue » in pr
   let { m, q } = await launch();
   await waitKernel(m);
   await openAction(m, "pages", "Pages");
-  await click(m, tid("relancer-action"));
-  await q.waitContains(tid("avancement-action"), "Lecture de 127.0.0.1…", 30_000);
+  await click(m, tid("relaunch-action"));
+  await q.waitContains(tid("action-progress"), "Lecture de 127.0.0.1…", 30_000);
   await quit(m);
   // The run is written « interrompue » on the stop; no result is kept for it.
   expect(await runStatuses(dirs.dataDir, "pages")).toEqual(["interrupted"]);
@@ -210,8 +210,8 @@ it("quitting during an action: after relaunch its run is « interrompue » in pr
   ({ m, q } = await launch());
   // The action's tab is restored: it shows the interrupted run, without launching it again.
   await waitUi(m, "return !!doc.querySelector(arguments[0]);", [tid("page-action")], 30_000);
-  await click(m, tid("resultats-precedents"));
-  await q.waitContains(tid(`resultat-${execution}`), "interrompue", 30_000);
+  await click(m, tid("previous-results"));
+  await q.waitContains(tid(`result-${execution}`), "interrompue", 30_000);
   await sleep(500);
   expect(await runStatuses(dirs.dataDir, "pages")).toEqual(["interrupted"]);
 });

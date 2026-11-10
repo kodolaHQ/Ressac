@@ -117,7 +117,7 @@ test("agent end → termine; demarrer starts a new session", async () => {
   expect(manager.active("F")).toBe(true);
 });
 
-test("fermerFenetre stops the session; a session that finishes opening after the close is stopped", async () => {
+test("closeWindow stops the session; a session that finishes opening after the close is stopped", async () => {
   const { management: manager, sessions } = prepare();
   await manager.start("F", size);
   manager.closeWindow("F");
@@ -140,7 +140,7 @@ test("ecrire goes to the window's session", async () => {
   expect(sessions[0]!.written).toEqual(["ls\r"]);
 });
 
-test("Enter in the terminal = the user sends a message (surEnvoi); an ordinary keystroke does not", async () => {
+test("Enter in the terminal = the user sends a message (onSend); an ordinary keystroke does not", async () => {
   const { management: manager, messages } = prepare();
   await manager.start("F", size);
   manager.write("F", "abc");
@@ -149,7 +149,7 @@ test("Enter in the terminal = the user sends a message (surEnvoi); an ordinary k
   expect(messages).toEqual(["F"]);
 });
 
-test("relancerTout stops every session and reopens one at the same size, without announcing « terminé »", async () => {
+test("relaunchAll stops every session and reopens one at the same size, without announcing « terminé »", async () => {
   const sizes: { cols: number; rows: number }[] = [];
   const sessions: FakeSession[] = [];
   const sends: { f: string; channel: string; v: unknown }[] = [];
@@ -175,7 +175,7 @@ test("relancerTout stops every session and reopens one at the same size, without
   expect(manager.active("F")).toBe(true);
 });
 
-test("relancerTout during a start: the failure of the old start does not overwrite the new session", async () => {
+test("relaunchAll during a start: the failure of the old start does not overwrite the new session", async () => {
   const sessions: FakeSession[] = [];
   const sends: { f: string; channel: string; v: unknown }[] = [];
   let fail!: (e: Error) => void;
@@ -197,7 +197,7 @@ test("relancerTout during a start: the failure of the old start does not overwri
   expect(manager.active("F")).toBe(true);
 });
 
-test("toutArreter waits for each session to stop", async () => {
+test("stopAll waits for each session to stop", async () => {
   let finish!: () => void;
   const s = new FakeSession();
   s.stop = () => new Promise<void>((ok) => (finish = ok));
@@ -211,7 +211,7 @@ test("toutArreter waits for each session to stop", async () => {
   await stop;
 });
 
-test("preRemplir before the start writes as soon as the session is active", async () => {
+test("prefill before the start writes as soon as the session is active", async () => {
   let open!: (s: SessionLike) => void;
   const session = new FakeSession();
   const { management: manager, messages } = prepare(() => new Promise((r) => (open = r)));
@@ -228,7 +228,7 @@ test("preRemplir before the start writes as soon as the session is active", asyn
   expect(messages).toEqual([]);
 });
 
-test("preRemplir on an active session writes right away", async () => {
+test("prefill on an active session writes right away", async () => {
   const { management: manager, sessions, messages } = prepare();
   await manager.start("F", size);
   let called = 0;

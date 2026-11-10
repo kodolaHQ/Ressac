@@ -149,7 +149,7 @@ describe("runAction", () => {
     expect(ai.calls).toHaveLength(1);
     // The action's instruction is given to Gemma.
     expect(ai.calls[0]).toContain("Les tickets en liste");
-    expect(steps).toEqual(["mise-en-page"]);
+    expect(steps).toEqual(["layout"]);
   });
 
   it("without a grant: accord-requis, no container launched, nothing written", async () => {

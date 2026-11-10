@@ -4,6 +4,6 @@
   let { p }: { p: { figures: { value: string; label: string }[] } } = $props();
 </script>
 
-<div class="pa-chiffres" data-testid="bloc-chiffres">
-  {#each p.figures as c, i (i)}<Figure p={c} testid="chiffre" />{/each}
+<div class="pa-figures" data-testid="block-figures">
+  {#each p.figures as c, i (i)}<Figure p={c} testid="figure" />{/each}
 </div>

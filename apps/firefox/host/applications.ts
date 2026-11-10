@@ -55,11 +55,11 @@ export function createApplicationsHost(o: {
   const last = new Map<string, Promise<unknown>>();
   const delay = Number(process.env.WEBAIOS_APP_DELAY_MS);
   const ports = portRange(process.env.WEBAIOS_APP_PORTS);
-  const report = (folder: string, what: string) => (e: unknown) => console.error(`[applications] ${folder} non ${what} :`, e);
+  const report = (folder: string, what: string) => (e: unknown) => console.error(`[applications] ${folder} not ${what}:`, e);
 
   const close = (folder: string) => {
     windows.delete(folder);
-    void o.chrome.close(folder).catch(report(folder, "fermée"));
+    void o.chrome.close(folder).catch(report(folder, "closed"));
   };
   /** Closes the window of an app that is no longer running, except during a launch (which will decide at its end). */
   const followState = (folder: string) => {
@@ -79,7 +79,7 @@ export function createApplicationsHost(o: {
             // Launched, or relaunched: the window opens or reloads on the new port.
             if (a.state === "running" && a.port !== undefined) {
               windows.set(folder, { title: windows.get(folder)?.title ?? a.name, url: `http://localhost:${a.port}/` });
-              void o.chrome.open({ folder: folder, name: a.name, port: a.port }, memory.read(folder).frame ?? null).catch(report(folder, "ouverte"));
+              void o.chrome.open({ folder: folder, name: a.name, port: a.port }, memory.read(folder).frame ?? null).catch(report(folder, "opened"));
               memory.note(folder, { lastLaunch: new Date().toISOString() });
             }
           },
@@ -107,7 +107,7 @@ export function createApplicationsHost(o: {
     },
   });
   // Once per host life, in the background: windows never wait for Docker.
-  manager.start().catch((e) => console.error("[applications] démarrage impossible :", e));
+  manager.start().catch((e) => console.error("[applications] start failed:", e));
   // The list never waits for it: the page is re-read when Docker's state changes.
   const docker = new DockerProbe({ probe: () => o.workshop.state(), onChange: o.broadcast });
 
@@ -146,22 +146,22 @@ export function createApplicationsHost(o: {
       // Relaunch = launch a running or errored app: the manager first stops the running instance.
       case "launch":
       case "relaunch":
-        void manager.launch(folder).catch(report(folder, "lancée"));
+        void manager.launch(folder).catch(report(folder, "launched"));
         return;
       case "stop":
-        void manager.stop(folder).catch(report(folder, "arrêtée"));
+        void manager.stop(folder).catch(report(folder, "stopped"));
         return;
       case "open":
-        void o.chrome.show(folder).catch(report(folder, "montrée"));
+        void o.chrome.show(folder).catch(report(folder, "shown"));
         return;
       case "delete":
-        void remove(folder).catch(report(folder, "supprimée"));
+        void remove(folder).catch(report(folder, "deleted"));
         return;
       case "promote":
-        void writeType(o.paths, folder, "app").then(o.broadcast).catch(report(folder, "promue"));
+        void writeType(o.paths, folder, "app").then(o.broadcast).catch(report(folder, "promoted"));
         return;
       case "debug":
-        void debug(folder, win).catch(report(folder, "déboguée"));
+        void debug(folder, win).catch(report(folder, "debugged"));
         return;
       // « dossier » and « relire » are the chrome's and the page's (plan 35a tasks 4 and 5).
     }
@@ -192,7 +192,7 @@ export function createApplicationsHost(o: {
       if (!folder) return;
       windows.delete(folder);
       o.policy()?.tabClosed("app:" + folder);
-      if (p?.byUser === true) void manager.stop(folder).catch(report(folder, "arrêtée"));
+      if (p?.byUser === true) void manager.stop(folder).catch(report(folder, "stopped"));
     },
     // An app window always shows what the agent built: « construite » again on its new origin.
     "apps.navigation": (p) => {

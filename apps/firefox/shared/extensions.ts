@@ -1,20 +1,5 @@
 import type { SourceExtension } from "@webaios/kernel";
 
-// In a module with no dependency on the kernel: the UI imports them (the kernel does not enter its bundle).
-export {
-  activeIn as activeDans,
-  APP_CLOSED as APPLI_FERMEE,
-  NO_SITE_EXTENSION as AUCUNE_EXTENSION_SITE,
-  CONSOLE_UNLOCKED_PAGE as CONSOLE_DEBLOQUEE_PAGE,
-  DISABLED_CRASHES as DESACTIVEE_PLANTAGES,
-  DISABLED_SCOPE as DESACTIVEE_PORTEE,
-  EXTENSION_CHANGED_DOMAINS as DOMAINES_CHANGES_EXTENSION,
-  MANAGE_EXTENSIONS as GERER_EXTENSIONS,
-  UNLOCK_REASON_LENGTH as LONGUEUR_RAISON_DEBLOCAGE,
-  unlockedConsoleText as texteDeblocageConsole,
-  SEES_SITE_PAGES as VOIT_LES_PAGES_SITE,
-} from "./extensions-messages";
-
 /** A row of the « Extensions » section of a space's settings (everything is displayed as text there). */
 export interface SpaceExtensionLine {
   key: string;
@@ -85,7 +70,7 @@ export interface ExtensionLine {
   errors: string[];
   /** Agent: last reloaded copy (ISO). */
   modifiedAt: string | null;
-  /** The message of its deactivation (`DESACTIVEE_PLANTAGES`, `DESACTIVEE_PORTEE`), or null. */
+  /** The message of its deactivation (`DISABLED_CRASHES`, `DISABLED_SCOPE`), or null. */
   disabled: string | null;
   /** Store: the version of an update waiting for the user's grant. */
   pendingUpdate: string | null;
@@ -106,7 +91,7 @@ export interface SiteExtensionLine {
   active: boolean;
   /** Enabled, but for other domains (`DOMAINES_CHANGES_EXTENSION`): nothing is loaded. */
   domainsChanged: boolean;
-  /** `ALL_CUT_AGENT`, `DESACTIVEE_PLANTAGES`, `DESACTIVEE_PORTEE`: the switch is greyed out; otherwise null. */
+  /** `ALL_CUT_AGENT`, `DISABLED_CRASHES`, `DISABLED_SCOPE`: the switch is greyed out; otherwise null. */
   unavailable: string | null;
 }
 

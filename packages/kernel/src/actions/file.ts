@@ -19,7 +19,7 @@ export type DirectAction = {
   start: string;
   input: string | null;
   attempt: boolean;
-  step: "workflow" | "mise-en-page";
+  step: "workflow" | "layout";
   /** `type`: that of the block in the workflow (its label is the catalog's). */
   blocks: Record<string, { status: "running" | "succeeded" | "partial" | "failed"; items: number | null; done?: number; total?: number; host?: string; type?: string }>;
 };
@@ -214,7 +214,7 @@ export class FileActions {
       if (t.type !== undefined) tracking.blocks[t.block]!.type = t.type;
       this.signalDirect();
     };
-    const onStep = (e: "mise-en-page") => {
+    const onStep = (e: "layout") => {
       if (d.direct !== tracking) return;
       tracking.step = e;
       this.signalDirect();
@@ -257,7 +257,7 @@ export class FileActions {
     try {
       this.o.onLive(this.direct());
     } catch (e) {
-      console.error("[webaios] suivi des actions :", e);
+      console.error("[webaios] actions tracking:", e);
     }
   }
 }

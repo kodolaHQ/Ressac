@@ -62,7 +62,7 @@ async function launch(): Promise<void> {
 
 const read = (file: string) => (existsSync(file) ? readFileSync(file, "utf8") : "");
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const agentInput = () => read(path.join(dataDir, "workspace", "faux-agent-entree.txt"));
+const agentInput = () => read(path.join(dataDir, "workspace", "fake-agent-input.txt"));
 /** The terminal's text (xterm's DOM renderer, in the agent frame), spaces normalised. */
 const TERMINAL = "(doc.querySelector('.xterm-rows')?.textContent ?? '').replace(/\\u00a0/g, ' ')";
 const terminalShows = (text: string) => waitUi(m, `return ${TERMINAL}.includes(arguments[0])`, [text], 20_000, "agent");
@@ -79,9 +79,9 @@ const hidden = () => waitFor(m, "return document.getElementById('webaios-agent')
 const terminalFocused = async () =>
   (await m.execute("return document.activeElement?.id")) === "webaios-agent" &&
   (await inUi<boolean>(m, "return !!doc.activeElement?.classList.contains('xterm-helper-textarea')", [], "agent"));
-const agentTabSelected = () => inUi<string | null>(m, "return doc.querySelector('[data-testid=\"onglet-agent\"]')?.getAttribute('aria-selected') ?? null");
-const waitAgentTab = () => waitUi(m, "return doc.querySelector('[data-testid=\"onglet-agent\"]')?.getAttribute('aria-selected') === 'true'");
-const blockTab = () => click(m, '.onglets-droite [role="tab"]', { text: "Bloc" });
+const agentTabSelected = () => inUi<string | null>(m, "return doc.querySelector('[data-testid=\"agent-tab\"]')?.getAttribute('aria-selected') ?? null");
+const waitAgentTab = () => waitUi(m, "return doc.querySelector('[data-testid=\"agent-tab\"]')?.getAttribute('aria-selected') === 'true'");
+const blockTab = () => click(m, '.tabs-right [role="tab"]', { text: "Bloc" });
 const count = (testid: string) => inUi<number>(m, `return doc.querySelectorAll('[data-testid="${testid}"]').length`);
 const waitCount = (testid: string, n: number) => waitUi(m, `return doc.querySelectorAll('[data-testid="${testid}"]').length === arguments[0]`, [n]);
 async function typeInTerminal(text: string): Promise<void> {
@@ -92,9 +92,9 @@ async function typeInTerminal(text: string): Promise<void> {
 /** The home page's panel shows the agent ready. */
 async function homeAgent(): Promise<void> {
   await shown();
-  await terminalShows("faux agent prêt>");
+  await terminalShows("fake agent ready>");
 }
-const newTab = () => click(m, '[data-testid="nouvel-onglet"]');
+const newTab = () => click(m, '[data-testid="new-tab"]');
 
 /** The builder of `id`, once its canvas has stopped moving (fitted to its blocks). */
 async function builder(id: string): Promise<void> {
@@ -110,7 +110,7 @@ async function builder(id: string): Promise<void> {
 /** The agent session's own MCP config of the window whose agent started last (the fake agent logs its args). */
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const lastSessionConfig = () =>
-  path.join(dataDir, "workspace", (JSON.parse(read(path.join(dataDir, "workspace", "faux-agent-args.json"))) as string[]).at(-1)!.replace(/^\/workspace\//, ""));
+  path.join(dataDir, "workspace", (JSON.parse(read(path.join(dataDir, "workspace", "fake-agent-args.json"))) as string[]).at(-1)!.replace(/^\/workspace\//, ""));
 const workflowOpen = async (config: string) => (await callMcpTool(path.join(dataDir, "workspace"), "open_workflow", {}, config)).text;
 async function poll(read: () => Promise<string>, expected: string, ms = 10_000): Promise<void> {
   const deadline = Date.now() + ms;
@@ -127,34 +127,34 @@ describe("the builder's Agent tab", () => {
     await launch();
     await homeAgent();
     await typeInTerminal("premier");
-    await terminalShows("reçu: premier");
+    await terminalShows("received: premier");
 
     // In the builder, the panel the home page opened closes; its Agent tab opens it again, with the same conversation.
     await builder("veille");
     await hidden();
     await click(m, '[data-testid="palette-list.keep"]');
-    await waitCount("noeud-list-keep", 1);
-    await click(m, '[data-testid="onglet-agent"]');
+    await waitCount("node-list-keep", 1);
+    await click(m, '[data-testid="agent-tab"]');
     await shown();
-    await terminalShows("reçu: premier");
-    expect(await occurrences("reçu: premier")).toBe(1);
+    await terminalShows("received: premier");
+    expect(await occurrences("received: premier")).toBe(1);
     await oneTerminal();
     await typeInTerminal("second");
-    await terminalShows("reçu: second");
-    expect(await occurrences("reçu: second")).toBe(1);
+    await terminalShows("received: second");
+    expect(await occurrences("received: second")).toBe(1);
     // ⌘Z typed in the terminal does not undo the canvas's addition.
     await pressKeys(m, "Meta+z");
     await sleep(300);
-    expect(await count("noeud-list-keep")).toBe(1);
+    expect(await count("node-list-keep")).toBe(1);
     // One session for the window: the input reached the agent once.
     expect(agentInput().split("second\r").length - 1).toBe(1);
 
     // Back on the home page, the panel keeps the conversation.
     await newTab();
-    await waitUi(m, "return !!doc.querySelector('[data-testid=\"page-vide\"]')");
+    await waitUi(m, "return !!doc.querySelector('[data-testid=\"empty-page\"]')");
     await shown();
-    await terminalShows("reçu: second");
-    expect(await occurrences("reçu: second")).toBe(1);
+    await terminalShows("received: second");
+    expect(await occurrences("received: second")).toBe(1);
     await oneTerminal();
   });
 
@@ -167,11 +167,11 @@ describe("the builder's Agent tab", () => {
     await pressKeys(m, "Meta+j");
     await waitAgentTab();
     await shown();
-    await terminalShows("faux agent prêt>");
+    await terminalShows("fake agent ready>");
     // Back to the Bloc tab, then ✦: the Agent tab again, the panel still open.
     await blockTab();
     expect(await agentTabSelected()).toBe("false");
-    await click(m, '[data-testid="bouton-agent"]');
+    await click(m, '[data-testid="agent-button"]');
     await waitAgentTab();
     expect(await panelShown()).toBe(true);
     await sleep(500);
@@ -183,12 +183,12 @@ describe("the builder's Agent tab", () => {
     await launch();
     await homeAgent();
     await openBuilder(m, "casse");
-    await waitCount("workflow-illisible", 1);
+    await waitCount("workflow-unreadable", 1);
     await hidden();
     await pressKeys(m, "Meta+j");
     await waitAgentTab();
     await shown();
-    await terminalShows("faux agent prêt>");
+    await terminalShows("fake agent ready>");
   });
 
   it("entering the builder then leaving it does not give the keyboard to the agent's terminal; ✦ gives it", async () => {
@@ -203,9 +203,9 @@ describe("the builder's Agent tab", () => {
     await sleep(300);
     expect(await terminalFocused()).toBe(false);
     // Opened by the user (✦): then the terminal takes the keyboard.
-    await click(m, '[data-testid="bouton-agent"]');
+    await click(m, '[data-testid="agent-button"]');
     await hidden();
-    await click(m, '[data-testid="bouton-agent"]');
+    await click(m, '[data-testid="agent-button"]');
     await shown();
     for (const end = Date.now() + 10_000; !(await terminalFocused()); await sleep(100)) if (Date.now() > end) throw new Error("the terminal did not take the keyboard");
   });
@@ -214,21 +214,21 @@ describe("the builder's Agent tab", () => {
     await launch();
     await homeAgent();
     // The panel closed by the user on the home page.
-    await click(m, '[data-testid="bouton-agent"]');
+    await click(m, '[data-testid="agent-button"]');
     await hidden();
     await builder("veille");
-    await click(m, '[data-testid="onglet-agent"]');
+    await click(m, '[data-testid="agent-tab"]');
     await shown();
     await typeInTerminal("un");
-    await terminalShows("reçu: un");
+    await terminalShows("received: un");
     await blockTab();
     expect(await agentTabSelected()).toBe("false");
-    await click(m, '[data-testid="onglet-agent"]');
+    await click(m, '[data-testid="agent-tab"]');
     await waitAgentTab();
     await typeInTerminal("deux");
-    await terminalShows("reçu: deux");
-    expect(await occurrences("reçu: un")).toBe(1);
-    expect(await occurrences("reçu: deux")).toBe(1);
+    await terminalShows("received: deux");
+    expect(await occurrences("received: un")).toBe(1);
+    expect(await occurrences("received: deux")).toBe(1);
     expect(agentInput()).toBe("un\rdeux\r");
     await oneTerminal();
   });
@@ -238,19 +238,19 @@ describe("the builder's Agent tab", () => {
     await homeAgent();
     await builder("veille");
     await pressKeys(m, "Meta+y");
-    await waitCount("historique", 1);
-    expect(await count("constructeur")).toBe(0);
+    await waitCount("history", 1);
+    expect(await count("builder")).toBe(0);
     await pressKeys(m, "Meta+j");
-    await waitCount("historique", 0);
+    await waitCount("history", 0);
     await waitAgentTab();
     await shown();
-    await terminalShows("faux agent prêt>");
+    await terminalShows("fake agent ready>");
   });
 
   it("the agent rewrites workflow.json: the canvas shows the new block without changing the zoom; with an invalid draft, the banner offers both versions", async () => {
     await launch();
     await builder("veille");
-    await waitCount("noeud-tri", 1);
+    await waitCount("node-tri", 1);
     // The user zooms: the view is no longer the opening one.
     const view = () => inUi<string>(m, "return doc.querySelector('.svelte-flow__viewport').getAttribute('style')");
     const before = await view();
@@ -276,20 +276,20 @@ describe("the builder's Agent tab", () => {
         { from: "textes", to: "sortie" },
       ],
     });
-    await waitCount("noeud-garder", 1);
-    expect(await count("bandeau-fichier")).toBe(0);
+    await waitCount("node-garder", 1);
+    expect(await count("file-banner")).toBe(0);
     await sleep(300);
     expect(await view()).toBe(zoomed);
 
     // An invalid draft, then a new version from the agent: the banner offers both.
     await click(m, '[data-testid="palette-list.dedupe"]');
-    await waitUi(m, "return !!doc.querySelector('[data-testid=\"etat-enregistrement\"]')?.textContent.includes('entrée manquante')");
+    await waitUi(m, "return !!doc.querySelector('[data-testid=\"save-status\"]')?.textContent.includes('entrée manquante')");
     await writeAsAgent({ ...WATCH_WORKFLOW, blocks: WATCH_WORKFLOW.blocks.map((b) => (b.id === "tri" ? { ...b, params: { ...b.params, threshold: 0.8 } } : b)) });
-    await waitCount("bandeau-fichier", 1);
+    await waitCount("file-banner", 1);
     const visible = (testid: string) => inUi<boolean>(m, `const r = doc.querySelector('[data-testid="${testid}"]')?.getBoundingClientRect(); return !!r && r.width > 0 && r.height > 0`);
-    expect(await visible("bandeau-fichier")).toBe(true);
-    expect(await visible("prendre-version")).toBe(true);
-    expect(await visible("garder-mienne")).toBe(true);
+    expect(await visible("file-banner")).toBe(true);
+    expect(await visible("take-version")).toBe(true);
+    expect(await visible("keep-mine")).toBe(true);
     expect(await view()).toBe(zoomed);
   });
 });
@@ -304,10 +304,10 @@ describe("open_workflow", () => {
 
     await builder("veille");
     await poll(open, '{"widget":"veille","block":null}');
-    await click(m, '[data-testid="noeud-tri"]');
+    await click(m, '[data-testid="node-tri"]');
     await poll(open, '{"widget":"veille","block":"tri"}');
     // The Agent tab changes nothing the agent knows.
-    await click(m, '[data-testid="onglet-agent"]');
+    await click(m, '[data-testid="agent-tab"]');
     await shown();
     await poll(open, '{"widget":"veille","block":"tri"}');
     // The host restarts (the panel's Réessayer): the window's new session still sees the selected block.
@@ -328,7 +328,7 @@ describe("open_workflow", () => {
     await homeAgent();
     const a = lastSessionConfig();
     await builder("veille");
-    await click(m, '[data-testid="noeud-tri"]');
+    await click(m, '[data-testid="node-tri"]');
 
     const second = await newWindow(m);
     const b = await inWindow(m, second, async () => {
@@ -336,7 +336,7 @@ describe("open_workflow", () => {
       await waitFor(m, "return 1", () => lastSessionConfig() !== a);
       const config = lastSessionConfig();
       await builder("autre");
-      await click(m, '[data-testid="noeud-liens"]');
+      await click(m, '[data-testid="node-liens"]');
       return config;
     });
     await poll(() => workflowOpen(a), '{"widget":"veille","block":"tri"}');

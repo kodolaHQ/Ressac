@@ -128,7 +128,7 @@ export function createReviewApi(o: { host: Pick<AgentHost, "request"> }): ApiWeb
  */
 export function createDesignApi(o: { win: WindowController; untilUnload: (f: () => void) => () => void }): ApiDesign {
   const { design, agent: host } = o.win.store;
-  const t = { type: "fenetre" as const, windowId: o.win.windowId };
+  const t = { type: "window" as const, windowId: o.win.windowId };
   const copy = <T>(p: Promise<T>): Promise<T> =>
     p.then(
       (v) => structuredClone(v),

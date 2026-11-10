@@ -25,7 +25,7 @@ test("actionsDirect: a current action becomes a run (or a trial) of its key, wit
     waiting: [{ action: "autre", since: "2026-10-31T08:00:00.000Z" }],
   });
   expect(d).toEqual({
-    running: [{ widget: "action:gitlab", kind: "essai", start: "2026-10-31T08:00:00.000Z", blocks: { lire: { status: "running", items: null } } }],
+    running: [{ widget: "action:gitlab", kind: "attempt", start: "2026-10-31T08:00:00.000Z", blocks: { lire: { status: "running", items: null } } }],
     waiting: ["action:autre"],
   });
 });

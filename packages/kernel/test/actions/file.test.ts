@@ -74,7 +74,7 @@ const waitUntil = async (f: () => boolean, ms = 5000) => {
 };
 
 describe("FileActions", () => {
-  it("three actions: two run, the third waits and appears in enAttente", async () => {
+  it("three actions: two run, the third waits and appears in waiting", async () => {
     expect(CONCURRENT_ACTIONS).toBe(2);
     const r = kept();
     const { f } = await prepare({ run: r.run });
@@ -213,11 +213,11 @@ describe("FileActions", () => {
     expect(f.direct().running[0]!.blocks).toEqual({ lire: { status: "running", items: null, host: "gitlab.com", done: 7, total: 12 } });
     o.onTrace({ block: "lire", step: "end", status: "succeeded", items: 12 });
     expect(f.direct().running[0]!.blocks.lire).toMatchObject({ status: "succeeded", items: 12 });
-    o.onStep("mise-en-page");
-    expect(f.direct().running[0]!.step).toBe("mise-en-page");
+    o.onStep("layout");
+    expect(f.direct().running[0]!.step).toBe("layout");
     // surDirect is called on each change.
     expect(directs.some((d) => d.running[0]?.blocks.lire?.host === "gitlab.com")).toBe(true);
-    expect(directs.at(-1)!.running[0]!.step).toBe("mise-en-page");
+    expect(directs.at(-1)!.running[0]!.step).toBe("layout");
     // direct() is a copy.
     f.direct().running[0]!.blocks.lire!.status = "failed";
     expect(f.direct().running[0]!.blocks.lire!.status).toBe("succeeded");

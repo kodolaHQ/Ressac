@@ -25,11 +25,11 @@ export function registerHomeNotifications(agent: Pick<AgentHost, "on">): () => v
     try {
       const alert = Cc["@mozilla.org/alert-notification;1"].createInstance(Ci.nsIAlertNotification);
       // A unique name: an alert with the same name replaces the previous one.
-      alert.init(`webaios-accueil-${Date.now()}`, "", String(n?.title ?? "WebAiOs"), String(n?.text ?? ""), false, "");
+      alert.init(`webaios-home-${Date.now()}`, "", String(n?.title ?? "WebAiOs"), String(n?.text ?? ""), false, "");
       // nsIObserver is a function interface: a plain function stands for it.
       Cc["@mozilla.org/alerts-service;1"].getService(Ci.nsIAlertsService).showAlert(alert, (s: unknown, t: string, d: string) => alertObserver.observe(s, t, d));
     } catch (e) {
-      console.error("[webaios] notification non montrée :", e);
+      console.error("[webaios] notification not shown:", e);
     }
   });
 }

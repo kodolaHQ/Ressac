@@ -68,10 +68,10 @@ const bar = (id: string) =>
   inSiteBar<{ title: string; disabled: boolean; pressed: string | null; chevron: boolean; count: string | null; notice: string | null; entries: number }>(
     m,
     id,
-    `const b = doc.querySelector('${tid("site-bouton-design")}'), c = doc.querySelector('${tid("site-menu-design")}');
+    `const b = doc.querySelector('${tid("site-design-button")}'), c = doc.querySelector('${tid("site-menu-design")}');
      return { title: b?.title ?? "", disabled: !!b?.disabled, pressed: b?.getAttribute("aria-pressed") ?? null, chevron: !!c && !c.disabled,
-       count: doc.querySelector('${tid("site-compteur-panier")}')?.textContent ?? null, notice: doc.querySelector('${tid("site-avis")}')?.textContent.trim() ?? null,
-       entries: doc.querySelectorAll('${tid("site-menu-design-panier")}').length };`,
+       count: doc.querySelector('${tid("site-basket-counter")}')?.textContent ?? null, notice: doc.querySelector('${tid("site-notice")}')?.textContent.trim() ?? null,
+       entries: doc.querySelectorAll('${tid("site-menu-design-basket")}').length };`,
   );
 const clickBar = (id: string, t: string) => inSiteBar(m, id, `doc.querySelector('${tid(t)}').click(); return 1;`);
 /** The centre of the bar's element `t`, in the site window's coordinates. */
@@ -87,7 +87,7 @@ const fullscreen = async (id: string) => {
   await m.execute(`${siteExpr(id)}.focus(); return 1;`);
   await view(id, "(void document.getElementById('films').requestFullscreen(), 1)");
 };
-const bubbleText = (id: string) => overlayOf<string | null>(m, id, `return doc.querySelector('${tid("bulle-design")}')?.textContent ?? null;`);
+const bubbleText = (id: string) => overlayOf<string | null>(m, id, `return doc.querySelector('${tid("design-bubble")}')?.textContent ?? null;`);
 
 /** ⇧⌘D in tuning's window: the mode on, the viewfinder armed. */
 async function modeOn(id = "tuning") {
@@ -123,7 +123,7 @@ it("⇧⌘D in tuning: viewfinder in the view, a click on #lien does nothing, bu
   await sleep(500);
   expect(await view("tuning", "location.href")).toBe(start);
   expect(await view("tuning", "window.reactions")).toEqual([]);
-  expect(await overlayOf(m, "tuning", `return doc.querySelector('${tid("avertissement-bulle")}')?.textContent ?? null;`)).toBe(CAPTURE_WARNING_SITE);
+  expect(await overlayOf(m, "tuning", `return doc.querySelector('${tid("bubble-warning")}')?.textContent ?? null;`)).toBe(CAPTURE_WARNING_SITE);
   expect(await overlayTop("tuning")).toBeGreaterThanOrEqual(36);
   // ⌘Enter: the remark goes to the cart, the viewfinder is armed again.
   await overlayOf(m, "tuning", `const t = doc.querySelector("textarea"); t.value = "Lien plus visible"; t.dispatchEvent(new f.contentWindow.Event("input", { bubbles: true })); return 1;`);
@@ -137,8 +137,8 @@ it("⇧⌘D in tuning: viewfinder in the view, a click on #lien does nothing, bu
   // Panier (chevron): the overlay shows the cart, under the bar; the entries fold.
   await clickBar("tuning", "site-menu-design");
   await expect.poll(async () => (await bar("tuning")).entries, { timeout: 10_000 }).toBe(1);
-  await clickBar("tuning", "site-menu-design-panier");
-  await expect.poll(() => overlayOf(m, "tuning", `return !!doc.querySelector('${tid("panier-design")}');`), { timeout: 10_000 }).toBe(true);
+  await clickBar("tuning", "site-menu-design-basket");
+  await expect.poll(() => overlayOf(m, "tuning", `return !!doc.querySelector('${tid("design-basket")}');`), { timeout: 10_000 }).toBe(true);
   await expect.poll(() => overlayTop("tuning"), { timeout: 10_000 }).toBe(48);
   expect((await bar("tuning")).entries).toBe(0);
 });
@@ -148,12 +148,12 @@ it("unavailable on the grant card (the avis goes after 5 s); ⌂ stops the mode"
   // (a) avec-accueil: the site entered from the home, the mode on, then ⌂: it stops.
   await toSite(m, "avec-accueil");
   await modeOn("avec-accueil");
-  await clickBar("avec-accueil", "site-accueil");
+  await clickBar("avec-accueil", "site-home");
   await expect.poll(async () => (await bar("avec-accueil")).pressed, { timeout: 10_000 }).toBe("false");
   await expect.poll(() => hosts("avec-accueil"), { timeout: 10_000 }).toBe(0);
   // (b) sans-accord on its grant card.
   await openSite(m, "sans-accord");
-  await expect.poll(() => inSiteBar(m, "sans-accord", `return !!doc.querySelector('${tid("carte-accord-site")}');`), { timeout: 10_000 }).toBe(true);
+  await expect.poll(() => inSiteBar(m, "sans-accord", `return !!doc.querySelector('${tid("site-grant-card")}');`), { timeout: 10_000 }).toBe(true);
   await verifyUnavailable("sans-accord");
   await expect.poll(async () => (await bar("sans-accord")).notice, { timeout: 10_000 }).toBeNull();
 });
@@ -269,7 +269,7 @@ it("the bar stays clickable over an open bubble and an open cart", async () => {
 it("two site apps: each bar toggles its own app, never the other", async () => {
   await toSite(m, "tuning");
   await toSite(m, "avec-accueil");
-  await clickBar("tuning", "site-bouton-design");
+  await clickBar("tuning", "site-design-button");
   await expect.poll(async () => (await state("tuning")).active, { timeout: 10_000 }).toBe(true);
   await expect.poll(() => hosts("tuning"), { timeout: 10_000 }).toBe(1);
   expect((await state("avec-accueil")).active).toBe(false);
@@ -279,7 +279,7 @@ it("two site apps: each bar toggles its own app, never the other", async () => {
   await expect.poll(async () => (await state("avec-accueil")).active, { timeout: 10_000 }).toBe(true);
   await expect.poll(() => hosts("avec-accueil"), { timeout: 10_000 }).toBe(1);
   expect((await state("tuning")).active).toBe(true);
-  await clickBar("avec-accueil", "site-bouton-design");
+  await clickBar("avec-accueil", "site-design-button");
   await expect.poll(async () => (await state("avec-accueil")).active, { timeout: 10_000 }).toBe(false);
   expect((await state("tuning")).active).toBe(true);
   expect(await hosts("tuning")).toBe(1);

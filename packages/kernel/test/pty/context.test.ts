@@ -23,7 +23,7 @@ test("long title truncated to 120 + …", () => {
   expect(p).toBe(`[contexte : ${"a".repeat(120)}… — https://x.test] `);
 });
 
-test("titre vide → url seule", () => {
+test("empty title → url alone", () => {
   expect(contextPrefix(" \n ", "https://x.test")).toBe("[contexte : https://x.test] ");
 });
 
@@ -52,7 +52,7 @@ test("appPrefix also cleans the folder: a \\r never hits Enter there", () => {
   expect(p).toBe("[application : x — /workspace/projects/a b — journal : /workspace/.webaios/logs/a b.log] ");
 });
 
-test("appPrefix with enMarche mentions app:<folder>", () => {
+test("appPrefix with running mentions app:<folder>", () => {
   expect(appPrefix({ name: "Todo", folder: "todo", noManifest: false, running: true })).toBe(
     "[application : Todo — /workspace/projects/todo — journal : /workspace/.webaios/logs/todo.log — fenêtre : onglet app:todo (outils de développement disponibles)] ",
   );

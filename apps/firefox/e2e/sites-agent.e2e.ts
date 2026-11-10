@@ -18,8 +18,8 @@ import { click, inUi, missingApi, waitUi } from "./ui";
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const HOSTS = ["vidola-a.localhost", "pub.localhost", "compte.localhost", "mail.localhost", "flemmix.localhost"];
 const DENIAL = "Accès refusé par l'utilisateur à cet onglet.";
-const CARD = '[data-testid="demande-donnees-widget"]';
-const DEVTOOLS = '[data-testid="demande-outils-dev"]';
+const CARD = '[data-testid="widget-data-request"]';
+const DEVTOOLS = '[data-testid="devtools-request"]';
 const ALLOW = "Autoriser pour cette conversation";
 
 let server: Awaited<ReturnType<typeof startSitesServer>>;
@@ -41,7 +41,7 @@ const view = <T = unknown>(expr: string, id = "vidola") => inSiteView<T>(m, id, 
 const tabUrls = async () => Object.values((await state(m)).tabs).map((o) => o.url);
 
 /** The app's card (in the main window), its « demande-site » text once shown. */
-const cardText = () => waitUi<string>(m, `return doc.querySelector(${JSON.stringify(`${CARD} [data-testid="demande-site"]`)})?.textContent`, [], 15_000);
+const cardText = () => waitUi<string>(m, `return doc.querySelector(${JSON.stringify(`${CARD} [data-testid="site-request"]`)})?.textContent`, [], 15_000);
 const answer = (button: string, card = CARD) => click(m, `${card} button`, { text: button });
 const shown = (selector: string) => inUi<boolean>(m, `return !!doc.querySelector(${JSON.stringify(selector)})`);
 const gone = (selector: string) => waitUi(m, `return !doc.querySelector(${JSON.stringify(selector)})`);
@@ -61,7 +61,7 @@ async function start(sites: Record<string, object> = { vidola: vidola() }, prepa
   const config = path.join(dataDir, "workspace", ".webaios", "mcp.json");
   for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
     if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
-  await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('prêt>')", [], 20_000, "agent");
+  await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
 }
 
 /** The app opened, its view on `chemin` and loaded. */
@@ -124,7 +124,7 @@ describe("the agent on a site app window", () => {
     // capture_screen: no second card.
     const capture = await call("capture_screen", { id: "site:vidola" });
     expect(capture.image?.startsWith("iVBOR")).toBe(true);
-    expect(await shown('[data-testid="modale-demande"]')).toBe(false);
+    expect(await shown('[data-testid="request-modal"]')).toBe(false);
 
     // naviguer off the site: refused, nothing loaded, no tab opened.
     const tabs = await tabUrls();
@@ -155,7 +155,7 @@ describe("the agent on a site app window", () => {
     // In the page's own world.
     await view(`(() => { const s = document.createElement("script"); s.textContent = "console.warn('message de la vue du site')"; document.documentElement.append(s); s.remove(); return 1; })()`);
     await expect.poll(async () => (await call("read_console", { id: "site:vidola" })).text, { timeout: 10_000 }).toContain("[warn] message de la vue du site");
-    expect(await shown('[data-testid="modale-demande"]')).toBe(false);
+    expect(await shown('[data-testid="request-modal"]')).toBe(false);
   });
 
   it("the app window closed during the dev tools card: the card falls, read_console answers « introuvable » (sites.spec.ts:1742)", async () => {
@@ -185,7 +185,7 @@ describe("the agent on a site app window", () => {
     expect((await call("open_site", { id: "vidola" })).text).toBe("site:vidola");
     expect((await call("read_tab", { id: "site:vidola" })).text).toContain("Titre : Vidola");
     expect((await call("site_memory", { id: "vidola" })).error).toBe(false);
-    expect(await shown('[data-testid="modale-demande"]')).toBe(false);
+    expect(await shown('[data-testid="request-modal"]')).toBe(false);
 
     // The agent adds a domain: the card comes back before any read; refused, nothing is read.
     writeSite(dataDir, "vidola", { declaration: vidola(["vidola-a.localhost", "mail.localhost"]) });
