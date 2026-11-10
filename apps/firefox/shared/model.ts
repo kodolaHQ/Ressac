@@ -190,7 +190,7 @@ export function tabProfile(state: BrowserState, tab: Tab): ProfileId {
   return state.spaces.find((e) => e.id === tab.spaceId)?.profile ?? DEFAULT_PROFILE;
 }
 
-/** A history page: one row per URL and per space (`espaceId` empty: no space, old visits). */
+/** A history page: one row per URL and per space (`spaceId` empty: no space). */
 export interface Visit {
   url: string;
   title: string;

@@ -1,9 +1,9 @@
-import { expect, test, vi } from "vitest";
+import { expect, test } from "vitest";
 import { existsSync, readdirSync } from "node:fs";
-import { chmod, cp, lstat, mkdir, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { spacePaths } from "../../src/paths.js";
-import { initSpace, DEFAULT_MODELS, HARVESTS_SHIPPED, DISPLAYS_SHIPPED, OLD_AGENTS, OLD_AGENT_PROFILE, OLD_CLAUDE_MD } from "../../src/workspace/initialize.js";
+import { initSpace, DEFAULT_MODELS, DISPLAYS_SHIPPED, OLD_AGENTS, OLD_AGENT_PROFILE, OLD_CLAUDE_MD } from "../../src/workspace/initialize.js";
 import { createHash } from "node:crypto";
 import { DeclarationWidget, Layout } from "../../src/home/schemas.js";
 import { DeclarationSite, checkSiteDeclaration } from "../../src/sites/schemas.js";
@@ -18,8 +18,6 @@ const START_FILES: Record<string, string[]> = {
   "actus-tech": ["widget.json", "example.json", "display.html", "workflow.json", "articles.mjs"],
   "daily-dev": ["widget.json", "example.json", "display.html", "workflow.json", "liens.mjs", "articles.mjs"],
 };
-/** The switch code: workflow.json and the template's .mjs files. */
-const START_CODE = (id: string) => START_FILES[id]!.filter((f) => f === "workflow.json" || f.endsWith(".mjs"));
 
 const expectedList = [
   "AGENTS.md",
@@ -73,7 +71,6 @@ test("a new space gets the three starter widgets and the v2 layout", async () =>
   const c = spacePaths(await tempFolder());
   await initSpace(c);
   expect((await readdir(c.widgets)).sort()).toEqual(["actus-tech", "daily-dev", "meteo"]);
-  expect(existsSync(c.blocks)).toBe(false);
   const available = Layout.parse(JSON.parse(await readFile(c.layout, "utf8")));
   expect(available.widgets.map((w) => w.id)).toEqual(["actus-tech", "daily-dev", "meteo"]);
   for (const id of ["meteo", "actus-tech", "daily-dev"]) {
@@ -83,26 +80,6 @@ test("a new space gets the three starter widgets and the v2 layout", async () =>
   }
   const daily = DeclarationWidget.parse(JSON.parse(await readFile(join(c.widgets, "daily-dev", "widget.json"), "utf8")));
   expect(daily.sources.account).toEqual(["app.daily.dev"]);
-});
-
-test("existing blocks move to home/.trash/blocks-…, nothing is destroyed", async () => {
-  const c = spacePaths(await tempFolder());
-  await mkdir(join(c.blocks, "mien"), { recursive: true });
-  await writeFile(join(c.blocks, "mien", "bloc.json"), '{"a":1}');
-  await writeFile(c.layout, '{"ordre":["mien"]}');
-  await initSpace(c);
-  expect(existsSync(c.blocks)).toBe(false);
-  const trash = join(c.home, ".trash");
-  const folders = await readdir(trash);
-  expect(folders).toHaveLength(1);
-  expect(folders[0]).toMatch(/^blocks-\d{4}-\d\d-\d\dT[^:]+$/);
-  expect(await readFile(join(trash, folders[0]!, "mien", "bloc.json"), "utf8")).toBe('{"a":1}');
-  expect(await readFile(join(trash, folders[0]!, "layout.json"), "utf8")).toBe('{"ordre":["mien"]}');
-  expect(Layout.safeParse(JSON.parse(await readFile(c.layout, "utf8"))).success).toBe(true);
-  expect(existsSync(join(c.widgets, "meteo", "widget.json"))).toBe(true);
-  // A second launch sets nothing aside.
-  await initSpace(c);
-  expect(await readdir(trash)).toHaveLength(1);
 });
 
 test("a v3 layout (Firefox) is kept at launch", async () => {
@@ -201,12 +178,12 @@ test("the profile shipped before the English formats (profil-claude.json) is a k
 
 test("the AGENTS.md template is pinned: before editing it, add this hash to OLD_AGENTS, then update the pin", async () => {
   expect(sha256(await readFile(join(import.meta.dirname, "..", "..", "modeles", "AGENTS.md")))).toBe(
-    "ee8df7f36a6bfc9fcaeec7dc07a0f363f4ac1e88953f6d1066b498d635249abf",
+    "3bd6fbba709a6d3f59a8caa28c98833e9631414701096ccd4a252300e4b9f341",
   );
 });
 
 test("the hash of every shipped version is kept: the list only grows", () => {
-  expect(OLD_AGENTS.size).toBeGreaterThanOrEqual(37);
+  expect(OLD_AGENTS.size).toBeGreaterThanOrEqual(38);
   expect(OLD_AGENTS.has("eaf40a1f51b1e62226e5087c7d7a73cf8b48b84e1e4fb214e89a119d0eb71d96")).toBe(true);
 });
 
@@ -242,176 +219,6 @@ test("the references given as examples in AGENTS.md are valid for the plan reade
   }
 });
 
-// ——— Switching the starter widgets to workflows ———
-
-const SHIPPED = join(import.meta.dirname, "shipped-harvests");
-
-/** A space whose widget `id` stayed at an old shipped version (harvest.mjs, no workflow). */
-async function spaceWithOldHarvest(id: string, harvest: string) {
-  const c = spacePaths(await tempFolder());
-  await initSpace(c);
-  for (const f of START_CODE(id)) await rm(join(c.widgets, id, f));
-  await writeFile(join(c.widgets, id, "harvest.mjs"), harvest);
-  return c;
-}
-
-test("the 7 shipped versions of harvest.mjs have the known hashes", async () => {
-  const files = (await readdir(SHIPPED)).sort();
-  expect(files).toHaveLength(7);
-  const hashes: Record<string, string[]> = {};
-  for (const f of files) {
-    const id = f.replace(/-[0-9a-f]{7}\.mjs$/, "");
-    (hashes[id] ??= []).push(createHash("sha256").update(await readFile(join(SHIPPED, f))).digest("hex"));
-  }
-  for (const [id, list] of Object.entries(hashes)) {
-    expect([...HARVESTS_SHIPPED[id as keyof typeof HARVESTS_SHIPPED]].sort(), id).toEqual(list.sort());
-  }
-  expect(Object.keys(hashes).sort()).toEqual(["actus-tech", "daily-dev", "meteo"]);
-});
-
-for (const file of readdirSync(join(import.meta.dirname, "shipped-harvests")).sort()) {
-  const id = file.replace(/-[0-9a-f]{7}\.mjs$/, "");
-  test(`an unmodified starter widget becomes a workflow, its harvest.mjs goes to the trash (${file})`, async () => {
-    const old = await readFile(join(SHIPPED, file), "utf8");
-    const c = await spaceWithOldHarvest(id, old);
-    // What the user sees and sets is never touched.
-    await writeFile(join(c.widgets, id, "widget.json"), '{"nom":"le mien"}');
-    await writeFile(join(c.widgets, id, "display.html"), "<p>le mien</p>");
-    const { created: crees } = await initSpace(c);
-
-    expect(existsSync(join(c.widgets, id, "harvest.mjs"))).toBe(false);
-    for (const f of START_CODE(id)) {
-      expect(await readFile(join(c.widgets, id, f), "utf8"), f).toBe(await readFile(join(DEFAULT_MODELS, "widgets", id, f), "utf8"));
-      expect(crees).toContain(join(c.widgets, id, f));
-    }
-    expect(await readFile(join(c.widgets, id, "widget.json"), "utf8")).toBe('{"nom":"le mien"}');
-    expect(await readFile(join(c.widgets, id, "display.html"), "utf8")).toBe("<p>le mien</p>");
-    const trash = await readdir(join(c.home, ".trash"));
-    expect(trash).toHaveLength(1);
-    expect(trash[0]).toMatch(new RegExp(`^${id}-harvest-\\d{4}-\\d\\d-\\d\\dT[^:]+\\.mjs$`));
-    expect(await readFile(join(c.home, ".trash", trash[0]!), "utf8")).toBe(old);
-    // The other starter widgets did not move, and a second launch does nothing anymore.
-    expect((await initSpace(c)).created).toEqual([]);
-    expect(await readdir(join(c.home, ".trash"))).toHaveLength(1);
-  });
-}
-
-test("a modified starter widget is left alone", async () => {
-  const old = await readFile(join(SHIPPED, "actus-tech-4d4c5f1.mjs"), "utf8");
-  const modified = old.replace("const GARDER = 15;", "const GARDER = 20;");
-  expect(modified).not.toBe(old);
-  const c = await spaceWithOldHarvest("actus-tech", modified);
-  await initSpace(c);
-  expect(await readFile(join(c.widgets, "actus-tech", "harvest.mjs"), "utf8")).toBe(modified);
-  for (const f of START_CODE("actus-tech")) expect(existsSync(join(c.widgets, "actus-tech", f)), f).toBe(false);
-  expect(existsSync(join(c.home, ".trash"))).toBe(false);
-});
-
-test("a starter widget that already has its workflow.json, or its own .mjs of the same name, is left alone", async () => {
-  const old = await readFile(join(SHIPPED, "meteo-4d4c5f1.mjs"), "utf8");
-  const c = await spaceWithOldHarvest("meteo", old);
-  await writeFile(join(c.widgets, "meteo", "workflow.json"), '{"version":1,"blocks":[],"liens":[]}');
-  await initSpace(c);
-  expect(await readFile(join(c.widgets, "meteo", "harvest.mjs"), "utf8")).toBe(old);
-  expect(await readFile(join(c.widgets, "meteo", "workflow.json"), "utf8")).toBe('{"version":1,"blocks":[],"liens":[]}');
-  expect(existsSync(join(c.widgets, "meteo", "prevision.mjs"))).toBe(false);
-
-  const d = await spaceWithOldHarvest("daily-dev", await readFile(join(SHIPPED, "daily-dev-4d4c5f1.mjs"), "utf8"));
-  await writeFile(join(d.widgets, "daily-dev", "liens.mjs"), "export default () => [];");
-  await initSpace(d);
-  expect(existsSync(join(d.widgets, "daily-dev", "harvest.mjs"))).toBe(true);
-  expect(existsSync(join(d.widgets, "daily-dev", "workflow.json"))).toBe(false);
-  expect(existsSync(join(d.widgets, "daily-dev", "articles.mjs"))).toBe(false);
-  expect(await readFile(join(d.widgets, "daily-dev", "liens.mjs"), "utf8")).toBe("export default () => [];");
-  expect(existsSync(join(d.home, ".trash"))).toBe(false);
-});
-
-test("an interrupted switch (template workflow.json already there, shipped harvest.mjs left) puts harvest.mjs away", async () => {
-  const old = await readFile(join(SHIPPED, "daily-dev-4d4c5f1.mjs"), "utf8");
-  const c = spacePaths(await tempFolder());
-  await initSpace(c);
-  // The template's code and workflow.json copied, harvest.mjs not yet put away.
-  await writeFile(join(c.widgets, "daily-dev", "harvest.mjs"), old);
-  const { created: crees } = await initSpace(c);
-  expect(crees).toEqual([]);
-  expect(existsSync(join(c.widgets, "daily-dev", "harvest.mjs"))).toBe(false);
-  const trash = await readdir(join(c.home, ".trash"));
-  expect(trash).toHaveLength(1);
-  expect(trash[0]).toMatch(/^daily-dev-harvest-/);
-  expect(await readFile(join(c.home, ".trash", trash[0]!), "utf8")).toBe(old);
-  for (const f of START_CODE("daily-dev")) {
-    expect(await readFile(join(c.widgets, "daily-dev", f), "utf8"), f).toBe(await readFile(join(DEFAULT_MODELS, "widgets", "daily-dev", f), "utf8"));
-  }
-});
-
-test("an agent widget (gmail) is left alone, even with a shipped harvest.mjs", async () => {
-  const c = spacePaths(await tempFolder());
-  await initSpace(c);
-  const gmail = join(c.widgets, "gmail");
-  await mkdir(gmail);
-  const files = {
-    "widget.json": '{"nom":"Gmail","sources":{"compte":["mail.google.com"],"publiques":[]}}',
-    "harvest.mjs": "export default async (webaios) => ({ messages: [] });",
-    "display.html": "<p>gmail</p>",
-  };
-  for (const [f, content] of Object.entries(files)) await writeFile(join(gmail, f), content);
-  // Even an exact copy of a shipped harvest, outside a starter folder, stays where it is.
-  const copy = join(c.widgets, "meteo-bis");
-  await mkdir(copy);
-  await writeFile(join(copy, "harvest.mjs"), await readFile(join(SHIPPED, "meteo-4d4c5f1.mjs")));
-  await initSpace(c);
-  expect((await readdir(gmail)).sort()).toEqual(Object.keys(files).sort());
-  for (const [f, content] of Object.entries(files)) expect(await readFile(join(gmail, f), "utf8")).toBe(content);
-  expect(await readdir(copy)).toEqual(["harvest.mjs"]);
-  expect(existsSync(join(c.home, ".trash"))).toBe(false);
-});
-
-test("a shipped harvest.mjs that is a symbolic link is not followed", async () => {
-  const c = await spaceWithOldHarvest("meteo", "");
-  await rm(join(c.widgets, "meteo", "harvest.mjs"));
-  const outside = join(await tempFolder(), "harvest.mjs");
-  await writeFile(outside, await readFile(join(SHIPPED, "meteo-4d4c5f1.mjs")));
-  await symlink(outside, join(c.widgets, "meteo", "harvest.mjs"));
-  await initSpace(c);
-  expect(existsSync(join(c.widgets, "meteo", "workflow.json"))).toBe(false);
-  expect((await lstat(join(c.widgets, "meteo", "harvest.mjs"))).isSymbolicLink()).toBe(true);
-  expect(existsSync(outside)).toBe(true);
-});
-
-test("a failed switch does not block the launch: the other widgets go through, the failed one retries at the next", async () => {
-  const models = join(await tempFolder(), "modeles");
-  await cp(DEFAULT_MODELS, models, { recursive: true });
-  const c = await spaceWithOldHarvest("meteo", await readFile(join(SHIPPED, "meteo-4d4c5f1.mjs"), "utf8"));
-  for (const f of START_CODE("actus-tech")) await rm(join(c.widgets, "actus-tech", f));
-  await writeFile(join(c.widgets, "actus-tech", "harvest.mjs"), await readFile(join(SHIPPED, "actus-tech-4d4c5f1.mjs")));
-  for (const f of START_CODE("daily-dev")) await rm(join(c.widgets, "daily-dev", f));
-  await writeFile(join(c.widgets, "daily-dev", "harvest.mjs"), await readFile(join(SHIPPED, "daily-dev-4d4c5f1.mjs")));
-  // daily-dev absent from the templates, and a meteo copy that fails (unreadable file).
-  await rm(join(models, "widgets", "daily-dev"), { recursive: true });
-  await chmod(join(models, "widgets", "meteo", "prevision.mjs"), 0o000);
-  const error = vi.spyOn(console, "error").mockImplementation(() => {});
-  let notes = 0;
-  try {
-    await expect(initSpace(c, models)).resolves.toBeDefined();
-    notes = error.mock.calls.length;
-  } finally {
-    error.mockRestore();
-    await chmod(join(models, "widgets", "meteo", "prevision.mjs"), 0o644);
-  }
-  expect(existsSync(join(c.widgets, "actus-tech", "workflow.json"))).toBe(true);
-  expect(existsSync(join(c.widgets, "actus-tech", "harvest.mjs"))).toBe(false);
-  expect(existsSync(join(c.widgets, "daily-dev", "harvest.mjs"))).toBe(true);
-  expect(existsSync(join(c.widgets, "daily-dev", "workflow.json"))).toBe(false);
-  expect(existsSync(join(c.widgets, "meteo", "harvest.mjs"))).toBe(true);
-  expect(existsSync(join(c.widgets, "meteo", "workflow.json"))).toBe(false);
-  expect(notes).toBe(1); // meteo; daily-dev, absent from the templates, is simply skipped
-
-  // On the next launch, the meteo copy succeeds (the already-copied .mjs is identical to the template).
-  await initSpace(c, models);
-  expect(existsSync(join(c.widgets, "meteo", "workflow.json"))).toBe(true);
-  expect(existsSync(join(c.widgets, "meteo", "harvest.mjs"))).toBe(false);
-});
-
 test("a new space gets the workflows", async () => {
   const c = spacePaths(await tempFolder());
   await initSpace(c);
@@ -421,7 +228,7 @@ test("a new space gets the workflows", async () => {
   expect(existsSync(join(c.home, ".trash"))).toBe(false);
 });
 
-// ——— Migration of the displays shipped before Firefox ———
+// ——— Update of the starter displays left as shipped ———
 
 const DISPLAYS = join(import.meta.dirname, "shipped-displays");
 

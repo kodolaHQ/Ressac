@@ -1,8 +1,0 @@
-{
-  "nom": "Veille",
-  "description": "Les nouveautés du web",
-  "tailles": { "min": { "l": 3, "h": 2 }, "max": { "l": 6, "h": 4 }, "defaut": { "l": 4, "h": 3 } },
-  "recolte": { "heures": ["08:00", "18:00"], "dureeMaxMinutes": 10, "notifier": true },
-  "sources": { "compte": [], "publiques": ["news.ycombinator.com"], "web": false },
-  "config": { "interets": "rust, bases de données", "titre": "gardé tel quel" }
-}

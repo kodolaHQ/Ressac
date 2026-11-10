@@ -1,16 +1,15 @@
 import { execFileSync, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { afterEach, describe, expect, it } from "vitest";
 import { NO_WORKFLOW_OPEN, CONSOLE_UNLOCKED, CONSOLE_BACKGROUND_HIDDEN, OBSERVED_BACKGROUND_CONSOLE, REQUEST_REMOVED, PRIVATE_PROFILE_ERROR, hiddenTabs, navigationOutsideSite } from "../../../packages/kernel/src/index";
 import { PRIVATE_TEXT } from "../../../packages/kernel/src/mcp/bridge";
-import { RESIGN } from "../../../packages/kernel/src/migration/extensions";
 import { DISABLED_CRASHES } from "../shared/extensions-messages";
 import { hostPath, nodePath, tsxPath } from "../scripts/paths";
-import { createRpc, HOST_FATAL, type Handler, type Rpc } from "../shared/rpc";
+import { createRpc, type Handler, type Rpc } from "../shared/rpc";
 import { installationImpossible, NOTHING_TO_REVIEW } from "../host/extensions/agent";
 import { KEYS_ABSENT, deniedSignature } from "../host/extensions/amo";
 import type { ExtensionCard, GrantResponse } from "../shared/extensions";
@@ -18,7 +17,6 @@ import { startFakeAmo } from "./fake-amo";
 import { callMcpTool } from "./mcp";
 
 const tools = join(import.meta.dirname, "tools");
-const MIGRATION_FIXTURE = join(import.meta.dirname, "../../../packages/kernel/test/migration/fixtures/v1");
 const tabs = [
   { id: "t1", title: "Un", url: "https://un.test/", space: "Perso" },
   { id: "t2", title: "Deux", url: "https://deux.test/", space: "Perso" },
@@ -139,32 +137,6 @@ describe("agent host", { timeout: 30_000 }, () => {
     expect(existsSync(join(h.root, ".webaios", "mcp.json"))).toBe(true);
     const r = await callMcpTool(h.root, "list_tabs");
     expect(r.text).toContain("onglet non partagé");
-  });
-
-  it("migrates old data before anything reads it, and says so once", async () => {
-    const notes = join(tmpdir(), `webaios-notes-${process.pid}-${Date.now()}.jsonl`);
-    const h = startHost({ WEBAIOS_TEST_NOTIFICATIONS: notes }, (d) => {
-      cpSync(MIGRATION_FIXTURE, d, { recursive: true });
-      writeFileSync(join(d, ".format-version"), JSON.stringify({ store: 2, kernel: 1 }));
-    });
-    await h.rpc.request("start", { agentProfile: "claude" });
-    await h.rpc.request("start", { agentProfile: "claude" });
-    expect(existsSync(join(h.dataDir, "espace"))).toBe(false);
-    expect(JSON.parse(readFileSync(join(h.dataDir, ".format-version"), "utf8"))).toEqual({ store: 2, kernel: 2 });
-    const lines = readFileSync(notes, "utf8").trim().split("\n");
-    expect(lines).toHaveLength(1);
-    expect(JSON.parse(lines[0]!).text).toContain("migration-anglais.md");
-    rmSync(notes, { force: true });
-  });
-
-  it("old data the store has not backed up: the host stops, nothing written, and tells Firefox why first", async () => {
-    const fatal: unknown[] = [];
-    const h = startHost({}, (d) => cpSync(MIGRATION_FIXTURE, d, { recursive: true }), { handlers: { [HOST_FATAL]: (p: unknown) => void fatal.push(p) } });
-    expect(await h.exited).toBe(2);
-    expect(existsSync(join(h.dataDir, "espace"))).toBe(true);
-    expect(h.stderr()).toContain("copie de sauvegarde");
-    await until(() => fatal.length > 0);
-    expect(fatal).toEqual([{ message: expect.stringMatching(/^Le noyau de l'agent ne démarre pas : .*copie de sauvegarde/) }]);
   });
 
   it("a private tab is hidden from the agent", async () => {
@@ -645,41 +617,6 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     expect(amo.sends.map((e) => e.version)).toEqual(["1.0.0.1", "1.0.0.2"]);
     expect(f.installs.at(-1)).toMatchObject({ version: "1.0.0.2" });
     expect(f.activations.at(-1)).toEqual({ addonId: ID, active: true });
-  });
-
-  /** Started once (signed 1.0.0.1), then its signed record marked to sign again, as the English formats migration does. */
-  const markedResign = async (amo: { url: string }, f: ReturnType<typeof firefox>) => {
-    let h = launch(amo, f, { prepare });
-    await h.rpc.request("extensions.ready", {});
-    await stop(h);
-    const record = join(h.dataDir, "extensions", "signed", "ma-ext.json");
-    writeFileSync(record, JSON.stringify({ ...JSON.parse(readFileSync(record, "utf8")), hash: RESIGN }));
-    f.activations.length = 0;
-    h = launch(amo, f, { dataDir: h.dataDir });
-    await h.rpc.request("extensions.ready", {});
-    return h;
-  };
-
-  it("signed with the old guards (re-sign): off at startup, nothing sent; signed again when the user turns it back on", async () => {
-    const amo = await fakeAmo();
-    const f = firefox();
-    const h = await markedResign(amo, f);
-    expect(amo.sends).toHaveLength(1);
-    expect(entry(h.dataDir)).toMatchObject({ grant: GRANT, profiles: [] });
-    expect(f.activations).toEqual([{ addonId: ID, active: false }]);
-    expect(await h.rpc.request("extensions.toggle", { key: "agent:ma-ext", spaceId: "e1", active: true, window: null })).toEqual({ ok: true });
-    expect(amo.sends.map((e) => e.version)).toEqual(["1.0.0.1", "1.0.0.2"]);
-    expect(f.activations.at(-1)).toEqual({ addonId: ID, active: true });
-  });
-
-  it("signed with the old guards (re-sign): reload_extension signs it again", async () => {
-    const amo = await fakeAmo();
-    const f = firefox();
-    const h = await markedResign(amo, f);
-    expect(amo.sends).toHaveLength(1);
-    expect(await tool(h, "reload_extension", { id: "ma-ext" })).toBe("state : reloaded");
-    expect(amo.sends.map((e) => e.version)).toEqual(["1.0.0.1", "1.0.0.2"]);
-    expect(JSON.parse(readFileSync(join(h.dataDir, "extensions", "signed", "ma-ext.json"), "utf8")).hash).not.toBe(RESIGN);
   });
 
   it("aTourne: an unreadable tab masks its console in that profile and by add-on id, once; a readable one changes nothing", async () => {

@@ -18,48 +18,6 @@ afterAll(async () => {
 });
 
 describe("profile containers", () => {
-  it("a public webaios container from an older build is migrated at start", async () => {
-    const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
-    const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
-    const cookies = `return Services.cookies.getCookiesFromHost("127.0.0.1", { userContextId: arguments[0] }).map((c) => c.name + "=" + c.value);`;
-    try {
-      let w = await launchWebAiOs({ profile, dataDir });
-      let m = w.marionette;
-      await m.setContext("chrome");
-      await waitReady(m);
-      // What an older build left behind: a public container holding a cookie.
-      const id = await m.execute<number>(`return ${CIS}.create("webaios-p1", "fence", "blue").userContextId;`);
-      await m.execute(
-        `return (async () => {
-          const tab = gBrowser.addTab(arguments[0], { userContextId: arguments[1], triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });
-          for (let i = 0; i < 50 && tab.linkedBrowser.currentURI.spec !== arguments[0]; i++) await new Promise((r) => setTimeout(r, 100));
-          await new Promise((r) => setTimeout(r, 500));
-          gBrowser.removeTab(tab);
-        })();`,
-        [`${server.url}/cookie`, id],
-      );
-      expect(await m.execute(cookies, [id])).toEqual(["essai=1"]);
-      await w.close();
-
-      w = await launchWebAiOs({ profile, dataDir });
-      m = w.marionette;
-      await m.setContext("chrome");
-      await waitReady(m);
-      const r = await m.execute<{ publicNames: string[]; same: boolean }>(
-        `return (async () => {
-          const store = await ChromeUtils.importESModule("${STORE}").ready;
-          return { publicNames: ${CIS}.getPublicIdentities().map((i) => i.name ?? "").filter((n) => n.startsWith("webaios-")), same: store.containerFor("p1") === arguments[0] };
-        })();`,
-        [id],
-      );
-      expect(r).toEqual({ publicNames: [], same: true });
-      expect(await m.execute(cookies, [id])).toEqual(["essai=1"]);
-      await w.close();
-    } finally {
-      await Promise.all([rm(profile, { recursive: true, force: true }), rm(dataDir, { recursive: true, force: true })]);
-    }
-  });
-
   it("a profile container survives an enterprise-policy sweep", async () => {
     const w = await launchWebAiOs();
     try {

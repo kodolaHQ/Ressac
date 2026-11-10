@@ -13,7 +13,6 @@ test("default paths under ~/WebAiOs", () => {
   delete process.env.WEBAIOS_ROOT;
   const c = spacePaths();
   expect(c.root).toBe(join(homedir(), "WebAiOs"));
-  expect(c.blocks).toBe(join(homedir(), "WebAiOs", "home", "blocks"));
   expect(c.widgets).toBe(join(homedir(), "WebAiOs", "home", "widgets"));
   expect(c.mcpConfig).toBe(join(homedir(), "WebAiOs", ".webaios", "mcp.json"));
 });

@@ -15,9 +15,7 @@ import { createDevTools, type DevTools } from "./devtools";
 import { createDownloads, type DownloadsList } from "./downloads";
 import { createHistory, type History } from "./history";
 import { registerHomeNotifications } from "./notifications";
-import { containerFor, containers, existingContainer, isSiteContainer, migrateContainers, removeContainer } from "./containers";
-import { migrateStore } from "./migration";
-import { initialState } from "../../core/state/initial-state";
+import { containerFor, existingContainer, isSiteContainer, removeContainer } from "./containers";
 import { registerPermissionHooks } from "./permission-hooks";
 import { createSitePermissions, type SitePermission, type SitePermissions } from "./site-permissions";
 import { bindSites, sites, type SiteApps } from "./sites";
@@ -33,8 +31,6 @@ export interface WebAiOsStore extends Store {
   readonly dataDir: string;
   /** Where an unreadable session was set aside at startup, or null. */
   readonly setAside: string | null;
-  /** Why the data migration (English formats) failed at startup, or null: then nothing is read nor written and the agent does not start. */
-  readonly migrationError: string | null;
   flush(): Promise<void>;
   /** userContextId of a login profile: 0 for DEFAULT_PROFILE, an internal container otherwise (created on first use). */
   containerFor(profile: ProfileId): number;
@@ -146,14 +142,6 @@ async function start(): Promise<WebAiOsStore> {
   // with no module, and no DRM site ever plays.
   const gmp = Services.prefs.getDefaultBranch("").getCharPref("media.gmp-manager.url", "");
   if (gmp.includes("%VERSION%")) Services.prefs.getDefaultBranch("").setCharPref("media.gmp-manager.url", gmp.replace("%VERSION%", Services.appinfo.platformVersion));
-  // Before anything reads or writes the data folder (its backup comes first).
-  let migrationError: string | null = null;
-  try {
-    await migrateStore({ dataDir, profileDir: Services.dirsvc.get("ProfD", Ci.nsIFile).path, containers });
-  } catch (e) {
-    migrationError = (e as Error)?.message ?? String(e);
-    console.error("[migration]", e);
-  }
   // The widget displays' copies are a disposable cache: clearing them at startup never serves a copy made by an older
   // sanitizer (CSP_WIDGET, containsNetworkHint).
   await IOUtils.remove(PathUtils.join(dataDir, "webaios-widgets"), { recursive: true, ignoreAbsent: true }).catch((e) => console.warn("[widget] copies non effacées :", e));
@@ -161,10 +149,8 @@ async function start(): Promise<WebAiOsStore> {
   await IOUtils.remove(PathUtils.join(dataDir, "webaios-sites"), { recursive: true, ignoreAbsent: true }).catch((e) => console.warn("[sites] copies non effacées :", e));
   // The agent components' copies too.
   await IOUtils.remove(PathUtils.join(dataDir, "webaios-components"), { recursive: true, ignoreAbsent: true }).catch((e) => console.warn("[actions] copies non effacées :", e));
-  if (!migrationError) migrateContainers();
   let setAside: string | null = null;
-  // Data left in the old format: a session in memory only, never written over it.
-  const store = createStore(migrationError ? initialState() : await loadSession(dataDir, (p) => (setAside = p)));
+  const store = createStore(await loadSession(dataDir, (p) => (setAside = p)));
   const questions = new Questions(store, () => sites.forAgent(), () => apps.forAgent());
   // A site app or agent app window closed: the agent's questions on it fall.
   sites.onClosed(() => questions.dropStale());
@@ -174,7 +160,6 @@ async function start(): Promise<WebAiOsStore> {
     profiles: () => [...profilesInUse(store.state)],
     ask: (d, signal) => questions.askSite(d, signal),
     firefox: firefoxPermissions,
-    ...(migrationError ? { files: { read: async () => null, write: async () => {}, remove: async () => {} } } : {}),
   });
   registerPermissionHooks({
     sitePermissions,
@@ -189,7 +174,7 @@ async function start(): Promise<WebAiOsStore> {
   const recorder = new SessionRecorder(dataDir);
   const flush = () => recorder.clear();
   store.subscribe((state, previous) => {
-    if (!migrationError) recorder.schedule(state);
+    recorder.schedule(state);
     const used = profilesInUse(state);
     for (const id of profilesInUse(previous)) if (!used.has(id)) {
         try {
@@ -368,9 +353,7 @@ async function start(): Promise<WebAiOsStore> {
     devtools.release();
     apps.closeAll();
   });
-  // Old data not migrated: the host must never start on it.
-  if (migrationError) agent.ensure = () => Promise.reject(new Error(migrationError!));
-  else agent.ensure().catch((e) => console.error("[agent] the kernel did not start:", e));
+  agent.ensure().catch((e) => console.error("[agent] the kernel did not start:", e));
   // No `node … host.ts` may outlive the app: its sessions and MCP server stop with it.
   AsyncShutdown.profileBeforeChange.addBlocker("WebAiOs: stop the agent host", () => agent.stop());
   return {
@@ -381,7 +364,6 @@ async function start(): Promise<WebAiOsStore> {
     subscribe: store.subscribe,
     dataDir,
     setAside,
-    migrationError,
     flush,
     containerFor,
     agent,

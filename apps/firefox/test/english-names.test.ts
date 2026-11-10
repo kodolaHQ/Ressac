@@ -3,7 +3,6 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { expect, test } from "vitest";
-import * as NAMES from "../../../packages/kernel/src/migration/names";
 
 // French words a binding, member or file name may no longer contain.
 const FORBIDDEN = new Set(
@@ -79,56 +78,19 @@ export function names(code: string, svelte = false): Names {
 }
 export const bindings = (code: string, svelte = false) => names(code, svelte).bindings;
 
-/** Every English name of NAMES: an old name spelled like one of them is an English word, not a leftover. */
-const ENGLISH = new Set(Object.values(NAMES).flatMap((m) => Object.values(m).flatMap((v) => (typeof v === "string" ? [v] : Object.values(v)))));
-// `declare` (the external registry's method) and `applications` (WebExtension manifest key) are English too.
-for (const w of ["declare", "applications"]) ENGLISH.add(w);
-const old = (maps: object[]) => new Set(maps.flatMap((m) => Object.keys(m)).filter((k) => k.length > 1 && !ENGLISH.has(k)));
-const { KEYS, ENGINE_FIELDS, KEY_EXCEPTIONS, VALUE_EXCEPTIONS, ...FORMATS } = NAMES;
-/** Old object keys of the stored and wire formats. */
-const OLD_KEYS = old([KEYS, ENGINE_FIELDS, ...Object.values(KEY_EXCEPTIONS)]);
-/** Old names given as strings: values, file and folder names, methods, tools, messages, variables… */
-const OLD_STRINGS = old([...Object.values(FORMATS), ...Object.values(VALUE_EXCEPTIONS)]);
-
-/** Old French names (or French member names) that stay on purpose, by file. */
+/** French member and key names that stay on purpose, by file. */
 const KEPT: Record<string, string[]> = {
-  // CSS classes and custom properties
-  "apps/firefox/ui/builder/BlockNode.svelte": ["echec", "en-cours"],
-  "apps/firefox/ui/builder/labels.ts": ["echec"],
-  "apps/firefox/ui/components/DiffFile.svelte": ["contexte"],
-  "apps/firefox/ui/theme.ts": ["texte"],
-  "apps/firefox/e2e/builder-runs.e2e.ts": ["en-cours"],
-  // data-testids
-  "apps/firefox/e2e/actions-scenarios.e2e.ts": ["en-attente"],
   // the test page's field ids, read back by the test extension
   "apps/firefox/e2e/agent-extensions-guards.e2e.ts": ["texte"],
-  // visible French texts
-  "apps/firefox/ui/action/ActionHeader.svelte": ["partielle", "interrompue"],
-  "apps/firefox/ui/builder/BlockOutput.svelte": ["partiel", "interrompu", "repris"],
-  "apps/firefox/ui/components/DesignBasket.svelte": ["lu"],
-  "packages/kernel/src/mcp/extensions.ts": ["espace"],
-  "packages/kernel/src/pages/preview.ts": ["texte", "textes", "nombre", "liste"],
-  "packages/kernel/src/pages/resolve.ts": ["non"],
-  // field names an agent may write in French: the fallback layout looks for them
-  "packages/kernel/src/pages/fallback.ts": ["lien", "titre"],
 };
 
-/**
- * Old format names left in code: members (all files), and in product code object keys and `.x` reads equal to an old
- * format key. Strings equal to an old format name: in product code any; in tests and e2e only the compound ones
- * (`agent.demarrer`, `recolte.mjs`…), since their plain French words are fixture data (block ids, agent outputs).
- */
+/** French names left in code: members (all files), and object keys in product code. */
 export function leftovers(file: string, code: string, svelte = false): string[] {
   const n = names(code, svelte);
   const test = /\/(test|e2e)\//.test(file);
   const kept = new Set(KEPT[file]);
   const member = (k: string) => /^[\w$]+$/.test(k) && french(k).length > 0 && !kept.has(k);
-  return [
-    ...n.members.filter((k) => member(k) || (!test && OLD_KEYS.has(k))).map((k) => `member ${k}`),
-    ...(test ? [] : n.keys.filter((k) => member(k) || OLD_KEYS.has(k)).map((k) => `key ${k}`)),
-    ...(test ? [] : n.reads.filter((k) => OLD_KEYS.has(k)).map((k) => `.${k}`)),
-    ...n.strings.filter((s) => OLD_STRINGS.has(s) && !kept.has(s) && (!test || /[^a-z]/.test(s))).map((s) => `"${s}"`),
-  ];
+  return [...n.members.filter(member).map((k) => `member ${k}`), ...(test ? [] : n.keys.filter(member).map((k) => `key ${k}`))];
 }
 
 test("the guard sees French binding names", () => {
@@ -137,21 +99,20 @@ test("the guard sees French binding names", () => {
   expect(bindings("export function lire() {} let x = 1;", true)).toEqual(["x"]);
 });
 
-test("the guard sees French members, old format keys and old format strings", () => {
-  const code = "class A { fermer() {} } type T = { nomOnglet: string }; const o = { titre: 1, url: 2 }; o.espaceId; f('agent.demarrer', 'sortie');";
-  expect(leftovers("apps/firefox/ui/a.ts", code)).toEqual(["member fermer", "member nomOnglet", "key titre", ".espaceId", '"agent.demarrer"', '"sortie"']);
-  // In tests the plain words are fixture data; `declare` is English.
-  expect(leftovers("apps/firefox/test/a.test.ts", code + " r.declare();")).toEqual(["member fermer", "member nomOnglet", '"agent.demarrer"']);
+test("the guard sees French members and keys", () => {
+  const code = "class A { fermer() {} } type T = { nomOnglet: string }; const o = { nomEspace: 1, url: 2 };";
+  expect(leftovers("apps/firefox/ui/a.ts", code)).toEqual(["member fermer", "member nomOnglet", "key nomEspace"]);
+  // In tests, object keys are fixture data.
+  expect(leftovers("apps/firefox/test/a.test.ts", code)).toEqual(["member fermer", "member nomOnglet"]);
 });
 
-test("no old French member, format key or format string under apps/firefox and packages/kernel", (ctx) => {
+test("no French member or key under apps/firefox and packages/kernel", (ctx) => {
   const r = spawnSync("git", ["ls-files", "apps/firefox", "packages/kernel"], { cwd: repoRoot, encoding: "utf8" });
   if (r.error || r.status !== 0) return ctx.skip();
-  // Old names on purpose: the migration and its fixtures (kernel and Firefox store), the shipped harvests kept byte for
-  // byte, the guards themselves. modeles/ has its own guard (template-names.test.ts).
+  // French on purpose: the Firefox engine sources, the templates (agent-facing French data), the guard itself.
   // shortcut: the extension guard scripts (packages/kernel/extensions/*.js) and the e2e spikes (.js/.mjs) are not read; read them once renamed.
   const skip =
-    /^packages\/kernel\/(src\/migration|test\/migration|test\/workspace\/shipped-harvests|modeles)\/|^apps\/firefox\/src\/|^apps\/firefox\/(chrome\/store\/migration\.ts|test\/migration-store\.test\.ts|e2e\/migration\.e2e\.ts|test\/english-names\.test\.ts)$|\/template-names\.test\.ts$/;
+    /^packages\/kernel\/modeles\/|^apps\/firefox\/src\/|^apps\/firefox\/test\/english-names\.test\.ts$/;
   const files = r.stdout.split("\n").filter((f) => !skip.test(f) && /\.(ts|mts|svelte)$|^packages\/kernel\/docker\/.*\.mjs$/.test(f));
   const bad: string[] = [];
   for (const f of files) {
@@ -165,8 +126,8 @@ test("no old French member, format key or format string under apps/firefox and p
 test("no binding or file name under apps/firefox and packages/kernel is French", (ctx) => {
   const r = spawnSync("git", ["ls-files", "apps/firefox", "packages/kernel"], { cwd: repoRoot, encoding: "utf8" });
   if (r.error || r.status !== 0) return ctx.skip();
-  // modeles/ has its own guard (template-names.test.ts: its block files are agent data ids); the migration fixtures are old data on purpose.
-  const files = r.stdout.split("\n").filter((f) => f && !/^packages\/kernel\/(modeles|test\/migration\/fixtures)\//.test(f));
+  // modeles/: its block files are agent data ids.
+  const files = r.stdout.split("\n").filter((f) => f && !/^packages\/kernel\/modeles\//.test(f));
   const bad: string[] = [];
   for (const f of files) {
     if (/\.(ts|mts|js|mjs|cjs|svelte)$/.test(f) && french(f.split("/").pop()!).length) bad.push(`${f}: file name`);

@@ -21,10 +21,9 @@ const { appendFileSync } = await import("node:fs");
 const { stat } = await import("node:fs/promises");
 // Imported after the env is set and stdout redirected: nothing in the kernel can write to stdout at load time.
 const { ACTION_UNKNOWN, Workshop, blockCatalog, loadProfiles, spacePaths, createKernel, defaultRunner, LocalAi, readHome, readFreeLayout, readTheme, Pacing, contextPrefix, removeGrant, deleteData, watchActions } = await import("../../../packages/kernel/src/index.ts");
-const { migrateKernel } = await import("../../../packages/kernel/src/migration/index.ts");
 const { SessionsAgent } = await import("../core/agent/sessions.ts");
 const { History } = await import("../core/history.ts");
-const { createRpc, HOST_FATAL } = await import("../shared/rpc.ts");
+const { createRpc } = await import("../shared/rpc.ts");
 const { RemoteBridge } = await import("./remote-bridge.ts");
 const { createSites } = await import("./sites.ts");
 const { createDesignHost, DESIGN_METHODS, externalMcpPort } = await import("./design.ts");
@@ -64,19 +63,6 @@ const dataDir = process.env.WEBAIOS_DATA_DIR;
 if (!dataDir) {
   console.error("[webaios] WEBAIOS_DATA_DIR manquant");
   process.exit(2);
-}
-// The English formats (kernel half): before anything reads the data, the workspace setup and the history included.
-// A newer format, or old data the store has not backed up: the host stops, nothing written.
-let migrationReport: string | null = null;
-try {
-  migrationReport = (await migrateKernel({ dataDir })).report;
-} catch (e) {
-  console.error(`[webaios] migration des données arrêtée : ${(e as Error).message}`);
-  // Said to Firefox before going, so the user reads why rather than only that the kernel stopped.
-  const message = `Le noyau de l'agent ne démarre pas : ${(e as Error).message}`;
-  // The exit a moment later: Firefox reads the line before it sees the process go.
-  writeStdout(JSON.stringify({ jsonrpc: "2.0", method: HOST_FATAL, params: { message } }) + "\n", () => setTimeout(() => process.exit(2), 500));
-  await new Promise(() => {});
 }
 const root = join(dataDir, "workspace");
 const paths = spacePaths(root);
@@ -216,11 +202,6 @@ const stopKernel = async (n: Kernel | null) => {
 const start = async () => {
   const n = await ready;
   if (!n) throw new Error(error ?? "le noyau de l'agent n'a pas démarré");
-  // Said once, when the browser is there to show it (same channel as the home's notifications).
-  if (migrationReport) {
-    notify({ title: "Données passées aux noms anglais", text: `Le code de l'agent à corriger et le reste sont dans ${migrationReport}` });
-    migrationReport = null;
-  }
   return { agent: n.agent };
 };
 

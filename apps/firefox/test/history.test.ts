@@ -119,22 +119,6 @@ test("rendrePrive marks only this space's rows", () => {
   });
 });
 
-test("old schema (url key alone): rows kept, empty space, non-private", () => {
-  h.close();
-  const old = join(mkdtempSync(join(tmpdir(), "webaios-hist-")), "history.sqlite");
-  const db = new DatabaseSync(old);
-  db.exec(`CREATE TABLE visits (url TEXT PRIMARY KEY, title TEXT NOT NULL, last_visit TEXT NOT NULL, visits INTEGER NOT NULL DEFAULT 1);
-    INSERT INTO visits VALUES ('https://vieux.fr/', 'Vieux', '2026-01-01T00:00:00.000Z', 3);`);
-  db.close();
-  h = new History(old);
-  expect(h.recents()).toEqual([{ url: "https://vieux.fr/", title: "Vieux", lastVisit: "2026-01-01T00:00:00.000Z", visits: 3, spaceId: "", private: false, kept: false }]);
-  h.note({ url: "https://vieux.fr/", title: "Vieux", spaceId: "A", private: false });
-  expect(h.recents()).toHaveLength(2);
-  h.close();
-  h = new History(old); // already migrated: reopening changes nothing
-  expect(h.recents()).toHaveLength(2);
-});
-
 test("search in distinct mode: a URL seen in two spaces comes out once, and the limit counts URLs", () => {
   h.note({ url: "https://a.fr/", title: "page", spaceId: "A", private: false });
   h.note({ url: "https://a.fr/", title: "page", spaceId: "B", private: false });

@@ -6,7 +6,6 @@ export const CONTAINER_PATH = "/workspace";
 export interface SpacePaths {
   root: string;
   home: string;
-  blocks: string;
   /** Widgets of the home page (code and display; the data is outside the workspace). */
   widgets: string;
   layout: string;
@@ -34,7 +33,6 @@ export function spacePaths(root?: string): SpacePaths {
   return {
     root: r,
     home: home,
-    blocks: join(home, "blocks"),
     widgets: join(home, "widgets"),
     layout: join(home, "layout.json"),
     projects: join(r, "projects"),

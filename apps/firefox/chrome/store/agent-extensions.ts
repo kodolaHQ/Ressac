@@ -103,7 +103,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
         return { version: addon.version };
       });
     },
-    // reload_extension on an unchanged copy: the running add-on restarts as is (disable then enable), nothing re-signed.
+    // reload_extension on an unchanged copy: the running add-on restarts as is (disable then enable), nothing signed again.
     "extensions.restart": async (p: { addonId: string }) => {
       const addon = await AddonManager.getAddonByID(agentId(p.addonId));
       if (addon?.isActive) await own(addon.id, "disabled", () => addon.reload());

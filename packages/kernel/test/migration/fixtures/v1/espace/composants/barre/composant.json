@@ -1,1 +1,0 @@
-{ "nom": "barre", "description": "Une barre", "proprietes": { "valeur": { "genre": "reference", "description": "La valeur", "requis": true }, "titre": { "genre": "texte", "description": "Titre" }, "cle": { "genre": "champ", "description": "Champ" }, "max": { "genre": "nombre", "description": "Max" }, "plein": { "genre": "case", "description": "Plein" } } }

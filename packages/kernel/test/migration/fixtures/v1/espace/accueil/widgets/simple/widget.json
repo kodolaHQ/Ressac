@@ -1,1 +1,0 @@
-{ "nom": "Simple", "tailles": { "min": { "l": 2, "h": 2 }, "max": { "l": 2, "h": 2 }, "defaut": { "l": 2, "h": 2 } }, "recolte": { "minutes": 60 } }

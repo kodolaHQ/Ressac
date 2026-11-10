@@ -1,1 +1,0 @@
-{"version":1,"id":"2026-11-01T09-00-00-000Z-essai","proprietaire":{"type":"widget","id":"veille"},"declencheur":"rejeu","essai":{"depart":"tri","origine":"2026-11-01T08-00-00-000Z"},"debut":"2026-11-01T09:00:00.000Z","fin":"2026-11-01T09:00:05.000Z","statut":"reussie","blocs":[{"id":"flux","type":"source.flux","statut":"repris","debut":null,"fin":null,"elements":2,"journal":[]}]}

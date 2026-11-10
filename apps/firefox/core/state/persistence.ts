@@ -10,7 +10,7 @@ const FavoriteSchema = z.object({ id: z.string(), url: z.string(), title: z.stri
 
 const SpaceSchema = z.object({ id: z.string(), name: z.string(), icon: z.string(), pinned: z.array(FavoriteSchema), private: z.boolean(), profile: z.string().min(1) });
 
-/** Version 3, the English formats (versions 1 and 2, French, are rewritten by the data migration: chrome/store/migration.ts). */
+/** Version 3. Any other version is unreadable: set aside like a damaged session. */
 const SchemaSession = z.object({
   version: z.literal(3),
   spaces: z.array(SpaceSchema).min(1),

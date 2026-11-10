@@ -97,13 +97,6 @@ window.addEventListener(
           [],
         );
       }
-      if (first && store.migrationError) {
-        void window.gNotificationBox.appendNotification(
-          "webaios-migration-failed",
-          { label: `Les données de WebAiOs n'ont pas pu passer au nouveau format : ${store.migrationError} La session n'est pas enregistrée.`, priority: window.gNotificationBox.PRIORITY_CRITICAL_HIGH },
-          [],
-        );
-      }
       // The UI reads window.webaiosWindow as it loads. Without the UI's network guard, neither loads.
       if (!sidebarMayLoad || !agentMayLoad) return;
       frame.src = "chrome://browser/content/webaios/sidebar.html";

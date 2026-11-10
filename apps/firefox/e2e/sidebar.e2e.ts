@@ -227,7 +227,7 @@ describe("WebAiOs sidebar", () => {
   });
 
   it("shows an internal webaios: page as not yet available", async () => {
-    // An internal page WebAiOs-Firefox does not know (the Review page, used here before plan 34, is migrated).
+    // An internal page WebAiOs-Firefox does not know.
     await dispatch(m, { type: "openTab", windowId: (await win()).id, url: "webaios://inconnue" });
     const text = await waitUi<string>(m, "return doc.querySelector('[data-testid=\"page-interne\"]')?.textContent");
     expect(text).toBe("Pas encore disponible dans WebAiOs-Firefox.");

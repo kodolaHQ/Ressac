@@ -35,7 +35,6 @@ import type { Space, Outcome } from "../../shared/model.ts";
 import { ConsolesExtensions, type AgentFilter } from "../../core/extensions/consoles.ts";
 import type { Rpc } from "../../shared/rpc.ts";
 import { AMO_URL, KEYS_ABSENT, SignatureError, readAmoKey, signatureImpossible, sign } from "./amo.ts";
-import { RESIGN } from "../../../../packages/kernel/src/migration/extensions.ts";
 import { cardOf, unsupported } from "./card.ts";
 import { addonIdOf, firefoxManifest, nextVersion, firefoxDenial, ID_SUFFIX, zipper } from "./firefox-copy.ts";
 
@@ -178,12 +177,8 @@ export class ExtensionsAgent {
     await Promise.all(
       Object.entries(state.extensions).map(async ([key, x]) => {
         if (x.source !== "agent" || !x.grant) return;
-        const id = key.slice("agent:".length);
         try {
-          // Signed with the old guards (English formats migration): off everywhere, so nothing goes to AMO until the
-          // user turns it back on (or has it reloaded); the startup below then keeps it for the next activation.
-          if (x.profiles.length && (await this.guard(id))?.hash === RESIGN) await this.edit((e) => disableEverywhere(e, key));
-          const r = await this.prepareAndInstall(id, { grant: x.grant, startup: true });
+          const r = await this.prepareAndInstall(key.slice("agent:".length), { grant: x.grant, startup: true });
           if (!r.ok) console.warn(`[extensions] ${key} au démarrage : ${r.error}`);
         } catch (e) {
           console.error(`[extensions] ${key} non installée au démarrage :`, e);

@@ -1,1 +1,0 @@
-{ "version": 1, "valeurs": { "vu": { "valeur": { "titre": "libre" }, "adresse": "https://vidola.example/series/1", "quand": "2026-11-01T00:00:00.000Z" } }, "positions": { "https://vidola.example/series/1": { "t": 120, "duree": 1500, "quand": "2026-11-01T00:00:00.000Z" } } }

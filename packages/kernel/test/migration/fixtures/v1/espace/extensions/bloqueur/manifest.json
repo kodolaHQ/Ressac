@@ -1,1 +1,0 @@
-{ "manifest_version": 3, "name": "Bloqueur", "version": "1.0", "background": { "service_worker": "bg.js" } }

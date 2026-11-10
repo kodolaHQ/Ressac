@@ -1,4 +1,4 @@
-import { createRpc, HOST_FATAL, type Handler, type Rpc } from "../../shared/rpc";
+import { createRpc, type Handler, type Rpc } from "../../shared/rpc";
 import { lineSplitter } from "./lines";
 
 export const HOST_STOPPED = "Le noyau de l'agent s'est arrêté.";
@@ -62,34 +62,19 @@ export function createHost(o: {
     });
     const rpc = createRpc({ send: (line) => void proc.stdin.write(line + "\n").catch(() => {}), handlers });
     let gone = false;
-    // Why it stops, when it said so before going (HOST_FATAL: data not migrated…).
-    let reason = HOST_STOPPED;
     // stdout closing is the host going: dropped at once, so Réessayer spawns a new one instead of hitting this rpc.
     const exited = () => {
       if (gone) return;
       gone = true;
-      rpc.close(reason);
+      rpc.close(HOST_STOPPED);
       if (pid === proc.pid) {
         pid = null;
         current = null;
         // Only the current host: an old one exiting late must not report a stop over its successor.
-        for (const l of listeners.get(HOST_EXITED) ?? []) l({ message: reason });
+        for (const l of listeners.get(HOST_EXITED) ?? []) l({ message: HOST_STOPPED });
       }
     };
-    const out = readLines(proc.stdout, (l) => {
-      // The cheap test first: every byte of the terminals comes through here.
-      if (l.includes(HOST_FATAL)) {
-        try {
-          const m = JSON.parse(l);
-          // Gone for good: stopped now, with its reason (the process exits just after).
-          if (m.method === HOST_FATAL && typeof m.params?.message === "string") return ((reason = m.params.message), exited());
-        } catch {
-          // not a message
-        }
-      }
-      rpc.receive(l);
-    });
-    void out.then(exited);
+    void readLines(proc.stdout, (l) => rpc.receive(l)).then(exited);
     void readLines(proc.stderr, (l) => console.warn(`[kernel] ${l}`));
     o.onStart((method, params) => rpc.notify(method, params));
     pid = proc.pid;

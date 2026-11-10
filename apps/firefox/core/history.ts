@@ -37,7 +37,7 @@ export class History {
     mkdirSync(dirname(path), { recursive: true });
     this.db = new DatabaseSync(path);
     this.db.exec("PRAGMA journal_mode = WAL;");
-    this.migrate();
+    this.createTables();
     this.db.function("fold", { deterministic: true }, (s) => fold(String(s)));
     this.req = {
       note: this.db.prepare(`
@@ -92,29 +92,20 @@ export class History {
     };
   }
 
-  /** Creates the table, or migrates the old one (`url` key alone): rows kept, space `""` (none), non-private. */
-  private migrate(): void {
-    const columns = (this.db.prepare("PRAGMA table_info(visits)").all() as { name: string }[]).map((c) => c.name);
-    const fresh = `(
-        url TEXT NOT NULL,
-        space_id TEXT NOT NULL,
-        title TEXT NOT NULL,
-        last_visit TEXT NOT NULL,
-        visits INTEGER NOT NULL DEFAULT 1,
-        private INTEGER NOT NULL DEFAULT 0,
-        PRIMARY KEY (url, space_id)
-      )`;
+  /** Creates the tables if they are missing. */
+  private createTables(): void {
     this.db.exec("BEGIN");
     try {
-      if (columns.length === 0) this.db.exec(`CREATE TABLE visits ${fresh}`);
-      else if (!columns.includes("space_id")) {
-        this.db.exec(`
-          CREATE TABLE visits_v2 ${fresh};
-          INSERT INTO visits_v2 (url, space_id, title, last_visit, visits, private)
-            SELECT url, '', title, last_visit, visits, 0 FROM visits;
-          DROP TABLE visits;
-          ALTER TABLE visits_v2 RENAME TO visits;`);
-      }
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS visits (
+          url TEXT NOT NULL,
+          space_id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          last_visit TEXT NOT NULL,
+          visits INTEGER NOT NULL DEFAULT 1,
+          private INTEGER NOT NULL DEFAULT 0,
+          PRIMARY KEY (url, space_id)
+        )`);
       this.db.exec("CREATE INDEX IF NOT EXISTS visits_date ON visits (last_visit)");
       // Kept text: one row per URL and per space. The FTS5 index reads its content from `texts` (nothing is stored
       // twice); the triggers keep it up to date whichever method writes or erases.
