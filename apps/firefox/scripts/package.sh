@@ -20,12 +20,12 @@ sentry_cli=@sentry/cli@2.58.6
 
 step() { print -r -- "==> $*" }
 fail() { print -u2 -- "package: $*"; exit 1 }
-# The packaged UI build blanks the dev host paths in src/ and the dev app: put the dev bundles back once the app is staged.
+# The packaged UI build blanks the dev host paths and bakes the DSN into src/ and the dev app: put the dev bundles back once the app is staged.
 dev_ui_dirty=
 restore_dev_ui() {
   dev_ui_dirty=
   step "Restoring the dev UI bundles"
-  env -u WEBAIOS_PACKAGE corepack pnpm run build:ui || { print -u2 -- "package: could not restore the dev UI, run build:ui"; return 1 }
+  env -u WEBAIOS_PACKAGE -u WEBAIOS_SENTRY_DSN corepack pnpm run build:ui || { print -u2 -- "package: could not restore the dev UI, run build:ui"; return 1 }
 }
 node_x=
 cleanup() {
