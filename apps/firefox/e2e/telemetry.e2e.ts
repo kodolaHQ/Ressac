@@ -92,8 +92,9 @@ it("chrome error: our chrome's errors are sent scrubbed, a web page's are not", 
   expect(boom()!.event.exception.values[0]).toMatchObject({ type: "TypeError", value: "boom <url>" });
   expect(boom()!.raw).not.toContain("exemple.fr");
   await logError("https://exemple.fr/app.js", "TypeError: web page");
+  await logError("chrome://browser/content/webaios/page-actor.sys.mjs", "TypeError: actor error");
   await settle();
-  expect(envelopes.filter((e) => e.raw.includes("web page"))).toEqual([]);
+  expect(envelopes.filter((e) => e.raw.includes("web page") || e.raw.includes("actor error"))).toEqual([]);
 });
 
 it("notice: shown once, « Couper l'envoi » turns sending off for good", async () => {

@@ -15,17 +15,20 @@ kernel=$repo_root/packages/kernel
 node_version=v22.23.2
 node_tar=node-$node_version-darwin-arm64.tar.gz
 node_sha256=61130f394c1630d211dd50aecc4353d379480f36d3ac913cd85dbba1aed585c6
-node_cache=$HOME/WebAiOs-firefox/cache
+# Under dist/ (git-ignored), outside $work: neither the cleanup, the leak check nor the DMG touch it.
+node_cache=$app_dir/dist/cache
 sentry_cli=@sentry/cli@2.58.6
 
 step() { print -r -- "==> $*" }
 fail() { print -u2 -- "package: $*"; exit 1 }
+# exit, not return: zsh skips the EXIT trap when errexit fires on a function return, and the trap is the retry.
 # The packaged UI build blanks the dev host paths and bakes the DSN into src/ and the dev app: put the dev bundles back once the app is staged.
 dev_ui_dirty=
+# exit, not return: zsh skips the EXIT trap (the retry) when errexit fires on a function return.
 restore_dev_ui() {
-  dev_ui_dirty=
   step "Restoring the dev UI bundles"
-  env -u WEBAIOS_PACKAGE -u WEBAIOS_SENTRY_DSN corepack pnpm run build:ui || { print -u2 -- "package: could not restore the dev UI, run build:ui"; return 1 }
+  env -u WEBAIOS_PACKAGE -u WEBAIOS_SENTRY_DSN corepack pnpm run build:ui || { print -u2 -- "package: could not restore the dev UI, run build:ui"; exit 1 }
+  dev_ui_dirty=
 }
 node_x=
 cleanup() {

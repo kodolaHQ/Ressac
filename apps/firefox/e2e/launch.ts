@@ -91,6 +91,8 @@ export async function launchWebAiOs(o: { headed?: boolean; width?: number; heigh
         WEBAIOS_PORT_MCP_EXTERNAL: "0",
         // The host's notifications go to a file, never to the owner's screen (a test passes its own file to read them).
         WEBAIOS_TEST_NOTIFICATIONS: path.join(dataDir, "notifications.jsonl"),
+        // No real Sentry from a test: only one that passes a DSN itself gets one.
+        WEBAIOS_SENTRY_DSN: "",
         ...o.env,
         PATH: `${FAKE_TOOLS}${path.delimiter}${process.env.PATH ?? ""}`,
       }, },

@@ -2,6 +2,7 @@ import { createReporter, parseDsn, type ReportedError } from "../../shared/telem
 
 const ENABLED = "webaios.telemetry.enabled";
 // Our own chrome only: a web page's errors are its own (and would carry its addresses).
+const CRASH_TAB_SEND = "browser.tabs.crashReporting.sendReport";
 const OURS = "chrome://browser/content/webaios/";
 
 /**
@@ -25,6 +26,8 @@ export function installTelemetry(): { report(e: ReportedError): void; active: bo
       const crashReporter = Services.appinfo.QueryInterface(Ci.nsICrashReporter);
       const on = active && enabled();
       if (crashReporter.submitReports !== on) crashReporter.submitReports = on;
+      // The crashed-tab page's "send report" box starts from this pref.
+      Services.prefs.setBoolPref(CRASH_TAB_SEND, on);
     } catch {}
   };
   syncCrashReports();
@@ -33,7 +36,8 @@ export function installTelemetry(): { report(e: ReportedError): void; active: bo
     Services.console.registerListener({
       observe(m: any) {
         if (!(m instanceof Ci.nsIScriptError) || m.flags & (Ci.nsIScriptError.warningFlag | Ci.nsIScriptError.infoFlag)) return;
-        if (!m.sourceName.startsWith(OURS)) return;
+        // JSWindowActor modules run in content processes: their errors come from inside web pages.
+        if (!m.sourceName.startsWith(OURS) || m.sourceName.endsWith("-actor.sys.mjs")) return;
         const typed = /^(\w+): ([\s\S]*)$/.exec(m.errorMessage);
         const stack = m.stack ? String(m.stack) : `@${m.sourceName}:${m.lineNumber}:${m.columnNumber}`;
         reporter.report({ source: "chrome", type: typed?.[1] ?? "Error", message: typed?.[2] ?? m.errorMessage, stack });

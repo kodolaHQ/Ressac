@@ -29,8 +29,8 @@ export default defineConfig(({ mode }) => {
         __WEBAIOS_NODE__: JSON.stringify(packaged ? "" : nodePath),
         __WEBAIOS_TSX__: JSON.stringify(packaged ? "" : tsxPath),
         __WEBAIOS_HOST__: JSON.stringify(packaged ? "" : hostPath),
-        // Where error reports go (chrome/store/telemetry.ts): empty, nothing is sent.
-        __WEBAIOS_SENTRY_DSN__: JSON.stringify(process.env.WEBAIOS_SENTRY_DSN ?? ""),
+        // Where error reports go (chrome/store/telemetry.ts): only a packaged build bakes it in, a dev build sends nothing.
+        __WEBAIOS_SENTRY_DSN__: JSON.stringify(packaged ? (process.env.WEBAIOS_SENTRY_DSN ?? "") : ""),
       },
       resolve: {
         alias: {
