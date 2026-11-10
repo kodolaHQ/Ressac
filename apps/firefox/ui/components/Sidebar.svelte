@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Panel } from "../../shared/api";
-  import { URL_ACTIONS, URL_APPLICATIONS, workflowUrlTarget, type WindowState } from "../../shared/model";
+  import { URL_ACTIONS, URL_APPLICATIONS, URL_SETTINGS, workflowUrlTarget, type WindowState } from "../../shared/model";
   import { api, appState, downloads } from "../state.svelte";
   import UrlBar from "./UrlBar.svelte";
   import Essentials from "./Essentials.svelte";
@@ -94,6 +94,14 @@
       title="Actions"
       aria-pressed={activeTab?.url === URL_ACTIONS}
       onclick={() => api.dispatch({ type: "openActions", windowId: win.id })}><Icon name="actions" /></button
+    >
+    <button
+      class="tool"
+      data-testid="settings-button"
+      aria-label="Réglages (⌘,)"
+      title="Réglages (⌘,)"
+      aria-pressed={activeTab?.url === URL_SETTINGS}
+      onclick={() => api.dispatch({ type: "openSettings", windowId: win.id })}><Icon name="settings" /></button
     >
     {#if downloads.list.length}
       <button class="downloads" aria-label="Téléchargements" title="Téléchargements" onclick={() => togglePanel?.("downloads")}>
