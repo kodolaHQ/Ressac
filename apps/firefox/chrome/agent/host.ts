@@ -1,4 +1,5 @@
 import { createRpc, type Handler, type Rpc } from "../../shared/rpc";
+import { hostCommand } from "./command";
 import { lineSplitter } from "./lines";
 
 export const HOST_STOPPED = "Le noyau de l'agent s'est arrêté.";
@@ -43,20 +44,25 @@ export function createHost(o: {
   handlers: Record<string, Handler>;
   /** Each new process, before any other message: what the host must know first (private tabs mirror). */
   onStart(notify: (method: string, params?: unknown) => void): void;
+  /** A process ended without stop() asking it to (a crash, a kill): once per process. */
+  onUnexpectedExit?(code: number | null): void;
 }): AgentHost {
   const listeners = new Map<string, Set<(params: any) => void>>();
   // createRpc looks handlers up on each message: notifications listened to with on() are added here.
   const handlers: Record<string, Handler> = { ...o.handlers };
   let current: Promise<Running> | null = null;
   let pid: number | null = null;
+  // The processes stop() ended: their exit is no crash.
+  const stopped = new WeakSet<object>();
 
   const spawn = async (): Promise<Running> => {
     // Imported here, not at the top: the UI bundles import this file's constants.
     const { Subprocess } = ChromeUtils.importESModule("resource://gre/modules/Subprocess.sys.mjs");
+    const cmd = await hostCommand(Services.dirsvc.get("GreD", Ci.nsIFile).path, (p) => IOUtils.exists(p));
     const proc = await Subprocess.call({
-      command: __WEBAIOS_NODE__,
-      arguments: ["--import", __WEBAIOS_TSX__, __WEBAIOS_HOST__],
-      environment: { WEBAIOS_DATA_DIR: o.dataDir },
+      command: cmd.command,
+      arguments: cmd.arguments,
+      environment: { ...cmd.environment, WEBAIOS_DATA_DIR: o.dataDir },
       environmentAppend: true,
       stderr: "pipe",
     });
@@ -78,7 +84,10 @@ export function createHost(o: {
     void readLines(proc.stderr, (l) => console.warn(`[kernel] ${l}`));
     o.onStart((method, params) => rpc.notify(method, params));
     pid = proc.pid;
-    void proc.wait().then(exited);
+    void proc.wait().then(({ exitCode }: { exitCode: number | null }) => {
+      exited();
+      if (!stopped.has(proc)) o.onUnexpectedExit?.(exitCode);
+    });
     return { proc, rpc };
   };
 
@@ -109,6 +118,7 @@ export function createHost(o: {
     async stop() {
       const r = await current?.catch(() => null);
       if (!r) return;
+      stopped.add(r.proc);
       const timeout = new Promise((resolve) => setTimeout(resolve, STOP_TIMEOUT_MS));
       await Promise.race([r.rpc.request("stop").then(() => r.proc.wait()), timeout]).catch(() => {});
       await r.proc.kill();

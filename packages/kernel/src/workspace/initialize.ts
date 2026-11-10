@@ -3,10 +3,10 @@ import { constants } from "node:fs";
 import { copyFile, lstat, mkdir, readdir, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type { SpacePaths } from "../paths.js";
+import { KERNEL_ROOT, type SpacePaths } from "../paths.js";
 
 /** Templates folder of the package; a browser that embeds the kernel can provide another. */
-export const DEFAULT_TEMPLATES = join(import.meta.dirname, "..", "..", "templates");
+export const DEFAULT_TEMPLATES = join(KERNEL_ROOT, "templates");
 
 /**
  * sha256 hashes of old versions of the AGENTS.md template. An AGENTS.md that has one is left as

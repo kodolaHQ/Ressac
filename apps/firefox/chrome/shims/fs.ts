@@ -16,6 +16,9 @@ export const access = async (path: string): Promise<void> => {
 export const rename = (from: string, to: string): Promise<void> => wrap(from, () => IOUtils.move(from, to));
 export const mkdir = (path: string, _options: { recursive: true }): Promise<void> =>
   IOUtils.makeDirectory(path, { createAncestors: true, ignoreExisting: true });
+export const writeFile = (path: string, text: string): Promise<void> => IOUtils.writeUTF8(path, text, { flush: true }).then(() => {});
+/** Entry names only, like Node's readdir. */
+export const readdir = async (path: string): Promise<string[]> => (await wrap(path, () => IOUtils.getChildren(path))).map((child) => PathUtils.filename(child));
 export const rm = (path: string, _options: { force: true }): Promise<void> => IOUtils.remove(path, { ignoreAbsent: true });
 
 /** Only mode "w" (truncate). Each writeFile is flushed to disk, so sync has nothing left to do. */
@@ -28,4 +31,4 @@ export async function open(path: string, _mode: "w") {
   };
 }
 
-export default { readFile, access, rename, mkdir, rm, open };
+export default { readFile, access, rename, mkdir, writeFile, readdir, rm, open };

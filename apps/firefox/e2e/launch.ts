@@ -1,8 +1,9 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { cp, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { DATA_FORMAT } from "../core/state/format";
 import { Marionette } from "./marionette";
 
 // Fake docker (a wrapper of fake-docker.cjs that knows the Firefox container name): no test ever touches a real container.
@@ -62,6 +63,9 @@ export async function launchWebAiOs(o: { headed?: boolean; width?: number; heigh
   const dataDir = o.dataDir ?? (await mkdtemp(path.join(os.tmpdir(), "webaios-data-")));
   const cleanup = () =>
     Promise.all([o.profile ? undefined : rm(profile, { recursive: true, force: true }), o.dataDir ? undefined : rm(dataDir, { recursive: true, force: true })]);
+  // The current data format: without the marker the store would set the folder aside.
+  await mkdir(dataDir, { recursive: true });
+  await writeFile(path.join(dataDir, ".format-version"), JSON.stringify({ format: DATA_FORMAT }));
   if (!o.starterHarvests) await seedStarterWidgets(dataDir);
   // A reused profile may hold the previous run's port file.
   await rm(path.join(profile, "MarionetteActivePort"), { force: true });
@@ -87,6 +91,8 @@ export async function launchWebAiOs(o: { headed?: boolean; width?: number; heigh
         WEBAIOS_PORT_MCP_EXTERNAL: "0",
         // The host's notifications go to a file, never to the owner's screen (a test passes its own file to read them).
         WEBAIOS_TEST_NOTIFICATIONS: path.join(dataDir, "notifications.jsonl"),
+        // No real Sentry from a test: only one that passes a DSN itself gets one.
+        WEBAIOS_SENTRY_DSN: "",
         ...o.env,
         PATH: `${FAKE_TOOLS}${path.delimiter}${process.env.PATH ?? ""}`,
       }, },

@@ -97,6 +97,31 @@ window.addEventListener(
           [],
         );
       }
+      if (first && store.formatSetAside) {
+        void window.gNotificationBox.appendNotification(
+          "webaios-data-set-aside",
+          {
+            label: `WebAiOs ne reconnaît pas le format de ses données : il repart à neuf et les garde dans ${store.formatSetAside}. Vos projets n'ont pas bougé.`,
+            priority: window.gNotificationBox.PRIORITY_WARNING_HIGH,
+          },
+          [],
+        );
+      }
+      // Once ever: error reports go out, and how to turn them off.
+      if (first && store.telemetryActive && !Services.prefs.getBoolPref("webaios.telemetry.noticeShown", false)) {
+        Services.prefs.setBoolPref("webaios.telemetry.noticeShown", true);
+        void window.gNotificationBox.appendNotification(
+          "webaios-telemetry",
+          {
+            label: "WebAiOs envoie à son développeur les plantages et les erreurs, sans adresse de page, pour corriger les bugs de la bêta. Un plantage peut contenir des fragments de mémoire.",
+            priority: window.gNotificationBox.PRIORITY_INFO_HIGH,
+          },
+          [
+            { label: "Couper l'envoi", callback: () => Services.prefs.setBoolPref("webaios.telemetry.enabled", false) },
+            { label: "D'accord", callback: () => {} },
+          ],
+        );
+      }
       // The UI reads window.webaiosWindow as it loads. Without the UI's network guard, neither loads.
       if (!sidebarMayLoad || !agentMayLoad) return;
       frame.src = "chrome://browser/content/webaios/sidebar.html";

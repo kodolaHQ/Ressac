@@ -1,5 +1,7 @@
 import type { Decision, AccessState, WindowId, ProfileId } from "../../shared/model";
 import { privateTab, tabProfile, profilesInUse } from "../../shared/model";
+import type { ReportedError } from "../../shared/telemetry";
+import { checkDataFormat } from "../../core/state/format";
 import { loadSession, SessionRecorder } from "../../core/state/persistence";
 import { bridgeHandlers, sendMirror, trackState } from "../agent/bridge";
 import { createHost, HOST_EXITED, type AgentHost } from "../agent/host";
@@ -20,6 +22,7 @@ import { registerPermissionHooks } from "./permission-hooks";
 import { createSitePermissions, type SitePermission, type SitePermissions } from "./site-permissions";
 import { bindSites, sites, type SiteApps } from "./sites";
 import { createStore, type Store } from "./store";
+import { installTelemetry } from "./telemetry";
 import { createWindowRegistry, type WindowRegistry } from "./windows";
 import { installUiNetwork, isUiDocument, type UiNetworkState } from "./ui-network";
 import { gestureGuard } from "../../shared/widget-gesture";
@@ -31,6 +34,9 @@ export interface WebAiOsStore extends Store {
   readonly dataDir: string;
   /** Where an unreadable session was set aside at startup, or null. */
   readonly setAside: string | null;
+  readonly formatSetAside: string | null;
+  /** Error reports go out (a DSN is set): the first window tells it once. */
+  readonly telemetryActive: boolean;
   flush(): Promise<void>;
   /** userContextId of a login profile: 0 for DEFAULT_PROFILE, an internal container otherwise (created on first use). */
   containerFor(profile: ProfileId): number;
@@ -118,7 +124,7 @@ const firefoxPermissions = {
 };
 
 const dataDir =
-  Services.env.get("WEBAIOS_DATA_DIR") || PathUtils.join(Services.dirsvc.get("Home", Ci.nsIFile).path, "WebAiOs-firefox", "data");
+  Services.env.get("WEBAIOS_DATA_DIR") || PathUtils.join(Services.dirsvc.get("Home", Ci.nsIFile).path, "WebAiOs");
 
 const widgetGestures = gestureGuard<string>();
 
@@ -127,6 +133,10 @@ let uiNetState: UiNetworkState;
 async function start(): Promise<WebAiOsStore> {
   // The UI's network net first, before any await: the windows read its state before they give their frames a src.
   uiNetState = installUiNetwork(Services.env.get("WEBAIOS_TEST_UI_NETWORK_FAIL") || null);
+  // Before anything else can fail: its errors are reported.
+  const telemetry = installTelemetry();
+  // Before anything touches the data folder: an unknown format sets it aside (workspace/ stays).
+  const formatSetAside = await checkDataFormat(dataDir).catch((e) => (console.error("[data] format check failed:", e), null));
   // Our history is the only one: Firefox's would grow unread. Set at runtime on the default branch, before any window
   // (favicons, back/forward and reopening a closed tab keep working: plan 24 spike S1).
   Services.prefs.getDefaultBranch("").setBoolPref("places.history.enabled", false);
@@ -325,6 +335,7 @@ async function start(): Promise<WebAiOsStore> {
       // Its sites handlers are up: the host asks which app windows are open (sites.ouvertes).
       notify("sites.ready");
     },
+    onUnexpectedExit: (code) => telemetry.report({ source: "host", type: "HostExit", message: `exit code ${code}` }),
   });
   // « Ouvrir dans un onglet » of a site app: a tab of the last main window, in its active space, brought to the front
   // (« Ouvrir dans un onglet »); with no main window open, one opens first.
@@ -347,6 +358,7 @@ async function start(): Promise<WebAiOsStore> {
   refreshMirror = trackState(store, agent, windows);
   // Registered before any UI listener: the UI reads `access` once it is updated.
   agent.on("access", (e: AccessState) => (access = e));
+  agent.on("telemetryError", (e: ReportedError) => telemetry.report({ ...e, source: "host" }));
   agent.on(HOST_EXITED, () => {
     access = { agent: access.agent, tabs: {} };
     // Its kernel is gone: nothing stays attached for it, and its apps' windows close (its successor stops the orphans).
@@ -364,6 +376,8 @@ async function start(): Promise<WebAiOsStore> {
     subscribe: store.subscribe,
     dataDir,
     setAside,
+    formatSetAside,
+    telemetryActive: telemetry.active,
     flush,
     containerFor,
     agent,
