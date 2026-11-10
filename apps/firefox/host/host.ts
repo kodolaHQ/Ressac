@@ -27,6 +27,7 @@ const { createRpc } = await import("../shared/rpc.ts");
 const { RemoteBridge } = await import("./remote-bridge.ts");
 const { createSites } = await import("./sites.ts");
 const { createDesignHost, DESIGN_METHODS, externalMcpPort } = await import("./design.ts");
+const { createSettingsHandlers, SETTINGS_METHODS } = await import("./settings.ts");
 const { createApplicationsHost } = await import("./applications.ts");
 const { createActionsHost } = await import("./actions.ts");
 const { ExtensionsAgent } = await import("./extensions/agent.ts");
@@ -205,6 +206,14 @@ const start = async () => {
   return { agent: n.agent };
 };
 
+// Through the kernel, which also writes the grants; without it, the files directly.
+const denyWidget = async (w: string) => {
+  const n = await ready;
+  if (n) return n.denyGrant(w);
+  await removeGrant(widgetsFolder, w);
+  await deleteData(widgetsFolder, w);
+};
+
 let profile: string | null = null;
 // Another profile: a new kernel (command, MCP config) and a new agent in every panel. Never two kernels at once:
 // two MCP servers would write the same mcp.json.
@@ -314,12 +323,7 @@ const rpc = createRpc({
     "home.remove": (p: { id?: unknown }) => {
       const id = typeof p?.id === "string" ? p.id : "";
       // The grant and the data read with the account leave with the widget (through the kernel, which also writes the grants).
-      void removeWidget(paths, id, async (w) => {
-        const n = await ready;
-        if (n) return n.denyGrant(w);
-        await removeGrant(widgetsFolder, w);
-        await deleteData(widgetsFolder, w);
-      }).then(
+      void removeWidget(paths, id, denyWidget).then(
         () => rpc.notify("home.change"),
         (e) => console.error(`[webaios] widget ${id} not removed:`, e),
       );
@@ -569,6 +573,8 @@ const rpc = createRpc({
     // The agent's applications (host/applications.ts): `apps` is made after the RPC, below.
     ...Object.fromEntries(["apps.list", "apps.act", "apps.windowClosed", "apps.navigation", "apps.note"].map((k) => [k, (p: unknown) => apps.handlers[k]!(p)])),
     // Design mode's host side (host/design.ts): `design` is made after `sites`, below.
+    // The settings page (host/settings.ts): `settings` is made after `sites` and `actions`, below.
+    ...Object.fromEntries(SETTINGS_METHODS.map((k) => [k, (p: unknown) => settings[k]!(p)])),
     ...Object.fromEntries(DESIGN_METHODS.map((k) => [k, (p: unknown) => design.handlers[k]!(p)])),
     ...(process.env.WEBAIOS_HOST_TEST === "1" ? { "debug.log": (p: { text: string }) => console.log(p.text) } : {}),
   },
@@ -688,6 +694,23 @@ try {
 } catch (e) {
   console.error("[webaios] the actions watch did not start:", e);
 }
+const settings = createSettingsHandlers({
+  workshop,
+  ai,
+  stopApps: () => apps.manager.stopAll(),
+  relaunchSessions: () => sessions.relaunchAll(),
+  dataDir,
+  widgetsFolder,
+  actionsFolder,
+  names: async (kind) => {
+    if (kind === "widget") return Object.fromEntries((await readHome(paths, widgetsFolder)).widgets.flatMap((w) => ("declaration" in w ? [[w.id, w.declaration.name]] : [])));
+    const l = kind === "action" ? await actions.list() : await sites.list();
+    return Object.fromEntries(l.map((x) => [x.id, x.name]));
+  },
+  denyWidget,
+  denyAction: async (id) => void (await actions.denyGrant(id)),
+  revokeSite: (id) => sites.revokeGrant(id),
+});
 // The chrome may not answer yet (its handlers come up later): it calls "sites.ready" once it does.
 void sites.resync().catch(() => {});
 let extensionsStartup: Promise<void> | undefined;

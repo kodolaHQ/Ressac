@@ -535,7 +535,8 @@ export interface ProfileForGrant {
 export interface LocalAiStateShown {
   state: AiState;
   error?: string;
-  verification?: { kev: boolean; uv: boolean; ollama: boolean; gemma: boolean };
+  verification?: { kev: boolean; uv: boolean; ollama: boolean; gemma: boolean; decision: boolean };
+  ollamaUrl?: string;
 }
 
 /** What an app window's badge UI gets (ui/badge-api.ts): the agent's access and its app's design mode. */
