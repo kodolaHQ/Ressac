@@ -1,5 +1,6 @@
 import type { Decision, AccessState, WindowId, ProfileId } from "../../shared/model";
 import { privateTab, tabProfile, profilesInUse } from "../../shared/model";
+import { checkDataFormat } from "../../core/state/format";
 import { loadSession, SessionRecorder } from "../../core/state/persistence";
 import { bridgeHandlers, sendMirror, trackState } from "../agent/bridge";
 import { createHost, HOST_EXITED, type AgentHost } from "../agent/host";
@@ -31,6 +32,7 @@ export interface WebAiOsStore extends Store {
   readonly dataDir: string;
   /** Where an unreadable session was set aside at startup, or null. */
   readonly setAside: string | null;
+  readonly formatSetAside: string | null;
   flush(): Promise<void>;
   /** userContextId of a login profile: 0 for DEFAULT_PROFILE, an internal container otherwise (created on first use). */
   containerFor(profile: ProfileId): number;
@@ -118,7 +120,7 @@ const firefoxPermissions = {
 };
 
 const dataDir =
-  Services.env.get("WEBAIOS_DATA_DIR") || PathUtils.join(Services.dirsvc.get("Home", Ci.nsIFile).path, "WebAiOs-firefox", "data");
+  Services.env.get("WEBAIOS_DATA_DIR") || PathUtils.join(Services.dirsvc.get("Home", Ci.nsIFile).path, "WebAiOs");
 
 const widgetGestures = gestureGuard<string>();
 
@@ -127,6 +129,8 @@ let uiNetState: UiNetworkState;
 async function start(): Promise<WebAiOsStore> {
   // The UI's network net first, before any await: the windows read its state before they give their frames a src.
   uiNetState = installUiNetwork(Services.env.get("WEBAIOS_TEST_UI_NETWORK_FAIL") || null);
+  // Before anything touches the data folder: an unknown format sets it aside (workspace/ stays).
+  const formatSetAside = await checkDataFormat(dataDir);
   // Our history is the only one: Firefox's would grow unread. Set at runtime on the default branch, before any window
   // (favicons, back/forward and reopening a closed tab keep working: plan 24 spike S1).
   Services.prefs.getDefaultBranch("").setBoolPref("places.history.enabled", false);
@@ -364,6 +368,7 @@ async function start(): Promise<WebAiOsStore> {
     subscribe: store.subscribe,
     dataDir,
     setAside,
+    formatSetAside,
     flush,
     containerFor,
     agent,

@@ -97,6 +97,16 @@ window.addEventListener(
           [],
         );
       }
+      if (first && store.formatSetAside) {
+        void window.gNotificationBox.appendNotification(
+          "webaios-data-set-aside",
+          {
+            label: `WebAiOs ne reconnaît pas le format de ses données : il repart à neuf et les garde dans ${store.formatSetAside}. Vos projets n'ont pas bougé.`,
+            priority: window.gNotificationBox.PRIORITY_WARNING_HIGH,
+          },
+          [],
+        );
+      }
       // The UI reads window.webaiosWindow as it loads. Without the UI's network guard, neither loads.
       if (!sidebarMayLoad || !agentMayLoad) return;
       frame.src = "chrome://browser/content/webaios/sidebar.html";
