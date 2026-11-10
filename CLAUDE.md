@@ -21,3 +21,8 @@ After a clone: `npm ci` in `.claude/marketplace-local/plugins/svelte-lsp`.
 - **During a plan's task**: run only the e2e files the task touches or whose tested code it changes (`corepack pnpm --filter firefox-webaios exec vitest run -c vitest.e2e.config.ts e2e/<file>`).
 - **The full suite**: once at the end of the plan, before the final review, and after the final fix pass.
 - Do not run the suite during the owner's `build:ui`: the binary disappears and everything fails with "build missing".
+
+## Specs, plans, notes; local settings
+
+- They live outside the repo, in `../WebAiOs-docs/superpowers`. `docs/superpowers` is a git-ignored link to it (`ln -s ../../WebAiOs-docs/superpowers docs/superpowers`), so the usual paths keep working. Never commit them.
+- The local plugin marketplace is declared in `.claude/settings.local.json` (git-ignored, absolute path): after a clone, add `extraKnownMarketplaces.webaios-local` with `{"source": "directory", "path": "<repo>/.claude/marketplace-local"}`.
