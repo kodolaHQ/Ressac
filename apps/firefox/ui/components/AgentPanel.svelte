@@ -1,6 +1,7 @@
 <script lang="ts">
   import { tick, untrack } from "svelte";
   import { api, appState as browserState } from "../state.svelte";
+  import type { AgentAccount } from "../../shared/settings";
   import { focusAgent } from "./agent.svelte";
   import * as terminalAgent from "./terminalAgent.svelte";
 
@@ -39,12 +40,28 @@
   const appState = $derived(terminalAgent.agent.state);
 
   let profiles = $state<{ id: string; name: string }[]>([]);
-  const agentProfile = $derived(browserState.value?.settings.agentProfile ?? "claude");
+  let accounts = $state<AgentAccount[]>([]);
+  /** The window's own agent (the host's), not the setting: switching only concerns this window. */
+  let current = $state<string | null>(null);
+  const refreshAccounts = () => api.settings.agents().then((a) => (accounts = a), () => {});
   $effect(() => {
-    if (visible) api.agent.profiles().then((p) => (profiles = p), () => {});
+    if (!visible) return;
+    api.agent.profiles().then((p) => (profiles = p), () => {});
+    void refreshAccounts();
   });
-  // A single profile: nothing to choose. The menu stays if the chosen profile has disappeared, so it can be changed.
-  const profileChoice = $derived(profiles.length >= 2 || (profiles.length > 0 && !profiles.some((p) => p.id === agentProfile)));
+  // Read again at each state the host sends (a switch or a restart changes it).
+  $effect(() => {
+    void appState;
+    api.agent.current().then((c) => (current = c), () => {});
+  });
+  const account = (id: string | null) => accounts.find((a) => a.id === id);
+  const signedOutCodex = $derived(current === "codex" && browserState.value?.settings.codexEngine.kind === "chatgpt" && account("codex")?.state === "logged-out");
+  const profileChoice = $derived(profiles.length >= 2);
+  function choose(id: string) {
+    api.agent.switch(id);
+    current = id;
+    void refreshAccounts();
+  }
 
   // The window's terminal comes here on the first opening of this panel, then stays attached: closing the panel only
   // hides it, the conversation goes on. The « Agent » tab borrows it while it is shown.
@@ -92,13 +109,17 @@
     <header>
       <select
         data-testid="agent-profile"
-        aria-label="Profil d'agent"
-        value={agentProfile}
-        onchange={(e) => api.dispatch({ type: "chooseAgentProfile", profile: e.currentTarget.value })}
+        aria-label="Agent"
+        value={current ?? ""}
+        onchange={(e) => choose(e.currentTarget.value)}
       >
-        {#each profiles as p (p.id)}<option value={p.id}>{p.name}</option>{/each}
+        {#each profiles as p (p.id)}<option value={p.id}>{p.name}{account(p.id)?.state === "logged-out" ? " (non connecté)" : ""}</option>{/each}
       </select>
     </header>
+  {/if}
+  {#if signedOutCodex}
+    <p class="message">Codex n'est pas connecté à votre compte ChatGPT.</p>
+    <button data-testid="agent-login-settings" onclick={() => api.dispatch({ type: "openSettings", windowId: api.windowId })}>Se connecter</button>
   {/if}
   {#if appState.state === "preparing"}
     <p class="message">Préparation de l'agent… (la première fois, la construction du conteneur prend quelques minutes)</p>

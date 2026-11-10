@@ -117,8 +117,8 @@ it("a second profile in .webaios/profiles appears in the panel; choosing it rest
     const select = '[data-testid="agent-profile"]';
     expect(await waitUi(m, "const o = [...(doc.querySelector(arguments[0])?.options ?? [])].map((x) => x.textContent.trim()); return o.length && o", [select], 10_000, "agent")).toEqual([
       "Autre",
-      "Claude Code",
-      "Codex",
+      "Claude Code (non connecté)",
+      "Codex (non connecté)",
     ]);
     await inUi(m, "const s = doc.querySelector(arguments[0]); s.value = 'autre'; s.dispatchEvent(new ui.Event('change', { bubbles: true }));", [select], "agent");
     await waitFor(m, "return 1", () => read(pidFile) !== "" && read(pidFile) !== first, 20_000);
@@ -131,14 +131,69 @@ it("a second profile in .webaios/profiles appears in the panel; choosing it rest
   }
 });
 
-it("the built-in profiles: Claude Code and Codex in the menu", async () => {
+it("the built-in profiles: Claude Code and Codex in the menu, signed-out ones marked (the fake docker has no account)", async () => {
   await launch();
   await shown();
   await terminalShows("fake agent ready>");
   expect(await waitUi(m, "const o = [...(doc.querySelector('[data-testid=\"agent-profile\"]')?.options ?? [])].map((x) => x.textContent.trim()); return o.length && o", [], 10_000, "agent")).toEqual([
-    "Claude Code",
-    "Codex",
+    "Claude Code (non connecté)",
+    "Codex (non connecté)",
   ]);
+});
+
+describe("the agent selector", () => {
+  const SELECT = '[data-testid="agent-profile"]';
+  const argsFile = () => join(w!.dataDir, "workspace", "fake-agent-args.json");
+  const args = (): string[] => (read(argsFile()) ? JSON.parse(read(argsFile())) : []);
+  const pick = (id: string) => inUi(m, "const s = doc.querySelector(arguments[0]); s.value = arguments[1]; s.dispatchEvent(new ui.Event('change', { bubbles: true }));", [SELECT, id], "agent");
+  const argsAre = (first: string) => waitFor(m, "return 1", () => args()[0] === first, 20_000);
+
+  it("switching to Codex opens a new conversation in this window only; switching back resumes; new windows take the last choice", async () => {
+    await launch();
+    await shown();
+    await terminalShows("fake agent ready>");
+    const a = (await m.command<{ value: string }>("WebDriver:GetWindowHandle")).value;
+    const second = await newWindow(m);
+    await inWindow(m, second, async () => {
+      await shown();
+      await terminalShows("fake agent ready>");
+      await click(m, ".xterm-screen", { frame: "agent" });
+      await send("avant");
+      await terminalShows("received: avant");
+    });
+    await m.command("WebDriver:SwitchToWindow", { handle: a, focus: false });
+    await pick("codex");
+    await argsAre("codex");
+    expect(args()).not.toContain("resume");
+    await inWindow(m, second, async () => {
+      expect(await terminalText()).toContain("received: avant");
+      expect(await inUi(m, `return doc.querySelector(${JSON.stringify(SELECT)}).value`, [], "agent")).toBe("claude");
+    });
+    await pick("claude");
+    await waitFor(m, "return 1", () => args().includes("--continue"), 20_000);
+    await pick("codex");
+    await waitFor(m, "return 1", () => args().includes("resume") && args().includes("--last"), 20_000);
+    expect(args()[0]).toBe("codex");
+    // A new window takes the last chosen agent.
+    await pressKeys(m, "Meta+n");
+    const third = (await waitWindowCount(m, 3)).find((h) => h !== a && h !== second)!;
+    await inWindow(m, third, () => waitReady(m));
+    await inWindow(m, third, async () => {
+      await waitFor(m, "return !document.getElementById('webaios-agent').hidden", (v) => v === true);
+      await waitUi(m, `return doc.querySelector(${JSON.stringify(SELECT)})?.value === "codex"`, [], 20_000, "agent");
+    });
+  });
+
+  it("Codex not signed in: a line and a button to Settings", async () => {
+    await launch();
+    await shown();
+    await terminalShows("fake agent ready>");
+    await pick("codex");
+    await panelShows("Codex n'est pas connecté à votre compte ChatGPT.");
+    await click(m, '[data-testid="agent-login-settings"]', { frame: "agent" });
+    for (const end = Date.now() + 10_000; !Object.values((await state(m)).tabs).some((t) => t.url === "webaios://settings"); await new Promise((r) => setTimeout(r, 100)))
+      if (Date.now() > end) throw new Error("Settings did not open");
+  });
 });
 
 it("the ✦ button opens and closes the panel", async () => {
