@@ -20,6 +20,19 @@ sentry_cli=@sentry/cli@2.58.6
 
 step() { print -r -- "==> $*" }
 fail() { print -u2 -- "package: $*"; exit 1 }
+# The packaged UI build blanks the dev host paths in src/ and the dev app: put the dev bundles back once the app is staged.
+dev_ui_dirty=
+restore_dev_ui() {
+  dev_ui_dirty=
+  step "Restoring the dev UI bundles"
+  env -u WEBAIOS_PACKAGE corepack pnpm run build:ui || { print -u2 -- "package: could not restore the dev UI, run build:ui"; return 1 }
+}
+node_x=
+cleanup() {
+  if [[ -n $node_x ]]; then rm -rf $node_x; fi
+  if [[ -n $dev_ui_dirty ]]; then restore_dev_ui; fi
+}
+trap cleanup EXIT
 
 # 1. Version and telemetry.
 version=$(node -p 'require("./surfer.json").brands.webaios.release.displayVersion')
@@ -39,6 +52,7 @@ step "Packaging WebAiOs $version"
 export WEBAIOS_PACKAGE=1
 build_id() { grep -s '^BuildID=' $objdist/bin/application.ini || true }
 before=$(build_id)
+dev_ui_dirty=1
 corepack pnpm run build
 # surfer build exits 0 without building when it asks, with no terminal, to go on despite unimported patches.
 [[ $(build_id) != "$before" && -n $(build_id) ]] || fail "the build did not run (unimported patches? run engine:import first)"
@@ -55,6 +69,7 @@ ditto $staged $app
 dev_files=$(find $app \( -iname '*gtest*' -o -name 'xpcshell*' -o -name .lldbinit \) -print)
 [[ -z $dev_files ]] || fail "test files in the staged app:\n$dev_files"
 if grep -q 'mozilla.com' $res/application.ini; then fail "application.ini still points at Mozilla's crash server (mozconfig MOZ_CRASHREPORTER_URL)"; fi
+restore_dev_ui
 
 # 4. Node, checked against the hash published on nodejs.org.
 step "Node $node_version"
@@ -65,7 +80,6 @@ if [[ ! -f $node_cache/$node_tar ]]; then
 fi
 print -r -- "$node_sha256  $node_cache/$node_tar" | shasum -a 256 -c - >/dev/null || fail "$node_tar does not match its SHA-256, delete it from $node_cache and retry"
 node_x=$(mktemp -d)
-trap 'rm -rf $node_x' EXIT
 tar -xzf $node_cache/$node_tar -C $node_x node-$node_version-darwin-arm64/bin/node node-$node_version-darwin-arm64/LICENSE
 
 # 5. The bundled host: the layout chrome/agent/command.ts expects (see test/host-bundle.test.ts).
@@ -91,12 +105,13 @@ node -e '
 [[ -s $host/LICENSES/third-party.txt ]] || fail "empty third-party license list"
 
 # 6. Crash reports go to our Sentry, or nowhere.
+crash_section() { sed -n '/^\[Crash Reporter\]/,/^\[/p' $res/application.ini }
 if [[ -n $minidump_url ]]; then
   sed -i '' "/^\[Crash Reporter\]/,/^\[/s|^ServerURL=.*|ServerURL=$minidump_url|" $res/application.ini
-  grep -qxF "ServerURL=$minidump_url" $res/application.ini || fail "could not set the crash ServerURL in application.ini"
+  crash_section | grep -qxF "ServerURL=$minidump_url" || fail "could not set the crash ServerURL in application.ini"
 else
   sed -i '' '/^\[Crash Reporter\]/,/^\[/s|^Enabled=.*|Enabled=0|' $res/application.ini
-  grep -qx 'Enabled=0' $res/application.ini || fail "could not disable the crash reporter in application.ini"
+  crash_section | grep -qx 'Enabled=0' || fail "could not disable the crash reporter in application.ini"
 fi
 
 # 7. No path of this Mac may ship.
