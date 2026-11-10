@@ -74,7 +74,7 @@ export class ExternalRegistry {
 
   // Computes the new state, writes it (clients first), and only then adopts it in memory.
   private edit<T>(computation: () => { projects?: ExternalProject[]; clients?: ExternalClient[]; result: T }): Promise<T> {
-    const tache = this.writes.then(async () => {
+    const task = this.writes.then(async () => {
       const { projects: projects, clients, result: result } = computation();
       if (clients) await this.writeFile(CLIENTS_FILE, clients);
       if (projects) await this.writeFile(PROJECTS_FILE, projects);
@@ -83,8 +83,8 @@ export class ExternalRegistry {
       for (const e of [...this.listeners]) { try { e(); } catch { /* a listener does not block */ } }
       return result;
     });
-    this.writes = tache.catch(() => undefined);
-    return tache;
+    this.writes = task.catch(() => undefined);
+    return task;
   }
 
   async connect(name: string): Promise<{ client: ExternalClient; token: string }> {

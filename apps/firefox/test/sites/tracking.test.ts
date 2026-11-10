@@ -17,7 +17,7 @@ const declaration: DeclarationSite = {
   resume: false,
 };
 
-function tracking(liens: string[] | Error) {
+function tracking(links: string[] | Error) {
   const signals: (AbortSignal | undefined)[] = [];
   const sitesFolder = mkdtempSync(join(tmpdir(), "webaios-suivi-"));
   let now = 1_000_000;
@@ -26,8 +26,8 @@ function tracking(liens: string[] | Error) {
     readLinks: async (_page, signal) => {
       signals.push(signal);
       reads++;
-      if (liens instanceof Error) throw liens;
-      return liens;
+      if (links instanceof Error) throw links;
+      return links;
     },
     sitesFolder: sitesFolder,
     localAddresses: false,

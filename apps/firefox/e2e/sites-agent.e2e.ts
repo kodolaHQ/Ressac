@@ -114,11 +114,11 @@ describe("the agent on a site app window", () => {
     reading = call("read_tab", { id: "site:vidola" });
     await cardText();
     await answer(ALLOW);
-    const lu = await reading;
-    expect(lu.error).toBe(false);
-    expect(lu.text).toContain("Titre : Vidola");
-    expect(lu.text).toContain(`URL : ${startUrl}`);
-    expect(lu.text).toContain("aller");
+    const parsed = await reading;
+    expect(parsed.error).toBe(false);
+    expect(parsed.text).toContain("Titre : Vidola");
+    expect(parsed.text).toContain(`URL : ${startUrl}`);
+    expect(parsed.text).toContain("aller");
     await gone(CARD);
 
     // capture_screen: no second card.
@@ -276,9 +276,9 @@ describe("the agent on a site app window", () => {
     const reading = call("read_tab", { id: "site:flemmix" });
     expect(await cardText()).toContain("« Flemmix »");
     await answer(ALLOW);
-    const lu = await reading;
-    expect(lu.error).toBe(false);
-    expect(lu.text).toContain("les films du jour");
+    const parsed = await reading;
+    expect(parsed.error).toBe(false);
+    expect(parsed.text).toContain("les films du jour");
     await expect.poll(async () => (await call("tweak_errors", { id: "flemmix" })).text, { timeout: 10_000 }).toContain("retouche cassée");
   });
 

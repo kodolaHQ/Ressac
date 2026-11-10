@@ -44,14 +44,14 @@ export class UrlTracking {
     if (last !== undefined && now - last < TRACKING_INTERVAL_MS) return { t: "too-soon" };
     // Noted before the read: a second request during it reads nothing.
     this.lasts.set(id, now);
-    let liens: string[];
+    let links: string[];
     try {
-      liens = await this.o.readLinks(tracking.page, signal);
+      links = await this.o.readLinks(tracking.page, signal);
       if (signal?.aborted) return { t: "not-found" };
     } catch {
       return { t: "not-found" };
     }
-    const found = findUrl(liens, { page: tracking.page, pattern: tracking.pattern, localAddresses: this.o.localAddresses });
+    const found = findUrl(links, { page: tracking.page, pattern: tracking.pattern, localAddresses: this.o.localAddresses });
     if (!found) return { t: "not-found" };
     if (signal?.aborted) return { t: "not-found" };
     const currentUrl = await readUrlState(this.o.sitesFolder, id);

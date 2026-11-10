@@ -280,9 +280,9 @@ describe("the workflow builder", () => {
       "return arguments[0].map((id) => { const r = doc.querySelector('[data-testid=\"noeud-' + id + '\"]').getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; })",
       [ids],
     );
-    const liens = await inUi<string>(m, "return doc.querySelector('[data-testid=\"noeud-liens\"]').textContent");
-    expect(liens).toContain("Liens de la page");
-    expect(liens).toContain("code");
+    const links = await inUi<string>(m, "return doc.querySelector('[data-testid=\"noeud-liens\"]').textContent");
+    expect(links).toContain("Liens de la page");
+    expect(links).toContain("code");
     // One column per rank, left to right, no overlap.
     for (let i = 1; i < boxes.length; i++) expect(boxes[i]!.x).toBeGreaterThan(boxes[i - 1]!.x + boxes[i - 1]!.width / 2);
     for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) expect(overlap(boxes[i]!, boxes[j]!)).toBe(false);
@@ -586,8 +586,8 @@ describe("the workflow builder", () => {
     await click(m, '[data-testid="noeud-liens"]');
     await poll(questionOf, "Parle de cuisine ?");
     // (The first gesture froze the positions shown: only the position is added.)
-    const { position: _p, ...liens } = (await readWorkflow(dataDir, "gabarit")).blocks.find((b: { id: string }) => b.id === "liens");
-    expect(liens).toEqual(WATCH_WORKFLOW.blocks[1]);
+    const { position: _p, ...links } = (await readWorkflow(dataDir, "gabarit")).blocks.find((b: { id: string }) => b.id === "liens");
+    expect(links).toEqual(WATCH_WORKFLOW.blocks[1]);
   });
 
   it("a code block's code is only written with Enregistrer le code; ⌘S too", async () => {

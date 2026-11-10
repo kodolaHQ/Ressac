@@ -78,7 +78,7 @@ export async function writeAtomic(target: string, text: string): Promise<void> {
 
 const LINE_MAX_BYTES = 2 * 1024;
 const MAX_ERROR_BYTES = 2 * 1024;
-const LIGNES_MAX = 200;
+const MAX_LINES = 200;
 
 /** The start of a text, `octets` bytes at most. */
 export function cut(text: string, bytes: number): string {
@@ -137,8 +137,8 @@ function truncate(entry: Execution): Execution {
 // Error and log of a block: lines of 2 KB at most, 200 lines at most (the last ones are kept).
 function clampText(b: BlockTrace): BlockTrace {
   let log = b.log.map((l) => (Buffer.byteLength(l) > LINE_MAX_BYTES ? cut(l, LINE_MAX_BYTES) : l));
-  if (log.length > LIGNES_MAX) {
-    log = [`… ${log.length - LIGNES_MAX} lignes coupées`, ...log.slice(-LIGNES_MAX)];
+  if (log.length > MAX_LINES) {
+    log = [`… ${log.length - MAX_LINES} lignes coupées`, ...log.slice(-MAX_LINES)];
   }
   return { ...b, log: log, ...(b.error === undefined ? {} : { error: cut(b.error, MAX_ERROR_BYTES) }) };
 }

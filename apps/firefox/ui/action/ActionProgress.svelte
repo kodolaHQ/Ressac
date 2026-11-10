@@ -23,7 +23,7 @@
       if (seen?.done !== c.done || seen?.total !== c.total) accounts[id] = c;
     }
   });
-  const lignes = $derived(Object.entries(current?.blocks ?? {}).map(([id, b]) => ({ id, ...b, account: b.total !== undefined ? { done: b.done ?? 0, total: b.total } : accounts[id] })));
+  const lines = $derived(Object.entries(current?.blocks ?? {}).map(([id, b]) => ({ id, ...b, account: b.total !== undefined ? { done: b.done ?? 0, total: b.total } : accounts[id] })));
   /** The catalog label of each block type; the block id until it is read (or unknown type). */
   let labels = $state.raw<ReadonlyMap<string, string>>(new Map());
   $effect(() =>
@@ -34,7 +34,7 @@
         .catch(() => {});
     }),
   );
-  const label = (l: (typeof lignes)[number]) => (l.status === "running" && l.host ? readingOf(l.host) : ((l.type && labels.get(l.type)) ?? l.id));
+  const label = (l: (typeof lines)[number]) => (l.status === "running" && l.host ? readingOf(l.host) : ((l.type && labels.get(l.type)) ?? l.id));
   const MARKS = { running: "…", succeeded: "✓", partial: "≈", failed: "✗" } as const;
 </script>
 
@@ -44,7 +44,7 @@
   {/if}
   {#if current}
     <ol>
-      {#each lignes as l (l.id)}
+      {#each lines as l (l.id)}
         <li class={l.status} data-testid="ligne-bloc">
           <span class="marque" aria-hidden="true">{MARKS[l.status]}</span>
           <span class="libelle">{label(l)}</span>

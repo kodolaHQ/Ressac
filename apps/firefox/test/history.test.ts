@@ -90,9 +90,9 @@ test("same URL in two spaces: two rows; a new visit in A only counts for A", () 
   h.note({ url: "https://a.fr/", title: "A", spaceId: "A", private: false });
   h.note({ url: "https://a.fr/", title: "A", spaceId: "B", private: false });
   h.note({ url: "https://a.fr/", title: "A", spaceId: "A", private: false });
-  const lignes = h.recents();
-  expect(lignes).toHaveLength(2);
-  expect(Object.fromEntries(lignes.map((v) => [v.spaceId, v.visits]))).toEqual({ A: 2, B: 1 });
+  const lines = h.recents();
+  expect(lines).toHaveLength(2);
+  expect(Object.fromEntries(lines.map((v) => [v.spaceId, v.visits]))).toEqual({ A: 2, B: 1 });
 });
 
 test("majTitre only touches the targeted space", () => {

@@ -236,8 +236,8 @@ describe("interpreter (in the container)", () => {
       files: { "src.mjs": `export default async () => [{ id: 1 }, { id: 2 }];` },
     });
     expect(r.terminal.data).toEqual([{ id: 1 }, { id: 2 }]);
-    const lignes = r.lines.map((l) => l.t);
-    expect(lignes.indexOf("memory")).toBe(lignes.indexOf("end") - 1);
+    const lines = r.lines.map((l) => l.t);
+    expect(lines.indexOf("memory")).toBe(lines.indexOf("end") - 1);
     expect(r.lines.find((l) => l.t === "memory").memory).toEqual({
       src: { type: "code", value: { guard: true } },
       nv: { type: "list.new", value: [["1", "2026-10-29T10:00:00.000Z"], ["2", "2026-10-29T10:00:00.000Z"]] },

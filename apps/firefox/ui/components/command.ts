@@ -34,28 +34,28 @@ function recentActions(actions: ActionShown[]): ActionShown[] {
 export function commandLines(text: string, sources: CommandSources, urlActive: string | null, shownTab: TabId | null = null): CommandLine[] {
   const t = text.trim();
   const label = !t ? "Page d'accueil" : /^\S+\.\S+$/.test(t) ? `Ouvrir ${t}` : `Rechercher « ${t} »`;
-  const lignes: CommandLine[] = [{ type: "default", text: t, label: label }];
+  const lines: CommandLine[] = [{ type: "default", text: t, label: label }];
   if (!t) {
-    for (const a of recentActions(sources.actions)) lignes.push({ type: "action", id: a.id, name: a.name, input: null, param: a.input?.label ?? null });
-    for (const tab of sources.tabs.filter((o) => o.id !== shownTab).slice(0, EMPTY_LIMITS.tabs)) lignes.push({ type: "tab", tab: tab });
-    return lignes;
+    for (const a of recentActions(sources.actions)) lines.push({ type: "action", id: a.id, name: a.name, input: null, param: a.input?.label ?? null });
+    for (const tab of sources.tabs.filter((o) => o.id !== shownTab).slice(0, EMPTY_LIMITS.tabs)) lines.push({ type: "tab", tab: tab });
+    return lines;
   }
-  if (urlActive !== null && t === urlActive) return lignes;
+  if (urlActive !== null && t === urlActive) return lines;
 
   const q = normalize(t);
   for (const a of suggestionsActions(t, sources.actions).slice(0, LIMITS.actions)) {
     const param = sources.actions.find((x) => x.id === a.id)?.input?.label ?? null;
-    lignes.push({ type: "action", id: a.id, name: a.name, input: a.input, param: param });
+    lines.push({ type: "action", id: a.id, name: a.name, input: a.input, param: param });
   }
   const tabs = sources.tabs.filter((o) => normalize(o.title).includes(q) || normalize(o.url).includes(q)).slice(0, LIMITS.tabs);
-  for (const tab of tabs) lignes.push({ type: "tab", tab: tab });
-  for (const app of sources.siteApps.filter((a) => normalize(a.name).includes(q)).slice(0, LIMITS.siteApps)) lignes.push({ type: "app", app: app });
+  for (const tab of tabs) lines.push({ type: "tab", tab: tab });
+  for (const app of sources.siteApps.filter((a) => normalize(a.name).includes(q)).slice(0, LIMITS.siteApps)) lines.push({ type: "app", app: app });
   const listed = new Set(tabs.map((o) => o.url));
   sources.history
     .filter((v) => v.url !== urlActive && !listed.has(v.url))
     .slice(0, LIMITS.history)
-    .forEach((v) => lignes.push({ type: "history", url: v.url, title: v.title }));
-  return lignes;
+    .forEach((v) => lines.push({ type: "history", url: v.url, title: v.title }));
+  return lines;
 }
 
 export type Section = "actions" | "tabs" | "apps" | "history";
@@ -68,9 +68,9 @@ export function sectionOf(l: CommandLine): Section | null {
 }
 
 /** The title to put before row `i`: its section's when it opens one, null otherwise. */
-export function titleBefore(lignes: CommandLine[], i: number): string | null {
-  const s = sectionOf(lignes[i]!);
-  return s !== null && (i === 0 || sectionOf(lignes[i - 1]!) !== s) ? SECTION_TITLES[s] : null;
+export function titleBefore(lines: CommandLine[], i: number): string | null {
+  const s = sectionOf(lines[i]!);
+  return s !== null && (i === 0 || sectionOf(lines[i - 1]!) !== s) ? SECTION_TITLES[s] : null;
 }
 
 /** An action missing its input: the bar asks for it before launching. */

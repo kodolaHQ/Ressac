@@ -28,18 +28,18 @@
   const losesConnections = $derived(choiceLosesConnections(spaces, draft.id, draft.profile));
 
   // Extensions: the rows seen from the space's saved profile (an existing space only).
-  let lignes = $state<SpaceExtensionLine[] | null>(null);
+  let lines = $state<SpaceExtensionLine[] | null>(null);
   let extensionError = $state<string | null>(null);
   const saved = $derived(spaces.find((e) => e.id === draft.id));
   const profileChanged = $derived(!!saved && draft.profile !== saved.profile);
   const linesKey = $derived(saved ? `${saved.id}|${saved.profile}|${saved.private}|${spaces.map((e) => `${e.name}:${e.profile}`).join(",")}` : "");
   const warned = $derived(
-    lignes && !fresh
-      ? warnings({ id: draft.id, private: draft.private, profile: draft.profile }, spaces, lignes)
+    lines && !fresh
+      ? warnings({ id: draft.id, private: draft.private, profile: draft.profile }, spaces, lines)
       : { sharedPrivate: [], agentDisabled: [] },
   );
   async function loadLines() {
-    if (draft.id !== null) lignes = await api.extensions.forSpace(draft.id);
+    if (draft.id !== null) lines = await api.extensions.forSpace(draft.id);
   }
   $effect(() => {
     void linesKey;
@@ -52,7 +52,7 @@
     if (!r.ok) extensionError = r.error;
     await loadLines();
     // The switch takes back what the registry says (card refused, error).
-    const view = lignes?.find((x) => x.key === l.key);
+    const view = lines?.find((x) => x.key === l.key);
     if (view && field.isConnected) field.checked = view.active;
   }
 
@@ -159,10 +159,10 @@
           <span class="libelle">Extensions</span>
           {#if profileChanged}
             <p class="note">Enregistre d'abord le changement de profil pour régler ses extensions.</p>
-          {:else if lignes && lignes.length === 0}
+          {:else if lines && lines.length === 0}
             <p class="note">Aucune extension installée.</p>
-          {:else if lignes}
-            {#each lignes as l (l.key)}
+          {:else if lines}
+            {#each lines as l (l.key)}
               <div class="extension" data-testid="extension-ligne" data-cle={l.key}>
                 <label class="case">
                   <input type="checkbox" role="switch" checked={l.active} disabled={l.greyedOut !== null} onchange={(e) => void toggle(l, e.currentTarget)} />

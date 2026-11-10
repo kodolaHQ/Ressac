@@ -101,8 +101,8 @@ describe("fichier state.json", () => {
     const add = (key: string) =>
       changeExtensionsState(folder, (e) => ({ ...e, extensions: { ...e.extensions, [key]: entry("agent") } }), () => none);
     await Promise.all([add("agent:a"), add("agent:b"), add("agent:c")]);
-    const lu = await readExtensionsState(folder);
-    expect(Object.keys(lu.extensions).sort()).toEqual(["agent:a", "agent:b", "agent:c"]);
+    const parsed = await readExtensionsState(folder);
+    expect(Object.keys(parsed.extensions).sort()).toEqual(["agent:a", "agent:b", "agent:c"]);
   });
 
   it("a damaged state.json reads as empty and is not rewritten as long as nothing changes", async () => {
@@ -120,10 +120,10 @@ describe("fichier state.json", () => {
       join(folder, "state.json"),
       JSON.stringify({ version: 1, allCut: true, extensions: { [A]: good, "agent:BAD": good, "agent:x": { name: 1 } } }),
     );
-    const lu = await readExtensionsState(folder);
-    expect(lu.allCut).toBe(true);
-    expect(Object.keys(lu.extensions)).toEqual([A]);
-    expect(lu.extensions[A]!.grant?.scripts).toBe(true);
+    const parsed = await readExtensionsState(folder);
+    expect(parsed.allCut).toBe(true);
+    expect(Object.keys(parsed.extensions)).toEqual([A]);
+    expect(parsed.extensions[A]!.grant?.scripts).toBe(true);
   });
 
   it("consolesMasquees (Chromium ids masked from the agent) survives retirer and the re-read; an invalid id is ignored", async () => {
@@ -133,9 +133,9 @@ describe("fichier state.json", () => {
       join(folder, "state.json"),
       JSON.stringify({ version: 1, allCut: false, extensions: { [A]: entry("agent") }, hiddenConsoles: [id, "pas-un-id", 3, "garde@agent.webaios", "garde@autre.org"] }),
     );
-    const lu = await readExtensionsState(folder);
-    expect(lu.hiddenConsoles).toEqual([id, "garde@agent.webaios"]);
-    expect(remove(lu, A).hiddenConsoles).toEqual([id, "garde@agent.webaios"]);
+    const parsed = await readExtensionsState(folder);
+    expect(parsed.hiddenConsoles).toEqual([id, "garde@agent.webaios"]);
+    expect(remove(parsed, A).hiddenConsoles).toEqual([id, "garde@agent.webaios"]);
     await changeExtensionsState(folder, (e) => remove(e, A), () => none);
     const reviewed = await readExtensionsState(folder);
     expect(reviewed.extensions).toEqual({});
@@ -191,8 +191,8 @@ describe("fichier state.json", () => {
     const folder = await tempFolder();
     await written(folder, JSON.stringify(state({ [A]: entry("agent") })));
     await writeFile(join(folder, "state.json.xyz.tmp"), "reste");
-    const lu = await changeExtensionsState(folder, addition("agent:b"), withoutPrivate);
-    expect(Object.keys(lu.extensions).sort()).toEqual(["agent:b", A]);
+    const parsed = await changeExtensionsState(folder, addition("agent:b"), withoutPrivate);
+    expect(Object.keys(parsed.extensions).sort()).toEqual(["agent:b", A]);
     expect(await backups(folder)).toEqual([]);
   });
 
@@ -216,12 +216,12 @@ describe("fichier state.json", () => {
     isPrivate = true; // the space becomes private after the call but before the execution
     await expect(activation).rejects.toThrow(PRIVATE_PROFILE_ERROR);
     // activation passed through a stale set: the removal follows anyway
-    const lu = await changeExtensionsState(
+    const parsed = await changeExtensionsState(
       folder,
       (e) => enable(e, "agent:b", "p", none),
       () => new Set(["p"]),
     );
-    expect(lu.extensions["agent:b"]!.profiles).toEqual([]);
+    expect(parsed.extensions["agent:b"]!.profiles).toEqual([]);
   });
 
   it("applis survives modifierEtatExtensions and the re-read; an state.json without applis re-reads without an .damaged-* copy", async () => {

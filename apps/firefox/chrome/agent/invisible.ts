@@ -15,7 +15,7 @@ const TOO_SLOW = "Page trop lente : 30 s dépassées";
 const FORCED_READ_MARGIN_MS = 4_000;
 const QUIET_MS = 2_000;
 const MAX_TEXT = 20_000;
-const MAX_LIENS = 400;
+const MAX_LINKS = 400;
 const MAX_SCROLL_TEXT = 100_000;
 const MAX_SCROLL_LINKS = 1_000;
 const QUIET_SCROLL_MS = 1_000;
@@ -288,7 +288,7 @@ export function readPage(
   waitHost?: WaitHost,
 ): Promise<ReadPage> {
   const screens = screensOf(o.scroll);
-  const bounds = screens > 0 ? { text: MAX_SCROLL_TEXT, links: MAX_SCROLL_LINKS } : { text: MAX_TEXT, links: MAX_LIENS };
+  const bounds = screens > 0 ? { text: MAX_SCROLL_TEXT, links: MAX_SCROLL_LINKS } : { text: MAX_TEXT, links: MAX_LINKS };
   return load(store, url, o, signal, {
     read: (actor) => actor.sendQuery("read", bounds),
     shape: (u, raw) => shapePage(u, (raw ?? { title: "", text: "", links: [] }) as Parts, bounds),

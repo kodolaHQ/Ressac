@@ -1,8 +1,8 @@
 <script lang="ts">
   import PageLink from "../PageLink.svelte";
-  import { andOthers, sections, type Collection, type PageContext, type LinkRef as Lien } from "../types";
+  import { andOthers, sections, type Collection, type PageContext, type LinkRef as Link } from "../types";
 
-  type Element = { title: string; subtitle: string | null; link: Lien | null };
+  type Element = { title: string; subtitle: string | null; link: Link | null };
   let { p, ctx }: { p: Collection<Element>; ctx: PageContext } = $props();
 </script>
 

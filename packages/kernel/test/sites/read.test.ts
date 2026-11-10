@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { spacePaths } from "../../src/paths.js";
 import { SITE_ID_ERROR, tweakFileNotFound } from "../../src/sites/schemas.js";
-import { readTweaks, readSite, readSites, watchSites, type SiteLu } from "../../src/sites/read.js";
+import { readTweaks, readSite, readSites, watchSites, type SiteRead } from "../../src/sites/read.js";
 import { tempFolder } from "../helpers/temp.js";
 
 const o = { localAddresses: false };
@@ -20,7 +20,7 @@ async function site(c: ReturnType<typeof spacePaths>, id: string, json: string) 
   await mkdir(join(c.sites, id), { recursive: true });
   await writeFile(join(c.sites, id, "site.json"), json);
 }
-function withDeclaration(s: SiteLu | null) {
+function withDeclaration(s: SiteRead | null) {
   if (!s || !("declaration" in s)) throw new Error("site sans déclaration");
   return s;
 }

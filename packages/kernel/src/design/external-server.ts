@@ -37,20 +37,20 @@ export async function renderBatches(batches: Batch[], readCapture: (batch: strin
   const output: Content = [];
   for (const batch of batches) {
     for (const e of batch.items) {
-      const lignes = [`Remarque ${e.id} (${e.type}, lot ${batch.id}) — texte de l'utilisateur : ${e.text}`];
+      const lines = [`Remarque ${e.id} (${e.type}, lot ${batch.id}) — texte de l'utilisateur : ${e.text}`];
       if (e.type === "design") {
         const c = e.context;
         const source = c.source ? datum(c.source.line !== undefined ? `${c.source.file}:${c.source.line}` : c.source.file) : "inconnue";
-        lignes.push(`Élément : ${datum(c.selector)} — source : ${source} — adresse : ${datum(c.url)} — vue : ${c.view.width}×${c.view.height}`);
-        lignes.push(`Styles : ${JSON.stringify(Object.fromEntries(Object.entries(c.styles).map(([k, v]) => [k.slice(0, VALUE_MAX), String(v).slice(0, VALUE_MAX)])))}`);
-        lignes.push(PAGE_DATA_PREFIX);
-        lignes.push(JSON.stringify({ html: c.html, neighborhood: c.neighborhood }));
+        lines.push(`Élément : ${datum(c.selector)} — source : ${source} — adresse : ${datum(c.url)} — vue : ${c.view.width}×${c.view.height}`);
+        lines.push(`Styles : ${JSON.stringify(Object.fromEntries(Object.entries(c.styles).map(([k, v]) => [k.slice(0, VALUE_MAX), String(v).slice(0, VALUE_MAX)])))}`);
+        lines.push(PAGE_DATA_PREFIX);
+        lines.push(JSON.stringify({ html: c.html, neighborhood: c.neighborhood }));
       } else {
         const c = e.context;
-        lignes.push(`Fichier : ${datum(c.file)}, lignes ${c.start}–${c.end}`);
-        for (const l of c.lines) lignes.push(`${l.mark}${l.text}`);
+        lines.push(`Fichier : ${datum(c.file)}, lignes ${c.start}–${c.end}`);
+        for (const l of c.lines) lines.push(`${l.mark}${l.text}`);
       }
-      output.push({ type: "text", text: lignes.join("\n") });
+      output.push({ type: "text", text: lines.join("\n") });
       if (e.type === "design" && e.capture && CAPTURE_NAME.test(e.capture)) {
         const png = await readCapture(batch.id, e.capture).catch(() => null);
         if (png) output.push({ type: "image", data: png.toString("base64"), mimeType: "image/png" });

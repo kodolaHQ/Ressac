@@ -253,9 +253,9 @@ export class Edit {
     for (let n = 1; n <= 50; n++) {
       const name = `${id}${n === 1 ? "" : `-${n}`}.mjs`;
       if (taken.has(name)) continue;
-      const lu = await this.repo.readCode(this.id, name);
-      if ("absent" in lu) return name;
-      if ("error" in lu) return null;
+      const parsed = await this.repo.readCode(this.id, name);
+      if ("absent" in parsed) return name;
+      if ("error" in parsed) return null;
     }
     return null;
   }

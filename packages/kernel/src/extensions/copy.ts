@@ -66,7 +66,7 @@ function json(content: Buffer | undefined): unknown {
 
 class ReadDenial extends Error {}
 
-const LIENS = new Set(["ELOOP", "EMLINK", "ENOTDIR"]);
+const LINKS = new Set(["ELOOP", "EMLINK", "ENOTDIR"]);
 // O_NOFOLLOW: a link in place of the file makes the open fail; O_NONBLOCK: a pipe does not block.
 const READ_FLAGS = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
 
@@ -113,7 +113,7 @@ export async function readFolder(source: string): Promise<{ files: Map<string, B
       fh = await open(absolute(path), READ_FLAGS);
     } catch (e) {
       const code = (e as NodeJS.ErrnoException).code ?? "";
-      if (LIENS.has(code)) deny(`Lien symbolique refusé : ${path}`);
+      if (LINKS.has(code)) deny(`Lien symbolique refusé : ${path}`);
       if (code === "ENOENT") deny(`Fichier remplacé pendant la lecture : ${path}`);
       throw e;
     }
@@ -125,16 +125,16 @@ export async function readFolder(source: string): Promise<{ files: Map<string, B
       if (info.nlink !== 1) deny(`Lien physique refusé : ${path}`);
       const rest = MAX_SIZE - size;
       const chunks: Buffer[] = [];
-      let lu = 0;
+      let parsed = 0;
       for (;;) {
-        const buffer = Buffer.alloc(Math.min(64 * 1024, rest + 1 - lu));
+        const buffer = Buffer.alloc(Math.min(64 * 1024, rest + 1 - parsed));
         const { bytesRead } = await fh.read(buffer, 0, buffer.length, null);
         if (bytesRead === 0) break;
         chunks.push(buffer.subarray(0, bytesRead));
-        lu += bytesRead;
-        if (lu > rest) deny(`Extension trop lourde : ${MAX_SIZE / 1024 / 1024} Mo au plus`);
+        parsed += bytesRead;
+        if (parsed > rest) deny(`Extension trop lourde : ${MAX_SIZE / 1024 / 1024} Mo au plus`);
       }
-      size += lu;
+      size += parsed;
       return Buffer.concat(chunks);
     } finally {
       await fh.close();
@@ -146,7 +146,7 @@ export async function readFolder(source: string): Promise<{ files: Map<string, B
     try {
       names = (await readdir(absolute(folder.path))).sort();
     } catch (e) {
-      if (["ENOENT", ...LIENS].includes((e as NodeJS.ErrnoException).code ?? "")) {
+      if (["ENOENT", ...LINKS].includes((e as NodeJS.ErrnoException).code ?? "")) {
         deny(`Dossier remplacé pendant la lecture : ${folder.path || "."}`);
       }
       throw e;

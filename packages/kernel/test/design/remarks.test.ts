@@ -198,7 +198,7 @@ describe("Remarks", () => {
     };
     const processed = await mk("app-essai", ["t"]);
     const partial = await mk("app-essai", ["p1", "p2"]);
-    const lu = await mk("app-essai", ["l"]);
+    const parsed = await mk("app-essai", ["l"]);
     const waiting = await mk("app-essai", ["w"]);
     const extProcessed = await mk("ext-0123456789abcdef", ["x"]);
     await r.markHandled("app-essai", processed.items.map((e) => e.id));
@@ -211,14 +211,14 @@ describe("Remarks", () => {
     delete raw.read;
     await writeFile(written, JSON.stringify(raw));
     expect(batchState((await r.batches("app-essai")).find((l) => l.id === waiting.id)!)).toBe("pending");
-    expect(batchState((await r.batches("app-essai")).find((l) => l.id === lu.id)!)).toBe("read");
+    expect(batchState((await r.batches("app-essai")).find((l) => l.id === parsed.id)!)).toBe("read");
     const now = clock.t.getTime();
     clock.t = new Date(now + 29 * 86_400_000);
     expect(await r.purge()).toBe(0);
     clock.t = new Date(now + 31 * 86_400_000);
     expect(await r.purge()).toBe(2);
     const remaining = (await r.batches("app-essai")).map((l) => l.id).sort();
-    expect(remaining).toEqual([partial.id, lu.id, waiting.id].sort());
+    expect(remaining).toEqual([partial.id, parsed.id, waiting.id].sort());
     expect(await exists(join(folders.private, "remarks", "ext-0123456789abcdef", extProcessed.id))).toBe(false);
   });
 

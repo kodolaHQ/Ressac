@@ -115,9 +115,9 @@ function nameCycle(remaining: string[], predecessors: Record<string, string[]>):
 }
 
 export function validateWorkflow(raw: unknown, ctx: ValidationContext = DEFAULT_CONTEXT): ValidationResult {
-  const lu = Workflow.safeParse(raw);
-  if (!lu.success) return workflowError(firstProblem(lu.error));
-  const workflow = lu.data;
+  const parsed = Workflow.safeParse(raw);
+  if (!parsed.success) return workflowError(firstProblem(parsed.error));
+  const workflow = parsed.data;
 
   const ids = new Set<string>();
   for (const b of workflow.blocks) {

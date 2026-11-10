@@ -907,10 +907,10 @@ test("list_tabs without a grant: « site:vidola · Vidola · vidola-a.example ·
   // An ordinary tab of the same domain, authorized, does not open the app's window.
   policy.grant(vidolaTab);
   const t = text(await client.callTool({ name: "list_tabs", arguments: {} }));
-  const lignes = t.split("\n");
-  expect(lignes).toContain("site:vidola · Vidola · vidola-a.example · appli de site");
-  expect(lignes.filter((l) => l.startsWith("site:vidola"))).toHaveLength(1);
-  expect(lignes.find((l) => l.startsWith("site:vidola"))).not.toContain("/film/1");
+  const lines = t.split("\n");
+  expect(lines).toContain("site:vidola · Vidola · vidola-a.example · appli de site");
+  expect(lines.filter((l) => l.startsWith("site:vidola"))).toHaveLength(1);
+  expect(lines.find((l) => l.startsWith("site:vidola"))).not.toContain("/film/1");
   expect(t).not.toContain("ep=3");
   expect(siteCards()).toHaveLength(0);
   expect(bridgeCalls("askPermission")).toHaveLength(0);
@@ -938,9 +938,9 @@ test("read_tab on a site app: the site-kind card; refusal → DENIAL_TEXT, nothi
 
 test("read_tab on a site app: grant → the text, and capture_screen without a second card", async () => {
   await withSite({ widgetData: true });
-  const lu = text(await client.callTool({ name: "read_tab", arguments: { id: "site:vidola" } }));
-  expect(lu).toContain("Titre : Vidola");
-  expect(lu).toContain("Texte de Vidola (https://vidola-a.example/film/1?ep=3)");
+  const parsed = text(await client.callTool({ name: "read_tab", arguments: { id: "site:vidola" } }));
+  expect(parsed).toContain("Titre : Vidola");
+  expect(parsed).toContain("Texte de Vidola (https://vidola-a.example/film/1?ep=3)");
   expect(policy.grantedSiteRead("vidola")).toBe(true);
   const capture = await client.callTool({ name: "capture_screen", arguments: { id: "site:vidola" } });
   expect((capture.content as { type: string }[])[0]!.type).toBe("image");
@@ -1208,9 +1208,9 @@ test("grant → SITE_DATA_PREFIX and encours.the-bear; tweak_errors next without
   expect(t).toContain("encours.the-bear");
   const e = await invoke("tweak_errors", { id: "vidola" });
   expect(e.startsWith(`${TWEAK_ERRORS_PREFIX}\n`)).toBe(true);
-  const lignes = e.split("\n");
-  expect(lignes).toHaveLength(2);
-  expect(lignes[1]).toContain("source déclarée par la page");
+  const lines = e.split("\n");
+  expect(lines).toHaveLength(2);
+  expect(lines[1]).toContain("source déclarée par la page");
   expect(siteCards()).toHaveLength(1);
 });
 

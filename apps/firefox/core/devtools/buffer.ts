@@ -69,7 +69,7 @@ export class TabBuffer {
   /** Start of each request, on the protocol's monotonic clock (for the duration). */
   private readonly starts = new Map<string, number>();
   private readonly maxConsole: number;
-  private readonly maxReseau: number;
+  private readonly maxNetwork: number;
   private readonly since: number;
   /** Ids of the discarded extension requests (the most recent): their log entries (failure, CORS) are too. */
   private readonly extensionRequests = new Map<string, string>();
@@ -77,9 +77,9 @@ export class TabBuffer {
   private readonly extensionContexts = new Set<number>();
 
   /** `depuis`: attach time (ms); older messages, replayed by the protocol, are discarded. */
-  constructor(o: { maxConsole?: number; maxReseau?: number; since?: number } = {}) {
+  constructor(o: { maxConsole?: number; maxNetwork?: number; since?: number } = {}) {
     this.maxConsole = o.maxConsole ?? 1000;
-    this.maxReseau = o.maxReseau ?? 500;
+    this.maxNetwork = o.maxNetwork ?? 500;
     this.since = o.since ?? -Infinity;
   }
 
@@ -166,7 +166,7 @@ export class TabBuffer {
         });
         this.starts.set(p.requestId, p.timestamp);
         for (const id of this.requests.keys()) {
-          if (this.requests.size <= this.maxReseau) break;
+          if (this.requests.size <= this.maxNetwork) break;
           this.requests.delete(id);
           this.starts.delete(id);
         }

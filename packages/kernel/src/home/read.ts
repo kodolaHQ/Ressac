@@ -11,7 +11,7 @@ import {
   Placement,
   FreePlacement,
   type HomeState,
-  type WidgetLu,
+  type WidgetRead,
 } from "./schemas.js";
 
 const ID_WIDGET = /^[a-z0-9-]+$/;
@@ -23,7 +23,7 @@ async function readJsonIn(folder: string, name: string): Promise<unknown> {
   return JSON.parse(await readFile(real, "utf8"));
 }
 
-async function readWidget(c: SpacePaths, widgetsFolder: string, id: string): Promise<WidgetLu> {
+async function readWidget(c: SpacePaths, widgetsFolder: string, id: string): Promise<WidgetRead> {
   const folder = join(c.widgets, id);
   let declaration: DeclarationWidget;
   try {

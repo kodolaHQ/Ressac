@@ -1,9 +1,9 @@
 <script lang="ts">
   import ImageRef from "../../ActionImage.svelte";
   import PageLink from "../PageLink.svelte";
-  import { andOthers, sections, type Collection, type PageContext, type ImageRef as Image, type LinkRef as Lien } from "../types";
+  import { andOthers, sections, type Collection, type PageContext, type ImageRef as Image, type LinkRef as Link } from "../types";
 
-  type Card = { title: string; subtitle: string | null; image: Image; value: string | null; tags: string[]; link: Lien | null };
+  type Card = { title: string; subtitle: string | null; image: Image; value: string | null; tags: string[]; link: Link | null };
   let { p, ctx }: { p: Collection<Card>; ctx: PageContext } = $props();
 </script>
 

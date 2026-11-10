@@ -163,7 +163,7 @@ export function tweaksFor(
  * outside local addresses. `hostname` is clean (no port or trailing dot); `port` only exists in test mode.
  */
 export function findUrl(
-  liens: readonly string[],
+  links: readonly string[],
   o: { page: string; pattern: string; localAddresses: boolean },
 ): { hostname: string; origin: string; port: string | null } | null {
   const page = analyze(o.page);
@@ -171,7 +171,7 @@ export function findUrl(
   if (!page || !pattern) return null;
   const two = (h: string) => h.split(".").slice(-2).join(".");
   const pageHost = clean(page.hostname);
-  for (const link of liens) {
+  for (const link of links) {
     const u = analyze(link);
     if (!u || !acceptedSchema(u, o.localAddresses)) continue;
     const h = clean(u.hostname);

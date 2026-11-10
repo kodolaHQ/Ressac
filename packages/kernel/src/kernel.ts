@@ -5,7 +5,7 @@ import { basename, join, posix } from "node:path";
 import { CONTAINER_PATH, sessionConfigPath, pathInContainer, sessionsFolder, spacePaths, type SpacePaths } from "./paths.js";
 import { initSpace } from "./workspace/initialize.js";
 import { readHome } from "./home/read.js";
-import type { HomeState, WidgetState, WidgetLu } from "./home/schemas.js";
+import type { HomeState, WidgetState, WidgetRead } from "./home/schemas.js";
 import { writeWidgetState, readData, readWidgetState, deleteData } from "./home/data.js";
 import { watchHome } from "./home/watch.js";
 import { loadProfiles, buildCommand } from "./profiles/profile.js";
@@ -319,7 +319,7 @@ export async function createKernel(o: {
       console.error("[webaios] rappel des widgets :", e);
     }
   };
-  const widget = async (id: string): Promise<WidgetLu | undefined> =>
+  const widget = async (id: string): Promise<WidgetRead | undefined> =>
     (await readHome(paths, widgetsFolder)).widgets.find((w) => w.id === id);
   // Read by the agent through its MCP tools. A widget whose declaration is unreadable, or that has a recorded grant, counts
   // as reading with the user's account: its data may have been harvested with it.

@@ -158,14 +158,14 @@ async function bench(
 }
 
 /** A fake process that writes these lines on stdout then exits with `code`. */
-const scriptedLauncher = (lignes: unknown[], code = 0): ProcessLauncher => () => {
+const scriptedLauncher = (lines: unknown[], code = 0): ProcessLauncher => () => {
   const stdout = new PassThrough();
   const stderr = new PassThrough();
   const stdin = new PassThrough();
   stdin.resume();
   const end = new Promise<number | null>((ok) => {
     setImmediate(() => {
-      for (const l of lignes) stdout.write((typeof l === "string" ? l : JSON.stringify(l)) + "\n");
+      for (const l of lines) stdout.write((typeof l === "string" ? l : JSON.stringify(l)) + "\n");
       stdout.end();
       stderr.end();
       setImmediate(() => ok(code));
@@ -533,15 +533,15 @@ describe("executerWorkflow", () => {
     });
     b.ctx.previous = { old: true };
     await runWorkflow(b.ctx, b.infra);
-    const lignes = received.join("").trim().split("\n").map((l) => JSON.parse(l));
-    expect(lignes[0]).toEqual({
+    const lines = received.join("").trim().split("\n").map((l) => JSON.parse(l));
+    expect(lines[0]).toEqual({
       t: "start",
       previous: { old: true },
       now: NOW.toISOString(),
       config: { interests: "rust" },
       workflow: { blocks: b.ctx.valid.workflow.blocks, links: b.ctx.valid.workflow.links, order: ["a", "sortie"] },
     });
-    expect(lignes[1]).toEqual({ t: "memory", memory: { a: { type: "code", value: 1 } } });
+    expect(lines[1]).toEqual({ t: "memory", memory: { a: { type: "code", value: 1 } } });
   });
 
   /** The lines the container receives (start, memory) and the returned memory, for a workflow `a` → `sortie`. */
@@ -556,8 +556,8 @@ describe("executerWorkflow", () => {
       memory: memory,
     });
     const r = await runWorkflow(b.ctx, b.infra);
-    const lignes = received.join("").trim().split("\n").map((l) => JSON.parse(l));
-    return { sent: lignes[1].memory as BlocksMemory, rendered: r.issue.t === "end" ? r.issue.memory : null, ctx: b.ctx };
+    const lines = received.join("").trim().split("\n").map((l) => JSON.parse(l));
+    return { sent: lines[1].memory as BlocksMemory, rendered: r.issue.t === "end" ? r.issue.memory : null, ctx: b.ctx };
   }
 
   it("a memory whose hash no longer matches the parameters is not sent to the container", async () => {
@@ -663,9 +663,9 @@ describe("executerWorkflow", () => {
       });
       b.ctx.replay = replayFromC;
       const r = await runWorkflow(b.ctx, b.infra);
-      const lignes = received.join("").trim().split("\n").map((l) => JSON.parse(l));
-      expect(lignes[0].replay).toEqual({ reruns: ["c", "sortie"], outputs: { b: [{ x: 1 }, { x: 2 }] } });
-      expect(lignes[1]).toEqual({ t: "memory", memory: {} });
+      const lines = received.join("").trim().split("\n").map((l) => JSON.parse(l));
+      expect(lines[0].replay).toEqual({ reruns: ["c", "sortie"], outputs: { b: [{ x: 1 }, { x: 2 }] } });
+      expect(lines[1]).toEqual({ t: "memory", memory: {} });
       expect(r.issue).toMatchObject({ t: "end", memory: null });
     });
 
@@ -1649,7 +1649,7 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
 
 describe("executerWorkflow: input, progress, reads and stop (actions)", () => {
   /** A fake container: writes its lines, then waits to be killed (`bloque`) or exits with 0. `recu`: what it receives. */
-  const launcherLines = (lignes: unknown[], o: { received?: string[]; blocked?: boolean; killed?: () => void } = {}): ProcessLauncher => () => {
+  const launcherLines = (lines: unknown[], o: { received?: string[]; blocked?: boolean; killed?: () => void } = {}): ProcessLauncher => () => {
     const stdout = new PassThrough();
     const stderr = new PassThrough();
     const stdin = new PassThrough();
@@ -1663,7 +1663,7 @@ describe("executerWorkflow: input, progress, reads and stop (actions)", () => {
         ok(null);
       };
       setImmediate(() => {
-        for (const l of lignes) stdout.write(JSON.stringify(l) + "\n");
+        for (const l of lines) stdout.write(JSON.stringify(l) + "\n");
         if (o.blocked) return;
         stdout.end();
         stderr.end();
@@ -1786,7 +1786,7 @@ describe("executerWorkflow: input, progress, reads and stop (actions)", () => {
 
   it("progress: at most one per PROGRESS_GAP_MS and per block, the last (faits = total) always; ignored without avancement", async () => {
     let t = 0;
-    const lignes = [
+    const lines = [
       { t: "block", id: "a", step: "start" },
       ...[1, 2, 3, 4].map((done) => ({ t: "block", id: "a", step: "progress", done: done, total: 4 })),
       { t: "block", id: "a", step: "end", status: "succeeded", output: [] },
@@ -1794,7 +1794,7 @@ describe("executerWorkflow: input, progress, reads and stop (actions)", () => {
       { t: "block", id: "sortie", step: "end", status: "succeeded", output: [] },
       { t: "end", data: [] },
     ];
-    const updateEntry = await bench(chain("a"), {}, { launch: launcherLines(lignes) });
+    const updateEntry = await bench(chain("a"), {}, { launch: launcherLines(lines) });
     updateEntry.ctx.progress = true;
     // 300 ms between two received lines.
     updateEntry.infra.clock = () => new Date(NOW.getTime() + (t += 300));
@@ -1806,7 +1806,7 @@ describe("executerWorkflow: input, progress, reads and stop (actions)", () => {
     expect(done.at(-1)).toBe(4);
     expect(done.length).toBeLessThan(4);
 
-    const without = await bench(chain("a"), {}, { launch: launcherLines(lignes) });
+    const without = await bench(chain("a"), {}, { launch: launcherLines(lines) });
     const relayees2: DirectTrace[] = [];
     without.infra.onTrace = (x) => relayees2.push(x);
     await runWorkflow(without.ctx, without.infra);

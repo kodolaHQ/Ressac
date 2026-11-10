@@ -290,8 +290,8 @@ describe("LocalAi", () => {
       [/^ollama pull/, { code: 0, stdout: "pulling…\nsuccess\n" }],
     ]);
     const ai = new LocalAi({ folder: folder, run: run });
-    const lignes: string[] = [];
-    await ai.install((l) => lignes.push(l));
+    const lines: string[] = [];
+    await ai.install((l) => lines.push(l));
     const cmds = calls.map((a) => [a.command, ...a.args].join(" "));
     expect(cmds[0]).toBe("uv --version");
     // Cloned alongside then renamed: an interrupted clone never leaves a half-filled `kev/.git`.
@@ -301,7 +301,7 @@ describe("LocalAi", () => {
     expect(cmds.some((c) => c.includes("rev-parse HEAD"))).toBe(true);
     expect(cmds.findIndex((c) => c.startsWith("uv sync --extra serve"))).toBeGreaterThan(1);
     expect(cmds.at(-1)).toBe("ollama pull gemma4:e4b-mlx");
-    expect(lignes).toContain("success");
+    expect(lines).toContain("success");
     expect(calls.find((a) => a.args[0] === "sync")!.args).toEqual(["sync", "--extra", "serve", "--project", join(folder, "kev")]);
 
     // resume: the repo is already there, no new clone

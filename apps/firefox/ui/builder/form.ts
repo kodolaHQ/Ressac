@@ -40,9 +40,9 @@ export function paramsWith(params: Record<string, unknown>, f: FormField, input:
     v = Number(input.trim().replace(",", "."));
     if (!Number.isFinite(v)) return null;
   } else if (f.kind === "texts") {
-    const lignes = input.split("\n").map((l) => l.trim()).filter((l) => l !== "");
-    if (lignes.length === 0 && !f.required) return without;
-    v = lignes;
+    const lines = input.split("\n").map((l) => l.trim()).filter((l) => l !== "");
+    if (lines.length === 0 && !f.required) return without;
+    v = lines;
   } else {
     if (input === "" && !f.required) return without;
     v = input;

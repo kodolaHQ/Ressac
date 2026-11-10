@@ -355,7 +355,7 @@ function createToolsServer(
         "tant que l'utilisateur ne l'a pas ouverte à l'agent (read_tab le lui demande).",
     },
     protect(async () => {
-      const lignes = (await bridge.listTabs()).map((o) => {
+      const lines = (await bridge.listTabs()).map((o) => {
         // A site app: its name (never the page title); its full address only with the grant.
         // Without a grant: the app's current domain, never the page's host (a login domain would say what the user is doing).
         if (o.site !== undefined) return `${o.id} · ${o.title} · ${policy.canRead(o) ? o.url : (o.domain ?? "")} · ${SITE_APP_LABEL}`;
@@ -363,7 +363,7 @@ function createToolsServer(
           ? `${o.id} · ${o.title} · ${o.url} · ${o.space}`
           : `${o.id} · ${NOT_SHARED_LABEL} ·  · ${o.space}`;
       });
-      return text(lignes.join("\n") || "Aucun onglet ouvert.");
+      return text(lines.join("\n") || "Aucun onglet ouvert.");
     }),
   );
 
@@ -846,18 +846,18 @@ function registerSitesTools(
       if (errors === null) return text(SITE_UNKNOWN, true);
       if (errors.length === 0) return text(`${TWEAK_ERRORS_PREFIX}\n(aucune)`);
       let total = 0;
-      const lignes: string[] = [];
+      const lines: string[] = [];
       for (const e of errors) {
         // The source is written by the page: never presented as verified, a single line.
         const l = `${oneLine(e.when, 40)} · ${oneLine(e.text, TEXT_ERROR_MAX)} · source déclarée par la page : ${oneLine(e.source, SOURCE_ERROR_MAX)}`;
         if (total + l.length > MAX_TOTAL_ERRORS) {
-          lignes.push(TRUNCATED);
+          lines.push(TRUNCATED);
           break;
         }
         total += l.length;
-        lignes.push(l);
+        lines.push(l);
       }
-      return text(`${TWEAK_ERRORS_PREFIX}\n${lignes.join("\n")}`);
+      return text(`${TWEAK_ERRORS_PREFIX}\n${lines.join("\n")}`);
     }),
   );
 }

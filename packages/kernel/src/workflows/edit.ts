@@ -58,9 +58,9 @@ async function folderExists(folder: string): Promise<boolean> {
  */
 export async function readDraft(filesFolder: string, ctx: ValidationContext = DEFAULT_CONTEXT): Promise<DraftRead | null> {
   if (await exists(join(filesFolder, "workflow.json"))) {
-    const lu = await readRawWorkflow(filesFolder);
-    if ("error" in lu) return { origin: "file", raw: null, validation: resume(workflowError(lu.error)) };
-    return { origin: "file", raw: lu.raw, validation: resume(validateWorkflow(lu.raw, ctx)) };
+    const parsed = await readRawWorkflow(filesFolder);
+    if ("error" in parsed) return { origin: "file", raw: null, validation: resume(workflowError(parsed.error)) };
+    return { origin: "file", raw: parsed.raw, validation: resume(validateWorkflow(parsed.raw, ctx)) };
   }
   if (await exists(join(filesFolder, "harvest.mjs"))) {
     const raw = implicitWorkflow();

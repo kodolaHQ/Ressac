@@ -222,9 +222,9 @@ describe("agent host", { timeout: 30_000 }, () => {
     await h.rpc.request("start", { agentProfile: "claude" });
     await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
     await until(() => h.data().includes("faux agent prêt>"));
-    const lignes = readFileSync(h.log, "utf8").split("\n");
-    expect(lignes.some((l) => l.includes("webaios-workshop-firefox"))).toBe(true);
-    expect(lignes.filter((l) => / webaios-workshop( |$)/.test(l))).toEqual([]);
+    const lines = readFileSync(h.log, "utf8").split("\n");
+    expect(lines.some((l) => l.includes("webaios-workshop-firefox"))).toBe(true);
+    expect(lines.filter((l) => / webaios-workshop( |$)/.test(l))).toEqual([]);
   });
 
   it("publishes its own port range, 5300-5319", async () => {

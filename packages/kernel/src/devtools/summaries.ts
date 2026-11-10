@@ -23,13 +23,13 @@ export function maskHeaders(h: Record<string, string>): Record<string, string> {
 /** Masks, in a `name=value&…` sequence, the values whose name is sensitive. */
 function hidePairs(text: string): string {
   return text.replace(/(^|[?&])([^=&?]*)=([^&]*)/g, (all, sep: string, name: string) => {
-    let lu = name;
+    let parsed = name;
     try {
-      lu = decodeURIComponent(name);
+      parsed = decodeURIComponent(name);
     } catch {
       // badly encoded name: compared as it is
     }
-    return SECRET_PARAM.test(lu) ? `${sep}${name}=${MASK}` : all;
+    return SECRET_PARAM.test(parsed) ? `${sep}${name}=${MASK}` : all;
   });
 }
 
@@ -79,7 +79,7 @@ export function summarizeProfile(p: CpuProfile, metrics: Record<string, number>,
     byNode.set(id, (byNode.get(id) ?? 0) + Math.max(0, next - timestamp));
   });
   const total = [...byNode.values()].reduce((a, b) => a + b, 0);
-  const lignes = p.nodes
+  const lines = p.nodes
     .map((node) => ({ node: node, us: byNode.get(node.id) ?? 0 }))
     .filter((e) => e.us > 0)
     .sort((a, b) => b.us - a.us)
@@ -97,7 +97,7 @@ export function summarizeProfile(p: CpuProfile, metrics: Record<string, number>,
   if (m.LayoutCount !== undefined) extra.push(`LayoutCount : ${m.LayoutCount}`);
   if (m.ScriptDuration !== undefined) extra.push(`ScriptDuration : ${rounded(m.ScriptDuration * 1000)} ms`);
   if (m.TaskDuration !== undefined) extra.push(`TaskDuration : ${rounded(m.TaskDuration * 1000)} ms`);
-  return [...lignes, ...extra].join("\n");
+  return [...lines, ...extra].join("\n");
 }
 
 export interface MemorySummary {
@@ -152,16 +152,16 @@ export function summarizeSnapshot(json: string): MemorySummary {
 const ko = (bytes: number): string => `${rounded(bytes / 1024)} Ko`;
 
 export function memoryText(r: MemorySummary, n = 20): string {
-  const lignes = r.byConstructor
+  const lines = r.byConstructor
     .slice(0, n)
     .map((c) => `${c.name || "(sans nom)"} : ${c.count} objets, ${ko(c.size)}`);
-  return [`Total : ${ko(r.total)}`, ...lignes].join("\n");
+  return [`Total : ${ko(r.total)}`, ...lines].join("\n");
 }
 
 /** The constructors that grew the most from `a` to `b` (positive gaps only). */
 export function compareMemory(a: MemorySummary, b: MemorySummary, n = 20): string {
   const before = new Map(a.byConstructor.map((c) => [c.name, c]));
-  const lignes = b.byConstructor
+  const lines = b.byConstructor
     .map((c) => ({
       name: c.name,
       dCount: c.count - (before.get(c.name)?.count ?? 0),
@@ -172,5 +172,5 @@ export function compareMemory(a: MemorySummary, b: MemorySummary, n = 20): strin
     .slice(0, n)
     .map((e) => `${e.name || "(sans nom)"} +${e.dCount} (+${ko(e.dSize)})`);
   const gap = b.total - a.total;
-  return [`Total : ${gap >= 0 ? "+" : ""}${ko(gap)}`, ...lignes].join("\n");
+  return [`Total : ${gap >= 0 ? "+" : ""}${ko(gap)}`, ...lines].join("\n");
 }

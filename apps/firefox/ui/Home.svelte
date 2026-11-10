@@ -24,10 +24,10 @@
   function load() {
     const n = ++last;
     api.home.read().then(
-      ({ widgets: reads, theme: lu }) => {
+      ({ widgets: reads, theme: parsed }) => {
         if (n !== last) return;
         widgets = reads;
-        theme = lu;
+        theme = parsed;
         onLoaded = true;
         checkPending();
       },

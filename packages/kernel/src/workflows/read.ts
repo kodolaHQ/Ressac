@@ -3,7 +3,7 @@ import { join, sep } from "node:path";
 import { WORKFLOW_MAX_SIZE } from "./schema.js";
 import { DEFAULT_CONTEXT, workflowError, validateWorkflow, implicitWorkflow, type ValidationContext, type ValidationResult } from "./validate.js";
 
-export type WorkflowLu = { origin: "file" | "implicit"; result: ValidationResult };
+export type WorkflowRead = { origin: "file" | "implicit"; result: ValidationResult };
 
 /** The name exists in the folder, even as a broken symbolic link (a broken workflow.json is invalid, not absent). */
 export async function exists(path: string): Promise<boolean> {
@@ -29,8 +29,8 @@ export async function readRawWorkflow(folder: string): Promise<{ raw: unknown } 
 }
 
 async function readTextFile(folder: string, ctx: ValidationContext): Promise<ValidationResult> {
-  const lu = await readRawWorkflow(folder);
-  return "error" in lu ? workflowError(lu.error) : validateWorkflow(lu.raw, ctx);
+  const parsed = await readRawWorkflow(folder);
+  return "error" in parsed ? workflowError(parsed.error) : validateWorkflow(parsed.raw, ctx);
 }
 
 /**
@@ -38,7 +38,7 @@ async function readTextFile(folder: string, ctx: ValidationContext): Promise<Val
  * `harvest.mjs`, otherwise null. Nothing is run here: the file is only read as JSON. `ctx`: what the widget
  * declares (`contexteValidation`).
  */
-export async function readWorkflow(filesFolder: string, ctx: ValidationContext = DEFAULT_CONTEXT): Promise<WorkflowLu | null> {
+export async function readWorkflow(filesFolder: string, ctx: ValidationContext = DEFAULT_CONTEXT): Promise<WorkflowRead | null> {
   if (await exists(join(filesFolder, "workflow.json"))) {
     return { origin: "file", result: await readTextFile(filesFolder, ctx) };
   }

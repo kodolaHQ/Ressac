@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { SpacePaths } from "../paths.js";
 import { writeWidgetState, readWidgetState, changeWidgetState } from "../home/data.js";
 import { readHome } from "../home/read.js";
-import type { WidgetState, WidgetLu } from "../home/schemas.js";
+import type { WidgetState, WidgetRead } from "../home/schemas.js";
 import type { Workshop } from "../container/workshop.js";
 import type { LocalAi } from "../ai/local-ai.js";
 import { createAiDispatcher, type AiDispatcher } from "../ai/dispatcher.js";
@@ -46,7 +46,7 @@ export type Route = "short" | "long";
  * The watches (`dureeMaxMinutes` > 3) have their own lane: one at a time in the application, without holding back the short
  * widgets, which keep theirs.
  */
-export function routeOf(w: WidgetLu): Route {
+export function routeOf(w: WidgetRead): Route {
   if ("error" in w) return "short";
   return (w.declaration.harvest?.maxDurationMinutes ?? 0) > LONG_ROUTE_MINUTES ? "long" : "short";
 }
@@ -71,7 +71,7 @@ const age = (iso: string | null, now: Date) => (iso ? now.getTime() - Date.parse
  * attempt. `en-cours` is only relaunched at launch (the previous harvest was interrupted), and only if it has a
  * frequency or an hour to do: otherwise, ours is the one running.
  */
-export function widgetOf(w: WidgetLu, now: Date, o: { onLaunch: boolean }): boolean {
+export function widgetOf(w: WidgetRead, now: Date, o: { onLaunch: boolean }): boolean {
   if ("error" in w || !w.hasHarvest || !w.declaration.harvest) return false;
   const { minutes, hours: hours } = w.declaration.harvest;
   const { status: status, lastUpdate: lastUpdate, lastAttempt: lastAttempt } = w.state;
@@ -274,7 +274,7 @@ export class WidgetsScheduler {
     return this.verification;
   }
 
-  private async widgets(): Promise<WidgetLu[]> {
+  private async widgets(): Promise<WidgetRead[]> {
     return (await readHome(this.o.paths, this.o.widgetsFolder)).widgets;
   }
 
@@ -289,7 +289,7 @@ export class WidgetsScheduler {
    * a lane), then read again under the lane's lock. If it changed while waiting for the lane, the request
    * goes into the other one without losing its turn in the widget.
    */
-  private inItsLane<T>(id: string, f: (w: WidgetLu | undefined) => Promise<T>): Promise<T> {
+  private inItsLane<T>(id: string, f: (w: WidgetRead | undefined) => Promise<T>): Promise<T> {
     return this.only(id, "a-choisir", async (route): Promise<T | OtherRoute> => {
       const w = (await this.widgets()).find((x) => x.id === id);
       if (w && routeOf(w) !== route) return new OtherRoute(routeOf(w));
@@ -337,7 +337,7 @@ export class WidgetsScheduler {
   }
 
   /** `widgetDu`, where a widget reset at startup counts, at launch, as still en-cours. */
-  private isDue(w: WidgetLu, o: { onLaunch: boolean }): boolean {
+  private isDue(w: WidgetRead, o: { onLaunch: boolean }): boolean {
     const interrupted = o.onLaunch && this.interrupted.has(w.id) && !("error" in w) && w.state.status !== "grant-required";
     return widgetOf(interrupted ? { ...w, state: { ...w.state, status: "running" } } : w, this.o.clock(), o);
   }
@@ -358,7 +358,7 @@ export class WidgetsScheduler {
       if (this.longs.has(id)) continue;
       const route = routeOf(entry);
       // Read again under the lock: a harvest requested in the meantime may have updated it.
-      const tache = this.only(id, route, async () => {
+      const task = this.only(id, route, async () => {
         const w = (await this.widgets()).find((x) => x.id === id);
         if (!w || !this.isDue(w, o) || this.stopped) return false;
         // Moved to the other lane since the read: the next check will launch it there.
@@ -372,10 +372,10 @@ export class WidgetsScheduler {
         return true;
       });
       if (route === "long") {
-        tache.catch((e) => console.error(`[webaios] récolte du widget ${id} :`, e));
+        task.catch((e) => console.error(`[webaios] récolte du widget ${id} :`, e));
         continue;
       }
-      if (await tache) harvests.push(id);
+      if (await task) harvests.push(id);
     }
     return harvests;
   }
@@ -443,7 +443,7 @@ export class WidgetsScheduler {
     let counted = route !== "short";
     if (counted) this.countLong(id, 1);
     const previous = this.perWidget.get(id) ?? Promise.resolve();
-    const tache = previous.then(async () => {
+    const task = previous.then(async () => {
       try {
         let v = route === "a-choisir" ? await this.currentRoute(id) : route;
         for (;;) {
@@ -461,12 +461,12 @@ export class WidgetsScheduler {
         counted = false;
       }
     });
-    const end = tache.catch(() => {});
+    const end = task.catch(() => {});
     this.perWidget.set(id, end);
     void end.then(() => {
       if (this.perWidget.get(id) === end) this.perWidget.delete(id);
     });
-    return tache;
+    return task;
   }
 
   private async workshopStarted(): Promise<boolean> {
@@ -474,7 +474,7 @@ export class WidgetsScheduler {
   }
 
   /** Without a workshop, nothing runs: the widget keeps its data and says so (a single write). */
-  private async markWorkshopStopped(w: WidgetLu): Promise<WidgetState> {
+  private async markWorkshopStopped(w: WidgetRead): Promise<WidgetState> {
     const before = await readWidgetState(this.o.widgetsFolder, w.id);
     if (before.status === "workshop-stopped") return before;
     const state: WidgetState = {
@@ -489,7 +489,7 @@ export class WidgetsScheduler {
     return state;
   }
 
-  private harvestOptions(w: WidgetLu, onTrace: (t: DirectTrace) => void, ai: HarvestOptions["ai"]): HarvestOptions {
+  private harvestOptions(w: WidgetRead, onTrace: (t: DirectTrace) => void, ai: HarvestOptions["ai"]): HarvestOptions {
     return {
       id: w.id,
       widget: w,
@@ -512,7 +512,7 @@ export class WidgetsScheduler {
    * A real run. For a widget with hours, its outcome is noted in the tracking, for the slot where it started
    * (tries never go through here).
    */
-  private async harvest(w: WidgetLu, trigger: Execution["trigger"]): Promise<WidgetState & { run?: string }> {
+  private async harvest(w: WidgetRead, trigger: Execution["trigger"]): Promise<WidgetState & { run?: string }> {
     const start = this.o.clock();
     this.interrupted.delete(w.id);
     const { result: result, issue: outcome } = await this.run(w, trigger, start);
@@ -538,7 +538,7 @@ export class WidgetsScheduler {
     }
   }
 
-  private async run(w: WidgetLu, trigger: Execution["trigger"], start: Date): Promise<{ result: WidgetState & { run?: string }; issue: HourOutcome }> {
+  private async run(w: WidgetRead, trigger: Execution["trigger"], start: Date): Promise<{ result: WidgetState & { run?: string }; issue: HourOutcome }> {
     const before = await readWidgetState(this.o.widgetsFolder, w.id);
     let state: WidgetState;
     let run: string | undefined;
@@ -575,7 +575,7 @@ export class WidgetsScheduler {
   }
 
   /** End notification: title = widget name, text = number of new items, never anything from the data. */
-  private notifyEnd(w: WidgetLu, fresh: number): void {
+  private notifyEnd(w: WidgetRead, fresh: number): void {
     if (!this.o.notify || "error" in w || w.declaration.harvest?.notify !== true) return;
     try {
       // `nom` is written by the agent: control and invisible characters replaced, on a single line.

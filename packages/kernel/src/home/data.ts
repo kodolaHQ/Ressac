@@ -55,13 +55,13 @@ const stateWrites = new Map<string, Promise<unknown>>();
 
 function stateUnderLock<T>(widgetsFolder: string, id: string, f: () => Promise<T>): Promise<T> {
   const key = join(widgetsFolder, id);
-  const tache = (stateWrites.get(key) ?? Promise.resolve()).then(f);
-  const end = tache.catch(() => {});
+  const task = (stateWrites.get(key) ?? Promise.resolve()).then(f);
+  const end = task.catch(() => {});
   stateWrites.set(key, end);
   void end.then(() => {
     if (stateWrites.get(key) === end) stateWrites.delete(key);
   });
-  return tache;
+  return task;
 }
 
 async function writeStateWithoutLock(widgetsFolder: string, id: string, state: WidgetState): Promise<void> {

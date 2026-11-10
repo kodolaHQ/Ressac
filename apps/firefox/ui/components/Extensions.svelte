@@ -5,7 +5,7 @@
   import { api } from "../state.svelte";
 
   // Everything from a manifest or a console is shown as text (never {@html}): it is data.
-  let lignes = $state<ExtensionLine[]>([]);
+  let lines = $state<ExtensionLine[]>([]);
   let cuts = $state(false);
   let chargee = $state(false);
   let input = $state("");
@@ -19,7 +19,7 @@
     const n = ++request;
     const [l, b] = await Promise.all([api.extensions.list(), api.extensions.allCut()]);
     if (n !== request) return;
-    lignes = l;
+    lines = l;
     cuts = b;
     chargee = true;
   }
@@ -74,11 +74,11 @@
   </form>
   {#if message}<p class="message" role="status" data-testid="message-extensions">{message}</p>{/if}
   {#if cuts}<p class="bandeau" role="status">Toutes les extensions sont désactivées : aucune n'est chargée, même après un redémarrage.</p>{/if}
-  {#if chargee && lignes.length === 0}
+  {#if chargee && lines.length === 0}
     <p class="vide">Aucune extension. Ajoute-en une depuis le Chrome Web Store, ou demande à l'agent d'en écrire une.</p>
   {/if}
   <ul>
-    {#each lignes as l (l.key)}
+    {#each lines as l (l.key)}
       <li data-testid="extension-page" data-cle={l.key}>
         <div class="tete">
           <b>{l.name}</b>

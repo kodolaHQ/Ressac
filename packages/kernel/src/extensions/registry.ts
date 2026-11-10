@@ -226,12 +226,12 @@ export function changeExtensionsState(
 ): Promise<ExtensionsState> {
   const previous = files.get(folder) ?? Promise.resolve();
   const next = previous.catch(() => {}).then(async () => {
-    const lu = await read(folder);
-    if (lu.future) throw new Error("état des extensions d'une version plus récente");
+    const parsed = await read(folder);
+    if (parsed.future) throw new Error("état des extensions d'une version plus récente");
     const privates = privateProfiles();
-    const fresh = applyPrivateProfiles(change(lu.state, privates), privates).state;
+    const fresh = applyPrivateProfiles(change(parsed.state, privates), privates).state;
     await mkdir(folder, { recursive: true });
-    if (lu.damaged) await copyFile(file(folder), `${file(folder)}.damaged-${new Date().toISOString().replace(/[:.]/g, "-")}`);
+    if (parsed.damaged) await copyFile(file(folder), `${file(folder)}.damaged-${new Date().toISOString().replace(/[:.]/g, "-")}`);
     const temp = `${file(folder)}.${randomUUID()}.tmp`;
     try {
       await writeFile(temp, JSON.stringify(fresh, null, 2));

@@ -81,10 +81,10 @@ describe("summarizeProfile", () => {
       ScriptDuration: 0.0123,
       TaskDuration: 0.5,
     });
-    const lignes = t.split("\n");
-    expect(lignes[0]).toContain("calculer");
-    expect(lignes[0]).toContain("25 ms");
-    expect(lignes[0]).toContain("83.3");
+    const lines = t.split("\n");
+    expect(lines[0]).toContain("calculer");
+    expect(lines[0]).toContain("25 ms");
+    expect(lines[0]).toContain("83.3");
     expect(t).toContain("(anonyme)");
     expect(t).toContain("Nodes : 120");
     expect(t).toContain("JSHeapUsedSize : 5 Mo");

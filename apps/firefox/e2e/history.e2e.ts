@@ -183,8 +183,8 @@ describe("the agent's memory retains page text", () => {
   it("the meta description is retained before the body", async () => {
     await open(`${base}/description`);
     await retained("/description");
-    const lu = (await callTool(w.dataDir, "read_history", { url: `${base}/description` })).text;
-    expect(lu).toMatch(/Resume des licornes\n\nCorps des licornes/);
+    const parsed = (await callTool(w.dataDir, "read_history", { url: `${base}/description` })).text;
+    expect(parsed).toMatch(/Resume des licornes\n\nCorps des licornes/);
   });
 
   it("nothing from a private space", async () => {

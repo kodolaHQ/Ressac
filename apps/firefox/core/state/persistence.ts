@@ -48,9 +48,9 @@ const SchemaSession = z.object({
 });
 
 /** A login profile used by a space is always listed: otherwise it would be taken for a profile to erase. */
-function withProfiles(lu: z.infer<typeof SchemaSession>): z.infer<typeof SchemaSession> {
-  const missing = [...new Set(lu.spaces.map((e) => e.profile))].filter((id) => !lu.profiles.some((p) => p.id === id));
-  return missing.length ? { ...lu, profiles: [...lu.profiles, ...missing.map((id) => ({ id }))] } : lu;
+function withProfiles(parsed: z.infer<typeof SchemaSession>): z.infer<typeof SchemaSession> {
+  const missing = [...new Set(parsed.spaces.map((e) => e.profile))].filter((id) => !parsed.profiles.some((p) => p.id === id));
+  return missing.length ? { ...parsed, profiles: [...parsed.profiles, ...missing.map((id) => ({ id }))] } : parsed;
 }
 
 /** A tab's volatile fields are not saved: they restart from their default value. */
@@ -85,10 +85,10 @@ export async function loadSession(folder: string, kept?: (path: string) => void)
     return initialState();
   }
   try {
-    const lu = withProfiles(SchemaSession.parse(JSON.parse(text)));
+    const parsed = withProfiles(SchemaSession.parse(JSON.parse(text)));
     return {
-      ...lu,
-      tabs: Object.fromEntries(Object.entries(lu.tabs).map(([id, o]) => [id, { ...o, ...VOLATILE }])),
+      ...parsed,
+      tabs: Object.fromEntries(Object.entries(parsed.tabs).map(([id, o]) => [id, { ...o, ...VOLATILE }])),
     };
   } catch {
     const name = await setAside(path, "corrupt");

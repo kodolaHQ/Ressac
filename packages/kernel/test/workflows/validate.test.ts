@@ -128,8 +128,8 @@ test("zod's common messages are worded in French", () => {
 test("more than 100 blocks, or more than 400 links: refused", () => {
   const blocks = Array.from({ length: 101 }, (_, i) => ({ id: `b${i}`, type: "list.keep", params: { count: 1 } }));
   expect(denial(wf(blocks))).toBe("Workflow invalide : blocks : 100 éléments au plus");
-  const liens = Array.from({ length: 401 }, () => ({ from: "s", to: "s" }));
-  expect(denial(wf([output()], liens))).toBe("Workflow invalide : links : 400 éléments au plus");
+  const links = Array.from({ length: 401 }, () => ({ from: "s", to: "s" }));
+  expect(denial(wf([output()], links))).toBe("Workflow invalide : links : 400 éléments au plus");
   // At the limit: accepted by the schema (100 blocks, 400 links).
   const hundred = [{ id: "b0", type: "source.feed", params: { urls: ["https://x.fr/rss"] } }, ...blocks.slice(1, 99), output()];
   const chain = hundred.slice(1).map((b, i) => ({ from: hundred[i]!.id, to: b.id }));
@@ -220,8 +220,8 @@ test("keepDays without reuse refused on source.page, accepted on list.new", () =
     [{ id: "f", type: "source.feed", params: { urls: ["https://x.fr/rss"] } }, { id: "n", type: "list.new", params: { key: "url", keepDays: 30 } }, output()],
     [{ from: "f", to: "n" }, { from: "n", to: "s" }],
   );
-  const lu = validateWorkflow(fresh);
-  expect(lu.ok && lu.valid.workflow.blocks[1]!.params).toEqual({ key: "url", keepDays: 30 });
+  const parsed = validateWorkflow(fresh);
+  expect(parsed.ok && parsed.valid.workflow.blocks[1]!.params).toEqual({ key: "url", keepDays: 30 });
 });
 
 test("keepDays 0 and 366 refused", () => {

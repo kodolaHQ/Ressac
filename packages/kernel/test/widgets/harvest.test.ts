@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { spacePaths } from "../../src/paths.js";
 import { readHome } from "../../src/home/read.js";
 import { Workshop, IMAGE } from "../../src/container/workshop.js";
-import { DeclarationWidget, type WidgetLu } from "../../src/home/schemas.js";
+import { DeclarationWidget, type WidgetRead } from "../../src/home/schemas.js";
 import { writeData, writeWidgetState, readWidgetState, deleteData } from "../../src/home/data.js";
 import { LocalAi } from "../../src/ai/local-ai.js";
 import { FakeBridge } from "../../src/mcp/fake-bridge.js";
@@ -61,7 +61,7 @@ async function webServer(routes: Record<string, (res: import("node:http").Server
 }
 
 interface Context {
-  widget: WidgetLu & { declaration: DeclarationWidget };
+  widget: WidgetRead & { declaration: DeclarationWidget };
   widgetsFolder: string;
   space: string;
   commands: string[][];
@@ -160,7 +160,7 @@ async function harvest(ctx: Context, o: { ai?: LocalAi | Pick<LocalAi, "kev" | "
 
 const optionsOf = (ctx: Context) => ({
   id: ctx.widget.id,
-  widget: ctx.widget as WidgetLu,
+  widget: ctx.widget as WidgetRead,
   widgetsFolder: ctx.widgetsFolder,
   engine: ENGINE,
   workshop: ctx.workshop,
@@ -579,9 +579,9 @@ describe("runHarvest, widget with an account", () => {
     await writeFile(join(ctx.widget.folder, "widget.json"), JSON.stringify(raw));
     await writeFile(join(ctx.widget.folder, "harvest.mjs"), "export default async (w) => ({ prev: w.previous });");
     const home = await readHome(spacePaths(ctx.space), ctx.widgetsFolder);
-    const lu = home.widgets.find((w) => w.id === "daily")!;
-    expect("data" in lu && lu.data).toBeNull(); // what widget_data would return
-    const r = await runHarvest({ ...optionsOf(ctx), widget: lu });
+    const parsed = home.widgets.find((w) => w.id === "daily")!;
+    expect("data" in parsed && parsed.data).toBeNull(); // what widget_data would return
+    const r = await runHarvest({ ...optionsOf(ctx), widget: parsed });
     expect(r.data).toEqual({ prev: null });
   });
 
@@ -679,8 +679,8 @@ describe("runHarvest, widget with an account", () => {
     expect(existsSync(join(ctx.widgetsFolder, "daily", "data.json"))).toBe(false);
     expect((await readWidgetState(ctx.widgetsFolder, "daily")).status).toBe("grant-required");
     const home = await readHome(spacePaths(ctx.space), ctx.widgetsFolder);
-    const lu = home.widgets.find((w) => w.id === "daily")!;
-    expect("data" in lu && lu.data).toBeNull(); // what widget_data would return
+    const parsed = home.widgets.find((w) => w.id === "daily")!;
+    expect("data" in parsed && parsed.data).toBeNull(); // what widget_data would return
   });
 });
 

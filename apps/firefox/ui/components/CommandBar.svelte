@@ -111,9 +111,9 @@
   let paramField: HTMLInputElement | undefined = $state();
 
   const mode = $derived(command.open?.mode ?? "new");
-  const lignes: CommandLine[] = $derived(commandLines(text, sources, mode === "active" ? (activeTab?.url ?? null) : null, activeTab?.id ?? null));
+  const lines: CommandLine[] = $derived(commandLines(text, sources, mode === "active" ? (activeTab?.url ?? null) : null, activeTab?.id ?? null));
   // A late source may shorten the list: the selection stays on a row that exists (the first otherwise).
-  const chosen = $derived(rawChosen >= 0 && rawChosen < lignes.length ? rawChosen : 0);
+  const chosen = $derived(rawChosen >= 0 && rawChosen < lines.length ? rawChosen : 0);
   const choose = (i: number) => (rawChosen = i);
 
   // An action launched: a second Enter does not relaunch it, and its reply arriving after a close or another
@@ -243,14 +243,14 @@
    */
   function key(e: KeyboardEvent) {
     if (e.isComposing) return;
-    if (e.key === "ArrowDown") choose((chosen + 1) % Math.max(lignes.length, 1));
-    else if (e.key === "ArrowUp") choose((chosen - 1 + lignes.length) % Math.max(lignes.length, 1));
+    if (e.key === "ArrowDown") choose((chosen + 1) % Math.max(lines.length, 1));
+    else if (e.key === "ArrowUp") choose((chosen - 1 + lines.length) % Math.max(lines.length, 1));
     else if (e.key === "Enter") {
-      const l = lignes[chosen];
+      const l = lines[chosen];
       if (l && !e.repeat) run(l);
     } else if (e.key === "Tab") {
       // Tab on an action awaiting its input: it is given right away, like Enter.
-      const l = lignes[chosen];
+      const l = lines[chosen];
       if (l && paramRequest(l) && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) enterParam(l);
     } else return;
     e.preventDefault();
@@ -342,8 +342,8 @@
     />
     {#if denial}<p class="refus" data-testid="refus-commande">{denial}</p>{/if}
     <ul role="listbox">
-      {#each lignes as l, i (i)}
-        {@const title = titleBefore(lignes, i)}
+      {#each lines as l, i (i)}
+        {@const title = titleBefore(lines, i)}
         {#if title}<li role="presentation" class="section" data-testid="section-commande">{title}</li>{/if}
         <li role="option" aria-selected={i === chosen} data-testid="ligne-commande" data-type={l.type}>
           <button type="button" tabindex="-1" class:choisie={i === chosen} onmousemove={() => choose(i)} onclick={() => run(l)}>

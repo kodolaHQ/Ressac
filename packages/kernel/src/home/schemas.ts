@@ -121,7 +121,7 @@ export type WidgetState = z.infer<typeof WidgetState>;
 
 export const DEFAULT_WIDGET_STATE: WidgetState = { status: "ok", lastUpdate: null, lastAttempt: null };
 
-export type WidgetLu =
+export type WidgetRead =
   | {
       id: string;
       folder: string;
@@ -139,5 +139,5 @@ export type WidgetLu =
 
 export interface HomeState {
   layout: Placement[];
-  widgets: WidgetLu[];
+  widgets: WidgetRead[];
 }

@@ -10,7 +10,7 @@ export type Owner = { type: "widget"; id: string } | { type: "action"; id: strin
 export const INVALID_WORKFLOW_PREFIX = "Workflow invalide : ";
 export const WORKFLOW_MAX_SIZE = 256 * 1024;
 export const MAX_BLOCKS = 100;
-export const MAX_LIENS = 400;
+export const MAX_LINKS = 400;
 
 const BLOCK_ID = /^[a-z0-9-]{1,40}$/;
 
@@ -32,7 +32,7 @@ export const Workflow = z
   .object({
     version: z.literal(1),
     blocks: z.array(Block).max(MAX_BLOCKS),
-    links: z.array(Link).max(MAX_LIENS).default([]),
+    links: z.array(Link).max(MAX_LINKS).default([]),
   })
   .strict();
 export type Workflow = z.infer<typeof Workflow>;

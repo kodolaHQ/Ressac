@@ -895,12 +895,12 @@ describe("agent extensions: content scripts", () => {
     expect(JSON.parse(r)).toMatchObject({ fichiers: ["|visible"], fonction: ["|visible"] });
     // I4: the value copied into the attribute (React) is not readable either.
     const a = await order(w, "attributs-onglet");
-    const lu = JSON.parse(a) as { mdp: unknown[]; texte: unknown[] };
+    const parsed = JSON.parse(a) as { mdp: unknown[]; texte: unknown[] };
     expect(a).not.toContain("secret");
-    expect(lu.mdp.slice(0, 7)).toEqual(Array(7).fill(""));
-    expect(lu.mdp[8]).toBe("");
-    expect(lu.texte.slice(0, 7)).toEqual(Array(7).fill("visible"));
-    expect(lu.texte[8]).toBe("visible");
+    expect(parsed.mdp.slice(0, 7)).toEqual(Array(7).fill(""));
+    expect(parsed.mdp[8]).toBe("");
+    expect(parsed.texte.slice(0, 7)).toEqual(Array(7).fill("visible"));
+    expect(parsed.texte[8]).toBe("visible");
   });
 
   // An agent page kept open in a tab outside the store.

@@ -45,14 +45,14 @@ const SUMMARY_LENGTH = 20000;
 export const LIST_LENGTH_MAX = 100_000;
 
 /** Keeps the last lines as long as the answer fits in LONGUEUR_LISTE_MAX, and reports the omitted ones. */
-function clamp(lignes: string[], empty: string): string {
-  if (!lignes.length) return empty;
+function clamp(lines: string[], empty: string): string {
+  if (!lines.length) return empty;
   const budget = LIST_LENGTH_MAX - 64; // room for the omission line
   let total = 0;
-  let start = lignes.length;
-  while (start > 0 && total + lignes[start - 1]!.length + 1 <= budget) total += lignes[--start]!.length + 1;
-  if (start === 0) return lignes.join("\n");
-  return [`${start} entrées plus anciennes omises.`, ...lignes.slice(start)].join("\n");
+  let start = lines.length;
+  while (start > 0 && total + lines[start - 1]!.length + 1 <= budget) total += lines[--start]!.length + 1;
+  if (start === 0) return lines.join("\n");
+  return [`${start} entrées plus anciennes omises.`, ...lines.slice(start)].join("\n");
 }
 
 const chronological = <T extends { timestamp: number }>(l: T[]): T[] => [...l].sort((a, b) => a.timestamp - b.timestamp);
@@ -268,11 +268,11 @@ export function registerDevTools(
         const messages = chronological(await tools.console(id)).filter(
           (m) => (from === undefined || m.timestamp >= from) && (level === undefined || m.level === level),
         );
-        const lignes = messages.map((m) => {
+        const lines = messages.map((m) => {
           const line = `${new Date(m.timestamp).toISOString()} [${m.level}] ${truncate(view(m.text))}`;
           return m.stack ? `${line}\n${truncate(view(m.stack))}` : line;
         });
-        return text(clamp(lignes, "Aucun message."));
+        return text(clamp(lines, "Aucun message."));
       }),
     ),
   );
@@ -289,7 +289,7 @@ export function registerDevTools(
     },
     protect(async ({ id, filter: filter }) =>
       withRight(id, "network", "read_network", async (o) => {
-        const lignes = chronological(await tools.network(id))
+        const lines = chronological(await tools.network(id))
           .map((r) => ({ r, url: viewUrl(o, r) }))
           .filter(({ url }) => !filter || url.includes(filter))
           .map(({ r, url }) =>
@@ -304,7 +304,7 @@ export function registerDevTools(
               ...(r.error ? [`erreur : ${truncate(r.error)}`] : []),
             ].join(" · "),
           );
-        return text(clamp(lignes, "Aucune requête."));
+        return text(clamp(lines, "Aucune requête."));
       }),
     ),
   );

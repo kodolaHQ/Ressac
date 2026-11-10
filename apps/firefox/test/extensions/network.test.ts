@@ -229,10 +229,10 @@ test("guard: arguments are frozen once (copy), checked and passed as is: an acce
     expect(received).not.toBe(options);
     expect(JSON.stringify(received)).not.toContain("redirect");
   }
-  let lu = 0;
+  let tabReads = 0;
   const target = {
     get tabId() {
-      return lu++ === 0 ? 4 : 5;
+      return tabReads++ === 0 ? 4 : 5;
     },
   };
   await chrome.scripting.executeScript({ target: target as unknown as { tabId: number }, files: ["x.js"] });

@@ -241,7 +241,7 @@ describe("runAction", () => {
 
   it("the blocks' memory is written after the result; a failure does not touch it", async () => {
     const b = await prepare("memo", { name: "M", sources: {} }, `export default async () => 1;`);
-    const lignes = (end: unknown) => [
+    const lines = (end: unknown) => [
       { t: "block", id: "lire", step: "start" },
       { t: "block", id: "lire", step: "end", status: "succeeded", output: { tickets: [{ title: "a" }] } },
       { t: "memory", memory: { lire: { type: "code", value: { seen: 1 } } } },
@@ -249,7 +249,7 @@ describe("runAction", () => {
       { t: "block", id: "sortie", step: "end", status: "succeeded", output: { tickets: [{ title: "a" }] } },
       end,
     ];
-    const r = await runAction(options(b, "memo", { launch: launcherLines(lignes({ t: "end", data: { tickets: [{ title: "a" }] } })) }));
+    const r = await runAction(options(b, "memo", { launch: launcherLines(lines({ t: "end", data: { tickets: [{ title: "a" }] } })) }));
     expect(r.status).toBe("succeeded");
     expect((await readMemory(join(b.actionsFolder, "memo"))).lire).toMatchObject({ type: "code", value: { seen: 1 } });
     const failure = await runAction(options(b, "memo", { launch: launcherLines([{ t: "memory", memory: { lire: { type: "code", value: { seen: 2 } } } }, { t: "failure", error: "cassé" }]) }));
@@ -259,7 +259,7 @@ describe("runAction", () => {
 
   it("action deleted just before the memory write: the memory is not written", async () => {
     const b = await prepare("memo", { name: "M", sources: {} }, `export default async () => 1;`);
-    const lignes = [
+    const lines = [
       { t: "block", id: "lire", step: "start" },
       { t: "block", id: "lire", step: "end", status: "succeeded", output: { tickets: [{ title: "a" }] } },
       { t: "memory", memory: { lire: { type: "code", value: { seen: 1 } } } },
@@ -271,7 +271,7 @@ describe("runAction", () => {
     // The memory is held (as during the erasing of its data): the run waits its turn to write it.
     let release!: () => void;
     const held = withMemory(dataFolder, () => new Promise<void>((ok) => (release = ok)));
-    const end = runAction(options(b, "memo", { launch: launcherLines(lignes) }));
+    const end = runAction(options(b, "memo", { launch: launcherLines(lines) }));
     await waitUntil(() => existsSync(join(dataFolder, "results")));
     // The time the re-read that follows the result takes: the action is still there.
     await new Promise((ok) => setTimeout(ok, 200));
@@ -429,14 +429,14 @@ describe("runAction", () => {
 });
 
 /** A fake container that writes these lines then exits with 0. */
-function launcherLines(lignes: unknown[]): ProcessLauncher {
+function launcherLines(lines: unknown[]): ProcessLauncher {
   return () => {
     const stdout = new PassThrough();
     const stderr = new PassThrough();
     const stdin = new PassThrough();
     const end = new Promise<number | null>((ok) => {
       setImmediate(() => {
-        for (const l of lignes) stdout.write(JSON.stringify(l) + "\n");
+        for (const l of lines) stdout.write(JSON.stringify(l) + "\n");
         stdout.end();
         stderr.end();
         setImmediate(() => ok(0));

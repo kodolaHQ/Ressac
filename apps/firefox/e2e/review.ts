@@ -19,7 +19,7 @@ export function projectDir(name: string): string {
 }
 
 export const LINES = Array.from({ length: 30 }, (_, i) => `ligne ${i + 1}`);
-export const writeAppJs = (dir: string, lignes: string[]) => writeFileSync(join(dir, "app.js"), lignes.join("\n") + "\n");
+export const writeAppJs = (dir: string, lines: string[]) => writeFileSync(join(dir, "app.js"), lines.join("\n") + "\n");
 /** LINES with lines `n` (1-based) modified. */
 export const modified = (...n: number[]) => LINES.map((l, i) => (n.includes(i + 1) ? `${l} modifiée` : l));
 

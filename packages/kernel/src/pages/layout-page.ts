@@ -110,12 +110,12 @@ export async function layOut(o: {
         }
         return { failure: FAILURE_REASON };
       }
-      const lu = readJson(response);
-      if (!lu) {
+      const parsed = readJson(response);
+      if (!parsed) {
         errors = [NON_JSON];
         continue;
       }
-      const v = validatePlan(lu.value, { catalog: o.catalog, results: o.results });
+      const v = validatePlan(parsed.value, { catalog: o.catalog, results: o.results });
       if (v.ok) return { plan: v.plan, fallback: false, empty: false, attempts: attempts };
       errors = v.errors;
     }

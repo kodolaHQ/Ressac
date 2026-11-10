@@ -46,8 +46,8 @@ test("a valid workflow is written atomically and re-read identical", async () =>
   expect(await readJson()).toEqual(wf());
   expect((await readFile(join(files, "workflow.json"), "utf8")).endsWith("}\n")).toBe(true);
   expect((await readdir(files)).sort()).toEqual(["a.mjs", "workflow.json"]); // no .tmp
-  const lu = await readDraft(files);
-  expect(lu).toMatchObject({ origin: "file", raw: wf(), validation: { ok: true } });
+  const parsed = await readDraft(files);
+  expect(parsed).toMatchObject({ origin: "file", raw: wf(), validation: { ok: true } });
 });
 
 test("an invalid workflow writes nothing and returns the error with the block concerned", async () => {

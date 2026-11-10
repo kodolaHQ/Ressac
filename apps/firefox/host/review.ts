@@ -31,7 +31,7 @@ import { RANGE_OUTSIDE_BLOCK } from "../shared/model.ts";
 /** Reason shown for a project the review does not know (demo, forgotten external project, vanished folder). */
 export const UNKNOWN_PROJECT = "projet inconnu";
 /** Most lines one `lignes` call returns (the page asks for 20 at a time). */
-export const LIGNES_MAX = 200;
+export const MAX_LINES = 200;
 /** Most comparisons kept per project (a page may show a comparison older than the latest). */
 export const KEPT_COMPARISONS = 8;
 /** A page asks for a comparison that is no longer kept (or never made). */
@@ -50,8 +50,8 @@ export const NO_COMMENT = "Aucun commentaire à envoyer.";
 export function blockLines(diff: DiffFile, start: number, end: number): Comment["lines"] | null {
   if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 1 || end < start) return null;
   for (const b of diff.blocks) {
-    const lignes = b.lines.map((l, i) => ({ mark: l.mark, text: l.text, position: newPosition(b, i) }));
-    const inside = lignes.filter((l) => l.position >= start && l.position <= end);
+    const lines = b.lines.map((l, i) => ({ mark: l.mark, text: l.text, position: newPosition(b, i) }));
+    const inside = lines.filter((l) => l.position >= start && l.position <= end);
     const positions = new Set(inside.map((l) => l.position));
     let full = true;
     for (let n = start; n <= end && full; n++) full = positions.has(n);
@@ -268,7 +268,7 @@ export class ReviewService {
     const g = this.guard(p, token, path);
     if (g.file.status === "deleted" || g.file.displayable !== true) return [];
     const a = Math.max(1, Math.floor(start));
-    const b = Math.min(Math.floor(end), a + LIGNES_MAX - 1);
+    const b = Math.min(Math.floor(end), a + MAX_LINES - 1);
     if (b < a) return [];
     // One more line: if it is missing, the end of the file is reached and its last "\n" does not make an empty line.
     const l = await g.repo.lines(g.comparison.currentTree, path, a, b + 1);

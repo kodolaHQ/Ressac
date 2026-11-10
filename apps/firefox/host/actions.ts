@@ -112,9 +112,9 @@ export function createActionsHost(o: {
   const denialFile = join(o.actionsFolder, "launch-denials.json");
   const onLoaded = readFile(denialFile, "utf8").then(
     (t) => {
-      const lu: unknown = JSON.parse(t);
-      if (typeof lu !== "object" || lu === null) return;
-      for (const [id, v] of Object.entries(lu)) {
+      const parsed: unknown = JSON.parse(t);
+      if (typeof parsed !== "object" || parsed === null) return;
+      for (const [id, v] of Object.entries(parsed)) {
         const { error: error, when: when } = (v ?? {}) as { error?: unknown; when?: unknown };
         if (typeof error === "string" && typeof when === "string") launchDenial.set(id, { error: error, when: when });
       }

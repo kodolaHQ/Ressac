@@ -1,9 +1,9 @@
 <script lang="ts">
   import PageLink from "../PageLink.svelte";
   import { sortLines } from "../sort";
-  import { andOthers, sections, type Collection, type PageContext, type LinkRef as Lien } from "../types";
+  import { andOthers, sections, type Collection, type PageContext, type LinkRef as Link } from "../types";
 
-  type Line = { values: Record<string, string>; link: Lien | null };
+  type Line = { values: Record<string, string>; link: Link | null };
   let { p, ctx }: { p: Collection<Line> & { columns: { field: string; label: string }[] }; ctx: PageContext } = $props();
 
   /** Click on a header: ascending sort; second click on the same one: reverse order. */

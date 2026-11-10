@@ -30,16 +30,16 @@ async function launch(
     o.edit(w);
     await writeFile(join(folder, "workflow.json"), JSON.stringify(w));
   }
-  const lu = (await readWorkflow(folder))!;
-  expect(lu.origin).toBe("file");
-  const r = lu.result;
+  const parsed = (await readWorkflow(folder))!;
+  expect(parsed.origin).toBe("file");
+  const r = parsed.result;
   if (!r.ok) throw new Error(r.error);
   const declaration = JSON.parse(await readFile(join(folder, "widget.json"), "utf8"));
   const config = { ...declaration.config, ...o.config };
 
   const child = spawn("node", [SCRIPT, folder], { stdio: ["pipe", "pipe", "pipe"] });
   const calls: Call[] = [];
-  const lignes: any[] = [];
+  const lines: any[] = [];
   let buffer = "";
   const finished = new Promise<void>((ok) => child.on("close", () => ok()));
   child.stdout.on("data", (d) => {
@@ -48,7 +48,7 @@ async function launch(
     while ((i = buffer.indexOf("\n")) >= 0) {
       const m = JSON.parse(buffer.slice(0, i));
       buffer = buffer.slice(i + 1);
-      lignes.push(m);
+      lines.push(m);
       if (m.t === "call") {
         calls.push(m);
         void Promise.resolve(reply(m)).then((rep) => child.stdin.write(JSON.stringify({ t: "answer", n: m.n, ...rep }) + "\n"));
@@ -61,9 +61,9 @@ async function launch(
   await finished;
   return {
     calls: calls,
-    terminal: lignes.find((l) => l.t === "end" || l.t === "failure"),
-    memory: lignes.find((l) => l.t === "memory")?.memory as BlocksMemory | undefined,
-    blockEnd: (b: string) => lignes.find((l) => l.t === "block" && l.id === b && l.step === "end"),
+    terminal: lines.find((l) => l.t === "end" || l.t === "failure"),
+    memory: lines.find((l) => l.t === "memory")?.memory as BlocksMemory | undefined,
+    blockEnd: (b: string) => lines.find((l) => l.t === "block" && l.id === b && l.step === "end"),
   };
 }
 

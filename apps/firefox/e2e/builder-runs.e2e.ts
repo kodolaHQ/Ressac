@@ -31,7 +31,7 @@ const WATCH_WORKFLOW = {
     { from: "textes", to: "sortie" },
   ],
 };
-const LIENS = "export default async (page) => page.links;";
+const LINKS = "export default async (page) => page.links;";
 const TEXTS = "export default async (liens) => ({ liens: liens.map((l) => l.text) });";
 /** The last code block waits a little: time to see the « en cours » badges and the greyed buttons. */
 const SLOW_TEXTS = "export default async (liens) => { await new Promise((r) => setTimeout(r, 2500)); return { liens: liens.map((l) => l.text) }; };";
@@ -92,7 +92,7 @@ const writeWatch = (id: string, o: { slow?: boolean; declaration?: Record<string
     harvest: { minutes: 60 },
     declaration: { config: { url: `${site.url}/liens?${id}` }, ...o.declaration },
     workflow: WATCH_WORKFLOW,
-    files: { "liens.mjs": LIENS, "textes.mjs": o.slow ? SLOW_TEXTS : TEXTS, "example.json": JSON.stringify({ example: "veille" }) },
+    files: { "liens.mjs": LINKS, "textes.mjs": o.slow ? SLOW_TEXTS : TEXTS, "example.json": JSON.stringify({ example: "veille" }) },
   });
 /** No state: harvested at launch (scheduled). */
 const dropState = (id: string) => rm(dataOf(id), { recursive: true });
@@ -230,7 +230,7 @@ beforeAll(async () => {
     harvest: { hours: ["07:00", "19:00"], maxDurationMinutes: 30, notify: true },
     declaration: { sources: { account: [], public: [], web: true }, config: { url: `${site.url}/liens?web` } },
     workflow: WATCH_WORKFLOW,
-    files: { "liens.mjs": LIENS, "textes.mjs": TEXTS },
+    files: { "liens.mjs": LINKS, "textes.mjs": TEXTS },
   });
   await writeState("web", noHourDue());
   await writeWatch("sansweb");
@@ -252,7 +252,7 @@ beforeAll(async () => {
         { from: "garder", to: "sortie" },
       ],
     },
-    files: { "liens.mjs": LIENS },
+    files: { "liens.mjs": LINKS },
   });
   await writeWatch("relance", { slow: true });
 

@@ -27,7 +27,7 @@ import {
   type SiteRights,
   type SitesTools,
   type TweaksRead,
-  type SiteLu,
+  type SiteRead,
 } from "../../../packages/kernel/src/index.ts";
 import { urlChanged, urlUnchanged, urlNotFound, ICON_MAX, editWithAgent, type ActionSite, type BarNotice, type SiteGrantRequest, type MessageToHome, type ShownSite } from "../shared/sites.ts";
 import type { FrameBounds } from "../shared/model.ts";
@@ -141,9 +141,9 @@ export class SiteRecords {
     private readonly file = "sites.json",
   ) {
     try {
-      const lu: unknown = JSON.parse(readFileSync(join(folder, file), "utf8"));
+      const parsed: unknown = JSON.parse(readFileSync(join(folder, file), "utf8"));
       // Without a prototype: an app name « __proto__ » or « constructor » stays a plain key.
-      if (lu && typeof lu === "object" && !Array.isArray(lu)) this.data = Object.assign(Object.create(null), lu) as Record<string, SiteRecord>;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) this.data = Object.assign(Object.create(null), parsed) as Record<string, SiteRecord>;
     } catch {
       // Absent or unreadable: start from zero (nothing essential is kept there).
     }
@@ -293,9 +293,9 @@ export function createSites(o: {
     // A case-insensitive disk would find « MonSite » for « monsite »: only the exact name counts.
     const names = await readdir(o.paths.sites).catch(() => [] as string[]);
     if (!still() || !names.includes(id)) return null;
-    const lu = await readSite(o.paths, id, reading);
-    if (!still() || !lu || "error" in lu) return null;
-    const d = lu.declaration;
+    const parsed = await readSite(o.paths, id, reading);
+    if (!still() || !parsed || "error" in parsed) return null;
+    const d = parsed.declaration;
     const state = await readUrlState(sitesFolder, id);
     if (!still()) return null;
     let grant: SiteRights | null = null;
@@ -307,12 +307,12 @@ export function createSites(o: {
       console.error("[sites] accords illisibles :", e);
     }
     if (!still()) return null;
-    const files = await tweakFiles(lu);
+    const files = await tweakFiles(parsed);
     if (!still()) return null;
     const site: OpenableSite = {
       id,
       declaration: d,
-      hasHome: lu.hasHome,
+      hasHome: parsed.hasHome,
       domains: effectiveDomains(d, state),
       start: startUrl(d, state),
       grantRequired: grantNeeded(d) && !grantCovers(grant, d),
@@ -321,11 +321,11 @@ export function createSites(o: {
   }
 
   /** The tweak files; none if one of them is missing or exceeds the bounds (the error is written). */
-  async function tweakFiles(lu: Extract<SiteLu, { declaration: unknown }>): Promise<TweaksRead> {
-    if (lu.declaration.tweaks.length === 0) return { js: {}, css: {} };
-    const r = await readTweaks(lu).catch((e: unknown) => ({ error: String(e) }));
+  async function tweakFiles(parsed: Extract<SiteRead, { declaration: unknown }>): Promise<TweaksRead> {
+    if (parsed.declaration.tweaks.length === 0) return { js: {}, css: {} };
+    const r = await readTweaks(parsed).catch((e: unknown) => ({ error: String(e) }));
     if (!("error" in r)) return r;
-    console.warn(`[sites] ${lu.id} : retouches non injectées : ${r.error}`);
+    console.warn(`[sites] ${parsed.id} : retouches non injectées : ${r.error}`);
     return { js: {}, css: {} };
   }
 
@@ -444,9 +444,9 @@ export function createSites(o: {
 
   /** The app's current domain (that of its start address). */
   async function currentDomain(id: string): Promise<string> {
-    const lu = await readSite(o.paths, id, reading).catch(() => null);
-    if (!lu || "error" in lu) return "";
-    return host(startUrl(lu.declaration, await readUrlState(sitesFolder, id))) ?? "";
+    const parsed = await readSite(o.paths, id, reading).catch(() => null);
+    if (!parsed || "error" in parsed) return "";
+    return host(startUrl(parsed.declaration, await readUrlState(sitesFolder, id))) ?? "";
   }
 
   const memoryMessage = async (id: string, m: SiteMemory): Promise<MessageToHome & { type: "memory" }> => {
@@ -548,7 +548,7 @@ export function createSites(o: {
   }
 
   /** The rows of the « Sites » section, and the hash of each valid declaration (for the agent only). */
-  async function lignes(): Promise<(ShownSite & { hash?: string })[]> {
+  async function lines(): Promise<(ShownSite & { hash?: string })[]> {
     const sites = await readSites(o.paths, reading);
     shownItems = new Set(sites.map((s) => s.id));
     return Promise.all(
@@ -578,7 +578,7 @@ export function createSites(o: {
     if (!subscriptions.has(id)) subscriptions.set(id, m.onChange(() => void memoryMessage(id, m).then((msg) => o.notifyMemory(id, msg), () => {})));
   };
 
-  const list = async () => (await lignes()).map(({ hash: _, ...l }) => l);
+  const list = async () => (await lines()).map(({ hash: _, ...l }) => l);
 
   function forget(id: string): void {
     openSites.delete(id);
@@ -587,7 +587,7 @@ export function createSites(o: {
 
   return {
     list: list,
-    agentList: lignes,
+    agentList: lines,
     openById: openById,
     async dispatch(id, a, win) {
       if (!ID_SITE.test(id)) return;
@@ -642,7 +642,7 @@ export function createSites(o: {
     },
     tools: {
       list: async () =>
-        (await lignes()).map((s) => ({
+        (await lines()).map((s) => ({
           id: s.id, name: s.name, domain: s.domain, open: s.open, ...(s.error !== undefined ? { error: s.error } : {}),
           ...(s.hash !== undefined ? { hash: s.hash } : {}),
         })),

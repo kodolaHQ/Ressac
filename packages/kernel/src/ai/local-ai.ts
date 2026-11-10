@@ -386,11 +386,11 @@ export class LocalAi {
     }
     const gen = ++this.generation;
     this.change("starting");
-    const lignes: string[] = [];
+    const lines: string[] = [];
     let output: number | null | undefined;
     const p = this.launch("uv", ["run", "--extra", "serve", "python", "-m", "kev.serve", "--run", KEV_MODEL, "--port", String(this.port)], { cwd: this.kevFolder });
     this.process = p;
-    p.onLine?.((l) => { lignes.push(l); if (lignes.length > 20) lignes.shift(); });
+    p.onLine?.((l) => { lines.push(l); if (lines.length > 20) lines.shift(); });
     let dead = false;
     p.onOutput((code) => {
       dead = true;
@@ -402,7 +402,7 @@ export class LocalAi {
     while (Date.now() < end) {
       if (gen !== this.generation) return; // arreter() came through here
       if (dead) {
-        const msg = `Kev n'a pas démarré : ${lignes.slice(-5).join("\n") || `code ${output}`}`;
+        const msg = `Kev n'a pas démarré : ${lines.slice(-5).join("\n") || `code ${output}`}`;
         this.change("error", msg);
         throw new Error(msg);
       }
@@ -421,7 +421,7 @@ export class LocalAi {
     if (gen !== this.generation) return;
     p.stop();
     this.process = undefined;
-    const msg = `Kev n'a pas démarré : délai dépassé. ${lignes.slice(-5).join("\n")}`.trim();
+    const msg = `Kev n'a pas démarré : délai dépassé. ${lines.slice(-5).join("\n")}`.trim();
     this.change("error", msg);
     throw new Error(msg);
   }

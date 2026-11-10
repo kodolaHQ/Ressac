@@ -15,7 +15,7 @@ import {
   checkSiteDeclaration,
 } from "./schemas.js";
 
-export type SiteLu =
+export type SiteRead =
   | { id: string; folder: string; declaration: DeclarationSite; hasHome: boolean }
   | { id: string; folder: string; error: string };
 export type TweaksRead = { js: Record<string, string>; css: Record<string, string> };
@@ -67,22 +67,22 @@ async function readDeclaration(folder: string, o: { localAddresses: boolean }): 
   return denial ? { error: `site.json invalide : ${denial}` } : { declaration: r.data };
 }
 
-async function readOne(c: SpacePaths, id: string, o: { localAddresses: boolean }): Promise<SiteLu> {
+async function readOne(c: SpacePaths, id: string, o: { localAddresses: boolean }): Promise<SiteRead> {
   const folder = join(c.sites, id);
   if (!ID_SITE.test(id)) return { id, folder: folder, error: SITE_ID_ERROR };
-  const lu = await readDeclaration(folder, o);
-  if ("error" in lu) return { id, folder: folder, error: lu.error };
+  const parsed = await readDeclaration(folder, o);
+  if ("error" in parsed) return { id, folder: folder, error: parsed.error };
   let hasHome = false;
   try {
     hasHome = (await lstat(join(folder, "home", "index.html"))).isFile();
   } catch {
     // no home
   }
-  return { id, folder: folder, declaration: lu.declaration, hasHome: hasHome };
+  return { id, folder: folder, declaration: parsed.declaration, hasHome: hasHome };
 }
 
 /** The site apps on disk, sorted by id; a broken app is reported, it does not prevent reading the others. */
-export async function readSites(c: SpacePaths, o: { localAddresses: boolean }): Promise<SiteLu[]> {
+export async function readSites(c: SpacePaths, o: { localAddresses: boolean }): Promise<SiteRead[]> {
   let ids: string[];
   try {
     // `isDirectory` is false for a symbolic link: a link to a folder is ignored.
@@ -97,7 +97,7 @@ export async function readSites(c: SpacePaths, o: { localAddresses: boolean }): 
 }
 
 /** An app by its id; null if the folder does not exist (or is hidden, a symbolic link, an invalid name). */
-export async function readSite(c: SpacePaths, id: string, o: { localAddresses: boolean }): Promise<SiteLu | null> {
+export async function readSite(c: SpacePaths, id: string, o: { localAddresses: boolean }): Promise<SiteRead | null> {
   if (!id || id.startsWith(".") || /[\\/\0]/.test(id)) return null;
   try {
     if (!(await lstat(join(c.sites, id))).isDirectory()) return null;
@@ -108,7 +108,7 @@ export async function readSite(c: SpacePaths, id: string, o: { localAddresses: b
 }
 
 /** The files cited by the tweaks, read under `tweaks/`: never a link, never outside the folder, bounded. */
-export async function readTweaks(s: Extract<SiteLu, { declaration: DeclarationSite }>): Promise<TweaksRead | { error: string }> {
+export async function readTweaks(s: Extract<SiteRead, { declaration: DeclarationSite }>): Promise<TweaksRead | { error: string }> {
   const base = join(s.folder, "tweaks");
   const missing = { error: "tweaks : dossier de l'appli introuvable" };
   let realRoot: string;

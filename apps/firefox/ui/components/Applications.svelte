@@ -68,7 +68,7 @@
   });
 
   const actSite = (s: ShownSite, action: ActionSite) => api.sites.act(s.id, action);
-  const lignesSites = $derived.by(() => {
+  const siteRows = $derived.by(() => {
     const searches = text.trim().toLowerCase();
     return sites.filter((s) => !searches || [s.name, s.id, s.domain ?? "", s.description].some((x) => x.toLowerCase().includes(searches)));
   });
@@ -92,7 +92,7 @@
   const effectiveFilter = $derived(GROUPS.flatMap((g) => g.filters).some((x) => x.id === filter && (!x.ifPresent || account(x.id) > 0)) ? filter : "tout");
 
   /** Running first, then the most recent last launch, then the most recent creation. */
-  const lignes = $derived.by(() => {
+  const lines = $derived.by(() => {
     const searches = text.trim().toLowerCase();
     return data.apps
       .filter(FILTERS[effectiveFilter])
@@ -219,7 +219,7 @@
       <p class="vide">Rien ici pour l'instant. Demande à l'agent de tester un package ou de construire une app.</p>
     {:else}
       <ul>
-        {#each lignes as a (a.folder)}
+        {#each lines as a (a.folder)}
           {@const { buttons: buttons, menu } = actions(a)}
           <li data-testid="appli-{a.folder}" data-etat={a.state}>
             <span class="icone">
@@ -250,15 +250,15 @@
             </div>
           </li>
         {:else}
-          {#if lignesSites.length === 0}<li class="aucune">Aucune appli ne correspond.</li>{/if}
+          {#if siteRows.length === 0}<li class="aucune">Aucune appli ne correspond.</li>{/if}
         {/each}
       </ul>
     {/if}
-    {#if lignesSites.length > 0}
+    {#if siteRows.length > 0}
       <section class="sites" data-testid="section-sites" aria-label="Sites">
         <h2 class="titre-sites">Sites</h2>
         <ul>
-          {#each lignesSites as s (s.id)}
+          {#each siteRows as s (s.id)}
             <li data-testid="site-{s.id}" data-ouverte={s.open}>
               <span class="icone">
                 {#if s.icon}<img src={s.icon} alt="" width="16" height="16" />{:else}🌐{/if}

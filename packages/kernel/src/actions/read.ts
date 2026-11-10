@@ -34,9 +34,9 @@ async function readDeclaration(folder: string): Promise<{ declaration: Declarati
 
 async function readOne(c: SpacePaths, id: string): Promise<ReadAction> {
   const folder = join(c.actions, id);
-  const lu = await readDeclaration(folder);
-  if ("error" in lu) return { id, folder: folder, error: lu.error };
-  return { id, folder: folder, declaration: lu.declaration, hasWorkflow: await exists(join(folder, "workflow.json")) };
+  const parsed = await readDeclaration(folder);
+  if ("error" in parsed) return { id, folder: folder, error: parsed.error };
+  return { id, folder: folder, declaration: parsed.declaration, hasWorkflow: await exists(join(folder, "workflow.json")) };
 }
 
 /** Actions on disk, sorted by name; a broken action is reported, it does not prevent reading the others. */
@@ -73,7 +73,7 @@ export async function actionWorkflow(
 ): Promise<{ t: "ok"; valid: ValidWorkflow } | { t: "invalid" | "unreadable"; error: string } | { t: "absent" }> {
   if ("error" in a) return { t: "unreadable", error: a.error };
   if (!(await exists(join(a.folder, "workflow.json")))) return { t: "absent" };
-  const lu = await readRawWorkflow(a.folder);
-  const r = "error" in lu ? workflowError(lu.error) : validateWorkflow(lu.raw, actionValidationContext(a.declaration));
+  const parsed = await readRawWorkflow(a.folder);
+  const r = "error" in parsed ? workflowError(parsed.error) : validateWorkflow(parsed.raw, actionValidationContext(a.declaration));
   return r.ok ? { t: "ok", valid: r.valid } : { t: "invalid", error: r.error };
 }

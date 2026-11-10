@@ -409,7 +409,7 @@ export class ExtensionsAgent {
   async entries(): Promise<ExtensionLine[]> {
     const [nav, state] = await Promise.all([this.browser(), readExtensionsState(this.o.folder)]);
     const privates = privateProfilesOf(nav);
-    const lignes: ExtensionLine[] = [];
+    const lines: ExtensionLine[] = [];
     for (const [key, x] of Object.entries(state.extensions)) {
       const id = this.id(key);
       if (!id || x.source !== "agent") continue;
@@ -417,7 +417,7 @@ export class ExtensionsAgent {
       // The granted scope; without a grant (never for a loaded entry), the manifest's on disk.
       const scope = x.grant ?? parseManifest(manifest, { source: "agent" }).scope;
       const disabled = x.disabled ? (x.disabled.reason === "crashes" ? DISABLED_CRASHES : DISABLED_SCOPE) : null;
-      lignes.push({
+      lines.push({
         key: key,
         name: x.name,
         source: "agent",
@@ -436,7 +436,7 @@ export class ExtensionsAgent {
         siteApps: [],
       });
     }
-    return lignes.sort((a, b) => a.name.localeCompare(b.name) || a.key.localeCompare(b.key));
+    return lines.sort((a, b) => a.name.localeCompare(b.name) || a.key.localeCompare(b.key));
   }
 
   /** « Désactiver toutes les extensions » is on. */
@@ -709,7 +709,7 @@ export class ExtensionsAgent {
     const state = await readExtensionsState(this.o.folder);
     const others = nav.spaces.filter((e) => e.id !== space.id && e.profile === space.profile).map((e) => e.name);
     const grayed = privateProfilesOf(nav).has(space.profile) ? PRIVATE_PROFILE_ERROR : null;
-    const lignes: SpaceExtensionLine[] = Object.entries(state.extensions)
+    const lines: SpaceExtensionLine[] = Object.entries(state.extensions)
       .filter(([, x]) => x.source === "agent")
       .map(([key, x]) => {
         const active = x.profiles.includes(space.profile);
@@ -718,9 +718,9 @@ export class ExtensionsAgent {
     for (const d of await readdir(this.o.agentFolder, { withFileTypes: true }).catch(() => [])) {
       const key = this.key(d.name);
       if (!d.isDirectory() || !key || key in state.extensions) continue;
-      lignes.push({ key: key, name: d.name, source: "agent", active: false, alsoIn: [], greyedOut: grayed, profiles: [] });
+      lines.push({ key: key, name: d.name, source: "agent", active: false, alsoIn: [], greyedOut: grayed, profiles: [] });
     }
-    return lignes.sort((a, b) => a.name.localeCompare(b.name) || a.key.localeCompare(b.key));
+    return lines.sort((a, b) => a.name.localeCompare(b.name) || a.key.localeCompare(b.key));
   }
 
   /**
@@ -1042,8 +1042,8 @@ export class ExtensionsAgent {
     const realAfter = await realpath(this.o.agentFolder).catch(() => "");
     if (typeof after === "string" || !sameMarkers(before, after) || realAfter !== realBefore)
       return deny([typeof after === "string" ? after : "Dossier remplacé pendant la copie"]);
-    const lu = before[1]!;
-    if (r.root && (r.root.path !== join(realBefore, id) || r.root.dev !== lu.dev || r.root.ino !== lu.ino)) return deny(["Dossier remplacé pendant la copie"]);
+    const parsed = before[1]!;
+    if (r.root && (r.root.path !== join(realBefore, id) || r.root.dev !== parsed.dev || r.root.ino !== parsed.ino)) return deny(["Dossier remplacé pendant la copie"]);
     if (r.analysis.denial.length > 0) return deny(r.analysis.denial);
     try {
       const manifest = JSON.parse(await readFile(join(staging, "manifest.json"), "utf8"));

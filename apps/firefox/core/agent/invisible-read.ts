@@ -45,25 +45,25 @@ interface PartsRead {
  * the longest text seen. The title is that of the final read. The caps then apply, at formatting.
  */
 export function accumulateParts(readings: unknown[]): PartsRead {
-  let lignes: string[] = [];
-  const liens = new Map<string, string>();
+  let lines: string[] = [];
+  const links = new Map<string, string>();
   let title: unknown = "";
   let previous: string[] | null = null;
   for (const r of readings) {
     const p = (r ?? {}) as Partial<PartsRead>;
     title = p.title ?? title;
     const here = String(p.text ?? "").split("\n");
-    if (previous === null) lignes = [...here];
-    else lignes = addNext(lignes, previous, here);
+    if (previous === null) lines = [...here];
+    else lines = addNext(lines, previous, here);
     previous = here;
     for (const l of Array.isArray(p.links) ? (p.links as unknown[]) : []) {
       const raw = (l as { url?: unknown; text?: unknown } | null) ?? {};
       if (typeof raw.url !== "string") continue;
       const text = String(raw.text ?? "");
-      if (text.length > (liens.get(raw.url)?.length ?? -1)) liens.set(raw.url, text);
+      if (text.length > (links.get(raw.url)?.length ?? -1)) links.set(raw.url, text);
     }
   }
-  return { title: title, text: lignes.join("\n"), links: [...liens].map(([url, text]) => ({ url, text: text })) };
+  return { title: title, text: lines.join("\n"), links: [...links].map(([url, text]) => ({ url, text: text })) };
 }
 
 /** Trailing lines of the previous snapshot that can be ignored for the realignment (« Chargement… », « Voir plus » button). */

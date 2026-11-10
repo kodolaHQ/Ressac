@@ -17,9 +17,9 @@ export interface ProfileExtension {
 export function warnings(
   b: { id: SpaceId | null; private: boolean; profile: ProfileId },
   spaces: Space[],
-  lignes: ProfileExtension[],
+  lines: ProfileExtension[],
 ): { sharedPrivate: string[]; agentDisabled: string[] } {
-  const actives = lignes.filter((l) => l.profiles.includes(b.profile));
+  const actives = lines.filter((l) => l.profiles.includes(b.profile));
   if (!b.private || actives.length === 0) return { sharedPrivate: [], agentDisabled: [] };
   return {
     sharedPrivate: spaces.filter((e) => e.id !== b.id && e.profile === b.profile).map((e) => e.name),

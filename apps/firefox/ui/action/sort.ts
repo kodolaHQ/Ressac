@@ -12,9 +12,9 @@ function count(s: string): number | null {
 
 const cell = (l: Record<string, string>, field: string) => (Object.hasOwn(l, field) ? (l[field] ?? "") : "").trim();
 
-export function sortLines(lignes: Record<string, string>[], field: string, direction: "asc" | "desc"): Record<string, string>[] {
+export function sortLines(lines: Record<string, string>[], field: string, direction: "asc" | "desc"): Record<string, string>[] {
   const sign = direction === "asc" ? 1 : -1;
-  const keys = lignes.map((l, i) => {
+  const keys = lines.map((l, i) => {
     const t = cell(l, field);
     return { l, i, t, n: count(t) };
   });

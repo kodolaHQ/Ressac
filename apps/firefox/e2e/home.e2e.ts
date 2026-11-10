@@ -503,13 +503,13 @@ describe("the home page", () => {
   });
 
   it("a news harvest writes its notification into WEBAIOS_TEST_NOTIFICATIONS", async () => {
-    const lignes = await wait(
+    const lines = await wait(
       async () => ((existsSync(notifications) ? (await readFile(notifications, "utf8")).trim().split("\n").filter(Boolean) : []).map((l) => JSON.parse(l) as { title: string; text: string })),
       (ls) => ls.some((n) => n.title === "Veille"),
       "la notification de nouveautés",
       20_000,
     );
-    expect(lignes).toContainEqual({ title: "Veille", text: "2 nouveaux éléments" });
+    expect(lines).toContainEqual({ title: "Veille", text: "2 nouveaux éléments" });
   });
 
   it("Retirer: the folder goes into .corbeille, the grant and the data are erased", async () => {

@@ -97,11 +97,11 @@ function extensionLine(x: AgentExtension): string {
 }
 
 /** Keeps the last messages as long as the answer fits in CONSOLE_LENGTH_MAX, and reports the omitted ones. */
-function clamp(lignes: string[]): string[] {
+function clamp(lines: string[]): string[] {
   let total = 0;
-  let start = lignes.length;
-  while (start > 0 && total + lignes[start - 1]!.length + 1 <= CONSOLE_LENGTH_MAX - 64) total += lignes[--start]!.length + 1;
-  return start === 0 ? lignes : [`${start} messages plus anciens omis.`, ...lignes.slice(start)];
+  let start = lines.length;
+  while (start > 0 && total + lines[start - 1]!.length + 1 <= CONSOLE_LENGTH_MAX - 64) total += lines[--start]!.length + 1;
+  return start === 0 ? lines : [`${start} messages plus anciens omis.`, ...lines.slice(start)];
 }
 
 /**
@@ -203,9 +203,9 @@ export function registerExtensionsTools(
     },
     beating(protect(async ({ id }: { id: string }) => {
       const r = await tools.reload(id);
-      const lignes = [`state : ${r.state}`, ...(r.detail.length ? [RELOAD_DETAIL_PREFIX, ...r.detail] : [])];
-      if (r.state === "disabled") lignes.push("Appelle request_extension pour redemander l'accord de l'utilisateur.");
-      return text(lignes.join("\n"), r.state === "refused");
+      const lines = [`state : ${r.state}`, ...(r.detail.length ? [RELOAD_DETAIL_PREFIX, ...r.detail] : [])];
+      if (r.state === "disabled") lines.push("Appelle request_extension pour redemander l'accord de l'utilisateur.");
+      return text(lines.join("\n"), r.state === "refused");
     })),
   );
 
@@ -225,11 +225,11 @@ export function registerExtensionsTools(
       if (isFromStore(id)) return text(AGENT_ONLY);
       const r = await tools.console(id, from);
       if (!r) return text(`Extension inconnue : ${id}`, true);
-      const lignes = r.messages.map((m) => {
+      const lines = r.messages.map((m) => {
         const stack = m.stack ? `\n${truncate(m.stack, MESSAGE_LENGTH)}` : "";
         return `${m.timestamp} · ${m.level} · ${truncate(m.text, MESSAGE_LENGTH)}${stack}`;
       });
-      const body = lignes.length ? [EXTENSION_CONSOLE_PREFIX, ...clamp(lignes)] : ["Aucun message."];
+      const body = lines.length ? [EXTENSION_CONSOLE_PREFIX, ...clamp(lines)] : ["Aucun message."];
       const notice = [
         ...(r.hidden > 0 ? [hiddenTabs(r.hidden)] : []),
         ...(r.hiddenBackground ? [CONSOLE_BACKGROUND_HIDDEN] : []),

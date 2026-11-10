@@ -32,12 +32,12 @@ function nearest<T>(items: T[], pos: (t: T) => number, target: number): T {
 
 /** Pure re-anchoring: a comment is never deleted, only moved or marked « ligne changée ». */
 export function rejoin(c: Comment, blocks: Block[]): Comment {
-  const lignes = shownList(blocks);
+  const lines = shownList(blocks);
   const n = c.lines.length;
   const windows: Shown[][] = [];
   if (n > 0) {
-    for (let i = 0; i + n <= lignes.length; i++) {
-      const f = lignes.slice(i, i + n);
+    for (let i = 0; i + n <= lines.length; i++) {
+      const f = lines.slice(i, i + n);
       // The text alone: a « + » line becomes context again after « Marquer comme relu ».
       if (f.every((l, k) => l.block === f[0]!.block && l.text === c.lines[k]!.text)) windows.push(f);
     }
@@ -46,13 +46,13 @@ export function rejoin(c: Comment, blocks: Block[]): Comment {
     const f = nearest(windows, (w) => w[0]!.position, c.start);
     return { ...c, start: f[0]!.position, end: f[n - 1]!.position, lineChanged: false };
   }
-  const sameText = n > 0 ? lignes.filter((l) => l.text === c.lines[0]!.text) : [];
+  const sameText = n > 0 ? lines.filter((l) => l.text === c.lines[0]!.text) : [];
   if (sameText.length > 0) {
     const l = nearest(sameText, (x) => x.position, c.start);
     return { ...c, start: l.position, end: l.position, lineChanged: true };
   }
-  if (lignes.length > 0) {
-    const l = nearest(lignes, (x) => x.position, c.start);
+  if (lines.length > 0) {
+    const l = nearest(lines, (x) => x.position, c.start);
     return { ...c, start: l.position, end: l.position, lineChanged: true };
   }
   return { ...c, lineChanged: true };
@@ -71,13 +71,13 @@ export class ReviewComments {
 
   // Serialized read-modify-write: two simultaneous calls do not overwrite each other.
   private transform<T>(f: (list: Comment[]) => { list: Comment[]; result: T }): Promise<T> {
-    const tache = this.writes.then(async () => {
+    const task = this.writes.then(async () => {
       const { list: list, result: result } = f(await this.read());
       await writePrivateJson(this.file, list);
       return result;
     });
-    this.writes = tache.catch(() => undefined);
-    return tache;
+    this.writes = task.catch(() => undefined);
+    return task;
   }
 
   async list(): Promise<Comment[]> {

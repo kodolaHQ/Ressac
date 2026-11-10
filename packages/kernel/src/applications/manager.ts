@@ -320,7 +320,7 @@ export class ApplicationManager {
   }
 
   /** The last `lignes` lines of the app's log (read on the Mac), empty if it does not exist. */
-  async log(folder: string, lignes = 50): Promise<string> {
+  async log(folder: string, lines = 50): Promise<string> {
     if (!validFolder(folder)) throw new Error(`dossier d'application invalide : ${folder}`);
     let content: string;
     try {
@@ -328,6 +328,6 @@ export class ApplicationManager {
     } catch {
       return "";
     }
-    return content.replace(/\n+$/, "").split("\n").slice(-lignes).join("\n");
+    return content.replace(/\n+$/, "").split("\n").slice(-lines).join("\n");
   }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_WIDGET_STATE, type DeclarationWidget, type HomeState, type WidgetLu } from "../../../packages/kernel/src/index";
+import { DEFAULT_WIDGET_STATE, type DeclarationWidget, type HomeState, type WidgetRead } from "../../../packages/kernel/src/index";
 import { validatePlacements, toShownWidgets } from "../host/widgets";
 
 const declaration = (o: Partial<DeclarationWidget> = {}): DeclarationWidget => ({
@@ -10,7 +10,7 @@ const declaration = (o: Partial<DeclarationWidget> = {}): DeclarationWidget => (
   ...o,
 });
 
-const widget = (o: Partial<Extract<WidgetLu, { declaration: DeclarationWidget }>> = {}): WidgetLu => ({
+const widget = (o: Partial<Extract<WidgetRead, { declaration: DeclarationWidget }>> = {}): WidgetRead => ({
   id: "demo",
   folder: "/espace/home/widgets/demo",
   declaration: declaration(),
@@ -23,19 +23,19 @@ const widget = (o: Partial<Extract<WidgetLu, { declaration: DeclarationWidget }>
   ...o,
 });
 
-const state = (widgets: WidgetLu[]): HomeState => ({ layout: [], widgets });
+const state = (widgets: WidgetRead[]): HomeState => ({ layout: [], widgets });
 
 describe("toShownWidgets", () => {
   it("returns the data, the example, the state and the display versioned by date", () => {
     const theme = { version: 1 as const, background: "#101014" };
-    const lu = toShownWidgets({
+    const parsed = toShownWidgets({
       state: state([widget({ data: { n: 1 }, example: { n: 0 }, state: { ...DEFAULT_WIDGET_STATE, status: "running" } })]),
       placements: [],
       theme,
       mtimes: { demo: 1730000000123 },
     });
-    expect(lu.theme).toBe(theme);
-    expect(lu.widgets).toEqual([
+    expect(parsed.theme).toBe(theme);
+    expect(parsed.widgets).toEqual([
       {
         id: "demo",
         name: "Démo",
@@ -56,24 +56,24 @@ describe("toShownWidgets", () => {
   });
 
   it("without a display, src is null and the date is not read", () => {
-    const lu = toShownWidgets({ state: state([widget({ hasDisplay: false })]), placements: [], theme: null, mtimes: {} });
-    expect(lu.theme).toBeNull();
-    expect(lu.widgets[0]).toMatchObject({ src: null });
+    const parsed = toShownWidgets({ state: state([widget({ hasDisplay: false })]), placements: [], theme: null, mtimes: {} });
+    expect(parsed.theme).toBeNull();
+    expect(parsed.widgets[0]).toMatchObject({ src: null });
   });
 
   it("keeps the wanted place when it comes from layout.json", () => {
-    const lu = toShownWidgets({ state: state([widget()]), placements: [{ id: "demo", x: 250, y: 360, w: 100, h: 90 }], theme: null, mtimes: {} });
-    expect(lu.widgets[0]?.placement).toEqual({ id: "demo", x: 250, y: 360, w: 100, h: 90 });
+    const parsed = toShownWidgets({ state: state([widget()]), placements: [{ id: "demo", x: 250, y: 360, w: 100, h: 90 }], theme: null, mtimes: {} });
+    expect(parsed.widgets[0]?.placement).toEqual({ id: "demo", x: 250, y: 360, w: 100, h: 90 });
   });
 
   it("places an unreadable widget at its default size (4 × 2)", () => {
-    const lu = toShownWidgets({
+    const parsed = toShownWidgets({
       state: state([{ id: "casse", folder: "/espace/home/widgets/casse", error: "widget.json invalide" }]),
       placements: [],
       theme: null,
       mtimes: {},
     });
-    expect(lu.widgets).toEqual([
+    expect(parsed.widgets).toEqual([
       { id: "casse", error: "widget.json invalide", placement: { id: "casse", x: 0, y: 0, w: 333, h: 180 } },
     ]);
   });

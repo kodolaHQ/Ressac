@@ -227,7 +227,7 @@ export class History {
            JOIN visits v ON v.url = t.url AND v.space_id = t.space_id
            WHERE texts_fts MATCH :fts AND ${inPeriod}`
       : "SELECT NULL AS url, NULL AS id, NULL AS score WHERE 0";
-    const lignes = this.db
+    const lines = this.db
       .prepare(`
         WITH matches AS MATERIALIZED (${found}),
         candidates AS (
@@ -243,7 +243,7 @@ export class History {
         ORDER BY c.score IS NULL, c.score, latest DESC
         LIMIT :limit`)
       .all({ ...period, ...patterns, ...(words.length ? { fts } : {}), limit: limit }) as { url: string; id: number | null }[];
-    return lignes.map(({ url, id }) => {
+    return lines.map(({ url, id }) => {
       const visits = this.req.visitsOf.all({ url, ...period }) as { title: string; date: string; visits: number }[];
       const snippet = id === null ? undefined : (this.req.excerpt.get(fts, id) as { excerpt: string } | undefined);
       return {

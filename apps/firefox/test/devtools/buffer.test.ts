@@ -156,7 +156,7 @@ test("vider() clears the console and the network", () => {
 });
 
 test("the caps are adjustable", () => {
-  const t = new TabBuffer({ maxConsole: 2, maxReseau: 1 });
+  const t = new TabBuffer({ maxConsole: 2, maxNetwork: 1 });
   for (let i = 0; i < 3; i++) log(t, "log", `m${i}`);
   expect(t.console().map((m) => m.text)).toEqual(["m1", "m2"]);
 });

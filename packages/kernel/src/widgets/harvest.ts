@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { writeData, writeWidgetState, readData, readWidgetState, changeWidgetState, deleteData } from "../home/data.js";
-import type { DeclarationWidget, WidgetState, WidgetLu } from "../home/schemas.js";
+import type { DeclarationWidget, WidgetState, WidgetRead } from "../home/schemas.js";
 import type { Workshop } from "../container/workshop.js";
 import type { LocalAi } from "../ai/local-ai.js";
 import type { BrowserBridge } from "../mcp/bridge.js";
@@ -35,7 +35,7 @@ export { PROFILE_DENIED, defaultLaunch, type ProcessLauncher, type HarvestProces
 
 export interface HarvestOptions {
   id: string;
-  widget: WidgetLu;
+  widget: WidgetRead;
   widgetsFolder: string;
   /** Folder of the workflow engine on the Mac (`docker/engine`), mounted read-only in the container. */
   engine: string;
@@ -128,12 +128,12 @@ export function validationContext(d: DeclarationWidget): ValidationContext {
   return { web: d.sources.web, maxDurationMinutes: d.harvest?.maxDurationMinutes ?? null, owner: "widget", input: false };
 }
 
-async function widgetWorkflow(widget: WidgetLu): Promise<WidgetWorkflow> {
+async function widgetWorkflow(widget: WidgetRead): Promise<WidgetWorkflow> {
   if ("error" in widget) return { t: "unreadable", error: widget.error };
-  const lu = await readWorkflow(widget.folder, validationContext(widget.declaration));
-  if (!lu) return { t: "absent" };
-  if (!lu.result.ok) return { t: "invalid", error: truncate(lu.result.error, MAX_ERROR) };
-  return { t: "ok", valid: lu.result.valid, declaration: widget.declaration };
+  const parsed = await readWorkflow(widget.folder, validationContext(widget.declaration));
+  if (!parsed) return { t: "absent" };
+  if (!parsed.result.ok) return { t: "invalid", error: truncate(parsed.result.error, MAX_ERROR) };
+  return { t: "ok", valid: parsed.result.valid, declaration: widget.declaration };
 }
 
 /**
@@ -293,13 +293,13 @@ export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
     return e.id;
   };
 
-  const lu = await widgetWorkflow(widget);
+  const parsed = await widgetWorkflow(widget);
   // The widget's read error may quote its files: it counts as written by the widget.
-  if (lu.t === "unreadable") return conclude({ status: "error", error: lu.error, widgetError: true });
-  if (lu.t === "absent") return conclude({ status: "error", error: NO_WORKFLOW_ERROR });
+  if (parsed.t === "unreadable") return conclude({ status: "error", error: parsed.error, widgetError: true });
+  if (parsed.t === "absent") return conclude({ status: "error", error: NO_WORKFLOW_ERROR });
   // workflow.json half-written, unknown block, cycle…: no container is launched, the data stays.
-  if (lu.t === "invalid") return conclude({ status: "error", error: lu.error, run: await withoutContainer("failed", lu.error, []) });
-  const { valid: valid, declaration } = lu;
+  if (parsed.t === "invalid") return conclude({ status: "error", error: parsed.error, run: await withoutContainer("failed", parsed.error, []) });
+  const { valid: valid, declaration } = parsed;
   // A widget that reads with the user's account only runs with their grant (an expired grant is withdrawn, with its data).
   if (!(await validGrant(widgetsFolder, id, declaration)).can) {
     const error = grantRequired(declaration);
@@ -458,10 +458,10 @@ export async function runAttempt(o: HarvestOptions & { origin: string; start: st
   const dataFolder = join(widgetsFolder, id);
   const denial = (error: string): AttemptResult => ({ ok: false, error: error });
 
-  const lu = await widgetWorkflow(widget);
-  if (lu.t === "absent") return denial(NO_WORKFLOW_ERROR);
-  if (lu.t !== "ok") return denial(lu.error);
-  const { valid: valid, declaration } = lu;
+  const parsed = await widgetWorkflow(widget);
+  if (parsed.t === "absent") return denial(NO_WORKFLOW_ERROR);
+  if (parsed.t !== "ok") return denial(parsed.error);
+  const { valid: valid, declaration } = parsed;
   const grant = await validGrant(widgetsFolder, id, declaration);
   if (!grant.can) {
     // Expired grant withdrawn: the widget waits for a new grant. Never given: nothing is written.

@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, expect, it } from "vitest";
 import { NO_CLIENT } from "../../../packages/kernel/src/design/projects";
-import { PAGE_LINE_CHANGED as LIGNE_CHANGEE, RANGE_OUTSIDE_BLOCK, reviewUrl } from "../shared/model";
+import { PAGE_LINE_CHANGED as LINE_CHANGED, RANGE_OUTSIDE_BLOCK, reviewUrl } from "../shared/model";
 import { state, waitFor } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
@@ -190,11 +190,11 @@ it("three lines added at the top of app.js then Rafraîchir: the comment follows
     writeAppJs(p.folder, ["a", "b", "c", ...modified(15)]);
     await refresh();
     await waitText(COMMENT, "Ligne 18");
-    expect(await text(COMMENT)).not.toContain(LIGNE_CHANGEE);
+    expect(await text(COMMENT)).not.toContain(LINE_CHANGED);
     expect(await commentUnder()).toBe("18");
     writeAppJs(p.folder, ["a", "b", "c", ...LINES.map((l, i) => (i === 14 ? "ligne 15 réécrite" : l))]);
     await refresh();
-    await waitText(COMMENT, LIGNE_CHANGEE);
+    await waitText(COMMENT, LINE_CHANGED);
     expect(await text(COMMENT)).toContain("garder l'ancien nom");
   } finally {
     await p.client.close();

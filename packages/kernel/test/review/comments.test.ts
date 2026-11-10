@@ -5,9 +5,9 @@ import { tempFolder } from "../helpers/temp.js";
 import { ReviewComments, EMPTY_REMARK, rejoin, type Comment } from "../../src/review/comments.js";
 import { parserDiff } from "../../src/review/diff.js";
 
-const ctx = (lignes: string[]) => lignes.map((t) => ` ${t}`);
-function patch(start: number, lignes: string[]): string {
-  return [`@@ -${start},${lignes.length} +${start},${lignes.length} @@`, ...lignes, ""].join("\n");
+const ctx = (lines: string[]) => lines.map((t) => ` ${t}`);
+function patch(start: number, lines: string[]): string {
+  return [`@@ -${start},${lines.length} +${start},${lines.length} @@`, ...lines, ""].join("\n");
 }
 function com(start: number, lines: Comment["lines"]): Comment {
   return { id: "c-1", file: "f.txt", start: start, end: start + lines.length - 1, lines, text: "t", created: "", sent: false, resolved: false, lineChanged: false };
