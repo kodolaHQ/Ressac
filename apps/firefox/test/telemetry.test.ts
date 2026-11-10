@@ -73,6 +73,7 @@ describe("errorEnvelope", () => {
     expect(JSON.parse(lines[1]!).type).toBe("event");
     expect(ev).toMatchObject({ event_id: "e1", release: "0.1.0", environment: "beta", platform: "node", tags: { source: "host" } });
     expect(ev.sdk.settings).toEqual({ infer_ip: "never" });
+    expect(ev.user).toEqual({ ip_address: "0.0.0.0" });
     expect(ev.exception.values[0]).toMatchObject({ type: "Error", value: "ENOENT ~/x <url>" });
     expect(ev.exception.values[0].stacktrace.frames[0].filename).toBe("~/p.js");
   });
@@ -81,7 +82,7 @@ describe("errorEnvelope", () => {
     expect(v).not.toHaveProperty("stacktrace");
   });
   it("is anonymous", () => {
-    for (const k of ["user", "server_name", "request"]) expect(ev).not.toHaveProperty(k);
+    for (const k of ["server_name", "request"]) expect(ev).not.toHaveProperty(k);
     expect(ev.contexts?.device).toBeUndefined();
     expect(env).not.toContain(home);
   });

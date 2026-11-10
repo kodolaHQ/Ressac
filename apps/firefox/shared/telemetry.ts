@@ -51,6 +51,8 @@ export function errorEnvelope(e: ReportedError, o: { release: string; home: stri
     platform: "node",
     // Without this, Sentry derives the sender's IP (and so a city) from the request.
     sdk: { name: "webaios", version: o.release, settings: { infer_ip: "never" } },
+    // An explicit, unlocatable IP: Sentry keeps it instead of the sender's, so it derives no city.
+    user: { ip_address: "0.0.0.0" },
     tags: { source: e.source },
     exception: { values: [{ type: s(e.type), value: s(e.message).replace(QUOTED, '"…"').slice(0, 300), ...(frames.length ? { stacktrace: { frames } } : {}) }] },
   };
