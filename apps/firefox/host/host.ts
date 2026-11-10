@@ -74,7 +74,8 @@ try {
   console.error(`[webaios] migration des données arrêtée : ${(e as Error).message}`);
   // Said to Firefox before going, so the user reads why rather than only that the kernel stopped.
   const message = `Le noyau de l'agent ne démarre pas : ${(e as Error).message}`;
-  writeStdout(JSON.stringify({ jsonrpc: "2.0", method: HOST_FATAL, params: { message } }) + "\n", () => process.exit(2));
+  // The exit a moment later: Firefox reads the line before it sees the process go.
+  writeStdout(JSON.stringify({ jsonrpc: "2.0", method: HOST_FATAL, params: { message } }) + "\n", () => setTimeout(() => process.exit(2), 500));
   await new Promise(() => {});
 }
 const root = join(dataDir, "workspace");

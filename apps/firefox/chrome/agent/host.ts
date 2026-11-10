@@ -81,7 +81,8 @@ export function createHost(o: {
       if (l.includes(HOST_FATAL)) {
         try {
           const m = JSON.parse(l);
-          if (m.method === HOST_FATAL && typeof m.params?.message === "string") reason = m.params.message;
+          // Gone for good: stopped now, with its reason (the process exits just after).
+          if (m.method === HOST_FATAL && typeof m.params?.message === "string") return ((reason = m.params.message), exited());
         } catch {
           // not a message
         }
@@ -92,8 +93,7 @@ export function createHost(o: {
     void readLines(proc.stderr, (l) => console.warn(`[kernel] ${l}`));
     o.onStart((method, params) => rpc.notify(method, params));
     pid = proc.pid;
-    // The exit alone also counts (stdout held open by a child it left), once what it wrote before is read.
-    void proc.wait().then(() => Promise.race([out, new Promise((r) => setTimeout(r, 1_000))])).then(exited);
+    void proc.wait().then(exited);
     return { proc, rpc };
   };
 
