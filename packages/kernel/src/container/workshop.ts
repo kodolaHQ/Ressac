@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { validFolder } from "../applications/manifest.js";
 import { CONTAINER_PATH, KERNEL_ROOT, type SpacePaths } from "../paths.js";
 import type { Owner } from "../workflows/schema.js";
-import { defaultRunner, type Runner } from "./runner.js";
+import { defaultRunner, type RunResult, type Runner } from "./runner.js";
 
 export const CONTAINER_NAME = "webaios-workshop";
 // Read on every call so a second app (Firefox build) can run its own container.
@@ -169,7 +169,30 @@ export class Workshop {
     return this.startup;
   }
 
-  private async start(): Promise<WorkshopState> {
+  /** Stops the container (volumes kept) and starts it again. */
+  async restart(): Promise<WorkshopState> {
+    if (!this.docker || (await this.launch(["info"], PROBE_DELAY_MS)).code !== 0) return "docker-absent";
+    await this.launch(["stop", "-t", "2", containerName()], PROBE_DELAY_MS);
+    return this.ensureStarted();
+  }
+
+  /** Deletes the container and rebuilds the image from scratch; /workspace and the home volume are kept. */
+  async rebuild(): Promise<WorkshopState> {
+    if (!this.docker || (await this.launch(["info"], PROBE_DELAY_MS)).code !== 0) return "docker-absent";
+    this.startup ??= (async () => {
+      await this.launch(["rm", "-f", containerName()], PROBE_DELAY_MS);
+      return this.start({ fresh: true });
+    })().finally(() => (this.startup = null));
+    return this.startup;
+  }
+
+  /** One-off command in the container, not interactive. */
+  async exec(argv: string[]): Promise<RunResult> {
+    if (!this.docker) return { code: 1, stdout: "", stderr: "Docker introuvable" };
+    return this.launch(["exec", containerName(), ...argv], PROBE_DELAY_MS);
+  }
+
+  private async start(o: { fresh?: boolean } = {}): Promise<WorkshopState> {
     let state = await this.state();
     if (state === "docker-absent") return state;
     const hash = dockerfileHash(this.dockerFolder);
@@ -185,8 +208,8 @@ export class Workshop {
       return this.state();
     }
     const image = await this.launch(["image", "inspect", "-f", `{{index .Config.Labels "${HASH_LABEL}"}}`, IMAGE], PROBE_DELAY_MS);
-    if (image.code !== 0 || image.stdout.trim() !== hash) {
-      const build = await this.launch(["build", "-t", IMAGE, "--label", `${HASH_LABEL}=${hash}`, "-f", dockerfile(this.dockerFolder), this.dockerFolder], BUILD_DELAY_MS);
+    if (o.fresh || image.code !== 0 || image.stdout.trim() !== hash) {
+      const build = await this.launch(["build", ...(o.fresh ? ["--no-cache", "--pull"] : []), "-t", IMAGE, "--label", `${HASH_LABEL}=${hash}`, "-f", dockerfile(this.dockerFolder), this.dockerFolder], BUILD_DELAY_MS);
       if (build.code !== 0) throw new Error(`Construction de l'image ${IMAGE} impossible : ${build.stderr}`);
     }
     const ports = containerPortRange().join("-");

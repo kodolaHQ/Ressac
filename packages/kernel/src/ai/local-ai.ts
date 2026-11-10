@@ -141,7 +141,9 @@ export class LocalAi {
   // Modifiable: Kev's address, imposed by WEBAIOS_KEV_URL or computed from the port.
   private kevUrl: string;
   private readonly kevForced: boolean;
-  private readonly ollamaUrl: string;
+  readonly ollamaUrl: string;
+  /** Decision model served by Ollama; undefined = Kev. */
+  private decisionModel: string | undefined;
   private readonly port: number;
   private readonly inactivityMs: number;
   private readonly clock: () => number;
@@ -151,6 +153,7 @@ export class LocalAi {
     this.port = o.port ?? 8008;
     const imposed = o.kevUrl ?? process.env.WEBAIOS_KEV_URL;
     this.kevForced = Boolean(imposed);
+    this.decisionModel = o.decisionModel;
     this.kevUrl = imposed ?? `http://127.0.0.1:${this.port}`;
     this.ollamaUrl = o.ollamaUrl ?? process.env.WEBAIOS_OLLAMA_URL ?? "http://127.0.0.1:11434";
     this.inactivityMs = o.inactivityMs ?? 600_000;
@@ -170,20 +173,27 @@ export class LocalAi {
 
   private get kevFolder() { return join(this.o.folder, "kev"); }
 
-  async check(): Promise<{ kev: boolean; uv: boolean; ollama: boolean; gemma: boolean }> {
+  setDecisionModel(model: string | undefined): void {
+    this.decisionModel = model;
+  }
+
+  async check(): Promise<{ kev: boolean; uv: boolean; ollama: boolean; gemma: boolean; decision: boolean }> {
     const kev = existsSync(join(this.kevFolder, ".git"));
     const uv = (await this.o.run("uv", ["--version"], { delayMs: 10_000 })).code === 0;
     let ollama = false;
     let gemma = false;
+    let decision = false;
+    const wanted = this.kevForced ? undefined : this.decisionModel;
     try {
       const r = await fetch(`${this.ollamaUrl}/api/tags`, { signal: AbortSignal.timeout(3000) });
       ollama = r.ok;
       if (r.ok) {
         const { models } = (await r.json()) as { models?: { name?: string }[] };
         gemma = (models ?? []).some((m) => m.name === GEMMA_MODEL);
+        decision = Boolean(wanted) && (models ?? []).some((m) => m.name === wanted || m.name === `${wanted}:latest`);
       }
     } catch { /* unreachable */ }
-    return { kev, uv, ollama, gemma };
+    return { kev, uv, ollama, gemma, decision };
   }
 
   /** Folder where Kev is cloned before being renamed to `kev/`: an interrupted clone never leaves a partial repo there. */
@@ -257,7 +267,7 @@ export class LocalAi {
   async kev(body: { state: unknown; questions: Record<string, unknown> }, o: { signal?: AbortSignal } = {}): Promise<unknown> {
     if (this.closed) throw new Error(AI_CLOSED_ERROR);
     checkAbort(o.signal);
-    const model = this.kevForced ? undefined : this.o.decisionModel;
+    const model = this.kevForced ? undefined : this.decisionModel;
     if (!model) await this.ensureKev();
     checkAbort(o.signal);
     this.lastUsage = this.clock();

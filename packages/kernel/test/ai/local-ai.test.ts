@@ -38,6 +38,34 @@ describe("LocalAi", () => {
     expect(req.body).toEqual({ state: "texte", questions });
   });
 
+  it("check() reports whether the decision model is in Ollama's tags, false in Kev mode", async () => {
+    const ollama = keep(await fakeOllama("", ["gemma4:e4b-mlx", "pplx-decider-flash:latest"]));
+    const ai = new LocalAi({ folder: await tempFolder(), run: fakeRunner([]).run, ollamaUrl: ollama.url, decisionModel: "pplx-decider-flash" });
+    toStop.push(ai);
+    expect(await ai.check()).toMatchObject({ gemma: true, decision: true });
+    ai.setDecisionModel(undefined);
+    expect((await ai.check()).decision).toBe(false);
+  });
+
+  it("setDecisionModel switches between Kev and Ollama", async () => {
+    const kev = keep(await fakeKev());
+    const ollama = keep(await fakeKev());
+    const folder = await tempFolder();
+    await mkdir(join(folder, "kev", ".git"), { recursive: true });
+    const launch = (): AiProcess => ({ stop() {}, onOutput() {} });
+    const ai = new LocalAi({ folder, run: fakeRunner([]).run, launch, port: 1, ollamaUrl: ollama.url, decisionModel: "pplx-decider-flash", ...fast });
+    (ai as any).kevUrl = kev.url;
+    toStop.push(ai);
+    const body = { state: "t", questions: {} };
+    ai.setDecisionModel(undefined);
+    await ai.kev(body);
+    expect(kev.requests.some((r) => r.url === "/v1/systemone")).toBe(true);
+    expect(ollama.requests).toHaveLength(0);
+    ai.setDecisionModel("pplx-decider-flash");
+    await ai.kev(body);
+    expect(ollama.requests.find((r) => r.url === "/v1/systemone")!.body.model).toBe("pplx-decider-flash");
+  });
+
   it("with modeleDecision, kev() asks Ollama's /v1/systemone with that model and launches nothing", async () => {
     const ollama = keep(await fakeKev());
     const { run: run } = fakeRunner([]);

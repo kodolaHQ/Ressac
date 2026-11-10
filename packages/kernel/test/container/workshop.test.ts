@@ -1,4 +1,4 @@
-import { expect, test, vi } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { spacePaths } from "../../src/paths.js";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -398,4 +398,67 @@ test("a failed docker run removes the half-created container, so the next start 
   expect(calls.slice(iRun + 1).some((a) => a.args.join(" ") === "rm -f webaios-workshop")).toBe(true);
   await workshop.ensureStarted();
   expect(runs).toBe(2);
+});
+
+describe("restart, rebuild, exec", () => {
+  const upToDate = `${paths.root}|${dockerfileHash()}\n`;
+
+  test("restart stops then starts", async () => {
+    let started = false;
+    const { run: runCall, calls } = fakeRunner([
+      [/ inspect -f .*Mounts/, { code: 0, stdout: upToDate }],
+      [/ inspect -f/, () => ({ code: 0, stdout: started ? "true\n" : "false\n" })],
+      [/ start /, () => ((started = true), { code: 0 })],
+    ]);
+    expect(await new Workshop({ paths, docker: "docker", run: runCall }).restart()).toBe("demarre");
+    const lines = calls.map((c) => c.args.join(" "));
+    expect(lines.indexOf("stop -t 2 webaios-workshop")).toBeGreaterThan(-1);
+    expect(lines.findIndex((l) => l.startsWith("inspect"))).toBeGreaterThan(lines.indexOf("stop -t 2 webaios-workshop"));
+    expect(lines).toContain("start webaios-workshop");
+  });
+
+  const rebuildRules = () => {
+    let launched = false;
+    return fakeRunner([
+      [/ image inspect /, { code: 0, stdout: dockerfileHash() + "\n" }],
+      [/ inspect /, () => ({ code: launched ? 0 : 1, stdout: "true\n" })],
+      [/ run /, () => ((launched = true), { code: 0 })],
+    ]);
+  };
+
+  test("rebuild keeps the volumes", async () => {
+    const { run: runCall, calls } = rebuildRules();
+    expect(await new Workshop({ paths, docker: "docker", run: runCall }).rebuild()).toBe("demarre");
+    const names = calls.map((c) => c.args[0]);
+    expect(names.indexOf("rm")).toBeLessThan(names.indexOf("build"));
+    expect(names.indexOf("build")).toBeLessThan(names.indexOf("run"));
+    expect(calls.find((c) => c.args[0] === "rm")!.args).toEqual(["rm", "-f", "webaios-workshop"]);
+    const build = calls.find((c) => c.args[0] === "build")!;
+    expect(build.args).toEqual(expect.arrayContaining(["--no-cache", "--pull"]));
+    expect(calls.find((c) => c.args[0] === "run")!.args).toEqual(
+      expect.arrayContaining(["webaios-home:/home/node", `${paths.root}:/workspace`]),
+    );
+  });
+
+  test("rebuild twice at once builds once", async () => {
+    const { run: runCall, calls } = rebuildRules();
+    const w = new Workshop({ paths, docker: "docker", run: runCall });
+    await Promise.all([w.rebuild(), w.rebuild()]);
+    expect(calls.filter((c) => c.args[0] === "build")).toHaveLength(1);
+  });
+
+  test("docker absent", async () => {
+    const { run: runCall, calls } = fakeRunner([[/ info/, { code: 1 }]]);
+    const w = new Workshop({ paths, docker: "docker", run: runCall });
+    expect(await w.restart()).toBe("docker-absent");
+    expect(await w.rebuild()).toBe("docker-absent");
+    expect(calls.every((c) => c.args[0] === "info")).toBe(true);
+    expect(await new Workshop({ paths, docker: null }).exec(["ls"])).toEqual({ code: 1, stdout: "", stderr: "Docker introuvable" });
+  });
+
+  test("exec", async () => {
+    const { run: runCall, calls } = fakeRunner([]);
+    await new Workshop({ paths, docker: "docker", run: runCall }).exec(["claude", "auth", "status", "--json"]);
+    expect(calls[0]!.args).toEqual(["exec", "webaios-workshop", "claude", "auth", "status", "--json"]);
+  });
 });
