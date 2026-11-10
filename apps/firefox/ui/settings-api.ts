@@ -1,10 +1,9 @@
 import type { Action, SettingsApi } from "../shared/api";
-import type { BrowserState, WindowId } from "../shared/model";
+import type { WindowId } from "../shared/model";
 import type { AgentAccount, Backup, GrantKind, GrantRow, SettingsResult } from "../shared/settings";
 import type { AgentHost } from "../chrome/agent/host";
 import type { SettingsChrome } from "../chrome/store/settings";
 import type { SitePermissions } from "../chrome/store/site-permissions";
-import { profileLabel } from "./home-profiles";
 
 const SILENT: { ok: false; error: string } = { ok: false, error: "L'agent ne répond pas" };
 const LABELS: Record<string, string> = { notifications: "Notifications", geolocation: "Position", "media-camera": "Caméra", "media-micro": "Micro", midi: "MIDI", drm: "Contenu protégé" };
@@ -15,7 +14,6 @@ export function createSettingsApi(o: {
   host: Pick<AgentHost, "request" | "notify">;
   chrome: SettingsChrome;
   sitePermissions: Pick<SitePermissions, "list" | "forget">;
-  state: () => BrowserState;
   dispatch(a: Action): void;
   windowId: WindowId;
   openAgent(): void;
@@ -36,7 +34,7 @@ export function createSettingsApi(o: {
         .map(([k, d]) => `${LABELS[k]} : ${DECISIONS[d as keyof typeof DECISIONS] ?? d}`)
         .sort()
         .join(" · ");
-      return { kind: "site", key: `${profile}\n${origin}`, name, profile: profileLabel(o.state(), profile), detail };
+      return { kind: "site", key: `${profile}\n${origin}`, name, profile, detail };
     });
   };
   return {

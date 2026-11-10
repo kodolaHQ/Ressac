@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Action } from "../shared/api";
-import type { BrowserState } from "../shared/model";
 import type { GrantRow } from "../shared/settings";
 import { revealable } from "../chrome/store/settings";
 import { createSettingsApi } from "../ui/settings-api";
@@ -24,7 +23,6 @@ function setup(answers: Record<string, (p: any) => unknown> = {}) {
     host,
     chrome,
     sitePermissions: sitePermissions as any,
-    state: () => ({ spaces: [{ id: "s", name: "Perso", profile: "default" }] }) as unknown as BrowserState,
     dispatch: (a) => void dispatched.push(a),
     windowId: "W",
     openAgent: vi.fn(),
@@ -43,6 +41,7 @@ describe("settings api", () => {
     });
     const g = await api.grants();
     expect(g.map((r) => r.kind)).toEqual(["site", "widget", "action", "external"]);
+    expect(g[0]!.profile).toBe("default");
     expect(g[0]!.detail).toBe("Caméra : autorisé · Notifications : refusé");
     expect(g[3]).toMatchObject({ name: "Claude", detail: "Projets externes du mode design" });
   });

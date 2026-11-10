@@ -288,7 +288,6 @@ export function createApi(win: WindowController): ApiFirefox {
       host,
       chrome: win.store.settings,
       sitePermissions: win.store.sitePermissions,
-      state: () => win.store.state,
       dispatch: (a) => win.store.dispatch(a),
       windowId,
       openAgent: () => win.openAgent(),
