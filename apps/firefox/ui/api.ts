@@ -145,7 +145,7 @@ export function createApi(win: WindowController): ApiFirefox {
         });
       },
       profiles: () => host.request<{ id: string; name: string }[]>("agent.profiles").then((p) => structuredClone(p), () => []),
-      current: () => host.request<string>("agent.current", { window: windowId }).then((p) => String(p), () => null),
+      current: () => host.request<string>("agent.current", { window: windowId }).then((p) => (typeof p === "string" ? p : null), () => null),
       switch: (profile) => switchAgent(profile),
     },
     tabCycle: (m) => win.tabSwitch(m),
