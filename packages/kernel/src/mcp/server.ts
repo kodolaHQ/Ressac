@@ -866,11 +866,11 @@ function tokenEqual(received: Buffer, expected: Buffer): boolean {
   return received.length === expected.length && timingSafeEqual(received, expected);
 }
 
-/** The window of the presented token: `null` for the main token, `undefined` if the token is not valid. Each token is compared in constant time. */
-function tokenWindow(req: IncomingMessage, principal: Buffer, sessions: Map<string, { token: Buffer; window: string }>): string | null | undefined {
+/** The window (and agent name, if the session has its own) of the presented token: window `null` for the main token, `undefined` if the token is not valid. Each token is compared in constant time. */
+function tokenWindow(req: IncomingMessage, principal: Buffer, sessions: Map<string, { token: Buffer; window: string; agent?: string }>): { window: string | null; agent?: string } | undefined {
   const received = Buffer.from((req.headers.authorization ?? "").replace(/^Bearer /, ""));
-  let found: string | null | undefined = tokenEqual(received, principal) ? null : undefined;
-  for (const s of sessions.values()) if (tokenEqual(received, s.token)) found = s.window;
+  let found: { window: string | null; agent?: string } | undefined = tokenEqual(received, principal) ? { window: null } : undefined;
+  for (const s of sessions.values()) if (tokenEqual(received, s.token)) found = { window: s.window, ...(s.agent ? { agent: s.agent } : {}) };
   return found;
 }
 
@@ -901,12 +901,12 @@ export async function startMcpServer(o: {
   extensions?: ExtensionsTools;
   /** Site app tools (list, open, memory, errors); without it, none of these tools. */
   sites?: SitesTools;
-}): Promise<{ port: number; containerUrl: string; openSession(win: string): string; closeSession(token: string): void; stop(): Promise<void> }> {
+}): Promise<{ port: number; containerUrl: string; openSession(win: string, agent?: string): string; closeSession(token: string): void; stop(): Promise<void> }> {
   const expected = Buffer.from(o.token);
   // Session tokens: one per window agent. Security note: their config files are readable by the
   // agents in the container; a session token gives nothing more than the main token, otherwise the link to
   // a window (ids only).
-  const sessions = new Map<string, { token: Buffer; window: string }>();
+  const sessions = new Map<string, { token: Buffer; window: string; agent?: string }>();
   const requests: OngoingRequests = new Map();
   const dev: DevToolsOptions = {
     agent: o.agent ?? "L'agent",
@@ -918,11 +918,14 @@ export async function startMcpServer(o: {
   const actions: OptionsActions | undefined = o.actions ? { tools: o.actions, agent: dev.agent, requests: new Map() } : undefined;
 
   const http = createServer(async (req: IncomingMessage, res: ServerResponse) => {
-    const win = tokenWindow(req, expected, sessions);
-    if (win === undefined) return res.writeHead(401).end();
+    const who = tokenWindow(req, expected, sessions);
+    if (who === undefined) return res.writeHead(401).end();
+    const win = who.window;
+    // A session of another agent (profile) asks under its own name; the pending-request maps stay shared.
+    const named = who.agent ? { ...dev, agent: who.agent } : dev;
     if (new URL(req.url ?? "/", "http://x").pathname !== "/mcp") return res.writeHead(404).end();
     // Stateless mode: a new server and transport per request.
-    const server = createToolsServer(o.bridge, o.policy, requests, o.apps, o.appTabDelayMs, dev, widgets, win, o.openWorkflow, o.extensions, actions, o.sites, o.heartbeatMs);
+    const server = createToolsServer(o.bridge, o.policy, requests, o.apps, o.appTabDelayMs, named, widgets && who.agent ? { ...widgets, agent: who.agent } : widgets, win, o.openWorkflow, o.extensions, actions && who.agent ? { ...actions, agent: who.agent } : actions, o.sites, o.heartbeatMs);
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on("close", () => {
       void transport.close();
@@ -944,9 +947,9 @@ export async function startMcpServer(o: {
   return {
     port,
     containerUrl: `http://host.docker.internal:${port}/mcp`,
-    openSession(win) {
+    openSession(win, agent) {
       const token = generateToken();
-      sessions.set(token, { token: Buffer.from(token), window: win });
+      sessions.set(token, { token: Buffer.from(token), window: win, ...(agent ? { agent: agent } : {}) });
       return token;
     },
     closeSession(token) {

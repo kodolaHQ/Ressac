@@ -25,6 +25,7 @@ const expectedList = [
   "home/layout.json",
   ...Object.entries(START_FILES).flatMap(([w, files]) => files.map((f) => `home/widgets/${w}/${f}`)),
   ".webaios/profiles/claude.json",
+  ".webaios/profiles/codex.json",
 ];
 
 test("creates the full space in an empty folder", async () => {
@@ -273,4 +274,21 @@ test("a starter display modified by the user is left alone", async () => {
   const { created: crees } = await initSpace(c);
   expect(await readFile(join(c.widgets, "meteo", "display.html"), "utf8")).toBe(modified);
   expect(crees).toEqual([]);
+});
+
+test("a space with only the old claude.json gets codex.json and an updated claude.json; edited ones are kept", async () => {
+  const c = spacePaths(await tempFolder());
+  await mkdir(c.profiles, { recursive: true });
+  // The profile shipped before `resume` (hash 0fb830fc...).
+  const shipped = '{\n  "id": "claude",\n  "name": "Claude Code",\n  "interactive": ["claude", "--dangerously-skip-permissions", "--mcp-config", "{mcpConfig}"],\n  "nonInteractive": ["claude", "--dangerously-skip-permissions", "-p", "{prompt}"],\n  "mcpConfig": "claude-json"\n}\n';
+  expect(OLD_AGENT_PROFILE.has(sha256(shipped))).toBe(true);
+  await writeFile(join(c.profiles, "claude.json"), shipped);
+  await initSpace(c);
+  expect(existsSync(join(c.profiles, "codex.json"))).toBe(true);
+  expect(await readFile(join(c.profiles, "claude.json"), "utf8")).toContain("--continue");
+  await writeFile(join(c.profiles, "codex.json"), '{"id":"codex","mine":true}');
+  await writeFile(join(c.profiles, "claude.json"), '{"id":"claude","mine":true}');
+  await initSpace(c);
+  expect(await readFile(join(c.profiles, "codex.json"), "utf8")).toBe('{"id":"codex","mine":true}');
+  expect(await readFile(join(c.profiles, "claude.json"), "utf8")).toBe('{"id":"claude","mine":true}');
 });

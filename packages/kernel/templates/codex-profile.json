@@ -1,0 +1,8 @@
+{
+  "id": "codex",
+  "name": "Codex",
+  "interactive": ["codex", "--dangerously-bypass-approvals-and-sandbox", "-c", "{mcpConfig}"],
+  "resume": ["codex", "resume", "--last", "--dangerously-bypass-approvals-and-sandbox", "-c", "{mcpConfig}"],
+  "nonInteractive": ["codex", "exec", "--dangerously-bypass-approvals-and-sandbox", "--skip-git-repo-check", "{prompt}"],
+  "mcpConfig": "codex-toml"
+}

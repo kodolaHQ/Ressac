@@ -483,3 +483,11 @@ describe("restart, rebuild, exec", () => {
     expect(calls[0]!.args).toEqual(["exec", "webaios-workshop", "claude", "auth", "status", "--json"]);
   });
 });
+
+test("sessionCommand passes env variables by name only", () => {
+  const w = new Workshop({ paths: spacePaths("/x"), docker: "/d", run: fakeRunner([]).run });
+  const argv = w.sessionCommand("s1", ["codex"], ["WEBAIOS_MCP_TOKEN"]);
+  const at = argv.indexOf("WEBAIOS_MCP_TOKEN");
+  expect(argv[at - 1]).toBe("-e");
+  expect(argv.some((a) => a.startsWith("WEBAIOS_MCP_TOKEN="))).toBe(false);
+});
