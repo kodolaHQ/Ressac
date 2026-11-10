@@ -2,6 +2,8 @@ import { z } from "zod";
 import { validFolder, ID_EXECUTION, ID_SITE, type Application, type Warning, type BlockCatalogEntry, type DeclarationWidget, type DirectState, type DraftRead, type SaveResult, type AttemptResult, type DevRight, type AiState, type WidgetState, type Execution, type ResumeExecution, type ActionsState, type PageAction, type LaunchResult, type Owner } from "@webaios/kernel";
 import type { BatchState, ProjectId, ExternalProject, TrackedProject } from "@webaios/kernel";
 import { PROJECT_ID, type Comment, type DiffFile, type ModifiedFile } from "@webaios/kernel";
+import type { AgentAccount, Backup, DecisionModel, GrantKind, GrantRow, SettingsResult } from "./settings";
+import type { WorkshopState } from "../../../packages/kernel/src/container/workshop.ts";
 import type { ActionShown } from "./actions";
 import type { ActionSite, SiteWindowState, MessageToHome, ShownSite } from "./sites";
 import type { ExtensionsBar, ExtensionLine, SpaceExtensionLine, SiteExtensionLine } from "./extensions";
@@ -344,6 +346,33 @@ export interface ApiWebaios {
   design: ApiDesign;
   external: ExternalApi;
   review: ReviewApi;
+  settings: SettingsApi;
+}
+
+/** The settings page: agent accounts, workshop, local AI, durable grants, data, telemetry. */
+export interface SettingsApi {
+  agents(): Promise<AgentAccount[]>;
+  /** Opens this window's agent panel, to sign in there. */
+  login(id: string): void;
+  logout(id: string): Promise<AgentAccount[]>;
+  /** null: the host does not answer. */
+  workshop(): Promise<WorkshopState | null>;
+  restartWorkshop(fresh: boolean): Promise<SettingsResult>;
+  chooseDecisionModel(model: DecisionModel): void;
+  grants(): Promise<GrantRow[]>;
+  revoke(kind: GrantKind, key: string): Promise<void>;
+  data(): Promise<{ dataDir: string; backups: Backup[] }>;
+  reveal(path: string): void;
+  deleteBackup(path: string): Promise<SettingsResult>;
+  /** Reveals the file once written. */
+  exportData(): Promise<{ ok: true; path: string } | { ok: false; error: string }>;
+  reset(): void;
+  telemetry(): Promise<{ available: boolean; enabled: boolean }>;
+  setTelemetry(enabled: boolean): void;
+  version(): Promise<string>;
+  openAdvanced(): void;
+  /** The OrbStack install link: https only. */
+  openUrl(url: string): void;
 }
 
 

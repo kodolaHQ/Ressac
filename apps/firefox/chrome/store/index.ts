@@ -23,6 +23,7 @@ import { createSitePermissions, type SitePermission, type SitePermissions } from
 import { bindSites, sites, type SiteApps } from "./sites";
 import { createStore, type Store } from "./store";
 import { installTelemetry } from "./telemetry";
+import { createSettingsChrome, type SettingsChrome } from "./settings";
 import { createWindowRegistry, type WindowRegistry } from "./windows";
 import { installUiNetwork, isUiDocument, type UiNetworkState } from "./ui-network";
 import { gestureGuard } from "../../shared/widget-gesture";
@@ -37,6 +38,8 @@ export interface WebAiOsStore extends Store {
   readonly dataSetAside: { backup: string; reason: "format" | "reset" } | null;
   /** Error reports go out (a DSN is set): the first window tells it once. */
   readonly telemetryActive: boolean;
+  /** What the settings page asks of the chrome: telemetry, version, Finder, export folder, reset. */
+  readonly settings: SettingsChrome;
   flush(): Promise<void>;
   /** userContextId of a login profile: 0 for DEFAULT_PROFILE, an internal container otherwise (created on first use). */
   containerFor(profile: ProfileId): number;
@@ -379,6 +382,7 @@ async function start(): Promise<WebAiOsStore> {
     setAside,
     dataSetAside,
     telemetryActive: telemetry.active,
+    settings: createSettingsChrome(dataDir, telemetry.active),
     flush,
     containerFor,
     agent,

@@ -1,0 +1,87 @@
+import { describe, expect, it, vi } from "vitest";
+import type { Action } from "../shared/api";
+import type { BrowserState } from "../shared/model";
+import type { GrantRow } from "../shared/settings";
+import { revealable } from "../chrome/store/settings";
+import { createSettingsApi } from "../ui/settings-api";
+
+function setup(answers: Record<string, (p: any) => unknown> = {}) {
+  const calls: { method: string; params: unknown }[] = [];
+  const host = {
+    request: async (method: string, params?: unknown) => {
+      calls.push({ method, params });
+      const a = answers[method];
+      if (!a) throw new Error("down");
+      return a(params);
+    },
+    notify: vi.fn(),
+  } as any;
+  const chrome = { telemetry: vi.fn(), setTelemetry: vi.fn(), version: vi.fn(), reveal: vi.fn(), exportFolder: async () => "/u/Downloads", reset: vi.fn() };
+  const forget = vi.fn(async () => {});
+  const sitePermissions = { list: async () => [{ profile: "default", origin: "https://a.fr", permissions: { "media-camera": "allow", notifications: "deny" } as const }], forget };
+  const dispatched: Action[] = [];
+  const api = createSettingsApi({
+    host,
+    chrome,
+    sitePermissions: sitePermissions as any,
+    state: () => ({ spaces: [{ id: "s", name: "Perso", profile: "default" }] }) as unknown as BrowserState,
+    dispatch: (a) => void dispatched.push(a),
+    windowId: "W",
+    openAgent: vi.fn(),
+    dataDir: "/u/WebAiOs",
+  });
+  return { api, calls, chrome, forget, dispatched };
+}
+
+const row = (kind: GrantRow["kind"], key: string): GrantRow => ({ kind, key, name: key, profile: null, detail: "" });
+
+describe("settings api", () => {
+  it("grants order and labels", async () => {
+    const { api } = setup({
+      "settings.grants": () => [row("widget", "w1"), row("action", "a1")],
+      "external.list": () => ({ clients: [{ id: "c1", name: "Claude" }] }),
+    });
+    const g = await api.grants();
+    expect(g.map((r) => r.kind)).toEqual(["site", "widget", "action", "external"]);
+    expect(g[0]!.detail).toBe("Caméra : autorisé · Notifications : refusé");
+    expect(g[3]).toMatchObject({ name: "Claude", detail: "Projets externes du mode design" });
+  });
+
+  it("revoke routing", async () => {
+    const { api, calls, forget } = setup({ "external.revoke": () => {}, "settings.revoke": () => {} });
+    await api.revoke("site", "default\nhttps://a.fr");
+    expect(forget).toHaveBeenCalledWith("default", "https://a.fr");
+    await api.revoke("external", "c1");
+    await api.revoke("widget", "w1");
+    expect(calls.map((c) => c.method)).toEqual(["external.revoke", "settings.revoke"]);
+  });
+
+  it("host down", async () => {
+    const { api } = setup();
+    expect(await api.agents()).toEqual([]);
+    expect(await api.workshop()).toBeNull();
+    expect((await api.grants()).map((r) => r.kind)).toEqual(["site"]);
+    expect(await api.restartWorkshop(true)).toEqual({ ok: false, error: "L'agent ne répond pas" });
+    expect(await api.data()).toEqual({ dataDir: "/u/WebAiOs", backups: [] });
+  });
+
+  it("export reveals", async () => {
+    const path = "/u/Downloads/WebAiOs-donnees-2026-11-10.zip";
+    const { api, calls, chrome } = setup({ "settings.export": () => ({ ok: true, path }) });
+    expect(await api.exportData()).toEqual({ ok: true, path });
+    expect(calls[0]!.params).toEqual({ to: "/u/Downloads" });
+    expect(chrome.reveal).toHaveBeenCalledWith(path);
+  });
+
+  it("revealable", () => {
+    const r = (p: string) => revealable("/u/WebAiOs", "/u/Downloads", p);
+    for (const p of ["/u/WebAiOs", "/u/WebAiOs.backup-2026-11-10T13-35-12-345Z", "/u/Downloads/WebAiOs-donnees-2026-11-10 (2).zip"]) expect(r(p)).toBe(true);
+    for (const p of ["/u/WebAiOs/workspace", "/u/WebAiOs.backup-x", "/u/Downloads/autre.zip", "/u/Downloads/../WebAiOs-donnees-2026-11-10.zip", "/etc"]) expect(r(p)).toBe(false);
+  });
+
+  it("openAdvanced", () => {
+    const { api, dispatched } = setup();
+    api.openAdvanced();
+    expect(dispatched).toEqual([{ type: "openTab", windowId: "W", url: "about:preferences", activate: true }]);
+  });
+});
