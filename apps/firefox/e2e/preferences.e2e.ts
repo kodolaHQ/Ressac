@@ -106,3 +106,27 @@ it("logins tab: the saved passwords open in a store tab of the current space", a
   expect(activeTab(s)!.spaceId).toBe(s.windows[0]!.activeSpace);
   expect(await m.execute("return gBrowser.selectedTab.getAttribute('webaios-tab-id')")).toBe(s.windows[0]!.active[s.windows[0]!.activeSpace]);
 });
+
+it("other tabs opened while the preferences show keep their own space and container", async () => {
+  await launch();
+  const windowId = (await state(m)).windows[0]!.id;
+  const first = (await state(m)).windows[0]!.activeSpace;
+  await dispatch(m, { type: "createSpace", name: "Pro", icon: "💼", private: false, profile: "new", windowId });
+  await openPrefs();
+  const container = await m.execute<number>("return gBrowser.selectedTab.userContextId");
+  expect(container).not.toBe(0);
+  // A call without options fails as Firefox's own addTab does (no triggering principal), not in our override.
+  const error = await m.execute<string>(`try { gBrowser.addTab("about:blank"); return ""; } catch (e) { return String(e); }`);
+  expect(error).not.toMatch(/TypeError/);
+  // TabSync's own creation: a tab of the first space (default profile), shown in the background.
+  const before = Object.keys((await state(m)).tabs);
+  const after = await dispatch(m, { type: "openTab", windowId, spaceId: first, url: "about:blank", activate: false });
+  const added = Object.keys(after.tabs).filter((id) => !before.includes(id));
+  expect(added).toHaveLength(1);
+  const xul = await m.execute<{ count: number; userContextId: number }>(
+    `return (async () => { await window.webaiosWindow.ensure(arguments[0]); const t = gBrowser.tabs.filter((t) => t.getAttribute("webaios-tab-id") === arguments[0]); return { count: t.length, userContextId: t[0].userContextId }; })();`,
+    [added[0]],
+  );
+  expect(xul).toEqual({ count: 1, userContextId: 0 });
+  expect(Object.keys((await state(m)).tabs)).toHaveLength(before.length + 1);
+});

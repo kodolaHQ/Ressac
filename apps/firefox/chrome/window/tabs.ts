@@ -45,19 +45,20 @@ export class TabSync {
     // A popup's link reaches this window with no opener tab, only its popup's browser (TabOpen fires inside addTab).
     // shortcut: the tab lands in Firefox's most recent window, not always the source tab's; upgrade if several windows make it wrong in use
     const addTab = gBrowser.addTab.bind(gBrowser);
-    gBrowser.addTab = (uri: string, options?: { openerBrowser?: any; triggeringPrincipal?: any; userContextId?: number }) => {
-      this.fromPopup = options?.openerBrowser?.ownerDocument.defaultView?.webaiosPopupSource;
-      this.fromAddon = !!options?.triggeringPrincipal?.addonId;
-      const shown = gBrowser.selectedTab;
-      this.fromPreferences = shown.hasAttribute(TAB_ID) && /^about:(preferences|settings)\b/.test(shown.linkedBrowser.currentURI?.spec ?? "");
-      // An add-on's or the preferences' tab joins the active space: loaded in its container from the first request (unless the add-on chose one).
-      if ((this.fromAddon || this.fromPreferences) && options!.userContextId === undefined) {
-        const state = this.store.state;
-        const f = state.windows.find((x) => x.id === this.windowId);
-        const space = f && state.spaces.find((e) => e.id === f.activeSpace);
-        if (space) options!.userContextId = this.store.containerFor(space.profile);
-      }
+    gBrowser.addTab = (uri: string, options: { openerBrowser?: any; triggeringPrincipal?: any; userContextId?: number } = {}) => {
       try {
+        this.fromPopup = options.openerBrowser?.ownerDocument.defaultView?.webaiosPopupSource;
+        this.fromAddon = !!options.triggeringPrincipal?.addonId;
+        // Our own creations (another space's tab, the parking tab) keep the container they ask for.
+        const shown = gBrowser.selectedTab;
+        this.fromPreferences = !this.creating && shown.hasAttribute(TAB_ID) && /^about:(preferences|settings)\b/.test(shown.linkedBrowser.currentURI?.spec ?? "");
+        // An add-on's or the preferences' tab joins the active space: loaded in its container from the first request (unless the add-on chose one).
+        if ((this.fromAddon || this.fromPreferences) && options.userContextId === undefined) {
+          const state = this.store.state;
+          const f = state.windows.find((x) => x.id === this.windowId);
+          const space = f && state.spaces.find((e) => e.id === f.activeSpace);
+          if (space) options.userContextId = this.store.containerFor(space.profile);
+        }
         return addTab(uri, options);
       } finally {
         this.fromPopup = undefined;
