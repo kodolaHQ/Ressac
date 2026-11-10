@@ -35,7 +35,7 @@ beforeEach(() => {
 
 test("initial state: one Perso space, one window, no tab, Google", () => {
   expect(e.version).toBe(3);
-  expect(e.spaces).toEqual([{ id: P, name: "Perso", icon: "🏠", pinned: [], private: false, profile: "default" }]);
+  expect(e.spaces).toEqual([{ id: P, name: "Perso", icon: "🏠", pinned: [], private: false, profile: "default", aura: "aube" }]);
   expect(e.profiles).toEqual([{ id: "default" }]);
   expect(e.windows).toHaveLength(1);
   expect(e.tabs).toEqual({});
@@ -807,4 +807,14 @@ test("reviewUrlProject refuses webaios://review/../x and webaios://review/app-",
   expect(PAGE_LINE_CHANGED).toBe(LINE_CHANGED);
   for (const p of ["app-essai", "app-.x", "ext-0123456789abcdef", "ext-0123", "demo-15283", "demo-", "app-a/b", "site-tuning", "site-", "site-A", "site-../x"])
     expect(reviewUrlProject(`webaios://review/${p}`) !== null).toBe(PROJECT_ID.test(p));
+});
+
+test("createSpace without aura gives aube; updateSpace of the aura alone is a change", () => {
+  ag({ type: "createSpace", name: "Boulot", icon: "💼", private: false, profile: "default" });
+  const id = e.spaces[1]!.id;
+  expect(e.spaces[1]!.aura).toBe("aube");
+  const before = e;
+  ag({ type: "updateSpace", id, name: "Boulot", icon: "💼", private: false, profile: "default", aura: "braise" });
+  expect(e).not.toBe(before);
+  expect(e.spaces[1]!.aura).toBe("braise");
 });

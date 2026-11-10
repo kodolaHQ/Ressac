@@ -9,6 +9,7 @@ const space = (id: string, name: string, profile: ProfileId, isPrivate = false):
   pinned: [],
   private: isPrivate,
   profile: profile,
+  aura: "aube",
 });
 
 const win = (id: string, activeSpace: SpaceId): WindowState => ({

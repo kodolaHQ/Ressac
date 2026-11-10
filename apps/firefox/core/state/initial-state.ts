@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { DEFAULT_AURA } from "../../shared/aura";
 import { DEFAULT_CODEX_ENGINE } from "../../shared/settings";
 import { DEFAULT_PROFILE, type BrowserState } from "../../shared/model";
 
@@ -6,7 +7,7 @@ export function initialState(genId: () => string = randomUUID): BrowserState {
   const space = genId();
   return {
     version: 3,
-    spaces: [{ id: space, name: "Perso", icon: "🏠", pinned: [], private: false, profile: DEFAULT_PROFILE }],
+    spaces: [{ id: space, name: "Perso", icon: "🏠", pinned: [], private: false, profile: DEFAULT_PROFILE, aura: DEFAULT_AURA }],
     profiles: [{ id: DEFAULT_PROFILE }],
     essentials: [],
     tabs: {},

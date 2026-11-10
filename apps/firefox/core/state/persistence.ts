@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import type { BrowserState } from "../../shared/model";
+import { AURA_IDS, DEFAULT_AURA } from "../../shared/aura";
 import { CodexEngineSchema, DEFAULT_CODEX_ENGINE } from "../../shared/settings";
 import { initialState } from "./initial-state";
 
@@ -9,7 +10,7 @@ const FILE = "session.json";
 
 const FavoriteSchema = z.object({ id: z.string(), url: z.string(), title: z.string(), favicon: z.string().nullable() });
 
-const SpaceSchema = z.object({ id: z.string(), name: z.string(), icon: z.string(), pinned: z.array(FavoriteSchema), private: z.boolean(), profile: z.string().min(1) });
+const SpaceSchema = z.object({ id: z.string(), name: z.string(), icon: z.string(), pinned: z.array(FavoriteSchema), private: z.boolean(), profile: z.string().min(1), aura: z.enum(AURA_IDS).catch(DEFAULT_AURA) });
 
 /** Version 3. Any other version is unreadable: set aside like a damaged session. */
 const SchemaSession = z.object({

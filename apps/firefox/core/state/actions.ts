@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Action } from "../../shared/api";
+import { DEFAULT_AURA } from "../../shared/aura";
 import {
   spaceKey,
   AGENT_WIDTH_MAX,
@@ -319,7 +320,7 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       const profile = requestedProfile(d, genId, a.profile);
       if (!profile) return false;
       const space = genId();
-      d.spaces.push({ id: space, name: a.name, icon: a.icon, pinned: [], private: a.private, profile: profile });
+      d.spaces.push({ id: space, name: a.name, icon: a.icon, pinned: [], private: a.private, profile: profile, aura: a.aura ?? DEFAULT_AURA });
       for (const f of d.windows) {
         f.order[space] = [];
         f.active[space] = null;
@@ -331,11 +332,11 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
     case "updateSpace": {
       const space = d.spaces.find((e) => e.id === a.id);
       if (!space) return false;
-      if (space.name === a.name && space.icon === a.icon && space.private === a.private && space.profile === a.profile) return false;
+      if (space.name === a.name && space.icon === a.icon && space.private === a.private && space.profile === a.profile && (a.aura ?? space.aura) === space.aura) return false;
       const profile = requestedProfile(d, genId, a.profile);
       if (!profile) return false;
       const oldKey = spaceKey(d, space.id);
-      Object.assign(space, { name: a.name, icon: a.icon, private: a.private, profile: profile });
+      Object.assign(space, { name: a.name, icon: a.icon, private: a.private, profile: profile, aura: a.aura ?? space.aura });
       if (spaceKey(d, space.id) !== oldKey) forwardShown(d, space.id, oldKey);
       removeUnusedProfiles(d);
       dropIncompatible(d);

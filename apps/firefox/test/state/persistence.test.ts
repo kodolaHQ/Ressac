@@ -257,3 +257,14 @@ test("session v2 where a space uses an unlisted sign-in profile: the profile is 
   expect(reviewed.profiles).toEqual([{ id: "default" }, { id: "orphelin" }]);
   expect(reviewed.spaces[1]!.profile).toBe("orphelin");
 });
+
+test("a space without aura, or with an unknown one, loads as aube", async () => {
+  for (const aura of [undefined, "violet"]) {
+    const d = folder();
+    const state = initialState();
+    writeFileSync(join(d, "session.json"), JSON.stringify({ ...state, spaces: [{ ...state.spaces[0], aura }] }));
+    const loaded = await loadSession(d);
+    expect(loaded.spaces[0]!.aura).toBe("aube");
+    expect(set_aside(d, "")).toEqual([]);
+  }
+});
