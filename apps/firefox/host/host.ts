@@ -243,6 +243,7 @@ const stop = () =>
       console.error("[webaios] the apps did not stop:", e),
     );
     extensions.stop();
+    settings.stopLogins();
     await sessions.stopAll();
     await relay.stop();
     await sites.stop();
@@ -744,6 +745,9 @@ const settings = createSettingsHandlers({
   denyWidget,
   denyAction: async (id) => void (await actions.denyGrant(id)),
   revokeSite: (id) => sites.revokeGrant(id),
+  deviceCommand: (argv) => workshop.execCommand(argv, { interactive: false }),
+  keychain: keys,
+  forgetKey,
 });
 // The chrome may not answer yet (its handlers come up later): it calls "sites.ready" once it does.
 void sites.resync().catch(() => {});

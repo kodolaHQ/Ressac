@@ -10,9 +10,12 @@ export interface AgentAccount {
   id: string;
   name: string;
   state: AgentAccountState;
+  /** How the account signs in: Claude in a terminal panel, Codex by a code the host runs in the workshop. */
+  login: "panel" | "device";
   account?: string;
   error?: string;
 }
+export type LoginResult = { kind: "panel" } | { kind: "device"; url: string; code: string } | { kind: "error"; error: string };
 export type GrantKind = "site" | "widget" | "action" | "siteApp" | "external";
 export interface GrantRow {
   kind: GrantKind;
