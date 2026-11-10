@@ -1,0 +1,18 @@
+diff --git a/toolkit/content/moz.build b/toolkit/content/moz.build
+index 3d6602629247ff8dbc78ad7bb2f495a42fd70eb6..bf7b7642e63bdcc248ef1cfa7a62663eb0154ab1 100644
+--- a/toolkit/content/moz.build
++++ b/toolkit/content/moz.build
+@@ -10,6 +10,13 @@ for var in ("CC", "CC_VERSION", "CXX", "RUSTC", "RUSTC_VERSION"):
+     if CONFIG[var]:
+         DEFINES[var] = CONFIG[var]
+ 
++# about:buildconfig ships: the tools without their directories, which reveal the builder's home.
++for var in ("CC", "CXX"):
++    if CONFIG[var]:
++        DEFINES[var] = [CONFIG[var][0].rsplit("/", 1)[-1]] + [a for a in CONFIG[var][1:]]
++if CONFIG["RUSTC"]:
++    DEFINES["RUSTC"] = CONFIG["RUSTC"].rsplit("/", 1)[-1]
++
+ for var in ("MOZ_CONFIGURE_OPTIONS", "MOZ_APP_DISPLAYNAME"):
+     DEFINES[var] = CONFIG[var]
+ 

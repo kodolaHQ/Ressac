@@ -13,7 +13,8 @@
     "test": "vitest run",
     "e2e": "vitest run -c vitest.e2e.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "ui": "zsh scripts/ui.sh"
+    "ui": "zsh scripts/ui.sh",
+    "package": "zsh scripts/env.sh zsh scripts/package.sh"
   },
   "dependencies": {
     "@webaios/kernel": "workspace:*"
