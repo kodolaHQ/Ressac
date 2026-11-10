@@ -1,4 +1,5 @@
 import { createRpc, type Handler, type Rpc } from "../../shared/rpc";
+import { hostCommand } from "./command";
 import { lineSplitter } from "./lines";
 
 export const HOST_STOPPED = "Le noyau de l'agent s'est arrêté.";
@@ -53,10 +54,11 @@ export function createHost(o: {
   const spawn = async (): Promise<Running> => {
     // Imported here, not at the top: the UI bundles import this file's constants.
     const { Subprocess } = ChromeUtils.importESModule("resource://gre/modules/Subprocess.sys.mjs");
+    const cmd = await hostCommand(Services.dirsvc.get("GreD", Ci.nsIFile).path, (p) => IOUtils.exists(p));
     const proc = await Subprocess.call({
-      command: __WEBAIOS_NODE__,
-      arguments: ["--import", __WEBAIOS_TSX__, __WEBAIOS_HOST__],
-      environment: { WEBAIOS_DATA_DIR: o.dataDir },
+      command: cmd.command,
+      arguments: cmd.arguments,
+      environment: { ...cmd.environment, WEBAIOS_DATA_DIR: o.dataDir },
       environmentAppend: true,
       stderr: "pipe",
     });
