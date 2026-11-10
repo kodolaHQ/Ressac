@@ -195,7 +195,7 @@ describe("LocalAi", () => {
     await call;
     await new Promise((r) => setTimeout(r, 40));
     expect(ai.state()).toEqual({ state: "stopped" });
-    expect((ai as any).minuteur).toBeUndefined();
+    expect((ai as any).timeout).toBeUndefined();
   });
 
   it("after 10 min without a call, Kev is stopped (fake clock)", async () => {

@@ -5,7 +5,7 @@
   import { link, deleteBlocks, deleteLink } from "./draft";
   import { DRAG_BLOCK } from "./add";
   import type { Edit } from "./edit.svelte";
-  import BlockNode, { type BlockNode as Noeud } from "./BlockNode.svelte";
+  import BlockNode, { type BlockNode as FlowNode } from "./BlockNode.svelte";
   import type { Badge } from "./badges";
 
   /** Half of a displayed block: a dropped block is centered on the targeted point. */
@@ -30,7 +30,7 @@
   const flow = useSvelteFlow();
   const nodeTypes: NodeTypes = { block: BlockNode };
   let zone: HTMLDivElement;
-  let nodes = $state.raw<Noeud[]>([]);
+  let nodes = $state.raw<FlowNode[]>([]);
   let edges = $state.raw<Edge[]>([]);
 
   /** A block is being dragged: the canvas is not redrawn under the mouse, only at the end. */
@@ -86,7 +86,7 @@
     rebuild();
   }
 
-  function deleted({ nodes: n, edges: e }: { nodes: Noeud[]; edges: Edge[] }): void {
+  function deleted({ nodes: n, edges: e }: { nodes: FlowNode[]; edges: Edge[] }): void {
     edit.edit((b) => deleteBlocks(e.reduce((r, l) => deleteLink(r, l.source, l.target), b), n.map((x) => x.id)));
     rebuild();
   }

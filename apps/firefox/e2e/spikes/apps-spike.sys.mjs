@@ -20,8 +20,8 @@ const sameOrigin = (a, b) => {
 };
 
 /** containers.ts's containerFor, under the `webaios-app-` prefix. */
-export function containerFor(dossier) {
-  const name = PREFIX + dossier;
+export function containerFor(folder) {
+  const name = PREFIX + folder;
   const found = ContextualIdentityService.getPrivateIdentity(name);
   if (found) return found.userContextId;
   ContextualIdentityService.ensureDataReady();
@@ -119,15 +119,15 @@ function openInContainer(userContextId) {
 }
 
 /** Opens app `dossier` (served at `origin`) in its window; resolves once its page has loaded. */
-export async function open(dossier, origin, path = "/") {
+export async function open(folder, origin, path = "/") {
   install();
-  const userContextId = containerFor(dossier);
+  const userContextId = containerFor(folder);
   const win = openInContainer(userContextId);
-  const a = { dossier, origin, userContextId, window: win, view: null };
-  apps.set(dossier, a);
+  const a = { folder, origin, userContextId, window: win, view: null };
+  apps.set(folder, a);
   await new Promise((r) => win.addEventListener("load", r, { once: true }));
   await win.delayedStartupPromise;
-  win.document.documentElement.setAttribute("webaios-spike-app", dossier);
+  win.document.documentElement.setAttribute("webaios-spike-app", folder);
   win.document.getElementById("navigator-toolbox").hidden = true;
   win.CanCloseWindow = () => true;
   // site-window.ts's routeOpens: window.open and target=_blank become a main window tab; nothing opens here.
@@ -152,17 +152,17 @@ export async function open(dossier, origin, path = "/") {
   win.gBrowser.addTabsProgressListener({
     onLinkIconAvailable(browser, iconURL, originalURL) {
       const kept = typeof iconURL === "string" && iconURL.startsWith("data:image/") && iconURL.length <= ICON_MAX && sameOrigin(originalURL, origin);
-      log.icons.push({ dossier, page: browser.currentURI.spec, originalURL, icon: String(iconURL).slice(0, 22), length: String(iconURL).length, kept });
+      log.icons.push({ folder, page: browser.currentURI.spec, originalURL, icon: String(iconURL).slice(0, 22), length: String(iconURL).length, kept });
     },
   });
-  win.addEventListener("unload", () => apps.get(dossier) === a && apps.delete(dossier), { once: true });
-  await load(dossier, origin + path);
+  win.addEventListener("unload", () => apps.get(folder) === a && apps.delete(folder), { once: true });
+  await load(folder, origin + path);
   return { userContextId, browserId: a.view.browserId };
 }
 
 /** WebAiOs's own load in the view (the system principal), resolved when it stops. */
-export function load(dossier, url) {
-  const view = apps.get(dossier).view;
+export function load(folder, url) {
+  const view = apps.get(folder).view;
   return new Promise((resolve) => {
     const l = {
       QueryInterface: ChromeUtils.generateQI(["nsIWebProgressListener", "nsISupportsWeakReference"]),
@@ -179,9 +179,9 @@ export function load(dossier, url) {
 }
 
 /** The app is stopped: its window closes, it leaves the map (its container stays, as a deleted-later app's would). */
-export async function stop(dossier) {
-  const a = apps.get(dossier);
-  apps.delete(dossier);
+export async function stop(folder) {
+  const a = apps.get(folder);
+  apps.delete(folder);
   if (a && !a.window.closed) {
     const closed = new Promise((r) => a.window.addEventListener("unload", r, { once: true }));
     a.window.close();
@@ -190,8 +190,8 @@ export async function stop(dossier) {
 }
 
 /** The badge: a chrome frame at the top right of the app window's #browser. */
-export async function badge(dossier, w = 48, h = 28) {
-  const win = apps.get(dossier).window;
+export async function badge(folder, w = 48, h = 28) {
+  const win = apps.get(folder).window;
   const doc = win.document;
   let f = doc.getElementById("spike-pastille");
   if (!f) {
@@ -208,7 +208,7 @@ export async function badge(dossier, w = 48, h = 28) {
     f.contentWindow.clicks = 0;
     d.addEventListener("mousedown", () => f.contentWindow.clicks++);
   }
-  const br = apps.get(dossier).view.getBoundingClientRect();
+  const br = apps.get(folder).view.getBoundingClientRect();
   f.style.cssText = `position:fixed;z-index:3;border:none;background:transparent;left:${br.right - 12 - w}px;top:${br.top + 12}px;width:${w}px;height:${h}px`;
   await new Promise((r) => win.requestAnimationFrame(() => win.requestAnimationFrame(r)));
   const r = f.getBoundingClientRect();

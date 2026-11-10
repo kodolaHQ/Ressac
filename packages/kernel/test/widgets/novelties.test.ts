@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { countNew, elementsOf, identity, notificationText } from "../../src/widgets/nouveautes.js";
+import { countNew, elementsOf, identity, notificationText } from "../../src/widgets/novelties.js";
 
-describe("nouveautes", () => {
+describe("novelties", () => {
   it("identity by url, otherwise canonical JSON (key order irrelevant)", () => {
     expect(identity({ url: "https://a.example/1", title: "x" })).toBe(identity({ title: "autre", url: "https://a.example/1" }));
     expect(identity({ url: "https://a.example/1" })).not.toBe(identity({ url: "https://a.example/2" }));

@@ -3,7 +3,7 @@
   import { NO_RESULT, FALLBACK_MENTION } from "../../shared/actions";
   import ComponentFrame from "../ActionComponentFrame.svelte";
   import Cards from "./blocks/Cards.svelte";
-  import Champs from "./blocks/Champs.svelte";
+  import Fields from "./blocks/Fields.svelte";
   import Figure from "./blocks/Figure.svelte";
   import Figures from "./blocks/Figures.svelte";
   import Columns from "./blocks/Columns.svelte";
@@ -14,7 +14,7 @@
   import Link from "./blocks/Link.svelte";
   import List from "./blocks/List.svelte";
   import Paragraph from "./blocks/Paragraph.svelte";
-  import Tableau from "./blocks/Tableau.svelte";
+  import Table from "./blocks/Table.svelte";
   import Title from "./blocks/Title.svelte";
   import "./page.css";
   import type { PageContext } from "./types";
@@ -49,9 +49,9 @@
     {:else if b.component === "cards"}
       <Cards p={p(b)} {ctx} />
     {:else if b.component === "table"}
-      <Tableau p={p(b)} {ctx} />
+      <Table p={p(b)} {ctx} />
     {:else if b.component === "fields"}
-      <Champs p={p(b)} />
+      <Fields p={p(b)} />
     {:else if b.component === "tags"}
       <Labels p={p(b)} />
     {:else if b.component === "link"}

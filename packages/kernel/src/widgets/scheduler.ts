@@ -14,7 +14,7 @@ import { currentSlot, dueHour, trackingAfter, type HourOutcome, type HoursTracki
 import type { DirectTrace } from "../workflows/run.js";
 import { readRun, type Execution } from "../workflows/executions.js";
 import type { Pacing } from "../workflows/pacing.js";
-import { notificationText, type NotificationWidget } from "./nouveautes.js";
+import { notificationText, type NotificationWidget } from "./novelties.js";
 import {
   WORKSHOP_STOPPED_ERROR,
   INTERRUPTED_ERROR,

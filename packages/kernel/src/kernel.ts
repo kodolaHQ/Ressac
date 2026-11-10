@@ -24,7 +24,7 @@ import { createAiDispatcher } from "./ai/dispatcher.js";
 import { ID_EXECUTION, listRuns, readRun, type Execution } from "./workflows/executions.js";
 import { DEFAULT_PACING } from "./workflows/run.js";
 import { WidgetsScheduler, type DirectState, type AttemptResult } from "./widgets/scheduler.js";
-import type { NotificationWidget } from "./widgets/nouveautes.js";
+import type { NotificationWidget } from "./widgets/novelties.js";
 import { grantRequired } from "./widgets/harvest.js";
 import { giveGrant, readGrants, removeGrant } from "./widgets/grants.js";
 import { readAction, readActions, type ReadAction } from "./actions/read.js";

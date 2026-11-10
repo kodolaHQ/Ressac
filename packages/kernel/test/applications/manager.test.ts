@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { spacePaths, type SpacePaths } from "../../src/paths.js";
 import { Workshop } from "../../src/container/workshop.js";
-import { createServer as serveurHttp } from "node:http";
-import { createServer as serveurTcp, type AddressInfo, type Server } from "node:net";
+import { createServer as httpServer } from "node:http";
+import { createServer as tcpServer, type AddressInfo, type Server } from "node:net";
 import { ApplicationManager, probeByDefault, type AppState, type Launcher } from "../../src/applications/manager.js";
 import { fakeRunner, type Response } from "../helpers/fake-runner.js";
 import { tempFolder } from "../helpers/temp.js";
@@ -361,14 +361,14 @@ async function listen(server: Server): Promise<number> {
 }
 
 test("default probe: closed port → libre", async () => {
-  const server = serveurTcp();
+  const server = tcpServer();
   const port = await listen(server);
   await new Promise((r) => server.close(r));
   expect(await probeByDefault(port)).toBe("libre");
 });
 
 test("default probe: connection accepted then cut (Docker proxy without a server) → libre", async () => {
-  const server = serveurTcp((s) => s.resetAndDestroy());
+  const server = tcpServer((s) => s.resetAndDestroy());
   try {
     expect(await probeByDefault(await listen(server))).toBe("libre");
   } finally {
@@ -377,7 +377,7 @@ test("default probe: connection accepted then cut (Docker proxy without a server
 });
 
 test("default probe: HTTP server → http", async () => {
-  const server = serveurHttp((_, res) => res.writeHead(404).end());
+  const server = httpServer((_, res) => res.writeHead(404).end());
   try {
     expect(await probeByDefault(await listen(server))).toBe("http");
   } finally {
@@ -388,7 +388,7 @@ test("default probe: HTTP server → http", async () => {
 
 test("default probe: connection accepted without an answer in 1 s → occupe", async () => {
   const sockets: import("node:net").Socket[] = [];
-  const server = serveurTcp((s) => sockets.push(s));
+  const server = tcpServer((s) => sockets.push(s));
   try {
     expect(await probeByDefault(await listen(server))).toBe("occupe");
   } finally {

@@ -23,7 +23,7 @@ import { writeRun, attemptId, idExecution, readRun, listRuns, type Execution, ty
 import { readWorkflow } from "../workflows/read.js";
 import type { Pacing } from "../workflows/pacing.js";
 import { withMemory, writeMemory, readMemory, type BlocksMemory } from "../workflows/memory.js";
-import { countNew } from "./nouveautes.js";
+import { countNew } from "./novelties.js";
 import { startTooBig } from "../workflows/protocol.js";
 import { REPLAY_DEPTH, REPLAY_TOO_BIG, replayPlan } from "../workflows/replay.js";
 import { INVALID_WORKFLOW_PREFIX, type Owner } from "../workflows/schema.js";

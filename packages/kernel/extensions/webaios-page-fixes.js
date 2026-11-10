@@ -2,10 +2,10 @@
 // chrome.storage.local, and `browser` points at `chrome` (extensions written for Firefox). No effect if already done.
 (() => {
   const c = globalThis.chrome;
-  const stockage = c && c.storage;
-  if (stockage && stockage.local && stockage.sync !== stockage.local) {
+  const storage = c && c.storage;
+  if (storage && storage.local && storage.sync !== storage.local) {
     try {
-      Object.defineProperty(stockage, "sync", { value: stockage.local, configurable: true, writable: true, enumerable: true });
+      Object.defineProperty(storage, "sync", { value: storage.local, configurable: true, writable: true, enumerable: true });
     } catch {
       // Property that cannot be redefined: left as it is.
     }

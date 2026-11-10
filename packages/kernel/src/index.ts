@@ -32,7 +32,7 @@ export * from "./workflows/protocol.js";
 export * from "./widgets/grants.js";
 export * from "./widgets/scheduler.js";
 export * from "./widgets/hours.js";
-export { notificationText, type NotificationWidget } from "./widgets/nouveautes.js";
+export { notificationText, type NotificationWidget } from "./widgets/novelties.js";
 export { validationContext } from "./widgets/harvest.js";
 export { localUrl } from "./workflows/access.js";
 export * from "./kernel.js";

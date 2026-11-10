@@ -44,7 +44,7 @@ async function openTab(path: string): Promise<void> {
 /** The home page's panel: its agent ready, the terminal clicked to type in it. */
 async function homeAgent(): Promise<void> {
   await shown();
-  await terminalShows("faux agent prêt>");
+  await terminalShows("fake agent ready>");
   await click(m, ".xterm-screen", { frame: "agent" });
 }
 async function send(text: string): Promise<void> {
@@ -55,7 +55,7 @@ async function send(text: string): Promise<void> {
 it("the home page opens the panel, which runs the fake agent", async () => {
   await launch();
   await shown();
-  await terminalShows("faux agent prêt>");
+  await terminalShows("fake agent ready>");
   expect(await inUi(m, "return [...(ui.webaiosMissingApi ?? [])]", [], "agent")).toEqual([]);
 });
 
@@ -73,8 +73,8 @@ it("without Docker, browsing works", async () => {
 it("the home page's panel runs the real CLI with the session's MCP config", async () => {
   await launch();
   await shown();
-  await terminalShows("faux agent prêt>");
-  expect(JSON.parse(read(join(w!.dataDir, "workspace", "faux-agent-args.json")))).toEqual([
+  await terminalShows("fake agent ready>");
+  expect(JSON.parse(read(join(w!.dataDir, "workspace", "fake-agent-args.json")))).toEqual([
     "claude",
     "--dangerously-skip-permissions",
     "--mcp-config",
@@ -85,10 +85,10 @@ it("the home page's panel runs the real CLI with the session's MCP config", asyn
 it("a huge output does not freeze the UI", async () => {
   await launch();
   await homeAgent();
-  await send("inonder");
+  await send("flood");
   // 1 MB later, the command has scrolled off the screen and the prompt is back at the bottom.
-  await waitUi(m, `const t = ${TERMINAL.slice("return ".length)}; return !t.includes("reçu: inonder") && t.includes("prêt>")`, [], 20_000, "agent");
-  expect(read(join(w!.dataDir, "workspace", "faux-agent-entree.txt"))).toContain("inonder\r");
+  await waitUi(m, `const t = ${TERMINAL.slice("return ".length)}; return !t.includes("received: flood") && t.includes("ready>")`, [], 20_000, "agent");
+  expect(read(join(w!.dataDir, "workspace", "fake-agent-input.txt"))).toContain("flood\r");
   await click(m, '[data-testid="nouvel-onglet"]');
   await waitUi(m, "return !!doc.querySelector('[data-testid=\"page-vide\"]')", [], 10_000);
 });
@@ -111,8 +111,8 @@ it("a second profile in .webaios/profiles appears in the panel; choosing it rest
     );
     await launch(undefined, dataDir);
     await shown();
-    await terminalShows("faux agent prêt>");
-    const pidFile = join(dataDir, "workspace", "faux-agent-pid");
+    await terminalShows("fake agent ready>");
+    const pidFile = join(dataDir, "workspace", "fake-agent-pid");
     const first = read(pidFile);
     const select = '[data-testid="profil-agent"]';
     expect(await waitUi(m, "const o = [...(doc.querySelector(arguments[0])?.options ?? [])].map((x) => x.textContent.trim()); return o.length && o", [select], 10_000, "agent")).toEqual([
@@ -121,8 +121,8 @@ it("a second profile in .webaios/profiles appears in the panel; choosing it rest
     ]);
     await inUi(m, "const s = doc.querySelector(arguments[0]); s.value = 'autre'; s.dispatchEvent(new ui.Event('change', { bubbles: true }));", [select], "agent");
     await waitFor(m, "return 1", () => read(pidFile) !== "" && read(pidFile) !== first, 20_000);
-    expect(JSON.parse(read(join(dataDir, "workspace", "faux-agent-args.json")))).toEqual(["autre-agent", "--mcp", expect.stringMatching(SESSION_CONFIG)]);
-    await terminalShows("faux agent prêt>");
+    expect(JSON.parse(read(join(dataDir, "workspace", "fake-agent-args.json")))).toEqual(["autre-agent", "--mcp", expect.stringMatching(SESSION_CONFIG)]);
+    await terminalShows("fake agent ready>");
     expect(await inUi(m, "return doc.querySelector('[data-testid=\"panneau-agent\"]').textContent", [], "agent")).not.toContain("L'agent s'est arrêté.");
   } finally {
     await w?.close();
@@ -133,7 +133,7 @@ it("a second profile in .webaios/profiles appears in the panel; choosing it rest
 it("a single profile: no profile menu", async () => {
   await launch();
   await shown();
-  await terminalShows("faux agent prêt>");
+  await terminalShows("fake agent ready>");
   expect(await inUi(m, "return doc.querySelectorAll('[data-testid=\"profil-agent\"]').length", [], "agent")).toBe(0);
 });
 
@@ -151,15 +151,15 @@ it("typing reaches the agent", async () => {
   await launch();
   await homeAgent();
   await send("bonjour");
-  await terminalShows("reçu: bonjour");
+  await terminalShows("received: bonjour");
 });
 
 it("each key reaches the agent once and shows once, also after closing and reopening the panel", async () => {
   await launch();
   await homeAgent();
-  const input = join(w!.dataDir, "workspace", "faux-agent-entree.txt");
+  const input = join(w!.dataDir, "workspace", "fake-agent-input.txt");
   await typeText(m, "xyz");
-  await terminalShows("prêt> xyz");
+  await terminalShows("ready> xyz");
   // Time for a second copy to arrive.
   await new Promise((r) => setTimeout(r, 500));
   expect(read(input)).toBe("xyz");
@@ -191,7 +191,7 @@ it("a keypress after a keydown the terminal consumed is not sent again (macOS, p
     [],
     "agent",
   );
-  const input = join(w!.dataDir, "workspace", "faux-agent-entree.txt");
+  const input = join(w!.dataDir, "workspace", "fake-agent-input.txt");
   await waitFor(m, "return 1", () => read(input).length >= 3);
   await new Promise((r) => setTimeout(r, 500));
   expect(read(input)).toBe("xyz");
@@ -202,9 +202,9 @@ it("after Réessayer, each key still reaches the agent once and shows once", asy
   await shown();
   await click(m, "button", { text: "Réessayer", frame: "agent" });
   await homeAgent();
-  const input = join(w!.dataDir, "workspace", "faux-agent-entree.txt");
+  const input = join(w!.dataDir, "workspace", "fake-agent-input.txt");
   await typeText(m, "xyz");
-  await terminalShows("prêt> xyz");
+  await terminalShows("ready> xyz");
   await new Promise((r) => setTimeout(r, 500));
   expect(read(input)).toBe("xyz");
   expect(await terminalText()).not.toContain("xxyy");
@@ -213,9 +213,9 @@ it("after Réessayer, each key still reaches the agent once and shows once", asy
 it("agent quits → Relancer starts a new one", async () => {
   await launch();
   await homeAgent();
-  const pidFile = join(w!.dataDir, "workspace", "faux-agent-pid");
+  const pidFile = join(w!.dataDir, "workspace", "fake-agent-pid");
   const first = read(pidFile);
-  await send("quitter");
+  await send("quit");
   await waitUi(m, "return doc.querySelector('[data-testid=\"panneau-agent\"]').textContent.includes(\"L'agent s'est arrêté.\")", [], 10_000, "agent");
   await click(m, "button", { text: "Relancer", frame: "agent" });
   await waitFor(m, "return 1", () => read(pidFile) !== "" && read(pidFile) !== first, 20_000);
@@ -226,12 +226,12 @@ it("closing and reopening the panel keeps the conversation", async () => {
   await launch();
   await homeAgent();
   await send("souvenir");
-  await terminalShows("reçu: souvenir");
+  await terminalShows("received: souvenir");
   await toggleWithButton();
   await hidden();
   await toggleWithButton();
   await shown();
-  expect(await terminalText()).toContain("reçu: souvenir");
+  expect(await terminalText()).toContain("received: souvenir");
 });
 
 it("Docker absent → message and Réessayer", async () => {
@@ -249,7 +249,7 @@ it("Docker absent → message and Réessayer", async () => {
 
 it("⌘J opens the panel and focuses the terminal", async () => {
   await launch();
-  await terminalShows("faux agent prêt>");
+  await terminalShows("fake agent ready>");
   await openTab("/a.html");
   await m.execute("gBrowser.selectedBrowser.focus()");
   await pressKeys(m, "Meta+j");
@@ -258,7 +258,7 @@ it("⌘J opens the panel and focuses the terminal", async () => {
   await waitUi(m, "return doc.activeElement?.classList.contains('xterm-helper-textarea')", [], 10_000, "agent");
   // Keys typed next go to the agent, after the context prefix opening the panel wrote.
   await send("clavier");
-  const input = join(w!.dataDir, "workspace", "faux-agent-entree.txt");
+  const input = join(w!.dataDir, "workspace", "fake-agent-input.txt");
   await waitFor(m, "return 1", () => read(input).includes(`[contexte : Page A — ${server.url}/a.html] clavier\r`));
   await pressKeys(m, "Meta+j");
   await hidden();
@@ -279,7 +279,7 @@ it("the page narrows by the panel width", async () => {
 it("opening the panel on a tab shares it: current_page reads without asking", async () => {
   await launch();
   // The session started on the home page: a new one would take the access back.
-  await terminalShows("faux agent prêt>");
+  await terminalShows("fake agent ready>");
   await openTab("/texte.html");
   await toggleWithButton();
   await shown();
@@ -287,7 +287,7 @@ it("opening the panel on a tab shares it: current_page reads without asking", as
 });
 
 describe("one agent session per window", () => {
-  const pidFile = () => join(w!.dataDir, "workspace", "faux-agent-pid");
+  const pidFile = () => join(w!.dataDir, "workspace", "fake-agent-pid");
   const alive = (pid: number) => {
     try {
       process.kill(pid, 0);
@@ -311,7 +311,7 @@ describe("one agent session per window", () => {
   it("⌘W on the empty page of the last window closes it and stops its agent", async () => {
     await launch();
     await shown();
-    await terminalShows("faux agent prêt>");
+    await terminalShows("fake agent ready>");
     const pid = Number(read(pidFile()));
     await pressClosing(m, "Meta+w");
     await waitWindowCount(m, 0);
@@ -321,7 +321,7 @@ describe("one agent session per window", () => {
   it("⇧⌘W on the last window with a tab stops its agent; reopening it (Dock) starts a new one", async () => {
     await launch();
     await shown();
-    await terminalShows("faux agent prêt>");
+    await terminalShows("fake agent ready>");
     const pid = Number(read(pidFile()));
     await openTab("/a.html");
     // A module timer outlives the window: once it is gone, it reopens one as the Dock would.
@@ -339,7 +339,7 @@ describe("one agent session per window", () => {
     await waitReady(m);
     await toggleWithButton();
     await shown();
-    await terminalShows("faux agent prêt>");
+    await terminalShows("fake agent ready>");
     const next = Number(read(pidFile()));
     expect(next).not.toBe(pid);
     expect(alive(next)).toBe(true);
@@ -347,14 +347,14 @@ describe("one agent session per window", () => {
 
   it("closing a window stops its agent", async () => {
     await launch();
-    // The first window's agent first: faux-agent-pid then becomes the second's.
+    // The first window's agent first: fake-agent-pid then becomes the second's.
     await shown();
-    await terminalShows("faux agent prêt>");
+    await terminalShows("fake agent ready>");
     const first = Number(read(pidFile()));
     const second = await newWindow(m);
     const pid = await inWindow(m, second, async () => {
       await shown();
-      await terminalShows("faux agent prêt>");
+      await terminalShows("fake agent ready>");
       await waitFor(m, "return 1", () => Number(read(pidFile())) !== first);
       return Number(read(pidFile()));
     });
@@ -367,7 +367,7 @@ describe("one agent session per window", () => {
   it("focusing another window moves the agent there at once: current_page reads its public tab, not the other's private one", async () => {
     await launch();
     await shown();
-    await terminalShows("faux agent prêt>");
+    await terminalShows("fake agent ready>");
     const a = (await m.command<{ value: string }>("WebDriver:GetWindowHandle")).value;
     const second = await newWindow(m);
     const STORE = "chrome://browser/content/webaios/store.sys.mjs";
@@ -382,7 +382,7 @@ describe("one agent session per window", () => {
     // B: its session up, then a public tab shared through the panel.
     const b = await inWindow(m, second, async () => {
       await shown();
-      await terminalShows("faux agent prêt>");
+      await terminalShows("fake agent ready>");
       return m.execute<string>("return window.webaiosWindow.windowId");
     });
     await dispatch(m, { type: "openTab", windowId: b, url: `${server.url}/texte.html` });

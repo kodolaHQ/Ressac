@@ -25,7 +25,7 @@ import {
 import { Pacing } from "../../src/workflows/pacing.js";
 import { currentSlot } from "../../src/widgets/hours.js";
 import { AI_ABANDONED } from "../../src/ai/dispatcher.js";
-import type { NotificationWidget } from "../../src/widgets/nouveautes.js";
+import type { NotificationWidget } from "../../src/widgets/novelties.js";
 import { readHome } from "../../src/home/read.js";
 import type { SpacePaths } from "../../src/paths.js";
 import { declarationWidget, writeWidget } from "../helpers/home.js";
