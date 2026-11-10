@@ -104,9 +104,9 @@ export function createApi(win: WindowController): ApiFirefox {
   const ask = <T>(method: string, params: unknown, fallback: T): Promise<T> => host.request<T>(method, params).then((r) => structuredClone(r), () => fallback);
   /** An action's builder in a window whose active space is private (or unknown), read at the moment of asking. */
   const privateAction = (target: { type: string }) => target.type === "action" && (!win.store.state || activeSpacePrivate(win.store.state, windowId));
-  const switchAgent = (profile: string) => {
+  const switchAgent = (profile: string): Promise<void> => {
     win.store.dispatch({ type: "chooseAgentProfile", profile });
-    host.request("agent.switch", { window: windowId, profile }).catch((e) => console.error("[agent] switch failed:", e));
+    return host.request("agent.switch", { window: windowId, profile }).then(() => {}, (e) => console.error("[agent] switch failed:", e));
   };
   const api: Partial<ApiFirefox> = {
     windowId: win.windowId,

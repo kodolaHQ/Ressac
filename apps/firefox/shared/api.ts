@@ -193,7 +193,8 @@ export interface ApiWebaios {
     /** The profile this window's agent runs; null when the host does not answer. */
     current(): Promise<string | null>;
     /** Chooses the profile and switches this window's agent to it. */
-    switch(profile: string): void;
+    /** Settles once the host has answered (a failure is logged, never thrown). */
+    switch(profile: string): Promise<void>;
   };
   /** The agent's access to tabs (badges and bubble to cut it). */
   access: {

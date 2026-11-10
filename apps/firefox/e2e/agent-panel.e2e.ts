@@ -161,11 +161,16 @@ describe("the agent selector", () => {
       await send("avant");
       await terminalShows("received: avant");
     });
+    // B's panel state is recorded from now on: it must never show the preparation again.
+    await inWindow(m, second, () =>
+      inUi(m, "ui.__seenPreparing = false; const t = () => { if (doc.querySelector('[data-testid=\"agent-panel\"]')?.textContent.includes('Préparation')) ui.__seenPreparing = true; }; ui.__obs = new ui.MutationObserver(t); ui.__obs.observe(doc.body, { subtree: true, childList: true, characterData: true });", [], "agent"),
+    );
     await m.command("WebDriver:SwitchToWindow", { handle: a, focus: false });
     await pick("codex");
     await argsAre("codex");
     expect(args()).not.toContain("resume");
     await inWindow(m, second, async () => {
+      expect(await inUi(m, "return ui.__seenPreparing", [], "agent")).toBe(false);
       expect(await terminalText()).toContain("received: avant");
       expect(await inUi(m, `return doc.querySelector(${JSON.stringify(SELECT)}).value`, [], "agent")).toBe("claude");
     });

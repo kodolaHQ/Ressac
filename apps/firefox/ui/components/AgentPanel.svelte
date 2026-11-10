@@ -50,16 +50,24 @@
     void refreshAccounts();
   });
   // Read again at each state the host sends (a switch or a restart changes it).
+  // Only the latest read applies: an older answer must not overwrite a newer one.
+  let reads = 0;
+  const readCurrent = () => {
+    const n = ++reads;
+    return api.agent.current().then((c) => void (n === reads && (current = c)), () => {});
+  };
   $effect(() => {
     void appState;
-    api.agent.current().then((c) => (current = c), () => {});
+    void readCurrent();
   });
   const account = (id: string | null) => accounts.find((a) => a.id === id);
   const signedOutCodex = $derived(current === "codex" && browserState.value?.settings.codexEngine.kind === "chatgpt" && account("codex")?.state === "logged-out");
   const profileChoice = $derived(profiles.length >= 2);
-  function choose(id: string) {
-    api.agent.switch(id);
+  async function choose(id: string) {
+    reads++;
     current = id;
+    await api.agent.switch(id);
+    void readCurrent();
     void refreshAccounts();
   }
 
