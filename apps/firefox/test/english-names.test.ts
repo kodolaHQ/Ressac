@@ -10,7 +10,12 @@ const FORBIDDEN = new Set(
     "texte textes nom noms cle cles liste resultat resultats profil profils projet projets memoire recolte relecture noyau hote retouche " +
     "retouches empreinte accord accords ouvrir fermer ecrire lire enregistrer supprimer ajouter afficher attendre demarrer arreter " +
     "envoyer garder valider charger creer chercher lancer executer traiter trier rediger saisie libelle brouillon demande panneau " +
-    "barre bouton composant composants parametres adresse adresses delai duree suivi refus atelier viseur panier sonde").split(" "),
+    "barre bouton composant composants parametres adresse adresses delai duree suivi refus atelier viseur panier sonde " +
+    "lu lus ligne lignes lien liens tache taches champ champs tableau nouveautes raccourcis grille apercu apercus racine morceau " +
+    "serveur noeud stockage minuteur actif actifs appel cadre cible copie copier descripteur enveloppe envelopper essai essais " +
+    "garde gardes natif onglet permis permise refusee reseau valeur valeurs verifier suivant suivante tous toutes premier regles " +
+    "reperes requete reponse vide titre contenu accueil carte cartes poignee pastille bandeau volet voile fond bord saisie " +
+    "relecture sortie bloc blocs demande demandes erreur lancer rejouer historique telechargement telechargements epingles").split(" "),
 );
 
 const repoRoot = join(import.meta.dirname, "..", "..", "..");
@@ -82,6 +87,9 @@ export const bindings = (code: string, svelte = false) => names(code, svelte).bi
 const KEPT: Record<string, string[]> = {
   // the test page's field ids, read back by the test extension
   "apps/firefox/e2e/agent-extensions-guards.e2e.ts": ["texte"],
+  // fake French classified-ad sites: the scraped ads keep their French fields
+  "apps/firefox/e2e/actions-scenarios-2.e2e.ts": ["titre"],
+  "apps/firefox/e2e/watch.e2e.ts": ["titre"],
 };
 
 /** French names left in code: members (all files), and object keys in product code. */
@@ -110,10 +118,10 @@ test("no French member or key under apps/firefox and packages/kernel", (ctx) => 
   const r = spawnSync("git", ["ls-files", "apps/firefox", "packages/kernel"], { cwd: repoRoot, encoding: "utf8" });
   if (r.error || r.status !== 0) return ctx.skip();
   // French on purpose: the Firefox engine sources, the templates (agent-facing French data), the guard itself.
-  // shortcut: the extension guard scripts (packages/kernel/extensions/*.js) and the e2e spikes (.js/.mjs) are not read; read them once renamed.
+  // shortcut: the e2e spikes (.js/.mjs) are not read; read them once renamed.
   const skip =
     /^packages\/kernel\/templates\/|^apps\/firefox\/src\/|^apps\/firefox\/test\/english-names\.test\.ts$/;
-  const files = r.stdout.split("\n").filter((f) => !skip.test(f) && /\.(ts|mts|svelte)$|^packages\/kernel\/docker\/.*\.mjs$/.test(f));
+  const files = r.stdout.split("\n").filter((f) => !skip.test(f) && /\.(ts|mts|svelte)$|^packages\/kernel\/(docker\/.*\.mjs|extensions\/.*\.js)$/.test(f));
   const bad: string[] = [];
   for (const f of files) {
     let code = readFileSync(join(repoRoot, f), "utf8");
@@ -132,7 +140,7 @@ test("no binding or file name under apps/firefox and packages/kernel is French",
   for (const f of files) {
     if (/\.(ts|mts|js|mjs|cjs|svelte)$/.test(f) && french(f.split("/").pop()!).length) bad.push(`${f}: file name`);
     for (const d of f.split("/").slice(0, -1)) if (french(d).length) bad.push(`${f}: folder ${d}`);
-    if (!/\.(ts|mts|svelte)$/.test(f)) continue;
+    if (!/\.(ts|mts|svelte)$|^packages\/kernel\/extensions\/.*\.js$/.test(f)) continue;
     let code = readFileSync(join(repoRoot, f), "utf8");
     if (f.endsWith(".svelte")) code = [...code.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].map((m) => m[1]).join("\n"); // shortcut: names declared in markup ({#each as x}) are not read
     for (const n of bindings(code, f.endsWith(".svelte"))) if (french(n).length) bad.push(`${f}: ${n}`);
