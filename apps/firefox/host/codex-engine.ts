@@ -1,4 +1,4 @@
-import { CodexEngineSchema, type CodexEngine } from "../shared/settings";
+import { apiUrlProblem, CodexEngineSchema, type CodexEngine } from "../shared/settings";
 
 export const ENGINE_TOKEN_VARIABLE = "WEBAIOS_ENGINE_TOKEN";
 export const NO_KEY = "Aucune clé enregistrée pour l'API compatible (Réglages › Agents).";
@@ -28,6 +28,8 @@ export function codexEngineArgs(e: CodexEngine, relay: { url: string; token: str
   }
   if (!e.apiUrl || !e.apiModel) throw incomplete("l'API compatible");
   href(e.apiUrl, "l'API compatible");
+  const bad = apiUrlProblem(e.apiUrl);
+  if (bad) throw new Error(`${bad} (Réglages › Agents)`);
   if (!relay) throw new Error(NO_KEY);
   return { args: [...provider("webaios-api", "API compatible", new URL(relay.url).href.replace(/\/$/, "")), "-m", e.apiModel], env: { [ENGINE_TOKEN_VARIABLE]: relay.token } };
 }

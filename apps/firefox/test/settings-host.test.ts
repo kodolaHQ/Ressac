@@ -121,6 +121,12 @@ describe("settings host", () => {
     expect(o.deviceCommand).toHaveBeenCalledWith(["codex", "login", "--device-auth"]);
   });
 
+  it("login on a workshop built before Codex", async () => {
+    const { h, o } = setup();
+    o.deviceCommand.mockReturnValueOnce([process.execPath, "-e", "console.error('exec: \"codex\": executable file not found in $PATH');process.exit(127)"]);
+    expect(await h["settings.login"]!({ id: "codex" })).toEqual({ kind: "error", error: "Codex n'est pas encore installé dans l'atelier : ouvrez la vue agent ou redémarrez l'atelier (section Conteneur)." });
+  });
+
   it("login needs a running workshop", async () => {
     const { h, o } = setup({ state: "arrete" });
     expect(await h["settings.login"]!({ id: "codex" })).toEqual({ kind: "error", error: "L'atelier de l'agent n'est pas démarré : voir Conteneur." });

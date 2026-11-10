@@ -121,7 +121,7 @@
         value={current ?? ""}
         onchange={(e) => choose(e.currentTarget.value)}
       >
-        {#each profiles as p (p.id)}<option value={p.id}>{p.name}{account(p.id)?.state === "logged-out" ? " (non connecté)" : ""}</option>{/each}
+        {#each profiles as p (p.id)}<option value={p.id}>{p.name}{account(p.id)?.state === "logged-out" && (p.id !== "codex" || browserState.value?.settings.codexEngine.kind === "chatgpt") ? " (non connecté)" : ""}</option>{/each}
       </select>
     </header>
   {/if}

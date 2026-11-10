@@ -36,8 +36,8 @@ beforeAll(async () => {
   const ot = await listen(other);
   target = `http://127.0.0.1:${up}/v1/`;
   (globalThis as { __other?: number }).__other = ot;
-  relay = await startRelay({ target: () => target, readKey: async () => key });
-  token = relay.openSession();
+  relay = await startRelay({ readKey: async () => key });
+  token = relay.openSession(target);
 });
 afterAll(async () => {
   await relay.stop();
@@ -107,7 +107,7 @@ describe("relay", () => {
   });
 
   it("token", async () => {
-    const closed = relay.openSession();
+    const closed = relay.openSession(target!);
     relay.closeSession(closed);
     for (const t of [null, "wrong", closed]) expect((await call("/responses", {}, t)).status).toBe(401);
     expect(seen).toHaveLength(0);
@@ -129,16 +129,19 @@ describe("relay", () => {
   });
 
   it("not set", async () => {
-    target = null;
-    let r = await call("/responses");
-    expect(r.status).toBe(503);
-    expect(await r.json()).toEqual({ error: { message: "Aucune API compatible n'est réglée dans WebAiOs (Réglages › Agents)." } });
-    target = `http://127.0.0.1:${(upstream.address() as AddressInfo).port}/v1/`;
     key = null;
-    r = await call("/responses");
+    const r = await call("/responses");
     expect(r.status).toBe(503);
     expect(await r.json()).toEqual({ error: { message: "Aucune clé enregistrée pour l'API compatible (Réglages › Agents)." } });
     expect(seen).toHaveLength(0);
+  });
+
+  it("the target is the one the session opened with", async () => {
+    const t = relay.openSession("http://127.0.0.1:1/");
+    target = null;
+    expect((await call("/responses", {}, t)).status).toBe(502);
+    expect(seen).toHaveLength(0);
+    expect((await call("/responses")).status).toBe(200);
   });
 
   it("no redirect", async () => {
@@ -149,8 +152,8 @@ describe("relay", () => {
   });
 
   it("unreachable", async () => {
-    const down = await startRelay({ target: () => "http://127.0.0.1:1/", readKey: async () => "k" });
-    const t = down.openSession();
+    const down = await startRelay({ readKey: async () => "k" });
+    const t = down.openSession("http://127.0.0.1:1/");
     const r = await fetch(`http://127.0.0.1:${down.port}/responses`, { method: "POST", body: "{}", headers: { authorization: `Bearer ${t}` } });
     expect(r.status).toBe(502);
     expect(await r.json()).toEqual({ error: { message: "API compatible injoignable" } });

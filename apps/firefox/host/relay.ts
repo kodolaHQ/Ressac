@@ -11,7 +11,8 @@ const DROPPED = new Set(["authorization", "host", "connection", "content-length"
 export interface Relay {
   port: number;
   containerUrl: string;
-  openSession(): string;
+  /** The token is bound to `target`, the API address when the session opened: a later change does not redirect it. */
+  openSession(target: string): string;
   closeSession(token: string): void;
   stop(): Promise<void>;
 }
@@ -27,23 +28,22 @@ const reply = (res: http.ServerResponse, status: number, message: string) =>
  * A local HTTP relay to the compatible API: the container sends a session token, the relay swaps it for the real key.
  * The key stays on the Mac: never in a log, never in a header sent back, masked in error bodies.
  */
-export async function startRelay(o: { target(): string | null; readKey(): Promise<string | null>; host?: string; port?: number }): Promise<Relay> {
-  const tokens = new Set<string>();
+export async function startRelay(o: { readKey(): Promise<string | null>; host?: string; port?: number }): Promise<Relay> {
+  const tokens = new Map<string, string>();
   const server = http.createServer(async (req, res) => {
     const [pathname = "", ...q] = (req.url ?? "").split("?");
     const query = q.length ? "?" + q.join("?") : "";
     const bearer = /^Bearer (.+)$/.exec(req.headers.authorization ?? "")?.[1] ?? "";
     let status = 500;
     try {
-      const ok = [...tokens].reduce((found, t) => sameToken(t, bearer) || found, false);
-      if (!ok) status = 401, reply(res, 401, "Jeton invalide");
+      let target: string | undefined;
+      for (const [t, u] of tokens) if (sameToken(t, bearer)) target = u;
+      if (!target) status = 401, reply(res, 401, "Jeton invalide");
       else if (!RELAY_PATHS.includes(pathname)) status = 404, reply(res, 404, "Introuvable");
       else if (req.method !== "POST") status = 405, reply(res, 405, "Méthode non permise");
       else {
-        const target = o.target();
-        const key = target ? await o.readKey() : null;
-        if (!target) status = 503, reply(res, 503, "Aucune API compatible n'est réglée dans WebAiOs (Réglages › Agents).");
-        else if (!key) status = 503, reply(res, 503, NO_KEY);
+        const key = await o.readKey();
+        if (!key) status = 503, reply(res, 503, NO_KEY);
         else {
           const headers = new Headers();
           for (const [k, v] of Object.entries(req.headers)) if (v !== undefined && !DROPPED.has(k)) headers.set(k, [v].flat().join(", "));
@@ -82,9 +82,9 @@ export async function startRelay(o: { target(): string | null; readKey(): Promis
   return {
     port,
     containerUrl: `http://host.docker.internal:${port}`,
-    openSession() {
+    openSession(target) {
       const t = randomBytes(32).toString("hex");
-      tokens.add(t);
+      tokens.set(t, target);
       return t;
     },
     closeSession: (t) => void tokens.delete(t),

@@ -37,10 +37,10 @@
     for (const a of agents) if (a.state === "logged-in") delete logins[a.id];
   };
   $effect(() => void loadAgents());
-  // Claude signs in in the agent panel (which builds the workshop if needed), Codex by a code on OpenAI's site: while an account waits for it, re-read it.
+  // Claude signs in in the agent panel (which builds the workshop if needed), Codex by a code on OpenAI's site: re-read only while one is awaited (a Codex code shown, or Claude signed out).
   const signIn = (a: AgentAccount) => a.state === "logged-out" || a.state === "no-container";
   $effect(() => {
-    if (!agents?.some(signIn)) return;
+    if (!agents?.some((a) => signIn(a) && (a.login === "panel" || logins[a.id] !== undefined))) return;
     const t = setInterval(() => void loadAgents(), 5_000);
     return () => clearInterval(t);
   });

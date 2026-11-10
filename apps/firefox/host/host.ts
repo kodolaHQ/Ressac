@@ -225,12 +225,15 @@ let kernelLaunched = false;
 // Codex's engine (Settings › Agents) and the relay that adds the compatible API's key, which stays on the Mac.
 let engine = DEFAULT_CODEX_ENGINE;
 const keys = keychain();
-let cachedKey: Promise<string | null> | undefined;
+let cachedKey: string | undefined;
 // Called after the key is written or removed (Settings › Agents).
 const forgetKey = () => void (cachedKey = undefined);
 const relay = await startRelay({
-  target: () => (engine.kind === "api" && !apiUrlProblem(engine.apiUrl) ? engine.apiUrl : null),
-  readKey: () => (cachedKey ??= keys.read()),
+  // Only a string is kept: a failed read (Keychain locked) is tried again.
+  readKey: async () => {
+    cachedKey ??= (await keys.read()) ?? undefined;
+    return cachedKey ?? null;
+  },
 });
 
 let stopping: Promise<void> | undefined;
@@ -263,7 +266,7 @@ const sessions = new SessionsAgent({
     if (!n) throw new Error(error ?? "le noyau de l'agent n'a pas démarré");
     if (profile !== "codex") return n.openAgentSession({ ...t, window: f, profile, resume });
     const e = engine;
-    const token = e.kind === "api" && (await keys.has()) ? relay.openSession() : null;
+    const token = e.kind === "api" && (await keys.has()) ? relay.openSession(e.apiUrl) : null;
     try {
       const extra = codexEngineArgs(e, token ? { url: relay.containerUrl, token } : null);
       const session = await n.openAgentSession({ ...t, window: f, profile, resume, extra });

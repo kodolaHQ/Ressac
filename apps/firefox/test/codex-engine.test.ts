@@ -28,6 +28,9 @@ describe("codexEngineArgs", () => {
       env: { WEBAIOS_ENGINE_TOKEN: "t" },
     });
   });
+  it("api: a bad address names the problem", () => {
+    expect(() => codexEngineArgs(e({ kind: "api", apiUrl: "http://example.com", apiModel: "m" }), { url: "http://h:1", token: "t" })).toThrow("Adresse invalide (https://…) (Réglages › Agents)");
+  });
   it("quotes", () => {
     const v = codexEngineArgs(e({ kind: "ollama", ollamaUrl: "http://h/a\"b" }), null).args[3]!;
     expect(v).toContain("%22");

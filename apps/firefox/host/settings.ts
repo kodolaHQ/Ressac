@@ -156,7 +156,10 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
       } catch (e) {
         return { kind: "error", error: failure(e) };
       }
-      return signIn.result;
+      const r = await signIn.result;
+      // A workshop built before Codex has no `codex` yet (docker exec: exit 127).
+      if (r.kind === "error" && /not found|127/.test(r.error)) return { kind: "error", error: "Codex n'est pas encore installé dans l'atelier : ouvrez la vue agent ou redémarrez l'atelier (section Conteneur)." };
+      return r;
     },
     "settings.codexKey": (p: { key?: unknown }) => keyResult(async () => {
       if (typeof p?.key !== "string") throw new Error(INVALID_KEY);
