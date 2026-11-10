@@ -47,6 +47,20 @@ test("first request → we ask; the decision is remembered and the second goes t
   expect(saved()).toEqual({ [`${meet} notifications`]: "allow" });
 });
 
+test("list gives one entry per profile and origin, with its decisions; forget drops it", async () => {
+  disk.set(FILE, JSON.stringify({ "https://a.fr media-camera": "allow", "https://a.fr notifications": "deny" }));
+  disk.set(`${DIR}/permissions-p2.json`, JSON.stringify({ "https://b.fr geolocation": "allow" }));
+  profiles = ["default", "p2"];
+  const p = make();
+  await p.ready;
+  expect(await p.list()).toEqual([
+    { profile: "default", origin: "https://a.fr", permissions: { "media-camera": "allow", notifications: "deny" } },
+    { profile: "p2", origin: "https://b.fr", permissions: { geolocation: "allow" } },
+  ]);
+  await p.forget("default", "https://a.fr");
+  expect(await p.list()).toEqual([{ profile: "p2", origin: "https://b.fr", permissions: { geolocation: "allow" } }]);
+});
+
 test("camera + microphone: both permissions are needed", async () => {
   const p = make();
   expect(await p.handle(req("media", { mediaTypes: ["video", "audio"] }))).toBe(true);

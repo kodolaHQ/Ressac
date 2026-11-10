@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { validFolder } from "../applications/manifest.js";
 import { CONTAINER_PATH, KERNEL_ROOT, type SpacePaths } from "../paths.js";
 import type { Owner } from "../workflows/schema.js";
-import { defaultRunner, type Runner } from "./runner.js";
+import { defaultRunner, type RunResult, type Runner } from "./runner.js";
 
 export const CONTAINER_NAME = "webaios-workshop";
 // Read on every call so a second app (Firefox build) can run its own container.
@@ -25,6 +25,9 @@ export function containerPortRange(): [number, number] {
 const PROBE_DELAY_MS = 30_000;
 /** First build: download of the base image and install of the agent. Beyond that, it is blocked. */
 export const BUILD_DELAY_MS = 20 * 60_000;
+
+/** The end of a build output: the error is there, the rest would flood the page that shows it. */
+const tail = (s: string): string => s.trim().split("\n").slice(-3).join("\n").slice(-300);
 
 /** Dockerfile folder in the package; a browser that embeds the kernel can provide another. */
 export const DEFAULT_DOCKER_FOLDER = join(KERNEL_ROOT, "docker");
@@ -137,6 +140,8 @@ export class Workshop {
   private readonly dockerFolder: string;
   /** Startup in progress, shared: two windows opening an agent do not build the image twice. */
   private startup: Promise<WorkshopState> | null = null;
+  /** Rebuild in progress, shared: two rebuilds at once build once. */
+  private rebuilding: Promise<WorkshopState> | null = null;
 
   constructor(o: { paths: SpacePaths; run?: Runner; docker?: string | null; dockerFolder?: string }) {
     this.dockerFolder = o.dockerFolder ?? DEFAULT_DOCKER_FOLDER;
@@ -169,7 +174,35 @@ export class Workshop {
     return this.startup;
   }
 
-  private async start(): Promise<WorkshopState> {
+  /** Stops the container (volumes kept) and starts it again. */
+  async restart(): Promise<WorkshopState> {
+    if (!this.docker || (await this.launch(["info"], PROBE_DELAY_MS)).code !== 0) return "docker-absent";
+    await this.launch(["stop", "-t", "2", containerName()], PROBE_DELAY_MS);
+    return this.ensureStarted();
+  }
+
+  /** Deletes the container and rebuilds the image from scratch; /workspace and the home volume are kept. */
+  async rebuild(): Promise<WorkshopState> {
+    if (!this.docker || (await this.launch(["info"], PROBE_DELAY_MS)).code !== 0) return "docker-absent";
+    this.rebuilding ??= (async () => {
+      // A plain startup in progress (an agent opening) ends first: the rebuild never rides on it.
+      while (this.startup) await this.startup.catch(() => {});
+      this.startup = (async () => {
+        await this.launch(["rm", "-f", containerName()], PROBE_DELAY_MS);
+        return this.start({ fresh: true });
+      })().finally(() => (this.startup = null));
+      return this.startup;
+    })().finally(() => (this.rebuilding = null));
+    return this.rebuilding;
+  }
+
+  /** One-off command in the container, not interactive. */
+  async exec(argv: string[]): Promise<RunResult> {
+    if (!this.docker) return { code: 1, stdout: "", stderr: "Docker introuvable" };
+    return this.launch(["exec", containerName(), ...argv], PROBE_DELAY_MS);
+  }
+
+  private async start(o: { fresh?: boolean } = {}): Promise<WorkshopState> {
     let state = await this.state();
     if (state === "docker-absent") return state;
     const hash = dockerfileHash(this.dockerFolder);
@@ -185,9 +218,9 @@ export class Workshop {
       return this.state();
     }
     const image = await this.launch(["image", "inspect", "-f", `{{index .Config.Labels "${HASH_LABEL}"}}`, IMAGE], PROBE_DELAY_MS);
-    if (image.code !== 0 || image.stdout.trim() !== hash) {
-      const build = await this.launch(["build", "-t", IMAGE, "--label", `${HASH_LABEL}=${hash}`, "-f", dockerfile(this.dockerFolder), this.dockerFolder], BUILD_DELAY_MS);
-      if (build.code !== 0) throw new Error(`Construction de l'image ${IMAGE} impossible : ${build.stderr}`);
+    if (o.fresh || image.code !== 0 || image.stdout.trim() !== hash) {
+      const build = await this.launch(["build", ...(o.fresh ? ["--no-cache", "--pull"] : []), "-t", IMAGE, "--label", `${HASH_LABEL}=${hash}`, "-f", dockerfile(this.dockerFolder), this.dockerFolder], BUILD_DELAY_MS);
+      if (build.code !== 0) throw new Error(`Construction de l'image ${IMAGE} impossible : ${tail(build.stderr)}`);
     }
     const ports = containerPortRange().join("-");
     const run = await this.launch([

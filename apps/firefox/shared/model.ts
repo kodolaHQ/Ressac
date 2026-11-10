@@ -1,10 +1,13 @@
 import type { DevRight, TabAccessState, Owner } from "@webaios/kernel";
 import type { ExtensionCard } from "./extensions";
+import type { DecisionModel } from "./settings";
 
 /** Internal Applications page: a tab without a web page, displayed by the UI. */
 export const URL_APPLICATIONS = "webaios://apps";
 /** Internal Extensions page (Store and agent), displayed by the UI. */
 export const URL_EXTENSIONS = "webaios://extensions";
+/** Internal Settings page, displayed by the UI. */
+export const URL_SETTINGS = "webaios://settings";
 /** Internal « Voir le workflow » page of a widget: `webaios://workflow/<widget id>`. */
 export const WORKFLOW_PREFIX = "webaios://workflow/";
 export const urlWorkflow = (id: string) => WORKFLOW_PREFIX + id;
@@ -150,6 +153,8 @@ export interface BrowserState {
   settings: { engine: SearchEngine; /** Profil d'agent (fichier .webaios/profiles/<id>.json). */ agentProfile: string;
     /** Width of the agent panel, in pixels (the user sets it by dragging its left edge). */
     agentPanelWidth: number;
+    /** The model that decides the workflows' watch notices. */
+    decisionModel: DecisionModel;
   };
 }
 

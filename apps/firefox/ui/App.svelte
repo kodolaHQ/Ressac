@@ -17,6 +17,7 @@
   import Downloads from "./components/Downloads.svelte";
   import TabsPanel from "./components/TabsPanel.svelte";
   import Review from "./components/Review.svelte";
+  import Settings from "./components/Settings.svelte";
   import { focusAgent } from "./components/agent.svelte";
   import { design, rereadDesign } from "./components/design.svelte";
   import { command, closeCommand, focusEmptyPage, openCommand } from "./components/command.svelte";
@@ -24,7 +25,7 @@
   import { menu } from "./components/menu.svelte";
   import { spaceSettings } from "./components/spaceSettings.svelte";
   import { access, api, requestOf, appState, currentWindow, closeTab } from "./state.svelte";
-  import { actionOfUrl, hasView, workflowUrlTarget, reviewUrlProject, URL_ACTIONS, URL_APPLICATIONS, URL_EXTENSIONS } from "../shared/model";
+  import { actionOfUrl, hasView, workflowUrlTarget, reviewUrlProject, URL_ACTIONS, URL_APPLICATIONS, URL_EXTENSIONS, URL_SETTINGS } from "../shared/model";
   import { ACTIONS_IN_PRIVATE_SPACE } from "../shared/actions";
   import { hide, INITIAL_REVEAL, onZone, type LeftZone } from "../shared/reveal";
   import type { Panel, TabsPanel as TabPanel } from "../shared/api";
@@ -213,6 +214,8 @@
       <Extensions />
     {:else if activeTab?.url === URL_APPLICATIONS}
       <Applications />
+    {:else if activeTab?.url === URL_SETTINGS}
+      <Settings />
     {:else if activeTab?.url === URL_ACTIONS}
       {#if privateAction}
         <p class="crashed" data-testid="action-private-space">{ACTIONS_IN_PRIVATE_SPACE}</p>

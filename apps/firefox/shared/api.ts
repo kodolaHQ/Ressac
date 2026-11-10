@@ -2,6 +2,8 @@ import { z } from "zod";
 import { validFolder, ID_EXECUTION, ID_SITE, type Application, type Warning, type BlockCatalogEntry, type DeclarationWidget, type DirectState, type DraftRead, type SaveResult, type AttemptResult, type DevRight, type AiState, type WidgetState, type Execution, type ResumeExecution, type ActionsState, type PageAction, type LaunchResult, type Owner } from "@webaios/kernel";
 import type { BatchState, ProjectId, ExternalProject, TrackedProject } from "@webaios/kernel";
 import { PROJECT_ID, type Comment, type DiffFile, type ModifiedFile } from "@webaios/kernel";
+import type { AgentAccount, Backup, DecisionModel, GrantKind, GrantRow, SettingsResult, WorkshopOperation } from "./settings";
+import type { WorkshopState } from "../../../packages/kernel/src/container/workshop.ts";
 import type { ActionShown } from "./actions";
 import type { ActionSite, SiteWindowState, MessageToHome, ShownSite } from "./sites";
 import type { ExtensionsBar, ExtensionLine, SpaceExtensionLine, SiteExtensionLine } from "./extensions";
@@ -68,6 +70,9 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("openApps"), windowId: id }),
   /** Activates this window's Extensions page, or opens it (like Applications). */
   z.object({ type: z.literal("openExtensions"), windowId: id }),
+  /** Activates this window's Settings page, or opens it (like Applications). */
+  z.object({ type: z.literal("openSettings"), windowId: id }),
+  z.object({ type: z.literal("chooseDecisionModel"), model: z.enum(["pplx-decider-flash", "kev"]) }),
   /** Activates the « Voir le workflow » page of widget `id` in this window, or opens it. */
   z.object({
     type: z.literal("openWorkflow"),
@@ -341,6 +346,38 @@ export interface ApiWebaios {
   design: ApiDesign;
   external: ExternalApi;
   review: ReviewApi;
+  settings: SettingsApi;
+}
+
+/** The settings page: agent accounts, workshop, local AI, durable grants, data, telemetry. */
+export interface SettingsApi {
+  agents(): Promise<AgentAccount[]>;
+  /** Opens this window's agent panel, to sign in there. */
+  login(id: string): void;
+  logout(id: string): Promise<AgentAccount[]>;
+  /** null: the host does not answer. */
+  workshop(): Promise<WorkshopState | null>;
+  /** Refused while another restart or rebuild runs (from any page or window). */
+  restartWorkshop(fresh: boolean): Promise<SettingsResult>;
+  workshopOperation(): Promise<WorkshopOperation>;
+  chooseDecisionModel(model: DecisionModel): void;
+  grants(): Promise<GrantRow[]>;
+  revoke(kind: GrantKind, key: string): Promise<void>;
+  dataDir(): string;
+  /** Slow with big backups (their size is measured): loaded apart from the data folder. */
+  backups(): Promise<Backup[]>;
+  reveal(path: string): void;
+  deleteBackup(path: string): Promise<SettingsResult>;
+  /** Reveals the file once written. */
+  exportData(): Promise<{ ok: true; path: string } | { ok: false; error: string }>;
+  /** Marks the data to set aside and restarts; false when the restart was cancelled (nothing is reset then). */
+  reset(): Promise<boolean>;
+  telemetry(): Promise<{ available: boolean; enabled: boolean }>;
+  setTelemetry(enabled: boolean): void;
+  version(): Promise<string>;
+  openAdvanced(): void;
+  /** The OrbStack install link: https only. */
+  openUrl(url: string): void;
 }
 
 
@@ -535,7 +572,8 @@ export interface ProfileForGrant {
 export interface LocalAiStateShown {
   state: AiState;
   error?: string;
-  verification?: { kev: boolean; uv: boolean; ollama: boolean; gemma: boolean };
+  verification?: { kev: boolean; uv: boolean; ollama: boolean; gemma: boolean; decision: boolean };
+  ollamaUrl?: string;
 }
 
 /** What an app window's badge UI gets (ui/badge-api.ts): the agent's access and its app's design mode. */

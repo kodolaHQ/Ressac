@@ -1,5 +1,5 @@
 import type { ShownSite } from "../shared/sites";
-import type { ApiWebaios, AgentPanelState, ApplicationList, ExtensionResult, ShownWidget } from "../shared/api";
+import type { ApiWebaios, LocalAiStateShown, AgentPanelState, ApplicationList, ExtensionResult, ShownWidget } from "../shared/api";
 import type { ExtensionLine, SpaceExtensionLine } from "../shared/extensions";
 import type { HomeTheme } from "../../../packages/kernel/src/home/theme.ts";
 import type { FreePlacement } from "../../../packages/kernel/src/home/schemas.ts";
@@ -11,6 +11,7 @@ import { forgetWidget, prepareWidget } from "../chrome/window/widget-frame";
 import { readableProfiles, profilesForGrant, openableUrl } from "./home-profiles";
 import { ACTIONS_IN_PRIVATE_SPACE } from "../shared/actions";
 import { createActionsApi, activeSpacePrivate, type ActionsFirefox } from "./actions-api";
+import { createSettingsApi } from "./settings-api";
 import { createDesignApi, createExternalApi, createReviewApi } from "./design-api";
 
 /** What the Firefox page reads: the widgets, plus the theme the ApiWebaios type does not carry. */
@@ -277,8 +278,21 @@ export function createApi(win: WindowController): ApiFirefox {
     },
     // The section « Projets externes »: the external MCP server, kept by the kernel host.
     external: createExternalApi({ host, window: windowId, dispatch: (a) => win.store.dispatch(a), untilUnload }),
+    // The local AI's state; its install and feed are not migrated.
+    ai: {
+      state: () => ask<LocalAiStateShown>("ai.state", undefined, { state: "error", error: "L'agent ne répond pas" }),
+    } as Partial<ApiWebaios["ai"]> as ApiWebaios["ai"],
     // The Review page: its comparisons and comments, kept by the kernel host.
     review: createReviewApi({ host }),
+    settings: createSettingsApi({
+      host,
+      chrome: win.store.settings,
+      sitePermissions: win.store.sitePermissions,
+      dispatch: (a) => win.store.dispatch(a),
+      windowId,
+      openAgent: () => win.openAgent(),
+      dataDir: win.store.dataDir,
+    }),
     // The design mode of this window's tab; its cart column is a chrome frame (chrome/window/design-overlays.ts).
     design: createDesignApi({ win, untilUnload }),
     designPanel(isOpen) {

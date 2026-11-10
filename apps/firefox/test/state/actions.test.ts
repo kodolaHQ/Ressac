@@ -2,7 +2,7 @@ import { beforeEach, expect, test } from "vitest";
 import { apply } from "../../core/state/actions";
 import { initialState } from "../../core/state/initial-state";
 import { SchemaAction, type Action } from "../../shared/api";
-import { spaceKey, historyContext, privateTab, profilesInUse, tabProfile, hasView, URL_ACTIONS, URL_APPLICATIONS, URL_EXTENSIONS, urlAction, urlWorkflow, type BrowserState, type Tab } from "../../shared/model";
+import { spaceKey, historyContext, privateTab, profilesInUse, tabProfile, hasView, URL_ACTIONS, URL_APPLICATIONS, URL_EXTENSIONS, URL_SETTINGS, urlAction, urlWorkflow, type BrowserState, type Tab } from "../../shared/model";
 
 let n = 0;
 const genId = () => `g${++n}`;
@@ -627,6 +627,30 @@ test("openExtensions opens or activates the page, like openApps", () => {
   ag({ type: "openExtensions", windowId: F });
   expect(pages()).toHaveLength(1);
   expect(fen().activeSpace).toBe(P);
+});
+
+test("openSettings opens or activates the Réglages page, once for the window", () => {
+  expect(URL_SETTINGS).toBe("webaios://settings");
+  open("https://a.test/");
+  ag({ type: "openSettings", windowId: F });
+  const pages = () => Object.values(e.tabs).filter((o) => o.url === URL_SETTINGS);
+  expect(pages()).toHaveLength(1);
+  const page = pages()[0]!;
+  expect(page).toMatchObject({ title: "Réglages", spaceId: P });
+  expect(active()).toBe(page.id);
+  ag({ type: "createSpace", name: "Boulot", icon: "💼", private: false, profile: "default", windowId: F });
+  ag({ type: "openSettings", windowId: F });
+  expect(pages()).toHaveLength(1);
+  expect(fen().activeSpace).toBe(P);
+});
+
+test("chooseDecisionModel changes the setting; the same model again changes nothing", () => {
+  expect(e.settings.decisionModel).toBe("pplx-decider-flash");
+  ag({ type: "chooseDecisionModel", model: "kev" });
+  expect(e.settings.decisionModel).toBe("kev");
+  const before = e;
+  ag({ type: "chooseDecisionModel", model: "kev" });
+  expect(e).toBe(before);
 });
 
 test("openWorkflow opens a titled webaios://workflow/<id> tab, then returns to it instead of opening a second one", () => {

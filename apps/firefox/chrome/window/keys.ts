@@ -18,6 +18,8 @@ export type Shortcut =
   | { type: "closeWindow" }
   /** ⇧⌘A: the Applications page (menu item « Applications »), not Firefox's add-ons. */
   | { type: "apps" }
+  /** ⌘, (menu item « Réglages »): the Settings page, not Firefox's about:preferences. */
+  | { type: "settings" }
   /** ⇧⌘D: the design mode of the window in front (menu item « Mode design »), not Firefox's « bookmark all tabs ». */
   | { type: "design" }
   /** Firefox's next/previous tab keys walk every XUL tab, other spaces' too: consumed, nothing done. */
@@ -35,6 +37,7 @@ const COMMAND: Record<string, Shortcut> = {
   n: { type: "window" },
   j: { type: "agent" },
   y: { type: "panel", p: "history" },
+  ",": { type: "settings" },
 };
 const SHIFT_COMMAND: Record<string, Shortcut> = {
   t: { type: "reopen" },
@@ -93,6 +96,9 @@ export const FIREFOX_KEYS = [
   // ⇧⌘D: Firefox's « bookmark all tabs ».
   "bookmarkAllTabsKb",
 ];
+
+/** The native Settings menu items: kept in FIREFOX_COMMANDS (site and app windows keep them off), re-enabled in main windows. */
+export const SETTINGS_MENU_ITEMS = ["menu_preferences", "menu_settings"];
 
 /**
  * Firefox's <command>s (and macOS menu items) that open or close tabs and windows behind the store's back: disabling a

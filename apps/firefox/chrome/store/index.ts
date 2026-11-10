@@ -22,7 +22,9 @@ import { registerPermissionHooks } from "./permission-hooks";
 import { createSitePermissions, type SitePermission, type SitePermissions } from "./site-permissions";
 import { bindSites, sites, type SiteApps } from "./sites";
 import { createStore, type Store } from "./store";
+import { installPreferencesCleanup } from "./preferences-cleanup";
 import { installTelemetry } from "./telemetry";
+import { createSettingsChrome, type SettingsChrome } from "./settings";
 import { createWindowRegistry, type WindowRegistry } from "./windows";
 import { installUiNetwork, isUiDocument, type UiNetworkState } from "./ui-network";
 import { gestureGuard } from "../../shared/widget-gesture";
@@ -34,9 +36,11 @@ export interface WebAiOsStore extends Store {
   readonly dataDir: string;
   /** Where an unreadable session was set aside at startup, or null. */
   readonly setAside: string | null;
-  readonly formatSetAside: string | null;
+  readonly dataSetAside: { backup: string; reason: "format" | "reset" } | null;
   /** Error reports go out (a DSN is set): the first window tells it once. */
   readonly telemetryActive: boolean;
+  /** What the settings page asks of the chrome: telemetry, version, Finder, export folder, reset. */
+  readonly settings: SettingsChrome;
   flush(): Promise<void>;
   /** userContextId of a login profile: 0 for DEFAULT_PROFILE, an internal container otherwise (created on first use). */
   containerFor(profile: ProfileId): number;
@@ -136,7 +140,7 @@ async function start(): Promise<WebAiOsStore> {
   // Before anything else can fail: its errors are reported.
   const telemetry = installTelemetry();
   // Before anything touches the data folder: an unknown format sets it aside (workspace/ stays).
-  const formatSetAside = await checkDataFormat(dataDir).catch((e) => (console.error("[data] format check failed:", e), null));
+  const dataSetAside = await checkDataFormat(dataDir).catch((e) => (console.error("[data] format check failed:", e), null));
   // Our history is the only one: Firefox's would grow unread. Set at runtime on the default branch, before any window
   // (favicons, back/forward and reopening a closed tab keep working: plan 24 spike S1).
   Services.prefs.getDefaultBranch("").setBoolPref("places.history.enabled", false);
@@ -148,6 +152,8 @@ async function start(): Promise<WebAiOsStore> {
   Services.prefs.getDefaultBranch("").setBoolPref("privacy.popups.showBrowserMessage", false);
   // Fullscreen is granted without a question and without Firefox's warning over the page (spike P8).
   Services.prefs.getDefaultBranch("").setIntPref("full-screen-api.warning.timeout", 0);
+  // The browser's advanced settings without what contradicts WebAiOs.
+  installPreferencesCleanup();
   // Mozilla's update server offers Widevine (DRM) only to a Firefox version: under WebAiOs's own version it answers
   // with no module, and no DRM site ever plays.
   const gmp = Services.prefs.getDefaultBranch("").getCharPref("media.gmp-manager.url", "");
@@ -329,6 +335,7 @@ async function start(): Promise<WebAiOsStore> {
     },
     onStart: (notify) => {
       sendMirror(store, windows, notify);
+      notify("ai.decisionModel", { model: store.state.settings.decisionModel });
       // A rendrePrive sent while no host ran was dropped: replayed (idempotent) so no private space stays searchable.
       for (const e of store.state.spaces) if (e.private) notify("history.makePrivate", { spaceId: e.id });
       agentExtensions.hostStarted();
@@ -376,8 +383,9 @@ async function start(): Promise<WebAiOsStore> {
     subscribe: store.subscribe,
     dataDir,
     setAside,
-    formatSetAside,
+    dataSetAside,
     telemetryActive: telemetry.active,
+    settings: createSettingsChrome(dataDir, telemetry.active),
     flush,
     containerFor,
     agent,

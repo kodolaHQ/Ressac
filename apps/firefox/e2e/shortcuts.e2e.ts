@@ -5,6 +5,7 @@ import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
 import { inUi, missingApi, pressKeys, waitUi } from "./ui";
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 let server: Awaited<ReturnType<typeof startServer>>;
 let w: LaunchedWebAiOs;
@@ -67,6 +68,20 @@ describe("WebAiOs shortcuts", () => {
     await waitBar(true);
     expect(await m.execute<number>("return gBrowser.tabs.length")).toBe(tabs);
     expect(Object.keys((await state(m)).tabs)).toEqual([a]);
+  });
+
+  it("⌘, opens the Settings page once, not Firefox's preferences", async () => {
+    const a = await open("/a.html");
+    await waitTitle(a, "Page A");
+    await focusPage();
+    await pressKeys(m, "Meta+,");
+    await pressKeys(m, "Meta+,");
+    await sleep(500);
+    const s = await state(m);
+    const pages = Object.values(s.tabs).filter((o) => o.url === "webaios://settings");
+    expect(pages).toHaveLength(1);
+    expect(pages[0]).toMatchObject({ title: "Réglages" });
+    expect(s.windows[0]!.active[s.windows[0]!.activeSpace]).toBe(pages[0]!.id);
   });
 
   it("⌘T + address opens a tab; ⌘W closes it; ⇧⌘T reopens it with its URL", async () => {

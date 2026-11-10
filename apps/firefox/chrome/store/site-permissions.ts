@@ -21,6 +21,8 @@ export interface SitePermissions {
   handle(r: SiteRequest): Promise<boolean>;
   /** Synchronous, from the remembered decisions. */
   check(profile: ProfileId, origin: string, kind: string, mediaType?: string): boolean;
+  /** After `ready`: one entry per profile and origin. */
+  list(): Promise<{ profile: ProfileId; origin: string; permissions: Partial<Record<SitePermission, Decision>> }[]>;
   forget(profile: ProfileId, origin: string): Promise<void>;
   removeProfile(profile: ProfileId): Promise<void>;
 }
@@ -170,6 +172,18 @@ export function createSitePermissions(o: {
       if (NO_REQUEST.has(kind)) return true;
       const permissions = translate(kind, mediaType ? [mediaType] : []);
       return permissions.length > 0 && permissions.every((p) => memo.get(profile)?.[key(origin, p)] === "allow");
+    },
+    async list() {
+      await ready;
+      return [...memo].flatMap(([profile, decisions]) => {
+        const byOrigin = new Map<string, Partial<Record<SitePermission, Decision>>>();
+        for (const [k, d] of Object.entries(decisions)) {
+          const i = k.lastIndexOf(" ");
+          const origin = k.slice(0, i);
+          byOrigin.set(origin, { ...byOrigin.get(origin), [k.slice(i + 1)]: d });
+        }
+        return [...byOrigin].map(([origin, permissions]) => ({ profile, origin, permissions }));
+      });
     },
     async forget(profile, origin) {
       await ready;

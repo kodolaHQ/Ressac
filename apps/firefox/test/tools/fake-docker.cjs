@@ -17,8 +17,22 @@ const quit = (code, out = "", err = "") => {
 // FAKE_DOCKER_SLOW: Docker that is starting up, `docker info` only answers after 8 s.
 if (args[0] === "info" && env.FAKE_DOCKER_SLOW === "1") Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 8_000);
 if (args[0] === "info") quit(env.FAKE_DOCKER_ABSENT === "1" ? 1 : 0);
+// The settings page's workshop operations are noted for the tests; a removed workshop is absent until its next `run -d`.
+const removedMark = () => join(env.WEBAIOS_ROOT, "fake-docker-workshop-removed");
+const noteCall = () => appendFileSync(join(env.WEBAIOS_ROOT, "fake-docker-calls.log"), `${args.join(" ")}\n`);
+if (args[0] === "stop") {
+  noteCall();
+  quit(0);
+}
+if (args[0] === "rm" && args[1] === "-f" && args[2] === "webaios-workshop") {
+  noteCall();
+  writeFileSync(removedMark(), "");
+  quit(0);
+}
+if (args[0] === "build") noteCall();
+if (args[0] === "run" && args[1] === "-d") rmSync(removedMark(), { force: true });
 if (args[0] === "inspect") {
-  if (failing) quit(1, "", "No such object");
+  if (failing || (args[3] === "webaios-workshop" && existsSync(removedMark()))) quit(1, "", "No such object");
   const format = args[2] ?? "";
   if (format.includes("State.Running")) quit(0, "true\n");
   const dockerfile = join(__dirname, "..", "..", "..", "..", "packages", "kernel", "docker", "workshop.Dockerfile");
@@ -139,6 +153,13 @@ if (args[0] === "exec") {
   if (options.some((o) => o.startsWith("WEBAIOS_APP="))) {
     launchApp(options, command);
     return;
+  }
+  // Claude Code's account (settings page): <WEBAIOS_ROOT>/fake-claude-auth.json is the signed-in account.
+  const auth = join(env.WEBAIOS_ROOT, "fake-claude-auth.json");
+  if (command.join(" ") === "claude auth status --json") quit(0, existsSync(auth) ? readFileSync(auth, "utf8") : '{"loggedIn":false}\n');
+  if (command.join(" ") === "claude auth logout") {
+    rmSync(auth, { force: true });
+    quit(0);
   }
   // Stop of a session or an app in the container (Workshop session and app stops…): noted for the
   // tests; the targeted apps are killed beforehand, the log is the proof of the stop.

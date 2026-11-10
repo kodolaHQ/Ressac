@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import type { Space, WindowState, BrowserState, SpaceId, ProfileId } from "../shared/model";
-import { profilesForGrant, openableUrl } from "../ui/home-profiles";
+import { profileLabel, profilesForGrant, openableUrl } from "../ui/home-profiles";
 
 const space = (id: string, name: string, profile: ProfileId, isPrivate = false): Space => ({
   id,
@@ -65,4 +65,10 @@ test("a widget link: http(s) only, never the machine nor the local network", () 
   expect(openableUrl("http://192.168.1.4/")).toBe(false);
   expect(openableUrl("http://machine.local/")).toBe(false);
   expect(openableUrl("pas une url")).toBe(false);
+});
+
+test("profileLabel: a profile shared by two spaces lists both; one without a space is neutral", () => {
+  const s = state([space("e1", "Perso", "perso"), space("e2", "Travail", "perso")], ["perso", "autre"], []);
+  expect(profileLabel(s, "perso")).toBe("Profil de « Perso, Travail »");
+  expect(profileLabel(s, "autre")).toBe("Profil « autre »");
 });

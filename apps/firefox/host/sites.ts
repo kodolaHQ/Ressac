@@ -9,6 +9,7 @@ import {
   urlOnDomain,
   grantNeeded,
   storeSiteGrant,
+  removeSiteGrant,
   startUrl,
   effectiveDomains,
   rightsOf,
@@ -101,6 +102,8 @@ export interface SitesHost {
   closed(id: string): void;
   /** « Autoriser » / « Ouvrir sans retouches » on the card. */
   grant(id: string, yes: boolean, hash: string): Promise<void>;
+  /** The grant is withdrawn (settings page); an open app gets its card back. */
+  revokeGrant(id: string): Promise<void>;
   /** `webaiosSite` of an open app's main page; the chrome checked the sender, the grant and the address. */
   memoryOp(request: unknown): Promise<MemoryResponse>;
   /** A video position of an open app's page (`sites.position`), and the position to resume (`sites.resume`); the chrome checked the frame. */
@@ -682,6 +685,11 @@ export function createSites(o: {
       openSites.set(id, after);
       await o.chrome.afterGrant(id, after);
       void reread(id);
+    },
+    async revokeGrant(id) {
+      await removeSiteGrant(o.dataDir, id);
+      // Read again: grantRequired is recomputed and chrome.update brings the card back (afterGrant does nothing outside the card).
+      await reread(id);
     },
     // Checked again here: only an open app whose tweaks are granted has a memory for its page.
     memoryOp: (d) => memoryOp((id) => (openSites.get(id)?.grantRequired === false ? memory(id) : Promise.reject(new Error("pas d'accord"))), d),

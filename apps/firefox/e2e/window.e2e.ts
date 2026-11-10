@@ -197,7 +197,12 @@ describe("the WebAiOs window", () => {
       const item = document.getElementById(id);
       return !(document.getElementById(item.getAttribute("command")) ?? item).hasAttribute("disabled");
     })`;
-    expect(await m.execute(enabled, [items])).toEqual(["menu_newNavigator", "menu_closeWindow"]);
+    expect(await m.execute(enabled, [items])).toEqual(["menu_newNavigator", "menu_closeWindow", "menu_preferences"]);
+    // The Settings item opens our page, never about:preferences.
+    await m.execute("document.getElementById('menu_preferences').doCommand()");
+    await sleep(500);
+    expect(Object.values((await state(m)).tabs).filter((o) => o.url === "webaios://settings")).toHaveLength(1);
+    expect(await m.execute<number>("return gBrowser.tabs.filter((t) => t.linkedBrowser.currentURI.spec.startsWith('about:preferences')).length")).toBe(0);
     const old = await handle();
     await m.execute("document.getElementById('cmd_newNavigator').doCommand()");
     const other = (await waitWindowCount(m, 2)).find((h) => h !== old)!;

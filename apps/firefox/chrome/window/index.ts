@@ -9,6 +9,7 @@ import { cutFrameNetwork } from "./frame-network";
 import { setupPopup } from "./popup";
 import { mountSiteMenu } from "./site-menu";
 import { refuseSiteTabs, setupSiteSmallWindow, setupSiteWindow, siteIdOf, siteOfContainer } from "./site-window";
+import { TELEMETRY_NOTICE } from "../../shared/settings";
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const { PrivateBrowsingUtils } = ChromeUtils.importESModule("resource://gre/modules/PrivateBrowsingUtils.sys.mjs");
@@ -97,12 +98,16 @@ window.addEventListener(
           [],
         );
       }
-      if (first && store.formatSetAside) {
+      if (first && store.dataSetAside) {
+        const { backup, reason } = store.dataSetAside;
         void window.gNotificationBox.appendNotification(
           "webaios-data-set-aside",
           {
-            label: `WebAiOs ne reconnaît pas le format de ses données : il repart à neuf et les garde dans ${store.formatSetAside}. Vos projets n'ont pas bougé.`,
-            priority: window.gNotificationBox.PRIORITY_WARNING_HIGH,
+            label:
+              reason === "reset"
+                ? `WebAiOs repart à neuf. Ses anciennes données sont gardées dans ${backup} (Réglages › Données). Vos projets n'ont pas bougé.`
+                : `WebAiOs ne reconnaît pas le format de ses données : il repart à neuf et les garde dans ${backup}. Vos projets n'ont pas bougé.`,
+            priority: reason === "reset" ? window.gNotificationBox.PRIORITY_INFO_HIGH : window.gNotificationBox.PRIORITY_WARNING_HIGH,
           },
           [],
         );
@@ -113,7 +118,7 @@ window.addEventListener(
         void window.gNotificationBox.appendNotification(
           "webaios-telemetry",
           {
-            label: "WebAiOs envoie à son développeur les plantages et les erreurs, sans adresse de page, pour corriger les bugs de la bêta. Un plantage peut contenir des fragments de mémoire.",
+            label: TELEMETRY_NOTICE,
             priority: window.gNotificationBox.PRIORITY_INFO_HIGH,
           },
           [
