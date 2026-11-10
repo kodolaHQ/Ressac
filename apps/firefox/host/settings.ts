@@ -2,7 +2,7 @@ import { readGrants, readSiteGrants } from "../../../packages/kernel/src/index.t
 import type { LocalAi, Workshop } from "../../../packages/kernel/src/index.ts";
 import type { LocalAiStateShown } from "../shared/api.ts";
 import { deleteBackup, exportData, listBackups } from "./data-folder.ts";
-import type { AgentAccount, DecisionModel, GrantKind, GrantRow, SettingsResult } from "../shared/settings.ts";
+import type { AgentAccount, DecisionModel, WorkshopOperation, GrantKind, GrantRow, SettingsResult } from "../shared/settings.ts";
 
 // The settings page's host side: agent accounts, workshop, local AI, durable grants, data backups.
 
@@ -31,6 +31,7 @@ export const SETTINGS_METHODS = [
   "settings.logout",
   "settings.workshop",
   "settings.restartWorkshop",
+  "settings.workshopOperation",
   "settings.grants",
   "settings.revoke",
   "settings.backups",
@@ -59,6 +60,8 @@ export interface SettingsOptions {
 }
 
 export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTINGS_METHODS)[number], (p: any) => unknown> {
+  /** The restart or rebuild in progress, whatever page or window asked for it. */
+  let operation: WorkshopOperation = null;
   async function agents(): Promise<AgentAccount[]> {
     const state = await o.workshop.state();
     if (state === "docker-absent" || state === "absent" || state === "arrete")
@@ -99,15 +102,20 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
     },
     "settings.workshop": () => o.workshop.state(),
     "settings.restartWorkshop": async (p: { fresh?: unknown }): Promise<SettingsResult> => {
+      if (operation) return { ok: false, error: "Une opération sur l'atelier est déjà en cours." };
+      operation = p?.fresh === true ? "rebuild" : "restart";
       try {
         await o.stopApps();
-        await (p?.fresh === true ? o.workshop.rebuild() : o.workshop.restart());
+        await (operation === "rebuild" ? o.workshop.rebuild() : o.workshop.restart());
         void o.relaunchSessions();
         return { ok: true };
       } catch (e) {
         return { ok: false, error: failure(e) };
+      } finally {
+        operation = null;
       }
     },
+    "settings.workshopOperation": () => operation,
     "settings.grants": grants,
     "settings.revoke": async (p: { kind?: unknown; key?: unknown }): Promise<void> => {
       if (typeof p?.key !== "string" || !KEY.test(p.key)) return;

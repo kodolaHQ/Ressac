@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { LocalAiStateShown, SettingsApi } from "../../shared/api";
-  import { TELEMETRY_NOTICE, type AgentAccount, type DecisionModel } from "../../shared/settings";
+  import { TELEMETRY_NOTICE, type AgentAccount, type DecisionModel, type WorkshopOperation } from "../../shared/settings";
   import { api, appState } from "../state.svelte";
   import SettingsData from "./SettingsData.svelte";
   import SettingsPermissions from "./SettingsPermissions.svelte";
@@ -48,11 +48,17 @@
 
   /** undefined: loading; null: the host does not answer. */
   let workshop = $state<WorkshopState | null | undefined>(undefined);
-  let operation = $state<"restart" | "rebuild" | null>(null);
+  let operation = $state<WorkshopOperation>(null);
   let asking = $state<"restart" | "rebuild" | null>(null);
   let workshopError = $state<string | null>(null);
-  const loadWorkshop = async () => (workshop = await s.workshop());
+  // The host runs one operation at a time: a remounted page or another window sees it and waits for its end.
+  const loadWorkshop = async () => ([workshop, operation] = await Promise.all([s.workshop(), s.workshopOperation()]));
   $effect(() => void loadWorkshop());
+  $effect(() => {
+    if (!operation) return;
+    const t = setInterval(() => void loadWorkshop(), 2_000);
+    return () => clearInterval(t);
+  });
   const WORKSHOP: Record<WorkshopState, string> = {
     demarre: "Atelier démarré",
     arrete: "Atelier arrêté",

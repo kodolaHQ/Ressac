@@ -1,6 +1,6 @@
 import type { Action, SettingsApi } from "../shared/api";
 import type { WindowId } from "../shared/model";
-import type { AgentAccount, Backup, GrantKind, GrantRow, SettingsResult } from "../shared/settings";
+import type { AgentAccount, Backup, GrantKind, GrantRow, SettingsResult, WorkshopOperation } from "../shared/settings";
 import type { AgentHost } from "../chrome/agent/host";
 import type { SettingsChrome } from "../chrome/store/settings";
 import type { SitePermissions } from "../chrome/store/site-permissions";
@@ -46,6 +46,7 @@ export function createSettingsApi(o: {
     },
     workshop: () => ask("settings.workshop", undefined, null),
     restartWorkshop: (fresh) => ask<SettingsResult>("settings.restartWorkshop", { fresh }, SILENT),
+    workshopOperation: () => ask<WorkshopOperation>("settings.workshopOperation", undefined, null),
     chooseDecisionModel: (model) => o.dispatch({ type: "chooseDecisionModel", model }),
     async grants() {
       const [sites, host, external] = await Promise.all([

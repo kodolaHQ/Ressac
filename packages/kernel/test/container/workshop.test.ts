@@ -447,6 +447,14 @@ describe("restart, rebuild, exec", () => {
     expect(calls.filter((c) => c.args[0] === "build")).toHaveLength(1);
   });
 
+  test("a rebuild never rides on a plain startup in progress", async () => {
+    const { run: runCall, calls } = rebuildRules();
+    const w = new Workshop({ paths, docker: "docker", run: runCall });
+    await Promise.all([w.ensureStarted(), w.rebuild()]);
+    expect(calls.map((c) => c.args.join(" "))).toContain("rm -f webaios-workshop");
+    expect(calls.some((c) => c.args[0] === "build" && c.args.includes("--no-cache"))).toBe(true);
+  });
+
   test("docker absent", async () => {
     const { run: runCall, calls } = fakeRunner([[/ info/, { code: 1 }]]);
     const w = new Workshop({ paths, docker: "docker", run: runCall });

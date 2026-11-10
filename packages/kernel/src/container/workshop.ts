@@ -137,6 +137,8 @@ export class Workshop {
   private readonly dockerFolder: string;
   /** Startup in progress, shared: two windows opening an agent do not build the image twice. */
   private startup: Promise<WorkshopState> | null = null;
+  /** Rebuild in progress, shared: two rebuilds at once build once. */
+  private rebuilding: Promise<WorkshopState> | null = null;
 
   constructor(o: { paths: SpacePaths; run?: Runner; docker?: string | null; dockerFolder?: string }) {
     this.dockerFolder = o.dockerFolder ?? DEFAULT_DOCKER_FOLDER;
@@ -179,11 +181,16 @@ export class Workshop {
   /** Deletes the container and rebuilds the image from scratch; /workspace and the home volume are kept. */
   async rebuild(): Promise<WorkshopState> {
     if (!this.docker || (await this.launch(["info"], PROBE_DELAY_MS)).code !== 0) return "docker-absent";
-    this.startup ??= (async () => {
-      await this.launch(["rm", "-f", containerName()], PROBE_DELAY_MS);
-      return this.start({ fresh: true });
-    })().finally(() => (this.startup = null));
-    return this.startup;
+    this.rebuilding ??= (async () => {
+      // A plain startup in progress (an agent opening) ends first: the rebuild never rides on it.
+      while (this.startup) await this.startup.catch(() => {});
+      this.startup = (async () => {
+        await this.launch(["rm", "-f", containerName()], PROBE_DELAY_MS);
+        return this.start({ fresh: true });
+      })().finally(() => (this.startup = null));
+      return this.startup;
+    })().finally(() => (this.rebuilding = null));
+    return this.rebuilding;
   }
 
   /** One-off command in the container, not interactive. */

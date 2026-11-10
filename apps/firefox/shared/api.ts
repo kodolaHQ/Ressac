@@ -2,7 +2,7 @@ import { z } from "zod";
 import { validFolder, ID_EXECUTION, ID_SITE, type Application, type Warning, type BlockCatalogEntry, type DeclarationWidget, type DirectState, type DraftRead, type SaveResult, type AttemptResult, type DevRight, type AiState, type WidgetState, type Execution, type ResumeExecution, type ActionsState, type PageAction, type LaunchResult, type Owner } from "@webaios/kernel";
 import type { BatchState, ProjectId, ExternalProject, TrackedProject } from "@webaios/kernel";
 import { PROJECT_ID, type Comment, type DiffFile, type ModifiedFile } from "@webaios/kernel";
-import type { AgentAccount, Backup, DecisionModel, GrantKind, GrantRow, SettingsResult } from "./settings";
+import type { AgentAccount, Backup, DecisionModel, GrantKind, GrantRow, SettingsResult, WorkshopOperation } from "./settings";
 import type { WorkshopState } from "../../../packages/kernel/src/container/workshop.ts";
 import type { ActionShown } from "./actions";
 import type { ActionSite, SiteWindowState, MessageToHome, ShownSite } from "./sites";
@@ -357,7 +357,9 @@ export interface SettingsApi {
   logout(id: string): Promise<AgentAccount[]>;
   /** null: the host does not answer. */
   workshop(): Promise<WorkshopState | null>;
+  /** Refused while another restart or rebuild runs (from any page or window). */
   restartWorkshop(fresh: boolean): Promise<SettingsResult>;
+  workshopOperation(): Promise<WorkshopOperation>;
   chooseDecisionModel(model: DecisionModel): void;
   grants(): Promise<GrantRow[]>;
   revoke(kind: GrantKind, key: string): Promise<void>;

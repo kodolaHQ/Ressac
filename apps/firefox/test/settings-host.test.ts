@@ -87,6 +87,20 @@ describe("settings host", () => {
     expect(await h["settings.restartWorkshop"]!({ fresh: true })).toEqual({ ok: false, error: "kaput" });
   });
 
+  it("one workshop operation at a time", async () => {
+    const { h, calls, o } = setup();
+    let finish!: () => void;
+    o.workshop.rebuild.mockImplementationOnce(() => new Promise((r) => (finish = () => r((calls.push("rebuild"), "demarre")))));
+    const first = h["settings.restartWorkshop"]!({ fresh: true }) as Promise<unknown>;
+    await vi.waitFor(() => expect(o.workshop.rebuild).toHaveBeenCalled());
+    expect(await h["settings.workshopOperation"]!({})).toBe("rebuild");
+    expect(await h["settings.restartWorkshop"]!({ fresh: false })).toEqual({ ok: false, error: "Une opération sur l'atelier est déjà en cours." });
+    finish();
+    expect(await first).toEqual({ ok: true });
+    expect(calls).toEqual(["stopApps", "rebuild", "relaunch"]);
+    expect(await h["settings.workshopOperation"]!({})).toBeNull();
+  });
+
   it("grants", async () => {
     const { h, o } = setup();
     const g = (profile: string) => ({ domains: ["mail.fr"], public: [], profile });
