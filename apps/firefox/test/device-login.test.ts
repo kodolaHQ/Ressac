@@ -27,6 +27,12 @@ describe("startDeviceLogin", () => {
     await vi.waitFor(() => expect(alive()).toBe(false));
   });
 
+  it("reads whole lines only", async () => {
+    const l = startDeviceLogin(fake(`console.log("https://auth.example/device");process.stdout.write("B3MH-2FT2");setTimeout(()=>{process.stdout.write("1\\n");setTimeout(()=>{},60000)},150)`));
+    expect(await l.result).toEqual({ kind: "device", url: "https://auth.example/device", code: "B3MH-2FT21" });
+    l.stop();
+  });
+
   it("exits first", async () => {
     const l = startDeviceLogin(fake(`console.error("Error logging in: boom");process.exit(1)`));
     expect(await l.result).toEqual({ kind: "error", error: "Error logging in: boom" });

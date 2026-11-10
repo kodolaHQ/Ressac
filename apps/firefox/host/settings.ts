@@ -2,7 +2,7 @@ import { readGrants, readSiteGrants } from "../../../packages/kernel/src/index.t
 import type { LocalAi, Workshop } from "../../../packages/kernel/src/index.ts";
 import type { LocalAiStateShown } from "../shared/api.ts";
 import { startDeviceLogin } from "./device-login.ts";
-import type { Keychain } from "./keychain.ts";
+import { INVALID_KEY, type Keychain } from "./keychain.ts";
 import { deleteBackup, exportData, listBackups } from "./data-folder.ts";
 import type { AgentAccount, DecisionModel, LoginResult, WorkshopOperation, GrantKind, GrantRow, SettingsResult } from "../shared/settings.ts";
 
@@ -158,7 +158,10 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
       }
       return signIn.result;
     },
-    "settings.codexKey": (p: { key?: unknown }) => keyResult(() => o.keychain.write(String(p?.key))),
+    "settings.codexKey": (p: { key?: unknown }) => keyResult(async () => {
+      if (typeof p?.key !== "string") throw new Error(INVALID_KEY);
+      await o.keychain.write(p.key);
+    }),
     "settings.codexKeySaved": () => o.keychain.has(),
     "settings.codexKeyDelete": () => keyResult(() => o.keychain.remove()),
     "settings.logout": async (p: { id?: unknown }) => {

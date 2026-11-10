@@ -7,7 +7,7 @@ const run = promisify(execFile);
 
 export const CODEX_KEY = { service: "webaios-codex-api", account: "default" };
 export const KEY_PATTERN = /^[A-Za-z0-9._~+/=:-]{1,512}$/;
-const INVALID_KEY = "Clé invalide : lettres, chiffres et . _ ~ + / = : - seulement";
+export const INVALID_KEY = "Clé invalide : lettres, chiffres et . _ ~ + / = : - seulement";
 
 export interface Keychain {
   read(): Promise<string | null>;

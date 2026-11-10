@@ -16,12 +16,15 @@ export function startDeviceLogin(command: string[], o: { delayMs?: number } = {}
   let timer: NodeJS.Timeout;
   const result = new Promise<LoginResult>((resolve) => {
     const fail = () => {
+      // shortcut: killing the docker client leaves codex login running in the container until its code expires (15 min); kill it in the container if that ever matters.
       child.kill();
       resolve({ kind: "error", error: text.trim().split("\n").slice(-3).join("\n").slice(-300) });
     };
     const look = () => {
-      const url = text.match(/https:\/\/\S+/)?.[0];
-      const code = text.match(/\b[A-Z0-9]{4}-[A-Z0-9]{4,6}\b/)?.[0];
+      // Whole lines only: a chunk may end in the middle of the code.
+      const lines = text.slice(0, text.lastIndexOf("\n") + 1);
+      const url = lines.match(/https:\/\/\S+/)?.[0];
+      const code = lines.match(/\b[A-Z0-9]{4}-[A-Z0-9]{4,6}\b/)?.[0];
       if (url && code) {
         clearTimeout(timer);
         resolve({ kind: "device", url, code });

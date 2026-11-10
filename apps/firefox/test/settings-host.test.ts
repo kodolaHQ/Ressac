@@ -141,6 +141,8 @@ describe("settings host", () => {
     expect(o.forgetKey).toHaveBeenCalledTimes(1);
     expect(await h["settings.codexKey"]!({ key: "a b" })).toEqual({ ok: false, error: "Clé invalide : x" });
     expect(o.forgetKey).toHaveBeenCalledTimes(1);
+    for (const bad of [undefined, 42, null]) expect(await h["settings.codexKey"]!({ key: bad })).toMatchObject({ ok: false, error: expect.stringContaining("Clé invalide") });
+    expect(o.keychain.write).toHaveBeenCalledTimes(2); // sk-1 and "a b" only
     expect(await h["settings.codexKeySaved"]!({})).toBe(true);
     expect(await h["settings.codexKeyDelete"]!({})).toEqual({ ok: true });
     expect(o.keychain.remove).toHaveBeenCalled();
