@@ -22,6 +22,7 @@ import { registerPermissionHooks } from "./permission-hooks";
 import { createSitePermissions, type SitePermission, type SitePermissions } from "./site-permissions";
 import { bindSites, sites, type SiteApps } from "./sites";
 import { createStore, type Store } from "./store";
+import { installPreferencesCleanup } from "./preferences-cleanup";
 import { installTelemetry } from "./telemetry";
 import { createSettingsChrome, type SettingsChrome } from "./settings";
 import { createWindowRegistry, type WindowRegistry } from "./windows";
@@ -151,6 +152,8 @@ async function start(): Promise<WebAiOsStore> {
   Services.prefs.getDefaultBranch("").setBoolPref("privacy.popups.showBrowserMessage", false);
   // Fullscreen is granted without a question and without Firefox's warning over the page (spike P8).
   Services.prefs.getDefaultBranch("").setIntPref("full-screen-api.warning.timeout", 0);
+  // The browser's advanced settings without what contradicts WebAiOs.
+  installPreferencesCleanup();
   // Mozilla's update server offers Widevine (DRM) only to a Firefox version: under WebAiOs's own version it answers
   // with no module, and no DRM site ever plays.
   const gmp = Services.prefs.getDefaultBranch("").getCharPref("media.gmp-manager.url", "");
