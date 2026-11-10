@@ -199,6 +199,19 @@ test("after a failure, a new start retries", async () => {
   expect(calls.filter((x) => x.args[0] === "build")).toHaveLength(2);
 });
 
+test("a failed build keeps only the tail of its output in the error", async () => {
+  const stderr = ["#1 [internal] load build definition", ...Array.from({ length: 200 }, (_, i) => `#${i} step ${"x".repeat(40)}`), "ERROR: failed to solve: npm install exited with 1"].join("\n");
+  const { run: runCall } = fakeRunner([
+    [/ image inspect /, { code: 1 }],
+    [/ inspect /, { code: 1 }],
+    [/ build /, { code: 1, stderr }],
+  ]);
+  const error: Error = await new Workshop({ paths: paths, docker: "docker", run: runCall }).ensureStarted().then(() => { throw new Error("no failure"); }, (e) => e);
+  expect(error.message).toContain("ERROR: failed to solve: npm install exited with 1");
+  expect(error.message).not.toContain("load build definition");
+  expect(error.message.length).toBeLessThan(400);
+});
+
 test("building and launching the container have a maximum timeout", async () => {
   let launched = false;
   const { run: runCall, calls: calls } = fakeRunner([

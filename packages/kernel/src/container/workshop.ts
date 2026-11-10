@@ -26,6 +26,9 @@ const PROBE_DELAY_MS = 30_000;
 /** First build: download of the base image and install of the agent. Beyond that, it is blocked. */
 export const BUILD_DELAY_MS = 20 * 60_000;
 
+/** The end of a build output: the error is there, the rest would flood the page that shows it. */
+const tail = (s: string): string => s.trim().split("\n").slice(-3).join("\n").slice(-300);
+
 /** Dockerfile folder in the package; a browser that embeds the kernel can provide another. */
 export const DEFAULT_DOCKER_FOLDER = join(KERNEL_ROOT, "docker");
 const dockerfile = (folder: string) => join(folder, "workshop.Dockerfile");
@@ -217,7 +220,7 @@ export class Workshop {
     const image = await this.launch(["image", "inspect", "-f", `{{index .Config.Labels "${HASH_LABEL}"}}`, IMAGE], PROBE_DELAY_MS);
     if (o.fresh || image.code !== 0 || image.stdout.trim() !== hash) {
       const build = await this.launch(["build", ...(o.fresh ? ["--no-cache", "--pull"] : []), "-t", IMAGE, "--label", `${HASH_LABEL}=${hash}`, "-f", dockerfile(this.dockerFolder), this.dockerFolder], BUILD_DELAY_MS);
-      if (build.code !== 0) throw new Error(`Construction de l'image ${IMAGE} impossible : ${build.stderr}`);
+      if (build.code !== 0) throw new Error(`Construction de l'image ${IMAGE} impossible : ${tail(build.stderr)}`);
     }
     const ports = containerPortRange().join("-");
     const run = await this.launch([
