@@ -24,6 +24,9 @@ export function scrub(text: string, home: string): string {
   return h ? t.replace(new RegExp(h.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?![\\w.-])", "g"), "~") : t;
 }
 
+// A message may quote what it choked on (JSON.parse, a path, typed text): no quoted span leaves.
+const QUOTED = /"[^"\n]*?"|'[^'\n]*?'|`[^`\n]*?`|«[^»\n]*?»/g;
+
 const V8 = /^\s*at (?:(.*?) \()?(.*?):(\d+):(\d+)\)?\s*$/;
 const SPIDER = /^(.*?)@(.*?):(\d+):(\d+)\s*$/;
 
@@ -38,7 +41,7 @@ export function parseStack(stack: string): Frame[] {
 
 export function errorEnvelope(e: ReportedError, o: { release: string; home: string; eventId: string; now: Date }): string {
   const s = (t: string) => scrub(t, o.home);
-  // Sentry's limits: the 50 most recent frames (parseStack puts them last), a 1000-char value.
+  // The 50 most recent frames (parseStack puts them last), a 300-char value.
   const frames = parseStack(e.stack ?? "").slice(-50).map((f) => ({ ...f, filename: s(f.filename), function: s(f.function) }));
   const event = {
     event_id: o.eventId,
@@ -47,7 +50,7 @@ export function errorEnvelope(e: ReportedError, o: { release: string; home: stri
     environment: "beta",
     platform: "javascript",
     tags: { source: e.source },
-    exception: { values: [{ type: s(e.type), value: s(e.message).slice(0, 1000), stacktrace: { frames } }] },
+    exception: { values: [{ type: s(e.type), value: s(e.message).replace(QUOTED, '"…"').slice(0, 300), stacktrace: { frames } }] },
   };
   return [{ event_id: o.eventId, sent_at: o.now.toISOString() }, { type: "event" }, event].map((x) => JSON.stringify(x)).join("\n");
 }

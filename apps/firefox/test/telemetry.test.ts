@@ -83,15 +83,31 @@ describe("errorEnvelope", () => {
 });
 
 describe("errorEnvelope caps", () => {
-  it("caps the value to 1000 chars and the stack to the 50 most recent frames", () => {
+  it("caps the value to 300 chars and the stack to the 50 most recent frames", () => {
     const stack = Array.from({ length: 80 }, (_, i) => `f${i}@chrome://x/a.js:${i + 1}:1`).join("\n");
     const ev = JSON.parse(errorEnvelope({ source: "chrome", type: "Error", message: "x".repeat(5000), stack }, { release: "1", home, eventId: "e", now: new Date() }).split("\n")[2]!);
     const v = ev.exception.values[0];
-    expect(v.value).toHaveLength(1000);
+    expect(v.value).toHaveLength(300);
     expect(v.stacktrace.frames).toHaveLength(50);
     // Oldest first: the last frame is the most recent one (f0).
     expect(v.stacktrace.frames.at(-1).function).toBe("f0");
     expect(v.stacktrace.frames[0].function).toBe("f49");
+  });
+});
+
+describe("errorEnvelope hides quoted content", () => {
+  const value = (message: string) =>
+    JSON.parse(errorEnvelope({ source: "host", type: "Error", message }, { release: "1", home, eventId: "e", now: new Date() }).split("\n")[2]!).exception.values[0].value as string;
+  it("replaces every quoted span", () => {
+    expect(value(`Unexpected token 'h', "hello worl"... is not valid JSON`)).not.toContain("hello");
+    const enoent = value("ENOENT: no such file or directory, open '/Users/marie/x'");
+    expect(enoent).not.toContain("marie");
+    expect(enoent).not.toContain("x'");
+    expect(value("a `b` «c» d")).toBe('a "…" "…" d');
+  });
+  it("caps the value at 300 chars and leaves an unquoted message alone", () => {
+    expect(value("y".repeat(500))).toHaveLength(300);
+    expect(value("boom at line 3")).toBe("boom at line 3");
   });
 });
 
