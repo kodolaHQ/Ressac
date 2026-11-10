@@ -57,188 +57,188 @@
 // no prototype.
 (() => {
   const g = globalThis;
-  const descripteur = Object.getOwnPropertyDescriptor;
+  const descriptor = Object.getOwnPropertyDescriptor;
   // Already set in this world (another entry, executeScript): own property, which a named element of the page does not make.
-  if (descripteur(g, "__webaiosFile")) return;
-  const appliquer = Reflect.apply;
-  const construire = Reflect.construct;
-  const definir = Object.defineProperty;
-  const creer = Object.create;
-  const estListe = Array.isArray;
-  const Erreur = Error;
-  const ErreurType = TypeError;
+  if (descriptor(g, "__webaiosFile")) return;
+  const apply_ = Reflect.apply;
+  const build = Reflect.construct;
+  const define = Object.defineProperty;
+  const create_ = Object.create;
+  const isList = Array.isArray;
+  const Err = Error;
+  const TypeErr = TypeError;
   const P = typeof Promise === "function" ? Promise : null;
-  const minuterie = typeof g.setTimeout === "function" ? g.setTimeout : null;
-  const journal = g.console && typeof g.console.error === "function" ? g.console.error : null;
+  const timer = typeof g.setTimeout === "function" ? g.setTimeout : null;
+  const logError = g.console && typeof g.console.error === "function" ? g.console.error : null;
   const WM = typeof WeakMap === "function" ? WeakMap : null;
   const wmGet = WM && WM.prototype.get;
   const wmSet = WM && WM.prototype.set;
   const Url = typeof URL === "function" ? URL : null;
-  const lireDe = (proto, nom) => {
-    const d = proto && descripteur(proto, nom);
+  const readOf = (proto, name) => {
+    const d = proto && descriptor(proto, name);
     return d && typeof d.get === "function" ? d.get : null;
   };
-  const urlProtocole = Url && lireDe(Url.prototype, "protocol");
-  const urlHote = Url && lireDe(Url.prototype, "hostname");
-  const minuscules = String.prototype.toLowerCase;
+  const urlProtocol = Url && readOf(Url.prototype, "protocol");
+  const urlHost = Url && readOf(Url.prototype, "hostname");
+  const lowercase = String.prototype.toLowerCase;
   const fin = String.prototype.endsWith;
-  const debut = String.prototype.startsWith;
-  const tranche = String.prototype.slice;
-  const indice = String.prototype.indexOf;
-  const texte = (v) => `${v}`;
+  const start = String.prototype.startsWith;
+  const slice_ = String.prototype.slice;
+  const index_ = String.prototype.indexOf;
+  const text = (v) => `${v}`;
 
-  const URL_REFUSEE = "URL refusée par WebAiOs";
+  const URL_REFUSED = "URL refusée par WebAiOs";
 
   // --- Scope and context
 
   let portee = null;
-  const figerSur = (objet, nom, valeur) => {
+  const freezeOn = (obj, name, value_) => {
     try {
-      definir(objet, nom, { __proto__: null, value: valeur, writable: false, configurable: false, enumerable: false });
+      define(obj, name, { __proto__: null, value: value_, writable: false, configurable: false, enumerable: false });
       return true;
     } catch (e) {
-      if (journal) appliquer(journal, g.console, [`[webaios] garde de page non posée sur ${nom} :`, e]);
+      if (logError) apply_(logError, g.console, [`[webaios] garde de page non posée sur ${name} :`, e]);
       return false;
     }
   };
   // Firefox: a content script's global is a sandbox; its `window` (also `self`, `document.defaultView`) is the page's
   // window seen through an Xray, whose own members (`open`, `fetch`, `FormData`, the `on…` handlers…) are the page's.
   // Every member guarded on the global goes through `surGlobal`, which guards it on that window too.
-  const fenetre = g.window && g.window !== g ? g.window : null;
-  const surGlobal = (nom, valeur) => {
-    figerSur(g, nom, valeur);
-    if (fenetre) figerSur(fenetre, nom, valeur);
+  const win = g.window && g.window !== g ? g.window : null;
+  const onGlobal = (name, value_) => {
+    freezeOn(g, name, value_);
+    if (win) freezeOn(win, name, value_);
   };
   /** List of strings, copied (read once, own properties). */
-  const chaines = (v) => {
+  const strings = (v) => {
     const r = [];
-    if (!estListe(v)) return r;
-    const d = descripteur(v, "length");
+    if (!isList(v)) return r;
+    const d = descriptor(v, "length");
     const n = d && typeof d.value === "number" ? d.value : 0;
     for (let i = 0; i < n && i < 1000; i++) {
-      const e = descripteur(v, `${i}`);
-      if (e && typeof e.value === "string") r[r.length] = appliquer(minuscules, e.value, []);
+      const e = descriptor(v, `${i}`);
+      if (e && typeof e.value === "string") r[r.length] = apply_(lowercase, e.value, []);
     }
     return r;
   };
-  figerSur(g, "__webaiosScope", (p) => {
+  freezeOn(g, "__webaiosScope", (p) => {
     if (portee !== null || p === null || typeof p !== "object") return;
-    const reseau = descripteur(p, "network");
-    const hotes = descripteur(p, "hosts");
-    portee = { __proto__: null, reseau: chaines(reseau && reseau.value), hotes: chaines(hotes && hotes.value) };
+    const network = descriptor(p, "network");
+    const hosts = descriptor(p, "hosts");
+    portee = { __proto__: null, network: strings(network && network.value), hosts: strings(hosts && hosts.value) };
   });
   const c = g.chrome;
   const runtime = c && c.runtime;
-  const envoyer = runtime && typeof runtime.sendMessage === "function" ? runtime.sendMessage : null;
-  const idExtension = runtime && typeof runtime.id === "string" ? runtime.id : "";
+  const send = runtime && typeof runtime.sendMessage === "function" ? runtime.sendMessage : null;
+  const extensionId = runtime && typeof runtime.id === "string" ? runtime.id : "";
   /** The message of `chrome.runtime.lastError` during the callback (read as an own property), or null. */
-  const derniereErreur = () => {
-    const d = runtime ? descripteur(runtime, "lastError") : undefined;
-    const e = d && "value" in d ? d.value : d && typeof d.get === "function" ? appliquer(d.get, runtime, []) : undefined;
+  const lastErr = () => {
+    const d = runtime ? descriptor(runtime, "lastError") : undefined;
+    const e = d && "value" in d ? d.value : d && typeof d.get === "function" ? apply_(d.get, runtime, []) : undefined;
     if (e === undefined || e === null) return null;
-    const m = typeof e === "object" ? descripteur(e, "message") : undefined;
+    const m = typeof e === "object" ? descriptor(e, "message") : undefined;
     return m && typeof m.value === "string" ? m.value : "erreur inconnue";
   };
 
   // The markers (`webaios-files/<n>.js`) deposit the index of each agent file; once the task is done, the
   // guard asks the background to inject them. The requests go one after the other (the order of the files is kept).
-  const aDemander = [];
-  let prevu = false;
-  let enCours = false;
-  const ESSAIS_MAX = 20;
-  const suivante = () => {
-    if (enCours || aDemander.length === 0) return;
-    if (!envoyer) {
-      if (journal) appliquer(journal, g.console, ["[webaios] scripts de l'agent non lancés : chrome.runtime.sendMessage absent"]);
-      aDemander.length = 0;
+  const toAsk = [];
+  let planned = false;
+  let pending = false;
+  const MAX_ATTEMPTS = 20;
+  const nextOne = () => {
+    if (pending || toAsk.length === 0) return;
+    if (!send) {
+      if (logError) apply_(logError, g.console, ["[webaios] scripts de l'agent non lancés : chrome.runtime.sendMessage absent"]);
+      toAsk.length = 0;
       return;
     }
-    enCours = true;
+    pending = true;
     const lot = [];
-    for (let i = 0; i < aDemander.length; i++) lot[lot.length] = aDemander[i];
-    aDemander.length = 0;
-    let essais = 0;
-    const finir = () => {
-      enCours = false;
-      suivante();
+    for (let i = 0; i < toAsk.length; i++) lot[lot.length] = toAsk[i];
+    toAsk.length = 0;
+    let attempts = 0;
+    const finish = () => {
+      pending = false;
+      nextOne();
     };
-    const essayer = () => {
-      essais++;
-      const relancer = (raison) => {
-        if (essais < ESSAIS_MAX && minuterie) {
-          appliquer(minuterie, g, [essayer, 250]);
+    const attempt = () => {
+      attempts++;
+      const rethrow = (reason) => {
+        if (attempts < MAX_ATTEMPTS && timer) {
+          apply_(timer, g, [attempt, 250]);
           return;
         }
-        if (journal) appliquer(journal, g.console, [`[webaios] scripts de l'agent non lancés après ${essais} essais : ${raison}`]);
-        finir();
+        if (logError) apply_(logError, g.console, [`[webaios] scripts de l'agent non lancés après ${attempts} essais : ${reason}`]);
+        finish();
       };
       try {
-        appliquer(envoyer, runtime, [
+        apply_(send, runtime, [
           { __proto__: null, webaios: "context", files: lot },
           (r) => {
             // Read during the callback: otherwise Chromium writes "Unchecked runtime.lastError".
-            const erreur = derniereErreur();
-            const d = r !== null && typeof r === "object" ? descripteur(r, "tab") : undefined;
-            if (d && "value" in d) return finir();
-            relancer(erreur || "pas de réponse du fond");
+            const err = lastErr();
+            const d = r !== null && typeof r === "object" ? descriptor(r, "tab") : undefined;
+            if (d && "value" in d) return finish();
+            rethrow(err || "pas de réponse du fond");
           },
         ]);
       } catch (e) {
-        relancer(`${e && e.message}`);
+        rethrow(`${e && e.message}`);
       }
     };
-    essayer();
+    attempt();
   };
-  figerSur(g, "__webaiosFile", (n) => {
+  freezeOn(g, "__webaiosFile", (n) => {
     if (typeof n !== "number") return;
-    aDemander[aDemander.length] = n;
-    if (prevu) return;
-    prevu = true;
-    const partir = () => {
-      prevu = false;
-      suivante();
+    toAsk[toAsk.length] = n;
+    if (planned) return;
+    planned = true;
+    const leave = () => {
+      planned = false;
+      nextOne();
     };
-    if (minuterie) appliquer(minuterie, g, [partir, 0]);
-    else partir();
+    if (timer) apply_(timer, g, [leave, 0]);
+    else leave();
   });
 
   // --- Addresses
 
   // The document's origin, read now (`origin` can be replaced in this world, `location` cannot).
-  let hotePage = "";
+  let pageHost = "";
   try {
-    hotePage = appliquer(minuscules, texte(g.location.hostname), []);
+    pageHost = apply_(lowercase, text(g.location.hostname), []);
   } catch {
-    hotePage = "";
+    pageHost = "";
   }
-  const docBase = g.Node && lireDe(g.Node.prototype, "baseURI");
+  const docBase = g.Node && readOf(g.Node.prototype, "baseURI");
   const document = g.document;
   /** The host of a Chrome pattern (`<all_urls>`: "*", `https://*.x.test/*`: "*.x.test"), or null. */
-  const hoteDuMotif = (m) => {
+  const patternHost = (m) => {
     if (m === "<all_urls>") return "*";
-    const i = appliquer(indice, m, ["://"]);
+    const i = apply_(index_, m, ["://"]);
     if (i < 0) return null;
-    const schema = appliquer(tranche, m, [0, i]);
+    const schema = apply_(slice_, m, [0, i]);
     if (schema !== "*" && schema !== "http" && schema !== "https" && schema !== "ws" && schema !== "wss") return null;
-    const reste = appliquer(tranche, m, [i + 3]);
-    const j = appliquer(indice, reste, ["/"]);
-    let hote = j < 0 ? reste : appliquer(tranche, reste, [0, j]);
-    const k = appliquer(indice, hote, [":"]);
-    if (k >= 0) hote = appliquer(tranche, hote, [0, k]);
-    return hote;
+    const rest = apply_(slice_, m, [i + 3]);
+    const j = apply_(index_, rest, ["/"]);
+    let host = j < 0 ? rest : apply_(slice_, rest, [0, j]);
+    const k = apply_(index_, host, [":"]);
+    if (k >= 0) host = apply_(slice_, host, [0, k]);
+    return host;
   };
-  const hotePermis = (hote) => {
-    if (!hote) return false;
-    if (hote === hotePage) return true;
+  const hostAllowed_ = (host) => {
+    if (!host) return false;
+    if (host === pageHost) return true;
     if (!portee) return false;
-    for (let i = 0; i < portee.reseau.length; i++) if (portee.reseau[i] === hote) return true;
-    for (let i = 0; i < portee.hotes.length; i++) {
-      const h = hoteDuMotif(portee.hotes[i]);
+    for (let i = 0; i < portee.network.length; i++) if (portee.network[i] === host) return true;
+    for (let i = 0; i < portee.hosts.length; i++) {
+      const h = patternHost(portee.hosts[i]);
       if (h === null) continue;
-      if (h === "*" || h === hote) return true;
-      if (appliquer(debut, h, ["*."])) {
-        const racine = appliquer(tranche, h, [2]);
-        if (hote === racine || appliquer(fin, hote, [`.${racine}`])) return true;
+      if (h === "*" || h === host) return true;
+      if (apply_(start, h, ["*."])) {
+        const root = apply_(slice_, h, [2]);
+        if (host === root || apply_(fin, host, [`.${root}`])) return true;
       }
     }
     return false;
@@ -247,66 +247,66 @@
    * Is the address (relative: to the document) allowed? `reseau`: only http(s)/ws(s) to an allowed host
    * (window.open); otherwise `data:`, `blob:`, `about:` and the extension itself pass too.
    */
-  const permise = (brute, reseauSeul) => {
-    if (!Url || !urlProtocole || !urlHote) return false;
+  const allowedUrl = (raw, networkOnly) => {
+    if (!Url || !urlProtocol || !urlHost) return false;
     let u;
     try {
-      const base = docBase && document ? appliquer(docBase, document, []) : undefined;
-      u = base === undefined ? new Url(brute) : new Url(brute, base);
+      const base = docBase && document ? apply_(docBase, document, []) : undefined;
+      u = base === undefined ? new Url(raw) : new Url(raw, base);
     } catch {
       // Unreadable: nothing will go to it (neither fetch nor element will resolve it any better).
       return true;
     }
-    const schema = appliquer(urlProtocole, u, []);
-    if (schema === "http:" || schema === "https:" || schema === "ws:" || schema === "wss:") return hotePermis(appliquer(urlHote, u, []));
-    if (reseauSeul) return false;
+    const schema = apply_(urlProtocol, u, []);
+    if (schema === "http:" || schema === "https:" || schema === "ws:" || schema === "wss:") return hostAllowed_(apply_(urlHost, u, []));
+    if (networkOnly) return false;
     if (schema === "data:" || schema === "blob:" || schema === "about:") return true;
-    if (schema === "chrome-extension:") return !!idExtension && appliquer(urlHote, u, []) === idExtension;
+    if (schema === "chrome-extension:") return !!extensionId && apply_(urlHost, u, []) === extensionId;
     return false;
   };
   /**
    * Each piece of a `srcset` / `ping`, cut at whitespace and commas (stricter than the browser). Walked
    * character by character: `split` would consult `Symbol.split`, which the agent's script can set.
    */
-  const SEPARATEURS = { __proto__: null, " ": 1, "\t": 1, "\n": 1, "\r": 1, "\f": 1, ",": 1 };
-  const listePermise = (valeur) => {
-    const n = valeur.length;
-    let depart = 0;
+  const SEPARATORS = { __proto__: null, " ": 1, "\t": 1, "\n": 1, "\r": 1, "\f": 1, ",": 1 };
+  const allowedList = (value_) => {
+    const n = value_.length;
+    let departure = 0;
     for (let i = 0; i <= n; i++) {
-      if (i < n && !SEPARATEURS[valeur[i]]) continue;
-      if (i > depart && !permise(appliquer(tranche, valeur, [depart, i]), false)) return false;
-      depart = i + 1;
+      if (i < n && !SEPARATORS[value_[i]]) continue;
+      if (i > departure && !allowedUrl(apply_(slice_, value_, [departure, i]), false)) return false;
+      departure = i + 1;
     }
     return true;
   };
-  const ATTRIBUTS = { __proto__: null, src: 1, href: 1, "xlink:href": 1, action: 1, formaction: 1, data: 1, poster: 1, background: 1, srcset: 2, imagesrcset: 2, ping: 2 };
-  const attributPermis = (nom, valeur) => {
-    const n = ATTRIBUTS[appliquer(minuscules, texte(nom), [])];
+  const ATTRIBUTES = { __proto__: null, src: 1, href: 1, "xlink:href": 1, action: 1, formaction: 1, data: 1, poster: 1, background: 1, srcset: 2, imagesrcset: 2, ping: 2 };
+  const attributeAllowed = (name, value_) => {
+    const n = ATTRIBUTES[apply_(lowercase, text(name), [])];
     if (!n) return true;
-    return n === 2 ? listePermise(valeur) : permise(valeur, false);
+    return n === 2 ? allowedList(value_) : allowedUrl(value_, false);
   };
 
   // --- Passwords
 
   const HIE = g.HTMLInputElement;
-  const typeDe = HIE && lireDe(HIE.prototype, "type");
-  const estMotDePasse = (n) => {
-    if (!typeDe || n === null || typeof n !== "object") return false;
+  const typeOf_ = HIE && readOf(HIE.prototype, "type");
+  const isPassword = (n) => {
+    if (!typeOf_ || n === null || typeof n !== "object") return false;
     try {
-      return appliquer(typeDe, n, []) === "password";
+      return apply_(typeOf_, n, []) === "password";
     } catch {
       return false;
     }
   };
-  if (HIE && typeDe) {
-    const d = descripteur(HIE.prototype, "value");
+  if (HIE && typeOf_) {
+    const d = descriptor(HIE.prototype, "value");
     if (d && typeof d.get === "function") {
-      const lire = d.get;
-      definir(HIE.prototype, "value", {
+      const read = d.get;
+      define(HIE.prototype, "value", {
         __proto__: null,
         get: function () {
-          const v = appliquer(lire, this, []);
-          return estMotDePasse(this) ? "" : v;
+          const v = apply_(read, this, []);
+          return isPassword(this) ? "" : v;
         },
         set: d.set,
         enumerable: d.enumerable,
@@ -320,103 +320,103 @@
   // field. Still open: serialization (`outerHTML`, `innerHTML` of an ancestor) and attribute selectors
   // (`matches('[value^="a"]')`, `querySelector`).
   const AttrP = g.Attr && g.Attr.prototype;
-  const nomDAttr = AttrP && lireDe(AttrP, "name");
-  const proprioDAttr = AttrP && lireDe(AttrP, "ownerElement");
-  const estValeur = (nom) => typeof nom === "string" && appliquer(minuscules, nom, []) === "value";
+  const attributeName = AttrP && readOf(AttrP, "name");
+  const attrOwner = AttrP && readOf(AttrP, "ownerElement");
+  const isValue = (name) => typeof name === "string" && apply_(lowercase, name, []) === "value";
   /** True if `a` is the `value` attribute of a password field (false for anything that is not an `Attr`). */
-  const attrMasque = (a) => {
-    if (!nomDAttr || !proprioDAttr || a === null || typeof a !== "object") return false;
+  const attrHidden = (a) => {
+    if (!attributeName || !attrOwner || a === null || typeof a !== "object") return false;
     try {
-      return estValeur(appliquer(nomDAttr, a, [])) && estMotDePasse(appliquer(proprioDAttr, a, []));
+      return isValue(apply_(attributeName, a, [])) && isPassword(apply_(attrOwner, a, []));
     } catch {
       return false;
     }
   };
-  const masquerGetter = (proto, nom, masque) => {
-    const d = proto && descripteur(proto, nom);
+  const hideGetter = (proto, name, hidden) => {
+    const d = proto && descriptor(proto, name);
     if (!d || typeof d.get !== "function") return;
-    const lire = d.get;
+    const read = d.get;
     try {
-      definir(proto, nom, {
+      define(proto, name, {
         __proto__: null,
         get: function () {
-          const v = appliquer(lire, this, []);
-          return masque(this) ? "" : v;
+          const v = apply_(read, this, []);
+          return hidden(this) ? "" : v;
         },
         set: d.set,
         enumerable: d.enumerable,
         configurable: false,
       });
     } catch (e) {
-      if (journal) appliquer(journal, g.console, [`[webaios] garde de page non posée sur ${nom} :`, e]);
+      if (logError) apply_(logError, g.console, [`[webaios] garde de page non posée sur ${name} :`, e]);
     }
   };
-  if (HIE && typeDe) masquerGetter(HIE.prototype, "defaultValue", estMotDePasse);
+  if (HIE && typeOf_) hideGetter(HIE.prototype, "defaultValue", isPassword);
   if (g.Node) {
-    masquerGetter(g.Node.prototype, "nodeValue", attrMasque);
-    masquerGetter(g.Node.prototype, "textContent", attrMasque);
+    hideGetter(g.Node.prototype, "nodeValue", attrHidden);
+    hideGetter(g.Node.prototype, "textContent", attrHidden);
   }
   const ElP = g.Element && g.Element.prototype;
-  if (ElP && typeDe) {
-    const lireAttr = ElP.getAttribute;
-    const lireAttrNS = ElP.getAttributeNS;
-    if (typeof lireAttr === "function") {
-      figerSur(ElP, "getAttribute", function getAttribute(nom) {
+  if (ElP && typeOf_) {
+    const readAttr = ElP.getAttribute;
+    const readAttrNS = ElP.getAttributeNS;
+    if (typeof readAttr === "function") {
+      freezeOn(ElP, "getAttribute", function getAttribute(name) {
         // The name is converted only once: an object whose `toString` changes does not pass between the two reads.
-        const n = texte(nom);
-        const v = appliquer(lireAttr, this, [n]);
-        return v !== null && estMotDePasse(this) && estValeur(n) ? "" : v;
+        const n = text(name);
+        const v = apply_(readAttr, this, [n]);
+        return v !== null && isPassword(this) && isValue(n) ? "" : v;
       });
     }
-    if (typeof lireAttrNS === "function") {
-      figerSur(ElP, "getAttributeNS", function getAttributeNS(ns, nom) {
-        const n = texte(nom);
-        const v = appliquer(lireAttrNS, this, [ns, n]);
-        return v !== null && estMotDePasse(this) && estValeur(n) ? "" : v;
+    if (typeof readAttrNS === "function") {
+      freezeOn(ElP, "getAttributeNS", function getAttributeNS(ns, name) {
+        const n = text(name);
+        const v = apply_(readAttrNS, this, [ns, n]);
+        return v !== null && isPassword(this) && isValue(n) ? "" : v;
       });
     }
   }
 
   const FD = g.FormData;
   const HFE = g.HTMLFormElement;
-  const elementsDe = HFE && lireDe(HFE.prototype, "elements");
-  const longueurCollection = g.HTMLCollection && lireDe(g.HTMLCollection.prototype, "length");
-  const nomDe = HIE && lireDe(HIE.prototype, "name");
-  const retirerFD = FD && FD.prototype.delete;
-  if (FD && elementsDe && longueurCollection && nomDe && typeof retirerFD === "function") {
-    const Enveloppe = function FormData(...a) {
-      if (new.target === undefined) throw new ErreurType("Failed to construct 'FormData': Please use the 'new' operator.");
-      const fd = construire(FD, a, new.target);
+  const elementsOf = HFE && readOf(HFE.prototype, "elements");
+  const collectionLength = g.HTMLCollection && readOf(g.HTMLCollection.prototype, "length");
+  const nameOf = HIE && readOf(HIE.prototype, "name");
+  const removeFD = FD && FD.prototype.delete;
+  if (FD && elementsOf && collectionLength && nameOf && typeof removeFD === "function") {
+    const Wrapper = function FormData(...a) {
+      if (new.target === undefined) throw new TypeErr("Failed to construct 'FormData': Please use the 'new' operator.");
+      const fd = build(FD, a, new.target);
       if (a.length > 0 && a[0] !== undefined) {
-        const els = appliquer(elementsDe, a[0], []);
-        const n = appliquer(longueurCollection, els, []);
+        const els = apply_(elementsOf, a[0], []);
+        const n = apply_(collectionLength, els, []);
         for (let i = 0; i < n; i++) {
           const el = els[i];
-          if (!estMotDePasse(el)) continue;
-          const nom = appliquer(nomDe, el, []);
-          if (nom) appliquer(retirerFD, fd, [nom]);
+          if (!isPassword(el)) continue;
+          const name = apply_(nameOf, el, []);
+          if (name) apply_(removeFD, fd, [name]);
         }
       }
       return fd;
     };
-    definir(Enveloppe, "prototype", { __proto__: null, value: FD.prototype, writable: false, configurable: false, enumerable: false });
-    figerSur(FD.prototype, "constructor", Enveloppe);
-    surGlobal("FormData", Enveloppe);
+    define(Wrapper, "prototype", { __proto__: null, value: FD.prototype, writable: false, configurable: false, enumerable: false });
+    freezeOn(FD.prototype, "constructor", Wrapper);
+    onGlobal("FormData", Wrapper);
   }
 
-  const lireCible = g.Event && lireDe(g.Event.prototype, "target");
-  const chemin = g.Event && g.Event.prototype.composedPath;
-  const actifDe = g.Document && lireDe(g.Document.prototype, "activeElement");
-  const ombreDe = g.Element && lireDe(g.Element.prototype, "shadowRoot");
-  const actifOmbre = g.ShadowRoot && lireDe(g.ShadowRoot.prototype, "activeElement");
-  const FILTRES = { __proto__: null, keydown: 1, keypress: 1, keyup: 1, input: 1, beforeinput: 1, paste: 1, compositionstart: 1, compositionupdate: 1, compositionend: 1, textinput: 1, formdata: 2 };
+  const readTarget = g.Event && readOf(g.Event.prototype, "target");
+  const path = g.Event && g.Event.prototype.composedPath;
+  const activeOf = g.Document && readOf(g.Document.prototype, "activeElement");
+  const shadowOf = g.Element && readOf(g.Element.prototype, "shadowRoot");
+  const activeInShadow = g.ShadowRoot && readOf(g.ShadowRoot.prototype, "activeElement");
+  const FILTERS = { __proto__: null, keydown: 1, keypress: 1, keyup: 1, input: 1, beforeinput: 1, paste: 1, compositionstart: 1, compositionupdate: 1, compositionend: 1, textinput: 1, formdata: 2 };
   /** The active field, through the open shadow roots. */
-  const actifProfond = () => {
-    if (!actifDe || !document) return null;
-    let a = appliquer(actifDe, document, []);
+  const deepActive = () => {
+    if (!activeOf || !document) return null;
+    let a = apply_(activeOf, document, []);
     for (let i = 0; i < 32 && a; i++) {
-      const r = ombreDe ? appliquer(ombreDe, a, []) : null;
-      const b = r && actifOmbre ? appliquer(actifOmbre, r, []) : null;
+      const r = shadowOf ? apply_(shadowOf, a, []) : null;
+      const b = r && activeInShadow ? apply_(activeInShadow, r, []) : null;
       if (!b) break;
       a = b;
     }
@@ -424,260 +424,260 @@
   };
   /** Must the event be hidden from the agent's listener? */
   const cache = (type, e) => {
-    const f = FILTRES[type];
+    const f = FILTERS[type];
     if (!f) return false;
     if (f === 2) return true;
     try {
-      if (lireCible && estMotDePasse(appliquer(lireCible, e, []))) return true;
-      const p = chemin ? appliquer(chemin, e, []) : null;
-      if (p && p.length > 0 && estMotDePasse(p[0])) return true;
-      return estMotDePasse(actifProfond());
+      if (readTarget && isPassword(apply_(readTarget, e, []))) return true;
+      const p = path ? apply_(path, e, []) : null;
+      if (p && p.length > 0 && isPassword(p[0])) return true;
+      return isPassword(deepActive());
     } catch {
       return true;
     }
   };
-  const nomType = (t) => appliquer(minuscules, texte(t), []);
-  const envelopperEcouteur = (type, l) =>
+  const typeName = (t) => apply_(lowercase, text(t), []);
+  const wrapListener = (type, l) =>
     function (e) {
       if (cache(type, e)) return undefined;
-      if (typeof l === "function") return appliquer(l, this, [e]);
+      if (typeof l === "function") return apply_(l, this, [e]);
       const h = l && l.handleEvent;
-      return typeof h === "function" ? appliquer(h, l, [e]) : undefined;
+      return typeof h === "function" ? apply_(h, l, [e]) : undefined;
     };
 
   const ET = g.EventTarget;
   if (ET && WM) {
-    const ajouter = ET.prototype.addEventListener;
-    const retirer = ET.prototype.removeEventListener;
+    const add = ET.prototype.addEventListener;
+    const remove = ET.prototype.removeEventListener;
     // Listener → { "<type>|<capture>": wrapper }: the same wrapper for the same triplet (removal, duplicates).
-    const enveloppes = new WM();
-    const enveloppeDe = (type, l, options, creerSiAbsente) => {
+    const wrappers = new WM();
+    const wrapperOf = (type, l, options, createIfMissing) => {
       if (l === null || (typeof l !== "object" && typeof l !== "function")) return null;
       let capture = false;
       if (typeof options === "boolean") capture = options;
       else if (options !== null && typeof options === "object") capture = !!options.capture;
-      const cle = `${type}|${capture}`;
-      let table = appliquer(wmGet, enveloppes, [l]);
+      const key = `${type}|${capture}`;
+      let table = apply_(wmGet, wrappers, [l]);
       if (!table) {
-        if (!creerSiAbsente) return null;
-        table = creer(null);
-        appliquer(wmSet, enveloppes, [l, table]);
+        if (!createIfMissing) return null;
+        table = create_(null);
+        apply_(wmSet, wrappers, [l, table]);
       }
-      if (!table[cle] && creerSiAbsente) table[cle] = envelopperEcouteur(type, l);
-      return table[cle] || null;
+      if (!table[key] && createIfMissing) table[key] = wrapListener(type, l);
+      return table[key] || null;
     };
-    if (typeof ajouter === "function" && typeof retirer === "function") {
-      figerSur(ET.prototype, "addEventListener", function addEventListener(type, l, options) {
-        const t = texte(type);
-        if (!FILTRES[nomType(t)]) return appliquer(ajouter, this, [t, l, options]);
-        const w = enveloppeDe(nomType(t), l, options, true);
-        return appliquer(ajouter, this, [t, w || l, options]);
+    if (typeof add === "function" && typeof remove === "function") {
+      freezeOn(ET.prototype, "addEventListener", function addEventListener(type, l, options) {
+        const t = text(type);
+        if (!FILTERS[typeName(t)]) return apply_(add, this, [t, l, options]);
+        const w = wrapperOf(typeName(t), l, options, true);
+        return apply_(add, this, [t, w || l, options]);
       });
-      figerSur(ET.prototype, "removeEventListener", function removeEventListener(type, l, options) {
-        const t = texte(type);
-        if (!FILTRES[nomType(t)]) return appliquer(retirer, this, [t, l, options]);
-        const w = enveloppeDe(nomType(t), l, options, false);
-        return appliquer(retirer, this, [t, w || l, options]);
+      freezeOn(ET.prototype, "removeEventListener", function removeEventListener(type, l, options) {
+        const t = text(type);
+        if (!FILTERS[typeName(t)]) return apply_(remove, this, [t, l, options]);
+        const w = wrapperOf(typeName(t), l, options, false);
+        return apply_(remove, this, [t, w || l, options]);
       });
     }
     // The `on…` handlers: the agent reads back the function it set, the page receives the wrapper.
-    const posees = new WM();
-    const NOMS_ON = ["onkeydown", "onkeypress", "onkeyup", "oninput", "onbeforeinput", "onpaste", "onformdata"];
+    const placed = new WM();
+    const ON_NAMES = ["onkeydown", "onkeypress", "onkeyup", "oninput", "onbeforeinput", "onpaste", "onformdata"];
     const protos = [g.HTMLElement, g.SVGElement, g.MathMLElement, g.Document, g.Window];
-    const surProto = (o, nom) => {
-      const d = o && descripteur(o, nom);
+    const onProto = (o, name) => {
+      const d = o && descriptor(o, name);
       if (!d || typeof d.set !== "function" || typeof d.get !== "function") return;
-      const lire = d.get;
-      const ecrire = d.set;
-      const type = appliquer(tranche, nom, [2]);
-      definir(o, nom, {
+      const read = d.get;
+      const write = d.set;
+      const type = apply_(slice_, name, [2]);
+      define(o, name, {
         __proto__: null,
         get: function () {
-          const v = appliquer(lire, this, []);
-          const table = appliquer(wmGet, posees, [this]);
-          return table && table[nom] && table[nom].enveloppe === v ? table[nom].fonction : v;
+          const v = apply_(read, this, []);
+          const table = apply_(wmGet, placed, [this]);
+          return table && table[name] && table[name].wrapper === v ? table[name].fn : v;
         },
         set: function (f) {
-          if (typeof f !== "function") return appliquer(ecrire, this, [f]);
-          const w = envelopperEcouteur(type, f);
-          let table = appliquer(wmGet, posees, [this]);
+          if (typeof f !== "function") return apply_(write, this, [f]);
+          const w = wrapListener(type, f);
+          let table = apply_(wmGet, placed, [this]);
           if (!table) {
-            table = creer(null);
-            appliquer(wmSet, posees, [this, table]);
+            table = create_(null);
+            apply_(wmSet, placed, [this, table]);
           }
-          table[nom] = { __proto__: null, fonction: f, enveloppe: w };
-          return appliquer(ecrire, this, [w]);
+          table[name] = { __proto__: null, fn: f, wrapper: w };
+          return apply_(write, this, [w]);
         },
         enumerable: d.enumerable,
         configurable: false,
       });
     };
-    for (let i = 0; i < NOMS_ON.length; i++) {
-      for (let j = 0; j < protos.length; j++) surProto(protos[j] && protos[j].prototype, NOMS_ON[i]);
-      surProto(g, NOMS_ON[i]);
-      if (fenetre) surProto(fenetre, NOMS_ON[i]);
+    for (let i = 0; i < ON_NAMES.length; i++) {
+      for (let j = 0; j < protos.length; j++) onProto(protos[j] && protos[j].prototype, ON_NAMES[i]);
+      onProto(g, ON_NAMES[i]);
+      if (win) onProto(win, ON_NAMES[i]);
     }
   }
 
   // --- Network
 
-  const refusee = () => new Erreur(URL_REFUSEE);
-  const reqUrl = g.Request && lireDe(g.Request.prototype, "url");
-  const fetchNatif = typeof g.fetch === "function" ? g.fetch : null;
-  if (fetchNatif && P) {
-    surGlobal("fetch", function fetch(entree, init) {
+  const refused = () => new Err(URL_REFUSED);
+  const reqUrl = g.Request && readOf(g.Request.prototype, "url");
+  const nativeFetch = typeof g.fetch === "function" ? g.fetch : null;
+  if (nativeFetch && P) {
+    onGlobal("fetch", function fetch(entry, init) {
       let u = null;
-      if (reqUrl && entree !== null && typeof entree === "object") {
+      if (reqUrl && entry !== null && typeof entry === "object") {
         try {
-          u = appliquer(reqUrl, entree, []);
+          u = apply_(reqUrl, entry, []);
         } catch {
           u = null;
         }
       }
       // Not a request: the address is read once, and that is the one that goes.
-      const cible = u === null ? texte(entree) : entree;
-      if (!permise(u === null ? cible : u, false)) return new P((_ok, ko) => ko(new ErreurType(URL_REFUSEE)));
-      return appliquer(fetchNatif, g, arguments.length > 1 ? [cible, init] : [cible]);
+      const target_ = u === null ? text(entry) : entry;
+      if (!allowedUrl(u === null ? target_ : u, false)) return new P((_ok, ko) => ko(new TypeErr(URL_REFUSED)));
+      return apply_(nativeFetch, g, arguments.length > 1 ? [target_, init] : [target_]);
     });
   }
   const XHR = g.XMLHttpRequest;
   if (XHR && typeof XHR.prototype.open === "function") {
-    const ouvrir = XHR.prototype.open;
-    figerSur(XHR.prototype, "open", function open(methode, url, ...reste) {
-      const u = texte(url);
-      if (!permise(u, false)) throw refusee();
-      return appliquer(ouvrir, this, [methode, u, ...reste]);
+    const open_ = XHR.prototype.open;
+    freezeOn(XHR.prototype, "open", function open(method, url, ...rest) {
+      const u = text(url);
+      if (!allowedUrl(u, false)) throw refused();
+      return apply_(open_, this, [method, u, ...rest]);
     });
     // Firefox: the sandbox's own XMLHttpRequest (guarded prototype) replaces the page's on the Xray window.
-    if (fenetre && fenetre.XMLHttpRequest !== XHR) figerSur(fenetre, "XMLHttpRequest", XHR);
+    if (win && win.XMLHttpRequest !== XHR) freezeOn(win, "XMLHttpRequest", XHR);
   }
   /** Replaces a constructor (`WebSocket`, `EventSource`): the address (first argument) is checked first. */
-  const garderConstructeur = (nom) => {
-    const C = g[nom];
+  const guardConstructor = (name) => {
+    const C = g[name];
     if (typeof C !== "function") return;
-    const Enveloppe = function (url, ...reste) {
-      if (new.target === undefined) throw new ErreurType(`Failed to construct '${nom}': Please use the 'new' operator.`);
-      const u = texte(url);
-      if (!permise(u, false)) throw refusee();
-      return construire(C, [u, ...reste], new.target);
+    const Wrapper = function (url, ...rest) {
+      if (new.target === undefined) throw new TypeErr(`Failed to construct '${name}': Please use the 'new' operator.`);
+      const u = text(url);
+      if (!allowedUrl(u, false)) throw refused();
+      return build(C, [u, ...rest], new.target);
     };
-    definir(Enveloppe, "name", { __proto__: null, value: nom });
-    definir(Enveloppe, "prototype", { __proto__: null, value: C.prototype, writable: false, configurable: false, enumerable: false });
-    const constantes = ["CONNECTING", "OPEN", "CLOSING", "CLOSED"];
-    for (let i = 0; i < constantes.length; i++) {
-      const d = descripteur(C, constantes[i]);
-      if (d) definir(Enveloppe, constantes[i], { __proto__: null, value: d.value, enumerable: true });
+    define(Wrapper, "name", { __proto__: null, value: name });
+    define(Wrapper, "prototype", { __proto__: null, value: C.prototype, writable: false, configurable: false, enumerable: false });
+    const constants = ["CONNECTING", "OPEN", "CLOSING", "CLOSED"];
+    for (let i = 0; i < constants.length; i++) {
+      const d = descriptor(C, constants[i]);
+      if (d) define(Wrapper, constants[i], { __proto__: null, value: d.value, enumerable: true });
     }
-    figerSur(C.prototype, "constructor", Enveloppe);
-    surGlobal(nom, Enveloppe);
+    freezeOn(C.prototype, "constructor", Wrapper);
+    onGlobal(name, Wrapper);
   };
-  garderConstructeur("WebSocket");
-  garderConstructeur("EventSource");
+  guardConstructor("WebSocket");
+  guardConstructor("EventSource");
   const Nav = g.Navigator;
   if (Nav && typeof Nav.prototype.sendBeacon === "function") {
-    const balise = Nav.prototype.sendBeacon;
-    figerSur(Nav.prototype, "sendBeacon", function sendBeacon(url, ...reste) {
-      const u = texte(url);
-      if (!permise(u, false)) return false;
-      return appliquer(balise, this, [u, ...reste]);
+    const tag = Nav.prototype.sendBeacon;
+    freezeOn(Nav.prototype, "sendBeacon", function sendBeacon(url, ...rest) {
+      const u = text(url);
+      if (!allowedUrl(u, false)) return false;
+      return apply_(tag, this, [u, ...rest]);
     });
   }
-  const dOuvrir = descripteur(g, "open") || (fenetre && descripteur(fenetre, "open")) || (g.Window && descripteur(g.Window.prototype, "open"));
-  const ouvrirFenetre = dOuvrir && typeof dOuvrir.value === "function" ? dOuvrir.value : null;
-  if (ouvrirFenetre) {
+  const ofOpen = descriptor(g, "open") || (win && descriptor(win, "open")) || (g.Window && descriptor(g.Window.prototype, "open"));
+  const openWindow = ofOpen && typeof ofOpen.value === "function" ? ofOpen.value : null;
+  if (openWindow) {
     // An empty window could then be led elsewhere (its `location` is writable from another origin): refused.
-    const open = function open(url, ...reste) {
-      const u = url === undefined ? "" : texte(url);
-      if (!permise(u === "" ? "about:blank" : u, true)) return null;
-      return appliquer(ouvrirFenetre, this === g ? fenetre || g : this, [u, ...reste]);
+    const open = function open(url, ...rest) {
+      const u = url === undefined ? "" : text(url);
+      if (!allowedUrl(u === "" ? "about:blank" : u, true)) return null;
+      return apply_(openWindow, this === g ? win || g : this, [u, ...rest]);
     };
-    surGlobal("open", open);
+    onGlobal("open", open);
   }
   /** The address setters of an element class. */
-  const garderSetters = (classe, noms) => {
-    const C = g[classe];
+  const guardSetters = (klass, names) => {
+    const C = g[klass];
     const proto = C && C.prototype;
     if (!proto) return;
-    for (let i = 0; i < noms.length; i++) {
-      const d = descripteur(proto, noms[i]);
+    for (let i = 0; i < names.length; i++) {
+      const d = descriptor(proto, names[i]);
       if (!d || typeof d.set !== "function") continue;
-      const ecrire = d.set;
-      const nom = noms[i];
-      const liste = nom === "srcset" || nom === "imageSrcset" || nom === "ping";
-      definir(proto, nom, {
+      const write = d.set;
+      const name = names[i];
+      const list = name === "srcset" || name === "imageSrcset" || name === "ping";
+      define(proto, name, {
         __proto__: null,
         get: d.get,
         set: function (v) {
-          const s = texte(v);
-          if (!(liste ? listePermise(s) : permise(s, false))) throw refusee();
-          return appliquer(ecrire, this, [s]);
+          const s = text(v);
+          if (!(list ? allowedList(s) : allowedUrl(s, false))) throw refused();
+          return apply_(write, this, [s]);
         },
         enumerable: d.enumerable,
         configurable: false,
       });
     }
   };
-  garderSetters("HTMLImageElement", ["src", "srcset"]);
-  garderSetters("HTMLSourceElement", ["src", "srcset"]);
-  garderSetters("HTMLScriptElement", ["src"]);
-  garderSetters("HTMLIFrameElement", ["src"]);
-  garderSetters("HTMLFrameElement", ["src"]);
-  garderSetters("HTMLEmbedElement", ["src"]);
-  garderSetters("HTMLMediaElement", ["src"]);
-  garderSetters("HTMLTrackElement", ["src"]);
-  garderSetters("HTMLVideoElement", ["poster"]);
-  garderSetters("HTMLInputElement", ["src", "formAction"]);
-  garderSetters("HTMLButtonElement", ["formAction"]);
-  garderSetters("HTMLFormElement", ["action"]);
-  garderSetters("HTMLAnchorElement", ["href", "ping"]);
-  garderSetters("HTMLAreaElement", ["href", "ping"]);
-  garderSetters("HTMLLinkElement", ["href", "imageSrcset"]);
-  garderSetters("HTMLBaseElement", ["href"]);
-  garderSetters("HTMLObjectElement", ["data"]);
+  guardSetters("HTMLImageElement", ["src", "srcset"]);
+  guardSetters("HTMLSourceElement", ["src", "srcset"]);
+  guardSetters("HTMLScriptElement", ["src"]);
+  guardSetters("HTMLIFrameElement", ["src"]);
+  guardSetters("HTMLFrameElement", ["src"]);
+  guardSetters("HTMLEmbedElement", ["src"]);
+  guardSetters("HTMLMediaElement", ["src"]);
+  guardSetters("HTMLTrackElement", ["src"]);
+  guardSetters("HTMLVideoElement", ["poster"]);
+  guardSetters("HTMLInputElement", ["src", "formAction"]);
+  guardSetters("HTMLButtonElement", ["formAction"]);
+  guardSetters("HTMLFormElement", ["action"]);
+  guardSetters("HTMLAnchorElement", ["href", "ping"]);
+  guardSetters("HTMLAreaElement", ["href", "ping"]);
+  guardSetters("HTMLLinkElement", ["href", "imageSrcset"]);
+  guardSetters("HTMLBaseElement", ["href"]);
+  guardSetters("HTMLObjectElement", ["data"]);
   const El = g.Element;
   if (El) {
-    const poser = El.prototype.setAttribute;
-    const poserNS = El.prototype.setAttributeNS;
-    if (typeof poser === "function") {
-      figerSur(El.prototype, "setAttribute", function setAttribute(nom, valeur) {
-        const n = texte(nom);
-        const v = texte(valeur);
-        if (!attributPermis(n, v)) throw refusee();
-        return appliquer(poser, this, [n, v]);
+    const setAttr = El.prototype.setAttribute;
+    const setAttrNS = El.prototype.setAttributeNS;
+    if (typeof setAttr === "function") {
+      freezeOn(El.prototype, "setAttribute", function setAttribute(name, value_) {
+        const n = text(name);
+        const v = text(value_);
+        if (!attributeAllowed(n, v)) throw refused();
+        return apply_(setAttr, this, [n, v]);
       });
     }
-    if (typeof poserNS === "function") {
-      figerSur(El.prototype, "setAttributeNS", function setAttributeNS(ns, nom, valeur) {
-        const n = texte(nom);
-        const v = texte(valeur);
-        const k = appliquer(indice, n, [":"]);
-        if (!attributPermis(n, v) || !attributPermis(k < 0 ? n : appliquer(tranche, n, [k + 1]), v)) throw refusee();
-        return appliquer(poserNS, this, [ns, n, v]);
+    if (typeof setAttrNS === "function") {
+      freezeOn(El.prototype, "setAttributeNS", function setAttributeNS(ns, name, value_) {
+        const n = text(name);
+        const v = text(value_);
+        const k = apply_(index_, n, [":"]);
+        if (!attributeAllowed(n, v) || !attributeAllowed(k < 0 ? n : apply_(slice_, n, [k + 1]), v)) throw refused();
+        return apply_(setAttrNS, this, [ns, n, v]);
       });
     }
   }
   const Attr = g.Attr;
-  const dValeur = Attr && descripteur(Attr.prototype, "value");
-  const nomAttr = Attr && lireDe(Attr.prototype, "name");
-  if (dValeur && typeof dValeur.set === "function" && nomAttr) {
-    const ecrire = dValeur.set;
-    const lireValeur = dValeur.get;
-    definir(Attr.prototype, "value", {
+  const ofValue = Attr && descriptor(Attr.prototype, "value");
+  const attrName = Attr && readOf(Attr.prototype, "name");
+  if (ofValue && typeof ofValue.set === "function" && attrName) {
+    const write = ofValue.set;
+    const readValue = ofValue.get;
+    define(Attr.prototype, "value", {
       __proto__: null,
       // Passwords: the `value` attribute of a password field reads empty (see above).
       get:
-        typeof lireValeur === "function"
+        typeof readValue === "function"
           ? function () {
-              const v = appliquer(lireValeur, this, []);
-              return attrMasque(this) ? "" : v;
+              const v = apply_(readValue, this, []);
+              return attrHidden(this) ? "" : v;
             }
-          : lireValeur,
+          : readValue,
       set: function (v) {
-        const s = texte(v);
-        if (!attributPermis(appliquer(nomAttr, this, []), s)) throw refusee();
-        return appliquer(ecrire, this, [s]);
+        const s = text(v);
+        if (!attributeAllowed(apply_(attrName, this, []), s)) throw refused();
+        return apply_(write, this, [s]);
       },
-      enumerable: dValeur.enumerable,
+      enumerable: ofValue.enumerable,
       configurable: false,
     });
   }
