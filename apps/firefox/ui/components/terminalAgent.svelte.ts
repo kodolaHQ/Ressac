@@ -34,7 +34,14 @@ function create(hostName: HTMLElement): void {
   element = document.createElement("div");
   element.style.cssText = "position: absolute; inset: 6px;";
   hostName.append(element);
-  terminal = new Terminal({ fontSize: 13, cursorBlink: true, theme: { background: "#1e1e22" } });
+  // ⌥-drag selects even while the agent's TUI captures the mouse.
+  terminal = new Terminal({ fontSize: 13, cursorBlink: true, macOptionClickForcesSelection: true, theme: { background: "#1e1e22" } });
+  // ⌘C copies the selection: in the browser's chrome the copy command never reaches xterm's hidden textarea.
+  terminal.attachCustomKeyEventHandler((e) => {
+    if (e.type !== "keydown" || !e.metaKey || e.key !== "c" || !terminal!.hasSelection()) return true;
+    void navigator.clipboard.writeText(terminal!.getSelection()).catch(() => {});
+    return false;
+  });
   adjustment = new FitAddon();
   terminal.loadAddon(adjustment);
   terminal.open(element);
