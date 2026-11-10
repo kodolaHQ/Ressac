@@ -1,12 +1,38 @@
+@font-face { font-family: "Funnel Display"; font-weight: 300 800; font-style: normal; font-display: block; src: url("chrome://browser/content/webaios/fonts/FunnelDisplay-latin-ext.woff2") format("woff2"); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: "Funnel Display"; font-weight: 300 800; font-style: normal; font-display: block; src: url("chrome://browser/content/webaios/fonts/FunnelDisplay-latin.woff2") format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: "Geist"; font-weight: 300 700; font-style: normal; font-display: block; src: url("chrome://browser/content/webaios/fonts/Geist-latin-ext.woff2") format("woff2"); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: "Geist"; font-weight: 300 700; font-style: normal; font-display: block; src: url("chrome://browser/content/webaios/fonts/Geist-latin.woff2") format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: "Geist Mono"; font-weight: 400 500; font-style: normal; font-display: block; src: url("chrome://browser/content/webaios/fonts/GeistMono-latin-ext.woff2") format("woff2"); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: "Geist Mono"; font-weight: 400 500; font-style: normal; font-display: block; src: url("chrome://browser/content/webaios/fonts/GeistMono-latin.woff2") format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
 :root {
-  --bg: #1e1e22;
-  --bg-bar: #26262c;
-  --bg-hover: #33333b;
-  --bg-active: #3d3d47;
-  --text: #e8e8ee;
-  --text-muted: #9a9aa6;
-  --accent: #8b7cf6;
-  --border: #3a3a42;
+  /* Aura: the signature gradient (default Aube); Task 2 rewrites a1-a3 and the two accents per chosen aura. */
+  --a1: #FF9F7A;
+  --a2: #FF6F91;
+  --a3: #FFD36E;
+  --aura-accent-light: #C23A5E;
+  --aura-accent-dark: #FF8FA8;
+  --accent: var(--aura-accent-dark);
+  --accent-ink: #0E1014;
+  --bg: #0E1014;
+  --bg-bar: rgb(22 24 30 / 0.5);
+  --bg-hover: rgb(255 255 255 / 0.07);
+  --bg-active: rgb(255 255 255 / 0.12);
+  --text: #ECEEF2;
+  --text-muted: #9AA1AD;
+  --border: rgb(255 255 255 / 0.09);
+  --glass: rgb(22 24 30 / 0.5);
+  --glass-hi: rgb(255 255 255 / 0.1);
+  --glass-edge: rgb(255 255 255 / 0.1);
+  --sheet: #17191F;
+  --font-display: "Funnel Display", "Geist", sans-serif;
+  --font-ui: "Geist", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, Menlo, monospace;
+  /* Motion: four gestures only (touch, spring, aura, halo loop). */
+  --tap: 120ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --spring: linear(0, 0.06 2.4%, 0.24 5.1%, 0.55 9.4%, 0.84 14.6%, 1.01 19.4%, 1.07 23.2%, 1.08 26.6%, 1.05 32.8%, 1 41%, 0.99 50%, 1);
+  --spring-d: 460ms;
+  --aura-d: 900ms ease-in-out;
+  --out: cubic-bezier(0.2, 0.8, 0.2, 1);
   /* App states (badges) and destructive actions. */
   --running: #4fbf6a;
   --in-progress: #e0a23a;
@@ -24,19 +50,25 @@
   --modal-shadow: 0 18px 50px rgb(0 0 0 / 0.5);
   /* Callouts of an action's page: info, notice, warning. */
   --info-bg: #2d6cdf2e;
-  --notice-bg: #8b7cf62e;
+  --notice-bg: color-mix(in srgb, var(--accent) 18%, transparent);
   --attention-bg: #e0a23a2e;
   color-scheme: dark;
 }
 @media (prefers-color-scheme: light) {
   :root {
-    --bg: #f4f4f6;
-    --bg-bar: #e9e9ee;
-    --bg-hover: #dcdce3;
-    --bg-active: #cfcfd8;
-    --text: #1e1e22;
-    --text-muted: #66667a;
-    --border: #d0d0d8;
+    --accent: var(--aura-accent-light);
+    --accent-ink: #FFFFFF;
+    --bg: #F1F3F6;
+    --bg-bar: rgb(255 255 255 / 0.52);
+    --bg-hover: rgb(21 23 28 / 0.06);
+    --bg-active: rgb(21 23 28 / 0.11);
+    --text: #15171C;
+    --text-muted: #5D6470;
+    --border: rgb(21 23 28 / 0.1);
+    --glass: rgb(255 255 255 / 0.52);
+    --glass-hi: rgb(255 255 255 / 0.78);
+    --glass-edge: rgb(255 255 255 / 0.75);
+    --sheet: #FFFFFF;
     --running: #2e9a4b;
     --in-progress: #c27f12;
     --in-error: #c9473e;
@@ -45,22 +77,31 @@
     --access-read-bg: #2d6cdf26;
     --access-act: #b45309;
     --access-act-bg: #f59e0b30;
-  --access-cut: #c2410c;
-  --access-cut-hover: #9a3412;
+    --access-cut: #c2410c;
+    --access-cut-hover: #9a3412;
     --veil: rgb(20 20 30 / 0.32);
     --modal-shadow: 0 18px 50px rgb(0 0 0 / 0.22);
     --info-bg: #2d6cdf1a;
-    --notice-bg: #8b7cf61f;
     --attention-bg: #c27f1224;
     color-scheme: light;
   }
 }
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --spring-d: 150ms;
+    --spring: ease-out;
+  }
+}
+@property --a1 { syntax: "<color>"; inherits: true; initial-value: #FF9F7A; }
+@property --a2 { syntax: "<color>"; inherits: true; initial-value: #FF6F91; }
+@property --a3 { syntax: "<color>"; inherits: true; initial-value: #FFD36E; }
+@property --ang { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
 * { box-sizing: border-box; }
 html, body, #app { margin: 0; height: 100%; }
 body {
   background: var(--bg);
   color: var(--text);
-  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font: 13px/1.4 var(--font-ui);
   user-select: none;
   overflow: hidden;
 }
