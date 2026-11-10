@@ -13,12 +13,25 @@ async function isKnown(dataDir: string): Promise<boolean> {
   }
 }
 
+export const RESET_FILE = ".reset-requested";
+
+const STAMP = /^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z(-\d+)?$/;
+
+/** The ISO date of a path that is exactly `<dataDir>.backup-<timestamp>[-n]` (what checkDataFormat writes), else null. */
+export function backupDate(dataDir: string, path: string): string | null {
+  const prefix = `${dataDir}.backup-`;
+  const m = path.startsWith(prefix) ? STAMP.exec(path.slice(prefix.length)) : null;
+  return m && `${m[1]}T${m[2]}:${m[3]}:${m[4]}.${m[5]}Z`;
+}
+
 /**
- * Makes sure the data folder is of the current format. An unknown format sets the whole folder aside (workspace/ stays
- * in place: it holds the user's projects) and starts anew. Returns the backup path, or null when nothing was set aside.
+ * Makes sure the data folder is of the current format, and honours a reset request. An unknown format or a reset marker
+ * sets the whole folder aside (workspace/ stays in place: it holds the user's projects) and starts anew. Returns the
+ * backup path and why, or null when nothing was set aside.
  */
-export async function checkDataFormat(dataDir: string, now: Date = new Date()): Promise<string | null> {
-  if (await isKnown(dataDir)) return null;
+export async function checkDataFormat(dataDir: string, now: Date = new Date()): Promise<{ backup: string; reason: "format" | "reset" } | null> {
+  const reset = await fs.access(join(dataDir, RESET_FILE)).then(() => true, () => false);
+  if (!reset && (await isKnown(dataDir))) return null;
   let backup: string | null = null;
   if (await fs.access(dataDir).then(() => true, () => false)) {
     const timestamp = now.toISOString().replace(/[:.]/g, "-");
@@ -32,5 +45,5 @@ export async function checkDataFormat(dataDir: string, now: Date = new Date()): 
   }
   await fs.mkdir(dataDir, { recursive: true });
   await fs.writeFile(join(dataDir, FORMAT_FILE), JSON.stringify({ format: DATA_FORMAT }));
-  return backup;
+  return backup === null ? null : { backup, reason: reset ? "reset" : "format" };
 }

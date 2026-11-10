@@ -34,7 +34,7 @@ export interface WebAiOsStore extends Store {
   readonly dataDir: string;
   /** Where an unreadable session was set aside at startup, or null. */
   readonly setAside: string | null;
-  readonly formatSetAside: string | null;
+  readonly dataSetAside: { backup: string; reason: "format" | "reset" } | null;
   /** Error reports go out (a DSN is set): the first window tells it once. */
   readonly telemetryActive: boolean;
   flush(): Promise<void>;
@@ -136,7 +136,7 @@ async function start(): Promise<WebAiOsStore> {
   // Before anything else can fail: its errors are reported.
   const telemetry = installTelemetry();
   // Before anything touches the data folder: an unknown format sets it aside (workspace/ stays).
-  const formatSetAside = await checkDataFormat(dataDir).catch((e) => (console.error("[data] format check failed:", e), null));
+  const dataSetAside = await checkDataFormat(dataDir).catch((e) => (console.error("[data] format check failed:", e), null));
   // Our history is the only one: Firefox's would grow unread. Set at runtime on the default branch, before any window
   // (favicons, back/forward and reopening a closed tab keep working: plan 24 spike S1).
   Services.prefs.getDefaultBranch("").setBoolPref("places.history.enabled", false);
@@ -376,7 +376,7 @@ async function start(): Promise<WebAiOsStore> {
     subscribe: store.subscribe,
     dataDir,
     setAside,
-    formatSetAside,
+    dataSetAside,
     telemetryActive: telemetry.active,
     flush,
     containerFor,

@@ -97,12 +97,16 @@ window.addEventListener(
           [],
         );
       }
-      if (first && store.formatSetAside) {
+      if (first && store.dataSetAside) {
+        const { backup, reason } = store.dataSetAside;
         void window.gNotificationBox.appendNotification(
           "webaios-data-set-aside",
           {
-            label: `WebAiOs ne reconnaît pas le format de ses données : il repart à neuf et les garde dans ${store.formatSetAside}. Vos projets n'ont pas bougé.`,
-            priority: window.gNotificationBox.PRIORITY_WARNING_HIGH,
+            label:
+              reason === "reset"
+                ? `WebAiOs repart à neuf. Ses anciennes données sont gardées dans ${backup} (Réglages › Données). Vos projets n'ont pas bougé.`
+                : `WebAiOs ne reconnaît pas le format de ses données : il repart à neuf et les garde dans ${backup}. Vos projets n'ont pas bougé.`,
+            priority: reason === "reset" ? window.gNotificationBox.PRIORITY_INFO_HIGH : window.gNotificationBox.PRIORITY_WARNING_HIGH,
           },
           [],
         );
