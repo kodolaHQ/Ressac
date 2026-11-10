@@ -1,0 +1,25 @@
+diff --git a/toolkit/modules/WebAuthnPromptHelper.sys.mjs b/toolkit/modules/WebAuthnPromptHelper.sys.mjs
+index 02d026777b1eaf39a481d8f98c38ce9b17692784..e9d90eb75812ea559d3a63922237e4eb07633930 100644
+--- a/toolkit/modules/WebAuthnPromptHelper.sys.mjs
++++ b/toolkit/modules/WebAuthnPromptHelper.sys.mjs
+@@ -247,6 +247,20 @@ export let WebAuthnPromptHelper = {
+     let options = { escAction: "buttoncommand" };
+     let secondaryActions = [];
+     let message = "webauthn-user-presence-prompt";
++    // shortcut: assumes the build lacks the passkey entitlement (ad hoc signature), drop once signed with it.
++    if (Services.appinfo.OS == "Darwin") {
++      this.show_formatted_msg(
++        browsingContext,
++        tid,
++        "presence",
++        "Les passkeys du Mac (Touch ID, trousseau iCloud) ne sont pas disponibles dans cette version de WebAiOs. " +
++          "Seule une clé de sécurité USB fonctionne : branchez-la et touchez-la, ou annulez et choisissez une autre méthode de connexion.",
++        mainAction,
++        secondaryActions,
++        options
++      );
++      return;
++    }
+     this.show(
+       browsingContext,
+       tid,
