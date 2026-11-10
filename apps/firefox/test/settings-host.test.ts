@@ -57,6 +57,9 @@ describe("settings host", () => {
     expect(await h["settings.agents"]!({})).toMatchObject([{ state: "logged-in", account: "ami@example.com" }]);
     r = out('{"loggedIn":false}');
     expect(await h["settings.agents"]!({})).toMatchObject([{ state: "logged-out" }]);
+    // The real CLI exits 1 when logged out, with its JSON on stdout.
+    r = out('{"loggedIn":false,"authMethod":"none"}', 1);
+    expect(await h["settings.agents"]!({})).toMatchObject([{ state: "logged-out" }]);
     r = out("", 1);
     expect(await h["settings.agents"]!({})).toMatchObject([{ state: "error", error: "boom" }]);
     r = out("not json");

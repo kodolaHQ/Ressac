@@ -70,8 +70,13 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
       AGENT_ACCOUNTS.map(async (a): Promise<AgentAccount> => {
         try {
           const r = await o.workshop.exec(a.status);
-          if (r.code !== 0) return { id: a.id, name: a.name, state: "error", error: tail(r.stderr) };
-          const s = a.parse(r.stdout);
+          // `claude auth status` exits 1 when logged out but still prints its JSON: trust the JSON first.
+          let s: ReturnType<typeof a.parse>;
+          try {
+            s = a.parse(r.stdout);
+          } catch {
+            return { id: a.id, name: a.name, state: "error", error: tail(r.stderr || r.stdout) };
+          }
           return { id: a.id, name: a.name, state: s.loggedIn ? "logged-in" : "logged-out", ...(s.account ? { account: s.account } : {}) };
         } catch (e) {
           return { id: a.id, name: a.name, state: "error", error: failure(e) };
