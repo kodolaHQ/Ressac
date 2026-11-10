@@ -3,7 +3,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { spacePaths } from "../../src/paths.js";
-import { initSpace, DEFAULT_MODELS, DISPLAYS_SHIPPED, OLD_AGENTS, OLD_AGENT_PROFILE, OLD_CLAUDE_MD } from "../../src/workspace/initialize.js";
+import { initSpace, DEFAULT_TEMPLATES, DISPLAYS_SHIPPED, OLD_AGENTS, OLD_AGENT_PROFILE, OLD_CLAUDE_MD } from "../../src/workspace/initialize.js";
 import { createHash } from "node:crypto";
 import { DeclarationWidget, Layout } from "../../src/home/schemas.js";
 import { DeclarationSite, checkSiteDeclaration } from "../../src/sites/schemas.js";
@@ -122,7 +122,7 @@ test("two simultaneous initializations create each file only once", async () => 
 
 test("a shipped AGENTS.md (its hash is known) is replaced by the current template", async () => {
   const c = spacePaths(await tempFolder());
-  const model = await readFile(join(DEFAULT_MODELS, "AGENTS.md"), "utf8");
+  const model = await readFile(join(DEFAULT_TEMPLATES, "AGENTS.md"), "utf8");
   const old = "ancien modèle\n";
   const h = sha256(old);
   OLD_AGENTS.add(h);
@@ -155,8 +155,8 @@ test("CLAUDE.md and the agent profile are rewritten only when identical to an ol
     await writeFile(join(c.profiles, "claude.json"), oldProfile);
     await writeFile(join(c.root, "CLAUDE.md"), oldClaude);
     await initSpace(c);
-    expect(await readFile(join(c.profiles, "claude.json"), "utf8")).toBe(await readFile(join(DEFAULT_MODELS, "agent-profile.json"), "utf8"));
-    expect(await readFile(join(c.root, "CLAUDE.md"), "utf8")).toBe(await readFile(join(DEFAULT_MODELS, "CLAUDE.md"), "utf8"));
+    expect(await readFile(join(c.profiles, "claude.json"), "utf8")).toBe(await readFile(join(DEFAULT_TEMPLATES, "agent-profile.json"), "utf8"));
+    expect(await readFile(join(c.root, "CLAUDE.md"), "utf8")).toBe(await readFile(join(DEFAULT_TEMPLATES, "CLAUDE.md"), "utf8"));
     // edited by the user: kept
     await writeFile(join(c.profiles, "claude.json"), '{"id":"claude","mine":true}');
     await writeFile(join(c.root, "CLAUDE.md"), "Mes règles.\n");
@@ -177,7 +177,7 @@ test("the profile shipped before the English formats (profil-claude.json) is a k
 });
 
 test("the AGENTS.md template is pinned: before editing it, add this hash to OLD_AGENTS, then update the pin", async () => {
-  expect(sha256(await readFile(join(import.meta.dirname, "..", "..", "modeles", "AGENTS.md")))).toBe(
+  expect(sha256(await readFile(join(import.meta.dirname, "..", "..", "templates", "AGENTS.md")))).toBe(
     "3bd6fbba709a6d3f59a8caa28c98833e9631414701096ccd4a252300e4b9f341",
   );
 });
@@ -188,14 +188,14 @@ test("the hash of every shipped version is kept: the list only grows", () => {
 });
 
 test("the AGENTS.md template describes the design mode remarks of site apps", async () => {
-  const text = await readFile(join(DEFAULT_MODELS, "AGENTS.md"), "utf8");
+  const text = await readFile(join(DEFAULT_TEMPLATES, "AGENTS.md"), "utf8");
   for (const pattern of ["Remarques du mode design", "/workspace/.webaios/remarks/site-<id>/", "MutationObserver", "third-party-site", "home/"]) {
     expect(text, pattern).toContain(pattern);
   }
 });
 
 test("the site.json examples given in AGENTS.md (YouTube, Vidola) are valid for the site app schema", async () => {
-  const text = await readFile(join(DEFAULT_MODELS, "AGENTS.md"), "utf8");
+  const text = await readFile(join(DEFAULT_TEMPLATES, "AGENTS.md"), "utf8");
   const blocks = [...text.matchAll(/```json site\.json:([a-z]+)\n([\s\S]*?)```/g)].map((m) => ({ name: m[1]!, json: m[2]! }));
   expect(blocks.map((b) => b.name).sort()).toEqual(["vidola", "youtube"]);
   for (const { name: name, json } of blocks) {
@@ -209,7 +209,7 @@ test("the site.json examples given in AGENTS.md (YouTube, Vidola) are valid for 
 });
 
 test("the references given as examples in AGENTS.md are valid for the plan reader", async () => {
-  const text = await readFile(join(DEFAULT_MODELS, "AGENTS.md"), "utf8");
+  const text = await readFile(join(DEFAULT_TEMPLATES, "AGENTS.md"), "utf8");
   const blocks = [...text.matchAll(/```reference\n([\s\S]*?)```/g)].map((m) => m[1]!);
   expect(blocks.length).toBeGreaterThan(0);
   const references = blocks.flatMap((b) => b.split("\n").filter((l) => l.trim() !== ""));
@@ -255,10 +255,10 @@ for (const file of readdirSync(DISPLAYS).sort()) {
     await writeFile(join(c.widgets, id, "display.html"), old);
     const { created: crees } = await initSpace(c);
     expect(await readFile(join(c.widgets, id, "display.html"), "utf8")).toBe(
-      await readFile(join(DEFAULT_MODELS, "widgets", id, "display.html"), "utf8"),
+      await readFile(join(DEFAULT_TEMPLATES, "widgets", id, "display.html"), "utf8"),
     );
     // The copy of the current template is already up to date: nothing to replace.
-    if (old !== (await readFile(join(DEFAULT_MODELS, "widgets", id, "display.html"), "utf8"))) expect(crees).toContain(join(c.widgets, id, "display.html"));
+    if (old !== (await readFile(join(DEFAULT_TEMPLATES, "widgets", id, "display.html"), "utf8"))) expect(crees).toContain(join(c.widgets, id, "display.html"));
     // A second launch does nothing anymore.
     expect((await initSpace(c)).created).toEqual([]);
   });

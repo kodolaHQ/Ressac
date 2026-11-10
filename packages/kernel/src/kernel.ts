@@ -255,7 +255,7 @@ export async function createKernel(o: {
   run?: Runner;
   clock?: () => Date;
   profileId?: string;
-  /** Folder containing `modeles/` and `docker/` (by default, those of the package). */
+  /** Folder containing `templates/` and `docker/` (by default, those of the package). */
   resources?: string;
   /** Workshop shared with the browser (which also launches the applications); otherwise, the kernel creates its own. */
   workshop?: Workshop;
@@ -296,7 +296,7 @@ export async function createKernel(o: {
 }): Promise<Kernel> {
   const paths = spacePaths(o.root);
   const run = o.run ?? defaultRunner;
-  await initSpace(paths, o.resources ? join(o.resources, "modeles") : undefined);
+  await initSpace(paths, o.resources ? join(o.resources, "templates") : undefined);
 
   const profileId = o.profileId ?? "claude";
   const profile = (await loadProfiles(paths)).profiles.find((p) => p.id === profileId);

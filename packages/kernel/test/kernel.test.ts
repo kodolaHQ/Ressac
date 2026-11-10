@@ -142,9 +142,9 @@ test("at launch, once the container is ready, the agents of a previous app are s
 test("createKernel reads models and Dockerfile from resources", async () => {
   const root = await tempFolder();
   const copy = await tempFolder();
-  await cp(join(import.meta.dirname, "..", "modeles"), join(copy, "modeles"), { recursive: true });
+  await cp(join(import.meta.dirname, "..", "templates"), join(copy, "templates"), { recursive: true });
   await cp(join(import.meta.dirname, "..", "docker"), join(copy, "docker"), { recursive: true });
-  await writeFile(join(copy, "modeles", "AGENTS.md"), "# copie");
+  await writeFile(join(copy, "templates", "AGENTS.md"), "# copie");
   const { run: run } = fakeRunner([[/ info$/, { code: 1, stderr: "absent" }]]);
   kernel = await createKernel({ widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, resources: copy, run: run });
   expect(await readFile(join(root, "AGENTS.md"), "utf8")).toBe("# copie");

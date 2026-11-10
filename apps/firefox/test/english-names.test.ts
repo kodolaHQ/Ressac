@@ -112,7 +112,7 @@ test("no French member or key under apps/firefox and packages/kernel", (ctx) => 
   // French on purpose: the Firefox engine sources, the templates (agent-facing French data), the guard itself.
   // shortcut: the extension guard scripts (packages/kernel/extensions/*.js) and the e2e spikes (.js/.mjs) are not read; read them once renamed.
   const skip =
-    /^packages\/kernel\/modeles\/|^apps\/firefox\/src\/|^apps\/firefox\/test\/english-names\.test\.ts$/;
+    /^packages\/kernel\/templates\/|^apps\/firefox\/src\/|^apps\/firefox\/test\/english-names\.test\.ts$/;
   const files = r.stdout.split("\n").filter((f) => !skip.test(f) && /\.(ts|mts|svelte)$|^packages\/kernel\/docker\/.*\.mjs$/.test(f));
   const bad: string[] = [];
   for (const f of files) {
@@ -126,8 +126,8 @@ test("no French member or key under apps/firefox and packages/kernel", (ctx) => 
 test("no binding or file name under apps/firefox and packages/kernel is French", (ctx) => {
   const r = spawnSync("git", ["ls-files", "apps/firefox", "packages/kernel"], { cwd: repoRoot, encoding: "utf8" });
   if (r.error || r.status !== 0) return ctx.skip();
-  // modeles/: its block files are agent data ids.
-  const files = r.stdout.split("\n").filter((f) => f && !/^packages\/kernel\/modeles\//.test(f));
+  // templates/: its block files are agent data ids.
+  const files = r.stdout.split("\n").filter((f) => f && !/^packages\/kernel\/templates\//.test(f));
   const bad: string[] = [];
   for (const f of files) {
     if (/\.(ts|mts|js|mjs|cjs|svelte)$/.test(f) && french(f.split("/").pop()!).length) bad.push(`${f}: file name`);

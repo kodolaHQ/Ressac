@@ -6,12 +6,12 @@ import { dirname, join } from "node:path";
 import type { SpacePaths } from "../paths.js";
 
 /** Templates folder of the package; a browser that embeds the kernel can provide another. */
-export const DEFAULT_MODELS = join(import.meta.dirname, "..", "..", "modeles");
+export const DEFAULT_TEMPLATES = join(import.meta.dirname, "..", "..", "templates");
 
 /**
  * sha256 hashes of old versions of the AGENTS.md template. An AGENTS.md that has one is left as
  * is: it is replaced by the current template. To complete with each new template version: add
- * the old version's hash (`shasum -a 256 modeles/AGENTS.md`) before modifying it.
+ * the old version's hash (`shasum -a 256 templates/AGENTS.md`) before modifying it.
  */
 export const OLD_AGENTS = new Set([
   "4cb44a141c2e0865ae472910b3f1026b918c2d09d12b96732b7a5556ffcc4681",
@@ -161,7 +161,7 @@ const OLD_TEMPLATES: Readonly<Record<string, ReadonlySet<string>>> = {
  * Creates the workspace from the templates, without overwriting an existing file, except AGENTS.md, CLAUDE.md and the
  * agent profile left at an old shipped version.
  */
-export async function initSpace(c: SpacePaths, models = DEFAULT_MODELS): Promise<{ created: string[] }> {
+export async function initSpace(c: SpacePaths, models = DEFAULT_TEMPLATES): Promise<{ created: string[] }> {
   const created: string[] = [];
   for (const [model, destination] of await matches(c, models)) {
     const old = OLD_TEMPLATES[model];

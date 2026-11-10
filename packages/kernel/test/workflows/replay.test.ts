@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { expect, test } from "vitest";
 import { LINE_MAX_BYTES, startTooBig, lineStart, lineStartBytes, replayPlan, validateWorkflow, type Execution, type BlockTrace, type ValidWorkflow } from "../../src/index.js";
 
-const raw = JSON.parse(readFileSync(join(import.meta.dirname, "..", "..", "modeles", "widgets", "actus-tech", "workflow.json"), "utf8"));
+const raw = JSON.parse(readFileSync(join(import.meta.dirname, "..", "..", "templates", "widgets", "actus-tech", "workflow.json"), "utf8"));
 const r = validateWorkflow(raw);
 if (!r.ok) throw new Error(r.error);
 const valid: ValidWorkflow = r.valid;
