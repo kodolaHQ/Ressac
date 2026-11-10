@@ -1,0 +1,106 @@
+import { describe, expect, it } from "vitest";
+import { createReporter, errorEnvelope, parseDsn, parseStack, scrub } from "../shared/telemetry";
+
+const home = "/Users/marie";
+
+describe("parseDsn", () => {
+  it("builds the envelope and minidump urls", () => {
+    expect(parseDsn("https://abc@o1.ingest.sentry.io/42")).toEqual({
+      envelopeUrl: "https://o1.ingest.sentry.io/api/42/envelope/?sentry_key=abc&sentry_version=7",
+      minidumpUrl: "https://o1.ingest.sentry.io/api/42/minidump/?sentry_key=abc",
+    });
+    expect(parseDsn("http://k@localhost:9000/1")?.envelopeUrl).toBe("http://localhost:9000/api/1/envelope/?sentry_key=k&sentry_version=7");
+  });
+  it("rejects empty and invalid", () => {
+    expect(parseDsn("")).toBeNull();
+    expect(parseDsn("pas un dsn")).toBeNull();
+  });
+});
+
+describe("scrub", () => {
+  it("replaces home and web urls", () => {
+    expect(scrub("ENOENT /Users/marie/WebAiOs/x and https://banque.fr/compte?id=3", home)).toBe("ENOENT ~/WebAiOs/x and <url>");
+  });
+  it("hides every private scheme but keeps chrome and resource", () => {
+    for (const u of ["file:///Users/marie/a", "wss://x", "blob:https://a/b", "data:text/html,hi"]) expect(scrub(u, home)).toBe("<url>");
+    expect(scrub("chrome://browser/content/webaios/sidebar.js:3:1", home)).toBe("chrome://browser/content/webaios/sidebar.js:3:1");
+    expect(scrub("resource://app/x.mjs", home)).toBe("resource://app/x.mjs");
+  });
+});
+
+describe("parseStack", () => {
+  it("parses V8, oldest first", () => {
+    const f = parseStack("Error: x\n    at inner (/a/b.js:1:2)\n    at /a/c.js:3:4");
+    expect(f).toEqual([
+      { function: "?", filename: "/a/c.js", lineno: 3, colno: 4 },
+      { function: "inner", filename: "/a/b.js", lineno: 1, colno: 2 },
+    ]);
+  });
+  it("parses SpiderMonkey, oldest first", () => {
+    const f = parseStack("inner@chrome://x/a.js:1:2\nouter@chrome://x/b.js:5:6\n");
+    expect(f.map((x) => x.function)).toEqual(["outer", "inner"]);
+    expect(f[1]).toEqual({ function: "inner", filename: "chrome://x/a.js", lineno: 1, colno: 2 });
+  });
+});
+
+describe("errorEnvelope", () => {
+  const env = errorEnvelope(
+    { source: "host", type: "Error", message: "ENOENT /Users/marie/x https://a.b/c", stack: "at f (/Users/marie/p.js:1:2)" },
+    { release: "0.1.0", home, eventId: "e1", now: new Date("2026-11-10T10:00:00Z") },
+  );
+  const lines = env.split("\n");
+  const ev = JSON.parse(lines[2]!);
+  it("has three JSON lines and the expected fields", () => {
+    expect(lines).toHaveLength(3);
+    expect(JSON.parse(lines[0]!).event_id).toBe("e1");
+    expect(JSON.parse(lines[1]!).type).toBe("event");
+    expect(ev).toMatchObject({ event_id: "e1", release: "0.1.0", environment: "beta", platform: "javascript", tags: { source: "host" } });
+    expect(ev.exception.values[0]).toMatchObject({ type: "Error", value: "ENOENT ~/x <url>" });
+    expect(ev.exception.values[0].stacktrace.frames[0].filename).toBe("~/p.js");
+  });
+  it("is anonymous", () => {
+    for (const k of ["user", "server_name", "request"]) expect(ev).not.toHaveProperty(k);
+    expect(ev.contexts?.device).toBeUndefined();
+    expect(env).not.toContain(home);
+  });
+});
+
+describe("createReporter", () => {
+  const make = (over: Record<string, unknown> = {}) => {
+    const posts: string[] = [];
+    const r = createReporter({
+      dsn: "https://k@h.io/1", release: "0.1.0", home, enabled: () => true,
+      post: async (u) => void posts.push(u), ...over,
+    });
+    return { posts, r };
+  };
+  const err = (i: number) => ({ source: "chrome" as const, type: "Error", message: `boom ${i}` });
+  it("caps at 30", () => {
+    const { posts, r } = make();
+    for (let i = 0; i < 40; i++) r.report(err(i));
+    expect(posts).toHaveLength(30);
+  });
+  it("dedupes", () => {
+    const { posts, r } = make();
+    for (let i = 0; i < 5; i++) r.report(err(1));
+    expect(posts).toHaveLength(1);
+  });
+  it("sends nothing when disabled or without dsn", () => {
+    const a = make({ enabled: () => false });
+    a.r.report(err(1));
+    const b = make({ dsn: "" });
+    b.r.report(err(1));
+    expect(a.posts.length + b.posts.length).toBe(0);
+  });
+  it("survives a rejecting post without waiting", async () => {
+    let calls = 0;
+    const { r } = make({ post: () => { calls++; return Promise.reject(new Error("net")); } });
+    expect(() => { r.report(err(1)); r.report(err(1)); }).not.toThrow();
+    await new Promise((x) => setTimeout(x, 0));
+    expect(calls).toBe(1);
+  });
+  it("survives a synchronously throwing post", () => {
+    const { r } = make({ post: () => { throw new Error("x"); } });
+    expect(() => r.report(err(1))).not.toThrow();
+  });
+});
