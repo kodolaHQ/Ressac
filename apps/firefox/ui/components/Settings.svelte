@@ -29,7 +29,13 @@
   type WorkshopState = NonNullable<Awaited<ReturnType<SettingsApi["workshop"]>>>;
 
   let agents = $state<AgentAccount[] | null>(null);
-  const loadAgents = async () => (agents = await s.agents());
+  /** Each account's sign-in in progress: null while the host starts it, then its code or its error. */
+  let logins = $state<Record<string, LoginResult | null>>({});
+  const loadAgents = async () => {
+    agents = await s.agents();
+    // A finished sign-in forgets its code: after a logout, the row offers Se connecter again.
+    for (const a of agents) if (a.state === "logged-in") delete logins[a.id];
+  };
   $effect(() => void loadAgents());
   // Claude signs in in the agent panel (which builds the workshop if needed), Codex by a code on OpenAI's site: while an account waits for it, re-read it.
   const signIn = (a: AgentAccount) => a.state === "logged-out" || a.state === "no-container";
@@ -59,8 +65,6 @@
     delete logins[id];
     agents = await s.logout(id);
   }
-  /** Each account's sign-in in progress: null while the host starts it, then its code or its error. */
-  let logins = $state<Record<string, LoginResult | null>>({});
   async function login(id: string) {
     logins[id] = null;
     logins[id] = await s.login(id);

@@ -170,10 +170,12 @@ if (args[0] === "exec") {
   }
   if (command.join(" ") === "codex login --device-auth") {
     process.stderr.write("Follow these steps to sign in:\n1. Open https://auth.openai.com/codex/device\n2. Enter this code: ABCD-12345\n");
+    // <WEBAIOS_ROOT>/fake-codex-device-delay-ms: how long the code takes to be "entered" (1 s by default); a test changes it between sign-ins.
+    const delayFile = join(env.WEBAIOS_ROOT, "fake-codex-device-delay-ms");
     setTimeout(() => {
       writeFileSync(codexAuth, "");
       process.exit(0);
-    }, 1_000);
+    }, existsSync(delayFile) ? Number(readFileSync(delayFile, "utf8")) : 1_000);
     return;
   }
   // Stop of a session or an app in the container (Workshop session and app stops…): noted for the

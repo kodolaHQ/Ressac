@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import { join } from "node:path";
 import type { IncomingHttpHeaders } from "node:http";
@@ -100,7 +100,8 @@ describe("Codex in Settings", () => {
     await click(m, '[data-testid="agent-codex"] [data-testid="agent-logout"]');
     await shows("agent-codex", "Non connecté");
     expect(existsSync(join(w!.dataDir, "workspace", "fake-codex-auth"))).toBe(false);
-    // Again, this time opening the sign-in page (its address only: the proxy is dead).
+    // Again, this time opening the sign-in page (its address only: the proxy is dead); the code stays unentered so no re-read removes the button.
+    writeFileSync(join(w!.dataDir, "workspace", "fake-codex-device-delay-ms"), "60000");
     await click(m, '[data-testid="agent-codex"] [data-testid="agent-login"]');
     await click(m, '[data-testid="device-open"]');
     await waitFor<BrowserState>(m, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).state)();`, (st) => Object.values(st.tabs).some((t) => t.url === "https://auth.openai.com/codex/device"));
