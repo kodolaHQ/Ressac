@@ -32,3 +32,7 @@ pref("browser.ctrlTab.sortByRecentlyUsed", false);
 
 // AMO and many sites look for the Firefox/ token in the user agent: nsHttpHandler appends Firefox/<version> when this is on.
 pref("general.useragent.compatMode.firefox", true);
+
+// Crash and error reports (chrome/store/telemetry.ts): on unless turned off; the first-run notice says so once.
+pref("webaios.telemetry.enabled", true);
+pref("webaios.telemetry.noticeShown", false);

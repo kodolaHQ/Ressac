@@ -107,6 +107,21 @@ window.addEventListener(
           [],
         );
       }
+      // Once ever: error reports go out, and how to turn them off.
+      if (first && store.telemetryActive && !Services.prefs.getBoolPref("webaios.telemetry.noticeShown", false)) {
+        Services.prefs.setBoolPref("webaios.telemetry.noticeShown", true);
+        void window.gNotificationBox.appendNotification(
+          "webaios-telemetry",
+          {
+            label: "WebAiOs envoie à son développeur les plantages et les erreurs, sans adresse de page ni contenu, pour corriger les bugs de la bêta.",
+            priority: window.gNotificationBox.PRIORITY_INFO_HIGH,
+          },
+          [
+            { label: "Couper l'envoi", callback: () => Services.prefs.setBoolPref("webaios.telemetry.enabled", false) },
+            { label: "D'accord", callback: () => {} },
+          ],
+        );
+      }
       // The UI reads window.webaiosWindow as it loads. Without the UI's network guard, neither loads.
       if (!sidebarMayLoad || !agentMayLoad) return;
       frame.src = "chrome://browser/content/webaios/sidebar.html";

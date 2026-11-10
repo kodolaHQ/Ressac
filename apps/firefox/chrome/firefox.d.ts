@@ -64,6 +64,7 @@ declare class JSWindowActorChild {
 declare const __WEBAIOS_NODE__: string;
 declare const __WEBAIOS_TSX__: string;
 declare const __WEBAIOS_HOST__: string;
+declare const __WEBAIOS_SENTRY_DSN__: string;
 // Vite's raw imports (a file's text, bundled).
 declare module "*?raw" {
   const text: string;

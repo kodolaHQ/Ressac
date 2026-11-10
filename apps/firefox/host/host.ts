@@ -573,6 +573,18 @@ const rpc = createRpc({
     ...(process.env.WEBAIOS_HOST_TEST === "1" ? { "debug.log": (p: { text: string }) => console.log(p.text) } : {}),
   },
 });
+// Errors go to Firefox, which reports them (chrome/store/telemetry.ts), on top of the stderr log.
+const reportError = (e: unknown) => {
+  const err = e instanceof Error ? e : new Error(String(e));
+  rpc.notify("telemetryError", { source: "host", type: err.name, message: err.message, stack: err.stack });
+};
+process.on("unhandledRejection", reportError);
+process.on("uncaughtException", (e) => {
+  console.error("[webaios] uncaught exception:", e);
+  reportError(e);
+  // Exit once the notification is flushed: stdout is an asynchronous pipe on macOS.
+  writeStdout("", () => process.exit(1));
+});
 const bridge = new RemoteBridge(rpc, hist, (site, url) => sites.urlAllowed(site, url));
 const testPacing = new Pacing();
 /** A page request on one extension key: a malformed one is refused as text. */
