@@ -118,6 +118,7 @@ it("a second profile in .webaios/profiles appears in the panel; choosing it rest
     expect(await waitUi(m, "const o = [...(doc.querySelector(arguments[0])?.options ?? [])].map((x) => x.textContent.trim()); return o.length && o", [select], 10_000, "agent")).toEqual([
       "Autre",
       "Claude Code",
+      "Codex",
     ]);
     await inUi(m, "const s = doc.querySelector(arguments[0]); s.value = 'autre'; s.dispatchEvent(new ui.Event('change', { bubbles: true }));", [select], "agent");
     await waitFor(m, "return 1", () => read(pidFile) !== "" && read(pidFile) !== first, 20_000);
@@ -130,11 +131,14 @@ it("a second profile in .webaios/profiles appears in the panel; choosing it rest
   }
 });
 
-it("a single profile: no profile menu", async () => {
+it("the built-in profiles: Claude Code and Codex in the menu", async () => {
   await launch();
   await shown();
   await terminalShows("fake agent ready>");
-  expect(await inUi(m, "return doc.querySelectorAll('[data-testid=\"agent-profile\"]').length", [], "agent")).toBe(0);
+  expect(await waitUi(m, "const o = [...(doc.querySelector('[data-testid=\"agent-profile\"]')?.options ?? [])].map((x) => x.textContent.trim()); return o.length && o", [], 10_000, "agent")).toEqual([
+    "Claude Code",
+    "Codex",
+  ]);
 });
 
 it("the ✦ button opens and closes the panel", async () => {

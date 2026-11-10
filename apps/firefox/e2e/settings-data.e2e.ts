@@ -122,6 +122,7 @@ describe("Settings page, permissions and data", () => {
     await openPage();
     await click(m, '[data-testid="data-reset"]');
     await waitUi(m, `return doc.querySelector('[data-testid="settings-data"]').textContent.includes("installation de Kev (IA locale, à réinstaller)) sont mises de côté")`);
+    await waitUi(m, `return doc.querySelector('[data-testid="settings-data"]').textContent.includes("les connexions de Claude et de Codex (boutons Se déconnecter, section Agents)")`);
     await click(m, '[data-testid="confirm-reset"]');
     const alive = () => {
       try {

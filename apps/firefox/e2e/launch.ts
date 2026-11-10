@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { closeSync, existsSync, openSync } from "node:fs";
 import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -56,9 +56,9 @@ async function waitFor<T>(read: () => Promise<T | undefined>, ms: number, what: 
  * Launches WebAiOs-Firefox headless (`headed` shows its window). Folders passed in are reused and kept (to restart on the same data); the others
  * are temporary and deleted on close. `prefs` are appended to the profile's user.js. WEBAIOS_DATA_DIR is always set, so tests never touch the real data folder.
  * A data folder without a space's widgets folder gets the starter widgets without their harvest (`starterHarvests` keeps
- * them, and their real-web reads: prefer a local server).
+ * them, and their real-web reads: prefer a local server). `output`: a file that gets the browser's stdout and stderr.
  */
-export async function launchWebAiOs(o: { headed?: boolean; width?: number; height?: number; dataDir?: string; profile?: string; env?: Record<string, string>; prefs?: Record<string, string | number | boolean>; starterHarvests?: boolean } = {}): Promise<LaunchedWebAiOs> {
+export async function launchWebAiOs(o: { headed?: boolean; width?: number; height?: number; dataDir?: string; profile?: string; env?: Record<string, string>; prefs?: Record<string, string | number | boolean>; starterHarvests?: boolean; output?: string } = {}): Promise<LaunchedWebAiOs> {
   const profile = o.profile ?? (await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-")));
   const dataDir = o.dataDir ?? (await mkdtemp(path.join(os.tmpdir(), "webaios-data-")));
   const cleanup = () =>
@@ -77,11 +77,12 @@ export async function launchWebAiOs(o: { headed?: boolean; width?: number; heigh
       'user_pref("media.gmp-manager.updateEnabled", false);\n' +
       Object.entries(o.prefs ?? {}).map(([k, v]) => `user_pref(${JSON.stringify(k)}, ${JSON.stringify(v)});\n`).join(""),
   );
+  const out = o.output ? openSync(o.output, "a") : "ignore";
   const proc = spawn(
     binary(),
     ["--marionette", ...(o.headed ? [] : ["--headless"]), "--no-remote", "--profile", profile, "--width", String(o.width ?? 1280), "--height", String(o.height ?? 800)],
     // The chrome context (the browser's own UI) is only reachable over Marionette with system access enabled.
-    { stdio: "ignore", env: {
+    { stdio: ["ignore", out, out], env: {
         ...process.env,
         MOZ_REMOTE_ALLOW_SYSTEM_ACCESS: "1",
         WEBAIOS_DATA_DIR: dataDir,
@@ -97,6 +98,7 @@ export async function launchWebAiOs(o: { headed?: boolean; width?: number; heigh
         PATH: `${FAKE_TOOLS}${path.delimiter}${process.env.PATH ?? ""}`,
       }, },
   );
+  if (typeof out === "number") closeSync(out);
   const exited = new Promise<void>((r) => proc.once("exit", () => r()));
   try {
     const port = await waitFor(

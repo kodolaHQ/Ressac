@@ -77,10 +77,12 @@ describe("Settings page", () => {
     await launch({}, { "fake-claude-auth.json": JSON.stringify({ loggedIn: true, email: "ami@example.com" }) });
     await openPage();
     await shows("agent-claude", "Connecté (ami@example.com)");
-    await click(m, '[data-testid="agent-logout"]');
+    expect(await text("agent-claude")).not.toContain("tapez /login");
+    await click(m, '[data-testid="agent-claude"] [data-testid="agent-logout"]');
     await shows("agent-claude", "Non connecté");
+    await shows("agent-claude", "Claude Code vous demande de vous connecter dans le panneau de l'agent ; sinon, tapez /login.");
     expect(existsSync(join(w!.dataDir, "workspace", "fake-claude-auth.json"))).toBe(false);
-    await click(m, '[data-testid="agent-login"]');
+    await click(m, '[data-testid="agent-claude"] [data-testid="agent-login"]');
     await waitFor(m, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).state.windows[0].agentPanelOpen)();`, (v) => v === true);
   });
 
@@ -89,7 +91,7 @@ describe("Settings page", () => {
     await launch({ FAKE_DOCKER_NO_CONTAINER: "1", FAKE_DOCKER_RUN_FAILED: "1" });
     await openPage();
     await shows("agent-claude", "L'atelier de l'agent n'est pas démarré");
-    await click(m, '[data-testid="agent-login"]');
+    await click(m, '[data-testid="agent-claude"] [data-testid="agent-login"]');
     await waitFor(m, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).state.windows[0].agentPanelOpen)();`, (v) => v === true);
     await click(m, "button", { text: "Réessayer", frame: "agent" });
     await shows("agent-claude", "Non connecté", 30_000);
@@ -141,7 +143,7 @@ describe("Settings page", () => {
     await waitFor(m, "return true", () => log().includes("stop -t 2"), 20_000);
     await waitUi(m, `return !doc.querySelector('[data-testid="workshop-rebuild"]').disabled`, [], 20_000);
     await click(m, '[data-testid="workshop-rebuild"]');
-    await shows("settings-workshop", "La reconstruction réinstalle Claude Code et prend quelques minutes.");
+    await shows("settings-workshop", "La reconstruction réinstalle Claude Code et Codex et prend quelques minutes. Les agents et les applis en cours s'arrêtent ; vos projets et les connexions de Claude et de Codex restent.");
     await click(m, '[data-testid="confirm-workshop"]');
     await waitFor(m, "return true", () => log().split("\n").some((l) => l.startsWith("build ") && l.includes("--no-cache")), 20_000);
     await shows("workshop-state", "Atelier démarré", 20_000);
