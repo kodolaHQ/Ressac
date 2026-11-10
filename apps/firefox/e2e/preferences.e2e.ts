@@ -97,6 +97,7 @@ it("no brand: General and Privacy name neither Firefox nor Mozilla", async () =>
 it("logins tab: the saved passwords open in a store tab of the current space", async () => {
   await launch();
   await click(m, '[data-testid="settings-button"]');
+  await click(m, '[data-testid="settings-nav-about"]');
   await waitUi(m, "return !!doc.querySelector('[data-testid=\"open-advanced\"]')");
   await click(m, '[data-testid="open-advanced"]');
   await waitFor(m, "return gBrowser.selectedBrowser.contentDocument?.readyState === 'complete' && !!gBrowser.selectedBrowser.contentDocument.defaultView.gotoPref", (v) => v === true);
