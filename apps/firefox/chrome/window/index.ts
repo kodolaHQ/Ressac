@@ -113,7 +113,7 @@ window.addEventListener(
         void window.gNotificationBox.appendNotification(
           "webaios-telemetry",
           {
-            label: "WebAiOs envoie à son développeur les plantages et les erreurs, sans adresse de page ni contenu, pour corriger les bugs de la bêta.",
+            label: "WebAiOs envoie à son développeur les plantages et les erreurs, sans adresse de page, pour corriger les bugs de la bêta. Un plantage peut contenir des fragments de mémoire.",
             priority: window.gNotificationBox.PRIORITY_INFO_HIGH,
           },
           [

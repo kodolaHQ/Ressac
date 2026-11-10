@@ -113,7 +113,7 @@ async function noticeOnce(profile: string): Promise<void> {
   await waitFor(m, `return [...window.gNotificationBox.allNotifications].some((n) => n.getAttribute("value") === "${NOTICE}")`, (v) => v === true);
   expect(await m.execute("return Services.prefs.getBoolPref('webaios.telemetry.noticeShown')")).toBe(true);
   const label = await m.execute<string>(`return [...window.gNotificationBox.allNotifications].find((n) => n.getAttribute("value") === "${NOTICE}").messageText?.textContent ?? ""`);
-  expect(label).toContain("WebAiOs envoie à son développeur les plantages et les erreurs, sans adresse de page ni contenu, pour corriger les bugs de la bêta.");
+  expect(label).toContain("WebAiOs envoie à son développeur les plantages et les erreurs, sans adresse de page, pour corriger les bugs de la bêta. Un plantage peut contenir des fragments de mémoire.");
   await m.execute(
     `const n = [...window.gNotificationBox.allNotifications].find((n) => n.getAttribute("value") === "${NOTICE}");
      [...n.buttonContainer.children].find((b) => b.getAttribute("label") === "Couper l'envoi").doCommand();`,

@@ -48,9 +48,9 @@ export function errorEnvelope(e: ReportedError, o: { release: string; home: stri
     timestamp: o.now.toISOString(),
     release: o.release,
     environment: "beta",
-    platform: "javascript",
+    platform: "node",
     tags: { source: e.source },
-    exception: { values: [{ type: s(e.type), value: s(e.message).replace(QUOTED, '"…"').slice(0, 300), stacktrace: { frames } }] },
+    exception: { values: [{ type: s(e.type), value: s(e.message).replace(QUOTED, '"…"').slice(0, 300), ...(frames.length ? { stacktrace: { frames } } : {}) }] },
   };
   return [{ event_id: o.eventId, sent_at: o.now.toISOString() }, { type: "event" }, event].map((x) => JSON.stringify(x)).join("\n");
 }
