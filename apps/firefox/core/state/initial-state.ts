@@ -21,6 +21,6 @@ export function initialState(genId: () => string = randomUUID): BrowserState {
         frame: null,
       },
     ],
-    settings: { engine: "google", agentProfile: "claude", agentPanelWidth: 420 },
+    settings: { engine: "google", agentProfile: "claude", agentPanelWidth: 420, decisionModel: "pplx-decider-flash" },
   };
 }

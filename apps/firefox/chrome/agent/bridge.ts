@@ -211,6 +211,7 @@ export function trackState(store: Store, host: AgentHost, windows: WindowRegistr
       const tab = opened && activeTabOf(state, f.id);
       if (tab) host.notify("agent.panelOpened", { window: f.id, tab: tab });
     }
+    if (state.settings.decisionModel !== previous.settings.decisionModel) host.notify("ai.decisionModel", { model: state.settings.decisionModel });
     if (state.settings.agentProfile !== previous.settings.agentProfile)
       host.request("changeProfile", { agentProfile: state.settings.agentProfile }).catch((e) => console.error("[agent] profile change failed:", e));
   });

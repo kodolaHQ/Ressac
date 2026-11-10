@@ -329,6 +329,7 @@ async function start(): Promise<WebAiOsStore> {
     },
     onStart: (notify) => {
       sendMirror(store, windows, notify);
+      notify("ai.decisionModel", { model: store.state.settings.decisionModel });
       // A rendrePrive sent while no host ran was dropped: replayed (idempotent) so no private space stays searchable.
       for (const e of store.state.spaces) if (e.private) notify("history.makePrivate", { spaceId: e.id });
       agentExtensions.hostStarted();

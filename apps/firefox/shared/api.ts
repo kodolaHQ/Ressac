@@ -68,6 +68,9 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("openApps"), windowId: id }),
   /** Activates this window's Extensions page, or opens it (like Applications). */
   z.object({ type: z.literal("openExtensions"), windowId: id }),
+  /** Activates this window's Settings page, or opens it (like Applications). */
+  z.object({ type: z.literal("openSettings"), windowId: id }),
+  z.object({ type: z.literal("chooseDecisionModel"), model: z.enum(["pplx-decider-flash", "kev"]) }),
   /** Activates the « Voir le workflow » page of widget `id` in this window, or opens it. */
   z.object({
     type: z.literal("openWorkflow"),

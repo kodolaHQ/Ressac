@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FIREFOX_COMMANDS, FIREFOX_KEYS, shortcutFor } from "../chrome/window/keys";
+import { FIREFOX_COMMANDS, FIREFOX_KEYS, SETTINGS_MENU_ITEMS, shortcutFor } from "../chrome/window/keys";
 
 const key = (key: string, code: string, mods: { meta?: boolean; ctrl?: boolean; shift?: boolean; alt?: boolean } = {}) =>
   shortcutFor({ key, code, metaKey: !!mods.meta, ctrlKey: !!mods.ctrl, shiftKey: !!mods.shift, altKey: !!mods.alt });
@@ -74,6 +74,14 @@ describe("shortcutFor", () => {
     expect(key("A", "KeyA", { meta: true, shift: true })).toEqual({ type: "apps" });
     expect(key("a", "KeyA", { meta: true })).toBeNull();
     expect(FIREFOX_KEYS).toContain("key_openAddons");
+  });
+
+  it("⌘, opens the Settings page, not Firefox's preferences", () => {
+    expect(key(",", "Comma", { meta: true })).toEqual({ type: "settings" });
+    expect(key(",", "Comma", { meta: true, shift: true })).toBeNull();
+    expect(key(",", "Comma", { ctrl: true })).toBeNull();
+    expect(FIREFOX_COMMANDS).toContain("menu_preferences");
+    expect(SETTINGS_MENU_ITEMS).toEqual(["menu_preferences", "menu_settings"]);
   });
 
   it("⇧⌘D toggles the design mode, not Firefox's « bookmark all tabs »", () => {

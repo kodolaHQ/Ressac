@@ -9,6 +9,7 @@ import {
   URL_ACTIONS,
   URL_APPLICATIONS,
   URL_EXTENSIONS,
+  URL_SETTINGS,
   urlAction,
   urlWorkflow,
   reviewUrl,
@@ -420,6 +421,8 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       return openInternalPage(d, genId, a.windowId, URL_APPLICATIONS, "Applications");
     case "openExtensions":
       return openInternalPage(d, genId, a.windowId, URL_EXTENSIONS, "Extensions");
+    case "openSettings":
+      return openInternalPage(d, genId, a.windowId, URL_SETTINGS, "Réglages");
     // Likewise, a single « Voir le workflow » page per widget and per window.
     case "openWorkflow":
       return openInternalPage(d, genId, a.windowId, a.owner === "action" ? WORKFLOW_ACTION_PREFIX + a.id : urlWorkflow(a.id), `Workflow — ${a.name}`);
@@ -442,6 +445,11 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
     case "chooseAgentProfile": {
       if (d.settings.agentProfile === a.profile) return false;
       d.settings.agentProfile = a.profile;
+      return true;
+    }
+    case "chooseDecisionModel": {
+      if (d.settings.decisionModel === a.model) return false;
+      d.settings.decisionModel = a.model;
       return true;
     }
     case "agentPanelWidth": {

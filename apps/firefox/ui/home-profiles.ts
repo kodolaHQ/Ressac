@@ -1,5 +1,5 @@
 import type { ProfileForGrant } from "../shared/api";
-import type { BrowserState, WindowId } from "../shared/model";
+import type { BrowserState, ProfileId, WindowId } from "../shared/model";
 
 // Pure rules of the reads and the home page: the sidebar bundle cannot import
 // node:net.
@@ -10,6 +10,12 @@ export function readableProfiles(appState: Pick<BrowserState, "profiles" | "spac
   return appState.profiles.map((p) => p.id).filter((id) => !privates.has(id));
 }
 
+/** « Profil de « Perso, Travail » » (the spaces that use it), or « Profil « id » » with no space. */
+export function profileLabel(state: Pick<BrowserState, "spaces">, id: ProfileId): string {
+  const spaces = state.spaces.filter((e) => e.profile === id).map((e) => e.name);
+  return spaces.length ? `Profil de « ${spaces.join(", ")} »` : `Profil « ${id} »`;
+}
+
 /**
  * The profiles a grant may use: never a private space's (even shared with a non-private space).
  * Checked by default: the window's active space's, if it is readable.
@@ -18,8 +24,7 @@ export function profilesForGrant(appState: Pick<BrowserState, "profiles" | "spac
   const win = appState.windows.find((f) => f.id === windowId);
   const active = win ? appState.spaces.find((e) => e.id === win.activeSpace)?.profile : undefined;
   return readableProfiles(appState).map((id) => {
-    const spaces = appState.spaces.filter((e) => e.profile === id).map((e) => e.name);
-    return { id, label: spaces.length ? `Profil de « ${spaces.join(", ")} »` : `Profil « ${id} »`, isDefault: id === active };
+    return { id, label: profileLabel(appState, id), isDefault: id === active };
   });
 }
 
