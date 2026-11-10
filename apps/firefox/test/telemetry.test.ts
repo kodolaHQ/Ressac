@@ -28,6 +28,23 @@ describe("scrub", () => {
   });
 });
 
+describe("scrub hardening", () => {
+  it("matches url schemes case-insensitively", () => {
+    expect(scrub("HTTPS://x.fr/a and File:///Users/marie/a", home)).toBe("<url> and <url>");
+  });
+  it("replaces home only at a path boundary, trailing slash ignored", () => {
+    for (const h of [home, home + "/"]) {
+      expect(scrub("/Users/marie/x", h)).toBe("~/x");
+      expect(scrub("in /Users/marie", h)).toBe("in ~");
+      expect(scrub("/Users/marieX/f", h)).toBe("/Users/marieX/f");
+    }
+  });
+  it("scrubs no home when it is empty or the root", () => {
+    expect(scrub("/a/b", "")).toBe("/a/b");
+    expect(scrub("/a/b", "/")).toBe("/a/b");
+  });
+});
+
 describe("parseStack", () => {
   it("parses V8, oldest first", () => {
     const f = parseStack("Error: x\n    at inner (/a/b.js:1:2)\n    at /a/c.js:3:4");
@@ -62,6 +79,19 @@ describe("errorEnvelope", () => {
     for (const k of ["user", "server_name", "request"]) expect(ev).not.toHaveProperty(k);
     expect(ev.contexts?.device).toBeUndefined();
     expect(env).not.toContain(home);
+  });
+});
+
+describe("errorEnvelope caps", () => {
+  it("caps the value to 1000 chars and the stack to the 50 most recent frames", () => {
+    const stack = Array.from({ length: 80 }, (_, i) => `f${i}@chrome://x/a.js:${i + 1}:1`).join("\n");
+    const ev = JSON.parse(errorEnvelope({ source: "chrome", type: "Error", message: "x".repeat(5000), stack }, { release: "1", home, eventId: "e", now: new Date() }).split("\n")[2]!);
+    const v = ev.exception.values[0];
+    expect(v.value).toHaveLength(1000);
+    expect(v.stacktrace.frames).toHaveLength(50);
+    // Oldest first: the last frame is the most recent one (f0).
+    expect(v.stacktrace.frames.at(-1).function).toBe("f0");
+    expect(v.stacktrace.frames[0].function).toBe("f49");
   });
 });
 

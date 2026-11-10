@@ -15,11 +15,13 @@ export function parseDsn(dsn: string): { envelopeUrl: string; minidumpUrl: strin
 }
 
 // chrome:// and resource:// are not listed: they stay.
-const PRIVATE_URL = /\b(?:(?:https?|wss?|file):\/\/|blob:|data:)[^\s)'"<>]+/g;
+const PRIVATE_URL = /\b(?:(?:https?|wss?|file):\/\/|blob:|data:)[^\s)'"<>]+/gi;
 
 export function scrub(text: string, home: string): string {
   const t = text.replace(PRIVATE_URL, "<url>");
-  return home ? t.split(home).join("~") : t;
+  const h = home.replace(/\/+$/, "");
+  // Only at a path boundary: /Users/marieX is someone else's folder.
+  return h ? t.replace(new RegExp(h.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?![\\w.-])", "g"), "~") : t;
 }
 
 const V8 = /^\s*at (?:(.*?) \()?(.*?):(\d+):(\d+)\)?\s*$/;
@@ -36,7 +38,8 @@ export function parseStack(stack: string): Frame[] {
 
 export function errorEnvelope(e: ReportedError, o: { release: string; home: string; eventId: string; now: Date }): string {
   const s = (t: string) => scrub(t, o.home);
-  const frames = parseStack(e.stack ?? "").map((f) => ({ ...f, filename: s(f.filename), function: s(f.function) }));
+  // Sentry's limits: the 50 most recent frames (parseStack puts them last), a 1000-char value.
+  const frames = parseStack(e.stack ?? "").slice(-50).map((f) => ({ ...f, filename: s(f.filename), function: s(f.function) }));
   const event = {
     event_id: o.eventId,
     timestamp: o.now.toISOString(),
@@ -44,7 +47,7 @@ export function errorEnvelope(e: ReportedError, o: { release: string; home: stri
     environment: "beta",
     platform: "javascript",
     tags: { source: e.source },
-    exception: { values: [{ type: s(e.type), value: s(e.message), stacktrace: { frames } }] },
+    exception: { values: [{ type: s(e.type), value: s(e.message).slice(0, 1000), stacktrace: { frames } }] },
   };
   return [{ event_id: o.eventId, sent_at: o.now.toISOString() }, { type: "event" }, event].map((x) => JSON.stringify(x)).join("\n");
 }
