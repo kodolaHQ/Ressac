@@ -78,6 +78,27 @@ describe("Settings page", () => {
     await waitFor(m, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).state.windows[0].agentPanelOpen)();`, (v) => v === true);
   });
 
+  it("no workshop yet: Se connecter opens the agent panel, which starts it, and the account is re-read", { timeout: 60_000 }, async () => {
+    // The launch's own start fails (port taken): no container until the agent panel starts it again.
+    await launch({ FAKE_DOCKER_NO_CONTAINER: "1", FAKE_DOCKER_RUN_FAILED: "1" });
+    await openPage();
+    await shows("agent-claude", "L'atelier de l'agent n'est pas démarré");
+    await click(m, '[data-testid="agent-login"]');
+    await waitFor(m, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).state.windows[0].agentPanelOpen)();`, (v) => v === true);
+    await click(m, "button", { text: "Réessayer", frame: "agent" });
+    await shows("agent-claude", "Non connecté", 30_000);
+  });
+
+  it("host stopped: agents and local AI say the agent does not answer", async () => {
+    await launch();
+    await m.execute(`return (async () => { await window.webaiosWindow.store.agent.stop(); return true; })();`);
+    await waitFor<number | null>(m, `return window.webaiosWindow.store.agent.pid;`, (pid) => pid === null);
+    await openPage();
+    await shows("settings-agents", "L'agent ne répond pas.");
+    await shows("ai-error", "L'agent ne répond pas");
+    expect(await text("settings-ai")).not.toContain("undefined");
+  });
+
   it("Docker absent: the agents point to the workshop, which offers OrbStack", async () => {
     await launch({ FAKE_DOCKER_ABSENT: "1" });
     await openPage();

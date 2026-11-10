@@ -12,9 +12,10 @@
   let agents = $state<AgentAccount[] | null>(null);
   const loadAgents = async () => (agents = await s.agents());
   $effect(() => void loadAgents());
-  // Signing in happens in the agent panel: while an account is signed out, re-read it.
+  // Signing in happens in the agent panel (which builds the workshop if needed): while an account waits for it, re-read it.
+  const signIn = (a: AgentAccount) => a.state === "logged-out" || a.state === "no-container";
   $effect(() => {
-    if (!agents?.some((a) => a.state === "logged-out")) return;
+    if (!agents?.some(signIn)) return;
     const t = setInterval(() => void loadAgents(), 5_000);
     return () => clearInterval(t);
   });
@@ -100,7 +101,7 @@
             <b>{a.name}</b>
             <span class="muted">{agentText(a)}</span>
           </div>
-          {#if a.state === "logged-out"}
+          {#if signIn(a)}
             <div class="with-hint">
               <button data-testid="agent-login" onclick={() => s.login(a.id)}>Se connecter</button>
               <span class="hint">Claude Code vous demande de vous connecter dans le panneau de l'agent ; sinon, tapez /login.</span>
@@ -112,6 +113,8 @@
             </div>
           {/if}
         </div>
+      {:else}
+        <p class="alert">L'agent ne répond pas.</p>
       {/each}
     {/if}
   </section>
@@ -120,6 +123,9 @@
     <h2>IA locale</h2>
     {#if !ai}
       <p class="muted">Vérification…</p>
+    {:else if !ai.ollamaUrl}
+      <!-- Only the silent host gives no address; a failed check still shows Ollama as unreachable. -->
+      <p class="alert" data-testid="ai-error">{ai.error ?? "L'agent ne répond pas"}</p>
     {:else}
       <p data-testid="ai-ollama">Ollama : {v?.ollama ? "joignable" : "injoignable"} ({ai.ollamaUrl})</p>
       <p data-testid="ai-gemma">Gemma : {v?.gemma ? "installé" : "absent"} <span class="muted">— Widgets et veille : Gemma (gemma4:e4b-mlx)</span></p>

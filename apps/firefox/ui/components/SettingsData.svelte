@@ -4,16 +4,18 @@
 
   // Styles come from Settings.svelte.
   const s = api.settings;
-  let data = $state<{ dataDir: string; backups: Backup[] } | null>(null);
+  const dir = s.dataDir();
+  /** null: being measured (du over big backups takes seconds). */
+  let backups = $state<Backup[] | null>(null);
   /** A backup to delete, or the reset, awaiting confirmation. */
   let asking = $state<{ backup: string } | "reset" | null>(null);
   let exporting = $state(false);
   let message = $state<string | null>(null);
-  const load = async () => (data = await s.data());
+  const load = async () => (backups = await s.backups());
   $effect(() => void load());
 
   const RESET =
-    "Réinitialiser WebAiOs ? Ses données (espaces, onglets, historique, réglages, données des widgets et des actions) sont mises de côté dans une sauvegarde, puis WebAiOs redémarre à neuf. Restent en place : le dossier workspace (vos projets et ce que l'agent a créé), la connexion de Claude (bouton Se déconnecter, section Agents), les cookies et mots de passe du navigateur (Réglages avancés du navigateur).";
+    "Réinitialiser WebAiOs ? Ses données (espaces, onglets, historique, réglages, données des widgets et des actions, installation de Kev (IA locale, à réinstaller)) sont mises de côté dans une sauvegarde, puis WebAiOs redémarre à neuf. Restent en place : le dossier workspace (vos projets et ce que l'agent a créé), la connexion de Claude (bouton Se déconnecter, section Agents), les cookies et mots de passe du navigateur (Réglages avancés du navigateur).";
   const date = (iso: string) => new Date(iso).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" });
   const number = (n: number) => n.toLocaleString("fr-FR", { maximumFractionDigits: 1 });
   const size = (b: number) => (b >= 1e9 ? `${number(b / 1e9)} Go` : `${number(b / 1e6)} Mo`);
@@ -31,19 +33,22 @@
     exporting = false;
     message = r.ok ? `Exporté dans ${r.path}` : r.error;
   }
+  async function reset() {
+    asking = null;
+    if (!(await s.reset())) message = "Redémarrage annulé : rien n'a été réinitialisé.";
+  }
 </script>
 
 <section data-testid="settings-data">
   <h2>Données</h2>
-  {#if !data}
+  <div class="row">
+    <code class="grow" data-testid="data-dir">{dir}</code>
+    <button data-testid="data-reveal" onclick={() => s.reveal(dir)}>Afficher dans le Finder</button>
+  </div>
+  {#if !backups}
     <p class="muted">Vérification…</p>
   {:else}
-    {@const dir = data.dataDir}
-    <div class="row">
-      <code class="grow" data-testid="data-dir">{dir}</code>
-      <button data-testid="data-reveal" onclick={() => s.reveal(dir)}>Afficher dans le Finder</button>
-    </div>
-    {#each data.backups as b (b.path)}
+    {#each backups as b (b.path)}
       <div data-testid="backup-row">
         <div class="row">
           <div class="grow">
@@ -78,7 +83,7 @@
       <p>{RESET}</p>
       <div class="buttons">
         <button onclick={() => (asking = null)}>Annuler</button>
-        <button class="confirm" data-testid="confirm-reset" onclick={() => s.reset()}>Réinitialiser et redémarrer</button>
+        <button class="confirm" data-testid="confirm-reset" onclick={() => void reset()}>Réinitialiser et redémarrer</button>
       </div>
     </div>
   {/if}

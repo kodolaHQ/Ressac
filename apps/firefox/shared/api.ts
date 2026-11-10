@@ -363,12 +363,15 @@ export interface SettingsApi {
   chooseDecisionModel(model: DecisionModel): void;
   grants(): Promise<GrantRow[]>;
   revoke(kind: GrantKind, key: string): Promise<void>;
-  data(): Promise<{ dataDir: string; backups: Backup[] }>;
+  dataDir(): string;
+  /** Slow with big backups (their size is measured): loaded apart from the data folder. */
+  backups(): Promise<Backup[]>;
   reveal(path: string): void;
   deleteBackup(path: string): Promise<SettingsResult>;
   /** Reveals the file once written. */
   exportData(): Promise<{ ok: true; path: string } | { ok: false; error: string }>;
-  reset(): void;
+  /** Marks the data to set aside and restarts; false when the restart was cancelled (nothing is reset then). */
+  reset(): Promise<boolean>;
   telemetry(): Promise<{ available: boolean; enabled: boolean }>;
   setTelemetry(enabled: boolean): void;
   version(): Promise<string>;

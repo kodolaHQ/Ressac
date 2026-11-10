@@ -61,7 +61,30 @@ describe("settings api", () => {
     expect(await api.workshop()).toBeNull();
     expect((await api.grants()).map((r) => r.kind)).toEqual(["site"]);
     expect(await api.restartWorkshop(true)).toEqual({ ok: false, error: "L'agent ne répond pas" });
-    expect(await api.data()).toEqual({ dataDir: "/u/WebAiOs", backups: [] });
+    expect(api.dataDir()).toBe("/u/WebAiOs");
+    expect(await api.backups()).toEqual([]);
+    expect(await api.logout("claude")).toEqual([]);
+  });
+
+  it("the data folder does not wait for the backups", async () => {
+    const { api } = setup({ "settings.backups": () => new Promise(() => {}) });
+    expect(api.dataDir()).toBe("/u/WebAiOs");
+  });
+
+  it("logout shows the host's answer, in one request", async () => {
+    const accounts = [{ id: "claude", name: "Claude Code", state: "logged-out" }];
+    const { api, calls } = setup({ "settings.logout": () => accounts });
+    expect(await api.logout("claude")).toEqual(accounts);
+    expect(calls).toEqual([{ method: "settings.logout", params: { id: "claude" } }]);
+  });
+
+  it("reset: the chrome's answer, false when it fails", async () => {
+    const { api, chrome } = setup();
+    chrome.reset.mockResolvedValueOnce(false).mockRejectedValueOnce(new Error("disk"));
+    expect(await api.reset()).toBe(false);
+    expect(await api.reset()).toBe(false);
+    chrome.reset.mockResolvedValueOnce(true);
+    expect(await api.reset()).toBe(true);
   });
 
   it("export reveals", async () => {

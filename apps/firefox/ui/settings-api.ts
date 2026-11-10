@@ -40,10 +40,7 @@ export function createSettingsApi(o: {
   return {
     agents,
     login: () => o.openAgent(),
-    async logout(id) {
-      await ask("settings.logout", { id }, undefined);
-      return agents();
-    },
+    logout: (id) => ask<AgentAccount[]>("settings.logout", { id }, []),
     workshop: () => ask("settings.workshop", undefined, null),
     restartWorkshop: (fresh) => ask<SettingsResult>("settings.restartWorkshop", { fresh }, SILENT),
     workshopOperation: () => ask<WorkshopOperation>("settings.workshopOperation", undefined, null),
@@ -64,9 +61,8 @@ export function createSettingsApi(o: {
       } else if (kind === "external") await ask("external.revoke", { id: key }, undefined);
       else await ask("settings.revoke", { kind, key }, undefined);
     },
-    async data() {
-      return { dataDir: o.dataDir, backups: await ask<Backup[]>("settings.backups", undefined, []) };
-    },
+    dataDir: () => o.dataDir,
+    backups: () => ask<Backup[]>("settings.backups", undefined, []),
     reveal: (path) => o.chrome.reveal(path),
     deleteBackup: (path) => ask<SettingsResult>("settings.deleteBackup", { path }, SILENT),
     async exportData() {
@@ -75,7 +71,11 @@ export function createSettingsApi(o: {
       if (r.ok) o.chrome.reveal(r.path);
       return r;
     },
-    reset: () => void o.chrome.reset().catch((e) => console.error("[settings] reset:", e)),
+    reset: () =>
+      o.chrome.reset().catch((e) => {
+        console.error("[settings] reset:", e);
+        return false;
+      }),
     telemetry: async () => o.chrome.telemetry(),
     setTelemetry: (enabled) => o.chrome.setTelemetry(enabled),
     version: async () => o.chrome.version(),
