@@ -653,6 +653,16 @@ test("chooseDecisionModel changes the setting; the same model again changes noth
   expect(e).toBe(before);
 });
 
+test("chooseCodexEngine changes the setting; the same engine again changes nothing; a bad model is refused by the schema", () => {
+  const api = { ...e.settings.codexEngine, kind: "api" as const };
+  ag({ type: "chooseCodexEngine", engine: api });
+  expect(e.settings.codexEngine.kind).toBe("api");
+  const before = e;
+  ag({ type: "chooseCodexEngine", engine: { ...api } });
+  expect(e).toBe(before);
+  expect(SchemaAction.safeParse({ type: "chooseCodexEngine", engine: { ...api, apiModel: "a b" } }).success).toBe(false);
+});
+
 test("openWorkflow opens a titled webaios://workflow/<id> tab, then returns to it instead of opening a second one", () => {
   open("https://a.test/");
   ag({ type: "openWorkflow", windowId: F, id: "meteo", name: "Météo" });

@@ -278,9 +278,9 @@ export class Workshop {
    * Interactive agent session: the shell notes its PID in the container before becoming the agent (exec), so
    * that `stopSession` can kill it there. Killing the local `docker exec` client would leave the agent running.
    */
-  sessionCommand(id: string, argv: string[]): string[] {
+  sessionCommand(id: string, argv: string[], passEnv: string[] = []): string[] {
     const f = sessionFile(id);
-    return this.execCommand(["sh", "-c", `echo $$ > ${f}; exec "$@"`, "webaios-session", ...argv], { interactive: true, env: { [VARIABLE_SESSION]: id } });
+    return this.execCommand(["sh", "-c", `echo $$ > ${f}; exec "$@"`, "webaios-session", ...argv], { interactive: true, env: { [VARIABLE_SESSION]: id }, passEnv: passEnv });
   }
 
   async stopSession(id: string): Promise<void> {
@@ -320,9 +320,10 @@ export class Workshop {
     if (this.docker) await this.launch(["exec", containerName(), "sh", "-c", escalate(marks(`${VARIABLE_APPLICATION}=.*`)).join("\n")], PROBE_DELAY_MS);
   }
 
-  execCommand(argv: string[], o: { interactive: boolean; env?: Record<string, string>; folder?: string }): string[] {
+  /** `passEnv`: names only (`-e NAME`), the value comes from the caller's environment, so a token never shows in the arguments. */
+  execCommand(argv: string[], o: { interactive: boolean; env?: Record<string, string>; passEnv?: string[]; folder?: string }): string[] {
     if (!this.docker) throw new Error("Docker introuvable");
-    const env = Object.entries(o.env ?? {}).flatMap(([k, v]) => ["-e", `${k}=${v}`]);
+    const env = Object.entries(o.env ?? {}).flatMap(([k, v]) => ["-e", `${k}=${v}`]).concat((o.passEnv ?? []).flatMap((k) => ["-e", k]));
     return [this.docker, "exec", ...(o.interactive ? ["-it"] : []), ...env, "-w", o.folder ?? CONTAINER_PATH, containerName(), ...argv];
   }
 }

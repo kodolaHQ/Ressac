@@ -67,6 +67,10 @@ interface Entry {
   size: TerminalSize;
   /** Text to put in the input as soon as the session is active (see prefill). */
   prefill?: { text: string; written?: () => void };
+  /** This window's agent profile, fixed when the entry is made. */
+  profile: string;
+  /** Profiles whose session was active in this window: switching back to one resumes its conversation. */
+  ran: Set<string>;
 }
 
 /** One agent session per window (spec §8): it survives tab changes and the panel closing. */
@@ -75,18 +79,31 @@ export class SessionsAgent {
 
   constructor(
     private readonly o: {
-      open: (f: WindowId, t: TerminalSize) => Promise<SessionLike>;
+      open: (f: WindowId, t: TerminalSize, s: { profile: string; resume: boolean }) => Promise<SessionLike>;
+      /** The profile of a window that has not chosen one. */
+      defaultProfile?: () => string;
       send: (f: WindowId, channel: "data" | "state", v: string | AgentPanelState) => void;
       /** The user submits a message (Enter) in this window's terminal. */
       onSend?: (f: WindowId) => void;
     },
   ) {}
 
-  /** Idempotent: an active session returns its state and its buffer; otherwise a new session starts. */
-  start(f: WindowId, size: TerminalSize): Promise<void> {
+  private entry(f: WindowId, size: TerminalSize, profile = this.profileOf(f), ran = new Set<string>()): Entry {
     let e = this.inputs.get(f);
-    if (!e) this.inputs.set(f, (e = { buffer: new SessionBuffer(BUFFER_MAX), toSend: "", size: size }));
-    const entry = e;
+    if (!e) this.inputs.set(f, (e = { buffer: new SessionBuffer(BUFFER_MAX), toSend: "", size, profile, ran }));
+    return e;
+  }
+
+  profileOf(f: WindowId): string {
+    return this.inputs.get(f)?.profile ?? this.o.defaultProfile?.() ?? "claude";
+  }
+
+  /**
+   * Idempotent: an active session returns its state and its buffer; otherwise a new session starts.
+   * `resume` only applies to this start: Relancer/Réessayer start fresh.
+   */
+  start(f: WindowId, size: TerminalSize, resume = false): Promise<void> {
+    const entry = this.entry(f, size);
     entry.size = size;
     if (entry.session?.active) {
       entry.session.resize(size.cols, size.rows);
@@ -102,12 +119,13 @@ export class SessionsAgent {
     this.cancelSend(entry);
     this.o.send(f, "state", { state: "preparing" });
     entry.startup = this.o
-      .open(f, size)
+      .open(f, size, { profile: entry.profile, resume })
       .then(
         (s) => {
-          // Window closed during startup: nobody will display this agent.
+          // Window closed or agent switched during startup: nobody will display this agent.
           if (this.inputs.get(f) !== entry) return void s.stop();
           entry.session = s;
+          entry.ran.add(entry.profile);
           s.onData((d) => {
             entry.buffer.add(d);
             entry.toSend += d;
@@ -170,7 +188,7 @@ export class SessionsAgent {
   prefill(f: WindowId, text: string, written?: () => void): void {
     let e = this.inputs.get(f);
     if (e?.session?.active) return this.writePrefill(e.session, text, written);
-    if (!e) this.inputs.set(f, (e = { buffer: new SessionBuffer(BUFFER_MAX), toSend: "", size: { cols: 80, rows: 24 } }));
+    e ??= this.entry(f, { cols: 80, rows: 24 });
     e.prefill = { text: text, ...(written ? { written: written } : {}) };
   }
 
@@ -185,18 +203,30 @@ export class SessionsAgent {
     e?.session?.resize(t.cols, t.rows);
   }
 
-  /** Profile change: every window that had an agent gets a new one, at the same size. */
+  /** Stops an entry already taken out of the map: a startup still in flight is abandoned when it arrives. */
+  private drop(e: Entry): void {
+    this.cancelSend(e);
+    const s = e.session;
+    e.session = undefined;
+    void s?.stop();
+  }
+
+  /** Workshop restart: every window that had an agent gets a new one of its own profile, at the same size, without resuming. */
   async relaunchAll(): Promise<void> {
     const olds = [...this.inputs];
-    // New entries: a startup still in progress on the old kernel will be abandoned when it arrives.
     this.inputs.clear();
-    for (const [, e] of olds) {
-      this.cancelSend(e);
-      const s = e.session;
-      e.session = undefined;
-      void s?.stop();
-    }
-    await Promise.all(olds.map(([f, e]) => this.start(f, e.size)));
+    for (const [, e] of olds) this.drop(e);
+    await Promise.all(olds.map(([f, e]) => (this.entry(f, e.size, e.profile, e.ran), this.start(f, e.size))));
+  }
+
+  /** This window only changes agent; switching back to a profile that ran here resumes its last conversation. */
+  async switchProfile(f: WindowId, profile: string): Promise<void> {
+    if (this.profileOf(f) === profile) return;
+    const old = this.inputs.get(f);
+    this.inputs.delete(f);
+    if (old) this.drop(old);
+    const e = this.entry(f, old?.size ?? { cols: 80, rows: 24 }, profile, old?.ran);
+    await this.start(f, e.size, e.ran.has(profile));
   }
 
   /** Hands control back once the agent is stopped in the container. */

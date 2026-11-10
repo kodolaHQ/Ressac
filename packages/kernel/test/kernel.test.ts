@@ -1,4 +1,5 @@
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi, type MockInstance } from "vitest";
+import { SessionAgent } from "../src/pty/session.js";
 import { Workshop } from "../src/container/workshop.js";
 import type { Runner } from "../src/container/runner.js";
 import { spacePaths } from "../src/paths.js";
@@ -449,4 +450,52 @@ test("kernel.actions: accorder records the grant without running anything; refus
   await n.actions.denyGrant("gitlab");
   expect((await readGrants(actionsFolder)).gitlab).toBeUndefined();
   expect(await n.actions.runs("gitlab")).toEqual([]);
+});
+
+describe("openAgentSession with a profile", () => {
+  async function started(attempt: (n: Kernel, start: MockInstance<typeof SessionAgent.start>) => Promise<void>) {
+    const n = await createReady();
+    const start = vi.spyOn(SessionAgent, "start");
+    try {
+      await attempt(n, start);
+    } finally {
+      start.mockRestore();
+    }
+  }
+
+  test("codex: -c argument, no session file, token by environment", async () => {
+    await started(async (n, start) => {
+      const s = await n.openAgentSession({ cols: 80, rows: 24, window: "f1", profile: "codex" });
+      const [command, o] = start.mock.calls[0]!;
+      expect(command.at(-1)).toMatch(/^mcp_servers\.webaios=\{url="http:\/\/host\.docker\.internal:\d+\/mcp",bearer_token_env_var="WEBAIOS_MCP_TOKEN"\}$/);
+      expect(command.at(-2)).toBe("-c");
+      expect(command.some((a) => a.startsWith("WEBAIOS_MCP_TOKEN="))).toBe(false);
+      expect(o.env!.WEBAIOS_MCP_TOKEN).toMatch(/^[0-9a-f]{64}$/);
+      expect(existsSync(join(n.paths.internal, "sessions"))).toBe(false);
+      await s.stop();
+    });
+  });
+
+  test("codex resume with extra args and env", async () => {
+    await started(async (n, start) => {
+      const s = await n.openAgentSession({ cols: 80, rows: 24, window: "f1", profile: "codex", resume: true, extra: { args: ["-m", "x"], env: { WEBAIOS_ENGINE_TOKEN: "t" } } });
+      const [command, o] = start.mock.calls[0]!;
+      expect(command.slice(command.indexOf("codex"), command.indexOf("codex") + 3)).toEqual(["codex", "resume", "--last"]);
+      expect(command.slice(-2)).toEqual(["-m", "x"]);
+      expect(o.env!.WEBAIOS_ENGINE_TOKEN).toBe("t");
+      expect(command[command.indexOf("WEBAIOS_ENGINE_TOKEN") - 1]).toBe("-e");
+      await s.stop();
+    });
+  });
+
+  test("an unknown profile is rejected; claude still writes its 0600 session file", async () => {
+    await started(async (n) => {
+      await expect(n.openAgentSession({ cols: 80, rows: 24, profile: "inconnu" })).rejects.toThrow("Profil d'agent inconnu : inconnu");
+      const s = await n.openAgentSession({ cols: 80, rows: 24, window: "f1", profile: "claude" });
+      const folder = join(n.paths.internal, "sessions");
+      const [file] = await readdir(folder);
+      expect((await stat(join(folder, file!))).mode & 0o777).toBe(0o600);
+      await s.stop();
+    });
+  });
 });

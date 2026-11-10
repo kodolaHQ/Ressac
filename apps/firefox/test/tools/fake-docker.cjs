@@ -161,6 +161,23 @@ if (args[0] === "exec") {
     rmSync(auth, { force: true });
     quit(0);
   }
+  // Codex's account: <WEBAIOS_ROOT>/fake-codex-auth means signed in; the sign-in by code creates it 1 s after showing the code.
+  const codexAuth = join(env.WEBAIOS_ROOT, "fake-codex-auth");
+  if (command.join(" ") === "codex login status") quit(existsSync(codexAuth) ? 0 : 1, "", existsSync(codexAuth) ? "Logged in using ChatGPT\n" : "Not logged in\n");
+  if (command.join(" ") === "codex logout") {
+    rmSync(codexAuth, { force: true });
+    quit(0);
+  }
+  if (command.join(" ") === "codex login --device-auth") {
+    process.stderr.write("Follow these steps to sign in:\n1. Open https://auth.openai.com/codex/device\n2. Enter this code: ABCD-12345\n");
+    // <WEBAIOS_ROOT>/fake-codex-device-delay-ms: how long the code takes to be "entered" (1 s by default); a test changes it between sign-ins.
+    const delayFile = join(env.WEBAIOS_ROOT, "fake-codex-device-delay-ms");
+    setTimeout(() => {
+      writeFileSync(codexAuth, "");
+      process.exit(0);
+    }, existsSync(delayFile) ? Number(readFileSync(delayFile, "utf8")) : 1_000);
+    return;
+  }
   // Stop of a session or an app in the container (Workshop session and app stops…): noted for the
   // tests; the targeted apps are killed beforehand, the log is the proof of the stop.
   if (command[0] === "sh" && !command[2].includes('exec "$@"')) {
@@ -170,7 +187,16 @@ if (args[0] === "exec") {
   }
   // Interactive session (Workshop.sessionCommand): sh -c '<notes the PID>; exec "$@"' webaios-session <agent…>
   if (command[0] === "sh") command = command.slice(4);
-  const r = spawnSync(process.execPath, [join(__dirname, "fake-agent.mjs"), ...command], { stdio: "inherit" });
+  // Like docker exec: `-e NAME=value` sets it, `-e NAME` passes the client's value (session tokens).
+  const vars = {};
+  for (let i = 0; i < options.length; i++)
+    if (options[i] === "-e") {
+      const [key, ...value] = options[++i].split("=");
+      vars[key] = value.length ? value.join("=") : env[key];
+    }
+  // What the agent received from docker exec, for the tests.
+  writeFileSync(join(env.WEBAIOS_ROOT, "fake-agent-env.json"), JSON.stringify(Object.fromEntries(Object.entries(vars).filter(([k]) => k.startsWith("WEBAIOS_")))));
+  const r = spawnSync(process.execPath, [join(__dirname, "fake-agent.mjs"), ...command], { stdio: "inherit", env: { ...env, ...vars } });
   process.exit(r.status ?? 1);
 }
 quit(0);

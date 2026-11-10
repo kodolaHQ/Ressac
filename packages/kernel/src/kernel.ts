@@ -9,7 +9,7 @@ import type { HomeState, WidgetState, WidgetRead } from "./home/schemas.js";
 import { writeWidgetState, readData, readWidgetState, deleteData } from "./home/data.js";
 import { watchHome } from "./home/watch.js";
 import { loadProfiles, buildCommand } from "./profiles/profile.js";
-import { writeMcpConfig, writeSessionConfig } from "./profiles/config-mcp.js";
+import { writeMcpConfig, writeSessionConfig, mcpArgument, MCP_TOKEN_VARIABLE } from "./profiles/config-mcp.js";
 import { Workshop, DEFAULT_DOCKER_FOLDER, type WorkshopState } from "./container/workshop.js";
 import { defaultRunner, type Runner } from "./container/runner.js";
 import { SessionAgent } from "./pty/session.js";
@@ -219,7 +219,17 @@ export interface Kernel {
   agent: string;
   workshopState(): Promise<WorkshopState>;
   /** New conversation: erases the authorizations. Signal the current tab (interactionUtilisateur) afterwards. */
-  openAgentSession(o: { cols: number; rows: number; window?: string }): Promise<SessionAgent>;
+  openAgentSession(o: {
+    cols: number;
+    rows: number;
+    window?: string;
+    /** Profile id; absent: the profile the kernel started with. Read again at each session. */
+    profile?: string;
+    /** Continue the profile's last conversation (when it has a resume command). */
+    resume?: boolean;
+    /** Appended to the command, and passed by name to the container (values go to the local `docker exec` only). */
+    extra?: { args: string[]; env: Record<string, string> };
+  }): Promise<SessionAgent>;
   /** Widgets of the home page, with their data and state (stored outside the workspace). */
   readHome(): Promise<HomeState>;
   watchHome(callback: () => void): () => Promise<void>;
@@ -377,7 +387,8 @@ export async function createKernel(o: {
     // Session configs left by a crash: their tokens are worth nothing any more.
     // A failure does not prevent starting: dead tokens are harmless.
     await rm(sessionsFolder(paths), { recursive: true, force: true }).catch((e) => console.error("[webaios] session configs purge:", e));
-    await writeMcpConfig(paths, profile.mcpConfig, { url: server.containerUrl, token: token });
+    // The one config file whatever the default profile (Codex takes its server by argument): window-less sessions, tools.
+    await writeMcpConfig(paths, "claude-json", { url: server.containerUrl, token: token });
   } catch (e) {
     await server.stop();
     owner?.release();
@@ -514,7 +525,9 @@ export async function createKernel(o: {
     policy: policy,
     agent: profile.name,
     workshopState: () => workshop.state(),
-    async openAgentSession({ cols, rows, window: win }) {
+    async openAgentSession({ cols, rows, window: win, profile: profileChoice, resume, extra }) {
+      const chosen = profileChoice === undefined ? profile : (await loadProfiles(paths)).profiles.find((p) => p.id === profileChoice);
+      if (!chosen) throw new Error(`Profil d'agent inconnu : ${profileChoice}`);
       const first = startup;
       startup = null;
       const attempt = first ? first.then(() => workshop.ensureStarted()) : workshop.ensureStarted();
@@ -540,14 +553,19 @@ export async function createKernel(o: {
         return rm(configSession, { force: true }).catch((e) => console.error("[webaios] session config deletion:", e));
       };
       try {
-        if (win !== undefined) {
-          sessionToken = server.openSession(win);
-          await writeSessionConfig(paths, profile.mcpConfig, { url: server.containerUrl, token: sessionToken }, id);
+        if (win !== undefined) sessionToken = server.openSession(win, chosen.name);
+        let mcpConfig: string;
+        let env: Record<string, string> = {};
+        if (chosen.mcpConfig === "codex-toml") {
+          mcpConfig = mcpArgument({ url: server.containerUrl });
+          env = { [MCP_TOKEN_VARIABLE]: sessionToken ?? token, ...extra?.env };
+        } else {
+          if (sessionToken !== undefined) await writeSessionConfig(paths, chosen.mcpConfig, { url: server.containerUrl, token: sessionToken }, id);
+          mcpConfig = pathInContainer(sessionToken !== undefined ? configSession : paths.mcpConfig, paths);
+          env = { ...extra?.env };
         }
-        const command = buildCommand(profile, "interactive", {
-          mcpConfig: pathInContainer(win !== undefined ? configSession : paths.mcpConfig, paths),
-        });
-        const session = SessionAgent.start(workshop.sessionCommand(id, command), { cols, rows, stopRemote: () => workshop.stopSession(id) });
+        const command = [...buildCommand(chosen, resume && chosen.resume ? "resume" : "interactive", { mcpConfig: mcpConfig }), ...(extra?.args ?? [])];
+        const session = SessionAgent.start(workshop.sessionCommand(id, command, Object.keys(env)), { cols, rows, env: env, stopRemote: () => workshop.stopSession(id) });
         openSessions.add(clean);
         session.onEnd(() => {
           openSessions.delete(clean);

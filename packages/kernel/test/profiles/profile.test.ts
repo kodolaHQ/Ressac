@@ -41,3 +41,16 @@ test("loadProfiles ignores an invalid profile and reports it", async () => {
   expect(errors).toHaveLength(1);
   expect(errors[0]!.file).toBe(join(c.profiles, "casse.json"));
 });
+
+const codex = Profile.parse(JSON.parse(await readFile(join(import.meta.dirname, "../../templates/codex-profile.json"), "utf8")));
+
+test("a codex-toml profile with resume loads; buildCommand resume uses it", () => {
+  expect(codex.mcpConfig).toBe("codex-toml");
+  expect(buildCommand(codex, "resume", { mcpConfig: "X" })).toEqual(["codex", "resume", "--last", "--dangerously-bypass-approvals-and-sandbox", "-c", "X"]);
+});
+
+test("buildCommand resume without a resume command throws; an unknown mcpConfig is refused", () => {
+  const { resume: _, ...without } = codex;
+  expect(() => buildCommand(without, "resume", { mcpConfig: "X" })).toThrow("Profil codex : pas de commande resume");
+  expect(Profile.safeParse({ ...codex, mcpConfig: "autre" }).success).toBe(false);
+});

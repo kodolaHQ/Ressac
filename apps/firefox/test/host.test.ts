@@ -183,24 +183,73 @@ describe("agent host", { timeout: 30_000 }, () => {
     mkdirSync(join(h.root, ".webaios", "profiles"), { recursive: true });
     writeFileSync(join(h.root, ".webaios", "profiles", "autre.json"), JSON.stringify({ id: "autre", name: "Autre", interactive: ["a"], nonInteractive: ["a"], mcpConfig: "claude-json" }));
     const started = h.rpc.request("start", { agentProfile: "claude" });
-    expect((await h.rpc.request<{ id: string }[]>("agent.profiles")).map((p) => p.id)).toEqual(["autre", "claude"]);
+    expect((await h.rpc.request<{ id: string }[]>("agent.profiles")).map((p) => p.id)).toEqual(["autre", "claude", "codex"]);
     await started;
   });
 
-  it("demarrer with another profile restarts the sessions", async () => {
+  const args = (h: Host) => JSON.parse(readFileSync(join(h.root, "fake-agent-args.json"), "utf8")) as string[];
+  const stopsLog = (h: Host) => (existsSync(join(h.root, "fake-docker-stops.log")) ? readFileSync(join(h.root, "fake-docker-stops.log"), "utf8") : "");
+  const sessionStops = (h: Host) => stopsLog(h).split("\n").filter((l) => l.includes("webaios-session-")).length;
+  /** Starts the window's agent and waits for its prompt; returns the arguments it got. */
+  const agentReady = async (h: Host, f: string) => {
+    const before = h.data().split("fake agent ready>").length;
+    await h.rpc.request("agent.start", { window: f, size: { cols: 80, rows: 24 } });
+    await until(() => h.data().split("fake agent ready>").length > before);
+    return args(h);
+  };
+
+  it("changing the default does not touch open agents", async () => {
     const h = startHost();
     await h.rpc.request("start", { agentProfile: "claude" });
-    const profiles = join(h.root, ".webaios", "profiles");
-    writeFileSync(join(profiles, "autre.json"), readFileSync(join(profiles, "claude.json"), "utf8").replace('"id": "claude"', '"id": "autre"'));
+    await agentReady(h, "f1");
+    const before = stopsLog(h);
+    expect(await h.rpc.request("start", { agentProfile: "codex" })).toEqual({ agent: expect.any(String) });
+    expect((await agentReady(h, "f2"))[0]).toBe("codex");
+    expect(stopsLog(h)).toBe(before);
+    expect(await h.rpc.request("agent.current", { window: "f1" })).toBe("claude");
+  });
+
+  it("agent.switch: only this window's agent, resumed on the way back", async () => {
+    const h = startHost();
+    await h.rpc.request("start", { agentProfile: "claude" });
+    await agentReady(h, "f1");
+    const stops = sessionStops(h);
+    const ready = h.data().split("fake agent ready>").length;
+    await h.rpc.request("agent.switch", { window: "f1", profile: "codex" });
+    await until(() => h.data().split("fake agent ready>").length > ready);
+    expect(args(h)[0]).toBe("codex");
+    await until(() => sessionStops(h) > stops);
+    expect(await h.rpc.request("agent.current", { window: "f1" })).toBe("codex");
+    const again = h.data().split("fake agent ready>").length;
+    await h.rpc.request("agent.switch", { window: "f1", profile: "claude" });
+    await until(() => h.data().split("fake agent ready>").length > again);
+    expect(args(h)).toContain("--continue");
+    await h.rpc.request("agent.switch", { window: "f1", profile: "../x" });
+    expect(await h.rpc.request("agent.current", { window: "f1" })).toBe("claude");
+  });
+
+  it("codex with the compatible API: engine arguments through the relay, never the key", async () => {
+    const key = "sk-secret-123";
+    const keyFile = join(mkdtempSync(join(tmpdir(), "webaios-key-")), "key");
+    writeFileSync(keyFile, key);
+    const k = startHost({ WEBAIOS_TEST_KEYCHAIN: keyFile });
+    k.rpc.notify("agent.codexEngine", { engine: { kind: "api", apiUrl: "https://api.example/v1", apiModel: "m", ollamaUrl: "", ollamaModel: "" } });
+    await k.rpc.request("start", { agentProfile: "codex" });
+    const a = await agentReady(k, "f1");
+    expect(a[0]).toBe("codex");
+    expect(a).toContain('model_provider="webaios-api"');
+    expect(a[a.indexOf("-m") + 1]).toBe("m");
+    expect(a.some((x) => x.includes(key))).toBe(false);
+    expect(readFileSync(k.log, "utf8")).not.toContain(key);
+  });
+
+  it("codex engine incomplete: no key → the panel says why", async () => {
+    const h = startHost();
+    h.rpc.notify("agent.codexEngine", { engine: { kind: "api", apiUrl: "https://api.example/v1", apiModel: "m", ollamaUrl: "", ollamaModel: "" } });
+    await h.rpc.request("start", { agentProfile: "codex" });
     await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
-    await until(() => h.data().includes("fake agent ready>"));
-    const stops = join(h.root, "fake-docker-stops.log");
-    const before = readFileSync(stops, "utf8");
-    h.states.length = 0;
-    await h.rpc.request("start", { agentProfile: "autre" });
-    await until(() => h.states.some((e) => (e as { state: string }).state === "active"));
-    // The old session was stopped in the container.
-    await until(() => readFileSync(stops, "utf8").slice(before.length).includes("webaios-session-"));
+    await until(() => h.states.some((e) => (e as { state: string }).state === "error"));
+    expect(h.states.at(-1)).toEqual({ state: "error", message: "Aucune clé enregistrée pour l'API compatible (Réglages › Agents)." });
   });
 
   it("docker absent → etat docker-absent", async () => {

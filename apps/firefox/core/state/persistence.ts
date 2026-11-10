@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import type { BrowserState } from "../../shared/model";
+import { CodexEngineSchema, DEFAULT_CODEX_ENGINE } from "../../shared/settings";
 import { initialState } from "./initial-state";
 
 const FILE = "session.json";
@@ -44,7 +45,7 @@ const SchemaSession = z.object({
       }),
     )
     .min(1),
-  settings: z.object({ engine: z.enum(["google", "duckduckgo", "qwant"]), agentProfile: z.string().min(1).default("claude"), agentPanelWidth: z.number().default(420), decisionModel: z.enum(["pplx-decider-flash", "kev"]).catch("pplx-decider-flash") }),
+  settings: z.object({ engine: z.enum(["google", "duckduckgo", "qwant"]), agentProfile: z.string().min(1).default("claude"), agentPanelWidth: z.number().default(420), decisionModel: z.enum(["pplx-decider-flash", "kev"]).catch("pplx-decider-flash"), codexEngine: CodexEngineSchema.catch(() => ({ ...DEFAULT_CODEX_ENGINE })) }),
 });
 
 /** A login profile used by a space is always listed: otherwise it would be taken for a profile to erase. */

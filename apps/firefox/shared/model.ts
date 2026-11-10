@@ -1,6 +1,6 @@
 import type { DevRight, TabAccessState, Owner } from "@webaios/kernel";
 import type { ExtensionCard } from "./extensions";
-import type { DecisionModel } from "./settings";
+import type { CodexEngine, DecisionModel } from "./settings";
 
 /** Internal Applications page: a tab without a web page, displayed by the UI. */
 export const URL_APPLICATIONS = "webaios://apps";
@@ -155,6 +155,8 @@ export interface BrowserState {
     agentPanelWidth: number;
     /** The model that decides the workflows' watch notices. */
     decisionModel: DecisionModel;
+    /** The engine Codex runs on (account, local Ollama or compatible API). */
+    codexEngine: CodexEngine;
   };
 }
 

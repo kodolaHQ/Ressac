@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { DEFAULT_CODEX_ENGINE } from "../../shared/settings";
 import { DEFAULT_PROFILE, type BrowserState } from "../../shared/model";
 
 export function initialState(genId: () => string = randomUUID): BrowserState {
@@ -21,6 +22,6 @@ export function initialState(genId: () => string = randomUUID): BrowserState {
         frame: null,
       },
     ],
-    settings: { engine: "google", agentProfile: "claude", agentPanelWidth: 420, decisionModel: "pplx-decider-flash" },
+    settings: { engine: "google", agentProfile: "claude", agentPanelWidth: 420, decisionModel: "pplx-decider-flash", codexEngine: { ...DEFAULT_CODEX_ENGINE } },
   };
 }

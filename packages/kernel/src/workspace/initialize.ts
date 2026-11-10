@@ -85,6 +85,7 @@ async function matches(c: SpacePaths, models: string): Promise<[string, string][
     ["AGENTS.md", join(c.root, "AGENTS.md")],
     ["CLAUDE.md", join(c.root, "CLAUDE.md")],
     ["agent-profile.json", join(c.profiles, "claude.json")],
+    ["codex-profile.json", join(c.profiles, "codex.json")],
     ["layout.json", c.layout],
   ];
   if (!existsSync(c.widgets)) {
@@ -148,13 +149,18 @@ async function updateStartDisplay(c: SpacePaths, models: string, id: keyof typeo
 
 /** sha256 of old shipped versions of the `CLAUDE.md` and agent profile templates: a copy left as shipped is replaced. */
 export const OLD_CLAUDE_MD: ReadonlySet<string> = new Set(["11baa6aab5848a8fff974dabc5e78e9ccc69b8d2a53a91d23fa9a3f0ca73632b"]);
-export const OLD_AGENT_PROFILE: ReadonlySet<string> = new Set(["2e20e733cc7c9aa30c807e227a6547824afbfc1f6a8ffe0c005cc9f51c039085"]);
+export const OLD_AGENT_PROFILE: ReadonlySet<string> = new Set([
+  "2e20e733cc7c9aa30c807e227a6547824afbfc1f6a8ffe0c005cc9f51c039085",
+  "0fb830fc421a5c48f8de042d8e7e722a4e8c4ef38c6c2e4738ac8b389b4f4816",
+]);
+export const OLD_CODEX_PROFILE: ReadonlySet<string> = new Set<string>();
 
 /** The templates replaced when the user's copy is still a shipped version (the hashes of every old version). */
 const OLD_TEMPLATES: Readonly<Record<string, ReadonlySet<string>>> = {
   "AGENTS.md": OLD_AGENTS,
   "CLAUDE.md": OLD_CLAUDE_MD,
   "agent-profile.json": OLD_AGENT_PROFILE,
+  "codex-profile.json": OLD_CODEX_PROFILE,
 };
 
 /**

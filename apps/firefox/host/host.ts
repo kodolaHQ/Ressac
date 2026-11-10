@@ -31,6 +31,10 @@ const { createSettingsHandlers, SETTINGS_METHODS } = await import("./settings.ts
 const { createApplicationsHost } = await import("./applications.ts");
 const { createActionsHost } = await import("./actions.ts");
 const { ExtensionsAgent } = await import("./extensions/agent.ts");
+const { keychain } = await import("./keychain.ts");
+const { startRelay } = await import("./relay.ts");
+const { codexEngineArgs } = await import("./codex-engine.ts");
+const { CodexEngineSchema, DEFAULT_CODEX_ENGINE, apiUrlProblem } = await import("../shared/settings.ts");
 const { STORE_ABSENT } = await import("./extensions/amo.ts");
 const { executionWidget, executionsWidget, placeWidgets, removeWidget, validatePlacements, toShownWidgets } = await import("./widgets.ts");
 const { ACTION_ALREADY_RUNNING } = await import("../shared/actions.ts");
@@ -214,16 +218,23 @@ const denyWidget = async (w: string) => {
   await deleteData(widgetsFolder, w);
 };
 
-let profile: string | null = null;
-// Another profile: a new kernel (command, MCP config) and a new agent in every panel. Never two kernels at once:
-// two MCP servers would write the same mcp.json.
-const changeProfile = (agentProfile: string) => {
-  const relaunch = profile !== null;
-  profile = agentProfile;
-  ready = ready.then(stopKernel).then(() => launchKernel(agentProfile));
-  if (relaunch) void sessions.relaunchAll();
-  return start();
-};
+// The profile of windows that have not chosen their agent. One kernel serves every profile: it starts once.
+let defaultProfile = "claude";
+let kernelLaunched = false;
+
+// Codex's engine (Settings › Agents) and the relay that adds the compatible API's key, which stays on the Mac.
+let engine = DEFAULT_CODEX_ENGINE;
+const keys = keychain();
+let cachedKey: string | undefined;
+// Called after the key is written or removed (Settings › Agents).
+const forgetKey = () => void (cachedKey = undefined);
+const relay = await startRelay({
+  // Only a string is kept: a failed read (Keychain locked) is tried again.
+  readKey: async () => {
+    cachedKey ??= (await keys.read()) ?? undefined;
+    return cachedKey ?? null;
+  },
+});
 
 let stopping: Promise<void> | undefined;
 const stop = () =>
@@ -235,7 +246,9 @@ const stop = () =>
       console.error("[webaios] the apps did not stop:", e),
     );
     extensions.stop();
+    settings.stopLogins();
     await sessions.stopAll();
+    await relay.stop();
     await sites.stop();
     await design.stop();
     await actionsStop?.();
@@ -247,10 +260,22 @@ const stop = () =>
   })());
 
 const sessions = new SessionsAgent({
-  async open(f, t) {
+  defaultProfile: () => defaultProfile,
+  async open(f, t, { profile, resume }) {
     const n = await ready;
     if (!n) throw new Error(error ?? "le noyau de l'agent n'a pas démarré");
-    return n.openAgentSession({ ...t, window: f });
+    if (profile !== "codex") return n.openAgentSession({ ...t, window: f, profile, resume });
+    const e = engine;
+    const token = e.kind === "api" && (await keys.has()) ? relay.openSession(e.apiUrl) : null;
+    try {
+      const extra = codexEngineArgs(e, token ? { url: relay.containerUrl, token } : null);
+      const session = await n.openAgentSession({ ...t, window: f, profile, resume, extra });
+      if (token) session.onEnd(() => relay.closeSession(token));
+      return session;
+    } catch (err) {
+      if (token) relay.closeSession(token);
+      throw err;
+    }
   },
   // The user talks to the agent from the tab on screen: it is given to the agent.
   onSend: (f) => {
@@ -265,13 +290,26 @@ const sessions = new SessionsAgent({
 const rpc = createRpc({
   send: (line) => void writeStdout(line + "\n"),
   handlers: {
-    // Repeated with the same profile: the running kernel stays (its sessions with it); a failed start is retried.
+    // Sets the default profile; the kernel starts once (its sessions stay), a failed start is retried.
     start: async (p: { agentProfile: string }) => {
-      if (profile === p.agentProfile && (await ready)) return start();
-      return changeProfile(p.agentProfile);
+      defaultProfile = p.agentProfile;
+      if (!kernelLaunched || !(await ready)) {
+        kernelLaunched = true;
+        ready = ready.then(stopKernel).then(() => launchKernel(p.agentProfile));
+      }
+      return start();
     },
-    changeProfile: (p: { agentProfile: string }) => changeProfile(p.agentProfile),
+    // Only new windows take the new default: open agents stay.
+    changeProfile: (p: { agentProfile: string }) => void (defaultProfile = p.agentProfile),
     "agent.start": (p: { window: string; size: TerminalSize }) => sessions.start(p.window, p.size),
+    "agent.switch": async (p: { window: string; profile: unknown }) => {
+      if (typeof p.profile === "string" && /^[\w-]{1,64}$/.test(p.profile)) await sessions.switchProfile(p.window, p.profile);
+    },
+    "agent.current": (p: { window: string }) => sessions.profileOf(p.window),
+    "agent.codexEngine": (p: { engine: unknown }) => {
+      const r = CodexEngineSchema.safeParse(p?.engine);
+      if (r.success) engine = r.data;
+    },
     "agent.profiles": async () => {
       // The kernel writes the default profile while it starts: the panel may ask before that.
       await ready;
@@ -710,6 +748,9 @@ const settings = createSettingsHandlers({
   denyWidget,
   denyAction: async (id) => void (await actions.denyGrant(id)),
   revokeSite: (id) => sites.revokeGrant(id),
+  deviceCommand: (argv) => workshop.execCommand(argv, { interactive: false }),
+  keychain: keys,
+  forgetKey,
 });
 // The chrome may not answer yet (its handlers come up later): it calls "sites.ready" once it does.
 void sites.resync().catch(() => {});

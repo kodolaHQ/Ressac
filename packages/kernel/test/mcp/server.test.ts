@@ -1321,3 +1321,17 @@ test("list_sites: multi-line name, error and id brought back to one line, length
   expect(t.split("\n")).toHaveLength(1);
   expect(t.length).toBeLessThan(800);
 });
+
+test("a session token opened with an agent name asks under that name", async () => {
+  const { tools: tools } = fakeWidgets();
+  await withWidgets(tools, { widgetData: false });
+  const c = new Client({ name: "test", version: "0" });
+  await c.connect(
+    new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${server.port}/mcp`), {
+      requestInit: { headers: { Authorization: `Bearer ${server.openSession("F1", "Codex")}` } },
+    }),
+  );
+  await c.callTool({ name: "widget_data", arguments: { id: "daily" } });
+  await c.close();
+  expect(dataCards()[0]!.args[0]).toEqual({ id: "daily", name: "daily.dev", agent: "Codex" });
+});

@@ -17,9 +17,10 @@
 
 <script lang="ts">
   import type { LocalAiStateShown, SettingsApi } from "../../shared/api";
-  import { TELEMETRY_NOTICE, type AgentAccount, type DecisionModel, type WorkshopOperation } from "../../shared/settings";
+  import { TELEMETRY_NOTICE, type AgentAccount, type DecisionModel, type LoginResult, type WorkshopOperation } from "../../shared/settings";
   import { api, appState } from "../state.svelte";
   import Icon from "./Icon.svelte";
+  import SettingsCodex from "./SettingsCodex.svelte";
   import SettingsData from "./SettingsData.svelte";
   import SettingsPermissions from "./SettingsPermissions.svelte";
 
@@ -28,12 +29,18 @@
   type WorkshopState = NonNullable<Awaited<ReturnType<SettingsApi["workshop"]>>>;
 
   let agents = $state<AgentAccount[] | null>(null);
-  const loadAgents = async () => (agents = await s.agents());
+  /** Each account's sign-in in progress: null while the host starts it, then its code or its error. */
+  let logins = $state<Record<string, LoginResult | null>>({});
+  const loadAgents = async () => {
+    agents = await s.agents();
+    // A finished sign-in forgets its code: after a logout, the row offers Se connecter again.
+    for (const a of agents) if (a.state === "logged-in") delete logins[a.id];
+  };
   $effect(() => void loadAgents());
-  // Signing in happens in the agent panel (which builds the workshop if needed): while an account waits for it, re-read it.
+  // Claude signs in in the agent panel (which builds the workshop if needed), Codex by a code on OpenAI's site: re-read only while one is awaited (a Codex code shown, or Claude signed out).
   const signIn = (a: AgentAccount) => a.state === "logged-out" || a.state === "no-container";
   $effect(() => {
-    if (!agents?.some(signIn)) return;
+    if (!agents?.some((a) => signIn(a) && (a.login === "panel" || logins[a.id] !== undefined))) return;
     const t = setInterval(() => void loadAgents(), 5_000);
     return () => clearInterval(t);
   });
@@ -55,7 +62,12 @@
     return a.state === "logged-in" ? "ok" : a.state === "logged-out" ? "off" : a.state === "error" ? "error" : "warn";
   }
   async function logout(id: string) {
+    delete logins[id];
     agents = await s.logout(id);
+  }
+  async function login(id: string) {
+    logins[id] = null;
+    logins[id] = await s.login(id);
   }
 
   let ai = $state<LocalAiStateShown | null>(null);
@@ -90,7 +102,7 @@
   const WORKSHOP_TONE: Record<WorkshopState, string> = { demarre: "ok", arrete: "off", absent: "off", "docker-absent": "warn" };
   const CONFIRM = {
     restart: "Les agents et les applis en cours s'arrêtent, puis les agents se relancent.",
-    rebuild: "La reconstruction réinstalle Claude Code et prend quelques minutes. Les agents et les applis en cours s'arrêtent ; vos projets et la connexion de Claude restent.",
+    rebuild: "La reconstruction réinstalle Claude Code et Codex et prend quelques minutes. Les agents et les applis en cours s'arrêtent ; vos projets et les connexions de Claude et de Codex restent.",
   };
   async function operate(kind: "restart" | "rebuild") {
     asking = null;
@@ -132,18 +144,34 @@
                 <div class="grow">
                   <b>{a.name}</b>
                   {#if signIn(a)}
-                    <span class="muted">Claude Code vous demande de vous connecter dans le panneau de l'agent ; sinon, tapez /login.</span>
+                    {@const l = logins[a.id]}
+                    {#if l?.kind === "device"}
+                      <span class="muted">Ouvrez la page de connexion et saisissez le code <code data-testid="device-code">{l.code}</code></span>
+                      <span class="muted">En attente de la connexion…</span>
+                    {:else if l?.kind === "error"}
+                      <span class="alert">Erreur : {l.error}</span>
+                    {:else if a.login === "panel"}
+                      <span class="muted">Claude Code vous demande de vous connecter dans le panneau de l'agent ; sinon, tapez /login.</span>
+                    {:else}
+                      <span class="muted">Connexion avec votre abonnement ChatGPT : un code à saisir sur le site d'OpenAI.</span>
+                    {/if}
                   {:else if a.state === "logged-in"}
                     <span class="muted">Les conversations déjà ouvertes continuent jusqu'à leur relance.</span>
                   {/if}
                 </div>
                 <span class="pill" data-tone={agentTone(a)}>{agentText(a)}</span>
                 {#if signIn(a)}
-                  <button class="primary" data-testid="agent-login" onclick={() => s.login(a.id)}>Se connecter</button>
+                  {@const l = logins[a.id]}
+                  {#if l?.kind === "device"}
+                    <button class="primary" data-testid="device-open" onclick={() => s.openUrl(l.url)}>Ouvrir la page de connexion</button>
+                  {:else}
+                    <button class="primary" data-testid="agent-login" disabled={l === null} onclick={() => void login(a.id)}>Se connecter</button>
+                  {/if}
                 {:else if a.state === "logged-in"}
                   <button data-testid="agent-logout" onclick={() => void logout(a.id)}>Se déconnecter</button>
                 {/if}
               </div>
+              {#if a.id === "codex"}<SettingsCodex />{/if}
             {:else}
               <div class="row"><span class="pill" data-tone="error">L'agent ne répond pas.</span></div>
             {/each}

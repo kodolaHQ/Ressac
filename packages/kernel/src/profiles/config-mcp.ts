@@ -4,15 +4,17 @@ import { dirname } from "node:path";
 import { sessionConfigPath, sessionsFolder, type SpacePaths } from "../paths.js";
 import type { Profile } from "./profile.js";
 
+/** Codex takes no file: the server is declared by a `-c` argument, and the token travels in this environment variable. */
+export const MCP_TOKEN_VARIABLE = "WEBAIOS_MCP_TOKEN";
+
+export function mcpArgument(server: { url: string }): string {
+  return `mcp_servers.webaios={url=${JSON.stringify(server.url)},bearer_token_env_var="${MCP_TOKEN_VARIABLE}"}`;
+}
+
 function configContent(format: Profile["mcpConfig"], server: { url: string; token: string }): string {
+  if (format !== "claude-json") throw new Error(`Format ${format} : pas de fichier de configuration MCP`);
   return JSON.stringify(
-    {
-      "claude-json": {
-        mcpServers: {
-          webaios: { type: "http", url: server.url, headers: { Authorization: `Bearer ${server.token}` } },
-        },
-      },
-    }[format],
+    { mcpServers: { webaios: { type: "http", url: server.url, headers: { Authorization: `Bearer ${server.token}` } } } },
     null,
     2,
   );

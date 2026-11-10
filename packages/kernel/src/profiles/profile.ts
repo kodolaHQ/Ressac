@@ -14,7 +14,8 @@ export const Profile = z.object({
   nonInteractive: z.array(z.string()).min(1).refine((a) => !a.includes(WILDCARDS.mcpConfig), {
     message: "nonInteractive ne doit pas recevoir {mcpConfig}",
   }),
-  mcpConfig: z.literal("claude-json"),
+  resume: z.array(z.string()).min(1).optional(),
+  mcpConfig: z.enum(["claude-json", "codex-toml"]),
 });
 export type Profile = z.infer<typeof Profile>;
 
@@ -38,10 +39,11 @@ export async function loadProfiles(
 /** Builds a profile's command; each wildcard replaces a whole argument. */
 export function buildCommand(
   p: Profile,
-  mode: "interactive" | "nonInteractive",
+  mode: "interactive" | "resume" | "nonInteractive",
   vars: { mcpConfig?: string; prompt?: string },
 ): string[] {
   const model = p[mode];
+  if (!model) throw new Error(`Profil ${p.id} : pas de commande ${mode}`);
   if (mode === "nonInteractive" && model.includes(WILDCARDS.mcpConfig)) {
     throw new Error(`Profil ${p.id} : nonInteractive ne doit pas recevoir {mcpConfig}`);
   }

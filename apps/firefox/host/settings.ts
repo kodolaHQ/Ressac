@@ -1,8 +1,10 @@
 import { readGrants, readSiteGrants } from "../../../packages/kernel/src/index.ts";
 import type { LocalAi, Workshop } from "../../../packages/kernel/src/index.ts";
 import type { LocalAiStateShown } from "../shared/api.ts";
+import { startDeviceLogin } from "./device-login.ts";
+import { INVALID_KEY, type Keychain } from "./keychain.ts";
 import { deleteBackup, exportData, listBackups } from "./data-folder.ts";
-import type { AgentAccount, DecisionModel, WorkshopOperation, GrantKind, GrantRow, SettingsResult } from "../shared/settings.ts";
+import type { AgentAccount, DecisionModel, LoginResult, WorkshopOperation, GrantKind, GrantRow, SettingsResult } from "../shared/settings.ts";
 
 // The settings page's host side: agent accounts, workshop, local AI, durable grants, data backups.
 
@@ -12,16 +14,34 @@ export const AGENT_ACCOUNTS: {
   name: string;
   status: string[];
   logout: string[];
-  parse(stdout: string): { loggedIn: boolean; account?: string };
+  login: { kind: "panel" } | { kind: "device"; argv: string[] };
+  /** Throws when the output is unreadable. */
+  parse(r: { code: number; stdout: string; stderr: string }): { loggedIn: boolean; account?: string };
 }[] = [
   {
     id: "claude",
     name: "Claude Code",
     status: ["claude", "auth", "status", "--json"],
     logout: ["claude", "auth", "logout"],
-    parse(stdout) {
+    login: { kind: "panel" },
+    // `claude auth status` exits 1 when logged out but still prints its JSON: trust the JSON whatever the code.
+    parse({ stdout }) {
       const j = JSON.parse(stdout) as { loggedIn?: unknown; email?: unknown };
       return { loggedIn: j.loggedIn === true, ...(typeof j.email === "string" ? { account: j.email } : {}) };
+    },
+  },
+  {
+    id: "codex",
+    name: "Codex",
+    status: ["codex", "login", "status"],
+    logout: ["codex", "logout"],
+    login: { kind: "device", argv: ["codex", "login", "--device-auth"] },
+    parse({ stdout, stderr }) {
+      const t = stdout + stderr;
+      if (t.includes("Logged in using ChatGPT")) return { loggedIn: true, account: "ChatGPT" };
+      if (t.includes("API key configured")) return { loggedIn: true, account: "clé d'API" };
+      if (t.includes("Not logged in")) return { loggedIn: false };
+      throw new Error(tail(t));
     },
   },
 ];
@@ -29,6 +49,10 @@ export const AGENT_ACCOUNTS: {
 export const SETTINGS_METHODS = [
   "settings.agents",
   "settings.logout",
+  "settings.login",
+  "settings.codexKey",
+  "settings.codexKeySaved",
+  "settings.codexKeyDelete",
   "settings.workshop",
   "settings.restartWorkshop",
   "settings.workshopOperation",
@@ -57,29 +81,39 @@ export interface SettingsOptions {
   denyWidget(id: string): Promise<void>;
   denyAction(id: string): Promise<void>;
   revokeSite(id: string): Promise<void>;
+  /** The command that runs `argv` in the workshop without a terminal. */
+  deviceCommand(argv: string[]): string[];
+  keychain: Keychain;
+  /** Called after the compatible API key is written or removed. */
+  forgetKey(): void;
 }
 
-export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTINGS_METHODS)[number], (p: any) => unknown> {
+export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTINGS_METHODS)[number], (p: any) => unknown> & { stopLogins(): void } {
+  /** The sign-in by code in progress; one at a time. */
+  let signIn: ReturnType<typeof startDeviceLogin> | undefined;
+  const stopLogins = () => {
+    signIn?.stop();
+    signIn = undefined;
+  };
   /** The restart or rebuild in progress, whatever page or window asked for it. */
   let operation: WorkshopOperation = null;
   async function agents(): Promise<AgentAccount[]> {
     const state = await o.workshop.state();
     if (state === "docker-absent" || state === "absent" || state === "arrete")
-      return AGENT_ACCOUNTS.map((a) => ({ id: a.id, name: a.name, state: state === "docker-absent" ? "docker-absent" : "no-container" }));
+      return AGENT_ACCOUNTS.map((a) => ({ id: a.id, name: a.name, login: a.login.kind, state: state === "docker-absent" ? "docker-absent" : "no-container" }));
     return Promise.all(
       AGENT_ACCOUNTS.map(async (a): Promise<AgentAccount> => {
         try {
           const r = await o.workshop.exec(a.status);
-          // `claude auth status` exits 1 when logged out but still prints its JSON: trust the JSON first.
           let s: ReturnType<typeof a.parse>;
           try {
-            s = a.parse(r.stdout);
+            s = a.parse(r);
           } catch {
-            return { id: a.id, name: a.name, state: "error", error: tail(r.stderr || r.stdout) };
+            return { id: a.id, name: a.name, login: a.login.kind, state: "error", error: tail(r.stderr || r.stdout) };
           }
-          return { id: a.id, name: a.name, state: s.loggedIn ? "logged-in" : "logged-out", ...(s.account ? { account: s.account } : {}) };
+          return { id: a.id, name: a.name, login: a.login.kind, state: s.loggedIn ? "logged-in" : "logged-out", ...(s.account ? { account: s.account } : {}) };
         } catch (e) {
-          return { id: a.id, name: a.name, state: "error", error: failure(e) };
+          return { id: a.id, name: a.name, login: a.login.kind, state: "error", error: failure(e) };
         }
       }),
     );
@@ -98,8 +132,41 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
     return rows;
   }
 
+  const keyResult = async (change: () => Promise<void>): Promise<SettingsResult> => {
+    try {
+      await change();
+      o.forgetKey();
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: failure(e) };
+    }
+  };
+
   return {
+    stopLogins,
     "settings.agents": agents,
+    "settings.login": async (p: { id?: unknown }): Promise<LoginResult> => {
+      const a = AGENT_ACCOUNTS.find((x) => x.id === p?.id);
+      if (!a) return { kind: "error", error: "Agent inconnu." };
+      if (a.login.kind === "panel") return { kind: "panel" };
+      if ((await o.workshop.state()) !== "demarre") return { kind: "error", error: "L'atelier de l'agent n'est pas démarré : voir Conteneur." };
+      stopLogins();
+      try {
+        signIn = startDeviceLogin(o.deviceCommand(a.login.argv));
+      } catch (e) {
+        return { kind: "error", error: failure(e) };
+      }
+      const r = await signIn.result;
+      // A workshop built before Codex has no `codex` yet (docker exec: exit 127).
+      if (r.kind === "error" && /executable file not found|command not found|codex: not found/.test(r.error)) return { kind: "error", error: "Codex n'est pas encore installé dans l'atelier : ouvrez la vue agent ou redémarrez l'atelier (section Conteneur)." };
+      return r;
+    },
+    "settings.codexKey": (p: { key?: unknown }) => keyResult(async () => {
+      if (typeof p?.key !== "string") throw new Error(INVALID_KEY);
+      await o.keychain.write(p.key);
+    }),
+    "settings.codexKeySaved": () => o.keychain.has(),
+    "settings.codexKeyDelete": () => keyResult(() => o.keychain.remove()),
     "settings.logout": async (p: { id?: unknown }) => {
       const a = AGENT_ACCOUNTS.find((x) => x.id === p?.id);
       if (a) await o.workshop.exec(a.logout).catch((e) => console.error("[settings] logout:", e));

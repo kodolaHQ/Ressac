@@ -7,6 +7,7 @@ import { apply } from "../../core/state/actions";
 import { initialState } from "../../core/state/initial-state";
 import { loadSession, SessionRecorder } from "../../core/state/persistence";
 import type { BrowserState } from "../../shared/model";
+import { DEFAULT_CODEX_ENGINE } from "../../shared/settings";
 
 const folder = () => mkdtempSync(join(tmpdir(), "webaios-session-"));
 const set_aside = (d: string, suffix: string) => readdirSync(d).filter((f) => f.startsWith("session.json.") && f.endsWith(suffix));
@@ -211,6 +212,17 @@ test("a session saved without agentProfile loads with claude", async () => {
   const e = await loadSession(d);
   expect(e.settings.agentProfile).toBe("claude");
   expect(set_aside(d, ".corrupt")).toEqual([]);
+});
+
+test("a session saved without codexEngine loads with the default; an unknown one too", async () => {
+  const d = folder();
+  const old = structuredClone(initialState()) as unknown as { settings: Record<string, unknown> };
+  delete old.settings.codexEngine;
+  writeFileSync(join(d, "session.json"), JSON.stringify(old));
+  expect((await loadSession(d)).settings.codexEngine).toEqual(DEFAULT_CODEX_ENGINE);
+  old.settings.codexEngine = { kind: "autre" };
+  writeFileSync(join(d, "session.json"), JSON.stringify(old));
+  expect((await loadSession(d)).settings.codexEngine).toEqual(DEFAULT_CODEX_ENGINE);
 });
 
 test("a session saved without decisionModel loads with pplx-decider-flash; an unknown value too", async () => {

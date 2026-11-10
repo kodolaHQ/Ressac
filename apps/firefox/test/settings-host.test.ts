@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -8,6 +8,8 @@ const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })));
 
 function setup(over: { state?: string; exec?: (argv: string[]) => unknown } = {}) {
+  const pids = join(mkdtempSync(join(tmpdir(), "settings-pids-")), "pids");
+  dirs.push(join(pids, ".."));
   const dataDir = mkdtempSync(join(tmpdir(), "settings-host-"));
   dirs.push(dataDir);
   const calls: string[] = [];
@@ -34,49 +36,123 @@ function setup(over: { state?: string; exec?: (argv: string[]) => unknown } = {}
     denyWidget: vi.fn(async () => {}),
     denyAction: vi.fn(async () => {}),
     revokeSite: vi.fn(async () => {}),
+    // A fake CLI that prints a code then waits.
+    deviceCommand: vi.fn((argv: string[]) => {
+      void argv;
+      return [process.execPath, "-e", `require("fs").appendFileSync(${JSON.stringify(pids)}, process.pid + "\\n");console.log("https://auth.example/device B3MH-2FT21");setTimeout(()=>{},60000)`];
+    }),
+    keychain: { read: vi.fn(async () => null), has: vi.fn(async () => true), write: vi.fn(async (k: string) => void (k.includes(" ") && (() => { throw new Error("Clé invalide : x"); })())), remove: vi.fn(async () => {}) },
+    forgetKey: vi.fn(),
   };
-  return { o, exec, calls, h: createSettingsHandlers(o) };
+  const alive = () => readFileSync(pids, "utf8").trim().split("\n").map((p) => { try { process.kill(Number(p), 0); return true; } catch { return false; } });
+  return { o, exec, calls, alive, h: createSettingsHandlers(o) };
 }
 
 describe("settings host", () => {
   it("docker absent", async () => {
-    const { h, exec } = setup({ state: "docker-absent" });
-    expect(await h["settings.agents"]!({})).toEqual([{ id: "claude", name: "Claude Code", state: "docker-absent" }]);
+    const { h, exec, o } = setup({ state: "docker-absent" });
+    expect(await h["settings.agents"]!({})).toEqual([
+      { id: "claude", name: "Claude Code", state: "docker-absent", login: "panel" },
+      { id: "codex", name: "Codex", state: "docker-absent", login: "device" },
+    ]);
     expect(exec).not.toHaveBeenCalled();
+    expect(await h["settings.login"]!({ id: "codex" })).toMatchObject({ kind: "error" });
+    expect(o.deviceCommand).not.toHaveBeenCalled();
   });
 
   it("container stopped", async () => {
     const { h } = setup({ state: "arrete" });
-    expect(await h["settings.agents"]!({})).toEqual([{ id: "claude", name: "Claude Code", state: "no-container" }]);
+    expect(await h["settings.agents"]!({})).toEqual([
+      { id: "claude", name: "Claude Code", state: "no-container", login: "panel" },
+      { id: "codex", name: "Codex", state: "no-container", login: "device" },
+    ]);
   });
 
   it("logged in, out and error", async () => {
     const out = (stdout: string, code = 0) => ({ code, stdout, stderr: "boom" });
     let r = out('{"loggedIn":true,"email":"ami@example.com"}');
     const { h } = setup({ exec: async () => r });
-    expect(await h["settings.agents"]!({})).toMatchObject([{ state: "logged-in", account: "ami@example.com" }]);
+    expect((await h["settings.agents"]!({}) as any[])[0]).toMatchObject({ state: "logged-in", account: "ami@example.com" });
     r = out('{"loggedIn":false}');
-    expect(await h["settings.agents"]!({})).toMatchObject([{ state: "logged-out" }]);
+    expect((await h["settings.agents"]!({}) as any[])[0]).toMatchObject({ state: "logged-out" });
     // The real CLI exits 1 when logged out, with its JSON on stdout.
     r = out('{"loggedIn":false,"authMethod":"none"}', 1);
-    expect(await h["settings.agents"]!({})).toMatchObject([{ state: "logged-out" }]);
+    expect((await h["settings.agents"]!({}) as any[])[0]).toMatchObject({ state: "logged-out" });
     r = out("", 1);
-    expect(await h["settings.agents"]!({})).toMatchObject([{ state: "error", error: "boom" }]);
+    expect((await h["settings.agents"]!({}) as any[])[0]).toMatchObject({ state: "error", error: "boom" });
     r = out("not json");
-    expect(await h["settings.agents"]!({})).toMatchObject([{ state: "error" }]);
+    expect((await h["settings.agents"]!({}) as any[])[0]).toMatchObject({ state: "error" });
   });
 
   it("logout touches nothing else", async () => {
     const { h, exec, o } = setup();
     await h["settings.logout"]!({ id: "claude" });
     expect(exec).toHaveBeenNthCalledWith(1, ["claude", "auth", "logout"]);
-    expect(exec).toHaveBeenCalledTimes(2);
+    expect(exec).toHaveBeenCalledTimes(3); // the logout, then one status per account
     expect(o.relaunchSessions).not.toHaveBeenCalled();
     expect(o.stopApps).not.toHaveBeenCalled();
     exec.mockClear();
     await h["settings.logout"]!({ id: "nope" });
-    expect(exec).toHaveBeenCalledTimes(1); // only the status re-read
+    expect(exec).toHaveBeenCalledTimes(2); // only the status re-reads
     expect(exec).not.toHaveBeenCalledWith(["claude", "auth", "logout"]);
+  });
+
+  it("codex states", async () => {
+    let r = { code: 0, stdout: "", stderr: "Logged in using ChatGPT" };
+    const { h } = setup({ exec: async (argv) => (argv[0] === "codex" ? r : { code: 0, stdout: '{"loggedIn":false}', stderr: "" }) });
+    const codex = async () => ((await h["settings.agents"]!({})) as any[])[1];
+    expect(await codex()).toEqual({ id: "codex", name: "Codex", state: "logged-in", account: "ChatGPT", login: "device" });
+    r = { code: 0, stdout: "", stderr: "API key configured - sk-***" };
+    expect(await codex()).toMatchObject({ state: "logged-in", account: "clé d'API" });
+    r = { code: 1, stdout: "", stderr: "Not logged in" };
+    expect(await codex()).toMatchObject({ state: "logged-out" });
+    r = { code: 2, stdout: "", stderr: "what?" };
+    expect(await codex()).toMatchObject({ state: "error", error: "what?" });
+  });
+
+  it("one login at a time", async () => {
+    const { h, alive, o } = setup();
+    expect(await h["settings.login"]!({ id: "claude" })).toEqual({ kind: "panel" });
+    expect(await h["settings.login"]!({ id: "codex" })).toEqual({ kind: "device", url: "https://auth.example/device", code: "B3MH-2FT21" });
+    expect(await h["settings.login"]!({ id: "codex" })).toMatchObject({ kind: "device" });
+    await vi.waitFor(() => expect(alive()).toEqual([false, true]));
+    h.stopLogins();
+    await vi.waitFor(() => expect(alive()).toEqual([false, false]));
+    expect(o.deviceCommand).toHaveBeenCalledWith(["codex", "login", "--device-auth"]);
+  });
+
+  it("login on a workshop built before Codex", async () => {
+    const { h, o } = setup();
+    o.deviceCommand.mockReturnValueOnce([process.execPath, "-e", "console.error('exec: \"codex\": executable file not found in $PATH');process.exit(127)"]);
+    expect(await h["settings.login"]!({ id: "codex" })).toEqual({ kind: "error", error: "Codex n'est pas encore installé dans l'atelier : ouvrez la vue agent ou redémarrez l'atelier (section Conteneur)." });
+  });
+
+  it("login needs a running workshop", async () => {
+    const { h, o } = setup({ state: "arrete" });
+    expect(await h["settings.login"]!({ id: "codex" })).toEqual({ kind: "error", error: "L'atelier de l'agent n'est pas démarré : voir Conteneur." });
+    expect(o.deviceCommand).not.toHaveBeenCalled();
+  });
+
+  it("logout codex", async () => {
+    const { h, exec, o } = setup();
+    await h["settings.logout"]!({ id: "codex" });
+    expect(exec).toHaveBeenNthCalledWith(1, ["codex", "logout"]);
+    expect(o.relaunchSessions).not.toHaveBeenCalled();
+  });
+
+  it("key", async () => {
+    const { h, o } = setup();
+    expect(await h["settings.codexKey"]!({ key: "sk-1" })).toEqual({ ok: true });
+    expect(o.keychain.write).toHaveBeenCalledWith("sk-1");
+    expect(o.forgetKey).toHaveBeenCalledTimes(1);
+    expect(await h["settings.codexKey"]!({ key: "a b" })).toEqual({ ok: false, error: "Clé invalide : x" });
+    expect(o.forgetKey).toHaveBeenCalledTimes(1);
+    for (const bad of [undefined, 42, null]) expect(await h["settings.codexKey"]!({ key: bad })).toMatchObject({ ok: false, error: expect.stringContaining("Clé invalide") });
+    expect(o.keychain.write).toHaveBeenCalledTimes(2); // sk-1 and "a b" only
+    expect(await h["settings.codexKeySaved"]!({})).toBe(true);
+    expect(await h["settings.codexKeyDelete"]!({})).toEqual({ ok: true });
+    expect(o.keychain.remove).toHaveBeenCalled();
+    expect(o.forgetKey).toHaveBeenCalledTimes(2);
   });
 
   it("rebuild order", async () => {

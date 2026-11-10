@@ -5,6 +5,8 @@ import { revealable } from "../chrome/store/settings";
 import { createSettingsApi } from "../ui/settings-api";
 
 function setup(answers: Record<string, (p: any) => unknown> = {}) {
+  const openAgent = vi.fn();
+  const switchAgent = vi.fn();
   const calls: { method: string; params: unknown }[] = [];
   const host = {
     request: async (method: string, params?: unknown) => {
@@ -25,10 +27,11 @@ function setup(answers: Record<string, (p: any) => unknown> = {}) {
     sitePermissions: sitePermissions as any,
     dispatch: (a) => void dispatched.push(a),
     windowId: "W",
-    openAgent: vi.fn(),
+    openAgent,
+    switchAgent,
     dataDir: "/u/WebAiOs",
   });
-  return { api, calls, chrome, forget, dispatched };
+  return { api, calls, chrome, forget, dispatched, openAgent, switchAgent };
 }
 
 const row = (kind: GrantRow["kind"], key: string): GrantRow => ({ kind, key, name: key, profile: null, detail: "" });
@@ -69,6 +72,22 @@ describe("settings api", () => {
   it("the data folder does not wait for the backups", async () => {
     const { api } = setup({ "settings.backups": () => new Promise(() => {}) });
     expect(api.dataDir()).toBe("/u/WebAiOs");
+  });
+
+  it("login: a panel answer switches the agent and opens the panel; a device code is returned as is; a silent host is an error", async () => {
+    const a = setup({ "settings.login": ({ id }) => (id === "claude" ? { kind: "panel" } : { kind: "device", url: "https://x", code: "AB-1" }) });
+    expect(await a.api.login("claude")).toEqual({ kind: "panel" });
+    expect(a.switchAgent).toHaveBeenCalledWith("claude");
+    expect(a.openAgent).toHaveBeenCalledTimes(1);
+    expect(await a.api.login("codex")).toEqual({ kind: "device", url: "https://x", code: "AB-1" });
+    expect(a.openAgent).toHaveBeenCalledTimes(1);
+    expect(await setup().api.login("codex")).toEqual({ kind: "error", error: "L'agent ne répond pas" });
+  });
+
+  it("the Codex key goes to the host", async () => {
+    const { api, calls } = setup({ "settings.codexKey": () => ({ ok: true }) });
+    expect(await api.setCodexKey("sk-1")).toEqual({ ok: true });
+    expect(calls).toEqual([{ method: "settings.codexKey", params: { key: "sk-1" } }]);
   });
 
   it("logout shows the host's answer, in one request", async () => {
