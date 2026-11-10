@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { validFolder } from "../applications/manifest.js";
-import { CONTAINER_PATH, type SpacePaths } from "../paths.js";
+import { CONTAINER_PATH, KERNEL_ROOT, type SpacePaths } from "../paths.js";
 import type { Owner } from "../workflows/schema.js";
 import { defaultRunner, type Runner } from "./runner.js";
 
@@ -27,7 +27,7 @@ const PROBE_DELAY_MS = 30_000;
 export const BUILD_DELAY_MS = 20 * 60_000;
 
 /** Dockerfile folder in the package; a browser that embeds the kernel can provide another. */
-export const DEFAULT_DOCKER_FOLDER = join(import.meta.dirname, "..", "..", "docker");
+export const DEFAULT_DOCKER_FOLDER = join(KERNEL_ROOT, "docker");
 const dockerfile = (folder: string) => join(folder, "workshop.Dockerfile");
 const HASH_LABEL = "webaios.dockerfile";
 

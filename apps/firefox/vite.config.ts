@@ -16,6 +16,7 @@ for (const f of INJECTED_CSS) if (!existsSync(new URL(f, import.meta.url))) thro
 // - window: script loaded in every browser window;
 // - agent: the agent panel, same kind of page as the sidebar (agent.html, agent.js, agent.css);
 // - actor: ES modules for the page, extension, site and design JSWindowActors (page-actor.sys.mjs, extension-actor.sys.mjs, site-actor.sys.mjs, design-actor.sys.mjs);
+// - host: the agent host as one Node ES module (dist-host/host.mjs), everything bundled but node-pty;
 // - store: ES module loaded by resource://, the Node state code bundled with shims for node:fs/crypto/path.
 export default defineConfig(({ mode }) => {
   const outDir = "src/browser/base/content/webaios";
@@ -51,6 +52,18 @@ export default defineConfig(({ mode }) => {
           output: { banner: 'import { setTimeout, clearTimeout } from "resource://gre/modules/Timer.sys.mjs";' },
         },
       },
+    };
+  if (mode === "host")
+    return {
+      build: {
+        ssr: "host/host.ts",
+        outDir: "dist-host",
+        emptyOutDir: true,
+        minify: false,
+        target: "node22",
+        rollupOptions: { external: ["node-pty"], output: { format: "es", entryFileNames: "host.mjs", inlineDynamicImports: true } },
+      },
+      ssr: { noExternal: true, external: ["node-pty"] },
     };
   if (mode === "actor")
     return {

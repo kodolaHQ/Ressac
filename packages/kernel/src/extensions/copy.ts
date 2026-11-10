@@ -14,10 +14,11 @@ import {
   type FileHandle,
 } from "node:fs/promises";
 import { basename, dirname, join, posix } from "node:path";
+import { KERNEL_ROOT } from "../paths.js";
 import { parseManifest, messageFiles, type ManifestAnalysis } from "./manifest.js";
 
 /** Folder of the guards shipped with the kernel; a browser that embeds the kernel can provide another. */
-export const DEFAULT_GUARDS = join(import.meta.dirname, "..", "..", "extensions");
+export const DEFAULT_GUARDS = join(KERNEL_ROOT, "extensions");
 
 export const FILES_MAX = 2000;
 export const MAX_SIZE = 20 * 1024 * 1024;

@@ -20,3 +20,7 @@ apps/firefox/src/browser/base/content/webaios/design-actor.sys.mjs
 
 # Specs, plans and notes live outside the repo (../WebAiOs-docs); docs/superpowers is a local link to them
 docs/superpowers
+
+# Packaging outputs
+apps/firefox/dist-host/
+apps/firefox/dist/

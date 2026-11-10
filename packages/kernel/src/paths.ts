@@ -1,6 +1,9 @@
 import { homedir } from "node:os";
 import { dirname, join, relative, isAbsolute } from "node:path";
 
+/** Kernel package root in dev; once shipped, the folder holding `templates/`, `extensions/` and `docker/`. */
+export const KERNEL_ROOT = process.env.WEBAIOS_KERNEL_RESOURCES ?? join(import.meta.dirname, "..");
+
 export const CONTAINER_PATH = "/workspace";
 
 export interface SpacePaths {
