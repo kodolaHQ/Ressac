@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { BrowserState } from "../shared/model";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { state, waitFor, waitReady } from "./firefox";
+import { dispatch, state, waitFor, waitReady } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
@@ -51,6 +51,12 @@ const openPage = async () => {
   await click(m, '[data-testid="settings-button"]');
   await waitUi(m, "return !!doc.querySelector(arguments[0])", [PAGE]);
 };
+const SECTIONS = ["agents", "ai", "workshop", "permissions", "data", "privacy", "about"];
+/** Shows one section of the page (Agents is the one it opens on). */
+const go = async (id: string) => {
+  await click(m, `[data-testid="settings-nav-${id}"]`);
+  await waitUi(m, "return !!doc.querySelector(arguments[0])", [`[data-testid="settings-${id}"]`]);
+};
 const text = (id: string) => inUi<string>(m, "return doc.querySelector(arguments[0])?.textContent.replace(/\\s+/g, ' ') ?? ''", [`[data-testid="${id}"]`]);
 const shows = (id: string, wanted: string, ms = 10_000) =>
   waitUi(m, "return doc.querySelector(arguments[0])?.textContent.replace(/\\s+/g, ' ').includes(arguments[1])", [`[data-testid="${id}"]`, wanted], ms);
@@ -95,6 +101,7 @@ describe("Settings page", () => {
     await waitFor<number | null>(m, `return window.webaiosWindow.store.agent.pid;`, (pid) => pid === null);
     await openPage();
     await shows("settings-agents", "L'agent ne répond pas.");
+    await go("ai");
     await shows("ai-error", "L'agent ne répond pas");
     expect(await text("settings-ai")).not.toContain("undefined");
   });
@@ -103,6 +110,7 @@ describe("Settings page", () => {
     await launch({ FAKE_DOCKER_ABSENT: "1" });
     await openPage();
     await shows("settings-agents", "voir Conteneur");
+    await go("workshop");
     await shows("settings-workshop", "Installer OrbStack");
   });
 
@@ -110,8 +118,12 @@ describe("Settings page", () => {
     await launch({ FAKE_DOCKER_SLOW: "1" });
     const start = Date.now();
     await openPage();
-    await waitUi(m, `return !!doc.querySelector('[data-testid="app-version"]')?.textContent.trim() && !!doc.querySelector('[data-testid="data-dir"]')?.textContent.trim()`, [], 2_000);
-    expect(Date.now() - start).toBeLessThan(3_000);
+    await go("about");
+    await waitUi(m, `return !!doc.querySelector('[data-testid="app-version"]')?.textContent.trim()`, [], 2_000);
+    await go("data");
+    await waitUi(m, `return !!doc.querySelector('[data-testid="data-dir"]')?.textContent.trim()`, [], 2_000);
+    expect(Date.now() - start).toBeLessThan(4_000);
+    await go("agents");
     expect(await text("settings-agents")).toContain("Vérification…");
     await shows("settings-agents", "Non connecté", 40_000);
   });
@@ -119,6 +131,7 @@ describe("Settings page", () => {
   it("restart and rebuild the workshop", { timeout: 60_000 }, async () => {
     await launch();
     await openPage();
+    await go("workshop");
     await shows("workshop-state", "Atelier démarré");
     const file = join(w!.dataDir, "workspace", "fake-docker-calls.log");
     const log = () => (existsSync(file) ? readFileSync(file, "utf8") : "");
@@ -137,21 +150,25 @@ describe("Settings page", () => {
   it("local AI: Ollama reachable, Gemma installed, Kev unavailable", async () => {
     await launch({ WEBAIOS_OLLAMA_URL: server.url });
     await openPage();
-    await shows("ai-ollama", `joignable (${server.url})`);
+    await go("ai");
+    await shows("ai-ollama", "joignable");
+    expect(await text("ai-ollama")).toContain(server.url);
     expect(await text("ai-ollama")).not.toContain("injoignable");
-    await shows("ai-gemma", "Gemma : installé");
+    await shows("ai-gemma", "installé");
     expect(await inUi(m, `return doc.querySelector('[data-testid="ai-decision-model"] option[value="kev"]').disabled`)).toBe(true);
   });
 
   it("privacy: no DSN, the switch is greyed; with one, turning it off clears the pref", async () => {
     await launch();
     await openPage();
+    await go("privacy");
     await shows("settings-privacy", "Cette version n'envoie rien.");
     expect(await inUi(m, `return doc.querySelector('[data-testid="telemetry-switch"]').disabled`)).toBe(true);
     await w!.close();
     await launch({ WEBAIOS_SENTRY_DSN: `http://k@127.0.0.1:${server.port}/1` });
     await m.execute(`Services.prefs.setBoolPref("webaios.telemetry.enabled", true);`);
     await openPage();
+    await go("privacy");
     await waitUi(m, `const s = doc.querySelector('[data-testid="telemetry-switch"]'); return s && !s.disabled && s.checked`);
     await click(m, '[data-testid="telemetry-switch"]');
     await waitFor(m, `return Services.prefs.getBoolPref("webaios.telemetry.enabled", true)`, (v) => v === false);
@@ -160,9 +177,27 @@ describe("Settings page", () => {
   it("about: the version, and the browser's advanced settings in the current space", async () => {
     await launch();
     await openPage();
+    await go("about");
     await shows("app-version", await m.execute<string>("return Services.appinfo.version"));
     await click(m, '[data-testid="open-advanced"]');
     const s = await waitFor<BrowserState>(m, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).state)();`, (s) => activeTab(s)?.url === "about:preferences");
     expect(activeTab(s)!.spaceId).toBe(s.windows[0]!.activeSpace);
+  });
+
+  it("the menu shows one section at a time, and the page comes back on the last one", async () => {
+    await launch();
+    await openPage();
+    const shown = () => inUi<string[]>(m, "return arguments[0].filter((id) => doc.querySelector(`[data-testid=\"settings-${id}\"]`))", [SECTIONS]);
+    expect(await shown()).toEqual(["agents"]);
+    for (const id of SECTIONS) {
+      await go(id);
+      expect(await shown()).toEqual([id]);
+      expect(await inUi(m, "return doc.querySelector(arguments[0]).getAttribute('aria-current')", [`[data-testid="settings-nav-${id}"]`])).toBe("page");
+    }
+    await go("privacy");
+    await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url: "about:blank", activate: true });
+    await waitUi(m, "return !doc.querySelector(arguments[0])", [PAGE]);
+    await openPage();
+    expect(await shown()).toEqual(["privacy"]);
   });
 });

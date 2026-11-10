@@ -20,31 +20,33 @@
 <section data-testid="settings-permissions">
   <h2>Permissions</h2>
   {#if !rows}
-    <p class="muted">Vérification…</p>
-  {:else if rows.length === 0}
-    <p class="muted">Aucun accès accordé.</p>
+    <p><span class="pill" data-tone="warn">Vérification…</span></p>
   {:else}
-    {#each rows as r (`${r.kind}:${r.key}`)}
-      <div data-testid="grant-row" data-kind={r.kind}>
-        <div class="row">
-          <div class="grow">
-            <b>{r.name}</b>
-            <span class="muted">{r.detail}</span>
-            {#if r.profile && appState.value}<span class="muted">{profileLabel(appState.value, r.profile)}</span>{/if}
-          </div>
-          <button data-testid="grant-revoke" onclick={() => (r.kind === "widget" || r.kind === "action" ? (asking = r) : void revoke(r))}>Retirer</button>
-        </div>
-        {#if asking?.kind === r.kind && asking.key === r.key}
-          <div class="confirmation" role="alertdialog" aria-label="Retirer">
-            <p>Les données lues avec ce compte sont effacées.</p>
-            <div class="buttons">
-              <button onclick={() => (asking = null)}>Annuler</button>
-              <button class="confirm" data-testid="confirm-grant" onclick={() => void revoke(r)}>Retirer</button>
+    <div class="panel">
+      {#each rows as r (`${r.kind}:${r.key}`)}
+        <div data-testid="grant-row" data-kind={r.kind}>
+          <div class="row">
+            <div class="grow">
+              <b>{r.name}</b>
+              <span class="muted">{r.detail}</span>
+              {#if r.profile && appState.value}<span class="muted">{profileLabel(appState.value, r.profile)}</span>{/if}
             </div>
+            <button class="danger" data-testid="grant-revoke" onclick={() => (r.kind === "widget" || r.kind === "action" ? (asking = r) : void revoke(r))}>Retirer</button>
           </div>
-        {/if}
-      </div>
-    {/each}
+          {#if asking?.kind === r.kind && asking.key === r.key}
+            <div class="confirmation" role="alertdialog" aria-label="Retirer">
+              <p>Les données lues avec ce compte sont effacées.</p>
+              <div class="buttons">
+                <button onclick={() => (asking = null)}>Annuler</button>
+                <button class="primary" data-testid="confirm-grant" onclick={() => void revoke(r)}>Retirer</button>
+              </div>
+            </div>
+          {/if}
+        </div>
+      {:else}
+        <div class="row muted">Aucun accès accordé.</div>
+      {/each}
+    </div>
   {/if}
   <p class="muted">Les accès éphémères aux onglets ne sont pas listés.</p>
 </section>

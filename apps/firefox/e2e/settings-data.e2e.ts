@@ -46,9 +46,11 @@ async function launch(o: { env?: Record<string, string>; profile?: string; prefs
   await m.setContext("chrome");
   await waitReady(m);
 }
-const openPage = async () => {
+/** Opens the page on one of its sections. */
+const openPage = async (section: "permissions" | "data" = "data") => {
   await click(m, '[data-testid="settings-button"]');
-  await waitUi(m, `return !!doc.querySelector('[data-testid="settings-page"]')`);
+  await click(m, `[data-testid="settings-nav-${section}"]`);
+  await waitUi(m, "return !!doc.querySelector(arguments[0])", [`[data-testid="settings-${section}"]`]);
 };
 const count = (selector: string, n: number, ms = 10_000) => waitUi(m, "return doc.querySelectorAll(arguments[0]).length === arguments[1]", [selector, n], ms);
 const read = (file: string) => (existsSync(file) ? readFileSync(file, "utf8") : "");
@@ -60,7 +62,7 @@ describe("Settings page, permissions and data", () => {
     mkdirSync(join(dataDir, "widgets"), { recursive: true });
     writeFileSync(join(dataDir, "widgets", "grants.json"), JSON.stringify({ meteo: { domains: ["a.fr"], public: [], profile: "default" } }));
     await launch();
-    await openPage();
+    await openPage("permissions");
     await count('[data-testid="grant-row"]', 2);
     expect(await inUi(m, `return [...doc.querySelectorAll('[data-testid="grant-row"]')].map((r) => r.dataset.kind).sort()`)).toEqual(["site", "widget"]);
     await click(m, '[data-testid="grant-row"][data-kind="site"] [data-testid="grant-revoke"]');
