@@ -9,7 +9,8 @@ export interface SettingsChrome {
   version(): string;
   reveal(path: string): void;
   exportFolder(): Promise<string>;
-  reset(): Promise<void>;
+  /** false: the quit was cancelled (a window or an observer kept it), and the reset request is withdrawn. */
+  reset(): Promise<boolean>;
 }
 
 /** What « Afficher dans le Finder » may show: the data folder, a backup, or an export file directly in the export folder. */
@@ -43,9 +44,17 @@ export function createSettingsChrome(dataDir: string, telemetryActive: boolean):
       return (lastExportFolder = await Downloads.getPreferredDownloadsDirectory());
     },
     async reset() {
-      await IOUtils.writeUTF8(PathUtils.join(dataDir, RESET_FILE), "");
-      const quit = Ci.nsIAppStartup.eAttemptQuit | (Services.env.get("WEBAIOS_TEST_NO_RESTART") === "1" ? 0 : Ci.nsIAppStartup.eRestart);
-      Services.startup.quit(quit);
+      const marker = PathUtils.join(dataDir, RESET_FILE);
+      await IOUtils.writeUTF8(marker, "");
+      // Asked as every Firefox quit path does (downloads in progress…), and in the same task as quit(), so our windows
+      // skip their pages' questions. A quit kept by an observer or a window must not reset at some later launch.
+      const cancel = Cc["@mozilla.org/supports-PRBool;1"].createInstance(Ci.nsISupportsPRBool);
+      Services.obs.notifyObservers(cancel, "quit-application-requested", "restart");
+      if (!cancel.data) Services.startup.quit(Ci.nsIAppStartup.eAttemptQuit | (Services.env.get("WEBAIOS_TEST_NO_RESTART") === "1" ? 0 : Ci.nsIAppStartup.eRestart));
+      // attemptingQuit: every window agreed to close (shuttingDown waits for them to be closed).
+      if (!cancel.data && Services.startup.attemptingQuit) return true;
+      await IOUtils.remove(marker, { ignoreAbsent: true });
+      return false;
     },
   };
 }

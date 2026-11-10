@@ -94,6 +94,19 @@ describe("Settings page, permissions and data", () => {
     expect(readdirSync(downloads).some((n) => /^WebAiOs-donnees-.*\.zip$/.test(n))).toBe(true);
   });
 
+  it("reset: a cancelled quit resets nothing, and says so", async () => {
+    await prepare();
+    await launch({ env: { WEBAIOS_TEST_NO_RESTART: "1" } });
+    // Like Firefox's « downloads in progress » question answered « stay ».
+    await m.execute(`window.keepQuit = { observe: (s) => (s.QueryInterface(Ci.nsISupportsPRBool).data = true) }; Services.obs.addObserver(window.keepQuit, "quit-application-requested");`);
+    await openPage();
+    await click(m, '[data-testid="data-reset"]');
+    await click(m, '[data-testid="confirm-reset"]');
+    await waitUi(m, `return doc.querySelector('[data-testid="settings-data"]').textContent.includes("Redémarrage annulé : rien n'a été réinitialisé.")`);
+    expect(existsSync(join(dataDir, ".reset-requested"))).toBe(false);
+    process.kill(w!.pid, 0);
+  });
+
   it("reset: data set aside, the workspace stays, a fresh start", { timeout: 90_000 }, async () => {
     await prepare();
     const profile = await temp("webaios-firefox-");
@@ -106,7 +119,7 @@ describe("Settings page, permissions and data", () => {
     await waitFor(m, "return true", () => read(join(dataDir, "session.json")).includes(old), 15_000);
     await openPage();
     await click(m, '[data-testid="data-reset"]');
-    await waitUi(m, `return doc.querySelector('[data-testid="settings-data"]').textContent.includes("Restent en place : le dossier workspace")`);
+    await waitUi(m, `return doc.querySelector('[data-testid="settings-data"]').textContent.includes("installation de Kev (IA locale, à réinstaller)) sont mises de côté")`);
     await click(m, '[data-testid="confirm-reset"]');
     const alive = () => {
       try {

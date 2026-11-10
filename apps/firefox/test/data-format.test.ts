@@ -84,13 +84,25 @@ describe("checkDataFormat", () => {
     expect((await readdir(dir)).sort()).toEqual([FORMAT_FILE, "workspace"]);
     expect(await readFile(join(dir, FORMAT_FILE), "utf8")).toBe(NEW);
   });
+  it("partial failure during a reset keeps the request for the next start", async () => {
+    const dir = await tmp();
+    await seed(dir, NEW);
+    await writeFile(join(dir, RESET_FILE), "");
+    await mkdir(join(dir, "stuck"));
+    await chmod(join(dir, "stuck"), 0o555);
+    await expect(checkDataFormat(dir)).rejects.toThrow();
+    expect(await readdir(dir)).toContain(RESET_FILE);
+    await chmod(join(dir, "stuck"), 0o755);
+    expect((await checkDataFormat(dir))?.reason).toBe("reset");
+    expect((await readdir(dir)).sort()).toEqual([FORMAT_FILE, "workspace"]);
+  });
   it("reset requested", async () => {
     const dir = await tmp();
     await seed(dir, NEW);
     await writeFile(join(dir, RESET_FILE), "");
     const res = await checkDataFormat(dir);
     expect(res?.reason).toBe("reset");
-    expect((await readdir(res!.backup)).sort()).toEqual([FORMAT_FILE, RESET_FILE, "session.json"]);
+    expect((await readdir(res!.backup)).sort()).toEqual([FORMAT_FILE, "session.json"]);
     expect(await readFile(join(dir, "workspace/projects/a.txt"), "utf8")).toBe("a");
     expect(await readdir(dir)).not.toContain(RESET_FILE);
     expect(await checkDataFormat(dir)).toBeNull();
