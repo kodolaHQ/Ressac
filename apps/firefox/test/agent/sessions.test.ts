@@ -1,4 +1,4 @@
-import { expect, test, vi } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { WorkshopError } from "@webaios/kernel";
 import { GROUPING_MS, SessionsAgent, BUFFER_MAX, SessionBuffer, type SessionLike } from "../../core/agent/sessions";
 
@@ -249,4 +249,107 @@ test("ouvrir receives the session's window", async () => {
   });
   await manager.start("F7", size);
   expect(received).toEqual([{ f: "F7", t: size }]);
+});
+
+describe("each window keeps its agent", () => {
+  /** `open` notes each call; `fails` lists profiles whose opening rejects; `slow` holds openings until released. */
+  function windows(o: { fails?: string[]; slow?: boolean } = {}) {
+    const calls: { f: string; profile: string; resume: boolean }[] = [];
+    const opened: { f: string; profile: string; s: FakeSession }[] = [];
+    const pending: (() => void)[] = [];
+    const manager = new SessionsAgent({
+      defaultProfile: () => "claude",
+      open: (f, _t, { profile, resume }) => {
+        calls.push({ f, profile, resume });
+        if (o.fails?.includes(profile)) return Promise.reject(new Error("no"));
+        const s = new FakeSession();
+        s.stop = () => s.finish(143);
+        opened.push({ f, profile, s });
+        return o.slow ? new Promise((ok) => pending.push(() => ok(s))) : Promise.resolve(s);
+      },
+      send: () => {},
+    });
+    const live = (f: string) => opened.filter((x) => x.f === f && x.s.active);
+    return { manager, calls, opened, pending, live };
+  }
+
+  test("default profile", async () => {
+    const w = windows();
+    await w.manager.start("f1", size);
+    expect(w.calls).toEqual([{ f: "f1", profile: "claude", resume: false }]);
+  });
+
+  test("switch only this window", async () => {
+    const w = windows();
+    await w.manager.start("f1", size);
+    await w.manager.start("f2", size);
+    const [one, two] = w.opened;
+    await w.manager.switchProfile("f1", "codex");
+    expect(one!.s.active).toBe(false);
+    expect(w.calls.at(-1)).toEqual({ f: "f1", profile: "codex", resume: false });
+    expect(two!.s.active).toBe(true);
+    expect(w.calls.filter((c) => c.f === "f2")).toHaveLength(1);
+    expect(w.manager.profileOf("f1")).toBe("codex");
+    expect(w.manager.profileOf("f2")).toBe("claude");
+    await w.manager.switchProfile("f1", "codex");
+    expect(w.calls).toHaveLength(3);
+  });
+
+  test("switch back resumes", async () => {
+    const w = windows();
+    await w.manager.start("f1", size);
+    await w.manager.switchProfile("f1", "codex");
+    await w.manager.switchProfile("f1", "claude");
+    expect(w.calls.at(-1)).toEqual({ f: "f1", profile: "claude", resume: true });
+    await w.manager.switchProfile("f1", "codex");
+    expect(w.calls.at(-1)).toEqual({ f: "f1", profile: "codex", resume: true });
+  });
+
+  test("no resume without an active session", async () => {
+    const w = windows({ fails: ["codex"] });
+    await w.manager.start("f1", size);
+    await w.manager.switchProfile("f1", "codex");
+    await w.manager.switchProfile("f1", "claude");
+    w.calls.length = 0;
+    await w.manager.switchProfile("f1", "codex");
+    expect(w.calls).toEqual([{ f: "f1", profile: "codex", resume: false }]);
+  });
+
+  test("fast switches leave one session, of the last profile", async () => {
+    const w = windows({ slow: true });
+    const first = w.manager.start("f1", size);
+    w.pending.shift()!();
+    await first;
+    const toCodex = w.manager.switchProfile("f1", "codex");
+    const toClaude = w.manager.switchProfile("f1", "claude");
+    for (const release of w.pending.splice(0)) release();
+    await Promise.all([toCodex, toClaude]);
+    const codex = w.opened.find((x) => x.profile === "codex")!;
+    expect(codex.s.active).toBe(false); // stopped on arrival
+    expect(w.live("f1").map((x) => x.profile)).toEqual(["claude"]);
+    expect(w.manager.active("f1")).toBe(true);
+  });
+
+  test("relaunchAll keeps each window's agent", async () => {
+    const w = windows();
+    await w.manager.start("f1", size);
+    await w.manager.start("f2", size);
+    await w.manager.switchProfile("f1", "codex");
+    w.calls.length = 0;
+    await w.manager.relaunchAll();
+    expect(w.calls.sort((a, b) => a.f.localeCompare(b.f))).toEqual([
+      { f: "f1", profile: "codex", resume: false },
+      { f: "f2", profile: "claude", resume: false },
+    ]);
+  });
+
+  test("Relancer does not resume", async () => {
+    const w = windows();
+    await w.manager.start("f1", size);
+    await w.manager.switchProfile("f1", "codex");
+    await w.manager.switchProfile("f1", "claude");
+    w.opened.at(-1)!.s.finish(0);
+    await w.manager.start("f1", size);
+    expect(w.calls.at(-1)).toEqual({ f: "f1", profile: "claude", resume: false });
+  });
 });

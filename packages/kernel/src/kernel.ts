@@ -387,7 +387,8 @@ export async function createKernel(o: {
     // Session configs left by a crash: their tokens are worth nothing any more.
     // A failure does not prevent starting: dead tokens are harmless.
     await rm(sessionsFolder(paths), { recursive: true, force: true }).catch((e) => console.error("[webaios] session configs purge:", e));
-    await writeMcpConfig(paths, profile.mcpConfig, { url: server.containerUrl, token: token });
+    // The one config file whatever the default profile (Codex takes its server by argument): window-less sessions, tools.
+    await writeMcpConfig(paths, "claude-json", { url: server.containerUrl, token: token });
   } catch (e) {
     await server.stop();
     owner?.release();
