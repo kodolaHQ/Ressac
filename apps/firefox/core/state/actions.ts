@@ -452,6 +452,11 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       d.settings.decisionModel = a.model;
       return true;
     }
+    case "chooseCodexEngine": {
+      if (JSON.stringify(d.settings.codexEngine) === JSON.stringify(a.engine)) return false;
+      d.settings.codexEngine = a.engine;
+      return true;
+    }
     case "agentPanelWidth": {
       const width = Math.round(Math.min(AGENT_WIDTH_MAX, Math.max(AGENT_WIDTH_MIN, a.width)));
       if (d.settings.agentPanelWidth === width) return false;

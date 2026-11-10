@@ -2,7 +2,7 @@ import { z } from "zod";
 import { validFolder, ID_EXECUTION, ID_SITE, type Application, type Warning, type BlockCatalogEntry, type DeclarationWidget, type DirectState, type DraftRead, type SaveResult, type AttemptResult, type DevRight, type AiState, type WidgetState, type Execution, type ResumeExecution, type ActionsState, type PageAction, type LaunchResult, type Owner } from "@webaios/kernel";
 import type { BatchState, ProjectId, ExternalProject, TrackedProject } from "@webaios/kernel";
 import { PROJECT_ID, type Comment, type DiffFile, type ModifiedFile } from "@webaios/kernel";
-import type { AgentAccount, Backup, DecisionModel, GrantKind, GrantRow, SettingsResult, WorkshopOperation } from "./settings";
+import { CodexEngineSchema, type AgentAccount, type Backup, type CodexEngine, type DecisionModel, type LoginResult, type GrantKind, type GrantRow, type SettingsResult, type WorkshopOperation } from "./settings";
 import type { WorkshopState } from "../../../packages/kernel/src/container/workshop.ts";
 import type { ActionShown } from "./actions";
 import type { ActionSite, SiteWindowState, MessageToHome, ShownSite } from "./sites";
@@ -99,6 +99,7 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("homeAgentPanel"), windowId: id, open: z.boolean() }),
   z.object({ type: z.literal("chooseEngine"), engine: engine }),
   z.object({ type: z.literal("chooseAgentProfile"), profile: z.string().regex(/^[\w-]+$/).max(64) }),
+  z.object({ type: z.literal("chooseCodexEngine"), engine: CodexEngineSchema }),
   z.object({ type: z.literal("agentPanelWidth"), width: z.number().finite() }),
   /** Activates this window's project Review page, or opens it (one per project and per window). */
   z.object({ type: z.literal("openReview"), windowId: id, project: z.string().regex(PROJECT_ID), name: z.string().max(80) }),
@@ -189,6 +190,10 @@ export interface ApiWebaios {
     onState(callback: (e: AgentPanelState) => void): () => void;
     /** Available agent profiles (the choice goes through the choisirProfilAgent action). */
     profiles(): Promise<{ id: string; name: string }[]>;
+    /** The profile this window's agent runs; null when the host does not answer. */
+    current(): Promise<string | null>;
+    /** Chooses the profile and switches this window's agent to it. */
+    switch(profile: string): void;
   };
   /** The agent's access to tabs (badges and bubble to cut it). */
   access: {
@@ -352,8 +357,8 @@ export interface ApiWebaios {
 /** The settings page: agent accounts, workshop, local AI, durable grants, data, telemetry. */
 export interface SettingsApi {
   agents(): Promise<AgentAccount[]>;
-  /** Opens this window's agent panel, to sign in there. */
-  login(id: string): void;
+  /** panel: the agent panel is open on that agent, to sign in there; device: a code to enter on a page. */
+  login(id: string): Promise<LoginResult>;
   logout(id: string): Promise<AgentAccount[]>;
   /** null: the host does not answer. */
   workshop(): Promise<WorkshopState | null>;
@@ -361,6 +366,10 @@ export interface SettingsApi {
   restartWorkshop(fresh: boolean): Promise<SettingsResult>;
   workshopOperation(): Promise<WorkshopOperation>;
   chooseDecisionModel(model: DecisionModel): void;
+  codexKeySaved(): Promise<boolean>;
+  setCodexKey(key: string): Promise<SettingsResult>;
+  deleteCodexKey(): Promise<SettingsResult>;
+  chooseCodexEngine(engine: CodexEngine): void;
   grants(): Promise<GrantRow[]>;
   revoke(kind: GrantKind, key: string): Promise<void>;
   dataDir(): string;

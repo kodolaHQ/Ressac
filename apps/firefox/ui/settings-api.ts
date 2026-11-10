@@ -1,6 +1,6 @@
 import type { Action, SettingsApi } from "../shared/api";
 import type { WindowId } from "../shared/model";
-import type { AgentAccount, Backup, GrantKind, GrantRow, SettingsResult, WorkshopOperation } from "../shared/settings";
+import type { AgentAccount, Backup, GrantKind, LoginResult, GrantRow, SettingsResult, WorkshopOperation } from "../shared/settings";
 import type { AgentHost } from "../chrome/agent/host";
 import type { SettingsChrome } from "../chrome/store/settings";
 import type { SitePermissions } from "../chrome/store/site-permissions";
@@ -17,6 +17,7 @@ export function createSettingsApi(o: {
   dispatch(a: Action): void;
   windowId: WindowId;
   openAgent(): void;
+  switchAgent(profile: string): void;
   dataDir: string;
 }): SettingsApi {
   /** A host answer copied into this realm; `fallback` when the host does not answer. */
@@ -39,12 +40,23 @@ export function createSettingsApi(o: {
   };
   return {
     agents,
-    login: () => o.openAgent(),
+    async login(id) {
+      const r = await ask<LoginResult>("settings.login", { id }, { kind: "error", error: "L'agent ne répond pas" });
+      if (r.kind === "panel") {
+        o.switchAgent(id);
+        o.openAgent();
+      }
+      return r;
+    },
     logout: (id) => ask<AgentAccount[]>("settings.logout", { id }, []),
     workshop: () => ask("settings.workshop", undefined, null),
     restartWorkshop: (fresh) => ask<SettingsResult>("settings.restartWorkshop", { fresh }, SILENT),
     workshopOperation: () => ask<WorkshopOperation>("settings.workshopOperation", undefined, null),
     chooseDecisionModel: (model) => o.dispatch({ type: "chooseDecisionModel", model }),
+    codexKeySaved: () => ask<boolean>("settings.codexKeySaved", undefined, false),
+    setCodexKey: (key) => ask<SettingsResult>("settings.codexKey", { key }, SILENT),
+    deleteCodexKey: () => ask<SettingsResult>("settings.codexKeyDelete", undefined, SILENT),
+    chooseCodexEngine: (engine) => o.dispatch({ type: "chooseCodexEngine", engine }),
     async grants() {
       const [sites, host, external] = await Promise.all([
         siteRows(),

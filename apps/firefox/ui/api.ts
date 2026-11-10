@@ -104,6 +104,10 @@ export function createApi(win: WindowController): ApiFirefox {
   const ask = <T>(method: string, params: unknown, fallback: T): Promise<T> => host.request<T>(method, params).then((r) => structuredClone(r), () => fallback);
   /** An action's builder in a window whose active space is private (or unknown), read at the moment of asking. */
   const privateAction = (target: { type: string }) => target.type === "action" && (!win.store.state || activeSpacePrivate(win.store.state, windowId));
+  const switchAgent = (profile: string) => {
+    win.store.dispatch({ type: "chooseAgentProfile", profile });
+    host.request("agent.switch", { window: windowId, profile }).catch((e) => console.error("[agent] switch failed:", e));
+  };
   const api: Partial<ApiFirefox> = {
     windowId: win.windowId,
     // A tab the user closes may ask first (beforeunload).
@@ -141,6 +145,8 @@ export function createApi(win: WindowController): ApiFirefox {
         });
       },
       profiles: () => host.request<{ id: string; name: string }[]>("agent.profiles").then((p) => structuredClone(p), () => []),
+      current: () => host.request<string>("agent.current", { window: windowId }).then((p) => String(p), () => null),
+      switch: (profile) => switchAgent(profile),
     },
     tabCycle: (m) => win.tabSwitch(m),
     navigate: (id, input) => win.navigate(id, input),
@@ -291,6 +297,7 @@ export function createApi(win: WindowController): ApiFirefox {
       dispatch: (a) => win.store.dispatch(a),
       windowId,
       openAgent: () => win.openAgent(),
+      switchAgent,
       dataDir: win.store.dataDir,
     }),
     // The design mode of this window's tab; its cart column is a chrome frame (chrome/window/design-overlays.ts).
