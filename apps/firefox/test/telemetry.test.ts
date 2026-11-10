@@ -72,6 +72,7 @@ describe("errorEnvelope", () => {
     expect(JSON.parse(lines[0]!).event_id).toBe("e1");
     expect(JSON.parse(lines[1]!).type).toBe("event");
     expect(ev).toMatchObject({ event_id: "e1", release: "0.1.0", environment: "beta", platform: "node", tags: { source: "host" } });
+    expect(ev.sdk.settings).toEqual({ infer_ip: "never" });
     expect(ev.exception.values[0]).toMatchObject({ type: "Error", value: "ENOENT ~/x <url>" });
     expect(ev.exception.values[0].stacktrace.frames[0].filename).toBe("~/p.js");
   });
