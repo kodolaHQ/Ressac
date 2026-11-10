@@ -158,7 +158,7 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
       }
       const r = await signIn.result;
       // A workshop built before Codex has no `codex` yet (docker exec: exit 127).
-      if (r.kind === "error" && /not found|127/.test(r.error)) return { kind: "error", error: "Codex n'est pas encore installé dans l'atelier : ouvrez la vue agent ou redémarrez l'atelier (section Conteneur)." };
+      if (r.kind === "error" && /executable file not found|command not found|codex: not found/.test(r.error)) return { kind: "error", error: "Codex n'est pas encore installé dans l'atelier : ouvrez la vue agent ou redémarrez l'atelier (section Conteneur)." };
       return r;
     },
     "settings.codexKey": (p: { key?: unknown }) => keyResult(async () => {
