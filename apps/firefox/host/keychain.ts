@@ -44,12 +44,15 @@ export function keychain(o: { command?: string; delayMs?: number; env?: NodeJS.P
         const p = spawn(command, ["-i"], { stdio: ["pipe", "ignore", "ignore"], timeout });
         p.on("error", () => reject(new Error("Écriture au trousseau impossible")));
         p.on("close", (code) => (code === 0 ? resolve() : reject(new Error("Écriture au trousseau impossible"))));
+        p.stdin.on("error", () => reject(new Error("Écriture au trousseau impossible")));
         p.stdin.end(`add-generic-password -U ${ids.join(" ")} -w "${key}"\n`);
       });
     },
     async remove() {
       if (file) return rm(file, { force: true });
-      await run(command, ["delete-generic-password", ...ids], { timeout }).catch(() => undefined); // absent = done
+      await run(command, ["delete-generic-password", ...ids], { timeout }).catch((e: { code?: unknown }) => {
+        if (e.code !== 44) throw new Error("Suppression au trousseau impossible"); // 44 = absent = done
+      });
     },
   };
 }

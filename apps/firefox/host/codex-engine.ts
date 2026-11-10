@@ -1,4 +1,4 @@
-import type { CodexEngine } from "../shared/settings";
+import { CodexEngineSchema, type CodexEngine } from "../shared/settings";
 
 export const ENGINE_TOKEN_VARIABLE = "WEBAIOS_ENGINE_TOKEN";
 export const NO_KEY = "Aucune clé enregistrée pour l'API compatible (Réglages › Agents).";
@@ -19,6 +19,7 @@ function href(url: string, who: string): string {
 
 /** The `codex` arguments and environment for the chosen engine. The API key never appears here: `api` goes through the relay. */
 export function codexEngineArgs(e: CodexEngine, relay: { url: string; token: string } | null): { args: string[]; env: Record<string, string> } {
+  if (!CodexEngineSchema.safeParse(e).success) throw incomplete(e.kind === "api" ? "l'API compatible" : "Ollama");
   if (e.kind === "chatgpt") return { args: [], env: {} };
   if (e.kind === "ollama") {
     if (!e.ollamaUrl || !e.ollamaModel) throw incomplete("Ollama");

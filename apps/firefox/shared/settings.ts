@@ -51,7 +51,7 @@ const httpUrl = (s: string) => {
   }
 };
 const urlField = z.string().max(2048).refine((s) => s === "" || httpUrl(s));
-const modelField = z.string().regex(/^[\w.:\/@+-]{0,128}$/);
+const modelField = z.string().regex(/^([\w.:\/@+][\w.:\/@+-]{0,127})?$/);
 export const CodexEngineSchema: z.ZodType<CodexEngine> = z.object({
   kind: z.enum(["chatgpt", "ollama", "api"]),
   ollamaUrl: urlField,
@@ -64,7 +64,7 @@ export const CodexEngineSchema: z.ZodType<CodexEngine> = z.object({
 export function apiUrlProblem(url: string): string | null {
   try {
     const u = new URL(url);
-    if (u.protocol === "https:" || (u.protocol === "http:" && (u.hostname === "localhost" || u.hostname === "127.0.0.1"))) return null;
+    if (!u.search && !u.hash && (u.protocol === "https:" || (u.protocol === "http:" && (u.hostname === "localhost" || u.hostname === "127.0.0.1")))) return null;
   } catch {
     // falls through to the message
   }

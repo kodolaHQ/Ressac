@@ -1,7 +1,8 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
-import { Readable } from "node:stream";
+import { pipeline, Readable } from "node:stream";
+import { NO_KEY } from "./codex-engine";
 
 /** Codex only calls POST /responses (seen with the real CLI, plan 45 task 1). */
 export const RELAY_PATHS = ["/responses"];
@@ -15,7 +16,10 @@ export interface Relay {
   stop(): Promise<void>;
 }
 
-const sameToken = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
+const sameToken = (a: string, b: string) => {
+  const [x, y] = [Buffer.from(a), Buffer.from(b)];
+  return x.length === y.length && timingSafeEqual(x, y);
+};
 const reply = (res: http.ServerResponse, status: number, message: string) =>
   res.writeHead(status, { "content-type": "application/json" }).end(JSON.stringify({ error: { message } }));
 
@@ -34,27 +38,32 @@ export async function startRelay(o: { target(): string | null; readKey(): Promis
       const ok = [...tokens].reduce((found, t) => sameToken(t, bearer) || found, false);
       if (!ok) status = 401, reply(res, 401, "Jeton invalide");
       else if (!RELAY_PATHS.includes(pathname)) status = 404, reply(res, 404, "Introuvable");
+      else if (req.method !== "POST") status = 405, reply(res, 405, "Méthode non permise");
       else {
         const target = o.target();
         const key = target ? await o.readKey() : null;
         if (!target) status = 503, reply(res, 503, "Aucune API compatible n'est réglée dans WebAiOs (Réglages › Agents).");
-        else if (!key) status = 503, reply(res, 503, "Aucune clé enregistrée pour l'API compatible (Réglages › Agents).");
+        else if (!key) status = 503, reply(res, 503, NO_KEY);
         else {
           const headers = new Headers();
           for (const [k, v] of Object.entries(req.headers)) if (v !== undefined && !DROPPED.has(k)) headers.set(k, [v].flat().join(", "));
           headers.set("authorization", `Bearer ${key}`);
-          const hasBody = req.method !== "GET" && req.method !== "HEAD";
+          // The container left: stop the upstream call (billed tokens) while waiting for headers and while streaming.
+          const ac = new AbortController();
+          res.on("close", () => ac.abort());
           const up = await fetch(target.replace(/\/$/, "") + pathname + query, {
             method: req.method,
             headers,
-            ...(hasBody ? { body: Readable.toWeb(req) as ReadableStream, duplex: "half" } : {}),
+            body: Readable.toWeb(req) as ReadableStream,
+            duplex: "half",
             redirect: "manual",
+            signal: ac.signal,
           } as RequestInit).catch(() => null);
           if (!up || (up.status >= 300 && up.status < 400)) status = 502, reply(res, 502, "API compatible injoignable");
           else if (up.status < 300) {
             status = up.status;
             res.writeHead(up.status, up.headers.get("content-type") ? { "content-type": up.headers.get("content-type")! } : {});
-            if (up.body) Readable.fromWeb(up.body as never).on("error", () => res.destroy()).pipe(res);
+            if (up.body) pipeline(Readable.fromWeb(up.body as never), res, () => undefined);
             else res.end();
           } else {
             status = up.status;

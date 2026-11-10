@@ -74,6 +74,9 @@ describe("keychain", () => {
     await writeFile(state, "44\n");
     expect(await kc.has()).toBe(false);
     await expect(kc.remove()).resolves.toBeUndefined();
+    await writeFile(state, "1\n");
+    await expect(kc.remove()).rejects.toThrow();
+    await writeFile(state, "44\n");
     const l = await journal();
     expect(l[0]!.argv).not.toContain("-w");
     expect(l[2]!.argv).toEqual(["delete-generic-password", "-s", "webaios-codex-api", "-a", "default"]);

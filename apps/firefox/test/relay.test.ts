@@ -85,6 +85,27 @@ describe("relay", () => {
     while (!(await reader.read()).done);
   });
 
+  it("aborts upstream when the client leaves", async () => {
+    let closed!: () => void;
+    const upstreamClosed = new Promise<void>((r) => (closed = r));
+    handler = (req, res) => {
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      res.write("data: 1\n\n");
+      res.on("close", closed);
+    };
+    const ac = new AbortController();
+    const r = await call("/responses", { signal: ac.signal });
+    await r.body!.getReader().read();
+    ac.abort();
+    await upstreamClosed;
+  });
+
+  it("only POST, and a non-ASCII bearer is a 401", async () => {
+    expect((await call("/responses", { method: "GET", body: undefined })).status).toBe(405);
+    expect((await call("/responses", {}, "é".repeat(64))).status).toBe(401);
+    expect(seen).toHaveLength(0);
+  });
+
   it("token", async () => {
     const closed = relay.openSession();
     relay.closeSession(closed);
