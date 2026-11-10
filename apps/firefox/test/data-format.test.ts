@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -57,5 +57,28 @@ describe("checkDataFormat", () => {
     await writeFile(join(dir, FORMAT_FILE), "{");
     const second = await checkDataFormat(dir, now);
     expect(second).toBe(`${first}-1`);
+  });
+  it("no workspace", async () => {
+    const dir = await tmp();
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, "session.json"), "{}");
+    const backup = await checkDataFormat(dir);
+    expect(await readFile(join(backup!, "session.json"), "utf8")).toBe("{}");
+    expect(await readdir(dir)).toEqual([FORMAT_FILE]);
+  });
+  it("partial failure leaves workspace in place and the next call completes", async () => {
+    const dir = await tmp();
+    await seed(dir, "{");
+    await mkdir(join(dir, "stuck"));
+    await chmod(join(dir, "stuck"), 0o555); // a directory without write permission cannot be renamed across parents
+    await expect(checkDataFormat(dir)).rejects.toThrow();
+    expect(await readFile(join(dir, "workspace/projects/a.txt"), "utf8")).toBe("a");
+    expect(await readdir(dir)).not.toContain(FORMAT_FILE); // never written on failure
+    await chmod(join(dir, "stuck"), 0o755);
+    const backup = await checkDataFormat(dir);
+    expect(backup).not.toBeNull();
+    expect(await readFile(join(dir, "workspace/projects/a.txt"), "utf8")).toBe("a");
+    expect((await readdir(dir)).sort()).toEqual([FORMAT_FILE, "workspace"]);
+    expect(await readFile(join(dir, FORMAT_FILE), "utf8")).toBe(NEW);
   });
 });

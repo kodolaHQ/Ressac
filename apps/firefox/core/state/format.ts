@@ -26,10 +26,11 @@ export async function checkDataFormat(dataDir: string, now: Date = new Date()): 
       backup = `${dataDir}.backup-${timestamp}${i ? `-${i}` : ""}`;
       if (await fs.access(backup).then(() => false, () => true)) break;
     }
-    await fs.rename(dataDir, backup);
+    await fs.mkdir(backup, { recursive: true });
+    // workspace/ never moves, and dataDir always exists; the marker comes last, so a partial failure re-runs on the next start.
+    for (const name of await fs.readdir(dataDir)) if (name !== "workspace") await fs.rename(join(dataDir, name), join(backup, name));
   }
   await fs.mkdir(dataDir, { recursive: true });
-  if (backup && (await fs.access(join(backup, "workspace")).then(() => true, () => false))) await fs.rename(join(backup, "workspace"), join(dataDir, "workspace"));
   await fs.writeFile(join(dataDir, FORMAT_FILE), JSON.stringify({ format: DATA_FORMAT }));
   return backup;
 }

@@ -130,7 +130,7 @@ async function start(): Promise<WebAiOsStore> {
   // The UI's network net first, before any await: the windows read its state before they give their frames a src.
   uiNetState = installUiNetwork(Services.env.get("WEBAIOS_TEST_UI_NETWORK_FAIL") || null);
   // Before anything touches the data folder: an unknown format sets it aside (workspace/ stays).
-  const formatSetAside = await checkDataFormat(dataDir);
+  const formatSetAside = await checkDataFormat(dataDir).catch((e) => (console.error("[data] format check failed:", e), null));
   // Our history is the only one: Firefox's would grow unread. Set at runtime on the default branch, before any window
   // (favicons, back/forward and reopening a closed tab keep working: plan 24 spike S1).
   Services.prefs.getDefaultBranch("").setBoolPref("places.history.enabled", false);
