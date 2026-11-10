@@ -18,15 +18,17 @@ for (const f of INJECTED_CSS) if (!existsSync(new URL(f, import.meta.url))) thro
 // - actor: ES modules for the page, extension, site and design JSWindowActors (page-actor.sys.mjs, extension-actor.sys.mjs, site-actor.sys.mjs, design-actor.sys.mjs);
 // - host: the agent host as one Node ES module (dist-host/host.mjs), everything bundled but node-pty;
 // - store: ES module loaded by resource://, the Node state code bundled with shims for node:fs/crypto/path.
+//   WEBAIOS_PACKAGE=1 blanks the dev host paths (this Mac's absolute paths) so a shipped app leaks none.
 export default defineConfig(({ mode }) => {
   const outDir = "src/browser/base/content/webaios";
+  const packaged = process.env.WEBAIOS_PACKAGE === "1";
   if (mode === "store")
     return {
       define: {
         "process.pid": "0",
-        __WEBAIOS_NODE__: JSON.stringify(nodePath),
-        __WEBAIOS_TSX__: JSON.stringify(tsxPath),
-        __WEBAIOS_HOST__: JSON.stringify(hostPath),
+        __WEBAIOS_NODE__: JSON.stringify(packaged ? "" : nodePath),
+        __WEBAIOS_TSX__: JSON.stringify(packaged ? "" : tsxPath),
+        __WEBAIOS_HOST__: JSON.stringify(packaged ? "" : hostPath),
       },
       resolve: {
         alias: {

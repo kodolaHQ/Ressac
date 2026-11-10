@@ -27,4 +27,15 @@ describe("hostCommand", () => {
       environment: {},
     });
   });
+
+  it("packaged without the host: throws instead of using dev paths", async () => {
+    const g = globalThis as any;
+    const saved = g.__WEBAIOS_HOST__;
+    g.__WEBAIOS_HOST__ = "";
+    try {
+      await expect(hostCommand("/App/Resources", async () => false)).rejects.toThrow("agent host is missing");
+    } finally {
+      g.__WEBAIOS_HOST__ = saved;
+    }
+  });
 });
