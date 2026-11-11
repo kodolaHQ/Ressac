@@ -478,6 +478,11 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       d.settings.hints.enabled = a.enabled;
       return true;
     }
+    case "setVimMode": {
+      if (d.settings.vimMode === a.enabled) return false;
+      d.settings.vimMode = a.enabled;
+      return true;
+    }
     case "setShortcut": {
       const current = d.settings.shortcuts[a.id];
       if (bindingProblem(a.id, a.binding, effectiveBindings(d.settings.shortcuts)) || (current && sameBinding(current, a.binding))) return false;

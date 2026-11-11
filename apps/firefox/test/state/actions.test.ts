@@ -862,6 +862,16 @@ test("setSidebarSide stores the side; the same one changes nothing", () => {
   expect(SchemaAction.safeParse({ type: "setSidebarSide", side: "top" }).success).toBe(false);
 });
 
+test("setVimMode toggles the vim keys", () => {
+  e = initialState(genId);
+  expect(e.settings.vimMode).toBe(false);
+  ag({ type: "setVimMode", enabled: true });
+  expect(e.settings.vimMode).toBe(true);
+  const before = e;
+  ag({ type: "setVimMode", enabled: true });
+  expect(e).toBe(before);
+});
+
 test("shortcut actions store, refuse and reset bindings", () => {
   e = initialState(genId);
   const changed = (a: Action) => {

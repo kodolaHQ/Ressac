@@ -46,6 +46,8 @@ export interface WindowController {
   setFullWindow(full: boolean | "window"): void;
   /** The first-launch welcome covers the window: our shortcuts (⌃Tab included) do nothing, but closing the window. */
   setWelcome(shown: boolean): void;
+  /** Settings is waiting for a new key combination: our shortcuts do nothing meanwhile. */
+  setCapturingShortcut(on: boolean): void;
   /** Compact mode: the page takes the sidebar's column, and the sidebar floats over it. */
   setSidebarColumn(shown: boolean): void;
   /** Whether the sidebar shows; hidden, the iframe folds once the sidebar has slid out. */
@@ -245,6 +247,7 @@ export function createController(
   unsubscribe.push(store.subscribe((state) => walk.onState(state)));
 
   let welcome = false;
+  let capturing = false;
   const run = (s: Shortcut) => {
     const state = store.state;
     const f = state.windows.find((x) => x.id === windowId);
@@ -287,6 +290,8 @@ export function createController(
   };
   // Capture on the window: our keys act before the page sees them (a page that swallows every key keeps none of them).
   const onKeyDown = (e: KeyboardEvent) => {
+    // Settings is capturing a combination: it reads this key, not us.
+    if (capturing) return;
     const s = shortcutFor(e, effectiveBindings(store.state.settings.shortcuts));
     if (!s) return;
     e.preventDefault();
@@ -463,6 +468,9 @@ export function createController(
     },
     setWelcome(shown) {
       welcome = shown;
+    },
+    setCapturingShortcut(on) {
+      capturing = on;
     },
     setFullWindow(full) {
       frame.toggleAttribute("full", !!full);

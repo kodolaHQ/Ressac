@@ -5,7 +5,7 @@ import type { BrowserState } from "../../shared/model";
 import { AURA_IDS, DEFAULT_AURA } from "../../shared/aura";
 import { ClaudeEngineSchema, CodexEngineSchema, DEFAULT_CLAUDE_ENGINE, DEFAULT_CODEX_ENGINE } from "../../shared/settings";
 import { FIRST_TIME, HINT_IDS, type HintId } from "../../shared/hints";
-import { SHORTCUTS, isBinding, pickBinding, type Binding, type ShortcutId } from "../../shared/shortcuts";
+import { SHORTCUTS, SHORTCUT_IDS, bindingProblem, effectiveBindings, isBinding, pickBinding, type Binding, type ShortcutId } from "../../shared/shortcuts";
 import { initialState } from "./initial-state";
 
 const FILE = "session.json";
@@ -60,11 +60,21 @@ const SchemaSession = z.object({
       })
       .catch(() => ({ enabled: true, seen: Object.keys(FIRST_TIME) as HintId[] })),
     sidebarSide: z.enum(["left", "right"]).catch("left"),
+    vimMode: z.boolean().catch(false),
     // An unknown id or a malformed binding is dropped; the rest is kept.
     shortcuts: z
       .record(z.string(), z.unknown())
       .default({})
-      .transform((o) => Object.fromEntries(Object.entries(o).filter(([id, v]) => id in SHORTCUTS && isBinding(v)).map(([id, v]) => [id, pickBinding(v as Binding)])) as Partial<Record<ShortcutId, Binding>>)
+      .transform((o) => {
+        const kept = Object.fromEntries(Object.entries(o).filter(([id, v]) => Object.hasOwn(SHORTCUTS, id) && isBinding(v)).map(([id, v]) => [id, pickBinding(v as Binding)])) as Partial<Record<ShortcutId, Binding>>;
+        // An override that clashes with another or is reserved (a hand-edited file) is dropped, in table order.
+        const ok: Partial<Record<ShortcutId, Binding>> = {};
+        for (const id of SHORTCUT_IDS) {
+          const bd = kept[id];
+          if (bd && !bindingProblem(id, bd, effectiveBindings({ ...ok }))) ok[id] = bd;
+        }
+        return ok;
+      })
       .catch(() => ({})),
   }),
 });

@@ -168,6 +168,8 @@ export interface BrowserState {
     hints: { enabled: boolean; seen: HintId[] };
     /** Which side of the window the navigation sidebar sits on. */
     sidebarSide: "left" | "right";
+    /** Vim keys in web tabs (off by default). */
+    vimMode: boolean;
     /** The user's own bindings; an action absent here keeps its default (shared/shortcuts.ts). */
     shortcuts: Partial<Record<ShortcutId, Binding>>;
   };

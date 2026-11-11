@@ -301,6 +301,28 @@ test("shortcuts: missing loads empty, unknown ids and malformed bindings are dro
   expect((await loadSession(d)).settings.shortcuts).toEqual({ agent: k });
 });
 
+test("shortcuts: an inherited property name is no id, a clashing or reserved override is dropped", async () => {
+  const d = folder();
+  const old = structuredClone(initialState()) as unknown as { settings: Record<string, unknown> };
+  const k = { key: "k", shift: false, alt: false, ctrl: false, meta: true };
+  const t = { ...k, key: "t" }; // the command bar's default
+  const c = { ...k, key: "c" }; // reserved
+  old.settings.shortcuts = JSON.parse(`{"toString":${JSON.stringify(k)},"agent":${JSON.stringify(t)},"history":${JSON.stringify(c)},"settings":${JSON.stringify(k)}}`);
+  writeFileSync(join(d, "session.json"), JSON.stringify(old));
+  expect((await loadSession(d)).settings.shortcuts).toEqual({ settings: k });
+});
+
+test("vimMode: missing or malformed loads off, true is kept", async () => {
+  const d = folder();
+  const old = structuredClone(initialState()) as unknown as { settings: Record<string, unknown> };
+  delete old.settings.vimMode;
+  writeFileSync(join(d, "session.json"), JSON.stringify(old));
+  expect((await loadSession(d)).settings.vimMode).toBe(false);
+  old.settings.vimMode = true;
+  writeFileSync(join(d, "session.json"), JSON.stringify(old));
+  expect((await loadSession(d)).settings.vimMode).toBe(true);
+});
+
 test("existing session never welcomes", async () => {
   const d = folder();
   const old = structuredClone(initialState()) as unknown as { settings: Record<string, unknown> };

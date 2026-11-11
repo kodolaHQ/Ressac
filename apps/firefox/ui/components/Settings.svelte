@@ -8,6 +8,7 @@
     { id: "permissions", label: "Permissions", icon: "key" },
     { id: "data", label: "Données", icon: "database" },
     { id: "privacy", label: "Vie privée", icon: "lock" },
+    { id: "shortcuts", label: "Raccourcis", icon: "keyboard" },
     { id: "about", label: "À propos", icon: "info" },
   ] as const satisfies readonly { id: string; label: string; icon: IconName }[];
   type SectionId = (typeof SECTIONS)[number]["id"];
@@ -23,6 +24,7 @@
   import SettingsEngine from "./SettingsEngine.svelte";
   import SettingsData from "./SettingsData.svelte";
   import SettingsPermissions from "./SettingsPermissions.svelte";
+  import SettingsShortcuts from "./SettingsShortcuts.svelte";
 
   // Each section loads on its own: a slow Docker never holds the version or the data folder.
   const s = api.settings;
@@ -250,6 +252,8 @@
       <SettingsPermissions />
     {:else if current === "data"}
       <SettingsData />
+    {:else if current === "shortcuts"}
+      <SettingsShortcuts />
     {:else if current === "privacy"}
       <section data-testid="settings-privacy">
         <h2>Vie privée</h2>
