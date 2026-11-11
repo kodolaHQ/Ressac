@@ -116,6 +116,22 @@ describe("welcome", () => {
     await layerGone();
     expect(await inUi(m, `return !!doc.querySelector('[data-testid="sidebar"]').closest('[inert]')`)).toBe(false);
     await saved((s) => s.settings?.onboarded === true);
+    // Finished: the shortcuts work again.
+    await pressKeys(m, "Meta+t");
+    await shown("command-bar");
+  });
+
+  it("a silent host: neither state can be checked", async () => {
+    await launch({ welcome: false });
+    await m.execute(`return (async () => { await window.webaiosWindow.store.agent.stop(); return true; })();`);
+    await waitFor<number | null>(m, `return window.webaiosWindow.store.agent.pid;`, (pid) => pid === null);
+    await click(m, '[data-testid="settings-button"]');
+    await click(m, '[data-testid="settings-nav-about"]');
+    await click(m, '[data-testid="settings-replay-welcome"]');
+    await forward(1, 3);
+    await shows("welcome-docker", "Impossible de vérifier pour l'instant.");
+    await press("welcome-next");
+    await shows("welcome-ollama", "Ollama n'est pas installé ou pas lancé.");
   });
 
   it("agent choice", async () => {
@@ -178,6 +194,9 @@ describe("welcome", () => {
     const s = await waitFor<BrowserState>(m, `return (async () => (await ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready).state)();`, (s) => s.settings.onboarded);
     expect(s.spaces).toHaveLength(1);
     expect(activeSpace(s).name).toBe("Maison");
+    // Finished on the last page: a second replay starts at the beginning again.
+    await click(m, '[data-testid="settings-replay-welcome"]');
+    await shown("welcome-1");
   });
 
   it("default launch skips it", async () => {

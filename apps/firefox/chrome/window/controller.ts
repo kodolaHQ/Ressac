@@ -342,7 +342,7 @@ export function createController(
     item.removeAttribute("disabled");
     const onCommand = (e: Event) => {
       e.stopPropagation();
-      store.dispatch({ type: "openSettings", windowId: windowId });
+      if (!welcome) store.dispatch({ type: "openSettings", windowId: windowId });
     };
     item.addEventListener("command", onCommand);
     unsubscribe.push(() => item.removeEventListener("command", onCommand));

@@ -53,7 +53,6 @@
     const n = name.trim();
     if (s && ((n && n !== s.name) || aura !== s.aura)) api.dispatch({ type: "updateSpace", id: s.id, name: n || s.name, icon: s.icon, private: s.private, profile: s.profile, aura });
     api.dispatch({ type: "finishOnboarding" });
-    step.page = 1;
   }
 </script>
 
@@ -156,7 +155,7 @@
       </section>
     {/key}
     <ol class="dots" aria-label="Page {step.page} sur {PAGES}">
-      {#each { length: PAGES } as _, i (i)}<li class:current={i + 1 === step.page}></li>{/each}
+      {#each { length: PAGES } as _, i (i)}<li aria-hidden="true" class:current={i + 1 === step.page}></li>{/each}
     </ol>
   </div>
 </div>
@@ -177,6 +176,7 @@
     -moz-window-dragging: drag;
   }
   @media (prefers-color-scheme: light) { .welcome { --accent: var(--aura-accent-light); } }
+  @media (prefers-reduced-motion: reduce) { .welcome { transition: none; } }
   /* The window's aura (window.css), painted here too: the welcome covers the page and the agent panel. */
   .aura { position: absolute; inset: 0; }
   .aura i { position: absolute; width: 66%; aspect-ratio: 1; border-radius: 50%; filter: blur(70px) saturate(1.15); opacity: 0.95; }
@@ -211,7 +211,7 @@
   .note { color: var(--text-muted); font-size: 13px; }
 
   .hero { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; padding: 8px 0 4px; }
-  .hero img { width: 96px; height: 96px; filter: drop-shadow(0 10px 24px rgb(0 0 0 / 0.25)); }
+  .hero img { width: 96px; height: 96px; filter: drop-shadow(var(--modal-shadow)); }
   .brand { margin: 6px 0 0; font: 600 44px/1 var(--font-display); letter-spacing: -0.03em; }
   .lead { max-width: 30ch; color: var(--text-muted); font-size: 15px; }
 

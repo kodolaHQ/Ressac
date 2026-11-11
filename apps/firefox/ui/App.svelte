@@ -2,6 +2,7 @@
   // The window's UI: sidebar, spaces, empty page, command bar. Web pages are Firefox's <browser>, under
   // this transparent iframe; the iframe covers the whole window only when the UI shows more than its column.
   import { tick, untrack } from "svelte";
+  import { fade } from "svelte/transition";
   import PageAction from "../ui/action/PageAction.svelte";
   import Actions from "./components/Actions.svelte";
   import Applications from "./components/Applications.svelte";
@@ -45,6 +46,18 @@
   const unfinished = $derived(!!winState && appState.value?.settings.onboarded === false);
   const welcome = $derived(unfinished && !welcomeStep.aside);
   $effect(() => win.setWelcome(welcome));
+  /** The welcome's layer: it stays (and keeps the whole window) for its fade out once the welcome steps aside or ends. */
+  let welcomeLayer = $state(false);
+  const WELCOME_FADE_MS = 150;
+  $effect(() => {
+    if (welcome) return void (welcomeLayer = true);
+    const t = setTimeout(() => (welcomeLayer = false), WELCOME_FADE_MS);
+    return () => clearTimeout(t);
+  });
+  // Finished (here or in another window), once its layer is gone: a later « Revoir l'accueil » starts at the beginning.
+  $effect(() => {
+    if (!unfinished && !welcomeLayer) untrack(() => Object.assign(welcomeStep, { page: 1, aside: false }));
+  });
   const activeTab = $derived.by(() => {
     const id = winState?.active[winState.activeSpace];
     return id ? appState.value?.tabs[id] : undefined;
@@ -146,7 +159,7 @@
     }),
   );
   // Overlays cover the agent panel too; the empty page and internal pages only fill the space left of it.
-  const overlay = $derived(welcome || !!agentRequest || !!spaceSettings.draft || !!menu.open || !!command.open || !!tabPanel);
+  const overlay = $derived(welcomeLayer || !!agentRequest || !!spaceSettings.draft || !!menu.open || !!command.open || !!tabPanel);
   $effect(() => win.setFullWindow(overlay ? "window" : !pageWeb || !!panel));
 
   // Compact mode: touching the left edge reveals the sidebar. It floats over the page, which
@@ -209,7 +222,7 @@
     <!-- The welcome stepped aside for an install page: the way back, under the sidebar (the only place this iframe
          covers beside a web page). -->
     {#if unfinished && welcomeStep.aside}
-      <button class="resume-welcome" data-testid="welcome-resume" onclick={() => (welcomeStep.aside = false)}>Reprendre l'accueil</button>
+      <button class="resume-welcome" data-testid="welcome-resume" out:fade={{ duration: WELCOME_FADE_MS }} onclick={() => (welcomeStep.aside = false)}>Reprendre l'accueil</button>
     {/if}
   </div>
   <main class="content" class:framed={(!pageWeb || !!panel) && !(winState && !activeTab && !panel)} data-testid="content-zone">
@@ -272,8 +285,8 @@
     <CommandBar window={winState} activeTab={activeTab} yields={!!tabPanel} closePanel={() => (panel = null)} />
   </div>
 {/if}
-{#if welcome && winState}
-  <div class="welcome-layer" data-testid="welcome-layer"><Welcome window={winState} /></div>
+{#if welcomeLayer && winState}
+  <div class="welcome-layer" class:leaving={!welcome} data-testid="welcome-layer"><Welcome window={winState} /></div>
 {/if}
 
 <style>
@@ -286,7 +299,8 @@
   .window :global(:is([data-testid="action-delete-veil"], [data-testid="action-delete-confirmation"])) { -moz-window-dragging: no-drag; }
   .command-layer { position: fixed; inset: 0; z-index: 100; }
   /* Above every other layer: nothing else is reachable until the welcome is finished. */
-  .welcome-layer { position: fixed; inset: 0; z-index: 200; }
+  .welcome-layer { position: fixed; inset: 0; z-index: 200; transition: opacity 150ms var(--out); }
+  .welcome-layer.leaving { opacity: 0; pointer-events: none; }
   .tabs-layer { display: contents; }
   /* Under the command bar and ⌃Tab: the overlay veil, the window slightly blurred (the glass boxes blur more). */
   :is(.command-layer, .tabs-layer) :global(div.veil) { background: var(--overlay-veil); backdrop-filter: blur(6px); }
