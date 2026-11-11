@@ -6,6 +6,7 @@ import type { BrowserState } from "../shared/model";
 import { afterEach, describe, expect, it } from "vitest";
 import { dispatch, state, waitFor, waitReady } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { startServer } from "./server";
 import type { Marionette } from "./marionette";
 import { click, inUi, keyDown, keyUp, missingApi, pressKeys, waitUi } from "./ui";
 
@@ -120,6 +121,47 @@ describe("welcome", () => {
     // Finished: the shortcuts work again.
     await pressKeys(m, "Meta+t");
     await shown("command-bar");
+  });
+
+  it("ollama without its models: « Télécharger en arrière-plan » pulls both, the welcome goes on, a notification says the end", async () => {
+    const pulled: string[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>((ok) => (release = ok));
+    const ollama = await startServer({
+      routes: {
+        "/api/tags": (_req, res) => res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ models: pulled.map((name) => ({ name })) })),
+        "/api/pull": (req, res) => {
+          let body = "";
+          req.on("data", (d) => (body += d)).on("end", () => {
+            const name = JSON.parse(body).model as string;
+            res.writeHead(200, { "Content-Type": "application/x-ndjson" });
+            res.write('{"status":"downloading","total":100,"completed":40}\n');
+            void gate.then(() => {
+              pulled.push(name);
+              res.end('{"status":"success"}\n');
+            });
+          });
+        },
+      },
+    });
+    try {
+      await launch({ env: { WEBAIOS_OLLAMA_URL: ollama.url } });
+      await forward(1, 4);
+      await shows("welcome-ollama", "Ollama est prêt.");
+      await shows("welcome-models", "Il manque les modèles d'IA locale (plusieurs Go).");
+      await press("welcome-pull");
+      await shows("welcome-models", "Téléchargement lancé");
+      // The welcome goes on while the host pulls.
+      await press("welcome-next");
+      await shown("welcome-5");
+      release();
+      const file = join(w!.dataDir, "notifications.jsonl");
+      await waitFor(m, "return true", () => existsSync(file) && readFileSync(file, "utf8").includes("L'IA locale est prête"), 15_000);
+      expect(pulled).toEqual(["gemma4:e4b-mlx", "pplx-decider-flash"]);
+    } finally {
+      release();
+      await ollama.close();
+    }
   });
 
   it("a silent host: neither state can be checked", async () => {

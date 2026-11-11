@@ -66,6 +66,7 @@ export function createSettingsApi(o: {
     chooseClaudeEngine: (engine) => o.dispatch({ type: "chooseClaudeEngine", engine }),
     pullModel: (name) => ask<SettingsResult>("settings.pullModel", { name }, SILENT),
     pullProgress: () => ask<PullProgress | null>("settings.pullProgress", undefined, null),
+    pullInBackground: (names) => ask<SettingsResult>("settings.pullInBackground", { names }, SILENT),
     ollamaModels: (url) => ask("settings.ollamaModels", { url }, { ok: false as const, error: "Ollama ne répond pas à cette adresse." }),
     async grants() {
       const [sites, host, external] = await Promise.all([

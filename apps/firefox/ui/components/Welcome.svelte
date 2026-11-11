@@ -26,13 +26,25 @@
   /** undefined: checking; null: the host does not answer. */
   let docker = $state<Awaited<ReturnType<SettingsApi["workshop"]>> | undefined>(undefined);
   let ollama = $state<boolean | undefined>(undefined);
+  /** The local models Ollama still lacks; the download runs in the host and goes on after the welcome closes. */
+  let missing = $state<string[]>([]);
+  let pulling = $state(false);
+  let pullError = $state<string | null>(null);
   async function checkDocker() {
     docker = undefined;
     docker = await api.settings.workshop();
   }
   async function checkOllama() {
     ollama = undefined;
-    ollama = await api.ai.state().then((s) => !!s.verification?.ollama, () => false);
+    const [v, running] = await Promise.all([api.ai.state().then((s) => s.verification, () => undefined), api.settings.pullProgress()]);
+    ollama = !!v?.ollama;
+    missing = v ? [!v.gemma && "gemma4:e4b-mlx", !v.decision && "pplx-decider-flash"].filter((n): n is string => !!n) : [];
+    pulling = !!running;
+  }
+  async function pullInBackground() {
+    const r = await api.settings.pullInBackground(missing);
+    pulling = r.ok;
+    pullError = r.ok ? null : r.error;
   }
   $effect(() => {
     void checkDocker();
@@ -129,6 +141,12 @@
               {@render status("welcome-ollama", "warn", "Vérification…")}
             {:else if ollama}
               {@render status("welcome-ollama", "ok", "Ollama est prêt.")}
+              {#if pulling}
+                {@render status("welcome-models", "ok", "Téléchargement lancé : une notification vous préviendra quand ce sera prêt. Le suivi est dans Réglages › IA locale.")}
+              {:else if missing.length}
+                {@render status("welcome-models", "warn", pullError ?? "Il manque les modèles d'IA locale (plusieurs Go).")}
+                <button type="button" data-testid="welcome-pull" onclick={() => void pullInBackground()}>Télécharger en arrière-plan</button>
+              {/if}
             {:else}
               {@render status("welcome-ollama", "warn", "Ollama n'est pas installé ou pas lancé.")}
               <button type="button" data-testid="welcome-install-ollama" onclick={() => install("https://ollama.com/download")}>Installer Ollama</button>

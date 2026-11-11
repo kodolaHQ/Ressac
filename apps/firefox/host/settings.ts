@@ -1,5 +1,5 @@
 import { listOllamaModels } from "./ollama-models.ts";
-import { pullOllamaModel } from "./ollama-pull.ts";
+import { PULLABLE_MODELS, pullOllamaModel, UNSUPPORTED_MODEL } from "./ollama-pull.ts";
 import { readGrants, readSiteGrants } from "../../../packages/kernel/src/index.ts";
 import type { LocalAi, Workshop } from "../../../packages/kernel/src/index.ts";
 import type { LocalAiStateShown } from "../shared/api.ts";
@@ -73,11 +73,13 @@ export const SETTINGS_METHODS = [
   "ai.state",
   "settings.pullModel",
   "settings.pullProgress",
+  "settings.pullInBackground",
   "ai.decisionModel",
 ] as const;
 
 const KEY = /^[a-z0-9-]{1,100}$/;
 const tail = (s: string) => s.trim().split("\n").slice(-3).join("\n").slice(-300);
+const PULL_BUSY = "Un téléchargement est déjà en cours";
 const failure = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export interface SettingsOptions {
@@ -99,6 +101,8 @@ export interface SettingsOptions {
   amoKeychain: AmoKeychain;
   /** Called after an agent's compatible API key is written or removed. */
   forgetKey(kind: "codex" | "claude"): void;
+  /** A system notification (the end of a background model download). */
+  notify(n: { title: string; text: string }): void;
 }
 
 export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTINGS_METHODS)[number], (p: any) => unknown> & { stopLogins(): void } {
@@ -113,6 +117,16 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
    * shortcut: no cancel button in v1; quitting stops it and Ollama resumes from its kept chunks next time.
    */
   let pull: PullProgress | null = null;
+  /** One model at a time, from any window; `pull` is set before the first await, so a second caller sees it. */
+  const pullOne = async (name: string) => {
+    if (pull) throw new Error(PULL_BUSY);
+    pull = { name, percent: null, status: "" };
+    try {
+      await pullOllamaModel(o.ai.ollamaUrl, name, (e) => (pull = e));
+    } finally {
+      pull = null;
+    }
+  };
   /** The restart or rebuild in progress, whatever page or window asked for it. */
   let operation: WorkshopOperation = null;
   async function agents(): Promise<AgentAccount[]> {
@@ -259,17 +273,28 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
       }
     },
     "settings.pullModel": async (p: { name?: unknown }): Promise<SettingsResult> => {
-      if (pull) return { ok: false, error: "Un téléchargement est déjà en cours" };
-      const name = String(p?.name);
-      pull = { name, percent: null, status: "" };
+      if (pull) return { ok: false, error: PULL_BUSY };
       try {
-        await pullOllamaModel(o.ai.ollamaUrl, name, (e) => (pull = e));
+        await pullOne(String(p?.name));
         return { ok: true };
       } catch (e) {
         return { ok: false, error: failure(e) };
-      } finally {
-        pull = null;
       }
+    },
+    // The welcome's download: answers at once, pulls one model after the other, and says the end in a notification.
+    "settings.pullInBackground": (p: { names?: unknown }): SettingsResult => {
+      if (pull) return { ok: false, error: PULL_BUSY };
+      const names = Array.isArray(p?.names) ? p.names.map(String) : [];
+      if (!names.length || names.some((n) => !PULLABLE_MODELS.includes(n))) return { ok: false, error: UNSUPPORTED_MODEL };
+      void (async () => {
+        try {
+          for (const n of names) await pullOne(n);
+          o.notify({ title: "L'IA locale est prête", text: "Les modèles sont téléchargés : la veille et les décisions tournent sur votre Mac." });
+        } catch (e) {
+          o.notify({ title: "Le téléchargement de l'IA locale a échoué", text: `${failure(e)}. Réessayez depuis Réglages › IA locale.` });
+        }
+      })();
+      return { ok: true };
     },
     "settings.pullProgress": () => pull,
     "ai.state": async (): Promise<LocalAiStateShown> => {

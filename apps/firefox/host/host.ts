@@ -768,6 +768,7 @@ const settings = createSettingsHandlers({
   claudeKeychain: keys.claude,
   amoKeychain: amoKeychain(),
   forgetKey,
+  notify,
 });
 // The chrome may not answer yet (its handlers come up later): it calls "sites.ready" once it does.
 void sites.resync().catch(() => {});

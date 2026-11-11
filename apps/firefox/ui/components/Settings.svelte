@@ -99,6 +99,21 @@
     if (!r.ok) pullError = r.error;
     reloadAi();
   }
+  // A pull started elsewhere (the welcome, another window) shows here until it ends.
+  $effect(() => {
+    let timer: ReturnType<typeof setInterval> | undefined;
+    void s.pullProgress().then((p) => {
+      if (!p || pulling) return;
+      pulling = p;
+      timer = setInterval(() => void s.pullProgress().then((q) => {
+        if (q) return void (pulling = q);
+        clearInterval(timer);
+        pulling = null;
+        reloadAi();
+      }), 700);
+    });
+    return () => clearInterval(timer);
+  });
   const pullLabel = (p: PullProgress) => (p.percent === null ? "Téléchargement…" : `Téléchargement ${p.percent} %`);
 
   /** undefined: loading; null: the host does not answer. */

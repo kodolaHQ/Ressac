@@ -389,6 +389,8 @@ export interface SettingsApi {
   pullModel(name: string): Promise<SettingsResult>;
   /** The pull in progress (from any window), null when none. */
   pullProgress(): Promise<PullProgress | null>;
+  /** Pulls the given models one after the other without waiting; a system notification says the end. */
+  pullInBackground(names: string[]): Promise<SettingsResult>;
   ollamaModels(url: string): Promise<{ ok: true; models: { name: string; size?: string }[] } | { ok: false; error: string }>;
   grants(): Promise<GrantRow[]>;
   revoke(kind: GrantKind, key: string): Promise<void>;

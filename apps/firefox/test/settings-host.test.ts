@@ -45,6 +45,7 @@ function setup(over: { state?: string; exec?: (argv: string[]) => unknown } = {}
     claudeKeychain: { read: vi.fn(async () => null), has: vi.fn(async () => false), write: vi.fn(async () => {}), remove: vi.fn(async () => {}) },
     amoKeychain: { issuer: vi.fn(async (): Promise<string | null> => "user:1:2"), write: vi.fn(async (i: string) => void (i === "bad" && (() => { throw new Error("Clé invalide : x"); })())), remove: vi.fn(async () => {}) },
     forgetKey: vi.fn(),
+    notify: vi.fn(),
   };
   const alive = () => readFileSync(pids, "utf8").trim().split("\n").map((p) => { try { process.kill(Number(p), 0); return true; } catch { return false; } });
   return { o, exec, calls, alive, h: createSettingsHandlers(o) };
@@ -263,6 +264,29 @@ describe("settings host", () => {
       expect(o.ai.ollamaUrl).toBe("http://127.0.0.1:11434");
       globalThis.fetch = (async () => new Response("no space", { status: 500 })) as any;
       expect(await h["settings.pullModel"]!({ name: "pplx-decider-flash" })).toEqual({ ok: false, error: "no space" });
+    } finally {
+      globalThis.fetch = real;
+    }
+  });
+
+  it("pullInBackground: answers at once, pulls in order, notifies the end or the failure", async () => {
+    const { h, o } = setup();
+    expect(await h["settings.pullInBackground"]!({ names: ["gemma4:e4b-mlx", "llama3"] })).toEqual({ ok: false, error: "Modèle non pris en charge" });
+    expect(await h["settings.pullInBackground"]!({ names: [] })).toMatchObject({ ok: false });
+    const real = globalThis.fetch;
+    const pulled: string[] = [];
+    globalThis.fetch = (async (_u: string, init: RequestInit) => {
+      pulled.push(JSON.parse(String(init.body)).model);
+      return new Response('{"status":"success"}\n');
+    }) as any;
+    try {
+      expect(await h["settings.pullInBackground"]!({ names: ["gemma4:e4b-mlx", "pplx-decider-flash"] })).toEqual({ ok: true });
+      await vi.waitFor(() => expect(o.notify).toHaveBeenCalledWith(expect.objectContaining({ title: "L'IA locale est prête" })));
+      expect(pulled).toEqual(["gemma4:e4b-mlx", "pplx-decider-flash"]);
+      expect(await h["settings.pullProgress"]!({})).toBeNull();
+      globalThis.fetch = (async () => new Response("no space", { status: 500 })) as any;
+      expect(await h["settings.pullInBackground"]!({ names: ["pplx-decider-flash"] })).toEqual({ ok: true });
+      await vi.waitFor(() => expect(o.notify).toHaveBeenLastCalledWith({ title: "Le téléchargement de l'IA locale a échoué", text: "no space. Réessayez depuis Réglages › IA locale." }));
     } finally {
       globalThis.fetch = real;
     }
