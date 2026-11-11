@@ -161,7 +161,7 @@ export function registerExtensionsTools(
     "list_extensions",
     {
       description:
-        "Extensions de WebAiOs (Chrome Web Store et les tiennes, ~/WebAiOs/extensions/<id>) : une ligne par extension, " +
+        "Extensions de WebAiOs (celles de l'utilisateur et les tiennes, ~/WebAiOs/extensions/<id>) : une ligne par extension, " +
         "clé · nom · version · source · espaces où elle est active (les espaces privés sont seulement comptés) · erreurs.",
       inputSchema: {},
     },

@@ -434,10 +434,10 @@ l'URL par un autre moyen).
 
 ## Extensions
 
-L'utilisateur utilise des extensions Chrome (installées par lui depuis le Chrome Web Store) et tu peux
+L'utilisateur utilise des extensions (installées par lui depuis addons.mozilla.org) et tu peux
 en écrire pour lui : une extension change une page (masquer, réécrire, ajouter un bouton), bloque
 des requêtes, ou garde un petit service en arrière-plan. **Rien de ce que tu écris ne tourne sans
-l'accord de l'utilisateur.** Les extensions du Store ne sont pas les tiennes : tu ne les modifies pas, et
+l'accord de l'utilisateur.** Les extensions qu'il a installées ne sont pas les tiennes : tu ne les modifies pas, et
 `extension_console` et `unlock_console` leur sont fermés.
 
 **Écrire une extension**
@@ -1031,10 +1031,10 @@ parent.postMessage({ type: "ready" }, "*");
 | `launch_action(id, input?)` | Lance une action et attend sa fin : `{ status, run?, error? }`, jamais les résultats ; l'utilisateur voit la page dans les résultats précédents de l'action |
 | `action_runs(id, run?)` | Exécutions récentes d'une action (liste) ou le détail de l'une, plan de la page compris ; pour une action avec compte, statut seul sans l'accord de l'utilisateur |
 | `widget_data(id)` | Dernières données récoltées d'un widget ; pour un widget avec compte, une carte demande l'accord de l'utilisateur |
-| `list_extensions` | Extensions de l'utilisateur (Store et les tiennes) : clé, nom, version, source, espaces où elles sont actives (les espaces privés sont seulement comptés), erreurs |
+| `list_extensions` | Extensions de l'utilisateur (les siennes et les tiennes) : clé, nom, version, source, espaces où elles sont actives (les espaces privés sont seulement comptés), erreurs |
 | `request_extension(id, space?)` | Demande à l'utilisateur d'activer ton extension `/workspace/extensions/<id>` dans un espace (par défaut l'espace actif) : une carte lui montre droits, sites et réseau, et l'outil attend sa réponse |
 | `reload_extension(id)` | Recharge ton extension après modification : sans droit de plus elle repart seule (`reloaded`), sinon elle est désactivée (`disabled`) jusqu'à un nouvel accord ; une copie refusée ne change rien (`refused`) |
-| `extension_console(id, since?)` | Console de ton extension (service worker, pages, scripts de contenu), filtrée ; jamais pour une extension du Store |
+| `extension_console(id, since?)` | Console de ton extension (service worker, pages, scripts de contenu), filtrée ; jamais pour une extension installée par l'utilisateur |
 | `unlock_console(id, reason)` | Demande à l'utilisateur de lever le filtrage de la console, pour corriger |
 | `lock_console(id)` | Referme ce déblocage : à appeler dès que la correction est finie |
 | `list_sites` | Applis de site de l'utilisateur : id, nom, domaine actuel, ouverte ou fermée (voir « Applis de site ») |

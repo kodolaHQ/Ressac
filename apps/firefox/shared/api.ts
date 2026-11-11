@@ -329,10 +329,6 @@ export interface ApiWebaios {
     act(id: string, action: ActionSite): void;
   };
   extensions: {
-    /**
-     * Installs a Chrome Web Store extension (its page address or id) in this window's active space, after the
-     * grant card. Unreadable input: « Adresse ou identifiant du Chrome Web Store attendu ».
-     */
     /** The installed or granted extensions, and the agent's folders never granted, seen from this space. */
     forSpace(spaceId: SpaceId): Promise<SpaceExtensionLine[]>;
     /** Enables or disables an extension in this space's profile (the agent without a grant goes through the card). */
