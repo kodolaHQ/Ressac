@@ -68,10 +68,11 @@ const SchemaSession = z.object({
       .transform((o) => {
         const kept = Object.fromEntries(Object.entries(o).filter(([id, v]) => Object.hasOwn(SHORTCUTS, id) && isBinding(v)).map(([id, v]) => [id, pickBinding(v as Binding)])) as Partial<Record<ShortcutId, Binding>>;
         // An override that clashes with another or is reserved (a hand-edited file) is dropped, in table order.
-        const ok: Partial<Record<ShortcutId, Binding>> = {};
+        // Checked against every kept override, not the defaults alone: a swap (⌘J to the command bar, ⌘K to the agent) survives.
+        const ok = { ...kept };
         for (const id of SHORTCUT_IDS) {
-          const bd = kept[id];
-          if (bd && !bindingProblem(id, bd, effectiveBindings({ ...ok }))) ok[id] = bd;
+          const bd = ok[id];
+          if (bd && bindingProblem(id, bd, effectiveBindings(ok))) delete ok[id];
         }
         return ok;
       })

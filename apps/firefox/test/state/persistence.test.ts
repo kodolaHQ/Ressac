@@ -312,6 +312,16 @@ test("shortcuts: an inherited property name is no id, a clashing or reserved ove
   expect((await loadSession(d)).settings.shortcuts).toEqual({ settings: k });
 });
 
+test("shortcuts: a swap of saved overrides survives a restart", async () => {
+  const d = folder();
+  const old = structuredClone(initialState()) as unknown as { settings: Record<string, unknown> };
+  const k = { key: "k", shift: false, alt: false, ctrl: false, meta: true };
+  const j = { ...k, key: "j" }; // the agent's default, freed by its own override
+  old.settings.shortcuts = { agent: k, command: j };
+  writeFileSync(join(d, "session.json"), JSON.stringify(old));
+  expect((await loadSession(d)).settings.shortcuts).toEqual({ agent: k, command: j });
+});
+
 test("vimMode: missing or malformed loads off, true is kept", async () => {
   const d = folder();
   const old = structuredClone(initialState()) as unknown as { settings: Record<string, unknown> };
