@@ -1,0 +1,46 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Halo</title>
+<!-- Source of the app icon: render with scripts/render-logo.sh. ?small drops the page (<= 32 px), ?mac adds the macOS transparent margin, ?word renders the wordmark. -->
+<style>
+@property --ang { syntax: "<angle>"; inherits: false; initial-value: 49deg; }
+@font-face { font-family: "Funnel Display"; font-weight: 300 800; src: url("../../../../src/browser/base/content/webaios/fonts/FunnelDisplay-latin.woff2") format("woff2"); }
+:root { --a1: #FF9F7A; --a2: #FF6F91; --a3: #FFD36E; }
+* { box-sizing: border-box; }
+html, body { margin: 0; background: transparent; width: 1024px; height: 1024px; overflow: hidden; }
+.ic { --s: 1024px; width: var(--s); height: var(--s); border-radius: 22.4%; position: relative; overflow: hidden; isolation: isolate;
+  background: linear-gradient(180deg, #2A2D37, #0D0F13); }
+/* Apple icon grid: 824 px squircle centred in the 1024 canvas, with a soft drop shadow in the margin */
+.mac .ic { --s: 824px; position: absolute; left: 100px; top: 100px; overflow: visible; box-shadow: 0 10px 24px rgba(0,0,0,.45); }
+.mac .clip { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; }
+.ic .clip { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; }
+.clip > * { position: absolute; }
+.ring { inset: 21%; border-radius: 20%; padding: 7.5%; z-index: 2;
+  background: conic-gradient(from var(--ang), transparent 0 28%, var(--a3) 46%, var(--a1) 64%, var(--a2) 86%, #fff 99%, transparent 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  filter: drop-shadow(0 0 calc(var(--s) * .04) rgba(255,111,145,.7)); }
+.core { inset: 21%; border-radius: 20%; z-index: 1; box-shadow: inset 0 0 calc(var(--s) * .12) rgba(255,111,145,.25); }
+.spark { z-index: 3; width: 11%; height: 11%; left: 73%; top: 27%; translate: -50% -50%; border-radius: 50%;
+  background: radial-gradient(circle, #fff 0 28%, rgba(255,255,255,.85) 38%, rgba(255,211,110,.5) 60%, transparent 72%);
+  filter: drop-shadow(0 0 calc(var(--s) * .05) rgba(255,230,180,.95)); }
+.page { z-index: 1; inset: 33%; border-radius: 12%; background: transparent; box-shadow: inset 0 0 0 calc(var(--s) * .012) rgba(255,255,255,.5); }
+.page::before, .page::after { content: ""; position: absolute; left: 16%; right: 16%; height: 9%; border-radius: 9px; background: rgba(255,255,255,.4); }
+.page::before { top: 24%; } .page::after { top: 44%; right: 36%; }
+.aura { inset: 0; z-index: 0;
+  background: radial-gradient(circle at 12% 92%, rgba(255,111,145,.55), transparent 55%), radial-gradient(circle at 92% 6%, rgba(255,211,110,.35), transparent 50%), radial-gradient(circle at 85% 95%, rgba(255,159,122,.25), transparent 45%); }
+.glass { inset: 0; z-index: 4; border-radius: inherit; pointer-events: none;
+  background: linear-gradient(180deg, rgba(255,255,255,.20), rgba(255,255,255,0) 42%);
+  box-shadow: inset 0 calc(var(--s) * .008) 0 rgba(255,255,255,.45), inset 0 calc(var(--s) * -.01) calc(var(--s) * .03) rgba(0,0,0,.35); }
+.small .page { display: none; }
+.word { font: 700 400px/460px "Funnel Display", sans-serif; letter-spacing: -.035em; color: #fff; padding-left: 20px; white-space: nowrap; }
+</style>
+<body>
+<div id="root"><div class="ic"><div class="clip">
+  <span class="aura"></span><span class="core"></span><span class="page"></span><span class="ring"></span><span class="spark"></span><span class="glass"></span>
+</div></div></div>
+<script>
+const q = location.search;
+if (q.includes("word")) { document.body.style.cssText = "width:auto;height:auto"; document.documentElement.style.cssText = "width:auto;height:auto"; document.body.innerHTML = '<div class="word">webaios</div>'; }
+else document.getElementById("root").className = (q.includes("small") ? "small " : "") + (q.includes("mac") ? "mac" : "");
+</script>
