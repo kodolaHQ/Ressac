@@ -61,6 +61,7 @@ export function createSettingsApi(o: {
     setClaudeKey: (key) => ask<SettingsResult>("settings.claudeKey", { key }, SILENT),
     deleteClaudeKey: () => ask<SettingsResult>("settings.claudeKeyDelete", undefined, SILENT),
     chooseClaudeEngine: (engine) => o.dispatch({ type: "chooseClaudeEngine", engine }),
+    ollamaModels: (url) => ask("settings.ollamaModels", { url }, { ok: false as const, error: "Ollama ne répond pas à cette adresse." }),
     async grants() {
       const [sites, host, external] = await Promise.all([
         siteRows(),

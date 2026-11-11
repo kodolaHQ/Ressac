@@ -381,6 +381,7 @@ export interface SettingsApi {
   setClaudeKey(key: string): Promise<SettingsResult>;
   deleteClaudeKey(): Promise<SettingsResult>;
   chooseClaudeEngine(engine: ClaudeEngine): void;
+  ollamaModels(url: string): Promise<{ ok: true; models: { name: string; size?: string }[] } | { ok: false; error: string }>;
   grants(): Promise<GrantRow[]>;
   revoke(kind: GrantKind, key: string): Promise<void>;
   dataDir(): string;
