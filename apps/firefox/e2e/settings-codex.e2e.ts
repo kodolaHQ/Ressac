@@ -14,6 +14,7 @@ import { click, inUi, missingApi, waitUi } from "./ui";
 // Plan 45 Task 7: Codex in Settings › Agents (sign-in by code, its engine, the compatible API key).
 
 const PAGE = '[data-testid="settings-page"]';
+const CARD = '[data-testid="codex-engine"]';
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const SECRET = "sk-e2e-secret";
 // Any https page the test opens fails on a dead proxy: no real web.
@@ -30,6 +31,11 @@ beforeAll(async () => {
         req.resume();
         res.writeHead(200, { "Content-Type": "application/json" }).end("{}");
       },
+      // A fake Ollama: two installed models.
+      "/api/tags": (_req, res) =>
+        res
+          .writeHead(200, { "Content-Type": "application/json" })
+          .end(JSON.stringify({ models: [{ name: "ornith:35b", details: { parameter_size: "35B" } }, { name: "qwen3.5:4b", details: { parameter_size: "4B" } }] })),
     },
   });
 });
@@ -61,7 +67,7 @@ const shows = (id: string, wanted: string, ms = 10_000) =>
 /** Types into a field and leaves it (the `change` the page validates on). */
 const fill = (id: string, value: string) =>
   inUi(m, "const f = doc.querySelector(arguments[0]); f.value = arguments[1]; f.dispatchEvent(new ui.Event('input', { bubbles: true })); f.dispatchEvent(new ui.Event('change', { bubbles: true }));", [
-    `[data-testid="${id}"]`,
+    `${CARD} [data-testid="${id}"]`,
     value,
   ]);
 const read = (file: string) => (existsSync(file) ? readFileSync(file, "utf8") : "");
@@ -111,33 +117,41 @@ describe("Codex in Settings", () => {
     await launch();
     await shows("codex-engine", "Moteur de Codex");
     await shows("codex-engine", "S'applique à la prochaine conversation avec Codex.");
-    await click(m, '[data-testid="engine-ollama"]');
-    await fill("ollama-model", "qwen3:8b");
-    await engineSaved((e) => e.kind === "ollama" && e.ollamaModel === "qwen3:8b");
-    await click(m, '[data-testid="engine-api"]');
-    expect(await inUi(m, "return doc.querySelector('[data-testid=\"api-url\"]').placeholder")).toBe("https://openrouter.ai/api/v1");
+    await click(m, `${CARD} [data-testid="engine-ollama"]`);
+    await fill("ollama-url", server.url);
+    // The model is picked from the installed ones; the default gpt-oss:20b is not among them.
+    // The default address may first list this Mac's real Ollama: wait for the fake's list.
+    await waitUi(
+      m,
+      "const s = doc.querySelector(arguments[0]); return s?.tagName === 'SELECT' && [...s.options].map((o) => o.textContent.trim()).join('|') === arguments[1]",
+      [`${CARD} [data-testid="ollama-model"]`, "gpt-oss:20b (non installé)|ornith:35b · 35B|qwen3.5:4b · 4B"],
+    );
+    await fill("ollama-model", "qwen3.5:4b");
+    await engineSaved((e) => e.kind === "ollama" && e.ollamaModel === "qwen3.5:4b");
+    await click(m, `${CARD} [data-testid="engine-api"]`);
+    expect(await inUi(m, "return doc.querySelector(arguments[0]).placeholder", [`${CARD} [data-testid="api-url"]`])).toBe("https://openrouter.ai/api/v1");
     await fill("api-url", "http://example.com");
     await shows("codex-engine", "Adresse invalide (https://…)");
     await fill("api-model", "bad model");
     await shows("codex-engine", "Modèle invalide");
     await fill("api-model", "m");
     await engineSaved((e) => e.kind === "api" && e.apiModel === "m");
-    expect(savedEngine()).toMatchObject({ apiUrl: "", ollamaModel: "qwen3:8b" });
+    expect(savedEngine()).toMatchObject({ apiUrl: "", ollamaModel: "qwen3.5:4b" });
   });
 
   it("key never leaves the keychain", { timeout: 90_000 }, async () => {
     const keyFile = join(temp, "keychain");
     const output = join(temp, "output.log");
     await launch({ env: { WEBAIOS_TEST_KEYCHAIN: keyFile }, output, prefs: { "devtools.console.stdout.chrome": true } });
-    await click(m, '[data-testid="engine-api"]');
+    await click(m, `${CARD} [data-testid="engine-api"]`);
     await fill("api-url", `${server.url}/v1`);
     await fill("api-model", "m");
     await engineSaved((e) => e.kind === "api" && e.apiUrl === `${server.url}/v1` && e.apiModel === "m");
-    expect(await inUi(m, "const k = doc.querySelector('[data-testid=\"api-key\"]'); return [k.type, k.autocomplete, k.value]")).toEqual(["password", "off", ""]);
+    expect(await inUi(m, "const k = doc.querySelector(arguments[0]); return [k.type, k.autocomplete, k.value]", [`${CARD} [data-testid="api-key"]`])).toEqual(["password", "off", ""]);
     await fill("api-key", SECRET);
-    await click(m, '[data-testid="api-key-save"]');
-    await waitUi(m, "return !!doc.querySelector('[data-testid=\"api-key-saved\"]')");
-    expect(await inUi(m, "return doc.querySelector('[data-testid=\"api-key\"]').value")).toBe("");
+    await click(m, `${CARD} [data-testid="api-key-save"]`);
+    await waitUi(m, "return !!doc.querySelector(arguments[0])", [`${CARD} [data-testid="api-key-saved"]`]);
+    expect(await inUi(m, "return doc.querySelector(arguments[0]).value", [`${CARD} [data-testid="api-key"]`])).toBe("");
     expect(read(keyFile)).toBe(SECRET);
 
     const args = join(w!.dataDir, "workspace", "fake-agent-args.json");
@@ -164,8 +178,8 @@ describe("Codex in Settings", () => {
     expect(read(output)).not.toBe("");
     expect(read(output)).not.toContain(SECRET);
 
-    await click(m, '[data-testid="api-key-delete"]');
-    await waitUi(m, "return !doc.querySelector('[data-testid=\"api-key-saved\"]')");
+    await click(m, `${CARD} [data-testid="api-key-delete"]`);
+    await waitUi(m, "return !doc.querySelector(arguments[0])", [`${CARD} [data-testid="api-key-saved"]`]);
     expect(read(keyFile)).not.toContain(SECRET);
   });
 });

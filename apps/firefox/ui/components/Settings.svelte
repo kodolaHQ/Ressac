@@ -20,7 +20,7 @@
   import { TELEMETRY_NOTICE, type AgentAccount, type DecisionModel, type LoginResult, type WorkshopOperation } from "../../shared/settings";
   import { api, appState } from "../state.svelte";
   import Icon from "./Icon.svelte";
-  import SettingsCodex from "./SettingsCodex.svelte";
+  import SettingsEngine from "./SettingsEngine.svelte";
   import SettingsData from "./SettingsData.svelte";
   import SettingsPermissions from "./SettingsPermissions.svelte";
 
@@ -151,7 +151,10 @@
                     {:else if l?.kind === "error"}
                       <span class="alert">Erreur : {l.error}</span>
                     {:else if a.login === "panel"}
-                      <span class="muted">Claude Code vous demande de vous connecter dans le panneau de l'agent ; sinon, tapez /login.</span>
+                      <!-- Claude on Ollama or an API starts without its subscription: no nudge to sign in. -->
+                      {#if (appState.value?.settings.claudeEngine.kind ?? "subscription") === "subscription"}
+                        <span class="muted">Claude Code vous demande de vous connecter dans le panneau de l'agent ; sinon, tapez /login.</span>
+                      {/if}
                     {:else}
                       <span class="muted">Connexion avec votre abonnement ChatGPT : un code à saisir sur le site d'OpenAI.</span>
                     {/if}
@@ -171,7 +174,7 @@
                   <button data-testid="agent-logout" onclick={() => void logout(a.id)}>Se déconnecter</button>
                 {/if}
               </div>
-              {#if a.id === "codex"}<SettingsCodex />{/if}
+              {#if a.id === "claude" || a.id === "codex"}<SettingsEngine agent={a.id} />{/if}
             {:else}
               <div class="row"><span class="pill" data-tone="error">L'agent ne répond pas.</span></div>
             {/each}

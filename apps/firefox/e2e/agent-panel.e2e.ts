@@ -145,6 +145,16 @@ it("the built-in profiles: Claude Code and Codex in the menu, signed-out ones ma
   ]);
 });
 
+it("Claude on Ollama is not marked signed out in the menu: its subscription is not needed", async () => {
+  await launch();
+  await shown();
+  await dispatch(m, { type: "chooseClaudeEngine", engine: { kind: "ollama", ollamaUrl: "http://host.docker.internal:11434", ollamaModel: "ornith:35b", apiUrl: "", apiModel: "" } });
+  expect(await waitUi(m, "const o = [...(doc.querySelector('[data-testid=\"agent-profile\"]')?.options ?? [])].map((x) => x.textContent.trim()); return o[0] === 'Claude Code' && o", [], 10_000, "agent")).toEqual([
+    "Claude Code",
+    "Codex (non connecté)",
+  ]);
+});
+
 describe("the agent selector", () => {
   const SELECT = '[data-testid="agent-profile"]';
   const argsFile = () => join(w!.dataDir, "workspace", "fake-agent-args.json");

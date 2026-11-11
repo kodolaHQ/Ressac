@@ -63,7 +63,10 @@
     void readCurrent();
   });
   const account = (id: string | null) => accounts.find((a) => a.id === id);
-  const signedOutCodex = $derived(current === "codex" && browserState.value?.settings.codexEngine.kind === "chatgpt" && account("codex")?.state === "logged-out");
+  /** Whether an agent runs on its subscription (the sign-in it needs); Claude or Codex on Ollama or an API does not. */
+  const onSubscription = (id: string) =>
+    id === "codex" ? browserState.value?.settings.codexEngine.kind === "chatgpt" : id === "claude" ? (browserState.value?.settings.claudeEngine.kind ?? "subscription") === "subscription" : true;
+  const signedOutCodex = $derived(current === "codex" && onSubscription("codex") && account("codex")?.state === "logged-out");
   const profileChoice = $derived(profiles.length >= 2);
   async function choose(id: string) {
     reads++;
@@ -150,7 +153,7 @@
         value={current ?? ""}
         onchange={(e) => choose(e.currentTarget.value)}
       >
-        {#each profiles as p (p.id)}<option value={p.id}>{p.name}{account(p.id)?.state === "logged-out" && (p.id !== "codex" || browserState.value?.settings.codexEngine.kind === "chatgpt") ? " (non connecté)" : ""}</option>{/each}
+        {#each profiles as p (p.id)}<option value={p.id}>{p.name}{account(p.id)?.state === "logged-out" && onSubscription(p.id) ? " (non connecté)" : ""}</option>{/each}
       </select>
     {:else}
       <span class="name">{profiles.find((p) => p.id === current)?.name ?? "Agent"}</span>
