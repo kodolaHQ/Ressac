@@ -29,14 +29,18 @@ const PAGE = `<!doctype html><meta charset="utf-8"><title>vim</title>
 <input id="in"><textarea id="ta"></textarea><div id="ce" contenteditable="true"></div><div id="host"></div>
 <script>document.getElementById("host").attachShadow({ mode: "open" }).innerHTML = '<input id="sin">';</script>`;
 
-// Ten visible links (more than the nine home-row letters), and four that get no label: hidden, invisible, below and left
-// of the viewport. Its CSP allows only its own nonce'd style: the labels' style must still apply.
+// Ten visible links (more than the nine home-row letters), and six that get no label: hidden, invisible, below and left
+// of the viewport, covered at its centre, clipped by its scrolling box. Its CSP allows only its own nonce'd style: the
+// labels' style must still apply.
 const HINTS = `<!doctype html><meta charset="utf-8"><title>liens</title>
 <style nonce="n0">body{margin:0;height:4000px} .l{display:block;margin:6px} #none{display:none} #invisible{visibility:hidden}
-#below{position:absolute;top:3000px} #left{position:absolute;left:-500px;top:10px}</style>
+#below{position:absolute;top:3000px} #left{position:absolute;left:-500px;top:10px}
+.under{position:relative} .cover{position:absolute;inset:0;background:#fff} .clip{height:20px;overflow:hidden} .clip i{display:block;height:40px}</style>
 ${Array.from({ length: 10 }, (_, i) => `<a id="l${i}" class="l" href="/vim2?n=${i}">lien ${i}</a>`).join("")}
 <a id="none" href="/vim2?n=none">caché</a><a id="invisible" href="/vim2?n=invisible">invisible</a>
-<a id="below" href="/vim2?n=below">en bas</a><a id="left" href="/vim2?n=left">à gauche</a>`;
+<a id="below" href="/vim2?n=below">en bas</a><a id="left" href="/vim2?n=left">à gauche</a>
+<div class="under"><a id="covered" href="/vim2?n=covered">couvert</a><div class="cover"></div></div>
+<div class="clip"><i></i><a id="clipped" href="/vim2?n=clipped">rogné</a></div>`;
 // No link; a tall page.
 const NO_LINKS = `<!doctype html><meta charset="utf-8"><title>sans liens</title><body style="margin:0;height:6000px"><p>rien</p>`;
 // The body does not scroll; a full-height inner box does (a web app's layout, such as Gmail's).
@@ -234,8 +238,11 @@ describe("vim mode: hints, find, inner scrolling", () => {
     // None is the start of another; 8 of one letter, 2 of two (breadth-first).
     for (const a of labels) for (const b of labels) if (a !== b) expect(b.startsWith(a)).toBe(false);
     expect(labels.filter((l) => l.length === 1)).toHaveLength(8);
-    // The page's CSP (style-src 'none') does not reach the labels' style.
+    // The page's CSP (nonce'd styles only) does not reach the labels' style; they are in Geist Mono.
     expect(shown[0]!.position).toBe("absolute");
+    await expect
+      .poll(() => inBrowser<boolean>(m, B, `return [...document.fonts].some((f) => f.family.includes("WebAiOs Geist Mono") && f.status === "loaded");`, { system: true }))
+      .toBe(true);
     await typeText(m, shown.find((h) => h.link === "l3")!.label);
     await waitFor(m, `return ${B}.currentURI.spec`, (v: string) => v.endsWith("/vim2?n=3"));
   });

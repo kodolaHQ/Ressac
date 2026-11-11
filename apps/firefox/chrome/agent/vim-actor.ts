@@ -14,6 +14,11 @@ const LINE = 60;
 const HINT_KEYS = "asdfghjkl";
 /** The labels' and the pill's fade out, in ms (none under reduced motion). */
 const FADE_MS = 150;
+/** The labels' and the pill's font (the UI's woff2), under a name of our own in the page's font set. */
+const MONO_URL = "chrome://browser/content/webaios/fonts/GeistMono-latin.woff2";
+const MONO_FAMILY = "WebAiOs Geist Mono";
+/** The parent's copy of the font, read once. */
+let monoBytes: Promise<ArrayBuffer> | undefined;
 /** The pause's pill (French UI copy). */
 const PAUSED = "vim en pause · ⇧Échap";
 // The actor's layer, a closed shadow root in the page: the link hints and the pause's pill. `:host` important
@@ -23,7 +28,7 @@ const LAYER_CSS = `
 :host { all: initial !important; position: fixed !important; inset: 0 !important; z-index: 2147483647 !important; pointer-events: none !important; display: block !important; }
 .hints, .pill { transition: opacity ${FADE_MS}ms ease-out; }
 .hint, .pill { position: absolute; border: 1px solid var(--border); background: color-mix(in srgb, var(--sheet) 86%, transparent);
-  backdrop-filter: blur(12px) saturate(1.4); font: 500 11px/1.4 "Geist Mono", ui-monospace, monospace; white-space: nowrap; }
+  backdrop-filter: blur(12px) saturate(1.4); font: 500 11px/1.4 "WebAiOs Geist Mono", "Geist Mono", ui-monospace, monospace; white-space: nowrap; }
 .hint, .pill { animation: in 460ms linear(0, .06 2.4%, .24 5.1%, .55 9.4%, .84 14.6%, 1.01 19.4%, 1.07 23.2%, 1.08 26.6%, 1.05 32.8%, 1 41%, .99 50%, 1); }
 .hint { padding: 1px 4px; border-radius: 6px; color: var(--accent); text-transform: uppercase; letter-spacing: .02em; transition: opacity ${FADE_MS}ms ease-out; }
 .hint b { font-weight: 500; opacity: .45; }
@@ -100,9 +105,11 @@ export class WebAiOsVimParent extends JSWindowActorParent {
         t.controller.store.dispatch({ type: "openTab", windowId: t.controller.windowId, url, spaceId: space, after: t.tabId, activate: false });
     } else if (m.name === "vim:style") {
       // The window's tokens (window.css), in its theme; the displayed tab's space is the active one, whose aura's accent
-      // the controller sets on the root.
+      // the controller sets on the root. With Geist Mono's bytes: a web process cannot read chrome:// itself.
       const style = t.browser.ownerDocument.defaultView.getComputedStyle(t.browser.ownerDocument.documentElement);
-      return Object.fromEntries(HINT_TOKENS.map((k) => [k, style.getPropertyValue(k)])) as any;
+      const tokens = Object.fromEntries(HINT_TOKENS.map((k) => [k, style.getPropertyValue(k)]));
+      monoBytes ??= fetch(MONO_URL).then((r) => r.arrayBuffer());
+      return monoBytes.then((mono) => ({ tokens, mono }), () => ({ tokens })) as any;
     }
     return null;
   }
@@ -343,10 +350,15 @@ export class WebAiOsVimChild extends JSWindowActorChild {
   private showHints(newTab: boolean): void {
     const doc = this.document;
     const win = this.contentWindow;
-    // shortcut: a link clipped by a scrolling box or covered by another element still gets a label; add an elementFromPoint test if that misleads.
+    const inView = (r: DOMRect) => r.width > 0 && r.height > 0 && r.right > 0 && r.bottom > 0 && r.left < win.innerWidth && r.top < win.innerHeight;
+    // The centre of the rect's part in view hits the link: not covered, not clipped by a scrolling box.
+    const reached = (link: Element, r: DOMRect) => {
+      const hit = doc.elementFromPoint((Math.max(r.left, 0) + Math.min(r.right, win.innerWidth)) / 2, (Math.max(r.top, 0) + Math.min(r.bottom, win.innerHeight)) / 2);
+      return !!hit && link.contains(hit);
+    };
     const links = [...doc.querySelectorAll<HTMLAnchorElement>("a[href]")]
       .filter((a) => a.checkVisibility({ visibilityProperty: true, opacityProperty: true }))
-      .map((link) => ({ link, rect: [...link.getClientRects()].find((r) => r.width > 0 && r.height > 0 && r.right > 0 && r.bottom > 0 && r.left < win.innerWidth && r.top < win.innerHeight) }))
+      .map((link) => ({ link, rect: [...link.getClientRects()].find((r) => inView(r) && reached(link, r)) }))
       .filter((x) => x.rect);
     if (!links.length) return;
     const box = doc.createElement("div");
@@ -378,8 +390,16 @@ export class WebAiOsVimChild extends JSWindowActorChild {
       root.adoptedStyleSheets = [sheet];
       const ui = doc.createElement("div");
       root.append(ui);
-      const ready = this.sendQuery("vim:style").then((tokens) => {
-        for (const [k, v] of Object.entries((tokens ?? {}) as Record<string, string>)) if (HINT_TOKENS.includes(k)) ui.style.setProperty(k, v);
+      const win = this.contentWindow as unknown as typeof globalThis;
+      const ready = this.sendQuery("vim:style").then(async (answer) => {
+        const { tokens, mono } = (answer ?? {}) as { tokens?: Record<string, string>; mono?: ArrayBuffer };
+        for (const [k, v] of Object.entries(tokens ?? {})) if (HINT_TOKENS.includes(k)) ui.style.setProperty(k, v);
+        // Geist Mono, the UI's (theme.css), given to the page's fonts from bytes: an @font-face in a shadow root is
+        // ignored, and a chrome:// URL is out of a page's reach. Latin only: the labels' letters, the pill's words.
+        if (!mono) return;
+        const face = new win.FontFace(MONO_FAMILY, mono, { weight: "400 500" });
+        doc.fonts.add(face);
+        await face.load().catch(() => {});
       });
       this.layer = { host, ui, ready };
     }
