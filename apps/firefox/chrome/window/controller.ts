@@ -4,7 +4,7 @@ import { auraVariables, DEFAULT_AURA, type AuraId } from "../../shared/aura";
 import { toUrl } from "../../core/url";
 import { createHalo } from "../../core/halo";
 import { TabCycle } from "../../core/tab-cycle";
-import { toNth } from "../../core/shortcuts";
+import { toNeighbour, toNextSpace, toNth } from "../../core/shortcuts";
 import { effectiveBindings } from "../../shared/shortcuts";
 import { leftZone, exitZone, type LeftZone } from "../../shared/reveal";
 import type { WebAiOsStore } from "../store";
@@ -48,6 +48,8 @@ export interface WindowController {
   setWelcome(shown: boolean): void;
   /** Settings is waiting for a new key combination: our shortcuts do nothing meanwhile. */
   setCapturingShortcut(on: boolean): void;
+  /** A window shortcut the vim mode asks for (vim-actor.ts), as its key would run it; nothing under the welcome or a capture. */
+  shortcut(s: Shortcut): void;
   /** Compact mode: the page takes the sidebar's column, and the sidebar floats over it. */
   setSidebarColumn(shown: boolean): void;
   /** Whether the sidebar shows; hidden, the iframe folds once the sidebar has slid out. */
@@ -265,6 +267,9 @@ export function createController(
     else if (s.type === "nth") {
       const action = toNth(state, windowId, s.n);
       if (action) store.dispatch(action);
+    } else if (s.type === "neighbour" || s.type === "nextSpace") {
+      const action = (s.type === "neighbour" ? toNeighbour : toNextSpace)(state, windowId, s.delta);
+      if (action) store.dispatch(action);
     } else if (s.type === "space") {
       const space = state.spaces[s.n - 1];
       if (space) store.dispatch({ type: "activateSpace", windowId: windowId, id: space.id });
@@ -471,6 +476,9 @@ export function createController(
     },
     setCapturingShortcut(on) {
       capturing = on;
+    },
+    shortcut(s) {
+      if (!welcome && !capturing) run(s);
     },
     setFullWindow(full) {
       frame.toggleAttribute("full", !!full);

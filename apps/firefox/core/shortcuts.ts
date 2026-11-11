@@ -20,6 +20,23 @@ function toElement(windowId: WindowId, x: Element | undefined): Action | null {
   return "tab" in x ? { type: "activateTab", id: x.tab } : { type: "openFavorite", windowId: windowId, kind: "pinned", id: x.favorite };
 }
 
+/** J / K (vim mode): the shown item's neighbour in the sidebar's order, wrapping. */
+export function toNeighbour(state: BrowserState, windowId: WindowId, delta: 1 | -1): Action | null {
+  const { items, current } = shownElements(state, windowId);
+  if (!items.length) return null;
+  const from = current < 0 ? (delta > 0 ? -1 : 0) : current;
+  return toElement(windowId, items[(from + delta + items.length) % items.length]);
+}
+
+/** gs / gS (vim mode): the window's next / previous space, wrapping. */
+export function toNextSpace(state: BrowserState, windowId: WindowId, delta: 1 | -1): Action | null {
+  const f = state.windows.find((x) => x.id === windowId);
+  const i = state.spaces.findIndex((e) => e.id === f?.activeSpace);
+  const n = state.spaces.length;
+  if (i < 0 || n < 2) return null;
+  return { type: "activateSpace", windowId: windowId, id: state.spaces[(i + delta + n) % n]!.id };
+}
+
 /** ⌘1…⌘8: n-th displayed item; ⌘9: the last. */
 export function toNth(state: BrowserState, windowId: WindowId, n: number): Action | null {
   const { items: elements } = shownElements(state, windowId);

@@ -309,6 +309,132 @@ describe("vim mode: hints, find, inner scrolling", () => {
   });
 });
 
+/** The window's displayed tab. */
+const shown = async () => {
+  const f = (await state(m)).windows[0]!;
+  return f.active[f.activeSpace];
+};
+const activeSpace = async () => (await state(m)).windows[0]!.activeSpace;
+/** Keyboard back on the displayed page, its actor ready. */
+async function backToPage() {
+  await waitFor(m, `return !${B}.webProgress.isLoadingDocument`, (v) => v === true);
+  await m.execute(`${B}.focus();`);
+  await actorReady();
+}
+let spaceCount = 0;
+/** A new space with three tabs (its own order, whatever earlier cases left), the last one shown: /vim?<space>-<1..3>. */
+async function threeTabs(): Promise<string[]> {
+  const windowId = (await state(m)).windows[0]!.id;
+  const n = ++spaceCount;
+  await dispatch(m, { type: "createSpace", name: `Vim ${n}`, icon: "⌨️", private: false, profile: "default", windowId });
+  return [await open(`/vim?${n}-1`), await open(`/vim?${n}-2`), await open(`/vim?${n}-3`)];
+}
+const commandField = () =>
+  waitUi(m, "return doc.activeElement?.dataset.testid === 'command-input' && document.activeElement === document.getElementById('webaios-sidebar')");
+const commandValue = () => inUi<string>(m, "return doc.querySelector('[data-testid=\"command-input\"]').value");
+
+describe("vim mode: tabs and spaces", () => {
+  beforeEach(async () => {
+    await setVim(true);
+  });
+  // Back to one space: with several, the sidebar's footer trades the Settings button for the spaces (later cases click it).
+  afterAll(async () => {
+    for (const e of (await state(m)).spaces.slice(1)) await dispatch(m, { type: "deleteSpace", id: e.id });
+  });
+
+  it("J / K and gT / gt walk the sidebar's order, wrapping; g0 / g$ go to the ends", async () => {
+    const [a, b, c] = await threeTabs();
+    await pressKeys(m, "J");
+    await expect.poll(shown).toBe(b);
+    // The keyboard follows the tab: no refocusing between keys.
+    await actorReady();
+    await pressKeys(m, "J");
+    await expect.poll(shown).toBe(a);
+    await backToPage();
+    await pressKeys(m, "K");
+    await expect.poll(shown).toBe(b);
+    await backToPage();
+    await typeText(m, "gt");
+    await expect.poll(shown).toBe(c);
+    await backToPage();
+    await pressKeys(m, "K"); // from the last, wraps to the first
+    await expect.poll(shown).toBe(a);
+    await backToPage();
+    await typeText(m, "gT"); // and back
+    await expect.poll(shown).toBe(c);
+    await backToPage();
+    await typeText(m, "g0");
+    await expect.poll(shown).toBe(a);
+    await backToPage();
+    await typeText(m, "g$");
+    await expect.poll(shown).toBe(c);
+  });
+
+  it("x then X brings the closed tab back", async () => {
+    await threeTabs();
+    const last = `${server.url}/vim?${spaceCount}-3`;
+    const has = async () => Object.values((await state(m)).tabs).some((t) => t.url === last);
+    await pressKeys(m, "x");
+    await expect.poll(has).toBe(false);
+    await backToPage();
+    await pressKeys(m, "X");
+    await expect.poll(has).toBe(true);
+  });
+
+  it("t opens the command bar, o the address bar, each with the focus", async () => {
+    await open();
+    await pressKeys(m, "t");
+    await commandField();
+    expect(await commandValue()).toBe("");
+    await pressKeys(m, "Escape");
+    await waitUi(m, "return !doc.querySelector('[data-testid=\"command-bar\"]')");
+    await backToPage();
+    await pressKeys(m, "o");
+    await commandField();
+    expect(await commandValue()).toBe(`${server.url}/vim`);
+    await pressKeys(m, "Escape");
+    await waitUi(m, "return !doc.querySelector('[data-testid=\"command-bar\"]')");
+  });
+
+  it("gs / gS show the next / previous space, wrapping", async () => {
+    await threeTabs();
+    const windowId = (await state(m)).windows[0]!.id;
+    const spaces = (await state(m)).spaces.map((e) => e.id);
+    // A web page in the first space too: the keys need one to land in.
+    await dispatch(m, { type: "activateSpace", windowId, id: spaces[0]! });
+    await open();
+    await typeText(m, "gS"); // from the first, the last
+    await expect.poll(activeSpace).toBe(spaces.at(-1));
+    await backToPage();
+    await typeText(m, "gs"); // from the last, the first
+    await expect.poll(activeSpace).toBe(spaces[0]);
+    await backToPage();
+    await typeText(m, "gs");
+    await expect.poll(activeSpace).toBe(spaces[1]);
+  });
+
+  it("in a field JKtoX is typed; with the mode off, none of these keys does anything", async () => {
+    await threeTabs();
+    const before = await state(m);
+    const id = await shown();
+    await inPage("document.getElementById('in').focus(); return 1;");
+    await typeText(m, "JKtoX");
+    expect(await inPage<string>("return document.getElementById('in').value;")).toBe("JKtoX");
+    await setVim(false);
+    await m.execute(`${B}.focus();`);
+    await actorReady();
+    await inPage("document.activeElement.blur(); return 1;");
+    for (const k of ["J", "K", "X", "t", "o"]) await pressKeys(m, k);
+    await typeText(m, "gtgsg0");
+    await sleep(500);
+    const after = await state(m);
+    expect(await shown()).toBe(id);
+    expect(after.windows[0]!.activeSpace).toBe(before.windows[0]!.activeSpace);
+    expect(Object.keys(after.tabs).length).toBe(Object.keys(before.tabs).length);
+    expect(await inUi(m, "return !!doc.querySelector('[data-testid=\"command-bar\"]')")).toBe(false);
+  });
+});
+
 describe("vim mode off, or outside web tabs", () => {
   it("off (the default): j reaches the page and nothing scrolls", async () => {
     await setVim(false);

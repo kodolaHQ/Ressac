@@ -75,7 +75,18 @@ export class WebAiOsVimParent extends JSWindowActorParent {
     else if (m.name === "vim:reload") t.controller.command(t.tabId, "reload");
     else if (m.name === "vim:closeTab") void t.controller.closeTab(t.tabId);
     else if (m.name === "vim:copyUrl") Cc["@mozilla.org/widget/clipboardhelper;1"].getService(Ci.nsIClipboardHelper).copyString(t.browser.currentURI.spec);
-    else if (m.name === "vim:find") {
+    else if (m.name === "vim:reopen") t.controller.shortcut({ type: "reopen" });
+    else if (m.name === "vim:command") t.controller.shortcut({ type: "shortcut", r: "command" });
+    else if (m.name === "vim:address") t.controller.shortcut({ type: "shortcut", r: "address" });
+    else if (m.name === "vim:tab") {
+      // The window's own ⌘1 / ⌘9 for the ends; the sidebar's neighbour for next / previous.
+      const to = (m.data as { to?: unknown } | undefined)?.to;
+      if (to === "first" || to === "last") t.controller.shortcut({ type: "nth", n: to === "first" ? 1 : 9 });
+      else if (to === "next" || to === "previous") t.controller.shortcut({ type: "neighbour", delta: to === "next" ? 1 : -1 });
+    } else if (m.name === "vim:space") {
+      const delta = (m.data as { delta?: unknown } | undefined)?.delta;
+      if (delta === 1 || delta === -1) t.controller.shortcut({ type: "nextSpace", delta });
+    } else if (m.name === "vim:find") {
       const g = t.browser.ownerDocument.defaultView.gBrowser;
       void g.getFindBar(g.getTabForBrowser(t.browser)).then((bar: any) => bar.onFindCommand());
     } else if (m.name === "vim:openTab") {
@@ -100,6 +111,28 @@ function editable(t: EventTarget | undefined): boolean {
   if (!el || el.nodeType !== 1) return false;
   return el.localName === "input" || el.localName === "textarea" || el.localName === "select" || el.isContentEditable;
 }
+
+/** The keys that ask the parent for something: [message, data]. */
+const ONE_KEYS: Record<string, [string, unknown?]> = {
+  H: ["vim:back"],
+  L: ["vim:forward"],
+  r: ["vim:reload"],
+  x: ["vim:closeTab"],
+  X: ["vim:reopen"],
+  J: ["vim:tab", { to: "previous" }],
+  K: ["vim:tab", { to: "next" }],
+  t: ["vim:command"],
+  o: ["vim:address"],
+};
+/** The same after a `g` (gg scrolls, in the child). */
+const G_KEYS: Record<string, [string, unknown]> = {
+  t: ["vim:tab", { to: "next" }],
+  T: ["vim:tab", { to: "previous" }],
+  "0": ["vim:tab", { to: "first" }],
+  $: ["vim:tab", { to: "last" }],
+  s: ["vim:space", { delta: 1 }],
+  S: ["vim:space", { delta: -1 }],
+};
 
 /** What the child hears on the tab's chrome event handler, in the capture phase. */
 const EVENTS = ["keydown", "keypress", "keyup", "mousedown", "mouseover", "scroll", "pagehide"];
@@ -193,9 +226,16 @@ export class WebAiOsVimChild extends JSWindowActorChild {
     if (this.hints) return this.hintKey(key);
     const prefix = this.prefix;
     this.setPrefix("");
-    if (prefix && key === prefix) {
-      if (key === "g") this.scrollTo(false);
-      else this.sendAsyncMessage("vim:copyUrl");
+    if (prefix === "y" && key === "y") {
+      this.sendAsyncMessage("vim:copyUrl");
+      return true;
+    }
+    if (prefix === "g" && key === "g") {
+      this.scrollTo(false);
+      return true;
+    }
+    if (prefix === "g" && Object.hasOwn(G_KEYS, key)) {
+      if (!repeat) this.sendAsyncMessage(...G_KEYS[key]!);
       return true;
     }
     if (key === "Escape") return !!prefix;
@@ -227,10 +267,10 @@ export class WebAiOsVimChild extends JSWindowActorChild {
         if (!repeat) this.setPrefix(key);
         return true;
     }
-    const message = { H: "vim:back", L: "vim:forward", r: "vim:reload", x: "vim:closeTab" }[key];
+    const message = Object.hasOwn(ONE_KEYS, key) ? ONE_KEYS[key] : undefined;
     if (!message) return false;
     // A held key repeats: one tab closed, one step back, not ten.
-    if (!repeat) this.sendAsyncMessage(message);
+    if (!repeat) this.sendAsyncMessage(message[0], message[1]);
     return true;
   }
 

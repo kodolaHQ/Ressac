@@ -8,6 +8,9 @@ export type Shortcut =
   | { type: "space"; n: number }
   | { type: "navigate"; c: "back" | "forward" | "reload" | "reloadHard" }
   | { type: "cycle"; delta: 1 | -1 }
+  /** The vim mode's J / K and gs / gS (vim-actor.ts): the next / previous tab of the sidebar, the next / previous space. */
+  | { type: "neighbour"; delta: 1 | -1 }
+  | { type: "nextSpace"; delta: 1 | -1 }
   /** ⌘J: the agent panel (menu item « Panneau agent »). */
   | { type: "agent" }
   /** ⇧⌘S: the sidebar's compact mode (menu item « Mode compact »). */

@@ -3,7 +3,7 @@ import type { Action } from "../shared/api";
 import type { BrowserState } from "../shared/model";
 import { apply } from "../core/state/actions";
 import { initialState } from "../core/state/initial-state";
-import { toNth } from "../core/shortcuts";
+import { toNeighbour, toNextSpace, toNth } from "../core/shortcuts";
 
 let n = 0;
 const genId = () => `g${++n}`;
@@ -51,4 +51,30 @@ test("⌘2 activates the second; ⌘9 the last; beyond the list, nothing", () =>
   expect(toNth(e, F, 5)).toBeNull();
   ag({ type: "activateTab", id: a });
   expect(active()).toBe(a);
+});
+
+test("vim J / K: the sidebar's neighbour, pinned first, wrapping", () => {
+  const p = open("https://epingle.fr");
+  ag({ type: "pinTab", id: p });
+  const favorite = e.spaces[0]!.pinned[0]!.id;
+  const a = open("https://a.fr");
+  const b = open("https://b.fr");
+  ag(toNeighbour(e, F, -1));
+  expect(active()).toBe(a);
+  ag(toNeighbour(e, F, 1));
+  expect(active()).toBe(b);
+  // From the last, the first: the pinned favorite.
+  expect(toNeighbour(e, F, 1)).toEqual({ type: "openFavorite", windowId: F, kind: "pinned", id: favorite });
+});
+
+test("vim gs / gS: the next / previous space, wrapping; one space, nothing", () => {
+  expect(toNextSpace(e, F, 1)).toBeNull();
+  const first = e.spaces[0]!.id;
+  ag({ type: "createSpace", name: "B", icon: "b", private: false, profile: "default", windowId: F });
+  const second = e.spaces[1]!.id;
+  expect(e.windows[0]!.activeSpace).toBe(second);
+  expect(toNextSpace(e, F, 1)).toEqual({ type: "activateSpace", windowId: F, id: first });
+  expect(toNextSpace(e, F, -1)).toEqual({ type: "activateSpace", windowId: F, id: first });
+  ag(toNextSpace(e, F, 1));
+  expect(toNextSpace(e, F, -1)).toEqual({ type: "activateSpace", windowId: F, id: second });
 });
