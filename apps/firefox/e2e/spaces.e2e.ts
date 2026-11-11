@@ -214,11 +214,22 @@ describe("space settings", () => {
     for (const [name, icon] of [["Jeux", "🎮"], ["Lecture", "📚"], ["Courses", "🛒"], ["Voyage", "🧳"]]) await create(name!, icon!, false, "default");
     await waitUi(m, `return !!doc.querySelector('[data-testid="tools-button"]') && !doc.querySelector('[data-testid="agent-button"]');`);
     expect(await oneRow()).toBe(true);
+    // ⋯ opens the tools upward, above the row; the row itself does not move.
     await click(m, '[data-testid="tools-button"]');
     await waitUi(m, `return !!doc.querySelector('[data-testid="agent-button"]') && !!doc.querySelector('[data-testid="settings-button"]');`);
     expect(await oneRow()).toBe(true);
-    await click(m, '[data-testid="tools-fold"]');
-    await waitUi(m, `return !!doc.querySelector('[data-testid="tools-button"]');`);
+    expect(await inUi<boolean>(m, `return doc.querySelector('[data-testid="tools-pop"]').getBoundingClientRect().bottom <= doc.querySelector('[data-testid="tools-button"]').getBoundingClientRect().top;`)).toBe(true);
+    // A tool closes it; so do Escape and a click elsewhere.
+    await click(m, '[data-testid="settings-button"]');
+    await waitUi(m, `return !doc.querySelector('[data-testid="tools-pop"]');`);
+    await click(m, '[data-testid="tools-button"]');
+    await waitUi(m, `return !!doc.querySelector('[data-testid="tools-pop"]');`);
+    await pressKeys(m, "Escape");
+    await waitUi(m, `return !doc.querySelector('[data-testid="tools-pop"]');`);
+    await click(m, '[data-testid="tools-button"]');
+    await waitUi(m, `return !!doc.querySelector('[data-testid="tools-pop"]');`);
+    await click(m, '[data-testid="new-space"]');
+    await waitUi(m, `return !doc.querySelector('[data-testid="tools-pop"]');`);
   });
 
   it("right-clicking a space chip keeps its menu open, its items work, and the active space stays", async () => {

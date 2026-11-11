@@ -122,7 +122,7 @@ describe("the sidebar's layout", () => {
         `const rect = (e) => e.getBoundingClientRect();
          const navEl = doc.querySelector("footer nav"), nav = rect(navEl);
          const chips = [...doc.querySelectorAll("footer nav button")].map(rect);
-         const tools = [...doc.querySelectorAll("footer > .tool")].map(rect);
+         const tools = [...doc.querySelectorAll("footer > .tool, footer > .fold")].map(rect);
          const footer = rect(doc.querySelector("footer"));
          const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
          return {

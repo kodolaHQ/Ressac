@@ -31,6 +31,7 @@
   // Past two spaces the tools fold behind one button so the spaces keep the whole row.
   const foldable = $derived((appState.value?.spaces.length ?? 0) > 2);
   let toolsOpen = $state(false);
+  let fold = $state<HTMLElement>();
   const activeTab = $derived.by(() => {
     const id = win.active[win.activeSpace];
     return id ? appState.value?.tabs[id] : undefined;
@@ -39,6 +40,12 @@
   // In the builder, the agent has its « Agent » tab: ✦ shows it there (like ⌘J), the side panel does not appear.
   const builder = $derived(!!activeTab && workflowUrlTarget(activeTab.url) !== null);
 </script>
+
+<svelte:window
+  onclick={(e) => toolsOpen && !fold?.contains(e.target as Node) && (toolsOpen = false)}
+  onkeydown={(e) => toolsOpen && e.key === "Escape" && (toolsOpen = false)}
+  onblur={() => (toolsOpen = false)}
+/>
 
 <aside class="bar" data-testid="sidebar" hidden={hidden}>
   <UrlBar window={win} />
@@ -76,19 +83,10 @@
   </div>
   <footer>
     <SpaceSelector window={win} />
-    {#if foldable && !toolsOpen}
-      <button
-        class="tool"
-        data-testid="tools-button"
-        aria-label="Outils"
-        title="Outils"
-        aria-expanded="false"
-        class:on={win.agentPanelOpen || [URL_APPLICATIONS, URL_ACTIONS, URL_SETTINGS].includes(activeTab?.url ?? "")}
-        onclick={() => (toolsOpen = true)}><Icon name="options" /></button
-      >
-    {:else}
+    {#snippet tools()}
     <button
       class="tool"
+      style:--i={0}
       data-testid="agent-button"
       aria-label="Agent (⌘J)"
       title="Agent (⌘J)"
@@ -97,6 +95,7 @@
     >
     <button
       class="tool"
+      style:--i={1}
       data-testid="applications-button"
       aria-label="Applications (⇧⌘A)"
       title="Applications (⇧⌘A)"
@@ -105,6 +104,7 @@
     >
     <button
       class="tool"
+      style:--i={2}
       data-testid="actions-button"
       aria-label="Actions"
       title="Actions"
@@ -113,15 +113,32 @@
     >
     <button
       class="tool"
+      style:--i={3}
       data-testid="settings-button"
       aria-label="Réglages (⌘,)"
       title="Réglages (⌘,)"
       aria-pressed={activeTab?.url === URL_SETTINGS}
       onclick={() => api.dispatch({ type: "openSettings", windowId: win.id })}><Icon name="settings" /></button
     >
+    {/snippet}
     {#if foldable}
-      <button class="tool" data-testid="tools-fold" aria-label="Replier les outils" title="Replier les outils" aria-expanded="true" onclick={() => (toolsOpen = false)}><Icon name="close" /></button>
-    {/if}
+      <!-- Past two spaces the tools fold into ⋯, which opens them upward. -->
+      <div class="fold" bind:this={fold}>
+        {#if toolsOpen}
+          <div class="pop" data-testid="tools-pop" onclick={() => (toolsOpen = false)} role="presentation">{@render tools()}</div>
+        {/if}
+        <button
+          class="tool"
+          data-testid="tools-button"
+          aria-label="Outils"
+          title="Outils"
+          aria-expanded={toolsOpen}
+          class:on={toolsOpen || win.agentPanelOpen || [URL_APPLICATIONS, URL_ACTIONS, URL_SETTINGS].includes(activeTab?.url ?? "")}
+          onclick={() => (toolsOpen = !toolsOpen)}><Icon name="options" /></button
+        >
+      </div>
+    {:else}
+      {@render tools()}
     {/if}
     {#if downloads.list.length}
       <button class="downloads" aria-label="Téléchargements" title="Téléchargements" onclick={() => togglePanel?.("downloads")}>
@@ -160,6 +177,10 @@
   footer :global(nav) { flex: 1 1 0; min-width: 0; }
   footer :global(nav:has(.confirmation)) { flex-basis: 100%; }
   .tool:first-of-type { margin-left: auto; }
+  .fold { position: relative; margin-left: auto; }
+  /* The tools rise from ⋯ on the spring, one after the other. */
+  .pop { position: absolute; right: -4px; bottom: calc(100% + 6px); display: flex; flex-direction: column; gap: 2px; padding: 4px; background: var(--glass-dense); backdrop-filter: blur(30px) saturate(1.8); border: 1px solid var(--glass-edge); border-radius: 12px; box-shadow: var(--modal-shadow); transform-origin: bottom right; animation: webaios-rise var(--spring-d) var(--spring) backwards; }
+  .pop .tool { margin: 0; animation: webaios-rise var(--spring-d) var(--spring) backwards; animation-delay: calc((3 - var(--i)) * 35ms); }
   .downloads { all: unset; position: relative; width: 28px; height: 28px; display: grid; place-content: center; border-radius: 8px; color: var(--text-muted); transition: transform var(--tap), background var(--tap), color var(--tap); }
   .tool { all: unset; -webkit-app-region: no-drag; width: 28px; height: 28px; display: grid; place-content: center; border-radius: 8px; color: var(--text-muted); transition: transform var(--tap), background var(--tap), color var(--tap); }
   .tool:hover, .downloads:hover { background: var(--glass-hi); color: var(--text); }
