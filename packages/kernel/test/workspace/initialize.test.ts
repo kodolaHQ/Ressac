@@ -179,7 +179,7 @@ test("the profile shipped before the English formats (profil-claude.json) is a k
 
 test("the AGENTS.md template is pinned: before editing it, add this hash to OLD_AGENTS, then update the pin", async () => {
   expect(sha256(await readFile(join(import.meta.dirname, "..", "..", "templates", "AGENTS.md")))).toBe(
-    "e63295a004bce64af5982dddd7c8af0aafc67c05b621405be3576e1c1c39e92d",
+    "bfad62c350ce052ee0fadf3ae1a4316f53abc2fe641080ef3637f02111394a72",
   );
 });
 

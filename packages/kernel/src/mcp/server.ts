@@ -137,6 +137,8 @@ export interface SitesTools {
   list(): Promise<{ id: string; name: string; domain: string | null; open: boolean; error?: string; hash?: string }[]>;
   /** Opens the window (home); false if the app does not exist or its site.json is invalid. */
   open(id: string): Promise<boolean>;
+  /** Closes the window if it is open; false if the app does not exist. */
+  close(id: string): Promise<boolean>;
   /** The app's memory; null if the app is unknown. */
   memory(id: string): Promise<MemoryContent | null>;
   /** The tweaks console (the source comes from the page, unauthenticated); null if the app is unknown. */
@@ -467,7 +469,7 @@ function createToolsServer(
 
     server.registerTool(
       "stop_app",
-      { description: "Arrête une application lancée par launch_app.", inputSchema: { folder: folderSchema } },
+      { description: "Arrête une application lancée par launch_app et ferme sa fenêtre (quitter l'appli).", inputSchema: { folder: folderSchema } },
       protect(async ({ folder: folder }) => {
         await applications.stop(folder);
         return text(`Application ${folder} arrêtée.`);
@@ -815,6 +817,15 @@ function registerSitesTools(
       inputSchema: { id },
     },
     protect(async ({ id }) => ((await s.tools.open(id)) ? text(`site:${id}`) : text(SITE_UNKNOWN, true))),
+  );
+
+  server.registerTool(
+    "close_site",
+    {
+      description: "Ferme la fenêtre d'une appli de site (quitter l'appli). Sans effet si elle est déjà fermée.",
+      inputSchema: { id },
+    },
+    protect(async ({ id }) => ((await s.tools.close(id)) ? text(`Appli de site ${id} fermée.`) : text(SITE_UNKNOWN, true))),
   );
 
   /** The app's name (for the card) and the `empreinte` of today's declaration, or null if it is unknown. */

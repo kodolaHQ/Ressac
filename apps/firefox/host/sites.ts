@@ -650,6 +650,11 @@ export function createSites(o: {
           ...(s.hash !== undefined ? { hash: s.hash } : {}),
         })),
       open: openById,
+      close: async (id) => {
+        if (!(await list()).some((s) => s.id === id)) return false;
+        if (opened.has(id)) await o.chrome.close(id);
+        return true;
+      },
       memory: async (id) => {
         if (!(await list()).some((s) => s.id === id)) return null;
         return (await memory(id)).content();
