@@ -253,6 +253,26 @@ async function start(): Promise<WebAiOsStore> {
     messageManagerGroups: ["browsers"],
     safeForUntrustedWebProcess: true,
   });
+  // The vim mode (vim-actor.ts): top http(s) documents of tab browsers; the parent decides whether keys are taken there.
+  const vimActor = actorModule("vim-actor");
+  ChromeUtils.registerWindowActor("WebAiOsVim", {
+    parent: { esModuleURI: vimActor },
+    child: { esModuleURI: vimActor, events: { DOMWindowCreated: {}, pageshow: {} } },
+    matches: ["http://*/*", "https://*/*"],
+    messageManagerGroups: ["browsers"],
+    safeForUntrustedWebProcess: true,
+  });
+  // The switch reaches the pages already open (a page in the bfcache asks again when it comes back).
+  store.subscribe((s, p) => {
+    if (s.settings.vimMode === p.settings.vimMode) return;
+    for (const win of Services.wm.getEnumerator("navigator:browser"))
+      for (const b of win.gBrowser?.browsers ?? [])
+        try {
+          b.browsingContext?.currentWindowGlobal?.getExistingActor("WebAiOsVim")?.tell();
+        } catch (e) {
+          console.error("[vim] mode not sent:", e);
+        }
+  });
   // The agent's extensions' consoles, in every content process: a content script writes in a web process (spike S6).
   // What it relays is untrusted there: the parent checks it (agentExtensions.relayConsole).
   ChromeUtils.registerProcessActor("WebAiOsConsole", {

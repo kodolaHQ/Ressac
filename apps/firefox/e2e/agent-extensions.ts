@@ -17,7 +17,7 @@ export type FakeAmo = Awaited<ReturnType<typeof startFakeAmo>>;
 const BUILT = path.resolve(import.meta.dirname, "../src/browser/base/content/webaios");
 
 /**
- * The extension, site and design actors as `pnpm ui` built them, without their preprocessor line, in a folder of the profile:
+ * The extension, site, design and vim actors as `pnpm ui` built them, without their preprocessor line, in a folder of the profile:
  * the store loads them by a resource:// substitution, which the content sandbox reads with the testing_read_path1 pref
  * (spike S5). So these tests need no rebuild of the app.
  */
@@ -26,7 +26,7 @@ export function testActor(profile: string): { env: Record<string, string>; prefs
   if (process.env.WEBAIOS_E2E_PACKAGED_ACTOR === "1") return { env: {}, prefs: {} };
   const dir = path.join(realpathSync(profile), "extension-actor");
   mkdirSync(dir, { recursive: true });
-  for (const name of ["extension-actor", "site-actor", "design-actor"])
+  for (const name of ["extension-actor", "site-actor", "design-actor", "vim-actor"])
     writeFileSync(path.join(dir, `${name}.sys.mjs`), readFileSync(path.join(BUILT, `${name}.sys.mjs`), "utf8").replace(/^#define .*\n/, ""));
   return { env: { WEBAIOS_TEST_EXTENSION_ACTOR: dir }, prefs: { "security.sandbox.content.mac.testing_read_path1": dir } };
 }

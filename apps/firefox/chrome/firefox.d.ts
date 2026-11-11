@@ -44,6 +44,8 @@ declare const WindowGlobalParent: { getByInnerWindowId(id: number): any };
 declare const WindowGlobalChild: { getByInnerWindowId(id: number): any };
 declare class JSWindowActorParent {
   readonly manager: any;
+  readonly browsingContext: any;
+  sendAsyncMessage(name: string, data?: unknown): void;
 }
 declare class JSProcessActorParent {
   readonly manager: { childID: number; remoteType: string };
