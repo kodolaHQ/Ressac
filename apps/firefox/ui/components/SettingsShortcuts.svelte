@@ -1,6 +1,6 @@
 <script lang="ts">
   import { fade } from "svelte/transition";
-  import { bindingLabel, bindingProblem, effectiveBindings, sameBinding, SHORTCUT_IDS, SHORTCUTS, type Binding, type ShortcutId } from "../../shared/shortcuts";
+  import { bindingFromKey, bindingLabel, bindingProblem, effectiveBindings, sameBinding, SHORTCUT_IDS, SHORTCUTS, type ShortcutId } from "../../shared/shortcuts";
   import { api, appState } from "../state.svelte";
 
   const win = window.parent.webaiosWindow!;
@@ -31,8 +31,7 @@
     if (MODIFIER_KEYS.includes(key)) return;
     const id = capturing;
     if (key === "escape") return void (capturing = null);
-    // A digit is read on the physical key (AZERTY types « & » for the 1 key).
-    const binding: Binding = { key: /^Digit[1-9]$/.test(e.code) ? e.code : key, shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey, meta: e.metaKey };
+    const binding = bindingFromKey(e);
     const text = bindingProblem(id, binding, effective);
     if (text) problem = { id, text };
     else api.dispatch(sameBinding(binding, SHORTCUTS[id].default) ? { type: "resetShortcut", id } : { type: "setShortcut", id, binding });
@@ -40,8 +39,14 @@
   }
   $effect(() => {
     if (!capturing) return;
+    // Focus gone to another frame (the agent panel, a page): its keys never reach `capture`, so the capture ends.
+    const stop = () => (capturing = null);
     window.addEventListener("keydown", capture, true);
-    return () => window.removeEventListener("keydown", capture, true);
+    window.addEventListener("blur", stop);
+    return () => {
+      window.removeEventListener("keydown", capture, true);
+      window.removeEventListener("blur", stop);
+    };
   });
   const start = (id: ShortcutId) => {
     problem = null;

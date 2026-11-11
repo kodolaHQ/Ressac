@@ -54,6 +54,19 @@ const RESERVED_MESSAGE = "Réservé par macOS ou l'édition de texte";
 // ⌘+ and ⌘= are the same zoom key, with or without ⇧.
 const RESERVED_ANY_SHIFT = ["+", "=", "-", "−", "0", "tab", "`"];
 const RESERVED_PLAIN = ["q", "h", "m", "c", "v", "x", "a", "z", "f", "g", "p", "s", "o"];
+const RESERVED_CMD_EDIT = ["arrowleft", "arrowright", "arrowup", "arrowdown", "backspace", "delete"];
+const RESERVED_CTRL_EDIT = [..."aebfnpdhk"];
+// The zoom keys are read on the physical key: AZERTY types « à » for ⌘0.
+const ZOOM_CODES: Record<string, string> = { Digit0: "0", Minus: "-", Equal: "=" };
+
+/** The binding a keydown makes: a digit is read on the physical key (AZERTY types « & » for the 1 key), so are the zoom keys. */
+export const bindingFromKey = (e: { key: string; code: string; shiftKey: boolean; altKey: boolean; ctrlKey: boolean; metaKey: boolean }): Binding => ({
+  key: /^Digit[1-9]$/.test(e.code) ? e.code : (ZOOM_CODES[e.code] ?? e.key.toLowerCase()),
+  shift: e.shiftKey,
+  alt: e.altKey,
+  ctrl: e.ctrlKey,
+  meta: e.metaKey,
+});
 
 /** Why a binding cannot be given to `id`: reserved by macOS or text editing, no ⌘ or ⌃, or another action's. Null when it can. */
 export function bindingProblem(id: ShortcutId, binding: Binding, effective: Bindings): string | null {
@@ -62,7 +75,20 @@ export function bindingProblem(id: ShortcutId, binding: Binding, effective: Bind
   const cmdOnly = meta && !ctrl && !alt;
   const fixed = /^Digit[1-9]$/.test(key) && !shift && !alt && meta !== ctrl;
   const ctrlTab = ctrl && !meta && key === "tab";
-  if (fixed || ctrlTab || (cmdOnly && (RESERVED_ANY_SHIFT.includes(key) || (!shift && RESERVED_PLAIN.includes(key)) || (shift && key === "z"))))
+  if (
+    fixed ||
+    ctrlTab ||
+    (cmdOnly && (RESERVED_ANY_SHIFT.includes(key) || (!shift && RESERVED_PLAIN.includes(key)) || (shift && key === "z"))) ||
+    // ⌘ + arrows, ⌫ and ⌦ move and delete in text fields, with or without ⇧ and ⌥.
+    (meta && RESERVED_CMD_EDIT.includes(key)) ||
+    // The Cocoa ⌃ editing keys (⌃A, ⌃E, ⌃K…), ⌃ + arrows (Mission Control).
+    (ctrl && !meta && (RESERVED_CTRL_EDIT.includes(key) || key.startsWith("arrow"))) ||
+    // Full screen, emoji picker.
+    (ctrl && meta && (key === "f" || key === " ")) ||
+    // Consumed by the window before the bindings are read (keys.ts): a binding there would never fire.
+    (meta && !ctrl && !alt && (key === "{" || key === "}")) ||
+    (ctrl && !meta && !alt && (key === "pageup" || key === "pagedown"))
+  )
     return RESERVED_MESSAGE;
   const other = SHORTCUT_IDS.find((o) => o !== id && sameBinding(effective[o], binding));
   return other ? `Déjà utilisé par ${SHORTCUTS[other].label}` : null;
