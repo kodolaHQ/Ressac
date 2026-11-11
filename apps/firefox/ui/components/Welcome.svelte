@@ -99,13 +99,14 @@
             {#if docker === undefined}
               {@render status("welcome-docker", "warn", "Vérification…")}
             {:else if docker === "docker-absent"}
-              {@render status("welcome-docker", "warn", "OrbStack n'est pas installé.")}
+              {@render status("welcome-docker", "warn", "OrbStack n'est pas lancé ou pas installé.")}
               <button type="button" data-testid="welcome-install-docker" onclick={() => install("https://orbstack.dev/download")}>Installer OrbStack</button>
               <button type="button" data-testid="welcome-recheck" onclick={() => void checkDocker()}>Vérifier à nouveau</button>
             {:else if docker === null}
               {@render status("welcome-docker", "off", "Impossible de vérifier pour l'instant.")}
+              <button type="button" data-testid="welcome-recheck" onclick={() => void checkDocker()}>Vérifier à nouveau</button>
             {:else}
-              {@render status("welcome-docker", "ok", "OrbStack est prêt.")}
+              {@render status("welcome-docker", "ok", "Docker est prêt.")}
             {/if}
           </div>
           <div class="agents" role="radiogroup" aria-label="Agent">
@@ -116,7 +117,7 @@
               </label>
             {/each}
           </div>
-          <p class="note">Vous vous connecterez la première fois que vous ouvrirez l'agent (<kbd>⌘J</kbd>).</p>
+          {#if docker && docker !== "docker-absent"}<p class="note">Vous vous connecterez la première fois que vous ouvrirez l'agent (<kbd>⌘J</kbd>).</p>{/if}
           {@render actions("Continuer", true)}
         {:else if step.page === 4}
           <h2>L'IA locale</h2>

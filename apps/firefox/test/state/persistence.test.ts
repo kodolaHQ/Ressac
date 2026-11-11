@@ -283,7 +283,16 @@ test("existing session never welcomes", async () => {
   writeFileSync(join(d, "session.json"), JSON.stringify(old));
   const s = await loadSession(d);
   expect(s.settings.onboarded).toBe(true);
-  expect(s.settings.hints).toEqual({ enabled: true, seen: [] });
+  // They already use the agent, design mode and actions: those notes are seen, the tips are not.
+  expect(s.settings.hints).toEqual({ enabled: true, seen: ["agent", "design", "actions"] });
+});
+
+test("an unknown hint id is dropped, the rest kept", async () => {
+  const d = folder();
+  const s = initialState();
+  s.settings.hints = { enabled: false, seen: ["cmd-t", "from-the-future", "agent"] as never };
+  writeFileSync(join(d, "session.json"), JSON.stringify(s));
+  expect((await loadSession(d)).settings.hints).toEqual({ enabled: false, seen: ["cmd-t", "agent"] });
 });
 
 test("set-aside session never welcomes", async () => {

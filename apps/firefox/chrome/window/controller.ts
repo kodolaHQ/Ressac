@@ -463,7 +463,8 @@ export function createController(
       const had = document.activeElement;
       return () => {
         if (had === agentFrame && agentOpen(store.state)) agentFrame.focus();
-        else if (had !== frame) controller.focusPage();
+        else if (had === frame) frame.focus();
+        else controller.focusPage();
       };
     },
     setAgentWidth(px) {

@@ -30,9 +30,9 @@ afterEach(async () => {
 });
 
 /** A launch that shows the welcome (unless `welcome` is false: the tests' default, which skips it). Ollama unreachable. */
-async function launch(o: { welcome?: boolean; env?: Record<string, string>; dataDir?: string } = {}): Promise<void> {
+async function launch(o: { welcome?: boolean; env?: Record<string, string>; dataDir?: string; firstTimeNotes?: boolean } = {}): Promise<void> {
   const env = { WEBAIOS_OLLAMA_URL: "http://127.0.0.1:9", ...(o.welcome === false ? {} : { WEBAIOS_SKIP_WELCOME: "0" }), ...o.env };
-  w = await launchWebAiOs({ env, prefs: NO_WEB, dataDir: o.dataDir });
+  w = await launchWebAiOs({ env, prefs: NO_WEB, dataDir: o.dataDir, firstTimeNotes: o.firstTimeNotes });
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
@@ -81,7 +81,7 @@ describe("welcome", () => {
   it("no docker, no ollama, still through", async () => {
     await launch({ env: { FAKE_DOCKER_ABSENT: "1" } });
     await forward(1, 3);
-    await shows("welcome-docker", "OrbStack n'est pas installé.");
+    await shows("welcome-docker", "OrbStack n'est pas lancé ou pas installé.");
     // An install link opens its page and the welcome steps aside; the pill brings it back on the same step.
     await press("welcome-install-docker");
     await waitFor<BrowserState>(m, `return (async () => (await ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready).state)();`, (s) =>
@@ -90,7 +90,7 @@ describe("welcome", () => {
     await layerGone();
     expect(await inUi(m, `return !!doc.querySelector('[data-testid="sidebar"]').closest('[inert]')`)).toBe(false);
     await click(m, '[data-testid="welcome-resume"]');
-    await shows("welcome-docker", "OrbStack n'est pas installé.");
+    await shows("welcome-docker", "OrbStack n'est pas lancé ou pas installé.");
     // The pill leaves with a fade.
     await waitUi(m, `return !doc.querySelector('[data-testid="welcome-resume"]')`);
 
@@ -131,6 +131,7 @@ describe("welcome", () => {
     await click(m, '[data-testid="settings-replay-welcome"]');
     await forward(1, 3);
     await shows("welcome-docker", "Impossible de vérifier pour l'instant.");
+    await shown("welcome-recheck");
     await press("welcome-next");
     await shows("welcome-ollama", "Ollama n'est pas installé ou pas lancé.");
   });
@@ -198,6 +199,23 @@ describe("welcome", () => {
     // Finished on the last page: a second replay starts at the beginning again.
     await click(m, '[data-testid="settings-replay-welcome"]');
     await shown("welcome-1");
+  });
+
+  it("first launch, whole journey", async () => {
+    await launch({ firstTimeNotes: true });
+    await forward(1, 5);
+    await press("welcome-finish");
+    await layerGone();
+    // The home page opens the agent panel: its note takes the keyboard.
+    await waitUi(m, "return !!doc.querySelector(arguments[0])", ['[data-testid="first-time-agent"]'], 10_000, "agent");
+    expect(await m.execute<string>("return document.activeElement?.id;")).toBe("webaios-agent");
+    expect(await inUi(m, "return doc.activeElement?.dataset.testid;", [], "agent")).toBe("first-time-ok");
+    expect(await inUi(m, `return !!doc.querySelector('[data-testid="tip-card"]')`)).toBe(false);
+    await click(m, '[data-testid="first-time-ok"]', { frame: "agent" });
+    await waitUi(m, "return !doc.querySelector(arguments[0])", ['[data-testid="first-time-agent"]'], 10_000, "agent");
+    // The tip takes its turn, and the keyboard is back where it was: the empty page's field.
+    await shown("tip-card");
+    await waitUi(m, "return document.activeElement?.id === 'webaios-sidebar' && doc.activeElement?.dataset.testid === 'empty-page-input'");
   });
 
   it("default launch skips it", async () => {

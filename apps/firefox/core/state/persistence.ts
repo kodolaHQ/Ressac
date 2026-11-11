@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { BrowserState } from "../../shared/model";
 import { AURA_IDS, DEFAULT_AURA } from "../../shared/aura";
 import { CodexEngineSchema, DEFAULT_CODEX_ENGINE } from "../../shared/settings";
-import { HINT_IDS } from "../../shared/hints";
+import { FIRST_TIME, HINT_IDS, type HintId } from "../../shared/hints";
 import { initialState } from "./initial-state";
 
 const FILE = "session.json";
@@ -50,7 +50,14 @@ const SchemaSession = z.object({
   settings: z.object({ engine: z.enum(["google", "duckduckgo", "qwant"]), agentProfile: z.string().min(1).default("claude"), agentPanelWidth: z.number().default(420), decisionModel: z.enum(["pplx-decider-flash", "kev"]).catch("pplx-decider-flash"), codexEngine: CodexEngineSchema.catch(() => ({ ...DEFAULT_CODEX_ENGINE })),
     // A session saved before the welcome existed never welcomes.
     onboarded: z.boolean().default(true),
-    hints: z.object({ enabled: z.boolean(), seen: z.array(z.enum(HINT_IDS)) }).catch(() => ({ enabled: true, seen: [] })),
+    // A session saved before the hints existed has used the agent, design mode and actions: their one-time notes are seen, the tips are not.
+    // An id this build does not know (a later version, a downgrade) is dropped; the rest is kept.
+    hints: z
+      .object({
+        enabled: z.boolean().catch(true),
+        seen: z.array(z.string()).transform((ids) => ids.filter((id): id is HintId => (HINT_IDS as readonly string[]).includes(id))),
+      })
+      .catch(() => ({ enabled: true, seen: Object.keys(FIRST_TIME) as HintId[] })),
   }),
 });
 

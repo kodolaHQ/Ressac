@@ -104,11 +104,30 @@
     }
     if (n === served) return;
     served = n;
+    if (firstTimePending("agent")) userAsked = true;
     // The first-time note keeps the keyboard until Compris.
     const aim = () => visible && !firstTimePending("agent") && terminalAgent.focus();
     void tick().then(aim);
     const relaunch = setTimeout(() => !terminalAgent.hasFocus() && aim(), 100);
     return () => clearTimeout(relaunch);
+  });
+  // The note takes the keyboard; Compris gives it back: to the terminal if the user opened the panel (⌘J, ✦), else to
+  // where it was (the empty page's field when the home page opened the panel). Captured before the note mounts.
+  let giveBack: (() => void) | undefined;
+  let userAsked = false;
+  $effect.pre(() => {
+    const pending = visible && firstTimePending("agent");
+    const done = !firstTimePending("agent");
+    untrack(() => {
+      if (pending) giveBack ??= window.parent.webaiosWindow?.rememberFocus();
+      else if (done && giveBack) {
+        const back = giveBack;
+        const asked = userAsked;
+        giveBack = undefined;
+        userAsked = false;
+        void tick().then(() => (asked ? terminalAgent.focus() : back()));
+      }
+    });
   });
   // Shown with its note pending, the panel gives the keyboard to the note's button.
   $effect(() => {
