@@ -24,6 +24,12 @@ Every visual change follows `DESIGN.md`.
 - **The full suite**: once at the end of the plan, before the final review, and after the final fix pass.
 - Do not run the suite during the owner's `build:ui`: the binary disappears and everything fails with "build missing".
 
+## Version and DMG
+
+- The WebAiOs version is `"version"` in `apps/firefox/package.json`. To ship a DMG to testers, bump it there, then run `(set -a; . ~/.config/webaios/sentry.env; set +a; echo N | corepack pnpm --filter firefox-webaios run package)`. Sentry's release, Réglages › À propos, the DMG name and the Finder version all follow it. The package step takes a normal build.
+- Never change `displayVersion` in `apps/firefox/surfer.json` for a WebAiOs release. It is compiled into Gecko, so a change forces a near-full engine rebuild (40+ min). It only moves with a Firefox engine update.
+- Bump only for a DMG that actually goes to testers, not for every test build.
+
 ## Specs, plans, notes; local settings
 
 - They live outside the repo, in `../WebAiOs-docs/superpowers`. `docs/superpowers` is a git-ignored link to it (`ln -s ../../WebAiOs-docs/superpowers docs/superpowers`), so the usual paths keep working. Never commit them.
