@@ -10,6 +10,39 @@ const { setTimeout, clearTimeout } = ChromeUtils.importESModule("resource://gre/
 const PREFIX_MS = 1000;
 /** One line of j / k / h / l, in CSS pixels (Vimium's). */
 const LINE = 60;
+/** The letters of the link hints: the home row. */
+const HINT_KEYS = "asdfghjkl";
+/** The labels' fade out, in ms (none under reduced motion). */
+const FADE_MS = 150;
+// The labels, in a closed shadow root in the page: `:host` important declarations win over the page's. Glass, Geist
+// Mono and the space's aura accent (DESIGN.md), on the window's own tokens (the parent sends them: see "vim:style").
+const HINTS_CSS = `
+:host { all: initial !important; position: fixed !important; inset: 0 !important; z-index: 2147483647 !important; pointer-events: none !important; display: block !important; }
+.hints { transition: opacity ${FADE_MS}ms ease-out; }
+.hint { position: absolute; padding: 1px 4px; border-radius: 6px; border: 1px solid var(--border); background: color-mix(in srgb, var(--sheet) 86%, transparent);
+  backdrop-filter: blur(12px) saturate(1.4); color: var(--accent);
+  font: 500 11px/1.4 "Geist Mono", ui-monospace, monospace; text-transform: uppercase; letter-spacing: .02em; white-space: nowrap;
+  transition: opacity ${FADE_MS}ms ease-out;
+  animation: in 460ms linear(0, .06 2.4%, .24 5.1%, .55 9.4%, .84 14.6%, 1.01 19.4%, 1.07 23.2%, 1.08 26.6%, 1.05 32.8%, 1 41%, .99 50%, 1); }
+.hint b { font-weight: 500; opacity: .45; }
+.gone, .out { opacity: 0; }
+@keyframes in { from { opacity: 0; transform: scale(.85); } }
+@media (prefers-reduced-motion: reduce) { .hints, .hint { transition: none; animation: none; } }
+`;
+
+/** The window's tokens the labels paint with. */
+const HINT_TOKENS = ["--accent", "--sheet", "--border"];
+
+/** `n` labels over HINT_KEYS, breadth-first: as short as possible, and none is the start of another. */
+function hintLabels(n: number): string[] {
+  const labels = [""];
+  let next = 0;
+  while (labels.length - next < n || next === 0) {
+    const stem = labels[next++]!;
+    for (const c of HINT_KEYS) labels.push(stem + c);
+  }
+  return labels.slice(next, next + n);
+}
 
 /**
  * A web process is untrusted: the parent reads only the message's name. What it acts on (the tab, its window) comes from
@@ -32,7 +65,7 @@ export class WebAiOsVimParent extends JSWindowActorParent {
     this.sendAsyncMessage("vim:mode", { on: !!this.target() });
   }
 
-  receiveMessage(m: { name: string }): boolean | null {
+  receiveMessage(m: { name: string; data?: unknown }): boolean | null {
     const t = this.target();
     if (m.name === "vim:state") return !!t;
     if (!t) return null;
@@ -42,6 +75,21 @@ export class WebAiOsVimParent extends JSWindowActorParent {
     else if (m.name === "vim:reload") t.controller.command(t.tabId, "reload");
     else if (m.name === "vim:closeTab") void t.controller.closeTab(t.tabId);
     else if (m.name === "vim:copyUrl") Cc["@mozilla.org/widget/clipboardhelper;1"].getService(Ci.nsIClipboardHelper).copyString(t.browser.currentURI.spec);
+    else if (m.name === "vim:find") {
+      const g = t.browser.ownerDocument.defaultView.gBrowser;
+      void g.getFindBar(g.getTabForBrowser(t.browser)).then((bar: any) => bar.onFindCommand());
+    } else if (m.name === "vim:openTab") {
+      // F: the page names the link; only an http(s) address opens, in the background, in this tab's space.
+      const url = (m as { data?: { url?: unknown } }).data?.url;
+      const space = t.controller.store.state.tabs[t.tabId]?.spaceId;
+      if (typeof url === "string" && /^https?:\/\//i.test(url) && space)
+        t.controller.store.dispatch({ type: "openTab", windowId: t.controller.windowId, url, spaceId: space, after: t.tabId, activate: false });
+    } else if (m.name === "vim:style") {
+      // The window's tokens (window.css), in its theme; the displayed tab's space is the active one, whose aura's accent
+      // the controller sets on the root.
+      const style = t.browser.ownerDocument.defaultView.getComputedStyle(t.browser.ownerDocument.documentElement);
+      return Object.fromEntries(HINT_TOKENS.map((k) => [k, style.getPropertyValue(k)])) as any;
+    }
     return null;
   }
 }
@@ -53,13 +101,20 @@ function editable(t: EventTarget | undefined): boolean {
   return el.localName === "input" || el.localName === "textarea" || el.localName === "select" || el.isContentEditable;
 }
 
+/** What the child hears on the tab's chrome event handler, in the capture phase. */
+const EVENTS = ["keydown", "keypress", "keyup", "mousedown", "mouseover", "scroll", "pagehide"];
+
 export class WebAiOsVimChild extends JSWindowActorChild {
   private on = false;
   private prefix = "";
   private prefixTimer: unknown;
   /** The codes of keys taken on keydown: their keyup is taken too. */
   private taken = new Set<string>();
-  private listening: { target: any; listener: (e: KeyboardEvent) => void } | null = null;
+  private listening: { target: any; listener: (e: Event) => void } | null = null;
+  /** The link hints shown: their host in the page, each label's link, what was typed, F or f. */
+  private hints: { host: HTMLElement; box: HTMLElement; items: { label: string; link: HTMLAnchorElement; el: HTMLElement }[]; typed: string; newTab: boolean } | null = null;
+  /** The last element clicked or hovered: j/k scroll its scrolling box when the window cannot move (Vimium's). */
+  private pointed: Element | null = null;
 
   // DOMWindowCreated: a new document; pageshow: one back from the bfcache may have missed a change of the setting.
   handleEvent(e: Event): void {
@@ -67,8 +122,8 @@ export class WebAiOsVimChild extends JSWindowActorChild {
     if (!this.listening) {
       // The chrome event handler is the tab's: every document of the tab hears these keys (see `mine`).
       const target = this.docShell.chromeEventHandler;
-      const listener = (k: KeyboardEvent) => this.key(k);
-      for (const type of ["keydown", "keypress", "keyup"]) target.addEventListener(type, listener, true);
+      const listener = (e: Event) => this.event(e);
+      for (const type of EVENTS) target.addEventListener(type, listener, true);
       this.listening = { target, listener };
     }
     this.sendQuery("vim:state").then(
@@ -83,9 +138,22 @@ export class WebAiOsVimChild extends JSWindowActorChild {
 
   didDestroy(): void {
     clearTimeout(this.prefixTimer);
+    this.hideHints(true);
     if (!this.listening) return;
-    for (const type of ["keydown", "keypress", "keyup"]) this.listening.target.removeEventListener(type, this.listening.listener, true);
+    for (const type of EVENTS) this.listening.target.removeEventListener(type, this.listening.listener, true);
     this.listening = null;
+  }
+
+  private event(e: Event): void {
+    if (e.type.startsWith("key")) return this.key(e as KeyboardEvent);
+    if (!this.on || !e.isTrusted) return;
+    if (e.type === "scroll" || e.type === "pagehide") return this.hideHints(e.type === "pagehide");
+    const target = e.composedPath()[0] as Element | undefined;
+    try {
+      if (target?.nodeType === 1 && target.ownerDocument === this.document) this.pointed = target;
+    } catch {
+      // A page left in the bfcache: its actor no longer has a document.
+    }
   }
 
   private key(e: KeyboardEvent): void {
@@ -122,15 +190,15 @@ export class WebAiOsVimChild extends JSWindowActorChild {
 
   /** Runs vim key `key`; false: not a vim key, the page gets it. */
   private run(key: string, repeat: boolean): boolean {
+    if (this.hints) return this.hintKey(key);
     const prefix = this.prefix;
     this.setPrefix("");
     if (prefix && key === prefix) {
-      if (key === "g") this.scrollTo(0);
+      if (key === "g") this.scrollTo(false);
       else this.sendAsyncMessage("vim:copyUrl");
       return true;
     }
     if (key === "Escape") return !!prefix;
-    const win = this.contentWindow;
     switch (key) {
       case "j":
         return this.scroll(0, LINE);
@@ -141,11 +209,18 @@ export class WebAiOsVimChild extends JSWindowActorChild {
       case "h":
         return this.scroll(-LINE, 0);
       case "d":
-        return this.scroll(0, win.innerHeight / 2);
+        return this.scroll(0, 1, true);
       case "u":
-        return this.scroll(0, -win.innerHeight / 2);
+        return this.scroll(0, -1, true);
       case "G":
-        this.scrollTo((this.document.scrollingElement ?? this.document.documentElement).scrollHeight);
+        this.scrollTo(true);
+        return true;
+      case "f":
+      case "F":
+        if (!repeat) this.showHints(key === "F");
+        return true;
+      case "/":
+        if (!repeat) this.sendAsyncMessage("vim:find");
         return true;
       case "g":
       case "y":
@@ -169,13 +244,141 @@ export class WebAiOsVimChild extends JSWindowActorChild {
     return this.contentWindow.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth";
   }
 
-  // shortcut: scrolls the page's window only, not an inner scrolling element (some web apps); find the scrollable box if that matters.
-  private scroll(left: number, top: number): true {
-    this.contentWindow.scrollBy({ left, top, behavior: this.behavior() });
+  /**
+   * What a scroll by (dx, dy) moves, as Vimium chooses: the window when it can move that way; else the scrolling box
+   * around the last element clicked or hovered; else the largest visible scrolling box (a web app's main column).
+   */
+  private scroller(dx: number, dy: number): Window | Element {
+    // scrollMaxX / scrollMaxY: Gecko's own, how far the window can scroll.
+    const win = this.contentWindow as Window & { scrollMaxX: number; scrollMaxY: number };
+    if (movable(win.scrollX, win.scrollMaxX, dx) || movable(win.scrollY, win.scrollMaxY, dy)) return win;
+    for (let el: Element | null = this.pointed?.isConnected ? this.pointed : null; el; el = el.parentElement ?? ((el.parentNode as ShadowRoot | null)?.host ?? null))
+      if (scrollable(el, dx, dy)) return el;
+    let best: Element = win as unknown as Element;
+    let area = 0;
+    for (const el of this.document.querySelectorAll("*")) {
+      if (!scrollable(el, dx, dy)) continue;
+      const r = el.getBoundingClientRect();
+      const a = Math.max(0, Math.min(r.right, win.innerWidth) - Math.max(r.left, 0)) * Math.max(0, Math.min(r.bottom, win.innerHeight) - Math.max(r.top, 0));
+      if (a > area) [best, area] = [el, a];
+    }
+    return best;
+  }
+
+  /** Scrolls by (dx, dy), or by half the box's height in dy's direction when `half` (d / u). */
+  private scroll(dx: number, dy: number, half = false): true {
+    const t = this.scroller(dx, dy);
+    const top = half ? (dy * ("innerHeight" in t ? t.innerHeight : t.clientHeight)) / 2 : dy;
+    t.scrollBy({ left: dx, top, behavior: this.behavior() });
     return true;
   }
 
-  private scrollTo(top: number): void {
-    this.contentWindow.scrollTo({ top, behavior: this.behavior() });
+  /** G (bottom) or gg (top). */
+  private scrollTo(bottom: boolean): void {
+    const t = this.scroller(0, bottom ? 1 : -1);
+    const height = "innerHeight" in t ? (this.document.scrollingElement ?? this.document.documentElement).scrollHeight : t.scrollHeight;
+    t.scrollTo({ top: bottom ? height : 0, behavior: this.behavior() });
   }
+
+  /** f / F: a label on each link in view; none, and nothing happens. */
+  private showHints(newTab: boolean): void {
+    const doc = this.document;
+    const win = this.contentWindow;
+    // shortcut: a link clipped by a scrolling box or covered by another element still gets a label; add an elementFromPoint test if that misleads.
+    const links = [...doc.querySelectorAll<HTMLAnchorElement>("a[href]")]
+      .filter((a) => a.checkVisibility({ visibilityProperty: true, opacityProperty: true }))
+      .map((link) => ({ link, rect: [...link.getClientRects()].find((r) => r.width > 0 && r.height > 0 && r.right > 0 && r.bottom > 0 && r.left < win.innerWidth && r.top < win.innerHeight) }))
+      .filter((x) => x.rect);
+    if (!links.length) return;
+    const host = doc.createElement("div");
+    const root = host.attachShadow({ mode: "closed" });
+    // A constructed sheet: the page's CSP (style-src) blocks a <style> element, even the actor's.
+    const sheet = new (win as unknown as typeof globalThis).CSSStyleSheet();
+    sheet.replaceSync(HINTS_CSS);
+    root.adoptedStyleSheets = [sheet];
+    const box = doc.createElement("div");
+    box.className = "hints";
+    root.append(box);
+    const items = hintLabels(links.length).map((label, i) => {
+      const { link, rect } = links[i]!;
+      const el = doc.createElement("span");
+      el.className = "hint";
+      el.style.left = `${Math.max(0, rect!.left)}px`;
+      el.style.top = `${Math.max(0, rect!.top)}px`;
+      el.textContent = label;
+      box.append(el);
+      return { label, link, el };
+    });
+    this.hints = { host, box, items, typed: "", newTab };
+    // Shown once the window's tokens are there (no flash of unstyled labels); letters typed meanwhile already count.
+    this.sendQuery("vim:style").then(
+      (tokens) => {
+        if (this.hints?.host !== host) return;
+        for (const [k, v] of Object.entries((tokens ?? {}) as Record<string, string>)) if (HINT_TOKENS.includes(k)) box.style.setProperty(k, v);
+        doc.documentElement.append(host);
+      },
+      () => {},
+    );
+  }
+
+  /** A key while the labels show: a letter narrows them (a whole label follows its link), Backspace undoes one, Escape quits. */
+  private hintKey(key: string): boolean {
+    const h = this.hints!;
+    if (key === "Shift") return false;
+    if (key === "Escape") {
+      this.hideHints();
+      return true;
+    }
+    const typed = key === "Backspace" ? h.typed.slice(0, -1) : h.typed + key.toLowerCase();
+    if (key !== "Backspace" && (key.length !== 1 || !HINT_KEYS.includes(key.toLowerCase()))) {
+      // Any other key quits the labels and does its own job.
+      this.hideHints();
+      return this.run(key, false);
+    }
+    const hit = h.items.find((i) => i.label === typed);
+    if (hit) {
+      this.hideHints();
+      if (!h.newTab) hit.link.click();
+      else this.sendAsyncMessage("vim:openTab", { url: hit.link.href });
+      return true;
+    }
+    // A letter no label continues is ignored.
+    if (!h.items.some((i) => i.label.startsWith(typed))) return true;
+    h.typed = typed;
+    for (const i of h.items) {
+      const on = i.label.startsWith(typed);
+      i.el.classList.toggle("gone", !on);
+      if (!on) continue;
+      // The typed letters, dimmed.
+      const b = this.document.createElement("b");
+      b.textContent = typed;
+      i.el.replaceChildren(b, i.label.slice(typed.length));
+    }
+    return true;
+  }
+
+  /** Removes the labels: a fade out, or at once (`now`, or reduced motion). */
+  private hideHints(now = false): void {
+    const h = this.hints;
+    if (!h) return;
+    this.hints = null;
+    if (now || this.behavior() === "instant") return void h.host.remove();
+    h.box.classList.add("out");
+    setTimeout(() => h.host.remove(), FADE_MS);
+  }
+}
+
+/** A position in [0, max] can move by d's sign. */
+function movable(position: number, max: number, d: number): boolean {
+  return d > 0 ? position < max - 0.5 : d < 0 ? position > 0.5 : false;
+}
+
+/** `el` is a scrolling box that can move by (dx, dy)'s sign. */
+function scrollable(el: Element, dx: number, dy: number): boolean {
+  const y = dy !== 0 && el.scrollHeight > el.clientHeight && movable(el.scrollTop, el.scrollHeight - el.clientHeight, dy);
+  const x = dx !== 0 && el.scrollWidth > el.clientWidth && movable(el.scrollLeft, el.scrollWidth - el.clientWidth, dx);
+  if (!x && !y) return false;
+  const style = el.ownerDocument.defaultView?.getComputedStyle(el) ?? null;
+  const open = (o: string | undefined) => o === "auto" || o === "scroll" || o === "overlay";
+  return (y && open(style?.overflowY)) || (x && open(style?.overflowX));
 }

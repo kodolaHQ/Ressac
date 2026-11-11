@@ -12,7 +12,8 @@ import { startServer } from "./server";
 import { inBrowser } from "./sites";
 import { click, inUi, pressKeys, typeText, waitUi } from "./ui";
 
-// Plan 50 Task 4: the vim mode's actor (WebAiOsVim): scrolling, history, tabs, never in a field nor outside web tabs.
+// Plan 50 Tasks 4-5: the vim mode's actor (WebAiOsVim): scrolling, history, tabs, link hints, find; never in a field
+// nor outside web tabs.
 
 const B = "gBrowser.selectedBrowser";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -28,7 +29,23 @@ const PAGE = `<!doctype html><meta charset="utf-8"><title>vim</title>
 <input id="in"><textarea id="ta"></textarea><div id="ce" contenteditable="true"></div><div id="host"></div>
 <script>document.getElementById("host").attachShadow({ mode: "open" }).innerHTML = '<input id="sin">';</script>`;
 
-const send = (body: string) => (_req: unknown, res: ServerResponse) => void res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(body);
+// Ten visible links (more than the nine home-row letters), and four that get no label: hidden, invisible, below and left
+// of the viewport. Its CSP allows only its own nonce'd style: the labels' style must still apply.
+const HINTS = `<!doctype html><meta charset="utf-8"><title>liens</title>
+<style nonce="n0">body{margin:0;height:4000px} .l{display:block;margin:6px} #none{display:none} #invisible{visibility:hidden}
+#below{position:absolute;top:3000px} #left{position:absolute;left:-500px;top:10px}</style>
+${Array.from({ length: 10 }, (_, i) => `<a id="l${i}" class="l" href="/vim2?n=${i}">lien ${i}</a>`).join("")}
+<a id="none" href="/vim2?n=none">caché</a><a id="invisible" href="/vim2?n=invisible">invisible</a>
+<a id="below" href="/vim2?n=below">en bas</a><a id="left" href="/vim2?n=left">à gauche</a>`;
+// No link; a tall page.
+const NO_LINKS = `<!doctype html><meta charset="utf-8"><title>sans liens</title><body style="margin:0;height:6000px"><p>rien</p>`;
+// The body does not scroll; a full-height inner box does (a web app's layout, such as Gmail's).
+const INNER = `<!doctype html><meta charset="utf-8"><title>boîte</title>
+<style>html,body{margin:0;height:100%;overflow:hidden}#inner{height:100%;overflow:auto}#inner>div{height:5000px}</style>
+<div id="inner"><div>contenu</div></div>`;
+
+const send = (body: string, headers: Record<string, string> = {}) => (_req: unknown, res: ServerResponse) =>
+  void res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", ...headers }).end(body);
 
 let server: Awaited<ReturnType<typeof startServer>>;
 let w: LaunchedWebAiOs;
@@ -36,7 +53,7 @@ let m: Marionette;
 const dirs: string[] = [];
 
 beforeAll(async () => {
-  server = await startServer({ routes: { "/vim": send(PAGE), "/vim2": send(PAGE) } });
+  server = await startServer({ routes: { "/vim": send(PAGE), "/vim2": send(PAGE), "/hints": send(HINTS, { "Content-Security-Policy": "style-src 'nonce-n0'" }), "/nolinks": send(NO_LINKS), "/inner": send(INNER) } });
   const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
   const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
   dirs.push(dataDir, profile);
@@ -66,6 +83,20 @@ async function open(p = "/vim"): Promise<string> {
   await actorReady();
   return id;
 }
+/** The labels shown (a closed shadow root: read with chrome privileges), each with the id of the link at its place. */
+const hints = () =>
+  inBrowser<{ label: string; link: string | null; position: string }[] | null>(
+    m,
+    B,
+    `const root = [...document.documentElement.children].map((e) => e.openOrClosedShadowRoot).find((r) => r?.querySelector(".hint"));
+     if (!root) return null;
+     return [...root.querySelectorAll(".hint:not(.gone)")].map((h) => {
+       const r = h.getBoundingClientRect();
+       const link = [...document.querySelectorAll("a")].find((a) => { const b = a.getBoundingClientRect(); return Math.abs(b.left - r.left) < 1 && Math.abs(b.top - r.top) < 1; });
+       return { label: h.textContent, link: link?.id ?? null, position: getComputedStyle(h).position };
+     });`,
+    { system: true },
+  );
 const scrollY = () => inPage<number>("return window.scrollY;");
 const seen = () => inPage<string>("return document.documentElement.dataset.seen ?? '';");
 const url = () => m.execute<string>(`return ${B}.currentURI.spec;`);
@@ -183,6 +214,98 @@ describe("vim mode on", () => {
     await expect.poll(clipboardText).toBe(`${server.url}/vim`);
     await pressKeys(m, "x");
     await expect.poll(async () => !!(await state(m)).tabs[id], { timeout: 10_000 }).toBe(false);
+  });
+});
+
+describe("vim mode: hints, find, inner scrolling", () => {
+  beforeEach(async () => {
+    await setVim(true);
+  });
+
+  it("f labels each visible link with short, distinct home-row labels; typing one follows it", async () => {
+    await open("/hints");
+    await pressKeys(m, "f");
+    await expect.poll(hints).not.toBeNull();
+    const shown = (await hints())!;
+    expect(shown.map((h) => h.link).sort()).toEqual(Array.from({ length: 10 }, (_, i) => `l${i}`).sort());
+    const labels = shown.map((h) => h.label);
+    expect(new Set(labels).size).toBe(10);
+    for (const l of labels) expect(l).toMatch(/^[asdfghjkl]{1,2}$/);
+    // None is the start of another; 8 of one letter, 2 of two (breadth-first).
+    for (const a of labels) for (const b of labels) if (a !== b) expect(b.startsWith(a)).toBe(false);
+    expect(labels.filter((l) => l.length === 1)).toHaveLength(8);
+    // The page's CSP (style-src 'none') does not reach the labels' style.
+    expect(shown[0]!.position).toBe("absolute");
+    await typeText(m, shown.find((h) => h.link === "l3")!.label);
+    await waitFor(m, `return ${B}.currentURI.spec`, (v: string) => v.endsWith("/vim2?n=3"));
+  });
+
+  it("F opens the link in a new tab of the same space, in the background", async () => {
+    const id = await open("/hints");
+    await pressKeys(m, "F");
+    await expect.poll(hints).not.toBeNull();
+    const label = (await hints())!.find((h) => h.link === "l5")!.label;
+    const before = new Set(Object.keys((await state(m)).tabs));
+    await typeText(m, label);
+    await expect.poll(async () => Object.values((await state(m)).tabs).find((t) => !before.has(t.id))?.url).toBe(`${server.url}/vim2?n=5`);
+    const s = await state(m);
+    const added = Object.values(s.tabs).find((t) => !before.has(t.id))!;
+    expect(added.spaceId).toBe(s.tabs[id]!.spaceId);
+    expect(await url()).toBe(`${server.url}/hints`);
+    await expect.poll(hints).toBeNull();
+  });
+
+  it("Escape and a scroll remove the labels", async () => {
+    await open("/hints");
+    await pressKeys(m, "f");
+    await expect.poll(hints).not.toBeNull();
+    await pressKeys(m, "Escape");
+    await expect.poll(hints).toBeNull();
+    await pressKeys(m, "f");
+    await expect.poll(hints).not.toBeNull();
+    await inPage("window.scrollTo(0, 100); return 1;");
+    await expect.poll(hints).toBeNull();
+  });
+
+  it("with motion, the labels fade out, then leave the page", async () => {
+    await m.execute(`Services.prefs.setIntPref("ui.prefersReducedMotion", 0);`);
+    try {
+      await open("/hints");
+      await pressKeys(m, "f");
+      await expect.poll(hints).not.toBeNull();
+      await pressKeys(m, "Escape");
+      await expect.poll(hints).toBeNull();
+    } finally {
+      await m.execute(`Services.prefs.setIntPref("ui.prefersReducedMotion", 1);`);
+    }
+  });
+
+  it("f on a page without visible links shows nothing and leaves hint mode", async () => {
+    await open("/nolinks");
+    await pressKeys(m, "f");
+    await sleep(300);
+    expect(await hints()).toBeNull();
+    await pressKeys(m, "j");
+    await expect.poll(scrollY).toBeGreaterThan(0);
+  });
+
+  it("/ opens Firefox's find bar with the focus in it", async () => {
+    await open();
+    await pressKeys(m, "/");
+    await waitFor(m, "const f = gBrowser.getCachedFindBar(); return !!f && !f.hidden && document.activeElement === f._findField", (v) => v === true);
+    await pressKeys(m, "Escape");
+    await waitFor(m, "return gBrowser.getCachedFindBar().hidden", (v) => v === true);
+  });
+
+  it("j scrolls the inner box when the window cannot scroll", async () => {
+    await open("/inner");
+    await pressKeys(m, "j");
+    await expect.poll(() => inPage<number>("return document.getElementById('inner').scrollTop;")).toBe(60);
+    await pressKeys(m, "G");
+    await expect.poll(() => inPage<boolean>("const e = document.getElementById('inner'); return e.scrollTop + e.clientHeight >= e.scrollHeight - 1;")).toBe(true);
+    await typeText(m, "gg");
+    await expect.poll(() => inPage<number>("return document.getElementById('inner').scrollTop;")).toBe(0);
+    expect(await scrollY()).toBe(0);
   });
 });
 

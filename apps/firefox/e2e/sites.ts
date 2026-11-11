@@ -154,13 +154,15 @@ const NAVIGABLES = "chrome://remote/content/shared/NavigableManager.sys.mjs";
  * gives, in its `frame`-th frame if given; with `gesture`, from the click handler of a trusted click (WebDriver
  * actions), so the page has a user activation. Comes back to the chrome context and the window it left.
  */
-export async function inBrowser<T>(m: Marionette, browser: string, script: string, o: { frame?: number; gesture?: boolean } = {}): Promise<T> {
+export async function inBrowser<T>(m: Marionette, browser: string, script: string, o: { frame?: number; gesture?: boolean; system?: boolean } = {}): Promise<T> {
   const main = (await m.command<{ value: string }>("WebDriver:GetWindowHandle")).value;
   const handle = await m.execute<string>(`return ChromeUtils.importESModule("${NAVIGABLES}").NavigableManager.getIdForBrowser(${browser});`);
   await m.command("WebDriver:SwitchToWindow", { handle, focus: false });
   await m.setContext("content");
   try {
     if (o.frame !== undefined) await m.command("WebDriver:SwitchToFrame", { id: o.frame });
+    // system: Marionette's privileged sandbox (chrome-only APIs, such as a closed shadow root).
+    if (o.system) return (await m.command<{ value: T }>("WebDriver:ExecuteScript", { script, args: [], sandbox: "system" })).value;
     if (!o.gesture) return await m.execute<T>(script);
     // The script becomes the handler of a button on top of the page; a trusted click runs it.
     await m.execute(
