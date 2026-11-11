@@ -1,6 +1,7 @@
-import { createReporter, parseDsn, type ReportedError } from "../../shared/telemetry";
+import { createReporter, launchSession, parseDsn, type ReportedError } from "../../shared/telemetry";
 
 const ENABLED = "webaios.telemetry.enabled";
+const INSTALL_ID = "webaios.telemetry.installId";
 // Our own chrome only: a web page's errors are its own (and would carry its addresses).
 const CRASH_TAB_SEND = "browser.tabs.crashReporting.sendReport";
 const OURS = "chrome://browser/content/webaios/";
@@ -31,7 +32,23 @@ export function installTelemetry(): { report(e: ReportedError): void; active: bo
     } catch {}
   };
   syncCrashReports();
-  Services.prefs.addObserver(ENABLED, syncCrashReports);
+  Services.prefs.addObserver(ENABLED, () => {
+    syncCrashReports();
+    // Off wipes the install id whatever turned it off (the setting, the first-run choice).
+    if (!enabled()) Services.prefs.clearUserPref(INSTALL_ID);
+  });
+  launchSession({
+    dsn,
+    release: Services.appinfo.version,
+    enabled,
+    post: (url, body) => fetch(url, { method: "POST", body }),
+    ids: {
+      get: () => Services.prefs.getStringPref(INSTALL_ID, "") || undefined,
+      set: (id) => Services.prefs.setStringPref(INSTALL_ID, id),
+      clear: () => Services.prefs.clearUserPref(INSTALL_ID),
+    },
+    newId: () => crypto.randomUUID(),
+  });
   if (active)
     Services.console.registerListener({
       observe(m: any) {

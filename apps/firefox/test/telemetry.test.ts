@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createReporter, errorEnvelope, parseDsn, parseStack, scrub } from "../shared/telemetry";
+import { createReporter, errorEnvelope, launchSession, parseDsn, parseStack, scrub, sessionEnvelope } from "../shared/telemetry";
 
 const home = "/Users/marie";
 
@@ -154,5 +154,51 @@ describe("createReporter", () => {
   it("survives a synchronously throwing post", () => {
     const { r } = make({ post: () => { throw new Error("x"); } });
     expect(() => r.report(err(1))).not.toThrow();
+  });
+});
+
+describe("session counting", () => {
+  it("builds an anonymous session envelope", () => {
+    const now = new Date("2026-11-11T10:00:00.000Z");
+    const [h, i, p] = sessionEnvelope({ release: "0.1.0", installId: "inst", sessionId: "sess", now }).split("\n").map((l) => JSON.parse(l));
+    expect(h).toEqual({ sent_at: now.toISOString() });
+    expect(i).toEqual({ type: "session" });
+    expect(p).toEqual({
+      sid: "sess", did: "inst", init: true, started: now.toISOString(), timestamp: now.toISOString(),
+      status: "exited", duration: 0, errors: 0, attrs: { release: "0.1.0", environment: "beta", ip_address: "0.0.0.0" },
+    });
+    expect(JSON.stringify([h, i, p])).not.toContain(home);
+  });
+  const make = () => {
+    let stored: string | undefined;
+    let n = 0;
+    const posts: string[] = [];
+    let on = true;
+    const launch = (dsn = "https://k@h.io/1") =>
+      launchSession({
+        dsn, release: "0.1.0", enabled: () => on, post: async (_u, b) => void posts.push(b),
+        ids: { get: () => stored, set: (v) => (stored = v), clear: () => (stored = undefined) },
+        newId: () => `id${++n}`,
+      });
+    return { posts, launch, off: (v: boolean) => (on = v) };
+  };
+  const did = (b: string) => JSON.parse(b.split("\n")[2]!).did;
+  it("keeps the same did across launches, a new one after off then on", () => {
+    const { posts, launch, off } = make();
+    launch();
+    launch();
+    off(false);
+    launch();
+    off(true);
+    launch();
+    expect(posts.map(did)).toEqual(["id1", "id1", "id4"]);
+  });
+  it("posts nothing when off or without dsn", () => {
+    const { posts, launch, off } = make();
+    off(false);
+    launch();
+    off(true);
+    launch("");
+    expect(posts).toHaveLength(0);
   });
 });

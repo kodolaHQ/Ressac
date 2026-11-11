@@ -85,3 +85,35 @@ export function createReporter(o: {
     },
   };
 }
+
+/** One anonymous session per launch: lets Sentry count installs (`did`) and launches. No home path, no URL. */
+export function sessionEnvelope(o: { release: string; installId: string; sessionId: string; now: Date }): string {
+  const t = o.now.toISOString();
+  const session = {
+    sid: o.sessionId, did: o.installId, init: true, started: t, timestamp: t, status: "exited", duration: 0, errors: 0,
+    // Same unlocatable IP as the error events: Sentry derives no city.
+    attrs: { release: o.release, environment: "beta", ip_address: "0.0.0.0" },
+  };
+  return [{ sent_at: t }, { type: "session" }, session].map((x) => JSON.stringify(x)).join("\n");
+}
+
+// shortcut: one "exited" session per launch, no live session or crash linking; enough to count installs and launches, upgrade if crash-free rates matter
+export function launchSession(o: {
+  dsn: string;
+  release: string;
+  enabled: () => boolean;
+  post: (url: string, body: string) => Promise<unknown>;
+  ids: { get(): string | undefined; set(id: string): void; clear(): void };
+  newId: () => string;
+}): void {
+  try {
+    const urls = parseDsn(o.dsn);
+    if (!urls) return;
+    // Reports off: the install id goes away, so turning them back on starts a new one.
+    if (!o.enabled()) return o.ids.clear();
+    let installId = o.ids.get();
+    if (!installId) o.ids.set((installId = o.newId()));
+    const body = sessionEnvelope({ release: o.release, installId, sessionId: o.newId(), now: new Date() });
+    Promise.resolve(o.post(urls.envelopeUrl, body)).catch(() => {});
+  } catch {}
+}

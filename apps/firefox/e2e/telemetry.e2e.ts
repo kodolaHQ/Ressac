@@ -12,6 +12,7 @@ const NOTICE = "webaios-telemetry";
 
 // A fake Sentry: every envelope posted to project 1 is kept, parsed.
 let envelopes: { raw: string; event: any }[] = [];
+let sessions: any[] = [];
 let server: Awaited<ReturnType<typeof startServer>>;
 beforeAll(async () => {
   server = await startServer({
@@ -20,7 +21,8 @@ beforeAll(async () => {
         let raw = "";
         req.on("data", (c) => (raw += c));
         req.on("end", () => {
-          envelopes.push({ raw, event: JSON.parse(raw.split("\n")[2]!) });
+          const [, item, payload] = raw.split("\n").map((l) => JSON.parse(l));
+          (item.type === "session" ? sessions : envelopes).push(item.type === "session" ? payload : { raw, event: payload });
           res.writeHead(200).end("{}");
         });
       },
@@ -35,6 +37,7 @@ afterEach(async () => {
   await w?.close();
   w = undefined;
   envelopes = [];
+  sessions = [];
 });
 
 const dsn = () => `http://k@127.0.0.1:${server.port}/1`;
@@ -72,6 +75,13 @@ it("host crash: one anonymous envelope from the host", async () => {
   expect(e.event.exception.values[0].value).toMatch(/^exit code /);
   expect(e.raw).not.toContain(os.homedir());
   expect(e.raw).not.toContain(w!.dataDir);
+});
+
+it("launch: one anonymous session with an install id", async () => {
+  await launch();
+  await until(() => sessions.length > 0);
+  expect(sessions[0]).toMatchObject({ init: true, status: "exited", attrs: { environment: "beta", ip_address: "0.0.0.0" } });
+  expect(sessions[0].did).toMatch(/^[0-9a-f-]{36}$/);
 });
 
 it("host stop: a requested stop sends nothing", async () => {
@@ -113,7 +123,7 @@ async function noticeOnce(profile: string): Promise<void> {
   await waitFor(m, `return [...window.gNotificationBox.allNotifications].some((n) => n.getAttribute("value") === "${NOTICE}")`, (v) => v === true);
   expect(await m.execute("return Services.prefs.getBoolPref('webaios.telemetry.noticeShown')")).toBe(true);
   const label = await m.execute<string>(`return [...window.gNotificationBox.allNotifications].find((n) => n.getAttribute("value") === "${NOTICE}").messageText?.textContent ?? ""`);
-  expect(label).toContain("WebAiOs envoie à son développeur les plantages et les erreurs, sans adresse de page, pour corriger les bugs de la bêta. Un plantage peut contenir des fragments de mémoire.");
+  expect(label).toContain("WebAiOs envoie à son développeur les plantages et les erreurs, sans adresse de page, pour corriger les bugs de la bêta, et à chaque lancement un identifiant d'installation anonyme pour compter les utilisateurs. Un plantage peut contenir des fragments de mémoire.");
   await m.execute(
     `const n = [...window.gNotificationBox.allNotifications].find((n) => n.getAttribute("value") === "${NOTICE}");
      [...n.buttonContainer.children].find((b) => b.getAttribute("label") === "Couper l'envoi").doCommand();`,
