@@ -829,3 +829,24 @@ test("updateSpace without aura keeps a non-default aura; the same aura again cha
   ag({ type: "updateSpace", id: P, name: "Maison", icon: "🏠", private: false, profile: "default", aura: "lagon" });
   expect(e).toBe(before);
 });
+
+test("onboarding actions and hints", () => {
+  e = initialState(genId);
+  expect(e.settings.onboarded).toBe(false);
+  const changed = (a: Action) => {
+    const before = e;
+    ag(a);
+    return e !== before;
+  };
+  expect(changed({ type: "finishOnboarding" })).toBe(true);
+  expect(e.settings.onboarded).toBe(true);
+  expect(changed({ type: "finishOnboarding" })).toBe(false);
+  ag({ type: "replayOnboarding" });
+  expect(e.settings.onboarded).toBe(false);
+  expect(changed({ type: "markHintSeen", id: "agent" })).toBe(true);
+  expect(changed({ type: "markHintSeen", id: "agent" })).toBe(false);
+  expect(e.settings.hints.seen).toEqual(["agent"]);
+  expect(SchemaAction.safeParse({ type: "markHintSeen", id: "autre" }).success).toBe(false);
+  ag({ type: "setHintsEnabled", enabled: false });
+  expect(e.settings.hints.enabled).toBe(false);
+});

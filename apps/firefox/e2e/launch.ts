@@ -95,6 +95,8 @@ export async function launchWebAiOs(o: { headed?: boolean; width?: number; heigh
         WEBAIOS_TEST_NOTIFICATIONS: path.join(dataDir, "notifications.jsonl"),
         // No real Sentry from a test: only one that passes a DSN itself gets one.
         WEBAIOS_SENTRY_DSN: "",
+        // No welcome screen in front of the tests.
+        WEBAIOS_SKIP_WELCOME: "1",
         ...o.env,
         PATH: `${FAKE_TOOLS}${path.delimiter}${process.env.PATH ?? ""}`,
       }, },

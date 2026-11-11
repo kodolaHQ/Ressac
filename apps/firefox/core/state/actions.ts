@@ -453,6 +453,25 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       d.settings.codexEngine = a.engine;
       return true;
     }
+    case "finishOnboarding": {
+      if (d.settings.onboarded) return false;
+      d.settings.onboarded = true;
+      return true;
+    }
+    case "replayOnboarding": {
+      d.settings.onboarded = false;
+      return true;
+    }
+    case "markHintSeen": {
+      if (d.settings.hints.seen.includes(a.id)) return false;
+      d.settings.hints.seen.push(a.id);
+      return true;
+    }
+    case "setHintsEnabled": {
+      if (d.settings.hints.enabled === a.enabled) return false;
+      d.settings.hints.enabled = a.enabled;
+      return true;
+    }
     case "agentPanelWidth": {
       const width = Math.round(Math.min(AGENT_WIDTH_MAX, Math.max(AGENT_WIDTH_MIN, a.width)));
       if (d.settings.agentPanelWidth === width) return false;

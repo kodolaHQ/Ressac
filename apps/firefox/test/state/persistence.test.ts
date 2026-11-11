@@ -268,3 +268,34 @@ test("a space without aura, or with an unknown one, loads as aube", async () => 
     expect(set_aside(d, "")).toEqual([]);
   }
 });
+
+test("fresh folder welcomes", async () => {
+  const s = await loadSession(folder());
+  expect(s.settings.onboarded).toBe(false);
+  expect(s.settings.hints).toEqual({ enabled: true, seen: [] });
+});
+
+test("existing session never welcomes", async () => {
+  const d = folder();
+  const old = structuredClone(initialState()) as unknown as { settings: Record<string, unknown> };
+  delete old.settings.onboarded;
+  delete old.settings.hints;
+  writeFileSync(join(d, "session.json"), JSON.stringify(old));
+  const s = await loadSession(d);
+  expect(s.settings.onboarded).toBe(true);
+  expect(s.settings.hints).toEqual({ enabled: true, seen: [] });
+});
+
+test("set-aside session never welcomes", async () => {
+  const d = folder();
+  writeFileSync(join(d, "session.json"), "{");
+  expect((await loadSession(d)).settings.onboarded).toBe(true);
+});
+
+test("hints round-trip", async () => {
+  const d = folder();
+  const s = initialState();
+  s.settings.hints = { enabled: false, seen: ["cmd-t", "agent"] };
+  writeFileSync(join(d, "session.json"), JSON.stringify(s));
+  expect((await loadSession(d)).settings.hints).toEqual({ enabled: false, seen: ["cmd-t", "agent"] });
+});

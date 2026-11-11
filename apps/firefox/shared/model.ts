@@ -1,4 +1,5 @@
 import type { AuraId } from "./aura";
+import type { HintId } from "./hints";
 import type { DevRight, TabAccessState, Owner } from "@webaios/kernel";
 import type { ExtensionCard } from "./extensions";
 import type { CodexEngine, DecisionModel } from "./settings";
@@ -159,6 +160,10 @@ export interface BrowserState {
     decisionModel: DecisionModel;
     /** The engine Codex runs on (account, local Ollama or compatible API). */
     codexEngine: CodexEngine;
+    /** False until the first-launch welcome is finished (or skipped). */
+    onboarded: boolean;
+    /** Tips and first-time notes: shown while enabled, each at most once. */
+    hints: { enabled: boolean; seen: HintId[] };
   };
 }
 
