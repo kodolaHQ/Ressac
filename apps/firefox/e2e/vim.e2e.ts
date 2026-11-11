@@ -430,7 +430,9 @@ describe("vim mode: tabs and spaces", () => {
     // A web page in the first space too: the keys need one to land in.
     await dispatch(m, { type: "activateSpace", windowId, id: spaces[0]! });
     await open();
-    await typeText(m, "gS"); // from the first, the last
+    // As a real keyboard sends it: g, then ⇧ alone, then S held with ⇧ (the lone ⇧ must not drop the g).
+    await pressKeys(m, "g");
+    await pressKeys(m, "Shift+S"); // from the first, the last
     await expect.poll(activeSpace).toBe(spaces.at(-1));
     await backToPage();
     await typeText(m, "gs"); // from the last, the first

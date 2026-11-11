@@ -152,6 +152,8 @@ const G_KEYS: Record<string, [string, unknown]> = {
   S: ["vim:space", { delta: -1 }],
 };
 
+const MODIFIER_KEYS = new Set(["Shift", "Control", "Alt", "Meta", "CapsLock", "AltGraph"]);
+
 /** What the child hears on the tab's chrome event handler, in the capture phase. */
 const EVENTS = ["keydown", "keypress", "keyup", "mousedown", "mouseover", "scroll", "pagehide"];
 
@@ -273,6 +275,8 @@ export class WebAiOsVimChild extends JSWindowActorChild {
   /** Runs vim key `key`; false: not a vim key, the page gets it. */
   private run(key: string, repeat: boolean): boolean {
     if (this.hints) return this.hintKey(key);
+    // A modifier alone (⇧ before the S of gS) must not drop a pending g or y.
+    if (MODIFIER_KEYS.has(key)) return false;
     const prefix = this.prefix;
     this.setPrefix("");
     if (prefix === "y" && key === "y") {
