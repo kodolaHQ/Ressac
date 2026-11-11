@@ -1,6 +1,7 @@
 <script lang="ts">
   import { fade } from "svelte/transition";
   import { nextTip } from "../../shared/hints";
+  import { shortcutLabel } from "../../shared/shortcuts";
   import { appState } from "../state.svelte";
   import { openCommand } from "./command.svelte";
   import { agentNoteShowing, markSeen } from "./hints";
@@ -9,6 +10,8 @@
   // Not under the first-launch welcome.
   // And not beside the agent note, which shows in the open panel: one hint at a time.
   const tip = $derived(hints?.enabled && appState.value?.settings.onboarded !== false && !agentNoteShowing() ? nextTip(hints.seen) : null);
+
+  const key = $derived(tip?.shortcut ? shortcutLabel(tip.shortcut, appState.value?.settings) : tip?.keys);
 
   function tryIt() {
     if (!tip) return;
@@ -23,9 +26,9 @@
 {#if tip}
   <aside class="tip" data-testid="tip-card" out:fade={{ duration: 150 }}>
     <b>Astuce</b>
-    <p>{tip.text}</p>
+    <p>{tip.text.replace("{key}", key ?? "")}</p>
     <div class="row">
-      {#if tip.keys}<kbd>{tip.keys}</kbd>{/if}
+      {#if key}<kbd>{key}</kbd>{/if}
       <span class="grow"></span>
       {#if tip.tryIt}<button type="button" class="primary" data-testid="tip-try" onclick={tryIt}>Essayer</button>{/if}
       <button type="button" data-testid="tip-next" onclick={() => markSeen(tip.id)}>Une autre</button>

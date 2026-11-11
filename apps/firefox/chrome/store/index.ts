@@ -1,3 +1,4 @@
+import { shortcutLabel } from "../../shared/shortcuts";
 import type { Decision, AccessState, WindowId, ProfileId } from "../../shared/model";
 import { privateTab, tabProfile, profilesInUse } from "../../shared/model";
 import type { ReportedError } from "../../shared/telemetry";
@@ -356,7 +357,7 @@ async function start(): Promise<WebAiOsStore> {
     store.dispatch({ type: "openTab", windowId: windowId, url });
     toFront(windowId);
   };
-  const design = createDesign({ agent, windows, apps, sites, dispatch: store.dispatch, mainWindow, toFront });
+  const design = createDesign({ agent, windows, apps, sites, dispatch: store.dispatch, mainWindow, toFront, shortcutLabel: () => shortcutLabel("design", store.state.settings) });
   bindSites(agent, dataDir, openInTab, design);
   design.overlays = createOverlays({ design, host: agent });
   bindApps(agent, openInTab, dataDir, { access: () => access, design });

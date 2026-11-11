@@ -58,7 +58,7 @@
     aria-label="Mode design"
     aria-pressed={active}
     disabled={unavailable}
-    title={unavailable ? (design?.unavailable ?? "") : "Mode design (⌘⇧D)"}
+    title={unavailable ? (design?.unavailable ?? "") : `Mode design (${design?.shortcut ?? ""})`}
     onclick={() => api.design.toggle()}
     >✎{#if design && design.basket > 0}<span class="counter" data-testid="site-basket-counter">{design.basket}</span>{/if}</button
   >

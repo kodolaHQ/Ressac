@@ -75,3 +75,7 @@ export function bindingLabel(x: Binding): string {
   const key = /^Digit\d$/.test(x.key) ? x.key.slice(5) : (KEY_NAMES[x.key] ?? x.key.toUpperCase());
   return `${x.ctrl ? "⌃" : ""}${x.alt ? "⌥" : ""}${x.shift ? "⇧" : ""}${x.meta ? "⌘" : ""}${key}`;
 }
+
+/** The label of an action's current binding, for tooltips and hints. */
+export const shortcutLabel = (id: ShortcutId, settings: { shortcuts: Partial<Record<ShortcutId, Binding>> } | undefined): string =>
+  bindingLabel(settings?.shortcuts[id] ?? SHORTCUTS[id].default);

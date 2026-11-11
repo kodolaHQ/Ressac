@@ -152,6 +152,8 @@ export function createDesign(o: {
   sites: Pick<SiteApps, "designView" | "infoNotice" | "controller" | "onClosed">;
   dispatch: Store["dispatch"];
   mainWindow(): Promise<WindowId | undefined>;
+  /** The design mode's current key label. */
+  shortcutLabel(): string;
   toFront(f: WindowId): void;
 }): DesignService {
   const sessions = new Map<string, Session>();
@@ -317,10 +319,10 @@ export function createDesign(o: {
       // A host that does not answer rejects: the button keeps its last state.
       const r = s ? await o.agent.request<DesignTracking | null>("design.tracking", { project: s.project.project }) : v ? await tracking(t, v) : null;
       const project = r?.project ?? s?.project ?? null;
-      if (!project) return { active: false, project: null, unavailable: t.type === "site" ? UNAVAILABLE_DESIGN_SITE : UNAVAILABLE_DESIGN, destination: null, noDestination: null, basket: 0, name: "" };
+      if (!project) return { active: false, project: null, unavailable: t.type === "site" ? UNAVAILABLE_DESIGN_SITE : UNAVAILABLE_DESIGN, destination: null, noDestination: null, basket: 0, name: "", shortcut: o.shortcutLabel() };
       // A site app: its project is known even where the mode does not start (card, sign-in page, fullscreen).
       const unavailable = t.type === "site" && !s && !o.sites.designView(t.id)?.available ? UNAVAILABLE_DESIGN_SITE : null;
-      return { active: !!s, project: project, unavailable: unavailable, destination: r?.destination ?? null, noDestination: r?.noDestination ?? null, basket: r?.basket ?? 0, name: r?.name ?? "" };
+      return { active: !!s, project: project, unavailable: unavailable, destination: r?.destination ?? null, noDestination: r?.noDestination ?? null, basket: r?.basket ?? 0, name: r?.name ?? "", shortcut: o.shortcutLabel() };
     },
 
     async toggle(t) {

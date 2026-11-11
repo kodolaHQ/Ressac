@@ -4,6 +4,7 @@
   import AccessBadge from "./AccessBadge.svelte";
   import Icon from "./Icon.svelte";
   import type { WindowState, Visit } from "../../shared/model";
+  import { shortcutLabel } from "../../shared/shortcuts";
   import { accessOf, api, appState } from "../state.svelte";
 
   let { window: win }: { window: WindowState } = $props();
@@ -80,7 +81,7 @@
   <button
     class="compact"
     aria-label={win.compact ? "Quitter le mode compact" : "Mode compact"}
-    title={win.compact ? "Quitter le mode compact (⌘⇧S)" : "Mode compact (⌘⇧S)"}
+    title="{win.compact ? "Quitter le mode compact" : "Mode compact"} ({shortcutLabel("compact", appState.value?.settings)})"
     aria-pressed={win.compact}
     onclick={() => api.dispatch({ type: "toggleCompact", windowId: win.id })}><Icon name="bar" /></button>
   <DesignButton />

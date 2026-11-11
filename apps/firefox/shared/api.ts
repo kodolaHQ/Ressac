@@ -692,6 +692,8 @@ export interface DesignState {
   basket: number;
   /** Name of the project to display. */
   name: string;
+  /** The mode's current key, e.g. « ⇧⌘D » (windows without settings in their state read it here). */
+  shortcut: string;
 }
 /** A note as the basket and the history display it: text, never HTML. */
 export interface ShownElement {

@@ -214,7 +214,7 @@ describe("outside the followed projects", () => {
 describe("on the demo", () => {
   it("⇧⌘D toggles the mode on the demo as the button does; the counter shows the cart", async () => {
     await open(`${demo.page}/`);
-    await expect.poll(button, { timeout: 10_000 }).toMatchObject({ disabled: false, title: "Mode design (⌘⇧D)", pressed: "false", count: null });
+    await expect.poll(button, { timeout: 10_000 }).toMatchObject({ disabled: false, title: "Mode design (⇧⌘D)", pressed: "false", count: null });
     await modeOn();
     await expect.poll(pressed, { timeout: 10_000 }).toBe("true");
     expect(await message()).toBeNull();

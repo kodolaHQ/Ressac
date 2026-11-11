@@ -90,6 +90,13 @@ describe("Settings › Raccourcis", () => {
     expect((await state(m)).settings.vimMode).toBe(true);
   });
 
+  it("every label of the interface follows a remapped shortcut", async () => {
+    await edit("agent");
+    await pressKeys(m, "Meta+k");
+    await waitUi(m, "return !!doc.querySelector(arguments[0])", ['[data-testid="shortcut-agent-reset"]']);
+    expect(await inUi<string>(m, "return doc.querySelector('[data-testid=\"agent-button\"]').title")).toBe("Agent (⌘K)");
+  });
+
   async function waitAgent(open: boolean): Promise<boolean> {
     for (let i = 0; i < 50 && (await agentOpen()) !== open; i++) await new Promise((r) => setTimeout(r, 100));
     return agentOpen();

@@ -2,6 +2,7 @@
   import { untrack } from "svelte";
   import { AURA_IDS, AURAS, auraVariables, type AuraId } from "../../shared/aura";
   import type { SettingsApi } from "../../shared/api";
+  import { shortcutLabel } from "../../shared/shortcuts";
   import type { WindowState } from "../../shared/model";
   import { api, appState } from "../state.svelte";
   import AuraDot from "./AuraDot.svelte";
@@ -17,6 +18,7 @@
   const PAGES = 5;
   const AGENTS = [["claude", "Claude Code"], ["codex", "Codex"]] as const;
   const space = $derived(appState.value?.spaces.find((s) => s.id === win.activeSpace));
+  const label = (id: "command" | "agent") => shortcutLabel(id, appState.value?.settings);
   const profile = $derived(appState.value?.settings.agentProfile);
   let name = $state(untrack(() => space?.name ?? ""));
   let aura = $state<AuraId>(untrack(() => space?.aura ?? "aube"));
@@ -84,11 +86,11 @@
         {:else if step.page === 2}
           <h2>Vos onglets vivent à gauche</h2>
           <div class="sidebar">
-            <SidebarSketch />
+            <SidebarSketch key={label("command")} />
             <ul>
               <li>Les onglets de l'espace en cours, en liste.</li>
               <li>Les espaces en bas : un par sujet, chacun avec son aura.</li>
-              <li><kbd>⌘T</kbd> ouvre un onglet ou cherche partout.</li>
+              <li><kbd>{label("command")}</kbd> ouvre un onglet ou cherche partout.</li>
             </ul>
           </div>
           {@render actions("Suivant", false)}
@@ -117,7 +119,7 @@
               </label>
             {/each}
           </div>
-          {#if docker && docker !== "docker-absent"}<p class="note">Vous vous connecterez la première fois que vous ouvrirez l'agent (<kbd>⌘J</kbd>).</p>{/if}
+          {#if docker && docker !== "docker-absent"}<p class="note">Vous vous connecterez la première fois que vous ouvrirez l'agent (<kbd>{label("agent")}</kbd>).</p>{/if}
           {@render actions("Continuer", true)}
         {:else if step.page === 4}
           <h2>L'IA locale</h2>

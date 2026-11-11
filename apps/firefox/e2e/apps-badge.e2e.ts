@@ -141,7 +141,7 @@ describe("one WebAiOs, essai and autre launched in each test", () => {
     await sized(m, "essai", 48, 28);
     await clickBadge(m, "essai", '[data-testid="webaios-pill"]');
     await sized(m, "essai", 300, 320);
-    expect(await inBadge(m, "essai", `return [...doc.querySelectorAll('[role="menuitem"]')].map((e) => e.textContent.trim());`)).toEqual(["Mode design ⌘⇧D", "Panier (0)", "Voir les modifications de l'agent"]);
+    expect(await inBadge(m, "essai", `return [...doc.querySelectorAll('[role="menuitem"]')].map((e) => e.textContent.trim());`)).toEqual(["Mode design ⇧⌘D", "Panier (0)", "Voir les modifications de l'agent"]);
     await inBadge(m, "essai", `f.contentWindow.dispatchEvent(new f.contentWindow.KeyboardEvent("keydown", { key: "Escape", bubbles: true })); return 1;`);
     await sized(m, "essai", 48, 28);
     expect(await inBadge(m, "essai", `return doc.querySelectorAll('[role="menuitem"]').length;`)).toBe(0);

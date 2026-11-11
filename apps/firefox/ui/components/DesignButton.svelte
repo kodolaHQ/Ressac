@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { api } from "../state.svelte";
+  import { shortcutLabel } from "../../shared/shortcuts";
+  import { api, appState } from "../state.svelte";
   import { design } from "./design.svelte";
   import { openMenu, type MenuEntry } from "./menu.svelte";
 
@@ -21,7 +22,7 @@
     aria-label="Mode design"
     aria-pressed={e?.active ?? false}
     disabled={unavailable}
-    title={unavailable ? (e?.unavailable ?? "") : "Mode design (⌘⇧D)"}
+    title={unavailable ? (e?.unavailable ?? "") : `Mode design (${shortcutLabel("design", appState.value?.settings)})`}
     onclick={() => api.design.toggle()}
     >✎{#if e && e.basket > 0}<span class="counter" data-testid="basket-counter">{e.basket}</span>{/if}</button
   >

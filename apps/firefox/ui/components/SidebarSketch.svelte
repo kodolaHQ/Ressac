@@ -3,11 +3,12 @@
   import AuraDot from "./AuraDot.svelte";
 
   /** A drawing of the sidebar for the welcome (not a capture): the ⌘T field, a list of tabs, the spaces at the bottom. */
+  let { key }: { key: string } = $props();
   const TABS = [72, 54, 64, 46];
 </script>
 
 <div class="sketch" aria-hidden="true">
-  <div class="field"><span class="line" style:width="48%"></span><kbd>⌘T</kbd></div>
+  <div class="field"><span class="line" style:width="48%"></span><kbd>{key}</kbd></div>
   <div class="tabs">
     {#each TABS as width, i (i)}
       <div class="tab" class:current={i === 1}><span class="icon"></span><span class="line" style:width="{width}%"></span></div>

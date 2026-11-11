@@ -35,7 +35,7 @@
       <button class="pill" data-testid="webaios-pill" aria-label="WebAiOs" aria-haspopup="menu" aria-expanded={menuOpen} onclick={toggleMenu}>✎</button>
       {#if menuOpen}
         <div class="menu" role="menu">
-          <button role="menuitem" class:active={design?.active} onclick={() => choose(() => api.design.toggle())}>Mode design <kbd>⌘⇧D</kbd></button>
+          <button role="menuitem" class:active={design?.active} onclick={() => choose(() => api.design.toggle())}>Mode design {#if design}<kbd>{design.shortcut}</kbd>{/if}</button>
           <button role="menuitem" onclick={() => choose(() => api.design.basket())}>Panier ({design?.basket ?? 0})</button>
           <button role="menuitem" onclick={() => choose(() => api.design.review())}>Voir les modifications de l'agent</button>
         </div>

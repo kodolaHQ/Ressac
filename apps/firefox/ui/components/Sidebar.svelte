@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Panel } from "../../shared/api";
   import { URL_ACTIONS, URL_APPLICATIONS, URL_SETTINGS, workflowUrlTarget, type WindowState } from "../../shared/model";
+  import { shortcutLabel, type ShortcutId } from "../../shared/shortcuts";
   import { api, appState, downloads } from "../state.svelte";
   import UrlBar from "./UrlBar.svelte";
   import Essentials from "./Essentials.svelte";
@@ -9,6 +10,8 @@
   import TabList from "./TabList.svelte";
   import { openMenu } from "./menu.svelte";
   import SpaceSelector from "./SpaceSelector.svelte";
+
+  const key = (id: ShortcutId) => shortcutLabel(id, appState.value?.settings);
 
   let {
     window: win,
@@ -78,7 +81,7 @@
     <div class="space" data-testid="space-title">{space?.icon} {space?.name}</div>
     <TabList window={win} />
     <button class="new" data-testid="new-tab" onclick={() => api.dispatch({ type: "showBlankPage", windowId: win.id })}
-      ><Icon name="plus" size={14} /> Nouvel onglet<kbd>⌘T</kbd></button
+      ><Icon name="plus" size={14} /> Nouvel onglet<kbd>{key("command")}</kbd></button
     >
   </div>
   <footer>
@@ -88,8 +91,8 @@
       class="tool"
       style:--i={0}
       data-testid="agent-button"
-      aria-label="Agent (⌘J)"
-      title="Agent (⌘J)"
+      aria-label="Agent ({key("agent")})"
+      title="Agent ({key("agent")})"
       aria-pressed={!builder && win.agentPanelOpen}
       onclick={() => (builder ? builderAgent?.() : api.dispatch({ type: "toggleAgentPanel", windowId: win.id }))}><Icon name="agent" /></button
     >
@@ -97,8 +100,8 @@
       class="tool"
       style:--i={1}
       data-testid="applications-button"
-      aria-label="Applications (⇧⌘A)"
-      title="Applications (⇧⌘A)"
+      aria-label="Applications ({key("apps")})"
+      title="Applications ({key("apps")})"
       aria-pressed={activeTab?.url === URL_APPLICATIONS}
       onclick={() => api.dispatch({ type: "openApps", windowId: win.id })}><Icon name="apps" /></button
     >
@@ -115,8 +118,8 @@
       class="tool"
       style:--i={3}
       data-testid="settings-button"
-      aria-label="Réglages (⌘,)"
-      title="Réglages (⌘,)"
+      aria-label="Réglages ({key("settings")})"
+      title="Réglages ({key("settings")})"
       aria-pressed={activeTab?.url === URL_SETTINGS}
       onclick={() => api.dispatch({ type: "openSettings", windowId: win.id })}><Icon name="settings" /></button
     >
