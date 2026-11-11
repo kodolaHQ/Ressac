@@ -2,7 +2,7 @@
 name: WebAiOs Aura
 colors:
   light: { bg: "#F1F3F6", text: "#15171C", muted: "#5D6470", line: "rgba(21,23,28,.10)", glass: "rgba(255,255,255,.52)", glass-hi: "rgba(255,255,255,.78)", glass-edge: "rgba(255,255,255,.75)", sheet: "#FFFFFF", accent-ink: "#FFFFFF" }
-  dark: { bg: "#0E1014", text: "#ECEEF2", muted: "#9AA1AD", line: "rgba(255,255,255,.09)", glass: "rgba(22,24,30,.50)", glass-hi: "rgba(255,255,255,.10)", glass-edge: "rgba(255,255,255,.10)", sheet: "#17191F", accent-ink: "#0E1014" }
+  dark: { bg: "#0E1014", text: "#ECEEF2", muted: "#9AA1AD", line: "rgba(255,255,255,.09)", glass: "rgba(14,16,24,.66)", glass-hi: "rgba(255,255,255,.10)", glass-edge: "rgba(255,255,255,.10)", sheet: "#17191F", accent-ink: "#0E1014" }
 auras:
   aube: { hues: ["#FF9F7A", "#FF6F91", "#FFD36E"], accent-light: "#C23A5E", accent-dark: "#FF8FA8" }
   lagon: { hues: ["#4FD1C5", "#3B8BEB", "#B7F0D8"], accent-light: "#1D64C8", accent-dark: "#6FB3FF" }
@@ -18,6 +18,8 @@ motion:
   spring: { duration: 460ms, easing: "linear(0, .06 2.4%, .24 5.1%, .55 9.4%, .84 14.6%, 1.01 19.4%, 1.07 23.2%, 1.08 26.6%, 1.05 32.8%, 1 41%, .99 50%, 1)" }
   aura: { duration: 900ms, easing: ease-in-out }
   halo: { duration: 1.8s, easing: linear, loop: true }
+veil: { light: "color-mix(bg 30%, transparent)", dark: "color-mix(color-mix(bg 88%, a2) 72%, transparent)" }
+aura-layers: { light: { opacity: 0.95, blur: 70px, saturate: 1.15 }, dark: { opacity: 0.55, blur: 80px, saturate: 1.45 } }
 radius: { control: 10px, card: 16px, window: 18px, page: 12px }
 ---
 

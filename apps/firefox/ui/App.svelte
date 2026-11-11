@@ -272,8 +272,8 @@
   .window :global(:is([data-testid="action-delete-veil"], [data-testid="action-delete-confirmation"])) { -moz-window-dragging: no-drag; }
   .command-layer { position: fixed; inset: 0; z-index: 100; }
   .tabs-layer { display: contents; }
-  /* Under the command bar and ⌃Tab: a breath of the background over the window, slightly blurred (the glass boxes blur more). */
-  :is(.command-layer, .tabs-layer) :global(div.veil) { background: color-mix(in srgb, var(--bg) 30%, transparent); backdrop-filter: blur(6px); }
+  /* Under the command bar and ⌃Tab: the overlay veil, the window slightly blurred (the glass boxes blur more). */
+  :is(.command-layer, .tabs-layer) :global(div.veil) { background: var(--overlay-veil); backdrop-filter: blur(6px); }
   .window {
     display: grid;
     grid-template-columns: 240px 1fr;

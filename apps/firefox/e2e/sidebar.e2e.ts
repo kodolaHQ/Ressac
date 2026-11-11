@@ -82,7 +82,7 @@ const DRAGGING = `const of = (s) => {
 };`;
 
 describe("the sidebar's layout", () => {
-  it("drags the window from its empty areas only, and leaves the page the whole height", async () => {
+  it("drags the window from its empty areas only, and frames the page 8 px from the top and the bottom", async () => {
     await open("/icone");
     await waitUi(m, `return !frame.hasAttribute("full");`);
     const drag = await inUi<Record<string, string>>(
@@ -218,8 +218,12 @@ describe("WebAiOs sidebar", () => {
     // The page may paint a moment after its title arrives.
     for (let i = 0; i < 50 && (await pixel(m, 900, 400)).join() !== "255,0,0"; i++) await new Promise((r) => setTimeout(r, 100));
     expect(await pixel(m, 900, 400)).toEqual([255, 0, 0]);
-    // The sidebar's glass pane on the aura, not the page.
-    expect(await pixel(m, 100, 400)).not.toEqual([255, 0, 0]);
+    // The sidebar's glass pane on the aura, not the page: another colour than the page's, and a glass that paints.
+    const page = await pixel(m, 900, 400);
+    expect(await pixel(m, 100, 400)).not.toEqual(page);
+    const glass = await inUi<string>(m, "return ui.getComputedStyle(doc.querySelector('[data-testid=\"sidebar\"]')).backgroundColor");
+    const alpha = glass.startsWith("rgba") ? parseFloat(glass.split(",")[3]!) : 1;
+    expect(alpha, glass).toBeGreaterThan(0);
     // The empty page covers the page: the UI paints above Firefox's tab box.
     await dispatch(m, { type: "showBlankPage", windowId: (await win()).id });
     const empty = await waitUi<string>(m, "const p = doc.querySelector('[data-testid=\"empty-page\"]'); return p && ui.getComputedStyle(p.parentElement).backgroundColor");

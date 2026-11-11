@@ -49,6 +49,8 @@
   inset: 0;
   overflow: hidden;
   pointer-events: none;
+  /* The base the lights glow on: the root's own background is not painted under the transparent chrome boxes. */
+  background: var(--bg);
 }
 
 :root[webaios-main] #webaios-aura i {
@@ -58,6 +60,14 @@
   border-radius: 50%;
   filter: blur(70px) saturate(1.15);
   opacity: 0.95;
+}
+
+/* Dark: coloured light on a night base, dimmer and richer rather than washed to brown. */
+@media (prefers-color-scheme: dark) {
+  :root[webaios-main] #webaios-aura i {
+    filter: blur(80px) saturate(1.45);
+    opacity: 0.55;
+  }
 }
 
 :root[webaios-main] #webaios-aura i:nth-child(1) { background: var(--a1); left: -8%; top: -16%; animation: webaios-drift1 22s ease-in-out infinite alternate; }
