@@ -316,7 +316,8 @@
   }
   .field input { flex: 1; }
   .icon-pick { position: relative; flex: none; display: flex; }
-  .field .icon { flex: none; width: 2.5em; text-align: center; cursor: pointer; }
+  /* Wide enough for any emoji (a variation selector widens some): never clipped. */
+  .field .icon { flex: none; width: 44px; padding: 0; text-align: center; font-size: 18px; cursor: pointer; }
   /* The emoji grid: a popover dropping under the field on the spring. */
   .emojis {
     position: absolute;
@@ -332,8 +333,12 @@
     border: 1px solid var(--glass-edge);
     border-radius: 14px;
     box-shadow: var(--modal-shadow);
-    transform-origin: top left;
-    animation: webaios-drop var(--spring-d) var(--spring) backwards;
+    /* A short drop without overshoot: the spring's bounce made the 48 emojis judder at its end. */
+    animation: emojis-in 180ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+  }
+  @keyframes emojis-in { from { opacity: 0; transform: translateY(-4px); } }
+  @media (prefers-reduced-motion: reduce) {
+    @keyframes emojis-in { from { opacity: 0; } }
   }
   .emojis button { width: 32px; height: 32px; padding: 0; border: none; border-radius: 8px; background: none; font: 18px/1 var(--font-ui); display: grid; place-items: center; }
   .emojis button:hover:not(:disabled) { background: var(--glass-hi); }

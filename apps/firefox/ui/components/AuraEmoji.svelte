@@ -2,8 +2,8 @@
   import { AURAS, type AuraId } from "../../shared/aura";
 
   /**
-   * A space's emoji over a soft, blurred glow of its own aura (not the active space's). The glow brightens and grows on
-   * the spring when an ancestor marks it `aria-current="true"` or is hovered.
+   * A space's emoji over a soft wash of its own aura (not the active space's), fuller when an ancestor marks it
+   * `aria-current="true"` or is hovered.
    */
   let { icon, aura }: { icon: string; aura: AuraId } = $props();
   const [a1, a2, a3] = $derived(AURAS[aura].colors);
@@ -13,20 +13,21 @@
 
 <style>
   .emoji { position: relative; isolation: isolate; display: inline-grid; place-items: center; line-height: 1; }
+  /* A soft wash of the space's aura filling its round chip (no blur spilling out): faint at rest, fuller on hover and on
+     the active space. */
   .emoji::before {
     content: "";
     position: absolute;
-    inset: -4px;
+    inset: -6px;
     z-index: -1;
     border-radius: 50%;
-    background: conic-gradient(from 210deg, var(--g1), var(--g2), var(--g3), var(--g1));
-    filter: blur(5px) saturate(1.2);
-    opacity: var(--glow-rest);
-    transform: scale(0.8);
-    transition: opacity var(--spring-d) var(--out), transform var(--spring-d) var(--spring);
-    --glow-rest: 0.5;
+    background:
+      radial-gradient(circle at 30% 25%, var(--g3), transparent 65%),
+      radial-gradient(circle at 75% 80%, var(--g2), transparent 70%),
+      var(--g1);
+    opacity: 0.16;
+    transition: opacity var(--tap);
   }
-  @media (prefers-color-scheme: light) { .emoji::before { --glow-rest: 0.55; } }
-  :global(:hover) > .emoji::before { opacity: 0.75; transform: scale(0.95); }
-  :global([aria-current="true"]) > .emoji::before { opacity: 0.95; transform: scale(1.1); }
+  :global(:hover) > .emoji::before { opacity: 0.3; }
+  :global([aria-current="true"]) > .emoji::before { opacity: 0.45; }
 </style>
