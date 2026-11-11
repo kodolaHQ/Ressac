@@ -54,7 +54,7 @@ test("ensureStarted on absent: build if the image is missing then run with the r
   ]);
   expect(await new Workshop({ paths: paths, docker: "docker", run: runCall }).ensureStarted()).toBe("demarre");
   const build = calls.find((a) => a.args[0] === "build")!;
-  expect(build.args.slice(0, 4)).toEqual(["build", "--progress=plain", "-t", "webaios-workshop:1"]);
+  expect(build.args.slice(0, 4)).toEqual(["build", "-t", "webaios-workshop:1", "--label"]);
   expect(build.args).toContain("-f");
   const run = calls.find((a) => a.args[0] === "run")!;
   expect(run.args).toEqual(expect.arrayContaining([

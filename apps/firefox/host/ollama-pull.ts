@@ -14,7 +14,12 @@ export async function pullOllamaModel(url: string, name: string, onProgress: (p:
   let done = false;
   const line = (l: string) => {
     if (!l.trim()) return;
-    const j = JSON.parse(l) as { status?: string; error?: string; total?: number; completed?: number };
+    let j: { status?: string; error?: string; total?: number; completed?: number };
+    try {
+      j = JSON.parse(l);
+    } catch {
+      throw new Error(`Réponse inattendue d'Ollama : ${l.slice(0, 120)}`);
+    }
     if (j.error) throw new Error(j.error);
     const status = j.status ?? "";
     if (status === "success") done = true;

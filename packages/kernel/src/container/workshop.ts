@@ -270,7 +270,8 @@ export class Workshop {
     }
     const image = await this.launch(["image", "inspect", "-f", `{{index .Config.Labels "${HASH_LABEL}"}}`, IMAGE], PROBE_DELAY_MS);
     if (o.fresh || image.code !== 0 || image.stdout.trim() !== hash) {
-      const build = await this.build(["build", "--progress=plain", ...(o.fresh ? ["--no-cache", "--pull"] : []), "-t", IMAGE, "--label", `${HASH_LABEL}=${hash}`, "-f", dockerfile(this.dockerFolder), this.dockerFolder]);
+      // No --progress flag: the classic builder rejects it, and BuildKit already prints plain steps without a TTY.
+      const build = await this.build(["build", ...(o.fresh ? ["--no-cache", "--pull"] : []), "-t", IMAGE, "--label", `${HASH_LABEL}=${hash}`, "-f", dockerfile(this.dockerFolder), this.dockerFolder]);
       if (build.code !== 0) throw new Error(`Construction de l'image ${IMAGE} impossible : ${tail(build.stderr)}`);
     }
     const ports = containerPortRange().join("-");

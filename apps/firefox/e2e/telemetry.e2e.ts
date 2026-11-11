@@ -77,11 +77,21 @@ it("host crash: one anonymous envelope from the host", async () => {
   expect(e.raw).not.toContain(w!.dataDir);
 });
 
-it("launch: one anonymous session with an install id", async () => {
-  await launch();
-  await until(() => sessions.length > 0);
-  expect(sessions[0]).toMatchObject({ init: true, status: "exited", attrs: { environment: "beta", ip_address: "0.0.0.0" } });
-  expect(sessions[0].did).toMatch(/^[0-9a-f-]{36}$/);
+it("launch: no session before the notice, then one anonymous session with an install id", async () => {
+  const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
+  try {
+    await launch({ profile });
+    await settle();
+    expect(sessions).toEqual([]);
+    await w!.close();
+    await launch({ profile });
+    await until(() => sessions.length > 0);
+    expect(sessions[0]).toMatchObject({ init: true, status: "exited", attrs: { environment: "beta", ip_address: "0.0.0.0" } });
+    expect(sessions[0].did).toMatch(/^[0-9a-f-]{36}$/);
+  } finally {
+    await w?.close();
+    await rm(profile, { recursive: true, force: true });
+  }
 });
 
 it("host stop: a requested stop sends nothing", async () => {

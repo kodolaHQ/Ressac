@@ -40,7 +40,8 @@ export function installTelemetry(): { report(e: ReportedError): void; active: bo
   launchSession({
     dsn,
     release: Services.appinfo.version,
-    enabled,
+    // The once-ever notice (chrome/window) shows on the first launch: count from the next one, after the user could say no.
+    enabled: () => enabled() && Services.prefs.getBoolPref("webaios.telemetry.noticeShown", false),
     post: (url, body) => fetch(url, { method: "POST", body }),
     ids: {
       get: () => Services.prefs.getStringPref(INSTALL_ID, "") || undefined,

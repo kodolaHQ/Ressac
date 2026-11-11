@@ -54,5 +54,7 @@ describe("pullOllamaModel", () => {
     await expect(events(http.url, "pplx-decider-flash").done).rejects.toThrow("disk full");
     const cut = await fake((_b, res) => res.end('{"status":"downloading","total":10,"completed":1}\n'));
     await expect(events(cut.url, "pplx-decider-flash").done).rejects.toThrow("interrompu");
+    const junk = await fake((_b, res) => res.end("<html>proxy error</html>\n"));
+    await expect(events(junk.url, "pplx-decider-flash").done).rejects.toThrow("Réponse inattendue d'Ollama : <html>proxy error</html>");
   });
 });
