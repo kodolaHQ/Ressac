@@ -17,7 +17,7 @@ beforeEach(async () => {
   items = path.join(dir, "items.json");
   log = path.join(dir, "log.json");
   await writeFile(items, "[]");
-  await writeFile(log, "[]");
+  await writeFile(log, "");
   await writeFile(
     fake,
     `#!/usr/bin/env node
@@ -26,7 +26,8 @@ const J = (f) => JSON.parse(fs.readFileSync(f, "utf8"));
 const argv = process.argv.slice(2);
 let stdin = "";
 const done = () => {
-  const l = J(${JSON.stringify(log)}); l.push({ argv, stdin }); fs.writeFileSync(${JSON.stringify(log)}, JSON.stringify(l));
+  // One appended line per call: readAmoKey runs two calls at once, a read-modify-write log would race.
+  fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify({ argv, stdin }) + "\\n");
   let list = J(${JSON.stringify(items)});
   const save = () => fs.writeFileSync(${JSON.stringify(items)}, JSON.stringify(list));
   if (argv[0] === "-i") {
@@ -44,6 +45,7 @@ if (argv[0] === "-i") { process.stdin.on("data", (d) => (stdin += d)); process.s
   await chmod(fake, 0o755);
 });
 
+const calls_ = async () => (await readFile(log, "utf8")).split("\n").filter(Boolean).map((l) => JSON.parse(l) as { argv: string[]; stdin: string });
 const stored = async () => JSON.parse(await readFile(items, "utf8")) as { acct: string; secret: string }[];
 
 describe("Mozilla account keychain", () => {
@@ -58,7 +60,7 @@ describe("Mozilla account keychain", () => {
     await kc.write("user:3:4", "n3w");
     expect(await stored()).toEqual([{ acct: "user:3:4", secret: "n3w" }]);
     expect(await kc.issuer()).toBe("user:3:4");
-    const calls = JSON.parse(await readFile(log, "utf8")) as { argv: string[] }[];
+    const calls = await calls_();
     expect(calls.some((c) => c.argv.join(" ").includes("n3w"))).toBe(false);
     await kc.remove();
     expect(await stored()).toEqual([]);
@@ -69,7 +71,7 @@ describe("Mozilla account keychain", () => {
     const kc = amoKeychain({ command: fake, env: {} });
     for (const [i, s] of [["user:1:2", 'a"b'], ["user:1:2", ""], ["bob", "ok"], ["user:1:x", "ok"], ["user:1:2\nx", "ok"]] as const)
       await expect(kc.write(i, s)).rejects.toThrow("Clé invalide");
-    expect(JSON.parse(await readFile(log, "utf8"))).toEqual([]);
+    expect(await calls_()).toEqual([]);
   });
 
   it("test keychain file: read by readAmoKey, no real security", async () => {
