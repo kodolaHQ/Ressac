@@ -1,3 +1,4 @@
+import { withoutV1 } from "./claude-engine.ts";
 import { modelField } from "../shared/settings.ts";
 
 export type OllamaModels = { ok: true; models: { name: string; size?: string }[] } | { ok: false; error: string };
@@ -14,10 +15,10 @@ export async function listOllamaModels(url: string, o: { fetch?: typeof fetch; t
   }
   if (u.protocol !== "http:" && u.protocol !== "https:") return { ok: false, error: "Adresse invalide" };
   if (u.hostname === "host.docker.internal") u.hostname = "127.0.0.1";
-  u.pathname = "/api/tags";
+  u.pathname = withoutV1(u.pathname.replace(/\/$/, "")) + "/api/tags";
   u.search = "";
   try {
-    const res = await (o.fetch ?? fetch)(u.toString(), { signal: AbortSignal.timeout(o.timeoutMs ?? 3000) });
+    const res = await (o.fetch ?? fetch)(u.toString(), { redirect: "error", signal: AbortSignal.timeout(o.timeoutMs ?? 3000) });
     if (!res.ok) return DOWN;
     const body = (await res.json()) as { models?: { name?: unknown; details?: { parameter_size?: unknown } }[] };
     const models = (body.models ?? [])

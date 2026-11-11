@@ -1,5 +1,6 @@
 import type { Kernel, TabInfo } from "../../../packages/kernel/src/index.ts";
 import type { FrameBounds } from "../shared/model.ts";
+import type { ClaudeEngine, CodexEngine } from "../shared/settings.ts";
 import type { BuilderSelection, TerminalSize } from "../shared/api.ts";
 
 // The agent host: Firefox spawns it and talks JSON-RPC over stdin/stdout, one JSON message per line.
@@ -34,8 +35,8 @@ const { ExtensionsAgent } = await import("./extensions/agent.ts");
 const { CLAUDE_KEY, keychain } = await import("./keychain.ts");
 const { startRelay } = await import("./relay.ts");
 const { codexEngineArgs } = await import("./codex-engine.ts");
-const { claudeEngineEnv } = await import("./claude-engine.ts");
-const { ClaudeEngineSchema, CodexEngineSchema, DEFAULT_CLAUDE_ENGINE, DEFAULT_CODEX_ENGINE, apiUrlProblem } = await import("../shared/settings.ts");
+const { claudeEngineEnv, withoutV1 } = await import("./claude-engine.ts");
+const { ClaudeEngineSchema, CodexEngineSchema, DEFAULT_CLAUDE_ENGINE, DEFAULT_CODEX_ENGINE } = await import("../shared/settings.ts");
 const { STORE_ABSENT } = await import("./extensions/amo.ts");
 const { executionWidget, executionsWidget, placeWidgets, removeWidget, validatePlacements, toShownWidgets } = await import("./widgets.ts");
 const { ACTION_ALREADY_RUNNING } = await import("../shared/actions.ts");
@@ -234,7 +235,7 @@ let kernelLaunched = false;
 // Codex's and Claude's engines (Settings › Agents) and the relay that adds each one's compatible API key, which stays on the Mac.
 let engine = DEFAULT_CODEX_ENGINE;
 let claudeEngine = DEFAULT_CLAUDE_ENGINE;
-const keys = { codex: keychain(), claude: keychain({ service: CLAUDE_KEY.service }) };
+const keys = { codex: keychain(), claude: keychain(CLAUDE_KEY) };
 const cachedKeys: { codex?: string; claude?: string } = {};
 // Called after a key is written or removed (Settings › Agents).
 const forgetKey = (kind: "codex" | "claude") => void delete cachedKeys[kind];
@@ -275,11 +276,11 @@ const sessions = new SessionsAgent({
     const n = await ready;
     if (!n) throw new Error(error ?? "le noyau de l'agent n'a pas démarré");
     if (profile !== "codex" && profile !== "claude") return n.openAgentSession({ ...t, window: f, profile, resume });
-    const e = profile === "claude" ? claudeEngine : engine;
-    const token = e.kind === "api" && (await keys[profile].has()) ? relay.openSession(e.apiUrl, profile) : null;
+    const e = profile === "claude" ? claudeEngine : engine; // one snapshot: the env must match the relay token
+    const token = e.kind === "api" && (await keys[profile].has()) ? relay.openSession(profile === "claude" ? withoutV1(e.apiUrl) : e.apiUrl, profile) : null;
     try {
       const relayed = token ? { url: relay.containerUrl, token } : null;
-      const extra = profile === "claude" ? claudeEngineEnv(claudeEngine, relayed) : codexEngineArgs(engine, relayed);
+      const extra = profile === "claude" ? claudeEngineEnv(e as ClaudeEngine, relayed) : codexEngineArgs(e as CodexEngine, relayed);
       const session = await n.openAgentSession({ ...t, window: f, profile, resume, extra });
       if (token) session.onEnd(() => relay.closeSession(token));
       return session;

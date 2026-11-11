@@ -14,6 +14,14 @@ describe("listOllamaModels", () => {
     expect(await listOllamaModels("http://host.docker.internal:11434", { fetch: f.fetch })).toEqual({ ok: true, models: [{ name: "a:latest" }, { name: "b:7b", size: "7B" }] });
     expect(f.urls).toEqual(["http://127.0.0.1:11434/api/tags"]);
   });
+  it("keeps a path prefix, drops /v1, refuses redirects", async () => {
+    const urls: string[] = [];
+    const seen: RequestInit[] = [];
+    const f = ((u: string, i: RequestInit) => (urls.push(u), seen.push(i), Promise.resolve(json({ models: [] })))) as unknown as typeof fetch;
+    await listOllamaModels("http://h:1/ollama/v1/", { fetch: f });
+    expect(urls).toEqual(["http://h:1/ollama/api/tags"]);
+    expect(seen[0]!.redirect).toBe("error");
+  });
   it("an empty list is ok", async () => {
     expect(await listOllamaModels("http://localhost:11434", { fetch: fake(async () => json({ models: [] })).fetch })).toEqual({ ok: true, models: [] });
   });

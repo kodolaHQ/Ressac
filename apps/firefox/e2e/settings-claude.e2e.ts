@@ -104,7 +104,7 @@ describe("Claude in Settings", () => {
     await engineSaved((e) => e.kind === "ollama" && e.ollamaModel === "ornith:35b" && e.ollamaUrl === ollama.url);
     expect(await inUi(m, "return doc.querySelector(arguments[0]).textContent", ['[data-testid="agent-claude"]'])).not.toContain(HINT);
     expect(await inUi(m, "return doc.querySelector('[data-testid=agent-claude] [data-testid=agent-login]')?.classList.contains('primary')")).toBe(false);
-    await screenshots();
+    if (process.env.WEBAIOS_E2E_SHOTS) await screenshots();
   });
 
   it("Ollama: Claude's session gets the engine environment", { timeout: 90_000 }, async () => {
@@ -120,7 +120,7 @@ describe("Claude in Settings", () => {
     rmSync(envFile);
     await inUi(m, "ui.webaios.agent.switch('claude')");
     await waitFor(m, "return true", () => read(envFile).includes("ANTHROPIC_BASE_URL"), 30_000);
-    expect(JSON.parse(read(envFile))).toMatchObject({ ANTHROPIC_BASE_URL: ollama.url, ANTHROPIC_MODEL: "ornith:35b", ANTHROPIC_DEFAULT_SONNET_MODEL: "ornith:35b", CLAUDE_CODE_SUBAGENT_MODEL: "ornith:35b" });
+    expect(JSON.parse(read(envFile))).toMatchObject({ ANTHROPIC_BASE_URL: ollama.url.replace("127.0.0.1", "host.docker.internal"), ANTHROPIC_MODEL: "ornith:35b", ANTHROPIC_DEFAULT_SONNET_MODEL: "ornith:35b", CLAUDE_CODE_SUBAGENT_MODEL: "ornith:35b" });
   });
 
   it("a saved model that is gone is marked; Actualiser reads again", async () => {

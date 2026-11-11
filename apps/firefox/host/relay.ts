@@ -70,7 +70,7 @@ export async function startRelay(o: { readKey(kind: RelayKind): Promise<string |
             else res.end();
           } else {
             status = up.status;
-            res.writeHead(up.status, { "content-type": up.headers.get("content-type") ?? "text/plain" }).end((await up.text()).split(key).join("***"));
+            res.writeHead(up.status, { "content-type": up.headers.get("content-type") ?? "text/plain", ...(up.headers.get("retry-after") ? { "retry-after": up.headers.get("retry-after")! } : {}) }).end((await up.text()).split(key).join("***"));
           }
         }
       }

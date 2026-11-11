@@ -105,6 +105,12 @@ describe("settings api", () => {
     expect(dispatched).toEqual([{ type: "chooseClaudeEngine", engine }]);
   });
 
+  it("ollamaModels: the host's list, the unreachable answer when the host is silent", async () => {
+    const list = { ok: true, models: [{ name: "a" }] };
+    expect(await setup({ "settings.ollamaModels": () => list }).api.ollamaModels("http://h:1")).toEqual(list);
+    expect(await setup().api.ollamaModels("http://h:1")).toEqual({ ok: false, error: "Ollama ne répond pas à cette adresse." });
+  });
+
   it("logout shows the host's answer, in one request", async () => {
     const accounts = [{ id: "claude", name: "Claude Code", state: "logged-out" }];
     const { api, calls } = setup({ "settings.logout": () => accounts });

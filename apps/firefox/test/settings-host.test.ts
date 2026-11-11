@@ -85,6 +85,12 @@ describe("settings host", () => {
     expect((await h["settings.agents"]!({}) as any[])[0]).toMatchObject({ state: "error" });
   });
 
+  it("ollamaModels: a non-string address is refused without any request", async () => {
+    const { h } = setup();
+    expect(await h["settings.ollamaModels"]!({ url: 3 })).toEqual({ ok: false, error: "Adresse invalide" });
+    expect(await h["settings.ollamaModels"]!({})).toEqual({ ok: false, error: "Adresse invalide" });
+  });
+
   it("logout touches nothing else", async () => {
     const { h, exec, o } = setup();
     await h["settings.logout"]!({ id: "claude" });

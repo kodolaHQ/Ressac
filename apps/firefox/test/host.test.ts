@@ -243,6 +243,33 @@ describe("agent host", { timeout: 30_000 }, () => {
     expect(readFileSync(k.log, "utf8")).not.toContain(key);
   });
 
+  it("claude with the compatible API: the env holds the relay token, never the key", async () => {
+    const key = "sk-secret-456";
+    const keyFile = join(mkdtempSync(join(tmpdir(), "webaios-key-")), "key");
+    writeFileSync(`${keyFile}.claude`, key);
+    const k = startHost({ WEBAIOS_TEST_KEYCHAIN: keyFile });
+    k.rpc.notify("agent.claudeEngine", { engine: { kind: "api", apiUrl: "https://api.example/v1", apiModel: "m", ollamaUrl: "", ollamaModel: "" } });
+    await k.rpc.request("start", { agentProfile: "claude" });
+    const a = await agentReady(k, "f1");
+    expect(a.some((x) => x.includes(key))).toBe(false);
+    const envFile = join(k.dataDir, "workspace", "fake-agent-env.json");
+    await until(() => existsSync(envFile));
+    const env = JSON.parse(readFileSync(envFile, "utf8")) as Record<string, string>;
+    expect(env.ANTHROPIC_BASE_URL).toMatch(/^http:\/\/host\.docker\.internal:\d+$/);
+    expect(env.ANTHROPIC_AUTH_TOKEN).toMatch(/^[0-9a-f]{64}$/);
+    expect(JSON.stringify(env)).not.toContain(key);
+    expect(readFileSync(k.log, "utf8")).not.toContain(key);
+  });
+
+  it("claude with the compatible API and no key: NO_KEY, never the subscription", async () => {
+    const h = startHost();
+    h.rpc.notify("agent.claudeEngine", { engine: { kind: "api", apiUrl: "https://api.example", apiModel: "m", ollamaUrl: "", ollamaModel: "" } });
+    await h.rpc.request("start", { agentProfile: "claude" });
+    await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
+    await until(() => h.states.some((e) => (e as { state: string }).state === "error"));
+    expect(h.states.at(-1)).toEqual({ state: "error", message: "Aucune clé enregistrée pour l'API compatible (Réglages › Agents)." });
+  });
+
   it("codex engine incomplete: no key → the panel says why", async () => {
     const h = startHost();
     h.rpc.notify("agent.codexEngine", { engine: { kind: "api", apiUrl: "https://api.example/v1", apiModel: "m", ollamaUrl: "", ollamaModel: "" } });

@@ -42,7 +42,7 @@ describe("codexEngineArgs", () => {
       "Réglez l'adresse et le modèle de l'API compatible dans Réglages › Agents.",
     );
     expect(() => codexEngineArgs(e({ kind: "api", apiUrl: "https://x.test", apiModel: "m" }), null)).toThrow("Aucune clé enregistrée pour l'API compatible (Réglages › Agents).");
-    expect(() => codexEngineArgs(e({ kind: "ollama", ollamaModel: "" }), null)).toThrow("Réglez l'adresse et le modèle de Ollama dans Réglages › Agents.");
+    expect(() => codexEngineArgs(e({ kind: "ollama", ollamaModel: "" }), null)).toThrow("Réglez l'adresse et le modèle d'Ollama dans Réglages › Agents.");
   });
   it("refuses a model that looks like a flag", () => {
     expect(() => codexEngineArgs(e({ kind: "ollama", ollamaModel: "--foo" }), null)).toThrow("Réglez");
