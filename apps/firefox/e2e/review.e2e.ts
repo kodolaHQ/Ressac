@@ -63,7 +63,7 @@ const tabsOf = (f: { order: Record<string, string[]> }) => Object.values(f.order
 
 /** « Relire » of the projet-externe line, on the Applications page; waits for the Review page. */
 async function reread(): Promise<void> {
-  await click(m, `${tid("external-project")} button`, { text: "Relire" });
+  await click(m, `${tid("external-project")} button`, { text: "Modifications" });
   await waitUi(m, `return !!doc.querySelector('${PAGE}')`);
 }
 

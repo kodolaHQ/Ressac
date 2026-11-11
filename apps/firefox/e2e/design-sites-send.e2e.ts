@@ -121,7 +121,7 @@ async function sendFromCart(label: string) {
 }
 
 // design-sites.spec.ts:408
-it("two remarks on tuning then send from the cart: text pre-filled without Enter, site-tiers batch on disk, cart empty", async () => {
+it("two remarks on tuning then send from the cart: text sent with Enter, site-tiers batch on disk, cart empty", async () => {
   await toSite(m, ID);
   await modeOn();
   await remark("#banniere", "div#banniere.cookies", "cache ça", "1");
@@ -134,8 +134,7 @@ it("two remarks on tuning then send from the cart: text pre-filled without Enter
   await waitUi(m, `return ${TERMINAL}.includes("fake agent ready>")`, [], 20_000, "agent");
   await expect.poll(agentInput, { timeout: 15_000 }).toMatch(/^\[remarques de .+ — appli de site "Tuning" \(\/workspace\/sites\/tuning\/\) : site tiers/);
   expect(agentInput()).toContain("/workspace/.webaios/remarks/site-tuning/");
-  await sleep(300);
-  expect(agentInput()).not.toContain("\r");
+  await expect.poll(agentInput, { timeout: 5_000 }).toMatch(/\] [^\r]*\r$/);
   const batchList = batches();
   expect(batchList).toHaveLength(1);
   const batch = JSON.parse(readFileSync(path.join(remarksDir(), batchList[0]!, "batch.json"), "utf8"));
@@ -171,7 +170,7 @@ it("tweak changed during the mode: the view reloads without the grant card, the 
 });
 
 // design-sites.spec.ts:507, the chevron half (the card half is review.e2e.ts:252)
-it("after site.json and the tweak changed, « Relire ce projet » of the chevron brings the same Review page, no second tab", async () => {
+it("after site.json and the tweak changed, « Voir les modifications de l'agent » of the chevron brings the same Review page, no second tab", async () => {
   await expect.poll(() => existsSync(reviewedRef(w.dataDir, `site-${ID}`)), { timeout: 15_000 }).toBe(true);
   writeFileSync(path.join(space(), "sites", ID, "site.json"), JSON.stringify({ ...tuningDeclaration(url), description: "Sans bannière" }));
   writeFileSync(path.join(space(), "sites", ID, "tweaks", "tuning.css"), "#banniere { display: none } /* 2 */");
@@ -183,7 +182,7 @@ it("after site.json and the tweak changed, « Relire ce projet » of the chevron
   const names = await inUi<string[]>(m, `return [...doc.querySelectorAll('${tid("review-file")} .file-name')].map((e) => e.textContent).sort();`);
   expect(names).toEqual(["site.json", "tweaks/tuning.css"]);
   expect((await reviewTabs()).map((o) => o.title)).toEqual(["Relecture — Tuning"]);
-  // Another tab, then « Relire ce projet » again: the same page comes back.
+  // Another tab, then « Voir les modifications de l'agent » again: the same page comes back.
   await openApplications(m);
   await waitUi(m, `return !doc.querySelector('${PAGE}')`);
   await chevron("site-menu-design-review");

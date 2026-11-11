@@ -64,7 +64,7 @@
           <span class="meta">Ports {p.ports.join(", ")}</span>
           <span class="meta">{p.clientName ?? "aucun client"}</span>
           <div class="actions">
-            <button onclick={() => api.external.review(p.id)}>Relire</button>
+            <button onclick={() => api.external.review(p.id)}>Modifications</button>
             <button onclick={() => void api.external.forget(p.id)}>Oublier</button>
           </div>
         </li>

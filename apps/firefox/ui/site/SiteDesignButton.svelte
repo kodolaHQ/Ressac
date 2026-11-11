@@ -2,7 +2,7 @@
   import type { ApiSite, DesignState } from "../../shared/api";
   import type { SiteWindowState } from "../../shared/sites";
 
-  // The app's design mode (plan 18): ✎ (⌘⇧D), its counter, and the « Panier » / « Relire ce projet » chevron. A list
+  // The app's design mode (plan 18): ✎ (⌘⇧D), its counter, and the « Panier » / « Voir les modifications de l'agent » chevron. A list
   // under the bar would be hidden by the site's view: both entries unfold in the bar, in place of the title
   // (`menuOuvert`, read by the bar), and fold back on choice, on Escape, on a click elsewhere in the bar or after 5 s.
   let { api, state: appState, menuOpen: menuOpen = $bindable(false) }: { api: ApiSite; state: SiteWindowState; menuOpen?: boolean } = $props();
@@ -49,7 +49,7 @@
   {#if menuOpen}
     <span class="entries" role="menu" aria-label="Mode design">
       <button role="menuitem" data-testid="site-menu-design-basket" onclick={() => choose(() => api.design.openBasket())}>Panier</button>
-      <button role="menuitem" data-testid="site-menu-design-review" onclick={() => choose(() => api.design.review())}>Relire ce projet</button>
+      <button role="menuitem" data-testid="site-menu-design-review" onclick={() => choose(() => api.design.review())}>Voir les modifications de l'agent</button>
     </span>
   {/if}
   <button

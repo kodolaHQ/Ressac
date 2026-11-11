@@ -6,7 +6,7 @@ export interface SendOptions {
   /** The main window the agent considers active. */
   agentWindow(): WindowId | undefined;
   batchFolder(p: ProjectId, batch: string): string;
-  /** `prefill`: opens the panel and puts the text in the input, without sending it. */
+  /** `prefill`: opens the panel and sends the text to the agent. */
   prefill(f: WindowId, text: string): void;
   /** Like ⌘J: the agent's terminal takes the keyboard. */
   giveTerminal(f: WindowId): void;
@@ -20,8 +20,7 @@ export interface SendOptions {
 export const NO_WINDOW = "Aucune fenêtre principale pour l'agent : le lot est enregistré, rouvre une fenêtre pour le lui donner.";
 
 /**
- * After writing a batch: for an agent batch (app, demo), a line is pre-filled in its session, never
- * sent. An external project has nothing more: its batch is already in the queue of the connected Claude Code.
+ * After writing a batch: for an agent batch (app, demo, site), a line is sent in its session. An external project has nothing more: its batch is already in the queue of the connected Claude Code.
  */
 export function createSend(o: SendOptions): (p: TrackedProject, batch: Batch) => Promise<void> {
   return async (p, batch) => {

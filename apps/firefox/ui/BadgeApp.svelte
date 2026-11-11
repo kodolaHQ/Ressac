@@ -37,7 +37,7 @@
         <div class="menu" role="menu">
           <button role="menuitem" class:active={design?.active} onclick={() => choose(() => api.design.toggle())}>Mode design <kbd>⌘⇧D</kbd></button>
           <button role="menuitem" onclick={() => choose(() => api.design.basket())}>Panier ({design?.basket ?? 0})</button>
-          <button role="menuitem" onclick={() => choose(() => api.design.review())}>Relire ce projet</button>
+          <button role="menuitem" onclick={() => choose(() => api.design.review())}>Voir les modifications de l'agent</button>
         </div>
       {/if}
     </span>

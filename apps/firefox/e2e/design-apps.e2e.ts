@@ -188,7 +188,7 @@ it("design.spec.ts:426 an app window launched from the Applications page: the We
   expect(readdirSync(join(dataDir, "workspace", ".webaios", "remarks"))).toEqual(["app-essai"]);
 });
 
-it("design.spec.ts:529 app window essai: sending from the overlay pre-fills the main window's terminal", async () => {
+it("design.spec.ts:529 app window essai: sending from the overlay sends to the main window's terminal", async () => {
   await launched();
   await modeOn();
   await aim("#email", "input#email.champ");
@@ -200,23 +200,22 @@ it("design.spec.ts:529 app window essai: sending from the overlay pre-fills the 
   await waitFor(m, "return !document.getElementById('webaios-agent').hidden", (v) => v === true);
   await expect.poll(() => agentInput(dataDir).slice(before.length), { timeout: 20_000 }).toContain("appli Essai (/workspace/projects/essai)");
   expect(agentInput(dataDir)).toContain("/workspace/.webaios/remarks/app-essai/");
-  await sleep(300);
-  expect(agentInput(dataDir)).not.toContain("\r");
+  await expect.poll(() => agentInput(dataDir), { timeout: 5_000 }).toMatch(/\] [^\r]*\r$/);
   await expect.poll(() => overlay<number>(`return doc.querySelectorAll('${tid("batch-sent")}').length;`), { timeout: 10_000 }).toBe(1);
 });
 
 // relecture.spec.ts:168: no native menu item relire-projet (spec §5.7); its two
 // equivalents are the badge's item again and the card's « Relire ».
-it("relecture.spec.ts:168 Relire ce projet from essai's badge, twice, then Relire of its card bring back the same page, without a second tab", async () => {
+it("relecture.spec.ts:168 Voir les modifications de l'agent from essai's badge, twice, then Relire of its card bring back the same page, without a second tab", async () => {
   await launched();
   for (let i = 0; i < 2; i++) {
-    await menu("Relire ce projet");
+    await menu("Voir les modifications de l'agent");
     await waitUi(m, `return !!doc.querySelector('${tid("review-page")}')`, [], 15_000);
     await expect.poll(async () => (await reviewTabs()).map((o) => o.title), { timeout: 10_000 }).toEqual(["Relecture — Essai"]);
   }
   expect((await reviewTabs())[0]!.windowId).toBe((await state(m)).windows[0]!.id);
   await dispatch(m, { type: "openApps", windowId: (await state(m)).windows[0]!.id });
-  await rowMenu(m, "essai", "Relire");
+  await rowMenu(m, "essai", "Modifications");
   await waitUi(m, `return !!doc.querySelector('${tid("review-page")}')`, [], 15_000);
   await sleep(500);
   expect((await reviewTabs()).map((o) => o.title)).toEqual(["Relecture — Essai"]);
@@ -317,7 +316,7 @@ it("a relaunch on another port, closing the window, stopping the app: each stops
 });
 
 describe("no main window", () => {
-  it("sending from an app's cart with no main window open opens one and pre-fills it", async () => {
+  it("sending from an app's cart with no main window open opens one and sends to it", async () => {
     await launched();
     await modeOn();
     await aim("#email", "input#email.champ");
@@ -335,8 +334,7 @@ describe("no main window", () => {
     const before = agentInput(dataDir);
     await click(m, tid("send-remarks"), { frame: "overlay" });
     await expect.poll(() => agentInput(dataDir).slice(before.length), { timeout: 30_000 }).toContain("appli Essai (/workspace/projects/essai)");
-    await sleep(300);
-    expect(agentInput(dataDir)).not.toContain("\r");
+    await expect.poll(() => agentInput(dataDir), { timeout: 5_000 }).toMatch(/\] [^\r]*\r$/);
     // The new main window, its agent panel open: the next tests act in it.
     let opened: string | undefined;
     for (const end = Date.now() + 10_000; !opened && Date.now() < end; await sleep(100))

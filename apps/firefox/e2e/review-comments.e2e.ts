@@ -84,7 +84,7 @@ async function comment(text: string): Promise<void> {
 
 /** « Relire » of the projet-externe line, on the Applications page; waits for the Review page. */
 async function reread(): Promise<void> {
-  await click(m, `${tid("external-project")} button`, { text: "Relire" });
+  await click(m, `${tid("external-project")} button`, { text: "Modifications" });
   await waitUi(m, `return !!doc.querySelector('${PAGE}')`);
 }
 
@@ -130,7 +130,7 @@ async function siteOnAppJs(): Promise<void> {
 }
 
 // relecture.spec.ts:251
-it("+ on line 15 of app.js, « garder l'ancien nom »: a comment under the line; « Envoyer 1 commentaire à l'agent »: the agent's terminal holds the line, no \\r, the comment says « envoyé »", { timeout: 60_000 }, async () => {
+it("+ on line 15 of app.js, « garder l'ancien nom »: a comment under the line; « Envoyer 1 commentaire à l'agent »: the agent receives the line with Enter, the comment says « envoyé »", { timeout: 60_000 }, async () => {
   await siteOnAppJs();
   await click(m, extra(15));
   await comment("garder l'ancien nom");
@@ -148,8 +148,7 @@ it("+ on line 15 of app.js, « garder l'ancien nom »: a comment under the line;
   await waitUi(m, `return ${TERMINAL}.includes(arguments[0])`, [sent], 20_000, "agent");
   await expect.poll(agentInput, { timeout: 10_000 }).toContain(sent);
   expect(agentInput()).toContain("/workspace/.webaios/remarks/site-essai/");
-  await new Promise((r) => setTimeout(r, 300));
-  expect(agentInput()).not.toContain("\r");
+  await expect.poll(agentInput, { timeout: 5_000 }).toMatch(/\] [^\r]*\r$/);
   await waitText(COMMENT, "envoyé");
   const batches = path.join(w!.dataDir, "workspace", ".webaios", "remarks", "site-essai");
   expect(filesOf(batches).some((f) => f.endsWith("batch.json"))).toBe(true);
