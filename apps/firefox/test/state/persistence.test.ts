@@ -275,6 +275,20 @@ test("fresh folder welcomes", async () => {
   expect(s.settings.hints).toEqual({ enabled: true, seen: [] });
 });
 
+test("the sidebar side loads left when missing or unknown, right when saved", async () => {
+  const d = folder();
+  const old = structuredClone(initialState()) as unknown as { settings: Record<string, unknown> };
+  delete old.settings.sidebarSide;
+  writeFileSync(join(d, "session.json"), JSON.stringify(old));
+  expect((await loadSession(d)).settings.sidebarSide).toBe("left");
+  old.settings.sidebarSide = "top";
+  writeFileSync(join(d, "session.json"), JSON.stringify(old));
+  expect((await loadSession(d)).settings.sidebarSide).toBe("left");
+  old.settings.sidebarSide = "right";
+  writeFileSync(join(d, "session.json"), JSON.stringify(old));
+  expect((await loadSession(d)).settings.sidebarSide).toBe("right");
+});
+
 test("existing session never welcomes", async () => {
   const d = folder();
   const old = structuredClone(initialState()) as unknown as { settings: Record<string, unknown> };

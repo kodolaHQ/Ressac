@@ -58,6 +58,7 @@ const SchemaSession = z.object({
         seen: z.array(z.string()).transform((ids) => ids.filter((id): id is HintId => (HINT_IDS as readonly string[]).includes(id))),
       })
       .catch(() => ({ enabled: true, seen: Object.keys(FIRST_TIME) as HintId[] })),
+    sidebarSide: z.enum(["left", "right"]).catch("left"),
   }),
 });
 

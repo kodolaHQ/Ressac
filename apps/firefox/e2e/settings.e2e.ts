@@ -176,6 +176,25 @@ describe("Settings page", () => {
     await waitFor(m, `return Services.prefs.getBoolPref("webaios.telemetry.enabled", true)`, (v) => v === false);
   });
 
+  it("privacy: the navigation sidebar's side is saved", async () => {
+    await launch();
+    await openPage();
+    await go("privacy");
+    const radio = (side: string) => `[data-testid="settings-sidebar-${side}"]`;
+    await shows("settings-privacy", "Barre de navigation");
+    expect(await inUi(m, "return doc.querySelector(arguments[0]).checked", [radio("left")])).toBe(true);
+    await click(m, radio("right"));
+    const saved = () => {
+      try {
+        return JSON.parse(readFileSync(join(w!.dataDir, "session.json"), "utf8")).settings?.sidebarSide;
+      } catch {
+        return undefined;
+      }
+    };
+    await waitFor(m, "return true", () => saved() === "right", 15_000);
+    expect(await inUi(m, "return doc.querySelector(arguments[0]).checked", [radio("right")])).toBe(true);
+  });
+
   it("about: the version, and the browser's advanced settings in the current space", async () => {
     await launch();
     await openPage();

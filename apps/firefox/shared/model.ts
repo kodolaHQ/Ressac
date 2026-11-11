@@ -165,6 +165,8 @@ export interface BrowserState {
     onboarded: boolean;
     /** Tips and first-time notes: shown while enabled, each at most once. */
     hints: { enabled: boolean; seen: HintId[] };
+    /** Which side of the window the navigation sidebar sits on. */
+    sidebarSide: "left" | "right";
   };
 }
 

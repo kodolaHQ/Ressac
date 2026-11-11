@@ -298,6 +298,22 @@
               onchange={(e) => api.dispatch({ type: "setHintsEnabled", enabled: e.currentTarget.checked })}
             />
           </div>
+          <div class="row">
+            <b class="grow" id="sidebar-side-label">Barre de navigation</b>
+            <div role="radiogroup" aria-labelledby="sidebar-side-label" class="row">
+              {#each [["left", "À gauche"], ["right", "À droite"]] as const as [side, name]}
+                <label class="row">
+                  <input
+                    type="radio"
+                    name="sidebar-side"
+                    data-testid="settings-sidebar-{side}"
+                    checked={(appState.value?.settings.sidebarSide ?? "left") === side}
+                    onchange={() => api.dispatch({ type: "setSidebarSide", side })}
+                  />{name}
+                </label>
+              {/each}
+            </div>
+          </div>
         </div>
       </section>
     {:else}

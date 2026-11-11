@@ -107,6 +107,7 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("replayOnboarding") }),
   z.object({ type: z.literal("markHintSeen"), id: z.enum(HINT_IDS) }),
   z.object({ type: z.literal("setHintsEnabled"), enabled: z.boolean() }),
+  z.object({ type: z.literal("setSidebarSide"), side: z.enum(["left", "right"]) }),
   z.object({ type: z.literal("agentPanelWidth"), width: z.number().finite() }),
   /** Activates this window's project Review page, or opens it (one per project and per window). */
   z.object({ type: z.literal("openReview"), windowId: id, project: z.string().regex(PROJECT_ID), name: z.string().max(80) }),

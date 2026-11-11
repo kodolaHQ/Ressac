@@ -477,6 +477,11 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       d.settings.hints.enabled = a.enabled;
       return true;
     }
+    case "setSidebarSide": {
+      if (d.settings.sidebarSide === a.side) return false;
+      d.settings.sidebarSide = a.side;
+      return true;
+    }
     case "agentPanelWidth": {
       const width = Math.round(Math.min(AGENT_WIDTH_MAX, Math.max(AGENT_WIDTH_MIN, a.width)));
       if (d.settings.agentPanelWidth === width) return false;

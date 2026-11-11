@@ -851,6 +851,17 @@ test("onboarding actions and hints", () => {
   expect(e.settings.hints.enabled).toBe(false);
 });
 
+test("setSidebarSide stores the side; the same one changes nothing", () => {
+  e = initialState(genId);
+  expect(e.settings.sidebarSide).toBe("left");
+  ag({ type: "setSidebarSide", side: "right" });
+  expect(e.settings.sidebarSide).toBe("right");
+  const before = e;
+  ag({ type: "setSidebarSide", side: "right" });
+  expect(e).toBe(before);
+  expect(SchemaAction.safeParse({ type: "setSidebarSide", side: "top" }).success).toBe(false);
+});
+
 test("chooseClaudeEngine stores a new engine; an equal one changes nothing", () => {
   const before = e;
   ag({ type: "chooseClaudeEngine", engine: { ...e.settings.claudeEngine } });
