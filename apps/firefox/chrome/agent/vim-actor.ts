@@ -12,26 +12,29 @@ const PREFIX_MS = 1000;
 const LINE = 60;
 /** The letters of the link hints: the home row. */
 const HINT_KEYS = "asdfghjkl";
-/** The labels' fade out, in ms (none under reduced motion). */
+/** The labels' and the pill's fade out, in ms (none under reduced motion). */
 const FADE_MS = 150;
-// The labels, in a closed shadow root in the page: `:host` important declarations win over the page's. Glass, Geist
-// Mono and the space's aura accent (DESIGN.md), on the window's own tokens (the parent sends them: see "vim:style").
-const HINTS_CSS = `
+/** The pause's pill (French UI copy). */
+const PAUSED = "vim en pause · ⇧Échap";
+// The actor's layer, a closed shadow root in the page: the link hints and the pause's pill. `:host` important
+// declarations win over the page's. Glass, Geist Mono and the space's aura accent (DESIGN.md), on the window's own
+// tokens (the parent sends them: see "vim:style").
+const LAYER_CSS = `
 :host { all: initial !important; position: fixed !important; inset: 0 !important; z-index: 2147483647 !important; pointer-events: none !important; display: block !important; }
-.hints { transition: opacity ${FADE_MS}ms ease-out; }
-.hint { position: absolute; padding: 1px 4px; border-radius: 6px; border: 1px solid var(--border); background: color-mix(in srgb, var(--sheet) 86%, transparent);
-  backdrop-filter: blur(12px) saturate(1.4); color: var(--accent);
-  font: 500 11px/1.4 "Geist Mono", ui-monospace, monospace; text-transform: uppercase; letter-spacing: .02em; white-space: nowrap;
-  transition: opacity ${FADE_MS}ms ease-out;
-  animation: in 460ms linear(0, .06 2.4%, .24 5.1%, .55 9.4%, .84 14.6%, 1.01 19.4%, 1.07 23.2%, 1.08 26.6%, 1.05 32.8%, 1 41%, .99 50%, 1); }
+.hints, .pill { transition: opacity ${FADE_MS}ms ease-out; }
+.hint, .pill { position: absolute; border: 1px solid var(--border); background: color-mix(in srgb, var(--sheet) 86%, transparent);
+  backdrop-filter: blur(12px) saturate(1.4); font: 500 11px/1.4 "Geist Mono", ui-monospace, monospace; white-space: nowrap; }
+.hint, .pill { animation: in 460ms linear(0, .06 2.4%, .24 5.1%, .55 9.4%, .84 14.6%, 1.01 19.4%, 1.07 23.2%, 1.08 26.6%, 1.05 32.8%, 1 41%, .99 50%, 1); }
+.hint { padding: 1px 4px; border-radius: 6px; color: var(--accent); text-transform: uppercase; letter-spacing: .02em; transition: opacity ${FADE_MS}ms ease-out; }
 .hint b { font-weight: 500; opacity: .45; }
+.pill { right: 12px; bottom: 12px; padding: 4px 10px; border-radius: 10px; color: var(--text); }
 .gone, .out { opacity: 0; }
 @keyframes in { from { opacity: 0; transform: scale(.85); } }
-@media (prefers-reduced-motion: reduce) { .hints, .hint { transition: none; animation: none; } }
+@media (prefers-reduced-motion: reduce) { .hints, .hint, .pill { transition: none; animation: none; } }
 `;
 
 /** The window's tokens the labels paint with. */
-const HINT_TOKENS = ["--accent", "--sheet", "--border"];
+const HINT_TOKENS = ["--accent", "--sheet", "--border", "--text"];
 
 /** `n` labels over HINT_KEYS, breadth-first: as short as possible, and none is the start of another. */
 function hintLabels(n: number): string[] {
@@ -145,9 +148,14 @@ export class WebAiOsVimChild extends JSWindowActorChild {
   private taken = new Set<string>();
   private listening: { target: any; listener: (e: Event) => void } | null = null;
   /** The link hints shown: their host in the page, each label's link, what was typed, F or f. */
-  private hints: { host: HTMLElement; box: HTMLElement; items: { label: string; link: HTMLAnchorElement; el: HTMLElement }[]; typed: string; newTab: boolean } | null = null;
+  private hints: { box: HTMLElement; items: { label: string; link: HTMLAnchorElement; el: HTMLElement }[]; typed: string; newTab: boolean } | null = null;
   /** The last element clicked or hovered: j/k scroll its scrolling box when the window cannot move (Vimium's). */
   private pointed: Element | null = null;
+  /** The layer in the page (LAYER_CSS): its host, the element holding what it shows, put in the page once styled. */
+  private layer: { host: HTMLElement; ui: HTMLElement; ready: Promise<unknown> } | null = null;
+  // shortcut: the pause is per document and falls on reload; a per-site list if testers ask
+  private paused = false;
+  private pill: HTMLElement | null = null;
 
   // DOMWindowCreated: a new document; pageshow: one back from the bfcache may have missed a change of the setting.
   handleEvent(e: Event): void {
@@ -167,11 +175,12 @@ export class WebAiOsVimChild extends JSWindowActorChild {
 
   receiveMessage(m: { name: string; data?: { on?: unknown } }): void {
     if (m.name === "vim:mode") this.on = m.data?.on === true;
+    if (!this.on && this.paused) this.setPaused(false);
   }
 
   didDestroy(): void {
     clearTimeout(this.prefixTimer);
-    this.hideHints(true);
+    this.layer?.host.remove();
     if (!this.listening) return;
     for (const type of EVENTS) this.listening.target.removeEventListener(type, this.listening.listener, true);
     this.listening = null;
@@ -210,6 +219,13 @@ export class WebAiOsVimChild extends JSWindowActorChild {
       return;
     }
     if (((target as Node | undefined)?.ownerDocument ?? target) !== doc || editable(target)) return;
+    // ⇧Escape starts or ends the pause; paused, every other key is the page's.
+    if (e.key === "Escape" && e.shiftKey) {
+      if (!e.repeat) this.setPaused(!this.paused);
+      this.taken.add(e.code);
+      return this.swallow(e);
+    }
+    if (this.paused) return;
     if (this.run(e.key, e.repeat)) {
       this.taken.add(e.code);
       this.swallow(e);
@@ -261,6 +277,9 @@ export class WebAiOsVimChild extends JSWindowActorChild {
         return true;
       case "/":
         if (!repeat) this.sendAsyncMessage("vim:find");
+        return true;
+      case "i":
+        if (!repeat) this.setPaused(true);
         return true;
       case "g":
       case "y":
@@ -330,15 +349,8 @@ export class WebAiOsVimChild extends JSWindowActorChild {
       .map((link) => ({ link, rect: [...link.getClientRects()].find((r) => r.width > 0 && r.height > 0 && r.right > 0 && r.bottom > 0 && r.left < win.innerWidth && r.top < win.innerHeight) }))
       .filter((x) => x.rect);
     if (!links.length) return;
-    const host = doc.createElement("div");
-    const root = host.attachShadow({ mode: "closed" });
-    // A constructed sheet: the page's CSP (style-src) blocks a <style> element, even the actor's.
-    const sheet = new (win as unknown as typeof globalThis).CSSStyleSheet();
-    sheet.replaceSync(HINTS_CSS);
-    root.adoptedStyleSheets = [sheet];
     const box = doc.createElement("div");
     box.className = "hints";
-    root.append(box);
     const items = hintLabels(links.length).map((label, i) => {
       const { link, rect } = links[i]!;
       const el = doc.createElement("span");
@@ -349,16 +361,58 @@ export class WebAiOsVimChild extends JSWindowActorChild {
       box.append(el);
       return { label, link, el };
     });
-    this.hints = { host, box, items, typed: "", newTab };
-    // Shown once the window's tokens are there (no flash of unstyled labels); letters typed meanwhile already count.
-    this.sendQuery("vim:style").then(
-      (tokens) => {
-        if (this.hints?.host !== host) return;
-        for (const [k, v] of Object.entries((tokens ?? {}) as Record<string, string>)) if (HINT_TOKENS.includes(k)) box.style.setProperty(k, v);
-        doc.documentElement.append(host);
-      },
+    this.hints = { box, items, typed: "", newTab };
+    // Letters typed before the layer shows already count.
+    this.mount(box);
+  }
+
+  /** Shows `el` in the layer, made on first use and put in the page once the window's tokens are in (no unstyled flash). */
+  private mount(el: HTMLElement): void {
+    const doc = this.document;
+    if (!this.layer) {
+      const host = doc.createElement("div");
+      const root = host.attachShadow({ mode: "closed" });
+      // A constructed sheet: the page's CSP (style-src) blocks a <style> element, even the actor's.
+      const sheet = new (this.contentWindow as unknown as typeof globalThis).CSSStyleSheet();
+      sheet.replaceSync(LAYER_CSS);
+      root.adoptedStyleSheets = [sheet];
+      const ui = doc.createElement("div");
+      root.append(ui);
+      const ready = this.sendQuery("vim:style").then((tokens) => {
+        for (const [k, v] of Object.entries((tokens ?? {}) as Record<string, string>)) if (HINT_TOKENS.includes(k)) ui.style.setProperty(k, v);
+      });
+      this.layer = { host, ui, ready };
+    }
+    const layer = this.layer;
+    layer.ui.append(el);
+    // Put back if the page dropped it (a script rewriting <html>'s children).
+    layer.ready.then(
+      () => el.parentNode && !layer.host.isConnected && doc.documentElement.append(layer.host),
       () => {},
     );
+  }
+
+  /** Takes `el` out of the layer: a fade out, or at once (`now`, or reduced motion). */
+  private unmount(el: HTMLElement, now = false): void {
+    if (now || this.behavior() === "instant") return void el.remove();
+    el.classList.add("out");
+    setTimeout(() => el.remove(), FADE_MS);
+  }
+
+  /** The pause (i / ⇧Escape): vim keys off in this document, the pill says so. */
+  private setPaused(on: boolean): void {
+    this.paused = on;
+    this.setPrefix("");
+    this.hideHints();
+    if (on && !this.pill) {
+      this.pill = this.document.createElement("div");
+      this.pill.className = "pill";
+      this.pill.textContent = PAUSED;
+      this.mount(this.pill);
+    } else if (!on && this.pill) {
+      this.unmount(this.pill);
+      this.pill = null;
+    }
   }
 
   /** A key while the labels show: a letter narrows them (a whole label follows its link), Backspace undoes one, Escape quits. */
@@ -402,9 +456,7 @@ export class WebAiOsVimChild extends JSWindowActorChild {
     const h = this.hints;
     if (!h) return;
     this.hints = null;
-    if (now || this.behavior() === "instant") return void h.host.remove();
-    h.box.classList.add("out");
-    setTimeout(() => h.host.remove(), FADE_MS);
+    this.unmount(h.box, now);
   }
 }
 

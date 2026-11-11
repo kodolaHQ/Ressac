@@ -435,6 +435,68 @@ describe("vim mode: tabs and spaces", () => {
   });
 });
 
+/** The pause's pill text, or null. */
+const pill = () =>
+  inBrowser<string | null>(
+    m,
+    B,
+    `const root = [...document.documentElement.children].map((e) => e.openOrClosedShadowRoot).find((r) => r?.querySelector(".pill"));
+     return root?.querySelector(".pill:not(.out)")?.textContent ?? null;`,
+    { system: true },
+  );
+
+describe("vim mode: pause", () => {
+  beforeEach(async () => {
+    await setVim(true);
+  });
+
+  it("i pauses: keys and Escape reach the page, the pill shows; ⇧Escape resumes unseen", async () => {
+    const id = await open();
+    await pressKeys(m, "i");
+    await expect.poll(pill).toBe("vim en pause · ⇧Échap");
+    await pressKeys(m, "j");
+    await expect.poll(seen).toContain("keydown:j");
+    await pressKeys(m, "x");
+    await pressKeys(m, "Escape");
+    await expect.poll(seen).toContain("keydown:Escape");
+    expect(await scrollY()).toBe(0);
+    expect(!!(await state(m)).tabs[id]).toBe(true);
+    expect(await pill()).toBe("vim en pause · ⇧Échap");
+    const before = await seen();
+    await pressKeys(m, "Shift+Escape");
+    await expect.poll(pill).toBeNull();
+    // The page saw the Shift, not the Escape.
+    expect((await seen()).slice(before.length)).not.toContain("Escape");
+    await pressKeys(m, "j");
+    await expect.poll(scrollY).toBeGreaterThan(0);
+    // ⇧Escape outside a pause starts one, unseen too.
+    const before2 = await seen();
+    await pressKeys(m, "Shift+Escape");
+    await expect.poll(pill).toBe("vim en pause · ⇧Échap");
+    expect((await seen()).slice(before2.length)).not.toContain("Escape");
+  });
+
+  it("a reload ends the pause; in a field, i is typed and no pause starts", async () => {
+    await open();
+    await pressKeys(m, "i");
+    await expect.poll(pill).not.toBeNull();
+    const loads = Number(await inPage<string>("return sessionStorage.loads;"));
+    await m.execute(`${B}.reload();`);
+    await expect.poll(() => inPage<string>("return sessionStorage.loads;").catch(() => "0"), { timeout: 10_000 }).toBe(String(loads + 1));
+    await backToPage();
+    expect(await pill()).toBeNull();
+    await pressKeys(m, "j");
+    await expect.poll(scrollY).toBeGreaterThan(0);
+    await inPage("window.scrollTo(0, 0); document.getElementById('in').focus(); return 1;");
+    await typeText(m, "i");
+    expect(await inPage<string>("return document.getElementById('in').value;")).toBe("i");
+    await inPage("document.activeElement.blur(); return 1;");
+    expect(await pill()).toBeNull();
+    await pressKeys(m, "j");
+    await expect.poll(scrollY).toBeGreaterThan(0);
+  });
+});
+
 describe("vim mode off, or outside web tabs", () => {
   it("off (the default): j reaches the page and nothing scrolls", async () => {
     await setVim(false);
