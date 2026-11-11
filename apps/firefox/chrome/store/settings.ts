@@ -8,6 +8,8 @@ export interface SettingsChrome {
   setTelemetry(enabled: boolean): void;
   version(): string;
   reveal(path: string): void;
+  /** macOS's System Settings › Notifications: a site's or the watch's notification never shows while WebAiOs is off there. */
+  openNotificationSettings(): void;
   exportFolder(): Promise<string>;
   /** false: the quit was cancelled (a window or an observer kept it), and the reset request is withdrawn. */
   reset(): Promise<boolean>;
@@ -37,6 +39,18 @@ export function createSettingsChrome(dataDir: string, telemetryActive: boolean):
         f.reveal();
       } catch (e) {
         console.warn("[settings] path not shown:", e);
+      }
+    },
+    openNotificationSettings() {
+      const url = "x-apple.systempreferences:com.apple.Notifications-Settings.extension";
+      const test = Services.env.get("WEBAIOS_TEST_REVEAL");
+      if (test) return void IOUtils.writeUTF8(test, url + "\n", { mode: "appendOrCreate" }).catch((e: unknown) => console.warn("[settings] open not noted:", e));
+      try {
+        const handler = Cc["@mozilla.org/uriloader/external-protocol-service;1"].getService(Ci.nsIExternalProtocolService).getProtocolHandlerInfo("x-apple.systempreferences");
+        handler.preferredAction = Ci.nsIHandlerInfo.useSystemDefault;
+        handler.launchWithURI(Services.io.newURI(url));
+      } catch (e) {
+        console.warn("[settings] notification settings not opened:", e);
       }
     },
     async exportFolder() {

@@ -168,6 +168,19 @@ describe("welcome", () => {
     expect(activeSpace(t)).toMatchObject({ name: "Perso", aura: "aube" });
   });
 
+  it("the last page opens macOS's notification settings and stays", async () => {
+    const dir = await mkdtemp(join(os.tmpdir(), "webaios-welcome-"));
+    dirs.push(dir);
+    const opened = join(dir, "opened.txt");
+    await launch({ env: { WEBAIOS_TEST_REVEAL: opened } });
+    await forward(1, 5);
+    await press("welcome-notifications");
+    const read = () => (existsSync(opened) ? readFileSync(opened, "utf8") : "");
+    await waitFor(m, "return true", () => read().length > 0);
+    expect(read()).toBe("x-apple.systempreferences:com.apple.Notifications-Settings.extension\n");
+    await shown("welcome-5");
+  });
+
   it("relaunch after finishing", async () => {
     const dataDir = await mkdtemp(join(os.tmpdir(), "webaios-welcome-"));
     dirs.push(dataDir);

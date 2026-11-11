@@ -393,6 +393,8 @@ export interface SettingsApi {
   openAdvanced(): void;
   /** The OrbStack install link: https only. */
   openUrl(url: string): void;
+  /** macOS's System Settings › Notifications. */
+  openNotificationSettings(): void;
 }
 
 
