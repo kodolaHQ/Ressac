@@ -195,7 +195,7 @@ if (args[0] === "exec") {
       vars[key] = value.length ? value.join("=") : env[key];
     }
   // What the agent received from docker exec, for the tests.
-  writeFileSync(join(env.WEBAIOS_ROOT, "fake-agent-env.json"), JSON.stringify(Object.fromEntries(Object.entries(vars).filter(([k]) => k.startsWith("WEBAIOS_")))));
+  writeFileSync(join(env.WEBAIOS_ROOT, "fake-agent-env.json"), JSON.stringify(Object.fromEntries(Object.entries(vars).filter(([k]) => /^(WEBAIOS_|ANTHROPIC_|CLAUDE_CODE_)/.test(k)))));
   const r = spawnSync(process.execPath, [join(__dirname, "fake-agent.mjs"), ...command], { stdio: "inherit", env: { ...env, ...vars } });
   process.exit(r.status ?? 1);
 }

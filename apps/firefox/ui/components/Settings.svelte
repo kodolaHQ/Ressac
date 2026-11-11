@@ -168,7 +168,7 @@
                   {#if l?.kind === "device"}
                     <button class="primary" data-testid="device-open" onclick={() => s.openUrl(l.url)}>Ouvrir la page de connexion</button>
                   {:else}
-                    <button class="primary" data-testid="agent-login" disabled={l === null} onclick={() => void login(a.id)}>Se connecter</button>
+                    <button class:primary={a.id !== "claude" || (appState.value?.settings.claudeEngine.kind ?? "subscription") === "subscription"} data-testid="agent-login" disabled={l === null} onclick={() => void login(a.id)}>Se connecter</button>
                   {/if}
                 {:else if a.state === "logged-in"}
                   <button data-testid="agent-logout" onclick={() => void logout(a.id)}>Se déconnecter</button>

@@ -103,7 +103,24 @@ describe("Claude in Settings", () => {
     await fill("ollama-model", "ornith:35b");
     await engineSaved((e) => e.kind === "ollama" && e.ollamaModel === "ornith:35b" && e.ollamaUrl === ollama.url);
     expect(await inUi(m, "return doc.querySelector(arguments[0]).textContent", ['[data-testid="agent-claude"]'])).not.toContain(HINT);
+    expect(await inUi(m, "return doc.querySelector('[data-testid=agent-claude] [data-testid=agent-login]')?.classList.contains('primary')")).toBe(false);
     await screenshots();
+  });
+
+  it("Ollama: Claude's session gets the engine environment", { timeout: 90_000 }, async () => {
+    await launch();
+    await ollamaAt(ollama.url);
+    await click(m, inCard("engine-ollama"));
+    await options();
+    await fill("ollama-model", "ornith:35b");
+    await engineSaved((e) => e.kind === "ollama" && e.ollamaModel === "ornith:35b");
+    const envFile = join(w!.dataDir, "workspace", "fake-agent-env.json");
+    await inUi(m, "ui.webaios.agent.switch('codex')");
+    await waitFor(m, "return true", () => existsSync(envFile), 30_000);
+    rmSync(envFile);
+    await inUi(m, "ui.webaios.agent.switch('claude')");
+    await waitFor(m, "return true", () => read(envFile).includes("ANTHROPIC_BASE_URL"), 30_000);
+    expect(JSON.parse(read(envFile))).toMatchObject({ ANTHROPIC_BASE_URL: ollama.url, ANTHROPIC_MODEL: "ornith:35b", ANTHROPIC_DEFAULT_SONNET_MODEL: "ornith:35b", CLAUDE_CODE_SUBAGENT_MODEL: "ornith:35b" });
   });
 
   it("a saved model that is gone is marked; Actualiser reads again", async () => {
