@@ -68,7 +68,7 @@
 <style>
   .spaces { display: flex; flex-wrap: wrap; gap: 2px; padding: 0; }
   /* Round chips: the space's emoji, its aura dot growing on the spring when the space is the active one. */
-  .spaces button { all: unset; width: 28px; height: 28px; display: grid; place-content: center; border-radius: 50%; color: var(--text-muted); position: relative; transition: transform var(--tap), background var(--tap); }
+  .spaces button { all: unset; flex: none; width: 28px; height: 28px; display: grid; place-content: center; border-radius: 50%; color: var(--text-muted); position: relative; transition: transform var(--tap), background var(--tap); }
   .spaces button:hover { background: color-mix(in srgb, var(--glass-hi) 60%, transparent); color: var(--text); }
   .spaces button:active { transform: scale(0.97); }
   .spaces button[aria-current="true"] { background: var(--glass-hi); box-shadow: inset 0 0 0 1px var(--border), var(--lift); color: var(--text); }
@@ -76,7 +76,7 @@
   .spaces button:hover .aura { transform: scale(1.12); }
   .spaces button[aria-current="true"] .aura { transform: scale(1.25); }
   .padlock { position: absolute; left: -2px; bottom: -3px; font-size: 9px; line-height: 1; }
-  .confirmation { margin-bottom: 6px; padding: 10px; border-radius: 12px; background: var(--glass-hi); box-shadow: inset 0 0 0 1px var(--glass-edge); color: var(--text); -webkit-app-region: no-drag; animation: webaios-rise var(--spring-d) var(--spring) backwards; }
+  .confirmation { flex: 1 0 100%; box-sizing: border-box; padding: 10px; border-radius: 12px; background: var(--glass-hi); box-shadow: inset 0 0 0 1px var(--glass-edge); color: var(--text); -webkit-app-region: no-drag; animation: webaios-rise var(--spring-d) var(--spring) backwards; }
   .confirmation p { margin: 0 0 8px; }
   .buttons { display: flex; justify-content: flex-end; gap: 6px; }
   .buttons button { padding: 5px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--sheet); color: var(--text); font: inherit; transition: transform var(--tap); }

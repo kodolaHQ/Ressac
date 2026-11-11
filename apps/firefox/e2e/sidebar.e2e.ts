@@ -115,6 +115,36 @@ describe("the sidebar's layout", () => {
     );
     expect(panel!.top).toBeGreaterThanOrEqual(panel!.bottom);
   });
+  it("gives the spaces a full row above the tools, chips never squashed, with 1, 3 and 6 spaces", async () => {
+    const layout = () =>
+      inUi<{ chipTops: number[]; chipWidths: number[]; toolTops: number[]; overlap: boolean; toolsRight: boolean }>(
+        m,
+        `const rect = (e) => e.getBoundingClientRect();
+         const chips = [...doc.querySelectorAll("footer nav button")].map(rect);
+         const tools = [...doc.querySelectorAll("footer > .tool")].map(rect);
+         const footer = rect(doc.querySelector("footer"));
+         const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+         return {
+           chipTops: [...new Set(chips.map((r) => Math.round(r.top)))],
+           chipWidths: [...new Set(chips.map((r) => Math.round(r.width)))],
+           toolTops: [...new Set(tools.map((r) => Math.round(r.top)))],
+           overlap: chips.some((c) => tools.some((t) => hit(c, t))),
+           toolsRight: footer.right - tools.at(-1).right < 12,
+         };`,
+      );
+    for (const total of [1, 3, 6]) {
+      for (let n = (await state(m)).spaces.length; n < total; n++)
+        await dispatch(m, { type: "createSpace", name: `E${n}`, icon: "📁", private: n % 2 === 0, profile: "default", windowId: (await win()).id });
+      await waitUi(m, "return doc.querySelectorAll('footer nav button[data-testid^=\"space-\"]').length === arguments[0]", [total]);
+      const l = await layout();
+      expect(l.chipTops).toHaveLength(1);
+      expect(l.chipWidths).toEqual([28]);
+      expect(l.toolTops).toHaveLength(1);
+      expect(l.toolTops[0]!).toBeGreaterThan(l.chipTops[0]!);
+      expect(l.overlap).toBe(false);
+      expect(l.toolsRight).toBe(true);
+    }
+  });
 });
 
 describe("WebAiOs sidebar", () => {

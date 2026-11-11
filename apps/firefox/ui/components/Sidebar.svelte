@@ -137,8 +137,10 @@
   .pinned button:hover { background: color-mix(in srgb, var(--glass-hi) 55%, transparent); }
   .pinned button.active { background: var(--glass-hi); box-shadow: inset 0 0 0 1px var(--glass-edge); }
   .pinned button:active, .new:active, .tool:active, .downloads:active { transform: scale(0.97); }
-  footer { display: flex; align-items: center; gap: 2px; margin: 0 -6px; padding: 6px 6px 8px; border-top: 1px solid var(--border); -webkit-app-region: no-drag; }
-  footer :global(nav) { flex: 1; }
+  /* Two rows: the spaces get the full width, the tools sit right-aligned below them. */
+  footer { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 2px; margin: 0 -6px; padding: 6px 6px 8px; border-top: 1px solid var(--border); -webkit-app-region: no-drag; }
+  footer :global(nav) { flex: 1 0 100%; }
+  .tool:first-of-type { margin-left: auto; }
   .downloads { all: unset; position: relative; width: 28px; height: 28px; display: grid; place-content: center; border-radius: 8px; color: var(--text-muted); transition: transform var(--tap), background var(--tap), color var(--tap); }
   .tool { all: unset; -webkit-app-region: no-drag; width: 28px; height: 28px; display: grid; place-content: center; border-radius: 8px; color: var(--text-muted); transition: transform var(--tap), background var(--tap), color var(--tap); }
   .tool:hover, .downloads:hover { background: var(--glass-hi); color: var(--text); }
