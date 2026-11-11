@@ -16,8 +16,8 @@ beforeAll(async () => (server = await startServer()));
 afterAll(() => server?.close());
 afterEach(() => w?.close());
 
-async function launch(env?: Record<string, string>, dataDir?: string): Promise<void> {
-  w = await launchWebAiOs({ env, dataDir });
+async function launch(env?: Record<string, string>, dataDir?: string, prefs?: Record<string, number>): Promise<void> {
+  w = await launchWebAiOs({ env, dataDir, prefs });
   m = w.marionette;
   await m.setContext("chrome");
   await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
@@ -315,8 +315,11 @@ it("Docker absent → message and Réessayer", async () => {
   await waitUi(m, "return [...doc.querySelectorAll('button')].some((b) => b.textContent === 'Réessayer')", [], 10_000, "agent");
 });
 
-it("⌘J opens the panel and focuses the terminal", async () => {
-  await launch();
+it.each([
+  ["reduced motion", 1],
+  ["the slide", 0],
+])("⌘J opens the panel and focuses the terminal (%s)", async (_, reduced) => {
+  await launch(undefined, undefined, { "ui.prefersReducedMotion": reduced });
   await terminalShows("fake agent ready>");
   await openTab("/a.html");
   await m.execute("gBrowser.selectedBrowser.focus()");
@@ -505,4 +508,18 @@ it("text the agent copies itself (OSC 52, Claude Code's mouse selection) reaches
   await homeAgent();
   await send("osc52");
   await expect.poll(clipboardText, { timeout: 5_000 }).toBe("copié par l'agent ✓");
+});
+
+it("⌘J: the terminal takes the keyboard back when the window's focus is lost during the slide", async () => {
+  await launch(undefined, undefined, { "ui.prefersReducedMotion": 0 });
+  await terminalShows("fake agent ready>");
+  await openTab("/a.html");
+  await m.execute("gBrowser.selectedBrowser.focus()");
+  await pressKeys(m, "Meta+j");
+  // Mid-slide, the window's focus goes back to the page: the terminal's own document still points at its textarea.
+  await new Promise((r) => setTimeout(r, 200));
+  await m.execute("gBrowser.selectedBrowser.focus()");
+  await shown();
+  await waitFor(m, "return document.activeElement?.id", (v) => v === "webaios-agent", 2_000);
+  await waitUi(m, "return doc.activeElement?.classList.contains('xterm-helper-textarea')", [], 2_000, "agent");
 });

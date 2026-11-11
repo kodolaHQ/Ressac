@@ -139,11 +139,14 @@ export function adjust(): void {
 }
 
 export function focus(): void {
+  // The textarea alone is not enough: its frame must be the focused element of the window's document too.
+  (window.frameElement as HTMLElement | null)?.focus();
   terminal?.focus();
 }
 
+/** The keyboard really goes to the terminal: its textarea is this document's active element, and this document is in the window's focus chain (the active element stays when the window's focus moves elsewhere). */
 export function hasFocus(): boolean {
-  return !!terminal?.textarea && terminal.textarea === document.activeElement;
+  return !!terminal?.textarea && terminal.textarea === document.activeElement && window.parent.document.activeElement === window.frameElement;
 }
 
 /** New session (Réessayer, Relancer): the screen starts from scratch. */

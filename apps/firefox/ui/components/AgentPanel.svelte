@@ -94,8 +94,8 @@
   // svelte-ignore state_referenced_locally
   let served = builtIn ? -1 : untrack(() => focusAgent.n);
 
-  // ⌘J from a web page: the keyboard goes from the page to the interface. During this handover, Chromium ignores a
-  // focus requested too early: it is requested again shortly after if the terminal does not have it.
+  // ⌘J from a web page: the keyboard goes from the page to the interface. A focus requested during this handover or the
+  // panel's slide can be lost at the window level: it is requested again shortly after, and once the slide is over.
   $effect(() => {
     const n = focusAgent.n;
     if (!visible) {
@@ -108,8 +108,8 @@
     // The first-time note keeps the keyboard until Compris.
     const aim = () => visible && !firstTimePending("agent") && terminalAgent.focus();
     void tick().then(aim);
-    const relaunch = setTimeout(() => !terminalAgent.hasFocus() && aim(), 100);
-    return () => clearTimeout(relaunch);
+    const relaunches = [100, 500].map((ms) => setTimeout(() => !terminalAgent.hasFocus() && aim(), ms));
+    return () => relaunches.forEach(clearTimeout);
   });
   // The note takes the keyboard; Compris gives it back: to the terminal if the user opened the panel (⌘J, ✦), else to
   // where it was (the empty page's field when the home page opened the panel). Captured before the note mounts.
