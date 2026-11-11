@@ -304,12 +304,10 @@
   left: var(--webaios-agent, 0px);
   right: var(--webaios-sidebar, 240px);
 }
-/* Switching sides (controller: webaios-side-switch "out", then "in" on the new side): a fade, never a slide across. */
+/* Switching sides (controller: webaios-side-switch "in" right after the swap): a fade in, never a slide across. */
+@keyframes webaios-side-in { from { opacity: 0; } }
 :root[webaios-main][webaios-side-switch] :is(#webaios-sidebar, #webaios-agent, #tabbrowser-tabbox) {
-  transition: opacity 150ms ease-out;
-}
-:root[webaios-main][webaios-side-switch="out"] :is(#webaios-sidebar, #webaios-agent, #tabbrowser-tabbox) {
-  opacity: 0 !important;
+  animation: webaios-side-in 150ms ease-out;
 }
 
 /* Firefox's separator under its hidden toolbar: the page goes up to the window's top edge. */

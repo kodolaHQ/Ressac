@@ -98,8 +98,7 @@ describe("the sidebar on the right", () => {
     await waitFor(m, "return !document.getElementById('webaios-agent').hidden", (v) => v === true);
     const before = await agentWidth();
     await dragHandle(300);
-    // The native drag loses the same 8 px on both sides (measured on the left handle too): a tolerance, not an offset in the code.
-    await waitFor(m, "return document.getElementById('webaios-agent').getBoundingClientRect().width", (v: number) => v >= before + 290 && v <= before + 300);
+    await waitFor(m, "return document.getElementById('webaios-agent').getBoundingClientRect().width", (v: number) => v === before + 300);
     // Beyond the maximum (room for the page stays): clamped like the left side.
     await dragHandle(450);
     const win = await width();

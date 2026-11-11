@@ -27,7 +27,8 @@
     const handle = e.currentTarget as HTMLElement;
     handle.setPointerCapture(e.pointerId);
     const start = e.clientX;
-    const width = section.getBoundingClientRect().width;
+    // The frame's width, as resize() takes it: the section leaves out the panel's 8 px margin.
+    const width = window.innerWidth;
     // The pointer moving right grows a panel whose handle is on its right edge, and shrinks one whose handle is on its left.
     const direction = sidebarRight ? 1 : -1;
     const wanted = (ev: PointerEvent) => width + direction * (ev.clientX - start);

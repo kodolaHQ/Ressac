@@ -157,25 +157,19 @@ export function createController(
       if (agentOpen(state) !== agentOpen(previous) || state.settings.agentPanelWidth !== previous.settings.agentPanelWidth) showAgent(state);
     }),
   );
-  // The sidebar's side (window.css mirrors on webaios-sidebar-side). A switch fades out, swaps, and fades in; reduced
-  // motion swaps at once.
+  // The sidebar's side (window.css mirrors on webaios-sidebar-side). A switch swaps at once, in step with the UI pages
+  // that read the same state, then fades in; reduced motion skips the fade.
   const FADE_MS = 150;
   let sideFade: ReturnType<typeof setTimeout> | undefined;
   const sideOf = (state: BrowserState) => state.settings.sidebarSide;
   const placeSide = (fade: boolean) => {
     const root = document.documentElement;
-    const swap = () => root.setAttribute("webaios-sidebar-side", sideOf(store.state));
+    root.setAttribute("webaios-sidebar-side", sideOf(store.state));
     clearTimeout(sideFade);
-    if (!fade || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      root.removeAttribute("webaios-side-switch");
-      return swap();
-    }
-    root.setAttribute("webaios-side-switch", "out");
-    sideFade = setTimeout(() => {
-      swap();
-      root.setAttribute("webaios-side-switch", "in");
-      sideFade = setTimeout(() => root.removeAttribute("webaios-side-switch"), FADE_MS);
-    }, FADE_MS);
+    root.removeAttribute("webaios-side-switch");
+    if (!fade || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    root.setAttribute("webaios-side-switch", "in");
+    sideFade = setTimeout(() => root.removeAttribute("webaios-side-switch"), FADE_MS);
   };
   placeSide(false);
   unsubscribe.push(

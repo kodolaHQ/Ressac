@@ -300,9 +300,9 @@
           </div>
           <div class="row">
             <b class="grow" id="sidebar-side-label">Barre de navigation</b>
-            <div role="radiogroup" aria-labelledby="sidebar-side-label" class="row">
+            <div role="radiogroup" aria-labelledby="sidebar-side-label" class="kinds">
               {#each [["left", "À gauche"], ["right", "À droite"]] as const as [side, name]}
-                <label class="row">
+                <label>
                   <input
                     type="radio"
                     name="sidebar-side"
@@ -356,6 +356,8 @@
   .settings :global(.panel) { border: 1px solid var(--border); border-radius: 16px; background: var(--sheet); box-shadow: var(--lift); overflow: hidden; }
   .settings :global(.panel > * + *) { border-top: 1px solid var(--border); }
   .settings :global(.row) { display: flex; align-items: center; gap: 10px; padding: 11px 14px; }
+  .kinds { display: flex; gap: 16px; }
+  .kinds label { display: inline-flex; align-items: center; gap: 6px; }
   .settings :global(.grow) { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
   .settings :global(.grow b), .settings :global(b.grow) { font-weight: 600; }
   .settings :global(.grow .muted) { font-size: 12px; }
