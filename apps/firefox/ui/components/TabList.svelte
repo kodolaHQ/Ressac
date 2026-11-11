@@ -21,15 +21,26 @@
     const position = index + (after ? 1 : 0);
     api.dispatch({ type: "moveTab", id, index: order.indexOf(id) < position ? position - 1 : position });
   }
+
+  /** Rows are 36 px apart: the highlight slides to the active one (hidden when the active page is not a listed tab). */
+  const activeIndex = $derived(active ? order.indexOf(active) : -1);
+  // Rows mounted together (a space switch, the first render) rise in cascade, 45 ms apart; a lone new tab rises at once.
+  let batch = 0;
+  function rise(node: HTMLElement) {
+    if (batch === 0) requestAnimationFrame(() => (batch = 0));
+    node.style.animationDelay = `${batch++ * 45}ms`;
+  }
 </script>
 
 <ul class="tabs" role="tablist" aria-orientation="vertical">
+  <li class="highlight" role="presentation" aria-hidden="true" class:shown={activeIndex >= 0} style:transform="translateY({Math.max(activeIndex, 0) * 36}px)"></li>
   {#each order as id, index (id)}
     {@const tab = appState.value?.tabs[id]}
     {@const agentRights = accessOf(id)}
     {#if tab}
       <li
         data-testid="tab-{id}"
+        use:rise
         role="tab"
         tabindex="0"
         aria-selected={id === active}
@@ -73,16 +84,44 @@
 </ul>
 
 <style>
-  .tabs { list-style: none; margin: 0; padding: 0; }
-  li { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 8px; border-radius: 8px; color: var(--text); cursor: default; }
-  li:hover { background: var(--bg-hover); }
-  li[aria-current="page"] { background: var(--bg-active); }
+  .tabs { position: relative; list-style: none; margin: 0; padding: 0; }
+  li[role="tab"] {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 34px;
+    margin-bottom: 2px;
+    padding: 0 6px 0 10px;
+    border-radius: 10px;
+    color: var(--text);
+    cursor: default;
+    transition: transform var(--tap), background var(--tap);
+    animation: webaios-rise var(--spring-d) var(--spring) backwards;
+  }
+  li[role="tab"]:hover:not([aria-current="page"]) { background: color-mix(in srgb, var(--glass-hi) 50%, transparent); }
+  li[role="tab"]:active { transform: scale(0.97); }
+  /* One highlight for the whole list: it slides on the spring from the old active tab to the new one. */
+  .highlight {
+    position: absolute;
+    inset: 0 0 auto;
+    height: 34px;
+    border-radius: 10px;
+    background: var(--glass-hi);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.06), inset 0 0 0 1px var(--glass-edge);
+    opacity: 0;
+    pointer-events: none;
+    transition: transform var(--spring-d) var(--spring), opacity var(--tap);
+  }
+  .highlight.shown { opacity: 1; }
   li.before { box-shadow: inset 0 2px 0 var(--accent); }
   li.after { box-shadow: inset 0 -2px 0 var(--accent); }
   .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  [aria-current="page"] .title { font-weight: 500; }
   .agent { color: var(--accent); }
-  .close { all: unset; opacity: 0; padding: 0 4px; color: var(--text-muted); }
+  .close { all: unset; display: grid; place-content: center; width: 20px; height: 20px; border-radius: 6px; opacity: 0; color: var(--text-muted); transition: opacity var(--tap), background var(--tap); }
+  .close:hover { background: var(--glass-hi); color: var(--text); }
   li:hover .close { opacity: 1; }
-  .spinner { width: 12px; height: 12px; margin: 2px; flex: none; border: 2px solid var(--text-muted); border-top-color: transparent; border-radius: 50%; animation: tourne 0.8s linear infinite; }
+  .spinner { width: 12px; height: 12px; margin: 2px; flex: none; border: 2px solid var(--accent); border-top-color: transparent; border-radius: 50%; animation: tourne 0.8s linear infinite; }
   @keyframes tourne { to { transform: rotate(360deg); } }
 </style>

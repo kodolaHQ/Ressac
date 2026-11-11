@@ -90,7 +90,8 @@ describe("the sidebar's layout", () => {
       `${DRAGGING} return { allowed: frame.contentWindow.docShell.windowDraggingAllowed, sidebar: of(".bar"), button: of(".navigation button"), address: of(".line"), tabs: of(".scrolling"), footer: of("footer") };`,
     );
     expect(drag).toEqual({ allowed: true, sidebar: "drag", button: "no-drag", address: "no-drag", tabs: "no-drag", footer: "no-drag" });
-    expect(await m.execute(`const r = gBrowser.selectedBrowser.getBoundingClientRect(); return [r.top, r.height - window.innerHeight];`)).toEqual([0, 0]);
+    // The page sits framed on the aura, 8 px from the top and the bottom.
+    expect(await m.execute(`const r = gBrowser.selectedBrowser.getBoundingClientRect(); return [r.top, r.height - window.innerHeight];`)).toEqual([8, -16]);
     // Under an overlay the sidebar's area belongs to the overlay.
     await pressKeys(m, "Meta+t");
     await waitUi(m, `${DRAGGING} return of(".bar") === "default";`);
@@ -214,16 +215,17 @@ describe("WebAiOs sidebar", () => {
     await waitTitle(id, "icone");
     // The UI shrinks to its column once a web page is displayed.
     await waitFor(m, "return document.getElementById('webaios-sidebar').hasAttribute('full')", (v) => v === false);
-    const bar = await inUi<string>(m, "return ui.getComputedStyle(doc.querySelector('[data-testid=\"sidebar\"]')).backgroundColor");
     // The page may paint a moment after its title arrives.
     for (let i = 0; i < 50 && (await pixel(m, 900, 400)).join() !== "255,0,0"; i++) await new Promise((r) => setTimeout(r, 100));
     expect(await pixel(m, 900, 400)).toEqual([255, 0, 0]);
-    expect(`rgb(${(await pixel(m, 100, 400)).join(", ")})`).toBe(bar);
+    // The sidebar's glass pane on the aura, not the page.
+    expect(await pixel(m, 100, 400)).not.toEqual([255, 0, 0]);
     // The empty page covers the page: the UI paints above Firefox's tab box.
     await dispatch(m, { type: "showBlankPage", windowId: (await win()).id });
     const empty = await waitUi<string>(m, "const p = doc.querySelector('[data-testid=\"empty-page\"]'); return p && ui.getComputedStyle(p.parentElement).backgroundColor");
-    for (let i = 0; i < 50 && `rgb(${(await pixel(m, 900, 400)).join(", ")})` !== empty; i++) await new Promise((r) => setTimeout(r, 100));
-    expect(`rgb(${(await pixel(m, 900, 400)).join(", ")})`).toBe(empty);
+    // Between the home field and the widgets, left of the agent panel the home page opens.
+    for (let i = 0; i < 50 && `rgb(${(await pixel(m, 550, 190)).join(", ")})` !== empty; i++) await new Promise((r) => setTimeout(r, 100));
+    expect(`rgb(${(await pixel(m, 550, 190)).join(", ")})`).toBe(empty);
   });
 
   it("shows an internal webaios: page as not yet available", async () => {

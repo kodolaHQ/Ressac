@@ -66,15 +66,20 @@
 </nav>
 
 <style>
-  .spaces { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 0; }
-  .spaces button { all: unset; width: 28px; height: 28px; display: grid; place-content: center; border-radius: 6px; color: var(--text-muted); position: relative; }
-  .spaces button:hover { background: var(--bg-hover); }
-  .spaces button[aria-current="true"] { background: var(--bg-active); }
-  .aura { position: absolute; left: 2px; bottom: 2px; line-height: 0; }
-  .padlock { position: absolute; right: -3px; bottom: -3px; font-size: 9px; line-height: 1; }
-  .confirmation { padding: 8px; border-radius: 6px; background: var(--bg-active); color: var(--text); -webkit-app-region: no-drag; }
+  .spaces { display: flex; flex-wrap: wrap; gap: 2px; padding: 0; }
+  /* Round chips: the space's emoji, its aura dot growing on the spring when the space is the active one. */
+  .spaces button { all: unset; width: 28px; height: 28px; display: grid; place-content: center; border-radius: 50%; color: var(--text-muted); position: relative; transition: transform var(--tap), background var(--tap); }
+  .spaces button:hover { background: color-mix(in srgb, var(--glass-hi) 60%, transparent); color: var(--text); }
+  .spaces button:active { transform: scale(0.97); }
+  .spaces button[aria-current="true"] { background: var(--glass-hi); box-shadow: inset 0 0 0 1px var(--border), 0 1px 2px rgb(0 0 0 / 0.06); color: var(--text); }
+  .aura { position: absolute; right: 1px; bottom: 1px; line-height: 0; border-radius: 50%; box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--sheet) 70%, transparent); transition: transform var(--spring-d) var(--spring); }
+  .spaces button:hover .aura { transform: scale(1.12); }
+  .spaces button[aria-current="true"] .aura { transform: scale(1.25); }
+  .padlock { position: absolute; left: -2px; bottom: -3px; font-size: 9px; line-height: 1; }
+  .confirmation { margin-bottom: 6px; padding: 10px; border-radius: 12px; background: var(--glass-hi); box-shadow: inset 0 0 0 1px var(--glass-edge); color: var(--text); -webkit-app-region: no-drag; animation: webaios-rise var(--spring-d) var(--spring) backwards; }
   .confirmation p { margin: 0 0 8px; }
   .buttons { display: flex; justify-content: flex-end; gap: 6px; }
-  .buttons button { padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
-  .buttons .danger { background: #c0392b; border-color: #c0392b; color: white; }
+  .buttons button { padding: 5px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--sheet); color: var(--text); font: inherit; transition: transform var(--tap); }
+  .buttons button:active { transform: scale(0.97); }
+  .buttons .danger { background: var(--in-error); border-color: var(--in-error); color: var(--accent-ink); }
 </style>

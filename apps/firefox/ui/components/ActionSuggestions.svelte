@@ -41,9 +41,9 @@
 </ul>
 
 <style>
-  .suggestions-actions { -webkit-app-region: no-drag; list-style: none; margin: 4px 0 0; padding: 4px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-bar); }
-  li { padding: 8px 12px; border-radius: 6px; cursor: pointer; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .suggestions-actions { -webkit-app-region: no-drag; list-style: none; margin: 6px 0 0; padding: 6px; border-radius: 16px; border: 1px solid var(--glass-edge); background: var(--glass); backdrop-filter: blur(30px) saturate(1.8); box-shadow: var(--modal-shadow); animation: webaios-drop var(--spring-d) var(--spring) backwards; }
+  li { padding: 9px 12px; border-radius: 10px; cursor: pointer; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: background var(--tap); }
   li.usual { color: var(--text-muted); }
-  li:hover { background: var(--bg-hover); }
-  li[aria-selected="true"] { background: var(--bg-active); }
+  li:hover { background: color-mix(in srgb, var(--glass-hi) 55%, transparent); }
+  li[aria-selected="true"] { background: var(--glass-hi); box-shadow: inset 0 0 0 1px var(--glass-edge); }
 </style>

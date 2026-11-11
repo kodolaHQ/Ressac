@@ -14,6 +14,7 @@
 {/if}
 
 <style>
-  img { border-radius: 3px; flex: none; }
-  .letter { display: inline-grid; place-content: center; flex: none; border-radius: 3px; background: var(--bg-active); color: var(--text-muted); }
+  img { border-radius: 4px; flex: none; }
+  /* No favicon: the initial on the active aura's colours, like the tiles of the charte. */
+  .letter { display: inline-grid; place-content: center; flex: none; border-radius: 28%; background: linear-gradient(135deg, var(--a1), var(--a2)); color: rgb(255 255 255 / 0.95); font-weight: 600; text-shadow: 0 1px 1px rgb(0 0 0 / 0.18); }
 </style>

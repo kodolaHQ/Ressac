@@ -43,8 +43,10 @@
 <style>
   .essentials { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; min-height: 8px; }
   .essentials.large { grid-template-columns: repeat(auto-fill, 64px); justify-content: center; gap: 12px; }
-  button { all: unset; display: grid; place-content: center; height: 44px; border-radius: 10px; background: var(--bg-hover); }
-  .large button { height: 64px; }
+  button { all: unset; display: grid; place-content: center; height: 44px; border-radius: 12px; background: color-mix(in srgb, var(--glass-hi) 60%, transparent); box-shadow: inset 0 0 0 1px var(--glass-edge); transition: transform var(--tap), background var(--tap), box-shadow var(--tap); }
+  button:hover { background: var(--glass-hi); }
+  button:active { transform: scale(0.97); }
+  .large button { height: 64px; border-radius: 16px; }
   /* Inside the box: the sidebar's scroll area clips what sticks out. */
-  button.active { background: var(--bg-active); outline: 1px solid var(--accent); outline-offset: -1px; }
+  button.active { background: var(--glass-hi); box-shadow: inset 0 0 0 1.5px var(--accent); }
 </style>

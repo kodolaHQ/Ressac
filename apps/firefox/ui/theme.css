@@ -24,6 +24,8 @@
   --glass-hi: rgb(255 255 255 / 0.1);
   --glass-edge: rgb(255 255 255 / 0.1);
   --sheet: #17191F;
+  /* Glass laid over a web page: this document cannot blur the page below, so the glass is denser to stay readable. */
+  --glass-dense: color-mix(in srgb, var(--sheet) 86%, transparent);
   --font-display: "Funnel Display", "Geist", sans-serif;
   --font-ui: "Geist", -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, Menlo, monospace;
@@ -105,4 +107,13 @@ body {
   font: 13px/1.4 var(--font-ui);
   user-select: none;
   overflow: hidden;
+}
+/* Shortcuts: Geist Mono keys on a glass chip. */
+kbd { font: 500 11px/1 var(--font-mono); padding: 3px 5px; border-radius: 6px; background: var(--glass-hi); border: 1px solid var(--border); color: var(--text-muted); }
+/* The spring's shapes (what appears): a row rising, a box dropping. Reduced motion keeps only the fade. */
+@keyframes webaios-rise { from { opacity: 0; transform: translateY(8px); } }
+@keyframes webaios-drop { from { opacity: 0; transform: translateY(-10px) scale(0.96); } }
+@media (prefers-reduced-motion: reduce) {
+  @keyframes webaios-rise { from { opacity: 0; } }
+  @keyframes webaios-drop { from { opacity: 0; } }
 }

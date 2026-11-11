@@ -67,7 +67,9 @@
     </ul>
     <div class="space" data-testid="space-title">{space?.icon} {space?.name}</div>
     <TabList window={win} />
-    <button class="new" data-testid="new-tab" onclick={() => api.dispatch({ type: "showBlankPage", windowId: win.id })}><Icon name="plus" size={14} /> Nouvel onglet</button>
+    <button class="new" data-testid="new-tab" onclick={() => api.dispatch({ type: "showBlankPage", windowId: win.id })}
+      ><Icon name="plus" size={14} /> Nouvel onglet<kbd>⌘T</kbd></button
+    >
   </div>
   <footer>
     <SpaceSelector window={win} />
@@ -113,31 +115,38 @@
 </aside>
 
 <style>
+  /* A glass pane floating on the aura, 8 px from the window's edges and from the page (the same frame as the page). */
   .bar {
     display: flex;
     flex-direction: column;
     min-height: 0;
-    padding: 10px 8px 0;
-    background: var(--bg-bar);
+    margin: 8px;
+    padding: 2px 6px 0;
+    border: 1px solid var(--glass-edge);
+    border-radius: 16px;
+    background: var(--glass);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.06);
     -webkit-app-region: drag;
   }
   .bar[hidden] { display: none; }
   .scrolling { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; margin-top: 14px; -webkit-app-region: no-drag; }
   .bar :global(nav) { -webkit-app-region: no-drag; }
   .pinned { list-style: none; margin: 0; padding: 0; min-height: 8px; }
-  .pinned button { all: unset; display: flex; align-items: center; gap: 8px; width: calc(100% - 16px); height: 34px; padding: 0 8px; border-radius: 8px; color: var(--text); }
+  .pinned button { all: unset; display: flex; align-items: center; gap: 10px; width: calc(100% - 20px); height: 36px; padding: 0 10px; border-radius: 10px; color: var(--text); transition: transform var(--tap), background var(--tap); }
   .pinned button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .pinned button:hover { background: var(--bg-hover); }
-  .pinned button.active { background: var(--bg-active); }
-  footer { display: flex; align-items: flex-end; gap: 4px; -webkit-app-region: no-drag; }
+  .pinned button:hover { background: color-mix(in srgb, var(--glass-hi) 55%, transparent); }
+  .pinned button.active { background: var(--glass-hi); box-shadow: inset 0 0 0 1px var(--glass-edge); }
+  .pinned button:active, .new:active, .tool:active, .downloads:active { transform: scale(0.97); }
+  footer { display: flex; align-items: center; gap: 2px; margin: 0 -6px; padding: 6px 6px 8px; border-top: 1px solid var(--border); -webkit-app-region: no-drag; }
   footer :global(nav) { flex: 1; }
-  .downloads { all: unset; position: relative; width: 28px; height: 28px; margin-bottom: 8px; display: grid; place-content: center; border-radius: 6px; color: var(--text-muted); }
-  .downloads:hover { background: var(--bg-hover); }
-  .tool { all: unset; -webkit-app-region: no-drag; width: 28px; height: 28px; margin-bottom: 8px; display: grid; place-content: center; border-radius: 6px; color: var(--text-muted); }
-  .tool:hover { background: var(--bg-hover); }
-  .tool[aria-pressed="true"] { color: var(--accent); }
+  .downloads { all: unset; position: relative; width: 28px; height: 28px; display: grid; place-content: center; border-radius: 8px; color: var(--text-muted); transition: transform var(--tap), background var(--tap), color var(--tap); }
+  .tool { all: unset; -webkit-app-region: no-drag; width: 28px; height: 28px; display: grid; place-content: center; border-radius: 8px; color: var(--text-muted); transition: transform var(--tap), background var(--tap), color var(--tap); }
+  .tool:hover, .downloads:hover { background: var(--glass-hi); color: var(--text); }
+  .tool[aria-pressed="true"] { color: var(--accent); background: var(--glass-hi); }
   .pill { position: absolute; inset: 3px; border-radius: 50%; background: conic-gradient(var(--accent) calc(var(--p) * 360deg), transparent 0); mask: radial-gradient(circle, transparent 55%, black 56%); }
-  .space { padding: 10px 8px 0; font-size: 12px; font-weight: 600; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: none; }
-  .new { all: unset; display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 8px; border-radius: 8px; color: var(--text-muted); }
-  .new:hover { background: var(--bg-hover); }
+  .space { padding: 10px 10px 2px; font: 600 13px/1.2 var(--font-display); letter-spacing: -0.01em; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: none; }
+  .new { all: unset; display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 10px; border-radius: 10px; color: var(--text-muted); transition: transform var(--tap), background var(--tap), color var(--tap); }
+  .new kbd { margin-left: auto; opacity: 0; transition: opacity var(--tap); }
+  .new:hover { background: color-mix(in srgb, var(--glass-hi) 55%, transparent); color: var(--text); }
+  .new:hover kbd { opacity: 1; }
 </style>
