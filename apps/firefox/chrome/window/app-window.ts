@@ -2,7 +2,7 @@
 // WebAiOs main window. One <browser> (the app view, in the app's container), Firefox's tabs and toolbars hidden.
 import { sameOrigin, FAVICON_SIZE } from "../../core/applications/favicon";
 import { cutFrameNetwork } from "./frame-network";
-import { FIREFOX_COMMANDS, FIREFOX_KEYS, shortcutFor } from "./keys";
+import { FIREFOX_COMMANDS, FIREFOX_KEYS, liveBindings, shortcutFor } from "./keys";
 import { protectView, showHalo } from "./site-window";
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
@@ -99,10 +99,11 @@ export function setupAppWindow(win: Window, folder: string): void {
   // Firefox's tab, address and history keys do nothing here; ⌘R reloads the view; ⌘W and ⇧⌘W close the window; ⌘N
   // opens a main window; ⇧⌘D toggles this window's design mode. ⌥⌘I stays Firefox's (the view's dev tools).
   for (const k of [...FIREFOX_KEYS, ...FIREFOX_COMMANDS, "goBackKb", "goForwardKb"]) doc.getElementById(k)?.setAttribute("disabled", "true");
+  const bindings = liveBindings();
   win.addEventListener(
     "keydown",
     (e: KeyboardEvent) => {
-      const s = shortcutFor(e);
+      const s = shortcutFor(e, bindings());
       if (!s) return;
       e.preventDefault();
       e.stopImmediatePropagation();

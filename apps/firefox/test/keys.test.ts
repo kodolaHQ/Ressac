@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { effectiveBindings } from "../shared/shortcuts";
 import { FIREFOX_COMMANDS, FIREFOX_KEYS, SETTINGS_MENU_ITEMS, shortcutFor } from "../chrome/window/keys";
 
 const key = (key: string, code: string, mods: { meta?: boolean; ctrl?: boolean; shift?: boolean; alt?: boolean } = {}) =>
-  shortcutFor({ key, code, metaKey: !!mods.meta, ctrlKey: !!mods.ctrl, shiftKey: !!mods.shift, altKey: !!mods.alt });
+  shortcutFor({ key, code, metaKey: !!mods.meta, ctrlKey: !!mods.ctrl, shiftKey: !!mods.shift, altKey: !!mods.alt }, effectiveBindings({}));
 
 describe("shortcutFor", () => {
   it("maps the menu accelerators", () => {
@@ -97,5 +98,21 @@ describe("shortcutFor", () => {
     expect(key("t", "KeyT", { ctrl: true })).toBeNull();
     expect(key("c", "KeyC", { meta: true })).toBeNull();
     expect(key("Tab", "Tab")).toBeNull();
+  });
+});
+
+describe("remapped bindings", () => {
+  const press = (k: string, code: string, mods: { meta?: boolean; shift?: boolean }) =>
+    shortcutFor({ key: k, code, metaKey: !!mods.meta, ctrlKey: false, shiftKey: !!mods.shift, altKey: false }, effectiveBindings({ agent: { key: "k", shift: false, alt: false, ctrl: false, meta: true } }));
+  it("an override replaces the default", () => {
+    expect(press("k", "KeyK", { meta: true })).toEqual({ type: "agent" });
+    expect(press("j", "KeyJ", { meta: true })).toBeNull();
+    expect(press("J", "KeyJ", { meta: true, shift: true })).toEqual({ type: "panel", p: "downloads" });
+  });
+  it("a digit binding is read on the physical key", () => {
+    const b = effectiveBindings({ design: { key: "Digit1", shift: true, alt: false, ctrl: false, meta: true } });
+    const e = { key: "1", code: "Digit1", metaKey: true, ctrlKey: false, shiftKey: true, altKey: false };
+    expect(shortcutFor(e, b)).toEqual({ type: "design" });
+    expect(shortcutFor({ ...e, shiftKey: false }, b)).toEqual({ type: "nth", n: 1 });
   });
 });

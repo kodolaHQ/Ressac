@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { AURA_IDS } from "./aura";
 import { HINT_IDS } from "./hints";
+import { SHORTCUT_IDS } from "./shortcuts";
 import { validFolder, ID_EXECUTION, ID_SITE, type Application, type Warning, type BlockCatalogEntry, type DeclarationWidget, type DirectState, type DraftRead, type SaveResult, type AttemptResult, type DevRight, type AiState, type WidgetState, type Execution, type ResumeExecution, type ActionsState, type PageAction, type LaunchResult, type Owner } from "@webaios/kernel";
 import type { BatchState, ProjectId, ExternalProject, TrackedProject } from "@webaios/kernel";
 import { PROJECT_ID, type Comment, type DiffFile, type ModifiedFile } from "@webaios/kernel";
@@ -108,6 +109,9 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("markHintSeen"), id: z.enum(HINT_IDS) }),
   z.object({ type: z.literal("setHintsEnabled"), enabled: z.boolean() }),
   z.object({ type: z.literal("setSidebarSide"), side: z.enum(["left", "right"]) }),
+  z.object({ type: z.literal("setShortcut"), id: z.enum(SHORTCUT_IDS), binding: z.object({ key: z.string().min(1), shift: z.boolean(), alt: z.boolean(), ctrl: z.boolean(), meta: z.boolean() }) }),
+  z.object({ type: z.literal("resetShortcut"), id: z.enum(SHORTCUT_IDS) }),
+  z.object({ type: z.literal("resetShortcuts") }),
   z.object({ type: z.literal("agentPanelWidth"), width: z.number().finite() }),
   /** Activates this window's project Review page, or opens it (one per project and per window). */
   z.object({ type: z.literal("openReview"), windowId: id, project: z.string().regex(PROJECT_ID), name: z.string().max(80) }),

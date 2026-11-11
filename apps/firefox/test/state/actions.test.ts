@@ -862,6 +862,28 @@ test("setSidebarSide stores the side; the same one changes nothing", () => {
   expect(SchemaAction.safeParse({ type: "setSidebarSide", side: "top" }).success).toBe(false);
 });
 
+test("shortcut actions store, refuse and reset bindings", () => {
+  e = initialState(genId);
+  const changed = (a: Action) => {
+    const before = e;
+    ag(a);
+    return e !== before;
+  };
+  const k = { key: "k", shift: false, alt: false, ctrl: false, meta: true };
+  expect(changed({ type: "setShortcut", id: "agent", binding: k })).toBe(true);
+  expect(e.settings.shortcuts.agent).toEqual(k);
+  expect(changed({ type: "setShortcut", id: "agent", binding: k })).toBe(false);
+  expect(changed({ type: "setShortcut", id: "agent", binding: { ...k, key: "c" } })).toBe(false);
+  expect(changed({ type: "setShortcut", id: "history", binding: k })).toBe(false);
+  expect(SchemaAction.safeParse({ type: "setShortcut", id: "nope", binding: k }).success).toBe(false);
+  expect(changed({ type: "resetShortcut", id: "agent" })).toBe(true);
+  expect(changed({ type: "resetShortcut", id: "agent" })).toBe(false);
+  ag({ type: "setShortcut", id: "agent", binding: k });
+  expect(changed({ type: "resetShortcuts" })).toBe(true);
+  expect(e.settings.shortcuts).toEqual({});
+  expect(changed({ type: "resetShortcuts" })).toBe(false);
+});
+
 test("chooseClaudeEngine stores a new engine; an equal one changes nothing", () => {
   const before = e;
   ag({ type: "chooseClaudeEngine", engine: { ...e.settings.claudeEngine } });

@@ -1,4 +1,5 @@
 import type { Panel, ShortcutAction } from "../../shared/api";
+import { effectiveBindings, SHORTCUT_IDS, SHORTCUTS, type Bindings } from "../../shared/shortcuts";
 
 export type Shortcut =
   | { type: "shortcut"; r: Extract<ShortcutAction, "command" | "address" | "closeTab"> }
@@ -27,30 +28,8 @@ export type Shortcut =
 
 type Keys = { key: string; code: string; metaKey: boolean; ctrlKey: boolean; shiftKey: boolean; altKey: boolean };
 
-const COMMAND: Record<string, Shortcut> = {
-  t: { type: "shortcut", r: "command" },
-  l: { type: "shortcut", r: "address" },
-  w: { type: "shortcut", r: "closeTab" },
-  "[": { type: "navigate", c: "back" },
-  "]": { type: "navigate", c: "forward" },
-  r: { type: "navigate", c: "reload" },
-  n: { type: "window" },
-  j: { type: "agent" },
-  y: { type: "panel", p: "history" },
-  ",": { type: "settings" },
-};
-const SHIFT_COMMAND: Record<string, Shortcut> = {
-  t: { type: "reopen" },
-  r: { type: "navigate", c: "reloadHard" },
-  w: { type: "closeWindow" },
-  j: { type: "panel", p: "downloads" },
-  s: { type: "compact" },
-  a: { type: "apps" },
-  d: { type: "design" },
-};
-
-/** WebAiOs's menu accelerators (macOS: ⌘ is Meta). Digits are read on the physical key: ⌘1 types “&” in AZERTY. */
-export function shortcutFor(e: Keys): Shortcut | null {
+/** WebAiOs's menu accelerators (macOS: ⌘ is Meta), the fixed ones and `bindings`. Digits are read on the physical key: ⌘1 types “&” in AZERTY. */
+export function shortcutFor(e: Keys, bindings: Bindings): Shortcut | null {
   // ShortcutUtils' PREVIOUS_TAB/NEXT_TAB (and ⌃⇧PageUp/PageDown, which move the tab) on macOS.
   if (
     (e.ctrlKey && !e.metaKey && !e.altKey && (e.key === "PageUp" || e.key === "PageDown")) ||
@@ -58,15 +37,25 @@ export function shortcutFor(e: Keys): Shortcut | null {
     (e.metaKey && !e.altKey && !e.ctrlKey && (e.key === "{" || e.key === "}"))
   )
     return { type: "ignore" };
-  if (e.altKey || (e.metaKey && e.ctrlKey)) return null;
-  const digit = !e.shiftKey && /^Digit([1-9])$/.exec(e.code)?.[1];
-  if (e.ctrlKey) {
-    if (e.key === "Tab") return { type: "cycle", delta: e.shiftKey ? -1 : 1 };
-    return digit ? { type: "space", n: Number(digit) } : null;
-  }
-  if (!e.metaKey) return null;
-  if (digit) return { type: "nth", n: Number(digit) };
-  return (e.shiftKey ? SHIFT_COMMAND : COMMAND)[e.key.toLowerCase()] ?? null;
+  if (e.altKey && !e.metaKey && !e.ctrlKey) return null;
+  const digit = !e.shiftKey && !e.altKey && !(e.metaKey && e.ctrlKey) && /^Digit([1-9])$/.exec(e.code)?.[1];
+  if (e.ctrlKey && !e.metaKey && !e.altKey && e.key === "Tab") return { type: "cycle", delta: e.shiftKey ? -1 : 1 };
+  if (digit && e.ctrlKey) return { type: "space", n: Number(digit) };
+  if (digit && e.metaKey) return { type: "nth", n: Number(digit) };
+  if (!e.metaKey && !e.ctrlKey) return null;
+  const key = e.key.toLowerCase();
+  const id = SHORTCUT_IDS.find((i) => {
+    const b = bindings[i];
+    return (b.key.startsWith("Digit") ? b.key === e.code : b.key === key) && b.shift === e.shiftKey && b.alt === e.altKey && b.ctrl === e.ctrlKey && b.meta === e.metaKey;
+  });
+  return id ? SHORTCUTS[id].run : null;
+}
+
+/** For windows that have no store at hand: the bindings from the store's state at each keydown, the defaults until it is ready. */
+export function liveBindings(): () => Bindings {
+  let store: import("../store").WebAiOsStore | undefined;
+  void ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready.then((s: import("../store").WebAiOsStore) => (store = s));
+  return () => effectiveBindings(store?.state.settings.shortcuts ?? {});
 }
 
 /** Firefox's <key>s for the same keys, disabled so that only ours act (⇧⌘T is the restore key, not History:UndoCloseTab). */

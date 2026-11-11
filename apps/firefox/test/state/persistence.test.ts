@@ -289,6 +289,18 @@ test("the sidebar side loads left when missing or unknown, right when saved", as
   expect((await loadSession(d)).settings.sidebarSide).toBe("right");
 });
 
+test("shortcuts: missing loads empty, unknown ids and malformed bindings are dropped, the rest kept", async () => {
+  const d = folder();
+  const old = structuredClone(initialState()) as unknown as { settings: Record<string, unknown> };
+  delete old.settings.shortcuts;
+  writeFileSync(join(d, "session.json"), JSON.stringify(old));
+  expect((await loadSession(d)).settings.shortcuts).toEqual({});
+  const k = { key: "k", shift: false, alt: false, ctrl: false, meta: true };
+  old.settings.shortcuts = { nope: k, agent: k, history: { key: 3 } };
+  writeFileSync(join(d, "session.json"), JSON.stringify(old));
+  expect((await loadSession(d)).settings.shortcuts).toEqual({ agent: k });
+});
+
 test("existing session never welcomes", async () => {
   const d = folder();
   const old = structuredClone(initialState()) as unknown as { settings: Record<string, unknown> };

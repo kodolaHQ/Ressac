@@ -6,7 +6,7 @@ import { HOST_EXITED } from "../agent/host";
 import type { SiteWindowController } from "../store/sites";
 import { createSiteAddons, type WindowAddons } from "./addons";
 import { cutFrameNetwork } from "./frame-network";
-import { FIREFOX_COMMANDS, FIREFOX_KEYS, shortcutFor } from "./keys";
+import { FIREFOX_COMMANDS, FIREFOX_KEYS, liveBindings, shortcutFor } from "./keys";
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const XHTML = "http://www.w3.org/1999/xhtml";
@@ -166,8 +166,9 @@ export function setupSiteWindow(win: Window, id: string): SiteWindowController |
   // Firefox's tab, address and history keys and menu commands do nothing here; ⌘W closes the window, never its one
   // tab; ⌘N opens a main window. Back and forward go through the bar.
   for (const k of [...FIREFOX_KEYS, ...FIREFOX_COMMANDS, "goBackKb", "goForwardKb"]) doc.getElementById(k)?.setAttribute("disabled", "true");
+  const bindings = liveBindings();
   const onKeyDown = (e: KeyboardEvent) => {
-    const s = shortcutFor(e);
+    const s = shortcutFor(e, bindings());
     if (!s) return;
     e.preventDefault();
     e.stopImmediatePropagation();
@@ -202,10 +203,11 @@ export function setupSiteSmallWindow(win: Window, id: string): void {
   win.document.documentElement.setAttribute("webaios-site-small", id);
   // ⇧⌘D: the avis in the app's bar (store.design.shortcut), never Firefox's « bookmark all tabs »; no other key is taken.
   for (const k of ["bookmarkAllTabsKb", "Browser:BookmarkAllTabs"]) win.document.getElementById(k)?.setAttribute("disabled", "true");
+  const bindings = liveBindings();
   win.addEventListener(
     "keydown",
     (e: KeyboardEvent) => {
-      if (shortcutFor(e)?.type !== "design") return;
+      if (shortcutFor(e, bindings())?.type !== "design") return;
       e.preventDefault();
       e.stopImmediatePropagation();
       designShortcut(win);

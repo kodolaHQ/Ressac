@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Action } from "../../shared/api";
 import { DEFAULT_AURA } from "../../shared/aura";
+import { bindingProblem, effectiveBindings, sameBinding } from "../../shared/shortcuts";
 import {
   spaceKey,
   AGENT_WIDTH_MAX,
@@ -475,6 +476,22 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
     case "setHintsEnabled": {
       if (d.settings.hints.enabled === a.enabled) return false;
       d.settings.hints.enabled = a.enabled;
+      return true;
+    }
+    case "setShortcut": {
+      const current = d.settings.shortcuts[a.id];
+      if (bindingProblem(a.id, a.binding, effectiveBindings(d.settings.shortcuts)) || (current && sameBinding(current, a.binding))) return false;
+      d.settings.shortcuts[a.id] = a.binding;
+      return true;
+    }
+    case "resetShortcut": {
+      if (!(a.id in d.settings.shortcuts)) return false;
+      delete d.settings.shortcuts[a.id];
+      return true;
+    }
+    case "resetShortcuts": {
+      if (!Object.keys(d.settings.shortcuts).length) return false;
+      d.settings.shortcuts = {};
       return true;
     }
     case "setSidebarSide": {

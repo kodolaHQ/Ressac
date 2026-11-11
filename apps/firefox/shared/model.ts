@@ -1,6 +1,7 @@
 import type { AuraId } from "./aura";
 import type { HintId } from "./hints";
 import type { DevRight, TabAccessState, Owner } from "@webaios/kernel";
+import type { Binding, ShortcutId } from "./shortcuts";
 import type { ExtensionCard } from "./extensions";
 import type { ClaudeEngine, CodexEngine, DecisionModel } from "./settings";
 
@@ -167,6 +168,8 @@ export interface BrowserState {
     hints: { enabled: boolean; seen: HintId[] };
     /** Which side of the window the navigation sidebar sits on. */
     sidebarSide: "left" | "right";
+    /** The user's own bindings; an action absent here keeps its default (shared/shortcuts.ts). */
+    shortcuts: Partial<Record<ShortcutId, Binding>>;
   };
 }
 

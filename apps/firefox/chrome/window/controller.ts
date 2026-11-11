@@ -5,6 +5,7 @@ import { toUrl } from "../../core/url";
 import { createHalo } from "../../core/halo";
 import { TabCycle } from "../../core/tab-cycle";
 import { toNth } from "../../core/shortcuts";
+import { effectiveBindings } from "../../shared/shortcuts";
 import { leftZone, exitZone, type LeftZone } from "../../shared/reveal";
 import type { WebAiOsStore } from "../store";
 import { HOST_EXITED } from "../agent/host";
@@ -286,7 +287,7 @@ export function createController(
   };
   // Capture on the window: our keys act before the page sees them (a page that swallows every key keeps none of them).
   const onKeyDown = (e: KeyboardEvent) => {
-    const s = shortcutFor(e);
+    const s = shortcutFor(e, effectiveBindings(store.state.settings.shortcuts));
     if (!s) return;
     e.preventDefault();
     e.stopImmediatePropagation();
