@@ -115,21 +115,25 @@ describe("the sidebar's layout", () => {
     );
     expect(panel!.top).toBeGreaterThanOrEqual(panel!.bottom);
   });
-  it("gives the spaces a full row above the tools, chips never squashed, with 1, 3 and 6 spaces", async () => {
+  it("keeps spaces and tools on one row, tools folded past two spaces, chips never squashed, the row scrolling when full, with 1, 3 and 6 spaces", async () => {
     const layout = () =>
-      inUi<{ chipTops: number[]; chipWidths: number[]; toolTops: number[]; overlap: boolean; toolsRight: boolean }>(
+      inUi<{ centres: number[]; chipWidths: number[]; clipped: boolean; scrolls: boolean; overlap: boolean; toolsRight: boolean; tools: number }>(
         m,
         `const rect = (e) => e.getBoundingClientRect();
+         const navEl = doc.querySelector("footer nav"), nav = rect(navEl);
          const chips = [...doc.querySelectorAll("footer nav button")].map(rect);
          const tools = [...doc.querySelectorAll("footer > .tool")].map(rect);
          const footer = rect(doc.querySelector("footer"));
          const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
          return {
-           chipTops: [...new Set(chips.map((r) => Math.round(r.top)))],
+           centres: [...new Set([...chips, ...tools].map((r) => Math.round((r.top + r.height / 2) / 4)))],
            chipWidths: [...new Set(chips.map((r) => Math.round(r.width)))],
-           toolTops: [...new Set(tools.map((r) => Math.round(r.top)))],
-           overlap: chips.some((c) => tools.some((t) => hit(c, t))),
+           clipped: chips.some((c) => c.left < nav.left - 1 || c.right > nav.right + 1),
+           scrolls: navEl.scrollWidth > navEl.clientWidth,
+           // The part of each chip the row shows: past its edge the row scrolls.
+           overlap: chips.map((c) => new DOMRect(Math.max(c.left, nav.left), c.top, Math.max(0, Math.min(c.right, nav.right) - Math.max(c.left, nav.left)), c.height)).some((c) => c.width > 0 && tools.some((t) => hit(c, t))),
            toolsRight: footer.right - tools.at(-1).right < 12,
+           tools: tools.length,
          };`,
       );
     for (const total of [1, 3, 6]) {
@@ -137,13 +141,23 @@ describe("the sidebar's layout", () => {
         await dispatch(m, { type: "createSpace", name: `E${n}`, icon: "📁", private: n % 2 === 0, profile: "default", windowId: (await win()).id });
       await waitUi(m, "return doc.querySelectorAll('footer nav button[data-testid^=\"space-\"]').length === arguments[0]", [total]);
       const l = await layout();
-      expect(l.chipTops).toHaveLength(1);
+      expect(l.centres).toHaveLength(1);
       expect(l.chipWidths).toEqual([28]);
-      expect(l.toolTops).toHaveLength(1);
-      expect(l.toolTops[0]!).toBeGreaterThan(l.chipTops[0]!);
+      if (l.clipped) expect(l.scrolls).toBe(true);
       expect(l.overlap).toBe(false);
       expect(l.toolsRight).toBe(true);
+      expect(l.tools).toBe(total > 2 ? 1 : 4);
     }
+    // Two more: the last space starts past the row's edge, and scrolls into view once active.
+    for (const n of [6, 7]) await dispatch(m, { type: "createSpace", name: `E${n}`, icon: "📁", private: false, profile: "default", windowId: (await win()).id });
+    const last = (await state(m)).spaces.at(-1)!;
+    const inView = () => inUi<boolean>(m, `const nav = doc.querySelector("footer nav").getBoundingClientRect(), c = doc.querySelector(arguments[0]).getBoundingClientRect();
+      return c.left >= nav.left - 1 && c.right <= nav.right + 1;`, [`[data-testid="space-${last.id}"]`]);
+    // Creating activates the new space: back to the first one, which scrolls the row to its start.
+    await dispatch(m, { type: "activateSpace", windowId: (await win()).id, id: (await state(m)).spaces[0]!.id });
+    await expect.poll(inView, { timeout: 5_000 }).toBe(false);
+    await dispatch(m, { type: "activateSpace", windowId: (await win()).id, id: last.id });
+    await expect.poll(inView, { timeout: 5_000 }).toBe(true);
   });
 });
 

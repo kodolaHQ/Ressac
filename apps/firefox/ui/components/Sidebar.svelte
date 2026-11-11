@@ -28,6 +28,9 @@
     return total ? running.reduce((s, t) => s + t.received, 0) / total : 0;
   });
   const space = $derived(appState.value?.spaces.find((e) => e.id === win.activeSpace));
+  // Past two spaces the tools fold behind one button so the spaces keep the whole row.
+  const foldable = $derived((appState.value?.spaces.length ?? 0) > 2);
+  let toolsOpen = $state(false);
   const activeTab = $derived.by(() => {
     const id = win.active[win.activeSpace];
     return id ? appState.value?.tabs[id] : undefined;
@@ -73,6 +76,17 @@
   </div>
   <footer>
     <SpaceSelector window={win} />
+    {#if foldable && !toolsOpen}
+      <button
+        class="tool"
+        data-testid="tools-button"
+        aria-label="Outils"
+        title="Outils"
+        aria-expanded="false"
+        class:on={win.agentPanelOpen || [URL_APPLICATIONS, URL_ACTIONS, URL_SETTINGS].includes(activeTab?.url ?? "")}
+        onclick={() => (toolsOpen = true)}><Icon name="options" /></button
+      >
+    {:else}
     <button
       class="tool"
       data-testid="agent-button"
@@ -105,6 +119,10 @@
       aria-pressed={activeTab?.url === URL_SETTINGS}
       onclick={() => api.dispatch({ type: "openSettings", windowId: win.id })}><Icon name="settings" /></button
     >
+    {#if foldable}
+      <button class="tool" data-testid="tools-fold" aria-label="Replier les outils" title="Replier les outils" aria-expanded="true" onclick={() => (toolsOpen = false)}><Icon name="close" /></button>
+    {/if}
+    {/if}
     {#if downloads.list.length}
       <button class="downloads" aria-label="Téléchargements" title="Téléchargements" onclick={() => togglePanel?.("downloads")}>
         <Icon name="download" />
@@ -137,14 +155,15 @@
   .pinned button:hover { background: color-mix(in srgb, var(--glass-hi) 55%, transparent); }
   .pinned button.active { background: var(--glass-hi); box-shadow: inset 0 0 0 1px var(--glass-edge); }
   .pinned button:active, .new:active, .tool:active, .downloads:active { transform: scale(0.97); }
-  /* Two rows: the spaces get the full width, the tools sit right-aligned below them. */
+  /* One row: the spaces take what the tools leave and scroll past it; a space deletion confirmation gets the full width. */
   footer { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 2px; margin: 0 -6px; padding: 6px 6px 8px; border-top: 1px solid var(--border); -webkit-app-region: no-drag; }
-  footer :global(nav) { flex: 1 0 100%; }
+  footer :global(nav) { flex: 1 1 0; min-width: 0; }
+  footer :global(nav:has(.confirmation)) { flex-basis: 100%; }
   .tool:first-of-type { margin-left: auto; }
   .downloads { all: unset; position: relative; width: 28px; height: 28px; display: grid; place-content: center; border-radius: 8px; color: var(--text-muted); transition: transform var(--tap), background var(--tap), color var(--tap); }
   .tool { all: unset; -webkit-app-region: no-drag; width: 28px; height: 28px; display: grid; place-content: center; border-radius: 8px; color: var(--text-muted); transition: transform var(--tap), background var(--tap), color var(--tap); }
   .tool:hover, .downloads:hover { background: var(--glass-hi); color: var(--text); }
-  .tool[aria-pressed="true"] { color: var(--accent); background: var(--glass-hi); }
+  .tool[aria-pressed="true"], .tool.on { color: var(--accent); background: var(--glass-hi); }
   .pill { position: absolute; inset: 3px; border-radius: 50%; background: conic-gradient(var(--accent) calc(var(--p) * 360deg), transparent 0); mask: radial-gradient(circle, transparent 55%, currentColor 56%); }
   .space { padding: 10px 10px 2px; font: 600 13px/1.2 var(--font-display); letter-spacing: -0.01em; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: none; }
   .new { all: unset; display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 10px; border-radius: 10px; color: var(--text-muted); transition: transform var(--tap), background var(--tap), color var(--tap); }

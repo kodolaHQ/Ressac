@@ -202,6 +202,25 @@ describe("space settings", () => {
     ]);
   });
 
+  it("past two spaces the tools fold behind one button and everything stays on one row", async () => {
+    const has = (id: string) => inUi<boolean>(m, "return !!doc.querySelector(`[data-testid=\"${arguments[0]}\"]`);", [id]);
+    // One row: every footer child shares the footer's vertical centre.
+    const oneRow = () =>
+      inUi<boolean>(m, `const f = doc.querySelector("footer"); const c = (e) => { const r = e.getBoundingClientRect(); return r.top + r.height / 2; };
+        return [...f.children].every((e) => Math.abs(c(e) - c(f.children[0])) < 4);`);
+    await create("Travail", "💼", false, "default");
+    expect(await has("agent-button")).toBe(true);
+    expect(await has("tools-button")).toBe(false);
+    for (const [name, icon] of [["Jeux", "🎮"], ["Lecture", "📚"], ["Courses", "🛒"], ["Voyage", "🧳"]]) await create(name!, icon!, false, "default");
+    await waitUi(m, `return !!doc.querySelector('[data-testid="tools-button"]') && !doc.querySelector('[data-testid="agent-button"]');`);
+    expect(await oneRow()).toBe(true);
+    await click(m, '[data-testid="tools-button"]');
+    await waitUi(m, `return !!doc.querySelector('[data-testid="agent-button"]') && !!doc.querySelector('[data-testid="settings-button"]');`);
+    expect(await oneRow()).toBe(true);
+    await click(m, '[data-testid="tools-fold"]');
+    await waitUi(m, `return !!doc.querySelector('[data-testid="tools-button"]');`);
+  });
+
   it("right-clicking a space chip keeps its menu open, its items work, and the active space stays", async () => {
     const work = await create("Travail", "💼", false, "default");
     const home = (await spaces())[0]!;

@@ -9,6 +9,12 @@
   import { spaceSettings } from "./spaceSettings.svelte";
 
   let { window: win }: { window: WindowState } = $props();
+  let nav: HTMLElement;
+  // The row scrolls when full: keep the active space in view (⌃1…, ⌃Tab, another window's switch).
+  $effect(() => {
+    void win.activeSpace;
+    nav.querySelector('[aria-current="true"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  });
   /** Space to delete awaiting confirmation (it contains tabs, or it takes sign-ins with it). */
   let toDelete = $state<{ space: Space; tabs: number; logins: boolean } | null>(null);
 
@@ -46,7 +52,7 @@
     </div>
   </div>
 {/if}
-<nav class="spaces">
+<nav class="spaces" bind:this={nav}>
   {#each appState.value?.spaces ?? [] as space (space.id)}
     <button
       data-testid="space-{space.id}"
@@ -66,7 +72,9 @@
 </nav>
 
 <style>
-  .spaces { display: flex; flex-wrap: wrap; gap: 2px; padding: 0; }
+  /* A single scrolling row; the padding keeps the grown aura dot and the padlock inside the scroll box. */
+  .spaces { display: flex; gap: 2px; padding: 3px 2px; margin: -3px -2px; overflow-x: auto; scrollbar-width: none; }
+  .spaces:has(.confirmation) { flex-wrap: wrap; overflow: visible; }
   /* Round chips: the space's emoji, its aura dot growing on the spring when the space is the active one. */
   .spaces button { all: unset; flex: none; width: 28px; height: 28px; display: grid; place-content: center; border-radius: 50%; color: var(--text-muted); position: relative; transition: transform var(--tap), background var(--tap); }
   .spaces button:hover { background: color-mix(in srgb, var(--glass-hi) 60%, transparent); color: var(--text); }
