@@ -119,8 +119,8 @@ describe("WebAiOs-Firefox foundation", () => {
     })();`);
     expect(r.title).toBe("essai");
     expect(r.left).toBeGreaterThanOrEqual(240);
-    // Up to the agent panel, open on the home page.
-    expect(Math.abs(r.right - r.edge)).toBeLessThanOrEqual(1);
+    // Up to the agent panel, open on the home page, less the 8 px of aura that frame the page.
+    expect(Math.abs(r.right + 8 - r.edge)).toBeLessThanOrEqual(1);
   });
 });
 

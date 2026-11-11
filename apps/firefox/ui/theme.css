@@ -98,8 +98,9 @@
 @property --ang { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
 * { box-sizing: border-box; }
 html, body, #app { margin: 0; height: 100%; }
+/* Transparent: in a main window the aura painted behind the iframes shows through; each surface sets its own glass. */
 body {
-  background: var(--bg);
+  background: transparent;
   color: var(--text);
   font: 13px/1.4 var(--font-ui);
   user-select: none;

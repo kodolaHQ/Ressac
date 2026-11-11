@@ -282,6 +282,8 @@
     z-index: 10;
     width: 240px;
     border-right: 1px solid var(--border);
+    /* Floating over the web page, which no backdrop blur of this document reaches: a solid sheet keeps it readable. */
+    background: var(--sheet);
     transition: transform 200ms ease;
   }
   .compact .folded-up { transform: translateX(-100%); visibility: hidden; transition: transform 200ms ease, visibility 0s 200ms; }

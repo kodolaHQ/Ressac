@@ -65,11 +65,12 @@ describe("compact mode", () => {
     await click(m, "button.compact");
     await waitSidebar(false);
     const hidden = await layout();
-    expect(hidden).toMatchObject({ page: 0, frame: 0, pageWidth: hidden.window });
+    // The page is framed by 8 px of aura on both sides.
+    expect(hidden).toMatchObject({ page: 8, frame: 0, pageWidth: hidden.window - 16 });
 
     await moveMouse(5);
     await waitSidebar(true);
-    expect(await layout()).toMatchObject({ page: 0, frame: 240, pageWidth: hidden.window });
+    expect(await layout()).toMatchObject({ page: 8, frame: 240, pageWidth: hidden.pageWidth });
 
     // Over the sidebar, then over its margin on the page: it stays.
     await moveMouse(100);
@@ -79,7 +80,7 @@ describe("compact mode", () => {
 
     await moveMouse(600);
     await waitSidebar(false);
-    expect(await layout()).toMatchObject({ page: 0, frame: 0 });
+    expect(await layout()).toMatchObject({ page: 8, frame: 0 });
   });
 
   it("the macOS window buttons go with the sidebar", async () => {

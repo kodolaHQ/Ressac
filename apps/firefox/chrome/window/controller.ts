@@ -1,5 +1,6 @@
 import type { TabCycleMessage, Panel, TabsPanel, ShortcutAction } from "../../shared/api";
 import { workflowUrlTarget, historyContext, AGENT_WIDTH_MAX, AGENT_WIDTH_MIN, BAR_WIDTH, type FrameBounds, type BrowserState, type WindowId, type TabId } from "../../shared/model";
+import { auraVariables, DEFAULT_AURA, type AuraId } from "../../shared/aura";
 import { toUrl } from "../../core/url";
 import { TabCycle } from "../../core/tab-cycle";
 import { toNth } from "../../core/shortcuts";
@@ -136,6 +137,22 @@ export function createController(
       if (agentOpen(state) !== agentOpen(previous) || state.settings.agentPanelWidth !== previous.settings.agentPanelWidth) showAgent(state);
     }),
   );
+  // The active space's aura lights the window and both UI documents (each set again when it loads).
+  const auraOf = (state: BrowserState) => {
+    const f = state.windows.find((x) => x.id === windowId);
+    return state.spaces.find((s) => s.id === f?.activeSpace)?.aura ?? DEFAULT_AURA;
+  };
+  const applyAura = (root: HTMLElement | undefined, id: AuraId) => {
+    for (const [k, v] of Object.entries(auraVariables(id))) root?.style.setProperty(k, v);
+  };
+  const auraRoots = () => [document.documentElement, frame.contentDocument?.documentElement, agentFrame.contentDocument?.documentElement];
+  for (const root of auraRoots()) applyAura(root, auraOf(store.state));
+  unsubscribe.push(
+    store.subscribe((state, previous) => {
+      const id = auraOf(state);
+      if (id !== auraOf(previous)) for (const root of auraRoots()) applyAura(root, id);
+    }),
+  );
   // After a tab switch Firefox gives the keyboard to the selected browser; the parking tab is no page, the UI keeps it.
   window.addEventListener("TabSwitchDone", () => {
     if (!tabs.displayed()) frame.focus();
@@ -250,6 +267,7 @@ export function createController(
   // The UI documents' events stop at their own window: listen there too, on each load.
   for (const f of [frame, agentFrame])
     f.addEventListener("load", () => {
+      applyAura(f.contentDocument?.documentElement, auraOf(store.state));
       f.contentWindow!.addEventListener("keydown", onKeyDown, true);
       f.contentWindow!.addEventListener("keyup", onKeyUp, true);
       f.contentWindow!.addEventListener("mousemove", onMouseMove, true);

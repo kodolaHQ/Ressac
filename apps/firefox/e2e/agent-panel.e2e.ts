@@ -334,9 +334,10 @@ it("the page narrows by the panel width", async () => {
   await launch();
   await openTab("/a.html");
   const width = await m.execute<number>("return window.innerWidth");
-  expect(await m.execute("return gBrowser.selectedBrowser.getBoundingClientRect().right")).toBe(width);
+  // The page keeps 8 px of aura on its right.
+  expect(await m.execute("return gBrowser.selectedBrowser.getBoundingClientRect().right")).toBe(width - 8);
   await toggleWithButton();
-  await waitFor(m, "return gBrowser.selectedBrowser.getBoundingClientRect().right", (v) => v === width - 420);
+  await waitFor(m, "return gBrowser.selectedBrowser.getBoundingClientRect().right", (v) => v === width - 420 - 8);
   expect(await m.execute("return document.getElementById('webaios-agent').getBoundingClientRect().left")).toBe(width - 420);
 });
 
