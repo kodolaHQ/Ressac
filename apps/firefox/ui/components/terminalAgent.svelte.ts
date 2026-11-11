@@ -83,6 +83,19 @@ function create(hostName: HTMLElement): void {
     void navigator.clipboard.writeText(terminal!.getSelection()).catch(() => {});
     return false;
   });
+  // OSC 52: a TUI that captures the mouse (Claude Code) selects text itself and copies it this way. Writes only: a
+  // read request ("?") is ignored, the agent never reads the clipboard.
+  terminal.parser.registerOscHandler(52, (data) => {
+    const b64 = data.slice(data.indexOf(";") + 1);
+    if (!b64 || b64 === "?") return true;
+    try {
+      const text = new TextDecoder().decode(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
+      void navigator.clipboard.writeText(text).catch(() => {});
+    } catch {
+      // Not base64: dropped.
+    }
+    return true;
+  });
   adjustment = new FitAddon();
   terminal.loadAddon(adjustment);
   terminal.open(element);

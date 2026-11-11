@@ -20,6 +20,8 @@ process.stdin.on("data", (chunk) => {
     }
     process.stdout.write(`\r\nreceived: ${line}\r\n`);
     if (line === "quit") process.exit(0);
+    // What Claude Code sends when its own (mouse) selection is copied: OSC 52 with the text in base64.
+    if (line === "osc52") process.stdout.write(`\x1b]52;c;${Buffer.from("copié par l'agent ✓").toString("base64")}\x07`);
     if (line === "flood") process.stdout.write("x".repeat(80).concat("\r\n").repeat(13_000));
     line = "";
     invite();

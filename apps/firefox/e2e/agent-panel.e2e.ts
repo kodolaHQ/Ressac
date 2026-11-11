@@ -472,3 +472,37 @@ describe("one agent session per window", () => {
     expect((await callTool(w!.dataDir, "current_page")).text).toContain("Le chat dort");
   });
 });
+
+/** The system clipboard's text (chrome context). */
+const clipboardText = () =>
+  m.execute<string>(`const t = Cc["@mozilla.org/widget/transferable;1"].createInstance(Ci.nsITransferable);
+    t.init(null); t.addDataFlavor("text/plain");
+    Services.clipboard.getData(t, Ci.nsIClipboard.kGlobalClipboard, window.browsingContext.currentWindowContext);
+    const o = {}; try { t.getTransferData("text/plain", o); } catch { return ""; }
+    return o.value.QueryInterface(Ci.nsISupportsString).data;`);
+
+it("text selected in the terminal by dragging is copied by ⌘C", async () => {
+  await launch();
+  await homeAgent();
+  await m.execute(`Cc["@mozilla.org/widget/clipboardhelper;1"].getService(Ci.nsIClipboardHelper).copyString("avant");`);
+  // A drag across the first row ("fake agent ready>").
+  await inUi(
+    m,
+    `const r = doc.querySelector(".xterm-rows > div").getBoundingClientRect();
+     const y = r.top + r.height / 2;
+     ui.synthesizeMouseEvent("mousedown", r.left + 1, y, { button: 0, clickCount: 1 });
+     for (let x = r.left + 10; x < r.left + 300; x += 20) ui.synthesizeMouseEvent("mousemove", x, y, { button: 0 });
+     ui.synthesizeMouseEvent("mouseup", r.left + 300, y, { button: 0, clickCount: 1 });`,
+    [],
+    "agent",
+  );
+  await pressKeys(m, "Meta+c");
+  await expect.poll(clipboardText, { timeout: 5_000 }).toContain("fake agent");
+});
+
+it("text the agent copies itself (OSC 52, Claude Code's mouse selection) reaches the clipboard", async () => {
+  await launch();
+  await homeAgent();
+  await send("osc52");
+  await expect.poll(clipboardText, { timeout: 5_000 }).toBe("copié par l'agent ✓");
+});
