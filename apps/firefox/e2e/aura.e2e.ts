@@ -117,6 +117,11 @@ describe("the window's aura", () => {
     const working = `return document.documentElement.hasAttribute("webaios-agent-working");`;
     const slow = "await new Promise((r) => setTimeout(r, 2500)); 1";
 
+    // A read takes a few ms, far less than the host's 50 ms grouping of access changes: the halo still lights.
+    await call("read_tab", { id: shown });
+    await waitFor(m, working, (v) => v === true, 1_000);
+    await waitFor(m, working, (v) => v === false, 5_000);
+
     const onOther = call("run_js", { id: other, code: slow });
     const seen: boolean[] = [];
     let done = false;
