@@ -8,6 +8,6 @@ test("nextTip walks the tips in order, then returns null", () => {
 });
 
 test("HINT_IDS holds every tip and first-time id, no duplicate", () => {
-  expect(HINT_IDS).toHaveLength(8);
-  expect(new Set(HINT_IDS).size).toBe(8);
+  expect(HINT_IDS).toHaveLength(9);
+  expect(new Set(HINT_IDS).size).toBe(9);
 });
