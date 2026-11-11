@@ -5,6 +5,7 @@ import { openableUrl } from "../../ui/home-profiles";
 import { CSP_WIDGET, displayServed } from "../window/widget-frame";
 import { containerFor } from "./containers";
 import { containerRequests, isLink, loadImage, realPath, toDataUrl } from "./site-home";
+import THEME from "../../ui/theme.css?raw";
 
 /** The kernel's COMPONENT_HTML_MAX (pages/agent-components.ts), copied: that module's node:fs imports have no shim in this bundle. Drift test in action-media.test.ts. */
 export const COMPONENT_HTML_MAX = 256 * 1024;
@@ -59,6 +60,27 @@ export function componentBridge(): void {
 
 export const COMPONENT_BRIDGE = `<script>(${componentBridge.toString()})();</script>`;
 
+/** The browser's @font-face rules (theme.css), their chrome:// sources inlined as data: (the CSP allows font-src data: only). */
+let fonts: Promise<string> | null = null;
+export function componentFonts(): Promise<string> {
+  fonts ??= Promise.all(
+    (THEME.match(/@font-face\s*{[^}]*}/g) ?? []).map(async (rule) => {
+      const url = rule.match(/url\("(chrome:[^"]+)"\)/)?.[1];
+      if (!url) return "";
+      const body = new Uint8Array(await (await fetch(url)).arrayBuffer());
+      return rule.replace(url, toDataUrl({ type: "font/woff2", body }));
+    }),
+  ).then(
+    (rules) => `<style>${rules.join("")}</style>`,
+    (e) => {
+      console.warn("[actions] component fonts not inlined:", e);
+      fonts = null; // tried again with the next copy
+      return "";
+    },
+  );
+  return fonts;
+}
+
 const NAME = /^[a-z0-9-]{1,40}$/;
 const substitution = (name: string) => `webaios-component-${name}`;
 const copiesOf = (dataDir: string, name: string) => PathUtils.join(dataDir, "webaios-components", name);
@@ -87,7 +109,7 @@ function queued<T>(name: string, f: () => Promise<T>): Promise<T> {
  * One more page shows component `nom`: copies `<dataDir>/workspace/components/<nom>/component.html` with these rules
  * (no symbolic link on the path, COMPONENT_HTML_MAX at most) into
  * `<dataDir>/webaios-components/<nom>/component-<mtime>.html` through displayServed (the widgets' CSP and guard, then
- * the bridge; DISPLAY_DENIED on a network hint), and returns its resource:// URL, or null. Each call is paired with a
+ * the bridge and the browser fonts; DISPLAY_DENIED on a network hint), and returns its resource:// URL, or null. Each call is paired with a
  * releaseComponent, null or not.
  * shortcut: checked by realpath then read by path (IOUtils has no O_NOFOLLOW), as serveHome; upgrade with it.
  */
@@ -116,7 +138,7 @@ export function serveComponent(dataDir: string, name: string): Promise<string | 
       if (!(await IOUtils.exists(copy))) {
         // Atomic: a frame never reads a half-written copy.
         const tmp = `${copy}.${crypto.randomUUID()}.tmp`;
-        await IOUtils.writeUTF8(tmp, displayServed(new TextDecoder().decode(bytes), CSP_WIDGET, COMPONENT_BRIDGE));
+        await IOUtils.writeUTF8(tmp, displayServed(new TextDecoder().decode(bytes), CSP_WIDGET, COMPONENT_BRIDGE + (await componentFonts())));
         await IOUtils.move(tmp, copy);
       }
       // One copy per name: a frame still showing an older one has it loaded already.

@@ -4,5 +4,6 @@ import { defineConfig } from "vitest/config";
 // The Svelte plugin compiles the runes of the `.svelte.ts` modules (builder state) for the tests.
 export default defineConfig({
   plugins: [svelte()],
-  test: { include: ["test/**/*.test.ts"] },
+  // theme.css is read raw by chrome/store/action-media.ts: Vitest empties CSS it does not include.
+  test: { include: ["test/**/*.test.ts"], css: { include: [/theme\.css/] } },
 });

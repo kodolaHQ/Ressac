@@ -1,9 +1,10 @@
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { utimes } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
 import type { Action } from "../shared/api";
+import { fallbackLayout } from "../../../packages/kernel/src/pages/fallback";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { BARS, EXECUTION, openActionPage, probe, startActionServers, tid, uiQueries, writeActionWithResult, writeComponent, type Block } from "./actions";
 import { dispatch, state, waitReady } from "./firefox";
@@ -271,6 +272,15 @@ describe("action page rendering", () => {
       );
       expect(tokens.frame).toEqual([...tokens.host.slice(0, 3), "16px"]);
       expect(tokens.frame[0]).not.toBe("");
+      // The browser fonts, inlined in the copy, load under the families the tokens name.
+      await waitUi(
+        m,
+        `const d = doc.querySelector(arguments[0]).contentDocument;
+         const loaded = (family) => (d.fonts.load('16px "' + family + '"'), [...d.fonts].some((f) => f.family.replaceAll('"', '') === family && f.status === 'loaded'));
+         return ["Geist", "Funnel Display", "Geist Mono"].every(loaded) && d.fonts.check('16px Geist');`,
+        [FRAME],
+        15_000,
+      );
       // The height the component asked for: its document's own height, not the 150 it started with.
       await waitUi(m, "const f = doc.querySelector(arguments[0]); const h = f.contentDocument.documentElement.scrollHeight; return h !== 150 && Math.round(f.getBoundingClientRect().height) === h;", [FRAME]);
       expect(await q.text(tid("block-error"))).toBe("Composant indisponible : absent");
@@ -343,5 +353,37 @@ describe("action page rendering", () => {
     // The probe tries at once, then navigates itself to the server after 1.5 s.
     await sleep(3000);
     expect(reached).toEqual({ requests: [], connections: 0 });
+  }, 30_000);
+
+  // Not compared: a PNG of the fallback layout, dark then light, in dist/aura-tour/ to look at.
+  it("captures a fallback page (a video summary), dark and light", async () => {
+    const results = {
+      title: "I discovered a sound that changes everything",
+      url: "https://www.youtube.com/watch?v=abc",
+      channel: "colsto",
+      duration: "29 min 12",
+      views: 4410673,
+      score: "9/10",
+      recommendation: "À regarder",
+      summary: "Le vidéaste raconte comment un son entendu par hasard l'a mené à reconstruire tout son studio, et ce que cela change pour sa façon de composer.",
+      verdict: [{ text: "Passionnant de bout en bout" }, { text: "Un peu long au milieu" }],
+      points: [{ text: "L'origine du son" }, { text: "La reconstruction du studio" }, { text: "Ce qui change pour la composition" }],
+    };
+    await writeActionWithResult(w.dataDir, "video", { name: "Résumer une vidéo YouTube", results, blocks: fallbackLayout(results).blocks as Block[], fallback: true });
+    const out = path.resolve(import.meta.dirname, "../dist/aura-tour");
+    mkdirSync(out, { recursive: true });
+    try {
+      await openActionPage(m, "video", "Résumer une vidéo YouTube");
+      expect(await q.count(tid("block-list"))).toBe(2);
+      for (const [theme, dark] of [["sombre", 1], ["clair", 0]] as const) {
+        await m.execute(`Services.prefs.setIntPref('ui.systemUsesDarkTheme', ${dark});`);
+        await sleep(1200);
+        const png = (await m.command<{ value: string }>("WebDriver:TakeScreenshot", { full: false, hash: false })).value;
+        writeFileSync(path.join(out, `action-fallback-${theme}.png`), Buffer.from(png, "base64"));
+      }
+    } finally {
+      await m.execute("Services.prefs.clearUserPref('ui.systemUsesDarkTheme');");
+      await closeTabs();
+    }
   }, 30_000);
 });
