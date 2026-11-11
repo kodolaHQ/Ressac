@@ -262,6 +262,52 @@ Limits:
 - A cached 301/308 to `file:` leaves the view on `about:blank`.
 - Headless cannot route a real click into an out-of-process frame: the viewfinder's cross-origin case is tested through WebDriver actions, and a headed check is pending.
 
+## Shortcuts and vim mode
+
+### The binding table
+
+`shared/shortcuts.ts` is the one table of window shortcuts. It has 17 ids (`command`, `address`, `closeTab`, `back`, `forward`, `reload`, `newWindow`, `agent`, `history`, `settings`, `reopen`, `reloadHard`, `closeWindow`, `downloads`, `compact`, `apps`, `design`), each with a label and a default binding. `chrome/window/keys.ts` matches a key event against the effective bindings (defaults plus `settings.shortcuts` overrides, read at each keydown); a digit binding matches `e.code` (AZERTY), any other key its character.
+
+- Not remappable: ⌘1–9, ⌃1–9 and ⌃Tab / ⌃⇧Tab are handled before the table.
+- Reserved, refused with a reason: ⌘Q ⌘H ⌘M ⌘C ⌘V ⌘X ⌘A ⌘Z ⇧⌘Z ⌘F ⌘G ⌘P ⌘S ⌘O ⌘+ ⌘− ⌘0 ⌘⇥ ⌘`. A binding needs ⌘ or ⌃; one already used by another id is refused too (`bindingProblem`).
+- Persistence: `settings.shortcuts` holds only the overrides (`{}` by default). On load, unknown ids, malformed bindings and bindings that clash with an earlier id are dropped. Actions: `setShortcut`, `resetShortcut`, `resetShortcuts`.
+- Capture gate: while Réglages › Raccourcis waits for a combination, the controller (`setCapturingShortcut`) lets the keys through to the page instead of running them.
+- Labels follow the bindings: tips, welcome, sidebar, compact bar and design buttons call `shortcutLabel`; the site and agent app windows read `liveBindings()`; the design state carries its label (`DesignState.shortcut`).
+
+### Vim mode
+
+Off by default (Réglages › Raccourcis › « Mode vim », `settings.vimMode`). It is the content actor `chrome/agent/vim-actor.ts` (`WebAiOsVim`, registered in `chrome/store/index.ts`, bundled to `vim-actor.sys.mjs`).
+
+| Key | Action |
+|---|---|
+| `j` `k` / `h` `l` | scroll 60 px down/up, left/right |
+| `d` `u` | scroll half a page down/up |
+| `gg` `G` | top / bottom |
+| `H` `L` | back / forward |
+| `r` | reload |
+| `x` / `X` | close / reopen the tab |
+| `J` `K` (and `gT` `gt`) | previous / next tab, in the sidebar's order, wrapping |
+| `g0` `g$` | first / last tab |
+| `t` | new tab (command bar) |
+| `o` | address bar |
+| `gs` `gS` | next / previous space, wrapping |
+| `f` `F` | link hints; typing the letters opens the link (`F`: background tab) |
+| `/` | Firefox's find bar |
+| `yy` | copy the page address |
+| `i` | pause the vim keys in this tab; `⇧Échap` resumes (and pauses when active) |
+| `Échap` | drop hints or a pending prefix |
+
+- Where: web tabs (http/https, top frame) of main windows only. The parent answers `vim:state` true only when the setting is on, the window is a main window (`webaiosWindow`) and the tab has a `webaios-tab-id`; it re-checks before each action.
+- The guard: the child listens to keydown/keypress/keyup in capture on `docShell.chromeEventHandler`, so the page never sees a key the actor took (its own `window` capture listeners included). Untouched: keys with ⌘ ⌃ ⌥, IME composition, untrusted events, events from another document (frames, bfcache).
+- Editable fields: when the target (`composedPath()[0]`) is an input, textarea, select or contenteditable, every key goes to the page, `i` and `⇧Échap` included.
+- Inner scrollers: scrolling moves the window while it can; otherwise the scrollable ancestor of the last element clicked or hovered; otherwise the largest visible scrollable element. `d`, `u`, `G`, `gg` use that box.
+- Hints: labels sit in a div with a **closed** shadow root, styled by a constructed stylesheet (a `<style>` is blocked by page CSP). Colors come from the main window's tokens and the font bytes (Geist Mono woff2, read once) from the parent via `vim:style`, since a web process cannot fetch `chrome://` and a shadow root ignores `@font-face`. Only links whose centre point hits the link are labelled. The « vim en pause · ⇧Échap » pill uses the same layer.
+- The pause is per document: a reload or navigation ends it.
+
+Build facts: changing the actor needs `pnpm build:ui`. A fresh engine needs `pnpm engine:import` first: it creates the `vim-actor.sys.mjs` link in `src/`, and without it `build:ui` fails. Tests: `e2e/vim.e2e.ts`, `e2e/settings-shortcuts.e2e.ts`, `test/shortcut-bindings.test.ts`.
+
+Limits: no links in cross-origin iframes; not in site app or agent app windows; the find bar is Firefox's own (English, not styled by WebAiOs).
+
 ## Design mode
 
 - The ✎ button of the toolbar and ⇧⌘D (Firefox's own bookmark-all-tabs shortcut is disabled) start the viewfinder on the selected tab of a main window, or on an agent app window. Only a tab on a followed project (an agent demo, an agent app, a project connected by a Claude Code) is armed; elsewhere a message shows for 4 s and nothing is injected. 
