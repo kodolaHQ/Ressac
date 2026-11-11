@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { DEFAULT_AURA } from "../../shared/aura";
+  import AuraDot from "./AuraDot.svelte";
   import Icon from "./Icon.svelte";
   import type { Space, WindowState } from "../../shared/model";
   import { api, appState } from "../state.svelte";
@@ -19,9 +21,9 @@
 
   // A setting keeps the space's current profile (alone or shared); a new space has none: the user chooses.
   const set = (space: Space) =>
-    (spaceSettings.draft = { id: space.id, name: space.name, icon: space.icon, private: space.private, profile: space.profile });
+    (spaceSettings.draft = { id: space.id, name: space.name, icon: space.icon, private: space.private, profile: space.profile, aura: space.aura });
   function create() {
-    spaceSettings.draft = { id: null, name: "", icon: "📁", private: false, profile: PROFILE_TO_CHOOSE };
+    spaceSettings.draft = { id: null, name: "", icon: "📁", private: false, profile: PROFILE_TO_CHOOSE, aura: DEFAULT_AURA };
   }
 </script>
 
@@ -57,7 +59,7 @@
           { label: "Réglages", dispatch: () => set(space) },
           ...((appState.value?.spaces.length ?? 0) > 1 ? [{ label: "Supprimer", dispatch: () => remove(space) }] : []),
         ])}
-      >{space.icon}{#if space.private}<span class="padlock" aria-hidden="true">🔒</span>{/if}</button
+      >{space.icon}<span class="aura"><AuraDot aura={space.aura} size={8} /></span>{#if space.private}<span class="padlock" aria-hidden="true">🔒</span>{/if}</button
     >
   {/each}
   <button data-testid="new-space" title="Nouvel espace" onclick={create}><Icon name="plus" /></button>
@@ -68,6 +70,7 @@
   .spaces button { all: unset; width: 28px; height: 28px; display: grid; place-content: center; border-radius: 6px; color: var(--text-muted); position: relative; }
   .spaces button:hover { background: var(--bg-hover); }
   .spaces button[aria-current="true"] { background: var(--bg-active); }
+  .aura { position: absolute; left: 2px; bottom: 2px; line-height: 0; }
   .padlock { position: absolute; right: -3px; bottom: -3px; font-size: 9px; line-height: 1; }
   .confirmation { padding: 8px; border-radius: 6px; background: var(--bg-active); color: var(--text); -webkit-app-region: no-drag; }
   .confirmation p { margin: 0 0 8px; }

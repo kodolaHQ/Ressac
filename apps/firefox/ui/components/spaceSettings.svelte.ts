@@ -1,4 +1,5 @@
 import type { SpaceId } from "../../shared/model";
+import type { AuraId } from "../../shared/aura";
 import type { ProfileChoice } from "./spaceProfiles";
 
 /** Settings of a space in progress in the modal (`id` null: a new space). */
@@ -8,6 +9,7 @@ export interface SpaceDraft {
   icon: string;
   private: boolean;
   profile: ProfileChoice;
+  aura: AuraId;
 }
 
 /**

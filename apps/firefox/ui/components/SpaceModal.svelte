@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { AURA_IDS, AURAS, auraVariables } from "../../shared/aura";
+  import AuraDot from "./AuraDot.svelte";
   import { command } from "./command.svelte";
   import { onMount, untrack } from "svelte";
   import type { SpaceExtensionLine } from "../../shared/extensions";
@@ -89,9 +91,9 @@
     if (!valid) return;
     const name = draft.name.trim();
     const icon = draft.icon.trim() || "📁";
-    const { id, private: isPrivate, profile: profile } = draft;
-    if (id === null) api.dispatch({ type: "createSpace", name: name, icon: icon, private: isPrivate, profile: profile, windowId: windowId });
-    else api.dispatch({ type: "updateSpace", id, name: name, icon: icon, private: isPrivate, profile: profile });
+    const { id, private: isPrivate, profile: profile, aura } = draft;
+    if (id === null) api.dispatch({ type: "createSpace", name: name, icon: icon, private: isPrivate, profile: profile, aura, windowId: windowId });
+    else api.dispatch({ type: "updateSpace", id, name: name, icon: icon, private: isPrivate, profile: profile, aura });
     close();
   }
 
@@ -128,7 +130,7 @@
 <svelte:window onkeydown={clavier} />
 
 <!-- Under the command bar, nothing in the modal can take focus (native Tab from the page body). -->
-<div class="modal" class:ready={ready} data-testid="space-modal" inert={!!command.open}>
+<div class="modal" class:ready={ready} data-testid="space-modal" inert={!!command.open} style={Object.entries(auraVariables(draft.aura)).map(([k, v]) => `${k}:${v}`).join(";")}>
   <FrozenBackground tabId={tabId} onReady={() => (ready = true)} />
   <div class="card" bind:this={card} role="dialog" aria-modal="true" aria-labelledby="space-title">
     <form onsubmit={validate}>
@@ -136,6 +138,16 @@
       <div class="field">
         <input class="icon" bind:value={draft.icon} aria-label="Icône" maxlength="4" />
         <input bind:this={nameField} bind:value={draft.name} aria-label="Nom de l'espace" placeholder="Nom" />
+      </div>
+      <div class="block">
+        <span class="label" id="aura-label">Aura</span>
+        <div class="auras" role="radiogroup" aria-labelledby="aura-label">
+          {#each AURA_IDS as id (id)}
+            <button type="button" class="aura" role="radio" aria-checked={draft.aura === id} aria-label="Aura {AURAS[id].name}" title={AURAS[id].name} onclick={() => (draft.aura = id)}>
+              <AuraDot aura={id} size={18} />
+            </button>
+          {/each}
+        </div>
       </div>
       <div class="block">
         <label class="case"><input type="checkbox" bind:checked={draft.private} aria-describedby="private-note" /> <b>Espace privé</b></label>
@@ -242,5 +254,9 @@
   button { padding: 6px 12px; border-radius: 7px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); font-weight: 600; font-size: 12.5px; }
   button:disabled { opacity: 0.5; }
   button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .auras { display: flex; gap: 8px; }
+  .auras .aura { padding: 3px; border-radius: 50%; border: 2px solid transparent; background: none; line-height: 0; transition: transform var(--tap, 120ms) var(--spring, ease-out); }
+  .auras .aura[aria-checked="true"] { border-color: var(--accent); }
+  .auras .aura:active { transform: scale(0.97); }
   .main { background: var(--accent); border-color: var(--accent); color: white; }
 </style>

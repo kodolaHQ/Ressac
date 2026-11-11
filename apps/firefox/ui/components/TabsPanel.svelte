@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { TabsPanel } from "../../shared/api";
-  import { api } from "../state.svelte";
+  import { api, appState } from "../state.svelte";
+  import AuraDot from "./AuraDot.svelte";
   import SiteIcon from "./SiteIcon.svelte";
 
   /**
@@ -10,6 +11,10 @@
   let { panel: panel }: { panel: TabsPanel } = $props();
 
   const send = api.tabCycle;
+  const auraOf = (id: string) => {
+    const s = appState.value;
+    return s?.spaces.find((e) => e.id === s.tabs[id]?.spaceId)?.aura;
+  };
 
   /**
    * The mouse only picks a card after a real movement: a panel that appears (or changes cards) under a still mouse
@@ -64,6 +69,7 @@
       <div class="legend">
         <SiteIcon favicon={card.favicon} title={card.title} />
         <span class="title">{card.title}</span>
+        {#if auraOf(card.id)}<AuraDot aura={auraOf(card.id)!} size={10} />{/if}
       </div>
     </div>
   {/each}

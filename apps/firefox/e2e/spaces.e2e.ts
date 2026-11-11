@@ -122,6 +122,21 @@ describe("space settings", () => {
     expect([work.profile, "default", "new"]).not.toContain(fresh);
   });
 
+  it("a new space gets the aura chosen in the modal", async () => {
+    await click(m, '[data-testid="new-space"]');
+    await modalOpen("Nouvel espace");
+    await fill("Nom de l'espace", "Verdure");
+    await choose("Nouveau profil");
+    await click(m, `${MODAL} [aria-label="Aura Verger"]`);
+    await waitUi(m, "return doc.querySelector(arguments[0] + ' [aria-label=\"Aura Verger\"]').getAttribute('aria-checked') === 'true'", [MODAL]);
+    await click(m, `${MODAL} button[type="submit"]`, { text: "Créer" });
+    await modalClosed();
+    const made = await waitSpaces((l) => l.find((e) => e.name === "Verdure"), (e) => !!e);
+    expect(made!.aura).toBe("verger");
+    await openSettings(made!.id);
+    expect(await inUi(m, "return doc.querySelector(arguments[0] + ' [aria-label=\"Aura Verger\"]').getAttribute('aria-checked')", [MODAL])).toBe("true");
+  });
+
   it("“Réglages” shows the space's values; private and its own profile are saved", async () => {
     const bank = await create("Banque", "💶", false, "default");
     await click(m, button(bank.id), { button: 2 });
