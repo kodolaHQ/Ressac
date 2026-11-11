@@ -18,6 +18,7 @@
   import TabsPanel from "./components/TabsPanel.svelte";
   import Review from "./components/Review.svelte";
   import Settings from "./components/Settings.svelte";
+  import Welcome from "./components/Welcome.svelte";
   import { focusAgent } from "./components/agent.svelte";
   import { design, rereadDesign } from "./components/design.svelte";
   import { command, closeCommand, focusEmptyPage, openCommand } from "./components/command.svelte";
@@ -39,6 +40,8 @@
   const win = window.parent.webaiosWindow!;
 
   const winState = $derived(currentWindow());
+  /** The first-launch welcome covers the whole window until it is finished. */
+  const welcome = $derived(!!winState && appState.value?.settings.onboarded === false);
   const activeTab = $derived.by(() => {
     const id = winState?.active[winState.activeSpace];
     return id ? appState.value?.tabs[id] : undefined;
@@ -130,6 +133,7 @@
   );
   $effect(() =>
     api.onShortcut((r) => {
+      if (welcome) return;
       if (r === "closeTab") {
         if (activeTab) closeTab(activeTab.id);
       } else if (r === "command") openCommand("new");
@@ -140,7 +144,7 @@
     }),
   );
   // Overlays cover the agent panel too; the empty page and internal pages only fill the space left of it.
-  const overlay = $derived(!!agentRequest || !!spaceSettings.draft || !!menu.open || !!command.open || !!tabPanel);
+  const overlay = $derived(welcome || !!agentRequest || !!spaceSettings.draft || !!menu.open || !!command.open || !!tabPanel);
   $effect(() => win.setFullWindow(overlay ? "window" : !pageWeb || !!panel));
 
   // Compact mode: touching the left edge reveals the sidebar. It floats over the page, which
@@ -192,7 +196,7 @@
      iframe again (TabSwitchDone), and the empty page takes the keyboard back. -->
 <svelte:window onfocus={() => document.activeElement === document.body && focusEmptyPage.n++} />
 
-<div class="window" inert={!!agentRequest || !!spaceSettings.draft || !!command.open} class:compact class:covered={overlay}>
+<div class="window" inert={welcome || !!agentRequest || !!spaceSettings.draft || !!command.open} class:compact class:covered={overlay}>
   <div class="column" class:folded-up={!barVisible} inert={!barVisible}>
     {#if winState}
       <!-- ✦ on a builder tab: the controller opens the panel and sends "agent", handled above. -->
@@ -261,6 +265,9 @@
     <CommandBar window={winState} activeTab={activeTab} yields={!!tabPanel} closePanel={() => (panel = null)} />
   </div>
 {/if}
+{#if welcome && winState}
+  <div class="welcome-layer" data-testid="welcome-layer"><Welcome window={winState} /></div>
+{/if}
 
 <style>
   /* Transparent so the web page under the iframe shows; the sidebar and the content area paint their own. */
@@ -271,6 +278,8 @@
   /* The Actions page's confirmation covers the window, its drag areas too (no-drag on its veil). */
   .window :global(:is([data-testid="action-delete-veil"], [data-testid="action-delete-confirmation"])) { -moz-window-dragging: no-drag; }
   .command-layer { position: fixed; inset: 0; z-index: 100; }
+  /* Above every other layer: nothing else is reachable until the welcome is finished. */
+  .welcome-layer { position: fixed; inset: 0; z-index: 200; }
   .tabs-layer { display: contents; }
   /* Under the command bar and ⌃Tab: the overlay veil, the window slightly blurred (the glass boxes blur more). */
   :is(.command-layer, .tabs-layer) :global(div.veil) { background: var(--overlay-veil); backdrop-filter: blur(6px); }
