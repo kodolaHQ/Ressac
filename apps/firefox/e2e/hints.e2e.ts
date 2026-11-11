@@ -129,6 +129,21 @@ describe("first-time notes", () => {
     await cardShows("⌃Tab");
   });
 
+  it("the actions note waits for the agent note", async () => {
+    await noteIn("agent", "agent");
+    await click(m, '[data-testid="actions-button"]');
+    await waitUi(m, "return !!doc.querySelector('[data-testid=\"page-actions\"]')");
+    // The panel the home page opened closed on the tab; the user opens it: the agent note takes the front, the actions note leaves.
+    const panelOpen = (want: boolean) => expect.poll(async () => (await state(m)).windows[0]!.agentPanelOpen, { timeout: 15_000 }).toBe(want);
+    await panelOpen(false);
+    await dispatch(m, { type: "toggleAgentPanel", windowId: (await state(m)).windows[0]!.id });
+    await panelOpen(true);
+    await noteIn("agent", "agent");
+    await noNoteIn("actions", "sidebar");
+    await click(m, '[data-testid="first-time-ok"]', { frame: "agent" });
+    await noteIn("actions", "sidebar");
+  });
+
   it("actions first time", async () => {
     await click(m, '[data-testid="actions-button"]');
     await noteIn("actions", "sidebar");

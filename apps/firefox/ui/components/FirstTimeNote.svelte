@@ -10,7 +10,8 @@
   $effect(() => ok?.focus());
 </script>
 
-<svelte:window onkeydown={(e) => e.key === "Escape" && firstTimePending(id) && (e.preventDefault(), markSeen(id))} />
+<!-- Capture: Escape is the note's, it never reaches the terminal below. -->
+<svelte:window onkeydowncapture={(e) => e.key === "Escape" && firstTimePending(id) && (e.preventDefault(), e.stopPropagation(), markSeen(id))} />
 
 {#if firstTimePending(id)}
   <div class="layer" class:veil data-testid="first-time-{id}" out:fade={{ duration: 150 }}>

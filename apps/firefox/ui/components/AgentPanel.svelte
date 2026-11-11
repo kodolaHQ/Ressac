@@ -5,6 +5,7 @@
   import { focusAgent } from "./agent.svelte";
   import * as terminalAgent from "./terminalAgent.svelte";
   import FirstTimeNote from "./FirstTimeNote.svelte";
+  import { firstTimePending } from "./hints";
 
   let {
     visible,
@@ -103,10 +104,15 @@
     }
     if (n === served) return;
     served = n;
-    const aim = () => visible && terminalAgent.focus();
+    // The first-time note keeps the keyboard until Compris.
+    const aim = () => visible && !firstTimePending("agent") && terminalAgent.focus();
     void tick().then(aim);
     const relaunch = setTimeout(() => !terminalAgent.hasFocus() && aim(), 100);
     return () => clearTimeout(relaunch);
+  });
+  // Shown with its note pending, the panel gives the keyboard to the note's button.
+  $effect(() => {
+    if (visible && firstTimePending("agent")) void tick().then(() => section?.querySelector<HTMLElement>('[data-testid="first-time-ok"]')?.focus());
   });
 </script>
 

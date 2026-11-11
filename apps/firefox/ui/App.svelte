@@ -21,7 +21,7 @@
   import Settings from "./components/Settings.svelte";
   import Welcome from "./components/Welcome.svelte";
   import { welcomeStep } from "./components/welcome-step.svelte";
-  import { firstTimePending, markSeen } from "./components/hints";
+  import { agentNoteShowing, firstTimePending, markSeen } from "./components/hints";
   import FirstTimeNote from "./components/FirstTimeNote.svelte";
   import { focusAgent } from "./components/agent.svelte";
   import { design, rereadDesign } from "./components/design.svelte";
@@ -170,7 +170,7 @@
   // Overlays cover the agent panel too; the empty page and internal pages only fill the space left of it.
   const modalOpen = $derived(welcomeLayer || !!agentRequest || !!spaceSettings.draft || !!menu.open || !!command.open || !!tabPanel);
   // The one-time notes of design mode (over the page: a frozen background, the whole window) and of the Actions page; never over another modal.
-  const designNoteDue = $derived(!modalOpen && !!design.state?.active && firstTimePending("design"));
+  const designNoteDue = $derived(!modalOpen && !agentNoteShowing() && !!design.state?.active && firstTimePending("design"));
   /** The note's layer stays (and keeps the whole window) for the note's fade out. */
   let designNote = $state(false);
   $effect(() => {
@@ -310,7 +310,7 @@
     <FrozenBackground tabId={activeTab?.id ?? null} onReady={() => {}} />
     <FirstTimeNote id="design" />
   </div>
-{:else if !modalOpen && activeTab?.url === URL_ACTIONS && !privateAction}
+{:else if !modalOpen && !agentNoteShowing() && activeTab?.url === URL_ACTIONS && !privateAction}
   <FirstTimeNote id="actions" veil />
 {/if}
 {#if welcomeLayer && winState}
