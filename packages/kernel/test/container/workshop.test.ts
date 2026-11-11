@@ -16,6 +16,16 @@ test("docker not found → docker-absent, without an exception", async () => {
   expect(await new Workshop({ paths: paths, docker: null }).ensureStarted()).toBe("docker-absent");
 });
 
+test("docker installed after the start is found without a restart", async () => {
+  const { run: runCall, calls } = fakeRunner([[/ info/, { code: 1, stderr: "Cannot connect" }]]);
+  let installed = false;
+  const workshop = new Workshop({ paths: paths, findDocker: () => (installed ? "docker" : null), run: runCall });
+  expect(await workshop.state()).toBe("docker-absent");
+  installed = true;
+  await workshop.state();
+  expect(calls.map((c) => [c.command, ...c.args].join(" "))).toEqual(["docker info"]);
+});
+
 test("docker info failing → docker-absent", async () => {
   const { run: runCall } = fakeRunner([[/ info/, { code: 1, stderr: "Cannot connect" }]]);
   expect(await new Workshop({ paths: paths, docker: "docker", run: runCall }).state()).toBe("docker-absent");

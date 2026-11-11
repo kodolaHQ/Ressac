@@ -156,7 +156,12 @@ export const VARIABLE_APPLICATION = "WEBAIOS_APP";
 export class Workshop {
   private readonly paths: SpacePaths;
   private readonly run: Runner;
-  private readonly docker: string | null;
+  private found: string | null = null;
+  private readonly lookup: () => string | null;
+  /** Looked up again while absent: Docker installed after the app started is found without a restart. */
+  private get docker(): string | null {
+    return (this.found ??= this.lookup());
+  }
   private readonly dockerFolder: string;
   /** Startup in progress, shared: two windows opening an agent do not build the image twice. */
   private startup: Promise<WorkshopState> | null = null;
@@ -166,11 +171,11 @@ export class Workshop {
   private progress: BuildProgress | null = null;
   private readonly listeners = new Set<(p: BuildProgress) => void>();
 
-  constructor(o: { paths: SpacePaths; run?: Runner; docker?: string | null; dockerFolder?: string }) {
+  constructor(o: { paths: SpacePaths; run?: Runner; docker?: string | null; findDocker?: () => string | null; dockerFolder?: string }) {
     this.dockerFolder = o.dockerFolder ?? DEFAULT_DOCKER_FOLDER;
     this.paths = o.paths;
     this.run = o.run ?? defaultRunner;
-    this.docker = o.docker === undefined ? findDocker() : o.docker;
+    this.lookup = o.docker === undefined ? (o.findDocker ?? findDocker) : () => o.docker ?? null;
   }
 
   private launch(args: string[], delayMs?: number) {
