@@ -1,6 +1,6 @@
 import type { Action, SettingsApi } from "../shared/api";
 import type { WindowId } from "../shared/model";
-import type { AgentAccount, Backup, GrantKind, LoginResult, GrantRow, SettingsResult, WorkshopOperation } from "../shared/settings";
+import type { AgentAccount, Backup, GrantKind, LoginResult, GrantRow, SettingsResult, WorkshopOperation, PullProgress } from "../shared/settings";
 import type { AgentHost } from "../chrome/agent/host";
 import type { SettingsChrome } from "../chrome/store/settings";
 import type { SitePermissions } from "../chrome/store/site-permissions";
@@ -64,6 +64,8 @@ export function createSettingsApi(o: {
     setClaudeKey: (key) => ask<SettingsResult>("settings.claudeKey", { key }, SILENT),
     deleteClaudeKey: () => ask<SettingsResult>("settings.claudeKeyDelete", undefined, SILENT),
     chooseClaudeEngine: (engine) => o.dispatch({ type: "chooseClaudeEngine", engine }),
+    pullModel: (name) => ask<SettingsResult>("settings.pullModel", { name }, SILENT),
+    pullProgress: () => ask<PullProgress | null>("settings.pullProgress", undefined, null),
     ollamaModels: (url) => ask("settings.ollamaModels", { url }, { ok: false as const, error: "Ollama ne répond pas à cette adresse." }),
     async grants() {
       const [sites, host, external] = await Promise.all([

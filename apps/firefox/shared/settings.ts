@@ -95,3 +95,11 @@ export function apiUrlProblem(url: string): string | null {
   }
   return "Adresse invalide (https://…)";
 }
+
+/** The progress of an Ollama model download shown in Settings. */
+export interface PullProgress {
+  name: string;
+  /** 0-100, null while Ollama gives no total (manifest, verifying). */
+  percent: number | null;
+  status: string;
+}

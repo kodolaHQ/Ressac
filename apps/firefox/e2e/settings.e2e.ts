@@ -161,6 +161,42 @@ describe("Settings page", () => {
     expect(await inUi(m, `return doc.querySelector('[data-testid="ai-decision-model"] option[value="kev"]').disabled`)).toBe(true);
   });
 
+  it("local AI: Download pulls the missing Gemma through Ollama, shows a percentage, then installed", async () => {
+    let pulled = false;
+    let release!: () => void;
+    const gate = new Promise<void>((ok) => (release = ok));
+    const ollama = await startServer({
+      routes: {
+        "/api/tags": (_req, res) => res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ models: [{ name: "pplx-decider-flash:latest" }, ...(pulled ? [{ name: "gemma4:e4b-mlx" }] : [])] })),
+        "/api/pull": (_req, res) => {
+          res.writeHead(200, { "Content-Type": "application/x-ndjson" });
+          res.write('{"status":"pulling manifest"}\n{"status":"downloading","total":100,"completed":40}\n');
+          void gate.then(() => {
+            pulled = true;
+            res.end('{"status":"success"}\n');
+          });
+        },
+      },
+    });
+    try {
+      await launch({ WEBAIOS_OLLAMA_URL: ollama.url });
+      await openPage();
+      await go("ai");
+      await shows("ai-gemma", "absent");
+      expect(await text("settings-ai")).toContain("Plusieurs Go : le téléchargement peut prendre un moment.");
+      expect(await inUi(m, `return doc.querySelectorAll('[data-testid="pull-decision"]').length`)).toBe(0); // installed: no button
+      await click(m, '[data-testid="pull-gemma"]');
+      await shows("ai-gemma", "Téléchargement 40 %");
+      if (process.env.WEBAIOS_SHOT) writeFileSync(process.env.WEBAIOS_SHOT, Buffer.from((await m.command<{ value: string }>("WebDriver:TakeScreenshot", { full: false, hash: false })).value, "base64"));
+      release();
+      await shows("ai-gemma", "installé");
+      expect(await text("ai-gemma")).not.toContain("Télécharger");
+    } finally {
+      release();
+      await ollama.close();
+    }
+  });
+
   it("privacy: no DSN, the switch is greyed; with one, turning it off clears the pref", async () => {
     await launch();
     await openPage();

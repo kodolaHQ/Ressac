@@ -241,6 +241,33 @@ describe("settings host", () => {
     expect(o.revokeSite).toHaveBeenCalledTimes(1);
   });
 
+  it("pullModel: one pull at a time, progress visible meanwhile, refusal and errors returned", async () => {
+    const { h, o } = setup();
+    expect(await h["settings.pullModel"]!({ name: "llama3" })).toEqual({ ok: false, error: "Modèle non pris en charge" });
+    const real = globalThis.fetch;
+    let finish!: () => void;
+    const body = new ReadableStream({
+      start(c) {
+        c.enqueue(new TextEncoder().encode('{"status":"downloading","total":10,"completed":5}\n'));
+        finish = () => (c.enqueue(new TextEncoder().encode('{"status":"success"}\n')), c.close());
+      },
+    });
+    globalThis.fetch = (async () => new Response(body)) as any;
+    try {
+      const first = h["settings.pullModel"]!({ name: "gemma4:e4b-mlx" }) as Promise<unknown>;
+      await vi.waitFor(async () => expect(await h["settings.pullProgress"]!({})).toEqual({ name: "gemma4:e4b-mlx", status: "downloading", percent: 50 }));
+      expect(await h["settings.pullModel"]!({ name: "pplx-decider-flash" })).toMatchObject({ ok: false });
+      finish();
+      expect(await first).toEqual({ ok: true });
+      expect(await h["settings.pullProgress"]!({})).toBeNull();
+      expect(o.ai.ollamaUrl).toBe("http://127.0.0.1:11434");
+      globalThis.fetch = (async () => new Response("no space", { status: 500 })) as any;
+      expect(await h["settings.pullModel"]!({ name: "pplx-decider-flash" })).toEqual({ ok: false, error: "no space" });
+    } finally {
+      globalThis.fetch = real;
+    }
+  });
+
   it("ai.state and decision model", async () => {
     const { h, o } = setup();
     expect(await h["ai.state"]!({})).toMatchObject({ state: "stopped", verification: { decision: true }, ollamaUrl: "http://127.0.0.1:11434" });

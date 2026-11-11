@@ -20,7 +20,7 @@
 
 <script lang="ts">
   import type { LocalAiStateShown, SettingsApi } from "../../shared/api";
-  import { TELEMETRY_NOTICE, type AgentAccount, type DecisionModel, type LoginResult, type WorkshopOperation } from "../../shared/settings";
+  import { TELEMETRY_NOTICE, type AgentAccount, type DecisionModel, type LoginResult, type PullProgress, type WorkshopOperation } from "../../shared/settings";
   import { api, appState } from "../state.svelte";
   import Icon from "./Icon.svelte";
   import SettingsMozilla from "./SettingsMozilla.svelte";
@@ -85,6 +85,22 @@
     void api.ai.state().then((r) => (ai = r));
   });
 
+  // Model downloads: the host runs one at a time and reports it; polled like the workshop operation.
+  let pulling = $state<PullProgress | null>(null);
+  let pullError = $state<string | null>(null);
+  const reloadAi = () => void api.ai.state().then((r) => (ai = r));
+  async function pullModel(name: string) {
+    pullError = null;
+    pulling = { name, percent: null, status: "" };
+    const timer = setInterval(() => void s.pullProgress().then((p) => p && (pulling = p)), 700);
+    const r = await s.pullModel(name);
+    clearInterval(timer);
+    pulling = null;
+    if (!r.ok) pullError = r.error;
+    reloadAi();
+  }
+  const pullLabel = (p: PullProgress) => (p.percent === null ? "Téléchargement…" : `Téléchargement ${p.percent} %`);
+
   /** undefined: loading; null: the host does not answer. */
   let workshop = $state<WorkshopState | null | undefined>(undefined);
   let operation = $state<WorkshopOperation>(null);
@@ -125,6 +141,18 @@
   let version = $state<string | null>(null);
   $effect(() => void s.version().then((t) => (version = t)));
 </script>
+
+<!-- The pill of a local model: « installé », or « absent » with a download button once Ollama answers. -->
+{#snippet pullPill(name: string, installed: boolean, id: string)}
+  {#if installed}
+    <span class="pill" data-tone="ok">installé</span>
+  {:else if pulling?.name === name}
+    <span class="pill" data-tone="warn" data-testid="pull-progress-{id}">{pullLabel(pulling)}</span>
+  {:else}
+    <span class="pill" data-tone="off">absent</span>
+    {#if v?.ollama}<button data-testid="pull-{id}" disabled={!!pulling} onclick={() => void pullModel(name)}>Télécharger</button>{/if}
+  {/if}
+{/snippet}
 
 <section class="settings" data-testid="settings-page" aria-label="Réglages">
   <nav aria-label="Sections des réglages">
@@ -203,7 +231,7 @@
             </div>
             <div class="row" data-testid="ai-gemma">
               <div class="grow"><b>Gemma</b><span class="muted">Widgets et veille : {v?.gemmaModel ? `Gemma (${v.gemmaModel})` : "Gemma absent"}</span></div>
-              <span class="pill" data-tone={v?.gemma ? "ok" : "off"}>{v?.gemma ? "installé" : "absent"}</span>
+              {@render pullPill("gemma4:e4b-mlx", !!v?.gemma, "gemma")}
             </div>
             <div class="row">
               <label class="grow" for="decision-model"><b>Modèle de décision</b></label>
@@ -211,12 +239,16 @@
                 <option value="pplx-decider-flash">pplx-decider-flash (Ollama)</option>
                 <option value="kev" disabled={!kevReady}>Kev (local)</option>
               </select>
-              {#if (model === "kev" ? kevReady : v?.decision)}
-                <span class="pill" data-tone="ok">installé</span>
+              {#if model === "kev"}
+                <span class="pill" data-tone={kevReady ? "ok" : "off"}>{kevReady ? "installé" : "absent"}</span>
               {:else}
-                <span class="pill" data-tone="off">absent</span>
+                {@render pullPill("pplx-decider-flash", !!v?.decision, "decision")}
               {/if}
             </div>
+            {#if pullError}<div class="row"><span class="pill" data-tone="error" data-testid="pull-error">{pullError}</span></div>{/if}
+            {#if v?.ollama && (!v.gemma || (model !== "kev" && !v.decision))}
+              <div class="row"><span class="muted">Plusieurs Go : le téléchargement peut prendre un moment.</span></div>
+            {/if}
           </div>
         {/if}
       </section>

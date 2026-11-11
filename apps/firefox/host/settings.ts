@@ -1,11 +1,12 @@
 import { listOllamaModels } from "./ollama-models.ts";
+import { pullOllamaModel } from "./ollama-pull.ts";
 import { readGrants, readSiteGrants } from "../../../packages/kernel/src/index.ts";
 import type { LocalAi, Workshop } from "../../../packages/kernel/src/index.ts";
 import type { LocalAiStateShown } from "../shared/api.ts";
 import { startDeviceLogin } from "./device-login.ts";
 import { INVALID_KEY, type AmoKeychain, type Keychain } from "./keychain.ts";
 import { deleteBackup, exportData, listBackups } from "./data-folder.ts";
-import type { AgentAccount, DecisionModel, LoginResult, WorkshopOperation, GrantKind, GrantRow, SettingsResult } from "../shared/settings.ts";
+import type { AgentAccount, DecisionModel, LoginResult, WorkshopOperation, GrantKind, GrantRow, SettingsResult, PullProgress } from "../shared/settings.ts";
 
 // The settings page's host side: agent accounts, workshop, local AI, durable grants, data backups.
 
@@ -70,6 +71,8 @@ export const SETTINGS_METHODS = [
   "settings.deleteBackup",
   "settings.export",
   "ai.state",
+  "settings.pullModel",
+  "settings.pullProgress",
   "ai.decisionModel",
 ] as const;
 
@@ -105,6 +108,11 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
     signIn?.stop();
     signIn = undefined;
   };
+  /**
+   * The model download in progress, whatever window asked for it; one at a time.
+   * shortcut: no cancel button in v1; quitting stops it and Ollama resumes from its kept chunks next time.
+   */
+  let pull: PullProgress | null = null;
   /** The restart or rebuild in progress, whatever page or window asked for it. */
   let operation: WorkshopOperation = null;
   async function agents(): Promise<AgentAccount[]> {
@@ -250,6 +258,20 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
         return { ok: false as const, error: failure(e) };
       }
     },
+    "settings.pullModel": async (p: { name?: unknown }): Promise<SettingsResult> => {
+      if (pull) return { ok: false, error: "Un téléchargement est déjà en cours" };
+      const name = String(p?.name);
+      pull = { name, percent: null, status: "" };
+      try {
+        await pullOllamaModel(o.ai.ollamaUrl, name, (e) => (pull = e));
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, error: failure(e) };
+      } finally {
+        pull = null;
+      }
+    },
+    "settings.pullProgress": () => pull,
     "ai.state": async (): Promise<LocalAiStateShown> => {
       const v = await o.ai.check().catch(() => undefined);
       return { ...o.ai.state(), ...(v ? { verification: v } : {}), ollamaUrl: o.ai.ollamaUrl };
