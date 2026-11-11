@@ -21,7 +21,8 @@
   import Settings from "./components/Settings.svelte";
   import Welcome from "./components/Welcome.svelte";
   import { welcomeStep } from "./components/welcome-step.svelte";
-  import { markSeen } from "./components/hints";
+  import { firstTimePending, markSeen } from "./components/hints";
+  import FirstTimeNote from "./components/FirstTimeNote.svelte";
   import { focusAgent } from "./components/agent.svelte";
   import { design, rereadDesign } from "./components/design.svelte";
   import { command, closeCommand, focusEmptyPage, openCommand } from "./components/command.svelte";
@@ -167,7 +168,10 @@
     }),
   );
   // Overlays cover the agent panel too; the empty page and internal pages only fill the space left of it.
-  const overlay = $derived(welcomeLayer || !!agentRequest || !!spaceSettings.draft || !!menu.open || !!command.open || !!tabPanel);
+  const modalOpen = $derived(welcomeLayer || !!agentRequest || !!spaceSettings.draft || !!menu.open || !!command.open || !!tabPanel);
+  // The one-time notes of design mode (over the page: a frozen background, the whole window) and of the Actions page; never over another modal.
+  const designNote = $derived(!modalOpen && !!design.state?.active && firstTimePending("design"));
+  const overlay = $derived(modalOpen || designNote);
   $effect(() => win.setFullWindow(overlay ? "window" : !pageWeb || !!panel));
 
   // Compact mode: touching the left edge reveals the sidebar. It floats over the page, which
@@ -292,6 +296,14 @@
     <FrozenBackground tabId={activeTab?.id ?? null} onReady={() => {}} />
     <CommandBar window={winState} activeTab={activeTab} yields={!!tabPanel} closePanel={() => (panel = null)} />
   </div>
+{/if}
+{#if designNote}
+  <div class="command-layer">
+    <FrozenBackground tabId={activeTab?.id ?? null} onReady={() => {}} />
+    <FirstTimeNote id="design" />
+  </div>
+{:else if !modalOpen && activeTab?.url === URL_ACTIONS && !privateAction}
+  <FirstTimeNote id="actions" veil />
 {/if}
 {#if welcomeLayer && winState}
   <div class="welcome-layer" class:leaving={!welcome} data-testid="welcome-layer"><Welcome window={winState} /></div>

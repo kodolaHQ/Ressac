@@ -13,7 +13,7 @@ export const TIPS: { id: TipId; text: string; keys?: string; tryIt?: "command" |
 
 export const FIRST_TIME: Record<FirstTimeId, { title: string; text: string }> = {
   agent: { title: "L'agent", text: "Claude Code ou Codex travaille dans un conteneur à part, sur votre Mac. Il ne lit un onglet ou n'agit sur une page qu'avec votre accord, et un halo entoure la page quand il agit." },
-  design: { title: "Le mode design", text: "Cliquez sur un élément de la page pour le montrer à l'agent et lui demander une retouche." },
+  design: { title: "Le mode design", text: "Cliquez sur un élément de la page pour y laisser une remarque. Vos remarques vont dans le panier, puis à l'agent." },
   actions: { title: "Les actions", text: "Une action est une petite appli que l'agent construit pour vous. Elle ne lit vos comptes qu'avec votre accord." },
 };
 

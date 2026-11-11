@@ -4,6 +4,7 @@
   import type { AgentAccount } from "../../shared/settings";
   import { focusAgent } from "./agent.svelte";
   import * as terminalAgent from "./terminalAgent.svelte";
+  import FirstTimeNote from "./FirstTimeNote.svelte";
 
   let {
     visible,
@@ -110,6 +111,7 @@
 </script>
 
 <section class="agent" class:built-in={builtIn} data-testid={builtIn ? "built-in-agent-terminal" : "agent-panel"} hidden={!visible} bind:this={section}>
+  <FirstTimeNote id="agent" />
   {#if !builtIn}
     <div class="handle" data-testid="agent-handle" role="separator" aria-orientation="vertical" aria-label="Largeur du panneau agent" onpointerdown={tirer}></div>
   {/if}
