@@ -116,7 +116,7 @@ async function verifyUnavailable(id: string) {
 // design-sites.spec.ts:149
 it("⇧⌘D in tuning: viewfinder in the view, a click on #lien does nothing, bubble under the bar; ⌘Enter, Escape, Panier", async () => {
   const start = await toSite(m, "tuning");
-  await expect.poll(() => bar("tuning"), { timeout: 10_000 }).toMatchObject({ title: "Mode design (⌘⇧D)", disabled: false });
+  await expect.poll(() => bar("tuning"), { timeout: 10_000 }).toMatchObject({ title: "Mode design (⇧⌘D)", disabled: false });
   const n = (await state("tuning")).basket;
   await modeOn();
   await aim("tuning", "#lien", "a#lien");
