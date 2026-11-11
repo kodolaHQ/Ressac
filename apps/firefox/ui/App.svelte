@@ -2,6 +2,7 @@
   // The window's UI: sidebar, spaces, empty page, command bar. Web pages are Firefox's <browser>, under
   // this transparent iframe; the iframe covers the whole window only when the UI shows more than its column.
   import { tick, untrack } from "svelte";
+  import { fade } from "svelte/transition";
   import PageAction from "../ui/action/PageAction.svelte";
   import Actions from "./components/Actions.svelte";
   import Applications from "./components/Applications.svelte";
@@ -18,6 +19,10 @@
   import TabsPanel from "./components/TabsPanel.svelte";
   import Review from "./components/Review.svelte";
   import Settings from "./components/Settings.svelte";
+  import Welcome from "./components/Welcome.svelte";
+  import { welcomeStep } from "./components/welcome-step.svelte";
+  import { agentNoteShowing, firstTimePending, markSeen } from "./components/hints";
+  import FirstTimeNote from "./components/FirstTimeNote.svelte";
   import { focusAgent } from "./components/agent.svelte";
   import { design, rereadDesign } from "./components/design.svelte";
   import { command, closeCommand, focusEmptyPage, openCommand } from "./components/command.svelte";
@@ -39,6 +44,22 @@
   const win = window.parent.webaiosWindow!;
 
   const winState = $derived(currentWindow());
+  /** The first-launch welcome covers the whole window until it is finished, unless it stepped aside for an install page. */
+  const unfinished = $derived(!!winState && appState.value?.settings.onboarded === false);
+  const welcome = $derived(unfinished && !welcomeStep.aside);
+  $effect(() => win.setWelcome(welcome));
+  /** The welcome's layer: it stays (and keeps the whole window) for its fade out once the welcome steps aside or ends. */
+  let welcomeLayer = $state(false);
+  const WELCOME_FADE_MS = 150;
+  $effect(() => {
+    if (welcome) return void (welcomeLayer = true);
+    const t = setTimeout(() => (welcomeLayer = false), WELCOME_FADE_MS);
+    return () => clearTimeout(t);
+  });
+  // Finished (here or in another window), once its layer is gone: a later « Revoir l'accueil » starts at the beginning.
+  $effect(() => {
+    if (!unfinished && !welcomeLayer) untrack(() => Object.assign(welcomeStep, { page: 1, aside: false }));
+  });
   const activeTab = $derived.by(() => {
     const id = winState?.active[winState.activeSpace];
     return id ? appState.value?.tabs[id] : undefined;
@@ -125,22 +146,39 @@
   $effect(() =>
     api.onTabsPanel((p) => {
       tabPanel = p;
-      if (!p) tabPanelReady = false;
+      if (p) markSeen("ctrl-tab");
+      else tabPanelReady = false;
     }),
   );
   $effect(() =>
     api.onShortcut((r) => {
       if (r === "closeTab") {
         if (activeTab) closeTab(activeTab.id);
-      } else if (r === "command") openCommand("new");
-      else if (r === "address") {
+      } else if (r === "command") {
+        markSeen("cmd-t");
+        openCommand("new");
+      } else if (r === "address") {
+        markSeen("cmd-l");
         if (activeTab) openCommand("active", activeTab.url);
         else openCommand("new");
-      } else if (r === "agent" && builderTarget) builderAgent();
+      } else if (r === "agent") {
+        markSeen("cmd-j");
+        if (builderTarget) builderAgent();
+      }
     }),
   );
   // Overlays cover the agent panel too; the empty page and internal pages only fill the space left of it.
-  const overlay = $derived(!!agentRequest || !!spaceSettings.draft || !!menu.open || !!command.open || !!tabPanel);
+  const modalOpen = $derived(welcomeLayer || !!agentRequest || !!spaceSettings.draft || !!menu.open || !!command.open || !!tabPanel);
+  // The one-time notes of design mode (over the page: a frozen background, the whole window) and of the Actions page; never over another modal.
+  const designNoteDue = $derived(!modalOpen && !agentNoteShowing() && !!design.state?.active && firstTimePending("design"));
+  /** The note's layer stays (and keeps the whole window) for the note's fade out. */
+  let designNote = $state(false);
+  $effect(() => {
+    if (designNoteDue) return void (designNote = true);
+    const t = setTimeout(() => (designNote = false), WELCOME_FADE_MS);
+    return () => clearTimeout(t);
+  });
+  const overlay = $derived(modalOpen || designNote);
   $effect(() => win.setFullWindow(overlay ? "window" : !pageWeb || !!panel));
 
   // Compact mode: touching the left edge reveals the sidebar. It floats over the page, which
@@ -192,13 +230,18 @@
      iframe again (TabSwitchDone), and the empty page takes the keyboard back. -->
 <svelte:window onfocus={() => document.activeElement === document.body && focusEmptyPage.n++} />
 
-<div class="window" inert={!!agentRequest || !!spaceSettings.draft || !!command.open} class:compact class:covered={overlay}>
-  <div class="column" class:folded-up={!barVisible} inert={!barVisible}>
+<div class="window" inert={welcome || !!agentRequest || !!spaceSettings.draft || !!command.open} class:compact class:covered={overlay}>
+  <div class="column" class:folded-up={!barVisible} class:resume={unfinished && welcomeStep.aside} inert={!barVisible}>
     {#if winState}
       <!-- ✦ on a builder tab: the controller opens the panel and sends "agent", handled above. -->
       <Sidebar window={winState} togglePanel={togglePanel} builderAgent={() => win.openAgent()} />
     {:else}
       <aside data-testid="sidebar"></aside>
+    {/if}
+    <!-- The welcome stepped aside for an install page: the way back, under the sidebar (the only place this iframe
+         covers beside a web page). -->
+    {#if unfinished && welcomeStep.aside}
+      <button class="resume-welcome" data-testid="welcome-resume" out:fade={{ duration: WELCOME_FADE_MS }} onclick={() => (welcomeStep.aside = false)}>Reprendre l'accueil</button>
     {/if}
   </div>
   <main class="content" class:framed={(!pageWeb || !!panel) && !(winState && !activeTab && !panel)} data-testid="content-zone">
@@ -241,7 +284,7 @@
     {/if}
   </main>
 </div>
-<ContextMenu />
+{#if !welcome}<ContextMenu />{/if}
 <!-- No page capture under the modals in step 2: the web page shows through the veil. An agent's question comes before
      the space settings, which come back with their draft. -->
 {#if agentRequest}
@@ -261,6 +304,18 @@
     <CommandBar window={winState} activeTab={activeTab} yields={!!tabPanel} closePanel={() => (panel = null)} />
   </div>
 {/if}
+{#if designNote}
+  <!-- A modal opening over it takes the window: the note's layer leaves with it. -->
+  <div class="command-layer">
+    <FrozenBackground tabId={activeTab?.id ?? null} onReady={() => {}} />
+    <FirstTimeNote id="design" />
+  </div>
+{:else if !modalOpen && !agentNoteShowing() && activeTab?.url === URL_ACTIONS && !privateAction}
+  <FirstTimeNote id="actions" veil />
+{/if}
+{#if welcomeLayer && winState}
+  <div class="welcome-layer" class:leaving={!welcome} data-testid="welcome-layer"><Welcome window={winState} /></div>
+{/if}
 
 <style>
   /* Transparent so the web page under the iframe shows; the sidebar and the content area paint their own. */
@@ -271,6 +326,9 @@
   /* The Actions page's confirmation covers the window, its drag areas too (no-drag on its veil). */
   .window :global(:is([data-testid="action-delete-veil"], [data-testid="action-delete-confirmation"])) { -moz-window-dragging: no-drag; }
   .command-layer { position: fixed; inset: 0; z-index: 100; }
+  /* Above every other layer: nothing else is reachable until the welcome is finished. */
+  .welcome-layer { position: fixed; inset: 0; z-index: 200; transition: opacity 150ms var(--out); }
+  .welcome-layer.leaving { opacity: 0; pointer-events: none; }
   .tabs-layer { display: contents; }
   /* Under the command bar and ⌃Tab: the overlay veil, the window slightly blurred (the glass boxes blur more). */
   :is(.command-layer, .tabs-layer) :global(div.veil) { background: var(--overlay-veil); backdrop-filter: blur(6px); }
@@ -281,6 +339,24 @@
   }
   .window.compact { grid-template-columns: 1fr; }
   .column { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; min-height: 0; }
+  .column.resume { grid-template-rows: minmax(0, 1fr) auto; }
+  .resume-welcome {
+    justify-self: center;
+    margin: 0 8px 10px;
+    padding: 7px 16px;
+    border: 1px solid var(--glass-edge);
+    border-radius: 999px;
+    background: var(--glass-hi);
+    box-shadow: var(--float);
+    color: var(--text);
+    font: 600 12.5px var(--font-ui);
+    -moz-window-dragging: no-drag;
+    animation: webaios-rise var(--spring-d) var(--spring) backwards;
+    transition: transform var(--tap), background var(--tap);
+  }
+  .resume-welcome:hover { background: var(--bg-active); }
+  .resume-welcome:active { transform: scale(0.97); }
+  .resume-welcome:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .compact .column {
     position: fixed;
     inset: 0 auto 0 0;

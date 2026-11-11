@@ -23,6 +23,6 @@ export function initialState(genId: () => string = randomUUID): BrowserState {
         frame: null,
       },
     ],
-    settings: { engine: "google", agentProfile: "claude", agentPanelWidth: 420, decisionModel: "pplx-decider-flash", codexEngine: { ...DEFAULT_CODEX_ENGINE } },
+    settings: { engine: "google", agentProfile: "claude", agentPanelWidth: 420, decisionModel: "pplx-decider-flash", codexEngine: { ...DEFAULT_CODEX_ENGINE }, onboarded: false, hints: { enabled: true, seen: [] } },
   };
 }

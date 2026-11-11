@@ -166,7 +166,7 @@ async function start(): Promise<WebAiOsStore> {
   // The agent components' copies too.
   await IOUtils.remove(PathUtils.join(dataDir, "webaios-components"), { recursive: true, ignoreAbsent: true }).catch((e) => console.warn("[actions] copies not erfacées :", e));
   let setAside: string | null = null;
-  const store = createStore(await loadSession(dataDir, (p) => (setAside = p)));
+  const store = createStore(await loadSession(dataDir, (p) => (setAside = p)).then((s) => (Services.env.get("WEBAIOS_SKIP_WELCOME") === "1" ? { ...s, settings: { ...s.settings, onboarded: true } } : s)));
   const questions = new Questions(store, () => sites.forAgent(), () => apps.forAgent());
   // A site app or agent app window closed: the agent's questions on it fall.
   sites.onClosed(() => questions.dropStale());

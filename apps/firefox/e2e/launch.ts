@@ -4,6 +4,8 @@ import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/pr
 import os from "node:os";
 import path from "node:path";
 import { DATA_FORMAT } from "../core/state/format";
+import { initialState } from "../core/state/initial-state";
+import { FIRST_TIME, type FirstTimeId } from "../shared/hints";
 import { Marionette } from "./marionette";
 
 // Fake docker (a wrapper of fake-docker.cjs that knows the Firefox container name): no test ever touches a real container.
@@ -25,6 +27,15 @@ async function seedStarterWidgets(dataDir: string): Promise<void> {
     const { harvest: _, ...widget } = JSON.parse(await readFile(file, "utf8"));
     await writeFile(file, JSON.stringify(widget, null, 2));
   }
+}
+
+/** A first session whose one-time notes (agent, design, actions) are already seen: tests that open those surfaces are not met by the note. */
+async function seedFirstTimeNotesSeen(dataDir: string): Promise<void> {
+  const file = path.join(dataDir, "session.json");
+  if (existsSync(file)) return;
+  const s = initialState();
+  s.settings.hints.seen = Object.keys(FIRST_TIME) as FirstTimeId[];
+  await writeFile(file, JSON.stringify(s));
 }
 
 export interface LaunchedWebAiOs {
@@ -56,9 +67,9 @@ async function waitFor<T>(read: () => Promise<T | undefined>, ms: number, what: 
  * Launches WebAiOs-Firefox headless (`headed` shows its window). Folders passed in are reused and kept (to restart on the same data); the others
  * are temporary and deleted on close. `prefs` are appended to the profile's user.js (reduced motion is on unless `prefs` sets `ui.prefersReducedMotion` to 0). WEBAIOS_DATA_DIR is always set, so tests never touch the real data folder.
  * A data folder without a space's widgets folder gets the starter widgets without their harvest (`starterHarvests` keeps
- * them, and their real-web reads: prefer a local server). `output`: a file that gets the browser's stdout and stderr.
+ * them, and their real-web reads: prefer a local server). `firstTimeNotes` leaves the one-time notes unseen (a new session has them seen). `output`: a file that gets the browser's stdout and stderr.
  */
-export async function launchWebAiOs(o: { headed?: boolean; width?: number; height?: number; dataDir?: string; profile?: string; env?: Record<string, string>; prefs?: Record<string, string | number | boolean>; starterHarvests?: boolean; output?: string } = {}): Promise<LaunchedWebAiOs> {
+export async function launchWebAiOs(o: { headed?: boolean; width?: number; height?: number; dataDir?: string; profile?: string; env?: Record<string, string>; prefs?: Record<string, string | number | boolean>; starterHarvests?: boolean; firstTimeNotes?: boolean; output?: string } = {}): Promise<LaunchedWebAiOs> {
   const profile = o.profile ?? (await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-")));
   const dataDir = o.dataDir ?? (await mkdtemp(path.join(os.tmpdir(), "webaios-data-")));
   const cleanup = () =>
@@ -67,6 +78,7 @@ export async function launchWebAiOs(o: { headed?: boolean; width?: number; heigh
   await mkdir(dataDir, { recursive: true });
   await writeFile(path.join(dataDir, ".format-version"), JSON.stringify({ format: DATA_FORMAT }));
   if (!o.starterHarvests) await seedStarterWidgets(dataDir);
+  if (!o.firstTimeNotes) await seedFirstTimeNotesSeen(dataDir);
   // A reused profile may hold the previous run's port file.
   await rm(path.join(profile, "MarionetteActivePort"), { force: true });
   // Port 0: Firefox picks a free port and writes it to MarionetteActivePort, so parallel launches never collide.
@@ -95,6 +107,8 @@ export async function launchWebAiOs(o: { headed?: boolean; width?: number; heigh
         WEBAIOS_TEST_NOTIFICATIONS: path.join(dataDir, "notifications.jsonl"),
         // No real Sentry from a test: only one that passes a DSN itself gets one.
         WEBAIOS_SENTRY_DSN: "",
+        // No welcome screen in front of the tests.
+        WEBAIOS_SKIP_WELCOME: "1",
         ...o.env,
         PATH: `${FAKE_TOOLS}${path.delimiter}${process.env.PATH ?? ""}`,
       }, },

@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { BrowserState } from "../../shared/model";
 import { AURA_IDS, DEFAULT_AURA } from "../../shared/aura";
 import { CodexEngineSchema, DEFAULT_CODEX_ENGINE } from "../../shared/settings";
+import { FIRST_TIME, HINT_IDS, type HintId } from "../../shared/hints";
 import { initialState } from "./initial-state";
 
 const FILE = "session.json";
@@ -46,7 +47,18 @@ const SchemaSession = z.object({
       }),
     )
     .min(1),
-  settings: z.object({ engine: z.enum(["google", "duckduckgo", "qwant"]), agentProfile: z.string().min(1).default("claude"), agentPanelWidth: z.number().default(420), decisionModel: z.enum(["pplx-decider-flash", "kev"]).catch("pplx-decider-flash"), codexEngine: CodexEngineSchema.catch(() => ({ ...DEFAULT_CODEX_ENGINE })) }),
+  settings: z.object({ engine: z.enum(["google", "duckduckgo", "qwant"]), agentProfile: z.string().min(1).default("claude"), agentPanelWidth: z.number().default(420), decisionModel: z.enum(["pplx-decider-flash", "kev"]).catch("pplx-decider-flash"), codexEngine: CodexEngineSchema.catch(() => ({ ...DEFAULT_CODEX_ENGINE })),
+    // A session saved before the welcome existed never welcomes.
+    onboarded: z.boolean().default(true),
+    // A session saved before the hints existed has used the agent, design mode and actions: their one-time notes are seen, the tips are not.
+    // An id this build does not know (a later version, a downgrade) is dropped; the rest is kept.
+    hints: z
+      .object({
+        enabled: z.boolean().catch(true),
+        seen: z.array(z.string()).transform((ids) => ids.filter((id): id is HintId => (HINT_IDS as readonly string[]).includes(id))),
+      })
+      .catch(() => ({ enabled: true, seen: Object.keys(FIRST_TIME) as HintId[] })),
+  }),
 });
 
 /** A login profile used by a space is always listed: otherwise it would be taken for a profile to erase. */
@@ -74,6 +86,12 @@ async function setAside(path: string, reason: "corrupt" | "unreadable"): Promise
   }
 }
 
+/** A user who already had a session (even a damaged one) is not welcomed again. */
+function known(s: BrowserState): BrowserState {
+  s.settings.onboarded = true;
+  return s;
+}
+
 /** `kept` receives the name under which an unreadable session was set aside, to tell the user. */
 export async function loadSession(folder: string, kept?: (path: string) => void): Promise<BrowserState> {
   const path = join(folder, FILE);
@@ -84,7 +102,7 @@ export async function loadSession(folder: string, kept?: (path: string) => void)
     // Absent: first launch. Otherwise (permissions…), keep it rather than overwrite it at the next save.
     const name = (e as NodeJS.ErrnoException).code !== "ENOENT" && (await setAside(path, "unreadable"));
     if (name) kept?.(name);
-    return initialState();
+    return name ? known(initialState()) : initialState();
   }
   try {
     const parsed = withProfiles(SchemaSession.parse(JSON.parse(text)));
@@ -95,7 +113,7 @@ export async function loadSession(folder: string, kept?: (path: string) => void)
   } catch {
     const name = await setAside(path, "corrupt");
     if (name) kept?.(name);
-    return initialState();
+    return known(initialState());
   }
 }
 

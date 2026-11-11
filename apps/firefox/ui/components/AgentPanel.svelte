@@ -4,6 +4,8 @@
   import type { AgentAccount } from "../../shared/settings";
   import { focusAgent } from "./agent.svelte";
   import * as terminalAgent from "./terminalAgent.svelte";
+  import FirstTimeNote from "./FirstTimeNote.svelte";
+  import { firstTimePending } from "./hints";
 
   let {
     visible,
@@ -102,14 +104,39 @@
     }
     if (n === served) return;
     served = n;
-    const aim = () => visible && terminalAgent.focus();
+    if (firstTimePending("agent")) userAsked = true;
+    // The first-time note keeps the keyboard until Compris.
+    const aim = () => visible && !firstTimePending("agent") && terminalAgent.focus();
     void tick().then(aim);
     const relaunch = setTimeout(() => !terminalAgent.hasFocus() && aim(), 100);
     return () => clearTimeout(relaunch);
   });
+  // The note takes the keyboard; Compris gives it back: to the terminal if the user opened the panel (⌘J, ✦), else to
+  // where it was (the empty page's field when the home page opened the panel). Captured before the note mounts.
+  let giveBack: (() => void) | undefined;
+  let userAsked = false;
+  $effect.pre(() => {
+    const pending = visible && firstTimePending("agent");
+    const done = !firstTimePending("agent");
+    untrack(() => {
+      if (pending) giveBack ??= window.parent.webaiosWindow?.rememberFocus();
+      else if (done && giveBack) {
+        const back = giveBack;
+        const asked = userAsked;
+        giveBack = undefined;
+        userAsked = false;
+        void tick().then(() => (asked ? terminalAgent.focus() : back()));
+      }
+    });
+  });
+  // Shown with its note pending, the panel gives the keyboard to the note's button.
+  $effect(() => {
+    if (visible && firstTimePending("agent")) void tick().then(() => section?.querySelector<HTMLElement>('[data-testid="first-time-ok"]')?.focus());
+  });
 </script>
 
 <section class="agent" class:built-in={builtIn} data-testid={builtIn ? "built-in-agent-terminal" : "agent-panel"} hidden={!visible} bind:this={section}>
+  <FirstTimeNote id="agent" />
   {#if !builtIn}
     <div class="handle" data-testid="agent-handle" role="separator" aria-orientation="vertical" aria-label="Largeur du panneau agent" onpointerdown={tirer}></div>
   {/if}
