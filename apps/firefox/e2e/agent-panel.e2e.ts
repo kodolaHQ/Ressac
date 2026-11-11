@@ -358,6 +358,21 @@ it("the page narrows by the panel width", async () => {
   expect(await m.execute("return document.getElementById('webaios-agent').getBoundingClientRect().left")).toBe(width - 420);
 });
 
+it("with the sidebar on the right, the panel opens on the left and the page sits between", async () => {
+  await launch();
+  await openTab("/a.html");
+  await dispatch(m, { type: "setSidebarSide", side: "right" });
+  const width = await m.execute<number>("return window.innerWidth");
+  const rect = (id: string) => m.execute<{ left: number; right: number }>(`const r = document.getElementById(arguments[0]).getBoundingClientRect(); return { left: r.left, right: r.right };`, [id]);
+  await waitFor(m, "return gBrowser.selectedBrowser.getBoundingClientRect().right", (v) => v === width - 240);
+  expect((await rect("webaios-sidebar")).right).toBe(width);
+  expect(await m.execute("return gBrowser.selectedBrowser.getBoundingClientRect().left")).toBe(8);
+  await toggleWithButton();
+  await waitFor(m, "return gBrowser.selectedBrowser.getBoundingClientRect().left", (v) => v === 420 + 8);
+  expect(await m.execute("return gBrowser.selectedBrowser.getBoundingClientRect().right")).toBe(width - 240);
+  expect(await rect("webaios-agent")).toEqual({ left: 0, right: 420 });
+});
+
 it("opening the panel on a tab shares it: current_page reads without asking", async () => {
   await launch();
   // The session started on the home page: a new one would take the access back.

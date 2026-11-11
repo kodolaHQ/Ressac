@@ -276,6 +276,42 @@
   width: var(--webaios-basket, 0px);
 }
 
+/* The sidebar on the right (settings.sidebarSide, the controller's webaios-sidebar-side): a full mirror, the agent panel on
+   the left, the design cart still between the page and the agent. The window buttons keep their place in the sidebar's
+   first row, which stays the window's drag area. */
+:root[webaios-main][webaios-sidebar-side="right"] #webaios-window-buttons {
+  left: calc(100% - 224px);
+}
+:root[webaios-main][webaios-sidebar-side="right"] #webaios-sidebar {
+  left: auto;
+  right: 0;
+}
+:root[webaios-main][webaios-sidebar-side="right"] #webaios-agent {
+  right: auto;
+  left: 0;
+  transform: translateX(calc(var(--webaios-agent, 0px) - var(--webaios-agent-w, 0px)));
+}
+/* Not in HTML fullscreen, whose margin: 0 this would override. */
+:root[webaios-main][webaios-sidebar-side="right"]:not([inDOMFullscreen]) #tabbrowser-tabbox {
+  margin-inline-start: calc(var(--webaios-agent, 0px) + var(--webaios-basket, 0px) + 8px);
+  margin-inline-end: max(var(--webaios-sidebar, 240px), 8px);
+}
+:root[webaios-main][webaios-sidebar-side="right"] #webaios-design-volet {
+  right: auto;
+  left: var(--webaios-agent, 0px);
+}
+:root[webaios-main][webaios-sidebar-side="right"] #webaios-banner {
+  left: var(--webaios-agent, 0px);
+  right: var(--webaios-sidebar, 240px);
+}
+/* Switching sides (controller: webaios-side-switch "out", then "in" on the new side): a fade, never a slide across. */
+:root[webaios-main][webaios-side-switch] :is(#webaios-sidebar, #webaios-agent, #tabbrowser-tabbox) {
+  transition: opacity 150ms ease-out;
+}
+:root[webaios-main][webaios-side-switch="out"] :is(#webaios-sidebar, #webaios-agent, #tabbrowser-tabbox) {
+  opacity: 0 !important;
+}
+
 /* Firefox's separator under its hidden toolbar: the page goes up to the window's top edge. */
 :root[webaios-main] .browserContainer {
   border-block-start: none !important;

@@ -157,6 +157,32 @@ export function createController(
       if (agentOpen(state) !== agentOpen(previous) || state.settings.agentPanelWidth !== previous.settings.agentPanelWidth) showAgent(state);
     }),
   );
+  // The sidebar's side (window.css mirrors on webaios-sidebar-side). A switch fades out, swaps, and fades in; reduced
+  // motion swaps at once.
+  const FADE_MS = 150;
+  let sideFade: ReturnType<typeof setTimeout> | undefined;
+  const sideOf = (state: BrowserState) => state.settings.sidebarSide;
+  const placeSide = (fade: boolean) => {
+    const root = document.documentElement;
+    const swap = () => root.setAttribute("webaios-sidebar-side", sideOf(store.state));
+    clearTimeout(sideFade);
+    if (!fade || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      root.removeAttribute("webaios-side-switch");
+      return swap();
+    }
+    root.setAttribute("webaios-side-switch", "out");
+    sideFade = setTimeout(() => {
+      swap();
+      root.setAttribute("webaios-side-switch", "in");
+      sideFade = setTimeout(() => root.removeAttribute("webaios-side-switch"), FADE_MS);
+    }, FADE_MS);
+  };
+  placeSide(false);
+  unsubscribe.push(
+    store.subscribe((state, previous) => {
+      if (sideOf(state) !== sideOf(previous)) placeSide(true);
+    }),
+  );
   // The active space's aura lights the window and both UI documents (each set again when it loads).
   const auraOf = (state: BrowserState) => {
     const f = state.windows.find((x) => x.id === windowId);
@@ -286,6 +312,8 @@ export function createController(
   };
   const onMouseMove = (e: MouseEvent) => {
     lastX = e.screenX - window.mozInnerScreenX;
+    // On the right, the zones count from the window's right edge.
+    if (sideOf(store.state) === "right") lastX = window.innerWidth - lastX;
     const z = leftZone(lastX);
     sendZone(z);
     zone = z;

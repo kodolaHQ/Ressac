@@ -73,7 +73,7 @@ window.addEventListener(
     const windowButtons = (document as any).createXULElement("hbox") as HTMLElement;
     windowButtons.id = "webaios-window-buttons";
     document.getElementById("browser")!.append(windowButtons);
-    // The agent panel, on the right: a second iframe, so that the web page between both keeps the mouse.
+    // The agent panel, on the right (on the left with the sidebar on the right): a second iframe, so that the web page between both keeps the mouse.
     const agentFrame = document.createElementNS("http://www.w3.org/1999/xhtml", "iframe") as HTMLIFrameElement;
     agentFrame.id = "webaios-agent";
     agentFrame.hidden = true;

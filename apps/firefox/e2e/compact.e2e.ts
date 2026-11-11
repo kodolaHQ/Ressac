@@ -154,4 +154,53 @@ describe("compact mode", () => {
     await waitUi(m, `return frame.getBoundingClientRect().width === 240;`);
     expect(await layout()).toMatchObject({ page: 240, frame: 240 });
   });
+
+  describe("with the sidebar on the right", () => {
+    const toRight = () => dispatch(m, { type: "setSidebarSide", side: "right" });
+    const frameRight = () => m.execute<number>(`return document.getElementById("webaios-sidebar").getBoundingClientRect().right;`);
+
+    it("the right edge reveals it over the page, leaving hides it", async () => {
+      await openPage();
+      await toRight();
+      await toggle();
+      await waitSidebar(false);
+      const hidden = await layout();
+      expect(hidden).toMatchObject({ page: 8, frame: 0, pageWidth: hidden.window - 16 });
+
+      await moveMouse(hidden.window - 5);
+      await waitSidebar(true);
+      expect(await frameRight()).toBe(hidden.window);
+      expect(await layout()).toMatchObject({ page: 8, frame: 240, pageWidth: hidden.pageWidth });
+
+      await moveMouse(hidden.window - 100);
+      await moveMouse(hidden.window - 260);
+      await sleep(500);
+      expect((await layout()).sidebar).toBe(true);
+
+      await moveMouse(hidden.window - 300);
+      await waitSidebar(false);
+    });
+
+    it("switching sides with the agent open moves both frames, the page stays loaded", async () => {
+      await openPage();
+      const windowId = (await state(m)).windows[0]!.id;
+      await dispatch(m, { type: "toggleAgentPanel", windowId });
+      await toggle();
+      await waitSidebar(false);
+      const page = () => m.execute<{ uri: string; inner: number }>(`return { uri: gBrowser.selectedBrowser.currentURI.spec, inner: gBrowser.selectedBrowser.innerWindowID };`);
+      const before = await page();
+      const agentLeft = "return document.getElementById('webaios-agent').getBoundingClientRect().left";
+      const width = await m.execute<number>("return window.innerWidth");
+      await waitFor(m, agentLeft, (v) => v === width - 420);
+
+      await toRight();
+      await waitFor(m, agentLeft, (v) => v === 0);
+      await waitFor(m, "return gBrowser.selectedBrowser.getBoundingClientRect().left", (v) => v === 420 + 8);
+      expect(await m.execute("return gBrowser.selectedBrowser.getBoundingClientRect().right")).toBe(width - 8);
+      await moveMouse(width - 5);
+      await waitSidebar(true);
+      expect(await frameRight()).toBe(width);
+      expect(await page()).toEqual(before);
+    });
+  });
 });
