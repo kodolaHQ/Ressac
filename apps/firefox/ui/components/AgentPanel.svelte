@@ -15,18 +15,22 @@
     visible: boolean;
     /** In the builder's « Agent » tab: no width handle, always shown in its host. */
     builtin?: boolean;
-    /** The user drags the left edge: wanted width in pixels; `fin` on release. */
+    /** The user drags the inner edge: wanted width in pixels; `fin` on release. */
     resize?: (width: number, end: boolean) => void;
   } = $props();
   let section: HTMLElement;
 
-  /** Dragging the left edge: the capture keeps the pointer even over the neighboring web page. */
+  /** The panel is on the left when the sidebar is on the right: the handle follows the panel's inner edge. */
+  const sidebarRight = $derived(browserState.value?.settings.sidebarSide === "right");
+  /** Dragging the inner edge: the capture keeps the pointer even over the neighboring web page. */
   function tirer(e: PointerEvent) {
     const handle = e.currentTarget as HTMLElement;
     handle.setPointerCapture(e.pointerId);
     const start = e.clientX;
     const width = section.getBoundingClientRect().width;
-    const wanted = (ev: PointerEvent) => width + start - ev.clientX;
+    // The pointer moving right grows a panel whose handle is on its right edge, and shrinks one whose handle is on its left.
+    const direction = sidebarRight ? 1 : -1;
+    const wanted = (ev: PointerEvent) => width + direction * (ev.clientX - start);
     const move = (ev: PointerEvent) => resize?.(wanted(ev), false);
     const drop = (ev: PointerEvent) => {
       handle.removeEventListener("pointermove", move);
@@ -138,7 +142,7 @@
   });
 </script>
 
-<section class="agent" class:built-in={builtIn} data-testid={builtIn ? "built-in-agent-terminal" : "agent-panel"} hidden={!visible} bind:this={section}>
+<section class="agent" class:built-in={builtIn} class:right={sidebarRight} data-testid={builtIn ? "built-in-agent-terminal" : "agent-panel"} hidden={!visible} bind:this={section}>
   <FirstTimeNote id="agent" />
   {#if !builtIn}
     <div class="handle" data-testid="agent-handle" role="separator" aria-orientation="vertical" aria-label="Largeur du panneau agent" onpointerdown={tirer}></div>
@@ -181,9 +185,11 @@
 <style>
   /* A glass pane floating on the aura, like the sidebar: 8 px from the window, the page's gap on its left. */
   .agent { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; margin: 8px 8px 8px 0; background: var(--glass); border: 1px solid var(--glass-edge); border-radius: 16px; box-shadow: var(--lift); overflow: hidden; }
+  .agent.right { margin: 8px 0 8px 8px; }
   .agent[hidden] { display: none; }
   .agent.built-in { flex: 1; margin: 0; border: none; border-radius: 0; box-shadow: none; }
   .handle { position: absolute; top: 0; bottom: 0; left: 0; width: 6px; cursor: col-resize; z-index: 1; transition: background var(--tap); }
+  .right .handle { left: auto; right: 0; }
   .handle:hover, .handle:active { background: color-mix(in srgb, var(--accent) 40%, transparent); }
   header { display: flex; align-items: center; gap: 9px; height: 40px; padding: 0 12px; flex: none; }
   .orb { flex: none; width: 14px; height: 14px; border-radius: 50%; background: conic-gradient(from var(--ang), var(--a1), var(--a2), var(--a3), var(--a1)); box-shadow: 0 0 0 3px color-mix(in oklab, var(--a2) 16%, transparent); transition: box-shadow 300ms var(--out); }

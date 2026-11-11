@@ -59,9 +59,10 @@
   /** Width of this iframe when the drag started. */
   let start: number | null = null;
   function resize(wanted: number, end: boolean) {
-    // The handle measures in this iframe, whose left edge moves with the width: back to window coordinates.
+    // On the left the handle measures in this iframe, whose left edge moves with the width: back to window coordinates.
+    // On the right the iframe's left edge is the window's, nothing moves under the pointer.
     start ??= window.innerWidth;
-    const real = wanted - start + window.innerWidth;
+    const real = appState.value?.settings.sidebarSide === "right" ? wanted : wanted - start + window.innerWidth;
     // Always room for the page: 300 px at least beside the sidebar.
     const max = Math.min(AGENT_WIDTH_MAX, window.parent.innerWidth - win.sidebarWidth() - 300);
     const width = Math.round(Math.max(AGENT_WIDTH_MIN, Math.min(max, real)));

@@ -44,6 +44,7 @@
   const win = window.parent.webaiosWindow!;
 
   const winState = $derived(currentWindow());
+  const sidebarRight = $derived(appState.value?.settings.sidebarSide === "right");
   /** The first-launch welcome covers the whole window until it is finished, unless it stepped aside for an install page. */
   const unfinished = $derived(!!winState && appState.value?.settings.onboarded === false);
   const welcome = $derived(unfinished && !welcomeStep.aside);
@@ -230,7 +231,7 @@
      iframe again (TabSwitchDone), and the empty page takes the keyboard back. -->
 <svelte:window onfocus={() => document.activeElement === document.body && focusEmptyPage.n++} />
 
-<div class="window" inert={welcome || !!agentRequest || !!spaceSettings.draft || !!command.open} class:compact class:covered={overlay}>
+<div class="window" inert={welcome || !!agentRequest || !!spaceSettings.draft || !!command.open} class:compact class:covered={overlay} class:right={sidebarRight}>
   <div class="column" class:folded-up={!barVisible} class:resume={unfinished && welcomeStep.aside} inert={!barVisible}>
     {#if winState}
       <!-- ✦ on a builder tab: the controller opens the panel and sends "agent", handled above. -->
@@ -338,6 +339,10 @@
     height: 100%;
   }
   .window.compact { grid-template-columns: 1fr; }
+  /* The sidebar on the right (settings.sidebarSide): the same grid mirrored. */
+  .window.right { grid-template-columns: 1fr 240px; }
+  .window.right.compact { grid-template-columns: 1fr; }
+  .right .column { order: 1; }
   .column { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; min-height: 0; }
   .column.resume { grid-template-rows: minmax(0, 1fr) auto; }
   .resume-welcome {
@@ -370,6 +375,7 @@
     background: linear-gradient(color-mix(in oklab, var(--a1) 14%, var(--sheet)), var(--sheet) 45%);
     box-shadow: var(--modal-shadow);
   }
+  .compact.right .column { inset: 0 0 0 auto; }
   .compact .folded-up { transform: translateX(-100%); visibility: hidden; transition: transform 200ms var(--out), visibility 0s 200ms; }
   @media (prefers-reduced-motion: reduce) {
     .compact .column { transition: none; }
@@ -389,6 +395,9 @@
     overflow: hidden;
   }
   .compact .framed { margin-left: 8px; }
+  .right .framed { margin: 8px 0 8px 8px; }
+  .right.compact .framed { margin-right: 8px; }
+  .compact.right .folded-up { transform: translateX(100%); }
   /* The page's error and crash messages. */
   .crashed { display: grid; place-content: center; gap: 12px; height: 100%; text-align: center; color: var(--text); }
 </style>
