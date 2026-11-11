@@ -5,7 +5,7 @@ import { dispatch, state, waitFor } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
-import { click, inUi, missingApi, pressKeys, waitUi } from "./ui";
+import { click, inUi, missingApi, pressKeys, typeText, waitUi } from "./ui";
 
 let server: Awaited<ReturnType<typeof startServer>>;
 let w: LaunchedWebAiOs;
@@ -120,6 +120,53 @@ describe("space settings", () => {
     await modalClosed();
     const fresh = await waitSpaces((l) => l.find((e) => e.name === "Neuf")?.profile, (p) => !!p);
     expect([work.profile, "default", "new"]).not.toContain(fresh);
+  });
+
+  it("the icon field opens a grid of emojis: a click or Enter picks at once, Escape closes only the grid, typing replaces the icon", async () => {
+    const GRID = '[data-testid="emoji-grid"]';
+    const gridOpen = (open: boolean) => waitUi(m, "return !!doc.querySelector(arguments[0]) === arguments[1]", [GRID, open]);
+    const focused = () => inUi<string | null>(m, "return doc.activeElement?.getAttribute('aria-label') ?? null");
+    await click(m, '[data-testid="new-space"]');
+    await modalOpen("Nouvel espace");
+    await click(m, `${MODAL} [aria-label="Icône"]`);
+    await gridOpen(true);
+    expect(await inUi(m, "return doc.querySelector(arguments[0] + ' [aria-label=\"Icône\"]').getAttribute('aria-expanded')", [MODAL])).toBe("true");
+    expect(await inUi(m, "return doc.querySelectorAll(arguments[0] + ' button').length", [GRID])).toBeGreaterThanOrEqual(40);
+    await click(m, `${GRID} [aria-label="Musique"]`);
+    await gridOpen(false);
+    expect((await fields()).icon).toBe("🎵");
+    expect(await focused()).toBe("Icône");
+
+    // Keyboard: ↓ enters the grid, → moves, Enter picks.
+    await pressKeys(m, "ArrowDown");
+    await gridOpen(true);
+    await waitUi(m, "return doc.activeElement?.getAttribute('aria-label') === 'Maison'");
+    await pressKeys(m, "ArrowRight");
+    expect(await focused()).toBe("Travail");
+    await pressKeys(m, "Enter");
+    await gridOpen(false);
+    expect((await fields()).icon).toBe("💼");
+    expect(await inUi(m, "return !!doc.querySelector(arguments[0])", [MODAL])).toBe(true);
+
+    // Escape closes the grid, the modal stays.
+    await pressKeys(m, "ArrowDown");
+    await gridOpen(true);
+    await pressKeys(m, "Escape");
+    await gridOpen(false);
+    expect(await inUi(m, "return !!doc.querySelector(arguments[0])", [MODAL])).toBe(true);
+
+    // A click outside closes it too.
+    await click(m, `${MODAL} [aria-label="Icône"]`);
+    await gridOpen(true);
+    await click(m, `${MODAL} h2`);
+    await gridOpen(false);
+
+    // Typing replaces the icon, no need to erase it first.
+    await click(m, `${MODAL} [aria-label="Nom de l'espace"]`);
+    await click(m, `${MODAL} [aria-label="Icône"]`);
+    await typeText(m, "Z");
+    await gridOpen(false);
+    expect((await fields()).icon).toBe("Z");
   });
 
   it("a new space gets the aura chosen in the modal", async () => {

@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { TabsPanel } from "../../shared/api";
   import { api, appState } from "../state.svelte";
-  import AuraDot from "./AuraDot.svelte";
+  import AuraEmoji from "./AuraEmoji.svelte";
   import SiteIcon from "./SiteIcon.svelte";
 
   /**
@@ -11,9 +11,9 @@
   let { panel: panel }: { panel: TabsPanel } = $props();
 
   const send = api.tabCycle;
-  const auraOf = (id: string) => {
+  const spaceOf = (id: string) => {
     const s = appState.value;
-    return s?.spaces.find((e) => e.id === s.tabs[id]?.spaceId)?.aura;
+    return s?.spaces.find((e) => e.id === s.tabs[id]?.spaceId);
   };
 
   /**
@@ -49,6 +49,7 @@
 
 <div class="panel" data-testid="tabs-panel" role="listbox" aria-label="Onglets récents">
   {#each panel.cards as card, i (card.id)}
+    {@const space = spaceOf(card.id)}
     <div
       class="card"
       style:animation-delay="{i * 45}ms"
@@ -70,7 +71,7 @@
       <div class="legend">
         <SiteIcon favicon={card.favicon} title={card.title} />
         <span class="title">{card.title}</span>
-        {#if auraOf(card.id)}<AuraDot aura={auraOf(card.id)!} size={10} />{/if}
+        {#if space}<span class="space" title={space.name}><AuraEmoji icon={space.icon} aura={space.aura} /></span>{/if}
       </div>
     </div>
   {/each}
@@ -113,5 +114,6 @@
   .fallback { display: grid; place-items: center; height: 100%; background: linear-gradient(135deg, color-mix(in oklab, var(--a1) 22%, var(--sheet)), color-mix(in oklab, var(--a2) 22%, var(--sheet))); }
   .legend { display: flex; align-items: center; gap: 8px; margin: 8px 2px 1px; font-size: 13px; }
   .card[aria-selected="true"] .title { font-weight: 500; }
+  .space { flex: none; font-size: 12px; margin-right: 2px; }
   .title { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 </style>

@@ -105,6 +105,10 @@ describe("aura tour", () => {
       await click(m, '[data-testid="new-space"]');
       await waitUi(m, "return doc.querySelector('[data-testid=\"space-modal\"] h2')?.textContent === 'Nouvel espace'");
       await shoot(m, `8-space-modal-${theme}`);
+      await click(m, '[data-testid="space-modal"] [aria-label="Icône"]');
+      await waitUi(m, "return !!doc.querySelector('[data-testid=\"emoji-grid\"]')");
+      await shoot(m, `8b-emoji-grid-${theme}`);
+      await pressKeys(m, "Escape");
       await pressKeys(m, "Escape");
       await waitUi(m, "return !doc.querySelector('[data-testid=\"space-modal\"]')");
 
@@ -136,6 +140,15 @@ describe("aura tour", () => {
       );
       await waitUi(m, "return !doc.querySelector('[data-testid=\"sidebar\"]').parentElement.inert");
       await shoot(m, `4-compact-${theme}`);
+
+      // Last (more than two spaces fold the tools): a few spaces, each chip glowing with its own aura, the first active.
+      await dispatch(m, { type: "toggleCompact", windowId });
+      const first = (await state(m)).windows[0]!.activeSpace;
+      for (const [name, icon, aura, priv] of [["Travail", "💼", "lagon", false], ["Jardin", "🌱", "verger", false], ["Secret", "🎁", "braise", true]] as const)
+        await dispatch(m, { type: "createSpace", name, icon, aura, private: priv, profile: "default", windowId });
+      await dispatch(m, { type: "activateSpace", windowId, id: first });
+      await waitUi(m, "return doc.querySelectorAll('footer nav [data-testid^=\"space-\"]').length === 4");
+      await shoot(m, `4b-spaces-${theme}`);
     });
   }
 

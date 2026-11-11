@@ -1,6 +1,6 @@
 <script lang="ts">
   import { DEFAULT_AURA } from "../../shared/aura";
-  import AuraDot from "./AuraDot.svelte";
+  import AuraEmoji from "./AuraEmoji.svelte";
   import Icon from "./Icon.svelte";
   import type { Space, WindowState } from "../../shared/model";
   import { api, appState } from "../state.svelte";
@@ -65,24 +65,21 @@
           { label: "Réglages", dispatch: () => set(space) },
           ...((appState.value?.spaces.length ?? 0) > 1 ? [{ label: "Supprimer", dispatch: () => remove(space) }] : []),
         ])}
-      >{space.icon}<span class="aura"><AuraDot aura={space.aura} size={8} /></span>{#if space.private}<span class="padlock" aria-hidden="true">🔒</span>{/if}</button
+      ><AuraEmoji icon={space.icon} aura={space.aura} />{#if space.private}<span class="padlock" aria-hidden="true">🔒</span>{/if}</button
     >
   {/each}
   <button data-testid="new-space" title="Nouvel espace" onclick={create}><Icon name="plus" /></button>
 </nav>
 
 <style>
-  /* A single scrolling row; the padding keeps the grown aura dot and the padlock inside the scroll box. */
+  /* A single scrolling row; the padding keeps the grown aura glow and the padlock inside the scroll box. */
   .spaces { display: flex; gap: 2px; padding: 3px 2px; margin: -3px -2px; overflow-x: auto; scrollbar-width: none; }
   .spaces:has(.confirmation) { flex-wrap: wrap; overflow: visible; }
-  /* Round chips: the space's emoji, its aura dot growing on the spring when the space is the active one. */
+  /* Round chips: the space's emoji over its own aura's glow, brighter and larger on the active one (AuraEmoji). */
   .spaces button { all: unset; flex: none; width: 28px; height: 28px; display: grid; place-content: center; border-radius: 50%; color: var(--text-muted); position: relative; transition: transform var(--tap), background var(--tap); }
   .spaces button:hover { background: color-mix(in srgb, var(--glass-hi) 60%, transparent); color: var(--text); }
   .spaces button:active { transform: scale(0.97); }
   .spaces button[aria-current="true"] { background: var(--glass-hi); box-shadow: inset 0 0 0 1px var(--border), var(--lift); color: var(--text); }
-  .aura { position: absolute; right: 1px; bottom: 1px; line-height: 0; border-radius: 50%; box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--sheet) 70%, transparent); transition: transform var(--spring-d) var(--spring); }
-  .spaces button:hover .aura { transform: scale(1.12); }
-  .spaces button[aria-current="true"] .aura { transform: scale(1.25); }
   .padlock { position: absolute; left: -2px; bottom: -3px; font-size: 9px; line-height: 1; }
   .confirmation { flex: 1 0 100%; box-sizing: border-box; padding: 10px; border-radius: 12px; background: var(--glass-hi); box-shadow: inset 0 0 0 1px var(--glass-edge); color: var(--text); -webkit-app-region: no-drag; animation: webaios-rise var(--spring-d) var(--spring) backwards; }
   .confirmation p { margin: 0 0 8px; }

@@ -10,6 +10,7 @@
   import FrozenBackground from "./FrozenBackground.svelte";
   import { choiceLosesConnections, profileOptions, PROFILE_TO_CHOOSE } from "./spaceProfiles";
   import { spaceSettings } from "./spaceSettings.svelte";
+  import { fade } from "svelte/transition";
 
   /**
    * Creation or settings of a space: the `spaceSettings` draft, mounted as long as it exists. `ongletId`: the page
@@ -21,6 +22,40 @@
 
   let card: HTMLElement;
   let nameField: HTMLInputElement;
+  let iconField: HTMLInputElement;
+  let picker = $state<HTMLElement>();
+  /** The emoji grid under the icon field is open. */
+  let picking = $state(false);
+  const COLUMNS = 8;
+  const EMOJIS: [string, string][] = [
+    ["🏠", "Maison"], ["💼", "Travail"], ["🎓", "École"], ["📚", "Lecture"], ["✏️", "Écriture"], ["💻", "Code"], ["🧪", "Science"], ["💡", "Idées"],
+    ["🎮", "Jeux"], ["🎵", "Musique"], ["🎬", "Films"], ["📺", "Séries"], ["📷", "Photo"], ["🎨", "Art"], ["🧶", "Loisirs créatifs"], ["🎲", "Jeux de société"],
+    ["✈️", "Voyage"], ["🗺️", "Carte"], ["🏖️", "Vacances"], ["🚗", "Voiture"], ["🛒", "Courses"], ["🛍️", "Shopping"], ["🍳", "Cuisine"], ["☕", "Café"],
+    ["💰", "Argent"], ["📈", "Bourse"], ["🏦", "Banque"], ["🧾", "Factures"], ["📅", "Agenda"], ["📌", "Projets"], ["📁", "Dossier"], ["📰", "Actualités"],
+    ["❤️", "Santé"], ["🏃", "Sport"], ["🧘", "Bien-être"], ["🌱", "Jardin"], ["🐾", "Animaux"], ["👪", "Famille"], ["👶", "Bébé"], ["🎁", "Cadeaux"],
+    ["⚽", "Football"], ["🚀", "Projet perso"], ["🔧", "Bricolage"], ["🏡", "Immobilier"], ["🌍", "Monde"], ["⭐", "Favoris"], ["🔒", "Privé"], ["🧳", "Déplacements"],
+  ];
+  function pick(emoji: string) {
+    draft.icon = emoji;
+    picking = false;
+    iconField.focus();
+    iconField.select();
+  }
+  /** Arrows move across the grid (row-wise), Home / End to its ends; ↑ from the first row goes back to the field. */
+  function gridKeys(e: KeyboardEvent) {
+    const buttons = [...picker!.querySelectorAll("button")];
+    const i = buttons.indexOf(e.target as HTMLButtonElement);
+    const step = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -COLUMNS, ArrowDown: COLUMNS }[e.key];
+    const next = e.key === "Home" ? 0 : e.key === "End" ? buttons.length - 1 : step === undefined ? null : i + step;
+    if (next === null) return;
+    e.preventDefault();
+    if (next < 0 && e.key === "ArrowUp") iconField.focus();
+    else buttons[Math.max(0, Math.min(buttons.length - 1, next))]!.focus();
+  }
+  /** A click or focus anywhere outside the field and its grid closes the grid. */
+  function outside(e: Event) {
+    if (picking && e.target instanceof Node && e.target !== iconField && !picker?.contains(e.target)) picking = false;
+  }
   let ready = $state(false);
 
   const spaces = $derived(appState.value?.spaces ?? []);
@@ -107,7 +142,10 @@
     if (command.open || e.isComposing) return;
     if (e.key === "Escape") {
       e.preventDefault();
-      close();
+      if (picking) {
+        picking = false;
+        iconField.focus();
+      } else close();
     } else if (e.key === "Enter") {
       // A focused button keeps its own action; everywhere else, Enter saves.
       if (e.target instanceof HTMLElement && e.target.closest("button")) return;
@@ -127,7 +165,7 @@
   }
 </script>
 
-<svelte:window onkeydown={clavier} />
+<svelte:window onkeydown={clavier} onpointerdown={outside} onfocusin={outside} />
 
 <!-- Under the command bar, nothing in the modal can take focus (native Tab from the page body). -->
 <div class="modal" class:ready={ready} data-testid="space-modal" inert={!!command.open} style={Object.entries(auraVariables(draft.aura)).map(([k, v]) => `${k}:${v}`).join(";")}>
@@ -136,7 +174,39 @@
     <form onsubmit={validate}>
       <h2 id="space-title">{fresh ? "Nouvel espace" : "Réglages de l'espace"}</h2>
       <div class="field">
-        <input class="icon" bind:value={draft.icon} aria-label="Icône" maxlength="4" />
+        <div class="icon-pick">
+          <!-- Typing any emoji replaces the current one (selected on focus); the grid offers common ones. -->
+          <input
+            class="icon"
+            bind:this={iconField}
+            bind:value={draft.icon}
+            aria-label="Icône"
+            maxlength="4"
+            aria-haspopup="true"
+            aria-expanded={picking}
+            aria-controls="space-emojis"
+            onfocus={(e) => e.currentTarget.select()}
+            onclick={(e) => {
+              // Selected on click too: the release would otherwise drop the selection made on focus.
+              e.currentTarget.select();
+              picking = true;
+            }}
+            oninput={() => (picking = false)}
+            onkeydown={(e) => {
+              if (e.key !== "ArrowDown") return;
+              e.preventDefault();
+              picking = true;
+              requestAnimationFrame(() => picker?.querySelector("button")?.focus());
+            }}
+          />
+          {#if picking}
+            <div class="emojis" id="space-emojis" role="group" aria-label="Icônes proposées" data-testid="emoji-grid" bind:this={picker} out:fade={{ duration: 120 }}>
+              {#each EMOJIS as [emoji, label] (emoji)}
+                <button type="button" aria-label={label} title={label} aria-pressed={draft.icon === emoji} onkeydown={gridKeys} onclick={() => pick(emoji)}>{emoji}</button>
+              {/each}
+            </div>
+          {/if}
+        </div>
         <input bind:this={nameField} bind:value={draft.name} aria-label="Nom de l'espace" placeholder="Nom" />
       </div>
       <div class="block">
@@ -245,7 +315,30 @@
     font: inherit;
   }
   .field input { flex: 1; }
-  .field .icon { flex: none; width: 2.5em; text-align: center; }
+  .icon-pick { position: relative; flex: none; display: flex; }
+  .field .icon { flex: none; width: 2.5em; text-align: center; cursor: pointer; }
+  /* The emoji grid: a popover dropping under the field on the spring. */
+  .emojis {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: repeat(8, 32px);
+    gap: 2px;
+    padding: 6px;
+    /* Opaque: a backdrop blur does not reach through the card's own (backdrop root), the fields would show through. */
+    background: var(--sheet);
+    border: 1px solid var(--glass-edge);
+    border-radius: 14px;
+    box-shadow: var(--modal-shadow);
+    transform-origin: top left;
+    animation: webaios-drop var(--spring-d) var(--spring) backwards;
+  }
+  .emojis button { width: 32px; height: 32px; padding: 0; border: none; border-radius: 8px; background: none; font: 18px/1 var(--font-ui); display: grid; place-items: center; }
+  .emojis button:hover:not(:disabled) { background: var(--glass-hi); }
+  .emojis button:active:not(:disabled) { transform: scale(0.9); }
+  .emojis button[aria-pressed="true"] { background: var(--bg-active); box-shadow: inset 0 0 0 1px var(--accent); }
   select { width: 100%; }
   .block { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--border); padding-top: 10px; }
   .case { display: flex; align-items: center; gap: 6px; }
