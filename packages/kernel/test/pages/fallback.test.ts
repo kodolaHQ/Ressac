@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { resolvePage } from "../../src/pages/resolve.js";
 import { BUILTIN_COMPONENTS } from "../../src/pages/catalog.js";
-import { fallbackLayout } from "../../src/pages/fallback.js";
+import { fallbackLayout, humanize } from "../../src/pages/fallback.js";
 import { validatePlan } from "../../src/pages/validate.js";
 
 const tickets = [
@@ -42,16 +42,14 @@ describe("fallbackLayout", () => {
     expect(components(["a", "b"])).toEqual(["tags"]);
   });
 
-  it("objet { total: 3, tickets: [...] } : titre, chiffre, tableau", () => {
-    const c = components({ total: 3, tickets });
-    expect(c[0]).toBe("title");
-    expect(c).toContain("figure");
-    expect(c).toContain("table");
+  it("objet { total: 3, tickets: [...] } : titre, champs, section, tableau", () => {
+    expect(components({ total: 3, tickets })).toEqual(["title", "fields", "title", "table"]);
   });
 
   it("objet de champs simples : champs ; texte : paragraphe", () => {
     expect(components({ project: { name: "W", url: "https://x.fr" } })).toContain("fields");
-    expect(components({ resume: "bonjour" })).toContain("paragraph");
+    expect(fallbackLayout({ resume: "bonjour" }).blocks[1]).toMatchObject({ component: "fields", props: { object: "$", fields: [{ field: "resume", label: "Resume" }] } });
+    expect(components({ resume: "b".repeat(200) })).toEqual(["title", "title", "paragraph"]);
   });
 
   it("texte seul : paragraphe ; nombre seul : chiffre", () => {
@@ -59,10 +57,75 @@ describe("fallbackLayout", () => {
     expect(fallbackLayout(42).blocks[0]).toMatchObject({ component: "figure", props: { value: "$" } });
   });
 
+  it("humanize: camelCase and snake_case split, first letter capitalized, acronyms kept", () => {
+    expect(["viewCount", "nb_vues", "verdict", "URL", "pageURL", "top10Items", "_"].map(humanize)).toEqual(["View count", "Nb vues", "Verdict", "URL", "Page URL", "Top10 items", "_"]);
+  });
+
+  it("an action result (video summary): link, one labelled fields block, sections with humanized titles, bullets", () => {
+    const r = {
+      title: "I discovered a sound",
+      url: "https://www.youtube.com/watch?v=abc",
+      channel: "colsto",
+      duration: "29 min 12",
+      views: 4410673,
+      score: "9/10",
+      recommendation: "À regarder",
+      summary: "Une longue phrase ".repeat(12),
+      verdict: [{ text: "Excellent" }, { text: "Un peu long" }],
+      points: [{ text: "Un" }, { text: "Deux" }],
+    };
+    expect(fallbackLayout(r).blocks).toEqual([
+      { component: "title", props: { text: "Résultats" } },
+      { component: "link", props: { object: "$", url: "url", textField: "title" } },
+      {
+        component: "fields",
+        props: {
+          object: "$",
+          fields: [
+            { field: "channel", label: "Channel" },
+            { field: "duration", label: "Duration" },
+            { field: "views", label: "Views" },
+            { field: "score", label: "Score" },
+            { field: "recommendation", label: "Recommendation" },
+          ],
+        },
+      },
+      { component: "title", props: { text: "Summary" } },
+      { component: "paragraph", props: { value: "summary" } },
+      { component: "title", props: { text: "Verdict" } },
+      { component: "list", props: { items: "verdict", title: "text" } },
+      { component: "title", props: { text: "Points" } },
+      { component: "list", props: { items: "points", title: "text" } },
+    ]);
+    const v = valid(r);
+    expect(v.ok).toBe(true);
+    if (v.ok) expect(v.discarded).toEqual([]);
+    const page = resolvePage(fallbackLayout(r), r, { account: false, catalog: BUILTIN_COMPONENTS, fallback: true });
+    expect(page.blocks[1]).toMatchObject({ props: { link: { text: "I discovered a sound", url: r.url } } });
+    const fields = (page.blocks[2] as unknown as { props: { fields: { label: string; value: string }[] } }).props.fields;
+    expect(fields.slice(0, 3)).toEqual([{ label: "Channel", value: "colsto" }, { label: "Duration", value: "29 min 12" }, { label: "Views", value: new Intl.NumberFormat("fr-FR").format(4410673) }]);
+  });
+
+  it("a url without a title: a link showing the address; more than 12 short fields: several fields blocks", () => {
+    expect(fallbackLayout({ source: "http://x.fr/a" }).blocks[1]).toEqual({ component: "link", props: { object: "$", url: "source" } });
+    const many = Object.fromEntries(Array.from({ length: 14 }, (_, i) => [`f${i}`, i]));
+    expect(components(many)).toEqual(["title", "fields", "fields"]);
+    expect(valid(many).ok).toBe(true);
+  });
+
+  it("a nested object gets a humanized section title", () => {
+    expect(fallbackLayout({ project_info: { name: "W" } }).blocks.slice(1)).toEqual([
+      { component: "title", props: { text: "Project info" } },
+      { component: "fields", props: { object: "project_info" } },
+    ]);
+  });
+
   it("each fallback passes validatePlan", () => {
     const cas: unknown[] = [
       announcements, tickets, ["a", "b"], "texte", 7, { total: 3, tickets }, { project: { name: "W" }, announcements: announcements, tags: ["x"], text: "t", n: 0, ok: true },
       { "clé-bizarre": 1, tickets }, [1, 2, 3], JSON.parse('{"__proto__": {"a": 1}, "n": 2}'),
+      { points: [{ text: "a" }], lien: "https://x.fr", nom: "X", long: "y".repeat(300), multi: "a\nb", nan: Number.NaN, vide: "" },
+      Object.fromEntries(Array.from({ length: 40 }, (_, i) => [`k${i}`, i % 2 ? "https://x.fr/" + i : [{ t: i }]])),
     ];
     for (const r of cas) {
       const v = valid(r);

@@ -63,7 +63,7 @@
 .pa-table th .direction { margin-left: 4px; color: var(--text-muted); }
 .pa-table tbody th { font-weight: 600; }
 
-.pa-fields { display: grid; grid-template-columns: minmax(100px, max-content) 1fr; gap: 4px 16px; margin: 0; }
+.pa-fields { display: grid; grid-template-columns: minmax(100px, max-content) 1fr; gap: 6px 20px; margin: 0; padding: 12px 14px; border: 1px solid var(--glass-edge); border-radius: 16px; background: var(--glass); box-shadow: var(--lift); }
 .pa-fields dt { color: var(--text-muted); overflow-wrap: anywhere; }
 .pa-fields dd { margin: 0; overflow-wrap: anywhere; }
 
