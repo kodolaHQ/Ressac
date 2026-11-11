@@ -2,7 +2,7 @@
   /**
    * An agent component in a sandboxed opaque frame (`sandbox="allow-scripts"`),
    * served from its sanitized resource:// copy (chrome/store/action-media.ts), served again on each actions.change (the
-   * agent may have rewritten it: a new mtime, a new URL). It gets its props, the theme and its width by message; its
+   * agent may have rewritten it: a new mtime, a new URL). It gets its props, the theme, the Aura tokens and its width by message; its
    * `parent.postMessage` reaches the chrome as a `webaios-component` event (the copy's bridge), listened on the window
    * root. It can only ask for its height; anything else, a `webaiosOpen` link included, is ignored.
    */
@@ -24,12 +24,19 @@
     return () => sombre.removeEventListener("change", follow);
   });
 
+  /** The Aura tokens a component may use as CSS variables (the bridge sets them on its root), as resolved here. */
+  const TOKENS = ["--bg", "--sheet", "--text", "--text-muted", "--glass", "--border", "--accent", "--accent-ink", "--a1", "--a2", "--a3", "--font-display", "--font-ui", "--font-mono"];
+  function tokens(): Record<string, string> {
+    const s = getComputedStyle(document.documentElement);
+    return { ...Object.fromEntries(TOKENS.map((t) => [t, s.getPropertyValue(t).trim()])), "--radius-card": "16px", "--radius-control": "10px" };
+  }
+
   /** The frame shows the current copy: never an older copy, nor a page it navigated to. */
   const ours = () => !!src && iframe?.contentDocument?.documentURI === src;
 
   function send() {
     // Opaque origin: « * » is the only possible target; only the current copy receives.
-    if (ours()) iframe?.contentWindow?.postMessage({ type: "component", props: $state.snapshot(props), theme, width: width }, "*");
+    if (ours()) iframe?.contentWindow?.postMessage({ type: "component", props: $state.snapshot(props), theme, width: width, tokens: tokens() }, "*");
   }
   // On each change (the load goes through DOMFrameContentLoaded).
   $effect(() => {

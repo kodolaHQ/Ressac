@@ -260,6 +260,17 @@ describe("action page rendering", () => {
       expect(frame.uri).toBe(frame.src);
       expect(frame).toMatchObject({ title: "Ventes", body: "sombre" });
       expect(frame.texts.slice(0, 4)).toEqual(["Lundi", "1", "Mardi", "2"]);
+      // The Aura tokens of the page, as CSS variables on the component's root.
+      const tokens = await inUi<{ host: string[]; frame: string[] }>(
+        m,
+        `const names = ["--accent", "--text", "--font-ui", "--radius-card"];
+         const host = ui.getComputedStyle(doc.documentElement), d = doc.querySelector(arguments[0]).contentDocument;
+         const own = d.defaultView.getComputedStyle(d.documentElement);
+         return { host: names.map((n) => host.getPropertyValue(n).trim()), frame: names.map((n) => own.getPropertyValue(n).trim()) };`,
+        [FRAME],
+      );
+      expect(tokens.frame).toEqual([...tokens.host.slice(0, 3), "16px"]);
+      expect(tokens.frame[0]).not.toBe("");
       // The height the component asked for: its document's own height, not the 150 it started with.
       await waitUi(m, "const f = doc.querySelector(arguments[0]); const h = f.contentDocument.documentElement.scrollHeight; return h !== 150 && Math.round(f.getBoundingClientRect().height) === h;", [FRAME]);
       expect(await q.text(tid("block-error"))).toBe("Composant indisponible : absent");

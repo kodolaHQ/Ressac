@@ -38,7 +38,8 @@ export async function actionImage(url: string): Promise<string | null> {
 
 /**
  * The site home's bridge (homeBridge) for a component: `parent` becomes a frozen object whose postMessage dispatches
- * `webaios-component` on the frame's window, its detail the message as JSON; `Components` is hidden. Self-contained, serialized with toString().
+ * `webaios-component` on the frame's window, its detail the message as JSON; the Aura tokens of the chrome's messages
+ * are set on the root; `Components` is hidden. Self-contained, serialized with toString().
  */
 export function componentBridge(): void {
   const w = window as unknown as Record<string, any>;
@@ -46,6 +47,12 @@ export function componentBridge(): void {
   const Custom = w.CustomEvent;
   const dispatch = w.dispatchEvent.bind(w);
   w.parent = Object.freeze({ postMessage: (m: unknown) => void dispatch(new Custom("webaios-component", { detail: stringify(m) })) });
+  // The Aura tokens of each component message become CSS variables on the root, before the component's own listener runs.
+  const root = w.document.documentElement;
+  w.addEventListener("message", (e: MessageEvent) => {
+    const t = e.data?.type === "component" ? e.data.tokens : null;
+    if (t && typeof t === "object") for (const k of Object.keys(t)) if (/^--[a-z0-9-]+$/.test(k) && typeof t[k] === "string") root.style.setProperty(k, t[k]);
+  });
   // Firefox's leftover web `Components` (`interfaces` only): hidden, a component page never sees it.
   Object.defineProperty(w, "Components", { value: undefined, configurable: false, writable: false });
 }
