@@ -56,7 +56,7 @@
         }}
         ondragleave={() => (hover = null)}
         ondrop={(e) => drop(e, index)}
-        onclick={() => api.dispatch({ type: "activateTab", id })}
+        onclick={(e) => e.button === 0 && api.dispatch({ type: "activateTab", id })}
         onkeydown={(e) => (e.key === "Enter" || e.key === " ") && api.dispatch({ type: "activateTab", id })}
         onauxclick={(e) => e.button === 1 && closeTab(id)}
         oncontextmenu={(e) =>

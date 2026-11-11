@@ -202,6 +202,27 @@ describe("space settings", () => {
     ]);
   });
 
+  it("right-clicking a space chip keeps its menu open, its items work, and the active space stays", async () => {
+    const work = await create("Travail", "💼", false, "default");
+    const home = (await spaces())[0]!;
+    await dispatch(m, { type: "activateSpace", windowId: await windowId(), id: home.id });
+    const active = async () => (await state(m)).windows[0]!.activeSpace;
+    expect(await active()).toBe(home.id);
+    await click(m, button(work.id), { button: 2 });
+    await new Promise((r) => setTimeout(r, 300));
+    expect(await inUi(m, "return [...doc.querySelectorAll('[role=menuitem]')].map((e) => e.textContent)")).toEqual(["Réglages", "Supprimer"]);
+    expect(await active()).toBe(home.id);
+    await click(m, '[role="menuitem"]', { text: "Réglages" });
+    await modalOpen("Réglages de l'espace");
+    expect((await fields()).name).toBe("Travail");
+    await pressKeys(m, "Escape");
+    await modalClosed();
+    await click(m, button(work.id), { button: 2 });
+    await click(m, '[role="menuitem"]', { text: "Supprimer" });
+    await waitSpaces((l) => l.some((e) => e.id === work.id), (v) => !v);
+    expect(await active()).toBe(home.id);
+  });
+
   it("deleting a profile's last space warns that its logins will be lost, even without tabs", async () => {
     // Shares the default profile, no tab: deleted without confirmation.
     const sets = await create("Jeux", "🎮", false, "default");

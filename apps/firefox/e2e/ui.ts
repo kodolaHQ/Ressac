@@ -40,7 +40,7 @@ export async function waitUi<T = unknown>(m: Marionette, body: string, args: unk
 }
 
 /**
- * A trusted mouse click (`button` 0) or right click (2: contextmenu) at the centre of the first element matching
+ * A trusted mouse click (`button` 0) or right click (2: mousedown, contextmenu, mouseup) at the centre of the first element matching
  * `selector` in the UI, and whose text contains `text` if given. Waits for it to appear.
  */
 export async function click(m: Marionette, selector: string, o: { button?: 0 | 2; text?: string; frame?: Frame } = {}): Promise<void> {
@@ -53,8 +53,9 @@ export async function click(m: Marionette, selector: string, o: { button?: 0 | 2
      await new Promise((r) => requestAnimationFrame(r));
      const r = el.getBoundingClientRect();
      const x = r.left + r.width / 2, y = r.top + r.height / 2;
-     if (arguments[2] === 2) ui.synthesizeMouseEvent("contextmenu", x, y, { button: 2 });
-     else for (const type of ["mousedown", "mouseup"]) ui.synthesizeMouseEvent(type, x, y, { button: 0, clickCount: 1 });`,
+     // A right click as Gecko delivers it on macOS: contextmenu on the press, then the release, whose click (button 2) reaches chrome documents.
+     const types = arguments[2] === 2 ? ["mousedown", "contextmenu", "mouseup"] : ["mousedown", "mouseup"];
+     for (const type of types) ui.synthesizeMouseEvent(type, x, y, { button: arguments[2], clickCount: 1 });`,
     [selector, o.text ?? null, o.button ?? 0],
     o.frame,
   );

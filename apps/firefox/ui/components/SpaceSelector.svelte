@@ -53,7 +53,7 @@
       aria-current={space.id === win.activeSpace ? "true" : undefined}
       title={space.private ? `${space.name} (privé)` : space.name}
       data-private={space.private || undefined}
-      onclick={() => api.dispatch({ type: "activateSpace", windowId: win.id, id: space.id })}
+      onclick={(e) => e.button === 0 && api.dispatch({ type: "activateSpace", windowId: win.id, id: space.id })}
       oncontextmenu={(e) =>
         openMenu(e, [
           { label: "Réglages", dispatch: () => set(space) },

@@ -55,7 +55,7 @@
           <button
             data-testid="favorite-{favorite.id}"
             class:active={favorite.id === activeLink}
-            onclick={() => api.dispatch({ type: "openFavorite", windowId: win.id, kind: "pinned", id: favorite.id })}
+            onclick={(e) => e.button === 0 && api.dispatch({ type: "openFavorite", windowId: win.id, kind: "pinned", id: favorite.id })}
             oncontextmenu={(e) =>
               openMenu(e, [{ label: "Retirer", dispatch: () => api.dispatch({ type: "unpin", spaceId: win.activeSpace, favoriteId: favorite.id }) }])}
           >

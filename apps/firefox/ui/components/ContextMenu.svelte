@@ -1,8 +1,9 @@
 <script lang="ts">
+  // Gecko dispatches `click` for the right button too in chrome documents: only a left click closes the menu.
   import { closeMenu, menu } from "./menu.svelte";
 </script>
 
-<svelte:window onkeydown={(e) => e.key === "Escape" && closeMenu()} onclick={closeMenu} onblur={closeMenu} />
+<svelte:window onkeydown={(e) => e.key === "Escape" && closeMenu()} onclick={(e) => e.button === 0 && closeMenu()} onblur={closeMenu} />
 
 {#if menu.open}
   <!-- Stays in the sidebar (the web view would cover a menu that overflows onto the content), except on an internal page. -->

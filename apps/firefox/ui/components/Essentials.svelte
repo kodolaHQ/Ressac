@@ -32,7 +32,7 @@
       data-testid="favorite-{favorite.id}"
       class:active={favorite.id === active}
       title={favorite.title}
-      onclick={() => open(favorite)}
+      onclick={(e) => e.button === 0 && open(favorite)}
       oncontextmenu={(e) => openMenu(e, [{ label: "Retirer", dispatch: () => api.dispatch({ type: "removeEssential", favoriteId: favorite.id }) }])}
     >
       <SiteIcon favicon={favorite.favicon} title={favorite.title} size={large ? 32 : 18} />
