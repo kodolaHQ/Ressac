@@ -65,7 +65,7 @@
           { label: "Réglages", dispatch: () => set(space) },
           ...((appState.value?.spaces.length ?? 0) > 1 ? [{ label: "Supprimer", dispatch: () => remove(space) }] : []),
         ])}
-      ><AuraEmoji icon={space.icon} aura={space.aura} />{#if space.private}<span class="padlock" aria-hidden="true">🔒</span>{/if}</button
+      ><AuraEmoji icon={space.icon} aura={space.aura} size={28} />{#if space.private}<span class="padlock" aria-hidden="true">🔒</span>{/if}</button
     >
   {/each}
   <button data-testid="new-space" title="Nouvel espace" onclick={create}><Icon name="plus" /></button>
@@ -76,7 +76,7 @@
   .spaces { display: flex; gap: 2px; padding: 3px 2px; margin: -3px -2px; overflow-x: auto; scrollbar-width: none; }
   .spaces:has(.confirmation) { flex-wrap: wrap; overflow: visible; }
   /* Round chips: the space's emoji over its own aura's glow, brighter and larger on the active one (AuraEmoji). */
-  .spaces button { all: unset; flex: none; width: 28px; height: 28px; display: grid; place-content: center; border-radius: 50%; color: var(--text-muted); position: relative; transition: transform var(--tap), background var(--tap); }
+  .spaces button { all: unset; flex: none; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; color: var(--text-muted); position: relative; transition: transform var(--tap), background var(--tap); }
   .spaces button:hover { background: color-mix(in srgb, var(--glass-hi) 60%, transparent); color: var(--text); }
   .spaces button:active { transform: scale(0.97); }
   .spaces button[aria-current="true"] { background: var(--glass-hi); box-shadow: inset 0 0 0 1px var(--border), var(--lift); color: var(--text); }
