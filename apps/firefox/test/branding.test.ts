@@ -21,4 +21,12 @@ describe("Halo branding", () => {
       "48c25a7f3d339aa8f49b946cd3171b6e5bbaf7dfdc0c26cd14d62e48321a9c1f",
     );
   });
+
+  it("Assets.car (what macOS 26+ shows first) carries the Halo AppIcon, not Firefox's from the branding template", () => {
+    const b = readFileSync(join(dir, "Assets.car"));
+    expect(b.subarray(0, 8).toString()).toBe("BOMStore");
+    expect(b.includes("AppIcon")).toBe(true);
+    // sha256 of engine/browser/branding/unofficial/Assets.car, which surfer copies when the branding has none
+    expect(createHash("sha256").update(b).digest("hex")).not.toBe("a5d14250b9346693ed95add03b2d9a106c4740a83f85e6f6c6b5fbda438e4506");
+  });
 });
