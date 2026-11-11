@@ -36,6 +36,8 @@ The kernel (`@webaios/kernel`) runs in a separate Node process, `host/host.ts`, 
 
 The agent's workshop container is `webaios-workshop-firefox` (`WEBAIOS_CONTAINER`), from the image `webaios-workshop:1`. It publishes ports 5300-5319 (`WEBAIOS_CONTAINER_PORTS`) and mounts the `webaios-home` volume (kept: it holds the agent's login).
 
+First build: the kernel runs `docker build --progress=plain` and streams its stderr; `parseBuildStep` (`packages/kernel/src/container/workshop.ts`) turns the BuildKit lines `#N [k/n] FROM|RUN …` into a step and a French label, sent to every window waiting on that start (`Workshop.onBuildProgress`, replayed to late joiners) and shown in the agent panel (« Préparation de l'agent, étape k/n : … (m min) »). Without step lines (classic builder) the panel keeps its plain text. The 20 min cap and the error tail are unchanged. `FAKE_DOCKER_BUILD_STEP_MS` paces the fake docker's build lines in the e2e.
+
 Invisible reads run in a windowless browser, in a private container cleared before and after each read. Every request from a reading container is checked: an address that is local, or a name that resolves to one (or fails to resolve), is refused. Known limits, marked `shortcut:` in `chrome/agent/local-guard.ts` and `invisible.ts`: custom-scheme navigations, preconnects, Alt-Svc, WebRTC, and service workers in a login profile's container. Paced reads (the workflows' `web` widgets) wait for another site's turn before following a navigation to it: the read stops at that site's document, gives its place back, waits, then resumes (`chrome/agent/invisible.ts`, `host/remote-bridge.ts`).
 
 ### Agent engines
@@ -49,6 +51,10 @@ Settings › Agents lets each agent pick its engine. Codex: the ChatGPT subscrip
 - Added a file to `src/`: `pnpm engine:import` (builds the UI first, so the generated sidebar files get linked), then `pnpm build:ui`.
 - Changed a `*.patch`, or anything compiled (C++, Rust, `jar.mn`): `pnpm engine:import`, then `pnpm build`.
 - Tests: `pnpm test` (unit), `pnpm e2e` (headless Firefox with a temporary profile, driven over Marionette).
+
+## Reports (Sentry)
+
+A packaged build with a DSN (`WEBAIOS_SENTRY_DSN` at package time, never in the repo) sends, while the switch in Réglages is on (pref `webaios.telemetry.enabled`): errors (`errorEnvelope`, no page address, IP sent as `0.0.0.0`), native crashes, and one session per launch (`sessionEnvelope` in `shared/telemetry.ts`, item type `session`, `status: "exited"`) carrying a random install id kept in the pref `webaios.telemetry.installId`. Sentry › Releases then counts installs (users) and launches (sessions) per version. Turning the switch off deletes the install id; nothing is sent while it is off. One « exited » session per launch: no live session nor crash-free rate (`shortcut:` comment).
 
 ## Data
 
@@ -199,7 +205,7 @@ Limits:
 - A login profile that becomes private or is deleted does not re-ask at once: the accord is refused at the widget's next scheduled harvest (at the next read; no observer).
 - `display.html` is written by the agent: the CSP and the guard are deterrence, not proof.
 - One home page for every space: widgets, data and accords are not per space.
-- `ai.*` blocks run entirely in Ollama: Gemma (`gemma4:e4b-mlx`) writes, and the decision model `pplx-decider-flash` replaces Kev (same `/v1/systemone` request and answers; compared on the owner's real widgets: 90–100 % same keep/drop decisions, score correlation ~0.9). Nothing is installed by WebAiOs-Firefox: run `ollama pull pplx-decider-flash` once; a missing model fails the block with `Kev a répondu 404`. `WEBAIOS_KEV_URL` still points the decisions at a Kev server instead (the e2e use it for their fake).
+- `ai.*` blocks run entirely in Ollama: Gemma (`gemma4:e4b-mlx`) writes, and the decision model `pplx-decider-flash` replaces Kev (same `/v1/systemone` request and answers; compared on the owner's real widgets: 90–100 % same keep/drop decisions, score correlation ~0.9). Gemma is `gemma4:e4b-mlx`, or `gemma4:e4b` when only that one is installed (`check()` reports `gemmaModel`; generation uses the detected one). Réglages › IA locale has a « Télécharger » button next to an absent model while Ollama answers: the host's `settings.pullModel` (`host/ollama-pull.ts`) accepts only `gemma4:e4b-mlx` and the chosen decision model, posts Ollama's `/api/pull`, and the page polls `settings.pullProgress` for the percentage (one pull at a time, no cancel: quitting stops it and Ollama resumes later). A missing model fails the block with `Kev a répondu 404`. `WEBAIOS_KEV_URL` still points the decisions at a Kev server instead (the e2e use it for their fake).
 
 ## Actions
 
