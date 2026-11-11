@@ -23,7 +23,7 @@ const MONO_FAMILY = "WebAiOs Geist Mono";
 /** The parent's copy of the font, read once. */
 let monoBytes: Promise<ArrayBuffer> | undefined;
 /** The pause's pill (French UI copy). */
-const PAUSED = "vim en pause · ⇧Échap · ? : aide";
+const PAUSED = "vim en pause · ⇧Échap pour reprendre";
 // The actor's layer, a closed shadow root in the page: the link hints, the pause's pill and the `?` sheet. `:host` important
 // declarations win over the page's. Glass, Geist Mono and the space's aura accent (DESIGN.md), on the window's own
 // tokens (the parent sends them: see "vim:style").

@@ -482,7 +482,7 @@ describe("vim mode: pause", () => {
   it("i pauses: keys and Escape reach the page, the pill shows; ⇧Escape resumes unseen", async () => {
     const id = await open();
     await pressKeys(m, "i");
-    await expect.poll(pill).toBe("vim en pause · ⇧Échap · ? : aide");
+    await expect.poll(pill).toBe("vim en pause · ⇧Échap pour reprendre");
     await pressKeys(m, "j");
     await expect.poll(seen).toContain("keydown:j");
     await pressKeys(m, "x");
@@ -490,7 +490,7 @@ describe("vim mode: pause", () => {
     await expect.poll(seen).toContain("keydown:Escape");
     expect(await scrollY()).toBe(0);
     expect(!!(await state(m)).tabs[id]).toBe(true);
-    expect(await pill()).toBe("vim en pause · ⇧Échap · ? : aide");
+    expect(await pill()).toBe("vim en pause · ⇧Échap pour reprendre");
     const before = await seen();
     await pressKeys(m, "Shift+Escape");
     await expect.poll(pill).toBeNull();
@@ -501,7 +501,7 @@ describe("vim mode: pause", () => {
     // ⇧Escape outside a pause starts one, unseen too.
     const before2 = await seen();
     await pressKeys(m, "Shift+Escape");
-    await expect.poll(pill).toBe("vim en pause · ⇧Échap · ? : aide");
+    await expect.poll(pill).toBe("vim en pause · ⇧Échap pour reprendre");
     expect((await seen()).slice(before2.length)).not.toContain("Escape");
   });
 

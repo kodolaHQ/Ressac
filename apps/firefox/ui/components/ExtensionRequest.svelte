@@ -30,7 +30,7 @@
   {:else}
     <h3>Activer <span class="name" data-testid="extension-card-name">« {name} »</span> dans « {card.space} » ?</h3>
   {/if}
-  <div class="subtle">{card.source === "store" ? "Chrome Web Store" : "Écrite par l'agent"}</div>
+  <div class="subtle">{card.source === "store" ? "addons.mozilla.org" : "Écrite par l'agent"}</div>
 
   {#if card.rights.length > 0}
     <p class="title">Ce qu'elle veut faire :</p>

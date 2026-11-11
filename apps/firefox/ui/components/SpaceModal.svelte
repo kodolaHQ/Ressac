@@ -249,7 +249,7 @@
                 <label class="case">
                   <input type="checkbox" role="switch" checked={l.active} disabled={l.greyedOut !== null} onchange={(e) => void toggle(l, e.currentTarget)} />
                   <b>{l.name}</b>
-                  <span class="source">{l.source === "agent" ? "écrite par l'agent" : "Chrome Web Store"}</span>
+                  <span class="source">{l.source === "agent" ? "écrite par l'agent" : "addons.mozilla.org"}</span>
                 </label>
                 {#if l.active && l.alsoIn.length > 0}<p class="note">Active aussi dans « {l.alsoIn.join(", ")} » (même profil)</p>{/if}
                 {#if l.greyedOut}<p class="note">{l.greyedOut}</p>{/if}
