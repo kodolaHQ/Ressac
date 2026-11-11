@@ -170,7 +170,14 @@
   // Overlays cover the agent panel too; the empty page and internal pages only fill the space left of it.
   const modalOpen = $derived(welcomeLayer || !!agentRequest || !!spaceSettings.draft || !!menu.open || !!command.open || !!tabPanel);
   // The one-time notes of design mode (over the page: a frozen background, the whole window) and of the Actions page; never over another modal.
-  const designNote = $derived(!modalOpen && !!design.state?.active && firstTimePending("design"));
+  const designNoteDue = $derived(!modalOpen && !!design.state?.active && firstTimePending("design"));
+  /** The note's layer stays (and keeps the whole window) for the note's fade out. */
+  let designNote = $state(false);
+  $effect(() => {
+    if (designNoteDue) return void (designNote = true);
+    const t = setTimeout(() => (designNote = false), WELCOME_FADE_MS);
+    return () => clearTimeout(t);
+  });
   const overlay = $derived(modalOpen || designNote);
   $effect(() => win.setFullWindow(overlay ? "window" : !pageWeb || !!panel));
 
@@ -298,6 +305,7 @@
   </div>
 {/if}
 {#if designNote}
+  <!-- A modal opening over it takes the window: the note's layer leaves with it. -->
   <div class="command-layer">
     <FrozenBackground tabId={activeTab?.id ?? null} onReady={() => {}} />
     <FirstTimeNote id="design" />

@@ -91,7 +91,8 @@ describe("welcome", () => {
     expect(await inUi(m, `return !!doc.querySelector('[data-testid="sidebar"]').closest('[inert]')`)).toBe(false);
     await click(m, '[data-testid="welcome-resume"]');
     await shows("welcome-docker", "OrbStack n'est pas installé.");
-    expect(await inUi(m, `return !!doc.querySelector('[data-testid="welcome-resume"]')`)).toBe(false);
+    // The pill leaves with a fade.
+    await waitUi(m, `return !doc.querySelector('[data-testid="welcome-resume"]')`);
 
     // While it shows, the window's shortcuts do nothing: ⌘T, ⌃Tab.
     const before = await state(m);

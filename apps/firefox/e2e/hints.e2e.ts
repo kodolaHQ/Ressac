@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { TIPS } from "../shared/hints";
 import { dispatch, state, waitFor, waitReady } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
@@ -12,8 +12,10 @@ import { click, inUi, missingApi, pressKeys, waitUi, type Frame } from "./ui";
 const CARD = '[data-testid="tip-card"]';
 let w: LaunchedWebAiOs;
 let m: Marionette;
+/** The first-time notes tests start with the notes unseen; the tips tests with them seen (the agent note holds the tip back). */
+let notes = false;
 beforeEach(async () => {
-  w = await launchWebAiOs({ env: { WEBAIOS_OLLAMA_URL: "http://127.0.0.1:9" }, firstTimeNotes: true });
+  w = await launchWebAiOs({ env: { WEBAIOS_OLLAMA_URL: "http://127.0.0.1:9" }, firstTimeNotes: notes });
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
@@ -36,7 +38,7 @@ const seen = (): string[] => {
     return [];
   }
 };
-const savedSeen = (want: string[]) => waitFor(m, "return true", () => JSON.stringify(seen()) === JSON.stringify(want), 15_000);
+const savedSeen = (want: string[], pick = () => seen().filter((id) => TIPS.some((t) => t.id === id))) => waitFor(m, "return true", () => JSON.stringify(pick()) === JSON.stringify(want), 15_000);
 
 describe("hints", () => {
   it("first tip", async () => {
@@ -97,13 +99,15 @@ const noteIn = (id: string, frame: Frame) => waitUi(m, "return !!doc.querySelect
 const noNoteIn = (id: string, frame: Frame) => waitUi(m, "return !doc.querySelector(arguments[0])", [`[data-testid="first-time-${id}"]`], 10_000, frame);
 
 describe("first-time notes", () => {
+  beforeAll(() => void (notes = true));
+  afterAll(() => void (notes = false));
   it("agent first time", async () => {
     // The panel is open by default on the home page.
     await noteIn("agent", "agent");
     expect(await inUi<string>(m, 'return doc.querySelector(\'[data-testid="first-time-agent"] h2\').textContent;', [], "agent")).toBe("L'agent");
     await click(m, '[data-testid="first-time-ok"]', { frame: "agent" });
     await noNoteIn("agent", "agent");
-    await savedSeen(["agent"]);
+    await savedSeen(["agent"], seen);
     // Closed, opened again: no note.
     await click(m, '[data-testid="agent-button"]');
     await click(m, '[data-testid="agent-button"]');
@@ -115,7 +119,14 @@ describe("first-time notes", () => {
     // The key goes to the agent frame itself: which frame has the keyboard in a headless window is not what is tested.
     await inUi(m, "doc.defaultView.dispatchEvent(new doc.defaultView.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));", [], "agent");
     await noNoteIn("agent", "agent");
-    await savedSeen(["agent"]);
+    await savedSeen(["agent"], seen);
+  });
+
+  it("the tip waits for the agent note", async () => {
+    await noteIn("agent", "agent");
+    expect(await inUi(m, `return !!doc.querySelector('${CARD}')`)).toBe(false);
+    await click(m, '[data-testid="first-time-ok"]', { frame: "agent" });
+    await cardShows("⌃Tab");
   });
 
   it("actions first time", async () => {

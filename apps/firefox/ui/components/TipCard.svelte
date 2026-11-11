@@ -1,13 +1,14 @@
 <script lang="ts">
   import { fade } from "svelte/transition";
   import { nextTip } from "../../shared/hints";
-  import { appState } from "../state.svelte";
+  import { appState, currentWindow } from "../state.svelte";
   import { openCommand } from "./command.svelte";
-  import { markSeen } from "./hints";
+  import { firstTimePending, markSeen } from "./hints";
 
   const hints = $derived(appState.value?.settings.hints);
   // Not under the first-launch welcome.
-  const tip = $derived(hints?.enabled && appState.value?.settings.onboarded !== false ? nextTip(hints.seen) : null);
+  // And not beside the agent note, which shows in the open panel: one hint at a time.
+  const tip = $derived(hints?.enabled && appState.value?.settings.onboarded !== false && !(currentWindow()?.agentPanelOpen && firstTimePending("agent")) ? nextTip(hints.seen) : null);
 
   function tryIt() {
     if (!tip) return;
