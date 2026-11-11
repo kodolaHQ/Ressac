@@ -326,6 +326,8 @@ Tests: `test/ui-network.test.ts`, `e2e/ui-network.e2e.ts`, `e2e/ui-network-fail.
 
 No title bar (`browser.tabs.inTitlebar`, in `webaios.js`: needs `pnpm build:ui`). macOS places its window buttons on the box `#webaios-window-buttons` and hides them when there is none, as in compact mode (the theme geometry of `-moz-window-button-box`). The sidebar drags the window through `-moz-window-dragging`, which only counts in a nested document whose docShell has `windowDraggingAllowed`.
 
+Sidebar side (Réglages › Vie privée › Interface › « Barre de navigation »): `settings.sidebarSide` (`left` by default). On `right`, the controller sets `webaios-sidebar-side="right"` on the chrome root and `window.css` mirrors the frames: the sidebar on the right edge, the agent panel on the left, the design basket between the page and the agent. The window buttons stay in the sidebar's top row, which is still the drag zone. The UI follows the state: full-window pages (`App.svelte`), the compact column (it folds out to the right), the context menu clamp, and the agent's resize handle (on its right edge, one signed drag handler). The compact mouse zone uses `innerWidth - x`. Tests: `e2e/sidebar-right.e2e.ts` and the right-side cases in `agent-panel` and `compact`.
+
 ## Worktrees
 
 `engine/` is shared by all checkouts (it links to `~/WebAiOs-firefox/engine`), and the import links `src/` files of the checkout that ran it. Run `pnpm engine:import` in the checkout you build. Links left behind by a deleted worktree are dangling: `engine:import` prunes them first (`scripts/engine.sh prune`), otherwise surfer fails with ENOENT.
