@@ -177,7 +177,7 @@
   {/if}
   {#if appState.state === "preparing"}
     {#if appState.step !== undefined && appState.since !== undefined}
-      <p class="message" data-testid="agent-build-step">Préparation de l'agent, étape {appState.step}/{appState.of} : {appState.label}… ({Math.max(0, Math.floor((now - appState.since) / 60_000))} min) (la première fois, la construction du conteneur prend quelques minutes)</p>
+      <p class="message" data-testid="agent-build-step">Préparation de l'agent, étape {appState.step}/{appState.of} : {appState.label}… ({Math.max(0, Math.floor((now - appState.since) / 60_000)) || "moins d'une"} min) (la première fois, la construction du conteneur prend quelques minutes)</p>
     {:else}
       <p class="message">Préparation de l'agent… (la première fois, la construction du conteneur prend quelques minutes)</p>
     {/if}

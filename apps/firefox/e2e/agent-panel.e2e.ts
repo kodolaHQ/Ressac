@@ -552,6 +552,6 @@ it("⌘J: the terminal takes the keyboard back when the window's focus is lost d
 it("the first build shows its step and the elapsed minutes in the panel", async () => {
   await launch({ FAKE_DOCKER_NO_CONTAINER: "1", FAKE_DOCKER_BUILD_STEP_MS: "2000" });
   await shown();
-  await waitUi(m, "return (doc.querySelector('[data-testid=agent-build-step]')?.textContent ?? '').includes(arguments[0])", ["étape 2/3 : Outils système… (0 min)"], 20_000, "agent");
+  await waitUi(m, "return (doc.querySelector('[data-testid=agent-build-step]')?.textContent ?? '').includes(arguments[0])", ["étape 2/3 : Outils système… (moins d'une min)"], 20_000, "agent");
   await terminalShows("fake agent ready>", 30_000);
 });
