@@ -86,7 +86,7 @@ export function createDesignHost(o: {
   let externals: ExternalService | null = null;
   let failure: string | null = null;
 
-  // The batch sent to the agent: one pre-filled line in its session, never sent. The chrome reopens a window if needed
+  // The batch sent to the agent: one line in its session, sent. The chrome reopens a window if needed
   // and design.donnerAgent brings it to the front.
   const batchSend = async (p: TrackedProject, batch: Batch): Promise<void> => {
     if (p.type === "externe") return;

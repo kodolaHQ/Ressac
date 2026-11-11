@@ -165,21 +165,21 @@
     switch (a.state) {
       case "preparing":
       case "launching":
-        return { buttons: [{ label: "Arrêter", action: "stop" }], menu: [entry("Déboguer", "debug"), entry("Relire", "review")] };
+        return { buttons: [{ label: "Arrêter", action: "stop" }], menu: [entry("Déboguer", "debug"), entry("Modifications", "review")] };
       case "running":
         return {
           buttons: [
             { label: "Ouvrir", action: "open" },
             { label: "Arrêter", action: "stop" },
           ],
-          menu: [entry("Relancer", "relaunch"), entry("Déboguer", "debug"), entry("Relire", "review")],
+          menu: [entry("Relancer", "relaunch"), entry("Déboguer", "debug"), entry("Modifications", "review")],
         };
       case "error":
         return {
           buttons: [
             { label: "Relancer", action: "relaunch", launched: true },
             { label: "Déboguer", action: "debug" },
-            { label: "Relire", action: "review" },
+            { label: "Modifications", action: "review" },
           ],
           menu: [entry("Supprimer", "delete"), ...promote],
         };
@@ -188,7 +188,7 @@
           buttons: [
             { label: "Lancer", action: "launch", launched: true },
             { label: "Déboguer", action: "debug" },
-            { label: "Relire", action: "review" },
+            { label: "Modifications", action: "review" },
           ],
           menu: [entry("Supprimer", "delete"), ...promote, entry("Afficher le dossier", "folder")],
         };
@@ -287,7 +287,7 @@
                 <button data-testid="site-{s.id}-edit" onclick={() => actSite(s, "edit")}>Modifier avec l'agent</button>
                 <button data-testid="site-{s.id}-forget" onclick={() => (siteToForget = s)}>{FORGET_MEMORY}</button>
                 <button data-testid="site-{s.id}-folder" onclick={() => actSite(s, "folder")}>Afficher le dossier</button>
-                <button data-testid="site-{s.id}-review" onclick={() => actSite(s, "review")}>Relire</button>
+                <button data-testid="site-{s.id}-review" onclick={() => actSite(s, "review")}>Modifications</button>
                 <button data-testid="site-{s.id}-delete" onclick={() => (siteToDelete = s)}>Supprimer</button>
               </div>
               {/if}

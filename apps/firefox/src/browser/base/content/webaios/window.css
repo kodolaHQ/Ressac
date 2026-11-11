@@ -221,12 +221,13 @@
 
 /* The agent's halo (controller: webaios-agent-working while one of its tools runs on the displayed tab): a light that
    runs around the page (::after) over an inner glow (::before). Inside the tabbox, which clips: over the page, never
-   taking the mouse. Always there at opacity 0, its spin paused, so it fades in and out. */
-:root[webaios-main] #tabbrowser-tabbox {
+   taking the mouse. Always there at opacity 0, its spin paused, so it fades in and out. App and site app windows
+   (app-window.ts, site-window.ts) light it the same way around their view. */
+:root:is([webaios-main], [webaios-app], [webaios-site]) #tabbrowser-tabbox {
   position: relative;
 }
-:root[webaios-main] #tabbrowser-tabbox::before,
-:root[webaios-main] #tabbrowser-tabbox::after {
+:root:is([webaios-main], [webaios-app], [webaios-site]) #tabbrowser-tabbox::before,
+:root:is([webaios-main], [webaios-app], [webaios-site]) #tabbrowser-tabbox::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -236,31 +237,31 @@
   opacity: 0;
   transition: opacity 400ms;
 }
-:root[webaios-main] #tabbrowser-tabbox::before {
+:root:is([webaios-main], [webaios-app], [webaios-site]) #tabbrowser-tabbox::before {
   box-shadow: inset 0 0 40px -12px var(--a2);
 }
-:root[webaios-main] #tabbrowser-tabbox::after {
+:root:is([webaios-main], [webaios-app], [webaios-site]) #tabbrowser-tabbox::after {
   padding: 2px;
   background: conic-gradient(from var(--ang), transparent 0 55%, var(--a1) 70%, var(--a2) 82%, var(--a3) 92%, transparent);
   mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
   animation: webaios-spin 1.8s linear infinite paused;
 }
-:root[webaios-main][webaios-agent-working] #tabbrowser-tabbox::before,
-:root[webaios-main][webaios-agent-working] #tabbrowser-tabbox::after {
+:root:is([webaios-main], [webaios-app], [webaios-site])[webaios-agent-working] #tabbrowser-tabbox::before,
+:root:is([webaios-main], [webaios-app], [webaios-site])[webaios-agent-working] #tabbrowser-tabbox::after {
   opacity: 1;
 }
-:root[webaios-main][webaios-agent-working] #tabbrowser-tabbox::after {
+:root:is([webaios-main], [webaios-app], [webaios-site])[webaios-agent-working] #tabbrowser-tabbox::after {
   animation-play-state: running;
 }
 /* A video in fullscreen: no halo over it. */
-:root[webaios-main][inDOMFullscreen] #tabbrowser-tabbox::before,
-:root[webaios-main][inDOMFullscreen] #tabbrowser-tabbox::after {
+:root:is([webaios-main], [webaios-app], [webaios-site])[inDOMFullscreen] #tabbrowser-tabbox::before,
+:root:is([webaios-main], [webaios-app], [webaios-site])[inDOMFullscreen] #tabbrowser-tabbox::after {
   display: none;
 }
 @keyframes webaios-spin { to { --ang: 360deg; } }
 @media (prefers-reduced-motion: reduce) {
   /* A still ring. */
-  :root[webaios-main] #tabbrowser-tabbox::after {
+  :root:is([webaios-main], [webaios-app], [webaios-site]) #tabbrowser-tabbox::after {
     animation: none !important;
   }
 }

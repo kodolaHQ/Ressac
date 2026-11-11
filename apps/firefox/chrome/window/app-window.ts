@@ -3,7 +3,7 @@
 import { sameOrigin, FAVICON_SIZE } from "../../core/applications/favicon";
 import { cutFrameNetwork } from "./frame-network";
 import { FIREFOX_COMMANDS, FIREFOX_KEYS, shortcutFor } from "./keys";
-import { protectView } from "./site-window";
+import { protectView, showHalo } from "./site-window";
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 // Keep in sync with store/apps.ts APP_WINDOW_KEY.
@@ -93,6 +93,7 @@ export function setupAppWindow(win: Window, folder: string): void {
   if (app?.folder !== folder) return void win.close();
   const doc = win.document;
   doc.documentElement.setAttribute("webaios-app", folder);
+  showHalo(win, `app:${folder}`);
   doc.getElementById("navigator-toolbox")!.hidden = true;
   routeOpens(win, apps);
   // Firefox's tab, address and history keys do nothing here; ⌘R reloads the view; ⌘W and ⇧⌘W close the window; ⌘N

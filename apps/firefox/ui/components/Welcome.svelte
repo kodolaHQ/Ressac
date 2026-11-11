@@ -146,6 +146,10 @@
                 </button>
               {/each}
             </div>
+            <div class="check">
+              <p class="note">Pour recevoir les alertes des sites et de la veille, autorisez les notifications de WebAiOs dans les Réglages Système.</p>
+              <button type="button" data-testid="welcome-notifications" onclick={() => api.settings.openNotificationSettings()}>Ouvrir les réglages de notifications</button>
+            </div>
             <div class="actions">
               <button type="button" class="quiet" data-testid="welcome-back" onclick={back}>Retour</button>
               <span class="grow"></span>

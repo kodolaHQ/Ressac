@@ -115,7 +115,8 @@ const ticks = (m: Marionette, tab: string) => inPage<number>(m, tab, "return Num
 /** A mark on the page's document: gone once the tab reloaded. */
 const mark = (m: Marionette, tab: string) => inPage(m, tab, "document.documentElement.setAttribute('data-avant', '1')");
 const reloaded = (m: Marionette, tab: string) =>
-  poll(() => inPage<boolean>(m, tab, "return !document.documentElement.hasAttribute('data-avant') && document.readyState === 'complete'"), (v) => v);
+  // readyState first: mid-reload, the new document has no documentElement yet.
+  poll(() => inPage<boolean>(m, tab, "return document.readyState === 'complete' && !document.documentElement.hasAttribute('data-avant')"), (v) => v);
 
 describe("agent extensions per space", () => {
   it("active in space A only: its content script runs in A's tab, not in B's (another profile)", async () => {

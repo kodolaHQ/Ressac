@@ -6,6 +6,8 @@ import type { WindowId } from "../../shared/model";
 export const BUFFER_MAX = 200_000;
 /** The agent's output goes to the UI in batches: one IPC message per burst, not per pty chunk. */
 export const GROUPING_MS = 8;
+/** A submitted prefill: the Enter that sends it comes this long after its text. */
+export const SUBMIT_DELAY_MS = 150;
 
 /** The last characters of an output, kept in chunks: appending never copies the whole buffer. */
 export class SessionBuffer {
@@ -66,7 +68,7 @@ interface Entry {
   /** Last terminal size, to reopen the session identically (relancerTout). */
   size: TerminalSize;
   /** Text to put in the input as soon as the session is active (see prefill). */
-  prefill?: { text: string; written?: () => void };
+  prefill?: { text: string; written?: () => void; submit?: boolean };
   /** This window's agent profile, fixed when the entry is made. */
   profile: string;
   /** Profiles whose session was active in this window: switching back to one resumes its conversation. */
@@ -141,7 +143,7 @@ export class SessionsAgent {
           this.o.send(f, "state", { state: "active" });
           const p = entry.prefill;
           entry.prefill = undefined;
-          if (p) this.writePrefill(s, p.text, p.written);
+          if (p) this.writePrefill(f, s, p);
         },
         (err: Error) => {
           // Startup abandoned (window closed, relancerTout): its failure no longer concerns the panel.
@@ -181,20 +183,28 @@ export class SessionsAgent {
   }
 
   /**
-   * Puts a text in the agent's input, without sending it: right away if the session is active, otherwise as soon as it
+   * Puts a text in the agent's input, sent only when `submit`: right away if the session is active, otherwise as soon as it
    * becomes so (a single pending text per window, the last wins). `ecrit` is called just before writing,
    * session open: an access granted there survives the policy's reset by the session opening.
    */
-  prefill(f: WindowId, text: string, written?: () => void): void {
+  prefill(f: WindowId, text: string, written?: () => void, submit = false): void {
+    const p = { text: text, ...(written ? { written: written } : {}), ...(submit ? { submit: true } : {}) };
     let e = this.inputs.get(f);
-    if (e?.session?.active) return this.writePrefill(e.session, text, written);
+    if (e?.session?.active) return this.writePrefill(f, e.session, p);
     e ??= this.entry(f, { cols: 80, rows: 24 });
-    e.prefill = { text: text, ...(written ? { written: written } : {}) };
+    e.prefill = p;
   }
 
-  private writePrefill(s: SessionLike, text: string, written?: () => void): void {
-    written?.();
-    s.write(text);
+  private writePrefill(f: WindowId, s: SessionLike, p: NonNullable<Entry["prefill"]>): void {
+    p.written?.();
+    s.write(p.text);
+    if (!p.submit) return;
+    // Enter apart from the text: in the same write, the agent's TUI takes it as a pasted newline, not a send.
+    setTimeout(() => {
+      if (this.inputs.get(f)?.session !== s || !s.active) return;
+      s.write("\r");
+      this.o.onSend?.(f);
+    }, SUBMIT_DELAY_MS);
   }
 
   resize(f: WindowId, t: TerminalSize): void {

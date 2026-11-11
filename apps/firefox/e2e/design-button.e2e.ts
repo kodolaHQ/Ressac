@@ -14,7 +14,7 @@ import { declareProject, openApplications } from "./review";
 import { inBrowser, resolveLocalHosts } from "./sites";
 import { click, inUi, pressKeys, typeText } from "./ui";
 
-// Plan 35b Task 4: the ✎ button, ⇧⌘D and the chevron's menu (Panier, Relire ce projet), without a
+// Plan 35b Task 4: the ✎ button, ⇧⌘D and the chevron's menu (Panier, Voir les modifications de l'agent), without a
 // native menu, and Review Focus 1. The demo is 127.0.0.1:15313, in this file's block 15310-15314.
 
 const PORT = 15313;
@@ -243,7 +243,7 @@ describe("on the demo", () => {
     expect((await button())?.count).toBe("1");
   });
 
-  it("the chevron: Panier opens the column even outside the mode; no Relire ce projet on a demo; Fermer clears Panier", async () => {
+  it("the chevron: Panier opens the column even outside the mode; no Voir les modifications de l'agent on a demo; Fermer clears Panier", async () => {
     await open(`${demo.page}/`);
     await expect.poll(button, { timeout: 10_000 }).toMatchObject({ disabled: false });
     expect(await chevron()).toEqual(["Panier"]);
@@ -327,18 +327,18 @@ describe("an external project", () => {
 
   const reviewTabs = async () => Object.values((await state(m)).tabs).filter((o) => o.url === reviewUrl(project()));
 
-  it("relecture.spec.ts:168 Relire ce projet of an external project's tab, twice: one Review page, no second tab", async () => {
+  it("relecture.spec.ts:168 Voir les modifications de l'agent of an external project's tab, twice: one Review page, no second tab", async () => {
     await activate(tab);
     await expect.poll(button, { timeout: 10_000 }).toMatchObject({ disabled: false });
-    expect(await chevron()).toEqual(["Panier", "Relire ce projet"]);
-    await click(m, '[role="menuitem"]', { text: "Relire ce projet" });
+    expect(await chevron()).toEqual(["Panier", "Voir les modifications de l'agent"]);
+    await click(m, '[role="menuitem"]', { text: "Voir les modifications de l'agent" });
     await expect.poll(async () => (await reviewTabs()).length, { timeout: 10_000 }).toBe(1);
     const review = (await reviewTabs())[0]!;
     await expect.poll(() => inUi<boolean>(m, `return !!doc.querySelector('${tid("review-page")}');`), { timeout: 10_000 }).toBe(true);
     await activate(tab);
     await expect.poll(button, { timeout: 10_000 }).toMatchObject({ disabled: false });
     await chevron();
-    await click(m, '[role="menuitem"]', { text: "Relire ce projet" });
+    await click(m, '[role="menuitem"]', { text: "Voir les modifications de l'agent" });
     await expect.poll(async () => (await state(m)).windows[0]!.active[(await state(m)).windows[0]!.activeSpace], { timeout: 10_000 }).toBe(review.id);
     expect((await reviewTabs()).map((o) => o.id)).toEqual([review.id]);
     await activate(tab);

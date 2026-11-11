@@ -92,6 +92,7 @@ export function createSettingsApi(o: {
     setTelemetry: (enabled) => o.chrome.setTelemetry(enabled),
     version: async () => o.chrome.version(),
     openAdvanced: () => o.dispatch({ type: "openTab", windowId: o.windowId, url: "about:preferences", activate: true }),
+    openNotificationSettings: () => o.chrome.openNotificationSettings(),
     openUrl(url) {
       if (typeof url === "string" && url.startsWith("https://")) o.dispatch({ type: "openTab", windowId: o.windowId, url, activate: true });
     },

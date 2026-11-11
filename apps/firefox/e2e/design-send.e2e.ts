@@ -12,7 +12,7 @@ import { declareProject, modified, openApplications, refreshReview, textOf, writ
 import { inBrowser, resolveLocalHosts } from "./sites";
 import { click, typeText, waitUi } from "./ui";
 
-// Plan 35b Task 5: the cart's send, to the agent (pre-filled, never sent) and to the connected Claude Code, and
+// Plan 35b Task 5: the cart's send, to the agent (sent with Enter) and to the connected Claude Code, and
 // spec §5.10 (the host stopped). The demo is
 // 127.0.0.1:15318, in this file's block 15315-15319.
 
@@ -125,7 +125,7 @@ const TERMINAL = "(doc.querySelector('.xterm-rows')?.textContent ?? '').replace(
 type Content = { type: string; text?: string; data?: string; mimeType?: string }[];
 
 describe("to the agent", () => {
-  it("design.spec.ts:489 two remarks on the demo then send: the agent's terminal is pre-filled without Enter, the batch is on disk, « Traité » closes it", async () => {
+  it("design.spec.ts:489 two remarks on the demo then send: the agent receives it with Enter, the batch is on disk, « Traité » closes it", async () => {
     await open(`${demo.page}/`);
     await modeOn();
     await remark("#email", "input#email.champ", "Champ plus large");
@@ -137,8 +137,8 @@ describe("to the agent", () => {
     await waitUi(m, `return ${TERMINAL}.includes("fake agent ready>")`, [], 20_000, "agent");
     await expect.poll(agentInput, { timeout: 10_000 }).toMatch(new RegExp(`^\\[remarques de .+ — démo http://(localhost|127\\.0\\.0\\.1):${PORT} : 1\\) `));
     expect(agentInput()).toContain(`/workspace/.webaios/remarks/demo-${PORT}/`);
-    await sleep(300);
-    expect(agentInput()).not.toContain("\r");
+    // Enter comes once, after the text (core/agent/sessions.ts SUBMIT_DELAY_MS).
+    await expect.poll(agentInput, { timeout: 5_000 }).toMatch(/\] [^\r]*\r$/);
     const dir = path.join(w.dataDir, "workspace", ".webaios", "remarks", `demo-${PORT}`);
     const batches = readdirSync(dir).filter((n) => /^\d{8}T\d{6}Z-[0-9a-f]{4}$/.test(n));
     expect(batches).toHaveLength(1);
@@ -215,7 +215,7 @@ describe("an external project", () => {
     await modeOff();
   });
 
-  it("design.spec.ts:577 the spec's success on an external project: remarks, send, read_remarks, the file changed, Relire ce projet, a comment, Marquer comme relu", { timeout: 90_000 }, async () => {
+  it("design.spec.ts:577 the spec's success on an external project: remarks, send, read_remarks, the file changed, Voir les modifications de l'agent, a comment, Marquer comme relu", { timeout: 90_000 }, async () => {
     await activate(tab);
     await modeOn();
     await remark("#email", "input#email.champ", "refuser une adresse sans domaine");
@@ -234,7 +234,7 @@ describe("an external project", () => {
     writeAppJs(p.folder, modified(15));
     await activate(tab);
     await click(m, ".design .chevron");
-    await click(m, '[role="menuitem"]', { text: "Relire ce projet" });
+    await click(m, '[role="menuitem"]', { text: "Voir les modifications de l'agent" });
     const PAGE = tid("review-page");
     const ADDED = `${tid("diff-line")}.added`;
     await waitUi(m, `return !!doc.querySelector('${PAGE}')`, [], 15_000);

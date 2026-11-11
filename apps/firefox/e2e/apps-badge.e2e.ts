@@ -141,7 +141,7 @@ describe("one WebAiOs, essai and autre launched in each test", () => {
     await sized(m, "essai", 48, 28);
     await clickBadge(m, "essai", '[data-testid="webaios-pill"]');
     await sized(m, "essai", 300, 320);
-    expect(await inBadge(m, "essai", `return [...doc.querySelectorAll('[role="menuitem"]')].map((e) => e.textContent.trim());`)).toEqual(["Mode design ⌘⇧D", "Panier (0)", "Relire ce projet"]);
+    expect(await inBadge(m, "essai", `return [...doc.querySelectorAll('[role="menuitem"]')].map((e) => e.textContent.trim());`)).toEqual(["Mode design ⌘⇧D", "Panier (0)", "Voir les modifications de l'agent"]);
     await inBadge(m, "essai", `f.contentWindow.dispatchEvent(new f.contentWindow.KeyboardEvent("keydown", { key: "Escape", bubbles: true })); return 1;`);
     await sized(m, "essai", 48, 28);
     expect(await inBadge(m, "essai", `return doc.querySelectorAll('[role="menuitem"]').length;`)).toBe(0);
@@ -216,10 +216,10 @@ describe("one WebAiOs, essai and autre launched in each test", () => {
     const windowId = (await state(m)).windows[0]!.id;
     await dispatch(m, { type: "openApps", windowId: windowId });
     await waitUi(m, `return !!doc.querySelector(${JSON.stringify(appRow("vieux"))})`);
-    expect(await inUi<string[]>(m, `return [...doc.querySelectorAll(arguments[0])].map((b) => b.textContent.trim());`, [`${appRow("vieux")} button`])).not.toContain("Relire");
-    expect(await rowMenuItems(m, "vieux")).not.toContain("Relire");
+    expect(await inUi<string[]>(m, `return [...doc.querySelectorAll(arguments[0])].map((b) => b.textContent.trim());`, [`${appRow("vieux")} button`])).not.toContain("Modifications");
+    expect(await rowMenuItems(m, "vieux")).not.toContain("Modifications");
     await inUi(m, "doc.body.dispatchEvent(new ui.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); return 1;");
-    await rowButton(m, "essai", "Relire");
+    await rowButton(m, "essai", "Modifications");
     await waitUi(m, "return !!doc.querySelector('[data-testid=\"review-page\"]')", [], 15_000);
     await expect.poll(async () => (await reviewTabs(m, "app-essai")).map((o) => o.title), { timeout: 10_000 }).toEqual(["Relecture — Essai"]);
     // The UI refuses a folder name a shell would not take, and a project without manifest, before any page.
@@ -229,11 +229,11 @@ describe("one WebAiOs, essai and autre launched in each test", () => {
   });
 
   // relecture.spec.ts:168
-  it("Relire ce projet from the badge opens the same page in the main window, without a second tab", async () => {
+  it("Voir les modifications de l'agent from the badge opens the same page in the main window, without a second tab", async () => {
     await launched();
     for (let i = 0; i < 2; i++) {
       await clickBadge(m, "essai", '[data-testid="webaios-pill"]');
-      await clickBadge(m, "essai", '[role="menuitem"]', "Relire ce projet");
+      await clickBadge(m, "essai", '[role="menuitem"]', "Voir les modifications de l'agent");
       await expect.poll(async () => (await reviewTabs(m, "app-essai")).map((o) => o.title), { timeout: 10_000 }).toEqual(["Relecture — Essai"]);
     }
     const s = await state(m);

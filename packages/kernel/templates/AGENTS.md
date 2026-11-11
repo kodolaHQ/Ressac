@@ -848,6 +848,7 @@ fenêtre de la même session ; une navigation ou redirection de la page principa
 - `list_sites` : id · nom · domaine actuel · ouverte|fermée (et l'erreur de `site.json`), jamais une page ni la mémoire.
 - `open_site(id)` : ouvre la fenêtre (ou la remet devant) et rend `site:<id>`, l'id sous lequel elle apparaît dans
   `list_tabs` (« appli de site »).
+- `close_site(id)` : ferme sa fenêtre (quand l'utilisateur te demande de quitter ou fermer l'appli).
 - **Un accord par appli et par conversation** : la première lecture (`read_tab`, `capture_screen`, `site_memory`,
   `tweak_errors`, `navigate`) affiche une carte à l'utilisateur. S'il refuse, tu ne vois que le nom, le
   domaine et l'état. `navigate(site:<id>, url)` ne va que sur les domaines de l'appli ; si la carte des retouches est
@@ -1038,6 +1039,7 @@ parent.postMessage({ type: "ready" }, "*");
 | `lock_console(id)` | Referme ce déblocage : à appeler dès que la correction est finie |
 | `list_sites` | Applis de site de l'utilisateur : id, nom, domaine actuel, ouverte ou fermée (voir « Applis de site ») |
 | `open_site(id)` | Ouvre la fenêtre d'une appli de site et rend l'id d'onglet `site:<id>` |
+| `close_site(id)` | Ferme la fenêtre d'une appli de site |
 | `site_memory(id)` | Ce que l'appli a retenu (valeurs, positions des vidéos), tronqué à 65 536 caractères (64 Ko) ; accord de l'utilisateur par appli et par conversation |
 | `tweak_errors(id)` | Erreurs de console de tes retouches (source déclarée par la page, non vérifiée) ; même accord |
 

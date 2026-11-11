@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { testActor } from "./agent-extensions";
-import { state, waitReady } from "./firefox";
+import { state, waitFor, waitReady } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
@@ -212,7 +212,7 @@ describe("the agent on a site app window", () => {
     expect((await memory).text).not.toContain("Mémoire d'une appli de site");
   });
 
-  it("site_memory, window closed: the card has the app's name; grant → the memory; then the window's tools without a second card (sites.spec.ts:1799)", async () => {
+  it("site_memory, window closed: the card has the app's name; grant → the memory; then the window's tools without a second card (sites.spec.ts:1799); close_site closes it", async () => {
     await start({ vidola: vidola() }, () => {
       const folder = path.join(dataDir, "sites", "vidola");
       mkdirSync(folder, { recursive: true });
@@ -234,6 +234,16 @@ describe("the agent on a site app window", () => {
     await expect.poll(() => siteWindowCount(m, "vidola"), { timeout: 10_000 }).toBe(1);
     expect((await call("tweak_errors", { id: "vidola" })).text).toContain("Erreurs de console des retouches");
     expect(await shown(CARD)).toBe(false);
+    // A read lights the agent's halo around the app's view, as in the main window.
+    const working = `return ${siteWindowExpr("vidola")}?.document.documentElement.hasAttribute("webaios-agent-working");`;
+    const reading = call("read_tab", { id: "site:vidola" });
+    await waitFor(m, working, (v) => v === true, 2_000);
+    await reading;
+    await waitFor(m, working, (v) => v === false, 5_000);
+    // The agent quits the app: its window closes, the list says so.
+    expect((await call("close_site", { id: "vidola" })).text).toBe("Appli de site vidola fermée.");
+    await expect.poll(() => siteWindowCount(m, "vidola"), { timeout: 10_000 }).toBe(0);
+    await expect.poll(async () => (await call("list_sites")).text).toContain("vidola · Vidola · vidola-a.localhost · fermée");
   });
 
   it("list_tabs shows site:vidola without its URL; site_memory after the grant gives the series; navigate to pub.localhost refused (sites.spec.ts:2173)", async () => {

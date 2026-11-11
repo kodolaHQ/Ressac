@@ -185,11 +185,11 @@ export function writeRunnableAction(
   });
 }
 
-/** Three pages of the slow site, read one by one: « Lecture de 127.0.0.1… » then « 3 / 3 ». */
-export const writePagesAction = (dataDir: string, siteUrl: string, id = "pages", name = "Pages") =>
+/** `pages` pages (three by default) of the slow site: « Lecture de 127.0.0.1… » then « 3 / 3 ». */
+export const writePagesAction = (dataDir: string, siteUrl: string, id = "pages", name = "Pages", pages = 3) =>
   writeRunnableAction(dataDir, id, {
     name: name,
-    code: `export default async () => [1, 2, 3].map((n) => ({ url: "${siteUrl}/lent/" + n }));`,
+    code: `export default async () => [1, 2, 3].slice(0, ${pages}).map((n) => ({ url: "${siteUrl}/lent/" + n }));`,
     blocks: [{ id: "lecture", type: "source.page", params: { url: "{url}", perItem: true, field: "page" } }],
   });
 
@@ -296,7 +296,8 @@ export type ImageRequestSeen = { path: string; cookie: string | null; referer: s
  * `/hop` a 302 to `/p.png`, `/secret` a PNG, `*.jpg` a PNG too, `*\/html.png` an HTML page, `*\/big.png` 6 MB.
  */
 export async function startActionServers() {
-  const settings: { siteSlownessMs: number; gemmaSlownessMs: number; plan: unknown; tickets: GitlabTicket[] } = { siteSlownessMs: 0, gemmaSlownessMs: 0, plan: null, tickets: GITLAB_TICKETS };
+  // `siteHold`: the /lent/ pages wait for it (a test ends an action when it chooses, not after a delay).
+  const settings: { siteSlownessMs: number; siteHold: Promise<void> | null; gemmaSlownessMs: number; plan: unknown; tickets: GitlabTicket[] } = { siteSlownessMs: 0, siteHold: null, gemmaSlownessMs: 0, plan: null, tickets: GITLAB_TICKETS };
   const pages: Record<string, () => string> = {
     "/gitlab/tickets": () =>
       `<title>Tickets</title><h1>Tableau de bord</h1><ul>${settings.tickets.map((t) => `<li><a href="/gitlab/ticket/${t.n}">#${t.n} ${t.title} [${t.priority}] (${t.project})</a></li>`).join("")}</ul><a href="/gitlab/aide">Aide</a>`,
@@ -312,7 +313,7 @@ export async function startActionServers() {
     if (page) return void setTimeout(() => html(res, page()), p.startsWith("/gitlab/") ? settings.siteSlownessMs : 0);
     const n = /^\/lent\/(\d+)$/.exec(p)?.[1];
     if (!n) return void res.writeHead(404).end();
-    setTimeout(() => html(res, `<title>Page ${n}</title><p>Texte ${n}</p>`), settings.siteSlownessMs);
+    void Promise.resolve(settings.siteHold).then(() => setTimeout(() => html(res, `<title>Page ${n}</title><p>Texte ${n}</p>`), settings.siteSlownessMs));
   });
   const prompts: string[] = [];
   const ollama = await listen((req, res, body) => {
@@ -349,7 +350,7 @@ export async function startActionServers() {
     settings,
     /** actions.spec.ts beforeEach. */
     reset() {
-      Object.assign(settings, { siteSlownessMs: 0, gemmaSlownessMs: 0, plan: null, tickets: GITLAB_TICKETS });
+      Object.assign(settings, { siteSlownessMs: 0, siteHold: null, gemmaSlownessMs: 0, plan: null, tickets: GITLAB_TICKETS });
       seen.length = 0;
     },
     close: () => Promise.all([site, ollama, kev, images].map((s) => s.close())),

@@ -726,7 +726,8 @@ const design = createDesignHost({
   sites: () => sites.list().then((l) => l.map(({ id, name: name }) => ({ id, name: name }))),
   // Every app (apps.liste() keeps the running ones only).
   siteApps: () => apps.manager.list(),
-  prefill: (f, t) => sessions.prefill(f, t),
+  // Remarks from the cart and comments from the review: already reviewed by the user, so sent right away.
+  prefill: (f, t) => sessions.prefill(f, t, undefined, true),
   chrome: { agentWindow: () => rpc.request("design.agentWindow"), giveAgent: (f) => rpc.notify("design.giveAgent", [f]) },
   notify: notify,
   broadcast: () => (rpc.notify("external.change"), rpc.notify("design.change")),

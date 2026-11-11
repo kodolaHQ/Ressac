@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { WorkshopError } from "@webaios/kernel";
-import { GROUPING_MS, SessionsAgent, BUFFER_MAX, SessionBuffer, type SessionLike } from "../../core/agent/sessions";
+import { GROUPING_MS, SUBMIT_DELAY_MS, SessionsAgent, BUFFER_MAX, SessionBuffer, type SessionLike } from "../../core/agent/sessions";
 
 class FakeSession implements SessionLike {
   active = true;
@@ -352,4 +352,18 @@ describe("each window keeps its agent", () => {
     await w.manager.start("f1", size);
     expect(w.calls.at(-1)).toEqual({ f: "f1", profile: "claude", resume: false });
   });
+});
+
+test("a submitted prefill sends Enter apart from its text", async () => {
+  vi.useFakeTimers();
+  try {
+    const { management: manager, sessions } = prepare();
+    await manager.start("F", size);
+    manager.prefill("F", "[remarques] ", undefined, true);
+    expect(sessions[0]!.written).toEqual(["[remarques] "]);
+    vi.advanceTimersByTime(SUBMIT_DELAY_MS);
+    expect(sessions[0]!.written).toEqual(["[remarques] ", "\r"]);
+  } finally {
+    vi.useRealTimers();
+  }
 });

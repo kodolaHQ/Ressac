@@ -122,7 +122,11 @@ const widgetRuns = (id: string) => {
 
 // actions.spec.ts:1558
 it("the Gmail widget (account, harvest.mjs) and a watch update as before while an action runs", { timeout: 150_000 }, async () => {
-  servers.settings.siteSlownessMs = 8000;
+  // The action's one page stays unanswered until the widgets are checked: the action runs until the test lets it end, not
+  // for a delay that a loaded machine outlasts (only the 30 s read deadline bounds it). One page: it takes one of the two
+  // invisible-read places, the other stays free for the widgets (three pages took both, and the widgets waited for them).
+  let release = () => {};
+  servers.settings.siteHold = new Promise<void>((r) => (release = r));
   const site = servers.site.url;
   // An account, a harvest written by hand (harvest.mjs), no workflow.
   await writeWidget(dirs.dataDir, "gmail", {
@@ -165,7 +169,7 @@ it("the Gmail widget (account, harvest.mjs) and a watch update as before while a
   const now = new Date().toISOString();
   await writeFile(path.join(widgetsDir("veille"), "state.json"), JSON.stringify({ status: "ok", lastUpdate: now, lastAttempt: now, hours: { done: "9999-12-31T23:59", failures: null } }));
   await writeFile(path.join(dirs.dataDir, "widgets", "grants.json"), JSON.stringify({ gmail: { domains: ["127.0.0.1"], public: [], profile: "default" } }));
-  await writePagesAction(dirs.dataDir, site);
+  await writePagesAction(dirs.dataDir, site, "pages", "Pages", 1);
   const { m } = await launch(1400);
   await untilEqual(() => shown(m, "gmail"), '{"example":"gmail"}');
   await waitKernel(m);
@@ -188,6 +192,7 @@ it("the Gmail widget (account, harvest.mjs) and a watch update as before while a
   expect(widgetRuns("gmail").map((e) => e.status)).toEqual(["succeeded"]);
   for (const id of ["gmail", "veille"]) expect(widgetRuns(id)[0]!.owner).toEqual({ type: "widget", id });
   expect(JSON.parse(readFileSync(path.join(widgetsDir("gmail"), "state.json"), "utf8")).status).toBe("ok");
+  release();
   await untilEqual(() => runStatuses(dirs.dataDir, "pages"), ["succeeded"], 60_000);
 });
 

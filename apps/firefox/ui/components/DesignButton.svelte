@@ -9,7 +9,7 @@
   function menu(ev: MouseEvent) {
     const entries: MenuEntry[] = [{ label: "Panier", dispatch: () => (design.basketRequested = true) }];
     // Task 11: the review of the agent's apps and external projects.
-    if (e?.project && e.project.type !== "demo") entries.push({ label: "Relire ce projet", dispatch: () => api.design.review() });
+    if (e?.project && e.project.type !== "demo") entries.push({ label: "Voir les modifications de l'agent", dispatch: () => api.design.review() });
     openMenu(ev, entries);
   }
 </script>
