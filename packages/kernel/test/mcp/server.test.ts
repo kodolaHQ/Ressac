@@ -89,6 +89,23 @@ test("read_tab on Gmail: request, refusal → normal answer", async () => {
   expect(bridge.calls.some((a) => a.method === "readText")).toBe(false);
 });
 
+test("read_tab marks the tab running while it reads, not after (the window's halo)", async () => {
+  await client.close();
+  await server.stop();
+  await start(true);
+  let release!: () => void;
+  const read = bridge.readText.bind(bridge);
+  bridge.readText = async (id: string) => {
+    await new Promise<void>((ok) => (release = ok));
+    return read(id);
+  };
+  const call = client.callTool({ name: "read_tab", arguments: { id: "gmail" } });
+  await vi.waitFor(() => expect(policy.state().gmail?.running).toBe(true));
+  release();
+  expect(text(await call)).toContain("Texte de Gmail");
+  expect(policy.state().gmail?.running).toBe(false);
+});
+
 test("request accepted → access remembered (no second request)", async () => {
   await client.close();
   await server.stop();

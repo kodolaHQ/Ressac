@@ -210,6 +210,11 @@
 :root[webaios-main][webaios-agent-working] #tabbrowser-tabbox::after {
   animation-play-state: running;
 }
+/* A video in fullscreen: no halo over it. */
+:root[webaios-main][inDOMFullscreen] #tabbrowser-tabbox::before,
+:root[webaios-main][inDOMFullscreen] #tabbrowser-tabbox::after {
+  display: none;
+}
 @keyframes webaios-spin { to { --ang: 360deg; } }
 @media (prefers-reduced-motion: reduce) {
   /* A still ring. */

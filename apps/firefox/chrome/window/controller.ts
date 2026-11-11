@@ -157,9 +157,12 @@ export function createController(
   );
   // The agent's halo: lit while one of its tools runs on the displayed tab (a tab or space switch is a state change).
   const halo = createHalo((on) => document.documentElement.toggleAttribute("webaios-agent-working", on));
+  let haloTab: TabId | null | undefined;
   const updateHalo = () => {
     const f = store.state.windows.find((x) => x.id === windowId);
     const shown = f?.active[f.activeSpace];
+    if (shown !== haloTab) halo.off();
+    haloTab = shown;
     halo.update(!!(shown && store.access.tabs[shown]?.running));
   };
   updateHalo();

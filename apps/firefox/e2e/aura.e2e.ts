@@ -91,18 +91,28 @@ describe("the window's aura", () => {
     expect(seen.length).toBeGreaterThan(5);
     expect(seen.some(Boolean)).toBe(false);
 
-    const onShown = call("run_js", { id: shown, code: slow });
+    const onShown = call("run_js", { id: shown, code: "await new Promise((r) => setTimeout(r, 5000)); 1" });
     onShown.catch(() => {}); // awaited below; a failed wait must not leave it unhandled
     await waitFor(m, working, (v) => v === true, 2_000);
+    // Showing another tab puts it out at once (no hold), showing the worked-on tab again lights it.
+    await dispatch(m, { type: "activateTab", id: other });
+    const switched = Date.now();
+    await waitFor(m, working, (v) => v === false, 1_000);
+    expect(Date.now() - switched).toBeLessThan(1_000);
+    await dispatch(m, { type: "activateTab", id: shown });
+    await waitFor(m, working, (v) => v === true, 1_000);
+    const ring = `const s = getComputedStyle(document.getElementById("tabbrowser-tabbox"), "::after"); return { events: s.pointerEvents, image: s.backgroundImage, display: s.display };`;
+    // None over a video in fullscreen.
+    await m.execute(`document.documentElement.setAttribute("inDOMFullscreen", "true");`);
+    expect((await m.execute<{ display: string }>(ring)).display).toBe("none");
+    await m.execute(`document.documentElement.removeAttribute("inDOMFullscreen");`);
     await onShown;
     const end = Date.now();
     await waitFor(m, working, (v) => v === false, 3_000);
     expect(Date.now() - end).toBeLessThanOrEqual(3_000);
     // The ring sits over the page and lets the mouse through.
-    const ring = await m.execute<{ events: string; image: string }>(
-      `const s = getComputedStyle(document.getElementById("tabbrowser-tabbox"), "::after"); return { events: s.pointerEvents, image: s.backgroundImage };`,
-    );
-    expect(ring.events).toBe("none");
-    expect(ring.image).toContain("conic-gradient");
+    const shape = await m.execute<{ events: string; image: string }>(ring);
+    expect(shape.events).toBe("none");
+    expect(shape.image).toContain("conic-gradient");
   }, 60_000);
 });

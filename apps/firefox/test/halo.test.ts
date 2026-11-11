@@ -51,3 +51,16 @@ test("dispose cancels the planned switch-off", () => {
   vi.advanceTimersByTime(2000);
   expect(set.mock.calls).toEqual([[true]]);
 });
+
+test("off goes out at once and cancels the hold; then lights up again on work", () => {
+  const h = createHalo(set);
+  h.update(true);
+  h.update(false);
+  h.off();
+  expect(set.mock.calls).toEqual([[true], [false]]);
+  vi.advanceTimersByTime(2000);
+  h.off();
+  expect(set.mock.calls).toEqual([[true], [false]]);
+  h.update(true);
+  expect(set.mock.calls).toEqual([[true], [false], [true]]);
+});
