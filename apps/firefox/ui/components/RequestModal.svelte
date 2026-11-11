@@ -187,27 +187,31 @@
     width: min(440px, 100%);
     max-height: calc(100vh - 32px);
     overflow-y: auto;
-    padding: 14px 18px;
-    background: var(--bg-active);
+    padding: 18px 20px;
+    /* Over the live page (no blur reaches it): dense glass, the aura's light washing its top. */
+    background: radial-gradient(120% 90% at 0% 0%, color-mix(in oklab, var(--a1) 20%, transparent), transparent 60%), radial-gradient(110% 80% at 100% 0%, color-mix(in oklab, var(--a2) 14%, transparent), transparent 55%), var(--glass-dense);
+    backdrop-filter: blur(30px) saturate(1.8);
     color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 12px;
+    border: 1px solid var(--glass-edge);
+    border-radius: 16px;
     box-shadow: var(--modal-shadow);
     font-size: 13px;
     line-height: 1.45;
     outline: none;
     opacity: 0;
-    transform: translateY(6px) scale(0.98);
-    transition: opacity 120ms ease-out, transform 120ms ease-out;
+    transform: translateY(-10px) scale(0.96);
+    transition: opacity 200ms var(--out), transform var(--spring-d) var(--spring);
   }
   .ready .card { opacity: 1; transform: none; }
   @media (prefers-reduced-motion: reduce) {
-    .card { transition: none; transform: none; }
+    .card { transition: opacity 150ms ease-out; transform: none; }
   }
   .reading p { margin: 0 0 12px; font-size: 14px; overflow-wrap: anywhere; }
   .reading p.reason { font-size: 13px; color: var(--text-muted, inherit); }
   .actions { display: flex; justify-content: flex-end; gap: 8px; }
-  button { padding: 6px 12px; border-radius: 7px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); font-weight: 600; font-size: 12.5px; }
+  button { padding: 7px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: 600 12.5px var(--font-ui); cursor: pointer; transition: transform var(--tap), background var(--tap); }
+  button:hover:not(:disabled) { background: var(--bg-active); }
+  button:active:not(:disabled) { transform: scale(0.97); }
   button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .allow { background: var(--accent); border-color: var(--accent); color: white; }
+  .allow { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 </style>

@@ -90,22 +90,24 @@
 </div>
 
 <style>
-  h3 { margin: 0 0 4px; font-size: 15px; overflow-wrap: anywhere; }
+  h3 { margin: 0 0 4px; font: 600 17px/1.2 var(--font-display); letter-spacing: -0.01em; overflow-wrap: anywhere; }
   p { margin: 0 0 8px; overflow-wrap: anywhere; }
-  .subtle { opacity: 0.7; font-size: 12px; margin-bottom: 8px; overflow-wrap: anywhere; }
+  .subtle { color: var(--text-muted); font-size: 12px; margin-bottom: 8px; overflow-wrap: anywhere; }
   .title { margin-top: 8px; font-weight: 600; }
   ul { margin: 0 0 10px; padding-left: 18px; }
   li { overflow-wrap: anywhere; }
-  .name { display: inline-block; max-width: 100%; padding: 0 5px; border-radius: 5px; background: var(--bg-bar); border: 1px solid var(--border); font-weight: 600; }
+  .name { display: inline-block; max-width: 100%; padding: 0 6px; border-radius: 6px; background: var(--glass-hi); border: 1px solid var(--border); font-weight: 600; }
   .alert { color: var(--access-act); font-weight: 600; }
-  .strengthened { border: 1px solid var(--in-error); background: color-mix(in srgb, var(--in-error) 14%, transparent); border-radius: 8px; padding: 8px 10px; margin: 4px 0 10px; }
+  .strengthened { border: 1px solid var(--in-error); background: color-mix(in srgb, var(--in-error) 14%, transparent); border-radius: 10px; padding: 8px 10px; margin: 4px 0 10px; }
   .strengthened p { color: var(--in-error); font-weight: 600; }
   .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .strengthened label { display: flex; gap: 8px; align-items: flex-start; font-weight: 600; }
   .strengthened input { margin-top: 3px; }
   .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
-  button { padding: 6px 12px; border-radius: 7px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); font-weight: 600; font-size: 12.5px; }
+  button { padding: 7px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: 600 12.5px var(--font-ui); cursor: pointer; transition: transform var(--tap), background var(--tap); }
+  button:hover:not(:disabled) { background: var(--bg-active); }
+  button:active:not(:disabled) { transform: scale(0.97); }
   button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   button:disabled { opacity: 0.5; cursor: not-allowed; }
-  .allow { background: var(--accent); border-color: var(--accent); color: white; }
+  .allow { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 </style>

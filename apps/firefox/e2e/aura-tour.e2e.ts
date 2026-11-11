@@ -4,8 +4,9 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { dispatch, state, waitFor } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
+import { callTool } from "./mcp";
 import { startServer } from "./server";
-import { keyDown, keyUp, pressKeys, typeText, waitUi } from "./ui";
+import { click, keyDown, keyUp, pressKeys, typeText, waitUi } from "./ui";
 
 /**
  * A walk through the chrome surfaces that saves a PNG of each, light and dark, in dist/aura-tour/ (to look at, not compared).
@@ -56,10 +57,43 @@ describe("aura tour", () => {
       await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
       await waitUi(m, "return !!doc.querySelector('[data-testid=\"sidebar\"]')");
       const windowId = (await state(m)).windows[0]!.id;
+      // The home page's panel starts the agent's session, which takes back every access: tools are called after it.
+      await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
       for (const p of ["/notes", "/recette", "/vols"]) await dispatch(m, { type: "openTab", windowId, url: server.url + p });
       await waitFor(m, "return gBrowser.selectedBrowser.currentURI.spec", (u: string) => u.endsWith("/vols"));
       await waitUi(m, "return doc.querySelectorAll('[data-testid^=\"tab-\"][role=\"tab\"]').length === 3");
       await shoot(m, `1-window-${theme}`);
+
+      await click(m, '[data-testid="agent-button"]');
+      await waitFor(m, "return !document.getElementById('webaios-agent').hidden", (v) => v === true);
+      await shoot(m, `5-agent-${theme}`);
+
+      // An access card: the agent asks to read a tab it was not given (opening the panel shared the shown one).
+      const tabs = Object.values((await state(m)).tabs);
+      const vols = tabs.find((t) => t.url.endsWith("/vols"))!.id;
+      const reading = callTool(w.dataDir, "read_tab", { id: tabs.find((t) => t.url.endsWith("/notes"))!.id });
+      reading.catch(() => {});
+      await waitUi(m, "return !!doc.querySelector('[data-testid=\"request-modal\"][data-armed]')");
+      await shoot(m, `6-access-card-${theme}`);
+      await click(m, '[data-testid="request-modal"] button', { text: "Autoriser une fois" });
+      await reading;
+      await click(m, `[data-testid="tab-${vols}"] [data-testid="access-pill"]`);
+      await waitUi(m, "return !!doc.querySelector('[data-testid=\"access-bubble\"]')");
+      await shoot(m, `7-access-bubble-${theme}`);
+      await pressKeys(m, "Escape");
+      await click(m, '[data-testid="agent-button"]');
+      await waitFor(m, "return document.getElementById('webaios-agent').hidden", (v) => v === true);
+
+      await click(m, '[data-testid="new-space"]');
+      await waitUi(m, "return doc.querySelector('[data-testid=\"space-modal\"] h2')?.textContent === 'Nouvel espace'");
+      await shoot(m, `8-space-modal-${theme}`);
+      await pressKeys(m, "Escape");
+      await waitUi(m, "return !doc.querySelector('[data-testid=\"space-modal\"]')");
+
+      await click(m, `[data-testid="tab-${vols}"]`, { button: 2 });
+      await waitUi(m, "return !!doc.querySelector('[role=\"menu\"]')");
+      await shoot(m, `9-menu-${theme}`);
+      await pressKeys(m, "Escape");
 
       await pressKeys(m, "Meta+t");
       await waitUi(m, "return doc.activeElement?.dataset.testid === 'command-input'");

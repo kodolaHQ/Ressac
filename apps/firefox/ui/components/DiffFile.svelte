@@ -251,22 +251,25 @@
 
 <style>
   .diff { min-width: 0; }
-  .path { margin: 0 0 8px; font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+  .path { margin: 0 0 8px; font: 500 13px var(--font-mono); overflow-wrap: anywhere; }
   .not-displayable { color: var(--text-muted); }
-  .code-diff { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; line-height: 1.5; border: 1px solid var(--border); border-radius: 6px; overflow: auto; }
+  .code-diff { font-family: var(--font-mono); font-size: 12px; line-height: 1.5; background: var(--sheet); border: 1px solid var(--border); border-radius: 12px; overflow: auto; }
   .line { display: grid; grid-template-columns: 18px 44px 44px 1fr; }
-  .line.selected { box-shadow: inset 3px 0 0 var(--accent, #3b82f6); background: color-mix(in srgb, var(--accent, #3b82f6) 14%, transparent); }
+  .line.selected { box-shadow: inset 3px 0 0 var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
   .margin { display: flex; align-items: center; justify-content: center; }
-  .add-button { width: 16px; height: 16px; padding: 0; border: none; border-radius: 4px; background: var(--accent, #3b82f6); color: white; font-size: 12px; line-height: 16px; cursor: pointer; opacity: 0; }
+  .add-button { width: 16px; height: 16px; padding: 0; border: none; border-radius: 5px; background: var(--accent); color: var(--accent-ink); font-size: 12px; line-height: 16px; cursor: pointer; opacity: 0; transition: opacity var(--tap), transform var(--tap); }
+  .add-button:active { transform: scale(0.97); }
   /* The « + » through CSS: it does not enter the line's text. */
   .add-button::before { content: "+"; }
   .line:hover .add-button, .add-button:focus-visible { opacity: 1; }
-  .form { margin: 4px 8px 8px 106px; padding: 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); font-family: system-ui, sans-serif; display: flex; flex-direction: column; gap: 6px; }
-  .form textarea { font: inherit; font-size: 12px; resize: vertical; padding: 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-bar); color: var(--text); }
+  .form { margin: 4px 8px 8px 106px; padding: 10px; border: 1px solid var(--glass-edge); border-radius: 12px; background: var(--glass-hi); font-family: var(--font-ui); display: flex; flex-direction: column; gap: 6px; }
+  .form textarea { font: inherit; font-size: 12px; resize: vertical; padding: 7px 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--sheet); color: var(--text); }
+  .form textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .range { font-size: 11px; color: var(--text-muted); }
   .error { margin: 0; color: var(--in-error); font-size: 12px; }
   .actions { display: flex; justify-content: flex-end; gap: 6px; }
-  .actions button { padding: 3px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); font-size: 12px; }
+  .actions button { padding: 4px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--sheet); color: var(--text); font-size: 12px; cursor: pointer; transition: transform var(--tap); }
+  .actions button:active:not(:disabled) { transform: scale(0.97); }
   .num { padding: 0 6px; text-align: right; color: var(--text-muted); user-select: none; }
   .code { white-space: pre; padding-left: 14px; position: relative; }
   .code::before { position: absolute; left: 3px; color: var(--text-muted); }

@@ -11,7 +11,32 @@ import { api } from "../state.svelte";
  */
 
 /** What the window's agent shows (preparing, active, error…), the same for all hosts. */
-export const agent = $state<{ state: AgentPanelState }>({ state: { state: "preparing" } });
+export const agent = $state<{ state: AgentPanelState; busy: boolean }>({ state: { state: "preparing" }, busy: false });
+
+/** The agent counts as answering while its output flows; this long a silence ends the answer. */
+const BUSY_QUIET_MS = 900;
+let quiet: ReturnType<typeof setTimeout> | undefined;
+function flowing(): void {
+  agent.busy = true;
+  clearTimeout(quiet);
+  quiet = setTimeout(() => (agent.busy = false), BUSY_QUIET_MS);
+}
+
+const MONO_FALLBACK = "ui-monospace, Menlo, monospace";
+/** xterm paints with JS colours: read from the tokens, again when the theme or the space's aura changes. */
+function palette() {
+  const css = getComputedStyle(document.documentElement);
+  const v = (name: string) => css.getPropertyValue(name).trim();
+  const accent = v("--accent");
+  return {
+    background: v("--sheet"),
+    foreground: v("--text"),
+    cursor: accent,
+    cursorAccent: v("--sheet"),
+    // The accents are #rrggbb tokens: 59 is 35 % alpha (xterm does not parse color-mix).
+    selectionBackground: /^#[0-9a-f]{6}$/i.test(accent) ? `${accent}59` : accent,
+  };
+}
 
 let terminal: Terminal | undefined;
 let adjustment: FitAddon | undefined;
@@ -35,7 +60,23 @@ function create(hostName: HTMLElement): void {
   element.style.cssText = "position: absolute; inset: 6px;";
   hostName.append(element);
   // ⌥-drag selects even while the agent's TUI captures the mouse.
-  terminal = new Terminal({ fontSize: 13, cursorBlink: true, macOptionClickForcesSelection: true, theme: { background: "#1e1e22" } });
+  terminal = new Terminal({
+    fontSize: 13,
+    fontFamily: MONO_FALLBACK,
+    cursorBlink: true,
+    macOptionClickForcesSelection: true,
+    // The agent's TUI picks colours for a dark screen: xterm lifts any that would be unreadable on a light sheet.
+    minimumContrastRatio: 4.5,
+    theme: palette(),
+  });
+  const repaint = () => terminal && (terminal.options.theme = palette());
+  new MutationObserver(repaint).observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", repaint);
+  // Geist Mono is measured only once loaded: switching the family then makes xterm measure the cells again.
+  void document.fonts.load(`13px "Geist Mono"`).then(() => {
+    terminal!.options.fontFamily = `"Geist Mono", ${MONO_FALLBACK}`;
+    adjust();
+  });
   // ⌘C copies the selection: in the browser's chrome the copy command never reaches xterm's hidden textarea.
   terminal.attachCustomKeyEventHandler((e) => {
     if (e.type !== "keydown" || !e.metaKey || e.key !== "c" || !terminal!.hasSelection()) return true;
@@ -47,7 +88,10 @@ function create(hostName: HTMLElement): void {
   terminal.open(element);
   adjustment.fit();
   terminal.onData((d) => api.agent.write(d));
-  dataEnd = api.agent.onData((d) => terminal!.write(d));
+  dataEnd = api.agent.onData((d) => {
+    terminal!.write(d);
+    flowing();
+  });
   api.agent.start(size());
 }
 

@@ -31,21 +31,29 @@
   .menu {
     position: fixed;
     z-index: 10;
-    width: 160px;
-    padding: 4px;
-    background: var(--bg-active);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+    width: 170px;
+    padding: 5px;
+    box-sizing: border-box;
+    background: var(--glass-dense);
+    backdrop-filter: blur(30px) saturate(1.8);
+    border: 1px solid var(--glass-edge);
+    border-radius: 12px;
+    box-shadow: var(--modal-shadow);
+    animation: webaios-drop var(--spring-d) var(--spring) backwards;
     -webkit-app-region: no-drag;
   }
   button {
     all: unset;
     display: block;
-    width: calc(100% - 12px);
-    padding: 5px 6px;
-    border-radius: 4px;
+    width: calc(100% - 18px);
+    padding: 7px 9px;
+    border-radius: 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
     color: var(--text);
+    transition: transform var(--tap), background var(--tap);
   }
-  button:hover { background: var(--bg-hover); }
+  button:hover { background: var(--glass-hi); box-shadow: inset 0 0 0 1px var(--glass-edge); }
+  button:active { transform: scale(0.97); }
 </style>

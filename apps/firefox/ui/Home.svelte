@@ -3,7 +3,7 @@
   import type { FreePlacement } from "../../../packages/kernel/src/home/schemas";
   import type { HomeTheme } from "../../../packages/kernel/src/home/theme";
   import { api } from "./state.svelte";
-  import AccountGrantCard from "./AccountGrantCard.svelte";
+  import AccountGrantCard from "./components/AccountGrantCard.svelte";
   import HomeWidget from "./HomeWidget.svelte";
   import { moveFree, freeGuides, FREE_WIDTH, resizeFree, freeSizes } from "./free-grid";
   import { variablesTheme } from "./theme";

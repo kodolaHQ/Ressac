@@ -113,8 +113,10 @@
   {#if !builtIn}
     <div class="handle" data-testid="agent-handle" role="separator" aria-orientation="vertical" aria-label="Largeur du panneau agent" onpointerdown={tirer}></div>
   {/if}
-  {#if profileChoice}
-    <header>
+  <header>
+    <!-- The agent's mark: the aura's three hues, turning while it answers. -->
+    <span class="orb" class:busy={terminalAgent.agent.busy} data-testid="agent-orb" aria-hidden="true"></span>
+    {#if profileChoice}
       <select
         data-testid="agent-profile"
         aria-label="Agent"
@@ -123,8 +125,10 @@
       >
         {#each profiles as p (p.id)}<option value={p.id}>{p.name}{account(p.id)?.state === "logged-out" && (p.id !== "codex" || browserState.value?.settings.codexEngine.kind === "chatgpt") ? " (non connecté)" : ""}</option>{/each}
       </select>
-    </header>
-  {/if}
+    {:else}
+      <span class="name">{profiles.find((p) => p.id === current)?.name ?? "Agent"}</span>
+    {/if}
+  </header>
   {#if signedOutCodex}
     <p class="message">Codex n'est pas connecté à votre compte ChatGPT.</p>
     <button data-testid="agent-login-settings" onclick={() => api.dispatch({ type: "openSettings", windowId: api.windowId })}>Se connecter</button>
@@ -145,16 +149,27 @@
 </section>
 
 <style>
-  .agent { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--bg-bar); border-left: 1px solid var(--border); }
+  /* A glass pane floating on the aura, like the sidebar: 8 px from the window, the page's gap on its left. */
+  .agent { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; margin: 8px 8px 8px 0; background: var(--glass); border: 1px solid var(--glass-edge); border-radius: 16px; box-shadow: 0 1px 2px rgb(0 0 0 / 0.06); overflow: hidden; }
   .agent[hidden] { display: none; }
-  .agent.built-in { flex: 1; border-left: none; }
-  .handle { position: absolute; top: 0; bottom: 0; left: -3px; width: 6px; cursor: col-resize; z-index: 1; }
+  .agent.built-in { flex: 1; margin: 0; border: none; border-radius: 0; box-shadow: none; }
+  .handle { position: absolute; top: 0; bottom: 0; left: 0; width: 6px; cursor: col-resize; z-index: 1; transition: background var(--tap); }
   .handle:hover, .handle:active { background: color-mix(in srgb, var(--accent) 40%, transparent); }
-  .message { margin: 12px; color: var(--text-muted); }
-  header { padding: 6px 8px; border-bottom: 1px solid var(--border); }
-  select { padding: 2px 6px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-active); color: var(--text); font-size: 12px; }
-  button { margin: 0 12px 12px; align-self: flex-start; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-active); color: var(--text); }
-  /* The terminal (terminalAgent) is placed in it absolutely, 6 px from the edge. */
-  .terminal { position: relative; flex: 1; min-height: 0; background: #1e1e22; }
+  header { display: flex; align-items: center; gap: 9px; height: 40px; padding: 0 12px; flex: none; }
+  .orb { flex: none; width: 14px; height: 14px; border-radius: 50%; background: conic-gradient(from var(--ang), var(--a1), var(--a2), var(--a3), var(--a1)); box-shadow: 0 0 0 3px color-mix(in oklab, var(--a2) 16%, transparent); transition: box-shadow 300ms var(--out); }
+  .orb.busy { animation: orb-spin 1.8s linear infinite; box-shadow: 0 0 0 3px color-mix(in oklab, var(--a2) 28%, transparent), 0 0 12px color-mix(in oklab, var(--a1) 55%, transparent); }
+  @keyframes orb-spin { to { --ang: 360deg; } }
+  @media (prefers-reduced-motion: reduce) { .orb.busy { animation: none; } }
+  .name { font: 600 14px/1 var(--font-display); letter-spacing: -0.01em; }
+  select { appearance: none; padding: 5px 26px 5px 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%239AA1AD' stroke-width='1.5'/%3E%3C/svg%3E") no-repeat right 9px center; color: var(--text); font: 600 13px/1.2 var(--font-display); transition: transform var(--tap), border-color var(--tap); }
+  select:hover { border-color: var(--glass-edge); }
+  select:active { transform: scale(0.97); }
+  select:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .message { margin: 4px 14px 10px; color: var(--text-muted); line-height: 1.45; }
+  button { margin: 0 14px 12px; align-self: flex-start; padding: 6px 14px; border-radius: 10px; border: 0; background: var(--accent); color: var(--accent-ink); font: 600 12.5px var(--font-ui); cursor: pointer; transition: transform var(--tap); }
+  button:active { transform: scale(0.97); }
+  /* The terminal (terminalAgent) is placed in it absolutely, 6 px from the edge: a sheet set inside the glass. */
+  .terminal { position: relative; flex: 1; min-height: 0; margin: 0 6px 6px; border-radius: 11px; background: var(--sheet); box-shadow: inset 0 0 0 1px var(--border); }
+  .built-in .terminal { margin: 0; border-radius: 0; box-shadow: none; }
   .terminal.masked { visibility: hidden; }
 </style>

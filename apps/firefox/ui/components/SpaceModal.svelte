@@ -212,31 +212,33 @@
     width: min(400px, 100%);
     max-height: calc(100vh - 32px);
     overflow-y: auto;
-    padding: 16px 18px;
-    background: var(--bg-active);
+    padding: 18px 20px;
+    /* Over the live page (no blur reaches it): dense glass, the aura's light washing its top. */
+    background: radial-gradient(120% 90% at 0% 0%, color-mix(in oklab, var(--a1) 20%, transparent), transparent 60%), radial-gradient(110% 80% at 100% 0%, color-mix(in oklab, var(--a2) 14%, transparent), transparent 55%), var(--glass-dense);
+    backdrop-filter: blur(30px) saturate(1.8);
     color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 12px;
+    border: 1px solid var(--glass-edge);
+    border-radius: 16px;
     box-shadow: var(--modal-shadow);
     font-size: 13px;
     line-height: 1.45;
     opacity: 0;
-    transform: translateY(6px) scale(0.98);
-    transition: opacity 120ms ease-out, transform 120ms ease-out;
+    transform: translateY(-10px) scale(0.96);
+    transition: opacity 200ms var(--out), transform var(--spring-d) var(--spring);
   }
   .ready .card { opacity: 1; transform: none; }
   @media (prefers-reduced-motion: reduce) {
-    .card { transition: none; transform: none; }
+    .card { transition: opacity 150ms ease-out; transform: none; }
   }
   form { display: flex; flex-direction: column; gap: 10px; margin: 0; }
-  h2 { margin: 0; font-size: 15px; }
+  h2 { margin: 0 0 2px; font: 600 18px/1.2 var(--font-display); letter-spacing: -0.01em; }
   .field { display: flex; gap: 6px; }
   input:not([type="checkbox"]), select {
     min-width: 0;
-    padding: 5px 7px;
-    border-radius: 6px;
+    padding: 7px 9px;
+    border-radius: 10px;
     border: 1px solid var(--border);
-    background: var(--bg);
+    background: var(--glass-hi);
     color: var(--text);
     font: inherit;
   }
@@ -251,12 +253,18 @@
   .source { font-size: 11px; color: var(--text-muted); }
   .alert { color: var(--text); font-weight: 600; }
   .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
-  button { padding: 6px 12px; border-radius: 7px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); font-weight: 600; font-size: 12.5px; }
+  button { padding: 7px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: 600 12.5px var(--font-ui); cursor: pointer; transition: transform var(--tap), background var(--tap); }
+  button:hover:not(:disabled) { background: var(--bg-active); }
+  button:active:not(:disabled) { transform: scale(0.97); }
   button:disabled { opacity: 0.5; }
   button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .auras { display: flex; gap: 8px; }
-  .auras .aura { padding: 3px; border-radius: 50%; border: 2px solid transparent; background: none; line-height: 0; transition: transform var(--tap, 120ms) var(--spring, ease-out); }
+  .auras .aura { padding: 3px; border-radius: 50%; border: 2px solid transparent; background: none; line-height: 0; transition: transform var(--tap), border-color var(--tap); }
+  .auras .aura:hover:not(:disabled) { background: none; }
+  .auras .aura :global(*) { transition: transform var(--spring-d) var(--spring); }
+  .auras .aura:hover :global(*) { transform: scale(1.12); }
   .auras .aura[aria-checked="true"] { border-color: var(--accent); }
-  .auras .aura:active { transform: scale(0.97); }
-  .main { background: var(--accent); border-color: var(--accent); color: white; }
+  .auras .aura[aria-checked="true"] :global(*) { transform: scale(1.2); }
+  .main { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .main:hover:not(:disabled) { background: color-mix(in oklab, var(--accent) 88%, var(--text)); }
 </style>

@@ -61,14 +61,17 @@
 </div>
 
 <style>
-  .bubble { position: fixed; z-index: 30; box-sizing: border-box; padding: 10px; background: var(--bg-active); color: var(--text); border: 1px solid var(--border); border-radius: 9px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); font-size: 12px; font-weight: 400; cursor: default; text-align: left; }
+  .bubble { position: fixed; z-index: 30; box-sizing: border-box; padding: 12px; background: var(--glass-dense); backdrop-filter: blur(30px) saturate(1.8); color: var(--text); border: 1px solid var(--glass-edge); border-radius: 14px; box-shadow: var(--modal-shadow); font-size: 12px; font-weight: 400; cursor: default; text-align: left; transform-origin: top center; animation: webaios-drop var(--spring-d) var(--spring) backwards; }
   .bubble:focus { outline: none; }
-  h4 { margin: 0 0 6px; font-size: 12px; }
-  ul { list-style: none; margin: 0 0 6px; padding: 0; }
-  li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 3px 0; }
-  p { margin: 0 0 8px; color: var(--text-muted); font-size: 11.5px; }
-  button { padding: 3px 9px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); font-size: 11.5px; font-weight: 600; }
+  h4 { margin: 0 0 8px; font: 600 13px/1.25 var(--font-display); }
+  ul { list-style: none; margin: 0 0 8px; padding: 0; }
+  li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 0; }
+  li + li { border-top: 1px solid var(--border); }
+  p { margin: 0 0 10px; color: var(--text-muted); font-size: 11.5px; }
+  button { padding: 3px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font-size: 11.5px; font-weight: 600; transition: transform var(--tap), background var(--tap); }
   button:hover { background: var(--bg-hover); }
-  .cut { display: block; width: 100%; padding: 5px; background: var(--access-cut); border-color: var(--access-cut); color: white; font-size: 12px; }
+  button:active { transform: scale(0.97); }
+  /* Cutting stays the semantic orange in both themes, white on it. */
+  .cut { display: block; width: 100%; padding: 6px; border-radius: 10px; background: var(--access-cut); border-color: var(--access-cut); color: white; font-size: 12px; }
   .cut:hover { background: var(--access-cut-hover); }
 </style>

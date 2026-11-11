@@ -86,9 +86,13 @@ it("a huge output does not freeze the UI", async () => {
   await launch();
   await homeAgent();
   await send("flood");
+  // The orb turns while the agent's output flows, and stops once it is quiet.
+  const ORB = "return doc.querySelector('[data-testid=\"agent-orb\"]').classList.contains('busy')";
+  await waitUi(m, ORB, [], 10_000, "agent");
   // 1 MB later, the command has scrolled off the screen and the prompt is back at the bottom.
   await waitUi(m, `const t = ${TERMINAL.slice("return ".length)}; return !t.includes("received: flood") && t.includes("ready>")`, [], 20_000, "agent");
   expect(read(join(w!.dataDir, "workspace", "fake-agent-input.txt"))).toContain("flood\r");
+  await waitUi(m, `return !(${ORB.slice("return ".length)})`, [], 10_000, "agent");
   await click(m, '[data-testid="new-tab"]');
   await waitUi(m, "return !!doc.querySelector('[data-testid=\"empty-page\"]')", [], 10_000);
 });

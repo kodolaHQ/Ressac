@@ -190,17 +190,18 @@
 <style>
   .review { height: 100%; display: flex; flex-direction: column; padding: 16px 20px; box-sizing: border-box; overflow: hidden; color: var(--text); background: var(--bg); }
   header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
-  h2 { margin: 0; font-size: 16px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  h3 { margin: 16px 0 6px; font-size: 12px; color: var(--text-muted); }
-  button { padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); font-size: 12px; }
-  button:hover:not(:disabled) { background: var(--bg-hover); }
+  h2 { margin: 0; font: 600 18px/1.2 var(--font-display); letter-spacing: -0.01em; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  h3 { margin: 16px 0 6px; font: 600 12px/1.2 var(--font-display); letter-spacing: 0.01em; color: var(--text-muted); }
+  button { padding: 5px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: 500 12px var(--font-ui); cursor: pointer; transition: transform var(--tap), background var(--tap); }
+  button:hover:not(:disabled) { background: var(--bg-active); }
+  button:active:not(:disabled) { transform: scale(0.97); }
   .unavailable, .empty { color: var(--text-muted); }
   .message { margin: 0 0 8px; color: var(--in-error); font-size: 12px; }
   .body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(180px, 260px) 1fr; gap: 16px; }
   .list { overflow: auto; display: flex; flex-direction: column; gap: 2px; }
-  .file { display: flex; align-items: center; gap: 8px; text-align: left; border: none; background: transparent; padding: 4px 6px; }
-  .file.chosen { background: var(--bg-active); }
-  .status { width: 12px; font-family: ui-monospace, Menlo, monospace; font-weight: 700; }
+  .file { display: flex; align-items: center; gap: 8px; text-align: left; border: none; background: transparent; padding: 6px 8px; }
+  .file.chosen { background: var(--glass-hi); box-shadow: inset 0 0 0 1px var(--glass-edge), inset 3px 0 0 var(--accent); }
+  .status { width: 12px; font-family: var(--font-mono); font-weight: 700; }
   .status.added { color: var(--running); }
   .status.deleted { color: var(--in-error); }
   .file-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -208,6 +209,6 @@
   .comments { list-style: none; margin: 0; padding: 0; font-size: 12px; }
   .comments li { padding: 4px 6px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; }
   .comments li.resolved { opacity: 0.6; }
-  .or { color: var(--text-muted); font-family: ui-monospace, Menlo, monospace; }
+  .or { color: var(--text-muted); font-family: var(--font-mono); }
   .center { overflow: auto; min-width: 0; }
 </style>

@@ -54,16 +54,17 @@
 
 <style>
   .zone { flex: 1; display: grid; place-content: center; padding: 16px; min-height: 0; overflow: auto; }
-  .card { width: min(480px, 90vw); padding: 16px 20px; border-radius: 10px; background: var(--bg-bar); border: 1px solid var(--border); color: var(--text); box-shadow: var(--modal-shadow); }
-  h2 { margin: 0 0 12px; font-size: 15px; overflow-wrap: anywhere; }
+  .card { width: min(480px, 90vw); padding: 18px 20px; border-radius: 16px; background: radial-gradient(120% 90% at 0% 0%, color-mix(in oklab, var(--a1) 20%, transparent), transparent 60%), radial-gradient(110% 80% at 100% 0%, color-mix(in oklab, var(--a2) 14%, transparent), transparent 55%), var(--glass-dense); backdrop-filter: blur(30px) saturate(1.8); border: 1px solid var(--glass-edge); color: var(--text); box-shadow: var(--modal-shadow); animation: webaios-drop var(--spring-d) var(--spring) backwards; }
+  h2 { margin: 0 0 12px; font: 600 17px/1.25 var(--font-display); letter-spacing: -0.01em; overflow-wrap: anywhere; }
   dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 12px; margin: 0 0 12px; font-size: 13px; }
   dt { color: var(--text-muted); }
   dd { margin: 0; display: flex; flex-wrap: wrap; gap: 4px 8px; overflow-wrap: anywhere; min-width: 0; }
-  code { font: 12px ui-monospace, monospace; overflow-wrap: anywhere; }
+  code { font: 12px var(--font-mono); padding: 1px 5px; border-radius: 6px; background: var(--glass-hi); overflow-wrap: anywhere; }
   p { margin: 0 0 12px; font-size: 13px; }
   .muted { color: var(--text-muted); }
   .buttons { display: flex; justify-content: flex-end; gap: 8px; }
-  .buttons button { padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); -webkit-app-region: no-drag; }
-  .buttons .main { background: var(--accent); border-color: var(--accent); color: white; }
+  .buttons button { padding: 7px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: 600 12.5px var(--font-ui); cursor: pointer; -webkit-app-region: no-drag; transition: transform var(--tap), background var(--tap); }
+  .buttons button:active:not(:disabled) { transform: scale(0.97); }
+  .buttons .main { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
   .buttons button:disabled { opacity: 0.5; }
 </style>
