@@ -69,6 +69,10 @@ staged=$objdist/webaios/WebAiOs.app
 rm -rf $work
 mkdir -p $work
 ditto $staged $app
+# The icons come from the engine's copy of the branding, refreshed only by engine:import: catch a stale one.
+for icon in firefox.icns Assets.car; do
+  cmp -s $app_dir/configs/branding/webaios/$icon $res/$icon || fail "$icon in the app differs from configs/branding/webaios (copy it into engine/browser/branding/webaios, or run engine:import, then package again)"
+done
 dev_files=$(find $app \( -iname '*gtest*' -o -name 'xpcshell*' -o -name .lldbinit \) -print)
 [[ -z $dev_files ]] || fail "test files in the staged app:\n$dev_files"
 if grep -q 'mozilla.com' $res/application.ini; then fail "application.ini still points at Mozilla's crash server (mozconfig MOZ_CRASHREPORTER_URL)"; fi
