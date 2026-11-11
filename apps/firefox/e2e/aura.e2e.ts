@@ -1,13 +1,22 @@
+import { existsSync } from "node:fs";
+import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { dispatch, state, waitFor } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { callTool } from "./mcp";
+import { startServer } from "./server";
 import { waitUi } from "./ui";
 
 let w: LaunchedWebAiOs | undefined;
-afterEach(() => w?.close());
+let server: Awaited<ReturnType<typeof startServer>> | undefined;
+afterEach(async () => {
+  await w?.close();
+  await server?.close();
+  server = undefined;
+});
 
-async function launch(prefs?: Record<string, number>) {
-  w = await launchWebAiOs({ prefs });
+async function launch(prefs?: Record<string, number>, env?: Record<string, string>) {
+  w = await launchWebAiOs({ prefs, env });
   const m = w.marionette;
   await m.setContext("chrome");
   await waitFor(m, "return !!window.webaiosWindow", (v) => v === true);
@@ -47,5 +56,53 @@ describe("the window's aura", () => {
     const m = await launch({ "ui.prefersReducedMotion": 1 });
     const names = await m.execute<string[]>(`return [...document.querySelectorAll("#webaios-aura i")].map((i) => getComputedStyle(i).animationName);`);
     expect(names).toEqual(["none", "none", "none"]);
+    // The agent's halo: a still ring.
+    expect(await m.execute(`return getComputedStyle(document.getElementById("tabbrowser-tabbox"), "::after").animationName;`)).toBe("none");
   });
+
+  it("the halo shows while the agent works on the displayed tab", async () => {
+    server = await startServer({ routes: { "/": (_, res) => res.writeHead(200, { "Content-Type": "text/html" }).end("<title>demo</title><p>demo</p>") } });
+    // The demo port is the kernel's own: the agent's tabs there get every right, no consent card.
+    const m = await launch(undefined, { WEBAIOS_CONTAINER_PORTS: `${server.port}-${server.port}` });
+    const config = path.join(w!.dataDir, "workspace", ".webaios", "mcp.json");
+    for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
+      if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
+    // The home page's panel starts the agent's session, which takes back every access: tools are called after it.
+    await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
+    const call = async (name: string, args: Record<string, unknown>) => {
+      const r = await callTool(w!.dataDir, name, args);
+      expect(r.error, r.text).toBe(false);
+      return r.text;
+    };
+    const other = await call("open_tab", { url: `${server.url}/?other` });
+    const shown = await call("open_tab", { url: `${server.url}/` }); // open_tab displays it
+    const working = `return document.documentElement.hasAttribute("webaios-agent-working");`;
+    const slow = "await new Promise((r) => setTimeout(r, 2500)); 1";
+
+    const onOther = call("run_js", { id: other, code: slow });
+    const seen: boolean[] = [];
+    let done = false;
+    void onOther.then(() => (done = true), () => (done = true));
+    while (!done) {
+      seen.push(await m.execute<boolean>(working));
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    await onOther;
+    expect(seen.length).toBeGreaterThan(5);
+    expect(seen.some(Boolean)).toBe(false);
+
+    const onShown = call("run_js", { id: shown, code: slow });
+    onShown.catch(() => {}); // awaited below; a failed wait must not leave it unhandled
+    await waitFor(m, working, (v) => v === true, 2_000);
+    await onShown;
+    const end = Date.now();
+    await waitFor(m, working, (v) => v === false, 3_000);
+    expect(Date.now() - end).toBeLessThanOrEqual(3_000);
+    // The ring sits over the page and lets the mouse through.
+    const ring = await m.execute<{ events: string; image: string }>(
+      `const s = getComputedStyle(document.getElementById("tabbrowser-tabbox"), "::after"); return { events: s.pointerEvents, image: s.backgroundImage };`,
+    );
+    expect(ring.events).toBe("none");
+    expect(ring.image).toContain("conic-gradient");
+  }, 60_000);
 });

@@ -9,6 +9,7 @@
 @property --a1 { syntax: "<color>"; inherits: true; initial-value: #FF9F7A; }
 @property --a2 { syntax: "<color>"; inherits: true; initial-value: #FF6F91; }
 @property --a3 { syntax: "<color>"; inherits: true; initial-value: #FFD36E; }
+@property --ang { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
 
 :root[webaios-main] {
   --bg: #0E1014;
@@ -174,6 +175,47 @@
   margin: 0;
   border-radius: 0;
   box-shadow: none;
+}
+
+/* The agent's halo (controller: webaios-agent-working while one of its tools runs on the displayed tab): a light that
+   runs around the page (::after) over an inner glow (::before). Inside the tabbox, which clips: over the page, never
+   taking the mouse. Always there at opacity 0, its spin paused, so it fades in and out. */
+:root[webaios-main] #tabbrowser-tabbox {
+  position: relative;
+}
+:root[webaios-main] #tabbrowser-tabbox::before,
+:root[webaios-main] #tabbrowser-tabbox::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 400ms;
+}
+:root[webaios-main] #tabbrowser-tabbox::before {
+  box-shadow: inset 0 0 40px -12px var(--a2);
+}
+:root[webaios-main] #tabbrowser-tabbox::after {
+  padding: 2px;
+  background: conic-gradient(from var(--ang), transparent 0 55%, var(--a1) 70%, var(--a2) 82%, var(--a3) 92%, transparent);
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  animation: webaios-spin 1.8s linear infinite paused;
+}
+:root[webaios-main][webaios-agent-working] #tabbrowser-tabbox::before,
+:root[webaios-main][webaios-agent-working] #tabbrowser-tabbox::after {
+  opacity: 1;
+}
+:root[webaios-main][webaios-agent-working] #tabbrowser-tabbox::after {
+  animation-play-state: running;
+}
+@keyframes webaios-spin { to { --ang: 360deg; } }
+@media (prefers-reduced-motion: reduce) {
+  /* A still ring. */
+  :root[webaios-main] #tabbrowser-tabbox::after {
+    animation: none !important;
+  }
 }
 
 /* The design mode's cart column (chrome/window/design-overlays.ts): the whole height of the page's area, left of the

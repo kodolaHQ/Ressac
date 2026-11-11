@@ -2,10 +2,12 @@ import type { TabCycleMessage, Panel, TabsPanel, ShortcutAction } from "../../sh
 import { workflowUrlTarget, historyContext, AGENT_WIDTH_MAX, AGENT_WIDTH_MIN, BAR_WIDTH, type FrameBounds, type BrowserState, type WindowId, type TabId } from "../../shared/model";
 import { auraVariables, DEFAULT_AURA, type AuraId } from "../../shared/aura";
 import { toUrl } from "../../core/url";
+import { createHalo } from "../../core/halo";
 import { TabCycle } from "../../core/tab-cycle";
 import { toNth } from "../../core/shortcuts";
 import { leftZone, exitZone, type LeftZone } from "../../shared/reveal";
 import type { WebAiOsStore } from "../store";
+import { HOST_EXITED } from "../agent/host";
 import { createAddons, type WindowAddons } from "./addons";
 import { routeAddonsManager } from "./addons-manager";
 import { setupAnchors } from "./anchor";
@@ -153,6 +155,15 @@ export function createController(
       if (id !== auraOf(previous)) for (const root of auraRoots()) applyAura(root, id);
     }),
   );
+  // The agent's halo: lit while one of its tools runs on the displayed tab (a tab or space switch is a state change).
+  const halo = createHalo((on) => document.documentElement.toggleAttribute("webaios-agent-working", on));
+  const updateHalo = () => {
+    const f = store.state.windows.find((x) => x.id === windowId);
+    const shown = f?.active[f.activeSpace];
+    halo.update(!!(shown && store.access.tabs[shown]?.running));
+  };
+  updateHalo();
+  unsubscribe.push(store.subscribe(updateHalo), store.agent.on("access", updateHalo), store.agent.on(HOST_EXITED, updateHalo), () => halo.dispose());
   // After a tab switch Firefox gives the keyboard to the selected browser; the parking tab is no page, the UI keeps it.
   window.addEventListener("TabSwitchDone", () => {
     if (!tabs.displayed()) frame.focus();
