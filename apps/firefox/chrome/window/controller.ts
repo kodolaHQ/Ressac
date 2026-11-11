@@ -43,6 +43,8 @@ export interface WindowController {
    * the window left of the agent panel (true: empty and internal pages) or only its 240 px column (false).
    */
   setFullWindow(full: boolean | "window"): void;
+  /** The first-launch welcome covers the window: our shortcuts (⌃Tab included) do nothing, but closing the window. */
+  setWelcome(shown: boolean): void;
   /** Compact mode: the page takes the sidebar's column, and the sidebar floats over it. */
   setSidebarColumn(shown: boolean): void;
   /** Whether the sidebar shows; hidden, the iframe folds once the sidebar has slid out. */
@@ -221,6 +223,7 @@ export function createController(
   walk.onState(store.state);
   unsubscribe.push(store.subscribe((state) => walk.onState(state)));
 
+  let welcome = false;
   const run = (s: Shortcut) => {
     const state = store.state;
     const f = state.windows.find((x) => x.id === windowId);
@@ -267,7 +270,7 @@ export function createController(
     if (!s) return;
     e.preventDefault();
     e.stopImmediatePropagation();
-    run(s);
+    if (!welcome || s.type === "closeWindow") run(s);
   };
   const onKeyUp = (e: KeyboardEvent) => {
     if (e.key === "Control") walk.keyReleased(windowId);
@@ -434,6 +437,9 @@ export function createController(
     },
     focusPage() {
       if (tabs.displayed()) gBrowser.selectedBrowser.focus();
+    },
+    setWelcome(shown) {
+      welcome = shown;
     },
     setFullWindow(full) {
       frame.toggleAttribute("full", !!full);

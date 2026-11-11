@@ -224,7 +224,7 @@
                 {operation === "restart" ? "Redémarrage…" : operation === "rebuild" ? "Reconstruction… (quelques minutes)" : workshop ? WORKSHOP[workshop] : "L'agent ne répond pas"}
               </span>
               {#if workshop === "docker-absent"}
-                <button class="primary" onclick={() => s.openUrl("https://orbstack.dev")}>Installer OrbStack</button>
+                <button class="primary" onclick={() => s.openUrl("https://orbstack.dev/download")}>Installer OrbStack</button>
               {/if}
               <button data-testid="workshop-restart" disabled={!!operation} onclick={() => (asking = "restart")}>Redémarrer</button>
               <button data-testid="workshop-rebuild" disabled={!!operation} onclick={() => (asking = "rebuild")}>Reconstruire</button>

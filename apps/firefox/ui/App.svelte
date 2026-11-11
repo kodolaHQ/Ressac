@@ -19,6 +19,7 @@
   import Review from "./components/Review.svelte";
   import Settings from "./components/Settings.svelte";
   import Welcome from "./components/Welcome.svelte";
+  import { welcomeStep } from "./components/welcome-step.svelte";
   import { focusAgent } from "./components/agent.svelte";
   import { design, rereadDesign } from "./components/design.svelte";
   import { command, closeCommand, focusEmptyPage, openCommand } from "./components/command.svelte";
@@ -40,8 +41,10 @@
   const win = window.parent.webaiosWindow!;
 
   const winState = $derived(currentWindow());
-  /** The first-launch welcome covers the whole window until it is finished. */
-  const welcome = $derived(!!winState && appState.value?.settings.onboarded === false);
+  /** The first-launch welcome covers the whole window until it is finished, unless it stepped aside for an install page. */
+  const unfinished = $derived(!!winState && appState.value?.settings.onboarded === false);
+  const welcome = $derived(unfinished && !welcomeStep.aside);
+  $effect(() => win.setWelcome(welcome));
   const activeTab = $derived.by(() => {
     const id = winState?.active[winState.activeSpace];
     return id ? appState.value?.tabs[id] : undefined;
@@ -133,7 +136,6 @@
   );
   $effect(() =>
     api.onShortcut((r) => {
-      if (welcome) return;
       if (r === "closeTab") {
         if (activeTab) closeTab(activeTab.id);
       } else if (r === "command") openCommand("new");
@@ -197,12 +199,17 @@
 <svelte:window onfocus={() => document.activeElement === document.body && focusEmptyPage.n++} />
 
 <div class="window" inert={welcome || !!agentRequest || !!spaceSettings.draft || !!command.open} class:compact class:covered={overlay}>
-  <div class="column" class:folded-up={!barVisible} inert={!barVisible}>
+  <div class="column" class:folded-up={!barVisible} class:resume={unfinished && welcomeStep.aside} inert={!barVisible}>
     {#if winState}
       <!-- ✦ on a builder tab: the controller opens the panel and sends "agent", handled above. -->
       <Sidebar window={winState} togglePanel={togglePanel} builderAgent={() => win.openAgent()} />
     {:else}
       <aside data-testid="sidebar"></aside>
+    {/if}
+    <!-- The welcome stepped aside for an install page: the way back, under the sidebar (the only place this iframe
+         covers beside a web page). -->
+    {#if unfinished && welcomeStep.aside}
+      <button class="resume-welcome" data-testid="welcome-resume" onclick={() => (welcomeStep.aside = false)}>Reprendre l'accueil</button>
     {/if}
   </div>
   <main class="content" class:framed={(!pageWeb || !!panel) && !(winState && !activeTab && !panel)} data-testid="content-zone">
@@ -245,7 +252,7 @@
     {/if}
   </main>
 </div>
-<ContextMenu />
+{#if !welcome}<ContextMenu />{/if}
 <!-- No page capture under the modals in step 2: the web page shows through the veil. An agent's question comes before
      the space settings, which come back with their draft. -->
 {#if agentRequest}
@@ -290,6 +297,24 @@
   }
   .window.compact { grid-template-columns: 1fr; }
   .column { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; min-height: 0; }
+  .column.resume { grid-template-rows: minmax(0, 1fr) auto; }
+  .resume-welcome {
+    justify-self: center;
+    margin: 0 8px 10px;
+    padding: 7px 16px;
+    border: 1px solid var(--glass-edge);
+    border-radius: 999px;
+    background: var(--glass-hi);
+    box-shadow: var(--float);
+    color: var(--text);
+    font: 600 12.5px var(--font-ui);
+    -moz-window-dragging: no-drag;
+    animation: webaios-rise var(--spring-d) var(--spring) backwards;
+    transition: transform var(--tap), background var(--tap);
+  }
+  .resume-welcome:hover { background: var(--bg-active); }
+  .resume-welcome:active { transform: scale(0.97); }
+  .resume-welcome:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .compact .column {
     position: fixed;
     inset: 0 auto 0 0;

@@ -6,13 +6,16 @@
   import { api, appState } from "../state.svelte";
   import AuraDot from "./AuraDot.svelte";
   import SidebarSketch from "./SidebarSketch.svelte";
+  import { welcomeStep as step } from "./welcome-step.svelte";
 
-  /** The first-launch welcome: five pages on the aura, then the browser. Nothing is done before « Ouvrir le navigateur ». */
+  /**
+   * The first-launch welcome: five pages on the aura, then the browser. Nothing is done before « Ouvrir le navigateur ».
+   * An install link steps it aside (unmounted, its page kept in `step`): coming back checks Docker and Ollama again.
+   */
   let { window: win }: { window: WindowState } = $props();
 
   const PAGES = 5;
   const AGENTS = [["claude", "Claude Code"], ["codex", "Codex"]] as const;
-  let page = $state(1);
   const space = $derived(appState.value?.spaces.find((s) => s.id === win.activeSpace));
   const profile = $derived(appState.value?.settings.agentProfile);
   let name = $state(untrack(() => space?.name ?? ""));
@@ -34,8 +37,13 @@
     void checkOllama();
   });
 
-  const next = () => (page = Math.min(PAGES, page + 1));
-  const back = () => (page = Math.max(1, page - 1));
+  const next = () => (step.page = Math.min(PAGES, step.page + 1));
+  const back = () => (step.page = Math.max(1, step.page - 1));
+  /** The download page opens in a tab, and the welcome steps aside so that it shows. */
+  function install(url: string) {
+    api.settings.openUrl(url);
+    step.aside = true;
+  }
   /** Each page's main button takes the keyboard as it appears. */
   const focus = (el: HTMLElement) => el.focus({ preventScroll: true });
 
@@ -45,12 +53,13 @@
     const n = name.trim();
     if (s && ((n && n !== s.name) || aura !== s.aura)) api.dispatch({ type: "updateSpace", id: s.id, name: n || s.name, icon: s.icon, private: s.private, profile: s.profile, aura });
     api.dispatch({ type: "finishOnboarding" });
+    step.page = 1;
   }
 </script>
 
 {#snippet actions(label: string, later: boolean)}
   <div class="actions">
-    {#if page > 1}<button type="button" class="quiet" data-testid="welcome-back" onclick={back}>Retour</button>{/if}
+    {#if step.page > 1}<button type="button" class="quiet" data-testid="welcome-back" onclick={back}>Retour</button>{/if}
     <span class="grow"></span>
     {#if later}<button type="button" class="quiet" data-testid="welcome-later" onclick={next}>Plus tard</button>{/if}
     <button type="button" class="primary" data-testid="welcome-next" use:focus onclick={next}>{label}</button>
@@ -64,16 +73,16 @@
 <div class="welcome" style={Object.entries(auraVariables(aura)).map(([k, v]) => `${k}:${v}`).join(";")}>
   <div class="aura" aria-hidden="true"><i></i><i></i><i></i></div>
   <div class="panel" role="dialog" aria-modal="true" aria-label="Bienvenue dans WebAiOs">
-    {#key page}
-      <section class="page" data-testid="welcome-{page}">
-        {#if page === 1}
+    {#key step.page}
+      <section class="page" data-testid="welcome-{step.page}">
+        {#if step.page === 1}
           <div class="hero">
             <img src="chrome://branding/content/about-logo.svg" alt="" width="96" height="96" />
             <h1 class="brand">webaios</h1>
             <p class="lead">Un navigateur calme, avec un agent quand vous le voulez.</p>
           </div>
           {@render actions("Commencer", false)}
-        {:else if page === 2}
+        {:else if step.page === 2}
           <h2>Vos onglets vivent à gauche</h2>
           <div class="sidebar">
             <SidebarSketch />
@@ -84,7 +93,7 @@
             </ul>
           </div>
           {@render actions("Suivant", false)}
-        {:else if page === 3}
+        {:else if step.page === 3}
           <h2>Brancher un agent</h2>
           <p>Claude Code et Codex travaillent dans un conteneur à part, sur votre Mac. Il leur faut OrbStack (ou Docker Desktop).</p>
           <div class="check">
@@ -92,7 +101,7 @@
               {@render status("welcome-docker", "warn", "Vérification…")}
             {:else if docker === "docker-absent"}
               {@render status("welcome-docker", "warn", "OrbStack n'est pas installé.")}
-              <button type="button" data-testid="welcome-install-docker" onclick={() => api.settings.openUrl("https://orbstack.dev/download")}>Installer OrbStack</button>
+              <button type="button" data-testid="welcome-install-docker" onclick={() => install("https://orbstack.dev/download")}>Installer OrbStack</button>
               <button type="button" data-testid="welcome-recheck" onclick={() => void checkDocker()}>Vérifier à nouveau</button>
             {:else if docker === null}
               {@render status("welcome-docker", "off", "Impossible de vérifier pour l'instant.")}
@@ -110,7 +119,7 @@
           </div>
           <p class="note">Vous vous connecterez la première fois que vous ouvrirez l'agent (<kbd>⌘J</kbd>).</p>
           {@render actions("Continuer", true)}
-        {:else if page === 4}
+        {:else if step.page === 4}
           <h2>L'IA locale</h2>
           <p>Avec Ollama, la veille et les décisions tournent sur votre Mac : rien ne part sur Internet.</p>
           <div class="check">
@@ -120,7 +129,7 @@
               {@render status("welcome-ollama", "ok", "Ollama est prêt.")}
             {:else}
               {@render status("welcome-ollama", "warn", "Ollama n'est pas installé ou pas lancé.")}
-              <button type="button" data-testid="welcome-install-ollama" onclick={() => api.settings.openUrl("https://ollama.com/download")}>Installer Ollama</button>
+              <button type="button" data-testid="welcome-install-ollama" onclick={() => install("https://ollama.com/download")}>Installer Ollama</button>
               <button type="button" data-testid="welcome-recheck" onclick={() => void checkOllama()}>Vérifier à nouveau</button>
             {/if}
           </div>
@@ -146,8 +155,8 @@
         {/if}
       </section>
     {/key}
-    <ol class="dots" aria-label="Page {page} sur {PAGES}">
-      {#each { length: PAGES } as _, i (i)}<li class:current={i + 1 === page}></li>{/each}
+    <ol class="dots" aria-label="Page {step.page} sur {PAGES}">
+      {#each { length: PAGES } as _, i (i)}<li class:current={i + 1 === step.page}></li>{/each}
     </ol>
   </div>
 </div>

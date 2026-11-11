@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { dispatch, state, waitFor, waitReady } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
-import { click, inUi, missingApi, waitUi } from "./ui";
+import { click, inUi, keyDown, keyUp, missingApi, pressKeys, waitUi } from "./ui";
 
 // Plan 47 Task 2: the first-launch welcome (five pages on the aura) and « Revoir l'accueil » in Settings.
 
@@ -82,12 +82,31 @@ describe("welcome", () => {
     await launch({ env: { FAKE_DOCKER_ABSENT: "1" } });
     await forward(1, 3);
     await shows("welcome-docker", "OrbStack n'est pas installé.");
+    // An install link opens its page and the welcome steps aside; the pill brings it back on the same step.
     await press("welcome-install-docker");
-    const s = await waitFor<BrowserState>(m, `return (async () => (await ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready).state)();`, (s) =>
+    await waitFor<BrowserState>(m, `return (async () => (await ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready).state)();`, (s) =>
       Object.values(s.tabs).some((t) => t.url === "https://orbstack.dev/download"),
     );
-    // The install page opens in a tab under the welcome; closed here so that finishing lands on the home page.
-    await dispatch(m, { type: "closeTab", id: Object.values(s.tabs).find((t) => t.url === "https://orbstack.dev/download")!.id });
+    await layerGone();
+    expect(await inUi(m, `return !!doc.querySelector('[data-testid="sidebar"]').closest('[inert]')`)).toBe(false);
+    await click(m, '[data-testid="welcome-resume"]');
+    await shows("welcome-docker", "OrbStack n'est pas installé.");
+    expect(await inUi(m, `return !!doc.querySelector('[data-testid="welcome-resume"]')`)).toBe(false);
+
+    // While it shows, the window's shortcuts do nothing: ⌘T, ⌃Tab.
+    const before = await state(m);
+    await dispatch(m, { type: "openTab", windowId: before.windows[0]!.id, url: "about:blank", activate: false });
+    await pressKeys(m, "Meta+t");
+    await keyDown(m, "Control");
+    await pressKeys(m, "Tab");
+    await sleep(300);
+    expect(await inUi(m, `return !!doc.querySelector('[data-testid="tabs-panel"], [data-testid="command-bar"]')`)).toBe(false);
+    await keyUp(m, "Control");
+    await sleep(300);
+    const after = await state(m);
+    expect(after.windows[0]!.active[after.windows[0]!.activeSpace]).toBe(before.windows[0]!.active[before.windows[0]!.activeSpace]);
+    await shown("welcome-3");
+
     await press("welcome-later");
     await shows("welcome-ollama", "Ollama n'est pas installé ou pas lancé.");
     await shown("welcome-install-ollama");
@@ -95,7 +114,6 @@ describe("welcome", () => {
     await shown("welcome-5");
     await press("welcome-finish");
     await layerGone();
-    await shown("empty-page");
     expect(await inUi(m, `return !!doc.querySelector('[data-testid="sidebar"]').closest('[inert]')`)).toBe(false);
     await saved((s) => s.settings?.onboarded === true);
   });
