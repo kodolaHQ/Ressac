@@ -897,7 +897,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const f = firefox();
     const h = launch(amo, f, { prepare: source, keys: false });
     const r = await tool(h, "request_extension", { id: "ma-ext" });
-    expect(r).toContain("Clés AMO absentes");
+    expect(r).toContain("Compte Mozilla non branché");
     expect(r).toBe(KEYS_ABSENT);
     expect(f.cards).toEqual([]);
     expect(amo.sends).toEqual([]);

@@ -32,7 +32,7 @@ const { createSettingsHandlers, SETTINGS_METHODS } = await import("./settings.ts
 const { createApplicationsHost } = await import("./applications.ts");
 const { createActionsHost } = await import("./actions.ts");
 const { ExtensionsAgent } = await import("./extensions/agent.ts");
-const { CLAUDE_KEY, keychain } = await import("./keychain.ts");
+const { CLAUDE_KEY, amoKeychain, keychain } = await import("./keychain.ts");
 const { startRelay } = await import("./relay.ts");
 const { codexEngineArgs } = await import("./codex-engine.ts");
 const { claudeEngineEnv, withoutV1 } = await import("./claude-engine.ts");
@@ -768,6 +768,7 @@ const settings = createSettingsHandlers({
   deviceCommand: (argv) => workshop.execCommand(argv, { interactive: false }),
   keychain: keys.codex,
   claudeKeychain: keys.claude,
+  amoKeychain: amoKeychain(),
   forgetKey,
 });
 // The chrome may not answer yet (its handlers come up later): it calls "sites.ready" once it does.

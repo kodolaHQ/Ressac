@@ -382,6 +382,9 @@ export interface SettingsApi {
   codexKeySaved(): Promise<boolean>;
   setCodexKey(key: string): Promise<SettingsResult>;
   deleteCodexKey(): Promise<SettingsResult>;
+  amoAccount(): Promise<{ saved: boolean; issuer: string | null }>;
+  setAmoAccount(issuer: string, secret: string): Promise<SettingsResult>;
+  deleteAmoAccount(): Promise<SettingsResult>;
   chooseCodexEngine(engine: CodexEngine): void;
   claudeKeySaved(): Promise<boolean>;
   setClaudeKey(key: string): Promise<SettingsResult>;

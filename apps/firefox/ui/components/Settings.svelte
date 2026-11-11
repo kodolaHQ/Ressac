@@ -21,6 +21,7 @@
   import { TELEMETRY_NOTICE, type AgentAccount, type DecisionModel, type LoginResult, type WorkshopOperation } from "../../shared/settings";
   import { api, appState } from "../state.svelte";
   import Icon from "./Icon.svelte";
+  import SettingsMozilla from "./SettingsMozilla.svelte";
   import SettingsEngine from "./SettingsEngine.svelte";
   import SettingsData from "./SettingsData.svelte";
   import SettingsPermissions from "./SettingsPermissions.svelte";
@@ -182,6 +183,7 @@
             {/each}
           </div>
         {/if}
+        <SettingsMozilla />
       </section>
     {:else if current === "ai"}
       <section data-testid="settings-ai">

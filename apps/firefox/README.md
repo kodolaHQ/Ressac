@@ -86,7 +86,7 @@ Each is copied, signed by AMO (unlisted) and installed as an add-on (`<folder>@a
 
 Setup and files:
 
-- Signing: AMO, unlisted channel. The keys sit in the macOS keychain, read by the kernel host at each upload and never written anywhere: `security add-generic-password -s webaios-amo -a <JWT issuer> -w` (the password is the JWT secret). Without them a grant answers « Clés AMO absentes » and nothing leaves the machine.
+- Signing: AMO, unlisted channel. The keys sit in the macOS keychain, read by the kernel host at each upload and never written anywhere: `security add-generic-password -s webaios-amo -a <JWT issuer> -w` (the password is the JWT secret). Settings › Agents › Compte Mozilla enters them (the `security` command works too). Without them a grant answers « Compte Mozilla non branché » and nothing leaves the machine.
 - Files in `<dataDir>/extensions`: `state.json` (registry: grants, scopes, state), `copies/<folder>@agent.webaios/` (the modified copy), `signed/` (the signed `.xpi` kept, reinstalled at startup if missing), `amo-versions.json` (the counter per id; never lowered nor cleared, not even by « Supprimer », because AMO never reuses a number).
 - Id `<folder>@agent.webaios`; version `<a>.<b>.<c>.<n>` (the agent's version completed with zeros to three numbers, then the counter; four numbers are refused).
 - Signing takes 154 to 298 s (median 284 s, spike S1, `docs/superpowers/notes/2026-11-04-extensions-agent-essai.md`); the timeout is `SIGNATURE_DELAY_MS` = 900 000 ms.

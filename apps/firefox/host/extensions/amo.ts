@@ -10,7 +10,7 @@ export const AMO_URL = "https://addons.mozilla.org";
 /** 3 x the slowest signing measured (298 s, plan 25 spike): AMO signs in 2.5 to 5 minutes. */
 export const SIGNATURE_DELAY_MS = 900_000;
 
-export const KEYS_ABSENT = "Clés AMO absentes : ajoute-les au trousseau macOS (service « webaios-amo »). Rien n'est parti chez Mozilla.";
+export const KEYS_ABSENT = "Compte Mozilla non branché : Réglages › Agents › Compte Mozilla. Rien n'est parti chez Mozilla.";
 export const deniedSignature = (m: string) => "Signature refusée par addons.mozilla.org : " + m.slice(0, 2000);
 export const SLOW_SIGNATURE = "Signature trop longue : addons.mozilla.org n'a pas rendu le module à temps. Réessaie reload_extension.";
 export const signatureImpossible = (m: string) => "Signature impossible (réseau ou addons.mozilla.org) : " + m;
@@ -27,16 +27,17 @@ export interface AmoKey {
 export const KEYCHAIN_DELAY_MS = 10_000;
 
 /**
- * Test: WEBAIOS_TEST_AMO_URL set → WEBAIOS_TEST_AMO_KEYS ("emetteur:secret") or null; else the keychain (service webaios-amo),
+ * Test: WEBAIOS_TEST_AMO_URL set → WEBAIOS_TEST_AMO_KEYS ("emetteur:secret") or null; else WEBAIOS_TEST_KEYCHAIN's ".amo" file; else the keychain (service webaios-amo),
  * null when absent or too slow. `command` and `delai` are only there for tests.
  */
 export async function readAmoKey(env: NodeJS.ProcessEnv = process.env, o: { command?: string; delay?: number } = {}): Promise<AmoKey | null> {
-  if (env.WEBAIOS_TEST_AMO_URL) {
-    const keys = env.WEBAIOS_TEST_AMO_KEYS;
-    // The issuer itself holds colons (user:<id>:<hash>): the secret is what follows the last one.
+  // The issuer itself holds colons (user:<id>:<hash>): the secret is what follows the last one.
+  const split = (keys?: string): AmoKey | null => {
     const i = keys?.lastIndexOf(":") ?? -1;
     return keys && i > 0 && i < keys.length - 1 ? { emitter: keys.slice(0, i), secret: keys.slice(i + 1) } : null;
-  }
+  };
+  if (env.WEBAIOS_TEST_AMO_URL) return split(env.WEBAIOS_TEST_AMO_KEYS);
+  if (env.WEBAIOS_TEST_KEYCHAIN) return split(await readFile(`${env.WEBAIOS_TEST_KEYCHAIN}.amo`, "utf8").catch(() => undefined));
   try {
     const security = (args: string[]) => run(o.command ?? "security", ["find-generic-password", "-s", "webaios-amo", ...args], { timeout: o.delay ?? KEYCHAIN_DELAY_MS });
     const [{ stdout: attrs }, { stdout: secret }] = await Promise.all([security([]), security(["-w"])]);
