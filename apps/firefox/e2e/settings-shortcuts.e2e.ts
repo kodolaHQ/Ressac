@@ -90,6 +90,17 @@ describe("Settings › Raccourcis", () => {
     expect((await state(m)).settings.vimMode).toBe(true);
   });
 
+  it("the vim keys' table shows only while the mode is on", async () => {
+    expect(await has('[data-testid="vim-keys"]')).toBe(false);
+    await click(m, '[data-testid="vim-mode"]');
+    await waitUi(m, "return !!doc.querySelector(arguments[0])", ['[data-testid="vim-keys"]']);
+    const table = await text('[data-testid="vim-keys"]');
+    for (const heading of ["Défiler", "Naviguer", "Onglets et espaces", "Liens et recherche", "Pause"]) expect(table).toContain(heading);
+    expect(table).toContain("gs");
+    await click(m, '[data-testid="vim-mode"]');
+    await waitUi(m, "return !doc.querySelector(arguments[0])", ['[data-testid="vim-keys"]']);
+  });
+
   it("every label of the interface follows a remapped shortcut", async () => {
     await edit("agent");
     await pressKeys(m, "Meta+k");

@@ -5,6 +5,8 @@
 // The child listens on its chrome event handler, in front of every page listener (the design actor's guard): a key it
 // takes never reaches the page. Packaged: a change here needs build:ui.
 
+import { VIM_KEYS } from "../../shared/vim-keys";
+
 const { setTimeout, clearTimeout } = ChromeUtils.importESModule("resource://gre/modules/Timer.sys.mjs");
 
 /** How long a `g` or `y` waits for its second letter. */
@@ -21,26 +23,34 @@ const MONO_FAMILY = "WebAiOs Geist Mono";
 /** The parent's copy of the font, read once. */
 let monoBytes: Promise<ArrayBuffer> | undefined;
 /** The pause's pill (French UI copy). */
-const PAUSED = "vim en pause · ⇧Échap";
-// The actor's layer, a closed shadow root in the page: the link hints and the pause's pill. `:host` important
+const PAUSED = "vim en pause · ⇧Échap · ? : aide";
+// The actor's layer, a closed shadow root in the page: the link hints, the pause's pill and the `?` sheet. `:host` important
 // declarations win over the page's. Glass, Geist Mono and the space's aura accent (DESIGN.md), on the window's own
 // tokens (the parent sends them: see "vim:style").
 const LAYER_CSS = `
 :host { all: initial !important; position: fixed !important; inset: 0 !important; z-index: 2147483647 !important; pointer-events: none !important; display: block !important; }
-.hints, .pill { transition: opacity ${FADE_MS}ms ease-out; }
-.hint, .pill { position: absolute; border: 1px solid var(--border); background: color-mix(in srgb, var(--sheet) 86%, transparent);
+.hints, .pill, .help { transition: opacity ${FADE_MS}ms ease-out; }
+.hint, .pill, .help { position: absolute; border: 1px solid var(--border); background: color-mix(in srgb, var(--sheet) 86%, transparent);
   backdrop-filter: blur(12px) saturate(1.4); font: 500 11px/1.4 "WebAiOs Geist Mono", "Geist Mono", ui-monospace, monospace; white-space: nowrap; }
-.hint, .pill { animation: in 460ms linear(0, .06 2.4%, .24 5.1%, .55 9.4%, .84 14.6%, 1.01 19.4%, 1.07 23.2%, 1.08 26.6%, 1.05 32.8%, 1 41%, .99 50%, 1); }
+.hint, .pill, .help { animation: in 460ms linear(0, .06 2.4%, .24 5.1%, .55 9.4%, .84 14.6%, 1.01 19.4%, 1.07 23.2%, 1.08 26.6%, 1.05 32.8%, 1 41%, .99 50%, 1); }
 .hint { padding: 1px 4px; border-radius: 6px; color: var(--accent); text-transform: uppercase; letter-spacing: .02em; transition: opacity ${FADE_MS}ms ease-out; }
 .hint b { font-weight: 500; opacity: .45; }
 .pill { right: 12px; bottom: 12px; padding: 4px 10px; border-radius: 10px; color: var(--text); }
+.help { right: 12px; bottom: 12px; box-sizing: border-box; width: 360px; max-width: calc(100% - 24px); max-height: calc(100% - 24px); overflow: auto;
+  pointer-events: auto; padding: 12px 14px; border-radius: 14px; color: var(--text); font: 400 12px/1.45 -apple-system, system-ui, sans-serif; white-space: normal;
+  box-shadow: var(--float); transform-origin: bottom right; }
+.help h3 { margin: 12px 0 4px; font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); }
+.help h3:first-child { margin-top: 0; }
+.row { display: grid; grid-template-columns: 84px 1fr; gap: 10px; padding: 2px 0; }
+.keys { display: flex; flex-wrap: wrap; gap: 6px; }
+kbd { font: 500 11px/1.45 "WebAiOs Geist Mono", "Geist Mono", ui-monospace, monospace; color: var(--accent); }
 .gone, .out { opacity: 0; }
 @keyframes in { from { opacity: 0; transform: scale(.85); } }
-@media (prefers-reduced-motion: reduce) { .hints, .hint, .pill { transition: none; animation: none; } }
+@media (prefers-reduced-motion: reduce) { .hints, .hint, .pill, .help { transition: none; animation: none; } }
 `;
 
 /** The window's tokens the labels paint with. */
-const HINT_TOKENS = ["--accent", "--sheet", "--border", "--text"];
+const HINT_TOKENS = ["--accent", "--sheet", "--border", "--text", "--text-muted", "--float"];
 
 /** `n` labels over HINT_KEYS, breadth-first: as short as possible, and none is the start of another. */
 function hintLabels(n: number): string[] {
@@ -173,6 +183,8 @@ export class WebAiOsVimChild extends JSWindowActorChild {
   // shortcut: the pause is per document and falls on reload; a per-site list if testers ask
   private paused = false;
   private pill: HTMLElement | null = null;
+  /** The `?` sheet shown. */
+  private help: HTMLElement | null = null;
 
   // DOMWindowCreated: a new document; pageshow: one back from the bfcache asks again.
   handleEvent(e: Event): void {
@@ -200,6 +212,7 @@ export class WebAiOsVimChild extends JSWindowActorChild {
     this.on = m.data?.on === true;
     if (this.on) return this.listen();
     if (this.paused) this.setPaused(false);
+    if (this.help) this.toggleHelp();
     this.hideHints(true);
     this.setPrefix("");
   }
@@ -291,7 +304,12 @@ export class WebAiOsVimChild extends JSWindowActorChild {
       if (!repeat) this.sendAsyncMessage(...G_KEYS[key]!);
       return true;
     }
-    if (key === "Escape") return !!prefix;
+    if (key === "Escape") {
+      if (prefix) return true;
+      if (!this.help) return false;
+      this.toggleHelp();
+      return true;
+    }
     switch (key) {
       case "j":
         return this.scroll(0, LINE);
@@ -317,6 +335,9 @@ export class WebAiOsVimChild extends JSWindowActorChild {
         return true;
       case "i":
         if (!repeat) this.setPaused(true);
+        return true;
+      case "?":
+        if (!repeat) this.toggleHelp();
         return true;
       case "g":
       case "y":
@@ -456,6 +477,7 @@ export class WebAiOsVimChild extends JSWindowActorChild {
     this.paused = on;
     this.setPrefix("");
     this.hideHints();
+    if (on && this.help) this.toggleHelp();
     if (on && !this.pill) {
       this.pill = this.document.createElement("div");
       this.pill.className = "pill";
@@ -465,6 +487,30 @@ export class WebAiOsVimChild extends JSWindowActorChild {
       this.unmount(this.pill);
       this.pill = null;
     }
+  }
+
+  /** `?`: shows the sheet of the vim keys (VIM_KEYS), or takes it away. */
+  private toggleHelp(): void {
+    if (this.help) {
+      this.unmount(this.help);
+      this.help = null;
+      return;
+    }
+    const doc = this.document;
+    const make = (tag: string, className: string, text = "") => Object.assign(doc.createElement(tag), { className, textContent: text });
+    const help = make("div", "help");
+    for (const group of VIM_KEYS) {
+      help.append(make("h3", "", group.title));
+      for (const row of group.rows) {
+        const keys = make("span", "keys");
+        keys.append(...row.keys.map((k) => make("kbd", "", k)));
+        const line = make("div", "row");
+        line.append(keys, make("span", "", row.action));
+        help.append(line);
+      }
+    }
+    this.help = help;
+    this.mount(help);
   }
 
   /** A key while the labels show: a letter narrows them (a whole label follows its link), Backspace undoes one, Escape quits. */

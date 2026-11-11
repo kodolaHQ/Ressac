@@ -482,7 +482,7 @@ describe("vim mode: pause", () => {
   it("i pauses: keys and Escape reach the page, the pill shows; ⇧Escape resumes unseen", async () => {
     const id = await open();
     await pressKeys(m, "i");
-    await expect.poll(pill).toBe("vim en pause · ⇧Échap");
+    await expect.poll(pill).toBe("vim en pause · ⇧Échap · ? : aide");
     await pressKeys(m, "j");
     await expect.poll(seen).toContain("keydown:j");
     await pressKeys(m, "x");
@@ -490,7 +490,7 @@ describe("vim mode: pause", () => {
     await expect.poll(seen).toContain("keydown:Escape");
     expect(await scrollY()).toBe(0);
     expect(!!(await state(m)).tabs[id]).toBe(true);
-    expect(await pill()).toBe("vim en pause · ⇧Échap");
+    expect(await pill()).toBe("vim en pause · ⇧Échap · ? : aide");
     const before = await seen();
     await pressKeys(m, "Shift+Escape");
     await expect.poll(pill).toBeNull();
@@ -501,7 +501,7 @@ describe("vim mode: pause", () => {
     // ⇧Escape outside a pause starts one, unseen too.
     const before2 = await seen();
     await pressKeys(m, "Shift+Escape");
-    await expect.poll(pill).toBe("vim en pause · ⇧Échap");
+    await expect.poll(pill).toBe("vim en pause · ⇧Échap · ? : aide");
     expect((await seen()).slice(before2.length)).not.toContain("Escape");
   });
 
@@ -523,6 +523,46 @@ describe("vim mode: pause", () => {
     expect(await pill()).toBeNull();
     await pressKeys(m, "j");
     await expect.poll(scrollY).toBeGreaterThan(0);
+  });
+});
+
+/** The text of the `?` sheet shown, or null. */
+const sheet = () =>
+  inBrowser<string | null>(
+    m,
+    B,
+    `const root = [...document.documentElement.children].map((e) => e.openOrClosedShadowRoot).find((r) => r?.querySelector(".help"));
+     return root?.querySelector(".help:not(.out)")?.textContent ?? null;`,
+    { system: true },
+  );
+
+describe("vim mode: the ? sheet", () => {
+  beforeEach(async () => {
+    await setVim(true);
+  });
+
+  it("? shows the sheet, unseen by the page; ? and Escape close it", async () => {
+    await open();
+    await pressKeys(m, "?");
+    await expect.poll(sheet).toContain("Onglets et espaces");
+    expect(await sheet()).toContain("Afficher cette aide");
+    await pressKeys(m, "?");
+    await expect.poll(sheet).toBeNull();
+    await pressKeys(m, "?");
+    await expect.poll(sheet).not.toBeNull();
+    await pressKeys(m, "Escape");
+    await expect.poll(sheet).toBeNull();
+    // Neither the ? nor the Escape that closed the sheet reached the page.
+    expect(await seen()).toBe("");
+  });
+
+  it("in a field, ? is typed and no sheet shows", async () => {
+    await open();
+    await inPage("document.getElementById('in').focus(); return 1;");
+    await typeText(m, "?");
+    expect(await inPage<string>("return document.getElementById('in').value;")).toBe("?");
+    await sleep(300);
+    expect(await sheet()).toBeNull();
   });
 });
 

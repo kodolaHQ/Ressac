@@ -295,16 +295,18 @@ Off by default (Réglages › Raccourcis › « Mode vim », `settings.vimMode`)
 | `/` | Firefox's find bar |
 | `yy` | copy the page address |
 | `i` | pause the vim keys in this tab; `⇧Échap` resumes (and pauses when active) |
-| `Échap` | drop hints or a pending prefix |
+| `Échap` | drop hints, a pending prefix or the `?` sheet |
+| `?` | show / hide the cheat sheet (bottom-right, same layer as the hints) |
 
 - Where: web tabs (http/https, top frame) of main windows only. The parent answers `vim:state` true only when the setting is on, the window is a main window (`webaiosWindow`) and the tab has a `webaios-tab-id`; it re-checks before each action.
 - The guard: the child listens to keydown/keypress/keyup in capture on `docShell.chromeEventHandler`, so the page never sees a key the actor took (its own `window` capture listeners included). Untouched: keys with ⌘ ⌃ ⌥, IME composition, untrusted events, events from another document (frames, bfcache).
 - Editable fields: when the target (chrome-only `composedTarget`, which a closed shadow root does not hide) is a text input, textarea, select or contenteditable, every key goes to the page, `i` and `⇧Échap` included; Échap also blurs the field, giving the keys back. A checkbox, radio, range, button, file or color input is not a field.
 - Inner scrollers: scrolling moves the window while it can; otherwise the scrollable ancestor of the last element clicked or hovered; otherwise the largest visible scrollable element. `d`, `u`, `G`, `gg` use that box.
-- Hints: labels sit in a div with a **closed** shadow root, styled by a constructed stylesheet (a `<style>` is blocked by page CSP). Colors come from the main window's tokens and the font bytes (Geist Mono woff2, read once) from the parent via `vim:style`, since a web process cannot fetch `chrome://` and a shadow root ignores `@font-face`. Only HTML links (not SVG `<a>`) whose centre point hits the link are labelled. The « vim en pause · ⇧Échap » pill uses the same layer.
+- Hints: labels sit in a div with a **closed** shadow root, styled by a constructed stylesheet (a `<style>` is blocked by page CSP). Colors come from the main window's tokens and the font bytes (Geist Mono woff2, read once) from the parent via `vim:style`, since a web process cannot fetch `chrome://` and a shadow root ignores `@font-face`. Only HTML links (not SVG `<a>`) whose centre point hits the link are labelled. The « vim en pause · ⇧Échap · ? : aide » pill and the `?` sheet use the same layer.
+- The cheat sheet: `shared/vim-keys.ts` (`VIM_KEYS`) is the one list of keys, bundled into the actor for the `?` sheet and read by Réglages › Raccourcis, which shows it while the mode is on. `test/vim-keys.test.ts` drives the actor's `run` over every printable key and fails if one it handles is missing from the list.
 - The pause is per document: a reload or navigation ends it.
 
-Build facts: changing the actor needs `pnpm build:ui`. A fresh engine needs `pnpm engine:import` first: it creates the `vim-actor.sys.mjs` link in `src/`, and without it `build:ui` fails. Tests: `e2e/vim.e2e.ts`, `e2e/settings-shortcuts.e2e.ts`, `test/shortcut-bindings.test.ts`.
+Build facts: changing the actor needs `pnpm build:ui`. A fresh engine needs `pnpm engine:import` first: it creates the `vim-actor.sys.mjs` link in `src/`, and without it `build:ui` fails. Tests: `e2e/vim.e2e.ts`, `e2e/settings-shortcuts.e2e.ts`, `test/shortcut-bindings.test.ts`, `test/vim-keys.test.ts`.
 
 Limits: no links in cross-origin iframes; not in site app or agent app windows; the find bar is Firefox's own (English, not styled by WebAiOs).
 

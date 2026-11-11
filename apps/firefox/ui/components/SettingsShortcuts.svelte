@@ -1,5 +1,6 @@
 <script lang="ts">
   import { fade } from "svelte/transition";
+  import { VIM_KEYS } from "../../shared/vim-keys";
   import { bindingFromKey, bindingLabel, bindingProblem, effectiveBindings, sameBinding, SHORTCUT_IDS, SHORTCUTS, type ShortcutId } from "../../shared/shortcuts";
   import { api, appState } from "../state.svelte";
 
@@ -74,6 +75,21 @@
       />
     </div>
   </div>
+  {#if appState.value?.settings.vimMode}
+    <div class="vim-keys" data-testid="vim-keys" out:fade={{ duration: 150 }}>
+      {#each VIM_KEYS as group (group.title)}
+        <h3>{group.title}</h3>
+        <div class="panel">
+          {#each group.rows as row (row.keys.join())}
+            <div class="row">
+              <span class="keys">{#each row.keys as k (k)}<kbd>{k}</kbd>{/each}</span>
+              <span class="grow">{row.action}</span>
+            </div>
+          {/each}
+        </div>
+      {/each}
+    </div>
+  {/if}
   <div class="panel list">
     {#each SHORTCUT_IDS as id (id)}
       <div class="row" data-testid="shortcut-{id}">
@@ -109,4 +125,7 @@
   .switch:checked { background: var(--accent); }
   .switch:checked::after { left: 16px; }
   kbd { font: 12px var(--font-mono); color: var(--text-muted); }
+  .vim-keys { animation: webaios-rise var(--spring-d) var(--spring) backwards; }
+  .vim-keys .keys { display: flex; gap: 8px; width: 84px; flex: none; }
+  .vim-keys kbd { color: var(--accent); }
 </style>
