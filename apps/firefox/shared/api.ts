@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { AURA_IDS } from "./aura";
 import { validFolder, ID_EXECUTION, ID_SITE, type Application, type Warning, type BlockCatalogEntry, type DeclarationWidget, type DirectState, type DraftRead, type SaveResult, type AttemptResult, type DevRight, type AiState, type WidgetState, type Execution, type ResumeExecution, type ActionsState, type PageAction, type LaunchResult, type Owner } from "@webaios/kernel";
 import type { BatchState, ProjectId, ExternalProject, TrackedProject } from "@webaios/kernel";
 import { PROJECT_ID, type Comment, type DiffFile, type ModifiedFile } from "@webaios/kernel";
@@ -52,8 +53,8 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("addEssential"), id }),
   z.object({ type: z.literal("removeEssential"), favoriteId: id }),
   /** `profile`: an existing login profile, or "new" to create one specific to the space. */
-  z.object({ type: z.literal("createSpace"), name: z.string().min(1), icon: z.string().min(1), private: z.boolean(), profile: id, windowId: id.optional() }),
-  z.object({ type: z.literal("updateSpace"), id, name: z.string().min(1), icon: z.string().min(1), private: z.boolean(), profile: id }),
+  z.object({ type: z.literal("createSpace"), name: z.string().min(1), icon: z.string().min(1), private: z.boolean(), profile: id, aura: z.enum(AURA_IDS).optional(), windowId: id.optional() }),
+  z.object({ type: z.literal("updateSpace"), id, name: z.string().min(1), icon: z.string().min(1), private: z.boolean(), profile: id, aura: z.enum(AURA_IDS).optional() }),
   z.object({ type: z.literal("deleteSpace"), id }),
   z.object({ type: z.literal("activateSpace"), windowId: id, id }),
   z.object({ type: z.literal("openWindow"), id: id.optional(), spaceId: id.optional() }),

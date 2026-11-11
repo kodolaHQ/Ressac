@@ -30,7 +30,7 @@
 
 <style>
   .action { font-size: 12px; }
-  .name { margin: 0 0 8px; font-size: 14px; font-weight: 600; word-break: break-word; }
+  .name { margin: 0 0 8px; font: 650 16px/1.2 var(--font-display); letter-spacing: -0.01em; word-break: break-word; }
   dl { display: grid; grid-template-columns: 1fr; gap: 2px; margin: 0 0 8px; }
   dt { color: var(--text-muted); }
   dd { margin: 0 0 6px; word-break: break-word; }

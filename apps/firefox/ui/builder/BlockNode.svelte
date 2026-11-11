@@ -63,25 +63,27 @@
   .node {
     width: 200px;
     box-sizing: border-box;
-    padding: 8px 10px;
-    border-radius: 8px;
+    padding: 10px 12px;
+    border-radius: 14px;
     border: 1px solid var(--border);
-    background: var(--bg-bar);
+    background: var(--sheet);
+    box-shadow: var(--float);
     color: var(--text);
     font-size: 12px;
+    transition: box-shadow var(--tap), border-color var(--tap);
   }
-  .node.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .node.selected { border-color: var(--accent); box-shadow: var(--float), 0 0 0 3px color-mix(in oklab, var(--accent) 22%, transparent); }
   .node.in-error { border-color: var(--in-error); }
   .node.warns { border-color: var(--in-progress); }
   .line { display: flex; align-items: center; gap: 6px; min-width: 0; }
   .line + .line { margin-top: 4px; }
-  .title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+  .title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 650 13px/1.2 var(--font-display); letter-spacing: -0.01em; }
   .muted { color: var(--text-muted); }
-  code { font-size: 11px; padding: 0 5px; border-radius: 4px; background: var(--bg-hover); }
+  code { font: 10.5px var(--font-mono); padding: 1px 6px; border-radius: 6px; background: color-mix(in oklab, var(--a1) 14%, var(--glass-hi)); }
   .mark { margin-left: auto; font-weight: 700; }
   .in-error .mark { color: var(--in-error); }
   .warns .mark { color: var(--in-progress); }
-  .pill { flex: none; min-width: 18px; height: 18px; padding: 0 5px; box-sizing: border-box; border-radius: 9px; font-size: 11px; line-height: 18px; text-align: center; color: white; background: var(--stopped); }
+  .pill { flex: none; min-width: 18px; height: 18px; padding: 0 5px; box-sizing: border-box; border-radius: 9px; font-size: 11px; line-height: 18px; text-align: center; color: var(--on-color); background: var(--stopped); }
   .pill.ok { background: var(--running); }
   .pill.warn, .pill.in-progress { background: var(--in-progress); }
   .pill.bad { background: var(--in-error); }

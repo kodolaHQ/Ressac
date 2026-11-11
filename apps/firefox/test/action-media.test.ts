@@ -33,6 +33,8 @@ beforeAll(() => {
     <A extends unknown[], R>(name: string, f: (...a: A) => R) =>
     (...a: A) => (io.push(name), f(...a));
   Object.assign(globalThis as any, {
+    // The bundled fonts, read from chrome:// (componentFonts): their file name as the body.
+    fetch: async (url: string) => ({ arrayBuffer: async () => new TextEncoder().encode(url.split("/").pop()).buffer }),
     PathUtils: { join: (...parts: string[]) => join(...parts) },
     IOUtils: {
       stat: log("stat", async (p: string) => {
@@ -127,6 +129,11 @@ describe("agent components", () => {
     expect(served).toContain('http-equiv="Content-Security-Policy"');
     expect(served).toContain("webaios-component");
     expect(served).toContain('defineProperty(w, "Components"');
+    // The browser fonts, inlined (font-src data:) under the families the tokens name, after the CSP meta.
+    expect(served).toContain(`font-family: "Geist"; font-weight: 300 700; font-style: normal; font-display: block; src: url("data:font/woff2;base64,${btoa("Geist-latin.woff2")}")`);
+    for (const family of ["Funnel Display", "Geist Mono"]) expect(served).toContain(`font-family: "${family}"`);
+    expect(served).not.toContain("chrome://");
+    expect(served.indexOf("@font-face")).toBeGreaterThan(served.indexOf("Content-Security-Policy"));
     expect(substitutions.get("webaios-component-barres")).toBe(`file://${copies}`);
     expect(await serveComponent(data(), "barres")).toBe(url);
     expect(readdirSync(copies)).toHaveLength(1);

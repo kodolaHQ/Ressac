@@ -52,13 +52,15 @@ describe("Applications page", () => {
     await click(m, '[data-testid="applications-button"]');
     await pageShown(true);
     expect(await pageTabs()).toBe(1);
-    // From another space: the window's page comes back, in its space.
+    // From another space: its own page there, the window stays in that space.
     const s = await state(m);
     await dispatch(m, { type: "createSpace", name: "Boulot", icon: "💼", private: false, profile: s.spaces[0]!.profile, windowId: s.windows[0]!.id });
     await pageShown(false);
+    const work = (await state(m)).windows[0]!.activeSpace;
     await pressKeys(m, "Meta+Shift+a");
     await pageShown(true);
-    expect(await pageTabs()).toBe(1);
+    expect(await pageTabs()).toBe(2);
+    expect((await state(m)).windows[0]!.activeSpace).toBe(work);
     // Firefox's ⇧⌘A (add-ons) never ran.
     expect(Object.values((await state(m)).tabs).some((o) => o.url.startsWith("about:addons"))).toBe(false);
     expect(await m.execute<boolean>(`return gBrowser.browsers.some((b) => b.currentURI.spec.startsWith("about:addons"));`)).toBe(false);
@@ -72,12 +74,13 @@ describe("Applications page", () => {
     await waitUi(m, `return doc.querySelector('[data-testid="sidebar"]').parentElement.inert;`);
     const box = await inUi<{ top: number; left: number }>(
       m,
-      `const h = doc.querySelector(arguments[0]).querySelector("h2").getBoundingClientRect(); const f = frame.getBoundingClientRect();
+      `const h = doc.querySelector(arguments[0]).querySelector("h1").getBoundingClientRect(); const f = frame.getBoundingClientRect();
        return { top: f.top + h.top, left: f.left + doc.querySelector(arguments[0]).getBoundingClientRect().left };`,
       [PAGE],
     );
     expect(box.top).toBeLessThan(40);
-    expect(box.left).toBe(0);
+    // Framed on the aura like a web page: 8 px of margin, then its 1 px glass edge.
+    expect(box.left).toBe(9);
     await moveMouse(3);
     await waitUi(m, `return !doc.querySelector('[data-testid="sidebar"]').parentElement.inert;`);
     await waitUi(m, `return !!doc.querySelector('[aria-label="Quitter le mode compact"]');`);

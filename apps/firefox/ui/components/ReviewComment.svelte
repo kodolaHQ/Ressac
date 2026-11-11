@@ -51,15 +51,17 @@
 </div>
 
 <style>
-  .comment { margin: 4px 8px 8px 106px; padding: 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-bar); font-family: system-ui, sans-serif; font-size: 12px; display: flex; flex-direction: column; gap: 4px; }
+  .comment { margin: 4px 8px 8px 106px; padding: 10px; border: 1px solid var(--glass-edge); border-radius: 12px; background: var(--glass-hi); font-family: var(--font-ui); font-size: 12px; display: flex; flex-direction: column; gap: 4px; }
   .comment.resolved { opacity: 0.6; }
   .head { display: flex; gap: 6px; align-items: center; color: var(--text-muted); font-size: 11px; }
   .state { padding: 0 6px; border-radius: 8px; border: 1px solid var(--border); }
   .state.change { color: var(--in-error); border-color: var(--in-error); }
   .text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
-  textarea { font: inherit; resize: vertical; padding: 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--text); }
+  textarea { font: inherit; resize: vertical; padding: 7px 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--sheet); color: var(--text); }
   .actions { display: flex; justify-content: flex-end; gap: 6px; }
-  button { padding: 2px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 11px; }
+  textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button { padding: 3px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--sheet); color: var(--text); font-size: 11px; cursor: pointer; transition: transform var(--tap); }
+  button:active:not(:disabled) { transform: scale(0.97); }
   button:hover:not(:disabled) { background: var(--bg-hover); }
   .error { margin: 0; color: var(--in-error); }
 </style>

@@ -156,9 +156,11 @@ const hasCard = (h: string) => inWindow(m, h, () => inUi<boolean>(m, `return !!d
 
 /** The ✦ button (what ⌘J does too), then waits for the panel to show or hide. */
 async function togglePanel(): Promise<void> {
-  const was = await m.execute<boolean>("return !document.getElementById('webaios-agent').hidden");
+  // The state, not the frame's hidden: a closing panel stays visible while it slides out.
+  const open = async () => (await state(m)).windows[0]!.agentPanelOpen;
+  const was = await open();
   await click(m, '[data-testid="agent-button"]');
-  await waitFor(m, "return !document.getElementById('webaios-agent').hidden", (v) => v === !was);
+  await expect.poll(open, { timeout: 10_000 }).toBe(!was);
 }
 
 it("a tab visited without talking to the agent: current_page asks", async () => {

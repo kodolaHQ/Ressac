@@ -137,24 +137,27 @@
 </div>
 
 <style>
-  .navigation { display: flex; gap: 2px; padding: 0 2px 6px 70px; -webkit-app-region: drag; }
-  .navigation button { all: unset; width: 26px; height: 24px; display: grid; place-content: center; border-radius: 5px; color: var(--text-muted); -webkit-app-region: no-drag; }
-  .navigation button:hover:not(:disabled) { background: var(--bg-hover); color: var(--text); }
+  /* 62 px: the macOS window buttons sit there (16 px from the window's edge, the pane starts at 8). */
+  .navigation { display: flex; gap: 2px; padding: 0 0 6px 62px; -webkit-app-region: drag; }
+  .navigation button { all: unset; width: 26px; height: 24px; display: grid; place-content: center; border-radius: 7px; color: var(--text-muted); -webkit-app-region: no-drag; transition: transform var(--tap), background var(--tap), color var(--tap); }
+  .navigation button:hover:not(:disabled) { background: var(--glass-hi); color: var(--text); }
+  .navigation button:active:not(:disabled) { transform: scale(0.97); }
   .navigation button:disabled { opacity: 0.35; }
   .navigation .compact { margin-left: auto; }
   .navigation .compact[aria-pressed="true"] { color: var(--accent); }
   /* The badge: a background under its first row (field and extensions), the extensions panel wraps to the line below. */
   .line { position: relative; z-index: 1; display: flex; align-items: center; flex-wrap: wrap; -webkit-app-region: no-drag; }
-  .line::before { content: ""; position: absolute; z-index: -1; inset: 0 0 auto; height: 34px; box-sizing: border-box; border-radius: 10px; border: 1px solid transparent; background: var(--bg-hover); }
-  .line:has(input:focus)::before { border-color: var(--accent); background: var(--bg); }
+  .line::before { content: ""; position: absolute; z-index: -1; inset: 0 0 auto; height: 34px; box-sizing: border-box; border-radius: 10px; border: 1px solid var(--glass-edge); background: var(--glass-hi); transition: border-color var(--tap), box-shadow var(--tap); }
+  .line:has(input:focus)::before { border-color: var(--accent); background: var(--sheet); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
   .line :global(.extensions) { padding-right: 3px; }
   form { position: relative; flex: 1; min-width: 80px; height: 34px; }
   .access { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); }
-  .suggestions { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 5; list-style: none; margin: 0; padding: 4px; background: var(--bg-active); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35); }
-  .suggestions li { display: flex; flex-direction: column; padding: 5px 8px; border-radius: 5px; color: var(--text); }
-  .suggestions li[aria-selected="true"], .suggestions li:hover { background: var(--bg-hover); }
+  .suggestions { position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 5; list-style: none; margin: 0; padding: 4px; background: var(--sheet); border: 1px solid var(--glass-edge); border-radius: 12px; box-shadow: var(--modal-shadow); animation: webaios-drop var(--spring-d) var(--spring) both; }
+  .suggestions li { display: flex; flex-direction: column; padding: 6px 9px; border-radius: 8px; color: var(--text); }
+  .suggestions li[aria-selected="true"], .suggestions li:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
   .suggestions span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .suggestions .url { font-size: 11px; color: var(--text-muted); }
-  input { width: 100%; height: 100%; box-sizing: border-box; padding: 0 10px; border: none; background: none; color: var(--text); outline: none; -webkit-app-region: no-drag; }
+  .suggestions .url { font: 11px var(--font-mono); color: var(--text-muted); }
+  input { width: 100%; height: 100%; box-sizing: border-box; padding: 0 10px; border: none; background: none; color: var(--text); font: inherit; outline: none; -webkit-app-region: no-drag; }
+  input::placeholder { color: var(--text-muted); }
   input.with-access { padding-right: 56px; }
 </style>

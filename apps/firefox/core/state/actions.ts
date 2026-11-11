@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Action } from "../../shared/api";
+import { DEFAULT_AURA } from "../../shared/aura";
 import {
   spaceKey,
   AGENT_WIDTH_MAX,
@@ -73,20 +74,18 @@ function open(
   return o;
 }
 
-/** Activates the window's internal page `url` (in its space) if already open, otherwise opens it. */
+/** Activates the window's internal page `url` if already open in the active space, otherwise opens it there (never switches space). */
 function openInternalPage(d: Draft, genId: () => string, windowId: string, url: string, title: string): boolean {
   const f = win(d, windowId);
   if (!f) return false;
-  const spaces = [f.activeSpace, ...Object.keys(f.order).filter((x) => x !== f.activeSpace)];
-  for (const space of spaces) {
-    const existing = list(f, space).find((id) => d.tabs[id]?.url === url);
-    if (!existing) continue;
+  const space = f.activeSpace;
+  const existing = list(f, space).find((id) => d.tabs[id]?.url === url);
+  if (existing) {
     const o = d.tabs[existing]!;
-    if (f.activeSpace === space && f.active[space] === existing && o.title === title) return false;
+    if (f.active[space] === existing && o.title === title) return false;
     // The widget may have been renamed since: the title follows.
     o.title = title;
     f.active[space] = existing;
-    f.activeSpace = space;
     return true;
   }
   const o = open(d, genId, f, { url });
@@ -96,28 +95,25 @@ function openInternalPage(d: Draft, genId: () => string, windowId: string, url: 
 
 /**
  * Activates the window's page of action `id` (tab whose URL is the action's, with or without execution) if it
- * is open in a non-private space, otherwise opens it in the active space if not private. `execution` changes the URL
- * of that tab (a specific result).
+ * is open in the active space, otherwise opens it there; never switches space, nothing in a private space.
+ * `execution` changes the URL of that tab (a specific result).
  */
 function openAction(d: Draft, genId: () => string, a: { windowId: string; id: string; name: string; run?: string }): boolean {
   const f = win(d, a.windowId);
   if (!f) return false;
-  const notPrivate = (space: SpaceId) => d.spaces.find((e) => e.id === space)?.private === false;
-  const spaces = [f.activeSpace, ...Object.keys(f.order).filter((x) => x !== f.activeSpace)].filter(notPrivate);
-  for (const space of spaces) {
-    const existing = list(f, space).find((id) => actionOfUrl(d.tabs[id]?.url ?? "")?.id === a.id);
-    if (!existing) continue;
+  const space = f.activeSpace;
+  if (d.spaces.find((e) => e.id === space)?.private !== false) return false;
+  const existing = list(f, space).find((id) => actionOfUrl(d.tabs[id]?.url ?? "")?.id === a.id);
+  if (existing) {
     const o = d.tabs[existing]!;
     const url = a.run ? urlAction(a.id, a.run) : o.url;
-    if (f.activeSpace === space && f.active[space] === existing && o.title === a.name && o.url === url) return false;
+    if (f.active[space] === existing && o.title === a.name && o.url === url) return false;
     // The action may have been renamed since: the title follows.
     o.title = a.name;
     o.url = url;
     f.active[space] = existing;
-    f.activeSpace = space;
     return true;
   }
-  if (!notPrivate(f.activeSpace)) return false;
   const o = open(d, genId, f, { url: urlAction(a.id, a.run) });
   if (o) o.title = a.name;
   return !!o;
@@ -319,7 +315,7 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       const profile = requestedProfile(d, genId, a.profile);
       if (!profile) return false;
       const space = genId();
-      d.spaces.push({ id: space, name: a.name, icon: a.icon, pinned: [], private: a.private, profile: profile });
+      d.spaces.push({ id: space, name: a.name, icon: a.icon, pinned: [], private: a.private, profile: profile, aura: a.aura ?? DEFAULT_AURA });
       for (const f of d.windows) {
         f.order[space] = [];
         f.active[space] = null;
@@ -331,11 +327,11 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
     case "updateSpace": {
       const space = d.spaces.find((e) => e.id === a.id);
       if (!space) return false;
-      if (space.name === a.name && space.icon === a.icon && space.private === a.private && space.profile === a.profile) return false;
+      if (space.name === a.name && space.icon === a.icon && space.private === a.private && space.profile === a.profile && (a.aura ?? space.aura) === space.aura) return false;
       const profile = requestedProfile(d, genId, a.profile);
       if (!profile) return false;
       const oldKey = spaceKey(d, space.id);
-      Object.assign(space, { name: a.name, icon: a.icon, private: a.private, profile: profile });
+      Object.assign(space, { name: a.name, icon: a.icon, private: a.private, profile: profile, aura: a.aura ?? space.aura });
       if (spaceKey(d, space.id) !== oldKey) forwardShown(d, space.id, oldKey);
       removeUnusedProfiles(d);
       dropIncompatible(d);

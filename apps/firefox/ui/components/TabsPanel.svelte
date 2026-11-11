@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { TabsPanel } from "../../shared/api";
-  import { api } from "../state.svelte";
+  import { api, appState } from "../state.svelte";
+  import AuraEmoji from "./AuraEmoji.svelte";
   import SiteIcon from "./SiteIcon.svelte";
 
   /**
@@ -10,6 +11,10 @@
   let { panel: panel }: { panel: TabsPanel } = $props();
 
   const send = api.tabCycle;
+  const spaceOf = (id: string) => {
+    const s = appState.value;
+    return s?.spaces.find((e) => e.id === s.tabs[id]?.spaceId);
+  };
 
   /**
    * The mouse only picks a card after a real movement: a panel that appears (or changes cards) under a still mouse
@@ -44,8 +49,10 @@
 
 <div class="panel" data-testid="tabs-panel" role="listbox" aria-label="Onglets récents">
   {#each panel.cards as card, i (card.id)}
+    {@const space = spaceOf(card.id)}
     <div
       class="card"
+      style:animation-delay="{i * 45}ms"
       data-testid="tab-card"
       role="option"
       tabindex="-1"
@@ -64,6 +71,7 @@
       <div class="legend">
         <SiteIcon favicon={card.favicon} title={card.title} />
         <span class="title">{card.title}</span>
+        {#if space}<span class="space" title={space.name}><AuraEmoji icon={space.icon} aura={space.aura} /></span>{/if}
       </div>
     </div>
   {/each}
@@ -82,22 +90,30 @@
     padding: 16px;
     -webkit-app-region: no-drag;
   }
+  /* Glass cards over the frozen, blurred window: they rise in cascade, the selected one lifts on the spring. */
   .card {
     flex: 0 1 280px;
     min-width: 0;
     padding: 8px;
-    background: var(--bg-active);
+    background: var(--glass-dense);
+    backdrop-filter: blur(30px) saturate(1.8);
     color: var(--text);
-    border: 2px solid transparent;
-    border-radius: 12px;
+    border: 1px solid var(--glass-edge);
+    border-radius: 16px;
     box-shadow: var(--modal-shadow);
     cursor: pointer;
     outline: none;
+    transition: transform var(--spring-d) var(--spring), border-color var(--tap), box-shadow var(--tap);
+    animation: webaios-rise var(--spring-d) var(--spring) backwards;
   }
-  .card[aria-selected="true"] { border-color: var(--accent); }
-  .preview { aspect-ratio: 16 / 10; overflow: hidden; border-radius: 7px; background: var(--bg-bar); }
+  .card[aria-selected="true"] { transform: scale(1.04); border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), var(--modal-shadow); }
+  .card:active { transform: scale(0.97); }
+  .preview { aspect-ratio: 16 / 10; overflow: hidden; border-radius: 10px; background: var(--sheet); }
   .preview img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: top; }
-  .fallback { display: grid; place-items: center; height: 100%; }
-  .legend { display: flex; align-items: center; gap: 6px; margin-top: 7px; font-size: 13px; }
-  .title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  /* No capture: a wash of the window's aura behind the icon. */
+  .fallback { display: grid; place-items: center; height: 100%; background: linear-gradient(135deg, color-mix(in oklab, var(--a1) 22%, var(--sheet)), color-mix(in oklab, var(--a2) 22%, var(--sheet))); }
+  .legend { display: flex; align-items: center; gap: 8px; margin: 8px 2px 1px; font-size: 13px; }
+  .card[aria-selected="true"] .title { font-weight: 500; }
+  .space { flex: none; font-size: 12px; margin-right: 2px; }
+  .title { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 </style>

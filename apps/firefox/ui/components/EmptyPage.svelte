@@ -128,9 +128,10 @@
 <style>
   .empty-page { position: relative; display: flex; flex-direction: column; align-items: center; gap: 32px; padding-top: 12vh; height: 100%; box-sizing: border-box; overflow-y: auto; }
   form { width: min(560px, 80%); }
-  input { width: 100%; box-sizing: border-box; padding: 12px 16px; font-size: 16px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); outline: none; }
+  input { width: 100%; box-sizing: border-box; padding: 12px 16px; font-size: 16px; border-radius: 16px; border: 1px solid var(--glass-edge); background: var(--glass); box-shadow: var(--float); color: var(--text); outline: none; transition: border-color var(--tap), box-shadow var(--tap); }
   .refusal { margin: 6px 4px 0; color: var(--in-error); font-size: 13px; }
-  input:focus { border-color: var(--accent); }
+  input::placeholder { color: var(--text-muted); }
+  input:focus { border-color: var(--accent); box-shadow: var(--float), 0 0 0 4px color-mix(in oklab, var(--accent) 18%, transparent); }
   /* No shrink: its min-height lets the column crush it under tall widgets. */
   .empty-page :global([data-testid="essentials-empty-page"]) { width: min(560px, 80%); flex-shrink: 0; }
 </style>

@@ -45,16 +45,18 @@
 </div>
 
 <style>
-  h3 { margin: 0 0 4px; font-size: 15px; }
-  .site { opacity: 0.7; font-size: 12px; margin-bottom: 10px; overflow-wrap: anywhere; }
-  .reason { background: var(--bg-bar); border-radius: 8px; padding: 8px 10px; font-size: 12px; margin-bottom: 10px; overflow-wrap: anywhere; }
+  h3 { margin: 0 0 4px; font: 600 17px/1.2 var(--font-display); letter-spacing: -0.01em; }
+  .site { color: var(--text-muted); font-size: 12px; margin-bottom: 10px; overflow-wrap: anywhere; }
+  .reason { background: var(--glass-hi); border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; font-size: 12px; margin-bottom: 10px; overflow-wrap: anywhere; }
   .right-side { display: flex; gap: 10px; align-items: flex-start; padding: 7px 0; border-top: 1px solid var(--border); }
   .right-side input { margin-top: 3px; }
   .right-side b { display: block; font-size: 13px; }
-  .right-side span { opacity: 0.7; font-size: 11.5px; }
-  .sensitive { color: #fbbf24; font-size: 11px; font-weight: 600; }
+  .right-side span { color: var(--text-muted); font-size: 11.5px; }
+  .sensitive { color: var(--access-act); font-size: 11px; font-weight: 600; }
   .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
-  button { padding: 6px 12px; border-radius: 7px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); font-weight: 600; font-size: 12.5px; }
-  .allow { background: var(--accent); border-color: var(--accent); color: white; }
-  .note { opacity: 0.55; font-size: 11px; margin-top: 10px; }
+  button { padding: 7px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: 600 12.5px var(--font-ui); cursor: pointer; transition: transform var(--tap), background var(--tap); }
+  button:hover:not(:disabled) { background: var(--bg-active); }
+  button:active:not(:disabled) { transform: scale(0.97); }
+  .allow { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .note { color: var(--text-muted); font-size: 11px; margin-top: 10px; }
 </style>

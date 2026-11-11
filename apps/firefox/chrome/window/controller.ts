@@ -1,10 +1,13 @@
 import type { TabCycleMessage, Panel, TabsPanel, ShortcutAction } from "../../shared/api";
 import { workflowUrlTarget, historyContext, AGENT_WIDTH_MAX, AGENT_WIDTH_MIN, BAR_WIDTH, type FrameBounds, type BrowserState, type WindowId, type TabId } from "../../shared/model";
+import { auraVariables, DEFAULT_AURA, type AuraId } from "../../shared/aura";
 import { toUrl } from "../../core/url";
+import { createHalo } from "../../core/halo";
 import { TabCycle } from "../../core/tab-cycle";
 import { toNth } from "../../core/shortcuts";
 import { leftZone, exitZone, type LeftZone } from "../../shared/reveal";
 import type { WebAiOsStore } from "../store";
+import { HOST_EXITED } from "../agent/host";
 import { createAddons, type WindowAddons } from "./addons";
 import { routeAddonsManager } from "./addons-manager";
 import { setupAnchors } from "./anchor";
@@ -116,6 +119,9 @@ export function createController(
   );
   // The agent panel: --webaios-agent is its width when open, 0 when closed (the page and the UI make room for it).
   const agentOpen = (state: BrowserState) => !!state.windows.find((x) => x.id === windowId)?.agentPanelOpen;
+  // The slide's length in window.css (--webaios-slide, 380 ms), plus a few frames of margin.
+  const SLIDE_MS = 450;
+  let slideEnd: ReturnType<typeof setTimeout> | undefined;
   const showAgent = (state: BrowserState) => {
     const open = agentOpen(state);
     // Closed while the terminal had the keyboard (⌘J, ✦): it goes back to the page, or to the UI when no page shows.
@@ -123,9 +129,22 @@ export function createController(
       if (tabs.displayed()) gBrowser.selectedBrowser.focus();
       else frame.focus();
     }
-    agentFrame.hidden = !open;
+    const root = document.documentElement;
+    // A change of open state slides (window.css); a width change alone (the saved drag) does not. Closed, the panel
+    // hides once it has slid out.
+    if (open !== root.hasAttribute("webaios-agent-open")) {
+      root.toggleAttribute("webaios-agent-open", open);
+      root.setAttribute("webaios-agent-sliding", "");
+      clearTimeout(slideEnd);
+      slideEnd = setTimeout(() => {
+        root.removeAttribute("webaios-agent-sliding");
+        if (!agentOpen(store.state)) agentFrame.hidden = true;
+      }, SLIDE_MS);
+    }
+    if (open) agentFrame.hidden = false;
     const width = Math.min(AGENT_WIDTH_MAX, Math.max(AGENT_WIDTH_MIN, state.settings.agentPanelWidth));
-    document.documentElement.style.setProperty("--webaios-agent", open ? `${width}px` : "0px");
+    root.style.setProperty("--webaios-agent-w", `${width}px`);
+    root.style.setProperty("--webaios-agent", open ? `${width}px` : "0px");
     // Laid out now: the panel focuses its terminal right after this change, which needs the iframe visible.
     agentFrame.getBoundingClientRect();
   };
@@ -136,6 +155,34 @@ export function createController(
       if (agentOpen(state) !== agentOpen(previous) || state.settings.agentPanelWidth !== previous.settings.agentPanelWidth) showAgent(state);
     }),
   );
+  // The active space's aura lights the window and both UI documents (each set again when it loads).
+  const auraOf = (state: BrowserState) => {
+    const f = state.windows.find((x) => x.id === windowId);
+    return state.spaces.find((s) => s.id === f?.activeSpace)?.aura ?? DEFAULT_AURA;
+  };
+  const applyAura = (root: HTMLElement | undefined, id: AuraId) => {
+    for (const [k, v] of Object.entries(auraVariables(id))) root?.style.setProperty(k, v);
+  };
+  const auraRoots = () => [document.documentElement, frame.contentDocument?.documentElement, agentFrame.contentDocument?.documentElement];
+  for (const root of auraRoots()) applyAura(root, auraOf(store.state));
+  unsubscribe.push(
+    store.subscribe((state, previous) => {
+      const id = auraOf(state);
+      if (id !== auraOf(previous)) for (const root of auraRoots()) applyAura(root, id);
+    }),
+  );
+  // The agent's halo: lit while one of its tools runs on the displayed tab (a tab or space switch is a state change).
+  const halo = createHalo((on) => document.documentElement.toggleAttribute("webaios-agent-working", on));
+  let haloTab: TabId | null | undefined;
+  const updateHalo = () => {
+    const f = store.state.windows.find((x) => x.id === windowId);
+    const shown = f?.active[f.activeSpace];
+    if (shown !== haloTab) halo.off();
+    haloTab = shown;
+    halo.update(!!(shown && store.access.tabs[shown]?.running));
+  };
+  updateHalo();
+  unsubscribe.push(store.subscribe(updateHalo), store.agent.on("access", updateHalo), store.agent.on(HOST_EXITED, updateHalo), () => halo.dispose());
   // After a tab switch Firefox gives the keyboard to the selected browser; the parking tab is no page, the UI keeps it.
   window.addEventListener("TabSwitchDone", () => {
     if (!tabs.displayed()) frame.focus();
@@ -250,6 +297,7 @@ export function createController(
   // The UI documents' events stop at their own window: listen there too, on each load.
   for (const f of [frame, agentFrame])
     f.addEventListener("load", () => {
+      applyAura(f.contentDocument?.documentElement, auraOf(store.state));
       f.contentWindow!.addEventListener("keydown", onKeyDown, true);
       f.contentWindow!.addEventListener("keyup", onKeyUp, true);
       f.contentWindow!.addEventListener("mousemove", onMouseMove, true);
@@ -413,7 +461,10 @@ export function createController(
       };
     },
     setAgentWidth(px) {
-      if (agentOpen(store.state)) document.documentElement.style.setProperty("--webaios-agent", `${px}px`);
+      if (!agentOpen(store.state)) return;
+      document.documentElement.removeAttribute("webaios-agent-sliding");
+      document.documentElement.style.setProperty("--webaios-agent-w", `${px}px`);
+      document.documentElement.style.setProperty("--webaios-agent", `${px}px`);
     },
     openAgent() {
       if (!agentOpen(store.state)) store.dispatch({ type: "toggleAgentPanel", windowId: windowId });

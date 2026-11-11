@@ -363,34 +363,39 @@
 
 <style>
   .background { position: fixed; inset: 0; display: flex; justify-content: center; align-items: flex-start; padding: 14vh 16px 0; -webkit-app-region: no-drag; }
+  /* Frosted glass: the blur reaches this document only (sidebar, a frozen page capture); over the live page the dense glass keeps it readable. */
   .box {
     width: min(640px, 100%);
     max-height: 70vh;
     overflow-y: auto;
-    padding: 8px;
-    background: var(--bg-active);
+    background: var(--glass-dense);
     color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 12px;
+    border: 1px solid var(--glass-edge);
+    border-radius: 16px;
     box-shadow: var(--modal-shadow);
+    backdrop-filter: blur(30px) saturate(1.8);
     font-size: 14px;
+    animation: webaios-drop var(--spring-d) var(--spring) backwards;
   }
-  input { width: 100%; box-sizing: border-box; padding: 10px 12px; font: inherit; font-size: 16px; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 8px; outline: none; }
-  input:focus { border-color: var(--accent); }
-  ul { list-style: none; margin: 6px 0 0; padding: 0; }
-  button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 7px 10px; border: 0; border-radius: 8px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-  button.chosen-one { background: var(--bg); }
+  input { width: 100%; box-sizing: border-box; padding: 16px 18px; font: 400 17px var(--font-ui); color: var(--text); background: transparent; border: 0; border-bottom: 1px solid var(--border); outline: none; }
+  input::placeholder { color: var(--text-muted); }
+  ul { list-style: none; margin: 0; padding: 6px; }
+  ul:empty { display: none; }
+  button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 12px; border: 0; border-radius: 10px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: transform var(--tap), background var(--tap); }
+  button:active { transform: scale(0.97); }
+  button.chosen-one { background: var(--glass-hi); box-shadow: inset 0 0 0 1px var(--glass-edge); }
+  /* Enter acts on the chosen row (a pseudo-element: the row's text stays its own). */
+  button.chosen-one::after { content: "↵"; flex: none; font: 500 11px/1 var(--font-mono); padding: 3px 5px; border-radius: 6px; background: var(--glass-hi); border: 1px solid var(--border); color: var(--text-muted); }
   .label { flex: none; max-width: 70%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .refusal { margin: 6px 2px 0; color: var(--in-error); font-size: 13px; }
-  .section { margin: 10px 10px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.02em; color: var(--text-muted); }
+  .refusal { margin: 8px 18px; color: var(--in-error); font-size: 13px; }
+  .section { margin: 10px 12px 4px; font: 600 12px/1.2 var(--font-display); letter-spacing: 0.01em; color: var(--text-muted); }
   .section:first-child { margin-top: 4px; }
-  .pictogram { display: grid; place-items: center; flex: none; width: 24px; height: 24px; border-radius: 6px; background: var(--bg); color: var(--text-muted); }
-  button.chosen-one .pictogram { background: var(--bg-active); }
+  .pictogram { display: grid; place-items: center; flex: none; width: 26px; height: 26px; border-radius: 8px; background: var(--glass-hi); color: var(--text-muted); }
   .pictogram[data-type="action"] { color: var(--accent); }
-  .param-line { display: flex; align-items: center; gap: 8px; padding: 4px 4px 4px 8px; background: var(--bg); border: 1px solid var(--accent); border-radius: 8px; }
-  .param-line input { border: 0; padding: 6px 4px; background: none; }
-  .pill { display: inline-flex; align-items: center; gap: 5px; flex: none; max-width: 45%; padding: 3px 8px; border-radius: 6px; background: var(--bg-active); color: var(--accent); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .help { margin: 8px 4px 2px; font-size: 12px; color: var(--text-muted); }
-  .tag { margin-left: auto; flex: none; opacity: 0.5; font-size: 11px; }
-  .detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.6; font-size: 12px; }
+  .param-line { display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 14px; border-bottom: 1px solid var(--border); }
+  .param-line input { border: 0; padding: 8px 4px; }
+  .pill { display: inline-flex; align-items: center; gap: 5px; flex: none; max-width: 45%; padding: 4px 10px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; animation: webaios-drop var(--spring-d) var(--spring) backwards; }
+  .help { margin: 10px 18px 12px; font-size: 12px; color: var(--text-muted); }
+  .tag { margin-left: auto; flex: none; color: var(--text-muted); font: 11px var(--font-mono); }
+  .detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font: 12px var(--font-mono); }
 </style>

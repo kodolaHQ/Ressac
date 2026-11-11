@@ -64,13 +64,14 @@
 </nav>
 
 <style>
-  .palette { width: 190px; flex: none; overflow-y: auto; padding: 8px; box-sizing: border-box; border-right: 1px solid var(--border); background: var(--bg-bar); }
+  .palette { width: 190px; flex: none; overflow-y: auto; padding: 8px; box-sizing: border-box; border-right: 1px solid var(--border); }
   section + section { margin-top: 6px; }
   .family { all: unset; box-sizing: border-box; width: 100%; display: flex; align-items: center; gap: 4px; padding: 4px; cursor: pointer; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
-  .chevron { display: inline-block; transition: transform 0.1s; }
+  .chevron { display: inline-block; transition: transform var(--tap); }
   .chevron.folded { transform: rotate(-90deg); }
   ul { list-style: none; margin: 0; padding: 0; }
-  .block { all: unset; box-sizing: border-box; width: 100%; padding: 6px 8px; border-radius: 6px; cursor: grab; font-size: 13px; color: var(--text); }
-  .block:hover:not(:disabled) { background: var(--bg-hover); }
+  .block { all: unset; box-sizing: border-box; width: 100%; padding: 6px 10px; border-radius: 10px; cursor: grab; font-size: 13px; color: var(--text); transition: transform var(--tap), background var(--tap); }
+  .block:hover:not(:disabled) { background: var(--glass-hi); box-shadow: var(--lift); }
+  .block:active:not(:disabled) { transform: scale(0.97); }
   .block:disabled { cursor: default; opacity: 0.45; }
 </style>

@@ -4,6 +4,95 @@
 
 /* Only the WebAiOs window: popups stay plain Firefox windows. */
 
+/* The UI's tokens the window itself paints with (ui/theme.css is bundled with the UI documents, not loaded here). The
+   controller sets --a1..--a3 and both accents inline on the root from the active space's aura.
+   shortcut: duplicated from ui/theme.css because chrome CSS can't import it, keep in sync when neutrals change. */
+@property --a1 { syntax: "<color>"; inherits: true; initial-value: #FF9F7A; }
+@property --a2 { syntax: "<color>"; inherits: true; initial-value: #FF6F91; }
+@property --a3 { syntax: "<color>"; inherits: true; initial-value: #FFD36E; }
+@property --ang { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+/* Registered so the agent panel's slide can transition it (the page's margin follows the same value). */
+@property --webaios-agent { syntax: "<length>"; inherits: true; initial-value: 0px; }
+
+:root[webaios-main] {
+  --bg: #0E1014;
+  --text: #ECEEF2;
+  --border: rgb(255 255 255 / 0.09);
+  --glass-hi: rgb(255 255 255 / 0.1);
+  --sheet: #17191F;
+  --accent: var(--aura-accent-dark, #FF8FA8);
+  --accent-ink: #0E1014;
+  --page-shadow: 0 2px 6px rgb(0 0 0 / 0.3), 0 12px 40px -16px rgb(0 0 0 / 0.6);
+  --aura-d: 900ms ease-in-out;
+  transition: --a1 var(--aura-d), --a2 var(--aura-d), --a3 var(--aura-d);
+  background: var(--bg);
+}
+
+@media (prefers-color-scheme: light) {
+  :root[webaios-main] {
+    --bg: #F1F3F6;
+    --text: #15171C;
+    --border: rgb(21 23 28 / 0.1);
+    --glass-hi: rgb(255 255 255 / 0.78);
+    --sheet: #FFFFFF;
+    --accent: var(--aura-accent-light, #C23A5E);
+    --accent-ink: #FFFFFF;
+    --page-shadow: 0 2px 6px rgb(30 20 40 / 0.06), 0 12px 40px -16px rgb(30 20 40 / 0.3);
+  }
+}
+
+/* Firefox paints its chrome boxes: the aura shows through them, the page keeps its own sheet. */
+:root[webaios-main] :is(body, #browser, #tabbrowser-tabbox, #tabbrowser-tabpanels, #appcontent) {
+  background: transparent !important;
+}
+
+/* The aura, behind the page and both UI iframes (whose bodies are transparent). */
+:root[webaios-main] #webaios-aura {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  /* The base the lights glow on: the root's own background is not painted under the transparent chrome boxes. */
+  background: var(--bg);
+}
+
+:root[webaios-main] #webaios-aura i {
+  position: absolute;
+  width: 66%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  filter: blur(70px) saturate(1.15);
+  opacity: 0.95;
+}
+
+/* Dark: coloured light on a night base, dimmer and richer rather than washed to brown. */
+@media (prefers-color-scheme: dark) {
+  :root[webaios-main] #webaios-aura i {
+    filter: blur(80px) saturate(1.45);
+    opacity: 0.55;
+  }
+}
+
+:root[webaios-main] #webaios-aura i:nth-child(1) { background: var(--a1); left: -8%; top: -16%; animation: webaios-drift1 22s ease-in-out infinite alternate; }
+:root[webaios-main] #webaios-aura i:nth-child(2) { background: var(--a2); right: -20%; top: 2%; animation: webaios-drift2 26s ease-in-out infinite alternate; }
+:root[webaios-main] #webaios-aura i:nth-child(3) { background: var(--a3); left: 14%; bottom: -27%; animation: webaios-drift3 30s ease-in-out infinite alternate; }
+
+@keyframes webaios-drift1 { to { transform: translate(14%, 10%) scale(1.1); } }
+@keyframes webaios-drift2 { to { transform: translate(-12%, 14%) scale(0.92); } }
+@keyframes webaios-drift3 { to { transform: translate(10%, -12%) scale(1.08); } }
+
+/* No drift while another app has the focus, none at all with reduced motion. */
+:root[webaios-main]:-moz-window-inactive #webaios-aura i {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[webaios-main] #webaios-aura i {
+    /* Over each light's own animation (:nth-child, more specific). */
+    animation: none !important;
+  }
+}
+
 /* Firefox's tab strip, navigation bar and bookmarks bar give way to the WebAiOs UI. */
 :root[webaios-main] #navigator-toolbox {
   display: none !important;
@@ -68,9 +157,32 @@
   top: 0;
   right: 0;
   height: 100%;
-  width: var(--webaios-agent, 0px);
+  /* Always its open width, slid out by what --webaios-agent lacks: the terminal never reflows during the slide. */
+  width: var(--webaios-agent-w, 0px);
+  transform: translateX(calc(var(--webaios-agent-w, 0px) - var(--webaios-agent, 0px)));
   border: none;
   z-index: 3;
+}
+
+/* Opening or closing (controller: webaios-agent-sliding for the slide's length, never while the handle is dragged): the
+   panel slides in from the right, the page making room in step; closed, the controller hides it once out. */
+:root[webaios-main] {
+  --webaios-slide: 380ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+:root[webaios-main][webaios-agent-sliding] {
+  transition: --a1 var(--aura-d), --a2 var(--aura-d), --a3 var(--aura-d), --webaios-agent var(--webaios-slide);
+}
+@media (prefers-reduced-motion: reduce) {
+  /* No slide: the panel fades. */
+  :root[webaios-main][webaios-agent-sliding] {
+    transition: --a1 var(--aura-d), --a2 var(--aura-d), --a3 var(--aura-d);
+  }
+  :root[webaios-main] #webaios-agent {
+    transition: opacity 150ms ease-out;
+  }
+  :root[webaios-main]:not([webaios-agent-open]) #webaios-agent {
+    opacity: 0;
+  }
 }
 
 /* Not display: none, which drops the panel document's layout: on reopening, the terminal could not take the keyboard
@@ -82,10 +194,75 @@
 
 :root[webaios-main] #tabbrowser-tabbox {
   /* Below the site question's banner, --webaios-banner high (0 without one). */
-  margin-top: var(--webaios-banner, 0px);
-  margin-inline-start: var(--webaios-sidebar, 240px);
+  margin-top: calc(var(--webaios-banner, 0px) + 8px);
+  margin-bottom: 8px;
+  /* Compact mode (no sidebar column): 8 px of aura on the left too. */
+  margin-inline-start: max(var(--webaios-sidebar, 240px), 8px);
   /* The design mode's cart column, --webaios-basket wide (unset when closed), sits between the page and the agent panel. */
-  margin-inline-end: calc(var(--webaios-agent, 0px) + var(--webaios-basket, 0px));
+  margin-inline-end: calc(var(--webaios-agent, 0px) + var(--webaios-basket, 0px) + 8px);
+  /* The page sits framed on the aura. */
+  border-radius: 12px;
+  overflow: clip;
+  box-shadow: var(--page-shadow);
+}
+
+/* No web page shown (the parking tab, or the UI covering the page's place): the page box steps aside, the aura shows
+   under the UI's own internal pages. An overlay ([over]) over a web page keeps it visible under its veil. */
+:root[webaios-main]:is(:has(tab[webaios-parking][selected]), :has(#webaios-sidebar[full]:not([over]))) #tabbrowser-tabbox {
+  opacity: 0;
+}
+
+/* A video in fullscreen: only the page, edge to edge. */
+:root[webaios-main][inDOMFullscreen] #tabbrowser-tabbox {
+  margin: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* The agent's halo (controller: webaios-agent-working while one of its tools runs on the displayed tab): a light that
+   runs around the page (::after) over an inner glow (::before). Inside the tabbox, which clips: over the page, never
+   taking the mouse. Always there at opacity 0, its spin paused, so it fades in and out. */
+:root[webaios-main] #tabbrowser-tabbox {
+  position: relative;
+}
+:root[webaios-main] #tabbrowser-tabbox::before,
+:root[webaios-main] #tabbrowser-tabbox::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 400ms;
+}
+:root[webaios-main] #tabbrowser-tabbox::before {
+  box-shadow: inset 0 0 40px -12px var(--a2);
+}
+:root[webaios-main] #tabbrowser-tabbox::after {
+  padding: 2px;
+  background: conic-gradient(from var(--ang), transparent 0 55%, var(--a1) 70%, var(--a2) 82%, var(--a3) 92%, transparent);
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  animation: webaios-spin 1.8s linear infinite paused;
+}
+:root[webaios-main][webaios-agent-working] #tabbrowser-tabbox::before,
+:root[webaios-main][webaios-agent-working] #tabbrowser-tabbox::after {
+  opacity: 1;
+}
+:root[webaios-main][webaios-agent-working] #tabbrowser-tabbox::after {
+  animation-play-state: running;
+}
+/* A video in fullscreen: no halo over it. */
+:root[webaios-main][inDOMFullscreen] #tabbrowser-tabbox::before,
+:root[webaios-main][inDOMFullscreen] #tabbrowser-tabbox::after {
+  display: none;
+}
+@keyframes webaios-spin { to { --ang: 360deg; } }
+@media (prefers-reduced-motion: reduce) {
+  /* A still ring. */
+  :root[webaios-main] #tabbrowser-tabbox::after {
+    animation: none !important;
+  }
 }
 
 /* The design mode's cart column (chrome/window/design-overlays.ts): the whole height of the page's area, left of the
@@ -103,13 +280,8 @@
   border-block-start: none !important;
 }
 
-/* A site's question, above the page; colours from the UI's theme.css. */
+/* A site's question, above the page, on the window's tokens. */
 :root[webaios-main] #webaios-banner {
-  --bg-active: #3d3d47;
-  --bg-bar: #26262c;
-  --text: #e8e8ee;
-  --accent: #8b7cf6;
-  --border: #3a3a42;
   position: fixed;
   top: 0;
   left: var(--webaios-sidebar, 240px);
@@ -119,19 +291,10 @@
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  background: var(--bg-active);
+  background: var(--sheet);
   border-bottom: 1px solid var(--border);
   color: var(--text);
   font: message-box;
-}
-
-@media (prefers-color-scheme: light) {
-  :root[webaios-main] #webaios-banner {
-    --bg-active: #cfcfd8;
-    --bg-bar: #e9e9ee;
-    --text: #1e1e22;
-    --border: #d0d0d8;
-  }
 }
 
 :root[webaios-main] #webaios-banner[hidden] {
@@ -146,14 +309,14 @@
   padding: 4px 10px;
   border-radius: 6px;
   border: 1px solid var(--border);
-  background: var(--bg-bar);
+  background: var(--glass-hi);
   color: var(--text);
 }
 
 :root[webaios-main] #webaios-banner button.allow {
   background: var(--accent);
   border-color: var(--accent);
-  color: white;
+  color: var(--accent-ink);
 }
 
 /* A site app's window (store/sites.ts): its bar on top, 36 px (HAUTEUR_BARRE_SITE), above the app view. */

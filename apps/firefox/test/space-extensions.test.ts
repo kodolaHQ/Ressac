@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import type { Space } from "../shared/model";
 import { warnings } from "../ui/components/spaceExtensions";
 
-const space = (id: string, name: string, profile: string, isPrivate = false): Space => ({ id, name: name, icon: "📁", pinned: [], private: isPrivate, profile: profile }) as Space;
+const space = (id: string, name: string, profile: string, isPrivate = false): Space => ({ id, name: name, icon: "📁", pinned: [], private: isPrivate, profile: profile, aura: "aube" }) as Space;
 const spaces = [space("e1", "Perso", "default"), space("e2", "Lecture", "default"), space("e3", "Banque", "banque")];
 const agent = { key: "agent:cacheur", name: "Cacheur", source: "agent" as const, profiles: ["default"] };
 const store = { key: `store:${"a".repeat(32)}`, name: "Bloqueur", source: "store" as const, profiles: ["default"] };

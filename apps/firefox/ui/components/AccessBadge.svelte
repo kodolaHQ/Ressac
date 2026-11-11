@@ -36,7 +36,8 @@
 
 <style>
   .root { display: inline-flex; flex: none; -webkit-app-region: no-drag; }
-  .pill { all: unset; display: inline-flex; align-items: center; border-radius: 999px; padding: 1px 7px; font-size: 11px; font-weight: 600; cursor: pointer; }
+  .pill { all: unset; display: inline-flex; align-items: center; border-radius: 999px; padding: 1px 7px; font-size: 11px; font-weight: 600; cursor: pointer; box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 22%, transparent); transition: transform var(--tap); }
+  .pill:active { transform: scale(0.97); }
   .pill[data-level="read"] { background: var(--access-read-bg); color: var(--access-read); }
   .pill[data-level="act"] { background: var(--access-act-bg); color: var(--access-act); }
   .pill.pulse { animation: bat 1s ease-in-out infinite; }

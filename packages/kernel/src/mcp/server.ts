@@ -317,9 +317,19 @@ function createToolsServer(
     return policy.canRead(await tab(o.id));
   }
 
+  /** The agent works on the tab while `f` runs (once access is settled): the window's halo shows it. */
+  async function working<T>(id: string, f: () => Promise<T>): Promise<T> {
+    policy.use(id, true);
+    try {
+      return await f();
+    } finally {
+      policy.use(id, false);
+    }
+  }
+
   async function content(o: TabInfo): Promise<Result> {
     if (!(await access(o))) return text(DENIAL_TEXT);
-    const { text: body, selection } = await bridge.readText(o.id);
+    const { text: body, selection } = await working(o.id, () => bridge.readText(o.id));
     return text([`Titre : ${o.title}`, `URL : ${o.url}`, ...(selection ? [`Sélection : ${selection}`] : []), "", body].join("\n"));
   }
 
@@ -398,7 +408,7 @@ function createToolsServer(
         // to its domains: elsewhere, nothing loads and no tab opens (the browser checks again).
         if (!(await access(o))) return text(DENIAL_TEXT);
         if (!bridge.siteUrlAllowed?.(o.site, url)) return text(navigationOutsideSite(url), true);
-        if ((await bridge.navigate(id, url)) === "pending") return text(PENDING_SITE_NAVIGATION);
+        if ((await working(id, () => bridge.navigate(id, url))) === "pending") return text(PENDING_SITE_NAVIGATION);
         return text(`Appli de site ${id} → ${url}`);
       }
       if (!(await access(o))) return text(DENIAL_TEXT);
@@ -412,7 +422,7 @@ function createToolsServer(
       // Before bridge.navigate: the browser may report the navigation (tabNavigated) before it
       // ends, and the agent must not lose access to its own demo.
       policy.navigationByAgent(id, url);
-      await bridge.navigate(id, url);
+      await working(id, () => bridge.navigate(id, url));
       return text(`Onglet ${id} → ${url}`);
     }),
   );
@@ -422,7 +432,7 @@ function createToolsServer(
     { description: "Capture d'écran PNG d'un onglet.", inputSchema: { id: z.string() } },
     protect(async ({ id }) => {
       if (!(await access(await tab(id)))) return text(DENIAL_TEXT);
-      const png = await bridge.capture(id);
+      const png = await working(id, () => bridge.capture(id));
       return { content: [{ type: "image", data: png.toString("base64"), mimeType: "image/png" }] };
     }),
   );

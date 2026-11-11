@@ -82,7 +82,7 @@ const DRAGGING = `const of = (s) => {
 };`;
 
 describe("the sidebar's layout", () => {
-  it("drags the window from its empty areas only, and leaves the page the whole height", async () => {
+  it("drags the window from its empty areas only, and frames the page 8 px from the top and the bottom", async () => {
     await open("/icone");
     await waitUi(m, `return !frame.hasAttribute("full");`);
     const drag = await inUi<Record<string, string>>(
@@ -90,7 +90,8 @@ describe("the sidebar's layout", () => {
       `${DRAGGING} return { allowed: frame.contentWindow.docShell.windowDraggingAllowed, sidebar: of(".bar"), button: of(".navigation button"), address: of(".line"), tabs: of(".scrolling"), footer: of("footer") };`,
     );
     expect(drag).toEqual({ allowed: true, sidebar: "drag", button: "no-drag", address: "no-drag", tabs: "no-drag", footer: "no-drag" });
-    expect(await m.execute(`const r = gBrowser.selectedBrowser.getBoundingClientRect(); return [r.top, r.height - window.innerHeight];`)).toEqual([0, 0]);
+    // The page sits framed on the aura, 8 px from the top and the bottom.
+    expect(await m.execute(`const r = gBrowser.selectedBrowser.getBoundingClientRect(); return [r.top, r.height - window.innerHeight];`)).toEqual([8, -16]);
     // Under an overlay the sidebar's area belongs to the overlay.
     await pressKeys(m, "Meta+t");
     await waitUi(m, `${DRAGGING} return of(".bar") === "default";`);
@@ -113,6 +114,50 @@ describe("the sidebar's layout", () => {
       `const p = doc.querySelector('[data-testid="extensions-panel"]'); return p && { top: p.getBoundingClientRect().top, bottom: doc.querySelector("form").getBoundingClientRect().bottom };`,
     );
     expect(panel!.top).toBeGreaterThanOrEqual(panel!.bottom);
+  });
+  it("keeps spaces and tools on one row, tools folded past two spaces, chips never squashed, the row scrolling when full, with 1, 3 and 6 spaces", async () => {
+    const layout = () =>
+      inUi<{ centres: number[]; chipWidths: number[]; clipped: boolean; scrolls: boolean; overlap: boolean; toolsRight: boolean; tools: number }>(
+        m,
+        `const rect = (e) => e.getBoundingClientRect();
+         const navEl = doc.querySelector("footer nav"), nav = rect(navEl);
+         const chips = [...doc.querySelectorAll("footer nav button")].map(rect);
+         const tools = [...doc.querySelectorAll("footer > .tool, footer > .fold")].map(rect);
+         const footer = rect(doc.querySelector("footer"));
+         const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+         return {
+           centres: [...new Set([...chips, ...tools].map((r) => Math.round((r.top + r.height / 2) / 4)))],
+           chipWidths: [...new Set(chips.map((r) => Math.round(r.width)))],
+           clipped: chips.some((c) => c.left < nav.left - 1 || c.right > nav.right + 1),
+           scrolls: navEl.scrollWidth > navEl.clientWidth,
+           // The part of each chip the row shows: past its edge the row scrolls.
+           overlap: chips.map((c) => new DOMRect(Math.max(c.left, nav.left), c.top, Math.max(0, Math.min(c.right, nav.right) - Math.max(c.left, nav.left)), c.height)).some((c) => c.width > 0 && tools.some((t) => hit(c, t))),
+           toolsRight: footer.right - tools.at(-1).right < 12,
+           tools: tools.length,
+         };`,
+      );
+    for (const total of [1, 3, 6]) {
+      for (let n = (await state(m)).spaces.length; n < total; n++)
+        await dispatch(m, { type: "createSpace", name: `E${n}`, icon: "📁", private: n % 2 === 0, profile: "default", windowId: (await win()).id });
+      await waitUi(m, "return doc.querySelectorAll('footer nav button[data-testid^=\"space-\"]').length === arguments[0]", [total]);
+      const l = await layout();
+      expect(l.centres).toHaveLength(1);
+      expect(l.chipWidths).toEqual([28]);
+      if (l.clipped) expect(l.scrolls).toBe(true);
+      expect(l.overlap).toBe(false);
+      expect(l.toolsRight).toBe(true);
+      expect(l.tools).toBe(total > 2 ? 1 : 4);
+    }
+    // Two more: the last space starts past the row's edge, and scrolls into view once active.
+    for (const n of [6, 7]) await dispatch(m, { type: "createSpace", name: `E${n}`, icon: "📁", private: false, profile: "default", windowId: (await win()).id });
+    const last = (await state(m)).spaces.at(-1)!;
+    const inView = () => inUi<boolean>(m, `const nav = doc.querySelector("footer nav").getBoundingClientRect(), c = doc.querySelector(arguments[0]).getBoundingClientRect();
+      return c.left >= nav.left - 1 && c.right <= nav.right + 1;`, [`[data-testid="space-${last.id}"]`]);
+    // Creating activates the new space: back to the first one, which scrolls the row to its start.
+    await dispatch(m, { type: "activateSpace", windowId: (await win()).id, id: (await state(m)).spaces[0]!.id });
+    await expect.poll(inView, { timeout: 5_000 }).toBe(false);
+    await dispatch(m, { type: "activateSpace", windowId: (await win()).id, id: last.id });
+    await expect.poll(inView, { timeout: 5_000 }).toBe(true);
   });
 });
 
@@ -140,6 +185,14 @@ describe("WebAiOs sidebar", () => {
     await click(m, `[data-testid="tab-${b}"] button[aria-label="Fermer l'onglet"]`);
     const shown = await waitShown((t) => t.ids.length === 2);
     expect(shown).toEqual({ ids: [a, c], current: c });
+  });
+
+  it("a right click on ✕ does not close the tab", async () => {
+    const a = await open("/a.html");
+    const b = await open("/b.html");
+    await click(m, `[data-testid="tab-${b}"] button[aria-label="Fermer l'onglet"]`, { button: 2 });
+    await new Promise((r) => setTimeout(r, 300));
+    expect((await waitShown((t) => t.ids.length === 2)).ids).toEqual([a, b]);
   });
 
   it("drag and drop reorders the list and the state", async () => {
@@ -214,16 +267,22 @@ describe("WebAiOs sidebar", () => {
     await waitTitle(id, "icone");
     // The UI shrinks to its column once a web page is displayed.
     await waitFor(m, "return document.getElementById('webaios-sidebar').hasAttribute('full')", (v) => v === false);
-    const bar = await inUi<string>(m, "return ui.getComputedStyle(doc.querySelector('[data-testid=\"sidebar\"]')).backgroundColor");
     // The page may paint a moment after its title arrives.
     for (let i = 0; i < 50 && (await pixel(m, 900, 400)).join() !== "255,0,0"; i++) await new Promise((r) => setTimeout(r, 100));
     expect(await pixel(m, 900, 400)).toEqual([255, 0, 0]);
-    expect(`rgb(${(await pixel(m, 100, 400)).join(", ")})`).toBe(bar);
-    // The empty page covers the page: the UI paints above Firefox's tab box.
+    // The sidebar's glass pane on the aura, not the page: another colour than the page's, and a glass that paints.
+    const page = await pixel(m, 900, 400);
+    expect(await pixel(m, 100, 400)).not.toEqual(page);
+    const glass = await inUi<string>(m, "return ui.getComputedStyle(doc.querySelector('[data-testid=\"sidebar\"]')).backgroundColor");
+    const alpha = glass.startsWith("rgba") ? parseFloat(glass.split(",")[3]!) : 1;
+    expect(alpha, glass).toBeGreaterThan(0);
+    // The empty page sits on the aura: Firefox's tab box steps aside (window.css), the page's red no longer shows.
     await dispatch(m, { type: "showBlankPage", windowId: (await win()).id });
-    const empty = await waitUi<string>(m, "const p = doc.querySelector('[data-testid=\"empty-page\"]'); return p && ui.getComputedStyle(p.parentElement).backgroundColor");
-    for (let i = 0; i < 50 && `rgb(${(await pixel(m, 900, 400)).join(", ")})` !== empty; i++) await new Promise((r) => setTimeout(r, 100));
-    expect(`rgb(${(await pixel(m, 900, 400)).join(", ")})`).toBe(empty);
+    await waitUi(m, "return !!doc.querySelector('[data-testid=\"empty-page\"]')");
+    // Between the home field and the widgets, left of the agent panel the home page opens.
+    for (let i = 0; i < 50 && (await pixel(m, 550, 190)).join() === "255,0,0"; i++) await new Promise((r) => setTimeout(r, 100));
+    expect(await pixel(m, 550, 190)).not.toEqual([255, 0, 0]);
+    expect(await m.execute("return getComputedStyle(document.getElementById('tabbrowser-tabbox')).opacity")).toBe("0");
   });
 
   it("shows an internal webaios: page as not yet available", async () => {

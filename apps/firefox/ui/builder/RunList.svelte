@@ -35,15 +35,15 @@
 </section>
 
 <style>
-  .list { position: absolute; inset: 0; z-index: 5; overflow-y: auto; padding: 16px 24px; background: var(--bg); color: var(--text); font-size: 13px; }
+  .list { position: absolute; inset: 0; z-index: 5; overflow-y: auto; padding: 16px 24px; background: var(--glass-dense); backdrop-filter: blur(28px) saturate(1.6); color: var(--text); font-size: 13px; }
   ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; max-width: 900px; }
-  button { width: 100%; display: grid; grid-template-columns: 10px 170px 100px 110px 90px 1fr; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 6px; border: 1px solid transparent; background: none; color: var(--text); text-align: left; font-size: 13px; }
+  button { width: 100%; display: grid; grid-template-columns: 10px 170px 100px 110px 90px 1fr; align-items: center; gap: 10px; padding: 7px 12px; border-radius: 10px; border: 1px solid transparent; background: none; color: var(--text); text-align: left; font-size: 13px; }
   button:hover { background: var(--bg-hover); }
-  button.active { border-color: var(--accent); background: var(--bg-active); }
+  button.active { border-color: var(--accent); background: var(--glass-hi); box-shadow: var(--lift); }
   .pill { width: 8px; height: 8px; border-radius: 50%; background: var(--stopped); }
   .pill.ok { background: var(--running); }
   .pill.warn { background: var(--in-progress); }
   .pill.bad { background: var(--in-error); }
-  .trial { justify-self: start; padding: 0 6px; border-radius: 4px; background: var(--bg-hover); color: var(--text-muted); font-size: 12px; }
+  .trial { justify-self: start; padding: 0 6px; border-radius: 6px; background: var(--glass-hi); color: var(--text-muted); font-size: 12px; }
   .muted { color: var(--text-muted); }
 </style>

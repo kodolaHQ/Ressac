@@ -73,6 +73,30 @@ describe("WebAiOs-Firefox foundation", () => {
     expect(root?.text).toContain("Nouvel onglet");
   });
 
+  it("the UI uses the bundled Aura fonts and tokens", async () => {
+    const r = await w.marionette.execute<{ family: string; faces: number; a1: string; accent: string } | null>(`return (async () => {
+      const frame = document.getElementById("webaios-sidebar");
+      for (let i = 0; i < 100 && !frame?.contentDocument?.querySelector('[data-testid="sidebar"]'); i++) await new Promise((r) => setTimeout(r, 100));
+      const d = frame?.contentDocument;
+      if (!d) return null;
+      const faces = await d.fonts.load("16px Geist");
+      const root = d.documentElement;
+      return {
+        family: d.defaultView.getComputedStyle(d.body).fontFamily,
+        faces: faces.length,
+        a1: d.defaultView.getComputedStyle(root).getPropertyValue("--a1").trim(),
+        accent: d.defaultView.getComputedStyle(root).getPropertyValue("--accent").trim(),
+      };
+    })();`);
+    expect(r?.family.startsWith('"Geist"') || r?.family.startsWith("Geist")).toBe(true);
+    expect(r?.faces).toBeGreaterThan(0);
+    // @property <color> makes the computed value serialize as rgb().
+    expect(r?.a1.toLowerCase()).toBe("rgb(255, 159, 122)");
+    expect(r?.accent).not.toBe("");
+    expect(r?.accent.toLowerCase()).not.toBe("#8b7cf6");
+    expect(r?.accent.toLowerCase()).not.toBe("rgb(139, 124, 246)");
+  });
+
   it("covers the window left of the agent panel with the UI while no page is shown, then keeps the left 240 px", async () => {
     const rect = "const r = document.getElementById('webaios-sidebar')?.getBoundingClientRect(); return r ? { left: r.left, width: r.width } : null";
     // The home page opens the 420 px agent panel.
@@ -95,8 +119,8 @@ describe("WebAiOs-Firefox foundation", () => {
     })();`);
     expect(r.title).toBe("essai");
     expect(r.left).toBeGreaterThanOrEqual(240);
-    // Up to the agent panel, open on the home page.
-    expect(Math.abs(r.right - r.edge)).toBeLessThanOrEqual(1);
+    // Up to the agent panel, open on the home page, less the 8 px of aura that frame the page.
+    expect(Math.abs(r.right + 8 - r.edge)).toBeLessThanOrEqual(1);
   });
 });
 

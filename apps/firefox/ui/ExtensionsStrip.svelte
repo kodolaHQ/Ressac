@@ -87,22 +87,23 @@
 
 <style>
   .extensions { display: flex; align-items: center; gap: 2px; flex: none; -webkit-app-region: no-drag; }
-  .action { all: unset; position: relative; width: 24px; height: 24px; flex: none; border-radius: 5px; background-position: center; background-repeat: no-repeat; background-size: 16px; }
-  .action:hover:not(:disabled), .menu:hover { background-color: var(--bg-hover); }
+  .action { all: unset; position: relative; width: 24px; height: 24px; flex: none; border-radius: 7px; background-position: center; background-repeat: no-repeat; background-size: 16px; transition: transform var(--tap), background-color var(--tap); }
+  .action:hover:not(:disabled), .menu:hover { background-color: color-mix(in srgb, var(--accent) 12%, transparent); }
+  .action:active:not(:disabled), .menu:active, .link:active, .manage:active { transform: scale(0.97); }
   .action:disabled { opacity: 0.4; }
   /* Without an icon: the first letter of the name. */
-  .action.no-icon::after { content: attr(data-letter); position: absolute; inset: 4px; display: grid; place-content: center; border-radius: 4px; background: var(--bg-active); color: var(--text); font-size: 10px; text-transform: uppercase; }
+  .action.no-icon::after { content: attr(data-letter); position: absolute; inset: 4px; display: grid; place-content: center; border-radius: 4px; background: linear-gradient(135deg, var(--a1), var(--a2)); color: var(--on-color); font-size: 10px; font-weight: 600; text-transform: uppercase; }
   .badge { position: absolute; right: 0; bottom: 0; padding: 0 2px; border-radius: 2px; font-size: 9px; line-height: 12px; pointer-events: none; }
-  .menu { all: unset; position: relative; width: 28px; height: 28px; display: grid; place-content: center; border-radius: 6px; color: var(--text-muted); font-size: 18px; }
-  .point { position: absolute; right: 4px; top: 4px; width: 7px; height: 7px; border-radius: 50%; background: #e5484d; }
+  .menu { all: unset; position: relative; width: 28px; height: 28px; display: grid; place-content: center; border-radius: 8px; color: var(--text-muted); font-size: 18px; transition: transform var(--tap), background-color var(--tap); }
+  .point { position: absolute; right: 4px; top: 4px; width: 7px; height: 7px; border-radius: 50%; background: var(--in-error); box-shadow: 0 0 0 1.5px var(--sheet); }
   /* min-width: 0: without it a long name (nowrap) would widen the panel, a flexible item of the row, out of the bar. */
-  .panel { -webkit-app-region: no-drag; flex-basis: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; margin-top: 6px; padding: 4px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-active); }
+  .panel { -webkit-app-region: no-drag; flex-basis: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; margin-top: 6px; padding: 6px; border: 1px solid var(--glass-edge); border-radius: 12px; background: var(--glass-hi); animation: webaios-rise var(--spring-d) var(--spring) backwards; }
   ul { list-style: none; margin: 0; padding: 0; }
   li { display: flex; align-items: center; gap: 6px; padding: 2px 4px; }
   .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
-  .link, .manage { all: unset; padding: 2px 6px; border-radius: 5px; color: var(--text-muted); font-size: 12px; }
+  .link, .manage { all: unset; padding: 3px 7px; border-radius: 7px; color: var(--text-muted); font-size: 12px; transition: transform var(--tap), background var(--tap); }
   .link { flex: none; white-space: nowrap; }
-  .link:hover, .manage:hover { background: var(--bg-hover); color: var(--text); }
+  .link:hover, .manage:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--text); }
   .manage { display: block; margin-top: 2px; }
   .empty { margin: 4px; color: var(--text-muted); font-size: 12px; }
 </style>

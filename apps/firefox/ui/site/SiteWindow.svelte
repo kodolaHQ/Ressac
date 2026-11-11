@@ -33,6 +33,14 @@
 {/if}
 
 <style>
-  :global(html), :global(body) { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px system-ui, sans-serif; overflow: hidden; }
+  /* An app window has no aura behind it: its bar carries one, the default Aube washed into the base. */
+  :global(html), :global(body) {
+    margin: 0;
+    height: 100%;
+    background: linear-gradient(100deg, color-mix(in oklab, var(--a1) 60%, var(--bg)), color-mix(in oklab, var(--a2) 45%, var(--bg)) 55%, color-mix(in oklab, var(--a3) 55%, var(--bg)));
+    color: var(--text);
+    font: 13px/1.4 var(--font-ui);
+    overflow: hidden;
+  }
   :global(#app) { display: flex; flex-direction: column; height: 100%; }
 </style>

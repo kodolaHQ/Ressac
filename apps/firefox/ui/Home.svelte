@@ -3,7 +3,7 @@
   import type { FreePlacement } from "../../../packages/kernel/src/home/schemas";
   import type { HomeTheme } from "../../../packages/kernel/src/home/theme";
   import { api } from "./state.svelte";
-  import AccountGrantCard from "./AccountGrantCard.svelte";
+  import AccountGrantCard from "./components/AccountGrantCard.svelte";
   import HomeWidget from "./HomeWidget.svelte";
   import { moveFree, freeGuides, FREE_WIDTH, resizeFree, freeSizes } from "./free-grid";
   import { variablesTheme } from "./theme";
@@ -249,15 +249,16 @@
 {/if}
 
 <style>
-  /* The agent theme variables, set on this root only; without a theme, the application's. */
+  /* The agent theme variables, set on this root only; without a theme, Aura's: the home sits on the aura, its widgets
+     on sheets the aura shows through. */
   .home {
-    --home-bg: var(--bg);
-    --home-card: var(--bg-bar);
+    --home-bg: transparent;
+    --home-card: color-mix(in oklab, var(--sheet) 72%, transparent);
     --home-text: var(--text);
     --home-text-muted: var(--text-muted);
     --home-accent: var(--accent);
-    --home-border: var(--border);
-    --home-radius: 12px;
+    --home-border: var(--glass-edge);
+    --home-radius: 16px;
     --home-spacing: 12px;
     --home-font: inherit;
     box-sizing: border-box;
@@ -278,10 +279,11 @@
   .guide-x { top: 0; bottom: 0; width: 1px; }
   .guide-y { left: 0; right: 0; height: 1px; }
   .empty { margin: 24px 0; text-align: center; font-size: 13px; color: var(--home-text-muted); }
-  .veil { position: fixed; inset: 0; display: grid; place-content: center; background: rgb(0 0 0 / 0.35); z-index: 10; }
-  .confirmation { padding: 16px 20px; border-radius: 10px; background: var(--bg-bar); border: 1px solid var(--border); color: var(--text); }
+  .veil { position: fixed; inset: 0; display: grid; place-content: center; background: var(--veil); backdrop-filter: blur(6px); z-index: 10; }
+  .confirmation { max-width: 420px; padding: 18px 20px; border-radius: 16px; background: var(--glass-dense); border: 1px solid var(--glass-edge); box-shadow: var(--modal-shadow); color: var(--text); animation: webaios-drop var(--spring-d) var(--spring) backwards; }
   .confirmation p { margin: 0 0 14px; }
   .buttons { display: flex; justify-content: flex-end; gap: 8px; }
-  .buttons button { padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
-  .buttons .main { background: var(--accent); border-color: var(--accent); color: white; }
+  .buttons button { padding: 7px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: 600 12.5px var(--font-ui); transition: transform var(--tap); }
+  .buttons button:active { transform: scale(0.97); }
+  .buttons .main { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 </style>

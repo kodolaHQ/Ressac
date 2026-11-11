@@ -273,40 +273,40 @@
 <style>
   .builder { position: relative; height: 100%; display: flex; flex-direction: column; color: var(--text); min-height: 0; }
   header { display: flex; align-items: center; gap: 16px; padding: 10px 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
-  h1 { margin: 0; font-size: 16px; font-weight: 600; }
+  h1 { margin: 0; font: 650 22px/1.1 var(--font-display); letter-spacing: -0.02em; }
   .tabs { display: flex; gap: 2px; }
-  .tabs button { padding: 4px 10px; border-radius: 6px; border: none; background: none; color: var(--text-muted); }
-  .tabs button.active { background: var(--bg-active); color: var(--text); }
+  .tabs button, .tabs-right button { padding: 5px 11px; border-radius: 10px; border: none; background: none; color: var(--text-muted); font: 500 13px var(--font-ui); transition: transform var(--tap), background var(--tap); }
+  .tabs button:active, .tabs-right button:active { transform: scale(0.97); }
+  .tabs button.active, .tabs-right button.active { background: var(--glass-hi); box-shadow: var(--lift), inset 0 0 0 1px var(--glass-edge); color: var(--text); }
   .tabs button:disabled { opacity: 0.5; }
   .state { font-size: 12px; color: var(--text-muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
   .state.invalid { color: var(--in-error); }
   .actions { display: flex; gap: 8px; margin-left: auto; }
-  .actions button { padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); }
+  .actions button, .buttons button { padding: 6px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: 600 12.5px var(--font-ui); transition: transform var(--tap), background var(--tap); }
+  :is(.actions, .buttons) button:hover:not(:disabled) { background: var(--bg-active); }
+  :is(.actions, .buttons) button:active:not(:disabled) { transform: scale(0.97); }
   .actions button:disabled { opacity: 0.5; }
-  .actions .launch { border-color: var(--accent); background: var(--accent); color: white; }
-  .banner { display: flex; align-items: center; gap: 10px; padding: 8px 16px; background: var(--bg-active); font-size: 13px; }
+  :is(.actions, .buttons) .launch, :is(.actions, .buttons) .launch:hover:not(:disabled) { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); }
+  .banner { display: flex; align-items: center; gap: 10px; padding: 8px 16px; background: var(--attention-bg); font-size: 13px; }
   .banner span { flex: 1; }
   .body { position: relative; flex: 1; display: flex; min-height: 0; }
   .canvas-zone { position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; }
-  .right { width: 320px; flex: none; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--border); background: var(--bg-bar); }
+  /* Narrow window (the agent panel open beside it): the side pane gives way before the canvas does. */
+  .right { width: clamp(240px, 36%, 320px); flex: none; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--border); }
   /* The side panel's width (--agent, set by App): the terminal keeps its columns when moving from one to the other. */
   .right.agent { width: var(--agent, 420px); }
   .block-pane { flex: 1; display: flex; flex-direction: column; min-height: 0; }
   .block-pane[hidden] { display: none; }
   .tabs-right { display: flex; gap: 2px; padding: 8px 12px 0; }
-  .tabs-right button { padding: 4px 10px; border-radius: 6px; border: none; background: none; color: var(--text-muted); }
-  .tabs-right button.active { background: var(--bg-active); color: var(--text); }
   .message { padding: 20px 24px; margin: 0; }
   .body > .message { flex: 1; min-width: 0; }
   .muted { color: var(--text-muted); }
   .error { color: var(--in-error); white-space: pre-wrap; word-break: break-word; }
-  .veil { position: absolute; inset: 0; z-index: 10; display: flex; align-items: flex-start; justify-content: center; padding-top: 80px; background: rgba(0, 0, 0, 0.25); }
+  .veil { position: absolute; inset: 0; z-index: 10; display: flex; align-items: flex-start; justify-content: center; padding-top: 80px; background: var(--veil); backdrop-filter: blur(6px); }
   .request form { display: flex; flex-direction: column; gap: 12px; }
-  .request { width: 340px; max-width: calc(100% - 32px); padding: 16px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-bar); box-shadow: var(--modal-shadow); font-size: 13px; }
+  .request { width: 340px; max-width: calc(100% - 32px); padding: 18px 20px; border-radius: 16px; border: 1px solid var(--glass-edge); background: var(--glass-dense); box-shadow: var(--modal-shadow); font-size: 13px; animation: webaios-drop var(--spring-d) var(--spring) backwards; }
   .request label { display: flex; flex-direction: column; gap: 6px; }
-  .request input { padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit; }
+  .request input { padding: 7px 9px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: inherit; }
   .buttons { display: flex; justify-content: flex-end; gap: 8px; }
-  .buttons button { padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); }
   .buttons button:disabled { opacity: 0.5; }
-  .buttons .launch { border-color: var(--accent); background: var(--accent); color: white; }
 </style>

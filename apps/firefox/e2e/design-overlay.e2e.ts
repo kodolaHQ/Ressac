@@ -172,10 +172,11 @@ describe("design overlay", () => {
          top: v.top, tabboxTop: document.getElementById("tabbrowser-tabbox").getBoundingClientRect().top, bottom: v.bottom, height: window.innerHeight };`,
     );
     expect(g.panelWidth).toBe(300);
-    expect(g.browserRight).toBe(g.panelLeft);
+    // The page sits framed by 8 px of aura; the column takes the window's height, as the agent panel.
+    expect(g.browserRight + 8).toBe(g.panelLeft);
     expect(g.panelRight).toBe(g.right);
     expect(g.atPanel).toBe("webaios-design-volet");
-    expect([g.top, g.bottom]).toEqual([g.tabboxTop, g.height]);
+    expect([g.top, g.bottom]).toEqual([g.tabboxTop - 8, g.height]);
     await modeOff();
     await expect.poll(pageWidth, { timeout: 10_000 }).toBe(before);
   });

@@ -217,8 +217,8 @@
   .error { color: var(--in-error); overflow-wrap: anywhere; }
   .gone { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
   .gone p { margin: 0; }
-  .gone button { padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); font: inherit; }
+  .gone button { padding: 5px 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: inherit; }
   .grant { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
   .grant p { margin: 0; color: var(--text); }
-  .grant button { padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); font: inherit; }
+  .grant button { padding: 5px 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: inherit; }
 </style>

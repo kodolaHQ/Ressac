@@ -68,6 +68,6 @@
   li.failed .mark { color: var(--in-error); }
   .counter { color: var(--text-muted); font-variant-numeric: tabular-nums; }
   .waiting { margin: 0; color: var(--text-muted); }
-  button { padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); font: inherit; }
+  button { padding: 5px 11px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: inherit; }
   button:hover { background: var(--bg-hover); }
 </style>

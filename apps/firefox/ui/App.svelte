@@ -201,7 +201,7 @@
       <aside data-testid="sidebar"></aside>
     {/if}
   </div>
-  <main class="content" class:opaque={!pageWeb || !!panel} data-testid="content-zone">
+  <main class="content" class:framed={(!pageWeb || !!panel) && !(winState && !activeTab && !panel)} data-testid="content-zone">
     {#if winState && panel === "history"}
       <History window={winState} close={closePanel} />
     {:else if panel === "downloads"}
@@ -250,8 +250,10 @@
   <SpaceModal windowId={winState.id} tabId={null} />
 {/if}
 {#if tabPanel}
-  <FrozenBackground tabId={activeTab?.id ?? null} onReady={() => (tabPanelReady = true)} />
-  {#if tabPanelReady}<TabsPanel panel={tabPanel} />{/if}
+  <div class="tabs-layer">
+    <FrozenBackground tabId={activeTab?.id ?? null} onReady={() => (tabPanelReady = true)} />
+    {#if tabPanelReady}<TabsPanel panel={tabPanel} />{/if}
+  </div>
 {/if}
 {#if command.open && winState}
   <div class="command-layer">
@@ -269,6 +271,9 @@
   /* The Actions page's confirmation covers the window, its drag areas too (no-drag on its veil). */
   .window :global(:is([data-testid="action-delete-veil"], [data-testid="action-delete-confirmation"])) { -moz-window-dragging: no-drag; }
   .command-layer { position: fixed; inset: 0; z-index: 100; }
+  .tabs-layer { display: contents; }
+  /* Under the command bar and ⌃Tab: the overlay veil, the window slightly blurred (the glass boxes blur more). */
+  :is(.command-layer, .tabs-layer) :global(div.veil) { background: var(--overlay-veil); backdrop-filter: blur(6px); }
   .window {
     display: grid;
     grid-template-columns: 240px 1fr;
@@ -281,16 +286,33 @@
     inset: 0 auto 0 0;
     z-index: 10;
     width: 240px;
-    border-right: 1px solid var(--border);
-    transition: transform 200ms ease;
+    transition: transform 200ms var(--out);
   }
-  .compact .folded-up { transform: translateX(-100%); visibility: hidden; transition: transform 200ms ease, visibility 0s 200ms; }
+  /* Floating over the web page, which no backdrop blur of this document reaches: a solid sheet keeps it readable, a
+     wash of the aura at its top keeps it of the family. */
+  .compact .column :global(.bar) {
+    background: linear-gradient(color-mix(in oklab, var(--a1) 14%, var(--sheet)), var(--sheet) 45%);
+    box-shadow: var(--modal-shadow);
+  }
+  .compact .folded-up { transform: translateX(-100%); visibility: hidden; transition: transform 200ms var(--out), visibility 0s 200ms; }
   @media (prefers-reduced-motion: reduce) {
     .compact .column { transition: none; }
   }
   /* The action page fills it (position: absolute), not the window. */
   .content { position: relative; min-width: 0; min-height: 0; }
-  .opaque { background: var(--bg); }
+  /* No web page (window.css then hides the page box): an internal page takes its place, a glass sheet framed on the
+     aura like a web page. The empty page sits on the aura itself. */
+  .framed {
+    margin: 8px 8px 8px 0;
+    border: 1px solid var(--glass-edge);
+    border-radius: 12px;
+    /* No backdrop-filter: the aura is painted by the window, out of this document's reach; it would also become the
+       containing block of the pages' fixed veils. */
+    background: var(--glass);
+    box-shadow: var(--float);
+    overflow: hidden;
+  }
+  .compact .framed { margin-left: 8px; }
   /* The page's error and crash messages. */
   .crashed { display: grid; place-content: center; gap: 12px; height: 100%; text-align: center; color: var(--text); }
 </style>

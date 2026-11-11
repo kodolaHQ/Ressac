@@ -61,6 +61,11 @@ window.addEventListener(
     const frame = document.createElementNS("http://www.w3.org/1999/xhtml", "iframe") as HTMLIFrameElement;
     frame.id = "webaios-sidebar";
     document.getElementById("browser")!.prepend(frame);
+    // The aura behind everything (window.css): three drifting blurred lights in the active space's colors.
+    const aura = document.createElementNS("http://www.w3.org/1999/xhtml", "div");
+    aura.id = "webaios-aura";
+    for (let i = 0; i < 3; i++) aura.append(document.createElementNS("http://www.w3.org/1999/xhtml", "i"));
+    document.getElementById("browser")!.prepend(aura);
     const sidebarMayLoad = cutFrameNetwork(frame);
     // Dragging regions only count in the top document unless its docShell allows them: the sidebar has the window's.
     (frame.contentWindow as any).docShell.windowDraggingAllowed = true;

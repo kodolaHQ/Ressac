@@ -142,24 +142,26 @@
 {/if}
 
 <style>
-  .actions { height: 100%; overflow-y: auto; padding: 20px 24px; color: var(--text); }
-  h1 { margin: 0 0 14px; font-size: 18px; font-weight: 600; }
-  .banner { margin: 0 0 14px; padding: 8px 12px; border-radius: 8px; background: var(--bg-active); }
+  .actions { height: 100%; overflow-y: auto; padding: 26px 32px; color: var(--text); }
+  h1 { margin: 0 0 18px; font: 650 26px/1.1 var(--font-display); letter-spacing: -0.02em; }
+  .banner { margin: 0 0 14px; padding: 10px 14px; border-radius: 12px; background: var(--attention-bg); }
   .empty { color: var(--text-muted); }
-  ul { list-style: none; margin: 0; padding: 0; }
-  li { display: flex; align-items: center; gap: 12px; padding: 10px 8px; border-bottom: 1px solid var(--border); }
+  ul { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: 16px; background: var(--sheet); box-shadow: var(--lift); overflow: hidden; }
+  li { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-top: 1px solid var(--border); }
+  li:first-child { border-top: none; }
   .name { flex: 1; min-width: 0; }
   .name b { display: block; font-weight: 600; }
   .name span { display: block; font-size: 12px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .name .error { color: var(--in-error); white-space: normal; }
-  .input { all: unset; box-sizing: border-box; width: 100%; max-width: 360px; margin-top: 6px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-bar); }
+  .input { all: unset; box-sizing: border-box; width: 100%; max-width: 360px; margin-top: 6px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--glass-hi); }
   .input:focus { border-color: var(--accent); }
   .buttons { display: flex; gap: 6px; flex: none; }
-  .buttons button, .confirmation button { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); font-size: 12px; }
-  .buttons button:hover { background: var(--bg-hover); }
-  .veil { position: fixed; inset: 0; -webkit-app-region: no-drag; display: grid; place-content: center; background: rgb(0 0 0 / 0.35); z-index: 10; }
-  .confirmation { max-width: 420px; padding: 16px 20px; border-radius: 10px; background: var(--bg-bar); border: 1px solid var(--border); color: var(--text); }
+  .buttons button, .confirmation button { display: inline-flex; align-items: center; gap: 4px; padding: 5px 11px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: 600 12px var(--font-ui); transition: transform var(--tap), background var(--tap); }
+  .buttons button:hover { background: var(--bg-active); }
+  :is(.buttons, .confirmation) button:active { transform: scale(0.97); }
+  .veil { position: fixed; inset: 0; -webkit-app-region: no-drag; display: grid; place-content: center; background: var(--veil); backdrop-filter: blur(6px); z-index: 10; }
+  .confirmation { max-width: 420px; padding: 18px 20px; border-radius: 16px; background: var(--glass-dense); border: 1px solid var(--glass-edge); box-shadow: var(--modal-shadow); color: var(--text); animation: webaios-drop var(--spring-d) var(--spring) backwards; }
   .confirmation p { margin: 0 0 14px; }
   .confirm-buttons { display: flex; justify-content: flex-end; gap: 8px; }
-  .confirmation .confirm { background: var(--accent); border-color: var(--accent); color: white; }
+  .confirmation .confirm { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 </style>

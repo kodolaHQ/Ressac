@@ -92,5 +92,5 @@
   .error { margin: 0 0 6px; color: var(--in-error); white-space: pre-wrap; word-break: break-word; }
   details { margin-top: 4px; }
   summary { cursor: pointer; color: var(--text-muted); }
-  pre { margin: 4px 0 0; padding: 6px 8px; max-height: 320px; overflow: auto; border-radius: 6px; background: var(--bg); font-size: 11px; white-space: pre-wrap; word-break: break-word; }
+  pre { margin: 4px 0 0; padding: 6px 8px; max-height: 320px; overflow: auto; border-radius: 10px; border: 1px solid var(--border); background: var(--sheet); font: 11px var(--font-mono); white-space: pre-wrap; word-break: break-word; }
 </style>

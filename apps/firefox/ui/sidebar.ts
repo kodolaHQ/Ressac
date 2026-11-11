@@ -8,6 +8,9 @@ import AppBadge from "./BadgeApp.svelte";
 import App from "./App.svelte";
 import SiteWindow from "./SiteWindow.svelte";
 
+// Gecko fires `click` for the right and middle buttons in chrome documents: only a left click is a click here.
+window.addEventListener("click", (e) => { if (e.button !== 0) e.stopImmediatePropagation(); }, true);
+
 const params = new URLSearchParams(location.search);
 // sidebar.html?site=<id>: a site app window's bar (SiteWindow's styles lay out #app).
 if (params.has("site")) mount(SiteWindow, { target: document.body.appendChild(Object.assign(document.createElement("div"), { id: "app" })) });

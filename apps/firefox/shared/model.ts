@@ -1,3 +1,4 @@
+import type { AuraId } from "./aura";
 import type { DevRight, TabAccessState, Owner } from "@webaios/kernel";
 import type { ExtensionCard } from "./extensions";
 import type { CodexEngine, DecisionModel } from "./settings";
@@ -111,6 +112,7 @@ export interface Space {
   /** Invisible to the agent: its tabs are neither listed, nor read, nor kept. */
   private: boolean;
   profile: ProfileId;
+  aura: AuraId;
 }
 
 export interface RecentlyClosed {

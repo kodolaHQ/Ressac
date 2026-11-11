@@ -86,9 +86,13 @@ it("a huge output does not freeze the UI", async () => {
   await launch();
   await homeAgent();
   await send("flood");
+  // The orb turns while the agent's output flows, and stops once it is quiet.
+  const ORB = "return doc.querySelector('[data-testid=\"agent-orb\"]').classList.contains('busy')";
+  await waitUi(m, ORB, [], 10_000, "agent");
   // 1 MB later, the command has scrolled off the screen and the prompt is back at the bottom.
   await waitUi(m, `const t = ${TERMINAL.slice("return ".length)}; return !t.includes("received: flood") && t.includes("ready>")`, [], 20_000, "agent");
   expect(read(join(w!.dataDir, "workspace", "fake-agent-input.txt"))).toContain("flood\r");
+  await waitUi(m, `return !(${ORB.slice("return ".length)})`, [], 10_000, "agent");
   await click(m, '[data-testid="new-tab"]');
   await waitUi(m, "return !!doc.querySelector('[data-testid=\"empty-page\"]')", [], 10_000);
 });
@@ -334,9 +338,10 @@ it("the page narrows by the panel width", async () => {
   await launch();
   await openTab("/a.html");
   const width = await m.execute<number>("return window.innerWidth");
-  expect(await m.execute("return gBrowser.selectedBrowser.getBoundingClientRect().right")).toBe(width);
+  // The page keeps 8 px of aura on its right.
+  expect(await m.execute("return gBrowser.selectedBrowser.getBoundingClientRect().right")).toBe(width - 8);
   await toggleWithButton();
-  await waitFor(m, "return gBrowser.selectedBrowser.getBoundingClientRect().right", (v) => v === width - 420);
+  await waitFor(m, "return gBrowser.selectedBrowser.getBoundingClientRect().right", (v) => v === width - 420 - 8);
   expect(await m.execute("return document.getElementById('webaios-agent').getBoundingClientRect().left")).toBe(width - 420);
 });
 
@@ -466,4 +471,38 @@ describe("one agent session per window", () => {
     await focus(second);
     expect((await callTool(w!.dataDir, "current_page")).text).toContain("Le chat dort");
   });
+});
+
+/** The system clipboard's text (chrome context). */
+const clipboardText = () =>
+  m.execute<string>(`const t = Cc["@mozilla.org/widget/transferable;1"].createInstance(Ci.nsITransferable);
+    t.init(null); t.addDataFlavor("text/plain");
+    Services.clipboard.getData(t, Ci.nsIClipboard.kGlobalClipboard, window.browsingContext.currentWindowContext);
+    const o = {}; try { t.getTransferData("text/plain", o); } catch { return ""; }
+    return o.value.QueryInterface(Ci.nsISupportsString).data;`);
+
+it("text selected in the terminal by dragging is copied by ⌘C", async () => {
+  await launch();
+  await homeAgent();
+  await m.execute(`Cc["@mozilla.org/widget/clipboardhelper;1"].getService(Ci.nsIClipboardHelper).copyString("avant");`);
+  // A drag across the first row ("fake agent ready>").
+  await inUi(
+    m,
+    `const r = doc.querySelector(".xterm-rows > div").getBoundingClientRect();
+     const y = r.top + r.height / 2;
+     ui.synthesizeMouseEvent("mousedown", r.left + 1, y, { button: 0, clickCount: 1 });
+     for (let x = r.left + 10; x < r.left + 300; x += 20) ui.synthesizeMouseEvent("mousemove", x, y, { button: 0 });
+     ui.synthesizeMouseEvent("mouseup", r.left + 300, y, { button: 0, clickCount: 1 });`,
+    [],
+    "agent",
+  );
+  await pressKeys(m, "Meta+c");
+  await expect.poll(clipboardText, { timeout: 5_000 }).toContain("fake agent");
+});
+
+it("text the agent copies itself (OSC 52, Claude Code's mouse selection) reaches the clipboard", async () => {
+  await launch();
+  await homeAgent();
+  await send("osc52");
+  await expect.poll(clipboardText, { timeout: 5_000 }).toBe("copié par l'agent ✓");
 });

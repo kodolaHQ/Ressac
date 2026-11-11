@@ -70,20 +70,31 @@
 
 <style>
   :global(html), :global(body), :global(#app) { margin: 0; height: 100%; overflow: hidden; }
-  .bubble { box-sizing: border-box; height: 100%; display: flex; flex-direction: column; gap: 6px; padding: 8px; background: var(--bg-active); color: var(--text); border: 1px solid var(--accent); border-radius: 8px; font-size: 12px; }
+  .bubble { box-sizing: border-box; height: 100%; display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; background: var(--glass-dense); color: var(--text); border: 1px solid var(--accent); border-radius: 12px; font-size: 12px; animation: webaios-drop var(--spring-d) var(--spring) backwards; }
   .head { display: flex; gap: 6px; align-items: baseline; min-width: 0; }
-  .tag { color: var(--accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tag { color: var(--accent); font-family: var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .source { color: var(--text-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  textarea { flex: 1; resize: none; box-sizing: border-box; width: 100%; padding: 6px; border-radius: 5px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit; outline: none; }
+  textarea { flex: 1; resize: none; box-sizing: border-box; width: 100%; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: inherit; outline: none; }
   textarea:focus { border-color: var(--accent); }
   .warning { margin: 0; color: var(--text-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .error { margin: 0; color: var(--in-error); }
   .actions { display: flex; justify-content: flex-end; gap: 6px; }
-  button { all: unset; cursor: pointer; padding: 4px 10px; border-radius: 5px; }
+  button { all: unset; cursor: pointer; padding: 4px 10px; border-radius: 8px; transition: transform var(--tap), background var(--tap); }
+  button:active { transform: scale(0.97); }
   .cancel { color: var(--text-muted); }
   .cancel:hover { background: var(--bg-hover); color: var(--text); }
-  .add-button { background: var(--accent); color: #fff; font-weight: 600; }
+  .add-button { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
   kbd { font: inherit; opacity: 0.8; margin-left: 4px; }
-  .message { box-sizing: border-box; height: 100%; display: flex; align-items: center; padding: 8px 12px; background: var(--bg-active); color: var(--text); border: 1px solid var(--border); border-radius: 8px; font-size: 12px; line-height: 1.35; cursor: default; overflow: hidden; }
-  .pane { height: 100%; border-radius: 8px; overflow: hidden; }
+  .message { box-sizing: border-box; height: 100%; display: flex; align-items: center; padding: 8px 12px; background: var(--glass-dense); color: var(--text); border: 1px solid var(--glass-edge); border-radius: 12px; font-size: 12px; line-height: 1.35; cursor: default; overflow: hidden; }
+  /* The cart column: a glass card beside the page, like the agent panel; dense, a window without aura may be behind. */
+  .pane {
+    box-sizing: border-box;
+    height: calc(100% - 16px);
+    margin: 8px 8px 8px 0;
+    border: 1px solid var(--glass-edge);
+    border-radius: 16px;
+    background: radial-gradient(120% 50% at 0% 0%, color-mix(in oklab, var(--a1) 16%, transparent), transparent 70%), var(--glass-dense);
+    box-shadow: var(--lift);
+    overflow: hidden;
+  }
 </style>

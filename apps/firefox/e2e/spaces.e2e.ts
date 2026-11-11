@@ -5,7 +5,7 @@ import { dispatch, state, waitFor } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
-import { click, inUi, missingApi, pressKeys, waitUi } from "./ui";
+import { click, inUi, missingApi, pressKeys, typeText, waitUi } from "./ui";
 
 let server: Awaited<ReturnType<typeof startServer>>;
 let w: LaunchedWebAiOs;
@@ -122,6 +122,68 @@ describe("space settings", () => {
     expect([work.profile, "default", "new"]).not.toContain(fresh);
   });
 
+  it("the icon field opens a grid of emojis: a click or Enter picks at once, Escape closes only the grid, typing replaces the icon", async () => {
+    const GRID = '[data-testid="emoji-grid"]';
+    const gridOpen = (open: boolean) => waitUi(m, "return !!doc.querySelector(arguments[0]) === arguments[1]", [GRID, open]);
+    const focused = () => inUi<string | null>(m, "return doc.activeElement?.getAttribute('aria-label') ?? null");
+    await click(m, '[data-testid="new-space"]');
+    await modalOpen("Nouvel espace");
+    await click(m, `${MODAL} [aria-label="Icône"]`);
+    await gridOpen(true);
+    expect(await inUi(m, "return doc.querySelector(arguments[0] + ' [aria-label=\"Icône\"]').getAttribute('aria-expanded')", [MODAL])).toBe("true");
+    expect(await inUi(m, "return doc.querySelectorAll(arguments[0] + ' button').length", [GRID])).toBeGreaterThanOrEqual(40);
+    await click(m, `${GRID} [aria-label="Musique"]`);
+    await gridOpen(false);
+    expect((await fields()).icon).toBe("🎵");
+    expect(await focused()).toBe("Icône");
+
+    // Keyboard: ↓ enters the grid, → moves, Enter picks.
+    await pressKeys(m, "ArrowDown");
+    await gridOpen(true);
+    await waitUi(m, "return doc.activeElement?.getAttribute('aria-label') === 'Maison'");
+    await pressKeys(m, "ArrowRight");
+    expect(await focused()).toBe("Travail");
+    await pressKeys(m, "Enter");
+    await gridOpen(false);
+    expect((await fields()).icon).toBe("💼");
+    expect(await inUi(m, "return !!doc.querySelector(arguments[0])", [MODAL])).toBe(true);
+
+    // Escape closes the grid, the modal stays.
+    await pressKeys(m, "ArrowDown");
+    await gridOpen(true);
+    await pressKeys(m, "Escape");
+    await gridOpen(false);
+    expect(await inUi(m, "return !!doc.querySelector(arguments[0])", [MODAL])).toBe(true);
+
+    // A click outside closes it too.
+    await click(m, `${MODAL} [aria-label="Icône"]`);
+    await gridOpen(true);
+    await click(m, `${MODAL} h2`);
+    await gridOpen(false);
+
+    // Typing replaces the icon, no need to erase it first.
+    await click(m, `${MODAL} [aria-label="Nom de l'espace"]`);
+    await click(m, `${MODAL} [aria-label="Icône"]`);
+    await typeText(m, "Z");
+    await gridOpen(false);
+    expect((await fields()).icon).toBe("Z");
+  });
+
+  it("a new space gets the aura chosen in the modal", async () => {
+    await click(m, '[data-testid="new-space"]');
+    await modalOpen("Nouvel espace");
+    await fill("Nom de l'espace", "Verdure");
+    await choose("Nouveau profil");
+    await click(m, `${MODAL} [aria-label="Aura Verger"]`);
+    await waitUi(m, "return doc.querySelector(arguments[0] + ' [aria-label=\"Aura Verger\"]').getAttribute('aria-checked') === 'true'", [MODAL]);
+    await click(m, `${MODAL} button[type="submit"]`, { text: "Créer" });
+    await modalClosed();
+    const made = await waitSpaces((l) => l.find((e) => e.name === "Verdure"), (e) => !!e);
+    expect(made!.aura).toBe("verger");
+    await openSettings(made!.id);
+    expect(await inUi(m, "return doc.querySelector(arguments[0] + ' [aria-label=\"Aura Verger\"]').getAttribute('aria-checked')", [MODAL])).toBe("true");
+  });
+
   it("“Réglages” shows the space's values; private and its own profile are saved", async () => {
     const bank = await create("Banque", "💶", false, "default");
     await click(m, button(bank.id), { button: 2 });
@@ -185,6 +247,57 @@ describe("space settings", () => {
       null,
       "🏠",
     ]);
+  });
+
+  it("past two spaces the tools fold behind one button and everything stays on one row", async () => {
+    const has = (id: string) => inUi<boolean>(m, "return !!doc.querySelector(`[data-testid=\"${arguments[0]}\"]`);", [id]);
+    // One row: every footer child shares the footer's vertical centre.
+    const oneRow = () =>
+      inUi<boolean>(m, `const f = doc.querySelector("footer"); const c = (e) => { const r = e.getBoundingClientRect(); return r.top + r.height / 2; };
+        return [...f.children].every((e) => Math.abs(c(e) - c(f.children[0])) < 4);`);
+    await create("Travail", "💼", false, "default");
+    expect(await has("agent-button")).toBe(true);
+    expect(await has("tools-button")).toBe(false);
+    for (const [name, icon] of [["Jeux", "🎮"], ["Lecture", "📚"], ["Courses", "🛒"], ["Voyage", "🧳"]]) await create(name!, icon!, false, "default");
+    await waitUi(m, `return !!doc.querySelector('[data-testid="tools-button"]') && !doc.querySelector('[data-testid="agent-button"]');`);
+    expect(await oneRow()).toBe(true);
+    // ⋯ opens the tools upward, above the row; the row itself does not move.
+    await click(m, '[data-testid="tools-button"]');
+    await waitUi(m, `return !!doc.querySelector('[data-testid="agent-button"]') && !!doc.querySelector('[data-testid="settings-button"]');`);
+    expect(await oneRow()).toBe(true);
+    expect(await inUi<boolean>(m, `return doc.querySelector('[data-testid="tools-pop"]').getBoundingClientRect().bottom <= doc.querySelector('[data-testid="tools-button"]').getBoundingClientRect().top;`)).toBe(true);
+    // A tool closes it; so do Escape and a click elsewhere.
+    await click(m, '[data-testid="settings-button"]');
+    await waitUi(m, `return !doc.querySelector('[data-testid="tools-pop"]');`);
+    await click(m, '[data-testid="tools-button"]');
+    await waitUi(m, `return !!doc.querySelector('[data-testid="tools-pop"]');`);
+    await pressKeys(m, "Escape");
+    await waitUi(m, `return !doc.querySelector('[data-testid="tools-pop"]');`);
+    await click(m, '[data-testid="tools-button"]');
+    await waitUi(m, `return !!doc.querySelector('[data-testid="tools-pop"]');`);
+    await click(m, '[data-testid="new-space"]');
+    await waitUi(m, `return !doc.querySelector('[data-testid="tools-pop"]');`);
+  });
+
+  it("right-clicking a space chip keeps its menu open, its items work, and the active space stays", async () => {
+    const work = await create("Travail", "💼", false, "default");
+    const home = (await spaces())[0]!;
+    await dispatch(m, { type: "activateSpace", windowId: await windowId(), id: home.id });
+    const active = async () => (await state(m)).windows[0]!.activeSpace;
+    expect(await active()).toBe(home.id);
+    await click(m, button(work.id), { button: 2 });
+    await new Promise((r) => setTimeout(r, 300));
+    expect(await inUi(m, "return [...doc.querySelectorAll('[role=menuitem]')].map((e) => e.textContent)")).toEqual(["Réglages", "Supprimer"]);
+    expect(await active()).toBe(home.id);
+    await click(m, '[role="menuitem"]', { text: "Réglages" });
+    await modalOpen("Réglages de l'espace");
+    expect((await fields()).name).toBe("Travail");
+    await pressKeys(m, "Escape");
+    await modalClosed();
+    await click(m, button(work.id), { button: 2 });
+    await click(m, '[role="menuitem"]', { text: "Supprimer" });
+    await waitSpaces((l) => l.some((e) => e.id === work.id), (v) => !v);
+    expect(await active()).toBe(home.id);
   });
 
   it("deleting a profile's last space warns that its logins will be lost, even without tabs", async () => {

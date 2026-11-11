@@ -31,12 +31,12 @@
 
 <style>
   .widget { font-size: 12px; }
-  .name { margin: 0 0 8px; font-size: 14px; font-weight: 600; word-break: break-word; }
+  .name { margin: 0 0 8px; font: 650 16px/1.2 var(--font-display); letter-spacing: -0.01em; word-break: break-word; }
   dl { display: grid; grid-template-columns: 1fr; gap: 2px; margin: 0 0 8px; }
   dt { color: var(--text-muted); }
   dd { margin: 0 0 6px; word-break: break-word; }
   .line { margin: 0 0 6px; }
   .label { margin: 0; color: var(--text-muted); }
-  pre { margin: 4px 0 10px; padding: 6px 8px; max-height: 260px; overflow: auto; border-radius: 6px; background: var(--bg); font-size: 11px; white-space: pre-wrap; word-break: break-word; }
+  pre { margin: 4px 0 10px; padding: 6px 8px; max-height: 260px; overflow: auto; border-radius: 10px; border: 1px solid var(--border); background: var(--sheet); font: 11px var(--font-mono); white-space: pre-wrap; word-break: break-word; }
   .muted { margin: 0 0 6px; color: var(--text-muted); }
 </style>

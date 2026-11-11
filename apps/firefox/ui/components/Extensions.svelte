@@ -148,21 +148,24 @@
 {/if}
 
 <style>
-  .extensions { height: 100%; overflow-y: auto; padding: 20px 24px; box-sizing: border-box; color: var(--text); }
-  header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
-  h1 { margin: 0; font-size: 18px; }
+  .extensions { height: 100%; overflow-y: auto; padding: 26px 32px; box-sizing: border-box; color: var(--text); }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+  h1 { margin: 0; font: 650 26px/1.1 var(--font-display); letter-spacing: -0.02em; }
   .cutoff { display: flex; align-items: center; gap: 8px; }
   .add { display: flex; align-items: flex-end; gap: 8px; margin-bottom: 14px; }
   .add label { flex: 1; display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-muted); }
-  .add input { padding: 7px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); outline: none; }
+  .add input { padding: 7px 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); outline: none; }
   .add input:focus { border-color: var(--accent); }
-  button { padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); font-size: 12px; }
-  button:hover:not(:disabled) { background: var(--bg-hover); }
+  button { padding: 5px 11px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: 600 12px var(--font-ui); transition: transform var(--tap), background var(--tap); }
+  button:hover:not(:disabled) { background: var(--bg-active); }
+  button:active:not(:disabled) { transform: scale(0.97); }
   button:disabled { opacity: 0.5; }
-  .message, .banner { margin: 0 0 14px; padding: 8px 12px; border-radius: 8px; background: var(--bg-active); }
+  .message, .banner { margin: 0 0 14px; padding: 10px 14px; border-radius: 12px; background: var(--glass-hi); border: 1px solid var(--border); }
   .empty, .muted { color: var(--text-muted); }
-  ul { list-style: none; margin: 0; padding: 0; }
-  li { padding: 12px 8px; border-bottom: 1px solid var(--border); }
+  ul { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: 16px; background: var(--sheet); box-shadow: var(--lift); overflow: hidden; }
+  li { padding: 12px 14px; border-top: 1px solid var(--border); }
+  li:first-child { border-top: none; }
+  ul:not(:has(li)) { display: none; }
   li p { margin: 4px 0; font-size: 13px; overflow-wrap: anywhere; }
   .head { display: flex; align-items: baseline; gap: 10px; }
   .head .muted { font-size: 12px; }
@@ -171,9 +174,9 @@
   .details { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 8px 0; font-size: 12px; }
   .details dt { color: var(--text-muted); }
   .details dd { margin: 0; display: flex; flex-direction: column; overflow-wrap: anywhere; }
-  .veil { position: fixed; inset: 0; display: grid; place-content: center; background: rgb(0 0 0 / 0.35); z-index: 10; }
-  .confirmation { max-width: 420px; padding: 16px 20px; border-radius: 10px; background: var(--bg-bar); border: 1px solid var(--border); color: var(--text); }
+  .veil { position: fixed; inset: 0; display: grid; place-content: center; background: var(--veil); backdrop-filter: blur(6px); z-index: 10; }
+  .confirmation { max-width: 420px; padding: 18px 20px; border-radius: 16px; background: var(--glass-dense); border: 1px solid var(--glass-edge); box-shadow: var(--modal-shadow); color: var(--text); animation: webaios-drop var(--spring-d) var(--spring) backwards; }
   .confirmation p { margin: 0 0 14px; }
   .buttons { display: flex; justify-content: flex-end; gap: 8px; }
-  .buttons .confirm { background: var(--accent); border-color: var(--accent); color: white; }
+  .buttons .confirm { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 </style>

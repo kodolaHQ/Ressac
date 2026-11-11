@@ -67,8 +67,8 @@
 
 <style>
   .pane { padding: 12px; overflow-y: auto; min-height: 0; flex: 1; color: var(--text); }
-  h3 { margin: 0 0 6px; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
-  h3 code { font-size: 11px; font-weight: 400; padding: 0 5px; border-radius: 4px; background: var(--bg-hover); color: var(--text-muted); }
+  h3 { margin: 0 0 8px; font: 650 16px/1.2 var(--font-display); letter-spacing: -0.01em; display: flex; align-items: center; gap: 8px; }
+  h3 code { font: 400 10.5px var(--font-mono); padding: 1px 6px; border-radius: 6px; background: var(--glass-hi); color: var(--text-muted); }
   .error { margin: 0 0 6px; color: var(--in-error); font-size: 12px; white-space: pre-wrap; word-break: break-word; }
   .warnings { list-style: none; margin: 0 0 6px; padding: 0; color: var(--in-progress); font-size: 12px; word-break: break-word; }
   .muted { color: var(--text-muted); font-size: 12px; }

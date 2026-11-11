@@ -190,12 +190,14 @@
   .field { display: flex; flex-direction: column; gap: 3px; margin-top: 6px; font-size: 12px; }
   .field.case { flex-direction: row; align-items: center; gap: 6px; }
   .label { color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
-  .mark { font-size: 10px; padding: 0 5px; border-radius: 4px; background: var(--bg-active); color: var(--text); }
+  .mark { font-size: 10px; padding: 0 6px; border-radius: 6px; background: var(--glass-hi); color: var(--text); }
   input:not([type="checkbox"]), select, textarea {
-    box-sizing: border-box; width: 100%; padding: 5px 7px; border-radius: 6px; border: 1px solid var(--border);
-    background: var(--bg); color: var(--text); font: inherit; font-size: 12px;
+    box-sizing: border-box; width: 100%; padding: 6px 8px; border-radius: 10px; border: 1px solid var(--border);
+    background: var(--glass-hi); color: var(--text); font: inherit; font-size: 12px;
   }
-  textarea { resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  :is(input, select, textarea):focus { border-color: var(--accent); outline: none; }
+  input[type="checkbox"] { accent-color: var(--accent); }
+  textarea { resize: vertical; font-family: var(--font-mono); }
   code { font-size: 12px; color: var(--text); word-break: break-all; }
   .help { margin: 0; font-size: 11px; color: var(--text-muted); word-break: break-word; }
 </style>

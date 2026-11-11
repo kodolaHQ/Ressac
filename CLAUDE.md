@@ -15,6 +15,8 @@ Rule:
 If `apps/firefox/node_modules/typescript` moves, update the path in `.claude/marketplace-local/plugins/tsgo-lsp/.lsp.json`.
 After a clone: `npm ci` in `.claude/marketplace-local/plugins/svelte-lsp`.
 
+Every visual change follows `DESIGN.md`.
+
 ## WebAiOs-Firefox e2e tests
 
 - The suite runs 6 files in parallel (`maxWorkers: 6`, about 2 min). At 9, time-sensitive tests break: do not raise it without making them robust.

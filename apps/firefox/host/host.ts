@@ -125,12 +125,20 @@ let homeStop: (() => Promise<void>) | undefined;
 let accessTimer: NodeJS.Timeout | undefined;
 
 const accessState = () => ({ agent: kernel?.agent ?? "L'agent", tabs: kernel?.policy.state() ?? {} });
-// A burst of policy changes gives one notification per 50 ms.
+// Tabs a tool ran on in the last notification.
+let notifiedRunning = new Set<string>();
+const notifyAccess = (state = accessState()) => {
+  clearTimeout(accessTimer);
+  accessTimer = undefined;
+  notifiedRunning = new Set(Object.keys(state.tabs).filter((id) => state.tabs[id]!.running));
+  rpc.notify("access", state);
+};
+// A burst of policy changes gives one notification per 50 ms, except a tool starting on a tab: sent at once, or a
+// read shorter than the 50 ms would never show (the window's halo).
 const broadcastAccess = () => {
-  accessTimer ??= setTimeout(() => {
-    accessTimer = undefined;
-    rpc.notify("access", accessState());
-  }, 50);
+  const state = accessState();
+  if (Object.keys(state.tabs).some((id) => state.tabs[id]!.running && !notifiedRunning.has(id))) return notifyAccess(state);
+  accessTimer ??= setTimeout(() => notifyAccess(), 50);
 };
 
 // The local AI for harvests: Gemma and the decision model both run in Ollama (same

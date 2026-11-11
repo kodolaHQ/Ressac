@@ -50,15 +50,16 @@
 </header>
 
 <style>
-  header { display: flex; align-items: center; gap: 10px; padding: 0 8px; box-sizing: border-box; background: var(--bg-bar); border-bottom: 1px solid var(--border); -webkit-app-region: drag; user-select: none; overflow: hidden; }
+  header { display: flex; align-items: center; gap: 10px; padding: 0 8px; box-sizing: border-box; background: var(--glass); border-bottom: 1px solid var(--glass-edge); -webkit-app-region: drag; user-select: none; overflow: hidden; }
   header.mac { padding-left: 78px; }
   nav { display: flex; gap: 2px; flex: none; }
-  nav button { all: unset; width: 26px; height: 24px; display: grid; place-content: center; border-radius: 5px; color: var(--text-muted); -webkit-app-region: no-drag; }
+  nav button { all: unset; width: 26px; height: 24px; display: grid; place-content: center; border-radius: 8px; color: var(--text-muted); -webkit-app-region: no-drag; transition: transform var(--tap), background var(--tap); }
+  nav button:active:not(:disabled) { transform: scale(0.97); }
   nav button:hover:not(:disabled) { background: var(--bg-hover); color: var(--text); }
   nav button:disabled { opacity: 0.4; }
-  nav button[aria-pressed="true"] { background: var(--bg-active); color: var(--text); }
+  nav button[aria-pressed="true"] { background: var(--glass-hi); color: var(--accent); }
   .title { display: flex; align-items: baseline; gap: 8px; min-width: 0; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .name { font-weight: 600; color: var(--text); }
+  .name { font: 650 14px/1 var(--font-display); letter-spacing: -0.02em; color: var(--text); }
   .domain { color: var(--text-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
   .search { all: unset; flex: none; padding: 3px 8px; border-radius: 5px; font-size: 12px; color: var(--text-muted); white-space: nowrap; -webkit-app-region: no-drag; }
   .search:disabled { opacity: 0.5; }

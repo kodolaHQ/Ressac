@@ -48,11 +48,13 @@
   main { display: flex; justify-content: flex-end; align-items: flex-start; height: 100%; }
   .line { display: flex; align-items: center; gap: 6px; height: 28px; }
   .webaios { position: relative; display: inline-flex; }
-  .pill { all: unset; display: grid; place-content: center; width: 40px; height: 24px; border-radius: 999px; background: var(--bg-active); color: var(--text); font-size: 12px; cursor: pointer; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35); }
+  .pill { all: unset; display: grid; place-content: center; width: 40px; height: 24px; border-radius: 999px; background: var(--glass-dense); border: 1px solid var(--glass-edge); box-sizing: border-box; color: var(--text); font-size: 12px; cursor: pointer; box-shadow: var(--float); transition: transform var(--tap), color var(--tap); }
+  .pill:active { transform: scale(0.97); }
   .pill[aria-expanded="true"] { color: var(--accent); }
-  .menu { position: absolute; right: 0; top: 30px; width: 200px; padding: 4px; background: var(--bg-active); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35); }
-  .menu button { all: unset; display: flex; justify-content: space-between; box-sizing: border-box; width: 100%; padding: 5px 6px; border-radius: 4px; color: var(--text); cursor: pointer; font-size: 13px; }
-  .menu button:hover { background: var(--bg-hover); }
+  /* Over the site: no blur reaches it, the dense glass keeps the menu readable. */
+  .menu { position: absolute; right: 0; top: 30px; width: 210px; padding: 5px; background: var(--glass-dense); border: 1px solid var(--glass-edge); border-radius: 12px; box-shadow: var(--modal-shadow); transform-origin: top right; animation: webaios-drop var(--spring-d) var(--spring) backwards; }
+  .menu button { all: unset; display: flex; align-items: center; justify-content: space-between; box-sizing: border-box; width: 100%; padding: 7px 9px; border-radius: 8px; color: var(--text); cursor: pointer; font-size: 13px; transition: transform var(--tap), background var(--tap); }
+  .menu button:hover { background: var(--glass-hi); }
+  .menu button:active { transform: scale(0.97); }
   .menu button.active { color: var(--accent); }
-  kbd { font: inherit; color: var(--text-muted); }
 </style>

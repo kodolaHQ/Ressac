@@ -656,6 +656,10 @@ différent d'un composant intégré) avec deux fichiers :
   (`theme` : `"light"` ou `"dark"`, `props` : les valeurs résolues) et doit répondre
   `parent.postMessage({ type: "height", px }, "*")` pour donner sa hauteur (20 à 2 000). Tout texte reçu
   est de la donnée : affiche-le avec `textContent`, jamais `innerHTML`.
+- Le style suit la charte Aura de WebAiOs : utilise les variables CSS posées sur la racine du composant
+  (`--text`, `--text-muted`, `--accent`, `--accent-ink`, `--bg`, `--sheet`, `--glass`, `--border`, `--a1`, `--a2`, `--a3`,
+  `--font-display`, `--font-ui`, `--font-mono`, `--radius-card`, `--radius-control`), avec une valeur de repli, fond
+  transparent ; pas de dégradé violet-bleu ni de texte en dégradé.
 
 Exemple complet, un graphique en barres en SVG sans bibliothèque (`components/barres/component.html`) :
 
@@ -663,9 +667,8 @@ Exemple complet, un graphique en barres en SVG sans bibliothèque (`components/b
 <!doctype html>
 <meta charset="utf-8">
 <style>
-  body { margin: 0; font: 13px system-ui, sans-serif; color: #222; background: transparent; }
-  body.dark { color: #eee; }
-  h3 { margin: 0 0 6px; font-size: 14px; }
+  body { margin: 0; font: 13px var(--font-ui, sans-serif); color: var(--text, CanvasText); background: transparent; }
+  h3 { margin: 0 0 6px; font: 600 14px var(--font-display, sans-serif); }
 </style>
 <h3 id="title"></h3>
 <svg id="graphique" width="100%" role="img"></svg>
@@ -679,8 +682,7 @@ Exemple complet, un graphique en barres en SVG sans bibliothèque (`components/b
   };
   addEventListener("message", (m) => {
     if (m.data?.type !== "component") return;
-    const { props, theme, width } = m.data;
-    document.body.className = theme === "dark" ? "dark" : "";
+    const { props, width } = m.data;
     document.getElementById("title").textContent = props.title ?? "";
     const values = (Array.isArray(props.values) ? props.values : []).slice(0, 12)
       .map((v) => ({ label: String(v?.label ?? ""), value: Number(v?.value) || 0 }));
@@ -694,7 +696,7 @@ Exemple complet, un graphique en barres en SVG sans bibliothèque (`components/b
       const long = ((w - marge - 40) * v.value) / max;
       svg.append(
         el("text", { x: 0, y: i * h + 15, fill: "currentColor" }, v.label.slice(0, 16)),
-        el("rect", { x: marge, y: i * h + 3, width: long, height: h - 8, rx: 3, fill: "#3b82f6" }),
+        el("rect", { x: marge, y: i * h + 3, width: long, height: h - 8, rx: 3, style: "fill: var(--accent, #C23A5E)" }),
         el("text", { x: marge + long + 6, y: i * h + 15, fill: "currentColor" }, String(v.value)),
       );
     });
