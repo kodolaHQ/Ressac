@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Action } from "../shared/api";
 import { callMcpTool } from "../test/mcp";
-import { actionsDataDir, listen, openAction, runsOnDisk, tid, uiQueries, waitKernel, writeAction, type TestServer } from "./actions";
+import { actionsDataDir, listen, openAction, runsOnDisk, tid, uiQueries, waitKernel, writeAction, writeRunnableAction, type TestServer } from "./actions";
 import { dispatch, state, waitReady } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
@@ -90,6 +90,26 @@ afterAll(async () => {
 });
 
 describe("the builder of an action", () => {
+  it("▶ Lancer of an account action without grant: the grant card, then the run", { timeout: 90_000 }, async () => {
+    await writeRunnableAction(w.dataDir, "courrier-b", { name: "Courrier", account: ["127.0.0.1"], code: `export default async () => ({ messages: [{ sujet: "Bonjour" }] });` });
+    // Straight to the builder: the action page would ask for the grant itself.
+    const s = await state(m);
+    await dispatch(m, { type: "openTab", windowId: s.windows[0]!.id, url: "webaios://workflow/action/courrier-b", activate: true });
+    await visible(tid("builder"));
+    await waitUi(m, "return !doc.querySelector(arguments[0])?.disabled;", [tid("launch")], 30_000);
+    await click(m, tid("launch"));
+    const card = tid("grant-card");
+    await q.waitText(`${card} :is(h1, h2, h3, h4)`, "Autoriser l'action « Courrier » à lire avec ton compte");
+    // Nothing runs until the grant; « Annuler » launches nothing.
+    await click(m, `${card} button`, { text: "Annuler" });
+    await q.waitCount(card, 0);
+    expect(await runsOnDisk(w.dataDir, "courrier-b")).toEqual([]);
+    await click(m, tid("launch"));
+    await click(m, `${card} button`, { text: "Autoriser" });
+    await q.waitCount(card, 0);
+    await poll(() => runsOnDisk(w.dataDir, "courrier-b"), (l) => l.length === 1, "one run after the grant");
+  });
+
   // constructeur.spec.ts:1560
   it("opening an action's workflow from its page: the Action panel with input and instruction", { timeout: 60_000 }, async () => {
     await writeGitlab("gitlab-a");

@@ -19,6 +19,8 @@
   import BlockTab from "./BlockTab.svelte";
   import Palette from "./Palette.svelte";
   import { badgesOf } from "./badges";
+  import AccountGrantCard from "../components/AccountGrantCard.svelte";
+  import type { ActionShown } from "../../shared/actions";
 
   /**
    * The builder of a widget's workflow (page `webaios://workflow/<id>`) or an action's
@@ -127,7 +129,25 @@
   function launch(): void {
     const input = edit.action?.input;
     if (input) request = { label: input.label, value: "" };
-    else void runs.launch().catch(() => {});
+    else void start();
+  }
+
+  /** An action that reads with an account and has no grant yet: the action page's grant card first, then the run. */
+  let grantFor = $state<{ action: ActionShown; input?: string } | null>(null);
+  async function start(input?: string): Promise<void> {
+    if (isAction) {
+      const a = (await api.actions.list().catch(() => [])).find((x) => x.id === target.id);
+      if (a && a.account.length > 0 && !a.grant) return void (grantFor = { action: a, input });
+    }
+    await (input === undefined ? runs.launch() : runs.launch(input)).catch(() => {});
+  }
+  async function giveGrant(profile: string): Promise<void> {
+    const g = grantFor;
+    grantFor = null;
+    if (!g) return;
+    const r = await api.actions.grant({ id: g.action.id, profile, account: [...g.action.account], public: [...g.action.public] });
+    if (!r.ok) return void (runs.denial = `Accord non enregistré : ${r.error}`);
+    await start(g.input);
   }
 
   function confirmLaunch(e: SubmitEvent): void {
@@ -135,7 +155,7 @@
     const value = request?.value.trim();
     if (!value) return;
     request = null;
-    void runs.launch(value).catch(() => {});
+    void start(value);
   }
 
   function requestedKey(e: KeyboardEvent): void {
@@ -250,6 +270,18 @@
         <RunsBar {runs} {selection} output={outputId} replayable={edit.diskValid && edit.recordingState !== "saving"} />
       {/if}
     </SvelteFlowProvider>
+  {/if}
+
+  {#if grantFor}
+    <AccountGrantCard
+      subject="action"
+      name={grantFor.action.name}
+      domains={grantFor.action.account}
+      public={grantFor.action.public}
+      profilesForGrant={api.actions.profilesForGrant}
+      close={() => (grantFor = null)}
+      allow={(profile) => void giveGrant(profile)}
+    />
   {/if}
 
   {#if request}
