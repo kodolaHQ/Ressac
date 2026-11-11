@@ -597,13 +597,14 @@ test("openApps reuses the window's existing tab", () => {
   ag({ type: "openApps", windowId: F });
   expect(pages()).toHaveLength(1);
   expect(active()).toBe(page.id);
-  // From another space: go back to the window's page, in its space.
+  // Open in space A, active space B: a new tab in B, the window stays in B.
   ag({ type: "createSpace", name: "Boulot", icon: "💼", private: false, profile: "default", windowId: F });
-  expect(fen().activeSpace).not.toBe(P);
+  const b = fen().activeSpace;
+  expect(b).not.toBe(P);
   ag({ type: "openApps", windowId: F });
-  expect(pages()).toHaveLength(1);
-  expect(fen().activeSpace).toBe(P);
-  expect(active()).toBe(page.id);
+  expect(pages()).toHaveLength(2);
+  expect(fen().activeSpace).toBe(b);
+  expect(e.tabs[active(b)!]).toMatchObject({ url: URL_APPLICATIONS, spaceId: b });
 });
 
 test("openExtensions opens or activates the page, like openApps", () => {
@@ -625,8 +626,8 @@ test("openExtensions opens or activates the page, like openApps", () => {
   expect(active()).toBe(page.id);
   ag({ type: "createSpace", name: "Boulot", icon: "💼", private: false, profile: "default", windowId: F });
   ag({ type: "openExtensions", windowId: F });
-  expect(pages()).toHaveLength(1);
-  expect(fen().activeSpace).toBe(P);
+  expect(pages()).toHaveLength(2);
+  expect(fen().activeSpace).not.toBe(P);
 });
 
 test("openSettings opens or activates the Réglages page, once for the window", () => {
@@ -640,8 +641,8 @@ test("openSettings opens or activates the Réglages page, once for the window", 
   expect(active()).toBe(page.id);
   ag({ type: "createSpace", name: "Boulot", icon: "💼", private: false, profile: "default", windowId: F });
   ag({ type: "openSettings", windowId: F });
-  expect(pages()).toHaveLength(1);
-  expect(fen().activeSpace).toBe(P);
+  expect(pages()).toHaveLength(2);
+  expect(fen().activeSpace).not.toBe(P);
 });
 
 test("chooseDecisionModel changes the setting; the same model again changes nothing", () => {
@@ -666,7 +667,7 @@ test("chooseCodexEngine changes the setting; the same engine again changes nothi
 test("openWorkflow opens a titled webaios://workflow/<id> tab, then returns to it instead of opening a second one", () => {
   open("https://a.test/");
   ag({ type: "openWorkflow", windowId: F, id: "meteo", name: "Météo" });
-  const pages = (id = "meteo") => Object.values(e.tabs).filter((o) => o.url === urlWorkflow(id));
+  const pages = (id = "meteo") => Object.values(e.tabs).filter((o) => o.url === urlWorkflow(id) && o.spaceId === P);
   expect(pages()).toHaveLength(1);
   const page = pages()[0]!;
   expect(page).toMatchObject({ url: "webaios://workflow/meteo", title: "Workflow — Météo", spaceId: P });
@@ -678,12 +679,12 @@ test("openWorkflow opens a titled webaios://workflow/<id> tab, then returns to i
   ag({ type: "openWorkflow", windowId: F, id: "meteo", name: "Météo" });
   expect(pages()).toHaveLength(1);
   expect(active()).toBe(page.id);
-  // From another space: go back to the window's page, in its space.
+  // From another space: its own page there, the window stays in that space.
   ag({ type: "createSpace", name: "Boulot", icon: "💼", private: false, profile: "default", windowId: F });
   ag({ type: "openWorkflow", windowId: F, id: "meteo", name: "Météo" });
-  expect(pages()).toHaveLength(1);
-  expect(fen().activeSpace).toBe(P);
-  expect(active()).toBe(page.id);
+  expect(Object.values(e.tabs).filter((o) => o.url === urlWorkflow("meteo"))).toHaveLength(2);
+  expect(fen().activeSpace).not.toBe(P);
+  ag({ type: "activateSpace", windowId: F, id: P });
   // Another widget: its own page.
   ag({ type: "openWorkflow", windowId: F, id: "actus", name: "Actus" });
   expect(pages("actus")).toHaveLength(1);
@@ -714,38 +715,39 @@ test("openAction opens a webaios://action/<id> tab titled with the name, then re
   expect(Object.values(e.tabs).filter((o) => o.url === urlAction("meteo"))).toHaveLength(1);
 });
 
-test("openAction finds the action's tab in another space of the window; with execution, changes its URL", () => {
+test("openAction looks only in the active space; with execution, changes its URL", () => {
   ag({ type: "openAction", windowId: F, id: "gitlab", name: "GitLab" });
   const page = Object.keys(e.tabs).at(-1)!;
+  // Open in space A, active space B: a new tab in B, the window stays in B.
   ag({ type: "createSpace", name: "Boulot", icon: "💼", private: false, profile: "default", windowId: F });
-  expect(fen().activeSpace).not.toBe(P);
+  const b = fen().activeSpace;
+  expect(b).not.toBe(P);
+  ag({ type: "openAction", windowId: F, id: "gitlab", name: "GitLab" });
+  expect(Object.keys(e.tabs)).toHaveLength(2);
+  expect(fen().activeSpace).toBe(b);
+  expect(e.tabs[active(b)!]).toMatchObject({ url: urlAction("gitlab"), spaceId: b });
+  ag({ type: "activateSpace", windowId: F, id: P });
+  open("https://b.test/");
   const ex = "2026-10-31T10-00-00-000Z";
   ag({ type: "openAction", windowId: F, id: "gitlab", name: "GitLab", run: ex });
-  expect(Object.keys(e.tabs)).toHaveLength(1);
+  expect(Object.values(e.tabs).filter((o) => o.spaceId === P && o.url.startsWith("webaios://action/"))).toHaveLength(1);
   expect(fen().activeSpace).toBe(P);
   expect(active()).toBe(page);
   expect(e.tabs[page]).toMatchObject({ url: urlAction("gitlab", ex), title: "GitLab" });
   // The tab shows a specific run: it stays the action's tab (same id), the name follows.
   ag({ type: "openAction", windowId: F, id: "gitlab", name: "Mes tickets" });
-  expect(Object.keys(e.tabs)).toHaveLength(1);
+  expect(Object.values(e.tabs).filter((o) => o.spaceId === P && o.url.startsWith("webaios://action/"))).toHaveLength(1);
   expect(e.tabs[page]).toMatchObject({ url: urlAction("gitlab", ex), title: "Mes tickets" });
   // Invalid run: refused by the schema, never a URL.
   expect(SchemaAction.safeParse({ type: "openAction", windowId: F, id: "gitlab", name: "GitLab", run: "./" }).success).toBe(false);
   expect(SchemaAction.safeParse({ type: "openAction", windowId: F, id: "../x", name: "GitLab" }).success).toBe(false);
 });
 
-test("openAction neither opens nor finds anything in a private space", () => {
+test("openAction neither opens nor finds anything in a private space, and never leaves it", () => {
   ag({ type: "openAction", windowId: F, id: "gitlab", name: "GitLab" });
-  const page = Object.keys(e.tabs).at(-1)!;
   ag({ type: "createSpace", name: "Banque", icon: "🏦", private: true, profile: "new", windowId: F });
-  const bank = fen().activeSpace;
-  // The non-private space's tab is found; the window goes back there.
-  ag({ type: "openAction", windowId: F, id: "gitlab", name: "GitLab" });
-  expect(fen().activeSpace).toBe(P);
-  expect(active()).toBe(page);
-  // No tab elsewhere: nothing is opened in the private space.
-  ag({ type: "activateSpace", windowId: F, id: bank });
   const before = e;
+  ag({ type: "openAction", windowId: F, id: "gitlab", name: "GitLab" });
   ag({ type: "openAction", windowId: F, id: "meteo", name: "Météo" });
   expect(e).toBe(before);
 });
