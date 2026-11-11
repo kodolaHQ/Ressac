@@ -254,24 +254,30 @@ async function start(): Promise<WebAiOsStore> {
     safeForUntrustedWebProcess: true,
   });
   // The vim mode (vim-actor.ts): top http(s) documents of tab browsers; the parent decides whether keys are taken there.
+  // Registered only while the setting is on: off, no page pays for it. Unregistering destroys the actors (didDestroy
+  // drops their listeners and layer); registering reaches the pages already open through `tell`.
   const vimActor = actorModule("vim-actor");
-  ChromeUtils.registerWindowActor("WebAiOsVim", {
-    parent: { esModuleURI: vimActor },
-    child: { esModuleURI: vimActor, events: { DOMWindowCreated: {}, pageshow: {} } },
-    matches: ["http://*/*", "https://*/*"],
-    messageManagerGroups: ["browsers"],
-    safeForUntrustedWebProcess: true,
-  });
-  // The switch reaches the pages already open (a page in the bfcache asks again when it comes back).
-  store.subscribe((s, p) => {
-    if (s.settings.vimMode === p.settings.vimMode) return;
+  const setVimActor = (on: boolean) => {
+    if (!on) return ChromeUtils.unregisterWindowActor("WebAiOsVim");
+    ChromeUtils.registerWindowActor("WebAiOsVim", {
+      parent: { esModuleURI: vimActor },
+      child: { esModuleURI: vimActor, events: { DOMWindowCreated: {}, pageshow: {} } },
+      matches: ["http://*/*", "https://*/*"],
+      messageManagerGroups: ["browsers"],
+      safeForUntrustedWebProcess: true,
+    });
     for (const win of Services.wm.getEnumerator("navigator:browser"))
       for (const b of win.gBrowser?.browsers ?? [])
-        try {
-          b.browsingContext?.currentWindowGlobal?.getExistingActor("WebAiOsVim")?.tell();
-        } catch (e) {
-          console.error("[vim] mode not sent:", e);
-        }
+        if (/^https?:/.test(b.currentURI?.spec ?? ""))
+          try {
+            b.browsingContext?.currentWindowGlobal?.getActor("WebAiOsVim").tell();
+          } catch (e) {
+            console.error("[vim] mode not sent:", e);
+          }
+  };
+  if (store.state.settings.vimMode) setVimActor(true);
+  store.subscribe((s, p) => {
+    if (s.settings.vimMode !== p.settings.vimMode) setVimActor(s.settings.vimMode);
   });
   // The agent's extensions' consoles, in every content process: a content script writes in a web process (spike S6).
   // What it relays is untrusted there: the parent checks it (agentExtensions.relayConsole).
@@ -380,6 +386,10 @@ async function start(): Promise<WebAiOsStore> {
   const design = createDesign({ agent, windows, apps, sites, dispatch: store.dispatch, mainWindow, toFront, shortcutLabel: () => shortcutLabel("design", store.state.settings) });
   bindSites(agent, dataDir, openInTab, design);
   design.overlays = createOverlays({ design, host: agent });
+  // A remapped design shortcut: the windows re-read the label (a site app's « Mode design (⇧⌘D) » tooltip).
+  store.subscribe((s, p) => {
+    if (shortcutLabel("design", s.settings) !== shortcutLabel("design", p.settings)) design.refresh();
+  });
   bindApps(agent, openInTab, dataDir, { access: () => access, design });
   const history = createHistory(store, agent);
   registerHomeNotifications(agent);

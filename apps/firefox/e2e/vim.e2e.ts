@@ -26,11 +26,13 @@ const PAGE = `<!doctype html><meta charset="utf-8"><title>vim</title>
   for (const t of ["keydown", "keypress", "keyup"]) addEventListener(t, (e) => { document.documentElement.dataset.seen = (document.documentElement.dataset.seen || "") + t + ":" + e.key + " "; }, true);
 </script>
 <a id="next" href="/vim2">suivant</a>
-<input id="in"><textarea id="ta"></textarea><div id="ce" contenteditable="true"></div><div id="host"></div>
-<script>document.getElementById("host").attachShadow({ mode: "open" }).innerHTML = '<input id="sin">';</script>`;
+<input id="in"><textarea id="ta"></textarea><div id="ce" contenteditable="true"></div><div id="host"></div><div id="closed"></div>
+<input id="box" type="checkbox">
+<script>document.getElementById("host").attachShadow({ mode: "open" }).innerHTML = '<input id="sin">';
+document.getElementById("closed").attachShadow({ mode: "closed" }).innerHTML = '<input id="cin">';</script>`;
 
-// Ten visible links (more than the nine home-row letters), and six that get no label: hidden, invisible, below and left
-// of the viewport, covered at its centre, clipped by its scrolling box. Its CSP allows only its own nonce'd style: the
+// Ten visible links (more than the nine home-row letters), and seven that get no label: hidden, invisible, below and left
+// of the viewport, covered at its centre, clipped by its scrolling box, an SVG link (no click()). Its CSP allows only its own nonce'd style: the
 // labels' style must still apply.
 const HINTS = `<!doctype html><meta charset="utf-8"><title>liens</title>
 <style nonce="n0">body{margin:0;height:4000px} .l{display:block;margin:6px} #none{display:none} #invisible{visibility:hidden}
@@ -40,7 +42,8 @@ ${Array.from({ length: 10 }, (_, i) => `<a id="l${i}" class="l" href="/vim2?n=${
 <a id="none" href="/vim2?n=none">caché</a><a id="invisible" href="/vim2?n=invisible">invisible</a>
 <a id="below" href="/vim2?n=below">en bas</a><a id="left" href="/vim2?n=left">à gauche</a>
 <div class="under"><a id="covered" href="/vim2?n=covered">couvert</a><div class="cover"></div></div>
-<div class="clip"><i></i><a id="clipped" href="/vim2?n=clipped">rogné</a></div>`;
+<div class="clip"><i></i><a id="clipped" href="/vim2?n=clipped">rogné</a></div>
+<svg width="120" height="24"><a id="svg" href="/vim2?n=svg"><text x="0" y="16">svg</text></a></svg>`;
 // No link; a tall page.
 const NO_LINKS = `<!doctype html><meta charset="utf-8"><title>sans liens</title><body style="margin:0;height:6000px"><p>rien</p>`;
 // The body does not scroll; a full-height inner box does (a web app's layout, such as Gmail's).
@@ -178,19 +181,36 @@ describe("vim mode on", () => {
     await expect.poll(seen).toContain("keydown:Escape");
   });
 
-  it("in a field (input, textarea, contenteditable, shadow input) jkG is typed and nothing scrolls", async () => {
+  it("in a field (input, textarea, contenteditable, open or closed shadow input) jkG is typed and nothing scrolls", async () => {
     await open();
+    const cin = "document.getElementById('closed').openOrClosedShadowRoot.getElementById('cin')";
     for (const [focus, read] of [
       ["document.getElementById('in').focus()", "return document.getElementById('in').value;"],
       ["document.getElementById('ta').focus()", "return document.getElementById('ta').value;"],
       ["document.getElementById('ce').focus()", "return document.getElementById('ce').textContent;"],
       ["document.getElementById('host').shadowRoot.getElementById('sin').focus()", "return document.getElementById('host').shadowRoot.getElementById('sin').value;"],
+      // A closed shadow root (a web component's search box): seen from outside the page, its host is the target.
+      [`${cin}.focus()`, `return ${cin}.value;`],
     ]) {
-      await inPage(`${focus}; return 1;`);
+      await inBrowser(m, B, `${focus}; return 1;`, { system: true });
       await typeText(m, "jkG");
-      expect(await inPage<string>(read!)).toBe("jkG");
+      expect(await inBrowser<string>(m, B, read!, { system: true })).toBe("jkG");
       expect(await scrollY()).toBe(0);
     }
+  });
+
+  it("a checkbox takes no typing: j scrolls; Escape in a field gives the focus back to the page", async () => {
+    await open();
+    await inPage("document.getElementById('box').focus(); return 1;");
+    await pressKeys(m, "j");
+    await expect.poll(scrollY).toBeGreaterThan(0);
+    await inPage("window.scrollTo(0, 0); document.getElementById('in').focus(); return 1;");
+    await pressKeys(m, "Escape");
+    await expect.poll(seen).toContain("keydown:Escape"); // the page hears it too
+    expect(await inPage<string>("return document.activeElement.localName;")).toBe("body");
+    await pressKeys(m, "j");
+    await expect.poll(scrollY).toBeGreaterThan(0);
+    expect(await inPage<string>("return document.getElementById('in').value;")).toBe("");
   });
 
   it("H goes back, L forward, r reloads", async () => {
@@ -429,7 +449,7 @@ describe("vim mode: tabs and spaces", () => {
     expect(await inPage<string>("return document.getElementById('in').value;")).toBe("JKtoX");
     await setVim(false);
     await m.execute(`${B}.focus();`);
-    await actorReady();
+    await sleep(300);
     await inPage("document.activeElement.blur(); return 1;");
     for (const k of ["J", "K", "X", "t", "o"]) await pressKeys(m, k);
     await typeText(m, "gtgsg0");
@@ -505,22 +525,33 @@ describe("vim mode: pause", () => {
 });
 
 describe("vim mode off, or outside web tabs", () => {
-  it("off (the default): j reaches the page and nothing scrolls", async () => {
+  it("off (the default): no vim actor on a fresh page, j reaches the page and nothing scrolls", async () => {
     await setVim(false);
-    await open();
+    await openTab(m, `${server.url}/vim`);
+    await m.execute(`${B}.focus();`);
+    // Not registered: getActor throws (an unregistered name), where a registered actor would be made.
+    expect(await m.execute<string>(`try { ${B}.browsingContext.currentWindowGlobal.getActor("WebAiOsVim"); return "made"; } catch (e) { return e.name; }`)).toBe("NotFoundError");
     await pressKeys(m, "j");
     await expect.poll(seen).toContain("keydown:j");
     expect(await scrollY()).toBe(0);
   });
 
-  it("turned off while a page is open: that page lets j through", async () => {
+  it("turned off while a page is open: its actor and labels go, the page lets j through; on again, it is back", async () => {
     await setVim(true);
     await open();
+    await pressKeys(m, "f");
+    await expect.poll(hints).not.toBeNull();
     await setVim(false);
-    await sleep(200);
+    await expect.poll(hints).toBeNull();
+    await expect.poll(() => m.execute<boolean>(`return !!${B}.browsingContext.currentWindowGlobal.getExistingActor("WebAiOsVim");`)).toBe(false);
     await pressKeys(m, "j");
     await expect.poll(seen).toContain("keydown:j");
     expect(await scrollY()).toBe(0);
+    // On again: the page already open gets its keys back, without a reload.
+    await setVim(true);
+    await actorReady();
+    await pressKeys(m, "j");
+    await expect.poll(scrollY).toBeGreaterThan(0);
   });
 
   it("Settings and the agent's terminal get j untouched", async () => {

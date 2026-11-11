@@ -24,6 +24,7 @@ declare const ChromeUtils: {
   /** Milliseconds, monotonic. */
   now(): number;
   registerWindowActor(name: string, options: object): void;
+  unregisterWindowActor(name: string): void;
   registerProcessActor(name: string, options: object): void;
   getAllDOMProcesses(): {
     remoteType: string | null;

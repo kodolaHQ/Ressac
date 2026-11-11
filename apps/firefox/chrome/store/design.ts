@@ -64,6 +64,8 @@ export interface DesignService {
   /** The target's window closed. */
   forget(t: DesignTarget): void;
   onChange(cb: () => void): () => void;
+  /** Something every state shows changed (the shortcut's label): the listeners re-read. */
+  refresh(): void;
   /** Set by Task 3: shows and hides the overlay frames. No-op until then. */
   overlays: DesignOverlays;
 }
@@ -507,6 +509,7 @@ export function createDesign(o: {
       listeners.add(cb);
       return () => void listeners.delete(cb);
     },
+    refresh: notify,
   };
   return service;
 }

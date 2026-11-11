@@ -1,6 +1,7 @@
 // The vim mode's actor (plan 50, spec §2): vim keys in the top http(s) document of a main window's web tab.
-// The parent decides whether the mode applies to a document (the setting, a main window, a WebAiOs tab) and tells the
-// child: when the child asks (a new document, a page back from the bfcache) and when the setting changes.
+// Registered only while the setting is on (store/index.ts): off, no page has a vim actor or listener.
+// The parent decides whether the mode applies to a document (a main window, a WebAiOs tab) and tells the child: when
+// the child asks (a new document, a page back from the bfcache) and when the actor is registered for open pages.
 // The child listens on its chrome event handler, in front of every page listener (the design actor's guard): a key it
 // takes never reaches the page. Packaged: a change here needs build:ui.
 
@@ -115,12 +116,19 @@ export class WebAiOsVimParent extends JSWindowActorParent {
   }
 }
 
-/** The focus is somewhere typing goes: a field, a contenteditable (or inside one), a designMode document. */
+/** Inputs that take no typing: a click on one leaves the vim keys working. */
+const UNTYPED_INPUTS = ["checkbox", "radio", "range", "button", "submit", "reset", "image", "file", "color"];
+
+/** The focus is somewhere typing goes: a text field, a select, a contenteditable (or inside one), a designMode document. */
 function editable(t: EventTarget | undefined): boolean {
   const el = t as HTMLElement | undefined;
   if (!el || el.nodeType !== 1) return false;
-  return el.localName === "input" || el.localName === "textarea" || el.localName === "select" || el.isContentEditable;
+  if (el.localName === "input") return !UNTYPED_INPUTS.includes((el as HTMLInputElement).type);
+  return el.localName === "textarea" || el.localName === "select" || el.isContentEditable;
 }
+
+/** The event's real target: chrome-only, not retargeted to the host of a closed shadow root (a web component's field). */
+const realTarget = (e: Event): EventTarget | undefined => (e as Event & { composedTarget?: EventTarget }).composedTarget ?? e.composedPath()[0];
 
 /** The keys that ask the parent for something: [message, data]. */
 const ONE_KEYS: Record<string, [string, unknown?]> = {
@@ -164,9 +172,17 @@ export class WebAiOsVimChild extends JSWindowActorChild {
   private paused = false;
   private pill: HTMLElement | null = null;
 
-  // DOMWindowCreated: a new document; pageshow: one back from the bfcache may have missed a change of the setting.
+  // DOMWindowCreated: a new document; pageshow: one back from the bfcache asks again.
   handleEvent(e: Event): void {
     if (e.target !== this.document || !e.isTrusted) return;
+    this.listen();
+    this.sendQuery("vim:state").then(
+      (on) => (this.on = on === true),
+      () => {},
+    );
+  }
+
+  private listen(): void {
     if (!this.listening) {
       // The chrome event handler is the tab's: every document of the tab hears these keys (see `mine`).
       const target = this.docShell.chromeEventHandler;
@@ -174,30 +190,35 @@ export class WebAiOsVimChild extends JSWindowActorChild {
       for (const type of EVENTS) target.addEventListener(type, listener, true);
       this.listening = { target, listener };
     }
-    this.sendQuery("vim:state").then(
-      (on) => (this.on = on === true),
-      () => {},
-    );
   }
 
+  // The actor just registered on a page already open (no DOMWindowCreated): the parent tells it.
   receiveMessage(m: { name: string; data?: { on?: unknown } }): void {
-    if (m.name === "vim:mode") this.on = m.data?.on === true;
-    if (!this.on && this.paused) this.setPaused(false);
+    if (m.name !== "vim:mode") return;
+    this.on = m.data?.on === true;
+    if (this.on) return this.listen();
+    if (this.paused) this.setPaused(false);
+    this.hideHints(true);
+    this.setPrefix("");
   }
 
   didDestroy(): void {
     clearTimeout(this.prefixTimer);
-    this.layer?.host.remove();
-    if (!this.listening) return;
-    for (const type of EVENTS) this.listening.target.removeEventListener(type, this.listening.listener, true);
+    // The listeners first: the chrome event handler outlives the document, a dead layer must not keep them there.
+    if (this.listening) for (const type of EVENTS) this.listening.target.removeEventListener(type, this.listening.listener, true);
     this.listening = null;
+    try {
+      this.layer?.host.remove();
+    } catch {
+      // A dead wrapper on teardown: the document goes with it.
+    }
   }
 
   private event(e: Event): void {
     if (e.type.startsWith("key")) return this.key(e as KeyboardEvent);
     if (!this.on || !e.isTrusted) return;
     if (e.type === "scroll" || e.type === "pagehide") return this.hideHints(e.type === "pagehide");
-    const target = e.composedPath()[0] as Element | undefined;
+    const target = realTarget(e) as Element | undefined;
     try {
       if (target?.nodeType === 1 && target.ownerDocument === this.document) this.pointed = target;
     } catch {
@@ -216,7 +237,7 @@ export class WebAiOsVimChild extends JSWindowActorChild {
       return;
     }
     if (!this.on || e.metaKey || e.ctrlKey || e.altKey || e.isComposing) return;
-    const target = e.composedPath()[0];
+    const target = realTarget(e);
     // The tab's chrome event handler hears every document of the tab: a frame's keys, or a page left in the bfcache's
     // actor, are not this one's.
     let doc: Document | null = null;
@@ -225,7 +246,12 @@ export class WebAiOsVimChild extends JSWindowActorChild {
     } catch {
       return;
     }
-    if (((target as Node | undefined)?.ownerDocument ?? target) !== doc || editable(target)) return;
+    if (((target as Node | undefined)?.ownerDocument ?? target) !== doc) return;
+    if (editable(target)) {
+      // Escape in a field gives the focus back to the page (Vimium's); the page hears the Escape too.
+      if (e.key === "Escape" && !e.shiftKey && !this.paused) (target as HTMLElement).blur();
+      return;
+    }
     // ⇧Escape starts or ends the pause; paused, every other key is the page's.
     if (e.key === "Escape" && e.shiftKey) {
       if (!e.repeat) this.setPaused(!this.paused);
@@ -357,6 +383,8 @@ export class WebAiOsVimChild extends JSWindowActorChild {
       return !!hit && link.contains(hit);
     };
     const links = [...doc.querySelectorAll<HTMLAnchorElement>("a[href]")]
+      // An SVG <a> has no click() and its href is no string.
+      .filter((a) => a instanceof (this.contentWindow as unknown as typeof globalThis).HTMLAnchorElement)
       .filter((a) => a.checkVisibility({ visibilityProperty: true, opacityProperty: true }))
       .map((link) => ({ link, rect: [...link.getClientRects()].find((r) => inView(r) && reached(link, r)) }))
       .filter((x) => x.rect);

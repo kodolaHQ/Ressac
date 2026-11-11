@@ -97,6 +97,24 @@ describe("Settings › Raccourcis", () => {
     expect(await inUi<string>(m, "return doc.querySelector('[data-testid=\"agent-button\"]').title")).toBe("Agent (⌘K)");
   });
 
+  it("the capture ends when the focus leaves the Settings frame", async () => {
+    await edit("agent");
+    await m.execute("gBrowser.selectedBrowser.focus(); return 1;");
+    await waitUi(m, "return !!doc.querySelector(arguments[0])", ['[data-testid="shortcut-agent-edit"]']);
+    expect(await text('[data-testid="shortcut-agent-key"]')).toBe("⌘J");
+  });
+
+  it("a remapped design shortcut reaches the design state's listeners at once", async () => {
+    const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+    await m.execute(`return (async () => { const d = (await ChromeUtils.importESModule("${STORE}").ready).design; window.__designChanges = 0; d.onChange(() => window.__designChanges++); return 1; })();`);
+    await edit("design");
+    await pressKeys(m, "Meta+Shift+e");
+    await waitUi(m, "return !!doc.querySelector(arguments[0])", ['[data-testid="shortcut-design-reset"]']);
+    expect(await m.execute<number>("return window.__designChanges;")).toBeGreaterThan(0);
+    const label = await m.execute<string>(`return (async () => (await (await ChromeUtils.importESModule("${STORE}").ready).design.state({ type: "window", windowId: window.webaiosWindow.windowId })).shortcut)();`);
+    expect(label).toBe("⇧⌘E");
+  });
+
   async function waitAgent(open: boolean): Promise<boolean> {
     for (let i = 0; i < 50 && (await agentOpen()) !== open; i++) await new Promise((r) => setTimeout(r, 100));
     return agentOpen();
