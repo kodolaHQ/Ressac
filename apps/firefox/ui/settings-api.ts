@@ -57,6 +57,10 @@ export function createSettingsApi(o: {
     setCodexKey: (key) => ask<SettingsResult>("settings.codexKey", { key }, SILENT),
     deleteCodexKey: () => ask<SettingsResult>("settings.codexKeyDelete", undefined, SILENT),
     chooseCodexEngine: (engine) => o.dispatch({ type: "chooseCodexEngine", engine }),
+    claudeKeySaved: () => ask<boolean>("settings.claudeKeySaved", undefined, false),
+    setClaudeKey: (key) => ask<SettingsResult>("settings.claudeKey", { key }, SILENT),
+    deleteClaudeKey: () => ask<SettingsResult>("settings.claudeKeyDelete", undefined, SILENT),
+    chooseClaudeEngine: (engine) => o.dispatch({ type: "chooseClaudeEngine", engine }),
     async grants() {
       const [sites, host, external] = await Promise.all([
         siteRows(),

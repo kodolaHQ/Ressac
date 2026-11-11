@@ -90,6 +90,21 @@ describe("settings api", () => {
     expect(calls).toEqual([{ method: "settings.codexKey", params: { key: "sk-1" } }]);
   });
 
+  it("the Claude key and engine go to the host", async () => {
+    const { api, calls, dispatched } = setup({ "settings.claudeKey": () => ({ ok: true }), "settings.claudeKeySaved": () => true, "settings.claudeKeyDelete": () => ({ ok: true }) });
+    expect(await api.setClaudeKey("sk-1")).toEqual({ ok: true });
+    expect(await api.claudeKeySaved()).toBe(true);
+    expect(await api.deleteClaudeKey()).toEqual({ ok: true });
+    expect(calls).toEqual([
+      { method: "settings.claudeKey", params: { key: "sk-1" } },
+      { method: "settings.claudeKeySaved", params: undefined },
+      { method: "settings.claudeKeyDelete", params: undefined },
+    ]);
+    const engine = { kind: "ollama" as const, ollamaUrl: "http://h:1", ollamaModel: "m", apiUrl: "", apiModel: "" };
+    api.chooseClaudeEngine(engine);
+    expect(dispatched).toEqual([{ type: "chooseClaudeEngine", engine }]);
+  });
+
   it("logout shows the host's answer, in one request", async () => {
     const accounts = [{ id: "claude", name: "Claude Code", state: "logged-out" }];
     const { api, calls } = setup({ "settings.logout": () => accounts });

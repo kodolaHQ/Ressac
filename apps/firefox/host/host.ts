@@ -31,10 +31,11 @@ const { createSettingsHandlers, SETTINGS_METHODS } = await import("./settings.ts
 const { createApplicationsHost } = await import("./applications.ts");
 const { createActionsHost } = await import("./actions.ts");
 const { ExtensionsAgent } = await import("./extensions/agent.ts");
-const { keychain } = await import("./keychain.ts");
+const { CLAUDE_KEY, keychain } = await import("./keychain.ts");
 const { startRelay } = await import("./relay.ts");
 const { codexEngineArgs } = await import("./codex-engine.ts");
-const { CodexEngineSchema, DEFAULT_CODEX_ENGINE, apiUrlProblem } = await import("../shared/settings.ts");
+const { claudeEngineEnv } = await import("./claude-engine.ts");
+const { ClaudeEngineSchema, CodexEngineSchema, DEFAULT_CLAUDE_ENGINE, DEFAULT_CODEX_ENGINE, apiUrlProblem } = await import("../shared/settings.ts");
 const { STORE_ABSENT } = await import("./extensions/amo.ts");
 const { executionWidget, executionsWidget, placeWidgets, removeWidget, validatePlacements, toShownWidgets } = await import("./widgets.ts");
 const { ACTION_ALREADY_RUNNING } = await import("../shared/actions.ts");
@@ -230,17 +231,18 @@ const denyWidget = async (w: string) => {
 let defaultProfile = "claude";
 let kernelLaunched = false;
 
-// Codex's engine (Settings › Agents) and the relay that adds the compatible API's key, which stays on the Mac.
+// Codex's and Claude's engines (Settings › Agents) and the relay that adds each one's compatible API key, which stays on the Mac.
 let engine = DEFAULT_CODEX_ENGINE;
-const keys = keychain();
-let cachedKey: string | undefined;
-// Called after the key is written or removed (Settings › Agents).
-const forgetKey = () => void (cachedKey = undefined);
+let claudeEngine = DEFAULT_CLAUDE_ENGINE;
+const keys = { codex: keychain(), claude: keychain({ service: CLAUDE_KEY.service }) };
+const cachedKeys: { codex?: string; claude?: string } = {};
+// Called after a key is written or removed (Settings › Agents).
+const forgetKey = (kind: "codex" | "claude") => void delete cachedKeys[kind];
 const relay = await startRelay({
   // Only a string is kept: a failed read (Keychain locked) is tried again.
-  readKey: async () => {
-    cachedKey ??= (await keys.read()) ?? undefined;
-    return cachedKey ?? null;
+  readKey: async (kind) => {
+    cachedKeys[kind] ??= (await keys[kind].read()) ?? undefined;
+    return cachedKeys[kind] ?? null;
   },
 });
 
@@ -272,11 +274,12 @@ const sessions = new SessionsAgent({
   async open(f, t, { profile, resume }) {
     const n = await ready;
     if (!n) throw new Error(error ?? "le noyau de l'agent n'a pas démarré");
-    if (profile !== "codex") return n.openAgentSession({ ...t, window: f, profile, resume });
-    const e = engine;
-    const token = e.kind === "api" && (await keys.has()) ? relay.openSession(e.apiUrl) : null;
+    if (profile !== "codex" && profile !== "claude") return n.openAgentSession({ ...t, window: f, profile, resume });
+    const e = profile === "claude" ? claudeEngine : engine;
+    const token = e.kind === "api" && (await keys[profile].has()) ? relay.openSession(e.apiUrl, profile) : null;
     try {
-      const extra = codexEngineArgs(e, token ? { url: relay.containerUrl, token } : null);
+      const relayed = token ? { url: relay.containerUrl, token } : null;
+      const extra = profile === "claude" ? claudeEngineEnv(claudeEngine, relayed) : codexEngineArgs(engine, relayed);
       const session = await n.openAgentSession({ ...t, window: f, profile, resume, extra });
       if (token) session.onEnd(() => relay.closeSession(token));
       return session;
@@ -317,6 +320,10 @@ const rpc = createRpc({
     "agent.codexEngine": (p: { engine: unknown }) => {
       const r = CodexEngineSchema.safeParse(p?.engine);
       if (r.success) engine = r.data;
+    },
+    "agent.claudeEngine": (p: { engine: unknown }) => {
+      const r = ClaudeEngineSchema.safeParse(p?.engine);
+      if (r.success) claudeEngine = r.data;
     },
     "agent.profiles": async () => {
       // The kernel writes the default profile while it starts: the panel may ask before that.
@@ -758,7 +765,8 @@ const settings = createSettingsHandlers({
   denyAction: async (id) => void (await actions.denyGrant(id)),
   revokeSite: (id) => sites.revokeGrant(id),
   deviceCommand: (argv) => workshop.execCommand(argv, { interactive: false }),
-  keychain: keys,
+  keychain: keys.codex,
+  claudeKeychain: keys.claude,
   forgetKey,
 });
 // The chrome may not answer yet (its handlers come up later): it calls "sites.ready" once it does.

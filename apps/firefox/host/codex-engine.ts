@@ -2,14 +2,14 @@ import { apiUrlProblem, CodexEngineSchema, type CodexEngine } from "../shared/se
 
 export const ENGINE_TOKEN_VARIABLE = "WEBAIOS_ENGINE_TOKEN";
 export const NO_KEY = "Aucune clé enregistrée pour l'API compatible (Réglages › Agents).";
-const incomplete = (who: string) => new Error(`Réglez l'adresse et le modèle de ${who} dans Réglages › Agents.`);
+export const incomplete = (who: string) => new Error(`Réglez l'adresse et le modèle de ${who} dans Réglages › Agents.`);
 
 const provider = (id: string, name: string, baseUrl: string) => [
   "-c", `model_provider=${JSON.stringify(id)}`,
   "-c", `model_providers.${id}={name=${JSON.stringify(name)},base_url=${JSON.stringify(baseUrl)},env_key=${JSON.stringify(ENGINE_TOKEN_VARIABLE)}}`,
 ];
 
-function href(url: string, who: string): string {
+export function href(url: string, who: string): string {
   try {
     return new URL(url).href;
   } catch {

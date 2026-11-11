@@ -6,6 +6,7 @@ import { KEYCHAIN_DELAY_MS } from "./extensions/amo";
 const run = promisify(execFile);
 
 export const CODEX_KEY = { service: "webaios-codex-api", account: "default" };
+export const CLAUDE_KEY = { service: "webaios-claude-api", account: "default" };
 export const KEY_PATTERN = /^[A-Za-z0-9._~+/=:-]{1,512}$/;
 export const INVALID_KEY = "Clé invalide : lettres, chiffres et . _ ~ + / = : - seulement";
 
@@ -17,14 +18,16 @@ export interface Keychain {
 }
 
 /**
- * The compatible API key in the macOS keychain. The key goes to `security` through stdin only (never argv, visible in `ps`),
+ * A compatible API key in the macOS keychain (Codex's by default). The key goes to `security` through stdin only (never argv, visible in `ps`),
  * and the output of `security` is never logged. `env.WEBAIOS_TEST_KEYCHAIN` = a file standing in for the keychain (tests, e2e).
  */
-export function keychain(o: { command?: string; delayMs?: number; env?: NodeJS.ProcessEnv } = {}): Keychain {
+export function keychain(o: { service?: string; command?: string; delayMs?: number; env?: NodeJS.ProcessEnv } = {}): Keychain {
   const command = o.command ?? "security";
   const timeout = o.delayMs ?? KEYCHAIN_DELAY_MS;
-  const file = (o.env ?? process.env).WEBAIOS_TEST_KEYCHAIN;
-  const ids = ["-s", CODEX_KEY.service, "-a", CODEX_KEY.account];
+  const service = o.service ?? CODEX_KEY.service;
+  const testFile = (o.env ?? process.env).WEBAIOS_TEST_KEYCHAIN;
+  const file = testFile && service === CLAUDE_KEY.service ? `${testFile}.claude` : testFile;
+  const ids = ["-s", service, "-a", CODEX_KEY.account];
   const find = async (extra: string[]) => {
     try {
       return (await run(command, ["find-generic-password", ...ids, ...extra], { timeout })).stdout;

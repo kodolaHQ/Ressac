@@ -53,6 +53,9 @@ export const SETTINGS_METHODS = [
   "settings.codexKey",
   "settings.codexKeySaved",
   "settings.codexKeyDelete",
+  "settings.claudeKey",
+  "settings.claudeKeySaved",
+  "settings.claudeKeyDelete",
   "settings.workshop",
   "settings.restartWorkshop",
   "settings.workshopOperation",
@@ -84,8 +87,9 @@ export interface SettingsOptions {
   /** The command that runs `argv` in the workshop without a terminal. */
   deviceCommand(argv: string[]): string[];
   keychain: Keychain;
-  /** Called after the compatible API key is written or removed. */
-  forgetKey(): void;
+  claudeKeychain: Keychain;
+  /** Called after an agent's compatible API key is written or removed. */
+  forgetKey(kind: "codex" | "claude"): void;
 }
 
 export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTINGS_METHODS)[number], (p: any) => unknown> & { stopLogins(): void } {
@@ -132,10 +136,10 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
     return rows;
   }
 
-  const keyResult = async (change: () => Promise<void>): Promise<SettingsResult> => {
+  const keyResult = async (kind: "codex" | "claude", change: () => Promise<void>): Promise<SettingsResult> => {
     try {
       await change();
-      o.forgetKey();
+      o.forgetKey(kind);
       return { ok: true };
     } catch (e) {
       return { ok: false, error: failure(e) };
@@ -161,12 +165,18 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
       if (r.kind === "error" && /executable file not found|command not found|codex: not found/.test(r.error)) return { kind: "error", error: "Codex n'est pas encore installé dans l'atelier : ouvrez la vue agent ou redémarrez l'atelier (section Conteneur)." };
       return r;
     },
-    "settings.codexKey": (p: { key?: unknown }) => keyResult(async () => {
+    "settings.codexKey": (p: { key?: unknown }) => keyResult("codex", async () => {
       if (typeof p?.key !== "string") throw new Error(INVALID_KEY);
       await o.keychain.write(p.key);
     }),
     "settings.codexKeySaved": () => o.keychain.has(),
-    "settings.codexKeyDelete": () => keyResult(() => o.keychain.remove()),
+    "settings.codexKeyDelete": () => keyResult("codex", () => o.keychain.remove()),
+    "settings.claudeKey": (p: { key?: unknown }) => keyResult("claude", async () => {
+      if (typeof p?.key !== "string") throw new Error(INVALID_KEY);
+      await o.claudeKeychain.write(p.key);
+    }),
+    "settings.claudeKeySaved": () => o.claudeKeychain.has(),
+    "settings.claudeKeyDelete": () => keyResult("claude", () => o.claudeKeychain.remove()),
     "settings.logout": async (p: { id?: unknown }) => {
       const a = AGENT_ACCOUNTS.find((x) => x.id === p?.id);
       if (a) await o.workshop.exec(a.logout).catch((e) => console.error("[settings] logout:", e));

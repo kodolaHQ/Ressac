@@ -4,15 +4,16 @@ import type { AddressInfo } from "node:net";
 import { pipeline, Readable } from "node:stream";
 import { NO_KEY } from "./codex-engine";
 
-/** Codex only calls POST /responses (seen with the real CLI, plan 45 task 1). */
-export const RELAY_PATHS = ["/responses"];
-const DROPPED = new Set(["authorization", "host", "connection", "content-length", "cookie", "proxy-authorization", "transfer-encoding", "keep-alive", "upgrade", "te", "trailer"]);
+export type RelayKind = "codex" | "claude";
+/** Seen with the real CLIs: Codex calls POST /responses (plan 45 task 1), Claude Code POST /v1/messages (plan 48 task 2; count_tokens is its other endpoint). */
+export const RELAY_PATHS: Record<RelayKind, string[]> = { codex: ["/responses"], claude: ["/v1/messages", "/v1/messages/count_tokens"] };
+const DROPPED = new Set(["authorization", "x-api-key", "host", "connection", "content-length", "cookie", "proxy-authorization", "transfer-encoding", "keep-alive", "upgrade", "te", "trailer"]);
 
 export interface Relay {
   port: number;
   containerUrl: string;
   /** The token is bound to `target`, the API address when the session opened: a later change does not redirect it. */
-  openSession(target: string): string;
+  openSession(target: string, kind: RelayKind): string;
   closeSession(token: string): void;
   stop(): Promise<void>;
 }
@@ -28,30 +29,32 @@ const reply = (res: http.ServerResponse, status: number, message: string) =>
  * A local HTTP relay to the compatible API: the container sends a session token, the relay swaps it for the real key.
  * The key stays on the Mac: never in a log, never in a header sent back, masked in error bodies.
  */
-export async function startRelay(o: { readKey(): Promise<string | null>; host?: string; port?: number }): Promise<Relay> {
-  const tokens = new Map<string, string>();
+export async function startRelay(o: { readKey(kind: RelayKind): Promise<string | null>; host?: string; port?: number }): Promise<Relay> {
+  const tokens = new Map<string, { target: string; kind: RelayKind }>();
   const server = http.createServer(async (req, res) => {
     const [pathname = "", ...q] = (req.url ?? "").split("?");
     const query = q.length ? "?" + q.join("?") : "";
     const bearer = /^Bearer (.+)$/.exec(req.headers.authorization ?? "")?.[1] ?? "";
     let status = 500;
     try {
-      let target: string | undefined;
-      for (const [t, u] of tokens) if (sameToken(t, bearer)) target = u;
-      if (!target) status = 401, reply(res, 401, "Jeton invalide");
-      else if (!RELAY_PATHS.includes(pathname)) status = 404, reply(res, 404, "Introuvable");
+      let session: { target: string; kind: RelayKind } | undefined;
+      for (const [t, s] of tokens) if (sameToken(t, bearer)) session = s;
+      if (!session) status = 401, reply(res, 401, "Jeton invalide");
+      else if (!RELAY_PATHS[session.kind].includes(pathname)) status = 404, reply(res, 404, "Introuvable");
       else if (req.method !== "POST") status = 405, reply(res, 405, "Méthode non permise");
       else {
-        const key = await o.readKey();
+        const key = await o.readKey(session.kind);
         if (!key) status = 503, reply(res, 503, NO_KEY);
         else {
           const headers = new Headers();
           for (const [k, v] of Object.entries(req.headers)) if (v !== undefined && !DROPPED.has(k)) headers.set(k, [v].flat().join(", "));
           headers.set("authorization", `Bearer ${key}`);
+          // Anthropic reads x-api-key; compatible gateways often read the bearer.
+          if (session.kind === "claude") headers.set("x-api-key", key);
           // The container left: stop the upstream call (billed tokens) while waiting for headers and while streaming.
           const ac = new AbortController();
           res.on("close", () => ac.abort());
-          const up = await fetch(target.replace(/\/$/, "") + pathname + query, {
+          const up = await fetch(session.target.replace(/\/$/, "") + pathname + query, {
             method: req.method,
             headers,
             body: Readable.toWeb(req) as ReadableStream,
@@ -82,9 +85,9 @@ export async function startRelay(o: { readKey(): Promise<string | null>; host?: 
   return {
     port,
     containerUrl: `http://host.docker.internal:${port}`,
-    openSession(target) {
+    openSession(target, kind) {
       const t = randomBytes(32).toString("hex");
-      tokens.set(t, target);
+      tokens.set(t, { target, kind });
       return t;
     },
     closeSession: (t) => void tokens.delete(t),

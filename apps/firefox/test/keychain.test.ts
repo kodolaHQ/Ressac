@@ -2,7 +2,7 @@ import { chmod, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
-import { keychain } from "../host/keychain";
+import { CLAUDE_KEY, keychain } from "../host/keychain";
 
 let dir: string;
 let log: string;
@@ -94,5 +94,17 @@ describe("keychain", () => {
     expect(await kc.read()).toBeNull();
     await kc.remove();
     expect(await journal()).toEqual([]);
+  });
+
+  it("Claude's key: its own service and its own test file", async () => {
+    await keychain({ command: fake, service: CLAUDE_KEY.service }).write("sk-ant-1");
+    expect((await journal())[0]!.stdin).toBe('add-generic-password -U -s webaios-claude-api -a default -w "sk-ant-1"\n');
+    const file = path.join(dir, "kc-file");
+    const env = { WEBAIOS_TEST_KEYCHAIN: file };
+    await keychain({ command: fake, env }).write("sk-codex");
+    await keychain({ command: fake, env, service: CLAUDE_KEY.service }).write("sk-claude");
+    expect(await readFile(file, "utf8")).toBe("sk-codex");
+    expect(await readFile(`${file}.claude`, "utf8")).toBe("sk-claude");
+    expect(await keychain({ command: fake, env, service: CLAUDE_KEY.service }).read()).toBe("sk-claude");
   });
 });

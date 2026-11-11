@@ -11,7 +11,9 @@ let seen: { method?: string; url?: string; headers: http.IncomingHttpHeaders; bo
 let otherCalls = 0;
 let handler: (req: http.IncomingMessage, res: http.ServerResponse) => void;
 let key: string | null;
+let claudeKey: string | null;
 let target: string | null;
+let base: string;
 let relay: Relay;
 let token: string;
 
@@ -34,10 +36,10 @@ beforeAll(async () => {
   });
   const up = await listen(upstream);
   const ot = await listen(other);
-  target = `http://127.0.0.1:${up}/v1/`;
+  target = base = `http://127.0.0.1:${up}/v1/`;
   (globalThis as { __other?: number }).__other = ot;
-  relay = await startRelay({ readKey: async () => key });
-  token = relay.openSession(target);
+  relay = await startRelay({ readKey: async (kind) => (kind === "claude" ? claudeKey : key) });
+  token = relay.openSession(target, "codex");
 });
 afterAll(async () => {
   await relay.stop();
@@ -46,12 +48,14 @@ afterAll(async () => {
   // Last: nothing the relay logged holds the key or a token.
   const logged = JSON.stringify(spies.flatMap((s) => s.mock.calls));
   expect(logged).not.toContain("sk-secret");
+  expect(logged).not.toContain("sk-ant-secret");
   expect(logged).not.toContain(token);
 });
 beforeEach(() => {
   seen = [];
   otherCalls = 0;
   key = "sk-secret";
+  claudeKey = "sk-ant-secret";
   handler = (_, res) => res.writeHead(200, { "content-type": "application/json" }).end('{"ok":1}');
 });
 
@@ -107,7 +111,7 @@ describe("relay", () => {
   });
 
   it("token", async () => {
-    const closed = relay.openSession(target!);
+    const closed = relay.openSession(target!, "codex");
     relay.closeSession(closed);
     for (const t of [null, "wrong", closed]) expect((await call("/responses", {}, t)).status).toBe(401);
     expect(seen).toHaveLength(0);
@@ -137,7 +141,7 @@ describe("relay", () => {
   });
 
   it("the target is the one the session opened with", async () => {
-    const t = relay.openSession("http://127.0.0.1:1/");
+    const t = relay.openSession("http://127.0.0.1:1/", "codex");
     target = null;
     expect((await call("/responses", {}, t)).status).toBe(502);
     expect(seen).toHaveLength(0);
@@ -153,7 +157,7 @@ describe("relay", () => {
 
   it("unreachable", async () => {
     const down = await startRelay({ readKey: async () => "k" });
-    const t = down.openSession("http://127.0.0.1:1/");
+    const t = down.openSession("http://127.0.0.1:1/", "codex");
     const r = await fetch(`http://127.0.0.1:${down.port}/responses`, { method: "POST", body: "{}", headers: { authorization: `Bearer ${t}` } });
     expect(r.status).toBe(502);
     expect(await r.json()).toEqual({ error: { message: "API compatible injoignable" } });
@@ -165,5 +169,29 @@ describe("relay", () => {
     const r = await call("/responses");
     expect(r.status).toBe(401);
     expect(await r.text()).toBe('{"error":"bad key ***"}');
+  });
+
+  it("claude: its own key in both headers, on its own paths", async () => {
+    const t = relay.openSession(base, "claude");
+    const r = await call("/v1/messages?beta=true", { headers: { "x-api-key": "from-container", "anthropic-version": "2023-06-01" } }, t);
+    expect(r.status).toBe(200);
+    expect(seen[0]!.url).toBe("/v1/v1/messages?beta=true");
+    expect(seen[0]!.headers["x-api-key"]).toBe("sk-ant-secret");
+    expect(seen[0]!.headers.authorization).toBe("Bearer sk-ant-secret");
+    expect(seen[0]!.headers["anthropic-version"]).toBe("2023-06-01");
+    expect((await call("/v1/messages/count_tokens", {}, t)).status).toBe(200);
+    expect((await call("/responses", {}, t)).status).toBe(404);
+    expect((await call("/v1/messages")).status).toBe(404); // a codex token
+    expect(seen).toHaveLength(2);
+    relay.closeSession(t);
+  });
+
+  it("claude: masks its key in errors", async () => {
+    const t = relay.openSession(base, "claude");
+    handler = (_, res) => res.writeHead(401, { "content-type": "application/json" }).end('{"error":"bad key sk-ant-secret"}');
+    const r = await call("/v1/messages", {}, t);
+    expect(r.status).toBe(401);
+    expect(await r.text()).toBe('{"error":"bad key ***"}');
+    relay.closeSession(t);
   });
 });

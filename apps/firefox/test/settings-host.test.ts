@@ -42,6 +42,7 @@ function setup(over: { state?: string; exec?: (argv: string[]) => unknown } = {}
       return [process.execPath, "-e", `require("fs").appendFileSync(${JSON.stringify(pids)}, process.pid + "\\n");console.log("https://auth.example/device B3MH-2FT21");setTimeout(()=>{},60000)`];
     }),
     keychain: { read: vi.fn(async () => null), has: vi.fn(async () => true), write: vi.fn(async (k: string) => void (k.includes(" ") && (() => { throw new Error("Clé invalide : x"); })())), remove: vi.fn(async () => {}) },
+    claudeKeychain: { read: vi.fn(async () => null), has: vi.fn(async () => false), write: vi.fn(async () => {}), remove: vi.fn(async () => {}) },
     forgetKey: vi.fn(),
   };
   const alive = () => readFileSync(pids, "utf8").trim().split("\n").map((p) => { try { process.kill(Number(p), 0); return true; } catch { return false; } });
@@ -152,6 +153,20 @@ describe("settings host", () => {
     expect(await h["settings.codexKeySaved"]!({})).toBe(true);
     expect(await h["settings.codexKeyDelete"]!({})).toEqual({ ok: true });
     expect(o.keychain.remove).toHaveBeenCalled();
+    expect(o.forgetKey).toHaveBeenCalledTimes(2);
+    expect(o.forgetKey).toHaveBeenLastCalledWith("codex");
+  });
+
+  it("Claude's key: its own keychain, its own cache", async () => {
+    const { h, o } = setup();
+    expect(await h["settings.claudeKey"]!({ key: "sk-ant" })).toEqual({ ok: true });
+    expect(o.claudeKeychain.write).toHaveBeenCalledWith("sk-ant");
+    expect(o.keychain.write).not.toHaveBeenCalled();
+    expect(o.forgetKey).toHaveBeenLastCalledWith("claude");
+    expect(await h["settings.claudeKey"]!({ key: 42 })).toMatchObject({ ok: false, error: expect.stringContaining("Clé invalide") });
+    expect(await h["settings.claudeKeySaved"]!({})).toBe(false);
+    expect(await h["settings.claudeKeyDelete"]!({})).toEqual({ ok: true });
+    expect(o.claudeKeychain.remove).toHaveBeenCalled();
     expect(o.forgetKey).toHaveBeenCalledTimes(2);
   });
 
