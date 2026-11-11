@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import type { BrowserState } from "../../shared/model";
 import { AURA_IDS, DEFAULT_AURA } from "../../shared/aura";
-import { CodexEngineSchema, DEFAULT_CODEX_ENGINE } from "../../shared/settings";
+import { ClaudeEngineSchema, CodexEngineSchema, DEFAULT_CLAUDE_ENGINE, DEFAULT_CODEX_ENGINE } from "../../shared/settings";
 import { FIRST_TIME, HINT_IDS, type HintId } from "../../shared/hints";
 import { initialState } from "./initial-state";
 
@@ -47,7 +47,7 @@ const SchemaSession = z.object({
       }),
     )
     .min(1),
-  settings: z.object({ engine: z.enum(["google", "duckduckgo", "qwant"]), agentProfile: z.string().min(1).default("claude"), agentPanelWidth: z.number().default(420), decisionModel: z.enum(["pplx-decider-flash", "kev"]).catch("pplx-decider-flash"), codexEngine: CodexEngineSchema.catch(() => ({ ...DEFAULT_CODEX_ENGINE })),
+  settings: z.object({ engine: z.enum(["google", "duckduckgo", "qwant"]), agentProfile: z.string().min(1).default("claude"), agentPanelWidth: z.number().default(420), decisionModel: z.enum(["pplx-decider-flash", "kev"]).catch("pplx-decider-flash"), codexEngine: CodexEngineSchema.catch(() => ({ ...DEFAULT_CODEX_ENGINE })), claudeEngine: ClaudeEngineSchema.catch(() => ({ ...DEFAULT_CLAUDE_ENGINE })),
     // A session saved before the welcome existed never welcomes.
     onboarded: z.boolean().default(true),
     // A session saved before the hints existed has used the agent, design mode and actions: their one-time notes are seen, the tips are not.

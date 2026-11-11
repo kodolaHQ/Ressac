@@ -7,7 +7,7 @@ import { apply } from "../../core/state/actions";
 import { initialState } from "../../core/state/initial-state";
 import { loadSession, SessionRecorder } from "../../core/state/persistence";
 import type { BrowserState } from "../../shared/model";
-import { DEFAULT_CODEX_ENGINE } from "../../shared/settings";
+import { DEFAULT_CLAUDE_ENGINE, DEFAULT_CODEX_ENGINE } from "../../shared/settings";
 
 const folder = () => mkdtempSync(join(tmpdir(), "webaios-session-"));
 const set_aside = (d: string, suffix: string) => readdirSync(d).filter((f) => f.startsWith("session.json.") && f.endsWith(suffix));
@@ -307,4 +307,18 @@ test("hints round-trip", async () => {
   s.settings.hints = { enabled: false, seen: ["cmd-t", "agent"] };
   writeFileSync(join(d, "session.json"), JSON.stringify(s));
   expect((await loadSession(d)).settings.hints).toEqual({ enabled: false, seen: ["cmd-t", "agent"] });
+});
+
+test("a session saved without claudeEngine loads with the default; a corrupt one too, keeping the other settings", async () => {
+  const d = folder();
+  const old = structuredClone(initialState()) as unknown as { settings: Record<string, unknown> };
+  delete old.settings.claudeEngine;
+  writeFileSync(join(d, "session.json"), JSON.stringify(old));
+  expect((await loadSession(d)).settings.claudeEngine).toEqual(DEFAULT_CLAUDE_ENGINE);
+  old.settings.claudeEngine = { kind: "x" };
+  old.settings.agentPanelWidth = 500;
+  writeFileSync(join(d, "session.json"), JSON.stringify(old));
+  const s = await loadSession(d);
+  expect(s.settings.claudeEngine).toEqual(DEFAULT_CLAUDE_ENGINE);
+  expect(s.settings.agentPanelWidth).toBe(500);
 });

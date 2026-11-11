@@ -850,3 +850,12 @@ test("onboarding actions and hints", () => {
   ag({ type: "setHintsEnabled", enabled: false });
   expect(e.settings.hints.enabled).toBe(false);
 });
+
+test("chooseClaudeEngine stores a new engine; an equal one changes nothing", () => {
+  const before = e;
+  ag({ type: "chooseClaudeEngine", engine: { ...e.settings.claudeEngine } });
+  expect(e).toBe(before);
+  const ollama = { ...e.settings.claudeEngine, kind: "ollama" as const, ollamaModel: "ornith:35b" };
+  ag({ type: "chooseClaudeEngine", engine: ollama });
+  expect(e.settings.claudeEngine).toEqual(ollama);
+});

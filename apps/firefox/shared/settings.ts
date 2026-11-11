@@ -55,6 +55,28 @@ const httpUrl = (s: string) => {
 };
 const urlField = z.string().max(2048).refine((s) => s === "" || httpUrl(s));
 const modelField = z.string().regex(/^([\w.:\/@+][\w.:\/@+-]{0,127})?$/);
+export type ClaudeEngineKind = "subscription" | "ollama" | "api";
+export interface ClaudeEngine {
+  kind: ClaudeEngineKind;
+  ollamaUrl: string;
+  ollamaModel: string;
+  apiUrl: string;
+  apiModel: string;
+}
+export const DEFAULT_CLAUDE_ENGINE: ClaudeEngine = {
+  kind: "subscription",
+  ollamaUrl: "http://host.docker.internal:11434",
+  ollamaModel: "",
+  apiUrl: "",
+  apiModel: "",
+};
+export const ClaudeEngineSchema: z.ZodType<ClaudeEngine> = z.object({
+  kind: z.enum(["subscription", "ollama", "api"]),
+  ollamaUrl: urlField,
+  ollamaModel: modelField,
+  apiUrl: urlField,
+  apiModel: modelField,
+});
 export const CodexEngineSchema: z.ZodType<CodexEngine> = z.object({
   kind: z.enum(["chatgpt", "ollama", "api"]),
   ollamaUrl: urlField,

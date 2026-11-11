@@ -4,7 +4,7 @@ import { HINT_IDS } from "./hints";
 import { validFolder, ID_EXECUTION, ID_SITE, type Application, type Warning, type BlockCatalogEntry, type DeclarationWidget, type DirectState, type DraftRead, type SaveResult, type AttemptResult, type DevRight, type AiState, type WidgetState, type Execution, type ResumeExecution, type ActionsState, type PageAction, type LaunchResult, type Owner } from "@webaios/kernel";
 import type { BatchState, ProjectId, ExternalProject, TrackedProject } from "@webaios/kernel";
 import { PROJECT_ID, type Comment, type DiffFile, type ModifiedFile } from "@webaios/kernel";
-import { CodexEngineSchema, type AgentAccount, type Backup, type CodexEngine, type DecisionModel, type LoginResult, type GrantKind, type GrantRow, type SettingsResult, type WorkshopOperation } from "./settings";
+import { ClaudeEngineSchema, CodexEngineSchema, type AgentAccount, type Backup, type CodexEngine, type DecisionModel, type LoginResult, type GrantKind, type GrantRow, type SettingsResult, type WorkshopOperation } from "./settings";
 import type { WorkshopState } from "../../../packages/kernel/src/container/workshop.ts";
 import type { ActionShown } from "./actions";
 import type { ActionSite, SiteWindowState, MessageToHome, ShownSite } from "./sites";
@@ -102,6 +102,7 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("chooseEngine"), engine: engine }),
   z.object({ type: z.literal("chooseAgentProfile"), profile: z.string().regex(/^[\w-]+$/).max(64) }),
   z.object({ type: z.literal("chooseCodexEngine"), engine: CodexEngineSchema }),
+  z.object({ type: z.literal("chooseClaudeEngine"), engine: ClaudeEngineSchema }),
   z.object({ type: z.literal("finishOnboarding") }),
   z.object({ type: z.literal("replayOnboarding") }),
   z.object({ type: z.literal("markHintSeen"), id: z.enum(HINT_IDS) }),

@@ -453,6 +453,11 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       d.settings.codexEngine = a.engine;
       return true;
     }
+    case "chooseClaudeEngine": {
+      if (JSON.stringify(d.settings.claudeEngine) === JSON.stringify(a.engine)) return false;
+      d.settings.claudeEngine = a.engine;
+      return true;
+    }
     case "finishOnboarding": {
       if (d.settings.onboarded) return false;
       d.settings.onboarded = true;

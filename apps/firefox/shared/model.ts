@@ -2,7 +2,7 @@ import type { AuraId } from "./aura";
 import type { HintId } from "./hints";
 import type { DevRight, TabAccessState, Owner } from "@webaios/kernel";
 import type { ExtensionCard } from "./extensions";
-import type { CodexEngine, DecisionModel } from "./settings";
+import type { ClaudeEngine, CodexEngine, DecisionModel } from "./settings";
 
 /** Internal Applications page: a tab without a web page, displayed by the UI. */
 export const URL_APPLICATIONS = "webaios://apps";
@@ -160,6 +160,7 @@ export interface BrowserState {
     decisionModel: DecisionModel;
     /** The engine Codex runs on (account, local Ollama or compatible API). */
     codexEngine: CodexEngine;
+    claudeEngine: ClaudeEngine;
     /** False until the first-launch welcome is finished (or skipped). */
     onboarded: boolean;
     /** Tips and first-time notes: shown while enabled, each at most once. */
