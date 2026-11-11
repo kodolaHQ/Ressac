@@ -1,6 +1,8 @@
 // A site app's window: browser.xhtml opened by store/sites.ts without a toolbar, marked from its creation, never a
 // WebAiOs main window. One <browser> (the app view, in the app's container), Firefox's tabs and toolbars hidden, the
 // bar's frame on top (sidebar.html?site=<id>, ui/SiteWindow.svelte).
+import { createHalo } from "../../core/halo";
+import { HOST_EXITED } from "../agent/host";
 import type { SiteWindowController } from "../store/sites";
 import { createSiteAddons, type WindowAddons } from "./addons";
 import { cutFrameNetwork } from "./frame-network";
@@ -21,6 +23,18 @@ declare global {
 type Sites = typeof import("../store/sites").sites;
 const sitesModule = (): Sites => ChromeUtils.importESModule(STORE).sites;
 const designShortcut = (win: Window) => void ChromeUtils.importESModule(STORE).ready.then((store: import("../store").WebAiOsStore) => store.design.shortcut(win));
+
+/** The agent's halo around this app window's view while one of its tools runs on its tab (`app:<folder>`, `site:<id>`), as in the main window. */
+export function showHalo(win: Window, id: string): void {
+  void ChromeUtils.importESModule(STORE).ready.then((store: import("../store").WebAiOsStore) => {
+    if (win.closed) return;
+    const halo = createHalo((on) => win.document.documentElement.toggleAttribute("webaios-agent-working", on));
+    const update = () => halo.update(!!store.access.tabs[id]?.running);
+    const offs = [store.agent.on("access", update), store.agent.on(HOST_EXITED, update)];
+    update();
+    win.addEventListener("unload", () => (offs.forEach((off) => off()), halo.dispose()), { once: true });
+  });
+}
 
 /** The app id this window was opened for (window.arguments[1], set by sites.open), or null. */
 export function siteIdOf(win: Window): string | null {
@@ -142,6 +156,7 @@ export function setupSiteWindow(win: Window, id: string): SiteWindowController |
   }
   const doc = win.document;
   doc.documentElement.setAttribute("webaios-site", id);
+  showHalo(win, `site:${id}`);
   doc.getElementById("navigator-toolbox")!.hidden = true;
   const bar = doc.createElementNS(XHTML, "iframe") as HTMLIFrameElement;
   bar.id = "webaios-site-bar";
