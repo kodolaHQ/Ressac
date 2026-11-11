@@ -173,6 +173,14 @@ describe("WebAiOs sidebar", () => {
     expect(shown).toEqual({ ids: [a, c], current: c });
   });
 
+  it("a right click on ✕ does not close the tab", async () => {
+    const a = await open("/a.html");
+    const b = await open("/b.html");
+    await click(m, `[data-testid="tab-${b}"] button[aria-label="Fermer l'onglet"]`, { button: 2 });
+    await new Promise((r) => setTimeout(r, 300));
+    expect((await waitShown((t) => t.ids.length === 2)).ids).toEqual([a, b]);
+  });
+
   it("drag and drop reorders the list and the state", async () => {
     const a = await open("/a.html", { activate: false });
     const b = await open("/b.html", { activate: false });
