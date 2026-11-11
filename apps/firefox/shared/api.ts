@@ -599,7 +599,7 @@ export interface ProfileForGrant {
 export interface LocalAiStateShown {
   state: AiState;
   error?: string;
-  verification?: { kev: boolean; uv: boolean; ollama: boolean; gemma: boolean; decision: boolean };
+  verification?: { kev: boolean; uv: boolean; ollama: boolean; gemma: boolean; gemmaModel?: string | null; decision: boolean };
   ollamaUrl?: string;
 }
 

@@ -39,7 +39,10 @@ export const DEPOT_KEV = "https://github.com/jaredpalmer/kev.git";
 export const TAG_KEV = "kev-1.0";
 export const COMMIT_KEV = "6b719c3c3f367295f6ef336f4f751cf5ff970abc";
 export const KEV_MODEL = "jaredpalmer/kev-4b@v1.0";
-export const GEMMA_MODEL = "gemma4:e4b-mlx";
+/** In order of preference: the MLX build is faster, but not every Ollama serves it. */
+export const GEMMA_MODELS = ["gemma4:e4b-mlx", "gemma4:e4b"];
+/** What the kernel's own install() pulls. */
+export const GEMMA_MODEL = GEMMA_MODELS[0]!;
 const STARTUP_DELAY_MS = 180_000;
 const KEV_DELAY_MS = 60_000;
 const GEMMA_DELAY_MS = 120_000;
@@ -144,6 +147,8 @@ export class LocalAi {
   readonly ollamaUrl: string;
   /** Decision model served by Ollama; undefined = Kev. */
   private decisionModel: string | undefined;
+  /** The Gemma build found in Ollama, kept until a call says it is gone. */
+  private gemmaModel: string | undefined;
   private readonly port: number;
   private readonly inactivityMs: number;
   private readonly clock: () => number;
@@ -177,11 +182,23 @@ export class LocalAi {
     this.decisionModel = model;
   }
 
-  async check(): Promise<{ kev: boolean; uv: boolean; ollama: boolean; gemma: boolean; decision: boolean }> {
+  /** The preferred Gemma build among the installed models (undefined: none, or Ollama unreachable). */
+  private async detectGemma(): Promise<string | undefined> {
+    try {
+      const r = await fetch(`${this.ollamaUrl}/api/tags`, { signal: AbortSignal.timeout(3000) });
+      if (!r.ok) return undefined;
+      const { models } = (await r.json()) as { models?: { name?: string }[] };
+      return GEMMA_MODELS.find((g) => (models ?? []).some((m) => m.name === g));
+    } catch {
+      return undefined;
+    }
+  }
+
+  async check(): Promise<{ kev: boolean; uv: boolean; ollama: boolean; gemma: boolean; gemmaModel: string | null; decision: boolean }> {
     const kev = existsSync(join(this.kevFolder, ".git"));
     const uv = (await this.o.run("uv", ["--version"], { delayMs: 10_000 })).code === 0;
     let ollama = false;
-    let gemma = false;
+    let gemmaModel: string | null = null;
     let decision = false;
     const wanted = this.kevForced ? undefined : this.decisionModel;
     try {
@@ -189,11 +206,12 @@ export class LocalAi {
       ollama = r.ok;
       if (r.ok) {
         const { models } = (await r.json()) as { models?: { name?: string }[] };
-        gemma = (models ?? []).some((m) => m.name === GEMMA_MODEL);
+        gemmaModel = GEMMA_MODELS.find((g) => (models ?? []).some((m) => m.name === g)) ?? null;
+        this.gemmaModel = gemmaModel ?? undefined;
         decision = Boolean(wanted) && (models ?? []).some((m) => m.name === wanted || m.name === `${wanted}:latest`);
       }
     } catch { /* unreachable */ }
-    return { kev, uv, ollama, gemma, decision };
+    return { kev, uv, ollama, gemma: gemmaModel !== null, gemmaModel, decision };
   }
 
   /** Folder where Kev is cloned before being renamed to `kev/`: an interrupted clone never leaves a partial repo there. */
@@ -296,10 +314,13 @@ export class LocalAi {
   async gemma(o: { prompt: string; images?: string[]; json?: boolean; signal?: AbortSignal }): Promise<string | unknown> {
     if (this.closed) throw new Error(AI_CLOSED_ERROR);
     checkAbort(o.signal);
+    // Nothing installed: ask for the preferred tag anyway, Ollama's refusal is the error.
+    const model = (this.gemmaModel ??= await this.detectGemma()) ?? GEMMA_MODEL;
+    checkAbort(o.signal);
     const message: Record<string, unknown> = { role: "user", content: o.prompt };
     if (o.images?.length) message.images = o.images;
     const body: Record<string, unknown> = {
-      model: GEMMA_MODEL,
+      model,
       messages: [message],
       stream: false,
       think: false,
@@ -319,7 +340,10 @@ export class LocalAi {
       checkAbort(o.signal);
       throw new Error("Ollama n'est pas lancé");
     }
-    if (!r.ok) throw new Error(`Ollama a répondu ${r.status}`);
+    if (!r.ok) {
+      this.gemmaModel = undefined;
+      throw new Error(`Ollama a répondu ${r.status}`);
+    }
     let response: { message?: { content?: string } };
     try {
       response = (await r.json()) as { message?: { content?: string } };

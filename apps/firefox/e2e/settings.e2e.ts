@@ -157,6 +157,7 @@ describe("Settings page", () => {
     expect(await text("ai-ollama")).toContain(server.url);
     expect(await text("ai-ollama")).not.toContain("injoignable");
     await shows("ai-gemma", "installé");
+    expect(await text("ai-gemma")).toContain("Gemma (gemma4:e4b-mlx)");
     expect(await inUi(m, `return doc.querySelector('[data-testid="ai-decision-model"] option[value="kev"]').disabled`)).toBe(true);
   });
 

@@ -47,6 +47,26 @@ describe("LocalAi", () => {
     expect((await ai.check()).decision).toBe(false);
   });
 
+  it("Gemma: only gemma4:e4b installed is used, both installed prefers the MLX build, none is absent", async () => {
+    const mk = async (models: string[]) => {
+      const ollama = keep(await fakeOllama('{"a":1}', models));
+      const ai = new LocalAi({ folder: await tempFolder(), run: fakeRunner([]).run, ollamaUrl: ollama.url });
+      toStop.push(ai);
+      return { ollama, ai };
+    };
+    const only = await mk(["gemma4:e4b"]);
+    expect(await only.ai.check()).toMatchObject({ gemma: true, gemmaModel: "gemma4:e4b" });
+    await only.ai.gemma({ prompt: "x" });
+    expect(only.ollama.requests.find((r) => r.url === "/api/chat")!.body.model).toBe("gemma4:e4b");
+    const fresh = await mk(["gemma4:e4b"]); // no check() first: generation reads the tags itself
+    await fresh.ai.gemma({ prompt: "x" });
+    expect(fresh.ollama.requests.find((r) => r.url === "/api/chat")!.body.model).toBe("gemma4:e4b");
+    const both = await mk(["gemma4:e4b", "gemma4:e4b-mlx"]);
+    expect(await both.ai.check()).toMatchObject({ gemma: true, gemmaModel: "gemma4:e4b-mlx" });
+    const none = await mk([]);
+    expect(await none.ai.check()).toMatchObject({ gemma: false, gemmaModel: null });
+  });
+
   it("setDecisionModel switches between Kev and Ollama", async () => {
     const kev = keep(await fakeKev());
     const ollama = keep(await fakeKev());
@@ -94,7 +114,8 @@ describe("LocalAi", () => {
     const { run: run } = fakeRunner([]);
     const ai = new LocalAi({ folder: await tempFolder(), run: run, ollamaUrl: ollama.url });
     expect(await ai.gemma({ prompt: "salut", images: ["QUJD"], json: true })).toEqual({ a: 1 });
-    const c = ollama.requests[0]!.body;
+    const chats = () => ollama.requests.filter((r) => r.url === "/api/chat");
+    const c = chats()[0]!.body;
     expect(c.model).toBe("gemma4:e4b-mlx");
     expect(c.stream).toBe(false);
     expect(c.think).toBe(false);
@@ -103,7 +124,7 @@ describe("LocalAi", () => {
     expect(c.options).toEqual({ num_ctx: 16384, temperature: 0.2 });
     expect(c.messages[0]).toMatchObject({ role: "user", content: "salut", images: ["QUJD"] });
     expect(await ai.gemma({ prompt: "x" })).toBe('{"a":1}');
-    expect(ollama.requests[1]!.body.format).toBeUndefined();
+    expect(chats()[1]!.body.format).toBeUndefined();
   });
 
   it("gemma with a raised signal aborts the request to Ollama (fake server)", async () => {

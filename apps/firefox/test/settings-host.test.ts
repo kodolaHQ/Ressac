@@ -23,7 +23,7 @@ function setup(over: { state?: string; exec?: (argv: string[]) => unknown } = {}
     },
     ai: {
       state: () => ({ state: "stopped" as const }),
-      check: async () => ({ kev: true, uv: true, ollama: true, gemma: false, decision: true }),
+      check: async () => ({ kev: true, uv: true, ollama: true, gemma: false, gemmaModel: null, decision: true }),
       ollamaUrl: "http://127.0.0.1:11434",
       setDecisionModel: vi.fn(),
     },

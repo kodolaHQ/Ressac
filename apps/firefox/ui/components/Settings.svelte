@@ -202,7 +202,7 @@
               <span class="pill" data-tone={v?.ollama ? "ok" : "warn"}>{v?.ollama ? "joignable" : "injoignable"}</span>
             </div>
             <div class="row" data-testid="ai-gemma">
-              <div class="grow"><b>Gemma</b><span class="muted">Widgets et veille : Gemma (gemma4:e4b-mlx)</span></div>
+              <div class="grow"><b>Gemma</b><span class="muted">Widgets et veille : {v?.gemmaModel ? `Gemma (${v.gemmaModel})` : "Gemma absent"}</span></div>
               <span class="pill" data-tone={v?.gemma ? "ok" : "off"}>{v?.gemma ? "installé" : "absent"}</span>
             </div>
             <div class="row">
