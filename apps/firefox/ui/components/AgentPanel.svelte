@@ -45,6 +45,13 @@
   }
   let hostEl: HTMLDivElement;
   const appState = $derived(terminalAgent.agent.state);
+  /** Ticks while a build step shows, so the elapsed minutes count up. */
+  let now = $state(Date.now());
+  $effect(() => {
+    if (appState.state !== "preparing" || appState.since === undefined) return;
+    const timer = setInterval(() => (now = Date.now()), 5_000);
+    return () => clearInterval(timer);
+  });
 
   let profiles = $state<{ id: string; name: string }[]>([]);
   let accounts = $state<AgentAccount[]>([]);
@@ -169,7 +176,11 @@
     <button data-testid="agent-login-settings" onclick={() => api.dispatch({ type: "openSettings", windowId: api.windowId })}>Se connecter</button>
   {/if}
   {#if appState.state === "preparing"}
-    <p class="message">Préparation de l'agent… (la première fois, la construction du conteneur prend quelques minutes)</p>
+    {#if appState.step !== undefined && appState.since !== undefined}
+      <p class="message" data-testid="agent-build-step">Préparation de l'agent, étape {appState.step}/{appState.of} : {appState.label}… ({Math.max(0, Math.floor((now - appState.since) / 60_000))} min) (la première fois, la construction du conteneur prend quelques minutes)</p>
+    {:else}
+      <p class="message">Préparation de l'agent… (la première fois, la construction du conteneur prend quelques minutes)</p>
+    {/if}
   {:else if appState.state === "docker-absent"}
     <p class="message">Docker n'est pas lancé. La navigation fonctionne ; seul l'agent est indisponible.</p>
     <button onclick={terminalAgent.reset}>Réessayer</button>

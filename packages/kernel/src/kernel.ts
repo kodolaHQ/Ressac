@@ -10,7 +10,7 @@ import { writeWidgetState, readData, readWidgetState, deleteData } from "./home/
 import { watchHome } from "./home/watch.js";
 import { loadProfiles, buildCommand } from "./profiles/profile.js";
 import { writeMcpConfig, writeSessionConfig, mcpArgument, MCP_TOKEN_VARIABLE } from "./profiles/config-mcp.js";
-import { Workshop, DEFAULT_DOCKER_FOLDER, type WorkshopState } from "./container/workshop.js";
+import { Workshop, DEFAULT_DOCKER_FOLDER, type BuildProgress, type WorkshopState } from "./container/workshop.js";
 import { defaultRunner, type Runner } from "./container/runner.js";
 import { SessionAgent } from "./pty/session.js";
 import { AccessPolicy } from "./access/policy.js";
@@ -229,6 +229,8 @@ export interface Kernel {
     resume?: boolean;
     /** Appended to the command, and passed by name to the container (values go to the local `docker exec` only). */
     extra?: { args: string[]; env: Record<string, string> };
+    /** The first image build's steps, while this call waits for the shared start. */
+    onBuildProgress?: (p: BuildProgress) => void;
   }): Promise<SessionAgent>;
   /** Widgets of the home page, with their data and state (stored outside the workspace). */
   readHome(): Promise<HomeState>;
@@ -525,17 +527,20 @@ export async function createKernel(o: {
     policy: policy,
     agent: profile.name,
     workshopState: () => workshop.state(),
-    async openAgentSession({ cols, rows, window: win, profile: profileChoice, resume, extra }) {
+    async openAgentSession({ cols, rows, window: win, profile: profileChoice, resume, extra, onBuildProgress }) {
       const chosen = profileChoice === undefined ? profile : (await loadProfiles(paths)).profiles.find((p) => p.id === profileChoice);
       if (!chosen) throw new Error(`Profil d'agent inconnu : ${profileChoice}`);
       const first = startup;
       startup = null;
       const attempt = first ? first.then(() => workshop.ensureStarted()) : workshop.ensureStarted();
       let state: WorkshopState;
+      const unsubscribe = onBuildProgress ? workshop.onBuildProgress(onBuildProgress) : undefined;
       try {
         state = await attempt;
       } catch (e) {
         throw new WorkshopError("absent", (e as Error).message);
+      } finally {
+        unsubscribe?.();
       }
       if (state !== "demarre") throw new WorkshopError(state);
       // New conversation: no authorization any more. The sessions share the MCP server and therefore the policy:

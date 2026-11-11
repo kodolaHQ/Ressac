@@ -29,6 +29,26 @@ export const BUILD_DELAY_MS = 20 * 60_000;
 /** The end of a build output: the error is there, the rest would flood the page that shows it. */
 const tail = (s: string): string => s.trim().split("\n").slice(-3).join("\n").slice(-300);
 
+export interface BuildProgress {
+  step: number;
+  of: number;
+  label: string;
+  /** Epoch ms of the build's start, so that every window counts the same minutes. */
+  since: number;
+}
+
+/** What a BuildKit plain-progress line says (`#5 [2/3] RUN apt-get …`), or null for any other line. */
+export function parseBuildStep(line: string): Pick<BuildProgress, "step" | "of" | "label"> | null {
+  const m = /^#\d+ \[(?:[\w-]+ )?(\d+)\/(\d+)\] (FROM|RUN) (.*)$/.exec(line.trim());
+  if (!m) return null;
+  const label =
+    m[3] === "FROM" ? "Téléchargement de l'image de base"
+    : m[4]!.includes("apt-get") ? "Outils système"
+    : m[4]!.includes("claude-code") ? "Installation de Claude Code et Codex"
+    : "Préparation";
+  return { step: Number(m[1]), of: Number(m[2]), label };
+}
+
 /** Dockerfile folder in the package; a browser that embeds the kernel can provide another. */
 export const DEFAULT_DOCKER_FOLDER = join(KERNEL_ROOT, "docker");
 const dockerfile = (folder: string) => join(folder, "workshop.Dockerfile");
@@ -142,6 +162,9 @@ export class Workshop {
   private startup: Promise<WorkshopState> | null = null;
   /** Rebuild in progress, shared: two rebuilds at once build once. */
   private rebuilding: Promise<WorkshopState> | null = null;
+  /** The build's latest step, replayed to a window that subscribes mid-build; null outside a build. */
+  private progress: BuildProgress | null = null;
+  private readonly listeners = new Set<(p: BuildProgress) => void>();
 
   constructor(o: { paths: SpacePaths; run?: Runner; docker?: string | null; dockerFolder?: string }) {
     this.dockerFolder = o.dockerFolder ?? DEFAULT_DOCKER_FOLDER;
@@ -152,6 +175,34 @@ export class Workshop {
 
   private launch(args: string[], delayMs?: number) {
     return this.run(this.docker!, args, delayMs ? { delayMs: delayMs } : undefined);
+  }
+
+  /** Every window waiting on the shared start hears the build's steps. Returns the unsubscribe. */
+  onBuildProgress(listener: (p: BuildProgress) => void): () => void {
+    this.listeners.add(listener);
+    if (this.progress) listener(this.progress);
+    return () => this.listeners.delete(listener);
+  }
+
+  /** The build streams its stderr (BuildKit plain progress) instead of waiting for the end. */
+  private async build(args: string[]): Promise<RunResult> {
+    const since = Date.now();
+    let pending = "";
+    const onStderr = (chunk: string) => {
+      const lines = (pending + chunk).split("\n");
+      pending = lines.pop()!;
+      for (const line of lines) {
+        const step = parseBuildStep(line);
+        if (!step) continue;
+        this.progress = { ...step, since };
+        for (const l of this.listeners) l(this.progress);
+      }
+    };
+    try {
+      return await this.run(this.docker!, args, { delayMs: BUILD_DELAY_MS, onStderr });
+    } finally {
+      this.progress = null;
+    }
   }
 
   async state(): Promise<WorkshopState> {
@@ -219,7 +270,7 @@ export class Workshop {
     }
     const image = await this.launch(["image", "inspect", "-f", `{{index .Config.Labels "${HASH_LABEL}"}}`, IMAGE], PROBE_DELAY_MS);
     if (o.fresh || image.code !== 0 || image.stdout.trim() !== hash) {
-      const build = await this.launch(["build", ...(o.fresh ? ["--no-cache", "--pull"] : []), "-t", IMAGE, "--label", `${HASH_LABEL}=${hash}`, "-f", dockerfile(this.dockerFolder), this.dockerFolder], BUILD_DELAY_MS);
+      const build = await this.build(["build", "--progress=plain", ...(o.fresh ? ["--no-cache", "--pull"] : []), "-t", IMAGE, "--label", `${HASH_LABEL}=${hash}`, "-f", dockerfile(this.dockerFolder), this.dockerFolder]);
       if (build.code !== 0) throw new Error(`Construction de l'image ${IMAGE} impossible : ${tail(build.stderr)}`);
     }
     const ports = containerPortRange().join("-");

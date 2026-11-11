@@ -1,0 +1,27 @@
+#0 building with "orbstack" instance using docker driver
+
+#1 [internal] load build definition from workshop.Dockerfile
+#1 transferring dockerfile: 912B done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/node:22-bookworm
+#2 DONE 1.2s
+
+#3 [internal] load .dockerignore
+#3 DONE 0.0s
+
+#4 [1/3] FROM docker.io/library/node:22-bookworm@sha256:0f3c1a5e8d2b
+#4 resolve docker.io/library/node:22-bookworm@sha256:0f3c1a5e8d2b done
+#4 sha256:7a1b2c3d4e5f 49.56MB / 49.56MB 3.1s done
+#4 DONE 41.7s
+
+#5 [2/3] RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*
+#5 1.320 Get:1 http://deb.debian.org/debian bookworm InRelease [151 kB]
+#5 DONE 38.2s
+
+#6 [3/3] RUN npm install -g @anthropic-ai/claude-code @openai/codex
+#6 25.1 added 3 packages in 25s
+#6 DONE 27.4s
+
+#7 exporting to image
+#7 DONE 3.0s

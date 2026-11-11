@@ -271,16 +271,16 @@ const stop = () =>
 
 const sessions = new SessionsAgent({
   defaultProfile: () => defaultProfile,
-  async open(f, t, { profile, resume }) {
+  async open(f, t, { profile, resume, onBuildProgress }) {
     const n = await ready;
     if (!n) throw new Error(error ?? "le noyau de l'agent n'a pas démarré");
-    if (profile !== "codex" && profile !== "claude") return n.openAgentSession({ ...t, window: f, profile, resume });
+    if (profile !== "codex" && profile !== "claude") return n.openAgentSession({ ...t, window: f, profile, resume, onBuildProgress });
     const e = profile === "claude" ? claudeEngine : engine; // one snapshot: the env must match the relay token
     const token = e.kind === "api" && (await keys[profile].has()) ? relay.openSession(profile === "claude" ? withoutV1(e.apiUrl) : e.apiUrl, profile) : null;
     try {
       const relayed = token ? { url: relay.containerUrl, token } : null;
       const extra = profile === "claude" ? claudeEngineEnv(e as ClaudeEngine, relayed) : codexEngineArgs(e as CodexEngine, relayed);
-      const session = await n.openAgentSession({ ...t, window: f, profile, resume, extra });
+      const session = await n.openAgentSession({ ...t, window: f, profile, resume, extra, onBuildProgress });
       if (token) session.onEnd(() => relay.closeSession(token));
       return session;
     } catch (err) {

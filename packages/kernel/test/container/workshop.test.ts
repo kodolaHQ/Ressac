@@ -2,9 +2,9 @@ import { describe, expect, test, vi } from "vitest";
 import { spacePaths } from "../../src/paths.js";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { Workshop, BUILD_DELAY_MS, IMAGE, dockerfileHash, harvestName, containerPortRange, sessionStopScript, findDocker } from "../../src/container/workshop.js";
+import { Workshop, BUILD_DELAY_MS, parseBuildStep, IMAGE, dockerfileHash, harvestName, containerPortRange, sessionStopScript, findDocker } from "../../src/container/workshop.js";
 import { execFile, spawn } from "node:child_process";
-import { existsSync, mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { TOOLS_FOLDERS } from "../../src/container/runner.js";
 import { fakeRunner } from "../helpers/fake-runner.js";
@@ -54,7 +54,7 @@ test("ensureStarted on absent: build if the image is missing then run with the r
   ]);
   expect(await new Workshop({ paths: paths, docker: "docker", run: runCall }).ensureStarted()).toBe("demarre");
   const build = calls.find((a) => a.args[0] === "build")!;
-  expect(build.args.slice(0, 3)).toEqual(["build", "-t", "webaios-workshop:1"]);
+  expect(build.args.slice(0, 4)).toEqual(["build", "--progress=plain", "-t", "webaios-workshop:1"]);
   expect(build.args).toContain("-f");
   const run = calls.find((a) => a.args[0] === "run")!;
   expect(run.args).toEqual(expect.arrayContaining([
@@ -490,4 +490,49 @@ test("sessionCommand passes env variables by name only", () => {
   const at = argv.indexOf("WEBAIOS_MCP_TOKEN");
   expect(argv[at - 1]).toBe("-e");
   expect(argv.some((a) => a.startsWith("WEBAIOS_MCP_TOKEN="))).toBe(false);
+});
+
+describe("first build progress", () => {
+  const sample = readFileSync(new URL("../fixtures/buildkit-plain-progress.txt", import.meta.url), "utf8");
+
+  test("the parser reads the steps of a recorded BuildKit plain output", () => {
+    const steps = sample.split("\n").map(parseBuildStep).filter(Boolean);
+    expect(steps).toEqual([
+      { step: 1, of: 3, label: "Téléchargement de l'image de base" },
+      { step: 2, of: 3, label: "Outils système" },
+      { step: 3, of: 3, label: "Installation de Claude Code et Codex" },
+    ]);
+  });
+
+  test("the parser ignores non-BuildKit output and labels other RUNs", () => {
+    expect(parseBuildStep("Step 2/3 : RUN apt-get update")).toBeNull();
+    expect(parseBuildStep("#5 DONE 38.2s")).toBeNull();
+    expect(parseBuildStep("")).toBeNull();
+    expect(parseBuildStep("#8 [stage-1 2/4] RUN make")).toEqual({ step: 2, of: 4, label: "Préparation" });
+  });
+
+  test("every subscriber hears the steps, even a late one, across split chunks", async () => {
+    let launched = false;
+    const run = (async (_c: string, args: string[], opts?: { onStderr?: (s: string) => void }) => {
+      if (args[0] === "build") {
+        opts!.onStderr!("#4 [1/3] FROM docker.io/lib");
+        opts!.onStderr!("rary/node:22\n#5 [2/3] RUN apt-get update\n");
+        await lateJoin();
+        opts!.onStderr!("#6 [3/3] RUN npm install -g @anthropic-ai/claude-code\n");
+        return { code: 0, stdout: "", stderr: "" };
+      }
+      if (args[0] === "run") launched = true;
+      if (args[0] === "image") return { code: 1, stdout: "", stderr: "" };
+      if (args[0] === "inspect") return { code: launched ? 0 : 1, stdout: "true\n", stderr: "" };
+      return { code: 0, stdout: "", stderr: "" };
+    }) as never;
+    const w = new Workshop({ paths: paths, docker: "docker", run });
+    const early: number[] = [];
+    const late: number[] = [];
+    w.onBuildProgress((p) => early.push(p.step));
+    const lateJoin = async () => void w.onBuildProgress((p) => late.push(p.step));
+    expect(await w.ensureStarted()).toBe("demarre");
+    expect(early).toEqual([1, 2, 3]);
+    expect(late).toEqual([2, 3]);
+  });
 });

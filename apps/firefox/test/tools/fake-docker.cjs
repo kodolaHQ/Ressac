@@ -30,6 +30,22 @@ if (args[0] === "rm" && args[1] === "-f" && args[2] === "webaios-workshop") {
   quit(0);
 }
 if (args[0] === "build") noteCall();
+// BuildKit plain progress goes to stderr; FAKE_DOCKER_BUILD_STEP_MS paces the lines (unset: instant, as before).
+if (args[0] === "build" && Number(env.FAKE_DOCKER_BUILD_STEP_MS) > 0 && !failing) {
+  const lines = [
+    "#5 [1/3] FROM docker.io/library/node:22-bookworm",
+    "#6 [2/3] RUN apt-get update && apt-get install -y git",
+    "#7 [3/3] RUN npm install -g @anthropic-ai/claude-code @openai/codex",
+  ];
+  const next = () => {
+    const line = lines.shift();
+    if (!line) return process.exit(0);
+    process.stderr.write(`${line}\n`);
+    setTimeout(next, Number(env.FAKE_DOCKER_BUILD_STEP_MS));
+  };
+  next();
+  return;
+}
 if (args[0] === "run" && args[1] === "-d") rmSync(removedMark(), { force: true });
 if (args[0] === "inspect") {
   if (failing || (args[3] === "webaios-workshop" && existsSync(removedMark()))) quit(1, "", "No such object");

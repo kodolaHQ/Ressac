@@ -9,7 +9,7 @@ export interface RunResult {
 }
 
 /** `signal`: cancels the command (its whole process group is killed), the result then has the code CODE_CANCELLED. */
-export type Runner = (command: string, args: string[], opts?: { delayMs?: number; signal?: AbortSignal }) => Promise<RunResult>;
+export type Runner = (command: string, args: string[], opts?: { delayMs?: number; signal?: AbortSignal; onStderr?: (chunk: string) => void }) => Promise<RunResult>;
 
 /** Code returned when the timeout is exceeded (same convention as timeout(1)). */
 export const CODE_TIMEOUT_EXCEEDED = 124;
@@ -64,7 +64,7 @@ export const defaultRunner: Runner = (command, args, opts = {}) => {
   if (opts.signal) return runCancelable(command, args, opts.signal, opts.delayMs);
   return new Promise((resolve) => {
     const PATH = toolsPath();
-    execFile(
+    const child = execFile(
       command,
       args,
       { timeout: opts.delayMs, maxBuffer: 64 * 1024 * 1024, env: { ...process.env, PATH } },
@@ -76,6 +76,8 @@ export const defaultRunner: Runner = (command, args, opts = {}) => {
         resolve({ code: typeof e.code === "number" ? e.code : 1, stdout, stderr });
       },
     );
+    // shortcut: streamed only on this path (the cancellable one has no streaming caller), extend when one needs it.
+    if (opts.onStderr) child.stderr?.on("data", (d) => opts.onStderr!(String(d)));
   });
 };
 

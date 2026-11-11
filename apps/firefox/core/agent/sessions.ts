@@ -1,4 +1,4 @@
-import { WorkshopError } from "@webaios/kernel";
+import { WorkshopError, type BuildProgress } from "@webaios/kernel";
 import type { AgentPanelState, TerminalSize } from "../../shared/api";
 import type { WindowId } from "../../shared/model";
 
@@ -81,7 +81,7 @@ export class SessionsAgent {
 
   constructor(
     private readonly o: {
-      open: (f: WindowId, t: TerminalSize, s: { profile: string; resume: boolean }) => Promise<SessionLike>;
+      open: (f: WindowId, t: TerminalSize, s: { profile: string; resume: boolean; onBuildProgress: (p: BuildProgress) => void }) => Promise<SessionLike>;
       /** The profile of a window that has not chosen one. */
       defaultProfile?: () => string;
       send: (f: WindowId, channel: "data" | "state", v: string | AgentPanelState) => void;
@@ -121,7 +121,13 @@ export class SessionsAgent {
     this.cancelSend(entry);
     this.o.send(f, "state", { state: "preparing" });
     entry.startup = this.o
-      .open(f, size, { profile: entry.profile, resume })
+      .open(f, size, {
+        profile: entry.profile,
+        resume,
+        onBuildProgress: (p) => {
+          if (this.inputs.get(f) === entry && !entry.session) this.o.send(f, "state", { state: "preparing", ...p });
+        },
+      })
       .then(
         (s) => {
           // Window closed or agent switched during startup: nobody will display this agent.

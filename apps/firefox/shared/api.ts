@@ -463,7 +463,7 @@ export type TabCycleMessage = z.infer<typeof WalkMessageSchema>;
 
 /** What a window's agent panel shows. */
 export type AgentPanelState =
-  | { state: "preparing" }
+  | { state: "preparing"; step?: number; of?: number; label?: string; since?: number }
   | { state: "docker-absent" }
   | { state: "error"; message: string }
   | { state: "active" }

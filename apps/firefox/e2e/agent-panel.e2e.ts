@@ -548,3 +548,10 @@ it("⌘J: the terminal takes the keyboard back when the window's focus is lost d
   await waitFor(m, "return document.activeElement?.id", (v) => v === "webaios-agent", 2_000);
   await waitUi(m, "return doc.activeElement?.classList.contains('xterm-helper-textarea')", [], 2_000, "agent");
 });
+
+it("the first build shows its step and the elapsed minutes in the panel", async () => {
+  await launch({ FAKE_DOCKER_NO_CONTAINER: "1", FAKE_DOCKER_BUILD_STEP_MS: "2000" });
+  await shown();
+  await waitUi(m, "return (doc.querySelector('[data-testid=agent-build-step]')?.textContent ?? '').includes(arguments[0])", ["étape 2/3 : Outils système… (0 min)"], 20_000, "agent");
+  await terminalShows("fake agent ready>", 30_000);
+});
