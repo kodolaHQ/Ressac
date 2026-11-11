@@ -21,6 +21,7 @@
   import Settings from "./components/Settings.svelte";
   import Welcome from "./components/Welcome.svelte";
   import { welcomeStep } from "./components/welcome-step.svelte";
+  import { markSeen } from "./components/hints";
   import { focusAgent } from "./components/agent.svelte";
   import { design, rereadDesign } from "./components/design.svelte";
   import { command, closeCommand, focusEmptyPage, openCommand } from "./components/command.svelte";
@@ -144,18 +145,25 @@
   $effect(() =>
     api.onTabsPanel((p) => {
       tabPanel = p;
-      if (!p) tabPanelReady = false;
+      if (p) markSeen("ctrl-tab");
+      else tabPanelReady = false;
     }),
   );
   $effect(() =>
     api.onShortcut((r) => {
       if (r === "closeTab") {
         if (activeTab) closeTab(activeTab.id);
-      } else if (r === "command") openCommand("new");
-      else if (r === "address") {
+      } else if (r === "command") {
+        markSeen("cmd-t");
+        openCommand("new");
+      } else if (r === "address") {
+        markSeen("cmd-l");
         if (activeTab) openCommand("active", activeTab.url);
         else openCommand("new");
-      } else if (r === "agent" && builderTarget) builderAgent();
+      } else if (r === "agent") {
+        markSeen("cmd-j");
+        if (builderTarget) builderAgent();
+      }
     }),
   );
   // Overlays cover the agent panel too; the empty page and internal pages only fill the space left of it.

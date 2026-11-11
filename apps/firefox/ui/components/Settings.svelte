@@ -277,6 +277,25 @@
           </div>
           {#if !telemetry.available}<p class="muted">Cette version n'envoie rien.</p>{/if}
         {/if}
+        <h2>Interface</h2>
+        <div class="panel">
+          <div class="row">
+            <div class="grow">
+              <label for="hints-switch"><b>Astuces</b></label>
+              <span class="muted" id="hints-help">Des conseils sur la page d'accueil et à la première ouverture de l'agent, du mode design et des actions.</span>
+            </div>
+            <input
+              id="hints-switch"
+              class="switch"
+              type="checkbox"
+              role="switch"
+              data-testid="settings-hints"
+              aria-describedby="hints-help"
+              checked={appState.value?.settings.hints.enabled ?? true}
+              onchange={(e) => api.dispatch({ type: "setHintsEnabled", enabled: e.currentTarget.checked })}
+            />
+          </div>
+        </div>
       </section>
     {:else}
       <section data-testid="settings-about">
