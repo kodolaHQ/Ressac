@@ -40,7 +40,7 @@
   {/if}
 
   {#if card.allSites}
-    <p class="alert" data-testid="extension-card-all-sites">Sur tous les sites que tu visites</p>
+    <p class="alert" data-testid="extension-card-all-sites">Sur tous les sites que vous visitez</p>
   {:else if card.sites.length > 0}
     <p>Sur : {sites}</p>
   {/if}
@@ -63,7 +63,7 @@
       Ses scripts tournent dans les pages : ils pourraient faire charger une ressource à la page, et ainsi faire sortir des données. Les champs de mot
       de passe lui sont masqués, sans garantie absolue.
     </p>
-    <p class="subtle">L'agent ne voit pas ce que cette extension lit sur les onglets que tu ne lui as pas partagés.</p>
+    <p class="subtle">L'agent ne voit pas ce que cette extension lit sur les onglets que vous ne lui avez pas partagés.</p>
   {/if}
 
   {#if card.hardened}

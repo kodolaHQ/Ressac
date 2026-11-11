@@ -14,6 +14,8 @@
   type SectionId = (typeof SECTIONS)[number]["id"];
   // Module-level: the page is remounted on each tab switch and comes back to the last section seen.
   let current = $state<SectionId>("agents");
+  /** Called before opening Réglages from elsewhere (the Extensions page): it lands on Agents. */
+  export const showAgentsSection = () => (current = "agents");
 </script>
 
 <script lang="ts">

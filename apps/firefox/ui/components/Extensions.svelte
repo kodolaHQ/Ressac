@@ -2,13 +2,28 @@
   import type { ExtensionLine } from "../../shared/extensions";
   import { activeIn, CONSOLE_UNLOCKED_PAGE, DISABLED_CRASHES, DISABLED_SCOPE } from "../../shared/extensions-messages";
   import type { ExtensionResult } from "../../shared/api";
-  import { api } from "../state.svelte";
+  import { fade } from "svelte/transition";
+  import { api, appState } from "../state.svelte";
+  import { markSeen } from "./hints";
+  import { showAgentsSection } from "./Settings.svelte";
 
   // Everything from a manifest or a console is shown as text (never {@html}): it is data.
   let lines = $state<ExtensionLine[]>([]);
   let cuts = $state(false);
   let chargee = $state(false);
-  let input = $state("");
+  let reopened = $state(false);
+  let accountSaved = $state(false);
+  // Closed = « extensions » is in the hints' seen list (kept by the session); the link shows the block again without resetting it.
+  const helpShown = $derived(reopened || !appState.value?.settings.hints.seen.includes("extensions"));
+  $effect(() => void api.settings.amoAccount().then((a) => (accountSaved = a.saved)));
+  function connect() {
+    showAgentsSection();
+    api.dispatch({ type: "openSettings", windowId: api.windowId });
+  }
+  function closeHelp() {
+    reopened = false;
+    markSeen("extensions");
+  }
   let message = $state<string | null>(null);
   let details = $state<Record<string, boolean>>({});
   /** Extension whose deletion awaits the user's confirmation. */
@@ -36,17 +51,6 @@
     await load();
   }
 
-  async function add(e: SubmitEvent) {
-    e.preventDefault();
-    const text = input.trim();
-    if (!text) return;
-    message = null;
-    const r = await api.extensions.installStore(text);
-    if (r.ok) input = "";
-    else message = r.error;
-    await load();
-  }
-
   const date = (iso: string) => new Date(iso).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" });
   const spaces = (l: ExtensionLine) => (l.spaces.length ? l.spaces.map((e) => `« ${e.name} » (profil ${e.profile})`).join(", ") : l.siteApps.length ? "aucun" : "Active nulle part");
 </script>
@@ -65,28 +69,40 @@
       Désactiver toutes les extensions
     </label>
   </header>
-  <form class="add" onsubmit={add}>
-    <label>
-      Ajouter depuis le Chrome Web Store
-      <input data-testid="store-add" bind:value={input} placeholder="Adresse de sa page ou identifiant" spellcheck="false" />
-    </label>
-    <button type="submit">Ajouter</button>
-  </form>
+  {#if helpShown}
+    <div class="help" data-testid="extensions-help" out:fade={{ duration: 150 }}>
+      <div class="help-head">
+        <h2>Comment ça marche</h2>
+        <button data-testid="extensions-help-close" onclick={closeHelp}>Fermer</button>
+      </div>
+      <ol>
+        <li>
+          <b>Branchez votre compte Mozilla</b> (une fois). Firefox n'installe que des extensions signées par Mozilla.
+          {#if accountSaved}<span class="ok">Compte branché</span>{:else}<button class="primary" data-testid="extensions-connect" onclick={connect}>Brancher mon compte Mozilla</button>{/if}
+        </li>
+        <li><b>Demandez à l'agent</b> : « écris-moi une extension qui… ». Il l'écrit, la fait signer (comptez quelques minutes), puis vous demande votre accord pour l'installer, avec ses droits et ses sites.</li>
+        <li><b>Gérez-la ici</b> : l'activer par espace, voir ses erreurs, la faire modifier par l'agent, la supprimer.</li>
+      </ol>
+      <p class="muted">La signature envoie le code de l'extension à Mozilla ; elle n'est pas publiée sur le catalogue public.</p>
+    </div>
+  {:else}
+    <button class="link" data-testid="extensions-help-link" onclick={() => (reopened = true)}>Comment ça marche</button>
+  {/if}
   {#if message}<p class="message" role="status" data-testid="message-extensions">{message}</p>{/if}
   {#if cuts}<p class="banner" role="status">Toutes les extensions sont désactivées : aucune n'est chargée, même après un redémarrage.</p>{/if}
   {#if chargee && lines.length === 0}
-    <p class="empty">Aucune extension. Ajoute-en une depuis le Chrome Web Store, ou demande à l'agent d'en écrire une.</p>
+    <p class="empty">Aucune extension. Demandez à l'agent d'en écrire une, ou installez-en depuis addons.mozilla.org.</p>
   {/if}
   <ul>
     {#each lines as l (l.key)}
       <li data-testid="extension-page" data-key={l.key}>
         <div class="head">
           <b>{l.name}</b>
-          <span class="muted">{l.source === "store" ? "Chrome Web Store" : "Écrite par l'agent"} · {l.version}</span>
+          <span class="muted">{l.source === "store" ? "addons.mozilla.org" : "Écrite par l'agent"} · {l.version}</span>
         </div>
         {#if l.disabled}<p class="alert">{l.disabled}</p>{/if}
         {#if l.consoleUnlocked}<p class="alert" data-testid="console-unlocked">{CONSOLE_UNLOCKED_PAGE}</p>{/if}
-        {#if l.pendingUpdate}<p class="muted">Mise à jour {l.pendingUpdate} en attente de ton accord.</p>{/if}
+        {#if l.pendingUpdate}<p class="muted">Mise à jour {l.pendingUpdate} en attente de votre accord.</p>{/if}
         <p>Droits : {l.rights.length ? l.rights.join(" · ") : "aucun"}</p>
         <p>Sites : {l.allSites ? "tous les sites" : l.sites.length ? l.sites.join(", ") : "aucun"}</p>
         <p>Espaces : {spaces(l)}</p>
@@ -152,10 +168,14 @@
   header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
   h1 { margin: 0; font: 650 26px/1.1 var(--font-display); letter-spacing: -0.02em; }
   .cutoff { display: flex; align-items: center; gap: 8px; }
-  .add { display: flex; align-items: flex-end; gap: 8px; margin-bottom: 14px; }
-  .add label { flex: 1; display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-muted); }
-  .add input { padding: 7px 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); outline: none; }
-  .add input:focus { border-color: var(--accent); }
+  .help { margin-bottom: 14px; padding: 14px 16px; border-radius: 16px; border: 1px solid var(--glass-edge); background: var(--glass-dense, var(--glass)); box-shadow: var(--lift); animation: webaios-rise var(--spring-d) var(--spring) backwards; }
+  .help-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .help h2 { margin: 0; font: 650 17px/1.2 var(--font-display); }
+  .help ol { margin: 10px 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+  .help p { margin: 0; font-size: 12px; }
+  .ok { color: var(--ok, var(--text-muted)); font-weight: 600; }
+  .primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); margin-left: 6px; }
+  .link { margin-bottom: 14px; border: none; background: none; color: var(--accent); padding: 0; }
   button { padding: 5px 11px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: 600 12px var(--font-ui); transition: transform var(--tap), background var(--tap); }
   button:hover:not(:disabled) { background: var(--bg-active); }
   button:active:not(:disabled) { transform: scale(0.97); }

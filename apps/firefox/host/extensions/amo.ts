@@ -12,11 +12,10 @@ export const SIGNATURE_DELAY_MS = 900_000;
 
 export const KEYS_ABSENT = "Compte Mozilla non branché : Réglages › Agents › Compte Mozilla. Rien n'est parti chez Mozilla.";
 export const deniedSignature = (m: string) => "Signature refusée par addons.mozilla.org : " + m.slice(0, 2000);
-export const SLOW_SIGNATURE = "Signature trop longue : addons.mozilla.org n'a pas rendu le module à temps. Réessaie reload_extension.";
+export const SLOW_SIGNATURE = "Signature trop longue : addons.mozilla.org n'a pas rendu le module à temps. Réessayez reload_extension.";
 export const signatureImpossible = (m: string) => "Signature impossible (réseau ou addons.mozilla.org) : " + m;
 export const VERSION_FOUR = "version : trois nombres au plus (WebAiOs ajoute le quatrième)";
 export const GECKO_ID = "browser_specific_settings.gecko.id refusé : WebAiOs pose l'identifiant";
-export const STORE_ABSENT = "Le Chrome Web Store n'est pas pris en charge : installe tes modules depuis addons.mozilla.org.";
 
 export interface AmoKey {
   emitter: string;

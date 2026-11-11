@@ -58,7 +58,8 @@ const SchemaSession = z.object({
         enabled: z.boolean().catch(true),
         seen: z.array(z.string()).transform((ids) => ids.filter((id): id is HintId => (HINT_IDS as readonly string[]).includes(id))),
       })
-      .catch(() => ({ enabled: true, seen: Object.keys(FIRST_TIME) as HintId[] })),
+      // Not « extensions »: a page, not a surface they already use.
+      .catch(() => ({ enabled: true, seen: (Object.keys(FIRST_TIME) as HintId[]).filter((id) => id !== "extensions") })),
     sidebarSide: z.enum(["left", "right"]).catch("left"),
     vimMode: z.boolean().catch(false),
     // An unknown id or a malformed binding is dropped; the rest is kept.

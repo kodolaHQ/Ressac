@@ -203,7 +203,7 @@ describe("the grant card", () => {
       "Elle sera active aussi dans « Lecture » (même profil).",
       "Elle ne peut rien envoyer vers internet.",
       "Ses scripts tournent dans les pages : ils pourraient faire charger une ressource à la page",
-      "L'agent ne voit pas ce que cette extension lit sur les onglets que tu ne lui as pas partagés.",
+      "L'agent ne voit pas ce que cette extension lit sur les onglets que vous ne lui avez pas partagés.",
     ])
       expect(c).toContain(t);
     expect(c).toMatch(/Activer\s*« Essai »\s*dans « .+ » \?/);
@@ -330,7 +330,7 @@ describe("the console", () => {
     const s = await state(m);
     const space = s.spaces.find((e) => e.id === s.windows[0]!.activeSpace)!.name;
     expect(card).toContain(
-      `L'agent demande à voir toute la console de « Journal de l'agent » pour la corriger. Il verra ce que l'extension écrit dans sa console sur tous les onglets de l'espace « ${space} », y compris ceux que tu ne partages pas. Jusqu'à ce que tu le coupes ou qu'il ait fini.`,
+      `L'agent demande à voir toute la console de « Journal de l'agent » pour la corriger. Il verra ce que l'extension écrit dans sa console sur tous les onglets de l'espace « ${space} », y compris ceux que vous ne partagez pas. Jusqu'à ce que vous le coupiez ou qu'il ait fini.`,
     );
     expect(card).toContain("le script de contenu ne trouve pas le bouton");
     // Refuser is the default button (Enter).

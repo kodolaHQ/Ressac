@@ -1,7 +1,7 @@
 import type { ShortcutId } from "./shortcuts";
 
 export type TipId = "ctrl-tab" | "cmd-t" | "cmd-l" | "cmd-j" | "spaces" | "design-mode";
-export type FirstTimeId = "agent" | "design" | "actions";
+export type FirstTimeId = "agent" | "design" | "actions" | "extensions";
 export type HintId = TipId | FirstTimeId;
 
 export const TIPS: { id: TipId; text: string; /** A fixed key, shown as is. */ keys?: string; /** A remappable action: its current binding replaces `{key}` in the text. */ shortcut?: ShortcutId; tryIt?: "command" | "agent" }[] = [
@@ -16,6 +16,7 @@ export const TIPS: { id: TipId; text: string; /** A fixed key, shown as is. */ k
 export const FIRST_TIME: Record<FirstTimeId, { title: string; text: string }> = {
   agent: { title: "L'agent", text: "Claude Code ou Codex travaille dans un conteneur à part, sur votre Mac. Il ne lit un onglet ou n'agit sur une page qu'avec votre accord, et un halo entoure la page quand il agit." },
   design: { title: "Le mode design", text: "Cliquez sur un élément de la page pour y laisser une remarque. Vos remarques vont dans le panier, puis à l'agent." },
+  extensions: { title: "Les extensions", text: "L'agent écrit des extensions pour vous ; la page Extensions explique comment elles sont signées, installées et gérées." },
   actions: { title: "Les actions", text: "Une action est une petite appli que l'agent construit pour vous. Elle ne lit vos comptes qu'avec votre accord." },
 };
 

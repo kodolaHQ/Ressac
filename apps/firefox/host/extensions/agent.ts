@@ -53,7 +53,7 @@ export const CONSOLE_PRIVATE_PROFILE = "Extension active dans le profil d'un esp
 export const UNLOCK_INACTIVE = "Extension inactive ou désactivée : rien à débloquer (demande d'abord son activation)";
 export const UNLOCK_CHANGED = "L'extension a changé pendant la carte : rien n'est débloqué";
 const UNLOCK_DENIED = "Déblocage refusé";
-export const REVIEW_DURING_OUTAGE = "Les extensions sont toutes désactivées : réactive-les pour revoir cette extension";
+export const REVIEW_DURING_OUTAGE = "Les extensions sont toutes désactivées : réactivez-les pour revoir cette extension";
 export const NOTHING_TO_REVIEW = "Rien à revoir pour cette extension";
 const PAGE_CONSOLE_ERRORS = 20;
 /** Rights that see tabs or navigation: with one, sites or all sites, the background's and pages' console stays masked. */

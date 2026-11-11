@@ -37,7 +37,6 @@ const { startRelay } = await import("./relay.ts");
 const { codexEngineArgs } = await import("./codex-engine.ts");
 const { claudeEngineEnv, withoutV1 } = await import("./claude-engine.ts");
 const { ClaudeEngineSchema, CodexEngineSchema, DEFAULT_CLAUDE_ENGINE, DEFAULT_CODEX_ENGINE } = await import("../shared/settings.ts");
-const { STORE_ABSENT } = await import("./extensions/amo.ts");
 const { executionWidget, executionsWidget, placeWidgets, removeWidget, validatePlacements, toShownWidgets } = await import("./widgets.ts");
 const { ACTION_ALREADY_RUNNING } = await import("../shared/actions.ts");
 const {
@@ -614,7 +613,6 @@ const rpc = createRpc({
     "extensions.review": (p: { key?: unknown; window?: unknown }) =>
       byKey(p, (key) => extensions.review(key, typeof p.window === "string" ? p.window : null)),
     "extensions.cutAll": (p: { yes?: unknown }) => extensions.cutAll(p?.yes === true),
-    "extensions.installStore": () => ({ ok: false, error: STORE_ABSENT }),
     // The RPC signal is ignored on purpose: the kernel's Pacing hands the lane back (partie=false) when the read has already ended, and rpc.ts drops a late answer.
     "read.changeHost": (p: { read: string; host: string }) => bridge.changeHost(p.read, p.host),
     // Tests only: a paced read through a Pacing shared by the calls, as a workflow's web widget does.

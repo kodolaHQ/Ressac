@@ -322,7 +322,6 @@ export function createApi(win: WindowController): ApiFirefox {
       review: (key) => extension("extensions.review", { key: key, window: windowId }),
       reenable: (key) => extension("extensions.reenable", { key: key }),
       cutUnlock: (key) => extension("extensions.cutUnlock", { key: key }),
-      installStore: () => extension("extensions.installStore", {}),
     } as Partial<ApiWebaios["extensions"]> as ApiWebaios["extensions"],
     // The workflow builder: its reads and writes in the kernel host. An action's is refused in a private space with the
     // shapes of the builder's answers; its reads are checked again once answered.

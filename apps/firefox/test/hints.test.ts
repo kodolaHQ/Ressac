@@ -16,6 +16,6 @@ test("a tip's keys come from the action's binding, not from a literal", () => {
 });
 
 test("HINT_IDS holds every tip and first-time id, no duplicate", () => {
-  expect(HINT_IDS).toHaveLength(9);
-  expect(new Set(HINT_IDS).size).toBe(9);
+  expect(HINT_IDS).toHaveLength(10);
+  expect(new Set(HINT_IDS).size).toBe(10);
 });
