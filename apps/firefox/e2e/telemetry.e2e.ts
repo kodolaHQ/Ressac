@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -66,7 +67,7 @@ const settle = () => new Promise((r) => setTimeout(r, 1_500));
 
 it("host crash: one anonymous envelope from the host", async () => {
   await launch();
-  const version = await m.execute<string>("return Services.appinfo.version");
+  const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
   process.kill(await hostPid(), "SIGKILL");
   await until(() => envelopes.some((e) => e.event.tags.source === "host"));
   const e = envelopes.find((x) => x.event.tags.source === "host")!;

@@ -236,7 +236,7 @@ describe("Settings page", () => {
     await launch();
     await openPage();
     await go("about");
-    await shows("app-version", await m.execute<string>("return Services.appinfo.version"));
+    await shows("app-version", JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version);
     await click(m, '[data-testid="open-advanced"]');
     const s = await waitFor<BrowserState>(m, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).state)();`, (s) => activeTab(s)?.url === "about:preferences");
     expect(activeTab(s)!.spaceId).toBe(s.windows[0]!.activeSpace);

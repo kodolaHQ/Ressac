@@ -16,7 +16,7 @@ export function installTelemetry(): { report(e: ReportedError): void; active: bo
   const enabled = () => Services.prefs.getBoolPref(ENABLED, false);
   const reporter = createReporter({
     dsn,
-    release: Services.appinfo.version,
+    release: __WEBAIOS_VERSION__,
     home: Services.dirsvc.get("Home", Ci.nsIFile).path,
     enabled,
     post: (url, body) => fetch(url, { method: "POST", body }),
@@ -39,7 +39,7 @@ export function installTelemetry(): { report(e: ReportedError): void; active: bo
   });
   launchSession({
     dsn,
-    release: Services.appinfo.version,
+    release: __WEBAIOS_VERSION__,
     // The once-ever notice (chrome/window) shows on the first launch: count from the next one, after the user could say no.
     enabled: () => enabled() && Services.prefs.getBoolPref("webaios.telemetry.noticeShown", false),
     post: (url, body) => fetch(url, { method: "POST", body }),

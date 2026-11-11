@@ -38,8 +38,9 @@ cleanup() {
 trap cleanup EXIT
 
 # 1. Version and telemetry.
-version=$(node -p 'require("./surfer.json").brands.webaios.release.displayVersion')
-[[ -n $version ]] || fail "no version in surfer.json (brands.webaios.release.displayVersion)"
+# The WebAiOs version lives in package.json (the UI bakes it in); surfer.json's displayVersion only moves with the engine.
+version=$(node -p 'require("./package.json").version')
+[[ -n $version ]] || fail "no version in package.json"
 dsn=${WEBAIOS_SENTRY_DSN:-}
 minidump_url=
 if [[ -z $dsn ]]; then
@@ -128,6 +129,7 @@ leaks=$(grep -rl --binary-files=text -e "$HOME" -e "$repo_root" $app || true)
 
 # 8. Ad hoc signature: the friends allow it once in System Settings.
 step "Signing"
+plutil -replace CFBundleShortVersionString -string $version $app/Contents/Info.plist
 codesign --force --deep --sign - $app
 codesign --verify --deep --strict $app || fail "codesign --verify failed"
 

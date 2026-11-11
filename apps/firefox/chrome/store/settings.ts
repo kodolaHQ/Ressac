@@ -28,7 +28,7 @@ export function createSettingsChrome(dataDir: string, telemetryActive: boolean):
   return {
     telemetry: () => ({ available: telemetryActive, enabled: Services.prefs.getBoolPref(ENABLED, false) }),
     setTelemetry: (enabled) => Services.prefs.setBoolPref(ENABLED, enabled === true),
-    version: () => Services.appinfo.version,
+    version: () => __WEBAIOS_VERSION__,
     reveal(path) {
       if (!revealable(dataDir, lastExportFolder, path)) return;
       const test = Services.env.get("WEBAIOS_TEST_REVEAL");

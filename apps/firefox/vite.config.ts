@@ -31,6 +31,8 @@ export default defineConfig(({ mode }) => {
         __WEBAIOS_HOST__: JSON.stringify(packaged ? "" : hostPath),
         // Where error reports go (chrome/store/telemetry.ts): only a packaged build bakes it in, a dev build sends nothing.
         __WEBAIOS_SENTRY_DSN__: JSON.stringify(packaged ? (process.env.WEBAIOS_SENTRY_DSN ?? "") : ""),
+        // The WebAiOs version (package.json), outside the compiled engine: bumping it costs a build:ui, not a Gecko rebuild.
+        __WEBAIOS_VERSION__: JSON.stringify(JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")).version),
       },
       resolve: {
         alias: {
