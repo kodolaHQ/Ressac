@@ -53,6 +53,43 @@ describe("the window's aura", () => {
     expect(await m.execute(box)).toEqual({ radius: "0px", margin: "0px", right: "0px" });
   });
 
+  it("the agent panel slides in and out, the page making room in step", async () => {
+    const m = await launch();
+    const windowId = (await state(m)).windows[0]!.id;
+    const open = async () => (await state(m)).windows[0]!.agentPanelOpen;
+    // The panel's left edge and the page's right margin, sampled every frame for 600 ms after the toggle.
+    const slide = async () =>
+      m.execute<{ left: number; margin: number; hidden: boolean }[]>(`return (async () => {
+        const agent = document.getElementById("webaios-agent"), box = document.getElementById("tabbrowser-tabbox"), out = [];
+        const t0 = performance.now();
+        while (performance.now() - t0 < 600) {
+          out.push({ left: Math.round(agent.getBoundingClientRect().left), margin: Math.round(parseFloat(getComputedStyle(box).marginRight)), hidden: agent.hidden });
+          await new Promise((r) => requestAnimationFrame(r));
+        }
+        return out;
+      })();`);
+    if (!(await open())) {
+      await dispatch(m, { type: "toggleAgentPanel", windowId });
+      await waitFor(m, "return !document.getElementById('webaios-agent').hidden", (v) => v === true);
+      await new Promise((r) => setTimeout(r, 600));
+    }
+    const width = await m.execute<number>(`return Math.round(document.getElementById("webaios-agent").getBoundingClientRect().width);`);
+    await dispatch(m, { type: "toggleAgentPanel", windowId });
+    const closing = await slide();
+    // A hidden iframe measures 0: only the frames where it shows.
+    const lefts = closing.filter((x) => !x.hidden).map((x) => x.left);
+    // Several intermediate positions, moving right; the margin shrinks with it; hidden only at the end.
+    expect(new Set(lefts).size).toBeGreaterThan(3);
+    expect(lefts.every((x, i) => i === 0 || x >= lefts[i - 1]!)).toBe(true);
+    expect(closing.some((x) => x.margin > 8 && x.margin < width + 8)).toBe(true);
+    expect(closing[0]!.hidden).toBe(false);
+    await waitFor(m, "return document.getElementById('webaios-agent').hidden", (v) => v === true, 2_000);
+    await dispatch(m, { type: "toggleAgentPanel", windowId });
+    const opening = (await slide()).map((x) => x.left);
+    expect(new Set(opening).size).toBeGreaterThan(3);
+    expect(opening.every((x, i) => i === 0 || x <= opening[i - 1]!)).toBe(true);
+  });
+
   it("reduced motion stops the aura drift", async () => {
     const m = await launch({ "ui.prefersReducedMotion": 1 });
     const names = await m.execute<string[]>(`return [...document.querySelectorAll("#webaios-aura i")].map((i) => getComputedStyle(i).animationName);`);

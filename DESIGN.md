@@ -35,6 +35,9 @@ Toute retouche visuelle suit ce fichier. Les valeurs vivent dans `apps/firefox/u
 - **Accent** : dérivé de l'aura de l'espace actif, plus de violet fixe. Chaque aura a un accent pour le clair et un pour le sombre (contraste AA). Le texte posé sur l'accent est `#0E1014` en sombre, blanc en clair. Les couleurs d'état (en cours, erreur, arrêté, accès lecture / action) restent sémantiques et indépendantes de l'aura.
 - **Typo** : Funnel Display pour les titres, Geist pour l'interface, Geist Mono pour les raccourcis et le code court. Embarquées en woff2 (licence OFL), jamais chargées du réseau.
 - **Mouvement**, quatre gestes seulement : toucher, ressort (ce qui apparaît), aura (changement d'espace), halo (l'agent agit sur la page).
+- **Jamais d'apparition brute** : tout ce qui apparaît ou disparaît (panneau, menu, bulle, bandeau, carte) entre sur le
+  ressort et sort par un fondu ou un glissement court. Un panneau latéral glisse sans dépassement (380 ms, la courbe du
+  toucher) pour que la page le suive sans rebond. C'est une règle de chaque nouvelle interaction, pas une finition.
 - **Réduire les animations** : auras figées, ressorts remplacés par des fondus de 150 ms au plus, halo fixe.
 
 ## Interdits

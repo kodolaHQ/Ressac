@@ -119,6 +119,9 @@ export function createController(
   );
   // The agent panel: --webaios-agent is its width when open, 0 when closed (the page and the UI make room for it).
   const agentOpen = (state: BrowserState) => !!state.windows.find((x) => x.id === windowId)?.agentPanelOpen;
+  // The slide's length in window.css (--webaios-slide, 380 ms), plus a few frames of margin.
+  const SLIDE_MS = 450;
+  let slideEnd: ReturnType<typeof setTimeout> | undefined;
   const showAgent = (state: BrowserState) => {
     const open = agentOpen(state);
     // Closed while the terminal had the keyboard (⌘J, ✦): it goes back to the page, or to the UI when no page shows.
@@ -126,9 +129,22 @@ export function createController(
       if (tabs.displayed()) gBrowser.selectedBrowser.focus();
       else frame.focus();
     }
-    agentFrame.hidden = !open;
+    const root = document.documentElement;
+    // A change of open state slides (window.css); a width change alone (the saved drag) does not. Closed, the panel
+    // hides once it has slid out.
+    if (open !== root.hasAttribute("webaios-agent-open")) {
+      root.toggleAttribute("webaios-agent-open", open);
+      root.setAttribute("webaios-agent-sliding", "");
+      clearTimeout(slideEnd);
+      slideEnd = setTimeout(() => {
+        root.removeAttribute("webaios-agent-sliding");
+        if (!agentOpen(store.state)) agentFrame.hidden = true;
+      }, SLIDE_MS);
+    }
+    if (open) agentFrame.hidden = false;
     const width = Math.min(AGENT_WIDTH_MAX, Math.max(AGENT_WIDTH_MIN, state.settings.agentPanelWidth));
-    document.documentElement.style.setProperty("--webaios-agent", open ? `${width}px` : "0px");
+    root.style.setProperty("--webaios-agent-w", `${width}px`);
+    root.style.setProperty("--webaios-agent", open ? `${width}px` : "0px");
     // Laid out now: the panel focuses its terminal right after this change, which needs the iframe visible.
     agentFrame.getBoundingClientRect();
   };
@@ -445,7 +461,10 @@ export function createController(
       };
     },
     setAgentWidth(px) {
-      if (agentOpen(store.state)) document.documentElement.style.setProperty("--webaios-agent", `${px}px`);
+      if (!agentOpen(store.state)) return;
+      document.documentElement.removeAttribute("webaios-agent-sliding");
+      document.documentElement.style.setProperty("--webaios-agent-w", `${px}px`);
+      document.documentElement.style.setProperty("--webaios-agent", `${px}px`);
     },
     openAgent() {
       if (!agentOpen(store.state)) store.dispatch({ type: "toggleAgentPanel", windowId: windowId });

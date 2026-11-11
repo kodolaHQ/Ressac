@@ -11,6 +11,8 @@
 @property --a2 { syntax: "<color>"; inherits: true; initial-value: #FF6F91; }
 @property --a3 { syntax: "<color>"; inherits: true; initial-value: #FFD36E; }
 @property --ang { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+/* Registered so the agent panel's slide can transition it (the page's margin follows the same value). */
+@property --webaios-agent { syntax: "<length>"; inherits: true; initial-value: 0px; }
 
 :root[webaios-main] {
   --bg: #0E1014;
@@ -155,9 +157,32 @@
   top: 0;
   right: 0;
   height: 100%;
-  width: var(--webaios-agent, 0px);
+  /* Always its open width, slid out by what --webaios-agent lacks: the terminal never reflows during the slide. */
+  width: var(--webaios-agent-w, 0px);
+  transform: translateX(calc(var(--webaios-agent-w, 0px) - var(--webaios-agent, 0px)));
   border: none;
   z-index: 3;
+}
+
+/* Opening or closing (controller: webaios-agent-sliding for the slide's length, never while the handle is dragged): the
+   panel slides in from the right, the page making room in step; closed, the controller hides it once out. */
+:root[webaios-main] {
+  --webaios-slide: 380ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+:root[webaios-main][webaios-agent-sliding] {
+  transition: --a1 var(--aura-d), --a2 var(--aura-d), --a3 var(--aura-d), --webaios-agent var(--webaios-slide);
+}
+@media (prefers-reduced-motion: reduce) {
+  /* No slide: the panel fades. */
+  :root[webaios-main][webaios-agent-sliding] {
+    transition: --a1 var(--aura-d), --a2 var(--aura-d), --a3 var(--aura-d);
+  }
+  :root[webaios-main] #webaios-agent {
+    transition: opacity 150ms ease-out;
+  }
+  :root[webaios-main]:not([webaios-agent-open]) #webaios-agent {
+    opacity: 0;
+  }
 }
 
 /* Not display: none, which drops the panel document's layout: on reopening, the terminal could not take the keyboard
