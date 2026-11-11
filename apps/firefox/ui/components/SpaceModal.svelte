@@ -206,7 +206,9 @@
 </div>
 
 <style>
-  .modal { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 16px; -webkit-app-region: no-drag; }
+  /* The accent follows the previewed aura (its accents are set inline), not the active space's. */
+  .modal { --accent: var(--aura-accent-dark); position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 16px; -webkit-app-region: no-drag; }
+  @media (prefers-color-scheme: light) { .modal { --accent: var(--aura-accent-light); } }
   .card {
     position: relative;
     width: min(400px, 100%);

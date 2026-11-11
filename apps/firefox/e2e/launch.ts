@@ -54,7 +54,7 @@ async function waitFor<T>(read: () => Promise<T | undefined>, ms: number, what: 
 
 /**
  * Launches WebAiOs-Firefox headless (`headed` shows its window). Folders passed in are reused and kept (to restart on the same data); the others
- * are temporary and deleted on close. `prefs` are appended to the profile's user.js. WEBAIOS_DATA_DIR is always set, so tests never touch the real data folder.
+ * are temporary and deleted on close. `prefs` are appended to the profile's user.js (reduced motion is on unless `prefs` sets `ui.prefersReducedMotion` to 0). WEBAIOS_DATA_DIR is always set, so tests never touch the real data folder.
  * A data folder without a space's widgets folder gets the starter widgets without their harvest (`starterHarvests` keeps
  * them, and their real-web reads: prefer a local server). `output`: a file that gets the browser's stdout and stderr.
  */
@@ -75,7 +75,8 @@ export async function launchWebAiOs(o: { headed?: boolean; width?: number; heigh
     'user_pref("marionette.port", 0);\nuser_pref("browser.sessionstore.resume_from_crash", false);\n' +
       // Media plugin updates (OpenH264, Widevine) would download from the real web at startup.
       'user_pref("media.gmp-manager.updateEnabled", false);\n' +
-      Object.entries(o.prefs ?? {}).map(([k, v]) => `user_pref(${JSON.stringify(k)}, ${JSON.stringify(v)});\n`).join(""),
+      // Reduced motion by default (no drifting aura, no blur animation on parallel browsers); a test of motion passes 0.
+      Object.entries({ "ui.prefersReducedMotion": 1, ...o.prefs }).map(([k, v]) => `user_pref(${JSON.stringify(k)}, ${JSON.stringify(v)});\n`).join(""),
   );
   const out = o.output ? openSync(o.output, "a") : "ignore";
   const proc = spawn(

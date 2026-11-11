@@ -16,7 +16,8 @@ afterEach(async () => {
 });
 
 async function launch(prefs?: Record<string, number>, env?: Record<string, string>) {
-  w = await launchWebAiOs({ prefs, env });
+  // Motion is what this file tests: full motion unless the test asks for reduced.
+  w = await launchWebAiOs({ prefs: { "ui.prefersReducedMotion": 0, ...prefs }, env });
   const m = w.marionette;
   await m.setContext("chrome");
   await waitFor(m, "return !!window.webaiosWindow", (v) => v === true);

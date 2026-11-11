@@ -5,7 +5,8 @@
 /* Only the WebAiOs window: popups stay plain Firefox windows. */
 
 /* The UI's tokens the window itself paints with (ui/theme.css is bundled with the UI documents, not loaded here). The
-   controller sets --a1..--a3 and both accents inline on the root from the active space's aura. */
+   controller sets --a1..--a3 and both accents inline on the root from the active space's aura.
+   shortcut: duplicated from ui/theme.css because chrome CSS can't import it, keep in sync when neutrals change. */
 @property --a1 { syntax: "<color>"; inherits: true; initial-value: #FF9F7A; }
 @property --a2 { syntax: "<color>"; inherits: true; initial-value: #FF6F91; }
 @property --a3 { syntax: "<color>"; inherits: true; initial-value: #FFD36E; }

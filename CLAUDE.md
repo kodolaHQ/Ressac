@@ -15,7 +15,7 @@ Rule:
 If `apps/firefox/node_modules/typescript` moves, update the path in `.claude/marketplace-local/plugins/tsgo-lsp/.lsp.json`.
 After a clone: `npm ci` in `.claude/marketplace-local/plugins/svelte-lsp`.
 
-Toute retouche visuelle suit `DESIGN.md`.
+Every visual change follows `DESIGN.md`.
 
 ## WebAiOs-Firefox e2e tests
 

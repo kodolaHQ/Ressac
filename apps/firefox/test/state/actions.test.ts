@@ -820,3 +820,12 @@ test("createSpace without aura gives aube; updateSpace of the aura alone is a ch
   expect(e).not.toBe(before);
   expect(e.spaces[1]!.aura).toBe("braise");
 });
+
+test("updateSpace without aura keeps a non-default aura; the same aura again changes nothing", () => {
+  ag({ type: "updateSpace", id: P, name: "Perso", icon: "🏠", private: false, profile: "default", aura: "lagon" });
+  ag({ type: "updateSpace", id: P, name: "Maison", icon: "🏠", private: false, profile: "default" });
+  expect(e.spaces[0]).toMatchObject({ name: "Maison", aura: "lagon" });
+  const before = e;
+  ag({ type: "updateSpace", id: P, name: "Maison", icon: "🏠", private: false, profile: "default", aura: "lagon" });
+  expect(e).toBe(before);
+});

@@ -69,7 +69,7 @@ async function shoot(m: Marionette, name: string): Promise<void> {
 describe("aura tour", () => {
   for (const [theme, dark] of [["sombre", 1], ["clair", 0]] as const) {
     it(`captures the chrome surfaces (${theme})`, async () => {
-      w = await launchWebAiOs({ prefs: { "ui.systemUsesDarkTheme": dark } });
+      w = await launchWebAiOs({ prefs: { "ui.systemUsesDarkTheme": dark, "ui.prefersReducedMotion": 0 } });
       const m = w.marionette;
       await m.setContext("chrome");
       await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
@@ -167,7 +167,7 @@ describe("aura tour", () => {
         dataDir,
         profile,
         env: { ...actor.env, WEBAIOS_APP_PORTS: "15335-15339", WEBAIOS_TEST_LOCAL_ADDRESSES: "1", WEBAIOS_OLLAMA_URL: "http://127.0.0.1:9" },
-        prefs: { ...actor.prefs, "ui.systemUsesDarkTheme": dark },
+        prefs: { ...actor.prefs, "ui.systemUsesDarkTheme": dark, "ui.prefersReducedMotion": 0 },
       });
       const m = w.marionette;
       await m.setContext("chrome");
