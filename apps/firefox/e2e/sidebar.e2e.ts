@@ -224,12 +224,13 @@ describe("WebAiOs sidebar", () => {
     const glass = await inUi<string>(m, "return ui.getComputedStyle(doc.querySelector('[data-testid=\"sidebar\"]')).backgroundColor");
     const alpha = glass.startsWith("rgba") ? parseFloat(glass.split(",")[3]!) : 1;
     expect(alpha, glass).toBeGreaterThan(0);
-    // The empty page covers the page: the UI paints above Firefox's tab box.
+    // The empty page sits on the aura: Firefox's tab box steps aside (window.css), the page's red no longer shows.
     await dispatch(m, { type: "showBlankPage", windowId: (await win()).id });
-    const empty = await waitUi<string>(m, "const p = doc.querySelector('[data-testid=\"empty-page\"]'); return p && ui.getComputedStyle(p.parentElement).backgroundColor");
+    await waitUi(m, "return !!doc.querySelector('[data-testid=\"empty-page\"]')");
     // Between the home field and the widgets, left of the agent panel the home page opens.
-    for (let i = 0; i < 50 && `rgb(${(await pixel(m, 550, 190)).join(", ")})` !== empty; i++) await new Promise((r) => setTimeout(r, 100));
-    expect(`rgb(${(await pixel(m, 550, 190)).join(", ")})`).toBe(empty);
+    for (let i = 0; i < 50 && (await pixel(m, 550, 190)).join() === "255,0,0"; i++) await new Promise((r) => setTimeout(r, 100));
+    expect(await pixel(m, 550, 190)).not.toEqual([255, 0, 0]);
+    expect(await m.execute("return getComputedStyle(document.getElementById('tabbrowser-tabbox')).opacity")).toBe("0");
   });
 
   it("shows an internal webaios: page as not yet available", async () => {

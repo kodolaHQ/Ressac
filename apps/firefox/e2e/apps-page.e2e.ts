@@ -72,12 +72,13 @@ describe("Applications page", () => {
     await waitUi(m, `return doc.querySelector('[data-testid="sidebar"]').parentElement.inert;`);
     const box = await inUi<{ top: number; left: number }>(
       m,
-      `const h = doc.querySelector(arguments[0]).querySelector("h2").getBoundingClientRect(); const f = frame.getBoundingClientRect();
+      `const h = doc.querySelector(arguments[0]).querySelector("h1").getBoundingClientRect(); const f = frame.getBoundingClientRect();
        return { top: f.top + h.top, left: f.left + doc.querySelector(arguments[0]).getBoundingClientRect().left };`,
       [PAGE],
     );
     expect(box.top).toBeLessThan(40);
-    expect(box.left).toBe(0);
+    // Framed on the aura like a web page: 8 px of margin, then its 1 px glass edge.
+    expect(box.left).toBe(9);
     await moveMouse(3);
     await waitUi(m, `return !doc.querySelector('[data-testid="sidebar"]').parentElement.inert;`);
     await waitUi(m, `return !!doc.querySelector('[aria-label="Quitter le mode compact"]');`);

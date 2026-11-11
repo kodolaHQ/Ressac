@@ -180,6 +180,12 @@
   box-shadow: var(--page-shadow);
 }
 
+/* No web page shown (the parking tab, or the UI covering the page's place): the page box steps aside, the aura shows
+   under the UI's own internal pages. An overlay ([over]) over a web page keeps it visible under its veil. */
+:root[webaios-main]:is(:has(tab[webaios-parking][selected]), :has(#webaios-sidebar[full]:not([over]))) #tabbrowser-tabbox {
+  opacity: 0;
+}
+
 /* A video in fullscreen: only the page, edge to edge. */
 :root[webaios-main][inDOMFullscreen] #tabbrowser-tabbox {
   margin: 0;

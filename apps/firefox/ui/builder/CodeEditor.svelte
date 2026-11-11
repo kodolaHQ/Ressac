@@ -69,14 +69,15 @@
   .head { display: flex; align-items: center; gap: 8px; font-size: 12px; }
   .title { flex: 1; color: var(--text-muted); }
   .unsaved { color: var(--in-progress); }
-  button { padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); font-size: 12px; }
+  button { padding: 4px 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: 600 12px var(--font-ui); transition: transform var(--tap); }
+  button:active:not(:disabled) { transform: scale(0.97); }
   button:disabled { opacity: 0.5; }
-  .banner { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 6px; background: var(--bg-active); font-size: 12px; }
+  .banner { display: flex; align-items: center; gap: 6px; padding: 7px 10px; border-radius: 10px; background: var(--attention-bg); font-size: 12px; }
   .banner span { flex: 1; }
   .error { margin: 0; color: var(--in-error); font-size: 12px; white-space: pre-wrap; word-break: break-word; }
   textarea {
-    box-sizing: border-box; width: 100%; min-height: 220px; resize: vertical; padding: 8px; border-radius: 6px;
-    border: 1px solid var(--border); background: var(--bg); color: var(--text); tab-size: 2;
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.45;
+    box-sizing: border-box; width: 100%; min-height: 220px; resize: vertical; padding: 10px; border-radius: 12px;
+    border: 1px solid var(--border); background: var(--sheet); color: var(--text); tab-size: 2;
+    font-family: var(--font-mono); font-size: 12px; line-height: 1.45;
   }
 </style>

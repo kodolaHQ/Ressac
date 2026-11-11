@@ -123,19 +123,20 @@
 
 <style>
   .header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; max-width: 960px; margin: 0 auto; padding: 20px 24px 0; color: var(--text); }
-  h1 { margin: 0; font-size: 18px; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+  h1 { margin: 0; font: 650 26px/1.1 var(--font-display); letter-spacing: -0.02em; min-width: 0; overflow-wrap: anywhere; }
   .commands { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
   .input { display: flex; align-items: center; gap: 6px; color: var(--text-muted); }
-  .input input { width: 180px; padding: 5px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); font: inherit; }
+  .input input { width: 180px; padding: 6px 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: inherit; }
   .input input:focus { outline: none; border-color: var(--accent); }
-  button { padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); font: inherit; }
-  button:hover:not(:disabled) { background: var(--bg-hover); }
+  button { padding: 6px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: 600 12.5px var(--font-ui); transition: transform var(--tap), background var(--tap); }
+  button:hover:not(:disabled) { background: var(--bg-active); }
+  button:active:not(:disabled) { transform: scale(0.97); }
   button:disabled { opacity: 0.5; }
-  .main { background: var(--accent); border-color: var(--accent); color: white; }
-  .main:hover:not(:disabled) { background: var(--accent); filter: brightness(1.1); }
+  .main { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .main:hover:not(:disabled) { background: color-mix(in oklab, var(--accent) 88%, var(--text)); }
   .time { color: var(--text-muted); font-size: 12px; }
   .previous { position: relative; }
-  .menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 5; display: flex; flex-direction: column; min-width: 260px; max-height: 320px; overflow-y: auto; padding: 4px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-bar); box-shadow: var(--modal-shadow); }
+  .menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 5; display: flex; flex-direction: column; min-width: 260px; max-height: 320px; overflow-y: auto; padding: 4px; border: 1px solid var(--glass-edge); border-radius: 12px; background: var(--glass-dense); box-shadow: var(--modal-shadow); animation: webaios-drop var(--spring-d) var(--spring) backwards; }
   .menu button { display: flex; gap: 8px; align-items: baseline; border: none; background: none; text-align: left; white-space: nowrap; }
   .menu button:hover { background: var(--bg-hover); }
   .muted { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; }

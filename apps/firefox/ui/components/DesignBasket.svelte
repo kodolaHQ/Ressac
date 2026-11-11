@@ -125,13 +125,13 @@
 </aside>
 
 <style>
-  .basket { display: flex; flex-direction: column; height: 100%; box-sizing: border-box; padding: 10px; gap: 8px; background: var(--bg-bar); color: var(--text); border-left: 1px solid var(--border); font-size: 13px; }
+  .basket { display: flex; flex-direction: column; height: 100%; box-sizing: border-box; padding: 12px; gap: 8px; color: var(--text); font-size: 13px; }
   header { display: flex; align-items: center; justify-content: space-between; }
-  h2 { margin: 0; font-size: 14px; }
+  h2 { margin: 0; font: 650 18px/1.2 var(--font-display); letter-spacing: -0.02em; }
   ul { list-style: none; margin: 0; padding: 0; overflow: auto; flex: 1; display: flex; flex-direction: column; gap: 6px; }
-  li { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; }
+  li { background: var(--sheet); border: 1px solid var(--border); border-radius: 12px; padding: 8px 10px; box-shadow: var(--lift); animation: webaios-rise var(--spring-d) var(--spring) backwards; }
   .head { display: flex; align-items: center; gap: 6px; }
-  .tag { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--accent); font-size: 12px; }
+  .tag { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--accent); font: 11.5px var(--font-mono); }
   .text { margin: 4px 0 0; white-space: pre-wrap; word-break: break-word; }
   .source { margin: 2px 0 0; color: var(--text-muted); font-size: 11px; word-break: break-all; }
   .sent { max-height: 40%; overflow: auto; display: flex; flex-direction: column; gap: 4px; }
@@ -139,14 +139,15 @@
   h3 { margin: 0; font-size: 12px; color: var(--text-muted); font-weight: 600; }
   .state { font-weight: 600; font-size: 12px; }
   .when { flex: 1; color: var(--text-muted); font-size: 11px; }
-  .handled { padding: 2px 8px; border-radius: 4px; background: var(--bg-hover); font-size: 12px; }
+  .handled { padding: 2px 8px; border-radius: 8px; background: var(--glass-hi); font-size: 12px; }
   .sub { margin: 4px 0 0; font-size: 12px; word-break: break-word; }
   .note { margin: 2px 0 0 8px; font-size: 12px; color: var(--text-muted); border-left: 2px solid var(--border); padding-left: 6px; white-space: pre-wrap; word-break: break-word; }
   .empty { color: var(--text-muted); flex: 1; margin: 0; }
   .reason { color: var(--in-progress); margin: 0 0 6px; font-size: 12px; }
   button { all: unset; cursor: pointer; }
-  .close, .delete { width: 20px; height: 20px; display: grid; place-content: center; border-radius: 4px; color: var(--text-muted); }
+  .close, .delete { width: 20px; height: 20px; display: grid; place-content: center; border-radius: 8px; color: var(--text-muted); }
   .close:hover, .delete:hover { background: var(--bg-hover); color: var(--text); }
-  .send { display: block; box-sizing: border-box; width: 100%; text-align: center; padding: 7px 10px; border-radius: 6px; background: var(--accent); color: #fff; font-weight: 600; }
+  .send { display: block; box-sizing: border-box; width: 100%; text-align: center; padding: 8px 10px; border-radius: 10px; background: var(--accent); color: var(--accent-ink); font-weight: 600; transition: transform var(--tap); }
+  .send:active:not(:disabled) { transform: scale(0.97); }
   .send:disabled { opacity: 0.4; cursor: default; }
 </style>

@@ -125,7 +125,7 @@
     border: 1px solid var(--glass-edge);
     border-radius: 16px;
     background: var(--glass);
-    box-shadow: 0 1px 2px rgb(0 0 0 / 0.06);
+    box-shadow: var(--lift);
     -webkit-app-region: drag;
   }
   .bar[hidden] { display: none; }
@@ -143,7 +143,7 @@
   .tool { all: unset; -webkit-app-region: no-drag; width: 28px; height: 28px; display: grid; place-content: center; border-radius: 8px; color: var(--text-muted); transition: transform var(--tap), background var(--tap), color var(--tap); }
   .tool:hover, .downloads:hover { background: var(--glass-hi); color: var(--text); }
   .tool[aria-pressed="true"] { color: var(--accent); background: var(--glass-hi); }
-  .pill { position: absolute; inset: 3px; border-radius: 50%; background: conic-gradient(var(--accent) calc(var(--p) * 360deg), transparent 0); mask: radial-gradient(circle, transparent 55%, black 56%); }
+  .pill { position: absolute; inset: 3px; border-radius: 50%; background: conic-gradient(var(--accent) calc(var(--p) * 360deg), transparent 0); mask: radial-gradient(circle, transparent 55%, currentColor 56%); }
   .space { padding: 10px 10px 2px; font: 600 13px/1.2 var(--font-display); letter-spacing: -0.01em; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: none; }
   .new { all: unset; display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 10px; border-radius: 10px; color: var(--text-muted); transition: transform var(--tap), background var(--tap), color var(--tap); }
   .new kbd { margin-left: auto; opacity: 0; transition: opacity var(--tap); }

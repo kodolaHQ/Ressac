@@ -198,6 +198,7 @@
 
 <section class="applications" data-testid="page-applications" aria-label="Applications">
   <nav class="pane" aria-label="Filtres">
+    <h1>Applications</h1>
     {#each GROUPS as g (g.title)}
       <h2>{g.title}</h2>
       {#each g.filters.filter((x) => !x.ifPresent || account(x.id) > 0) as x (x.id)}
@@ -363,27 +364,30 @@
 
 <style>
   .applications { display: grid; grid-template-columns: 190px 1fr; height: 100%; color: var(--text); }
-  .pane { display: flex; flex-direction: column; gap: 2px; padding: 20px 10px 20px; background: var(--bg-bar); border-right: 1px solid var(--border); overflow-y: auto; }
-  h2 { margin: 12px 8px 6px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
-  h2:first-child { margin-top: 0; }
-  .pane button { all: unset; display: flex; justify-content: space-between; padding: 6px 8px; border-radius: 6px; }
+  .pane { display: flex; flex-direction: column; gap: 2px; padding: 22px 10px; border-right: 1px solid var(--border); overflow-y: auto; }
+  h1 { margin: 0 10px 8px; font: 650 22px/1.1 var(--font-display); letter-spacing: -0.02em; }
+  h2 { margin: 14px 10px 6px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
+  .pane button { all: unset; display: flex; justify-content: space-between; align-items: center; height: 32px; padding: 0 10px; border-radius: 10px; transition: transform var(--tap), background var(--tap); }
   .pane button:hover { background: var(--bg-hover); }
-  .pane button.active { background: var(--bg-active); }
+  .pane button:active { transform: scale(0.97); }
+  .pane button.active { background: var(--glass-hi); box-shadow: var(--lift), inset 0 0 0 1px var(--glass-edge); }
   .n { color: var(--text-muted); font-variant-numeric: tabular-nums; }
-  .main { min-width: 0; overflow-y: auto; padding: 20px 24px; }
-  .search-box { display: flex; align-items: center; gap: 8px; padding: 0 10px; margin-bottom: 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-bar); color: var(--text-muted); }
+  .main { min-width: 0; overflow-y: auto; padding: 22px 24px; }
+  .search-box { display: flex; align-items: center; gap: 8px; padding: 0 12px; margin-bottom: 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--glass-hi); color: var(--text-muted); transition: border-color var(--tap); }
   .search-box:focus-within { border-color: var(--accent); }
   .search-box input { all: unset; flex: 1; padding: 8px 0; color: var(--text); }
-  .banner { margin: 0 0 14px; padding: 8px 12px; border-radius: 8px; background: var(--bg-active); }
+  .banner { margin: 0 0 14px; padding: 10px 14px; border-radius: 12px; background: var(--attention-bg); }
   .sites { margin-top: 24px; }
-  .sites-title { margin: 0 0 6px; }
+  .sites-title { margin: 0 0 10px; font: 650 20px/1.1 var(--font-display); letter-spacing: -0.02em; text-transform: none; color: var(--text); }
   .site-error { flex: 1; min-width: 0; font-size: 12px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .empty, .none { color: var(--text-muted); }
-  ul { list-style: none; margin: 0; padding: 0; }
-  li { display: flex; align-items: center; gap: 12px; padding: 10px 8px; border-bottom: 1px solid var(--border); }
-  li.none { border: none; }
-  .icon { width: 28px; height: 28px; flex: none; display: grid; place-content: center; border-radius: 7px; background: var(--bg-hover); color: var(--text-muted); }
-  .name { flex: 1; min-width: 0; }
+  /* A list is a sheet card on the glass. */
+  ul { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: 16px; background: var(--sheet); box-shadow: var(--lift); overflow: hidden; }
+  li { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-top: 1px solid var(--border); }
+  li:first-child { border-top: none; }
+  ul:not(:has(li)) { display: none; }
+  .icon { width: 30px; height: 30px; flex: none; display: grid; place-content: center; border-radius: 9px; background: color-mix(in oklab, var(--a1) 16%, var(--glass-hi)); color: var(--accent); }
+  .name { flex: 1; min-width: 140px; }
   .name b { display: block; font-weight: 600; }
   .name span { display: block; font-size: 12px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .state { display: flex; align-items: center; gap: 6px; width: 170px; flex: none; font-size: 12px; white-space: nowrap; }
@@ -391,15 +395,18 @@
   .pill.running { background: var(--running); }
   .pill.launching, .pill.preparing { background: var(--in-progress); }
   .pill.error { background: var(--in-error); }
-  .actions { display: flex; gap: 6px; flex: none; }
-  .actions button { padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); font-size: 12px; }
-  .actions button:hover:not(:disabled) { background: var(--bg-hover); }
+  /* Many buttons (a site has six): they wrap instead of crushing the name. */
+  .actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; flex: 0 1 auto; }
+  .actions button { padding: 5px 11px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: 600 12px var(--font-ui); transition: transform var(--tap), background var(--tap); }
+  .actions button:hover:not(:disabled) { background: var(--bg-active); }
+  .actions button:active:not(:disabled) { transform: scale(0.97); }
   .actions button:disabled { opacity: 0.5; }
-  .veil { position: fixed; inset: 0; display: grid; place-content: center; background: rgb(0 0 0 / 0.35); z-index: 10; }
-  .confirmation { padding: 16px 20px; border-radius: 10px; background: var(--bg-bar); border: 1px solid var(--border); color: var(--text); }
+  .veil { position: fixed; inset: 0; display: grid; place-content: center; background: var(--veil); backdrop-filter: blur(6px); z-index: 10; }
+  .confirmation { max-width: 420px; padding: 18px 20px; border-radius: 16px; background: var(--glass-dense); border: 1px solid var(--glass-edge); box-shadow: var(--modal-shadow); color: var(--text); animation: webaios-drop var(--spring-d) var(--spring) backwards; }
   .confirmation p { margin: 0 0 14px; }
   .buttons { display: flex; justify-content: flex-end; gap: 8px; }
-  .buttons button { padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
-  .buttons .confirm { background: var(--accent); border-color: var(--accent); color: white; }
+  .buttons button { padding: 7px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: 600 12.5px var(--font-ui); transition: transform var(--tap); }
+  .buttons button:active { transform: scale(0.97); }
+  .buttons .confirm { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
   .actions .options { display: grid; place-content: center; padding: 4px 6px; border-color: transparent; background: none; color: var(--text-muted); }
 </style>

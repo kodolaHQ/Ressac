@@ -92,7 +92,7 @@
   .action:active:not(:disabled), .menu:active, .link:active, .manage:active { transform: scale(0.97); }
   .action:disabled { opacity: 0.4; }
   /* Without an icon: the first letter of the name. */
-  .action.no-icon::after { content: attr(data-letter); position: absolute; inset: 4px; display: grid; place-content: center; border-radius: 4px; background: linear-gradient(135deg, var(--a1), var(--a2)); color: rgb(255 255 255 / 0.95); font-size: 10px; font-weight: 600; text-transform: uppercase; }
+  .action.no-icon::after { content: attr(data-letter); position: absolute; inset: 4px; display: grid; place-content: center; border-radius: 4px; background: linear-gradient(135deg, var(--a1), var(--a2)); color: var(--on-color); font-size: 10px; font-weight: 600; text-transform: uppercase; }
   .badge { position: absolute; right: 0; bottom: 0; padding: 0 2px; border-radius: 2px; font-size: 9px; line-height: 12px; pointer-events: none; }
   .menu { all: unset; position: relative; width: 28px; height: 28px; display: grid; place-content: center; border-radius: 8px; color: var(--text-muted); font-size: 18px; transition: transform var(--tap), background-color var(--tap); }
   .point { position: absolute; right: 4px; top: 4px; width: 7px; height: 7px; border-radius: 50%; background: var(--in-error); box-shadow: 0 0 0 1.5px var(--sheet); }

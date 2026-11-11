@@ -201,7 +201,7 @@
       <aside data-testid="sidebar"></aside>
     {/if}
   </div>
-  <main class="content" class:opaque={!pageWeb || !!panel} data-testid="content-zone">
+  <main class="content" class:framed={(!pageWeb || !!panel) && !(winState && !activeTab && !panel)} data-testid="content-zone">
     {#if winState && panel === "history"}
       <History window={winState} close={closePanel} />
     {:else if panel === "downloads"}
@@ -300,7 +300,19 @@
   }
   /* The action page fills it (position: absolute), not the window. */
   .content { position: relative; min-width: 0; min-height: 0; }
-  .opaque { background: var(--bg); }
+  /* No web page (window.css then hides the page box): an internal page takes its place, a glass sheet framed on the
+     aura like a web page. The empty page sits on the aura itself. */
+  .framed {
+    margin: 8px 8px 8px 0;
+    border: 1px solid var(--glass-edge);
+    border-radius: 12px;
+    /* No backdrop-filter: the aura is painted by the window, out of this document's reach; it would also become the
+       containing block of the pages' fixed veils. */
+    background: var(--glass);
+    box-shadow: var(--float);
+    overflow: hidden;
+  }
+  .compact .framed { margin-left: 8px; }
   /* The page's error and crash messages. */
   .crashed { display: grid; place-content: center; gap: 12px; height: 100%; text-align: center; color: var(--text); }
 </style>

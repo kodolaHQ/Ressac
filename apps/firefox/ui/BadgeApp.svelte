@@ -48,7 +48,7 @@
   main { display: flex; justify-content: flex-end; align-items: flex-start; height: 100%; }
   .line { display: flex; align-items: center; gap: 6px; height: 28px; }
   .webaios { position: relative; display: inline-flex; }
-  .pill { all: unset; display: grid; place-content: center; width: 40px; height: 24px; border-radius: 999px; background: var(--glass-dense); border: 1px solid var(--glass-edge); box-sizing: border-box; color: var(--text); font-size: 12px; cursor: pointer; box-shadow: 0 1px 4px rgb(0 0 0 / 0.2); transition: transform var(--tap), color var(--tap); }
+  .pill { all: unset; display: grid; place-content: center; width: 40px; height: 24px; border-radius: 999px; background: var(--glass-dense); border: 1px solid var(--glass-edge); box-sizing: border-box; color: var(--text); font-size: 12px; cursor: pointer; box-shadow: var(--float); transition: transform var(--tap), color var(--tap); }
   .pill:active { transform: scale(0.97); }
   .pill[aria-expanded="true"] { color: var(--accent); }
   /* Over the site: no blur reaches it, the dense glass keeps the menu readable. */

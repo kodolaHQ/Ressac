@@ -108,7 +108,7 @@
     height: 34px;
     border-radius: 10px;
     background: var(--glass-hi);
-    box-shadow: 0 1px 2px rgb(0 0 0 / 0.06), inset 0 0 0 1px var(--glass-edge);
+    box-shadow: var(--lift), inset 0 0 0 1px var(--glass-edge);
     opacity: 0;
     pointer-events: none;
     transition: transform var(--spring-d) var(--spring), opacity var(--tap);

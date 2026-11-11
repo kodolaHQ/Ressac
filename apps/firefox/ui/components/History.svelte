@@ -104,17 +104,19 @@
 </section>
 
 <style>
-  .history { height: 100%; overflow-y: auto; box-sizing: border-box; padding: 24px 32px; color: var(--text); }
-  header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
-  h1 { font-size: 18px; margin: 0; }
-  header input { flex: 1; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); outline: none; }
-  header button { padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); }
+  .history { height: 100%; overflow-y: auto; box-sizing: border-box; padding: 26px 32px; color: var(--text); }
+  header { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  h1 { margin: 0; font: 650 26px/1.1 var(--font-display); letter-spacing: -0.02em; }
+  header input { flex: 1; padding: 8px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); outline: none; }
+  header input:focus { border-color: var(--accent); }
+  header button { padding: 6px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: 600 12px var(--font-ui); transition: transform var(--tap), background var(--tap); }
+  header button:active { transform: scale(0.97); }
   .close { border: none; background: none; }
   .clear { position: relative; }
-  .choice { position: absolute; right: 0; top: 110%; display: flex; flex-direction: column; gap: 2px; padding: 4px; background: var(--bg-active); border-radius: 6px; z-index: 1; }
-  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); margin: 20px 0 6px; }
-  ul { list-style: none; margin: 0; padding: 0; }
-  a { display: flex; gap: 12px; padding: 6px 8px; border-radius: 6px; color: inherit; text-decoration: none; }
+  .choice { position: absolute; right: 0; top: 110%; display: flex; flex-direction: column; gap: 2px; padding: 4px; background: var(--glass-dense); border: 1px solid var(--glass-edge); border-radius: 12px; box-shadow: var(--modal-shadow); z-index: 1; animation: webaios-drop var(--spring-d) var(--spring) backwards; }
+  h2 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); margin: 22px 4px 8px; }
+  ul { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: 16px; background: var(--sheet); box-shadow: var(--lift); overflow: hidden; padding: 4px; }
+  a { display: flex; gap: 12px; padding: 7px 10px; border-radius: 10px; color: inherit; text-decoration: none; }
   a:hover { background: var(--bg-hover); }
   .time { color: var(--text-muted); font-variant-numeric: tabular-nums; }
   .kept { font-size: 11px; opacity: 0.7; }

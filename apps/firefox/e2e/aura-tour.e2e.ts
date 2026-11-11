@@ -1,12 +1,18 @@
 import { mkdirSync, statSync, writeFileSync } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { dispatch, state, waitFor } from "./firefox";
+import { openTab, testActor } from "./agent-extensions";
+import { startDesignServers } from "./design";
+import { dispatch, state, waitFor, waitReady, windowHandles } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
 import { startServer } from "./server";
-import { click, keyDown, keyUp, pressKeys, typeText, waitUi } from "./ui";
+import { resolveLocalHosts, siteWindowExpr, startSitesServer, writeSite } from "./sites";
+import { click, inUi, keyDown, keyUp, pressKeys, typeText, waitUi } from "./ui";
+import { openBuilder, writeWidget } from "./workflows";
 
 /**
  * A walk through the chrome surfaces that saves a PNG of each, light and dark, in dist/aura-tour/ (to look at, not compared).
@@ -20,9 +26,16 @@ const page = (title: string, body: string) => (_: unknown, res: import("node:htt
     .writeHead(200, { "Content-Type": "text/html; charset=utf-8" })
     .end(`<!doctype html><title>${title}</title><body style="font:16px/1.5 system-ui;margin:40px;max-width:640px"><h1>${title}</h1>${body}</body>`);
 let server: Awaited<ReturnType<typeof startServer>>;
+let design: Awaited<ReturnType<typeof startDesignServers>>;
+let sites: Awaited<ReturnType<typeof startSitesServer>>;
 let w: LaunchedWebAiOs | undefined;
+const dirs: string[] = [];
 beforeAll(async () => {
   mkdirSync(OUT, { recursive: true });
+  // This file's app port block: 15335-15339.
+  design = await startDesignServers({ port: 15338 });
+  sites = await startSitesServer();
+  sites.define("carnet.localhost", "/", `<title>Carnet</title><body style="font:16px/1.5 system-ui;margin:40px"><h1>Carnet de recettes</h1><p>Tarte aux figues, pâte sablée.</p></body>`);
   server = await startServer({
     routes: {
       "/vols": page("Vols Paris – Lisbonne", "<p>Mer. 12 mars · direct · 124 €</p><p>Ven. 14 mars · direct · 89 €</p><p>Sam. 15 mars · 1 escale · 97 €</p>"),
@@ -31,7 +44,12 @@ beforeAll(async () => {
     },
   });
 });
-afterAll(() => server?.close());
+afterAll(async () => {
+  server?.close();
+  await design?.close();
+  await sites?.close();
+  for (const d of dirs) await rm(d, { recursive: true, force: true });
+});
 afterEach(async () => {
   await w?.close();
   w = undefined;
@@ -118,6 +136,93 @@ describe("aura tour", () => {
       );
       await waitUi(m, "return !doc.querySelector('[data-testid=\"sidebar\"]').parentElement.inert");
       await shoot(m, `4-compact-${theme}`);
+    });
+  }
+
+  for (const [theme, dark] of [["sombre", 1], ["clair", 0]] as const) {
+    it(`captures the internal pages (${theme})`, async () => {
+      const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
+      const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
+      dirs.push(dataDir, profile);
+      await writeWidget(dataDir, "veille", {
+        name: "Veille",
+        harvest: { minutes: 60 },
+        declaration: { config: { url: `${server.url}/notes` } },
+        workflow: {
+          version: 1,
+          blocks: [
+            { id: "page", type: "source.page", params: { url: "{config.url}" } },
+            { id: "tri", type: "ai.sort", name: "Tri par Kev", params: { question: "Parle de figues ?", text: "{text}", threshold: 0.5 } },
+            { id: "sortie", type: "output", params: { to: "widget" } },
+          ],
+          links: [
+            { from: "page", to: "tri" },
+            { from: "tri", to: "sortie" },
+          ],
+        },
+      });
+      writeSite(dataDir, "carnet", { declaration: { name: "Carnet", url: sites.url("carnet.localhost", "/"), domains: ["carnet.localhost"] } });
+      const actor = testActor(profile);
+      w = await launchWebAiOs({
+        dataDir,
+        profile,
+        env: { ...actor.env, WEBAIOS_APP_PORTS: "15335-15339", WEBAIOS_TEST_LOCAL_ADDRESSES: "1", WEBAIOS_OLLAMA_URL: "http://127.0.0.1:9" },
+        prefs: { ...actor.prefs, "ui.systemUsesDarkTheme": dark },
+      });
+      const m = w.marionette;
+      await m.setContext("chrome");
+      await waitReady(m);
+      await resolveLocalHosts(m, ["localhost", "carnet.localhost"]);
+      const windowId = (await state(m)).windows[0]!.id;
+
+      await waitUi(m, "return !!doc.querySelector('[data-testid=\"widget-veille\"]')", [], 15_000);
+      await shoot(m, `10-home-${theme}`);
+
+      await openBuilder(m, "veille");
+      await waitUi(m, "return doc.querySelectorAll('.svelte-flow__node').length === 3");
+      await shoot(m, `11-builder-${theme}`);
+
+      await click(m, '[data-testid="settings-button"]');
+      await waitUi(m, "return !!doc.querySelector('[data-testid=\"settings-page\"]')");
+      await shoot(m, `12-settings-${theme}`);
+      await click(m, '[data-testid="settings-nav-privacy"]');
+      await waitUi(m, "return !!doc.querySelector('[data-testid=\"telemetry-switch\"]')");
+      await shoot(m, `12b-settings-privacy-${theme}`);
+
+      await click(m, '[data-testid="applications-button"]');
+      await waitUi(m, `return !!doc.querySelector('[data-testid="page-applications"]')`);
+      await shoot(m, `13-applications-${theme}`);
+
+      for (const p of ["/notes", "/recette", "/vols"]) await openTab(m, server.url + p);
+      await pressKeys(m, "Meta+y");
+      await waitUi(m, "return doc.querySelector('[data-testid=\"content-zone\"]').textContent.includes('Vols Paris')");
+      await shoot(m, `14-history-${theme}`);
+      await pressKeys(m, "Escape");
+
+      await dispatch(m, { type: "openTab", windowId, url: "http://127.0.0.1:1/" });
+      await waitUi(m, "return doc.querySelector('[data-testid=\"content-zone\"]').textContent.includes(\"Impossible d'ouvrir cette page.\")");
+      await shoot(m, `15-error-${theme}`);
+
+      // Design mode on the demo page: the cart column beside the page.
+      await openTab(m, `${design.page}/`);
+      await inUi(m, "ui.webaios.design.toggle(); return 1;");
+      await waitFor(m, "const f = document.getElementById('webaios-design-volet'); return !!f && f.getBoundingClientRect().width > 0;", (v) => v === true, 15_000);
+      await shoot(m, `16-design-${theme}`);
+      await inUi(m, "ui.webaios.design.toggle(); return 1;");
+
+      // A site app's own window: its bar over the site.
+      const before = await windowHandles(m);
+      await m.execute(
+        `return (async () => { const store = await ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready;
+          await store.agent.request("sites.act", { id: "carnet", action: "open", window: store.state.windows[0].id }); })();`,
+      );
+      await waitFor(m, `const w = ${siteWindowExpr("carnet")}; return !!w && w.gBrowser.selectedBrowser.currentURI.spec.includes("carnet.localhost");`, (v) => v === true, 15_000);
+      const handle = (await windowHandles(m)).find((h) => !before.includes(h));
+      if (handle) {
+        await m.command("WebDriver:SwitchToWindow", { handle, focus: false });
+        await shoot(m, `17-site-window-${theme}`);
+        await m.command("WebDriver:SwitchToWindow", { handle: before[0], focus: false });
+      }
     });
   }
 

@@ -71,7 +71,7 @@
   .spaces button { all: unset; width: 28px; height: 28px; display: grid; place-content: center; border-radius: 50%; color: var(--text-muted); position: relative; transition: transform var(--tap), background var(--tap); }
   .spaces button:hover { background: color-mix(in srgb, var(--glass-hi) 60%, transparent); color: var(--text); }
   .spaces button:active { transform: scale(0.97); }
-  .spaces button[aria-current="true"] { background: var(--glass-hi); box-shadow: inset 0 0 0 1px var(--border), 0 1px 2px rgb(0 0 0 / 0.06); color: var(--text); }
+  .spaces button[aria-current="true"] { background: var(--glass-hi); box-shadow: inset 0 0 0 1px var(--border), var(--lift); color: var(--text); }
   .aura { position: absolute; right: 1px; bottom: 1px; line-height: 0; border-radius: 50%; box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--sheet) 70%, transparent); transition: transform var(--spring-d) var(--spring); }
   .spaces button:hover .aura { transform: scale(1.12); }
   .spaces button[aria-current="true"] .aura { transform: scale(1.25); }

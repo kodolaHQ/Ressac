@@ -50,16 +50,18 @@
 </section>
 
 <style>
-  .downloads { height: 100%; overflow-y: auto; box-sizing: border-box; padding: 24px 32px; color: var(--text); }
-  header { display: flex; align-items: center; margin-bottom: 12px; }
-  h1 { font-size: 18px; margin: 0; }
+  .downloads { height: 100%; overflow-y: auto; box-sizing: border-box; padding: 26px 32px; color: var(--text); }
+  header { display: flex; align-items: center; margin-bottom: 18px; }
+  h1 { margin: 0; font: 650 26px/1.1 var(--font-display); letter-spacing: -0.02em; }
   .close { margin-left: auto; border: none; background: none; color: var(--text); }
-  ul { list-style: none; margin: 0; padding: 0; }
-  li { display: flex; align-items: center; gap: 8px; padding: 10px 8px; border-bottom: 1px solid var(--border); }
+  ul { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: 16px; background: var(--sheet); box-shadow: var(--lift); overflow: hidden; }
+  li { display: flex; align-items: center; gap: 8px; padding: 11px 14px; border-top: 1px solid var(--border); }
+  li:first-child { border-top: none; }
   .infos { flex: 1; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
   .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .detail { font-size: 12px; color: var(--text-muted); }
   progress { width: 100%; height: 4px; accent-color: var(--accent); }
-  li button { padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); }
-  .empty { color: var(--text-muted); }
+  li button { padding: 5px 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: 600 12px var(--font-ui); transition: transform var(--tap), background var(--tap); }
+  li button:active { transform: scale(0.97); }
+  .empty { margin: 0; padding: 14px; color: var(--text-muted); }
 </style>

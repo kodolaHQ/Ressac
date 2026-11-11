@@ -159,5 +159,22 @@
 
 <style>
   .canvas { position: relative; width: 100%; height: 100%; min-width: 0; min-height: 0; }
-  .canvas :global(.svelte-flow) { --xy-background-color: var(--bg); }
+  /* On the page's glass: a dotted ground, links in the accent, the controls on a glass chip. */
+  .canvas :global(.svelte-flow) {
+    --xy-background-color: transparent;
+    --xy-background-pattern-color: var(--border);
+    --xy-edge-stroke: color-mix(in oklab, var(--accent) 70%, transparent);
+    --xy-edge-stroke-selected: var(--accent);
+    --xy-edge-stroke-width: 1.5;
+    --xy-connectionline-stroke: var(--accent);
+    --xy-handle-background-color: var(--accent);
+    --xy-handle-border-color: var(--sheet);
+    --xy-controls-button-background-color: var(--glass-hi);
+    --xy-controls-button-background-color-hover: var(--bg-active);
+    --xy-controls-button-color: var(--text);
+    --xy-controls-button-color-hover: var(--text);
+    --xy-controls-button-border-color: var(--border);
+    --xy-controls-box-shadow: var(--lift);
+  }
+  .canvas :global(.svelte-flow__controls) { border-radius: 10px; overflow: hidden; border: 1px solid var(--glass-edge); }
 </style>

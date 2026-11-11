@@ -150,7 +150,7 @@
 
 <style>
   /* A glass pane floating on the aura, like the sidebar: 8 px from the window, the page's gap on its left. */
-  .agent { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; margin: 8px 8px 8px 0; background: var(--glass); border: 1px solid var(--glass-edge); border-radius: 16px; box-shadow: 0 1px 2px rgb(0 0 0 / 0.06); overflow: hidden; }
+  .agent { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; margin: 8px 8px 8px 0; background: var(--glass); border: 1px solid var(--glass-edge); border-radius: 16px; box-shadow: var(--lift); overflow: hidden; }
   .agent[hidden] { display: none; }
   .agent.built-in { flex: 1; margin: 0; border: none; border-radius: 0; box-shadow: none; }
   .handle { position: absolute; top: 0; bottom: 0; left: 0; width: 6px; cursor: col-resize; z-index: 1; transition: background var(--tap); }
@@ -161,7 +161,7 @@
   @keyframes orb-spin { to { --ang: 360deg; } }
   @media (prefers-reduced-motion: reduce) { .orb.busy { animation: none; } }
   .name { font: 600 14px/1 var(--font-display); letter-spacing: -0.01em; }
-  select { appearance: none; padding: 5px 26px 5px 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%239AA1AD' stroke-width='1.5'/%3E%3C/svg%3E") no-repeat right 9px center; color: var(--text); font: 600 13px/1.2 var(--font-display); transition: transform var(--tap), border-color var(--tap); }
+  select { appearance: none; padding: 5px 26px 5px 10px; border-radius: 10px; border: 1px solid var(--border); background: linear-gradient(45deg, transparent 50%, var(--text-muted) 50%) no-repeat right 14px center / 5px 5px, linear-gradient(-45deg, transparent 50%, var(--text-muted) 50%) no-repeat right 9px center / 5px 5px, var(--glass-hi); color: var(--text); font: 600 13px/1.2 var(--font-display); transition: transform var(--tap), border-color var(--tap); }
   select:hover { border-color: var(--glass-edge); }
   select:active { transform: scale(0.97); }
   select:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

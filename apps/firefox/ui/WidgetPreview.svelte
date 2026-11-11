@@ -59,8 +59,8 @@
 </div>
 
 <style>
-  .preview { position: absolute; left: 12px; bottom: 12px; z-index: 4; display: flex; flex-direction: column; gap: 4px; padding: 6px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-bar); box-shadow: var(--modal-shadow); max-width: calc(100% - 24px); }
-  .frame { display: flex; max-width: 100%; border-radius: 6px; overflow: hidden; }
+  .preview { position: absolute; left: 12px; bottom: 12px; z-index: 4; display: flex; flex-direction: column; gap: 4px; padding: 6px; border-radius: 16px; border: 1px solid var(--glass-edge); background: var(--glass-dense); box-shadow: var(--modal-shadow); animation: webaios-rise var(--spring-d) var(--spring) backwards; max-width: calc(100% - 24px); }
+  .frame { display: flex; max-width: 100%; border-radius: 12px; overflow: hidden; }
   .muted { margin: 0; font-size: 11px; color: var(--text-muted); }
   .mention { max-width: 260px; }
 </style>

@@ -115,23 +115,25 @@
 
 <style>
   .external { margin-top: 24px; }
-  .title { margin: 0 0 6px; }
-  ul { list-style: none; margin: 0; padding: 0; }
-  li { display: flex; align-items: center; gap: 12px; padding: 10px 8px; border-bottom: 1px solid var(--border); }
-  li.none { border: none; color: var(--text-muted); }
+  .title { margin: 0 0 10px; font: 650 20px/1.1 var(--font-display); letter-spacing: -0.02em; }
+  ul { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: 16px; background: var(--sheet); box-shadow: var(--lift); overflow: hidden; }
+  li { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-top: 1px solid var(--border); }
+  li:first-child { border-top: none; }
+  li.none { color: var(--text-muted); }
   .name { flex: 1; min-width: 0; }
   .name b { display: block; font-weight: 600; }
   .name span { display: block; font-size: 12px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .meta { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
   .reason { margin: 0 0 8px; color: var(--text-muted); }
   .actions { display: flex; gap: 6px; flex: none; }
-  button { padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); font-size: 12px; }
-  button:hover:not(:disabled) { background: var(--bg-hover); }
+  button { padding: 5px 11px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: 600 12px var(--font-ui); transition: transform var(--tap), background var(--tap); }
+  button:hover:not(:disabled) { background: var(--bg-active); }
+  button:active:not(:disabled) { transform: scale(0.97); }
   button:disabled { opacity: 0.5; }
   .connect { margin-top: 10px; }
   .command, .form { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
   .form { flex-direction: row; align-items: center; }
   .command p { margin: 0; }
-  code { display: block; max-width: 100%; padding: 8px 10px; border-radius: 6px; background: var(--bg-hover); font-size: 12px; user-select: all; overflow-wrap: anywhere; }
-  input { padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); }
+  code { display: block; max-width: 100%; padding: 8px 10px; border-radius: 10px; background: var(--sheet); border: 1px solid var(--border); font: 12px var(--font-mono); user-select: all; overflow-wrap: anywhere; }
+  input { padding: 5px 9px; border: 1px solid var(--border); border-radius: 10px; background: var(--glass-hi); color: var(--text); }
 </style>

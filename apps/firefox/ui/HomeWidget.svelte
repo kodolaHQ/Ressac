@@ -144,16 +144,12 @@
     border: 1px solid var(--home-border);
     border-radius: var(--home-radius);
     background: var(--home-card);
-    box-shadow: 0 2px 10px rgb(0 0 0 / 0.12);
+    box-shadow: var(--float);
     overflow: hidden;
     color: var(--home-text);
   }
-  /* Softer shadow on a light background. */
-  @media (prefers-color-scheme: light) {
-    .widget { box-shadow: 0 1px 6px rgb(0 0 0 / 0.08); }
-  }
   header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: grab; user-select: none; min-height: 20px; }
-  h2 { margin: 0; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  h2 { margin: 0; font: 650 14px/1.2 var(--font-display); letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .badge { font-size: 11px; color: var(--home-accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .badge.muted { color: var(--home-text-muted); }
   .badge.failure, .unreadable, .warning { color: var(--in-error); }
@@ -161,12 +157,12 @@
   .actions { position: relative; margin-left: auto; }
   .menu { all: unset; width: 22px; height: 22px; display: grid; place-content: center; border-radius: 4px; color: var(--home-text-muted); cursor: pointer; }
   .menu:hover { background: var(--bg-hover); }
-  .list { position: absolute; right: 0; top: 24px; z-index: 3; display: flex; flex-direction: column; min-width: 190px; padding: 4px; border-radius: 8px; border: 1px solid var(--home-border); background: var(--home-card); box-shadow: var(--modal-shadow); }
-  .list button { all: unset; padding: 6px 10px; border-radius: 4px; font-size: 13px; color: var(--home-text); cursor: pointer; }
+  .list { position: absolute; right: 0; top: 24px; z-index: 3; display: flex; flex-direction: column; min-width: 190px; padding: 4px; border-radius: 12px; border: 1px solid var(--glass-edge); background: var(--glass-dense); box-shadow: var(--modal-shadow); animation: webaios-drop var(--spring-d) var(--spring) backwards; }
+  .list button { all: unset; padding: 6px 10px; border-radius: 8px; font-size: 13px; color: var(--home-text); cursor: pointer; }
   .list button:hover { background: var(--bg-hover); }
   .banner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 12px; font-size: 12px; background: var(--bg-hover); }
-  .banner button { padding: 3px 10px; border-radius: 6px; border: 1px solid var(--home-border); background: var(--home-bg); color: var(--home-text); font-size: 12px; cursor: pointer; }
-  .banner button:first-of-type { background: var(--home-accent); border-color: var(--home-accent); color: white; }
+  .banner button { padding: 3px 10px; border-radius: 8px; border: 1px solid var(--home-border); background: var(--glass-hi); color: var(--home-text); font-size: 12px; cursor: pointer; }
+  .banner button:first-of-type { background: var(--home-accent); border-color: var(--home-accent); color: var(--accent-ink); }
   .warning { margin: 0; padding: 4px 12px; font-size: 12px; }
   /* During a drag, the frame (in WidgetFrame) does not capture the mouse. */
   .gesture :global(iframe) { pointer-events: none; }

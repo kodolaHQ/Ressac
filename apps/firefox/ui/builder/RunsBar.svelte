@@ -62,17 +62,19 @@
 </footer>
 
 <style>
-  .bar { flex: none; border-top: 1px solid var(--border); background: var(--bg-bar); padding: 6px 12px; font-size: 12px; }
+  .bar { flex: none; border-top: 1px solid var(--border); padding: 7px 12px; font-size: 12px; }
   .line { display: flex; align-items: center; gap: 12px; }
   .executions { flex: 1; min-width: 0; display: flex; gap: 6px; margin: 0; padding: 0; list-style: none; overflow-x: auto; }
-  .executions button { display: flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); white-space: nowrap; font-size: 12px; }
-  .executions button.active { border-color: var(--accent); background: var(--bg-active); }
+  .executions button { display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); white-space: nowrap; font-size: 12px; transition: transform var(--tap); }
+  .executions button:active { transform: scale(0.97); }
+  .executions button.active { border-color: var(--accent); box-shadow: var(--lift); }
   .pill { width: 8px; height: 8px; border-radius: 50%; background: var(--stopped); flex: none; }
   .pill.ok { background: var(--running); }
   .pill.warn { background: var(--in-progress); }
   .pill.bad { background: var(--in-error); }
-  .trial { padding: 0 5px; border-radius: 4px; background: var(--bg-hover); color: var(--text-muted); }
-  .replay { flex: none; padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-bar); color: var(--text); }
+  .trial { padding: 0 6px; border-radius: 6px; background: var(--bg-hover); color: var(--text-muted); }
+  .replay { flex: none; padding: 5px 11px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: 600 12px var(--font-ui); transition: transform var(--tap); }
+  .replay:active:not(:disabled) { transform: scale(0.97); }
   .replay:disabled { opacity: 0.5; }
   .refusal { margin: 6px 0 0; color: var(--in-error); white-space: pre-wrap; word-break: break-word; }
   .muted { color: var(--text-muted); }

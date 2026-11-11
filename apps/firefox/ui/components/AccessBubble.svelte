@@ -72,6 +72,6 @@
   button:hover { background: var(--bg-hover); }
   button:active { transform: scale(0.97); }
   /* Cutting stays the semantic orange in both themes, white on it. */
-  .cut { display: block; width: 100%; padding: 6px; border-radius: 10px; background: var(--access-cut); border-color: var(--access-cut); color: white; font-size: 12px; }
+  .cut { display: block; width: 100%; padding: 6px; border-radius: 10px; background: var(--access-cut); border-color: var(--access-cut); color: var(--on-color); font-size: 12px; }
   .cut:hover { background: var(--access-cut-hover); }
 </style>

@@ -69,14 +69,15 @@
 <style>
   .design { display: inline-flex; align-items: center; gap: 2px; flex: none; -webkit-app-region: no-drag; }
   .entries { display: inline-flex; gap: 2px; margin-right: 4px; }
-  button { all: unset; height: 24px; display: grid; grid-auto-flow: column; align-items: center; gap: 3px; border-radius: 5px; color: var(--text-muted); cursor: pointer; white-space: nowrap; -webkit-app-region: no-drag; }
-  .entries button { padding: 0 8px; font-size: 12px; background: var(--bg-active); color: var(--text); }
+  button { all: unset; height: 24px; display: grid; grid-auto-flow: column; align-items: center; gap: 3px; border-radius: 8px; color: var(--text-muted); cursor: pointer; white-space: nowrap; -webkit-app-region: no-drag; transition: transform var(--tap), background var(--tap); }
+  button:active:not(:disabled) { transform: scale(0.97); }
+  .entries button { padding: 0 8px; font-size: 12px; background: var(--glass-hi); color: var(--text); }
   .button { padding: 0 6px; }
   .chevron { width: 14px; justify-content: center; font-size: 10px; }
   button:hover:not(:disabled) { background: var(--bg-hover); color: var(--text); }
   button:disabled { opacity: 0.35; cursor: default; }
   .button[aria-pressed="true"] { color: var(--accent); }
   .chevron[aria-expanded="true"] { background: var(--bg-hover); color: var(--text); }
-  .counter { min-width: 14px; padding: 0 3px; box-sizing: border-box; border-radius: 7px; background: var(--accent); color: #fff; font-size: 10px; line-height: 14px; text-align: center; }
+  .counter { min-width: 14px; padding: 0 3px; box-sizing: border-box; border-radius: 7px; background: var(--accent); color: var(--accent-ink); font-size: 10px; line-height: 14px; text-align: center; }
   button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 </style>

@@ -86,5 +86,6 @@
   .key { display: flex; align-items: center; gap: 8px; }
   .key input { flex: 1; }
   .muted { font-size: 12px; }
-  input:not([type="radio"]) { padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 12px; }
+  input:not([type="radio"]) { padding: 5px 9px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: 12px var(--font-ui); }
+  input:not([type="radio"]):focus { border-color: var(--accent); outline: none; }
 </style>

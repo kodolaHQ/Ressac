@@ -294,23 +294,27 @@
 
 <style>
   .settings { display: grid; grid-template-columns: 200px 1fr; height: 100%; color: var(--text); font-size: 13px; }
-  nav { display: flex; flex-direction: column; gap: 2px; padding: 20px 10px; background: var(--bg-bar); border-right: 1px solid var(--border); overflow-y: auto; }
-  nav h1 { margin: 0 8px 10px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
-  nav button { all: unset; display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 6px; color: var(--text-muted); cursor: default; }
+  nav { display: flex; flex-direction: column; gap: 2px; padding: 22px 10px; border-right: 1px solid var(--border); overflow-y: auto; }
+  nav h1 { margin: 0 10px 14px; font: 650 22px/1.1 var(--font-display); letter-spacing: -0.02em; color: var(--text); }
+  nav button { all: unset; display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 10px; color: var(--text-muted); cursor: default; transition: transform var(--tap), background var(--tap); }
   nav button :global(svg) { color: var(--text-muted); }
   nav button:hover { background: var(--bg-hover); color: var(--text); }
-  nav button[aria-current="page"] { background: var(--bg-active); color: var(--text); }
+  nav button:active { transform: scale(0.97); }
+  nav button[aria-current="page"] { background: var(--glass-hi); box-shadow: var(--lift), inset 0 0 0 1px var(--glass-edge); color: var(--text); }
   nav button[aria-current="page"] :global(svg) { color: var(--accent); }
   .settings :global(:is(button, input, select):focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .content { min-width: 0; overflow-y: auto; padding: 24px 32px; }
+  .content { min-width: 0; overflow-y: auto; padding: 26px 32px; }
   .content > :global(section) { max-width: 720px; }
-  .settings :global(h2) { margin: 0 0 16px; font-size: 20px; font-weight: 600; }
+  .settings :global(h2) { margin: 0 0 18px; font: 650 26px/1.1 var(--font-display); letter-spacing: -0.02em; }
   .settings :global(h3) { margin: 22px 4px 6px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
   .settings :global(p) { margin: 10px 4px; overflow-wrap: anywhere; }
-  .settings :global(code) { font: 12px ui-monospace, Menlo, monospace; overflow-wrap: anywhere; }
+  .settings :global(code) { font: 12px var(--font-mono); overflow-wrap: anywhere; }
+  /* macOS draws native radios in the system blue: ours, in the accent. */
+  .settings :global(input[type="radio"]) { appearance: none; width: 15px; height: 15px; margin: 0; flex: none; border-radius: 50%; border: 1px solid var(--border); background: var(--glass-hi); transition: border-width var(--tap); }
+  .settings :global(input[type="radio"]:checked) { border: 4.5px solid var(--accent); background: var(--accent-ink); }
   .settings :global(.muted) { color: var(--text-muted); }
   .settings :global(.alert) { color: var(--in-error); }
-  .settings :global(.panel) { border: 1px solid var(--border); border-radius: 10px; background: var(--bg-bar); overflow: hidden; }
+  .settings :global(.panel) { border: 1px solid var(--border); border-radius: 16px; background: var(--sheet); box-shadow: var(--lift); overflow: hidden; }
   .settings :global(.panel > * + *) { border-top: 1px solid var(--border); }
   .settings :global(.row) { display: flex; align-items: center; gap: 10px; padding: 11px 14px; }
   .settings :global(.grow) { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
@@ -322,20 +326,21 @@
   .settings :global(.pill[data-tone="ok"]) { --tone: var(--running); }
   .settings :global(.pill[data-tone="warn"]) { --tone: var(--in-progress); }
   .settings :global(.pill[data-tone="error"]) { --tone: var(--in-error); }
-  .content :global(button) { flex: none; padding: 5px 11px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 12px; }
-  .content :global(button:hover:not(:disabled)) { background: var(--bg-hover); }
+  .content :global(button) { flex: none; padding: 6px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: 600 12px var(--font-ui); transition: transform var(--tap), background var(--tap); }
+  .content :global(button:hover:not(:disabled)) { background: var(--bg-active); }
+  .content :global(button:active:not(:disabled)) { transform: scale(0.97); }
   .content :global(button:disabled) { opacity: 0.5; }
-  .content :global(button.primary) { background: var(--accent); border-color: var(--accent); color: white; }
-  .content :global(button.primary:hover:not(:disabled)) { background: color-mix(in srgb, var(--accent) 85%, black); }
+  .content :global(button.primary) { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .content :global(button.primary:hover:not(:disabled)) { background: color-mix(in oklab, var(--accent) 88%, var(--text)); }
   .content :global(button.danger) { color: var(--in-error); }
   .settings :global(.buttons) { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
   .settings :global(.buttons.start) { justify-content: flex-start; margin-top: 14px; }
-  .settings :global(.confirmation) { margin: 12px 0; padding: 12px 14px; border-radius: 10px; background: var(--bg-bar); border: 1px solid var(--border); }
+  .settings :global(.confirmation) { margin: 12px 0; padding: 14px 16px; border-radius: 16px; background: var(--sheet); border: 1px solid var(--border); box-shadow: var(--lift); animation: webaios-rise var(--spring-d) var(--spring) backwards; }
   .settings :global(.confirmation p) { margin: 0 0 12px; }
-  .settings :global(.panel .confirmation) { margin: 0 14px 12px; background: var(--bg); }
-  select { padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 12px; }
-  .switch { appearance: none; position: relative; width: 34px; height: 20px; margin: 0; flex: none; border-radius: 10px; background: var(--bg-active); transition: background 0.15s; }
-  .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: white; box-shadow: 0 1px 2px rgb(0 0 0 / 0.3); transition: left 0.15s; }
+  .settings :global(.panel .confirmation) { margin: 0 14px 12px; background: var(--glass-hi); box-shadow: none; }
+  select { padding: 5px 8px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: 12px var(--font-ui); }
+  .switch { appearance: none; position: relative; width: 34px; height: 20px; margin: 0; flex: none; border-radius: 10px; background: var(--bg-active); transition: background var(--tap); }
+  .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--on-color); box-shadow: var(--float); transition: left var(--spring-d) var(--spring); }
   .switch:checked { background: var(--accent); }
   .switch:checked::after { left: 16px; }
   .switch:disabled { opacity: 0.5; }
