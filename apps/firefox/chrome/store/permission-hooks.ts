@@ -99,7 +99,8 @@ export function registerPermissionHooks(o: {
         if (!ok || (screen && !video)) return this.denyRequest(d);
         const devices = [video?.deviceIndex, d.audioInputDevices[0]?.deviceIndex].filter((x) => x !== undefined);
         // As Firefox's own allow: the one-shot camera grant, then macOS's check for a real device.
-        if (video && !screen) Services.perms.addFromPrincipal(this.manager.topWindowContext.documentPrincipal, "MediaManagerVideo", Services.perms.ALLOW_ACTION, Services.perms.EXPIRE_SESSION);
+        // The screen too: CamerasParent checks this grant for every capture engine.
+        if (video) Services.perms.addFromPrincipal(this.manager.topWindowContext.documentPrincipal, "MediaManagerVideo", Services.perms.ALLOW_ACTION, Services.perms.EXPIRE_SESSION);
         this.checkOSPermission(!screen && !!video, d.audioInputDevices.length > 0, screen).then(
           (granted: boolean) => (granted ? this.sendAsyncMessage("webrtc:Allow", { callID: d.callID, windowID: d.windowID, devices }) : this.denyRequestNoPermission(d)),
           () => {},
