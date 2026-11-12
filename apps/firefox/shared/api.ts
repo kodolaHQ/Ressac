@@ -360,6 +360,23 @@ export interface ApiWebaios {
   external: ExternalApi;
   review: ReviewApi;
   settings: SettingsApi;
+  browserImport: BrowserImportApi;
+}
+
+export type ImportSourceId = "arc" | "chrome" | "brave" | "edge" | "vivaldi" | "opera" | "safari" | "firefox" | "zen";
+export type ImportType = "bookmarks" | "history" | "passwords" | "spaces";
+export interface ImportSource { id: ImportSourceId; name: string; profiles: { id: string; name: string }[]; types: ImportType[]; passwordsByCsv: boolean }
+export interface ImportProgress { source: ImportSourceId; done: boolean; counts: Partial<Record<ImportType, number>>; failed: Partial<Record<ImportType, string>> }
+/** Import from another browser on this Mac: one run at a time, in the background; a notification tells the end. */
+export interface BrowserImportApi {
+  /** Only the browsers whose data folder exists. */
+  sources(): Promise<ImportSource[]>;
+  /** Answers at once; the import goes on in the background. */
+  start(o: { source: ImportSourceId; profile: string | null; types: ImportType[] }): Promise<{ ok: true } | { ok: false; error: string }>;
+  /** The run in progress, or the last one; null before any. */
+  progress(): Promise<ImportProgress | null>;
+  /** A CSV export of passwords (Safari, Firefox, Zen), picked in a native file picker. */
+  importPasswordsCsv(): Promise<{ ok: true; count: number } | { ok: false; error: string }>;
 }
 
 /** The settings page: agent accounts, workshop, local AI, durable grants, data, telemetry. */

@@ -17,6 +17,8 @@ import { createOverlays } from "../window/design-overlays";
 import { createDevTools, type DevTools } from "./devtools";
 import { createDownloads, type DownloadsList } from "./downloads";
 import { createHistory, type History } from "./history";
+import { createBrowserImporter } from "./import/importer";
+import type { BrowserImportApi } from "../../shared/api";
 import { registerHomeNotifications } from "./notifications";
 import { containerFor, existingContainer, isSiteContainer, removeContainer } from "./containers";
 import { registerPermissionHooks } from "./permission-hooks";
@@ -42,6 +44,8 @@ export interface WebAiOsStore extends Store {
   readonly telemetryActive: boolean;
   /** What the settings page asks of the chrome: telemetry, version, Finder, export folder, reset. */
   readonly settings: SettingsChrome;
+  /** Bookmarks, history and passwords from another browser on this Mac, through the engine's migrators. */
+  readonly browserImport: BrowserImportApi;
   flush(): Promise<void>;
   /** userContextId of a login profile: 0 for DEFAULT_PROFILE, an internal container otherwise (created on first use). */
   containerFor(profile: ProfileId): number;
@@ -419,6 +423,7 @@ async function start(): Promise<WebAiOsStore> {
     dataSetAside,
     telemetryActive: telemetry.active,
     settings: createSettingsChrome(dataDir, telemetry.active),
+    browserImport: createBrowserImporter(dataDir, agent),
     flush,
     containerFor,
     agent,

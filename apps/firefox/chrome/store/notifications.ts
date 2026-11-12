@@ -17,19 +17,24 @@ export const alertObserver = {
 };
 
 /**
- * The kernel host is Node and cannot call Cc: it sends `home.notification` over the RPC. The alert goes through the
- * system alerts service only (note P4: `Services.alerts` does not exist, and the XUL fallback opens a window).
+ * A macOS notification, through the system alerts service only (note P4: `Services.alerts` does not exist, and the XUL
+ * fallback opens a window). Under WEBAIOS_TEST_NOTIFICATIONS it is written to that file instead, like the host does.
  */
+export function showAlert(title: string, text: string): void {
+  const file = Services.env.get("WEBAIOS_TEST_NOTIFICATIONS");
+  if (file) return void IOUtils.writeUTF8(file, JSON.stringify({ title, text }) + "\n", { mode: "appendOrCreate" }).catch((e: unknown) => console.error("[webaios] notification not written:", e));
+  try {
+    const alert = Cc["@mozilla.org/alert-notification;1"].createInstance(Ci.nsIAlertNotification);
+    // A unique name: an alert with the same name replaces the previous one.
+    alert.init(`webaios-home-${Date.now()}`, "", title, text, false, "");
+    // nsIObserver is a function interface: a plain function stands for it.
+    Cc["@mozilla.org/alerts-service;1"].getService(Ci.nsIAlertsService).showAlert(alert, (s: unknown, t: string, d: string) => alertObserver.observe(s, t, d));
+  } catch (e) {
+    console.error("[webaios] notification not shown:", e);
+  }
+}
+
+/** The kernel host is Node and cannot call Cc: it sends `home.notification` over the RPC. */
 export function registerHomeNotifications(agent: Pick<AgentHost, "on">): () => void {
-  return agent.on("home.notification", (n: { title?: unknown; text?: unknown }) => {
-    try {
-      const alert = Cc["@mozilla.org/alert-notification;1"].createInstance(Ci.nsIAlertNotification);
-      // A unique name: an alert with the same name replaces the previous one.
-      alert.init(`webaios-home-${Date.now()}`, "", String(n?.title ?? "WebAiOs"), String(n?.text ?? ""), false, "");
-      // nsIObserver is a function interface: a plain function stands for it.
-      Cc["@mozilla.org/alerts-service;1"].getService(Ci.nsIAlertsService).showAlert(alert, (s: unknown, t: string, d: string) => alertObserver.observe(s, t, d));
-    } catch (e) {
-      console.error("[webaios] notification not shown:", e);
-    }
-  });
+  return agent.on("home.notification", (n: { title?: unknown; text?: unknown }) => showAlert(String(n?.title ?? "WebAiOs"), String(n?.text ?? "")));
 }

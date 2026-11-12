@@ -300,6 +300,13 @@ export function createApi(win: WindowController): ApiFirefox {
       switchAgent,
       dataDir: win.store.dataDir,
     }),
+    // Import from another browser: the chrome runs the engine's migrators; answers copied into this realm.
+    browserImport: {
+      sources: () => win.store.browserImport.sources().then((r) => structuredClone(r)),
+      start: (o) => win.store.browserImport.start(structuredClone(o)).then((r) => structuredClone(r)),
+      progress: () => win.store.browserImport.progress().then((r) => structuredClone(r)),
+      importPasswordsCsv: () => win.store.browserImport.importPasswordsCsv().then((r) => structuredClone(r)),
+    },
     // The design mode of this window's tab; its cart column is a chrome frame (chrome/window/design-overlays.ts).
     design: createDesignApi({ win, untilUnload }),
     designPanel(isOpen) {
