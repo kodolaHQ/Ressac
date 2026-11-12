@@ -391,6 +391,20 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       unlink(d, a.favoriteId);
       return true;
     }
+    case "unloadEssential": {
+      const f = win(d, a.windowId);
+      const tabs = Object.values(d.tabs).filter((o) => o.windowId === a.windowId && o.link?.type === "essential" && o.link.id === a.favoriteId && !o.unloaded);
+      if (!f || !tabs.length) return false;
+      for (const o of tabs) {
+        // Its page closes: nothing of it is left to show (sound, call, load), and the spaces that displayed it move on.
+        Object.assign(o, { unloaded: true, loading: false, crashed: false, error: null });
+        delete o.sound;
+        delete o.playback;
+        delete o.call;
+        for (const [space, id] of Object.entries(f.active)) if (id === o.id) f.active[space] = list(f, space)[0] ?? null;
+      }
+      return true;
+    }
     case "moveEssential": {
       const from = d.essentials.findIndex((x) => x.id === a.favoriteId);
       const to = Math.max(0, Math.min(a.index, d.essentials.length - 1));
@@ -630,11 +644,15 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
 /** The only way to evolve the state: pure, never mutates `state`. */
 /**
  * Every essential keeps a tab in each window, for the login profile of the displayed space: it loads in the background
- * (at launch, once added, after its tab was closed) and opens at once. Not in a private space, where it opens on a click.
+ * (at launch, once added, after its tab was closed) and opens at once. Not in a private space, where it opens on a click,
+ * nor once the user unloaded it (unloadEssential): its tab stays, without a page, until it is displayed again.
  */
 function keepEssentials(d: Draft, genId: () => string): boolean {
   let created = false;
   for (const f of d.windows) {
+    // Displayed again, an unloaded essential loads.
+    const shown = d.tabs[f.active[f.activeSpace] ?? ""];
+    if (shown?.unloaded) delete shown.unloaded;
     const space = d.spaces.find((e) => e.id === f.activeSpace);
     if (!space || space.private) continue;
     const key = spaceKey(d, space.id);

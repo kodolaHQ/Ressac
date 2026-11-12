@@ -315,6 +315,22 @@ describe("WebAiOs sidebar", () => {
     } while (!(seen?.done && seen.url.endsWith("/a.html")) && Date.now() < deadline && (await new Promise((r) => setTimeout(r, 100)), true));
     expect(seen).toEqual({ url: expect.stringMatching(/\/a\.html$/), done: true, selected: false, kept: true });
     expect((await win()).active[(await win()).activeSpace]).toBe(b);
+
+    // Right click › Décharger: the page closes and the tile dims; a click loads it again.
+    const tile = '[data-testid="essentials"] [data-testid^="favorite-"]';
+    const has = `return gBrowser.tabs.some((t) => t.getAttribute("webaios-tab-id") === arguments[0]);`;
+    await click(m, tile, { button: 2 });
+    await click(m, '[role="menuitem"]', { text: "Décharger" });
+    await waitUi(m, "return doc.querySelector(arguments[0]).classList.contains('unloaded')", [tile]);
+    expect(await m.execute(has, [fresh])).toBe(false);
+    expect((await state(m)).tabs[fresh!]).toMatchObject({ unloaded: true });
+    await click(m, tile, { button: 2 });
+    expect(await inUi(m, `return [...doc.querySelectorAll('[role="menuitem"]')].map((x) => x.textContent.trim())`)).toEqual(["Retirer"]);
+    await pressKeys(m, "Escape");
+    await click(m, tile);
+    await waitUi(m, "return !doc.querySelector(arguments[0]).classList.contains('unloaded')", [tile]);
+    expect(await m.execute(has, [fresh])).toBe(true);
+    expect((await win()).active[(await win()).activeSpace]).toBe(fresh);
   });
 
   it("dragging an essential onto another reorders the grid and the state; it does not add or open anything", async () => {

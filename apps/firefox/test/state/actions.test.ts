@@ -1006,3 +1006,24 @@ test("essentials stay loaded: a tab per window in the displayed space, again aft
   ag({ type: "createSpace", name: "Secret", icon: "x", private: true, profile: "new", windowId: F });
   expect(Object.values(e.tabs).filter((o) => o.link && o.spaceId === e.windows[0]!.activeSpace)).toEqual([]);
 });
+
+test("unloadEssential: the tab stays without a page and leaves the display, a closed one is not recreated; opening the essential loads it again", () => {
+  const id = open("https://mail.test/");
+  ag({ type: "addEssential", id });
+  const other = open("https://a.test/");
+  ag({ type: "openFavorite", windowId: F, kind: "essential", id: e.essentials[0]!.id });
+  ag({ type: "updateTab", id, fields: { sound: "playing" } });
+  ag({ type: "unloadEssential", windowId: F, favoriteId: e.essentials[0]!.id });
+  expect(e.tabs[id]).toMatchObject({ unloaded: true });
+  expect(e.tabs[id]!.sound).toBeUndefined();
+  expect(e.windows[0]!.active[e.windows[0]!.activeSpace]).not.toBe(id);
+  // Other actions leave it unloaded, and a second unload changes nothing.
+  ag({ type: "activateTab", id: other });
+  expect(e.tabs[id]!.unloaded).toBe(true);
+  const before = e;
+  ag({ type: "unloadEssential", windowId: F, favoriteId: e.essentials[0]!.id });
+  expect(e).toBe(before);
+  ag({ type: "openFavorite", windowId: F, kind: "essential", id: e.essentials[0]!.id });
+  expect(e.tabs[id]!.unloaded).toBeUndefined();
+  expect(Object.values(e.tabs).filter((o) => o.link)).toHaveLength(1);
+});

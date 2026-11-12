@@ -81,6 +81,7 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("removeEssential"), favoriteId: id }),
   /** The essential takes the place `index` in the grid. */
   z.object({ type: z.literal("moveEssential"), favoriteId: id, index: z.number().int() }),
+  z.object({ type: z.literal("unloadEssential"), windowId: id, favoriteId: id }),
   /** Adds favorites by address: the space's pinned tabs, or the essentials without `spaceId`. Never a private space; a URL already there is skipped. */
   z.object({ type: z.literal("addFavorites"), spaceId: id.optional(), favorites: z.array(favoriteLink) }),
   /** `profile`: an existing login profile, or "new" to create one specific to the space. `pinned`: its first pinned tabs (an import). */
