@@ -11,7 +11,18 @@ import { click, waitUi } from "./ui";
 let server: Awaited<ReturnType<typeof startServer>>;
 let w: LaunchedWebAiOs;
 let m: Marionette;
-beforeAll(async () => (server = await startServer()));
+beforeAll(async () => {
+  server = await startServer({
+    routes: {
+      "/lent.html": (_req, res) => {
+        setTimeout(() => {
+          res.setHeader("content-type", "text/html; charset=utf-8");
+          res.end("<title>Lente</title><p>Texte tardif</p>");
+        }, 1500);
+      },
+    },
+  });
+});
 afterAll(() => server?.close());
 beforeEach(async () => {
   w = await launchWebAiOs({ env: { WEBAIOS_MEMORY_LOOP: "1", WEBAIOS_TEST_SEARCH_URL: `${server.url}/results.html?q=%s` } });
@@ -132,4 +143,14 @@ it("read_pages returns both pages and leaves no extra tab", async () => {
   const after = await state(m);
   expect(Object.keys(after.tabs).sort()).toEqual(before);
   expect(after.tabs[id]!.url).toBe(`${server.url}/results.html?q=x`);
+});
+
+it("read_pages waits for a slow background page to load before reading it (readText ensures the tab)", async () => {
+  await callTool(w.dataDir, "search_web", { query: "x" });
+  const slow = `${server.url}/lent.html`;
+  // The engine's origin is free: no card.
+  const t = Date.now();
+  const r = (await callTool(w.dataDir, "read_pages", { urls: [slow] })).text;
+  expect(r).toContain("Texte tardif");
+  expect(Date.now() - t).toBeGreaterThan(1000);
 });

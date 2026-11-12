@@ -274,6 +274,20 @@ describe("SearchSessions", () => {
 });
 
 describe("onEnd", () => {
+  test("a throwing callback does not skip the others nor the hand-over", async () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    s.start("w", "t1", "g");
+    const ok = vi.fn();
+    s.onEnd("t1", () => { throw new Error("boom"); });
+    s.onEnd("t1", ok);
+    const hand = s.handOver("t1", "à vous");
+    s.stop("t1");
+    expect(ok).toHaveBeenCalledOnce();
+    expect((await hand).outcome).toBe("stop");
+    expect(err).toHaveBeenCalled();
+    err.mockRestore();
+  });
+
   test("called once when the search ends, not after unsubscribe, at once when there is no search", () => {
     const sessions = new SearchSessions({ show: () => {} });
     sessions.start("w", "t1", "g");

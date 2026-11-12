@@ -146,6 +146,7 @@ export class FakeBridge implements BrowserBridge {
   readonly bookmarks?: BrowserBridge["bookmarks"];
   readonly search?: BrowserBridge["search"];
   private readonly failing = new Set<string>();
+  private readonly hanging = new Set<string>();
   /** Links of the successive reads (the last one repeats), to simulate a page whose results come late. */
   linkSequence?: PageLink[][];
   readPageInvisible?: (url: string, o: PageReadOptions) => Promise<ReadPage>;
@@ -190,7 +191,7 @@ export class FakeBridge implements BrowserBridge {
       sites?: Record<string, string[]>;
       pendingSites?: string[];
       /** Provides the search tab; `privateWindows`: windows whose active space is private. */
-      search?: { privateWindows?: string[]; /** Addresses whose read fails. */ failing?: string[] };
+      search?: { privateWindows?: string[]; /** Addresses whose read fails. */ failing?: string[]; /** Addresses whose read never answers. */ hanging?: string[] };
       /** Provides the address card: answers this value, `"later"` true after 400 ms, or `"wait"` until its signal is raised (then false). */
       address?: boolean | "wait" | "later";
     },
@@ -271,6 +272,7 @@ export class FakeBridge implements BrowserBridge {
     }
     const searching = o.search;
     for (const u of searching?.failing ?? []) this.failing.add(u);
+    for (const u of searching?.hanging ?? []) this.hanging.add(u);
     if (searching)
       this.search = {
         open: async (window, target, reuse) => {
@@ -289,10 +291,9 @@ export class FakeBridge implements BrowserBridge {
           this.active = tab.id;
           return { ...tab, engineOrigin };
         },
-        openBackground: async (window, url) => {
-          this.note("search.openBackground", window, url);
-          if (window !== undefined && searching.privateWindows?.includes(window)) throw new Error("Impossible d'ouvrir un onglet ici : l'espace actif est privé.");
-          const tab = { id: `bg-${++this.counter}`, title: url, url, space: "perso" };
+        openBackground: async (searchTabId, url) => {
+          this.note("search.openBackground", searchTabId, url);
+          const tab = { id: `bg-${++this.counter}`, title: url, url, space: this.find(searchTabId).space };
           this.tabs.push(tab);
           return { ...tab };
         },
@@ -425,6 +426,7 @@ export class FakeBridge implements BrowserBridge {
   async readText(id: string) {
     this.note("readText", id);
     const o = this.find(id);
+    if (this.hanging.has(o.url)) await new Promise(() => {});
     if (this.failing.has(o.url)) throw new Error("Page illisible");
     const seq = this.linkSequence;
     const links = seq?.length ? (seq.length > 1 ? seq.shift()! : seq[0]!) : [{ text: "Annonce", url: "https://exemple.fr/a" }];

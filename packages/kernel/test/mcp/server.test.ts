@@ -1382,13 +1382,13 @@ const c = { text: "C", url: "https://exemple.fr/c" };
 
 async function withSearch(
   attempt: (o: { call: (name: string, args: Record<string, unknown>, token?: string) => Promise<{ text: string; isError: boolean }>; fake: FakeBridge; search: SearchSessions; s: Awaited<ReturnType<typeof startMcpServer>>; bands: [string, Band | null][] }) => Promise<void>,
-  opts: { privateWindows?: string[]; allow?: boolean; emptySpanMs?: number; address?: boolean | "wait"; failing?: string[] } = {},
+  opts: { privateWindows?: string[]; allow?: boolean; emptySpanMs?: number; address?: boolean | "wait"; failing?: string[]; hanging?: string[]; readPageMs?: number } = {},
 ) {
   const principal = generateToken();
-  const fake = new FakeBridge([github], { active: "github", allow: opts.allow ?? false, search: { privateWindows: opts.privateWindows ?? [], failing: opts.failing ?? [] }, ...(opts.address !== undefined ? { address: opts.address } : {}) });
+  const fake = new FakeBridge([github], { active: "github", allow: opts.allow ?? false, search: { privateWindows: opts.privateWindows ?? [], failing: opts.failing ?? [], hanging: opts.hanging ?? [] }, ...(opts.address !== undefined ? { address: opts.address } : {}) });
   const bands: [string, Band | null][] = [];
   const search = new SearchSessions({ show: (id, band) => bands.push([id, band]) });
-  const s = await startMcpServer({ bridge: fake, policy: new AccessPolicy(), token: principal, search, settleMs: 0, emptySpanMs: opts.emptySpanMs ?? 0 });
+  const s = await startMcpServer({ bridge: fake, policy: new AccessPolicy(), token: principal, search, settleMs: 0, emptySpanMs: opts.emptySpanMs ?? 0, ...(opts.readPageMs !== undefined ? { readPageMs: opts.readPageMs } : {}) });
   const clients: Client[] = [];
   const call = async (name: string, args: Record<string, unknown>, clientToken = principal) => {
     const cl = new Client({ name: "test", version: "0" });
@@ -1574,6 +1574,85 @@ test("read_pages: the user stopping the search during the reads gives STOP_TEXT 
     expect(r.text).toBe(STOP_TEXT);
     expect(fake.calls.filter((x) => x.method === "search.close")).toHaveLength(2);
   });
+});
+
+test("read_pages refuses file: and about: addresses before any card; the others are read", async () => {
+  await withSearch(async ({ call, fake }) => {
+    fake.linkSequence = [[a]];
+    await call("search_web", { query: "x" });
+    const r = await call("read_pages", { urls: ["file:///etc/passwd", a.url, "about:config"] });
+    expect(r.text).toContain("## file:///etc/passwd\nErreur : URL refusée (http ou https uniquement) : file:///etc/passwd");
+    expect(r.text).toContain("## about:config\nErreur : URL refusée");
+    expect(r.text).toContain(`## ${a.url}\nTitre`);
+    expect(fake.calls.filter((x) => x.method === "askAddress")).toHaveLength(0);
+  }, { address: true });
+});
+
+test("read_pages: a stop abandons a page that never answers: STOP_TEXT at once, the tab closed", async () => {
+  await withSearch(async ({ call, fake, search }) => {
+    await call("search_web", { query: "x" });
+    const pending = call("read_pages", { urls: ["https://exemple.fr/pend"] });
+    await vi.waitFor(() => expect(fake.calls.some((x) => x.method === "readText" && x.args[0] === "bg-2")).toBe(true));
+    search.stop("search-1");
+    expect((await pending).text).toBe(STOP_TEXT);
+    expect(fake.calls.filter((x) => x.method === "search.close").map((x) => x.args[0])).toEqual(["bg-2"]);
+  }, { address: true, hanging: ["https://exemple.fr/pend"] });
+});
+
+test("read_pages: a page past the time limit gives its error and its tab is closed; the others are read", async () => {
+  await withSearch(async ({ call, fake }) => {
+    await call("search_web", { query: "x" });
+    const r = await call("read_pages", { urls: ["https://exemple.fr/pend", a.url] });
+    expect(r.text).toContain("## https://exemple.fr/pend\nErreur : la page n'a pas répondu à temps.");
+    expect(r.text).toContain(`## ${a.url}\nTitre`);
+    expect(fake.calls.filter((x) => x.method === "search.close")).toHaveLength(2);
+  }, { address: true, hanging: ["https://exemple.fr/pend"], readPageMs: 50 });
+});
+
+test("read_pages: the background tab opens from the search tab (its space, not the active one)", async () => {
+  await withSearch(async ({ call, fake }) => {
+    await call("search_web", { query: "x" });
+    fake.editTab("search-1", { space: "travail" });
+    await call("read_pages", { urls: [a.url] });
+    expect(fake.calls.find((x) => x.method === "search.openBackground")!.args[0]).toBe("search-1");
+    expect(fake.calls.filter((x) => x.method === "search.close")).toHaveLength(1);
+  }, { address: true });
+  await withSearch(async ({ call, fake }) => {
+    await call("search_web", { query: "x" });
+    fake.editTab("search-1", { space: "travail" });
+    let space = "";
+    const open = fake.search!.openBackground;
+    fake.search!.openBackground = async (id, url) => { const t = await open(id, url); space = t.space; return t; };
+    await call("read_pages", { urls: [a.url] });
+    expect(space).toBe("travail");
+  }, { address: true });
+});
+
+test("read_pages without askAddress: a non-free address has its own error section", async () => {
+  await withSearch(async ({ call, fake }) => {
+    await call("search_web", { query: "x" });
+    const r = await call("read_pages", { urls: [a.url, "https://ailleurs.fr/"] });
+    expect(r.text).toContain("## https://ailleurs.fr/\nErreur : Adresse non lue");
+  });
+});
+
+test("read_pages with no search running and every address refused: no search, no tab", async () => {
+  await withSearch(async ({ call, fake, search }) => {
+    const r = await call("read_pages", { urls: [a.url] });
+    expect(r.text).toContain("Erreur");
+    expect(search.current("main")).toBeUndefined();
+    expect(fake.calls.filter((x) => x.method === "search.open" || x.method === "search.openBackground")).toHaveLength(0);
+  }, { address: false });
+});
+
+test("read_pages: a stop while a card is shown answers STOP_TEXT", async () => {
+  await withSearch(async ({ call, fake, search }) => {
+    await call("search_web", { query: "x" });
+    const pending = call("read_pages", { urls: ["https://ailleurs.fr/"] });
+    await vi.waitFor(() => expect(fake.calls.some((x) => x.method === "askAddress")).toBe(true));
+    search.stop("search-1");
+    expect((await pending).text).toBe(STOP_TEXT);
+  }, { address: "wait" });
 });
 
 /** A search with an address card that never answers by itself; `end` ends the conversation (the card is taken down). */

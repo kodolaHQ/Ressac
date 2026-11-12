@@ -201,7 +201,9 @@ export class SearchSessions {
     this.byWindow.delete(s.window);
     this.byTab.delete(s.tabId);
     this.o.show(s.tabId, null);
-    for (const f of s.enders) f();
+    for (const f of s.enders) {
+      try { f(); } catch (e) { console.error("search: an end callback threw", e); }
+    }
     const h = s.hand;
     s.hand = undefined;
     h?.resolve({ outcome, path: h.path.slice(-PATH_MAX) });

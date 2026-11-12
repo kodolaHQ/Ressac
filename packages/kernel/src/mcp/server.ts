@@ -24,6 +24,7 @@ export const UNREAD_ADDRESS_TEXT = "Adresse non lue dans cette recherche : tu ne
 const MAIN_WINDOW = "main";
 const SETTLE_MAX_MS = 5000;
 const READ_PAGES_MAX = 6;
+const READ_PAGE_MS = 30_000;
 /** A page with no link is returned only after its reads gave none for this long, so results that come late are not missed. */
 const EMPTY_SPAN_MS = 1500;
 const LINKS_SHOWN = 150;
@@ -289,9 +290,9 @@ function askAddressCard(
     const offChange = policy.onChange(() => {
       if (policy.conversation !== conversation) removal.abort();
     });
+    const abandon = new Promise<boolean>((ok) => removal.signal.addEventListener("abort", () => ok(false), { once: true }));
     const offEnd = onEnd(() => removal.abort());
     const unsubscribe = () => { offChange(); offEnd(); };
-    const abandon = new Promise<boolean>((ok) => removal.signal.addEventListener("abort", () => ok(false), { once: true }));
     request = Promise.race([bridge.askAddress!(card, window, removal.signal), abandon])
       .then((yes) => yes && policy.conversation === conversation)
       .finally(() => {
@@ -317,7 +318,7 @@ function createToolsServer(
   actions?: OptionsActions,
   toolSites?: SitesTools,
   beatMs?: number,
-  searching?: { sessions: SearchSessions; settleMs: number; emptySpanMs: number; chains: Map<string, Promise<unknown>> },
+  searching?: { sessions: SearchSessions; settleMs: number; emptySpanMs: number; readPageMs: number; chains: Map<string, Promise<unknown>> },
 ): McpServer {
   const server = new McpServer({ name: "webaios", version: "0.1.0" });
 
@@ -641,8 +642,10 @@ function createToolsServer(
           const errors = new Map<string, string>();
           const ok: string[] = [];
           for (const u of new Set(urls)) {
+            if (!urlWeb(u)) { errors.set(u, `Erreur : URL refusée (http ou https uniquement) : ${u}`); continue; }
             if (u.length > URL_MAX) { errors.set(u, `Erreur : Adresse trop longue (${URL_MAX} caractères au plus).`); continue; }
             if (tabId && sessions.isFree(tabId, u)) { ok.push(u); continue; }
+            if (!bridge.askAddress) { errors.set(u, `Erreur : ${UNREAD_ADDRESS_TEXT}`); continue; }
             const t = tabId;
             // shortcut: with no search yet the engine's origin is unknown, so even an engine address asks its card; upgrade if that annoys.
             const yes = await askAddressCard(bridge, policy, requests, { url: u, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent" }, `address:${t ?? key}:${u}`, win ?? undefined, (f) => (t ? sessions.onEnd(t, f) : () => {}));
@@ -665,11 +668,23 @@ function createToolsServer(
             for (const u of ok) sessions.log(id, { tool: "read_pages", url: u });
             let done = 0;
             const label = () => `Lecture de ${ok.length} page${ok.length > 1 ? "s" : ""}, ${done} faite${done > 1 ? "s" : ""}`;
+            const opened = new Set<string>();
+            const close = async (t: string) => {
+              if (opened.delete(t)) await search.close(t).catch((e) => console.error("read_pages: closing a tab failed", e));
+            };
             const read = async (u: string, own?: TabInfo) => {
+              let timer: ReturnType<typeof setTimeout> | undefined;
               let t = own;
               try {
-                t ??= await search.openBackground(win ?? undefined, u);
-                const r = await working(t.id, () => bridge.readText(t!.id));
+                if (!t) {
+                  t = await search.openBackground(id, u);
+                  opened.add(t.id);
+                  if (!sessions.owns(id)) return; // the search ended while the tab opened: the finally closes it
+                }
+                const tabRead = working(t.id, () => bridge.readText(t!.id));
+                tabRead.catch(() => {}); // abandoned by the timeout: its rejection (tab closed) is not an error
+                const late = new Promise<never>((_, no) => { timer = setTimeout(() => no(new Error("la page n'a pas répondu à temps.")), searching.readPageMs); });
+                const r = await Promise.race([tabRead, late]);
                 if (!sessions.owns(id)) return;
                 const now = (await bridge.listTabs()).find((x) => x.id === t!.id) ?? t;
                 sessions.pageRead(id, now.url, (r.links ?? []).map((l) => l.url));
@@ -677,12 +692,21 @@ function createToolsServer(
               } catch (e) {
                 sections.set(u, `Erreur : ${e instanceof Error ? e.message : String(e)}`);
               } finally {
-                if (t && t !== own) await search.close(t.id).catch(() => {});
+                clearTimeout(timer);
+                if (t && t !== own) await close(t.id);
                 done++;
                 sessions.setText(id, label());
               }
             };
-            await sessions.step(id, label(), () => Promise.all(ok.map((u, i) => read(u, i === 0 ? first : undefined))));
+            // The search ending (stop, tab closed) abandons the reads that are left.
+            let off = () => {};
+            const over = new Promise<void>((ok2) => { off = sessions.onEnd(id, ok2); });
+            try {
+              await sessions.step(id, label(), () => Promise.race([Promise.all(ok.map((u, i) => read(u, i === 0 ? first : undefined))), over]));
+            } finally {
+              off();
+              await Promise.all([...opened].map(close));
+            }
             if (!sessions.owns(id)) return ended();
           }
           return text(urls.map((u) => `## ${u}\n${errors.get(u) ?? sections.get(u) ?? "Erreur : page non lue."}`).join("\n\n"));
@@ -1148,6 +1172,8 @@ export async function startMcpServer(o: {
   settleMs?: number;
   /** How long a page must stay without a link before it is returned as it is (tests: 0). */
   emptySpanMs?: number;
+  /** The longest a page read by read_pages may take (tests: short). */
+  readPageMs?: number;
 }): Promise<{ port: number; containerUrl: string; openSession(win: string, agent?: string): string; closeSession(token: string): void; stop(): Promise<void> }> {
   const expected = Buffer.from(o.token);
   // Session tokens: one per window agent. Security note: their config files are readable by the
@@ -1173,7 +1199,7 @@ export async function startMcpServer(o: {
     const named = who.agent ? { ...dev, agent: who.agent } : dev;
     if (new URL(req.url ?? "/", "http://x").pathname !== "/mcp") return res.writeHead(404).end();
     // Stateless mode: a new server and transport per request.
-    const server = createToolsServer(o.bridge, o.policy, requests, o.apps, o.appTabDelayMs, named, widgets && who.agent ? { ...widgets, agent: who.agent } : widgets, win, o.openWorkflow, o.extensions, actions && who.agent ? { ...actions, agent: who.agent } : actions, o.sites, o.heartbeatMs, o.search ? { sessions: o.search, settleMs: o.settleMs ?? 500, emptySpanMs: o.emptySpanMs ?? EMPTY_SPAN_MS, chains } : undefined);
+    const server = createToolsServer(o.bridge, o.policy, requests, o.apps, o.appTabDelayMs, named, widgets && who.agent ? { ...widgets, agent: who.agent } : widgets, win, o.openWorkflow, o.extensions, actions && who.agent ? { ...actions, agent: who.agent } : actions, o.sites, o.heartbeatMs, o.search ? { sessions: o.search, settleMs: o.settleMs ?? 500, emptySpanMs: o.emptySpanMs ?? EMPTY_SPAN_MS, readPageMs: o.readPageMs ?? READ_PAGE_MS, chains } : undefined);
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on("close", () => {
       void transport.close();

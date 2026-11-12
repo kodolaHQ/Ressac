@@ -135,8 +135,8 @@ export interface BrowserBridge {
      * navigated instead and nothing opens nor activates.
      */
     open(window: string | undefined, target: { query: string } | { url: string }, reuse?: string): Promise<TabInfo & { engineOrigin: string }>;
-    /** Opens `url` in a background tab of AGENT_PROFILE (`openedByAgent`, not activated), in `window` (the active one if undefined). Throws in a private space. */
-    openBackground(window: string | undefined, url: string): Promise<TabInfo>;
+    /** Opens `url` in a background tab of AGENT_PROFILE (`openedByAgent`, not activated), in the window and space of the search tab `searchTabId`. */
+    openBackground(searchTabId: string, url: string): Promise<TabInfo>;
     /** Closes a tab opened by `open` or `openBackground`, at once (no « leave this site? » question). */
     close(tabId: string): Promise<void>;
     /** Shows or removes the band of the tab. */

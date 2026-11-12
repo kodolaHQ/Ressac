@@ -177,7 +177,10 @@ export function bridgeHandlers(
       }
       return { ...openTabIn(win, url, undefined, { profile: AGENT_PROFILE }), engineOrigin };
     },
-    "search.openBackground": ([win, url]: [WindowId | undefined, string]) => openTabIn(win, url, undefined, { profile: AGENT_PROFILE, background: true }),
+    "search.openBackground": ([searchTab, url]: [string, string]) => {
+      const t = tab(searchTab);
+      return openTabIn(t.windowId, url, t.spaceId, { profile: AGENT_PROFILE, background: true });
+    },
     "search.close": ([id]: [string]) => void store.dispatch({ type: "closeTab", id }),
     // Task 7 draws the band of the search tab.
     "search.band": () => {},
