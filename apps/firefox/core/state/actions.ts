@@ -382,6 +382,13 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       unlink(d, a.favoriteId);
       return true;
     }
+    case "moveEssential": {
+      const from = d.essentials.findIndex((x) => x.id === a.favoriteId);
+      const to = Math.max(0, Math.min(a.index, d.essentials.length - 1));
+      if (from < 0 || from === to) return false;
+      d.essentials.splice(to, 0, ...d.essentials.splice(from, 1));
+      return true;
+    }
     case "addFavorites": {
       const space = a.spaceId === undefined ? null : d.spaces.find((e) => e.id === a.spaceId);
       if (space === undefined || space?.private) return false;

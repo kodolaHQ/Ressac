@@ -283,6 +283,23 @@ describe("WebAiOs sidebar", () => {
     expect(await count(essentials)).toBe(1);
   });
 
+  it("dragging an essential onto another reorders the grid and the state; it does not add or open anything", async () => {
+    for (const path of ["/a.html", "/b.html", "/texte.html"]) await dispatch(m, { type: "addEssential", id: await open(path, { activate: false }) });
+    const [a, b, c] = (await state(m)).essentials.map((f) => f.id);
+    await waitUi(m, "return doc.querySelectorAll('[data-testid=\"essentials\"] [draggable=\"true\"]').length === 3");
+    await inUi(
+      m,
+      `const dt = new ui.DataTransfer();
+       dt.setData("application/x-webaios-essentiel", arguments[0]);
+       const target = doc.querySelector('[data-testid="favorite-' + arguments[1] + '"]');
+       for (const type of ["dragover", "drop"]) target.dispatchEvent(new ui.DragEvent(type, { dataTransfer: dt, bubbles: true, cancelable: true }));`,
+      [c, a],
+    );
+    const shown = "return [...doc.querySelectorAll('[data-testid=\"essentials\"] [data-testid^=\"favorite-\"]')].map((e) => e.dataset.testid.slice(9)).join()";
+    await waitUi(m, `${shown} === arguments[0]`.replace("return ", "return (").replace(".join()", ".join())"), [[c, a, b].join()]);
+    expect((await state(m)).essentials.map((f) => f.id)).toEqual([c, a, b]);
+  });
+
   it("switching spaces shows its tabs and finds each space's active tab", async () => {
     const home = (await win()).activeSpace;
     const a = await open("/a.html");

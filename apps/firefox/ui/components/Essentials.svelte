@@ -10,6 +10,10 @@
     return id ? appState.value?.tabs[id]?.link?.id : undefined;
   });
 
+  const MOVE = "application/x-webaios-essentiel";
+  /** The essential under a dragged one: it shows where the drop lands. */
+  let over = $state<string | null>(null);
+
   function open(f: Favorite) {
     api.dispatch({ type: "openFavorite", windowId: win.id, kind: "essential", id: f.id });
   }
@@ -27,26 +31,49 @@
     if (id) api.dispatch({ type: "addEssential", id });
   }}
 >
-  {#each appState.value?.essentials ?? [] as favorite (favorite.id)}
-    <button
+  {#each appState.value?.essentials ?? [] as favorite, index (favorite.id)}
+    <!-- A div, not a button: Firefox does not start a drag from a button. -->
+    <div
+      class="cell"
+      role="button"
+      tabindex="0"
       data-testid="favorite-{favorite.id}"
       class:active={favorite.id === active}
+      class:over={favorite.id === over}
       title={favorite.title}
+      draggable="true"
+      ondragstart={(e) => e.dataTransfer?.setData(MOVE, favorite.id)}
+      ondragover={(e) => {
+        if (!e.dataTransfer?.types.includes(MOVE)) return;
+        e.preventDefault();
+        over = favorite.id;
+      }}
+      ondragleave={() => (over = null)}
+      ondragend={() => (over = null)}
+      ondrop={(e) => {
+        over = null;
+        const id = e.dataTransfer?.getData(MOVE);
+        if (!id) return;
+        e.stopPropagation();
+        api.dispatch({ type: "moveEssential", favoriteId: id, index });
+      }}
       onclick={(e) => e.button === 0 && open(favorite)}
+      onkeydown={(e) => (e.key === "Enter" || e.key === " ") && open(favorite)}
       oncontextmenu={(e) => openMenu(e, [{ label: "Retirer", dispatch: () => api.dispatch({ type: "removeEssential", favoriteId: favorite.id }) }])}
     >
       <SiteIcon favicon={favorite.favicon} title={favorite.title} size={large ? 32 : 18} />
-    </button>
+    </div>
   {/each}
 </div>
 
 <style>
   .essentials { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; min-height: 8px; }
   .essentials.large { grid-template-columns: repeat(auto-fill, 64px); justify-content: center; gap: 12px; }
-  button { all: unset; display: grid; place-content: center; height: 44px; border-radius: 12px; background: color-mix(in srgb, var(--glass-hi) 60%, transparent); box-shadow: inset 0 0 0 1px var(--glass-edge); transition: transform var(--tap), background var(--tap), box-shadow var(--tap); }
-  button:hover { background: var(--glass-hi); }
-  button:active { transform: scale(0.97); }
-  .large button { height: 64px; border-radius: 16px; }
+  .cell { display: grid; place-content: center; height: 44px; border-radius: 12px; background: color-mix(in srgb, var(--glass-hi) 60%, transparent); box-shadow: inset 0 0 0 1px var(--glass-edge); transition: transform var(--tap), background var(--tap), box-shadow var(--tap); }
+  .cell:hover { background: var(--glass-hi); }
+  .cell:active { transform: scale(0.97); }
+  .large .cell { height: 64px; border-radius: 16px; }
   /* Inside the box: the sidebar's scroll area clips what sticks out. */
-  button.active { background: var(--glass-hi); box-shadow: inset 0 0 0 1.5px var(--accent); }
+  .cell.over { box-shadow: inset 0 0 0 1.5px var(--accent); transform: scale(1.06); }
+  .cell.active { background: var(--glass-hi); box-shadow: inset 0 0 0 1.5px var(--accent); }
 </style>
