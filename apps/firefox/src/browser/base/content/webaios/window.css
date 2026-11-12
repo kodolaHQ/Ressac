@@ -430,6 +430,11 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+:root[webaios-main] #webaios-search-band[data-state="yours"] .what {
+  /* The user's instructions wrap, whole (a long address too); the band grows and the page follows (ResizeObserver). */
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 :root[webaios-main] #webaios-search-band small {
   margin-inline-start: 8px;
   color: var(--text-muted);

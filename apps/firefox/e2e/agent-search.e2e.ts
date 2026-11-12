@@ -9,6 +9,8 @@ import { startServer } from "./server";
 import { click, waitUi } from "./ui";
 
 let server: Awaited<ReturnType<typeof startServer>>;
+/** No decision model (nothing listens there): the watcher lets every action pass, whatever model runs on this machine. */
+const NO_WATCHER = { WEBAIOS_KEV_URL: "http://127.0.0.1:9" };
 let w: LaunchedWebAiOs;
 let m: Marionette;
 beforeAll(async () => {
@@ -31,7 +33,7 @@ beforeAll(async () => {
 });
 afterAll(() => server?.close());
 beforeEach(async () => {
-  w = await launchWebAiOs({ env: { WEBAIOS_MEMORY_LOOP: "1", WEBAIOS_TEST_SEARCH_URL: `${server.url}/results.html?q=%s` } });
+  w = await launchWebAiOs({ env: { ...NO_WATCHER, WEBAIOS_MEMORY_LOOP: "1", WEBAIOS_TEST_SEARCH_URL: `${server.url}/results.html?q=%s` } });
   m = w.marionette;
   await m.setContext("chrome");
   await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
@@ -75,7 +77,7 @@ it("search_web opens an agent tab on the engine, active, in the agent's profile,
 });
 
 it("a search_web navigate follows a result in the same tab without activating it again", async () => {
-  const id = idOf((await callTool(w.dataDir, "search_web", { query: "x" })).text);
+  const id = idOf((await callTool(w.dataDir, "search_web", { query: "x", goal: "but" })).text);
   const windowId = (await state(m)).windows[0]!.id;
   await dispatch(m, { type: "openTab", windowId, url: `${server.url}/lien.html` });
   const before = (await state(m)).windows[0]!;
@@ -86,17 +88,18 @@ it("a search_web navigate follows a result in the same tab without activating it
   const after = await state(m);
   expect(after.tabs[id]!.url).toBe(`${server.url}/b.html?q=x`);
   expect(after.windows[0]!.active[after.windows[0]!.activeSpace]).toBe(active);
-  // Only the fragment changes: no load to wait for, so the answer does not take the 15 s limit.
+  // A fragment the agent adds is dropped (the page's script would read it): the address read opens, quickly.
   const t = Date.now();
-  await callTool(w.dataDir, "navigate", { id, url: `${server.url}/b.html?q=x#haut` });
+  expect((await callTool(w.dataDir, "navigate", { id, url: `${server.url}/b.html?q=x#d=secret` })).text).toBe(`Onglet ${id} → ${server.url}/b.html?q=x`);
   expect(Date.now() - t).toBeLessThan(5000);
+  expect((await state(m)).tabs[id]!.url).toBe(`${server.url}/b.html?q=x`);
 });
 
 const CARD = '[data-testid="address-request"]';
 
 it("a composed address shows the card with the full address; Autoriser loads it, Refuser does not", async () => {
-  const id = idOf((await callTool(w.dataDir, "search_web", { query: "x" })).text);
-  // Another origin than the engine's (which is free): localhost, the same local server.
+  const id = idOf((await callTool(w.dataDir, "search_web", { query: "x", goal: "but" })).text);
+  // An address not read in this search (the engine's own origin is not free either).
   const before = (await state(m)).tabs[id]!.url;
   const composed = `${server.url.replace("127.0.0.1", "localhost")}/b.html?composed=${"y".repeat(150)}`;
   const refusing = callTool(w.dataDir, "navigate", { id, url: composed, reason: "pour voir" });
@@ -115,9 +118,9 @@ it("a composed address shows the card with the full address; Autoriser loads it,
 });
 
 it("a second search_web returns the second page, never the first", async () => {
-  const first = (await callTool(w.dataDir, "search_web", { query: "alpha" })).text;
+  const first = (await callTool(w.dataDir, "search_web", { query: "alpha", goal: "but" })).text;
   expect(first).toContain("Requête : alpha");
-  const second = (await callTool(w.dataDir, "search_web", { query: "beta" })).text;
+  const second = (await callTool(w.dataDir, "search_web", { query: "beta", goal: "but" })).text;
   expect(idOf(second)).toBe(idOf(first));
   expect(second).toContain("Requête : beta");
   expect(second).toContain("/a.html?q=beta");
@@ -126,19 +129,19 @@ it("a second search_web returns the second page, never the first", async () => {
 
 it("late results are returned", async () => {
   await w.close();
-  w = await launchWebAiOs({ env: { WEBAIOS_MEMORY_LOOP: "1", WEBAIOS_TEST_SEARCH_URL: `${server.url}/results-late.html?q=%s` } });
+  w = await launchWebAiOs({ env: { ...NO_WATCHER, WEBAIOS_MEMORY_LOOP: "1", WEBAIOS_TEST_SEARCH_URL: `${server.url}/results-late.html?q=%s` } });
   m = w.marionette;
   await m.setContext("chrome");
   await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
   const config = join(w.dataDir, "workspace", ".webaios", "mcp.json");
   for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
     if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
-  const r = (await callTool(w.dataDir, "search_web", { query: "x" })).text;
+  const r = (await callTool(w.dataDir, "search_web", { query: "x", goal: "but" })).text;
   expect(r).toContain(`Lien — ${server.url}/lien.html`);
 });
 
 it("read_pages returns both pages and leaves no extra tab", async () => {
-  const id = idOf((await callTool(w.dataDir, "search_web", { query: "x" })).text);
+  const id = idOf((await callTool(w.dataDir, "search_web", { query: "x", goal: "but" })).text);
   const before = Object.keys((await state(m)).tabs).sort();
   const a = `${server.url}/a.html?q=x`;
   const b = `${server.url}/b.html?q=x`;
@@ -152,13 +155,45 @@ it("read_pages returns both pages and leaves no extra tab", async () => {
 });
 
 it("read_pages waits for a slow background page to load before reading it (readText ensures the tab)", async () => {
-  await callTool(w.dataDir, "search_web", { query: "x" });
+  await callTool(w.dataDir, "search_web", { query: "x", goal: "but" });
   const slow = `${server.url}/lent.html`;
-  // The engine's origin is free: no card.
+  // Not a link read: its card first.
   const t = Date.now();
-  const r = (await callTool(w.dataDir, "read_pages", { urls: [slow] })).text;
+  const reading = callTool(w.dataDir, "read_pages", { urls: [slow], reason: "lire" });
+  await click(m, `${CARD} button`, { text: "Autoriser" });
+  const r = (await reading).text;
   expect(r).toContain("Texte tardif");
   expect(Date.now() - t).toBeGreaterThan(1000);
+});
+
+it("a target=_blank link in the search tab opens a tab in the agent's profile", async () => {
+  const id = idOf((await callTool(w.dataDir, "search_web", { query: "x", goal: "but" })).text);
+  await callTool(w.dataDir, "navigate", { id, url: `${server.url}/a.html?q=x` });
+  await titleOf(`${server.url}/a.html?q=x`);
+  const handle = await m.execute<string>(
+    `const t = gBrowser.tabs.find((t) => t.getAttribute("webaios-tab-id") === arguments[0]);
+     return ChromeUtils.importESModule("chrome://remote/content/shared/NavigableManager.sys.mjs").NavigableManager.getIdForBrowser(t.linkedBrowser);`,
+    [id],
+  );
+  await m.command("WebDriver:SwitchToWindow", { handle, focus: false });
+  await m.setContext("content");
+  try {
+    const found = await m.command<{ value: Record<string, string> }>("WebDriver:FindElement", { using: "css selector", value: "#lien" });
+    await m.command("WebDriver:PerformActions", {
+      actions: [{ type: "pointer", id: "mouse", parameters: { pointerType: "mouse" }, actions: [{ type: "pointerMove", origin: found.value, x: 0, y: 0 }, { type: "pointerDown", button: 0 }, { type: "pointerUp", button: 0 }] }],
+    });
+    await m.command("WebDriver:ReleaseActions");
+  } finally {
+    await m.setContext("chrome");
+  }
+  for (const deadline = Date.now() + 10_000; ; await new Promise((r) => setTimeout(r, 100))) {
+    const t = Object.values((await state(m)).tabs).find((x) => x.url === `${server.url}/b.html`);
+    if (t) {
+      expect(t.profile).toBe("agent");
+      break;
+    }
+    if (Date.now() > deadline) throw new Error("the link's tab did not open");
+  }
 });
 
 // --- the band, « à vous » and hand_over ---
@@ -178,9 +213,10 @@ const otherTab = async () => {
 };
 
 it("during a read the band shows on the search tab only, with Arrêter", async () => {
-  const id = idOf((await callTool(w.dataDir, "search_web", { query: "x" })).text);
-  const reading = callTool(w.dataDir, "read_pages", { urls: [`${server.url}/lent-longtemps.html`] });
-  const b = (await waitBand((v) => v.state === "working"))!;
+  const id = idOf((await callTool(w.dataDir, "search_web", { query: "x", goal: "but" })).text);
+  const reading = callTool(w.dataDir, "read_pages", { urls: [`${server.url}/lent-longtemps.html`], reason: "lire" });
+  await click(m, `${CARD} button`, { text: "Autoriser" });
+  const b = (await waitBand((v) => v.state === "working" && v.text.startsWith("Lecture")))!;
   expect(b).toMatchObject({ shown: true, label: "Recherche de l'agent", buttons: ["Arrêter"] });
   expect(b.text).toBe("Lecture de 1 page, 0 faite");
   await waitFor(m, `return document.documentElement.hasAttribute("webaios-agent-working")`, (v) => v === true);
@@ -196,7 +232,7 @@ it("during a read the band shows on the search tab only, with Arrêter", async (
 });
 
 it("hand_over: the band says the reason, the tab is marked « à vous » while another tab is active, the halo is off; the user navigates in the tab, Continuer returns the path", async () => {
-  const id = idOf((await callTool(w.dataDir, "search_web", { query: "x" })).text);
+  const id = idOf((await callTool(w.dataDir, "search_web", { query: "x", goal: "but" })).text);
   await otherTab();
   const handing = callTool(w.dataDir, "hand_over", { id, reason: "Résolvez le captcha", kind: "verification" });
   await waitUi(m, `return !!doc.querySelector('[data-testid="tab-yours"]')`);
@@ -219,7 +255,7 @@ it("hand_over: the band says the reason, the tab is marked « à vous » while a
 });
 
 it("Arrêter during a hand-over ends it and removes the band", async () => {
-  const id = idOf((await callTool(w.dataDir, "search_web", { query: "x" })).text);
+  const id = idOf((await callTool(w.dataDir, "search_web", { query: "x", goal: "but" })).text);
   const handing = callTool(w.dataDir, "hand_over", { id, reason: "Aidez-moi", kind: "lost" });
   await waitBand((v) => v.state === "yours");
   expect((await band())!.text).toBe("Je ne trouve pas mon chemin. À vous : Aidez-moi");
@@ -230,18 +266,24 @@ it("Arrêter during a hand-over ends it and removes the band", async () => {
 });
 
 it("a reason with <b> and 5,000 characters shows as text, cut", async () => {
-  const id = idOf((await callTool(w.dataDir, "search_web", { query: "x" })).text);
+  const id = idOf((await callTool(w.dataDir, "search_web", { query: "x", goal: "but" })).text);
   const handing = callTool(w.dataDir, "hand_over", { id, reason: `<b>gras</b>${"z".repeat(5000)}`, kind: "verification" });
   const b = (await waitBand((v) => v.state === "yours"))!;
   expect(b.hasB).toBe(false);
   expect(b.text.startsWith("Bloqué par une vérification. À vous : <b>gras</b>zzz")).toBe(true);
   expect(b.text.length).toBe("Bloqué par une vérification. À vous : ".length + 200);
+  // The sentence wraps, whole, and the page moves down by the band's full height.
+  const fit = `const b = document.querySelector('${BAND}'), w = b.querySelector(".what"), h = b.getBoundingClientRect().height;
+    return { whole: w.scrollWidth <= w.clientWidth, lines: w.getBoundingClientRect().height / parseFloat(getComputedStyle(w).lineHeight), gap: document.getElementById("tabbrowser-tabbox").getBoundingClientRect().top - 8 - (h + 8) };`;
+  const shape = (await waitFor<{ whole: boolean; lines: number; gap: number }>(m, fit, (v) => Math.abs(v.gap) < 1))!;
+  expect(shape.whole).toBe(true);
+  expect(shape.lines).toBeGreaterThan(1.5);
   await press("search-stop");
   await handing;
 });
 
 it("closing the search tab during a hand-over answers the tool", async () => {
-  const id = idOf((await callTool(w.dataDir, "search_web", { query: "x" })).text);
+  const id = idOf((await callTool(w.dataDir, "search_web", { query: "x", goal: "but" })).text);
   const handing = callTool(w.dataDir, "hand_over", { id, reason: "Aidez-moi", kind: "lost" });
   await waitBand((v) => v.state === "yours");
   await dispatch(m, { type: "closeTab", id });
@@ -249,7 +291,7 @@ it("closing the search tab during a hand-over answers the tool", async () => {
 });
 
 it("hand_over is refused on a tab that is not the search tab", async () => {
-  await callTool(w.dataDir, "search_web", { query: "x" });
+  await callTool(w.dataDir, "search_web", { query: "x", goal: "but" });
   await otherTab();
   const other = Object.values((await state(m)).tabs).find((t) => t.url.endsWith("/lien.html"))!.id;
   expect((await callTool(w.dataDir, "hand_over", { id: other, reason: "x", kind: "lost" })).text).toBe("hand_over ne vaut que pour l'onglet de recherche en cours.");
@@ -257,7 +299,7 @@ it("hand_over is refused on a tab that is not the search tab", async () => {
 
 it("the band enters and leaves with a transition", async () => {
   await w.close();
-  w = await launchWebAiOs({ prefs: { "ui.prefersReducedMotion": 0 }, env: { WEBAIOS_MEMORY_LOOP: "1", WEBAIOS_TEST_SEARCH_URL: `${server.url}/results.html?q=%s` } });
+  w = await launchWebAiOs({ prefs: { "ui.prefersReducedMotion": 0 }, env: { ...NO_WATCHER, WEBAIOS_MEMORY_LOOP: "1", WEBAIOS_TEST_SEARCH_URL: `${server.url}/results.html?q=%s` } });
   m = w.marionette;
   await m.setContext("chrome");
   await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
@@ -268,7 +310,7 @@ it("the band enters and leaves with a transition", async () => {
   await m.execute(`window.__samples = []; window.__sampling = true;
     const tick = () => { const b = document.querySelector('${BAND}'); window.__samples.push({ o: b ? +getComputedStyle(b).opacity : 0, inset: document.getElementById("tabbrowser-tabbox").getBoundingClientRect().top - 8 }); if (window.__sampling) requestAnimationFrame(tick); };
     requestAnimationFrame(tick);`);
-  const id = idOf((await callTool(w.dataDir, "search_web", { query: "x" })).text);
+  const id = idOf((await callTool(w.dataDir, "search_web", { query: "x", goal: "but" })).text);
   await waitBand((v) => v.shown);
   // Settled: the inset no longer moves.
   const inset = () => m.execute<number>(`return document.getElementById("tabbrowser-tabbox").getBoundingClientRect().top - 8`);

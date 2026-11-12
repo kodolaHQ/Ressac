@@ -54,7 +54,7 @@
     </div>
     <div class="row">
       <div class="grow"><b>Carnet de recherche</b><span class="muted">Les leçons que l'agent tire de ses recherches : vous pouvez le lire et le corriger.</span></div>
-      <button data-testid="settings-browsing-notes" onclick={() => s.reveal(notes)}>Ouvrir le carnet de recherche</button>
+      <button data-testid="settings-browsing-notes" onclick={() => s.reveal(notes)}>Afficher dans le Finder</button>
     </div>
   </div>
   <h3>Importer</h3>

@@ -74,6 +74,7 @@ describe("Settings page, permissions and data", () => {
     await prepare();
     await launch();
     await openPage();
+    expect(await waitUi(m, `return doc.querySelector('[data-testid="settings-browsing-notes"]')?.textContent`)).toBe("Afficher dans le Finder");
     await click(m, '[data-testid="settings-browsing-notes"]');
     await waitFor(m, "return true", () => read(reveals).includes(join(dataDir, "workspace", "browsing-notes.md")));
   });
