@@ -9,10 +9,17 @@ interface Search {
   window: string; tabId: string; goal: string; gestures: Gesture[];
   free: Set<string>; pages: number; startedAt: number; text: string;
   timer?: ReturnType<typeof setTimeout>;
-  hand?: { path: string[]; resolve(r: { outcome: Outcome; path: string[] }): void };
+  inFlight: number;
+  hand?: { path: string[]; promise: Promise<{ outcome: Outcome; path: string[] }>; resolve(r: { outcome: Outcome; path: string[] }): void };
 }
 
 const PATH_MAX = 20;
+const URL_MAX = 500;
+/** Normalised http(s) address short enough to remember, else undefined. */
+function freeable(u: string): string | undefined {
+  if (u.length > URL_MAX) return undefined;
+  try { const x = new URL(u); return x.protocol === "http:" || x.protocol === "https:" ? norm(u) : undefined; } catch { return undefined; }
+}
 function norm(u: string): string {
   try { const x = new URL(u); x.hash = ""; return x.href; } catch { return u; }
 }
@@ -30,14 +37,16 @@ export class SearchSessions {
     this.idleMs = o.idleMs ?? 120_000;
   }
 
-  current(window: string) {
-    return this.byWindow.get(window);
+  current(window: string): { tabId: string; goal: string; gestures: readonly Gesture[] } | undefined {
+    const s = this.byWindow.get(window);
+    return s && { tabId: s.tabId, goal: s.goal, gestures: [...s.gestures] };
   }
 
   start(window: string, tabId: string, goal: string): void {
     if (this.byWindow.has(window)) throw new Error("a search is already running in this window");
+    if (this.byTab.has(tabId)) throw new Error("this tab already belongs to a search");
     this.stopped.delete(window);
-    const s: Search = { window, tabId, goal, gestures: [], free: new Set(), pages: 0, startedAt: this.now(), text: "" };
+    const s: Search = { window, tabId, goal, gestures: [], free: new Set(), pages: 0, startedAt: this.now(), text: "", inFlight: 0 };
     this.byWindow.set(window, s);
     this.byTab.set(tabId, s);
     this.arm(s);
@@ -51,12 +60,14 @@ export class SearchSessions {
     const s = this.byTab.get(tabId);
     if (!s) return f();
     s.text = text;
+    s.inFlight++;
     clearTimeout(s.timer);
-    this.band(s, "working");
+    if (!s.hand) this.band(s, "working");
     try { return await f(); } finally {
-      if (this.byTab.get(tabId) === s) {
+      s.inFlight--;
+      if (this.byTab.get(tabId) === s && !s.hand && s.inFlight === 0) {
         this.band(s, "idle");
-        if (!s.hand) this.arm(s);
+        this.arm(s);
       }
     }
   }
@@ -65,8 +76,7 @@ export class SearchSessions {
     const s = this.byTab.get(tabId);
     if (!s) return;
     s.pages++;
-    s.free.add(norm(url));
-    for (const l of links) s.free.add(norm(l));
+    for (const l of [url, ...links]) this.allow(tabId, l);
   }
 
   isFree(tabId: string, url: string): boolean {
@@ -76,17 +86,24 @@ export class SearchSessions {
     return s.free.has(norm(url));
   }
 
-  allow(tabId: string, url: string): void { this.byTab.get(tabId)?.free.add(norm(url)); }
+  allow(tabId: string, url: string): void {
+    const u = freeable(url);
+    if (u) this.byTab.get(tabId)?.free.add(u);
+  }
 
   log(tabId: string, g: Gesture): void { this.byTab.get(tabId)?.gestures.push(g); }
 
   handOver(tabId: string, text: string): Promise<{ outcome: Outcome; path: string[] }> {
     const s = this.byTab.get(tabId);
     if (!s) return Promise.resolve({ outcome: "stop", path: [] });
+    if (s.hand) return s.hand.promise; // one question to the user at a time
     clearTimeout(s.timer);
     s.text = text;
     this.band(s, "yours");
-    return new Promise((resolve) => { s.hand = { path: [], resolve }; });
+    let resolve!: (r: { outcome: Outcome; path: string[] }) => void;
+    const promise = new Promise<{ outcome: Outcome; path: string[] }>((res) => { resolve = res; });
+    s.hand = { path: [], promise, resolve };
+    return promise;
   }
 
   continue(tabId: string): void {
@@ -113,7 +130,12 @@ export class SearchSessions {
     if (s) this.end(s, "stop");
   }
 
-  tabNavigated(tabId: string, url: string): void { this.byTab.get(tabId)?.hand?.path.push(url); }
+  tabNavigated(tabId: string, url: string): void {
+    const p = this.byTab.get(tabId)?.hand?.path;
+    if (!p) return;
+    p.push(url);
+    if (p.length > PATH_MAX) p.shift();
+  }
 
   tabClosed(tabId: string): void {
     const s = this.byTab.get(tabId);
@@ -125,7 +147,9 @@ export class SearchSessions {
     this.stopped.clear();
   }
 
-  setEngineOrigin(origin: string): void { this.engineOrigin = origin; }
+  setEngineOrigin(origin: string): void {
+    try { this.engineOrigin = new URL(origin).origin; } catch { this.engineOrigin = ""; }
+  }
 
   private band(s: Search, state: BandState): void {
     this.o.show(s.tabId, { state, text: s.text, pages: s.pages, startedAt: s.startedAt });

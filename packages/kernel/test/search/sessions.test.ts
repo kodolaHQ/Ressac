@@ -152,9 +152,81 @@ describe("SearchSessions", () => {
     expect(s.takeStop("w")).toBe(false);
   });
 
-  test("log records gestures, forgotten at the end", () => {
+  test("log records gestures; goal and gestures are gone once the search ends", () => {
     s.start("w", "t1", "g");
     s.log("t1", { tool: "search", query: "q" });
-    expect(s.current("w")?.gestures).toEqual([{ tool: "search", query: "q" }]);
+    expect(s.current("w")).toEqual({ tabId: "t1", goal: "g", gestures: [{ tool: "search", query: "q" }] });
+    s.dismiss("t1");
+    expect(s.current("w")).toBeUndefined();
+    s.start("w", "t1", "g2");
+    expect(s.current("w")?.gestures).toEqual([]);
+  });
+
+  test("a second handOver returns the pending promise", async () => {
+    s.start("w", "t1", "g");
+    const a = s.handOver("t1", "first");
+    const b = s.handOver("t1", "second");
+    expect(last()?.text).toBe("first");
+    s.continue("t1");
+    expect(await a).toEqual(await b);
+  });
+
+  test("concurrent steps: idle and the idle timer only when the last one ends", async () => {
+    s.start("w", "t1", "g");
+    let r1!: () => void, r2!: () => void;
+    const a = s.step("t1", "a", () => new Promise<void>((r) => { r1 = r; }));
+    const b = s.step("t1", "b", () => new Promise<void>((r) => { r2 = r; }));
+    r1(); await a;
+    expect(last()?.state).toBe("working");
+    vi.advanceTimersByTime(500_000);
+    expect(s.current("w")).toBeDefined();
+    r2(); await b;
+    expect(last()?.state).toBe("idle");
+    vi.advanceTimersByTime(120_000);
+    expect(s.current("w")).toBeUndefined();
+  });
+
+  test("a hand-over begun inside a step keeps its band", async () => {
+    s.start("w", "t1", "g");
+    let hand!: Promise<unknown>;
+    await s.step("t1", "x", async () => { hand = s.handOver("t1", "À vous"); });
+    expect(last()?.state).toBe("yours");
+    s.continue("t1");
+    await hand;
+  });
+
+  test("start throws when the tab already belongs to a search of another window", () => {
+    s.start("w", "t1", "g");
+    expect(() => s.start("w2", "t1", "g")).toThrow();
+  });
+
+  test("tabNavigated caps the path while pushing", async () => {
+    s.start("w", "t1", "g");
+    const p = s.handOver("t1", "x");
+    for (let i = 0; i < 1000; i++) s.tabNavigated("t1", `https://n.test/${i}`);
+    s.continue("t1");
+    const r = await p;
+    expect(r.path).toHaveLength(20);
+    expect(r.path[0]).toBe("https://n.test/980");
+  });
+
+  test("only http(s) addresses up to 500 characters become free", () => {
+    s.start("w", "t1", "g");
+    s.pageRead("t1", "javascript:alert(1)", ["file:///etc/passwd", "https://ok.test/" + "a".repeat(500), "https://ok.test/fine"]);
+    s.allow("t1", "data:text/html,x");
+    expect(s.isFree("t1", "javascript:alert(1)")).toBe(false);
+    expect(s.isFree("t1", "file:///etc/passwd")).toBe(false);
+    expect(s.isFree("t1", "data:text/html,x")).toBe(false);
+    expect(s.isFree("t1", "https://ok.test/" + "a".repeat(500))).toBe(false);
+    expect(s.isFree("t1", "https://ok.test/fine")).toBe(true);
+  });
+
+  test("engine origin: userinfo, subdomain lookalike, other port and other scheme are not free; a path is normalised", () => {
+    s.start("w", "t1", "g");
+    for (const u of ["https://engine@evil.example/", "https://engine.test.evil.example/", "https://sub.engine.test/", "https://engine.test:8443/", "http://engine.test/"])
+      expect(s.isFree("t1", u)).toBe(false);
+    s.setEngineOrigin("https://other.test/some/path?x=1");
+    expect(s.isFree("t1", "https://other.test/anything")).toBe(true);
+    expect(s.isFree("t1", "https://engine.test/")).toBe(false);
   });
 });
