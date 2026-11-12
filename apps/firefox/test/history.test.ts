@@ -311,7 +311,8 @@ test("after fermer, the retained-text methods do not throw", () => {
 });
 
 test("importVisits: http(s) only, retention, upsert keeps latest, not private, searchable, fast", () => {
-  const day = (n: number) => new Date(Date.now() - n * 86_400_000);
+  const now = Date.now();
+  const day = (n: number) => new Date(now - n * 86_400_000);
   const n = h.importVisits([
     { url: "https://old.fr/", title: "Old", date: day(1) },
     { url: "https://old.fr/", title: "Newer title", date: day(0.5) },
