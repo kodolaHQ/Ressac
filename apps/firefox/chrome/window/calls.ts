@@ -58,6 +58,19 @@ export function mountCalls(win: any, store: WebAiOsStore): { press(id: TabId, wh
           }
       }, ms);
   };
+  // A tab closed while its player was still opening leaves it behind (Firefox closes only a player already there).
+  const onClose = (e: any) => {
+    const browser = e.target.linkedBrowser;
+    for (const ms of [0, 500, 2000])
+      win.setTimeout(() => {
+        for (const player of Services.wm.getEnumerator("Toolkit:PictureInPicture")) {
+          const from = PictureInPicture.weakWinToBrowser.get(player);
+          // Its tab's, or (last pass) one Firefox never tied to a tab: the tab went before the player was set up.
+          if (from === browser || (ms === 2000 && !from?.isConnected)) player.close();
+        }
+      }, ms);
+  };
+  gBrowser.tabContainer.addEventListener("TabClose", onClose);
   gBrowser.tabContainer.addEventListener("TabSelect", onSelect);
   const observer = {
     observe(_subject: unknown, _topic: string, data: string) {
@@ -78,6 +91,7 @@ export function mountCalls(win: any, store: WebAiOsStore): { press(id: TabId, wh
     },
     dispose() {
       gBrowser.tabContainer.removeEventListener("TabSelect", onSelect);
+      gBrowser.tabContainer.removeEventListener("TabClose", onClose);
       Services.obs.removeObserver(observer, "webaios-call-state");
     },
   };
