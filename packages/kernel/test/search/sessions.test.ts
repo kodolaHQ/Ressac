@@ -229,4 +229,37 @@ describe("SearchSessions", () => {
     expect(s.isFree("t1", "https://other.test/anything")).toBe(true);
     expect(s.isFree("t1", "https://engine.test/")).toBe(false);
   });
+
+  test("a non-http engine origin frees nothing; an unparsable one does not throw", () => {
+    s.start("w", "t1", "g");
+    s.setEngineOrigin("about:blank");
+    for (const u of ["about:blank", "data:text/html,x", "javascript:alert(1)", "file:///etc/passwd"]) expect(s.isFree("t1", u)).toBe(false);
+    expect(() => s.setEngineOrigin("not a url")).not.toThrow();
+    expect(s.isFree("t1", "https://engine.test/")).toBe(false);
+  });
+
+  test("continue while a step is in flight keeps the timer off until that step ends", async () => {
+    s.start("w", "t1", "g");
+    let rel!: () => void;
+    const call = s.step("t1", "x", () => new Promise<void>((r) => { rel = r; }));
+    const p = s.handOver("t1", "À vous");
+    s.continue("t1");
+    await p;
+    expect(last()?.state).toBe("working");
+    vi.advanceTimersByTime(500_000);
+    expect(s.current("w")).toBeDefined();
+    rel(); await call;
+    expect(last()?.state).toBe("idle");
+  });
+
+  test("gestures keep the last 50; the free set stops growing at 10 000", () => {
+    s.start("w", "t1", "g");
+    for (let i = 0; i < 60; i++) s.log("t1", { tool: "t", query: String(i) });
+    const g = s.current("w")!.gestures;
+    expect(g).toHaveLength(50);
+    expect(g[0]!.query).toBe("10");
+    s.pageRead("t1", "https://a.test/", Array.from({ length: 10_050 }, (_, i) => `https://f.test/${i}`));
+    expect(s.isFree("t1", "https://f.test/100")).toBe(true);
+    expect(s.isFree("t1", "https://f.test/10040")).toBe(false);
+  });
 });

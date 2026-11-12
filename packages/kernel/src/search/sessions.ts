@@ -15,10 +15,13 @@ interface Search {
 
 const PATH_MAX = 20;
 const URL_MAX = 500;
+const GESTURES_MAX = 50;
+const FREE_MAX = 10_000;
+const isWeb = (x: URL) => x.protocol === "http:" || x.protocol === "https:";
 /** Normalised http(s) address short enough to remember, else undefined. */
 function freeable(u: string): string | undefined {
   if (u.length > URL_MAX) return undefined;
-  try { const x = new URL(u); return x.protocol === "http:" || x.protocol === "https:" ? norm(u) : undefined; } catch { return undefined; }
+  try { const x = new URL(u); return isWeb(x) ? norm(u) : undefined; } catch { return undefined; }
 }
 function norm(u: string): string {
   try { const x = new URL(u); x.hash = ""; return x.href; } catch { return u; }
@@ -82,16 +85,24 @@ export class SearchSessions {
   isFree(tabId: string, url: string): boolean {
     const s = this.byTab.get(tabId);
     if (!s) return false;
-    try { if (this.engineOrigin && new URL(url).origin === this.engineOrigin) return true; } catch { /* not a URL */ }
-    return s.free.has(norm(url));
+    let x: URL;
+    try { x = new URL(url); } catch { return false; }
+    if (!isWeb(x)) return false;
+    return (!!this.engineOrigin && x.origin === this.engineOrigin) || s.free.has(norm(url));
   }
 
   allow(tabId: string, url: string): void {
     const u = freeable(url);
-    if (u) this.byTab.get(tabId)?.free.add(u);
+    const free = this.byTab.get(tabId)?.free;
+    if (u && free && free.size < FREE_MAX) free.add(u);
   }
 
-  log(tabId: string, g: Gesture): void { this.byTab.get(tabId)?.gestures.push(g); }
+  log(tabId: string, g: Gesture): void {
+    const list = this.byTab.get(tabId)?.gestures;
+    if (!list) return;
+    list.push(g);
+    if (list.length > GESTURES_MAX) list.shift();
+  }
 
   handOver(tabId: string, text: string): Promise<{ outcome: Outcome; path: string[] }> {
     const s = this.byTab.get(tabId);
@@ -113,8 +124,8 @@ export class SearchSessions {
     s.hand = undefined;
     const kept = path.slice(-PATH_MAX);
     if (kept.length) this.allow(tabId, kept[kept.length - 1]!);
-    this.band(s, "idle");
-    this.arm(s);
+    if (s.inFlight > 0) this.band(s, "working"); // the last step to end sets idle and arms the timer
+    else { this.band(s, "idle"); this.arm(s); }
     resolve({ outcome: "continue", path: kept });
   }
 
@@ -148,7 +159,10 @@ export class SearchSessions {
   }
 
   setEngineOrigin(origin: string): void {
-    try { this.engineOrigin = new URL(origin).origin; } catch { this.engineOrigin = ""; }
+    try {
+      const x = new URL(origin);
+      this.engineOrigin = isWeb(x) ? x.origin : "";
+    } catch { this.engineOrigin = ""; }
   }
 
   private band(s: Search, state: BandState): void {
