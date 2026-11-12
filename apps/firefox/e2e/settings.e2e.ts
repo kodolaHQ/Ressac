@@ -38,7 +38,8 @@ afterEach(async () => {
 
 /** Launches with `files` written under the workspace (WEBAIOS_ROOT). Ollama is unreachable unless the test points it elsewhere. */
 async function launch(env: Record<string, string> = {}, files: Record<string, string> = {}): Promise<void> {
-  w = await launchWebAiOs({ env: { WEBAIOS_OLLAMA_URL: "http://127.0.0.1:9", ...env } });
+  // The kernel's own decision-model address: these tests read the decision model found in Ollama, which an imposed one hides.
+  w = await launchWebAiOs({ env: { WEBAIOS_OLLAMA_URL: "http://127.0.0.1:9", WEBAIOS_KEV_URL: undefined, ...env } });
   for (const [name, text] of Object.entries(files)) {
     mkdirSync(join(w.dataDir, "workspace"), { recursive: true });
     writeFileSync(join(w.dataDir, "workspace", name), text);

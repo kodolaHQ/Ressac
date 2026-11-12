@@ -9,8 +9,6 @@ import { startServer } from "./server";
 import { click, waitUi } from "./ui";
 
 let server: Awaited<ReturnType<typeof startServer>>;
-/** No decision model (nothing listens there): the watcher lets every action pass, whatever model runs on this machine. */
-const NO_WATCHER = { WEBAIOS_KEV_URL: "http://127.0.0.1:9" };
 let w: LaunchedWebAiOs;
 let m: Marionette;
 beforeAll(async () => {
@@ -33,7 +31,7 @@ beforeAll(async () => {
 });
 afterAll(() => server?.close());
 beforeEach(async () => {
-  w = await launchWebAiOs({ env: { ...NO_WATCHER, WEBAIOS_MEMORY_LOOP: "1", WEBAIOS_TEST_SEARCH_URL: `${server.url}/results.html?q=%s` } });
+  w = await launchWebAiOs({ env: { WEBAIOS_MEMORY_LOOP: "1", WEBAIOS_TEST_SEARCH_URL: `${server.url}/results.html?q=%s` } });
   m = w.marionette;
   await m.setContext("chrome");
   await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
@@ -129,7 +127,7 @@ it("a second search_web returns the second page, never the first", async () => {
 
 it("late results are returned", async () => {
   await w.close();
-  w = await launchWebAiOs({ env: { ...NO_WATCHER, WEBAIOS_MEMORY_LOOP: "1", WEBAIOS_TEST_SEARCH_URL: `${server.url}/results-late.html?q=%s` } });
+  w = await launchWebAiOs({ env: { WEBAIOS_MEMORY_LOOP: "1", WEBAIOS_TEST_SEARCH_URL: `${server.url}/results-late.html?q=%s` } });
   m = w.marionette;
   await m.setContext("chrome");
   await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
@@ -299,7 +297,7 @@ it("hand_over is refused on a tab that is not the search tab", async () => {
 
 it("the band enters and leaves with a transition", async () => {
   await w.close();
-  w = await launchWebAiOs({ prefs: { "ui.prefersReducedMotion": 0 }, env: { ...NO_WATCHER, WEBAIOS_MEMORY_LOOP: "1", WEBAIOS_TEST_SEARCH_URL: `${server.url}/results.html?q=%s` } });
+  w = await launchWebAiOs({ prefs: { "ui.prefersReducedMotion": 0 }, env: { WEBAIOS_MEMORY_LOOP: "1", WEBAIOS_TEST_SEARCH_URL: `${server.url}/results.html?q=%s` } });
   m = w.marionette;
   await m.setContext("chrome");
   await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);

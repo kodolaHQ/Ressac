@@ -57,6 +57,12 @@ export class SearchSessions {
 
   owns(tabId: string): boolean { return this.byTab.has(tabId); }
 
+  /** Gives the search its goal (one started without, by read_pages). */
+  setGoal(tabId: string, goal: string): void {
+    const s = this.byTab.get(tabId);
+    if (s) s.goal = goal;
+  }
+
   /** Calls `f` once when the search of this tab ends (stop, idle, tab closed, reset); returns the unsubscribe. */
   onEnd(tabId: string, f: () => void): () => void {
     const e = this.byTab.get(tabId)?.enders;
@@ -107,14 +113,14 @@ export class SearchSessions {
   }
 
   /**
-   * The address to open without a card: `url` itself if it was read as it is, its fragment-less form if only that was
+   * The address to open without a card: `url` (normalised) if it was read as it is, its fragment-less form if only that was
    * (a fragment the agent adds is dropped: the page's script would read it), else undefined.
    */
   freeAs(tabId: string, url: string): string | undefined {
     const free = this.byTab.get(tabId)?.free;
     const x = web(url);
     if (!free || !x) return undefined;
-    if (free.has(x.href)) return url;
+    if (free.has(x.href)) return x.href;
     x.hash = "";
     return free.has(x.href) ? x.href : undefined;
   }

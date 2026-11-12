@@ -1383,14 +1383,15 @@ const b = { text: "B", url: "https://exemple.fr/b" };
 const c = { text: "C", url: "https://exemple.fr/c" };
 
 async function withSearch(
-  attempt: (o: { call: (name: string, args: Record<string, unknown>, token?: string, onprogress?: (n: number) => void) => Promise<{ text: string; isError: boolean }>; token: string; fake: FakeBridge; search: SearchSessions; s: Awaited<ReturnType<typeof startMcpServer>>; bands: [string, Band | null][] }) => Promise<void>,
-  opts: { privateWindows?: string[]; allow?: boolean; emptySpanMs?: number; address?: boolean | "wait"; failing?: string[]; hanging?: string[]; readPageMs?: number; heartbeatMs?: number; watcher?: Watcher; withUserData?: boolean; idleMs?: number } = {},
+  attempt: (o: { call: (name: string, args: Record<string, unknown>, token?: string, onprogress?: (n: number) => void) => Promise<{ text: string; isError: boolean }>; token: string; fake: FakeBridge; search: SearchSessions; s: Awaited<ReturnType<typeof startMcpServer>>; bands: [string, Band | null][]; policy: AccessPolicy }) => Promise<void>,
+  opts: { privateWindows?: string[]; allow?: boolean; emptySpanMs?: number; address?: boolean | "wait" | "later"; failing?: string[]; hanging?: string[]; readPageMs?: number; heartbeatMs?: number; watcher?: Watcher; withUserData?: boolean; idleMs?: number } = {},
 ) {
   const principal = generateToken();
   const fake = new FakeBridge([github], { active: "github", allow: opts.allow ?? false, ...(opts.withUserData ? { history: { results: [] }, bookmarks: [] } : {}), search: { privateWindows: opts.privateWindows ?? [], failing: opts.failing ?? [], hanging: opts.hanging ?? [] }, ...(opts.address !== undefined ? { address: opts.address } : {}) });
   const bands: [string, Band | null][] = [];
   const search = new SearchSessions({ show: (id, band) => bands.push([id, band]), ...(opts.idleMs ? { idleMs: opts.idleMs } : {}) });
-  const s = await startMcpServer({ bridge: fake, policy: new AccessPolicy(), token: principal, search, ...(opts.watcher ? { watcher: opts.watcher } : {}), settleMs: 0, emptySpanMs: opts.emptySpanMs ?? 0, ...(opts.heartbeatMs ? { heartbeatMs: opts.heartbeatMs } : {}), ...(opts.readPageMs !== undefined ? { readPageMs: opts.readPageMs } : {}) });
+  const policy = new AccessPolicy();
+  const s = await startMcpServer({ bridge: fake, policy, token: principal, search, ...(opts.watcher ? { watcher: opts.watcher } : {}), settleMs: 0, emptySpanMs: opts.emptySpanMs ?? 0, ...(opts.heartbeatMs ? { heartbeatMs: opts.heartbeatMs } : {}), ...(opts.readPageMs !== undefined ? { readPageMs: opts.readPageMs } : {}) });
   const clients: Client[] = [];
   const call = async (name: string, args: Record<string, unknown>, clientToken = principal, onprogress?: (n: number) => void) => {
     // search_web needs a goal: a test that does not care gets one.
@@ -1402,7 +1403,7 @@ async function withSearch(
     return { text: text(r), isError: r.isError === true };
   };
   try {
-    await attempt({ call, token: principal, fake, search, s, bands });
+    await attempt({ call, token: principal, fake, search, s, bands, policy });
   } finally {
     await Promise.all(clients.map((x) => x.close()));
     await s.stop();
@@ -2096,15 +2097,19 @@ test("a followed link is never judged", async () => {
   }, { watcher: w.watcher });
 });
 
-test("search_web needs a goal; a search read_pages starts takes its reason as goal, and without one the watcher is not asked", async () => {
-  const { watcher, asked } = fakeWatcher(() => true);
-  await withSearch(async ({ call, fake, search }) => {
+test("search_web needs a goal; a search read_pages starts takes its reason as goal; without one, the next search_web gives it and is judged", async () => {
+  const { watcher, asked } = fakeWatcher((g) => g.tool === "search_web");
+  await withSearch(async ({ call, fake, search, bands }) => {
     for (const goal of [undefined, "   "]) expect((await call("search_web", { query: "x", goal })).isError).toBe(true);
     expect(fake.calls.filter((x) => x.method === "search.open")).toHaveLength(0);
     await call("read_pages", { urls: [a.url] });
     expect(search.current("main")?.goal).toBe("");
-    await call("search_history", { query: "h" });
-    expect(asked).toHaveLength(0);
+    const pending = call("search_web", { query: "adresse mail", goal: "trouver un vélo" });
+    await vi.waitFor(() => expect(bands.at(-1)![1]).toMatchObject({ state: "yours", text: BAND("recherche « adresse mail »", "trouver un vélo") }));
+    expect(search.current("main")?.goal).toBe("trouver un vélo");
+    expect(asked.map((x) => x.goal)).toEqual(["trouver un vélo"]);
+    search.continue("search-1");
+    expect((await pending).text).toContain("Onglet : search-1");
   }, { watcher, withUserData: true, address: true });
   await withSearch(async ({ call, search }) => {
     await call("read_pages", { urls: [a.url], reason: "  lire l'annonce " });
@@ -2280,4 +2285,67 @@ test("a dropped request takes its address card down and the window's chain goes 
     await vi.waitFor(() => expect(fake.addressSignals[0]!.aborted).toBe(true));
     expect((await call("search_web", { query: "y" })).text).toContain("Onglet : search-1");
   }, { address: "wait" });
+});
+
+// --- residuals: a hand opened while a tool waited ---
+
+test("a hand opened while the watcher judges a search_web: the search tab is not navigated", async () => {
+  let release!: () => void;
+  const judging = new Promise<void>((ok) => { release = ok; });
+  let first = true;
+  const watcher: Watcher = { judge: async () => { if (first) { first = false; return "ok"; } await judging; return "ok"; } };
+  await withSearch(async ({ call, fake, search }) => {
+    await call("search_web", { query: "x", goal: "but" });
+    const pending = call("search_web", { query: "y" });
+    await new Promise((ok) => setTimeout(ok, 100));
+    const hand = handOver(call);
+    await vi.waitFor(() => expect(search.handing("search-1")).toBe(true));
+    release();
+    expect(await pending).toEqual({ text: HANDING, isError: true });
+    expect(fake.calls.filter((x) => x.method === "search.open")).toHaveLength(1);
+    search.continue("search-1");
+    await hand;
+  }, { watcher });
+});
+
+test("a hand opened while an address card is up: navigate and read_pages neither move nor read the search tab", async () => {
+  await withSearch(async ({ call, fake, search }) => {
+    await call("search_web", { query: "x" });
+    const going = call("navigate", { id: "search-1", url: "https://ailleurs.fr/", reason: "r" });
+    const reading = call("read_pages", { urls: ["https://autre.fr/"], reason: "r" });
+    await vi.waitFor(() => expect(fake.calls.some((x) => x.method === "askAddress")).toBe(true));
+    const hand = handOver(call);
+    await vi.waitFor(() => expect(search.handing("search-1")).toBe(true));
+    expect(await going).toEqual({ text: HANDING, isError: true });
+    search.continue("search-1");
+    await hand;
+    expect(fake.calls.filter((x) => x.method === "navigate")).toHaveLength(0);
+    await reading;
+  }, { address: "later" });
+  await withSearch(async ({ call, fake, search }) => {
+    await call("search_web", { query: "x" });
+    const reading = call("read_pages", { urls: ["https://autre.fr/"], reason: "r" });
+    await vi.waitFor(() => expect(fake.calls.some((x) => x.method === "askAddress")).toBe(true));
+    const hand = handOver(call);
+    await vi.waitFor(() => expect(search.handing("search-1")).toBe(true));
+    expect(await reading).toEqual({ text: HANDING, isError: true });
+    expect(fake.calls.filter((x) => x.method === "search.openBackground")).toHaveLength(0);
+    search.continue("search-1");
+    await hand;
+  }, { address: "later" });
+});
+
+test("list_tabs shows the search tab as not shared while a hand is open, even with a grant", async () => {
+  await withSearch(async ({ call, fake, search, policy }) => {
+    await call("search_web", { query: "x" });
+    policy.grant((await fake.listTabs()).find((x) => x.id === "search-1")!);
+    expect((await call("list_tabs", {})).text).toContain("search-1 · https://moteur.test/?q=x");
+    const hand = handOver(call);
+    await vi.waitFor(() => expect(search.handing("search-1")).toBe(true));
+    const listed = (await call("list_tabs", {})).text;
+    expect(listed).toContain("search-1 · onglet non partagé ·  · perso");
+    expect(listed).not.toContain("moteur.test");
+    search.continue("search-1");
+    await hand;
+  });
 });

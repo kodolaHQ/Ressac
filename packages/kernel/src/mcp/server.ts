@@ -524,7 +524,8 @@ function createToolsServer(
         // A site app: its name (never the page title); its full address only with the grant.
         // Without a grant: the app's current domain, never the page's host (a login domain would say what the user is doing).
         if (o.site !== undefined) return `${o.id} · ${o.title} · ${policy.canRead(o) ? o.url : (o.domain ?? "")} · ${SITE_APP_LABEL}`;
-        return policy.canRead(o)
+        // A search tab the user has in hand: nothing of it, grant or not.
+        return policy.canRead(o) && !handing(o.id)
           ? `${o.id} · ${o.title} · ${o.url} · ${o.space}`
           : `${o.id} · ${NOT_SHARED_LABEL} ·  · ${o.space}`;
       });
@@ -599,6 +600,8 @@ function createToolsServer(
             askAddressCard(bridge, policy, requests, { url, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", ...view }, `address:${id}:${url}`, win ?? undefined, (f) => sessions.onEnd(id, f), extra?.signal),
           );
           if (!sessions.owns(id)) return text(sessions.takeStop(win ?? MAIN_WINDOW, id) ? STOP_TEXT : CLOSED_TEXT);
+          // The user took the page while the card was up.
+          if (sessions.handing(id)) return text(HANDING_TEXT, true);
           if (!yes) return text(DENIAL_TEXT);
           sessions.allow(id, url);
         }
@@ -709,12 +712,16 @@ function createToolsServer(
           if (sessions.takeStop(key)) return text(STOP_TEXT);
           const current = sessions.current(key);
           if (current && sessions.handing(current.tabId)) return text(HANDING_TEXT, true);
+          // A search read_pages started without a reason takes this goal: the watcher works from now on.
+          if (current && !current.goal) sessions.setGoal(current.tabId, goal);
           const g: Gesture = { tool: "search_web", query };
           const what = `recherche « ${cut(query)} »`;
           let o: TabInfo;
           if (current) {
             const stop = await watch(g, what, extra?.signal);
             if (stop) return text(stop);
+            // The user took the page while the watcher judged.
+            if (sessions.handing(current.tabId)) return text(HANDING_TEXT, true);
             o = await search.open(win ?? undefined, { query }, current.tabId);
           } else {
             const aim = goal;
@@ -774,6 +781,8 @@ function createToolsServer(
             if (t) sessions.allow(t, u);
             ok.push([u, u]);
           }
+          // The user took the search tab while a card was up: nothing is read in this search now.
+          if (handing(tabId)) return text(HANDING_TEXT, true);
           let first: TabInfo | undefined;
           if (!tabId && ok.length) {
             first = await search.open(win ?? undefined, { url: ok[0]![1] });
