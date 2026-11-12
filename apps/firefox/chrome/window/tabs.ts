@@ -69,11 +69,21 @@ export class TabSync {
     const strip = gBrowser.tabContainer;
     strip.addEventListener("TabOpen", (e: Event) => this.onOpen(e.target));
     strip.addEventListener("TabClose", (e: Event) => this.onClose(e.target));
-    strip.addEventListener("TabSelect", (e: Event) => this.onSelect(e.target));
+    strip.addEventListener("TabSelect", (e: any) => {
+      this.onSelect(e.target);
+      // A tab left while it plays without sound (a muted video) has a media session too.
+      this.watchPlayback(e.detail?.previousTab);
+      // Shown again: a pause in the background is forgotten.
+      this.watchPlayback(e.target);
+    });
     strip.addEventListener("TabAttrModified", (e: CustomEvent) => {
       const changed: string[] = e.detail.changed;
       const tab: any = e.target;
       if (changed.includes("label") || changed.includes("image")) this.update(tab, { title: tab.label, favicon: tab.getAttribute("image") || null });
+      if (changed.includes("soundplaying") || changed.includes("muted")) {
+        this.update(tab, { sound: tab.hasAttribute("muted") ? "muted" : tab.hasAttribute("soundplaying") ? "playing" : null });
+        this.watchPlayback(tab);
+      }
     });
     gBrowser.addTabsProgressListener({
       onLocationChange: (browser: any, progress: any, _request: unknown, location: any, flags: number) => {
@@ -253,6 +263,35 @@ export class TabSync {
       // Not yet in the state: a tab being adopted, its ouvrirOnglet follows.
       if (f && state.tabs[id] && f.active[f.activeSpace] !== id) this.store.dispatch({ type: "activateTab", id });
     });
+  }
+
+  /** The media sessions already listened to (one per page process). */
+  private readonly sessions = new WeakSet<object>();
+
+  /** Follows the tab's media session (Firefox's media keys' view of it): playing, paused in the background, or none. */
+  private watchPlayback(tab: any): void {
+    const session = tab?.linkedBrowser?.browsingContext?.mediaController;
+    if (!session) return;
+    const read = () => {
+      // The tab may have moved on to another session (a new page process).
+      if (tab.linkedBrowser?.browsingContext?.mediaController !== session) return;
+      // Paused counts only for a background tab that was playing (paused from its bar, or by the page): a tab left
+      // with nothing playing has no bar, whatever it played before.
+      const shownPaused = !tab.selected && !!this.store.state.tabs[tab.getAttribute(TAB_ID)]?.playback;
+      this.update(tab, { playback: session.isActive && session.isPlaying ? "playing" : session.isActive && shownPaused ? "paused" : null });
+    };
+    if (!this.sessions.has(session)) {
+      this.sessions.add(session);
+      for (const type of ["activated", "deactivated", "playbackstatechange"]) session.addEventListener(type, read);
+    }
+    read();
+  }
+
+  /** The media bar's play / pause. */
+  togglePlayback(id: TabId): void {
+    const session = this.tabs.get(id)?.linkedBrowser?.browsingContext?.mediaController;
+    // pause() takes why the sound is lost: the user asked.
+    if (session?.isActive) session.isPlaying ? session.pause("user") : session.play();
   }
 
   private history(browser: any): Pick<TabFields, "canGoBack" | "canGoForward"> {

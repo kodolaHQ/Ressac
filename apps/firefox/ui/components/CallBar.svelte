@@ -4,10 +4,13 @@
   import { api, appState } from "../state.svelte";
   import Icon from "./Icon.svelte";
   import SiteIcon from "./SiteIcon.svelte";
+  import SoundButton from "./SoundButton.svelte";
 
-  /** The calls going on in this window's background tabs: back to the call, its microphone, its camera. */
+  /** What goes on in this window's background tabs: a call (back to it, microphone, camera), a video or music (back to it, play / pause, sound). */
   let { window: win }: { window: WindowState } = $props();
   const calls = $derived(Object.values(appState.value?.tabs ?? {}).filter((t) => t.call && t.windowId === win.id));
+  /** Tabs with a media session (a video, music) that are not the one shown; a call has its own bar. */
+  const playing = $derived(Object.values(appState.value?.tabs ?? {}).filter((t) => t.playback && !t.call && t.windowId === win.id && win.active[win.activeSpace] !== t.id));
   const press = (id: string, which: "mic" | "camera") => window.parent.webaiosWindow?.pressCall(id, which);
 </script>
 
@@ -35,6 +38,22 @@
       title={tab.call!.camera ? "Couper la caméra" : "Activer la caméra"}
       onclick={() => press(tab.id, "camera")}><Icon name={tab.call!.camera ? "camera" : "camera-off"} size={16} /></button
     >
+  </div>
+{/each}
+{#each playing as tab (tab.id)}
+  <div class="call" data-testid="media-bar" role="group" aria-label="Lecture en cours : {tab.title}" out:fade={{ duration: 150 }}>
+    <button class="back" data-testid="media-back" title="Revenir à l'onglet : {tab.title}" onclick={() => api.dispatch({ type: "activateTab", id: tab.id })}>
+      <SiteIcon favicon={tab.favicon} title={tab.title} />
+      <span>{tab.title}</span>
+    </button>
+    <button
+      class="toggle"
+      data-testid="media-play"
+      aria-label={tab.playback === "playing" ? "Mettre en pause" : "Reprendre la lecture"}
+      title={tab.playback === "playing" ? "Mettre en pause" : "Reprendre la lecture"}
+      onclick={() => window.parent.webaiosWindow?.togglePlayback(tab.id)}><Icon name={tab.playback === "playing" ? "pause" : "play"} size={16} /></button
+    >
+    <SoundButton {tab} size={16} />
   </div>
 {/each}
 

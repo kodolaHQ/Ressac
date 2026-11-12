@@ -68,6 +68,10 @@ export interface WindowController {
    */
   rememberFocus(): () => void;
   /** Width of the open agent panel while its handle is dragged (the saved width comes back from reglages). */
+  /** A tab's sound pictogram: mutes or unmutes the tab. */
+  toggleMute(id: TabId): void;
+  /** The media bar's play / pause, for a tab with a media session. */
+  togglePlayback(id: TabId): void;
   /** The call bar's microphone or camera button, for a background tab in a call. */
   pressCall(id: TabId, which: "mic" | "camera"): void;
   setAgentWidth(px: number): void;
@@ -543,6 +547,8 @@ export function createController(
       };
     },
     pressCall: calls.press,
+    toggleMute: (id) => tabs.tab(id)?.toggleMuteAudio(),
+    togglePlayback: (id) => tabs.togglePlayback(id),
     setAgentWidth(px) {
       if (!agentOpen(store.state)) return;
       document.documentElement.removeAttribute("webaios-agent-sliding");
