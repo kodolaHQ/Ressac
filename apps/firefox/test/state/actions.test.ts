@@ -423,6 +423,11 @@ test("historyContext: a shared essential counts in the space that displays it, o
   expect(historyContext(e, "inexistant")).toBeNull();
 });
 
+test("historyContext: a tab in its own login profile (the agent's) records nothing", () => {
+  const t = open("https://moteur.test/?q=x", { profile: AGENT_PROFILE });
+  expect(historyContext(e, t)).toBeNull();
+});
+
 test("spaceKey, privateTab, tabProfile", () => {
   ag({ type: "createSpace", name: "Banque", icon: "🏦", private: true, profile: "new" });
   const bank = e.spaces[1]!;

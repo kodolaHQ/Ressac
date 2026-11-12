@@ -285,7 +285,9 @@ export class TabSync {
       if (this.tabs.get(id) !== tab) return;
       // The URL addTab is loading: sync replaces a tab opened in another container than its space's before it loads.
       const url = tab.linkedBrowser.userTypedValue || (tab.linkedBrowser.currentURI?.spec ?? "about:blank");
-      this.store.dispatch({ type: "openTab", windowId: this.windowId, url, after: after, activate: tab.selected }, () => id);
+      // A page in its own login profile (the agent's) opens its tabs in that profile too.
+      const profile = opener ? this.store.state.tabs[opener]?.profile : undefined;
+      this.store.dispatch({ type: "openTab", windowId: this.windowId, url, after: after, activate: tab.selected, ...(profile ? { profile } : {}) }, () => id);
     });
   }
 

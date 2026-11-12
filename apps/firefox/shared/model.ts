@@ -221,10 +221,11 @@ export function profilesInUse(state: Pick<BrowserState, "profiles" | "spaces">):
 /**
  * The space where to count a visit (and the kept text) of the tab: the one that displays it in its window — a shared
  * essential is seen in the active space —, otherwise its own. Private if that space or the tab's is (unknown: private).
+ * A tab in its own login profile (the agent's) records nothing: its pages are not the user's.
  */
 export function historyContext(state: BrowserState, id: TabId): { spaceId: SpaceId; private: boolean } | null {
   const o = state.tabs[id];
-  if (!o) return null;
+  if (!o || o.profile) return null;
   const f = state.windows.find((x) => x.id === o.windowId);
   const spaceId = f && f.active[f.activeSpace] === id ? f.activeSpace : o.spaceId;
   const isPrivate = (state.spaces.find((e) => e.id === spaceId)?.private ?? true) || privateTab(state, o);
