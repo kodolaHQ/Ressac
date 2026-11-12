@@ -137,7 +137,7 @@ describe("settings api", () => {
 
   it("revealable", () => {
     const r = (p: string) => revealable("/u/WebAiOs", "/u/Downloads", p);
-    for (const p of ["/u/WebAiOs", "/u/WebAiOs.backup-2026-11-10T13-35-12-345Z", "/u/Downloads/WebAiOs-donnees-2026-11-10 (2).zip"]) expect(r(p)).toBe(true);
+    for (const p of ["/u/WebAiOs", "/u/WebAiOs.backup-2026-11-10T13-35-12-345Z", "/u/Downloads/WebAiOs-donnees-2026-11-10 (2).zip", "/u/WebAiOs/workspace/browsing-notes.md"]) expect(r(p)).toBe(true);
     for (const p of ["/u/WebAiOs/workspace", "/u/WebAiOs.backup-x", "/u/Downloads/autre.zip", "/u/Downloads/../WebAiOs-donnees-2026-11-10.zip", "/etc"]) expect(r(p)).toBe(false);
   });
 

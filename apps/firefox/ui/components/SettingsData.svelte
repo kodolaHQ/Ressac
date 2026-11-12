@@ -22,6 +22,7 @@
   const date = (iso: string) => new Date(iso).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" });
   const number = (n: number) => n.toLocaleString("fr-FR", { maximumFractionDigits: 1 });
   // shortcut: assumes a macOS home under /Users, display only; take the home from the chrome if another OS ships.
+  const notes = `${dir}/workspace/browsing-notes.md`;
   const shownDir = dir.replace(/^\/Users\/[^/]+(?=\/|$)/, "~");
   const size = (b: number) => (b >= 1e9 ? `${number(b / 1e9)} Go` : `${number(b / 1e6)} Mo`);
 
@@ -50,6 +51,10 @@
     <div class="row">
       <div class="grow"><b>Dossier</b><code class="muted" data-testid="data-dir" title={dir}>{shownDir}</code></div>
       <button data-testid="data-reveal" onclick={() => s.reveal(dir)}>Afficher dans le Finder</button>
+    </div>
+    <div class="row">
+      <div class="grow"><b>Carnet de recherche</b><span class="muted">Les leçons que l'agent tire de ses recherches : vous pouvez le lire et le corriger.</span></div>
+      <button data-testid="settings-browsing-notes" onclick={() => s.reveal(notes)}>Ouvrir le carnet de recherche</button>
     </div>
   </div>
   <h3>Importer</h3>

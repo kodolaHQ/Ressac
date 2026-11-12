@@ -22,6 +22,7 @@ const START_FILES: Record<string, string[]> = {
 const expectedList = [
   "AGENTS.md",
   "CLAUDE.md",
+  "browsing-notes.md",
   "home/layout.json",
   ...Object.entries(START_FILES).flatMap(([w, files]) => files.map((f) => `home/widgets/${w}/${f}`)),
   ".webaios/profiles/claude.json",
@@ -170,6 +171,29 @@ test("CLAUDE.md and the agent profile are rewritten only when identical to an ol
   }
 });
 
+test("initSpace creates browsing-notes.md and never overwrites it", async () => {
+  const c = spacePaths(await tempFolder());
+  await initSpace(c);
+  const notes = join(c.root, "browsing-notes.md");
+  expect(existsSync(notes)).toBe(true);
+  await writeFile(notes, "my lessons\n");
+  await initSpace(c);
+  expect(await readFile(notes, "utf8")).toBe("my lessons\n");
+});
+
+test("a profile left at the previous shipped version is replaced", async () => {
+  expect(OLD_AGENT_PROFILE.has("4bedd62a30db9f408bd8ada622b5bc415cd7ac1fdcd7d9e1b52eda1bc1d2fc35")).toBe(true);
+  const c = spacePaths(await tempFolder());
+  await mkdir(c.profiles, { recursive: true });
+  await writeFile(
+    join(c.profiles, "claude.json"),
+    '{\n  "id": "claude",\n  "name": "Claude Code",\n  "interactive": ["claude", "--dangerously-skip-permissions", "--mcp-config", "{mcpConfig}"],\n  "resume": ["claude", "--dangerously-skip-permissions", "--continue", "--mcp-config", "{mcpConfig}"],\n  "nonInteractive": ["claude", "--dangerously-skip-permissions", "-p", "{prompt}"],\n  "mcpConfig": "claude-json"\n}\n',
+  );
+  expect(sha256(await readFile(join(c.profiles, "claude.json")))).toBe("4bedd62a30db9f408bd8ada622b5bc415cd7ac1fdcd7d9e1b52eda1bc1d2fc35");
+  await initSpace(c);
+  expect(await readFile(join(c.profiles, "claude.json"), "utf8")).toBe(await readFile(join(DEFAULT_TEMPLATES, "agent-profile.json"), "utf8"));
+});
+
 test("the profile shipped before the English formats (profil-claude.json) is a known old template", () => {
   expect(OLD_AGENT_PROFILE.has("2e20e733cc7c9aa30c807e227a6547824afbfc1f6a8ffe0c005cc9f51c039085")).toBe(true);
   expect(OLD_CLAUDE_MD.has("11baa6aab5848a8fff974dabc5e78e9ccc69b8d2a53a91d23fa9a3f0ca73632b")).toBe(true);
@@ -179,8 +203,9 @@ test("the profile shipped before the English formats (profil-claude.json) is a k
 
 test("the AGENTS.md template is pinned: before editing it, add this hash to OLD_AGENTS, then update the pin", async () => {
   expect(sha256(await readFile(join(import.meta.dirname, "..", "..", "templates", "AGENTS.md")))).toBe(
-    "56b165bf7ae7e88fd3125401419301b29eb16eba113434592e01a0d1c61b868b",
+    "6df85cfde516794ae770dad6cd1f7d4d5f6cd6b8653c7ec6a72f4f6f48041ce8",
   );
+  expect(OLD_AGENTS.has("56b165bf7ae7e88fd3125401419301b29eb16eba113434592e01a0d1c61b868b")).toBe(true);
 });
 
 test("the hash of every shipped version is kept: the list only grows", () => {

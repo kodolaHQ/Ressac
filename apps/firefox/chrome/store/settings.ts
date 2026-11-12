@@ -17,10 +17,10 @@ export interface SettingsChrome {
   reset(): Promise<boolean>;
 }
 
-/** What « Afficher dans le Finder » may show: the data folder, a backup, or an export file directly in the export folder. */
+/** What « Afficher dans le Finder » may show: the data folder, the agent's browsing notes, a backup, or an export file directly in the export folder. */
 export function revealable(dataDir: string, exportFolder: string, path: string): boolean {
   if (typeof path !== "string" || path.includes("\0")) return false;
-  if (path === dataDir || backupDate(dataDir, path) !== null) return true;
+  if (path === dataDir || path === `${dataDir}/workspace/browsing-notes.md` || backupDate(dataDir, path) !== null) return true;
   if (!exportFolder || !path.startsWith(exportFolder + "/")) return false;
   return EXPORT_NAME.test(path.slice(exportFolder.length + 1));
 }
