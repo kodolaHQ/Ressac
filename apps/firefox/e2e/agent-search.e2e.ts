@@ -80,6 +80,7 @@ const CARD = '[data-testid="address-request"]';
 it("a composed address shows the card with the full address; Autoriser loads it, Refuser does not", async () => {
   const id = idOf((await callTool(w.dataDir, "search_web", { query: "x" })).text);
   // Another origin than the engine's (which is free): localhost, the same local server.
+  const before = (await state(m)).tabs[id]!.url;
   const composed = `${server.url.replace("127.0.0.1", "localhost")}/b.html?composed=${"y".repeat(150)}`;
   const refusing = callTool(w.dataDir, "navigate", { id, url: composed, reason: "pour voir" });
   const card = await waitUi<string>(m, `return doc.querySelector(${JSON.stringify(CARD)})?.textContent`);
@@ -88,7 +89,7 @@ it("a composed address shows the card with the full address; Autoriser loads it,
   expect(card).toContain("Sa raison : pour voir");
   await click(m, `${CARD} button`, { text: "Refuser" });
   expect((await refusing).text).toBe("Accès refusé par l'utilisateur à cet onglet.");
-  expect((await state(m)).tabs[id]!.url).not.toBe(composed);
+  expect((await state(m)).tabs[id]!.url).toBe(before);
   const allowing = callTool(w.dataDir, "navigate", { id, url: composed, reason: "pour voir" });
   await waitUi(m, `return !!doc.querySelector(${JSON.stringify(CARD)})`);
   await click(m, `${CARD} button`, { text: "Autoriser" });

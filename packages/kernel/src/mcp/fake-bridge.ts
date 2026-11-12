@@ -157,6 +157,8 @@ export class FakeBridge implements BrowserBridge {
   /** Site apps whose tweaks card is shown: navigating answers « pending ». */
   private readonly pendingSites: Set<string>;
   askAddress?: BrowserBridge["askAddress"];
+  /** The signals the address card was asked with. */
+  readonly addressSignals: AbortSignal[] = [];
   askDevTools?: (o: TabInfo, d: { rights: DevRight[]; reason: string; agent: string }, signal?: AbortSignal) => Promise<DevRight[]>;
 
   /**
@@ -188,8 +190,8 @@ export class FakeBridge implements BrowserBridge {
       pendingSites?: string[];
       /** Provides the search tab; `privateWindows`: windows whose active space is private. */
       search?: { privateWindows?: string[] };
-      /** Provides the address card: answers this value, or `"wait"` until its signal is raised (then false). */
-      address?: boolean | "wait";
+      /** Provides the address card: answers this value, `"later"` true after 400 ms, or `"wait"` until its signal is raised (then false). */
+      address?: boolean | "wait" | "later";
     },
   ) {
     this.sites = o.sites ?? {};
@@ -298,6 +300,8 @@ export class FakeBridge implements BrowserBridge {
     if (address !== undefined) {
       this.askAddress = (d, window, signal) => {
         this.note("askAddress", { ...d }, window);
+        if (signal) this.addressSignals.push(signal);
+        if (address === "later") return new Promise((ok) => setTimeout(() => ok(true), 400));
         if (address !== "wait") return Promise.resolve(address);
         return new Promise((ok) => signal?.addEventListener("abort", () => ok(false), { once: true }));
       };

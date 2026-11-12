@@ -16,7 +16,7 @@ import type { MemoryContent } from "../sites/memory.js";
 import type { DevRight, AccessPolicy } from "../access/policy.js";
 import { registerDevTools, type ProfileFiles } from "./devtools.js";
 import { registerExtensionsTools, type ExtensionsTools } from "./extensions.js";
-import { STOP_TEXT, CLOSED_TEXT, type SearchSessions } from "../search/sessions.js";
+import { STOP_TEXT, CLOSED_TEXT, URL_MAX, type SearchSessions } from "../search/sessions.js";
 import { TabNotFound, PrivateTab, PRIVATE_TEXT, type TabInfo, type BrowserDevTools, type BrowserBridge, type HistoryResult } from "./bridge.js";
 
 export const UNREAD_ADDRESS_TEXT = "Adresse non lue dans cette recherche : tu ne peux suivre que les liens des pages lues ici.";
@@ -278,14 +278,18 @@ function askAddressCard(
   card: { url: string; reason: string; agent: string },
   key: string,
   window: string | undefined,
+  /** Registers a callback for the end of the search (stop, idle, tab closed): the card then comes down. */
+  onEnd: (f: () => void) => () => void,
 ): Promise<boolean> {
   let request = requests.get(key);
   if (!request) {
     const conversation = policy.conversation;
     const removal = new AbortController();
-    const unsubscribe = policy.onChange(() => {
+    const offChange = policy.onChange(() => {
       if (policy.conversation !== conversation) removal.abort();
     });
+    const offEnd = onEnd(() => removal.abort());
+    const unsubscribe = () => { offChange(); offEnd(); };
     const abandon = new Promise<boolean>((ok) => removal.signal.addEventListener("abort", () => ok(false), { once: true }));
     request = Promise.race([bridge.askAddress!(card, window, removal.signal), abandon])
       .then((yes) => yes && policy.conversation === conversation)
@@ -495,7 +499,9 @@ function createToolsServer(
         if (!searching.sessions.isFree(id, url)) {
           // An address the agent composed: the user decides, on a card showing it whole.
           if (!bridge.askAddress) return text(UNREAD_ADDRESS_TEXT);
-          const yes = await askAddressCard(bridge, policy, requests, { url, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent" }, `address:${id}:${url}`, win ?? undefined);
+          // Longer than the search remembers: it could be allowed but never freed.
+          if (url.length > URL_MAX) return text(`Adresse trop longue (${URL_MAX} caractères au plus).`);
+          const yes = await askAddressCard(bridge, policy, requests, { url, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent" }, `address:${id}:${url}`, win ?? undefined, (f) => searching.sessions.onEnd(id, f));
           if (!searching.sessions.owns(id)) return text(searching.sessions.takeStop(win ?? MAIN_WINDOW, id) ? STOP_TEXT : CLOSED_TEXT);
           if (!yes) return text(DENIAL_TEXT);
           searching.sessions.allow(id, url);

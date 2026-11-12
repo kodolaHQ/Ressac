@@ -10,11 +10,12 @@ interface Search {
   free: Set<string>; pages: number; startedAt: number; text: string;
   timer?: ReturnType<typeof setTimeout>;
   inFlight: number;
+  enders: Set<() => void>;
   hand?: { path: string[]; promise: Promise<{ outcome: Outcome; path: string[] }>; resolve(r: { outcome: Outcome; path: string[] }): void };
 }
 
 const PATH_MAX = 20;
-const URL_MAX = 500;
+export const URL_MAX = 500;
 const GESTURES_MAX = 50;
 const FREE_MAX = 10_000;
 const isWeb = (x: URL) => x.protocol === "http:" || x.protocol === "https:";
@@ -50,13 +51,21 @@ export class SearchSessions {
     if (this.byWindow.has(window)) throw new Error("a search is already running in this window");
     if (this.byTab.has(tabId)) throw new Error("this tab already belongs to a search");
     this.stopped.delete(window);
-    const s: Search = { window, tabId, goal, gestures: [], free: new Set(), pages: 0, startedAt: this.now(), text: "", inFlight: 0 };
+    const s: Search = { window, tabId, goal, gestures: [], free: new Set(), pages: 0, startedAt: this.now(), text: "", inFlight: 0, enders: new Set() };
     this.byWindow.set(window, s);
     this.byTab.set(tabId, s);
     this.arm(s);
   }
 
   owns(tabId: string): boolean { return this.byTab.has(tabId); }
+
+  /** Calls `f` once when the search of this tab ends (stop, idle, tab closed, reset); returns the unsubscribe. */
+  onEnd(tabId: string, f: () => void): () => void {
+    const e = this.byTab.get(tabId)?.enders;
+    if (!e) { f(); return () => {}; }
+    e.add(f);
+    return () => e.delete(f);
+  }
 
   /** True once after a stop, for a call in `window` (about the former search tab `tabId`, if given; another tab does not consume it). */
   takeStop(window: string, tabId?: string): boolean {
@@ -184,6 +193,7 @@ export class SearchSessions {
     this.byWindow.delete(s.window);
     this.byTab.delete(s.tabId);
     this.o.show(s.tabId, null);
+    for (const f of s.enders) f();
     const h = s.hand;
     s.hand = undefined;
     h?.resolve({ outcome, path: h.path.slice(-PATH_MAX) });

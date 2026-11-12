@@ -272,3 +272,18 @@ describe("SearchSessions", () => {
     expect(s.takeStop("w", "t1")).toBe(false);
   });
 });
+
+describe("onEnd", () => {
+  test("called once when the search ends, not after unsubscribe, at once when there is no search", () => {
+    const sessions = new SearchSessions({ show: () => {} });
+    sessions.start("w", "t1", "g");
+    sessions.start("v", "t2", "g");
+    const a = vi.fn(), b = vi.fn(), c = vi.fn();
+    sessions.onEnd("t1", a);
+    sessions.onEnd("t2", b)();
+    sessions.stop("t1");
+    sessions.tabClosed("t2");
+    sessions.onEnd("t1", c);
+    expect([a.mock.calls.length, b.mock.calls.length, c.mock.calls.length]).toEqual([1, 0, 1]);
+  });
+});

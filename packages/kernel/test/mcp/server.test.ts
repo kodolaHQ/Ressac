@@ -1483,11 +1483,12 @@ test("navigate on the search tab to a composed address, refused: DENIAL_TEXT and
 });
 
 /** A search with an address card that never answers by itself; `end` ends the conversation (the card is taken down). */
-async function withWaitingCard(attempt: (o: { call: (a: Record<string, unknown>) => Promise<{ text: string }>; fake: FakeBridge; end: () => void }) => Promise<void>) {
+async function withWaitingCard(attempt: (o: { call: (a: Record<string, unknown>) => Promise<{ text: string }>; fake: FakeBridge; end: () => void; search: SearchSessions }) => Promise<void>, answer: boolean | "wait" | "later" = "wait") {
   const principal = generateToken();
-  const fake = new FakeBridge([github], { active: "github", allow: false, search: {}, address: "wait" });
+  const fake = new FakeBridge([github], { active: "github", allow: false, search: {}, address: answer });
   const policy = new AccessPolicy();
-  const s = await startMcpServer({ bridge: fake, policy, token: principal, search: new SearchSessions({ show: () => {} }), settleMs: 0, emptySpanMs: 0 });
+  const search = new SearchSessions({ show: () => {} });
+  const s = await startMcpServer({ bridge: fake, policy, token: principal, search, settleMs: 0, emptySpanMs: 0 });
   const clients: Client[] = [];
   const call = async (a: Record<string, unknown>) => {
     const cl = new Client({ name: "test", version: "0" });
@@ -1500,7 +1501,7 @@ async function withWaitingCard(attempt: (o: { call: (a: Record<string, unknown>)
     clients.push(first);
     await first.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${s.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${principal}` } } }));
     await first.callTool({ name: "search_web", arguments: { query: "x" } });
-    await attempt({ call, fake, end: () => policy.reset() });
+    await attempt({ call, fake, end: () => policy.reset(), search });
   } finally {
     await Promise.all(clients.map((x) => x.close()));
     await s.stop();
@@ -1518,6 +1519,45 @@ test("one card per address at a time: both calls get its answer", async () => {
     expect(fake.calls.filter((x) => x.method === "askAddress")).toHaveLength(1);
     end();
     expect((await both).map((r) => r.text)).toEqual([DENIAL_TEXT, DENIAL_TEXT]);
+  });
+});
+
+test("one card per address, accepted: both calls get the navigation, the address is free afterwards", async () => {
+  await withWaitingCard(async ({ call, fake, search }) => {
+    // The card answers true after both calls are in; the second caller shares the first's answer, so both navigate (same address: the tab ends there).
+    const both = Promise.all([call({ id: "search-1", url: COMPOSED }), call({ id: "search-1", url: COMPOSED })]);
+    await new Promise((ok) => setTimeout(ok, 200));
+    expect(fake.calls.filter((x) => x.method === "askAddress")).toHaveLength(1);
+    expect((await both).map((r) => r.text)).toEqual([`Onglet search-1 → ${COMPOSED}`, `Onglet search-1 → ${COMPOSED}`]);
+    expect(search.isFree("search-1", COMPOSED)).toBe(true);
+  }, "later");
+});
+
+test("the search stopped while the card is shown: STOP_TEXT, the card comes down", async () => {
+  await withWaitingCard(async ({ call, fake, search }) => {
+    const pending = call({ id: "search-1", url: COMPOSED });
+    await asked(fake, 1);
+    search.stop("search-1");
+    expect((await pending).text).toBe(STOP_TEXT);
+    expect(fake.addressSignals[0]!.aborted).toBe(true);
+    expect(fake.calls.filter((x) => x.method === "navigate")).toHaveLength(0);
+  });
+});
+
+test("the search tab closed while the card is shown: CLOSED_TEXT, the card comes down", async () => {
+  await withWaitingCard(async ({ call, fake, search }) => {
+    const pending = call({ id: "search-1", url: COMPOSED });
+    await asked(fake, 1);
+    search.tabClosed("search-1");
+    expect((await pending).text).toBe(CLOSED_TEXT);
+    expect(fake.addressSignals[0]!.aborted).toBe(true);
+  });
+});
+
+test("a composed address longer than 500 characters is refused before any card", async () => {
+  await withWaitingCard(async ({ call, fake }) => {
+    expect((await call({ id: "search-1", url: "https://ailleurs.fr/" + "x".repeat(500) })).text).toBe("Adresse trop longue (500 caractères au plus).");
+    expect(fake.calls.filter((x) => x.method === "askAddress")).toHaveLength(0);
   });
 });
 
