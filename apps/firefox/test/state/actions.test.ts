@@ -1,5 +1,5 @@
 import { beforeEach, expect, test } from "vitest";
-import { apply } from "../../core/state/actions";
+import { apply, withEssentials } from "../../core/state/actions";
 import { initialState } from "../../core/state/initial-state";
 import { SchemaAction, type Action } from "../../shared/api";
 import { AGENT_PROFILE, spaceKey, historyContext, privateTab, profilesInUse, tabProfile, hasView, URL_ACTIONS, URL_APPLICATIONS, URL_EXTENSIONS, URL_SETTINGS, urlAction, urlWorkflow, type BrowserState, type Tab } from "../../shared/model";
@@ -982,4 +982,27 @@ test("setAgentSearch sets and clears the tab's band; unknown id or no change →
   ag({ type: "setAgentSearch", id: a, band: null });
   expect(e.tabs[a]!.agentSearch).toBeUndefined();
   expect(apply(e, { type: "setAgentSearch", id: a, band: null }, genId)).toBe(e);
+});
+
+test("essentials stay loaded: a tab per window in the displayed space, again after a close, on a loaded session, never in a private space", () => {
+  const id = open("https://mail.test/");
+  ag({ type: "addEssential", id });
+  const fav = e.essentials[0]!.id;
+  const tabsOf = (w: string) => Object.values(e.tabs).filter((o) => o.windowId === w && o.link?.id === fav);
+  expect(tabsOf(F).map((o) => o.id)).toEqual([id]);
+  // Closed: a fresh one, in the background.
+  ag({ type: "closeTab", id });
+  expect(tabsOf(F)).toHaveLength(1);
+  expect(tabsOf(F)[0]!.id).not.toBe(id);
+  expect(e.windows[0]!.active[e.windows[0]!.activeSpace]).not.toBe(tabsOf(F)[0]!.id);
+  // A second window gets its own.
+  ag({ type: "openWindow", id: "F2" });
+  expect(tabsOf("F2")).toHaveLength(1);
+  // A session saved before this rule: its essentials get their tabs when it loads.
+  const old = { ...e, tabs: Object.fromEntries(Object.entries(e.tabs).filter(([, o]) => !o.link)) };
+  expect(Object.values(withEssentials(old, genId).tabs).filter((o) => o.link?.id === fav)).toHaveLength(2);
+  expect(withEssentials(e, genId)).toBe(e);
+  // A private space loads nothing by itself.
+  ag({ type: "createSpace", name: "Secret", icon: "x", private: true, profile: "new", windowId: F });
+  expect(Object.values(e.tabs).filter((o) => o.link && o.spaceId === e.windows[0]!.activeSpace)).toEqual([]);
 });

@@ -97,8 +97,12 @@ describe("restore at startup", () => {
     expect(f.active).toEqual(before.windows[0]!.active);
     expect(f.active[work.id]).toBe(c);
     expect(f.order).toEqual(before.windows[0]!.order);
-    const urls = (s: typeof before) => Object.fromEntries(Object.values(s.tabs).map((o) => [o.id, o.url]));
+    // The second window comes back under a new id: its only tab, the essential it keeps loaded, is a new one.
+    const urls = (s: typeof before) => Object.fromEntries(Object.values(s.tabs).filter((o) => o.windowId === s.windows[0]!.id).map((o) => [o.id, o.url]));
+    expect(Object.values(after.tabs).filter((o) => o.windowId === after.windows[1]!.id).map((o) => o.link?.type)).toEqual(["essential"]);
     expect(urls(after)).toEqual(urls(before));
+    // The essential loads at launch, without being shown.
+    await waitFor(m, `const t = gBrowser.tabs.find((t) => t.getAttribute('webaios-tab-id') === ${JSON.stringify(b)}); return !!t && !t.selected && t.linkedBrowser.currentURI.spec.endsWith('/b.html')`, (v) => v === true);
     // The active tab of the active space is displayed, on its page.
     await waitFor(m, "return gBrowser.selectedTab.getAttribute('webaios-tab-id')", (v) => v === c);
     await waitFor(m, "return gBrowser.selectedBrowser.currentURI.spec", (v) => v === server.url + "/b.html?n=1");

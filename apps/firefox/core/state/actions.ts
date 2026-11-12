@@ -628,7 +628,36 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
 }
 
 /** The only way to evolve the state: pure, never mutates `state`. */
+/**
+ * Every essential keeps a tab in each window, for the login profile of the displayed space: it loads in the background
+ * (at launch, once added, after its tab was closed) and opens at once. Not in a private space, where it opens on a click.
+ */
+function keepEssentials(d: Draft, genId: () => string): boolean {
+  let created = false;
+  for (const f of d.windows) {
+    const space = d.spaces.find((e) => e.id === f.activeSpace);
+    if (!space || space.private) continue;
+    const key = spaceKey(d, space.id);
+    for (const e of d.essentials) {
+      if (Object.values(d.tabs).some((o) => o.windowId === f.id && o.link?.id === e.id && spaceKey(d, o.spaceId) === key)) continue;
+      // Some callers give the id of the one tab their action opens: never reuse it.
+      const id = genId();
+      createTab(d, () => (d.tabs[id] ? randomUUID() : id), { windowId: f.id, spaceId: space.id, url: e.url, title: e.title, favicon: e.favicon, link: { type: "essential", id: e.id } });
+      created = true;
+    }
+  }
+  return created;
+}
+
+/** The loaded session with its essentials' tabs (see keepEssentials). */
+export function withEssentials(state: BrowserState, genId: () => string = randomUUID): BrowserState {
+  const draft = structuredClone(state);
+  return keepEssentials(draft, genId) ? draft : state;
+}
+
 export function apply(state: BrowserState, action: Action, genId: () => string = randomUUID): BrowserState {
   const draft = structuredClone(state);
-  return handle(draft, action, genId) ? draft : state;
+  if (!handle(draft, action, genId)) return state;
+  keepEssentials(draft, genId);
+  return draft;
 }

@@ -299,6 +299,24 @@ describe("WebAiOs sidebar", () => {
     expect(await count(essentials)).toBe(1);
   });
 
+  it("an essential stays loaded: closed, its page loads again in the background, and Firefox may not unload it", async () => {
+    const a = await open("/a.html");
+    await waitTitle(a, "Page A");
+    await dispatch(m, { type: "addEssential", id: a });
+    const b = await open("/b.html");
+    await dispatch(m, { type: "closeTab", id: a });
+    const fresh = await waitState((s) => Object.values(s.tabs).find((o) => o.link?.type === "essential" && o.url.endsWith("/a.html"))?.id, (id) => !!id && id !== a);
+    const xul = `const tab = [...gBrowser.tabs].find((t) => t.getAttribute("webaios-tab-id") === arguments[0]); const br = tab?.linkedBrowser;
+      return tab ? { url: br.currentURI.spec, done: !br.webProgress.isLoadingDocument, selected: tab.selected, kept: tab.undiscardable } : null;`;
+    const deadline = Date.now() + 10_000;
+    let seen: any;
+    do {
+      seen = await m.execute(xul, [fresh]);
+    } while (!(seen?.done && seen.url.endsWith("/a.html")) && Date.now() < deadline && (await new Promise((r) => setTimeout(r, 100)), true));
+    expect(seen).toEqual({ url: expect.stringMatching(/\/a\.html$/), done: true, selected: false, kept: true });
+    expect((await win()).active[(await win()).activeSpace]).toBe(b);
+  });
+
   it("dragging an essential onto another reorders the grid and the state; it does not add or open anything", async () => {
     for (const path of ["/a.html", "/b.html", "/texte.html"]) await dispatch(m, { type: "addEssential", id: await open(path, { activate: false }) });
     const [a, b, c] = (await state(m)).essentials.map((f) => f.id);
