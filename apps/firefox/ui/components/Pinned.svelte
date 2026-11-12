@@ -42,7 +42,7 @@
     const id = e.dataTransfer?.getData(TAB);
     if (id) api.dispatch({ type: "pinTab", id, folderId });
   }
-  /** The favorite's open tab in this window, if any: its sound pictogram sits on the row. */
+  /** The favorite's open tab in this window, if any: the row shows its live icon and its sound pictogram. */
   const tabOf = (f: Favorite) => Object.values(appState.value?.tabs ?? {}).find((t) => t.link?.id === f.id && t.windowId === win.id);
   const focus = (node: HTMLInputElement) => (node.focus(), node.select());
 </script>
@@ -55,7 +55,8 @@
       onclick={(e) => e.button === 0 && api.dispatch({ type: "openFavorite", windowId: win.id, kind: "pinned", id: f.id })}
       oncontextmenu={(e) => openMenu(e, favoriteMenu(f))}
     >
-      <SiteIcon favicon={f.favicon} title={f.title} />
+      <!-- Its open tab's icon, which the site changes (unread count): the favorite keeps the one it was pinned with. -->
+      <SiteIcon favicon={tabOf(f)?.favicon ?? f.favicon} title={f.title} />
       <span>{f.title}</span>
     </button>
     {#if tabOf(f)}<span class="sound"><SoundButton tab={tabOf(f)!} /></span>{/if}

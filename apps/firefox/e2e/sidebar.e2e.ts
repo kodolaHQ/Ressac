@@ -232,6 +232,19 @@ describe("WebAiOs sidebar", () => {
     await waitUi(m, "return doc.querySelectorAll(arguments[0]).length === 0", [pinned]);
   });
 
+  it("a pinned tab and an essential show their open tab's live icon (an unread count); the favorite keeps its own", async () => {
+    const a = await open("/a.html");
+    await waitTitle(a, "Page A");
+    await dispatch(m, { type: "pinTab", id: a });
+    const b = await open("/b.html");
+    await dispatch(m, { type: "addEssential", id: b });
+    const ICON = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E";
+    for (const id of [a, b]) await dispatch(m, { type: "updateTab", id, fields: { favicon: ICON } });
+    await waitUi(m, `return ['[data-testid="pinned"]', '[data-testid="essentials"]'].every((zone) => doc.querySelector(zone + ' [data-testid^="favorite-"] img')?.getAttribute("src") === arguments[0])`, [ICON]);
+    const s = await state(m);
+    expect([s.spaces[0]!.pinned[0]!.favicon, s.essentials[0]!.favicon]).not.toContain(ICON);
+  });
+
   it("a pinned tab goes into a new folder, named in place; the folder collapses, and deleting it keeps the tab", async () => {
     const a = await open("/a.html");
     await waitTitle(a, "Page A");
