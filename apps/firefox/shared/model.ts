@@ -11,6 +11,8 @@ export const URL_APPLICATIONS = "webaios://apps";
 export const URL_EXTENSIONS = "webaios://extensions";
 /** Internal Settings page, displayed by the UI. */
 export const URL_SETTINGS = "webaios://settings";
+/** Internal « Nouveautés » page (shared/release-notes.ts), displayed by the UI. */
+export const URL_RELEASE_NOTES = "webaios://release-notes";
 /** Internal « Voir le workflow » page of a widget: `webaios://workflow/<widget id>`. */
 export const WORKFLOW_PREFIX = "webaios://workflow/";
 export const urlWorkflow = (id: string) => WORKFLOW_PREFIX + id;
@@ -164,6 +166,8 @@ export interface BrowserState {
     claudeEngine: ClaudeEngine;
     /** False until the first-launch welcome is finished (or skipped). */
     onboarded: boolean;
+    /** The WebAiOs version of the last launch; null before any launch that records it. */
+    seenVersion: string | null;
     /** Tips and first-time notes: shown while enabled, each at most once. */
     hints: { enabled: boolean; seen: HintId[] };
     /** Which side of the window the navigation sidebar sits on. */

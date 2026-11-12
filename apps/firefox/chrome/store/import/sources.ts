@@ -6,6 +6,8 @@ export type SourceKind = "chromium" | "safari" | "firefox";
 export interface SourceDef {
   id: ImportSourceId;
   name: string;
+  /** Its application bundle's name: the screen shows the installed app's own icon. */
+  app: string;
   kind: SourceKind;
   /** The data folder, under the home folder. */
   dir: string[];
@@ -24,15 +26,15 @@ const NO_PASSWORDS: ImportType[] = ["bookmarks", "history"];
 
 export const SOURCES: SourceDef[] = [
   // shortcut: Arc is not installed on the Mac this was built on; folder and keychain names are Chromium's usual pattern, measure them on a real Arc install.
-  { id: "arc", name: "Arc", kind: "chromium", dir: [...SUPPORT, "Arc", "User Data"], types: [...CHROMIUM, "spaces", "tabs"], passwordsByCsv: false, engineClass: "ChromeProfileMigrator", keychain: { service: "Arc Safe Storage", account: "Arc" } },
-  { id: "chrome", name: "Google Chrome", kind: "chromium", dir: [...SUPPORT, "Google", "Chrome"], types: CHROMIUM, passwordsByCsv: false, engineClass: "ChromeProfileMigrator" },
-  { id: "brave", name: "Brave", kind: "chromium", dir: [...SUPPORT, "BraveSoftware", "Brave-Browser"], types: CHROMIUM, passwordsByCsv: false, engineClass: "BraveProfileMigrator" },
-  { id: "edge", name: "Microsoft Edge", kind: "chromium", dir: [...SUPPORT, "Microsoft Edge"], types: CHROMIUM, passwordsByCsv: false, engineClass: "ChromiumEdgeMigrator" },
-  { id: "vivaldi", name: "Vivaldi", kind: "chromium", dir: [...SUPPORT, "Vivaldi"], types: CHROMIUM, passwordsByCsv: false, engineClass: "VivaldiProfileMigrator" },
-  { id: "opera", name: "Opera", kind: "chromium", dir: [...SUPPORT, "com.operasoftware.Opera"], types: CHROMIUM, passwordsByCsv: false, engineClass: "OperaProfileMigrator" },
-  { id: "safari", name: "Safari", kind: "safari", dir: ["Library", "Safari"], types: NO_PASSWORDS, passwordsByCsv: true },
-  { id: "firefox", name: "Firefox", kind: "firefox", dir: [...SUPPORT, "Firefox"], types: NO_PASSWORDS, passwordsByCsv: true },
-  { id: "zen", name: "Zen", kind: "firefox", dir: [...SUPPORT, "zen"], types: [...NO_PASSWORDS, "spaces", "tabs"], passwordsByCsv: true },
+  { id: "arc", app: "Arc", name: "Arc", kind: "chromium", dir: [...SUPPORT, "Arc", "User Data"], types: [...CHROMIUM, "spaces", "tabs"], passwordsByCsv: false, engineClass: "ChromeProfileMigrator", keychain: { service: "Arc Safe Storage", account: "Arc" } },
+  { id: "chrome", app: "Google Chrome", name: "Google Chrome", kind: "chromium", dir: [...SUPPORT, "Google", "Chrome"], types: CHROMIUM, passwordsByCsv: false, engineClass: "ChromeProfileMigrator" },
+  { id: "brave", app: "Brave Browser", name: "Brave", kind: "chromium", dir: [...SUPPORT, "BraveSoftware", "Brave-Browser"], types: CHROMIUM, passwordsByCsv: false, engineClass: "BraveProfileMigrator" },
+  { id: "edge", app: "Microsoft Edge", name: "Microsoft Edge", kind: "chromium", dir: [...SUPPORT, "Microsoft Edge"], types: CHROMIUM, passwordsByCsv: false, engineClass: "ChromiumEdgeMigrator" },
+  { id: "vivaldi", app: "Vivaldi", name: "Vivaldi", kind: "chromium", dir: [...SUPPORT, "Vivaldi"], types: CHROMIUM, passwordsByCsv: false, engineClass: "VivaldiProfileMigrator" },
+  { id: "opera", app: "Opera", name: "Opera", kind: "chromium", dir: [...SUPPORT, "com.operasoftware.Opera"], types: CHROMIUM, passwordsByCsv: false, engineClass: "OperaProfileMigrator" },
+  { id: "safari", app: "Safari", name: "Safari", kind: "safari", dir: ["Library", "Safari"], types: NO_PASSWORDS, passwordsByCsv: true },
+  { id: "firefox", app: "Firefox", name: "Firefox", kind: "firefox", dir: [...SUPPORT, "Firefox"], types: NO_PASSWORDS, passwordsByCsv: true },
+  { id: "zen", app: "Zen", name: "Zen", kind: "firefox", dir: [...SUPPORT, "zen"], types: [...NO_PASSWORDS, "spaces", "tabs"], passwordsByCsv: true },
 ];
 
 /** macOS only: plain `/` joins keep this module loadable by the unit tests. */
@@ -42,6 +44,36 @@ export const sourceRoot = (home: string, def: SourceDef) => [home, ...def.dir].j
 export async function detectSources(home: string, exists: (path: string) => Promise<boolean>): Promise<SourceDef[]> {
   const found = await Promise.all(SOURCES.map((d) => exists(sourceRoot(home, d))));
   return SOURCES.filter((_, i) => found[i]);
+}
+
+/** The installed app's bundle, or null when it is not in an Applications folder. */
+export async function sourceApp(home: string, def: SourceDef, exists: (path: string) => Promise<boolean>): Promise<string | null> {
+  for (const dir of ["/Applications", `${home}/Applications`]) {
+    const path = `${dir}/${def.app}.app`;
+    if (await exists(path)) return path;
+  }
+  return null;
+}
+
+/**
+ * An app's icon as macOS draws it, as a PNG `data:` URL (64 px); null if it cannot be read. The UI's documents cannot
+ * load `moz-icon:` themselves (measured: the image errors there, loads in the browser window), so the store reads it,
+ * as an image load (any other type is refused: NS_ERROR_CONTENT_BLOCKED).
+ */
+export async function appIcon(path: string): Promise<string | null> {
+  try {
+    const { NetUtil } = ChromeUtils.importESModule("resource://gre/modules/NetUtil.sys.mjs");
+    const tools = Cc["@mozilla.org/image/tools;1"].getService(Ci.imgITools);
+    const raw: any = await new Promise((done, fail) =>
+      NetUtil.asyncFetch({ uri: `moz-icon://file://${encodeURI(path)}?size=32`, loadUsingSystemPrincipal: true, contentPolicyType: Ci.nsIContentPolicy.TYPE_IMAGE }, (stream: any, status: number) => (Components.isSuccessCode(status) ? done(stream) : fail(new Error(`status ${status}`)))),
+    );
+    const bytes = NetUtil.readInputStream(raw, raw.available());
+    const png = tools.encodeImage(tools.decodeImageFromArrayBuffer(bytes, "image/icon"), "image/png");
+    return `data:image/png;base64,${btoa(NetUtil.readInputStreamToString(png, png.available()))}`;
+  } catch (e) {
+    console.warn("[import] no icon for", path, e);
+    return null;
+  }
 }
 
 /** A Chromium `Local State`'s profiles, the last used first; null when it has none. */

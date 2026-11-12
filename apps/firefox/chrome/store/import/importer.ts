@@ -3,7 +3,7 @@ import type { AgentHost } from "../../agent/host";
 import { showAlert } from "../notifications";
 import type { Store } from "../store";
 import { parseArcSidebar, parseZenSpaces, planSpaceImport, planTabImport } from "./spaces";
-import { chromiumMigrator, chromiumProfiles, detectSources, firefoxMigrator, firefoxProfiles, safariMigrator, sourceRoot, type SourceDef } from "./sources";
+import { chromiumMigrator, chromiumProfiles, appIcon, detectSources, firefoxMigrator, sourceApp, firefoxProfiles, safariMigrator, sourceRoot, type SourceDef } from "./sources";
 
 /** Visits per `history.import` call (the host takes up to 50 000). */
 export const HISTORY_BATCH = 5000;
@@ -321,7 +321,10 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
   return {
     async sources() {
       // Only which data folders exist: no file of another browser is read before the person picks it.
-      return (await detectSources(home, (path) => IOUtils.exists(path))).map((d): ImportSource => ({ id: d.id, name: d.name, types: [...d.types], passwordsByCsv: d.passwordsByCsv }));
+      const exists = (path: string) => IOUtils.exists(path);
+      // The app sits under the real home even when a test home holds the data.
+      const realHome = Services.dirsvc.get("Home", Ci.nsIFile).path;
+      return Promise.all((await detectSources(home, exists)).map(async (d): Promise<ImportSource> => ({ id: d.id, name: d.name, icon: await sourceApp(realHome, d, exists).then((app) => app && appIcon(app)), types: [...d.types], passwordsByCsv: d.passwordsByCsv })));
     },
     async profiles(source) {
       const def = (await detectSources(home, (path) => IOUtils.exists(path))).find((d) => d.id === source);

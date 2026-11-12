@@ -377,6 +377,7 @@
         <div class="panel">
           <div class="row">
             <b class="grow" data-testid="app-version">{version === null ? "" : `WebAiOs ${version}`}</b>
+            <button data-testid="settings-release-notes" onclick={() => api.dispatch({ type: "openReleaseNotes", windowId: api.windowId })}>Nouveautés</button>
             <button data-testid="settings-replay-welcome" onclick={() => api.dispatch({ type: "replayOnboarding" })}>Revoir l'accueil</button>
             <button data-testid="open-advanced" onclick={() => s.openAdvanced()}>Réglages avancés du navigateur</button>
           </div>

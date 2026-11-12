@@ -142,7 +142,7 @@ describe("import from another browser", () => {
       ["safari", ["bookmarks", "history"]],
       ["zen", ["bookmarks", "history", "spaces", "tabs"]],
     ]);
-    expect(sources[1]).toEqual({ id: "chrome", name: "Google Chrome", types: ["bookmarks", "history", "passwords"], passwordsByCsv: false });
+    expect(sources[1]).toMatchObject({ id: "chrome", name: "Google Chrome", types: ["bookmarks", "history", "passwords"], passwordsByCsv: false });
     expect(await api("profiles(arguments[0])", ["chrome"])).toEqual([{ id: "Default", name: "Personne 1" }]);
     await expect.poll(() => existsSync(join(dataDir, "import-tmp"))).toBe(false);
   });
@@ -307,5 +307,15 @@ describe("import from another browser", () => {
     await click(m, '[data-testid="import-disk-access"]');
     const opened = join(home, "opened.txt");
     await expect.poll(() => (existsSync(opened) ? readFileSync(opened, "utf8") : "")).toBe("x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles\n");
+  });
+  it("a found app shows its icon; Réglages › À propos opens « Nouveautés »", async () => {
+    // Safari is on every Mac: its icon is drawn by macOS.
+    await waitUi(m, `const i = doc.querySelector('[data-testid="import-source-safari"]').closest("label").querySelector("img"); return !!i && i.complete && i.naturalWidth > 0 && !i.hidden`);
+    await click(m, '[data-testid="settings-nav-about"]');
+    await click(m, '[data-testid="settings-release-notes"]');
+    await shows("release-notes", "Nouveautés");
+    await shows("release-notes", "Import depuis un autre navigateur");
+    if (process.env.WEBAIOS_SHOT) await new Promise((r) => setTimeout(r, 1_000));
+    if (process.env.WEBAIOS_SHOT) writeFileSync(process.env.WEBAIOS_SHOT + ".notes.png", Buffer.from((await m.command<{ value: string }>("WebDriver:TakeScreenshot", { full: false, hash: false })).value, "base64"));
   });
 });

@@ -19,6 +19,7 @@
   import TabsPanel from "./components/TabsPanel.svelte";
   import Review from "./components/Review.svelte";
   import Settings from "./components/Settings.svelte";
+  import ReleaseNotes from "./components/ReleaseNotes.svelte";
   import Welcome from "./components/Welcome.svelte";
   import { welcomeStep } from "./components/welcome-step.svelte";
   import { agentNoteShowing, firstTimePending, markSeen } from "./components/hints";
@@ -30,7 +31,7 @@
   import { menu } from "./components/menu.svelte";
   import { spaceSettings } from "./components/spaceSettings.svelte";
   import { access, api, requestOf, appState, currentWindow, closeTab } from "./state.svelte";
-  import { actionOfUrl, hasView, workflowUrlTarget, reviewUrlProject, URL_ACTIONS, URL_APPLICATIONS, URL_EXTENSIONS, URL_SETTINGS } from "../shared/model";
+  import { actionOfUrl, hasView, workflowUrlTarget, reviewUrlProject, URL_ACTIONS, URL_APPLICATIONS, URL_EXTENSIONS, URL_RELEASE_NOTES, URL_SETTINGS } from "../shared/model";
   import { ACTIONS_IN_PRIVATE_SPACE } from "../shared/actions";
   import { hide, INITIAL_REVEAL, onZone, type LeftZone } from "../shared/reveal";
   import type { Panel, TabsPanel as TabPanel } from "../shared/api";
@@ -260,6 +261,8 @@
       <Applications />
     {:else if activeTab?.url === URL_SETTINGS}
       <Settings />
+    {:else if activeTab?.url === URL_RELEASE_NOTES}
+      <ReleaseNotes />
     {:else if activeTab?.url === URL_ACTIONS}
       {#if privateAction}
         <p class="crashed" data-testid="action-private-space">{ACTIONS_IN_PRIVATE_SPACE}</p>

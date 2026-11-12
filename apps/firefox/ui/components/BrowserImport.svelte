@@ -89,6 +89,7 @@
       {#each sources as s (s.id)}
         <label class="source">
           <input type="radio" name="import-source" data-testid="import-source-{s.id}" checked={chosen === s.id} onchange={() => choose(s)} />
+          {#if s.icon}<img src={s.icon} alt="" width="20" height="20" onerror={(e) => ((e.currentTarget as HTMLImageElement).hidden = true)} />{/if}
           {s.name}
         </label>
       {/each}

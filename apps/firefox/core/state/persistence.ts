@@ -51,6 +51,8 @@ const SchemaSession = z.object({
   settings: z.object({ engine: z.enum(["google", "duckduckgo", "qwant"]), agentProfile: z.string().min(1).default("claude"), agentPanelWidth: z.number().default(420), decisionModel: z.enum(["pplx-decider-flash", "kev"]).catch("pplx-decider-flash"), codexEngine: CodexEngineSchema.catch(() => ({ ...DEFAULT_CODEX_ENGINE })), claudeEngine: ClaudeEngineSchema.catch(() => ({ ...DEFAULT_CLAUDE_ENGINE })),
     // A session saved before the welcome existed never welcomes.
     onboarded: z.boolean().default(true),
+    // A session saved before the release notes existed comes from an older version: its next launch shows them.
+    seenVersion: z.string().nullable().catch(null).default(null),
     // A session saved before the hints existed has used the agent, design mode and actions: their one-time notes are seen, the tips are not.
     // An id this build does not know (a later version, a downgrade) is dropped; the rest is kept.
     hints: z

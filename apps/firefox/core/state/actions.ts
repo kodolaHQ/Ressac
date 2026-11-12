@@ -1,3 +1,4 @@
+import { RELEASE_NOTES } from "../../shared/release-notes";
 import { randomUUID } from "node:crypto";
 import type { Action } from "../../shared/api";
 import { DEFAULT_AURA } from "../../shared/aura";
@@ -12,6 +13,7 @@ import {
   URL_APPLICATIONS,
   URL_EXTENSIONS,
   URL_SETTINGS,
+  URL_RELEASE_NOTES,
   urlAction,
   urlWorkflow,
   reviewUrl,
@@ -483,6 +485,16 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       d.settings.onboarded = false;
       return true;
     }
+    case "noteVersion": {
+      if (d.settings.seenVersion === a.version) return false;
+      d.settings.seenVersion = a.version;
+      // Not on a first launch (the welcome is still to come), nor for a version without notes.
+      const f = d.windows[0];
+      if (f && d.settings.onboarded && RELEASE_NOTES[0]?.version === a.version) openInternalPage(d, genId, f.id, URL_RELEASE_NOTES, "Nouveautés");
+      return true;
+    }
+    case "openReleaseNotes":
+      return openInternalPage(d, genId, a.windowId, URL_RELEASE_NOTES, "Nouveautés");
     case "markHintSeen": {
       if (d.settings.hints.seen.includes(a.id)) return false;
       d.settings.hints.seen.push(a.id);

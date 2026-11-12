@@ -112,6 +112,9 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("chooseClaudeEngine"), engine: ClaudeEngineSchema }),
   z.object({ type: z.literal("finishOnboarding") }),
   z.object({ type: z.literal("replayOnboarding") }),
+  /** At each start: records the running version, and opens « Nouveautés » when it changed and has notes. */
+  z.object({ type: z.literal("noteVersion"), version: z.string().min(1) }),
+  z.object({ type: z.literal("openReleaseNotes"), windowId: id }),
   z.object({ type: z.literal("markHintSeen"), id: z.enum(HINT_IDS) }),
   z.object({ type: z.literal("setHintsEnabled"), enabled: z.boolean() }),
   z.object({ type: z.literal("setVimMode"), enabled: z.boolean() }),
@@ -375,7 +378,7 @@ export interface ApiWebaios {
 
 export type ImportSourceId = "arc" | "chrome" | "brave" | "edge" | "vivaldi" | "opera" | "safari" | "firefox" | "zen";
 export type ImportType = "bookmarks" | "history" | "passwords" | "spaces" | "tabs";
-export interface ImportSource { id: ImportSourceId; name: string; types: ImportType[]; passwordsByCsv: boolean }
+export interface ImportSource { id: ImportSourceId; name: string; /** The installed app's icon; null when the app is not found. */ icon: string | null; types: ImportType[]; passwordsByCsv: boolean }
 export interface ImportProgress { source: ImportSourceId; done: boolean; counts: Partial<Record<ImportType, number>>; failed: Partial<Record<ImportType, string>> }
 /** Import from another browser on this Mac: one run at a time, in the background; a notification tells the end. */
 export interface BrowserImportApi {

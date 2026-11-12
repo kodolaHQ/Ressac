@@ -166,6 +166,7 @@ Limits:
   - Chromium: the engine reads them, and macOS asks for the source's keychain item.
   - Safari, Firefox and Zen: by CSV, with a guide on screen. The import uses `LoginCSVImport`.
 - **Arc and Zen spaces** (`chrome/store/import/spaces.ts`): spaces, favorites and pinned tabs become WebAiOs spaces, essentials and pinned tabs. They go through the store actions `createSpace` (with `pinned`) and `addFavorites`. A space with the same name is reused, a URL already present is skipped, and a private space never receives anything.
+- **Source icons:** the screen shows each installed app's own icon. The store reads `moz-icon:` for the bundle in `/Applications` or `~/Applications` and hands the UI a PNG `data:` URL (`appIcon`); an app that is not found has no icon.
 - **Arc and Zen open tabs** (type `tabs`, its own checkbox « Onglets ouverts »): after the spaces, `planTabImport` opens each open tab in its space with `openTab` (`activate: false`, with its `title`), in the first window. No tab loads before it is displayed, and an address already open in the space is skipped. A space with neither pinned nor open tabs is not created.
   - The Arc sidebar format is assumed, not measured (no Arc on the dev Mac); see the `shortcut:` comment.
   - Zen is read from `zen-sessions.jsonlz4`.
@@ -433,3 +434,7 @@ Full build 20–23 min; `build:ui` after a UI change 17 s; adding the sidebar fi
 - A truncated Firefox archive stays cached in `.surfer/engine/` after an interrupted download: delete it.
 - surfer declares a git fork of `is-apple-silicon`, which pnpm rejects: replaced by the registry version (`pnpm-workspace.yaml`).
 - The icons in `configs/branding/webaios/` are placeholders.
+
+## Release notes
+
+`shared/release-notes.ts` lists what changed, newest first. At each start the store dispatches `noteVersion` with the running version: when it differs from `settings.seenVersion` and the newest entry is for that version, the internal page `webaios://release-notes` (« Nouveautés ») opens once. A first launch only records the version. The page stays reachable from Réglages › À propos. When bumping `version` in `package.json`, add its entry.
