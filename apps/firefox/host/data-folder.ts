@@ -7,7 +7,7 @@ import type { Backup } from "../shared/settings";
 
 const run = promisify(execFile);
 
-export const EXPORT_EXCLUDED = ["workspace", "local-ai", "webaios-widgets", "webaios-sites", "webaios-components"];
+export const EXPORT_EXCLUDED = ["workspace", "local-ai", "webaios-widgets", "webaios-sites", "webaios-components", "import-tmp"];
 
 export async function listBackups(dataDir: string): Promise<Backup[]> {
   const parent = dirname(dataDir);

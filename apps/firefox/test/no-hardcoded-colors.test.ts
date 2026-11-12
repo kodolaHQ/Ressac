@@ -31,6 +31,11 @@ const ALLOWED_LINES: { file: string; match: string; reason: string }[] = [
     match: '"white", { drawView: true }',
     reason: "the backdrop of a web page's snapshot for the design mode, not a UI colour",
   },
+  ...["stroke='%230E1014'", "stroke='white'"].map((match) => ({
+    file: "ui/components/BrowserImport.svelte",
+    match,
+    reason: "a checkbox tick drawn as a data: image, which cannot read the tokens: --accent-ink of each theme",
+  })),
 ];
 
 // `%23…`: a hex escaped in a data: URI (an SVG chevron).

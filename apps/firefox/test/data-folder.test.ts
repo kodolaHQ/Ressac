@@ -48,7 +48,7 @@ describe("data folder", () => {
   it("export", async () => {
     const dir = await tmp();
     await seed(dir);
-    for (const f of ["widgets/w/state.json", "local-ai/kev/x", "webaios-widgets/y"]) {
+    for (const f of ["widgets/w/state.json", "local-ai/kev/x", "webaios-widgets/y", "import-tmp/chrome/Login Data"]) {
       await mkdir(join(dir, f, ".."), { recursive: true });
       await writeFile(join(dir, f), "x");
     }

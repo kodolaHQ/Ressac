@@ -5,7 +5,8 @@
 
   /**
    * Import from another browser on this Mac: welcome page 2 and Réglages › Données. The run goes on in the host;
-   * `sources` is bound so the welcome can drop « Plus tard » when nothing is found.
+   * `sources` is bound so the welcome can drop « Plus tard » when nothing is found. No source is preselected: a
+   * browser's profiles (its account names) are read only once the person picks it.
    */
   let { sources = $bindable() }: { sources?: ImportSource[] } = $props();
 
@@ -14,6 +15,7 @@
 
   let chosen = $state<ImportSourceId | null>(null);
   let profile = $state<string | null>(null);
+  let profiles = $state<{ id: string; name: string }[]>([]);
   let unchecked = $state<ImportType[]>([]);
   /** This screen launched the run or saw it running: it shows its status, then what failed. */
   let watching = $state(false);
@@ -27,9 +29,11 @@
   const diskAccess = $derived(progress?.source === "safari" && failures.some(([, why]) => why.includes("Accès complet au disque")));
 
   function choose(s: ImportSource) {
-    chosen = s.id;
-    profile = s.profiles[0]?.id ?? null;
-    unchecked = [];
+    [chosen, profile, profiles, unchecked] = [s.id, null, [], []];
+    // null until read: the host then takes the last used profile.
+    void bi.profiles(s.id).then((list) => {
+      if (chosen === s.id) [profiles, profile] = [list, list[0]?.id ?? null];
+    }, () => {});
   }
   /** Bumped by each start: a progress answer asked before it belongs to an older run and is dropped. */
   let generation = 0;
@@ -38,10 +42,7 @@
     void bi.progress().then((p) => g === generation && then(p), () => {});
   };
   $effect(() => {
-    void bi.sources().then((list) => {
-      sources = list;
-      if (list[0]) choose(list[0]);
-    });
+    void bi.sources().then((list) => (sources = list));
     readProgress((p) => {
       if (p && !p.done) [progress, watching] = [p, true];
     });
@@ -66,7 +67,7 @@
   }
   async function pickCsv() {
     const r = await bi.importPasswordsCsv();
-    csv = !r.ok ? r.error : r.count === 1 ? "1 mot de passe importé" : `${r.count.toLocaleString("fr-FR")} mots de passe importés`;
+    csv = !r.ok ? r.error : r.count < 2 ? `${r.count} mot de passe importé` : `${r.count.toLocaleString("fr-FR")} mots de passe importés`;
   }
   const guide = (s: ImportSource) =>
     s.id === "safari"
@@ -94,10 +95,10 @@
     </div>
     {#if source}
       <div class="options">
-        {#if source.profiles.length > 1}
+        {#if profiles.length > 1}
           <label class="profile" out:fade={{ duration: 150 }}>Profil
             <select data-testid="import-profile" bind:value={profile}>
-              {#each source.profiles as p (p.id)}<option value={p.id}>{p.name}</option>{/each}
+              {#each profiles as p (p.id)}<option value={p.id}>{p.name}</option>{/each}
             </select>
           </label>
         {/if}
@@ -127,7 +128,8 @@
       <button type="button" data-testid="import-start" disabled={!types.some((t) => !unchecked.includes(t))} onclick={() => void start()}>Importer</button>
     </div>
     {#if refusal}{@render status("import-refusal", "warn", refusal)}{/if}
-    {#if watching}{@render status("import-started", "ok", "Import lancé : une notification vous préviendra à la fin.")}{/if}
+    {#if watching && progress?.done}{@render status("import-done", "ok", "Import terminé.")}
+    {:else if watching}{@render status("import-started", "ok", "Import lancé : une notification vous préviendra à la fin.")}{/if}
     {#each failures as [t, why] (t)}{@render status(`import-failed-${t}`, "warn", `${LABELS[t]} : ${why}`)}{/each}
     {#if diskAccess}
       <div class="row" out:fade={{ duration: 150 }}>

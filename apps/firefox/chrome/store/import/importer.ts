@@ -91,7 +91,8 @@ export function summary(p: ImportProgress): { title: string; text: string } {
 function reason(def: SourceDef, type: ImportType, unreadableFile: boolean): string {
   if (def.kind === "safari") return "accès refusé : autorisez WebAiOs dans Réglages Système › Confidentialité et sécurité › Accès complet au disque";
   if (type === "passwords" && def.kind === "chromium" && !unreadableFile) return "accès au trousseau refusé";
-  return `fichier illisible : fermez ${def.name} puis réessayez`;
+  // Firefox and Zen are always read from a copy: a lock is not the cause.
+  return def.kind === "firefox" ? `profil ${def.name} illisible` : `fichier illisible : fermez ${def.name} puis réessayez`;
 }
 
 /** The engine caps Chromium history at 2 000 pages and 180 days: for an import, all of it within our retention. */
@@ -112,6 +113,8 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
   const testHome = Services.env.get("WEBAIOS_TEST_IMPORT_HOME");
   const home = testHome || Services.dirsvc.get("Home", Ci.nsIFile).path;
   const tmp = PathUtils.join(dataDir, "import-tmp");
+  // A quit or crash mid-import may have left copies (Login Data, History): never kept. A run waits for it.
+  const cleared = IOUtils.remove(tmp, { recursive: true, ignoreAbsent: true }).catch((e: unknown) => console.error("[import] old copy not removed:", e));
   let progress: ImportProgress | null = null;
   let running = false;
 
@@ -184,8 +187,7 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
       errors.set(type, e instanceof Error ? e.message : String(e));
       throw e;
     };
-    // A crash mid-import may have left copies (Login Data, History): never kept.
-    await IOUtils.remove(tmp, { recursive: true, ignoreAbsent: true }).catch((e: unknown) => console.error("[import] old copy not removed:", e));
+    await cleared;
     // First, on its own: a migrator that crashes never takes the spaces with it.
     if (types.includes("spaces"))
       await importSpaces(def, profile).then(
@@ -203,8 +205,9 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
     // Our history is the kernel's (Firefox's is off: places.history.enabled), so the visits go there, not into Places.
     MigrationUtils.insertVisitsWrapper = async (pages: PageInfo[]) => {
       for (const batch of visitBatches(pages)) {
-        await host.request("history.import", { visits: batch }).catch(noted("history"));
-        counts.history = (counts.history ?? 0) + batch.length;
+        // The rows written or updated: a URL the kernel drops, or an unchanged re-import, is not counted.
+        const r = await host.request<{ count: number }>("history.import", { visits: batch }).catch(noted("history"));
+        counts.history = (counts.history ?? 0) + r.count;
       }
     };
     // insertTree directly: the engine's wrapper would also show Firefox's bookmarks toolbar.
@@ -219,8 +222,21 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
       }
       const parent = await PlacesUtils.bookmarks.fetch(parentGuid);
       const kept = pruneBookmarks(items, parent?.title ?? "", existing);
-      if (kept.items.length) await PlacesUtils.bookmarks.insertTree({ guid: parentGuid, children: kept.items });
+      await mergeTree(kept.items, parentGuid);
       counts.bookmarks = (counts.bookmarks ?? 0) + kept.count;
+    };
+    /** Already pruned items under `parentGuid`: a folder of the same title there gets the new children, never a twin. */
+    const mergeTree = async (items: BookmarkItem[], parentGuid: string): Promise<void> => {
+      const db = await PlacesUtils.promiseDBConnection();
+      const rows = await db.execute("SELECT b.guid, b.title FROM moz_bookmarks b JOIN moz_bookmarks p ON p.id = b.parent WHERE p.guid = :guid AND b.type = 2", { guid: parentGuid });
+      const folders = new Map<string, string>(rows.map((r: any) => [r.getResultByName("title") ?? "", r.getResultByName("guid")]));
+      const fresh: BookmarkItem[] = [];
+      for (const item of items) {
+        const folder = Array.isArray(item.children) ? folders.get(item.title ?? "") : undefined;
+        if (folder) await mergeTree(item.children!, folder);
+        else fresh.push(item);
+      }
+      if (fresh.length) await PlacesUtils.bookmarks.insertTree({ guid: parentGuid, children: fresh });
     };
     const migrate = async (migrator: any, asked: ImportType[]) => {
       // Tests never reach the real keychain: a readable Login Data would ask it for its key.
@@ -293,8 +309,12 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
 
   return {
     async sources() {
-      const defs = await detectSources(home, (path) => IOUtils.exists(path));
-      return Promise.all(defs.map(async (d): Promise<ImportSource> => ({ id: d.id, name: d.name, profiles: await profilesOf(d), types: [...d.types], passwordsByCsv: d.passwordsByCsv })));
+      // Only which data folders exist: no file of another browser is read before the person picks it.
+      return (await detectSources(home, (path) => IOUtils.exists(path))).map((d): ImportSource => ({ id: d.id, name: d.name, types: [...d.types], passwordsByCsv: d.passwordsByCsv }));
+    },
+    async profiles(source) {
+      const def = (await detectSources(home, (path) => IOUtils.exists(path))).find((d) => d.id === source);
+      return def ? profilesOf(def) : [];
     },
     async start(o) {
       if (running) return { ok: false, error: "Un import est déjà en cours" };
@@ -329,7 +349,7 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
       try {
         const { LoginCSVImport } = ChromeUtils.importESModule("resource://gre/modules/LoginCSVImport.sys.mjs");
         const report: { result: string }[] = await LoginCSVImport.importFromCSV(path);
-        return { ok: true, count: report.filter((r) => !r.result.includes("error")).length };
+        return { ok: true, count: report.filter((r) => r.result === "added" || r.result === "modified").length };
       } catch (e: any) {
         console.error("[import] CSV:", e);
         if (e?.errorType === "FILE_PERMISSIONS_ERROR" || e?.errorType === "UNABLE_TO_READ_ERROR") return { ok: false, error: "Ce fichier n'a pas pu être lu." };

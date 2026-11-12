@@ -373,12 +373,14 @@ export interface ApiWebaios {
 
 export type ImportSourceId = "arc" | "chrome" | "brave" | "edge" | "vivaldi" | "opera" | "safari" | "firefox" | "zen";
 export type ImportType = "bookmarks" | "history" | "passwords" | "spaces";
-export interface ImportSource { id: ImportSourceId; name: string; profiles: { id: string; name: string }[]; types: ImportType[]; passwordsByCsv: boolean }
+export interface ImportSource { id: ImportSourceId; name: string; types: ImportType[]; passwordsByCsv: boolean }
 export interface ImportProgress { source: ImportSourceId; done: boolean; counts: Partial<Record<ImportType, number>>; failed: Partial<Record<ImportType, string>> }
 /** Import from another browser on this Mac: one run at a time, in the background; a notification tells the end. */
 export interface BrowserImportApi {
-  /** Only the browsers whose data folder exists. */
+  /** Only the browsers whose data folder exists (no file of theirs is read). */
   sources(): Promise<ImportSource[]>;
+  /** A source's profiles, the last used first: read only once the person picks that source. */
+  profiles(source: ImportSourceId): Promise<{ id: string; name: string }[]>;
   /** Answers at once; the import goes on in the background. */
   start(o: { source: ImportSourceId; profile: string | null; types: ImportType[] }): Promise<{ ok: true } | { ok: false; error: string }>;
   /** The run in progress, or the last one; null before any. */

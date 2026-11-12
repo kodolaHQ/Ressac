@@ -19,25 +19,33 @@ let w: LaunchedWebAiOs;
 let m: Marionette;
 let home = "";
 let csv = "";
+let dataDir = "";
 
 /** Chrome's time: microseconds since 1601. */
 const chromeTime = (d: Date) => (d.getTime() + 11_644_473_600_000) * 1000;
 
-function fakeChrome(root: string): void {
-  const profile = join(root, "Library/Application Support/Google/Chrome/Default");
-  mkdirSync(profile, { recursive: true });
-  writeFileSync(join(profile, "..", "Local State"), JSON.stringify({ profile: { last_used: "Default", info_cache: { Default: { name: "Personne 1" } } } }));
+const chromeProfile = () => join(home, "Library/Application Support/Google/Chrome/Default");
+
+/** Chrome's Bookmarks file, with more bookmarks in its « Travail » folder. */
+function chromeBookmarks(work: { name: string; url: string }[]): void {
   writeFileSync(
-    join(profile, "Bookmarks"),
+    join(chromeProfile(), "Bookmarks"),
     JSON.stringify({
       version: 1,
       roots: {
-        bookmark_bar: { type: "folder", name: "Barre", children: [{ type: "url", name: "Exemple A", url: "https://a.example/" }, { type: "folder", name: "Travail", children: [{ type: "url", name: "Exemple B", url: "https://b.example/page" }] }] },
+        bookmark_bar: { type: "folder", name: "Barre", children: [{ type: "url", name: "Exemple A", url: "https://a.example/" }, { type: "folder", name: "Travail", children: work.map((b) => ({ type: "url", ...b })) }] },
         other: { type: "folder", name: "Autres", children: [] },
         synced: { type: "folder", name: "Mobile", children: [] },
       },
     }),
   );
+}
+
+function fakeChrome(): void {
+  const profile = chromeProfile();
+  mkdirSync(profile, { recursive: true });
+  writeFileSync(join(profile, "..", "Local State"), JSON.stringify({ profile: { last_used: "Default", info_cache: { Default: { name: "Personne 1" } } } }));
+  chromeBookmarks([{ name: "Exemple B", url: "https://b.example/page" }]);
   const db = new DatabaseSync(join(profile, "History"));
   db.exec("CREATE TABLE urls (id INTEGER PRIMARY KEY, url TEXT, title TEXT, visit_count INTEGER DEFAULT 0, typed_count INTEGER DEFAULT 0, last_visit_time INTEGER, hidden INTEGER DEFAULT 0)");
   db.exec("CREATE TABLE visits (id INTEGER PRIMARY KEY, url INTEGER, visit_time INTEGER)");
@@ -74,13 +82,17 @@ function fakeArcAndZen(root: string): void {
 
 beforeAll(async () => {
   home = await mkdtemp(join(os.tmpdir(), "webaios-import-home-"));
-  fakeChrome(home);
+  fakeChrome();
   fakeArcAndZen(home);
   // An empty Safari folder: offered, but its engine migrator never runs under a test home (every type fails as without Full Disk Access).
   mkdirSync(join(home, "Library/Safari"), { recursive: true });
   csv = join(home, "passwords.csv");
   writeFileSync(csv, "url,username,password\nhttps://site1.example,alice,secret-1\nhttps://site2.example,bob,secret-2\n");
-  w = await launchWebAiOs({ env: { WEBAIOS_TEST_IMPORT_HOME: home, WEBAIOS_TEST_IMPORT_CSV: csv, WEBAIOS_TEST_REVEAL: join(home, "opened.txt") } });
+  // A copy left by a quit mid-import: removed at startup.
+  dataDir = await mkdtemp(join(os.tmpdir(), "webaios-data-"));
+  mkdirSync(join(dataDir, "import-tmp/chrome/Default"), { recursive: true });
+  writeFileSync(join(dataDir, "import-tmp/chrome/Default/Login Data"), "copie");
+  w = await launchWebAiOs({ dataDir, env: { WEBAIOS_TEST_IMPORT_HOME: home, WEBAIOS_TEST_IMPORT_CSV: csv, WEBAIOS_TEST_REVEAL: join(home, "opened.txt") } });
   m = w.marionette;
   await m.setContext("chrome");
 });
@@ -90,6 +102,7 @@ afterAll(async () => {
   } finally {
     await w?.close();
     await rm(home, { recursive: true, force: true });
+    await rm(dataDir, { recursive: true, force: true });
   }
 });
 
@@ -104,11 +117,11 @@ async function finished(): Promise<ImportProgress> {
   }
 }
 const bookmarks = (url: string) =>
-  m.execute<{ title: string; parent: string }[]>(
+  m.execute<{ title: string; parent: string; parentGuid: string }[]>(
     `return (async () => {
       const { PlacesUtils } = ChromeUtils.importESModule("resource://gre/modules/PlacesUtils.sys.mjs");
       const found = await PlacesUtils.bookmarks.search({ url: arguments[0] });
-      return Promise.all(found.map(async (b) => ({ title: b.title, parent: (await PlacesUtils.bookmarks.fetch(b.parentGuid)).title })));
+      return Promise.all(found.map(async (b) => ({ title: b.title, parent: (await PlacesUtils.bookmarks.fetch(b.parentGuid)).title, parentGuid: b.parentGuid })));
     })();`,
     [url],
   );
@@ -121,7 +134,7 @@ const notifications = () =>
     .filter((n) => n.title.startsWith("Import"));
 
 describe("import from another browser", () => {
-  it("lists the fake browsers, with their profiles", async () => {
+  it("lists the fake browsers; a source's profiles only when asked", async () => {
     const sources = await api<ImportSource[]>("sources()");
     expect(sources.map((s) => [s.id, s.types])).toEqual([
       ["arc", ["bookmarks", "history", "passwords", "spaces"]],
@@ -129,7 +142,9 @@ describe("import from another browser", () => {
       ["safari", ["bookmarks", "history"]],
       ["zen", ["bookmarks", "history", "spaces"]],
     ]);
-    expect(sources[1]).toEqual({ id: "chrome", name: "Google Chrome", profiles: [{ id: "Default", name: "Personne 1" }], types: ["bookmarks", "history", "passwords"], passwordsByCsv: false });
+    expect(sources[1]).toEqual({ id: "chrome", name: "Google Chrome", types: ["bookmarks", "history", "passwords"], passwordsByCsv: false });
+    expect(await api("profiles(arguments[0])", ["chrome"])).toEqual([{ id: "Default", name: "Personne 1" }]);
+    await expect.poll(() => existsSync(join(dataDir, "import-tmp"))).toBe(false);
   });
 
   it("brings bookmarks and history, says why passwords failed, leaves no copy, and a re-import doubles nothing", async () => {
@@ -149,7 +164,7 @@ describe("import from another browser", () => {
     expect(
       await m.execute(`return ["browser.migrate.chrome.history.limit", "browser.migrate.history.maxAgeInDays"].map((n) => Services.prefs.prefHasUserValue(n));`),
     ).toEqual([false, false]);
-    expect(await bookmarks("https://b.example/page")).toEqual([{ title: "Exemple B", parent: "Travail" }]);
+    expect(await bookmarks("https://b.example/page")).toMatchObject([{ title: "Exemple B", parent: "Travail" }]);
     expect(await bookmarks("https://a.example/")).toHaveLength(1);
     const urls = (await history()).map((v) => v.url).sort();
     expect(urls).toEqual(["https://h1.example/lu", "https://h2.example/lu"]);
@@ -157,9 +172,14 @@ describe("import from another browser", () => {
     expect(notifications().at(-1)).toMatchObject({ title: "Import terminé en partie" });
     expect(notifications().at(-1)!.text).toMatch(/2 favoris, 2 pages d'historique\. Non importé : mots de passe/);
 
+    // Since then, one more bookmark in « Travail »: it joins the folder already there, never a second « Travail ».
+    chromeBookmarks([{ name: "Exemple B", url: "https://b.example/page" }, { name: "Exemple C", url: "https://c.example/" }]);
     expect(await api("start(arguments[0])", [start])).toEqual({ ok: true });
     const again = await finished();
-    expect(again.counts).toEqual({ bookmarks: 0, history: 2 });
+    // The visits are already there, unchanged: none is counted again.
+    expect(again.counts).toEqual({ bookmarks: 1, history: 0 });
+    const [b] = await bookmarks("https://b.example/page");
+    expect(await bookmarks("https://c.example/")).toEqual([{ title: "Exemple C", parent: "Travail", parentGuid: b!.parentGuid }]);
     expect(await bookmarks("https://b.example/page")).toHaveLength(1);
     expect(await bookmarks("https://a.example/")).toHaveLength(1);
     expect((await history()).map((v) => v.url).sort()).toEqual(urls);
@@ -223,8 +243,11 @@ describe("import from another browser", () => {
     await shows("welcome-2", "Vous venez d'un autre navigateur ?");
     await shows("browser-import", "Arc");
     expect(await inUi(m, `return [...doc.querySelectorAll('[name="import-source"]')].map((r) => r.closest("label").textContent.trim())`)).toEqual(["Arc", "Google Chrome", "Safari", "Zen"]);
-    // The first is chosen, with every type checked; Arc's spaces too.
-    expect(await checked("import-source-arc")).toBe(true);
+    // None is chosen before a click (no browser's profiles are read); then every type is checked, Arc's spaces too.
+    expect(await checked("import-source-arc")).toBe(false);
+    expect(await inUi(m, `return doc.querySelector('[data-testid="import-start"]').disabled`)).toBe(true);
+    await click(m, '[data-testid="import-source-arc"]');
+    await shows("browser-import", "Espaces et onglets épinglés");
     expect(await checked("import-type-spaces")).toBe(true);
     expect(await there("welcome-later")).toBe(true);
     await click(m, '[data-testid="import-source-chrome"]');
@@ -236,7 +259,9 @@ describe("import from another browser", () => {
     await click(m, '[data-testid="import-start"]');
     await shows("import-started", "Import lancé : une notification vous préviendra à la fin.");
     expect((await finished()).source).toBe("chrome");
-    // The run's failure is told once it ends.
+    // The run's end and its failure are told once it ends.
+    await shows("import-done", "Import terminé.");
+    await gone("import-started");
     await shows("import-failed-passwords", "Mots de passe : fichier illisible");
     await click(m, '[data-testid="welcome-next"]');
     await shows("welcome-3", "Vos onglets vivent à gauche");
@@ -256,7 +281,8 @@ describe("import from another browser", () => {
     await shows("import-guide", "Supprimez ensuite le fichier exporté : il n'est pas chiffré.");
     await gone("import-type-passwords");
     await click(m, '[data-testid="import-csv"]');
-    await shows("import-csv-result", "2 mots de passe importés");
+    // Already imported by the API test above: unchanged rows are not counted.
+    await shows("import-csv-result", "0 mot de passe importé");
   });
 
   it("Safari: the CSV guide's four steps, and a refused disk access opens System Settings", async () => {

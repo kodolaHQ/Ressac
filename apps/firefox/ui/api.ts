@@ -304,6 +304,7 @@ export function createApi(win: WindowController): ApiFirefox {
     bookmarks: { search: (text, limit) => win.store.bookmarks.search(text, limit).then((v) => structuredClone(v)) },
     browserImport: {
       sources: () => win.store.browserImport.sources().then((r) => structuredClone(r)),
+      profiles: (source) => win.store.browserImport.profiles(source).then((r) => structuredClone(r)),
       start: (o) => win.store.browserImport.start(structuredClone(o)).then((r) => structuredClone(r)),
       progress: () => win.store.browserImport.progress().then((r) => structuredClone(r)),
       importPasswordsCsv: () => win.store.browserImport.importPasswordsCsv().then((r) => structuredClone(r)),

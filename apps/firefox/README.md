@@ -150,14 +150,14 @@ Limits:
 
 ## Import from another browser
 
-- **Where:** welcome page 2 (« Vous venez d'un autre navigateur ? ») and Réglages › Données › « Importer depuis un autre navigateur ». Both use `ui/components/BrowserImport.svelte` and the `browserImport` API: `sources`, `start`, `progress`, `importPasswordsCsv`.
-- **Sources and data:** detected under the home, listing only the browsers whose data folder exists.
+- **Where:** welcome page 2 (« Vous venez d'un autre navigateur ? ») and Réglages › Données › « Importer depuis un autre navigateur ». Both use `ui/components/BrowserImport.svelte` and the `browserImport` API: `sources`, `profiles`, `start`, `progress`, `importPasswordsCsv`.
+- **Sources and data:** detected under the home, listing only the browsers whose data folder exists. Nothing in them is read until the person picks one: only then are its profiles read (Chromium's `Local State`, Firefox's `profiles.ini`), the last used preselected.
   - **Chrome and its cousins** (Brave, Edge, Vivaldi, Opera): the engine's own migrators.
-  - **Arc:** an `ArcProfileMigrator` subclass in `chrome/store/import/sources.ts`.
+  - **Arc:** the engine's `ChromeProfileMigrator`, pointed at Arc's folder and keychain item (`chromiumMigrator` in `chrome/store/import/sources.ts`).
   - **Firefox and Zen:** subclasses that read the source's own `profiles.ini` and a copy of `places.sqlite`.
   - **Safari:** the engine's migrator.
   - There is no engine patch: the subclasses live in our chrome code.
-- **Bookmarks:** they go into Places through `PlacesUtils.bookmarks.insertTree`, skipping a URL already in a folder of the same title. They are never shown in the sidebar. They are searchable from ⌘T (« Favoris ») and by the agent (`search_bookmarks`, through the host RPC `bookmarks.search` to the chrome).
+- **Bookmarks:** they go into Places through `PlacesUtils.bookmarks.insertTree`, skipping a URL already in a folder of the same title; a folder already there of the same title gets the new ones. They are never shown in the sidebar. They are searchable from ⌘T (« Favoris ») and by the agent (`search_bookmarks`, through the host RPC `bookmarks.search` to the chrome).
 - **History:** during a run, `MigrationUtils.insertVisitsWrapper` is swapped to send each batch (5 000 visits) to the host RPC `history.import`. The visits land in the kernel history under `IMPORTED_SPACE` (`"import"`), never private, within `RETENTION_DAYS`. For the run, the engine's Chromium caps are lifted:
   - `browser.migrate.chrome.history.limit` is set to 0;
   - `browser.migrate.history.maxAgeInDays` is set to 183;
@@ -170,7 +170,7 @@ Limits:
   - Zen is read from `zen-sessions.jsonlz4`.
 - **Background run:** one import at a time, in the background. It ends with a macOS notification giving the counts per type, or what failed and why.
   - A locked or unreadable Chromium file is retried once on a copy in `<dataDir>/import-tmp/`.
-  - That folder is removed at the start and at the end of every run.
+  - That folder is removed at startup (a quit or crash mid-import may leave it) and at the end of every run, and « Exporter les données » never includes it.
 - **Not imported:** cookies and logged-in sessions, and extensions.
 - **Tests:**
   - `WEBAIOS_TEST_IMPORT_HOME` replaces the home for source paths. Every e2e launch defaults it to an empty folder, so a test never reads the real `~/Library`.

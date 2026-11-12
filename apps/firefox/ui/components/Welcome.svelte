@@ -11,7 +11,8 @@
   import { welcomeStep as step } from "./welcome-step.svelte";
 
   /**
-   * The first-launch welcome: six pages on the aura, then the browser. Nothing is done before « Ouvrir le navigateur ».
+   * The first-launch welcome: six pages on the aura, then the browser. Nothing is saved before « Ouvrir le navigateur »,
+   * except an import from another browser, started on page 2.
    * An install link steps it aside (unmounted, its page kept in `step`): coming back checks Docker and Ollama again.
    */
   let { window: win }: { window: WindowState } = $props();
