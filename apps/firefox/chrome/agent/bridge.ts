@@ -1,7 +1,8 @@
 import { navigationOutsideSite, TabNotFound, PrivateTab, type DevRight, type TabInfo, type PageReadOptions } from "../shims/kernel";
-import type { BrowserState, WindowId, Tab } from "../../shared/model";
-import { privateTab, WORKFLOW_PREFIX } from "../../shared/model";
-import { policyChanges, tabInfos, activeTabOf, appTab, siteTab, originOf, SITE_PREFIX, resolveSpace } from "../../core/agent/bridge";
+import type { BrowserState, WindowId, Tab, Band } from "../../shared/model";
+import { privateTab, WORKFLOW_PREFIX, AGENT_PROFILE } from "../../shared/model";
+import { ENGINES } from "../../core/url";
+import { boundLinks, policyChanges, tabInfos, activeTabOf, appTab, siteTab, originOf, SITE_PREFIX, resolveSpace } from "../../core/agent/bridge";
 import type { Handler } from "../../shared/rpc";
 import type { AgentApps } from "../store/apps";
 import type { DevTools } from "../store/devtools";
@@ -105,7 +106,8 @@ export function bridgeHandlers(
     // The child runs in a web process: its answer is not trusted.
     const text = String(r?.text ?? "").slice(0, TEXT_MAX);
     const selection = String(r?.selection ?? "").slice(0, TEXT_MAX);
-    return selection ? { text: text, selection } : { text: text };
+    const links = boundLinks(r?.links);
+    return selection ? { text: text, selection, links } : { text: text, links };
   };
   const snapshot = async (browser: any, win: Window) => {
     const bitmap = await browser.browsingContext.currentWindowGlobal.drawSnapshot(null, 1, "white");
@@ -121,25 +123,28 @@ export function bridgeHandlers(
   };
 
   /** The agent's demos open in the foreground, marked ✦. With no window open, in the kept one. */
-  const openTab = ([url, space]: [string, string?]): TabInfo => {
+  const openTabIn = (window: WindowId | undefined, url: string, space?: string, extra: { profile?: string; background?: boolean } = {}): TabInfo => {
     const state = store.state;
-    const f = state.windows.find((x) => x.id === windows.active()) ?? state.windows[0];
+    const f = state.windows.find((x) => x.id === (window ?? windows.active())) ?? state.windows[0];
     if (!f) throw new Error("Aucune fenêtre ouverte");
     const spaceId = resolveSpace(state, f, space);
     if (state.spaces.find((e) => e.id === spaceId)?.private ?? true) throw new Error("Impossible d'ouvrir un onglet ici : l'espace actif est privé.");
     const id = crypto.randomUUID();
-    store.dispatch({ type: "openTab", windowId: f.id, url, spaceId: spaceId, activate: true, openedByAgent: true }, () => id);
+    const { background, ...fields } = extra;
+    store.dispatch({ type: "openTab", windowId: f.id, url, spaceId: spaceId, activate: !background, openedByAgent: true, ...fields }, () => id);
     if (!store.state.tabs[id]) throw new Error(`Impossible d'ouvrir ${url}`);
-    store.dispatch({ type: "activateTab", id }); // also switches to its space
+    if (!background) store.dispatch({ type: "activateTab", id }); // also switches to its space
     return tabInfos(store.state).find((o) => o.id === id)!;
   };
+
+  const openTab = ([url, space]: [string, string?]): TabInfo => openTabIn(undefined, url, space);
 
   return {
     // Decision 3: no window open (the last one kept), no active tab.
     activeTab: ([win]: [WindowId?] = []) => activeTabOf(store.state, win ?? windows.active()),
     listTabs: () => [...tabInfos(store.state), ...apps.forAgent().map(appTab), ...sites.forAgent().map(siteTab)],
     openTab: openTab,
-    navigate: ([id, url]: [string, string]) => {
+    navigate: async ([id, url]: [string, string]) => {
       if (id.startsWith(SITE_PREFIX)) {
         if (!sites.viewFor(id.slice(SITE_PREFIX.length))) throw new TabNotFound(id);
         // Never a tab instead: off the app's domains nothing loads (the kernel checked it already).
@@ -155,8 +160,29 @@ export function bridgeHandlers(
         return;
       }
       tab(id);
-      windowOf(id).controller.navigateForAgent(id, url);
+      await windowOf(id).controller.navigateForAgentLoaded(id, url);
     },
+    // The agent's search tab, in its own login profile; `reuse`: that tab goes to the new address instead.
+    "search.open": async ([win, target, reuse]: [WindowId | undefined, { query: string } | { url: string }, string?]) => {
+      const template = Services.env.get("WEBAIOS_TEST_SEARCH_URL") || ENGINES[store.state.settings.engine];
+      const url = "query" in target ? template.replace("%s", encodeURIComponent(target.query)) : target.url;
+      if (reuse !== undefined && store.state.tabs[reuse]) {
+        tab(reuse);
+        await windowOf(reuse).controller.navigateForAgentLoaded(reuse, url);
+        // Closed during the load: nothing to return.
+        const info = tabInfos(store.state).find((o) => o.id === reuse);
+        if (!info) throw new TabNotFound(reuse);
+        return info;
+      }
+      return openTabIn(win, url, undefined, { profile: AGENT_PROFILE });
+    },
+    "search.openBackground": ([searchTab, url]: [string, string]) => {
+      const t = tab(searchTab);
+      return openTabIn(t.windowId, url, t.spaceId, { profile: AGENT_PROFILE, background: true });
+    },
+    "search.close": ([id]: [string]) => void store.dispatch({ type: "closeTab", id }),
+    // The band of the search tab: the window draws it (window/search-band.ts) from the tab's state.
+    "search.band": ([id, band]: [string, Band | null]) => void store.dispatch({ type: "setAgentSearch", id, band: band && { ...band, text: band.text.slice(0, 300) } }),
     readText: ([id]: [string]) => onSiteView(id, getText) ?? outsidePrivate(id, getText),
     capture: ([id]: [string]) => onSiteView(id, snapshot) ?? outsidePrivate(id, (browser) => snapshot(browser, windowOf(id).window)),
     // « L'agent veut lire l'onglet … » in the active window; refused with none to show it. The signal aborts when the
@@ -170,6 +196,11 @@ export function bridgeHandlers(
     askDevTools: ([o, d]: [TabInfo, { rights: DevRight[]; reason: string; agent: string }], signal) => {
       const f = windows.active();
       return f ? questions.askDevTools(o, d, f, signal) : [];
+    },
+    // The card for an address the agent composed, in the window of its search; refused with none to show it.
+    askAddress: ([o, win]: [{ url: string; reason: string; agent: string; opinion?: string }, WindowId | undefined], signal) => {
+      const f = win ?? windows.active();
+      return f ? questions.askAddress(o, f, signal) : false;
     },
     // The « donnees-widget » card in the active window; refused with none to show it. The kernel takes it down (signal)
     // when a new conversation starts.

@@ -5,7 +5,7 @@ import { bannerText } from "./banner-text";
 
 const XHTML = "http://www.w3.org/1999/xhtml";
 /** These open as the UI's modal (as modal.svelte.ts's isAgentRequest, not importable here: it holds runes). */
-const AGENT = ["read-tab", "devtools", "widget-data", "extension", "extension-console"];
+const AGENT = ["read-tab", "devtools", "widget-data", "extension", "extension-console", "agent-address"];
 
 /**
  * The site question of the displayed tab, above the page, which moves down by its height

@@ -32,7 +32,8 @@ afterEach(async () => {
 
 /** A launch that shows the welcome (unless `welcome` is false: the tests' default, which skips it). Ollama unreachable. */
 async function launch(o: { welcome?: boolean; env?: Record<string, string>; dataDir?: string; firstTimeNotes?: boolean } = {}): Promise<void> {
-  const env = { WEBAIOS_OLLAMA_URL: "http://127.0.0.1:9", ...(o.welcome === false ? {} : { WEBAIOS_SKIP_WELCOME: "0" }), ...o.env };
+  // The kernel's own decision-model address: the welcome reads the decision model found in Ollama, which an imposed one hides.
+  const env = { WEBAIOS_OLLAMA_URL: "http://127.0.0.1:9", WEBAIOS_KEV_URL: undefined, ...(o.welcome === false ? {} : { WEBAIOS_SKIP_WELCOME: "0" }), ...o.env };
   w = await launchWebAiOs({ env, prefs: NO_WEB, dataDir: o.dataDir, firstTimeNotes: o.firstTimeNotes });
   m = w.marionette;
   await m.setContext("chrome");

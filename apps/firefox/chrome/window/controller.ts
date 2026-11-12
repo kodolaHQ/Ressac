@@ -13,6 +13,7 @@ import { createAddons, type WindowAddons } from "./addons";
 import { routeAddonsManager } from "./addons-manager";
 import { setupAnchors } from "./anchor";
 import { mountSiteBanner } from "./site-banner";
+import { mountSearchBand } from "./search-band";
 import { visibleFrame } from "./frame";
 import { FIREFOX_COMMANDS, FIREFOX_KEYS, SETTINGS_MENU_ITEMS, shortcutFor, type Shortcut } from "./keys";
 import { TabSync } from "./tabs";
@@ -29,6 +30,8 @@ export interface WindowController {
    * way when TabSync creates its XUL tab.
    */
   navigateForAgent(tabId: TabId, url: string): void;
+  /** As `navigateForAgent`, resolved once the new address has finished loading (15 s at most): a read after it never sees the previous page. */
+  navigateForAgentLoaded(tabId: TabId, url: string): Promise<void>;
   /** The browser of a tab for the agent, its XUL tab created in the background if needed and loaded (TabSync.ensure). */
   ensure(tabId: TabId): Promise<any>;
   command(tabId: TabId, c: "back" | "forward" | "reload" | "reloadHard" | "stop"): void;
@@ -95,7 +98,7 @@ export function createController(
   tabs.sync(store.state);
   // The store outlives the window (macOS keeps running without one): drop this window's listeners when it goes, then
   // its state window (its tabs leave with it).
-  const unsubscribe = [store.subscribe((state) => tabs.sync(state)), mountSiteBanner(window, store, windowId)];
+  const unsubscribe = [store.subscribe((state) => tabs.sync(state)), mountSiteBanner(window, store, windowId), mountSearchBand(window, store, windowId)];
   applyFrame(store.state.windows.find((f) => f.id === windowId)?.frame ?? null);
   // Size and position kept for the next start (grouped: a drag fires dozens of events).
   let frameTimer: ReturnType<typeof setTimeout> | undefined;
@@ -206,7 +209,9 @@ export function createController(
     const shown = f?.active[f.activeSpace];
     if (shown !== haloTab) halo.off();
     haloTab = shown;
-    halo.update(!!(shown && store.access.tabs[shown]?.running));
+    // In « à vous » the page is the user's: no halo.
+    if (shown && store.state.tabs[shown]?.agentSearch?.state === "yours") halo.off();
+    else halo.update(!!(shown && store.access.tabs[shown]?.running));
   };
   updateHalo();
   unsubscribe.push(store.subscribe(updateHalo), store.agent.on("access", updateHalo), store.agent.on(HOST_EXITED, updateHalo), () => halo.dispose());
@@ -416,6 +421,15 @@ export function createController(
       if (!tab) return void store.dispatch({ type: "updateTab", id: tabId, fields: { url } });
       const triggeringPrincipal = Services.scriptSecurityManager.createContentPrincipal(uri, { userContextId: tab.userContextId });
       tab.linkedBrowser.loadURI(uri, { triggeringPrincipal });
+    },
+    async navigateForAgentLoaded(tabId, url) {
+      const browser = tabs.tab(tabId)?.linkedBrowser;
+      // Only the fragment changes: a same-document navigation, no load to wait for.
+      const base = (u: string) => u.replace(/#.*/, "");
+      const sameDocument = url.includes("#") && base(url) === base(browser?.currentURI?.spec ?? "");
+      const loaded = browser && !sameDocument ? tabs.nextLoad(tabId, browser) : Promise.resolve();
+      controller.navigateForAgent(tabId, url);
+      await loaded;
     },
     ensure: (tabId) => tabs.ensure(tabId),
     command(tabId, c) {

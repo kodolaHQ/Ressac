@@ -1,0 +1,7 @@
+<!doctype html><meta charset="utf-8"><title>Résultats</title>
+<p>Résultats de la recherche.</p>
+<script>
+// The text and the links depend on the query, so two searches differ, with as many links.
+const q = new URLSearchParams(location.search).get("q") ?? "";
+document.body.insertAdjacentHTML("beforeend", `<p>Requête : ${encodeURIComponent(q)}</p><a href="/a.html?q=${encodeURIComponent(q)}">Annonce</a><a href="/b.html?q=${encodeURIComponent(q)}">Autre</a>`);
+</script>

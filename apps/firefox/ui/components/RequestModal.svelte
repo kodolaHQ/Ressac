@@ -34,7 +34,10 @@
   /** The spaces the unlock covers: names given by the user, shown as text and bounded. */
   const extensionSpaces = $derived((request.spaces ?? []).slice(0, 20).map((e) => e.slice(0, 60)));
   const agentReason = $derived((request.reason ?? "").slice(0, UNLOCK_REASON_LENGTH));
+  const agentAddress = $derived(request.permissions.includes("agent-address"));
   const site = $derived(siteOf(request.origin));
+  /** The address card's « Pourquoi on me demande ça ? » explanation, closed again for each request. */
+  let why = $state(false);
 
   // A single opening for the whole queue: following requests replace the content, the page stays hidden.
   onMount(() => {
@@ -53,6 +56,7 @@
   // Next request in the queue: its content replaces the old one, focus stays in the modal.
   $effect(() => {
     void request.id;
+    why = false;
     untrack(armer);
     void tick().then(() => {
       if (card && !card.contains(document.activeElement)) card.focus();
@@ -127,7 +131,9 @@
           ? "Activer une extension"
           : consoleExtension
             ? "Débloquer la console d'une extension"
-            : "Demande d'autorisation"}
+            : agentAddress
+              ? "L'agent veut ouvrir une adresse qu'il a écrite lui-même"
+              : "Demande d'autorisation"}
   >
     {#key request.id}
       {#if devTools}
@@ -150,6 +156,25 @@
             <!-- Enter refuses: showing the agent what an extension reads on unshared tabs takes a real click. -->
             <button data-main onclick={deny}>Refuser</button>
             <button class="allow" onclick={() => api.permissions.answer(request.id, "allow")}>Débloquer</button>
+          </div>
+        </div>
+      {:else if agentAddress}
+        <div class="reading" data-testid="address-request">
+          <p>L'agent veut ouvrir une adresse qu'il a écrite lui-même</p>
+          <p class="address" data-testid="address-request-url">{request.origin}</p>
+          {#if agentReason}<p class="reason">Sa raison : {agentReason}</p>{/if}
+          {#if request.opinion}<p class="reason">Avis du surveillant : {request.opinion.slice(0, UNLOCK_REASON_LENGTH)}</p>{/if}
+          <button class="why-toggle" data-testid="address-request-why" aria-expanded={why} aria-controls="address-request-why" onclick={() => (why = !why)}>Pourquoi on me demande ça ?</button>
+          <div class="why" class:open={why} id="address-request-why" aria-hidden={!why}>
+            <div>
+              <p class="reason">Pendant une recherche, l'agent ouvre librement les liens qu'il trouve dans les pages qu'il lit. Cette adresse, il ne l'a trouvée nulle part : il l'a écrite lui-même.</p>
+              <p class="reason">Une page piégée peut lui souffler une adresse qui emporte des informations vers un site inconnu. Un coup d'œil à l'adresse et à sa raison suffit ; dans le doute, « Refuser » : l'agent continue autrement.</p>
+            </div>
+          </div>
+          <div class="actions">
+            <!-- Enter refuses: an address the agent made up is opened only by a real click. -->
+            <button data-main onclick={deny}>Refuser</button>
+            <button class="allow" onclick={() => api.permissions.answer(request.id, "allow")}>Autoriser</button>
           </div>
         </div>
       {:else if widgetData}
@@ -207,7 +232,17 @@
     .card { transition: opacity 150ms ease-out; transform: none; }
   }
   .reading p { margin: 0 0 12px; font-size: 14px; overflow-wrap: anywhere; }
+  .reading p.address { font-family: var(--font-mono); font-size: 12px; word-break: break-all; }
   .reading p.reason { font-size: 13px; color: var(--text-muted, inherit); }
+  button.why-toggle { display: block; margin: 0 0 12px; padding: 0; border: 0; background: none; color: var(--text-muted); font: 500 12.5px var(--font-ui); text-decoration: underline; text-underline-offset: 2px; }
+  button.why-toggle:hover:not(:disabled) { background: none; color: var(--text); }
+  /* Opens on the spring, closes on a fade (DESIGN.md): the row grows from 0 so the buttons below slide with it. */
+  .why { display: grid; grid-template-rows: 0fr; opacity: 0; visibility: hidden; transition: grid-template-rows 150ms ease-out, opacity 150ms ease-out, visibility 0s 150ms; }
+  .why.open { grid-template-rows: 1fr; opacity: 1; visibility: visible; transition: grid-template-rows var(--spring-d) var(--spring), opacity 200ms var(--out); }
+  .why > div { overflow: hidden; min-height: 0; }
+  @media (prefers-reduced-motion: reduce) {
+    .why, .why.open { transition: opacity 150ms ease-out; }
+  }
   .actions { display: flex; justify-content: flex-end; gap: 8px; }
   button { padding: 7px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: 600 12.5px var(--font-ui); cursor: pointer; transition: transform var(--tap), background var(--tap); }
   button:hover:not(:disabled) { background: var(--bg-active); }

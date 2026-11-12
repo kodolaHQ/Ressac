@@ -14,6 +14,8 @@ import { Workshop, DEFAULT_DOCKER_FOLDER, type BuildProgress, type WorkshopState
 import { defaultRunner, type Runner } from "./container/runner.js";
 import { SessionAgent } from "./pty/session.js";
 import { AccessPolicy } from "./access/policy.js";
+import { SearchSessions } from "./search/sessions.js";
+import { createWatcher } from "./search/watcher.js";
 import type { TabInfo, BrowserBridge } from "./mcp/bridge.js";
 import type { ExtensionsTools } from "./mcp/extensions.js";
 import { startMcpServer, generateToken, type ActionsTools, type AppsTools, type SitesTools, type WidgetsTools, type OpenWorkflow } from "./mcp/server.js";
@@ -215,6 +217,8 @@ export interface Kernel {
   paths: SpacePaths;
   actions: KernelActions;
   policy: AccessPolicy;
+  /** The agent's visible searches, one per window. */
+  search: SearchSessions;
   /** Name of the agent of this kernel's profile (the one that holds the accesses). */
   agent: string;
   workshopState(): Promise<WorkshopState>;
@@ -315,6 +319,7 @@ export async function createKernel(o: {
   if (!profile) throw new Error(`Profil d'agent inconnu : ${profileId}`);
 
   const policy = new AccessPolicy(o.portBuilt ? { portBuilt: o.portBuilt } : {});
+  const search = new SearchSessions({ show: (tabId, band) => void o.bridge.search?.band(tabId, band).catch((e) => console.error("[webaios] search band:", e)) });
   const { widgetsFolder: widgetsFolder } = o;
   const { actionsFolder: actionsFolder } = o;
   // An action deleted (or put in the trash) since the last launch: its data and grant go.
@@ -374,6 +379,8 @@ export async function createKernel(o: {
   const server = await startMcpServer({
     bridge: o.bridge,
     policy: policy,
+    search: search,
+    ...(aiAccess ? { watcher: createWatcher(aiAccess) } : {}),
     token: token,
     agent: profile.name,
     profiles: profileFiles(paths, o.profilingFolder),
@@ -525,6 +532,7 @@ export async function createKernel(o: {
     paths: paths,
     actions,
     policy: policy,
+    search: search,
     agent: profile.name,
     workshopState: () => workshop.state(),
     async openAgentSession({ cols, rows, window: win, profile: profileChoice, resume, extra, onBuildProgress }) {
@@ -546,6 +554,7 @@ export async function createKernel(o: {
       // New conversation: no authorization any more. The sessions share the MCP server and therefore the policy:
       // a session of another window also loses its accesses (it will ask again), rather than inheriting them.
       policy.reset();
+      search.reset();
       const id = randomBytes(8).toString("hex");
       // With a window: its own token and config, so that `open_workflow` knows which one speaks (without a window,
       // dev CLI: the main config).
@@ -629,6 +638,7 @@ export async function createKernel(o: {
       openSessions.clear();
       // No access at all: the cards still displayed are removed, and a late answer grants nothing.
       policy.reset();
+      search.reset();
       await Promise.all([scheduler.stop(), fileActions.stopAll()]);
       await aiAccess?.close().catch((e) => console.error("[webaios] local AI stop:", e));
       await server.stop();

@@ -1,9 +1,12 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { SearchSessions, STOP_TEXT, CLOSED_TEXT, type Band, type Gesture } from "../../src/search/sessions.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { AccessPolicy } from "../../src/access/policy.js";
 import { PRIVATE_TEXT, type TabInfo } from "../../src/mcp/bridge.js";
+import type { Watcher } from "../../src/search/watcher.js";
 import { FakeBridge } from "../../src/mcp/fake-bridge.js";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { NO_WORKFLOW_OPEN, HIDDEN_ACTION_RUNS_NOTICE, HIDDEN_RUNS_NOTICE, startMcpServer, PENDING_SITE_NAVIGATION, navigationOutsideSite, SITE_DATA_PREFIX, TWEAK_ERRORS_PREFIX, SITE_UNKNOWN, SITE_DENIED, SITE_MEMORY_MAX_SHOWN, type SitesTools, DENIAL_TEXT, RESERVED_ERROR, RESERVED_ACTION_ERROR, ACTION_DATA_PREFIX, WIDGET_DATA_PREFIX, generateToken, type ActionsTools, type AppsTools, type WidgetsTools, type OpenWorkflow } from "../../src/mcp/server.js";
 import type { Execution } from "../../src/workflows/executions.js";
 import { ACTION_UNKNOWN, ACTION_WITHOUT_WORKFLOW, RESULT_TOO_BIG, requiredInput, type LaunchResult } from "../../src/actions/run.js";
@@ -87,6 +90,15 @@ test("read_tab on Gmail: request, refusal → normal answer", async () => {
   expect(r.isError).toBeFalsy();
   expect(text(r)).toBe("Accès refusé par l'utilisateur à cet onglet.");
   expect(bridge.calls.some((a) => a.method === "readText")).toBe(false);
+});
+
+test("read_tab with links: true lists the links after the text, without it lists none", async () => {
+  policy.grant(gmail);
+  const none = text(await client.callTool({ name: "read_tab", arguments: { id: "gmail" } }));
+  expect(none).not.toContain("Liens :");
+  expect(none).not.toContain("exemple.fr");
+  const some = text(await client.callTool({ name: "read_tab", arguments: { id: "gmail", links: true } }));
+  expect(some).toContain("Liens :\nAnnonce — https://exemple.fr/a");
 });
 
 test("read_tab marks the tab running while it reads, not after (the window's halo)", async () => {
@@ -1361,4 +1373,979 @@ test("a session token opened with an agent name asks under that name", async () 
   await c.callTool({ name: "widget_data", arguments: { id: "daily" } });
   await c.close();
   expect(dataCards()[0]!.args[0]).toEqual({ id: "daily", name: "daily.dev", agent: "Codex" });
+});
+
+// --- search_web and the link rule on the search tab ---
+
+const REFUSED = "Adresse non lue dans cette recherche : tu ne peux suivre que les liens des pages lues ici.";
+const a = { text: "A", url: "https://exemple.fr/a" };
+const b = { text: "B", url: "https://exemple.fr/b" };
+const c = { text: "C", url: "https://exemple.fr/c" };
+
+async function withSearch(
+  attempt: (o: { call: (name: string, args: Record<string, unknown>, token?: string, onprogress?: (n: number) => void) => Promise<{ text: string; isError: boolean }>; token: string; fake: FakeBridge; search: SearchSessions; s: Awaited<ReturnType<typeof startMcpServer>>; bands: [string, Band | null][]; policy: AccessPolicy }) => Promise<void>,
+  opts: { privateWindows?: string[]; allow?: boolean; emptySpanMs?: number; address?: boolean | "wait" | "later"; failing?: string[]; hanging?: string[]; readPageMs?: number; heartbeatMs?: number; watcher?: Watcher; withUserData?: boolean; idleMs?: number } = {},
+) {
+  const principal = generateToken();
+  const fake = new FakeBridge([github], { active: "github", allow: opts.allow ?? false, ...(opts.withUserData ? { history: { results: [] }, bookmarks: [] } : {}), search: { privateWindows: opts.privateWindows ?? [], failing: opts.failing ?? [], hanging: opts.hanging ?? [] }, ...(opts.address !== undefined ? { address: opts.address } : {}) });
+  const bands: [string, Band | null][] = [];
+  const search = new SearchSessions({ show: (id, band) => bands.push([id, band]), ...(opts.idleMs ? { idleMs: opts.idleMs } : {}) });
+  const policy = new AccessPolicy();
+  const s = await startMcpServer({ bridge: fake, policy, token: principal, search, ...(opts.watcher ? { watcher: opts.watcher } : {}), settleMs: 0, emptySpanMs: opts.emptySpanMs ?? 0, ...(opts.heartbeatMs ? { heartbeatMs: opts.heartbeatMs } : {}), ...(opts.readPageMs !== undefined ? { readPageMs: opts.readPageMs } : {}) });
+  const clients: Client[] = [];
+  const call = async (name: string, args: Record<string, unknown>, clientToken = principal, onprogress?: (n: number) => void) => {
+    // search_web needs a goal: a test that does not care gets one.
+    if (name === "search_web" && !("goal" in args)) args = { ...args, goal: "but" };
+    const cl = new Client({ name: "test", version: "0" });
+    clients.push(cl);
+    await cl.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${s.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${clientToken}` } } }));
+    const r = await cl.callTool({ name, arguments: args }, undefined, onprogress ? { onprogress: (p) => onprogress(p.progress) } : undefined);
+    return { text: text(r), isError: r.isError === true };
+  };
+  try {
+    await attempt({ call, token: principal, fake, search, s, bands, policy });
+  } finally {
+    await Promise.all(clients.map((x) => x.close()));
+    await s.stop();
+  }
+}
+
+test("search_web opens the search tab, returns its id, text and links, and starts a search with the goal", async () => {
+  await withSearch(async ({ call, fake, search }) => {
+    const r = await call("search_web", { query: "vélo électrique", goal: "trouver un vélo" });
+    expect(r.text).toContain("Onglet : search-1");
+    expect(r.text).toContain("Texte de ");
+    expect(r.text).toContain("Liens :");
+    expect(r.text).toContain("Annonce — https://exemple.fr/a");
+    expect(fake.calls.find((x) => x.method === "search.open")!.args).toEqual([undefined, { query: "vélo électrique" }, undefined]);
+    expect(search.current("main")).toMatchObject({ tabId: "search-1", goal: "trouver un vélo" });
+  });
+});
+
+test("a second search_web reuses the tab (navigate, no new tab) and keeps the search", async () => {
+  await withSearch(async ({ call, fake, search }) => {
+    await call("search_web", { query: "un", goal: "but" });
+    const r = await call("search_web", { query: "deux" });
+    expect(r.text).toContain("Onglet : search-1");
+    expect(fake.calls.filter((x) => x.method === "search.open").map((x) => x.args[2])).toEqual([undefined, "search-1"]);
+    expect(search.current("main")).toMatchObject({ tabId: "search-1", goal: "but" });
+    // The engine's own pages are not free: only links read are (search_web builds its addresses itself).
+    expect(search.isFree("search-1", "https://moteur.test/?q=autre")).toBe(false);
+  });
+});
+
+test("search_web waits for late results: links 0, then 3, then 3 → returns the 3", async () => {
+  await withSearch(async ({ call, fake }) => {
+    fake.linkSequence = [[], [a, b, c], [a, b, c]];
+    const r = await call("search_web", { query: "x" });
+    expect(r.text).toContain("https://exemple.fr/c");
+    expect(fake.calls.filter((x) => x.method === "readText")).toHaveLength(3);
+  });
+});
+
+test("read_tab on the search tab needs no card and records the page's links", async () => {
+  await withSearch(async ({ call, fake, search }) => {
+    fake.linkSequence = [[a, b]];
+    await call("search_web", { query: "x" });
+    const r = await call("read_tab", { id: "search-1" });
+    expect(r.text).toContain("Texte de ");
+    expect(fake.calls.filter((x) => x.method === "askPermission")).toHaveLength(0);
+    expect(search.isFree("search-1", b.url)).toBe(true);
+  });
+});
+
+test("navigate on the search tab to a link read is done; to another address it is refused", async () => {
+  await withSearch(async ({ call, fake }) => {
+    fake.linkSequence = [[a, b]];
+    await call("search_web", { query: "x" });
+    expect((await call("navigate", { id: "search-1", url: b.url })).text).toBe(`Onglet search-1 → ${b.url}`);
+    const r = await call("navigate", { id: "search-1", url: "https://ailleurs.fr/" });
+    expect(r.text).toBe(REFUSED);
+    expect(fake.calls.filter((x) => x.method === "navigate")).toHaveLength(1);
+  });
+});
+
+const COMPOSED = "https://ailleurs.fr/page?q=" + "x".repeat(300);
+
+test("navigate on the search tab to a composed address asks the card with the full address and the reason; accepted: it navigates and that address is free", async () => {
+  await withSearch(async ({ call, fake, search }) => {
+    await call("search_web", { query: "x" });
+    const r = await call("navigate", { id: "search-1", url: COMPOSED, reason: "r".repeat(300) });
+    expect(r.text).toBe(`Onglet search-1 → ${COMPOSED}`);
+    const card = fake.calls.find((x) => x.method === "askAddress")!;
+    expect(card.args[0]).toEqual({ url: COMPOSED, reason: "r".repeat(200), agent: "L'agent" });
+    expect(fake.calls.filter((x) => x.method === "navigate")).toHaveLength(1);
+    expect(search.isFree("search-1", COMPOSED)).toBe(true);
+  }, { address: true });
+});
+
+test("navigate on the search tab to a composed address, refused: DENIAL_TEXT and nothing loads", async () => {
+  await withSearch(async ({ call, fake, search }) => {
+    await call("search_web", { query: "x" });
+    expect((await call("navigate", { id: "search-1", url: COMPOSED, reason: "pour voir" })).text).toBe(DENIAL_TEXT);
+    expect(fake.calls.filter((x) => x.method === "navigate")).toHaveLength(0);
+    expect(search.isFree("search-1", COMPOSED)).toBe(false);
+  }, { address: false });
+});
+
+// --- read_pages ---
+
+const links3 = [a, b, c];
+
+test("read_pages reads free links in background agent tabs, closes them, counts the pages and frees their links", async () => {
+  await withSearch(async ({ call, fake, search }) => {
+    fake.linkSequence = [links3];
+    await call("search_web", { query: "x" });
+    const r = await call("read_pages", { urls: [a.url, b.url] });
+    expect(r.text).toContain(`## ${a.url}\nTitre : ${a.url}`);
+    expect(r.text).toContain(`## ${b.url}\n`);
+    expect(r.text).toContain(`Texte de ${b.url}`);
+    expect(fake.calls.filter((x) => x.method === "search.openBackground")).toHaveLength(2);
+    expect(fake.calls.filter((x) => x.method === "search.close").map((x) => x.args[0]).sort()).toEqual(["bg-2", "bg-3"]);
+    expect((await fake.listTabs()).map((x) => x.id)).toEqual(["github", "search-1"]);
+    expect(fake.calls.filter((x) => x.method === "askAddress")).toHaveLength(0);
+    expect(search.isFree("search-1", c.url)).toBe(true);
+  });
+});
+
+test("read_pages: 7 addresses are refused", async () => {
+  await withSearch(async ({ call, fake }) => {
+    const r = await call("read_pages", { urls: Array.from({ length: 7 }, (_, i) => `https://exemple.fr/${i}`) });
+    expect(r.text).toBe("6 adresses au plus par appel.");
+    expect(fake.calls.filter((x) => x.method === "search.open" || x.method === "search.openBackground")).toHaveLength(0);
+  });
+});
+
+test("read_pages: a composed address among them asks its card; refused, the others are still read", async () => {
+  await withSearch(async ({ call, fake }) => {
+    fake.linkSequence = [[a, b]];
+    await call("search_web", { query: "x" });
+    const r = await call("read_pages", { urls: [a.url, COMPOSED], reason: "pour voir" });
+    expect(r.text).toContain(`## ${a.url}\nTitre`);
+    expect(r.text).toContain(`## ${COMPOSED}\nErreur : ${DENIAL_TEXT}`);
+    expect(fake.calls.filter((x) => x.method === "askAddress")).toHaveLength(1);
+    expect(fake.calls.filter((x) => x.method === "search.openBackground")).toHaveLength(1);
+  }, { address: false });
+});
+
+test("read_pages: with no search running it starts one, the first address opens in the search tab (after its card), the others in the background", async () => {
+  await withSearch(async ({ call, fake, search }) => {
+    const r = await call("read_pages", { urls: [a.url, b.url] });
+    expect(fake.calls.filter((x) => x.method === "askAddress")).toHaveLength(2);
+    const open = fake.calls.find((x) => x.method === "search.open")!;
+    expect(open.args[1]).toEqual({ url: a.url });
+    expect(search.current("main")?.tabId).toBe("search-1");
+    expect(fake.calls.filter((x) => x.method === "search.openBackground")).toHaveLength(1);
+    expect(fake.calls.filter((x) => x.method === "search.close").map((x) => x.args[0])).toEqual(["bg-2"]);
+    expect(r.text).toContain(`## ${a.url}\n`);
+    expect(r.text).toContain(`## ${b.url}\n`);
+  }, { address: true });
+});
+
+test("read_pages: one page failing gives its error, the others their text; the tab is closed", async () => {
+  await withSearch(async ({ call, fake }) => {
+    await call("search_web", { query: "x" });
+    // the fake reads a link of the page as free: allow both through the default link
+    const r = await call("read_pages", { urls: [a.url, "https://exemple.fr/casse"] });
+    expect(r.text).toContain(`## ${a.url}\nTitre`);
+    expect(r.text).toContain("## https://exemple.fr/casse\nErreur : Page illisible");
+    expect(fake.calls.filter((x) => x.method === "search.close")).toHaveLength(2);
+  }, { address: true, failing: ["https://exemple.fr/casse"] });
+});
+
+test("read_pages: the band text counts the pages, singular for one", async () => {
+  await withSearch(async ({ call, fake, bands }) => {
+    fake.linkSequence = [links3];
+    await call("search_web", { query: "x" });
+    await call("read_pages", { urls: [a.url, b.url, c.url] });
+    const texts = bands.map(([, b]) => b?.text);
+    expect(texts).toContain("Lecture de 3 pages, 0 faite");
+    expect(texts).toContain("Lecture de 3 pages, 2 faites");
+    expect(texts).toContain("Lecture de 3 pages, 3 faites");
+    await call("read_pages", { urls: [a.url] });
+    expect(bands.map(([, b]) => b?.text)).toContain("Lecture de 1 page, 0 faite");
+  });
+});
+
+test("read_pages: the user stopping the search during the reads gives STOP_TEXT and closes the tabs", async () => {
+  await withSearch(async ({ call, fake, search }) => {
+    fake.linkSequence = [links3];
+    await call("search_web", { query: "x" });
+    const orig = fake.readText.bind(fake);
+    fake.readText = async (id: string) => {
+      if (id.startsWith("bg-")) search.stop("search-1");
+      return orig(id);
+    };
+    const r = await call("read_pages", { urls: [a.url, b.url] });
+    expect(r.text).toBe(STOP_TEXT);
+    expect(fake.calls.filter((x) => x.method === "search.close")).toHaveLength(2);
+  });
+});
+
+test("read_pages refuses file: and about: addresses before any card; the others are read", async () => {
+  await withSearch(async ({ call, fake }) => {
+    fake.linkSequence = [[a]];
+    await call("search_web", { query: "x" });
+    const r = await call("read_pages", { urls: ["file:///etc/passwd", a.url, "about:config"] });
+    expect(r.text).toContain("## file:///etc/passwd\nErreur : URL refusée (http ou https uniquement) : file:///etc/passwd");
+    expect(r.text).toContain("## about:config\nErreur : URL refusée");
+    expect(r.text).toContain(`## ${a.url}\nTitre`);
+    expect(fake.calls.filter((x) => x.method === "askAddress")).toHaveLength(0);
+  }, { address: true });
+});
+
+test("read_pages: a stop abandons a page that never answers: STOP_TEXT at once, the tab closed", async () => {
+  await withSearch(async ({ call, fake, search }) => {
+    await call("search_web", { query: "x" });
+    const pending = call("read_pages", { urls: ["https://exemple.fr/pend"] });
+    await vi.waitFor(() => expect(fake.calls.some((x) => x.method === "readText" && x.args[0] === "bg-2")).toBe(true));
+    search.stop("search-1");
+    expect((await pending).text).toBe(STOP_TEXT);
+    expect(fake.calls.filter((x) => x.method === "search.close").map((x) => x.args[0])).toEqual(["bg-2"]);
+  }, { address: true, hanging: ["https://exemple.fr/pend"] });
+});
+
+test("read_pages: a page past the time limit gives its error and its tab is closed; the others are read", async () => {
+  await withSearch(async ({ call, fake }) => {
+    await call("search_web", { query: "x" });
+    const r = await call("read_pages", { urls: ["https://exemple.fr/pend", a.url] });
+    expect(r.text).toContain("## https://exemple.fr/pend\nErreur : la page n'a pas répondu à temps.");
+    expect(r.text).toContain(`## ${a.url}\nTitre`);
+    expect(fake.calls.filter((x) => x.method === "search.close")).toHaveLength(2);
+  }, { address: true, hanging: ["https://exemple.fr/pend"], readPageMs: 50 });
+});
+
+test("read_pages: the background tab opens from the search tab (its space, not the active one)", async () => {
+  await withSearch(async ({ call, fake }) => {
+    await call("search_web", { query: "x" });
+    fake.editTab("search-1", { space: "travail" });
+    await call("read_pages", { urls: [a.url] });
+    expect(fake.calls.find((x) => x.method === "search.openBackground")!.args[0]).toBe("search-1");
+    expect(fake.calls.filter((x) => x.method === "search.close")).toHaveLength(1);
+  }, { address: true });
+  await withSearch(async ({ call, fake }) => {
+    await call("search_web", { query: "x" });
+    fake.editTab("search-1", { space: "travail" });
+    let space = "";
+    const open = fake.search!.openBackground;
+    fake.search!.openBackground = async (id, url) => { const t = await open(id, url); space = t.space; return t; };
+    await call("read_pages", { urls: [a.url] });
+    expect(space).toBe("travail");
+  }, { address: true });
+});
+
+test("read_pages without askAddress: a non-free address has its own error section", async () => {
+  await withSearch(async ({ call, fake }) => {
+    await call("search_web", { query: "x" });
+    const r = await call("read_pages", { urls: [a.url, "https://ailleurs.fr/"] });
+    expect(r.text).toContain("## https://ailleurs.fr/\nErreur : Adresse non lue");
+  });
+});
+
+test("read_pages with no search running and every address refused: no search, no tab", async () => {
+  await withSearch(async ({ call, fake, search }) => {
+    const r = await call("read_pages", { urls: [a.url] });
+    expect(r.text).toContain("Erreur");
+    expect(search.current("main")).toBeUndefined();
+    expect(fake.calls.filter((x) => x.method === "search.open" || x.method === "search.openBackground")).toHaveLength(0);
+  }, { address: false });
+});
+
+test("read_pages: a stop while a card is shown answers STOP_TEXT", async () => {
+  await withSearch(async ({ call, fake, search }) => {
+    await call("search_web", { query: "x" });
+    const pending = call("read_pages", { urls: ["https://ailleurs.fr/"] });
+    await vi.waitFor(() => expect(fake.calls.some((x) => x.method === "askAddress")).toBe(true));
+    search.stop("search-1");
+    expect((await pending).text).toBe(STOP_TEXT);
+  }, { address: "wait" });
+});
+
+/** A search with an address card that never answers by itself; `end` ends the conversation (the card is taken down). */
+async function withWaitingCard(attempt: (o: { call: (a: Record<string, unknown>) => Promise<{ text: string }>; fake: FakeBridge; end: () => void; search: SearchSessions }) => Promise<void>, answer: boolean | "wait" | "later" = "wait") {
+  const principal = generateToken();
+  const fake = new FakeBridge([github], { active: "github", allow: false, search: {}, address: answer });
+  const policy = new AccessPolicy();
+  const search = new SearchSessions({ show: () => {} });
+  const s = await startMcpServer({ bridge: fake, policy, token: principal, search, settleMs: 0, emptySpanMs: 0 });
+  const clients: Client[] = [];
+  const call = async (a: Record<string, unknown>) => {
+    const cl = new Client({ name: "test", version: "0" });
+    clients.push(cl);
+    await cl.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${s.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${principal}` } } }));
+    return { text: text(await cl.callTool({ name: "navigate", arguments: a })) };
+  };
+  try {
+    const first = new Client({ name: "test", version: "0" });
+    clients.push(first);
+    await first.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${s.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${principal}` } } }));
+    await first.callTool({ name: "search_web", arguments: { query: "x", goal: "but" } });
+    await attempt({ call, fake, end: () => policy.reset(), search });
+  } finally {
+    await Promise.all(clients.map((x) => x.close()));
+    await s.stop();
+  }
+}
+const asked = async (fake: FakeBridge, n: number) => {
+  while (fake.calls.filter((x) => x.method === "askAddress").length < n) await new Promise((ok) => setTimeout(ok, 10));
+};
+
+test("one card per address at a time: both calls get its answer", async () => {
+  await withWaitingCard(async ({ call, fake, end }) => {
+    const both = Promise.all([call({ id: "search-1", url: COMPOSED }), call({ id: "search-1", url: COMPOSED })]);
+    await asked(fake, 1);
+    await new Promise((ok) => setTimeout(ok, 200));
+    expect(fake.calls.filter((x) => x.method === "askAddress")).toHaveLength(1);
+    end();
+    expect((await both).map((r) => r.text)).toEqual([DENIAL_TEXT, DENIAL_TEXT]);
+  });
+});
+
+test("one card per address, accepted: both calls get the navigation, the address is free afterwards", async () => {
+  await withWaitingCard(async ({ call, fake, search }) => {
+    // The card answers true after both calls are in; the second caller shares the first's answer, so both navigate (same address: the tab ends there).
+    const both = Promise.all([call({ id: "search-1", url: COMPOSED }), call({ id: "search-1", url: COMPOSED })]);
+    await new Promise((ok) => setTimeout(ok, 200));
+    expect(fake.calls.filter((x) => x.method === "askAddress")).toHaveLength(1);
+    expect((await both).map((r) => r.text)).toEqual([`Onglet search-1 → ${COMPOSED}`, `Onglet search-1 → ${COMPOSED}`]);
+    expect(search.isFree("search-1", COMPOSED)).toBe(true);
+  }, "later");
+});
+
+test("the search stopped while the card is shown: STOP_TEXT, the card comes down", async () => {
+  await withWaitingCard(async ({ call, fake, search }) => {
+    const pending = call({ id: "search-1", url: COMPOSED });
+    await asked(fake, 1);
+    search.stop("search-1");
+    expect((await pending).text).toBe(STOP_TEXT);
+    expect(fake.addressSignals[0]!.aborted).toBe(true);
+    expect(fake.calls.filter((x) => x.method === "navigate")).toHaveLength(0);
+  });
+});
+
+test("the search tab closed while the card is shown: CLOSED_TEXT, the card comes down", async () => {
+  await withWaitingCard(async ({ call, fake, search }) => {
+    const pending = call({ id: "search-1", url: COMPOSED });
+    await asked(fake, 1);
+    search.tabClosed("search-1");
+    expect((await pending).text).toBe(CLOSED_TEXT);
+    expect(fake.addressSignals[0]!.aborted).toBe(true);
+  });
+});
+
+test("a composed address longer than 500 characters is refused before any card", async () => {
+  await withWaitingCard(async ({ call, fake }) => {
+    expect((await call({ id: "search-1", url: "https://ailleurs.fr/" + "x".repeat(500) })).text).toBe("Adresse trop longue (500 caractères au plus).");
+    expect(fake.calls.filter((x) => x.method === "askAddress")).toHaveLength(0);
+  });
+});
+
+test("a new conversation takes the address card down (false)", async () => {
+  await withWaitingCard(async ({ call, fake, end }) => {
+    const pending = call({ id: "search-1", url: COMPOSED });
+    await asked(fake, 1);
+    end();
+    expect((await pending).text).toBe(DENIAL_TEXT);
+    expect(fake.calls.filter((x) => x.method === "navigate")).toHaveLength(0);
+  });
+});
+
+test("the search tab of a finished search follows the ordinary access rules", async () => {
+  await withSearch(async ({ call, fake, search }) => {
+    await call("search_web", { query: "x" });
+    search.dismiss("search-1");
+    expect((await call("read_tab", { id: "search-1" })).text).toBe(DENIAL_TEXT);
+    expect(fake.calls.filter((x) => x.method === "askPermission")).toHaveLength(1);
+  });
+});
+
+test("search_web from a private space answers the error; a search in window A does not stop one in window B", async () => {
+  await withSearch(async ({ call, s, search }) => {
+    const tokenA = s.openSession("A");
+    const tokenB = s.openSession("B");
+    const tokenP = s.openSession("P");
+    const r = await call("search_web", { query: "x" }, tokenP);
+    expect(r.isError).toBe(true);
+    expect(r.text).toContain("l'espace actif est privé");
+    await call("search_web", { query: "un" }, tokenA);
+    await call("search_web", { query: "deux" }, tokenB);
+    search.stop(search.current("A")!.tabId);
+    expect(search.current("A")).toBeUndefined();
+    expect(search.current("B")).toBeDefined();
+  }, { privateWindows: ["P"] });
+});
+
+test("after stop, the next search tool answers STOP_TEXT once", async () => {
+  await withSearch(async ({ call, search, fake }) => {
+    await call("search_web", { query: "x" });
+    search.stop("search-1");
+    const opened = () => fake.calls.filter((x) => x.method === "search.open").length;
+    expect((await call("search_web", { query: "y" })).text).toBe(STOP_TEXT);
+    expect(opened()).toBe(1);
+    expect((await call("search_web", { query: "y" })).text).toContain("Onglet : search-2");
+  });
+});
+
+test("after stop, read_tab or navigate on the former search tab answers STOP_TEXT once, with no card; another tab does not consume it", async () => {
+  await withSearch(async ({ call, search, fake }) => {
+    await call("search_web", { query: "x" });
+    search.stop("search-1");
+    expect((await call("read_tab", { id: "github" })).text).toBe(DENIAL_TEXT);
+    expect((await call("read_tab", { id: "search-1" })).text).toBe(STOP_TEXT);
+    expect(fake.calls.filter((x) => x.method === "askPermission")).toHaveLength(1); // github's only
+    expect((await call("navigate", { id: "search-1", url: "https://exemple.fr/a" })).text).not.toBe(STOP_TEXT); // once: now the ordinary rules
+  });
+});
+
+test("two search_web started together open one tab and both answer", async () => {
+  await withSearch(async ({ call, fake }) => {
+    const [r1, r2] = await Promise.all([call("search_web", { query: "un" }), call("search_web", { query: "deux" })]);
+    expect(r1.isError || r2.isError).toBe(false);
+    expect(r1.text).toContain("Onglet : search-1");
+    expect(r2.text).toContain("Onglet : search-1");
+    expect(fake.calls.filter((x) => x.method === "search.open").map((x) => x.args[2]).sort()).toEqual(["search-1", undefined]);
+  });
+});
+
+test("a page with no link is returned after three empty reads, not 5 s", async () => {
+  await withSearch(async ({ call, fake }) => {
+    fake.linkSequence = [[]];
+    const t = Date.now();
+    await call("search_web", { query: "x" });
+    expect(Date.now() - t).toBeGreaterThanOrEqual(300);
+    expect(Date.now() - t).toBeLessThan(2000);
+  }, { emptySpanMs: 300 });
+});
+
+test("a stop during the wait for results answers STOP_TEXT and stops reading", async () => {
+  await withSearch(async ({ call, search, fake }) => {
+    fake.linkSequence = Array.from({ length: 80 }, (_, i) => Array.from({ length: i + 1 }, (_, j) => ({ text: "l", url: `https://exemple.fr/${j}` })));
+    const slow = call("search_web", { query: "x" });
+    await vi.waitFor(() => expect(search.owns("search-1")).toBe(true));
+    search.stop("search-1");
+    expect((await slow).text).toBe(STOP_TEXT);
+    const reads = () => fake.calls.filter((x) => x.method === "readText").length;
+    const n = reads();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(reads()).toBe(n);
+  });
+});
+
+test("a tab closed during the wait for results answers CLOSED_TEXT", async () => {
+  await withSearch(async ({ call, search, fake }) => {
+    fake.linkSequence = Array.from({ length: 80 }, (_, i) => Array.from({ length: i + 1 }, (_, j) => ({ text: "l", url: `https://exemple.fr/${j}` })));
+    const slow = call("search_web", { query: "x" });
+    await vi.waitFor(() => expect(search.owns("search-1")).toBe(true));
+    search.tabClosed("search-1");
+    expect((await slow).text).toBe(CLOSED_TEXT);
+  });
+});
+
+test("a failing first search_web does not block the one queued behind it, and the texts are French", async () => {
+  await withSearch(async ({ call, fake }) => {
+    const real = fake.search!.open;
+    let n = 0;
+    fake.search!.open = async (...a) => {
+      if (n++ === 0) throw new Error("Impossible d'ouvrir un onglet ici : l'espace actif est privé.");
+      return real(...a);
+    };
+    // The two requests race to the server: whichever arrives first fails, the other must still run.
+    const both = await Promise.all([call("search_web", { query: "un" }), call("search_web", { query: "deux" })]);
+    const [r1, r2] = both[0].isError ? both : [both[1], both[0]];
+    expect(r1.isError).toBe(true);
+    expect(r1.text).toContain("l'espace actif est privé");
+    expect(r2.text).toContain("Onglet : search-1");
+    expect(r1.text + r2.text).not.toMatch(/already running|already belongs/);
+  });
+});
+
+test("search_web on a search whose tab vanished answers a clean French error", async () => {
+  await withSearch(async ({ call, fake }) => {
+    await call("search_web", { query: "un" });
+    fake.closeTab("search-1");
+    const r = await call("search_web", { query: "deux" });
+    expect(r.isError).toBe(true);
+    expect(r.text).toContain("Onglet introuvable : search-1");
+  });
+});
+
+const handOver = (call: (n: string, a: Record<string, unknown>, t?: string, p?: (n: number) => void) => Promise<{ text: string; isError: boolean }>, kind = "verification", onprogress?: (n: number) => void, id = "search-1") =>
+  call("hand_over", { id, reason: "Résolvez le captcha", kind }, undefined, onprogress);
+
+test("hand_over on the search tab waits, then returns the path and the page is back to the agent", async () => {
+  await withSearch(async ({ call, search, bands }) => {
+    await call("search_web", { query: "x" });
+    const pending = handOver(call);
+    await vi.waitFor(() => expect(bands.at(-1)![1]).toMatchObject({ state: "yours", text: "Bloqué par une vérification. À vous : Résolvez le captcha" }));
+    search.tabNavigated("search-1", "https://exemple.fr/p1");
+    search.tabNavigated("search-1", "https://exemple.fr/p2");
+    search.continue("search-1");
+    const r = await pending;
+    expect(r.text).toContain("La page est de nouveau à toi : relis-la.");
+    expect(r.text).toContain("Chemin suivi par l'utilisateur :\nhttps://exemple.fr/p1\nhttps://exemple.fr/p2");
+    expect(r.text).not.toContain("browsing-notes");
+  });
+});
+
+test("hand_over without any move says the user did not change page", async () => {
+  await withSearch(async ({ call, search, bands }) => {
+    await call("search_web", { query: "x" });
+    const pending = handOver(call);
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.state).toBe("yours"));
+    search.continue("search-1");
+    expect((await pending).text).toContain("L'utilisateur n'a pas changé de page.");
+  });
+});
+
+test("hand_over elsewhere than on the search tab is refused", async () => {
+  await withSearch(async ({ call }) => {
+    expect((await call("hand_over", { id: "github", reason: "x", kind: "lost" })).text).toBe("hand_over ne vaut que pour l'onglet de recherche en cours.");
+    await call("search_web", { query: "x" });
+    expect((await call("hand_over", { id: "github", reason: "x", kind: "lost" })).text).toContain("hand_over ne vaut que");
+  });
+});
+
+test("hand_over kind lost returns the lesson reminder, verification does not", async () => {
+  await withSearch(async ({ call, search, bands }) => {
+    await call("search_web", { query: "x" });
+    const pending = handOver(call, "lost");
+    await vi.waitFor(() => expect(bands.at(-1)![1]).toMatchObject({ state: "yours", text: "Je ne trouve pas mon chemin. À vous : Résolvez le captcha" }));
+    search.continue("search-1");
+    expect((await pending).text).toContain("Note une leçon générale dans /workspace/browsing-notes.md");
+  });
+});
+
+test("hand_over band text for a verification, a long reason is cut to 200 characters", async () => {
+  await withSearch(async ({ call, search, bands }) => {
+    await call("search_web", { query: "x" });
+    const pending = call("hand_over", { id: "search-1", reason: "z".repeat(5000), kind: "verification" });
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.state).toBe("yours"));
+    expect(bands.at(-1)![1]!.text).toBe(`Bloqué par une vérification. À vous : ${"z".repeat(200)}`);
+    search.stop("search-1");
+    await pending;
+  });
+});
+
+test("hand_over: stop returns STOP_TEXT, closing the tab returns CLOSED_TEXT", async () => {
+  await withSearch(async ({ call, search, bands }) => {
+    await call("search_web", { query: "x" });
+    let pending = handOver(call);
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.state).toBe("yours"));
+    search.stop("search-1");
+    expect((await pending).text).toBe(STOP_TEXT);
+    await call("search_web", { query: "y" });
+    pending = handOver(call, "verification", undefined, "search-2");
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.state).toBe("yours"));
+    search.tabClosed("search-2");
+    expect((await pending).text).toBe(CLOSED_TEXT);
+  });
+});
+
+test("hand_over sends progress notifications while it waits", async () => {
+  await withSearch(async ({ call, search, bands }) => {
+    await call("search_web", { query: "x" });
+    const progress: number[] = [];
+    const pending = handOver(call, "verification", (n) => progress.push(n));
+    await vi.waitFor(() => expect(progress.length).toBeGreaterThanOrEqual(2));
+    search.continue("search-1");
+    await pending;
+  }, { heartbeatMs: 20 });
+});
+
+test("hand_over: a request the client drops puts the band back to idle; the search goes on", async () => {
+  await withSearch(async ({ call, token, search, s, bands }) => {
+    await call("search_web", { query: "x" });
+    const ac = new AbortController();
+    const sent = fetch(`http://127.0.0.1:${s.port}/mcp`, {
+      method: "POST",
+      signal: ac.signal,
+      headers: { Authorization: `Bearer ${token}`, "content-type": "application/json", accept: "application/json, text/event-stream" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "hand_over", arguments: { id: "search-1", reason: "x", kind: "lost" } } }),
+    }).catch(() => "aborted");
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.state).toBe("yours"));
+    ac.abort();
+    await sent;
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.state).toBe("idle"));
+    expect(search.owns("search-1")).toBe(true);
+  });
+});
+
+test("hand_over drops path URLs longer than 500 characters", async () => {
+  await withSearch(async ({ call, search, bands }) => {
+    await call("search_web", { query: "x" });
+    const pending = handOver(call);
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.state).toBe("yours"));
+    search.tabNavigated("search-1", `https://exemple.fr/${"a".repeat(600)}`);
+    search.tabNavigated("search-1", "https://exemple.fr/ok");
+    search.continue("search-1");
+    const r = (await pending).text;
+    expect(r).toContain("https://exemple.fr/ok");
+    expect(r).not.toContain("aaaa");
+  });
+});
+
+// --- the watcher ---
+
+/** A watcher that finds strange what `strange` says, and remembers what it was asked. */
+const fakeWatcher = (strange: (g: Gesture) => boolean) => {
+  const asked: { goal: string; past: readonly Gesture[]; next: Gesture }[] = [];
+  const watcher: Watcher = { judge: async (goal, past, next) => { asked.push({ goal, past: [...past], next }); return strange(next) ? "strange" : "ok"; } };
+  return { watcher, asked };
+};
+const BAND = (what: string, goal: string) => `Le surveillant a mis en pause : ${what} sans rapport avec « ${goal} »`;
+
+test("a strange search query is not run: the band goes to « yours »; Continuer runs it, Arrêter answers STOP_TEXT", async () => {
+  const { watcher } = fakeWatcher((g) => g.query === "adresse mail");
+  await withSearch(async ({ call, fake, search, bands }) => {
+    await call("search_web", { query: "vélo", goal: "trouver un vélo" });
+    const opens = () => fake.calls.filter((x) => x.method === "search.open").length;
+    const pending = call("search_web", { query: "adresse mail" });
+    await vi.waitFor(() => expect(bands.at(-1)![1]).toMatchObject({ state: "yours", text: BAND("recherche « adresse mail »", "trouver un vélo") }));
+    expect(opens()).toBe(1);
+    search.continue("search-1");
+    expect((await pending).text).toContain("Onglet : search-1");
+    expect(opens()).toBe(2);
+    const second = call("search_web", { query: "adresse mail" });
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.state).toBe("yours"));
+    search.stop("search-1");
+    expect((await second).text).toBe(STOP_TEXT);
+    expect(opens()).toBe(2);
+  }, { watcher });
+});
+
+test("a strange first query pauses on the engine's empty page, then runs on Continuer; the goal is cut to 200 characters", async () => {
+  const { watcher } = fakeWatcher(() => true);
+  await withSearch(async ({ call, fake, search, bands }) => {
+    const pending = call("search_web", { query: "x".repeat(300), goal: "g".repeat(300) });
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.state).toBe("yours"));
+    expect(bands.at(-1)![1]!.text).toBe(BAND(`recherche « ${"x".repeat(200)} »`, "g".repeat(200)));
+    expect(fake.calls.filter((x) => x.method === "search.open").map((x) => x.args[1])).toEqual([{ query: "" }]);
+    search.continue("search-1");
+    await pending;
+    expect(fake.calls.filter((x) => x.method === "search.open").map((x) => x.args[1])).toEqual([{ query: "" }, { query: "x".repeat(300) }]);
+    expect(search.current("main")).toMatchObject({ goal: "g".repeat(300), gestures: [{ tool: "search_web", query: "x".repeat(300) }] });
+  }, { watcher });
+});
+
+test("the first query is judged, with the goal, before its tab opens", async () => {
+  const { watcher, asked } = fakeWatcher(() => false);
+  await withSearch(async ({ call }) => {
+    await call("search_web", { query: "vélo", goal: "trouver un vélo" });
+    expect(asked).toEqual([{ goal: "trouver un vélo", past: [], next: { tool: "search_web", query: "vélo" } }]);
+  }, { watcher });
+});
+
+test("a composed address gets the watcher's opinion on its card, and the card still comes", async () => {
+  const { watcher } = fakeWatcher((g) => g.composed === true);
+  await withSearch(async ({ call, fake }) => {
+    await call("search_web", { query: "x", goal: "but" });
+    expect((await call("navigate", { id: "search-1", url: "https://ailleurs.fr/p", reason: "r" })).text).toBe("Onglet search-1 → https://ailleurs.fr/p");
+    expect(fake.calls.find((x) => x.method === "askAddress")!.args[0]).toMatchObject({ opinion: "Sans rapport apparent avec le but annoncé." });
+  }, { watcher, address: true });
+  const ok = fakeWatcher(() => false);
+  await withSearch(async ({ call, fake }) => {
+    await call("search_web", { query: "x", goal: "but" });
+    await call("navigate", { id: "search-1", url: "https://ailleurs.fr/p", reason: "r" });
+    expect(fake.calls.find((x) => x.method === "askAddress")!.args[0]).not.toHaveProperty("opinion");
+  }, { watcher: ok.watcher, address: true });
+});
+
+test("search_history, search_bookmarks, read_history and read_tab on a user tab are judged while a search runs, and not without one", async () => {
+  const { watcher, asked } = fakeWatcher(() => false);
+  await withSearch(async ({ call }) => {
+    const user = async () => {
+      await call("search_history", { query: "h" });
+      await call("search_bookmarks", { query: "b" });
+      await call("read_history", { url: "https://a.fr/" });
+      await call("read_tab", { id: "github" });
+    };
+    await user();
+    expect(asked).toHaveLength(0);
+    await call("search_web", { query: "x", goal: "but" });
+    asked.length = 0;
+    await user();
+    expect(asked.map((x) => x.next)).toEqual([
+      { tool: "search_history", query: "h" },
+      { tool: "search_bookmarks", query: "b" },
+      { tool: "read_history", url: "https://a.fr/" },
+      { tool: "read_tab", url: github.url },
+    ]);
+    expect(asked[3]!.past.map((x) => x.tool)).toEqual(["search_web", "search_history", "search_bookmarks", "read_history"]);
+  }, { watcher, withUserData: true, allow: true });
+});
+
+test("a strange history read is not run: the band names it; Continuer runs it", async () => {
+  const { watcher } = fakeWatcher((g) => g.tool === "search_history");
+  await withSearch(async ({ call, fake, search, bands }) => {
+    await call("search_web", { query: "x", goal: "but" });
+    const pending = call("search_history", { query: "h" });
+    await vi.waitFor(() => expect(bands.at(-1)![1]).toMatchObject({ state: "yours", text: BAND("lecture de l'historique", "but") }));
+    expect(fake.calls.some((x) => x.method === "history.find")).toBe(false);
+    search.continue("search-1");
+    await pending;
+    expect(fake.calls.some((x) => x.method === "history.find")).toBe(true);
+  }, { watcher, withUserData: true });
+});
+
+test("a followed link is never judged", async () => {
+  const w = fakeWatcher(() => false);
+  await withSearch(async ({ call }) => {
+    await call("search_web", { query: "x", goal: "but" });
+    w.asked.length = 0;
+    await call("navigate", { id: "search-1", url: "https://exemple.fr/a" });
+    expect(w.asked).toHaveLength(0);
+  }, { watcher: w.watcher });
+});
+
+test("search_web needs a goal; a search read_pages starts takes its reason as goal; without one, the next search_web gives it and is judged", async () => {
+  const { watcher, asked } = fakeWatcher((g) => g.tool === "search_web");
+  await withSearch(async ({ call, fake, search, bands }) => {
+    for (const goal of [undefined, "   "]) expect((await call("search_web", { query: "x", goal })).isError).toBe(true);
+    expect(fake.calls.filter((x) => x.method === "search.open")).toHaveLength(0);
+    await call("read_pages", { urls: [a.url] });
+    expect(search.current("main")?.goal).toBe("");
+    const pending = call("search_web", { query: "adresse mail", goal: "trouver un vélo" });
+    await vi.waitFor(() => expect(bands.at(-1)![1]).toMatchObject({ state: "yours", text: BAND("recherche « adresse mail »", "trouver un vélo") }));
+    expect(search.current("main")?.goal).toBe("trouver un vélo");
+    expect(asked.map((x) => x.goal)).toEqual(["trouver un vélo"]);
+    search.continue("search-1");
+    expect((await pending).text).toContain("Onglet : search-1");
+  }, { watcher, withUserData: true, address: true });
+  await withSearch(async ({ call, search }) => {
+    await call("read_pages", { urls: [a.url], reason: "  lire l'annonce " });
+    expect(search.current("main")?.goal).toBe("lire l'annonce");
+  }, { address: true });
+});
+
+test("a request dropped during a watcher pause puts the band back and the next search_web runs", async () => {
+  const { watcher } = fakeWatcher((g) => g.query === "adresse mail");
+  await withSearch(async ({ call, token, s, bands }) => {
+    await call("search_web", { query: "vélo", goal: "but" });
+    const drop = new AbortController();
+    const pending = fetch(`http://127.0.0.1:${s.port}/mcp`, {
+      method: "POST",
+      signal: drop.signal,
+      headers: { Authorization: `Bearer ${token}`, "content-type": "application/json", accept: "application/json, text/event-stream" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "search_web", arguments: { query: "adresse mail", goal: "but" } } }),
+    }).catch(() => "aborted");
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.state).toBe("yours"));
+    drop.abort();
+    await pending;
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.state).toBe("idle"));
+    expect((await call("search_web", { query: "vélo pliant" })).text).toContain("Onglet : search-1");
+  }, { watcher });
+});
+
+test("the watcher is asked about composed read_pages addresses in parallel", async () => {
+  let running = 0;
+  let most = 0;
+  const watcher: Watcher = { judge: async () => { most = Math.max(most, ++running); await new Promise((ok) => setTimeout(ok, 50)); running--; return "ok"; } };
+  await withSearch(async ({ call }) => {
+    await call("search_web", { query: "x", goal: "but" });
+    most = 0;
+    await call("read_pages", { urls: ["https://a.fr/", "https://b.fr/", "https://c.fr/"] });
+    expect(most).toBe(3);
+  }, { watcher, address: true });
+});
+
+// --- final fixes: the address rule, the hand-over, lifecycles ---
+
+const HANDING = "La page est à l'utilisateur : attends la fin de hand_over.";
+
+test("an address the agent composes on the engine is not free: it asks its card (no laundering through a redirect page)", async () => {
+  await withSearch(async ({ call, fake }) => {
+    await call("search_web", { query: "x" });
+    const laundering = "https://moteur.test/url?q=https://evil.tld/?d=secret";
+    expect((await call("navigate", { id: "search-1", url: laundering, reason: "r" })).text).toBe(DENIAL_TEXT);
+    expect((await call("read_pages", { urls: [laundering] })).text).toContain(`Erreur : ${DENIAL_TEXT}`);
+    expect(fake.calls.filter((x) => x.method === "askAddress")).toHaveLength(2);
+    expect(fake.calls.filter((x) => x.method === "navigate" || x.method === "search.openBackground")).toHaveLength(0);
+  }, { address: false });
+});
+
+test("a fragment the agent adds to a link read is dropped: navigate and read_pages open the address read, and say so", async () => {
+  await withSearch(async ({ call, fake }) => {
+    fake.linkSequence = [[a, b]];
+    await call("search_web", { query: "x" });
+    expect((await call("navigate", { id: "search-1", url: `${b.url}#d=secret` })).text).toBe(`Onglet search-1 → ${b.url}`);
+    expect(fake.calls.filter((x) => x.method === "navigate").map((x) => x.args[1])).toEqual([b.url]);
+    const r = await call("read_pages", { urls: [`${a.url}#d=secret`] });
+    expect(fake.calls.find((x) => x.method === "search.openBackground")!.args[1]).toBe(a.url);
+    expect(r.text).toContain(`## ${a.url}#d=secret\nTitre : ${a.url}\nURL : ${a.url}`);
+    expect(fake.calls.filter((x) => x.method === "askAddress")).toHaveLength(0);
+    expect((await call("navigate", { id: "search-1", url: `${b.url}#${"d".repeat(500)}` })).text).toBe("Adresse trop longue (500 caractères au plus).");
+  }, { address: true });
+});
+
+test("open_tab during a search asks the card for an address not read (with its reason); local and read addresses, or no search, ask nothing", async () => {
+  await withSearch(async ({ call, fake }) => {
+    expect((await call("open_tab", { url: "https://ailleurs.fr/" })).isError).toBe(false);
+    fake.linkSequence = [[a]];
+    await call("search_web", { query: "x" });
+    expect((await call("open_tab", { url: "http://localhost:3000/" })).isError).toBe(false);
+    expect((await call("open_tab", { url: `${a.url}#frag` })).isError).toBe(false);
+    expect(fake.calls.filter((x) => x.method === "askAddress")).toHaveLength(0);
+    expect((await call("open_tab", { url: "https://ailleurs.fr/x", reason: "pour voir" })).text).toBe(DENIAL_TEXT);
+    expect(fake.calls.find((x) => x.method === "askAddress")!.args[0]).toEqual({ url: "https://ailleurs.fr/x", reason: "pour voir", agent: "L'agent" });
+    expect(fake.calls.filter((x) => x.method === "openTab").map((x) => x.args[0])).toEqual(["https://ailleurs.fr/", "http://localhost:3000/", a.url]);
+  }, { address: false });
+  await withSearch(async ({ call, fake }) => {
+    await call("search_web", { query: "x" });
+    expect((await call("open_tab", { url: "https://ailleurs.fr/x", reason: "pour voir" })).isError).toBe(false);
+    expect(fake.calls.filter((x) => x.method === "openTab").map((x) => x.args[0])).toEqual(["https://ailleurs.fr/x"]);
+  }, { address: true });
+});
+
+test("while a hand is open, the agent's tools refuse the search tab: nothing read, navigated, captured or logged", async () => {
+  await withSearch(async ({ call, fake, search }) => {
+    fake.linkSequence = [[a]];
+    await call("search_web", { query: "x" });
+    const pending = handOver(call);
+    await vi.waitFor(() => expect(search.handing("search-1")).toBe(true));
+    const before = fake.calls.length;
+    const tries: [string, Record<string, unknown>][] = [
+      ["read_tab", { id: "search-1" }], ["current_page", {}], ["navigate", { id: "search-1", url: a.url }], ["search_web", { query: "y" }],
+      ["read_pages", { urls: [a.url] }], ["capture_screen", { id: "search-1" }], ["capture_screen", { id: "github" }],
+    ];
+    for (const [name, args] of tries) expect(await call(name, args)).toEqual({ text: HANDING, isError: true });
+    expect(fake.calls.slice(before).filter((x) => ["readText", "navigate", "capture", "search.open", "search.openBackground"].includes(x.method))).toEqual([]);
+    expect(search.current("main")!.gestures.map((g) => g.tool)).toEqual(["search_web"]);
+    search.continue("search-1");
+    await pending;
+    expect((await call("read_tab", { id: "search-1" })).isError).toBe(false);
+  });
+});
+
+test("a watcher pause during an open hand waits for it, then shows its own message", async () => {
+  const { watcher } = fakeWatcher((g) => g.tool === "search_history");
+  await withSearch(async ({ call, fake, search, bands }) => {
+    await call("search_web", { query: "x", goal: "but" });
+    const handing = handOver(call);
+    await vi.waitFor(() => expect(search.handing("search-1")).toBe(true));
+    const reading = call("search_history", { query: "h" });
+    await new Promise((ok) => setTimeout(ok, 100));
+    expect(bands.at(-1)![1]!.text).toBe("Bloqué par une vérification. À vous : Résolvez le captcha");
+    search.continue("search-1");
+    expect((await handing).text).toContain("La page est de nouveau à toi");
+    await vi.waitFor(() => expect(bands.at(-1)![1]).toMatchObject({ state: "yours", text: BAND("lecture de l'historique", "but") }));
+    expect(fake.calls.some((x) => x.method === "history.find")).toBe(false);
+    search.continue("search-1");
+    await reading;
+    expect(fake.calls.some((x) => x.method === "history.find")).toBe(true);
+  }, { watcher, withUserData: true });
+});
+
+test("hand_over on a call already cancelled hands the page back at once", async () => {
+  const handlers = new Map<string, (a: unknown, extra: unknown) => Promise<{ content: { text: string }[] }>>();
+  const register = McpServer.prototype.registerTool as (...args: unknown[]) => unknown;
+  const spy = vi.spyOn(McpServer.prototype, "registerTool").mockImplementation(function (this: McpServer, ...args: unknown[]) {
+    handlers.set(args[0] as string, args[2] as never);
+    return register.apply(this, args);
+  } as never);
+  try {
+    await withSearch(async ({ call, search, bands }) => {
+      await call("search_web", { query: "x" });
+      const r = handlers.get("hand_over")!({ id: "search-1", reason: "x", kind: "lost" }, { signal: AbortSignal.abort(), _meta: {}, sendNotification: async () => {} });
+      const answer = await Promise.race([r, new Promise<"hung">((ok) => setTimeout(() => ok("hung"), 500))]);
+      expect(answer).not.toBe("hung");
+      expect(search.handing("search-1")).toBe(false);
+      expect(bands.at(-1)![1]?.state).toBe("idle");
+    });
+  } finally {
+    spy.mockRestore();
+  }
+});
+
+test("the idle delay does not end a search while an address card is up", async () => {
+  await withSearch(async ({ call, fake, search, bands }) => {
+    await call("search_web", { query: "x" });
+    const pending = call("navigate", { id: "search-1", url: "https://ailleurs.fr/", reason: "r" });
+    await vi.waitFor(() => expect(fake.calls.some((x) => x.method === "askAddress")).toBe(true));
+    expect(bands.at(-1)![1]).toMatchObject({ state: "working", text: "Accord demandé pour une adresse" });
+    await new Promise((ok) => setTimeout(ok, 400));
+    expect(search.owns("search-1")).toBe(true);
+    search.stop("search-1");
+    expect((await pending).text).toBe(STOP_TEXT);
+  }, { address: "wait", idleMs: 150 });
+});
+
+test("a dropped request takes its address card down and the window's chain goes on", async () => {
+  await withSearch(async ({ call, fake, token, s }) => {
+    await call("search_web", { query: "x" });
+    const drop = new AbortController();
+    const sent = fetch(`http://127.0.0.1:${s.port}/mcp`, {
+      method: "POST",
+      signal: drop.signal,
+      headers: { Authorization: `Bearer ${token}`, "content-type": "application/json", accept: "application/json, text/event-stream" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "read_pages", arguments: { urls: ["https://ailleurs.fr/"], reason: "r" } } }),
+    }).catch(() => "aborted");
+    await vi.waitFor(() => expect(fake.addressSignals).toHaveLength(1));
+    drop.abort();
+    await sent;
+    await vi.waitFor(() => expect(fake.addressSignals[0]!.aborted).toBe(true));
+    expect((await call("search_web", { query: "y" })).text).toContain("Onglet : search-1");
+  }, { address: "wait" });
+});
+
+// --- residuals: a hand opened while a tool waited ---
+
+test("a hand opened while the watcher judges a search_web: the search tab is not navigated", async () => {
+  let release!: () => void;
+  const judging = new Promise<void>((ok) => { release = ok; });
+  let first = true;
+  const watcher: Watcher = { judge: async () => { if (first) { first = false; return "ok"; } await judging; return "ok"; } };
+  await withSearch(async ({ call, fake, search }) => {
+    await call("search_web", { query: "x", goal: "but" });
+    const pending = call("search_web", { query: "y" });
+    await new Promise((ok) => setTimeout(ok, 100));
+    const hand = handOver(call);
+    await vi.waitFor(() => expect(search.handing("search-1")).toBe(true));
+    release();
+    expect(await pending).toEqual({ text: HANDING, isError: true });
+    expect(fake.calls.filter((x) => x.method === "search.open")).toHaveLength(1);
+    search.continue("search-1");
+    await hand;
+  }, { watcher });
+});
+
+test("a hand opened while an address card is up: navigate and read_pages neither move nor read the search tab", async () => {
+  await withSearch(async ({ call, fake, search }) => {
+    await call("search_web", { query: "x" });
+    const going = call("navigate", { id: "search-1", url: "https://ailleurs.fr/", reason: "r" });
+    const reading = call("read_pages", { urls: ["https://autre.fr/"], reason: "r" });
+    await vi.waitFor(() => expect(fake.calls.some((x) => x.method === "askAddress")).toBe(true));
+    const hand = handOver(call);
+    await vi.waitFor(() => expect(search.handing("search-1")).toBe(true));
+    expect(await going).toEqual({ text: HANDING, isError: true });
+    search.continue("search-1");
+    await hand;
+    expect(fake.calls.filter((x) => x.method === "navigate")).toHaveLength(0);
+    await reading;
+  }, { address: "later" });
+  await withSearch(async ({ call, fake, search }) => {
+    await call("search_web", { query: "x" });
+    const reading = call("read_pages", { urls: ["https://autre.fr/"], reason: "r" });
+    await vi.waitFor(() => expect(fake.calls.some((x) => x.method === "askAddress")).toBe(true));
+    const hand = handOver(call);
+    await vi.waitFor(() => expect(search.handing("search-1")).toBe(true));
+    expect(await reading).toEqual({ text: HANDING, isError: true });
+    expect(fake.calls.filter((x) => x.method === "search.openBackground")).toHaveLength(0);
+    search.continue("search-1");
+    await hand;
+  }, { address: "later" });
+});
+
+test("list_tabs shows the search tab as not shared while a hand is open, even with a grant", async () => {
+  await withSearch(async ({ call, fake, search, policy }) => {
+    await call("search_web", { query: "x" });
+    policy.grant((await fake.listTabs()).find((x) => x.id === "search-1")!);
+    expect((await call("list_tabs", {})).text).toContain("search-1 · https://moteur.test/?q=x");
+    const hand = handOver(call);
+    await vi.waitFor(() => expect(search.handing("search-1")).toBe(true));
+    const listed = (await call("list_tabs", {})).text;
+    expect(listed).toContain("search-1 · onglet non partagé ·  · perso");
+    expect(listed).not.toContain("moteur.test");
+    search.continue("search-1");
+    await hand;
+  });
 });

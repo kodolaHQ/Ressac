@@ -27,11 +27,18 @@ export const SchemaAction = z.discriminatedUnion("type", [
     spaceId: id.optional(),
     activate: z.boolean().optional(),
     openedByAgent: z.boolean().optional(),
+    /** The tab's own login profile, instead of its space's. */
+    profile: z.string().min(1).optional(),
     after: id.optional(),
     /** Shown until the page loads (an imported tab is not loaded before it is displayed). */
     title: z.string().optional(),
   }),
   z.object({ type: z.literal("closeTab"), id }),
+  z.object({
+    type: z.literal("setAgentSearch"),
+    id,
+    band: z.object({ state: z.enum(["working", "yours", "idle"]), text: z.string().max(300), pages: z.number().int().min(0).max(100_000), startedAt: z.number() }).nullable(),
+  }),
   // garderEspace: the tab becomes its space's tab without the window changing space (an extension's request).
   z.object({ type: z.literal("activateTab"), id, keepSpace: z.boolean().optional() }),
   z.object({ type: z.literal("moveTab"), id, index: z.number().int() }),

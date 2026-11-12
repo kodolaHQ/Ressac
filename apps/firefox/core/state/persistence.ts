@@ -31,6 +31,7 @@ const SchemaSession = z.object({
       favicon: z.string().nullable(),
       link: z.object({ type: z.enum(["essential", "pinned"]), id: z.string() }).nullable(),
       openedByAgent: z.boolean(),
+      profile: z.string().min(1).optional(),
       zoom: z.number(),
     }),
   ),
@@ -177,7 +178,7 @@ export class SessionRecorder {
 
   private async write(state: BrowserState): Promise<void> {
     const tabs = Object.fromEntries(
-      Object.entries(state.tabs).map(([id, { loading: load, canGoBack: canGoBack, canGoForward: canAdvance, crashed: crashes, error: error, ...rest }]) => [id, rest]),
+      Object.entries(state.tabs).map(([id, { loading: load, canGoBack: canGoBack, canGoForward: canAdvance, crashed: crashes, error: error, agentSearch: _band, ...rest }]) => [id, rest]),
     );
     const target = join(this.folder, FILE);
     const temp = `${target}.${process.pid}.${++this.number}.tmp`;

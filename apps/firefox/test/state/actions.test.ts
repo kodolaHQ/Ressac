@@ -2,7 +2,7 @@ import { beforeEach, expect, test } from "vitest";
 import { apply } from "../../core/state/actions";
 import { initialState } from "../../core/state/initial-state";
 import { SchemaAction, type Action } from "../../shared/api";
-import { spaceKey, historyContext, privateTab, profilesInUse, tabProfile, hasView, URL_ACTIONS, URL_APPLICATIONS, URL_EXTENSIONS, URL_SETTINGS, urlAction, urlWorkflow, type BrowserState, type Tab } from "../../shared/model";
+import { AGENT_PROFILE, spaceKey, historyContext, privateTab, profilesInUse, tabProfile, hasView, URL_ACTIONS, URL_APPLICATIONS, URL_EXTENSIONS, URL_SETTINGS, urlAction, urlWorkflow, type BrowserState, type Tab } from "../../shared/model";
 
 let n = 0;
 const genId = () => `g${++n}`;
@@ -421,6 +421,11 @@ test("historyContext: a shared essential counts in the space that displays it, o
   f.active["disparu"] = g;
   expect(historyContext(bizarre, g)).toEqual({ spaceId: "disparu", private: true });
   expect(historyContext(e, "inexistant")).toBeNull();
+});
+
+test("historyContext: a tab in its own login profile (the agent's) records nothing", () => {
+  const t = open("https://moteur.test/?q=x", { profile: AGENT_PROFILE });
+  expect(historyContext(e, t)).toBeNull();
 });
 
 test("spaceKey, privateTab, tabProfile", () => {
@@ -901,4 +906,37 @@ test("chooseClaudeEngine stores a new engine; an equal one changes nothing", () 
   const ollama = { ...e.settings.claudeEngine, kind: "ollama" as const, ollamaModel: "ornith:35b" };
   ag({ type: "chooseClaudeEngine", engine: ollama });
   expect(e.settings.claudeEngine).toEqual(ollama);
+});
+
+test("openTab with profile \"agent\" gives the tab that profile; tabProfile returns it whatever the space's", () => {
+  const id = open("https://a.test/");
+  ag({ type: "openTab", windowId: F, url: "https://b.test/", profile: AGENT_PROFILE });
+  const tab = Object.values(e.tabs).find((t) => t.url === "https://b.test/")!;
+  expect(tab.profile).toBe(AGENT_PROFILE);
+  expect(tabProfile(e, tab)).toBe(AGENT_PROFILE);
+  expect(e.tabs[id]!.profile).toBeUndefined();
+});
+
+test("a tab without profile keeps its space's", () => {
+  const id = open("https://a.test/");
+  expect(tabProfile(e, e.tabs[id]!)).toBe("default");
+});
+
+test("a space cannot be created with the agent's profile", () => {
+  const before = e.spaces.length;
+  ag({ type: "createSpace", name: "X", icon: "x", private: false, profile: AGENT_PROFILE });
+  expect(e.spaces.length).toBe(before);
+});
+
+test("setAgentSearch sets and clears the tab's band; unknown id or no change → same reference", () => {
+  const a = open("https://a.test/");
+  const band = { state: "yours" as const, text: "x", pages: 2, startedAt: 5 };
+  ag({ type: "setAgentSearch", id: a, band });
+  expect(e.tabs[a]!.agentSearch).toEqual(band);
+  const before = e;
+  expect(apply(e, { type: "setAgentSearch", id: a, band: { ...band } }, genId)).toBe(before);
+  expect(apply(e, { type: "setAgentSearch", id: "nope", band }, genId)).toBe(before);
+  ag({ type: "setAgentSearch", id: a, band: null });
+  expect(e.tabs[a]!.agentSearch).toBeUndefined();
+  expect(apply(e, { type: "setAgentSearch", id: a, band: null }, genId)).toBe(e);
 });

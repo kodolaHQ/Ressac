@@ -576,8 +576,11 @@ const rpc = createRpc({
       void sessions.closeWindow(p.window);
     },
     privateTabs: (p: { privateTabs: string[]; activePrivate: boolean }) => bridge.setPrivate(p),
-    "policy.navigated": (p: { id: string; url: string }) => kernel?.policy.tabNavigated(p.id, p.url),
-    "policy.closed": (p: { id: string }) => kernel?.policy.tabClosed(p.id),
+    "policy.navigated": (p: { id: string; url: string }) => { kernel?.policy.tabNavigated(p.id, p.url); kernel?.search.tabNavigated(p.id, p.url); },
+    "policy.closed": (p: { id: string }) => { kernel?.policy.tabClosed(p.id); kernel?.search.tabClosed(p.id); },
+    "search.continue": (p: { id: string }) => kernel?.search.continue(p.id),
+    "search.stop": (p: { id: string }) => kernel?.search.stop(p.id),
+    "search.dismiss": (p: { id: string }) => kernel?.search.dismiss(p.id),
     "policy.cut": (p: { id: string; right?: Parameters<Kernel["policy"]["cut"]>[1] }) => kernel?.policy.cut(p.id, p.right),
     "agent.send": (p: { tab: TabInfo | null }) => void (p.tab && kernel?.policy.userInteraction(p.tab)),
     // Opening the panel on a tab gives it to the agent and pre-fills the context, without sending it.

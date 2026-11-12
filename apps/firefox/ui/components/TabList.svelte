@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { fade } from "svelte/transition";
   import Icon from "./Icon.svelte";
   import type { WindowState } from "../../shared/model";
   import { accessOf, api, appState, closeTab } from "../state.svelte";
@@ -47,6 +48,7 @@
         aria-current={id === active ? "page" : undefined}
         class:before={hover?.index === index && !hover.after}
         class:after={hover?.index === index && hover.after}
+        class:yours={tab.agentSearch?.state === "yours"}
         draggable="true"
         ondragstart={(e) => e.dataTransfer?.setData("application/x-webaios-onglet", id)}
         ondragover={(e) => {
@@ -70,6 +72,7 @@
         {#if tab.loading}<span class="spinner" aria-label="Chargement"></span>{:else}<SiteIcon favicon={tab.favicon} title={tab.title} />{/if}
         <span class="title">{tab.title}</span>
         {#if agentRights}<AccessBadge {id} state={agentRights} />{/if}
+        {#if tab.agentSearch?.state === "yours"}<span class="yours-tag" data-testid="tab-yours" out:fade={{ duration: 150 }}>à vous</span>{/if}
         {#if tab.openedByAgent}<span class="agent" title="Ouvert par l'agent">✦</span>{/if}
         <button
           class="close"
@@ -97,7 +100,7 @@
     border-radius: 10px;
     color: var(--text);
     cursor: default;
-    transition: transform var(--tap), background var(--tap);
+    transition: transform var(--tap), background var(--tap), box-shadow 150ms ease-out;
     animation: webaios-rise var(--spring-d) var(--spring) backwards;
   }
   li[role="tab"]:hover:not([aria-current="page"]) { background: color-mix(in srgb, var(--glass-hi) 50%, transparent); }
@@ -120,6 +123,9 @@
   .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   [aria-current="page"] .title { font-weight: 500; }
   .agent { color: var(--accent); }
+  /* The agent hands this tab to the user: an accent outline and a tag, visible while another tab is active. */
+  li.yours { box-shadow: inset 0 0 0 1.5px var(--accent); transition: transform var(--tap), background var(--tap), box-shadow var(--spring-d) var(--spring); }
+  .yours-tag { flex: none; font-size: 11px; color: var(--accent); animation: webaios-rise var(--spring-d) var(--spring) backwards; }
   .close { all: unset; display: grid; place-content: center; width: 20px; height: 20px; border-radius: 6px; opacity: 0; color: var(--text-muted); transition: opacity var(--tap), background var(--tap); }
   .close:hover { background: var(--glass-hi); color: var(--text); }
   li:hover .close { opacity: 1; }

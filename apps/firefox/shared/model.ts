@@ -71,6 +71,9 @@ export type SpaceId = string;
 export type WindowId = string;
 export type SearchEngine = "google" | "duckduckgo" | "qwant";
 
+/** Mirrors the kernel's Band (packages/kernel/src/search/sessions.ts); the model cannot import the kernel. */
+export type Band = { state: "working" | "yours" | "idle"; text: string; pages: number; startedAt: number };
+
 export interface Tab {
   id: TabId;
   windowId: WindowId;
@@ -81,6 +84,8 @@ export interface Tab {
   /** Link to a persistent favorite: the tab materializes an essential or a pinned tab. */
   link: { type: "essential" | "pinned"; id: string } | null;
   openedByAgent: boolean;
+  /** A login profile of the tab's own, winning over its space's (the agent's search tab). */
+  profile?: ProfileId;
   loading: boolean;
   canGoBack: boolean;
   canGoForward: boolean;
@@ -90,6 +95,8 @@ export interface Tab {
   crashed: boolean;
   /** Page load failure (Chromium code, e.g. ERR_NAME_NOT_RESOLVED); volatile. */
   error: string | null;
+  /** The band of the agent's search on this tab; volatile, never saved. */
+  agentSearch?: Band;
 }
 
 /** Persistent favorite displayed in the sidebar even without an open tab (Arc/Zen model). */
@@ -113,6 +120,8 @@ export interface Folder {
 export type ProfileId = string;
 /** The login profile from before configurable spaces (partition `persist:webaios`). */
 export const DEFAULT_PROFILE: ProfileId = "default";
+/** The agent's own login profile (its cookies): never a space's profile, only a tab's. */
+export const AGENT_PROFILE: ProfileId = "agent";
 export interface ConnectionProfile {
   id: ProfileId;
 }
@@ -212,19 +221,20 @@ export function profilesInUse(state: Pick<BrowserState, "profiles" | "spaces">):
 /**
  * The space where to count a visit (and the kept text) of the tab: the one that displays it in its window — a shared
  * essential is seen in the active space —, otherwise its own. Private if that space or the tab's is (unknown: private).
+ * A tab in its own login profile (the agent's) records nothing: its pages are not the user's.
  */
 export function historyContext(state: BrowserState, id: TabId): { spaceId: SpaceId; private: boolean } | null {
   const o = state.tabs[id];
-  if (!o) return null;
+  if (!o || o.profile) return null;
   const f = state.windows.find((x) => x.id === o.windowId);
   const spaceId = f && f.active[f.activeSpace] === id ? f.activeSpace : o.spaceId;
   const isPrivate = (state.spaces.find((e) => e.id === spaceId)?.private ?? true) || privateTab(state, o);
   return { spaceId: spaceId, private: isPrivate };
 }
 
-/** The tab's login profile, that of its space (the default profile if the space is unknown). */
+/** The tab's login profile: its own if it has one, else its space's (the default profile if the space is unknown). */
 export function tabProfile(state: BrowserState, tab: Tab): ProfileId {
-  return state.spaces.find((e) => e.id === tab.spaceId)?.profile ?? DEFAULT_PROFILE;
+  return tab.profile ?? state.spaces.find((e) => e.id === tab.spaceId)?.profile ?? DEFAULT_PROFILE;
 }
 
 /** A history page: one row per URL and per space (`spaceId` empty: no space). */
@@ -267,6 +277,8 @@ export type Permission =
   | "extension"
   /** The agent wants to see the whole console of one of its extensions (temporary unlock, until it is done). */
   | "extension-console"
+  /** The agent wants to open, in its search tab, an address it wrote itself (the whole address and its reason are shown). */
+  | "agent-address"
   | "other";
 export type Decision = "allow" | "deny";
 /** The outcome of a question: the user's decision, or `withdrawn` if it lapsed without their answer (timeout, stale…). */
@@ -298,6 +310,8 @@ export interface Request {
   reason?: string;
   /** « outils-dev » and « donnees-widget »: the agent's name, displayed as is. */
   agent?: string;
+  /** « agent-address »: the watcher's view of the address, displayed as text. */
+  opinion?: string;
   /** « extension »: the grant card, displayed as text. */
   extension?: ExtensionCard;
 }

@@ -9,7 +9,7 @@ const claude = Profile.parse(JSON.parse(await readFile(join(import.meta.dirname,
 
 test("buildCommand, interactive, replaces {mcpConfig}", () => {
   expect(buildCommand(claude, "interactive", { mcpConfig: "/workspace/.webaios/mcp.json" })).toEqual([
-    "claude", "--dangerously-skip-permissions", "--mcp-config", "/workspace/.webaios/mcp.json",
+    "claude", "--disallowedTools", "WebSearch,WebFetch", "--dangerously-skip-permissions", "--mcp-config", "/workspace/.webaios/mcp.json",
   ]);
 });
 
@@ -17,7 +17,7 @@ test("nonInteractive: the instruction stays a single argument, even with spaces 
   const instruction = `Résume "ça" ; rm -rf /`;
   const cmd = buildCommand(claude, "nonInteractive", { prompt: instruction });
   expect(cmd.at(-1)).toBe(instruction);
-  expect(cmd).toHaveLength(4);
+  expect(cmd).toHaveLength(6);
 });
 
 test("variable manquante → erreur", () => {
@@ -53,4 +53,14 @@ test("buildCommand resume without a resume command throws; an unknown mcpConfig 
   const { resume: _, ...without } = codex;
   expect(() => buildCommand(without, "resume", { mcpConfig: "X" })).toThrow("Profil codex : pas de commande resume");
   expect(Profile.safeParse({ ...codex, mcpConfig: "autre" }).success).toBe(false);
+});
+
+test("the shipped Claude commands hold --disallowedTools WebSearch,WebFetch as two arguments, before any wildcard", () => {
+  for (const key of ["interactive", "resume", "nonInteractive"] as const) {
+    const cmd = claude[key]!;
+    const i = cmd.indexOf("--disallowedTools");
+    expect(i, key).toBe(1);
+    expect(cmd[i + 1]).toBe("WebSearch,WebFetch");
+    expect(cmd.indexOf("{prompt}") === -1 || cmd.indexOf("{prompt}") > i).toBe(true);
+  }
 });

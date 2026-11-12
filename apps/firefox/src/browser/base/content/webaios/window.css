@@ -13,6 +13,8 @@
 @property --ang { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
 /* Registered so the agent panel's slide can transition it (the page's margin follows the same value). */
 @property --webaios-agent { syntax: "<length>"; inherits: true; initial-value: 0px; }
+/* The search band's room above the page (its height and the gap under it): the page follows its enter and leave. */
+@property --webaios-search-band { syntax: "<length>"; inherits: true; initial-value: 0px; }
 
 :root[webaios-main] {
   --bg: #0E1014;
@@ -22,9 +24,14 @@
   --sheet: #17191F;
   --accent: var(--aura-accent-dark, #FF8FA8);
   --accent-ink: #0E1014;
+  --text-muted: #9AA1AD;
+  --glass: rgb(14 16 24 / 0.66);
+  --glass-edge: rgb(255 255 255 / 0.1);
   --page-shadow: 0 2px 6px rgb(0 0 0 / 0.3), 0 12px 40px -16px rgb(0 0 0 / 0.6);
   --aura-d: 900ms ease-in-out;
-  transition: --a1 var(--aura-d), --a2 var(--aura-d), --a3 var(--aura-d);
+  /* The search band's room: out on a fade, in on the spring (the controller's webaios-search-band attribute). */
+  --webaios-band-t: 150ms ease-out;
+  transition: --a1 var(--aura-d), --a2 var(--aura-d), --a3 var(--aura-d), --webaios-search-band var(--webaios-band-t);
   background: var(--bg);
 }
 
@@ -37,6 +44,9 @@
     --sheet: #FFFFFF;
     --accent: var(--aura-accent-light, #C23A5E);
     --accent-ink: #FFFFFF;
+    --text-muted: #5D6470;
+    --glass: rgb(255 255 255 / 0.52);
+    --glass-edge: rgb(255 255 255 / 0.75);
     --page-shadow: 0 2px 6px rgb(30 20 40 / 0.06), 0 12px 40px -16px rgb(30 20 40 / 0.3);
   }
 }
@@ -170,12 +180,12 @@
   --webaios-slide: 380ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 :root[webaios-main][webaios-agent-sliding] {
-  transition: --a1 var(--aura-d), --a2 var(--aura-d), --a3 var(--aura-d), --webaios-agent var(--webaios-slide);
+  transition: --a1 var(--aura-d), --a2 var(--aura-d), --a3 var(--aura-d), --webaios-agent var(--webaios-slide), --webaios-search-band var(--webaios-band-t);
 }
 @media (prefers-reduced-motion: reduce) {
   /* No slide: the panel fades. */
   :root[webaios-main][webaios-agent-sliding] {
-    transition: --a1 var(--aura-d), --a2 var(--aura-d), --a3 var(--aura-d);
+    transition: --a1 var(--aura-d), --a2 var(--aura-d), --a3 var(--aura-d), --webaios-search-band var(--webaios-band-t);
   }
   :root[webaios-main] #webaios-agent {
     transition: opacity 150ms ease-out;
@@ -194,7 +204,7 @@
 
 :root[webaios-main] #tabbrowser-tabbox {
   /* Below the site question's banner, --webaios-banner high (0 without one). */
-  margin-top: calc(var(--webaios-banner, 0px) + 8px);
+  margin-top: calc(var(--webaios-banner, 0px) + var(--webaios-search-band, 0px) + 8px);
   margin-bottom: 8px;
   /* Compact mode (no sidebar column): 8 px of aura on the left too. */
   margin-inline-start: max(var(--webaios-sidebar, 240px), 8px);
@@ -269,9 +279,9 @@
 /* The design mode's cart column (chrome/window/design-overlays.ts): the whole height of the page's area, left of the
    agent panel, never over the page (spike S3). */
 :root[webaios-main] #webaios-design-volet {
-  top: var(--webaios-banner, 0px);
+  top: calc(var(--webaios-banner, 0px) + var(--webaios-search-band, 0px));
   /* Not bottom: 0, which leaves an iframe at its intrinsic 150 px. */
-  height: calc(100% - var(--webaios-banner, 0px));
+  height: calc(100% - var(--webaios-banner, 0px) - var(--webaios-search-band, 0px));
   right: var(--webaios-agent, 0px);
   width: var(--webaios-basket, 0px);
 }
@@ -352,6 +362,109 @@
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-ink);
+}
+
+/* The agent's search band (chrome/window/search-band.ts): a glass pill lined up with the page (same insets, 8 px above
+   and below), under the site question's banner. --webaios-search-band is its height plus the gap under it. It enters on
+   the spring and leaves by a fade (visibility waits for it); reduced motion keeps only a short fade. */
+:root[webaios-main][webaios-search-band] {
+  --webaios-band-t: 460ms linear(0, 0.06 2.4%, 0.24 5.1%, 0.55 9.4%, 0.84 14.6%, 1.01 19.4%, 1.07 23.2%, 1.08 26.6%, 1.05 32.8%, 1 41%, 0.99 50%, 1);
+}
+:root[webaios-main] #webaios-search-band {
+  position: fixed;
+  top: calc(var(--webaios-banner, 0px) + 8px);
+  left: max(var(--webaios-sidebar, 240px), 8px);
+  right: calc(var(--webaios-agent, 0px) + var(--webaios-basket, 0px) + 8px);
+  z-index: 1;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border: 1px solid var(--glass-edge);
+  border-radius: 10px;
+  background: var(--glass);
+  color: var(--text);
+  font: message-box;
+  font-size: 13px;
+  line-height: 1.4;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-8px);
+  transition: opacity 150ms ease-out, transform 150ms ease-out, visibility 0s 150ms;
+}
+:root[webaios-main][webaios-sidebar-side="right"] #webaios-search-band {
+  left: calc(var(--webaios-agent, 0px) + var(--webaios-basket, 0px) + 8px);
+  right: max(var(--webaios-sidebar, 240px), 8px);
+}
+:root[webaios-main] #webaios-search-band[data-shown] {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition: opacity var(--webaios-band-t), transform var(--webaios-band-t), visibility 0s;
+}
+/* The outline stays inside the rounded shape. */
+:root[webaios-main] #webaios-search-band[data-state="yours"] {
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+:root[webaios-main] #webaios-search-band .dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+:root[webaios-main] #webaios-search-band[data-state="working"] .dot {
+  animation: webaios-band-pulse 1.8s ease-in-out infinite;
+}
+:root[webaios-main] #webaios-search-band[data-state="idle"] .dot {
+  background: var(--text-muted);
+  box-shadow: none;
+}
+@keyframes webaios-band-pulse { 50% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--accent) 0%, transparent); } }
+:root[webaios-main] #webaios-search-band .what {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+:root[webaios-main] #webaios-search-band[data-state="yours"] .what {
+  /* The user's instructions wrap, whole (a long address too); the band grows and the page follows (ResizeObserver). */
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+:root[webaios-main] #webaios-search-band small {
+  margin-inline-start: 8px;
+  color: var(--text-muted);
+  font-size: inherit;
+}
+:root[webaios-main] #webaios-search-band [hidden] {
+  display: none;
+}
+:root[webaios-main] #webaios-search-band button {
+  flex: none;
+  padding: 4px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--glass-edge);
+  background: var(--glass-hi);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+:root[webaios-main] #webaios-search-band button.go {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[webaios-main],
+  :root[webaios-main][webaios-search-band] { --webaios-band-t: 150ms ease-out; }
+  :root[webaios-main] #webaios-search-band,
+  :root[webaios-main] #webaios-search-band[data-shown] { transform: none; }
+  :root[webaios-main] #webaios-search-band[data-state="working"] .dot { animation: none; }
 }
 
 /* A site app's window (store/sites.ts): its bar on top, 36 px (HAUTEUR_BARRE_SITE), above the app view. */

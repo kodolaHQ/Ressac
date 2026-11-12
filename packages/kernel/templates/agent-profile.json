@@ -1,8 +1,8 @@
 {
   "id": "claude",
   "name": "Claude Code",
-  "interactive": ["claude", "--dangerously-skip-permissions", "--mcp-config", "{mcpConfig}"],
-  "resume": ["claude", "--dangerously-skip-permissions", "--continue", "--mcp-config", "{mcpConfig}"],
-  "nonInteractive": ["claude", "--dangerously-skip-permissions", "-p", "{prompt}"],
+  "interactive": ["claude", "--disallowedTools", "WebSearch,WebFetch", "--dangerously-skip-permissions", "--mcp-config", "{mcpConfig}"],
+  "resume": ["claude", "--disallowedTools", "WebSearch,WebFetch", "--dangerously-skip-permissions", "--continue", "--mcp-config", "{mcpConfig}"],
+  "nonInteractive": ["claude", "--disallowedTools", "WebSearch,WebFetch", "--dangerously-skip-permissions", "-p", "{prompt}"],
   "mcpConfig": "claude-json"
 }

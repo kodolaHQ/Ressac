@@ -70,6 +70,15 @@ describe("Settings page, permissions and data", () => {
     await waitFor(m, "return true", () => !read(join(dataDir, "permissions.json")).includes("https://a.fr"));
   });
 
+  it("the browsing notes button reveals the notes file", async () => {
+    await prepare();
+    await launch();
+    await openPage();
+    expect(await waitUi(m, `return doc.querySelector('[data-testid="settings-browsing-notes"]')?.textContent`)).toBe("Afficher dans le Finder");
+    await click(m, '[data-testid="settings-browsing-notes"]');
+    await waitFor(m, "return true", () => read(reveals).includes(join(dataDir, "workspace", "browsing-notes.md")));
+  });
+
   it("backups: listed, shown in the Finder, deleted", async () => {
     await prepare();
     const backup = `${dataDir}.backup-2026-01-01T00-00-00-000Z`;

@@ -7,11 +7,13 @@ import {
   type DevRight,
   type BrowserHistory,
   type TabInfo,
+  type PageLink,
   type PageReadOptions,
   type BrowserDevTools,
   type DevToolsOwner,
   type ReadPage,
   type BrowserBridge,
+  type Band,
 } from "../../../packages/kernel/src/index.ts";
 import type { History } from "../core/history.ts";
 import type { Rpc } from "../shared/rpc.ts";
@@ -70,7 +72,7 @@ export class RemoteBridge implements BrowserBridge {
 
   activeTab = () => this.call<TabInfo | null>("activeTab", []);
   listTabs = () => this.call<TabInfo[]>("listTabs", []);
-  readText = (id: string) => this.call<{ text: string; selection?: string }>("readText", [id]);
+  readText = (id: string) => this.call<{ text: string; selection?: string; links?: PageLink[] }>("readText", [id]);
   openTab = (url: string, space?: string) => this.call<TabInfo>("openTab", space === undefined ? [url] : [url, space]);
   navigate = (id: string, url: string) => this.call<void | "pending">("navigate", [id, url]);
   capture = async (id: string) => Buffer.from(await this.call<string>("capture", [id]), "base64");
@@ -87,6 +89,18 @@ export class RemoteBridge implements BrowserBridge {
       if (signal?.aborted) return false;
       throw e;
     });
+  // Taken down (signal) when a new conversation starts: refused.
+  askAddress = (o: { url: string; reason: string; agent: string; opinion?: string }, window: string | undefined, signal?: AbortSignal) =>
+    this.call<boolean>("askAddress", [o, window], signal).catch((e) => {
+      if (signal?.aborted) return false;
+      throw e;
+    });
+  readonly search: NonNullable<BrowserBridge["search"]> = {
+    open: (window, target, reuse) => this.call("search.open", [window, target, reuse]),
+    openBackground: (searchTabId, url) => this.call("search.openBackground", [searchTabId, url]),
+    close: (tabId) => this.call("search.close", [tabId]),
+    band: (tabId: string, band: Band | null) => this.call("search.band", [tabId, band]),
+  };
   siteUrlAllowed = (site: string, url: string) => this.siteAllowed(site, url);
   isPrivate = (id: string) => this.privateTabs.has(id);
   activePrivateTab = () => this.activePrivate;

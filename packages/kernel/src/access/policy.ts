@@ -11,7 +11,7 @@ function origin(url: string): string | null {
 }
 
 /** The agent's demos run in the container and open locally. */
-function isLocal(url: string): boolean {
+export function isLocal(url: string): boolean {
   try {
     return ["localhost", "127.0.0.1", "[::1]"].includes(new URL(url).hostname);
   } catch {

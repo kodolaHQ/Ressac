@@ -2,6 +2,7 @@ import type { DevRight } from "../access/policy.js";
 import type { CpuProfile } from "../devtools/summaries.js";
 import type { ChangeHost } from "../workflows/pacing.js";
 import type { ReadPage } from "../workflows/protocol.js";
+import type { Band } from "../search/sessions.js";
 
 /** The options of an invisible page read (see `BrowserBridge.lirePageInvisible`). */
 export interface PageReadOptions {
@@ -12,6 +13,12 @@ export interface PageReadOptions {
   changeHost?: ChangeHost;
   /** Screens to scroll before reading (1 to 20); absent: the page is read without scrolling. */
   scroll?: number;
+}
+
+/** A link of a page, as the agent sees it. */
+export interface PageLink {
+  text: string;
+  url: string;
 }
 
 export interface TabInfo {
@@ -43,7 +50,7 @@ export interface BrowserBridge {
   activeTab(): Promise<TabInfo | null>;
   listTabs(): Promise<TabInfo[]>;
   /** Throws TabNotFound if the id is unknown (like lireTexte, naviguer and capturer). */
-  readText(id: string): Promise<{ text: string; selection?: string }>;
+  readText(id: string): Promise<{ text: string; selection?: string; links?: PageLink[] }>;
   openTab(url: string, space?: string): Promise<TabInfo>;
   /**
    * `"pending"` (site app window only): the tweaks grant card is shown; the address will
@@ -61,6 +68,12 @@ export interface BrowserBridge {
    * a subject (new conversation, kernel stopped), it is removed and the request answers `[]`.
    */
   askDevTools?(o: TabInfo, d: { rights: DevRight[]; reason: string; agent: string }, signal?: AbortSignal): Promise<DevRight[]>;
+  /**
+   * Shows the card for an address the agent wrote itself (not a link it read) in the window of the search; true if the
+   * user allows it. `signal` raised: the card is removed and the answer is false. Absent: such an address is refused.
+   * `opinion`: the watcher's view, shown as one more line when present.
+   */
+  askAddress?(o: { url: string; reason: string; agent: string; opinion?: string }, window: string | undefined, signal?: AbortSignal): Promise<boolean>;
   /** The tab is in a private space: absent from listerOnglets, the agent has no access to it. */
   isPrivate?(id: string): boolean;
   /** The tab the user is looking at is in a private space (ongletActif then returns null). */
@@ -114,6 +127,21 @@ export interface BrowserBridge {
    * window is not open. Absent: the agent navigates no site app.
    */
   siteUrlAllowed?(site: string, url: string): boolean;
+  /** The agent's visible web search (absent: no `search_web` tool). */
+  search?: {
+    /**
+     * Opens the search tab in `window` (the active one if undefined), in its active space, in AGENT_PROFILE, activated.
+     * A query goes to the user's engine. Throws in a private space. With `reuse` (the id of the search tab), that tab is
+     * navigated instead and nothing opens nor activates.
+     */
+    open(window: string | undefined, target: { query: string } | { url: string }, reuse?: string): Promise<TabInfo>;
+    /** Opens `url` in a background tab of AGENT_PROFILE (`openedByAgent`, not activated), in the window and space of the search tab `searchTabId`. */
+    openBackground(searchTabId: string, url: string): Promise<TabInfo>;
+    /** Closes a tab opened by `open` or `openBackground`, at once (no « leave this site? » question). */
+    close(tabId: string): Promise<void>;
+    /** Shows or removes the band of the tab. */
+    band(tabId: string, band: Band | null): Promise<void>;
+  };
 }
 
 export interface MessageConsole {

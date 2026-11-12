@@ -56,6 +56,7 @@ export const OLD_AGENTS = new Set([
   "3bd6fbba709a6d3f59a8caa28c98833e9631414701096ccd4a252300e4b9f341",
   "e63295a004bce64af5982dddd7c8af0aafc67c05b621405be3576e1c1c39e92d",
   "08ab1528c2c4345c2bad7685f7b89bdfe20d1d0a677b1267da0a34d1e91414c1",
+  "56b165bf7ae7e88fd3125401419301b29eb16eba113434592e01a0d1c61b868b",
 ]);
 
 const hash = (content: Buffer) => createHash("sha256").update(content).digest("hex");
@@ -88,6 +89,8 @@ async function matches(c: SpacePaths, models: string): Promise<[string, string][
   const pairs: [string, string][] = [
     ["AGENTS.md", join(c.root, "AGENTS.md")],
     ["CLAUDE.md", join(c.root, "CLAUDE.md")],
+    // Shared by the user and the agent: created once, never in OLD_TEMPLATES, so never refreshed.
+    ["browsing-notes.md", join(c.root, "browsing-notes.md")],
     ["agent-profile.json", join(c.profiles, "claude.json")],
     ["codex-profile.json", join(c.profiles, "codex.json")],
     ["layout.json", c.layout],
@@ -156,6 +159,7 @@ export const OLD_CLAUDE_MD: ReadonlySet<string> = new Set(["11baa6aab5848a8fff97
 export const OLD_AGENT_PROFILE: ReadonlySet<string> = new Set([
   "2e20e733cc7c9aa30c807e227a6547824afbfc1f6a8ffe0c005cc9f51c039085",
   "0fb830fc421a5c48f8de042d8e7e722a4e8c4ef38c6c2e4738ac8b389b4f4816",
+  "4bedd62a30db9f408bd8ada622b5bc415cd7ac1fdcd7d9e1b52eda1bc1d2fc35",
 ]);
 export const OLD_CODEX_PROFILE: ReadonlySet<string> = new Set<string>();
 

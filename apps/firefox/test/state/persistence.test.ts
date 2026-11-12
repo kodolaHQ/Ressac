@@ -41,6 +41,17 @@ test("round trip: identical, apart from volatile fields reset to defaults", asyn
   expect(reviewed).toEqual(expected);
 });
 
+test("a session reloaded has no agent search band", async () => {
+  const d = folder();
+  const state = richState();
+  const a = Object.keys(state.tabs)[0]!;
+  state.tabs[a]!.agentSearch = { state: "working", text: "x", pages: 1, startedAt: 1 };
+  const recorder = new SessionRecorder(d);
+  recorder.schedule(state);
+  await recorder.clear();
+  expect((await loadSession(d)).tabs[a]!.agentSearch).toBeUndefined();
+});
+
 test("session v3 with a private space and a second sign-in profile: identical round trip", async () => {
   const d = folder();
   let n = 100;
@@ -379,4 +390,16 @@ test("a session saved without claudeEngine loads with the default; a corrupt one
   const s = await loadSession(d);
   expect(s.settings.claudeEngine).toEqual(DEFAULT_CLAUDE_ENGINE);
   expect(s.settings.agentPanelWidth).toBe(500);
+});
+
+test("a persisted tab with a profile reloads with it", async () => {
+  const d = folder();
+  let n = 200;
+  const g = () => `k${++n}`;
+  const start = initialState(g);
+  const state = apply(start, { type: "openTab", windowId: start.windows[0]!.id, url: "https://a.test/", profile: "agent" }, g);
+  const recorder = new SessionRecorder(d);
+  recorder.schedule(state);
+  await recorder.clear();
+  expect(Object.values((await loadSession(d)).tabs).some((t) => t.profile === "agent")).toBe(true);
 });
