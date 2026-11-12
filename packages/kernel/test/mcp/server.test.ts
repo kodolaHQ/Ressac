@@ -1381,7 +1381,7 @@ const b = { text: "B", url: "https://exemple.fr/b" };
 const c = { text: "C", url: "https://exemple.fr/c" };
 
 async function withSearch(
-  attempt: (o: { call: (name: string, args: Record<string, unknown>, token?: string, onprogress?: (n: number) => void) => Promise<{ text: string; isError: boolean }>; fake: FakeBridge; search: SearchSessions; s: Awaited<ReturnType<typeof startMcpServer>>; bands: [string, Band | null][] }) => Promise<void>,
+  attempt: (o: { call: (name: string, args: Record<string, unknown>, token?: string, onprogress?: (n: number) => void) => Promise<{ text: string; isError: boolean }>; token: string; fake: FakeBridge; search: SearchSessions; s: Awaited<ReturnType<typeof startMcpServer>>; bands: [string, Band | null][] }) => Promise<void>,
   opts: { privateWindows?: string[]; allow?: boolean; emptySpanMs?: number; address?: boolean | "wait"; failing?: string[]; hanging?: string[]; readPageMs?: number; heartbeatMs?: number } = {},
 ) {
   const principal = generateToken();
@@ -1398,7 +1398,7 @@ async function withSearch(
     return { text: text(r), isError: r.isError === true };
   };
   try {
-    await attempt({ call, fake, search, s, bands });
+    await attempt({ call, token: principal, fake, search, s, bands });
   } finally {
     await Promise.all(clients.map((x) => x.close()));
     await s.stop();
@@ -1942,4 +1942,36 @@ test("hand_over sends progress notifications while it waits", async () => {
     search.continue("search-1");
     await pending;
   }, { heartbeatMs: 20 });
+});
+
+test("hand_over: a request the client drops puts the band back to idle; the search goes on", async () => {
+  await withSearch(async ({ call, token, search, s, bands }) => {
+    await call("search_web", { query: "x" });
+    const ac = new AbortController();
+    const sent = fetch(`http://127.0.0.1:${s.port}/mcp`, {
+      method: "POST",
+      signal: ac.signal,
+      headers: { Authorization: `Bearer ${token}`, "content-type": "application/json", accept: "application/json, text/event-stream" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "hand_over", arguments: { id: "search-1", reason: "x", kind: "lost" } } }),
+    }).catch(() => "aborted");
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.state).toBe("yours"));
+    ac.abort();
+    await sent;
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.state).toBe("idle"));
+    expect(search.owns("search-1")).toBe(true);
+  });
+});
+
+test("hand_over drops path URLs longer than 500 characters", async () => {
+  await withSearch(async ({ call, search, bands }) => {
+    await call("search_web", { query: "x" });
+    const pending = handOver(call);
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.state).toBe("yours"));
+    search.tabNavigated("search-1", `https://exemple.fr/${"a".repeat(600)}`);
+    search.tabNavigated("search-1", "https://exemple.fr/ok");
+    search.continue("search-1");
+    const r = (await pending).text;
+    expect(r).toContain("https://exemple.fr/ok");
+    expect(r).not.toContain("aaaa");
+  });
 });

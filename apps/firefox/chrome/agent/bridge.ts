@@ -183,7 +183,7 @@ export function bridgeHandlers(
     },
     "search.close": ([id]: [string]) => void store.dispatch({ type: "closeTab", id }),
     // The band of the search tab: the window draws it (window/search-band.ts) from the tab's state.
-    "search.band": ([id, band]: [string, Band | null]) => void store.dispatch({ type: "setAgentSearch", id, band }),
+    "search.band": ([id, band]: [string, Band | null]) => void store.dispatch({ type: "setAgentSearch", id, band: band && { ...band, text: band.text.slice(0, 300) } }),
     readText: ([id]: [string]) => onSiteView(id, getText) ?? outsidePrivate(id, getText),
     capture: ([id]: [string]) => onSiteView(id, snapshot) ?? outsidePrivate(id, (browser) => snapshot(browser, windowOf(id).window)),
     // « L'agent veut lire l'onglet … » in the active window; refused with none to show it. The signal aborts when the

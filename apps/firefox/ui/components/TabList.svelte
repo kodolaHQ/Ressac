@@ -100,7 +100,7 @@
     border-radius: 10px;
     color: var(--text);
     cursor: default;
-    transition: transform var(--tap), background var(--tap);
+    transition: transform var(--tap), background var(--tap), box-shadow 150ms ease-out;
     animation: webaios-rise var(--spring-d) var(--spring) backwards;
   }
   li[role="tab"]:hover:not([aria-current="page"]) { background: color-mix(in srgb, var(--glass-hi) 50%, transparent); }
@@ -124,7 +124,7 @@
   [aria-current="page"] .title { font-weight: 500; }
   .agent { color: var(--accent); }
   /* The agent hands this tab to the user: an accent outline and a tag, visible while another tab is active. */
-  li.yours { box-shadow: inset 0 0 0 1.5px var(--accent); }
+  li.yours { box-shadow: inset 0 0 0 1.5px var(--accent); transition: transform var(--tap), background var(--tap), box-shadow var(--spring-d) var(--spring); }
   .yours-tag { flex: none; font-size: 11px; color: var(--accent); animation: webaios-rise var(--spring-d) var(--spring) backwards; }
   .close { all: unset; display: grid; place-content: center; width: 20px; height: 20px; border-radius: 6px; opacity: 0; color: var(--text-muted); transition: opacity var(--tap), background var(--tap); }
   .close:hover { background: var(--glass-hi); color: var(--text); }

@@ -146,9 +146,19 @@ export class SearchSessions {
     s.hand = undefined;
     const kept = path.slice(-PATH_MAX);
     if (kept.length) this.allow(tabId, kept[kept.length - 1]!);
-    if (s.inFlight > 0) this.band(s, "working"); // the last step to end sets idle and arms the timer
-    else { this.band(s, "idle"); this.arm(s); }
+    this.resume(s);
     resolve({ outcome: "continue", path: kept });
+  }
+
+  /** The agent's call that waited for the user is gone (cancelled): the page is nobody's wait any more; back to idle. */
+  abandon(tabId: string): void {
+    const s = this.byTab.get(tabId);
+    if (!s?.hand) return;
+    const { resolve } = s.hand;
+    s.hand = undefined;
+    this.resume(s);
+    // shortcut: a second hand_over that shared this hand gets a stop too, when more than one waits, track callers.
+    resolve({ outcome: "stop", path: [] });
   }
 
   stop(tabId: string): void {
@@ -189,6 +199,11 @@ export class SearchSessions {
 
   private band(s: Search, state: BandState): void {
     this.o.show(s.tabId, { state, text: s.text, pages: s.pages, startedAt: s.startedAt });
+  }
+
+  private resume(s: Search): void {
+    if (s.inFlight > 0) this.band(s, "working"); // the last step to end sets idle and arms the timer
+    else { this.band(s, "idle"); this.arm(s); }
   }
 
   private arm(s: Search): void {

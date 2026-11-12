@@ -28,6 +28,7 @@ export function mountSearchBand(win: Window, store: WebAiOsStore, windowId: Wind
   band.dataset.testid = "search-band";
   band.setAttribute("role", "status");
   band.setAttribute("aria-label", "Recherche de l'agent");
+  band.setAttribute("aria-live", "off"); // set before any text changes, so a screen reader announces the « à vous » text
   const dot = el("span", "dot");
   const what = el("span", "what");
   const text = el("span", "text");
@@ -66,20 +67,25 @@ export function mountSearchBand(win: Window, store: WebAiOsStore, windowId: Wind
     shown = b;
     // Kept as it was when there is none: the text stays readable while the band fades out.
     if (b) {
+      band.setAttribute("aria-live", b.state === "yours" ? "polite" : "off");
       band.dataset.state = b.state;
       text.textContent = b.text;
       small.textContent = b.state === "yours" ? "" : stats(b, Date.now());
-      band.setAttribute("aria-live", b.state === "yours" ? "polite" : "off");
     }
     band.toggleAttribute("data-shown", !!b);
     go.hidden = b?.state !== "yours";
     stop.hidden = b?.state === "idle";
     close.hidden = b?.state !== "idle";
-    clearInterval(tick);
-    tick = b?.state === "working" ? setInterval(paint, 1000) : undefined;
+    if (b?.state === "working" && !tick) tick = setInterval(paint, 1000);
+    else if (b?.state !== "working" && tick) {
+      clearInterval(tick);
+      tick = undefined;
+    }
+    doc.documentElement.toggleAttribute("webaios-search-band", !!b);
     resize();
   };
-  const resize = () => doc.documentElement.style.setProperty("--webaios-search-band", shown ? `${band.getBoundingClientRect().height}px` : "0px");
+  // Its room: its height and the 8 px gap under it, as the page has to the window's edge.
+  const resize = () => doc.documentElement.style.setProperty("--webaios-search-band", shown ? `${band.getBoundingClientRect().height + 8}px` : "0px");
   const observer = new ResizeObserver(resize);
   observer.observe(band);
   render();

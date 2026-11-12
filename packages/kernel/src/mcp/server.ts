@@ -736,13 +736,19 @@ function createToolsServer(
             : setInterval(() => void extra.sendNotification({ method: "notifications/progress", params: { progressToken, progress: ++progress } }).catch(() => {}), beatMs ?? 30_000);
         try {
           const lead = kind === "verification" ? "Bloqué par une vérification. À vous : " : "Je ne trouve pas mon chemin. À vous : ";
-          const r = await sessions.handOver(id, lead + reason.slice(0, 200));
+          // A cancelled call (the agent was interrupted) hands the page back: nobody waits for the user any more.
+          const abandon = () => sessions.abandon(id);
+          extra.signal.addEventListener("abort", abandon, { once: true });
+          if (extra.signal.aborted) abandon();
+          let r;
+          try { r = await sessions.handOver(id, lead + reason.slice(0, 200)); } finally { extra.signal.removeEventListener("abort", abandon); }
           if (r.outcome === "stop") { sessions.takeStop(win ?? MAIN_WINDOW, id); return text(STOP_TEXT); }
           if (r.outcome === "closed") return text(CLOSED_TEXT);
+          const path = r.path.filter((u) => u.length <= URL_MAX);
           return text(
             [
               "La page est de nouveau à toi : relis-la.",
-              r.path.length ? `Chemin suivi par l'utilisateur :\n${r.path.join("\n")}` : "L'utilisateur n'a pas changé de page.",
+              path.length ? `Chemin suivi par l'utilisateur :\n${path.join("\n")}` : "L'utilisateur n'a pas changé de page.",
               ...(kind === "lost" ? ["Note une leçon générale dans /workspace/browsing-notes.md (ce qu'il faut essayer la prochaine fois, pas la recette d'un site, jamais ce que l'utilisateur a tapé)."] : []),
             ].join("\n"),
           );

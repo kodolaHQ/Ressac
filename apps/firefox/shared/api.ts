@@ -37,7 +37,7 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("setAgentSearch"),
     id,
-    band: z.object({ state: z.enum(["working", "yours", "idle"]), text: z.string(), pages: z.number(), startedAt: z.number() }).nullable(),
+    band: z.object({ state: z.enum(["working", "yours", "idle"]), text: z.string().max(300), pages: z.number().int().min(0).max(100_000), startedAt: z.number() }).nullable(),
   }),
   // garderEspace: the tab becomes its space's tab without the window changing space (an extension's request).
   z.object({ type: z.literal("activateTab"), id, keepSpace: z.boolean().optional() }),

@@ -183,6 +183,7 @@ it("during a read the band shows on the search tab only, with Arrêter", async (
   const b = (await waitBand((v) => v.state === "working"))!;
   expect(b).toMatchObject({ shown: true, label: "Recherche de l'agent", buttons: ["Arrêter"] });
   expect(b.text).toBe("Lecture de 1 page, 0 faite");
+  await waitFor(m, `return document.documentElement.hasAttribute("webaios-agent-working")`, (v) => v === true);
   expect(b.stats).toMatch(/^\d+ pages? lues? · \d+ s$/);
   // Another tab shown: the band is not (the search goes on).
   await otherTab();
@@ -263,12 +264,32 @@ it("the band enters and leaves with a transition", async () => {
   const config = join(w.dataDir, "workspace", ".webaios", "mcp.json");
   for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
     if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
+  // Samples of the band's opacity and the page's top inset at every frame, from before the band exists.
+  await m.execute(`window.__samples = []; window.__sampling = true;
+    const tick = () => { const b = document.querySelector('${BAND}'); window.__samples.push({ o: b ? +getComputedStyle(b).opacity : 0, inset: document.getElementById("tabbrowser-tabbox").getBoundingClientRect().top - 8 }); if (window.__sampling) requestAnimationFrame(tick); };
+    requestAnimationFrame(tick);`);
   const id = idOf((await callTool(w.dataDir, "search_web", { query: "x" })).text);
-  const durations = () => m.execute<string>(`return getComputedStyle(document.querySelector('${BAND}')).transitionDuration`);
   await waitBand((v) => v.shown);
-  expect(await durations()).toMatch(/[1-9]/);
+  // Settled: the inset no longer moves.
+  const inset = () => m.execute<number>(`return document.getElementById("tabbrowser-tabbox").getBoundingClientRect().top - 8`);
+  let settled = -1;
+  for (let before = -2; settled < 0; await new Promise((r) => setTimeout(r, 300))) {
+    const now = await inset();
+    if (now > 0 && now === before) settled = now;
+    before = now;
+  }
   await otherTab();
   await waitBand((v) => !v.shown);
-  expect(await durations()).toMatch(/[1-9]/);
+  await waitFor(m, `return document.getElementById("tabbrowser-tabbox").getBoundingClientRect().top - 8`, (v) => v === 0);
+  expect(await inset()).toBe(0);
+  const samples = await m.execute<{ o: number; inset: number }[]>(`window.__sampling = false; return window.__samples;`);
+  const lastFull = samples.findLastIndex((x) => x.inset >= settled - 0.5);
+  const firstFull = samples.findIndex((x) => x.inset >= settled - 0.5);
+  const mid = (xs: typeof samples) => xs.some((x) => x.inset > 0.5 && x.inset < settled - 0.5);
+  // In: the page goes down by steps (not at once) and the band fades in; out: it comes back by steps.
+  expect(mid(samples.slice(0, firstFull))).toBe(true);
+  expect(samples.slice(0, firstFull).some((x) => x.o > 0.02 && x.o < 0.98)).toBe(true);
+  expect(mid(samples.slice(lastFull))).toBe(true);
+  expect(samples.slice(lastFull).some((x) => x.o > 0.02 && x.o < 0.98)).toBe(true);
   await dispatch(m, { type: "activateTab", id });
 });
