@@ -262,7 +262,7 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
     case "updateTab": {
       const o = d.tabs[a.id];
       // Pages often emit the same values: nothing changed, nothing to rebroadcast.
-      if (!o || Object.entries(a.fields).every(([k, v]) => o[k as keyof Tab] === v)) return false;
+      if (!o || Object.entries(a.fields).every(([k, v]) => (o[k as keyof Tab] ?? null) === (v ?? null))) return false;
       Object.assign(o, a.fields);
       return true;
     }

@@ -597,6 +597,15 @@ test("agentPanelWidth: 420 by default, kept, clamped between 280 and 1000", () =
   expect(e.settings.agentPanelWidth).toBe(1000);
 });
 
+test("updateTab: a sound or playback set to null on a tab that never had one changes nothing", () => {
+  const a = open("https://music.example/");
+  const before = e;
+  ag({ type: "updateTab", id: a, fields: { sound: null, playback: null } });
+  expect(e).toBe(before);
+  ag({ type: "updateTab", id: a, fields: { sound: "playing", playback: "playing" } });
+  expect([e.tabs[a]!.sound, e.tabs[a]!.playback]).toEqual(["playing", "playing"]);
+});
+
 test("setCall sets and clears a tab's call; the same state or an unknown tab changes nothing", () => {
   const a = open("https://meet.example/");
   ag({ type: "setCall", id: a, call: { mic: true, camera: false } });

@@ -1,9 +1,10 @@
 <script lang="ts">
   import { fade } from "svelte/transition";
   import type { Favorite, Space, WindowState } from "../../shared/model";
-  import { api } from "../state.svelte";
+  import { api, appState } from "../state.svelte";
   import Icon from "./Icon.svelte";
   import SiteIcon from "./SiteIcon.svelte";
+  import SoundButton from "./SoundButton.svelte";
   import { openMenu, type MenuEntry } from "./menu.svelte";
 
   /** A space's pinned tabs: its folders first (one level, Arc/Zen model), then the pinned tabs outside any folder. */
@@ -41,6 +42,8 @@
     const id = e.dataTransfer?.getData(TAB);
     if (id) api.dispatch({ type: "pinTab", id, folderId });
   }
+  /** The favorite's open tab in this window, if any: its sound pictogram sits on the row. */
+  const tabOf = (f: Favorite) => Object.values(appState.value?.tabs ?? {}).find((t) => t.link?.id === f.id && t.windowId === win.id);
   const focus = (node: HTMLInputElement) => (node.focus(), node.select());
 </script>
 
@@ -55,6 +58,7 @@
       <SiteIcon favicon={f.favicon} title={f.title} />
       <span>{f.title}</span>
     </button>
+    {#if tabOf(f)}<span class="sound"><SoundButton tab={tabOf(f)!} /></span>{/if}
   </li>
 {/snippet}
 
@@ -105,7 +109,8 @@
   .pinned, .inside { list-style: none; margin: 0; padding: 0; }
   .pinned { min-height: 8px; }
   .inside { padding-left: 14px; }
-  li { animation: webaios-rise var(--spring-d) var(--spring) backwards; }
+  li { position: relative; animation: webaios-rise var(--spring-d) var(--spring) backwards; }
+  .sound { position: absolute; right: 8px; top: 8px; }
   button { all: unset; display: flex; align-items: center; gap: 10px; width: calc(100% - 20px); height: 36px; padding: 0 10px; border-radius: 10px; color: var(--text); transition: transform var(--tap), background var(--tap); }
   button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   button:hover { background: color-mix(in srgb, var(--glass-hi) 55%, transparent); }

@@ -435,6 +435,12 @@ A tab that uses the camera or the microphone when it is left (`TabSelect`, `chro
 - Tests: `e2e/calls.e2e.ts`, on fake devices (`media.navigator.streams.fake`; they count as a capture only with `media.navigator.permission.fake`). Not measured on the real Meet, Teams or Zoom.
 - Build facts: as the vim actor, a new checkout needs the `call-actor.sys.mjs` link in the engine (`pnpm engine:import`).
 
+## Sound and playback in tabs
+
+- Sound pictogram: `tab.sound` (`"playing"` / `"muted"`, volatile) follows the XUL tab's `soundplaying` and `muted` attributes (`TabAttrModified`, `chrome/window/tabs.ts`). `ui/components/SoundButton.svelte` shows it on the tab's row, on its pinned row and in the media bar; a click calls `tab.toggleMuteAudio()` (`webaiosWindow.toggleMute`). A muted tab keeps its pictogram until unmuted. Essentials (icon tiles) have none.
+- Media bar: `tab.playback` (`"playing"` / `"paused"`, volatile) follows the tab's `browsingContext.mediaController` (Firefox's media keys' session: `activated`, `deactivated`, `playbackstatechange`), listened to from the first sound or when the tab is left. A tab with a session that is not the one shown gets a bar above the sidebar's footer (in `CallBar.svelte`, under the calls): back to the tab, play / pause (`mediaController.play()` / `pause()`), sound. A tab in a call has the call bar only. Videos do not float (calls only).
+- Tests: `e2e/media-bar.e2e.ts`. Sound does not decode in a hidden test browser, so real playback (the session's events, play / pause on a real page) is not covered there.
+
 ## Measured times (M5 Pro, 2026-11-03, Firefox 159 + Zen patches)
 
 Full build 20–23 min; `build:ui` after a UI change 17 s; adding the sidebar files (`jar.mn` + `browser.xhtml` patches) 21 s; one C++ or Objective-C++ file 23–25 s; build with no change 21 s.

@@ -5,6 +5,7 @@
   import { accessOf, api, appState, closeTab } from "../state.svelte";
   import AccessBadge from "./AccessBadge.svelte";
   import SiteIcon from "./SiteIcon.svelte";
+  import SoundButton from "./SoundButton.svelte";
   import { openMenu } from "./menu.svelte";
 
   let { window: win }: { window: WindowState } = $props();
@@ -71,6 +72,7 @@
       >
         {#if tab.loading}<span class="spinner" aria-label="Chargement"></span>{:else}<SiteIcon favicon={tab.favicon} title={tab.title} />{/if}
         <span class="title">{tab.title}</span>
+        <SoundButton {tab} />
         {#if agentRights}<AccessBadge {id} state={agentRights} />{/if}
         {#if tab.agentSearch?.state === "yours"}<span class="yours-tag" data-testid="tab-yours" out:fade={{ duration: 150 }}>à vous</span>{/if}
         {#if tab.openedByAgent}<span class="agent" title="Ouvert par l'agent">✦</span>{/if}

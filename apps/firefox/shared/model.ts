@@ -97,6 +97,10 @@ export interface Tab {
   error: string | null;
   /** The band of the agent's search on this tab; volatile, never saved. */
   agentSearch?: Band;
+  /** The tab plays sound, or is muted (it stays so until unmuted); volatile, never saved. */
+  sound?: "playing" | "muted" | null;
+  /** The tab's media session (a video, music), as Firefox's media keys see it; volatile, never saved. */
+  playback?: "playing" | "paused" | null;
   /** The tab uses the camera or the microphone while another tab is shown (the sidebar's call bar); volatile, never saved. */
   call?: { mic: boolean; camera: boolean };
 }
