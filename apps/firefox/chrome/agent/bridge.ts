@@ -192,6 +192,11 @@ export function bridgeHandlers(
       const f = windows.active();
       return f ? questions.askDevTools(o, d, f, signal) : [];
     },
+    // The card for an address the agent composed, in the window of its search; refused with none to show it.
+    askAddress: ([o, win]: [{ url: string; reason: string; agent: string; opinion?: string }, WindowId | undefined], signal) => {
+      const f = win ?? windows.active();
+      return f ? questions.askAddress(o, f, signal) : false;
+    },
     // The « donnees-widget » card in the active window; refused with none to show it. The kernel takes it down (signal)
     // when a new conversation starts.
     askWidgetData: ([o]: [{ id: string; name: string; agent: string; kind?: "action" | "site" }], signal) => {

@@ -1382,10 +1382,10 @@ const c = { text: "C", url: "https://exemple.fr/c" };
 
 async function withSearch(
   attempt: (o: { call: (name: string, args: Record<string, unknown>, token?: string) => Promise<{ text: string; isError: boolean }>; fake: FakeBridge; search: SearchSessions; s: Awaited<ReturnType<typeof startMcpServer>>; bands: [string, Band | null][] }) => Promise<void>,
-  opts: { privateWindows?: string[]; allow?: boolean; emptySpanMs?: number } = {},
+  opts: { privateWindows?: string[]; allow?: boolean; emptySpanMs?: number; address?: boolean | "wait" } = {},
 ) {
   const principal = generateToken();
-  const fake = new FakeBridge([github], { active: "github", allow: opts.allow ?? false, search: { privateWindows: opts.privateWindows ?? [] } });
+  const fake = new FakeBridge([github], { active: "github", allow: opts.allow ?? false, search: { privateWindows: opts.privateWindows ?? [] }, ...(opts.address !== undefined ? { address: opts.address } : {}) });
   const bands: [string, Band | null][] = [];
   const search = new SearchSessions({ show: (id, band) => bands.push([id, band]) });
   const s = await startMcpServer({ bridge: fake, policy: new AccessPolicy(), token: principal, search, settleMs: 0, emptySpanMs: opts.emptySpanMs ?? 0 });
@@ -1456,6 +1456,78 @@ test("navigate on the search tab to a link read is done; to another address it i
     const r = await call("navigate", { id: "search-1", url: "https://ailleurs.fr/" });
     expect(r.text).toBe(REFUSED);
     expect(fake.calls.filter((x) => x.method === "navigate")).toHaveLength(1);
+  });
+});
+
+const COMPOSED = "https://ailleurs.fr/page?q=" + "x".repeat(300);
+
+test("navigate on the search tab to a composed address asks the card with the full address and the reason; accepted: it navigates and that address is free", async () => {
+  await withSearch(async ({ call, fake, search }) => {
+    await call("search_web", { query: "x" });
+    const r = await call("navigate", { id: "search-1", url: COMPOSED, reason: "r".repeat(300) });
+    expect(r.text).toBe(`Onglet search-1 → ${COMPOSED}`);
+    const card = fake.calls.find((x) => x.method === "askAddress")!;
+    expect(card.args[0]).toEqual({ url: COMPOSED, reason: "r".repeat(200), agent: "L'agent" });
+    expect(fake.calls.filter((x) => x.method === "navigate")).toHaveLength(1);
+    expect(search.isFree("search-1", COMPOSED)).toBe(true);
+  }, { address: true });
+});
+
+test("navigate on the search tab to a composed address, refused: DENIAL_TEXT and nothing loads", async () => {
+  await withSearch(async ({ call, fake, search }) => {
+    await call("search_web", { query: "x" });
+    expect((await call("navigate", { id: "search-1", url: COMPOSED, reason: "pour voir" })).text).toBe(DENIAL_TEXT);
+    expect(fake.calls.filter((x) => x.method === "navigate")).toHaveLength(0);
+    expect(search.isFree("search-1", COMPOSED)).toBe(false);
+  }, { address: false });
+});
+
+/** A search with an address card that never answers by itself; `end` ends the conversation (the card is taken down). */
+async function withWaitingCard(attempt: (o: { call: (a: Record<string, unknown>) => Promise<{ text: string }>; fake: FakeBridge; end: () => void }) => Promise<void>) {
+  const principal = generateToken();
+  const fake = new FakeBridge([github], { active: "github", allow: false, search: {}, address: "wait" });
+  const policy = new AccessPolicy();
+  const s = await startMcpServer({ bridge: fake, policy, token: principal, search: new SearchSessions({ show: () => {} }), settleMs: 0, emptySpanMs: 0 });
+  const clients: Client[] = [];
+  const call = async (a: Record<string, unknown>) => {
+    const cl = new Client({ name: "test", version: "0" });
+    clients.push(cl);
+    await cl.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${s.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${principal}` } } }));
+    return { text: text(await cl.callTool({ name: "navigate", arguments: a })) };
+  };
+  try {
+    const first = new Client({ name: "test", version: "0" });
+    clients.push(first);
+    await first.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${s.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${principal}` } } }));
+    await first.callTool({ name: "search_web", arguments: { query: "x" } });
+    await attempt({ call, fake, end: () => policy.reset() });
+  } finally {
+    await Promise.all(clients.map((x) => x.close()));
+    await s.stop();
+  }
+}
+const asked = async (fake: FakeBridge, n: number) => {
+  while (fake.calls.filter((x) => x.method === "askAddress").length < n) await new Promise((ok) => setTimeout(ok, 10));
+};
+
+test("one card per address at a time: both calls get its answer", async () => {
+  await withWaitingCard(async ({ call, fake, end }) => {
+    const both = Promise.all([call({ id: "search-1", url: COMPOSED }), call({ id: "search-1", url: COMPOSED })]);
+    await asked(fake, 1);
+    await new Promise((ok) => setTimeout(ok, 200));
+    expect(fake.calls.filter((x) => x.method === "askAddress")).toHaveLength(1);
+    end();
+    expect((await both).map((r) => r.text)).toEqual([DENIAL_TEXT, DENIAL_TEXT]);
+  });
+});
+
+test("a new conversation takes the address card down (false)", async () => {
+  await withWaitingCard(async ({ call, fake, end }) => {
+    const pending = call({ id: "search-1", url: COMPOSED });
+    await asked(fake, 1);
+    end();
+    expect((await pending).text).toBe(DENIAL_TEXT);
+    expect(fake.calls.filter((x) => x.method === "navigate")).toHaveLength(0);
   });
 });
 

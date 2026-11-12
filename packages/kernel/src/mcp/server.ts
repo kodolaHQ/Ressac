@@ -264,6 +264,40 @@ async function askDataCard(
   return (await request) && granted();
 }
 
+/** The agent's reason on an address card: plain text, bounded. */
+export const ADDRESS_REASON_LENGTH = 200;
+
+/**
+ * Puts up the card for an address the agent composed (one at a time for the same key: both calls get its answer). A new
+ * conversation takes it down: refused.
+ */
+function askAddressCard(
+  bridge: BrowserBridge,
+  policy: AccessPolicy,
+  requests: Map<string, Promise<boolean>>,
+  card: { url: string; reason: string; agent: string },
+  key: string,
+  window: string | undefined,
+): Promise<boolean> {
+  let request = requests.get(key);
+  if (!request) {
+    const conversation = policy.conversation;
+    const removal = new AbortController();
+    const unsubscribe = policy.onChange(() => {
+      if (policy.conversation !== conversation) removal.abort();
+    });
+    const abandon = new Promise<boolean>((ok) => removal.signal.addEventListener("abort", () => ok(false), { once: true }));
+    request = Promise.race([bridge.askAddress!(card, window, removal.signal), abandon])
+      .then((yes) => yes && policy.conversation === conversation)
+      .finally(() => {
+        unsubscribe();
+        requests.delete(key);
+      });
+    requests.set(key, request);
+  }
+  return request;
+}
+
 function createToolsServer(
   bridge: BrowserBridge,
   policy: AccessPolicy,
@@ -448,14 +482,24 @@ function createToolsServer(
 
   server.registerTool(
     "navigate",
-    { description: "Change l'URL d'un onglet, ou recharge une démo.", inputSchema: { id: z.string(), url: z.string() } },
-    protect(async ({ id, url }) => {
+    {
+      description: "Change l'URL d'un onglet, ou recharge une démo. Dans l'onglet d'une recherche, une adresse que tu as écrite toi-même demande l'accord de l'utilisateur : donne alors `reason`.",
+      inputSchema: { id: z.string(), url: z.string(), reason: z.string().optional() },
+    },
+    protect(async ({ id, url, reason }) => {
       if (!urlWeb(url)) return text(`URL refusée (http ou https uniquement) : ${url}`, true);
       if (searching?.sessions.takeStop(win ?? MAIN_WINDOW, id)) return text(STOP_TEXT);
       const o = await tab(id);
       if (searching?.sessions.owns(id)) {
         // The search tab follows links only: an address read on a page of this search.
-        if (!searching.sessions.isFree(id, url)) return text(UNREAD_ADDRESS_TEXT);
+        if (!searching.sessions.isFree(id, url)) {
+          // An address the agent composed: the user decides, on a card showing it whole.
+          if (!bridge.askAddress) return text(UNREAD_ADDRESS_TEXT);
+          const yes = await askAddressCard(bridge, policy, requests, { url, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent" }, `address:${id}:${url}`, win ?? undefined);
+          if (!searching.sessions.owns(id)) return text(searching.sessions.takeStop(win ?? MAIN_WINDOW, id) ? STOP_TEXT : CLOSED_TEXT);
+          if (!yes) return text(DENIAL_TEXT);
+          searching.sessions.allow(id, url);
+        }
         searching.sessions.log(id, { tool: "navigate", url });
         await searching.sessions.step(id, `Ouverture de ${url}`, () => working(id, () => bridge.navigate(id, url)));
         return text(`Onglet ${id} → ${url}`);

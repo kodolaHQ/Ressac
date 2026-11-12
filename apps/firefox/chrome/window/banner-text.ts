@@ -15,6 +15,7 @@ const NAMES: Record<SitePermission, string> = {
   "widget-data": "voir les données d'un widget",
   extension: "activer une extension",
   "extension-console": "voir toute la console d'une extension",
+  "agent-address": "ouvrir une adresse écrite par l'agent",
   other: "une permission inconnue",
   "screen-share": "partager votre écran",
   drm: "lire des contenus protégés (DRM)",

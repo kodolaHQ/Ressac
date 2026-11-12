@@ -68,6 +68,12 @@ export interface BrowserBridge {
    * a subject (new conversation, kernel stopped), it is removed and the request answers `[]`.
    */
   askDevTools?(o: TabInfo, d: { rights: DevRight[]; reason: string; agent: string }, signal?: AbortSignal): Promise<DevRight[]>;
+  /**
+   * Shows the card for an address the agent wrote itself (not a link it read) in the window of the search; true if the
+   * user allows it. `signal` raised: the card is removed and the answer is false. Absent: such an address is refused.
+   * `opinion`: the watcher's view, shown as one more line when present.
+   */
+  askAddress?(o: { url: string; reason: string; agent: string; opinion?: string }, window: string | undefined, signal?: AbortSignal): Promise<boolean>;
   /** The tab is in a private space: absent from listerOnglets, the agent has no access to it. */
   isPrivate?(id: string): boolean;
   /** The tab the user is looking at is in a private space (ongletActif then returns null). */

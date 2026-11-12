@@ -271,6 +271,8 @@ export type Permission =
   | "extension"
   /** The agent wants to see the whole console of one of its extensions (temporary unlock, until it is done). */
   | "extension-console"
+  /** The agent wants to open, in its search tab, an address it wrote itself (the whole address and its reason are shown). */
+  | "agent-address"
   | "other";
 export type Decision = "allow" | "deny";
 /** The outcome of a question: the user's decision, or `withdrawn` if it lapsed without their answer (timeout, stale…). */
@@ -302,6 +304,8 @@ export interface Request {
   reason?: string;
   /** « outils-dev » and « donnees-widget »: the agent's name, displayed as is. */
   agent?: string;
+  /** « agent-address »: the watcher's view of the address, displayed as text. */
+  opinion?: string;
   /** « extension »: the grant card, displayed as text. */
   extension?: ExtensionCard;
 }

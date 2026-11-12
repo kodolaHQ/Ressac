@@ -17,4 +17,5 @@ export const isAgentRequest = (d: PendingRequest) =>
   d.permissions.includes("devtools") ||
   d.permissions.includes("widget-data") ||
   d.permissions.includes("extension") ||
-  d.permissions.includes("extension-console");
+  d.permissions.includes("extension-console") ||
+  d.permissions.includes("agent-address");

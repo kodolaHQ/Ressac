@@ -89,6 +89,12 @@ export class RemoteBridge implements BrowserBridge {
       if (signal?.aborted) return false;
       throw e;
     });
+  // Taken down (signal) when a new conversation starts: refused.
+  askAddress = (o: { url: string; reason: string; agent: string; opinion?: string }, window: string | undefined, signal?: AbortSignal) =>
+    this.call<boolean>("askAddress", [o, window], signal).catch((e) => {
+      if (signal?.aborted) return false;
+      throw e;
+    });
   readonly search: NonNullable<BrowserBridge["search"]> = {
     open: (window, target, reuse) => this.call("search.open", [window, target, reuse]),
     band: (tabId: string, band: Band | null) => this.call("search.band", [tabId, band]),

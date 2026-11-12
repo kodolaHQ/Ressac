@@ -34,6 +34,7 @@
   /** The spaces the unlock covers: names given by the user, shown as text and bounded. */
   const extensionSpaces = $derived((request.spaces ?? []).slice(0, 20).map((e) => e.slice(0, 60)));
   const agentReason = $derived((request.reason ?? "").slice(0, UNLOCK_REASON_LENGTH));
+  const agentAddress = $derived(request.permissions.includes("agent-address"));
   const site = $derived(siteOf(request.origin));
 
   // A single opening for the whole queue: following requests replace the content, the page stays hidden.
@@ -127,7 +128,9 @@
           ? "Activer une extension"
           : consoleExtension
             ? "Débloquer la console d'une extension"
-            : "Demande d'autorisation"}
+            : agentAddress
+              ? "L'agent veut ouvrir une adresse qu'il a écrite lui-même"
+              : "Demande d'autorisation"}
   >
     {#key request.id}
       {#if devTools}
@@ -150,6 +153,18 @@
             <!-- Enter refuses: showing the agent what an extension reads on unshared tabs takes a real click. -->
             <button data-main onclick={deny}>Refuser</button>
             <button class="allow" onclick={() => api.permissions.answer(request.id, "allow")}>Débloquer</button>
+          </div>
+        </div>
+      {:else if agentAddress}
+        <div class="reading" data-testid="address-request">
+          <p>L'agent veut ouvrir une adresse qu'il a écrite lui-même</p>
+          <p class="address" data-testid="address-request-url">{request.origin}</p>
+          {#if agentReason}<p class="reason">Sa raison : {agentReason}</p>{/if}
+          {#if request.opinion}<p class="reason">Avis du surveillant : {request.opinion.slice(0, UNLOCK_REASON_LENGTH)}</p>{/if}
+          <div class="actions">
+            <!-- Enter refuses: an address the agent made up is opened only by a real click. -->
+            <button data-main onclick={deny}>Refuser</button>
+            <button class="allow" onclick={() => api.permissions.answer(request.id, "allow")}>Autoriser</button>
           </div>
         </div>
       {:else if widgetData}
@@ -207,6 +222,7 @@
     .card { transition: opacity 150ms ease-out; transform: none; }
   }
   .reading p { margin: 0 0 12px; font-size: 14px; overflow-wrap: anywhere; }
+  .reading p.address { font-family: var(--font-mono); font-size: 12px; word-break: break-all; }
   .reading p.reason { font-size: 13px; color: var(--text-muted, inherit); }
   .actions { display: flex; justify-content: flex-end; gap: 8px; }
   button { padding: 7px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: 600 12.5px var(--font-ui); cursor: pointer; transition: transform var(--tap), background var(--tap); }

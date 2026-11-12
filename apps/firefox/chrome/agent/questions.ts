@@ -72,6 +72,12 @@ export class Questions {
     return waitForRights((reply) => this.post(fields, reply), QUESTION_DELAY_MS, signal);
   }
 
+  /** The card for an address the agent composed: false on a refusal, after QUESTION_DELAY_MS or on `signal`. */
+  askAddress(o: { url: string; reason: string; agent: string; opinion?: string }, windowId: WindowId, signal?: AbortSignal): Promise<boolean> {
+    const fields = { tabId: null, windowId: windowId, origin: o.url, permissions: ["agent-address" as const], title: o.url, reason: o.reason, agent: o.agent, ...(o.opinion ? { opinion: o.opinion } : {}) };
+    return waitForResponse((reply) => this.post(fields, reply), QUESTION_DELAY_MS, signal);
+  }
+
   /**
    * The « donnees-widget » card: the agent wants a widget's, an
    * action's or a site app's data, read with the user's account. False after QUESTION_DELAY_MS or on `signal`.

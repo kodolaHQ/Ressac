@@ -6,7 +6,7 @@ import { callTool } from "./mcp";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
-import { waitUi } from "./ui";
+import { click, waitUi } from "./ui";
 
 let server: Awaited<ReturnType<typeof startServer>>;
 let w: LaunchedWebAiOs;
@@ -64,7 +64,6 @@ it("a search_web navigate follows a result in the same tab without activating it
   const before = (await state(m)).windows[0]!;
   const active = before.active[before.activeSpace];
   expect(active).not.toBe(id);
-  expect((await callTool(w.dataDir, "navigate", { id, url: "https://ailleurs.example/" })).text).toContain("Adresse non lue");
   await callTool(w.dataDir, "navigate", { id, url: `${server.url}/b.html?q=x` });
   await titleOf(`${server.url}/b.html?q=x`);
   const after = await state(m);
@@ -74,6 +73,27 @@ it("a search_web navigate follows a result in the same tab without activating it
   const t = Date.now();
   await callTool(w.dataDir, "navigate", { id, url: `${server.url}/b.html?q=x#haut` });
   expect(Date.now() - t).toBeLessThan(5000);
+});
+
+const CARD = '[data-testid="address-request"]';
+
+it("a composed address shows the card with the full address; Autoriser loads it, Refuser does not", async () => {
+  const id = idOf((await callTool(w.dataDir, "search_web", { query: "x" })).text);
+  // Another origin than the engine's (which is free): localhost, the same local server.
+  const composed = `${server.url.replace("127.0.0.1", "localhost")}/b.html?composed=${"y".repeat(150)}`;
+  const refusing = callTool(w.dataDir, "navigate", { id, url: composed, reason: "pour voir" });
+  const card = await waitUi<string>(m, `return doc.querySelector(${JSON.stringify(CARD)})?.textContent`);
+  expect(card).toContain("L'agent veut ouvrir une adresse qu'il a écrite lui-même");
+  expect(card).toContain(composed);
+  expect(card).toContain("Sa raison : pour voir");
+  await click(m, `${CARD} button`, { text: "Refuser" });
+  expect((await refusing).text).toBe("Accès refusé par l'utilisateur à cet onglet.");
+  expect((await state(m)).tabs[id]!.url).not.toBe(composed);
+  const allowing = callTool(w.dataDir, "navigate", { id, url: composed, reason: "pour voir" });
+  await waitUi(m, `return !!doc.querySelector(${JSON.stringify(CARD)})`);
+  await click(m, `${CARD} button`, { text: "Autoriser" });
+  expect((await allowing).text).toBe(`Onglet ${id} → ${composed}`);
+  expect((await state(m)).tabs[id]!.url).toBe(composed);
 });
 
 it("a second search_web returns the second page, never the first", async () => {
