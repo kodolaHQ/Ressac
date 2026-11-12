@@ -89,6 +89,15 @@ test("read_tab on Gmail: request, refusal → normal answer", async () => {
   expect(bridge.calls.some((a) => a.method === "readText")).toBe(false);
 });
 
+test("read_tab with links: true lists the links after the text, without it lists none", async () => {
+  policy.grant(gmail);
+  const none = text(await client.callTool({ name: "read_tab", arguments: { id: "gmail" } }));
+  expect(none).not.toContain("Liens :");
+  expect(none).not.toContain("exemple.fr");
+  const some = text(await client.callTool({ name: "read_tab", arguments: { id: "gmail", links: true } }));
+  expect(some).toContain("Liens :\nAnnonce — https://exemple.fr/a");
+});
+
 test("read_tab marks the tab running while it reads, not after (the window's halo)", async () => {
   await client.close();
   await server.stop();

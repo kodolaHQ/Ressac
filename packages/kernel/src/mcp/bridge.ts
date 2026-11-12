@@ -14,6 +14,12 @@ export interface PageReadOptions {
   scroll?: number;
 }
 
+/** A link of a page, as the agent sees it. */
+export interface PageLink {
+  text: string;
+  url: string;
+}
+
 export interface TabInfo {
   id: string;
   title: string;
@@ -43,7 +49,7 @@ export interface BrowserBridge {
   activeTab(): Promise<TabInfo | null>;
   listTabs(): Promise<TabInfo[]>;
   /** Throws TabNotFound if the id is unknown (like lireTexte, naviguer and capturer). */
-  readText(id: string): Promise<{ text: string; selection?: string }>;
+  readText(id: string): Promise<{ text: string; selection?: string; links?: PageLink[] }>;
   openTab(url: string, space?: string): Promise<TabInfo>;
   /**
    * `"pending"` (site app window only): the tweaks grant card is shown; the address will

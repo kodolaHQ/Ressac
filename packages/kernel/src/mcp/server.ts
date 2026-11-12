@@ -329,10 +329,11 @@ function createToolsServer(
     }
   }
 
-  async function content(o: TabInfo): Promise<Result> {
+  async function content(o: TabInfo, withLinks = false): Promise<Result> {
     if (!(await access(o))) return text(DENIAL_TEXT);
-    const { text: body, selection } = await working(o.id, () => bridge.readText(o.id));
-    return text([`Titre : ${o.title}`, `URL : ${o.url}`, ...(selection ? [`Sélection : ${selection}`] : []), "", body].join("\n"));
+    const { text: body, selection, links } = await working(o.id, () => bridge.readText(o.id));
+    const shown = withLinks && links?.length ? ["", "Liens :", ...links.slice(0, 150).map((l) => `${l.text} — ${l.url}`)] : [];
+    return text([`Titre : ${o.title}`, `URL : ${o.url}`, ...(selection ? [`Sélection : ${selection}`] : []), "", body, ...shown].join("\n"));
   }
 
   /** Turns a bridge error into a readable tool error rather than a crash. A private tab is not an error. */
@@ -381,8 +382,8 @@ function createToolsServer(
 
   server.registerTool(
     "read_tab",
-    { description: "Texte principal d'un onglet donné.", inputSchema: { id: z.string() } },
-    protect(async ({ id }) => content(await tab(id))),
+    { description: "Texte principal d'un onglet donné. Avec links: true, ajoute les liens de la page.", inputSchema: { id: z.string(), links: z.boolean().optional() } },
+    protect(async ({ id, links }) => content(await tab(id), links)),
   );
 
   server.registerTool(

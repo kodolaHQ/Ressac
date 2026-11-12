@@ -370,7 +370,7 @@ export class FakeBridge implements BrowserBridge {
   async readText(id: string) {
     this.note("readText", id);
     const o = this.find(id);
-    return { text: `Texte de ${o.title} (${o.url})` };
+    return { text: `Texte de ${o.title} (${o.url})`, links: [{ text: "Annonce", url: "https://exemple.fr/a" }] };
   }
 
   async openTab(url: string, space?: string) {

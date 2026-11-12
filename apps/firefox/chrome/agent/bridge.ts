@@ -105,7 +105,11 @@ export function bridgeHandlers(
     // The child runs in a web process: its answer is not trusted.
     const text = String(r?.text ?? "").slice(0, TEXT_MAX);
     const selection = String(r?.selection ?? "").slice(0, TEXT_MAX);
-    return selection ? { text: text, selection } : { text: text };
+    const links = (Array.isArray(r?.links) ? r.links : [])
+      .slice(0, 500)
+      .map((l: any) => ({ text: String(l?.text ?? "").slice(0, 80), url: String(l?.url ?? "").slice(0, 500) }))
+      .filter((l: { url: string }) => URL.canParse(l.url) && /^https?:$/.test(new URL(l.url).protocol));
+    return selection ? { text: text, selection, links } : { text: text, links };
   };
   const snapshot = async (browser: any, win: Window) => {
     const bitmap = await browser.browsingContext.currentWindowGlobal.drawSnapshot(null, 1, "white");

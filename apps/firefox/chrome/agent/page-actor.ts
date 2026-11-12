@@ -10,11 +10,24 @@ const MEMORY_TEXT_MAX = 20_000;
 export class WebAiOsPageChild extends JSWindowActorChild {
   receiveMessage(m: { name: string; data?: any }) {
     const doc = this.document;
+    // The page's http(s) links, deduplicated, at most `max`.
+    const collect = (max: number) => {
+      const seen = new Set<string>();
+      const links: { text: string; url: string }[] = [];
+      for (const a of doc.querySelectorAll("a[href]") as NodeListOf<HTMLAnchorElement>) {
+        if (links.length >= max) break;
+        const url = a.href;
+        if (typeof url !== "string" || !/^https?:/i.test(url) || seen.has(url)) continue;
+        seen.add(url);
+        links.push({ text: (a.innerText || a.textContent || "").replace(/\s+/g, " ").trim(), url });
+      }
+      return links;
+    };
     const win = this.contentWindow;
     const el = doc.scrollingElement || doc.documentElement;
     switch (m.name) {
       case "getText":
-        return { text: (doc.body?.innerText ?? "").slice(0, TEXT_MAX), selection: String(win.getSelection() ?? "") };
+        return { text: (doc.body?.innerText ?? "").slice(0, TEXT_MAX), selection: String(win.getSelection() ?? ""), links: collect(500) };
       // The parts of the page retained for the agent's memory.
       case "getParts": {
         const text = (sel: string) => (doc.querySelector(sel) as HTMLElement | null)?.innerText ?? "";
@@ -32,16 +45,7 @@ export class WebAiOsPageChild extends JSWindowActorChild {
       }
       // Invisible reading. The parent bounds and checks what comes back.
       case "read": {
-        const seen = new Set<string>();
-        const links: { text: string; url: string }[] = [];
-        for (const a of doc.querySelectorAll("a[href]") as NodeListOf<HTMLAnchorElement>) {
-          if (links.length >= m.data.links) break;
-          const url = a.href;
-          if (typeof url !== "string" || !/^https?:/i.test(url) || seen.has(url)) continue;
-          seen.add(url);
-          links.push({ text: (a.innerText || a.textContent || "").replace(/\s+/g, " ").trim(), url });
-        }
-        return { title: doc.title, text: (doc.body?.innerText ?? "").slice(0, m.data.text), links };
+        return { title: doc.title, text: (doc.body?.innerText ?? "").slice(0, m.data.text), links: collect(m.data.links) };
       }
       // The page's height, then one screen down: never a click, a key or focus; the page sees an ordinary scroll.
       case "scroll": {

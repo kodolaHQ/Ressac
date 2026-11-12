@@ -79,6 +79,15 @@ it("open_tab opens an active agent tab, readable and capturable", async () => {
   expect(capture.image!.length).toBeGreaterThan(1000);
 });
 
+it("read_tab with links returns the page's links", async () => {
+  const { text: id } = await call("open_tab", { url: `${server.url}/links.html` });
+  const { text } = await call("read_tab", { id, links: true });
+  expect(text).toContain(`Annonce — ${server.url}/a.html`);
+  expect(text).toContain(`Autre — ${server.url}/b.html`);
+  expect(text.split(`${server.url}/a.html`).length).toBe(2);
+  expect(text).not.toContain("javascript:");
+});
+
 it("an agent tab sent to the background stays readable and capturable", async () => {
   const { text: first } = await call("open_tab", { url: `${server.url}/texte.html` });
   const { text: second } = await call("open_tab", { url: `${server.url}/b.html` });
