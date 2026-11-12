@@ -272,6 +272,7 @@ export class FakeBridge implements BrowserBridge {
           const url = "query" in target ? `https://moteur.test/?q=${encodeURIComponent(target.query)}` : target.url;
           const engineOrigin = "https://moteur.test";
           const old = reuse ? this.tabs.find((x) => x.id === reuse) : undefined;
+          if (reuse && !old) throw new TabNotFound(reuse);
           if (old) {
             old.url = url;
             return { ...old, engineOrigin };

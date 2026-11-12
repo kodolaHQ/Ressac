@@ -139,12 +139,20 @@ export class TabSync {
     // A tab just created is still on its initial about:blank, its load not started yet.
     const pending = () => browser.webProgress?.isLoadingDocument || (browser.currentURI?.spec === "about:blank" && o.url !== "about:blank");
     if (!pending()) return browser;
-    await new Promise<void>((resolve) => {
-      // A crashed browser never stops loading, a closed tab neither: no need to wait the 15 s.
+    await this.waitLoad(id, browser, (flags) => !!(flags & STATE_STOP && flags & STATE_IS_NETWORK) && !pending());
+    return browser;
+  }
+
+  /**
+   * Resolves when `ends` says so for a top-level network state change of the browser, or at once when the tab closes or
+   * crashes (a crashed browser never stops loading), or after 15 s.
+   */
+  private waitLoad(id: TabId, browser: any, ends: (flags: number) => boolean): Promise<void> {
+    return new Promise<void>((resolve) => {
       const unsubscribe = this.store.subscribe((s) => (!s.tabs[id] || s.tabs[id].crashed) && done());
       const listener = {
         onStateChange: (b: any, progress: any, _request: unknown, flags: number) => {
-          if (b === browser && progress.isTopLevel && flags & STATE_STOP && flags & STATE_IS_NETWORK && !pending()) done();
+          if (b === browser && progress.isTopLevel && ends(flags)) done();
         },
       };
       const done = () => {
@@ -156,24 +164,17 @@ export class TabSync {
       const timer = setTimeout(done, 15_000);
       this.gBrowser.addTabsProgressListener(listener);
     });
-    return browser;
   }
 
-  /** Resolves when the next top-level load of the browser ends (15 s at most); register it before starting the load. */
-  nextLoad(browser: any): Promise<void> {
-    return new Promise<void>((resolve) => {
-      const listener = {
-        onStateChange: (b: any, progress: any, _request: unknown, flags: number) => {
-          if (b === browser && progress.isTopLevel && flags & STATE_STOP && flags & STATE_IS_NETWORK) done();
-        },
-      };
-      const done = () => {
-        clearTimeout(timer);
-        this.gBrowser.removeTabsProgressListener(listener);
-        resolve();
-      };
-      const timer = setTimeout(done, 15_000);
-      this.gBrowser.addTabsProgressListener(listener);
+  /**
+   * Resolves when the load that the caller is about to start ends. Register it before starting the load. Started while
+   * another load was in progress, the aborted one's stop does not count: only a stop after the new load's start does.
+   */
+  nextLoad(id: TabId, browser: any): Promise<void> {
+    let started = !browser.webProgress?.isLoadingDocument;
+    return this.waitLoad(id, browser, (flags) => {
+      if (flags & STATE_START && flags & STATE_IS_NETWORK) started = true;
+      return started && !!(flags & STATE_STOP && flags & STATE_IS_NETWORK);
     });
   }
 

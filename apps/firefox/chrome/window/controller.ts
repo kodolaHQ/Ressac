@@ -421,7 +421,10 @@ export function createController(
     },
     async navigateForAgentLoaded(tabId, url) {
       const browser = tabs.tab(tabId)?.linkedBrowser;
-      const loaded = browser ? tabs.nextLoad(browser) : Promise.resolve();
+      // Only the fragment changes: a same-document navigation, no load to wait for.
+      const base = (u: string) => u.replace(/#.*/, "");
+      const sameDocument = url.includes("#") && base(url) === base(browser?.currentURI?.spec ?? "");
+      const loaded = browser && !sameDocument ? tabs.nextLoad(tabId, browser) : Promise.resolve();
       controller.navigateForAgent(tabId, url);
       await loaded;
     },

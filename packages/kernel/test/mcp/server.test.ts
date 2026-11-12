@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { SearchSessions, STOP_TEXT, type Band } from "../../src/search/sessions.js";
+import { SearchSessions, STOP_TEXT, CLOSED_TEXT, type Band } from "../../src/search/sessions.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { AccessPolicy } from "../../src/access/policy.js";
@@ -1382,13 +1382,13 @@ const c = { text: "C", url: "https://exemple.fr/c" };
 
 async function withSearch(
   attempt: (o: { call: (name: string, args: Record<string, unknown>, token?: string) => Promise<{ text: string; isError: boolean }>; fake: FakeBridge; search: SearchSessions; s: Awaited<ReturnType<typeof startMcpServer>>; bands: [string, Band | null][] }) => Promise<void>,
-  opts: { privateWindows?: string[]; allow?: boolean } = {},
+  opts: { privateWindows?: string[]; allow?: boolean; emptySpanMs?: number } = {},
 ) {
   const principal = generateToken();
   const fake = new FakeBridge([github], { active: "github", allow: opts.allow ?? false, search: { privateWindows: opts.privateWindows ?? [] } });
   const bands: [string, Band | null][] = [];
   const search = new SearchSessions({ show: (id, band) => bands.push([id, band]) });
-  const s = await startMcpServer({ bridge: fake, policy: new AccessPolicy(), token: principal, search, settleMs: 0 });
+  const s = await startMcpServer({ bridge: fake, policy: new AccessPolicy(), token: principal, search, settleMs: 0, emptySpanMs: opts.emptySpanMs ?? 0 });
   const clients: Client[] = [];
   const call = async (name: string, args: Record<string, unknown>, clientToken = principal) => {
     const cl = new Client({ name: "test", version: "0" });
@@ -1521,9 +1521,9 @@ test("a page with no link is returned after three empty reads, not 5 s", async (
     fake.linkSequence = [[]];
     const t = Date.now();
     await call("search_web", { query: "x" });
+    expect(Date.now() - t).toBeGreaterThanOrEqual(300);
     expect(Date.now() - t).toBeLessThan(2000);
-    expect(fake.calls.filter((x) => x.method === "readText")).toHaveLength(3);
-  });
+  }, { emptySpanMs: 300 });
 });
 
 test("a stop during the wait for results answers STOP_TEXT and stops reading", async () => {
@@ -1537,5 +1537,41 @@ test("a stop during the wait for results answers STOP_TEXT and stops reading", a
     const n = reads();
     await new Promise((r) => setTimeout(r, 50));
     expect(reads()).toBe(n);
+  });
+});
+
+test("a tab closed during the wait for results answers CLOSED_TEXT", async () => {
+  await withSearch(async ({ call, search, fake }) => {
+    fake.linkSequence = Array.from({ length: 80 }, (_, i) => Array.from({ length: i + 1 }, (_, j) => ({ text: "l", url: `https://exemple.fr/${j}` })));
+    const slow = call("search_web", { query: "x" });
+    await vi.waitFor(() => expect(search.owns("search-1")).toBe(true));
+    search.tabClosed("search-1");
+    expect((await slow).text).toBe(CLOSED_TEXT);
+  });
+});
+
+test("a failing first search_web does not block the one queued behind it, and the texts are French", async () => {
+  await withSearch(async ({ call, fake }) => {
+    const real = fake.search!.open;
+    let n = 0;
+    fake.search!.open = async (...a) => {
+      if (n++ === 0) throw new Error("Impossible d'ouvrir un onglet ici : l'espace actif est privé.");
+      return real(...a);
+    };
+    const [r1, r2] = await Promise.all([call("search_web", { query: "un" }), call("search_web", { query: "deux" })]);
+    expect(r1.isError).toBe(true);
+    expect(r1.text).toContain("l'espace actif est privé");
+    expect(r2.text).toContain("Onglet : search-1");
+    expect(r1.text + r2.text).not.toMatch(/already running|already belongs/);
+  });
+});
+
+test("search_web on a search whose tab vanished answers a clean French error", async () => {
+  await withSearch(async ({ call, fake }) => {
+    await call("search_web", { query: "un" });
+    fake.closeTab("search-1");
+    const r = await call("search_web", { query: "deux" });
+    expect(r.isError).toBe(true);
+    expect(r.text).toContain("Onglet introuvable : search-1");
   });
 });

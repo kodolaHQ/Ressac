@@ -70,6 +70,10 @@ it("a search_web navigate follows a result in the same tab without activating it
   const after = await state(m);
   expect(after.tabs[id]!.url).toBe(`${server.url}/b.html?q=x`);
   expect(after.windows[0]!.active[after.windows[0]!.activeSpace]).toBe(active);
+  // Only the fragment changes: no load to wait for, so the answer does not take the 15 s limit.
+  const t = Date.now();
+  await callTool(w.dataDir, "navigate", { id, url: `${server.url}/b.html?q=x#haut` });
+  expect(Date.now() - t).toBeLessThan(5000);
 });
 
 it("a second search_web returns the second page, never the first", async () => {

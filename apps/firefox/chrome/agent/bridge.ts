@@ -169,7 +169,10 @@ export function bridgeHandlers(
       if (reuse !== undefined && store.state.tabs[reuse]) {
         tab(reuse);
         await windowOf(reuse).controller.navigateForAgentLoaded(reuse, url);
-        return { ...tabInfos(store.state).find((o) => o.id === reuse)!, engineOrigin };
+        // Closed during the load: nothing to return.
+        const info = tabInfos(store.state).find((o) => o.id === reuse);
+        if (!info) throw new TabNotFound(reuse);
+        return { ...info, engineOrigin };
       }
       return { ...openTabIn(win, url, undefined, { profile: AGENT_PROFILE }), engineOrigin };
     },
