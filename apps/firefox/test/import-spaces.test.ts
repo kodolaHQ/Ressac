@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseArcSidebar, parseZenSpaces, planSpaceImport, type ImportedSpaces } from "../chrome/store/import/spaces";
+import { summary } from "../chrome/store/import/importer";
 import { apply } from "../core/state/actions";
 import { initialState } from "../core/state/initial-state";
 import type { BrowserState } from "../shared/model";
@@ -89,5 +90,18 @@ describe("planSpaceImport", () => {
     s = { ...s, spaces: s.spaces.map((e) => ({ ...e, private: true })) };
     const actions = planSpaceImport(s, arc());
     expect(actions.filter((a) => a.type === "createSpace").map((a) => a.type === "createSpace" && a.profile)).toEqual(["new", "new"]);
+  });
+
+  it("the reducer keeps only http(s) addresses, once each, in a new space and in the essentials", () => {
+    const links = [{ url: "https://a.example.com/", title: "A" }, { url: "javascript:alert(1)", title: "x" }, { url: "https://a.example.com/", title: "A bis" }];
+    let s = apply(initialState(genId), { type: "createSpace", name: "N", icon: "📁", private: false, profile: "default", pinned: links }, genId);
+    s = apply(s, { type: "addFavorites", favorites: links }, genId);
+    expect(view(s).spaces[1]!.pinned).toEqual(["https://a.example.com/"]);
+    expect(view(s).essentials).toEqual(["https://a.example.com/"]);
+  });
+
+  it("the end notification names spaces and favorites together", () => {
+    expect(summary({ source: "arc", done: true, counts: { spaces: 3 }, failed: {} }).text).toBe("3 espaces et favoris");
+    expect(summary({ source: "arc", done: true, counts: { spaces: 1 }, failed: {} }).text).toBe("1 espace ou favori");
   });
 });

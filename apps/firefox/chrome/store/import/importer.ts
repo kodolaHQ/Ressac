@@ -73,7 +73,7 @@ const LABELS: Record<ImportType, [string, string, string]> = {
   bookmarks: ["favori", "favoris", "favoris"],
   history: ["page d'historique", "pages d'historique", "historique"],
   passwords: ["mot de passe", "mots de passe", "mots de passe"],
-  spaces: ["espace", "espaces", "espaces"],
+  spaces: ["espace ou favori", "espaces et favoris", "espaces"],
 };
 
 /** The end notification: what came in, then what failed and why. */
@@ -153,11 +153,12 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
       }
   }
 
-  /** Arc's or Zen's spaces, favorites and pinned tabs into the store; the spaces created or given pinned tabs. */
+  /** Arc's or Zen's spaces, favorites and pinned tabs into the store; the spaces created plus the favorites added. */
   async function importSpaces(def: SourceDef, profile: { id: string } | null): Promise<number> {
     const arc = def.id === "arc";
     // Arc keeps its sidebar next to its Chromium data folder; Zen, in the profile's session file (written whole, never locked).
-    const path = arc ? sourceRoot(home, def).replace(/\/User Data$/, "/StorableSidebar.json") : `${profile?.id}/zen-sessions.jsonlz4`;
+    if (!arc && !profile) throw new Error("profil Zen introuvable");
+    const path = arc ? sourceRoot(home, def).replace(/\/User Data$/, "/StorableSidebar.json") : `${profile!.id}/zen-sessions.jsonlz4`;
     if (!(await IOUtils.exists(path))) throw new Error("aucun espace trouvé");
     let json: unknown;
     try {
@@ -167,12 +168,10 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
     }
     const imported = arc ? parseArcSidebar(json) : parseZenSpaces(json);
     if (!imported) throw new Error(`format ${def.name} non reconnu`);
-    let count = 0;
-    for (const a of planSpaceImport(store.state, imported)) {
-      const before = store.state;
-      if (store.dispatch(a) !== before && (a.type === "createSpace" || (a.type === "addFavorites" && a.spaceId))) count++;
-    }
-    return count;
+    const size = () => store.state.spaces.reduce((n, e) => n + 1 + e.pinned.length, store.state.essentials.length);
+    const before = size();
+    for (const a of planSpaceImport(store.state, imported)) store.dispatch(a);
+    return size() - before;
   }
 
   async function run(def: SourceDef, profile: { id: string; name: string } | null, types: ImportType[], p: ImportProgress): Promise<void> {
@@ -187,6 +186,12 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
     };
     // A crash mid-import may have left copies (Login Data, History): never kept.
     await IOUtils.remove(tmp, { recursive: true, ignoreAbsent: true }).catch((e: unknown) => console.error("[import] old copy not removed:", e));
+    // First, on its own: a migrator that crashes never takes the spaces with it.
+    if (types.includes("spaces"))
+      await importSpaces(def, profile).then(
+        (n) => (p.counts.spaces = n),
+        (e) => (p.failed.spaces = e instanceof Error ? e.message : String(e)),
+      );
     const savedPrefs = RUN_PREFS.map(([name, value]) => {
       const saved = Services.prefs.prefHasUserValue(name) ? Services.prefs.getIntPref(name) : null;
       Services.prefs.setIntPref(name, value);
@@ -269,11 +274,6 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
         else if (testHome && def.kind === "chromium" && t === "passwords") p.failed[t] = "trousseau non consulté pendant les tests";
         else p.counts[t] = counts[t] ?? 0;
       }
-      if (types.includes("spaces"))
-        await importSpaces(def, profile).then(
-          (n) => (p.counts.spaces = n),
-          (e) => (p.failed.spaces = e instanceof Error ? e.message : String(e)),
-        );
     } catch (e) {
       console.error("[import] failed:", e);
       for (const t of types) if (p.counts[t] === undefined) p.failed[t] ??= e instanceof Error ? e.message : String(e);

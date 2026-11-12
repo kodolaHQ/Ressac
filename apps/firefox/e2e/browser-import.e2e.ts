@@ -164,7 +164,7 @@ describe("import from another browser", () => {
 
   it("brings Arc's then Zen's spaces, favorites and pinned tabs, once", async () => {
     expect(await api("start(arguments[0])", [{ source: "arc", profile: "Default", types: ["spaces"] }])).toEqual({ ok: true });
-    expect(await finished()).toMatchObject({ counts: { spaces: 2 }, failed: {} });
+    expect(await finished()).toMatchObject({ counts: { spaces: 7 }, failed: {} });
     const s = await state(m);
     expect(s.spaces.slice(1).map((e) => ({ name: e.name, private: e.private, pinned: e.pinned.map((f) => f.url) }))).toEqual([
       { name: "Travail", private: false, pinned: ["https://docs.example.com/projet", "https://tickets.example.com/"] },

@@ -193,6 +193,12 @@ function dropIncompatible(d: Draft) {
     }
 }
 
+/** Favorites given by address (an import): http(s) only, a URL already in `target` skipped. */
+function addLinks(target: Favorite[], links: { url: string; title: string }[], genId: () => string): Favorite[] {
+  for (const x of links) if (/^https?:\/\//.test(x.url) && !target.some((f) => f.url === x.url)) target.push({ id: genId(), url: x.url, title: x.title, favicon: null });
+  return target;
+}
+
 function deleteTab(d: Draft, o: Tab) {
   const f = win(d, o.windowId);
   if (f) {
@@ -317,14 +323,14 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       if (space === undefined || space?.private) return false;
       const target = space ? space.pinned : d.essentials;
       const before = target.length;
-      for (const x of a.favorites) if (!target.some((f) => f.url === x.url)) target.push({ id: genId(), url: x.url, title: x.title, favicon: null });
+      addLinks(target, a.favorites, genId);
       return target.length > before;
     }
     case "createSpace": {
       const profile = requestedProfile(d, genId, a.profile);
       if (!profile) return false;
       const space = genId();
-      const pinned = (a.pinned ?? []).map((x) => ({ id: genId(), url: x.url, title: x.title, favicon: null }));
+      const pinned = addLinks([], a.pinned ?? [], genId);
       d.spaces.push({ id: space, name: a.name, icon: a.icon, pinned, private: a.private, profile: profile, aura: a.aura ?? DEFAULT_AURA });
       for (const f of d.windows) {
         f.order[space] = [];
