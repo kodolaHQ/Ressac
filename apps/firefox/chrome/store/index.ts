@@ -166,6 +166,10 @@ async function start(): Promise<WebAiOsStore> {
   // with no module, and no DRM site ever plays.
   const gmp = Services.prefs.getDefaultBranch("").getCharPref("media.gmp-manager.url", "");
   if (gmp.includes("%VERSION%")) Services.prefs.getDefaultBranch("").setCharPref("media.gmp-manager.url", gmp.replace("%VERSION%", Services.appinfo.platformVersion));
+  // Sites that sniff the user agent (WhatsApp Web) take the trailing « WebAiOs/<version> » token for an old Firefox
+  // and refuse to load: sites get the exact Firefox user agent of this engine.
+  const http = Cc["@mozilla.org/network/protocol;1?name=http"].getService(Ci.nsIHttpProtocolHandler);
+  Services.prefs.getDefaultBranch("").setCharPref("general.useragent.override", http.userAgent.replace(/ WebAiOs\/\S+/, ""));
   // The widget displays' copies are a disposable cache: clearing them at startup never serves a copy made by an older
   // sanitizer (CSP_WIDGET, containsNetworkHint).
   await IOUtils.remove(PathUtils.join(dataDir, "webaios-widgets"), { recursive: true, ignoreAbsent: true }).catch((e) => console.warn("[widget] copies not erasedes :", e));
