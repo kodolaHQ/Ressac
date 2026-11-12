@@ -89,6 +89,14 @@ export class SearchSessions {
     }
   }
 
+  /** Changes the band text of a step in progress (a tool that counts its own progress). */
+  setText(tabId: string, text: string): void {
+    const s = this.byTab.get(tabId);
+    if (!s) return;
+    s.text = text;
+    if (!s.hand) this.band(s, "working");
+  }
+
   pageRead(tabId: string, url: string, links: readonly string[]): void {
     const s = this.byTab.get(tabId);
     if (!s) return;

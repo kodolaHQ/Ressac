@@ -123,16 +123,17 @@ export function bridgeHandlers(
   };
 
   /** The agent's demos open in the foreground, marked ✦. With no window open, in the kept one. */
-  const openTabIn = (window: WindowId | undefined, url: string, space?: string, extra: { profile?: string } = {}): TabInfo => {
+  const openTabIn = (window: WindowId | undefined, url: string, space?: string, extra: { profile?: string; background?: boolean } = {}): TabInfo => {
     const state = store.state;
     const f = state.windows.find((x) => x.id === (window ?? windows.active())) ?? state.windows[0];
     if (!f) throw new Error("Aucune fenêtre ouverte");
     const spaceId = resolveSpace(state, f, space);
     if (state.spaces.find((e) => e.id === spaceId)?.private ?? true) throw new Error("Impossible d'ouvrir un onglet ici : l'espace actif est privé.");
     const id = crypto.randomUUID();
-    store.dispatch({ type: "openTab", windowId: f.id, url, spaceId: spaceId, activate: true, openedByAgent: true, ...extra }, () => id);
+    const { background, ...fields } = extra;
+    store.dispatch({ type: "openTab", windowId: f.id, url, spaceId: spaceId, activate: !background, openedByAgent: true, ...fields }, () => id);
     if (!store.state.tabs[id]) throw new Error(`Impossible d'ouvrir ${url}`);
-    store.dispatch({ type: "activateTab", id }); // also switches to its space
+    if (!background) store.dispatch({ type: "activateTab", id }); // also switches to its space
     return tabInfos(store.state).find((o) => o.id === id)!;
   };
 
@@ -176,6 +177,8 @@ export function bridgeHandlers(
       }
       return { ...openTabIn(win, url, undefined, { profile: AGENT_PROFILE }), engineOrigin };
     },
+    "search.openBackground": ([win, url]: [WindowId | undefined, string]) => openTabIn(win, url, undefined, { profile: AGENT_PROFILE, background: true }),
+    "search.close": ([id]: [string]) => void store.dispatch({ type: "closeTab", id }),
     // Task 7 draws the band of the search tab.
     "search.band": () => {},
     readText: ([id]: [string]) => onSiteView(id, getText) ?? outsidePrivate(id, getText),

@@ -119,3 +119,17 @@ it("late results are returned", async () => {
   const r = (await callTool(w.dataDir, "search_web", { query: "x" })).text;
   expect(r).toContain(`Lien — ${server.url}/lien.html`);
 });
+
+it("read_pages returns both pages and leaves no extra tab", async () => {
+  const id = idOf((await callTool(w.dataDir, "search_web", { query: "x" })).text);
+  const before = Object.keys((await state(m)).tabs).sort();
+  const a = `${server.url}/a.html?q=x`;
+  const b = `${server.url}/b.html?q=x`;
+  const r = (await callTool(w.dataDir, "read_pages", { urls: [a, b] })).text;
+  expect(r).toContain(`## ${a}\nTitre :`);
+  expect(r).toContain(`## ${b}\nTitre :`);
+  expect(r).not.toContain("Erreur");
+  const after = await state(m);
+  expect(Object.keys(after.tabs).sort()).toEqual(before);
+  expect(after.tabs[id]!.url).toBe(`${server.url}/results.html?q=x`);
+});

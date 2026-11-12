@@ -1382,10 +1382,10 @@ const c = { text: "C", url: "https://exemple.fr/c" };
 
 async function withSearch(
   attempt: (o: { call: (name: string, args: Record<string, unknown>, token?: string) => Promise<{ text: string; isError: boolean }>; fake: FakeBridge; search: SearchSessions; s: Awaited<ReturnType<typeof startMcpServer>>; bands: [string, Band | null][] }) => Promise<void>,
-  opts: { privateWindows?: string[]; allow?: boolean; emptySpanMs?: number; address?: boolean | "wait" } = {},
+  opts: { privateWindows?: string[]; allow?: boolean; emptySpanMs?: number; address?: boolean | "wait"; failing?: string[] } = {},
 ) {
   const principal = generateToken();
-  const fake = new FakeBridge([github], { active: "github", allow: opts.allow ?? false, search: { privateWindows: opts.privateWindows ?? [] }, ...(opts.address !== undefined ? { address: opts.address } : {}) });
+  const fake = new FakeBridge([github], { active: "github", allow: opts.allow ?? false, search: { privateWindows: opts.privateWindows ?? [], failing: opts.failing ?? [] }, ...(opts.address !== undefined ? { address: opts.address } : {}) });
   const bands: [string, Band | null][] = [];
   const search = new SearchSessions({ show: (id, band) => bands.push([id, band]) });
   const s = await startMcpServer({ bridge: fake, policy: new AccessPolicy(), token: principal, search, settleMs: 0, emptySpanMs: opts.emptySpanMs ?? 0 });
@@ -1480,6 +1480,100 @@ test("navigate on the search tab to a composed address, refused: DENIAL_TEXT and
     expect(fake.calls.filter((x) => x.method === "navigate")).toHaveLength(0);
     expect(search.isFree("search-1", COMPOSED)).toBe(false);
   }, { address: false });
+});
+
+// --- read_pages ---
+
+const links3 = [a, b, c];
+
+test("read_pages reads free links in background agent tabs, closes them, counts the pages and frees their links", async () => {
+  await withSearch(async ({ call, fake, search }) => {
+    fake.linkSequence = [links3];
+    await call("search_web", { query: "x" });
+    const r = await call("read_pages", { urls: [a.url, b.url] });
+    expect(r.text).toContain(`## ${a.url}\nTitre : ${a.url}`);
+    expect(r.text).toContain(`## ${b.url}\n`);
+    expect(r.text).toContain(`Texte de ${b.url}`);
+    expect(fake.calls.filter((x) => x.method === "search.openBackground")).toHaveLength(2);
+    expect(fake.calls.filter((x) => x.method === "search.close").map((x) => x.args[0]).sort()).toEqual(["bg-2", "bg-3"]);
+    expect((await fake.listTabs()).map((x) => x.id)).toEqual(["github", "search-1"]);
+    expect(fake.calls.filter((x) => x.method === "askAddress")).toHaveLength(0);
+    expect(search.isFree("search-1", c.url)).toBe(true);
+  });
+});
+
+test("read_pages: 7 addresses are refused", async () => {
+  await withSearch(async ({ call, fake }) => {
+    const r = await call("read_pages", { urls: Array.from({ length: 7 }, (_, i) => `https://exemple.fr/${i}`) });
+    expect(r.text).toBe("6 adresses au plus par appel.");
+    expect(fake.calls.filter((x) => x.method === "search.open" || x.method === "search.openBackground")).toHaveLength(0);
+  });
+});
+
+test("read_pages: a composed address among them asks its card; refused, the others are still read", async () => {
+  await withSearch(async ({ call, fake }) => {
+    fake.linkSequence = [[a, b]];
+    await call("search_web", { query: "x" });
+    const r = await call("read_pages", { urls: [a.url, COMPOSED], reason: "pour voir" });
+    expect(r.text).toContain(`## ${a.url}\nTitre`);
+    expect(r.text).toContain(`## ${COMPOSED}\nErreur : ${DENIAL_TEXT}`);
+    expect(fake.calls.filter((x) => x.method === "askAddress")).toHaveLength(1);
+    expect(fake.calls.filter((x) => x.method === "search.openBackground")).toHaveLength(1);
+  }, { address: false });
+});
+
+test("read_pages: with no search running it starts one, the first address opens in the search tab (after its card), the others in the background", async () => {
+  await withSearch(async ({ call, fake, search }) => {
+    const r = await call("read_pages", { urls: [a.url, b.url] });
+    expect(fake.calls.filter((x) => x.method === "askAddress")).toHaveLength(2);
+    const open = fake.calls.find((x) => x.method === "search.open")!;
+    expect(open.args[1]).toEqual({ url: a.url });
+    expect(search.current("main")?.tabId).toBe("search-1");
+    expect(fake.calls.filter((x) => x.method === "search.openBackground")).toHaveLength(1);
+    expect(fake.calls.filter((x) => x.method === "search.close").map((x) => x.args[0])).toEqual(["bg-2"]);
+    expect(r.text).toContain(`## ${a.url}\n`);
+    expect(r.text).toContain(`## ${b.url}\n`);
+  }, { address: true });
+});
+
+test("read_pages: one page failing gives its error, the others their text; the tab is closed", async () => {
+  await withSearch(async ({ call, fake }) => {
+    await call("search_web", { query: "x" });
+    // the fake reads a link of the page as free: allow both through the default link
+    const r = await call("read_pages", { urls: [a.url, "https://exemple.fr/casse"] });
+    expect(r.text).toContain(`## ${a.url}\nTitre`);
+    expect(r.text).toContain("## https://exemple.fr/casse\nErreur : Page illisible");
+    expect(fake.calls.filter((x) => x.method === "search.close")).toHaveLength(2);
+  }, { address: true, failing: ["https://exemple.fr/casse"] });
+});
+
+test("read_pages: the band text counts the pages, singular for one", async () => {
+  await withSearch(async ({ call, fake, bands }) => {
+    fake.linkSequence = [links3];
+    await call("search_web", { query: "x" });
+    await call("read_pages", { urls: [a.url, b.url, c.url] });
+    const texts = bands.map(([, b]) => b?.text);
+    expect(texts).toContain("Lecture de 3 pages, 0 faite");
+    expect(texts).toContain("Lecture de 3 pages, 2 faites");
+    expect(texts).toContain("Lecture de 3 pages, 3 faites");
+    await call("read_pages", { urls: [a.url] });
+    expect(bands.map(([, b]) => b?.text)).toContain("Lecture de 1 page, 0 faite");
+  });
+});
+
+test("read_pages: the user stopping the search during the reads gives STOP_TEXT and closes the tabs", async () => {
+  await withSearch(async ({ call, fake, search }) => {
+    fake.linkSequence = [links3];
+    await call("search_web", { query: "x" });
+    const orig = fake.readText.bind(fake);
+    fake.readText = async (id: string) => {
+      if (id.startsWith("bg-")) search.stop("search-1");
+      return orig(id);
+    };
+    const r = await call("read_pages", { urls: [a.url, b.url] });
+    expect(r.text).toBe(STOP_TEXT);
+    expect(fake.calls.filter((x) => x.method === "search.close")).toHaveLength(2);
+  });
 });
 
 /** A search with an address card that never answers by itself; `end` ends the conversation (the card is taken down). */

@@ -97,6 +97,8 @@ export class RemoteBridge implements BrowserBridge {
     });
   readonly search: NonNullable<BrowserBridge["search"]> = {
     open: (window, target, reuse) => this.call("search.open", [window, target, reuse]),
+    openBackground: (window, url) => this.call("search.openBackground", [window, url]),
+    close: (tabId) => this.call("search.close", [tabId]),
     band: (tabId: string, band: Band | null) => this.call("search.band", [tabId, band]),
   };
   siteUrlAllowed = (site: string, url: string) => this.siteAllowed(site, url);

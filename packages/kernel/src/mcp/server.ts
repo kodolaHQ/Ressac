@@ -23,6 +23,7 @@ export const UNREAD_ADDRESS_TEXT = "Adresse non lue dans cette recherche : tu ne
 /** The key of the search of a session without a window (the main token). */
 const MAIN_WINDOW = "main";
 const SETTLE_MAX_MS = 5000;
+const READ_PAGES_MAX = 6;
 /** A page with no link is returned only after its reads gave none for this long, so results that come late are not missed. */
 const EMPTY_SPAN_MS = 1500;
 const LINKS_SHOWN = 150;
@@ -615,6 +616,76 @@ function createToolsServer(
           if (!current) sessions.start(key, o.id, goal?.trim() || query);
           sessions.log(o.id, { tool: "search_web", query });
           return readSearch(key, o, true, `Recherche : ${query}`, [`Onglet : ${o.id}`]);
+        });
+        searching.chains.set(key, mine);
+        return mine;
+      }),
+    );
+    server.registerTool(
+      "read_pages",
+      {
+        description:
+          "Lit jusqu'à 6 pages à la fois, dans des onglets en arrière-plan de ton profil, qu'elle referme ensuite. Une adresse lue dans cette recherche se lit tout de suite ; " +
+          "une autre demande l'accord de l'utilisateur (`reason` : pourquoi, en une phrase). Renvoie pour chaque adresse son titre et son texte, ou une erreur. Sans recherche en cours, la première adresse ouvre l'onglet de recherche.",
+        inputSchema: { urls: z.array(z.string()).min(1), reason: z.string().optional() },
+      },
+      protect(async ({ urls, reason }) => {
+        if (urls.length > READ_PAGES_MAX) return text(`${READ_PAGES_MAX} adresses au plus par appel.`);
+        const key = win ?? MAIN_WINDOW;
+        const previous = searching.chains.get(key) ?? Promise.resolve();
+        const mine = previous.catch(() => {}).then(async (): Promise<Result> => {
+          if (sessions.takeStop(key)) return text(STOP_TEXT);
+          let tabId = sessions.current(key)?.tabId;
+          const ended = () => text(sessions.takeStop(key, tabId) ? STOP_TEXT : CLOSED_TEXT);
+          // Each address gets the rule of navigate on the search tab: free, else its card.
+          const errors = new Map<string, string>();
+          const ok: string[] = [];
+          for (const u of new Set(urls)) {
+            if (u.length > URL_MAX) { errors.set(u, `Erreur : Adresse trop longue (${URL_MAX} caractères au plus).`); continue; }
+            if (tabId && sessions.isFree(tabId, u)) { ok.push(u); continue; }
+            const t = tabId;
+            // shortcut: with no search yet the engine's origin is unknown, so even an engine address asks its card; upgrade if that annoys.
+            const yes = await askAddressCard(bridge, policy, requests, { url: u, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent" }, `address:${t ?? key}:${u}`, win ?? undefined, (f) => (t ? sessions.onEnd(t, f) : () => {}));
+            if (t && !sessions.owns(t)) return ended();
+            if (!yes) { errors.set(u, `Erreur : ${DENIAL_TEXT}`); continue; }
+            if (t) sessions.allow(t, u);
+            ok.push(u);
+          }
+          let first: (TabInfo & { engineOrigin: string }) | undefined;
+          if (!tabId && ok.length) {
+            first = await search.open(win ?? undefined, { url: ok[0]! });
+            sessions.setEngineOrigin(first.engineOrigin);
+            sessions.start(key, first.id, "");
+            sessions.allow(first.id, ok[0]!);
+            tabId = first.id;
+          }
+          const id = tabId;
+          const sections = new Map<string, string>();
+          if (id) {
+            for (const u of ok) sessions.log(id, { tool: "read_pages", url: u });
+            let done = 0;
+            const label = () => `Lecture de ${ok.length} page${ok.length > 1 ? "s" : ""}, ${done} faite${done > 1 ? "s" : ""}`;
+            const read = async (u: string, own?: TabInfo) => {
+              let t = own;
+              try {
+                t ??= await search.openBackground(win ?? undefined, u);
+                const r = await working(t.id, () => bridge.readText(t!.id));
+                if (!sessions.owns(id)) return;
+                const now = (await bridge.listTabs()).find((x) => x.id === t!.id) ?? t;
+                sessions.pageRead(id, now.url, (r.links ?? []).map((l) => l.url));
+                sections.set(u, [`Titre : ${now.title}`, `URL : ${now.url}`, "", r.text].join("\n"));
+              } catch (e) {
+                sections.set(u, `Erreur : ${e instanceof Error ? e.message : String(e)}`);
+              } finally {
+                if (t && t !== own) await search.close(t.id).catch(() => {});
+                done++;
+                sessions.setText(id, label());
+              }
+            };
+            await sessions.step(id, label(), () => Promise.all(ok.map((u, i) => read(u, i === 0 ? first : undefined))));
+            if (!sessions.owns(id)) return ended();
+          }
+          return text(urls.map((u) => `## ${u}\n${errors.get(u) ?? sections.get(u) ?? "Erreur : page non lue."}`).join("\n\n"));
         });
         searching.chains.set(key, mine);
         return mine;
