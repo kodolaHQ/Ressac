@@ -11,7 +11,7 @@ export const ICON = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAA
 
 /**
  * Serves the e2e pages read-only; /cookie sets a persistent cookie, /lire-cookie shows the cookies in its title,
- * /icone is a page with an http favicon (/icone.png) and a pure red background, /avale a page that swallows every key.
+ * /icone is a page with an http favicon (/icone.png) and a pure red background, /icone-svg a page with an SVG favicon, /avale a page that swallows every key.
  * Invisible reading: /sous-ressources?vers=<base> has a frame, an image and a fetch on <base>, /redirige?vers=<url>
  * answers 302, /dialogues calls print() and alert() while loading, /lent never answers, /balise sends a beacon to
  * <base>/balise on pagehide, /coop is sent with Cross-Origin-Opener-Policy: same-origin, /fenetres calls open(),
@@ -95,6 +95,10 @@ export async function startServer(o: { host?: string; port?: number; routes?: Re
       res.writeHead(200, { "Content-Type": "text/html" });
       return res.end('<title>icone</title><link rel="icon" href="/icone.png"><body style="background: rgb(255, 0, 0)">');
     }
+    if (route === "/icone-svg") {
+      res.writeHead(200, { "Content-Type": "text/html" });
+      return res.end('<title>icone svg</title><link rel="icon" type="image/svg+xml" href="/icone.svg">');
+    }
     if (route === "/avale") {
       res.writeHead(200, { "Content-Type": "text/html" });
       return res.end('<title>avale</title><script>addEventListener("keydown", (e) => e.preventDefault(), true)</script><input autofocus>');
@@ -112,6 +116,7 @@ export async function startServer(o: { host?: string; port?: number; routes?: Re
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
       return res.end('<title>Avec description</title><meta name="description" content="Resume des licornes"><p>Corps des licornes</p>');
     }
+    if (route === "/icone.svg") return res.writeHead(200, { "Content-Type": "image/svg+xml" }).end('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16" fill="red"/></svg>');
     if (route === "/icone.png") return res.writeHead(200, { "Content-Type": "image/png" }).end(ICON);
     const file = path.join(PAGES, path.normalize(route));
     if (!file.startsWith(PAGES + path.sep) || !existsSync(file)) return res.writeHead(404).end();

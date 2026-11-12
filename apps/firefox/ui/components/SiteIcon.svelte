@@ -5,6 +5,11 @@
   let error = $state(false);
   // The UI has no network: an http(s) favicon goes through webaios-icone: (shared/icon.ts).
   const source = $derived(favicon ? iconUrl(favicon) : null);
+  // A new icon gets its chance: one that failed does not hide the next.
+  $effect(() => {
+    source;
+    error = false;
+  });
 </script>
 
 {#if source && !error}

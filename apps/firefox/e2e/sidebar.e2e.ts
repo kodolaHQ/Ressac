@@ -373,4 +373,12 @@ describe("WebAiOs sidebar", () => {
     await waitTitle(id, "icone");
     await waitUi(m, "const img = doc.querySelector(arguments[0]); return !!img && img.complete && img.naturalWidth > 0", [`[data-testid="tab-${id}"] img`]);
   });
+
+  // Firefox hands an SVG icon over as a moz-remote-image: address.
+  it("shows an SVG favicon", async () => {
+    const id = await open("/icone-svg");
+    await waitTitle(id, "icone svg");
+    await waitUi(m, "const img = doc.querySelector(arguments[0]); return !!img && img.complete && img.naturalWidth > 0", [`[data-testid="tab-${id}"] img`]);
+    expect((await state(m)).tabs[id]!.favicon).toMatch(/^moz-remote-image:/);
+  });
 });
