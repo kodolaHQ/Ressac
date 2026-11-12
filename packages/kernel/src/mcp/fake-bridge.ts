@@ -279,17 +279,16 @@ export class FakeBridge implements BrowserBridge {
           this.note("search.open", window, target, reuse);
           if (window !== undefined && searching.privateWindows?.includes(window)) throw new Error("Impossible d'ouvrir un onglet ici : l'espace actif est privé.");
           const url = "query" in target ? `https://moteur.test/?q=${encodeURIComponent(target.query)}` : target.url;
-          const engineOrigin = "https://moteur.test";
           const old = reuse ? this.tabs.find((x) => x.id === reuse) : undefined;
           if (reuse && !old) throw new TabNotFound(reuse);
           if (old) {
             old.url = url;
-            return { ...old, engineOrigin };
+            return { ...old };
           }
           const tab = { id: `search-${++this.counter}`, title: url, url, space: "perso" };
           this.tabs.push(tab);
           this.active = tab.id;
-          return { ...tab, engineOrigin };
+          return { ...tab };
         },
         openBackground: async (searchTabId, url) => {
           this.note("search.openBackground", searchTabId, url);

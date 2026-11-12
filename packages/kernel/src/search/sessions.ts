@@ -18,22 +18,20 @@ const PATH_MAX = 20;
 export const URL_MAX = 500;
 const GESTURES_MAX = 50;
 const FREE_MAX = 10_000;
-const isWeb = (x: URL) => x.protocol === "http:" || x.protocol === "https:";
-/** Normalised http(s) address short enough to remember, else undefined. */
-function freeable(u: string): string | undefined {
+/** A parsed http(s) address of at most URL_MAX characters, else undefined. */
+function web(u: string): URL | undefined {
   if (u.length > URL_MAX) return undefined;
-  try { const x = new URL(u); return isWeb(x) ? norm(u) : undefined; } catch { return undefined; }
-}
-function norm(u: string): string {
-  try { const x = new URL(u); x.hash = ""; return x.href; } catch { return u; }
+  try {
+    const x = new URL(u);
+    return x.protocol === "http:" || x.protocol === "https:" ? x : undefined;
+  } catch { return undefined; }
 }
 
 export class SearchSessions {
   private byWindow = new Map<string, Search>();
   private byTab = new Map<string, Search>();
-  /** Windows whose search the user stopped, with the tab that was its search tab. */
-  private stopped = new Map<string, string>();
-  private engineOrigin = "";
+  /** Windows whose search the user stopped, with the tab that was its search tab and when. */
+  private stopped = new Map<string, { tab: string; at: number }>();
   private readonly now: () => number;
   private readonly idleMs: number;
 
@@ -67,10 +65,14 @@ export class SearchSessions {
     return () => e.delete(f);
   }
 
-  /** True once after a stop, for a call in `window` (about the former search tab `tabId`, if given; another tab does not consume it). */
+  /**
+   * True once after a stop, for a call in `window` (about the former search tab `tabId`, if given; another tab does not
+   * consume it). A stop no call took within the idle delay expires: a later search is a new intent.
+   */
   takeStop(window: string, tabId?: string): boolean {
     const t = this.stopped.get(window);
-    return t !== undefined && (tabId === undefined || tabId === t) && this.stopped.delete(window);
+    if (t && this.now() - t.at > this.idleMs) this.stopped.delete(window);
+    return t !== undefined && (tabId === undefined || tabId === t.tab) && this.stopped.delete(window);
   }
 
   async step<T>(tabId: string, text: string, f: () => Promise<T>): Promise<T> {
@@ -104,19 +106,39 @@ export class SearchSessions {
     for (const l of [url, ...links]) this.allow(tabId, l);
   }
 
-  isFree(tabId: string, url: string): boolean {
-    const s = this.byTab.get(tabId);
-    if (!s) return false;
-    let x: URL;
-    try { x = new URL(url); } catch { return false; }
-    if (!isWeb(x)) return false;
-    return (!!this.engineOrigin && x.origin === this.engineOrigin) || s.free.has(norm(url));
+  /**
+   * The address to open without a card: `url` itself if it was read as it is, its fragment-less form if only that was
+   * (a fragment the agent adds is dropped: the page's script would read it), else undefined.
+   */
+  freeAs(tabId: string, url: string): string | undefined {
+    const free = this.byTab.get(tabId)?.free;
+    const x = web(url);
+    if (!free || !x) return undefined;
+    if (free.has(x.href)) return url;
+    x.hash = "";
+    return free.has(x.href) ? x.href : undefined;
   }
 
+  isFree(tabId: string, url: string): boolean {
+    return this.freeAs(tabId, url) !== undefined;
+  }
+
+  /** Remembers the address as read, and its fragment-less form. */
   allow(tabId: string, url: string): void {
-    const u = freeable(url);
     const free = this.byTab.get(tabId)?.free;
-    if (u && free && free.size < FREE_MAX) free.add(u);
+    const x = web(url);
+    if (!free || !x) return;
+    for (const u of [x.href, ((x.hash = ""), x.href)]) if (free.size < FREE_MAX) free.add(u);
+  }
+
+  /** A hand is open on this search tab: the page is the user's. */
+  handing(tabId: string): boolean {
+    return !!this.byTab.get(tabId)?.hand;
+  }
+
+  /** Settles when the hand open on this tab ends (at once without one). */
+  handEnd(tabId: string): Promise<void> {
+    return this.byTab.get(tabId)?.hand?.promise.then(() => {}) ?? Promise.resolve();
   }
 
   log(tabId: string, g: Gesture): void {
@@ -129,7 +151,7 @@ export class SearchSessions {
   handOver(tabId: string, text: string): Promise<{ outcome: Outcome; path: string[] }> {
     const s = this.byTab.get(tabId);
     if (!s) return Promise.resolve({ outcome: "stop", path: [] });
-    if (s.hand) return s.hand.promise; // one question to the user at a time
+    if (s.hand) return s.hand.promise; // one question to the user at a time (a watcher pause waits for its own: handEnd)
     clearTimeout(s.timer);
     s.text = text;
     this.band(s, "yours");
@@ -157,14 +179,15 @@ export class SearchSessions {
     const { resolve } = s.hand;
     s.hand = undefined;
     this.resume(s);
-    // shortcut: a second hand_over that shared this hand gets a stop too, when more than one waits, track callers.
+    // shortcut: a second hand_over sent while this hand was open shares it and gets a stop too (a watcher pause never
+    // shares: it waits for its own hand); track callers if agents send two hand_over at once.
     resolve({ outcome: "stop", path: [] });
   }
 
   stop(tabId: string): void {
     const s = this.byTab.get(tabId);
     if (!s) return;
-    this.stopped.set(s.window, s.tabId);
+    this.stopped.set(s.window, { tab: s.tabId, at: this.now() });
     this.end(s, "stop");
   }
 
@@ -188,13 +211,6 @@ export class SearchSessions {
   reset(): void {
     for (const s of [...this.byTab.values()]) this.end(s, "stop");
     this.stopped.clear();
-  }
-
-  setEngineOrigin(origin: string): void {
-    try {
-      const x = new URL(origin);
-      this.engineOrigin = isWeb(x) ? x.origin : "";
-    } catch { this.engineOrigin = ""; }
   }
 
   private band(s: Search, state: BandState): void {

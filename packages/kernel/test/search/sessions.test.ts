@@ -11,7 +11,6 @@ beforeEach(() => {
   clock = 1000;
   shown = [];
   s = new SearchSessions({ show: (t, b) => shown.push([t, b]), now: () => clock, idleMs: 120_000 });
-  s.setEngineOrigin("https://engine.test");
 });
 afterEach(() => {
   s.reset();
@@ -42,17 +41,51 @@ describe("SearchSessions", () => {
     expect(s.current("w2")?.tabId).toBe("t2");
   });
 
-  test("isFree: the engine's origin and links read in this search are free, the fragment is ignored, any other address is not; a new search forgets them", () => {
+  test("isFree: links read in this search are free, any other address is not, the engine's origin included; a new search forgets them", () => {
     s.start("w", "t1", "g");
     s.pageRead("t1", "https://a.test/page", ["https://b.test/x#frag"]);
-    expect(s.isFree("t1", "https://engine.test/search?q=1")).toBe(true);
-    expect(s.isFree("t1", "https://a.test/page#top")).toBe(true);
+    expect(s.isFree("t1", "https://engine.test/search?q=1")).toBe(false);
+    expect(s.isFree("t1", "https://a.test/page")).toBe(true);
+    expect(s.isFree("t1", "https://b.test/x#frag")).toBe(true);
     expect(s.isFree("t1", "https://b.test/x")).toBe(true);
     expect(s.isFree("t1", "https://c.test/")).toBe(false);
     s.dismiss("t1");
     s.start("w", "t1", "g");
     expect(s.isFree("t1", "https://b.test/x")).toBe(false);
-    expect(s.isFree("t1", "https://engine.test/")).toBe(true);
+  });
+
+  test("freeAs: an address read exactly opens as is; one that matches only without its fragment opens without it; over 500 characters, nothing", () => {
+    s.start("w", "t1", "g");
+    s.pageRead("t1", "https://a.test/page", ["https://b.test/x#frag"]);
+    expect(s.freeAs("t1", "https://b.test/x#frag")).toBe("https://b.test/x#frag");
+    expect(s.freeAs("t1", "https://b.test/x")).toBe("https://b.test/x");
+    expect(s.freeAs("t1", "https://a.test/page#secret=data")).toBe("https://a.test/page");
+    expect(s.freeAs("t1", "https://b.test/x#other")).toBe("https://b.test/x");
+    expect(s.freeAs("t1", "https://a.test/page#" + "d".repeat(500))).toBeUndefined();
+    expect(s.freeAs("t1", "https://c.test/")).toBeUndefined();
+  });
+
+  test("handing is true while a hand is open; handEnd settles when it ends", async () => {
+    s.start("w", "t1", "g");
+    expect(s.handing("t1")).toBe(false);
+    await s.handEnd("t1");
+    const p = s.handOver("t1", "À vous");
+    expect(s.handing("t1")).toBe(true);
+    let ended = false;
+    const end = s.handEnd("t1").then(() => { ended = true; });
+    await Promise.resolve();
+    expect(ended).toBe(false);
+    s.continue("t1");
+    await end;
+    expect(s.handing("t1")).toBe(false);
+    await p;
+  });
+
+  test("a stop no call consumed expires after the idle delay", () => {
+    s.start("w", "t1", "g");
+    s.stop("t1");
+    clock += 120_001;
+    expect(s.takeStop("w")).toBe(false);
   });
 
   test("pageRead after a redirect frees the arrival page's links", () => {
@@ -219,23 +252,6 @@ describe("SearchSessions", () => {
     expect(s.isFree("t1", "data:text/html,x")).toBe(false);
     expect(s.isFree("t1", "https://ok.test/" + "a".repeat(500))).toBe(false);
     expect(s.isFree("t1", "https://ok.test/fine")).toBe(true);
-  });
-
-  test("engine origin: userinfo, subdomain lookalike, other port and other scheme are not free; a path is normalised", () => {
-    s.start("w", "t1", "g");
-    for (const u of ["https://engine@evil.example/", "https://engine.test.evil.example/", "https://sub.engine.test/", "https://engine.test:8443/", "http://engine.test/"])
-      expect(s.isFree("t1", u)).toBe(false);
-    s.setEngineOrigin("https://other.test/some/path?x=1");
-    expect(s.isFree("t1", "https://other.test/anything")).toBe(true);
-    expect(s.isFree("t1", "https://engine.test/")).toBe(false);
-  });
-
-  test("a non-http engine origin frees nothing; an unparsable one does not throw", () => {
-    s.start("w", "t1", "g");
-    s.setEngineOrigin("about:blank");
-    for (const u of ["about:blank", "data:text/html,x", "javascript:alert(1)", "file:///etc/passwd"]) expect(s.isFree("t1", u)).toBe(false);
-    expect(() => s.setEngineOrigin("not a url")).not.toThrow();
-    expect(s.isFree("t1", "https://engine.test/")).toBe(false);
   });
 
   test("continue while a step is in flight keeps the timer off until that step ends", async () => {

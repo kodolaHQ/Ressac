@@ -6,6 +6,7 @@ import { AccessPolicy } from "../../src/access/policy.js";
 import { PRIVATE_TEXT, type TabInfo } from "../../src/mcp/bridge.js";
 import type { Watcher } from "../../src/search/watcher.js";
 import { FakeBridge } from "../../src/mcp/fake-bridge.js";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { NO_WORKFLOW_OPEN, HIDDEN_ACTION_RUNS_NOTICE, HIDDEN_RUNS_NOTICE, startMcpServer, PENDING_SITE_NAVIGATION, navigationOutsideSite, SITE_DATA_PREFIX, TWEAK_ERRORS_PREFIX, SITE_UNKNOWN, SITE_DENIED, SITE_MEMORY_MAX_SHOWN, type SitesTools, DENIAL_TEXT, RESERVED_ERROR, RESERVED_ACTION_ERROR, ACTION_DATA_PREFIX, WIDGET_DATA_PREFIX, generateToken, type ActionsTools, type AppsTools, type WidgetsTools, type OpenWorkflow } from "../../src/mcp/server.js";
 import type { Execution } from "../../src/workflows/executions.js";
 import { ACTION_UNKNOWN, ACTION_WITHOUT_WORKFLOW, RESULT_TOO_BIG, requiredInput, type LaunchResult } from "../../src/actions/run.js";
@@ -1383,15 +1384,17 @@ const c = { text: "C", url: "https://exemple.fr/c" };
 
 async function withSearch(
   attempt: (o: { call: (name: string, args: Record<string, unknown>, token?: string, onprogress?: (n: number) => void) => Promise<{ text: string; isError: boolean }>; token: string; fake: FakeBridge; search: SearchSessions; s: Awaited<ReturnType<typeof startMcpServer>>; bands: [string, Band | null][] }) => Promise<void>,
-  opts: { privateWindows?: string[]; allow?: boolean; emptySpanMs?: number; address?: boolean | "wait"; failing?: string[]; hanging?: string[]; readPageMs?: number; heartbeatMs?: number; watcher?: Watcher; withUserData?: boolean } = {},
+  opts: { privateWindows?: string[]; allow?: boolean; emptySpanMs?: number; address?: boolean | "wait"; failing?: string[]; hanging?: string[]; readPageMs?: number; heartbeatMs?: number; watcher?: Watcher; withUserData?: boolean; idleMs?: number } = {},
 ) {
   const principal = generateToken();
   const fake = new FakeBridge([github], { active: "github", allow: opts.allow ?? false, ...(opts.withUserData ? { history: { results: [] }, bookmarks: [] } : {}), search: { privateWindows: opts.privateWindows ?? [], failing: opts.failing ?? [], hanging: opts.hanging ?? [] }, ...(opts.address !== undefined ? { address: opts.address } : {}) });
   const bands: [string, Band | null][] = [];
-  const search = new SearchSessions({ show: (id, band) => bands.push([id, band]) });
+  const search = new SearchSessions({ show: (id, band) => bands.push([id, band]), ...(opts.idleMs ? { idleMs: opts.idleMs } : {}) });
   const s = await startMcpServer({ bridge: fake, policy: new AccessPolicy(), token: principal, search, ...(opts.watcher ? { watcher: opts.watcher } : {}), settleMs: 0, emptySpanMs: opts.emptySpanMs ?? 0, ...(opts.heartbeatMs ? { heartbeatMs: opts.heartbeatMs } : {}), ...(opts.readPageMs !== undefined ? { readPageMs: opts.readPageMs } : {}) });
   const clients: Client[] = [];
   const call = async (name: string, args: Record<string, unknown>, clientToken = principal, onprogress?: (n: number) => void) => {
+    // search_web needs a goal: a test that does not care gets one.
+    if (name === "search_web" && !("goal" in args)) args = { ...args, goal: "but" };
     const cl = new Client({ name: "test", version: "0" });
     clients.push(cl);
     await cl.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${s.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${clientToken}` } } }));
@@ -1425,7 +1428,8 @@ test("a second search_web reuses the tab (navigate, no new tab) and keeps the se
     expect(r.text).toContain("Onglet : search-1");
     expect(fake.calls.filter((x) => x.method === "search.open").map((x) => x.args[2])).toEqual([undefined, "search-1"]);
     expect(search.current("main")).toMatchObject({ tabId: "search-1", goal: "but" });
-    expect(search.isFree("search-1", "https://moteur.test/?q=autre")).toBe(true);
+    // The engine's own pages are not free: only links read are (search_web builds its addresses itself).
+    expect(search.isFree("search-1", "https://moteur.test/?q=autre")).toBe(false);
   });
 });
 
@@ -1674,7 +1678,7 @@ async function withWaitingCard(attempt: (o: { call: (a: Record<string, unknown>)
     const first = new Client({ name: "test", version: "0" });
     clients.push(first);
     await first.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${s.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${principal}` } } }));
-    await first.callTool({ name: "search_web", arguments: { query: "x" } });
+    await first.callTool({ name: "search_web", arguments: { query: "x", goal: "but" } });
     await attempt({ call, fake, end: () => policy.reset(), search });
   } finally {
     await Promise.all(clients.map((x) => x.close()));
@@ -2083,11 +2087,6 @@ test("a strange history read is not run: the band names it; Continuer runs it", 
 });
 
 test("a followed link is never judged", async () => {
-  const { watcher, asked } = fakeWatcher(() => true);
-  await withSearch(async ({ call }) => {
-    await call("search_web", { query: "x" }); // no goal: not asked either
-    await call("navigate", { id: "search-1", url: "https://exemple.fr/a" });
-  }, { watcher });
   const w = fakeWatcher(() => false);
   await withSearch(async ({ call }) => {
     await call("search_web", { query: "x", goal: "but" });
@@ -2095,18 +2094,22 @@ test("a followed link is never judged", async () => {
     await call("navigate", { id: "search-1", url: "https://exemple.fr/a" });
     expect(w.asked).toHaveLength(0);
   }, { watcher: w.watcher });
-  expect(asked).toHaveLength(0);
 });
 
-test("without a goal the watcher is not asked and nothing is paused", async () => {
+test("search_web needs a goal; a search read_pages starts takes its reason as goal, and without one the watcher is not asked", async () => {
   const { watcher, asked } = fakeWatcher(() => true);
-  await withSearch(async ({ call }) => {
-    await call("search_web", { query: "un" });
-    expect((await call("search_web", { query: "deux" })).text).toContain("Onglet : search-1");
+  await withSearch(async ({ call, fake, search }) => {
+    for (const goal of [undefined, "   "]) expect((await call("search_web", { query: "x", goal })).isError).toBe(true);
+    expect(fake.calls.filter((x) => x.method === "search.open")).toHaveLength(0);
+    await call("read_pages", { urls: [a.url] });
+    expect(search.current("main")?.goal).toBe("");
     await call("search_history", { query: "h" });
-    await call("read_pages", { urls: ["https://exemple.fr/a"] });
     expect(asked).toHaveLength(0);
-  }, { watcher, withUserData: true });
+  }, { watcher, withUserData: true, address: true });
+  await withSearch(async ({ call, search }) => {
+    await call("read_pages", { urls: [a.url], reason: "  lire l'annonce " });
+    expect(search.current("main")?.goal).toBe("lire l'annonce");
+  }, { address: true });
 });
 
 test("a request dropped during a watcher pause puts the band back and the next search_web runs", async () => {
@@ -2118,7 +2121,7 @@ test("a request dropped during a watcher pause puts the band back and the next s
       method: "POST",
       signal: drop.signal,
       headers: { Authorization: `Bearer ${token}`, "content-type": "application/json", accept: "application/json, text/event-stream" },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "search_web", arguments: { query: "adresse mail" } } }),
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "search_web", arguments: { query: "adresse mail", goal: "but" } } }),
     }).catch(() => "aborted");
     await vi.waitFor(() => expect(bands.at(-1)![1]?.state).toBe("yours"));
     drop.abort();
@@ -2138,4 +2141,143 @@ test("the watcher is asked about composed read_pages addresses in parallel", asy
     await call("read_pages", { urls: ["https://a.fr/", "https://b.fr/", "https://c.fr/"] });
     expect(most).toBe(3);
   }, { watcher, address: true });
+});
+
+// --- final fixes: the address rule, the hand-over, lifecycles ---
+
+const HANDING = "La page est à l'utilisateur : attends la fin de hand_over.";
+
+test("an address the agent composes on the engine is not free: it asks its card (no laundering through a redirect page)", async () => {
+  await withSearch(async ({ call, fake }) => {
+    await call("search_web", { query: "x" });
+    const laundering = "https://moteur.test/url?q=https://evil.tld/?d=secret";
+    expect((await call("navigate", { id: "search-1", url: laundering, reason: "r" })).text).toBe(DENIAL_TEXT);
+    expect((await call("read_pages", { urls: [laundering] })).text).toContain(`Erreur : ${DENIAL_TEXT}`);
+    expect(fake.calls.filter((x) => x.method === "askAddress")).toHaveLength(2);
+    expect(fake.calls.filter((x) => x.method === "navigate" || x.method === "search.openBackground")).toHaveLength(0);
+  }, { address: false });
+});
+
+test("a fragment the agent adds to a link read is dropped: navigate and read_pages open the address read, and say so", async () => {
+  await withSearch(async ({ call, fake }) => {
+    fake.linkSequence = [[a, b]];
+    await call("search_web", { query: "x" });
+    expect((await call("navigate", { id: "search-1", url: `${b.url}#d=secret` })).text).toBe(`Onglet search-1 → ${b.url}`);
+    expect(fake.calls.filter((x) => x.method === "navigate").map((x) => x.args[1])).toEqual([b.url]);
+    const r = await call("read_pages", { urls: [`${a.url}#d=secret`] });
+    expect(fake.calls.find((x) => x.method === "search.openBackground")!.args[1]).toBe(a.url);
+    expect(r.text).toContain(`## ${a.url}#d=secret\nTitre : ${a.url}\nURL : ${a.url}`);
+    expect(fake.calls.filter((x) => x.method === "askAddress")).toHaveLength(0);
+    expect((await call("navigate", { id: "search-1", url: `${b.url}#${"d".repeat(500)}` })).text).toBe("Adresse trop longue (500 caractères au plus).");
+  }, { address: true });
+});
+
+test("open_tab during a search asks the card for an address not read (with its reason); local and read addresses, or no search, ask nothing", async () => {
+  await withSearch(async ({ call, fake }) => {
+    expect((await call("open_tab", { url: "https://ailleurs.fr/" })).isError).toBe(false);
+    fake.linkSequence = [[a]];
+    await call("search_web", { query: "x" });
+    expect((await call("open_tab", { url: "http://localhost:3000/" })).isError).toBe(false);
+    expect((await call("open_tab", { url: `${a.url}#frag` })).isError).toBe(false);
+    expect(fake.calls.filter((x) => x.method === "askAddress")).toHaveLength(0);
+    expect((await call("open_tab", { url: "https://ailleurs.fr/x", reason: "pour voir" })).text).toBe(DENIAL_TEXT);
+    expect(fake.calls.find((x) => x.method === "askAddress")!.args[0]).toEqual({ url: "https://ailleurs.fr/x", reason: "pour voir", agent: "L'agent" });
+    expect(fake.calls.filter((x) => x.method === "openTab").map((x) => x.args[0])).toEqual(["https://ailleurs.fr/", "http://localhost:3000/", a.url]);
+  }, { address: false });
+  await withSearch(async ({ call, fake }) => {
+    await call("search_web", { query: "x" });
+    expect((await call("open_tab", { url: "https://ailleurs.fr/x", reason: "pour voir" })).isError).toBe(false);
+    expect(fake.calls.filter((x) => x.method === "openTab").map((x) => x.args[0])).toEqual(["https://ailleurs.fr/x"]);
+  }, { address: true });
+});
+
+test("while a hand is open, the agent's tools refuse the search tab: nothing read, navigated, captured or logged", async () => {
+  await withSearch(async ({ call, fake, search }) => {
+    fake.linkSequence = [[a]];
+    await call("search_web", { query: "x" });
+    const pending = handOver(call);
+    await vi.waitFor(() => expect(search.handing("search-1")).toBe(true));
+    const before = fake.calls.length;
+    const tries: [string, Record<string, unknown>][] = [
+      ["read_tab", { id: "search-1" }], ["current_page", {}], ["navigate", { id: "search-1", url: a.url }], ["search_web", { query: "y" }],
+      ["read_pages", { urls: [a.url] }], ["capture_screen", { id: "search-1" }], ["capture_screen", { id: "github" }],
+    ];
+    for (const [name, args] of tries) expect(await call(name, args)).toEqual({ text: HANDING, isError: true });
+    expect(fake.calls.slice(before).filter((x) => ["readText", "navigate", "capture", "search.open", "search.openBackground"].includes(x.method))).toEqual([]);
+    expect(search.current("main")!.gestures.map((g) => g.tool)).toEqual(["search_web"]);
+    search.continue("search-1");
+    await pending;
+    expect((await call("read_tab", { id: "search-1" })).isError).toBe(false);
+  });
+});
+
+test("a watcher pause during an open hand waits for it, then shows its own message", async () => {
+  const { watcher } = fakeWatcher((g) => g.tool === "search_history");
+  await withSearch(async ({ call, fake, search, bands }) => {
+    await call("search_web", { query: "x", goal: "but" });
+    const handing = handOver(call);
+    await vi.waitFor(() => expect(search.handing("search-1")).toBe(true));
+    const reading = call("search_history", { query: "h" });
+    await new Promise((ok) => setTimeout(ok, 100));
+    expect(bands.at(-1)![1]!.text).toBe("Bloqué par une vérification. À vous : Résolvez le captcha");
+    search.continue("search-1");
+    expect((await handing).text).toContain("La page est de nouveau à toi");
+    await vi.waitFor(() => expect(bands.at(-1)![1]).toMatchObject({ state: "yours", text: BAND("lecture de l'historique", "but") }));
+    expect(fake.calls.some((x) => x.method === "history.find")).toBe(false);
+    search.continue("search-1");
+    await reading;
+    expect(fake.calls.some((x) => x.method === "history.find")).toBe(true);
+  }, { watcher, withUserData: true });
+});
+
+test("hand_over on a call already cancelled hands the page back at once", async () => {
+  const handlers = new Map<string, (a: unknown, extra: unknown) => Promise<{ content: { text: string }[] }>>();
+  const register = McpServer.prototype.registerTool as (...args: unknown[]) => unknown;
+  const spy = vi.spyOn(McpServer.prototype, "registerTool").mockImplementation(function (this: McpServer, ...args: unknown[]) {
+    handlers.set(args[0] as string, args[2] as never);
+    return register.apply(this, args);
+  } as never);
+  try {
+    await withSearch(async ({ call, search, bands }) => {
+      await call("search_web", { query: "x" });
+      const r = handlers.get("hand_over")!({ id: "search-1", reason: "x", kind: "lost" }, { signal: AbortSignal.abort(), _meta: {}, sendNotification: async () => {} });
+      const answer = await Promise.race([r, new Promise<"hung">((ok) => setTimeout(() => ok("hung"), 500))]);
+      expect(answer).not.toBe("hung");
+      expect(search.handing("search-1")).toBe(false);
+      expect(bands.at(-1)![1]?.state).toBe("idle");
+    });
+  } finally {
+    spy.mockRestore();
+  }
+});
+
+test("the idle delay does not end a search while an address card is up", async () => {
+  await withSearch(async ({ call, fake, search, bands }) => {
+    await call("search_web", { query: "x" });
+    const pending = call("navigate", { id: "search-1", url: "https://ailleurs.fr/", reason: "r" });
+    await vi.waitFor(() => expect(fake.calls.some((x) => x.method === "askAddress")).toBe(true));
+    expect(bands.at(-1)![1]).toMatchObject({ state: "working", text: "Accord demandé pour une adresse" });
+    await new Promise((ok) => setTimeout(ok, 400));
+    expect(search.owns("search-1")).toBe(true);
+    search.stop("search-1");
+    expect((await pending).text).toBe(STOP_TEXT);
+  }, { address: "wait", idleMs: 150 });
+});
+
+test("a dropped request takes its address card down and the window's chain goes on", async () => {
+  await withSearch(async ({ call, fake, token, s }) => {
+    await call("search_web", { query: "x" });
+    const drop = new AbortController();
+    const sent = fetch(`http://127.0.0.1:${s.port}/mcp`, {
+      method: "POST",
+      signal: drop.signal,
+      headers: { Authorization: `Bearer ${token}`, "content-type": "application/json", accept: "application/json, text/event-stream" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "read_pages", arguments: { urls: ["https://ailleurs.fr/"], reason: "r" } } }),
+    }).catch(() => "aborted");
+    await vi.waitFor(() => expect(fake.addressSignals).toHaveLength(1));
+    drop.abort();
+    await sent;
+    await vi.waitFor(() => expect(fake.addressSignals[0]!.aborted).toBe(true));
+    expect((await call("search_web", { query: "y" })).text).toContain("Onglet : search-1");
+  }, { address: "wait" });
 });

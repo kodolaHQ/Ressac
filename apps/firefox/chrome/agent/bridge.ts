@@ -166,16 +166,15 @@ export function bridgeHandlers(
     "search.open": async ([win, target, reuse]: [WindowId | undefined, { query: string } | { url: string }, string?]) => {
       const template = Services.env.get("WEBAIOS_TEST_SEARCH_URL") || ENGINES[store.state.settings.engine];
       const url = "query" in target ? template.replace("%s", encodeURIComponent(target.query)) : target.url;
-      const engineOrigin = new URL(template.replace("%s", "")).origin;
       if (reuse !== undefined && store.state.tabs[reuse]) {
         tab(reuse);
         await windowOf(reuse).controller.navigateForAgentLoaded(reuse, url);
         // Closed during the load: nothing to return.
         const info = tabInfos(store.state).find((o) => o.id === reuse);
         if (!info) throw new TabNotFound(reuse);
-        return { ...info, engineOrigin };
+        return info;
       }
-      return { ...openTabIn(win, url, undefined, { profile: AGENT_PROFILE }), engineOrigin };
+      return openTabIn(win, url, undefined, { profile: AGENT_PROFILE });
     },
     "search.openBackground": ([searchTab, url]: [string, string]) => {
       const t = tab(searchTab);

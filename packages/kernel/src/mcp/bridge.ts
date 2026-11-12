@@ -134,7 +134,7 @@ export interface BrowserBridge {
      * A query goes to the user's engine. Throws in a private space. With `reuse` (the id of the search tab), that tab is
      * navigated instead and nothing opens nor activates.
      */
-    open(window: string | undefined, target: { query: string } | { url: string }, reuse?: string): Promise<TabInfo & { engineOrigin: string }>;
+    open(window: string | undefined, target: { query: string } | { url: string }, reuse?: string): Promise<TabInfo>;
     /** Opens `url` in a background tab of AGENT_PROFILE (`openedByAgent`, not activated), in the window and space of the search tab `searchTabId`. */
     openBackground(searchTabId: string, url: string): Promise<TabInfo>;
     /** Closes a tab opened by `open` or `openBackground`, at once (no « leave this site? » question). */
