@@ -14,6 +14,9 @@
   /** The essential under a dragged one: it shows where the drop lands. */
   let over = $state<string | null>(null);
 
+  /** The icon of the essential's open tab in this window, which the site changes (unread count). */
+  const live = (f: Favorite) => Object.values(appState.value?.tabs ?? {}).find((t) => t.link?.id === f.id && t.windowId === win.id)?.favicon;
+
   function open(f: Favorite) {
     api.dispatch({ type: "openFavorite", windowId: win.id, kind: "essential", id: f.id });
   }
@@ -61,7 +64,7 @@
       onkeydown={(e) => (e.key === "Enter" || e.key === " ") && open(favorite)}
       oncontextmenu={(e) => openMenu(e, [{ label: "Retirer", dispatch: () => api.dispatch({ type: "removeEssential", favoriteId: favorite.id }) }])}
     >
-      <SiteIcon favicon={favorite.favicon} title={favorite.title} size={large ? 32 : 18} />
+      <SiteIcon favicon={live(favorite) ?? favorite.favicon} title={favorite.title} size={large ? 32 : 18} />
     </div>
   {/each}
 </div>
