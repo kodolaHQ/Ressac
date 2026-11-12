@@ -207,7 +207,9 @@ test("policyChanges: a tab whose space becomes private is closed for the agent; 
   expect(e().windows.find((x) => x.id === F)!.active[work]).toBe(a);
   expect(e().windows.find((x) => x.id === F)!.active[personal]).toBeNull();
   expect(e().tabs[a]!.spaceId).toBe(work);
-  expect(policyChanges(before, e())).toEqual({ navigated: [], closed: [b] });
+  // The other window kept the essential loaded in Perso: that tab is closed for the agent too.
+  const kept = Object.values(before.tabs).find((o) => o.windowId === "F2" && o.link)!.id;
+  expect(policyChanges(before, e())).toEqual({ navigated: [], closed: [b, kept] });
   // Becoming non-private again gives nothing back: access has to be requested again.
   const isPrivate = e();
   setPrivate(e(), ag, personal, false);
@@ -225,7 +227,8 @@ test("an essential shared by two private spaces stays invisible to the agent whe
   ag({ type: "openFavorite", windowId: F, kind: "essential", id: e().essentials[0]!.id });
   const before = e();
   setPrivate(e(), ag, bank.id, false);
-  expect(tabInfos(e()).map((o) => o.url)).not.toContain("https://mail.google.com/");
+  // (The other window keeps the essential loaded in its non-private space: a tab of its own, which the agent sees.)
+  expect(tabInfos(e()).map((o) => o.id)).not.toContain(gmail);
   expect(activeTabOf(e(), F)).toBeNull();
   // Nothing new for the policy: the tab was never readable.
   expect(policyChanges(before, e())).toEqual({ navigated: [], closed: [] });

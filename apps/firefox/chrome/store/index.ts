@@ -4,6 +4,7 @@ import { privateTab, tabProfile, profilesInUse } from "../../shared/model";
 import type { ReportedError } from "../../shared/telemetry";
 import { checkDataFormat } from "../../core/state/format";
 import { loadSession, SessionRecorder } from "../../core/state/persistence";
+import { withEssentials } from "../../core/state/actions";
 import { bridgeHandlers, sendMirror, trackState } from "../agent/bridge";
 import { createHost, HOST_EXITED, type AgentHost } from "../agent/host";
 import { readHtml, readPage } from "../agent/invisible";
@@ -179,7 +180,7 @@ async function start(): Promise<WebAiOsStore> {
   // The agent components' copies too.
   await IOUtils.remove(PathUtils.join(dataDir, "webaios-components"), { recursive: true, ignoreAbsent: true }).catch((e) => console.warn("[actions] copies not erfacées :", e));
   let setAside: string | null = null;
-  const store = createStore(await loadSession(dataDir, (p) => (setAside = p)).then((s) => (Services.env.get("WEBAIOS_SKIP_WELCOME") === "1" ? { ...s, settings: { ...s.settings, onboarded: true, seenVersion: s.settings.seenVersion ?? __WEBAIOS_VERSION__ } } : s)));
+  const store = createStore(await loadSession(dataDir, (p) => (setAside = p)).then((s) => (Services.env.get("WEBAIOS_SKIP_WELCOME") === "1" ? { ...s, settings: { ...s.settings, onboarded: true, seenVersion: s.settings.seenVersion ?? __WEBAIOS_VERSION__ } } : s)).then((s) => withEssentials(s)));
   const questions = new Questions(store, () => sites.forAgent(), () => apps.forAgent());
   // A site app or agent app window closed: the agent's questions on it fall.
   sites.onClosed(() => questions.dropStale());

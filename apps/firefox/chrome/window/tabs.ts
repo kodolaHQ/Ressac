@@ -201,9 +201,12 @@ export class TabSync {
     // Gone, or now in another container: the page reopens from scratch at the same URL.
     for (const [id, tab] of [...this.tabs]) {
       const o = state.tabs[id];
-      if (!o || this.containerOf(state, o) !== tab.userContextId) this.remove(id, tab);
+      if (!o || o.unloaded || this.containerOf(state, o) !== tab.userContextId) this.remove(id, tab);
     }
     if (web && !this.tabs.has(web.id)) this.create(state, web);
+    // Essentials stay loaded: their pages load in the background, without waiting to be shown.
+    for (const o of Object.values(state.tabs))
+      if (o.windowId === this.windowId && o.link?.type === "essential" && hasView(o.url) && !o.crashed && !o.error && !o.unloaded && !this.tabs.has(o.id)) this.create(state, o);
     // A crashed or failed page is replaced by the UI's message.
     const target = web && !web.crashed && !web.error ? this.tabs.get(web.id) : this.parking;
     if (this.gBrowser.selectedTab !== target) this.select(() => (this.gBrowser.selectedTab = target));
@@ -230,6 +233,8 @@ export class TabSync {
         : Services.scriptSecurityManager.getSystemPrincipal();
       const tab = this.gBrowser.addTab(o.url, { triggeringPrincipal, userContextId, skipAnimation: true });
       tab.setAttribute(TAB_ID, o.id);
+      // Firefox never unloads an essential to free memory.
+      if (o.link?.type === "essential") tab.undiscardable = true;
       this.tabs.set(o.id, tab);
     } finally {
       this.creating = false;

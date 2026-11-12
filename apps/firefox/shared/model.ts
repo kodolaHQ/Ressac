@@ -103,6 +103,8 @@ export interface Tab {
   playback?: "playing" | "paused" | null;
   /** The tab uses the camera or the microphone while another tab is shown (the sidebar's call bar); volatile, never saved. */
   call?: { mic: boolean; camera: boolean };
+  /** An essential unloaded by the user: its page is closed until the essential is opened again; volatile, never saved. */
+  unloaded?: boolean;
 }
 
 /** Persistent favorite displayed in the sidebar even without an open tab (Arc/Zen model). */

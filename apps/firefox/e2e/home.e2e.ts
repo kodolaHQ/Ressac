@@ -360,7 +360,8 @@ describe("the home page", () => {
 
   it("a widget link only opens after a real press, never at load nor by a simulated click", async () => {
     await waitUi(m, `return !!doc.querySelector('[data-testid="widget-lien"] iframe')?.contentDocument?.getElementById("go");`, [], 15_000);
-    const urls = async () => Object.values((await state(m)).tabs).map((o) => o.url);
+    // Opened tabs only: an essential keeps its own loaded.
+    const urls = async () => Object.values((await state(m)).tabs).filter((o) => !o.link).map((o) => o.url);
     // The load's send: no gesture, no tab.
     await new Promise((r) => setTimeout(r, 2000));
     expect((await urls()).filter((u) => u.includes("exemple.invalid"))).toEqual([]);

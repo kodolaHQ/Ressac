@@ -41,5 +41,8 @@ test("walkableTabs: bar order, closed pinned absent, essential first, other spac
   const other = e.windows[0]!.activeSpace;
   expect(other).not.toBe(firstSpace);
   const z = open("https://z.fr");
-  expect(walkableTabs(e, F)).toEqual([z]);
+  // The essential keeps a tab of its own for this other login profile.
+  const essHere = Object.values(e.tabs).find((o) => o.link && o.spaceId === other)!.id;
+  expect(essHere).not.toBe(ess);
+  expect(walkableTabs(e, F)).toEqual([essHere, z]);
 });

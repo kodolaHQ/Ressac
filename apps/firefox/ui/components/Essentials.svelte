@@ -15,7 +15,7 @@
   let over = $state<string | null>(null);
 
   /** The icon of the essential's open tab in this window, which the site changes (unread count). */
-  const live = (f: Favorite) => Object.values(appState.value?.tabs ?? {}).find((t) => t.link?.id === f.id && t.windowId === win.id)?.favicon;
+  const tabOf = (f: Favorite) => Object.values(appState.value?.tabs ?? {}).find((t) => t.link?.id === f.id && t.windowId === win.id);
 
   function open(f: Favorite) {
     api.dispatch({ type: "openFavorite", windowId: win.id, kind: "essential", id: f.id });
@@ -43,6 +43,7 @@
       data-testid="favorite-{favorite.id}"
       class:active={favorite.id === active}
       class:over={favorite.id === over}
+      class:unloaded={tabOf(favorite)?.unloaded}
       title={favorite.title}
       draggable="true"
       ondragstart={(e) => e.dataTransfer?.setData(MOVE, favorite.id)}
@@ -62,9 +63,13 @@
       }}
       onclick={(e) => e.button === 0 && open(favorite)}
       onkeydown={(e) => (e.key === "Enter" || e.key === " ") && open(favorite)}
-      oncontextmenu={(e) => openMenu(e, [{ label: "Retirer", dispatch: () => api.dispatch({ type: "removeEssential", favoriteId: favorite.id }) }])}
+      oncontextmenu={(e) =>
+        openMenu(e, [
+          ...(tabOf(favorite) && !tabOf(favorite)?.unloaded ? [{ label: "Décharger", dispatch: () => api.dispatch({ type: "unloadEssential", windowId: win.id, favoriteId: favorite.id }) }] : []),
+          { label: "Retirer", dispatch: () => api.dispatch({ type: "removeEssential", favoriteId: favorite.id }) },
+        ])}
     >
-      <SiteIcon favicon={live(favorite) ?? favorite.favicon} title={favorite.title} size={large ? 32 : 18} />
+      <SiteIcon favicon={tabOf(favorite)?.favicon ?? favorite.favicon} title={favorite.title} size={large ? 32 : 18} />
     </div>
   {/each}
 </div>
@@ -72,7 +77,9 @@
 <style>
   .essentials { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; min-height: 8px; }
   .essentials.large { grid-template-columns: repeat(auto-fill, 64px); justify-content: center; gap: 12px; }
-  .cell { display: grid; place-content: center; height: 44px; border-radius: 12px; background: color-mix(in srgb, var(--glass-hi) 60%, transparent); box-shadow: inset 0 0 0 1px var(--glass-edge); transition: transform var(--tap), background var(--tap), box-shadow var(--tap); }
+  .cell { display: grid; place-content: center; height: 44px; border-radius: 12px; background: color-mix(in srgb, var(--glass-hi) 60%, transparent); box-shadow: inset 0 0 0 1px var(--glass-edge); transition: transform var(--tap), background var(--tap), box-shadow var(--tap), opacity var(--tap); }
+  /* Unloaded by the user: dimmed until opened again. */
+  .cell.unloaded { opacity: 0.45; }
   .cell:hover { background: var(--glass-hi); }
   .cell:active { transform: scale(0.97); }
   .large .cell { height: 64px; border-radius: 16px; }
