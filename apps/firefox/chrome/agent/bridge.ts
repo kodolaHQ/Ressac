@@ -2,7 +2,7 @@ import { navigationOutsideSite, TabNotFound, PrivateTab, type DevRight, type Tab
 import type { BrowserState, WindowId, Tab } from "../../shared/model";
 import { privateTab, WORKFLOW_PREFIX, AGENT_PROFILE } from "../../shared/model";
 import { ENGINES } from "../../core/url";
-import { policyChanges, tabInfos, activeTabOf, appTab, siteTab, originOf, SITE_PREFIX, resolveSpace } from "../../core/agent/bridge";
+import { boundLinks, policyChanges, tabInfos, activeTabOf, appTab, siteTab, originOf, SITE_PREFIX, resolveSpace } from "../../core/agent/bridge";
 import type { Handler } from "../../shared/rpc";
 import type { AgentApps } from "../store/apps";
 import type { DevTools } from "../store/devtools";
@@ -18,9 +18,6 @@ const XHTML = "http://www.w3.org/1999/xhtml";
 const APP_PREFIX = "app:";
 /** As the page actor. */
 const TEXT_MAX = 100_000;
-const LINKS_MAX = 500;
-/** A longer address is dropped, not cut: a cut address is a wrong one. */
-const LINK_URL_MAX = 500;
 
 const internal = (o: Tab) => o.url.startsWith("webaios:");
 
@@ -109,10 +106,7 @@ export function bridgeHandlers(
     // The child runs in a web process: its answer is not trusted.
     const text = String(r?.text ?? "").slice(0, TEXT_MAX);
     const selection = String(r?.selection ?? "").slice(0, TEXT_MAX);
-    const links = (Array.isArray(r?.links) ? r.links : [])
-      .slice(0, LINKS_MAX)
-      .map((l: any) => ({ text: String(l?.text ?? "").slice(0, 80), url: String(l?.url ?? "") }))
-      .filter((l: { url: string }) => l.url.length <= LINK_URL_MAX && URL.canParse(l.url) && /^https?:$/.test(new URL(l.url).protocol));
+    const links = boundLinks(r?.links);
     return selection ? { text: text, selection, links } : { text: text, links };
   };
   const snapshot = async (browser: any, win: Window) => {
@@ -149,7 +143,7 @@ export function bridgeHandlers(
     activeTab: ([win]: [WindowId?] = []) => activeTabOf(store.state, win ?? windows.active()),
     listTabs: () => [...tabInfos(store.state), ...apps.forAgent().map(appTab), ...sites.forAgent().map(siteTab)],
     openTab: openTab,
-    navigate: ([id, url]: [string, string]) => {
+    navigate: async ([id, url]: [string, string]) => {
       if (id.startsWith(SITE_PREFIX)) {
         if (!sites.viewFor(id.slice(SITE_PREFIX.length))) throw new TabNotFound(id);
         // Never a tab instead: off the app's domains nothing loads (the kernel checked it already).
@@ -165,16 +159,16 @@ export function bridgeHandlers(
         return;
       }
       tab(id);
-      windowOf(id).controller.navigateForAgent(id, url);
+      await windowOf(id).controller.navigateForAgentLoaded(id, url);
     },
     // The agent's search tab, in its own login profile; `reuse`: that tab goes to the new address instead.
-    "search.open": ([win, target, reuse]: [WindowId | undefined, { query: string } | { url: string }, string?]) => {
+    "search.open": async ([win, target, reuse]: [WindowId | undefined, { query: string } | { url: string }, string?]) => {
       const template = Services.env.get("WEBAIOS_TEST_SEARCH_URL") || ENGINES[store.state.settings.engine];
       const url = "query" in target ? template.replace("%s", encodeURIComponent(target.query)) : target.url;
       const engineOrigin = new URL(template.replace("%s", "")).origin;
       if (reuse !== undefined && store.state.tabs[reuse]) {
         tab(reuse);
-        windowOf(reuse).controller.navigateForAgent(reuse, url);
+        await windowOf(reuse).controller.navigateForAgentLoaded(reuse, url);
         return { ...tabInfos(store.state).find((o) => o.id === reuse)!, engineOrigin };
       }
       return { ...openTabIn(win, url, undefined, { profile: AGENT_PROFILE }), engineOrigin };

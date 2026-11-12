@@ -16,7 +16,7 @@ import type { MemoryContent } from "../sites/memory.js";
 import type { DevRight, AccessPolicy } from "../access/policy.js";
 import { registerDevTools, type ProfileFiles } from "./devtools.js";
 import { registerExtensionsTools, type ExtensionsTools } from "./extensions.js";
-import { STOP_TEXT, type SearchSessions } from "../search/sessions.js";
+import { STOP_TEXT, CLOSED_TEXT, type SearchSessions } from "../search/sessions.js";
 import { TabNotFound, PrivateTab, PRIVATE_TEXT, type TabInfo, type BrowserDevTools, type BrowserBridge, type HistoryResult } from "./bridge.js";
 
 export const UNREAD_ADDRESS_TEXT = "Adresse non lue dans cette recherche : tu ne peux suivre que les liens des pages lues ici.";
@@ -276,7 +276,7 @@ function createToolsServer(
   actions?: OptionsActions,
   toolSites?: SitesTools,
   beatMs?: number,
-  searching?: { sessions: SearchSessions; settleMs: number },
+  searching?: { sessions: SearchSessions; settleMs: number; chains: Map<string, Promise<unknown>> },
 ): McpServer {
   const server = new McpServer({ name: "webaios", version: "0.1.0" });
 
@@ -343,31 +343,36 @@ function createToolsServer(
 
   /**
    * Reads the search tab, repeating every `settleMs` until two reads in a row give the same, non-zero number of links
-   * (results can come late), 5 s at most. Every link read becomes free to follow, whether or not it is shown.
-   * shortcut: a page with no link at all waits the 5 s, when a real « no result » page is worth one.
+   * (results can come late), or three give none (a « no result » page), 5 s at most. Every link read becomes free to
+   * follow, whether or not it is shown. Stopped or closed meanwhile: the answer says so and nothing is kept.
    */
-  async function readSearch(o: TabInfo, withLinks: boolean, label: string, head: string[] = []): Promise<Result> {
+  async function readSearch(key: string, o: TabInfo, withLinks: boolean, label: string, head: string[] = []): Promise<Result> {
     const sessions = searching!.sessions;
     const r = await sessions.step(o.id, label, async () => {
       const end = Date.now() + SETTLE_MAX_MS;
       let last = -1;
+      let zeros = 0;
       for (;;) {
         const read = await working(o.id, () => bridge.readText(o.id));
+        if (!sessions.owns(o.id)) return sessions.takeStop(key, o.id) ? STOP_TEXT : CLOSED_TEXT;
         const n = read.links?.length ?? 0;
-        if ((n > 0 && n === last) || Date.now() >= end) return read;
+        zeros = n === 0 ? zeros + 1 : 0;
+        if ((n > 0 && n === last) || zeros >= 3 || Date.now() >= end) return read;
         last = n;
         await new Promise((ok) => setTimeout(ok, searching!.settleMs));
       }
     });
+    if (typeof r === "string") return text(r);
     const now = (await bridge.listTabs()).find((x) => x.id === o.id) ?? o;
     sessions.pageRead(o.id, now.url, (r.links ?? []).map((l) => l.url));
     return present(now, r, withLinks, head);
   }
 
   async function content(o: TabInfo, withLinks = false): Promise<Result> {
+    if (searching?.sessions.takeStop(win ?? MAIN_WINDOW, o.id)) return text(STOP_TEXT);
     if (searching?.sessions.owns(o.id)) {
       searching.sessions.log(o.id, { tool: "read_tab" });
-      return readSearch(o, withLinks, "Lecture de la page");
+      return readSearch(win ?? MAIN_WINDOW, o, withLinks, "Lecture de la page");
     }
     if (!(await access(o))) return text(DENIAL_TEXT);
     return present(o, await working(o.id, () => bridge.readText(o.id)), withLinks);
@@ -442,6 +447,7 @@ function createToolsServer(
     { description: "Change l'URL d'un onglet, ou recharge une démo.", inputSchema: { id: z.string(), url: z.string() } },
     protect(async ({ id, url }) => {
       if (!urlWeb(url)) return text(`URL refusée (http ou https uniquement) : ${url}`, true);
+      if (searching?.sessions.takeStop(win ?? MAIN_WINDOW, id)) return text(STOP_TEXT);
       const o = await tab(id);
       if (searching?.sessions.owns(id)) {
         // The search tab follows links only: an address read on a page of this search.
@@ -545,13 +551,19 @@ function createToolsServer(
       },
       protect(async ({ query, goal }) => {
         const key = win ?? MAIN_WINDOW;
-        if (sessions.takeStop(key)) return text(STOP_TEXT);
-        const current = sessions.current(key);
-        const o = await search.open(win ?? undefined, { query }, current?.tabId);
-        sessions.setEngineOrigin(o.engineOrigin);
-        if (!current) sessions.start(key, o.id, goal?.trim() || query);
-        sessions.log(o.id, { tool: "search_web", query });
-        return readSearch(o, true, `Recherche : ${query}`, [`Onglet : ${o.id}`]);
+        // One search_web at a time per window: a parallel one finds the search the first started and reuses its tab.
+        const previous = searching.chains.get(key) ?? Promise.resolve();
+        const mine = previous.catch(() => {}).then(async () => {
+          if (sessions.takeStop(key)) return text(STOP_TEXT);
+          const current = sessions.current(key);
+          const o = await search.open(win ?? undefined, { query }, current?.tabId);
+          sessions.setEngineOrigin(o.engineOrigin);
+          if (!current) sessions.start(key, o.id, goal?.trim() || query);
+          sessions.log(o.id, { tool: "search_web", query });
+          return readSearch(key, o, true, `Recherche : ${query}`, [`Onglet : ${o.id}`]);
+        });
+        searching.chains.set(key, mine);
+        return mine;
       }),
     );
   }
@@ -1016,6 +1028,7 @@ export async function startMcpServer(o: {
   // a window (ids only).
   const sessions = new Map<string, { token: Buffer; window: string; agent?: string }>();
   const requests: OngoingRequests = new Map();
+  const chains = new Map<string, Promise<unknown>>();
   const dev: DevToolsOptions = {
     agent: o.agent ?? "L'agent",
     profiles: o.profiles ?? MISSING_PROFILES,
@@ -1033,7 +1046,7 @@ export async function startMcpServer(o: {
     const named = who.agent ? { ...dev, agent: who.agent } : dev;
     if (new URL(req.url ?? "/", "http://x").pathname !== "/mcp") return res.writeHead(404).end();
     // Stateless mode: a new server and transport per request.
-    const server = createToolsServer(o.bridge, o.policy, requests, o.apps, o.appTabDelayMs, named, widgets && who.agent ? { ...widgets, agent: who.agent } : widgets, win, o.openWorkflow, o.extensions, actions && who.agent ? { ...actions, agent: who.agent } : actions, o.sites, o.heartbeatMs, o.search ? { sessions: o.search, settleMs: o.settleMs ?? 500 } : undefined);
+    const server = createToolsServer(o.bridge, o.policy, requests, o.apps, o.appTabDelayMs, named, widgets && who.agent ? { ...widgets, agent: who.agent } : widgets, win, o.openWorkflow, o.extensions, actions && who.agent ? { ...actions, agent: who.agent } : actions, o.sites, o.heartbeatMs, o.search ? { sessions: o.search, settleMs: o.settleMs ?? 500, chains } : undefined);
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on("close", () => {
       void transport.close();

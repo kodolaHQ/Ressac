@@ -29,6 +29,8 @@ export interface WindowController {
    * way when TabSync creates its XUL tab.
    */
   navigateForAgent(tabId: TabId, url: string): void;
+  /** As `navigateForAgent`, resolved once the new address has finished loading (15 s at most): a read after it never sees the previous page. */
+  navigateForAgentLoaded(tabId: TabId, url: string): Promise<void>;
   /** The browser of a tab for the agent, its XUL tab created in the background if needed and loaded (TabSync.ensure). */
   ensure(tabId: TabId): Promise<any>;
   command(tabId: TabId, c: "back" | "forward" | "reload" | "reloadHard" | "stop"): void;
@@ -416,6 +418,12 @@ export function createController(
       if (!tab) return void store.dispatch({ type: "updateTab", id: tabId, fields: { url } });
       const triggeringPrincipal = Services.scriptSecurityManager.createContentPrincipal(uri, { userContextId: tab.userContextId });
       tab.linkedBrowser.loadURI(uri, { triggeringPrincipal });
+    },
+    async navigateForAgentLoaded(tabId, url) {
+      const browser = tabs.tab(tabId)?.linkedBrowser;
+      const loaded = browser ? tabs.nextLoad(browser) : Promise.resolve();
+      controller.navigateForAgent(tabId, url);
+      await loaded;
     },
     ensure: (tabId) => tabs.ensure(tabId),
     command(tabId, c) {

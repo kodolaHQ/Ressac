@@ -3,7 +3,7 @@ import { apply } from "../../core/state/actions";
 import { initialState } from "../../core/state/initial-state";
 import type { Action } from "../../shared/api";
 import { siteOf, type BrowserState } from "../../shared/model";
-import { waitForRights, waitForResponse, policyChanges, allowedDecision, spacesBecamePrivate, tabInfos, activeTabOf, siteTab, SITE_PREFIX, staleQuestion, staleSiteQuestion, resolveSpace } from "../../core/agent/bridge";
+import { waitForRights, waitForResponse, policyChanges, allowedDecision, spacesBecamePrivate, tabInfos, activeTabOf, siteTab, SITE_PREFIX, staleQuestion, staleSiteQuestion, resolveSpace, boundLinks } from "../../core/agent/bridge";
 
 /** Sets a space's private flag, leaving the rest untouched. */
 function setPrivate(e: BrowserState, ag: (a: Action) => unknown, id: string, isPrivate: boolean) {
@@ -334,4 +334,12 @@ test("staleQuestion: a site-app window is not a closed tab (tracked separately)"
   const { e, F } = prepare();
   const dev = { id: "d", tabId: null, windowId: F, target: "site:vidola", origin: "https://vidola-a.example", permissions: ["devtools" as const], rights: ["console" as const] };
   expect(staleQuestion(dev, e())).toBe(false);
+});
+
+test("boundLinks drops a link whose address is over 500 characters (never cuts it), and non-web ones", () => {
+  const long = `https://exemple.fr/${"a".repeat(500)}`;
+  const ok = `https://exemple.fr/${"a".repeat(481)}`;
+  expect(ok).toHaveLength(500);
+  const links = boundLinks([{ text: "long", url: long }, { text: "ok", url: ok }, { text: "js", url: "javascript:alert(1)" }, { text: "x" }]);
+  expect(links).toEqual([{ text: "ok", url: ok }]);
 });

@@ -202,3 +202,14 @@ export function staleSiteQuestion(d: PendingRequest, opened: { id: string; url: 
 export function appTab(a: { folder: string; title: string; url: string }): TabInfo {
   return { id: APP_PREFIX + a.folder, title: a.title, url: a.url, space: "", app: a.folder };
 }
+
+const LINKS_MAX = 500;
+/** A longer address is dropped, not cut: a cut address is a wrong one. */
+const LINK_URL_MAX = 500;
+/** The links of a page as the agent gets them: from a web process, so bounded and checked (http(s) only). */
+export function boundLinks(raw: unknown): { text: string; url: string }[] {
+  return (Array.isArray(raw) ? raw : [])
+    .slice(0, LINKS_MAX)
+    .map((l: any) => ({ text: String(l?.text ?? "").slice(0, 80), url: String(l?.url ?? "") }))
+    .filter((l) => l.url.length <= LINK_URL_MAX && URL.canParse(l.url) && /^https?:$/.test(new URL(l.url).protocol));
+}

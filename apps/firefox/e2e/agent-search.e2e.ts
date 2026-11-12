@@ -46,8 +46,8 @@ const idOf = (text: string) => /Onglet : (\S+)/.exec(text)![1]!;
 it("search_web opens an agent tab on the engine, active, in the agent's profile, and returns the links", async () => {
   const r = (await callTool(w.dataDir, "search_web", { query: "vélo électrique", goal: "trouver un vélo" })).text;
   expect(r).toContain("Résultats de la recherche.");
-  expect(r).toContain(`Annonce — ${server.url}/a.html`);
-  expect(r).toContain(`Autre — ${server.url}/b.html`);
+  expect(r).toContain(`Annonce — ${server.url}/a.html?q=${encodeURIComponent("vélo électrique")}`);
+  expect(r).toContain(`Autre — ${server.url}/b.html?q=${encodeURIComponent("vélo électrique")}`);
   const s = await state(m);
   const tab = s.tabs[idOf(r)]!;
   expect(tab.profile).toBe("agent");
@@ -65,11 +65,21 @@ it("a search_web navigate follows a result in the same tab without activating it
   const active = before.active[before.activeSpace];
   expect(active).not.toBe(id);
   expect((await callTool(w.dataDir, "navigate", { id, url: "https://ailleurs.example/" })).text).toContain("Adresse non lue");
-  await callTool(w.dataDir, "navigate", { id, url: `${server.url}/b.html` });
-  await titleOf(`${server.url}/b.html`);
+  await callTool(w.dataDir, "navigate", { id, url: `${server.url}/b.html?q=x` });
+  await titleOf(`${server.url}/b.html?q=x`);
   const after = await state(m);
-  expect(after.tabs[id]!.url).toBe(`${server.url}/b.html`);
+  expect(after.tabs[id]!.url).toBe(`${server.url}/b.html?q=x`);
   expect(after.windows[0]!.active[after.windows[0]!.activeSpace]).toBe(active);
+});
+
+it("a second search_web returns the second page, never the first", async () => {
+  const first = (await callTool(w.dataDir, "search_web", { query: "alpha" })).text;
+  expect(first).toContain("Requête : alpha");
+  const second = (await callTool(w.dataDir, "search_web", { query: "beta" })).text;
+  expect(idOf(second)).toBe(idOf(first));
+  expect(second).toContain("Requête : beta");
+  expect(second).toContain("/a.html?q=beta");
+  expect(second).not.toContain("alpha");
 });
 
 it("late results are returned", async () => {

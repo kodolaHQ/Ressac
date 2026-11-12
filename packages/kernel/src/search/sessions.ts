@@ -30,7 +30,8 @@ function norm(u: string): string {
 export class SearchSessions {
   private byWindow = new Map<string, Search>();
   private byTab = new Map<string, Search>();
-  private stopped = new Set<string>();
+  /** Windows whose search the user stopped, with the tab that was its search tab. */
+  private stopped = new Map<string, string>();
   private engineOrigin = "";
   private readonly now: () => number;
   private readonly idleMs: number;
@@ -57,7 +58,11 @@ export class SearchSessions {
 
   owns(tabId: string): boolean { return this.byTab.has(tabId); }
 
-  takeStop(window: string): boolean { return this.stopped.delete(window); }
+  /** True once after a stop, for a call in `window` (about the former search tab `tabId`, if given; another tab does not consume it). */
+  takeStop(window: string, tabId?: string): boolean {
+    const t = this.stopped.get(window);
+    return t !== undefined && (tabId === undefined || tabId === t) && this.stopped.delete(window);
+  }
 
   async step<T>(tabId: string, text: string, f: () => Promise<T>): Promise<T> {
     const s = this.byTab.get(tabId);
@@ -132,7 +137,7 @@ export class SearchSessions {
   stop(tabId: string): void {
     const s = this.byTab.get(tabId);
     if (!s) return;
-    this.stopped.add(s.window);
+    this.stopped.set(s.window, s.tabId);
     this.end(s, "stop");
   }
 

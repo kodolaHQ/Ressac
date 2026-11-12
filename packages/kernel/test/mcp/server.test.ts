@@ -1494,3 +1494,48 @@ test("after stop, the next search tool answers STOP_TEXT once", async () => {
     expect((await call("search_web", { query: "y" })).text).toContain("Onglet : search-2");
   });
 });
+
+test("after stop, read_tab or navigate on the former search tab answers STOP_TEXT once, with no card; another tab does not consume it", async () => {
+  await withSearch(async ({ call, search, fake }) => {
+    await call("search_web", { query: "x" });
+    search.stop("search-1");
+    expect((await call("read_tab", { id: "github" })).text).toBe(DENIAL_TEXT);
+    expect((await call("read_tab", { id: "search-1" })).text).toBe(STOP_TEXT);
+    expect(fake.calls.filter((x) => x.method === "askPermission")).toHaveLength(1); // github's only
+    expect((await call("navigate", { id: "search-1", url: "https://exemple.fr/a" })).text).not.toBe(STOP_TEXT); // once: now the ordinary rules
+  });
+});
+
+test("two search_web started together open one tab and both answer", async () => {
+  await withSearch(async ({ call, fake }) => {
+    const [r1, r2] = await Promise.all([call("search_web", { query: "un" }), call("search_web", { query: "deux" })]);
+    expect(r1.isError || r2.isError).toBe(false);
+    expect(r1.text).toContain("Onglet : search-1");
+    expect(r2.text).toContain("Onglet : search-1");
+    expect(fake.calls.filter((x) => x.method === "search.open").map((x) => x.args[2]).sort()).toEqual(["search-1", undefined]);
+  });
+});
+
+test("a page with no link is returned after three empty reads, not 5 s", async () => {
+  await withSearch(async ({ call, fake }) => {
+    fake.linkSequence = [[]];
+    const t = Date.now();
+    await call("search_web", { query: "x" });
+    expect(Date.now() - t).toBeLessThan(2000);
+    expect(fake.calls.filter((x) => x.method === "readText")).toHaveLength(3);
+  });
+});
+
+test("a stop during the wait for results answers STOP_TEXT and stops reading", async () => {
+  await withSearch(async ({ call, search, fake }) => {
+    fake.linkSequence = Array.from({ length: 80 }, (_, i) => Array.from({ length: i + 1 }, (_, j) => ({ text: "l", url: `https://exemple.fr/${j}` })));
+    const slow = call("search_web", { query: "x" });
+    await vi.waitFor(() => expect(search.owns("search-1")).toBe(true));
+    search.stop("search-1");
+    expect((await slow).text).toBe(STOP_TEXT);
+    const reads = () => fake.calls.filter((x) => x.method === "readText").length;
+    const n = reads();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(reads()).toBe(n);
+  });
+});

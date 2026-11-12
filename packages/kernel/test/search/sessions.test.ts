@@ -262,4 +262,13 @@ describe("SearchSessions", () => {
     expect(s.isFree("t1", "https://f.test/100")).toBe(true);
     expect(s.isFree("t1", "https://f.test/10040")).toBe(false);
   });
+
+  test("takeStop(window, tab) is consumed only by the former search tab, once", () => {
+    const s = new SearchSessions({ show() {} });
+    s.start("w", "t1", "g");
+    s.stop("t1");
+    expect(s.takeStop("w", "other")).toBe(false);
+    expect(s.takeStop("w", "t1")).toBe(true);
+    expect(s.takeStop("w", "t1")).toBe(false);
+  });
 });

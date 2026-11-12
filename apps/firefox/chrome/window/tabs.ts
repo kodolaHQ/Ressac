@@ -159,6 +159,24 @@ export class TabSync {
     return browser;
   }
 
+  /** Resolves when the next top-level load of the browser ends (15 s at most); register it before starting the load. */
+  nextLoad(browser: any): Promise<void> {
+    return new Promise<void>((resolve) => {
+      const listener = {
+        onStateChange: (b: any, progress: any, _request: unknown, flags: number) => {
+          if (b === browser && progress.isTopLevel && flags & STATE_STOP && flags & STATE_IS_NETWORK) done();
+        },
+      };
+      const done = () => {
+        clearTimeout(timer);
+        this.gBrowser.removeTabsProgressListener(listener);
+        resolve();
+      };
+      const timer = setTimeout(done, 15_000);
+      this.gBrowser.addTabsProgressListener(listener);
+    });
+  }
+
   /** The WebAiOs tab displayed in the window, or null when the parking tab is. */
   displayed(): TabId | null {
     return this.gBrowser.selectedTab.getAttribute(TAB_ID);
