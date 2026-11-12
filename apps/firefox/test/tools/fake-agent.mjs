@@ -22,6 +22,8 @@ process.stdin.on("data", (chunk) => {
     if (line === "quit") process.exit(0);
     // What Claude Code sends when its own (mouse) selection is copied: OSC 52 with the text in base64.
     if (line === "osc52") process.stdout.write(`\x1b]52;c;${Buffer.from("copié par l'agent ✓").toString("base64")}\x07`);
+    // A hyperlink (OSC 8) as Claude Code prints its sign-in address; long enough to fill its first row.
+    if (line === "link") process.stdout.write(`\x1b]8;;https://sign-in.invalid/oauth?code=1\x07${"sign-in-link ".repeat(20)}\x1b]8;;\x07\r\n`);
     if (line === "flood") process.stdout.write("x".repeat(80).concat("\r\n").repeat(13_000));
     line = "";
     invite();

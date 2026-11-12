@@ -1,5 +1,5 @@
 import type { TabCycleMessage, Panel, TabsPanel, ShortcutAction } from "../../shared/api";
-import { workflowUrlTarget, historyContext, AGENT_WIDTH_MAX, AGENT_WIDTH_MIN, BAR_WIDTH, type FrameBounds, type BrowserState, type WindowId, type TabId } from "../../shared/model";
+import { workflowUrlTarget, historyContext, AGENT_WIDTH_MAX, AGENT_WIDTH_MIN, type FrameBounds, type BrowserState, type WindowId, type TabId } from "../../shared/model";
 import { auraVariables, DEFAULT_AURA, type AuraId } from "../../shared/aura";
 import { toUrl } from "../../core/url";
 import { createHalo } from "../../core/halo";
@@ -68,6 +68,8 @@ export interface WindowController {
   rememberFocus(): () => void;
   /** Width of the open agent panel while its handle is dragged (the saved width comes back from reglages). */
   setAgentWidth(px: number): void;
+  /** The sidebar's width while its edge is dragged; the state takes it at the drop. */
+  setSidebarWidth(px: number): void;
   /** Opens the agent panel if it is closed (never closes it), gives it the keyboard and tells the UIs ("agent"). */
   openAgent(): void;
   /** Shortcuts the UI handles (⌘T, ⌘L, ⌘W). */
@@ -317,6 +319,9 @@ export function createController(
   // sidebar revealed); its last real position is what counts when it leaves the window.
   let zone: LeftZone | null = null;
   let lastX = Infinity;
+  /** The sidebar's width (px), and whether it holds a column beside the page (not in compact mode). */
+  let barWidth = store.state.settings.sidebarWidth;
+  let columnShown = true;
   const sendZone = (z: LeftZone) => {
     if (z !== zone) for (const cb of leftZoneListeners) cb(z);
   };
@@ -324,13 +329,13 @@ export function createController(
     lastX = e.screenX - window.mozInnerScreenX;
     // On the right, the zones count from the window's right edge.
     if (sideOf(store.state) === "right") lastX = window.innerWidth - lastX;
-    const z = leftZone(lastX);
+    const z = leftZone(lastX, barWidth);
     sendZone(z);
     zone = z;
   };
   const onMouseOut = (e: MouseEvent) => {
     if (e.relatedTarget) return;
-    sendZone(exitZone(lastX));
+    sendZone(exitZone(lastX, barWidth));
     zone = null; // the next move is sent even in the same zone
   };
   window.addEventListener("mousemove", onMouseMove, true);
@@ -371,7 +376,18 @@ export function createController(
   window.CanCloseWindow = () => (quit && !quit.data) || canCloseWindow();
   /** Tabs whose page is being asked: a second ⌘W must not ask again. */
   const asking = new Set<TabId>();
-  let sidebarWidth = BAR_WIDTH;
+  const showSidebarWidth = (px: number) => {
+    barWidth = px;
+    document.documentElement.style.setProperty("--webaios-sidebar-w", `${px}px`);
+    if (columnShown) document.documentElement.style.setProperty("--webaios-sidebar", `${px}px`);
+  };
+  showSidebarWidth(barWidth);
+  // Only on a change of its own, as for the agent panel: an unrelated action keeps a width being dragged.
+  unsubscribe.push(
+    store.subscribe((state, previous) => {
+      if (state.settings.sidebarWidth !== previous.settings.sidebarWidth) showSidebarWidth(state.settings.sidebarWidth);
+    }),
+  );
   for (const id of [...FIREFOX_KEYS, ...FIREFOX_COMMANDS]) document.getElementById(id)?.setAttribute("disabled", "true");
   // The Settings menu items open our page: stopPropagation keeps browser-menubar.js from opening about:preferences.
   for (const id of SETTINGS_MENU_ITEMS) {
@@ -499,15 +515,16 @@ export function createController(
       frame.toggleAttribute("over", full === "window");
     },
     setSidebarColumn(shown) {
-      sidebarWidth = shown ? BAR_WIDTH : 0;
-      document.documentElement.style.setProperty("--webaios-sidebar", `${sidebarWidth}px`);
+      columnShown = shown;
+      document.documentElement.style.setProperty("--webaios-sidebar", `${shown ? barWidth : 0}px`);
     },
     setSidebarVisible(visible) {
       frame.toggleAttribute("folded", !visible);
       // They sit in the sidebar's first row: nothing else is under them.
       document.getElementById("webaios-window-buttons")!.toggleAttribute("hidden", !visible);
     },
-    sidebarWidth: () => sidebarWidth,
+    sidebarWidth: () => (columnShown ? barWidth : 0),
+    setSidebarWidth: showSidebarWidth,
     onLeftZone(cb) {
       leftZoneListeners.add(cb);
       return () => void leftZoneListeners.delete(cb);

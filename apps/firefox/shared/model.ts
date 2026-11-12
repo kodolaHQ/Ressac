@@ -179,6 +179,8 @@ export interface BrowserState {
   settings: { engine: SearchEngine; /** Profil d'agent (fichier .webaios/profiles/<id>.json). */ agentProfile: string;
     /** Width of the agent panel, in pixels (the user sets it by dragging its left edge). */
     agentPanelWidth: number;
+    /** Width of the tab sidebar (px), dragged by its inner edge. */
+    sidebarWidth: number;
     /** The model that decides the workflows' watch notices. */
     decisionModel: DecisionModel;
     /** The engine Codex runs on (account, local Ollama or compatible API). */
@@ -327,8 +329,10 @@ export const AGENT_WIDTH_MAX = 1000;
 export const REVEAL_EDGE = 16;
 /** …or when it leaves the page through the left from this distance: a fast gesture skips the strip. */
 export const LEFT_EXIT = 60;
-/** Width of the sidebar (px), that of its column in App.svelte. */
+/** Default width of the sidebar (px); `settings.sidebarWidth` holds the chosen one, within these bounds. */
 export const BAR_WIDTH = 240;
+export const BAR_WIDTH_MIN = 180;
+export const BAR_WIDTH_MAX = 480;
 /** Once revealed, the bar stays open as long as the mouse does not go beyond its width by more than this margin (px). */
 export const BAR_MARGIN = 40;
 

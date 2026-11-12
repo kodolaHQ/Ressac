@@ -68,6 +68,9 @@ function create(hostName: HTMLElement): void {
     // The agent's TUI picks colours for a dark screen: xterm lifts any that would be unreadable on a light sheet.
     minimumContrastRatio: 4.5,
     theme: palette(),
+    // A link the agent prints (its sign-in address) opens in a tab. xterm's default asks through a confirm() and a
+    // window.open(), which go nowhere in the browser's chrome.
+    linkHandler: { activate: (_e, uri) => api.settings.openUrl(uri) },
   });
   const repaint = () => terminal && (terminal.options.theme = palette());
   new MutationObserver(repaint).observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });

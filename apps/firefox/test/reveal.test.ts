@@ -5,7 +5,7 @@ import { hide, INITIAL_REVEAL, onZone, leftZone, exitZone, type Reveal, type Lef
 function walk(xs: number[], start: Reveal = INITIAL_REVEAL): boolean[] {
   let r = start;
   return xs.map((x) => {
-    const zone = leftZone(x);
+    const zone = leftZone(x, 240);
     const s = onZone(r, zone);
     r = s.hide ? hide(zone) : { revealed: s.revealed, armed: s.armed };
     return r.revealed;
@@ -14,12 +14,15 @@ function walk(xs: number[], start: Reveal = INITIAL_REVEAL): boolean[] {
 
 describe("left edge zones", () => {
   it("edge under 16 px, bar up to 280 px (240 + margin), far beyond", () => {
-    expect([0, 15, 16, 239, 279, 280, 900].map(leftZone)).toEqual<LeftZone[]>(["edge", "edge", "bar", "bar", "bar", "far", "far"]);
+    expect([0, 15, 16, 239, 279, 280, 900].map((x) => leftZone(x, 240))).toEqual<LeftZone[]>(["edge", "edge", "bar", "bar", "bar", "far", "far"]);
+  });
+  it("a wider bar keeps the mouse in its zone up to its own width and the margin", () => {
+    expect([300, 439, 440].map((x) => leftZone(x, 400))).toEqual<LeftZone[]>(["bar", "bar", "far"]);
   });
   it("a fast exit through the left counts as the edge", () => {
-    expect(exitZone(40)).toBe("edge");
-    expect(exitZone(60)).toBe("bar");
-    expect(exitZone(500)).toBe("far");
+    expect(exitZone(40, 240)).toBe("edge");
+    expect(exitZone(60, 240)).toBe("bar");
+    expect(exitZone(500, 240)).toBe("far");
   });
 });
 

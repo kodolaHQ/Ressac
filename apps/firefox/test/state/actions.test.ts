@@ -178,6 +178,18 @@ test("unpinning: the favorite disappears, the linked tab becomes normal again", 
   expect(order()).toEqual([a]);
 });
 
+test("moveEssential puts an essential at the given place; unknown id or same place changes nothing", () => {
+  for (const url of ["https://a.example/", "https://b.example/", "https://c.example/"]) ag({ type: "addEssential", id: open(url) });
+  const [a, b, c] = e.essentials.map((x) => x.id) as [string, string, string];
+  ag({ type: "moveEssential", favoriteId: c, index: 0 });
+  expect(e.essentials.map((x) => x.id)).toEqual([c, a, b]);
+  ag({ type: "moveEssential", favoriteId: c, index: 99 });
+  expect(e.essentials.map((x) => x.id)).toEqual([a, b, c]);
+  ag({ type: "moveEssential", favoriteId: "unknown", index: 0 });
+  ag({ type: "moveEssential", favoriteId: a, index: 0 });
+  expect(e.essentials.map((x) => x.id)).toEqual([a, b, c]);
+});
+
 test("essentials shared by all spaces; removing an essential", () => {
   const a = open("https://mail.google.com/");
   ag({ type: "addEssential", id: a });
@@ -583,6 +595,16 @@ test("agentPanelWidth: 420 by default, kept, clamped between 280 and 1000", () =
   expect(e.settings.agentPanelWidth).toBe(280);
   ag({ type: "agentPanelWidth", width: 5000 });
   expect(e.settings.agentPanelWidth).toBe(1000);
+});
+
+test("sidebarWidth: 240 by default, kept, clamped between 180 and 480", () => {
+  expect(e.settings.sidebarWidth).toBe(240);
+  ag({ type: "sidebarWidth", width: 312.4 });
+  expect(e.settings.sidebarWidth).toBe(312);
+  ag({ type: "sidebarWidth", width: 50 });
+  expect(e.settings.sidebarWidth).toBe(180);
+  ag({ type: "sidebarWidth", width: 5000 });
+  expect(e.settings.sidebarWidth).toBe(480);
 });
 
 test("openApps reuses the window's existing tab", () => {

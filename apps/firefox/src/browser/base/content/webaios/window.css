@@ -135,7 +135,7 @@
   top: 0;
   left: 0;
   height: 100%;
-  width: 240px;
+  width: var(--webaios-sidebar-w, 240px);
   border: none;
   /* Above #tabbrowser-tabbox (z-index 2 in Firefox), for painting and for the mouse. */
   z-index: 3;
@@ -200,6 +200,18 @@
 :root[webaios-main] #webaios-agent[hidden] {
   display: inline;
   visibility: hidden;
+}
+
+/* The strip of aura above the page moves the window, like a title bar: between the sidebar and the agent panel, whose
+   own documents set their drag areas. */
+:root[webaios-main] body::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 8px;
+  -moz-window-dragging: drag;
 }
 
 :root[webaios-main] #tabbrowser-tabbox {
@@ -290,7 +302,7 @@
    the left, the design cart still between the page and the agent. The window buttons keep their place in the sidebar's
    first row, which stays the window's drag area. */
 :root[webaios-main][webaios-sidebar-side="right"] #webaios-window-buttons {
-  left: calc(100% - 224px);
+  left: calc(100% - var(--webaios-sidebar-w, 240px) + 16px);
 }
 :root[webaios-main][webaios-sidebar-side="right"] #webaios-sidebar {
   left: auto;

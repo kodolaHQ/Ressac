@@ -8,6 +8,8 @@ import {
   spaceKey,
   AGENT_WIDTH_MAX,
   AGENT_WIDTH_MIN,
+  BAR_WIDTH_MAX,
+  BAR_WIDTH_MIN,
   actionOfUrl,
   WORKFLOW_ACTION_PREFIX,
   URL_ACTIONS,
@@ -382,6 +384,13 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       unlink(d, a.favoriteId);
       return true;
     }
+    case "moveEssential": {
+      const from = d.essentials.findIndex((x) => x.id === a.favoriteId);
+      const to = Math.max(0, Math.min(a.index, d.essentials.length - 1));
+      if (from < 0 || from === to) return false;
+      d.essentials.splice(to, 0, ...d.essentials.splice(from, 1));
+      return true;
+    }
     case "addFavorites": {
       const space = a.spaceId === undefined ? null : d.spaces.find((e) => e.id === a.spaceId);
       if (space === undefined || space?.private) return false;
@@ -591,6 +600,12 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
     case "setSidebarSide": {
       if (d.settings.sidebarSide === a.side) return false;
       d.settings.sidebarSide = a.side;
+      return true;
+    }
+    case "sidebarWidth": {
+      const width = Math.round(Math.min(BAR_WIDTH_MAX, Math.max(BAR_WIDTH_MIN, a.width)));
+      if (d.settings.sidebarWidth === width) return false;
+      d.settings.sidebarWidth = width;
       return true;
     }
     case "agentPanelWidth": {

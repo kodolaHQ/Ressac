@@ -1,4 +1,4 @@
-import { REVEAL_EDGE, BAR_WIDTH, BAR_MARGIN, LEFT_EXIT } from "./model";
+import { REVEAL_EDGE, BAR_MARGIN, LEFT_EXIT } from "./model";
 
 /**
  * Compact mode: where the mouse is relative to the window's left edge. « bord » reveals the bar, « barre »
@@ -6,15 +6,15 @@ import { REVEAL_EDGE, BAR_WIDTH, BAR_MARGIN, LEFT_EXIT } from "./model";
  */
 export type LeftZone = "edge" | "bar" | "far";
 
-/** Mouse zone at `x` px from the window's left edge. */
-export function leftZone(x: number): LeftZone {
+/** Mouse zone at `x` px from the window's left edge, for a bar `bar` px wide. */
+export function leftZone(x: number, bar: number): LeftZone {
   if (x < REVEAL_EDGE) return "edge";
-  return x < BAR_WIDTH + BAR_MARGIN ? "bar" : "far";
+  return x < bar + BAR_MARGIN ? "bar" : "far";
 }
 
 /** Zone of a mouse leaving a surface (page, UI) after last being seen at `x`: a fast gesture to the left counts as the edge. */
-export function exitZone(x: number): LeftZone {
-  return x < LEFT_EXIT ? "edge" : leftZone(x);
+export function exitZone(x: number, bar: number): LeftZone {
+  return x < LEFT_EXIT ? "edge" : leftZone(x, bar);
 }
 
 export interface Reveal {

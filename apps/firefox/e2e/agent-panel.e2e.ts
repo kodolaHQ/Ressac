@@ -76,6 +76,8 @@ it("the home page's panel runs the real CLI with the session's MCP config", asyn
   await terminalShows("fake agent ready>");
   expect(JSON.parse(read(join(w!.dataDir, "workspace", "fake-agent-args.json")))).toEqual([
     "claude",
+    "--disallowedTools",
+    "WebSearch,WebFetch",
     "--dangerously-skip-permissions",
     "--mcp-config",
     expect.stringMatching(SESSION_CONFIG),
@@ -533,6 +535,32 @@ it("text the agent copies itself (OSC 52, Claude Code's mouse selection) reaches
   await homeAgent();
   await send("osc52");
   await expect.poll(clipboardText, { timeout: 5_000 }).toBe("copié par l'agent ✓");
+});
+
+it("sites get the engine's plain Firefox user agent, with no WebAiOs token (WhatsApp Web refuses it)", async () => {
+  await launch();
+  const ua = await m.execute<string>(`return Cc["@mozilla.org/network/protocol;1?name=http"].getService(Ci.nsIHttpProtocolHandler).userAgent`);
+  expect(ua).toMatch(/ Gecko\/20100101 Firefox\/\d+\.\d+$/);
+});
+
+it("a link the agent prints (OSC 8, Claude Code's sign-in address) opens in a tab, with no dialog", async () => {
+  await launch();
+  await homeAgent();
+  await send("link");
+  await terminalShows("sign-in-link sign-in-link");
+  // xterm activates the link under the pointer: a move first, then the press.
+  await inUi(
+    m,
+    `const row = [...doc.querySelectorAll(".xterm-rows > div")].find((e) => e.textContent.startsWith("sign-in-link"));
+     const r = row.getBoundingClientRect();
+     const [x, y] = [r.left + r.width / 2, r.top + r.height / 2];
+     ui.synthesizeMouseEvent("mousemove", x, y, {});
+     await new Promise((r) => setTimeout(r, 300));
+     for (const type of ["mousedown", "mouseup"]) ui.synthesizeMouseEvent(type, x, y, { button: 0, clickCount: 1 });`,
+    [],
+    "agent",
+  );
+  await waitFor(m, "return gBrowser.tabs.some((t) => t.linkedBrowser.currentURI.spec === 'https://sign-in.invalid/oauth?code=1' || t.linkedBrowser.browsingContext?.currentWindowGlobal?.documentURI?.spec.includes('sign-in.invalid'))", (v) => v === true);
 });
 
 it("⌘J: the terminal takes the keyboard back when the window's focus is lost during the slide", async () => {

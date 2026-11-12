@@ -88,9 +88,12 @@ describe("the sidebar's layout", () => {
     await waitUi(m, `return !frame.hasAttribute("full");`);
     const drag = await inUi<Record<string, string>>(
       m,
-      `${DRAGGING} return { allowed: frame.contentWindow.docShell.windowDraggingAllowed, sidebar: of(".bar"), button: of(".navigation button"), address: of(".line"), tabs: of(".scrolling"), footer: of("footer") };`,
+      `${DRAGGING} return { allowed: frame.contentWindow.docShell.windowDraggingAllowed, sidebar: of(".bar"), button: of(".navigation button"), address: of(".line"), tabs: of(".scrolling"), tab: of(".scrolling > *"), footer: of("footer"), margin: of(".column") };`,
     );
-    expect(drag).toEqual({ allowed: true, sidebar: "drag", button: "no-drag", address: "no-drag", tabs: "no-drag", footer: "no-drag" });
+    expect(drag).toEqual({ allowed: true, sidebar: "drag", button: "no-drag", address: "no-drag", tabs: "default", tab: "no-drag", footer: "no-drag", margin: "drag" });
+    // The agent panel's header and the strip above the page move the window too.
+    expect(await inUi(m, `${DRAGGING} return [of("header"), frame.contentWindow.docShell.windowDraggingAllowed];`, [], "agent")).toEqual(["drag", true]);
+    expect(await m.execute(`return [...document.styleSheets].some((s) => { try { return [...s.cssRules].some((r) => r.selectorText?.includes("body::before") && r.cssText.includes("-moz-window-dragging: drag")); } catch { return false; } })`)).toBe(true);
     // The page sits framed on the aura, 8 px from the top and the bottom.
     expect(await m.execute(`const r = gBrowser.selectedBrowser.getBoundingClientRect(); return [r.top, r.height - window.innerHeight];`)).toEqual([8, -16]);
     // Under an overlay the sidebar's area belongs to the overlay.
@@ -281,6 +284,23 @@ describe("WebAiOs sidebar", () => {
     const work = (await win()).activeSpace;
     await waitUi(m, "return doc.querySelector(arguments[0])?.getAttribute('aria-current') === 'true'", [`[data-testid="space-${work}"]`]);
     expect(await count(essentials)).toBe(1);
+  });
+
+  it("dragging an essential onto another reorders the grid and the state; it does not add or open anything", async () => {
+    for (const path of ["/a.html", "/b.html", "/texte.html"]) await dispatch(m, { type: "addEssential", id: await open(path, { activate: false }) });
+    const [a, b, c] = (await state(m)).essentials.map((f) => f.id);
+    await waitUi(m, "return doc.querySelectorAll('[data-testid=\"essentials\"] [draggable=\"true\"]').length === 3");
+    await inUi(
+      m,
+      `const dt = new ui.DataTransfer();
+       dt.setData("application/x-webaios-essentiel", arguments[0]);
+       const target = doc.querySelector('[data-testid="favorite-' + arguments[1] + '"]');
+       for (const type of ["dragover", "drop"]) target.dispatchEvent(new ui.DragEvent(type, { dataTransfer: dt, bubbles: true, cancelable: true }));`,
+      [c, a],
+    );
+    const shown = "return [...doc.querySelectorAll('[data-testid=\"essentials\"] [data-testid^=\"favorite-\"]')].map((e) => e.dataset.testid.slice(9)).join()";
+    await waitUi(m, `${shown} === arguments[0]`.replace("return ", "return (").replace(".join()", ".join())"), [[c, a, b].join()]);
+    expect((await state(m)).essentials.map((f) => f.id)).toEqual([c, a, b]);
   });
 
   it("switching spaces shows its tabs and finds each space's active tab", async () => {
