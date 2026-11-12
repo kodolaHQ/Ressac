@@ -1,21 +1,22 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import { AURA_IDS, AURAS, auraVariables, type AuraId } from "../../shared/aura";
-  import type { SettingsApi } from "../../shared/api";
+  import type { ImportSource, SettingsApi } from "../../shared/api";
   import { shortcutLabel } from "../../shared/shortcuts";
   import type { WindowState } from "../../shared/model";
   import { api, appState } from "../state.svelte";
   import AuraDot from "./AuraDot.svelte";
+  import BrowserImport from "./BrowserImport.svelte";
   import SidebarSketch from "./SidebarSketch.svelte";
   import { welcomeStep as step } from "./welcome-step.svelte";
 
   /**
-   * The first-launch welcome: five pages on the aura, then the browser. Nothing is done before « Ouvrir le navigateur ».
+   * The first-launch welcome: six pages on the aura, then the browser. Nothing is done before « Ouvrir le navigateur ».
    * An install link steps it aside (unmounted, its page kept in `step`): coming back checks Docker and Ollama again.
    */
   let { window: win }: { window: WindowState } = $props();
 
-  const PAGES = 5;
+  const PAGES = 6;
   const AGENTS = [["claude", "Claude Code"], ["codex", "Codex"]] as const;
   const space = $derived(appState.value?.spaces.find((s) => s.id === win.activeSpace));
   const label = (id: "command" | "agent") => shortcutLabel(id, appState.value?.settings);
@@ -30,6 +31,8 @@
   let missing = $state<string[]>([]);
   let pulling = $state(false);
   let pullError = $state<string | null>(null);
+  /** undefined: being read; empty: no other browser, so no « Plus tard ». */
+  let sources = $state<ImportSource[] | undefined>(undefined);
   async function checkDocker() {
     docker = undefined;
     docker = await api.settings.workshop();
@@ -96,6 +99,10 @@
           </div>
           {@render actions("Commencer", false)}
         {:else if step.page === 2}
+          <h2>Vous venez d'un autre navigateur ?</h2>
+          <BrowserImport bind:sources />
+          {@render actions("Continuer", !!sources?.length)}
+        {:else if step.page === 3}
           <h2>Vos onglets vivent à gauche</h2>
           <div class="sidebar">
             <SidebarSketch key={label("command")} />
@@ -106,7 +113,7 @@
             </ul>
           </div>
           {@render actions("Suivant", false)}
-        {:else if step.page === 3}
+        {:else if step.page === 4}
           <h2>Brancher un agent</h2>
           <p>Claude Code et Codex travaillent dans un conteneur à part, sur votre Mac. Il leur faut OrbStack (ou Docker Desktop).</p>
           <div class="check">
@@ -133,7 +140,7 @@
           </div>
           {#if docker && docker !== "docker-absent"}<p class="note">Vous vous connecterez la première fois que vous ouvrirez l'agent (<kbd>{label("agent")}</kbd>).</p>{/if}
           {@render actions("Continuer", true)}
-        {:else if step.page === 4}
+        {:else if step.page === 5}
           <h2>L'IA locale</h2>
           <p>Avec Ollama, la veille et les décisions tournent sur votre Mac : rien ne part sur Internet.</p>
           <div class="check">

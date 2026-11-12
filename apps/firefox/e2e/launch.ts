@@ -107,6 +107,8 @@ export async function launchWebAiOs(o: { headed?: boolean; width?: number; heigh
         WEBAIOS_TEST_NOTIFICATIONS: path.join(dataDir, "notifications.jsonl"),
         // No real Sentry from a test: only one that passes a DSN itself gets one.
         WEBAIOS_SENTRY_DSN: "",
+        // The import screen never reads the owner's browsers: an empty home (a test passes its own fake one).
+        WEBAIOS_TEST_IMPORT_HOME: path.join(dataDir, "import-home"),
         // No welcome screen in front of the tests.
         WEBAIOS_SKIP_WELCOME: "1",
         ...o.env,

@@ -10,6 +10,8 @@ export interface SettingsChrome {
   reveal(path: string): void;
   /** macOS's System Settings › Notifications: a site's or the watch's notification never shows while WebAiOs is off there. */
   openNotificationSettings(): void;
+  /** System Settings › Privacy & Security › Full Disk Access: Safari's bookmarks and history are behind it. */
+  openFullDiskAccessSettings(): void;
   exportFolder(): Promise<string>;
   /** false: the quit was cancelled (a window or an observer kept it), and the reset request is withdrawn. */
   reset(): Promise<boolean>;
@@ -21,6 +23,18 @@ export function revealable(dataDir: string, exportFolder: string, path: string):
   if (path === dataDir || backupDate(dataDir, path) !== null) return true;
   if (!exportFolder || !path.startsWith(exportFolder + "/")) return false;
   return EXPORT_NAME.test(path.slice(exportFolder.length + 1));
+}
+
+function openSystemSettings(url: string): void {
+  const test = Services.env.get("WEBAIOS_TEST_REVEAL");
+  if (test) return void IOUtils.writeUTF8(test, url + "\n", { mode: "appendOrCreate" }).catch((e: unknown) => console.warn("[settings] open not noted:", e));
+  try {
+    const handler = Cc["@mozilla.org/uriloader/external-protocol-service;1"].getService(Ci.nsIExternalProtocolService).getProtocolHandlerInfo("x-apple.systempreferences");
+    handler.preferredAction = Ci.nsIHandlerInfo.useSystemDefault;
+    handler.launchWithURI(Services.io.newURI(url));
+  } catch (e) {
+    console.warn("[settings] system settings not opened:", e);
+  }
 }
 
 export function createSettingsChrome(dataDir: string, telemetryActive: boolean): SettingsChrome {
@@ -41,18 +55,8 @@ export function createSettingsChrome(dataDir: string, telemetryActive: boolean):
         console.warn("[settings] path not shown:", e);
       }
     },
-    openNotificationSettings() {
-      const url = "x-apple.systempreferences:com.apple.Notifications-Settings.extension";
-      const test = Services.env.get("WEBAIOS_TEST_REVEAL");
-      if (test) return void IOUtils.writeUTF8(test, url + "\n", { mode: "appendOrCreate" }).catch((e: unknown) => console.warn("[settings] open not noted:", e));
-      try {
-        const handler = Cc["@mozilla.org/uriloader/external-protocol-service;1"].getService(Ci.nsIExternalProtocolService).getProtocolHandlerInfo("x-apple.systempreferences");
-        handler.preferredAction = Ci.nsIHandlerInfo.useSystemDefault;
-        handler.launchWithURI(Services.io.newURI(url));
-      } catch (e) {
-        console.warn("[settings] notification settings not opened:", e);
-      }
-    },
+    openNotificationSettings: () => openSystemSettings("x-apple.systempreferences:com.apple.Notifications-Settings.extension"),
+    openFullDiskAccessSettings: () => openSystemSettings("x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"),
     async exportFolder() {
       const { Downloads } = ChromeUtils.importESModule("resource://gre/modules/Downloads.sys.mjs");
       return (lastExportFolder = await Downloads.getPreferredDownloadsDirectory());

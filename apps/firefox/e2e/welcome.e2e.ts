@@ -10,7 +10,7 @@ import { startServer } from "./server";
 import type { Marionette } from "./marionette";
 import { click, inUi, keyDown, keyUp, missingApi, pressKeys, waitUi } from "./ui";
 
-// Plan 47 Task 2: the first-launch welcome (five pages on the aura) and « Revoir l'accueil » in Settings.
+// Plan 47 Task 2: the first-launch welcome (six pages since plan 55 on the aura) and « Revoir l'accueil » in Settings.
 
 // Any https page the test opens fails on a dead proxy: no real web.
 const NO_WEB = { "network.proxy.type": 1, "network.proxy.http": "127.0.0.1", "network.proxy.http_port": 1, "network.proxy.ssl": "127.0.0.1", "network.proxy.ssl_port": 1 };
@@ -71,17 +71,22 @@ describe("welcome", () => {
     expect(await inUi(m, `return !!doc.querySelector('[data-testid="sidebar"]').closest('[inert]')`)).toBe(true);
     await shows("welcome-1", "Un navigateur calme, avec un agent quand vous le voulez.");
     await press("welcome-next");
-    await shows("welcome-2", "Vos onglets vivent à gauche");
+    // No other browser in the test home: no « Plus tard », only « Continuer ».
+    await shows("welcome-2", "Vous venez d'un autre navigateur ?");
+    await shows("import-none", "Aucun autre navigateur trouvé sur ce Mac.");
+    expect(await inUi(m, "return !!doc.querySelector(arguments[0])", [`${LAYER} [data-testid="welcome-later"]`])).toBe(false);
     await press("welcome-next");
-    await shows("welcome-3", "Brancher un agent");
+    await shows("welcome-3", "Vos onglets vivent à gauche");
+    await press("welcome-next");
+    await shows("welcome-4", "Brancher un agent");
     // « Retour » goes back a page.
     await press("welcome-back");
-    await shown("welcome-2");
+    await shown("welcome-3");
   });
 
   it("no docker, no ollama, still through", async () => {
     await launch({ env: { FAKE_DOCKER_ABSENT: "1" } });
-    await forward(1, 3);
+    await forward(1, 4);
     await shows("welcome-docker", "OrbStack n'est pas lancé ou pas installé.");
     // An install link opens its page and the welcome steps aside; the pill brings it back on the same step.
     await press("welcome-install-docker");
@@ -107,13 +112,13 @@ describe("welcome", () => {
     await sleep(300);
     const after = await state(m);
     expect(after.windows[0]!.active[after.windows[0]!.activeSpace]).toBe(before.windows[0]!.active[before.windows[0]!.activeSpace]);
-    await shown("welcome-3");
+    await shown("welcome-4");
 
     await press("welcome-later");
     await shows("welcome-ollama", "Ollama n'est pas installé ou pas lancé.");
     await shown("welcome-install-ollama");
     await press("welcome-later");
-    await shown("welcome-5");
+    await shown("welcome-6");
     await press("welcome-finish");
     await layerGone();
     expect(await inUi(m, `return !!doc.querySelector('[data-testid="sidebar"]').closest('[inert]')`)).toBe(false);
@@ -146,14 +151,14 @@ describe("welcome", () => {
     });
     try {
       await launch({ env: { WEBAIOS_OLLAMA_URL: ollama.url } });
-      await forward(1, 4);
+      await forward(1, 5);
       await shows("welcome-ollama", "Ollama est prêt.");
       await shows("welcome-models", "Il manque les modèles d'IA locale (plusieurs Go).");
       await press("welcome-pull");
       await shows("welcome-models", "Téléchargement lancé");
       // The welcome goes on while the host pulls.
       await press("welcome-next");
-      await shown("welcome-5");
+      await shown("welcome-6");
       release();
       const file = join(w!.dataDir, "notifications.jsonl");
       await waitFor(m, "return true", () => existsSync(file) && readFileSync(file, "utf8").includes("L'IA locale est prête"), 15_000);
@@ -171,7 +176,7 @@ describe("welcome", () => {
     await click(m, '[data-testid="settings-button"]');
     await click(m, '[data-testid="settings-nav-about"]');
     await click(m, '[data-testid="settings-replay-welcome"]');
-    await forward(1, 3);
+    await forward(1, 4);
     await shows("welcome-docker", "Impossible de vérifier pour l'instant.");
     await shown("welcome-recheck");
     await press("welcome-next");
@@ -180,7 +185,7 @@ describe("welcome", () => {
 
   it("agent choice", async () => {
     await launch();
-    await forward(1, 3);
+    await forward(1, 4);
     expect(await inUi(m, `return doc.querySelector('[data-testid="welcome-agent-claude"]').checked`)).toBe(true);
     await press("welcome-agent-codex");
     await saved((s) => s.settings?.agentProfile === "codex");
@@ -188,7 +193,7 @@ describe("welcome", () => {
 
   it("first space", async () => {
     await launch();
-    await forward(1, 5);
+    await forward(1, 6);
     expect(await inUi(m, `return doc.querySelector('[data-testid="welcome-space-name"]').value`)).toBe("Perso");
     await fill("welcome-space-name", "Travail");
     await press("welcome-aura-lagon");
@@ -201,7 +206,7 @@ describe("welcome", () => {
 
     // An emptied name keeps the space's own.
     await launch();
-    await forward(1, 5);
+    await forward(1, 6);
     await fill("welcome-space-name", "  ");
     await press("welcome-finish");
     await layerGone();
@@ -215,19 +220,19 @@ describe("welcome", () => {
     dirs.push(dir);
     const opened = join(dir, "opened.txt");
     await launch({ env: { WEBAIOS_TEST_REVEAL: opened } });
-    await forward(1, 5);
+    await forward(1, 6);
     await press("welcome-notifications");
     const read = () => (existsSync(opened) ? readFileSync(opened, "utf8") : "");
     await waitFor(m, "return true", () => read().length > 0);
     expect(read()).toBe("x-apple.systempreferences:com.apple.Notifications-Settings.extension\n");
-    await shown("welcome-5");
+    await shown("welcome-6");
   });
 
   it("relaunch after finishing", async () => {
     const dataDir = await mkdtemp(join(os.tmpdir(), "webaios-welcome-"));
     dirs.push(dataDir);
     await launch({ dataDir });
-    await forward(1, 5);
+    await forward(1, 6);
     await press("welcome-finish");
     await layerGone();
     await saved((s) => s.settings?.onboarded === true);
@@ -244,7 +249,7 @@ describe("welcome", () => {
     await click(m, '[data-testid="settings-nav-about"]');
     await click(m, '[data-testid="settings-replay-welcome"]');
     await shown("welcome-1");
-    await forward(1, 5);
+    await forward(1, 6);
     await fill("welcome-space-name", "Maison");
     await press("welcome-finish");
     await layerGone();
@@ -258,7 +263,7 @@ describe("welcome", () => {
 
   it("first launch, whole journey", async () => {
     await launch({ firstTimeNotes: true });
-    await forward(1, 5);
+    await forward(1, 6);
     await press("welcome-finish");
     await layerGone();
     // The home page opens the agent panel: its note takes the keyboard.

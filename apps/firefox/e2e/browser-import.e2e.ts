@@ -6,12 +6,13 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ImportProgress, ImportSource } from "../shared/api";
 import type { Visit } from "../shared/model";
-import { state } from "./firefox";
+import { dispatch, state } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
-import { inUi, missingApi } from "./ui";
+import { click, inUi, missingApi, waitUi } from "./ui";
 
 // Plan 55 Task 2: a fake home with a Chrome-format profile, imported through the engine's Chrome migrator.
+// Task 4: the import screen, on welcome page 2 and in Réglages › Données.
 // Task 3: a fake Arc sidebar and Zen session (the unit test fixtures), their spaces brought into the store.
 
 let w: LaunchedWebAiOs;
@@ -180,5 +181,57 @@ describe("import from another browser", () => {
 
   it("imports a CSV of 2 passwords", async () => {
     expect(await api("importPasswordsCsv()")).toEqual({ ok: true, count: 2 });
+  });
+
+  const shows = (id: string, wanted: string) =>
+    waitUi(m, "return doc.querySelector(arguments[0])?.textContent.replace(/\\s+/g, ' ').includes(arguments[1])", [`[data-testid="${id}"]`, wanted]);
+  const there = (id: string) => inUi<boolean>(m, "return !!doc.querySelector(arguments[0])", [`[data-testid="${id}"]`]);
+  const checked = (id: string) => inUi<boolean>(m, "return doc.querySelector(arguments[0]).checked", [`[data-testid="${id}"]`]);
+
+  // With three spaces, the sidebar folds its tools behind a button: Réglages opens by its action.
+  const openSettings = async () => dispatch(m, { type: "openSettings", windowId: (await state(m)).windows[0]!.id });
+
+  it("welcome page 2: lists the browsers, imports Chrome, and goes on", async () => {
+    await openSettings();
+    await click(m, '[data-testid="settings-nav-about"]');
+    await click(m, '[data-testid="settings-replay-welcome"]');
+    await click(m, '[data-testid="welcome-next"]');
+    await shows("welcome-2", "Vous venez d'un autre navigateur ?");
+    await shows("browser-import", "Arc");
+    expect(await inUi(m, `return [...doc.querySelectorAll('[name="import-source"]')].map((r) => r.closest("label").textContent.trim())`)).toEqual(["Arc", "Google Chrome", "Zen"]);
+    // The first is chosen, with every type checked; Arc's spaces too.
+    expect(await checked("import-source-arc")).toBe(true);
+    expect(await checked("import-type-spaces")).toBe(true);
+    expect(await there("welcome-later")).toBe(true);
+    await click(m, '[data-testid="import-source-chrome"]');
+    for (const t of ["bookmarks", "history", "passwords"]) expect(await checked(`import-type-${t}`)).toBe(true);
+    expect(await there("import-type-spaces")).toBe(false);
+    expect(await there("import-guide")).toBe(false);
+    if (process.env.WEBAIOS_SHOT) await new Promise((r) => setTimeout(r, 1_000)); // the page's rise ends
+    if (process.env.WEBAIOS_SHOT) writeFileSync(process.env.WEBAIOS_SHOT, Buffer.from((await m.command<{ value: string }>("WebDriver:TakeScreenshot", { full: false, hash: false })).value, "base64"));
+    await click(m, '[data-testid="import-start"]');
+    await shows("import-started", "Import lancé : une notification vous préviendra à la fin.");
+    expect((await finished()).source).toBe("chrome");
+    // The run's failure is told once it ends.
+    await shows("import-failed-passwords", "Mots de passe : fichier illisible");
+    await click(m, '[data-testid="welcome-next"]');
+    await shows("welcome-3", "Vos onglets vivent à gauche");
+    for (let p = 3; p < 6; p++) await click(m, '[data-testid="welcome-next"]');
+    await click(m, '[data-testid="welcome-finish"]');
+    await waitUi(m, `return !doc.querySelector('[data-testid="welcome-layer"]')`);
+  });
+
+  it("Réglages › Données: the button shows the screen; Zen's passwords go by a CSV", async () => {
+    await openSettings();
+    await click(m, '[data-testid="settings-nav-data"]');
+    await click(m, '[data-testid="data-import"]');
+    await shows("browser-import", "Google Chrome");
+    await click(m, '[data-testid="import-source-zen"]');
+    await shows("import-guide", "Dans Zen, ouvrez about:logins");
+    await shows("import-guide", "⋯ › Exporter les identifiants");
+    await shows("import-guide", "Supprimez ensuite le fichier exporté : il n'est pas chiffré.");
+    expect(await there("import-type-passwords")).toBe(false);
+    await click(m, '[data-testid="import-csv"]');
+    await shows("import-csv-result", "2 mots de passe importés");
   });
 });

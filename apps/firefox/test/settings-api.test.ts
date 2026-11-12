@@ -17,7 +17,7 @@ function setup(answers: Record<string, (p: any) => unknown> = {}) {
     },
     notify: vi.fn(),
   } as any;
-  const chrome = { telemetry: vi.fn(), setTelemetry: vi.fn(), version: vi.fn(), reveal: vi.fn(), openNotificationSettings: vi.fn(), exportFolder: async () => "/u/Downloads", reset: vi.fn() };
+  const chrome = { telemetry: vi.fn(), setTelemetry: vi.fn(), version: vi.fn(), reveal: vi.fn(), openNotificationSettings: vi.fn(), openFullDiskAccessSettings: vi.fn(), exportFolder: async () => "/u/Downloads", reset: vi.fn() };
   const forget = vi.fn(async () => {});
   const sitePermissions = { list: async () => [{ profile: "default", origin: "https://a.fr", permissions: { "media-camera": "allow", notifications: "deny" } as const }], forget };
   const dispatched: Action[] = [];

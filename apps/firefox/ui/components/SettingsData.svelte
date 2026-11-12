@@ -1,6 +1,8 @@
 <script lang="ts">
+  import { fade } from "svelte/transition";
   import type { Backup } from "../../shared/settings";
   import { api } from "../state.svelte";
+  import BrowserImport from "./BrowserImport.svelte";
 
   // Styles come from Settings.svelte.
   const s = api.settings;
@@ -10,6 +12,7 @@
   /** A backup to delete, or the reset, awaiting confirmation. */
   let asking = $state<{ backup: string } | "reset" | null>(null);
   let exporting = $state(false);
+  let importing = $state(false);
   let message = $state<string | null>(null);
   const load = async () => (backups = await s.backups());
   $effect(() => void load());
@@ -49,6 +52,12 @@
       <button data-testid="data-reveal" onclick={() => s.reveal(dir)}>Afficher dans le Finder</button>
     </div>
   </div>
+  <h3>Importer</h3>
+  {#if importing}
+    <div class="panel import"><BrowserImport /></div>
+  {:else}
+    <div class="buttons start" out:fade={{ duration: 150 }}><button data-testid="data-import" onclick={() => (importing = true)}>Importer depuis un autre navigateur</button></div>
+  {/if}
   <h3>Sauvegardes</h3>
   {#if !backups}
     <p><span class="pill" data-tone="warn">Vérification…</span></p>
@@ -95,3 +104,7 @@
     </div>
   {/if}
 </section>
+
+<style>
+  .import { padding: 14px; animation: webaios-rise var(--spring-d) var(--spring) backwards; }
+</style>

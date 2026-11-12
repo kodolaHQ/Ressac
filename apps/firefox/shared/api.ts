@@ -432,6 +432,8 @@ export interface SettingsApi {
   openUrl(url: string): void;
   /** macOS's System Settings › Notifications. */
   openNotificationSettings(): void;
+  /** macOS's System Settings › Privacy & Security › Full Disk Access. */
+  openFullDiskAccessSettings(): void;
 }
 
 

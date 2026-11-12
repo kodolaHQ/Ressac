@@ -104,6 +104,7 @@ export function createSettingsApi(o: {
     version: async () => o.chrome.version(),
     openAdvanced: () => o.dispatch({ type: "openTab", windowId: o.windowId, url: "about:preferences", activate: true }),
     openNotificationSettings: () => o.chrome.openNotificationSettings(),
+    openFullDiskAccessSettings: () => o.chrome.openFullDiskAccessSettings(),
     openUrl(url) {
       if (typeof url === "string" && url.startsWith("https://")) o.dispatch({ type: "openTab", windowId: o.windowId, url, activate: true });
     },
