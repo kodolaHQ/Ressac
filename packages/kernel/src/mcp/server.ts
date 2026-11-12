@@ -16,7 +16,8 @@ import type { MemoryContent } from "../sites/memory.js";
 import type { DevRight, AccessPolicy } from "../access/policy.js";
 import { registerDevTools, type ProfileFiles } from "./devtools.js";
 import { registerExtensionsTools, type ExtensionsTools } from "./extensions.js";
-import { STOP_TEXT, CLOSED_TEXT, URL_MAX, type SearchSessions } from "../search/sessions.js";
+import { STOP_TEXT, CLOSED_TEXT, URL_MAX, type SearchSessions, type Gesture } from "../search/sessions.js";
+import type { Watcher } from "../search/watcher.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import type { ServerNotification, ServerRequest } from "@modelcontextprotocol/sdk/types.js";
 import { TabNotFound, PrivateTab, PRIVATE_TEXT, type TabInfo, type BrowserDevTools, type BrowserBridge, type HistoryResult } from "./bridge.js";
@@ -279,7 +280,7 @@ function askAddressCard(
   bridge: BrowserBridge,
   policy: AccessPolicy,
   requests: Map<string, Promise<boolean>>,
-  card: { url: string; reason: string; agent: string },
+  card: { url: string; reason: string; agent: string; opinion?: string },
   key: string,
   window: string | undefined,
   /** Registers a callback for the end of the search (stop, idle, tab closed): the card then comes down. */
@@ -320,7 +321,7 @@ function createToolsServer(
   actions?: OptionsActions,
   toolSites?: SitesTools,
   beatMs?: number,
-  searching?: { sessions: SearchSessions; settleMs: number; emptySpanMs: number; readPageMs: number; chains: Map<string, Promise<unknown>> },
+  searching?: { sessions: SearchSessions; watcher?: Watcher; settleMs: number; emptySpanMs: number; readPageMs: number; chains: Map<string, Promise<unknown>> },
 ): McpServer {
   const server = new McpServer({ name: "webaios", version: "0.1.0" });
 
@@ -414,12 +415,45 @@ function createToolsServer(
     return present(now, r, withLinks, head);
   }
 
+  const cut = (x: string) => x.slice(0, 200);
+
+  /** Pauses the search on its tab: the band says what the watcher found strange. Returns the text to answer, or undefined when the user lets it go on. */
+  async function pause(tabId: string, goal: string, what: string): Promise<string | undefined> {
+    const r = await searching!.sessions.handOver(tabId, `Le surveillant a mis en pause : ${what} sans rapport avec « ${cut(goal)} »`);
+    if (r.outcome === "continue") return undefined;
+    if (r.outcome === "stop") { searching!.sessions.takeStop(win ?? MAIN_WINDOW, tabId); return STOP_TEXT; }
+    return CLOSED_TEXT;
+  }
+
+  /** The watcher's verdict on a gesture of the search running in this window, which it logs (unless `log` is false: the caller logs it); no goal, no search, no watcher: nothing. */
+  async function judge(g: Gesture, log = true): Promise<{ strange: boolean; tabId: string; goal: string } | undefined> {
+    const cur = searching?.sessions.current(win ?? MAIN_WINDOW);
+    if (!searching?.watcher || !cur?.goal) return undefined;
+    const verdict = await searching.watcher.judge(cur.goal, cur.gestures, g);
+    if (log) searching.sessions.log(cur.tabId, g);
+    return { strange: verdict === "strange", tabId: cur.tabId, goal: cur.goal };
+  }
+
+  /** Judges an action of the user's side (history, bookmarks, another tab) during a search; strange: paused, and the text to answer unless the user continues. */
+  async function watch(g: Gesture, what: string): Promise<string | undefined> {
+    const v = await judge(g);
+    return v?.strange ? pause(v.tabId, v.goal, what) : undefined;
+  }
+
+  const OPINION_TEXT = "Sans rapport apparent avec le but annoncé.";
+  /** The watcher's line for the card of an address the agent composed (it never blocks the card). */
+  async function opinion(g: Gesture): Promise<{ opinion?: string }> {
+    return (await judge(g, false))?.strange ? { opinion: OPINION_TEXT } : {};
+  }
+
   async function content(o: TabInfo, withLinks = false): Promise<Result> {
     if (searching?.sessions.takeStop(win ?? MAIN_WINDOW, o.id)) return text(STOP_TEXT);
     if (searching?.sessions.owns(o.id)) {
       searching.sessions.log(o.id, { tool: "read_tab" });
       return readSearch(win ?? MAIN_WINDOW, o, withLinks, "Lecture de la page");
     }
+    const other = await watch({ tool: "read_tab" }, "lecture d'un autre onglet");
+    if (other) return text(other);
     if (!(await access(o))) return text(DENIAL_TEXT);
     return present(o, await working(o.id, () => bridge.readText(o.id)), withLinks);
   }
@@ -500,17 +534,20 @@ function createToolsServer(
       const o = await tab(id);
       if (searching?.sessions.owns(id)) {
         // The search tab follows links only: an address read on a page of this search.
-        if (!searching.sessions.isFree(id, url)) {
+        const composed = !searching.sessions.isFree(id, url);
+        if (composed) {
           // An address the agent composed: the user decides, on a card showing it whole.
           if (!bridge.askAddress) return text(UNREAD_ADDRESS_TEXT);
           // Longer than the search remembers: it could be allowed but never freed.
           if (url.length > URL_MAX) return text(`Adresse trop longue (${URL_MAX} caractères au plus).`);
-          const yes = await askAddressCard(bridge, policy, requests, { url, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent" }, `address:${id}:${url}`, win ?? undefined, (f) => searching.sessions.onEnd(id, f));
+          const view = await opinion({ tool: "navigate", url, composed: true });
+          if (!searching.sessions.owns(id)) return text(searching.sessions.takeStop(win ?? MAIN_WINDOW, id) ? STOP_TEXT : CLOSED_TEXT);
+          const yes = await askAddressCard(bridge, policy, requests, { url, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", ...view }, `address:${id}:${url}`, win ?? undefined, (f) => searching.sessions.onEnd(id, f));
           if (!searching.sessions.owns(id)) return text(searching.sessions.takeStop(win ?? MAIN_WINDOW, id) ? STOP_TEXT : CLOSED_TEXT);
           if (!yes) return text(DENIAL_TEXT);
           searching.sessions.allow(id, url);
         }
-        searching.sessions.log(id, { tool: "navigate", url });
+        searching.sessions.log(id, { tool: "navigate", url, ...(composed ? { composed: true } : {}) });
         await searching.sessions.step(id, `Ouverture de ${url}`, () => working(id, () => bridge.navigate(id, url)));
         return text(`Onglet ${id} → ${url}`);
       }
@@ -614,10 +651,28 @@ function createToolsServer(
         const mine = previous.catch(() => {}).then(async () => {
           if (sessions.takeStop(key)) return text(STOP_TEXT);
           const current = sessions.current(key);
-          const o = await search.open(win ?? undefined, { query }, current?.tabId);
-          sessions.setEngineOrigin(o.engineOrigin);
-          if (!current) sessions.start(key, o.id, goal?.trim() || query);
-          sessions.log(o.id, { tool: "search_web", query });
+          const g: Gesture = { tool: "search_web", query };
+          const what = `recherche « ${cut(query)} »`;
+          let o: TabInfo & { engineOrigin: string };
+          if (current) {
+            const stop = await watch(g, what);
+            if (stop) return text(stop);
+            o = await search.open(win ?? undefined, { query }, current.tabId);
+            sessions.setEngineOrigin(o.engineOrigin);
+          } else {
+            const aim = goal?.trim() ?? "";
+            // The first query is judged before it goes to the engine; a strange one pauses on the engine's empty page.
+            const strange = aim !== "" && (await searching.watcher?.judge(aim, [], g)) === "strange";
+            o = await search.open(win ?? undefined, strange ? { query: "" } : { query });
+            sessions.setEngineOrigin(o.engineOrigin);
+            sessions.start(key, o.id, aim);
+            sessions.log(o.id, g);
+            if (strange) {
+              const stop = await pause(o.id, aim, what);
+              if (stop) return text(stop);
+              o = await search.open(win ?? undefined, { query }, o.id);
+            }
+          }
           return readSearch(key, o, true, `Recherche : ${query}`, [`Onglet : ${o.id}`]);
         });
         searching.chains.set(key, mine);
@@ -649,8 +704,10 @@ function createToolsServer(
             if (tabId && sessions.isFree(tabId, u)) { ok.push(u); continue; }
             if (!bridge.askAddress) { errors.set(u, `Erreur : ${UNREAD_ADDRESS_TEXT}`); continue; }
             const t = tabId;
+            const view = await opinion({ tool: "read_pages", url: u, composed: true });
+            if (t && !sessions.owns(t)) return ended();
             // shortcut: with no search yet the engine's origin is unknown, so even an engine address asks its card; upgrade if that annoys.
-            const yes = await askAddressCard(bridge, policy, requests, { url: u, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent" }, `address:${t ?? key}:${u}`, win ?? undefined, (f) => (t ? sessions.onEnd(t, f) : () => {}));
+            const yes = await askAddressCard(bridge, policy, requests, { url: u, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", ...view }, `address:${t ?? key}:${u}`, win ?? undefined, (f) => (t ? sessions.onEnd(t, f) : () => {}));
             if (t && !sessions.owns(t)) return ended();
             if (!yes) { errors.set(u, `Erreur : ${DENIAL_TEXT}`); continue; }
             if (t) sessions.allow(t, u);
@@ -796,6 +853,8 @@ function createToolsServer(
         },
       },
       protect(async ({ query: request, since: from, until: until, limit: limit }) => {
+        const stop = await watch({ tool: "search_history", query: request }, "lecture de l'historique");
+        if (stop) return text(stop);
         const results = await hist.find({
           query: request,
           limit: Math.min(HISTORY_LIMIT.max, limit ?? HISTORY_LIMIT.default),
@@ -810,6 +869,8 @@ function createToolsServer(
       "read_history",
       { description: "Texte retenu d'une page visitée par l'utilisateur (trouvée par search_history), pour la résumer.", inputSchema: { url: z.string() } },
       protect(async ({ url }) => {
+        const stop = await watch({ tool: "read_history", url }, "lecture de l'historique");
+        if (stop) return text(stop);
         const p = await hist.read(url);
         if (!p) return text(NOTHING_KEPT);
         return text([KEPT_TEXT_PREFIX, `Titre : ${p.title}`, `URL : ${p.url}`, `Date : ${p.date}`, "", p.text].join("\n"));
@@ -826,6 +887,8 @@ function createToolsServer(
         inputSchema: { query: z.string(), limit: z.number().int().min(1).optional() },
       },
       protect(async ({ query: request, limit: limit }) => {
+        const stop = await watch({ tool: "search_bookmarks", query: request }, "lecture des favoris");
+        if (stop) return text(stop);
         const results = await marks.find({ query: request, limit: Math.min(HISTORY_LIMIT.max, limit ?? HISTORY_LIMIT.default) });
         return text(results.map((r) => `${r.title} · ${r.url}`).join("\n") || "Aucun favori trouvé.");
       }),
@@ -1210,6 +1273,8 @@ export async function startMcpServer(o: {
   sites?: SitesTools;
   /** The agent's search sessions; with the bridge's `search`, the `search_web` tool exists. */
   search?: SearchSessions;
+  /** Judges the agent's actions during a search (absent: every action passes). */
+  watcher?: Watcher;
   /** Pause between two reads of the search page while its results come (tests: 0). */
   settleMs?: number;
   /** How long a page must stay without a link before it is returned as it is (tests: 0). */
@@ -1241,7 +1306,7 @@ export async function startMcpServer(o: {
     const named = who.agent ? { ...dev, agent: who.agent } : dev;
     if (new URL(req.url ?? "/", "http://x").pathname !== "/mcp") return res.writeHead(404).end();
     // Stateless mode: a new server and transport per request.
-    const server = createToolsServer(o.bridge, o.policy, requests, o.apps, o.appTabDelayMs, named, widgets && who.agent ? { ...widgets, agent: who.agent } : widgets, win, o.openWorkflow, o.extensions, actions && who.agent ? { ...actions, agent: who.agent } : actions, o.sites, o.heartbeatMs, o.search ? { sessions: o.search, settleMs: o.settleMs ?? 500, emptySpanMs: o.emptySpanMs ?? EMPTY_SPAN_MS, readPageMs: o.readPageMs ?? READ_PAGE_MS, chains } : undefined);
+    const server = createToolsServer(o.bridge, o.policy, requests, o.apps, o.appTabDelayMs, named, widgets && who.agent ? { ...widgets, agent: who.agent } : widgets, win, o.openWorkflow, o.extensions, actions && who.agent ? { ...actions, agent: who.agent } : actions, o.sites, o.heartbeatMs, o.search ? { sessions: o.search, ...(o.watcher ? { watcher: o.watcher } : {}), settleMs: o.settleMs ?? 500, emptySpanMs: o.emptySpanMs ?? EMPTY_SPAN_MS, readPageMs: o.readPageMs ?? READ_PAGE_MS, chains } : undefined);
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on("close", () => {
       void transport.close();

@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { SearchSessions, STOP_TEXT, CLOSED_TEXT, type Band } from "../../src/search/sessions.js";
+import { SearchSessions, STOP_TEXT, CLOSED_TEXT, type Band, type Gesture } from "../../src/search/sessions.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { AccessPolicy } from "../../src/access/policy.js";
 import { PRIVATE_TEXT, type TabInfo } from "../../src/mcp/bridge.js";
+import type { Watcher } from "../../src/search/watcher.js";
 import { FakeBridge } from "../../src/mcp/fake-bridge.js";
 import { NO_WORKFLOW_OPEN, HIDDEN_ACTION_RUNS_NOTICE, HIDDEN_RUNS_NOTICE, startMcpServer, PENDING_SITE_NAVIGATION, navigationOutsideSite, SITE_DATA_PREFIX, TWEAK_ERRORS_PREFIX, SITE_UNKNOWN, SITE_DENIED, SITE_MEMORY_MAX_SHOWN, type SitesTools, DENIAL_TEXT, RESERVED_ERROR, RESERVED_ACTION_ERROR, ACTION_DATA_PREFIX, WIDGET_DATA_PREFIX, generateToken, type ActionsTools, type AppsTools, type WidgetsTools, type OpenWorkflow } from "../../src/mcp/server.js";
 import type { Execution } from "../../src/workflows/executions.js";
@@ -1382,13 +1383,13 @@ const c = { text: "C", url: "https://exemple.fr/c" };
 
 async function withSearch(
   attempt: (o: { call: (name: string, args: Record<string, unknown>, token?: string, onprogress?: (n: number) => void) => Promise<{ text: string; isError: boolean }>; token: string; fake: FakeBridge; search: SearchSessions; s: Awaited<ReturnType<typeof startMcpServer>>; bands: [string, Band | null][] }) => Promise<void>,
-  opts: { privateWindows?: string[]; allow?: boolean; emptySpanMs?: number; address?: boolean | "wait"; failing?: string[]; hanging?: string[]; readPageMs?: number; heartbeatMs?: number } = {},
+  opts: { privateWindows?: string[]; allow?: boolean; emptySpanMs?: number; address?: boolean | "wait"; failing?: string[]; hanging?: string[]; readPageMs?: number; heartbeatMs?: number; watcher?: Watcher; withUserData?: boolean } = {},
 ) {
   const principal = generateToken();
-  const fake = new FakeBridge([github], { active: "github", allow: opts.allow ?? false, search: { privateWindows: opts.privateWindows ?? [], failing: opts.failing ?? [], hanging: opts.hanging ?? [] }, ...(opts.address !== undefined ? { address: opts.address } : {}) });
+  const fake = new FakeBridge([github], { active: "github", allow: opts.allow ?? false, ...(opts.withUserData ? { history: { results: [] }, bookmarks: [] } : {}), search: { privateWindows: opts.privateWindows ?? [], failing: opts.failing ?? [], hanging: opts.hanging ?? [] }, ...(opts.address !== undefined ? { address: opts.address } : {}) });
   const bands: [string, Band | null][] = [];
   const search = new SearchSessions({ show: (id, band) => bands.push([id, band]) });
-  const s = await startMcpServer({ bridge: fake, policy: new AccessPolicy(), token: principal, search, settleMs: 0, emptySpanMs: opts.emptySpanMs ?? 0, ...(opts.heartbeatMs ? { heartbeatMs: opts.heartbeatMs } : {}), ...(opts.readPageMs !== undefined ? { readPageMs: opts.readPageMs } : {}) });
+  const s = await startMcpServer({ bridge: fake, policy: new AccessPolicy(), token: principal, search, ...(opts.watcher ? { watcher: opts.watcher } : {}), settleMs: 0, emptySpanMs: opts.emptySpanMs ?? 0, ...(opts.heartbeatMs ? { heartbeatMs: opts.heartbeatMs } : {}), ...(opts.readPageMs !== undefined ? { readPageMs: opts.readPageMs } : {}) });
   const clients: Client[] = [];
   const call = async (name: string, args: Record<string, unknown>, clientToken = principal, onprogress?: (n: number) => void) => {
     const cl = new Client({ name: "test", version: "0" });
@@ -1974,4 +1975,134 @@ test("hand_over drops path URLs longer than 500 characters", async () => {
     expect(r).toContain("https://exemple.fr/ok");
     expect(r).not.toContain("aaaa");
   });
+});
+
+// --- the watcher ---
+
+/** A watcher that finds strange what `strange` says, and remembers what it was asked. */
+const fakeWatcher = (strange: (g: Gesture) => boolean) => {
+  const asked: { goal: string; past: readonly Gesture[]; next: Gesture }[] = [];
+  const watcher: Watcher = { judge: async (goal, past, next) => { asked.push({ goal, past: [...past], next }); return strange(next) ? "strange" : "ok"; } };
+  return { watcher, asked };
+};
+const BAND = (what: string, goal: string) => `Le surveillant a mis en pause : ${what} sans rapport avec « ${goal} »`;
+
+test("a strange search query is not run: the band goes to « yours »; Continuer runs it, Arrêter answers STOP_TEXT", async () => {
+  const { watcher } = fakeWatcher((g) => g.query === "adresse mail");
+  await withSearch(async ({ call, fake, search, bands }) => {
+    await call("search_web", { query: "vélo", goal: "trouver un vélo" });
+    const opens = () => fake.calls.filter((x) => x.method === "search.open").length;
+    const pending = call("search_web", { query: "adresse mail" });
+    await vi.waitFor(() => expect(bands.at(-1)![1]).toMatchObject({ state: "yours", text: BAND("recherche « adresse mail »", "trouver un vélo") }));
+    expect(opens()).toBe(1);
+    search.continue("search-1");
+    expect((await pending).text).toContain("Onglet : search-1");
+    expect(opens()).toBe(2);
+    const second = call("search_web", { query: "adresse mail" });
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.state).toBe("yours"));
+    search.stop("search-1");
+    expect((await second).text).toBe(STOP_TEXT);
+    expect(opens()).toBe(2);
+  }, { watcher });
+});
+
+test("a strange first query pauses on the engine's empty page, then runs on Continuer; the goal is cut to 200 characters", async () => {
+  const { watcher } = fakeWatcher(() => true);
+  await withSearch(async ({ call, fake, search, bands }) => {
+    const pending = call("search_web", { query: "x".repeat(300), goal: "g".repeat(300) });
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.state).toBe("yours"));
+    expect(bands.at(-1)![1]!.text).toBe(BAND(`recherche « ${"x".repeat(200)} »`, "g".repeat(200)));
+    expect(fake.calls.filter((x) => x.method === "search.open").map((x) => x.args[1])).toEqual([{ query: "" }]);
+    search.continue("search-1");
+    await pending;
+    expect(fake.calls.filter((x) => x.method === "search.open").map((x) => x.args[1])).toEqual([{ query: "" }, { query: "x".repeat(300) }]);
+    expect(search.current("main")).toMatchObject({ goal: "g".repeat(300), gestures: [{ tool: "search_web", query: "x".repeat(300) }] });
+  }, { watcher });
+});
+
+test("the first query is judged, with the goal, before its tab opens", async () => {
+  const { watcher, asked } = fakeWatcher(() => false);
+  await withSearch(async ({ call }) => {
+    await call("search_web", { query: "vélo", goal: "trouver un vélo" });
+    expect(asked).toEqual([{ goal: "trouver un vélo", past: [], next: { tool: "search_web", query: "vélo" } }]);
+  }, { watcher });
+});
+
+test("a composed address gets the watcher's opinion on its card, and the card still comes", async () => {
+  const { watcher } = fakeWatcher((g) => g.composed === true);
+  await withSearch(async ({ call, fake }) => {
+    await call("search_web", { query: "x", goal: "but" });
+    expect((await call("navigate", { id: "search-1", url: "https://ailleurs.fr/p", reason: "r" })).text).toBe("Onglet search-1 → https://ailleurs.fr/p");
+    expect(fake.calls.find((x) => x.method === "askAddress")!.args[0]).toMatchObject({ opinion: "Sans rapport apparent avec le but annoncé." });
+  }, { watcher, address: true });
+  const ok = fakeWatcher(() => false);
+  await withSearch(async ({ call, fake }) => {
+    await call("search_web", { query: "x", goal: "but" });
+    await call("navigate", { id: "search-1", url: "https://ailleurs.fr/p", reason: "r" });
+    expect(fake.calls.find((x) => x.method === "askAddress")!.args[0]).not.toHaveProperty("opinion");
+  }, { watcher: ok.watcher, address: true });
+});
+
+test("search_history, search_bookmarks, read_history and read_tab on a user tab are judged while a search runs, and not without one", async () => {
+  const { watcher, asked } = fakeWatcher(() => false);
+  await withSearch(async ({ call }) => {
+    const user = async () => {
+      await call("search_history", { query: "h" });
+      await call("search_bookmarks", { query: "b" });
+      await call("read_history", { url: "https://a.fr/" });
+      await call("read_tab", { id: "github" });
+    };
+    await user();
+    expect(asked).toHaveLength(0);
+    await call("search_web", { query: "x", goal: "but" });
+    asked.length = 0;
+    await user();
+    expect(asked.map((x) => x.next)).toEqual([
+      { tool: "search_history", query: "h" },
+      { tool: "search_bookmarks", query: "b" },
+      { tool: "read_history", url: "https://a.fr/" },
+      { tool: "read_tab" },
+    ]);
+    expect(asked[3]!.past.map((x) => x.tool)).toEqual(["search_web", "search_history", "search_bookmarks", "read_history"]);
+  }, { watcher, withUserData: true, allow: true });
+});
+
+test("a strange history read is not run: the band names it; Continuer runs it", async () => {
+  const { watcher } = fakeWatcher((g) => g.tool === "search_history");
+  await withSearch(async ({ call, fake, search, bands }) => {
+    await call("search_web", { query: "x", goal: "but" });
+    const pending = call("search_history", { query: "h" });
+    await vi.waitFor(() => expect(bands.at(-1)![1]).toMatchObject({ state: "yours", text: BAND("lecture de l'historique", "but") }));
+    expect(fake.calls.some((x) => x.method === "history.find")).toBe(false);
+    search.continue("search-1");
+    await pending;
+    expect(fake.calls.some((x) => x.method === "history.find")).toBe(true);
+  }, { watcher, withUserData: true });
+});
+
+test("a followed link is never judged", async () => {
+  const { watcher, asked } = fakeWatcher(() => true);
+  await withSearch(async ({ call }) => {
+    await call("search_web", { query: "x" }); // no goal: not asked either
+    await call("navigate", { id: "search-1", url: "https://exemple.fr/a" });
+  }, { watcher });
+  const w = fakeWatcher(() => false);
+  await withSearch(async ({ call }) => {
+    await call("search_web", { query: "x", goal: "but" });
+    w.asked.length = 0;
+    await call("navigate", { id: "search-1", url: "https://exemple.fr/a" });
+    expect(w.asked).toHaveLength(0);
+  }, { watcher: w.watcher });
+  expect(asked).toHaveLength(0);
+});
+
+test("without a goal the watcher is not asked and nothing is paused", async () => {
+  const { watcher, asked } = fakeWatcher(() => true);
+  await withSearch(async ({ call }) => {
+    await call("search_web", { query: "un" });
+    expect((await call("search_web", { query: "deux" })).text).toContain("Onglet : search-1");
+    await call("search_history", { query: "h" });
+    await call("read_pages", { urls: ["https://exemple.fr/a"] });
+    expect(asked).toHaveLength(0);
+  }, { watcher, withUserData: true });
 });

@@ -15,6 +15,7 @@ import { defaultRunner, type Runner } from "./container/runner.js";
 import { SessionAgent } from "./pty/session.js";
 import { AccessPolicy } from "./access/policy.js";
 import { SearchSessions } from "./search/sessions.js";
+import { createWatcher } from "./search/watcher.js";
 import type { TabInfo, BrowserBridge } from "./mcp/bridge.js";
 import type { ExtensionsTools } from "./mcp/extensions.js";
 import { startMcpServer, generateToken, type ActionsTools, type AppsTools, type SitesTools, type WidgetsTools, type OpenWorkflow } from "./mcp/server.js";
@@ -379,6 +380,7 @@ export async function createKernel(o: {
     bridge: o.bridge,
     policy: policy,
     search: search,
+    ...(aiAccess ? { watcher: createWatcher(aiAccess) } : {}),
     token: token,
     agent: profile.name,
     profiles: profileFiles(paths, o.profilingFolder),
