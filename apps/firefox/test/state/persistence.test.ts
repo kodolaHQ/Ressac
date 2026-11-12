@@ -380,3 +380,15 @@ test("a session saved without claudeEngine loads with the default; a corrupt one
   expect(s.settings.claudeEngine).toEqual(DEFAULT_CLAUDE_ENGINE);
   expect(s.settings.agentPanelWidth).toBe(500);
 });
+
+test("a persisted tab with a profile reloads with it", async () => {
+  const d = folder();
+  let n = 200;
+  const g = () => `k${++n}`;
+  const start = initialState(g);
+  const state = apply(start, { type: "openTab", windowId: start.windows[0]!.id, url: "https://a.test/", profile: "agent" }, g);
+  const recorder = new SessionRecorder(d);
+  recorder.schedule(state);
+  await recorder.clear();
+  expect(Object.values((await loadSession(d)).tabs).some((t) => t.profile === "agent")).toBe(true);
+});

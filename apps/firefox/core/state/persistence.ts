@@ -31,6 +31,7 @@ const SchemaSession = z.object({
       favicon: z.string().nullable(),
       link: z.object({ type: z.enum(["essential", "pinned"]), id: z.string() }).nullable(),
       openedByAgent: z.boolean(),
+      profile: z.string().min(1).optional(),
       zoom: z.number(),
     }),
   ),

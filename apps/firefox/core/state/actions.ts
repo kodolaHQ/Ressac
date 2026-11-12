@@ -4,6 +4,7 @@ import type { Action } from "../../shared/api";
 import { DEFAULT_AURA } from "../../shared/aura";
 import { bindingProblem, effectiveBindings, sameBinding } from "../../shared/shortcuts";
 import {
+  AGENT_PROFILE,
   spaceKey,
   AGENT_WIDTH_MAX,
   AGENT_WIDTH_MIN,
@@ -62,14 +63,14 @@ function open(
   d: Draft,
   genId: () => string,
   f: WindowState,
-  a: { url: string; spaceId?: SpaceId; activate?: boolean; openedByAgent?: boolean; after?: TabId; title?: string },
+  a: { url: string; spaceId?: SpaceId; activate?: boolean; openedByAgent?: boolean; after?: TabId; title?: string; profile?: ProfileId },
 ): Tab | null {
   // A link opened from a tab stays in that tab's space (its login profile), even in the background;
   // an essential, shared between spaces, opens in the displayed space if it is the active tab there.
   const parent = a.after && f.active[f.activeSpace] !== a.after ? d.tabs[a.after]?.spaceId : undefined;
   const space = a.spaceId ?? parent ?? f.activeSpace;
   if (!d.spaces.some((e) => e.id === space)) return null;
-  const o = createTab(d, genId, { windowId: f.id, spaceId: space, url: a.url, openedByAgent: a.openedByAgent ?? false, ...(a.title ? { title: a.title } : {}) });
+  const o = createTab(d, genId, { windowId: f.id, spaceId: space, url: a.url, openedByAgent: a.openedByAgent ?? false, ...(a.title ? { title: a.title } : {}), ...(a.profile ? { profile: a.profile } : {}) });
   const l = list(f, space);
   const i = a.after ? l.indexOf(a.after) : -1;
   l.splice(i >= 0 ? i + 1 : l.length, 0, o.id);
@@ -150,6 +151,7 @@ function linkToFavorite(d: Draft, genId: () => string, o: Tab, type: "essential"
 
 /** The requested login profile: "new" creates one; an unknown profile gives null. */
 function requestedProfile(d: Draft, genId: () => string, profile: ProfileId): ProfileId | null {
+  if (profile === AGENT_PROFILE) return null; // reserved for tabs
   if (profile === "new") {
     const id = genId();
     d.profiles.push({ id });

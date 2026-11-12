@@ -81,6 +81,8 @@ export interface Tab {
   /** Link to a persistent favorite: the tab materializes an essential or a pinned tab. */
   link: { type: "essential" | "pinned"; id: string } | null;
   openedByAgent: boolean;
+  /** A login profile of the tab's own, winning over its space's (the agent's search tab). */
+  profile?: ProfileId;
   loading: boolean;
   canGoBack: boolean;
   canGoForward: boolean;
@@ -113,6 +115,8 @@ export interface Folder {
 export type ProfileId = string;
 /** The login profile from before configurable spaces (partition `persist:webaios`). */
 export const DEFAULT_PROFILE: ProfileId = "default";
+/** The agent's own login profile (its cookies): never a space's profile, only a tab's. */
+export const AGENT_PROFILE: ProfileId = "agent";
 export interface ConnectionProfile {
   id: ProfileId;
 }
@@ -222,9 +226,9 @@ export function historyContext(state: BrowserState, id: TabId): { spaceId: Space
   return { spaceId: spaceId, private: isPrivate };
 }
 
-/** The tab's login profile, that of its space (the default profile if the space is unknown). */
+/** The tab's login profile: its own if it has one, else its space's (the default profile if the space is unknown). */
 export function tabProfile(state: BrowserState, tab: Tab): ProfileId {
-  return state.spaces.find((e) => e.id === tab.spaceId)?.profile ?? DEFAULT_PROFILE;
+  return tab.profile ?? state.spaces.find((e) => e.id === tab.spaceId)?.profile ?? DEFAULT_PROFILE;
 }
 
 /** A history page: one row per URL and per space (`spaceId` empty: no space). */

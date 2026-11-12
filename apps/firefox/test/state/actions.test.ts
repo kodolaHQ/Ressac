@@ -2,7 +2,7 @@ import { beforeEach, expect, test } from "vitest";
 import { apply } from "../../core/state/actions";
 import { initialState } from "../../core/state/initial-state";
 import { SchemaAction, type Action } from "../../shared/api";
-import { spaceKey, historyContext, privateTab, profilesInUse, tabProfile, hasView, URL_ACTIONS, URL_APPLICATIONS, URL_EXTENSIONS, URL_SETTINGS, urlAction, urlWorkflow, type BrowserState, type Tab } from "../../shared/model";
+import { AGENT_PROFILE, spaceKey, historyContext, privateTab, profilesInUse, tabProfile, hasView, URL_ACTIONS, URL_APPLICATIONS, URL_EXTENSIONS, URL_SETTINGS, urlAction, urlWorkflow, type BrowserState, type Tab } from "../../shared/model";
 
 let n = 0;
 const genId = () => `g${++n}`;
@@ -901,4 +901,24 @@ test("chooseClaudeEngine stores a new engine; an equal one changes nothing", () 
   const ollama = { ...e.settings.claudeEngine, kind: "ollama" as const, ollamaModel: "ornith:35b" };
   ag({ type: "chooseClaudeEngine", engine: ollama });
   expect(e.settings.claudeEngine).toEqual(ollama);
+});
+
+test("openTab with profile \"agent\" gives the tab that profile; tabProfile returns it whatever the space's", () => {
+  const id = open("https://a.test/");
+  ag({ type: "openTab", windowId: F, url: "https://b.test/", profile: AGENT_PROFILE });
+  const tab = Object.values(e.tabs).find((t) => t.url === "https://b.test/")!;
+  expect(tab.profile).toBe(AGENT_PROFILE);
+  expect(tabProfile(e, tab)).toBe(AGENT_PROFILE);
+  expect(e.tabs[id]!.profile).toBeUndefined();
+});
+
+test("a tab without profile keeps its space's", () => {
+  const id = open("https://a.test/");
+  expect(tabProfile(e, e.tabs[id]!)).toBe("default");
+});
+
+test("a space cannot be created with the agent's profile", () => {
+  const before = e.spaces.length;
+  ag({ type: "createSpace", name: "X", icon: "x", private: false, profile: AGENT_PROFILE });
+  expect(e.spaces.length).toBe(before);
 });
