@@ -166,6 +166,7 @@ Limits:
   - Chromium: the engine reads them, and macOS asks for the source's keychain item.
   - Safari, Firefox and Zen: by CSV, with a guide on screen. The import uses `LoginCSVImport`.
 - **Arc and Zen spaces** (`chrome/store/import/spaces.ts`): spaces, favorites and pinned tabs become WebAiOs spaces, essentials and pinned tabs. They go through the store actions `createSpace` (with `pinned`) and `addFavorites`. A space with the same name is reused, a URL already present is skipped, and a private space never receives anything.
+- **Arc and Zen open tabs** (type `tabs`, its own checkbox « Onglets ouverts »): after the spaces, `planTabImport` opens each open tab in its space with `openTab` (`activate: false`, with its `title`), in the first window. No tab loads before it is displayed, and an address already open in the space is skipped. A space with neither pinned nor open tabs is not created.
   - The Arc sidebar format is assumed, not measured (no Arc on the dev Mac); see the `shortcut:` comment.
   - Zen is read from `zen-sessions.jsonlz4`.
 - **Background run:** one import at a time, in the background. It ends with a macOS notification giving the counts per type, or what failed and why.

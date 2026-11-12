@@ -10,7 +10,7 @@
    */
   let { sources = $bindable() }: { sources?: ImportSource[] } = $props();
 
-  const LABELS: Record<ImportType, string> = { bookmarks: "Favoris", history: "Historique", passwords: "Mots de passe", spaces: "Espaces et onglets épinglés" };
+  const LABELS: Record<ImportType, string> = { bookmarks: "Favoris", history: "Historique", passwords: "Mots de passe", spaces: "Espaces et onglets épinglés", tabs: "Onglets ouverts" };
   const bi = api.browserImport;
 
   let chosen = $state<ImportSourceId | null>(null);

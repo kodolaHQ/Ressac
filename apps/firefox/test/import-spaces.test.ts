@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { parseArcSidebar, parseZenSpaces, planSpaceImport, type ImportedSpaces } from "../chrome/store/import/spaces";
+import { parseArcSidebar, parseZenSpaces, planSpaceImport, planTabImport, type ImportedSpaces } from "../chrome/store/import/spaces";
 import { summary } from "../chrome/store/import/importer";
 import { apply } from "../core/state/actions";
 import { initialState } from "../core/state/initial-state";
@@ -20,21 +20,21 @@ const view = (s: BrowserState) => ({
 });
 
 describe("parsing another browser's sidebar", () => {
-  it("reads Arc's spaces, pinned tabs (folders flattened, http only) and favorites", () => {
+  it("reads Arc's spaces, pinned tabs (folders flattened, http only), open tabs and favorites", () => {
     expect(arc()).toEqual({
       spaces: [
-        { name: "Travail", pinned: [{ url: "https://docs.example.com/projet", title: "Projet" }, { url: "https://tickets.example.com/", title: "Tickets" }] },
-        { name: "Maison", pinned: [{ url: "https://recettes.example.com/", title: "Recettes" }] },
+        { name: "Travail", pinned: [{ url: "https://docs.example.com/projet", title: "Projet" }, { url: "https://tickets.example.com/", title: "Tickets" }], tabs: [{ url: "https://ephemere.example.com/", title: "Onglet du jour" }] },
+        { name: "Maison", pinned: [{ url: "https://recettes.example.com/", title: "Recettes" }], tabs: [] },
       ],
       essentials: [{ url: "https://mail.example.com/", title: "Courrier" }, { url: "https://agenda.example.com/", title: "Agenda" }],
     });
   });
 
-  it("reads Zen's workspaces, pinned tabs at their pinned address, and essentials; no glance nor unpinned tab", () => {
+  it("reads Zen's workspaces, pinned tabs at their pinned address, and essentials; open tabs at their current address; no glance", () => {
     expect(zen()).toEqual({
       spaces: [
-        { name: "Travail", pinned: [{ url: "https://docs.example.com/projet", title: "Projet" }] },
-        { name: "Maison", pinned: [{ url: "https://recettes.example.com/", title: "Recettes" }] },
+        { name: "Travail", pinned: [{ url: "https://docs.example.com/projet", title: "Projet" }], tabs: [{ url: "https://ephemere.example.com/", title: "Onglet du jour" }] },
+        { name: "Maison", pinned: [{ url: "https://recettes.example.com/", title: "Recettes" }], tabs: [] },
       ],
       essentials: [{ url: "https://mail.example.com/", title: "Courrier" }],
     });
@@ -68,7 +68,7 @@ describe("planSpaceImport", () => {
   });
 
   it("adds only the missing pinned tabs to a space of the same name", () => {
-    const s = run(initialState(genId), { spaces: [{ name: "travail", pinned: [{ url: "https://docs.example.com/projet", title: "Projet" }] }], essentials: [] });
+    const s = run(initialState(genId), { spaces: [{ name: "travail", pinned: [{ url: "https://docs.example.com/projet", title: "Projet" }], tabs: [] }], essentials: [] });
     expect(planSpaceImport(s, arc())).toContainEqual({ type: "addFavorites", spaceId: s.spaces[1]!.id, favorites: [{ url: "https://tickets.example.com/", title: "Tickets" }] });
   });
 
@@ -100,8 +100,25 @@ describe("planSpaceImport", () => {
     expect(view(s).essentials).toEqual(["https://a.example.com/"]);
   });
 
+  it("opens the open tabs in their space, in the background and unloaded, once; a space with nothing is not created", () => {
+    const start = initialState(genId);
+    const w = start.windows[0]!;
+    const imported: ImportedSpaces = { spaces: [...arc().spaces, { name: "Vide", pinned: [], tabs: [] }, { name: "Onglets", pinned: [], tabs: [{ url: "https://a.example.com/", title: "A" }] }], essentials: [] };
+    const withSpaces = run(start, imported);
+    expect(withSpaces.spaces.map((e) => e.name)).toEqual(["Perso", "Travail", "Maison", "Onglets"]);
+    const after = planTabImport(withSpaces, imported, w.id).reduce((s, a) => apply(s, a, genId), withSpaces);
+    const tabs = Object.values(after.tabs).filter((t) => !(t.id in start.tabs));
+    expect(tabs.map((t) => [after.spaces.find((e) => e.id === t.spaceId)!.name, t.url, t.title, t.loading])).toEqual([
+      ["Travail", "https://ephemere.example.com/", "Onglet du jour", false],
+      ["Onglets", "https://a.example.com/", "A", false],
+    ]);
+    // The window stays where it was, on its tab.
+    expect([after.windows[0]!.activeSpace, after.windows[0]!.active[w.activeSpace]]).toEqual([w.activeSpace, w.active[w.activeSpace]]);
+    expect(planTabImport(after, imported, w.id)).toEqual([]);
+  });
+
   it("the end notification names spaces and favorites together", () => {
     expect(summary({ source: "arc", done: true, counts: { spaces: 3 }, failed: {} }).text).toBe("3 éléments de barre latérale");
-    expect(summary({ source: "arc", done: true, counts: { spaces: 1 }, failed: {} }).text).toBe("1 élément de barre latérale");
+    expect(summary({ source: "arc", done: true, counts: { spaces: 1, tabs: 2 }, failed: {} }).text).toBe("1 élément de barre latérale, 2 onglets ouverts");
   });
 });

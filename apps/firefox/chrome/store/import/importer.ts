@@ -2,7 +2,7 @@ import type { BrowserImportApi, ImportProgress, ImportSource, ImportType } from 
 import type { AgentHost } from "../../agent/host";
 import { showAlert } from "../notifications";
 import type { Store } from "../store";
-import { parseArcSidebar, parseZenSpaces, planSpaceImport } from "./spaces";
+import { parseArcSidebar, parseZenSpaces, planSpaceImport, planTabImport } from "./spaces";
 import { chromiumMigrator, chromiumProfiles, detectSources, firefoxMigrator, firefoxProfiles, safariMigrator, sourceRoot, type SourceDef } from "./sources";
 
 /** Visits per `history.import` call (the host takes up to 50 000). */
@@ -67,13 +67,14 @@ export function pruneBookmarks(items: BookmarkItem[], parentTitle: string, exist
   return { items: kept, count };
 }
 
-const ORDER: ImportType[] = ["bookmarks", "history", "passwords", "spaces"];
+const ORDER: ImportType[] = ["bookmarks", "history", "passwords", "spaces", "tabs"];
 /** Singular, plural, and the type's name in a failure. */
 const LABELS: Record<ImportType, [string, string, string]> = {
   bookmarks: ["favori", "favoris", "favoris"],
   history: ["page d'historique", "pages d'historique", "historique"],
   passwords: ["mot de passe", "mots de passe", "mots de passe"],
   spaces: ["élément de barre latérale", "éléments de barre latérale", "espaces et onglets épinglés"],
+  tabs: ["onglet ouvert", "onglets ouverts", "onglets ouverts"],
 };
 
 /** The end notification: what came in, then what failed and why. */
@@ -156,8 +157,11 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
       }
   }
 
-  /** Arc's or Zen's spaces, favorites and pinned tabs into the store; the spaces created plus the favorites added. */
-  async function importSpaces(def: SourceDef, profile: { id: string } | null): Promise<number> {
+  /**
+   * Arc's or Zen's spaces, favorites and pinned tabs (`spaces`) and open tabs (`tabs`) into the store, each only if in
+   * `types`. Counts: the spaces created plus the favorites added, and the tabs opened.
+   */
+  async function importSpaces(def: SourceDef, profile: { id: string } | null, types: ImportType[]): Promise<{ spaces: number; tabs: number }> {
     const arc = def.id === "arc";
     // Arc keeps its sidebar next to its Chromium data folder; Zen, in the profile's session file (written whole, never locked).
     if (!arc && !profile) throw new Error("profil Zen introuvable");
@@ -169,12 +173,18 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
     } catch {
       throw new Error(reason(def, "spaces", true));
     }
-    const imported = arc ? parseArcSidebar(json) : parseZenSpaces(json);
-    if (!imported) throw new Error(`format ${def.name} non reconnu`);
+    const read = arc ? parseArcSidebar(json) : parseZenSpaces(json);
+    if (!read) throw new Error(`format ${def.name} non reconnu`);
+    const [sidebar, tabs] = [types.includes("spaces"), types.includes("tabs")];
+    const imported = { spaces: read.spaces.map((s) => ({ name: s.name, pinned: sidebar ? s.pinned : [], tabs: tabs ? s.tabs : [] })), essentials: sidebar ? read.essentials : [] };
     const size = () => store.state.spaces.reduce((n, e) => n + 1 + e.pinned.length, store.state.essentials.length);
-    const before = size();
+    const open = () => Object.keys(store.state.tabs).length;
+    const before = [size(), open()];
     for (const a of planSpaceImport(store.state, imported)) store.dispatch(a);
-    return size() - before;
+    // shortcut: the open tabs all land in the first window, upgrade if importing with several windows open matters.
+    const windowId = store.state.windows[0]?.id;
+    if (windowId) for (const a of planTabImport(store.state, imported, windowId)) store.dispatch(a);
+    return { spaces: size() - before[0]!, tabs: open() - before[1]! };
   }
 
   async function run(def: SourceDef, profile: { id: string; name: string } | null, types: ImportType[], p: ImportProgress): Promise<void> {
@@ -189,10 +199,11 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
     };
     await cleared;
     // First, on its own: a migrator that crashes never takes the spaces with it.
-    if (types.includes("spaces"))
-      await importSpaces(def, profile).then(
-        (n) => (p.counts.spaces = n),
-        (e) => (p.failed.spaces = e instanceof Error ? e.message : String(e)),
+    const sidebar = types.filter((t) => t === "spaces" || t === "tabs");
+    if (sidebar.length)
+      await importSpaces(def, profile, types).then(
+        (n) => sidebar.forEach((t) => (p.counts[t] = n[t as "spaces" | "tabs"])),
+        (e) => sidebar.forEach((t) => (p.failed[t] = e instanceof Error ? e.message : String(e))),
       );
     const savedPrefs = RUN_PREFS.map(([name, value]) => {
       const saved = Services.prefs.prefHasUserValue(name) ? Services.prefs.getIntPref(name) : null;

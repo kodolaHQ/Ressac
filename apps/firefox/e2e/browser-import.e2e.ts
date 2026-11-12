@@ -137,10 +137,10 @@ describe("import from another browser", () => {
   it("lists the fake browsers; a source's profiles only when asked", async () => {
     const sources = await api<ImportSource[]>("sources()");
     expect(sources.map((s) => [s.id, s.types])).toEqual([
-      ["arc", ["bookmarks", "history", "passwords", "spaces"]],
+      ["arc", ["bookmarks", "history", "passwords", "spaces", "tabs"]],
       ["chrome", ["bookmarks", "history", "passwords"]],
       ["safari", ["bookmarks", "history"]],
-      ["zen", ["bookmarks", "history", "spaces"]],
+      ["zen", ["bookmarks", "history", "spaces", "tabs"]],
     ]);
     expect(sources[1]).toEqual({ id: "chrome", name: "Google Chrome", types: ["bookmarks", "history", "passwords"], passwordsByCsv: false });
     expect(await api("profiles(arguments[0])", ["chrome"])).toEqual([{ id: "Default", name: "Personne 1" }]);
@@ -205,10 +205,13 @@ describe("import from another browser", () => {
     }
   });
 
-  it("brings Arc's then Zen's spaces, favorites and pinned tabs, once", async () => {
-    expect(await api("start(arguments[0])", [{ source: "arc", profile: "Default", types: ["spaces"] }])).toEqual({ ok: true });
-    expect(await finished()).toMatchObject({ counts: { spaces: 7 }, failed: {} });
+  it("brings Arc's then Zen's spaces, favorites, pinned and open tabs, once", async () => {
+    expect(await api("start(arguments[0])", [{ source: "arc", profile: "Default", types: ["spaces", "tabs"] }])).toEqual({ ok: true });
+    expect(await finished()).toMatchObject({ counts: { spaces: 7, tabs: 1 }, failed: {} });
     const s = await state(m);
+    // The open tab waits in its space, not loaded.
+    const travail = s.spaces.find((e) => e.name === "Travail")!.id;
+    expect(Object.values(s.tabs).filter((t) => t.spaceId === travail).map((t) => [t.url, t.title, t.loading])).toEqual([["https://ephemere.example.com/", "Onglet du jour", false]]);
     expect(s.spaces.slice(1).map((e) => ({ name: e.name, private: e.private, pinned: e.pinned.map((f) => f.url) }))).toEqual([
       { name: "Travail", private: false, pinned: ["https://docs.example.com/projet", "https://tickets.example.com/"] },
       { name: "Maison", private: false, pinned: ["https://recettes.example.com/"] },
@@ -216,9 +219,10 @@ describe("import from another browser", () => {
     expect(s.essentials.map((f) => f.url)).toEqual(["https://mail.example.com/", "https://agenda.example.com/"]);
     // Zen has the same spaces and favorites: nothing new.
     const zenProfile = join(home, "Library/Application Support/zen/Profiles/abc.Default");
-    expect(await api("start(arguments[0])", [{ source: "zen", profile: zenProfile, types: ["spaces"] }])).toEqual({ ok: true });
-    expect(await finished()).toMatchObject({ counts: { spaces: 0 }, failed: {} });
+    expect(await api("start(arguments[0])", [{ source: "zen", profile: zenProfile, types: ["spaces", "tabs"] }])).toEqual({ ok: true });
+    expect(await finished()).toMatchObject({ counts: { spaces: 0, tabs: 0 }, failed: {} });
     expect((await state(m)).spaces).toEqual(s.spaces);
+    expect(Object.keys((await state(m)).tabs)).toEqual(Object.keys(s.tabs));
   });
 
   it("imports a CSV of 2 passwords", async () => {
@@ -249,6 +253,8 @@ describe("import from another browser", () => {
     await click(m, '[data-testid="import-source-arc"]');
     await shows("browser-import", "Espaces et onglets épinglés");
     expect(await checked("import-type-spaces")).toBe(true);
+    await shows("browser-import", "Onglets ouverts");
+    expect(await checked("import-type-tabs")).toBe(true);
     expect(await there("welcome-later")).toBe(true);
     await click(m, '[data-testid="import-source-chrome"]');
     for (const t of ["bookmarks", "history", "passwords"]) expect(await checked(`import-type-${t}`)).toBe(true);

@@ -28,6 +28,8 @@ export const SchemaAction = z.discriminatedUnion("type", [
     activate: z.boolean().optional(),
     openedByAgent: z.boolean().optional(),
     after: id.optional(),
+    /** Shown until the page loads (an imported tab is not loaded before it is displayed). */
+    title: z.string().optional(),
   }),
   z.object({ type: z.literal("closeTab"), id }),
   // garderEspace: the tab becomes its space's tab without the window changing space (an extension's request).
@@ -372,7 +374,7 @@ export interface ApiWebaios {
 }
 
 export type ImportSourceId = "arc" | "chrome" | "brave" | "edge" | "vivaldi" | "opera" | "safari" | "firefox" | "zen";
-export type ImportType = "bookmarks" | "history" | "passwords" | "spaces";
+export type ImportType = "bookmarks" | "history" | "passwords" | "spaces" | "tabs";
 export interface ImportSource { id: ImportSourceId; name: string; types: ImportType[]; passwordsByCsv: boolean }
 export interface ImportProgress { source: ImportSourceId; done: boolean; counts: Partial<Record<ImportType, number>>; failed: Partial<Record<ImportType, string>> }
 /** Import from another browser on this Mac: one run at a time, in the background; a notification tells the end. */

@@ -60,14 +60,14 @@ function open(
   d: Draft,
   genId: () => string,
   f: WindowState,
-  a: { url: string; spaceId?: SpaceId; activate?: boolean; openedByAgent?: boolean; after?: TabId },
+  a: { url: string; spaceId?: SpaceId; activate?: boolean; openedByAgent?: boolean; after?: TabId; title?: string },
 ): Tab | null {
   // A link opened from a tab stays in that tab's space (its login profile), even in the background;
   // an essential, shared between spaces, opens in the displayed space if it is the active tab there.
   const parent = a.after && f.active[f.activeSpace] !== a.after ? d.tabs[a.after]?.spaceId : undefined;
   const space = a.spaceId ?? parent ?? f.activeSpace;
   if (!d.spaces.some((e) => e.id === space)) return null;
-  const o = createTab(d, genId, { windowId: f.id, spaceId: space, url: a.url, openedByAgent: a.openedByAgent ?? false });
+  const o = createTab(d, genId, { windowId: f.id, spaceId: space, url: a.url, openedByAgent: a.openedByAgent ?? false, ...(a.title ? { title: a.title } : {}) });
   const l = list(f, space);
   const i = a.after ? l.indexOf(a.after) : -1;
   l.splice(i >= 0 ? i + 1 : l.length, 0, o.id);

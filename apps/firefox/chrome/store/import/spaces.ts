@@ -6,8 +6,8 @@ export interface ImportedLink {
   title: string;
 }
 
-/** Another browser's sidebar: its spaces with their pinned tabs, and its favorites (→ essentials). */
-export type ImportedSpaces = { spaces: { name: string; pinned: ImportedLink[] }[]; essentials: ImportedLink[] };
+/** Another browser's sidebar: its spaces with their pinned and open tabs, and its favorites (→ essentials). */
+export type ImportedSpaces = { spaces: { name: string; pinned: ImportedLink[]; tabs: ImportedLink[] }[]; essentials: ImportedLink[] };
 
 /** http(s) only, normalized so a re-import finds the same URL; null otherwise. */
 function link(url: unknown, title: unknown): ImportedLink | null {
@@ -34,7 +34,7 @@ function after(list: unknown, key: (v: unknown) => boolean): unknown {
  * Arc's `StorableSidebar.json`.
  * shortcut: the shape comes from public exporters (Arc is not installed where this was written): `sidebar.containers[]`,
  * the one holding `spaces` and `items` (each `[id, object…]`); a space's `containerIDs` has `"pinned"` then the pinned
- * container's id; `topAppsContainerIDs` has `{ default: true }` then the favorites container's id; an item is
+ * container's id, and `"unpinned"` then its open tabs' container's id; `topAppsContainerIDs` has `{ default: true }` then the favorites container's id; an item is
  * `{ id, title, childrenIds, data.tab.savedURL/savedTitle }`, a folder has children. Measure it on a real Arc install.
  */
 export function parseArcSidebar(json: unknown): ImportedSpaces | null {
@@ -58,6 +58,7 @@ export function parseArcSidebar(json: unknown): ImportedSpaces | null {
     .map((s: Record<string, any>) => ({
       name: typeof s.title === "string" && s.title.trim() ? s.title.trim() : "Arc",
       pinned: tabs(after(s.containerIDs, (x) => x === "pinned")),
+      tabs: tabs(after(s.containerIDs, (x) => x === "unpinned")),
     }));
   if (!spaces.length) return null;
   const essentials = tabs(after(c.topAppsContainerIDs, (x) => isObject(x) && x.default === true));
@@ -66,13 +67,15 @@ export function parseArcSidebar(json: unknown): ImportedSpaces | null {
 
 /**
  * Zen's `zen-sessions.jsonlz4` (decompressed), as measured on Zen 2026-11: `spaces[]` `{ uuid, name }`, and `tabs[]`
- * with `pinned`, `zenEssential`, `zenWorkspace` (a space's uuid), `zenIsGlance`, `entries[]` + `index` (1-based) and
- * `_zenPinnedInitialState.entry { url, title }`, the address the pin was made on.
+ * with `pinned`, `zenEssential`, `zenWorkspace` (a space's uuid), `zenIsGlance`, `zenIsEmpty`, `entries[]` + `index`
+ * (1-based) and `_zenPinnedInitialState.entry { url, title }`, the address the pin was made on. An open tab comes at
+ * its current address.
  */
 export function parseZenSpaces(session: unknown): ImportedSpaces | null {
   const s = session as { spaces?: unknown; tabs?: unknown };
   if (!isObject(s) || !Array.isArray(s.spaces) || !Array.isArray(s.tabs)) return null;
-  const pins = s.tabs.filter((t): t is Record<string, any> => isObject(t) && t.pinned === true && t.zenIsGlance !== true);
+  const tabs = s.tabs.filter((t): t is Record<string, any> => isObject(t) && t.zenIsGlance !== true && t.zenIsEmpty !== true);
+  const pins = tabs.filter((t) => t.pinned === true);
   const linkOf = (t: Record<string, any>) => {
     const entries = Array.isArray(t.entries) ? t.entries : [];
     const e = isObject(t._zenPinnedInitialState?.entry) ? t._zenPinnedInitialState.entry : entries[(typeof t.index === "number" ? t.index : entries.length) - 1];
@@ -84,6 +87,7 @@ export function parseZenSpaces(session: unknown): ImportedSpaces | null {
     .map((w: Record<string, any>) => ({
       name: typeof w.name === "string" && w.name.trim() ? w.name.trim() : "Zen",
       pinned: links(pins.filter((t) => t.zenEssential !== true && t.zenWorkspace === w.uuid)),
+      tabs: links(tabs.filter((t) => t.pinned !== true && t.zenEssential !== true && t.zenWorkspace === w.uuid)),
     }));
   return { spaces, essentials: links(pins.filter((t) => t.zenEssential === true)) };
 }
@@ -94,29 +98,50 @@ function fresh(list: ImportedLink[], present: { url: string }[]): ImportedLink[]
   return list.filter((f) => !seen.has(f.url) && (seen.add(f.url), true));
 }
 
+/** The imported spaces by lowercased name: two of the same name become one. */
+function merged(imported: ImportedSpaces): Map<string, ImportedSpaces["spaces"][number]> {
+  const byName = new Map<string, ImportedSpaces["spaces"][number]>();
+  for (const s of imported.spaces) {
+    const key = s.name.toLowerCase();
+    const prev = byName.get(key);
+    if (prev) prev.pinned.push(...s.pinned), prev.tabs.push(...s.tabs);
+    else byName.set(key, { name: s.name, pinned: [...s.pinned], tabs: [...s.tabs] });
+  }
+  return byName;
+}
+
 /**
  * The store actions bringing `imported` in: a space of the same name (any case) is reused, unless it is private (a
  * new one is made then); a new space is normal, with the default aura, sharing the first normal space's login
- * profile. Nothing already there is added twice, nothing ever goes into a private space.
+ * profile. Nothing already there is added twice, nothing ever goes into a private space, and a space with neither
+ * pinned nor open tabs is not created. The open tabs come after, with `planTabImport`.
  */
 export function planSpaceImport(state: BrowserState, imported: ImportedSpaces): Action[] {
   const actions: Action[] = [];
   const profile = state.spaces.find((e) => !e.private)?.profile ?? "new";
   const essentials = fresh(imported.essentials, state.essentials);
   if (essentials.length) actions.push({ type: "addFavorites", favorites: essentials });
-  // Two imported spaces of the same name become one.
-  const byName = new Map<string, { name: string; pinned: ImportedLink[] }>();
-  for (const s of imported.spaces) {
-    const key = s.name.toLowerCase();
-    const prev = byName.get(key);
-    if (prev) prev.pinned.push(...s.pinned);
-    else byName.set(key, { name: s.name, pinned: [...s.pinned] });
-  }
-  for (const [key, s] of byName) {
+  for (const [key, s] of merged(imported)) {
     const space = state.spaces.find((e) => !e.private && e.name.toLowerCase() === key);
     const pinned = fresh(s.pinned, space?.pinned ?? []);
-    if (!space) actions.push({ type: "createSpace", name: s.name, icon: "📁", private: false, profile, pinned });
-    else if (pinned.length) actions.push({ type: "addFavorites", spaceId: space.id, favorites: pinned });
+    if (!space) {
+      if (pinned.length || s.tabs.length) actions.push({ type: "createSpace", name: s.name, icon: "📁", private: false, profile, pinned });
+    } else if (pinned.length) actions.push({ type: "addFavorites", spaceId: space.id, favorites: pinned });
+  }
+  return actions;
+}
+
+/**
+ * After `planSpaceImport`'s actions: the open tabs into their space (the normal one of that name) in window
+ * `windowId`, in the background, so none loads before it is displayed. An address already open in the space is skipped.
+ */
+export function planTabImport(state: BrowserState, imported: ImportedSpaces, windowId: string): Action[] {
+  const actions: Action[] = [];
+  for (const [key, s] of merged(imported)) {
+    const space = state.spaces.find((e) => !e.private && e.name.toLowerCase() === key);
+    if (!space) continue;
+    const open = Object.values(state.tabs).filter((t) => t.spaceId === space.id);
+    for (const t of fresh(s.tabs, open)) actions.push({ type: "openTab", windowId, spaceId: space.id, url: t.url, title: t.title, activate: false });
   }
   return actions;
 }
