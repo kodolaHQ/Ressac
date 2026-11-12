@@ -1,0 +1,12 @@
+<!doctype html><meta charset="utf-8"><title>Résultats tardifs</title>
+<p>Résultats de la recherche.</p>
+<script>
+setTimeout(() => {
+  for (const [href, name] of [["/a.html", "Annonce"], ["/b.html", "Autre"], ["/lien.html", "Lien"]]) {
+    const a = document.createElement("a");
+    a.href = href;
+    a.textContent = name;
+    document.body.append(a);
+  }
+}, 800);
+</script>

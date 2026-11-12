@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { SearchSessions, STOP_TEXT, type Band } from "../../src/search/sessions.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { AccessPolicy } from "../../src/access/policy.js";
@@ -1370,4 +1371,126 @@ test("a session token opened with an agent name asks under that name", async () 
   await c.callTool({ name: "widget_data", arguments: { id: "daily" } });
   await c.close();
   expect(dataCards()[0]!.args[0]).toEqual({ id: "daily", name: "daily.dev", agent: "Codex" });
+});
+
+// --- search_web and the link rule on the search tab ---
+
+const REFUSED = "Adresse non lue dans cette recherche : tu ne peux suivre que les liens des pages lues ici.";
+const a = { text: "A", url: "https://exemple.fr/a" };
+const b = { text: "B", url: "https://exemple.fr/b" };
+const c = { text: "C", url: "https://exemple.fr/c" };
+
+async function withSearch(
+  attempt: (o: { call: (name: string, args: Record<string, unknown>, token?: string) => Promise<{ text: string; isError: boolean }>; fake: FakeBridge; search: SearchSessions; s: Awaited<ReturnType<typeof startMcpServer>>; bands: [string, Band | null][] }) => Promise<void>,
+  opts: { privateWindows?: string[]; allow?: boolean } = {},
+) {
+  const principal = generateToken();
+  const fake = new FakeBridge([github], { active: "github", allow: opts.allow ?? false, search: { privateWindows: opts.privateWindows ?? [] } });
+  const bands: [string, Band | null][] = [];
+  const search = new SearchSessions({ show: (id, band) => bands.push([id, band]) });
+  const s = await startMcpServer({ bridge: fake, policy: new AccessPolicy(), token: principal, search, settleMs: 0 });
+  const clients: Client[] = [];
+  const call = async (name: string, args: Record<string, unknown>, clientToken = principal) => {
+    const cl = new Client({ name: "test", version: "0" });
+    clients.push(cl);
+    await cl.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${s.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${clientToken}` } } }));
+    const r = await cl.callTool({ name, arguments: args });
+    return { text: text(r), isError: r.isError === true };
+  };
+  try {
+    await attempt({ call, fake, search, s, bands });
+  } finally {
+    await Promise.all(clients.map((x) => x.close()));
+    await s.stop();
+  }
+}
+
+test("search_web opens the search tab, returns its id, text and links, and starts a search with the goal", async () => {
+  await withSearch(async ({ call, fake, search }) => {
+    const r = await call("search_web", { query: "vélo électrique", goal: "trouver un vélo" });
+    expect(r.text).toContain("Onglet : search-1");
+    expect(r.text).toContain("Texte de ");
+    expect(r.text).toContain("Liens :");
+    expect(r.text).toContain("Annonce — https://exemple.fr/a");
+    expect(fake.calls.find((x) => x.method === "search.open")!.args).toEqual([undefined, { query: "vélo électrique" }, undefined]);
+    expect(search.current("main")).toMatchObject({ tabId: "search-1", goal: "trouver un vélo" });
+  });
+});
+
+test("a second search_web reuses the tab (navigate, no new tab) and keeps the search", async () => {
+  await withSearch(async ({ call, fake, search }) => {
+    await call("search_web", { query: "un", goal: "but" });
+    const r = await call("search_web", { query: "deux" });
+    expect(r.text).toContain("Onglet : search-1");
+    expect(fake.calls.filter((x) => x.method === "search.open").map((x) => x.args[2])).toEqual([undefined, "search-1"]);
+    expect(search.current("main")).toMatchObject({ tabId: "search-1", goal: "but" });
+    expect(search.isFree("search-1", "https://moteur.test/?q=autre")).toBe(true);
+  });
+});
+
+test("search_web waits for late results: links 0, then 3, then 3 → returns the 3", async () => {
+  await withSearch(async ({ call, fake }) => {
+    fake.linkSequence = [[], [a, b, c], [a, b, c]];
+    const r = await call("search_web", { query: "x" });
+    expect(r.text).toContain("https://exemple.fr/c");
+    expect(fake.calls.filter((x) => x.method === "readText")).toHaveLength(3);
+  });
+});
+
+test("read_tab on the search tab needs no card and records the page's links", async () => {
+  await withSearch(async ({ call, fake, search }) => {
+    fake.linkSequence = [[a, b]];
+    await call("search_web", { query: "x" });
+    const r = await call("read_tab", { id: "search-1" });
+    expect(r.text).toContain("Texte de ");
+    expect(fake.calls.filter((x) => x.method === "askPermission")).toHaveLength(0);
+    expect(search.isFree("search-1", b.url)).toBe(true);
+  });
+});
+
+test("navigate on the search tab to a link read is done; to another address it is refused", async () => {
+  await withSearch(async ({ call, fake }) => {
+    fake.linkSequence = [[a, b]];
+    await call("search_web", { query: "x" });
+    expect((await call("navigate", { id: "search-1", url: b.url })).text).toBe(`Onglet search-1 → ${b.url}`);
+    const r = await call("navigate", { id: "search-1", url: "https://ailleurs.fr/" });
+    expect(r.text).toBe(REFUSED);
+    expect(fake.calls.filter((x) => x.method === "navigate")).toHaveLength(1);
+  });
+});
+
+test("the search tab of a finished search follows the ordinary access rules", async () => {
+  await withSearch(async ({ call, fake, search }) => {
+    await call("search_web", { query: "x" });
+    search.dismiss("search-1");
+    expect((await call("read_tab", { id: "search-1" })).text).toBe(DENIAL_TEXT);
+    expect(fake.calls.filter((x) => x.method === "askPermission")).toHaveLength(1);
+  });
+});
+
+test("search_web from a private space answers the error; a search in window A does not stop one in window B", async () => {
+  await withSearch(async ({ call, s, search }) => {
+    const tokenA = s.openSession("A");
+    const tokenB = s.openSession("B");
+    const tokenP = s.openSession("P");
+    const r = await call("search_web", { query: "x" }, tokenP);
+    expect(r.isError).toBe(true);
+    expect(r.text).toContain("l'espace actif est privé");
+    await call("search_web", { query: "un" }, tokenA);
+    await call("search_web", { query: "deux" }, tokenB);
+    search.stop(search.current("A")!.tabId);
+    expect(search.current("A")).toBeUndefined();
+    expect(search.current("B")).toBeDefined();
+  }, { privateWindows: ["P"] });
+});
+
+test("after stop, the next search tool answers STOP_TEXT once", async () => {
+  await withSearch(async ({ call, search, fake }) => {
+    await call("search_web", { query: "x" });
+    search.stop("search-1");
+    const opened = () => fake.calls.filter((x) => x.method === "search.open").length;
+    expect((await call("search_web", { query: "y" })).text).toBe(STOP_TEXT);
+    expect(opened()).toBe(1);
+    expect((await call("search_web", { query: "y" })).text).toContain("Onglet : search-2");
+  });
 });

@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from "vitest";
 import { dispatch, state, waitFor } from "./firefox";
+import { callTool } from "./mcp";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
@@ -13,7 +14,7 @@ let m: Marionette;
 beforeAll(async () => (server = await startServer()));
 afterAll(() => server?.close());
 beforeEach(async () => {
-  w = await launchWebAiOs({ env: { WEBAIOS_MEMORY_LOOP: "1" } });
+  w = await launchWebAiOs({ env: { WEBAIOS_MEMORY_LOOP: "1", WEBAIOS_TEST_SEARCH_URL: `${server.url}/results.html?q=%s` } });
   m = w.marionette;
   await m.setContext("chrome");
   await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
@@ -38,4 +39,48 @@ it("a tab in the agent's profile does not see the cookies of the user's tabs", a
   expect(await titleOf(`${server.url}/lire-cookie?user`)).toBe("essai=1");
   await dispatch(m, { type: "openTab", windowId, url: `${server.url}/lire-cookie?agent`, profile: "agent" });
   expect(await titleOf(`${server.url}/lire-cookie?agent`)).toBe("aucun");
+});
+
+const idOf = (text: string) => /Onglet : (\S+)/.exec(text)![1]!;
+
+it("search_web opens an agent tab on the engine, active, in the agent's profile, and returns the links", async () => {
+  const r = (await callTool(w.dataDir, "search_web", { query: "vélo électrique", goal: "trouver un vélo" })).text;
+  expect(r).toContain("Résultats de la recherche.");
+  expect(r).toContain(`Annonce — ${server.url}/a.html`);
+  expect(r).toContain(`Autre — ${server.url}/b.html`);
+  const s = await state(m);
+  const tab = s.tabs[idOf(r)]!;
+  expect(tab.profile).toBe("agent");
+  expect(tab.openedByAgent).toBe(true);
+  expect(tab.url).toBe(`${server.url}/results.html?q=${encodeURIComponent("vélo électrique")}`);
+  const win = s.windows[0]!;
+  expect(win.active[win.activeSpace]).toBe(tab.id);
+});
+
+it("a search_web navigate follows a result in the same tab without activating it again", async () => {
+  const id = idOf((await callTool(w.dataDir, "search_web", { query: "x" })).text);
+  const windowId = (await state(m)).windows[0]!.id;
+  await dispatch(m, { type: "openTab", windowId, url: `${server.url}/lien.html` });
+  const before = (await state(m)).windows[0]!;
+  const active = before.active[before.activeSpace];
+  expect(active).not.toBe(id);
+  expect((await callTool(w.dataDir, "navigate", { id, url: "https://ailleurs.example/" })).text).toContain("Adresse non lue");
+  await callTool(w.dataDir, "navigate", { id, url: `${server.url}/b.html` });
+  await titleOf(`${server.url}/b.html`);
+  const after = await state(m);
+  expect(after.tabs[id]!.url).toBe(`${server.url}/b.html`);
+  expect(after.windows[0]!.active[after.windows[0]!.activeSpace]).toBe(active);
+});
+
+it("late results are returned", async () => {
+  await w.close();
+  w = await launchWebAiOs({ env: { WEBAIOS_MEMORY_LOOP: "1", WEBAIOS_TEST_SEARCH_URL: `${server.url}/results-late.html?q=%s` } });
+  m = w.marionette;
+  await m.setContext("chrome");
+  await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+  const config = join(w.dataDir, "workspace", ".webaios", "mcp.json");
+  for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
+    if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
+  const r = (await callTool(w.dataDir, "search_web", { query: "x" })).text;
+  expect(r).toContain(`Lien — ${server.url}/lien.html`);
 });

@@ -16,6 +16,7 @@ import {
   type NetworkRequest,
   type HistoryResult,
   type JsResult,
+  type PageLink,
 } from "./bridge.js";
 
 // Transparent 1×1 PNG.
@@ -143,6 +144,9 @@ export class FakeBridge implements BrowserBridge {
   readonly devTools?: FakeDevTools;
   readonly history?: BrowserHistory;
   readonly bookmarks?: BrowserBridge["bookmarks"];
+  readonly search?: BrowserBridge["search"];
+  /** Links of the successive reads (the last one repeats), to simulate a page whose results come late. */
+  linkSequence?: PageLink[][];
   readPageInvisible?: (url: string, o: PageReadOptions) => Promise<ReadPage>;
   readHtmlInvisible?: (url: string, o: { localAddresses?: boolean; signal?: AbortSignal }) => Promise<{ url: string; html: string }>;
   /** Suspended reads in progress, by URL: `relacher` lets them finish. */
@@ -181,6 +185,8 @@ export class FakeBridge implements BrowserBridge {
       widgetData?: boolean;
       sites?: Record<string, string[]>;
       pendingSites?: string[];
+      /** Provides the search tab; `privateWindows`: windows whose active space is private. */
+      search?: { privateWindows?: string[] };
     },
   ) {
     this.sites = o.sites ?? {};
@@ -257,6 +263,26 @@ export class FakeBridge implements BrowserBridge {
         return { url, html: reading.html?.[url] ?? "" };
       };
     }
+    const searching = o.search;
+    if (searching)
+      this.search = {
+        open: async (window, target, reuse) => {
+          this.note("search.open", window, target, reuse);
+          if (window !== undefined && searching.privateWindows?.includes(window)) throw new Error("Impossible d'ouvrir un onglet ici : l'espace actif est privé.");
+          const url = "query" in target ? `https://moteur.test/?q=${encodeURIComponent(target.query)}` : target.url;
+          const engineOrigin = "https://moteur.test";
+          const old = reuse ? this.tabs.find((x) => x.id === reuse) : undefined;
+          if (old) {
+            old.url = url;
+            return { ...old, engineOrigin };
+          }
+          const tab = { id: `search-${++this.counter}`, title: url, url, space: "perso" };
+          this.tabs.push(tab);
+          this.active = tab.id;
+          return { ...tab, engineOrigin };
+        },
+        band: async (tabId, band) => this.note("search.band", tabId, band),
+      };
     const widgetData = o.widgetData;
     if (widgetData !== undefined) {
       this.askWidgetData = async (d) => {
@@ -370,7 +396,9 @@ export class FakeBridge implements BrowserBridge {
   async readText(id: string) {
     this.note("readText", id);
     const o = this.find(id);
-    return { text: `Texte de ${o.title} (${o.url})`, links: [{ text: "Annonce", url: "https://exemple.fr/a" }] };
+    const seq = this.linkSequence;
+    const links = seq?.length ? (seq.length > 1 ? seq.shift()! : seq[0]!) : [{ text: "Annonce", url: "https://exemple.fr/a" }];
+    return { text: `Texte de ${o.title} (${o.url})`, links };
   }
 
   async openTab(url: string, space?: string) {

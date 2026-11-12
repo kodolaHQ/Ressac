@@ -13,6 +13,7 @@ import {
   type DevToolsOwner,
   type ReadPage,
   type BrowserBridge,
+  type Band,
 } from "../../../packages/kernel/src/index.ts";
 import type { History } from "../core/history.ts";
 import type { Rpc } from "../shared/rpc.ts";
@@ -88,6 +89,10 @@ export class RemoteBridge implements BrowserBridge {
       if (signal?.aborted) return false;
       throw e;
     });
+  readonly search: NonNullable<BrowserBridge["search"]> = {
+    open: (window, target, reuse) => this.call("search.open", [window, target, reuse]),
+    band: (tabId: string, band: Band | null) => this.call("search.band", [tabId, band]),
+  };
   siteUrlAllowed = (site: string, url: string) => this.siteAllowed(site, url);
   isPrivate = (id: string) => this.privateTabs.has(id);
   activePrivateTab = () => this.activePrivate;

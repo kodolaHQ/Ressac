@@ -2,6 +2,7 @@ import type { DevRight } from "../access/policy.js";
 import type { CpuProfile } from "../devtools/summaries.js";
 import type { ChangeHost } from "../workflows/pacing.js";
 import type { ReadPage } from "../workflows/protocol.js";
+import type { Band } from "../search/sessions.js";
 
 /** The options of an invisible page read (see `BrowserBridge.lirePageInvisible`). */
 export interface PageReadOptions {
@@ -120,6 +121,17 @@ export interface BrowserBridge {
    * window is not open. Absent: the agent navigates no site app.
    */
   siteUrlAllowed?(site: string, url: string): boolean;
+  /** The agent's visible web search (absent: no `search_web` tool). */
+  search?: {
+    /**
+     * Opens the search tab in `window` (the active one if undefined), in its active space, in AGENT_PROFILE, activated.
+     * A query goes to the user's engine. Throws in a private space. With `reuse` (the id of the search tab), that tab is
+     * navigated instead and nothing opens nor activates.
+     */
+    open(window: string | undefined, target: { query: string } | { url: string }, reuse?: string): Promise<TabInfo & { engineOrigin: string }>;
+    /** Shows or removes the band of the tab. */
+    band(tabId: string, band: Band | null): Promise<void>;
+  };
 }
 
 export interface MessageConsole {

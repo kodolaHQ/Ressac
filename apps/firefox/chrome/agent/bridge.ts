@@ -1,6 +1,7 @@
 import { navigationOutsideSite, TabNotFound, PrivateTab, type DevRight, type TabInfo, type PageReadOptions } from "../shims/kernel";
 import type { BrowserState, WindowId, Tab } from "../../shared/model";
-import { privateTab, WORKFLOW_PREFIX } from "../../shared/model";
+import { privateTab, WORKFLOW_PREFIX, AGENT_PROFILE } from "../../shared/model";
+import { ENGINES } from "../../core/url";
 import { policyChanges, tabInfos, activeTabOf, appTab, siteTab, originOf, SITE_PREFIX, resolveSpace } from "../../core/agent/bridge";
 import type { Handler } from "../../shared/rpc";
 import type { AgentApps } from "../store/apps";
@@ -17,6 +18,9 @@ const XHTML = "http://www.w3.org/1999/xhtml";
 const APP_PREFIX = "app:";
 /** As the page actor. */
 const TEXT_MAX = 100_000;
+const LINKS_MAX = 500;
+/** A longer address is dropped, not cut: a cut address is a wrong one. */
+const LINK_URL_MAX = 500;
 
 const internal = (o: Tab) => o.url.startsWith("webaios:");
 
@@ -106,9 +110,9 @@ export function bridgeHandlers(
     const text = String(r?.text ?? "").slice(0, TEXT_MAX);
     const selection = String(r?.selection ?? "").slice(0, TEXT_MAX);
     const links = (Array.isArray(r?.links) ? r.links : [])
-      .slice(0, 500)
-      .map((l: any) => ({ text: String(l?.text ?? "").slice(0, 80), url: String(l?.url ?? "").slice(0, 500) }))
-      .filter((l: { url: string }) => URL.canParse(l.url) && /^https?:$/.test(new URL(l.url).protocol));
+      .slice(0, LINKS_MAX)
+      .map((l: any) => ({ text: String(l?.text ?? "").slice(0, 80), url: String(l?.url ?? "") }))
+      .filter((l: { url: string }) => l.url.length <= LINK_URL_MAX && URL.canParse(l.url) && /^https?:$/.test(new URL(l.url).protocol));
     return selection ? { text: text, selection, links } : { text: text, links };
   };
   const snapshot = async (browser: any, win: Window) => {
@@ -125,18 +129,20 @@ export function bridgeHandlers(
   };
 
   /** The agent's demos open in the foreground, marked ✦. With no window open, in the kept one. */
-  const openTab = ([url, space]: [string, string?]): TabInfo => {
+  const openTabIn = (window: WindowId | undefined, url: string, space?: string, extra: { profile?: string } = {}): TabInfo => {
     const state = store.state;
-    const f = state.windows.find((x) => x.id === windows.active()) ?? state.windows[0];
+    const f = state.windows.find((x) => x.id === (window ?? windows.active())) ?? state.windows[0];
     if (!f) throw new Error("Aucune fenêtre ouverte");
     const spaceId = resolveSpace(state, f, space);
     if (state.spaces.find((e) => e.id === spaceId)?.private ?? true) throw new Error("Impossible d'ouvrir un onglet ici : l'espace actif est privé.");
     const id = crypto.randomUUID();
-    store.dispatch({ type: "openTab", windowId: f.id, url, spaceId: spaceId, activate: true, openedByAgent: true }, () => id);
+    store.dispatch({ type: "openTab", windowId: f.id, url, spaceId: spaceId, activate: true, openedByAgent: true, ...extra }, () => id);
     if (!store.state.tabs[id]) throw new Error(`Impossible d'ouvrir ${url}`);
     store.dispatch({ type: "activateTab", id }); // also switches to its space
     return tabInfos(store.state).find((o) => o.id === id)!;
   };
+
+  const openTab = ([url, space]: [string, string?]): TabInfo => openTabIn(undefined, url, space);
 
   return {
     // Decision 3: no window open (the last one kept), no active tab.
@@ -161,6 +167,20 @@ export function bridgeHandlers(
       tab(id);
       windowOf(id).controller.navigateForAgent(id, url);
     },
+    // The agent's search tab, in its own login profile; `reuse`: that tab goes to the new address instead.
+    "search.open": ([win, target, reuse]: [WindowId | undefined, { query: string } | { url: string }, string?]) => {
+      const template = Services.env.get("WEBAIOS_TEST_SEARCH_URL") || ENGINES[store.state.settings.engine];
+      const url = "query" in target ? template.replace("%s", encodeURIComponent(target.query)) : target.url;
+      const engineOrigin = new URL(template.replace("%s", "")).origin;
+      if (reuse !== undefined && store.state.tabs[reuse]) {
+        tab(reuse);
+        windowOf(reuse).controller.navigateForAgent(reuse, url);
+        return { ...tabInfos(store.state).find((o) => o.id === reuse)!, engineOrigin };
+      }
+      return { ...openTabIn(win, url, undefined, { profile: AGENT_PROFILE }), engineOrigin };
+    },
+    // Task 7 draws the band of the search tab.
+    "search.band": () => {},
     readText: ([id]: [string]) => onSiteView(id, getText) ?? outsidePrivate(id, getText),
     capture: ([id]: [string]) => onSiteView(id, snapshot) ?? outsidePrivate(id, (browser) => snapshot(browser, windowOf(id).window)),
     // « L'agent veut lire l'onglet … » in the active window; refused with none to show it. The signal aborts when the
