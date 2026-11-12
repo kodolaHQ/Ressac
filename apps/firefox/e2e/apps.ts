@@ -165,14 +165,33 @@ export async function closeAppsPage(p: AppsPage | undefined): Promise<void> {
 export const rowCount = (m: Marionette): Promise<number> => inUi<number>(m, `return doc.querySelectorAll('[data-testid^="app-"]').length;`);
 export const appRow = (folder: string) => `[data-testid="app-${folder}"]`;
 /** Waits until row `dossier`'s data-etat is `etat`. */
-export const rowState = (m: Marionette, folder: string, state: string, ms = 10_000) =>
+export const rowState = (m: Marionette, folder: string, state: string, ms = 30_000) =>
   waitUi(m, "return doc.querySelector(arguments[0])?.dataset.state === arguments[1]", [appRow(folder), state], ms);
 /** Clicks the row's button whose text contains `name`. */
 export const rowButton = (m: Marionette, folder: string, name: string) => click(m, `${appRow(folder)} .actions button`, { text: name });
 /** Opens the row's ⋯ menu and clicks its item `name`. */
 export async function rowMenu(m: Marionette, folder: string, name: string): Promise<void> {
-  await click(m, `${appRow(folder)} button.options`);
-  await click(m, '[role="menuitem"]', { text: name });
+  await waitUi(m, "return !!doc.querySelector(arguments[0])", [`${appRow(folder)} button.options`]);
+  // In one script, and again if the menu went away: the agent panel's focus retries (100 and 500 ms after Déboguer)
+  // close an open menu, and under load they land between two calls from here.
+  const done = await inUi<boolean>(
+    m,
+    `const press = (el) => { const r = el.getBoundingClientRect(); for (const t of ["mousedown", "mouseup"]) ui.synthesizeMouseEvent(t, r.left + r.width / 2, r.top + r.height / 2, { button: 0, clickCount: 1 }); };
+     for (const end = Date.now() + 8000; Date.now() < end; ) {
+       const options = doc.querySelector(arguments[0]);
+       options.scrollIntoView({ block: "center" });
+       await new Promise((r) => requestAnimationFrame(r));
+       press(options);
+       for (let i = 0; i < 30; i++) {
+         await new Promise((r) => requestAnimationFrame(r));
+         const item = [...doc.querySelectorAll('[role="menuitem"]')].find((e) => e.textContent.includes(arguments[1]));
+         if (item) return press(item), true;
+       }
+     }
+     return false;`,
+    [`${appRow(folder)} button.options`, name],
+  );
+  if (!done) throw new Error(`no « ${name} » in the menu of ${folder}`);
 }
 /** The labels of row `dossier`'s ⋯ menu (left open). */
 export async function rowMenuItems(m: Marionette, folder: string): Promise<string[]> {

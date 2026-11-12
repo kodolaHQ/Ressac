@@ -50,9 +50,19 @@ export async function click(m: Marionette, selector: string, o: { button?: 0 | 2
     m,
     `${find}
      el.scrollIntoView({ block: "center" });
-     await new Promise((r) => requestAnimationFrame(r));
-     const r = el.getBoundingClientRect();
-     const x = r.left + r.width / 2, y = r.top + r.height / 2;
+     // Like a person: the press waits until the element has stopped moving and is the one under the pointer. A
+     // layout still sliding or a canvas still fitting (measured: a block under the builder's tabs for a few frames)
+     // sent the press to a neighbour. After 2 s it is pressed anyway, where it is.
+     let x, y, before = "";
+     for (const end = Date.now() + 2000; ; ) {
+       await new Promise((r) => requestAnimationFrame(r));
+       const r = el.getBoundingClientRect();
+       [x, y] = [r.left + r.width / 2, r.top + r.height / 2];
+       const hit = doc.elementFromPoint(x, y);
+       const now = [r.left, r.top, r.width, r.height].join();
+       if ((now === before && hit && (el.contains(hit) || hit.contains(el))) || Date.now() > end) break;
+       before = now;
+     }
      // A right click as Gecko delivers it on macOS: contextmenu on the press, then the release, whose click (button 2) reaches chrome documents.
      const types = arguments[2] === 2 ? ["mousedown", "contextmenu", "mouseup"] : ["mousedown", "mouseup"];
      for (const type of types) ui.synthesizeMouseEvent(type, x, y, { button: arguments[2], clickCount: 1 });`,

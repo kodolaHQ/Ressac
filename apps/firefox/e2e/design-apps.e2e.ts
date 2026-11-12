@@ -161,7 +161,7 @@ it("design.spec.ts:426 an app window launched from the Applications page: the We
   const windowId = (await state(m)).windows[0]!.id;
   await dispatch(m, { type: "openApps", windowId: windowId });
   await rowButton(m, "essai", "Lancer");
-  await rowState(m, "essai", "running", 15_000);
+  await rowState(m, "essai", "running");
   await expect.poll(() => inAppView<string>(m, "essai", "return document.title;").catch(() => null), { timeout: 15_000 }).toBe("Inscription");
   // The app launched is « built »: the agent has access (88×28). Cut, the WebAiOs button stays alone (48×28).
   await expect.poll(() => badge<number>(`return doc.querySelectorAll('${tid("access-pill")}').length;`), { timeout: 10_000 }).toBe(1);

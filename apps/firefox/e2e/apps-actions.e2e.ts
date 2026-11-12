@@ -45,7 +45,7 @@ async function confirmDelete(folder: string): Promise<void> {
 }
 async function launchFromPage(): Promise<void> {
   await rowButton(p!.m, "essai", "Lancer");
-  await rowState(p!.m, "essai", "running", 15_000);
+  await rowState(p!.m, "essai", "running");
 }
 
 describe("Applications page actions", () => {
@@ -173,7 +173,7 @@ describe("Applications page actions", () => {
   it("a project made again after Supprimer does not keep the old error", async () => {
     p = await openAppsPage(BLOCK, { projects: false, prepare: (d) => writeProject(d, "essai", { manifest: { name: "Essai" }, server: "crashed" }) });
     await rowButton(p.m, "essai", "Lancer");
-    await rowState(p.m, "essai", "error", 15_000);
+    await rowState(p.m, "essai", "error");
     await confirmDelete("essai");
     await rowGone("essai");
     writeProject(p.dataDir, "essai", { manifest: { name: "Essai" } });

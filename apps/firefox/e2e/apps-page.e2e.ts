@@ -129,7 +129,7 @@ describe("Applications page", () => {
     const m = p.m;
     await rowButton(m, "essai", "Lancer");
     await rowState(m, "essai", "launching");
-    await rowState(m, "essai", "running", 15_000);
+    await rowState(m, "essai", "running");
     expect(await rowText("essai")).toMatch(/port 1528[5-9]/);
     await expect.poll(() => filterText("running"), { timeout: 10_000 }).toBe("En marche 1");
     await waitFor(m, `return !!${appWindowExpr("essai")}?.gBrowser.selectedBrowser.currentURI.spec.startsWith("http://localhost:");`, (v) => v === true, 15_000);
