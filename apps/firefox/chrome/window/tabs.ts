@@ -73,6 +73,8 @@ export class TabSync {
       this.onSelect(e.target);
       // A tab left while it plays without sound (a muted video) has a media session too.
       this.watchPlayback(e.detail?.previousTab);
+      // Shown again: a pause in the background is forgotten.
+      this.watchPlayback(e.target);
     });
     strip.addEventListener("TabAttrModified", (e: CustomEvent) => {
       const changed: string[] = e.detail.changed;
@@ -266,13 +268,17 @@ export class TabSync {
   /** The media sessions already listened to (one per page process). */
   private readonly sessions = new WeakSet<object>();
 
-  /** Follows the tab's media session (Firefox's media keys' view of it): playing, paused, or none. */
+  /** Follows the tab's media session (Firefox's media keys' view of it): playing, paused in the background, or none. */
   private watchPlayback(tab: any): void {
     const session = tab?.linkedBrowser?.browsingContext?.mediaController;
     if (!session) return;
     const read = () => {
       // The tab may have moved on to another session (a new page process).
-      if (tab.linkedBrowser?.browsingContext?.mediaController === session) this.update(tab, { playback: session.isActive ? (session.isPlaying ? "playing" : "paused") : null });
+      if (tab.linkedBrowser?.browsingContext?.mediaController !== session) return;
+      // Paused counts only for a background tab that was playing (paused from its bar, or by the page): a tab left
+      // with nothing playing has no bar, whatever it played before.
+      const shownPaused = !tab.selected && !!this.store.state.tabs[tab.getAttribute(TAB_ID)]?.playback;
+      this.update(tab, { playback: session.isActive && session.isPlaying ? "playing" : session.isActive && shownPaused ? "paused" : null });
     };
     if (!this.sessions.has(session)) {
       this.sessions.add(session);
@@ -284,7 +290,8 @@ export class TabSync {
   /** The media bar's play / pause. */
   togglePlayback(id: TabId): void {
     const session = this.tabs.get(id)?.linkedBrowser?.browsingContext?.mediaController;
-    if (session?.isActive) session.isPlaying ? session.pause() : session.play();
+    // pause() takes why the sound is lost: the user asked.
+    if (session?.isActive) session.isPlaying ? session.pause("user") : session.play();
   }
 
   private history(browser: any): Pick<TabFields, "canGoBack" | "canGoForward"> {

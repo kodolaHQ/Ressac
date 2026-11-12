@@ -55,9 +55,9 @@ it("a background tab with a media session gets a media bar; none for the shown t
   await dispatch(m, { type: "setCall", id: a, call: null });
   await click(m, '[data-testid="media-back"]');
   await waitFor(m, `return gBrowser.selectedTab.getAttribute("webaios-tab-id")`, (v: string) => v === a);
-  // The shown tab: no bar, its row still says what it does.
+  // The shown tab: no bar, and its pause in the background is forgotten.
   await waitUi(m, `return !doc.querySelector('[data-testid="media-bar"]')`);
-  expect((await state(m)).tabs[a]!.playback).toBe("paused");
+  await expect.poll(async () => (await state(m)).tabs[a]!.playback ?? null).toBeNull();
   // No media session on this page: the button's play / pause does nothing, and does not throw.
   expect(await m.execute(`window.webaiosWindow.togglePlayback(arguments[0]); return true`, [a])).toBe(true);
 });
