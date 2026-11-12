@@ -12,6 +12,8 @@ const COLUMNS = `url, title, last_visit AS lastVisit, visits, space_id AS spaceI
 /** Limits of the browsing memory (spec §6.3). */
 export const TEXT_MAX = 20_000; // characters per page
 export const RETENTION_DAYS = 183;
+/** Space id of the visits imported from another browser. */
+export const IMPORTED_SPACE = "import";
 export const BYTES_CAP = 1_000_000_000; // UTF-8 of `text`, all pages together
 const AGENT_LIMIT = { default: 20, max: 50 };
 /** Words of the excerpt returned to the agent (64 at most for FTS5): about 300 characters. */
@@ -27,7 +29,7 @@ export class History {
     | "note" | "updateTitle" | "search" | "searchDistinct" | "recents" | "eraseSince" | "clearAll" | "makePrivate"
     | "keep" | "updateTitleText" | "isPrivate" | "forgetText" | "forgetSpaceTexts" | "eraseTextsSince"
     | "eraseOrphanTexts" | "clearAllTexts" | "purgeBefore" | "totalBytes" | "oldTexts" | "forgetTextId"
-    | "keptText" | "visitsOf" | "excerpt",
+    | "keptText" | "visitsOf" | "excerpt" | "importVisit",
     StatementSync
   >;
   private byteCap: number;
@@ -44,6 +46,11 @@ export class History {
         INSERT INTO visits (url, space_id, title, last_visit, private) VALUES (?, ?, ?, ?, ?)
         ON CONFLICT (url, space_id) DO UPDATE SET title = excluded.title, last_visit = excluded.last_visit,
           visits = CASE WHEN private = 1 AND excluded.private = 0 THEN 1 ELSE visits + 1 END, private = excluded.private`),
+      // Re-importing never counts a new visit: the row only moves forward in time.
+      importVisit: this.db.prepare(`
+        INSERT INTO visits (url, space_id, title, last_visit, private) VALUES (?, '${IMPORTED_SPACE}', ?, ?, 0)
+        ON CONFLICT (url, space_id) DO UPDATE SET title = excluded.title, last_visit = excluded.last_visit
+        WHERE excluded.last_visit > last_visit`),
       updateTitle: this.db.prepare("UPDATE visits SET title = ? WHERE url = ? AND space_id = ?"),
       search: this.db.prepare(`
         SELECT ${COLUMNS} FROM visits
@@ -145,6 +152,21 @@ export class History {
   note(v: { url: string; title: string; spaceId: string; private: boolean; date?: Date }): void {
     if (!this.db.isOpen) return; // a page can still navigate during the exit
     this.req.note.run(v.url, v.spaceId, v.title, (v.date ?? new Date()).toISOString(), v.private ? 1 : 0);
+  }
+
+  /** Imported visits (http(s) only, within RETENTION_DAYS) in one transaction; returns the rows written or updated. */
+  importVisits(visits: { url: string; title: string; date: Date }[]): number {
+    if (!this.db.isOpen) return 0;
+    const oldest = Date.now() - RETENTION_DAYS * 86_400_000;
+    let count = 0;
+    this.transaction(() => {
+      for (const v of visits) {
+        const t = v.date.getTime();
+        if (!/^https?:\/\//i.test(v.url) || !(t >= oldest)) continue;
+        count += Number(this.req.importVisit.run(v.url, v.title || v.url, v.date.toISOString()).changes);
+      }
+    });
+    return count;
   }
 
   /** The title often arrives after the navigation: it completes the visit without counting a new one. */

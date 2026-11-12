@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, expect, test } from "vitest";
-import { History } from "../core/history";
+import { History, IMPORTED_SPACE } from "../core/history";
 
 let h: History;
 let path: string;
@@ -308,4 +308,26 @@ test("after fermer, the retained-text methods do not throw", () => {
   expect(() => h.purge()).not.toThrow();
   expect(h.searchForAgent({ query: "t" })).toEqual([]);
   expect(h.keptText("https://a.fr/")).toBeNull();
+});
+
+test("importVisits: http(s) only, retention, upsert keeps latest, not private, searchable, fast", () => {
+  const day = (n: number) => new Date(Date.now() - n * 86_400_000);
+  const n = h.importVisits([
+    { url: "https://old.fr/", title: "Old", date: day(1) },
+    { url: "https://old.fr/", title: "Newer title", date: day(0.5) },
+    { url: "ftp://x.fr/", title: "Ftp", date: day(1) },
+    { url: "about:blank", title: "Blank", date: day(1) },
+    { url: "https://ancient.fr/", title: "Ancient", date: day(200) },
+  ]);
+  expect(n).toBe(2);
+  const rows = h.recents();
+  expect(rows).toHaveLength(1);
+  expect(rows[0]).toMatchObject({ url: "https://old.fr/", title: "Newer title", spaceId: IMPORTED_SPACE, private: false, visits: 1 });
+  expect(h.importVisits([{ url: "https://old.fr/", title: "Same", date: day(0.5) }])).toBe(0);
+  expect(h.search("newer")).toHaveLength(1);
+  expect(h.searchForAgent({ query: "newer" }).map((r) => r.url)).toEqual(["https://old.fr/"]);
+  const many = Array.from({ length: 10_000 }, (_, i) => ({ url: `https://s.fr/${i}`, title: `p${i}`, date: day(1) }));
+  const t = Date.now();
+  expect(h.importVisits(many)).toBe(10_000);
+  expect(Date.now() - t).toBeLessThan(2000);
 });

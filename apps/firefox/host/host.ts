@@ -541,6 +541,16 @@ const rpc = createRpc({
       if (typeof p?.id === "string") sites.closed(p.id);
     },
     "history.record": (p: Parameters<InstanceType<typeof History>["note"]>[0]) => hist?.note(p),
+    "history.import": (p: { visits?: unknown }) => {
+      const str = (x: unknown) => typeof x === "string" && x.length <= 2048;
+      if (!Array.isArray(p?.visits) || p.visits.length > 50_000) throw new Error("history.import: invalid visits");
+      const visits: { url: string; title: string; date: Date }[] = [];
+      for (const v of p.visits) {
+        const date = new Date(v?.date);
+        if (str(v?.url) && str(v?.title) && !isNaN(date.getTime())) visits.push({ url: v.url, title: v.title, date });
+      }
+      return { count: hist?.importVisits(visits) ?? 0 };
+    },
     "history.title": (p: { url: string; spaceId: string; title: string }) => hist?.updateTitle(p.url, p.spaceId, p.title),
     "history.keep": (p: { url: string; spaceId: string; title: string; text: string }) => {
       if (keepable(p.url)) hist?.keep({ ...p, text: String(p.text) });
