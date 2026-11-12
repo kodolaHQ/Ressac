@@ -148,6 +148,40 @@ Limits:
 - A file Firefox blocks shows « Interrompu », without « Garder quand même »; a blocked or cancelled download may leave its partial file in the folder.
 - `/coupee` (truncated page) is not ported: Firefox may count a cut page as loaded.
 
+## Import from another browser
+
+- **Where:** welcome page 2 (« Vous venez d'un autre navigateur ? ») and Réglages › Données › « Importer depuis un autre navigateur ». Both use `ui/components/BrowserImport.svelte` and the `browserImport` API: `sources`, `start`, `progress`, `importPasswordsCsv`.
+- **Sources and data:** detected under the home, listing only the browsers whose data folder exists.
+  - **Chrome and its cousins** (Brave, Edge, Vivaldi, Opera): the engine's own migrators.
+  - **Arc:** an `ArcProfileMigrator` subclass in `chrome/store/import/sources.ts`.
+  - **Firefox and Zen:** subclasses that read the source's own `profiles.ini` and a copy of `places.sqlite`.
+  - **Safari:** the engine's migrator.
+  - There is no engine patch: the subclasses live in our chrome code.
+- **Bookmarks:** they go into Places through `PlacesUtils.bookmarks.insertTree`, skipping a URL already in a folder of the same title. They are never shown in the sidebar. They are searchable from ⌘T (« Favoris ») and by the agent (`search_bookmarks`, through the host RPC `bookmarks.search` to the chrome).
+- **History:** during a run, `MigrationUtils.insertVisitsWrapper` is swapped to send each batch (5 000 visits) to the host RPC `history.import`. The visits land in the kernel history under `IMPORTED_SPACE` (`"import"`), never private, within `RETENTION_DAYS`. For the run, the engine's Chromium caps are lifted:
+  - `browser.migrate.chrome.history.limit` is set to 0;
+  - `browser.migrate.history.maxAgeInDays` is set to 183;
+  - both are restored afterwards.
+- **Passwords:**
+  - Chromium: the engine reads them, and macOS asks for the source's keychain item.
+  - Safari, Firefox and Zen: by CSV, with a guide on screen. The import uses `LoginCSVImport`.
+- **Arc and Zen spaces** (`chrome/store/import/spaces.ts`): spaces, favorites and pinned tabs become WebAiOs spaces, essentials and pinned tabs. They go through the store actions `createSpace` (with `pinned`) and `addFavorites`. A space with the same name is reused, a URL already present is skipped, and a private space never receives anything.
+  - The Arc sidebar format is assumed, not measured (no Arc on the dev Mac); see the `shortcut:` comment.
+  - Zen is read from `zen-sessions.jsonlz4`.
+- **Background run:** one import at a time, in the background. It ends with a macOS notification giving the counts per type, or what failed and why.
+  - A locked or unreadable Chromium file is retried once on a copy in `<dataDir>/import-tmp/`.
+  - That folder is removed at the start and at the end of every run.
+- **Not imported:** cookies and logged-in sessions, and extensions.
+- **Tests:**
+  - `WEBAIOS_TEST_IMPORT_HOME` replaces the home for source paths. Every e2e launch defaults it to an empty folder, so a test never reads the real `~/Library`.
+  - Under a test home, Safari's engine migrator never runs, and Chromium passwords never touch the keychain.
+  - `WEBAIOS_TEST_IMPORT_CSV` replaces the CSV file picker.
+- **Manual checks:**
+  - a real Chrome import, with the keychain prompt;
+  - a real Arc import (folders, keychain names, sidebar format);
+  - Safari with Full Disk Access;
+  - a Zen import.
+
 ## Site permissions
 
 - Asked once per (origin, permission) and login profile: notifications, position, camera, microphone, plus DRM and MIDI. Screen sharing and links to another application are asked every time. Fullscreen and clipboard writes are granted without a question; everything else is refused without one (clipboard reads, `storage-access`, `xr`, persistent storage, local network, HID/serial/USB).
