@@ -546,6 +546,21 @@ function createToolsServer(
     );
   }
 
+  const marks = bridge.bookmarks;
+  if (marks) {
+    server.registerTool(
+      "search_bookmarks",
+      {
+        description: "Cherche dans les favoris importés ou enregistrés de l'utilisateur (titre et URL). 20 résultats par défaut, 50 au plus.",
+        inputSchema: { query: z.string(), limit: z.number().int().min(1).optional() },
+      },
+      protect(async ({ query: request, limit: limit }) => {
+        const results = await marks.find({ query: request, limit: Math.min(HISTORY_LIMIT.max, limit ?? HISTORY_LIMIT.default) });
+        return text(results.map((r) => `${r.title} · ${r.url}`).join("\n") || "Aucun favori trouvé.");
+      }),
+    );
+  }
+
   if (bridge.devTools && dev) {
     registerDevTools(server, {
       bridge: bridge,

@@ -6,16 +6,17 @@ import { normalize, suggestionsActions } from "./suggestions";
 
 export type SourceTab = { id: TabId; title: string; url: string; favicon: string | null };
 export type SiteApp = { kind: "project" | "site"; id: string; name: string; action: "open" | "launch"; favicon: string | null };
-export type CommandSources = { actions: ActionShown[]; tabs: SourceTab[]; siteApps: SiteApp[]; history: Visit[] };
+export type CommandSources = { actions: ActionShown[]; tabs: SourceTab[]; siteApps: SiteApp[]; history: Visit[]; bookmarks: { url: string; title: string }[] };
 export type CommandLine =
   | { type: "default"; text: string; label: string }
   /** `parametre`: the label of the input the action declares (null: it expects none). */
   | { type: "action"; id: string; name: string; input: string | null; param: string | null }
   | { type: "tab"; tab: SourceTab }
   | { type: "app"; app: SiteApp }
-  | { type: "history"; url: string; title: string };
+  | { type: "history"; url: string; title: string }
+  | { type: "bookmark"; url: string; title: string };
 
-export const LIMITS = { actions: 3, tabs: 3, siteApps: 3, history: 5 } as const;
+export const LIMITS = { actions: 3, tabs: 3, siteApps: 3, history: 5, bookmarks: 5 } as const;
 /** Empty field: what the bar offers before any keystroke. */
 export const EMPTY_LIMITS = { actions: 4, tabs: 5 } as const;
 
@@ -55,16 +56,22 @@ export function commandLines(text: string, sources: CommandSources, urlActive: s
     .filter((v) => v.url !== urlActive && !listed.has(v.url))
     .slice(0, LIMITS.history)
     .forEach((v) => lines.push({ type: "history", url: v.url, title: v.title }));
+  // A bookmark already offered as an open tab or a history row is not repeated.
+  const offered = new Set([...listed, ...lines.flatMap((l) => (l.type === "history" ? [l.url] : []))]);
+  sources.bookmarks
+    .filter((b) => b.url !== urlActive && !offered.has(b.url))
+    .slice(0, LIMITS.bookmarks)
+    .forEach((b) => lines.push({ type: "bookmark", url: b.url, title: b.title }));
   return lines;
 }
 
-export type Section = "actions" | "tabs" | "apps" | "history";
+export type Section = "actions" | "tabs" | "apps" | "history" | "bookmarks";
 
-export const SECTION_TITLES: Record<Section, string> = { actions: "Actions", tabs: "Onglets ouverts", apps: "Applis", history: "Historique" };
+export const SECTION_TITLES: Record<Section, string> = { actions: "Actions", tabs: "Onglets ouverts", apps: "Applis", history: "Historique", bookmarks: "Favoris" };
 
 /** A row's section: the default row has none, it stays first without a title. */
 export function sectionOf(l: CommandLine): Section | null {
-  return l.type === "default" ? null : l.type === "action" ? "actions" : l.type === "tab" ? "tabs" : l.type === "app" ? "apps" : "history";
+  return l.type === "default" ? null : l.type === "action" ? "actions" : l.type === "tab" ? "tabs" : l.type === "app" ? "apps" : l.type === "history" ? "history" : "bookmarks";
 }
 
 /** The title to put before row `i`: its section's when it opens one, null otherwise. */

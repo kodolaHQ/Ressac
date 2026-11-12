@@ -142,6 +142,7 @@ export class FakeBridge implements BrowserBridge {
   private readonly privateTabs = new Set<string>();
   readonly devTools?: FakeDevTools;
   readonly history?: BrowserHistory;
+  readonly bookmarks?: BrowserBridge["bookmarks"];
   readPageInvisible?: (url: string, o: PageReadOptions) => Promise<ReadPage>;
   readHtmlInvisible?: (url: string, o: { localAddresses?: boolean; signal?: AbortSignal }) => Promise<{ url: string; html: string }>;
   /** Suspended reads in progress, by URL: `relacher` lets them finish. */
@@ -174,6 +175,7 @@ export class FakeBridge implements BrowserBridge {
       devTools?: boolean;
       grantDev?: DevRight[];
       block?: boolean;
+      bookmarks?: { url: string; title: string }[];
       history?: { results: HistoryResult[]; texts?: KeptPage[]; error?: string };
       read?: { pages: ReadPage[]; html?: Record<string, string>; deny?: string[]; redirects?: Record<string, string>; suspended?: string[] };
       widgetData?: boolean;
@@ -208,6 +210,14 @@ export class FakeBridge implements BrowserBridge {
         },
       };
     }
+    const bm = o.bookmarks;
+    if (bm)
+      this.bookmarks = {
+        find: async (q) => {
+          this.note("bookmarks.find", { ...q });
+          return bm.slice(0, q.limit).map((r) => ({ ...r }));
+        },
+      };
     const reading = o.read;
     if (reading) {
       const wait = async (url: string, signal: AbortSignal | undefined) => {

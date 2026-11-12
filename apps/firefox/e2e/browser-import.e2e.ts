@@ -9,7 +9,7 @@ import type { Visit } from "../shared/model";
 import { dispatch, state } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
-import { click, inUi, missingApi, waitUi } from "./ui";
+import { click, inUi, missingApi, pressKeys, typeText, waitUi } from "./ui";
 
 // Plan 55 Task 2: a fake home with a Chrome-format profile, imported through the engine's Chrome migrator.
 // Task 4: the import screen, on welcome page 2 and in Réglages › Données.
@@ -164,6 +164,25 @@ describe("import from another browser", () => {
     expect(await bookmarks("https://a.example/")).toHaveLength(1);
     expect((await history()).map((v) => v.url).sort()).toEqual(urls);
     expect(existsSync(join(w.dataDir, "import-tmp"))).toBe(false);
+  });
+
+  it("⌘T finds an imported bookmark under « Favoris », and choosing it opens it", async () => {
+    await pressKeys(m, "Meta+t");
+    await waitUi(m, "return !!doc.querySelector('[data-testid=\"command-input\"]')");
+    await typeText(m, "exemple");
+    await waitUi(m, "return [...doc.querySelectorAll('[data-testid=\"command-section\"]')].some((s) => s.textContent.trim() === 'Favoris')");
+    await waitUi(
+      m,
+      `const row = [...doc.querySelectorAll('[data-testid="command-row"][data-type="bookmark"]')].find((r) => r.textContent.includes("Exemple A"));
+       if (!row) return false;
+       row.querySelector("button").click();
+       return true;`,
+    );
+    const deadline = Date.now() + 10_000;
+    while (!Object.values((await state(m)).tabs).some((t) => t.url.startsWith("https://a.example"))) {
+      if (Date.now() > deadline) throw new Error("the bookmark was not opened");
+      await new Promise((r) => setTimeout(r, 100));
+    }
   });
 
   it("brings Arc's then Zen's spaces, favorites and pinned tabs, once", async () => {

@@ -365,6 +365,10 @@ export interface ApiWebaios {
   review: ReviewApi;
   settings: SettingsApi;
   browserImport: BrowserImportApi;
+  bookmarks: {
+    /** Places bookmarks matching the text in title or URL (http(s) only). */
+    search(text: string, limit?: number): Promise<{ url: string; title: string }[]>;
+  };
 }
 
 export type ImportSourceId = "arc" | "chrome" | "brave" | "edge" | "vivaldi" | "opera" | "safari" | "firefox" | "zen";

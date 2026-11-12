@@ -67,6 +67,8 @@ export interface BrowserBridge {
   activePrivateTab?(): boolean;
   /** History and kept text of the pages, made only of non-private visits (absent: no history tools). */
   history?: BrowserHistory;
+  /** The user's bookmarks, http(s) only (absent: no bookmark tool). */
+  bookmarks?: { find(q: { query: string; limit: number }): Promise<{ url: string; title: string }[]> };
   /**
    * Reads a page in an invisible tab, without clicking or typing. `profile: null`: blank session, without any cookie;
    * otherwise the named login profile. Throws ProfileDenied if this profile is unknown or used by a private space.

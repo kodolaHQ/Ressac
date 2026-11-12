@@ -47,6 +47,7 @@
   let projects = $state.raw<SiteApp[]>([]);
   let sites = $state.raw<SiteApp[]>([]);
   let hist = $state.raw<Visit[]>([]);
+  let marks = $state.raw<{ url: string; title: string }[]>([]);
 
   /** Re-reads a source at startup and on each of its changes; only the last reply counts. */
   function follow<T>(read: () => Promise<T>, ask: (v: T) => void, onChange: (callback: () => void) => () => void): () => void {
@@ -82,7 +83,7 @@
     });
   });
 
-  const sources: CommandSources = $derived({ actions, tabs: tabs, siteApps: [...projects, ...sites], history: hist });
+  const sources: CommandSources = $derived({ actions, tabs: tabs, siteApps: [...projects, ...sites], history: hist, bookmarks: marks });
 
   let text = $state("");
   let denial = $state("");
@@ -94,8 +95,13 @@
     const n = ++request;
     if (!t) {
       hist = [];
+      marks = [];
       return;
     }
+    api.bookmarks.search(t, LIMITS.bookmarks * 2).then(
+      (v) => n === request && (marks = v),
+      () => n === request && (marks = []),
+    );
     api.history.search(t, LIMITS.history, true).then(
       (v) => n === request && (hist = v),
       () => n === request && (hist = []),
@@ -155,7 +161,7 @@
       return;
     }
     if (l.type === "default") api.navigate(target, l.text);
-    else if (l.type === "history") api.navigate(target, l.url);
+    else if (l.type === "history" || l.type === "bookmark") api.navigate(target, l.url);
     else if (l.type === "tab") {
       // Like the sidebar and ⌃Tab: an essential opens through its favorite (its tab may belong to a sibling space).
       const link = appState.value?.tabs[l.tab.id]?.link;
@@ -265,11 +271,11 @@
   const favicon = (l: CommandLine): string | null =>
     l.type === "tab" ? l.tab.favicon : l.type === "app" ? l.app.favicon : l.type === "history" ? visitFavicon(l.url) : null;
   const badgeText = (l: CommandLine): string =>
-    l.type === "action" ? "Action" : l.type === "tab" ? "Onglet" : l.type === "app" ? "Appli" : l.type === "history" ? "Historique" : "";
+    l.type === "action" ? "Action" : l.type === "tab" ? "Onglet" : l.type === "app" ? "Appli" : l.type === "history" ? "Historique" : l.type === "bookmark" ? "Favori" : "";
   const detail = (l: CommandLine): string =>
     l.type === "tab"
       ? l.tab.url
-      : l.type === "history"
+      : l.type === "history" || l.type === "bookmark"
         ? l.url
         : l.type === "action"
           ? l.input !== null
@@ -289,7 +295,9 @@
           ? "tab"
           : l.type === "app"
             ? "apps"
-            : "clock";
+            : l.type === "bookmark"
+              ? "bookmark"
+              : "clock";
 </script>
 
 <!-- In capture: the bar goes before everything else (modal, history…), and Escape only closes it. -->

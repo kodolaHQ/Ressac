@@ -301,6 +301,7 @@ export function createApi(win: WindowController): ApiFirefox {
       dataDir: win.store.dataDir,
     }),
     // Import from another browser: the chrome runs the engine's migrators; answers copied into this realm.
+    bookmarks: { search: (text, limit) => win.store.bookmarks.search(text, limit).then((v) => structuredClone(v)) },
     browserImport: {
       sources: () => win.store.browserImport.sources().then((r) => structuredClone(r)),
       start: (o) => win.store.browserImport.start(structuredClone(o)).then((r) => structuredClone(r)),

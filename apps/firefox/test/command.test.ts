@@ -3,13 +3,13 @@ import type { ActionShown } from "../shared/actions";
 import type { ApplicationShown } from "../shared/api";
 import type { Visit } from "../shared/model";
 import type { ShownSite } from "../shared/sites";
-import { projectSiteApp, siteSiteApp, paramRequest, commandLines, defaultParam, titleBefore, type SiteApp, type SourceTab, type CommandSources } from "../ui/components/command";
+import { projectSiteApp, siteSiteApp, paramRequest, commandLines, defaultParam, titleBefore, sectionOf, type SiteApp, type SourceTab, type CommandSources } from "../ui/components/command";
 
 const action = (id: string, name: string): ActionShown => ({ id, name: name, description: "", keywords: [], input: null, account: [], public: [], grant: true, last: null });
 const tab = (id: string, title: string, url = `https://${id}.fr/`): SourceTab => ({ id, title: title, url, favicon: null });
 const visit = (url: string, title = url): Visit => ({ url, title: title, lastVisit: "2026-01-01T00:00:00Z", visits: 1, spaceId: "e", private: false, kept: false });
 const app = (id: string, name: string): SiteApp => ({ kind: "site", id, name: name, action: "open", favicon: null });
-const EMPTY: CommandSources = { actions: [], tabs: [], siteApps: [], history: [] };
+const EMPTY: CommandSources = { actions: [], tabs: [], siteApps: [], history: [], bookmarks: [] };
 
 test("empty text without sources: a single default line « Page d'accueil »", () => {
   expect(commandLines("", EMPTY, null)).toEqual([{ type: "default", text: "", label: "Page d'accueil" }]);
@@ -21,7 +21,7 @@ test("address: « Ouvrir exemple.fr » first; words: « Rechercher »", () => {
 });
 
 test("group order: default, actions, tabs, apps, history", () => {
-  const S: CommandSources = { actions: [action("a", "Chat action")], tabs: [tab("o", "chat")], siteApps: [app("p", "Chat appli")], history: [visit("https://h.fr/", "chat h")] };
+  const S: CommandSources = { actions: [action("a", "Chat action")], tabs: [tab("o", "chat")], siteApps: [app("p", "Chat appli")], history: [visit("https://h.fr/", "chat h")], bookmarks: [] };
   expect(commandLines("chat", S, null).map((l) => l.type)).toEqual(["default", "action", "tab", "app", "history"]);
 });
 
@@ -84,7 +84,7 @@ test("an action that expects an entry carries its label; typed with its entry, i
 });
 
 test("titles: one per section, on its first line; none for the default line", () => {
-  const S: CommandSources = { actions: [action("a", "Chat action")], tabs: [tab("o", "chat"), tab("p", "chat 2")], siteApps: [], history: [visit("https://h.fr/", "chat h")] };
+  const S: CommandSources = { actions: [action("a", "Chat action")], tabs: [tab("o", "chat"), tab("p", "chat 2")], siteApps: [], history: [visit("https://h.fr/", "chat h")], bookmarks: [] };
   const l = commandLines("chat", S, null);
   expect(l.map((_, i) => titleBefore(l, i))).toEqual([null, "Actions", "Onglets ouverts", null, "Historique"]);
 });
@@ -106,6 +106,7 @@ test("empty field: the home first, then the actions (last launched first) and th
     tabs: [1, 2, 3, 4, 5, 6, 7].map((i) => tab(`o${i}`, `Onglet ${i}`)),
     siteApps: [app("p", "Appli")],
     history: [visit("https://h.fr/")],
+    bookmarks: [],
   };
   const l = commandLines("", S, null, "o2");
   expect(l[0]).toEqual({ type: "default", text: "", label: "Page d'accueil" });
@@ -114,4 +115,18 @@ test("empty field: the home first, then the actions (last launched first) and th
   expect(l.some((x) => x.type === "app" || x.type === "history")).toBe(false);
   const r = commandLines("", { ...EMPTY, actions: [withEntry("r", "Résumé", "Vidéo")] }, null).find((x) => x.type === "action")!;
   expect(paramRequest(r)).toBe(true);
+});
+
+test("bookmarks: a section after history, capped, without a URL already in a tab or in history", () => {
+  const S: CommandSources = {
+    ...EMPTY,
+    tabs: [tab("a", "chat", "https://c.fr/")],
+    history: [visit("https://d.fr/", "chat d")],
+    bookmarks: [1, 2, 3, 4, 5, 6, 7].map((i) => ({ url: `https://b${i}.fr/`, title: `chat ${i}` })).concat([{ url: "https://c.fr/", title: "chat" }, { url: "https://d.fr/", title: "chat d" }]),
+  };
+  const l = commandLines("chat", S, null);
+  expect(l.map((x) => x.type)).toEqual(["default", "tab", "history", ...Array(5).fill("bookmark")]);
+  expect(sectionOf(l[3]!)).toBe("bookmarks");
+  expect(titleBefore(l, 3)).toBe("Favoris");
+  expect(commandLines("", { ...EMPTY, bookmarks: S.bookmarks }, null).map((x) => x.type)).toEqual(["default"]);
 });

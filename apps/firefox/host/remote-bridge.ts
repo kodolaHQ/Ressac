@@ -24,6 +24,10 @@ export class RemoteBridge implements BrowserBridge {
   /** The agent's history tools; absent, it has none. */
   readonly history?: BrowserHistory;
 
+  readonly bookmarks: NonNullable<BrowserBridge["bookmarks"]> = {
+    find: ({ query, limit }) => this.rpc.request("bookmarks.search", [query, limit]),
+  };
+
   constructor(
     private readonly rpc: Rpc,
     h?: Pick<History, "searchForAgent" | "keptText">,

@@ -160,3 +160,18 @@ test("a bridge error is a readable tool error", async () => {
   expect(r.isError).toBe(true);
   expect(text(r)).toBe("Erreur : base fermée");
 });
+
+test("search_bookmarks asks the bridge with the default and the maximum limit, and lists title and URL", async () => {
+  bridge = new FakeBridge([], { active: null, allow: false, bookmarks: [{ url: "https://a.example/", title: "Exemple A" }] });
+  server = await startMcpServer({ bridge: bridge, policy: new AccessPolicy(), token: token });
+  client = new Client({ name: "test", version: "0" });
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${server.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${token}` } } }),
+  );
+  expect(text(await client.callTool({ name: "search_bookmarks", arguments: { query: "exemple" } }))).toBe("Exemple A · https://a.example/");
+  await client.callTool({ name: "search_bookmarks", arguments: { query: "x", limit: 500 } });
+  expect(bridge.calls.filter((a) => a.method === "bookmarks.find").map((a) => a.args[0])).toEqual([
+    { query: "exemple", limit: 20 },
+    { query: "x", limit: 50 },
+  ]);
+});

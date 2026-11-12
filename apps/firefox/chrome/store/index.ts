@@ -19,6 +19,7 @@ import { createDownloads, type DownloadsList } from "./downloads";
 import { createHistory, type History } from "./history";
 import { createBrowserImporter } from "./import/importer";
 import type { BrowserImportApi } from "../../shared/api";
+import { searchBookmarks } from "./bookmarks";
 import { registerHomeNotifications } from "./notifications";
 import { containerFor, existingContainer, isSiteContainer, removeContainer } from "./containers";
 import { registerPermissionHooks } from "./permission-hooks";
@@ -46,6 +47,8 @@ export interface WebAiOsStore extends Store {
   readonly settings: SettingsChrome;
   /** Bookmarks, history and passwords from another browser on this Mac, through the engine's migrators. */
   readonly browserImport: BrowserImportApi;
+  /** Places bookmarks (imported or saved), http(s) only. */
+  readonly bookmarks: { search(text: string, limit?: number): Promise<{ url: string; title: string }[]> };
   flush(): Promise<void>;
   /** userContextId of a login profile: 0 for DEFAULT_PROFILE, an internal container otherwise (created on first use). */
   containerFor(profile: ProfileId): number;
@@ -357,6 +360,7 @@ async function start(): Promise<WebAiOsStore> {
       ...agentExtensions.handlers,
       ...sites.handlers,
       ...apps.handlers,
+      "bookmarks.search": ([text, limit]: [string, number]) => searchBookmarks(text, limit),
       // A review batch for the agent (host/design.ts): its window, then its panel with the keyboard, in front.
       "design.agentWindow": async () => (await mainWindow()) ?? null,
       "design.giveAgent": ([win]: [WindowId]) => {
@@ -424,6 +428,7 @@ async function start(): Promise<WebAiOsStore> {
     telemetryActive: telemetry.active,
     settings: createSettingsChrome(dataDir, telemetry.active),
     browserImport: createBrowserImporter(dataDir, agent, store),
+    bookmarks: { search: searchBookmarks },
     flush,
     containerFor,
     agent,

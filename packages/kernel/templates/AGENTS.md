@@ -1024,6 +1024,7 @@ parent.postMessage({ type: "ready" }, "*");
 | `stop_app(folder)` | Arrête l'application |
 | `app_log(folder)` | Journal de l'application (pour comprendre une erreur) |
 | `search_history(query, since?, until?, limit?)` | Cherche dans les pages que l'utilisateur a visitées (titre, URL, texte retenu), sur une période facultative en dates ISO |
+| `search_bookmarks(query, limit?)` | Cherche dans les favoris de l'utilisateur (importés ou enregistrés), par titre ou URL |
 | `read_history(url)` | Texte retenu d'une page de l'historique, pour la résumer |
 | `harvest_widget(id)` | Lance tout de suite la récolte d'un widget et rend `{ status, run?, error?, log?, data? }` (réduit pour un widget avec compte sans accord de l'utilisateur) |
 | `widget_runs(id, run?)` | Exécutions récentes d'un widget (liste) ou le détail de l'une : statut, blocs, durées, éléments, sorties, journaux ; pour un widget avec compte, statut seul sans l'accord de l'utilisateur |
