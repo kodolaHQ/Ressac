@@ -35,7 +35,7 @@ beforeEach(() => {
 
 test("initial state: one Perso space, one window, no tab, Google", () => {
   expect(e.version).toBe(3);
-  expect(e.spaces).toEqual([{ id: P, name: "Perso", icon: "🏠", pinned: [], private: false, profile: "default", aura: "aube" }]);
+  expect(e.spaces).toEqual([{ id: P, name: "Perso", icon: "🏠", pinned: [], folders: [], private: false, profile: "default", aura: "aube" }]);
   expect(e.profiles).toEqual([{ id: "default" }]);
   expect(e.windows).toHaveLength(1);
   expect(e.tabs).toEqual({});

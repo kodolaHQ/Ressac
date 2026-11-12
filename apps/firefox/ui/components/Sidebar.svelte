@@ -6,7 +6,7 @@
   import UrlBar from "./UrlBar.svelte";
   import Essentials from "./Essentials.svelte";
   import Icon from "./Icon.svelte";
-  import SiteIcon from "./SiteIcon.svelte";
+  import Pinned from "./Pinned.svelte";
   import TabList from "./TabList.svelte";
   import { openMenu } from "./menu.svelte";
   import SpaceSelector from "./SpaceSelector.svelte";
@@ -33,6 +33,7 @@
   const space = $derived(appState.value?.spaces.find((e) => e.id === win.activeSpace));
   // Past two spaces the tools fold behind one button so the spaces keep the whole row.
   const foldable = $derived((appState.value?.spaces.length ?? 0) > 2);
+  let pinned = $state<Pinned>();
   let toolsOpen = $state(false);
   let fold = $state<HTMLElement>();
   const activeTab = $derived.by(() => {
@@ -54,31 +55,9 @@
   <UrlBar window={win} />
   <div class="scrolling">
     <Essentials window={win} />
-    <ul
-      class="pinned"
-      data-testid="pinned"
-      ondragover={(e) => e.dataTransfer?.types.includes("application/x-webaios-onglet") && e.preventDefault()}
-      ondrop={(e) => {
-        const id = e.dataTransfer?.getData("application/x-webaios-onglet");
-        if (id) api.dispatch({ type: "pinTab", id });
-      }}
-    >
-      {#each space?.pinned ?? [] as favorite (favorite.id)}
-        <li>
-          <button
-            data-testid="favorite-{favorite.id}"
-            class:active={favorite.id === activeLink}
-            onclick={(e) => e.button === 0 && api.dispatch({ type: "openFavorite", windowId: win.id, kind: "pinned", id: favorite.id })}
-            oncontextmenu={(e) =>
-              openMenu(e, [{ label: "Retirer", dispatch: () => api.dispatch({ type: "unpin", spaceId: win.activeSpace, favoriteId: favorite.id }) }])}
-          >
-            <SiteIcon favicon={favorite.favicon} title={favorite.title} />
-            <span>{favorite.title}</span>
-          </button>
-        </li>
-      {/each}
-    </ul>
-    <div class="space" data-testid="space-title">{space?.icon} {space?.name}</div>
+    {#if space}<Pinned bind:this={pinned} window={win} {space} {activeLink} />{/if}
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="space" data-testid="space-title" oncontextmenu={(e) => openMenu(e, [{ label: "Nouveau dossier", dispatch: () => pinned?.newFolder() }])}>{space?.icon} {space?.name}</div>
     <TabList window={win} />
     <button class="new" data-testid="new-tab" onclick={() => api.dispatch({ type: "showBlankPage", windowId: win.id })}
       ><Icon name="plus" size={14} /> Nouvel onglet<kbd>{key("command")}</kbd></button
@@ -169,12 +148,7 @@
   .bar[hidden] { display: none; }
   .scrolling { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; margin-top: 14px; -webkit-app-region: no-drag; }
   .bar :global(nav) { -webkit-app-region: no-drag; }
-  .pinned { list-style: none; margin: 0; padding: 0; min-height: 8px; }
-  .pinned button { all: unset; display: flex; align-items: center; gap: 10px; width: calc(100% - 20px); height: 36px; padding: 0 10px; border-radius: 10px; color: var(--text); transition: transform var(--tap), background var(--tap); }
-  .pinned button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .pinned button:hover { background: color-mix(in srgb, var(--glass-hi) 55%, transparent); }
-  .pinned button.active { background: var(--glass-hi); box-shadow: inset 0 0 0 1px var(--glass-edge); }
-  .pinned button:active, .new:active, .tool:active, .downloads:active { transform: scale(0.97); }
+  .new:active, .tool:active, .downloads:active { transform: scale(0.97); }
   /* One row: the spaces take what the tools leave and scroll past it; a space deletion confirmation gets the full width. */
   footer { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 2px; margin: 0 -6px; padding: 6px 6px 8px; border-top: 1px solid var(--border); -webkit-app-region: no-drag; }
   footer :global(nav) { flex: 1 1 0; min-width: 0; }

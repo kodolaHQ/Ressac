@@ -7,7 +7,7 @@ export function initialState(genId: () => string = randomUUID): BrowserState {
   const space = genId();
   return {
     version: 3,
-    spaces: [{ id: space, name: "Perso", icon: "🏠", pinned: [], private: false, profile: DEFAULT_PROFILE, aura: DEFAULT_AURA }],
+    spaces: [{ id: space, name: "Perso", icon: "🏠", pinned: [], folders: [], private: false, profile: DEFAULT_PROFILE, aura: DEFAULT_AURA }],
     profiles: [{ id: DEFAULT_PROFILE }],
     essentials: [],
     tabs: {},

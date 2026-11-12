@@ -298,7 +298,60 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       const o = d.tabs[a.id];
       const space = o && d.spaces.find((e) => e.id === o.spaceId);
       if (!o || o.link || !space) return false;
-      space.pinned.push(linkToFavorite(d, genId, o, "pinned"));
+      if (a.folderId && !space.folders.some((x) => x.id === a.folderId)) return false;
+      space.pinned.push({ ...linkToFavorite(d, genId, o, "pinned"), ...(a.folderId ? { folder: a.folderId } : {}) });
+      return true;
+    }
+    case "moveTabToSpace": {
+      const o = d.tabs[a.id];
+      const f = o && win(d, o.windowId);
+      // A pinned tab or an essential belongs to its favorite: it does not move.
+      if (!o || !f || o.link || o.spaceId === a.spaceId || !d.spaces.some((e) => e.id === a.spaceId)) return false;
+      const l = list(f, o.spaceId);
+      const i = l.indexOf(o.id);
+      if (i >= 0) l.splice(i, 1);
+      if (f.active[o.spaceId] === o.id) f.active[o.spaceId] = (i >= 0 ? (l[i] ?? l[i - 1]) : l[0]) ?? null;
+      o.spaceId = a.spaceId;
+      list(f, a.spaceId).push(o.id);
+      // The space it lands in shows it if it had no tab.
+      f.active[a.spaceId] ??= o.id;
+      return true;
+    }
+    case "createFolder": {
+      const space = d.spaces.find((e) => e.id === a.spaceId);
+      const favorite = a.favoriteId ? space?.pinned.find((x) => x.id === a.favoriteId) : undefined;
+      if (!space || (a.favoriteId && !favorite)) return false;
+      const folder = { id: genId(), name: a.name, collapsed: false };
+      space.folders.push(folder);
+      if (favorite) favorite.folder = folder.id;
+      return true;
+    }
+    case "renameFolder": {
+      const folder = d.spaces.find((e) => e.id === a.spaceId)?.folders.find((x) => x.id === a.id);
+      if (!folder || folder.name === a.name) return false;
+      folder.name = a.name;
+      return true;
+    }
+    case "deleteFolder": {
+      const space = d.spaces.find((e) => e.id === a.spaceId);
+      if (!space?.folders.some((x) => x.id === a.id)) return false;
+      space.folders = space.folders.filter((x) => x.id !== a.id);
+      for (const x of space.pinned) if (x.folder === a.id) delete x.folder;
+      return true;
+    }
+    case "toggleFolder": {
+      const folder = d.spaces.find((e) => e.id === a.spaceId)?.folders.find((x) => x.id === a.id);
+      if (!folder) return false;
+      folder.collapsed = !folder.collapsed;
+      return true;
+    }
+    case "moveToFolder": {
+      const space = d.spaces.find((e) => e.id === a.spaceId);
+      const favorite = space?.pinned.find((x) => x.id === a.favoriteId);
+      if (!space || !favorite || (favorite.folder ?? null) === a.folderId) return false;
+      if (a.folderId === null) delete favorite.folder;
+      else if (space.folders.some((x) => x.id === a.folderId)) favorite.folder = a.folderId;
+      else return false;
       return true;
     }
     case "addEssential": {
@@ -333,7 +386,7 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       if (!profile) return false;
       const space = genId();
       const pinned = addLinks([], a.pinned ?? [], genId);
-      d.spaces.push({ id: space, name: a.name, icon: a.icon, pinned, private: a.private, profile: profile, aura: a.aura ?? DEFAULT_AURA });
+      d.spaces.push({ id: space, name: a.name, icon: a.icon, pinned, folders: [], private: a.private, profile: profile, aura: a.aura ?? DEFAULT_AURA });
       for (const f of d.windows) {
         f.order[space] = [];
         f.active[space] = null;

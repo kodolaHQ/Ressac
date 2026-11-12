@@ -19,9 +19,9 @@ Every visual change follows `DESIGN.md`.
 
 ## WebAiOs-Firefox e2e tests
 
-- The suite runs 6 files in parallel (`maxWorkers: 6`, about 2 min). At 9, time-sensitive tests break: do not raise it without making them robust.
-- **During a plan's task**: run only the e2e files the task touches or whose tested code it changes (`corepack pnpm --filter firefox-webaios exec vitest run -c vitest.e2e.config.ts e2e/<file>`).
-- **The full suite**: once at the end of the plan, before the final review, and after the final fix pass.
+- The suite runs 6 files in parallel (`maxWorkers: 6`, about 8 min measured 2026-11-12). At 9, time-sensitive tests break: do not raise it without making them robust.
+- **For each change** (a plan's task, a small feature, a fix): run only the e2e files it touches or whose tested code it changes (`corepack pnpm --filter firefox-webaios exec vitest run -c vitest.e2e.config.ts e2e/<file>`).
+- **The full suite**: only before a DMG goes to testers, not at the end of each feature or plan. A test that fails there and passes when its file is run alone is a load flake: say so, do not rerun the whole suite.
 - Do not run the suite during the owner's `build:ui`: the binary disappears and everything fails with "build missing".
 
 ## Version and DMG

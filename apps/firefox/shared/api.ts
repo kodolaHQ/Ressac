@@ -54,7 +54,18 @@ export const SchemaAction = z.discriminatedUnion("type", [
       .partial(),
   }),
   z.object({ type: z.literal("openFavorite"), windowId: id, kind: z.enum(["essential", "pinned"]), id }),
-  z.object({ type: z.literal("pinTab"), id }),
+  /** `folderId`: straight into that folder of the tab's space. */
+  z.object({ type: z.literal("pinTab"), id, folderId: id.optional() }),
+  /** A normal tab into another space, at the end of its list, in the background: its page reopens there if the login profile differs. */
+  z.object({ type: z.literal("moveTabToSpace"), id, spaceId: id }),
+  /** `favoriteId`: a pinned tab of the space that starts in the new folder. */
+  z.object({ type: z.literal("createFolder"), spaceId: id, name: z.string().min(1), favoriteId: id.optional() }),
+  z.object({ type: z.literal("renameFolder"), spaceId: id, id, name: z.string().min(1) }),
+  /** Its pinned tabs stay pinned, outside any folder. */
+  z.object({ type: z.literal("deleteFolder"), spaceId: id, id }),
+  z.object({ type: z.literal("toggleFolder"), spaceId: id, id }),
+  /** `folderId` null: out of its folder. */
+  z.object({ type: z.literal("moveToFolder"), spaceId: id, favoriteId: id, folderId: id.nullable() }),
   z.object({ type: z.literal("unpin"), spaceId: id, favoriteId: id }),
   z.object({ type: z.literal("addEssential"), id }),
   z.object({ type: z.literal("removeEssential"), favoriteId: id }),

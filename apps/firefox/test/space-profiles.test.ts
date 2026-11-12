@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import type { Space } from "../shared/model";
 import { choiceLosesConnections, profileOptions, losesConnections, PROFILE_TO_CHOOSE } from "../ui/components/spaceProfiles";
 
-const space = (id: string, name: string, profile: string): Space => ({ id, name: name, icon: "📁", pinned: [], private: false, profile: profile, aura: "aube" });
+const space = (id: string, name: string, profile: string): Space => ({ id, name: name, icon: "📁", pinned: [], folders: [], private: false, profile: profile, aura: "aube" });
 const profiles = [{ id: "default" }, { id: "p1" }, { id: "p2" }];
 
 test("new space: « Nouveau profil » creates one, then each used profile with all its spaces", () => {

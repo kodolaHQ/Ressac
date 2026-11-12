@@ -10,9 +10,9 @@ import { initialState } from "./initial-state";
 
 const FILE = "session.json";
 
-const FavoriteSchema = z.object({ id: z.string(), url: z.string(), title: z.string(), favicon: z.string().nullable() });
+const FavoriteSchema = z.object({ id: z.string(), url: z.string(), title: z.string(), favicon: z.string().nullable(), folder: z.string().optional() });
 
-const SpaceSchema = z.object({ id: z.string(), name: z.string(), icon: z.string(), pinned: z.array(FavoriteSchema), private: z.boolean(), profile: z.string().min(1), aura: z.enum(AURA_IDS).catch(DEFAULT_AURA) });
+const SpaceSchema = z.object({ id: z.string(), name: z.string(), icon: z.string(), pinned: z.array(FavoriteSchema), folders: z.array(z.object({ id: z.string(), name: z.string(), collapsed: z.boolean() })).default([]), private: z.boolean(), profile: z.string().min(1), aura: z.enum(AURA_IDS).catch(DEFAULT_AURA) });
 
 /** Version 3. Any other version is unreadable: set aside like a damaged session. */
 const SchemaSession = z.object({

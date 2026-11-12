@@ -435,6 +435,11 @@ Full build 20–23 min; `build:ui` after a UI change 17 s; adding the sidebar fi
 - surfer declares a git fork of `is-apple-silicon`, which pnpm rejects: replaced by the registry version (`pnpm-workspace.yaml`).
 - The icons in `configs/branding/webaios/` are placeholders.
 
+## Folders of pinned tabs, sending a tab to another space
+
+- **Folders** (`ui/components/Pinned.svelte`): a space has `folders` (`{ id, name, collapsed }`, one level), and a pinned tab names its folder in `Favorite.folder`. `pinned` stays one flat list, so everything that reads it is unchanged. The folders come first, then the pinned tabs outside any folder. Actions: `createFolder` (optionally around a pinned tab), `renameFolder`, `deleteFolder` (its tabs stay pinned), `toggleFolder`, `moveToFolder`, and `pinTab` with `folderId` (a tab dropped on a folder). A new folder's name is typed in place.
+- **Sending a tab** (`moveTabToSpace`): a normal tab goes to the end of another space's list, in the background. `TabSync.sync` already reopens a page whose container changed, so a space with another login profile reloads it at the same address. A pinned tab or an essential does not move.
+
 ## Release notes
 
 `shared/release-notes.ts` lists what changed, newest first. At each start the store dispatches `noteVersion` with the running version: when it differs from `settings.seenVersion` and the newest entry is for that version, the internal page `webaios://release-notes` (« Nouveautés ») opens once. A first launch only records the version. The page stays reachable from Réglages › À propos. When bumping `version` in `package.json`, add its entry.

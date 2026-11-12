@@ -1,3 +1,4 @@
+import { writeFileSync } from "node:fs";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Action } from "../shared/api";
 import type { BrowserState } from "../shared/model";
@@ -5,7 +6,7 @@ import { dispatch, state, waitFor } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
-import { click, inUi, missingApi, pixel, pressKeys, waitUi } from "./ui";
+import { click, inUi, missingApi, pixel, pressKeys, typeText, waitUi } from "./ui";
 
 let server: Awaited<ReturnType<typeof startServer>>;
 let w: LaunchedWebAiOs;
@@ -226,6 +227,47 @@ describe("WebAiOs sidebar", () => {
     expect(await count(pinned)).toBe(1);
     await dispatch(m, { type: "createSpace", name: "Boulot", icon: "💼", private: false, profile: "default", windowId: (await win()).id });
     await waitUi(m, "return doc.querySelectorAll(arguments[0]).length === 0", [pinned]);
+  });
+
+  it("a pinned tab goes into a new folder, named in place; the folder collapses, and deleting it keeps the tab", async () => {
+    const a = await open("/a.html");
+    await waitTitle(a, "Page A");
+    await dispatch(m, { type: "pinTab", id: a });
+    const favorite = '[data-testid="pinned"] [data-testid^="favorite-"]';
+    await waitUi(m, "return doc.querySelectorAll(arguments[0]).length === 1", [favorite]);
+    await click(m, favorite, { button: 2 });
+    await click(m, '[role="menuitem"]', { text: "Nouveau dossier" });
+    await waitUi(m, `return doc.activeElement?.dataset.testid === "folder-name"`);
+    await typeText(m, "Docs");
+    await pressKeys(m, "Enter");
+    const inside = '[data-testid^="folder-"] [data-testid^="favorite-"]';
+    await waitUi(m, `return doc.querySelector('[data-testid^="folder-"] .head')?.textContent.trim() === "Docs" && doc.querySelectorAll(arguments[0]).length === 1`, [inside]);
+    await click(m, '[data-testid^="folder-"] .head');
+    await waitUi(m, "return doc.querySelectorAll(arguments[0]).length === 0", [inside]);
+    expect((await state(m)).spaces[0]!.folders).toMatchObject([{ name: "Docs", collapsed: true }]);
+    if (process.env.WEBAIOS_SHOT) {
+      await click(m, '[data-testid^="folder-"] .head');
+      await new Promise((r) => setTimeout(r, 1_000));
+      writeFileSync(process.env.WEBAIOS_SHOT, Buffer.from((await m.command<{ value: string }>("WebDriver:TakeScreenshot", { full: false, hash: false })).value, "base64"));
+    }
+    await click(m, '[data-testid^="folder-"] .head', { button: 2 });
+    await click(m, '[role="menuitem"]', { text: "Supprimer le dossier" });
+    await waitUi(m, `return !doc.querySelector('[data-testid^="folder-"]') && doc.querySelectorAll(arguments[0]).length === 1`, [favorite]);
+  });
+
+  it("right click → « Envoyer vers » moves the tab to the other space, in the background", async () => {
+    const home = (await win()).activeSpace;
+    await dispatch(m, { type: "createSpace", name: "Boulot", icon: "💼", private: false, profile: "default", windowId: (await win()).id });
+    const work = (await win()).activeSpace;
+    const a = await open("/a.html");
+    await waitTitle(a, "Page A");
+    await click(m, `[data-testid="tab-${a}"]`, { button: 2 });
+    await click(m, '[role="menuitem"]', { text: "Envoyer vers 🏠 Perso" });
+    await waitUi(m, "return !doc.querySelector(arguments[0])", [`[data-testid="tab-${a}"]`]);
+    const s = await state(m);
+    expect(s.tabs[a]!.spaceId).toBe(home);
+    expect(s.windows[0]!.activeSpace).toBe(work);
+    expect(s.windows[0]!.order[home]).toContain(a);
   });
 
   it("an essential is visible in every space", async () => {

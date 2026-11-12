@@ -63,6 +63,7 @@
           openMenu(e, [
             { label: "Épingler", dispatch: () => api.dispatch({ type: "pinTab", id }) },
             { label: "Ajouter aux essentiels", dispatch: () => api.dispatch({ type: "addEssential", id }) },
+            ...(appState.value?.spaces ?? []).filter((s) => s.id !== win.activeSpace).map((s) => ({ label: `Envoyer vers ${s.icon} ${s.name}`, dispatch: () => api.dispatch({ type: "moveTabToSpace", id, spaceId: s.id }) })),
             { label: "Fermer", dispatch: () => closeTab(id) },
           ])}
       >

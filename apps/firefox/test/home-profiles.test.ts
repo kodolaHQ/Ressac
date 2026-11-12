@@ -7,6 +7,7 @@ const space = (id: string, name: string, profile: ProfileId, isPrivate = false):
   name: name,
   icon: "",
   pinned: [],
+  folders: [],
   private: isPrivate,
   profile: profile,
   aura: "aube",

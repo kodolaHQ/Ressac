@@ -98,6 +98,15 @@ export interface Favorite {
   url: string;
   title: string;
   favicon: string | null;
+  /** A pinned tab only: the folder of its space it sits in. */
+  folder?: string;
+}
+
+/** A folder of pinned tabs in a space's sidebar (one level, Arc/Zen model). */
+export interface Folder {
+  id: string;
+  name: string;
+  collapsed: boolean;
 }
 
 /** A login profile: cookies, signed-in accounts and site permissions (one Chromium session). */
@@ -113,6 +122,8 @@ export interface Space {
   name: string;
   icon: string;
   pinned: Favorite[];
+  /** Shown above the pinned tabs outside any folder, in this order. */
+  folders: Folder[];
   /** Invisible to the agent: its tabs are neither listed, nor read, nor kept. */
   private: boolean;
   profile: ProfileId;
