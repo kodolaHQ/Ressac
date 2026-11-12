@@ -15,14 +15,14 @@ describe("source detection", () => {
     for (const d of ["Google/Chrome", "Arc/User Data", "BraveSoftware/Brave-Browser"]) mkdirSync(join(home, "Library/Application Support", d), { recursive: true });
     // A folder of another name is not Vivaldi's.
     mkdirSync(join(home, "Library/Application Support/Vivaldi-not"), { recursive: true });
-    expect((await detectSources(home, exists, true)).map((s) => s.id)).toEqual(["arc", "chrome", "brave"]);
+    expect((await detectSources(home, exists)).map((s) => s.id)).toEqual(["arc", "chrome", "brave"]);
   });
 
-  it("never offers Safari under a test home (its migrator reads the real ~/Library)", async () => {
+  it("offers Safari when its folder exists under the home", async () => {
     home = mkdtempSync(join(tmpdir(), "import-home-"));
+    expect(await detectSources(home, exists)).toEqual([]);
     mkdirSync(join(home, "Library/Safari"), { recursive: true });
-    expect(await detectSources(home, exists, true)).toEqual([]);
-    expect((await detectSources(home, exists, false)).map((s) => s.id)).toEqual(["safari"]);
+    expect((await detectSources(home, exists)).map((s) => s.id)).toEqual(["safari"]);
   });
 
   it("reads Chromium profiles from Local State, the last used first", () => {

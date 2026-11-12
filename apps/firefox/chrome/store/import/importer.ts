@@ -252,7 +252,9 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
         }
         return out;
       };
-      await migrate(make(root), asked);
+      // The engine's Safari migrator reads the real ~/Library whatever the home: under a test home it never runs, and
+      // every type fails as without Full Disk Access.
+      if (!(testHome && def.kind === "safari")) await migrate(make(root), asked);
       let failed = await bad(asked, `${root}/${profile?.id}`);
       // A browser that is open may lock its files: one more try on a copy. Not for passwords that read but failed:
       // that is the keychain refused, and a retry would ask again.
@@ -291,14 +293,14 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
 
   return {
     async sources() {
-      const defs = await detectSources(home, (path) => IOUtils.exists(path), !!testHome);
+      const defs = await detectSources(home, (path) => IOUtils.exists(path));
       return Promise.all(defs.map(async (d): Promise<ImportSource> => ({ id: d.id, name: d.name, profiles: await profilesOf(d), types: [...d.types], passwordsByCsv: d.passwordsByCsv })));
     },
     async start(o) {
       if (running) return { ok: false, error: "Un import est déjà en cours" };
       running = true;
       try {
-        const def = (await detectSources(home, (path) => IOUtils.exists(path), !!testHome)).find((d) => d.id === o?.source);
+        const def = (await detectSources(home, (path) => IOUtils.exists(path))).find((d) => d.id === o?.source);
         if (!def) throw new Error("Ce navigateur n'est pas sur ce Mac");
         const types = Array.isArray(o.types) ? def.types.filter((t) => o.types.includes(t)) : [];
         if (!types.length) throw new Error("Rien à importer");

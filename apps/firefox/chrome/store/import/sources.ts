@@ -38,12 +38,9 @@ export const SOURCES: SourceDef[] = [
 /** macOS only: plain `/` joins keep this module loadable by the unit tests. */
 export const sourceRoot = (home: string, def: SourceDef) => [home, ...def.dir].join("/");
 
-/**
- * The sources whose data folder exists under `home`. With a test home, Safari is never offered: the engine's Safari
- * migrator reads the real ~/Library whatever the home.
- */
-export async function detectSources(home: string, exists: (path: string) => Promise<boolean>, testHome: boolean): Promise<SourceDef[]> {
-  const found = await Promise.all(SOURCES.map((d) => (testHome && d.kind === "safari" ? false : exists(sourceRoot(home, d)))));
+/** The sources whose data folder exists under `home` (a test home too: there the importer never runs Safari's migrator). */
+export async function detectSources(home: string, exists: (path: string) => Promise<boolean>): Promise<SourceDef[]> {
+  const found = await Promise.all(SOURCES.map((d) => exists(sourceRoot(home, d))));
   return SOURCES.filter((_, i) => found[i]);
 }
 

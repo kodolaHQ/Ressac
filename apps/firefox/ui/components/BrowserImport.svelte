@@ -31,26 +31,38 @@
     profile = s.profiles[0]?.id ?? null;
     unchecked = [];
   }
+  /** Bumped by each start: a progress answer asked before it belongs to an older run and is dropped. */
+  let generation = 0;
+  const readProgress = (then: (p: ImportProgress | null) => void) => {
+    const g = generation;
+    void bi.progress().then((p) => g === generation && then(p), () => {});
+  };
   $effect(() => {
     void bi.sources().then((list) => {
       sources = list;
       if (list[0]) choose(list[0]);
     });
-    void bi.progress().then((p) => {
+    readProgress((p) => {
       if (p && !p.done) [progress, watching] = [p, true];
     });
   });
   $effect(() => {
     if (!watching || progress?.done) return;
-    const t = setInterval(() => void bi.progress().then((p) => (progress = p)), 1_000);
+    const t = setInterval(() => readProgress((p) => (progress = p)), 1_000);
     return () => clearInterval(t);
   });
 
   async function start() {
     if (!source) return;
-    const r = await bi.start({ source: source.id, profile, types: types.filter((t) => !unchecked.includes(t)) });
-    refusal = r.ok ? null : r.error;
-    if (r.ok) [progress, watching] = [null, true];
+    generation++;
+    [progress, watching] = [null, false];
+    try {
+      const r = await bi.start({ source: source.id, profile, types: types.filter((t) => !unchecked.includes(t)) });
+      refusal = r.ok ? null : r.error;
+      watching = r.ok;
+    } catch (e) {
+      refusal = `L'import n'a pas pu démarrer : ${e instanceof Error ? e.message : String(e)}`;
+    }
   }
   async function pickCsv() {
     const r = await bi.importPasswordsCsv();
@@ -91,7 +103,7 @@
         {/if}
         <div class="types">
           {#each types as t (t)}
-            <label>
+            <label out:fade={{ duration: 150 }}>
               <input type="checkbox" data-testid="import-type-{t}" checked={!unchecked.includes(t)} onchange={(e) => (unchecked = e.currentTarget.checked ? unchecked.filter((u) => u !== t) : [...unchecked, t])} />
               {LABELS[t]}
             </label>
@@ -154,7 +166,7 @@
   .profile { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 13px; }
   select { padding: 5px 8px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: 13px var(--font-ui); }
   .types { display: flex; flex-wrap: wrap; gap: 8px 18px; }
-  .types label { display: inline-flex; align-items: center; gap: 7px; }
+  .types label { display: inline-flex; align-items: center; gap: 7px; animation: webaios-rise var(--spring-d) var(--spring) backwards; }
   .guide { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 16px; background: var(--glass-hi); border: 1px solid var(--glass-edge); }
   .guide ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 2px; }
 

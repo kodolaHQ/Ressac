@@ -76,9 +76,11 @@ beforeAll(async () => {
   home = await mkdtemp(join(os.tmpdir(), "webaios-import-home-"));
   fakeChrome(home);
   fakeArcAndZen(home);
+  // An empty Safari folder: offered, but its engine migrator never runs under a test home (every type fails as without Full Disk Access).
+  mkdirSync(join(home, "Library/Safari"), { recursive: true });
   csv = join(home, "passwords.csv");
   writeFileSync(csv, "url,username,password\nhttps://site1.example,alice,secret-1\nhttps://site2.example,bob,secret-2\n");
-  w = await launchWebAiOs({ env: { WEBAIOS_TEST_IMPORT_HOME: home, WEBAIOS_TEST_IMPORT_CSV: csv } });
+  w = await launchWebAiOs({ env: { WEBAIOS_TEST_IMPORT_HOME: home, WEBAIOS_TEST_IMPORT_CSV: csv, WEBAIOS_TEST_REVEAL: join(home, "opened.txt") } });
   m = w.marionette;
   await m.setContext("chrome");
 });
@@ -124,6 +126,7 @@ describe("import from another browser", () => {
     expect(sources.map((s) => [s.id, s.types])).toEqual([
       ["arc", ["bookmarks", "history", "passwords", "spaces"]],
       ["chrome", ["bookmarks", "history", "passwords"]],
+      ["safari", ["bookmarks", "history"]],
       ["zen", ["bookmarks", "history", "spaces"]],
     ]);
     expect(sources[1]).toEqual({ id: "chrome", name: "Google Chrome", profiles: [{ id: "Default", name: "Personne 1" }], types: ["bookmarks", "history", "passwords"], passwordsByCsv: false });
@@ -186,6 +189,8 @@ describe("import from another browser", () => {
   const shows = (id: string, wanted: string) =>
     waitUi(m, "return doc.querySelector(arguments[0])?.textContent.replace(/\\s+/g, ' ').includes(arguments[1])", [`[data-testid="${id}"]`, wanted]);
   const there = (id: string) => inUi<boolean>(m, "return !!doc.querySelector(arguments[0])", [`[data-testid="${id}"]`]);
+  /** Gone, once its exit fade ends. */
+  const gone = (id: string) => waitUi(m, "return !doc.querySelector(arguments[0])", [`[data-testid="${id}"]`]);
   const checked = (id: string) => inUi<boolean>(m, "return doc.querySelector(arguments[0]).checked", [`[data-testid="${id}"]`]);
 
   // With three spaces, the sidebar folds its tools behind a button: Réglages opens by its action.
@@ -198,14 +203,14 @@ describe("import from another browser", () => {
     await click(m, '[data-testid="welcome-next"]');
     await shows("welcome-2", "Vous venez d'un autre navigateur ?");
     await shows("browser-import", "Arc");
-    expect(await inUi(m, `return [...doc.querySelectorAll('[name="import-source"]')].map((r) => r.closest("label").textContent.trim())`)).toEqual(["Arc", "Google Chrome", "Zen"]);
+    expect(await inUi(m, `return [...doc.querySelectorAll('[name="import-source"]')].map((r) => r.closest("label").textContent.trim())`)).toEqual(["Arc", "Google Chrome", "Safari", "Zen"]);
     // The first is chosen, with every type checked; Arc's spaces too.
     expect(await checked("import-source-arc")).toBe(true);
     expect(await checked("import-type-spaces")).toBe(true);
     expect(await there("welcome-later")).toBe(true);
     await click(m, '[data-testid="import-source-chrome"]');
     for (const t of ["bookmarks", "history", "passwords"]) expect(await checked(`import-type-${t}`)).toBe(true);
-    expect(await there("import-type-spaces")).toBe(false);
+    await gone("import-type-spaces");
     expect(await there("import-guide")).toBe(false);
     if (process.env.WEBAIOS_SHOT) await new Promise((r) => setTimeout(r, 1_000)); // the page's rise ends
     if (process.env.WEBAIOS_SHOT) writeFileSync(process.env.WEBAIOS_SHOT, Buffer.from((await m.command<{ value: string }>("WebDriver:TakeScreenshot", { full: false, hash: false })).value, "base64"));
@@ -230,8 +235,26 @@ describe("import from another browser", () => {
     await shows("import-guide", "Dans Zen, ouvrez about:logins");
     await shows("import-guide", "⋯ › Exporter les identifiants");
     await shows("import-guide", "Supprimez ensuite le fichier exporté : il n'est pas chiffré.");
-    expect(await there("import-type-passwords")).toBe(false);
+    await gone("import-type-passwords");
     await click(m, '[data-testid="import-csv"]');
     await shows("import-csv-result", "2 mots de passe importés");
+  });
+
+  it("Safari: the CSV guide's four steps, and a refused disk access opens System Settings", async () => {
+    await openSettings();
+    await click(m, '[data-testid="settings-nav-data"]');
+    if (!(await there("browser-import"))) await click(m, '[data-testid="data-import"]');
+    await click(m, '[data-testid="import-source-safari"]');
+    expect(await inUi(m, `return [...doc.querySelectorAll('[data-testid="import-guide"] li')].map((li) => li.textContent.trim())`)).toEqual([
+      "Ouvrez l'app Mots de passe.",
+      "Fichier › Exporter tous les mots de passe…",
+      "Choisissez le fichier ci-dessous.",
+      "Supprimez ensuite le fichier exporté : il n'est pas chiffré.",
+    ]);
+    await click(m, '[data-testid="import-start"]');
+    await shows("import-failed-bookmarks", "Accès complet au disque");
+    await click(m, '[data-testid="import-disk-access"]');
+    const opened = join(home, "opened.txt");
+    await expect.poll(() => (existsSync(opened) ? readFileSync(opened, "utf8") : "")).toBe("x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles\n");
   });
 });
