@@ -89,7 +89,8 @@ export class WebAiOsCallChild extends JSWindowActorChild {
         if (!this.capture().any) return false;
         const area = (v: any) => v.clientWidth * v.clientHeight;
         const video = [...this.document.querySelectorAll("video")].filter((v: any) => !v.paused && v.readyState >= 2 && v.checkVisibility() && area(v) > 0).sort((a, b) => area(b) - area(a))[0];
-        if (!video) return false;
+        // Already floating: asking again would put it back in the page.
+        if (!video || [...this.document.querySelectorAll("video")].some((v: any) => v.isCloningElementVisually)) return false;
         void (this.contentWindow as any).windowGlobalChild.getActor("PictureInPictureLauncher").togglePictureInPicture({ video, reason: "AutoPip" }, false);
         return true;
       }

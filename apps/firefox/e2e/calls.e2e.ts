@@ -8,13 +8,16 @@ import { click, inUi, waitUi } from "./ui";
 // A call page on a fake camera and microphone. ⌘D and ⌘E are its own shortcuts (as Meet's): they switch its tracks and
 // note in the title whether the key was a trusted one.
 const CALL = `<title>Appel</title><video id="v" autoplay playsinline width="640" height="360"></video><script>
+const video = v;
 navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then((s) => {
-  v.srcObject = new MediaStream(s.getVideoTracks());
+  video.srcObject = new MediaStream(s.getVideoTracks());
   document.title = "Appel en cours";
   addEventListener("keydown", (e) => {
     const t = e.metaKey && e.key === "d" ? s.getAudioTracks()[0] : e.metaKey && e.key === "e" ? s.getVideoTracks()[0] : null;
     if (!t) return;
     t.enabled = !t.enabled;
+    // As a real site: no camera, no video element.
+    if (e.key === "e") t.enabled ? (document.body.prepend(video), video.play()) : video.remove();
     document.title = "touche " + e.key + " " + e.isTrusted;
   });
 }, (e) => (document.title = "ERR " + e));
@@ -44,7 +47,6 @@ const open = async (path: string) => {
   const s = await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url: url + path, activate: true });
   return Object.values(s.tabs).find((t) => t.url === url + path)!.id;
 };
-const players = () => m.execute<number>(`return [...Services.wm.getEnumerator("Toolkit:PictureInPicture")].length`);
 const bar = () =>
   inUi<{ mic: string; camera: string } | null>(
     m,
@@ -93,6 +95,11 @@ it("on a known site the buttons press the site's own shortcut, as a trusted key,
   await click(m, '[data-testid="call-camera"]');
   await waitBar("false", "false");
   await callTitle(call, "touche e true");
+  // The site drops its video with the camera: the floating video goes, and comes back when the camera does.
+  await waitFor(m, `return [...Services.wm.getEnumerator("Toolkit:PictureInPicture")].length`, (v: number) => v === 0);
+  await click(m, '[data-testid="call-camera"]');
+  await waitBar("false", "true");
+  await waitFor(m, `return [...Services.wm.getEnumerator("Toolkit:PictureInPicture")].length`, (v: number) => v === 1);
 });
 
 it("a call that ends in the background takes its bar away", async () => {
@@ -102,5 +109,5 @@ it("a call that ends in the background takes its bar away", async () => {
   await waitBar("true", "true");
   await dispatch(m, { type: "closeTab", id: call });
   await waitUi(m, `return !doc.querySelector('[data-testid="call-bar"]')`);
-  expect(await players()).toBe(0);
+  await waitFor(m, `return [...Services.wm.getEnumerator("Toolkit:PictureInPicture")].length`, (v: number) => v === 0);
 });

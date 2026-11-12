@@ -42,6 +42,22 @@ export function mountCalls(win: any, store: WebAiOsStore): { press(id: TabId, wh
       .then((call: unknown) => (call && gBrowser.selectedTab !== e.detail.previousTab ? set(left, call) : actor(e.detail.previousTab)?.sendAsyncMessage("call:unwatch")))
       .catch(() => {});
   };
+  const { PictureInPicture } = ChromeUtils.importESModule("moz-src:///toolkit/components/pictureinpicture/PictureInPicture.sys.mjs") as any;
+  /** Asks the tab's frames for the call's video, a few times: the site shows it a moment after the camera starts. */
+  const float = (tab: any) => {
+    for (const ms of [300, 1000, 2500])
+      win.setTimeout(() => {
+        const browser = tab.linkedBrowser;
+        // Not shown again meanwhile, and not a player the user closed.
+        if (!browser?.browsingContext || gBrowser.selectedTab === tab || PictureInPicture.weakAutoPipBrowserClosedDeliberately.has(browser)) return;
+        for (const context of browser.browsingContext.getAllBrowsingContextsInSubtree())
+          try {
+            context.currentWindowGlobal?.getActor("WebAiOsCall").sendAsyncMessage("call:leave");
+          } catch {
+            // not an http(s) frame
+          }
+      }, ms);
+  };
   gBrowser.tabContainer.addEventListener("TabSelect", onSelect);
   const observer = {
     observe(_subject: unknown, _topic: string, data: string) {
@@ -49,6 +65,8 @@ export function mountCalls(win: any, store: WebAiOsStore): { press(id: TabId, wh
       const tab = gBrowser.tabs.find((t: any) => t.linkedBrowser?.browserId === browserId);
       const id = idOf(tab);
       if (!id || gBrowser.selectedTab === tab) return;
+      // The camera is back on: its video floats again (the player closed with the video when the camera went off).
+      if (call?.camera && store.state.tabs[id]?.call?.camera === false) float(tab);
       if (!call) actor(tab)?.sendAsyncMessage("call:unwatch");
       set(id, call);
     },
