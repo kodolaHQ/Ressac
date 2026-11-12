@@ -15,6 +15,8 @@ import type { Decision, PendingRequest, AccessState, BrowserState, SpaceId, Wind
 
 const id = z.string().min(1);
 const engine = z.enum(["google", "duckduckgo", "qwant"]);
+/** A favorite given by its address (an import), not by an open tab. */
+const favoriteLink = z.object({ url: z.string().regex(/^https?:\/\//), title: z.string() });
 
 /** The actions, validated at the entry of the main process: the schema is the source of the type. */
 export const SchemaAction = z.discriminatedUnion("type", [
@@ -54,8 +56,10 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("unpin"), spaceId: id, favoriteId: id }),
   z.object({ type: z.literal("addEssential"), id }),
   z.object({ type: z.literal("removeEssential"), favoriteId: id }),
-  /** `profile`: an existing login profile, or "new" to create one specific to the space. */
-  z.object({ type: z.literal("createSpace"), name: z.string().min(1), icon: z.string().min(1), private: z.boolean(), profile: id, aura: z.enum(AURA_IDS).optional(), windowId: id.optional() }),
+  /** Adds favorites by address: the space's pinned tabs, or the essentials without `spaceId`. Never a private space; a URL already there is skipped. */
+  z.object({ type: z.literal("addFavorites"), spaceId: id.optional(), favorites: z.array(favoriteLink) }),
+  /** `profile`: an existing login profile, or "new" to create one specific to the space. `pinned`: its first pinned tabs (an import). */
+  z.object({ type: z.literal("createSpace"), name: z.string().min(1), icon: z.string().min(1), private: z.boolean(), profile: id, aura: z.enum(AURA_IDS).optional(), windowId: id.optional(), pinned: z.array(favoriteLink).optional() }),
   z.object({ type: z.literal("updateSpace"), id, name: z.string().min(1), icon: z.string().min(1), private: z.boolean(), profile: id, aura: z.enum(AURA_IDS).optional() }),
   z.object({ type: z.literal("deleteSpace"), id }),
   z.object({ type: z.literal("activateSpace"), windowId: id, id }),

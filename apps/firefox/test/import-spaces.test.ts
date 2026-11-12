@@ -1,0 +1,93 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import { parseArcSidebar, parseZenSpaces, planSpaceImport, type ImportedSpaces } from "../chrome/store/import/spaces";
+import { apply } from "../core/state/actions";
+import { initialState } from "../core/state/initial-state";
+import type { BrowserState } from "../shared/model";
+
+const fixture = (name: string) => JSON.parse(readFileSync(join(__dirname, "fixtures/import", name), "utf8"));
+const arc = () => parseArcSidebar(fixture("arc-StorableSidebar.json"))!;
+const zen = () => parseZenSpaces(fixture("zen-sessions.json"))!;
+
+let n = 0;
+const genId = () => `id-${++n}`;
+const run = (state: BrowserState, imported: ImportedSpaces) => planSpaceImport(state, imported).reduce((s, a) => apply(s, a, genId), state);
+const view = (s: BrowserState) => ({
+  spaces: s.spaces.map((e) => ({ name: e.name, private: e.private, pinned: e.pinned.map((f) => f.url) })),
+  essentials: s.essentials.map((f) => f.url),
+});
+
+describe("parsing another browser's sidebar", () => {
+  it("reads Arc's spaces, pinned tabs (folders flattened, http only) and favorites", () => {
+    expect(arc()).toEqual({
+      spaces: [
+        { name: "Travail", pinned: [{ url: "https://docs.example.com/projet", title: "Projet" }, { url: "https://tickets.example.com/", title: "Tickets" }] },
+        { name: "Maison", pinned: [{ url: "https://recettes.example.com/", title: "Recettes" }] },
+      ],
+      essentials: [{ url: "https://mail.example.com/", title: "Courrier" }, { url: "https://agenda.example.com/", title: "Agenda" }],
+    });
+  });
+
+  it("reads Zen's workspaces, pinned tabs at their pinned address, and essentials; no glance nor unpinned tab", () => {
+    expect(zen()).toEqual({
+      spaces: [
+        { name: "Travail", pinned: [{ url: "https://docs.example.com/projet", title: "Projet" }] },
+        { name: "Maison", pinned: [{ url: "https://recettes.example.com/", title: "Recettes" }] },
+      ],
+      essentials: [{ url: "https://mail.example.com/", title: "Courrier" }],
+    });
+  });
+
+  it("an unknown shape is null", () => {
+    for (const bad of [null, 1, {}, { sidebar: {} }, { sidebar: { containers: [{ spaces: [], items: [] }] } }]) expect(parseArcSidebar(bad)).toBeNull();
+    for (const bad of [null, [], { spaces: [] }, { tabs: [] }]) expect(parseZenSpaces(bad)).toBeNull();
+  });
+});
+
+describe("planSpaceImport", () => {
+  it("creates the spaces with their pinned tabs, adds the essentials, and a re-plan does nothing", () => {
+    const start = initialState(genId);
+    const after = run(start, arc());
+    expect(view(after)).toEqual({
+      spaces: [
+        { name: "Perso", private: false, pinned: [] },
+        { name: "Travail", private: false, pinned: ["https://docs.example.com/projet", "https://tickets.example.com/"] },
+        { name: "Maison", private: false, pinned: ["https://recettes.example.com/"] },
+      ],
+      essentials: ["https://mail.example.com/", "https://agenda.example.com/"],
+    });
+    // The new spaces share the normal space's login profile and keep the window on its space.
+    expect(after.spaces.map((e) => e.profile)).toEqual(["default", "default", "default"]);
+    expect(after.windows[0]!.activeSpace).toBe(start.spaces[0]!.id);
+    expect(planSpaceImport(after, arc())).toEqual([]);
+    // Zen's same spaces, by name in any case: only what is missing.
+    const lower = { ...zen(), spaces: zen().spaces.map((s) => ({ ...s, name: s.name.toLowerCase() })) };
+    expect(planSpaceImport(after, lower)).toEqual([]);
+  });
+
+  it("adds only the missing pinned tabs to a space of the same name", () => {
+    const s = run(initialState(genId), { spaces: [{ name: "travail", pinned: [{ url: "https://docs.example.com/projet", title: "Projet" }] }], essentials: [] });
+    expect(planSpaceImport(s, arc())).toContainEqual({ type: "addFavorites", spaceId: s.spaces[1]!.id, favorites: [{ url: "https://tickets.example.com/", title: "Tickets" }] });
+  });
+
+  it("never writes into a private space: one named like an Arc space stays untouched, a normal one is created", () => {
+    let s = initialState(genId);
+    s = apply(s, { type: "createSpace", name: "Travail", icon: "🔒", private: true, profile: "new", windowId: s.windows[0]!.id }, genId);
+    const privateSpace = s.spaces[1]!;
+    expect(s.windows[0]!.activeSpace).toBe(privateSpace.id);
+    const after = run(s, arc());
+    expect(after.spaces.find((e) => e.id === privateSpace.id)).toEqual(privateSpace);
+    expect(after.spaces.filter((e) => e.name === "Travail" && !e.private)).toHaveLength(1);
+    expect(after.windows[0]!.activeSpace).toBe(privateSpace.id);
+    // The reducer refuses favorites aimed at a private space.
+    expect(apply(after, { type: "addFavorites", spaceId: privateSpace.id, favorites: [{ url: "https://x.example.com/", title: "x" }] })).toBe(after);
+  });
+
+  it("only private spaces: the new spaces get a login profile of their own", () => {
+    let s = initialState(genId);
+    s = { ...s, spaces: s.spaces.map((e) => ({ ...e, private: true })) };
+    const actions = planSpaceImport(s, arc());
+    expect(actions.filter((a) => a.type === "createSpace").map((a) => a.type === "createSpace" && a.profile)).toEqual(["new", "new"]);
+  });
+});

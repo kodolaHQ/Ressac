@@ -1,0 +1,17 @@
+{
+  "lastCollected": 1,
+  "spaces": [
+    { "uuid": "{w-work}", "name": "Travail", "theme": { "type": "gradient", "gradientColors": [], "opacity": 0.5, "texture": 0 }, "containerTabId": 0, "hasCollapsedPinnedTabs": false },
+    { "uuid": "{w-home}", "name": "Maison", "theme": { "type": "gradient", "gradientColors": [], "opacity": 0.5, "texture": 0 }, "containerTabId": 0, "hasCollapsedPinnedTabs": false }
+  ],
+  "tabs": [
+    { "pinned": true, "zenEssential": true, "zenWorkspace": "{w-work}", "zenIsGlance": false, "index": 1, "entries": [{ "url": "https://mail.example.com/", "title": "Courrier" }], "_zenPinnedInitialState": { "entry": { "url": "https://mail.example.com/", "title": "Courrier" } } },
+    { "pinned": true, "zenEssential": false, "zenWorkspace": "{w-work}", "zenIsGlance": false, "index": 2, "entries": [{ "url": "https://docs.example.com/projet", "title": "Projet" }, { "url": "https://docs.example.com/projet/page-2", "title": "Page 2" }], "_zenPinnedInitialState": { "entry": { "url": "https://docs.example.com/projet", "title": "Projet" } } },
+    { "pinned": true, "zenEssential": false, "zenWorkspace": "{w-home}", "zenIsGlance": false, "index": 1, "entries": [{ "url": "https://recettes.example.com/", "title": "Recettes" }] },
+    { "pinned": false, "zenEssential": false, "zenWorkspace": "{w-work}", "zenIsGlance": false, "index": 1, "entries": [{ "url": "https://ephemere.example.com/", "title": "Onglet du jour" }] },
+    { "pinned": true, "zenEssential": false, "zenWorkspace": "{w-work}", "zenIsGlance": true, "index": 1, "entries": [{ "url": "https://glance.example.com/", "title": "Aperçu" }] }
+  ],
+  "folders": [],
+  "groups": [],
+  "splitViewData": []
+}

@@ -423,7 +423,7 @@ async function start(): Promise<WebAiOsStore> {
     dataSetAside,
     telemetryActive: telemetry.active,
     settings: createSettingsChrome(dataDir, telemetry.active),
-    browserImport: createBrowserImporter(dataDir, agent),
+    browserImport: createBrowserImporter(dataDir, agent, store),
     flush,
     containerFor,
     agent,

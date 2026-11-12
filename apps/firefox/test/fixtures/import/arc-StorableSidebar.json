@@ -1,0 +1,30 @@
+{
+  "sidebar": {
+    "containers": [
+      { "global": {} },
+      {
+        "spaces": [
+          "space-work",
+          { "id": "space-work", "title": "Travail", "containerIDs": ["unpinned", "work-unpinned", "pinned", "work-pinned"] },
+          "space-home",
+          { "id": "space-home", "title": "Maison", "containerIDs": ["unpinned", "home-unpinned", "pinned", "home-pinned"] }
+        ],
+        "items": [
+          "fav", { "id": "fav", "title": null, "childrenIds": ["fav-1", "fav-2"], "data": { "itemContainer": {} } },
+          "fav-1", { "id": "fav-1", "title": null, "parentID": "fav", "childrenIds": [], "data": { "tab": { "savedURL": "https://mail.example.com/", "savedTitle": "Courrier" } } },
+          "fav-2", { "id": "fav-2", "title": "Agenda", "parentID": "fav", "childrenIds": [], "data": { "tab": { "savedURL": "https://agenda.example.com/", "savedTitle": "Agenda (titre)" } } },
+          "work-pinned", { "id": "work-pinned", "title": null, "childrenIds": ["w-1", "w-folder"], "data": { "itemContainer": {} } },
+          "w-1", { "id": "w-1", "title": null, "parentID": "work-pinned", "childrenIds": [], "data": { "tab": { "savedURL": "https://docs.example.com/projet", "savedTitle": "Projet" } } },
+          "w-folder", { "id": "w-folder", "title": "Dossier", "parentID": "work-pinned", "childrenIds": ["w-2", "w-3"], "data": { "list": {} } },
+          "w-2", { "id": "w-2", "title": null, "parentID": "w-folder", "childrenIds": [], "data": { "tab": { "savedURL": "https://tickets.example.com/", "savedTitle": "Tickets" } } },
+          "w-3", { "id": "w-3", "title": null, "parentID": "w-folder", "childrenIds": [], "data": { "tab": { "savedURL": "file:///etc/hosts", "savedTitle": "Local" } } },
+          "home-pinned", { "id": "home-pinned", "title": null, "childrenIds": ["h-1"], "data": { "itemContainer": {} } },
+          "h-1", { "id": "h-1", "title": null, "parentID": "home-pinned", "childrenIds": [], "data": { "tab": { "savedURL": "https://recettes.example.com", "savedTitle": "Recettes" } } },
+          "work-unpinned", { "id": "work-unpinned", "title": null, "childrenIds": ["u-1"], "data": { "itemContainer": {} } },
+          "u-1", { "id": "u-1", "title": null, "parentID": "work-unpinned", "childrenIds": [], "data": { "tab": { "savedURL": "https://ephemere.example.com/", "savedTitle": "Onglet du jour" } } }
+        ],
+        "topAppsContainerIDs": [{ "default": true }, "fav"]
+      }
+    ]
+  }
+}

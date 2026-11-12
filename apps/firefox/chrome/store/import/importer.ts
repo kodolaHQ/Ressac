@@ -1,6 +1,8 @@
 import type { BrowserImportApi, ImportProgress, ImportSource, ImportType } from "../../../shared/api";
 import type { AgentHost } from "../../agent/host";
 import { showAlert } from "../notifications";
+import type { Store } from "../store";
+import { parseArcSidebar, parseZenSpaces, planSpaceImport } from "./spaces";
 import { chromiumMigrator, chromiumProfiles, detectSources, firefoxMigrator, firefoxProfiles, safariMigrator, sourceRoot, type SourceDef } from "./sources";
 
 /** Visits per `history.import` call (the host takes up to 50 000). */
@@ -103,7 +105,7 @@ const CHROMIUM_FILES: Partial<Record<ImportType, string[]>> = { bookmarks: ["Boo
 
 const MIGRATION_UTILS = "moz-src:///browser/components/migration/MigrationUtils.sys.mjs";
 
-export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "request">): BrowserImportApi {
+export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "request">, store: Pick<Store, "state" | "dispatch">): BrowserImportApi {
   const { MigrationUtils } = ChromeUtils.importESModule(MIGRATION_UTILS);
   const { PlacesUtils } = ChromeUtils.importESModule("resource://gre/modules/PlacesUtils.sys.mjs");
   const BITS: Partial<Record<ImportType, number>> = { bookmarks: MigrationUtils.resourceTypes.BOOKMARKS, history: MigrationUtils.resourceTypes.HISTORY, passwords: MigrationUtils.resourceTypes.PASSWORDS };
@@ -149,6 +151,28 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
         const from = `${root}/${profile}/${name}${suffix}`;
         if (await IOUtils.exists(from)) await IOUtils.copy(from, `${to}/${profile}/${name}${suffix}`);
       }
+  }
+
+  /** Arc's or Zen's spaces, favorites and pinned tabs into the store; the spaces created or given pinned tabs. */
+  async function importSpaces(def: SourceDef, profile: { id: string } | null): Promise<number> {
+    const arc = def.id === "arc";
+    // Arc keeps its sidebar next to its Chromium data folder; Zen, in the profile's session file (written whole, never locked).
+    const path = arc ? sourceRoot(home, def).replace(/\/User Data$/, "/StorableSidebar.json") : `${profile?.id}/zen-sessions.jsonlz4`;
+    if (!(await IOUtils.exists(path))) throw new Error("aucun espace trouvé");
+    let json: unknown;
+    try {
+      json = await IOUtils.readJSON(path, { decompress: !arc });
+    } catch {
+      throw new Error(reason(def, "spaces", true));
+    }
+    const imported = arc ? parseArcSidebar(json) : parseZenSpaces(json);
+    if (!imported) throw new Error(`format ${def.name} non reconnu`);
+    let count = 0;
+    for (const a of planSpaceImport(store.state, imported)) {
+      const before = store.state;
+      if (store.dispatch(a) !== before && (a.type === "createSpace" || (a.type === "addFavorites" && a.spaceId))) count++;
+    }
+    return count;
   }
 
   async function run(def: SourceDef, profile: { id: string; name: string } | null, types: ImportType[], p: ImportProgress): Promise<void> {
@@ -245,6 +269,11 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
         else if (testHome && def.kind === "chromium" && t === "passwords") p.failed[t] = "trousseau non consulté pendant les tests";
         else p.counts[t] = counts[t] ?? 0;
       }
+      if (types.includes("spaces"))
+        await importSpaces(def, profile).then(
+          (n) => (p.counts.spaces = n),
+          (e) => (p.failed.spaces = e instanceof Error ? e.message : String(e)),
+        );
     } catch (e) {
       console.error("[import] failed:", e);
       for (const t of types) if (p.counts[t] === undefined) p.failed[t] ??= e instanceof Error ? e.message : String(e);

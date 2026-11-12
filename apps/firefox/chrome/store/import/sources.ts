@@ -24,7 +24,7 @@ const NO_PASSWORDS: ImportType[] = ["bookmarks", "history"];
 
 export const SOURCES: SourceDef[] = [
   // shortcut: Arc is not installed on the Mac this was built on; folder and keychain names are Chromium's usual pattern, measure them on a real Arc install.
-  { id: "arc", name: "Arc", kind: "chromium", dir: [...SUPPORT, "Arc", "User Data"], types: CHROMIUM, passwordsByCsv: false, engineClass: "ChromeProfileMigrator", keychain: { service: "Arc Safe Storage", account: "Arc" } },
+  { id: "arc", name: "Arc", kind: "chromium", dir: [...SUPPORT, "Arc", "User Data"], types: [...CHROMIUM, "spaces"], passwordsByCsv: false, engineClass: "ChromeProfileMigrator", keychain: { service: "Arc Safe Storage", account: "Arc" } },
   { id: "chrome", name: "Google Chrome", kind: "chromium", dir: [...SUPPORT, "Google", "Chrome"], types: CHROMIUM, passwordsByCsv: false, engineClass: "ChromeProfileMigrator" },
   { id: "brave", name: "Brave", kind: "chromium", dir: [...SUPPORT, "BraveSoftware", "Brave-Browser"], types: CHROMIUM, passwordsByCsv: false, engineClass: "BraveProfileMigrator" },
   { id: "edge", name: "Microsoft Edge", kind: "chromium", dir: [...SUPPORT, "Microsoft Edge"], types: CHROMIUM, passwordsByCsv: false, engineClass: "ChromiumEdgeMigrator" },
@@ -32,7 +32,7 @@ export const SOURCES: SourceDef[] = [
   { id: "opera", name: "Opera", kind: "chromium", dir: [...SUPPORT, "com.operasoftware.Opera"], types: CHROMIUM, passwordsByCsv: false, engineClass: "OperaProfileMigrator" },
   { id: "safari", name: "Safari", kind: "safari", dir: ["Library", "Safari"], types: NO_PASSWORDS, passwordsByCsv: true },
   { id: "firefox", name: "Firefox", kind: "firefox", dir: [...SUPPORT, "Firefox"], types: NO_PASSWORDS, passwordsByCsv: true },
-  { id: "zen", name: "Zen", kind: "firefox", dir: [...SUPPORT, "zen"], types: NO_PASSWORDS, passwordsByCsv: true },
+  { id: "zen", name: "Zen", kind: "firefox", dir: [...SUPPORT, "zen"], types: [...NO_PASSWORDS, "spaces"], passwordsByCsv: true },
 ];
 
 /** macOS only: plain `/` joins keep this module loadable by the unit tests. */

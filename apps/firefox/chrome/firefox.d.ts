@@ -1,6 +1,8 @@
 // Loose ambient declarations for the Firefox globals the chrome code uses.
 declare const IOUtils: {
   readUTF8(path: string): Promise<string>;
+  /** `decompress`: a mozlz4 file (`.jsonlz4`). */
+  readJSON(path: string, options?: { decompress?: boolean }): Promise<unknown>;
   writeUTF8(path: string, text: string, options?: { flush?: boolean; mode?: "overwrite" | "append" | "appendOrCreate" | "create" }): Promise<number>;
   exists(path: string): Promise<boolean>;
   move(from: string, to: string): Promise<void>;

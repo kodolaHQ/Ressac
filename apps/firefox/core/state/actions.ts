@@ -312,11 +312,20 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       unlink(d, a.favoriteId);
       return true;
     }
+    case "addFavorites": {
+      const space = a.spaceId === undefined ? null : d.spaces.find((e) => e.id === a.spaceId);
+      if (space === undefined || space?.private) return false;
+      const target = space ? space.pinned : d.essentials;
+      const before = target.length;
+      for (const x of a.favorites) if (!target.some((f) => f.url === x.url)) target.push({ id: genId(), url: x.url, title: x.title, favicon: null });
+      return target.length > before;
+    }
     case "createSpace": {
       const profile = requestedProfile(d, genId, a.profile);
       if (!profile) return false;
       const space = genId();
-      d.spaces.push({ id: space, name: a.name, icon: a.icon, pinned: [], private: a.private, profile: profile, aura: a.aura ?? DEFAULT_AURA });
+      const pinned = (a.pinned ?? []).map((x) => ({ id: genId(), url: x.url, title: x.title, favicon: null }));
+      d.spaces.push({ id: space, name: a.name, icon: a.icon, pinned, private: a.private, profile: profile, aura: a.aura ?? DEFAULT_AURA });
       for (const f of d.windows) {
         f.order[space] = [];
         f.active[space] = null;
