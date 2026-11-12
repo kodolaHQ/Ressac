@@ -97,6 +97,8 @@ export interface Tab {
   error: string | null;
   /** The band of the agent's search on this tab; volatile, never saved. */
   agentSearch?: Band;
+  /** The tab uses the camera or the microphone while another tab is shown (the sidebar's call bar); volatile, never saved. */
+  call?: { mic: boolean; camera: boolean };
 }
 
 /** Persistent favorite displayed in the sidebar even without an open tab (Arc/Zen model). */

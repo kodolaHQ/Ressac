@@ -426,6 +426,15 @@ Sidebar side (Réglages › Vie privée › Interface › « Barre de navigation
 
 `engine/` is shared by all checkouts (it links to `~/WebAiOs-firefox/engine`), and the import links `src/` files of the checkout that ran it. Run `pnpm engine:import` in the checkout you build. Links left behind by a deleted worktree are dangling: `engine:import` prunes them first (`scripts/engine.sh prune`), otherwise surfer fails with ENOENT.
 
+## Calls in a background tab
+
+A tab that uses the camera or the microphone when it is left (`TabSelect`, `chrome/window/calls.ts`) gets `tab.call` (`{ mic, camera }`, volatile) and the sidebar shows a call bar above its footer (`ui/components/CallBar.svelte`): back to the call, microphone, camera. The tab's actor (`chrome/agent/call-actor.ts`, `WebAiOsCall`, every http(s) frame) reads the state every 500 ms while watched and relays changes; the bar goes when the tab is shown again, the call ends or the tab closes.
+
+- Buttons: on a site of `shared/call-sites.ts` (Meet, Teams, Zoom) the actor dispatches the site's own macOS shortcut in the page (a chrome-made key event is trusted), so the site and the other participants see the change; the state shown is the site's buttons when it has `buttons` (`data-is-muted`), else what the window captures (`mediaCaptureWindowState`). On any other site Firefox mutes what the window sends (`getUserMedia:muteAudio` / `muteVideo`): the site's own UI does not show it. More sites without a build: pref `webaios.call.sites`, a JSON array of `CallSite` (read in the parent: a web process does not get a user string pref).
+- Video: Firefox's automatic picture-in-picture on a tab switch is on (`media.videocontrols.picture-in-picture.enable-when-switching-tabs.enabled`), kept for calls only: `chrome/store/call-player.ts` wraps `PictureInPictureToggleParent.receiveMessage` and, instead of Firefox's own choice (which refuses a live stream without a sound track), asks the call actor, which hands the largest playing video of a capturing page to `PictureInPictureLauncher`. Firefox closes the player when the tab is shown again.
+- Tests: `e2e/calls.e2e.ts`, on fake devices (`media.navigator.streams.fake`; they count as a capture only with `media.navigator.permission.fake`). Not measured on the real Meet, Teams or Zoom.
+- Build facts: as the vim actor, a new checkout needs the `call-actor.sys.mjs` link in the engine (`pnpm engine:import`).
+
 ## Measured times (M5 Pro, 2026-11-03, Firefox 159 + Zen patches)
 
 Full build 20–23 min; `build:ui` after a UI change 17 s; adding the sidebar files (`jar.mn` + `browser.xhtml` patches) 21 s; one C++ or Objective-C++ file 23–25 s; build with no change 21 s.

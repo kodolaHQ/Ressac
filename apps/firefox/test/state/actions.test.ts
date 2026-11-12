@@ -597,6 +597,18 @@ test("agentPanelWidth: 420 by default, kept, clamped between 280 and 1000", () =
   expect(e.settings.agentPanelWidth).toBe(1000);
 });
 
+test("setCall sets and clears a tab's call; the same state or an unknown tab changes nothing", () => {
+  const a = open("https://meet.example/");
+  ag({ type: "setCall", id: a, call: { mic: true, camera: false } });
+  expect(e.tabs[a]!.call).toEqual({ mic: true, camera: false });
+  const before = e;
+  ag({ type: "setCall", id: a, call: { mic: true, camera: false } });
+  ag({ type: "setCall", id: "unknown", call: { mic: true, camera: true } });
+  expect(e).toBe(before);
+  ag({ type: "setCall", id: a, call: null });
+  expect(e.tabs[a]!.call).toBeUndefined();
+});
+
 test("sidebarWidth: 240 by default, kept, clamped between 180 and 480", () => {
   expect(e.settings.sidebarWidth).toBe(240);
   ag({ type: "sidebarWidth", width: 312.4 });

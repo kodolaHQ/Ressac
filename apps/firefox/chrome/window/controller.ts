@@ -7,6 +7,7 @@ import { TabCycle } from "../../core/tab-cycle";
 import { toNeighbour, toNextSpace, toNth } from "../../core/shortcuts";
 import { effectiveBindings } from "../../shared/shortcuts";
 import { leftZone, exitZone, type LeftZone } from "../../shared/reveal";
+import { mountCalls } from "./calls";
 import type { WebAiOsStore } from "../store";
 import { HOST_EXITED } from "../agent/host";
 import { createAddons, type WindowAddons } from "./addons";
@@ -67,6 +68,8 @@ export interface WindowController {
    */
   rememberFocus(): () => void;
   /** Width of the open agent panel while its handle is dragged (the saved width comes back from reglages). */
+  /** The call bar's microphone or camera button, for a background tab in a call. */
+  pressCall(id: TabId, which: "mic" | "camera"): void;
   setAgentWidth(px: number): void;
   /** The sidebar's width while its edge is dragged; the state takes it at the drop. */
   setSidebarWidth(px: number): void;
@@ -376,6 +379,8 @@ export function createController(
   window.CanCloseWindow = () => (quit && !quit.data) || canCloseWindow();
   /** Tabs whose page is being asked: a second ⌘W must not ask again. */
   const asking = new Set<TabId>();
+  const calls = mountCalls(window, store);
+  unsubscribe.push(calls.dispose);
   const showSidebarWidth = (px: number) => {
     barWidth = px;
     document.documentElement.style.setProperty("--webaios-sidebar-w", `${px}px`);
@@ -537,6 +542,7 @@ export function createController(
         else controller.focusPage();
       };
     },
+    pressCall: calls.press,
     setAgentWidth(px) {
       if (!agentOpen(store.state)) return;
       document.documentElement.removeAttribute("webaios-agent-sliding");
