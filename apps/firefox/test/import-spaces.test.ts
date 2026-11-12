@@ -101,7 +101,7 @@ describe("planSpaceImport", () => {
   });
 
   it("the end notification names spaces and favorites together", () => {
-    expect(summary({ source: "arc", done: true, counts: { spaces: 3 }, failed: {} }).text).toBe("3 espaces et favoris");
-    expect(summary({ source: "arc", done: true, counts: { spaces: 1 }, failed: {} }).text).toBe("1 espace ou favori");
+    expect(summary({ source: "arc", done: true, counts: { spaces: 3 }, failed: {} }).text).toBe("3 éléments de barre latérale");
+    expect(summary({ source: "arc", done: true, counts: { spaces: 1 }, failed: {} }).text).toBe("1 élément de barre latérale");
   });
 });

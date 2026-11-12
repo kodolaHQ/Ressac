@@ -73,7 +73,7 @@ const LABELS: Record<ImportType, [string, string, string]> = {
   bookmarks: ["favori", "favoris", "favoris"],
   history: ["page d'historique", "pages d'historique", "historique"],
   passwords: ["mot de passe", "mots de passe", "mots de passe"],
-  spaces: ["espace ou favori", "espaces et favoris", "espaces"],
+  spaces: ["élément de barre latérale", "éléments de barre latérale", "espaces et onglets épinglés"],
 };
 
 /** The end notification: what came in, then what failed and why. */
