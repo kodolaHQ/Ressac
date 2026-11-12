@@ -202,6 +202,18 @@
   visibility: hidden;
 }
 
+/* The strip of aura above the page moves the window, like a title bar: between the sidebar and the agent panel, whose
+   own documents set their drag areas. */
+:root[webaios-main] body::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 8px;
+  -moz-window-dragging: drag;
+}
+
 :root[webaios-main] #tabbrowser-tabbox {
   /* Below the site question's banner, --webaios-banner high (0 without one). */
   margin-top: calc(var(--webaios-banner, 0px) + var(--webaios-search-band, 0px) + 8px);
@@ -290,7 +302,7 @@
    the left, the design cart still between the page and the agent. The window buttons keep their place in the sidebar's
    first row, which stays the window's drag area. */
 :root[webaios-main][webaios-sidebar-side="right"] #webaios-window-buttons {
-  left: calc(100% - 224px);
+  left: calc(100% - var(--webaios-sidebar-w, 240px) + 16px);
 }
 :root[webaios-main][webaios-sidebar-side="right"] #webaios-sidebar {
   left: auto;

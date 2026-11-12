@@ -352,8 +352,9 @@
   /* Transparent so the web page under the iframe shows; the sidebar and the content area paint their own. */
   :global(html, body) { background: transparent; }
   /* Firefox's -webkit-app-region: the same areas. An overlay over the sidebar keeps its clicks. */
-  .window:not(.covered) :global(.bar) { -moz-window-dragging: drag; }
-  .window :global(.bar :is(.navigation button, .line, .scrolling, footer)) { -moz-window-dragging: no-drag; }
+  /* The window moves from the sidebar's empty areas: its margins, the gaps between its parts, the room under the tabs. */
+  .window:not(.covered) :is(.column, :global(.bar)) { -moz-window-dragging: drag; }
+  .window :global(.bar :is(.navigation button, .line, .scrolling > *, footer)) { -moz-window-dragging: no-drag; }
   /* The Actions page's confirmation covers the window, its drag areas too (no-drag on its veil). */
   .window :global(:is([data-testid="action-delete-veil"], [data-testid="action-delete-confirmation"])) { -moz-window-dragging: no-drag; }
   .command-layer { position: fixed; inset: 0; z-index: 100; }

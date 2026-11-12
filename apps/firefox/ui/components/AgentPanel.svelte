@@ -203,7 +203,9 @@
   .handle { position: absolute; top: 0; bottom: 0; left: 0; width: 6px; cursor: col-resize; z-index: 1; transition: background var(--tap); }
   .right .handle { left: auto; right: 0; }
   .handle:hover, .handle:active { background: color-mix(in srgb, var(--accent) 40%, transparent); }
-  header { display: flex; align-items: center; gap: 9px; height: 40px; padding: 0 12px; flex: none; }
+  /* The panel's header moves the window, its menu aside. */
+  header { display: flex; align-items: center; gap: 9px; height: 40px; padding: 0 12px; flex: none; -moz-window-dragging: drag; }
+  header select { -moz-window-dragging: no-drag; }
   .orb { flex: none; width: 14px; height: 14px; border-radius: 50%; background: conic-gradient(from var(--ang), var(--a1), var(--a2), var(--a3), var(--a1)); box-shadow: 0 0 0 3px color-mix(in oklab, var(--a2) 16%, transparent); transition: box-shadow 300ms var(--out); }
   .orb.busy { animation: orb-spin 1.8s linear infinite; box-shadow: 0 0 0 3px color-mix(in oklab, var(--a2) 28%, transparent), 0 0 12px color-mix(in oklab, var(--a1) 55%, transparent); }
   @keyframes orb-spin { to { --ang: 360deg; } }

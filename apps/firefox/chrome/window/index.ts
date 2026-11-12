@@ -79,6 +79,8 @@ window.addEventListener(
     agentFrame.hidden = true;
     document.getElementById("browser")!.append(agentFrame);
     const agentMayLoad = cutFrameNetwork(agentFrame);
+    // Its header moves the window.
+    (agentFrame.contentWindow as any).docShell.windowDraggingAllowed = true;
     // The store is a shared module: imported at runtime, never bundled here (that would make a second copy).
     const ready: Promise<WebAiOsStore> = ChromeUtils.importESModule(STORE).ready;
     // After Firefox's own startup: a tab loaded before it (a restored tab) stays on about:blank.

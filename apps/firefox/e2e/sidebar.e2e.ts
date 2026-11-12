@@ -88,9 +88,12 @@ describe("the sidebar's layout", () => {
     await waitUi(m, `return !frame.hasAttribute("full");`);
     const drag = await inUi<Record<string, string>>(
       m,
-      `${DRAGGING} return { allowed: frame.contentWindow.docShell.windowDraggingAllowed, sidebar: of(".bar"), button: of(".navigation button"), address: of(".line"), tabs: of(".scrolling"), footer: of("footer") };`,
+      `${DRAGGING} return { allowed: frame.contentWindow.docShell.windowDraggingAllowed, sidebar: of(".bar"), button: of(".navigation button"), address: of(".line"), tabs: of(".scrolling"), tab: of(".scrolling > *"), footer: of("footer"), margin: of(".column") };`,
     );
-    expect(drag).toEqual({ allowed: true, sidebar: "drag", button: "no-drag", address: "no-drag", tabs: "no-drag", footer: "no-drag" });
+    expect(drag).toEqual({ allowed: true, sidebar: "drag", button: "no-drag", address: "no-drag", tabs: "default", tab: "no-drag", footer: "no-drag", margin: "drag" });
+    // The agent panel's header and the strip above the page move the window too.
+    expect(await inUi(m, `${DRAGGING} return [of("header"), frame.contentWindow.docShell.windowDraggingAllowed];`, [], "agent")).toEqual(["drag", true]);
+    expect(await m.execute(`return [...document.styleSheets].some((s) => { try { return [...s.cssRules].some((r) => r.selectorText?.includes("body::before") && r.cssText.includes("-moz-window-dragging: drag")); } catch { return false; } })`)).toBe(true);
     // The page sits framed on the aura, 8 px from the top and the bottom.
     expect(await m.execute(`const r = gBrowser.selectedBrowser.getBoundingClientRect(); return [r.top, r.height - window.innerHeight];`)).toEqual([8, -16]);
     // Under an overlay the sidebar's area belongs to the overlay.
