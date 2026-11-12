@@ -1,5 +1,5 @@
 import { navigationOutsideSite, TabNotFound, PrivateTab, type DevRight, type TabInfo, type PageReadOptions } from "../shims/kernel";
-import type { BrowserState, WindowId, Tab } from "../../shared/model";
+import type { BrowserState, WindowId, Tab, Band } from "../../shared/model";
 import { privateTab, WORKFLOW_PREFIX, AGENT_PROFILE } from "../../shared/model";
 import { ENGINES } from "../../core/url";
 import { boundLinks, policyChanges, tabInfos, activeTabOf, appTab, siteTab, originOf, SITE_PREFIX, resolveSpace } from "../../core/agent/bridge";
@@ -182,8 +182,8 @@ export function bridgeHandlers(
       return openTabIn(t.windowId, url, t.spaceId, { profile: AGENT_PROFILE, background: true });
     },
     "search.close": ([id]: [string]) => void store.dispatch({ type: "closeTab", id }),
-    // Task 7 draws the band of the search tab.
-    "search.band": () => {},
+    // The band of the search tab: the window draws it (window/search-band.ts) from the tab's state.
+    "search.band": ([id, band]: [string, Band | null]) => void store.dispatch({ type: "setAgentSearch", id, band }),
     readText: ([id]: [string]) => onSiteView(id, getText) ?? outsidePrivate(id, getText),
     capture: ([id]: [string]) => onSiteView(id, snapshot) ?? outsidePrivate(id, (browser) => snapshot(browser, windowOf(id).window)),
     // « L'agent veut lire l'onglet … » in the active window; refused with none to show it. The signal aborts when the

@@ -178,7 +178,7 @@ export class SessionRecorder {
 
   private async write(state: BrowserState): Promise<void> {
     const tabs = Object.fromEntries(
-      Object.entries(state.tabs).map(([id, { loading: load, canGoBack: canGoBack, canGoForward: canAdvance, crashed: crashes, error: error, ...rest }]) => [id, rest]),
+      Object.entries(state.tabs).map(([id, { loading: load, canGoBack: canGoBack, canGoForward: canAdvance, crashed: crashes, error: error, agentSearch: _band, ...rest }]) => [id, rest]),
     );
     const target = join(this.folder, FILE);
     const temp = `${target}.${process.pid}.${++this.number}.tmp`;

@@ -17,6 +17,8 @@ import type { DevRight, AccessPolicy } from "../access/policy.js";
 import { registerDevTools, type ProfileFiles } from "./devtools.js";
 import { registerExtensionsTools, type ExtensionsTools } from "./extensions.js";
 import { STOP_TEXT, CLOSED_TEXT, URL_MAX, type SearchSessions } from "../search/sessions.js";
+import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
+import type { ServerNotification, ServerRequest } from "@modelcontextprotocol/sdk/types.js";
 import { TabNotFound, PrivateTab, PRIVATE_TEXT, type TabInfo, type BrowserDevTools, type BrowserBridge, type HistoryResult } from "./bridge.js";
 
 export const UNREAD_ADDRESS_TEXT = "Adresse non lue dans cette recherche : tu ne peux suivre que les liens des pages lues ici.";
@@ -714,6 +716,40 @@ function createToolsServer(
         searching.chains.set(key, mine);
         return mine;
       }),
+    );
+    server.registerTool(
+      "hand_over",
+      {
+        description:
+          "Rend la main à l'utilisateur sur ton onglet de recherche, puis attend qu'il clique sur Continuer. À utiliser quand une vérification (captcha, connexion) te bloque (`kind: verification`) " +
+          "ou quand tu ne trouves pas ton chemin (`kind: lost`) : `reason` dit en une phrase ce que tu attends de lui. Renvoie le chemin qu'il a suivi dans l'onglet.",
+        inputSchema: { id: z.string(), reason: z.string().min(1), kind: z.enum(["verification", "lost"]) },
+      },
+      async ({ id, reason, kind }, extra: RequestHandlerExtra<ServerRequest, ServerNotification>) => {
+        if (!sessions.owns(id)) return text("hand_over ne vaut que pour l'onglet de recherche en cours.", true);
+        // Same heartbeat as request_extension: the user may take longer than the client's silence timeout.
+        const progressToken = extra._meta?.progressToken;
+        let progress = 0;
+        const beat =
+          progressToken === undefined
+            ? undefined
+            : setInterval(() => void extra.sendNotification({ method: "notifications/progress", params: { progressToken, progress: ++progress } }).catch(() => {}), beatMs ?? 30_000);
+        try {
+          const lead = kind === "verification" ? "Bloqué par une vérification. À vous : " : "Je ne trouve pas mon chemin. À vous : ";
+          const r = await sessions.handOver(id, lead + reason.slice(0, 200));
+          if (r.outcome === "stop") { sessions.takeStop(win ?? MAIN_WINDOW, id); return text(STOP_TEXT); }
+          if (r.outcome === "closed") return text(CLOSED_TEXT);
+          return text(
+            [
+              "La page est de nouveau à toi : relis-la.",
+              r.path.length ? `Chemin suivi par l'utilisateur :\n${r.path.join("\n")}` : "L'utilisateur n'a pas changé de page.",
+              ...(kind === "lost" ? ["Note une leçon générale dans /workspace/browsing-notes.md (ce qu'il faut essayer la prochaine fois, pas la recette d'un site, jamais ce que l'utilisateur a tapé)."] : []),
+            ].join("\n"),
+          );
+        } finally {
+          clearInterval(beat);
+        }
+      },
     );
   }
   if (openWorkflow) {

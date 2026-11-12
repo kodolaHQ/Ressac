@@ -14,6 +14,12 @@ let m: Marionette;
 beforeAll(async () => {
   server = await startServer({
     routes: {
+      "/lent-longtemps.html": (_req, res) => {
+        setTimeout(() => {
+          res.setHeader("content-type", "text/html; charset=utf-8");
+          res.end("<title>Longue</title><p>Texte très tardif</p>");
+        }, 5000);
+      },
       "/lent.html": (_req, res) => {
         setTimeout(() => {
           res.setHeader("content-type", "text/html; charset=utf-8");
@@ -153,4 +159,116 @@ it("read_pages waits for a slow background page to load before reading it (readT
   const r = (await callTool(w.dataDir, "read_pages", { urls: [slow] })).text;
   expect(r).toContain("Texte tardif");
   expect(Date.now() - t).toBeGreaterThan(1000);
+});
+
+// --- the band, « à vous » and hand_over ---
+
+const BAND = '[data-testid="search-band"]';
+/** The band as the window shows it (chrome context). */
+const READ = `const b = document.querySelector('${BAND}'); if (!b) return null;
+  return { shown: b.hasAttribute("data-shown"), state: b.dataset.state, text: b.querySelector('[data-testid="search-band-text"]').textContent, stats: b.querySelector("small").textContent, hasB: !!b.querySelector("b"), buttons: [...b.querySelectorAll("button")].filter((x) => !x.hidden).map((x) => x.textContent), label: b.getAttribute("aria-label") };`;
+type Band = { shown: boolean; state: string; text: string; stats: string; hasB: boolean; buttons: string[]; label: string | null };
+const band = () => m.execute<Band | null>(READ);
+const waitBand = async (ok: (b: Band) => boolean) => (await waitFor<Band | null>(m, READ, (v) => !!v && ok(v)))!;
+const press = (testid: string) => m.execute(`document.querySelector('${BAND} [data-testid="${testid}"]').click();`);
+const halo = () => m.execute<boolean>(`return document.documentElement.hasAttribute("webaios-agent-working")`);
+const otherTab = async () => {
+  const windowId = (await state(m)).windows[0]!.id;
+  await dispatch(m, { type: "openTab", windowId, url: `${server.url}/lien.html` });
+};
+
+it("during a read the band shows on the search tab only, with Arrêter", async () => {
+  const id = idOf((await callTool(w.dataDir, "search_web", { query: "x" })).text);
+  const reading = callTool(w.dataDir, "read_pages", { urls: [`${server.url}/lent-longtemps.html`] });
+  const b = (await waitBand((v) => v.state === "working"))!;
+  expect(b).toMatchObject({ shown: true, label: "Recherche de l'agent", buttons: ["Arrêter"] });
+  expect(b.text).toBe("Lecture de 1 page, 0 faite");
+  expect(b.stats).toMatch(/^\d+ pages? lues? · \d+ s$/);
+  // Another tab shown: the band is not (the search goes on).
+  await otherTab();
+  await waitBand((v) => !v.shown);
+  await dispatch(m, { type: "activateTab", id });
+  await waitBand((v) => v.shown);
+  await press("search-stop");
+  expect((await reading).text).toContain("L'utilisateur a arrêté la recherche");
+  await waitBand((v) => !v.shown);
+});
+
+it("hand_over: the band says the reason, the tab is marked « à vous » while another tab is active, the halo is off; the user navigates in the tab, Continuer returns the path", async () => {
+  const id = idOf((await callTool(w.dataDir, "search_web", { query: "x" })).text);
+  await otherTab();
+  const handing = callTool(w.dataDir, "hand_over", { id, reason: "Résolvez le captcha", kind: "verification" });
+  await waitUi(m, `return !!doc.querySelector('[data-testid="tab-yours"]')`);
+  expect(await halo()).toBe(false);
+  expect((await band())!.shown).toBe(false);
+  await dispatch(m, { type: "activateTab", id });
+  const b = (await waitBand((v) => v.shown && v.state === "yours"))!;
+  expect(b.text).toBe("Bloqué par une vérification. À vous : Résolvez le captcha");
+  expect(b.buttons).toEqual(["Continuer", "Arrêter"]);
+  expect(await halo()).toBe(false);
+  const next = `${server.url}/b.html?q=user`;
+  await m.execute(`const t = gBrowser.tabs.find((t) => t.getAttribute("webaios-tab-id") === arguments[0]); t.linkedBrowser.fixupAndLoadURIString(arguments[1], { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });`, [id, next]);
+  await titleOf(next);
+  await press("search-continue");
+  const r = (await handing).text;
+  expect(r).toContain("La page est de nouveau à toi : relis-la.");
+  expect(r).toContain(`Chemin suivi par l'utilisateur :\n${next}`);
+  await waitBand((v) => v.state !== "yours");
+  await waitUi(m, `return !doc.querySelector('[data-testid="tab-yours"]')`);
+});
+
+it("Arrêter during a hand-over ends it and removes the band", async () => {
+  const id = idOf((await callTool(w.dataDir, "search_web", { query: "x" })).text);
+  const handing = callTool(w.dataDir, "hand_over", { id, reason: "Aidez-moi", kind: "lost" });
+  await waitBand((v) => v.state === "yours");
+  expect((await band())!.text).toBe("Je ne trouve pas mon chemin. À vous : Aidez-moi");
+  await press("search-stop");
+  expect((await handing).text).toContain("L'utilisateur a arrêté la recherche");
+  await waitBand((v) => !v.shown);
+  expect((await state(m)).tabs[id]!.agentSearch).toBeUndefined();
+});
+
+it("a reason with <b> and 5,000 characters shows as text, cut", async () => {
+  const id = idOf((await callTool(w.dataDir, "search_web", { query: "x" })).text);
+  const handing = callTool(w.dataDir, "hand_over", { id, reason: `<b>gras</b>${"z".repeat(5000)}`, kind: "verification" });
+  const b = (await waitBand((v) => v.state === "yours"))!;
+  expect(b.hasB).toBe(false);
+  expect(b.text.startsWith("Bloqué par une vérification. À vous : <b>gras</b>zzz")).toBe(true);
+  expect(b.text.length).toBe("Bloqué par une vérification. À vous : ".length + 200);
+  await press("search-stop");
+  await handing;
+});
+
+it("closing the search tab during a hand-over answers the tool", async () => {
+  const id = idOf((await callTool(w.dataDir, "search_web", { query: "x" })).text);
+  const handing = callTool(w.dataDir, "hand_over", { id, reason: "Aidez-moi", kind: "lost" });
+  await waitBand((v) => v.state === "yours");
+  await dispatch(m, { type: "closeTab", id });
+  expect((await handing).text).toBe("Onglet fermé par l'utilisateur : la recherche est finie.");
+});
+
+it("hand_over is refused on a tab that is not the search tab", async () => {
+  await callTool(w.dataDir, "search_web", { query: "x" });
+  await otherTab();
+  const other = Object.values((await state(m)).tabs).find((t) => t.url.endsWith("/lien.html"))!.id;
+  expect((await callTool(w.dataDir, "hand_over", { id: other, reason: "x", kind: "lost" })).text).toBe("hand_over ne vaut que pour l'onglet de recherche en cours.");
+});
+
+it("the band enters and leaves with a transition", async () => {
+  await w.close();
+  w = await launchWebAiOs({ prefs: { "ui.prefersReducedMotion": 0 }, env: { WEBAIOS_MEMORY_LOOP: "1", WEBAIOS_TEST_SEARCH_URL: `${server.url}/results.html?q=%s` } });
+  m = w.marionette;
+  await m.setContext("chrome");
+  await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+  const config = join(w.dataDir, "workspace", ".webaios", "mcp.json");
+  for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
+    if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
+  const id = idOf((await callTool(w.dataDir, "search_web", { query: "x" })).text);
+  const durations = () => m.execute<string>(`return getComputedStyle(document.querySelector('${BAND}')).transitionDuration`);
+  await waitBand((v) => v.shown);
+  expect(await durations()).toMatch(/[1-9]/);
+  await otherTab();
+  await waitBand((v) => !v.shown);
+  expect(await durations()).toMatch(/[1-9]/);
+  await dispatch(m, { type: "activateTab", id });
 });

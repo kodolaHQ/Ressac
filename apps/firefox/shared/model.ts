@@ -71,6 +71,9 @@ export type SpaceId = string;
 export type WindowId = string;
 export type SearchEngine = "google" | "duckduckgo" | "qwant";
 
+/** Mirrors the kernel's Band (packages/kernel/src/search/sessions.ts); the model cannot import the kernel. */
+export type Band = { state: "working" | "yours" | "idle"; text: string; pages: number; startedAt: number };
+
 export interface Tab {
   id: TabId;
   windowId: WindowId;
@@ -92,6 +95,8 @@ export interface Tab {
   crashed: boolean;
   /** Page load failure (Chromium code, e.g. ERR_NAME_NOT_RESOLVED); volatile. */
   error: string | null;
+  /** The band of the agent's search on this tab; volatile, never saved. */
+  agentSearch?: Band;
 }
 
 /** Persistent favorite displayed in the sidebar even without an open tab (Arc/Zen model). */

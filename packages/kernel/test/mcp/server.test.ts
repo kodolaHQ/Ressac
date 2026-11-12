@@ -1381,20 +1381,20 @@ const b = { text: "B", url: "https://exemple.fr/b" };
 const c = { text: "C", url: "https://exemple.fr/c" };
 
 async function withSearch(
-  attempt: (o: { call: (name: string, args: Record<string, unknown>, token?: string) => Promise<{ text: string; isError: boolean }>; fake: FakeBridge; search: SearchSessions; s: Awaited<ReturnType<typeof startMcpServer>>; bands: [string, Band | null][] }) => Promise<void>,
-  opts: { privateWindows?: string[]; allow?: boolean; emptySpanMs?: number; address?: boolean | "wait"; failing?: string[]; hanging?: string[]; readPageMs?: number } = {},
+  attempt: (o: { call: (name: string, args: Record<string, unknown>, token?: string, onprogress?: (n: number) => void) => Promise<{ text: string; isError: boolean }>; fake: FakeBridge; search: SearchSessions; s: Awaited<ReturnType<typeof startMcpServer>>; bands: [string, Band | null][] }) => Promise<void>,
+  opts: { privateWindows?: string[]; allow?: boolean; emptySpanMs?: number; address?: boolean | "wait"; failing?: string[]; hanging?: string[]; readPageMs?: number; heartbeatMs?: number } = {},
 ) {
   const principal = generateToken();
   const fake = new FakeBridge([github], { active: "github", allow: opts.allow ?? false, search: { privateWindows: opts.privateWindows ?? [], failing: opts.failing ?? [], hanging: opts.hanging ?? [] }, ...(opts.address !== undefined ? { address: opts.address } : {}) });
   const bands: [string, Band | null][] = [];
   const search = new SearchSessions({ show: (id, band) => bands.push([id, band]) });
-  const s = await startMcpServer({ bridge: fake, policy: new AccessPolicy(), token: principal, search, settleMs: 0, emptySpanMs: opts.emptySpanMs ?? 0, ...(opts.readPageMs !== undefined ? { readPageMs: opts.readPageMs } : {}) });
+  const s = await startMcpServer({ bridge: fake, policy: new AccessPolicy(), token: principal, search, settleMs: 0, emptySpanMs: opts.emptySpanMs ?? 0, ...(opts.heartbeatMs ? { heartbeatMs: opts.heartbeatMs } : {}), ...(opts.readPageMs !== undefined ? { readPageMs: opts.readPageMs } : {}) });
   const clients: Client[] = [];
-  const call = async (name: string, args: Record<string, unknown>, clientToken = principal) => {
+  const call = async (name: string, args: Record<string, unknown>, clientToken = principal, onprogress?: (n: number) => void) => {
     const cl = new Client({ name: "test", version: "0" });
     clients.push(cl);
     await cl.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${s.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${clientToken}` } } }));
-    const r = await cl.callTool({ name, arguments: args });
+    const r = await cl.callTool({ name, arguments: args }, undefined, onprogress ? { onprogress: (p) => onprogress(p.progress) } : undefined);
     return { text: text(r), isError: r.isError === true };
   };
   try {
@@ -1859,4 +1859,87 @@ test("search_web on a search whose tab vanished answers a clean French error", a
     expect(r.isError).toBe(true);
     expect(r.text).toContain("Onglet introuvable : search-1");
   });
+});
+
+const handOver = (call: (n: string, a: Record<string, unknown>, t?: string, p?: (n: number) => void) => Promise<{ text: string; isError: boolean }>, kind = "verification", onprogress?: (n: number) => void, id = "search-1") =>
+  call("hand_over", { id, reason: "Résolvez le captcha", kind }, undefined, onprogress);
+
+test("hand_over on the search tab waits, then returns the path and the page is back to the agent", async () => {
+  await withSearch(async ({ call, search, bands }) => {
+    await call("search_web", { query: "x" });
+    const pending = handOver(call);
+    await vi.waitFor(() => expect(bands.at(-1)![1]).toMatchObject({ state: "yours", text: "Bloqué par une vérification. À vous : Résolvez le captcha" }));
+    search.tabNavigated("search-1", "https://exemple.fr/p1");
+    search.tabNavigated("search-1", "https://exemple.fr/p2");
+    search.continue("search-1");
+    const r = await pending;
+    expect(r.text).toContain("La page est de nouveau à toi : relis-la.");
+    expect(r.text).toContain("Chemin suivi par l'utilisateur :\nhttps://exemple.fr/p1\nhttps://exemple.fr/p2");
+    expect(r.text).not.toContain("browsing-notes");
+  });
+});
+
+test("hand_over without any move says the user did not change page", async () => {
+  await withSearch(async ({ call, search, bands }) => {
+    await call("search_web", { query: "x" });
+    const pending = handOver(call);
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.state).toBe("yours"));
+    search.continue("search-1");
+    expect((await pending).text).toContain("L'utilisateur n'a pas changé de page.");
+  });
+});
+
+test("hand_over elsewhere than on the search tab is refused", async () => {
+  await withSearch(async ({ call }) => {
+    expect((await call("hand_over", { id: "github", reason: "x", kind: "lost" })).text).toBe("hand_over ne vaut que pour l'onglet de recherche en cours.");
+    await call("search_web", { query: "x" });
+    expect((await call("hand_over", { id: "github", reason: "x", kind: "lost" })).text).toContain("hand_over ne vaut que");
+  });
+});
+
+test("hand_over kind lost returns the lesson reminder, verification does not", async () => {
+  await withSearch(async ({ call, search, bands }) => {
+    await call("search_web", { query: "x" });
+    const pending = handOver(call, "lost");
+    await vi.waitFor(() => expect(bands.at(-1)![1]).toMatchObject({ state: "yours", text: "Je ne trouve pas mon chemin. À vous : Résolvez le captcha" }));
+    search.continue("search-1");
+    expect((await pending).text).toContain("Note une leçon générale dans /workspace/browsing-notes.md");
+  });
+});
+
+test("hand_over band text for a verification, a long reason is cut to 200 characters", async () => {
+  await withSearch(async ({ call, search, bands }) => {
+    await call("search_web", { query: "x" });
+    const pending = call("hand_over", { id: "search-1", reason: "z".repeat(5000), kind: "verification" });
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.state).toBe("yours"));
+    expect(bands.at(-1)![1]!.text).toBe(`Bloqué par une vérification. À vous : ${"z".repeat(200)}`);
+    search.stop("search-1");
+    await pending;
+  });
+});
+
+test("hand_over: stop returns STOP_TEXT, closing the tab returns CLOSED_TEXT", async () => {
+  await withSearch(async ({ call, search, bands }) => {
+    await call("search_web", { query: "x" });
+    let pending = handOver(call);
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.state).toBe("yours"));
+    search.stop("search-1");
+    expect((await pending).text).toBe(STOP_TEXT);
+    await call("search_web", { query: "y" });
+    pending = handOver(call, "verification", undefined, "search-2");
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.state).toBe("yours"));
+    search.tabClosed("search-2");
+    expect((await pending).text).toBe(CLOSED_TEXT);
+  });
+});
+
+test("hand_over sends progress notifications while it waits", async () => {
+  await withSearch(async ({ call, search, bands }) => {
+    await call("search_web", { query: "x" });
+    const progress: number[] = [];
+    const pending = handOver(call, "verification", (n) => progress.push(n));
+    await vi.waitFor(() => expect(progress.length).toBeGreaterThanOrEqual(2));
+    search.continue("search-1");
+    await pending;
+  }, { heartbeatMs: 20 });
 });

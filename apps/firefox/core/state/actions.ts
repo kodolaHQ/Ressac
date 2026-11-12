@@ -264,6 +264,13 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       Object.assign(o, a.fields);
       return true;
     }
+    case "setAgentSearch": {
+      const o = d.tabs[a.id];
+      if (!o || (a.band === null ? !o.agentSearch : JSON.stringify(o.agentSearch) === JSON.stringify(a.band))) return false;
+      if (a.band) o.agentSearch = a.band;
+      else delete o.agentSearch;
+      return true;
+    }
     case "openFavorite": {
       const f = win(d, a.windowId);
       if (!f) return false;

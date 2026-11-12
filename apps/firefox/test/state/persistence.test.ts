@@ -41,6 +41,17 @@ test("round trip: identical, apart from volatile fields reset to defaults", asyn
   expect(reviewed).toEqual(expected);
 });
 
+test("a session reloaded has no agent search band", async () => {
+  const d = folder();
+  const state = richState();
+  const a = Object.keys(state.tabs)[0]!;
+  state.tabs[a]!.agentSearch = { state: "working", text: "x", pages: 1, startedAt: 1 };
+  const recorder = new SessionRecorder(d);
+  recorder.schedule(state);
+  await recorder.clear();
+  expect((await loadSession(d)).tabs[a]!.agentSearch).toBeUndefined();
+});
+
 test("session v3 with a private space and a second sign-in profile: identical round trip", async () => {
   const d = folder();
   let n = 100;

@@ -922,3 +922,16 @@ test("a space cannot be created with the agent's profile", () => {
   ag({ type: "createSpace", name: "X", icon: "x", private: false, profile: AGENT_PROFILE });
   expect(e.spaces.length).toBe(before);
 });
+
+test("setAgentSearch sets and clears the tab's band; unknown id or no change → same reference", () => {
+  const a = open("https://a.test/");
+  const band = { state: "yours" as const, text: "x", pages: 2, startedAt: 5 };
+  ag({ type: "setAgentSearch", id: a, band });
+  expect(e.tabs[a]!.agentSearch).toEqual(band);
+  const before = e;
+  expect(apply(e, { type: "setAgentSearch", id: a, band: { ...band } }, genId)).toBe(before);
+  expect(apply(e, { type: "setAgentSearch", id: "nope", band }, genId)).toBe(before);
+  ag({ type: "setAgentSearch", id: a, band: null });
+  expect(e.tabs[a]!.agentSearch).toBeUndefined();
+  expect(apply(e, { type: "setAgentSearch", id: a, band: null }, genId)).toBe(e);
+});

@@ -194,7 +194,7 @@
 
 :root[webaios-main] #tabbrowser-tabbox {
   /* Below the site question's banner, --webaios-banner high (0 without one). */
-  margin-top: calc(var(--webaios-banner, 0px) + 8px);
+  margin-top: calc(var(--webaios-banner, 0px) + var(--webaios-search-band, 0px) + 8px);
   margin-bottom: 8px;
   /* Compact mode (no sidebar column): 8 px of aura on the left too. */
   margin-inline-start: max(var(--webaios-sidebar, 240px), 8px);
@@ -269,9 +269,9 @@
 /* The design mode's cart column (chrome/window/design-overlays.ts): the whole height of the page's area, left of the
    agent panel, never over the page (spike S3). */
 :root[webaios-main] #webaios-design-volet {
-  top: var(--webaios-banner, 0px);
+  top: calc(var(--webaios-banner, 0px) + var(--webaios-search-band, 0px));
   /* Not bottom: 0, which leaves an iframe at its intrinsic 150 px. */
-  height: calc(100% - var(--webaios-banner, 0px));
+  height: calc(100% - var(--webaios-banner, 0px) - var(--webaios-search-band, 0px));
   right: var(--webaios-agent, 0px);
   width: var(--webaios-basket, 0px);
 }
@@ -352,6 +352,94 @@
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-ink);
+}
+
+/* The agent's search band (chrome/window/search-band.ts): under the site question's banner, on the same tokens. It enters
+   on the spring and leaves by a fade (visibility waits for it); reduced motion keeps only a short fade. */
+:root[webaios-main] #webaios-search-band {
+  position: fixed;
+  top: var(--webaios-banner, 0px);
+  left: var(--webaios-sidebar, 240px);
+  right: var(--webaios-agent, 0px);
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  background: var(--sheet);
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  font: message-box;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-8px);
+  transition: opacity 150ms ease-out, transform 150ms ease-out, visibility 0s 150ms;
+}
+:root[webaios-main][webaios-sidebar-side="right"] #webaios-search-band {
+  left: var(--webaios-agent, 0px);
+  right: var(--webaios-sidebar, 240px);
+}
+:root[webaios-main] #webaios-search-band[data-shown] {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition: opacity 460ms linear(0, 0.06 2.4%, 0.24 5.1%, 0.55 9.4%, 0.84 14.6%, 1.01 19.4%, 1.07 23.2%, 1.08 26.6%, 1.05 32.8%, 1 41%, 0.99 50%, 1), transform 460ms linear(0, 0.06 2.4%, 0.24 5.1%, 0.55 9.4%, 0.84 14.6%, 1.01 19.4%, 1.07 23.2%, 1.08 26.6%, 1.05 32.8%, 1 41%, 0.99 50%, 1), visibility 0s;
+}
+:root[webaios-main] #webaios-search-band[data-state="yours"] {
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+:root[webaios-main] #webaios-search-band .dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+:root[webaios-main] #webaios-search-band[data-state="working"] .dot {
+  animation: webaios-band-pulse 1.8s ease-in-out infinite;
+}
+:root[webaios-main] #webaios-search-band[data-state="idle"] .dot {
+  background: var(--text);
+  opacity: 0.5;
+  box-shadow: none;
+}
+@keyframes webaios-band-pulse { 50% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--accent) 0%, transparent); } }
+:root[webaios-main] #webaios-search-band .what {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+:root[webaios-main] #webaios-search-band small {
+  margin-inline-start: 8px;
+  opacity: 0.6;
+}
+:root[webaios-main] #webaios-search-band [hidden] {
+  display: none;
+}
+:root[webaios-main] #webaios-search-band button {
+  flex: none;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--glass-hi);
+  color: var(--text);
+}
+:root[webaios-main] #webaios-search-band button.go {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[webaios-main] #webaios-search-band,
+  :root[webaios-main] #webaios-search-band[data-shown] {
+    transform: none;
+    transition: opacity 150ms ease-out, visibility 0s 150ms;
+  }
+  :root[webaios-main] #webaios-search-band[data-shown] { transition: opacity 150ms ease-out, visibility 0s; }
+  :root[webaios-main] #webaios-search-band[data-state="working"] .dot { animation: none; }
 }
 
 /* A site app's window (store/sites.ts): its bar on top, 36 px (HAUTEUR_BARRE_SITE), above the app view. */
