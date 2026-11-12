@@ -143,6 +143,7 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("resetShortcut"), id: z.enum(SHORTCUT_IDS) }),
   z.object({ type: z.literal("resetShortcuts") }),
   z.object({ type: z.literal("agentPanelWidth"), width: z.number().finite() }),
+  z.object({ type: z.literal("sidebarWidth"), width: z.number().finite() }),
   /** Activates this window's project Review page, or opens it (one per project and per window). */
   z.object({ type: z.literal("openReview"), windowId: id, project: z.string().regex(PROJECT_ID), name: z.string().max(80) }),
 ]);

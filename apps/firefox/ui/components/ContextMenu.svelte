@@ -15,7 +15,7 @@
   <div
     class="menu"
     role="menu"
-    style:left="{Math.min(menu.open.x, (menu.open.free || right ? window.innerWidth : 240) - 170)}px"
+    style:left="{Math.min(menu.open.x, (menu.open.free || right ? window.innerWidth : (appState.value?.settings.sidebarWidth ?? 240)) - 170)}px"
     style:top={atBottom ? undefined : `${menu.open.y}px`}
     style:bottom={atBottom ? `${window.innerHeight - menu.open.y}px` : undefined}
   >

@@ -597,6 +597,16 @@ test("agentPanelWidth: 420 by default, kept, clamped between 280 and 1000", () =
   expect(e.settings.agentPanelWidth).toBe(1000);
 });
 
+test("sidebarWidth: 240 by default, kept, clamped between 180 and 480", () => {
+  expect(e.settings.sidebarWidth).toBe(240);
+  ag({ type: "sidebarWidth", width: 312.4 });
+  expect(e.settings.sidebarWidth).toBe(312);
+  ag({ type: "sidebarWidth", width: 50 });
+  expect(e.settings.sidebarWidth).toBe(180);
+  ag({ type: "sidebarWidth", width: 5000 });
+  expect(e.settings.sidebarWidth).toBe(480);
+});
+
 test("openApps reuses the window's existing tab", () => {
   open("https://a.test/");
   ag({ type: "openApps", windowId: F });

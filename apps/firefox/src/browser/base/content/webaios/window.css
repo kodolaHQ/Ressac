@@ -135,7 +135,7 @@
   top: 0;
   left: 0;
   height: 100%;
-  width: 240px;
+  width: var(--webaios-sidebar-w, 240px);
   border: none;
   /* Above #tabbrowser-tabbox (z-index 2 in Firefox), for painting and for the mouse. */
   z-index: 3;

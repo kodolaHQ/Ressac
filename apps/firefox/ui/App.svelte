@@ -31,7 +31,7 @@
   import { menu } from "./components/menu.svelte";
   import { spaceSettings } from "./components/spaceSettings.svelte";
   import { access, api, requestOf, appState, currentWindow, closeTab } from "./state.svelte";
-  import { actionOfUrl, hasView, workflowUrlTarget, reviewUrlProject, URL_ACTIONS, URL_APPLICATIONS, URL_EXTENSIONS, URL_RELEASE_NOTES, URL_SETTINGS } from "../shared/model";
+  import { BAR_WIDTH, BAR_WIDTH_MAX, BAR_WIDTH_MIN, actionOfUrl, hasView, workflowUrlTarget, reviewUrlProject, URL_ACTIONS, URL_APPLICATIONS, URL_EXTENSIONS, URL_RELEASE_NOTES, URL_SETTINGS } from "../shared/model";
   import { ACTIONS_IN_PRIVATE_SPACE } from "../shared/actions";
   import { hide, INITIAL_REVEAL, onZone, type LeftZone } from "../shared/reveal";
   import type { Panel, TabsPanel as TabPanel } from "../shared/api";
@@ -218,6 +218,32 @@
     if (access.openBubbles === 0) untrack(() => zone === "far" && scheduleHide());
   });
   $effect(() => api.onLeftZone(onMouseZone));
+
+  /** The sidebar's width while its inner edge is dragged; the state holds it otherwise. */
+  let dragged = $state<number | null>(null);
+  const barWidth = $derived(dragged ?? appState.value?.settings.sidebarWidth ?? BAR_WIDTH);
+  /** Dragging the inner edge: the capture keeps the pointer even over the neighboring web page. */
+  function dragEdge(e: PointerEvent) {
+    const handle = e.currentTarget as HTMLElement;
+    handle.setPointerCapture(e.pointerId);
+    const [from, x0] = [barWidth, e.screenX];
+    const agent = parseFloat(getComputedStyle(window.parent.document.documentElement).getPropertyValue("--webaios-agent")) || 0;
+    // Always room for the page: 300 px at least beside the agent panel.
+    const max = Math.max(BAR_WIDTH_MIN, Math.min(BAR_WIDTH_MAX, window.parent.innerWidth - agent - 300));
+    // Screen coordinates: this iframe's own edge moves with the width.
+    const wanted = (ev: PointerEvent) => Math.round(Math.max(BAR_WIDTH_MIN, Math.min(max, from + (sidebarRight ? x0 - ev.screenX : ev.screenX - x0))));
+    const move = (ev: PointerEvent) => win.setSidebarWidth((dragged = wanted(ev)));
+    const drop = (ev: PointerEvent) => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", drop);
+      handle.removeEventListener("pointercancel", drop);
+      api.dispatch({ type: "sidebarWidth", width: wanted(ev) });
+      dragged = null;
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", drop);
+    handle.addEventListener("pointercancel", drop);
+  }
   $effect(() => win.setSidebarColumn(!compact));
   $effect(() => win.setSidebarVisible(barVisible));
   $effect(() => {
@@ -232,7 +258,7 @@
      iframe again (TabSwitchDone), and the empty page takes the keyboard back. -->
 <svelte:window onfocus={() => document.activeElement === document.body && focusEmptyPage.n++} />
 
-<div class="window" inert={welcome || !!agentRequest || !!spaceSettings.draft || !!command.open} class:compact class:covered={overlay} class:right={sidebarRight}>
+<div class="window" inert={welcome || !!agentRequest || !!spaceSettings.draft || !!command.open} class:compact class:covered={overlay} class:right={sidebarRight} style:--bar-w="{barWidth}px">
   <div class="column" class:folded-up={!barVisible} class:resume={unfinished && welcomeStep.aside} inert={!barVisible}>
     {#if winState}
       <!-- ✦ on a builder tab: the controller opens the panel and sends "agent", handled above. -->
@@ -240,6 +266,7 @@
     {:else}
       <aside data-testid="sidebar"></aside>
     {/if}
+    <div class="edge" data-testid="sidebar-handle" role="separator" aria-orientation="vertical" aria-label="Largeur de la barre des onglets" onpointerdown={dragEdge}></div>
     <!-- The welcome stepped aside for an install page: the way back, under the sidebar (the only place this iframe
          covers beside a web page). -->
     {#if unfinished && welcomeStep.aside}
@@ -338,15 +365,19 @@
   :is(.command-layer, .tabs-layer) :global(div.veil) { background: var(--overlay-veil); backdrop-filter: blur(6px); }
   .window {
     display: grid;
-    grid-template-columns: 240px 1fr;
+    grid-template-columns: var(--bar-w) 1fr;
     height: 100%;
   }
   .window.compact { grid-template-columns: 1fr; }
   /* The sidebar on the right (settings.sidebarSide): the same grid mirrored. */
-  .window.right { grid-template-columns: 1fr 240px; }
+  .window.right { grid-template-columns: 1fr var(--bar-w); }
   .window.right.compact { grid-template-columns: 1fr; }
   .right .column { order: 1; }
-  .column { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; min-height: 0; }
+  .column { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; min-height: 0; }
+  /* The sidebar's inner edge, dragged to set its width (as the agent panel's). */
+  .edge { position: absolute; top: 0; bottom: 0; right: 0; width: 6px; cursor: col-resize; z-index: 1; -moz-window-dragging: no-drag; transition: background var(--tap); }
+  .right .edge { right: auto; left: 0; }
+  .edge:hover, .edge:active { background: color-mix(in srgb, var(--accent) 40%, transparent); }
   .column.resume { grid-template-rows: minmax(0, 1fr) auto; }
   .resume-welcome {
     justify-self: center;
@@ -369,7 +400,7 @@
     position: fixed;
     inset: 0 auto 0 0;
     z-index: 10;
-    width: 240px;
+    width: var(--bar-w);
     transition: transform 200ms var(--out);
   }
   /* Floating over the web page, which no backdrop blur of this document reaches: a solid sheet keeps it readable, a
