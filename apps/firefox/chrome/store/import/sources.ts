@@ -52,7 +52,10 @@ export function chromiumProfiles(localState: unknown): { id: string; name: strin
   const profile = (localState as { profile?: { info_cache?: Record<string, { name?: string }>; last_used?: string } })?.profile;
   const cache = profile?.info_cache;
   if (!cache || typeof cache !== "object") return null;
-  const list = Object.entries(cache).map(([id, p]) => ({ id, name: typeof p?.name === "string" && p.name ? p.name : id }));
+  // The ids become paths: one that could leave the data folder is dropped.
+  const list = Object.entries(cache)
+    .filter(([id]) => id && !id.includes("/") && !id.includes(".."))
+    .map(([id, p]) => ({ id, name: typeof p?.name === "string" && p.name ? p.name : id }));
   return list.sort((a, b) => Number(b.id === profile?.last_used) - Number(a.id === profile?.last_used));
 }
 

@@ -85,12 +85,18 @@ export function summary(p: ImportProgress): { title: string; text: string } {
   return { title: failed ? "Import terminé en partie" : "Import terminé", text: [got, failed && `Non importé : ${failed}`].filter(Boolean).join(". ") };
 }
 
-/** Why a type could not be read: the engine's migrators only say that it failed. */
-function reason(def: SourceDef, type: ImportType): string {
+/** Why a type could not be read when no error says it: the engine's migrators only say that it failed. */
+function reason(def: SourceDef, type: ImportType, unreadableFile: boolean): string {
   if (def.kind === "safari") return "accès refusé : autorisez WebAiOs dans Réglages Système › Confidentialité et sécurité › Accès complet au disque";
-  if (type === "passwords") return `accès au trousseau refusé, ou fichier illisible : fermez ${def.name} puis réessayez`;
+  if (type === "passwords" && def.kind === "chromium" && !unreadableFile) return "accès au trousseau refusé";
   return `fichier illisible : fermez ${def.name} puis réessayez`;
 }
+
+/** The engine caps Chromium history at 2 000 pages and 180 days: for an import, all of it within our retention. */
+const RUN_PREFS: [string, number][] = [
+  ["browser.migrate.chrome.history.limit", 0],
+  ["browser.migrate.history.maxAgeInDays", 183],
+];
 
 /** The files of a Chromium profile each type reads. */
 const CHROMIUM_FILES: Partial<Record<ImportType, string[]>> = { bookmarks: ["Bookmarks", "AccountBookmarks"], history: ["History"], passwords: ["Login Data"] };
@@ -148,18 +154,35 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
   async function run(def: SourceDef, profile: { id: string; name: string } | null, types: ImportType[], p: ImportProgress): Promise<void> {
     const counts: Partial<Record<ImportType, number>> = {};
     const reported = new Map<ImportType, boolean>();
+    /** Types whose file could not be read, and the errors our own inserts met. */
+    const unreadableTypes = new Set<ImportType>();
+    const errors = new Map<ImportType, string>();
+    const noted = (type: ImportType) => (e: unknown) => {
+      errors.set(type, e instanceof Error ? e.message : String(e));
+      throw e;
+    };
+    // A crash mid-import may have left copies (Login Data, History): never kept.
+    await IOUtils.remove(tmp, { recursive: true, ignoreAbsent: true }).catch((e: unknown) => console.error("[import] old copy not removed:", e));
+    const savedPrefs = RUN_PREFS.map(([name, value]) => {
+      const saved = Services.prefs.prefHasUserValue(name) ? Services.prefs.getIntPref(name) : null;
+      Services.prefs.setIntPref(name, value);
+      return [name, saved] as const;
+    });
     const visits = MigrationUtils.insertVisitsWrapper;
     const bookmarks = MigrationUtils.insertManyBookmarksWrapper;
     let existing: Set<string> | null = null;
     // Our history is the kernel's (Firefox's is off: places.history.enabled), so the visits go there, not into Places.
     MigrationUtils.insertVisitsWrapper = async (pages: PageInfo[]) => {
       for (const batch of visitBatches(pages)) {
-        await host.request("history.import", { visits: batch });
+        await host.request("history.import", { visits: batch }).catch(noted("history"));
         counts.history = (counts.history ?? 0) + batch.length;
       }
     };
     // insertTree directly: the engine's wrapper would also show Firefox's bookmarks toolbar.
     MigrationUtils.insertManyBookmarksWrapper = async (items: BookmarkItem[], parentGuid: string) => {
+      await insertBookmarks(items, parentGuid).catch(noted("bookmarks"));
+    };
+    const insertBookmarks = async (items: BookmarkItem[], parentGuid: string) => {
       if (!existing) {
         const db = await PlacesUtils.promiseDBConnection();
         const rows = await db.execute("SELECT h.url, p.title FROM moz_bookmarks b JOIN moz_places h ON h.id = b.fk JOIN moz_bookmarks p ON p.id = b.parent");
@@ -170,7 +193,9 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
       if (kept.items.length) await PlacesUtils.bookmarks.insertTree({ guid: parentGuid, children: kept.items });
       counts.bookmarks = (counts.bookmarks ?? 0) + kept.count;
     };
-    const migrate = async (migrator: any, want: ImportType[]) => {
+    const migrate = async (migrator: any, asked: ImportType[]) => {
+      // Tests never reach the real keychain: a readable Login Data would ask it for its key.
+      const want = testHome && def.kind === "chromium" ? asked.filter((t) => t !== "passwords") : asked;
       const bits = want.reduce((b, t) => b | (BITS[t] ?? 0), 0);
       // 0 would mean every type to the engine.
       if (!bits) return;
@@ -183,7 +208,8 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
         // No resource for any wanted type: each is checked below.
         console.warn("[import] nothing migrated:", e);
       }
-      if (reported.get("passwords")) counts.passwords = MigrationUtils.getImportedCount("logins");
+      // The engine resets its counts on each run: a run without passwords would read 0.
+      if (want.includes("passwords") && reported.get("passwords")) counts.passwords = MigrationUtils.getImportedCount("logins");
     };
     try {
       const root = sourceRoot(home, def);
@@ -191,7 +217,10 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
       const make = (from: string) => (def.kind === "chromium" ? chromiumMigrator(def, from) : def.kind === "safari" ? safariMigrator() : firefoxMigrator(PathUtils.join(tmp, def.id)));
       const bad = async (want: ImportType[], folder: string) => {
         const out: ImportType[] = [];
-        for (const t of want) if (reported.get(t) === false || (!reported.has(t) && (await unreadable(def, folder, t)))) out.push(t);
+        for (const t of want) {
+          if (reported.get(t) === false) out.push(t);
+          else if (!reported.has(t) && (await unreadable(def, folder, t))) out.push(t), unreadableTypes.add(t);
+        }
         return out;
       };
       await migrate(make(root), asked);
@@ -204,19 +233,23 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
         await copyChromium(root, profile.id, copy);
         for (const t of retry) {
           reported.delete(t);
+          unreadableTypes.delete(t);
+          errors.delete(t);
           delete counts[t];
         }
         await migrate(make(copy), retry);
         failed = [...failed.filter((t) => !retry.includes(t)), ...(await bad(retry, `${copy}/${profile.id}`))];
       }
       for (const t of asked) {
-        if (failed.includes(t)) p.failed[t] = reason(def, t);
+        if (failed.includes(t)) p.failed[t] = errors.get(t) ?? reason(def, t, unreadableTypes.has(t));
+        else if (testHome && def.kind === "chromium" && t === "passwords") p.failed[t] = "trousseau non consulté pendant les tests";
         else p.counts[t] = counts[t] ?? 0;
       }
     } catch (e) {
       console.error("[import] failed:", e);
-      for (const t of types) if (p.counts[t] === undefined) p.failed[t] ??= reason(def, t);
+      for (const t of types) if (p.counts[t] === undefined) p.failed[t] ??= e instanceof Error ? e.message : String(e);
     } finally {
+      for (const [name, saved] of savedPrefs) saved === null ? Services.prefs.clearUserPref(name) : Services.prefs.setIntPref(name, saved);
       MigrationUtils.insertVisitsWrapper = visits;
       MigrationUtils.insertManyBookmarksWrapper = bookmarks;
       await IOUtils.remove(tmp, { recursive: true, ignoreAbsent: true }).catch((e: unknown) => console.error("[import] copy not removed:", e));

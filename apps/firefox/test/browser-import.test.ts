@@ -33,6 +33,7 @@ describe("source detection", () => {
       { id: "Profile 2", name: "Profile 2" },
     ]);
     expect(chromiumProfiles({})).toBeNull();
+    expect(chromiumProfiles({ profile: { info_cache: { "../x": {}, "a/b": {}, "..": {}, Ok: {} } } })).toEqual([{ id: "Ok", name: "Ok" }]);
   });
 
   it("reads profiles.ini, the install's default first", () => {

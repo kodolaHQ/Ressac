@@ -110,7 +110,12 @@ describe("import from another browser", () => {
     expect(second).toEqual({ ok: false, error: "Un import est déjà en cours" });
     const p = await finished();
     expect(p.counts).toEqual({ bookmarks: 2, history: 2 });
-    expect(p.failed.passwords).toMatch(/trousseau/);
+    // The garbage Login Data is found unreadable (and the copy retried) before the test guard on the keychain.
+    expect(p.failed.passwords).toMatch(/fichier illisible : fermez Google Chrome/);
+    // The engine's history caps are lifted for the run only.
+    expect(
+      await m.execute(`return ["browser.migrate.chrome.history.limit", "browser.migrate.history.maxAgeInDays"].map((n) => Services.prefs.prefHasUserValue(n));`),
+    ).toEqual([false, false]);
     expect(await bookmarks("https://b.example/page")).toEqual([{ title: "Exemple B", parent: "Travail" }]);
     expect(await bookmarks("https://a.example/")).toHaveLength(1);
     const urls = (await history()).map((v) => v.url).sort();
