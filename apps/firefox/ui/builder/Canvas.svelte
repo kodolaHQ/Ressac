@@ -60,6 +60,9 @@
         type: "block" as const,
         position: edit.positions[x.id] ?? x.position,
         selected: selected.has(x.id),
+        // Its size as last measured: a redrawn block (a file change, a badge) stays visible and clickable instead of
+        // waiting hidden for a new measure.
+        measured: currents.find((n) => n.id === x.id)?.measured,
         deletable: x.type !== "output",
         data: {
           title: x.name ?? x.id,
