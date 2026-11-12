@@ -1844,7 +1844,9 @@ test("a failing first search_web does not block the one queued behind it, and th
       if (n++ === 0) throw new Error("Impossible d'ouvrir un onglet ici : l'espace actif est privé.");
       return real(...a);
     };
-    const [r1, r2] = await Promise.all([call("search_web", { query: "un" }), call("search_web", { query: "deux" })]);
+    // The two requests race to the server: whichever arrives first fails, the other must still run.
+    const both = await Promise.all([call("search_web", { query: "un" }), call("search_web", { query: "deux" })]);
+    const [r1, r2] = both[0].isError ? both : [both[1], both[0]];
     expect(r1.isError).toBe(true);
     expect(r1.text).toContain("l'espace actif est privé");
     expect(r2.text).toContain("Onglet : search-1");
