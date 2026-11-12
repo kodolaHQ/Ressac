@@ -12,6 +12,7 @@ export const RELEASE_NOTES: { version: string; date: string; items: string[] }[]
       "Un haut-parleur sur l'onglet qui émet du son ; un clic le coupe.",
       "La largeur de la barre des onglets se règle en tirant son bord.",
       "Les essentiels se réordonnent par glisser-déposer.",
+      "Les essentiels restent chargés : leurs pages se chargent au lancement et s'ouvrent aussitôt. Clic droit › « Décharger » pour en fermer un jusqu'au prochain clic.",
       "La fenêtre se déplace plus facilement : par le haut de la page, les marges de la barre latérale, le vide sous les onglets et l'en-tête du panneau agent.",
       "WhatsApp Web et d'autres sites qui refusaient WebAiOs fonctionnent.",
       "Le lien de connexion affiché par Claude Code dans le panneau agent s'ouvre dans un onglet.",
