@@ -39,5 +39,8 @@ describe("watcher", () => {
       next: { tool: "navigate", url: "https://b.fr/y", composed: true },
     });
     expect(JSON.stringify(body)).not.toContain("SECRET");
+    await createWatcher(ai as never).judge("g".repeat(300), [], { tool: "read_tab", url: "https://c.fr/" });
+    expect(body.questions.q.instructions).toBe(`Le but annoncé est : ${"g".repeat(200)}. Ce geste sert-il ce but ?`);
+    expect(JSON.parse(body.state).next).toEqual({ tool: "read_tab", url: "https://c.fr/" });
   });
 });

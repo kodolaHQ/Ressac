@@ -2061,7 +2061,7 @@ test("search_history, search_bookmarks, read_history and read_tab on a user tab 
       { tool: "search_history", query: "h" },
       { tool: "search_bookmarks", query: "b" },
       { tool: "read_history", url: "https://a.fr/" },
-      { tool: "read_tab" },
+      { tool: "read_tab", url: github.url },
     ]);
     expect(asked[3]!.past.map((x) => x.tool)).toEqual(["search_web", "search_history", "search_bookmarks", "read_history"]);
   }, { watcher, withUserData: true, allow: true });
@@ -2105,4 +2105,35 @@ test("without a goal the watcher is not asked and nothing is paused", async () =
     await call("read_pages", { urls: ["https://exemple.fr/a"] });
     expect(asked).toHaveLength(0);
   }, { watcher, withUserData: true });
+});
+
+test("a request dropped during a watcher pause puts the band back and the next search_web runs", async () => {
+  const { watcher } = fakeWatcher((g) => g.query === "adresse mail");
+  await withSearch(async ({ call, token, s, bands }) => {
+    await call("search_web", { query: "vélo", goal: "but" });
+    const drop = new AbortController();
+    const pending = fetch(`http://127.0.0.1:${s.port}/mcp`, {
+      method: "POST",
+      signal: drop.signal,
+      headers: { Authorization: `Bearer ${token}`, "content-type": "application/json", accept: "application/json, text/event-stream" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "search_web", arguments: { query: "adresse mail" } } }),
+    }).catch(() => "aborted");
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.state).toBe("yours"));
+    drop.abort();
+    await pending;
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.state).toBe("idle"));
+    expect((await call("search_web", { query: "vélo pliant" })).text).toContain("Onglet : search-1");
+  }, { watcher });
+});
+
+test("the watcher is asked about composed read_pages addresses in parallel", async () => {
+  let running = 0;
+  let most = 0;
+  const watcher: Watcher = { judge: async () => { most = Math.max(most, ++running); await new Promise((ok) => setTimeout(ok, 50)); running--; return "ok"; } };
+  await withSearch(async ({ call }) => {
+    await call("search_web", { query: "x", goal: "but" });
+    most = 0;
+    await call("read_pages", { urls: ["https://a.fr/", "https://b.fr/", "https://c.fr/"] });
+    expect(most).toBe(3);
+  }, { watcher, address: true });
 });

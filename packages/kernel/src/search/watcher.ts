@@ -30,7 +30,7 @@ export function createWatcher(ai: Pick<LocalAi, "kev"> | undefined, o: { timeout
           ai.kev(
             {
               state: JSON.stringify({ past: past.map(plain), next: plain(next) }),
-              questions: { q: { type: "noul", instructions: `Le but annoncé est : ${goal}. Ce geste sert-il ce but ?` } },
+              questions: { q: { type: "noul", instructions: `Le but annoncé est : ${goal.slice(0, 200)}. Ce geste sert-il ce but ?` } },
             },
             { signal: stop.signal },
           ),

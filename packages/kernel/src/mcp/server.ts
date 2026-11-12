@@ -418,8 +418,15 @@ function createToolsServer(
   const cut = (x: string) => x.slice(0, 200);
 
   /** Pauses the search on its tab: the band says what the watcher found strange. Returns the text to answer, or undefined when the user lets it go on. */
-  async function pause(tabId: string, goal: string, what: string): Promise<string | undefined> {
-    const r = await searching!.sessions.handOver(tabId, `Le surveillant a mis en pause : ${what} sans rapport avec « ${cut(goal)} »`);
+  async function pause(tabId: string, goal: string, what: string, signal?: AbortSignal): Promise<string | undefined> {
+    const sessions = searching!.sessions;
+    const waiting = sessions.handOver(tabId, `Le surveillant a mis en pause : ${what} sans rapport avec « ${cut(goal)} »`);
+    // A cancelled or dropped call hands the page back, as hand_over does: nobody waits for the user any more.
+    const abandon = () => sessions.abandon(tabId);
+    signal?.addEventListener("abort", abandon, { once: true });
+    if (signal?.aborted) abandon();
+    let r;
+    try { r = await waiting; } finally { signal?.removeEventListener("abort", abandon); }
     if (r.outcome === "continue") return undefined;
     if (r.outcome === "stop") { searching!.sessions.takeStop(win ?? MAIN_WINDOW, tabId); return STOP_TEXT; }
     return CLOSED_TEXT;
@@ -430,14 +437,15 @@ function createToolsServer(
     const cur = searching?.sessions.current(win ?? MAIN_WINDOW);
     if (!searching?.watcher || !cur?.goal) return undefined;
     const verdict = await searching.watcher.judge(cur.goal, cur.gestures, g);
+    // Without a goal or a watcher nothing is logged here (later queries included): only the watcher reads the gestures.
     if (log) searching.sessions.log(cur.tabId, g);
     return { strange: verdict === "strange", tabId: cur.tabId, goal: cur.goal };
   }
 
   /** Judges an action of the user's side (history, bookmarks, another tab) during a search; strange: paused, and the text to answer unless the user continues. */
-  async function watch(g: Gesture, what: string): Promise<string | undefined> {
+  async function watch(g: Gesture, what: string, signal?: AbortSignal): Promise<string | undefined> {
     const v = await judge(g);
-    return v?.strange ? pause(v.tabId, v.goal, what) : undefined;
+    return v?.strange ? pause(v.tabId, v.goal, what, signal) : undefined;
   }
 
   const OPINION_TEXT = "Sans rapport apparent avec le but annoncé.";
@@ -446,13 +454,13 @@ function createToolsServer(
     return (await judge(g, false))?.strange ? { opinion: OPINION_TEXT } : {};
   }
 
-  async function content(o: TabInfo, withLinks = false): Promise<Result> {
+  async function content(o: TabInfo, withLinks = false, signal?: AbortSignal): Promise<Result> {
     if (searching?.sessions.takeStop(win ?? MAIN_WINDOW, o.id)) return text(STOP_TEXT);
     if (searching?.sessions.owns(o.id)) {
       searching.sessions.log(o.id, { tool: "read_tab" });
       return readSearch(win ?? MAIN_WINDOW, o, withLinks, "Lecture de la page");
     }
-    const other = await watch({ tool: "read_tab" }, "lecture d'un autre onglet");
+    const other = await watch({ tool: "read_tab", url: o.url.slice(0, 500) }, "lecture d'un autre onglet", signal);
     if (other) return text(other);
     if (!(await access(o))) return text(DENIAL_TEXT);
     return present(o, await working(o.id, () => bridge.readText(o.id)), withLinks);
@@ -460,10 +468,10 @@ function createToolsServer(
 
   /** Turns a bridge error into a readable tool error rather than a crash. A private tab is not an error. */
   const protect =
-    <A>(f: (a: A) => Promise<Result>) =>
-    async (a: A): Promise<Result> => {
+    <A>(f: (a: A, extra?: RequestHandlerExtra<ServerRequest, ServerNotification>) => Promise<Result>) =>
+    async (a: A, extra?: RequestHandlerExtra<ServerRequest, ServerNotification>): Promise<Result> => {
       try {
-        return await f(a);
+        return await f(a, extra);
       } catch (e) {
         if (e instanceof PrivateTab) return text(PRIVATE_TEXT);
         if (e instanceof InvalidDate) return text(e.message, true);
@@ -474,10 +482,10 @@ function createToolsServer(
   server.registerTool(
     "current_page",
     { description: "URL, titre, texte principal et sélection de l'onglet que l'utilisateur regarde." },
-    protect(async () => {
+    protect(async (extra: RequestHandlerExtra<ServerRequest, ServerNotification>) => {
       if (bridge.activePrivateTab?.()) return text(PRIVATE_TEXT);
       const o = await bridge.activeTab();
-      return o ? content(o) : text("Aucun onglet actif.");
+      return o ? content(o, false, extra.signal) : text("Aucun onglet actif.");
     }),
   );
 
@@ -505,7 +513,7 @@ function createToolsServer(
   server.registerTool(
     "read_tab",
     { description: "Texte principal d'un onglet donné. Avec links: true, ajoute les liens de la page.", inputSchema: { id: z.string(), links: z.boolean().optional() } },
-    protect(async ({ id, links }) => content(await tab(id), links)),
+    protect(async ({ id, links }, extra) => content(await tab(id), links, extra?.signal)),
   );
 
   server.registerTool(
@@ -644,7 +652,7 @@ function createToolsServer(
           "Pour aller plus loin, utilise navigate sur cet onglet avec un lien lu (read_tab avec links: true relit la page). `goal` : ce que tu cherches, en une phrase.",
         inputSchema: { query: z.string().min(1), goal: z.string().optional() },
       },
-      protect(async ({ query, goal }) => {
+      protect(async ({ query, goal }, extra) => {
         const key = win ?? MAIN_WINDOW;
         // One search_web at a time per window: a parallel one finds the search the first started and reuses its tab.
         const previous = searching.chains.get(key) ?? Promise.resolve();
@@ -655,7 +663,7 @@ function createToolsServer(
           const what = `recherche « ${cut(query)} »`;
           let o: TabInfo & { engineOrigin: string };
           if (current) {
-            const stop = await watch(g, what);
+            const stop = await watch(g, what, extra?.signal);
             if (stop) return text(stop);
             o = await search.open(win ?? undefined, { query }, current.tabId);
             sessions.setEngineOrigin(o.engineOrigin);
@@ -668,7 +676,7 @@ function createToolsServer(
             sessions.start(key, o.id, aim);
             sessions.log(o.id, g);
             if (strange) {
-              const stop = await pause(o.id, aim, what);
+              const stop = await pause(o.id, aim, what, extra?.signal);
               if (stop) return text(stop);
               o = await search.open(win ?? undefined, { query }, o.id);
             }
@@ -698,16 +706,18 @@ function createToolsServer(
           // Each address gets the rule of navigate on the search tab: free, else its card.
           const errors = new Map<string, string>();
           const ok: string[] = [];
+          // The opinions of the addresses that will ask a card, in parallel (each waits for the model).
+          const asking = [...new Set(urls)].filter((u) => urlWeb(u) && u.length <= URL_MAX && !(tabId && sessions.isFree(tabId, u)) && bridge.askAddress);
+          const views = new Map(await Promise.all(asking.map(async (u) => [u, await opinion({ tool: "read_pages", url: u, composed: true })] as const)));
+          if (tabId && !sessions.owns(tabId)) return ended();
           for (const u of new Set(urls)) {
             if (!urlWeb(u)) { errors.set(u, `Erreur : URL refusée (http ou https uniquement) : ${u}`); continue; }
             if (u.length > URL_MAX) { errors.set(u, `Erreur : Adresse trop longue (${URL_MAX} caractères au plus).`); continue; }
             if (tabId && sessions.isFree(tabId, u)) { ok.push(u); continue; }
             if (!bridge.askAddress) { errors.set(u, `Erreur : ${UNREAD_ADDRESS_TEXT}`); continue; }
             const t = tabId;
-            const view = await opinion({ tool: "read_pages", url: u, composed: true });
-            if (t && !sessions.owns(t)) return ended();
             // shortcut: with no search yet the engine's origin is unknown, so even an engine address asks its card; upgrade if that annoys.
-            const yes = await askAddressCard(bridge, policy, requests, { url: u, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", ...view }, `address:${t ?? key}:${u}`, win ?? undefined, (f) => (t ? sessions.onEnd(t, f) : () => {}));
+            const yes = await askAddressCard(bridge, policy, requests, { url: u, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", ...views.get(u) }, `address:${t ?? key}:${u}`, win ?? undefined, (f) => (t ? sessions.onEnd(t, f) : () => {}));
             if (t && !sessions.owns(t)) return ended();
             if (!yes) { errors.set(u, `Erreur : ${DENIAL_TEXT}`); continue; }
             if (t) sessions.allow(t, u);
@@ -852,8 +862,8 @@ function createToolsServer(
           limit: z.number().int().min(1).optional(),
         },
       },
-      protect(async ({ query: request, since: from, until: until, limit: limit }) => {
-        const stop = await watch({ tool: "search_history", query: request }, "lecture de l'historique");
+      protect(async ({ query: request, since: from, until: until, limit: limit }, extra) => {
+        const stop = await watch({ tool: "search_history", query: request }, "lecture de l'historique", extra?.signal);
         if (stop) return text(stop);
         const results = await hist.find({
           query: request,
@@ -868,8 +878,8 @@ function createToolsServer(
     server.registerTool(
       "read_history",
       { description: "Texte retenu d'une page visitée par l'utilisateur (trouvée par search_history), pour la résumer.", inputSchema: { url: z.string() } },
-      protect(async ({ url }) => {
-        const stop = await watch({ tool: "read_history", url }, "lecture de l'historique");
+      protect(async ({ url }, extra) => {
+        const stop = await watch({ tool: "read_history", url }, "lecture de l'historique", extra?.signal);
         if (stop) return text(stop);
         const p = await hist.read(url);
         if (!p) return text(NOTHING_KEPT);
@@ -886,8 +896,8 @@ function createToolsServer(
         description: "Cherche dans les favoris importés ou enregistrés de l'utilisateur (titre et URL). 20 résultats par défaut, 50 au plus.",
         inputSchema: { query: z.string(), limit: z.number().int().min(1).optional() },
       },
-      protect(async ({ query: request, limit: limit }) => {
-        const stop = await watch({ tool: "search_bookmarks", query: request }, "lecture des favoris");
+      protect(async ({ query: request, limit: limit }, extra) => {
+        const stop = await watch({ tool: "search_bookmarks", query: request }, "lecture des favoris", extra?.signal);
         if (stop) return text(stop);
         const results = await marks.find({ query: request, limit: Math.min(HISTORY_LIMIT.max, limit ?? HISTORY_LIMIT.default) });
         return text(results.map((r) => `${r.title} · ${r.url}`).join("\n") || "Aucun favori trouvé.");
