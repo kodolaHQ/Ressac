@@ -540,13 +540,24 @@ it("⌘J: the terminal takes the keyboard back when the window's focus is lost d
   await terminalShows("fake agent ready>");
   await openTab("/a.html");
   await m.execute("gBrowser.selectedBrowser.focus()");
+  // The loss, without a race against the panel's retries (100 and 500 ms): for 150 ms from the first request, the
+  // frame's focus does nothing, as when the window's focus is lost in the handover. No timer on this side, which a
+  // loaded machine fires late (measured: a 200 ms timer at 577 ms, after the last retry).
+  await m.execute(`const frame = document.getElementById("webaios-agent");
+    const focus = frame.focus.bind(frame);
+    let first;
+    window.webaiosTestLost = [];
+    frame.focus = (...a) => {
+      first ??= performance.now();
+      if (performance.now() - first >= 150) return focus(...a);
+      queueMicrotask(() => window.webaiosTestLost.push(document.activeElement?.id || document.activeElement?.localName));
+    };`);
   await pressKeys(m, "Meta+j");
-  // Mid-slide, the window's focus goes back to the page: the terminal's own document still points at its textarea.
-  await new Promise((r) => setTimeout(r, 200));
-  await m.execute("gBrowser.selectedBrowser.focus()");
   await shown();
-  await waitFor(m, "return document.activeElement?.id", (v) => v === "webaios-agent", 2_000);
-  await waitUi(m, "return doc.activeElement?.classList.contains('xterm-helper-textarea')", [], 2_000, "agent");
+  await waitFor(m, "return document.activeElement?.id", (v) => v === "webaios-agent");
+  await waitUi(m, "return doc.activeElement?.classList.contains('xterm-helper-textarea')", [], 10_000, "agent");
+  // The first requests were lost for real: the keyboard was still on the page after them.
+  expect(await m.execute<string[]>("return window.webaiosTestLost")).toContain("browser");
 });
 
 it("the first build shows its step and the elapsed minutes in the panel", async () => {
