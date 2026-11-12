@@ -7,6 +7,7 @@ export const RELEASE_NOTES: { version: string; date: string; items: string[] }[]
       "L'agent cherche sur le web dans son propre onglet, que vous voyez travailler : une bande dit ce qu'il fait, et il vous rend la main (« à vous ») s'il est bloqué.",
       "Quand l'agent veut ouvrir une adresse qu'il a écrite lui-même, une carte vous la montre avec sa raison avant de l'ouvrir.",
       "Appels (Meet, Teams, Zoom…) : en changeant d'onglet, la vidéo de l'appel flotte et une barre en bas de la barre latérale garde le micro, la caméra et le retour à l'appel.",
+      "Google Meet : votre voix n'arrive plus trop faible chez vos interlocuteurs.",
       "Vidéo ou musique en arrière-plan : une barre en bas de la barre latérale pour mettre en pause, couper le son ou revenir à l'onglet.",
       "Un haut-parleur sur l'onglet qui émet du son ; un clic le coupe.",
       "La largeur de la barre des onglets se règle en tirant son bord.",
