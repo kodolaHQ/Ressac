@@ -22,6 +22,7 @@ import type { BrowserImportApi } from "../../shared/api";
 import { searchBookmarks } from "./bookmarks";
 import { registerHomeNotifications } from "./notifications";
 import { containerFor, existingContainer, isSiteContainer, removeContainer } from "./containers";
+import { installCallPlayer } from "./call-player";
 import { registerPermissionHooks } from "./permission-hooks";
 import { createSitePermissions, type SitePermission, type SitePermissions } from "./site-permissions";
 import { bindSites, sites, type SiteApps } from "./sites";
@@ -266,6 +267,18 @@ async function start(): Promise<WebAiOsStore> {
     messageManagerGroups: ["browsers"],
     safeForUntrustedWebProcess: true,
   });
+  // Calls (call-actor.ts): every http(s) frame, a call's video may sit in one. The child acts on the parent's demand;
+  // the parent only relays a call's state (two booleans) to the window of its own tab.
+  const callActor = actorModule("call-actor");
+  ChromeUtils.registerWindowActor("WebAiOsCall", {
+    parent: { esModuleURI: callActor },
+    child: { esModuleURI: callActor },
+    matches: ["http://*/*", "https://*/*"],
+    allFrames: true,
+    messageManagerGroups: ["browsers"],
+    safeForUntrustedWebProcess: true,
+  });
+  installCallPlayer();
   // The vim mode (vim-actor.ts): top http(s) documents of tab browsers; the parent decides whether keys are taken there.
   // Registered only while the setting is on: off, no page pays for it. Unregistering destroys the actors (didDestroy
   // drops their listeners and layer); registering reaches the pages already open through `tell`.

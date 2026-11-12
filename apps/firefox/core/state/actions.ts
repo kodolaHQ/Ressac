@@ -266,6 +266,13 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       Object.assign(o, a.fields);
       return true;
     }
+    case "setCall": {
+      const o = d.tabs[a.id];
+      if (!o || (a.call === null ? !o.call : o.call?.mic === a.call.mic && o.call.camera === a.call.camera)) return false;
+      if (a.call) o.call = a.call;
+      else delete o.call;
+      return true;
+    }
     case "setAgentSearch": {
       const o = d.tabs[a.id];
       if (!o || (a.band === null ? !o.agentSearch : JSON.stringify(o.agentSearch) === JSON.stringify(a.band))) return false;

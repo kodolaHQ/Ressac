@@ -9,6 +9,7 @@
   import Pinned from "./Pinned.svelte";
   import TabList from "./TabList.svelte";
   import { openMenu } from "./menu.svelte";
+  import CallBar from "./CallBar.svelte";
   import SpaceSelector from "./SpaceSelector.svelte";
 
   const key = (id: ShortcutId) => shortcutLabel(id, appState.value?.settings);
@@ -63,6 +64,7 @@
       ><Icon name="plus" size={14} /> Nouvel onglet<kbd>{key("command")}</kbd></button
     >
   </div>
+  <CallBar window={win} />
   <footer>
     <SpaceSelector window={win} />
     {#snippet tools()}

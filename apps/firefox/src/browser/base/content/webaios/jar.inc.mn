@@ -16,6 +16,7 @@
 *       content/browser/webaios/site-actor.sys.mjs (content/webaios/site-actor.sys.mjs)
 *       content/browser/webaios/design-actor.sys.mjs (content/webaios/design-actor.sys.mjs)
 *       content/browser/webaios/vim-actor.sys.mjs (content/webaios/vim-actor.sys.mjs)
+*       content/browser/webaios/call-actor.sys.mjs (content/webaios/call-actor.sys.mjs)
         content/browser/webaios/fonts/FunnelDisplay-latin-ext.woff2 (content/webaios/fonts/FunnelDisplay-latin-ext.woff2)
         content/browser/webaios/fonts/FunnelDisplay-latin.woff2 (content/webaios/fonts/FunnelDisplay-latin.woff2)
         content/browser/webaios/fonts/Geist-latin-ext.woff2 (content/webaios/fonts/Geist-latin-ext.woff2)

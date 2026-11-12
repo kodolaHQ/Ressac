@@ -18,6 +18,7 @@ apps/firefox/src/browser/base/content/webaios/extension-actor.sys.mjs
 apps/firefox/src/browser/base/content/webaios/site-actor.sys.mjs
 apps/firefox/src/browser/base/content/webaios/design-actor.sys.mjs
 apps/firefox/src/browser/base/content/webaios/vim-actor.sys.mjs
+apps/firefox/src/browser/base/content/webaios/call-actor.sys.mjs
 
 # Specs, plans and notes live outside the repo (../WebAiOs-docs); docs/superpowers is a local link to them
 docs/superpowers
