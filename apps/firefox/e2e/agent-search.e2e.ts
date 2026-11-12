@@ -6,7 +6,7 @@ import { callTool } from "./mcp";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
-import { click, waitUi } from "./ui";
+import { click, inUi, waitUi } from "./ui";
 
 let server: Awaited<ReturnType<typeof startServer>>;
 let w: LaunchedWebAiOs;
@@ -105,6 +105,11 @@ it("a composed address shows the card with the full address; Autoriser loads it,
   expect(card).toContain("L'agent veut ouvrir une adresse qu'il a écrite lui-même");
   expect(card).toContain(composed);
   expect(card).toContain("Sa raison : pour voir");
+  // « Pourquoi on me demande ça ? » opens the explanation, closed by default.
+  const WHY = `doc.querySelector('${CARD} .why')`;
+  expect(await inUi(m, `return getComputedStyle(${WHY}).visibility`)).toBe("hidden");
+  await click(m, '[data-testid="address-request-why"]');
+  await waitUi(m, `const e = ${WHY}; return getComputedStyle(e).opacity === "1" && e.getBoundingClientRect().height > 30 && e.textContent.includes("page piégée")`);
   await click(m, `${CARD} button`, { text: "Refuser" });
   expect((await refusing).text).toBe("Accès refusé par l'utilisateur à cet onglet.");
   expect((await state(m)).tabs[id]!.url).toBe(before);
