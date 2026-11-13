@@ -114,16 +114,36 @@ function readDisplayed(doc: Document, max: number, capture: boolean) {
     return ((r.width <= 1 || r.height <= 1) && cs.overflow !== "visible") || r.right < -50 || r.bottom + view.scrollY < -50 || r.left < -2000;
   };
   /** A link's photo: its first https image a person can see (a pixel or a data: placeholder is passed over). Links without an image cost no layout. */
-  const photo = (a: Element): string | undefined => {
+  const photo = (a: Element, cs: CSSStyleDeclaration): string | undefined => {
     // shortcut: images in a shadow root inside the link are missed, upgrade if a real site needs it.
-    for (const img of a.querySelectorAll("img")) {
+    const inside = imageIn(a.querySelectorAll("img"));
+    if (inside || (cs.position !== "absolute" && cs.position !== "fixed")) return inside;
+    // A link laid over its card (Leboncoin): the photo is under it, beside it in the box it covers.
+    const over = a.getBoundingClientRect();
+    const box = (a as HTMLElement).offsetParent ?? a.parentElement;
+    return box ? imageIn(box.querySelectorAll("img"), over) : undefined;
+  };
+  /** The first https image a person can see, whose centre is within `under` when given. */
+  const imageIn = (imgs: Iterable<HTMLImageElement>, under?: DOMRect): string | undefined => {
+    for (const img of imgs) {
       const cs = img.ownerDocument.defaultView!.getComputedStyle(img);
       const r = img.getBoundingClientRect();
       if (!(img as any).checkVisibility({ opacityProperty: true, visibilityProperty: true }) || stealthy(img, cs) || r.width <= 1 || r.height <= 1) continue;
+      if (under) {
+        const [x, y] = [r.left + r.width / 2, r.top + r.height / 2];
+        if (x < under.left || x > under.right || y < under.top || y > under.bottom) continue;
+      }
       const src = img.currentSrc || img.src;
       if (/^https:/i.test(src)) return src;
     }
     return undefined;
+  };
+  /** A link's name: its text, else the longest of its labels (an overlay link often has only « Voir l'annonce » and a title). */
+  const nameOf = (a: Element): string => {
+    const text = (a.textContent ?? "").replace(/\s+/g, " ").trim();
+    if (text) return text;
+    const labels = [a.getAttribute("aria-label"), a.getAttribute("title"), a.querySelector("[title]")?.getAttribute("title"), a.querySelector("img[alt]")?.getAttribute("alt")];
+    return labels.reduce<string>((best, l) => ((l ?? "").trim().length > best.length ? (l ?? "").replace(/\s+/g, " ").trim() : best), "");
   };
   const headingOf = (el: Element, cs: CSSStyleDeclaration, text: string) => {
     for (let e: Element | null = el, i = 0; e && i < 4; e = e.parentElement, i++) {
@@ -195,15 +215,16 @@ function readDisplayed(doc: Document, max: number, capture: boolean) {
       const key = `${z} ${String(url).split("#")[0]}`;
       const had = seen.get(key);
       if (had) {
-        // A card often links twice, title then photo: the photo may come with the second copy.
+        // A card often links twice, title then photo: the photo, or the name, may come with another copy.
+        if (!had.text) had.text = nameOf(el).slice(0, 200);
         if (!had.image) {
-          const image = photo(el);
+          const image = photo(el, cs);
           if (image) had.image = image;
         }
       } else if (typeof url === "string" && /^https?:/i.test(url) && links.length < LINKS_MAX && !(QUOTA_ZONES.has(z) && (perZone.get(z) ?? 0) >= LINKS_PER_ZONE)) {
         perZone.set(z, (perZone.get(z) ?? 0) + 1);
-        const image = photo(el);
-        const link = { text: (el.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 200), url, zone: z, ...(image ? { image } : {}) };
+        const image = photo(el, cs);
+        const link = { text: nameOf(el).slice(0, 200), url, zone: z, ...(image ? { image } : {}) };
         seen.set(key, link);
         links.push(link);
       }
