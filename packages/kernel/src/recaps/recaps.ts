@@ -16,6 +16,10 @@ export const RECAP_TOO_BIG = "Récap trop gros (1 Mo au plus).";
 const RECAP_MAX_BYTES = 1024 * 1024;
 const ALLOWED_MAX = 5000;
 export const RECAP_TITLE_MAX = 120;
+const DAY_MS = 86_400_000;
+/** Days the browser ran, as day numbers; never matches ID_RECAP, so it is not a recap. */
+const USED_DAYS_FILE = "used-days.json";
+const USED_DAYS_MAX = 60;
 
 /** `allowed`: the addresses of the results the agent had read, the only ones the page may link to or load. */
 export type RecapFile = { version: 1; id: string; title: string; results: unknown; plan: PlanPage; allowed: string[]; updated: string };
@@ -40,8 +44,11 @@ export interface Recaps {
   linkAllowed(id: string, url: string): Promise<boolean>;
   imageAllowed(id: string, url: string): Promise<boolean>;
   remove(id: string): Promise<void>;
-  /** Recaps neither published nor shown for more than `maxAgeMs`. */
-  stale(maxAgeMs: number): Promise<string[]>;
+  /**
+   * Notes today as a day of use, then gives the recaps neither published nor shown during the last `days` days of use
+   * (days the browser ran, not calendar days: a week away closes nothing). `dayMs` shortens a day for tests.
+   */
+  stale(days: number, dayMs?: number): Promise<string[]>;
 }
 
 /** Same rule as a link opened from an action page: http(s), no credentials, no local address. */
@@ -106,15 +113,25 @@ export function createRecaps(o: { folder: string; now?: () => Date }): Recaps {
     async remove(id) {
       if (ID_RECAP.test(id)) await rm(path(id), { force: true });
     },
-    async stale(maxAgeMs) {
+    async stale(days, dayMs = DAY_MS) {
+      // Local day number: a day of use starts at midnight where the user is.
+      const dayOf = (t: number) => Math.floor((t - new Date(t).getTimezoneOffset() * 60_000) / dayMs);
+      const usedPath = join(o.folder, USED_DAYS_FILE);
+      const before = await readFile(usedPath, "utf8")
+        .then((t) => z.array(z.number().int()).parse(JSON.parse(t)))
+        .catch(() => [] as number[]);
+      const today = dayOf(clock().getTime());
+      const used = [...new Set([...before, today])].sort((a, b) => a - b).slice(-USED_DAYS_MAX);
+      if (!before.includes(today)) await writeAtomic(usedPath, JSON.stringify(used));
       const names = await readdir(o.folder).catch(() => [] as string[]);
-      const limit = clock().getTime() - maxAgeMs;
       const ids: string[] = [];
       for (const name of names) {
         const id = name.endsWith(".json") ? name.slice(0, -5) : "";
         if (!ID_RECAP.test(id)) continue;
-        const mtime = await stat(path(id)).then((s) => s.mtimeMs, () => Infinity);
-        if (mtime < limit) ids.push(id);
+        const mtime = await stat(path(id)).then((s) => s.mtimeMs, () => NaN);
+        if (Number.isNaN(mtime)) continue;
+        const shown = dayOf(mtime);
+        if (used.filter((d) => d > shown).length >= days) ids.push(id);
       }
       return ids;
     },

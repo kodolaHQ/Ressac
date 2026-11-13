@@ -204,8 +204,8 @@ describe("recap after a restart", () => {
 });
 
 describe("forgotten recap", () => {
-  it("a recap not shown for longer than its age closes by itself", async () => {
-    const w = await launchWebAiOs({ env: { WEBAIOS_MEMORY_LOOP: "1", WEBAIOS_TEST_RECAP_MAX_AGE_MS: "2000", WEBAIOS_TEST_SEARCH_URL: `${server.url}/annonces.html?q=%s`, WEBAIOS_TEST_ACTION_IMAGES: server.url }, prefs: PREFS });
+  it("a recap not shown during 7 days of use closes by itself", async () => {
+    const w = await launchWebAiOs({ env: { WEBAIOS_MEMORY_LOOP: "1", WEBAIOS_TEST_RECAP_DAY_MS: "300", WEBAIOS_TEST_SEARCH_URL: `${server.url}/annonces.html?q=%s`, WEBAIOS_TEST_ACTION_IMAGES: server.url }, prefs: PREFS });
     try {
       const m = await ready(w);
       const q = uiQueries(m);

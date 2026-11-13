@@ -73,17 +73,38 @@ test("republish with the id keeps a link seen before, even with an empty seen li
   expect((await recaps.read(r.id))?.title).toBe("Vélos 2");
 });
 
-test("page() stamps the mtime; stale gives the id once its age passes", async () => {
+test("page() stamps the mtime; stale gives the id after 7 days of use", async () => {
   const { folder, recaps, seen, advance } = await setup();
   const r = await recaps.publish({ title: "Vélos", results, plan, seen });
   if (!r.ok) throw new Error();
   advance(3 * DAY);
   await recaps.page(r.id);
   expect((await stat(join(folder, `${r.id}.json`))).mtime.toISOString()).toBe("2026-11-16T10:00:00.000Z");
-  advance(5 * DAY);
-  expect(await recaps.stale(7 * DAY)).toEqual([]);
-  advance(3 * DAY);
-  expect(await recaps.stale(7 * DAY)).toEqual([r.id]);
+  for (let day = 1; day <= 6; day++) {
+    advance(DAY);
+    expect(await recaps.stale(7)).toEqual([]);
+  }
+  advance(DAY);
+  expect(await recaps.stale(7)).toEqual([r.id]);
+});
+
+test("days the browser did not run do not count", async () => {
+  const { recaps, seen, advance } = await setup();
+  const r = await recaps.publish({ title: "Vélos", results, plan, seen });
+  if (!r.ok) throw new Error();
+  advance(DAY);
+  expect(await recaps.stale(7)).toEqual([]);
+  advance(30 * DAY);
+  expect(await recaps.stale(7)).toEqual([]);
+  // Several sweeps on one day count once.
+  for (let i = 0; i < 5; i++) {
+    advance(60_000);
+    expect(await recaps.stale(7)).toEqual([]);
+  }
+  for (let day = 1; day <= 5; day++) {
+    advance(DAY);
+    expect(await recaps.stale(7)).toEqual(day < 5 ? [] : [r.id]);
+  }
 });
 
 test("remove erases; page then says gone; republishing that id fails", async () => {
@@ -132,14 +153,18 @@ test("page() after remove says gone and does not recreate the file", async () =>
   expect(await readdir(folder)).toEqual([]);
 });
 
-test("stale follows the mtime: one set in the past is swept, a fresh one is not", async () => {
-  const { folder, recaps, seen } = await setup();
+test("stale follows the mtime: one shown before 7 days of use is swept, a fresh one is not", async () => {
+  const { folder, recaps, seen, advance } = await setup();
+  for (let day = 0; day < 7; day++) {
+    await recaps.stale(7);
+    advance(DAY);
+  }
   const a = await recaps.publish({ title: "A", results, plan, seen });
   const b = await recaps.publish({ title: "B", results, plan, seen });
   if (!a.ok || !b.ok) throw new Error();
-  const past = new Date("2026-11-01T10:00:00Z");
+  const past = new Date("2026-11-12T10:00:00Z");
   await utimes(join(folder, `${a.id}.json`), past, past);
-  expect(await recaps.stale(7 * DAY)).toEqual([a.id]);
+  expect(await recaps.stale(7)).toEqual([a.id]);
 });
 
 test("an old file with a shown field still reads", async () => {
@@ -178,10 +203,10 @@ describe("sweep of forgotten recaps", () => {
     }
     before(ids);
     const { run } = fakeRunner([[/ info$/, { code: 1, stderr: "Cannot connect to the Docker daemon" }]]);
-    kernel = await createKernel({ widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, recapsFolder, recapsMaxAgeMs: 60_000, bridge, root, run });
+    kernel = await createKernel({ widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, recapsFolder, recapsDayMs: 20, bridge, root, run });
     return { recapsFolder, ids };
   }
-  const files = async (folder: string) => (await readdir(folder)).filter((f) => f.endsWith(".json")).sort();
+  const files = async (folder: string) => (await readdir(folder)).filter((f) => f.endsWith(".json") && f !== "used-days.json").sort();
 
   test("a stale recap off screen is closed and removed; a visible one is kept", async () => {
     const bridge = new FakeBridge([], { active: null, allow: false });

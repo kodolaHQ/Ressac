@@ -294,8 +294,8 @@ export async function createKernel(o: {
   actionsFolder: string;
   /** Folder of the recaps the agent publishes (the browser gives `<profil>/recaps`). Absent: no recap tool. */
   recapsFolder?: string;
-  /** Age after which a recap off screen is closed by itself (default 7 days; tests shorten it). */
-  recapsMaxAgeMs?: number;
+  /** Length of a day for the recap sweep (default a real day; tests shorten it). */
+  recapsDayMs?: number;
   /** Called with the recap's id after each successful publication. */
   onRecapChange?: (id: string) => void;
   /** Local AI for the harvests; stopped with the kernel. */
@@ -384,13 +384,13 @@ export async function createKernel(o: {
     },
   };
   const recaps = o.recapsFolder ? createRecaps({ folder: o.recapsFolder }) : null;
-  // A recap no one looked at for a week is forgotten; one on screen never is.
-  const maxAge = o.recapsMaxAgeMs ?? 7 * 24 * 3600_000;
+  // A recap no one looked at during 7 days of use is forgotten; one on screen never is.
+  const dayMs = o.recapsDayMs ?? 86_400_000;
   const sweepRecaps = async () => {
     if (!recaps || !o.bridge.recaps) return;
     try {
       const visible = new Set(await o.bridge.recaps.visible());
-      for (const id of await recaps.stale(maxAge)) {
+      for (const id of await recaps.stale(7, dayMs)) {
         if (visible.has(id)) continue;
         await o.bridge.recaps.close(id);
         await recaps.remove(id);
@@ -399,7 +399,7 @@ export async function createKernel(o: {
       console.error("[webaios] recap sweep:", e);
     }
   };
-  const sweeper = recaps ? setInterval(() => void sweepRecaps(), Math.min(3600_000, maxAge)) : null;
+  const sweeper = recaps ? setInterval(() => void sweepRecaps(), Math.min(3600_000, dayMs)) : null;
   sweeper?.unref();
   if (recaps) void sweepRecaps();
   const server = await startMcpServer({
