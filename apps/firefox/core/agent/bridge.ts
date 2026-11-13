@@ -55,13 +55,14 @@ export function policyChanges(before: BrowserState, after: BrowserState): { navi
 }
 
 /**
- * The recaps whose last tab left the state (closed, or its window closed): their files can go. A tab moved into a
- * private space still exists, so its recap stays.
+ * The recaps no tab shows any more (closed, its window closed, or navigated elsewhere): their files can go. A tab
+ * moved into a private space still exists, so its recap stays.
  */
 export function closedRecaps(before: BrowserState, after: BrowserState): string[] {
+  if (before.tabs === after.tabs) return [];
   const kept = new Set(Object.values(after.tabs).map((o) => recapOfUrl(o.url)));
-  const gone = Object.entries(before.tabs).filter(([id]) => !after.tabs[id]).map(([, o]) => recapOfUrl(o.url));
-  return [...new Set(gone)].filter((r): r is string => r !== null && !kept.has(r));
+  const shown = new Set(Object.values(before.tabs).map((o) => recapOfUrl(o.url)));
+  return [...shown].filter((r): r is string => r !== null && !kept.has(r));
 }
 
 /** The recap of the window's active tab, if it shows one. */

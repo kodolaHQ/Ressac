@@ -84,6 +84,14 @@ test("closedRecaps: a closed recap tab gives its id; a tab moved to a private sp
   expect(closedRecaps(before, e())).toEqual([R1]);
 });
 
+test("closedRecaps: a recap tab navigated to another address gives its id", () => {
+  const { e, ag, F } = prepare();
+  ag({ type: "openRecap", windowId: F, id: R1, title: "Sommets" });
+  const before = e();
+  ag({ type: "updateTab", id: Object.keys(e().tabs).at(-1)!, fields: { url: "https://ailleurs.test/" } });
+  expect(closedRecaps(before, e())).toEqual([R1]);
+});
+
 test("closedRecaps: a closed window gives the ids of its recaps", () => {
   const { e, ag } = prepare();
   ag({ type: "openRecap", windowId: "F2", id: R1, title: "Sommets" });
