@@ -7,8 +7,9 @@ const TEXT_MAX = 100_000;
 /** The body kept for the agent's memory. */
 const MEMORY_TEXT_MAX = 20_000;
 const LINKS_MAX = 500;
-/** A zone's share of LINKS_MAX: a page's 600 menu links never crowd out its content's. */
+/** A menu zone's share of LINKS_MAX: a page's 600 menu links never crowd out its content's, which has no quota. */
 const LINKS_PER_ZONE = 150;
+const QUOTA_ZONES = new Set<Zone>(["nav", "header", "footer", "aside", "lang"]);
 const PDF_PAGES_MAX = 60;
 const PDF_READ_MS = 5_000;
 const BLOCKS_MAX = 6_000;
@@ -45,7 +46,7 @@ const zoneOwn = (el: Element): Zone | undefined => {
 /**
  * The page as displayed, like innerText but through open and closed shadow roots, slots and frames of the page's own
  * origin (another origin's frame is never read: the user's grant is for this one). Its http(s) links, tagged with their
- * zone, at most LINKS_MAX and LINKS_PER_ZONE per zone (one per address, fragment dropped, and zone). The text stops at
+ * zone, at most LINKS_MAX and LINKS_PER_ZONE per menu zone (one per address, fragment dropped, and zone). The text stops at
  * `max`; the walk goes on for the links. Its blocks: the visible text by block, with heading weight and zone, without
  * the text a person cannot see (tiny, transparent, off screen, clipped, the colour of its background), the usual
  * carrier of instructions hidden from the reader. Blocks only with `capture`: the search reads, not every page read.
@@ -177,7 +178,7 @@ function readDisplayed(doc: Document, max: number, capture: boolean) {
       breakLine();
       flush();
     }
-    if (el.tagName === "A" && shown && !hidden && links.length < LINKS_MAX && !unseen(el, cs) && (perZone.get(z) ?? 0) < LINKS_PER_ZONE) {
+    if (el.tagName === "A" && shown && !hidden && links.length < LINKS_MAX && !unseen(el, cs) && !(QUOTA_ZONES.has(z) && (perZone.get(z) ?? 0) >= LINKS_PER_ZONE)) {
       const url = (el as HTMLAnchorElement).href;
       const key = `${z} ${String(url).split("#")[0]}`;
       if (typeof url === "string" && /^https?:/i.test(url) && !seen.has(key)) {

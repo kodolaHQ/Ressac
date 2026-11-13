@@ -24,7 +24,7 @@ beforeAll(async () => {
   other = await startServer({ routes: { "/externe.html": html(`<p>Texte cadre autre port</p><a href="/autre-lien.html">Lien cadre autre port</a>`) } });
   server = await startServer({
     routes: {
-      "/sommaire.html": html(`<title>Sommaire</title><a href="/ombre.html">Ombre</a><a href="/cadre.html">Cadre</a><a href="/rapport.pdf">Rapport</a><a href="/longue.html">Longue</a><a href="/faux-pdf.html">Faux</a><a href="/pdf-bloque.html">Bloque</a><a href="/menus.html">Menus</a><a href="/profonde.html">Profonde</a><a href="/piege.html">Piège</a><a href="/produit.html">Produit</a><a href="/absente.html">Absente</a><a href="/bloque.html">Bloque</a><a href="/connexion.html">Connexion</a><a href="/captchas.html">Captchas</a><a href="/code.html">Code</a><a href="/invisibles.html">Invisibles</a><a href="/sombre.html">Sombre</a>`),
+      "/sommaire.html": html(`<title>Sommaire</title><a href="/ombre.html">Ombre</a><a href="/cadre.html">Cadre</a><a href="/rapport.pdf">Rapport</a><a href="/longue.html">Longue</a><a href="/faux-pdf.html">Faux</a><a href="/pdf-bloque.html">Bloque</a><a href="/menus.html">Menus</a><a href="/profonde.html">Profonde</a><a href="/piege.html">Piège</a><a href="/produit.html">Produit</a><a href="/absente.html">Absente</a><a href="/bloque.html">Bloque</a><a href="/connexion.html">Connexion</a><a href="/captchas.html">Captchas</a><a href="/code.html">Code</a><a href="/invisibles.html">Invisibles</a><a href="/sombre.html">Sombre</a><a href="/liste.html">Liste</a>`),
       "/ombre.html": html(`<title>Ombre</title>
 <nav><a href="/menu.html">Menu du site</a></nav>
 <p>Avant</p><p>Après</p>
@@ -80,6 +80,8 @@ customElements.define("x-boite", class extends HTMLElement { constructor() { sup
 <a href="/cache.html" style="color:#fff">Lien blanc caché</a><div style="opacity:0"><a href="/opaque.html">Lien opaque caché</a></div><a href="/visible.html">Lien visible</a>
 <div itemscope><span itemprop="name" style="font-size:1px">Marqueur micro</span><meta itemprop="price" content="12.50"></div></main>`),
       "/sombre.html": html(`<title>Sombre</title><meta name="color-scheme" content="dark"><main><p style="color:#fff">Texte clair sur un thème sombre, assez long pour compter.</p></main>`),
+      // A list page: 300 content links under 600 menu links.
+      "/liste.html": html(`<title>Liste</title><header>${Array.from({ length: 600 }, (_, i) => `<a href="/m${i}.html">Menu ${i}</a>`).join("")}</header><main>${Array.from({ length: 300 }, (_, i) => `<a href="/s${i}.html">Sommet ${i}</a> `).join("")}</main>`),
       "/rapport.pdf": (_req, res) => {
         res.setHeader("content-type", "application/pdf");
         res.end(readFileSync(join(import.meta.dirname, "pages", "rapport.pdf")));
@@ -166,6 +168,15 @@ it("page-wide menu classes and 600 header links do not hide the content's links"
   const list = r.slice(r.indexOf("Liens (numérotés"));
   expect(list.indexOf("Contenu libre")).toBeGreaterThan(0);
   expect(list.indexOf("Contenu libre")).toBeLessThan(list.indexOf("Menu 0"));
+});
+
+it("read_tab with full: true gives every content link of a list page; only the menus are capped", async () => {
+  const id = /Onglet : (\S+)/.exec((await callTool(w.dataDir, "search_web", { query: "x", goal: "lire" })).text)![1]!;
+  await callTool(w.dataDir, "navigate", { id, url: `${server.url}/liste.html` });
+  const r = (await callTool(w.dataDir, "read_tab", { id, links: true, full: true })).text;
+  expect(r).toContain(`Sommet 299 — ${server.url}/s299.html`);
+  expect(r).toContain(`Menu 149 — ${server.url}/m149.html`);
+  expect(r).not.toContain(`Menu 150 — `);
 });
 
 it("a page nested far too deep is still read: whole with full: true, the reduced page holds no unchecked text", async () => {
