@@ -10,7 +10,11 @@ import { initialState } from "./initial-state";
 
 const FILE = "session.json";
 
-const FavoriteSchema = z.object({ id: z.string(), url: z.string(), title: z.string(), favicon: z.string().nullable(), folder: z.string().optional() });
+/** Read for sessions saved before the rename to Ressac: the app's own pages were webaios:// addresses. */
+const LEGACY_SCHEME = "webaios://";
+const Url = z.string().transform((u) => (u.startsWith(LEGACY_SCHEME) ? `ressac://${u.slice(LEGACY_SCHEME.length)}` : u));
+
+const FavoriteSchema = z.object({ id: z.string(), url: Url, title: z.string(), favicon: z.string().nullable(), folder: z.string().optional() });
 
 const SpaceSchema = z.object({ id: z.string(), name: z.string(), icon: z.string(), pinned: z.array(FavoriteSchema), folders: z.array(z.object({ id: z.string(), name: z.string(), collapsed: z.boolean() })).default([]), private: z.boolean(), profile: z.string().min(1), aura: z.enum(AURA_IDS).catch(DEFAULT_AURA) });
 
@@ -26,7 +30,7 @@ const SchemaSession = z.object({
       id: z.string(),
       windowId: z.string(),
       spaceId: z.string(),
-      url: z.string(),
+      url: Url,
       title: z.string(),
       favicon: z.string().nullable(),
       link: z.object({ type: z.enum(["essential", "pinned"]), id: z.string() }).nullable(),
@@ -44,7 +48,7 @@ const SchemaSession = z.object({
         active: z.record(z.string(), z.string().nullable()),
         compact: z.boolean(),
         agentPanelOpen: z.boolean(),
-        recentlyClosed: z.array(z.object({ url: z.string(), spaceId: z.string() })),
+        recentlyClosed: z.array(z.object({ url: Url, spaceId: z.string() })),
         frame: z.object({ x: z.number(), y: z.number(), width: z.number(), height: z.number() }).nullable().default(null),
       }),
     )

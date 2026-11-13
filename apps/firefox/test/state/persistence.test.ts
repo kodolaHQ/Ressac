@@ -424,3 +424,24 @@ test("startOnHome: each window loads on the home page, its tabs kept; off, on th
   writeFileSync(join(d, "session.json"), JSON.stringify({ ...saved, settings: old }));
   expect((await loadSession(d)).settings.startOnHome).toBe(true);
 });
+
+test("addresses saved before the rename (webaios://) load as ressac:// in every kind of field", async () => {
+  const d = folder();
+  const state = richState();
+  const [a, b] = Object.keys(state.tabs);
+  const w = state.windows[0]!;
+  state.tabs[a!]!.url = "webaios://settings";
+  state.tabs[b!]!.url = "https://webaios.example/webaios://x";
+  state.essentials = [{ id: "e", url: "webaios://apps", title: "Apps", favicon: null }];
+  state.spaces[0]!.pinned = [{ id: "p", url: "webaios://recap/x", title: "R", favicon: null }];
+  w.recentlyClosed = [{ url: "webaios://settings#a", spaceId: w.activeSpace }];
+  const recorder = new SessionRecorder(d);
+  recorder.schedule(state);
+  await recorder.clear();
+  const s = await loadSession(d);
+  expect(s.tabs[a!]!.url).toBe("ressac://settings");
+  expect(s.tabs[b!]!.url).toBe("https://webaios.example/webaios://x");
+  expect(s.essentials[0]!.url).toBe("ressac://apps");
+  expect(s.spaces[0]!.pinned[0]!.url).toBe("ressac://recap/x");
+  expect(s.windows[0]!.recentlyClosed[0]!.url).toBe("ressac://settings#a");
+});
