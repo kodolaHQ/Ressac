@@ -98,10 +98,10 @@
   button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .open { display: flex; flex-direction: column; gap: 6px; padding: 5px 30px 5px 8px; border-radius: inherit; }
   .grown .open { padding: 6px 30px 6px 6px; }
-  .line { display: flex; align-items: center; gap: 7px; max-width: 240px; }
+  .line { display: flex; align-items: center; gap: 7px; max-width: 360px; }
   .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .label.running { color: var(--accent); }
-  .frame { display: grid; place-items: center; width: 240px; aspect-ratio: 16 / 10; border-radius: 8px; overflow: hidden; background: var(--glass-hi); animation: webaios-rise var(--spring-d) var(--spring) backwards; }
+  .frame { display: grid; place-items: center; width: 360px; aspect-ratio: 16 / 10; border-radius: 8px; overflow: hidden; background: var(--glass-hi); animation: webaios-rise var(--spring-d) var(--spring) backwards; }
   .frame img { width: 100%; height: 100%; object-fit: cover; object-position: top; }
   .site { display: flex; flex-direction: column; align-items: center; gap: 6px; color: var(--text-muted); }
   .close { position: absolute; right: 6px; bottom: 5px; display: grid; place-content: center; width: 20px; height: 20px; border-radius: 50%; color: var(--text-muted); }

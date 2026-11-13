@@ -8,7 +8,7 @@ import { HOST_EXITED, type AgentHost } from "./host";
 
 const XHTML = "http://www.w3.org/1999/xhtml";
 const CAPTURE_EVERY_MS = 700;
-const THUMBNAIL_WIDTH = 320;
+const THUMBNAIL_WIDTH = 480;
 
 export interface AgentView {
   state(): AgentViewState | null;

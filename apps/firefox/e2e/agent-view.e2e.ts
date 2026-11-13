@@ -108,7 +108,7 @@ describe("the agent's view", () => {
     // Hovered, it grows into a thumbnail of the agent's tab.
     await inUi(m, `const r = doc.querySelector('${PILL}').getBoundingClientRect(); ui.synthesizeMouseEvent("mousemove", r.left + r.width / 2, r.top + r.height / 2, {});`, [], "agentview");
     await waitUi(m, `return doc.querySelector('[data-testid="agent-pill-frame"] img')?.src.startsWith("data:image/jpeg")`, [], 10_000, "agentview");
-    await waitFor<number>(m, `return document.getElementById("webaios-agent-pill").clientWidth;`, (w) => w > 240, 5_000);
+    await waitFor<number>(m, `return document.getElementById("webaios-agent-pill").clientWidth;`, (w) => w > 360, 5_000);
 
     // A click opens the agent's tab, where the pill has no reason to be.
     await click(m, PILL, { frame: "agentview" });

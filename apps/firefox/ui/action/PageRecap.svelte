@@ -123,7 +123,7 @@
   .live { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 999px; background: color-mix(in srgb, var(--running) 14%, transparent); color: var(--running); font-size: 11px; animation: webaios-rise var(--spring-d) var(--spring) both; }
   .live::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
   /* Enter on the spring, leave by a fade (DESIGN.md); the dense glass keeps it readable over the aura. */
-  .view { all: unset; cursor: pointer; flex: none; display: flex; flex-direction: column; gap: 6px; width: 200px; margin-top: 16px; padding: 6px; border-radius: 12px; background: var(--glass-dense); border: 1px solid var(--glass-edge); box-shadow: var(--float); color: var(--text); font: 500 12px var(--font-ui); transition: transform var(--tap); animation: webaios-rise var(--spring-d) var(--spring) both; }
+  .view { all: unset; cursor: pointer; flex: none; display: flex; flex-direction: column; gap: 6px; width: 280px; margin-top: 16px; padding: 6px; border-radius: 12px; background: var(--glass-dense); border: 1px solid var(--glass-edge); box-shadow: var(--float); color: var(--text); font: 500 12px var(--font-ui); transition: transform var(--tap); animation: webaios-rise var(--spring-d) var(--spring) both; }
   .view:active { transform: scale(0.97); }
   .view:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .frame { display: grid; place-items: center; aspect-ratio: 16 / 10; border-radius: 8px; overflow: hidden; background: var(--glass-hi); }
