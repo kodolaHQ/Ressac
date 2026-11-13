@@ -406,7 +406,7 @@ export async function createKernel(o: {
               try {
                 if (r.ok) o.onRecapChange?.(r.id);
               } catch (e) {
-                console.error("[webaios] recaps recall:", e);
+                console.error("[webaios] onRecapChange:", e);
               }
               return r;
             },

@@ -15,7 +15,7 @@ export const RECAP_UNKNOWN = "Récap introuvable : publie sans id pour en créer
 export const RECAP_TOO_BIG = "Récap trop gros (1 Mo au plus).";
 const RECAP_MAX_BYTES = 1024 * 1024;
 const ALLOWED_MAX = 5000;
-export const RECAP_TITLE_MAX = 200;
+export const RECAP_TITLE_MAX = 120;
 
 /** `allowed`: the addresses of the results the agent had read, the only ones the page may link to or load. */
 export type RecapFile = { version: 1; id: string; title: string; results: unknown; plan: PlanPage; allowed: string[]; updated: string; shown: string };
@@ -92,9 +92,12 @@ export function createRecaps(o: { folder: string; now?: () => Date }): Recaps {
     },
     async page(id) {
       if (!ID_RECAP.test(id)) return null;
+      const exists = () => stat(path(id)).then(() => true, () => false);
       const f = await read(id);
-      if (!f) return (await stat(path(id)).then(() => true, () => false)) ? null : { gone: true };
-      // shortcut: a publish racing this stamp can be overwritten by the older content; only if a recap is shown while republished.
+      if (!f) return (await exists()) ? null : { gone: true };
+      // Removed since the read (its tab closed): the stamp must not bring it back.
+      if (!(await exists())) return { gone: true };
+      // shortcut: a remove or publish landing between this check and the write is still lost or undone; add a per-id lock if it shows up.
       await write({ ...f, shown: now() });
       return { title: f.title, updated: f.updated, page: resolvePage(f.plan, f.results, { account: false, catalog: BUILTIN_COMPONENTS, fallback: false, allowed: new Set(f.allowed) }) };
     },

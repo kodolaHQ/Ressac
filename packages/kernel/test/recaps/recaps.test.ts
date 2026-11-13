@@ -1,9 +1,25 @@
-import { expect, test } from "vitest";
-import { readFile } from "node:fs/promises";
+import { expect, test, vi } from "vitest";
+import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createRecaps, ID_RECAP, RECAP_UNKNOWN } from "../../src/recaps/recaps.js";
 import { SeenUrls } from "../../src/mcp/seen.js";
 import { tempFolder } from "../helpers/temp.js";
+
+// Runs once right after the next readFile, to put a remove between page()'s read and its stamp.
+const hooks = vi.hoisted(() => ({ afterRead: null as null | (() => Promise<void>) }));
+vi.mock("node:fs/promises", async (original) => {
+  const m = await original<typeof import("node:fs/promises")>();
+  return {
+    ...m,
+    readFile: (async (...a: Parameters<typeof m.readFile>) => {
+      const r = await m.readFile(...a);
+      const h = hooks.afterRead;
+      hooks.afterRead = null;
+      await h?.();
+      return r;
+    }) as typeof m.readFile,
+  };
+});
 
 const DAY = 24 * 3600 * 1000;
 const results = {
@@ -77,8 +93,24 @@ test("remove erases; page then says gone; republishing that id fails", async () 
 });
 
 test("a refused plan gives validatePlan's errors and writes nothing", async () => {
-  const { recaps, seen } = await setup();
+  const { folder, recaps, seen } = await setup();
   const r = await recaps.publish({ title: "Vélos", results, plan: { blocks: [] }, seen });
   expect(r.ok).toBe(false);
-  expect(await recaps.stale(0)).toEqual([]);
+  expect(await readdir(folder)).toEqual([]);
+});
+
+test("a page() racing a remove does not bring the recap back", async () => {
+  const { folder, recaps, seen } = await setup();
+  const r = await recaps.publish({ title: "Vélos", results, plan, seen });
+  if (!r.ok) throw new Error();
+  hooks.afterRead = () => recaps.remove(r.id);
+  expect(await recaps.page(r.id)).toEqual({ gone: true });
+  expect(await readdir(folder)).toEqual([]);
+});
+
+test("the title keeps 120 characters", async () => {
+  const { recaps, seen } = await setup();
+  const r = await recaps.publish({ title: "x".repeat(130), results, plan, seen });
+  if (!r.ok) throw new Error();
+  expect((await recaps.read(r.id))?.title).toHaveLength(120);
 });
