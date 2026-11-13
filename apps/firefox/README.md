@@ -78,7 +78,7 @@ Ressac was called WebAiOs. At the first launch on a machine that had WebAiOs, `c
 
 Stored formats that keep the old spelling, so nothing has to be migrated: the container identities `userContextIdInternal.webaios-<id>` (logins of spaces, site apps and agent apps), the Docker volume `webaios-home` (the agent's logins) and the carried profile's name `webaios-carried`.
 
-Old names still read: `webaios.json` (new: `ressac.json`), `webaiosOpen` and `webaiosSite` (new: `ressacOpen`, `ressacSite`), `webaios://` addresses in a saved session, the five `webaios.*` prefs (moved to `ressac.*` at start, before telemetry, unless Ressac already has its own value), the three keychain services `webaios-*` (copied to `ressac-*` on first read) and the old workshop container `webaios-<name>` (removed before the new one is created).
+Old names still read: `webaios.json` (new: `ressac.json`), `webaiosOpen` and `webaiosSite` (new: `ressacOpen`, `ressacSite`), `webaios://` addresses in a saved session, the five `webaios.*` prefs (moved to `ressac.*` at start, before telemetry, unless Ressac already has its own value), the three keychain services `webaios-*` (copied to `ressac-*` on first read), the review mark `refs/webaios/relu` of a project reviewed under WebAiOs (until the next « Marquer comme relu » writes `refs/ressac/relu`) and the old workshop container `webaios-<name>` (removed before the new one is created).
 
 Agent extensions: ids are now `<x>@agent.ressac`. One installed under `@agent.webaios` stays guarded until the chrome uninstalls it at start (and drops it from the toolbar's pinned list); its registry entry is forgotten, so it is not reinstalled by itself: the agent has to ask the user again, which signs it again with Mozilla under the new id (its own storage is lost). Its folder in `~/Ressac/extensions/` stays.
 
@@ -86,7 +86,10 @@ Accepted losses:
 
 - Saved payment cards (Firefox encrypts them with a keychain secret labelled with the app's name; passwords are not concerned).
 - The workshop image is rebuilt once under its new name; the old image stays on disk.
-- The `.webaios/` folders inside individual projects (logs, profiling, review marks).
+- The `.webaios/` folders inside individual projects (logs, profiling).
+- Telemetry on Firefox's fresh profile: on a launch the carry-over stops with a message, Ressac runs on the empty profile Firefox just made, before WebAiOs's telemetry choice is carried, for as long as the message stays open, and again at each such launch. Only a native crash report can leave then (the session report waits for the notice to have been shown).
+- Each launch from a new path (the DMG, then `/Applications`) leaves an empty `default-ressac` profile folder in Ressac's profile root.
+- A resumed agent conversation still names `mcp__webaios__*` tools in its history.
 - Hand-edited agent instructions that still name `/workspace/.webaios/` paths.
 - The macOS grants (screen recording, camera, microphone, notifications, default browser) are asked again: the bundle id changed.
 
