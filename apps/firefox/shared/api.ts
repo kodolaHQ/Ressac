@@ -5,7 +5,7 @@ import { SHORTCUT_IDS } from "./shortcuts";
 import { validFolder, ID_EXECUTION, ID_SITE, type Application, type Warning, type BlockCatalogEntry, type DeclarationWidget, type DirectState, type DraftRead, type SaveResult, type AttemptResult, type DevRight, type AiState, type WidgetState, type Execution, type ResumeExecution, type ActionsState, type PageAction, type LaunchResult, type Owner, type RenderedPage } from "@webaios/kernel";
 import type { BatchState, ProjectId, ExternalProject, TrackedProject } from "@webaios/kernel";
 import { PROJECT_ID, type Comment, type DiffFile, type ModifiedFile } from "@webaios/kernel";
-import { ClaudeEngineSchema, CodexEngineSchema, type OllamaStatus, type AgentAccount, type Backup, type CodexEngine, type ClaudeEngine, type DecisionModel, type LoginResult, type GrantKind, type GrantRow, type SettingsResult, type WorkshopOperation, type PullProgress } from "./settings";
+import { ClaudeEngineSchema, CodexEngineSchema, type OllamaStatus, type DockerStatus, type AgentAccount, type Backup, type CodexEngine, type ClaudeEngine, type DecisionModel, type LoginResult, type GrantKind, type GrantRow, type SettingsResult, type WorkshopOperation, type PullProgress } from "./settings";
 import type { WorkshopState } from "../../../packages/kernel/src/container/workshop.ts";
 import type { ActionShown } from "./actions";
 import type { ActionSite, SiteWindowState, MessageToHome, ShownSite } from "./sites";
@@ -462,6 +462,10 @@ export interface SettingsApi {
   logout(id: string): Promise<AgentAccount[]>;
   /** null: the host does not answer. */
   workshop(): Promise<WorkshopState | null>;
+  /** Whether Docker runs, is installed but stopped, or is missing (null: the host does not answer). */
+  docker(): Promise<DockerStatus | null>;
+  /** Starts the installed container app and waits for Docker to answer. */
+  startDocker(): Promise<SettingsResult>;
   /** Refused while another restart or rebuild runs (from any page or window). */
   restartWorkshop(fresh: boolean): Promise<SettingsResult>;
   workshopOperation(): Promise<WorkshopOperation>;

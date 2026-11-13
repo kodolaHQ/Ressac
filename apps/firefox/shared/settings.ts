@@ -96,6 +96,8 @@ export function apiUrlProblem(url: string): string | null {
   return "Adresse invalide (https://…)";
 }
 
+/** What WebAiOs found of Docker on this machine. `stopped`: an app it can start (`app`: its name). `unmanaged`: under tests. */
+export type DockerStatus = { kind: "ready" | "absent" | "unmanaged" } | { kind: "stopped"; app: string };
 /** What WebAiOs found of Ollama on this machine. `unmanaged`: another address is imposed, WebAiOs starts and installs nothing. */
 export type OllamaStatus = { kind: "ready"; version: string } | { kind: "outdated"; version: string; min: string } | { kind: "stopped" | "absent" | "unmanaged" };
 /** The name the download of Ollama itself goes under, next to the model names. */

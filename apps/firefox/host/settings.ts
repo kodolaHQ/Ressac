@@ -8,6 +8,7 @@ import { INVALID_KEY, type AmoKeychain, type Keychain } from "./keychain.ts";
 import { deleteBackup, exportData, listBackups } from "./data-folder.ts";
 import { OLLAMA_ITSELF, type AgentAccount, type DecisionModel, type LoginResult, type WorkshopOperation, type GrantKind, type GrantRow, type SettingsResult, type PullProgress } from "../shared/settings.ts";
 import type { OllamaRuntime } from "./ollama-runtime.ts";
+import type { DockerRuntime } from "./docker-runtime.ts";
 
 // The settings page's host side: agent accounts, workshop, local AI, durable grants, data backups.
 
@@ -64,6 +65,8 @@ export const SETTINGS_METHODS = [
   "settings.claudeKeyDelete",
   "settings.ollamaModels",
   "settings.workshop",
+  "settings.docker",
+  "settings.startDocker",
   "settings.restartWorkshop",
   "settings.workshopOperation",
   "settings.grants",
@@ -88,6 +91,7 @@ export interface SettingsOptions {
   workshop: Pick<Workshop, "state" | "exec" | "restart" | "rebuild">;
   ai: Pick<LocalAi, "state" | "check" | "ollamaUrl" | "setDecisionModel">;
   ollama: Pick<OllamaRuntime, "status" | "start" | "install">;
+  docker: DockerRuntime;
   stopApps(): Promise<void>;
   relaunchSessions(): Promise<void>;
   dataDir: string;
@@ -237,6 +241,15 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
       return agents();
     },
     "settings.workshop": () => o.workshop.state(),
+    "settings.docker": () => o.docker.status(),
+    "settings.startDocker": async (): Promise<SettingsResult> => {
+      try {
+        await o.docker.start();
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, error: failure(e) };
+      }
+    },
     "settings.restartWorkshop": async (p: { fresh?: unknown }): Promise<SettingsResult> => {
       if (operation) return { ok: false, error: "Une opération sur l'atelier est déjà en cours." };
       operation = p?.fresh === true ? "rebuild" : "restart";

@@ -1,6 +1,6 @@
 import type { Action, SettingsApi } from "../shared/api";
 import type { WindowId } from "../shared/model";
-import type { AgentAccount, Backup, GrantKind, LoginResult, GrantRow, SettingsResult, WorkshopOperation, PullProgress } from "../shared/settings";
+import type { AgentAccount, Backup, GrantKind, LoginResult, GrantRow, SettingsResult, WorkshopOperation, PullProgress, DockerStatus } from "../shared/settings";
 import type { AgentHost } from "../chrome/agent/host";
 import type { SettingsChrome } from "../chrome/store/settings";
 import type { SitePermissions } from "../chrome/store/site-permissions";
@@ -66,6 +66,8 @@ export function createSettingsApi(o: {
     chooseClaudeEngine: (engine) => o.dispatch({ type: "chooseClaudeEngine", engine }),
     pullModel: (name) => ask<SettingsResult>("settings.pullModel", { name }, SILENT),
     pullProgress: () => ask<PullProgress | null>("settings.pullProgress", undefined, null),
+    docker: () => ask<DockerStatus | null>("settings.docker", undefined, null),
+    startDocker: () => ask<SettingsResult>("settings.startDocker", undefined, SILENT),
     startOllama: () => ask<SettingsResult>("settings.startOllama", undefined, SILENT),
     pullInBackground: (names) => ask<SettingsResult>("settings.pullInBackground", { names }, SILENT),
     ollamaModels: (url) => ask("settings.ollamaModels", { url }, { ok: false as const, error: "Ollama ne répond pas à cette adresse." }),

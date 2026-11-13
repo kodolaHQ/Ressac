@@ -2,7 +2,7 @@
   import { untrack } from "svelte";
   import { AURA_IDS, AURAS, auraVariables, type AuraId } from "../../shared/aura";
   import type { ImportSource, SettingsApi } from "../../shared/api";
-  import { OLLAMA_ITSELF, type OllamaStatus } from "../../shared/settings";
+  import { OLLAMA_ITSELF, type DockerStatus, type OllamaStatus } from "../../shared/settings";
   import { shortcutLabel } from "../../shared/shortcuts";
   import type { WindowState } from "../../shared/model";
   import { api, appState } from "../state.svelte";
@@ -37,9 +37,20 @@
   let pullError = $state<string | null>(null);
   /** undefined: being read; empty: no other browser, so no « Plus tard ». */
   let sources = $state<ImportSource[] | undefined>(undefined);
+  /** Set while Docker is missing: tells an installed app that is stopped from none at all. */
+  let dockerApp = $state<DockerStatus | null>(null);
+  let dockerError = $state<string | null>(null);
   async function checkDocker() {
     docker = undefined;
-    docker = await api.settings.workshop();
+    const state = await api.settings.workshop();
+    dockerApp = state === "docker-absent" ? await api.settings.docker() : null;
+    docker = state;
+  }
+  async function startDocker() {
+    docker = undefined;
+    const r = await api.settings.startDocker();
+    await checkDocker();
+    dockerError = r.ok ? null : r.error;
   }
   async function checkOllama() {
     ollama = undefined;
@@ -131,6 +142,9 @@
           <div class="check">
             {#if docker === undefined}
               {@render status("welcome-docker", "warn", "Vérification…")}
+            {:else if docker === "docker-absent" && dockerApp?.kind === "stopped"}
+              {@render status("welcome-docker", "warn", dockerError ?? `${dockerApp.app} est installé mais arrêté.`)}
+              <button type="button" data-testid="welcome-start-docker" onclick={() => void startDocker()}>Démarrer {dockerApp.app}</button>
             {:else if docker === "docker-absent"}
               {@render status("welcome-docker", "warn", "OrbStack n'est pas lancé ou pas installé.")}
               <button type="button" data-testid="welcome-install-docker" onclick={() => install("https://orbstack.dev/download")}>Installer OrbStack</button>

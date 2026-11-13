@@ -151,6 +151,13 @@ describe("Settings page", () => {
     await shows("workshop-state", "Atelier démarré", 20_000);
   });
 
+  it("workshop: a container app installed but stopped offers « Démarrer OrbStack »", async () => {
+    await launch({ FAKE_DOCKER_ABSENT: "1", WEBAIOS_TEST_DOCKER_KIND: "stopped" });
+    await openPage();
+    await go("workshop");
+    await shows("docker-start", "Démarrer OrbStack");
+  });
+
   it("local AI: an absent Ollama offers « Installer », a stopped one « Démarrer », an old one « Mettre à jour Ollama »", async () => {
     for (const [kind, id, label] of [["absent", "pull-ollama", "Installer"], ["stopped", "ollama-start", "Démarrer"], ["outdated", "ollama-update", "Mettre à jour Ollama"]] as const) {
       await launch({ WEBAIOS_TEST_OLLAMA_KIND: kind });

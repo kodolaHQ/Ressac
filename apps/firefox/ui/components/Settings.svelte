@@ -20,7 +20,7 @@
 
 <script lang="ts">
   import type { LocalAiStateShown, SettingsApi } from "../../shared/api";
-  import { OLLAMA_ITSELF, TELEMETRY_NOTICE, type AgentAccount, type DecisionModel, type LoginResult, type PullProgress, type WorkshopOperation } from "../../shared/settings";
+  import { OLLAMA_ITSELF, TELEMETRY_NOTICE, type DockerStatus, type AgentAccount, type DecisionModel, type LoginResult, type PullProgress, type WorkshopOperation } from "../../shared/settings";
   import { api, appState } from "../state.svelte";
   import Icon from "./Icon.svelte";
   import SettingsMozilla from "./SettingsMozilla.svelte";
@@ -131,7 +131,20 @@
   let asking = $state<"restart" | "rebuild" | null>(null);
   let workshopError = $state<string | null>(null);
   // The host runs one operation at a time: a remounted page or another window sees it and waits for its end.
-  const loadWorkshop = async () => ([workshop, operation] = await Promise.all([s.workshop(), s.workshopOperation()]));
+  /** Set while Docker is missing: tells an installed app that is stopped from none at all. */
+  let docker = $state<DockerStatus | null>(null);
+  let startingDocker = $state(false);
+  const loadWorkshop = async () => {
+    [workshop, operation] = await Promise.all([s.workshop(), s.workshopOperation()]);
+    docker = workshop === "docker-absent" ? await s.docker() : null;
+  };
+  async function startDocker() {
+    startingDocker = true;
+    const r = await s.startDocker();
+    startingDocker = false;
+    workshopError = r.ok ? null : r.error;
+    await loadWorkshop();
+  }
   $effect(() => void loadWorkshop());
   $effect(() => {
     if (!operation) return;
@@ -308,7 +321,9 @@
               <span class="pill" data-tone={operation ? "warn" : workshop ? WORKSHOP_TONE[workshop] : "error"} data-testid="workshop-state">
                 {operation === "restart" ? "Redémarrage…" : operation === "rebuild" ? "Reconstruction… (quelques minutes)" : workshop ? WORKSHOP[workshop] : "L'agent ne répond pas"}
               </span>
-              {#if workshop === "docker-absent"}
+              {#if workshop === "docker-absent" && docker?.kind === "stopped"}
+                <button class="primary" data-testid="docker-start" disabled={startingDocker} onclick={() => void startDocker()}>{startingDocker ? "Démarrage…" : `Démarrer ${docker.app}`}</button>
+              {:else if workshop === "docker-absent"}
                 <button class="primary" onclick={() => s.openUrl("https://orbstack.dev/download")}>Installer OrbStack</button>
               {/if}
               <button data-testid="workshop-restart" disabled={!!operation} onclick={() => (asking = "restart")}>Redémarrer</button>

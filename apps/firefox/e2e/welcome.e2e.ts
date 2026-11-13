@@ -170,6 +170,13 @@ describe("welcome", () => {
     }
   });
 
+  it("a container app installed but stopped: the welcome offers to start it", async () => {
+    await launch({ env: { WEBAIOS_TEST_DOCKER_KIND: "stopped", FAKE_DOCKER_ABSENT: "1" } });
+    await forward(1, 4);
+    await shows("welcome-docker", "OrbStack est installé mais arrêté.");
+    await shows("welcome-start-docker", "Démarrer OrbStack");
+  });
+
   it("no Ollama on the machine: « Installer en arrière-plan » starts the install, and the welcome goes on", async () => {
     await launch({ env: { WEBAIOS_TEST_OLLAMA_KIND: "absent" } });
     await forward(1, 5);

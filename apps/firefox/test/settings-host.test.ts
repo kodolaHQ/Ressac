@@ -32,6 +32,7 @@ function setup(over: { state?: string; exec?: (argv: string[]) => unknown; ollam
       start: vi.fn(async () => void calls.push("ollama.start")),
       install: vi.fn(async (progress: (p: number | null) => void) => (progress(40), void calls.push("ollama.install"))),
     },
+    docker: { status: async () => ({ kind: "stopped", app: "OrbStack" }) as const, start: vi.fn(async () => void calls.push("docker.start")) },
     stopApps: vi.fn(async () => void calls.push("stopApps")),
     relaunchSessions: vi.fn(async () => void calls.push("relaunch")),
     dataDir,
@@ -304,6 +305,13 @@ describe("settings host", () => {
     expect(await h["settings.pullModel"]!({ name: "ollama" })).toEqual({ ok: true });
     expect(calls).toEqual(["ollama.start", "ollama.install"]);
     expect(await h["settings.pullProgress"]!({})).toBeNull();
+  });
+
+  it("Docker: its status and its start", async () => {
+    const { h, calls } = setup();
+    expect(await h["settings.docker"]!({})).toEqual({ kind: "stopped", app: "OrbStack" });
+    expect(await h["settings.startDocker"]!({})).toEqual({ ok: true });
+    expect(calls).toEqual(["docker.start"]);
   });
 
   it("ai.state and decision model", async () => {
