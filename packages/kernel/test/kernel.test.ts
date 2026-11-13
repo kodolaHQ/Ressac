@@ -517,5 +517,5 @@ test("kernel: onRecapChange is called once per successful recap publication", as
   await call({ blocks: [] });
   await client.close();
   expect(onRecapChange).toHaveBeenCalledTimes(1);
-  expect(await readdir(`${root}-recaps`)).toEqual([`${onRecapChange.mock.calls[0]![0]}.json`]);
+  expect((await readdir(`${root}-recaps`)).filter((f) => f !== "used-days.json")).toEqual([`${onRecapChange.mock.calls[0]![0]}.json`]);
 });
