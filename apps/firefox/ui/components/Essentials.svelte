@@ -30,6 +30,8 @@
   aria-label="Essentiels"
   ondragover={(e) => e.dataTransfer?.types.includes("application/x-webaios-onglet") && e.preventDefault()}
   ondrop={(e) => {
+    // An essential dropped back in its own grid (between two cells) stays one.
+    if (e.dataTransfer?.types.includes(MOVE)) return e.stopPropagation();
     const id = e.dataTransfer?.getData("application/x-webaios-onglet");
     if (id) api.dispatch({ type: "addEssential", id });
   }}
