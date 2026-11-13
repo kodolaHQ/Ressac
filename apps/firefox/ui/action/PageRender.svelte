@@ -11,6 +11,7 @@
   import BlockError from "./blocks/BlockError.svelte";
   import Labels from "./blocks/Labels.svelte";
   import Group from "./blocks/Group.svelte";
+  import Highlight from "./blocks/Highlight.svelte";
   import Link from "./blocks/Link.svelte";
   import List from "./blocks/List.svelte";
   import Paragraph from "./blocks/Paragraph.svelte";
@@ -23,8 +24,11 @@
    * A rendered page (resolved by the kernel: references computed, links and images checked). Everything shows as text,
    * never as HTML. `composants` false (preview): the agent's components are not loaded, a neutral frame replaces them.
    */
-  let { page, action, run, components: components = true }: { page: RenderedPage; action: string; run: string; components?: boolean } = $props();
-  const ctx: PageContext = $derived({ action, run });
+  let { page, ctx, components = true }: { page: RenderedPage; ctx: PageContext; components?: boolean } = $props();
+
+  /** A page starting with a title, a paragraph and figures: they make its head, the figures beside the text. */
+  const HEAD = ["title", "paragraph", "figures"];
+  const head = $derived(HEAD.every((name, i) => page.blocks[i]?.component === name));
 
   // A block's props are typed by each component (shapes fixed by the kernel's pages/resolve.ts).
   const p = (b: RenderedBlock) => ("props" in b ? b.props : {}) as never;
@@ -46,6 +50,8 @@
       <Figures p={p(b)} />
     {:else if b.component === "list"}
       <List p={p(b)} {ctx} />
+    {:else if b.component === "highlight"}
+      <Highlight p={p(b)} {ctx} />
     {:else if b.component === "cards"}
       <Cards p={p(b)} {ctx} />
     {:else if b.component === "table"}
@@ -74,5 +80,15 @@
 <div class="page-action" data-testid="page-render">
   {#if page.fallback}<p class="pa-mention" data-testid="fallback-mention">{FALLBACK_MENTION}</p>{/if}
   {#if page.blocks.length === 0}<p class="pa-empty">{NO_RESULT}</p>{/if}
-  <div class="pa-blocks">{@render list(page.blocks)}</div>
+  <div class="pa-blocks">
+    {#if head}
+      <div class="pa-head">
+        <div class="pa-head-text">{@render list(page.blocks.slice(0, 2))}</div>
+        {@render list(page.blocks.slice(2, 3))}
+      </div>
+      {@render list(page.blocks.slice(3))}
+    {:else}
+      {@render list(page.blocks)}
+    {/if}
+  </div>
 </div>

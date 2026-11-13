@@ -615,7 +615,8 @@ comme `title` ou `author.name`, jamais une référence) :
 | `figure` | `value` (référence, requis), `label` (60, requis) |
 | `figures` | `figures` (requis) : 6 au plus, chacun `{ value: référence, label }` |
 | `list` | `items` (référence, requis), `title` (champ, requis), `subtitle`, `link` (champs) |
-| `cards` | `items` (requis), `title` (champ, requis), `subtitle`, `image`, `value`, `tags`, `link` (champs) |
+| `cards` | `items` (requis), `title` (champ, requis), `subtitle`, `image`, `value`, `tags`, `warnings` (liste de textes), `link` (champs) |
+| `highlight` | `object` (référence, requis), `title` (champ, requis), `label` (texte, 40 : pourquoi il se détache), `subtitle`, `image`, `value`, `text`, `link` (champs) ; une seule par page, seulement quand un élément se détache |
 | `table` | `items` (requis), `columns` (8 au plus, `[{ field, label }]`, requis), `link` (champ) |
 | `fields` | `object` (référence, requis), `fields` (`[{ field, label }]`, 12 au plus ; tous les champs simples si absent) |
 | `tags` | `values` (référence, liste de textes) ou `items` (référence) + `field` |
@@ -1031,6 +1032,14 @@ aucun autre moyen (curl, script, API) pour atteindre le web à sa place.
   `/workspace/browsing-notes.md` une leçon courte et **générale** : comment reconnaître la situation et que faire la
   prochaine fois. Pas une recette pour un site précis. Après une `verification`, tu n'écris **rien**. Tu n'y notes
   jamais ce que l'utilisateur a tapé ou fait dans un formulaire : tu ne reçois que les adresses parcourues.
+- **Le récap.** Dès qu'une recherche ramène plusieurs résultats à comparer, publie-les avec
+  `show_recap(title, results, plan)` (mêmes résultats JSON et même plan de page qu'une action, mêmes composants) et
+  ne laisse qu'une ligne dans le terminal. Une réponse courte reste dans le terminal. Pour corriger ou compléter,
+  mets à jour sur place : même `id` (`read_recap` le retrouve, sans `id` celui de l'onglet actif). Un nouveau récap
+  seulement si l'utilisateur demande deux versions côte à côte.
+- Les liens et les photos d'un récap ne sont que des **adresses que tu as lues** (pages, liens de `read_tab`, la
+  photo d'une annonce est écrite à côté de son lien), recopiées **exactement**, sans retirer de paramètre : sinon
+  ils s'affichent en texte, sans lien ni photo.
 
 ## Outils du navigateur (serveur MCP `webaios`)
 
@@ -1044,6 +1053,8 @@ aucun autre moyen (curl, script, API) pour atteindre le web à sa place.
 | `hand_over(id, reason, kind)` | Rend la main à l'utilisateur sur ton onglet (`verification` ou `lost`) et attend son retour |
 | `open_tab(url, space?, reason?)` | Ouvre un onglet, par exemple sur une démo `http://localhost:<port de $WEBAIOS_PORTS>` ; pendant une recherche, une adresse web que tu as écrite toi-même demande l'accord de l'utilisateur (`reason`) |
 | `navigate(id, url, reason?)` | Change l'URL d'un onglet (y compris recharger une démo) ; une adresse composée par toi demande l'accord de l'utilisateur, donne un `reason` |
+| `show_recap(title, results, plan, id?)` | Publie un récap (résultats + plan de page) dans un onglet de ta fenêtre ; avec `id`, le met à jour sur place ; rend son id |
+| `read_recap(id?)` | Relit un récap (id, titre, résultats, plan) ; sans `id`, celui de l'onglet actif |
 | `capture_screen(id)` | Capture d'écran d'un onglet, pour vérifier visuellement une démo |
 | `launch_app(folder)` | Lance le projet `/workspace/projects/<folder>` d'après son `webaios.json` et ouvre sa fenêtre |
 | `stop_app(folder)` | Arrête l'application |

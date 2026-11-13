@@ -45,6 +45,17 @@ export const BUILTIN_COMPONENTS: ComponentDefinition[] = [
     image: p("field", "Champ de l'image"),
     value: p("field", "Champ de la valeur"),
     tags: p("field", "Champ des étiquettes"),
+    warnings: p("field", "Champ des avertissements (liste de textes)"),
+    link: p("field", "Champ de l'adresse du lien"),
+  }),
+  builtIn("highlight", "La fiche mise en vedette : une seule par page, seulement quand un élément se détache.", {
+    object: p("reference", "L'objet mis en vedette", true),
+    label: p("text", "Pourquoi il se détache", false, { max: 40 }),
+    title: p("field", "Champ du titre", true),
+    subtitle: p("field", "Champ du sous-titre"),
+    image: p("field", "Champ de l'image"),
+    value: p("field", "Champ de la valeur"),
+    text: p("field", "Champ d'un court texte"),
     link: p("field", "Champ de l'adresse du lien"),
   }),
   builtIn("table", "Un tableau ; une référence finissant par group donne une section par valeur.", {

@@ -3,7 +3,7 @@
   import PageLink from "../PageLink.svelte";
   import { andOthers, sections, type Collection, type PageContext, type ImageRef as Image, type LinkRef as Link } from "../types";
 
-  type Card = { title: string; subtitle: string | null; image: Image; value: string | null; tags: string[]; link: Link | null };
+  type Card = { title: string; subtitle: string | null; image: Image; value: string | null; tags: string[]; warnings: string[]; link: Link | null };
   let { p, ctx }: { p: Collection<Card>; ctx: PageContext } = $props();
 </script>
 
@@ -13,13 +13,17 @@
     <div class="pa-cards">
       {#each s.items as c, j (j)}
         <article class="pa-card">
-          {#if c.image}<ImageRef image={c.image} {ctx} />{/if}
+          <!-- The price sits on the photo when there is one. -->
+          {#if c.image}<div class="pa-photo"><ImageRef image={c.image} {ctx} />{#if c.value}<span class="value">{c.value}</span>{/if}</div>{/if}
           <div class="body">
             <span class="title">{#if c.link}<PageLink link={c.link} {ctx} />{:else}{c.title}{/if}</span>
             {#if c.subtitle}<span class="subtitle">{c.subtitle}</span>{/if}
-            {#if c.value}<span class="value">{c.value}</span>{/if}
-            {#if c.tags.length}
-              <div class="pa-tags">{#each c.tags as t, k (k)}<span class="pa-tag">{t}</span>{/each}</div>
+            {#if c.value && !c.image}<span class="value">{c.value}</span>{/if}
+            {#if c.tags.length || c.warnings.length}
+              <div class="pa-tags">
+                {#each c.warnings as t, k (k)}<span class="pa-tag pa-warning">{t}</span>{/each}
+                {#each c.tags as t, k (k)}<span class="pa-tag">{t}</span>{/each}
+              </div>
             {/if}
           </div>
         </article>

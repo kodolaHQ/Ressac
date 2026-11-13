@@ -43,3 +43,16 @@ test("rankLinks: copies of one address collapse to one, at their best zone; self
   );
   expect(r).toEqual([{ text: "Lire A", url: "https://ex.fr/a", zone: "main" }]);
 });
+
+test("rankLinks: copies of one address keep the photo of either", () => {
+  const links = [
+    { text: "Yuba", url: "https://ex.fr/a", zone: "main" as const },
+    { text: "Photo de Yuba", url: "https://ex.fr/a", zone: "main" as const, image: "https://img.fr/a.jpg" },
+    { text: "Tern", url: "https://ex.fr/b", zone: "nav" as const, image: "https://img.fr/b.jpg" },
+    { text: "Tern", url: "https://ex.fr/b", zone: "main" as const },
+  ];
+  expect(rankLinks(links, "https://ex.fr/")).toEqual([
+    { text: "Yuba", url: "https://ex.fr/a", zone: "main", image: "https://img.fr/a.jpg" },
+    { text: "Tern", url: "https://ex.fr/b", zone: "main", image: "https://img.fr/b.jpg" },
+  ]);
+});

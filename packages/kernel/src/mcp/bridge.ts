@@ -24,6 +24,8 @@ export interface PageLink {
   url: string;
   /** Absent: `other`. */
   zone?: Zone;
+  /** The first visible image inside the link (https). */
+  image?: string;
 }
 
 /** A block of visible text of a page, as rendered (invisible text never makes one). */
@@ -179,6 +181,17 @@ export interface BrowserBridge {
     close(tabId: string): Promise<void>;
     /** Shows or removes the band of the tab. */
     band(tabId: string, band: Band | null): Promise<void>;
+  };
+  /** The recap tabs (absent: no recap tool can open one). */
+  recaps?: {
+    /** Opens the recap's tab in `window` (null: the main one), or updates and activates the one already showing it. `"private"`: the active space is private, nothing opens. */
+    open(window: string | null, id: string, title: string): Promise<"opened" | "private">;
+    /** Closes the tabs showing the recap. */
+    close(id: string): Promise<void>;
+    /** The recap of the active tab of `window` (null: the main one), if it shows one. */
+    active(window: string | null): Promise<string | null>;
+    /** The recaps shown in a tab of any window. */
+    visible(): Promise<string[]>;
   };
 }
 

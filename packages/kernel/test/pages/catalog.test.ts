@@ -10,7 +10,7 @@ describe("catalog of built-in components", () => {
       expect(required || ["columns", "paragraph", "tags"].includes(c.name), c.name).toBe(true);
     }
     expect(BUILTIN_COMPONENTS.map((c) => c.name)).toEqual([
-      "title", "paragraph", "callout", "figure", "figures", "list", "cards", "table", "fields", "tags", "link", "group", "columns",
+      "title", "paragraph", "callout", "figure", "figures", "list", "cards", "highlight", "table", "fields", "tags", "link", "group", "columns",
     ]);
   });
 

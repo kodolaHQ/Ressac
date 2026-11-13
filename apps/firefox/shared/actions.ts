@@ -2,6 +2,7 @@ import type { Execution } from "@webaios/kernel";
 
 /** The actions: UI messages, addresses of the images and components (also read by the UI). */
 export const ACTIONS_IN_PRIVATE_SPACE = "Les actions ne sont pas disponibles dans un espace privé";
+export const RECAPS_IN_PRIVATE_SPACE = "Les récaps ne sont pas disponibles dans un espace privé";
 /** The builder starts or replays an action that is already running (from its page, another window…): nothing goes out. */
 export const ACTION_ALREADY_RUNNING = "L'action tourne déjà";
 export const PENDING = "En attente : deux actions tournent déjà";

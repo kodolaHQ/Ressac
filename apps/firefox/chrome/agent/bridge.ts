@@ -1,8 +1,8 @@
 import { navigationOutsideSite, TabNotFound, PrivateTab, SiteChanged, type DevRight, type TabInfo, type PageReadOptions } from "../shims/kernel";
 import type { BrowserState, WindowId, Tab, Band } from "../../shared/model";
-import { privateTab, WORKFLOW_PREFIX, AGENT_PROFILE } from "../../shared/model";
+import { privateTab, recapOfUrl, WORKFLOW_PREFIX, AGENT_PROFILE } from "../../shared/model";
 import { ENGINES } from "../../core/url";
-import { boundCapture, boundLinks, policyChanges, tabInfos, activeTabOf, appTab, siteTab, originOf, SITE_PREFIX, resolveSpace } from "../../core/agent/bridge";
+import { boundCapture, boundLinks, policyChanges, closedRecaps, activeRecap, shownRecaps, tabInfos, activeTabOf, appTab, siteTab, originOf, SITE_PREFIX, resolveSpace } from "../../core/agent/bridge";
 import type { Handler } from "../../shared/rpc";
 import type { AgentApps } from "../store/apps";
 import type { DevTools } from "../store/devtools";
@@ -184,6 +184,20 @@ export function bridgeHandlers(
     "search.close": ([id]: [string]) => void store.dispatch({ type: "closeTab", id }),
     // The band of the search tab: the window draws it (window/search-band.ts) from the tab's state.
     "search.band": ([id, band]: [string, Band | null]) => void store.dispatch({ type: "setAgentSearch", id, band: band && { ...band, text: band.text.slice(0, 300) } }),
+    // The agent's recap: in its session's window (null: the active one), like its search; "private" when nothing can open.
+    "recaps.open": ([win, id, title]: [WindowId | null, string, string]) => {
+      const state = store.state;
+      const f = state.windows.find((x) => x.id === (win ?? windows.active())) ?? state.windows[0];
+      if (!f) throw new Error("Aucune fenêtre ouverte");
+      if (state.spaces.find((e) => e.id === f.activeSpace)?.private ?? true) return "private";
+      store.dispatch({ type: "openRecap", windowId: f.id, id, title });
+      return "opened";
+    },
+    "recaps.close": ([id]: [string]) => {
+      for (const o of Object.values(store.state.tabs)) if (recapOfUrl(o.url) === id) store.dispatch({ type: "closeTab", id: o.id });
+    },
+    "recaps.active": ([win]: [WindowId | null]) => activeRecap(store.state, win ?? windows.active()),
+    "recaps.visible": () => shownRecaps(store.state),
     readText: ([id, o]: [string, { capture?: boolean }?]) => {
       const read = (browser: any) => getText(browser, o?.capture === true);
       return onSiteView(id, read) ?? outsidePrivate(id, read);
@@ -240,6 +254,8 @@ export function trackState(store: Store, host: AgentHost, windows: WindowRegistr
     const { navigated: navigated, closed: closed } = policyChanges(previous, state);
     for (const n of navigated) host.notify("policy.navigated", n);
     for (const id of closed) host.notify("policy.closed", { id });
+    // Quitting keeps every tab for the restore: no recap goes then.
+    if (!Services.startup.shuttingDown) for (const id of closedRecaps(previous, state)) host.notify("recaps.closed", { id });
     // Opening the agent panel on a tab gives it to the agent and pre-fills its context.
     for (const f of state.windows) {
       const opened = f.agentPanelOpen && !previous.windows.find((x) => x.id === f.id)?.agentPanelOpen;

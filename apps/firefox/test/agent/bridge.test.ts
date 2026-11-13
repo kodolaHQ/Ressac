@@ -2,8 +2,8 @@ import { expect, test, vi } from "vitest";
 import { apply } from "../../core/state/actions";
 import { initialState } from "../../core/state/initial-state";
 import type { Action } from "../../shared/api";
-import { siteOf, type BrowserState } from "../../shared/model";
-import { waitForRights, waitForResponse, policyChanges, allowedDecision, spacesBecamePrivate, tabInfos, activeTabOf, siteTab, SITE_PREFIX, staleQuestion, staleSiteQuestion, resolveSpace, boundLinks, boundCapture } from "../../core/agent/bridge";
+import { siteOf, urlRecap, type BrowserState } from "../../shared/model";
+import { waitForRights, waitForResponse, policyChanges, allowedDecision, spacesBecamePrivate, tabInfos, activeTabOf, siteTab, SITE_PREFIX, staleQuestion, staleSiteQuestion, resolveSpace, boundLinks, boundCapture, closedRecaps, activeRecap, shownRecaps } from "../../core/agent/bridge";
 
 /** Sets a space's private flag, leaving the rest untouched. */
 function setPrivate(e: BrowserState, ag: (a: Action) => unknown, id: string, isPrivate: boolean) {
@@ -61,6 +61,55 @@ test("policyChanges: URL changed and tab closed; nothing for a title", () => {
   const middle = e();
   ag({ type: "updateTab", id: a!, fields: { title: "Autre" } });
   expect(policyChanges(middle, e())).toEqual({ navigated: [], closed: [] });
+});
+
+const R1 = "0b6f4a52-3c1d-4e8f-9a7b-2c5d6e7f8a90";
+const R2 = "1c7a5b63-4d2e-4f90-8b8c-3d6e7f809ba1";
+
+test("closedRecaps: a closed recap tab gives its id; a tab moved to a private space or a recap still shown elsewhere, nothing", () => {
+  const { e, ag, F } = prepare();
+  ag({ type: "openRecap", windowId: F, id: R1, title: "Sommets" });
+  const tab = Object.keys(e().tabs).at(-1)!;
+  let before = e();
+  ag({ type: "createSpace", name: "Banque", icon: "🏦", private: true, profile: "new" });
+  ag({ type: "moveTabToSpace", id: tab, spaceId: e().spaces.at(-1)!.id });
+  expect(closedRecaps(before, e())).toEqual([]);
+  // The same recap in two tabs (reopened): closing one keeps it.
+  ag({ type: "openTab", windowId: F, url: urlRecap(R1) });
+  before = e();
+  ag({ type: "closeTab", id: tab });
+  expect(closedRecaps(before, e())).toEqual([]);
+  before = e();
+  ag({ type: "closeTab", id: Object.keys(e().tabs).at(-1)! });
+  expect(closedRecaps(before, e())).toEqual([R1]);
+});
+
+test("closedRecaps: a recap tab navigated to another address gives its id", () => {
+  const { e, ag, F } = prepare();
+  ag({ type: "openRecap", windowId: F, id: R1, title: "Sommets" });
+  const before = e();
+  ag({ type: "updateTab", id: Object.keys(e().tabs).at(-1)!, fields: { url: "https://ailleurs.test/" } });
+  expect(closedRecaps(before, e())).toEqual([R1]);
+});
+
+test("closedRecaps: a closed window gives the ids of its recaps", () => {
+  const { e, ag } = prepare();
+  ag({ type: "openRecap", windowId: "F2", id: R1, title: "Sommets" });
+  ag({ type: "openRecap", windowId: "F2", id: R2, title: "Refuges" });
+  const before = e();
+  ag({ type: "closeWindow", id: "F2" });
+  expect(closedRecaps(before, e()).sort()).toEqual([R1, R2].sort());
+});
+
+test("activeRecap and shownRecaps: the recap of a window's active tab, the recaps on screen", () => {
+  const { e, ag, F } = prepare();
+  ag({ type: "openRecap", windowId: F, id: R1, title: "Sommets" });
+  ag({ type: "openRecap", windowId: "F2", id: R2, title: "Refuges" });
+  expect(activeRecap(e(), F)).toBe(R1);
+  expect(shownRecaps(e()).sort()).toEqual([R1, R2].sort());
+  ag({ type: "openTab", windowId: F, url: "https://c.test/" });
+  expect(activeRecap(e(), F)).toBeNull();
+  expect(shownRecaps(e())).toEqual([R2]);
 });
 
 test("waitForResponse: with no answer by the deadline, the question is withdrawn and the answer is no", async () => {
@@ -351,6 +400,15 @@ test("boundLinks keeps a known zone, turns any other into other, and keeps 500 l
   const u = "https://exemple.fr/";
   expect(boundLinks([{ text: "a", url: u, zone: "main" }, { text: "b", url: u, zone: "<script>" }, { text: "c", url: u }]).map((l) => l.zone)).toEqual(["main", "other", "other"]);
   expect(boundLinks(Array.from({ length: 10_000 }, () => ({ text: "x", url: u, zone: "nav" })))).toHaveLength(500);
+});
+
+test("boundLinks keeps a link's https photo up to 2 048 characters and drops any other", () => {
+  const u = "https://exemple.fr/";
+  const ok = `https://img.fr/${"a".repeat(2_033)}`;
+  expect(ok).toHaveLength(2_048);
+  const links = boundLinks([ok, `${ok}a`, "http://img.fr/a.jpg", "data:image/png;base64,AAAA", 42].map((image) => ({ text: "x", url: u, image })));
+  expect(links.map((l) => l.image)).toEqual([ok, undefined, undefined, undefined, undefined]);
+  expect("image" in links[1]!).toBe(false);
 });
 
 test("boundCapture caps what a web process sends and drops wrong types", () => {

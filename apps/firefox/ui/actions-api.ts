@@ -21,18 +21,80 @@ export type ActionsFirefox = ApiWebaios["actions"] & {
   releaseComponent(name: string): void;
 };
 
-// Shown when the actions service has no kernel (same texts as host/actions.ts).
-const NO_KERNEL_MESSAGE = "Le service des actions ne répond pas (agent arrêté ?)";
-const NO_ACTION = () => ({ running: [], waiting: [] });
+/** The recaps API, plus their images asked of the chrome. */
+export type RecapsFirefox = ApiWebaios["recaps"] & { image(id: string, url: string): Promise<string | null> };
 
-export function createActionsApi(o: {
+type WindowApiOptions = {
   state: () => BrowserState | undefined;
   dispatch: (a: Action) => void;
   host: AgentHost;
   window: WindowId;
   untilUnload: (unsubscribe: () => void) => () => void;
   media: WebAiOsStore["actionMedia"];
-}): ActionsFirefox {
+};
+
+/**
+ * Opens a page's link in an active tab once the host allows it. One per second at most: a page cannot make links leave
+ * in a burst. Taken at the click: a second click while the host checks is too close; a refused link gives it back.
+ */
+function pacedLinks(o: WindowApiOptions, isPrivate: () => boolean) {
+  let last = -Infinity;
+  return async (url: string, allowed: () => Promise<boolean>): Promise<void> => {
+    if (isPrivate()) return;
+    const now = Date.now();
+    if (now - last < 1000) return console.warn("[webaios] page link ignored (too soon):", url);
+    const before = last;
+    last = now;
+    const ok = await allowed();
+    if (ok !== true || isPrivate()) {
+      if (last === now) last = before;
+      if (ok !== true) console.warn("[webaios] page link refused:", url);
+      return;
+    }
+    o.dispatch({ type: "openTab", windowId: o.window, url, activate: true });
+  };
+}
+
+/** The window half of the recaps: nothing in a private space, links paced, images through the actions' anonymous loader. */
+export function createRecapsApi(o: WindowApiOptions): RecapsFirefox {
+  const isPrivate = () => {
+    const s = o.state();
+    return !s || activeSpacePrivate(s, o.window);
+  };
+  // Checked before and after the host answers: the window may have moved to a private space meanwhile.
+  const ask = async <T>(method: string, params: unknown, empty: T): Promise<T> => {
+    if (isPrivate()) return empty;
+    const r = await o.host.request<T>(method, params).then((v) => structuredClone(v), () => empty);
+    return isPrivate() ? empty : r;
+  };
+  const open = pacedLinks(o, isPrivate);
+  let hostDown = false;
+  o.untilUnload(o.host.on(HOST_EXITED, () => (hostDown = true)));
+  return {
+    page: (id) => ask("recaps.page", { id }, null),
+    openLink: (id, url) => open(url, () => ask("recaps.linkAllowed", { id, url }, false)),
+    onChange(callback) {
+      const offs = [
+        o.host.on("recaps.changed", (p) => !isPrivate() && callback(String((p as { id?: unknown } | undefined)?.id))),
+        // A host that started again (its kernel's first `access`): the pages read again.
+        o.host.on("access", () => hostDown && ((hostDown = false), callback(null))),
+      ];
+      return o.untilUnload(() => offs.forEach((f) => f()));
+    },
+    // Never cached: an image must not outlive a closed recap.
+    async image(id, url) {
+      if ((await ask("recaps.imageAllowed", { id, url }, false)) !== true) return null;
+      const data = await o.media.image(url);
+      return isPrivate() ? null : data;
+    },
+  };
+}
+
+// Shown when the actions service has no kernel (same texts as host/actions.ts).
+const NO_KERNEL_MESSAGE = "Le service des actions ne répond pas (agent arrêté ?)";
+const NO_ACTION = () => ({ running: [], waiting: [] });
+
+export function createActionsApi(o: WindowApiOptions): ActionsFirefox {
   const { host, window: win } = o;
   /** Read at each call and again after each wait: the window may have moved to a private space meanwhile. */
   const isPrivate = () => {
@@ -100,8 +162,7 @@ export function createActionsApi(o: {
     else m.delete(name);
   };
   const afterRestart = (cb: () => void) => (restarted.add(cb), () => void restarted.delete(cb));
-  /** When this window last opened a link of an action's page: a page cannot make links leave in a burst. */
-  let lastLink = -Infinity;
+  const openPaced = pacedLinks(o, isPrivate);
   const api: ActionsFirefox = {
     list: () => ask("actions.list", undefined, () => [], true),
     onChange(callback) {
@@ -135,22 +196,7 @@ export function createActionsApi(o: {
       const offs = [offFeed, afterRestart(() => void api.live().then((e) => !isPrivate() && callback(e)))];
       return o.untilUnload(() => offs.forEach((f) => f()));
     },
-    async openLink(id, run, url) {
-      if (isPrivate()) return;
-      const now = Date.now();
-      // A page that would open links in a burst (to make data leave): one per second at most.
-      if (now - lastLink < 1000) return console.warn("[webaios] action link ignored (too soon):", url);
-      // Taken now: a second click while the host checks this link is too close. A refused link gives the second back.
-      const before = lastLink;
-      lastLink = now;
-      const allowed = await ask("actions.linkAllowed", { id, run, url }, () => false);
-      if (allowed !== true || isPrivate()) {
-        if (lastLink === now) lastLink = before;
-        if (allowed !== true) console.warn("[webaios] action link refused:", url);
-        return;
-      }
-      o.dispatch({ type: "openTab", windowId: win, url, activate: true });
-    },
+    openLink: (id, run, url) => openPaced(url, () => ask("actions.linkAllowed", { id, run, url }, () => false)),
     profilesForGrant: async () => {
       const s = o.state();
       return !s || isPrivate() ? [] : profilesForGrant(s, win);

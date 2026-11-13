@@ -48,6 +48,17 @@ export function actionOfUrl(url: string): { id: string; run: string | null } | n
   if (run === undefined) return { id, run: null };
   return run.length <= 64 && ID_EXECUTION.test(run) ? { id, run } : null;
 }
+/** Page of a recap the agent published: `webaios://recap/<id>`. */
+export const RECAP_PREFIX = "webaios://recap/";
+/** Mirrors the kernel's ID_RECAP (packages/kernel/src/recaps/recaps.ts); the model cannot import the kernel. */
+const ID_RECAP = /^[0-9a-f-]{36}$/;
+export const urlRecap = (id: string) => RECAP_PREFIX + id;
+/** The recap of a recap page, or null if the URL is not one. */
+export function recapOfUrl(url: string): string | null {
+  if (!url.startsWith(RECAP_PREFIX)) return null;
+  const id = url.slice(RECAP_PREFIX.length);
+  return ID_RECAP.test(id) ? id : null;
+}
 /** An internal page (`webaios:`) has no view: the UI displays it, like the blank page. */
 export const hasView = (url: string) => !url.startsWith("webaios:");
 

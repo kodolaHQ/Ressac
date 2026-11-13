@@ -19,6 +19,7 @@ import { createWatcher } from "./search/watcher.js";
 import type { TabInfo, BrowserBridge } from "./mcp/bridge.js";
 import type { ExtensionsTools } from "./mcp/extensions.js";
 import { startMcpServer, generateToken, type ActionsTools, type AppsTools, type SitesTools, type WidgetsTools, type OpenWorkflow } from "./mcp/server.js";
+import { createRecaps, type Recaps } from "./recaps/recaps.js";
 import type { ProfileFiles } from "./mcp/devtools.js";
 import { DevToolsTracking } from "./devtools/tracking.js";
 import type { LocalAi } from "./ai/local-ai.js";
@@ -291,6 +292,12 @@ export async function createKernel(o: {
    * `<profil>/actions`).
    */
   actionsFolder: string;
+  /** Folder of the recaps the agent publishes (the browser gives `<profil>/recaps`). Absent: no recap tool. */
+  recapsFolder?: string;
+  /** Length of a day for the recap sweep (default a real day; tests shorten it). */
+  recapsDayMs?: number;
+  /** Called with the recap's id after each successful publication. */
+  onRecapChange?: (id: string) => void;
   /** Local AI for the harvests; stopped with the kernel. */
   ai?: LocalAi;
   /** Workflow engine, mounted in the harvest container (by default `<resources>/docker/engine`). */
@@ -376,6 +383,25 @@ export async function createKernel(o: {
       return { ...e, plan: r?.plan ?? null };
     },
   };
+  const recaps = o.recapsFolder ? createRecaps({ folder: o.recapsFolder }) : null;
+  // A recap no one looked at during 7 days of use is forgotten; one on screen never is.
+  const dayMs = o.recapsDayMs ?? 86_400_000;
+  const sweepRecaps = async () => {
+    if (!recaps || !o.bridge.recaps) return;
+    try {
+      const visible = new Set(await o.bridge.recaps.visible());
+      for (const id of await recaps.stale(7, dayMs)) {
+        if (visible.has(id)) continue;
+        await o.bridge.recaps.close(id);
+        await recaps.remove(id);
+      }
+    } catch (e) {
+      console.error("[webaios] recap sweep:", e);
+    }
+  };
+  const sweeper = recaps ? setInterval(() => void sweepRecaps(), Math.min(3600_000, dayMs)) : null;
+  sweeper?.unref();
+  if (recaps) void sweepRecaps();
   const server = await startMcpServer({
     bridge: o.bridge,
     policy: policy,
@@ -391,6 +417,22 @@ export async function createKernel(o: {
     ...(o.openWorkflow ? { openWorkflow: o.openWorkflow } : {}),
     ...(o.extensions ? { extensions: o.extensions } : {}),
     ...(o.sites ? { sites: o.sites } : {}),
+    ...(recaps
+      ? {
+          recaps: {
+            ...recaps,
+            async publish(p) {
+              const r = await recaps.publish(p);
+              try {
+                if (r.ok) o.onRecapChange?.(r.id);
+              } catch (e) {
+                console.error("[webaios] onRecapChange:", e);
+              }
+              return r;
+            },
+          } satisfies Recaps,
+        }
+      : {}),
   });
   try {
     // Session configs left by a crash: their tokens are worth nothing any more.
@@ -633,6 +675,7 @@ export async function createKernel(o: {
       report();
     },
     async stop() {
+      if (sweeper) clearInterval(sweeper);
       tracking?.stop();
       await Promise.all([...openSessions].map((clean) => clean()));
       openSessions.clear();

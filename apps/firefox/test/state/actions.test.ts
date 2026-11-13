@@ -2,7 +2,7 @@ import { beforeEach, expect, test } from "vitest";
 import { apply, withEssentials } from "../../core/state/actions";
 import { initialState } from "../../core/state/initial-state";
 import { SchemaAction, type Action } from "../../shared/api";
-import { AGENT_PROFILE, spaceKey, historyContext, privateTab, profilesInUse, tabProfile, hasView, URL_ACTIONS, URL_APPLICATIONS, URL_EXTENSIONS, URL_SETTINGS, urlAction, urlWorkflow, type BrowserState, type Tab } from "../../shared/model";
+import { AGENT_PROFILE, spaceKey, historyContext, privateTab, profilesInUse, tabProfile, hasView, URL_ACTIONS, URL_APPLICATIONS, URL_EXTENSIONS, URL_SETTINGS, urlAction, urlWorkflow, urlRecap, recapOfUrl, type BrowserState, type Tab } from "../../shared/model";
 
 let n = 0;
 const genId = () => `g${++n}`;
@@ -798,6 +798,59 @@ test("openAction neither opens nor finds anything in a private space, and never 
   ag({ type: "openAction", windowId: F, id: "gitlab", name: "GitLab" });
   ag({ type: "openAction", windowId: F, id: "meteo", name: "Météo" });
   expect(e).toBe(before);
+});
+
+const R1 = "0b6f4a52-3c1d-4e8f-9a7b-2c5d6e7f8a90";
+const R2 = "1c7a5b63-4d2e-4f90-8b8c-3d6e7f809ba1";
+
+test("recapOfUrl: the id of a webaios://recap/<id> tab, null for anything else", () => {
+  expect(urlRecap(R1)).toBe(`webaios://recap/${R1}`);
+  expect(recapOfUrl(urlRecap(R1))).toBe(R1);
+  expect(recapOfUrl("webaios://recap/../x")).toBeNull();
+  expect(recapOfUrl(`webaios://recap/${R1}/x`)).toBeNull();
+  expect(recapOfUrl(urlAction("gitlab"))).toBeNull();
+  expect(recapOfUrl(`https://a.test/webaios://recap/${R1}`)).toBeNull();
+});
+
+test("openRecap opens an active ✦ tab titled with the recap, then reuses it (any window), its title following", () => {
+  open("https://a.test/");
+  ag({ type: "openRecap", windowId: F, id: R1, title: "Sommets" });
+  const tabs = () => Object.values(e.tabs).filter((o) => recapOfUrl(o.url) === R1);
+  expect(tabs()).toHaveLength(1);
+  const tab = tabs()[0]!;
+  expect(tab).toMatchObject({ url: urlRecap(R1), title: "Sommets", spaceId: P, openedByAgent: true });
+  expect(active()).toBe(tab.id);
+  open("https://b.test/");
+  // Asked from another window: the tab that already shows it is reused and activated, renamed.
+  ag({ type: "openWindow", id: "F2" });
+  ag({ type: "openRecap", windowId: "F2", id: R1, title: "Sommets des Pyrénées" });
+  expect(tabs()).toHaveLength(1);
+  expect(active()).toBe(tab.id);
+  expect(e.tabs[tab.id]!.title).toBe("Sommets des Pyrénées");
+  const before = e;
+  ag({ type: "openRecap", windowId: F, id: R1, title: "Sommets des Pyrénées" });
+  expect(e).toBe(before);
+  // Another recap: its own tab.
+  ag({ type: "openRecap", windowId: F, id: R2, title: "Refuges" });
+  expect(Object.values(e.tabs).filter((o) => o.url === urlRecap(R2))).toHaveLength(1);
+  expect(SchemaAction.safeParse({ type: "openRecap", windowId: F, id: "../x", title: "X" }).success).toBe(false);
+});
+
+test("openRecap opens nothing in a private space, and never reuses a tab moved there", () => {
+  ag({ type: "openRecap", windowId: F, id: R1, title: "Sommets" });
+  const tab = Object.keys(e.tabs).at(-1)!;
+  ag({ type: "createSpace", name: "Banque", icon: "🏦", private: true, profile: "new", windowId: F });
+  const bank = fen().activeSpace;
+  const before = e;
+  ag({ type: "openRecap", windowId: F, id: R1, title: "Sommets" });
+  ag({ type: "openRecap", windowId: F, id: R2, title: "Refuges" });
+  expect(e).toBe(before);
+  ag({ type: "moveTabToSpace", id: tab, spaceId: bank });
+  ag({ type: "activateSpace", windowId: F, id: P });
+  ag({ type: "openRecap", windowId: F, id: R1, title: "Sommets" });
+  const tabs = Object.values(e.tabs).filter((o) => o.url === urlRecap(R1));
+  expect(tabs.map((o) => o.spaceId).sort()).toEqual([P, bank].sort());
+  expect(e.tabs[active()!]).toMatchObject({ url: urlRecap(R1), spaceId: P });
 });
 
 test("openActions opens the single « Actions » page, then returns to it", () => {

@@ -22,11 +22,11 @@ class Gap extends Error {}
 const EXPECTED: Record<string, "list" | "object" | "simple"> = {
   "paragraph.value": "simple", "figure.value": "simple", "callout.items": "list",
   "list.items": "list", "cards.items": "list", "table.items": "list",
-  "fields.object": "object", "tags.values": "list", "tags.items": "list", "link.object": "object",
+  "fields.object": "object", "highlight.object": "object", "tags.values": "list", "tags.items": "list", "link.object": "object",
 };
 /** The property that carries the items where its fields are read. */
 const SOURCE: Record<string, string> = {
-  callout: "items", list: "items", cards: "items", table: "items", tags: "items", link: "object", fields: "object",
+  callout: "items", list: "items", cards: "items", table: "items", highlight: "object", tags: "items", link: "object", fields: "object",
 };
 const CHILDREN: Record<string, ("blocks" | "left" | "right")[]> = { group: ["blocks"], columns: ["left", "right"] };
 
@@ -226,7 +226,7 @@ function countBlocks(b: PlanBlock): number {
   return n;
 }
 
-type Context = { defs: Map<string, ComponentDefinition>; results: unknown; discarded: string[]; n: number; references: number };
+type Context = { defs: Map<string, ComponentDefinition>; results: unknown; discarded: string[]; n: number; references: number; highlight: boolean };
 
 function validateBlocks(blocks: PlanBlock[], ctx: Context): PlanBlock[] {
   const guards: PlanBlock[] = [];
@@ -247,6 +247,13 @@ function validateBlocks(blocks: PlanBlock[], ctx: Context): PlanBlock[] {
       ctx.discarded.push(cut(`${n}. ${b.component} : ${e.message}`));
       ctx.n += countBlocks(b);
       continue;
+    }
+    if (def.origin === "builtin" && def.name === "highlight") {
+      if (ctx.highlight) {
+        ctx.discarded.push(cut(`${n}. highlight : une seule par page`));
+        continue;
+      }
+      ctx.highlight = true;
     }
     if (v.reference) ctx.references++;
     const kept: PlanBlock = { component: b.component, props: v.props };
@@ -273,7 +280,7 @@ export function validatePlan(raw: unknown, o: { catalog: ComponentDefinition[]; 
         errors: r.error.issues.slice(0, MAX_ERRORS).map((i) => cut(i.path.length ? `${i.path.join(".")} : ${i.message}` : i.message)),
       };
     }
-    const ctx: Context = { defs: new Map(o.catalog.map((d) => [d.name, d])), results: o.results, discarded: [], n: 0, references: 0 };
+    const ctx: Context = { defs: new Map(o.catalog.map((d) => [d.name, d])), results: o.results, discarded: [], n: 0, references: 0, highlight: false };
     const blocks = validateBlocks(r.data.blocks, ctx);
     if (ctx.references === 0) return { ok: false, errors: [PLAN_REFERENCES_NOTHING, ...ctx.discarded] };
     return { ok: true, plan: { blocks: blocks }, discarded: ctx.discarded };

@@ -5,7 +5,7 @@ import type { BrowserState } from "../shared/model";
 import { apply } from "../core/state/actions";
 import { initialState } from "../core/state/initial-state";
 import { HOST_EXITED, type AgentHost } from "../chrome/agent/host";
-import { createActionsApi, activeSpacePrivate } from "../ui/actions-api";
+import { createActionsApi, createRecapsApi, activeSpacePrivate } from "../ui/actions-api";
 
 const NONE = { running: [], waiting: [] };
 const START = "2026-10-31T08:00:00.000Z";
@@ -49,20 +49,14 @@ function setup(answers: Record<string, (p: any) => unknown> = {}) {
   const fake = fakeHost(answers);
   const media = { image: vi.fn(async (_url: string): Promise<string | null> => "data:image/png;base64,"), serve: vi.fn(async (name: string): Promise<string | null> => `resource://webaios-component-${name}/component-1.html`), release: vi.fn(async (_name: string) => {}) };
   const unloads: (() => void)[] = [];
-  const api = (win: string) =>
-    createActionsApi({
-      state: () => state,
-      dispatch,
-      host: fake.host,
-      window: win,
-      untilUnload: (f) => (unloads.push(f), f),
-      media,
-    });
+  const options = (win: string) => ({ state: () => state, dispatch, host: fake.host, window: win, untilUnload: (f: () => void) => (unloads.push(f), f), media });
+  const api = (win: string) => createActionsApi(options(win));
+  const recaps = (win: string) => createRecapsApi(options(win));
   const turnPrivate = (f = F) => {
     const e = state.spaces.find((x) => x.id === state.windows.find((w) => w.id === f)!.activeSpace)!;
     state = apply(state, { type: "updateSpace", id: e.id, name: e.name, icon: e.icon, private: true, profile: e.profile }, genId);
   };
-  return { F, api, dispatched, turnPrivate, media, unload: () => unloads.forEach((f) => f()), ...fake, state: () => state, set: (s: BrowserState) => (state = s), genId };
+  return { F, api, recaps, dispatched, turnPrivate, media, unload: () => unloads.forEach((f) => f()), ...fake, state: () => state, set: (s: BrowserState) => (state = s), genId };
 }
 
 type Api = ReturnType<typeof createActionsApi>;
@@ -517,5 +511,65 @@ describe("createActionsApi", () => {
     expect(await c.serveComponent("x")).toBeNull();
     c.releaseComponent("x");
     expect(t.media.release).toHaveBeenCalledWith("x");
+  });
+});
+
+describe("createRecapsApi", () => {
+  const ID = "0f8fad5b-d9cb-469f-a165-70867728950e";
+  const READ = "https://exemple.fr/lu";
+
+  it("a link opens an active tab only if the host allows it, one per second at most", async () => {
+    const { F, recaps, dispatched, calls } = setup({ "recaps.linkAllowed": (p) => p.url === READ });
+    let now = 10_000;
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    const r = recaps(F);
+    await r.openLink(ID, "https://exemple.fr/jamais-lu");
+    await r.openLink(ID, READ);
+    await r.openLink(ID, READ); // too close
+    now += 1000;
+    await r.openLink(ID, READ);
+    expect(dispatched).toEqual([
+      { type: "openTab", windowId: F, url: READ, activate: true },
+      { type: "openTab", windowId: F, url: READ, activate: true },
+    ]);
+    expect(calls.filter((c) => c.method === "recaps.linkAllowed")).toHaveLength(3);
+  });
+
+  it("an image is checked by the host, then loaded anonymously; refused ones are never fetched", async () => {
+    const { F, recaps, media, calls } = setup({ "recaps.imageAllowed": (p) => p.url === "https://img.fr/a.png" });
+    const r = recaps(F);
+    expect(await r.image(ID, "https://img.fr/b.png")).toBeNull();
+    expect(media.image).not.toHaveBeenCalled();
+    expect(await r.image(ID, "https://img.fr/a.png")).toBe("data:image/png;base64,");
+    expect(media.image).toHaveBeenCalledWith("https://img.fr/a.png");
+    expect(calls[0]).toEqual({ method: "recaps.imageAllowed", params: { id: ID, url: "https://img.fr/b.png" } });
+  });
+
+  it("nothing in a private space: no page, no link, no image, no change", async () => {
+    const { F, recaps, dispatched, calls, media, turnPrivate, emit } = setup({ "recaps.page": () => ({ gone: true }), "recaps.linkAllowed": () => true, "recaps.imageAllowed": () => true });
+    const r = recaps(F);
+    const changes: (string | null)[] = [];
+    r.onChange((id) => changes.push(id));
+    turnPrivate();
+    expect(await r.page(ID)).toBeNull();
+    await r.openLink(ID, READ);
+    expect(await r.image(ID, "https://img.fr/a.png")).toBeNull();
+    emit("recaps.changed", { id: ID });
+    expect({ dispatched, calls, changes }).toEqual({ dispatched: [], calls: [], changes: [] });
+    expect(media.image).not.toHaveBeenCalled();
+  });
+
+  it("onChange: a republished recap gives its id; a host started again gives null once", async () => {
+    const { F, recaps, emit } = setup({ "recaps.page": () => ({ gone: true }) });
+    const r = recaps(F);
+    const changes: (string | null)[] = [];
+    r.onChange((id) => changes.push(id));
+    emit("recaps.changed", { id: ID });
+    emit("access");
+    emit(HOST_EXITED);
+    emit("access");
+    emit("access");
+    expect(changes).toEqual([ID, null]);
+    expect(await r.page(ID)).toEqual({ gone: true });
   });
 });
