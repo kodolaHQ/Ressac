@@ -37,7 +37,6 @@ const READ_PAGE_MS = 30_000;
 /** A page with no link is returned only after its reads gave none for this long, so results that come late are not missed. */
 const EMPTY_SPAN_MS = 1500;
 const LINKS_SHOWN = 40;
-const LINK_TEXT_SHOWN = 100;
 const LISTS_KEPT = 200;
 export const LINKS_HEADER = 'Liens (numérotés, les plus utiles d\'abord ; navigate accepte {"link": n}) :';
 const unknownLink = (n: number) => `Lien ${n} inconnu : relis l'onglet avec links: true.`;
@@ -411,7 +410,7 @@ function createToolsServer(
     }
     const rest = ranked.length - top.length;
     const shown = top.length
-      ? ["", LINKS_HEADER, ...top.map((l, i) => `${i}. ${l.text.slice(0, LINK_TEXT_SHOWN)} — ${l.url}`), ...(rest > 0 ? [`(${rest} autres liens non montrés)`] : [])]
+      ? ["", LINKS_HEADER, ...top.map((l, i) => `${i}. ${l.text} — ${l.url}`), ...(rest > 0 ? [`(${rest} autres liens non montrés)`] : [])]
       : [];
     return text([...head, `Titre : ${o.title}`, `URL : ${o.url}`, ...(r.selection ? [`Sélection : ${r.selection}`] : []), "", r.text, ...shown].join("\n"));
   };
@@ -613,6 +612,8 @@ function createToolsServer(
       if ((given === undefined) === (link === undefined)) return text("Donne soit `url`, soit `link`.", true);
       const url = link === undefined ? given! : listed.get(id)?.[link];
       if (url === undefined) return text(unknownLink(link!), true);
+      // The tab leaves this page (or stays, refused): its numbers would point into a page no longer shown.
+      listed.delete(id);
       if (!urlWeb(url)) return text(`URL refusée (http ou https uniquement) : ${url}`, true);
       if (handing(id)) return text(HANDING_TEXT, true);
       if (searching?.sessions.takeStop(win ?? MAIN_WINDOW, id)) return text(STOP_TEXT);

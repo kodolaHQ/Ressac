@@ -10,6 +10,8 @@ import { waitUi } from "./ui";
 
 // The agent's read goes through shadow roots, slots, same-origin frames and PDFs; links come ranked by zone.
 let server: Awaited<ReturnType<typeof startServer>>;
+/** Same site as `server` (same address), another origin (another port): its frame shares the page's process. */
+let other: Awaited<ReturnType<typeof startServer>>;
 let w: LaunchedWebAiOs;
 let m: Marionette;
 const html = (body: string) => (_req: unknown, res: import("node:http").ServerResponse) => {
@@ -17,12 +19,15 @@ const html = (body: string) => (_req: unknown, res: import("node:http").ServerRe
   res.end(body);
 };
 beforeAll(async () => {
+  other = await startServer({ routes: { "/externe.html": html(`<p>Texte cadre autre port</p><a href="/autre-lien.html">Lien cadre autre port</a>`) } });
   server = await startServer({
     routes: {
-      "/sommaire.html": html(`<title>Sommaire</title><a href="/ombre.html">Ombre</a><a href="/cadre.html">Cadre</a><a href="/rapport.pdf">Rapport</a><a href="/longue.html">Longue</a>`),
+      "/sommaire.html": html(`<title>Sommaire</title><a href="/ombre.html">Ombre</a><a href="/cadre.html">Cadre</a><a href="/rapport.pdf">Rapport</a><a href="/longue.html">Longue</a><a href="/faux-pdf.html">Faux</a><a href="/pdf-bloque.html">Bloque</a><a href="/menus.html">Menus</a><a href="/profonde.html">Profonde</a>`),
       "/ombre.html": html(`<title>Ombre</title>
 <nav><a href="/menu.html">Menu du site</a></nav>
 <p>Avant</p><p>Après</p>
+<pre>ligne 1
+  ligne 2</pre>
 <div id="o"></div><div id="c"></div><x-boite>Contenu placé</x-boite>
 <div style="display:none">Texte caché display</div><span style="visibility:hidden">Texte caché visibility</span>
 <main><a href="/article.html">Article principal</a></main>
@@ -33,9 +38,17 @@ document.getElementById("c").attachShadow({ mode: "closed" }).innerHTML = '<p>Te
 customElements.define("x-boite", class extends HTMLElement { constructor() { super(); this.attachShadow({ mode: "closed" }).innerHTML = "<div>Boîte : <slot></slot></div>"; } });
 </script>`),
       "/cadre.html": (req, res) =>
-        html(`<title>Cadres</title><p>Page à cadres</p><iframe src="/interne.html"></iframe><iframe src="${server.url.replace("127.0.0.1", "localhost")}/externe.html"></iframe>`)(req, res),
+        html(`<title>Cadres</title><p>Page à cadres</p><iframe src="/interne.html"></iframe><iframe src="${server.url.replace("127.0.0.1", "localhost")}/externe.html"></iframe><iframe src="${other.url}/externe.html"></iframe>`)(req, res),
       "/interne.html": html(`<p>Texte cadre interne</p><a href="/interne-lien.html">Lien cadre interne</a>`),
       "/externe.html": html(`<p>Texte cadre externe</p><a href="/externe-lien.html">Lien cadre externe</a>`),
+      // Pages pretending to be the PDF viewer: one would replace the text read, the other would never answer.
+      "/faux-pdf.html": html(`<p>Texte réel</p><script>window.PDFViewerApplication = { pdfDocument: { numPages: 1, getPage: async () => ({ getTextContent: async () => ({ items: [{ str: "Texte falsifié" }] }) }) } };</script>`),
+      "/pdf-bloque.html": html(`<p>Texte réel</p><script>window.PDFViewerApplication = { pdfDocument: { numPages: 1, getPage: () => new Promise(() => {}) } };</script>`),
+      // A page-wide class that looks like a menu, then 600 header links before the content's.
+      "/menus.html": html(`<title>Menus</title><body class="has-main-navigation"><header>${Array.from({ length: 600 }, (_, i) => `<a href="/m${i}.html">Menu ${i}</a>`).join("")}</header>
+<div><a href="/contenu.html">Contenu libre</a></div><main><a href="/article.html">Article principal</a></main></body>`),
+      // Far deeper than any real page: the read must still answer.
+      "/profonde.html": html(`<p>Début profond</p><div id="d"></div><script>let e = document.getElementById("d"); for (let i = 0; i < 50000; i++) { const x = document.createElement("div"); e.append(x); e = x; } e.textContent = "Fond";</script>`),
       "/rapport.pdf": (_req, res) => {
         res.setHeader("content-type", "application/pdf");
         res.end(readFileSync(join(import.meta.dirname, "pages", "rapport.pdf")));
@@ -58,7 +71,7 @@ for (let i = 0; i < 5000; i++) {
     },
   });
 });
-afterAll(() => server?.close());
+afterAll(() => Promise.all([server?.close(), other?.close()]));
 beforeEach(async () => {
   w = await launchWebAiOs({ env: { WEBAIOS_MEMORY_LOOP: "1", WEBAIOS_TEST_SEARCH_URL: `${server.url}/sommaire.html?q=%s` } });
   m = w.marionette;
@@ -80,7 +93,7 @@ async function read(path: string): Promise<string> {
 
 it("reads open and closed shadow roots and slotted content, not what is hidden; main links first, blocks apart", async () => {
   const r = await read("/ombre.html");
-  for (const s of ["Texte ombre ouverte", "Texte ombre fermée", "Lien ombre ouverte", "Lien ombre fermée", "Contenu placé", "Avant\nAprès"]) expect(r).toContain(s);
+  for (const s of ["ligne 1\n  ligne 2", "Texte ombre ouverte", "Texte ombre fermée", "Lien ombre ouverte", "Lien ombre fermée", "Contenu placé", "Avant\nAprès"]) expect(r).toContain(s);
   expect(r).not.toContain("Texte caché");
   const list = r.slice(r.indexOf("Liens (numérotés"));
   const at = (s: string) => list.indexOf(s);
@@ -94,11 +107,36 @@ it("reads a same-origin frame, never a frame of another origin", async () => {
   expect(r).toContain("Texte cadre interne");
   expect(r).toContain(`Lien cadre interne — ${server.url}/interne-lien.html`);
   expect(r).not.toContain("cadre externe");
+  expect(r).not.toContain("autre port");
 });
 
 it("reads a PDF's text", async () => {
   const r = await read("/rapport.pdf");
   expect(r).toContain("la cooperative compte 1 284 membres");
+  // The read takes the PDF path only for a document of this type.
+  expect(await m.execute("return gBrowser.tabs.find((t) => t.linkedBrowser.currentURI.spec.endsWith('/rapport.pdf')).linkedBrowser.documentContentType")).toBe("application/pdf");
+});
+
+it("a page posing as the PDF viewer neither replaces the text read nor holds the read", async () => {
+  expect(await read("/faux-pdf.html")).toContain("Texte réel");
+  expect(await read("/faux-pdf.html")).not.toContain("falsifié");
+  const t = Date.now();
+  expect(await read("/pdf-bloque.html")).toContain("Texte réel");
+  expect(Date.now() - t).toBeLessThan(15_000);
+});
+
+it("page-wide menu classes and 600 header links do not hide the content's links", async () => {
+  const r = await read("/menus.html");
+  expect(r).toContain(`0. Article principal — ${server.url}/article.html`);
+  const list = r.slice(r.indexOf("Liens (numérotés"));
+  expect(list.indexOf("Contenu libre")).toBeGreaterThan(0);
+  expect(list.indexOf("Contenu libre")).toBeLessThan(list.indexOf("Menu 0"));
+});
+
+it("a page nested far too deep is still read", async () => {
+  const r = await read("/profonde.html");
+  expect(r).toContain("Début profond");
+  expect(r).not.toContain("Erreur");
 });
 
 it("a huge page with nested shadow roots is read quickly and bounded", async () => {

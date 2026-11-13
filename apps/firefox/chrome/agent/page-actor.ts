@@ -7,7 +7,10 @@ const TEXT_MAX = 100_000;
 /** The body kept for the agent's memory. */
 const MEMORY_TEXT_MAX = 20_000;
 const LINKS_MAX = 500;
+/** A zone's share of LINKS_MAX: a page's 600 menu links never crowd out its content's. */
+const LINKS_PER_ZONE = 150;
 const PDF_PAGES_MAX = 60;
+const PDF_READ_MS = 5_000;
 
 type Zone = "main" | "other" | "aside" | "header" | "nav" | "footer" | "lang";
 const ZONE_TAG: Record<string, Zone> = { NAV: "nav", HEADER: "header", FOOTER: "footer", ASIDE: "aside", MAIN: "main", ARTICLE: "main" };
@@ -21,6 +24,8 @@ const ZONE_HINT: [RegExp, Zone][] = [
 const SKIP = new Set(["SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE", "HEAD", "TITLE", "SELECT", "TEXTAREA", "svg"]);
 
 const zoneOwn = (el: Element): Zone | undefined => {
+  // The page-wide classes of body and html (« has-main-navigation ») say nothing of where a link sits.
+  if (el.tagName === "BODY" || el.tagName === "HTML") return undefined;
   const z = ZONE_TAG[el.tagName] ?? ZONE_ROLE[el.getAttribute("role") ?? ""];
   if (z) return z;
   const hint = `${el.id} ${typeof el.className === "string" ? el.className : ""}`.trim();
@@ -31,7 +36,8 @@ const zoneOwn = (el: Element): Zone | undefined => {
 /**
  * The page as displayed, like innerText but through open and closed shadow roots, slots and frames of the page's own
  * origin (another origin's frame is never read: the user's grant is for this one). Its http(s) links, tagged with their
- * zone, at most LINKS_MAX (one per address and zone). The text stops at `max`; the walk goes on for the links.
+ * zone, at most LINKS_MAX and LINKS_PER_ZONE per zone (one per address, fragment dropped, and zone). The text stops at
+ * `max`; the walk goes on for the links.
  */
 function readDisplayed(doc: Document, max: number) {
   const origin = (doc as any).nodePrincipal.origin;
@@ -40,6 +46,7 @@ function readDisplayed(doc: Document, max: number) {
   let newline = true;
   const links: { text: string; url: string; zone: Zone }[] = [];
   const seen = new Set<string>();
+  const perZone = new Map<Zone, number>();
   const add = (t: string) => {
     if (length >= max) return;
     parts.push(t);
@@ -49,15 +56,17 @@ function readDisplayed(doc: Document, max: number) {
   const breakLine = () => {
     if (!newline) add("\n");
   };
-  const walk = (node: Node, zone: Zone, visible: boolean): void => {
+  const walk = (node: Node, zone: Zone, visible: boolean, pre: boolean): void => {
     if (length >= max && links.length >= LINKS_MAX) return;
     if (node.nodeType === Node.TEXT_NODE) {
-      const t = (node.nodeValue ?? "").replace(/\s+/g, " ");
-      if (visible && t.trim()) add(newline ? t.trimStart() : t);
+      if (!visible || length >= max) return;
+      // Preformatted text (code) keeps its line breaks and indentation, as innerText does.
+      const t = pre ? (node.nodeValue ?? "") : (node.nodeValue ?? "").replace(/\s+/g, " ");
+      if (t.trim()) add(newline && !pre ? t.trimStart() : t);
       return;
     }
     if (node.nodeType !== Node.ELEMENT_NODE) {
-      if (node.nodeType === Node.DOCUMENT_FRAGMENT_NODE) for (const c of node.childNodes) walk(c, zone, visible);
+      if (node.nodeType === Node.DOCUMENT_FRAGMENT_NODE) for (const c of node.childNodes) walk(c, zone, visible, pre);
       return;
     }
     const el = node as Element;
@@ -66,37 +75,44 @@ function readDisplayed(doc: Document, max: number) {
     if (!cs || cs.display === "none") return;
     const z = zoneOwn(el) ?? zone;
     const shown = cs.visibility === "visible";
+    const keep = cs.whiteSpace.startsWith("pre") || cs.whiteSpace === "break-spaces";
     const block = !cs.display.startsWith("inline") && cs.display !== "contents";
     if (el.tagName === "BR") return add("\n");
     if (block) breakLine();
-    if (el.tagName === "A" && shown && links.length < LINKS_MAX) {
+    if (el.tagName === "A" && shown && links.length < LINKS_MAX && (perZone.get(z) ?? 0) < LINKS_PER_ZONE) {
       const url = (el as HTMLAnchorElement).href;
-      if (typeof url === "string" && /^https?:/i.test(url) && !seen.has(`${z} ${url}`)) {
-        seen.add(`${z} ${url}`);
+      const key = `${z} ${String(url).split("#")[0]}`;
+      if (typeof url === "string" && /^https?:/i.test(url) && !seen.has(key)) {
+        seen.add(key);
+        perZone.set(z, (perZone.get(z) ?? 0) + 1);
         links.push({ text: (el.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 200), url, zone: z });
       }
     }
     const shadow = (el as any).openOrClosedShadowRoot as ShadowRoot | null;
-    if (shadow) walk(shadow, z, shown);
+    if (shadow) walk(shadow, z, shown, keep);
     else if (el.tagName === "SLOT") {
       const assigned = (el as HTMLSlotElement).assignedNodes({ flatten: true });
-      for (const c of assigned.length ? assigned : el.childNodes) walk(c, z, shown);
+      for (const c of assigned.length ? assigned : el.childNodes) walk(c, z, shown, keep);
     } else if (el.tagName === "IFRAME" || el.tagName === "FRAME") {
       let inner: Document | null = null;
       try {
         inner = (el as HTMLIFrameElement).contentDocument;
       } catch {}
-      if (inner?.body && (inner as any).nodePrincipal.origin === origin) walk(inner.body, z, shown);
-    } else for (const c of el.childNodes) walk(c, z, shown);
+      if (inner?.body && (inner as any).nodePrincipal.origin === origin) walk(inner.body, z, shown, keep);
+    } else for (const c of el.childNodes) walk(c, z, shown, keep);
     if (block) breakLine();
   };
   const root = doc.body ?? doc.documentElement;
-  if (root) walk(root, zoneOwn(root) ?? "other", true);
+  if (root) walk(root, "other", true, false);
   return { text: parts.join("").trim().slice(0, max), links };
 }
 
-/** The text of the PDF the built-in viewer shows, page by page; null when the document is not that viewer. */
-async function pdfText(win: Window, max: number): Promise<string | null> {
+/**
+ * The text of the PDF the built-in viewer shows, page by page; null for any other document. Only a PDF document is asked
+ * (a web page could define a fake viewer to replace the text read), and never beyond PDF_READ_MS.
+ */
+async function pdfText(doc: Document, win: Window, max: number): Promise<string | null> {
+  if (doc.contentType !== "application/pdf") return null;
   const pdf = (win as any).wrappedJSObject?.PDFViewerApplication?.pdfDocument;
   if (!pdf) return null;
   const pages: string[] = [];
@@ -104,7 +120,8 @@ async function pdfText(win: Window, max: number): Promise<string | null> {
   for (let i = 1; i <= Math.min(Number(pdf.numPages) || 0, PDF_PAGES_MAX) && length < max; i++) {
     const page = Cu.waiveXrays(await pdf.getPage(i));
     const content = Cu.waiveXrays(await page.getTextContent());
-    const text = Array.from(content.items as ArrayLike<any>, (it) => String(it.str ?? "") + (it.hasEOL ? "\n" : "")).join("");
+    const items = Array.prototype.slice.call(content.items, 0, max) as any[];
+    const text = items.map((it) => String(it.str ?? "") + (it.hasEOL ? "\n" : "")).join("").slice(0, max - length);
     pages.push(text);
     length += text.length;
   }
@@ -132,9 +149,16 @@ export class WebAiOsPageChild extends JSWindowActorChild {
     switch (m.name) {
       case "getText":
         return (async () => {
-          const shown = readDisplayed(doc, TEXT_MAX);
-          // The viewer's own text is only its rendered pages: the PDF itself has them all.
-          const pdf = await pdfText(win, TEXT_MAX).catch(() => null);
+          let shown: { text: string; links: { text: string; url: string; zone?: string }[] };
+          try {
+            shown = readDisplayed(doc, TEXT_MAX);
+          } catch {
+            // A page the walk cannot go through (nested far too deep): what innerText gives.
+            shown = { text: (doc.body?.innerText ?? "").slice(0, TEXT_MAX), links: collect(LINKS_MAX) };
+          }
+          // The viewer's own text is only its rendered pages: the PDF itself has them all. Xray: the page's own timers cannot be swapped in.
+          const late = new Promise<null>((ok) => win.setTimeout(() => ok(null), PDF_READ_MS));
+          const pdf = await Promise.race([pdfText(doc, win, TEXT_MAX), late]).catch(() => null);
           return { text: pdf ?? shown.text, selection: String(win.getSelection() ?? ""), links: shown.links };
         })();
       // The parts of the page retained for the agent's memory.

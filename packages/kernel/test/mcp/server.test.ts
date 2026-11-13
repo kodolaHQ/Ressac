@@ -122,6 +122,14 @@ test("navigate by link number opens the last listed address of that tab; a new r
   expect(bridge.calls.filter((c) => c.method === "navigate").map((c) => c.args[1])).toEqual(["https://exemple.fr/1", "https://exemple.fr/2"]);
 });
 
+test("navigate by url forgets the tab's numbered list: a number never points into the previous page", async () => {
+  policy.grant(gmail);
+  await client.callTool({ name: "read_tab", arguments: { id: "gmail", links: true } });
+  await client.callTool({ name: "navigate", arguments: { id: "gmail", url: "https://mail.google.com/mail/u/1/" } });
+  const r = await client.callTool({ name: "navigate", arguments: { id: "gmail", link: 0 } });
+  expect(text(r)).toBe("Lien 0 inconnu : relis l'onglet avec links: true.");
+});
+
 test("navigate by an unknown link number, or with both or neither of url and link, is an error and opens nothing", async () => {
   policy.grant(gmail);
   const unread = await client.callTool({ name: "navigate", arguments: { id: "gmail", link: 0 } });
