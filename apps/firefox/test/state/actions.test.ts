@@ -1080,3 +1080,21 @@ test("unloadEssential: the tab stays without a page and leaves the display, a cl
   expect(e.tabs[id]!.unloaded).toBeUndefined();
   expect(Object.values(e.tabs).filter((o) => o.link)).toHaveLength(1);
 });
+
+test("moveTabToNewWindow: the tab leaves for a new window in its space, where it is dropped; not a window's only tab, not a pinned one", () => {
+  const a = open("https://a.test/");
+  expect(apply(e, { type: "moveTabToNewWindow", id: a }, genId)).toBe(e); // the only tab
+  const b = open("https://b.test/");
+  ag({ type: "pinTab", id: a });
+  expect(apply(e, { type: "moveTabToNewWindow", id: a }, genId)).toBe(e); // pinned
+  const c = open("https://c.test/");
+  const frame = { x: 10, y: 20, width: 800, height: 600 };
+  ag({ type: "moveTabToNewWindow", id: c, windowId: "W2", frame });
+  expect(order()).toEqual([b]);
+  expect(active()).toBe(b);
+  const to = e.windows.find((f) => f.id === "W2")!;
+  expect(to).toMatchObject({ activeSpace: P, frame });
+  expect(to.order[P]).toEqual([c]);
+  expect(to.active[P]).toBe(c);
+  expect(e.tabs[c]!.windowId).toBe("W2");
+});

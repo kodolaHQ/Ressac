@@ -5,7 +5,6 @@
   import { api, appState } from "../state.svelte";
   import Home from "../Home.svelte";
   import TipCard from "./TipCard.svelte";
-  import Essentials from "./Essentials.svelte";
   import SuggestionsActions from "./ActionSuggestions.svelte";
   import { suggestionsActions } from "./suggestions";
   import type { ActionShown } from "../../shared/actions";
@@ -123,18 +122,15 @@
     {#if denial}<p class="refusal" data-testid="action-refusal">{denial}</p>{/if}
   </form>
   <TipCard />
-  <Essentials window={win} large />
   <Home />
 </div>
 
 <style>
-  .empty-page { position: relative; display: flex; flex-direction: column; align-items: center; gap: 32px; padding-top: 12vh; height: 100%; box-sizing: border-box; overflow-y: auto; }
+  .empty-page { position: relative; display: flex; flex-direction: column; align-items: center; gap: 20px; padding-top: clamp(24px, 6vh, 72px); height: 100%; box-sizing: border-box; overflow-y: auto; }
   form { width: min(560px, 80%); }
   input { width: 100%; box-sizing: border-box; padding: 12px 16px; font-size: 16px; border-radius: 16px; border: 1px solid var(--glass-edge); background: var(--glass); box-shadow: var(--float); color: var(--text); outline: none; transition: border-color var(--tap), box-shadow var(--tap); }
   .refusal { margin: 6px 4px 0; color: var(--in-error); font-size: 13px; }
   input::placeholder { color: var(--text-muted); }
   input:focus { border-color: var(--accent); box-shadow: var(--float), 0 0 0 4px color-mix(in oklab, var(--accent) 18%, transparent); }
   .empty-page :global([data-testid="tip-card"]) { width: min(560px, 80%); box-sizing: border-box; }
-  /* No shrink: its min-height lets the column crush it under tall widgets. */
-  .empty-page :global([data-testid="essentials-empty-page"]) { width: min(560px, 80%); flex-shrink: 0; }
 </style>

@@ -41,6 +41,19 @@ function win(d: Draft, id: string): WindowState | undefined {
   return d.windows.find((f) => f.id === id);
 }
 
+function newWindow(d: Draft, id: string, space: SpaceId): WindowState {
+  return {
+    id,
+    activeSpace: space,
+    order: Object.fromEntries(d.spaces.map((e) => [e.id, []])),
+    active: Object.fromEntries(d.spaces.map((e) => [e.id, null])),
+    compact: false,
+    agentPanelOpen: false,
+    recentlyClosed: [],
+    frame: null,
+  };
+}
+
 function list(f: WindowState, space: SpaceId): TabId[] {
   return (f.order[space] ??= []);
 }
@@ -491,16 +504,25 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
     }
     case "openWindow": {
       const space = a.spaceId && d.spaces.some((e) => e.id === a.spaceId) ? a.spaceId : d.spaces[0]!.id;
-      d.windows.push({
-        id: a.id ?? genId(),
-        activeSpace: space,
-        order: Object.fromEntries(d.spaces.map((e) => [e.id, []])),
-        active: Object.fromEntries(d.spaces.map((e) => [e.id, null])),
-        compact: false,
-        agentPanelOpen: false,
-        recentlyClosed: [],
-        frame: null,
-      });
+      d.windows.push(newWindow(d, a.id ?? genId(), space));
+      return true;
+    }
+    case "moveTabToNewWindow": {
+      const o = d.tabs[a.id];
+      const f = o && win(d, o.windowId);
+      // A pinned tab or an essential belongs to its favorite; a window's only tab would leave an empty window behind.
+      if (!o || !f || o.link || !Object.values(d.tabs).some((x) => x.windowId === f.id && !x.link && x.id !== o.id)) return false;
+      const l = list(f, o.spaceId);
+      const i = l.indexOf(o.id);
+      if (i >= 0) l.splice(i, 1);
+      if (f.active[o.spaceId] === o.id) f.active[o.spaceId] = (i >= 0 ? (l[i] ?? l[i - 1]) : l[0]) ?? null;
+      const to = newWindow(d, a.windowId ?? genId(), o.spaceId);
+      to.order[o.spaceId] = [o.id];
+      to.active[o.spaceId] = o.id;
+      to.compact = f.compact;
+      to.frame = a.frame ?? null;
+      d.windows.push(to);
+      o.windowId = to.id;
       return true;
     }
     case "closeWindow": {
@@ -639,6 +661,11 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
     case "resetShortcuts": {
       if (!Object.keys(d.settings.shortcuts).length) return false;
       d.settings.shortcuts = {};
+      return true;
+    }
+    case "setStartOnHome": {
+      if (d.settings.startOnHome === a.enabled) return false;
+      d.settings.startOnHome = a.enabled;
       return true;
     }
     case "setSidebarSide": {

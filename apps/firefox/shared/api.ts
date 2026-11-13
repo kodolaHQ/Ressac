@@ -14,6 +14,7 @@ import type { LeftZone } from "./reveal";
 import type { Decision, PendingRequest, AccessState, BrowserState, SpaceId, WindowId, TabId, Download, Visit } from "./model";
 
 const id = z.string().min(1);
+const frame = z.object({ x: z.number(), y: z.number(), width: z.number().positive(), height: z.number().positive() });
 const engine = z.enum(["google", "duckduckgo", "qwant"]);
 /** A favorite given by its address (an import), not by an open tab. */
 const favoriteLink = z.object({ url: z.string().regex(/^https?:\/\//), title: z.string() });
@@ -91,11 +92,9 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("activateSpace"), windowId: id, id }),
   z.object({ type: z.literal("openWindow"), id: id.optional(), spaceId: id.optional() }),
   z.object({ type: z.literal("closeWindow"), id }),
-  z.object({
-    type: z.literal("frameWindow"),
-    id,
-    frame: z.object({ x: z.number(), y: z.number(), width: z.number().positive(), height: z.number().positive() }),
-  }),
+  z.object({ type: z.literal("frameWindow"), id, frame }),
+  // The tab leaves its window for a new one (`windowId`, `frame`: where it was dropped), its page still running.
+  z.object({ type: z.literal("moveTabToNewWindow"), id, windowId: id.optional(), frame: frame.optional() }),
   z.object({ type: z.literal("showBlankPage"), windowId: id }),
   z.object({ type: z.literal("toggleCompact"), windowId: id }),
   z.object({ type: z.literal("toggleAgentPanel"), windowId: id }),
@@ -148,6 +147,7 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("setHintsEnabled"), enabled: z.boolean() }),
   z.object({ type: z.literal("setVimMode"), enabled: z.boolean() }),
   z.object({ type: z.literal("setSidebarSide"), side: z.enum(["left", "right"]) }),
+  z.object({ type: z.literal("setStartOnHome"), enabled: z.boolean() }),
   z.object({ type: z.literal("setShortcut"), id: z.enum(SHORTCUT_IDS), binding: z.object({ key: z.string().min(1), shift: z.boolean(), alt: z.boolean(), ctrl: z.boolean(), meta: z.boolean() }) }),
   z.object({ type: z.literal("resetShortcut"), id: z.enum(SHORTCUT_IDS) }),
   z.object({ type: z.literal("resetShortcuts") }),
@@ -480,6 +480,12 @@ export interface SettingsApi {
   telemetry(): Promise<{ available: boolean; enabled: boolean }>;
   setTelemetry(enabled: boolean): void;
   version(): Promise<string>;
+  /** Whether macOS opens web links with WebAiOs. */
+  defaultBrowser(): Promise<boolean>;
+  /** macOS asks for confirmation itself: read `defaultBrowser()` again for the answer. */
+  setDefaultBrowser(): void;
+  /** Makes macOS ask again for screen recording (a relaunch is needed); false when it could not. */
+  repairScreenSharing(): Promise<boolean>;
   openAdvanced(): void;
   /** The OrbStack install link: https only. */
   openUrl(url: string): void;

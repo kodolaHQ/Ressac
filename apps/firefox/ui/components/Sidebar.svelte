@@ -54,7 +54,16 @@
 
 <aside class="bar" data-testid="sidebar" hidden={hidden}>
   <UrlBar window={win} />
-  <div class="scrolling">
+  <!-- An essential dragged out of its grid and dropped anywhere below is no longer one: its open tab joins the list. -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div
+    class="scrolling"
+    ondragover={(e) => e.dataTransfer?.types.includes("application/x-webaios-essentiel") && e.preventDefault()}
+    ondrop={(e) => {
+      const favoriteId = e.dataTransfer?.getData("application/x-webaios-essentiel");
+      if (favoriteId) api.dispatch({ type: "removeEssential", favoriteId });
+    }}
+  >
     <Essentials window={win} />
     {#if space}<Pinned bind:this={pinned} window={win} {space} {activeLink} />{/if}
     <!-- svelte-ignore a11y_no_static_element_interactions -->

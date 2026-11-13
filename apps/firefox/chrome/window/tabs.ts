@@ -23,6 +23,8 @@ type TabFields = Extract<Action, { type: "updateTab" }>["fields"];
  */
 export class TabSync {
   private readonly tabs = new Map<TabId, any>();
+  /** XUL tabs whose WebAiOs tab moved to another window: kept, page running, until that window adopts them. */
+  private readonly leaving = new Map<TabId, any>();
   private parking: any;
   private creating = false;
   /** While a popup's link opens here: the WebAiOs tab behind the popup. */
@@ -199,8 +201,21 @@ export class TabSync {
     const tab = active ? state.tabs[active] : undefined;
     const web = tab && hasView(tab.url) ? tab : undefined;
     // Gone, or now in another container: the page reopens from scratch at the same URL.
+    for (const [id, tab] of [...this.leaving]) {
+      const o = state.tabs[id];
+      if (o && o.windowId !== this.windowId) continue;
+      this.leaving.delete(id);
+      // Back before any window adopted it, or closed meanwhile.
+      if (o) this.tabs.set(id, tab);
+      else this.select(() => this.gBrowser.removeTab(tab, { skipPermitUnload: true, animate: false }));
+    }
     for (const [id, tab] of [...this.tabs]) {
       const o = state.tabs[id];
+      if (o && o.windowId !== this.windowId) {
+        this.tabs.delete(id);
+        this.leaving.set(id, tab);
+        continue;
+      }
       if (!o || o.unloaded || this.containerOf(state, o) !== tab.userContextId) this.remove(id, tab);
     }
     if (web && !this.tabs.has(web.id)) this.create(state, web);
@@ -231,7 +246,7 @@ export class TabSync {
       const triggeringPrincipal = /^https?:/i.test(o.url)
         ? Services.scriptSecurityManager.createContentPrincipal(Services.io.newURI(o.url), { userContextId })
         : Services.scriptSecurityManager.getSystemPrincipal();
-      const tab = this.gBrowser.addTab(o.url, { triggeringPrincipal, userContextId, skipAnimation: true });
+      const tab = this.adopt(o.id) ?? this.gBrowser.addTab(o.url, { triggeringPrincipal, userContextId, skipAnimation: true });
       tab.setAttribute(TAB_ID, o.id);
       // Firefox never unloads an essential to free memory.
       if (o.link?.type === "essential") tab.undiscardable = true;
@@ -239,6 +254,22 @@ export class TabSync {
     } finally {
       this.creating = false;
     }
+  }
+
+  /**
+   * The tab's page, still running in the window it just left (moveTabToNewWindow): Firefox swaps it into a new XUL tab
+   * here and closes the other. undefined when no window holds it; a refused swap closes the old page (it reloads here).
+   */
+  private adopt(id: TabId): any {
+    for (const w of Services.wm.getEnumerator("navigator:browser")) {
+      if (w.gBrowser === this.gBrowser) continue;
+      const old = w.gBrowser?.tabs.find((t: any) => t.getAttribute(TAB_ID) === id);
+      if (!old) continue;
+      const tab = this.gBrowser.adoptTab(old, { tabIndex: this.gBrowser.tabs.length });
+      if (!tab) w.gBrowser.removeTab(old, { skipPermitUnload: true, animate: false });
+      return tab ?? undefined;
+    }
+    return undefined;
   }
 
   private remove(id: TabId, tab: any): void {
@@ -350,10 +381,13 @@ export class TabSync {
       return;
     }
     const id = tab.getAttribute(TAB_ID);
+    // Adopted by the window it moved to: its page lives on there.
+    if (id && this.leaving.get(id) === tab) return void this.leaving.delete(id);
     // A tab we did not remove ourselves: the page closed itself (window.close()).
     if (id && this.tabs.get(id) === tab) {
       this.tabs.delete(id);
-      this.store.dispatch({ type: "closeTab", id });
+      // Unless it was adopted before this window's sync saw it leave.
+      if (this.store.state.tabs[id]?.windowId === this.windowId) this.store.dispatch({ type: "closeTab", id });
     }
   }
 }

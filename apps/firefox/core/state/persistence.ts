@@ -65,6 +65,8 @@ const SchemaSession = z.object({
       .catch(() => ({ enabled: true, seen: (Object.keys(FIRST_TIME) as HintId[]).filter((id) => id !== "extensions") })),
     sidebarSide: z.enum(["left", "right"]).catch("left"),
     vimMode: z.boolean().catch(false),
+    // A session saved before the setting existed gets the default.
+    startOnHome: z.boolean().catch(true),
     // An unknown id or a malformed binding is dropped; the rest is kept.
     shortcuts: z
       .record(z.string(), z.unknown())
@@ -129,6 +131,8 @@ export async function loadSession(folder: string, kept?: (path: string) => void)
   }
   try {
     const parsed = withProfiles(SchemaSession.parse(JSON.parse(text)));
+    // The tabs are all still there; only what each window shows first changes.
+    if (parsed.settings.startOnHome) for (const f of parsed.windows) f.active[f.activeSpace] = null;
     return {
       ...parsed,
       tabs: Object.fromEntries(Object.entries(parsed.tabs).map(([id, o]) => [id, { ...o, ...VOLATILE }])),

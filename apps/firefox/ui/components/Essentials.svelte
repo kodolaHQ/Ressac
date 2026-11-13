@@ -4,7 +4,7 @@
   import SiteIcon from "./SiteIcon.svelte";
   import { openMenu } from "./menu.svelte";
 
-  let { window: win, large: large = false }: { window: WindowState; large?: boolean } = $props();
+  let { window: win }: { window: WindowState } = $props();
   const active = $derived.by(() => {
     const id = win.active[win.activeSpace];
     return id ? appState.value?.tabs[id]?.link?.id : undefined;
@@ -24,12 +24,13 @@
 
 <div
   class="essentials"
-  class:large={large}
-  data-testid={large ? "essentials-empty-page" : "essentials"}
+  data-testid="essentials"
   role="group"
   aria-label="Essentiels"
   ondragover={(e) => e.dataTransfer?.types.includes("application/x-webaios-onglet") && e.preventDefault()}
   ondrop={(e) => {
+    // An essential dropped back in its own grid (between two cells) stays one.
+    if (e.dataTransfer?.types.includes(MOVE)) return e.stopPropagation();
     const id = e.dataTransfer?.getData("application/x-webaios-onglet");
     if (id) api.dispatch({ type: "addEssential", id });
   }}
@@ -69,20 +70,18 @@
           { label: "Retirer", dispatch: () => api.dispatch({ type: "removeEssential", favoriteId: favorite.id }) },
         ])}
     >
-      <SiteIcon favicon={tabOf(favorite)?.favicon ?? favorite.favicon} title={favorite.title} size={large ? 32 : 18} />
+      <SiteIcon favicon={tabOf(favorite)?.favicon ?? favorite.favicon} title={favorite.title} size={18} />
     </div>
   {/each}
 </div>
 
 <style>
   .essentials { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; min-height: 8px; }
-  .essentials.large { grid-template-columns: repeat(auto-fill, 64px); justify-content: center; gap: 12px; }
   .cell { display: grid; place-content: center; height: 44px; border-radius: 12px; background: color-mix(in srgb, var(--glass-hi) 60%, transparent); box-shadow: inset 0 0 0 1px var(--glass-edge); transition: transform var(--tap), background var(--tap), box-shadow var(--tap), opacity var(--tap); }
   /* Unloaded by the user: dimmed until opened again. */
   .cell.unloaded { opacity: 0.45; }
   .cell:hover { background: var(--glass-hi); }
   .cell:active { transform: scale(0.97); }
-  .large .cell { height: 64px; border-radius: 16px; }
   /* Inside the box: the sidebar's scroll area clips what sticks out. */
   .cell.over { box-shadow: inset 0 0 0 1.5px var(--accent); transform: scale(1.06); }
   .cell.active { background: var(--glass-hi); box-shadow: inset 0 0 0 1.5px var(--accent); }

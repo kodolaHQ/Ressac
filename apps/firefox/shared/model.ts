@@ -215,6 +215,8 @@ export interface BrowserState {
     sidebarSide: "left" | "right";
     /** Vim keys in web tabs (off by default). */
     vimMode: boolean;
+    /** At launch each window shows the home page instead of the tab it was left on (on by default). */
+    startOnHome: boolean;
     /** The user's own bindings; an action absent here keeps its default (shared/shortcuts.ts). */
     shortcuts: Partial<Record<ShortcutId, Binding>>;
   };

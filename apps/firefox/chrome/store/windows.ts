@@ -54,15 +54,16 @@ export function createWindowRegistry(o: {
         const id = f.id;
         opening.push(id);
         // Closed before it could claim (before Firefox's delayed startup): its state window is gone as well.
-        o.open()?.addEventListener(
-          "unload",
-          () => {
-            if (!opening.includes(id)) return;
-            opening = opening.filter((x) => x !== id);
-            forget(id);
-          },
-          { once: true },
-        );
+        // Not its `unload`: a new window's first one is its initial about:blank giving way to the browser.
+        const opened = o.open();
+        const closed = (subject: unknown) => {
+          if (subject !== opened) return;
+          Services.obs.removeObserver(closed, "domwindowclosed");
+          if (!opening.includes(id)) return;
+          opening = opening.filter((x) => x !== id);
+          forget(id);
+        };
+        if (opened) Services.obs.addObserver(closed, "domwindowclosed");
       }
   };
   store.subscribe(openMissing);
