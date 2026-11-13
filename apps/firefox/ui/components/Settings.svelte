@@ -20,7 +20,7 @@
 
 <script lang="ts">
   import type { LocalAiStateShown, SettingsApi } from "../../shared/api";
-  import { TELEMETRY_NOTICE, type AgentAccount, type DecisionModel, type LoginResult, type PullProgress, type WorkshopOperation } from "../../shared/settings";
+  import { OLLAMA_ITSELF, TELEMETRY_NOTICE, type AgentAccount, type DecisionModel, type LoginResult, type PullProgress, type WorkshopOperation } from "../../shared/settings";
   import { api, appState } from "../state.svelte";
   import Icon from "./Icon.svelte";
   import SettingsMozilla from "./SettingsMozilla.svelte";
@@ -89,6 +89,15 @@
   let pulling = $state<PullProgress | null>(null);
   let pullError = $state<string | null>(null);
   const reloadAi = () => void api.ai.state().then((r) => (ai = r));
+  const ollama = $derived(ai?.ollama);
+  let startingOllama = $state(false);
+  async function startOllama() {
+    startingOllama = true;
+    const r = await s.startOllama();
+    startingOllama = false;
+    pullError = r.ok ? null : r.error;
+    reloadAi();
+  }
   async function pullModel(name: string) {
     pullError = null;
     pulling = { name, percent: null, status: "" };
@@ -168,14 +177,14 @@
 </script>
 
 <!-- The pill of a local model: « installé », or « absent » with a download button once Ollama answers. -->
-{#snippet pullPill(name: string, installed: boolean, id: string)}
+{#snippet pullPill(name: string, installed: boolean, id: string, action = "Télécharger")}
   {#if installed}
     <span class="pill" data-tone="ok">installé</span>
   {:else if pulling?.name === name}
     <span class="pill" data-tone="warn" data-testid="pull-progress-{id}">{pullLabel(pulling)}</span>
   {:else}
     <span class="pill" data-tone="off">absent</span>
-    {#if v?.ollama}<button data-testid="pull-{id}" disabled={!!pulling} onclick={() => void pullModel(name)}>Télécharger</button>{/if}
+    {#if v?.ollama || name === OLLAMA_ITSELF}<button data-testid="pull-{id}" disabled={!!pulling} onclick={() => void pullModel(name)}>{action}</button>{/if}
   {/if}
 {/snippet}
 
@@ -252,7 +261,17 @@
           <div class="panel">
             <div class="row" data-testid="ai-ollama">
               <div class="grow"><b>Ollama</b><code class="muted">{ai.ollamaUrl}</code></div>
-              <span class="pill" data-tone={v?.ollama ? "ok" : "warn"}>{v?.ollama ? "joignable" : "injoignable"}</span>
+              {#if ollama?.kind === "outdated"}
+                <span class="pill" data-tone="warn">version {ollama.version}, il faut la {ollama.min}</span>
+                <button data-testid="ollama-update" onclick={() => s.openUrl("https://ollama.com/download")}>Mettre à jour Ollama</button>
+              {:else if ollama?.kind === "stopped"}
+                <span class="pill" data-tone="warn">arrêté</span>
+                <button data-testid="ollama-start" disabled={startingOllama} onclick={() => void startOllama()}>{startingOllama ? "Démarrage…" : "Démarrer"}</button>
+              {:else if ollama?.kind === "absent"}
+                {@render pullPill(OLLAMA_ITSELF, false, "ollama", "Installer")}
+              {:else}
+                <span class="pill" data-tone={v?.ollama ? "ok" : "warn"}>{v?.ollama ? "joignable" : "injoignable"}</span>
+              {/if}
             </div>
             <div class="row" data-testid="ai-gemma">
               <div class="grow"><b>Gemma</b><span class="muted">Widgets et veille : {v?.gemmaModel ? `Gemma (${v.gemmaModel})` : "Gemma absent"}</span></div>

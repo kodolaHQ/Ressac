@@ -5,7 +5,7 @@ import { SHORTCUT_IDS } from "./shortcuts";
 import { validFolder, ID_EXECUTION, ID_SITE, type Application, type Warning, type BlockCatalogEntry, type DeclarationWidget, type DirectState, type DraftRead, type SaveResult, type AttemptResult, type DevRight, type AiState, type WidgetState, type Execution, type ResumeExecution, type ActionsState, type PageAction, type LaunchResult, type Owner, type RenderedPage } from "@webaios/kernel";
 import type { BatchState, ProjectId, ExternalProject, TrackedProject } from "@webaios/kernel";
 import { PROJECT_ID, type Comment, type DiffFile, type ModifiedFile } from "@webaios/kernel";
-import { ClaudeEngineSchema, CodexEngineSchema, type AgentAccount, type Backup, type CodexEngine, type ClaudeEngine, type DecisionModel, type LoginResult, type GrantKind, type GrantRow, type SettingsResult, type WorkshopOperation, type PullProgress } from "./settings";
+import { ClaudeEngineSchema, CodexEngineSchema, type OllamaStatus, type AgentAccount, type Backup, type CodexEngine, type ClaudeEngine, type DecisionModel, type LoginResult, type GrantKind, type GrantRow, type SettingsResult, type WorkshopOperation, type PullProgress } from "./settings";
 import type { WorkshopState } from "../../../packages/kernel/src/container/workshop.ts";
 import type { ActionShown } from "./actions";
 import type { ActionSite, SiteWindowState, MessageToHome, ShownSite } from "./sites";
@@ -481,7 +481,9 @@ export interface SettingsApi {
   pullModel(name: string): Promise<SettingsResult>;
   /** The pull in progress (from any window), null when none. */
   pullProgress(): Promise<PullProgress | null>;
-  /** Pulls the given models one after the other without waiting; a system notification says the end. */
+  /** Starts the Ollama installed on this machine and waits for it to answer. */
+  startOllama(): Promise<SettingsResult>;
+  /** Pulls the given models one after the other without waiting (`OLLAMA_ITSELF` first downloads Ollama); a system notification says the end. */
   pullInBackground(names: string[]): Promise<SettingsResult>;
   ollamaModels(url: string): Promise<{ ok: true; models: { name: string; size?: string }[] } | { ok: false; error: string }>;
   grants(): Promise<GrantRow[]>;
@@ -707,6 +709,8 @@ export interface LocalAiStateShown {
   error?: string;
   verification?: { kev: boolean; uv: boolean; ollama: boolean; gemma: boolean; gemmaModel?: string | null; decision: boolean };
   ollamaUrl?: string;
+  /** What was found of Ollama on this machine (absent from an older host). */
+  ollama?: OllamaStatus;
 }
 
 /** What an app window's badge UI gets (ui/badge-api.ts): the agent's access and its app's design mode. */

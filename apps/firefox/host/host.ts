@@ -1,6 +1,6 @@
 import type { Kernel, TabInfo } from "../../../packages/kernel/src/index.ts";
 import type { FrameBounds } from "../shared/model.ts";
-import type { ClaudeEngine, CodexEngine } from "../shared/settings.ts";
+import type { ClaudeEngine, CodexEngine, OllamaStatus } from "../shared/settings.ts";
 import type { BuilderSelection, TerminalSize } from "../shared/api.ts";
 
 // The agent host: Firefox spawns it and talks JSON-RPC over stdin/stdout, one JSON message per line.
@@ -29,6 +29,7 @@ const { RemoteBridge } = await import("./remote-bridge.ts");
 const { createSites } = await import("./sites.ts");
 const { createDesignHost, DESIGN_METHODS, externalMcpPort } = await import("./design.ts");
 const { createSettingsHandlers, SETTINGS_METHODS } = await import("./settings.ts");
+const { createOllamaRuntime, OLLAMA_LOCAL_URL, OLLAMA_MIN } = await import("./ollama-runtime.ts");
 const { createApplicationsHost } = await import("./applications.ts");
 const { createActionsHost } = await import("./actions.ts");
 const { ExtensionsAgent } = await import("./extensions/agent.ts");
@@ -151,6 +152,14 @@ const broadcastAccess = () => {
 const ai = new LocalAi({ folder: join(dataDir, "local-ai"), run: defaultRunner, decisionModel: "pplx-decider-flash" });
 
 // The host is Node and cannot call Cc: in tests it writes the file, otherwise the chrome store shows the alert.
+// Another address imposed (a remote Ollama, a test): WebAiOs then starts and installs nothing.
+// WEBAIOS_TEST_OLLAMA_KIND (e2e): a fixed status and actions that touch nothing, to show each state of the pages.
+const fakeOllama = process.env.WEBAIOS_TEST_OLLAMA_KIND;
+const ollama = fakeOllama
+  ? { status: async () => ({ kind: fakeOllama, version: "0.30.0", min: OLLAMA_MIN }) as OllamaStatus, start: async () => {}, install: async (progress: (p: number | null) => void) => progress(50), close: () => {} }
+  : createOllamaRuntime({ url: ai.ollamaUrl, dataDir, managed: process.platform === "darwin" && ai.ollamaUrl === OLLAMA_LOCAL_URL && !process.env.WEBAIOS_TEST_NO_SYSTEM });
+// An installed Ollama that is not running is started with WebAiOs; nothing is ever downloaded without a click.
+void ollama.status().then((s) => (s.kind === "stopped" ? ollama.start() : undefined)).catch((e) => console.error("[webaios] Ollama did not start:", e));
 const notify = (n: { title: string; text: string }) => {
   const file = process.env.WEBAIOS_TEST_NOTIFICATIONS;
   if (file) return void appendFileSync(file, JSON.stringify({ title: n.title, text: n.text }) + "\n");
@@ -272,6 +281,7 @@ const stop = () =>
     await actionsStop?.();
     await stopKernel(await ready);
     await ai.close().catch(() => {});
+    ollama.close();
     clearInterval(purge);
     hist?.close();
     await appsStopped;
@@ -776,6 +786,7 @@ try {
 const settings = createSettingsHandlers({
   workshop,
   ai,
+  ollama,
   stopApps: () => apps.manager.stopAll(),
   relaunchSessions: () => sessions.relaunchAll(),
   dataDir,

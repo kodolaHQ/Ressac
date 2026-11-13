@@ -170,6 +170,28 @@ describe("welcome", () => {
     }
   });
 
+  it("no Ollama on the machine: « Installer en arrière-plan » starts the install, and the welcome goes on", async () => {
+    await launch({ env: { WEBAIOS_TEST_OLLAMA_KIND: "absent" } });
+    await forward(1, 5);
+    await shows("welcome-ollama", "L'IA locale n'est pas installée");
+    await press("welcome-install-ai");
+    await shows("welcome-ollama", "Installation lancée");
+    await press("welcome-next");
+    await shown("welcome-6");
+  });
+
+  it("an Ollama too old or stopped: the welcome invites to update it, or offers to start it", async () => {
+    await launch({ env: { WEBAIOS_TEST_OLLAMA_KIND: "outdated" } });
+    await forward(1, 5);
+    await shows("welcome-ollama", "Ollama 0.30.0 est trop ancien pour l'IA locale : il faut la version 0.40.0 ou plus.");
+    await shown("welcome-update-ollama");
+    await w!.close();
+    await launch({ env: { WEBAIOS_TEST_OLLAMA_KIND: "stopped" } });
+    await forward(1, 5);
+    await shows("welcome-ollama", "Ollama est installé mais arrêté.");
+    await shown("welcome-start-ollama");
+  });
+
   it("a silent host: neither state can be checked", async () => {
     await launch({ welcome: false });
     await m.execute(`return (async () => { await window.webaiosWindow.store.agent.stop(); return true; })();`);

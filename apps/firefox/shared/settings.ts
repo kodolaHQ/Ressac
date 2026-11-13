@@ -96,7 +96,12 @@ export function apiUrlProblem(url: string): string | null {
   return "Adresse invalide (https://…)";
 }
 
-/** The progress of an Ollama model download shown in Settings. */
+/** What WebAiOs found of Ollama on this machine. `unmanaged`: another address is imposed, WebAiOs starts and installs nothing. */
+export type OllamaStatus = { kind: "ready"; version: string } | { kind: "outdated"; version: string; min: string } | { kind: "stopped" | "absent" | "unmanaged" };
+/** The name the download of Ollama itself goes under, next to the model names. */
+export const OLLAMA_ITSELF = "ollama";
+
+/** The progress of an Ollama model download (or of Ollama itself) shown in Settings. */
 export interface PullProgress {
   name: string;
   /** 0-100, null while Ollama gives no total (manifest, verifying). */

@@ -7,7 +7,7 @@ import { createSettingsHandlers } from "../host/settings";
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })));
 
-function setup(over: { state?: string; exec?: (argv: string[]) => unknown } = {}) {
+function setup(over: { state?: string; exec?: (argv: string[]) => unknown; ollama?: unknown } = {}) {
   const pids = join(mkdtempSync(join(tmpdir(), "settings-pids-")), "pids");
   dirs.push(join(pids, ".."));
   const dataDir = mkdtempSync(join(tmpdir(), "settings-host-"));
@@ -26,6 +26,11 @@ function setup(over: { state?: string; exec?: (argv: string[]) => unknown } = {}
       check: async () => ({ kev: true, uv: true, ollama: true, gemma: false, gemmaModel: null, decision: true }),
       ollamaUrl: "http://127.0.0.1:11434",
       setDecisionModel: vi.fn(),
+    },
+    ollama: {
+      status: async () => (over.ollama ?? { kind: "unmanaged" }) as any,
+      start: vi.fn(async () => void calls.push("ollama.start")),
+      install: vi.fn(async (progress: (p: number | null) => void) => (progress(40), void calls.push("ollama.install"))),
     },
     stopApps: vi.fn(async () => void calls.push("stopApps")),
     relaunchSessions: vi.fn(async () => void calls.push("relaunch")),
@@ -290,6 +295,15 @@ describe("settings host", () => {
     } finally {
       globalThis.fetch = real;
     }
+  });
+
+  it("Ollama itself: its status rides on ai.state, start answers, and its download goes through the pull", async () => {
+    const { h, calls } = setup({ ollama: { kind: "absent" } });
+    expect(await h["ai.state"]!({})).toMatchObject({ ollama: { kind: "absent" } });
+    expect(await h["settings.startOllama"]!({})).toEqual({ ok: true });
+    expect(await h["settings.pullModel"]!({ name: "ollama" })).toEqual({ ok: true });
+    expect(calls).toEqual(["ollama.start", "ollama.install"]);
+    expect(await h["settings.pullProgress"]!({})).toBeNull();
   });
 
   it("ai.state and decision model", async () => {

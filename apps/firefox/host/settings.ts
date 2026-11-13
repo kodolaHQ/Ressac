@@ -6,7 +6,8 @@ import type { LocalAiStateShown } from "../shared/api.ts";
 import { startDeviceLogin } from "./device-login.ts";
 import { INVALID_KEY, type AmoKeychain, type Keychain } from "./keychain.ts";
 import { deleteBackup, exportData, listBackups } from "./data-folder.ts";
-import type { AgentAccount, DecisionModel, LoginResult, WorkshopOperation, GrantKind, GrantRow, SettingsResult, PullProgress } from "../shared/settings.ts";
+import { OLLAMA_ITSELF, type AgentAccount, type DecisionModel, type LoginResult, type WorkshopOperation, type GrantKind, type GrantRow, type SettingsResult, type PullProgress } from "../shared/settings.ts";
+import type { OllamaRuntime } from "./ollama-runtime.ts";
 
 // The settings page's host side: agent accounts, workshop, local AI, durable grants, data backups.
 
@@ -74,6 +75,7 @@ export const SETTINGS_METHODS = [
   "settings.pullModel",
   "settings.pullProgress",
   "settings.pullInBackground",
+  "settings.startOllama",
   "ai.decisionModel",
 ] as const;
 
@@ -85,6 +87,7 @@ const failure = (e: unknown) => (e instanceof Error ? e.message : String(e));
 export interface SettingsOptions {
   workshop: Pick<Workshop, "state" | "exec" | "restart" | "rebuild">;
   ai: Pick<LocalAi, "state" | "check" | "ollamaUrl" | "setDecisionModel">;
+  ollama: Pick<OllamaRuntime, "status" | "start" | "install">;
   stopApps(): Promise<void>;
   relaunchSessions(): Promise<void>;
   dataDir: string;
@@ -122,7 +125,8 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
     if (pull) throw new Error(PULL_BUSY);
     pull = { name, percent: null, status: "" };
     try {
-      await pullOllamaModel(o.ai.ollamaUrl, name, (e) => (pull = e));
+      if (name === OLLAMA_ITSELF) await o.ollama.install((percent) => (pull = { name, percent, status: "" }));
+      else await pullOllamaModel(o.ai.ollamaUrl, name, (e) => (pull = e));
     } finally {
       pull = null;
     }
@@ -285,7 +289,7 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
     "settings.pullInBackground": (p: { names?: unknown }): SettingsResult => {
       if (pull) return { ok: false, error: PULL_BUSY };
       const names = Array.isArray(p?.names) ? p.names.map(String) : [];
-      if (!names.length || names.some((n) => !PULLABLE_MODELS.includes(n))) return { ok: false, error: UNSUPPORTED_MODEL };
+      if (!names.length || names.some((n) => n !== OLLAMA_ITSELF && !PULLABLE_MODELS.includes(n))) return { ok: false, error: UNSUPPORTED_MODEL };
       void (async () => {
         try {
           for (const n of names) await pullOne(n);
@@ -297,9 +301,18 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
       return { ok: true };
     },
     "settings.pullProgress": () => pull,
+    "settings.startOllama": async (): Promise<SettingsResult> => {
+      try {
+        await o.ollama.start();
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, error: failure(e) };
+      }
+    },
     "ai.state": async (): Promise<LocalAiStateShown> => {
       const v = await o.ai.check().catch(() => undefined);
-      return { ...o.ai.state(), ...(v ? { verification: v } : {}), ollamaUrl: o.ai.ollamaUrl };
+      const ollama = await o.ollama.status().catch(() => undefined);
+      return { ...o.ai.state(), ...(v ? { verification: v } : {}), ollamaUrl: o.ai.ollamaUrl, ...(ollama ? { ollama } : {}) };
     },
     "ai.decisionModel": (p: { model?: DecisionModel }) => {
       if (p?.model === "kev" || p?.model === "pplx-decider-flash") o.ai.setDecisionModel(p.model === "kev" ? undefined : p.model);

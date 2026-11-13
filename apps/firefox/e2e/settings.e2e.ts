@@ -151,6 +151,18 @@ describe("Settings page", () => {
     await shows("workshop-state", "Atelier démarré", 20_000);
   });
 
+  it("local AI: an absent Ollama offers « Installer », a stopped one « Démarrer », an old one « Mettre à jour Ollama »", async () => {
+    for (const [kind, id, label] of [["absent", "pull-ollama", "Installer"], ["stopped", "ollama-start", "Démarrer"], ["outdated", "ollama-update", "Mettre à jour Ollama"]] as const) {
+      await launch({ WEBAIOS_TEST_OLLAMA_KIND: kind });
+      await openPage();
+      await go("ai");
+      await shows(id, label);
+      if (kind === "outdated") expect(await text("ai-ollama")).toContain("version 0.30.0, il faut la 0.40.0");
+      await w!.close();
+      w = undefined;
+    }
+  });
+
   it("local AI: Ollama reachable, Gemma installed, Kev unavailable", async () => {
     await launch({ WEBAIOS_OLLAMA_URL: server.url });
     await openPage();
