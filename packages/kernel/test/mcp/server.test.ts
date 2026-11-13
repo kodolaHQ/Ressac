@@ -2570,6 +2570,18 @@ describe("recaps", () => {
     expect(text(unknown)).toContain("Récap introuvable");
   });
 
+  test("a read shows each link's photo, and the photo counts as seen", async () => {
+    const folder = await startRecaps();
+    bridge.linkSequence = [[{ text: "Annonce", url: "https://exemple.fr/a", image: "https://img.fr/a.jpg" }]];
+    expect(text(await client.callTool({ name: "read_tab", arguments: { id: "github", links: true } }))).toContain("Annonce — https://exemple.fr/a — photo : https://img.fr/a.jpg");
+    const withPhotos = { items: [{ name: "A", url: "https://exemple.fr/a", photo: "https://img.fr/a.jpg" }, { name: "B", url: "https://exemple.fr/a", photo: "https://img.fr/b.jpg" }] };
+    const r = text(await client.callTool({ name: "show_recap", arguments: { title: "Vélos", results: withPhotos, plan } }));
+    const id = /Récap ([0-9a-f-]{36}) ouvert/.exec(r)![1];
+    const file = JSON.parse(await readFile(join(folder, `${id}.json`), "utf8"));
+    expect(file.allowed).toContain("https://img.fr/a.jpg");
+    expect(file.allowed).not.toContain("https://img.fr/b.jpg");
+  });
+
   test("show_recap in a private space says so", async () => {
     await startRecaps();
     bridge.recapsPrivate = true;

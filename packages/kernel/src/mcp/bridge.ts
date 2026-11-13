@@ -24,6 +24,8 @@ export interface PageLink {
   url: string;
   /** Absent: `other`. */
   zone?: Zone;
+  /** The first visible image inside the link (https). */
+  image?: string;
 }
 
 /** A block of visible text of a page, as rendered (invisible text never makes one). */

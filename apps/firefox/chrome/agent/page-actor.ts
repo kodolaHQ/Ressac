@@ -57,7 +57,7 @@ function readDisplayed(doc: Document, max: number, capture: boolean) {
   const parts: string[] = [];
   let length = 0;
   let newline = true;
-  const links: { text: string; url: string; zone: Zone }[] = [];
+  const links: { text: string; url: string; zone: Zone; image?: string }[] = [];
   const seen = new Set<string>();
   const perZone = new Map<Zone, number>();
   /** Shadow roots or frames were walked: content the reader mode never sees. */
@@ -112,6 +112,18 @@ function readDisplayed(doc: Document, max: number, capture: boolean) {
     if (cs.display.startsWith("inline") || cs.display === "contents") return false;
     const r = el.getBoundingClientRect();
     return ((r.width <= 1 || r.height <= 1) && cs.overflow !== "visible") || r.right < -50 || r.bottom + view.scrollY < -50 || r.left < -2000;
+  };
+  /** A link's photo: its first image a person can see, https. Links without an image cost no layout. */
+  const photo = (a: Element): string | undefined => {
+    // shortcut: images in a shadow root inside the link are missed, upgrade if a real site needs it.
+    for (const img of a.querySelectorAll("img")) {
+      const cs = img.ownerDocument.defaultView!.getComputedStyle(img);
+      const r = img.getBoundingClientRect();
+      if (!(img as any).checkVisibility({ opacityProperty: true, visibilityProperty: true }) || stealthy(img, cs) || unseen(img, cs) || r.width <= 1 || r.height <= 1) continue;
+      const src = img.currentSrc || img.src;
+      return /^https:/i.test(src) ? src : undefined;
+    }
+    return undefined;
   };
   const headingOf = (el: Element, cs: CSSStyleDeclaration, text: string) => {
     for (let e: Element | null = el, i = 0; e && i < 4; e = e.parentElement, i++) {
@@ -184,7 +196,8 @@ function readDisplayed(doc: Document, max: number, capture: boolean) {
       if (typeof url === "string" && /^https?:/i.test(url) && !seen.has(key)) {
         seen.add(key);
         perZone.set(z, (perZone.get(z) ?? 0) + 1);
-        links.push({ text: (el.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 200), url, zone: z });
+        const image = photo(el);
+        links.push({ text: (el.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 200), url, zone: z, ...(image ? { image } : {}) });
       }
     }
     const shadow = (el as any).openOrClosedShadowRoot as ShadowRoot | null;
@@ -309,7 +322,7 @@ export class WebAiOsPageChild extends JSWindowActorChild {
     switch (m.name) {
       case "getText":
         return (async () => {
-          let shown: { text: string; links: { text: string; url: string; zone?: string }[]; blocks?: unknown[]; deep?: boolean };
+          let shown: { text: string; links: { text: string; url: string; zone?: string; image?: string }[]; blocks?: unknown[]; deep?: boolean };
           const capture = m.data?.capture === true;
           try {
             shown = readDisplayed(doc, TEXT_MAX, capture);

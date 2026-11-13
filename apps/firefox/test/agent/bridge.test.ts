@@ -394,6 +394,15 @@ test("boundLinks keeps a known zone, turns any other into other, and keeps 500 l
   expect(boundLinks(Array.from({ length: 10_000 }, () => ({ text: "x", url: u, zone: "nav" })))).toHaveLength(500);
 });
 
+test("boundLinks keeps a link's https photo up to 2 048 characters and drops any other", () => {
+  const u = "https://exemple.fr/";
+  const ok = `https://img.fr/${"a".repeat(2_033)}`;
+  expect(ok).toHaveLength(2_048);
+  const links = boundLinks([ok, `${ok}a`, "http://img.fr/a.jpg", "data:image/png;base64,AAAA", 42].map((image) => ({ text: "x", url: u, image })));
+  expect(links.map((l) => l.image)).toEqual([ok, undefined, undefined, undefined, undefined]);
+  expect("image" in links[1]!).toBe(false);
+});
+
 test("boundCapture caps what a web process sends and drops wrong types", () => {
   const block = { text: "Un bloc", h: 2, zone: "main" };
   const c = boundCapture({

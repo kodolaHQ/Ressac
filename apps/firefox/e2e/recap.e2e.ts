@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import { join } from "node:path";
@@ -10,7 +11,7 @@ import { dispatch, state, waitFor } from "./firefox";
 import { callTool } from "./mcp";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
-import { startServer } from "./server";
+import { ICON, startServer } from "./server";
 import { click, inUi, missingApi, waitUi } from "./ui";
 
 // The agent's recap: published with show_recap, drawn as a webaios://recap/<id> tab. A link is clickable only if the
@@ -18,6 +19,9 @@ import { click, inUi, missingApi, waitUi } from "./ui";
 
 const READ = "https://exemple.invalide/velo-1";
 const NEVER_READ = "https://exemple.invalide/jamais";
+// Photos load through the action images' test hook: https://<host><path> is asked from <server>/<host><path>.
+const PHOTO = "https://exemple.invalide/photos/yuba.png";
+const PHOTO_NEVER_READ = "https://exemple.invalide/photos/babboe.png";
 const PREFS = { "network.dns.localDomains": "exemple.invalide" };
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -27,8 +31,17 @@ beforeAll(async () => {
     routes: {
       "/annonces.html": (_req, res) => {
         res.setHeader("content-type", "text/html; charset=utf-8");
-        res.end(`<title>Annonces</title><main><h1>Vélos cargo</h1><p>Deux annonces autour de Lyon, lues pour le récap.</p><a href="${READ}">Yuba Spicy Curry</a> <a href="https://exemple.invalide/velo-2">Tern GSD</a></main>`);
+        res.end(`<title>Annonces</title><main><h1>Vélos cargo</h1><p>Deux annonces autour de Lyon, lues pour le récap.</p><a href="${READ}"><img src="${PHOTO}" width="160" height="120" alt="">Yuba Spicy Curry</a> <a href="https://exemple.invalide/velo-2">Tern GSD</a></main>`);
       },
+      ...Object.fromEntries(
+        [PHOTO, PHOTO_NEVER_READ].map((u) => [
+          `/${u.slice("https://".length)}`,
+          (_req: IncomingMessage, res: ServerResponse) => {
+            res.setHeader("content-type", "image/png");
+            res.end(ICON);
+          },
+        ]),
+      ),
     },
   });
 });
@@ -75,7 +88,7 @@ describe("recap tab", () => {
   let q: ReturnType<typeof uiQueries>;
   let id: string;
   beforeAll(async () => {
-    w = await launchWebAiOs({ env: { WEBAIOS_MEMORY_LOOP: "1", WEBAIOS_TEST_SEARCH_URL: `${server.url}/annonces.html?q=%s` }, prefs: PREFS });
+    w = await launchWebAiOs({ env: { WEBAIOS_MEMORY_LOOP: "1", WEBAIOS_TEST_SEARCH_URL: `${server.url}/annonces.html?q=%s`, WEBAIOS_TEST_ACTION_IMAGES: server.url }, prefs: PREFS });
     m = await ready(w);
     q = uiQueries(m);
   }, 60_000);
@@ -86,8 +99,9 @@ describe("recap tab", () => {
 
   it("a published recap opens as a tab, links read are clickable, others are text", async () => {
     const tab = /Onglet : (\S+)/.exec((await callTool(w.dataDir, "search_web", { query: "vélo cargo", goal: "lire" })).text)![1]!;
-    // The search tab shows the results page (WEBAIOS_TEST_SEARCH_URL): read it with its links.
-    expect((await callTool(w.dataDir, "read_tab", { id: tab, links: true })).text).toContain(READ);
+    // The search tab shows the results page (WEBAIOS_TEST_SEARCH_URL): read it with its links and their photos.
+    const read = (await callTool(w.dataDir, "read_tab", { id: tab, links: true })).text;
+    expect(read).toContain(`${READ} — photo : ${PHOTO}`);
     id = await publish(w, "Vélos cargo");
     for (const deadline = Date.now() + 10_000; (await activeTab(m))?.url !== urlRecap(id); await sleep(100)) if (Date.now() > deadline) throw new Error("the recap tab is not active");
     expect((await activeTab(m))!.title).toBe("Vélos cargo");
@@ -131,6 +145,24 @@ describe("recap tab", () => {
     await waitUi(m, "return !!doc.querySelector(arguments[0]);", [tid("recap-gone")]);
     expect(await q.text(tid("recap-gone"))).toBe("Ce récap a été fermé.");
     expect(await inUi(m, "return !!doc.querySelector(arguments[0]);", [tid("block-title")])).toBe(false);
+  }, 30_000);
+
+  it("a photo seen in a read shows, an unseen one is left out", async () => {
+    const r = await callTool(w.dataDir, "show_recap", {
+      title: "Photos",
+      results: { items: [{ name: "Yuba", url: READ, photo: PHOTO }, { name: "Babboe", url: NEVER_READ, photo: PHOTO_NEVER_READ }] },
+      plan: { blocks: [{ component: "cards", props: { items: "items", title: "name", link: "url", image: "photo" } }] },
+    });
+    const photos = /Récap (\S+) ouvert/.exec(r.text)?.[1];
+    if (!photos) throw new Error(`show_recap: ${r.text}`);
+    for (const deadline = Date.now() + 10_000; (await activeTab(m))?.url !== urlRecap(photos); await sleep(100)) if (Date.now() > deadline) throw new Error("the recap tab is not active");
+    const cards = tid("block-cards");
+    await q.waitCount(`${cards} img.pa-image`, 1, 15_000);
+    expect(await inUi<string>(m, "return doc.querySelector(arguments[0]).src;", [`${cards} img.pa-image`])).toMatch(/^data:image\/png;base64,/);
+    // An unseen photo resolves to no image at all (pages/resolve.ts imageOf): no placeholder, never fetched.
+    expect(await q.count(`${cards} img`)).toBe(1);
+    expect(await q.count(`${cards} ${tid("neutral-image")}`)).toBe(0);
+    expect(server.paths).not.toContain(`/${PHOTO_NEVER_READ.slice("https://".length)}`);
   }, 30_000);
 });
 

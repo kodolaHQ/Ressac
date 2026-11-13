@@ -224,11 +224,17 @@ const LINKS_MAX = 500;
 /** A longer address is dropped, not cut: a cut address is a wrong one. */
 const LINK_URL_MAX = 500;
 const ZONES = new Set<string>(["main", "other", "aside", "header", "nav", "footer", "lang"] satisfies Zone[]);
-/** The links of a page as the agent gets them: from a web process, so bounded and checked (http(s) only, a known zone). */
-export function boundLinks(raw: unknown): Required<PageLink>[] {
+const IMAGE_URL_MAX = 2_048;
+/** The links of a page as the agent gets them: from a web process, so bounded and checked (http(s) only, a known zone, an https photo). */
+export function boundLinks(raw: unknown): (PageLink & { zone: Zone })[] {
   return (Array.isArray(raw) ? raw : [])
     .slice(0, LINKS_MAX)
-    .map((l: any) => ({ text: String(l?.text ?? "").slice(0, 80), url: String(l?.url ?? ""), zone: (ZONES.has(l?.zone) ? l.zone : "other") as Zone }))
+    .map((l: any) => ({
+      text: String(l?.text ?? "").slice(0, 80),
+      url: String(l?.url ?? ""),
+      zone: (ZONES.has(l?.zone) ? l.zone : "other") as Zone,
+      ...(typeof l?.image === "string" && l.image.length <= IMAGE_URL_MAX && l.image.startsWith("https://") && URL.canParse(l.image) ? { image: l.image as string } : {}),
+    }))
     .filter((l) => l.url.length <= LINK_URL_MAX && URL.canParse(l.url) && /^https?:$/.test(new URL(l.url).protocol));
 }
 

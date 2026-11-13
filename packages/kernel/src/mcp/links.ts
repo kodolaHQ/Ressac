@@ -45,7 +45,10 @@ export function rankLinks(links: readonly PageLink[], pageUrl: string): PageLink
     const zone = l.zone ?? "other";
     const rank = ZONE_RANK[zone] ?? ZONE_RANK.other;
     const had = best.get(url);
-    if (!had || rank < had.rank) best.set(url, { text, url, zone, rank, order: had ? Math.min(had.order, order) : order });
+    // A card often links twice (photo, then title): the photo of either is kept.
+    const image = l.image ?? had?.image;
+    if (!had || rank < had.rank) best.set(url, { text, url, zone, ...(image ? { image } : {}), rank, order: had ? Math.min(had.order, order) : order });
+    else if (image && !had.image) had.image = image;
   });
-  return [...best.values()].sort((a, b) => a.rank - b.rank || a.order - b.order).map(({ text, url, zone }) => ({ text, url, zone }));
+  return [...best.values()].sort((a, b) => a.rank - b.rank || a.order - b.order).map(({ text, url, zone, image }) => ({ text, url, zone, ...(image ? { image } : {}) }));
 }
