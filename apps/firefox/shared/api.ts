@@ -358,8 +358,8 @@ export interface ApiWebaios {
    * space (`null`, no link opened).
    */
   recaps: {
-    /** `gone`: closed or swept, the file is no more; null: unreadable, no host yet, or a private space. */
-    page(id: string): Promise<{ title: string; updated: string; page: RenderedPage } | { gone: true } | null>;
+    /** `gone`: closed or swept, the file is no more; null: unreadable, no host yet, or a private space. `live`: the agent is still filling it. */
+    page(id: string): Promise<{ title: string; updated: string; live: boolean; page: RenderedPage } | { gone: true } | null>;
     /** A link of the page: opened in a tab only if the agent read this exact address for this recap. */
     openLink(id: string, url: string): void;
     /** The agent republished this recap (its id), or the host started again (null): re-read. */

@@ -74,6 +74,10 @@ const MAX_TOTAL_ERRORS = 16 * 1024;
 const TRUNCATED = "… [tronqué]";
 /** What replaces the space in the site app's line of `list_tabs`. */
 const SITE_APP_LABEL = "appli de site";
+/** The site named in an activity line: the hostname without a leading `www.`. */
+const siteOf = (url: string) => (URL.canParse(url) ? new URL(url).hostname.replace(/^www\./, "") : url);
+/** What a browsing tool does on a tab, as the browser shows it (« Lit leboncoin.fr »). */
+export type AgentActivity = { tab: string; label: string };
 
 /**
  * The workflow open in the foreground in a window's builder (that of a widget or an action), and its selected
@@ -353,6 +357,7 @@ function createToolsServer(
   /** Every address read, kernel-wide (a recap links only to these); outlives a request's server. */
   seen = new SeenUrls(),
   recaps?: Recaps,
+  onActivity?: (a: AgentActivity) => void,
 ): McpServer {
   const server = new McpServer({ name: "webaios", version: "0.1.0" });
 
@@ -402,8 +407,14 @@ function createToolsServer(
     return policy.canRead(await tab(o.id));
   }
 
-  /** The agent works on the tab while `f` runs (once access is settled): the window's halo shows it. */
-  async function working<T>(id: string, f: () => Promise<T>): Promise<T> {
+  /** Tells the browser what the agent does on a tab; never for a tab of a private space. */
+  const act = (id: string, label: string) => {
+    if (!bridge.isPrivate?.(id)) onActivity?.({ tab: id, label });
+  };
+
+  /** The agent works on the tab while `f` runs (once access is settled): the window's halo shows it, and `label` what it does. */
+  async function working<T>(id: string, f: () => Promise<T>, label?: string): Promise<T> {
+    if (label) act(id, label);
     policy.use(id, true);
     try {
       return await f();
@@ -578,12 +589,13 @@ function createToolsServer(
     if (searching?.sessions.takeStop(win ?? MAIN_WINDOW, o.id)) return text(STOP_TEXT);
     if (searching?.sessions.owns(o.id)) {
       searching.sessions.log(o.id, { tool: "read_tab" });
+      act(o.id, `Lit ${siteOf(o.url)}`);
       return readSearch(win ?? MAIN_WINDOW, o, withLinks, "Lecture de la page", [], { full, extra });
     }
     const other = await watch({ tool: "read_tab", url: o.url.slice(0, 500) }, "lecture d'un autre onglet", signal);
     if (other) return text(other);
     if (!(await access(o))) return text(DENIAL_TEXT);
-    return present(o, await working(o.id, () => bridge.readText(o.id)), withLinks, [], undefined, full);
+    return present(o, await working(o.id, () => bridge.readText(o.id), `Lit ${siteOf(o.url)}`), withLinks, [], undefined, full);
   }
 
   /** Turns a bridge error into a readable tool error rather than a crash. A private tab is not an error. */
@@ -716,7 +728,7 @@ function createToolsServer(
           sessions.allow(id, url);
         }
         sessions.log(id, { tool: "navigate", url: target, ...(free ? {} : { composed: true }) });
-        await sessions.step(id, `Ouverture de ${target}`, () => working(id, () => bridge.navigate(id, target)));
+        await sessions.step(id, `Ouverture de ${target}`, () => working(id, () => bridge.navigate(id, target), `Va sur ${siteOf(target)}`));
         return text(`Onglet ${id} → ${target}`);
       }
       if (o.site !== undefined) {
@@ -724,7 +736,7 @@ function createToolsServer(
         // to its domains: elsewhere, nothing loads and no tab opens (the browser checks again).
         if (!(await access(o))) return text(DENIAL_TEXT);
         if (!bridge.siteUrlAllowed?.(o.site, url)) return text(navigationOutsideSite(url), true);
-        if ((await working(id, () => bridge.navigate(id, url))) === "pending") return text(PENDING_SITE_NAVIGATION);
+        if ((await working(id, () => bridge.navigate(id, url), `Va sur ${siteOf(url)}`)) === "pending") return text(PENDING_SITE_NAVIGATION);
         return text(`Appli de site ${id} → ${url}`);
       }
       if (!(await access(o))) return text(DENIAL_TEXT);
@@ -738,7 +750,7 @@ function createToolsServer(
       // Before bridge.navigate: the browser may report the navigation (tabNavigated) before it
       // ends, and the agent must not lose access to its own demo.
       policy.navigationByAgent(id, url);
-      await working(id, () => bridge.navigate(id, url));
+      await working(id, () => bridge.navigate(id, url), `Va sur ${siteOf(url)}`);
       return text(`Onglet ${id} → ${url}`);
     }),
   );
@@ -749,8 +761,9 @@ function createToolsServer(
     protect(async ({ id }) => {
       // shortcut: the kernel does not know a tab's window, so any capture waits while this window's search is the user's; refine if it annoys.
       if (handing(id) || handing(searching?.sessions.current(win ?? MAIN_WINDOW)?.tabId)) return text(HANDING_TEXT, true);
-      if (!(await access(await tab(id)))) return text(DENIAL_TEXT);
-      const png = await working(id, () => bridge.capture(id));
+      const o = await tab(id);
+      if (!(await access(o))) return text(DENIAL_TEXT);
+      const png = await working(id, () => bridge.capture(id), `Regarde ${siteOf(o.url)}`);
       return { content: [{ type: "image", data: png.toString("base64"), mimeType: "image/png" }] };
     }),
   );
@@ -906,6 +919,7 @@ function createToolsServer(
           const sections = new Map<string, string>();
           if (id) {
             for (const [, u] of ok) sessions.log(id, { tool: "read_pages", url: u });
+            act(id, urls.length > 1 ? `Lit ${urls.length} pages` : "Lit 1 page");
             let done = 0;
             const label = () => `Lecture de ${ok.length} page${ok.length > 1 ? "s" : ""}, ${done} faite${done > 1 ? "s" : ""}`;
             const opened = new Set<string>();
@@ -1069,6 +1083,7 @@ function createToolsServer(
       requests: dev.requests,
       // The site app: its grant (the app's card if needed) before any dev-tools card.
       siteAccess: access,
+      activity: act,
       ...(dev.tools ? { tools: dev.tools } : {}),
       ...dev.profiles,
     });
@@ -1302,13 +1317,14 @@ function registerRecapsTools(
     "show_recap",
     {
       description:
-        "Publie un récap (résultats JSON + plan de page, comme une action) dans un onglet de ta fenêtre. Avec `id`, met à jour ce récap sur place. Liens et photos : seulement des adresses lues, recopiées exactement.",
-      inputSchema: { id: z.string().max(64).optional(), title: z.string().min(1).max(RECAP_TITLE_MAX), results: z.unknown(), plan: z.unknown() },
+        "Publie un récap (résultats JSON + plan de page, comme une action) dans un onglet de ta fenêtre. Avec `id`, met à jour ce récap sur place. Liens et photos : seulement des adresses lues, recopiées exactement. " +
+        "`live: true` tant que la recherche continue ; la dernière publication sans `live`.",
+      inputSchema: { id: z.string().max(64).optional(), title: z.string().min(1).max(RECAP_TITLE_MAX), results: z.unknown(), plan: z.unknown(), live: z.boolean().optional() },
     },
-    protect(async ({ id, title, results, plan }) => {
+    protect(async ({ id, title, results, plan, live }) => {
       const tabs = bridge.recaps;
       if (!tabs) return text(NO_RECAP_TABS, true);
-      const r = await recaps.publish({ ...(id !== undefined ? { id } : {}), title, results, plan, seen });
+      const r = await recaps.publish({ ...(id !== undefined ? { id } : {}), title, results, plan, seen, ...(live ? { live } : {}) });
       if (!r.ok) return text(r.errors.join("\n"), true);
       // A new recap that no tab shows is never swept by a close: it goes now.
       const opened = await tabs.open(win, r.id, title).catch(async (e: unknown) => {
@@ -1335,7 +1351,7 @@ function registerRecapsTools(
       if (which === null) return text(NO_ACTIVE_RECAP);
       const f = await recaps.read(which);
       if (!f) return text(RECAP_UNKNOWN, true);
-      return text(`${RECAP_DATA_PREFIX}\n${JSON.stringify({ id: f.id, title: f.title, results: f.results, plan: f.plan })}`);
+      return text(`${RECAP_DATA_PREFIX}\n${JSON.stringify({ id: f.id, title: f.title, results: f.results, plan: f.plan, live: f.live === true })}`);
     }),
   );
 }
@@ -1506,6 +1522,8 @@ export async function startMcpServer(o: {
   readPageMs?: number;
   /** The recaps the agent publishes; without it, no recap tool. */
   recaps?: Recaps;
+  /** Told when a browsing tool starts on a tab (never a private one). */
+  onActivity?: (a: AgentActivity) => void;
 }): Promise<{ port: number; containerUrl: string; openSession(win: string, agent?: string): string; closeSession(token: string): void; stop(): Promise<void> }> {
   const expected = Buffer.from(o.token);
   // Session tokens: one per window agent. Security note: their config files are readable by the
@@ -1533,7 +1551,7 @@ export async function startMcpServer(o: {
     const named = who.agent ? { ...dev, agent: who.agent } : dev;
     if (new URL(req.url ?? "/", "http://x").pathname !== "/mcp") return res.writeHead(404).end();
     // Stateless mode: a new server and transport per request.
-    const server = createToolsServer(o.bridge, o.policy, requests, o.apps, o.appTabDelayMs, named, widgets && who.agent ? { ...widgets, agent: who.agent } : widgets, win, o.openWorkflow, o.extensions, actions && who.agent ? { ...actions, agent: who.agent } : actions, o.sites, o.heartbeatMs, o.search ? { sessions: o.search, ...(o.watcher ? { watcher: o.watcher } : {}), settleMs: o.settleMs ?? 500, emptySpanMs: o.emptySpanMs ?? EMPTY_SPAN_MS, readPageMs: o.readPageMs ?? READ_PAGE_MS, chains } : undefined, listed, seen, o.recaps);
+    const server = createToolsServer(o.bridge, o.policy, requests, o.apps, o.appTabDelayMs, named, widgets && who.agent ? { ...widgets, agent: who.agent } : widgets, win, o.openWorkflow, o.extensions, actions && who.agent ? { ...actions, agent: who.agent } : actions, o.sites, o.heartbeatMs, o.search ? { sessions: o.search, ...(o.watcher ? { watcher: o.watcher } : {}), settleMs: o.settleMs ?? 500, emptySpanMs: o.emptySpanMs ?? EMPTY_SPAN_MS, readPageMs: o.readPageMs ?? READ_PAGE_MS, chains } : undefined, listed, seen, o.recaps, o.onActivity);
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on("close", () => {
       void transport.close();

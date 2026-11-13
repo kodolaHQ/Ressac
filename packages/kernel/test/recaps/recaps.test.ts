@@ -73,6 +73,37 @@ test("republish with the id keeps a link seen before, even with an empty seen li
   expect((await recaps.read(r.id))?.title).toBe("Vélos 2");
 });
 
+test("live: stored only when asked, cleared by a final republish, stale after 5 minutes", async () => {
+  const { folder, recaps, seen, advance } = await setup();
+  const live = async (id: string) => {
+    const p = await recaps.page(id);
+    if (!p || "gone" in p) throw new Error("no page");
+    return p.live;
+  };
+  const r = await recaps.publish({ title: "Vélos", results, plan, seen, live: true });
+  if (!r.ok) throw new Error();
+  expect(await live(r.id)).toBe(true);
+  advance(4 * 60_000);
+  expect(await live(r.id)).toBe(true);
+  advance(2 * 60_000);
+  expect(await live(r.id)).toBe(false);
+  await recaps.publish({ id: r.id, title: "Vélos", results, plan, seen, live: true });
+  expect(await live(r.id)).toBe(true);
+  await recaps.publish({ id: r.id, title: "Vélos", results, plan, seen });
+  expect(await live(r.id)).toBe(false);
+  expect(JSON.parse(await readFile(join(folder, `${r.id}.json`), "utf8"))).not.toHaveProperty("live");
+});
+
+test("an old file without the live field reads as final", async () => {
+  const { folder, recaps, seen } = await setup();
+  const r = await recaps.publish({ title: "Vélos", results, plan, seen });
+  if (!r.ok) throw new Error();
+  const file = JSON.parse(await readFile(join(folder, `${r.id}.json`), "utf8"));
+  delete file.live;
+  await writeFile(join(folder, `${r.id}.json`), JSON.stringify(file));
+  expect(await recaps.page(r.id)).toMatchObject({ live: false });
+});
+
 test("page() stamps the mtime; stale gives the id after 7 days of use", async () => {
   const { folder, recaps, seen, advance } = await setup();
   const r = await recaps.publish({ title: "Vélos", results, plan, seen });

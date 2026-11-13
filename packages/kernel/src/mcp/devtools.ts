@@ -73,6 +73,8 @@ const profileName = (tool: string, extension: string): string =>
 const headerLines = (h: Record<string, string>): string[] =>
   Object.entries(h).map(([name, value]) => `  ${name}: ${truncate(value)}`);
 
+const ACTING = "Agit sur la page";
+
 export function registerDevTools(
   server: McpServer,
   c: {
@@ -87,6 +89,8 @@ export function registerDevTools(
      * Absent: no dev tool on a site app.
      */
     siteAccess?: (o: TabInfo) => Promise<boolean>;
+    /** Tells the browser what the agent does on a tab (never a private one). */
+    activity?: (tab: string, label: string) => void;
   } & ProfileFiles,
 ): void {
   const { bridge: bridge, policy: policy, requests: requests } = c;
@@ -167,6 +171,7 @@ export function registerDevTools(
     right: DevRight,
     tool: string,
     f: (o: TabInfo, signal: AbortSignal, write: (name: string, content: string) => Promise<string>) => Promise<Result>,
+    label?: string,
   ): Promise<Result> {
     const got = await get(id, [right], `L'agent veut utiliser ${tool}.`);
     if (!got.held.includes(right)) return text(TOOL_DENIAL_TEXT);
@@ -202,6 +207,7 @@ export function registerDevTools(
       check();
       // The site may have changed since the grant: the bridge is not called at all.
       if (signal.aborted) return await interruptionResponse();
+      if (label) c.activity?.(id, label);
       const abandon = new Promise<never>((_, ko) => signal.addEventListener("abort", () => ko(new Cut()), { once: true }));
       const call = f(o, signal, write);
       call.catch(() => {}); // a late result after abandonment is ignored
@@ -420,7 +426,7 @@ export function registerDevTools(
       withRight(id, "act", "run_js", async (_o, signal) => {
         const r = await tools.run(id, code, signal);
         return "exception" in r ? text(`Exception : ${truncate(r.exception)}`) : text(truncate(r.value));
-      }),
+      }, ACTING),
     ),
   );
 
@@ -431,7 +437,7 @@ export function registerDevTools(
       withRight(id, "act", "reload", async () => {
         await tools.reload(id, no_cache ?? false);
         return text(`Onglet ${id} rechargé.`);
-      }),
+      }, ACTING),
     ),
   );
 }

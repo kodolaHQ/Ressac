@@ -168,6 +168,7 @@ const launchKernel = (profileId: string): Promise<Kernel | null> => {
     recapsFolder: recapsFolder,
     ...(process.env.WEBAIOS_TEST_RECAP_DAY_MS ? { recapsDayMs: Number(process.env.WEBAIOS_TEST_RECAP_DAY_MS) } : {}),
     onRecapChange: (id) => rpc.notify("recaps.changed", { id }),
+    onActivity: (a) => rpc.notify("agent.activity", a),
     ai: ai,
     profilingFolder: join(dataDir, "profiling"),
     extensions: extensions.tools(),

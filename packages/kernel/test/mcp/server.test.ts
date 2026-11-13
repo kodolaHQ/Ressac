@@ -1439,14 +1439,14 @@ const c = { text: "C", url: "https://exemple.fr/c" };
 
 async function withSearch(
   attempt: (o: { call: (name: string, args: Record<string, unknown>, token?: string, onprogress?: (n: number) => void) => Promise<{ text: string; isError: boolean }>; token: string; fake: FakeBridge; search: SearchSessions; s: Awaited<ReturnType<typeof startMcpServer>>; bands: [string, Band | null][]; policy: AccessPolicy }) => Promise<void>,
-  opts: { privateWindows?: string[]; allow?: boolean; emptySpanMs?: number; address?: boolean | "wait" | "later"; failing?: string[]; hanging?: string[]; readPageMs?: number; heartbeatMs?: number; watcher?: Watcher; withUserData?: boolean; idleMs?: number } = {},
+  opts: { privateWindows?: string[]; allow?: boolean; emptySpanMs?: number; address?: boolean | "wait" | "later"; failing?: string[]; hanging?: string[]; readPageMs?: number; heartbeatMs?: number; watcher?: Watcher; withUserData?: boolean; idleMs?: number; onActivity?: (a: { tab: string; label: string }) => void } = {},
 ) {
   const principal = generateToken();
   const fake = new FakeBridge([github], { active: "github", allow: opts.allow ?? false, ...(opts.withUserData ? { history: { results: [] }, bookmarks: [] } : {}), search: { privateWindows: opts.privateWindows ?? [], failing: opts.failing ?? [], hanging: opts.hanging ?? [] }, ...(opts.address !== undefined ? { address: opts.address } : {}) });
   const bands: [string, Band | null][] = [];
   const search = new SearchSessions({ show: (id, band) => bands.push([id, band]), ...(opts.idleMs ? { idleMs: opts.idleMs } : {}) });
   const policy = new AccessPolicy();
-  const s = await startMcpServer({ bridge: fake, policy, token: principal, search, ...(opts.watcher ? { watcher: opts.watcher } : {}), settleMs: 0, emptySpanMs: opts.emptySpanMs ?? 0, ...(opts.heartbeatMs ? { heartbeatMs: opts.heartbeatMs } : {}), ...(opts.readPageMs !== undefined ? { readPageMs: opts.readPageMs } : {}) });
+  const s = await startMcpServer({ bridge: fake, policy, token: principal, search, ...(opts.watcher ? { watcher: opts.watcher } : {}), settleMs: 0, emptySpanMs: opts.emptySpanMs ?? 0, ...(opts.heartbeatMs ? { heartbeatMs: opts.heartbeatMs } : {}), ...(opts.readPageMs !== undefined ? { readPageMs: opts.readPageMs } : {}), ...(opts.onActivity ? { onActivity: opts.onActivity } : {}) });
   const clients: Client[] = [];
   const call = async (name: string, args: Record<string, unknown>, clientToken = principal, onprogress?: (n: number) => void) => {
     // search_web needs a goal: a test that does not care gets one.
@@ -2582,6 +2582,17 @@ describe("recaps", () => {
     expect(file.allowed).not.toContain("https://img.fr/b.jpg");
   });
 
+  test("show_recap with live: true stores it; read_recap gives it; a final republish clears it", async () => {
+    const folder = await startRecaps();
+    const r = text(await client.callTool({ name: "show_recap", arguments: { title: "Vélos", results, plan, live: true } }));
+    const id = /Récap (\S+) ouvert/.exec(r)![1]!;
+    expect(JSON.parse(await readFile(join(folder, `${id}.json`), "utf8")).live).toBe(true);
+    expect(text(await client.callTool({ name: "read_recap", arguments: { id } }))).toContain('"live":true');
+    await client.callTool({ name: "show_recap", arguments: { id, title: "Vélos", results, plan } });
+    expect(JSON.parse(await readFile(join(folder, `${id}.json`), "utf8"))).not.toHaveProperty("live");
+    expect(text(await client.callTool({ name: "read_recap", arguments: { id } }))).toContain('"live":false');
+  });
+
   test("show_recap in a private space says so", async () => {
     await startRecaps();
     bridge.recapsPrivate = true;
@@ -2614,5 +2625,60 @@ describe("recaps", () => {
   test("read_recap without a recap in the active tab says so", async () => {
     await startRecaps();
     expect(text(await client.callTool({ name: "read_recap", arguments: {} }))).toBe("Aucun récap dans l'onglet actif.");
+  });
+});
+
+describe("agent activity", () => {
+  const lbc: TabInfo = { id: "lbc", title: "Annonce", url: "https://www.leboncoin.fr/x", space: "perso" };
+  let seenActivity: { tab: string; label: string }[];
+  async function startActivity(o: { devTools?: boolean } = {}) {
+    await client.close();
+    await server.stop();
+    seenActivity = [];
+    bridge = new FakeBridge([lbc, gmail], { active: "lbc", allow: true, ...(o.devTools ? { devTools: true, grantDev: ["act"] } : {}) });
+    policy = new AccessPolicy();
+    server = await startMcpServer({ bridge, policy, token, agent: "Claude", onActivity: (a) => seenActivity.push(a) });
+    client = new Client({ name: "test", version: "0" });
+    await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${server.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${token}` } } }));
+  }
+
+  test("read_tab, navigate and capture_screen say what they do, with the host without www.", async () => {
+    await startActivity();
+    await client.callTool({ name: "read_tab", arguments: { id: "lbc" } });
+    await client.callTool({ name: "navigate", arguments: { id: "lbc", url: "https://www.exemple.fr/y" } });
+    await client.callTool({ name: "capture_screen", arguments: { id: "lbc" } });
+    expect(seenActivity).toEqual([
+      { tab: "lbc", label: "Lit leboncoin.fr" },
+      { tab: "lbc", label: "Va sur exemple.fr" },
+      { tab: "lbc", label: expect.stringMatching(/^Regarde /) },
+    ]);
+  });
+
+  test("run_js and reload: « Agit sur la page »", async () => {
+    await startActivity({ devTools: true });
+    await client.callTool({ name: "run_js", arguments: { id: "lbc", code: "1" } });
+    await client.callTool({ name: "reload", arguments: { id: "lbc" } });
+    expect(seenActivity).toEqual([{ tab: "lbc", label: "Agit sur la page" }, { tab: "lbc", label: "Agit sur la page" }]);
+  });
+
+  test("a private-space tab emits nothing", async () => {
+    await startActivity({ devTools: true });
+    bridge.makePrivate("lbc");
+    await client.callTool({ name: "read_tab", arguments: { id: "lbc" } });
+    await client.callTool({ name: "navigate", arguments: { id: "lbc", url: "https://exemple.fr" } });
+    await client.callTool({ name: "capture_screen", arguments: { id: "lbc" } });
+    await client.callTool({ name: "run_js", arguments: { id: "lbc", code: "1" } });
+    expect(seenActivity).toEqual([]);
+  });
+
+  test("read_pages: « Lit <n> pages » on the search tab, n = addresses asked", async () => {
+    const got: { tab: string; label: string }[] = [];
+    await withSearch(async ({ call, fake }) => {
+      fake.linkSequence = [links3];
+      await call("search_web", { query: "x" });
+      got.length = 0;
+      await call("read_pages", { urls: [a.url, b.url, c.url] });
+      expect(got).toEqual([{ tab: "search-1", label: "Lit 3 pages" }]);
+    }, { onActivity: (x) => got.push(x) });
   });
 });

@@ -18,7 +18,7 @@ import { SearchSessions } from "./search/sessions.js";
 import { createWatcher } from "./search/watcher.js";
 import type { TabInfo, BrowserBridge } from "./mcp/bridge.js";
 import type { ExtensionsTools } from "./mcp/extensions.js";
-import { startMcpServer, generateToken, type ActionsTools, type AppsTools, type SitesTools, type WidgetsTools, type OpenWorkflow } from "./mcp/server.js";
+import { startMcpServer, generateToken, type ActionsTools, type AppsTools, type SitesTools, type WidgetsTools, type OpenWorkflow, type AgentActivity } from "./mcp/server.js";
 import { createRecaps, type Recaps } from "./recaps/recaps.js";
 import type { ProfileFiles } from "./mcp/devtools.js";
 import { DevToolsTracking } from "./devtools/tracking.js";
@@ -298,6 +298,8 @@ export async function createKernel(o: {
   recapsDayMs?: number;
   /** Called with the recap's id after each successful publication. */
   onRecapChange?: (id: string) => void;
+  /** Called when a browsing tool starts on a tab (« Lit leboncoin.fr »); never for a private one. */
+  onActivity?: (a: AgentActivity) => void;
   /** Local AI for the harvests; stopped with the kernel. */
   ai?: LocalAi;
   /** Workflow engine, mounted in the harvest container (by default `<resources>/docker/engine`). */
@@ -417,6 +419,17 @@ export async function createKernel(o: {
     ...(o.openWorkflow ? { openWorkflow: o.openWorkflow } : {}),
     ...(o.extensions ? { extensions: o.extensions } : {}),
     ...(o.sites ? { sites: o.sites } : {}),
+    ...(o.onActivity
+      ? {
+          onActivity: (a: AgentActivity) => {
+            try {
+              o.onActivity!(a);
+            } catch (e) {
+              console.error("[webaios] onActivity:", e);
+            }
+          },
+        }
+      : {}),
     ...(recaps
       ? {
           recaps: {

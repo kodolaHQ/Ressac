@@ -17,12 +17,17 @@ const RECAP_MAX_BYTES = 1024 * 1024;
 const ALLOWED_MAX = 5000;
 export const RECAP_TITLE_MAX = 120;
 const DAY_MS = 86_400_000;
+/** A live recap not republished for this long reads as final: the agent stopped without saying so. */
+const LIVE_MS = 5 * 60_000;
 /** Days the browser ran, as day numbers; never matches ID_RECAP, so it is not a recap. */
 const USED_DAYS_FILE = "used-days.json";
 const USED_DAYS_MAX = 60;
 
-/** `allowed`: the addresses of the results the agent had read, the only ones the page may link to or load. */
-export type RecapFile = { version: 1; id: string; title: string; results: unknown; plan: PlanPage; allowed: string[]; updated: string };
+/**
+ * `allowed`: the addresses of the results the agent had read, the only ones the page may link to or load.
+ * `live`: the agent is still filling it (absent: final).
+ */
+export type RecapFile = { version: 1; id: string; title: string; results: unknown; plan: PlanPage; allowed: string[]; updated: string; live?: true };
 
 const RecapSchema = z.object({
   version: z.literal(1),
@@ -32,15 +37,19 @@ const RecapSchema = z.object({
   plan: PlanPage,
   allowed: z.array(z.string()).max(ALLOWED_MAX),
   updated: z.string(),
+  live: z.literal(true).optional(),
 });
 
 export type RecapPublished = { ok: true; id: string; created: boolean; discarded: string[] } | { ok: false; errors: string[] };
 
 export interface Recaps {
-  publish(o: { id?: string; title: string; results: unknown; plan: unknown; seen: SeenUrls }): Promise<RecapPublished>;
+  publish(o: { id?: string; title: string; results: unknown; plan: unknown; seen: SeenUrls; live?: boolean }): Promise<RecapPublished>;
   read(id: string): Promise<RecapFile | null>;
-  /** `gone`: no file (closed, swept). null: not a recap id, or an unreadable file. Stamps the file's mtime (last shown). */
-  page(id: string): Promise<{ title: string; updated: string; page: RenderedPage } | { gone: true } | null>;
+  /**
+   * `gone`: no file (closed, swept). null: not a recap id, or an unreadable file. Stamps the file's mtime (last shown).
+   * `live`: published live less than 5 minutes ago.
+   */
+  page(id: string): Promise<{ title: string; updated: string; live: boolean; page: RenderedPage } | { gone: true } | null>;
   linkAllowed(id: string, url: string): Promise<boolean>;
   imageAllowed(id: string, url: string): Promise<boolean>;
   remove(id: string): Promise<void>;
@@ -93,7 +102,7 @@ export function createRecaps(o: { folder: string; now?: () => Date }): Recaps {
       const kept = new Set(before?.allowed);
       const allowed = [...chainsOf(p.results)].filter((s) => kept.has(s) || p.seen.has(s)).slice(0, ALLOWED_MAX);
       const at = now();
-      const f: RecapFile = { version: 1, id: before?.id ?? randomUUID(), title: p.title.slice(0, RECAP_TITLE_MAX), results: p.results, plan: v.plan, allowed, updated: at };
+      const f: RecapFile = { version: 1, id: before?.id ?? randomUUID(), title: p.title.slice(0, RECAP_TITLE_MAX), results: p.results, plan: v.plan, allowed, updated: at, ...(p.live ? { live: true as const } : {}) };
       if (Buffer.byteLength(JSON.stringify(f)) > RECAP_MAX_BYTES) return { ok: false, errors: [RECAP_TOO_BIG] };
       await writeAtomic(path(f.id), JSON.stringify(f));
       await touch(f.id);
@@ -106,7 +115,8 @@ export function createRecaps(o: { folder: string; now?: () => Date }): Recaps {
       const stamped = await touch(id).then(() => true, (e: NodeJS.ErrnoException) => (e.code === "ENOENT" ? false : Promise.reject(e)));
       if (!stamped) return { gone: true };
       if (!f) return null;
-      return { title: f.title, updated: f.updated, page: resolvePage(f.plan, f.results, { account: false, catalog: BUILTIN_COMPONENTS, fallback: false, allowed: new Set(f.allowed) }) };
+      const live = f.live === true && clock().getTime() - Date.parse(f.updated) < LIVE_MS;
+      return { title: f.title, updated: f.updated, live, page: resolvePage(f.plan, f.results, { account: false, catalog: BUILTIN_COMPONENTS, fallback: false, allowed: new Set(f.allowed) }) };
     },
     linkAllowed: (id, url) => allowedIn(id, url, false),
     imageAllowed: (id, url) => allowedIn(id, url, true),
