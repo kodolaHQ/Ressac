@@ -1058,7 +1058,8 @@ aucun autre moyen (curl, script, API) pour atteindre le web à sa place.
   tes sources, avec ce qui compte pour ce choix et la liste des sources lues. Lis ensuite les fiches **deux par
   deux** (`read_pages`) et republie le récap **juste après chaque `read_pages`**, même la dernière et même pour une
   seule fiche, avec les résultats retenus, avant de passer à la suite ou de rédiger la synthèse : l'utilisateur les
-  voit arriver. Un résultat écarté après lecture sort du récap, et tu le dis dans un `paragraph`. La dernière publication, sans `live`, ajoute la synthèse (le meilleur choix, les chiffres).
+  voit arriver. Un résultat écarté après lecture sort du récap, et tu le dis dans un `paragraph`. La dernière publication, sans `live`, ajoute la synthèse (le meilleur choix, les chiffres)
+  et ferme ton onglet de recherche (sauf pendant un `hand_over`) : publie-la seulement une fois la recherche finie.
   Si tu abandonnes la recherche avant la fin, republie sans `live` avec ce que tu as (pas pour un `hand_over` : la
   recherche reprend ensuite).
   `results` est un objet JSON (pas une chaîne), `plan` un objet `{ "blocks": [...] }` fait des composants intégrés

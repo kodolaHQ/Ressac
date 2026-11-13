@@ -70,7 +70,7 @@ it("a tab in the agent's profile does not see the cookies of the user's tabs", a
 
 const idOf = (text: string) => /Onglet : (\S+)/.exec(text)![1]!;
 
-it("search_web opens an agent tab on the engine, active, in the agent's profile, and returns the links", async () => {
+it("search_web opens an agent tab on the engine, in the background, in the agent's profile and section, and returns the links", async () => {
   const r = (await callTool(w.dataDir, "search_web", { query: "vélo électrique", goal: "trouver un vélo" })).text;
   expect(r).toContain("Résultats de la recherche.");
   expect(r).toContain(`Annonce — ${server.url}/a.html?q=${encodeURIComponent("vélo électrique")}`);
@@ -81,7 +81,10 @@ it("search_web opens an agent tab on the engine, active, in the agent's profile,
   expect(tab.openedByAgent).toBe(true);
   expect(tab.url).toBe(`${server.url}/results.html?q=${encodeURIComponent("vélo électrique")}`);
   const win = s.windows[0]!;
-  expect(win.active[win.activeSpace]).toBe(tab.id);
+  expect(win.active[win.activeSpace]).not.toBe(tab.id);
+  // Listed apart, in the « Agent » section, not among the user's tabs.
+  await waitUi(m, `return !!doc.querySelector('[aria-label="Onglets de l\\'agent"] [data-testid="tab-${tab.id}"]')`);
+  expect(await inUi(m, `return doc.querySelector('[data-testid="agent-tabs"]').textContent`)).toBe("Agent1");
   // A result followed by its number in the list.
   expect((await callTool(w.dataDir, "navigate", { id: tab.id, link: 0 })).text).toBe(`Onglet ${tab.id} → ${server.url}/a.html?q=${encodeURIComponent("vélo électrique")}`);
 });
@@ -250,6 +253,7 @@ const otherTab = async () => {
 
 it("during a read the band shows on the search tab only, with Arrêter", async () => {
   const id = idOf((await callTool(w.dataDir, "search_web", { query: "x", goal: "but" })).text);
+  await dispatch(m, { type: "activateTab", id });
   const reading = callTool(w.dataDir, "read_pages", { urls: [`${server.url}/lent-longtemps.html`], reason: "lire" });
   await click(m, `${CARD} button`, { text: "Autoriser" });
   const b = (await waitBand((v) => v.state === "working" && v.text.startsWith("Lecture")))!;
@@ -267,10 +271,16 @@ it("during a read the band shows on the search tab only, with Arrêter", async (
   await waitBand((v) => !v.shown);
 });
 
-it("hand_over: the band says the reason, the tab is marked « à vous » while another tab is active, the halo is off; the user navigates in the tab, Continuer returns the path", async () => {
+it("hand_over: the tab comes to the front, the band says the reason, the tab is marked « à vous » while another tab is active, the halo is off; the user navigates in the tab, Continuer returns the path", async () => {
   const id = idOf((await callTool(w.dataDir, "search_web", { query: "x", goal: "but" })).text);
   await otherTab();
   const handing = callTool(w.dataDir, "hand_over", { id, reason: "Résolvez le captcha", kind: "verification" });
+  for (const deadline = Date.now() + 10_000; ; await new Promise((r) => setTimeout(r, 100))) {
+    const win = (await state(m)).windows[0]!;
+    if (win.active[win.activeSpace] === id) break;
+    if (Date.now() > deadline) throw new Error("the search tab did not come to the front");
+  }
+  await otherTab();
   await waitUi(m, `return !!doc.querySelector('[data-testid="tab-yours"]')`);
   expect(await halo()).toBe(false);
   expect((await band())!.shown).toBe(false);
@@ -303,6 +313,7 @@ it("Arrêter during a hand-over ends it and removes the band", async () => {
 
 it("a reason with <b> and 5,000 characters shows as text, cut", async () => {
   const id = idOf((await callTool(w.dataDir, "search_web", { query: "x", goal: "but" })).text);
+  await dispatch(m, { type: "activateTab", id });
   const handing = callTool(w.dataDir, "hand_over", { id, reason: `<b>gras</b>${"z".repeat(5000)}`, kind: "verification" });
   const b = (await waitBand((v) => v.state === "yours"))!;
   expect(b.hasB).toBe(false);
@@ -347,6 +358,7 @@ it("the band enters and leaves with a transition", async () => {
     const tick = () => { const b = document.querySelector('${BAND}'); window.__samples.push({ o: b ? +getComputedStyle(b).opacity : 0, inset: document.getElementById("tabbrowser-tabbox").getBoundingClientRect().top - 8 }); if (window.__sampling) requestAnimationFrame(tick); };
     requestAnimationFrame(tick);`);
   const id = idOf((await callTool(w.dataDir, "search_web", { query: "x", goal: "but" })).text);
+  await dispatch(m, { type: "activateTab", id });
   await waitBand((v) => v.shown);
   // Settled: the inset no longer moves.
   const inset = () => m.execute<number>(`return document.getElementById("tabbrowser-tabbox").getBoundingClientRect().top - 8`);

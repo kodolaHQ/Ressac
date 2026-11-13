@@ -1,15 +1,24 @@
 <script lang="ts">
   import { fade } from "svelte/transition";
   import Icon from "./Icon.svelte";
-  import type { WindowState } from "../../shared/model";
+  import { AGENT_PROFILE, type WindowState } from "../../shared/model";
   import { accessOf, api, appState, closeTab } from "../state.svelte";
   import AccessBadge from "./AccessBadge.svelte";
   import SiteIcon from "./SiteIcon.svelte";
   import SoundButton from "./SoundButton.svelte";
   import { openMenu } from "./menu.svelte";
 
-  let { window: win }: { window: WindowState } = $props();
-  const order = $derived(win.order[win.activeSpace] ?? []);
+  /** `agent`: the agent's browsing tabs (its own login profile), in their section; otherwise the user's tabs. */
+  let { window: win, agent = false }: { window: WindowState; agent?: boolean } = $props();
+  const all = $derived(win.order[win.activeSpace] ?? []);
+  const agentTab = (id: string) => appState.value?.tabs[id]?.profile === AGENT_PROFILE;
+  const order = $derived(all.filter((id) => agentTab(id) === agent));
+  let folded = $state(false);
+  /** Keeping an agent tab opens its page among the user's tabs, in the space's own profile: the agent's closes with its search. */
+  const keep = (id: string, after?: string) => {
+    const url = appState.value?.tabs[id]?.url;
+    if (url) api.dispatch({ type: "openTab", windowId: win.id, url, ...(after ? { after } : {}) });
+  };
   const active = $derived(win.active[win.activeSpace]);
   /** Drop point: before or after the hovered tab, depending on the half under the mouse (the line shows it). */
   let hover = $state<{ index: number; after: boolean } | null>(null);
@@ -18,10 +27,11 @@
     const after = hover?.index === index && hover.after;
     hover = null;
     const id = e.dataTransfer?.getData("application/x-webaios-onglet");
-    if (!id) return;
-    // deplacerOnglet counts without the moved tab: coming from above shifts the target by one.
-    const position = index + (after ? 1 : 0);
-    api.dispatch({ type: "moveTab", id, index: order.indexOf(id) < position ? position - 1 : position });
+    if (!id || !all.includes(id)) return;
+    if (agentTab(id) !== agent) return void (agent ? undefined : keep(id, order[index]));
+    // moveTab counts in the whole space, without the moved tab: coming from above shifts the target by one.
+    const position = all.indexOf(order[index]!) + (after ? 1 : 0);
+    api.dispatch({ type: "moveTab", id, index: all.indexOf(id) < position ? position - 1 : position });
   }
 
   /** A tab dropped outside the window leaves for a new one, placed where it was dropped. */
@@ -44,7 +54,13 @@
   }
 </script>
 
-<ul class="tabs" role="tablist" aria-orientation="vertical">
+{#if agent && order.length}
+  <button class="section" data-testid="agent-tabs" aria-expanded={!folded} onclick={() => (folded = !folded)} transition:fade={{ duration: 150 }}
+    ><Icon name="chevron" size={10} />Agent<span class="count">{order.length}</span></button
+  >
+{/if}
+{#if !(agent && folded)}
+<ul class="tabs" role="tablist" aria-orientation="vertical" aria-label={agent ? "Onglets de l'agent" : undefined}>
   <li class="highlight" role="presentation" aria-hidden="true" class:shown={activeIndex >= 0} style:transform="translateY({Math.max(activeIndex, 0) * 36}px)"></li>
   {#each order as id, index (id)}
     {@const tab = appState.value?.tabs[id]}
@@ -74,7 +90,10 @@
         onkeydown={(e) => (e.key === "Enter" || e.key === " ") && api.dispatch({ type: "activateTab", id })}
         onauxclick={(e) => e.button === 1 && closeTab(id)}
         oncontextmenu={(e) =>
-          openMenu(e, [
+          openMenu(e, agent ? [
+            { label: "Garder dans mes onglets", dispatch: () => keep(id) },
+            { label: "Fermer", dispatch: () => closeTab(id) },
+          ] : [
             { label: "Épingler", dispatch: () => api.dispatch({ type: "pinTab", id }) },
             { label: "Ajouter aux essentiels", dispatch: () => api.dispatch({ type: "addEssential", id }) },
             ...(appState.value?.spaces ?? []).filter((s) => s.id !== win.activeSpace).map((s) => ({ label: `Envoyer vers ${s.icon} ${s.name}`, dispatch: () => api.dispatch({ type: "moveTabToSpace", id, spaceId: s.id }) })),
@@ -100,9 +119,16 @@
     {/if}
   {/each}
 </ul>
+{/if}
 
 <style>
   .tabs { position: relative; list-style: none; margin: 0; padding: 0; }
+  .section { all: unset; display: flex; align-items: center; gap: 6px; margin: 12px 0 4px; padding: 2px 10px; border-radius: 6px; color: var(--text-muted); font-size: 12px; font-weight: 500; cursor: default; animation: webaios-rise var(--spring-d) var(--spring) backwards; }
+  .section:hover { color: var(--text); }
+  .section:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .section :global(svg) { transform: rotate(90deg); transition: transform var(--tap); }
+  .section[aria-expanded="false"] :global(svg) { transform: rotate(0deg); }
+  .count { margin-left: auto; font-variant-numeric: tabular-nums; }
   li[role="tab"] {
     position: relative;
     display: flex;

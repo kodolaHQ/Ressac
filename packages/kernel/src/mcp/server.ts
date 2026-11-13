@@ -814,7 +814,7 @@ function createToolsServer(
 
   if (widgets) registerWidgetsTools(server, bridge, policy, widgets, protect);
   if (actions) registerActionsTools(server, bridge, policy, actions, protect);
-  if (recaps) registerRecapsTools(server, bridge, recaps, seen, win, protect);
+  if (recaps) registerRecapsTools(server, bridge, recaps, seen, win, protect, searching?.sessions);
   if (toolSites) registerSitesTools(server, { tools: toolSites, access: siteAccess }, protect);
   if (extensions) registerExtensionsTools(server, { tools: extensions, agent: dev?.agent ?? "L'agent", window: win, policy: policy, ...(beatMs ? { heartbeatMs: beatMs } : {}) });
   if (searching && bridge.search) {
@@ -1312,6 +1312,7 @@ function registerRecapsTools(
   seen: SeenUrls,
   win: string | null,
   protect: <A>(f: (a: A) => Promise<Result>) => (a: A) => Promise<Result>,
+  sessions?: SearchSessions,
 ): void {
   server.registerTool(
     "show_recap",
@@ -1336,6 +1337,9 @@ function registerRecapsTools(
         await recaps.remove(r.id);
         return text(RECAP_PRIVATE, true);
       }
+      // The final version ends the search: its tab closes, unless the user has it (hand_over).
+      const search = live ? undefined : sessions?.current(win ?? MAIN_WINDOW);
+      if (search && !sessions!.handing(search.tabId)) await bridge.search?.close(search.tabId).catch((e) => console.error("show_recap: closing the search tab failed", e));
       const unread = r.unread.length ? ["Adresses jamais lues, affichées sans lien ni photo : recopie celles de tes lectures, à l'identique.", ...r.unread.slice(0, 10)] : [];
       return text([`Récap ${r.id} ouvert dans un onglet.`, ...(r.discarded.length ? ["Blocs écartés :", ...r.discarded] : []), ...unread].join("\n"));
     }),

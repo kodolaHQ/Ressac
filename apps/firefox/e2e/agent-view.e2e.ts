@@ -106,7 +106,7 @@ describe("the agent's view", () => {
     // Reduced by hand, it is a line; the frame covers only the pill: the rest of the page keeps the mouse.
     await click(m, '[data-testid="agent-pill-toggle"]', { frame: "agentview" });
     await waitUi(m, `return !doc.querySelector('[data-testid="agent-pill-frame"]')`, [], 5_000, "agentview");
-    const [width, height] = await waitFor<number[]>(m, `const f = document.getElementById("webaios-agent-pill"); return [f.clientWidth, f.clientHeight];`, ([w, h]) => w > 0 && w < 400 && h < 80, 5_000);
+    const [width, height] = await waitFor<number[]>(m, `const f = document.getElementById("webaios-agent-pill"); return [f.clientWidth, f.clientHeight];`, ([w = 0, h = 0]) => w > 0 && w < 400 && h < 80, 5_000);
     expect(width).toBeGreaterThan(0);
     expect(height).toBeLessThan(80);
     await click(m, '[data-testid="agent-pill-toggle"]', { frame: "agentview" });
