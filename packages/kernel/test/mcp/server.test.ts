@@ -1480,7 +1480,8 @@ test("search_web waits for late results: links 0, then 3, then 3 → returns the
     fake.linkSequence = [[], [a, b, c], [a, b, c]];
     const r = await call("search_web", { query: "x" });
     expect(r.text).toContain("https://exemple.fr/c");
-    expect(fake.calls.filter((x) => x.method === "readText")).toHaveLength(3);
+    // Three reads to settle, then one with the capture.
+    expect(fake.calls.filter((x) => x.method === "readText")).toHaveLength(4);
   });
 });
 
@@ -2008,6 +2009,18 @@ test("a login page is handed over too; stopping during the hand answers as hand_
     await vi.waitFor(() => expect(bands.at(-1)![1]).toMatchObject({ state: "yours", text: expect.stringContaining("Connexion demandée. À vous : ") }));
     search.stop("search-1");
     expect((await pending).text).toBe(STOP_TEXT);
+  });
+});
+
+test("only search reads ask the browser for the capture (reader mode, blocks…): never a read of the user's tab", async () => {
+  policy.grant(gmail);
+  await client.callTool({ name: "read_tab", arguments: { id: "gmail" } });
+  expect(bridge.calls.filter((c) => c.method === "readText").every((c) => c.args[1] === undefined)).toBe(true);
+  await withSearch(async ({ call, fake }) => {
+    await call("search_web", { query: "x", goal: "but" });
+    const reads = fake.calls.filter((c) => c.method === "readText");
+    expect(reads.at(-1)!.args[1]).toEqual({ capture: true });
+    expect(reads.slice(0, -1).every((c) => c.args[1] === undefined)).toBe(true);
   });
 });
 

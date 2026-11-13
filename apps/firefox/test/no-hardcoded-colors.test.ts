@@ -28,7 +28,7 @@ const ALLOWED_LINES: { file: string; match: string; reason: string }[] = [
   },
   {
     file: "chrome/agent/page-actor.ts",
-    match: 'if (!el) return "rgb(255, 255, 255)";',
+    match: 'const canvas = /dark/.test(scheme) ? "" : "rgb(255, 255, 255)";',
     reason: "a web page's default background, to find text drawn in its own background colour; not a UI colour",
   },
   {

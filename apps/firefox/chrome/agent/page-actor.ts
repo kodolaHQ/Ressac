@@ -14,6 +14,12 @@ const PDF_READ_MS = 5_000;
 const BLOCKS_MAX = 6_000;
 const BLOCKS_TEXT_MAX = 200_000;
 const READER_MS = 3_000;
+/** Past this many elements the reader mode would take the whole page's time: the blocks do without it. */
+const READER_ELEMENTS_MAX = 20_000;
+/** One block's text: a single huge text node never fills the whole budget. */
+const BLOCK_TEXT_MAX = 5_000;
+/** A JSON-LD script past this size is not parsed (the kernel keeps 20 pairs anyway). */
+const JSON_LD_MAX = 50_000;
 
 type Zone = "main" | "other" | "aside" | "header" | "nav" | "footer" | "lang";
 const ZONE_TAG: Record<string, Zone> = { NAV: "nav", HEADER: "header", FOOTER: "footer", ASIDE: "aside", MAIN: "main", ARTICLE: "main" };
@@ -42,9 +48,10 @@ const zoneOwn = (el: Element): Zone | undefined => {
  * zone, at most LINKS_MAX and LINKS_PER_ZONE per zone (one per address, fragment dropped, and zone). The text stops at
  * `max`; the walk goes on for the links. Its blocks: the visible text by block, with heading weight and zone, without
  * the text a person cannot see (tiny, transparent, off screen, clipped, the colour of its background), the usual
- * carrier of instructions hidden from the reader.
+ * carrier of instructions hidden from the reader. Blocks only with `capture`: the search reads, not every page read.
+ * A link a person cannot see is never listed.
  */
-function readDisplayed(doc: Document, max: number) {
+function readDisplayed(doc: Document, max: number, capture: boolean) {
   const origin = (doc as any).nodePrincipal.origin;
   const parts: string[] = [];
   let length = 0;
@@ -71,17 +78,28 @@ function readDisplayed(doc: Document, max: number) {
   };
   const view = doc.defaultView!;
   const bodySize = parseFloat(view.getComputedStyle(doc.body ?? doc.documentElement).fontSize) || 16;
+  // A dark colour scheme may paint the canvas dark: the page's background is then unknown ("").
+  // The meta tag does not show in the computed `color-scheme`.
+  const scheme = `${view.getComputedStyle(doc.documentElement).colorScheme} ${doc.querySelector('meta[name="color-scheme"]')?.getAttribute("content") ?? ""}`;
+  const canvas = /dark/.test(scheme) ? "" : "rgb(255, 255, 255)";
   const backgrounds = new WeakMap<Element, string>();
+  /** The colour behind an element's text, "" when unknown (an image or gradient is behind it). */
   const background = (el: Element | null): string => {
-    if (!el) return "rgb(255, 255, 255)";
+    if (!el) return canvas;
     const known = backgrounds.get(el);
-    if (known) return known;
-    const c = el.ownerDocument.defaultView!.getComputedStyle(el).backgroundColor;
-    const r = !c || c === "transparent" || /rgba\(.*,\s*0\)$/.test(c) ? background(el.parentElement ?? ((el.getRootNode() as ShadowRoot).host ?? null)) : c;
+    if (known !== undefined) return known;
+    const cs = el.ownerDocument.defaultView!.getComputedStyle(el);
+    const c = cs.backgroundColor;
+    const r = cs.backgroundImage && cs.backgroundImage !== "none" ? "" : !c || alpha(c) < 0.1 ? background(el.parentElement ?? ((el.getRootNode() as ShadowRoot).host ?? null)) : c;
     backgrounds.set(el, r);
     return r;
   };
-  const rgb = (c: string) => (c.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number);
+  const numbers = (c: string) => (c.match(/[\d.]+/g) ?? []).map(Number);
+  const rgb = (c: string) => numbers(c).slice(0, 3);
+  const alpha = (c: string) => (c === "transparent" ? 0 : (numbers(c)[3] ?? 1));
+  /** Text a person cannot see: transparent (but not gradient text, drawn by its background) or its background's colour. */
+  const unseen = (el: Element, cs: CSSStyleDeclaration) =>
+    (alpha(cs.color) < 0.1 && cs.backgroundClip !== "text") || sameColour(cs.color, background(el));
   const sameColour = (a: string, b: string) => {
     const [x, y] = [rgb(a), rgb(b)];
     return x.length === 3 && y.length === 3 && Math.abs(x[0]! - y[0]!) + Math.abs(x[1]! - y[1]!) + Math.abs(x[2]! - y[2]!) < 24;
@@ -114,14 +132,14 @@ function readDisplayed(doc: Document, max: number) {
     if (!newline) add("\n");
   };
   const walk = (node: Node, zone: Zone, visible: boolean, pre: boolean, stealth: boolean): void => {
-    if (length >= max && links.length >= LINKS_MAX && (blocks.length >= BLOCKS_MAX || blocksText >= BLOCKS_TEXT_MAX)) return;
+    if (length >= max && links.length >= LINKS_MAX && (!capture || blocks.length >= BLOCKS_MAX || blocksText >= BLOCKS_TEXT_MAX)) return;
     if (node.nodeType === Node.TEXT_NODE) {
       if (!visible) return;
       const raw = node.nodeValue ?? "";
       if (!raw.trim()) {
         // Whitespace between inline pieces separates words; in code it is the line breaks and the indentation.
         if (length < max && (pre || !(newline || /\s$/.test(parts.at(-1) ?? "")))) add(pre ? raw : " ");
-        if (cur && !stealth) cur.text += pre ? raw : " ";
+        if (cur && !stealth && cur.text.length < BLOCK_TEXT_MAX) cur.text += pre ? raw : " ";
         return;
       }
       if (length < max) {
@@ -129,15 +147,16 @@ function readDisplayed(doc: Document, max: number) {
         const t = pre ? raw : raw.replace(/\s+/g, " ");
         add(newline && !pre ? t.trimStart() : t);
       }
+      if (!capture || stealth) return;
       const parent = node.parentElement;
       const cs = parent && parent.ownerDocument.defaultView!.getComputedStyle(parent);
-      if (stealth || !parent || !cs || sameColour(cs.color, background(parent))) return;
+      if (!parent || !cs || unseen(parent, cs)) return;
       if (!cur) {
         const cell = parent.closest("td, th");
         const tr = cell?.parentElement;
         cur = { text: "", h: headingOf(parent, cs, raw.trim()), zone, ...(pre ? { pre } : {}), ...(tr ? { row: [...tr.parentElement!.children].indexOf(tr) } : {}) };
       }
-      cur.text += raw;
+      if (cur.text.length < BLOCK_TEXT_MAX) cur.text += raw.slice(0, BLOCK_TEXT_MAX - cur.text.length);
       return;
     }
     if (node.nodeType !== Node.ELEMENT_NODE) {
@@ -158,7 +177,7 @@ function readDisplayed(doc: Document, max: number) {
       breakLine();
       flush();
     }
-    if (el.tagName === "A" && shown && links.length < LINKS_MAX && (perZone.get(z) ?? 0) < LINKS_PER_ZONE) {
+    if (el.tagName === "A" && shown && !hidden && links.length < LINKS_MAX && !unseen(el, cs) && (perZone.get(z) ?? 0) < LINKS_PER_ZONE) {
       const url = (el as HTMLAnchorElement).href;
       const key = `${z} ${String(url).split("#")[0]}`;
       if (typeof url === "string" && /^https?:/i.test(url) && !seen.has(key)) {
@@ -200,8 +219,10 @@ function readDisplayed(doc: Document, max: number) {
 function structuredData(doc: Document): unknown[] {
   const out: unknown[] = [];
   for (const s of [...doc.querySelectorAll('script[type="application/ld+json"]')].slice(0, 20)) {
+    const raw = s.textContent ?? "";
+    if (raw.length > JSON_LD_MAX) continue;
     try {
-      out.push(JSON.parse(s.textContent ?? ""));
+      out.push(JSON.parse(raw));
     } catch {}
   }
   const meta: Record<string, string> = {};
@@ -213,7 +234,8 @@ function structuredData(doc: Document): unknown[] {
   if (Object.keys(meta).length) out.push(meta);
   const micro: Record<string, string> = {};
   for (const e of [...doc.querySelectorAll("[itemprop]")].slice(0, 80)) {
-    const v = e.getAttribute("content") || e.getAttribute("datetime") || (e.textContent ?? "").replace(/\s+/g, " ").trim();
+    // Attributes only: an element's text may be hidden from the person, the blocks carry what is shown.
+    const v = (e.getAttribute("content") || e.getAttribute("datetime") || "").replace(/\s+/g, " ").trim();
     const k = e.getAttribute("itemprop") ?? "";
     if (k && v && v.length < 300) micro[k] ??= v;
   }
@@ -287,22 +309,25 @@ export class WebAiOsPageChild extends JSWindowActorChild {
       case "getText":
         return (async () => {
           let shown: { text: string; links: { text: string; url: string; zone?: string }[]; blocks?: unknown[]; deep?: boolean };
+          const capture = m.data?.capture === true;
           try {
-            shown = readDisplayed(doc, TEXT_MAX);
+            shown = readDisplayed(doc, TEXT_MAX, capture);
           } catch {
-            // A page the walk cannot go through (nested far too deep): what innerText gives.
-            shown = { text: (doc.body?.innerText ?? "").slice(0, TEXT_MAX), links: collect(LINKS_MAX) };
+            // A page the walk cannot go through (nested far too deep): what innerText gives. No blocks: innerText
+            // keeps the text a person cannot see, which the blocks exist to leave out.
+            shown = { text: (doc.body?.innerText ?? "").slice(0, TEXT_MAX), links: collect(LINKS_MAX), ...(capture ? { blocks: [] } : {}) };
           }
           // The viewer's own text is only its rendered pages: the PDF itself has them all. Xray: the page's own timers cannot be swapped in.
           const late = new Promise<null>((ok) => win.setTimeout(() => ok(null), PDF_READ_MS));
           const pdf = await Promise.race([pdfText(doc, win, TEXT_MAX), late]).catch(() => null);
+          const read = { text: pdf ?? shown.text, selection: String(win.getSelection() ?? ""), links: shown.links };
+          if (!capture) return read;
           // The reader mode works on a copy without shadow roots nor frames: on such a page it would drop their text.
-          const reader = pdf === null && !shown.deep ? await readerText(doc, win).catch(() => undefined) : undefined;
+          const reader =
+            pdf === null && !shown.deep && doc.getElementsByTagName("*").length <= READER_ELEMENTS_MAX ? await readerText(doc, win).catch(() => undefined) : undefined;
           const passwords = [...doc.querySelectorAll('input[type="password"]')].filter((i) => (i as any).checkVisibility?.({ opacityProperty: true, visibilityProperty: true })).length;
           return {
-            text: pdf ?? shown.text,
-            selection: String(win.getSelection() ?? ""),
-            links: shown.links,
+            ...read,
             ...(pdf === null && shown.blocks ? { blocks: shown.blocks } : {}),
             structured: structuredData(doc),
             ...(reader ? { reader } : {}),

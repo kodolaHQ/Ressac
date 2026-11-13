@@ -84,7 +84,11 @@ export interface BrowserBridge {
   activeTab(): Promise<TabInfo | null>;
   listTabs(): Promise<TabInfo[]>;
   /** Throws TabNotFound if the id is unknown (like lireTexte, naviguer and capturer). */
-  readText(id: string): Promise<TabRead>;
+  /**
+   * `capture`: also what only the browser knows (blocks, structured data, reader text, status…), which costs the page
+   * a reader-mode parse: asked only for a search read, never for a read of the user's tab.
+   */
+  readText(id: string, o?: { capture?: boolean }): Promise<TabRead>;
   openTab(url: string, space?: string): Promise<TabInfo>;
   /**
    * `"pending"` (site app window only): the tweaks grant card is shown; the address will

@@ -26,6 +26,14 @@ test("a short results page with a result about captchas is a page of links, not 
   expect(pageState(page([body("Résultats pour captcha. Les captchas expliqués. Résultat 1. Résultat 2.")], { links }), "https://duckduckgo.com/html?q=captcha")).toBe("ok");
 });
 
+test("a login path must be a whole path segment, on a short page", () => {
+  const p = page([body("Notre offre fibre en détail. " + "z".repeat(100))], { redirects: ["http://ex.fr/connexion-internet-fibre"] });
+  expect(pageState(p, "https://ex.fr/connexion-internet-fibre")).toBe("ok");
+  expect(pageState(p, "https://ex.fr/login-tips")).toBe("ok");
+  expect(pageState(p, "https://ex.fr/auth/")).toBe("connexion demandée");
+  expect(pageState(page([body("Un long article. " + "z".repeat(5000))], { redirects: ["https://ex.fr/a"] }), "https://ex.fr/login")).toBe("ok");
+});
+
 test("stateLine names the state and the status when known", () => {
   expect(stateLine(page([body("x".repeat(100))], { status: 403 }), "https://ex.fr/")).toBe("État : bloquée (403)");
   expect(stateLine({ text: "x".repeat(100) }, "https://ex.fr/")).toBe("État : ok");

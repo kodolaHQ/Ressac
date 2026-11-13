@@ -101,8 +101,9 @@ export function bridgeHandlers(
       throw e;
     });
   };
-  const getText = async (browser: any) => {
-    const r = await browser.browsingContext.currentWindowGlobal.getActor("WebAiOsPage").sendQuery("getText");
+  /** `capture`: also the blocks, reader text, structured data and response facts (the search reads only). */
+  const getText = async (browser: any, capture = false) => {
+    const r = await browser.browsingContext.currentWindowGlobal.getActor("WebAiOsPage").sendQuery("getText", { capture });
     // The child runs in a web process: its answer is not trusted.
     const text = String(r?.text ?? "").slice(0, TEXT_MAX);
     const selection = String(r?.selection ?? "").slice(0, TEXT_MAX);
@@ -183,7 +184,10 @@ export function bridgeHandlers(
     "search.close": ([id]: [string]) => void store.dispatch({ type: "closeTab", id }),
     // The band of the search tab: the window draws it (window/search-band.ts) from the tab's state.
     "search.band": ([id, band]: [string, Band | null]) => void store.dispatch({ type: "setAgentSearch", id, band: band && { ...band, text: band.text.slice(0, 300) } }),
-    readText: ([id]: [string]) => onSiteView(id, getText) ?? outsidePrivate(id, getText),
+    readText: ([id, o]: [string, { capture?: boolean }?]) => {
+      const read = (browser: any) => getText(browser, o?.capture === true);
+      return onSiteView(id, read) ?? outsidePrivate(id, read);
+    },
     capture: ([id]: [string]) => onSiteView(id, snapshot) ?? outsidePrivate(id, (browser) => snapshot(browser, windowOf(id).window)),
     // « L'agent veut lire l'onglet … » in the active window; refused with none to show it. The signal aborts when the
     // host goes: the card falls.

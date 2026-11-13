@@ -41,6 +41,7 @@ const LINKS_SHOWN = 40;
 const LISTS_KEPT = 200;
 /** The reduced page of a search read, and of each page of read_pages. */
 const SEARCH_PAGE_MAX = 8_000;
+const CAPTURE = { capture: true } as const;
 const READ_PAGES_PAGE_MAX = 3_000;
 const reducedNote = (shown: number, total: number) => `(Page réduite : ${shown} passages sur ${total} ; read_tab avec full: true donne toute la page.)`;
 export const LINKS_HEADER = 'Liens (numérotés, les plus utiles d\'abord ; navigate accepte {"link": n}) :';
@@ -459,7 +460,9 @@ function createToolsServer(
         const n = read.links?.length ?? 0;
         zeros = n === 0 ? zeros + 1 : 0;
         if (zeros === 1) emptySince = Date.now();
-        if ((n > 0 && n === last) || (zeros >= 3 && Date.now() - emptySince >= searching!.emptySpanMs) || Date.now() >= end) return read;
+        // Settled: one more read with what only the browser knows (it costs a reader-mode parse, so once).
+        if ((n > 0 && n === last) || (zeros >= 3 && Date.now() - emptySince >= searching!.emptySpanMs) || Date.now() >= end)
+          return working(o.id, () => bridge.readText(o.id, CAPTURE)).catch(() => read);
         last = n;
         await new Promise((ok) => setTimeout(ok, searching!.settleMs));
       }
@@ -908,7 +911,7 @@ function createToolsServer(
                   opened.add(t.id);
                   if (!sessions.owns(id)) return; // the search ended while the tab opened: the finally closes it
                 }
-                const tabRead = working(t.id, () => bridge.readText(t!.id));
+                const tabRead = working(t.id, () => bridge.readText(t!.id, CAPTURE));
                 tabRead.catch(() => {}); // abandoned by the timeout: its rejection (tab closed) is not an error
                 const late = new Promise<never>((_, no) => { timer = setTimeout(() => no(new Error("la page n'a pas répondu à temps.")), searching.readPageMs); });
                 const r = await Promise.race([tabRead, late]);

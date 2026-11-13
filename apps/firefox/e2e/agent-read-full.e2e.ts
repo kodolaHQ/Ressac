@@ -24,7 +24,7 @@ beforeAll(async () => {
   other = await startServer({ routes: { "/externe.html": html(`<p>Texte cadre autre port</p><a href="/autre-lien.html">Lien cadre autre port</a>`) } });
   server = await startServer({
     routes: {
-      "/sommaire.html": html(`<title>Sommaire</title><a href="/ombre.html">Ombre</a><a href="/cadre.html">Cadre</a><a href="/rapport.pdf">Rapport</a><a href="/longue.html">Longue</a><a href="/faux-pdf.html">Faux</a><a href="/pdf-bloque.html">Bloque</a><a href="/menus.html">Menus</a><a href="/profonde.html">Profonde</a><a href="/piege.html">Piège</a><a href="/produit.html">Produit</a><a href="/absente.html">Absente</a><a href="/bloque.html">Bloque</a><a href="/connexion.html">Connexion</a><a href="/captchas.html">Captchas</a><a href="/code.html">Code</a>`),
+      "/sommaire.html": html(`<title>Sommaire</title><a href="/ombre.html">Ombre</a><a href="/cadre.html">Cadre</a><a href="/rapport.pdf">Rapport</a><a href="/longue.html">Longue</a><a href="/faux-pdf.html">Faux</a><a href="/pdf-bloque.html">Bloque</a><a href="/menus.html">Menus</a><a href="/profonde.html">Profonde</a><a href="/piege.html">Piège</a><a href="/produit.html">Produit</a><a href="/absente.html">Absente</a><a href="/bloque.html">Bloque</a><a href="/connexion.html">Connexion</a><a href="/captchas.html">Captchas</a><a href="/code.html">Code</a><a href="/invisibles.html">Invisibles</a><a href="/sombre.html">Sombre</a>`),
       "/ombre.html": html(`<title>Ombre</title>
 <nav><a href="/menu.html">Menu du site</a></nav>
 <p>Avant</p><p>Après</p>
@@ -72,6 +72,14 @@ customElements.define("x-boite", class extends HTMLElement { constructor() { sup
   <span>// rien</span>
   <span>int</span> x;
 }</pre><p><b>mot</b> <i>suivant</i></p><p><a href="/lie.html">Article lié</a></p></main>`),
+      // Transparent text, links a person cannot see, microdata text; visible gradient text and white text on a dark gradient.
+      "/invisibles.html": html(`<title>Invisibles</title><main><h1>Lecteur</h1><p>Un lecteur de musique pour la cuisine, simple et robuste.</p>
+<p style="color:transparent">Marqueur transparent.</p>
+<p style="background:linear-gradient(red,blue);background-clip:text;color:transparent">Titre dégradé visible</p>
+<div style="background:linear-gradient(#000,#222)"><p style="color:#fff">Texte sur fond sombre</p></div>
+<a href="/cache.html" style="color:#fff">Lien blanc caché</a><div style="opacity:0"><a href="/opaque.html">Lien opaque caché</a></div><a href="/visible.html">Lien visible</a>
+<div itemscope><span itemprop="name" style="font-size:1px">Marqueur micro</span><meta itemprop="price" content="12.50"></div></main>`),
+      "/sombre.html": html(`<title>Sombre</title><meta name="color-scheme" content="dark"><main><p style="color:#fff">Texte clair sur un thème sombre, assez long pour compter.</p></main>`),
       "/rapport.pdf": (_req, res) => {
         res.setHeader("content-type", "application/pdf");
         res.end(readFileSync(join(import.meta.dirname, "pages", "rapport.pdf")));
@@ -160,10 +168,20 @@ it("page-wide menu classes and 600 header links do not hide the content's links"
   expect(list.indexOf("Contenu libre")).toBeLessThan(list.indexOf("Menu 0"));
 });
 
-it("a page nested far too deep is still read", async () => {
+it("a page nested far too deep is still read: whole with full: true, the reduced page holds no unchecked text", async () => {
   const r = await read("/profonde.html");
-  expect(r).toContain("Début profond");
+  expect(r).toContain("État : vide");
   expect(r).not.toContain("Erreur");
+  const id = /Onglet : (\S+)/.exec((await callTool(w.dataDir, "search_web", { query: "x", goal: "lire" })).text)![1]!;
+  await callTool(w.dataDir, "navigate", { id, url: `${server.url}/profonde.html` });
+  expect((await callTool(w.dataDir, "read_tab", { id, full: true })).text).toContain("Début profond");
+});
+
+it("transparent text, unseen links and microdata text stay out; gradient text and text on a dark background stay in", async () => {
+  const r = await read("/invisibles.html");
+  for (const s of ["Titre dégradé visible", "Texte sur fond sombre", "price : 12.50", `Lien visible — ${server.url}/visible.html`]) expect(r).toContain(s);
+  for (const s of ["Marqueur", "Lien blanc caché", "Lien opaque caché"]) expect(r).not.toContain(s);
+  expect(await read("/sombre.html")).toContain("Texte clair sur un thème sombre");
 });
 
 it("a huge page with nested shadow roots is read quickly and bounded", async () => {
