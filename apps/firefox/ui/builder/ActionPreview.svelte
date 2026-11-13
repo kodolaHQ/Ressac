@@ -2,6 +2,7 @@
   import type { PageAction } from "@webaios/kernel";
   import { NO_RESULT } from "../../shared/actions";
   import PageRender from "../action/PageRender.svelte";
+  import { actionContext } from "../action/types";
   import { api } from "../state.svelte";
   import type { Executions } from "./executions.svelte";
 
@@ -43,7 +44,7 @@
     <p class="muted">{NO_RESULT}</p>
   {:else}
     <div class="page">
-      <PageRender page={loaded.page} action={id} run={loaded.run} components={false} />
+      <PageRender page={loaded.page} ctx={actionContext(id, loaded.run)} components={false} />
     </div>
   {/if}
   {#if executions.chosen?.attempt}<p class="muted mention" data-testid="mention-preview">Aperçu d'un essai : pas le dernier résultat de l'action</p>{/if}

@@ -7,6 +7,7 @@
   import ActionProgress from "./ActionProgress.svelte";
   import ActionHeader from "./ActionHeader.svelte";
   import PageRender from "./PageRender.svelte";
+  import { actionContext } from "./types";
 
   /**
    * The page `webaios://action/<id>[/<run>]`: the requested result (the latest without `execution`), the progress of a
@@ -97,6 +98,9 @@
     return end;
   });
 
+  // Through a primitive: a page read again keeps its context, so its images are not asked again.
+  const shownRun = $derived(loaded?.run ?? null);
+  const ctx = $derived(shownRun === null ? null : actionContext(id, shownRun));
   const current = $derived(direct.running.find((c) => c.action === id) ?? null);
   const pending = $derived(direct.waiting.some((a) => a.action === id));
   const running = $derived(current !== null || pending);
@@ -193,8 +197,8 @@
         <p class="message" data-testid="nothing-found">Pas encore de résultat</p>
       {:else if loaded?.page?.empty}
         <p class="message" data-testid="no-result">{NO_RESULT}</p>
-      {:else if loaded?.page}
-        <PageRender page={loaded.page} action={id} run={loaded.run} />
+      {:else if loaded?.page && ctx}
+        <PageRender page={loaded.page} {ctx} />
       {/if}
     {/if}
     {#if grantNeed && cardOpen}

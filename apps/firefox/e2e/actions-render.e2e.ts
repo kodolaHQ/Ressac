@@ -110,6 +110,15 @@ beforeAll(async () => {
   });
   await writeActionWithResult(w.dataDir, "ecrit", { name: "Ecrit", results: { n: 1 }, blocks: [{ component: "title", props: { text: "Ecrit" } }, { component: "ecrit", props: {} }] });
   await writeActionWithResult(w.dataDir, "sonde", { name: "Sonde", results: { n: 1 }, blocks: [{ component: "title", props: { text: "Sonde" } }, { component: "sonde", props: {} }] });
+  // The gallery bricks: a highlight with its photo, cards with warnings.
+  await writeActionWithResult(w.dataDir, "galerie", {
+    name: "Galerie",
+    results: { best: { nom: "Yuba", prix: "1 850 €", photo: "https://img.exemple/ok.png" }, autres: [{ nom: "Babboe", prix: "1 400 €", photo: "https://img.exemple/ok.png", alertes: ["batterie 70 %", "pneus"] }, { nom: "Tern", prix: "1 990 €", alertes: [] }] },
+    blocks: [
+      { component: "highlight", props: { object: "best", label: "Meilleure affaire", title: "nom", value: "prix", image: "photo" } },
+      { component: "cards", props: { items: "autres", title: "nom", value: "prix", image: "photo", warnings: "alertes" } },
+    ],
+  });
   await writeActionWithResult(w.dataDir, "images", { name: "Images", results: { photos: Object.entries(PHOTOS).map(([title, snapshot]) => ({ titre: title, photo: snapshot })) }, blocks: cards });
 }, 60_000);
 
@@ -146,6 +155,18 @@ describe("action page rendering", () => {
     } finally {
       await m.execute("Services.prefs.clearUserPref('ui.systemUsesDarkTheme');");
     }
+  });
+
+  it("a highlight and card warnings show (gallery bricks)", async () => {
+    await openActionPage(m, "galerie", "Galerie");
+    await q.waitContains(tid("block-highlight"), "Meilleure affaire");
+    expect(await q.text(tid("block-highlight"))).toContain("1 850 €");
+    await waitUi(m, "return !!doc.querySelector(arguments[0]);", [`${tid("block-highlight")} img.pa-image`], 15_000);
+    const warnings = await inUi<string[]>(m, "return [...doc.querySelectorAll(arguments[0])].map((e) => e.textContent);", [`${tid("block-cards")} .pa-warning`]);
+    expect(warnings).toEqual(["batterie 70 %", "pneus"]);
+    // The price sits on the photo when there is one, under the title otherwise.
+    expect(await q.count(`${tid("block-cards")} .pa-photo .value`)).toBe(1);
+    expect(await q.count(`${tid("block-cards")} .body .value`)).toBe(1);
   });
 
   // actions.spec.ts:131

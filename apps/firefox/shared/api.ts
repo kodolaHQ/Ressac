@@ -353,15 +353,17 @@ export interface ApiWebaios {
     /** Opens the builder on the action's workflow. */
     viewWorkflow(id: string): void;
   };
-  /** The agent's recaps (`webaios://recap/<id>`), served by the host whether or not the kernel runs. */
+  /**
+   * The agent's recaps (`webaios://recap/<id>`), served by the host whether or not the kernel runs. Nothing in a private
+   * space (`null`, no link opened).
+   */
   recaps: {
-    /** `gone`: closed or swept, the file is no more; null: unreadable, or no host. */
+    /** `gone`: closed or swept, the file is no more; null: unreadable, no host yet, or a private space. */
     page(id: string): Promise<{ title: string; updated: string; page: RenderedPage } | { gone: true } | null>;
-    /** Only an address the agent read for this recap; images https only. */
-    linkAllowed(id: string, url: string): Promise<boolean>;
-    imageAllowed(id: string, url: string): Promise<boolean>;
-    /** The agent republished this recap: re-read. */
-    onChange(callback: (id: string) => void): () => void;
+    /** A link of the page: opened in a tab only if the agent read this exact address for this recap. */
+    openLink(id: string, url: string): void;
+    /** The agent republished this recap (its id), or the host started again (null): re-read. */
+    onChange(callback: (id: string | null) => void): () => void;
   };
   /** Applications page (projects of the agent's space). */
   apps: {

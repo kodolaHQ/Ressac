@@ -1,5 +1,5 @@
 import type { ShownSite } from "../shared/sites";
-import type { ApiWebaios, LocalAiStateShown, AgentPanelState, ApplicationList, ExtensionResult, ShownWidget } from "../shared/api";
+import type { Action, ApiWebaios, LocalAiStateShown, AgentPanelState, ApplicationList, ExtensionResult, ShownWidget } from "../shared/api";
 import type { ExtensionLine, SpaceExtensionLine } from "../shared/extensions";
 import type { HomeTheme } from "../../../packages/kernel/src/home/theme.ts";
 import type { FreePlacement } from "../../../packages/kernel/src/home/schemas.ts";
@@ -10,7 +10,7 @@ import type { WindowController } from "../chrome/window/controller";
 import { forgetWidget, prepareWidget } from "../chrome/window/widget-frame";
 import { readableProfiles, profilesForGrant, openableUrl } from "./home-profiles";
 import { ACTIONS_IN_PRIVATE_SPACE } from "../shared/actions";
-import { createActionsApi, activeSpacePrivate, type ActionsFirefox } from "./actions-api";
+import { createActionsApi, createRecapsApi, activeSpacePrivate, type ActionsFirefox, type RecapsFirefox } from "./actions-api";
 import { createSettingsApi } from "./settings-api";
 import { createDesignApi, createExternalApi, createReviewApi } from "./design-api";
 
@@ -24,8 +24,9 @@ export interface HomeRead {
  * The UI's API, with the home page's read widened to carry the theme and free placements (Task 7), and
  * the actions' result images and components asked of the chrome.
  */
-export interface ApiFirefox extends Omit<ApiWebaios, "home" | "actions"> {
+export interface ApiFirefox extends Omit<ApiWebaios, "home" | "actions" | "recaps"> {
   actions: ActionsFirefox;
+  recaps: RecapsFirefox;
   home: Omit<ApiWebaios["home"], "read" | "place"> & {
     read(): Promise<HomeRead>;
     place(placements: FreePlacement[]): void;
@@ -89,6 +90,7 @@ export function createApi(win: WindowController): ApiFirefox {
   };
   const host = win.store.agent;
   const windowId = win.windowId;
+  const windowApi = { state: () => win.store.state, dispatch: (a: Action) => win.store.dispatch(a), host, window: windowId, untilUnload, media: win.store.actionMedia };
   let lastSelection: unknown; // the last workflow.selection this window sent
   /** When this window last opened a widget link: a display cannot make links leave in a burst. */
   let lastLink = 0;
@@ -365,15 +367,9 @@ export function createApi(win: WindowController): ApiFirefox {
         return untilUnload(() => offs.forEach((f) => f()));
       },
     },
-    // The recaps: the host's checks; the private space and the opening of links are the page's (task 4).
-    recaps: {
-      page: (id) => ask("recaps.page", { id }, null),
-      linkAllowed: (id, url) => ask("recaps.linkAllowed", { id, url }, false),
-      imageAllowed: (id, url) => ask("recaps.imageAllowed", { id, url }, false),
-      onChange: (callback) => untilUnload(host.on("recaps.changed", (p) => callback(String(p?.id)))),
-    },
-    // The actions: the window state's half here (private spaces, dispatches), the disk and kernel's in the host.
-    actions: createActionsApi({ state: () => win.store.state, dispatch: (a) => win.store.dispatch(a), host, window: windowId, untilUnload, media: win.store.actionMedia }),
+    // The actions and the recaps: the window state's half here (private spaces, dispatches), the disk and kernel's in the host.
+    actions: createActionsApi(windowApi),
+    recaps: createRecapsApi(windowApi),
   };
   return new Proxy(api, {
     get(target, key) {

@@ -1,7 +1,8 @@
 /*
  * The design system of an action page, in Aura (DESIGN.md): theme.css tokens only, glass cards on the aura (no backdrop blur: the aura is already blurred, and a page may hold many cards), aura-accent
  * chips, Funnel Display headings, Geist body. Fluid layout, at every tab width: the width rules follow the page
- * (container queries), not the window.
+ * (container queries), not the window. The « Galerie » layout: figures as chips beside the head, a featured photo card,
+ * cards with the price on the photo and orange warning chips.
  */
 .page-action {
   container-type: inline-size;
@@ -16,6 +17,17 @@
   user-select: text;
 }
 .pa-blocks { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+/* What appears comes in on the spring (DESIGN.md); a page read again keeps its elements, so nothing replays. */
+.page-action > .pa-blocks > * { animation: webaios-rise var(--spring-d) var(--spring) both; }
+
+.pa-head { display: flex; justify-content: space-between; align-items: end; gap: 20px; }
+.pa-head-text { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.pa-head .pa-title { margin: 0; font-size: 28px; line-height: 1.15; }
+.pa-head .pa-paragraph { color: var(--text-muted); max-width: 560px; }
+.pa-head .pa-figures { flex: none; }
+@container (max-width: 640px) {
+  .pa-head { flex-direction: column; align-items: stretch; }
+}
 .pa-mention { margin: 0; font-size: 12px; color: var(--text-muted); }
 .pa-empty { margin: 0; color: var(--text-muted); }
 .pa-others { margin: 6px 0 0; font-size: 12px; color: var(--text-muted); }
@@ -37,19 +49,44 @@
 .pa-figure { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border: 1px solid var(--glass-edge); border-radius: 16px; background: var(--glass); box-shadow: var(--lift); min-width: 0; }
 .pa-figure .value { font: 650 26px/1.15 var(--font-display); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .pa-figure .label { font-size: 12px; color: var(--text-muted); }
-.pa-figures { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+.pa-figures { display: flex; flex-wrap: wrap; gap: 10px; }
+.pa-figures .pa-figure { padding: 10px 14px; border-radius: 14px; min-width: 110px; box-shadow: none; }
+.pa-figures .pa-figure .value { font-size: 20px; }
 
 .pa-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--glass-edge); border-radius: 16px; background: var(--glass); box-shadow: var(--lift); overflow: hidden; }
 .pa-list li { padding: 8px 12px; border-top: 1px solid var(--border); min-width: 0; }
 .pa-list li:first-child { border-top: none; }
 .pa-list .subtitle { display: block; font-size: 12px; color: var(--text-muted); overflow-wrap: anywhere; }
 
-.pa-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
-.pa-card { display: flex; flex-direction: column; gap: 6px; border: 1px solid var(--glass-edge); border-radius: 16px; background: var(--glass); box-shadow: var(--lift); overflow: hidden; min-width: 0; }
-.pa-card .body { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px 12px; }
+.pa-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; }
+.pa-card { display: flex; flex-direction: column; border: 1px solid var(--glass-edge); border-radius: 16px; background: var(--glass); box-shadow: var(--lift); overflow: hidden; min-width: 0; }
+.pa-card .body { display: flex; flex-direction: column; gap: 4px; padding: 10px 13px 13px; }
+.pa-card .pa-image, .pa-card .pa-image-neutral { aspect-ratio: 4 / 3; }
 .pa-card .title { font: 600 15px/1.3 var(--font-display); overflow-wrap: anywhere; }
 .pa-card .subtitle { font-size: 12px; color: var(--text-muted); overflow-wrap: anywhere; }
 .pa-card .value { font-size: 16px; font-weight: 600; color: var(--accent); }
+
+/* A photo with what sits on it (a card's price). */
+.pa-photo { position: relative; }
+.pa-photo .value { position: absolute; left: 10px; bottom: 10px; padding: 3px 10px; border-radius: 999px; background: color-mix(in oklab, var(--bg) 82%, transparent); color: var(--text); font: 650 15px/1.3 var(--font-display); font-variant-numeric: tabular-nums; }
+
+.pa-highlight { display: flex; flex-direction: column; border: 1px solid var(--glass-edge); border-radius: 18px; background: var(--glass); box-shadow: var(--lift); overflow: hidden; min-width: 0; }
+.pa-highlight.with-photo { display: grid; grid-template-columns: 1.1fr 1fr; }
+/* The photo fills its column; the text sets the height. */
+.pa-highlight .pa-photo { min-height: 220px; }
+.pa-highlight .pa-photo .pa-image, .pa-highlight .pa-photo .pa-image-neutral { position: absolute; inset: 0; height: 100%; aspect-ratio: auto; }
+.pa-highlight .body { display: flex; flex-direction: column; gap: 8px; padding: 20px 22px; min-width: 0; }
+.pa-highlight .label { font-size: 12px; font-weight: 600; color: var(--accent); text-transform: uppercase; letter-spacing: 0.06em; overflow-wrap: anywhere; }
+.pa-highlight .title { font: 650 22px/1.2 var(--font-display); letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.pa-highlight .value { font: 650 26px/1.15 var(--font-display); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.pa-highlight .subtitle { font-size: 13px; color: var(--text-muted); overflow-wrap: anywhere; }
+.pa-highlight p { margin: 0; overflow-wrap: anywhere; }
+/* Without a photo: an answer box. */
+.pa-highlight:not(.with-photo) { border-left: 3px solid var(--accent); }
+@container (max-width: 640px) {
+  .pa-highlight.with-photo { grid-template-columns: 1fr; }
+  .pa-highlight .pa-photo { min-height: 0; aspect-ratio: 16 / 10; }
+}
 
 .pa-image { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; background: var(--glass-hi); }
 .pa-image-neutral { display: block; width: 100%; aspect-ratio: 16 / 10; background: color-mix(in oklab, var(--a1) 14%, var(--glass-hi)); }
@@ -68,6 +105,8 @@
 .pa-fields dd { margin: 0; overflow-wrap: anywhere; }
 
 .pa-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+/* A point of attention: the « in progress » state colour, never the aura's. */
+.pa-tag.pa-warning { background: color-mix(in oklab, var(--in-progress) 16%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--in-progress) 35%, transparent); color: var(--in-progress); }
 .pa-tag { padding: 2px 9px; border-radius: 999px; background: color-mix(in oklab, var(--accent) 16%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) 30%, transparent); color: var(--text); font-size: 12px; overflow-wrap: anywhere; }
 
 .pa-link { all: unset; cursor: pointer; color: var(--accent); overflow-wrap: anywhere; }

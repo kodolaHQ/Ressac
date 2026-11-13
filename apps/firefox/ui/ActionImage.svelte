@@ -22,16 +22,14 @@
     return () => io.disconnect();
   });
 
-  // Primitives: a page read again gives new objects with the same values, which must not ask for the image again.
-  const action = $derived(ctx.action);
-  const execution = $derived(ctx.run);
+  // A primitive: a page read again gives new objects with the same values, which must not ask for the image again.
   const url = $derived("url" in image ? image.url : null);
 
   $effect(() => {
     data = null;
     if (!near || !url) return;
     let current = true;
-    void window.webaios.actions.image(action, execution, url).then(
+    void ctx.image(url).then(
       (d) => current && (data = d),
       () => {},
     );
