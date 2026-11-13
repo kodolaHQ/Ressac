@@ -262,27 +262,61 @@ describe("carryOver", () => {
     expect(await exists(join(m.ressac, "Profiles", "a.default-webaios"))).toBe(true);
   });
 
-  it("a rename that fails in line 6 leaves the old folder intact and the state pending", async () => {
-    const m = await machine();
+  /** A launch whose rename of ~/WebAiOs fails (the home folder read-only): blocked on the data, nothing else done. */
+  async function failedRename(m: Awaited<ReturnType<typeof machine>>) {
     await chmod(m.home, 0o555);
     locked.push(m.home);
     const profiles = fakeProfiles();
-    await expect(carryOver({ ...m, profiles, env: fakeEnv() })).rejects.toThrow();
+    expect(await carryOver({ ...m, profiles, env: fakeEnv() })).toBe("data-blocked");
     expect(await readFile(join(m.home, "WebAiOs", "session.json"), "utf8")).toBe("{}");
+    expect(await exists(join(m.home, "Ressac"))).toBe(false);
     expect(await state(m.appSupport)).toMatchObject({ state: "pending" });
     expect(await exists(join(m.root, "Profiles", "a.default-webaios"))).toBe(true);
+    expect(await exists(join(m.ressac, "Profiles", "a.default-webaios"))).toBe(false);
     expect(profiles.calls.some((c) => c[0] === "flush" || c[0] === "default")).toBe(false);
+    expect(profiles.calls.filter((c) => c[0] === "createProfile").length).toBe(1);
+  }
+
+  it("a rename that fails in line 6 blocks on the data: old folder intact, state pending, no profile moved", async () => {
+    await failedRename(await machine());
+  });
+
+  it("the next launch, the rename failing again: blocked again", async () => {
+    const m = await machine();
+    await failedRename(m);
+    await failedRename(m);
+  });
+
+  it("the next launch, the rename now working: data folder moved, profile adopted, restart", async () => {
+    const m = await machine();
+    await failedRename(m);
+    await chmod(m.home, 0o755);
+    const profiles = fakeProfiles();
+    expect(await carryOver({ ...m, profiles, env: fakeEnv() })).toBe("restart");
+    expect(await exists(join(m.home, "WebAiOs"))).toBe(false);
+    expect(await readFile(join(m.home, "Ressac", "workspace", ".ressac", "mcp.json"), "utf8")).toBe("{}");
+    expect((await readdir(join(m.home, "Ressac"))).sort()).toEqual(["session.json", "workspace"]);
+    expect(await state(m.appSupport)).toEqual({ state: "done", profile: join(m.ressac, "Profiles", "a.default-webaios") });
   });
 
   // Line 9.
-  it("state pending: redoes from line 4 without line 6", async () => {
+  it("state pending, both data folders there: they are left alone, the profile is taken", async () => {
     const m = await machine();
+    await mkdir(join(m.home, "Ressac"));
     await writeState(m.appSupport, { state: "pending", profile: join(m.root, "Profiles", "a.default-webaios") });
     const profiles = fakeProfiles();
     expect(await carryOver({ ...m, profiles, env: fakeEnv() })).toBe("restart");
     expect(await exists(join(m.home, "WebAiOs", "webaios-sites"))).toBe(true);
-    expect(await exists(join(m.home, "Ressac"))).toBe(false);
+    expect(await readdir(join(m.home, "Ressac"))).toEqual([]);
     expect(await state(m.appSupport)).toEqual({ state: "done", profile: join(m.ressac, "Profiles", "a.default-webaios") });
+  });
+
+  it("state pending, only the new data folder there: left alone, the profile is taken", async () => {
+    const m = await machine({ data: false });
+    await write(join(m.home, "Ressac", "workspace", ".webaios", "x"), "");
+    await writeState(m.appSupport, { state: "pending", profile: join(m.root, "Profiles", "a.default-webaios") });
+    expect(await carryOver({ ...m, profiles: fakeProfiles(), env: fakeEnv() })).toBe("restart");
+    expect(await exists(join(m.home, "Ressac", "workspace", ".webaios", "x"))).toBe(true);
   });
 
   it("state pending, the profile already moved last time: adopted where it is", async () => {

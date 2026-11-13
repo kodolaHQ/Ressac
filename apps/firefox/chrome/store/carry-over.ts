@@ -111,10 +111,11 @@ async function oldProfile(o: Options, root: string, movedTo: (id: string) => str
 
 /**
  * Runs before anything creates the data folder. "restart": restart now, start nothing else. "blocked": WebAiOs is
- * running (say so, then quit). "done": a normal start. Throws on a failed move (the state stays pending: the next
- * launch takes the profile again, the data folder is left where it is).
+ * running; "data-blocked": ~/WebAiOs could not be moved (say which, then quit: the state stays pending and the next
+ * launch retries). "done": a normal start. Throws on a later failure (the data already moved: the next launch takes
+ * the profile again).
  */
-export async function carryOver(o: Options): Promise<"restart" | "blocked" | "done"> {
+export async function carryOver(o: Options): Promise<"restart" | "blocked" | "data-blocked" | "done"> {
   // Line 1.
   if (guarded(o)) return "done";
   const state = await readState(o);
@@ -150,10 +151,17 @@ export async function carryOver(o: Options): Promise<"restart" | "blocked" | "do
     return "blocked";
   }
   probe.remove(false);
-  // Line 6, skipped on a retry (line 9).
-  if (!state) {
-    await writeState(o, { state: "pending", profile: chosen.id });
-    if (await exists(oldData)) await fs.rename(oldData, newData);
+  // Line 6. On a retry (line 9) only the data folder's rename, if it failed last time.
+  const moveData = (await exists(oldData)) && !(await exists(newData));
+  try {
+    if (!state) await writeState(o, { state: "pending", profile: chosen.id });
+    if (moveData) await fs.rename(oldData, newData);
+  } catch (e) {
+    // Starting anyway would create an empty ~/Ressac: the spaces and tabs parted from the profile for good.
+    console.error("[carry-over] data folder not moved:", e);
+    return "data-blocked";
+  }
+  if (!state || moveData) {
     const workspace = `${newData}/workspace`;
     if ((await exists(`${workspace}/.webaios`)) && !(await exists(`${workspace}/.ressac`))) await fs.rename(`${workspace}/.webaios`, `${workspace}/.ressac`);
     for (const cache of CACHES) await fs.rm(`${newData}/${cache}`, { recursive: true, force: true }).catch((e) => console.warn("[carry-over] cache not erased:", e));

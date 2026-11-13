@@ -182,6 +182,7 @@ async function start(): Promise<RessacStore> {
   const carried = await carryOver(carry).catch((e) => (console.error("[carry-over] failed:", e), "done" as const));
   if (carried !== "done") {
     if (carried === "blocked") Services.prompt.alert(null, "Ressac", "Quittez WebAiOs, puis relancez Ressac.");
+    if (carried === "data-blocked") Services.prompt.alert(null, "Ressac", "Ressac n'a pas pu reprendre vos données WebAiOs (dossier WebAiOs de votre dossier personnel). Fermez les applications qui l'utilisent, puis relancez Ressac.");
     Services.startup.quit(Ci.nsIAppStartup.eAttemptQuit | (carried === "restart" ? Ci.nsIAppStartup.eRestart : 0));
     return new Promise<never>(() => {});
   }
