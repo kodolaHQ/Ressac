@@ -102,6 +102,8 @@ export function createSettingsApi(o: {
     telemetry: async () => o.chrome.telemetry(),
     setTelemetry: (enabled) => o.chrome.setTelemetry(enabled),
     version: async () => o.chrome.version(),
+    defaultBrowser: async () => o.chrome.defaultBrowser(),
+    setDefaultBrowser: () => o.chrome.setDefaultBrowser(),
     openAdvanced: () => o.dispatch({ type: "openTab", windowId: o.windowId, url: "about:preferences", activate: true }),
     openNotificationSettings: () => o.chrome.openNotificationSettings(),
     openFullDiskAccessSettings: () => o.chrome.openFullDiskAccessSettings(),

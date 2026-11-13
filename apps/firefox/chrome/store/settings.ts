@@ -12,6 +12,10 @@ export interface SettingsChrome {
   openNotificationSettings(): void;
   /** System Settings › Privacy & Security › Full Disk Access: Safari's bookmarks and history are behind it. */
   openFullDiskAccessSettings(): void;
+  /** Whether macOS opens web links with WebAiOs. */
+  defaultBrowser(): boolean;
+  /** Asks macOS, which shows its own confirmation: the answer comes later, in `defaultBrowser()`. */
+  setDefaultBrowser(): void;
   exportFolder(): Promise<string>;
   /** false: the quit was cancelled (a window or an observer kept it), and the reset request is withdrawn. */
   reset(): Promise<boolean>;
@@ -39,6 +43,10 @@ function openSystemSettings(url: string): void {
 
 export function createSettingsChrome(dataDir: string, telemetryActive: boolean): SettingsChrome {
   let lastExportFolder = "";
+  // A test never asks macOS (it would change the owner's default browser): the request is only remembered.
+  const test = !!Services.env.get("WEBAIOS_TEST_DEFAULT_BROWSER");
+  let testDefault = false;
+  const shell = () => ChromeUtils.importESModule("resource:///modules/ShellService.sys.mjs").ShellService;
   return {
     telemetry: () => ({ available: telemetryActive, enabled: Services.prefs.getBoolPref(ENABLED, false) }),
     setTelemetry: (enabled) => Services.prefs.setBoolPref(ENABLED, enabled === true),
@@ -57,6 +65,23 @@ export function createSettingsChrome(dataDir: string, telemetryActive: boolean):
     },
     openNotificationSettings: () => openSystemSettings("x-apple.systempreferences:com.apple.Notifications-Settings.extension"),
     openFullDiskAccessSettings: () => openSystemSettings("x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"),
+    defaultBrowser() {
+      if (test) return testDefault;
+      try {
+        return shell().isDefaultBrowser(false) === true;
+      } catch (e) {
+        console.warn("[settings] default browser not read:", e);
+        return false;
+      }
+    },
+    setDefaultBrowser() {
+      if (test) return void (testDefault = true);
+      try {
+        shell().setDefaultBrowser(false);
+      } catch (e) {
+        console.warn("[settings] default browser not set:", e);
+      }
+    },
     async exportFolder() {
       const { Downloads } = ChromeUtils.importESModule("resource://gre/modules/Downloads.sys.mjs");
       return (lastExportFolder = await Downloads.getPreferredDownloadsDirectory());

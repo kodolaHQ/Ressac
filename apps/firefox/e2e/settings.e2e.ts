@@ -198,6 +198,15 @@ describe("Settings page", () => {
     }
   });
 
+  it("default browser: the button asks, then the row says it is the default", async () => {
+    await launch();
+    await openPage();
+    await go("privacy");
+    await click(m, '[data-testid="default-browser-set"]');
+    await shows("settings-default-browser", "Par défaut");
+    expect(await inUi(m, `return !doc.querySelector('[data-testid="default-browser-set"]')`)).toBe(true);
+  });
+
   it("privacy: no DSN, the switch is greyed; with one, turning it off clears the pref", async () => {
     await launch();
     await openPage();

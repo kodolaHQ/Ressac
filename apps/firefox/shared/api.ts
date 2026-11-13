@@ -480,6 +480,10 @@ export interface SettingsApi {
   telemetry(): Promise<{ available: boolean; enabled: boolean }>;
   setTelemetry(enabled: boolean): void;
   version(): Promise<string>;
+  /** Whether macOS opens web links with WebAiOs. */
+  defaultBrowser(): Promise<boolean>;
+  /** macOS asks for confirmation itself: read `defaultBrowser()` again for the answer. */
+  setDefaultBrowser(): void;
   openAdvanced(): void;
   /** The OrbStack install link: https only. */
   openUrl(url: string): void;

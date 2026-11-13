@@ -153,6 +153,16 @@
 
   let telemetry = $state<{ available: boolean; enabled: boolean } | null>(null);
   $effect(() => void s.telemetry().then((t) => (telemetry = t)));
+  let isDefault = $state<boolean | null>(null);
+  /** Set by « Définir par défaut »: macOS asks in its own dialog, so the answer is awaited. */
+  let askedDefault = $state(false);
+  const loadDefault = () => s.defaultBrowser().then((d) => (isDefault = d));
+  $effect(() => void loadDefault());
+  $effect(() => {
+    if (!askedDefault || isDefault) return;
+    const t = setInterval(() => void loadDefault(), 1_000);
+    return () => clearInterval(t);
+  });
   let version = $state<string | null>(null);
   $effect(() => void s.version().then((t) => (version = t)));
 </script>
@@ -352,6 +362,17 @@
               checked={appState.value?.settings.hints.enabled ?? true}
               onchange={(e) => api.dispatch({ type: "setHintsEnabled", enabled: e.currentTarget.checked })}
             />
+          </div>
+          <div class="row" data-testid="settings-default-browser">
+            <div class="grow">
+              <b>Navigateur par défaut</b>
+              <span class="muted">Les liens des autres applications s'ouvrent dans WebAiOs.</span>
+            </div>
+            {#if isDefault}
+              <span class="pill" data-tone="ok" data-testid="default-browser-state">Par défaut</span>
+            {:else if isDefault === false}
+              <button data-testid="default-browser-set" onclick={() => (s.setDefaultBrowser(), (askedDefault = true))}>Définir par défaut</button>
+            {/if}
           </div>
           <div class="row">
             <b class="grow" id="sidebar-side-label">Barre de navigation</b>
