@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from "svelte";
   import { fade } from "svelte/transition";
   import type { AgentViewState } from "../shared/api";
   import { recapOfUrl, type BrowserState } from "../shared/model";
@@ -14,15 +15,19 @@
   let dismissed = $state(false);
   let grown = $state(false);
   let thumbnail = $state<string | null>(null);
-  let width = $state(0);
-  let height = $state(0);
+  let root = $state<HTMLElement>();
   $effect(() =>
     api.agentView.onState((s) => {
       view = s;
       if (!s) dismissed = false;
     }),
   );
-  $effect(() => api.onState((s) => (appState = s)));
+  // The browser state is copied on each change: only while the agent has something to show.
+  const active = $derived(view !== null);
+  $effect(() => {
+    if (!active) return void (appState = null);
+    return api.onState((s) => (appState = s));
+  });
 
   const shown = $derived.by(() => {
     if (!view || dismissed || !appState) return false;
@@ -42,14 +47,19 @@
   $effect(() => {
     if (!shown) grown = false;
   });
-  // The frame covers only the pill: the rest of the page keeps the mouse.
-  $effect(() => {
+  // The frame covers only the pill: the rest of the page keeps the mouse. Measured after each change that resizes the
+  // pill, not with a ResizeObserver: it does not fire in a window that is not painted (and the frame starts at 0×0).
+  const measure = () => {
     const f = window.frameElement as HTMLElement | null;
-    if (f) Object.assign(f.style, { width: `${width}px`, height: `${height}px` });
+    if (f && root) Object.assign(f.style, { width: `${root.offsetWidth}px`, height: `${root.offsetHeight}px` });
+  };
+  $effect(() => {
+    void [shown, grown, thumbnail, view?.label];
+    void tick().then(measure);
   });
 </script>
 
-<div class="root" bind:clientWidth={width} bind:clientHeight={height}>
+<div class="root" bind:this={root}>
   {#if shown && view}
     <div
       class="pill"
@@ -60,6 +70,7 @@
       onfocusin={() => (grown = true)}
       onfocusout={(e) => !(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node) && (grown = false)}
       out:fade={{ duration: 150 }}
+      onoutroend={() => setTimeout(measure)}
     >
       <button class="open" data-testid="agent-pill" aria-label="Voir l'onglet de l'agent" title={view.title} onclick={() => api.agentView.open()}>
         {#if grown}

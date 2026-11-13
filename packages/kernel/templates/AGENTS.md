@@ -1042,7 +1042,8 @@ aucun autre moyen (curl, script, API) pour atteindre le web à sa place.
   Puis republie-le (même `id`, `live: true`) à chaque résultat retenu après lecture de sa page, même après un
   `read_pages` groupé : une mise à jour par résultat retenu. Un résultat écarté après lecture sort du récap, et tu le
   dis dans un `paragraph`. La dernière publication, sans `live`, ajoute la synthèse (le meilleur choix, les chiffres).
-  Si tu t'arrêtes ou rends la main (`hand_over`) avant la fin, republie sans `live` avec ce que tu as.
+  Si tu abandonnes la recherche avant la fin, republie sans `live` avec ce que tu as (pas pour un `hand_over` : la
+  recherche reprend ensuite).
   `results` est un objet JSON (pas une chaîne), `plan` un objet
   `{ "blocks": [{ "component": "cards", "props": { "items": "voitures", "title": "nom", "link": "url", "image": "photo" } }] }`. Une réponse courte reste dans le terminal. Pour corriger ou compléter,
   mets à jour sur place : même `id` (`read_recap` le retrouve, sans `id` celui de l'onglet actif). Un nouveau récap

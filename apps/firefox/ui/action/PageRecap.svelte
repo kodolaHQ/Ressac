@@ -55,6 +55,7 @@
   let generation = 0;
   let retry: ReturnType<typeof setTimeout> | undefined;
   let unmounted = false;
+  const LIVE_MS = 5 * 60_000;
   async function load() {
     const g = ++generation;
     clearTimeout(retry);
@@ -62,7 +63,11 @@
     if (g !== generation || unmounted) return;
     // shortcut: retried every 2 s while it answers nothing (an unreadable file too), add a bound if it ever costs.
     if (r === null) retry = setTimeout(() => void load(), 2000);
-    else shown = r;
+    else {
+      shown = r;
+      // A live recap the agent stops updating ends live after 5 minutes (recaps.ts): read it again then.
+      if ("live" in r && r.live) retry = setTimeout(() => void load(), Math.max(0, Date.parse(r.updated) + LIVE_MS - Date.now()) + 1000);
+    }
   }
 
   $effect(() => {

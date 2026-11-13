@@ -205,7 +205,7 @@ describe("recap tab", () => {
     await q.waitText(tid("recap-live"), "en direct · 2 retenues");
     await q.waitCount(card, 2);
     expect(await inUi(m, "return doc.querySelector(arguments[0]).getAttribute('data-e2e-first');", [card])).toBe("1");
-    expect(await q.count(`${tid("page-recap")} > .version`)).toBe(1);
+    await waitUi(m, "return doc.querySelectorAll(arguments[0]).length === 1;", [`${tid("page-recap")} > .version`], 5_000);
 
     await show(["Yuba", "Babboe"], false, live);
     await waitUi(m, "return !doc.querySelector(arguments[0]) && !doc.querySelector(arguments[1]);", [tid("recap-live"), tid("recap-agent-view")]);
