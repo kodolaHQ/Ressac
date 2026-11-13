@@ -37,9 +37,15 @@
   // The agent's tab while the recap fills: thumbnails only while live (this page is mounted only while its tab shows).
   let view = $state<AgentViewState | null>(window.webaios.agentView.state());
   let thumbnail = $state<string | null>(null);
-  $effect(() => window.webaios.agentView.onState((s) => (view = s)));
   $effect(() => {
-    if (!live || !view) return;
+    const off = window.webaios.agentView.onState((s) => (view = s));
+    view = window.webaios.agentView.state();
+    return off;
+  });
+  // Every state is a fresh copy: watch again (and drop the old frame) only when the agent's tab changes.
+  const watched = $derived(live && view ? view.tab : null);
+  $effect(() => {
+    if (!watched) return;
     const off = window.webaios.agentView.watch((f) => (thumbnail = f));
     return () => {
       off();
@@ -120,4 +126,6 @@
   .site { display: flex; flex-direction: column; align-items: center; gap: 6px; color: var(--text-muted); }
   .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .label.running { color: var(--accent); }
+  /* A card added while the recap fills rises on its own; the others keep their place. */
+  .version :global(.pa-cards > .pa-card) { animation: webaios-rise var(--spring-d) var(--spring) both; }
 </style>
