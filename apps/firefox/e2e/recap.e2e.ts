@@ -22,6 +22,10 @@ const NEVER_READ = "https://exemple.invalide/jamais";
 // Photos load through the action images' test hook: https://<host><path> is asked from <server>/<host><path>.
 const PHOTO = "https://exemple.invalide/photos/yuba.png";
 const PHOTO_NEVER_READ = "https://exemple.invalide/photos/babboe.png";
+// A card linking twice (title, then photo), the photo after a data: placeholder.
+const TERN = "https://exemple.invalide/velo-2";
+const PHOTO_TERN = "https://exemple.invalide/photos/tern.png";
+const PIXEL = "data:image/gif;base64,R0lGODlhAQABAAAAACw=";
 const PREFS = { "network.dns.localDomains": "exemple.invalide" };
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -31,7 +35,7 @@ beforeAll(async () => {
     routes: {
       "/annonces.html": (_req, res) => {
         res.setHeader("content-type", "text/html; charset=utf-8");
-        res.end(`<title>Annonces</title><main><h1>Vélos cargo</h1><p>Deux annonces autour de Lyon, lues pour le récap.</p><a href="${READ}"><img src="${PHOTO}" width="160" height="120" alt="">Yuba Spicy Curry</a> <a href="https://exemple.invalide/velo-2">Tern GSD</a></main>`);
+        res.end(`<title>Annonces</title><main><h1>Vélos cargo</h1><p>Deux annonces autour de Lyon, lues pour le récap.</p><a href="${READ}"><img src="${PHOTO}" width="160" height="120" alt="">Yuba Spicy Curry</a> <a href="${TERN}">Tern GSD</a><a href="${TERN}"><img src="${PIXEL}" width="160" height="120" alt=""><img src="${PHOTO_TERN}" width="160" height="120" alt=""></a></main>`);
       },
       ...Object.fromEntries(
         [PHOTO, PHOTO_NEVER_READ].map((u) => [
@@ -102,6 +106,7 @@ describe("recap tab", () => {
     // The search tab shows the results page (WEBAIOS_TEST_SEARCH_URL): read it with its links and their photos.
     const read = (await callTool(w.dataDir, "read_tab", { id: tab, links: true })).text;
     expect(read).toContain(`${READ} — photo : ${PHOTO}`);
+    expect(read).toContain(`${TERN} — photo : ${PHOTO_TERN}`);
     id = await publish(w, "Vélos cargo");
     for (const deadline = Date.now() + 10_000; (await activeTab(m))?.url !== urlRecap(id); await sleep(100)) if (Date.now() > deadline) throw new Error("the recap tab is not active");
     expect((await activeTab(m))!.title).toBe("Vélos cargo");
