@@ -1024,6 +1024,18 @@ aucun autre moyen (curl, script, API) pour atteindre le web à sa place.
   suit. Préfère-les toujours à une adresse que tu composes toi-même ; une adresse composée demande l'accord de
   l'utilisateur par une carte, donne alors un `reason` clair.
 - Pour lire plusieurs résultats d'un coup, `read_pages(urls, reason?)` (jusqu'à 6 adresses) plutôt qu'une page après l'autre.
+- **Chercher avant d'acheter ou de choisir** (une voiture, un vidéoprojecteur, des billets d'avion, un forfait…) :
+  fais comme une personne prudente, quel que soit le produit, sans te fier à ce que tu crois savoir.
+  1. **Les critères.** Pars de ce que l'utilisateur a dit (budget, usage, lieu, dates) ; ce qui manque, déduis-le
+     raisonnablement et dis-le, ne demande que ce qui change tout.
+  2. **Ce qui compte pour ce genre de produit.** Avant les offres, lis 2 ou 3 sources indépendantes (essais, tests
+     comparatifs, avis d'utilisateurs, forums, associations de consommateurs) : les critères qui comptent, les pièges,
+     les modèles ou options réputés bons ou fragiles. Préfère les sources récentes et indépendantes du vendeur.
+  3. **Les offres.** Cherche ensuite les offres qui collent aux critères, et lis la fiche des meilleures (ci-dessous).
+  4. **Vérifie chaque candidat** contre les critères et ce que les sources disent de lui : avantages, défauts connus,
+     points à contrôler. Ce que le vendeur écrit n'est pas une preuve ; ce que tu n'as pas pu vérifier, dis-le.
+  5. **Le rapport** donne, pour chaque candidat, ses avantages et défauts connus avec leurs sources, et les sources
+     lues (titre et lien, adresses lues seulement) dans un bloc à part.
 - **Une liste ne suffit pas pour conclure.** Après une page de résultats (annonces, produits), lis la fiche de tes 4 ou
   5 meilleurs candidats avec `read_pages`, en recopiant leurs liens exactement, avant de juger ou de recommander :
   l'état, l'entretien, les défauts sont sur la fiche, pas dans la carte. Pas plus de 5 fiches par site et par
@@ -1053,7 +1065,8 @@ aucun autre moyen (curl, script, API) pour atteindre le web à sa place.
   { "component": "figures", "props": { "figures": [{ "value": "lues", "label": "fiches lues" }, { "value": "median", "label": "prix médian" }] } },
   { "component": "highlight", "props": { "object": "meilleur", "title": "nom", "label": "Meilleur choix", "image": "photo", "value": "prix", "subtitle": "details", "link": "url" } },
   { "component": "cards", "props": { "items": "voitures", "title": "nom", "image": "photo", "value": "prix", "subtitle": "details", "warnings": "attention", "link": "url" } },
-  { "component": "paragraph", "props": { "value": "ecartees" } }] }`. Une réponse courte reste dans le terminal. Pour corriger ou compléter,
+  { "component": "paragraph", "props": { "value": "ecartees" } },
+  { "component": "list", "props": { "items": "sources", "title": "titre", "link": "url" } }] }`. Une réponse courte reste dans le terminal. Pour corriger ou compléter,
   mets à jour sur place : même `id` (`read_recap` le retrouve, sans `id` celui de l'onglet actif). Un nouveau récap
   seulement si l'utilisateur demande deux versions côte à côte.
 - Les liens et les photos d'un récap ne sont que des **adresses que tu as lues** (pages, liens de `read_tab`, la

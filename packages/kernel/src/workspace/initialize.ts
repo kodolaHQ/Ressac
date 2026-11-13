@@ -14,6 +14,7 @@ export const DEFAULT_TEMPLATES = join(KERNEL_ROOT, "templates");
  * the old version's hash (`shasum -a 256 templates/AGENTS.md`) before modifying it.
  */
 export const OLD_AGENTS = new Set([
+  "ab60644f1589585bc770e628f0c7739eefd9b08a444d09fb12435514a3c2cedb",
   "0a6fde102809aedffb26d4e7547bed4a772e39eb3ffce50fabacafed08799b7d",
   "426a4b562b62b900fd3cde63778fea389e85f0086762625c232bca57f42a7e42",
   "bda7a478a63514c62285ddc3ae479fe79799af57b3bc5c19a3048e4411c3c31a",
