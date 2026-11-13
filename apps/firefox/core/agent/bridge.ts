@@ -1,5 +1,5 @@
 import type { DevRight, PageBlock, PageLink, TabInfo, TabRead, Zone } from "@webaios/kernel";
-import { privateTab, type Decision, type PendingRequest, type Outcome, type WindowState, type BrowserState, type SpaceId, type WindowId, type Tab } from "../../shared/model";
+import { privateTab, recapOfUrl, type Decision, type PendingRequest, type Outcome, type WindowState, type BrowserState, type SpaceId, type WindowId, type Tab } from "../../shared/model";
 
 const info = (state: BrowserState, o: Tab): TabInfo => ({
   id: o.id,
@@ -53,6 +53,23 @@ export function policyChanges(before: BrowserState, after: BrowserState): { navi
   }
   return { navigated: navigated, closed: closed };
 }
+
+/**
+ * The recaps whose last tab left the state (closed, or its window closed): their files can go. A tab moved into a
+ * private space still exists, so its recap stays.
+ */
+export function closedRecaps(before: BrowserState, after: BrowserState): string[] {
+  const kept = new Set(Object.values(after.tabs).map((o) => recapOfUrl(o.url)));
+  const gone = Object.entries(before.tabs).filter(([id]) => !after.tabs[id]).map(([, o]) => recapOfUrl(o.url));
+  return [...new Set(gone)].filter((r): r is string => r !== null && !kept.has(r));
+}
+
+/** The recap of the window's active tab, if it shows one. */
+export const activeRecap = (state: BrowserState, windowId: WindowId | undefined): string | null => recapOfUrl(shownTab(state, windowId)?.url ?? "");
+
+/** The recaps on screen: the active tab of a window. */
+export const shownRecaps = (state: BrowserState): string[] =>
+  state.windows.map((f) => activeRecap(state, f.id)).filter((r): r is string => r !== null);
 
 /** The spaces that just went from non-private to private (the reverse changes nothing in the history). */
 export function spacesBecamePrivate(before: BrowserState, after: BrowserState): string[] {

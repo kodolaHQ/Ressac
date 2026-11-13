@@ -365,6 +365,13 @@ export function createApi(win: WindowController): ApiFirefox {
         return untilUnload(() => offs.forEach((f) => f()));
       },
     },
+    // The recaps: the host's checks; the private space and the opening of links are the page's (task 4).
+    recaps: {
+      page: (id) => ask("recaps.page", { id }, null),
+      linkAllowed: (id, url) => ask("recaps.linkAllowed", { id, url }, false),
+      imageAllowed: (id, url) => ask("recaps.imageAllowed", { id, url }, false),
+      onChange: (callback) => untilUnload(host.on("recaps.changed", (p) => callback(String(p?.id)))),
+    },
     // The actions: the window state's half here (private spaces, dispatches), the disk and kernel's in the host.
     actions: createActionsApi({ state: () => win.store.state, dispatch: (a) => win.store.dispatch(a), host, window: windowId, untilUnload, media: win.store.actionMedia }),
   };

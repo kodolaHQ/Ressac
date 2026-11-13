@@ -11,6 +11,9 @@ import {
   BAR_WIDTH_MAX,
   BAR_WIDTH_MIN,
   actionOfUrl,
+  recapOfUrl,
+  urlRecap,
+  privateTab,
   WORKFLOW_ACTION_PREFIX,
   URL_ACTIONS,
   URL_APPLICATIONS,
@@ -123,6 +126,24 @@ function openAction(d: Draft, genId: () => string, a: { windowId: string; id: st
   const o = open(d, genId, f, { url: urlAction(a.id, a.run) });
   if (o) o.title = a.name;
   return !!o;
+}
+
+/**
+ * Activates the tab already showing recap `id` (any window, outside a private space; never switches space), otherwise
+ * opens it in the window's active space; nothing when that space is private. The title follows a republish.
+ */
+function openRecap(d: Draft, genId: () => string, a: { windowId: string; id: string; title: string }): boolean {
+  const f = win(d, a.windowId);
+  if (!f || d.spaces.find((e) => e.id === f.activeSpace)?.private !== false) return false;
+  const existing = Object.values(d.tabs).find((o) => recapOfUrl(o.url) === a.id && !privateTab(d, o));
+  const g = existing && win(d, existing.windowId);
+  if (existing && g) {
+    if (g.active[existing.spaceId] === existing.id && existing.title === a.title) return false;
+    existing.title = a.title;
+    g.active[existing.spaceId] = existing.id;
+    return true;
+  }
+  return !!open(d, genId, f, { url: urlRecap(a.id), title: a.title, openedByAgent: true });
 }
 
 /** An essential's tab can be displayed in several spaces: the other spaces release it. */
@@ -535,6 +556,8 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
     // A single page per action and per window (whatever result is shown), and a single « Actions » page.
     case "openAction":
       return openAction(d, genId, a);
+    case "openRecap":
+      return openRecap(d, genId, a);
     case "openActions":
       return openInternalPage(d, genId, a.windowId, URL_ACTIONS, "Actions");
     // Opening the panel on a tab gives it to the agent: the home page opens it only if it is still displayed.

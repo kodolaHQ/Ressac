@@ -2,7 +2,7 @@ import { z } from "zod";
 import { AURA_IDS } from "./aura";
 import { HINT_IDS } from "./hints";
 import { SHORTCUT_IDS } from "./shortcuts";
-import { validFolder, ID_EXECUTION, ID_SITE, type Application, type Warning, type BlockCatalogEntry, type DeclarationWidget, type DirectState, type DraftRead, type SaveResult, type AttemptResult, type DevRight, type AiState, type WidgetState, type Execution, type ResumeExecution, type ActionsState, type PageAction, type LaunchResult, type Owner } from "@webaios/kernel";
+import { validFolder, ID_EXECUTION, ID_SITE, type Application, type Warning, type BlockCatalogEntry, type DeclarationWidget, type DirectState, type DraftRead, type SaveResult, type AttemptResult, type DevRight, type AiState, type WidgetState, type Execution, type ResumeExecution, type ActionsState, type PageAction, type LaunchResult, type Owner, type RenderedPage } from "@webaios/kernel";
 import type { BatchState, ProjectId, ExternalProject, TrackedProject } from "@webaios/kernel";
 import { PROJECT_ID, type Comment, type DiffFile, type ModifiedFile } from "@webaios/kernel";
 import { ClaudeEngineSchema, CodexEngineSchema, type AgentAccount, type Backup, type CodexEngine, type ClaudeEngine, type DecisionModel, type LoginResult, type GrantKind, type GrantRow, type SettingsResult, type WorkshopOperation, type PullProgress } from "./settings";
@@ -126,6 +126,11 @@ export const SchemaAction = z.discriminatedUnion("type", [
     name: z.string().max(60),
     run: z.string().regex(ID_EXECUTION).max(64).optional(),
   }),
+  /**
+   * The agent's recap: activates the tab already showing it (any window, title updated), or opens it active in this
+   * window; nothing in a private space.
+   */
+  z.object({ type: z.literal("openRecap"), windowId: id, id: z.string().regex(/^[0-9a-f-]{36}$/), title: z.string().max(120) }),
   /** Activates this window's « Actions » page, or opens it. */
   z.object({ type: z.literal("openActions"), windowId: id }),
   /** Automatic opening and closing of the panel by the home page (not an action of the user). */
@@ -347,6 +352,16 @@ export interface ApiWebaios {
     delete(id: string): Promise<{ ok: true } | { ok: false; error: string }>;
     /** Opens the builder on the action's workflow. */
     viewWorkflow(id: string): void;
+  };
+  /** The agent's recaps (`webaios://recap/<id>`), served by the host whether or not the kernel runs. */
+  recaps: {
+    /** `gone`: closed or swept, the file is no more; null: unreadable, or no host. */
+    page(id: string): Promise<{ title: string; updated: string; page: RenderedPage } | { gone: true } | null>;
+    /** Only an address the agent read for this recap; images https only. */
+    linkAllowed(id: string, url: string): Promise<boolean>;
+    imageAllowed(id: string, url: string): Promise<boolean>;
+    /** The agent republished this recap: re-read. */
+    onChange(callback: (id: string) => void): () => void;
   };
   /** Applications page (projects of the agent's space). */
   apps: {

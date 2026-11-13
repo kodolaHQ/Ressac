@@ -21,7 +21,7 @@ const { createInterface } = await import("node:readline");
 const { appendFileSync } = await import("node:fs");
 const { stat } = await import("node:fs/promises");
 // Imported after the env is set and stdout redirected: nothing in the kernel can write to stdout at load time.
-const { ACTION_UNKNOWN, Workshop, blockCatalog, loadProfiles, spacePaths, createKernel, defaultRunner, LocalAi, readHome, readFreeLayout, readTheme, Pacing, contextPrefix, removeGrant, deleteData, watchActions } = await import("../../../packages/kernel/src/index.ts");
+const { ACTION_UNKNOWN, Workshop, blockCatalog, loadProfiles, spacePaths, createKernel, defaultRunner, LocalAi, readHome, readFreeLayout, readTheme, Pacing, contextPrefix, removeGrant, deleteData, watchActions, createRecaps, ID_RECAP } = await import("../../../packages/kernel/src/index.ts");
 const { SessionsAgent } = await import("../core/agent/sessions.ts");
 const { History } = await import("../core/history.ts");
 const { createRpc } = await import("../shared/rpc.ts");
@@ -115,6 +115,10 @@ const widgetsContext = { paths: paths, widgetsFolder: widgetsFolder };
 // Actions' runs, results, grants and refusals: outside the space.
 const actionsFolder = join(dataDir, "actions");
 const actionsContext = { paths: paths, actionsFolder: actionsFolder };
+// The agent's recaps: the kernel publishes, this instance (same folder) serves the pages and erases, kernel or not.
+const recapsFolder = join(dataDir, "recaps");
+const recaps = createRecaps({ folder: recapsFolder });
+const idRecap = (v: unknown): v is string => typeof v === "string" && ID_RECAP.test(v);
 // One container for the agent (whatever its profile) and the apps it launches: the kernel's own default (kernel.ts:389).
 const workshop = new Workshop({ paths: paths });
 
@@ -161,6 +165,8 @@ const launchKernel = (profileId: string): Promise<Kernel | null> => {
     root: root,
     widgetsFolder: widgetsFolder,
     actionsFolder: actionsFolder,
+    recapsFolder: recapsFolder,
+    onRecapChange: (id) => rpc.notify("recaps.changed", { id }),
     ai: ai,
     profilingFolder: join(dataDir, "profiling"),
     extensions: extensions.tools(),
@@ -510,6 +516,11 @@ const rpc = createRpc({
       idAction(p?.id) && executionAction(p.run) && urlAction(p.url) ? actions.linkAllowed(p.id, p.run, p.url) : false,
     "actions.imageAllowed": (p: { id?: unknown; run?: unknown; url?: unknown }) =>
       idAction(p?.id) && executionAction(p.run) && urlAction(p.url) ? actions.imageAllowed(p.id, p.run, p.url) : false,
+    // Recaps: `{ gone: true }` goes to the page as is (closed or swept, not « not ready »).
+    "recaps.page": (p: { id?: unknown }) => (idRecap(p?.id) ? recaps.page(p.id) : null),
+    "recaps.linkAllowed": (p: { id?: unknown; url?: unknown }) => (idRecap(p?.id) && urlAction(p.url) ? recaps.linkAllowed(p.id, p.url) : false),
+    "recaps.imageAllowed": (p: { id?: unknown; url?: unknown }) => (idRecap(p?.id) && urlAction(p.url) ? recaps.imageAllowed(p.id, p.url) : false),
+    "recaps.closed": (p: { id?: unknown }) => (idRecap(p?.id) ? recaps.remove(p.id) : undefined),
     "actions.grant": (p: unknown) => {
       const r = GrantSchema.safeParse(p);
       return r.success && idAction(r.data.id) ? actions.grant(r.data) : { ok: false, error: "Demande d'accord invalide" };
