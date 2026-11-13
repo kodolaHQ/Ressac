@@ -26,6 +26,35 @@ export interface PageLink {
   zone?: Zone;
 }
 
+/** A block of visible text of a page, as rendered (invisible text never makes one). */
+export interface PageBlock {
+  text: string;
+  /** Heading level 1-6 (by tag, role or visual weight), 0 for body text. */
+  h: number;
+  zone: Zone;
+  /** Table row index: the cells of one row join on one line. */
+  row?: number;
+}
+
+/** What a read of a tab gives: the text and links, and what only the browser knows of the page. */
+export interface TabRead {
+  text: string;
+  selection?: string;
+  links?: PageLink[];
+  blocks?: PageBlock[];
+  /** The structured data the page publishes for engines: parsed JSON-LD objects, `{ meta }`, `{ microdata }`. */
+  structured?: unknown[];
+  /** The reader mode's text of the main content, when it found one. */
+  reader?: string;
+  /** HTTP response status of the document. */
+  status?: number;
+  /** The addresses the document went through before this one. */
+  redirects?: string[];
+  contentType?: string;
+  /** Visible password fields. */
+  passwords?: number;
+}
+
 export interface TabInfo {
   id: string;
   title: string;
@@ -55,7 +84,7 @@ export interface BrowserBridge {
   activeTab(): Promise<TabInfo | null>;
   listTabs(): Promise<TabInfo[]>;
   /** Throws TabNotFound if the id is unknown (like lireTexte, naviguer and capturer). */
-  readText(id: string): Promise<{ text: string; selection?: string; links?: PageLink[] }>;
+  readText(id: string): Promise<TabRead>;
   openTab(url: string, space?: string): Promise<TabInfo>;
   /**
    * `"pending"` (site app window only): the tweaks grant card is shown; the address will
