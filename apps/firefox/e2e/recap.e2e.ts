@@ -26,6 +26,10 @@ const PHOTO_NEVER_READ = "https://exemple.invalide/photos/babboe.png";
 const TERN = "https://exemple.invalide/velo-2";
 const PHOTO_TERN = "https://exemple.invalide/photos/tern.png";
 const PIXEL = "data:image/gif;base64,R0lGODlhAQABAAAAACw=";
+// A Leboncoin card: textless links laid over the card and its photo, the name only in a hidden title.
+const RIESE = "https://exemple.invalide/velo-3";
+const PHOTO_RIESE = "https://exemple.invalide/photos/riese.png";
+const RIESE_CARD = `<article style="position:relative;width:500px;height:140px"><div style="position:relative;width:160px;height:120px"><img src="${PHOTO_RIESE}" width="160" height="120" alt=""><a style="position:absolute;inset:0" aria-hidden="true" href="${RIESE}"></a></div><p>Riese & Müller Load 75, 2 900 €</p><a style="position:absolute;inset:0" aria-label="Voir l’annonce" href="${RIESE}"><span aria-hidden="true" style="position:absolute;inset:0;opacity:0" title="Voir l’annonce: Riese & Müller Load 75"></span></a></article>`;
 const PREFS = { "network.dns.localDomains": "exemple.invalide" };
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -35,7 +39,7 @@ beforeAll(async () => {
     routes: {
       "/annonces.html": (_req, res) => {
         res.setHeader("content-type", "text/html; charset=utf-8");
-        res.end(`<title>Annonces</title><main><h1>Vélos cargo</h1><p>Deux annonces autour de Lyon, lues pour le récap.</p><a href="${READ}"><img src="${PHOTO}" width="160" height="120" alt="">Yuba Spicy Curry</a> <a href="${TERN}">Tern GSD</a><a href="${TERN}"><img src="${PIXEL}" width="160" height="120" alt=""><img src="${PHOTO_TERN}" width="160" height="120" alt=""></a></main>`);
+        res.end(`<title>Annonces</title><main><h1>Vélos cargo</h1><p>Deux annonces autour de Lyon, lues pour le récap.</p><a href="${READ}"><img src="${PHOTO}" width="160" height="120" alt="">Yuba Spicy Curry</a> <a href="${TERN}">Tern GSD</a><a href="${TERN}"><img src="${PIXEL}" width="160" height="120" alt=""><img src="${PHOTO_TERN}" width="160" height="120" alt=""></a>${RIESE_CARD}</main>`);
       },
       ...Object.fromEntries(
         [PHOTO, PHOTO_NEVER_READ].map((u) => [
@@ -107,6 +111,7 @@ describe("recap tab", () => {
     const read = (await callTool(w.dataDir, "read_tab", { id: tab, links: true })).text;
     expect(read).toContain(`${READ} — photo : ${PHOTO}`);
     expect(read).toContain(`${TERN} — photo : ${PHOTO_TERN}`);
+    expect(read).toMatch(/\d+\. Voir l’annonce: Riese & Müller Load 75 — https:\/\/exemple\.invalide\/velo-3 — photo : https:\/\/exemple\.invalide\/photos\/riese\.png/);
     id = await publish(w, "Vélos cargo");
     for (const deadline = Date.now() + 10_000; (await activeTab(m))?.url !== urlRecap(id); await sleep(100)) if (Date.now() > deadline) throw new Error("the recap tab is not active");
     expect((await activeTab(m))!.title).toBe("Vélos cargo");
