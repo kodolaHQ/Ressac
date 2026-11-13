@@ -30,6 +30,7 @@ import { registerPermissionHooks } from "./permission-hooks";
 import { createSitePermissions, type SitePermission, type SitePermissions } from "./site-permissions";
 import { bindSites, sites, type SiteApps } from "./sites";
 import { createStore, type Store } from "./store";
+import { relaunchAfterQuit } from "./relaunch";
 import { installPreferencesCleanup } from "./preferences-cleanup";
 import { installTelemetry } from "./telemetry";
 import { createSettingsChrome, type SettingsChrome } from "./settings";
@@ -199,7 +200,10 @@ async function start(): Promise<RessacStore> {
       restart: null,
     }[carried];
     if (why) Services.prompt.alert(null, "Ressac", why);
-    Services.startup.quit(Ci.nsIAppStartup.eAttemptQuit | (carried === "restart" ? Ci.nsIAppStartup.eRestart : 0));
+    // The variables the carry-over set for the restarted process: `open` gives a new app none of ours otherwise.
+    if (carried === "restart")
+      relaunchAfterQuit(Object.fromEntries(["XRE_PROFILE_PATH", "XRE_PROFILE_LOCAL_PATH", "RESSAC_CARRIED_RESTART"].map((k) => [k, Services.env.get(k)]).filter(([, v]) => v)));
+    Services.startup.quit(Ci.nsIAppStartup.eAttemptQuit);
     return new Promise<never>(() => {});
   }
   if (await tellOnce(carry).catch(() => false))

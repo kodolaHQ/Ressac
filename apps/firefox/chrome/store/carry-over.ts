@@ -97,7 +97,7 @@ async function writeState(o: Options, s: State): Promise<void> {
 /** A development or test launch: a profile given on the command line, or a test or dev data folder. */
 const guarded = (o: Options) => !o.profiles.currentProfile || !!o.env.get("RESSAC_DATA_DIR") || !!o.env.get("RESSAC_TEST_NO_SYSTEM");
 
-/** Without these the restart would reuse the running profile (xpcom/base/AppShutdown.cpp). */
+/** The relaunched process starts on this profile whatever the install default says. */
 function restart(o: Options, p: Profile): "restart" {
   o.env.set("XRE_PROFILE_PATH", p.rootDir.path);
   o.env.set("XRE_PROFILE_LOCAL_PATH", p.localDir.path);
@@ -188,7 +188,7 @@ async function carryOverSteps(o: Options, state: State | null): Promise<CarryRes
       if (carried.rootDir.path !== state.profile) throw new Error(`a profile named ${NAME} is at ${carried.rootDir.path}`);
       o.profiles.defaultProfile = carried;
       o.profiles.flush();
-      // Inherited by the restarted process like XRE_PROFILE_PATH (MacLaunchHelper passes the live environment).
+      // Handed to the relaunched process like XRE_PROFILE_PATH (the caller passes them on, see relaunch.ts).
       o.env.set(RESTARTED, "1");
       return restart(o, carried);
     } catch (e) {

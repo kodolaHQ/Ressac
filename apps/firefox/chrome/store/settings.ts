@@ -1,4 +1,5 @@
 import { backupDate, RESET_FILE } from "../../core/state/format";
+import { relaunchAfterQuit } from "./relaunch";
 
 const ENABLED = "ressac.telemetry.enabled";
 /** Firefox's own default browser service. */
@@ -119,9 +120,12 @@ export function createSettingsChrome(dataDir: string, telemetryActive: boolean):
       // skip their pages' questions. A quit kept by an observer or a window must not reset at some later launch.
       const cancel = Cc["@mozilla.org/supports-PRBool;1"].createInstance(Ci.nsISupportsPRBool);
       Services.obs.notifyObservers(cancel, "quit-application-requested", "restart");
-      if (!cancel.data) Services.startup.quit(Ci.nsIAppStartup.eAttemptQuit | (Services.env.get("RESSAC_TEST_NO_RESTART") === "1" ? 0 : Ci.nsIAppStartup.eRestart));
+      if (!cancel.data) Services.startup.quit(Ci.nsIAppStartup.eAttemptQuit);
       // attemptingQuit: every window agreed to close (shuttingDown waits for them to be closed).
-      if (!cancel.data && Services.startup.attemptingQuit) return true;
+      if (!cancel.data && Services.startup.attemptingQuit) {
+        if (Services.env.get("RESSAC_TEST_NO_RESTART") !== "1") relaunchAfterQuit();
+        return true;
+      }
       await IOUtils.remove(marker, { ignoreAbsent: true });
       return false;
     },
