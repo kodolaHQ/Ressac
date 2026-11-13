@@ -21,7 +21,7 @@ export function unwrapLink(url: string): string {
   return url;
 }
 
-const withoutHash = (url: string) => {
+export const withoutHash = (url: string) => {
   try {
     const u = new URL(url);
     u.hash = "";

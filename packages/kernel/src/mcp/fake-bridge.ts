@@ -147,6 +147,26 @@ export class FakeBridge implements BrowserBridge {
   readonly history?: BrowserHistory;
   readonly bookmarks?: BrowserBridge["bookmarks"];
   readonly search?: BrowserBridge["search"];
+  /** Recap ids with an open tab, in opening order; `recapsPrivate` makes `recaps.open` answer « private ». */
+  readonly recapsOpened: string[] = [];
+  recapsPrivate = false;
+  private activeRecap: string | null = null;
+  readonly recaps: NonNullable<BrowserBridge["recaps"]> = {
+    open: async (window, id, title) => {
+      this.note("recaps.open", window, id, title);
+      if (this.recapsPrivate) return "private";
+      if (!this.recapsOpened.includes(id)) this.recapsOpened.push(id);
+      this.activeRecap = id;
+      return "opened";
+    },
+    close: async (id) => {
+      this.note("recaps.close", id);
+      if (this.recapsOpened.includes(id)) this.recapsOpened.splice(this.recapsOpened.indexOf(id), 1);
+      if (this.activeRecap === id) this.activeRecap = null;
+    },
+    active: async () => this.activeRecap,
+    visible: async () => [...this.recapsOpened],
+  };
   private readonly failing = new Set<string>();
   private readonly hanging = new Set<string>();
   /** Links of the successive reads (the last one repeats), to simulate a page whose results come late. */

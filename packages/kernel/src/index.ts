@@ -61,6 +61,7 @@ export { NO_RESULT, chainsOf, resolvePage, FALLBACK_MENTION, type RenderedBlock,
 export { COMPONENT_HTML_MAX } from "./pages/agent-components.js";
 export { validatePlan } from "./pages/validate.js";
 export { BUILTIN_COMPONENTS } from "./pages/catalog.js";
+export { createRecaps, ID_RECAP, type Recaps, type RecapFile } from "./recaps/recaps.js";
 export * from "./sites/grants.js";
 export * from "./sites/tracking.js";
 export * from "./design/projects.js";

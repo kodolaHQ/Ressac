@@ -499,3 +499,23 @@ describe("openAgentSession with a profile", () => {
     });
   });
 });
+
+test("kernel: onRecapChange is called once per successful recap publication", async () => {
+  const root = await tempFolder();
+  const { run: run } = fakeRunner([[/ info$/, { code: 1 }]]);
+  const onRecapChange = vi.fn();
+  kernel = await createKernel({ widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, recapsFolder: `${root}-recaps`, onRecapChange, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run });
+  const mcp = await readMcp(kernel);
+  const client = new Client({ name: "test", version: "0" });
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL(mcp.url.replace("host.docker.internal", "127.0.0.1")), {
+      requestInit: { headers: { Authorization: mcp.headers.Authorization } },
+    }),
+  );
+  const call = (plan: unknown) => client.callTool({ name: "show_recap", arguments: { title: "Vélos", results: { items: [{ name: "A" }] }, plan } });
+  await call({ blocks: [{ component: "cards", props: { items: "items", title: "name" } }] });
+  await call({ blocks: [] });
+  await client.close();
+  expect(onRecapChange).toHaveBeenCalledTimes(1);
+  expect(await readdir(`${root}-recaps`)).toEqual([`${onRecapChange.mock.calls[0]![0]}.json`]);
+});
