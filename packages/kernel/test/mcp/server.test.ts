@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createRecaps } from "../../src/recaps/recaps.js";
 import { tempFolder } from "../helpers/temp.js";
@@ -11,7 +11,7 @@ import { PRIVATE_TEXT, type TabInfo } from "../../src/mcp/bridge.js";
 import type { Watcher } from "../../src/search/watcher.js";
 import { FakeBridge } from "../../src/mcp/fake-bridge.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { NO_WORKFLOW_OPEN, HIDDEN_ACTION_RUNS_NOTICE, HIDDEN_RUNS_NOTICE, startMcpServer, PENDING_SITE_NAVIGATION, navigationOutsideSite, SITE_DATA_PREFIX, TWEAK_ERRORS_PREFIX, SITE_UNKNOWN, SITE_DENIED, SITE_MEMORY_MAX_SHOWN, type SitesTools, DENIAL_TEXT, RESERVED_ERROR, RESERVED_ACTION_ERROR, ACTION_DATA_PREFIX, WIDGET_DATA_PREFIX, generateToken, type ActionsTools, type AppsTools, type WidgetsTools, type OpenWorkflow, LINKS_HEADER } from "../../src/mcp/server.js";
+import { NO_WORKFLOW_OPEN, HIDDEN_ACTION_RUNS_NOTICE, HIDDEN_RUNS_NOTICE, startMcpServer, PENDING_SITE_NAVIGATION, navigationOutsideSite, SITE_DATA_PREFIX, TWEAK_ERRORS_PREFIX, SITE_UNKNOWN, SITE_DENIED, SITE_MEMORY_MAX_SHOWN, type SitesTools, DENIAL_TEXT, RESERVED_ERROR, RESERVED_ACTION_ERROR, ACTION_DATA_PREFIX, WIDGET_DATA_PREFIX, generateToken, type ActionsTools, type AppsTools, type WidgetsTools, type OpenWorkflow, LINKS_HEADER, RECAP_UPDATED_PRIVATE } from "../../src/mcp/server.js";
 import type { Execution } from "../../src/workflows/executions.js";
 import { ACTION_UNKNOWN, ACTION_WITHOUT_WORKFLOW, RESULT_TOO_BIG, requiredInput, type LaunchResult } from "../../src/actions/run.js";
 import { INTERNAL_ACTION_ERROR } from "../../src/actions/file.js";
@@ -2589,6 +2589,26 @@ describe("recaps", () => {
     expect(r.isError).toBe(true);
     expect(text(r)).toContain("privé");
     expect(bridge.recapsOpened).toEqual([]);
+  });
+
+  test("a republish in a private space updates the file and says it is not shown here", async () => {
+    const folder = await startRecaps();
+    const id = /Récap ([0-9a-f-]{36}) ouvert/.exec(text(await client.callTool({ name: "show_recap", arguments: { title: "Vélos", results, plan } })))![1];
+    bridge.recapsPrivate = true;
+    const r = await client.callTool({ name: "show_recap", arguments: { id, title: "Vélos 2", results, plan } });
+    expect(r.isError).toBeFalsy();
+    expect(text(r)).toBe(RECAP_UPDATED_PRIVATE);
+    expect(JSON.parse(await readFile(join(folder, `${id}.json`), "utf8")).title).toBe("Vélos 2");
+  });
+
+  test("a tab that fails to open leaves no file for a new recap", async () => {
+    const folder = await startRecaps();
+    bridge.recaps.open = async () => {
+      throw new Error("no window");
+    };
+    const r = await client.callTool({ name: "show_recap", arguments: { title: "Vélos", results, plan } });
+    expect(r.isError).toBe(true);
+    expect(await readdir(folder)).toEqual([]);
   });
 
   test("read_recap without a recap in the active tab says so", async () => {
