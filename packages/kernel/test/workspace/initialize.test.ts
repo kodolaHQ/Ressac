@@ -205,7 +205,7 @@ test("the AGENTS.md template is pinned: before editing it, add this hash to OLD_
   expect(sha256(await readFile(join(import.meta.dirname, "..", "..", "templates", "AGENTS.md")))).toBe(
     "0a6fde102809aedffb26d4e7547bed4a772e39eb3ffce50fabacafed08799b7d",
   );
-  expect(OLD_AGENTS.has("75659bec080f69a81dba4bf5c63273eced68b8b4eea767f241cb05b60d2386e1")).toBe(true);
+  expect(OLD_AGENTS.has("0a6fde102809aedffb26d4e7547bed4a772e39eb3ffce50fabacafed08799b7d")).toBe(true);
 });
 
 test("the hash of every shipped version is kept: the list only grows", () => {
