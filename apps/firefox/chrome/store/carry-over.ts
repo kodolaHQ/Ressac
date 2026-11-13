@@ -200,7 +200,8 @@ async function carryOverSteps(o: Options, state: State | null): Promise<CarryRes
   const movedTo = (id: string) => `${o.appSupport}/Ressac/Profiles/${leaf(id)}`;
   // A carry-over begun goes on with the profile it recorded (its target is movedTo of it), wherever it is now: once
   // Ressac ran on the moved one, Firefox rewrote its compatibility.ini and the search no longer knows it.
-  const begun = state?.profile ? ((await exists(movedTo(state.profile))) ? movedTo(state.profile) : (await exists(state.profile)) ? state.profile : null) : null;
+  // Still at its old place first, as the search does: a folder of its name in Ressac/Profiles is then another's.
+  const begun = state?.profile ? ((await exists(state.profile)) ? state.profile : (await exists(movedTo(state.profile))) ? movedTo(state.profile) : null) : null;
   const chosen = begun ? { id: state!.profile, at: begun } : await oldProfile(o, root, movedTo, !!state);
   // No profile to take: the data folder alone is carried.
   if (!chosen) {

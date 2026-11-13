@@ -478,6 +478,16 @@ describe("carryOver", () => {
     expect(await state(m.appSupport)).toEqual({ state: "done", profile: moved });
   });
 
+  it("state pending, the old profile still in place and its name taken in Ressac/Profiles: blocked, the other folder never adopted", async () => {
+    const m = await machine();
+    await mkdir(join(m.ressac, "Profiles", "a.default-webaios"));
+    await writeState(m.appSupport, { state: "pending", profile: join(m.root, "Profiles", "a.default-webaios") });
+    const profiles = fakeProfiles();
+    expect(await carryOver({ ...m, profiles, env: fakeEnv() })).toBe("profile-blocked");
+    expect(profiles.calls.some((c) => c[0] === "flush" || c[0] === "default")).toBe(false);
+    expect(await exists(join(m.root, "Profiles", "a.default-webaios"))).toBe(true);
+  });
+
   it("no profile to take: the state is pending before the data folder moves (a crash there is finished next launch)", async () => {
     const m = await machine({ profiles: { "n.default": { platform: "/Applications/Nightly.app/Contents/Resources" } } });
     await chmod(m.home, 0o555);
