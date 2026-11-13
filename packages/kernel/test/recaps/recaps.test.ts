@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, stat, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createRecaps, ID_RECAP, RECAP_UNKNOWN } from "../../src/recaps/recaps.js";
 import { SeenUrls } from "../../src/mcp/seen.js";
@@ -50,7 +50,8 @@ test("publish without id creates the file; links never seen and local addresses 
   expect(r.created).toBe(true);
   expect(r.id).toMatch(ID_RECAP);
   const file = JSON.parse(await readFile(join(folder, `${r.id}.json`), "utf8"));
-  expect(file).toMatchObject({ version: 1, id: r.id, title: "Vélos", results, updated: "2026-11-13T10:00:00.000Z", shown: "2026-11-13T10:00:00.000Z" });
+  expect(file).toMatchObject({ version: 1, id: r.id, title: "Vélos", results, updated: "2026-11-13T10:00:00.000Z" });
+  expect(file).not.toHaveProperty("shown");
   expect(await recaps.linkAllowed(r.id, "https://exemple.fr/a")).toBe(true);
   expect(await recaps.linkAllowed(r.id, "https://jamais.vu/b")).toBe(false);
   expect(await recaps.linkAllowed(r.id, "http://127.0.0.1/c")).toBe(false);
@@ -72,13 +73,13 @@ test("republish with the id keeps a link seen before, even with an empty seen li
   expect((await recaps.read(r.id))?.title).toBe("Vélos 2");
 });
 
-test("page() stamps shown; stale gives the id once its age passes", async () => {
-  const { recaps, seen, advance } = await setup();
+test("page() stamps the mtime; stale gives the id once its age passes", async () => {
+  const { folder, recaps, seen, advance } = await setup();
   const r = await recaps.publish({ title: "Vélos", results, plan, seen });
   if (!r.ok) throw new Error();
   advance(3 * DAY);
   await recaps.page(r.id);
-  expect((await recaps.read(r.id))?.shown).toBe("2026-11-16T10:00:00.000Z");
+  expect((await stat(join(folder, `${r.id}.json`))).mtime.toISOString()).toBe("2026-11-16T10:00:00.000Z");
   advance(5 * DAY);
   expect(await recaps.stale(7 * DAY)).toEqual([]);
   advance(3 * DAY);
@@ -109,6 +110,45 @@ test("a page() racing a remove does not bring the recap back", async () => {
   hooks.afterRead = () => recaps.remove(r.id);
   expect(await recaps.page(r.id)).toEqual({ gone: true });
   expect(await readdir(folder)).toEqual([]);
+});
+
+test("a republish landing between page()'s read and its stamp keeps the new content", async () => {
+  const { recaps, seen } = await setup();
+  const r = await recaps.publish({ title: "Vélos", results, plan, seen });
+  if (!r.ok) throw new Error();
+  hooks.afterRead = async () => {
+    await recaps.publish({ id: r.id, title: "Vélos 2", results, plan, seen });
+  };
+  await recaps.page(r.id);
+  expect((await recaps.read(r.id))?.title).toBe("Vélos 2");
+});
+
+test("page() after remove says gone and does not recreate the file", async () => {
+  const { folder, recaps, seen } = await setup();
+  const r = await recaps.publish({ title: "Vélos", results, plan, seen });
+  if (!r.ok) throw new Error();
+  await recaps.remove(r.id);
+  expect(await recaps.page(r.id)).toEqual({ gone: true });
+  expect(await readdir(folder)).toEqual([]);
+});
+
+test("stale follows the mtime: one set in the past is swept, a fresh one is not", async () => {
+  const { folder, recaps, seen } = await setup();
+  const a = await recaps.publish({ title: "A", results, plan, seen });
+  const b = await recaps.publish({ title: "B", results, plan, seen });
+  if (!a.ok || !b.ok) throw new Error();
+  const past = new Date("2026-11-01T10:00:00Z");
+  await utimes(join(folder, `${a.id}.json`), past, past);
+  expect(await recaps.stale(7 * DAY)).toEqual([a.id]);
+});
+
+test("an old file with a shown field still reads", async () => {
+  const { folder, recaps, seen } = await setup();
+  const r = await recaps.publish({ title: "Vélos", results, plan, seen });
+  if (!r.ok) throw new Error();
+  const file = join(folder, `${r.id}.json`);
+  await writeFile(file, JSON.stringify({ ...JSON.parse(await readFile(file, "utf8")), shown: "2026-11-13T10:00:00.000Z" }));
+  expect((await recaps.read(r.id))?.title).toBe("Vélos");
 });
 
 test("the title keeps 120 characters", async () => {

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { readdir, readFile, rm, stat } from "node:fs/promises";
+import { readdir, readFile, rm, stat, utimes } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import { writeAtomic } from "../workflows/executions.js";
@@ -18,7 +18,7 @@ const ALLOWED_MAX = 5000;
 export const RECAP_TITLE_MAX = 120;
 
 /** `allowed`: the addresses of the results the agent had read, the only ones the page may link to or load. */
-export type RecapFile = { version: 1; id: string; title: string; results: unknown; plan: PlanPage; allowed: string[]; updated: string; shown: string };
+export type RecapFile = { version: 1; id: string; title: string; results: unknown; plan: PlanPage; allowed: string[]; updated: string };
 
 const RecapSchema = z.object({
   version: z.literal(1),
@@ -28,7 +28,6 @@ const RecapSchema = z.object({
   plan: PlanPage,
   allowed: z.array(z.string()).max(ALLOWED_MAX),
   updated: z.string(),
-  shown: z.string(),
 });
 
 export type RecapPublished = { ok: true; id: string; created: boolean; discarded: string[] } | { ok: false; errors: string[] };
@@ -36,7 +35,7 @@ export type RecapPublished = { ok: true; id: string; created: boolean; discarded
 export interface Recaps {
   publish(o: { id?: string; title: string; results: unknown; plan: unknown; seen: SeenUrls }): Promise<RecapPublished>;
   read(id: string): Promise<RecapFile | null>;
-  /** `gone`: no file (closed, swept). null: not a recap id, or an unreadable file. Stamps `shown`. */
+  /** `gone`: no file (closed, swept). null: not a recap id, or an unreadable file. Stamps the file's mtime (last shown). */
   page(id: string): Promise<{ title: string; updated: string; page: RenderedPage } | { gone: true } | null>;
   linkAllowed(id: string, url: string): Promise<boolean>;
   imageAllowed(id: string, url: string): Promise<boolean>;
@@ -58,9 +57,11 @@ function openable(url: string, httpsOnly: boolean): boolean {
  * publishes with one instance, the host serves pages and erases with its own.
  */
 export function createRecaps(o: { folder: string; now?: () => Date }): Recaps {
-  const now = () => (o.now ?? (() => new Date()))().toISOString();
+  const clock = () => (o.now ?? (() => new Date()))();
+  const now = () => clock().toISOString();
   const path = (id: string) => join(o.folder, `${id}.json`);
-  const write = (f: RecapFile) => writeAtomic(path(f.id), JSON.stringify(f));
+  // The mtime says when the recap was last published or shown; set from the clock so the sweep follows it.
+  const touch = (id: string) => utimes(path(id), clock(), clock());
 
   async function read(id: string): Promise<RecapFile | null> {
     if (!ID_RECAP.test(id)) return null;
@@ -85,20 +86,19 @@ export function createRecaps(o: { folder: string; now?: () => Date }): Recaps {
       const kept = new Set(before?.allowed);
       const allowed = [...chainsOf(p.results)].filter((s) => kept.has(s) || p.seen.has(s)).slice(0, ALLOWED_MAX);
       const at = now();
-      const f: RecapFile = { version: 1, id: before?.id ?? randomUUID(), title: p.title.slice(0, RECAP_TITLE_MAX), results: p.results, plan: v.plan, allowed, updated: at, shown: before?.shown ?? at };
+      const f: RecapFile = { version: 1, id: before?.id ?? randomUUID(), title: p.title.slice(0, RECAP_TITLE_MAX), results: p.results, plan: v.plan, allowed, updated: at };
       if (Buffer.byteLength(JSON.stringify(f)) > RECAP_MAX_BYTES) return { ok: false, errors: [RECAP_TOO_BIG] };
-      await write(f);
+      await writeAtomic(path(f.id), JSON.stringify(f));
+      await touch(f.id);
       return { ok: true, id: f.id, created: !before, discarded: v.discarded };
     },
     async page(id) {
       if (!ID_RECAP.test(id)) return null;
-      const exists = () => stat(path(id)).then(() => true, () => false);
       const f = await read(id);
-      if (!f) return (await exists()) ? null : { gone: true };
-      // Removed since the read (its tab closed): the stamp must not bring it back.
-      if (!(await exists())) return { gone: true };
-      // shortcut: a remove or publish landing between this check and the write is still lost or undone; add a per-id lock if it shows up.
-      await write({ ...f, shown: now() });
+      // Only the mtime is touched, never the content: a publish or remove in between is kept, and utimes never recreates a file.
+      const stamped = await touch(id).then(() => true, (e: NodeJS.ErrnoException) => (e.code === "ENOENT" ? false : Promise.reject(e)));
+      if (!stamped) return { gone: true };
+      if (!f) return null;
       return { title: f.title, updated: f.updated, page: resolvePage(f.plan, f.results, { account: false, catalog: BUILTIN_COMPONENTS, fallback: false, allowed: new Set(f.allowed) }) };
     },
     linkAllowed: (id, url) => allowedIn(id, url, false),
@@ -108,12 +108,13 @@ export function createRecaps(o: { folder: string; now?: () => Date }): Recaps {
     },
     async stale(maxAgeMs) {
       const names = await readdir(o.folder).catch(() => [] as string[]);
-      const limit = Date.parse(now()) - maxAgeMs;
+      const limit = clock().getTime() - maxAgeMs;
       const ids: string[] = [];
       for (const name of names) {
-        const f = name.endsWith(".json") ? await read(name.slice(0, -5)) : null;
-        // shortcut: an unreadable recap file is never swept; sweep by mtime if such files show up.
-        if (f && Math.max(Date.parse(f.updated), Date.parse(f.shown)) < limit) ids.push(f.id);
+        const id = name.endsWith(".json") ? name.slice(0, -5) : "";
+        if (!ID_RECAP.test(id)) continue;
+        const mtime = await stat(path(id)).then((s) => s.mtimeMs, () => Infinity);
+        if (mtime < limit) ids.push(id);
       }
       return ids;
     },
