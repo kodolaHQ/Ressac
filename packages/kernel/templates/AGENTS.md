@@ -1044,8 +1044,16 @@ aucun autre moyen (curl, script, API) pour atteindre le web à sa place.
   dis dans un `paragraph`. La dernière publication, sans `live`, ajoute la synthèse (le meilleur choix, les chiffres).
   Si tu abandonnes la recherche avant la fin, republie sans `live` avec ce que tu as (pas pour un `hand_over` : la
   recherche reprend ensuite).
-  `results` est un objet JSON (pas une chaîne), `plan` un objet
-  `{ "blocks": [{ "component": "cards", "props": { "items": "voitures", "title": "nom", "link": "url", "image": "photo" } }] }`. Une réponse courte reste dans le terminal. Pour corriger ou compléter,
+  `results` est un objet JSON (pas une chaîne), `plan` un objet `{ "blocks": [...] }` fait des composants intégrés
+  (tableau « Composants intégrés » plus haut : `title`, `paragraph`, `figures`, `highlight`, `cards`…). Un texte
+  (`text`) s'affiche tel quel ; pour montrer un résultat, donne sa **référence** (`value`, `items`, `object`). Montre ce
+  qui aide à choisir : prix (`value`), détails (`subtitle`), points d'attention (`warnings`). Page finale type :
+  `{ "blocks": [{ "component": "title", "props": { "text": "Voitures fiables ≤ 5 000 €" } },
+  { "component": "paragraph", "props": { "value": "synthese" } },
+  { "component": "figures", "props": { "figures": [{ "value": "lues", "label": "fiches lues" }, { "value": "median", "label": "prix médian" }] } },
+  { "component": "highlight", "props": { "object": "meilleur", "title": "nom", "label": "Meilleur choix", "image": "photo", "value": "prix", "subtitle": "details", "link": "url" } },
+  { "component": "cards", "props": { "items": "voitures", "title": "nom", "image": "photo", "value": "prix", "subtitle": "details", "warnings": "attention", "link": "url" } },
+  { "component": "paragraph", "props": { "value": "ecartees" } }] }`. Une réponse courte reste dans le terminal. Pour corriger ou compléter,
   mets à jour sur place : même `id` (`read_recap` le retrouve, sans `id` celui de l'onglet actif). Un nouveau récap
   seulement si l'utilisateur demande deux versions côte à côte.
 - Les liens et les photos d'un récap ne sont que des **adresses que tu as lues** (pages, liens de `read_tab`, la
