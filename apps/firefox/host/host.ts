@@ -166,6 +166,7 @@ const launchKernel = (profileId: string): Promise<Kernel | null> => {
     widgetsFolder: widgetsFolder,
     actionsFolder: actionsFolder,
     recapsFolder: recapsFolder,
+    ...(process.env.WEBAIOS_TEST_RECAP_MAX_AGE_MS ? { recapsMaxAgeMs: Number(process.env.WEBAIOS_TEST_RECAP_MAX_AGE_MS) } : {}),
     onRecapChange: (id) => rpc.notify("recaps.changed", { id }),
     ai: ai,
     profilingFolder: join(dataDir, "profiling"),

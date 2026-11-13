@@ -200,3 +200,25 @@ describe("recap after a restart", () => {
     }
   }, 120_000);
 });
+
+describe("forgotten recap", () => {
+  it("a recap not shown for longer than its age closes by itself", async () => {
+    const w = await launchWebAiOs({ env: { WEBAIOS_MEMORY_LOOP: "1", WEBAIOS_TEST_RECAP_MAX_AGE_MS: "2000", WEBAIOS_TEST_SEARCH_URL: `${server.url}/annonces.html?q=%s`, WEBAIOS_TEST_ACTION_IMAGES: server.url }, prefs: PREFS });
+    try {
+      const m = await ready(w);
+      const q = uiQueries(m);
+      const tab = /Onglet : (\S+)/.exec((await callTool(w.dataDir, "search_web", { query: "vélo cargo", goal: "lire" })).text)![1]!;
+      await callTool(w.dataDir, "read_tab", { id: tab, links: true });
+      const id = await publish(w, "Vélos cargo");
+      for (const deadline = Date.now() + 10_000; (await activeTab(m))?.url !== urlRecap(id); await sleep(100)) if (Date.now() > deadline) throw new Error("the recap tab is not active");
+      await q.waitText(tid("block-title"), "Vélos cargo", 15_000);
+      // Another tab comes to the front: the recap is no longer on screen.
+      await click(m, `${tid("block-highlight")} button.pa-link`, { text: "Yuba Spicy Curry" });
+      const file = join(w.dataDir, "recaps", `${id}.json`);
+      for (const deadline = Date.now() + 20_000; existsSync(file); await sleep(200)) if (Date.now() > deadline) throw new Error("the recap file stays");
+      expect(await recapTabs(m, id)).toHaveLength(0);
+    } finally {
+      await w.close();
+    }
+  }, 90_000);
+});

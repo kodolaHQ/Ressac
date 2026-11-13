@@ -1,9 +1,12 @@
-import { expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createRecaps, ID_RECAP, RECAP_UNKNOWN } from "../../src/recaps/recaps.js";
 import { SeenUrls } from "../../src/mcp/seen.js";
 import { tempFolder } from "../helpers/temp.js";
+import { createKernel, type Kernel } from "../../src/kernel.js";
+import { FakeBridge } from "../../src/mcp/fake-bridge.js";
+import { fakeRunner } from "../helpers/fake-runner.js";
 
 // Runs once right after the next readFile, to put a remove between page()'s read and its stamp.
 const hooks = vi.hoisted(() => ({ afterRead: null as null | (() => Promise<void>) }));
@@ -113,4 +116,49 @@ test("the title keeps 120 characters", async () => {
   const r = await recaps.publish({ title: "x".repeat(130), results, plan, seen });
   if (!r.ok) throw new Error();
   expect((await recaps.read(r.id))?.title).toHaveLength(120);
+});
+
+describe("sweep of forgotten recaps", () => {
+  let kernel: Kernel | undefined;
+  afterEach(async () => {
+    await kernel?.stop();
+    kernel = undefined;
+  });
+
+  /** Two recaps published in 2020, then a kernel that sweeps at 60 s; `before` can show some on screen first. */
+  async function start(bridge: FakeBridge, before: (ids: string[]) => void = () => {}) {
+    const root = await tempFolder();
+    const recapsFolder = `${root}-recaps`;
+    const old = createRecaps({ folder: recapsFolder, now: () => new Date("2020-01-01T00:00:00Z") });
+    const ids: string[] = [];
+    for (let i = 0; i < 2; i++) {
+      const r = await old.publish({ title: `R${i}`, results, plan, seen: new SeenUrls() });
+      if (!r.ok) throw new Error("publish");
+      ids.push(r.id);
+    }
+    before(ids);
+    const { run } = fakeRunner([[/ info$/, { code: 1, stderr: "Cannot connect to the Docker daemon" }]]);
+    kernel = await createKernel({ widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, recapsFolder, recapsMaxAgeMs: 60_000, bridge, root, run });
+    return { recapsFolder, ids };
+  }
+  const files = async (folder: string) => (await readdir(folder)).filter((f) => f.endsWith(".json")).sort();
+
+  test("a stale recap off screen is closed and removed; a visible one is kept", async () => {
+    const bridge = new FakeBridge([], { active: null, allow: false });
+    const { recapsFolder, ids } = await start(bridge, (ids) => bridge.recapsOpened.push(ids[1]!));
+    await vi.waitFor(async () => expect(await files(recapsFolder)).toEqual([`${ids[1]}.json`]));
+    expect(bridge.recapsOpened).toEqual([ids[1]]);
+  });
+
+  test("a bridge that throws never crashes the kernel", async () => {
+    const bridge = new FakeBridge([], { active: null, allow: false });
+    bridge.recaps.visible = async () => {
+      throw new Error("tab gone");
+    };
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { recapsFolder } = await start(bridge);
+    await vi.waitFor(() => expect(error).toHaveBeenCalledWith(expect.stringContaining("recap sweep"), expect.anything()));
+    expect(await files(recapsFolder)).toHaveLength(2);
+    error.mockRestore();
+  });
 });
