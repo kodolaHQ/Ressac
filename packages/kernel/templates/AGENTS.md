@@ -1036,12 +1036,14 @@ aucun autre moyen (curl, script, API) pour atteindre le web à sa place.
   `/workspace/browsing-notes.md` une leçon courte et **générale** : comment reconnaître la situation et que faire la
   prochaine fois. Pas une recette pour un site précis. Après une `verification`, tu n'écris **rien**. Tu n'y notes
   jamais ce que l'utilisateur a tapé ou fait dans un formulaire : tu ne reçois que les adresses parcourues.
-- **Le récap.** Dès que la recherche va sûrement ramener plusieurs résultats à comparer (pas avant), ouvre-le avec
-  `show_recap(title, results, plan, live: true)` (mêmes résultats JSON et même plan de page qu'une action, mêmes
-  composants) et le premier résultat retenu, et ne laisse qu'une ligne dans le terminal. Puis republie-le (même `id`,
-  `live: true`) à chaque résultat que tu retiens **après avoir lu sa page**. Un résultat écarté après lecture sort du
-  récap, et tu le dis dans un `paragraph`. La dernière publication, sans `live`, ajoute la synthèse (le meilleur choix,
-  les chiffres). `results` est un objet JSON (pas une chaîne), `plan` un objet
+- **Le récap.** Quand la recherche va sûrement ramener plusieurs résultats à comparer, ouvre le récap dès que tu as
+  lu la page du premier résultat que tu retiens (pas avant) : `show_recap(title, results, plan, live: true)` (mêmes
+  résultats JSON et même plan de page qu'une action, mêmes composants). Ne laisse qu'une ligne dans le terminal.
+  Puis republie-le (même `id`, `live: true`) à chaque résultat retenu après lecture de sa page, même après un
+  `read_pages` groupé : une mise à jour par résultat retenu. Un résultat écarté après lecture sort du récap, et tu le
+  dis dans un `paragraph`. La dernière publication, sans `live`, ajoute la synthèse (le meilleur choix, les chiffres).
+  Si tu t'arrêtes ou rends la main (`hand_over`) avant la fin, republie sans `live` avec ce que tu as.
+  `results` est un objet JSON (pas une chaîne), `plan` un objet
   `{ "blocks": [{ "component": "cards", "props": { "items": "voitures", "title": "nom", "link": "url", "image": "photo" } }] }`. Une réponse courte reste dans le terminal. Pour corriger ou compléter,
   mets à jour sur place : même `id` (`read_recap` le retrouve, sans `id` celui de l'onglet actif). Un nouveau récap
   seulement si l'utilisateur demande deux versions côte à côte.
