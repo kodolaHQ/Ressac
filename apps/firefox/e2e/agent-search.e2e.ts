@@ -82,6 +82,8 @@ it("search_web opens an agent tab on the engine, active, in the agent's profile,
   expect(tab.url).toBe(`${server.url}/results.html?q=${encodeURIComponent("vélo électrique")}`);
   const win = s.windows[0]!;
   expect(win.active[win.activeSpace]).toBe(tab.id);
+  // A result followed by its number in the list.
+  expect((await callTool(w.dataDir, "navigate", { id: tab.id, link: 0 })).text).toBe(`Onglet ${tab.id} → ${server.url}/a.html?q=${encodeURIComponent("vélo électrique")}`);
 });
 
 it("a search_web navigate follows a result in the same tab without activating it again", async () => {

@@ -344,5 +344,11 @@ test("boundLinks drops a link whose address is over 500 characters (never cuts i
   const ok = `https://exemple.fr/${"a".repeat(481)}`;
   expect(ok).toHaveLength(500);
   const links = boundLinks([{ text: "long", url: long }, { text: "ok", url: ok }, { text: "js", url: "javascript:alert(1)" }, { text: "x" }]);
-  expect(links).toEqual([{ text: "ok", url: ok }]);
+  expect(links).toEqual([{ text: "ok", url: ok, zone: "other" }]);
+});
+
+test("boundLinks keeps a known zone, turns any other into other, and keeps 500 links at most", () => {
+  const u = "https://exemple.fr/";
+  expect(boundLinks([{ text: "a", url: u, zone: "main" }, { text: "b", url: u, zone: "<script>" }, { text: "c", url: u }]).map((l) => l.zone)).toEqual(["main", "other", "other"]);
+  expect(boundLinks(Array.from({ length: 10_000 }, () => ({ text: "x", url: u, zone: "nav" })))).toHaveLength(500);
 });
