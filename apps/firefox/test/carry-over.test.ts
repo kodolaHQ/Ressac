@@ -1,0 +1,322 @@
+// The carry-over from WebAiOs, on temp folders and a fake profile service. The profile part cannot run in an e2e: macOS
+// gives Firefox its profile root (FSFindFolder), not $HOME, so no launch can be pointed at a fake one. Its proof is the
+// VM trial of plan 61 (Task 6): a machine with WebAiOs installed and used, then Ressac launched.
+import { access, chmod, mkdir, mkdtemp, readFile, readdir, utimes, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import { carryOver, tellOnce, type Env, type Profile, type ProfileService } from "../chrome/store/carry-over";
+
+const exists = (p: string) => access(p).then(() => true, () => false);
+const write = async (path: string, text: string) => (await mkdir(join(path, ".."), { recursive: true }), writeFile(path, text));
+
+const locked: string[] = [];
+afterEach(async () => {
+  for (const dir of locked.splice(0)) await chmod(dir, 0o755);
+});
+
+function fakeProfiles(o: { current?: boolean; firstRun?: boolean; inUse?: string[] } = {}) {
+  const calls: unknown[][] = [];
+  const byName = new Map<string, Profile>();
+  const service: ProfileService & { calls: unknown[][] } = {
+    calls,
+    currentProfile: o.current === false ? null : ({ rootDir: { path: "/fresh" } } as Profile),
+    isFirstRun: o.firstRun ?? true,
+    createProfile(...args: [string, string, string]) {
+      calls.push(["createProfile", ...args]);
+      const [dir, name] = args;
+      const known = byName.get(name);
+      if (known) return known;
+      const profile: Profile = {
+        rootDir: { path: dir },
+        localDir: { path: `/caches/${dir.slice(dir.lastIndexOf("/") + 1)}` },
+        lock() {
+          calls.push(["lock", dir]);
+          if (o.inUse?.includes(dir)) throw Object.assign(new Error("NS_ERROR_FILE_ACCESS_DENIED"), { result: 0x80520015 });
+          return { unlock: () => void calls.push(["unlock", dir]) };
+        },
+        remove(files) {
+          calls.push(["remove", dir, files]);
+          byName.delete(name);
+        },
+      };
+      byName.set(name, profile);
+      return profile;
+    },
+    get defaultProfile() {
+      return null;
+    },
+    set defaultProfile(p: Profile | null) {
+      calls.push(["default", p?.rootDir.path]);
+    },
+    flush() {
+      calls.push(["flush"]);
+    },
+  };
+  return service;
+}
+
+function fakeEnv(values: Record<string, string> = {}): Env & { values: Record<string, string> } {
+  return { values, get: (name) => values[name] ?? "", set: (name, value) => void (values[name] = value) };
+}
+
+const PROFILES_INI = (paths: string[]) => paths.map((p, i) => `[Profile${i}]\nName=p${i}\nIsRelative=1\nPath=Profiles/${p}\n`).join("\n");
+
+/** A machine that had WebAiOs: its data folder and its profile root, with `profiles` (folder → LastPlatformDir, prefs.js age). */
+async function machine(o: { profiles?: Record<string, { platform?: string; age?: number }>; installs?: string; data?: boolean } = {}) {
+  const base = await mkdtemp(join(tmpdir(), "carry-"));
+  const home = join(base, "home");
+  const appSupport = join(base, "support");
+  const root = join(appSupport, "WebAiOs");
+  const profiles = o.profiles ?? { "a.default-webaios": { platform: "/Applications/WebAiOs.app/Contents/Resources" } };
+  await write(join(root, "profiles.ini"), PROFILES_INI(Object.keys(profiles)));
+  for (const [folder, p] of Object.entries(profiles)) {
+    const dir = join(root, "Profiles", folder);
+    await write(join(dir, "cookies.sqlite"), folder);
+    if (p.platform) await write(join(dir, "compatibility.ini"), `[Compatibility]\nLastVersion=0.1.3\nLastPlatformDir=${p.platform}\n`);
+    await write(join(dir, "prefs.js"), "");
+    const t = Date.now() / 1000 - (p.age ?? 0);
+    await utimes(join(dir, "prefs.js"), t, t);
+  }
+  if (o.installs) await write(join(root, "installs.ini"), o.installs);
+  await mkdir(join(appSupport, "Ressac", "Profiles", "x.default-release"), { recursive: true });
+  if (o.data !== false) {
+    await write(join(home, "WebAiOs", "session.json"), "{}");
+    await write(join(home, "WebAiOs", "workspace", ".webaios", "mcp.json"), "{}");
+    await write(join(home, "WebAiOs", "workspace", "projects", "p.txt"), "p");
+    for (const cache of ["webaios-sites", "webaios-widgets", "webaios-components"]) await write(join(home, "WebAiOs", cache, "x", "copy.html"), "");
+  }
+  return { home, appSupport, root, ressac: join(appSupport, "Ressac") };
+}
+
+const state = async (appSupport: string) => JSON.parse(await readFile(join(appSupport, "Ressac", "carried.json"), "utf8"));
+const writeState = (appSupport: string, s: object) => write(join(appSupport, "Ressac", "carried.json"), JSON.stringify(s));
+
+describe("carryOver", () => {
+  // Line 1.
+  it.each([
+    ["the profile was given on the command line", { current: false }, {}],
+    ["RESSAC_DATA_DIR is set", {}, { RESSAC_DATA_DIR: "/tmp/d" }],
+    ["RESSAC_TEST_NO_SYSTEM is set", {}, { RESSAC_TEST_NO_SYSTEM: "1" }],
+  ])("does nothing when %s", async (_, p, e) => {
+    const m = await machine();
+    const profiles = fakeProfiles(p);
+    expect(await carryOver({ ...m, profiles, env: fakeEnv(e) })).toBe("done");
+    expect(profiles.calls).toEqual([]);
+    expect(await exists(join(m.home, "WebAiOs"))).toBe(true);
+    expect(await exists(join(m.ressac, "carried.json"))).toBe(false);
+  });
+
+  // Line 2.
+  it("a moved app (first run, state done) adopts the carried profile again and restarts", async () => {
+    const m = await machine();
+    const folder = join(m.ressac, "Profiles", "x.default-release");
+    await writeState(m.appSupport, { state: "done", profile: folder });
+    const profiles = fakeProfiles({ firstRun: true });
+    const env = fakeEnv();
+    expect(await carryOver({ ...m, profiles, env })).toBe("restart");
+    expect(profiles.calls).toEqual([["createProfile", folder, "default-ressac", "carry-over"], ["default", folder], ["flush"]]);
+    expect(env.values).toEqual({ XRE_PROFILE_PATH: folder, XRE_PROFILE_LOCAL_PATH: "/caches/x.default-release" });
+    expect(await exists(join(m.home, "WebAiOs"))).toBe(true);
+  });
+
+  it("state done, not a first run: a normal start", async () => {
+    const m = await machine();
+    await writeState(m.appSupport, { state: "done", profile: join(m.ressac, "Profiles", "x.default-release") });
+    const profiles = fakeProfiles({ firstRun: false });
+    expect(await carryOver({ ...m, profiles, env: fakeEnv() })).toBe("done");
+    expect(profiles.calls).toEqual([]);
+  });
+
+  it("state done, first run, the recorded folder gone: a normal start", async () => {
+    const m = await machine();
+    await writeState(m.appSupport, { state: "done", profile: join(m.ressac, "Profiles", "gone") });
+    const profiles = fakeProfiles({ firstRun: true });
+    expect(await carryOver({ ...m, profiles, env: fakeEnv() })).toBe("done");
+    expect(profiles.calls).toEqual([]);
+  });
+
+  // Line 3.
+  it("no WebAiOs profile root: a fresh Ressac, nothing touched", async () => {
+    const m = await machine();
+    await import("node:fs/promises").then((fs) => fs.rm(m.root, { recursive: true }));
+    const profiles = fakeProfiles();
+    expect(await carryOver({ ...m, profiles, env: fakeEnv() })).toBe("done");
+    expect(profiles.calls).toEqual([]);
+    expect(await exists(join(m.home, "WebAiOs"))).toBe(true);
+  });
+
+  it("~/Ressac already there: nothing touched, whatever the old folders hold", async () => {
+    const m = await machine();
+    await mkdir(join(m.home, "Ressac"));
+    const profiles = fakeProfiles();
+    expect(await carryOver({ ...m, profiles, env: fakeEnv() })).toBe("done");
+    expect(profiles.calls).toEqual([]);
+    expect(await exists(join(m.home, "WebAiOs"))).toBe(true);
+    expect(await exists(join(m.root, "Profiles", "a.default-webaios"))).toBe(true);
+  });
+
+  // Line 4.
+  it("chooses the profile of an installed WebAiOs.app, then the most recently used", async () => {
+    const m = await machine({
+      profiles: {
+        "dev.default": { platform: "/src/engine/obj/dist/WebAiOs.app/Contents/Resources", age: 0 },
+        "nightly.default": { platform: "/src/engine/obj/dist/Nightly.app/Contents/Resources", age: 0 },
+        "old.default": { platform: "/Applications/WebAiOs.app/Contents/Resources", age: 7200 },
+        "main.default": { platform: "/Applications/WebAiOs.app/Contents/Resources", age: 60 },
+      },
+    });
+    const profiles = fakeProfiles();
+    expect(await carryOver({ ...m, profiles, env: fakeEnv() })).toBe("restart");
+    expect(profiles.calls[0]).toEqual(["createProfile", join(m.root, "Profiles", "main.default"), "default-ressac", "carry-over"]);
+    expect(await exists(join(m.ressac, "Profiles", "main.default"))).toBe(true);
+    expect(await exists(join(m.root, "Profiles", "old.default"))).toBe(true);
+  });
+
+  it("without one, a dev WebAiOs.app profile, the most recent first; never another app's", async () => {
+    const m = await machine({
+      profiles: {
+        "nightly.default": { platform: "/obj/dist/Nightly.app/Contents/Resources", age: 0 },
+        "older.default": { platform: "/obj/dist/WebAiOs.app/Contents/Resources", age: 7200 },
+        "dev.default": { platform: "/obj/dist/WebAiOs.app/Contents/Resources", age: 60 },
+      },
+    });
+    const profiles = fakeProfiles();
+    expect(await carryOver({ ...m, profiles, env: fakeEnv() })).toBe("restart");
+    expect(profiles.calls[0]![1]).toBe(join(m.root, "Profiles", "dev.default"));
+  });
+
+  it("no WebAiOs.app profile: the default of a locked install", async () => {
+    const m = await machine({
+      profiles: { "a.default": {}, "b.default": {} },
+      installs: "[AAAA]\nDefault=Profiles/a.default\n\n[BBBB]\nDefault=Profiles/b.default\nLocked=1\n",
+    });
+    const profiles = fakeProfiles();
+    expect(await carryOver({ ...m, profiles, env: fakeEnv() })).toBe("restart");
+    expect(profiles.calls[0]![1]).toBe(join(m.root, "Profiles", "b.default"));
+  });
+
+  it("no profile to take: a normal start, nothing touched", async () => {
+    const m = await machine({ profiles: { "n.default": { platform: "/Applications/Nightly.app/Contents/Resources" } }, installs: "[AAAA]\nDefault=Profiles/n.default\n" });
+    const profiles = fakeProfiles();
+    expect(await carryOver({ ...m, profiles, env: fakeEnv() })).toBe("done");
+    expect(profiles.calls).toEqual([]);
+    expect(await exists(join(m.home, "WebAiOs"))).toBe(true);
+    expect(await exists(join(m.ressac, "carried.json"))).toBe(false);
+  });
+
+  // Line 5.
+  it("WebAiOs still running: blocked, its registration removed, nothing moved, written or flushed", async () => {
+    const m = await machine();
+    const old = join(m.root, "Profiles", "a.default-webaios");
+    const profiles = fakeProfiles({ inUse: [old] });
+    expect(await carryOver({ ...m, profiles, env: fakeEnv() })).toBe("blocked");
+    expect(profiles.calls).toEqual([["createProfile", old, "default-ressac", "carry-over"], ["lock", old], ["remove", old, false]]);
+    expect(await exists(join(m.home, "WebAiOs"))).toBe(true);
+    expect(await exists(join(m.home, "Ressac"))).toBe(false);
+    expect(await exists(old)).toBe(true);
+    expect(await exists(join(m.ressac, "carried.json"))).toBe(false);
+  });
+
+  // Lines 5 to 8: the whole carry-over.
+  it("moves the data folder and the profile, adopts it, and restarts on it", async () => {
+    const m = await machine();
+    const old = join(m.root, "Profiles", "a.default-webaios");
+    const moved = join(m.ressac, "Profiles", "a.default-webaios");
+    const profiles = fakeProfiles();
+    const env = fakeEnv();
+    expect(await carryOver({ ...m, profiles, env })).toBe("restart");
+    // Line 5: the in-use test, its registration dropped.
+    expect(profiles.calls.slice(0, 4)).toEqual([["createProfile", old, "default-ressac", "carry-over"], ["lock", old], ["unlock", old], ["remove", old, false]]);
+    // Line 6: the data folder, the agent's folder; the caches only are deleted.
+    expect(await exists(join(m.home, "WebAiOs"))).toBe(false);
+    expect(await readFile(join(m.home, "Ressac", "session.json"), "utf8")).toBe("{}");
+    expect(await readFile(join(m.home, "Ressac", "workspace", "projects", "p.txt"), "utf8")).toBe("p");
+    expect(await readFile(join(m.home, "Ressac", "workspace", ".ressac", "mcp.json"), "utf8")).toBe("{}");
+    expect(await exists(join(m.home, "Ressac", "workspace", ".webaios"))).toBe(false);
+    expect((await readdir(join(m.home, "Ressac"))).sort()).toEqual(["session.json", "workspace"]);
+    // Line 7: the profile moved whole, registered there, made the default, flushed, the state done.
+    expect(await exists(old)).toBe(false);
+    expect(await readFile(join(moved, "cookies.sqlite"), "utf8")).toBe("a.default-webaios");
+    expect(profiles.calls.slice(4)).toEqual([["createProfile", moved, "default-ressac", "carry-over"], ["default", moved], ["flush"]]);
+    expect(await state(m.appSupport)).toEqual({ state: "done", profile: moved });
+    // Line 8.
+    expect(env.values).toEqual({ XRE_PROFILE_PATH: moved, XRE_PROFILE_LOCAL_PATH: "/caches/a.default-webaios" });
+    // The fresh profile Ressac started on stays.
+    expect(await exists(join(m.ressac, "Profiles", "x.default-release"))).toBe(true);
+  });
+
+  it("calls createProfile with its three arguments, always", async () => {
+    const m = await machine();
+    const profiles = fakeProfiles();
+    await carryOver({ ...m, profiles, env: fakeEnv() });
+    const creates = profiles.calls.filter((c) => c[0] === "createProfile");
+    expect(creates.length).toBe(2);
+    for (const c of creates) expect(c.slice(1).map((a) => typeof a)).toEqual(["string", "string", "string"]);
+  });
+
+  it("no old data folder: only the profile is carried", async () => {
+    const m = await machine({ data: false });
+    expect(await carryOver({ ...m, profiles: fakeProfiles(), env: fakeEnv() })).toBe("restart");
+    expect(await exists(join(m.home, "Ressac"))).toBe(false);
+    expect(await exists(join(m.ressac, "Profiles", "a.default-webaios"))).toBe(true);
+  });
+
+  it("a rename that fails in line 6 leaves the old folder intact and the state pending", async () => {
+    const m = await machine();
+    await chmod(m.home, 0o555);
+    locked.push(m.home);
+    const profiles = fakeProfiles();
+    await expect(carryOver({ ...m, profiles, env: fakeEnv() })).rejects.toThrow();
+    expect(await readFile(join(m.home, "WebAiOs", "session.json"), "utf8")).toBe("{}");
+    expect(await state(m.appSupport)).toMatchObject({ state: "pending" });
+    expect(await exists(join(m.root, "Profiles", "a.default-webaios"))).toBe(true);
+    expect(profiles.calls.some((c) => c[0] === "flush" || c[0] === "default")).toBe(false);
+  });
+
+  // Line 9.
+  it("state pending: redoes from line 4 without line 6", async () => {
+    const m = await machine();
+    await writeState(m.appSupport, { state: "pending", profile: join(m.root, "Profiles", "a.default-webaios") });
+    const profiles = fakeProfiles();
+    expect(await carryOver({ ...m, profiles, env: fakeEnv() })).toBe("restart");
+    expect(await exists(join(m.home, "WebAiOs", "webaios-sites"))).toBe(true);
+    expect(await exists(join(m.home, "Ressac"))).toBe(false);
+    expect(await state(m.appSupport)).toEqual({ state: "done", profile: join(m.ressac, "Profiles", "a.default-webaios") });
+  });
+
+  it("state pending, the profile already moved last time: adopted where it is", async () => {
+    const m = await machine();
+    const moved = join(m.ressac, "Profiles", "a.default-webaios");
+    await import("node:fs/promises").then((fs) => fs.rename(join(m.root, "Profiles", "a.default-webaios"), moved));
+    await writeState(m.appSupport, { state: "pending", profile: join(m.root, "Profiles", "a.default-webaios") });
+    const profiles = fakeProfiles();
+    const env = fakeEnv();
+    expect(await carryOver({ ...m, profiles, env })).toBe("restart");
+    expect(profiles.calls.filter((c) => c[0] === "createProfile").map((c) => c[1])).toEqual([moved, moved]);
+    expect(env.values.XRE_PROFILE_PATH).toBe(moved);
+    expect(await state(m.appSupport)).toEqual({ state: "done", profile: moved });
+  });
+});
+
+describe("tellOnce", () => {
+  it("tells once after a carry-over", async () => {
+    const m = await machine();
+    await writeState(m.appSupport, { state: "done", profile: "/p" });
+    const o = { ...m, profiles: fakeProfiles({ firstRun: false }), env: fakeEnv() };
+    expect(await tellOnce(o)).toBe(true);
+    expect(await tellOnce(o)).toBe(false);
+    expect(await state(m.appSupport)).toEqual({ state: "done", profile: "/p", told: true });
+  });
+
+  it("never without a finished carry-over, nor on a guarded launch", async () => {
+    const m = await machine();
+    const o = { ...m, profiles: fakeProfiles(), env: fakeEnv() };
+    expect(await tellOnce(o)).toBe(false);
+    await writeState(m.appSupport, { state: "pending", profile: "/p" });
+    expect(await tellOnce(o)).toBe(false);
+    await writeState(m.appSupport, { state: "done", profile: "/p" });
+    expect(await tellOnce({ ...o, env: fakeEnv({ RESSAC_TEST_NO_SYSTEM: "1" }) })).toBe(false);
+    expect(await tellOnce({ ...o, profiles: fakeProfiles({ current: false }) })).toBe(false);
+  });
+});

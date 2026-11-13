@@ -1,5 +1,5 @@
 // Stand-in for node:fs/promises, on top of IOUtils (Firefox system modules have no Node). Only the calls the
-// session persistence uses. IOUtils reports a missing file as a DOMException "NotFoundError": map it to ENOENT.
+// session persistence and the carry-over use. `rename` is IOUtils.move: onto an existing folder it moves INTO it. IOUtils reports a missing file as a DOMException "NotFoundError": map it to ENOENT.
 const enoent = (path: string): Error => Object.assign(new Error(`ENOENT: no such file or directory, '${path}'`), { code: "ENOENT" });
 const wrap = async <T>(path: string, run: () => Promise<T>): Promise<T> => {
   try {
@@ -19,7 +19,8 @@ export const mkdir = (path: string, _options: { recursive: true }): Promise<void
 export const writeFile = (path: string, text: string): Promise<void> => IOUtils.writeUTF8(path, text, { flush: true }).then(() => {});
 /** Entry names only, like Node's readdir. */
 export const readdir = async (path: string): Promise<string[]> => (await wrap(path, () => IOUtils.getChildren(path))).map((child) => PathUtils.filename(child));
-export const rm = (path: string, _options: { force: true }): Promise<void> => IOUtils.remove(path, { ignoreAbsent: true });
+export const rm = (path: string, options: { force: true; recursive?: boolean }): Promise<void> => IOUtils.remove(path, { ignoreAbsent: true, recursive: options.recursive });
+export const stat = async (path: string): Promise<{ mtimeMs: number }> => ({ mtimeMs: (await wrap(path, () => IOUtils.stat(path))).lastModified });
 
 /** Only mode "w" (truncate). Each writeFile is flushed to disk, so sync has nothing left to do. */
 export async function open(path: string, _mode: "w") {
@@ -31,4 +32,4 @@ export async function open(path: string, _mode: "w") {
   };
 }
 
-export default { readFile, access, rename, mkdir, writeFile, readdir, rm, open };
+export default { readFile, access, rename, mkdir, writeFile, readdir, rm, stat, open };

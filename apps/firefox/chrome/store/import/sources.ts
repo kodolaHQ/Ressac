@@ -88,13 +88,19 @@ export function chromiumProfiles(localState: unknown): { id: string; name: strin
   return list.sort((a, b) => Number(b.id === profile?.last_used) - Number(a.id === profile?.last_used));
 }
 
-/** A Firefox-format `profiles.ini`'s profiles (id: the absolute folder), the default first. */
-export function firefoxProfiles(ini: string, root: string): { id: string; name: string }[] {
+/** An ini file's sections in order, each with its `[header]` line under the key "". */
+export function iniSections(ini: string): Record<string, string>[] {
   const sections: Record<string, string>[] = [];
   for (const line of ini.split(/\r?\n/)) {
     if (/^\s*\[.*\]\s*$/.test(line)) sections.push({ "": line.trim() });
     else if (sections.length && line.includes("=")) sections.at(-1)![line.slice(0, line.indexOf("=")).trim()] = line.slice(line.indexOf("=") + 1).trim();
   }
+  return sections;
+}
+
+/** A Firefox-format `profiles.ini`'s profiles (id: the absolute folder), the default first. */
+export function firefoxProfiles(ini: string, root: string): { id: string; name: string }[] {
+  const sections = iniSections(ini);
   // The install's default wins over the older `Default=1`.
   const preferred = sections.find((s) => s[""]!.startsWith("[Install") && s.Default)?.Default;
   const profiles = sections
