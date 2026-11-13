@@ -47,3 +47,16 @@ test("a closed tab is no longer shown", () => {
   a.running("t1", false);
   expect(a.state()).toBeNull();
 });
+
+test("remaining() is the time left of the hold", () => {
+  const c = clock();
+  const a = createActivity(c.now);
+  a.event({ tab: "t1", label: "Lit leboncoin.fr" });
+  a.running("t1", true);
+  expect(a.remaining()).toBe(20_000);
+  a.running("t1", false);
+  c.advance(15_000);
+  expect(a.remaining()).toBe(5_000);
+  c.advance(10_000);
+  expect(a.remaining()).toBe(0);
+});

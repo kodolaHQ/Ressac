@@ -1,7 +1,7 @@
 import type { AgentViewState } from "../../shared/api";
 import type { AccessState } from "../../shared/model";
 import { privateTab } from "../../shared/model";
-import { ACTIVITY_HOLD_MS, createActivity } from "../../core/agent/activity";
+import { createActivity } from "../../core/agent/activity";
 import type { Store } from "../store/store";
 import type { WindowRegistry } from "../store/windows";
 import { HOST_EXITED, type AgentHost } from "./host";
@@ -50,16 +50,30 @@ export function createAgentView(o: { store: Store; host: AgentHost; access: () =
     } catch {}
     return { tab: a.tab, label: a.label, title: tab.title, site, ...(tab.favicon ? { icon: tab.favicon } : {}), running: a.running };
   };
-  const send = (frame: string | null) => watchers.forEach((cb) => cb(frame));
+  /** One throwing callback does not starve the others. */
+  const each = <T>(cbs: Set<(v: T) => void>, v: T) =>
+    cbs.forEach((cb) => {
+      try {
+        cb(v);
+      } catch (e) {
+        console.error("[agent-view] listener failed:", e);
+      }
+    });
+  let lastFrame: string | null | undefined;
+  const send = (frame: string | null) => {
+    if (frame === null && lastFrame === null) return;
+    lastFrame = frame;
+    each(watchers, frame);
+  };
   const refresh = () => {
     const next = compute();
-    // Re-read once the hold may have passed.
+    // Re-read once the hold has passed.
     clearTimeout(expiry);
-    if (next) expiry = setTimeout(refresh, ACTIVITY_HOLD_MS + 100);
+    if (next) expiry = setTimeout(refresh, activity.remaining() + 50);
     if (JSON.stringify(next) === JSON.stringify(shown)) return;
     if (next?.tab !== shown?.tab) moved = true;
     shown = next;
-    listeners.forEach((cb) => cb(next));
+    each(listeners, next);
     if (!next) send(null);
   };
 
@@ -140,6 +154,7 @@ export function createAgentView(o: { store: Store; host: AgentHost; access: () =
       watchers.add(cb);
       // A new watcher gets a frame at once.
       moved = true;
+      lastFrame = undefined;
       if (watchers.size === 1) tick();
       return () => {
         watchers.delete(cb);

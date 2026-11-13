@@ -22,6 +22,10 @@ export function createActivity(now: () => number, holdMs = ACTIVITY_HOLD_MS) {
       running.delete(tab);
       if (last?.tab === tab) last = null;
     },
+    /** Ms left before the hold ends; the whole hold while a tool runs. */
+    remaining(): number {
+      return running.size ? holdMs : Math.max(0, holdMs - (now() - since));
+    },
     state(): { tab: string; label: string; running: boolean } | null {
       if (!last || (running.size === 0 && now() - since > holdMs)) return null;
       return { ...last, running: running.has(last.tab) };

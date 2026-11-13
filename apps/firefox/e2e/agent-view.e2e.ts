@@ -57,14 +57,20 @@ describe("the agent's view", () => {
     const frame = frames.find((f) => !!f)!;
     expect(frame.startsWith("data:image/jpeg;base64,")).toBe(true);
     expect(frame.length).toBeGreaterThan(1000);
-    // Then the watcher leaves: no capture after it.
-    await sleep(2_000);
+    // A tool running there: a capture every 700 ms, measured on several (not one first paint).
+    const before = await view<number>(m, "return v.test.captures;");
+    const slow = await callTool(w.dataDir, "run_js", { id: tab, code: "await new Promise((r) => setTimeout(r, 4000)); 1" });
+    expect(slow.error, slow.text).toBe(false);
     await view(m, "window.agentViewStop();");
-    const ms = await view<number[]>(m, "return v.test.ms;");
-    const median = [...ms].sort((a, b) => a - b)[Math.floor(ms.length / 2)]!;
-    console.log(`[agent-view] ${ms.length} captures, median ${median.toFixed(1)} ms`);
-    expect(median).toBeLessThan(30);
+    // A capture in flight when the watcher left may still land.
+    await sleep(200);
     const after = await view<number>(m, "return v.test.captures;");
+    expect(after - before).toBeGreaterThanOrEqual(4);
+    const ms = (await view<number[]>(m, "return v.test.ms;")).slice(before);
+    const median = [...ms].sort((a, b) => a - b)[Math.floor(ms.length / 2)]!;
+    console.log(`[agent-view] ${ms.length} captures while a tool ran, median ${median.toFixed(1)} ms`);
+    expect(median).toBeLessThan(30);
+    // The watcher left: no capture after it.
     await sleep(1_500);
     expect(await view(m, "return v.test.captures;")).toBe(after);
   }, 60_000);
