@@ -1051,13 +1051,14 @@ aucun autre moyen (curl, script, API) pour atteindre le web à sa place.
   `/workspace/browsing-notes.md` une leçon courte et **générale** : comment reconnaître la situation et que faire la
   prochaine fois. Pas une recette pour un site précis. Après une `verification`, tu n'écris **rien**. Tu n'y notes
   jamais ce que l'utilisateur a tapé ou fait dans un formulaire : tu ne reçois que les adresses parcourues.
-- **Le récap.** Quand la recherche va sûrement ramener plusieurs résultats à comparer, ouvre le récap tôt, dès
-  que tu as lu tes sources (étape 2 de la méthode) : `show_recap(title, results, plan, live: true)` avec ce qui
-  compte pour ce choix et la liste des sources lues (mêmes résultats JSON et même plan de page qu'une action, mêmes
-  composants). Ne laisse qu'une ligne dans le terminal. Lis ensuite les fiches **deux par deux** (`read_pages`) et
-  republie le récap (même `id`, `live: true`) après chaque lecture, avec les résultats retenus : l'utilisateur les
-  voit arriver. Un résultat écarté après lecture sort du récap, et tu le
-  dis dans un `paragraph`. La dernière publication, sans `live`, ajoute la synthèse (le meilleur choix, les chiffres).
+- **Le récap.** Quand la recherche va sûrement ramener plusieurs résultats à comparer, ouvre le récap **tout de
+  suite**, avant ta première recherche : `show_recap(title, results, plan, live: true)` avec le titre et les critères
+  de l'étape 1 (mêmes résultats JSON et même plan de page qu'une action, mêmes composants). L'utilisateur suit ta
+  navigation depuis le récap. Ne laisse qu'une ligne dans le terminal. Republie-le (même `id`, `live: true`) après
+  tes sources, avec ce qui compte pour ce choix et la liste des sources lues. Lis ensuite les fiches **deux par
+  deux** (`read_pages`) et republie le récap **juste après chaque `read_pages`**, même la dernière et même pour une
+  seule fiche, avec les résultats retenus, avant de passer à la suite ou de rédiger la synthèse : l'utilisateur les
+  voit arriver. Un résultat écarté après lecture sort du récap, et tu le dis dans un `paragraph`. La dernière publication, sans `live`, ajoute la synthèse (le meilleur choix, les chiffres).
   Si tu abandonnes la recherche avant la fin, republie sans `live` avec ce que tu as (pas pour un `hand_over` : la
   recherche reprend ensuite).
   `results` est un objet JSON (pas une chaîne), `plan` un objet `{ "blocks": [...] }` fait des composants intégrés

@@ -13,7 +13,9 @@
   let appState = $state<BrowserState | null>(null);
   /** ✕: hidden until the hold ends (state null); the next activity shows it again. */
   let dismissed = $state(false);
-  let grown = $state(false);
+  /** Open on the thumbnail; the user reduces it by hand, and it stays reduced in this window until they grow it again. */
+  let reduced = $state(false);
+  const grown = $derived(!reduced);
   let thumbnail = $state<string | null>(null);
   let root = $state<HTMLElement>();
   $effect(() =>
@@ -44,9 +46,6 @@
       thumbnail = null;
     };
   });
-  $effect(() => {
-    if (!shown) grown = false;
-  });
   // The frame covers only the pill: the rest of the page keeps the mouse. Measured after each change that resizes the
   // pill, not with a ResizeObserver: it does not fire in a window that is not painted (and the frame starts at 0×0).
   const measure = () => {
@@ -65,10 +64,6 @@
       class="pill"
       class:grown
       role="group"
-      onpointerenter={() => (grown = true)}
-      onpointerleave={() => (grown = false)}
-      onfocusin={() => (grown = true)}
-      onfocusout={(e) => !(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node) && (grown = false)}
       out:fade={{ duration: 150 }}
       onoutroend={() => setTimeout(measure)}
     >
@@ -83,6 +78,7 @@
           <span class="label" class:running={view.running}>{view.label}</span>
         </span>
       </button>
+      <button class="toggle" data-testid="agent-pill-toggle" aria-label={reduced ? "Agrandir" : "Réduire"} title={reduced ? "Agrandir" : "Réduire"} onclick={() => (reduced = !reduced)}><Icon name="chevron" size={12} /></button>
       <button class="close" data-testid="agent-pill-close" aria-label="Masquer" title="Masquer" onclick={() => (dismissed = true)}><Icon name="close" size={12} /></button>
     </div>
   {/if}
@@ -96,15 +92,21 @@
   button { all: unset; cursor: pointer; transition: transform var(--tap), background var(--tap); }
   button:active { transform: scale(0.97); }
   button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-  .open { display: flex; flex-direction: column; gap: 6px; padding: 5px 30px 5px 8px; border-radius: inherit; }
-  .grown .open { padding: 6px 30px 6px 6px; }
+  .open { display: flex; flex-direction: column; gap: 6px; padding: 5px 52px 5px 8px; border-radius: inherit; }
+  .grown .open { padding: 6px 52px 6px 6px; }
   .line { display: flex; align-items: center; gap: 7px; max-width: 360px; }
   .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .label.running { color: var(--accent); }
   .frame { display: grid; place-items: center; width: 360px; aspect-ratio: 16 / 10; border-radius: 8px; overflow: hidden; background: var(--glass-hi); animation: webaios-rise var(--spring-d) var(--spring) backwards; }
   .frame img { width: 100%; height: 100%; object-fit: cover; object-position: top; }
   .site { display: flex; flex-direction: column; align-items: center; gap: 6px; color: var(--text-muted); }
-  .close { position: absolute; right: 6px; bottom: 5px; display: grid; place-content: center; width: 20px; height: 20px; border-radius: 50%; color: var(--text-muted); }
-  .close:hover { background: var(--glass-hi); color: var(--text); }
+  .toggle, .close { position: absolute; bottom: 5px; display: grid; place-content: center; width: 20px; height: 20px; border-radius: 50%; color: var(--text-muted); }
+  .close { right: 6px; }
+  /* The chevron points up to grow, down to reduce. */
+  .toggle { right: 28px; transform: rotate(-90deg); }
+  .grown .toggle { transform: rotate(90deg); }
+  .toggle:active { transform: rotate(-90deg) scale(0.97); }
+  .grown .toggle:active { transform: rotate(90deg) scale(0.97); }
+  .toggle:hover, .close:hover { background: var(--glass-hi); color: var(--text); }
   @media (prefers-reduced-motion: reduce) { .pill, .frame { animation: none; } }
 </style>

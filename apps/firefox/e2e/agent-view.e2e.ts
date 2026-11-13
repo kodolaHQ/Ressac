@@ -78,7 +78,7 @@ describe("the agent's view", () => {
     expect(await view(m, "return v.test.captures;")).toBe(after);
   }, 60_000);
 
-  it("shows a pill over the user's tab: hover shows the agent's tab, a click opens it, ✕ hides it, never on a recap", async () => {
+  it("shows a pill over the user's tab: open on the agent's tab, reducible, a click opens it, ✕ hides it, never on a recap", async () => {
     const opened = await callTool(w.dataDir, "open_tab", { url: `${server.url}/` });
     expect(opened.error, opened.text).toBe(false);
     const tab = opened.text.trim();
@@ -99,15 +99,17 @@ describe("the agent's view", () => {
     expect((await callTool(w.dataDir, "read_tab", { id: tab })).error).toBe(false);
     await pillShown();
     expect(await inUi(m, `return doc.querySelector('${PILL}').getAttribute("aria-label")`, [], "agentview")).toBe("Voir l'onglet de l'agent");
-    // The frame covers only the pill: the rest of the page keeps the mouse.
-    const [width, height] = await m.execute<number[]>(`const f = document.getElementById("webaios-agent-pill"); return [f.clientWidth, f.clientHeight];`);
-    expect(width).toBeGreaterThan(0);
-    expect(width).toBeLessThan(400);
-    expect(height).toBeLessThan(80);
-
-    // Hovered, it grows into a thumbnail of the agent's tab.
-    await inUi(m, `const r = doc.querySelector('${PILL}').getBoundingClientRect(); ui.synthesizeMouseEvent("mousemove", r.left + r.width / 2, r.top + r.height / 2, {});`, [], "agentview");
+    // It opens on a thumbnail of the agent's tab.
     await waitUi(m, `return doc.querySelector('[data-testid="agent-pill-frame"] img')?.src.startsWith("data:image/jpeg")`, [], 10_000, "agentview");
+    await waitFor<number>(m, `return document.getElementById("webaios-agent-pill").clientWidth;`, (w) => w > 360, 5_000);
+
+    // Reduced by hand, it is a line; the frame covers only the pill: the rest of the page keeps the mouse.
+    await click(m, '[data-testid="agent-pill-toggle"]', { frame: "agentview" });
+    await waitUi(m, `return !doc.querySelector('[data-testid="agent-pill-frame"]')`, [], 5_000, "agentview");
+    const [width, height] = await waitFor<number[]>(m, `const f = document.getElementById("webaios-agent-pill"); return [f.clientWidth, f.clientHeight];`, ([w, h]) => w > 0 && w < 400 && h < 80, 5_000);
+    expect(width).toBeGreaterThan(0);
+    expect(height).toBeLessThan(80);
+    await click(m, '[data-testid="agent-pill-toggle"]', { frame: "agentview" });
     await waitFor<number>(m, `return document.getElementById("webaios-agent-pill").clientWidth;`, (w) => w > 360, 5_000);
 
     // A click opens the agent's tab, where the pill has no reason to be.

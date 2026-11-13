@@ -46,12 +46,9 @@
   const watched = $derived(live && view ? view.tab : null);
   $effect(() => {
     if (!watched) return;
-    const off = window.webaios.agentView.watch((f) => (thumbnail = f));
-    return () => {
-      off();
-      thumbnail = null;
-    };
+    return window.webaios.agentView.watch((f) => (thumbnail = f));
   });
+  // The last frame stays while the agent writes (no tool, so no activity): the recap is live until its last version.
   let generation = 0;
   let retry: ReturnType<typeof setTimeout> | undefined;
   let unmounted = false;
@@ -96,12 +93,12 @@
             Récap de l'agent · {date(shown.updated)}
             {#if live}<span class="live" data-testid="recap-live" out:fade={{ duration: 150 }}>en direct{count ? ` · ${count} retenue${count > 1 ? "s" : ""}` : ""}</span>{/if}
           </p>
-          {#if live && view}
-            <button class="view" data-testid="recap-agent-view" title={view.title} onclick={() => window.webaios.agentView.open()} out:fade={{ duration: 150 }}>
+          {#if live && (view || thumbnail)}
+            <button class="view" data-testid="recap-agent-view" title={view?.title} disabled={!view} onclick={() => window.webaios.agentView.open()} out:fade={{ duration: 150 }}>
               <span class="frame">
-                {#if thumbnail}<img src={thumbnail} alt="" />{:else}<span class="site"><SiteIcon favicon={view.icon ?? null} title={view.site} size={24} />{view.site}</span>{/if}
+                {#if thumbnail}<img src={thumbnail} alt="" />{:else if view}<span class="site"><SiteIcon favicon={view.icon ?? null} title={view.site} size={24} />{view.site}</span>{/if}
               </span>
-              <span class="label" class:running={view.running}>{view.label}</span>
+              <span class="label" class:running={view?.running}>{view ? view.label : "Rédige le récap…"}</span>
             </button>
           {/if}
         </div>
@@ -124,7 +121,8 @@
   .live::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
   /* Enter on the spring, leave by a fade (DESIGN.md); the dense glass keeps it readable over the aura. */
   .view { all: unset; cursor: pointer; flex: none; display: flex; flex-direction: column; gap: 6px; width: 280px; margin-top: 16px; padding: 6px; border-radius: 12px; background: var(--glass-dense); border: 1px solid var(--glass-edge); box-shadow: var(--float); color: var(--text); font: 500 12px var(--font-ui); transition: transform var(--tap); animation: webaios-rise var(--spring-d) var(--spring) both; }
-  .view:active { transform: scale(0.97); }
+  .view:active:not(:disabled) { transform: scale(0.97); }
+  .view:disabled { cursor: default; }
   .view:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .frame { display: grid; place-items: center; aspect-ratio: 16 / 10; border-radius: 8px; overflow: hidden; background: var(--glass-hi); }
   .frame img { width: 100%; height: 100%; object-fit: cover; object-position: top; }
