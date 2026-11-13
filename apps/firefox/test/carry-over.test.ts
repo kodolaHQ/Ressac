@@ -15,35 +15,42 @@ afterEach(async () => {
   for (const dir of locked.splice(0)) await chmod(dir, 0o755);
 });
 
-function fakeProfiles(o: { current?: boolean | string; firstRun?: boolean; inUse?: string[]; lockFails?: string[]; createFails?: boolean; flushFails?: boolean } = {}) {
+/**
+ * Like the real service: the running profile is registered as `default-ressac` (Firefox names a new install's profile
+ * `default-<update channel>`), and an existing name returns its profile whatever the folder passed.
+ */
+function fakeProfiles(o: { current?: boolean | string; registered?: Record<string, string>; firstRun?: boolean; inUse?: string[]; lockFails?: string[]; createFails?: boolean; flushFails?: boolean } = {}) {
   const calls: unknown[][] = [];
   const byName = new Map<string, Profile>();
+  const register = (dir: string, name: string): Profile => {
+    const profile: Profile = {
+      rootDir: { path: dir },
+      localDir: { path: `/caches/${dir.slice(dir.lastIndexOf("/") + 1)}` },
+      lock() {
+        calls.push(["lock", dir]);
+        if (o.inUse?.includes(dir)) throw Object.assign(new Error("NS_ERROR_FILE_ACCESS_DENIED"), { result: 0x80520015 });
+        if (o.lockFails?.includes(dir)) throw Object.assign(new Error("NS_ERROR_FAILURE"), { result: 0x80004005 });
+        return { unlock: () => void calls.push(["unlock", dir]) };
+      },
+      remove(files) {
+        calls.push(["remove", dir, files]);
+        byName.delete(name);
+      },
+    };
+    byName.set(name, profile);
+    return profile;
+  };
+  const current = o.current === false ? null : register(typeof o.current === "string" ? o.current : "/fresh", "default-ressac");
+  for (const [name, dir] of Object.entries(o.registered ?? {})) register(dir, name);
   const service: ProfileService & { calls: unknown[][] } = {
     calls,
-    currentProfile: o.current === false ? null : ({ rootDir: { path: typeof o.current === "string" ? o.current : "/fresh" } } as Profile),
+    currentProfile: current,
     isFirstRun: o.firstRun ?? true,
     createProfile(...args: [string, string, string]) {
       calls.push(["createProfile", ...args]);
       if (o.createFails) throw new Error("NS_ERROR_FILE_ACCESS_DENIED creating times.json");
       const [dir, name] = args;
-      const known = byName.get(name);
-      if (known) return known;
-      const profile: Profile = {
-        rootDir: { path: dir },
-        localDir: { path: `/caches/${dir.slice(dir.lastIndexOf("/") + 1)}` },
-        lock() {
-          calls.push(["lock", dir]);
-          if (o.inUse?.includes(dir)) throw Object.assign(new Error("NS_ERROR_FILE_ACCESS_DENIED"), { result: 0x80520015 });
-          if (o.lockFails?.includes(dir)) throw Object.assign(new Error("NS_ERROR_FAILURE"), { result: 0x80004005 });
-          return { unlock: () => void calls.push(["unlock", dir]) };
-        },
-        remove(files) {
-          calls.push(["remove", dir, files]);
-          byName.delete(name);
-        },
-      };
-      byName.set(name, profile);
-      return profile;
+      return byName.get(name) ?? register(dir, name);
     },
     get defaultProfile() {
       return null;
@@ -118,7 +125,7 @@ describe("carryOver", () => {
     const profiles = fakeProfiles({ firstRun: true });
     const env = fakeEnv();
     expect(await carryOver({ ...m, profiles, env })).toBe("restart");
-    expect(profiles.calls).toEqual([["createProfile", folder, "default-ressac", "carry-over"], ["default", folder], ["flush"]]);
+    expect(profiles.calls).toEqual([["createProfile", folder, "webaios-carried", "carry-over"], ["default", folder], ["flush"]]);
     expect(env.values).toEqual({ XRE_PROFILE_PATH: folder, XRE_PROFILE_LOCAL_PATH: "/caches/x.default-release" });
     expect(await exists(join(m.home, "WebAiOs"))).toBe(true);
   });
@@ -171,7 +178,7 @@ describe("carryOver", () => {
     });
     const profiles = fakeProfiles();
     expect(await carryOver({ ...m, profiles, env: fakeEnv() })).toBe("restart");
-    expect(profiles.calls[0]).toEqual(["createProfile", join(m.root, "Profiles", "main.default"), "default-ressac", "carry-over"]);
+    expect(profiles.calls[0]).toEqual(["createProfile", join(m.root, "Profiles", "main.default"), "webaios-carried-probe", "carry-over"]);
     expect(await exists(join(m.ressac, "Profiles", "main.default"))).toBe(true);
     expect(await exists(join(m.root, "Profiles", "old.default"))).toBe(true);
   });
@@ -238,7 +245,7 @@ describe("carryOver", () => {
     const old = join(m.root, "Profiles", "a.default-webaios");
     const profiles = fakeProfiles({ inUse: [old] });
     expect(await carryOver({ ...m, profiles, env: fakeEnv() })).toBe("blocked");
-    expect(profiles.calls).toEqual([["createProfile", old, "default-ressac", "carry-over"], ["lock", old], ["remove", old, false]]);
+    expect(profiles.calls).toEqual([["createProfile", old, "webaios-carried-probe", "carry-over"], ["lock", old], ["remove", old, false]]);
     expect(await exists(join(m.home, "WebAiOs"))).toBe(true);
     expect(await exists(join(m.home, "Ressac"))).toBe(false);
     expect(await exists(old)).toBe(true);
@@ -254,7 +261,7 @@ describe("carryOver", () => {
     const env = fakeEnv();
     expect(await carryOver({ ...m, profiles, env })).toBe("restart");
     // Line 5: the in-use test, its registration dropped.
-    expect(profiles.calls.slice(0, 4)).toEqual([["createProfile", old, "default-ressac", "carry-over"], ["lock", old], ["unlock", old], ["remove", old, false]]);
+    expect(profiles.calls.slice(0, 4)).toEqual([["createProfile", old, "webaios-carried-probe", "carry-over"], ["lock", old], ["unlock", old], ["remove", old, false]]);
     // Line 6: the data folder, the agent's folder; the caches only are deleted.
     expect(await exists(join(m.home, "WebAiOs"))).toBe(false);
     expect(await readFile(join(m.home, "Ressac", "session.json"), "utf8")).toBe("{}");
@@ -265,7 +272,7 @@ describe("carryOver", () => {
     // Line 7: the profile moved whole, registered there, made the default, flushed, the state done.
     expect(await exists(old)).toBe(false);
     expect(await readFile(join(moved, "cookies.sqlite"), "utf8")).toBe("a.default-webaios");
-    expect(profiles.calls.slice(4)).toEqual([["createProfile", moved, "default-ressac", "carry-over"], ["default", moved], ["flush"]]);
+    expect(profiles.calls.slice(4)).toEqual([["createProfile", moved, "webaios-carried", "carry-over"], ["default", moved], ["flush"]]);
     expect(await state(m.appSupport)).toEqual({ state: "done", profile: moved });
     // Line 8.
     expect(env.values).toEqual({ XRE_PROFILE_PATH: moved, XRE_PROFILE_LOCAL_PATH: "/caches/a.default-webaios" });
@@ -390,6 +397,36 @@ describe("carryOver", () => {
     expect(await carryOver({ ...m, profiles: fakeProfiles(), env })).toBe("restart");
     expect(env.values.XRE_PROFILE_PATH).toBe(join(m.ressac, "Profiles", "a.default-webaios"));
     expect(await state(m.appSupport)).toEqual({ state: "done", profile: join(m.ressac, "Profiles", "a.default-webaios") });
+  });
+
+  // Fix 1b: the real service's own `default-ressac`.
+  it("Ressac's fresh profile registered as default-ressac: the old folder is still registered, adopted, restart", async () => {
+    const m = await machine();
+    const fresh = join(m.ressac, "Profiles", "x.default-release");
+    const old = join(m.root, "Profiles", "a.default-webaios");
+    const moved = join(m.ressac, "Profiles", "a.default-webaios");
+    const profiles = fakeProfiles({ current: fresh });
+    const env = fakeEnv();
+    expect(await carryOver({ ...m, profiles, env })).toBe("restart");
+    expect(profiles.calls.slice(0, 4)).toEqual([["createProfile", old, "webaios-carried-probe", "carry-over"], ["lock", old], ["unlock", old], ["remove", old, false]]);
+    expect(profiles.calls.slice(4)).toEqual([["createProfile", moved, "webaios-carried", "carry-over"], ["default", moved], ["flush"]]);
+    expect(env.values.XRE_PROFILE_PATH).toBe(moved);
+  });
+
+  it("a probe registration left by an earlier launch is removed before probing", async () => {
+    const m = await machine();
+    const old = join(m.root, "Profiles", "a.default-webaios");
+    const profiles = fakeProfiles({ registered: { "webaios-carried-probe": "/elsewhere" } });
+    expect(await carryOver({ ...m, profiles, env: fakeEnv() })).toBe("restart");
+    expect(profiles.calls.slice(0, 4)).toEqual([["createProfile", old, "webaios-carried-probe", "carry-over"], ["remove", "/elsewhere", false], ["createProfile", old, "webaios-carried-probe", "carry-over"], ["lock", old]]);
+  });
+
+  it("webaios-carried registered on another folder: a real clash, blocked before the profile moves", async () => {
+    const m = await machine();
+    const profiles = fakeProfiles({ registered: { "webaios-carried": "/elsewhere" } });
+    expect(await carryOver({ ...m, profiles, env: fakeEnv() })).toBe("profile-blocked");
+    expect(profiles.calls.some((c) => c[0] === "flush" || c[0] === "default")).toBe(false);
+    expect(await state(m.appSupport)).toMatchObject({ state: "pending" });
   });
 
   // M1.

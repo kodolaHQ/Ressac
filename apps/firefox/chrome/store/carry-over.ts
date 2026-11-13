@@ -10,7 +10,10 @@ import { firefoxProfiles, iniSections } from "./import/sources";
 
 /** The old names: the data folder under the home folder, the Firefox profile root under Application Support. */
 export const LEGACY = { dataDir: "WebAiOs", profileRoot: "WebAiOs" };
-const NAME = "default-ressac";
+// Firefox names a new install's profile `default-<update channel>` (`default-ressac`): never one of these.
+const NAME = "webaios-carried";
+/** The in-use test's registration: never mistaken for the adopted profile. */
+const PROBE = "webaios-carried-probe";
 const SOURCE = "carry-over";
 /** Rebuilt at start under their new names. */
 const CACHES = ["webaios-sites", "webaios-widgets", "webaios-components"];
@@ -198,8 +201,12 @@ async function carryOverSteps(o: Options, state: State | null): Promise<CarryRes
   // Another folder of that name already there: never moved into (IOUtils.move would put it inside).
   if (chosen.at !== target && (await exists(target))) throw new Error(`${target} already exists`);
   // Line 5: WebAiOs running holds its profile's lock. The registration is only a probe, in memory (nothing flushed).
-  const probe = o.profiles.createProfile(chosen.at, NAME, SOURCE);
-  if (probe.rootDir.path !== chosen.at) throw new Error(`a profile named ${NAME} is at ${probe.rootDir.path}`);
+  let probe = o.profiles.createProfile(chosen.at, PROBE, SOURCE);
+  // An existing name returns its profile whatever the folder: a probe left by an earlier launch goes first.
+  if (probe.rootDir.path !== chosen.at) {
+    probe.remove(false);
+    probe = o.profiles.createProfile(chosen.at, PROBE, SOURCE);
+  }
   try {
     probe.lock({}).unlock();
   } catch (e) {
@@ -223,6 +230,7 @@ async function carryOverSteps(o: Options, state: State | null): Promise<CarryRes
     await fs.rename(chosen.at, target);
   }
   const adopted = o.profiles.createProfile(target, NAME, SOURCE);
+  if (adopted.rootDir.path !== target) throw new Error(`a profile named ${NAME} is at ${adopted.rootDir.path}`);
   o.profiles.defaultProfile = adopted;
   o.profiles.flush();
   await writeState(o, { state: "done", profile: target });
