@@ -15,6 +15,7 @@ import { routeAddonsManager } from "./addons-manager";
 import { setupAnchors } from "./anchor";
 import { mountSiteBanner } from "./site-banner";
 import { mountSearchBand } from "./search-band";
+import { mountAgentPill } from "./agent-pill";
 import { visibleFrame } from "./frame";
 import { FIREFOX_COMMANDS, FIREFOX_KEYS, SETTINGS_MENU_ITEMS, shortcutFor, type Shortcut } from "./keys";
 import { TabSync } from "./tabs";
@@ -35,6 +36,8 @@ export interface WindowController {
   navigateForAgentLoaded(tabId: TabId, url: string): Promise<void>;
   /** The browser of a tab for the agent, its XUL tab created in the background if needed and loaded (TabSync.ensure). */
   ensure(tabId: TabId): Promise<any>;
+  /** The browser of a tab if it already has a XUL tab, never created for the asking. */
+  browserOf(tabId: TabId): any;
   command(tabId: TabId, c: "back" | "forward" | "reload" | "reloadHard" | "stop"): void;
   /**
    * A tab the user closes. A page with unsaved changes (beforeunload) gets « Quitter ce site ? »
@@ -107,7 +110,7 @@ export function createController(
   tabs.sync(store.state);
   // The store outlives the window (macOS keeps running without one): drop this window's listeners when it goes, then
   // its state window (its tabs leave with it).
-  const unsubscribe = [store.subscribe((state) => tabs.sync(state)), mountSiteBanner(window, store, windowId), mountSearchBand(window, store, windowId)];
+  const unsubscribe = [store.subscribe((state) => tabs.sync(state)), mountSiteBanner(window, store, windowId), mountSearchBand(window, store, windowId), mountAgentPill(window)];
   applyFrame(store.state.windows.find((f) => f.id === windowId)?.frame ?? null);
   // Size and position kept for the next start (grouped: a drag fires dozens of events).
   let frameTimer: ReturnType<typeof setTimeout> | undefined;
@@ -457,6 +460,7 @@ export function createController(
       await loaded;
     },
     ensure: (tabId) => tabs.ensure(tabId),
+    browserOf,
     command(tabId, c) {
       if (c !== "stop" && revive(tabId)) return;
       const browser = browserOf(tabId);

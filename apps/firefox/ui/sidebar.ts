@@ -5,6 +5,7 @@ import { mount } from "svelte";
 import "../ui/theme.css";
 import DesignApp from "../ui/DesignApp.svelte";
 import AppBadge from "./BadgeApp.svelte";
+import AgentPill from "./AgentPill.svelte";
 import App from "./App.svelte";
 import SiteWindow from "./SiteWindow.svelte";
 
@@ -16,11 +17,13 @@ const params = new URLSearchParams(location.search);
 if (params.has("site")) mount(SiteWindow, { target: document.body.appendChild(Object.assign(document.createElement("div"), { id: "app" })) });
 // sidebar.html?badge=app:<dossier>: an app window's badge, over its page (transparent).
 // sidebar.html?overlay: a design overlay, the bubble, the message or the cart (transparent).
-else if (params.has("badge") || params.has("overlay")) {
+// sidebar.html?agentview: the pill of the agent's last tab, over a main window's pages (transparent).
+else if (params.has("badge") || params.has("overlay") || params.has("agentview")) {
   document.documentElement.style.background = "transparent";
   document.body.style.background = "transparent";
   const target = document.body.appendChild(Object.assign(document.createElement("div"), { id: "app" }));
   if (params.has("overlay")) mount(DesignApp, { target });
+  else if (params.has("agentview")) mount(AgentPill, { target });
   else mount(AppBadge, { target, props: { id: params.get("badge") ?? "" } });
 } else {
   // DesignButton's chevron opens the menu on click, and ContextMenu's window click listener would close it

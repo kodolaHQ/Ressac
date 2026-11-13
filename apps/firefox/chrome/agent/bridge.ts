@@ -175,7 +175,8 @@ export function bridgeHandlers(
         if (!info) throw new TabNotFound(reuse);
         return info;
       }
-      return openTabIn(win, url, undefined, { profile: AGENT_PROFILE });
+      // In the background: the user follows it from the pill or the recap, in the « Agent » section of the tab list.
+      return openTabIn(win, url, undefined, { profile: AGENT_PROFILE, background: true });
     },
     "search.openBackground": ([searchTab, url]: [string, string]) => {
       const t = tab(searchTab);
@@ -183,7 +184,12 @@ export function bridgeHandlers(
     },
     "search.close": ([id]: [string]) => void store.dispatch({ type: "closeTab", id }),
     // The band of the search tab: the window draws it (window/search-band.ts) from the tab's state.
-    "search.band": ([id, band]: [string, Band | null]) => void store.dispatch({ type: "setAgentSearch", id, band: band && { ...band, text: band.text.slice(0, 300) } }),
+    "search.band": ([id, band]: [string, Band | null]) => {
+      const handing = band?.state === "yours" && store.state.tabs[id]?.agentSearch?.state !== "yours";
+      store.dispatch({ type: "setAgentSearch", id, band: band && { ...band, text: band.text.slice(0, 300) } });
+      // The search runs in the background; when it needs the user, its tab comes to the front.
+      if (handing) store.dispatch({ type: "activateTab", id });
+    },
     // The agent's recap: in its session's window (null: the active one), like its search; "private" when nothing can open.
     "recaps.open": ([win, id, title]: [WindowId | null, string, string]) => {
       const state = store.state;

@@ -176,6 +176,41 @@ describe("recap tab", () => {
     expect(await q.count(`${cards} ${tid("neutral-image")}`)).toBe(0);
     expect(server.paths).not.toContain(`/${PHOTO_NEVER_READ.slice("https://".length)}`);
   }, 30_000);
+
+  it("a live recap shows its count and the agent's view; a live update keeps its cards", async () => {
+    // The agent acts on a tab: its view exists (it stays 20 s after the last tool).
+    const tab = /Onglet : (\S+)/.exec((await callTool(w.dataDir, "search_web", { query: "vélo cargo", goal: "lire" })).text)![1]!;
+    await callTool(w.dataDir, "read_tab", { id: tab });
+    const show = async (names: string[], live: boolean, id?: string) => {
+      const r = await callTool(w.dataDir, "show_recap", {
+        ...(id ? { id } : {}),
+        title: "En cours",
+        results: { items: names.map((name) => ({ name })) },
+        plan: { blocks: [{ component: "title", props: { text: "En cours" } }, { component: "cards", props: { items: "items", title: "name" } }] },
+        ...(live ? { live } : {}),
+      });
+      const found = /Récap (\S+) ouvert/.exec(r.text)?.[1];
+      if (!found) throw new Error(`show_recap: ${r.text}`);
+      return found;
+    };
+    const live = await show(["Yuba"], true);
+    for (const deadline = Date.now() + 10_000; (await activeTab(m))?.url !== urlRecap(live); await sleep(100)) if (Date.now() > deadline) throw new Error("the recap tab is not active");
+    await q.waitText(tid("recap-live"), "en direct · 1 retenue", 15_000);
+    await waitUi(m, "return !!doc.querySelector(arguments[0]);", [tid("recap-agent-view")]);
+    const card = `${tid("block-cards")} .pa-card`;
+    // A re-created card would lose this mark.
+    await inUi(m, "doc.querySelector(arguments[0]).setAttribute('data-e2e-first', '1');", [card]);
+
+    expect(await show(["Yuba", "Babboe"], true, live)).toBe(live);
+    await q.waitText(tid("recap-live"), "en direct · 2 retenues");
+    await q.waitCount(card, 2);
+    expect(await inUi(m, "return doc.querySelector(arguments[0]).getAttribute('data-e2e-first');", [card])).toBe("1");
+    await waitUi(m, "return doc.querySelectorAll(arguments[0]).length === 1;", [`${tid("page-recap")} > .version`], 5_000);
+
+    await show(["Yuba", "Babboe"], false, live);
+    await waitUi(m, "return !doc.querySelector(arguments[0]) && !doc.querySelector(arguments[1]);", [tid("recap-live"), tid("recap-agent-view")]);
+    await q.waitCount(card, 2);
+  }, 45_000);
 });
 
 describe("recap after a restart", () => {

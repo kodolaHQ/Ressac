@@ -72,6 +72,7 @@
     <button class="new" data-testid="new-tab" onclick={() => api.dispatch({ type: "showBlankPage", windowId: win.id })}
       ><Icon name="plus" size={14} /> Nouvel onglet<kbd>{key("command")}</kbd></button
     >
+    <TabList window={win} agent />
   </div>
   <CallBar window={win} />
   <footer>

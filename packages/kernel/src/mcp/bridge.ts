@@ -170,7 +170,7 @@ export interface BrowserBridge {
   /** The agent's visible web search (absent: no `search_web` tool). */
   search?: {
     /**
-     * Opens the search tab in `window` (the active one if undefined), in its active space, in AGENT_PROFILE, activated.
+     * Opens the search tab in `window` (the active one if undefined), in its active space, in AGENT_PROFILE, in the background.
      * A query goes to the user's engine. Throws in a private space. With `reuse` (the id of the search tab), that tab is
      * navigated instead and nothing opens nor activates.
      */

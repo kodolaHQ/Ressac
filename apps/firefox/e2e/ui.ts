@@ -7,6 +7,8 @@ const FRAMES = {
   // The design mode's overlay (bubble, message) and a main window's cart column (chrome/window/design-overlays.ts).
   overlay: { id: "webaios-design-calque", mounted: "#app" },
   panel: { id: "webaios-design-volet", mounted: "#app" },
+  // The pill of the agent's last tab (chrome/window/agent-pill.ts).
+  agentview: { id: "webaios-agent-pill", mounted: "#app" },
 };
 export type Frame = keyof typeof FRAMES;
 

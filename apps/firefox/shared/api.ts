@@ -179,6 +179,15 @@ export interface SearchResult {
   active: number;
   total: number;
 }
+/** What the agent last did and on which tab (`label`: « Lit leboncoin.fr »); `site`: its host without `www.`. */
+export interface AgentViewState {
+  tab: TabId;
+  label: string;
+  title: string;
+  site: string;
+  icon?: string;
+  running: boolean;
+}
 
 /** The API the UI gets as `window.webaios` (ui/install-api.ts). */
 export interface ApiWebaios {
@@ -254,6 +263,15 @@ export interface ApiWebaios {
   };
   /** The agent's access to a tab changed: the full state is broadcast again. */
   onAccess(callback: (e: AccessState) => void): () => void;
+  /** The tab the agent last acted on, never a private one: null when none, or 20 s after its last tool ended. */
+  agentView: {
+    state(): AgentViewState | null;
+    onState(callback: (s: AgentViewState | null) => void): () => void;
+    /** Thumbnails of that tab (`data:image/jpeg;base64,…`, null when it cannot be shown), taken only while someone watches. */
+    watch(callback: (frame: string | null) => void): () => void;
+    /** Shows that tab. */
+    open(): void;
+  };
   /** Home page: the widgets of the agent space's home/widgets. */
   home: {
     read(): Promise<ShownWidget[]>;
@@ -358,8 +376,8 @@ export interface ApiWebaios {
    * space (`null`, no link opened).
    */
   recaps: {
-    /** `gone`: closed or swept, the file is no more; null: unreadable, no host yet, or a private space. */
-    page(id: string): Promise<{ title: string; updated: string; page: RenderedPage } | { gone: true } | null>;
+    /** `gone`: closed or swept, the file is no more; null: unreadable, no host yet, or a private space. `live`: the agent is still filling it. */
+    page(id: string): Promise<{ title: string; updated: string; live: boolean; page: RenderedPage } | { gone: true } | null>;
     /** A link of the page: opened in a tab only if the agent read this exact address for this recap. */
     openLink(id: string, url: string): void;
     /** The agent republished this recap (its id), or the host started again (null): re-read. */
