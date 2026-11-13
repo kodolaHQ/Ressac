@@ -14,6 +14,7 @@ export const DEFAULT_TEMPLATES = join(KERNEL_ROOT, "templates");
  * the old version's hash (`shasum -a 256 templates/AGENTS.md`) before modifying it.
  */
 export const OLD_AGENTS = new Set([
+  "6ecc3a5571398b8490f4b384b32c191e56111e3eebe092e1ccf03790f2ec845b",
   "ff0f49e00a04cec590ee023394221e8bbf28dd0439a628e48ea307acaffa0a8e",
   "b5bbd495806166dd7940aeb6d7736a05bf1e67c0d2c2d1d83bdca38e4be56765",
   "b856fbb878d0ded600f27661561fbd763e1e20e1e1c48e2a52a366b277bed42a",
@@ -131,6 +132,7 @@ export const DISPLAYS_SHIPPED: Record<"meteo" | "actus-tech" | "daily-dev", Read
     "9057aa911e1fcfe0641d2943fa867ecba587b2e6f04974b17512fe57c552574e",
     "45f707b6454cea62bb36f181d70bc18f6dd2ba034ec0e84561897a3806b8f6bc",
     "66b319bac163fa6947d4047dd20e567dafa5eb93334b11c4bc9ea3936e66abba",
+    "b4e8220c69f7ba0b132596e90ffcd2b0dc46ee59c2b8667075be9410063fbdf8",
   ]),
   "daily-dev": new Set([
     "9bc668a4f1515d8f66b9a040a828099432f659ba976263af43aea2696b3a9e99",
@@ -138,6 +140,7 @@ export const DISPLAYS_SHIPPED: Record<"meteo" | "actus-tech" | "daily-dev", Read
     "c5e7c446b7df1754c52e88857daf71f286419d2585d9903ebbb25a650d857ebe",
     "714e787e5ca2dd69a1ac34a7b0f5b599d1aa3ebde11cde57d7ba3500272dcb23",
     "d1a96303f8474de20ac875874f45eb982c44e742e8cd0a0f8e060ba90466f7e4",
+    "b6eed58e315ddf505327f264aae1dad98c07933858f2da8934c3dc2fdf3b4182",
   ]),
 };
 

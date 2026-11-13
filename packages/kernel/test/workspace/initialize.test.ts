@@ -205,6 +205,7 @@ test("the AGENTS.md template is pinned: before editing it, add this hash to OLD_
   expect(sha256(await readFile(join(import.meta.dirname, "..", "..", "templates", "AGENTS.md")))).toBe(
     "6ecc3a5571398b8490f4b384b32c191e56111e3eebe092e1ccf03790f2ec845b",
   );
+  expect(OLD_AGENTS.has("6ecc3a5571398b8490f4b384b32c191e56111e3eebe092e1ccf03790f2ec845b")).toBe(true);
   expect(OLD_AGENTS.has("ff0f49e00a04cec590ee023394221e8bbf28dd0439a628e48ea307acaffa0a8e")).toBe(true);
 });
 
@@ -258,9 +259,9 @@ test("a new space gets the workflows", async () => {
 
 const DISPLAYS = join(import.meta.dirname, "shipped-displays");
 
-test("the 15 shipped versions of display.html have the known hashes", async () => {
+test("the 17 shipped versions of display.html have the known hashes", async () => {
   const files = (await readdir(DISPLAYS)).sort();
-  expect(files).toHaveLength(15);
+  expect(files).toHaveLength(17);
   const hashes: Record<string, string[]> = {};
   for (const f of files) {
     const id = f.replace(/-[0-9a-f]{7}\.html$/, "");
