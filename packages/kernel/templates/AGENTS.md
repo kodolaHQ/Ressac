@@ -1075,8 +1075,9 @@ aucun autre moyen (curl, script, API) pour atteindre le web à sa place.
   mets à jour sur place : même `id` (`read_recap` le retrouve, sans `id` celui de l'onglet actif). Un nouveau récap
   seulement si l'utilisateur demande deux versions côte à côte.
 - Les liens et les photos d'un récap ne sont que des **adresses que tu as lues** (pages, liens de `read_tab`, la
-  photo d'une annonce est écrite à côté de son lien), recopiées **exactement**, sans retirer de paramètre : sinon
-  ils s'affichent en texte, sans lien ni photo.
+  photo d'une annonce est écrite à côté de son lien), recopiées **exactement**, sans retirer ni changer de paramètre (pas même la taille d'une
+  photo) : sinon ils s'affichent en texte, sans lien ni photo. `show_recap` liste les adresses jamais lues :
+  corrige-les à la publication suivante.
 
 ## Outils du navigateur (serveur MCP `webaios`)
 

@@ -1336,7 +1336,8 @@ function registerRecapsTools(
         await recaps.remove(r.id);
         return text(RECAP_PRIVATE, true);
       }
-      return text([`Récap ${r.id} ouvert dans un onglet.`, ...(r.discarded.length ? ["Blocs écartés :", ...r.discarded] : [])].join("\n"));
+      const unread = r.unread.length ? ["Adresses jamais lues, affichées sans lien ni photo : recopie celles de tes lectures, à l'identique.", ...r.unread.slice(0, 10)] : [];
+      return text([`Récap ${r.id} ouvert dans un onglet.`, ...(r.discarded.length ? ["Blocs écartés :", ...r.discarded] : []), ...unread].join("\n"));
     }),
   );
 

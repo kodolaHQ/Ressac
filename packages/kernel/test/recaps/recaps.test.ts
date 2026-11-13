@@ -49,6 +49,8 @@ test("publish without id creates the file; links never seen and local addresses 
   if (!r.ok) throw new Error(r.errors.join());
   expect(r.created).toBe(true);
   expect(r.id).toMatch(ID_RECAP);
+  // Told back to the agent: an address it never read shows without link or photo.
+  expect(r.unread).toEqual(["https://jamais.vu/b"]);
   const file = JSON.parse(await readFile(join(folder, `${r.id}.json`), "utf8"));
   expect(file).toMatchObject({ version: 1, id: r.id, title: "Vélos", results, updated: "2026-11-13T10:00:00.000Z" });
   expect(file).not.toHaveProperty("shown");
@@ -68,7 +70,7 @@ test("republish with the id keeps a link seen before, even with an empty seen li
   const r = await recaps.publish({ title: "Vélos", results, plan, seen });
   if (!r.ok) throw new Error();
   const again = await recaps.publish({ id: r.id, title: "Vélos 2", results, plan, seen: new SeenUrls() });
-  expect(again).toEqual({ ok: true, id: r.id, created: false, discarded: [] });
+  expect(again).toEqual({ ok: true, id: r.id, created: false, discarded: [], unread: ["https://jamais.vu/b"] });
   expect(await recaps.linkAllowed(r.id, "https://exemple.fr/a")).toBe(true);
   expect((await recaps.read(r.id))?.title).toBe("Vélos 2");
 });

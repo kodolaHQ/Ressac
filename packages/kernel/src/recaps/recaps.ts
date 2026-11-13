@@ -40,7 +40,8 @@ const RecapSchema = z.object({
   live: z.literal(true).optional(),
 });
 
-export type RecapPublished = { ok: true; id: string; created: boolean; discarded: string[] } | { ok: false; errors: string[] };
+/** `unread`: web addresses in the results the agent never read, shown without link or photo. */
+export type RecapPublished = { ok: true; id: string; created: boolean; discarded: string[]; unread: string[] } | { ok: false; errors: string[] };
 
 export interface Recaps {
   publish(o: { id?: string; title: string; results: unknown; plan: unknown; seen: SeenUrls; live?: boolean }): Promise<RecapPublished>;
@@ -100,13 +101,15 @@ export function createRecaps(o: { folder: string; now?: () => Date }): Recaps {
       if (!v.ok) return v;
       // Seen now, or allowed before (a republish keeps what was read for the first version).
       const kept = new Set(before?.allowed);
-      const allowed = [...chainsOf(p.results)].filter((s) => kept.has(s) || p.seen.has(s)).slice(0, ALLOWED_MAX);
+      const chains = [...chainsOf(p.results)];
+      const allowed = chains.filter((s) => kept.has(s) || p.seen.has(s)).slice(0, ALLOWED_MAX);
+      const unread = chains.filter((s) => openable(s, false) && !allowed.includes(s));
       const at = now();
       const f: RecapFile = { version: 1, id: before?.id ?? randomUUID(), title: p.title.slice(0, RECAP_TITLE_MAX), results: p.results, plan: v.plan, allowed, updated: at, ...(p.live ? { live: true as const } : {}) };
       if (Buffer.byteLength(JSON.stringify(f)) > RECAP_MAX_BYTES) return { ok: false, errors: [RECAP_TOO_BIG] };
       await writeAtomic(path(f.id), JSON.stringify(f));
       await touch(f.id);
-      return { ok: true, id: f.id, created: !before, discarded: v.discarded };
+      return { ok: true, id: f.id, created: !before, discarded: v.discarded, unread };
     },
     async page(id) {
       if (!ID_RECAP.test(id)) return null;
