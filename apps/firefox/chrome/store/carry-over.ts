@@ -35,6 +35,7 @@ const RESTARTED = "RESSAC_CARRIED_RESTART";
 
 /** The parts of nsIToolkitProfile used. */
 export interface Profile {
+  readonly name: string;
   readonly rootDir: { path: string };
   readonly localDir: { path: string };
   /** Throws NS_ERROR_FILE_ACCESS_DENIED when another running instance holds the profile. */
@@ -172,7 +173,14 @@ async function carryOverSteps(o: Options, state: State | null): Promise<CarryRes
   // Line 2: the app moved to another path is a new install, bound to a new empty profile (Firefox may already have
   // flushed it as this install's default, so isFirstRun is no guide): back to the carried one.
   if (state?.state === "done") {
-    if (!state.profile || o.profiles.currentProfile!.rootDir.path === state.profile || !(await exists(state.profile))) return "done";
+    const current = o.profiles.currentProfile!;
+    // The name too: the every-launch decision never hangs on two spellings of one folder (Firefox's fresh one is never NAME).
+    if (current.name === NAME || current.rootDir.path === state.profile) {
+      // A restart Firefox triggers later from this process must not inherit the mark (an empty value reads as unset).
+      if (o.env.get(RESTARTED)) o.env.set(RESTARTED, "");
+      return "done";
+    }
+    if (!state.profile || !(await exists(state.profile))) return "done";
     // Restarted for this and still elsewhere: never a second restart.
     if (o.env.get(RESTARTED)) return "profile-blocked";
     try {

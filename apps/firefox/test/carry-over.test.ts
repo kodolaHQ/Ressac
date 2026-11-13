@@ -19,11 +19,12 @@ afterEach(async () => {
  * Like the real service: the running profile is registered as `default-ressac` (Firefox names a new install's profile
  * `default-<update channel>`), and an existing name returns its profile whatever the folder passed.
  */
-function fakeProfiles(o: { current?: boolean | string; registered?: Record<string, string>; inUse?: string[]; lockFails?: string[]; createFails?: boolean; flushFails?: boolean } = {}) {
+function fakeProfiles(o: { current?: boolean | string; currentName?: string; registered?: Record<string, string>; inUse?: string[]; lockFails?: string[]; createFails?: boolean; flushFails?: boolean } = {}) {
   const calls: unknown[][] = [];
   const byName = new Map<string, Profile>();
   const register = (dir: string, name: string): Profile => {
     const profile: Profile = {
+      name,
       rootDir: { path: dir },
       localDir: { path: `/caches/${dir.slice(dir.lastIndexOf("/") + 1)}` },
       lock() {
@@ -40,7 +41,7 @@ function fakeProfiles(o: { current?: boolean | string; registered?: Record<strin
     byName.set(name, profile);
     return profile;
   };
-  const current = o.current === false ? null : register(typeof o.current === "string" ? o.current : "/fresh", "default-ressac");
+  const current = o.current === false ? null : register(typeof o.current === "string" ? o.current : "/fresh", o.currentName ?? "default-ressac");
   for (const [name, dir] of Object.entries(o.registered ?? {})) register(dir, name);
   const service: ProfileService & { calls: unknown[][] } = {
     calls,
@@ -138,6 +139,27 @@ describe("carryOver", () => {
     expect(await carryOver({ ...m, profiles, env })).toBe("done");
     expect(profiles.calls).toEqual([]);
     expect(env.values).toEqual({});
+  });
+
+  it("state done, running on webaios-carried whose path text differs from the recorded one: a normal start, no write", async () => {
+    const m = await machine();
+    await writeState(m.appSupport, { state: "done", profile: join(m.ressac, "Profiles", "x.default-release") });
+    const profiles = fakeProfiles({ current: join(m.ressac, "Profiles", ".", "x.default-release") + "/", currentName: "webaios-carried" });
+    const env = fakeEnv();
+    expect(await carryOver({ ...m, profiles, env })).toBe("done");
+    expect(profiles.calls).toEqual([]);
+    expect(env.values).toEqual({});
+  });
+
+  it("state done, restarted for it and now on the carried profile: a normal start, the restart mark cleared", async () => {
+    const m = await machine();
+    const folder = join(m.ressac, "Profiles", "x.default-release");
+    await writeState(m.appSupport, { state: "done", profile: folder });
+    const profiles = fakeProfiles({ current: folder, currentName: "webaios-carried" });
+    const env = fakeEnv({ RESSAC_CARRIED_RESTART: "1" });
+    expect(await carryOver({ ...m, profiles, env })).toBe("done");
+    expect(profiles.calls).toEqual([]);
+    expect(env.values).toEqual({ RESSAC_CARRIED_RESTART: "" });
   });
 
   it("state done, restarted for it and still on another profile: blocked, never a second restart", async () => {
