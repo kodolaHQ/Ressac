@@ -17,14 +17,19 @@ export const LEGACY = {
   profileRoot: "WebAiOs",
   prefPrefix: "webaios.",
   prefs: ["telemetry.enabled", "telemetry.noticeShown", "telemetry.installId", "call.sites", "extensions.pinned"],
+  /** The app whose profile is taken (compatibility.ini's LastPlatformDir). */
+  app: "WebAiOs.app",
+  /** The agent's internal folder in the workspace, renamed `.ressac`. */
+  workspaceDir: ".webaios",
+  /** Disposable caches in the data folder, rebuilt at start under their new names. */
+  caches: ["webaios-sites", "webaios-widgets", "webaios-components"],
 };
-// Firefox names a new install's profile `default-<update channel>` (`default-ressac`): never one of these.
+// Firefox names a new install's profile `default-<update channel>` (`default-ressac`): never one of these. The old
+// spelling is deliberate: it says where the profile came from, and never matches a name Firefox generates.
 const NAME = "webaios-carried";
 /** The in-use test's registration: never mistaken for the adopted profile. */
 const PROBE = "webaios-carried-probe";
 const SOURCE = "carry-over";
-/** Rebuilt at start under their new names. */
-const CACHES = ["webaios-sites", "webaios-widgets", "webaios-components"];
 
 /** The parts of nsIToolkitProfile used. */
 export interface Profile {
@@ -109,9 +114,9 @@ async function oldProfile(o: Options, root: string, movedTo: (id: string) => str
     const at = await where(id);
     if (!at) continue;
     const platform = iniSections(await read(`${at}/compatibility.ini`)).find((s) => s[""] === "[Compatibility]")?.LastPlatformDir ?? "";
-    if (!/(^|\/)WebAiOs\.app(\/|$)/.test(platform)) continue;
+    if (!platform.split("/").includes(LEGACY.app)) continue;
     // A build tree's WebAiOs.app (a developer's) may be the most recent: the installed app's profile is the one in use.
-    const installed = ["/Applications", `${o.home}/Applications`].some((dir) => platform.startsWith(`${dir}/WebAiOs.app/`));
+    const installed = ["/Applications", `${o.home}/Applications`].some((dir) => platform.startsWith(`${dir}/${LEGACY.app}/`));
     // prefs.js is written as the browser runs and quits: the latest is the profile used last.
     const used = await fs.stat(`${at}/prefs.js`).then((s) => s.mtimeMs, () => 0);
     found.push({ id, at, installed, used });
@@ -193,8 +198,9 @@ async function carryOverSteps(o: Options, state: State | null): Promise<CarryRes
   const tidyData = async () => {
     if (await exists(oldData)) return;
     const workspace = `${newData}/workspace`;
-    if ((await exists(`${workspace}/.webaios`)) && !(await exists(`${workspace}/.ressac`))) await fs.rename(`${workspace}/.webaios`, `${workspace}/.ressac`);
-    for (const cache of CACHES) await fs.rm(`${newData}/${cache}`, { recursive: true, force: true }).catch((e) => console.warn("[carry-over] cache not erased:", e));
+    const old = `${workspace}/${LEGACY.workspaceDir}`;
+    if ((await exists(old)) && !(await exists(`${workspace}/.ressac`))) await fs.rename(old, `${workspace}/.ressac`);
+    for (const cache of LEGACY.caches) await fs.rm(`${newData}/${cache}`, { recursive: true, force: true }).catch((e) => console.warn("[carry-over] cache not erased:", e));
   };
   // Line 4.
   const movedTo = (id: string) => `${o.appSupport}/Ressac/Profiles/${leaf(id)}`;
@@ -205,6 +211,11 @@ async function carryOverSteps(o: Options, state: State | null): Promise<CarryRes
   const chosen = begun ? { id: state!.profile, at: begun } : await oldProfile(o, root, movedTo, !!state);
   // No profile to take: the data folder alone is carried.
   if (!chosen) {
+    // Nothing to carry (no ~/WebAiOs), and nothing carried by an earlier attempt: no state, nothing announced.
+    if (!(await exists(oldData)) && !(state && (await exists(newData)))) {
+      if (state) await writeState(o, { state: "done", profile: "", told: true });
+      return "done";
+    }
     // Pending first: a crash between the move and the tidy-up is finished at the next launch.
     try {
       if (!state) await writeState(o, { state: "pending", profile: "" });
@@ -243,7 +254,8 @@ async function carryOverSteps(o: Options, state: State | null): Promise<CarryRes
   probe.remove(false);
   // Line 6.
   try {
-    if (!state) await writeState(o, { state: "pending", profile: chosen.id });
+    // A pending state without a profile (an earlier failure, or a data-only attempt) records it too.
+    if (!state?.profile) await writeState(o, { state: "pending", profile: chosen.id });
   } catch (e) {
     console.error("[carry-over] state not written:", e);
     return "data-blocked";

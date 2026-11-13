@@ -488,6 +488,33 @@ describe("carryOver", () => {
     expect(await exists(join(m.root, "Profiles", "a.default-webaios"))).toBe(true);
   });
 
+  // M1.
+  it("a pending state without a profile records the chosen one before anything moves", async () => {
+    const m = await machine();
+    await writeState(m.appSupport, { state: "pending", profile: "" });
+    await chmod(m.home, 0o555);
+    locked.push(m.home);
+    expect(await carryOver({ ...m, profiles: fakeProfiles(), env: fakeEnv() })).toBe("data-blocked");
+    expect(await state(m.appSupport)).toEqual({ state: "pending", profile: join(m.root, "Profiles", "a.default-webaios") });
+  });
+
+  // M2.
+  it("nothing to carry (no WebAiOs profile, no ~/WebAiOs): no state, nothing announced", async () => {
+    const m = await machine({ profiles: { "n.default": { platform: "/Applications/Nightly.app/Contents/Resources" } }, data: false });
+    const o = { ...m, profiles: fakeProfiles(), env: fakeEnv() };
+    expect(await carryOver(o)).toBe("done");
+    expect(await exists(join(m.ressac, "carried.json"))).toBe(false);
+    expect(await tellOnce({ ...o, profiles: fakeProfiles({ firstRun: false }) })).toBe(false);
+  });
+
+  it("a pending state left with nothing carried ends without an announcement", async () => {
+    const m = await machine({ profiles: { "n.default": { platform: "/Applications/Nightly.app/Contents/Resources" } }, data: false });
+    await writeState(m.appSupport, { state: "pending", profile: "" });
+    const o = { ...m, profiles: fakeProfiles(), env: fakeEnv() };
+    expect(await carryOver(o)).toBe("done");
+    expect(await tellOnce({ ...o, profiles: fakeProfiles({ firstRun: false }) })).toBe(false);
+  });
+
   it("no profile to take: the state is pending before the data folder moves (a crash there is finished next launch)", async () => {
     const m = await machine({ profiles: { "n.default": { platform: "/Applications/Nightly.app/Contents/Resources" } } });
     await chmod(m.home, 0o555);
