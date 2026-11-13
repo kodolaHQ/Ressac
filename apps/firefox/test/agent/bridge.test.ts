@@ -3,7 +3,7 @@ import { apply } from "../../core/state/actions";
 import { initialState } from "../../core/state/initial-state";
 import type { Action } from "../../shared/api";
 import { siteOf, type BrowserState } from "../../shared/model";
-import { waitForRights, waitForResponse, policyChanges, allowedDecision, spacesBecamePrivate, tabInfos, activeTabOf, siteTab, SITE_PREFIX, staleQuestion, staleSiteQuestion, resolveSpace, boundLinks } from "../../core/agent/bridge";
+import { waitForRights, waitForResponse, policyChanges, allowedDecision, spacesBecamePrivate, tabInfos, activeTabOf, siteTab, SITE_PREFIX, staleQuestion, staleSiteQuestion, resolveSpace, boundLinks, boundCapture } from "../../core/agent/bridge";
 
 /** Sets a space's private flag, leaving the rest untouched. */
 function setPrivate(e: BrowserState, ag: (a: Action) => unknown, id: string, isPrivate: boolean) {
@@ -351,4 +351,29 @@ test("boundLinks keeps a known zone, turns any other into other, and keeps 500 l
   const u = "https://exemple.fr/";
   expect(boundLinks([{ text: "a", url: u, zone: "main" }, { text: "b", url: u, zone: "<script>" }, { text: "c", url: u }]).map((l) => l.zone)).toEqual(["main", "other", "other"]);
   expect(boundLinks(Array.from({ length: 10_000 }, () => ({ text: "x", url: u, zone: "nav" })))).toHaveLength(500);
+});
+
+test("boundCapture caps what a web process sends and drops wrong types", () => {
+  const block = { text: "Un bloc", h: 2, zone: "main" };
+  const c = boundCapture({
+    blocks: [...Array.from({ length: 10_000 }, () => block), { text: "t", h: 9, zone: "<x>" }],
+    structured: [{ name: "Lampe" }, { big: "x".repeat(5_000_000) }, ...Array.from({ length: 500 }, (_, i) => ({ [`k${i}`]: i }))],
+    reader: "r".repeat(300_000),
+    status: "200",
+    redirects: [...Array.from({ length: 20 }, (_, i) => `https://ex.fr/${i}`), "javascript:alert(1)"],
+    contentType: "text/html",
+    passwords: 2,
+  });
+  expect(c.blocks).toHaveLength(6000);
+  expect(boundCapture({ blocks: [{ text: "t", h: 9, zone: "<x>", row: "1" }] }).blocks).toEqual([{ text: "t", h: 0, zone: "other" }]);
+  expect(c.structured).toHaveLength(50);
+  expect(c.structured![0]).toEqual({ name: "Lampe" });
+  expect(JSON.stringify(c.structured)).not.toContain("xxxx");
+  expect(c.reader).toHaveLength(200_000);
+  expect(c.status).toBeUndefined();
+  expect(c.redirects).toHaveLength(10);
+  expect(c.contentType).toBe("text/html");
+  expect(c.passwords).toBe(2);
+  expect(boundCapture(null)).toEqual({});
+  expect(boundCapture({ status: 404, passwords: -1 })).toEqual({ status: 404 });
 });

@@ -21,6 +21,11 @@ test("pageState from the status, the content type and what the page shows", () =
   expect(pageState(page([body("Rien")]), url)).toBe("vide");
 });
 
+test("a short results page with a result about captchas is a page of links, not a check", () => {
+  const links = Array.from({ length: 12 }, (_, i) => ({ text: i === 3 ? "Les captchas expliqués" : `Résultat ${i}`, url: `https://ex.fr/${i}` }));
+  expect(pageState(page([body("Résultats pour captcha. Les captchas expliqués. Résultat 1. Résultat 2.")], { links }), "https://duckduckgo.com/html?q=captcha")).toBe("ok");
+});
+
 test("stateLine names the state and the status when known", () => {
   expect(stateLine(page([body("x".repeat(100))], { status: 403 }), "https://ex.fr/")).toBe("État : bloquée (403)");
   expect(stateLine({ text: "x".repeat(100) }, "https://ex.fr/")).toBe("État : ok");

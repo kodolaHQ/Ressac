@@ -2,7 +2,7 @@ import { navigationOutsideSite, TabNotFound, PrivateTab, SiteChanged, type DevRi
 import type { BrowserState, WindowId, Tab, Band } from "../../shared/model";
 import { privateTab, WORKFLOW_PREFIX, AGENT_PROFILE } from "../../shared/model";
 import { ENGINES } from "../../core/url";
-import { boundLinks, policyChanges, tabInfos, activeTabOf, appTab, siteTab, originOf, SITE_PREFIX, resolveSpace } from "../../core/agent/bridge";
+import { boundCapture, boundLinks, policyChanges, tabInfos, activeTabOf, appTab, siteTab, originOf, SITE_PREFIX, resolveSpace } from "../../core/agent/bridge";
 import type { Handler } from "../../shared/rpc";
 import type { AgentApps } from "../store/apps";
 import type { DevTools } from "../store/devtools";
@@ -107,7 +107,7 @@ export function bridgeHandlers(
     const text = String(r?.text ?? "").slice(0, TEXT_MAX);
     const selection = String(r?.selection ?? "").slice(0, TEXT_MAX);
     const links = boundLinks(r?.links);
-    return selection ? { text: text, selection, links } : { text: text, links };
+    return { text, ...(selection ? { selection } : {}), links, ...boundCapture(r) };
   };
   const snapshot = async (browser: any, win: Window) => {
     const bitmap = await browser.browsingContext.currentWindowGlobal.drawSnapshot(null, 1, "white");

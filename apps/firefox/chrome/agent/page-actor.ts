@@ -11,13 +11,16 @@ const LINKS_MAX = 500;
 const LINKS_PER_ZONE = 150;
 const PDF_PAGES_MAX = 60;
 const PDF_READ_MS = 5_000;
+const BLOCKS_MAX = 6_000;
+const BLOCKS_TEXT_MAX = 200_000;
+const READER_MS = 3_000;
 
 type Zone = "main" | "other" | "aside" | "header" | "nav" | "footer" | "lang";
 const ZONE_TAG: Record<string, Zone> = { NAV: "nav", HEADER: "header", FOOTER: "footer", ASIDE: "aside", MAIN: "main", ARTICLE: "main" };
 const ZONE_ROLE: Record<string, Zone> = { navigation: "nav", banner: "header", contentinfo: "footer", complementary: "aside", main: "main", article: "main", search: "nav" };
 const ZONE_HINT: [RegExp, Zone][] = [
   [/(^|[-_ ])(interlanguage|lang(uage)?s?[-_ ]?(list|switch|select|menu)|p-lang)/i, "lang"],
-  [/(^|[-_ ])(nav|navbar|menu|breadcrumb|toc|sidebar|vector-menu|mw-panel|navigation)($|[-_ ])/i, "nav"],
+  [/(^|[-_ ])(nav|navbar|menu|breadcrumb|toc|sidebar|vector-menu|mw-panel|navigation|editsection)($|[-_ ])/i, "nav"],
   [/(^|[-_ ])(footer|foot|colophon)($|[-_ ])/i, "footer"],
   [/(^|[-_ ])(cookie|consent|banner|advert|ads?)($|[-_ ])/i, "aside"],
 ];
@@ -37,7 +40,9 @@ const zoneOwn = (el: Element): Zone | undefined => {
  * The page as displayed, like innerText but through open and closed shadow roots, slots and frames of the page's own
  * origin (another origin's frame is never read: the user's grant is for this one). Its http(s) links, tagged with their
  * zone, at most LINKS_MAX and LINKS_PER_ZONE per zone (one per address, fragment dropped, and zone). The text stops at
- * `max`; the walk goes on for the links.
+ * `max`; the walk goes on for the links. Its blocks: the visible text by block, with heading weight and zone, without
+ * the text a person cannot see (tiny, transparent, off screen, clipped, the colour of its background), the usual
+ * carrier of instructions hidden from the reader.
  */
 function readDisplayed(doc: Document, max: number) {
   const origin = (doc as any).nodePrincipal.origin;
@@ -47,6 +52,58 @@ function readDisplayed(doc: Document, max: number) {
   const links: { text: string; url: string; zone: Zone }[] = [];
   const seen = new Set<string>();
   const perZone = new Map<Zone, number>();
+  /** Shadow roots or frames were walked: content the reader mode never sees. */
+  let deep = false;
+  const blocks: { text: string; h: number; zone: Zone; row?: number }[] = [];
+  let blocksText = 0;
+  let cur: { text: string; h: number; zone: Zone; row?: number; pre?: boolean } | null = null;
+  const flush = () => {
+    if (cur && blocks.length < BLOCKS_MAX && blocksText < BLOCKS_TEXT_MAX) {
+      // Code keeps its lines and indentation in the reduced page too.
+      cur.text = cur.pre ? cur.text.replace(/^\n+|\s+$/g, "") : cur.text.replace(/\s+/g, " ").trim();
+      delete cur.pre;
+      if (cur.text) {
+        blocks.push(cur);
+        blocksText += cur.text.length;
+      }
+    }
+    cur = null;
+  };
+  const view = doc.defaultView!;
+  const bodySize = parseFloat(view.getComputedStyle(doc.body ?? doc.documentElement).fontSize) || 16;
+  const backgrounds = new WeakMap<Element, string>();
+  const background = (el: Element | null): string => {
+    if (!el) return "rgb(255, 255, 255)";
+    const known = backgrounds.get(el);
+    if (known) return known;
+    const c = el.ownerDocument.defaultView!.getComputedStyle(el).backgroundColor;
+    const r = !c || c === "transparent" || /rgba\(.*,\s*0\)$/.test(c) ? background(el.parentElement ?? ((el.getRootNode() as ShadowRoot).host ?? null)) : c;
+    backgrounds.set(el, r);
+    return r;
+  };
+  const rgb = (c: string) => (c.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number);
+  const sameColour = (a: string, b: string) => {
+    const [x, y] = [rgb(a), rgb(b)];
+    return x.length === 3 && y.length === 3 && Math.abs(x[0]! - y[0]!) + Math.abs(x[1]! - y[1]!) + Math.abs(x[2]! - y[2]!) < 24;
+  };
+  /** Rendered, yet a person cannot see it. */
+  const stealthy = (el: Element, cs: CSSStyleDeclaration) => {
+    if (Number(cs.opacity) < 0.05 || parseFloat(cs.fontSize) < 4) return true;
+    if (/rect\(0|inset\(50%|inset\(100%/.test(cs.clip + cs.clipPath)) return true;
+    if (cs.display.startsWith("inline") || cs.display === "contents") return false;
+    const r = el.getBoundingClientRect();
+    return ((r.width <= 1 || r.height <= 1) && cs.overflow !== "visible") || r.right < -50 || r.bottom + view.scrollY < -50 || r.left < -2000;
+  };
+  const headingOf = (el: Element, cs: CSSStyleDeclaration, text: string) => {
+    for (let e: Element | null = el, i = 0; e && i < 4; e = e.parentElement, i++) {
+      const m = /^H([1-6])$/.exec(e.tagName);
+      if (m) return Number(m[1]);
+      if (e.getAttribute("role") === "heading") return Math.min(6, Math.max(1, Number(e.getAttribute("aria-level")) || 2));
+    }
+    const size = parseFloat(cs.fontSize) || 0;
+    // Visual weight: big or bold short text is a heading even without the tag.
+    return text.length < 120 && (size >= bodySize * 1.35 || (Number(cs.fontWeight) >= 600 && size >= bodySize * 1.1)) ? 3 : 0;
+  };
   const add = (t: string) => {
     if (length >= max) return;
     parts.push(t);
@@ -56,17 +113,35 @@ function readDisplayed(doc: Document, max: number) {
   const breakLine = () => {
     if (!newline) add("\n");
   };
-  const walk = (node: Node, zone: Zone, visible: boolean, pre: boolean): void => {
-    if (length >= max && links.length >= LINKS_MAX) return;
+  const walk = (node: Node, zone: Zone, visible: boolean, pre: boolean, stealth: boolean): void => {
+    if (length >= max && links.length >= LINKS_MAX && (blocks.length >= BLOCKS_MAX || blocksText >= BLOCKS_TEXT_MAX)) return;
     if (node.nodeType === Node.TEXT_NODE) {
-      if (!visible || length >= max) return;
-      // Preformatted text (code) keeps its line breaks and indentation, as innerText does.
-      const t = pre ? (node.nodeValue ?? "") : (node.nodeValue ?? "").replace(/\s+/g, " ");
-      if (t.trim()) add(newline && !pre ? t.trimStart() : t);
+      if (!visible) return;
+      const raw = node.nodeValue ?? "";
+      if (!raw.trim()) {
+        // Whitespace between inline pieces separates words; in code it is the line breaks and the indentation.
+        if (length < max && (pre || !(newline || /\s$/.test(parts.at(-1) ?? "")))) add(pre ? raw : " ");
+        if (cur && !stealth) cur.text += pre ? raw : " ";
+        return;
+      }
+      if (length < max) {
+        // Preformatted text (code) keeps its line breaks and indentation, as innerText does.
+        const t = pre ? raw : raw.replace(/\s+/g, " ");
+        add(newline && !pre ? t.trimStart() : t);
+      }
+      const parent = node.parentElement;
+      const cs = parent && parent.ownerDocument.defaultView!.getComputedStyle(parent);
+      if (stealth || !parent || !cs || sameColour(cs.color, background(parent))) return;
+      if (!cur) {
+        const cell = parent.closest("td, th");
+        const tr = cell?.parentElement;
+        cur = { text: "", h: headingOf(parent, cs, raw.trim()), zone, ...(pre ? { pre } : {}), ...(tr ? { row: [...tr.parentElement!.children].indexOf(tr) } : {}) };
+      }
+      cur.text += raw;
       return;
     }
     if (node.nodeType !== Node.ELEMENT_NODE) {
-      if (node.nodeType === Node.DOCUMENT_FRAGMENT_NODE) for (const c of node.childNodes) walk(c, zone, visible, pre);
+      if (node.nodeType === Node.DOCUMENT_FRAGMENT_NODE) for (const c of node.childNodes) walk(c, zone, visible, pre, stealth);
       return;
     }
     const el = node as Element;
@@ -77,8 +152,12 @@ function readDisplayed(doc: Document, max: number) {
     const shown = cs.visibility === "visible";
     const keep = cs.whiteSpace.startsWith("pre") || cs.whiteSpace === "break-spaces";
     const block = !cs.display.startsWith("inline") && cs.display !== "contents";
+    const hidden = stealth || stealthy(el, cs);
     if (el.tagName === "BR") return add("\n");
-    if (block) breakLine();
+    if (block) {
+      breakLine();
+      flush();
+    }
     if (el.tagName === "A" && shown && links.length < LINKS_MAX && (perZone.get(z) ?? 0) < LINKS_PER_ZONE) {
       const url = (el as HTMLAnchorElement).href;
       const key = `${z} ${String(url).split("#")[0]}`;
@@ -89,22 +168,80 @@ function readDisplayed(doc: Document, max: number) {
       }
     }
     const shadow = (el as any).openOrClosedShadowRoot as ShadowRoot | null;
-    if (shadow) walk(shadow, z, shown, keep);
+    if (shadow) {
+      deep = true;
+      walk(shadow, z, shown, keep, hidden);
+    }
     else if (el.tagName === "SLOT") {
       const assigned = (el as HTMLSlotElement).assignedNodes({ flatten: true });
-      for (const c of assigned.length ? assigned : el.childNodes) walk(c, z, shown, keep);
+      for (const c of assigned.length ? assigned : el.childNodes) walk(c, z, shown, keep, hidden);
     } else if (el.tagName === "IFRAME" || el.tagName === "FRAME") {
       let inner: Document | null = null;
       try {
         inner = (el as HTMLIFrameElement).contentDocument;
       } catch {}
-      if (inner?.body && (inner as any).nodePrincipal.origin === origin) walk(inner.body, z, shown, keep);
-    } else for (const c of el.childNodes) walk(c, z, shown, keep);
-    if (block) breakLine();
+      if (inner?.body && (inner as any).nodePrincipal.origin === origin) {
+        deep = true;
+        walk(inner.body, z, shown, keep, hidden);
+      }
+    } else for (const c of el.childNodes) walk(c, z, shown, keep, hidden);
+    if (block) {
+      breakLine();
+      flush();
+    }
   };
   const root = doc.body ?? doc.documentElement;
-  if (root) walk(root, "other", true, false);
-  return { text: parts.join("").trim().slice(0, max), links };
+  if (root) walk(root, "other", true, false, false);
+  flush();
+  return { text: parts.join("").trim().slice(0, max), links, blocks, deep };
+}
+
+/** The structured data the page publishes for engines: its JSON-LD, then its meta tags and microdata as objects. */
+function structuredData(doc: Document): unknown[] {
+  const out: unknown[] = [];
+  for (const s of [...doc.querySelectorAll('script[type="application/ld+json"]')].slice(0, 20)) {
+    try {
+      out.push(JSON.parse(s.textContent ?? ""));
+    } catch {}
+  }
+  const meta: Record<string, string> = {};
+  for (const m of [...doc.querySelectorAll("meta[property], meta[name]")].slice(0, 200)) {
+    const k = m.getAttribute("property") || m.getAttribute("name") || "";
+    const v = m.getAttribute("content") ?? "";
+    if (/^(og:|article:|product:|description$|author$|date$)/i.test(k) && v) meta[k] = v.slice(0, 500);
+  }
+  if (Object.keys(meta).length) out.push(meta);
+  const micro: Record<string, string> = {};
+  for (const e of [...doc.querySelectorAll("[itemprop]")].slice(0, 80)) {
+    const v = e.getAttribute("content") || e.getAttribute("datetime") || (e.textContent ?? "").replace(/\s+/g, " ").trim();
+    const k = e.getAttribute("itemprop") ?? "";
+    if (k && v && v.length < 300) micro[k] ??= v;
+  }
+  if (Object.keys(micro).length) out.push(micro);
+  return out;
+}
+
+/** The reader mode's text of the main content, or undefined (none found, or not within READER_MS). */
+async function readerText(doc: Document, win: Window): Promise<string | undefined> {
+  const { ReaderMode } = ChromeUtils.importESModule("moz-src:///toolkit/components/reader/ReaderMode.sys.mjs") as any;
+  const late = new Promise<null>((ok) => win.setTimeout(() => ok(null), READER_MS));
+  const article = await Promise.race([ReaderMode.parseDocument(doc), late]);
+  return article?.textContent ? String(article.textContent).slice(0, BLOCKS_TEXT_MAX) : undefined;
+}
+
+/** What the document's channel says: response status and the addresses it was redirected from. */
+function channelFacts(docShell: any): { status?: number; redirects?: string[] } {
+  const out: { status?: number; redirects?: string[] } = {};
+  try {
+    const ch = docShell.currentDocumentChannel;
+    try {
+      out.status = ch.QueryInterface(Ci.nsIHttpChannel).responseStatus;
+    } catch {}
+    try {
+      out.redirects = ch.loadInfo.redirectChain.map((e: any) => String(e.principal?.spec ?? "")).filter(Boolean);
+    } catch {}
+  } catch {}
+  return out;
 }
 
 /**
@@ -149,7 +286,7 @@ export class WebAiOsPageChild extends JSWindowActorChild {
     switch (m.name) {
       case "getText":
         return (async () => {
-          let shown: { text: string; links: { text: string; url: string; zone?: string }[] };
+          let shown: { text: string; links: { text: string; url: string; zone?: string }[]; blocks?: unknown[]; deep?: boolean };
           try {
             shown = readDisplayed(doc, TEXT_MAX);
           } catch {
@@ -159,7 +296,20 @@ export class WebAiOsPageChild extends JSWindowActorChild {
           // The viewer's own text is only its rendered pages: the PDF itself has them all. Xray: the page's own timers cannot be swapped in.
           const late = new Promise<null>((ok) => win.setTimeout(() => ok(null), PDF_READ_MS));
           const pdf = await Promise.race([pdfText(doc, win, TEXT_MAX), late]).catch(() => null);
-          return { text: pdf ?? shown.text, selection: String(win.getSelection() ?? ""), links: shown.links };
+          // The reader mode works on a copy without shadow roots nor frames: on such a page it would drop their text.
+          const reader = pdf === null && !shown.deep ? await readerText(doc, win).catch(() => undefined) : undefined;
+          const passwords = [...doc.querySelectorAll('input[type="password"]')].filter((i) => (i as any).checkVisibility?.({ opacityProperty: true, visibilityProperty: true })).length;
+          return {
+            text: pdf ?? shown.text,
+            selection: String(win.getSelection() ?? ""),
+            links: shown.links,
+            ...(pdf === null && shown.blocks ? { blocks: shown.blocks } : {}),
+            structured: structuredData(doc),
+            ...(reader ? { reader } : {}),
+            ...channelFacts(this.docShell),
+            contentType: doc.contentType,
+            passwords,
+          };
         })();
       // The parts of the page retained for the agent's memory.
       case "getParts": {

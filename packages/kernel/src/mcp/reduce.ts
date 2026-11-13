@@ -11,6 +11,8 @@ const PASSAGE_MAX = 1_500;
 const PASSAGE_CUT = 900;
 /** Check-page markers count only on a short page: a long article about captchas is an article. */
 const SHORT_PAGE = 3_000;
+/** …with almost no links: a results page about captchas is a page of links. */
+const CHECK_LINKS_MAX = 5;
 const CHECK_MARKERS =
   /(captcha|verify you are human|vérifiez que vous êtes humain|unusual traffic|trafic inhabituel|cf-challenge|are you a robot|êtes-vous un robot|access denied|accès refusé)/i;
 const LOGIN_PATH = /\/(login|signin|sign-in|connexion|auth)\b/i;
@@ -22,7 +24,7 @@ export function pageState(r: TabRead, url: string, title = ""): PageState {
   const visible = visibleText(r);
   if (r.contentType === "application/pdf") return "pdf";
   if (r.status === 404 || r.status === 410) return "introuvable";
-  if (r.status === 403 || r.status === 429 || (visible.length < SHORT_PAGE && CHECK_MARKERS.test(`${visible} ${title}`))) return "bloquée";
+  if (r.status === 403 || r.status === 429 || (visible.length < SHORT_PAGE && (r.links?.length ?? 0) < CHECK_LINKS_MAX && CHECK_MARKERS.test(`${visible} ${title}`))) return "bloquée";
   if ((r.passwords ?? 0) > 0 && visible.length < SHORT_PAGE) return "connexion demandée";
   if (LOGIN_PATH.test(url) && (r.redirects ?? []).length) return "connexion demandée";
   if (visible.trim().length < 40) return "vide";

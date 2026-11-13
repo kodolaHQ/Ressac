@@ -27,6 +27,11 @@ const ALLOWED_LINES: { file: string; match: string; reason: string }[] = [
     reason: "the backdrop of a web page's snapshot for the agent, not a UI colour",
   },
   {
+    file: "chrome/agent/page-actor.ts",
+    match: 'if (!el) return "rgb(255, 255, 255)";',
+    reason: "a web page's default background, to find text drawn in its own background colour; not a UI colour",
+  },
+  {
     file: "chrome/store/design.ts",
     match: '"white", { drawView: true }',
     reason: "the backdrop of a web page's snapshot for the design mode, not a UI colour",

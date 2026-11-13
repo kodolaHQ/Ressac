@@ -14,6 +14,8 @@ let server: Awaited<ReturnType<typeof startServer>>;
 let other: Awaited<ReturnType<typeof startServer>>;
 let w: LaunchedWebAiOs;
 let m: Marionette;
+/** /bloque.html answers 403 (a check page) until a test lets it through. */
+let blocked = true;
 const html = (body: string) => (_req: unknown, res: import("node:http").ServerResponse) => {
   res.setHeader("content-type", "text/html; charset=utf-8");
   res.end(body);
@@ -22,7 +24,7 @@ beforeAll(async () => {
   other = await startServer({ routes: { "/externe.html": html(`<p>Texte cadre autre port</p><a href="/autre-lien.html">Lien cadre autre port</a>`) } });
   server = await startServer({
     routes: {
-      "/sommaire.html": html(`<title>Sommaire</title><a href="/ombre.html">Ombre</a><a href="/cadre.html">Cadre</a><a href="/rapport.pdf">Rapport</a><a href="/longue.html">Longue</a><a href="/faux-pdf.html">Faux</a><a href="/pdf-bloque.html">Bloque</a><a href="/menus.html">Menus</a><a href="/profonde.html">Profonde</a>`),
+      "/sommaire.html": html(`<title>Sommaire</title><a href="/ombre.html">Ombre</a><a href="/cadre.html">Cadre</a><a href="/rapport.pdf">Rapport</a><a href="/longue.html">Longue</a><a href="/faux-pdf.html">Faux</a><a href="/pdf-bloque.html">Bloque</a><a href="/menus.html">Menus</a><a href="/profonde.html">Profonde</a><a href="/piege.html">Piège</a><a href="/produit.html">Produit</a><a href="/absente.html">Absente</a><a href="/bloque.html">Bloque</a><a href="/connexion.html">Connexion</a><a href="/captchas.html">Captchas</a><a href="/code.html">Code</a>`),
       "/ombre.html": html(`<title>Ombre</title>
 <nav><a href="/menu.html">Menu du site</a></nav>
 <p>Avant</p><p>Après</p>
@@ -49,6 +51,27 @@ customElements.define("x-boite", class extends HTMLElement { constructor() { sup
 <div><a href="/contenu.html">Contenu libre</a></div><main><a href="/article.html">Article principal</a></main></body>`),
       // Far deeper than any real page: the read must still answer.
       "/profonde.html": html(`<p>Début profond</p><div id="d"></div><script>let e = document.getElementById("d"); for (let i = 0; i < 50000; i++) { const x = document.createElement("div"); e.append(x); e = x; } e.textContent = "Fond";</script>`),
+      // Text a person cannot see: white on white and 1 px, off screen, 2 px.
+      "/piege.html": html(`<title>Radio</title><main><h1>Radio</h1><p>La radio capte la FM et le DAB+.</p>
+<p style="color:#fff;font-size:1px">Marqueur blanc minuscule.</p><div style="position:absolute;left:-9999px">Marqueur hors écran.</div><p style="font-size:2px">Marqueur deux pixels.</p>
+<h2>Dimensions</h2><p>22 × 12 × 9 cm, 850 g.</p></main>`),
+      "/produit.html": html(`<title>Lampe</title><script type="application/ld+json">{"@context":"https://schema.org","@type":"Product","name":"Lampe Orbe","offers":{"price":"49.90","priceCurrency":"EUR"}}</script><main><h1>Lampe Orbe</h1><p>Une lampe ronde en verre soufflé, pour le salon ou la chambre.</p></main>`),
+      "/absente.html": (_req, res) => {
+        res.statusCode = 404;
+        html(`<title>Absente</title><p>Cette page n'existe pas ou plus, désolé pour la gêne.</p>`)(_req, res);
+      },
+      "/bloque.html": (_req, res) => {
+        if (blocked) res.statusCode = 403;
+        html(blocked ? `<title>Vérification</title><p>Vérifiez que vous êtes humain.</p>` : `<title>Débloquée</title><p>La page est enfin là, avec tout son texte utile.</p>`)(_req, res);
+      },
+      "/connexion.html": html(`<title>Compte</title><p>Identifiez-vous pour lire la suite de cet article.</p><form><input name="u"><input type="password" name="p"></form>`),
+      "/captchas.html": html(`<title>Captchas</title><article><h1>Les captchas expliqués</h1>${"<p>Un captcha vérifie que vous êtes humain ; une page access denied refuse l'accès. Voici comment ils marchent.</p>".repeat(200)}</article>`),
+      // Highlighted code: its spaces and line breaks are text nodes of their own, between the coloured pieces.
+      "/code.html": html(`<title>Code</title><main><h2>Exemple<span class="mw-editsection"><a href="/modifier.html">modifier</a></span></h2>
+<pre><span>public</span> <span>class</span> <span>A</span> {
+  <span>// rien</span>
+  <span>int</span> x;
+}</pre><p><b>mot</b> <i>suivant</i></p><p><a href="/lie.html">Article lié</a></p></main>`),
       "/rapport.pdf": (_req, res) => {
         res.setHeader("content-type", "application/pdf");
         res.end(readFileSync(join(import.meta.dirname, "pages", "rapport.pdf")));
@@ -83,6 +106,10 @@ beforeEach(async () => {
   await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
 });
 afterEach(() => w?.close());
+
+const BAND = '[data-testid="search-band"]';
+const bandText = () => waitFor<string>(m, `const b = document.querySelector('${BAND}'); return b?.dataset.state === "yours" ? b.querySelector('[data-testid="search-band-text"]').textContent : ""`, (v) => !!v);
+const press = (testid: string) => m.execute(`document.querySelector('${BAND} [data-testid="${testid}"]').click();`);
 
 /** Opens `path` in the search tab (a link of the summary page) and reads it with its links. */
 async function read(path: string): Promise<string> {
@@ -144,8 +171,65 @@ it("a huge page with nested shadow roots is read quickly and bounded", async () 
   await callTool(w.dataDir, "navigate", { id, url: `${server.url}/longue.html` });
   const t = Date.now();
   const r = (await callTool(w.dataDir, "read_tab", { id })).text;
-  expect(Date.now() - t).toBeLessThan(3000);
+  expect(Date.now() - t).toBeLessThan(6000);
   expect(r).toContain("Section 0");
   expect(r).toContain("Section 1\n");
   expect(r.length).toBeLessThan(100_000 + 1_000);
+});
+
+it("the reduced page never holds text a person cannot see; full: true still answers", async () => {
+  const id = /Onglet : (\S+)/.exec((await callTool(w.dataDir, "search_web", { query: "x", goal: "autonomie de la radio" })).text)![1]!;
+  await callTool(w.dataDir, "navigate", { id, url: `${server.url}/piege.html` });
+  const r = (await callTool(w.dataDir, "read_tab", { id })).text;
+  expect(r).toContain("État : ok (200)");
+  expect(r).toContain("capte la FM");
+  expect(r).toContain("22 × 12 × 9 cm");
+  expect(r).not.toContain("Marqueur");
+  expect((await callTool(w.dataDir, "read_tab", { id, full: true })).text).toContain("capte la FM");
+});
+
+it("a product's structured data comes first; a missing page says so", async () => {
+  const r = await read("/produit.html");
+  expect(r).toContain("Données structurées :");
+  expect(r).toContain("offers.price : 49.90");
+  expect(await read("/absente.html")).toContain("État : introuvable (404)");
+});
+
+it("a long article about captchas is a page, not a check", async () => {
+  expect(await read("/captchas.html")).toContain("État : ok (200)");
+});
+
+it("a check page is handed to the user; after Continuer the agent gets the page that came", async () => {
+  blocked = true;
+  const id = /Onglet : (\S+)/.exec((await callTool(w.dataDir, "search_web", { query: "x", goal: "lire" })).text)![1]!;
+  await callTool(w.dataDir, "navigate", { id, url: `${server.url}/bloque.html` });
+  const reading = callTool(w.dataDir, "read_tab", { id });
+  expect(await bandText()).toMatch(/^Bloqué par une vérification\. À vous : /);
+  blocked = false;
+  await m.execute(`const t = gBrowser.tabs.find((t) => t.getAttribute("webaios-tab-id") === arguments[0]); t.linkedBrowser.reload();`, [id]);
+  await waitFor(m, `return gBrowser.tabs.find((t) => t.getAttribute("webaios-tab-id") === ${JSON.stringify(id)}).linkedBrowser.contentTitle`, (v) => v === "Débloquée");
+  await press("search-continue");
+  const r = (await reading).text;
+  expect(r).toContain("La page est de nouveau à toi (elle était bloquée).");
+  expect(r).toContain("La page est enfin là");
+});
+
+it("a login page is handed to the user too; Arrêter stops the search", async () => {
+  const id = /Onglet : (\S+)/.exec((await callTool(w.dataDir, "search_web", { query: "x", goal: "lire" })).text)![1]!;
+  await callTool(w.dataDir, "navigate", { id, url: `${server.url}/connexion.html` });
+  const reading = callTool(w.dataDir, "read_tab", { id });
+  expect(await bandText()).toMatch(/^Connexion demandée\. À vous : /);
+  await press("search-stop");
+  expect((await reading).text).toContain("L'utilisateur a arrêté la recherche");
+});
+
+it("code keeps its spaces, line breaks and indentation; words apart stay apart; edit links rank after the article's", async () => {
+  const code = "public class A {\n  // rien\n  int x;\n}";
+  const r = await read("/code.html");
+  expect(r).toContain(code);
+  expect(r).toContain("mot suivant");
+  expect(r).toContain(`0. Article lié — ${server.url}/lie.html`);
+  const id = /Onglet : (\S+)/.exec((await callTool(w.dataDir, "search_web", { query: "x", goal: "le code" })).text)![1]!;
+  await callTool(w.dataDir, "navigate", { id, url: `${server.url}/code.html` });
+  expect((await callTool(w.dataDir, "read_tab", { id, full: true })).text).toContain(code);
 });

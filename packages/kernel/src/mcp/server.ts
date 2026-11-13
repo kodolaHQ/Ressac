@@ -916,7 +916,7 @@ function createToolsServer(
                 const now = (await bridge.listTabs()).find((x) => x.id === t!.id) ?? t;
                 sessions.pageRead(id, now.url, readUrls(r.links));
                 const state = pageState(r, now.url, now.title);
-                const body = state === "ok" || state === "pdf" ? reducedPage(r, sessions.current(key)?.goal ?? "", READ_PAGES_PAGE_MAX).text : "";
+                const body = state !== "introuvable" && state !== "bloquée" && state !== "connexion demandée" ? reducedPage(r, sessions.current(key)?.goal ?? "", READ_PAGES_PAGE_MAX).text : "";
                 sections.set(u, [`Titre : ${now.title}`, `URL : ${now.url}`, stateLine(r, now.url, now.title), "", body].join("\n"));
               } catch (e) {
                 sections.set(u, `Erreur : ${e instanceof Error ? e.message : String(e)}`);
