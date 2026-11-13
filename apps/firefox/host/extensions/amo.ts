@@ -3,6 +3,8 @@ import { createHmac, randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
+// A cycle (keychain.ts reads keys through readAmoKey): both only call each other inside functions.
+import { AMO_SERVICE, keychain, legacyService } from "../keychain";
 
 const run = promisify(execFile);
 
@@ -26,7 +28,7 @@ export interface AmoKey {
 export const KEYCHAIN_DELAY_MS = 10_000;
 
 /**
- * Test: RESSAC_TEST_AMO_URL set → RESSAC_TEST_AMO_KEYS ("emetteur:secret") or null; else RESSAC_TEST_KEYCHAIN's ".amo" file; else the keychain (service ressac-amo),
+ * Test: RESSAC_TEST_AMO_URL set → RESSAC_TEST_AMO_KEYS ("emetteur:secret") or null; else RESSAC_TEST_KEYCHAIN's ".amo" file; else the keychain (service ressac-amo, else webaios-amo saved before the rename),
  * null when absent or too slow. `command` and `delai` are only there for tests.
  */
 export async function readAmoKey(env: NodeJS.ProcessEnv = process.env, o: { command?: string; delay?: number } = {}): Promise<AmoKey | null> {
@@ -37,15 +39,28 @@ export async function readAmoKey(env: NodeJS.ProcessEnv = process.env, o: { comm
   };
   if (env.RESSAC_TEST_AMO_URL) return split(env.RESSAC_TEST_AMO_KEYS);
   if (env.RESSAC_TEST_KEYCHAIN) return split(await readFile(`${env.RESSAC_TEST_KEYCHAIN}.amo`, "utf8").catch(() => undefined));
-  try {
-    const security = (args: string[]) => run(o.command ?? "security", ["find-generic-password", "-s", "ressac-amo", ...args], { timeout: o.delay ?? KEYCHAIN_DELAY_MS });
-    const [{ stdout: attrs }, { stdout: secret }] = await Promise.all([security([]), security(["-w"])]);
-    const issuer = /"acct"<blob>="([^"]*)"/.exec(attrs)?.[1];
-    return issuer && secret.trim() ? { emitter: issuer, secret: secret.trim() } : null;
-  } catch {
-    // Absent, refused or timed out: the error holds the command's output, so it is never logged.
-    return null;
-  }
+  const command = o.command ?? "security";
+  const at = async (service: string): Promise<AmoKey | null | "absent"> => {
+    try {
+      const security = (args: string[]) => run(command, ["find-generic-password", "-s", service, ...args], { timeout: o.delay ?? KEYCHAIN_DELAY_MS });
+      const [{ stdout: attrs }, { stdout: secret }] = await Promise.all([security([]), security(["-w"])]);
+      const issuer = /"acct"<blob>="([^"]*)"/.exec(attrs)?.[1];
+      return issuer && secret.trim() ? { emitter: issuer, secret: secret.trim() } : null;
+    } catch (e) {
+      // Refused or timed out: the error holds the command's output, so it is never logged. 44: not found.
+      return (e as { code?: unknown }).code === 44 ? "absent" : null;
+    }
+  };
+  const found = await at(AMO_SERVICE);
+  if (found !== "absent") return found;
+  // Saved before the rename to Ressac: saved again under the new name.
+  const old = await at(legacyService(AMO_SERVICE)!);
+  if (!old || old === "absent") return null;
+  // Not amoKeychain().write: it first removes every item, the old one too.
+  await keychain({ service: AMO_SERVICE, account: old.emitter, command, delayMs: o.delay, env: {} })
+    .write(old.secret)
+    .catch(() => {});
+  return old;
 }
 
 /** A fresh HS256 JWT, valid 60 s. Never logged. */
