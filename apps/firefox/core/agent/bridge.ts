@@ -1,4 +1,4 @@
-import type { DevRight, TabInfo } from "@webaios/kernel";
+import type { DevRight, PageLink, TabInfo, Zone } from "@webaios/kernel";
 import { privateTab, type Decision, type PendingRequest, type Outcome, type WindowState, type BrowserState, type SpaceId, type WindowId, type Tab } from "../../shared/model";
 
 const info = (state: BrowserState, o: Tab): TabInfo => ({
@@ -206,10 +206,11 @@ export function appTab(a: { folder: string; title: string; url: string }): TabIn
 const LINKS_MAX = 500;
 /** A longer address is dropped, not cut: a cut address is a wrong one. */
 const LINK_URL_MAX = 500;
-/** The links of a page as the agent gets them: from a web process, so bounded and checked (http(s) only). */
-export function boundLinks(raw: unknown): { text: string; url: string }[] {
+const ZONES = new Set<string>(["main", "other", "aside", "header", "nav", "footer", "lang"] satisfies Zone[]);
+/** The links of a page as the agent gets them: from a web process, so bounded and checked (http(s) only, a known zone). */
+export function boundLinks(raw: unknown): Required<PageLink>[] {
   return (Array.isArray(raw) ? raw : [])
     .slice(0, LINKS_MAX)
-    .map((l: any) => ({ text: String(l?.text ?? "").slice(0, 80), url: String(l?.url ?? "") }))
+    .map((l: any) => ({ text: String(l?.text ?? "").slice(0, 80), url: String(l?.url ?? ""), zone: (ZONES.has(l?.zone) ? l.zone : "other") as Zone }))
     .filter((l) => l.url.length <= LINK_URL_MAX && URL.canParse(l.url) && /^https?:$/.test(new URL(l.url).protocol));
 }

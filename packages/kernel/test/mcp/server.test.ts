@@ -7,7 +7,7 @@ import { PRIVATE_TEXT, type TabInfo } from "../../src/mcp/bridge.js";
 import type { Watcher } from "../../src/search/watcher.js";
 import { FakeBridge } from "../../src/mcp/fake-bridge.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { NO_WORKFLOW_OPEN, HIDDEN_ACTION_RUNS_NOTICE, HIDDEN_RUNS_NOTICE, startMcpServer, PENDING_SITE_NAVIGATION, navigationOutsideSite, SITE_DATA_PREFIX, TWEAK_ERRORS_PREFIX, SITE_UNKNOWN, SITE_DENIED, SITE_MEMORY_MAX_SHOWN, type SitesTools, DENIAL_TEXT, RESERVED_ERROR, RESERVED_ACTION_ERROR, ACTION_DATA_PREFIX, WIDGET_DATA_PREFIX, generateToken, type ActionsTools, type AppsTools, type WidgetsTools, type OpenWorkflow } from "../../src/mcp/server.js";
+import { NO_WORKFLOW_OPEN, HIDDEN_ACTION_RUNS_NOTICE, HIDDEN_RUNS_NOTICE, startMcpServer, PENDING_SITE_NAVIGATION, navigationOutsideSite, SITE_DATA_PREFIX, TWEAK_ERRORS_PREFIX, SITE_UNKNOWN, SITE_DENIED, SITE_MEMORY_MAX_SHOWN, type SitesTools, DENIAL_TEXT, RESERVED_ERROR, RESERVED_ACTION_ERROR, ACTION_DATA_PREFIX, WIDGET_DATA_PREFIX, generateToken, type ActionsTools, type AppsTools, type WidgetsTools, type OpenWorkflow, LINKS_HEADER } from "../../src/mcp/server.js";
 import type { Execution } from "../../src/workflows/executions.js";
 import { ACTION_UNKNOWN, ACTION_WITHOUT_WORKFLOW, RESULT_TOO_BIG, requiredInput, type LaunchResult } from "../../src/actions/run.js";
 import { INTERNAL_ACTION_ERROR } from "../../src/actions/file.js";
@@ -98,7 +98,49 @@ test("read_tab with links: true lists the links after the text, without it lists
   expect(none).not.toContain("Liens :");
   expect(none).not.toContain("exemple.fr");
   const some = text(await client.callTool({ name: "read_tab", arguments: { id: "gmail", links: true } }));
-  expect(some).toContain("Liens :\nAnnonce — https://exemple.fr/a");
+  expect(some).toContain(`${LINKS_HEADER}\n0. Annonce — https://exemple.fr/a`);
+});
+
+test("read_tab lists the links ranked by zone, 40 numbered, then how many are left out", async () => {
+  policy.grant(gmail);
+  const many = Array.from({ length: 45 }, (_, i) => ({ text: `Menu ${i}`, url: `https://exemple.fr/m${i}`, zone: "nav" as const }));
+  bridge.linkSequence = [[...many, { text: "Article", url: "https://exemple.fr/art", zone: "main" }]];
+  const r = text(await client.callTool({ name: "read_tab", arguments: { id: "gmail", links: true } }));
+  expect(r).toContain(`${LINKS_HEADER}\n0. Article — https://exemple.fr/art\n1. Menu 0 — https://exemple.fr/m0`);
+  expect(r).toContain("39. Menu 38 — https://exemple.fr/m38\n(6 autres liens non montrés)");
+  expect(r).not.toContain("Menu 39");
+});
+
+test("navigate by link number opens the last listed address of that tab; a new read renumbers", async () => {
+  policy.grant(gmail);
+  bridge.linkSequence = [[{ text: "Un", url: "https://exemple.fr/1" }], [{ text: "Deux", url: "https://exemple.fr/2" }]];
+  await client.callTool({ name: "read_tab", arguments: { id: "gmail", links: true } });
+  expect(text(await client.callTool({ name: "navigate", arguments: { id: "gmail", link: 0 } }))).toContain("https://exemple.fr/1");
+  policy.grant({ ...gmail, url: "https://exemple.fr/1" }); // the tab is now on another site
+  await client.callTool({ name: "read_tab", arguments: { id: "gmail", links: true } });
+  await client.callTool({ name: "navigate", arguments: { id: "gmail", link: 0 } });
+  expect(bridge.calls.filter((c) => c.method === "navigate").map((c) => c.args[1])).toEqual(["https://exemple.fr/1", "https://exemple.fr/2"]);
+});
+
+test("navigate by url forgets the tab's numbered list: a number never points into the previous page", async () => {
+  policy.grant(gmail);
+  await client.callTool({ name: "read_tab", arguments: { id: "gmail", links: true } });
+  await client.callTool({ name: "navigate", arguments: { id: "gmail", url: "https://mail.google.com/mail/u/1/" } });
+  const r = await client.callTool({ name: "navigate", arguments: { id: "gmail", link: 0 } });
+  expect(text(r)).toBe("Lien 0 inconnu : relis l'onglet avec links: true.");
+});
+
+test("navigate by an unknown link number, or with both or neither of url and link, is an error and opens nothing", async () => {
+  policy.grant(gmail);
+  const unread = await client.callTool({ name: "navigate", arguments: { id: "gmail", link: 0 } });
+  expect(unread.isError).toBe(true);
+  expect(text(unread)).toBe("Lien 0 inconnu : relis l'onglet avec links: true.");
+  await client.callTool({ name: "read_tab", arguments: { id: "gmail", links: true } });
+  const far = await client.callTool({ name: "navigate", arguments: { id: "gmail", link: 99 } });
+  expect(text(far)).toBe("Lien 99 inconnu : relis l'onglet avec links: true.");
+  expect((await client.callTool({ name: "navigate", arguments: { id: "gmail", link: 0, url: "https://exemple.fr/a" } })).isError).toBe(true);
+  expect((await client.callTool({ name: "navigate", arguments: { id: "gmail" } })).isError).toBe(true);
+  expect(bridge.calls.some((c) => c.method === "navigate")).toBe(false);
 });
 
 test("read_tab marks the tab running while it reads, not after (the window's halo)", async () => {
@@ -1415,8 +1457,7 @@ test("search_web opens the search tab, returns its id, text and links, and start
     const r = await call("search_web", { query: "vélo électrique", goal: "trouver un vélo" });
     expect(r.text).toContain("Onglet : search-1");
     expect(r.text).toContain("Texte de ");
-    expect(r.text).toContain("Liens :");
-    expect(r.text).toContain("Annonce — https://exemple.fr/a");
+    expect(r.text).toContain(`${LINKS_HEADER}\n0. Annonce — https://exemple.fr/a`);
     expect(fake.calls.find((x) => x.method === "search.open")!.args).toEqual([undefined, { query: "vélo électrique" }, undefined]);
     expect(search.current("main")).toMatchObject({ tabId: "search-1", goal: "trouver un vélo" });
   });
@@ -1481,6 +1522,19 @@ test("navigate on the search tab to a link read is done; to another address it i
     const r = await call("navigate", { id: "search-1", url: "https://ailleurs.fr/" });
     expect(r.text).toBe(REFUSED);
     expect(fake.calls.filter((x) => x.method === "navigate")).toHaveLength(1);
+  });
+});
+
+test("on the search tab, a link number opens without a card; an engine redirect's target and the redirect itself are both free", async () => {
+  await withSearch(async ({ call, fake }) => {
+    const target = "https://exemple.fr/cible";
+    const wrapped = `https://duckduckgo.com/l/?uddg=${encodeURIComponent(target)}`;
+    fake.linkSequence = [[{ text: "Cible", url: wrapped }]];
+    const r = await call("search_web", { query: "x" });
+    expect(r.text).toContain(`0. Cible — ${target}`);
+    expect((await call("navigate", { id: "search-1", link: 0 })).text).toBe(`Onglet search-1 → ${target}`);
+    expect((await call("navigate", { id: "search-1", url: wrapped })).text).toBe(`Onglet search-1 → ${wrapped}`);
+    expect(fake.calls.filter((x) => x.method === "askAddress")).toHaveLength(0);
   });
 });
 
