@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { BrowserState } from "../shared/model";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { dispatch, state, waitFor, waitReady } from "./firefox";
+import { SHELL_SERVICE } from "../chrome/store/settings";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
@@ -205,6 +206,15 @@ describe("Settings page", () => {
     await click(m, '[data-testid="default-browser-set"]');
     await shows("settings-default-browser", "Par défaut");
     expect(await inUi(m, `return !doc.querySelector('[data-testid="default-browser-set"]')`)).toBe(true);
+  });
+
+  it("default browser: without the test guard, the row shows what macOS says (read only)", async () => {
+    await launch({ WEBAIOS_TEST_NO_SYSTEM: "" });
+    const real = await m.execute<boolean>(`return ChromeUtils.importESModule(arguments[0]).ShellService.isDefaultBrowser(false)`, [SHELL_SERVICE]);
+    await openPage();
+    await go("privacy");
+    await waitUi(m, `return !!doc.querySelector('[data-testid="default-browser-state"], [data-testid="default-browser-set"]')`);
+    expect(await inUi(m, `return !!doc.querySelector('[data-testid="default-browser-state"]')`)).toBe(real);
   });
 
   it("privacy: no DSN, the switch is greyed; with one, turning it off clears the pref", async () => {

@@ -1,6 +1,8 @@
 import { backupDate, RESET_FILE } from "../../core/state/format";
 
 const ENABLED = "webaios.telemetry.enabled";
+/** Firefox's own default browser service. */
+export const SHELL_SERVICE = "moz-src:///browser/components/shell/ShellService.sys.mjs";
 const EXPORT_NAME = /^WebAiOs-donnees-\d{4}-\d{2}-\d{2}( \(\d+\))?\.zip$/;
 
 export interface SettingsChrome {
@@ -56,7 +58,7 @@ export function createSettingsChrome(dataDir: string, telemetryActive: boolean):
   // A test never changes the owner's macOS (default browser, screen recording grant): the request is only remembered.
   const test = !!Services.env.get("WEBAIOS_TEST_NO_SYSTEM");
   let testDefault = false;
-  const shell = () => ChromeUtils.importESModule("resource:///modules/ShellService.sys.mjs").ShellService;
+  const shell = () => ChromeUtils.importESModule(SHELL_SERVICE).ShellService;
   return {
     telemetry: () => ({ available: telemetryActive, enabled: Services.prefs.getBoolPref(ENABLED, false) }),
     setTelemetry: (enabled) => Services.prefs.setBoolPref(ENABLED, enabled === true),
