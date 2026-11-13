@@ -107,8 +107,17 @@ test("read_tab lists the links ranked by zone, 40 numbered, then how many are le
   bridge.linkSequence = [[...many, { text: "Article", url: "https://exemple.fr/art", zone: "main" }]];
   const r = text(await client.callTool({ name: "read_tab", arguments: { id: "gmail", links: true } }));
   expect(r).toContain(`${LINKS_HEADER}\n0. Article — https://exemple.fr/art\n1. Menu 0 — https://exemple.fr/m0`);
-  expect(r).toContain("39. Menu 38 — https://exemple.fr/m38\n(6 autres liens non montrés)");
+  expect(r).toContain("39. Menu 38 — https://exemple.fr/m38\n(6 autres liens non montrés ; read_tab avec full: true les donne tous)");
   expect(r).not.toContain("Menu 39");
+});
+
+test("read_tab with full: true lists every link read, so the agent never needs page scripts for them", async () => {
+  policy.grant(gmail);
+  const many = Array.from({ length: 300 }, (_, i) => ({ text: `Lien ${i}`, url: `https://exemple.fr/l${i}`, zone: "main" as const }));
+  bridge.linkSequence = [many, many];
+  const r = text(await client.callTool({ name: "read_tab", arguments: { id: "gmail", links: true, full: true } }));
+  expect(r).toContain("299. Lien 299 — https://exemple.fr/l299");
+  expect(r).not.toContain("non montrés");
 });
 
 test("navigate by link number opens the last listed address of that tab; a new read renumbers", async () => {
@@ -1480,7 +1489,8 @@ test("search_web waits for late results: links 0, then 3, then 3 → returns the
     fake.linkSequence = [[], [a, b, c], [a, b, c]];
     const r = await call("search_web", { query: "x" });
     expect(r.text).toContain("https://exemple.fr/c");
-    expect(fake.calls.filter((x) => x.method === "readText")).toHaveLength(3);
+    // Three reads to settle, then one with the capture.
+    expect(fake.calls.filter((x) => x.method === "readText")).toHaveLength(4);
   });
 });
 
@@ -1940,6 +1950,95 @@ test("search_web on a search whose tab vanished answers a clean French error", a
     expect(r.isError).toBe(true);
     expect(r.text).toContain("Onglet introuvable : search-1");
   });
+});
+
+const longBlocks = (n: number) =>
+  Array.from({ length: n }, (_, i) => [
+    { text: `Section ${i}`, h: 2, zone: "main" as const },
+    { text: (i === 7 ? "La lampe Orbe coûte 49,90 €. " : `Paragraphe ${i} sans rapport. `) + "v".repeat(400), h: 0, zone: "main" as const },
+  ]).flat();
+
+test("search_web shows the page state, the structured data and the reduced page for the goal, then the numbered links", async () => {
+  await withSearch(async ({ call, fake }) => {
+    fake.captures.set("https://moteur.test/?q=lampe", { status: 200, blocks: longBlocks(40), structured: [{ name: "Lampe Orbe" }] });
+    const r = (await call("search_web", { query: "lampe", goal: "prix de la lampe orbe" })).text;
+    expect(r).toContain("URL : https://moteur.test/?q=lampe\nÉtat : ok (200)\n\nDonnées structurées :\nname : Lampe Orbe");
+    expect(r).toContain("49,90 €");
+    expect(r).not.toContain("Paragraphe 30 sans rapport");
+    expect(r).toMatch(/\(Page réduite : \d+ passages sur 40 ; read_tab avec full: true donne toute la page\.\)/);
+    expect(r).toContain(`${LINKS_HEADER}\n0. Annonce — https://exemple.fr/a`);
+  });
+});
+
+test("read_tab full: true on the search tab gives the whole text with the state line", async () => {
+  await withSearch(async ({ call, fake }) => {
+    await call("search_web", { query: "x", goal: "but" });
+    fake.captures.set("https://moteur.test/?q=x", { status: 200, blocks: longBlocks(40) });
+    const r = (await call("read_tab", { id: "search-1", full: true })).text;
+    expect(r).toContain("État : ok (200)");
+    expect(r).toContain("Texte de ");
+    expect(r).not.toContain("Page réduite");
+  });
+});
+
+test("read_pages sections carry the state and a reduced page of 3,000 characters at most; a missing page gives no text", async () => {
+  await withSearch(async ({ call, fake }) => {
+    fake.linkSequence = [[a, b]];
+    await call("search_web", { query: "x", goal: "lampe orbe" });
+    fake.captures.set(a.url, { status: 200, blocks: longBlocks(40) });
+    fake.captures.set(b.url, { status: 404, blocks: [{ text: "Page introuvable, désolé.", h: 0, zone: "main" }] });
+    const r = (await call("read_pages", { urls: [a.url, b.url] })).text;
+    const [sa, sb] = [r.slice(r.indexOf(`## ${a.url}`), r.indexOf(`## ${b.url}`)), r.slice(r.indexOf(`## ${b.url}`))];
+    expect(sa).toContain("État : ok (200)");
+    expect(sa).toContain("49,90 €");
+    expect(sa.length).toBeLessThan(3000 + 300);
+    expect(sb).toContain("État : introuvable (404)");
+    expect(sb).not.toContain("désolé");
+  });
+});
+
+test("a blocked search page is handed to the user without the agent asking; after Continuer it is read again", async () => {
+  await withSearch(async ({ call, fake, search, bands }) => {
+    fake.captures.set("https://moteur.test/?q=x", { status: 403, blocks: [{ text: "Vérifiez que vous êtes humain.", h: 0, zone: "main" }] });
+    const pending = call("search_web", { query: "x", goal: "but" });
+    await vi.waitFor(() => expect(bands.at(-1)![1]).toMatchObject({ state: "yours", text: expect.stringContaining("Bloqué par une vérification. À vous : ") }));
+    fake.captures.delete("https://moteur.test/?q=x");
+    search.continue("search-1");
+    const r = (await pending).text;
+    expect(r).toContain("La page est de nouveau à toi (elle était bloquée).");
+    expect(r).toContain("État : ok");
+    expect(r).toContain("Texte de ");
+  });
+});
+
+test("a login page is handed over too; stopping during the hand answers as hand_over does", async () => {
+  await withSearch(async ({ call, fake, search, bands }) => {
+    fake.captures.set("https://moteur.test/?q=x", { status: 200, passwords: 1, blocks: [{ text: "Identifiez-vous pour continuer la lecture.", h: 0, zone: "main" }] });
+    const pending = call("search_web", { query: "x", goal: "but" });
+    await vi.waitFor(() => expect(bands.at(-1)![1]).toMatchObject({ state: "yours", text: expect.stringContaining("Connexion demandée. À vous : ") }));
+    search.stop("search-1");
+    expect((await pending).text).toBe(STOP_TEXT);
+  });
+});
+
+test("only search reads ask the browser for the capture (reader mode, blocks…): never a read of the user's tab", async () => {
+  policy.grant(gmail);
+  await client.callTool({ name: "read_tab", arguments: { id: "gmail" } });
+  expect(bridge.calls.filter((c) => c.method === "readText").every((c) => c.args[1] === undefined)).toBe(true);
+  await withSearch(async ({ call, fake }) => {
+    await call("search_web", { query: "x", goal: "but" });
+    const reads = fake.calls.filter((c) => c.method === "readText");
+    expect(reads.at(-1)!.args[1]).toEqual({ capture: true });
+    expect(reads.slice(0, -1).every((c) => c.args[1] === undefined)).toBe(true);
+  });
+});
+
+test("read_tab on a user's tab stays the whole text, without a state line", async () => {
+  policy.grant(gmail);
+  bridge.captures.set(gmail.url, { status: 200, blocks: longBlocks(40) });
+  const r = text(await client.callTool({ name: "read_tab", arguments: { id: "gmail" } }));
+  expect(r).toContain("Texte de ");
+  expect(r).not.toContain("État :");
 });
 
 const handOver = (call: (n: string, a: Record<string, unknown>, t?: string, p?: (n: number) => void) => Promise<{ text: string; isError: boolean }>, kind = "verification", onprogress?: (n: number) => void, id = "search-1") =>

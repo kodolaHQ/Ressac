@@ -7,6 +7,7 @@ import {
   DevToolsBusy,
   ProfileDenied,
   SiteChanged,
+  type TabRead,
   type BrowserHistory,
   type MessageConsole,
   type TabInfo,
@@ -152,6 +153,8 @@ export class FakeBridge implements BrowserBridge {
   linkSequence?: PageLink[][];
   /** The next reads refused because the tab went to another site meanwhile (an engine redirect). */
   siteChanges = 0;
+  /** What the browser would add to a read of a tab at this address (status, blocks, structured data…). */
+  captures = new Map<string, Partial<TabRead>>();
   readPageInvisible?: (url: string, o: PageReadOptions) => Promise<ReadPage>;
   readHtmlInvisible?: (url: string, o: { localAddresses?: boolean; signal?: AbortSignal }) => Promise<{ url: string; html: string }>;
   /** Suspended reads in progress, by URL: `relacher` lets them finish. */
@@ -425,18 +428,19 @@ export class FakeBridge implements BrowserBridge {
     return this.tabs.filter((x) => !this.privateTabs.has(x.id)).map((x) => ({ ...x }));
   }
 
-  async readText(id: string) {
-    this.note("readText", id);
-    const o = this.find(id);
-    if (this.hanging.has(o.url)) await new Promise(() => {});
-    if (this.failing.has(o.url)) throw new Error("Page illisible");
+  async readText(id: string, o?: { capture?: boolean }) {
+    if (o) this.note("readText", id, o);
+    else this.note("readText", id);
+    const tab = this.find(id);
+    if (this.hanging.has(tab.url)) await new Promise(() => {});
+    if (this.failing.has(tab.url)) throw new Error("Page illisible");
     if (this.siteChanges > 0) {
       this.siteChanges--;
       throw new SiteChanged(id);
     }
     const seq = this.linkSequence;
     const links = seq?.length ? (seq.length > 1 ? seq.shift()! : seq[0]!) : [{ text: "Annonce", url: "https://exemple.fr/a" }];
-    return { text: `Texte de ${o.title} (${o.url})`, links };
+    return { text: `Texte de ${tab.title} (${tab.url})`, links, ...(o?.capture ? this.captures.get(tab.url) : {}) };
   }
 
   async openTab(url: string, space?: string) {

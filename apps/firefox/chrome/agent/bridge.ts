@@ -2,7 +2,7 @@ import { navigationOutsideSite, TabNotFound, PrivateTab, SiteChanged, type DevRi
 import type { BrowserState, WindowId, Tab, Band } from "../../shared/model";
 import { privateTab, WORKFLOW_PREFIX, AGENT_PROFILE } from "../../shared/model";
 import { ENGINES } from "../../core/url";
-import { boundLinks, policyChanges, tabInfos, activeTabOf, appTab, siteTab, originOf, SITE_PREFIX, resolveSpace } from "../../core/agent/bridge";
+import { boundCapture, boundLinks, policyChanges, tabInfos, activeTabOf, appTab, siteTab, originOf, SITE_PREFIX, resolveSpace } from "../../core/agent/bridge";
 import type { Handler } from "../../shared/rpc";
 import type { AgentApps } from "../store/apps";
 import type { DevTools } from "../store/devtools";
@@ -101,13 +101,14 @@ export function bridgeHandlers(
       throw e;
     });
   };
-  const getText = async (browser: any) => {
-    const r = await browser.browsingContext.currentWindowGlobal.getActor("WebAiOsPage").sendQuery("getText");
+  /** `capture`: also the blocks, reader text, structured data and response facts (the search reads only). */
+  const getText = async (browser: any, capture = false) => {
+    const r = await browser.browsingContext.currentWindowGlobal.getActor("WebAiOsPage").sendQuery("getText", { capture });
     // The child runs in a web process: its answer is not trusted.
     const text = String(r?.text ?? "").slice(0, TEXT_MAX);
     const selection = String(r?.selection ?? "").slice(0, TEXT_MAX);
     const links = boundLinks(r?.links);
-    return selection ? { text: text, selection, links } : { text: text, links };
+    return { text, ...(selection ? { selection } : {}), links, ...boundCapture(r) };
   };
   const snapshot = async (browser: any, win: Window) => {
     const bitmap = await browser.browsingContext.currentWindowGlobal.drawSnapshot(null, 1, "white");
@@ -183,7 +184,10 @@ export function bridgeHandlers(
     "search.close": ([id]: [string]) => void store.dispatch({ type: "closeTab", id }),
     // The band of the search tab: the window draws it (window/search-band.ts) from the tab's state.
     "search.band": ([id, band]: [string, Band | null]) => void store.dispatch({ type: "setAgentSearch", id, band: band && { ...band, text: band.text.slice(0, 300) } }),
-    readText: ([id]: [string]) => onSiteView(id, getText) ?? outsidePrivate(id, getText),
+    readText: ([id, o]: [string, { capture?: boolean }?]) => {
+      const read = (browser: any) => getText(browser, o?.capture === true);
+      return onSiteView(id, read) ?? outsidePrivate(id, read);
+    },
     capture: ([id]: [string]) => onSiteView(id, snapshot) ?? outsidePrivate(id, (browser) => snapshot(browser, windowOf(id).window)),
     // « L'agent veut lire l'onglet … » in the active window; refused with none to show it. The signal aborts when the
     // host goes: the card falls.

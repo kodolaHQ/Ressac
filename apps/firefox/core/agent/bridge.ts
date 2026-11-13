@@ -1,4 +1,4 @@
-import type { DevRight, PageLink, TabInfo, Zone } from "@webaios/kernel";
+import type { DevRight, PageBlock, PageLink, TabInfo, TabRead, Zone } from "@webaios/kernel";
 import { privateTab, type Decision, type PendingRequest, type Outcome, type WindowState, type BrowserState, type SpaceId, type WindowId, type Tab } from "../../shared/model";
 
 const info = (state: BrowserState, o: Tab): TabInfo => ({
@@ -213,4 +213,47 @@ export function boundLinks(raw: unknown): Required<PageLink>[] {
     .slice(0, LINKS_MAX)
     .map((l: any) => ({ text: String(l?.text ?? "").slice(0, 80), url: String(l?.url ?? ""), zone: (ZONES.has(l?.zone) ? l.zone : "other") as Zone }))
     .filter((l) => l.url.length <= LINK_URL_MAX && URL.canParse(l.url) && /^https?:$/.test(new URL(l.url).protocol));
+}
+
+const BLOCKS_MAX = 6_000;
+const BLOCK_TEXT_MAX = 5_000;
+const STRUCTURED_MAX = 50;
+/** One structured entry, serialized: a bigger one is dropped, not cut (a cut JSON is a wrong one). */
+const STRUCTURED_ENTRY_MAX = 50_000;
+const READER_MAX = 200_000;
+const REDIRECTS_MAX = 10;
+const int = (v: unknown, min: number, max: number) => (Number.isInteger(v) && (v as number) >= min && (v as number) <= max ? (v as number) : undefined);
+
+/** What a page read adds to the text and links (`TabRead`), from a web process: bounded, checked, wrong types dropped. */
+export function boundCapture(raw: unknown): Omit<TabRead, "text" | "selection" | "links"> {
+  const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const out: Omit<TabRead, "text" | "selection" | "links"> = {};
+  if (Array.isArray(r.blocks))
+    out.blocks = r.blocks.slice(0, BLOCKS_MAX).map((b: any): PageBlock => {
+      const row = int(b?.row, 0, 100_000);
+      return { text: String(b?.text ?? "").slice(0, BLOCK_TEXT_MAX), h: int(b?.h, 0, 6) ?? 0, zone: (ZONES.has(b?.zone) ? b.zone : "other") as Zone, ...(row === undefined ? {} : { row }) };
+    });
+  if (Array.isArray(r.structured))
+    out.structured = r.structured
+      .slice(0, STRUCTURED_MAX * 4)
+      .filter((x) => {
+        try {
+          return JSON.stringify(x).length <= STRUCTURED_ENTRY_MAX;
+        } catch {
+          return false;
+        }
+      })
+      .slice(0, STRUCTURED_MAX)
+      .map((x) => JSON.parse(JSON.stringify(x)));
+  if (typeof r.reader === "string") out.reader = r.reader.slice(0, READER_MAX);
+  const status = int(r.status, 100, 599);
+  if (status !== undefined) out.status = status;
+  if (Array.isArray(r.redirects))
+    out.redirects = r.redirects
+      .filter((u): u is string => typeof u === "string" && u.length <= LINK_URL_MAX && URL.canParse(u) && /^https?:$/.test(new URL(u).protocol))
+      .slice(0, REDIRECTS_MAX);
+  if (typeof r.contentType === "string") out.contentType = r.contentType.slice(0, 100);
+  const passwords = int(r.passwords, 0, 1000);
+  if (passwords !== undefined) out.passwords = passwords;
+  return out;
 }
