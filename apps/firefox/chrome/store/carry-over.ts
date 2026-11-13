@@ -109,16 +109,42 @@ async function oldProfile(o: Options, root: string, movedTo: (id: string) => str
   return null;
 }
 
+/** XPCOM's code for a profile locked by another running instance. */
+const ACCESS_DENIED = 0x80520015;
+
+export type CarryResult = "restart" | "blocked" | "data-blocked" | "profile-blocked" | "done";
+
 /**
- * Runs before anything creates the data folder. "restart": restart now, start nothing else. "blocked": WebAiOs is
- * running; "data-blocked": ~/WebAiOs could not be moved (say which, then quit: the state stays pending and the next
- * launch retries). "done": a normal start. Throws on a later failure (the data already moved: the next launch takes
- * the profile again).
+ * Something to carry and not carried yet: a carry-over begun (state pending), or WebAiOs's profile root with no
+ * ~/Ressac. Measured before anything moves: once it says so, Ressac never starts normally until the carry-over ends.
  */
-export async function carryOver(o: Options): Promise<"restart" | "blocked" | "data-blocked" | "done"> {
+export async function unfinished(o: Options): Promise<boolean> {
+  const state = await readState(o);
+  return state?.state === "pending" || (!state && (await exists(`${o.appSupport}/${LEGACY.profileRoot}`)) && !(await exists(`${o.home}/Ressac`)));
+}
+
+/**
+ * Runs before anything creates the data folder. "restart": restart now, start nothing else. Each blocking result
+ * means: say why, then quit (the next launch goes on from the state). "blocked": WebAiOs is running. "data-blocked":
+ * ~/WebAiOs could not be moved. "profile-blocked": any other failure while there is something to carry. "done": a
+ * normal start. Throws only from the launch guard (before anything is read).
+ */
+export async function carryOver(o: Options): Promise<CarryResult> {
   // Line 1.
   if (guarded(o)) return "done";
   const state = await readState(o);
+  const carry = await unfinished(o);
+  try {
+    return await carryOverSteps(o, state);
+  } catch (e) {
+    console.error("[carry-over] failed:", e);
+    if (!carry) return "done";
+    if (!state) await writeState(o, { state: "pending", profile: "" }).catch(() => {});
+    return "profile-blocked";
+  }
+}
+
+async function carryOverSteps(o: Options, state: State | null): Promise<CarryResult> {
   // Line 2: the app moved to another path is a new install, given a new empty profile: back to the carried one.
   if (state?.state === "done") {
     if (!o.profiles.isFirstRun || !(await exists(state.profile))) return "done";
@@ -133,39 +159,64 @@ export async function carryOver(o: Options): Promise<"restart" | "blocked" | "da
   const newData = `${o.home}/Ressac`;
   // Line 3. Line 9: a pending state goes on from line 4.
   if (!state && (!(await exists(root)) || (await exists(newData)))) return "done";
-  // Line 4.
-  const movedTo = (id: string) => `${o.appSupport}/Ressac/Profiles/${leaf(id)}`;
-  const chosen = await oldProfile(o, root, movedTo, !!state);
-  if (!chosen) return "done";
-  const target = movedTo(chosen.id);
-  // Another folder of that name already there: never moved into (IOUtils.move would put it inside).
-  if (chosen.at !== target && (await exists(target))) return "done";
-  // Line 5: WebAiOs running holds its profile's lock. The registration is only a probe, in memory (nothing flushed).
-  const probe = o.profiles.createProfile(chosen.at, NAME, SOURCE);
-  // A profile of that name that is not ours: left alone.
-  if (probe.rootDir.path !== chosen.at) return "done";
-  try {
-    probe.lock({}).unlock();
-  } catch {
-    probe.remove(false);
-    return "blocked";
-  }
-  probe.remove(false);
-  // Line 6. On a retry (line 9) only the data folder's rename, if it failed last time.
-  const moveData = (await exists(oldData)) && !(await exists(newData));
-  try {
-    if (!state) await writeState(o, { state: "pending", profile: chosen.id });
-    if (moveData) await fs.rename(oldData, newData);
-  } catch (e) {
-    // Starting anyway would create an empty ~/Ressac: the spaces and tabs parted from the profile for good.
-    console.error("[carry-over] data folder not moved:", e);
-    return "data-blocked";
-  }
-  if (!state || moveData) {
+  /** Line 6's data folder: moved when it is there and ~/Ressac is not (a retry too). False: it could not be. */
+  const moveData = async (): Promise<boolean> => {
+    if (!(await exists(oldData)) || (await exists(newData))) return true;
+    try {
+      await fs.rename(oldData, newData);
+      return true;
+    } catch (e) {
+      // Starting anyway would create an empty ~/Ressac: the spaces and tabs parted from the profile for good.
+      console.error("[carry-over] data folder not moved:", e);
+      return false;
+    }
+  };
+  /** The rest of line 6, once the data lives in ~/Ressac only (on a retry too: a previous launch may have died here). */
+  const tidyData = async () => {
+    if (await exists(oldData)) return;
     const workspace = `${newData}/workspace`;
     if ((await exists(`${workspace}/.webaios`)) && !(await exists(`${workspace}/.ressac`))) await fs.rename(`${workspace}/.webaios`, `${workspace}/.ressac`);
     for (const cache of CACHES) await fs.rm(`${newData}/${cache}`, { recursive: true, force: true }).catch((e) => console.warn("[carry-over] cache not erased:", e));
+  };
+  // Line 4.
+  const movedTo = (id: string) => `${o.appSupport}/Ressac/Profiles/${leaf(id)}`;
+  const chosen = await oldProfile(o, root, movedTo, !!state);
+  // No profile to take: the data folder alone is carried.
+  if (!chosen) {
+    if (!(await moveData())) return "data-blocked";
+    await tidyData();
+    if (state) await writeState(o, { state: "done", profile: "" });
+    return "done";
   }
+  const target = movedTo(chosen.id);
+  // A previous launch adopted it and could not write "done": Ressac already runs on it.
+  if (state && o.profiles.currentProfile?.rootDir.path === target) {
+    await tidyData();
+    await writeState(o, { state: "done", profile: target });
+    return "done";
+  }
+  // Another folder of that name already there: never moved into (IOUtils.move would put it inside).
+  if (chosen.at !== target && (await exists(target))) throw new Error(`${target} already exists`);
+  // Line 5: WebAiOs running holds its profile's lock. The registration is only a probe, in memory (nothing flushed).
+  const probe = o.profiles.createProfile(chosen.at, NAME, SOURCE);
+  if (probe.rootDir.path !== chosen.at) throw new Error(`a profile named ${NAME} is at ${probe.rootDir.path}`);
+  try {
+    probe.lock({}).unlock();
+  } catch (e) {
+    probe.remove(false);
+    if ((e as { result?: number })?.result === ACCESS_DENIED) return "blocked";
+    throw e;
+  }
+  probe.remove(false);
+  // Line 6.
+  try {
+    if (!state) await writeState(o, { state: "pending", profile: chosen.id });
+  } catch (e) {
+    console.error("[carry-over] state not written:", e);
+    return "data-blocked";
+  }
+  if (!(await moveData())) return "data-blocked";
+  await tidyData();
   // Line 7.
   if (chosen.at !== target) {
     await fs.mkdir(`${o.appSupport}/Ressac/Profiles`, { recursive: true });

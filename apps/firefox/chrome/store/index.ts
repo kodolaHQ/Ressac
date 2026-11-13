@@ -20,7 +20,7 @@ import { createDevTools, type DevTools } from "./devtools";
 import { createDownloads, type DownloadsList } from "./downloads";
 import { createHistory, type History } from "./history";
 import { createBrowserImporter } from "./import/importer";
-import { carryOver, tellOnce, type ProfileService } from "./carry-over";
+import { carryOver, tellOnce, unfinished, type CarryResult, type ProfileService } from "./carry-over";
 import type { BrowserImportApi } from "../../shared/api";
 import { searchBookmarks } from "./bookmarks";
 import { registerHomeNotifications } from "./notifications";
@@ -179,10 +179,16 @@ async function start(): Promise<RessacStore> {
   const telemetry = installTelemetry();
   // Before anything creates the data folder: a machine that had WebAiOs keeps its data folder and its profile.
   const carry = carryOverOptions();
-  const carried = await carryOver(carry).catch((e) => (console.error("[carry-over] failed:", e), "done" as const));
+  // A throw (from the launch guard only) starts normally only when there is nothing to carry.
+  const carried: CarryResult = await carryOver(carry).catch(async (e) => (console.error("[carry-over] failed:", e), (await unfinished(carry)) ? "profile-blocked" : "done"));
   if (carried !== "done") {
-    if (carried === "blocked") Services.prompt.alert(null, "Ressac", "Quittez WebAiOs, puis relancez Ressac.");
-    if (carried === "data-blocked") Services.prompt.alert(null, "Ressac", "Ressac n'a pas pu reprendre vos données WebAiOs (dossier WebAiOs de votre dossier personnel). Fermez les applications qui l'utilisent, puis relancez Ressac.");
+    const why = {
+      blocked: "Quittez WebAiOs, puis relancez Ressac.",
+      "data-blocked": "Ressac n'a pas pu reprendre vos données WebAiOs (dossier WebAiOs de votre dossier personnel). Fermez les applications qui l'utilisent, puis relancez Ressac.",
+      "profile-blocked": "Ressac n'a pas pu terminer la reprise de vos données WebAiOs. Relancez Ressac.",
+      restart: null,
+    }[carried];
+    if (why) Services.prompt.alert(null, "Ressac", why);
     Services.startup.quit(Ci.nsIAppStartup.eAttemptQuit | (carried === "restart" ? Ci.nsIAppStartup.eRestart : 0));
     return new Promise<never>(() => {});
   }

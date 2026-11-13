@@ -15,15 +15,16 @@ afterEach(async () => {
   for (const dir of locked.splice(0)) await chmod(dir, 0o755);
 });
 
-function fakeProfiles(o: { current?: boolean; firstRun?: boolean; inUse?: string[] } = {}) {
+function fakeProfiles(o: { current?: boolean | string; firstRun?: boolean; inUse?: string[]; lockFails?: string[]; createFails?: boolean; flushFails?: boolean } = {}) {
   const calls: unknown[][] = [];
   const byName = new Map<string, Profile>();
   const service: ProfileService & { calls: unknown[][] } = {
     calls,
-    currentProfile: o.current === false ? null : ({ rootDir: { path: "/fresh" } } as Profile),
+    currentProfile: o.current === false ? null : ({ rootDir: { path: typeof o.current === "string" ? o.current : "/fresh" } } as Profile),
     isFirstRun: o.firstRun ?? true,
     createProfile(...args: [string, string, string]) {
       calls.push(["createProfile", ...args]);
+      if (o.createFails) throw new Error("NS_ERROR_FILE_ACCESS_DENIED creating times.json");
       const [dir, name] = args;
       const known = byName.get(name);
       if (known) return known;
@@ -33,6 +34,7 @@ function fakeProfiles(o: { current?: boolean; firstRun?: boolean; inUse?: string
         lock() {
           calls.push(["lock", dir]);
           if (o.inUse?.includes(dir)) throw Object.assign(new Error("NS_ERROR_FILE_ACCESS_DENIED"), { result: 0x80520015 });
+          if (o.lockFails?.includes(dir)) throw Object.assign(new Error("NS_ERROR_FAILURE"), { result: 0x80004005 });
           return { unlock: () => void calls.push(["unlock", dir]) };
         },
         remove(files) {
@@ -51,6 +53,7 @@ function fakeProfiles(o: { current?: boolean; firstRun?: boolean; inUse?: string
     },
     flush() {
       calls.push(["flush"]);
+      if (o.flushFails) throw new Error("NS_ERROR_DATABASE_CHANGED");
     },
   };
   return service;
@@ -196,13 +199,37 @@ describe("carryOver", () => {
     expect(profiles.calls[0]![1]).toBe(join(m.root, "Profiles", "b.default"));
   });
 
-  it("no profile to take: a normal start, nothing touched", async () => {
+  it("no profile to take: the data folder alone is carried, a normal start", async () => {
     const m = await machine({ profiles: { "n.default": { platform: "/Applications/Nightly.app/Contents/Resources" } }, installs: "[AAAA]\nDefault=Profiles/n.default\n" });
     const profiles = fakeProfiles();
     expect(await carryOver({ ...m, profiles, env: fakeEnv() })).toBe("done");
     expect(profiles.calls).toEqual([]);
-    expect(await exists(join(m.home, "WebAiOs"))).toBe(true);
-    expect(await exists(join(m.ressac, "carried.json"))).toBe(false);
+    expect(await exists(join(m.home, "WebAiOs"))).toBe(false);
+    expect(await exists(join(m.home, "Ressac", "workspace", ".ressac", "mcp.json"))).toBe(true);
+    expect(await exists(join(m.root, "Profiles", "n.default"))).toBe(true);
+  });
+
+  // M3: absolute paths.
+  it("an absolute profile path (IsRelative=0) is taken where it is", async () => {
+    const m = await machine({ profiles: {} });
+    const abs = join(m.home, "..", "elsewhere", "z.default");
+    await write(join(abs, "compatibility.ini"), "[Compatibility]\nLastPlatformDir=/Applications/WebAiOs.app/Contents/Resources\n");
+    await write(join(m.root, "profiles.ini"), `[Profile0]\nName=z\nIsRelative=0\nPath=${abs}\n`);
+    const profiles = fakeProfiles();
+    expect(await carryOver({ ...m, profiles, env: fakeEnv() })).toBe("restart");
+    expect(profiles.calls[0]![1]).toBe(abs);
+    expect(await exists(join(m.ressac, "Profiles", "z.default"))).toBe(true);
+  });
+
+  it("an absolute Default in installs.ini is taken where it is", async () => {
+    const m = await machine({ profiles: {} });
+    const abs = join(m.home, "..", "elsewhere", "y.default");
+    await write(join(abs, "prefs.js"), "");
+    await write(join(m.root, "profiles.ini"), `[Profile0]\nName=y\nIsRelative=0\nPath=${abs}\n`);
+    await write(join(m.root, "installs.ini"), `[AAAA]\nDefault=${abs}\nLocked=1\n`);
+    const profiles = fakeProfiles();
+    expect(await carryOver({ ...m, profiles, env: fakeEnv() })).toBe("restart");
+    expect(profiles.calls[0]![1]).toBe(abs);
   });
 
   // Line 5.
@@ -311,12 +338,80 @@ describe("carryOver", () => {
     expect(await state(m.appSupport)).toEqual({ state: "done", profile: join(m.ressac, "Profiles", "a.default-webaios") });
   });
 
-  it("state pending, only the new data folder there: left alone, the profile is taken", async () => {
+  it("state pending, the data folder already moved: the rest of line 6 is finished", async () => {
     const m = await machine({ data: false });
     await write(join(m.home, "Ressac", "workspace", ".webaios", "x"), "");
+    await write(join(m.home, "Ressac", "webaios-sites", "copy.html"), "");
+    await writeState(m.appSupport, { state: "pending", profile: join(m.root, "Profiles", "a.default-webaios") });
+    expect(await carryOver({ ...m, profiles: fakeProfiles(), env: fakeEnv() })).toBe("restart");
+    expect(await exists(join(m.home, "Ressac", "workspace", ".ressac", "x"))).toBe(true);
+    expect(await readdir(join(m.home, "Ressac"))).toEqual(["workspace"]);
+  });
+
+  it("state pending, .ressac already there: .webaios is not touched", async () => {
+    const m = await machine({ data: false });
+    await write(join(m.home, "Ressac", "workspace", ".webaios", "x"), "");
+    await write(join(m.home, "Ressac", "workspace", ".ressac", "y"), "");
     await writeState(m.appSupport, { state: "pending", profile: join(m.root, "Profiles", "a.default-webaios") });
     expect(await carryOver({ ...m, profiles: fakeProfiles(), env: fakeEnv() })).toBe("restart");
     expect(await exists(join(m.home, "Ressac", "workspace", ".webaios", "x"))).toBe(true);
+    expect(await readdir(join(m.home, "Ressac", "workspace", ".ressac"))).toEqual(["y"]);
+  });
+
+  // C1.
+  it("a first attempt that throws stops Ressac: nothing moved, no ~/Ressac; the next launch carries over", async () => {
+    const m = await machine();
+    expect(await carryOver({ ...m, profiles: fakeProfiles({ createFails: true }), env: fakeEnv() })).toBe("profile-blocked");
+    expect(await exists(join(m.home, "Ressac"))).toBe(false);
+    expect(await exists(join(m.home, "WebAiOs", "session.json"))).toBe(true);
+    expect(await exists(join(m.root, "Profiles", "a.default-webaios"))).toBe(true);
+    expect(await state(m.appSupport)).toMatchObject({ state: "pending" });
+    expect(await carryOver({ ...m, profiles: fakeProfiles(), env: fakeEnv() })).toBe("restart");
+    expect(await exists(join(m.home, "Ressac", "session.json"))).toBe(true);
+    expect(await state(m.appSupport)).toEqual({ state: "done", profile: join(m.ressac, "Profiles", "a.default-webaios") });
+  });
+
+  it("the target profile folder taken by another: blocked, nothing moved", async () => {
+    const m = await machine();
+    await mkdir(join(m.ressac, "Profiles", "a.default-webaios"));
+    expect(await carryOver({ ...m, profiles: fakeProfiles(), env: fakeEnv() })).toBe("profile-blocked");
+    expect(await exists(join(m.home, "WebAiOs"))).toBe(true);
+    expect(await exists(join(m.home, "Ressac"))).toBe(false);
+    expect(await exists(join(m.root, "Profiles", "a.default-webaios"))).toBe(true);
+  });
+
+  // I2.
+  it("a flush that fails after the data moved stops Ressac, state pending; the next launch adopts", async () => {
+    const m = await machine();
+    expect(await carryOver({ ...m, profiles: fakeProfiles({ flushFails: true }), env: fakeEnv() })).toBe("profile-blocked");
+    expect(await exists(join(m.home, "Ressac", "session.json"))).toBe(true);
+    expect(await state(m.appSupport)).toMatchObject({ state: "pending" });
+    const env = fakeEnv();
+    expect(await carryOver({ ...m, profiles: fakeProfiles(), env })).toBe("restart");
+    expect(env.values.XRE_PROFILE_PATH).toBe(join(m.ressac, "Profiles", "a.default-webaios"));
+    expect(await state(m.appSupport)).toEqual({ state: "done", profile: join(m.ressac, "Profiles", "a.default-webaios") });
+  });
+
+  // M1.
+  it("a lock error other than access denied is not « WebAiOs running »", async () => {
+    const m = await machine();
+    const old = join(m.root, "Profiles", "a.default-webaios");
+    const profiles = fakeProfiles({ lockFails: [old] });
+    expect(await carryOver({ ...m, profiles, env: fakeEnv() })).toBe("profile-blocked");
+    expect(profiles.calls).toContainEqual(["remove", old, false]);
+    expect(await exists(join(m.home, "Ressac"))).toBe(false);
+  });
+
+  // M2.
+  it("state pending, Ressac already running on the adopted profile: state done, no probe", async () => {
+    const m = await machine({ data: false });
+    const moved = join(m.ressac, "Profiles", "a.default-webaios");
+    await import("node:fs/promises").then((fs) => fs.rename(join(m.root, "Profiles", "a.default-webaios"), moved));
+    await writeState(m.appSupport, { state: "pending", profile: join(m.root, "Profiles", "a.default-webaios") });
+    const profiles = fakeProfiles({ current: moved });
+    expect(await carryOver({ ...m, profiles, env: fakeEnv() })).toBe("done");
+    expect(profiles.calls).toEqual([]);
+    expect(await state(m.appSupport)).toEqual({ state: "done", profile: moved });
   });
 
   it("state pending, the profile already moved last time: adopted where it is", async () => {
