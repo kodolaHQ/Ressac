@@ -156,9 +156,6 @@ function carryOverOptions() {
     get currentProfile() {
       return service.currentProfile;
     },
-    get isFirstRun() {
-      return service.isFirstRun;
-    },
     get defaultProfile() {
       return service.defaultProfile;
     },
@@ -198,7 +195,7 @@ async function start(): Promise<RessacStore> {
     const why = {
       blocked: "Quittez WebAiOs, puis relancez Ressac.",
       "data-blocked": "Ressac n'a pas pu reprendre vos données WebAiOs (dossier WebAiOs de votre dossier personnel). Fermez les applications qui l'utilisent, puis relancez Ressac.",
-      "profile-blocked": "Ressac n'a pas pu terminer la reprise de vos données WebAiOs. Relancez Ressac.",
+      "profile-blocked": "Ressac n'a pas pu terminer la reprise de vos données WebAiOs. Vos données sont intactes. Relancez Ressac ; si ce message revient, signalez-le à la personne qui vous a transmis Ressac.",
       restart: null,
     }[carried];
     if (why) Services.prompt.alert(null, "Ressac", why);

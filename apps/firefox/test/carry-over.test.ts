@@ -19,7 +19,7 @@ afterEach(async () => {
  * Like the real service: the running profile is registered as `default-ressac` (Firefox names a new install's profile
  * `default-<update channel>`), and an existing name returns its profile whatever the folder passed.
  */
-function fakeProfiles(o: { current?: boolean | string; registered?: Record<string, string>; firstRun?: boolean; inUse?: string[]; lockFails?: string[]; createFails?: boolean; flushFails?: boolean } = {}) {
+function fakeProfiles(o: { current?: boolean | string; registered?: Record<string, string>; inUse?: string[]; lockFails?: string[]; createFails?: boolean; flushFails?: boolean } = {}) {
   const calls: unknown[][] = [];
   const byName = new Map<string, Profile>();
   const register = (dir: string, name: string): Profile => {
@@ -45,7 +45,6 @@ function fakeProfiles(o: { current?: boolean | string; registered?: Record<strin
   const service: ProfileService & { calls: unknown[][] } = {
     calls,
     currentProfile: current,
-    isFirstRun: o.firstRun ?? true,
     createProfile(...args: [string, string, string]) {
       calls.push(["createProfile", ...args]);
       if (o.createFails) throw new Error("NS_ERROR_FILE_ACCESS_DENIED creating times.json");
@@ -117,33 +116,66 @@ describe("carryOver", () => {
     expect(await exists(join(m.ressac, "carried.json"))).toBe(false);
   });
 
-  // Line 2.
-  it("a moved app (first run, state done) adopts the carried profile again and restarts", async () => {
+  // Line 2: whatever isFirstRun says (Firefox may already have flushed its fresh profile as this install's default).
+  it("a moved app (state done, another profile running) adopts the carried profile again and restarts", async () => {
     const m = await machine();
     const folder = join(m.ressac, "Profiles", "x.default-release");
     await writeState(m.appSupport, { state: "done", profile: folder });
-    const profiles = fakeProfiles({ firstRun: true });
+    const profiles = fakeProfiles();
     const env = fakeEnv();
     expect(await carryOver({ ...m, profiles, env })).toBe("restart");
     expect(profiles.calls).toEqual([["createProfile", folder, "webaios-carried", "carry-over"], ["default", folder], ["flush"]]);
-    expect(env.values).toEqual({ XRE_PROFILE_PATH: folder, XRE_PROFILE_LOCAL_PATH: "/caches/x.default-release" });
+    expect(env.values).toEqual({ XRE_PROFILE_PATH: folder, XRE_PROFILE_LOCAL_PATH: "/caches/x.default-release", RESSAC_CARRIED_RESTART: "1" });
     expect(await exists(join(m.home, "WebAiOs"))).toBe(true);
   });
 
-  it("state done, not a first run: a normal start", async () => {
+  it("state done, running on the carried profile: a normal start, no profile-service write", async () => {
+    const m = await machine();
+    const folder = join(m.ressac, "Profiles", "x.default-release");
+    await writeState(m.appSupport, { state: "done", profile: folder });
+    const profiles = fakeProfiles({ current: folder });
+    const env = fakeEnv();
+    expect(await carryOver({ ...m, profiles, env })).toBe("done");
+    expect(profiles.calls).toEqual([]);
+    expect(env.values).toEqual({});
+  });
+
+  it("state done, restarted for it and still on another profile: blocked, never a second restart", async () => {
     const m = await machine();
     await writeState(m.appSupport, { state: "done", profile: join(m.ressac, "Profiles", "x.default-release") });
-    const profiles = fakeProfiles({ firstRun: false });
+    const profiles = fakeProfiles();
+    const env = fakeEnv({ RESSAC_CARRIED_RESTART: "1" });
+    expect(await carryOver({ ...m, profiles, env })).toBe("profile-blocked");
+    expect(profiles.calls).toEqual([]);
+    expect(env.values).toEqual({ RESSAC_CARRIED_RESTART: "1" });
+  });
+
+  it("state done, the recorded folder gone: a normal start", async () => {
+    const m = await machine();
+    await writeState(m.appSupport, { state: "done", profile: join(m.ressac, "Profiles", "gone") });
+    const profiles = fakeProfiles();
     expect(await carryOver({ ...m, profiles, env: fakeEnv() })).toBe("done");
     expect(profiles.calls).toEqual([]);
   });
 
-  it("state done, first run, the recorded folder gone: a normal start", async () => {
+  it("state done after a data-only carry-over: nothing to point back at, a normal start", async () => {
     const m = await machine();
-    await writeState(m.appSupport, { state: "done", profile: join(m.ressac, "Profiles", "gone") });
-    const profiles = fakeProfiles({ firstRun: true });
+    await writeState(m.appSupport, { state: "done", profile: "" });
+    const profiles = fakeProfiles();
     expect(await carryOver({ ...m, profiles, env: fakeEnv() })).toBe("done");
     expect(profiles.calls).toEqual([]);
+  });
+
+  it.each([
+    ["createProfile throws", { createFails: true }],
+    ["flush throws", { flushFails: true }],
+    ["webaios-carried is registered on another folder", { registered: { "webaios-carried": "/elsewhere" } }],
+  ])("state done, another profile running, %s: blocked, no restart", async (_, p) => {
+    const m = await machine();
+    await writeState(m.appSupport, { state: "done", profile: join(m.ressac, "Profiles", "x.default-release") });
+    const env = fakeEnv();
+    expect(await carryOver({ ...m, profiles: fakeProfiles(p), env })).toBe("profile-blocked");
+    expect(env.values.XRE_PROFILE_PATH).toBeUndefined();
   });
 
   // Line 3.
@@ -365,6 +397,17 @@ describe("carryOver", () => {
     expect(await readdir(join(m.home, "Ressac", "workspace", ".ressac"))).toEqual(["y"]);
   });
 
+  // M1 of the final review.
+  it("state pending, the data folder already moved, a fresh ~/WebAiOs back: the rest of line 6 still runs on ~/Ressac", async () => {
+    const m = await machine({ data: false });
+    await write(join(m.home, "Ressac", "workspace", ".webaios", "x"), "");
+    await write(join(m.home, "WebAiOs", "session.json"), "{}");
+    await writeState(m.appSupport, { state: "pending", profile: join(m.root, "Profiles", "a.default-webaios") });
+    expect(await carryOver({ ...m, profiles: fakeProfiles(), env: fakeEnv() })).toBe("restart");
+    expect(await exists(join(m.home, "Ressac", "workspace", ".ressac", "x"))).toBe(true);
+    expect(await exists(join(m.home, "WebAiOs", "session.json"))).toBe(true);
+  });
+
   // C1.
   it("a first attempt that throws stops Ressac: nothing moved, no ~/Ressac; the next launch carries over", async () => {
     const m = await machine();
@@ -504,7 +547,7 @@ describe("carryOver", () => {
     const o = { ...m, profiles: fakeProfiles(), env: fakeEnv() };
     expect(await carryOver(o)).toBe("done");
     expect(await exists(join(m.ressac, "carried.json"))).toBe(false);
-    expect(await tellOnce({ ...o, profiles: fakeProfiles({ firstRun: false }) })).toBe(false);
+    expect(await tellOnce({ ...o, profiles: fakeProfiles() })).toBe(false);
   });
 
   it("a pending state left with nothing carried ends without an announcement", async () => {
@@ -512,7 +555,7 @@ describe("carryOver", () => {
     await writeState(m.appSupport, { state: "pending", profile: "" });
     const o = { ...m, profiles: fakeProfiles(), env: fakeEnv() };
     expect(await carryOver(o)).toBe("done");
-    expect(await tellOnce({ ...o, profiles: fakeProfiles({ firstRun: false }) })).toBe(false);
+    expect(await tellOnce({ ...o, profiles: fakeProfiles() })).toBe(false);
   });
 
   it("no profile to take: the state is pending before the data folder moves (a crash there is finished next launch)", async () => {
@@ -545,7 +588,7 @@ describe("tellOnce", () => {
   it("tells once after a carry-over", async () => {
     const m = await machine();
     await writeState(m.appSupport, { state: "done", profile: "/p" });
-    const o = { ...m, profiles: fakeProfiles({ firstRun: false }), env: fakeEnv() };
+    const o = { ...m, profiles: fakeProfiles(), env: fakeEnv() };
     expect(await tellOnce(o)).toBe(true);
     expect(await tellOnce(o)).toBe(false);
     expect(await state(m.appSupport)).toEqual({ state: "done", profile: "/p", told: true });

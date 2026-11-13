@@ -43,7 +43,7 @@ export function removeContainer(profile: ProfileId): void {
 /** userContextId of site app `id`'s private container (`userContextIdInternal.webaios-site-<id>`), created on first use. */
 export const siteContainer = (id: string): number => containerFor(`site-${id}`);
 
-/** Is this a private container whose internal name starts with `ressac-<prefix>`? */
+/** Is this a private container whose internal name starts with `userContextIdInternal.webaios-<prefix>` (the stored format kept across the rename)? */
 function hasPrefix(userContextId: number, prefix: string): boolean {
   if (!userContextId) return false;
   ContextualIdentityService.ensureDataReady();

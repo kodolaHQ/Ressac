@@ -30,6 +30,8 @@ const NAME = "webaios-carried";
 /** The in-use test's registration: never mistaken for the adopted profile. */
 const PROBE = "webaios-carried-probe";
 const SOURCE = "carry-over";
+/** Set before line 2's restart: its presence means that restart already happened. */
+const RESTARTED = "RESSAC_CARRIED_RESTART";
 
 /** The parts of nsIToolkitProfile used. */
 export interface Profile {
@@ -43,7 +45,6 @@ export interface Profile {
 /** The parts of nsIToolkitProfileService used; `createProfile` takes a path (the caller makes the nsIFile). */
 export interface ProfileService {
   readonly currentProfile: Profile | null;
-  readonly isFirstRun: boolean;
   /** Returns the profile already registered under `name`, if any. */
   createProfile(rootDir: string, name: string, source: string): Profile;
   defaultProfile: Profile | null;
@@ -168,14 +169,24 @@ export async function carryOver(o: Options): Promise<CarryResult> {
 }
 
 async function carryOverSteps(o: Options, state: State | null): Promise<CarryResult> {
-  // Line 2: the app moved to another path is a new install, given a new empty profile: back to the carried one.
+  // Line 2: the app moved to another path is a new install, bound to a new empty profile (Firefox may already have
+  // flushed it as this install's default, so isFirstRun is no guide): back to the carried one.
   if (state?.state === "done") {
-    if (!o.profiles.isFirstRun || !(await exists(state.profile))) return "done";
-    const carried = o.profiles.createProfile(state.profile, NAME, SOURCE);
-    if (carried.rootDir.path !== state.profile) return "done";
-    o.profiles.defaultProfile = carried;
-    o.profiles.flush();
-    return restart(o, carried);
+    if (!state.profile || o.profiles.currentProfile!.rootDir.path === state.profile || !(await exists(state.profile))) return "done";
+    // Restarted for this and still elsewhere: never a second restart.
+    if (o.env.get(RESTARTED)) return "profile-blocked";
+    try {
+      const carried = o.profiles.createProfile(state.profile, NAME, SOURCE);
+      if (carried.rootDir.path !== state.profile) throw new Error(`a profile named ${NAME} is at ${carried.rootDir.path}`);
+      o.profiles.defaultProfile = carried;
+      o.profiles.flush();
+      // Inherited by the restarted process like XRE_PROFILE_PATH (MacLaunchHelper passes the live environment).
+      o.env.set(RESTARTED, "1");
+      return restart(o, carried);
+    } catch (e) {
+      console.error("[carry-over] carried profile not restored:", e);
+      return "profile-blocked";
+    }
   }
   const root = `${o.appSupport}/${LEGACY.profileRoot}`;
   const oldData = `${o.home}/${LEGACY.dataDir}`;
@@ -196,7 +207,7 @@ async function carryOverSteps(o: Options, state: State | null): Promise<CarryRes
   };
   /** The rest of line 6, once the data lives in ~/Ressac only (on a retry too: a previous launch may have died here). */
   const tidyData = async () => {
-    if (await exists(oldData)) return;
+    if (!(await exists(newData))) return;
     const workspace = `${newData}/workspace`;
     const old = `${workspace}/${LEGACY.workspaceDir}`;
     if ((await exists(old)) && !(await exists(`${workspace}/.ressac`))) await fs.rename(old, `${workspace}/.ressac`);
