@@ -20,7 +20,7 @@ import { STOP_TEXT, CLOSED_TEXT, URL_MAX, type SearchSessions, type Gesture } fr
 import type { Watcher } from "../search/watcher.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import type { ServerNotification, ServerRequest } from "@modelcontextprotocol/sdk/types.js";
-import { TabNotFound, PrivateTab, PRIVATE_TEXT, type TabInfo, type BrowserDevTools, type BrowserBridge, type HistoryResult } from "./bridge.js";
+import { TabNotFound, PrivateTab, SiteChanged, PRIVATE_TEXT, type TabInfo, type BrowserDevTools, type BrowserBridge, type HistoryResult } from "./bridge.js";
 
 export const UNREAD_ADDRESS_TEXT = "Adresse non lue dans cette recherche : tu ne peux suivre que les liens des pages lues ici.";
 /** While the user has the search tab (a hand_over or a watcher pause), the agent gets nothing from it. */
@@ -410,8 +410,16 @@ function createToolsServer(
       let emptySince = 0;
       for (;;) {
         if (sessions.handing(o.id)) return HANDING_TEXT;
-        const read = await working(o.id, () => bridge.readText(o.id));
+        // The engine may still be redirecting (its results page, a result link): that read gave nothing, read again.
+        const read = await working(o.id, () => bridge.readText(o.id)).catch((e) => {
+          if (e instanceof SiteChanged && Date.now() < end) return null;
+          throw e;
+        });
         if (!sessions.owns(o.id)) return sessions.takeStop(key, o.id) ? STOP_TEXT : CLOSED_TEXT;
+        if (!read) {
+          await new Promise((ok) => setTimeout(ok, searching!.settleMs));
+          continue;
+        }
         // The user took the page during the read: what it gave is theirs.
         if (sessions.handing(o.id)) return HANDING_TEXT;
         const n = read.links?.length ?? 0;

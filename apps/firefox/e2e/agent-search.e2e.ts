@@ -20,6 +20,16 @@ beforeAll(async () => {
           res.end("<title>Longue</title><p>Texte très tardif</p>");
         }, 5000);
       },
+      // A results page whose link goes through an engine redirect on another origin (DuckDuckGo's /l/?uddg=).
+      "/results-l.html": (_req, res) => {
+        const target = encodeURIComponent(`${server.url}/a.html`);
+        res.setHeader("content-type", "text/html; charset=utf-8");
+        res.end(`<title>Résultats</title><a href="${server.url.replace("127.0.0.1", "localhost")}/l/?uddg=${target}">Annonce</a>`);
+      },
+      "/l/": (_req, res) => {
+        res.setHeader("content-type", "text/html; charset=utf-8");
+        res.end(`<title>…</title><script>setTimeout(() => location.replace(new URLSearchParams(location.search).get("uddg")), 300)</script>`);
+      },
       "/lent.html": (_req, res) => {
         setTimeout(() => {
           res.setHeader("content-type", "text/html; charset=utf-8");
@@ -141,6 +151,27 @@ it("late results are returned", async () => {
     if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
   const r = (await callTool(w.dataDir, "search_web", { query: "x", goal: "but" })).text;
   expect(r).toContain(`Lien — ${server.url}/lien.html`);
+});
+
+it("the engine redirecting to another origin: search_web, then read_tab right after a redirect link, read the landed page", async () => {
+  await w.close();
+  const local = server.url.replace("127.0.0.1", "localhost");
+  w = await launchWebAiOs({ env: { WEBAIOS_MEMORY_LOOP: "1", WEBAIOS_TEST_SEARCH_URL: `${local}/redirige?vers=${server.url}/results-l.html?q=%s` } });
+  m = w.marionette;
+  await m.setContext("chrome");
+  await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+  const config = join(w.dataDir, "workspace", ".webaios", "mcp.json");
+  for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
+    if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
+  const r = (await callTool(w.dataDir, "search_web", { query: "x", goal: "but" })).text;
+  expect(r).not.toContain("changé de site");
+  const link = `${local}/l/?uddg=${encodeURIComponent(`${server.url}/a.html`)}`;
+  expect(r).toContain(`Annonce — ${link}`);
+  const id = idOf(r);
+  await callTool(w.dataDir, "navigate", { id, url: link });
+  const read = (await callTool(w.dataDir, "read_tab", { id, links: true })).text;
+  expect(read).not.toContain("changé de site");
+  expect(read).toContain("Page A");
 });
 
 it("read_pages returns both pages and leaves no extra tab", async () => {
