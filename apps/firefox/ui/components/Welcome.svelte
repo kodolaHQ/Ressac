@@ -168,7 +168,13 @@
           {@render actions("Continuer", true)}
         {:else if step.page === 5}
           <h2>L'IA locale</h2>
-          <p>Deux petits modèles tournent sur votre Mac, avec Ollama, le logiciel libre qui les fait fonctionner. L'un trie ce que trouvent vos veilles et surveille les actions de l'agent ; l'autre rédige les résumés. Rien de ce qu'ils lisent ne part sur Internet.</p>
+          <p>Une petite IA tourne sur votre Mac, en plus de l'agent. Elle est gratuite et rien de ce qu'elle lit ne quitte votre machine. Elle sert à :</p>
+          <ul>
+            <li>surveiller l'agent : elle le met en pause quand une de ses actions paraît étrange ;</li>
+            <li>trier pour vous : quand WebAiOs suit un sujet à votre place, elle choisit ce qui mérite de vous être montré ;</li>
+            <li>rédiger les résumés.</li>
+          </ul>
+          <p>Il lui faut Ollama, le logiciel libre qui la fait fonctionner, et deux modèles à télécharger.</p>
           <div class="check">
             {#if ollama === undefined}
               {@render status("welcome-ollama", "warn", "Vérification…")}

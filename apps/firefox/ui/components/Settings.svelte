@@ -265,7 +265,7 @@
     {:else if current === "ai"}
       <section data-testid="settings-ai">
         <h2>IA locale</h2>
-        <p class="muted">Deux petits modèles tournent sur votre Mac, avec Ollama. L'un trie ce que trouvent vos veilles et surveille les actions de l'agent ; l'autre rédige les résumés. Rien de ce qu'ils lisent ne part sur Internet.</p>
+        <p class="muted">Une petite IA tourne sur votre Mac, en plus de l'agent : elle le met en pause quand une de ses actions paraît étrange, trie ce que WebAiOs suit pour vous et rédige les résumés. Elle est gratuite et rien de ce qu'elle lit ne quitte votre machine. Il lui faut Ollama, le logiciel libre qui la fait fonctionner, et deux modèles.</p>
         {#if !ai}
           <p><span class="pill" data-tone="warn">Vérification…</span></p>
         {:else if !ai.ollamaUrl}
