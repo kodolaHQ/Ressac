@@ -111,8 +111,8 @@ export async function launchWebAiOs(o: { headed?: boolean; width?: number; heigh
         WEBAIOS_TEST_IMPORT_HOME: path.join(dataDir, "import-home"),
         // No welcome screen in front of the tests.
         WEBAIOS_SKIP_WELCOME: "1",
-        // « Définir par défaut » never asks macOS: the owner's default browser stays his.
-        WEBAIOS_TEST_DEFAULT_BROWSER: "1",
+        // Réglages never changes the owner's macOS: his default browser and his screen recording grant stay his.
+        WEBAIOS_TEST_NO_SYSTEM: "1",
         // Never the decision model running on this machine (nothing listens there): the search watcher lets every action
         // pass. A test with a fake passes its own; `undefined` (dropped by spawn) restores the kernel's default.
         WEBAIOS_KEV_URL: "http://127.0.0.1:9",

@@ -104,6 +104,7 @@ export function createSettingsApi(o: {
     version: async () => o.chrome.version(),
     defaultBrowser: async () => o.chrome.defaultBrowser(),
     setDefaultBrowser: () => o.chrome.setDefaultBrowser(),
+    repairScreenSharing: () => o.chrome.repairScreenSharing().catch(() => false),
     openAdvanced: () => o.dispatch({ type: "openTab", windowId: o.windowId, url: "about:preferences", activate: true }),
     openNotificationSettings: () => o.chrome.openNotificationSettings(),
     openFullDiskAccessSettings: () => o.chrome.openFullDiskAccessSettings(),

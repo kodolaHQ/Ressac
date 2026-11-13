@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Action } from "../shared/api";
 import type { GrantRow } from "../shared/settings";
-import { revealable } from "../chrome/store/settings";
+import { bundleId, revealable } from "../chrome/store/settings";
 import { createSettingsApi } from "../ui/settings-api";
 
 function setup(answers: Record<string, (p: any) => unknown> = {}) {
@@ -17,7 +17,7 @@ function setup(answers: Record<string, (p: any) => unknown> = {}) {
     },
     notify: vi.fn(),
   } as any;
-  const chrome = { telemetry: vi.fn(), setTelemetry: vi.fn(), version: vi.fn(), defaultBrowser: vi.fn(() => true), setDefaultBrowser: vi.fn(), reveal: vi.fn(), openNotificationSettings: vi.fn(), openFullDiskAccessSettings: vi.fn(), exportFolder: async () => "/u/Downloads", reset: vi.fn() };
+  const chrome = { telemetry: vi.fn(), setTelemetry: vi.fn(), version: vi.fn(), defaultBrowser: vi.fn(() => true), setDefaultBrowser: vi.fn(), repairScreenSharing: vi.fn(async () => true), reveal: vi.fn(), openNotificationSettings: vi.fn(), openFullDiskAccessSettings: vi.fn(), exportFolder: async () => "/u/Downloads", reset: vi.fn() };
   const forget = vi.fn(async () => {});
   const sitePermissions = { list: async () => [{ profile: "default", origin: "https://a.fr", permissions: { "media-camera": "allow", notifications: "deny" } as const }], forget };
   const dispatched: Action[] = [];
@@ -146,6 +146,12 @@ describe("settings api", () => {
     expect(await api.defaultBrowser()).toBe(true);
     api.setDefaultBrowser();
     expect(chrome.setDefaultBrowser).toHaveBeenCalledOnce();
+  });
+
+  it("bundleId reads the identifier macOS knows the app by", () => {
+    expect(bundleId("<dict>\n\t<key>CFBundleIdentifier</key>\n\t<string>fr.webaios.fr.webaios.browser</string>\n</dict>")).toBe("fr.webaios.fr.webaios.browser");
+    expect(bundleId("<dict><key>CFBundleName</key><string>WebAiOs</string></dict>")).toBeNull();
+    expect(bundleId("<key>CFBundleIdentifier</key><string>a; rm -rf /</string>")).toBeNull();
   });
 
   it("openAdvanced", () => {

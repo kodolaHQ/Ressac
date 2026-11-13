@@ -56,6 +56,14 @@ const count = (selector: string, n: number, ms = 10_000) => waitUi(m, "return do
 const read = (file: string) => (existsSync(file) ? readFileSync(file, "utf8") : "");
 
 describe("Settings page, permissions and data", () => {
+  it("permissions: Réparer le partage d'écran says to relaunch", async () => {
+    await prepare();
+    await launch();
+    await openPage("permissions");
+    await click(m, '[data-testid="screen-sharing-repair-button"]');
+    await waitUi(m, `return doc.querySelector('[data-testid="screen-sharing-repair"]')?.textContent.includes("Quittez puis rouvrez WebAiOs")`);
+  });
+
   it("permissions: a site decision and a widget grant; Retirer forgets the site", async () => {
     await prepare();
     writeFileSync(join(dataDir, "permissions.json"), JSON.stringify({ "https://a.fr media-camera": "allow" }));

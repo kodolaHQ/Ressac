@@ -484,6 +484,8 @@ export interface SettingsApi {
   defaultBrowser(): Promise<boolean>;
   /** macOS asks for confirmation itself: read `defaultBrowser()` again for the answer. */
   setDefaultBrowser(): void;
+  /** Makes macOS ask again for screen recording (a relaunch is needed); false when it could not. */
+  repairScreenSharing(): Promise<boolean>;
   openAdvanced(): void;
   /** The OrbStack install link: https only. */
   openUrl(url: string): void;

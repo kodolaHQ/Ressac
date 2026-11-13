@@ -16,6 +16,11 @@ export interface SettingsChrome {
   defaultBrowser(): boolean;
   /** Asks macOS, which shows its own confirmation: the answer comes later, in `defaultBrowser()`. */
   setDefaultBrowser(): void;
+  /**
+   * Forgets macOS's screen recording grant for WebAiOs, so macOS asks again at the next share (after a relaunch). A new
+   * version signed ad hoc is another application for macOS: the old grant still shows as on but no longer counts.
+   */
+  repairScreenSharing(): Promise<boolean>;
   exportFolder(): Promise<string>;
   /** false: the quit was cancelled (a window or an observer kept it), and the reset request is withdrawn. */
   reset(): Promise<boolean>;
@@ -27,6 +32,11 @@ export function revealable(dataDir: string, exportFolder: string, path: string):
   if (path === dataDir || path === `${dataDir}/workspace/browsing-notes.md` || backupDate(dataDir, path) !== null) return true;
   if (!exportFolder || !path.startsWith(exportFolder + "/")) return false;
   return EXPORT_NAME.test(path.slice(exportFolder.length + 1));
+}
+
+/** The application's identifier for macOS, from its Info.plist. */
+export function bundleId(plist: string): string | null {
+  return /<key>CFBundleIdentifier<\/key>\s*<string>([\w.-]+)<\/string>/.exec(plist)?.[1] ?? null;
 }
 
 function openSystemSettings(url: string): void {
@@ -43,8 +53,8 @@ function openSystemSettings(url: string): void {
 
 export function createSettingsChrome(dataDir: string, telemetryActive: boolean): SettingsChrome {
   let lastExportFolder = "";
-  // A test never asks macOS (it would change the owner's default browser): the request is only remembered.
-  const test = !!Services.env.get("WEBAIOS_TEST_DEFAULT_BROWSER");
+  // A test never changes the owner's macOS (default browser, screen recording grant): the request is only remembered.
+  const test = !!Services.env.get("WEBAIOS_TEST_NO_SYSTEM");
   let testDefault = false;
   const shell = () => ChromeUtils.importESModule("resource:///modules/ShellService.sys.mjs").ShellService;
   return {
@@ -80,6 +90,20 @@ export function createSettingsChrome(dataDir: string, telemetryActive: boolean):
         shell().setDefaultBrowser(false);
       } catch (e) {
         console.warn("[settings] default browser not set:", e);
+      }
+    },
+    async repairScreenSharing() {
+      if (test) return true;
+      try {
+        // WebAiOs.app/Contents/MacOS/webaios → WebAiOs.app/Contents/Info.plist
+        const id = bundleId(await IOUtils.readUTF8(PathUtils.join(Services.dirsvc.get("XREExeF", Ci.nsIFile).parent.parent.path, "Info.plist")));
+        if (!id) throw new Error("no CFBundleIdentifier in Info.plist");
+        const { Subprocess } = ChromeUtils.importESModule("resource://gre/modules/Subprocess.sys.mjs");
+        const proc = await Subprocess.call({ command: "/usr/bin/tccutil", arguments: ["reset", "ScreenCapture", id] });
+        return (await proc.wait()).exitCode === 0;
+      } catch (e) {
+        console.warn("[settings] screen sharing not repaired:", e);
+        return false;
       }
     },
     async exportFolder() {
