@@ -64,7 +64,7 @@ interface Options {
 }
 interface State {
   state: "pending" | "done";
-  /** pending: the old folder chosen; done: the adopted folder. */
+  /** pending: the old folder chosen (moved to Ressac/Profiles/<its name>), "" before one is; done: the adopted folder. */
   profile: string;
   /** The person was told once, after the carry-over. */
   told?: boolean;
@@ -198,19 +198,29 @@ async function carryOverSteps(o: Options, state: State | null): Promise<CarryRes
   };
   // Line 4.
   const movedTo = (id: string) => `${o.appSupport}/Ressac/Profiles/${leaf(id)}`;
-  const chosen = await oldProfile(o, root, movedTo, !!state);
+  // A carry-over begun goes on with the profile it recorded (its target is movedTo of it), wherever it is now: once
+  // Ressac ran on the moved one, Firefox rewrote its compatibility.ini and the search no longer knows it.
+  const begun = state?.profile ? ((await exists(movedTo(state.profile))) ? movedTo(state.profile) : (await exists(state.profile)) ? state.profile : null) : null;
+  const chosen = begun ? { id: state!.profile, at: begun } : await oldProfile(o, root, movedTo, !!state);
   // No profile to take: the data folder alone is carried.
   if (!chosen) {
+    // Pending first: a crash between the move and the tidy-up is finished at the next launch.
+    try {
+      if (!state) await writeState(o, { state: "pending", profile: "" });
+    } catch (e) {
+      console.error("[carry-over] state not written:", e);
+      return "data-blocked";
+    }
     if (!(await moveData())) return "data-blocked";
     await tidyData();
-    if (state) await writeState(o, { state: "done", profile: "" });
+    await writeState(o, { state: "done", profile: "" });
     return "done";
   }
   const target = movedTo(chosen.id);
   // A previous launch adopted it and could not write "done": Ressac already runs on it.
   if (state && o.profiles.currentProfile?.rootDir.path === target) {
     await tidyData();
-    await writeState(o, { state: "done", profile: target });
+    await writeState(o, { state: "done", profile: o.profiles.currentProfile.rootDir.path });
     return "done";
   }
   // Another folder of that name already there: never moved into (IOUtils.move would put it inside).

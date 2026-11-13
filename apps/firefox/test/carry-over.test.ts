@@ -451,6 +451,45 @@ describe("carryOver", () => {
     expect(await state(m.appSupport)).toEqual({ state: "done", profile: moved });
   });
 
+  // Firefox rewrites a profile's compatibility.ini when Ressac runs on it: the search for « last used by WebAiOs.app »
+  // no longer finds the moved profile. The pending state's own profile is used.
+  const usedByRessac = (dir: string) => writeFile(join(dir, "compatibility.ini"), "[Compatibility]\nLastPlatformDir=/Applications/Ressac.app/Contents/Resources\n");
+
+  it("state pending, Ressac already running on the adopted profile it rewrote: state done on that folder", async () => {
+    const m = await machine({ data: false });
+    const moved = join(m.ressac, "Profiles", "a.default-webaios");
+    await import("node:fs/promises").then((fs) => fs.rename(join(m.root, "Profiles", "a.default-webaios"), moved));
+    await usedByRessac(moved);
+    await writeState(m.appSupport, { state: "pending", profile: join(m.root, "Profiles", "a.default-webaios") });
+    const profiles = fakeProfiles({ current: moved });
+    expect(await carryOver({ ...m, profiles, env: fakeEnv() })).toBe("done");
+    expect(await state(m.appSupport)).toEqual({ state: "done", profile: moved });
+  });
+
+  it("state pending, the moved profile rewritten by Firefox, Ressac on its fresh one: adopted where it is", async () => {
+    const m = await machine({ data: false });
+    const moved = join(m.ressac, "Profiles", "a.default-webaios");
+    await import("node:fs/promises").then((fs) => fs.rename(join(m.root, "Profiles", "a.default-webaios"), moved));
+    await usedByRessac(moved);
+    await writeState(m.appSupport, { state: "pending", profile: join(m.root, "Profiles", "a.default-webaios") });
+    const env = fakeEnv();
+    expect(await carryOver({ ...m, profiles: fakeProfiles(), env })).toBe("restart");
+    expect(env.values.XRE_PROFILE_PATH).toBe(moved);
+    expect(await state(m.appSupport)).toEqual({ state: "done", profile: moved });
+  });
+
+  it("no profile to take: the state is pending before the data folder moves (a crash there is finished next launch)", async () => {
+    const m = await machine({ profiles: { "n.default": { platform: "/Applications/Nightly.app/Contents/Resources" } } });
+    await chmod(m.home, 0o555);
+    locked.push(m.home);
+    expect(await carryOver({ ...m, profiles: fakeProfiles(), env: fakeEnv() })).toBe("data-blocked");
+    expect(await state(m.appSupport)).toEqual({ state: "pending", profile: "" });
+    await chmod(m.home, 0o755);
+    expect(await carryOver({ ...m, profiles: fakeProfiles(), env: fakeEnv() })).toBe("done");
+    expect(await exists(join(m.home, "Ressac", "workspace", ".ressac", "mcp.json"))).toBe(true);
+    expect(await state(m.appSupport)).toEqual({ state: "done", profile: "" });
+  });
+
   it("state pending, the profile already moved last time: adopted where it is", async () => {
     const m = await machine();
     const moved = join(m.ressac, "Profiles", "a.default-webaios");
