@@ -300,6 +300,8 @@ const sessions = new SessionsAgent({
   async open(f, t, { profile, resume, onBuildProgress }) {
     const n = await ready;
     if (!n) throw new Error(error ?? "le noyau de l'agent n'a pas démarré");
+    // A container app WebAiOs is starting (or can start): the panel stays on « Préparation » until Docker answers.
+    await docker.start().catch(() => {});
     if (profile !== "codex" && profile !== "claude") return n.openAgentSession({ ...t, window: f, profile, resume, onBuildProgress });
     const e = profile === "claude" ? claudeEngine : engine; // one snapshot: the env must match the relay token
     const token = e.kind === "api" && (await keys[profile].has()) ? relay.openSession(profile === "claude" ? withoutV1(e.apiUrl) : e.apiUrl, profile) : null;
