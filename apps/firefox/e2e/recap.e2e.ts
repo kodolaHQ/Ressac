@@ -133,6 +133,8 @@ describe("recap tab", () => {
     await q.waitText(tid("block-title"), "Vélos cargo");
     expect(await publish(w, "Vélos cargo, sans les pros", id)).toBe(id);
     await q.waitText(tid("block-title"), "Vélos cargo, sans les pros");
+    // The old version faded out of the shared grid cell: one version left.
+    await waitUi(m, "return doc.querySelectorAll(arguments[0]).length === 1;", [`${tid("page-recap")} > .version`]);
     const tabs = await recapTabs(m, id);
     expect(tabs).toHaveLength(1);
     expect(tabs[0]!.title).toBe("Vélos cargo, sans les pros");

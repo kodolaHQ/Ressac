@@ -1,5 +1,6 @@
 <script lang="ts">
   import { untrack } from "svelte";
+  import { fade } from "svelte/transition";
   import type { ActionsState, PageAction, ResumeExecution } from "@webaios/kernel";
   import { ACTION_UNKNOWN, NO_RESULT, RESULT_GONE, type ActionShown } from "../../shared/actions";
   import AccountGrantCard from "../components/AccountGrantCard.svelte";
@@ -198,7 +199,12 @@
       {:else if loaded?.page?.empty}
         <p class="message" data-testid="no-result">{NO_RESULT}</p>
       {:else if loaded?.page && ctx}
-        <PageRender page={loaded.page} {ctx} />
+        <!-- Another run: the old page fades out while the new one rises in the same grid cell. -->
+        <div class="swap">
+          {#key loaded.run}
+            <div class="version" out:fade={{ duration: 150 }}><PageRender page={loaded.page} {ctx} /></div>
+          {/key}
+        </div>
       {/if}
     {/if}
     {#if grantNeed && cardOpen}
@@ -217,6 +223,8 @@
 
 <style>
   .scrolled { position: absolute; inset: 0; overflow: auto; }
+  .swap { display: grid; }
+  .version { grid-area: 1 / 1; min-width: 0; }
   .message { max-width: 960px; box-sizing: border-box; margin: 16px auto 0; padding: 0 24px; color: var(--text-muted); font-size: 14px; }
   .error { color: var(--in-error); overflow-wrap: anywhere; }
   .gone { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }

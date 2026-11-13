@@ -24,9 +24,11 @@
 .pa-head-text { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .pa-head .pa-title { margin: 0; font-size: 28px; line-height: 1.15; }
 .pa-head .pa-paragraph { color: var(--text-muted); max-width: 560px; }
-.pa-head .pa-figures { flex: none; }
+/* The figures take at most a bit more than half the row and wrap, so the title keeps its column. */
+.pa-head .pa-figures { flex: 0 1 auto; max-width: 55%; justify-content: flex-end; }
 @container (max-width: 640px) {
   .pa-head { flex-direction: column; align-items: stretch; }
+  .pa-head .pa-figures { max-width: none; justify-content: flex-start; }
 }
 .pa-mention { margin: 0; font-size: 12px; color: var(--text-muted); }
 .pa-empty { margin: 0; color: var(--text-muted); }
@@ -88,7 +90,7 @@
   .pa-highlight .pa-photo { min-height: 0; aspect-ratio: 16 / 10; }
 }
 
-.pa-image { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; background: var(--glass-hi); }
+.pa-image { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; background: var(--glass-hi); animation: webaios-rise var(--spring-d) var(--spring) both; }
 .pa-image-neutral { display: block; width: 100%; aspect-ratio: 16 / 10; background: color-mix(in oklab, var(--a1) 14%, var(--glass-hi)); }
 
 .pa-scroll { overflow-x: auto; border: 1px solid var(--glass-edge); border-radius: 16px; background: var(--glass); box-shadow: var(--lift); }

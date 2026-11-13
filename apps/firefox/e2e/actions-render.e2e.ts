@@ -119,6 +119,16 @@ beforeAll(async () => {
       { component: "cards", props: { items: "autres", title: "nom", value: "prix", image: "photo", warnings: "alertes" } },
     ],
   });
+  // A head with six figure pills: the title keeps its column.
+  await writeActionWithResult(w.dataDir, "entete", {
+    name: "Entete",
+    results: { a: 1, b: 2, c: 3, d: 4, e: 5, f: 6 },
+    blocks: [
+      { component: "title", props: { text: "Un titre assez long pour se faire écraser par les chiffres" } },
+      { component: "paragraph", props: { text: "Une phrase sous le titre." } },
+      { component: "figures", props: { figures: ["a", "b", "c", "d", "e", "f"].map((k) => ({ value: k, label: `Chiffre ${k}` })) } },
+    ],
+  });
   await writeActionWithResult(w.dataDir, "images", { name: "Images", results: { photos: Object.entries(PHOTOS).map(([title, snapshot]) => ({ titre: title, photo: snapshot })) }, blocks: cards });
 }, 60_000);
 
@@ -167,6 +177,15 @@ describe("action page rendering", () => {
     // The price sits on the photo when there is one, under the title otherwise.
     expect(await q.count(`${tid("block-cards")} .pa-photo .value`)).toBe(1);
     expect(await q.count(`${tid("block-cards")} .body .value`)).toBe(1);
+    // Images appear on the spring.
+    expect(await inUi(m, "return doc.defaultView.getComputedStyle(doc.querySelector(arguments[0])).animationName;", [`${tid("block-highlight")} img.pa-image`])).toBe("webaios-rise");
+  });
+
+  it("figure pills in the head leave the title at least 40 % of the row", async () => {
+    await openActionPage(m, "entete", "Entete");
+    await waitUi(m, "return !!doc.querySelector('.pa-head .pa-figures');", [], 15_000);
+    const share = await inUi<number>(m, "return doc.querySelector('.pa-head-text').getBoundingClientRect().width / doc.querySelector('.pa-head').getBoundingClientRect().width;", []);
+    expect(share).toBeGreaterThan(0.4);
   });
 
   // actions.spec.ts:131
