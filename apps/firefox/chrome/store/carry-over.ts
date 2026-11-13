@@ -8,8 +8,16 @@ import { firefoxProfiles, iniSections } from "./import/sources";
  * node:fs (shimmed onto IOUtils in the store bundle) keep it testable in Node.
  */
 
-/** The old names: the data folder under the home folder, the Firefox profile root under Application Support. */
-export const LEGACY = { dataDir: "WebAiOs", profileRoot: "WebAiOs" };
+/**
+ * The old names, read for data written before the rename: the data folder under the home folder, the Firefox profile
+ * root under Application Support, and WebAiOs's own prefs carried with the profile (`webaios.<name>`).
+ */
+export const LEGACY = {
+  dataDir: "WebAiOs",
+  profileRoot: "WebAiOs",
+  prefPrefix: "webaios.",
+  prefs: ["telemetry.enabled", "telemetry.noticeShown", "telemetry.installId", "call.sites", "extensions.pinned"],
+};
 // Firefox names a new install's profile `default-<update channel>` (`default-ressac`): never one of these.
 const NAME = "webaios-carried";
 /** The in-use test's registration: never mistaken for the adopted profile. */
@@ -35,6 +43,13 @@ export interface ProfileService {
   createProfile(rootDir: string, name: string, source: string): Profile;
   defaultProfile: Profile | null;
   flush(): void;
+}
+/** The parts of nsIPrefBranch used: user values only, of any type. */
+export interface Prefs {
+  has(name: string): boolean;
+  get(name: string): unknown;
+  set(name: string, value: unknown): void;
+  clear(name: string): void;
 }
 export interface Env {
   get(name: string): string;
@@ -245,4 +260,14 @@ export async function tellOnce(o: Options): Promise<boolean> {
   if (state?.state !== "done" || state.told) return false;
   await writeState(o, { ...state, told: true });
   return true;
+}
+
+/** On a normal start (the adopted profile): each of WebAiOs's prefs the person set becomes Ressac's, unless Ressac has one. */
+export function carryPrefs(prefs: Prefs): void {
+  for (const name of LEGACY.prefs) {
+    const old = `${LEGACY.prefPrefix}${name}`;
+    if (!prefs.has(old) || prefs.has(`ressac.${name}`)) continue;
+    prefs.set(`ressac.${name}`, prefs.get(old));
+    prefs.clear(old);
+  }
 }

@@ -5,7 +5,7 @@ import { access, chmod, mkdir, mkdtemp, readFile, readdir, utimes, writeFile } f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { carryOver, tellOnce, type Env, type Profile, type ProfileService } from "../chrome/store/carry-over";
+import { carryOver, carryPrefs, tellOnce, type Env, type Profile, type ProfileService } from "../chrome/store/carry-over";
 
 const exists = (p: string) => access(p).then(() => true, () => false);
 const write = async (path: string, text: string) => (await mkdir(join(path, ".."), { recursive: true }), writeFile(path, text));
@@ -484,5 +484,40 @@ describe("tellOnce", () => {
     await writeState(m.appSupport, { state: "done", profile: "/p" });
     expect(await tellOnce({ ...o, env: fakeEnv({ RESSAC_TEST_NO_SYSTEM: "1" }) })).toBe(false);
     expect(await tellOnce({ ...o, profiles: fakeProfiles({ current: false }) })).toBe(false);
+  });
+});
+
+describe("carryPrefs", () => {
+  /** User values as nsIPrefBranch holds them; defaults (not user values) are absent. */
+  const fakePrefs = (values: Record<string, unknown>) => ({
+    values,
+    has: (name: string) => name in values,
+    get: (name: string) => values[name],
+    set: (name: string, value: unknown) => void (values[name] = value),
+    clear: (name: string) => void delete values[name],
+  });
+
+  it("WebAiOs's choices become Ressac's: telemetry turned off stays off, the notice is not shown again", () => {
+    const prefs = fakePrefs({
+      "webaios.telemetry.enabled": false,
+      "webaios.telemetry.noticeShown": true,
+      "webaios.call.sites": "[]",
+      "webaios.extensions.pinned": '["a@b"]',
+      "webaios.other": 1,
+    });
+    carryPrefs(prefs);
+    expect(prefs.values).toEqual({
+      "ressac.telemetry.enabled": false,
+      "ressac.telemetry.noticeShown": true,
+      "ressac.call.sites": "[]",
+      "ressac.extensions.pinned": '["a@b"]',
+      "webaios.other": 1,
+    });
+  });
+
+  it("a value Ressac already has wins; the install id is carried", () => {
+    const prefs = fakePrefs({ "webaios.telemetry.enabled": false, "ressac.telemetry.enabled": true, "webaios.telemetry.installId": "id" });
+    carryPrefs(prefs);
+    expect(prefs.values).toEqual({ "webaios.telemetry.enabled": false, "ressac.telemetry.enabled": true, "ressac.telemetry.installId": "id" });
   });
 });
