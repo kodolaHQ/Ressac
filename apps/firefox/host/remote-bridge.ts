@@ -3,6 +3,7 @@ import {
   TabNotFound,
   PrivateTab,
   DevToolsBusy,
+  SiteChanged,
   ProfileDenied,
   type DevRight,
   type BrowserHistory,
@@ -66,6 +67,7 @@ export class RemoteBridge implements BrowserBridge {
       if (x.name === "PrivateTab") throw new PrivateTab(x.id!);
       if (x.name === "ProfileDenied") throw new ProfileDenied(x.profile!);
       if (x.name === "DevToolsBusy") throw new DevToolsBusy();
+      if (x.name === "SiteChanged") throw new SiteChanged(x.id!);
       throw e;
     }
   }

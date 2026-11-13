@@ -6,6 +6,7 @@ import {
   PrivateTab,
   DevToolsBusy,
   ProfileDenied,
+  SiteChanged,
   type BrowserHistory,
   type MessageConsole,
   type TabInfo,
@@ -149,6 +150,8 @@ export class FakeBridge implements BrowserBridge {
   private readonly hanging = new Set<string>();
   /** Links of the successive reads (the last one repeats), to simulate a page whose results come late. */
   linkSequence?: PageLink[][];
+  /** The next reads refused because the tab went to another site meanwhile (an engine redirect). */
+  siteChanges = 0;
   readPageInvisible?: (url: string, o: PageReadOptions) => Promise<ReadPage>;
   readHtmlInvisible?: (url: string, o: { localAddresses?: boolean; signal?: AbortSignal }) => Promise<{ url: string; html: string }>;
   /** Suspended reads in progress, by URL: `relacher` lets them finish. */
@@ -427,6 +430,10 @@ export class FakeBridge implements BrowserBridge {
     const o = this.find(id);
     if (this.hanging.has(o.url)) await new Promise(() => {});
     if (this.failing.has(o.url)) throw new Error("Page illisible");
+    if (this.siteChanges > 0) {
+      this.siteChanges--;
+      throw new SiteChanged(id);
+    }
     const seq = this.linkSequence;
     const links = seq?.length ? (seq.length > 1 ? seq.shift()! : seq[0]!) : [{ text: "Annonce", url: "https://exemple.fr/a" }];
     return { text: `Texte de ${o.title} (${o.url})`, links };

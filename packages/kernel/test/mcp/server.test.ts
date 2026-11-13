@@ -1443,6 +1443,25 @@ test("search_web waits for late results: links 0, then 3, then 3 → returns the
   });
 });
 
+test("search_web reads again while the engine redirects: a first read refused (site changed) still gives the links", async () => {
+  await withSearch(async ({ call, fake }) => {
+    fake.siteChanges = 1;
+    const r = await call("search_web", { query: "x" });
+    expect(r.text).not.toContain("changé de site");
+    expect(r.text).toContain("Annonce — https://exemple.fr/a");
+  });
+});
+
+test("read_tab on the search tab right after a navigate through a redirect reads again until the page holds", async () => {
+  await withSearch(async ({ call, fake }) => {
+    await call("search_web", { query: "x" });
+    fake.siteChanges = 2;
+    const r = await call("read_tab", { id: "search-1", links: true });
+    expect(r.text).not.toContain("changé de site");
+    expect(r.text).toContain("Annonce — https://exemple.fr/a");
+  });
+});
+
 test("read_tab on the search tab needs no card and records the page's links", async () => {
   await withSearch(async ({ call, fake, search }) => {
     fake.linkSequence = [[a, b]];

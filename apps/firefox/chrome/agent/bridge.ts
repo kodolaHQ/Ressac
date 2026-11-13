@@ -1,4 +1,4 @@
-import { navigationOutsideSite, TabNotFound, PrivateTab, type DevRight, type TabInfo, type PageReadOptions } from "../shims/kernel";
+import { navigationOutsideSite, TabNotFound, PrivateTab, SiteChanged, type DevRight, type TabInfo, type PageReadOptions } from "../shims/kernel";
 import type { BrowserState, WindowId, Tab, Band } from "../../shared/model";
 import { privateTab, WORKFLOW_PREFIX, AGENT_PROFILE } from "../../shared/model";
 import { ENGINES } from "../../core/url";
@@ -81,7 +81,7 @@ export function bridgeHandlers(
     const r = await read(browser);
     const origin = originOf(before.url);
     if (originOf(tab(id).url) !== origin || originOf(browser.currentURI.spec) !== origin)
-      throw new Error("L'onglet a changé de site pendant la lecture : rien n'est rendu.");
+      throw new SiteChanged(id);
     return r;
   };
   /** The view of a site app window (`site:<id>`) or of an agent app window (`app:<dossier>`); null for any other id. */

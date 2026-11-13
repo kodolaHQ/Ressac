@@ -246,6 +246,14 @@ export class DevToolsBusy extends Error {
   }
 }
 
+/** The tab went to another origin during the read (an engine redirect, a click): nothing read is returned. */
+export class SiteChanged extends Error {
+  constructor(readonly id: string) {
+    super("L'onglet a changé de site pendant la lecture : rien n'est rendu.");
+    this.name = "SiteChanged";
+  }
+}
+
 /** The login profile requested for a read is unknown or used by a private space. */
 export class ProfileDenied extends Error {
   constructor(readonly profile: string) {
