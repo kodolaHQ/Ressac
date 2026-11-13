@@ -199,6 +199,16 @@ describe("Settings page", () => {
     }
   });
 
+  it("start on home: the switch follows the setting and changes it", async () => {
+    await launch();
+    await openPage();
+    await go("privacy");
+    // The test launcher turns it off (tests restart on the tab they left).
+    expect(await inUi(m, `return doc.querySelector('[data-testid="settings-start-home"]').checked`)).toBe(false);
+    await click(m, '[data-testid="settings-start-home"]');
+    await waitFor(m, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).state.settings.startOnHome)();`, (v) => v === true);
+  });
+
   it("default browser: the button asks, then the row says it is the default", async () => {
     await launch();
     await openPage();

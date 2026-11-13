@@ -35,6 +35,8 @@ async function seedFirstTimeNotesSeen(dataDir: string): Promise<void> {
   if (existsSync(file)) return;
   const s = initialState();
   s.settings.hints.seen = Object.keys(FIRST_TIME) as FirstTimeId[];
+  // Tests that restart on the same data come back to the tab they left; the launch on home has its own test.
+  s.settings.startOnHome = false;
   await writeFile(file, JSON.stringify(s));
 }
 

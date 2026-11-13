@@ -296,6 +296,7 @@ describe("the home page", () => {
   });
 
   it("dragging a widget moves no other", async () => {
+    await waitUi(m, `return !!doc.querySelector('[data-testid="widget-alpha"] header')`);
     const before = await readLayout(dataDir);
     const betaBefore = before.find((p) => p.id === "beta")!;
     // Far to the right passing over bêta: a drag can cross a neighbour, and alpha stops at the

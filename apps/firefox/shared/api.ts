@@ -147,6 +147,7 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("setHintsEnabled"), enabled: z.boolean() }),
   z.object({ type: z.literal("setVimMode"), enabled: z.boolean() }),
   z.object({ type: z.literal("setSidebarSide"), side: z.enum(["left", "right"]) }),
+  z.object({ type: z.literal("setStartOnHome"), enabled: z.boolean() }),
   z.object({ type: z.literal("setShortcut"), id: z.enum(SHORTCUT_IDS), binding: z.object({ key: z.string().min(1), shift: z.boolean(), alt: z.boolean(), ctrl: z.boolean(), meta: z.boolean() }) }),
   z.object({ type: z.literal("resetShortcut"), id: z.enum(SHORTCUT_IDS) }),
   z.object({ type: z.literal("resetShortcuts") }),

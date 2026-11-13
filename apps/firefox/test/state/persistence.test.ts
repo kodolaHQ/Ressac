@@ -24,6 +24,8 @@ function richState(): BrowserState {
   e = apply(e, { type: "updateTab", id: a!, fields: { title: "A", zoom: 1.2, loading: true, canGoBack: true, crashed: true } }, g);
   e = apply(e, { type: "pinTab", id: b! }, g);
   e = apply(e, { type: "createSpace", name: "Boulot", icon: "💼", private: false, profile: "default" }, g);
+  // The round trips compare what each window shows: the launch on home (tested apart) would blank it.
+  e = apply(e, { type: "setStartOnHome", enabled: false }, g);
   return e;
 }
 
@@ -402,4 +404,23 @@ test("a persisted tab with a profile reloads with it", async () => {
   recorder.schedule(state);
   await recorder.clear();
   expect(Object.values((await loadSession(d)).tabs).some((t) => t.profile === "agent")).toBe(true);
+});
+
+test("startOnHome: each window loads on the home page, its tabs kept; off, on the tab it was left on; missing, on", async () => {
+  const d = folder();
+  const base = initialState();
+  const saved = apply(base, { type: "openTab", windowId: base.windows[0]!.id, url: "https://a.test/" });
+  const f = saved.windows[0]!;
+  const tab = f.active[f.activeSpace]!;
+  expect(tab).toBeTruthy();
+  writeFileSync(join(d, "session.json"), JSON.stringify(saved));
+  let s = await loadSession(d);
+  expect(s.windows[0]!.active[f.activeSpace]).toBeNull();
+  expect(s.windows[0]!.order[f.activeSpace]).toEqual([tab]);
+  writeFileSync(join(d, "session.json"), JSON.stringify({ ...saved, settings: { ...saved.settings, startOnHome: false } }));
+  s = await loadSession(d);
+  expect(s.windows[0]!.active[f.activeSpace]).toBe(tab);
+  const { startOnHome: _, ...old } = saved.settings;
+  writeFileSync(join(d, "session.json"), JSON.stringify({ ...saved, settings: old }));
+  expect((await loadSession(d)).settings.startOnHome).toBe(true);
 });

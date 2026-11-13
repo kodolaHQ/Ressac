@@ -363,6 +363,22 @@
               onchange={(e) => api.dispatch({ type: "setHintsEnabled", enabled: e.currentTarget.checked })}
             />
           </div>
+          <div class="row">
+            <div class="grow">
+              <label for="start-home-switch"><b>Ouvrir sur la page d'accueil</b></label>
+              <span class="muted" id="start-home-help">Au lancement, chaque fenêtre montre la page d'accueil plutôt que le dernier onglet vu. Les onglets restent ouverts.</span>
+            </div>
+            <input
+              id="start-home-switch"
+              class="switch"
+              type="checkbox"
+              role="switch"
+              data-testid="settings-start-home"
+              aria-describedby="start-home-help"
+              checked={appState.value?.settings.startOnHome ?? true}
+              onchange={(e) => api.dispatch({ type: "setStartOnHome", enabled: e.currentTarget.checked })}
+            />
+          </div>
           <div class="row" data-testid="settings-default-browser">
             <div class="grow">
               <b>Navigateur par défaut</b>

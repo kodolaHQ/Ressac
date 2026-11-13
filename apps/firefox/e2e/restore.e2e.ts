@@ -48,6 +48,21 @@ const fresh = () => {
 };
 
 describe("restore at startup", () => {
+  it("startOnHome: the next launch shows the home page, the tabs still in the list", async () => {
+    fresh();
+    let m = await start();
+    const after = await dispatch(m, { type: "openTab", windowId: (await win(m)).id, url: server.url + "/a.html", activate: true });
+    const tab = Object.keys(after.tabs)[0]!;
+    expect((await win(m)).active[(await win(m)).activeSpace]).toBe(tab);
+    await dispatch(m, { type: "setStartOnHome", enabled: true });
+    await quit();
+    m = await start();
+    const f = await win(m);
+    expect(f.active[f.activeSpace]).toBeNull();
+    expect(f.order[f.activeSpace]).toEqual([tab]);
+    await waitUi(m, `return !!doc.querySelector('[data-testid="empty-page"]') && !!doc.querySelector('[data-testid="tab-${tab}"]')`);
+  });
+
   it("restores tabs, spaces, pins, essentials and the active tab of each space", async () => {
     fresh();
     let m = await start();
