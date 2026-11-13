@@ -5,7 +5,6 @@
   import { api, appState } from "../state.svelte";
   import Home from "../Home.svelte";
   import TipCard from "./TipCard.svelte";
-  import Essentials from "./Essentials.svelte";
   import SuggestionsActions from "./ActionSuggestions.svelte";
   import { suggestionsActions } from "./suggestions";
   import type { ActionShown } from "../../shared/actions";
@@ -123,8 +122,6 @@
     {#if denial}<p class="refusal" data-testid="action-refusal">{denial}</p>{/if}
   </form>
   <TipCard />
-  <!-- The sidebar already shows the essentials: here only when it is hidden (compact), not twice. -->
-  {#if win.compact}<Essentials window={win} large />{/if}
   <Home />
 </div>
 
@@ -136,6 +133,4 @@
   input::placeholder { color: var(--text-muted); }
   input:focus { border-color: var(--accent); box-shadow: var(--float), 0 0 0 4px color-mix(in oklab, var(--accent) 18%, transparent); }
   .empty-page :global([data-testid="tip-card"]) { width: min(560px, 80%); box-sizing: border-box; }
-  /* No shrink: its min-height lets the column crush it under tall widgets. */
-  .empty-page :global([data-testid="essentials-empty-page"]) { width: min(560px, 80%); flex-shrink: 0; }
 </style>

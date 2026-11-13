@@ -286,24 +286,13 @@ describe("the home page", () => {
     expect(titles).toContain("Nouveau");
   });
 
-  it("a tall home page keeps the favourites whole, above the widgets (compact: the sidebar no longer shows them)", async () => {
+  it("the page does not repeat the sidebar's essentials", async () => {
     const s = await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url: "https://exemple.invalid/favori" });
-    // With the sidebar in view the page does not repeat them.
-    expect(await inUi(m, `return !doc.querySelector('[data-testid="essentials-empty-page"]')`)).toBe(true);
-    await dispatch(m, { type: "toggleCompact", windowId: s.windows[0]!.id });
     const tab = Object.entries(s.tabs).find(([, o]) => o.url.includes("/favori"))![0];
     await dispatch(m, { type: "addEssential", id: tab });
-    await dispatch(m, { type: "closeTab", id: tab });
-    const r = await waitUi<{ bottom: number; home: number; scrolled: boolean }>(
-      m,
-      `const f = doc.querySelector('[data-testid="essentials-empty-page"] [data-testid^="favorite-"]');
-       const a = doc.querySelector('[data-testid="home"]');
-       if (!f || !a?.querySelector('[data-testid="widget-retrait"]')) return null;
-       const p = a.parentElement;
-       return { bottom: f.getBoundingClientRect().bottom, home: a.getBoundingClientRect().top, scrolled: p.scrollHeight > p.clientHeight };`,
-    );
-    expect(r.scrolled).toBe(true);
-    expect(r.bottom).toBeLessThanOrEqual(r.home);
+    await dispatch(m, { type: "showBlankPage", windowId: s.windows[0]!.id });
+    await waitUi(m, `return !!doc.querySelector('[data-testid="empty-page"]') && doc.querySelectorAll('[data-testid="essentials"] [data-testid^="favorite-"]').length === 1`);
+    expect(await inUi(m, `return doc.querySelectorAll('[data-testid="empty-page"] [data-testid^="favorite-"]').length`)).toBe(0);
   });
 
   it("dragging a widget moves no other", async () => {
