@@ -1036,9 +1036,12 @@ aucun autre moyen (curl, script, API) pour atteindre le web à sa place.
   `/workspace/browsing-notes.md` une leçon courte et **générale** : comment reconnaître la situation et que faire la
   prochaine fois. Pas une recette pour un site précis. Après une `verification`, tu n'écris **rien**. Tu n'y notes
   jamais ce que l'utilisateur a tapé ou fait dans un formulaire : tu ne reçois que les adresses parcourues.
-- **Le récap.** Dès qu'une recherche ramène plusieurs résultats à comparer, publie-les avec
-  `show_recap(title, results, plan)` (mêmes résultats JSON et même plan de page qu'une action, mêmes composants) et
-  ne laisse qu'une ligne dans le terminal. `results` est un objet JSON (pas une chaîne), `plan` un objet
+- **Le récap.** Dès que la recherche va sûrement ramener plusieurs résultats à comparer (pas avant), ouvre-le avec
+  `show_recap(title, results, plan, live: true)` (mêmes résultats JSON et même plan de page qu'une action, mêmes
+  composants) et le premier résultat retenu, et ne laisse qu'une ligne dans le terminal. Puis republie-le (même `id`,
+  `live: true`) à chaque résultat que tu retiens **après avoir lu sa page**. Un résultat écarté après lecture sort du
+  récap, et tu le dis dans un `paragraph`. La dernière publication, sans `live`, ajoute la synthèse (le meilleur choix,
+  les chiffres). `results` est un objet JSON (pas une chaîne), `plan` un objet
   `{ "blocks": [{ "component": "cards", "props": { "items": "voitures", "title": "nom", "link": "url", "image": "photo" } }] }`. Une réponse courte reste dans le terminal. Pour corriger ou compléter,
   mets à jour sur place : même `id` (`read_recap` le retrouve, sans `id` celui de l'onglet actif). Un nouveau récap
   seulement si l'utilisateur demande deux versions côte à côte.
@@ -1058,7 +1061,7 @@ aucun autre moyen (curl, script, API) pour atteindre le web à sa place.
 | `hand_over(id, reason, kind)` | Rend la main à l'utilisateur sur ton onglet (`verification` ou `lost`) et attend son retour |
 | `open_tab(url, space?, reason?)` | Ouvre un onglet, par exemple sur une démo `http://localhost:<port de $WEBAIOS_PORTS>` ; pendant une recherche, une adresse web que tu as écrite toi-même demande l'accord de l'utilisateur (`reason`) |
 | `navigate(id, url, reason?)` | Change l'URL d'un onglet (y compris recharger une démo) ; une adresse composée par toi demande l'accord de l'utilisateur, donne un `reason` |
-| `show_recap(title, results, plan, id?)` | Publie un récap (résultats + plan de page) dans un onglet de ta fenêtre ; avec `id`, le met à jour sur place ; rend son id |
+| `show_recap(title, results, plan, id?, live?)` | Publie un récap (résultats + plan de page) dans un onglet de ta fenêtre ; avec `id`, le met à jour sur place ; rend son id |
 | `read_recap(id?)` | Relit un récap (id, titre, résultats, plan) ; sans `id`, celui de l'onglet actif |
 | `capture_screen(id)` | Capture d'écran d'un onglet, pour vérifier visuellement une démo |
 | `launch_app(folder)` | Lance le projet `/workspace/projects/<folder>` d'après son `webaios.json` et ouvre sa fenêtre |
