@@ -154,13 +154,11 @@ const ai = new LocalAi({ folder: join(dataDir, "local-ai"), run: defaultRunner, 
 
 // The host is Node and cannot call Cc: in tests it writes the file, otherwise the chrome store shows the alert.
 // Another address imposed (a remote Ollama, a test): WebAiOs then starts and installs nothing.
-// Ollama needs macOS 14 (Darwin 23); on an older Mac the pages keep the plain link to its site.
-const ollamaRuns = process.platform === "darwin" && parseInt((await import("node:os")).release(), 10) >= 23;
 // WEBAIOS_TEST_OLLAMA_KIND (e2e): a fixed status and actions that touch nothing, to show each state of the pages.
 const fakeOllama = process.env.WEBAIOS_TEST_OLLAMA_KIND;
 const ollama = fakeOllama
   ? { status: async () => ({ kind: fakeOllama, version: "0.30.0", min: OLLAMA_MIN }) as OllamaStatus, start: async () => {}, install: async (progress: (p: number | null) => void) => progress(50), close: () => {} }
-  : createOllamaRuntime({ url: ai.ollamaUrl, dataDir, managed: ollamaRuns && ai.ollamaUrl === OLLAMA_LOCAL_URL && !process.env.WEBAIOS_TEST_NO_SYSTEM });
+  : createOllamaRuntime({ url: ai.ollamaUrl, dataDir, managed: process.platform === "darwin" && ai.ollamaUrl === OLLAMA_LOCAL_URL && !process.env.WEBAIOS_TEST_NO_SYSTEM });
 // An installed Ollama that is not running is started with WebAiOs; nothing is ever downloaded without a click.
 void ollama.status().then((s) => (s.kind === "stopped" ? ollama.start() : undefined)).catch((e) => console.error("[webaios] Ollama did not start:", e));
 // WEBAIOS_TEST_DOCKER_KIND (e2e): a fixed status and a start that touches nothing.

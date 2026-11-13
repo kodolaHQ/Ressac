@@ -130,6 +130,8 @@ leaks=$(grep -rl --binary-files=text -e "$HOME" -e "$repo_root" $app || true)
 # 8. Ad hoc signature: the friends allow it once in System Settings.
 step "Signing"
 plutil -replace CFBundleShortVersionString -string $version $app/Contents/Info.plist
+# WebAiOs asks for macOS 14: the Ollama it can install for the local AI does not run below (Firefox itself says 10.15).
+plutil -replace LSMinimumSystemVersion -string 14.0 $app/Contents/Info.plist
 codesign --force --deep --sign - $app
 codesign --verify --deep --strict $app || fail "codesign --verify failed"
 
