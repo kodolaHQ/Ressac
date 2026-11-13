@@ -5,7 +5,7 @@ Ressac rebuilt on stable Firefox. Built with [surfer](https://github.com/zen-bro
 ## Requirements (macOS arm64)
 
 - `brew install gnu-tar python@3.12`; Rust in `~/.cargo/bin`; Mozilla toolchains in `~/.mozbuild` (installed by `engine:bootstrap` if needed).
-- About 25 GB free: the Firefox sources live in `~/Ressac-firefox/engine`, and `engine/` is a symlink to them.
+- About 25 GB free: the Firefox sources live in `~/WebAiOs-firefox/engine` (to be renamed `~/Ressac-firefox`; `scripts/engine.sh` follows), and `engine/` is a symlink to them.
 - Every command goes through `scripts/env.sh` (PATH, SDK): use the pnpm scripts.
 
 ## First install
@@ -68,9 +68,27 @@ A packaged build with a DSN (`RESSAC_SENTRY_DSN` at package time, never in the r
 
 ## Data
 
-The Ressac state (session, settings) lives in `~/Ressac-firefox/data` by default, next to `engine/`, never in `~/Ressac`. Set `RESSAC_DATA_DIR` to use another folder. The e2e always sets it to a temporary folder.
+The Ressac state (session, settings) lives in the `data` folder next to `engine/` by default, never in `~/Ressac`. Set `RESSAC_DATA_DIR` to use another folder. The e2e always sets it to a temporary folder.
 
 Two instances must never share a data folder: the session's temporary file name is the same in both (no pid in Firefox), so they would overwrite each other's session.
+
+## Coming from WebAiOs
+
+Ressac was called WebAiOs. At the first launch on a machine that had WebAiOs, `chrome/store/carry-over.ts` runs once. It checks that WebAiOs is not running (otherwise it shows « Quittez WebAiOs, puis relancez Ressac. » and quits), renames `~/WebAiOs` to `~/Ressac` (and `workspace/.webaios` to `.ressac`, the old caches removed), moves the profile last used by the installed WebAiOs into Ressac's profile root, registers it as `webaios-carried`, makes it this install's default and restarts once on it. Its state is `~/Library/Application Support/Ressac/carried.json`. An unfinished carry-over stops Ressac with a message and is retried at the next launch: Ressac never starts on half-carried data. A Ressac.app moved to another folder is pointed back at the carried profile. It never runs on a development or test launch (profile given on the command line, `RESSAC_DATA_DIR`, `RESSAC_TEST_NO_SYSTEM`). There is no way back: the old WebAiOs no longer finds its profile.
+
+Stored formats that keep the old spelling, so nothing has to be migrated: the container identities `userContextIdInternal.webaios-<id>` (logins of spaces, site apps and agent apps), the Docker volume `webaios-home` (the agent's logins) and the carried profile's name `webaios-carried`.
+
+Old names still read: `webaios.json` (new: `ressac.json`), `webaiosOpen` and `webaiosSite` (new: `ressacOpen`, `ressacSite`), `webaios://` addresses in a saved session, the five `webaios.*` prefs (copied to `ressac.*` at start, before telemetry), the three keychain services `webaios-*` (copied to `ressac-*` on first read) and the old workshop container `webaios-<name>` (removed before the new one is created).
+
+Agent extensions: ids are now `<x>@agent.ressac`. One installed under `@agent.webaios` stays guarded, is uninstalled at start and offered again, and is signed again by Mozilla (its own storage is lost).
+
+Accepted losses:
+
+- Saved payment cards (Firefox encrypts them with a keychain secret labelled with the app's name; passwords are not concerned).
+- The workshop image is rebuilt once under its new name; the old image stays on disk.
+- The `.webaios/` folders inside individual projects (logs, profiling, review marks).
+- Hand-edited agent instructions that still name `/workspace/.webaios/` paths.
+- The macOS grants (screen recording, camera, microphone, notifications, default browser) are asked again: the bundle id changed.
 
 ## Add-ons
 
@@ -432,7 +450,7 @@ Sidebar side (Réglages › Vie privée › Interface › « Barre de navigation
 
 ## Worktrees
 
-`engine/` is shared by all checkouts (it links to `~/Ressac-firefox/engine`), and the import links `src/` files of the checkout that ran it. Run `pnpm engine:import` in the checkout you build. Links left behind by a deleted worktree are dangling: `engine:import` prunes them first (`scripts/engine.sh prune`), otherwise surfer fails with ENOENT.
+`engine/` is shared by all checkouts (it links to `~/WebAiOs-firefox/engine`, to be renamed `~/Ressac-firefox`), and the import links `src/` files of the checkout that ran it. Run `pnpm engine:import` in the checkout you build. Links left behind by a deleted worktree are dangling: `engine:import` prunes them first (`scripts/engine.sh prune`), otherwise surfer fails with ENOENT.
 
 ## Calls in a background tab
 

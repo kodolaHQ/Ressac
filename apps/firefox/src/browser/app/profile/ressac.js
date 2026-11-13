@@ -18,6 +18,9 @@ pref("browser.aboutwelcome.enabled", false);
 pref("browser.startup.homepage_override.mstone", "ignore");
 pref("startup.homepage_welcome_url", "");
 pref("datareporting.policy.dataSubmissionEnabled", false);
+// The branding template still points at another browser's site: no update page of ours yet.
+pref("app.update.url.manual", "");
+pref("app.update.url.details", "");
 pref("browser.migrate.showBookmarksToolbarAfterMigration", false);
 
 // Our tabs have a single source of truth (ours): no Firefox start page, new-tab page, session restore or tab-close behaviour.

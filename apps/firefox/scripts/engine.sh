@@ -1,12 +1,12 @@
 #!/bin/zsh
-# The Firefox sources (~23 GB) live outside the repository, in ~/Ressac-firefox/engine; engine/ is a symlink to them.
+# The Firefox sources (~23 GB) live outside the repository, in ~/WebAiOs-firefox/engine (to be renamed ~/Ressac-firefox/engine); engine/ is a symlink to them.
 #   install: download Firefox (surfer download), move it out of the repository and create the link.
 #   link:    only create the link (new checkout, worktree).
 #   prune:   remove links into another Ressac checkout, dangling or not: surfer import never replaces an existing link,
 #            so after another checkout (or a deleted worktree) ran the import, its files would stay in the build.
 set -e
 cd "${0:A:h}/.."
-# Stored location kept until the folder moves (plan 61, task 7): ~/WebAiOs-firefox on this machine.
+# Kept until the machine's folder is renamed by hand to ~/Ressac-firefox (then change this line).
 TARGET="$HOME/WebAiOs-firefox/engine"
 case "$1" in
   install)
