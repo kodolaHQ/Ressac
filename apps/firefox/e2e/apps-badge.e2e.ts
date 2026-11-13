@@ -86,7 +86,7 @@ describe("one Ressac, essai and autre launched in each test", () => {
   it("at start the first photo of essai exists (refs/ressac/relu under <dataDir>/design/review/app-essai.git) and no .git appears in projets/essai", async () => {
     await expect.poll(() => existsSync(reviewedRef(p.dataDir, "app-essai")), { timeout: 15_000 }).toBe(true);
     const projects = join(p.dataDir, "workspace", "projects");
-    expect(readdirSync(join(projects, "essai")).sort()).toEqual(["app.js", "logo.bin", "serveur.mjs", "ressac.json"]);
+    expect(readdirSync(join(projects, "essai")).sort()).toEqual(["app.js", "logo.bin", "ressac.json", "serveur.mjs"]);
     expect(existsSync(join(projects, ".git"))).toBe(false);
     // A project without manifest gets no snapshot.
     expect(existsSync(reviewedRef(p.dataDir, "app-vieux"))).toBe(false);
