@@ -17,8 +17,6 @@ After a clone: `npm ci` in `.claude/marketplace-local/plugins/svelte-lsp`.
 
 Every visual change follows `DESIGN.md`.
 
-Until the machine's folders are renamed by hand, three paths still carry the old name: `~/.config/webaios/sentry.env` (to move to `~/.config/ressac/sentry.env`; it must also define `RESSAC_SENTRY_DSN`, the variable `package.sh` now reads), `../WebAiOs-docs` (the docs, to become `../Ressac-docs`) and the engine in `~/WebAiOs-firefox` (to become `~/Ressac-firefox`; `apps/firefox/scripts/engine.sh` still targets the old one). The commands below name the new paths.
-
 ## Ressac e2e tests
 
 - The suite runs 6 files in parallel (`maxWorkers: 6`, about 8 min measured 2026-11-12). At 9, time-sensitive tests break: do not raise it without making them robust.

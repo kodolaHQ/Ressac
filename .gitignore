@@ -20,7 +20,7 @@ apps/firefox/src/browser/base/content/ressac/design-actor.sys.mjs
 apps/firefox/src/browser/base/content/ressac/vim-actor.sys.mjs
 apps/firefox/src/browser/base/content/ressac/call-actor.sys.mjs
 
-# Specs, plans and notes live outside the repo (../Ressac-docs, still ../WebAiOs-docs until renamed by hand); docs/superpowers is a local link to them
+# Specs, plans and notes live outside the repo (../Ressac-docs); docs/superpowers is a local link to them
 docs/superpowers
 
 # Packaging outputs

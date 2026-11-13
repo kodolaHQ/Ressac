@@ -5,7 +5,7 @@ Ressac rebuilt on stable Firefox. Built with [surfer](https://github.com/zen-bro
 ## Requirements (macOS arm64)
 
 - `brew install gnu-tar python@3.12`; Rust in `~/.cargo/bin`; Mozilla toolchains in `~/.mozbuild` (installed by `engine:bootstrap` if needed).
-- About 25 GB free: the Firefox sources live in `~/WebAiOs-firefox/engine` (to be renamed `~/Ressac-firefox`; `scripts/engine.sh` follows), and `engine/` is a symlink to them.
+- About 25 GB free: the Firefox sources live in `~/Ressac-firefox/engine`, and `engine/` is a symlink to them.
 - Every command goes through `scripts/env.sh` (PATH, SDK): use the pnpm scripts.
 
 ## First install
@@ -453,7 +453,7 @@ Sidebar side (Réglages › Vie privée › Interface › « Barre de navigation
 
 ## Worktrees
 
-`engine/` is shared by all checkouts (it links to `~/WebAiOs-firefox/engine`, to be renamed `~/Ressac-firefox`), and the import links `src/` files of the checkout that ran it. Run `pnpm engine:import` in the checkout you build. Links left behind by a deleted worktree are dangling: `engine:import` prunes them first (`scripts/engine.sh prune`), otherwise surfer fails with ENOENT.
+`engine/` is shared by all checkouts (it links to `~/Ressac-firefox/engine`), and the import links `src/` files of the checkout that ran it. Run `pnpm engine:import` in the checkout you build. Links left behind by a deleted worktree are dangling: `engine:import` prunes them first (`scripts/engine.sh prune`), otherwise surfer fails with ENOENT.
 
 ## Calls in a background tab
 
