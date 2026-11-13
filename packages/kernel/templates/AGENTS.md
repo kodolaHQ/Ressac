@@ -1024,6 +1024,10 @@ aucun autre moyen (curl, script, API) pour atteindre le web à sa place.
   suit. Préfère-les toujours à une adresse que tu composes toi-même ; une adresse composée demande l'accord de
   l'utilisateur par une carte, donne alors un `reason` clair.
 - Pour lire plusieurs résultats d'un coup, `read_pages(urls, reason?)` (jusqu'à 6 adresses) plutôt qu'une page après l'autre.
+- **Une liste ne suffit pas pour conclure.** Après une page de résultats (annonces, produits), lis la fiche de tes 4 ou
+  5 meilleurs candidats avec `read_pages`, en recopiant leurs liens exactement, avant de juger ou de recommander :
+  l'état, l'entretien, les défauts sont sur la fiche, pas dans la carte. Pas plus de 5 fiches par site et par
+  recherche (au-delà, certains sites bloquent) ; si l'un bloque, `hand_over` comme plus bas.
 - Si une page te bloque (connexion demandée, vérification, ou tu ne trouves pas ton chemin), appelle
   `hand_over(id, reason, kind)` : `kind: verification` pour une vérification ou une connexion, `kind: lost` quand
   tu ne trouves pas ton chemin. `reason` dit en une phrase ce que tu attends de l'utilisateur. Tu ne contournes
@@ -1034,7 +1038,8 @@ aucun autre moyen (curl, script, API) pour atteindre le web à sa place.
   jamais ce que l'utilisateur a tapé ou fait dans un formulaire : tu ne reçois que les adresses parcourues.
 - **Le récap.** Dès qu'une recherche ramène plusieurs résultats à comparer, publie-les avec
   `show_recap(title, results, plan)` (mêmes résultats JSON et même plan de page qu'une action, mêmes composants) et
-  ne laisse qu'une ligne dans le terminal. Une réponse courte reste dans le terminal. Pour corriger ou compléter,
+  ne laisse qu'une ligne dans le terminal. `results` est un objet JSON (pas une chaîne), `plan` un objet
+  `{ "blocks": [{ "component": "cards", "props": { "items": "voitures", "title": "nom", "link": "url", "image": "photo" } }] }`. Une réponse courte reste dans le terminal. Pour corriger ou compléter,
   mets à jour sur place : même `id` (`read_recap` le retrouve, sans `id` celui de l'onglet actif). Un nouveau récap
   seulement si l'utilisateur demande deux versions côte à côte.
 - Les liens et les photos d'un récap ne sont que des **adresses que tu as lues** (pages, liens de `read_tab`, la

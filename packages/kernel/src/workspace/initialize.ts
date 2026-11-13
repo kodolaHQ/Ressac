@@ -58,6 +58,7 @@ export const OLD_AGENTS = new Set([
   "08ab1528c2c4345c2bad7685f7b89bdfe20d1d0a677b1267da0a34d1e91414c1",
   "56b165bf7ae7e88fd3125401419301b29eb16eba113434592e01a0d1c61b868b",
   "f523f766e05f8076213dd35c29cb89390481372fd807f12900d9d8a7f2b2206e",
+  "ee6688de3324e84c6aff31cfe19720d6dba2d03a24f594c61ef7a1308b28e9d0",
 ]);
 
 const hash = (content: Buffer) => createHash("sha256").update(content).digest("hex");
