@@ -190,6 +190,15 @@ export function createApi(win: WindowController): ApiFirefox {
         offExit();
       });
     },
+    agentView: {
+      state: () => structuredClone(win.store.agentView.state()),
+      onState: (callback) => untilUnload(win.store.agentView.onState((s) => callback(structuredClone(s)))),
+      watch: (callback) => untilUnload(win.store.agentView.watch(callback)),
+      open() {
+        const tab = win.store.agentView.state()?.tab;
+        if (tab) win.store.dispatch({ type: "activateTab", id: tab });
+      },
+    },
     // The home page: widgets, their data and state, and the agent's theme, all kept by the kernel host.
     home: {
       read: async () => {

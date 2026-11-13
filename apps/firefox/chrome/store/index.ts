@@ -7,6 +7,7 @@ import { loadSession, SessionRecorder } from "../../core/state/persistence";
 import { withEssentials } from "../../core/state/actions";
 import { bridgeHandlers, sendMirror, trackState } from "../agent/bridge";
 import { createHost, HOST_EXITED, type AgentHost } from "../agent/host";
+import { createAgentView, type AgentView } from "../agent/agent-view";
 import { readHtml, readPage } from "../agent/invisible";
 import { Questions } from "../agent/questions";
 import type { PageReadOptions, ReadPage } from "../shims/kernel";
@@ -70,6 +71,8 @@ export interface WebAiOsStore extends Store {
   readonly agentExtensions: AgentExtensions;
   /** The agent's access to tabs, as the host last sent it (no access while no host runs). */
   readonly access: AccessState;
+  /** The tab the agent last acted on, and its thumbnails while someone watches. */
+  readonly agentView: AgentView;
   /** The agent's dev tools on tabs, owned by the running kernel. */
   readonly devtools: DevTools;
   /** The site apps' windows (never WebAiOs windows), opened and closed as the host asks. */
@@ -433,6 +436,8 @@ async function start(): Promise<WebAiOsStore> {
     devtools.release();
     apps.closeAll();
   });
+  // After the `access` listener above: it reads the access just received.
+  const agentView = createAgentView({ store, host: agent, access: () => access, windows });
   agent.ensure().catch((e) => console.error("[agent] the kernel did not start:", e));
   // No `node … host.ts` may outlive the app: its sessions and MCP server stop with it.
   AsyncShutdown.profileBeforeChange.addBlocker("WebAiOs: stop the agent host", () => agent.stop());
@@ -465,6 +470,7 @@ async function start(): Promise<WebAiOsStore> {
     get access() {
       return access;
     },
+    agentView,
     widgetGestures: widgetGestures,
     readPage: (url, o, signal) => readPage(store, url, o, signal),
     readHtml: (url, o, signal) => readHtml(store, url, o, signal),

@@ -179,6 +179,15 @@ export interface SearchResult {
   active: number;
   total: number;
 }
+/** What the agent last did and on which tab (`label`: « Lit leboncoin.fr »); `site`: its host without `www.`. */
+export interface AgentViewState {
+  tab: TabId;
+  label: string;
+  title: string;
+  site: string;
+  icon?: string;
+  running: boolean;
+}
 
 /** The API the UI gets as `window.webaios` (ui/install-api.ts). */
 export interface ApiWebaios {
@@ -254,6 +263,15 @@ export interface ApiWebaios {
   };
   /** The agent's access to a tab changed: the full state is broadcast again. */
   onAccess(callback: (e: AccessState) => void): () => void;
+  /** The tab the agent last acted on, never a private one: null when none, or 20 s after its last tool ended. */
+  agentView: {
+    state(): AgentViewState | null;
+    onState(callback: (s: AgentViewState | null) => void): () => void;
+    /** Thumbnails of that tab (`data:image/jpeg;base64,…`, null when it cannot be shown), taken only while someone watches. */
+    watch(callback: (frame: string | null) => void): () => void;
+    /** Shows that tab. */
+    open(): void;
+  };
   /** Home page: the widgets of the agent space's home/widgets. */
   home: {
     read(): Promise<ShownWidget[]>;
