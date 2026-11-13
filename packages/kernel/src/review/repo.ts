@@ -14,6 +14,8 @@ export const DIFF_CONTEXT = 3;
 export const EXCLUSIONS = [".git", "node_modules", ".DS_Store", "dist", "build", ".next"];
 
 const REF = "refs/ressac/relu";
+/** Read (never written) for projects reviewed before the rename to Ressac. */
+const LEGACY_REF = "refs/webaios/relu";
 const PATHS_BATCH = 200;
 
 export class ReviewError extends Error {
@@ -140,12 +142,13 @@ export class ReviewStore {
     return (await this.g(["write-tree"])).trim();
   }
 
+  /** The last reviewed commit: the new ref, else the old one. */
   private async reviewedRef(): Promise<string | null> {
-    try {
-      return (await this.g(["rev-parse", "-q", "--verify", REF])).trim() || null;
-    } catch {
-      return null;
+    for (const ref of [REF, LEGACY_REF]) {
+      const commit = await this.g(["rev-parse", "-q", "--verify", ref]).then((out) => out.trim(), () => "");
+      if (commit) return commit;
     }
+    return null;
   }
 
   private async keepInternal(tree: string): Promise<void> {
@@ -177,7 +180,7 @@ export class ReviewStore {
       await this.prepare();
       const current = await this.internalSnapshot();
       if (!(await this.reviewedRef())) await this.keepInternal(current);
-      const reviewed = (await this.g(["rev-parse", `${REF}^{tree}`])).trim();
+      const reviewed = (await this.g(["rev-parse", `${await this.reviewedRef()}^{tree}`])).trim();
       if (reviewed === current) return { reviewedTree: reviewed, currentTree: current, files: [] };
 
       const raw = (await this.g(["diff-tree", "-r", "--no-renames", "-z", "--raw", reviewed, current])).split("\0");

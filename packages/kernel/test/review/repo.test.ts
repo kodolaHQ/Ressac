@@ -49,6 +49,23 @@ describe("reference", () => {
     expect(c.files).toEqual([]);
     expect(c.reviewedTree).toBe(c.currentTree);
   });
+  test("a project reviewed under WebAiOs (refs/webaios/relu only) reads as reviewed there; « Marquer comme relu » writes the new ref, which wins", async () => {
+    const g = (...a: string[]) => execFileSync(GIT, ["--git-dir", repo, ...a]).toString().trim();
+    await write("a.txt", "a\n");
+    await r.ensureReference();
+    const old = g("rev-parse", "refs/ressac/relu");
+    g("update-ref", "refs/webaios/relu", old);
+    g("update-ref", "-d", "refs/ressac/relu");
+    await write("a.txt", "b\n");
+    expect(await r.ensureReference()).toBe(false);
+    const c = await r.compare();
+    expect(c.reviewedTree).toBe(g("rev-parse", "refs/webaios/relu^{tree}"));
+    expect(c.files).toHaveLength(1);
+    await r.keep();
+    expect((await r.compare()).files).toEqual([]);
+    expect(g("rev-parse", "refs/ressac/relu^{tree}")).toBe((await r.compare()).currentTree);
+    expect(g("rev-parse", "refs/webaios/relu")).toBe(old);
+  });
 });
 
 describe("comparer and file", () => {
