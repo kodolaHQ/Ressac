@@ -10,6 +10,7 @@ import { createWatchdog } from "./crash-watchdog";
 import { consoleLevel, MAX_CRASHES } from "../../core/extensions/consoles";
 import type { Store } from "./store";
 import type { WindowRegistry } from "./windows";
+import { PINNED_PREF, parsePinned } from "../window/pinned";
 
 const { AddonManager } = ChromeUtils.importESModule("resource://gre/modules/AddonManager.sys.mjs");
 const { FileUtils } = ChromeUtils.importESModule("resource://gre/modules/FileUtils.sys.mjs");
@@ -17,6 +18,8 @@ const { ExtensionParent } = ChromeUtils.importESModule("resource://gre/modules/E
 
 // Keep in sync with host/extensions/firefox-copy.ts ID_SUFFIX.
 const SUFFIX = "@agent.ressac";
+/** Read for add-ons the agent installed before the rename to Ressac: no guard applies to them any more. */
+const LEGACY_SUFFIX = "@agent.webaios";
 const REFUSED_CALLS = new Set(["tabs.captureVisibleTab", "tabs.captureTab", "tabs.detectLanguage", "tabs.saveAsPDF", "tabs.print", "tabs.printPreview", "tabs.toggleReaderMode"]);
 // Keep in sync with chrome/window/tabs.ts (not imported: it runs window code at load).
 const TAB_ID = "ressac-tab-id";
@@ -57,6 +60,8 @@ export interface AgentExtensions {
 
 /** Firefox's side of the agent's extensions: the kernel host decides, this installs, enables, disables, uninstalls. */
 export function createAgentExtensions(store: Store, windows: WindowRegistry, questions: Questions, host: () => AgentHost, access: () => AccessState): AgentExtensions {
+  // First: an old-suffix add-on would run unguarded. The host drops their registry entries: the agent asks for them again.
+  void uninstallLegacy().catch((e) => console.error("[extensions] add-ons from before the rename not uninstalled:", e));
   // The add-on changes this module is making, as `<addonId> <quoi>`: only those AddonManager events are ours. A removal
   // in about:addons while we install or reload the same add-on is still the user's (an install fires no uninstall event).
   const ours = new Set<string>();
@@ -503,4 +508,12 @@ function watchCrashes(crashed: (addonId: string) => void): { backgroundError(add
   Services.obs.addObserver(() => watchdog.wake(), "wake_notification");
 
   return { backgroundError: (addonId, source, text) => half(addonId, source, text, "window") };
+}
+
+/** Uninstalls the agent's add-ons installed before the rename and takes them off the toolbar's pinned list. */
+async function uninstallLegacy(): Promise<void> {
+  for (const a of await AddonManager.getAddonsByTypes(["extension"])) if (a.id.endsWith(LEGACY_SUFFIX)) await a.uninstall();
+  const pinned = parsePinned(Services.prefs.getStringPref(PINNED_PREF, "[]"));
+  const kept = pinned.filter((id) => !id.endsWith(LEGACY_SUFFIX));
+  if (kept.length !== pinned.length) Services.prefs.setStringPref(PINNED_PREF, JSON.stringify(kept));
 }

@@ -40,16 +40,20 @@ const tabElement = (id: number, t: FakeTab) => {
   return tabElements.get(id);
 };
 
+/** An installed add-on as AddonManager lists it; `uninstalled` once uninstall() ran. */
+type FakeAddon = { id: string; uninstalled?: boolean; uninstall(): Promise<void> };
+const addon = (id: string): FakeAddon => ({ id, async uninstall() { this.uninstalled = true; } });
+
 /** The chrome module with Firefox simulated: one policy (ID → HOST), tabs by id with their attributes and address. */
 async function load(
   tabs: Record<number, FakeTab> = {},
-  o: { read?: string[]; requests?: unknown[][]; notified?: unknown[][]; running?: unknown[] } = {},
+  o: { read?: string[]; requests?: unknown[][]; notified?: unknown[][]; running?: unknown[]; addons?: FakeAddon[]; prefs?: Record<string, string> } = {},
 ) {
   reloads.length = 0;
   tabElements.clear();
   vi.stubGlobal("ChromeUtils", {
     importESModule: () => ({
-      AddonManager: { addAddonListener: () => {} },
+      AddonManager: { addAddonListener: () => {}, getAddonsByTypes: async () => o.addons ?? [] },
       FileUtils: {},
       Management: { on: () => {} },
       ExtensionParent: {
@@ -72,7 +76,7 @@ async function load(
   vi.stubGlobal("WebExtensionPolicy", { getByID: (id: string) => (id === ID ? { mozExtensionHostname: HOST } : null), getActiveExtensions: () => (o.running ?? []).map((extension) => ({ extension })) });
   vi.stubGlobal("Ci", { nsIHttpChannel: {} });
   vi.stubGlobal("Cr", { NS_BINDING_ABORTED: 0x804b0002 });
-  vi.stubGlobal("Services", { obs: { addObserver: (o: (s: unknown) => void, topic: string) => topic === "http-on-modify-request" && (observer = o) }, console: { registerListener: () => {} }, env: { get: () => "" } });
+  vi.stubGlobal("Services", { obs: { addObserver: (o: (s: unknown) => void, topic: string) => topic === "http-on-modify-request" && (observer = o) }, console: { registerListener: () => {} }, env: { get: () => "" }, prefs: { getStringPref: (n: string, d: string) => o.prefs?.[n] ?? d, setStringPref: (n: string, v: string) => o.prefs && (o.prefs[n] = v) } });
   const { createAgentExtensions } = await import("../chrome/store/agent-extensions");
   // Ressac tabs onglet-<n>: 5 is in a private space, 6 in another profile's, the others in the default one.
   const spaces = [
@@ -255,5 +259,15 @@ describe("agent extension checkpoints", () => {
     expect(request("https://autre.test/x", { loading: "autre@ressac.test", triggering: "autre@ressac.test" })).toBe(false);
     expect(request("https://autre.test/x", { loading: "", triggering: "" })).toBe(false);
     expect(request("https://autre.test/x", { loading: null, triggering: undefined })).toBe(false);
+  });
+});
+
+describe("agent extensions installed before the rename", () => {
+  it("are uninstalled at start and unpinned; the agent's own and other add-ons are untouched", async () => {
+    const addons = [addon("foo@agent.webaios"), addon("foo@agent.ressac"), addon("ublock@raymondhill.net")];
+    const prefs = { "ressac.extensions.pinned": JSON.stringify(["foo@agent.webaios", "foo@agent.ressac", "ublock@raymondhill.net"]) };
+    await load({}, { addons, prefs });
+    await vi.waitFor(() => expect(addons.map((a) => !!a.uninstalled)).toEqual([true, false, false]));
+    expect(JSON.parse(prefs["ressac.extensions.pinned"])).toEqual(["foo@agent.ressac", "ublock@raymondhill.net"]);
   });
 });

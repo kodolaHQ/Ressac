@@ -164,6 +164,10 @@ export class ExtensionsAgent {
 
   /** Startup (decision 5): leftovers deleted, every granted one recopied, signed again only if its source changed, then installed. */
   async start(): Promise<void> {
+    // Installed before the rename under another add-on id (the chrome uninstalls them): forgotten, the agent asks again.
+    const renamed = ([key, x]: [string, ExtensionEntry]) => x.source === "agent" && !!x.addonId && x.addonId !== addonIdOf(key.slice("agent:".length));
+    if (Object.entries((await readExtensionsState(this.o.folder)).extensions).some(renamed))
+      await changeExtensionsState(this.o.folder, (e) => ({ ...e, extensions: Object.fromEntries(Object.entries(e.extensions).filter((x) => !renamed(x))) }), () => new Set());
     // First: the chrome's checkpoints wait for it (an add-on kept by Firefox starts before this host).
     this.o.rpc.notify("extensions.scopes", scopesOf(await readExtensionsState(this.o.folder)));
     for (const [sub, rest] of [
@@ -831,11 +835,13 @@ export class ExtensionsAgent {
     return activeIn(e, x?.disabled?.reason === "scope-widened" ? { ...x, disabled: null } : x);
   }
 
-  /** The last signed and installed version (`signed/<id>.json`), if its .xpi is there. */
+  /** The last signed and installed version (`signed/<id>.json`), if its .xpi is there and carries today's add-on id. */
   private async guard(id: string): Promise<{ version: string; hash: string } | null> {
     const signs = join(this.o.folder, "signed");
     if (!(await lstat(join(signs, `${id}.xpi`)).then(() => true, () => false))) return null;
-    return readFile(join(signs, `${id}.json`), "utf8").then((t) => JSON.parse(t) as { version: string; hash: string }, () => null);
+    const kept = await readFile(join(signs, `${id}.json`), "utf8").then((t) => JSON.parse(t) as { version: string; hash: string; addonId?: string }, () => null);
+    // Signed before the rename (no id recorded): Firefox would refuse its old id, it is signed again.
+    return kept?.addonId === addonIdOf(id) ? kept : null;
   }
 
   /** `active` false: Firefox installs it only over a present add-on (disabled first), never fresh. */
@@ -895,7 +901,7 @@ export class ExtensionsAgent {
         return r;
       }
       this.toSign.delete(key);
-      await writeFile(join(signs, `${id}.json`), JSON.stringify({ version: r.version, hash: hash }));
+      await writeFile(join(signs, `${id}.json`), JSON.stringify({ version: r.version, hash: hash, addonId: addonIdOf(id) }));
       const copy = join(this.o.folder, "copies", id);
       await rm(copy, { recursive: true, force: true });
       await rename(staging, copy);
