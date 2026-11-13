@@ -15,6 +15,7 @@ import {
 } from "node:fs/promises";
 import { basename, dirname, join, posix } from "node:path";
 import { KERNEL_ROOT } from "../paths.js";
+import { LEGACY_MANIFEST_FILE, MANIFEST_FILE, readManifestFile } from "../manifest-file.js";
 import { parseManifest, messageFiles, type ManifestAnalysis } from "./manifest.js";
 
 /** Folder of the guards shipped with the kernel; a browser that embeds the kernel can provide another. */
@@ -344,7 +345,7 @@ async function replaceFolder(fresh: string, target: string): Promise<void> {
 
 /**
  * Controlled copy of an agent extension: `source` is read without following any link, analyzed, and if there is
- * no denial, the copy (CSP imposed, guards at the head, `ressac.json`, `key` and `update_url` removed) replaces
+ * no denial, the copy (CSP imposed, guards at the head, `ressac.json` (or `webaios.json`), `key` and `update_url` removed) replaces
  * `target` in one go. With a denial, nothing is written.
  */
 export async function prepareCopy(o: {
@@ -354,10 +355,10 @@ export async function prepareCopy(o: {
 }): Promise<{ analysis: ManifestAnalysis; hash: string; root?: RootRead }> {
   const { files: files, denial: folderDenial, root: root } = await readFolder(o.source);
   const raw = json(files.get("manifest.json"));
-  const rawRessac = files.get("ressac.json");
-  const ressac = rawRessac === undefined ? undefined : (json(rawRessac) ?? "illisible");
+  const found = await readManifestFile((name) => files.get(name));
+  const ressac = found === undefined ? undefined : (json(found.content) ?? "illisible");
   const messages = messageFiles(raw).map((f) => json(files.get(f)));
-  const analysis = parseManifest(raw, { source: "agent", ressac, rules: rulesOf(raw, files), messages });
+  const analysis = parseManifest(raw, { source: "agent", ressac, ressacFile: found?.name, rules: rulesOf(raw, files), messages });
   analysis.denial = [...folderDenial, ...filesDenial(files), ...analysis.denial];
   const hash = hashOf(files);
   const loaded = root ? { root: root } : {};
@@ -398,7 +399,7 @@ export async function prepareCopy(o: {
   try {
     await mkdir(tmp, { recursive: true });
     for (const [path, content] of files) {
-      if (path === "ressac.json" || path === "manifest.json") continue;
+      if (path === MANIFEST_FILE || path === LEGACY_MANIFEST_FILE || path === "manifest.json") continue;
       const destination = join(tmp, path);
       await mkdir(dirname(destination), { recursive: true });
       await writeFile(

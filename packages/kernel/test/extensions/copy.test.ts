@@ -100,6 +100,17 @@ describe("prepareCopy", () => {
     expect(existsSync(join(c, "ressac.json"))).toBe(false);
   });
 
+  it("webaios.json (written before the rename) is read when ressac.json is absent, and absent from the copy; ressac.json wins", async () => {
+    const old = await source({ "manifest.json": baseManifest(), "webaios.json": { network: ["api.exemple.com"] } });
+    const c = await target();
+    expect((await prepareCopy({ source: old, target: c, keptFolder: DEFAULT_GUARDS })).analysis.scope.network).toEqual(["api.exemple.com"]);
+    expect(existsSync(join(c, "webaios.json"))).toBe(false);
+    const both = await source({ "manifest.json": baseManifest(), "ressac.json": { network: [] }, "webaios.json": { network: ["api.exemple.com"] } });
+    const d = await target();
+    expect((await prepareCopy({ source: both, target: d, keptFolder: DEFAULT_GUARDS })).analysis.scope.network).toEqual([]);
+    expect(existsSync(join(d, "webaios.json"))).toBe(false);
+  });
+
   it("key and update_url removed", async () => {
     const src = await source({ "manifest.json": baseManifest({ key: "MIIB...", update_url: "https://x.example/u" }) });
     const c = await target();

@@ -310,3 +310,8 @@ test("I1 declarativeNetRequestFeedback has its own label", () => {
     "Voir quelles requêtes de tous les onglets ses règles ont touchées",
   ]);
 });
+
+test("agent: the denials name the network file read (webaios.json, written before the rename)", () => {
+  const base = { manifest_version: 3, name: "x", version: "1.0" };
+  expect(parseManifest(base, { source: "agent", ressac: { network: ["*.x.com"] }, ressacFile: "webaios.json" }).denial).toEqual(["webaios.json : domaine invalide « *.x.com »"]);
+});

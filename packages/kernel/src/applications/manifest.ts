@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { watch } from "chokidar";
 import { z } from "zod";
 import type { SpacePaths } from "../paths.js";
+import { LEGACY_MANIFEST_FILE, MANIFEST_FILE, readManifestFile } from "../manifest-file.js";
 
 const GROUPING_MS = 150;
 const FOLDER_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
@@ -39,23 +40,16 @@ export function validFolder(folder: string): boolean {
 
 async function readProject(c: SpacePaths, folder: string): Promise<ProjectRead> {
   const path = join(c.projects, folder);
-  const file = join(path, "ressac.json");
-  let createdAt: Date;
-  let content: string | undefined;
-  try {
-    content = await readFile(file, "utf8");
-    createdAt = (await stat(file)).mtime;
-  } catch {
-    createdAt = (await stat(path)).mtime;
-  }
+  const found = await readManifestFile((name) => readFile(join(path, name), "utf8").catch(() => undefined));
+  const createdAt = (await (found ? stat(join(path, found.name)).catch(() => stat(path)) : stat(path))).mtime;
   const base = { folder: folder, path: path, createdAt: createdAt.toISOString() };
   if (!validFolder(folder)) return { ...base, name: folder, noManifest: "nom de dossier non pris en charge" };
-  if (content === undefined) return { ...base, name: folder, noManifest: "pas de ressac.json" };
+  if (!found) return { ...base, name: folder, noManifest: `pas de ${MANIFEST_FILE}` };
   try {
-    const manifest = Manifest.parse(JSON.parse(content));
+    const manifest = Manifest.parse(JSON.parse(found.content));
     return { ...base, name: manifest.name ?? folder, manifest: manifest };
   } catch (e) {
-    return { ...base, name: folder, noManifest: `ressac.json invalide : ${(e as Error).message}` };
+    return { ...base, name: folder, noManifest: `${found.name} invalide : ${(e as Error).message}` };
   }
 }
 
@@ -85,7 +79,7 @@ export function watchProjects(c: SpacePaths, callback: () => void): () => Promis
   });
   observer.on("all", (event, path) => {
     const name = path.split(/[\\/]/).pop();
-    const relevant = event === "addDir" || event === "unlinkDir" || name === "ressac.json";
+    const relevant = event === "addDir" || event === "unlinkDir" || (name === MANIFEST_FILE || name === LEGACY_MANIFEST_FILE);
     if (!relevant) return;
     clearTimeout(timer);
     timer = setTimeout(callback, GROUPING_MS);
@@ -98,8 +92,11 @@ export function watchProjects(c: SpacePaths, callback: () => void): () => Promis
 
 /** Changes a project's type, keeping the other fields of the manifest. */
 export async function writeType(c: SpacePaths, folder: string, type: "app" | "poc"): Promise<void> {
-  const target = join(c.projects, folder, "ressac.json");
-  const manifest = Manifest.parse(JSON.parse(await readFile(target, "utf8")));
+  const found = await readManifestFile((name) => readFile(join(c.projects, folder, name), "utf8").catch(() => undefined));
+  if (!found) throw new Error(`pas de ${MANIFEST_FILE}`);
+  // The file read is the one rewritten: a webaios.json stays the project's only manifest.
+  const target = join(c.projects, folder, found.name);
+  const manifest = Manifest.parse(JSON.parse(found.content));
   const temp = `${target}.${process.pid}.tmp`;
   await writeFile(temp, JSON.stringify({ ...manifest, type }, null, 2));
   await rename(temp, target);

@@ -12,9 +12,9 @@ async function space() {
   return c;
 }
 
-async function write(c: ReturnType<typeof spacePaths>, folder: string, content: string) {
+async function write(c: ReturnType<typeof spacePaths>, folder: string, content: string, file = "ressac.json") {
   await mkdir(join(c.projects, folder), { recursive: true });
-  await writeFile(join(c.projects, folder, "ressac.json"), content);
+  await writeFile(join(c.projects, folder, file), content);
 }
 
 test("a project with a valid manifest", async () => {
@@ -85,6 +85,39 @@ test("watchProjects signals a new manifest and ignores node_modules", async () =
   await sleep(500);
   expect(calls).toBe(0);
   await write(c, "a", '{"type":"poc","launch":"x"}');
+  await sleep(500);
+  await stop();
+  expect(calls).toBe(1);
+});
+
+// Projects the agent wrote before the rename to Ressac carry webaios.json.
+test("webaios.json is read when ressac.json is absent; ressac.json wins; messages name the file read", async () => {
+  const c = await space();
+  await write(c, "old", '{"name":"Old","type":"app","launch":"x"}', "webaios.json");
+  await write(c, "both", '{"name":"New","type":"app","launch":"x"}');
+  await write(c, "both", '{"name":"Old","type":"app","launch":"x"}', "webaios.json");
+  await write(c, "cut", '{"type":', "webaios.json");
+  const byFolder = Object.fromEntries((await readProjects(c)).map((p) => [p.folder, p]));
+  expect(byFolder.old).toMatchObject({ name: "Old", manifest: { type: "app" } });
+  expect(byFolder.both).toMatchObject({ name: "New" });
+  expect((byFolder.cut as { noManifest: string }).noManifest.startsWith("webaios.json invalide")).toBe(true);
+});
+
+test("writeType rewrites the webaios.json it read, and creates no ressac.json", async () => {
+  const c = await space();
+  await write(c, "a", '{"type":"poc","launch":"x"}', "webaios.json");
+  await writeType(c, "a", "app");
+  expect(JSON.parse(await readFile(join(c.projects, "a", "webaios.json"), "utf8"))).toEqual({ type: "app", launch: "x" });
+  await expect(readFile(join(c.projects, "a", "ressac.json"))).rejects.toThrow();
+});
+
+test("watchProjects signals a changed webaios.json", async () => {
+  const c = await space();
+  await mkdir(join(c.projects, "a"), { recursive: true });
+  let calls = 0;
+  const stop = watchProjects(c, () => calls++);
+  await sleep(400);
+  await write(c, "a", '{"type":"poc","launch":"x"}', "webaios.json");
   await sleep(500);
   await stop();
   expect(calls).toBe(1);

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { MANIFEST_FILE } from "../manifest-file.js";
 
 export type SourceExtension = "store" | "agent";
 
@@ -100,24 +101,24 @@ function parseRules(
   }
 }
 
-function parseNetwork(ressac: unknown, denial: string[]): string[] {
+function parseNetwork(ressac: unknown, denial: string[], file = MANIFEST_FILE): string[] {
   const o = object(ressac ?? {});
   if (!o) {
-    denial.push("ressac.json : contenu invalide");
+    denial.push(`${file} : contenu invalide`);
     return [];
   }
   if (o.network === undefined) return [];
   if (!Array.isArray(o.network)) {
-    denial.push("ressac.json : « network » doit être une liste de domaines");
+    denial.push(`${file} : « network » doit être une liste de domaines`);
     return [];
   }
   if (o.network.length > NETWORK_MAX) {
-    denial.push(`ressac.json : ${NETWORK_MAX} domaines au plus (${o.network.length} demandés)`);
+    denial.push(`${file} : ${NETWORK_MAX} domaines au plus (${o.network.length} demandés)`);
   }
   const valid: string[] = [];
   for (const d of o.network) {
     if (typeof d === "string" && DOMAIN.test(d)) valid.push(d);
-    else denial.push(`ressac.json : domaine invalide « ${String(d)} »`);
+    else denial.push(`${file} : domaine invalide « ${String(d)} »`);
   }
   return sortedUnique(valid);
 }
@@ -161,6 +162,8 @@ export function parseManifest(
   o: {
     source: SourceExtension;
     ressac?: unknown;
+    /** The file `ressac` was read from, named in the denials (default ressac.json). */
+    ressacFile?: string;
     rules?: Record<string, unknown>;
     /** The content of the catalogs of `fichiersMessages` (absent or unreadable: `undefined`), for a `__MSG_…__` name. */
     messages?: readonly unknown[];
@@ -234,7 +237,7 @@ export function parseManifest(
       denial.push("optional_host_permissions refusé : déclare ces hôtes dans host_permissions");
     }
   }
-  const network = agent ? parseNetwork(o.ressac, denial) : [];
+  const network = agent ? parseNetwork(o.ressac, denial, o.ressacFile) : [];
 
   const scope: Scope = {
     permissions,
