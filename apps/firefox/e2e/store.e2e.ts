@@ -40,7 +40,7 @@ describe("state store", () => {
       const a = store.containerFor("p1");
       return { def: store.containerFor("default"), a, b: store.containerFor("p1"),
         named: ContextualIdentityService.getPrivateIdentity("userContextIdInternal.webaios-p1")?.userContextId === a,
-        leaked: ContextualIdentityService.getPublicIdentities().some((i) => i.name?.startsWith("ressac-")) };
+        leaked: ContextualIdentityService.getPublicIdentities().some((i) => i.name?.startsWith("webaios-")) };
     })();`);
     expect(r.def).toBe(0);
     expect(r.a).not.toBe(0);

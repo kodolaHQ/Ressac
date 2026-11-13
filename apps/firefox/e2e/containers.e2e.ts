@@ -35,7 +35,7 @@ describe("profile containers", () => {
         // SitePolicies.onMissing: removes every policy identity.
         for (const i of cis.getPolicyIdentities()) cis.removePolicyIdentity(i.userContextId);
         const cookies = () => Services.cookies.getCookiesFromHost("127.0.0.1", { userContextId: id }).length;
-        const out = { policy: cis.getPolicyIdentities().filter((i) => i.name.includes("ressac-")).length, kept: !!cis.getPrivateIdentity("userContextIdInternal.webaios-p1") && cookies() === 1 };
+        const out = { policy: cis.getPolicyIdentities().filter((i) => i.name.includes("webaios-")).length, kept: !!cis.getPrivateIdentity("userContextIdInternal.webaios-p1") && cookies() === 1 };
         return out;
       })();`);
       expect(r).toMatchObject({ policy: 0, kept: true });
@@ -89,7 +89,7 @@ describe("profile containers", () => {
       const note = server.paths.find((p) => p.startsWith("/note/ci-"))!;
       expect(note).toBeDefined();
       const seen: string[] = JSON.parse(decodeURIComponent(note.slice("/note/ci-".length)));
-      expect(seen.filter((n) => n.startsWith("ressac-") || n.startsWith("userContextIdInternal"))).toEqual([]);
+      expect(seen.filter((n) => n.startsWith("webaios-") || n.startsWith("userContextIdInternal"))).toEqual([]);
     } finally {
       await w.close();
     }
