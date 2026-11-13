@@ -232,4 +232,22 @@ describe("validatePlan", () => {
       if (!r.ok) expect(r.errors).toContain("1. figure : label : requise");
     });
   });
+
+  describe("highlight", () => {
+    const found = { best: { name: "Yuba", price: "1 850 €" }, items: [{ name: "Babboe" }] };
+    const hl = { component: "highlight", props: { object: "best", label: "Le meilleur", title: "name", value: "price" } };
+    it("a second highlight is discarded", () => {
+      const r = validate({ blocks: [hl, hl] }, found);
+      expect(r.ok).toBe(true);
+      if (r.ok) {
+        expect(r.plan.blocks).toHaveLength(1);
+        expect(r.discarded).toHaveLength(1);
+      }
+    });
+    it("highlight needs an object", () => {
+      const r = validate({ blocks: [figure, { component: "highlight", props: { ...hl.props, object: "items" } }] }, { ...found, tickets });
+      expect(r.ok).toBe(true);
+      if (r.ok) expect(r.plan.blocks.map((b) => b.component)).toEqual(["figure"]);
+    });
+  });
 });

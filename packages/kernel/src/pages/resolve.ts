@@ -81,13 +81,13 @@ function ask(o: Record<string, unknown>, k: string, v: unknown): void {
 
 type Context = {
   results: unknown; account: boolean; defs: Map<string, ComponentDefinition>; cuts: number; blocks: number;
-  chains: Set<string> | null;
+  chains: Set<string> | null; allowed?: ReadonlySet<string>;
 };
 
 const chains = (ctx: Context) => (ctx.chains ??= chainsOf(ctx.results));
 
 function urlAllowed(v: unknown, ctx: Context, httpsOnly: boolean): string | null {
-  if (typeof v !== "string" || v.length > URL_MAX || !chains(ctx).has(v)) return null;
+  if (typeof v !== "string" || v.length > URL_MAX || !(ctx.allowed ?? chains(ctx)).has(v)) return null;
   let u: URL;
   try {
     u = new URL(v);
@@ -233,7 +233,7 @@ function builtIn(name: string, p: Record<string, unknown>, ctx: Context): Record
     }
     case "cards": {
       const title = fieldOf(p.title);
-      const [subtitle, image, value, labels, link] = ["subtitle", "image", "value", "tags", "link"].map((k) => optField(p, k));
+      const [subtitle, image, value, labels, link, warnings] = ["subtitle", "image", "value", "tags", "link", "warnings"].map((k) => optField(p, k));
       const read = (e: unknown, c: string | null | undefined) => (c ? readPath(e, c) : undefined);
       return collection(valueFor(p.items, ctx), ctx, (e) => {
         const t = text(readPath(e, title));
@@ -243,9 +243,20 @@ function builtIn(name: string, p: Record<string, unknown>, ctx: Context): Record
           image: image ? imageOf(read(e, image), ctx) : null,
           value: value ? text(read(e, value)) : null,
           tags: labels ? labelsOf(read(e, labels)) : [],
+          warnings: warnings ? labelsOf(read(e, warnings)) : [],
           link: link ? linkOf(read(e, link), t, ctx) : null,
         };
       });
+    }
+    case "highlight": {
+      const o = objectOf(valueFor(p.object, ctx).value);
+      const [subtitle, image, value, body, link] = ["subtitle", "image", "value", "text", "link"].map((k) => optField(p, k));
+      const title = text(readPath(o, fieldOf(p.title)));
+      const read = (c: string | null | undefined) => (c ? text(readPath(o, c)) : null);
+      return {
+        label: literal(p, "label"), title: title, subtitle: read(subtitle), image: image ? imageOf(readPath(o, image), ctx) : null,
+        value: read(value), text: read(body), link: link ? linkOf(readPath(o, link), title, ctx) : null,
+      };
     }
     case "table": {
       const columns = columnsOf(p.columns).slice(0, 8);
@@ -368,9 +379,9 @@ function resolveBlocks(blocks: unknown, level: number, ctx: Context): RenderedBl
 export function resolvePage(
   plan: PlanPage,
   results: unknown,
-  o: { account: boolean; catalog: ComponentDefinition[]; fallback: boolean },
+  o: { account: boolean; catalog: ComponentDefinition[]; fallback: boolean; allowed?: ReadonlySet<string> },
 ): RenderedPage {
-  const ctx: Context = { results: results, account: o.account, defs: new Map(o.catalog.map((d) => [d.name, d])), cuts: 0, blocks: 0, chains: null };
+  const ctx: Context = { results: results, account: o.account, defs: new Map(o.catalog.map((d) => [d.name, d])), cuts: 0, blocks: 0, chains: null, allowed: o.allowed };
   const blocks = resolveBlocks(plan?.blocks, 0, ctx);
   return { blocks: blocks, fallback: o.fallback, empty: emptyResults(results), cuts: ctx.cuts };
 }

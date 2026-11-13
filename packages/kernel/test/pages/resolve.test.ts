@@ -199,4 +199,28 @@ describe("chainsOf", () => {
     for (let i = 0; i < 20_000; i++) r = [r];
     expect(chainsOf(r).has("fond")).toBe(true);
   });
+
+describe("highlight, card warnings and allowed addresses", () => {
+  const found = {
+    best: { name: "Yuba", price: "1 850 €", url: "https://lbc.fr/a/1", img: "https://img.lbc.fr/1.jpg" },
+    items: [{ name: "Babboe", w: ["batterie 70 %"] }],
+  };
+  const blocks: PlanBlock[] = [
+    { component: "highlight", props: { object: "best", label: "Le meilleur", title: "name", value: "price", link: "url", image: "img" } },
+    { component: "cards", props: { items: "items", title: "name", warnings: "w" } },
+  ];
+  const plan = (r: unknown, allowed?: ReadonlySet<string>) =>
+    resolvePage({ blocks: blocks }, r, { account: false, catalog: catalog, fallback: false, allowed: allowed }).blocks as any[];
+
+  it("highlight and card warnings resolve", () => {
+    const [h, c] = plan(found);
+    expect(h.props).toMatchObject({ label: "Le meilleur", title: "Yuba", value: "1 850 €", link: { url: "https://lbc.fr/a/1" }, image: { url: "https://img.lbc.fr/1.jpg" } });
+    expect(c.props.items[0].warnings).toEqual(["batterie 70 %"]);
+  });
+  it("allowed replaces the results rule", () => {
+    const [h] = plan(found, new Set(["https://lbc.fr/a/1"]));
+    expect(h.props.link.url).toBe("https://lbc.fr/a/1");
+    expect(h.props.image).toBeNull();
+  });
+});
 });
