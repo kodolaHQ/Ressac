@@ -19,6 +19,8 @@
 .pa-blocks { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 /* What appears comes in on the spring (DESIGN.md); a page read again keeps its elements, so nothing replays. */
 .page-action > .pa-blocks > * { animation: webaios-rise var(--spring-d) var(--spring) both; }
+/* A card added to a page shown (a live recap filling) rises on its own; the others keep their place. */
+.pa-cards > .pa-card { animation: webaios-rise var(--spring-d) var(--spring) both; }
 
 .pa-head { display: flex; justify-content: space-between; align-items: end; gap: 20px; }
 .pa-head-text { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
