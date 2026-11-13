@@ -273,7 +273,7 @@ export async function tellOnce(o: Options): Promise<boolean> {
   return true;
 }
 
-/** On a normal start (the adopted profile): each of WebAiOs's prefs the person set becomes Ressac's, unless Ressac has one. */
+/** At every start, before telemetry: each of WebAiOs's prefs the person set becomes Ressac's, unless Ressac has one. */
 export function carryPrefs(prefs: Prefs): void {
   for (const name of LEGACY.prefs) {
     const old = `${LEGACY.prefPrefix}${name}`;

@@ -175,6 +175,19 @@ function carryOverOptions() {
 async function start(): Promise<RessacStore> {
   // The UI's network net first, before any await: the windows read its state before they give their frames a src.
   uiNetState = installUiNetwork(Services.env.get("RESSAC_TEST_UI_NETWORK_FAIL") || null);
+  // WebAiOs's prefs, carried with its profile, before telemetry reads them: an opt-out holds from the first instant.
+  // Synchronous, and a no-op without webaios.* user values (a fresh profile, a dev or test launch).
+  try {
+    const P = Services.prefs;
+    carryPrefs({
+      has: (n) => P.prefHasUserValue(n),
+      get: (n) => (P.getPrefType(n) === P.PREF_BOOL ? P.getBoolPref(n) : P.getPrefType(n) === P.PREF_INT ? P.getIntPref(n) : P.getStringPref(n)),
+      set: (n, v) => (typeof v === "boolean" ? P.setBoolPref(n, v) : typeof v === "number" ? P.setIntPref(n, v) : P.setStringPref(n, String(v))),
+      clear: (n) => P.clearUserPref(n),
+    });
+  } catch (e) {
+    console.error("[carry-over] prefs not carried:", e);
+  }
   // Before anything else can fail: its errors are reported.
   const telemetry = installTelemetry();
   // Before anything creates the data folder: a machine that had WebAiOs keeps its data folder and its profile.
@@ -191,18 +204,6 @@ async function start(): Promise<RessacStore> {
     if (why) Services.prompt.alert(null, "Ressac", why);
     Services.startup.quit(Ci.nsIAppStartup.eAttemptQuit | (carried === "restart" ? Ci.nsIAppStartup.eRestart : 0));
     return new Promise<never>(() => {});
-  }
-  // Before the windows and the services that read them (the telemetry notice, the call bar, the pinned add-ons).
-  try {
-    const P = Services.prefs;
-    carryPrefs({
-      has: (n) => P.prefHasUserValue(n),
-      get: (n) => (P.getPrefType(n) === P.PREF_BOOL ? P.getBoolPref(n) : P.getPrefType(n) === P.PREF_INT ? P.getIntPref(n) : P.getStringPref(n)),
-      set: (n, v) => (typeof v === "boolean" ? P.setBoolPref(n, v) : typeof v === "number" ? P.setIntPref(n, v) : P.setStringPref(n, String(v))),
-      clear: (n) => P.clearUserPref(n),
-    });
-  } catch (e) {
-    console.error("[carry-over] prefs not carried:", e);
   }
   if (await tellOnce(carry).catch(() => false))
     setTimeout(() => Services.prompt.alert(null, "Ressac", "Vos données WebAiOs ont été reprises. Vous pouvez supprimer WebAiOs du dossier Applications. Pour faire de Ressac votre navigateur par défaut : Réglages › Vie privée › Interface."), 0);
