@@ -78,9 +78,9 @@ Ressac was called WebAiOs. At the first launch on a machine that had WebAiOs, `c
 
 Stored formats that keep the old spelling, so nothing has to be migrated: the container identities `userContextIdInternal.webaios-<id>` (logins of spaces, site apps and agent apps), the Docker volume `webaios-home` (the agent's logins) and the carried profile's name `webaios-carried`.
 
-Old names still read: `webaios.json` (new: `ressac.json`), `webaiosOpen` and `webaiosSite` (new: `ressacOpen`, `ressacSite`), `webaios://` addresses in a saved session, the five `webaios.*` prefs (copied to `ressac.*` at start, before telemetry), the three keychain services `webaios-*` (copied to `ressac-*` on first read) and the old workshop container `webaios-<name>` (removed before the new one is created).
+Old names still read: `webaios.json` (new: `ressac.json`), `webaiosOpen` and `webaiosSite` (new: `ressacOpen`, `ressacSite`), `webaios://` addresses in a saved session, the five `webaios.*` prefs (moved to `ressac.*` at start, before telemetry, unless Ressac already has its own value), the three keychain services `webaios-*` (copied to `ressac-*` on first read) and the old workshop container `webaios-<name>` (removed before the new one is created).
 
-Agent extensions: ids are now `<x>@agent.ressac`. One installed under `@agent.webaios` stays guarded, is uninstalled at start and offered again, and is signed again by Mozilla (its own storage is lost).
+Agent extensions: ids are now `<x>@agent.ressac`. One installed under `@agent.webaios` stays guarded until the chrome uninstalls it at start (and drops it from the toolbar's pinned list); its registry entry is forgotten, so it is not reinstalled by itself: the agent has to ask the user again, which signs it again with Mozilla under the new id (its own storage is lost). Its folder in `~/Ressac/extensions/` stays.
 
 Accepted losses:
 
