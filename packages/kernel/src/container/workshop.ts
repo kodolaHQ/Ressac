@@ -10,6 +10,12 @@ export const CONTAINER_NAME = "ressac-workshop";
 // Read on every call so a second app (Firefox build) can run its own container.
 export const containerName = (): string => process.env.RESSAC_CONTAINER || CONTAINER_NAME;
 export const IMAGE = "ressac-workshop:1";
+/** Read for the container created before the rename to Ressac: `webaios-<rest>` for `ressac-<rest>`. */
+export const LEGACY_CONTAINER_PREFIX = "webaios-";
+const legacyContainer = (): string | null => {
+  const name = containerName();
+  return name.startsWith("ressac-") ? LEGACY_CONTAINER_PREFIX + name.slice("ressac-".length) : null;
+};
 // Stored format kept across the rename to Ressac: a Docker volume cannot be renamed, and this one holds the agent's logins.
 export const VOLUME_HOME = "webaios-home";
 /**
@@ -281,6 +287,9 @@ export class Workshop {
       if (build.code !== 0) throw new Error(`Construction de l'image ${IMAGE} impossible : ${tail(build.stderr)}`);
     }
     const ports = containerPortRange().join("-");
+    // The container from before the rename publishes the same ports: removed (absent: docker says so, nothing more).
+    const old = legacyContainer();
+    if (old) await this.launch(["rm", "-f", old], PROBE_DELAY_MS);
     const run = await this.launch([
       "run", "-d",
       "--name", containerName(),

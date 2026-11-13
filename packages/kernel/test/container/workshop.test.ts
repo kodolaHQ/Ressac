@@ -546,3 +546,40 @@ describe("first build progress", () => {
     expect(late).toEqual([2, 3]);
   });
 });
+
+describe("the container from before the rename to Ressac", () => {
+  /** A first start (no container, image up to date): the docker commands, in order. */
+  async function firstStart(env: string) {
+    vi.stubEnv("RESSAC_CONTAINER", env);
+    try {
+      let launched = false;
+      const { run: runCall, calls } = fakeRunner([
+        [/ image inspect /, { code: 0, stdout: `${dockerfileHash()}\n` }],
+        [/ inspect /, () => ({ code: launched ? 0 : 1, stdout: "true\n" })],
+        [/ run /, () => ((launched = true), { code: 0 })],
+        [/ rm -f webaios-/, { code: 1, stderr: "Error: No such container" }],
+      ]);
+      expect(await new Workshop({ paths: paths, docker: "docker", run: runCall }).ensureStarted()).toBe("demarre");
+      return calls.map((c) => c.args.join(" "));
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  }
+
+  test("is removed before the new one is created: it holds the same ports (absent: no error)", async () => {
+    const lines = await firstStart("ressac-workshop-firefox");
+    const rm = lines.indexOf("rm -f webaios-workshop-firefox");
+    expect(rm).toBeGreaterThan(-1);
+    expect(rm).toBeLessThan(lines.findIndex((l) => l.startsWith("run ")));
+    expect(await firstStart("")).toContain("rm -f webaios-workshop");
+  });
+
+  test("never with Docker not running, nor when the container already exists", async () => {
+    const { run: off, calls: offCalls } = fakeRunner([[/ info/, { code: 1, stderr: "Cannot connect" }]]);
+    expect(await new Workshop({ paths: paths, docker: "docker", run: off }).ensureStarted()).toBe("docker-absent");
+    expect(offCalls.some((c) => c.args[0] === "rm")).toBe(false);
+    const { run: on, calls } = fakeRunner([[/ inspect -f \{\{\.State/, { code: 0, stdout: "true\n" }], [/ inspect /, { code: 0, stdout: `${paths.root}|${dockerfileHash()}\n` }]]);
+    expect(await new Workshop({ paths: paths, docker: "docker", run: on }).ensureStarted()).toBe("demarre");
+    expect(calls.some((c) => c.args[0] === "rm")).toBe(false);
+  });
+});
