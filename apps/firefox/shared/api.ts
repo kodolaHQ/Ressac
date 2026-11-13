@@ -14,6 +14,7 @@ import type { LeftZone } from "./reveal";
 import type { Decision, PendingRequest, AccessState, BrowserState, SpaceId, WindowId, TabId, Download, Visit } from "./model";
 
 const id = z.string().min(1);
+const frame = z.object({ x: z.number(), y: z.number(), width: z.number().positive(), height: z.number().positive() });
 const engine = z.enum(["google", "duckduckgo", "qwant"]);
 /** A favorite given by its address (an import), not by an open tab. */
 const favoriteLink = z.object({ url: z.string().regex(/^https?:\/\//), title: z.string() });
@@ -91,11 +92,9 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("activateSpace"), windowId: id, id }),
   z.object({ type: z.literal("openWindow"), id: id.optional(), spaceId: id.optional() }),
   z.object({ type: z.literal("closeWindow"), id }),
-  z.object({
-    type: z.literal("frameWindow"),
-    id,
-    frame: z.object({ x: z.number(), y: z.number(), width: z.number().positive(), height: z.number().positive() }),
-  }),
+  z.object({ type: z.literal("frameWindow"), id, frame }),
+  // The tab leaves its window for a new one (`windowId`, `frame`: where it was dropped), its page still running.
+  z.object({ type: z.literal("moveTabToNewWindow"), id, windowId: id.optional(), frame: frame.optional() }),
   z.object({ type: z.literal("showBlankPage"), windowId: id }),
   z.object({ type: z.literal("toggleCompact"), windowId: id }),
   z.object({ type: z.literal("toggleAgentPanel"), windowId: id }),

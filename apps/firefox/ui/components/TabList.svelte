@@ -24,6 +24,16 @@
     api.dispatch({ type: "moveTab", id, index: order.indexOf(id) < position ? position - 1 : position });
   }
 
+  /** A tab dropped outside the window leaves for a new one, placed where it was dropped. */
+  function dragEnd(e: DragEvent, id: string) {
+    hover = null;
+    const w = window.top ?? window;
+    const outside = e.screenX < w.screenX || e.screenX > w.screenX + w.outerWidth || e.screenY < w.screenY || e.screenY > w.screenY + w.outerHeight;
+    if (e.dataTransfer?.dropEffect !== "none" || !outside) return;
+    // The pointer holds the new window where it held the tab: by the top of its sidebar.
+    api.dispatch({ type: "moveTabToNewWindow", id, frame: { x: e.screenX - 120, y: e.screenY - 40, width: w.outerWidth, height: w.outerHeight } });
+  }
+
   /** Rows are 36 px apart: the highlight slides to the active one (hidden when the active page is not a listed tab). */
   const activeIndex = $derived(active ? order.indexOf(active) : -1);
   // Rows mounted together (a space switch, the first render) rise in cascade, 45 ms apart; a lone new tab rises at once.
@@ -58,6 +68,7 @@
           hover = { index, after: e.clientY > r.top + r.height / 2 };
         }}
         ondragleave={() => (hover = null)}
+        ondragend={(e) => dragEnd(e, id)}
         ondrop={(e) => drop(e, index)}
         onclick={(e) => e.button === 0 && api.dispatch({ type: "activateTab", id })}
         onkeydown={(e) => (e.key === "Enter" || e.key === " ") && api.dispatch({ type: "activateTab", id })}
@@ -67,6 +78,7 @@
             { label: "Épingler", dispatch: () => api.dispatch({ type: "pinTab", id }) },
             { label: "Ajouter aux essentiels", dispatch: () => api.dispatch({ type: "addEssential", id }) },
             ...(appState.value?.spaces ?? []).filter((s) => s.id !== win.activeSpace).map((s) => ({ label: `Envoyer vers ${s.icon} ${s.name}`, dispatch: () => api.dispatch({ type: "moveTabToSpace", id, spaceId: s.id }) })),
+            ...(order.length > 1 ? [{ label: "Déplacer vers une nouvelle fenêtre", dispatch: () => api.dispatch({ type: "moveTabToNewWindow", id }) }] : []),
             { label: "Fermer", dispatch: () => closeTab(id) },
           ])}
       >

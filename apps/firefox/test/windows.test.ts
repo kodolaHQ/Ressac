@@ -29,7 +29,9 @@ describe("pickWindow", () => {
 });
 
 describe("createWindowRegistry", () => {
-  vi.stubGlobal("Services", { startup: { shuttingDown: false }, focus: { activeWindow: null } });
+  const observers = new Set<(subject: unknown) => void>();
+  const obs = { addObserver: (f: (subject: unknown) => void) => void observers.add(f), removeObserver: (f: (subject: unknown) => void) => void observers.delete(f) };
+  vi.stubGlobal("Services", { startup: { shuttingDown: false }, focus: { activeWindow: null }, obs });
   const fakeWindow = () => new EventTarget() as unknown as Window;
 
   it("a window opened for the state that closes before claiming leaves it; the last real window then keeps its tabs", () => {
@@ -41,8 +43,12 @@ describe("createWindowRegistry", () => {
     expect(windows.claim(fakeWindow())).toEqual({ windowId: "a", first: true });
     expect(opened).toHaveLength(1);
     // Closed before Firefox's delayed startup: it never claims b.
+    // Its initial about:blank giving way to the browser is not a close.
     opened[0]!.dispatchEvent(new Event("unload"));
+    expect(store.state.windows.map((f) => f.id)).toEqual(["a", "b"]);
+    for (const f of [...observers]) f(opened[0]);
     expect(store.state.windows.map((f) => f.id)).toEqual(["a"]);
+    expect(observers.size).toBe(0);
     windows.release("a");
     expect(store.state.windows.map((f) => f.id)).toEqual(["a"]);
     expect(store.state.tabs.t).toBeDefined();

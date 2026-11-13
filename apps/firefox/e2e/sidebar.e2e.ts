@@ -220,6 +220,40 @@ describe("WebAiOs sidebar", () => {
     expect(f.order[f.activeSpace]).toEqual([c, a, b]);
   });
 
+  it("a tab dropped outside the window leaves for a new window, its page still running", async () => {
+    const a = await open("/a.html");
+    const b = await open("/b.html");
+    await waitTitle(b, "Page B");
+    // The page's own state and its browsing context survive a move; a reload would lose both.
+    const page = `for (const w of Services.wm.getEnumerator("navigator:browser")) {
+        const t = w.gBrowser?.tabs.find((t) => t.getAttribute("webaios-tab-id") === ${JSON.stringify(b)});
+        if (t) return { context: t.linkedBrowser.browsingContext.id, windows: [...Services.wm.getEnumerator("navigator:browser")].length, selected: t.selected };
+      }
+      return null;`;
+    const before = await m.execute<{ context: number; windows: number }>(page);
+    await inUi(
+      m,
+      `const row = doc.querySelector('[data-testid="tab-' + arguments[0] + '"]');
+       const top = ui.top;
+       row.dispatchEvent(new ui.DragEvent("dragend", { dataTransfer: new ui.DataTransfer(), screenX: top.screenX + top.outerWidth + 200, screenY: top.screenY + 100, bubbles: true }));`,
+      [b],
+    );
+    const s = await waitState((x) => x, (x) => x.windows.length === 2 && x.tabs[b]?.windowId === x.windows[1]!.id);
+    expect(s.windows[0]!.order[s.windows[0]!.activeSpace]).toEqual([a]);
+    expect(s.windows[1]!.frame).toMatchObject({ width: expect.any(Number) });
+    const after = await waitFor<{ context: number; windows: number; selected: boolean } | null>(m, page, (v) => v?.windows === before.windows + 1 && !!v.selected);
+    expect(after!.context).toBe(before.context);
+    expect(s.tabs[b]).toMatchObject({ title: "Page B" });
+    // Dropped inside the window: nothing moves.
+    await inUi(
+      m,
+      `const row = doc.querySelector('[data-testid="tab-' + arguments[0] + '"]');
+       row.dispatchEvent(new ui.DragEvent("dragend", { dataTransfer: new ui.DataTransfer(), screenX: ui.top.screenX + 50, screenY: ui.top.screenY + 100, bubbles: true }));`,
+      [a],
+    );
+    expect((await state(m)).windows).toHaveLength(2);
+  });
+
   it("right click → “Épingler” pins the tab in this space only", async () => {
     const a = await open("/a.html");
     await waitTitle(a, "Page A");
