@@ -298,6 +298,18 @@
   width: var(--webaios-basket, 0px);
 }
 
+/* The pill of the agent's last tab (chrome/window/agent-pill.ts): at the page's bottom right corner, its document sizes it. */
+:root[webaios-main] #webaios-agent-pill {
+  bottom: 8px;
+  right: calc(var(--webaios-agent, 0px) + var(--webaios-basket, 0px) + 8px);
+}
+:root[webaios-main][webaios-sidebar-side="right"] #webaios-agent-pill {
+  right: max(var(--webaios-sidebar, 240px), 8px);
+}
+:root[webaios-main][inDOMFullscreen] #webaios-agent-pill {
+  display: none;
+}
+
 /* The sidebar on the right (settings.sidebarSide, the controller's webaios-sidebar-side): a full mirror, the agent panel on
    the left, the design cart still between the page and the agent. The window buttons keep their place in the sidebar's
    first row, which stays the window's drag area. */

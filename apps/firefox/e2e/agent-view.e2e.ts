@@ -1,18 +1,19 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { waitFor } from "./firefox";
+import { dispatch, state, waitFor } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import { callTool } from "./mcp";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
-import { waitUi } from "./ui";
+import { click, inUi, waitUi } from "./ui";
 
 // The agent's last tab: its activity from the host, and thumbnails taken only while someone watches.
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** Chrome-context script body run with `v` = the store's agentView. */
+const PILL = '[data-testid="agent-pill"]';
 const view = <T>(m: Marionette, body: string) => m.execute<T>(`return (async () => { const v = (await ChromeUtils.importESModule("${STORE}").ready).agentView; ${body} })();`);
 
 let server: Awaited<ReturnType<typeof startServer>>;
@@ -74,4 +75,60 @@ describe("the agent's view", () => {
     await sleep(1_500);
     expect(await view(m, "return v.test.captures;")).toBe(after);
   }, 60_000);
+
+  it("shows a pill over the user's tab: hover shows the agent's tab, a click opens it, ✕ hides it, never on a recap", async () => {
+    const opened = await callTool(w.dataDir, "open_tab", { url: `${server.url}/` });
+    expect(opened.error, opened.text).toBe(false);
+    const tab = opened.text.trim();
+    const activeTab = async () => {
+      const s = await state(m);
+      const win = s.windows[0]!;
+      return s.tabs[win.active[win.activeSpace]!];
+    };
+    const waitActive = async (id: string) => {
+      for (const deadline = Date.now() + 10_000; (await activeTab())?.id !== id; await sleep(100)) if (Date.now() > deadline) throw new Error(`tab ${id} is not active`);
+    };
+    const pillShown = () => waitUi(m, `return doc.querySelector('${PILL}')?.textContent.includes("Lit 127.0.0.1")`, [], 10_000, "agentview");
+    const pillGone = () => waitUi(m, `return !doc.querySelector('${PILL}')`, [], 5_000, "agentview");
+    await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url: `${server.url}/?user` });
+    const user = (await activeTab())!.id;
+    expect(user).not.toBe(tab);
+
+    expect((await callTool(w.dataDir, "read_tab", { id: tab })).error).toBe(false);
+    await pillShown();
+    expect(await inUi(m, `return doc.querySelector('${PILL}').getAttribute("aria-label")`, [], "agentview")).toBe("Voir l'onglet de l'agent");
+    // The frame covers only the pill: the rest of the page keeps the mouse.
+    const [width, height] = await m.execute<number[]>(`const f = document.getElementById("webaios-agent-pill"); return [f.clientWidth, f.clientHeight];`);
+    expect(width).toBeGreaterThan(0);
+    expect(width).toBeLessThan(400);
+    expect(height).toBeLessThan(80);
+
+    // Hovered, it grows into a thumbnail of the agent's tab.
+    await inUi(m, `const r = doc.querySelector('${PILL}').getBoundingClientRect(); ui.synthesizeMouseEvent("mousemove", r.left + r.width / 2, r.top + r.height / 2, {});`, [], "agentview");
+    await waitUi(m, `return doc.querySelector('[data-testid="agent-pill-frame"] img')?.src.startsWith("data:image/jpeg")`, [], 10_000, "agentview");
+    expect((await m.execute<number>(`return document.getElementById("webaios-agent-pill").clientWidth;`))).toBeGreaterThan(240);
+
+    // A click opens the agent's tab, where the pill has no reason to be.
+    await click(m, PILL, { frame: "agentview" });
+    await waitActive(tab);
+    await pillGone();
+
+    // Never over a recap page. A new read keeps the agent's tab within its 20 s hold.
+    await dispatch(m, { type: "activateTab", id: user });
+    expect((await callTool(w.dataDir, "read_tab", { id: tab })).error).toBe(false);
+    await pillShown();
+    const recap = await callTool(w.dataDir, "show_recap", { title: "Pastille", results: {}, plan: { blocks: [{ component: "title", props: { text: "Pastille" } }] } });
+    expect(recap.text, recap.text).toMatch(/Récap \S+ ouvert/);
+    for (const deadline = Date.now() + 10_000; !(await activeTab())?.url.startsWith("webaios://recap/"); await sleep(100)) if (Date.now() > deadline) throw new Error("the recap tab is not active");
+    await pillGone();
+
+    // ✕ hides it, and it stays hidden while the agent's tab is held.
+    await dispatch(m, { type: "activateTab", id: user });
+    await pillShown();
+    await click(m, '[data-testid="agent-pill-close"]', { frame: "agentview" });
+    await pillGone();
+    await sleep(1_000);
+    expect(await inUi(m, `return !!doc.querySelector('${PILL}')`, [], "agentview")).toBe(false);
+    expect(await m.execute<number>(`return document.getElementById("webaios-agent-pill").clientWidth;`)).toBe(0);
+  }, 90_000);
 });

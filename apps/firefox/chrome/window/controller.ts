@@ -15,6 +15,7 @@ import { routeAddonsManager } from "./addons-manager";
 import { setupAnchors } from "./anchor";
 import { mountSiteBanner } from "./site-banner";
 import { mountSearchBand } from "./search-band";
+import { mountAgentPill } from "./agent-pill";
 import { visibleFrame } from "./frame";
 import { FIREFOX_COMMANDS, FIREFOX_KEYS, SETTINGS_MENU_ITEMS, shortcutFor, type Shortcut } from "./keys";
 import { TabSync } from "./tabs";
@@ -109,7 +110,7 @@ export function createController(
   tabs.sync(store.state);
   // The store outlives the window (macOS keeps running without one): drop this window's listeners when it goes, then
   // its state window (its tabs leave with it).
-  const unsubscribe = [store.subscribe((state) => tabs.sync(state)), mountSiteBanner(window, store, windowId), mountSearchBand(window, store, windowId)];
+  const unsubscribe = [store.subscribe((state) => tabs.sync(state)), mountSiteBanner(window, store, windowId), mountSearchBand(window, store, windowId), mountAgentPill(window)];
   applyFrame(store.state.windows.find((f) => f.id === windowId)?.frame ?? null);
   // Size and position kept for the next start (grouped: a drag fires dozens of events).
   let frameTimer: ReturnType<typeof setTimeout> | undefined;
