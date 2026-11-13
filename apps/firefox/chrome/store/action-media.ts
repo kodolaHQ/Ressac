@@ -16,7 +16,7 @@ export const ACTION_IMAGE_MAX = 5 * 1024 * 1024;
 export const actionImagesContainer = (): number => containerFor("action-images");
 
 /**
- * Tests only (WEBAIOS_TEST_ACTION_IMAGES = `origin`): `https://<host><path>` is fetched from `<origin>/<host><path>`.
+ * Tests only (RESSAC_TEST_ACTION_IMAGES = `origin`): `https://<host><path>` is fetched from `<origin>/<host><path>`.
  * The loader still judges the https address, so every redirect (reported with its real http URL) is refused.
  */
 export function actionImageTestUrl(url: string, origin: string | undefined): string {
@@ -32,14 +32,14 @@ const allowed = (u: string) => u.startsWith("https://") && openableUrl(u);
 export async function actionImage(url: string): Promise<string | null> {
   const open = containerRequests(actionImagesContainer(), { anonymous: true });
   // Under the hook, an https redirect would be judged allowed and followed natively: test servers redirect to http.
-  const origin = Services.env.get("WEBAIOS_TEST_ACTION_IMAGES") || undefined;
+  const origin = Services.env.get("RESSAC_TEST_ACTION_IMAGES") || undefined;
   const image = await loadImage((u, o) => open(actionImageTestUrl(u, origin), o), url, { allowed: allowed, cookies: false, max: ACTION_IMAGE_MAX });
   return image && toDataUrl(image);
 }
 
 /**
  * The site home's bridge (homeBridge) for a component: `parent` becomes a frozen object whose postMessage dispatches
- * `webaios-component` on the frame's window, its detail the message as JSON; the Aura tokens of the chrome's messages
+ * `ressac-component` on the frame's window, its detail the message as JSON; the Aura tokens of the chrome's messages
  * are set on the root; `Components` is hidden. Self-contained, serialized with toString().
  */
 export function componentBridge(): void {
@@ -47,7 +47,7 @@ export function componentBridge(): void {
   const stringify = JSON.stringify;
   const Custom = w.CustomEvent;
   const dispatch = w.dispatchEvent.bind(w);
-  w.parent = Object.freeze({ postMessage: (m: unknown) => void dispatch(new Custom("webaios-component", { detail: stringify(m) })) });
+  w.parent = Object.freeze({ postMessage: (m: unknown) => void dispatch(new Custom("ressac-component", { detail: stringify(m) })) });
   // The Aura tokens of each component message become CSS variables on the root, before the component's own listener runs.
   const root = w.document.documentElement;
   w.addEventListener("message", (e: MessageEvent) => {
@@ -82,8 +82,8 @@ export function componentFonts(): Promise<string> {
 }
 
 const NAME = /^[a-z0-9-]{1,40}$/;
-const substitution = (name: string) => `webaios-component-${name}`;
-const copiesOf = (dataDir: string, name: string) => PathUtils.join(dataDir, "webaios-components", name);
+const substitution = (name: string) => `ressac-component-${name}`;
+const copiesOf = (dataDir: string, name: string) => PathUtils.join(dataDir, "ressac-components", name);
 
 function substitute(name: string, dir: string | null): void {
   const handler = Services.io.getProtocolHandler("resource").QueryInterface(Ci.nsIResProtocolHandler);
@@ -108,7 +108,7 @@ function queued<T>(name: string, f: () => Promise<T>): Promise<T> {
 /**
  * One more page shows component `nom`: copies `<dataDir>/workspace/components/<nom>/component.html` with these rules
  * (no symbolic link on the path, COMPONENT_HTML_MAX at most) into
- * `<dataDir>/webaios-components/<nom>/component-<mtime>.html` through displayServed (the widgets' CSP and guard, then
+ * `<dataDir>/ressac-components/<nom>/component-<mtime>.html` through displayServed (the widgets' CSP and guard, then
  * the bridge and the browser fonts; DISPLAY_DENIED on a network hint), and returns its resource:// URL, or null. Each call is paired with a
  * releaseComponent, null or not.
  * shortcut: checked by realpath then read by path (IOUtils has no O_NOFOLLOW), as serveHome; upgrade with it.
@@ -130,8 +130,8 @@ export function serveComponent(dataDir: string, name: string): Promise<string | 
       if (bytes.length > COMPONENT_HTML_MAX) return null;
       const copies = copiesOf(dataDir, name);
       await IOUtils.makeDirectory(copies, { createAncestors: true, ignoreExisting: true });
-      // The copies stay inside <dataDir>/webaios-components: a copies folder that is a link is refused.
-      const root = realPath(PathUtils.join(dataDir, "webaios-components"));
+      // The copies stay inside <dataDir>/ressac-components: a copies folder that is a link is refused.
+      const root = realPath(PathUtils.join(dataDir, "ressac-components"));
       if (!root || realPath(copies) !== PathUtils.join(root, name)) return null;
       const file = `component-${Math.round(info.lastModified)}.html`;
       const copy = PathUtils.join(copies, file);

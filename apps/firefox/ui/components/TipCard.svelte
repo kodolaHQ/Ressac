@@ -19,7 +19,7 @@
     const { id, tryIt } = tip;
     markSeen(id);
     if (tryIt === "command") openCommand("new");
-    else window.parent.webaiosWindow!.openAgent();
+    else window.parent.ressacWindow!.openAgent();
   }
 </script>
 
@@ -38,7 +38,7 @@
 {/if}
 
 <style>
-  .tip { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border-radius: 16px; border: 1px solid var(--glass-edge); background: var(--glass); box-shadow: var(--float); color: var(--text); flex-shrink: 0; animation: webaios-rise var(--spring-d) var(--spring) backwards; }
+  .tip { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border-radius: 16px; border: 1px solid var(--glass-edge); background: var(--glass); box-shadow: var(--float); color: var(--text); flex-shrink: 0; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   b { font-size: 12px; color: var(--text-muted); }
   p { margin: 0; font-size: 14px; line-height: 1.45; }
   .row { display: flex; align-items: center; gap: 8px; }

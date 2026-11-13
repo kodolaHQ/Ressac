@@ -4,10 +4,10 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { cleanupXpis, identities, installAddon } from "./addons";
 import { dispatch, state, waitFor, waitReady } from "./firefox";
-import { launchWebAiOs } from "./launch";
+import { launchRessac } from "./launch";
 import { startServer } from "./server";
 
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const CIS = 'ChromeUtils.importESModule("moz-src:///toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs").ContextualIdentityService';
 
 let server: Awaited<ReturnType<typeof startServer>>;
@@ -19,7 +19,7 @@ afterAll(async () => {
 
 describe("profile containers", () => {
   it("a profile container survives an enterprise-policy sweep", async () => {
-    const w = await launchWebAiOs();
+    const w = await launchRessac();
     try {
       const m = w.marionette;
       await m.setContext("chrome");
@@ -35,7 +35,7 @@ describe("profile containers", () => {
         // SitePolicies.onMissing: removes every policy identity.
         for (const i of cis.getPolicyIdentities()) cis.removePolicyIdentity(i.userContextId);
         const cookies = () => Services.cookies.getCookiesFromHost("127.0.0.1", { userContextId: id }).length;
-        const out = { policy: cis.getPolicyIdentities().filter((i) => i.name.includes("webaios-")).length, kept: !!cis.getPrivateIdentity("userContextIdInternal.webaios-p1") && cookies() === 1 };
+        const out = { policy: cis.getPolicyIdentities().filter((i) => i.name.includes("ressac-")).length, kept: !!cis.getPrivateIdentity("userContextIdInternal.webaios-p1") && cookies() === 1 };
         return out;
       })();`);
       expect(r).toMatchObject({ policy: 0, kept: true });
@@ -44,27 +44,27 @@ describe("profile containers", () => {
     }
   });
 
-  it("a public webaios container whose internal name exists is left untouched at start", async () => {
-    const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
-    const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
+  it("a public ressac container whose internal name exists is left untouched at start", async () => {
+    const profile = await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
+    const dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
     try {
-      let w = await launchWebAiOs({ profile, dataDir });
+      let w = await launchRessac({ profile, dataDir });
       let m = w.marionette;
       await m.setContext("chrome");
       await waitReady(m);
       const ids = await m.execute<number[]>(`return (async () => {
         const store = await ChromeUtils.importESModule("${STORE}").ready;
-        return [store.containerFor("p1"), ${CIS}.create("webaios-p1", "fence", "blue").userContextId];
+        return [store.containerFor("p1"), ${CIS}.create("ressac-p1", "fence", "blue").userContextId];
       })();`);
       await w.close();
-      w = await launchWebAiOs({ profile, dataDir });
+      w = await launchRessac({ profile, dataDir });
       m = w.marionette;
       await m.setContext("chrome");
       await waitReady(m);
       const r = await m.execute<{ internal?: number; twin: boolean }>(`return (async () => {
         await ChromeUtils.importESModule("${STORE}").ready;
         return { internal: ${CIS}.getPrivateIdentity("userContextIdInternal.webaios-p1")?.userContextId,
-          twin: ${CIS}.getPublicIdentities().some((i) => i.userContextId === arguments[0] && i.name === "webaios-p1") };
+          twin: ${CIS}.getPublicIdentities().some((i) => i.userContextId === arguments[0] && i.name === "ressac-p1") };
       })();`, [ids[1]]);
       expect(r).toEqual({ internal: ids[0], twin: true });
       await w.close();
@@ -74,7 +74,7 @@ describe("profile containers", () => {
   });
 
   it("an add-on with contextualIdentities sees no profile container", async () => {
-    const w = await launchWebAiOs();
+    const w = await launchRessac();
     try {
       const m = w.marionette;
       await m.setContext("chrome");
@@ -89,7 +89,7 @@ describe("profile containers", () => {
       const note = server.paths.find((p) => p.startsWith("/note/ci-"))!;
       expect(note).toBeDefined();
       const seen: string[] = JSON.parse(decodeURIComponent(note.slice("/note/ci-".length)));
-      expect(seen.filter((n) => n.startsWith("webaios-") || n.startsWith("userContextIdInternal"))).toEqual([]);
+      expect(seen.filter((n) => n.startsWith("ressac-") || n.startsWith("userContextIdInternal"))).toEqual([]);
     } finally {
       await w.close();
     }

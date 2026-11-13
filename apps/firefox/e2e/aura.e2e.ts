@@ -2,12 +2,12 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { dispatch, state, waitFor } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import { callTool } from "./mcp";
 import { startServer } from "./server";
 import { waitUi } from "./ui";
 
-let w: LaunchedWebAiOs | undefined;
+let w: LaunchedRessac | undefined;
 let server: Awaited<ReturnType<typeof startServer>> | undefined;
 afterEach(async () => {
   await w?.close();
@@ -17,17 +17,17 @@ afterEach(async () => {
 
 async function launch(prefs?: Record<string, number>, env?: Record<string, string>) {
   // Motion is what this file tests: full motion unless the test asks for reduced.
-  w = await launchWebAiOs({ prefs: { "ui.prefersReducedMotion": 0, ...prefs }, env });
+  w = await launchRessac({ prefs: { "ui.prefersReducedMotion": 0, ...prefs }, env });
   const m = w.marionette;
   await m.setContext("chrome");
-  await waitFor(m, "return !!window.webaiosWindow", (v) => v === true);
+  await waitFor(m, "return !!window.ressacWindow", (v) => v === true);
   await waitUi(m, "return !!doc.querySelector('[data-testid=\"sidebar\"]')");
   return m;
 }
 
 // --a1..--a3 are registered colors: computed as rgb(). Read once the 900 ms transition is over.
 const variable = (name: string) =>
-  `return [document.documentElement, document.getElementById("webaios-sidebar").contentDocument.documentElement]
+  `return [document.documentElement, document.getElementById("ressac-sidebar").contentDocument.documentElement]
      .map((r) => r.ownerDocument.defaultView.getComputedStyle(r).getPropertyValue(${JSON.stringify(name)}).trim());`;
 
 describe("the window's aura", () => {
@@ -60,7 +60,7 @@ describe("the window's aura", () => {
     // The panel's left edge and the page's right margin, sampled every frame for 600 ms after the toggle.
     const slide = async () =>
       m.execute<{ left: number; margin: number; hidden: boolean }[]>(`return (async () => {
-        const agent = document.getElementById("webaios-agent"), box = document.getElementById("tabbrowser-tabbox"), out = [];
+        const agent = document.getElementById("ressac-agent"), box = document.getElementById("tabbrowser-tabbox"), out = [];
         const t0 = performance.now();
         while (performance.now() - t0 < 600) {
           out.push({ left: Math.round(agent.getBoundingClientRect().left), margin: Math.round(parseFloat(getComputedStyle(box).marginRight)), hidden: agent.hidden });
@@ -70,10 +70,10 @@ describe("the window's aura", () => {
       })();`);
     if (!(await open())) {
       await dispatch(m, { type: "toggleAgentPanel", windowId });
-      await waitFor(m, "return !document.getElementById('webaios-agent').hidden", (v) => v === true);
+      await waitFor(m, "return !document.getElementById('ressac-agent').hidden", (v) => v === true);
       await new Promise((r) => setTimeout(r, 600));
     }
-    const width = await m.execute<number>(`return Math.round(document.getElementById("webaios-agent").getBoundingClientRect().width);`);
+    const width = await m.execute<number>(`return Math.round(document.getElementById("ressac-agent").getBoundingClientRect().width);`);
     await dispatch(m, { type: "toggleAgentPanel", windowId });
     const closing = await slide();
     // A hidden iframe measures 0: only the frames where it shows.
@@ -83,7 +83,7 @@ describe("the window's aura", () => {
     expect(lefts.every((x, i) => i === 0 || x >= lefts[i - 1]!)).toBe(true);
     expect(closing.some((x) => x.margin > 8 && x.margin < width + 8)).toBe(true);
     expect(closing[0]!.hidden).toBe(false);
-    await waitFor(m, "return document.getElementById('webaios-agent').hidden", (v) => v === true, 2_000);
+    await waitFor(m, "return document.getElementById('ressac-agent').hidden", (v) => v === true, 2_000);
     await dispatch(m, { type: "toggleAgentPanel", windowId });
     const opening = (await slide()).map((x) => x.left);
     expect(new Set(opening).size).toBeGreaterThan(3);
@@ -92,7 +92,7 @@ describe("the window's aura", () => {
 
   it("reduced motion stops the aura drift", async () => {
     const m = await launch({ "ui.prefersReducedMotion": 1 });
-    const names = await m.execute<string[]>(`return [...document.querySelectorAll("#webaios-aura i")].map((i) => getComputedStyle(i).animationName);`);
+    const names = await m.execute<string[]>(`return [...document.querySelectorAll("#ressac-aura i")].map((i) => getComputedStyle(i).animationName);`);
     expect(names).toEqual(["none", "none", "none"]);
     // The agent's halo: a still ring.
     expect(await m.execute(`return getComputedStyle(document.getElementById("tabbrowser-tabbox"), "::after").animationName;`)).toBe("none");
@@ -101,8 +101,8 @@ describe("the window's aura", () => {
   it("the halo shows while the agent works on the displayed tab", async () => {
     server = await startServer({ routes: { "/": (_, res) => res.writeHead(200, { "Content-Type": "text/html" }).end("<title>demo</title><p>demo</p>") } });
     // The demo port is the kernel's own: the agent's tabs there get every right, no consent card.
-    const m = await launch(undefined, { WEBAIOS_CONTAINER_PORTS: `${server.port}-${server.port}` });
-    const config = path.join(w!.dataDir, "workspace", ".webaios", "mcp.json");
+    const m = await launch(undefined, { RESSAC_CONTAINER_PORTS: `${server.port}-${server.port}` });
+    const config = path.join(w!.dataDir, "workspace", ".ressac", "mcp.json");
     for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
       if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
     // The home page's panel starts the agent's session, which takes back every access: tools are called after it.
@@ -114,7 +114,7 @@ describe("the window's aura", () => {
     };
     const other = await call("open_tab", { url: `${server.url}/?other` });
     const shown = await call("open_tab", { url: `${server.url}/` }); // open_tab displays it
-    const working = `return document.documentElement.hasAttribute("webaios-agent-working");`;
+    const working = `return document.documentElement.hasAttribute("ressac-agent-working");`;
     const slow = "await new Promise((r) => setTimeout(r, 2500)); 1";
 
     // A read takes a few ms, far less than the host's 50 ms grouping of access changes: the halo still lights.

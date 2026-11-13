@@ -1,19 +1,19 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import { fade } from "svelte/transition";
-  import type { RenderedBlock, RenderedPage } from "@webaios/kernel";
+  import type { RenderedBlock, RenderedPage } from "@ressac/kernel";
   import type { AgentViewState } from "../../shared/api";
   import SiteIcon from "../components/SiteIcon.svelte";
   import PageRender from "./PageRender.svelte";
   import { sections, type Collection, type PageContext } from "./types";
 
   /**
-   * The page `webaios://recap/<id>`: a recap the agent published, drawn like an action page. Its links and images are
+   * The page `ressac://recap/<id>`: a recap the agent published, drawn like an action page. Its links and images are
    * allowed only if the agent read their address. Only a missing file is « fermé »: a host not ready yet is read again.
    */
   let { id }: { id: string } = $props();
 
-  const recaps = window.webaios.recaps;
+  const recaps = window.ressac.recaps;
   const ctx: PageContext = { openLink: (url) => recaps.openLink(id, url), image: (url) => recaps.image(id, url) };
   const FORMAT = new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" });
   const date = (iso: string) => {
@@ -35,18 +35,18 @@
   const count = $derived(shown && !("gone" in shown) ? kept(shown.page.blocks) : 0);
 
   // The agent's tab while the recap fills: thumbnails only while live (this page is mounted only while its tab shows).
-  let view = $state<AgentViewState | null>(window.webaios.agentView.state());
+  let view = $state<AgentViewState | null>(window.ressac.agentView.state());
   let thumbnail = $state<string | null>(null);
   $effect(() => {
-    const off = window.webaios.agentView.onState((s) => (view = s));
-    view = window.webaios.agentView.state();
+    const off = window.ressac.agentView.onState((s) => (view = s));
+    view = window.ressac.agentView.state();
     return off;
   });
   // Every state is a fresh copy: watch again (and drop the old frame) only when the agent's tab changes.
   const watched = $derived(live && view ? view.tab : null);
   $effect(() => {
     if (!watched) return;
-    return window.webaios.agentView.watch((f) => (thumbnail = f));
+    return window.ressac.agentView.watch((f) => (thumbnail = f));
   });
   // The last frame stays while the agent writes (no tool, so no activity): the recap is live until its last version.
   let generation = 0;
@@ -94,7 +94,7 @@
             {#if live}<span class="live" data-testid="recap-live" out:fade={{ duration: 150 }}>en direct{count ? ` · ${count} retenue${count > 1 ? "s" : ""}` : ""}</span>{/if}
           </p>
           {#if live && (view || thumbnail)}
-            <button class="view" data-testid="recap-agent-view" title={view?.title} disabled={!view} onclick={() => window.webaios.agentView.open()} out:fade={{ duration: 150 }}>
+            <button class="view" data-testid="recap-agent-view" title={view?.title} disabled={!view} onclick={() => window.ressac.agentView.open()} out:fade={{ duration: 150 }}>
               <span class="frame">
                 {#if thumbnail}<img src={thumbnail} alt="" />{:else if view}<span class="site"><SiteIcon favicon={view.icon ?? null} title={view.site} size={24} />{view.site}</span>{/if}
               </span>
@@ -113,14 +113,14 @@
   .scrolled { position: absolute; inset: 0; overflow: auto; }
   .swap { display: grid; align-content: start; }
   .version { grid-area: 1 / 1; min-width: 0; }
-  .message { max-width: 960px; box-sizing: border-box; margin: 16px auto 0; padding: 0 24px; color: var(--text-muted); font-size: 12px; animation: webaios-rise var(--spring-d) var(--spring) both; }
+  .message { max-width: 960px; box-sizing: border-box; margin: 16px auto 0; padding: 0 24px; color: var(--text-muted); font-size: 12px; animation: ressac-rise var(--spring-d) var(--spring) both; }
   .foot { margin: 0 auto 32px; }
   .head { max-width: 960px; box-sizing: border-box; margin: 0 auto; padding: 0 24px; display: flex; justify-content: space-between; align-items: start; gap: 16px; }
   .head .message { margin: 16px 0 0; padding: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-  .live { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 999px; background: color-mix(in srgb, var(--running) 14%, transparent); color: var(--running); font-size: 11px; animation: webaios-rise var(--spring-d) var(--spring) both; }
+  .live { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 999px; background: color-mix(in srgb, var(--running) 14%, transparent); color: var(--running); font-size: 11px; animation: ressac-rise var(--spring-d) var(--spring) both; }
   .live::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
   /* Enter on the spring, leave by a fade (DESIGN.md); the dense glass keeps it readable over the aura. */
-  .view { all: unset; cursor: pointer; flex: none; display: flex; flex-direction: column; gap: 6px; width: 280px; margin-top: 16px; padding: 6px; border-radius: 12px; background: var(--glass-dense); border: 1px solid var(--glass-edge); box-shadow: var(--float); color: var(--text); font: 500 12px var(--font-ui); transition: transform var(--tap); animation: webaios-rise var(--spring-d) var(--spring) both; }
+  .view { all: unset; cursor: pointer; flex: none; display: flex; flex-direction: column; gap: 6px; width: 280px; margin-top: 16px; padding: 6px; border-radius: 12px; background: var(--glass-dense); border: 1px solid var(--glass-edge); box-shadow: var(--float); color: var(--text); font: 500 12px var(--font-ui); transition: transform var(--tap); animation: ressac-rise var(--spring-d) var(--spring) both; }
   .view:active:not(:disabled) { transform: scale(0.97); }
   .view:disabled { cursor: default; }
   .view:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
@@ -130,5 +130,5 @@
   .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .label.running { color: var(--accent); }
   /* A card added while the recap fills rises on its own; the others keep their place. */
-  .version :global(.pa-cards > .pa-card) { animation: webaios-rise var(--spring-d) var(--spring) both; }
+  .version :global(.pa-cards > .pa-card) { animation: ressac-rise var(--spring-d) var(--spring) both; }
 </style>

@@ -1,16 +1,16 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { button, cleanupXpis, hider, installAddon } from "./addons";
 import { dispatch, state, waitFor } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
 import { click, inUi, missingApi, waitUi } from "./ui";
 
 // The sidebar's add-on strip (ui/ExtensionsStrip.svelte) over the window side (chrome/window/addons.ts).
 
-const ID = "button@webaios.test";
+const ID = "button@ressac.test";
 let server: Awaited<ReturnType<typeof startServer>>;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 beforeAll(async () => (server = await startServer()));
 afterAll(async () => {
@@ -18,10 +18,10 @@ afterAll(async () => {
   await cleanupXpis();
 });
 beforeEach(async () => {
-  w = await launchWebAiOs();
+  w = await launchRessac();
   m = w.marionette;
   await m.setContext("chrome");
-  await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+  await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
   await waitUi(m, "return !!doc.querySelector('[data-testid=\"sidebar\"]')");
 });
 afterEach(async () => {
@@ -41,7 +41,7 @@ async function open(path: string): Promise<void> {
   await dispatch(m, { type: "openTab", windowId: (await win()).id, url });
   await waitFor(m, `return gBrowser.selectedBrowser.currentURI.spec === ${JSON.stringify(url)} && !gBrowser.selectedBrowser.webProgress.isLoadingDocument`, (v) => v === true);
 }
-const setPinned = (ids: string[]) => m.execute("Services.prefs.setStringPref('webaios.extensions.pinned', arguments[0])", [JSON.stringify(ids)]);
+const setPinned = (ids: string[]) => m.execute("Services.prefs.setStringPref('ressac.extensions.pinned', arguments[0])", [JSON.stringify(ids)]);
 const popupOpen = () => m.execute<boolean>("return !!document.querySelector('browser.webextension-popup-browser')");
 const openMenu = () => click(m, MENU);
 
@@ -61,14 +61,14 @@ describe("add-on strip, sidebar", () => {
       `const popup = document.querySelector("browser.webextension-popup-browser");
        const panel = popup?.closest("panel");
        if (popup?.contentTitle !== "Popup de test prête" || panel?.state !== "open") return null;
-       const frame = document.getElementById("webaios-sidebar");
+       const frame = document.getElementById("ressac-sidebar");
        const f = frame.getBoundingClientRect();
        const bb = frame.contentDocument.querySelector(${JSON.stringify(BTN)}).getBoundingClientRect();
-       const a = document.getElementById("webaios-action-anchor").getBoundingClientRect();
+       const a = document.getElementById("ressac-action-anchor").getBoundingClientRect();
        return { anchorId: panel.anchorNode?.id, dx: a.x - (f.x + frame.clientLeft + bb.x), dy: a.y - (f.y + frame.clientTop + bb.y) };`,
       (v) => v !== null,
     );
-    expect(r.anchorId).toBe("webaios-action-anchor");
+    expect(r.anchorId).toBe("ressac-action-anchor");
     expect(Math.abs(r.dx)).toBeLessThanOrEqual(1);
     expect(Math.abs(r.dy)).toBeLessThanOrEqual(1);
   });
@@ -95,7 +95,7 @@ describe("add-on strip, sidebar", () => {
     expect(await inUi(m, `return doc.querySelectorAll('[data-testid="extensions-bar"] ${BTN}').length`)).toBe(0);
     await click(m, `${row} .link`, { text: "Épingler" });
     await waitUi(m, `return doc.querySelectorAll('[data-testid="extensions-bar"] ${BTN}').length === 1`);
-    expect(await m.execute("return Services.prefs.getStringPref('webaios.extensions.pinned')")).toContain(ID);
+    expect(await m.execute("return Services.prefs.getStringPref('ressac.extensions.pinned')")).toContain(ID);
     await waitUi(m, `return doc.querySelector(${JSON.stringify(row)})?.textContent.includes("Détacher")`);
   });
 
@@ -132,7 +132,7 @@ describe("add-on strip, sidebar", () => {
     await openMenu();
     await click(m, `${PANEL} .manage`, { text: "Gérer les extensions" });
     await waitUi(m, `return !doc.querySelector(${JSON.stringify(PANEL)})`);
-    const f = await waitFor(m, "return window.webaiosWindow.store.state", (st: any) => Object.values(st.tabs).some((o: any) => o.url.startsWith("about:addons")));
+    const f = await waitFor(m, "return window.ressacWindow.store.state", (st: any) => Object.values(st.tabs).some((o: any) => o.url.startsWith("about:addons")));
     const fen = f.windows[0];
     expect(f.tabs[fen.active[fen.activeSpace]].url).toMatch(/^about:addons/);
   });
@@ -141,7 +141,7 @@ describe("add-on strip, sidebar", () => {
     await openMenu();
     await click(m, `${PANEL} .manage`, { text: "Trouver des modules" });
     await waitUi(m, `return !doc.querySelector(${JSON.stringify(PANEL)})`);
-    const f = await waitFor(m, "return window.webaiosWindow.store.state", (st: any) => Object.values(st.tabs).some((o: any) => o.url === "https://addons.mozilla.org/fr/firefox/"));
+    const f = await waitFor(m, "return window.ressacWindow.store.state", (st: any) => Object.values(st.tabs).some((o: any) => o.url === "https://addons.mozilla.org/fr/firefox/"));
     const tab: any = Object.values(f.tabs).find((o: any) => o.url === "https://addons.mozilla.org/fr/firefox/");
     expect(tab.spaceId).toBe(f.windows[0].activeSpace);
   });

@@ -3,17 +3,17 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { dispatch, state, waitFor, waitReady } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { grantSite, siteWindowExpr, writeSite } from "./sites";
 import { consoleWith, NET_PREFS, SFX, startNetWitness, widgetFiles } from "./ui-network";
 
-// The UI's network failing to install (WEBAIOS_TEST_UI_NETWORK_FAIL, spec addendum 3): without the observer (the only
+// The UI's network failing to install (RESSAC_TEST_UI_NETWORK_FAIL, spec addendum 3): without the observer (the only
 // layer of the system documents) no UI frame gets its src; the policy failing alone, the UI loads and the observer
 // still cancels a widget's frame loads. One launch per case. Ports: 15375 (HTTP, logged by host), 15376 (TCP counter).
 
 const HTTP = 15375;
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const host = (name: string) => `${name}.${SFX}:${HTTP}`;
 
@@ -23,11 +23,11 @@ beforeAll(async () => {
 });
 afterAll(() => net?.close());
 
-/** WebAiOs on a fresh data folder (`prepare` writes into it first), the net's step `fail` forced to throw. */
-async function launch(fail: string, prepare: (dataDir: string) => Promise<void> | void): Promise<{ w: LaunchedWebAiOs; m: Marionette; dataDir: string }> {
-  const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
+/** Ressac on a fresh data folder (`prepare` writes into it first), the net's step `fail` forced to throw. */
+async function launch(fail: string, prepare: (dataDir: string) => Promise<void> | void): Promise<{ w: LaunchedRessac; m: Marionette; dataDir: string }> {
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
   await prepare(dataDir);
-  const w = await launchWebAiOs({ dataDir, prefs: NET_PREFS, env: { WEBAIOS_TEST_UI_NETWORK_FAIL: fail, WEBAIOS_TEST_LOCAL_ADDRESSES: "1" } });
+  const w = await launchRessac({ dataDir, prefs: NET_PREFS, env: { RESSAC_TEST_UI_NETWORK_FAIL: fail, RESSAC_TEST_LOCAL_ADDRESSES: "1" } });
   await w.marionette.setContext("chrome");
   return { w, m: w.marionette, dataDir };
 }
@@ -48,14 +48,14 @@ describe("the observer failing to install", () => {
 
   it("the observer failing to install: no UI frame gets its src", { timeout: 120_000 }, async () => {
     const { m } = l;
-    await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true, 30_000);
+    await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true, 30_000);
     await m.execute(`return (async () => { const store = await ChromeUtils.importESModule("${STORE}").ready; await store.agent.request("sites.act", { id: "failsite", action: "open", window: store.state.windows[0].id }); })();`);
     // The app's view still loads (a content browser): its window is up.
     await expect.poll(() => net.hits.some((h) => h.label === "failsite.localhost" && h.path === "/page"), { timeout: 20_000 }).toBe(true);
     await sleep(3000);
     const uris = await m.execute(
       `const uri = (f) => f ? f.contentDocument?.documentURI ?? "none" : "missing";
-       return [uri(document.getElementById("webaios-sidebar")), uri(document.getElementById("webaios-agent")), uri(${siteWindowExpr("failsite")}?.document.getElementById("webaios-site-bar"))];`,
+       return [uri(document.getElementById("ressac-sidebar")), uri(document.getElementById("ressac-agent")), uri(${siteWindowExpr("failsite")}?.document.getElementById("ressac-site-bar"))];`,
     );
     expect(uris).toEqual(["about:blank", "about:blank", "about:blank"]);
     expect(await consoleWith(m, "[ui-network] the UI's network guard is missing")).not.toEqual([]);
@@ -92,7 +92,7 @@ try { f.contentWindow.location.href = "http://${host("fail-nav")}/fail/nav"; } c
     const { m } = l;
     await waitReady(m);
     await expect
-      .poll(() => m.execute(`return !!document.getElementById("webaios-sidebar").contentDocument.querySelector('[data-testid="widget-cadres"] iframe')?.contentDocument?.getElementById("t");`), {
+      .poll(() => m.execute(`return !!document.getElementById("ressac-sidebar").contentDocument.querySelector('[data-testid="widget-cadres"] iframe')?.contentDocument?.getElementById("t");`), {
         timeout: 20_000,
       })
       .toBe(true);

@@ -26,7 +26,7 @@
   function drop(e: DragEvent, index: number) {
     const after = hover?.index === index && hover.after;
     hover = null;
-    const id = e.dataTransfer?.getData("application/x-webaios-onglet");
+    const id = e.dataTransfer?.getData("application/x-ressac-onglet");
     if (!id || !all.includes(id)) return;
     if (agentTab(id) !== agent) return void (agent ? undefined : keep(id, order[index]));
     // moveTab counts in the whole space, without the moved tab: coming from above shifts the target by one.
@@ -77,7 +77,7 @@
         class:after={hover?.index === index && hover.after}
         class:yours={tab.agentSearch?.state === "yours"}
         draggable="true"
-        ondragstart={(e) => e.dataTransfer?.setData("application/x-webaios-onglet", id)}
+        ondragstart={(e) => e.dataTransfer?.setData("application/x-ressac-onglet", id)}
         ondragover={(e) => {
           e.preventDefault();
           const r = e.currentTarget.getBoundingClientRect();
@@ -123,7 +123,7 @@
 
 <style>
   .tabs { position: relative; list-style: none; margin: 0; padding: 0; }
-  .section { all: unset; display: flex; align-items: center; gap: 6px; margin: 12px 0 4px; padding: 2px 10px; border-radius: 6px; color: var(--text-muted); font-size: 12px; font-weight: 500; cursor: default; animation: webaios-rise var(--spring-d) var(--spring) backwards; }
+  .section { all: unset; display: flex; align-items: center; gap: 6px; margin: 12px 0 4px; padding: 2px 10px; border-radius: 6px; color: var(--text-muted); font-size: 12px; font-weight: 500; cursor: default; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   .section:hover { color: var(--text); }
   .section:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .section :global(svg) { transform: rotate(90deg); transition: transform var(--tap); }
@@ -141,7 +141,7 @@
     color: var(--text);
     cursor: default;
     transition: transform var(--tap), background var(--tap), box-shadow 150ms ease-out;
-    animation: webaios-rise var(--spring-d) var(--spring) backwards;
+    animation: ressac-rise var(--spring-d) var(--spring) backwards;
   }
   li[role="tab"]:hover:not([aria-current="page"]) { background: color-mix(in srgb, var(--glass-hi) 50%, transparent); }
   li[role="tab"]:active { transform: scale(0.97); }
@@ -165,7 +165,7 @@
   .agent { color: var(--accent); }
   /* The agent hands this tab to the user: an accent outline and a tag, visible while another tab is active. */
   li.yours { box-shadow: inset 0 0 0 1.5px var(--accent); transition: transform var(--tap), background var(--tap), box-shadow var(--spring-d) var(--spring); }
-  .yours-tag { flex: none; font-size: 11px; color: var(--accent); animation: webaios-rise var(--spring-d) var(--spring) backwards; }
+  .yours-tag { flex: none; font-size: 11px; color: var(--accent); animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   .close { all: unset; display: grid; place-content: center; width: 20px; height: 20px; border-radius: 6px; opacity: 0; color: var(--text-muted); transition: opacity var(--tap), background var(--tap); }
   .close:hover { background: var(--glass-hi); color: var(--text); }
   li:hover .close { opacity: 1; }

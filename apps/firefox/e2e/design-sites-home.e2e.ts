@@ -24,7 +24,7 @@ import {
   viewPoint,
 } from "./design-sites";
 import { waitReady } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { grantSite, inSiteBar, inSiteView, resolveLocalHosts, startSitesServer, writeSite } from "./sites";
 
@@ -61,22 +61,22 @@ const HOME = `<!doctype html><meta charset="utf-8"><title>Accueil</title>
 <p id="nue" style="position:absolute;left:40px;top:160px">nue</p>`;
 
 let server: Awaited<ReturnType<typeof startSitesServer>>;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 const dirs: string[] = [];
 const url = (host: string, path = "/") => server.url(host, path);
 const declarationProbe = () => ({ ...withHomeDeclaration(url), name: "Sonde" });
 
 async function launch(prefs: Record<string, string | number | boolean> = {}) {
-  const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
-  const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
+  const profile = await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
   dirs.push(dataDir, profile);
   writeSite(dataDir, "avec-accueil", { declaration: withHomeDeclaration(url), files: { "home/index.html": WITH_HOME } });
   writeSite(dataDir, "sonde", { declaration: declarationProbe(), files: { "home/index.html": HOME } });
   writeSite(dataDir, "tuning", { declaration: tuningDeclaration(url), files: { "tweaks/tuning.css": "/* rien */" } });
   await grantSite(dataDir, "tuning", tuningDeclaration(url));
   const a = testActor(profile);
-  w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_LOCAL_ADDRESSES: "1", ...a.env }, prefs: { ...a.prefs, ...prefs } });
+  w = await launchRessac({ dataDir, profile, env: { RESSAC_TEST_LOCAL_ADDRESSES: "1", ...a.env }, prefs: { ...a.prefs, ...prefs } });
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
@@ -106,14 +106,14 @@ const view = (id: string) => inStore<string | null>(m, "return store.sites.viewO
 /** `body` with `f` the home's frame, `hdoc` its document and `hwin` its window (chrome access). */
 const inHome = <T = unknown>(id: string, body: string, args: unknown[] = []) =>
   inSiteBar<T>(m, id, `const f = doc.querySelector('${FRAME}'), hdoc = f?.contentDocument, hwin = hdoc?.defaultView; ${body}`, args);
-const homeHosts = (id: string) => inHome<number>(id, `return hdoc ? hdoc.getElementsByTagName("webaios-viewfinder").length : -1;`).catch(() => -1);
-const viewHosts = (id: string) => inSiteView<number>(m, id, `return document.getElementsByTagName("webaios-viewfinder").length;`).catch(() => 0);
+const homeHosts = (id: string) => inHome<number>(id, `return hdoc ? hdoc.getElementsByTagName("ressac-viewfinder").length : -1;`).catch(() => -1);
+const viewHosts = (id: string) => inSiteView<number>(m, id, `return document.getElementsByTagName("ressac-viewfinder").length;`).catch(() => 0);
 const homeLog = (id: string) => inHome<{ early: string[]; reactions: string[]; keys: string[] }>(id, "return JSON.parse(JSON.stringify(hwin.wrappedJSObject.log));");
 const homeKeys = (id: string) => inHome<string[]>(id, "return Object.keys(hwin.wrappedJSObject);");
 /** Code run in the home's own world (its principal, Xrays waived): what the agent's home could do itself. */
 const asHome = (id: string, code: string) =>
   inHome(id, `const sb = Components.utils.Sandbox(hdoc.nodePrincipal, { sandboxPrototype: hwin, wantXrays: false, wantComponents: false, sameZoneAs: hwin });
-    Components.utils.evalInSandbox(arguments[0], sb, "latest", "chrome://browser/content/webaios/e2e-home.js", 1); return 1;`, [code]);
+    Components.utils.evalInSandbox(arguments[0], sb, "latest", "chrome://browser/content/ressac/e2e-home.js", 1); return 1;`, [code]);
 const bar = (id: string) =>
   inSiteBar<{ pressed: string | null; count: string | null }>(
     m,
@@ -124,7 +124,7 @@ const barPoint = (id: string, t: string) =>
   inSiteBar<{ x: number; y: number }>(
     m,
     id,
-    `const b = win.document.getElementById("webaios-site-bar").getBoundingClientRect(), r = doc.querySelector('${tid(t)}').getBoundingClientRect();
+    `const b = win.document.getElementById("ressac-site-bar").getBoundingClientRect(), r = doc.querySelector('${tid(t)}').getBoundingClientRect();
      return { x: b.left + r.left + r.width / 2, y: b.top + r.top + r.height / 2 };`,
   );
 const overlayTop = (id: string) => overlayOf<number>(m, id, "return f.getBoundingClientRect().y;");
@@ -191,10 +191,10 @@ describe("design mode on a site app's home", () => {
     await overlayOf(m, "avec-accueil", `doc.querySelector('${tid("send-remarks")}').click(); return 1;`);
     await expect.poll(agentInput, { timeout: 20_000 }).toContain("les remarques [accueil] visent son écran d'accueil, à changer dans home/");
     expect(agentInput()).toContain('1) [accueil] "h1#titre" : « Titre plus gros »');
-    const dir = path.join(w.dataDir, "workspace", ".webaios", "remarks", "site-avec-accueil");
+    const dir = path.join(w.dataDir, "workspace", ".ressac", "remarks", "site-avec-accueil");
     const [batch] = readdirSync(dir).filter((n) => /^\d{8}T\d{6}Z-[0-9a-f]{4}$/.test(n));
     const content = JSON.parse(readFileSync(path.join(dir, batch!, "batch.json"), "utf8"));
-    expect(content.items[0].context.url).toBe("webaios-site://avec-accueil/index.html");
+    expect(content.items[0].context.url).toBe("ressac-site://avec-accueil/index.html");
     expect(readdirSync(path.join(dir, batch!)).filter((n) => n.endsWith(".png"))).toHaveLength(1);
   });
 
@@ -209,19 +209,19 @@ describe("design mode on a site app's home", () => {
         `(() => {
          const t = (f) => { try { const v = f(); return v === null || v === undefined ? String(v) : typeof v === "object" || typeof v === "function" ? typeof v + ":" + Object.prototype.toString.call(v) : String(v); } catch (e) { return "throws:" + String(e).slice(0, 90); } };
          return { Components: typeof Components, ChromeUtils: typeof ChromeUtils, Services: typeof Services, Cu: typeof Cu, docShell: typeof docShell, gBrowser: typeof gBrowser,
-           webaiosSiteWindow: typeof webaiosSiteWindow, windowRoot: typeof windowRoot, homeSecret: typeof homeSecret, origin: location.origin,
+           ressacSiteWindow: typeof ressacSiteWindow, windowRoot: typeof windowRoot, homeSecret: typeof homeSecret, origin: location.origin,
            frameElement: t(() => frameElement), parentDocument: t(() => parent.document), topDocument: t(() => top.document), parentHref: t(() => parent.location.href), topHref: t(() => top.location.href),
-           parentSiteWindow: t(() => parent.webaiosSiteWindow), topGBrowser: t(() => top.gBrowser), topSiteWindow: t(() => top.webaiosSiteWindow), parentFrames: t(() => parent.frames.length),
+           parentSiteWindow: t(() => parent.ressacSiteWindow), topGBrowser: t(() => top.gBrowser), topSiteWindow: t(() => top.ressacSiteWindow), parentFrames: t(() => parent.frames.length),
            opener: t(() => opener), ownerGlobal: t(() => document.ownerGlobal), defaultViewParent: t(() => document.defaultView.parent.document) };
        })()`,
       ],
     );
-    expect(reach).toMatchObject({ Components: "undefined", ChromeUtils: "undefined", Services: "undefined", Cu: "undefined", docShell: "undefined", gBrowser: "undefined", webaiosSiteWindow: "undefined", windowRoot: "undefined", homeSecret: "undefined" });
+    expect(reach).toMatchObject({ Components: "undefined", ChromeUtils: "undefined", Services: "undefined", Cu: "undefined", docShell: "undefined", gBrowser: "undefined", ressacSiteWindow: "undefined", windowRoot: "undefined", homeSecret: "undefined" });
     for (const k of ["parentDocument", "topDocument", "parentHref", "topHref", "parentSiteWindow", "topGBrowser", "topSiteWindow", "defaultViewParent"]) expect(String(reach[k])).toMatch(/^throws:|^undefined$/);
     expect(reach.frameElement).toBe("null");
     expect(reach.opener).toBe("null");
     // The home's own principal: the served copy's origin.
-    expect(reach.origin).toMatch(/^resource:\/\/webaios-site-sonde-/);
+    expect(reach.origin).toMatch(/^resource:\/\/ressac-site-sonde-/);
   });
 
   it("the home viewfinder arms only on the served home: a system about:blank frame or a sandboxed about:blank gives null, nothing set", async () => {
@@ -275,9 +275,9 @@ describe("design mode on a site app's home", () => {
     await expect.poll(() => homeHosts("sonde"), { timeout: 10_000 }).toBe(1);
     await siteMouse(m, "sonde", await homePoint(m, "sonde", "#nue"), { move: true });
     await expect
-      .poll(() => inHome<string | null>("sonde", `const sh = hdoc.querySelector("webaios-viewfinder")?.openOrClosedShadowRoot; return sh?.children[1]?.textContent ?? null;`), { timeout: 10_000 })
+      .poll(() => inHome<string | null>("sonde", `const sh = hdoc.querySelector("ressac-viewfinder")?.openOrClosedShadowRoot; return sh?.children[1]?.textContent ?? null;`), { timeout: 10_000 })
       .toBe("p#nue");
-    expect(await inHome("sonde", `return String(hdoc.querySelector("webaios-viewfinder").wrappedJSObject.shadowRoot);`)).toBe("null");
+    expect(await inHome("sonde", `return String(hdoc.querySelector("ressac-viewfinder").wrappedJSObject.shadowRoot);`)).toBe("null");
     await siteMouse(m, "sonde", await homePoint(m, "sonde", "#nue"), { button: 1 });
     await siteMouse(m, "sonde", await homePoint(m, "sonde", "#nue"), { button: 2 });
     await sleep(500);

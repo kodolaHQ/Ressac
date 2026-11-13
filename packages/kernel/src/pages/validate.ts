@@ -2,7 +2,7 @@ import type { ComponentDefinition, Property } from "./catalog.js";
 import { PlanPage, evaluate, readReference, readPath, type PlanBlock, type Group } from "./plan.js";
 
 // The validation of Gemma's plan, which is hostile data (it may have read a booby-trapped page). Nothing throws: an
-// unreadable plan returns `ok: false`. The reasons are written by WebAiOs and never quote a value of the results (only
+// unreadable plan returns `ok: false`. The reasons are written by Ressac and never quote a value of the results (only
 // names of properties, fields and paths, written by the plan itself).
 
 export const PLAN_REFERENCES_NOTHING = "le plan ne référence rien";

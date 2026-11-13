@@ -2,30 +2,30 @@ import { createApi, type ApiFirefox } from "./api";
 import type { OverlayApi } from "../shared/api";
 import { createBadgeApi } from "./badge-api";
 import { wrapOverlayApi } from "./overlay-api";
-import { createSiteApi, inertWebaios } from "./site-api";
+import { createSiteApi, inertRessac } from "./site-api";
 import type { BadgeChrome } from "../chrome/store/apps";
 
-// Imported first by sidebar.ts: ui/state.svelte.ts reads window.webaios as it loads.
+// Imported first by sidebar.ts: ui/state.svelte.ts reads window.ressac as it loads.
 // The controller sets the iframe's src only once it exists (chrome/window/index.ts, chrome/window/site-window.ts).
 // An app badge's frame and a design overlay's get their api on the frame element (chrome/window/app-window.ts,
 // chrome/window/design-overlays.ts), set before its src.
 const params = new URLSearchParams(location.search);
 if (params.has("site")) {
-  const site = window.parent.webaiosSiteWindow;
-  if (!site) throw new Error("WebAiOs site bar loaded before its window controller");
-  window.webaios = inertWebaios({ site: createSiteApi(site) }) as ApiFirefox;
+  const site = window.parent.ressacSiteWindow;
+  if (!site) throw new Error("Ressac site bar loaded before its window controller");
+  window.ressac = inertRessac({ site: createSiteApi(site) }) as ApiFirefox;
 } else if (params.has("badge")) {
-  const overlay = (window.frameElement as (Element & { webaiosOverlay?: { api: BadgeChrome } }) | null)?.webaiosOverlay;
-  if (!overlay) throw new Error("WebAiOs badge loaded before its window controller");
-  window.webaios = inertWebaios(createBadgeApi(overlay.api)) as ApiFirefox;
+  const overlay = (window.frameElement as (Element & { ressacOverlay?: { api: BadgeChrome } }) | null)?.ressacOverlay;
+  if (!overlay) throw new Error("Ressac badge loaded before its window controller");
+  window.ressac = inertRessac(createBadgeApi(overlay.api)) as ApiFirefox;
 } else if (params.has("overlay")) {
-  const overlay = (window.frameElement as (Element & { webaiosOverlay?: { api: OverlayApi } }) | null)?.webaiosOverlay;
-  if (!overlay) throw new Error("WebAiOs design overlay loaded before its window controller");
-  window.webaios = inertWebaios(wrapOverlayApi(overlay.api)) as ApiFirefox;
+  const overlay = (window.frameElement as (Element & { ressacOverlay?: { api: OverlayApi } }) | null)?.ressacOverlay;
+  if (!overlay) throw new Error("Ressac design overlay loaded before its window controller");
+  window.ressac = inertRessac(wrapOverlayApi(overlay.api)) as ApiFirefox;
 } else {
-  const win = window.parent.webaiosWindow;
-  if (!win) throw new Error("WebAiOs UI loaded before its window controller");
-  window.webaios = createApi(win);
+  const win = window.parent.ressacWindow;
+  if (!win) throw new Error("Ressac UI loaded before its window controller");
+  window.ressac = createApi(win);
 }
 
 // Gecko's macOS widget still fires keypress for a printable key whose keydown was consumed when the document is in the

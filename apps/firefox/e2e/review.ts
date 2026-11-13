@@ -13,7 +13,7 @@ import { click, waitUi } from "./ui";
 
 /** A temporary project folder named `nom` (the project's name), outside any data folder, its real path. */
 export function projectDir(name: string): string {
-  const d = join(mkdtempSync(join(tmpdir(), "webaios-externe-")), name);
+  const d = join(mkdtempSync(join(tmpdir(), "ressac-externe-")), name);
   mkdirSync(d);
   return realpathSync(d);
 }
@@ -61,7 +61,7 @@ export async function mcpClient(port: number, token: string): Promise<Client> {
 export const textOf = (r: unknown): string => ((r as { content: { type: string; text?: string }[] }).content ?? []).map((x) => x.text ?? "").join("\n");
 
 /** The review repository's `relu` ref of a project, under `<dataDir>/design/review/`. */
-export const reviewedRef = (dataDir: string, project: string) => join(dataDir, "design", "review", `${project}.git`, "refs", "webaios", "relu");
+export const reviewedRef = (dataDir: string, project: string) => join(dataDir, "design", "review", `${project}.git`, "refs", "ressac", "relu");
 
 /**
  * Connects a client and declares a project folder holding `app.js` (LINES) and `logo.bin`, then waits for its line and
@@ -96,7 +96,7 @@ export function rawStatus(port: number, headers: Record<string, string>): Promis
   });
 }
 
-/** The notifications the host wrote to WEBAIOS_TEST_NOTIFICATIONS, in order. */
+/** The notifications the host wrote to RESSAC_TEST_NOTIFICATIONS, in order. */
 export function readNotifications(file: string): { title: string; text: string }[] {
   return existsSync(file) ? readFileSync(file, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)) : [];
 }

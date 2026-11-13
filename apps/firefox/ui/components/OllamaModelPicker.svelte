@@ -38,5 +38,5 @@
 <style>
   .picker { display: flex; align-items: center; gap: 8px; }
   .picker > :is(select, input) { flex: 1; min-width: 0; }
-  .alert { animation: webaios-rise var(--spring-d) var(--spring) backwards; }
+  .alert { animation: ressac-rise var(--spring-d) var(--spring) backwards; }
 </style>

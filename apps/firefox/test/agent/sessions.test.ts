@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import { WorkshopError } from "@webaios/kernel";
+import { WorkshopError } from "@ressac/kernel";
 import { GROUPING_MS, SUBMIT_DELAY_MS, SessionsAgent, BUFFER_MAX, SessionBuffer, type SessionLike } from "../../core/agent/sessions";
 
 class FakeSession implements SessionLike {

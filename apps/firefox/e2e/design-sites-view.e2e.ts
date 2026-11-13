@@ -29,7 +29,7 @@ import {
   siteExpr,
 } from "./design-sites";
 import { waitFor, waitReady } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
 import { grantSite, inSiteView, resolveLocalHosts, startSitesServer, writeSite } from "./sites";
@@ -46,7 +46,7 @@ const T = (id: string) => ({ type: "site", id });
 
 let server: Awaited<ReturnType<typeof startSitesServer>>;
 let frames: Awaited<ReturnType<typeof startServer>>;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 const dirs: string[] = [];
 const url = (host: string, path = "/") => server.url(host, path);
@@ -61,8 +61,8 @@ beforeAll(async () => {
   server.define("compte-tuning.localhost", "/connexion", LOGIN_PAGE);
   server.define("vidola-a.localhost", "/design", S5_PAGE);
   frames = await startServer({ port: FRAME_PORT, routes: { "/frame": (_req, res) => void res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(FRAME_PAGE) } });
-  const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
-  const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
+  const profile = await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
   dirs.push(dataDir, profile);
   writeSite(dataDir, "tuning", { declaration: tuningDeclaration(url), files: { "tweaks/tuning.css": "/* rien */" } });
   writeSite(dataDir, "avec-accueil", { declaration: withHomeDeclaration(url), files: { "home/index.html": WITH_HOME } });
@@ -71,7 +71,7 @@ beforeAll(async () => {
   await grantSite(dataDir, "vidola", vidola());
   const a = testActor(profile);
   // An element's fullscreen without a gesture: the test's gestures would be the viewfinder's while it aims.
-  w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_LOCAL_ADDRESSES: "1", ...a.env }, prefs: { ...a.prefs, "full-screen-api.allow-trusted-requests-only": false } });
+  w = await launchRessac({ dataDir, profile, env: { RESSAC_TEST_LOCAL_ADDRESSES: "1", ...a.env }, prefs: { ...a.prefs, "full-screen-api.allow-trusted-requests-only": false } });
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
@@ -93,7 +93,7 @@ const add = (id: string, text: string) => inStore<{ ok: boolean }>(m, "return aw
 const bubble = (id: string) =>
   inStore<{ label: string; source: string | null; warning: string | null; project: string } | null>(m, 'return store.design.overlayContext(arguments[0], ["bubble"]);', [T(id)]);
 const cart = (id: string) => inStore<number>(m, `return (await store.agent.request("design.tracking", { project: "site-" + arguments[0] })).basket;`, [id]);
-const hosts = (id: string) => inSiteView<number>(m, id, `return document.getElementsByTagName("webaios-viewfinder").length;`).catch(() => -1);
+const hosts = (id: string) => inSiteView<number>(m, id, `return document.getElementsByTagName("ressac-viewfinder").length;`).catch(() => -1);
 const overlayRect = (id: string) => overlayOf<{ x: number; y: number; width: number; height: number }>(m, id, "const r = f.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height };");
 const notice = (id: string) => inStore<{ kind: string; text?: string } | null>(m, "return store.sites.controller(arguments[0]).state().notice;", [id]);
 const view = <T = unknown>(id: string, expr: string) => inSiteView<T>(m, id, `return ${expr};`).catch(() => null);
@@ -130,10 +130,10 @@ describe("design mode, site target, the view", () => {
     expect(await view("vidola", `getComputedStyle(document.querySelector(".cache")).display`)).toBe("none");
     await expect.poll(() => view("vidola", "document.documentElement.dataset.retouche ?? null"), { timeout: 10_000 }).toBe("oui");
     // The viewfinder's sandbox, probed through the shipped actor (the one the service arms).
-    const probe = `(() => ({ webaiosSite: typeof webaiosSite, scope: typeof __webaiosScope, file: typeof __webaiosFile, tweakSecret: typeof __retoucheSecret,
+    const probe = `(() => ({ ressacSite: typeof ressacSite, scope: typeof __ressacScope, file: typeof __ressacFile, tweakSecret: typeof __retoucheSecret,
       Components: typeof Components, ChromeUtils: typeof ChromeUtils, Services: typeof Services }))()`;
     const sees = await (await armActor(m, viewExpr("vidola"), probe)).result();
-    expect(sees).toEqual({ r: { webaiosSite: "undefined", scope: "undefined", file: "undefined", tweakSecret: "undefined", Components: "undefined", ChromeUtils: "undefined", Services: "undefined" } });
+    expect(sees).toEqual({ r: { ressacSite: "undefined", scope: "undefined", file: "undefined", tweakSecret: "undefined", Components: "undefined", ChromeUtils: "undefined", Services: "undefined" } });
     await sleep(600);
     const p = await viewPoint(m, "vidola", "#cible");
     await toggle("vidola");
@@ -199,7 +199,7 @@ describe("design mode, site target, the view", () => {
     expect(keys1?.filter((k) => !keys0?.includes(k))).toEqual([]);
     const pageTypeof = await view<string>(
       "vidola",
-      `(() => { const s = document.createElement("script"); s.textContent = "document.documentElement.dataset.vu = [typeof webaiosSite, typeof __webaiosScope, typeof __retoucheSecret].join()"; document.documentElement.append(s); s.remove(); return document.documentElement.dataset.vu; })()`,
+      `(() => { const s = document.createElement("script"); s.textContent = "document.documentElement.dataset.vu = [typeof ressacSite, typeof __ressacScope, typeof __retoucheSecret].join()"; document.documentElement.append(s); s.remove(); return document.documentElement.dataset.vu; })()`,
     );
     expect(pageTypeof).toBe("undefined,undefined,undefined");
   });

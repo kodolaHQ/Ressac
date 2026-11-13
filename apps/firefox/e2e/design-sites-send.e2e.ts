@@ -8,7 +8,7 @@ import { THIRD_PARTY_SITE_WARNING } from "../../../packages/kernel/src/design/re
 import { testActor } from "./agent-extensions";
 import { overlayOf, inStore, openSite, siteKey, siteMouse, toSite, TUNING_PAGE, tuningDeclaration, viewExpr, viewPoint, OTHER_PAGE, LOGIN_PAGE } from "./design-sites";
 import { state, waitFor, waitReady } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { openApplications, reviewedRef } from "./review";
 import { grantSite, inSiteBar, inSiteView, resolveLocalHosts, startSitesServer, writeSite } from "./sites";
@@ -26,7 +26,7 @@ const tid = (t: string) => `[data-testid="${t}"]`;
 const BATCH = /^\d{8}T\d{6}Z-[0-9a-f]{4}$/;
 
 let server: Awaited<ReturnType<typeof startSitesServer>>;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 const dirs: string[] = [];
 const url = (host: string, path = "/") => server.url(host, path);
@@ -36,13 +36,13 @@ beforeAll(async () => {
   server.define("tuning-a.localhost", "/", TUNING_PAGE);
   server.define("tuning-a.localhost", "/autre", OTHER_PAGE);
   server.define("compte-tuning.localhost", "/connexion", LOGIN_PAGE);
-  const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
-  const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
+  const profile = await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
   dirs.push(dataDir, profile);
   writeSite(dataDir, ID, { declaration: tuningDeclaration(url), files: { "tweaks/tuning.css": "/* rien */" } });
   await grantSite(dataDir, ID, tuningDeclaration(url));
   const a = testActor(profile);
-  w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_LOCAL_ADDRESSES: "1", ...a.env }, prefs: a.prefs });
+  w = await launchRessac({ dataDir, profile, env: { RESSAC_TEST_LOCAL_ADDRESSES: "1", ...a.env }, prefs: a.prefs });
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
@@ -58,7 +58,7 @@ afterEach(async () => {
 });
 
 const space = () => path.join(w.dataDir, "workspace");
-const remarksDir = () => path.join(space(), ".webaios", "remarks", `site-${ID}`);
+const remarksDir = () => path.join(space(), ".ressac", "remarks", `site-${ID}`);
 const batches = () => (existsSync(remarksDir()) ? readdirSync(remarksDir()).filter((n) => BATCH.test(n)) : []);
 const agentInput = () => {
   const f = path.join(space(), "fake-agent-input.txt");
@@ -67,7 +67,7 @@ const agentInput = () => {
 const TERMINAL = "(doc.querySelector('.xterm-rows')?.textContent ?? '').replace(/\\u00a0/g, ' ')";
 
 const designState = () => inStore<{ active: boolean; basket: number }>(m, "return await store.design.state(arguments[0]);", [T]);
-const hosts = () => inSiteView<number>(m, ID, `return document.getElementsByTagName("webaios-viewfinder").length;`).catch(() => -1);
+const hosts = () => inSiteView<number>(m, ID, `return document.getElementsByTagName("ressac-viewfinder").length;`).catch(() => -1);
 const view = <R = unknown>(expr: string) => inSiteView<R>(m, ID, `return ${expr};`).catch(() => null);
 const bar = () =>
   inSiteBar<{ pressed: string | null; count: string | null; grant: boolean }>(
@@ -130,10 +130,10 @@ it("two remarks on tuning then send from the cart: text sent with Enter, site-ti
   await escape();
   await sendFromCart("Envoyer 2 remarques à l'agent");
   // The agent's panel opens in the main window.
-  await waitFor(m, "return !document.getElementById('webaios-agent').hidden", (v) => v === true);
+  await waitFor(m, "return !document.getElementById('ressac-agent').hidden", (v) => v === true);
   await waitUi(m, `return ${TERMINAL}.includes("fake agent ready>")`, [], 20_000, "agent");
   await expect.poll(agentInput, { timeout: 15_000 }).toMatch(/^\[remarques de .+ — appli de site "Tuning" \(\/workspace\/sites\/tuning\/\) : site tiers/);
-  expect(agentInput()).toContain("/workspace/.webaios/remarks/site-tuning/");
+  expect(agentInput()).toContain("/workspace/.ressac/remarks/site-tuning/");
   await expect.poll(agentInput, { timeout: 5_000 }).toMatch(/\] [^\r]*\r$/);
   const batchList = batches();
   expect(batchList).toHaveLength(1);

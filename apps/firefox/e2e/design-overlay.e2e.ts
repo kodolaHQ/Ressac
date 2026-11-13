@@ -8,7 +8,7 @@ import { INVALID_REQUEST } from "../shared/design-guards";
 import { openTab, testActor } from "./agent-extensions";
 import { startDesignServers, trustedMouse } from "./design";
 import { waitFor } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { inBrowser, resolveLocalHosts } from "./sites";
 import { click, inUi, pressKeys, typeText } from "./ui";
@@ -20,31 +20,31 @@ import { uiRefusals } from "./ui-network";
 const PORT = 15308;
 const PROJECT = `demo-${PORT}`;
 const B = "gBrowser.selectedBrowser";
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 let servers: Awaited<ReturnType<typeof startDesignServers>>;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 let dataDir: string;
 let profile: string;
 const dirs: string[] = [];
 
-/** WebAiOs on the demo's port block, on `dataDir` and `profile`, its host answering. */
+/** Ressac on the demo's port block, on `dataDir` and `profile`, its host answering. */
 async function boot(): Promise<void> {
   const a = testActor(profile);
-  w = await launchWebAiOs({ dataDir, profile, env: { ...a.env, WEBAIOS_APP_PORTS: "15305-15309" }, prefs: a.prefs });
+  w = await launchRessac({ dataDir, profile, env: { ...a.env, RESSAC_APP_PORTS: "15305-15309" }, prefs: a.prefs });
   m = w.marionette;
   await m.setContext("chrome");
-  await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+  await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
   await resolveLocalHosts(m, ["localhost"]);
-  await waitFor(m, `return (async () => { const d = (await ChromeUtils.importESModule("${STORE}").ready).design; return d.state({ type: "window", windowId: window.webaiosWindow.windowId }).then(() => true, () => false); })();`, (v) => v === true, 30_000);
+  await waitFor(m, `return (async () => { const d = (await ChromeUtils.importESModule("${STORE}").ready).design; return d.state({ type: "window", windowId: window.ressacWindow.windowId }).then(() => true, () => false); })();`, (v) => v === true, 30_000);
 }
 
 beforeAll(async () => {
   servers = await startDesignServers({ port: PORT });
-  dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
-  profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
+  dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
+  profile = await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
   dirs.push(dataDir, profile);
   await boot();
 }, 120_000);
@@ -57,14 +57,14 @@ afterAll(async () => {
 /** Runs `body` with `d` the design service, `t` this window's target, `store` the store. */
 const svc = <R = unknown>(body: string, args: unknown[] = []) =>
   m.execute<R>(
-    `return (async (args) => { const store = await ChromeUtils.importESModule("${STORE}").ready, d = store.design; const t = { type: "window", windowId: window.webaiosWindow.windowId }; ${body} })([...arguments]);`,
+    `return (async (args) => { const store = await ChromeUtils.importESModule("${STORE}").ready, d = store.design; const t = { type: "window", windowId: window.ressacWindow.windowId }; ${body} })([...arguments]);`,
     args,
   );
 const state = () => svc<{ active: boolean; basket: number; project: { project: string } | null }>("return await d.state(t);");
 /** The UI's own api.design.toggle(), as ✎ will call it. */
-const toggle = () => inUi(m, "ui.webaios.design.toggle(); return 1;");
+const toggle = () => inUi(m, "ui.ressac.design.toggle(); return 1;");
 const inPage = <T = unknown>(script: string) => inBrowser<T>(m, B, script);
-const hosts = () => inPage<number>(`return document.querySelectorAll("webaios-viewfinder").length;`);
+const hosts = () => inPage<number>(`return document.querySelectorAll("ressac-viewfinder").length;`);
 
 async function open(p = "/"): Promise<void> {
   await openTab(m, `${servers.page}${p}`);
@@ -72,7 +72,7 @@ async function open(p = "/"): Promise<void> {
 }
 
 /** A chrome frame's state: shown (laid out), its rectangle, and `body` run in its document (`doc`). */
-const frameOf = <T = unknown>(id: "webaios-design-calque" | "webaios-design-volet", body = "return null;") =>
+const frameOf = <T = unknown>(id: "ressac-design-calque" | "ressac-design-volet", body = "return null;") =>
   m.execute<{ shown: boolean; rect: { x: number; y: number; width: number; height: number }; v: T } | null>(
     `const f = document.getElementById(arguments[0]);
      if (!f) return null;
@@ -80,10 +80,10 @@ const frameOf = <T = unknown>(id: "webaios-design-calque" | "webaios-design-vole
      return { shown: f.style.display !== "none" && r.width > 0, rect: { x: r.x, y: r.y, width: r.width, height: r.height }, v: (() => { ${body} })() };`,
     [id],
   );
-const bubbleText = async () => (await frameOf<string | null>("webaios-design-calque", `return doc?.querySelector('[data-testid="design-bubble"]')?.textContent ?? null;`))?.v ?? null;
-const bubbleShown = async () => (await frameOf("webaios-design-calque"))?.shown ?? false;
-const columnShown = async () => (await frameOf("webaios-design-volet"))?.shown ?? false;
-const cartLines = async () => (await frameOf<string[]>("webaios-design-volet", `return [...(doc?.querySelectorAll('[data-testid="basket-remark"]') ?? [])].map((e) => e.textContent);`))?.v ?? [];
+const bubbleText = async () => (await frameOf<string | null>("ressac-design-calque", `return doc?.querySelector('[data-testid="design-bubble"]')?.textContent ?? null;`))?.v ?? null;
+const bubbleShown = async () => (await frameOf("ressac-design-calque"))?.shown ?? false;
+const columnShown = async () => (await frameOf("ressac-design-volet"))?.shown ?? false;
+const cartLines = async () => (await frameOf<string[]>("ressac-design-volet", `return [...(doc?.querySelectorAll('[data-testid="basket-remark"]') ?? [])].map((e) => e.textContent);`))?.v ?? [];
 const pageWidth = () => inPage<number>("return innerWidth;");
 
 /** The mode on through the UI, the viewfinder armed. */
@@ -101,7 +101,7 @@ async function modeOff() {
 async function aim(sel: string, label: string) {
   await trustedMouse(m, B, sel);
   await expect.poll(bubbleText, { timeout: 10_000 }).toContain(label);
-  await expect.poll(() => frameOf<string | null>("webaios-design-calque", "return doc.activeElement?.localName ?? null;").then((f) => f?.v), { timeout: 10_000 }).toBe("textarea");
+  await expect.poll(() => frameOf<string | null>("ressac-design-calque", "return doc.activeElement?.localName ?? null;").then((f) => f?.v), { timeout: 10_000 }).toBe("textarea");
 }
 
 /** `text` typed in the bubble, then « Ajouter au panier »: the cart grows by one. */
@@ -145,18 +145,18 @@ describe("design overlay", () => {
   it("the calque and the volet are cut before they load", async () => {
     // The previous test opened the bubble and the cart column: both frames are there.
     const cut = await m.execute(
-      `return ["webaios-design-calque", "webaios-design-volet"].map((id) => { const f = document.getElementById(id), ds = f?.frameLoader?.docShell;
+      `return ["ressac-design-calque", "ressac-design-volet"].map((id) => { const f = document.getElementById(id), ds = f?.frameLoader?.docShell;
          return ds ? { dns: ds.allowDNSPrefetch, mail: ds.appType === Ci.nsIDocShell.APP_TYPE_MAIL, uri: f.contentDocument?.documentURI } : null; });`,
     );
-    const page = { dns: false, mail: true, uri: "chrome://browser/content/webaios/sidebar.html?overlay" };
+    const page = { dns: false, mail: true, uri: "chrome://browser/content/ressac/sidebar.html?overlay" };
     expect(cut).toEqual([page, page]);
     await m.execute(
-      `for (const id of ["webaios-design-calque", "webaios-design-volet"]) { const d = document.getElementById(id).contentDocument, i = d.createElement("img");
+      `for (const id of ["ressac-design-calque", "ressac-design-volet"]) { const d = document.getElementById(id).contentDocument, i = d.createElement("img");
          i.style.cssText = "position:absolute;width:1px;height:1px"; i.src = "http://127.0.0.1:${PORT}/ui-net-probe.png?" + id; d.body.append(i); }`,
     );
     await sleep(3000);
     const refusals = (await uiRefusals(m)).join("\n");
-    for (const id of ["webaios-design-calque", "webaios-design-volet"]) expect(refusals, id).toContain(`ui-net-probe.png?${id}`);
+    for (const id of ["ressac-design-calque", "ressac-design-volet"]) expect(refusals, id).toContain(`ui-net-probe.png?${id}`);
     expect(servers.paths.filter((p) => p.includes("ui-net-probe"))).toEqual([]);
   });
 
@@ -166,8 +166,8 @@ describe("design overlay", () => {
     await modeOn();
     await expect.poll(pageWidth, { timeout: 10_000 }).toBe(before - 300);
     const g = await m.execute<{ browserRight: number; panelLeft: number; panelWidth: number; panelRight: number; right: number; atPanel: string | undefined; top: number; tabboxTop: number; bottom: number; height: number }>(
-      `const b = ${B}.getBoundingClientRect(), f = document.getElementById("webaios-design-volet"), v = f.getBoundingClientRect();
-       const agent = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--webaios-agent")) || 0;
+      `const b = ${B}.getBoundingClientRect(), f = document.getElementById("ressac-design-volet"), v = f.getBoundingClientRect();
+       const agent = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--ressac-agent")) || 0;
        return { browserRight: b.right, panelLeft: v.left, panelWidth: v.width, panelRight: v.right, right: window.innerWidth - agent, atPanel: document.elementFromPoint(v.left + 10, v.top + v.height / 2)?.id,
          top: v.top, tabboxTop: document.getElementById("tabbrowser-tabbox").getBoundingClientRect().top, bottom: v.bottom, height: window.innerHeight };`,
     );
@@ -175,7 +175,7 @@ describe("design overlay", () => {
     // The page sits framed by 8 px of aura; the column takes the window's height, as the agent panel.
     expect(g.browserRight + 8).toBe(g.panelLeft);
     expect(g.panelRight).toBe(g.right);
-    expect(g.atPanel).toBe("webaios-design-volet");
+    expect(g.atPanel).toBe("ressac-design-volet");
     expect([g.top, g.bottom]).toEqual([g.tabboxTop - 8, g.height]);
     await modeOff();
     await expect.poll(pageWidth, { timeout: 10_000 }).toBe(before);
@@ -202,10 +202,10 @@ describe("design overlay", () => {
     await modeOn();
     const n = (await state()).basket;
     await aim("#email", "input#email.champ");
-    expect(await m.execute("return document.activeElement?.id;")).toBe("webaios-design-calque");
+    expect(await m.execute("return document.activeElement?.id;")).toBe("ressac-design-calque");
     await inPage("window.typed = []; addEventListener('keydown', (e) => typed.push(e.key), true); return 1;");
     await typeText(m, "ab");
-    expect(await frameOf<string>("webaios-design-calque", "return doc.querySelector('textarea').value;").then((f) => f?.v)).toBe("ab");
+    expect(await frameOf<string>("ressac-design-calque", "return doc.querySelector('textarea').value;").then((f) => f?.v)).toBe("ab");
     await pressKeys(m, "Meta+Enter");
     await expect.poll(async () => (await state()).basket, { timeout: 10_000 }).toBe(n + 1);
     await expect.poll(bubbleShown, { timeout: 10_000 }).toBe(false);
@@ -233,7 +233,7 @@ describe("design overlay", () => {
     await sleep(700);
     await inPage("window.got = []; for (const t of ['mousedown', 'click', 'wheel']) addEventListener(t, (e) => got.push(t), true); return 1;");
     const hits = await m.execute<{ onBubble: string; outside: string }>(
-      `const b = ${B}.getBoundingClientRect(), f = document.getElementById("webaios-design-calque").getBoundingClientRect();
+      `const b = ${B}.getBoundingClientRect(), f = document.getElementById("ressac-design-calque").getBoundingClientRect();
        const hit = (x, y) => { const e = document.elementFromPoint(x, y); return e ? e.localName + (e.id ? "#" + e.id : "") : null; };
        const x = b.left + b.width - 50, y = b.top + b.height - 50;
        const out = { onBubble: hit(f.left + 20, f.top + 20), outside: hit(x, y) };
@@ -241,7 +241,7 @@ describe("design overlay", () => {
        window.windowUtils.sendWheelEvent(x, y, 0, 100, 0, 0, 0, 0, 0, 0);
        return out;`,
     );
-    expect(hits).toEqual({ onBubble: "iframe#webaios-design-calque", outside: "browser" });
+    expect(hits).toEqual({ onBubble: "iframe#ressac-design-calque", outside: "browser" });
     await expect.poll(() => inPage<string[]>("return window.got;"), { timeout: 10_000 }).toEqual(["mousedown", "click", "wheel"]);
     expect(await bubbleShown()).toBe(true);
     await pressKeys(m, "Escape");
@@ -269,13 +269,13 @@ describe("design overlay", () => {
     await svc(`window.__calls = []; const real = (store.agent.__real ??= store.agent.request); store.agent.request = (method, p) => (window.__calls.push(method + " " + p?.project), real.call(store.agent, method, p)); return 1;`);
     try {
       const answers = await m.execute<unknown[]>(
-        `const api = document.getElementById("webaios-design-volet").contentWindow.webaios;
+        `const api = document.getElementById("ressac-design-volet").contentWindow.ressac;
          return Promise.all([api.basket("demo-15307"), api.batches("app-autre"), api.send("demo-15307"), api.remove("demo-15307", "e"), api.handled("demo-15307", "l")]);`,
       );
       expect(answers).toEqual([[], [], { ok: false, error: INVALID_REQUEST }, null, null]);
       // The column's own reads of its project go on; nothing ever asked for another project.
       expect(await m.execute<string[]>(`return window.__calls.filter((c) => c.startsWith("design.") && !c.startsWith("design.tracking") && !c.endsWith(" ${PROJECT}"));`)).toEqual([]);
-      const own = await m.execute<unknown[]>(`return document.getElementById("webaios-design-volet").contentWindow.webaios.basket(arguments[0]);`, [PROJECT]);
+      const own = await m.execute<unknown[]>(`return document.getElementById("ressac-design-volet").contentWindow.ressac.basket(arguments[0]);`, [PROJECT]);
       expect(own.length).toBeGreaterThan(0);
       expect(await m.execute<string[]>("return window.__calls;")).toContain(`design.basket ${PROJECT}`);
     } finally {
@@ -283,12 +283,12 @@ describe("design overlay", () => {
     }
     // The target is the chrome's: the frame's address names none, and the overlay cannot reach the page's document.
     const overlay = await m.execute<{ search: string[]; page: unknown }>(
-      `const f = document.getElementById("webaios-design-volet").contentWindow, c = document.getElementById("webaios-design-calque")?.contentWindow;
+      `const f = document.getElementById("ressac-design-volet").contentWindow, c = document.getElementById("ressac-design-calque")?.contentWindow;
        return { search: [f.location.search, c ? c.location.search : "?overlay"], page: f.parent.gBrowser.selectedBrowser.contentDocument };`,
     );
     expect(overlay).toEqual({ search: ["?overlay", "?overlay"], page: null });
     // The page sees no overlay: it is its own top, with no frame element, no api, no frame of ours.
-    expect(await inPage("return { top: window.top === window, parent: window.parent === window, frame: window.frameElement, api: typeof window.webaios, frames: window.frames.length };")).toEqual({
+    expect(await inPage("return { top: window.top === window, parent: window.parent === window, frame: window.frameElement, api: typeof window.ressac, frames: window.frames.length };")).toEqual({
       top: true, parent: true, frame: null, api: "undefined", frames: 0,
     });
     await modeOff();
@@ -305,7 +305,7 @@ describe("design overlay", () => {
     const g = await m.execute<{ z: number; x: number; y: number; width: number; height: number; w: number; h: number }>(
       `const r = ${B}.getBoundingClientRect(); return { z: ${B}.fullZoom, x: r.x, y: r.y, width: r.width, height: r.height, w: window.innerWidth, h: window.innerHeight };`,
     );
-    const f = (await frameOf("webaios-design-calque"))!;
+    const f = (await frameOf("ressac-design-calque"))!;
     const p = bubbleSlot(r, g.z, g, [g.w, g.h]);
     expect(f.rect).toEqual({ x: p.x, y: p.y, width: p.width, height: p.height });
     // Under the element as the chrome shows it (CSS px × zoom, from the view's edge).
@@ -332,7 +332,7 @@ describe("design overlay", () => {
     await modeOff();
   });
 
-  it("design.spec.ts:379 two remarks, reload then restart: the mode is off, the cart stays (<dataDir>/workspace/.webaios/remarks/demo-15308)", { timeout: 120_000 }, async () => {
+  it("design.spec.ts:379 two remarks, reload then restart: the mode is off, the cart stays (<dataDir>/workspace/.ressac/remarks/demo-15308)", { timeout: 120_000 }, async () => {
     await open();
     const n = (await state()).basket;
     await modeOn();
@@ -349,7 +349,7 @@ describe("design overlay", () => {
     await expect.poll(async () => (await state()).basket, { timeout: 15_000 }).toBe(n + 2);
     expect((await state()).active).toBe(false);
     expect(await columnShown()).toBe(false);
-    const file = path.join(dataDir, "workspace", ".webaios", "remarks", PROJECT, "basket.json");
+    const file = path.join(dataDir, "workspace", ".ressac", "remarks", PROJECT, "basket.json");
     expect(existsSync(file)).toBe(true);
     expect(JSON.parse(readFileSync(file, "utf8"))).toHaveLength(n + 2);
   });
@@ -362,7 +362,7 @@ describe("design overlay", () => {
     await svc("await store.agent.stop(); return 1;");
     await typeText(m, "perdue");
     await click(m, "button.add-button", { frame: "overlay" });
-    await expect.poll(() => frameOf<string | null>("webaios-design-calque", `return doc.querySelector('[role="alert"]')?.textContent ?? null;`).then((f) => f?.v ?? null), { timeout: 10_000 }).toBeTruthy();
+    await expect.poll(() => frameOf<string | null>("ressac-design-calque", `return doc.querySelector('[role="alert"]')?.textContent ?? null;`).then((f) => f?.v ?? null), { timeout: 10_000 }).toBeTruthy();
     expect(await bubbleShown()).toBe(true);
     expect(await svc("return d.overlayContext(t)?.mode ?? null;")).toBe("bubble");
     // Réessayer: the host starts again; the UI reads its design state again by itself (the test never asks it).

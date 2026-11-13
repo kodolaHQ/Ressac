@@ -1,4 +1,4 @@
-import { truncate, type MessageConsole, type NetworkRequest } from "@webaios/kernel";
+import { truncate, type MessageConsole, type NetworkRequest } from "@ressac/kernel";
 
 /** Value of a console argument or an exception (the protocol's Runtime.RemoteObject). */
 interface RemoteObject {

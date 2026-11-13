@@ -39,7 +39,7 @@ export function validFolder(folder: string): boolean {
 
 async function readProject(c: SpacePaths, folder: string): Promise<ProjectRead> {
   const path = join(c.projects, folder);
-  const file = join(path, "webaios.json");
+  const file = join(path, "ressac.json");
   let createdAt: Date;
   let content: string | undefined;
   try {
@@ -50,12 +50,12 @@ async function readProject(c: SpacePaths, folder: string): Promise<ProjectRead> 
   }
   const base = { folder: folder, path: path, createdAt: createdAt.toISOString() };
   if (!validFolder(folder)) return { ...base, name: folder, noManifest: "nom de dossier non pris en charge" };
-  if (content === undefined) return { ...base, name: folder, noManifest: "pas de webaios.json" };
+  if (content === undefined) return { ...base, name: folder, noManifest: "pas de ressac.json" };
   try {
     const manifest = Manifest.parse(JSON.parse(content));
     return { ...base, name: manifest.name ?? folder, manifest: manifest };
   } catch (e) {
-    return { ...base, name: folder, noManifest: `webaios.json invalide : ${(e as Error).message}` };
+    return { ...base, name: folder, noManifest: `ressac.json invalide : ${(e as Error).message}` };
   }
 }
 
@@ -85,7 +85,7 @@ export function watchProjects(c: SpacePaths, callback: () => void): () => Promis
   });
   observer.on("all", (event, path) => {
     const name = path.split(/[\\/]/).pop();
-    const relevant = event === "addDir" || event === "unlinkDir" || name === "webaios.json";
+    const relevant = event === "addDir" || event === "unlinkDir" || name === "ressac.json";
     if (!relevant) return;
     clearTimeout(timer);
     timer = setTimeout(callback, GROUPING_MS);
@@ -98,7 +98,7 @@ export function watchProjects(c: SpacePaths, callback: () => void): () => Promis
 
 /** Changes a project's type, keeping the other fields of the manifest. */
 export async function writeType(c: SpacePaths, folder: string, type: "app" | "poc"): Promise<void> {
-  const target = join(c.projects, folder, "webaios.json");
+  const target = join(c.projects, folder, "ressac.json");
   const manifest = Manifest.parse(JSON.parse(await readFile(target, "utf8")));
   const temp = `${target}.${process.pid}.tmp`;
   await writeFile(temp, JSON.stringify({ ...manifest, type }, null, 2));

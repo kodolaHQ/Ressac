@@ -22,7 +22,7 @@ import type { ShownWidget } from "../shared/api.ts";
 const ID_WIDGET = /^[a-z0-9-]+$/;
 /** The frame's URL: the sanitized copy that the sidebar writes, dated with the source's mtime (a new mtime reloads). */
 function displayUrl(id: string, mtime: number): string {
-  return `resource://webaios-widget-${id}/display-${mtime}.html`;
+  return `resource://ressac-widget-${id}/display-${mtime}.html`;
 }
 /** Size given to an unreadable widget (without declaration), so that it keeps a place and shows its error. */
 const UNREADABLE_WIDGET_SIZE = { w: 4, h: 2 };

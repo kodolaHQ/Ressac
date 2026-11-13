@@ -1,7 +1,7 @@
 import { siteOf } from "../../shared/model";
 import type { SitePermission } from "../store/site-permissions";
 
-/** The permission names the banner shows, plus the three kinds of WebAiOs-Firefox. */
+/** The permission names the banner shows, plus the three kinds of Ressac. */
 const NAMES: Record<SitePermission, string> = {
   "media-camera": "votre caméra",
   "media-micro": "votre micro",

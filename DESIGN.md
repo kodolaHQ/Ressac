@@ -1,5 +1,5 @@
 ---
-name: WebAiOs Aura
+name: Ressac Aura
 colors:
   light: { bg: "#F1F3F6", text: "#15171C", muted: "#5D6470", line: "rgba(21,23,28,.10)", glass: "rgba(255,255,255,.52)", glass-hi: "rgba(255,255,255,.78)", glass-edge: "rgba(255,255,255,.75)", sheet: "#FFFFFF", accent-ink: "#FFFFFF" }
   dark: { bg: "#0E1014", text: "#ECEEF2", muted: "#9AA1AD", line: "rgba(255,255,255,.09)", glass: "rgba(14,16,24,.66)", glass-hi: "rgba(255,255,255,.10)", glass-edge: "rgba(255,255,255,.10)", sheet: "#17191F", accent-ink: "#0E1014" }
@@ -23,7 +23,7 @@ aura-layers: { light: { opacity: 0.95, blur: 70px, saturate: 1.15 }, dark: { opa
 radius: { control: 10px, card: 16px, window: 18px, page: 12px }
 ---
 
-# WebAiOs : la charte Aura
+# Ressac : la charte Aura
 
 Toute retouche visuelle suit ce fichier. Les valeurs vivent dans `apps/firefox/ui/theme.css` (variables CSS).
 

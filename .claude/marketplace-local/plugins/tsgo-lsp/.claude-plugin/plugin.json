@@ -1,1 +1,1 @@
-{ "name": "tsgo-lsp", "version": "0.1.0", "description": "TypeScript 7 built-in LSP (tsc --lsp --stdio) for WebAiOs" }
+{ "name": "tsgo-lsp", "version": "0.1.0", "description": "TypeScript 7 built-in LSP (tsc --lsp --stdio) for Ressac" }

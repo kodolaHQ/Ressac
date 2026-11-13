@@ -82,7 +82,7 @@ export const grantRequired = (d: DeclarationWidget) => `Accord requis pour lire 
 export const WORKSHOP_STOPPED_ERROR = "Mise à jour impossible : atelier arrêté";
 export const INTERNAL_HARVEST_ERROR = "Mise à jour impossible : erreur interne du navigateur";
 export const NO_WORKFLOW_ERROR = "Ce widget n'a ni workflow.json ni harvest.mjs";
-export const INTERRUPTED_ERROR = "Interrompue : WebAiOs s'est arrêté";
+export const INTERRUPTED_ERROR = "Interrompue : Ressac s'est arrêté";
 
 /** Fixed error messages written by the kernel; any other error text may have been written by the widget. */
 const FIXED_ERRORS = new Set([
@@ -243,7 +243,7 @@ export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
   const trigger = o.trigger ?? "scheduled";
   const previous = await readWidgetState(widgetsFolder, id);
   const start = clock().toISOString();
-  // The previous state, kept during the run: restored at the next startup if WebAiOs stops abruptly.
+  // The previous state, kept during the run: restored at the next startup if Ressac stops abruptly.
   const before = stateBeforeRun(previous);
   await writeWidgetState(widgetsFolder, id, { status: "running", lastUpdate: previous.lastUpdate, lastAttempt: start, before: before });
   o.onChange?.();

@@ -1,4 +1,4 @@
-import { blockCatalog, validateWorkflow, implicitWorkflow } from "@webaios/kernel";
+import { blockCatalog, validateWorkflow, implicitWorkflow } from "@ressac/kernel";
 import { expect, test } from "vitest";
 import type { Draft, WorkflowEdit } from "../../shared/api";
 import { CODE_MODEL, freshParams, freeSlot } from "../../ui/builder/add";

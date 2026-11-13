@@ -1,5 +1,5 @@
 import { expect, test, vi } from "vitest";
-import { spacePaths, type Batch, type TrackedProject } from "@webaios/kernel";
+import { spacePaths, type Batch, type TrackedProject } from "@ressac/kernel";
 import { NO_WINDOW, createSend } from "../../core/design/send";
 
 const batch: Batch = {
@@ -38,7 +38,7 @@ test("app: prefill receives the agent's window and the text, never a \r; externa
   const [f, text] = o.prefill.mock.calls[0]!;
   expect(f).toBe("f7");
   expect(text).toContain("appli Essai (/workspace/projects/essai)");
-  expect(text).toContain("/workspace/.webaios/remarks/app-essai/20261102T101500Z-ab12/batch.json] ");
+  expect(text).toContain("/workspace/.ressac/remarks/app-essai/20261102T101500Z-ab12/batch.json] ");
   expect(text).not.toMatch(/[\r\n]/);
   expect(o.giveTerminal).toHaveBeenCalledWith("f7");
   expect(o.toFront).toHaveBeenCalledWith("f7");
@@ -70,7 +70,7 @@ test("site: prefill receives the site app, its folder and the batch path, withou
   const [f, text] = o.prefill.mock.calls[0]!;
   expect(f).toBe("f7");
   expect(text).toContain('appli de site "Tuning" (/workspace/sites/tuning/)');
-  expect(text).toContain("/workspace/.webaios/remarks/site-tuning/20261102T101500Z-ab12/batch.json] ");
+  expect(text).toContain("/workspace/.ressac/remarks/site-tuning/20261102T101500Z-ab12/batch.json] ");
   expect(text).not.toMatch(/[\r\n]/);
   expect(o.giveTerminal).toHaveBeenCalledWith("f7");
   expect(o.toFront).toHaveBeenCalledWith("f7");

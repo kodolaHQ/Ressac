@@ -3,7 +3,7 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { dispatch, inWindow, newWindow, state, waitFor, windowHandles } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
 import { click, inUi, missingApi, waitUi } from "./ui";
@@ -11,16 +11,16 @@ import { click, inUi, missingApi, waitUi } from "./ui";
 const NAVIGABLES = "chrome://remote/content/shared/NavigableManager.sys.mjs";
 
 let server: Awaited<ReturnType<typeof startServer>>;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 let dl: string;
 beforeAll(async () => (server = await startServer()));
 afterAll(() => server?.close());
 beforeEach(async () => {
-  w = await launchWebAiOs({ env: { WEBAIOS_TEST_PUBLIC_ADDRESSES: "127.0.0.1" } });
+  w = await launchRessac({ env: { RESSAC_TEST_PUBLIC_ADDRESSES: "127.0.0.1" } });
   m = w.marionette;
   await m.setContext("chrome");
-  await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+  await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
   // Downloads go to the test's data dir, never to ~/Downloads.
   dl = join(w.dataDir, "dl");
   await mkdir(dl);
@@ -43,7 +43,7 @@ async function openPage(): Promise<() => Promise<unknown>> {
   await waitFor(m, "return gBrowser.selectedBrowser.currentURI.spec.endsWith('/telecharger.html') && !gBrowser.selectedBrowser.webProgress.isLoadingDocument", (v) => v === true);
   return async () => {
     const handle = await m.execute<string>(
-      `const t = gBrowser.tabs.find((t) => t.getAttribute("webaios-tab-id") === arguments[0]);
+      `const t = gBrowser.tabs.find((t) => t.getAttribute("ressac-tab-id") === arguments[0]);
        return ChromeUtils.importESModule("${NAVIGABLES}").NavigableManager.getIdForBrowser(t.linkedBrowser);`,
       [id],
     );
@@ -60,15 +60,15 @@ const until = async (ok: () => boolean, ms = 10_000) => {
   for (const end = Date.now() + ms; !ok(); await new Promise((r) => setTimeout(r, 100))) if (Date.now() > end) throw new Error("timed out");
 };
 const rows = () => inUi<string[]>(m, `return [...doc.querySelectorAll('[data-testid="download"]')].map((e) => e.dataset.state)`);
-const list = () => inUi<number>(m, "return (await ui.webaios.downloads.list()).length");
-const unfinished = () => inUi<number>(m, "return (await ui.webaios.downloads.list()).filter((t) => t.state === 'in-progress').length");
+const list = () => inUi<number>(m, "return (await ui.ressac.downloads.list()).length");
+const unfinished = () => inUi<number>(m, "return (await ui.ressac.downloads.list()).filter((t) => t.state === 'in-progress').length");
 
 describe("downloads", () => {
   it("a file from the test server arrives, ends « termine »; the second gets Firefox's free name", async () => {
     const click1 = await openPage();
     await click1();
     await until(() => existsSync(join(dl, "fichier.txt")));
-    await waitUi(m, "return (await ui.webaios.downloads.list()).some((t) => t.state === 'done')");
+    await waitUi(m, "return (await ui.ressac.downloads.list()).some((t) => t.state === 'done')");
     await click1();
     await until(() => existsSync(join(dl, "fichier(1).txt")));
     expect(readFileSync(join(dl, "fichier.txt"), "utf8")).toContain("Bonjour");
@@ -89,7 +89,7 @@ describe("downloads", () => {
     const click1 = await openPage();
     await click1();
     await until(() => existsSync(join(dl, "fichier.txt")));
-    await waitUi(m, "return (await ui.webaios.downloads.list()).some((t) => t.state === 'done')");
+    await waitUi(m, "return (await ui.ressac.downloads.list()).some((t) => t.state === 'done')");
     expect(await m.execute<string | null>(`return document.getElementById("downloadsPanel")?.state ?? null`)).not.toBe("open");
     expect((await windowHandles(m)).length).toBe(windows);
   });
@@ -117,7 +117,7 @@ describe("downloads", () => {
   it("both windows show the button and the same list", async () => {
     const click1 = await openPage();
     await click1();
-    await waitUi(m, "return (await ui.webaios.downloads.list()).some((t) => t.state === 'done')");
+    await waitUi(m, "return (await ui.ressac.downloads.list()).some((t) => t.state === 'done')");
     const other = await newWindow(m);
     await inWindow(m, other, async () => {
       await waitUi(m, `return !!doc.querySelector('button[aria-label="Téléchargements"]')`);

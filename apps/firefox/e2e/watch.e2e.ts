@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from "vitest";
 import { newWindow, state, waitReady } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { click, inUi } from "./ui";
 import { writeWidget } from "./workflows";
@@ -109,12 +109,12 @@ afterAll(async () => {
 
 let dataDir: string;
 /** The apps launched by the test, closed after it. */
-let launched: LaunchedWebAiOs[] = [];
+let launched: LaunchedRessac[] = [];
 beforeEach(async () => {
   settings.failingPages.clear();
   settings.ddg = "results.html";
   settings.gemmaDelayMs = 0;
-  dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-watch-"));
+  dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-watch-"));
 });
 afterEach(async () => {
   await Promise.all(launched.map((l) => l.close()));
@@ -129,15 +129,15 @@ const notifications = (): { title: string; text: string }[] =>
 
 /** Launches on `dataDir` (kept), tall enough for every widget to show; waits for the home page. */
 async function launchWatch(): Promise<Marionette> {
-  const l = await launchWebAiOs({
+  const l = await launchRessac({
     dataDir,
     height: 1400,
     env: {
-      WEBAIOS_KEV_URL: kev.url,
-      WEBAIOS_OLLAMA_URL: ollama.url,
-      WEBAIOS_TEST_LOCAL_ADDRESSES: "1",
-      WEBAIOS_TEST_DUCKDUCKGO_URL: `${site.url}/ddg/`,
-      WEBAIOS_TEST_NOTIFICATIONS: notificationsFile(),
+      RESSAC_KEV_URL: kev.url,
+      RESSAC_OLLAMA_URL: ollama.url,
+      RESSAC_TEST_LOCAL_ADDRESSES: "1",
+      RESSAC_TEST_DUCKDUCKGO_URL: `${site.url}/ddg/`,
+      RESSAC_TEST_NOTIFICATIONS: notificationsFile(),
     },
   });
   launched.push(l);
@@ -460,7 +460,7 @@ it('the Gmail widget (account, harvest.mjs) updates as before; with "web": true 
     harvest: { minutes: 60 },
     declaration: { sources: { account: ["127.0.0.1"], public: [] }, config: { url: `${site.url}/court` } },
     files: {
-      "harvest.mjs": "export default async (webaios) => ({ titre: (await webaios.readPage(webaios.config.url, { account: true })).title });",
+      "harvest.mjs": "export default async (ressac) => ({ titre: (await ressac.readPage(ressac.config.url, { account: true })).title });",
       "example.json": JSON.stringify({ example: "gmail" }),
     },
   };
@@ -519,7 +519,7 @@ it("a click on the notification brings the last window to the front, with no tab
   await m.execute("window.minimize();");
   await until(() => m.execute<number>("return window.windowState;"), (s) => s === 2 /* STATE_MINIMIZED */);
   await m.execute(
-    `return (async () => (await ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs")).alertObserver.observe(null, "alertclickcallback", ""))();`,
+    `return (async () => (await ChromeUtils.importESModule("chrome://browser/content/ressac/store.sys.mjs")).alertObserver.observe(null, "alertclickcallback", ""))();`,
   );
   await until(() => m.execute<number>("return window.windowState;"), (s) => s !== 2);
   expect(await recent()).toBe(true);

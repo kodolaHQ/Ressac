@@ -33,7 +33,7 @@ async function createWithoutDocker() {
   return kernel;
 }
 
-const readMcp = async (n: Kernel) => JSON.parse(await readFile(n.paths.mcpConfig, "utf8")).mcpServers.webaios;
+const readMcp = async (n: Kernel) => JSON.parse(await readFile(n.paths.mcpConfig, "utf8")).mcpServers.ressac;
 
 /** Workshop whose « docker » is a fake script (it only sleeps for an `exec -it`, one session; any other call fails fast): a session pty never touches the real Docker. */
 async function workshopWithoutDocker(root: string, run: Runner): Promise<Workshop> {
@@ -136,8 +136,8 @@ test("at launch, once the container is ready, the agents of a previous app are s
   await kernel.openAgentSession({ cols: 80, rows: 24 }).then((s) => s.stop(), () => {});
   const execs = calls.filter((a) => a.args[0] === "exec").map((a) => a.args.join(" "));
   // The cleanup (all marked sessions) runs before the open session is stopped here.
-  expect(execs[0]).toContain("/tmp/webaios-session-*.pid");
-  expect(execs[1]).toMatch(/webaios-session-[0-9a-f]+\.pid/);
+  expect(execs[0]).toContain("/tmp/ressac-session-*.pid");
+  expect(execs[1]).toMatch(/ressac-session-[0-9a-f]+\.pid/);
 });
 
 test("createKernel reads models and Dockerfile from resources", async () => {
@@ -330,7 +330,7 @@ test("a session opened for a window writes its own MCP config, deleted when the 
   const session = await n.openAgentSession({ cols: 80, rows: 24, window: "F1" });
   const files = await readdir(folder);
   expect(files).toHaveLength(1);
-  const clean = JSON.parse(await readFile(join(folder, files[0]!), "utf8")).mcpServers.webaios;
+  const clean = JSON.parse(await readFile(join(folder, files[0]!), "utf8")).mcpServers.ressac;
   const principal = await readMcp(n);
   expect(clean.url).toBe(principal.url);
   expect(clean.headers.Authorization).toMatch(/^Bearer [0-9a-f]{64}$/);
@@ -467,10 +467,10 @@ describe("openAgentSession with a profile", () => {
     await started(async (n, start) => {
       const s = await n.openAgentSession({ cols: 80, rows: 24, window: "f1", profile: "codex" });
       const [command, o] = start.mock.calls[0]!;
-      expect(command.at(-1)).toMatch(/^mcp_servers\.webaios=\{url="http:\/\/host\.docker\.internal:\d+\/mcp",bearer_token_env_var="WEBAIOS_MCP_TOKEN"\}$/);
+      expect(command.at(-1)).toMatch(/^mcp_servers\.ressac=\{url="http:\/\/host\.docker\.internal:\d+\/mcp",bearer_token_env_var="RESSAC_MCP_TOKEN"\}$/);
       expect(command.at(-2)).toBe("-c");
-      expect(command.some((a) => a.startsWith("WEBAIOS_MCP_TOKEN="))).toBe(false);
-      expect(o.env!.WEBAIOS_MCP_TOKEN).toMatch(/^[0-9a-f]{64}$/);
+      expect(command.some((a) => a.startsWith("RESSAC_MCP_TOKEN="))).toBe(false);
+      expect(o.env!.RESSAC_MCP_TOKEN).toMatch(/^[0-9a-f]{64}$/);
       expect(existsSync(join(n.paths.internal, "sessions"))).toBe(false);
       await s.stop();
     });
@@ -478,12 +478,12 @@ describe("openAgentSession with a profile", () => {
 
   test("codex resume with extra args and env", async () => {
     await started(async (n, start) => {
-      const s = await n.openAgentSession({ cols: 80, rows: 24, window: "f1", profile: "codex", resume: true, extra: { args: ["-m", "x"], env: { WEBAIOS_ENGINE_TOKEN: "t" } } });
+      const s = await n.openAgentSession({ cols: 80, rows: 24, window: "f1", profile: "codex", resume: true, extra: { args: ["-m", "x"], env: { RESSAC_ENGINE_TOKEN: "t" } } });
       const [command, o] = start.mock.calls[0]!;
       expect(command.slice(command.indexOf("codex"), command.indexOf("codex") + 3)).toEqual(["codex", "resume", "--last"]);
       expect(command.slice(-2)).toEqual(["-m", "x"]);
-      expect(o.env!.WEBAIOS_ENGINE_TOKEN).toBe("t");
-      expect(command[command.indexOf("WEBAIOS_ENGINE_TOKEN") - 1]).toBe("-e");
+      expect(o.env!.RESSAC_ENGINE_TOKEN).toBe("t");
+      expect(command[command.indexOf("RESSAC_ENGINE_TOKEN") - 1]).toBe("-e");
       await s.stop();
     });
   });

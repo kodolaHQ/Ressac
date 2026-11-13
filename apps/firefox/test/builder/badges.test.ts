@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import type { DirectWidget, Execution } from "@webaios/kernel";
+import type { DirectWidget, Execution } from "@ressac/kernel";
 import { badgesOf } from "../../ui/builder/badges";
 
 const trace = (id: string, status: string, items: number | null) => ({ id, type: "code", status: status, start: null, end: null, items: items, log: [] });

@@ -25,7 +25,7 @@
 <body class="narrow">
 <ul id="list"></ul>
 <script>
-  const openLink = (url) => (window.webaiosOpen ? window.webaiosOpen(url) : parent.postMessage({ type: "open", url }, "*"));
+  const openLink = (url) => (window.ressacOpen ? window.ressacOpen(url) : parent.postMessage({ type: "open", url }, "*"));
   function render(m) {
     const data = m.data || {};
     const articles = Array.isArray(data.articles) ? data.articles : [];

@@ -109,13 +109,13 @@ const KEPT_TYPES = new Set(["object", "closure", "array", "string", "regexp", "n
 
 /** Firefox census, already converted by the caller; entries are object classes, not JS constructors. */
 export interface FirefoxSnapshot extends MemorySummary {
-  format: "webaios-firefox-census";
+  format: "ressac-firefox-census";
 }
 
 /** Reads a V8 `.heapsnapshot` (or a Firefox census) and groups the nodes by name. */
 export function summarizeSnapshot(json: string): MemorySummary {
   const parse = JSON.parse(json) as { format?: string };
-  if (parse.format === "webaios-firefox-census") {
+  if (parse.format === "ressac-firefox-census") {
     const { total, byConstructor: byBuilder } = parse as FirefoxSnapshot;
     return { total, byConstructor: [...byBuilder].sort((a, b) => b.size - a.size) };
   }

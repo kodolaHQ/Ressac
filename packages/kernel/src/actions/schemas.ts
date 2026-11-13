@@ -3,10 +3,10 @@ import { DeclaredSources, checkSources } from "../home/schemas.js";
 
 export { WEB_WITH_ACCOUNT } from "../home/schemas.js";
 
-/** The name of an action's folder under `~/WebAiOs/actions/`. */
+/** The name of an action's folder under `~/Ressac/actions/`. */
 export const ID_ACTION = /^[a-z0-9-]{1,60}$/;
 
-/** `action.json`: what the action is, what it reads and how Gemma should present it. Never written by WebAiOs. */
+/** `action.json`: what the action is, what it reads and how Gemma should present it. Never written by Ressac. */
 export const DeclarationAction = z
   .object({
     name: z.string().min(1).max(60),

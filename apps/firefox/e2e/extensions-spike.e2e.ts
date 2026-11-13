@@ -10,22 +10,22 @@ import { AMO_URL, readAmoKey, sign } from "../host/extensions/amo";
 import { DEFAULT_GUARDS, prepareCopy } from "../../../packages/kernel/src/extensions/copy.ts";
 import { writeXpi, type Fixture } from "./addons";
 import { dispatch, state, waitFor } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { ICON, startServer } from "./server";
 import { waitUi } from "./ui";
 
 // Probes of plan 25's unknowns (docs/superpowers/notes/2026-11-04-extensions-agent-essai.md). They print what they see
-// rather than assert it: rerun them with WEBAIOS_SPIKE=1 after a Firefox version change and compare with the note.
-// S1 signs for real on addons.mozilla.org: only with WEBAIOS_AMO=1, the network and the keychain's AMO keys.
+// rather than assert it: rerun them with RESSAC_SPIKE=1 after a Firefox version change and compare with the note.
+// S1 signs for real on addons.mozilla.org: only with RESSAC_AMO=1, the network and the keychain's AMO keys.
 
 const note = (what: string, v: unknown) => console.log(`[spike] ${what}: ${JSON.stringify(v)}`);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const run = promisify(execFile);
 
 /** Signed .xpi files of S1 are kept here (they hold no secret), so S3 can rerun without new uploads. */
-const SIGNED = path.join(os.tmpdir(), "webaios-extensions-spike-signed");
-const SPIKE_ID = `spike-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}@agent.webaios`;
+const SIGNED = path.join(os.tmpdir(), "ressac-extensions-spike-signed");
+const SPIKE_ID = `spike-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}@agent.ressac`;
 
 // --- The extension the agent would write (MV3 for Chrome), and the copy Firefox gets ----------------------------
 
@@ -36,8 +36,8 @@ const SPIKE_ID = `spike-${new Date().toISOString().slice(0, 10).replaceAll("-", 
 const SOURCE: Record<string, string | Buffer> = {
   "manifest.json": JSON.stringify({
     manifest_version: 3,
-    name: "WebAiOs agent extension test",
-    description: "Throwaway test of WebAiOs (agent-written extensions signing). Not for use.",
+    name: "Ressac agent extension test",
+    description: "Throwaway test of Ressac (agent-written extensions signing). Not for use.",
     version: "1.0",
     permissions: ["storage"],
     background: { service_worker: "background.js" },
@@ -45,7 +45,7 @@ const SOURCE: Record<string, string | Buffer> = {
     action: { default_icon: "icon.png", default_popup: "popup.html" },
     options_ui: { page: "options.html" },
   }),
-  "webaios.json": "{}",
+  "ressac.json": "{}",
   "icon.png": ICON,
   "background.js": `console.log("spike-background", location.pathname);
 const push = async (key, v) => { const o = await chrome.storage.local.get(key); await chrome.storage.local.set({ [key]: [...(o[key] ?? []), v] }); };
@@ -55,9 +55,9 @@ void chrome.storage.local.get("n").then((o) => (o.n ? undefined : chrome.storage
 `,
   "content.js": 'console.log("spike-content", location.href);\n',
   "popup.html": '<!doctype html><meta charset="utf-8"><title>Popup</title><script src="popup.js"></script>',
-  "popup.js": 'document.title = "popup " + typeof globalThis.__webaios;\n',
+  "popup.js": 'document.title = "popup " + typeof globalThis.__ressac;\n',
   "options.html": '<!doctype html><meta charset="utf-8"><title>Options</title><script src="options.js"></script>',
-  "options.js": 'document.title = "options " + typeof globalThis.__webaios;\n',
+  "options.js": 'document.title = "options " + typeof globalThis.__ressac;\n',
   "state.html": '<!doctype html><meta charset="utf-8"><title>…</title><script src="state.js"></script>',
   "state.js": 'chrome.storage.local.get(null).then((v) => (document.title = JSON.stringify(v)));\n',
 };
@@ -71,11 +71,11 @@ async function writeTree(dir: string, files: Record<string, string | Buffer>): P
 
 /**
  * The base copy of SOURCE, then by hand what plan 25's decisions 2 and 3 add for Firefox: gecko id,
- * version `1.0.0.<n>`, background `scripts: [guard, original]` (webaios-background.js dropped). `extra` is merged into the
+ * version `1.0.0.<n>`, background `scripts: [guard, original]` (ressac-background.js dropped). `extra` is merged into the
  * manifest last (what AMO turns out to require). Returns the zipped .xpi path and the copy's manifest.
  */
 async function firefoxCopy(o: { id: string; n: number; extra?: Record<string, unknown>; guards?: boolean; files?: Record<string, string> }): Promise<{ xpi: string; manifest: Record<string, any> }> {
-  const dir = await mkdtemp(path.join(os.tmpdir(), "webaios-spike-copy-"));
+  const dir = await mkdtemp(path.join(os.tmpdir(), "ressac-spike-copy-"));
   await writeTree(path.join(dir, "source"), { ...SOURCE, ...o.files });
   const target = path.join(dir, "copy");
   const { analysis: analysis } = await prepareCopy({ source: path.join(dir, "source"), target: target, keptFolder: DEFAULT_GUARDS });
@@ -84,12 +84,12 @@ async function firefoxCopy(o: { id: string; n: number; extra?: Record<string, un
   const gecko = { id: o.id, ...((o.extra?.gecko as object) ?? {}) };
   manifest.browser_specific_settings = { gecko };
   manifest.version = `1.0.0.${o.n}`;
-  manifest.background = { scripts: ["webaios-background-guard.js", "background.js"] };
+  manifest.background = { scripts: ["ressac-background-guard.js", "background.js"] };
   for (const [k, v] of Object.entries(o.extra ?? {})) if (k !== "gecko") manifest[k] = v;
-  await rm(path.join(target, "webaios-background.js"));
+  await rm(path.join(target, "ressac-background.js"));
   if (o.guards === false) {
-    // Control variant: the same extension without any WebAiOs file, to tell a guard rejection from anything else.
-    for (const f of ["webaios-background-guard.js", "webaios-page-guard.js", "webaios-page-fixes.js", "webaios-scope.js", "webaios-files"]) await rm(path.join(target, f), { recursive: true, force: true });
+    // Control variant: the same extension without any Ressac file, to tell a guard rejection from anything else.
+    for (const f of ["ressac-background-guard.js", "ressac-page-guard.js", "ressac-page-fixes.js", "ressac-scope.js", "ressac-files"]) await rm(path.join(target, f), { recursive: true, force: true });
     manifest.background = { scripts: ["background.js"] };
     manifest.content_scripts = [{ matches: ["http://127.0.0.1/*"], js: ["content.js"] }];
   }
@@ -103,7 +103,7 @@ async function firefoxCopy(o: { id: string; n: number; extra?: Record<string, un
 
 async function ready(m: Marionette, agent = true): Promise<void> {
   await m.setContext("chrome");
-  await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+  await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
   if (!agent) return;
   // The home page's agent session settles first: quitting during its start-up leaves writers in the data dir.
   await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
@@ -165,15 +165,15 @@ const LISTEN_ERRORS = `
   Services.console.registerListener(window.spikeListener);`;
 const STOP_ERRORS = "Services.console.unregisterListener(window.spikeListener); return window.spikeErrors;";
 
-/** A plain MV3 test extension (no copy), `<name>-spike@agent.webaios`; its `note(key, value)` asks base/note/<key>/<json>. */
+/** A plain MV3 test extension (no copy), `<name>-spike@agent.ressac`; its `note(key, value)` asks base/note/<key>/<json>. */
 function plain(base: string, name: string, files: Record<string, string>, manifest: Record<string, unknown> = {}): Fixture {
-  const id = `${name}-spike@agent.webaios`;
+  const id = `${name}-spike@agent.ressac`;
   const helper = `const note = (k, v) => fetch(${JSON.stringify(base)} + "/note/" + k + "/" + encodeURIComponent(JSON.stringify(v))).catch(() => {});\n`;
   return {
     id,
     manifest: {
       manifest_version: 3,
-      name: `WebAiOs spike ${name}`,
+      name: `Ressac spike ${name}`,
       version: "1.0",
       browser_specific_settings: { gecko: { id } },
       // Firefox's MV3 default adds upgrade-insecure-requests: the notes go to http://127.0.0.1.
@@ -199,7 +199,7 @@ async function until<T>(read: () => T | Promise<T>, ms = 10_000): Promise<T> {
   }
 }
 
-/** Opens `url` in a WebAiOs tab and waits until the selected browser shows it; returns the WebAiOs tab id. */
+/** Opens `url` in a Ressac tab and waits until the selected browser shows it; returns the Ressac tab id. */
 async function open(m: Marionette, url: string): Promise<string> {
   const before = new Set(Object.keys((await state(m)).tabs));
   const s = await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url });
@@ -207,43 +207,43 @@ async function open(m: Marionette, url: string): Promise<string> {
   return Object.keys(s.tabs).find((id) => !before.has(id))!;
 }
 
-/** The test actors of S5 and S6, written in src/browser/base/content/webaios (where the real one will live) for the run only. */
-const ACTOR_DIR = path.resolve(import.meta.dirname, "../src/browser/base/content/webaios");
+/** The test actors of S5 and S6, written in src/browser/base/content/ressac (where the real one will live) for the run only. */
+const ACTOR_DIR = path.resolve(import.meta.dirname, "../src/browser/base/content/ressac");
 const ACTOR_FILE = "extensions-spike-actor.sys.mjs";
 const ACTOR_MODULE = `
-export class WebAiOsSpikeExtParent extends JSWindowActorParent {
+export class RessacSpikeExtParent extends JSWindowActorParent {
   receiveMessage(msg) {
     const el = this.browsingContext.top.embedderElement;
     return { echo: msg.data, group: el?.getAttribute?.("messagemanagergroup") ?? null, url: this.windowContext?.documentURI?.spec ?? null };
   }
 }
-export class WebAiOsSpikeExtChild extends JSWindowActorChild {
+export class RessacSpikeExtChild extends JSWindowActorChild {
   handleEvent() {
     const win = this.contentWindow;
     const addonId = this.document.nodePrincipal.addonId;
-    if (!addonId || !addonId.endsWith("@agent.webaios")) return;
+    if (!addonId || !addonId.endsWith("@agent.ressac")) return;
     const api = Cu.createObjectIn(win);
     Cu.exportFunction((arg) => {
       const p = this.sendQuery("ask", arg);
       return new win.Promise((resolve, reject) => p.then((v) => resolve(Cu.cloneInto(v, win)), (e) => reject(new win.Error(String(e)))));
     }, api, { defineAs: "ask" });
     Object.freeze(Cu.waiveXrays(api));
-    Object.defineProperty(win.wrappedJSObject, "__webaios", { value: api, writable: false, configurable: false, enumerable: false });
+    Object.defineProperty(win.wrappedJSObject, "__ressac", { value: api, writable: false, configurable: false, enumerable: false });
   }
 }
 /** What the process actors relayed (this module's global is not the window's). */
 export const relayed = [];
-export class WebAiOsSpikeConsoleParent extends JSProcessActorParent {
+export class RessacSpikeConsoleParent extends JSProcessActorParent {
   receiveMessage(msg) {
     relayed.push({ remoteType: this.manager.remoteType, ...msg.data });
   }
 }
-export class WebAiOsSpikeConsoleChild extends JSProcessActorChild {
+export class RessacSpikeConsoleChild extends JSProcessActorChild {
   receiveMessage(msg) {
     if (msg.name === "ping") return Date.now();
     if (msg.name !== "start" || this.started) return;
     this.started = true;
-    const keep = (m) => m.addonId?.endsWith("@agent.webaios") || String(m.filename ?? "").startsWith("moz-extension:");
+    const keep = (m) => m.addonId?.endsWith("@agent.ressac") || String(m.filename ?? "").startsWith("moz-extension:");
     const send = (m) => keep(m) && this.sendAsyncMessage("log", { kind: "console", level: m.level, args: (m.arguments ?? []).map(String), addonId: m.addonId, innerID: m.innerID, filename: m.filename });
     const storage = Cc["@mozilla.org/consoleAPI-storage;1"].getService(Ci.nsIConsoleAPIStorage);
     for (const m of storage.getEvents()) send(m);
@@ -256,14 +256,14 @@ export class WebAiOsSpikeConsoleChild extends JSProcessActorChild {
 }
 `;
 
-/** Registers S5's window actor (moz-extension, extension process) and S6's process actor from resource://webaios-test/. */
+/** Registers S5's window actor (moz-extension, extension process) and S6's process actor from resource://ressac-test/. */
 const REGISTER_ACTORS = `
   const res = Services.io.getProtocolHandler("resource").QueryInterface(Ci.nsIResProtocolHandler);
-  res.setSubstitution("webaios-test", Services.io.newFileURI(new (ChromeUtils.importESModule("resource://gre/modules/FileUtils.sys.mjs").FileUtils.File)(arguments[0])));
-  const uri = "resource://webaios-test/" + arguments[1];
+  res.setSubstitution("ressac-test", Services.io.newFileURI(new (ChromeUtils.importESModule("resource://gre/modules/FileUtils.sys.mjs").FileUtils.File)(arguments[0])));
+  const uri = "resource://ressac-test/" + arguments[1];
   const out = {};
   try {
-    ChromeUtils.registerWindowActor("WebAiOsSpikeExt", {
+    ChromeUtils.registerWindowActor("RessacSpikeExt", {
       parent: { esModuleURI: uri },
       child: { esModuleURI: uri, events: { DOMWindowCreated: {} } },
       matches: ["moz-extension://*/*"],
@@ -274,31 +274,31 @@ const REGISTER_ACTORS = `
     out.window = "ok";
   } catch (e) { out.window = String(e); }
   try {
-    ChromeUtils.registerProcessActor("WebAiOsSpikeConsole", { parent: { esModuleURI: uri }, child: { esModuleURI: uri }, safeForUntrustedWebProcess: true });
+    ChromeUtils.registerProcessActor("RessacSpikeConsole", { parent: { esModuleURI: uri }, child: { esModuleURI: uri }, safeForUntrustedWebProcess: true });
     out.process = "ok";
   } catch (e) { out.process = String(e); }
   return out;`;
 
 /** Starts S6's console relay in every content process; returns what each answered. */
 const START_CONSOLE = `return (async () => Promise.all(ChromeUtils.getAllDOMProcesses().filter((p) => p.remoteType).map((p) =>
-  Promise.race([p.getActor("WebAiOsSpikeConsole").sendQuery("start").then((t) => [p.remoteType, t], (e) => [p.remoteType, String(e)]), new Promise((r) => setTimeout(() => r([p.remoteType, "no answer in 3 s"]), 3000))]))))();`;
+  Promise.race([p.getActor("RessacSpikeConsole").sendQuery("start").then((t) => [p.remoteType, t], (e) => [p.remoteType, String(e)]), new Promise((r) => setTimeout(() => r([p.remoteType, "no answer in 3 s"]), 3000))]))))();`;
 
-describe.skipIf(!process.env.WEBAIOS_SPIKE)("agent extensions spike", () => {
+describe.skipIf(!process.env.RESSAC_SPIKE)("agent extensions spike", () => {
   let server: Awaited<ReturnType<typeof startServer>>;
   beforeAll(async () => (server = await startServer()));
   afterAll(() => server?.close());
 
-  it.skipIf(!process.env.WEBAIOS_AMO)("S1: real unlisted signing on addons.mozilla.org", { timeout: 90 * 60_000 }, async () => {
+  it.skipIf(!process.env.RESSAC_AMO)("S1: real unlisted signing on addons.mozilla.org", { timeout: 90 * 60_000 }, async () => {
     const keys = await readAmoKey({});
     if (!keys) return note("S1", "not done: keys absent");
     note("S1 issuer", keys.emitter.replace(/[^:]+$/, "…"));
     note("S1 guid", SPIKE_ID);
-    // Plan 25 decision 2: `1.0` → `1.0.0.<n>`. WEBAIOS_SPIKE_EXTRA (JSON) is merged into the copy's manifest, for
+    // Plan 25 decision 2: `1.0` → `1.0.0.<n>`. RESSAC_SPIKE_EXTRA (JSON) is merged into the copy's manifest, for
     // what a first upload shows AMO requires (rerun with it rather than guess).
-    const extra = process.env.WEBAIOS_SPIKE_EXTRA ? JSON.parse(process.env.WEBAIOS_SPIKE_EXTRA) : undefined;
-    // WEBAIOS_SPIKE_FIRST / WEBAIOS_SPIKE_COUNT: a rerun continues the numbers already sent (AMO never takes one twice).
-    const first = Number(process.env.WEBAIOS_SPIKE_FIRST ?? 1);
-    const count = Number(process.env.WEBAIOS_SPIKE_COUNT ?? 3);
+    const extra = process.env.RESSAC_SPIKE_EXTRA ? JSON.parse(process.env.RESSAC_SPIKE_EXTRA) : undefined;
+    // RESSAC_SPIKE_FIRST / RESSAC_SPIKE_COUNT: a rerun continues the numbers already sent (AMO never takes one twice).
+    const first = Number(process.env.RESSAC_SPIKE_FIRST ?? 1);
+    const count = Number(process.env.RESSAC_SPIKE_COUNT ?? 3);
     const times: number[] = [];
     for (let n = first; n < first + count; n++) {
       const { xpi, manifest } = await firefoxCopy({ id: SPIKE_ID, n, extra });
@@ -315,14 +315,14 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("agent extensions spike", () => {
     note("S1 times ms", { times, median: sorted[Math.floor(sorted.length / 2)], worst: sorted.at(-1) });
   });
   it("S2: the copy's background as Firefox scripts (temporary install, no network)", { timeout: 120_000 }, async () => {
-    const id = "s2-spike@agent.webaios";
-    const w = await launchWebAiOs();
+    const id = "s2-spike@agent.ressac";
+    const w = await launchRessac();
     try {
       const m = w.marionette;
       await ready(m);
       const facts = `
 const facts = { pathname: location.pathname, importScripts: typeof importScripts, clients: typeof clients, self: typeof self,
-  storagePromise: chrome.storage.local.get("x") instanceof Promise, browser: typeof browser, guardTable: typeof __webaiosFiles,
+  storagePromise: chrome.storage.local.get("x") instanceof Promise, browser: typeof browser, guardTable: typeof __ressacFiles,
   guardedExecuteScript: Object.getOwnPropertyDescriptor(chrome.scripting ?? {}, "executeScript")?.writable === false,
   guardedTabsCreate: Object.getOwnPropertyDescriptor(chrome.tabs ?? {}, "create")?.writable === false };
 chrome.storage.local.set({ facts });
@@ -349,16 +349,16 @@ chrome.runtime.onInstalled.addListener((d) => chrome.storage.local.set({ install
     if (files.length < 2) return note("S3", `not done: ${files.length} signed .xpi in ${SIGNED} (S1 makes them)`);
     const [first, second] = files.map((f) => path.join(SIGNED, f));
     const id = path.basename(first!).replace(/-1\.0\.0\.\d+\.xpi$/, "");
-    const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
-    const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
+    const profile = await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
+    const dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
     // When each request reached the server (the restored tab's first load, against the background's start time).
     const seen: { path: string; at: number }[] = [];
     const ticker = setInterval(() => {
       while (seen.length < server.paths.length) seen.push({ path: server.paths[seen.length]!, at: Date.now() });
     }, 10);
-    let w: LaunchedWebAiOs | undefined;
+    let w: LaunchedRessac | undefined;
     try {
-      w = await launchWebAiOs({ profile, dataDir });
+      w = await launchRessac({ profile, dataDir });
       let m = w.marionette;
       await ready(m);
       note("S3 install", await installFile(m, first!, false));
@@ -366,7 +366,7 @@ chrome.runtime.onInstalled.addListener((d) => chrome.storage.local.set({ install
       await open(m, `${server.url}/texte.html?restored`);
       await w.close();
       const relaunched = Date.now();
-      w = await launchWebAiOs({ profile, dataDir });
+      w = await launchRessac({ profile, dataDir });
       m = w.marionette;
       // A restored session does not show the home page's agent.
       await ready(m, false);
@@ -401,16 +401,16 @@ chrome.runtime.onInstalled.addListener((d) => chrome.storage.local.set({ install
       "background.js": `chrome.runtime.onMessage.addListener((msg, sender) => { note("s4", { href: msg.href, tab: sender.tab ? { id: sender.tab.id, cookieStoreId: sender.tab.cookieStoreId } : null, frameId: sender.frameId, url: sender.url }); });`,
       "content.js": 'document.documentElement.setAttribute("data-s4", "ran"); chrome.runtime.sendMessage({ href: location.href }).then((r) => document.documentElement.setAttribute("data-s4-sent", String(r)), (e) => document.documentElement.setAttribute("data-s4-sent", "error " + e));',
     }, { background: { scripts: ["background.js"] }, content_scripts: [{ matches: ["http://127.0.0.1/*"], js: ["content.js"] }] });
-    const w = await launchWebAiOs();
+    const w = await launchRessac();
     try {
       const m = w.marionette;
       await ready(m);
       note("S4 install", await m.command("Addon:Install", { path: await writeXpi(f), temporary: true }));
-      const webaiosTab = await open(m, `${server.url}/texte.html?normal`);
+      const ressacTab = await open(m, `${server.url}/texte.html?normal`);
       const normal = await until(() => notes(server.paths, "s4").find((n) => n.href.endsWith("?normal")));
       note("S4 normal tab message", normal);
       const CIS = 'ChromeUtils.importESModule("moz-src:///toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs").ContextualIdentityService';
-      const userContextId = await m.execute<number>(`return ${CIS}.create("webaios-spike", "fence", "blue").userContextId;`);
+      const userContextId = await m.execute<number>(`return ${CIS}.create("ressac-spike", "fence", "blue").userContextId;`);
       await m.execute(`gBrowser.addTab(arguments[0], { userContextId: arguments[1], triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });`, [`${server.url}/texte.html?container`, userContextId]);
       const container = await until(() => notes(server.paths, "s4").find((n) => n.href.endsWith("?container")));
       note("S4 container tab message", { userContextId, message: container });
@@ -419,12 +419,12 @@ chrome.runtime.onInstalled.addListener((d) => chrome.storage.local.set({ install
         await m.execute(
           `const { ExtensionParent } = ChromeUtils.importESModule("resource://gre/modules/ExtensionParent.sys.mjs");
            const tt = ExtensionParent.apiManager.global.tabTracker;
-           return arguments[0].map((id) => { try { const t = tt.getTab(id); return { id, localName: t.localName, webaiosTabId: t.getAttribute("webaios-tab-id"), userContextId: t.userContextId, url: t.linkedBrowser.currentURI.spec, group: t.linkedBrowser.getAttribute("messagemanagergroup") }; } catch (e) { return { id, error: String(e) }; } });`,
+           return arguments[0].map((id) => { try { const t = tt.getTab(id); return { id, localName: t.localName, ressacTabId: t.getAttribute("ressac-tab-id"), userContextId: t.userContextId, url: t.linkedBrowser.currentURI.spec, group: t.linkedBrowser.getAttribute("messagemanagergroup") }; } catch (e) { return { id, error: String(e) }; } });`,
           [[normal?.tab?.id, container?.tab?.id].filter((x) => x !== undefined)],
         ),
       );
-      note("S4 WebAiOs tab id of the normal tab", webaiosTab);
-      // invisible.ts's reading browser: windowless, messagemanagergroup webaios-reading, an internal container.
+      note("S4 Ressac tab id of the normal tab", ressacTab);
+      // invisible.ts's reading browser: windowless, messagemanagergroup ressac-reading, an internal container.
       await m.execute(
         `return (async () => {
           const CIS = ${CIS};
@@ -444,11 +444,11 @@ chrome.runtime.onInstalled.addListener((d) => chrome.storage.local.set({ install
             windowless.loadURI(Services.io.newURI("chrome://global/content/backgroundPageThumbs.xhtml"), { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });
           });
           const browser = windowless.document.createXULElement("browser");
-          for (const [k, v] of Object.entries({ type: "content", remote: "true", maychangeremoteness: "true", disableglobalhistory: "true", messagemanagergroup: "webaios-reading", manualactiveness: "true", usercontextid: String(userContextId) }))
+          for (const [k, v] of Object.entries({ type: "content", remote: "true", maychangeremoteness: "true", disableglobalhistory: "true", messagemanagergroup: "ressac-reading", manualactiveness: "true", usercontextid: String(userContextId) }))
             browser.setAttribute(k, v);
           windowless.document.documentElement.appendChild(browser);
           for (let i = 0; i < 500 && !browser.browsingContext.currentWindowGlobal; i++) await new Promise((r) => setTimeout(r, 10));
-          await browser.browsingContext.currentWindowGlobal.getActor("WebAiOsReading").sendQuery("prepare");
+          await browser.browsingContext.currentWindowGlobal.getActor("RessacReading").sendQuery("prepare");
           browser.docShellIsActive = true;
           const uri = Services.io.newURI(arguments[0]);
           browser.loadURI(uri, { triggeringPrincipal: Services.scriptSecurityManager.createContentPrincipal(uri, { userContextId }) });
@@ -460,7 +460,7 @@ chrome.runtime.onInstalled.addListener((d) => chrome.storage.local.set({ install
       await sleep(3000);
       note("S4 invisible read: page asked", server.paths.includes("/texte.html"));
       note("S4 invisible read message", notes(server.paths, "s4").find((n) => n.href.endsWith("?reading")) ?? null);
-      note("S4 invisible read: content script marks", await m.execute(`return (async () => { const html = await window.spikeBrowser.browsingContext.currentWindowGlobal.getActor("WebAiOsPage").sendQuery("html", { max: 100000 }); return [html.length, /data-s4="[^"]*"/.exec(html)?.[0] ?? null, /data-s4-sent="[^"]*"/.exec(html)?.[0] ?? null]; })();`));
+      note("S4 invisible read: content script marks", await m.execute(`return (async () => { const html = await window.spikeBrowser.browsingContext.currentWindowGlobal.getActor("RessacPage").sendQuery("html", { max: 100000 }); return [html.length, /data-s4="[^"]*"/.exec(html)?.[0] ?? null, /data-s4-sent="[^"]*"/.exec(html)?.[0] ?? null]; })();`));
       await m.execute("window.spikeWindowless?.close()");
     } finally {
       await w.close();
@@ -469,12 +469,12 @@ chrome.runtime.onInstalled.addListener((d) => chrome.storage.local.set({ install
 
   it("S5+S6: an actor on the extension's pages, its console", { timeout: 120_000 }, async () => {
     const probe = (label: string) => `
-const seen = { first: typeof globalThis.__webaios, pathname: location.pathname };
-try { globalThis.__webaios = 1; } catch (e) { seen.assign = String(e); }
-try { seen.deleted = delete globalThis.__webaios; } catch (e) { seen.delete = String(e); }
-try { Object.defineProperty(globalThis, "__webaios", { value: 2 }); seen.redefine = "ok"; } catch (e) { seen.redefine = String(e); }
-seen.after = typeof globalThis.__webaios;
-Promise.resolve(globalThis.__webaios?.ask?.(${JSON.stringify(label)}) ?? "absent").then((v) => note("s5-${label}", { ...seen, answer: v }), (e) => note("s5-${label}", { ...seen, answer: "error " + e }));
+const seen = { first: typeof globalThis.__ressac, pathname: location.pathname };
+try { globalThis.__ressac = 1; } catch (e) { seen.assign = String(e); }
+try { seen.deleted = delete globalThis.__ressac; } catch (e) { seen.delete = String(e); }
+try { Object.defineProperty(globalThis, "__ressac", { value: 2 }); seen.redefine = "ok"; } catch (e) { seen.redefine = String(e); }
+seen.after = typeof globalThis.__ressac;
+Promise.resolve(globalThis.__ressac?.ask?.(${JSON.stringify(label)}) ?? "absent").then((v) => note("s5-${label}", { ...seen, answer: v }), (e) => note("s5-${label}", { ...seen, answer: "error " + e }));
 console.log("s6-log-${label}");
 setTimeout(() => { throw new Error("s6-uncaught-${label}"); }, 50);
 `;
@@ -492,14 +492,14 @@ setTimeout(() => { throw new Error("s6-uncaught-${label}"); }, 50);
       options_ui: { page: "options.html", open_in_tab: true },
     });
     f.files!["icon.png"] = ICON;
-    // WEBAIOS_SPIKE_ACTOR_DIR: the same probe from another folder (to tell the sandbox from the module).
-    const actorDir = process.env.WEBAIOS_SPIKE_ACTOR_DIR ?? ACTOR_DIR;
+    // RESSAC_SPIKE_ACTOR_DIR: the same probe from another folder (to tell the sandbox from the module).
+    const actorDir = process.env.RESSAC_SPIKE_ACTOR_DIR ?? ACTOR_DIR;
     await writeFile(path.join(actorDir, ACTOR_FILE), ACTOR_MODULE);
-    // Without it, the content sandbox refuses the module in the extension and web processes (WEBAIOS_SPIKE_NO_READ_PATH=1
-    // shows it; WEBAIOS_SPIKE_SANDBOX=0 turns the sandbox off instead).
-    const prefs: Record<string, string | number> = process.env.WEBAIOS_SPIKE_NO_READ_PATH ? {} : { "security.sandbox.content.mac.testing_read_path1": actorDir };
-    if (process.env.WEBAIOS_SPIKE_SANDBOX) prefs["security.sandbox.content.level"] = Number(process.env.WEBAIOS_SPIKE_SANDBOX);
-    const w = await launchWebAiOs({ prefs });
+    // Without it, the content sandbox refuses the module in the extension and web processes (RESSAC_SPIKE_NO_READ_PATH=1
+    // shows it; RESSAC_SPIKE_SANDBOX=0 turns the sandbox off instead).
+    const prefs: Record<string, string | number> = process.env.RESSAC_SPIKE_NO_READ_PATH ? {} : { "security.sandbox.content.mac.testing_read_path1": actorDir };
+    if (process.env.RESSAC_SPIKE_SANDBOX) prefs["security.sandbox.content.level"] = Number(process.env.RESSAC_SPIKE_SANDBOX);
+    const w = await launchRessac({ prefs });
     try {
       const m = w.marionette;
       await ready(m);
@@ -513,15 +513,15 @@ setTimeout(() => { throw new Error("s6-uncaught-${label}"); }, 50);
       // The popup through the strip (window/addons.ts), then the options page in a tab, asked by a content script.
       // The strip's buttons are enabled on a page only.
       await open(m, `${server.url}/texte.html?page`);
-      await waitFor(m, `return !!window.webaiosWindow.addons.buttons().find((b) => b.id === ${JSON.stringify(f.id)})?.enabled`, (v) => v === true);
-      await m.execute(`window.webaiosWindow.addons.click(arguments[0], { x: 0, y: 0, width: 24, height: 24 });`, [f.id]);
+      await waitFor(m, `return !!window.ressacWindow.addons.buttons().find((b) => b.id === ${JSON.stringify(f.id)})?.enabled`, (v) => v === true);
+      await m.execute(`window.ressacWindow.addons.click(arguments[0], { x: 0, y: 0, width: 24, height: 24 });`, [f.id]);
       await until(() => notes(server.paths, "s5-popup").length > 0);
       await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url: `${server.url}/texte.html?options` });
       await until(() => notes(server.paths, "s5-options").length > 0);
       for (const label of ["background", "popup", "options"]) note(`S5 ${label}`, notes(server.paths, `s5-${label}`));
       note("S6 start after pages", await m.execute(START_CONSOLE));
       await sleep(1500);
-      note("S6 relayed", await m.execute("return ChromeUtils.importESModule('resource://webaios-test/' + arguments[0]).relayed", [ACTOR_FILE]));
+      note("S6 relayed", await m.execute("return ChromeUtils.importESModule('resource://ressac-test/' + arguments[0]).relayed", [ACTOR_FILE]));
       note("S6 parent nsIScriptError", await m.execute(STOP_ERRORS));
       note("S6 uuid", await m.execute("return WebExtensionPolicy.getByID(arguments[0]).mozExtensionHostname", [f.id]));
     } finally {
@@ -536,7 +536,7 @@ setTimeout(() => { throw new Error("s6-uncaught-${label}"); }, 50);
         "background.js": kind === "throws" ? 'note("s7-throws", "before " + Date.now());\nthrow new Error("s7-throw-at-load");' : 'note("s7-loops", "before " + Date.now());\nsetTimeout(() => { while (true) {} }, 500);',
       }, { background: { scripts: ["background.js"] } });
       await writeFile(path.join(ACTOR_DIR, ACTOR_FILE), ACTOR_MODULE);
-      const w = await launchWebAiOs({ prefs: { "security.sandbox.content.mac.testing_read_path1": ACTOR_DIR } });
+      const w = await launchRessac({ prefs: { "security.sandbox.content.mac.testing_read_path1": ACTOR_DIR } });
       try {
         const m = w.marionette;
         await ready(m);
@@ -571,7 +571,7 @@ setTimeout(() => { throw new Error("s6-uncaught-${label}"); }, 50);
         note(`S7 ${kind} extension process answers a ping within 3 s`, await m.execute(`return (async () => {
           const p = ChromeUtils.getAllDOMProcesses().find((x) => x.remoteType === "extension");
           const t0 = Date.now();
-          return Promise.race([p.getActor("WebAiOsSpikeConsole").sendQuery("ping").then(() => Date.now() - t0), new Promise((r) => setTimeout(() => r("no answer"), 3000))]);
+          return Promise.race([p.getActor("RessacSpikeConsole").sendQuery("ping").then(() => Date.now() - t0), new Promise((r) => setTimeout(() => r("no answer"), 3000))]);
         })();`));
         if (kind === "loops") {
           // What recovery looks like: the hung extension process killed (as about:processes does).

@@ -18,14 +18,14 @@ const clone = (v) => {
 const MOUSE = ["pointerdown", "pointerup", "mousedown", "mouseup", "click", "auxclick", "dblclick", "contextmenu"];
 const GUARDED = new Set([...MOUSE, "keydown"]);
 
-export class WebAiOsSpikeDesignParent extends JSWindowActorParent {}
+export class RessacSpikeDesignParent extends JSWindowActorParent {}
 
-export class WebAiOsSpikeDesignChild extends JSWindowActorChild {
+export class RessacSpikeDesignChild extends JSWindowActorChild {
   /** The viewfinder's sandbox: an Xray view of the page, one per window (this actor's lifetime), as §5.4 says. */
   viewfinder() {
     if (!this.sb) {
       const win = this.contentWindow;
-      this.sb = Cu.Sandbox(this.document.nodePrincipal, { sandboxPrototype: win, wantXrays: true, wantComponents: false, sameZoneAs: win, sandboxName: "WebAiOs · viewfinder (spike)" });
+      this.sb = Cu.Sandbox(this.document.nodePrincipal, { sandboxPrototype: win, wantXrays: true, wantComponents: false, sameZoneAs: win, sandboxName: "Ressac · viewfinder (spike)" });
       // As the tweaks' sandbox: the page's legacy `Components` shim would show through the prototype.
       Object.defineProperty(this.sb, "Components", { value: undefined });
     }
@@ -35,7 +35,7 @@ export class WebAiOsSpikeDesignChild extends JSWindowActorChild {
   /** The page's own world, Xrays waived: what lireSource reads. Never kept. */
   pageWorld() {
     const win = this.contentWindow;
-    return Cu.Sandbox(this.document.nodePrincipal, { sandboxPrototype: win, wantXrays: false, wantComponents: false, sameZoneAs: win, sandboxName: "WebAiOs · source (spike)" });
+    return Cu.Sandbox(this.document.nodePrincipal, { sandboxPrototype: win, wantXrays: false, wantComponents: false, sameZoneAs: win, sandboxName: "Ressac · source (spike)" });
   }
 
   /**
@@ -81,7 +81,7 @@ export class WebAiOsSpikeDesignChild extends JSWindowActorChild {
     });
     let r = null;
     try {
-      r = await Cu.evalInSandbox(code, sb, "latest", "webaios-viewfinder.js", 1);
+      r = await Cu.evalInSandbox(code, sb, "latest", "ressac-viewfinder.js", 1);
     } finally {
       // After a capture, the rest of a double click is swallowed for 500 ms; else at once.
       if (r) timer = setTimeout(unguard, 500);
@@ -102,9 +102,9 @@ export class WebAiOsSpikeDesignChild extends JSWindowActorChild {
         return { remoteType: Services.appinfo.remoteType, processType: Services.appinfo.processType, top: this.browsingContext.top === this.browsingContext, uri: this.document.documentURI };
       // The viewfinder script, as is; the promise's value is the query's answer (never a spontaneous message).
       case "arm":
-        return clone(await Cu.evalInSandbox(d.code, this.viewfinder(), "latest", "webaios-viewfinder.js", 1));
+        return clone(await Cu.evalInSandbox(d.code, this.viewfinder(), "latest", "ressac-viewfinder.js", 1));
       case "stop":
-        Cu.evalInSandbox(ARRET, this.viewfinder(), "latest", "webaios-viewfinder-stop.js", 1);
+        Cu.evalInSandbox(ARRET, this.viewfinder(), "latest", "ressac-viewfinder-stop.js", 1);
         return true;
       // A probe in the viewfinder's sandbox (what it sees).
       case "probe":
@@ -116,7 +116,7 @@ export class WebAiOsSpikeDesignChild extends JSWindowActorChild {
       // The lireSource expression, in the page's world, Xrays waived. The parent checks the shape (sourceSaine).
       case "source":
         try {
-          return clone(Cu.evalInSandbox(d.code, this.pageWorld(), "latest", "webaios-source.js", 1));
+          return clone(Cu.evalInSandbox(d.code, this.pageWorld(), "latest", "ressac-source.js", 1));
         } catch (e) {
           return { error: String(e) };
         }
@@ -139,10 +139,10 @@ export class WebAiOsSpikeDesignChild extends JSWindowActorChild {
       }
       // Test only: the viewfinder's host elements, read through Xrays (works under any CSP).
       case "hosts":
-        return this.document.querySelectorAll("webaios-viewfinder").length;
+        return this.document.querySelectorAll("ressac-viewfinder").length;
       // Test only: the hover frame and its label, inside the closed shadow root (system principal reads it).
       case "frame": {
-        const host = this.document.querySelector("webaios-viewfinder");
+        const host = this.document.querySelector("ressac-viewfinder");
         const root = host?.openOrClosedShadowRoot;
         if (!root) return null;
         const [cadre, etiquette] = root.children;

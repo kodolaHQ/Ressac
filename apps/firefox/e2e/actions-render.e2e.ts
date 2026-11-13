@@ -8,13 +8,13 @@ import { fallbackLayout } from "../../../packages/kernel/src/pages/fallback";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { BARS, EXECUTION, openActionPage, probe, startActionServers, tid, uiQueries, writeActionWithResult, writeComponent, type Block } from "./actions";
 import { dispatch, state, waitReady } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { click, inUi, missingApi, waitUi } from "./ui";
 
 // An action's page and its built-in components: served from a result the
 // test writes, with no container and no Gemma. Reopening a page launches nothing. Result images go through the test hook
-// (WEBAIOS_TEST_ACTION_IMAGES): `https://<host><path>` is asked from the local image server, which notes each request.
+// (RESSAC_TEST_ACTION_IMAGES): `https://<host><path>` is asked from the local image server, which notes each request.
 
 const TASKS = [
   { nom: "Alpha", priorite: 9, etat: "ouvert", url: "https://exemple.invalide/alpha", image: "https://exemple.invalide/a.png" },
@@ -49,7 +49,7 @@ const PHOTOS = {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 let servers: Awaited<ReturnType<typeof startActionServers>>;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 let q: ReturnType<typeof uiQueries>;
 /** What reached the probe component's server: requests and TCP connections. */
@@ -60,7 +60,7 @@ let probeServer: Server;
 const sized = (px: number) => `<!doctype html><meta charset="utf-8"><script>
   addEventListener("message", (e) => {
     if (e.data?.type !== "component") return;
-    try { webaiosOpen("https://exemple.invalide/from-component"); } catch {}
+    try { ressacOpen("https://exemple.invalide/from-component"); } catch {}
     parent.postMessage({ type: "height", px: ${px} }, "*");
   });
 </script>`;
@@ -72,7 +72,7 @@ const closeTabs = async () => {
 beforeAll(async () => {
   // A permitted link opens a tab: exemple.invalide resolves to the machine, so no lookup leaves it.
   servers = await startActionServers();
-  w = await launchWebAiOs({ env: { WEBAIOS_TEST_ACTION_IMAGES: servers.images.url }, prefs: { "network.dns.localDomains": "exemple.invalide" } });
+  w = await launchRessac({ env: { RESSAC_TEST_ACTION_IMAGES: servers.images.url }, prefs: { "network.dns.localDomains": "exemple.invalide" } });
   m = w.marionette;
   q = uiQueries(m);
   await m.setContext("chrome");
@@ -178,7 +178,7 @@ describe("action page rendering", () => {
     expect(await q.count(`${tid("block-cards")} .pa-photo .value`)).toBe(1);
     expect(await q.count(`${tid("block-cards")} .body .value`)).toBe(1);
     // Images appear on the spring.
-    expect(await inUi(m, "return doc.defaultView.getComputedStyle(doc.querySelector(arguments[0])).animationName;", [`${tid("block-highlight")} img.pa-image`])).toBe("webaios-rise");
+    expect(await inUi(m, "return doc.defaultView.getComputedStyle(doc.querySelector(arguments[0])).animationName;", [`${tid("block-highlight")} img.pa-image`])).toBe("ressac-rise");
   });
 
   it("figure pills in the head leave the title at least 40 % of the row", async () => {
@@ -237,7 +237,7 @@ describe("action page rendering", () => {
     await q.waitCount(`${cards} ${tid("neutral-image")}`, 1);
     expect(await q.count(`${cards} img`)).toBe(0);
     // Asked directly, the host refuses it too: an action with an account never loads an image.
-    expect(await inUi(m, "return ui.webaios.actions.image('courrier', arguments[0], arguments[1]);", [EXECUTION, "https://img.exemple/photo.png"])).toBeNull();
+    expect(await inUi(m, "return ui.ressac.actions.image('courrier', arguments[0], arguments[1]);", [EXECUTION, "https://img.exemple/photo.png"])).toBeNull();
     await sleep(500);
     expect(servers.images.seen).toEqual([]);
   });
@@ -257,7 +257,7 @@ describe("action page rendering", () => {
     await q.waitCount(`${cards} ${tid("neutral-image")}`, 3);
     expect(await q.count(`${cards} img`)).toBe(1);
     // An address absent from the results: refused by the host, never fetched.
-    expect(await inUi(m, "return ui.webaios.actions.image('images', arguments[0], arguments[1]);", [EXECUTION, "https://img.exemple/absent.png"])).toBeNull();
+    expect(await inUi(m, "return ui.ressac.actions.image('images', arguments[0], arguments[1]);", [EXECUTION, "https://img.exemple/absent.png"])).toBeNull();
     await sleep(500);
     // The redirect's target (/secret) got no request; none carried a cookie or a referrer.
     expect(paths()).toEqual(asked);
@@ -297,7 +297,7 @@ describe("action page rendering", () => {
         "const f = doc.querySelector(arguments[0]); const d = f.contentDocument; return { src: f.src, uri: d.documentURI, title: d.getElementById('titre').textContent, body: d.body.className, texts: [...d.querySelectorAll('text')].map((t) => t.textContent) };",
         [FRAME],
       );
-      expect(frame.src).toMatch(/^resource:\/\/webaios-component-barres\/component-\d+\.html$/);
+      expect(frame.src).toMatch(/^resource:\/\/ressac-component-barres\/component-\d+\.html$/);
       expect(frame.uri).toBe(frame.src);
       expect(frame).toMatchObject({ title: "Ventes", body: "sombre" });
       expect(frame.texts.slice(0, 4)).toEqual(["Lundi", "1", "Mardi", "2"]);
@@ -345,14 +345,14 @@ describe("action page rendering", () => {
     await utimes(html, later, later);
     await waitUi(m, "const f = doc.querySelector(arguments[0]); return f.contentDocument?.documentURI !== arguments[1] && Math.round(f.getBoundingClientRect().height) === 400;", [FRAME, first], 15_000);
     const second = await inUi<string>(m, "return doc.querySelector(arguments[0]).contentDocument.documentURI;", [FRAME]);
-    expect(second).toMatch(/^resource:\/\/webaios-component-ecrit\/component-\d+\.html$/);
-    const copies = path.join(w.dataDir, "webaios-components", "ecrit");
+    expect(second).toMatch(/^resource:\/\/ressac-component-ecrit\/component-\d+\.html$/);
+    const copies = path.join(w.dataDir, "ressac-components", "ecrit");
     expect(readdirSync(copies)).toEqual([path.basename(second)]);
     // Its link was not opened: components open none.
     expect(Object.values((await state(m)).tabs).some((o) => o.url.includes("from-component"))).toBe(false);
     /** Dispatches a bridge event on the frame's window, as a component's own code could, with any detail. */
     const send = (detail: unknown) =>
-      inUi(m, "const w = doc.querySelector(arguments[0]).contentDocument.defaultView; w.dispatchEvent(new w.CustomEvent('webaios-component', { detail: arguments[1] }));", [FRAME, detail]);
+      inUi(m, "const w = doc.querySelector(arguments[0]).contentDocument.defaultView; w.dispatchEvent(new w.CustomEvent('ressac-component', { detail: arguments[1] }));", [FRAME, detail]);
     await send(JSON.stringify({ type: "autre", px: 900 }));
     await send({ type: "height", px: 700 });
     await send(JSON.stringify({ type: "height", px: "800" }));
@@ -377,19 +377,19 @@ describe("action page rendering", () => {
       `return (async () => {
         const h = Services.io.getProtocolHandler("resource").QueryInterface(Ci.nsIResProtocolHandler);
         const load = await fetch(arguments[0]).then((r) => "status " + r.status, (e) => e.name);
-        return { substitution: h.hasSubstitution("webaios-component-ecrit"), load };
+        return { substitution: h.hasSubstitution("ressac-component-ecrit"), load };
       })();`,
       [second],
     );
     expect(after).toEqual({ substitution: false, load: "TypeError" });
   }, 60_000);
 
-  // Plan 33 spike S1, kept without WEBAIOS_SPIKE
+  // Plan 33 spike S1, kept without RESSAC_SPIKE
   it("a component's fetch, image and WebSocket to the test server never arrive", async () => {
     reached.requests.length = 0;
     reached.connections = 0;
     await openActionPage(m, "sonde", "Sonde");
-    await waitUi(m, "return doc.querySelector(arguments[0])?.contentDocument?.documentURI?.startsWith('resource://webaios-component-sonde/');", [FRAME], 15_000);
+    await waitUi(m, "return doc.querySelector(arguments[0])?.contentDocument?.documentURI?.startsWith('resource://ressac-component-sonde/');", [FRAME], 15_000);
     // The probe tries at once, then navigates itself to the server after 1.5 s.
     await sleep(3000);
     expect(reached).toEqual({ requests: [], connections: 0 });

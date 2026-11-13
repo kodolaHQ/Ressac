@@ -12,7 +12,7 @@ let tmp = "";
 
 beforeAll(() => {
   execFileSync("corepack", ["pnpm", "run", "build:host"], { cwd: app, stdio: "pipe" });
-  tmp = realpathSync(mkdtempSync(join(tmpdir(), "webaios-bundle-")));
+  tmp = realpathSync(mkdtempSync(join(tmpdir(), "ressac-bundle-")));
   // The shipped layout: host.mjs, node_modules/node-pty, kernel/{templates,extensions,docker}.
   cpSync(join(app, "dist-host", "host.mjs"), join(tmp, "host.mjs"));
   cpSync(realpathSync(join(kernel, "node_modules", "node-pty")), join(tmp, "node_modules", "node-pty"), { recursive: true });
@@ -29,13 +29,13 @@ it("the compiled host runs alone and finds its kernel resources", { timeout: 30_
     cwd: tmp,
     env: {
       ...process.env,
-      WEBAIOS_KERNEL_RESOURCES: join(tmp, "kernel"),
-      WEBAIOS_DATA_DIR: dataDir,
+      RESSAC_KERNEL_RESOURCES: join(tmp, "kernel"),
+      RESSAC_DATA_DIR: dataDir,
       // The host must not start the machine's real Ollama or container app.
-      WEBAIOS_TEST_NO_SYSTEM: "1",
-      WEBAIOS_ROOT: root,
-      WEBAIOS_HOST_TEST: "1",
-      WEBAIOS_PORT_MCP_EXTERNAL: "0",
+      RESSAC_TEST_NO_SYSTEM: "1",
+      RESSAC_ROOT: root,
+      RESSAC_HOST_TEST: "1",
+      RESSAC_PORT_MCP_EXTERNAL: "0",
       PATH: `${join(app, "test", "tools")}:${process.env.PATH}`,
     },
   });

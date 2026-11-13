@@ -43,7 +43,7 @@
 
   const HIDING_MS = 300;
 
-  const win = window.parent.webaiosWindow!;
+  const win = window.parent.ressacWindow!;
 
   const winState = $derived(currentWindow());
   const sidebarRight = $derived(appState.value?.settings.sidebarSide === "right");
@@ -229,7 +229,7 @@
     const handle = e.currentTarget as HTMLElement;
     handle.setPointerCapture(e.pointerId);
     const [from, x0] = [barWidth, e.screenX];
-    const agent = parseFloat(getComputedStyle(window.parent.document.documentElement).getPropertyValue("--webaios-agent")) || 0;
+    const agent = parseFloat(getComputedStyle(window.parent.document.documentElement).getPropertyValue("--ressac-agent")) || 0;
     // Always room for the page: 300 px at least beside the agent panel.
     const max = Math.max(BAR_WIDTH_MIN, Math.min(BAR_WIDTH_MAX, window.parent.innerWidth - agent - 300));
     // Screen coordinates: this iframe's own edge moves with the width.
@@ -399,7 +399,7 @@
     color: var(--text);
     font: 600 12.5px var(--font-ui);
     -moz-window-dragging: no-drag;
-    animation: webaios-rise var(--spring-d) var(--spring) backwards;
+    animation: ressac-rise var(--spring-d) var(--spring) backwards;
     transition: transform var(--tap), background var(--tap);
   }
   .resume-welcome:hover { background: var(--bg-active); }

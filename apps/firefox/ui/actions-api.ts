@@ -1,8 +1,8 @@
 import { ACTIONS_IN_PRIVATE_SPACE } from "../shared/actions";
-import type { Action, ApiWebaios } from "../shared/api";
+import type { Action, ApiRessac } from "../shared/api";
 import type { BrowserState, WindowId } from "../shared/model";
 import { HOST_EXITED, type AgentHost } from "../chrome/agent/host";
-import type { WebAiOsStore } from "../chrome/store";
+import type { RessacStore } from "../chrome/store";
 import { readableProfiles, profilesForGrant } from "./home-profiles";
 
 // The window half of the actions service: private spaces, dispatches, the pace of
@@ -15,14 +15,14 @@ export function activeSpacePrivate(appState: Pick<BrowserState, "spaces" | "wind
 }
 
 /** The actions API, plus what the Firefox page asks the chrome for: result images and agent components. */
-export type ActionsFirefox = ApiWebaios["actions"] & {
+export type ActionsFirefox = ApiRessac["actions"] & {
   image(id: string, execution: string, url: string): Promise<string | null>;
   serveComponent(name: string): Promise<string | null>;
   releaseComponent(name: string): void;
 };
 
 /** The recaps API, plus their images asked of the chrome. */
-export type RecapsFirefox = ApiWebaios["recaps"] & { image(id: string, url: string): Promise<string | null> };
+export type RecapsFirefox = ApiRessac["recaps"] & { image(id: string, url: string): Promise<string | null> };
 
 type WindowApiOptions = {
   state: () => BrowserState | undefined;
@@ -30,7 +30,7 @@ type WindowApiOptions = {
   host: AgentHost;
   window: WindowId;
   untilUnload: (unsubscribe: () => void) => () => void;
-  media: WebAiOsStore["actionMedia"];
+  media: RessacStore["actionMedia"];
 };
 
 /**
@@ -42,13 +42,13 @@ function pacedLinks(o: WindowApiOptions, isPrivate: () => boolean) {
   return async (url: string, allowed: () => Promise<boolean>): Promise<void> => {
     if (isPrivate()) return;
     const now = Date.now();
-    if (now - last < 1000) return console.warn("[webaios] page link ignored (too soon):", url);
+    if (now - last < 1000) return console.warn("[ressac] page link ignored (too soon):", url);
     const before = last;
     last = now;
     const ok = await allowed();
     if (ok !== true || isPrivate()) {
       if (last === now) last = before;
-      if (ok !== true) console.warn("[webaios] page link refused:", url);
+      if (ok !== true) console.warn("[ressac] page link refused:", url);
       return;
     }
     o.dispatch({ type: "openTab", windowId: o.window, url, activate: true });
@@ -178,7 +178,7 @@ export function createActionsApi(o: WindowApiOptions): ActionsFirefox {
       if (!p.ok) return p;
       o.dispatch({ type: "openAction", windowId: win, id, name: p.name });
       // A host that dies meanwhile: the next `access` reads the page again, as after a rejected `ask`.
-      if (p.launch) host.request("actions.launch", { id, input: input }).catch((e) => ((hostDown = true), console.error(`[webaios] action ${id} :`, e)));
+      if (p.launch) host.request("actions.launch", { id, input: input }).catch((e) => ((hostDown = true), console.error(`[ressac] action ${id} :`, e)));
       return { ok: true };
     },
     launch: (id, input) => ask("actions.launch", { id, input: input }, () => ({ status: "invalid" as const, error: isPrivate() ? ACTIONS_IN_PRIVATE_SPACE : NO_KERNEL_MESSAGE })),
@@ -217,7 +217,7 @@ export function createActionsApi(o: WindowApiOptions): ActionsFirefox {
       // The host stops the run first, then erases the grant and the results.
       await host.request("actions.denyGrant", { id }).then(
         () => forget(id),
-        (e) => ((hostDown = true), console.error(`[webaios] grant removal of action ${id}:`, e)),
+        (e) => ((hostDown = true), console.error(`[ressac] grant removal of action ${id}:`, e)),
       );
     },
     async delete(id) {

@@ -7,7 +7,7 @@ import { writeAgentExtension } from "./extensions/fixtures";
 import { cleanupXpis, installAddon, marker, type Fixture } from "./addons";
 import { grant, launchWithAmo, testActor } from "./agent-extensions";
 import { state, waitFor, waitReady } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
 import { ICON } from "./server";
@@ -18,11 +18,11 @@ import { inUi, missingApi, waitUi } from "./ui";
 // popups in the app's window, and the app view protected from them. Add-ons
 // run everywhere in Firefox, there is no per-app activation (spec §4.9).
 
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const HOSTS = ["vidola-a.localhost", "pub.localhost", "compte.localhost", "lecteur.localhost"];
-const PROBE = "site-probe@webaios.test";
-const PROTECTED = "Onglet protégé par WebAiOs";
-const REFUSED = "Chargement refusé par WebAiOs";
+const PROBE = "site-probe@ressac.test";
+const PROTECTED = "Onglet protégé par Ressac";
+const REFUSED = "Chargement refusé par Ressac";
 const STRIP_BUTTON = '[data-testid="action-extension-site"]';
 
 /**
@@ -73,7 +73,7 @@ const probe = (): Fixture => ({
 });
 
 let server: Awaited<ReturnType<typeof startSitesServer>>;
-let w: LaunchedWebAiOs | undefined;
+let w: LaunchedRessac | undefined;
 let m: Marionette;
 let dataDir: string;
 let profile: string;
@@ -93,19 +93,19 @@ const inStore = <T = unknown>(body: string, args: unknown[] = []) =>
 const openSite = (id: string) => inStore(`await store.agent.request("sites.act", { id: arguments[0], action: "open", window: store.state.windows[0].id });`, [id]);
 const viewUrl = (id = "vidola") => m.execute<string>(`const u = ${siteWindowExpr(id)}?.gBrowser?.selectedBrowser.currentURI?.spec ?? ""; return u === "about:blank" ? "" : u;`);
 const view = <T = unknown>(expr: string, id = "vidola") => inSiteView<T>(m, id, `return ${expr};`).catch(() => null);
-const siteState = (id = "vidola") => m.execute<{ viewState: string }>(`return JSON.parse(JSON.stringify(${siteWindowExpr(id)}.webaiosSiteWindow.state()));`);
+const siteState = (id = "vidola") => m.execute<{ viewState: string }>(`return JSON.parse(JSON.stringify(${siteWindowExpr(id)}.ressacSiteWindow.state()));`);
 const stripButtons = (id = "vidola") => inSiteBar<number>(m, id, `return doc.querySelectorAll(${JSON.stringify(STRIP_BUTTON)}).length;`);
 const tabCount = (id = "vidola") => m.execute<number>(`return ${siteWindowExpr(id)}.gBrowser.tabs.length;`);
 const popupExpr = (id: string) => `${siteWindowExpr(id)}.document.querySelector("browser.webextension-popup-browser")`;
 
 async function start(o: { sites?: Record<string, SiteTest>; granted?: string[] } = {}) {
-  dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
-  profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
+  dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
+  profile = await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
   const sites = o.sites ?? { vidola: { declaration: vidola() } };
   for (const [id, s] of Object.entries(sites)) writeSite(dataDir, id, s);
   for (const id of o.granted ?? []) await grantSite(dataDir, id, sites[id]!.declaration as object);
   const actor = testActor(profile);
-  w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_LOCAL_ADDRESSES: "1", ...actor.env }, prefs: actor.prefs });
+  w = await launchRessac({ dataDir, profile, env: { RESSAC_TEST_LOCAL_ADDRESSES: "1", ...actor.env }, prefs: actor.prefs });
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
@@ -205,11 +205,11 @@ describe("add-ons in a site app window", () => {
     await expect.poll(() => siteState("tube").then((s) => s.viewState), { timeout: 15_000 }).toBe("home");
     await new Promise((r) => setTimeout(r, 500));
     expect(await stripButtons("tube")).toBe(0);
-    const enabled = (id: string) => m.execute<boolean[]>(`return ${siteWindowExpr(id)}.webaiosSiteWindow.addons.buttons().map((b) => b.enabled);`);
+    const enabled = (id: string) => m.execute<boolean[]>(`return ${siteWindowExpr(id)}.ressacSiteWindow.addons.buttons().map((b) => b.enabled);`);
     expect(await enabled("tube")).toEqual([false]);
-    await m.execute(`${siteWindowExpr("tube")}.webaiosSiteWindow.enter()`);
+    await m.execute(`${siteWindowExpr("tube")}.ressacSiteWindow.enter()`);
     await expect.poll(() => stripButtons("tube"), { timeout: 10_000 }).toBe(1);
-    await m.execute(`${siteWindowExpr("tube")}.webaiosSiteWindow.home()`);
+    await m.execute(`${siteWindowExpr("tube")}.ressacSiteWindow.home()`);
     await expect.poll(() => stripButtons("tube"), { timeout: 10_000 }).toBe(0);
     // Grant card.
     await openSite("carte");
@@ -224,12 +224,12 @@ describe("add-ons in a site app window", () => {
     await installAddon(m, probe());
     await openSite("tube");
     await expect.poll(() => siteState("tube").then((s) => s.viewState), { timeout: 15_000 }).toBe("home");
-    await m.execute(`${siteWindowExpr("tube")}.webaiosSiteWindow.enter()`);
+    await m.execute(`${siteWindowExpr("tube")}.ressacSiteWindow.enter()`);
     await expect.poll(() => viewUrl("tube"), { timeout: 15_000 }).toBe(url("/pubs"));
     await expect.poll(() => view("document.readyState", "tube"), { timeout: 10_000 }).toBe("complete");
     // The popup opened on the « site » view stays open once back on the home.
     await openPopup("tube");
-    await m.execute(`${siteWindowExpr("tube")}.webaiosSiteWindow.home()`);
+    await m.execute(`${siteWindowExpr("tube")}.ressacSiteWindow.home()`);
     expect((await siteState("tube")).viewState).toBe("home");
     server.requests.splice(0);
     expect(await order({ op: "update", url: url("/film/2") }, "tube")).toEqual({ error: REFUSED });
@@ -244,13 +244,13 @@ describe("add-ons in a site app window", () => {
     await installAddon(m, probe());
     await openSite("tube");
     await expect.poll(() => siteState("tube").then((s) => s.viewState), { timeout: 15_000 }).toBe("home");
-    await m.execute(`${siteWindowExpr("tube")}.webaiosSiteWindow.enter()`);
+    await m.execute(`${siteWindowExpr("tube")}.ressacSiteWindow.enter()`);
     await expect.poll(() => viewUrl("tube"), { timeout: 15_000 }).toBe(url("/pubs"));
     await view(`(location.href = ${JSON.stringify(url("/film/2"))}, 1)`, "tube");
     await expect.poll(() => viewUrl("tube"), { timeout: 15_000 }).toBe(url("/film/2"));
     await expect.poll(() => view("document.readyState", "tube"), { timeout: 10_000 }).not.toBe("loading");
     await openPopup("tube");
-    await m.execute(`${siteWindowExpr("tube")}.webaiosSiteWindow.home()`);
+    await m.execute(`${siteWindowExpr("tube")}.ressacSiteWindow.home()`);
     server.requests.splice(0);
     expect((await order({ op: "reload" }, "tube")).error).toBeUndefined();
     expect((await order({ op: "back" }, "tube")).error).toBeUndefined();
@@ -285,7 +285,7 @@ describe("add-ons in a site app window", () => {
     expect(await tabCount()).toBe(1);
     expect(await viewUrl()).toBe(url("/pubs"));
     const elsewhere = await m.execute<string[]>(
-      `return [...Services.wm.getEnumerator("navigator:browser")].filter((w) => !w.document.documentElement.hasAttribute("webaios-site")).flatMap((w) => w.gBrowser.browsers.map((b) => b.currentURI.spec));`,
+      `return [...Services.wm.getEnumerator("navigator:browser")].filter((w) => !w.document.documentElement.hasAttribute("ressac-site")).flatMap((w) => w.gBrowser.browsers.map((b) => b.currentURI.spec));`,
     );
     expect(elsewhere.filter((u) => u.includes("vidola-a.localhost"))).toEqual([]);
     expect(await view("document.title")).toMatch(/^order /);
@@ -323,7 +323,7 @@ describe("add-ons and what the agent adds to the app", () => {
       vidola: {
         declaration: series(),
         files: {
-          "tweaks/serie.js": `webaiosSite.remember("encours.the-bear", ${JSON.stringify(KEPT)}).then(() => (document.documentElement.dataset.kept = "oui"));`,
+          "tweaks/serie.js": `ressacSite.remember("encours.the-bear", ${JSON.stringify(KEPT)}).then(() => (document.documentElement.dataset.kept = "oui"));`,
           "tweaks/cacher.css": ".shorts { display: none; }",
         },
       },
@@ -352,7 +352,7 @@ describe("the agent and the app's add-ons", () => {
     await start();
     await installAddon(m, probe());
     await openAndWait();
-    const config = path.join(dataDir, "workspace", ".webaios", "mcp.json");
+    const config = path.join(dataDir, "workspace", ".ressac", "mcp.json");
     for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
       if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
     await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
@@ -362,8 +362,8 @@ describe("the agent and the app's add-ons", () => {
   });
 
   it("an agent extension's content script never runs in the app view, nor shows in its bar", async () => {
-    dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
-    profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
+    dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
+    profile = await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
     const host = "http://vidola-a.localhost/*";
     writeAgentExtension(path.join(dataDir, "workspace"), "cacheur", {
       "manifest.json": { manifest_version: 3, name: "Cacheur de l'agent", version: "1.0.0", content_scripts: [{ matches: [host], css: ["cache.css"] }] },
@@ -371,12 +371,12 @@ describe("the agent and the app's add-ons", () => {
     });
     grant(dataDir, "cacheur", { permissions: [], hosts: [host], network: [], allSites: false, allSitesScripts: false, scripts: true });
     writeSite(dataDir, "vidola", { declaration: vidola() });
-    w = await launchWithAmo({ dataDir, profile, env: { WEBAIOS_TEST_LOCAL_ADDRESSES: "1" } });
+    w = await launchWithAmo({ dataDir, profile, env: { RESSAC_TEST_LOCAL_ADDRESSES: "1" } });
     m = w.marionette;
     await resolveLocalHosts(m, HOSTS);
     await waitFor(m, `return (async () => {
       const { AddonManager } = ChromeUtils.importESModule("resource://gre/modules/AddonManager.sys.mjs");
-      return !!(await AddonManager.getAddonByID("cacheur@agent.webaios"))?.isActive;
+      return !!(await AddonManager.getAddonByID("cacheur@agent.ressac"))?.isActive;
     })();`, (v) => v === true, 30_000);
     // Witness: in a tab of the space, its sheet hides the banner.
     await inStore(`store.dispatch({ type: "openTab", windowId: store.state.windows[0].id, url: arguments[0] });`, [url("/pubs?onglet")]);
@@ -387,6 +387,6 @@ describe("the agent and the app's add-ons", () => {
     await openAndWait();
     await new Promise((r) => setTimeout(r, 2000));
     expect(await view("getComputedStyle(document.getElementById('banniere')).display")).toBe("block");
-    expect(await m.execute(`return ${siteWindowExpr("vidola")}.webaiosSiteWindow.addons.buttons().map((b) => b.id);`)).not.toContain("cacheur@agent.webaios");
+    expect(await m.execute(`return ${siteWindowExpr("vidola")}.ressacSiteWindow.addons.buttons().map((b) => b.id);`)).not.toContain("cacheur@agent.ressac");
   });
 });

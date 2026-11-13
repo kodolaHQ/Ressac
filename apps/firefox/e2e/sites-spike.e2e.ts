@@ -7,15 +7,15 @@ import { HOME_BRIDGE } from "../chrome/store/site-home";
 import { displayServed } from "../chrome/window/widget-frame";
 import { testActor } from "./agent-extensions";
 import { state, waitFor } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { SITE_HOME, inBrowser, inSiteBar, inSiteView, resolveLocalHosts, siteWindowCount, siteWindowExpr, startSitesServer } from "./sites";
 
 // Plan 31's spike (docs/superpowers/notes/2026-11-06-applis-de-site-firefox-spike.md): the site app window, routing
 // without a request, the Xray sandbox, the test home page. The probes print what they see rather than assert it:
-// rerun with WEBAIOS_SPIKE=1 after a Firefox version change and compare.
+// rerun with RESSAC_SPIKE=1 after a Firefox version change and compare.
 
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const HOSTS = ["vidola-a.localhost", "vidola-b.localhost", "pub.localhost", "compte.localhost", "lecteur.localhost"];
 const note = (what: string, v: unknown) => console.log(`[spike] ${what}: ${JSON.stringify(v)}`);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -25,7 +25,7 @@ const pageWorld = (code: string) => `const s = document.createElement("script");
 /** The probe script of (c): what the sandbox sees, then the password field's value when the test asks. */
 const PROBE = `
 const seen = { Components: typeof Components, ChromeUtils: typeof ChromeUtils, Services: typeof Services, require: typeof require, process: typeof process,
-  secret: typeof secret, windowSecret: typeof window.secret, portee: typeof __webaiosScope, href: location.href };
+  secret: typeof secret, windowSecret: typeof window.secret, portee: typeof __ressacScope, href: location.href };
 window.probeVar = 1;
 var probeGlobal = 2;
 document.documentElement.setAttribute("data-probe", JSON.stringify(seen));
@@ -50,13 +50,13 @@ const probePage = (frame: string) => `<!doctype html><title>Sonde</title>
   window.secret = "s3cret";
   for (const t of [window, document]) t.addEventListener("DOMContentLoaded", (e) => e.stopImmediatePropagation(), true);
   document.addEventListener("probe-check", () => document.documentElement.setAttribute("data-page", JSON.stringify({
-    probeVar: typeof window.probeVar, probeGlobal: typeof window.probeGlobal, injectedBySandbox: typeof window.injectedBySandbox, portee: typeof window.__webaiosScope, pwLength: document.getElementById("pw").value.length })));
+    probeVar: typeof window.probeVar, probeGlobal: typeof window.probeGlobal, injectedBySandbox: typeof window.injectedBySandbox, portee: typeof window.__ressacScope, pwLength: document.getElementById("pw").value.length })));
 </script>
 <input type="password" id="pw">${frame ? `<iframe src="${frame}"></iframe>` : ""}`;
 
-describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
+describe.skipIf(!process.env.RESSAC_SPIKE)("site app spike", () => {
   let server: Awaited<ReturnType<typeof startSitesServer>>;
-  let w: LaunchedWebAiOs;
+  let w: LaunchedRessac;
   let m: Marionette;
   let profile: string;
   const pub = (p: string) => server.url("pub.localhost", p);
@@ -114,12 +114,12 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
     d("/cadre", "<title>Cadre pub</title><p>pub</p>", "pub.localhost");
     d("/connexion", "<title>Connexion</title>", "compte.localhost");
     d("/", "<title>Vidola B</title>", "vidola-b.localhost");
-    profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
+    profile = await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
     const actor = testActor(profile);
-    w = await launchWebAiOs({ profile, env: { WEBAIOS_TEST_LOCAL_ADDRESSES: "1", ...actor.env }, prefs: actor.prefs });
+    w = await launchRessac({ profile, env: { RESSAC_TEST_LOCAL_ADDRESSES: "1", ...actor.env }, prefs: actor.prefs });
     m = w.marionette;
     await m.setContext("chrome");
-    await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+    await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
     await resolveLocalHosts(m, HOSTS);
     await openSite();
     await viewAt(server.url("vidola-a.localhost", "/"));
@@ -138,17 +138,17 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
         const { BrowserWindowTracker } = ChromeUtils.importESModule("resource:///modules/BrowserWindowTracker.sys.mjs");
         const { ContextualIdentityService } = ChromeUtils.importESModule("moz-src:///toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs");
         const win = ${siteWindowExpr("vidola")};
-        const main = [...Services.wm.getEnumerator("navigator:browser")].find((x) => x.document.documentElement.hasAttribute("webaios-main"));
+        const main = [...Services.wm.getEnumerator("navigator:browser")].find((x) => x.document.documentElement.hasAttribute("ressac-main"));
         win.focus();
         await new Promise((r) => setTimeout(r, 300));
         const browser = win.gBrowser.selectedBrowser;
         const toolbox = win.document.getElementById("navigator-toolbox");
         const opts = win.arguments[1];
         return {
-          markerArgument: opts instanceof Ci.nsIPropertyBag2 && opts.getPropertyAsAString("webaios-site"),
-          markerAttribute: win.document.documentElement.getAttribute("webaios-site"),
-          mainAttribute: win.document.documentElement.hasAttribute("webaios-main"),
-          controller: typeof win.webaiosWindow,
+          markerArgument: opts instanceof Ci.nsIPropertyBag2 && opts.getPropertyAsAString("ressac-site"),
+          markerAttribute: win.document.documentElement.getAttribute("ressac-site"),
+          mainAttribute: win.document.documentElement.hasAttribute("ressac-main"),
+          controller: typeof win.ressacWindow,
           toolbarVisible: win.toolbar.visible,
           tabs: win.gBrowser.tabs.length,
           browsers: win.document.querySelectorAll("browser[type=content]").length,
@@ -156,7 +156,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
           tabsToolbarHeight: win.document.getElementById("TabsToolbar")?.getBoundingClientRect().height ?? null,
           userContextId: browser.getAttribute("usercontextid"),
           identity: ContextualIdentityService.getPrivateIdentity("userContextIdInternal.webaios-site-vidola")?.userContextId ?? null,
-          barSrc: win.document.getElementById("webaios-site-bar")?.src,
+          barSrc: win.document.getElementById("ressac-site-bar")?.src,
           fenetres: store.state.windows.length,
           focusIsSite: Services.focus.activeWindow === win,
           activeIsMain: store.windows.get(store.windows.active())?.window === main,
@@ -210,7 +210,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
 
     // The sign-in window: window.open with features (Firefox opens a window itself), then target=_blank (browserDOMWindow).
     const login = server.url("compte.localhost", "/connexion");
-    const small = `[...Services.wm.getEnumerator("navigator:browser")].find((w) => w.document.documentElement.getAttribute("webaios-site-small") === "vidola" && w.gBrowser.selectedBrowser.currentURI.spec === ${JSON.stringify(login)})`;
+    const small = `[...Services.wm.getEnumerator("navigator:browser")].find((w) => w.document.documentElement.getAttribute("ressac-site-small") === "vidola" && w.gBrowser.selectedBrowser.currentURI.spec === ${JSON.stringify(login)})`;
     const smallInfo = () =>
       m.execute(`const w = ${small}; if (!w) return null; const b = w.gBrowser.selectedBrowser;
         return { outer: [w.outerWidth, w.outerHeight], inner: [w.innerWidth, w.innerHeight], content: [b.clientWidth, b.clientHeight], toolbarVisible: w.toolbar.visible,
@@ -237,7 +237,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
     await sleep(500);
     await measure("(b) target=_blank to compte.localhost", () => inSiteView(m, "vidola", "document.getElementById('compte').click()", { gesture: true }), 2000);
     note("(b) target=_blank sign-in window", await smallInfo());
-    note("(b) target=_blank: getTopWindow is a sign-in window", await m.execute(`const { BrowserWindowTracker } = ChromeUtils.importESModule("resource:///modules/BrowserWindowTracker.sys.mjs"); const w = BrowserWindowTracker.getTopWindow(); return !!w && w.document.documentElement.hasAttribute("webaios-site-small");`));
+    note("(b) target=_blank: getTopWindow is a sign-in window", await m.execute(`const { BrowserWindowTracker } = ChromeUtils.importESModule("resource:///modules/BrowserWindowTracker.sys.mjs"); const w = BrowserWindowTracker.getTopWindow(); return !!w && w.document.documentElement.hasAttribute("ressac-site-small");`));
     await m.execute(`(${small})?.close();`);
 
     // history.back() to an entry of a domain removed since the visit.
@@ -304,7 +304,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
   it("(d) the test home page: unchanged, served by resource://, parent.postMessage both ways", async () => {
     // The served copy: the widget display's CSP and guard, then the bridge, then the home page as is.
     const served = displayServed(SITE_HOME).replace("<title>Accueil</title>", `${HOME_BRIDGE}<title>Accueil</title>`);
-    const dir = path.join(w.dataDir, "webaios-sites", "vidola");
+    const dir = path.join(w.dataDir, "ressac-sites", "vidola");
     await mkdir(dir, { recursive: true });
     await writeFile(path.join(dir, "index.html"), served);
     const memory = { type: "memory", values: { "encours.the-bear": { value: { titre: "The Bear", episode: "S2E4" }, url: "/serie/the-bear?e=4", when: new Date().toISOString() } }, positions: {}, domain: "vidola-a.localhost" };
@@ -314,15 +314,15 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
         m,
         "vidola",
         `const { FileUtils } = ChromeUtils.importESModule("resource://gre/modules/FileUtils.sys.mjs");
-        Services.io.getProtocolHandler("resource").QueryInterface(Ci.nsIResProtocolHandler).setSubstitution("webaios-site-vidola", Services.io.newFileURI(new FileUtils.File(arguments[0])));
+        Services.io.getProtocolHandler("resource").QueryInterface(Ci.nsIResProtocolHandler).setSubstitution("ressac-site-vidola", Services.io.newFileURI(new FileUtils.File(arguments[0])));
         // The bar's frame covers the window in the home view (plan 31): the home frame on top of it.
-        win.document.getElementById("webaios-site-bar").style.height = "600px";
+        win.document.getElementById("ressac-site-bar").style.height = "600px";
         const home = doc.createElement("iframe");
         home.setAttribute("sandbox", "allow-scripts");
         home.style.cssText = "position: fixed; left: 0; top: 0; width: 800px; height: 500px; border: none";
         const got = (win.__spikeHome = { root: [], frameWindow: [] });
         // Listened above the frame (the window root sees events of the chrome window's in-process frames), before it loads.
-        win.windowRoot.addEventListener("webaios-home", (e) => {
+        win.windowRoot.addEventListener("ressac-home", (e) => {
           const fromFrame = e.target === home.contentWindow;
           got.root.push({ detail: e.detail, fromFrame });
           let m;
@@ -330,12 +330,12 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
           if (fromFrame && m?.type === "ready") home.contentWindow.postMessage(arguments[1], "*");
         }, true, true);
         doc.documentElement.append(home);
-        home.src = "resource://webaios-site-vidola/index.html";
+        home.src = "resource://ressac-site-vidola/index.html";
         for (let i = 0; i < 100 && home.contentDocument?.readyState !== "complete"; i++) await new Promise((r) => setTimeout(r, 100));
-        home.contentDocument.defaultView.addEventListener("webaios-home", (e) => got.frameWindow.push(e.detail), true, true);
+        home.contentDocument.defaultView.addEventListener("ressac-home", (e) => got.frameWindow.push(e.detail), true, true);
         await new Promise((r) => setTimeout(r, 500));
         const fd = home.contentDocument;
-        return { src: home.src, sandbox: home.getAttribute("sandbox"), origin: fd.defaultView.origin, rtc: typeof fd.defaultView.wrappedJSObject.RTCPeerConnection, xslt: typeof fd.defaultView.wrappedJSObject.XSLTProcessor, webaios: typeof fd.defaultView.wrappedJSObject.webaios,
+        return { src: home.src, sandbox: home.getAttribute("sandbox"), origin: fd.defaultView.origin, rtc: typeof fd.defaultView.wrappedJSObject.RTCPeerConnection, xslt: typeof fd.defaultView.wrappedJSObject.XSLTProcessor, ressac: typeof fd.defaultView.wrappedJSObject.ressac,
           series: fd.getElementById("series")?.textContent, domaine: fd.getElementById("domaine")?.textContent, received: got.root, barUrl: doc.documentURI };`,
         [dir, memory],
       ),
@@ -363,7 +363,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
   it("(e) closing the app window closes its sign-in windows: nothing of its container stays unguarded", async () => {
     const login = server.url("compte.localhost", "/connexion");
     await inSiteView(m, "vidola", `window.open(${JSON.stringify(login)}, "connexion", "width=500,height=650"); return 1;`, { gesture: true });
-    const small = `[...Services.wm.getEnumerator("navigator:browser")].filter((w) => w.document.documentElement.getAttribute("webaios-site-small") === "vidola").length`;
+    const small = `[...Services.wm.getEnumerator("navigator:browser")].filter((w) => w.document.documentElement.getAttribute("ressac-site-small") === "vidola").length`;
     await waitFor(m, `return ${small};`, (n: number) => n === 1);
     await m.execute(`${siteWindowExpr("vidola")}.close();`);
     const left = await waitFor(m, `return ${small};`, (n: number) => n === 0).catch(() => -1);

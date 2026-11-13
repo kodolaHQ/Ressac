@@ -11,16 +11,16 @@ const { setInterval, clearInterval } = ChromeUtils.importESModule("resource://gr
 const WATCH_MS = 500;
 const CAPTURE_ENABLED = 1;
 
-export class WebAiOsCallParent extends JSWindowActorParent {
+export class RessacCallParent extends JSWindowActorParent {
   receiveMessage(msg: { name: string; data: unknown }): void {
     // The tab's browser by its id: its window finds its own (chrome/window/calls.ts).
-    if (msg.name === "call:state") Services.obs.notifyObservers(null, "webaios-call-state", JSON.stringify({ browserId: this.browsingContext.top.browserId, call: msg.data }));
+    if (msg.name === "call:state") Services.obs.notifyObservers(null, "ressac-call-state", JSON.stringify({ browserId: this.browsingContext.top.browserId, call: msg.data }));
   }
 }
 
-export class WebAiOsCallChild extends JSWindowActorChild {
+export class RessacCallChild extends JSWindowActorChild {
   private watch: number | undefined;
-  /** The sites of the pref `webaios.call.sites`, sent by the parent with each watch: a web process does not get that pref. */
+  /** The sites of the pref `ressac.call.sites`, sent by the parent with each watch: a web process does not get that pref. */
   private more: CallSite[] = [];
 
   /** The camera's and the microphone's capture in this window: [camera, microphone], each on only while it sends. */

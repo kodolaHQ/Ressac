@@ -1,0 +1,25 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+        content/browser/ressac/window.js             (content/ressac/window.js)
+        content/browser/ressac/window.css            (content/ressac/window.css)
+        content/browser/ressac/sidebar.html          (content/ressac/sidebar.html)
+        content/browser/ressac/sidebar.js            (content/ressac/sidebar.js)
+        content/browser/ressac/sidebar.css           (content/ressac/sidebar.css)
+        content/browser/ressac/store.sys.mjs         (content/ressac/store.sys.mjs)
+        content/browser/ressac/agent.html            (content/ressac/agent.html)
+        content/browser/ressac/agent.js              (content/ressac/agent.js)
+        content/browser/ressac/agent.css             (content/ressac/agent.css)
+*       content/browser/ressac/page-actor.sys.mjs    (content/ressac/page-actor.sys.mjs)
+*       content/browser/ressac/extension-actor.sys.mjs (content/ressac/extension-actor.sys.mjs)
+*       content/browser/ressac/site-actor.sys.mjs (content/ressac/site-actor.sys.mjs)
+*       content/browser/ressac/design-actor.sys.mjs (content/ressac/design-actor.sys.mjs)
+*       content/browser/ressac/vim-actor.sys.mjs (content/ressac/vim-actor.sys.mjs)
+*       content/browser/ressac/call-actor.sys.mjs (content/ressac/call-actor.sys.mjs)
+        content/browser/ressac/fonts/FunnelDisplay-latin-ext.woff2 (content/ressac/fonts/FunnelDisplay-latin-ext.woff2)
+        content/browser/ressac/fonts/FunnelDisplay-latin.woff2 (content/ressac/fonts/FunnelDisplay-latin.woff2)
+        content/browser/ressac/fonts/Geist-latin-ext.woff2 (content/ressac/fonts/Geist-latin-ext.woff2)
+        content/browser/ressac/fonts/Geist-latin.woff2 (content/ressac/fonts/Geist-latin.woff2)
+        content/browser/ressac/fonts/GeistMono-latin-ext.woff2 (content/ressac/fonts/GeistMono-latin-ext.woff2)
+        content/browser/ressac/fonts/GeistMono-latin.woff2 (content/ressac/fonts/GeistMono-latin.woff2)

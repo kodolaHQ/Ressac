@@ -75,7 +75,7 @@ export function changeUrl(sitesFolder: string, id: string, d: DeclarationSite, f
   });
 }
 
-/** Forgets what WebAiOs keeps about an app: memory, address (under `<profil>/sites/<id>/`) and grant. */
+/** Forgets what Ressac keeps about an app: memory, address (under `<profil>/sites/<id>/`) and grant. */
 export async function deleteSiteData(profile: string, id: string): Promise<void> {
   checkId(id);
   const sitesFolder = join(profile, "sites");

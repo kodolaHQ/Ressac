@@ -8,8 +8,8 @@ import { tempFolder } from "../helpers/temp.js";
 const claude = Profile.parse(JSON.parse(await readFile(join(import.meta.dirname, "../../templates/agent-profile.json"), "utf8")));
 
 test("buildCommand, interactive, replaces {mcpConfig}", () => {
-  expect(buildCommand(claude, "interactive", { mcpConfig: "/workspace/.webaios/mcp.json" })).toEqual([
-    "claude", "--disallowedTools", "WebSearch,WebFetch", "--dangerously-skip-permissions", "--mcp-config", "/workspace/.webaios/mcp.json",
+  expect(buildCommand(claude, "interactive", { mcpConfig: "/workspace/.ressac/mcp.json" })).toEqual([
+    "claude", "--disallowedTools", "WebSearch,WebFetch", "--dangerously-skip-permissions", "--mcp-config", "/workspace/.ressac/mcp.json",
   ]);
 });
 

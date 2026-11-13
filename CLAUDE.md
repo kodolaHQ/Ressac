@@ -1,4 +1,4 @@
-# WebAiOs: notes for Claude
+# Ressac: notes for Claude
 
 ## Searching the code: LSP or grep
 
@@ -17,21 +17,21 @@ After a clone: `npm ci` in `.claude/marketplace-local/plugins/svelte-lsp`.
 
 Every visual change follows `DESIGN.md`.
 
-## WebAiOs-Firefox e2e tests
+## Ressac e2e tests
 
 - The suite runs 6 files in parallel (`maxWorkers: 6`, about 8 min measured 2026-11-12). At 9, time-sensitive tests break: do not raise it without making them robust.
-- **For each change** (a plan's task, a small feature, a fix): run only the e2e files it touches or whose tested code it changes (`corepack pnpm --filter firefox-webaios exec vitest run -c vitest.e2e.config.ts e2e/<file>`).
+- **For each change** (a plan's task, a small feature, a fix): run only the e2e files it touches or whose tested code it changes (`corepack pnpm --filter firefox-ressac exec vitest run -c vitest.e2e.config.ts e2e/<file>`).
 - **The full suite**: only before a DMG goes to testers, not at the end of each feature or plan. A test that fails there and passes when its file is run alone is a load flake: say so, do not rerun the whole suite.
 - Do not run the suite during the owner's `build:ui`: the binary disappears and everything fails with "build missing".
 
 ## Version and DMG
 
-- The WebAiOs version is `"version"` in `apps/firefox/package.json`. To ship a DMG to testers, bump it there, then run `(set -a; . ~/.config/webaios/sentry.env; set +a; echo N | corepack pnpm --filter firefox-webaios run package)`. Sentry's release, Réglages › À propos, the DMG name and the Finder version all follow it. The package step takes a normal build.
-- Never change `displayVersion` in `apps/firefox/surfer.json` for a WebAiOs release. It is compiled into Gecko, so a change forces a near-full engine rebuild (40+ min). It only moves with a Firefox engine update.
+- The Ressac version is `"version"` in `apps/firefox/package.json`. To ship a DMG to testers, bump it there, then run `(set -a; . ~/.config/ressac/sentry.env; set +a; echo N | corepack pnpm --filter firefox-ressac run package)`. Sentry's release, Réglages › À propos, the DMG name and the Finder version all follow it. The package step takes a normal build.
+- Never change `displayVersion` in `apps/firefox/surfer.json` for a Ressac release. It is compiled into Gecko, so a change forces a near-full engine rebuild (40+ min). It only moves with a Firefox engine update.
 - Bump only for a DMG that actually goes to testers, not for every test build.
 - With each bump, add the version's entry at the top of `apps/firefox/shared/release-notes.ts`: the « Nouveautés » page opens after the update only if the newest entry is for the running version.
 
 ## Specs, plans, notes; local settings
 
-- They live outside the repo, in `../WebAiOs-docs/superpowers`. `docs/superpowers` is a git-ignored link to it (`ln -s ../../WebAiOs-docs/superpowers docs/superpowers`), so the usual paths keep working. Never commit them.
-- The local plugin marketplace is declared in `.claude/settings.local.json` (git-ignored, absolute path): after a clone, add `extraKnownMarketplaces.webaios-local` with `{"source": "directory", "path": "<repo>/.claude/marketplace-local"}`.
+- They live outside the repo, in `../Ressac-docs/superpowers`. `docs/superpowers` is a git-ignored link to it (`ln -s ../../Ressac-docs/superpowers docs/superpowers`), so the usual paths keep working. Never commit them.
+- The local plugin marketplace is declared in `.claude/settings.local.json` (git-ignored, absolute path): after a clone, add `extraKnownMarketplaces.ressac-local` with `{"source": "directory", "path": "<repo>/.claude/marketplace-local"}`.

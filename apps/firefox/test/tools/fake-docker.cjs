@@ -18,13 +18,13 @@ const quit = (code, out = "", err = "") => {
 if (args[0] === "info" && env.FAKE_DOCKER_SLOW === "1") Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 8_000);
 if (args[0] === "info") quit(env.FAKE_DOCKER_ABSENT === "1" ? 1 : 0);
 // The settings page's workshop operations are noted for the tests; a removed workshop is absent until its next `run -d`.
-const removedMark = () => join(env.WEBAIOS_ROOT, "fake-docker-workshop-removed");
-const noteCall = () => appendFileSync(join(env.WEBAIOS_ROOT, "fake-docker-calls.log"), `${args.join(" ")}\n`);
+const removedMark = () => join(env.RESSAC_ROOT, "fake-docker-workshop-removed");
+const noteCall = () => appendFileSync(join(env.RESSAC_ROOT, "fake-docker-calls.log"), `${args.join(" ")}\n`);
 if (args[0] === "stop") {
   noteCall();
   quit(0);
 }
-if (args[0] === "rm" && args[1] === "-f" && args[2] === "webaios-workshop") {
+if (args[0] === "rm" && args[1] === "-f" && args[2] === "ressac-workshop") {
   noteCall();
   writeFileSync(removedMark(), "");
   quit(0);
@@ -48,21 +48,21 @@ if (args[0] === "build" && Number(env.FAKE_DOCKER_BUILD_STEP_MS) > 0 && !failing
 }
 if (args[0] === "run" && args[1] === "-d") rmSync(removedMark(), { force: true });
 if (args[0] === "inspect") {
-  if (failing || (args[3] === "webaios-workshop" && existsSync(removedMark()))) quit(1, "", "No such object");
+  if (failing || (args[3] === "ressac-workshop" && existsSync(removedMark()))) quit(1, "", "No such object");
   const format = args[2] ?? "";
   if (format.includes("State.Running")) quit(0, "true\n");
   const dockerfile = join(__dirname, "..", "..", "..", "..", "packages", "kernel", "docker", "workshop.Dockerfile");
   const hash = createHash("sha256").update(readFileSync(dockerfile)).digest("hex").slice(0, 12);
-  quit(0, `${env.WEBAIOS_ROOT}|${hash}\n`);
+  quit(0, `${env.RESSAC_ROOT}|${hash}\n`);
 }
 /** PID of the `run` client of a harvest in progress, by container name. */
-const harvestPidFile = (name) => join(env.WEBAIOS_ROOT, `fake-docker-${name}.pid`);
+const harvestPidFile = (name) => join(env.RESSAC_ROOT, `fake-docker-${name}.pid`);
 
 /** A run's container: a widget's harvest or an action's run. */
-const isRun = (name) => (name ?? "").startsWith("webaios-harvest-") || (name ?? "").startsWith("webaios-action-");
+const isRun = (name) => (name ?? "").startsWith("ressac-harvest-") || (name ?? "").startsWith("ressac-action-");
 
 // A widget's harvest or an action's run (Workshop.harvestCommand):
-// `run -i --rm … --name webaios-harvest-<id> (or webaios-action-<id>) … node <harvester> /widget`.
+// `run -i --rm … --name ressac-harvest-<id> (or ressac-action-<id>) … node <harvester> /widget`.
 // The harvester runs on the Mac (node), with the host paths recovered from the `-v host:container`. The kernel
 // must cut the container's network: without `--network none`, the harvest fails.
 if (args[0] === "run" && args.includes("-i") && isRun(args[args.indexOf("--name") + 1])) {
@@ -74,7 +74,7 @@ if (args[0] === "run" && args.includes("-i") && isRun(args[args.indexOf("--name"
     const [host, container] = args[++i].split(":");
     mounts.set(container, host);
   }
-  // A path under a mounted folder (the engine: /opt/webaios/engine/harvester.mjs) is recovered by its prefix.
+  // A path under a mounted folder (the engine: /opt/ressac/engine/harvester.mjs) is recovered by its prefix.
   const toHost = (c) => {
     if (mounts.has(c)) return mounts.get(c);
     for (const [container, host] of mounts) if (c.startsWith(container + "/")) return host + c.slice(container.length);
@@ -113,16 +113,16 @@ if (args[0] === "rm" && args[1] === "-f" && isRun(args[2])) {
 if (args[0] === "run" && args[1] === "--rm") quit(1);
 if (["image", "build", "run"].includes(args[0])) quit(failing ? 1 : 0, "", failing ? "simulated failure" : "");
 /** PID of a launched app's group (its shell, group leader). */
-const appPidFile = (folder) => join(env.WEBAIOS_ROOT, `fake-docker-app-${folder}.pid`);
+const appPidFile = (folder) => join(env.RESSAC_ROOT, `fake-docker-app-${folder}.pid`);
 
-/** Kills the group of each app targeted by a stop script (`WEBAIOS_APP=<folder>` or `WEBAIOS_APP=.*`). */
+/** Kills the group of each app targeted by a stop script (`RESSAC_APP=<folder>` or `RESSAC_APP=.*`). */
 function stopApps(script) {
   // The dot of a folder name is escaped for grep (`my\.app`).
-  const pattern = /WEBAIOS_APP=(\.\*|(?:[A-Za-z0-9_-]|\\\.)+)/.exec(script)?.[1]?.replaceAll("\\.", ".");
+  const pattern = /RESSAC_APP=(\.\*|(?:[A-Za-z0-9_-]|\\\.)+)/.exec(script)?.[1]?.replaceAll("\\.", ".");
   if (!pattern) return;
   const files =
     pattern === ".*"
-      ? readdirSync(env.WEBAIOS_ROOT).filter((f) => /^fake-docker-app-.*\.pid$/.test(f)).map((f) => join(env.WEBAIOS_ROOT, f))
+      ? readdirSync(env.RESSAC_ROOT).filter((f) => /^fake-docker-app-.*\.pid$/.test(f)).map((f) => join(env.RESSAC_ROOT, f))
       : [appPidFile(pattern)];
   for (const f of files) {
     if (!existsSync(f)) continue;
@@ -136,11 +136,11 @@ function stopApps(script) {
 }
 
 /**
- * Launch of an app (Workshop.appCommand): the shell runs on the Mac, /workspace becoming WEBAIOS_ROOT,
+ * Launch of an app (Workshop.appCommand): the shell runs on the Mac, /workspace becoming RESSAC_ROOT,
  * in its own group (like the container's processes, which the stop targets by their mark).
  */
 function launchApp(options, command) {
-  const local = (s) => s.replaceAll("/workspace", env.WEBAIOS_ROOT);
+  const local = (s) => s.replaceAll("/workspace", env.RESSAC_ROOT);
   const vars = {};
   let folder = "/workspace";
   for (let i = 0; i < options.length; i++) {
@@ -151,7 +151,7 @@ function launchApp(options, command) {
   }
   const [program, ...rest] = command.map(local);
   const child = spawn(program, rest, { cwd: local(folder), env: { ...env, ...vars }, stdio: "inherit", detached: true });
-  writeFileSync(appPidFile(vars.WEBAIOS_APP), String(child.pid));
+  writeFileSync(appPidFile(vars.RESSAC_APP), String(child.pid));
   for (const signal of ["SIGHUP", "SIGTERM", "SIGINT"])
     process.on(signal, () => {
       try {
@@ -164,21 +164,21 @@ function launchApp(options, command) {
 }
 
 if (args[0] === "exec") {
-  const options = args.slice(1, args.indexOf("webaios-workshop"));
-  let command = args.slice(args.indexOf("webaios-workshop") + 1);
-  if (options.some((o) => o.startsWith("WEBAIOS_APP="))) {
+  const options = args.slice(1, args.indexOf("ressac-workshop"));
+  let command = args.slice(args.indexOf("ressac-workshop") + 1);
+  if (options.some((o) => o.startsWith("RESSAC_APP="))) {
     launchApp(options, command);
     return;
   }
-  // Claude Code's account (settings page): <WEBAIOS_ROOT>/fake-claude-auth.json is the signed-in account.
-  const auth = join(env.WEBAIOS_ROOT, "fake-claude-auth.json");
+  // Claude Code's account (settings page): <RESSAC_ROOT>/fake-claude-auth.json is the signed-in account.
+  const auth = join(env.RESSAC_ROOT, "fake-claude-auth.json");
   if (command.join(" ") === "claude auth status --json") quit(0, existsSync(auth) ? readFileSync(auth, "utf8") : '{"loggedIn":false}\n');
   if (command.join(" ") === "claude auth logout") {
     rmSync(auth, { force: true });
     quit(0);
   }
-  // Codex's account: <WEBAIOS_ROOT>/fake-codex-auth means signed in; the sign-in by code creates it 1 s after showing the code.
-  const codexAuth = join(env.WEBAIOS_ROOT, "fake-codex-auth");
+  // Codex's account: <RESSAC_ROOT>/fake-codex-auth means signed in; the sign-in by code creates it 1 s after showing the code.
+  const codexAuth = join(env.RESSAC_ROOT, "fake-codex-auth");
   if (command.join(" ") === "codex login status") quit(existsSync(codexAuth) ? 0 : 1, "", existsSync(codexAuth) ? "Logged in using ChatGPT\n" : "Not logged in\n");
   if (command.join(" ") === "codex logout") {
     rmSync(codexAuth, { force: true });
@@ -186,8 +186,8 @@ if (args[0] === "exec") {
   }
   if (command.join(" ") === "codex login --device-auth") {
     process.stderr.write("Follow these steps to sign in:\n1. Open https://auth.openai.com/codex/device\n2. Enter this code: ABCD-12345\n");
-    // <WEBAIOS_ROOT>/fake-codex-device-delay-ms: how long the code takes to be "entered" (1 s by default); a test changes it between sign-ins.
-    const delayFile = join(env.WEBAIOS_ROOT, "fake-codex-device-delay-ms");
+    // <RESSAC_ROOT>/fake-codex-device-delay-ms: how long the code takes to be "entered" (1 s by default); a test changes it between sign-ins.
+    const delayFile = join(env.RESSAC_ROOT, "fake-codex-device-delay-ms");
     setTimeout(() => {
       writeFileSync(codexAuth, "");
       process.exit(0);
@@ -198,10 +198,10 @@ if (args[0] === "exec") {
   // tests; the targeted apps are killed beforehand, the log is the proof of the stop.
   if (command[0] === "sh" && !command[2].includes('exec "$@"')) {
     stopApps(command[2]);
-    appendFileSync(join(env.WEBAIOS_ROOT, "fake-docker-stops.log"), `${command[2]}\n`);
+    appendFileSync(join(env.RESSAC_ROOT, "fake-docker-stops.log"), `${command[2]}\n`);
     quit(0);
   }
-  // Interactive session (Workshop.sessionCommand): sh -c '<notes the PID>; exec "$@"' webaios-session <agent…>
+  // Interactive session (Workshop.sessionCommand): sh -c '<notes the PID>; exec "$@"' ressac-session <agent…>
   if (command[0] === "sh") command = command.slice(4);
   // Like docker exec: `-e NAME=value` sets it, `-e NAME` passes the client's value (session tokens).
   const vars = {};
@@ -211,7 +211,7 @@ if (args[0] === "exec") {
       vars[key] = value.length ? value.join("=") : env[key];
     }
   // What the agent received from docker exec, for the tests.
-  writeFileSync(join(env.WEBAIOS_ROOT, "fake-agent-env.json"), JSON.stringify(Object.fromEntries(Object.entries(vars).filter(([k]) => /^(WEBAIOS_|ANTHROPIC_|CLAUDE_CODE_)/.test(k)))));
+  writeFileSync(join(env.RESSAC_ROOT, "fake-agent-env.json"), JSON.stringify(Object.fromEntries(Object.entries(vars).filter(([k]) => /^(RESSAC_|ANTHROPIC_|CLAUDE_CODE_)/.test(k)))));
   const r = spawnSync(process.execPath, [join(__dirname, "fake-agent.mjs"), ...command], { stdio: "inherit", env: { ...env, ...vars } });
   process.exit(r.status ?? 1);
 }

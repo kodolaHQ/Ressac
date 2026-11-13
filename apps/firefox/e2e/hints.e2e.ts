@@ -3,19 +3,19 @@ import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { TIPS } from "../shared/hints";
 import { dispatch, state, waitFor, waitReady } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { click, inUi, missingApi, pressKeys, waitUi, type Frame } from "./ui";
 
 // Plan 47 Tasks 3-4: the « Astuce » card on the empty page; using a shortcut retires its tip; the Settings switch; the one-time notes (agent, actions).
 
 const CARD = '[data-testid="tip-card"]';
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 /** The first-time notes tests start with the notes unseen; the tips tests with them seen (the agent note holds the tip back). */
 let notes = false;
 beforeEach(async () => {
-  w = await launchWebAiOs({ env: { WEBAIOS_OLLAMA_URL: "http://127.0.0.1:9" }, firstTimeNotes: notes });
+  w = await launchRessac({ env: { RESSAC_OLLAMA_URL: "http://127.0.0.1:9" }, firstTimeNotes: notes });
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
@@ -84,7 +84,7 @@ describe("hints", () => {
       await click(m, '[data-testid="settings-button"]');
       await click(m, '[data-testid="settings-nav-privacy"]');
       await click(m, '[data-testid="settings-hints"]');
-      const tab = Object.values((await state(m)).tabs).find((t) => t.url === "webaios://settings")!;
+      const tab = Object.values((await state(m)).tabs).find((t) => t.url === "ressac://settings")!;
       await dispatch(m, { type: "closeTab", id: tab.id });
     };
     await flip();

@@ -26,7 +26,7 @@ function topDocumentResponse(subject: any): { browser: any; auth: boolean } | nu
 }
 
 /**
- * Notes the visits of this window's WebAiOs tabs: each committed top-level location (a redirect gives only its target,
+ * Notes the visits of this window's Ressac tabs: each committed top-level location (a redirect gives only its target,
  * an in-page change or pushState each new URL), then the title as the tab's label settles. The parking tab has no TAB_ID.
  * Also retains the page's text for the agent's memory, CAPTURE_DELAY_MS after a page settles:
  * never for a private space, an error page or an authenticated one; URL and space are checked again after the read.
@@ -67,7 +67,7 @@ export function trackVisits(gBrowser: any, history: History, context: (id: strin
       return browser.currentURI?.spec === url && c && !c.private && c.spaceId === spaceId;
     };
     if (!stillHere()) return;
-    const actor = browser.browsingContext.currentWindowGlobal.getActor("WebAiOsPage");
+    const actor = browser.browsingContext.currentWindowGlobal.getActor("RessacPage");
     const parts: PageParts | undefined = await actor.sendQuery("getParts", { video: isYoutubeVideo(url) });
     // An actor built before getParts existed answers nothing: fall back to the body text alone.
     const text = parts ? composeText(parts) : String((await actor.sendQuery("getText"))?.text ?? "");

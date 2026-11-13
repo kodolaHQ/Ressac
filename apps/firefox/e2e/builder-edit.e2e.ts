@@ -5,12 +5,12 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { dispatch, state, waitFor, waitReady } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { click, inUi, keyDown, keyUp, missingApi, pressKeys, typeText, waitUi } from "./ui";
 import { nodes, openBuilder, readWorkflow, widgetDir, writeWidget } from "./workflows";
 
-// The workflow builder on webaios://workflow/<widget>, opened from the home page's widget menu.
+// The workflow builder on ressac://workflow/<widget>, opened from the home page's widget menu.
 
 /** A workflow shipped by the agent, without positions: a page, its links taken by code, sorted by Kev, then their texts. */
 const WATCH_WORKFLOW = {
@@ -37,7 +37,7 @@ const overlap = (a: Box, b: Box) => a.x < b.x + b.width && b.x < a.x + a.width &
 const snapshot = async (dir: string) => (await Promise.all((await readdir(dir)).map(async (f) => `${f}:${(await stat(path.join(dir, f))).mtimeMs}`))).sort();
 
 let dataDir: string;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 
 // Local test servers: the site the widgets read, a fake Kev (an « IA » text scores 0.9) and a fake Ollama without Gemma.
@@ -102,7 +102,7 @@ beforeAll(async () => {
   });
   ollama = await listen((_req, res) => void res.writeHead(200, { "Content-Type": "application/json" }).end('{"models":[]}'));
 
-  dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-builder-"));
+  dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-builder-"));
   await writeWidget(dataDir, "veille", {
     name: "Veille",
     harvest: { minutes: 60 },
@@ -122,7 +122,7 @@ beforeAll(async () => {
     name: "Compte",
     harvest: { minutes: 60 },
     declaration: { sources: { account: ["127.0.0.1"], public: [], web: false }, config: { url: `${site.url}/lire-cookie?compte` } },
-    files: { "harvest.mjs": "export default async (webaios) => ({ vu: (await webaios.readPage(webaios.config.url, { account: true })).title });" },
+    files: { "harvest.mjs": "export default async (ressac) => ({ vu: (await ressac.readPage(ressac.config.url, { account: true })).title });" },
   });
   await rm(dataOf("compte"), { recursive: true });
   await writeWidget(dataDir, "casse", { name: "Cassé", harvest: { minutes: 60 }, workflow: '{ "version": 1, "blocks": [ { "id": "page", "type": "source.pa' });
@@ -143,7 +143,7 @@ beforeAll(async () => {
       ],
     },
   });
-  w = await launchWebAiOs({ dataDir, height: 1400, env: { WEBAIOS_KEV_URL: kev.url, WEBAIOS_OLLAMA_URL: ollama.url, WEBAIOS_TEST_LOCAL_ADDRESSES: "1" } });
+  w = await launchRessac({ dataDir, height: 1400, env: { RESSAC_KEV_URL: kev.url, RESSAC_OLLAMA_URL: ollama.url, RESSAC_TEST_LOCAL_ADDRESSES: "1" } });
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
@@ -158,7 +158,7 @@ afterEach(async () => {
   // The sidebar's own confirm back (answerConfirm replaced it).
   await inUi(m, "if (ui.realConfirm) ui.confirm = ui.realConfirm; delete ui.realConfirm; delete ui.questions;");
   // Every builder is named « Veille »: one builder tab at a time, so « Workflow — Veille » is this test's.
-  for (const o of Object.values((await state(m)).tabs)) if (o.url.startsWith("webaios://workflow/")) await dispatch(m, { type: "closeTab", id: o.id });
+  for (const o of Object.values((await state(m)).tabs)) if (o.url.startsWith("ressac://workflow/")) await dispatch(m, { type: "closeTab", id: o.id });
 });
 
 /** Back to the home page of the window. */
@@ -309,22 +309,22 @@ describe("the workflow builder", () => {
     await openBuilder(m, "veille");
     await home();
     await openBuilder(m, "veille");
-    const tabs = Object.values((await state(m)).tabs).filter((o) => o.url === "webaios://workflow/veille");
+    const tabs = Object.values((await state(m)).tabs).filter((o) => o.url === "ressac://workflow/veille");
     expect(tabs.map((o) => o.title)).toEqual(["Workflow — Veille"]);
   });
 
   it("⌘J and ✦ on a builder tab show its Agent tab and open the agent panel, never closing it", async () => {
     await home();
     await openBuilder(m, "veille");
-    const panelShown = () => m.execute<boolean>("return !document.getElementById('webaios-agent').hidden");
+    const panelShown = () => m.execute<boolean>("return !document.getElementById('ressac-agent').hidden");
     const agentTab = () => inUi<string | null>(m, "return doc.querySelector('[data-testid=\"agent-tab\"]')?.getAttribute('aria-selected')");
     // Leaving the home page closed the panel it had opened.
-    await waitFor(m, "return document.getElementById('webaios-agent').hidden", (v) => v === true);
+    await waitFor(m, "return document.getElementById('ressac-agent').hidden", (v) => v === true);
     expect(await agentTab()).toBe("false");
     await pressKeys(m, "Meta+j");
-    await waitFor(m, "return !document.getElementById('webaios-agent').hidden", (v) => v === true);
+    await waitFor(m, "return !document.getElementById('ressac-agent').hidden", (v) => v === true);
     expect(await waitUi(m, "return doc.querySelector('[data-testid=\"agent-tab\"]')?.getAttribute('aria-selected') === 'true'")).toBe(true);
-    expect(await m.execute("return document.activeElement?.id")).toBe("webaios-agent");
+    expect(await m.execute("return document.activeElement?.id")).toBe("ressac-agent");
     await pressKeys(m, "Meta+j");
     await click(m, '[data-testid="agent-button"]');
     await new Promise((r) => setTimeout(r, 300));
@@ -382,7 +382,7 @@ describe("the workflow builder", () => {
     await click(m, '[data-testid="palette-code"]');
     await waitCount("node-code", 1);
     await saved();
-    expect(await readFile(path.join(widgetDir(dataDir, "add-code"), "code.mjs"), "utf8")).toBe("export default async (input, webaios) => {\n  return input;\n};\n");
+    expect(await readFile(path.join(widgetDir(dataDir, "add-code"), "code.mjs"), "utf8")).toBe("export default async (input, ressac) => {\n  return input;\n};\n");
     const block = (await readWorkflow(dataDir, "add-code")).blocks.find((x: { id: string }) => x.id === "code");
     expect(block).toMatchObject({ type: "code", params: { source: "code.mjs" } });
   });
@@ -730,7 +730,7 @@ describe("the workflow builder", () => {
     await pressKeys(m, "Meta+ArrowDown");
     await typeText(m, " ");
     await waitCount("code-unsaved", 1);
-    const tabs = async () => Object.values((await state(m)).tabs).filter((o) => o.url === "webaios://workflow/close").length;
+    const tabs = async () => Object.values((await state(m)).tabs).filter((o) => o.url === "ressac://workflow/close").length;
 
     // Firefox shows the sidebar's confirm() as a modal prompt (a WebDriver user prompt), with the confirm's text.
     await pressKeysLater("Meta+w");
@@ -760,9 +760,9 @@ describe("the workflow builder", () => {
     await click(m, '[data-testid="removal-confirmation"] button', { text: "Retirer" });
     await waitUi(m, `return !doc.querySelector('[data-testid="widget-gone"]')`);
     // The home page hides it at once; the host moves its folder to the trash, then says the home page changed.
-    await waitUi(m, `return !(await ui.webaios.home.read()).widgets.some((w) => w.id === "gone")`);
+    await waitUi(m, `return !(await ui.ressac.home.read()).widgets.some((w) => w.id === "gone")`);
     await sleep(300);
-    expect(Object.values((await state(m)).tabs).some((o) => o.url === "webaios://workflow/gone")).toBe(true);
+    expect(Object.values((await state(m)).tabs).some((o) => o.url === "ressac://workflow/gone")).toBe(true);
 
     // The agent writes a new widget under the same id, with another workflow.
     await writeWidget(dataDir, "gone", {

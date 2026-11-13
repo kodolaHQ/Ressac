@@ -120,11 +120,11 @@ export const SITE_HOME = `<!doctype html><meta charset="utf-8"><title>Accueil</t
 
 /** Chrome-context expression: the window of site app `id` (the attribute set by setupSiteWindow), or undefined. */
 export const siteWindowExpr = (id: string) =>
-  `[...Services.wm.getEnumerator("navigator:browser")].find((w) => w.document.documentElement.getAttribute("webaios-site") === ${JSON.stringify(id)})`;
+  `[...Services.wm.getEnumerator("navigator:browser")].find((w) => w.document.documentElement.getAttribute("ressac-site") === ${JSON.stringify(id)})`;
 
 /** How many windows app `id` has open (chrome context). */
 export const siteWindowCount = (m: Marionette, id: string) =>
-  m.execute<number>(`return [...Services.wm.getEnumerator("navigator:browser")].filter((w) => w.document.documentElement.getAttribute("webaios-site") === arguments[0]).length;`, [id]);
+  m.execute<number>(`return [...Services.wm.getEnumerator("navigator:browser")].filter((w) => w.document.documentElement.getAttribute("ressac-site") === arguments[0]).length;`, [id]);
 
 /**
  * Runs `body` (an async function body, chrome context) with `win` = the app's window and `doc` = its bar's document
@@ -136,7 +136,7 @@ export function inSiteBar<T = unknown>(m: Marionette, id: string, body: string, 
       let win, frame;
       for (let i = 0; i < 100; i++) {
         win = ${siteWindowExpr(id)};
-        frame = win?.document.getElementById("webaios-site-bar");
+        frame = win?.document.getElementById("ressac-site-bar");
         if (frame?.contentDocument?.readyState === "complete" && frame.contentDocument.documentURI.startsWith("chrome:")) break;
         await new Promise((r) => setTimeout(r, 100));
       }
@@ -167,12 +167,12 @@ export async function inBrowser<T>(m: Marionette, browser: string, script: strin
     // The script becomes the handler of a button on top of the page; a trusted click runs it.
     await m.execute(
       `const b = document.createElement("button");
-       b.id = "webaios-test-gesture";
+       b.id = "ressac-test-gesture";
        b.style.cssText = "position: fixed; left: 0; top: 0; width: 20px; height: 20px; z-index: 2147483647";
        b.onclick = () => { b.remove(); window.__gestureResult = (function () { ${script} })(); };
        document.documentElement.append(b);`,
     );
-    const found = await m.command<{ value: Record<string, string> }>("WebDriver:FindElement", { using: "css selector", value: "#webaios-test-gesture" });
+    const found = await m.command<{ value: Record<string, string> }>("WebDriver:FindElement", { using: "css selector", value: "#ressac-test-gesture" });
     await m.command("WebDriver:PerformActions", {
       actions: [{ type: "pointer", id: "mouse", parameters: { pointerType: "mouse" }, actions: [{ type: "pointerMove", origin: found.value, x: 0, y: 0 }, { type: "pointerDown", button: 0 }, { type: "pointerUp", button: 0 }] }],
     });

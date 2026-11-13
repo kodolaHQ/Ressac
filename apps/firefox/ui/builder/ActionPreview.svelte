@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { PageAction } from "@webaios/kernel";
+  import type { PageAction } from "@ressac/kernel";
   import { NO_RESULT } from "../../shared/actions";
   import PageRender from "../action/PageRender.svelte";
   import { actionContext } from "../action/types";
@@ -51,7 +51,7 @@
 </div>
 
 <style>
-  .preview { position: absolute; left: 12px; bottom: 12px; z-index: 4; display: flex; flex-direction: column; gap: 4px; padding: 6px; border-radius: 16px; border: 1px solid var(--glass-edge); background: var(--glass-dense); box-shadow: var(--modal-shadow); animation: webaios-rise var(--spring-d) var(--spring) backwards; width: 480px; max-width: calc(100% - 24px); }
+  .preview { position: absolute; left: 12px; bottom: 12px; z-index: 4; display: flex; flex-direction: column; gap: 4px; padding: 6px; border-radius: 16px; border: 1px solid var(--glass-edge); background: var(--glass-dense); box-shadow: var(--modal-shadow); animation: ressac-rise var(--spring-d) var(--spring) backwards; width: 480px; max-width: calc(100% - 24px); }
   .page { max-height: 360px; overflow: auto; border-radius: 12px; background: var(--bg); zoom: 0.75; }
   .muted { margin: 0; font-size: 11px; color: var(--text-muted); }
   .mention { max-width: 360px; }

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// WebAiOs default prefs, included at the end of firefox.js.
+// Ressac default prefs, included at the end of firefox.js.
 
 // Browser developer tools (for developers and agents); remote connections still ask for confirmation.
 pref("devtools.chrome.enabled", true);
@@ -34,5 +34,5 @@ pref("browser.ctrlTab.sortByRecentlyUsed", false);
 pref("general.useragent.compatMode.firefox", true);
 
 // Crash and error reports (chrome/store/telemetry.ts): on unless turned off; the first-run notice says so once.
-pref("webaios.telemetry.enabled", true);
-pref("webaios.telemetry.noticeShown", false);
+pref("ressac.telemetry.enabled", true);
+pref("ressac.telemetry.noticeShown", false);

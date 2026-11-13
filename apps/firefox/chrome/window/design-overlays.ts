@@ -10,13 +10,13 @@ import { cutFrameNetwork } from "./frame-network";
 // Bundled in the store (it outlives each window): every frame is made in the window `show` names.
 
 const XHTML = "http://www.w3.org/1999/xhtml";
-const SRC = "chrome://browser/content/webaios/sidebar.html?overlay";
-/** Spike S3's cart column of a main window: the page shrinks by it (window.css, --webaios-panier). */
+const SRC = "chrome://browser/content/ressac/sidebar.html?overlay";
+/** Spike S3's cart column of a main window: the page shrinks by it (window.css, --ressac-panier). */
 export const COLUMN_WIDTH = 300;
 
 type Mode = OverlayContext["mode"];
 type Place = { x: number; y: number; width: number; height: number };
-type Frame = HTMLIFrameElement & { webaiosOverlay?: unknown };
+type Frame = HTMLIFrameElement & { ressacOverlay?: unknown };
 
 interface Overlay {
   win: Window;
@@ -54,14 +54,14 @@ export function createOverlays(o: { design: DesignService; host: Pick<AgentHost,
     if (existing?.isConnected) return existing;
     const doc = ov.win.document;
     const f = doc.createElementNS(XHTML, "iframe") as Frame;
-    f.id = kind === "panel" ? "webaios-design-volet" : "webaios-design-calque";
+    f.id = kind === "panel" ? "ressac-design-volet" : "ressac-design-calque";
     // Out of the flow before it is appended (spike S8): in #browser's flex row a default iframe pushes the page aside.
     f.style.cssText = "position: fixed; z-index: 3; border: 0; background: transparent; display: none";
     doc.getElementById("browser")!.append(f);
     const mayLoad = cutFrameNetwork(f);
     const t = targetOf(key);
     const api = kind === "panel" ? overlayApi({ ...o, modes: ["basket"], cancel: () => columnClosed(key) }, t) : overlayApi({ ...o, modes: overlayModes(key) }, t);
-    f.webaiosOverlay = { api };
+    f.ressacOverlay = { api };
     // A bubble shown while the frame still loads: the keyboard once its document is there.
     if (kind === "overlay") f.addEventListener("load", () => ov.places.bubble && f.focus());
     if (mayLoad) f.src = SRC;
@@ -93,7 +93,7 @@ export function createOverlays(o: { design: DesignService; host: Pick<AgentHost,
       if (!ov) overlays.set(key, (ov = { win, places: {} }));
       const t = targetOf(key);
       if (inColumn(key, ctx.mode)) {
-        win.document.documentElement.style.setProperty("--webaios-basket", `${COLUMN_WIDTH}px`);
+        win.document.documentElement.style.setProperty("--ressac-basket", `${COLUMN_WIDTH}px`);
         frame(key, ov, "panel").style.display = "";
         return;
       }
@@ -118,7 +118,7 @@ export function createOverlays(o: { design: DesignService; host: Pick<AgentHost,
       if (!ov) return;
       if (inColumn(key, mode)) {
         if (ov.panel) ov.panel.style.display = "none";
-        if (!ov.win.closed) ov.win.document.documentElement.style.removeProperty("--webaios-basket");
+        if (!ov.win.closed) ov.win.document.documentElement.style.removeProperty("--ressac-basket");
         return;
       }
       delete ov.places[mode];
@@ -134,7 +134,7 @@ export function createOverlays(o: { design: DesignService; host: Pick<AgentHost,
       if (ov.win.closed) return;
       ov.overlay?.remove();
       ov.panel?.remove();
-      ov.win.document.documentElement.style.removeProperty("--webaios-basket");
+      ov.win.document.documentElement.style.removeProperty("--ressac-basket");
     },
 
     onColumnClosed(t, cb) {

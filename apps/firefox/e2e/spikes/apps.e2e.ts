@@ -1,21 +1,21 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { dispatch, state, waitFor, waitReady } from "../firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "../launch";
+import { launchRessac, type LaunchedRessac } from "../launch";
 import type { Marionette } from "../marionette";
 import { inBrowser } from "../sites";
 
 // Plan 35's spike S8 (docs/superpowers/notes/2026-11-06-mode-design-firefox-spikes.md, « S8, les applis de l'agent »):
 // an agent app's window as store/sites.ts builds a site app's (apps-spike.sys.mjs, loaded in the parent from this
 // folder: no build:ui), its badge, its favicon's source, its request guard, its container, and quitting.
-// Security lines are asserted; the rest is printed as `[spike] <what>: <JSON>`. Rerun with WEBAIOS_SPIKE=1.
+// Security lines are asserted; the rest is printed as `[spike] <what>: <JSON>`. Rerun with RESSAC_SPIKE=1.
 //
 // Ports 5315–5317 on [::1] only: OrbStack holds 127.0.0.1:5300–5319 (the agent container's app range), so
 // `localhost` could reach the real container. The origin rule is the same (scheme, host, port).
 
 const note = (what: string, v: unknown) => console.log(`[spike] ${what}: ${JSON.stringify(v)}`);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const MODULE = "resource://webaios-spike-apps/apps-spike.sys.mjs";
+const MODULE = "resource://ressac-spike-apps/apps-spike.sys.mjs";
 const ATTEMPT = "http://[::1]:5315";
 const OTHER_A = "http://[::1]:5316";
 const OTHER = "http://[::1]:5317";
@@ -52,14 +52,14 @@ function route(port: number, req: IncomingMessage, res: ServerResponse): unknown
   res.writeHead(404).end();
 }
 
-describe.skipIf(!process.env.WEBAIOS_SPIKE)("agent app windows spike S8 (plan 35)", () => {
+describe.skipIf(!process.env.RESSAC_SPIKE)("agent app windows spike S8 (plan 35)", () => {
   const servers: Server[] = [];
-  let w: LaunchedWebAiOs;
+  let w: LaunchedRessac;
   let m: Marionette;
 
   const chrome = <T = any>(body: string, args: unknown[] = []) =>
     m.execute<T>(`return (async () => { const S = ChromeUtils.importESModule("${MODULE}"); ${body} })();`, args);
-  const appWin = (d: string) => `[...Services.wm.getEnumerator("navigator:browser")].find((x) => x.document.documentElement.getAttribute("webaios-spike-app") === "${d}")`;
+  const appWin = (d: string) => `[...Services.wm.getEnumerator("navigator:browser")].find((x) => x.document.documentElement.getAttribute("ressac-spike-app") === "${d}")`;
   const view = (d: string) => `${appWin(d)}.gBrowser.selectedBrowser`;
   const inView = <T = any>(d: string, script: string, gesture = false) => inBrowser<T>(m, view(d), script, { gesture });
   const viewUrl = (d: string) => m.execute<string>(`return ${view(d)}.currentURI.spec;`);
@@ -82,14 +82,14 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("agent app windows spike S8 (plan 35
       await new Promise<void>((ok, ko) => s.once("error", ko).listen(port, "::1", ok));
       servers.push(s);
     }
-    w = await launchWebAiOs();
+    w = await launchRessac();
     m = w.marionette;
     await m.setContext("chrome");
     await waitReady(m);
     await m.execute(
       `const res = Services.io.getProtocolHandler("resource").QueryInterface(Ci.nsIResProtocolHandler);
        const { FileUtils } = ChromeUtils.importESModule("resource://gre/modules/FileUtils.sys.mjs");
-       res.setSubstitution("webaios-spike-apps", Services.io.newFileURI(new FileUtils.File(arguments[0])));`,
+       res.setSubstitution("ressac-spike-apps", Services.io.newFileURI(new FileUtils.File(arguments[0])));`,
       [import.meta.dirname],
     );
     const opened = await chrome(`return { essai: await S.open("essai", "${ATTEMPT}"), autre: await S.open("autre", "${OTHER_A}") };`);
@@ -306,7 +306,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("agent app windows spike S8 (plan 35
   // --- Quitting ----------------------------------------------------------------------------------------------------
 
   it("quit: the app window closes, then a profile-before-change blocker (the host's stop) has time to stop the apps", async () => {
-    const hostPid = await m.execute<number>(`return (async () => (await ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready).agent.pid)();`);
+    const hostPid = await m.execute<number>(`return (async () => (await ChromeUtils.importESModule("chrome://browser/content/ressac/store.sys.mjs").ready).agent.pid)();`);
     // A stand-in for the host's apps stop: a subprocess (as the host's docker exec), during profile-before-change, as
     // the existing « stop the agent host » blocker; and the app window's close, noted with its time.
     await m.execute(
@@ -316,7 +316,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("agent app windows spike S8 (plan 35
        const appWin = ${appWin("essai")};
        Services.ww.registerNotification({ observe: (w, topic) => topic === "domwindowclosed" && w === appWin && curl("/closed?t=" + Date.now()) });
        AsyncShutdown.profileBeforeChange.addBlocker("spike: stop the agent apps", async () => {
-         const open = [...Services.wm.getEnumerator("navigator:browser")].filter((x) => x.document.documentElement.hasAttribute("webaios-spike-app")).length;
+         const open = [...Services.wm.getEnumerator("navigator:browser")].filter((x) => x.document.documentElement.hasAttribute("ressac-spike-app")).length;
          await curl("/stop?appWindowsOpen=" + open + "&t=" + Date.now());
        });`,
       [OTHER],

@@ -3,22 +3,22 @@ import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { BARS, probe, startActionServers, writeComponent } from "./actions";
 import { waitReady } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { inUi } from "./ui";
 
 // Plan 33's spike (docs/superpowers/notes/2026-11-06-actions-firefox-spike.md): S1, an agent component in a sandboxed
 // frame of the sidebar, served by store.actionMedia.serve; S2, the result images' anonymous channel. Rerun with
-// WEBAIOS_SPIKE=1 after a Firefox version change and compare: the security lines are asserted.
+// RESSAC_SPIKE=1 after a Firefox version change and compare: the security lines are asserted.
 
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const note = (what: string, v: unknown) => console.log(`[spike] ${what}: ${JSON.stringify(v)}`);
 /** Runs `body` (an async function body) in the chrome context. */
 const chrome = <T = any>(m: Marionette, body: string, args: unknown[] = []) => m.execute<T>(`return (async () => { ${body} })();`, args);
 
-describe.skipIf(!process.env.WEBAIOS_SPIKE)("actions spike", () => {
+describe.skipIf(!process.env.RESSAC_SPIKE)("actions spike", () => {
   let servers: Awaited<ReturnType<typeof startActionServers>>;
-  let w: LaunchedWebAiOs;
+  let w: LaunchedRessac;
   let m: Marionette;
   /** What reached the S1 probe's server: requests, WebSocket upgrades, TCP connections. */
   const reached = { requests: [] as string[], upgrades: [] as string[], connections: 0 };
@@ -40,7 +40,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("actions spike", () => {
     probeServer.on("connection", () => reached.connections++);
     await new Promise<void>((ok) => probeServer.listen(0, "127.0.0.1", ok));
     probeBase = `http://127.0.0.1:${(probeServer.address() as AddressInfo).port}`;
-    w = await launchWebAiOs({ env: { WEBAIOS_TEST_ACTION_IMAGES: servers.images.url } });
+    w = await launchRessac({ env: { RESSAC_TEST_ACTION_IMAGES: servers.images.url } });
     m = w.marionette;
     await m.setContext("chrome");
     await waitReady(m);
@@ -65,13 +65,13 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("actions spike", () => {
       f.style.cssText = "position: fixed; left: 0; top: 0; width: 400px; height: 300px; border: none";
       const got = [];
       const listener = (e) => got.push({ detail: e.detail, fromFrame: e.target === f.contentWindow });
-      ui.windowRoot.addEventListener("webaios-component", listener, true, true);
+      ui.windowRoot.addEventListener("ressac-component", listener, true, true);
       doc.documentElement.append(f);
       f.src = src;
       for (let i = 0; i < 100 && !(f.contentDocument?.documentURI === src && f.contentDocument.readyState === "complete"); i++) await new Promise((r) => setTimeout(r, 100));
       f.contentWindow.postMessage({ type: "component", props: arguments[1], theme: "light", width: 400 }, "*");
       await new Promise((r) => setTimeout(r, arguments[2]));
-      ui.windowRoot.removeEventListener("webaios-component", listener, true);
+      ui.windowRoot.removeEventListener("ressac-component", listener, true);
       const fd = f.contentDocument;
       const out = { src, loaded: fd?.documentURI, origin: fd?.defaultView.origin, csp: !!fd?.querySelector('meta[http-equiv="Content-Security-Policy"]'),
         titre: fd?.getElementById("titre")?.textContent ?? null, rects: fd ? fd.querySelectorAll("rect").length : -1,
@@ -85,7 +85,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("actions spike", () => {
   it("S1: AGENTS.md's « barres » draws with its props; its height reaches the chrome on the window root", async () => {
     const r = await mount("barres", { title: "Ventes", values: [{ label: "Lundi", value: 3 }, { label: "Mardi", value: 5 }] }, 500);
     note("S1 barres", r);
-    expect(r.src).toMatch(/^resource:\/\/webaios-component-barres\/component-\d+\.html$/);
+    expect(r.src).toMatch(/^resource:\/\/ressac-component-barres\/component-\d+\.html$/);
     expect(r.origin).toBe("null");
     expect(r.titre).toBe("Ventes");
     expect(r.rects).toBe(2);
@@ -95,7 +95,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("actions spike", () => {
     const after = await chrome(
       m,
       `const h = Services.io.getProtocolHandler("resource").QueryInterface(Ci.nsIResProtocolHandler);
-      return { substitution: h.hasSubstitution("webaios-component-barres"), copies: await IOUtils.exists(PathUtils.join(arguments[0], "webaios-components", "barres")) };`,
+      return { substitution: h.hasSubstitution("ressac-component-barres"), copies: await IOUtils.exists(PathUtils.join(arguments[0], "ressac-components", "barres")) };`,
       [w.dataDir],
     );
     note("S1 after release", after);

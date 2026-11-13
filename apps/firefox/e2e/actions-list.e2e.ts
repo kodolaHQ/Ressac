@@ -6,7 +6,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import type { Action } from "../shared/api";
 import { actionsDataDir, EXECUTION, runsOnDisk, startActionServers, tid, uiQueries, waitKernel, writeResult, writeRunnableAction } from "./actions";
 import { dispatch, state, waitReady } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { click, inUi, missingApi, pressKeys, waitUi } from "./ui";
 
@@ -17,7 +17,7 @@ const NAME_TICKETS = "Mes tickets GitLab à traiter";
 const YESTERDAY = "2026-10-30T08:00:00.000Z";
 
 let servers: Awaited<ReturnType<typeof startActionServers>>;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 let q: ReturnType<typeof uiQueries>;
 const kept: string[] = [];
@@ -49,11 +49,11 @@ async function writeTwoActions(d: string): Promise<void> {
   await writeRunnableAction(d, "leboncoin", { name: "Leboncoin", input: "Recherche", code: "export default async () => [{ page: { titre: 'Annonce' } }];" });
 }
 async function launch(prepare: (dataDir: string) => Promise<void>): Promise<void> {
-  const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
   kept.push(dataDir);
   await prepare(dataDir);
   // A fake Gemma and Kev: no layout request leaves for a real Ollama.
-  w = await launchWebAiOs({ dataDir, env: { WEBAIOS_OLLAMA_URL: servers.ollama.url, WEBAIOS_KEV_URL: servers.kev.url, WEBAIOS_TEST_LOCAL_ADDRESSES: "1" } });
+  w = await launchRessac({ dataDir, env: { RESSAC_OLLAMA_URL: servers.ollama.url, RESSAC_KEV_URL: servers.kev.url, RESSAC_TEST_LOCAL_ADDRESSES: "1" } });
   m = w.marionette;
   q = uiQueries(m);
   await m.setContext("chrome");
@@ -149,7 +149,7 @@ describe("the Actions page", () => {
     await waitUi(m, "return !!doc.querySelector('[data-testid^=\"tab-\"]') && [...doc.querySelectorAll('[data-testid^=\"tab-\"]')].some((e) => e.textContent.includes(arguments[0]));", [
       `Workflow — ${NAME_TICKETS}`,
     ]);
-    expect(Object.values((await state(m)).tabs).filter((o) => o.url === "webaios://workflow/action/tickets")).toHaveLength(1);
+    expect(Object.values((await state(m)).tabs).filter((o) => o.url === "ressac://workflow/action/tickets")).toHaveLength(1);
     await visible(tid("builder"));
   });
 

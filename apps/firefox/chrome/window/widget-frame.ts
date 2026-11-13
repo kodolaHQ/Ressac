@@ -11,9 +11,9 @@ export const DISPLAY_DENIED =
   '<!doctype html><meta charset="utf-8"><p style="font: 13px system-ui; color-scheme: light dark; color: light-dark(#c9473e, #e5736b)">Affichage refusé : il contient &lt;link&gt;, &lt;meta http-equiv&gt; ou des règles de spéculation, qui feraient sortir des données. Voir AGENTS.md.</p>';
 
 const ID_WIDGET = /^[a-z0-9-]+$/;
-const PREFIX = "webaios-widget-";
+const PREFIX = "ressac-widget-";
 
-/** The name of a widget's resource:// substitution: `webaios-widget-<id>`. */
+/** The name of a widget's resource:// substitution: `ressac-widget-<id>`. */
 function substitutionName(id: string): string {
   return `${PREFIX}${id}`;
 }
@@ -23,19 +23,19 @@ export function displayUrl(id: string, mtime: number): string {
   return `resource://${PREFIX}${id}/display-${mtime}.html`;
 }
 
-/** The folder of a widget's copies: `<dataDir>/webaios-widgets/<id>/`. */
+/** The folder of a widget's copies: `<dataDir>/ressac-widgets/<id>/`. */
 function copiesFolder(dataDir: string, id: string): string {
-  return PathUtils.join(dataDir, "webaios-widgets", id);
+  return PathUtils.join(dataDir, "ressac-widgets", id);
 }
 
 /**
- * The copies folder, created then confined to `<dataDir>/webaios-widgets`: a copies folder that is a symbolic
+ * The copies folder, created then confined to `<dataDir>/ressac-widgets`: a copies folder that is a symbolic
  * link is refused. Returns its real path, where the copies are written.
  */
 async function confinedCopiesFolder(dataDir: string, id: string): Promise<string | null> {
   const folder = copiesFolder(dataDir, id);
   await IOUtils.makeDirectory(folder, { createAncestors: true, ignoreExisting: true });
-  const root = realPath(PathUtils.join(dataDir, "webaios-widgets"));
+  const root = realPath(PathUtils.join(dataDir, "ressac-widgets"));
   const real = realPath(folder);
   return root && real && real.startsWith(root + "/") ? real : null;
 }
@@ -172,7 +172,7 @@ function widgetGuard(pattern: string): void {
   }
   // Firefox: a sandboxed resource frame cannot post to its chrome parent (measured: Permission denied to access
   // property "postMessage"). The widget's link goes through this page-world helper, a custom event the chrome listens for.
-  w.webaiosOpen = (url: unknown) => w.dispatchEvent(new CustomEvent("webaios-open", { detail: String(url) }));
+  w.ressacOpen = (url: unknown) => w.dispatchEvent(new CustomEvent("ressac-open", { detail: String(url) }));
   // Last: see the comment on widgetGuard.
   const absents = [
     "RTCPeerConnection",
@@ -247,7 +247,7 @@ function substitute(id: string, folder: string | null): void {
 
 /**
  * Prepares a widget's display: writes its sanitized copy if the source's mtime changed, then sets the
- * `resource://webaios-widget-<id>/` substitution. Returns the frame's URL, or null if the display is absent or leaves its
+ * `resource://ressac-widget-<id>/` substitution. Returns the frame's URL, or null if the display is absent or leaves its
  * folder.
  */
 export async function prepareWidget(dataDir: string, id: string): Promise<string | null> {
@@ -263,7 +263,7 @@ export async function prepareWidget(dataDir: string, id: string): Promise<string
   try {
     const real = await confinedCopiesFolder(dataDir, id);
     if (!real) {
-      console.warn(`[widget] copies folder of ${id} outside <dataDir>/webaios-widgets: refused`);
+      console.warn(`[widget] copies folder of ${id} outside <dataDir>/ressac-widgets: refused`);
       return null;
     }
     const copy = PathUtils.join(real, `display-${mtime}.html`);

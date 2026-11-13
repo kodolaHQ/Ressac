@@ -129,7 +129,7 @@ it("memorySnapshot leaves a memory front attached by someone else (the person's 
   try {
     const { devtools } = setup({ ensure: async () => browserAt("http://127.0.0.1:5300/") });
     const r = JSON.parse(String(await devtools.call(devtools.owner().token, "memorySnapshot", ["t"])));
-    expect(r).toEqual({ format: "webaios-firefox-census", total: 80, byConstructor: [{ name: "Object", count: 2, size: 64 }, { name: "strings", count: 1, size: 16 }, { name: "scripts", count: 0, size: 0 }] });
+    expect(r).toEqual({ format: "ressac-firefox-census", total: 80, byConstructor: [{ name: "Object", count: 2, size: 64 }, { name: "strings", count: 1, size: 16 }, { name: "scripts", count: 0, size: 0 }] });
     expect(mem.state).toBe("attached");
     expect(mem.calls).toEqual([]);
   } finally {

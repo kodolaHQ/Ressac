@@ -13,7 +13,7 @@ async function frame() {
   const base = await tempFolder();
   const isPrivate = join(base, "design");
   const homeDir = join(base, "maison");
-  const spaceRoot = join(base, "WebAiOs");
+  const spaceRoot = join(base, "Ressac");
   await mkdir(homeDir, { recursive: true });
   await mkdir(spaceRoot, { recursive: true });
   const options = { ranges: RANGES, spaceRoot: spaceRoot, home: homeDir };
@@ -80,7 +80,7 @@ describe("ExternalRegistry", () => {
     await mkdir(dotdot, { recursive: true });
     await expect(denial(dotdot)).rejects.toThrow(SPACE_FOLDER);
     expect(FOLDER_NOT_ABSOLUTE).toBe("Le dossier doit être un chemin absolu.");
-    expect(SPACE_FOLDER).toBe("Ce dossier est dans l'espace de WebAiOs : ses applis se relisent depuis la page Applications.");
+    expect(SPACE_FOLDER).toBe("Ce dossier est dans l'espace de Ressac : ses applis se relisent depuis la page Applications.");
     expect(r.projects()).toEqual([]);
   });
 
@@ -151,11 +151,11 @@ describe("ExternalRegistry", () => {
     } finally { await chmod(folder, 0o700); }
   });
 
-  test("a external-clients.json under racineEspace/.webaios is never read", async () => {
+  test("a external-clients.json under racineEspace/.ressac is never read", async () => {
     const c = await frame();
     const token = "jeton-pose-par-l-agent";
-    await mkdir(join(c.spaceRoot, ".webaios"), { recursive: true });
-    await writeFile(join(c.spaceRoot, ".webaios", "external-clients.json"), JSON.stringify([
+    await mkdir(join(c.spaceRoot, ".ressac"), { recursive: true });
+    await writeFile(join(c.spaceRoot, ".ressac", "external-clients.json"), JSON.stringify([
       { id: "pirate", name: "p", hash: createHash("sha256").update(token).digest("hex"), created: "2026-11-02T10:00:00Z" },
     ]));
     const r = await ExternalRegistry.open(c.private);

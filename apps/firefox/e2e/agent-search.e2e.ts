@@ -3,13 +3,13 @@ import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from "vitest";
 import { dispatch, state, waitFor } from "./firefox";
 import { callTool } from "./mcp";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
 import { click, inUi, waitUi } from "./ui";
 
 let server: Awaited<ReturnType<typeof startServer>>;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 beforeAll(async () => {
   server = await startServer({
@@ -41,12 +41,12 @@ beforeAll(async () => {
 });
 afterAll(() => server?.close());
 beforeEach(async () => {
-  w = await launchWebAiOs({ env: { WEBAIOS_MEMORY_LOOP: "1", WEBAIOS_TEST_SEARCH_URL: `${server.url}/results.html?q=%s` } });
+  w = await launchRessac({ env: { RESSAC_MEMORY_LOOP: "1", RESSAC_TEST_SEARCH_URL: `${server.url}/results.html?q=%s` } });
   m = w.marionette;
   await m.setContext("chrome");
-  await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+  await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
   // The kernel is up once its MCP config is written.
-  const config = join(w.dataDir, "workspace", ".webaios", "mcp.json");
+  const config = join(w.dataDir, "workspace", ".ressac", "mcp.json");
   for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
     if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
   // The home page's panel starts the agent's session, which takes back every access.
@@ -147,11 +147,11 @@ it("a second search_web returns the second page, never the first", async () => {
 
 it("late results are returned", async () => {
   await w.close();
-  w = await launchWebAiOs({ env: { WEBAIOS_MEMORY_LOOP: "1", WEBAIOS_TEST_SEARCH_URL: `${server.url}/results-late.html?q=%s` } });
+  w = await launchRessac({ env: { RESSAC_MEMORY_LOOP: "1", RESSAC_TEST_SEARCH_URL: `${server.url}/results-late.html?q=%s` } });
   m = w.marionette;
   await m.setContext("chrome");
-  await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
-  const config = join(w.dataDir, "workspace", ".webaios", "mcp.json");
+  await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
+  const config = join(w.dataDir, "workspace", ".ressac", "mcp.json");
   for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
     if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
   const r = (await callTool(w.dataDir, "search_web", { query: "x", goal: "but" })).text;
@@ -161,11 +161,11 @@ it("late results are returned", async () => {
 it("the engine redirecting to another origin: search_web, then read_tab right after a redirect link, read the landed page", async () => {
   await w.close();
   const local = server.url.replace("127.0.0.1", "localhost");
-  w = await launchWebAiOs({ env: { WEBAIOS_MEMORY_LOOP: "1", WEBAIOS_TEST_SEARCH_URL: `${local}/redirige?vers=${server.url}/results-l.html?q=%s` } });
+  w = await launchRessac({ env: { RESSAC_MEMORY_LOOP: "1", RESSAC_TEST_SEARCH_URL: `${local}/redirige?vers=${server.url}/results-l.html?q=%s` } });
   m = w.marionette;
   await m.setContext("chrome");
-  await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
-  const config = join(w.dataDir, "workspace", ".webaios", "mcp.json");
+  await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
+  const config = join(w.dataDir, "workspace", ".ressac", "mcp.json");
   for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
     if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
   const r = (await callTool(w.dataDir, "search_web", { query: "x", goal: "but" })).text;
@@ -210,7 +210,7 @@ it("a target=_blank link in the search tab opens a tab in the agent's profile", 
   await callTool(w.dataDir, "navigate", { id, url: `${server.url}/a.html?q=x` });
   await titleOf(`${server.url}/a.html?q=x`);
   const handle = await m.execute<string>(
-    `const t = gBrowser.tabs.find((t) => t.getAttribute("webaios-tab-id") === arguments[0]);
+    `const t = gBrowser.tabs.find((t) => t.getAttribute("ressac-tab-id") === arguments[0]);
      return ChromeUtils.importESModule("chrome://remote/content/shared/NavigableManager.sys.mjs").NavigableManager.getIdForBrowser(t.linkedBrowser);`,
     [id],
   );
@@ -245,7 +245,7 @@ type Band = { shown: boolean; state: string; text: string; stats: string; hasB: 
 const band = () => m.execute<Band | null>(READ);
 const waitBand = async (ok: (b: Band) => boolean) => (await waitFor<Band | null>(m, READ, (v) => !!v && ok(v)))!;
 const press = (testid: string) => m.execute(`document.querySelector('${BAND} [data-testid="${testid}"]').click();`);
-const halo = () => m.execute<boolean>(`return document.documentElement.hasAttribute("webaios-agent-working")`);
+const halo = () => m.execute<boolean>(`return document.documentElement.hasAttribute("ressac-agent-working")`);
 const otherTab = async () => {
   const windowId = (await state(m)).windows[0]!.id;
   await dispatch(m, { type: "openTab", windowId, url: `${server.url}/lien.html` });
@@ -259,7 +259,7 @@ it("during a read the band shows on the search tab only, with Arrêter", async (
   const b = (await waitBand((v) => v.state === "working" && v.text.startsWith("Lecture")))!;
   expect(b).toMatchObject({ shown: true, label: "Recherche de l'agent", buttons: ["Arrêter"] });
   expect(b.text).toBe("Lecture de 1 page, 0 faite");
-  await waitFor(m, `return document.documentElement.hasAttribute("webaios-agent-working")`, (v) => v === true);
+  await waitFor(m, `return document.documentElement.hasAttribute("ressac-agent-working")`, (v) => v === true);
   expect(b.stats).toMatch(/^\d+ pages? lues? · \d+ s$/);
   // Another tab shown: the band is not (the search goes on).
   await otherTab();
@@ -290,7 +290,7 @@ it("hand_over: the tab comes to the front, the band says the reason, the tab is 
   expect(b.buttons).toEqual(["Continuer", "Arrêter"]);
   expect(await halo()).toBe(false);
   const next = `${server.url}/b.html?q=user`;
-  await m.execute(`const t = gBrowser.tabs.find((t) => t.getAttribute("webaios-tab-id") === arguments[0]); t.linkedBrowser.fixupAndLoadURIString(arguments[1], { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });`, [id, next]);
+  await m.execute(`const t = gBrowser.tabs.find((t) => t.getAttribute("ressac-tab-id") === arguments[0]); t.linkedBrowser.fixupAndLoadURIString(arguments[1], { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });`, [id, next]);
   await titleOf(next);
   await press("search-continue");
   const r = (await handing).text;
@@ -346,11 +346,11 @@ it("hand_over is refused on a tab that is not the search tab", async () => {
 
 it("the band enters and leaves with a transition", async () => {
   await w.close();
-  w = await launchWebAiOs({ prefs: { "ui.prefersReducedMotion": 0 }, env: { WEBAIOS_MEMORY_LOOP: "1", WEBAIOS_TEST_SEARCH_URL: `${server.url}/results.html?q=%s` } });
+  w = await launchRessac({ prefs: { "ui.prefersReducedMotion": 0 }, env: { RESSAC_MEMORY_LOOP: "1", RESSAC_TEST_SEARCH_URL: `${server.url}/results.html?q=%s` } });
   m = w.marionette;
   await m.setContext("chrome");
-  await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
-  const config = join(w.dataDir, "workspace", ".webaios", "mcp.json");
+  await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
+  const config = join(w.dataDir, "workspace", ".ressac", "mcp.json");
   for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
     if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
   // Samples of the band's opacity and the page's top inset at every frame, from before the band exists.

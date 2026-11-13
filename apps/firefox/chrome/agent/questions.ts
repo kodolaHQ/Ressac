@@ -8,7 +8,7 @@ import type { Store } from "../store/store";
 
 type Listener = (pending: PendingRequest[]) => void;
 /** The scheme of a widget page's address. */
-export const SCHEMA_WIDGET = "webaios-widget";
+export const SCHEMA_WIDGET = "ressac-widget";
 
 /** The agent's « lire l'onglet » and extension grant cards waiting for the user. */
 export class Questions {
@@ -87,7 +87,7 @@ export class Questions {
     const fields = { tabId: tabId, windowId: windowId, permissions: ["widget-data" as const], title: o.name, agent: o.agent };
     const target =
       o.kind === "action"
-        ? { origin: `webaios://action/${o.id}`, action: o.id }
+        ? { origin: `ressac://action/${o.id}`, action: o.id }
         : o.kind === "site"
           ? { origin: `${SCHEMA_SITE}://${o.id}`, site: o.id }
           : { origin: `${SCHEMA_WIDGET}://${o.id}`, widget: o.id };

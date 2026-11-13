@@ -157,7 +157,7 @@
   .actions { position: relative; margin-left: auto; }
   .menu { all: unset; width: 22px; height: 22px; display: grid; place-content: center; border-radius: 4px; color: var(--home-text-muted); cursor: pointer; }
   .menu:hover { background: var(--bg-hover); }
-  .list { position: absolute; right: 0; top: 24px; z-index: 3; display: flex; flex-direction: column; min-width: 190px; padding: 4px; border-radius: 12px; border: 1px solid var(--glass-edge); background: var(--glass-dense); box-shadow: var(--modal-shadow); animation: webaios-drop var(--spring-d) var(--spring) backwards; }
+  .list { position: absolute; right: 0; top: 24px; z-index: 3; display: flex; flex-direction: column; min-width: 190px; padding: 4px; border-radius: 12px; border: 1px solid var(--glass-edge); background: var(--glass-dense); box-shadow: var(--modal-shadow); animation: ressac-drop var(--spring-d) var(--spring) backwards; }
   .list button { all: unset; padding: 6px 10px; border-radius: 8px; font-size: 13px; color: var(--home-text); cursor: pointer; }
   .list button:hover { background: var(--bg-hover); }
   .banner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 12px; font-size: 12px; background: var(--bg-hover); }

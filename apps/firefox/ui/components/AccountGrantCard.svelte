@@ -66,7 +66,7 @@
 
 <style>
   .veil { position: fixed; inset: 0; display: grid; place-content: center; background: var(--veil); z-index: 10; }
-  .card { width: min(460px, 90vw); padding: 18px 20px; border-radius: 16px; background: radial-gradient(120% 90% at 0% 0%, color-mix(in oklab, var(--a1) 20%, transparent), transparent 60%), radial-gradient(110% 80% at 100% 0%, color-mix(in oklab, var(--a2) 14%, transparent), transparent 55%), var(--glass-dense); backdrop-filter: blur(30px) saturate(1.8); border: 1px solid var(--glass-edge); color: var(--text); box-shadow: var(--modal-shadow); animation: webaios-drop var(--spring-d) var(--spring) backwards; }
+  .card { width: min(460px, 90vw); padding: 18px 20px; border-radius: 16px; background: radial-gradient(120% 90% at 0% 0%, color-mix(in oklab, var(--a1) 20%, transparent), transparent 60%), radial-gradient(110% 80% at 100% 0%, color-mix(in oklab, var(--a2) 14%, transparent), transparent 55%), var(--glass-dense); backdrop-filter: blur(30px) saturate(1.8); border: 1px solid var(--glass-edge); color: var(--text); box-shadow: var(--modal-shadow); animation: ressac-drop var(--spring-d) var(--spring) backwards; }
   h2 { margin: 0 0 10px; font: 600 17px/1.25 var(--font-display); letter-spacing: -0.01em; }
   p { margin: 0 0 12px; font-size: 13px; color: var(--text-muted); }
   .error { color: var(--in-error); }

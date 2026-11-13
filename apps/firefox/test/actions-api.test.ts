@@ -47,7 +47,7 @@ function setup(answers: Record<string, (p: any) => unknown> = {}) {
     state = apply(state, a, genId);
   };
   const fake = fakeHost(answers);
-  const media = { image: vi.fn(async (_url: string): Promise<string | null> => "data:image/png;base64,"), serve: vi.fn(async (name: string): Promise<string | null> => `resource://webaios-component-${name}/component-1.html`), release: vi.fn(async (_name: string) => {}) };
+  const media = { image: vi.fn(async (_url: string): Promise<string | null> => "data:image/png;base64,"), serve: vi.fn(async (name: string): Promise<string | null> => `resource://ressac-component-${name}/component-1.html`), release: vi.fn(async (_name: string) => {}) };
   const unloads: (() => void)[] = [];
   const options = (win: string) => ({ state: () => state, dispatch, host: fake.host, window: win, untilUnload: (f: () => void) => (unloads.push(f), f), media });
   const api = (win: string) => createActionsApi(options(win));
@@ -154,7 +154,7 @@ describe("createActionsApi", () => {
     const { F, api, calls, state: state } = setup({ "actions.name": (p) => (p.id === "gitlab" ? "GitLab" : null), "actions.launch": () => ({ status: "succeeded", run: "x" }) });
     const a = api(F);
     await a.viewWorkflow("gitlab");
-    expect(Object.values(state().tabs)[0]).toMatchObject({ url: "webaios://workflow/action/gitlab", title: "Workflow — GitLab" });
+    expect(Object.values(state().tabs)[0]).toMatchObject({ url: "ressac://workflow/action/gitlab", title: "Workflow — GitLab" });
     await a.viewWorkflow("inconnue");
     expect(Object.values(state().tabs)).toHaveLength(1);
     expect(await a.launch("leboncoin", "clio")).toEqual({ status: "succeeded", run: "x" });
@@ -403,7 +403,7 @@ describe("createActionsApi", () => {
     expect(await a.open("gitlab", null)).toEqual({ ok: true });
     const tabs = Object.values(state().tabs);
     expect(tabs).toHaveLength(1);
-    expect(tabs[0]).toMatchObject({ url: "webaios://action/gitlab", title: "GitLab" });
+    expect(tabs[0]).toMatchObject({ url: "ressac://action/gitlab", title: "GitLab" });
     expect(launched(calls)).toEqual([{ id: "gitlab", input: null }]);
     expect(await a.open("leboncoin", "clio lyon")).toEqual({ ok: true });
     expect(launched(calls)).toEqual([{ id: "gitlab", input: null }, { id: "leboncoin", input: "clio lyon" }]);
@@ -415,7 +415,7 @@ describe("createActionsApi", () => {
     const a = api(F);
     expect(await a.open("leboncoin", null)).toEqual({ ok: true });
     expect(await a.open("leboncoin", "  ")).toEqual({ ok: true });
-    expect(Object.values(state().tabs).map((o) => o.url)).toEqual(["webaios://action/leboncoin"]);
+    expect(Object.values(state().tabs).map((o) => o.url)).toEqual(["ressac://action/leboncoin"]);
     expect(launched(calls)).toEqual([]);
     expect(await a.open("inconnue", null)).toEqual({ ok: false, error: "Action inconnue" });
   });
@@ -429,7 +429,7 @@ describe("createActionsApi", () => {
     // Another tab comes first; opening again goes back to the action's page.
     set(apply(state(), { type: "openTab", windowId: F, url: "https://a.test/" }, genId));
     expect(await a.open("gitlab", null)).toEqual({ ok: true });
-    expect(Object.values(state().tabs).filter((o) => o.url.startsWith("webaios://action/"))).toHaveLength(1);
+    expect(Object.values(state().tabs).filter((o) => o.url.startsWith("ressac://action/"))).toHaveLength(1);
     expect(state().windows[0]!.active[state().windows[0]!.activeSpace]).toBe(page.id);
     expect(launched(calls)).toEqual([]);
   });
@@ -488,7 +488,7 @@ describe("createActionsApi", () => {
   it("components: each serve is paired with one store release; a private space serves none; unload releases what is left", async () => {
     const s = setup();
     const a = s.api(s.F);
-    expect(await a.serveComponent("barres")).toBe("resource://webaios-component-barres/component-1.html");
+    expect(await a.serveComponent("barres")).toBe("resource://ressac-component-barres/component-1.html");
     await a.serveComponent("barres");
     await a.serveComponent("ecrit");
     a.releaseComponent("barres");
@@ -507,7 +507,7 @@ describe("createActionsApi", () => {
     // Turned private while the store serves: null, and the reference taken is still released.
     const t = setup();
     const c = t.api(t.F);
-    t.media.serve.mockImplementationOnce(async () => (t.turnPrivate(), "resource://webaios-component-x/component-1.html"));
+    t.media.serve.mockImplementationOnce(async () => (t.turnPrivate(), "resource://ressac-component-x/component-1.html"));
     expect(await c.serveComponent("x")).toBeNull();
     c.releaseComponent("x");
     expect(t.media.release).toHaveBeenCalledWith("x");

@@ -21,7 +21,7 @@ test("watchHome calls the callback only once for a burst of writes", async () =>
   expect(calls).toBe(1);
 });
 
-test("watchActions follows ~/WebAiOs/actions and components, once per burst", async () => {
+test("watchActions follows ~/Ressac/actions and components, once per burst", async () => {
   const c = spacePaths(await tempFolder());
   let calls = 0;
   const stop = watchActions(c, () => calls++);

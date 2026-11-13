@@ -90,7 +90,7 @@ export function summary(p: ImportProgress): { title: string; text: string } {
 
 /** Why a type could not be read when no error says it: the engine's migrators only say that it failed. */
 function reason(def: SourceDef, type: ImportType, unreadableFile: boolean): string {
-  if (def.kind === "safari") return "accès refusé : autorisez WebAiOs dans Réglages Système › Confidentialité et sécurité › Accès complet au disque";
+  if (def.kind === "safari") return "accès refusé : autorisez Ressac dans Réglages Système › Confidentialité et sécurité › Accès complet au disque";
   if (type === "passwords" && def.kind === "chromium" && !unreadableFile) return "accès au trousseau refusé";
   // Firefox and Zen are always read from a copy: a lock is not the cause.
   return def.kind === "firefox" ? `profil ${def.name} illisible` : `fichier illisible : fermez ${def.name} puis réessayez`;
@@ -111,7 +111,7 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
   const { MigrationUtils } = ChromeUtils.importESModule(MIGRATION_UTILS);
   const { PlacesUtils } = ChromeUtils.importESModule("resource://gre/modules/PlacesUtils.sys.mjs");
   const BITS: Partial<Record<ImportType, number>> = { bookmarks: MigrationUtils.resourceTypes.BOOKMARKS, history: MigrationUtils.resourceTypes.HISTORY, passwords: MigrationUtils.resourceTypes.PASSWORDS };
-  const testHome = Services.env.get("WEBAIOS_TEST_IMPORT_HOME");
+  const testHome = Services.env.get("RESSAC_TEST_IMPORT_HOME");
   const home = testHome || Services.dirsvc.get("Home", Ci.nsIFile).path;
   const tmp = PathUtils.join(dataDir, "import-tmp");
   // A quit or crash mid-import may have left copies (Login Data, History): never kept. A run waits for it.
@@ -138,7 +138,7 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
       if (!(await IOUtils.exists(path))) continue;
       try {
         if (type === "bookmarks") JSON.parse(await IOUtils.readUTF8(path));
-        else await MigrationUtils.getRowsFromDBWithoutLocks(path, "WebAiOs import check", "SELECT 1 FROM sqlite_master LIMIT 1");
+        else await MigrationUtils.getRowsFromDBWithoutLocks(path, "Ressac import check", "SELECT 1 FROM sqlite_master LIMIT 1");
       } catch {
         return true;
       }
@@ -352,7 +352,7 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
     },
     progress: async () => progress && structuredClone(progress),
     async importPasswordsCsv() {
-      let path = Services.env.get("WEBAIOS_TEST_IMPORT_CSV");
+      let path = Services.env.get("RESSAC_TEST_IMPORT_CSV");
       if (!path) {
         const fp = Cc["@mozilla.org/filepicker;1"].createInstance(Ci.nsIFilePicker);
         fp.init(Services.wm.getMostRecentBrowserWindow()?.browsingContext, "Choisissez l'export de vos mots de passe (CSV)", Ci.nsIFilePicker.modeOpen);

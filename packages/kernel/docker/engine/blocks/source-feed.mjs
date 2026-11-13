@@ -12,18 +12,18 @@ const host = (url) => {
 
 export default {
   perItem: "no",
-  async run({ params, webaios, partial }) {
+  async run({ params, ressac, partial }) {
     const onError = params.onError ?? "skip";
     const articles = [];
     let read = 0;
     for (const url of params.urls) {
       let feed;
       try {
-        feed = await webaios.readFeed(url);
+        feed = await ressac.readFeed(url);
       } catch (e) {
         if (onError === "fail") throw new Error(`Flux en échec : ${url} : ${message(e)}`);
         // As today: to the global log (stderr) and to the block's log.
-        webaios.log("source en échec :", url, message(e));
+        ressac.log("source en échec :", url, message(e));
         partial();
         continue;
       }

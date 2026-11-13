@@ -8,7 +8,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { answers, APPS_ENV, appWindowExpr, inAppView, killFakeApps, launchAttempt, stopsLog, writeProject } from "./apps";
 import { state, waitFor, waitReady } from "./firefox";
 import { installAddon, type Fixture } from "./addons";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
 import { inBrowser } from "./sites";
@@ -16,7 +16,7 @@ import { inBrowser } from "./sites";
 // Plan 35a Task 3: the agent app's window, its container, its origin guard and the agent's `app:<dossier>`, plus
 // the security checks of spike S8 on the real code.
 
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const BLOCK: [number, number] = [15280, 15284];
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
@@ -25,23 +25,23 @@ const app = appWindowExpr("essai");
 const view = `${app}.gBrowser.selectedBrowser`;
 
 interface Instance {
-  w: LaunchedWebAiOs;
+  w: LaunchedRessac;
   m: Marionette;
   dataDir: string;
 }
 
-/** WebAiOs with the essai project (and `plante`, a crashing one), its MCP server up. */
+/** Ressac with the essai project (and `plante`, a crashing one), its MCP server up. */
 async function start(o: { server?: "ok" | "crashed" } = {}): Promise<Instance> {
-  const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
   writeProject(dataDir, "essai", { manifest: { name: "Essai" }, server: o.server ?? "ok" });
   writeProject(dataDir, "autre", { manifest: { name: "Autre" } });
   writeProject(dataDir, "plante", { manifest: { name: "Plante" }, server: "crashed" });
-  const w = await launchWebAiOs({ dataDir, env: APPS_ENV(BLOCK) });
+  const w = await launchRessac({ dataDir, env: APPS_ENV(BLOCK) });
   const m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
   // Not expect.poll: also run from beforeAll.
-  for (const end = Date.now() + 15_000; !existsSync(path.join(dataDir, "workspace", ".webaios", "mcp.json")); await sleep(100))
+  for (const end = Date.now() + 15_000; !existsSync(path.join(dataDir, "workspace", ".ressac", "mcp.json")); await sleep(100))
     if (Date.now() > end) throw new Error("the MCP server did not start");
   return { w, m, dataDir };
 }
@@ -54,7 +54,7 @@ async function stop(i: Instance | undefined): Promise<void> {
 
 const inStore = <T = unknown>(m: Marionette, body: string, args: unknown[] = []) =>
   m.execute<T>(`return (async () => { const store = await ChromeUtils.importESModule("${STORE}").ready; ${body} })();`, args);
-const appWindows = (m: Marionette) => m.execute<number>(`return [...Services.wm.getEnumerator("navigator:browser")].filter((w) => w.document.documentElement.hasAttribute("webaios-app")).length;`);
+const appWindows = (m: Marionette) => m.execute<number>(`return [...Services.wm.getEnumerator("navigator:browser")].filter((w) => w.document.documentElement.hasAttribute("ressac-app")).length;`);
 const browserWindows = (m: Marionette) => m.execute<number>(`return [...Services.wm.getEnumerator("navigator:browser")].length;`);
 const viewUrl = (m: Marionette) => m.execute<string | null>(`return ${app}?.gBrowser.selectedBrowser.currentURI.spec ?? null;`);
 /** The app view shows `url`, loaded. */
@@ -96,7 +96,7 @@ async function otherOrigin(): Promise<{ origin: string; hits: string[]; close():
   return { origin: `http://[::1]:${(s.address() as AddressInfo).port}`, hits, close: () => new Promise((ok) => (s.closeAllConnections(), s.close(() => ok()))) };
 }
 
-describe("one WebAiOs, the app launched in each test", () => {
+describe("one Ressac, the app launched in each test", () => {
   let i: Instance;
   let m: Marionette;
   let port: number;
@@ -109,7 +109,7 @@ describe("one WebAiOs, the app launched in each test", () => {
   afterAll(() => stop(i));
   afterEach(async () => {
     for (const folder of ["essai", "autre"]) await callTool(i.dataDir, "stop_app", { folder: folder }).catch(() => {});
-    await waitFor(m, `return [...Services.wm.getEnumerator("navigator:browser")].filter((w) => w.document.documentElement.hasAttribute("webaios-app")).length;`, (n) => n === 0);
+    await waitFor(m, `return [...Services.wm.getEnumerator("navigator:browser")].filter((w) => w.document.documentElement.hasAttribute("ressac-app")).length;`, (n) => n === 0);
     await waitFor(m, "for (const t of gBrowser.tabs.slice(1)) gBrowser.removeTab(t); return gBrowser.tabs.length;", (n) => n === 1);
     await expect.poll(async () => (await list(m)).apps.filter((a) => a.state !== "stopped" && a.state !== "error").length, { timeout: 10_000 }).toBe(0);
   });
@@ -121,7 +121,7 @@ describe("one WebAiOs, the app launched in each test", () => {
 
   // applications.spec.ts:236
   it("orphan apps are stopped at launch", async () => {
-    await expect.poll(() => stopsLog(i.dataDir), { timeout: 10_000 }).toContain("WEBAIOS_APP=.*");
+    await expect.poll(() => stopsLog(i.dataDir), { timeout: 10_000 }).toContain("RESSAC_APP=.*");
   });
 
   // applications.spec.ts:84
@@ -133,7 +133,7 @@ describe("one WebAiOs, the app launched in each test", () => {
       `const win = ${app};
        const { ContextualIdentityService: C } = ChromeUtils.importESModule("moz-src:///toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs");
        return { toolbox: win.document.getElementById("navigator-toolbox").hidden, browsers: win.gBrowser.browsers.length,
-         sidebar: !!win.document.getElementById("webaios-sidebar"), uc: win.gBrowser.selectedBrowser.browsingContext.originAttributes.userContextId,
+         sidebar: !!win.document.getElementById("ressac-sidebar"), uc: win.gBrowser.selectedBrowser.browsingContext.originAttributes.userContextId,
          container: C.getPrivateIdentity("userContextIdInternal.webaios-app-essai")?.userContextId ?? null, toolbar: win.toolbar.visible };`,
     );
     expect(shape).toMatchObject({ toolbox: true, browsers: 1, sidebar: false, toolbar: false });
@@ -149,7 +149,7 @@ describe("one WebAiOs, the app launched in each test", () => {
     await expect.poll(async () => (await callTool(i.dataDir, "read_tab", { id: "app:essai" })).text, { timeout: 10_000 }).toContain("Titre : Essai essai");
     expect((await callTool(i.dataDir, "read_tab", { id: "app:essai" })).text).toContain("lien");
     // A tool on the app lights the agent's halo around its view, as in the main window, then it goes out.
-    const working = `return ${app}.document.documentElement.hasAttribute("webaios-agent-working");`;
+    const working = `return ${app}.document.documentElement.hasAttribute("ressac-agent-working");`;
     const reading = callTool(i.dataDir, "run_js", { id: "app:essai", code: "await new Promise((r) => setTimeout(r, 1500)); 1" });
     await waitFor(m, working, (v) => v === true, 1_000);
     expect(await m.execute(`return getComputedStyle(${app}.document.getElementById("tabbrowser-tabbox"), "::after").backgroundImage;`)).toContain("conic-gradient");
@@ -165,7 +165,7 @@ describe("one WebAiOs, the app launched in each test", () => {
     await launched();
     expect(await answers(port)).toBe(true);
     await m.execute(`${app}.close();`);
-    await expect.poll(() => stopsLog(i.dataDir), { timeout: 10_000 }).toContain("WEBAIOS_APP=essai");
+    await expect.poll(() => stopsLog(i.dataDir), { timeout: 10_000 }).toContain("RESSAC_APP=essai");
     await expect.poll(() => answers(port), { timeout: 10_000 }).toBe(false);
   });
 
@@ -406,11 +406,11 @@ describe("one WebAiOs, the app launched in each test", () => {
     }
     const old = attempt;
     expect(port).not.toBe(BLOCK[0]);
-    await m.execute(`${app}.webaiosMark = 1;`);
+    await m.execute(`${app}.ressacMark = 1;`);
     await act(m, "essai", "relaunch");
     const next = `http://localhost:${BLOCK[0]}/`;
     await viewAt(m, next);
-    expect(await m.execute(`return ${app}.webaiosMark;`)).toBe(1);
+    expect(await m.execute(`return ${app}.ressacMark;`)).toBe(1);
     expect(await appWindows(m)).toBe(1);
     await inAppView(m, "essai", "window.marque = 7; return 1;");
     await inAppView(m, "essai", `location.href = ${JSON.stringify(`${old}page2`)}; return 1;`);
@@ -424,8 +424,8 @@ describe("one WebAiOs, the app launched in each test", () => {
  * runs the order on that tab and writes `result <n> <json>` back as the page's title.
  */
 const addonProbe = (): Fixture => ({
-  id: "app-probe@webaios.test",
-  manifest: { manifest_version: 2, name: "Sonde des applis", version: "1.0", browser_specific_settings: { gecko: { id: "app-probe@webaios.test" } }, permissions: ["tabs", "<all_urls>"], background: { scripts: ["background.js"] } },
+  id: "app-probe@ressac.test",
+  manifest: { manifest_version: 2, name: "Sonde des applis", version: "1.0", browser_specific_settings: { gecko: { id: "app-probe@ressac.test" } }, permissions: ["tabs", "<all_urls>"], background: { scripts: ["background.js"] } },
   files: {
     "page.html": '<!doctype html><meta charset="utf-8"><title>Page</title>',
     "background.js": `let done = 0;
@@ -474,7 +474,7 @@ async function waitHandles(m: Marionette, ok: (hs: string[]) => boolean): Promis
   throw new Error("timed out waiting on the window handles");
 }
 
-describe("each with its own WebAiOs", () => {
+describe("each with its own Ressac", () => {
   let i: Instance | undefined;
   afterEach(async () => {
     await stop(i);
@@ -494,7 +494,7 @@ describe("each with its own WebAiOs", () => {
     await sleep(1000);
     expect(await appWindows(i.m)).toBe(1);
     expect(await answers(port)).toBe(true);
-    expect(stopsLog(i.dataDir)).not.toContain("WEBAIOS_APP=essai");
+    expect(stopsLog(i.dataDir)).not.toContain("RESSAC_APP=essai");
   });
 
   it("add-ons can neither add a tab to the app window, nor close, move or detach its view", async () => {
@@ -503,18 +503,18 @@ describe("each with its own WebAiOs", () => {
     const port = await launchAttempt(i.dataDir);
     const attempt = `http://localhost:${port}/`;
     await viewAt(i.m, attempt);
-    expect(await order(i.m, { op: "create", url: "https://exemple.invalide/dans-l-appli" })).toEqual({ error: "Chargement refusé par WebAiOs" });
-    expect(await order(i.m, { op: "update", url: "page.html" })).toEqual({ error: "Chargement refusé par WebAiOs" });
-    expect(await order(i.m, { op: "remove" })).toEqual({ error: "Onglet protégé par WebAiOs" });
-    expect(await order(i.m, { op: "move" })).toEqual({ error: "Onglet protégé par WebAiOs" });
-    expect(await order(i.m, { op: "close-window" })).toEqual({ error: "Onglet protégé par WebAiOs" });
+    expect(await order(i.m, { op: "create", url: "https://exemple.invalide/dans-l-appli" })).toEqual({ error: "Chargement refusé par Ressac" });
+    expect(await order(i.m, { op: "update", url: "page.html" })).toEqual({ error: "Chargement refusé par Ressac" });
+    expect(await order(i.m, { op: "remove" })).toEqual({ error: "Onglet protégé par Ressac" });
+    expect(await order(i.m, { op: "move" })).toEqual({ error: "Onglet protégé par Ressac" });
+    expect(await order(i.m, { op: "close-window" })).toEqual({ error: "Onglet protégé par Ressac" });
     // windows.create({ tabId }): the view does not go into a new window (its answer may never come: not awaited).
     await order(i.m, { op: "window" }, false);
     await sleep(1500);
     expect(await i.m.execute(`return ${app}.gBrowser.tabs.length;`)).toBe(1);
     expect(await viewUrl(i.m)).toBe(attempt);
     expect(await appWindows(i.m)).toBe(1);
-    expect(stopsLog(i.dataDir)).not.toContain("WEBAIOS_APP=essai");
+    expect(stopsLog(i.dataDir)).not.toContain("RESSAC_APP=essai");
   });
 
   // applications.spec.ts:205
@@ -539,7 +539,7 @@ describe("each with its own WebAiOs", () => {
     console.log(`[apps-window] quit with an app running: ${ms} ms`);
     // The spec's target is 5 s (S8 measured 1.2 s); 8 s leaves room under 6 parallel Firefox instances.
     expect(ms).toBeLessThan(8000);
-    expect(stopsLog(i.dataDir)).toContain("WEBAIOS_APP=essai");
+    expect(stopsLog(i.dataDir)).toContain("RESSAC_APP=essai");
     expect(await answers(port)).toBe(false);
   });
 
@@ -548,7 +548,7 @@ describe("each with its own WebAiOs", () => {
     const m = i.m;
     const port = await launchAttempt(i.dataDir);
     await viewAt(m, `http://localhost:${port}/`);
-    const sweeps = () => stopsLog(i!.dataDir).split("\n").filter((l) => l.includes("WEBAIOS_APP=.*")).length;
+    const sweeps = () => stopsLog(i!.dataDir).split("\n").filter((l) => l.includes("RESSAC_APP=.*")).length;
     await expect.poll(sweeps, { timeout: 10_000 }).toBe(1);
     const pid = await inStore<number>(m, "return store.agent.pid;");
     process.kill(pid, "SIGKILL");
@@ -565,7 +565,7 @@ describe("each with its own WebAiOs", () => {
     await viewAt(m, `http://localhost:${again}/`);
     await sleep(2000);
     expect(await appWindows(m)).toBe(1);
-    expect(stopsLog(i.dataDir)).not.toContain("WEBAIOS_APP=essai");
+    expect(stopsLog(i.dataDir)).not.toContain("RESSAC_APP=essai");
     expect(await answers(again)).toBe(true);
   });
 });

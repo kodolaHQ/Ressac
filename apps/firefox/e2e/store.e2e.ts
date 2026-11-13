@@ -4,14 +4,14 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { dispatch, state, waitFor } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 
 describe("state store", () => {
-  let w: LaunchedWebAiOs;
+  let w: LaunchedRessac;
   beforeAll(async () => {
-    w = await launchWebAiOs();
+    w = await launchRessac();
     await w.marionette.setContext("chrome");
   });
   afterAll(() => w?.close());
@@ -40,7 +40,7 @@ describe("state store", () => {
       const a = store.containerFor("p1");
       return { def: store.containerFor("default"), a, b: store.containerFor("p1"),
         named: ContextualIdentityService.getPrivateIdentity("userContextIdInternal.webaios-p1")?.userContextId === a,
-        leaked: ContextualIdentityService.getPublicIdentities().some((i) => i.name?.startsWith("webaios-")) };
+        leaked: ContextualIdentityService.getPublicIdentities().some((i) => i.name?.startsWith("ressac-")) };
     })();`);
     expect(r.def).toBe(0);
     expect(r.a).not.toBe(0);
@@ -54,11 +54,11 @@ describe("state store", () => {
 // A start on a session whose frame is the window's changes nothing, so nothing is written.
 describe("restart on an unchanged session", () => {
   let dataDir: string;
-  let w: LaunchedWebAiOs | undefined;
+  let w: LaunchedRessac | undefined;
   beforeAll(async () => {
-    dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
+    dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
     const file = path.join(dataDir, "session.json");
-    w = await launchWebAiOs({ dataDir });
+    w = await launchRessac({ dataDir });
     await w.marionette.setContext("chrome");
     await waitFor(w.marionette, "return null;", () => existsSync(file) && !!JSON.parse(readFileSync(file, "utf8")).windows[0]?.frame);
     await w.close();
@@ -71,7 +71,7 @@ describe("restart on an unchanged session", () => {
   it("writes nothing before the first change", async () => {
     const file = path.join(dataDir, "session.json");
     const before = { text: await readFile(file, "utf8"), mtime: statSync(file).mtimeMs };
-    w = await launchWebAiOs({ dataDir });
+    w = await launchRessac({ dataDir });
     await w.marionette.setContext("chrome");
     expect((await state(w.marionette)).windows).toHaveLength(1);
     // Longer than the frame's 300 ms timer plus the recorder's 500 ms delay: a write would have landed.
@@ -82,11 +82,11 @@ describe("restart on an unchanged session", () => {
 
 describe("unreadable session", () => {
   let dataDir: string;
-  let w: LaunchedWebAiOs | undefined;
+  let w: LaunchedRessac | undefined;
   beforeAll(async () => {
-    dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
+    dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
     await writeFile(path.join(dataDir, "session.json"), "{ not json");
-    w = await launchWebAiOs({ dataDir });
+    w = await launchRessac({ dataDir });
     await w.marionette.setContext("chrome");
   });
   afterAll(async () => {

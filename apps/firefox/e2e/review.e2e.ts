@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterAll, afterEach, expect, it } from "vitest";
 import { reviewUrl } from "../shared/model";
 import { dispatch, inWindow, newWindow, state, waitFor } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { declareProject, LINES, modified, openApplications, refreshReview, reviewedRef, writeAppJs } from "./review";
 import { writeSite } from "./sites";
@@ -15,7 +15,7 @@ import { click, inUi, missingApi, waitUi } from "./ui";
 // a site app's « Relire », and Review Focus 3 and 4.
 
 const dirs: string[] = [];
-let w: LaunchedWebAiOs | undefined;
+let w: LaunchedRessac | undefined;
 let m: Marionette;
 afterEach(async () => {
   try {
@@ -29,16 +29,16 @@ afterAll(async () => {
   for (const d of dirs) await rm(d, { recursive: true, force: true });
 });
 
-/** WebAiOs on a temporary data folder (`prepare` writes into it first), the Applications page open. */
-async function launch(o: { env?: Record<string, string>; prepare?: (dataDir: string) => void } = {}): Promise<LaunchedWebAiOs> {
-  const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
-  const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
+/** Ressac on a temporary data folder (`prepare` writes into it first), the Applications page open. */
+async function launch(o: { env?: Record<string, string>; prepare?: (dataDir: string) => void } = {}): Promise<LaunchedRessac> {
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
+  const profile = await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
   dirs.push(dataDir, profile);
   o.prepare?.(dataDir);
-  w = await launchWebAiOs({ dataDir, profile, env: o.env });
+  w = await launchRessac({ dataDir, profile, env: o.env });
   m = w.marionette;
   await m.setContext("chrome");
-  await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+  await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
   await openApplications(m);
   return w;
 }
@@ -69,7 +69,7 @@ async function reread(): Promise<void> {
 
 /** Back to the Applications page of the current window (its tab, activated again). */
 async function backToApplications(): Promise<void> {
-  const windowId = await m.execute<string>("return window.webaiosWindow.windowId");
+  const windowId = await m.execute<string>("return window.ressacWindow.windowId");
   await dispatch(m, { type: "openApps", windowId: windowId });
   await waitUi(m, `return !!doc.querySelector('${tid("external-projects")}') && !doc.querySelector('${PAGE}')`);
 }
@@ -85,7 +85,7 @@ async function pageOnAppJs(n: number) {
 }
 
 // relecture.spec.ts:52
-it("at start the first photo is taken (refs/webaios/relu under <dataDir>/design/review/ext-<id>.git) and no .git appears in the project folder", async () => {
+it("at start the first photo is taken (refs/ressac/relu under <dataDir>/design/review/ext-<id>.git) and no .git appears in the project folder", async () => {
   await launch();
   const p = await declareProject(m, { dataDir: w!.dataDir });
   try {
@@ -212,8 +212,8 @@ it("« Relire » twice from « Projets externes »: the same page, one tab « Re
 });
 
 // relecture.spec.ts:200 (the Review part; design mode is plan 35's)
-it("WEBAIOS_GIT=/chemin/absent: the page says « git est nécessaire », no ref written", async () => {
-  await launch({ env: { WEBAIOS_GIT: "/chemin/absent" } });
+it("RESSAC_GIT=/chemin/absent: the page says « git est nécessaire », no ref written", async () => {
+  await launch({ env: { RESSAC_GIT: "/chemin/absent" } });
   const p = await declareProject(m, { dataDir: w!.dataDir, snapshot: false });
   try {
     await reread();

@@ -1,24 +1,24 @@
-// WebAiOs: guard of the service worker and the pages of the agent's extensions (DNR, scripting, tabs, context).
-// Loaded before the original script by webaios-background.js and as the first script of each HTML page (classic script or
-// module: no top-level declaration, except the `__webaiosFiles` table that the copy writes at the top). Task 12 of plan 12 (task 13 adds the frame guard to it).
+// Ressac: guard of the service worker and the pages of the agent's extensions (DNR, scripting, tabs, context).
+// Loaded before the original script by ressac-background.js and as the first script of each HTML page (classic script or
+// module: no top-level declaration, except the `__ressacFiles` table that the copy writes at the top). Task 12 of plan 12 (task 13 adds the frame guard to it).
 //
 // - Dynamic and session DNR rules: `redirect`, `modifyHeaders`, `regexSubstitution`, `transform` refused.
 // - `tabs.create`, `tabs.update`, `windows.create`: the address is first submitted to the main process
-//   (`globalThis.__webaios.urlAllowed`, set by the fixes' preload), which checks again on opening.
+//   (`globalThis.__ressac.urlAllowed`, set by the fixes' preload), which checks again on opening.
 // - `scripting.executeScript` / `insertCSS`, `tabs.executeScript` / `insertCSS`: the target tab must be a tab
-//   view (`__webaios.isTab`: never an invisible read) and a site of the granted hosts (`__webaios.hostAllowed`);
+//   view (`__ressac.isTab`: never an invisible read) and a site of the granted hosts (`__ressac.hostAllowed`);
 //   these native calls have no other checkpoint. `target.documentIds` is refused (the guard would not know which
 //   tab is targeted), `world: "MAIN"` too (out of reach of the page guard). The named files must be, byte
-//   for byte, agent files listed by the copy (`__webaiosFiles`, written at the top of this file): no
-//   `..`, no absolute path, no WebAiOs file. `executeScript` (and `tabs.executeScript`) first injects
-//   `webaios-page-fixes.js`, `webaios-page-guard.js` and `webaios-scope.js`; with `func`, these files first,
+//   for byte, agent files listed by the copy (`__ressacFiles`, written at the top of this file): no
+//   `..`, no absolute path, no Ressac file. `executeScript` (and `tabs.executeScript`) first injects
+//   `ressac-page-fixes.js`, `ressac-page-guard.js` and `ressac-scope.js`; with `func`, these files first,
 //   then the function in the documents that received them (`documentIds` returned by the first call; a missing id:
 //   refusal, no fallback).
 // - `scripting.registerContentScripts` / `updateContentScripts`: like the copied manifest's entries, they only register
-//   the guards then markers (`webaios-files/<n>.js`, CSS first); `getRegisteredContentScripts` returns the
+//   the guards then markers (`ressac-files/<n>.js`, CSS first); `getRegisteredContentScripts` returns the
 //   agent's files, and an update of only one of `js` / `css` takes the other from the current registration.
 // - `runtime.onMessage`: in the service worker only (an open page of the extension would inject a second
-//   time), answers `{ webaios: "context", files }` (the page guard) with `{ tab }`; if it is a tab, first injects, through the captured native functions, the CSS then the JS (guards first) of these markers into the
+//   time), answers `{ ressac: "context", files }` (the page guard) with `{ tab }`; if it is a tab, first injects, through the captured native functions, the CSS then the JS (guards first) of these markers into the
 //   exact document of the sender (`documentIds`, otherwise its frame). The extension's listeners never see this
 //   message (they cannot answer in the guard's place).
 // - WebRTC removed.
@@ -51,7 +51,7 @@
     }
   }
   const c = g.chrome;
-  const w = g.__webaios;
+  const w = g.__ressac;
   if (!c) return;
   // Captured now: the extension can no longer replace them afterwards for the guard.
   const nativeUrlAllowed = w && typeof w.urlAllowed === "function" ? w.urlAllowed : null;
@@ -72,7 +72,7 @@
     try {
       define(obj, name, { __proto__: null, value: value_, writable: false, configurable: false, enumerable: true });
     } catch (e) {
-      apply_(logError, console, [`[webaios] garde non posé sur ${name} :`, e]);
+      apply_(logError, console, [`[ressac] garde non posé sur ${name} :`, e]);
     }
   };
 
@@ -157,7 +157,7 @@
    * Calls `f` if `verifier(args)` returns true (or a promise of true), otherwise refuses with `message(args)`; promise or
    * callback, like the original call. The arguments are copied only once: the copy is checked then passed to the API.
    */
-  const guard = (f, target_, check, message, prefix = "Arguments refusés par WebAiOs", o = {}) =>
+  const guard = (f, target_, check, message, prefix = "Arguments refusés par Ressac", o = {}) =>
     function (...all) {
       // The possible callback: the last argument, if it is a function.
       let n = all.length;
@@ -217,8 +217,8 @@
       });
     };
 
-  const URL_REFUSED = "URL refusée par WebAiOs";
-  const SITE_REFUSED = "Site refusé par WebAiOs";
+  const URL_REFUSED = "URL refusée par Ressac";
+  const SITE_REFUSED = "Site refusé par Ressac";
   /** A (original) promise of true if the main process allows it; false without preload. */
   const ask = (native, value_) =>
     new P((ok) => {
@@ -272,8 +272,8 @@
           f,
           dnr,
           (args) => actionRefused(args[0]) === null,
-          (args) => `Règle DNR refusée par WebAiOs (${actionRefused(args[0])})`,
-          "Règle DNR refusée par WebAiOs",
+          (args) => `Règle DNR refusée par Ressac (${actionRefused(args[0])})`,
+          "Règle DNR refusée par Ressac",
         ),
       );
     }
@@ -322,14 +322,14 @@
   }
 
   // --- Scripts and styles placed in a tab
-  const TAB_REFUSED = "Onglet refusé par WebAiOs";
-  const PAGE_GUARDS = ["webaios-page-fixes.js", "webaios-page-guard.js", "webaios-scope.js"];
-  const MARKERS = "webaios-files/";
+  const TAB_REFUSED = "Onglet refusé par Ressac";
+  const PAGE_GUARDS = ["ressac-page-fixes.js", "ressac-page-guard.js", "ressac-scope.js"];
+  const MARKERS = "ressac-files/";
   // The table written by the copy at the top of this file: every .js and .css of the agent, the index is its marker. The
   // paths are compared as they are to this list (key in an object without a prototype): no splitting, no
   // normalization by a method the extension could replace. Without a table (outside the copy), no file is allowed.
   // eslint-disable-next-line no-undef
-  const rawTable = typeof __webaiosFiles !== "undefined" && isList(__webaiosFiles) ? __webaiosFiles : [];
+  const rawTable = typeof __ressacFiles !== "undefined" && isList(__ressacFiles) ? __ressacFiles : [];
   // Without a prototype, and read only for an integer within its bounds: an index outside the table never reads
   // `Object.prototype` or `Array.prototype` (which the extension can fill).
   const table = create_(null);
@@ -492,7 +492,7 @@
                 r,
                 (results) => {
                   const ids = documentsOf(results);
-                  if (!ids) return ko(new Err("Arguments refusés par WebAiOs (documentId absent)"));
+                  if (!ids) return ko(new Err("Arguments refusés par Ressac (documentId absent)"));
                   const t = create_(null);
                   t.tabId = d.target.tabId;
                   t.documentIds = ids;
@@ -698,7 +698,7 @@
   if (onMessage && typeof onMessage.addListener === "function") {
     const isContext = (m) => {
       if (m === null || typeof m !== "object") return false;
-      const d = descriptor(m, "webaios");
+      const d = descriptor(m, "ressac");
       return !!d && descriptor(d, "value") !== undefined && d.value === "context";
     };
     // The first listener: set before any extension script, in the service worker only. In a page, the
@@ -752,7 +752,7 @@
         const inject = () =>
           new P((ok) => {
             const ko = (e) => {
-              apply_(logError, console, ["[webaios] fichiers des scripts de contenu non injectés :", e]);
+              apply_(logError, console, ["[ressac] fichiers des scripts de contenu non injectés :", e]);
               ok(true);
             };
             let i = 0;
@@ -767,7 +767,7 @@
               }
               d.injectImmediately = true;
               const next = (e) => {
-                apply_(logError, console, ["[webaios] fichiers des scripts de contenu non injectés :", e]);
+                apply_(logError, console, ["[ressac] fichiers des scripts de contenu non injectés :", e]);
                 scripts();
               };
               try {

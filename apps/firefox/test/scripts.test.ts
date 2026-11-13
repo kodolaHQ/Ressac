@@ -13,41 +13,41 @@ describe("package scripts", () => {
   });
 
   it("prunes dangling links before surfer import", () => {
-    expect(scripts["engine:import"]).toMatch(/ui\.sh && zsh scripts\/engine\.sh prune && zsh scripts\/env\.sh surfer set brand webaios && zsh scripts\/env\.sh surfer import$/);
+    expect(scripts["engine:import"]).toMatch(/ui\.sh && zsh scripts\/engine\.sh prune && zsh scripts\/env\.sh surfer set brand ressac && zsh scripts\/env\.sh surfer import$/);
   });
 
   it("sets the brand in every checkout before importing or building (surfer keeps it in the untracked .surfer/)", () => {
-    for (const s of ["engine:import", "build", "build:ui"]) expect(scripts[s]).toMatch(/surfer set brand webaios && zsh scripts\/env\.sh surfer (import|build)/);
+    for (const s of ["engine:import", "build", "build:ui"]) expect(scripts[s]).toMatch(/surfer set brand ressac && zsh scripts\/env\.sh surfer (import|build)/);
   });
 });
 
 describe("agent scaffolding", () => {
   it("builds the agent panel and the page actor", () => {
     const ui = readFileSync(new URL("../scripts/ui.sh", import.meta.url), "utf8");
-    const jar = readFileSync(new URL("../src/browser/base/content/webaios/jar.inc.mn", import.meta.url), "utf8");
+    const jar = readFileSync(new URL("../src/browser/base/content/ressac/jar.inc.mn", import.meta.url), "utf8");
     for (const m of ["agent", "actor"]) expect(ui).toMatch(new RegExp(`\\b${m}\\b`));
-    for (const f of ["agent.html", "agent.js", "agent.css", "page-actor.sys.mjs"]) expect(jar).toContain(`content/webaios/${f})`);
+    for (const f of ["agent.html", "agent.js", "agent.css", "page-actor.sys.mjs"]) expect(jar).toContain(`content/ressac/${f})`);
   });
 
   it("copies the page actor into the build: the content sandbox cannot follow a link into a checkout", () => {
-    const jar = readFileSync(new URL("../src/browser/base/content/webaios/jar.inc.mn", import.meta.url), "utf8");
-    expect(jar).toMatch(/^\*\s+content\/browser\/webaios\/page-actor\.sys\.mjs/m);
+    const jar = readFileSync(new URL("../src/browser/base/content/ressac/jar.inc.mn", import.meta.url), "utf8");
+    expect(jar).toMatch(/^\*\s+content\/browser\/ressac\/page-actor\.sys\.mjs/m);
     // `*` runs Mozilla's preprocessor: it needs one directive, and any other line starting with # would be read as one.
-    const built = new URL("../src/browser/base/content/webaios/page-actor.sys.mjs", import.meta.url);
-    if (existsSync(built)) expect(readFileSync(built, "utf8").match(/^\s*#.*$/gm)).toEqual(["#define WEBAIOS_PAGE_ACTOR"]);
+    const built = new URL("../src/browser/base/content/ressac/page-actor.sys.mjs", import.meta.url);
+    if (existsSync(built)) expect(readFileSync(built, "utf8").match(/^\s*#.*$/gm)).toEqual(["#define RESSAC_PAGE_ACTOR"]);
   });
 });
 
 describe("engine.sh prune", () => {
-  it("removes only dangling links into a WebAiOs checkout, and only under src/'s directories", () => {
-    const root = mkdtempSync(path.join(os.tmpdir(), "webaios-prune-"));
+  it("removes only dangling links into a Ressac checkout, and only under src/'s directories", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "ressac-prune-"));
     mkdirSync(path.join(root, "scripts"));
     mkdirSync(path.join(root, "src/browser"), { recursive: true });
     copyFileSync(new URL("../scripts/engine.sh", import.meta.url), path.join(root, "scripts/engine.sh"));
     const dir = path.join(root, "engine/browser/base");
     mkdirSync(dir, { recursive: true });
     writeFileSync(path.join(root, "real.txt"), "");
-    const gone = "/nowhere/WebAiOs/.claude/worktrees/old/apps/firefox/src/browser/base/x.js";
+    const gone = "/nowhere/Ressac/.claude/worktrees/old/apps/firefox/src/browser/base/x.js";
     symlinkSync(gone, path.join(dir, "dangling-ours"));
     symlinkSync("/nowhere/other/file", path.join(dir, "dangling-other"));
     symlinkSync(path.join(root, "real.txt"), path.join(dir, "alive"));
@@ -59,13 +59,13 @@ describe("engine.sh prune", () => {
   });
 
   it("also removes live links into another checkout, so surfer import relinks every file to this one", () => {
-    const root = mkdtempSync(path.join(os.tmpdir(), "webaios-prune-"));
+    const root = mkdtempSync(path.join(os.tmpdir(), "ressac-prune-"));
     mkdirSync(path.join(root, "scripts"));
     mkdirSync(path.join(root, "src/browser"), { recursive: true });
     copyFileSync(new URL("../scripts/engine.sh", import.meta.url), path.join(root, "scripts/engine.sh"));
     const dir = path.join(root, "engine/browser/base");
     mkdirSync(dir, { recursive: true });
-    const other = mkdtempSync(path.join(os.tmpdir(), "webaios-main-"));
+    const other = mkdtempSync(path.join(os.tmpdir(), "ressac-main-"));
     mkdirSync(path.join(other, "apps/firefox/src"), { recursive: true });
     writeFileSync(path.join(other, "apps/firefox/src/x.js"), "");
     writeFileSync(path.join(root, "src/browser/y.js"), "");

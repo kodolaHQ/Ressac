@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { TabAccessState } from "@webaios/kernel";
+  import type { TabAccessState } from "@ressac/kernel";
   import AccessBubble from "./AccessBubble.svelte";
 
   let { id, state: appState }: { id: string; state: TabAccessState } = $props();

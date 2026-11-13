@@ -22,12 +22,12 @@ type App = { folder: string; name: string; type: "app" | "poc" | "no-manifest"; 
 const app = (folder: string, type: App["type"] = "app"): App => ({ folder: folder, name: folder, type, createdAt: "2026-11-07T00:00:00.000Z", state: "stopped" });
 
 function prepare(o: { port?: number; window?: string | null; sites?: { id: string; name: string }[]; siteApps?: App[] } = {}) {
-  const dataDir = realpathSync(mkdtempSync(join(tmpdir(), "webaios-design-")));
+  const dataDir = realpathSync(mkdtempSync(join(tmpdir(), "ressac-design-")));
   cleanup.push(() => rmSync(dataDir, { recursive: true, force: true }));
   const paths = spacePaths(join(dataDir, "workspace"));
   mkdirSync(paths.sites, { recursive: true });
   // Outside <dataDir>: a project under it would be refused.
-  const homeDir = realpathSync(mkdtempSync(join(tmpdir(), "webaios-maison-")));
+  const homeDir = realpathSync(mkdtempSync(join(tmpdir(), "ressac-maison-")));
   cleanup.push(() => rmSync(homeDir, { recursive: true, force: true }));
   const calls: string[] = [];
   const prefill = vi.fn((f: string, t: string) => void calls.push(`preRemplir ${f} ${t}`));
@@ -127,7 +127,7 @@ describe("design host", { timeout: 20_000 }, () => {
   it("a folder that links into <dataDir> is refused with SPACE_FOLDER", async () => {
     const s = prepare();
     mkdirSync(join(s.dataDir, "design"), { recursive: true });
-    const outside = realpathSync(mkdtempSync(join(tmpdir(), "webaios-lien-")));
+    const outside = realpathSync(mkdtempSync(join(tmpdir(), "ressac-lien-")));
     cleanup.push(() => rmSync(outside, { recursive: true, force: true }));
     const link = join(outside, "lien");
     symlinkSync(join(s.dataDir, "design"), link);
@@ -145,7 +145,7 @@ describe("design host", { timeout: 20_000 }, () => {
     await callTool(s.design, "declare_project", { folder: project, ports: [3000], name: "Projet" });
     await callTool(s.design, "declare_project", { folder: project, ports: [3001] });
     expect(s.notify).toHaveBeenCalledTimes(1);
-    expect(s.notify).toHaveBeenCalledWith({ title: "WebAiOs", text: "Claude Code a branché le projet Projet" });
+    expect(s.notify).toHaveBeenCalledWith({ title: "Ressac", text: "Claude Code a branché le projet Projet" });
     const e = await list(s.design);
     expect(e.projects.map((p) => p.name)).toEqual(["Projet"]);
     expect(await s.design.handlers["external.name"]!({ id: e.projects[0]!.id })).toBe("Projet");
@@ -193,7 +193,7 @@ describe("design host", { timeout: 20_000 }, () => {
     const [f, text] = s.prefill.mock.calls[0]!;
     expect(f).toBe("f7");
     expect(text).toContain('appli de site "Tuning" (/workspace/sites/tuning/)');
-    expect(text).toMatch(/\/workspace\/\.webaios\/remarks\/site-tuning\/[^/]+\/batch\.json\] /);
+    expect(text).toMatch(/\/workspace\/\.ressac\/remarks\/site-tuning\/[^/]+\/batch\.json\] /);
     expect(text).not.toMatch(/[\r\n]/);
     expect(s.chrome.giveAgent).toHaveBeenCalledWith("f7");
   });
@@ -299,9 +299,9 @@ const context = (o: Record<string, unknown> = {}) => ({
 });
 
 describe("design host, the carts", { timeout: 20_000 }, () => {
-  /** A demo on 15283 (in WEBAIOS_APP_PORTS), app-essai running on 15281, an external project on 3000. */
+  /** A demo on 15283 (in RESSAC_APP_PORTS), app-essai running on 15281, an external project on 3000. */
   async function withProjects(o: Parameters<typeof prepare>[0] = {}) {
-    vi.stubEnv("WEBAIOS_APP_PORTS", "15280-15284");
+    vi.stubEnv("RESSAC_APP_PORTS", "15280-15284");
     const s = prepare({ siteApps: [{ ...app("essai"), name: "Essai", state: "running", port: 15281 }, app("dort")], sites: [{ id: "x", name: "Site X" }], ...o });
     const project = join(s.home, "projet");
     mkdirSync(project);

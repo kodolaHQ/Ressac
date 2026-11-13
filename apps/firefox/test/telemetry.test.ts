@@ -19,11 +19,11 @@ describe("parseDsn", () => {
 
 describe("scrub", () => {
   it("replaces home and web urls", () => {
-    expect(scrub("ENOENT /Users/marie/WebAiOs/x and https://banque.fr/compte?id=3", home)).toBe("ENOENT ~/WebAiOs/x and <url>");
+    expect(scrub("ENOENT /Users/marie/Ressac/x and https://banque.fr/compte?id=3", home)).toBe("ENOENT ~/Ressac/x and <url>");
   });
   it("hides every private scheme but keeps chrome and resource", () => {
     for (const u of ["file:///Users/marie/a", "wss://x", "blob:https://a/b", "data:text/html,hi"]) expect(scrub(u, home)).toBe("<url>");
-    expect(scrub("chrome://browser/content/webaios/sidebar.js:3:1", home)).toBe("chrome://browser/content/webaios/sidebar.js:3:1");
+    expect(scrub("chrome://browser/content/ressac/sidebar.js:3:1", home)).toBe("chrome://browser/content/ressac/sidebar.js:3:1");
     expect(scrub("resource://app/x.mjs", home)).toBe("resource://app/x.mjs");
   });
 });

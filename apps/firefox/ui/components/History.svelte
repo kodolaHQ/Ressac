@@ -114,7 +114,7 @@
   header button:active { transform: scale(0.97); }
   .close { border: none; background: none; }
   .clear { position: relative; }
-  .choice { position: absolute; right: 0; top: 110%; display: flex; flex-direction: column; gap: 2px; padding: 4px; background: var(--glass-dense); border: 1px solid var(--glass-edge); border-radius: 12px; box-shadow: var(--modal-shadow); z-index: 1; animation: webaios-drop var(--spring-d) var(--spring) backwards; }
+  .choice { position: absolute; right: 0; top: 110%; display: flex; flex-direction: column; gap: 2px; padding: 4px; background: var(--glass-dense); border: 1px solid var(--glass-edge); border-radius: 12px; box-shadow: var(--modal-shadow); z-index: 1; animation: ressac-drop var(--spring-d) var(--spring) backwards; }
   h2 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); margin: 22px 4px 8px; }
   ul { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: 16px; background: var(--sheet); box-shadow: var(--lift); overflow: hidden; padding: 4px; }
   a { display: flex; gap: 12px; padding: 7px 10px; border-radius: 10px; color: inherit; text-decoration: none; }

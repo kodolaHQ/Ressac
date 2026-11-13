@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createContext, runInContext, runInNewContext } from "node:vm";
 import { expect, test, vi } from "vitest";
-import type { Scope } from "@webaios/kernel";
+import type { Scope } from "@ressac/kernel";
 import { agentAllowedHost, patternCovers, agentAllowedUrl } from "../../core/extensions/network";
 
 const ID = "a".repeat(32);
@@ -56,12 +56,12 @@ test("agentAllowedHost: only the granted hosts (not network)", () => {
   expect(agentAllowedHost("about:blank", grant)).toBe(false);
 });
 
-// --- The guard (packages/kernel/extensions/webaios-background-guard.js), run in a separate context.
+// --- The guard (packages/kernel/extensions/ressac-background-guard.js), run in a separate context.
 
-const pathGuard = join(import.meta.dirname, "..", "..", "..", "..", "packages", "kernel", "extensions", "webaios-background-guard.js");
+const pathGuard = join(import.meta.dirname, "..", "..", "..", "..", "packages", "kernel", "extensions", "ressac-background-guard.js");
 
 /** The table the copy puts at the head of the background guard: the agent's .js and .css files (the index is the marker). */
-const TABLE = `const __webaiosFiles = ${JSON.stringify([["a.js", "js"], ["b.js", "js"], ["c/d.js", "js"], ["s.css", "css"], ["x.js", "js"]])};\n`;
+const TABLE = `const __ressacFiles = ${JSON.stringify([["a.js", "js"], ["b.js", "js"], ["c/d.js", "js"], ["s.css", "css"], ["x.js", "js"]])};\n`;
 
 function guardContext(
   allowed: { urls?: string[]; tabs?: number[]; nonTabs?: number[] } = {},
@@ -119,7 +119,7 @@ function guardContext(
     console: { error: () => {} },
     RTCPeerConnection: class {},
     RTCDataChannel: class {},
-    __webaios: {
+    __ressac: {
       urlAllowed: async (u: string) => (allowed.urls ?? []).includes(u),
       hostAllowed: async (o: number) => (allowed.tabs ?? []).includes(o),
       isTab: async (o: number) => !(allowed.nonTabs ?? []).includes(o),
@@ -142,16 +142,16 @@ test("guard: updateDynamicRules / updateSessionRules refuse redirect, modifyHead
   const dnr = chrome.declarativeNetRequest;
   const rule = (action: unknown) => ({ addRules: [{ id: 1, priority: 1, action, condition: { urlFilter: "x" } }] });
   await expect(dnr.updateDynamicRules(rule({ type: "redirect", redirect: { url: "https://x.test/" } }))).rejects.toThrow(
-    "Règle DNR refusée par WebAiOs (redirect)",
+    "Règle DNR refusée par Ressac (redirect)",
   );
   await expect(dnr.updateSessionRules(rule({ type: "modifyHeaders", requestHeaders: [] }))).rejects.toThrow(
-    "Règle DNR refusée par WebAiOs (modifyHeaders)",
+    "Règle DNR refusée par Ressac (modifyHeaders)",
   );
   await expect(dnr.updateDynamicRules(rule({ type: "upgradeScheme", redirect: { regexSubstitution: "\\1" } }))).rejects.toThrow(
-    "Règle DNR refusée par WebAiOs (regexSubstitution)",
+    "Règle DNR refusée par Ressac (regexSubstitution)",
   );
   await expect(dnr.updateDynamicRules(rule({ type: "upgradeScheme", redirect: { transform: {} } }))).rejects.toThrow(
-    "Règle DNR refusée par WebAiOs (transform)",
+    "Règle DNR refusée par Ressac (transform)",
   );
   expect(calls).toEqual([]);
   await expect(dnr.updateDynamicRules(rule({ type: "block" }))).resolves.toBe("ok:updateDynamicRules");
@@ -172,15 +172,15 @@ test("guard: a callback receives chrome.runtime.lastError during the call, then 
       ok((chrome.runtime.lastError as { message: string } | undefined)?.message),
     ),
   );
-  expect(seen).toBe("Règle DNR refusée par WebAiOs (redirect)");
+  expect(seen).toBe("Règle DNR refusée par Ressac (redirect)");
   expect(chrome.runtime.lastError).toBeUndefined();
 });
 
-test("guard: tabs.create, tabs.update, windows.create ask the main process for the address; refusal « URL refusée par WebAiOs »", async () => {
+test("guard: tabs.create, tabs.update, windows.create ask the main process for the address; refusal « URL refusée par Ressac »", async () => {
   const { chrome, calls: calls } = guardContext({ urls: ["https://www.hote.test/"] });
-  await expect(chrome.tabs.create({ url: "https://autre.test/" })).rejects.toThrow("URL refusée par WebAiOs");
-  await expect(chrome.tabs.update(3, { url: "data:text/html,x" })).rejects.toThrow("URL refusée par WebAiOs");
-  await expect(chrome.windows.create({ url: ["https://www.hote.test/", "https://autre.test/"] })).rejects.toThrow("URL refusée par WebAiOs");
+  await expect(chrome.tabs.create({ url: "https://autre.test/" })).rejects.toThrow("URL refusée par Ressac");
+  await expect(chrome.tabs.update(3, { url: "data:text/html,x" })).rejects.toThrow("URL refusée par Ressac");
+  await expect(chrome.windows.create({ url: ["https://www.hote.test/", "https://autre.test/"] })).rejects.toThrow("URL refusée par Ressac");
   expect(calls).toEqual([]);
   await chrome.tabs.create({ url: "https://www.hote.test/" });
   await chrome.tabs.update(3, { active: true });
@@ -190,10 +190,10 @@ test("guard: tabs.create, tabs.update, windows.create ask the main process for t
 
 test("guard: scripting.executeScript / insertCSS and tabs.insertCSS only in a tab of a granted site; WebRTC removed", async () => {
   const { ctx, chrome, calls: calls } = guardContext({ tabs: [4] });
-  await expect(chrome.scripting.executeScript({ target: { tabId: 5 }, func: () => 1 })).rejects.toThrow("Site refusé par WebAiOs");
-  await expect(chrome.scripting.insertCSS({ target: { tabId: 5 }, css: "p{}" })).rejects.toThrow("Site refusé par WebAiOs");
+  await expect(chrome.scripting.executeScript({ target: { tabId: 5 }, func: () => 1 })).rejects.toThrow("Site refusé par Ressac");
+  await expect(chrome.scripting.insertCSS({ target: { tabId: 5 }, css: "p{}" })).rejects.toThrow("Site refusé par Ressac");
   // Without a tab: the active tab (here 9, not granted).
-  await expect(chrome.tabs.insertCSS({ code: "p{}" })).rejects.toThrow("Site refusé par WebAiOs");
+  await expect(chrome.tabs.insertCSS({ code: "p{}" })).rejects.toThrow("Site refusé par Ressac");
   expect(calls).toEqual([]);
   await chrome.scripting.executeScript({ target: { tabId: 4 }, files: ["x.js"] });
   await chrome.tabs.insertCSS(4, { code: "p{}" });
@@ -202,17 +202,17 @@ test("guard: scripting.executeScript / insertCSS and tabs.insertCSS only in a ta
   expect(ctx.RTCDataChannel).toBeUndefined();
 });
 
-test("guard: without __webaios (preload missing), every address and every tab are refused", async () => {
+test("guard: without __ressac (preload missing), every address and every tab are refused", async () => {
   const { ctx, chrome } = guardContext();
-  delete ctx.__webaios;
+  delete ctx.__ressac;
   const kept = readFileSync(pathGuard, "utf8");
   const without: Record<string, unknown> = { ...ctx, chrome: { ...chrome, tabs: { create: vi.fn() }, scripting: { executeScript: vi.fn() } } };
   without.globalThis = without;
   runInNewContext(TABLE + kept, without);
   const c = without.chrome as { tabs: { create(d: unknown): Promise<unknown> }; scripting: { executeScript(d: unknown): Promise<unknown> } };
-  await expect(c.tabs.create({ url: "https://www.hote.test/" })).rejects.toThrow("URL refusée par WebAiOs");
+  await expect(c.tabs.create({ url: "https://www.hote.test/" })).rejects.toThrow("URL refusée par Ressac");
   // Without preload, no tab is recognized as one.
-  await expect(c.scripting.executeScript({ target: { tabId: 4 } })).rejects.toThrow("Onglet refusé par WebAiOs");
+  await expect(c.scripting.executeScript({ target: { tabId: 4 } })).rejects.toThrow("Onglet refusé par Ressac");
 });
 
 test("guard: arguments are frozen once (copy), checked and passed as is: an accessor that changes its mind does not let a redirect through", async () => {
@@ -262,7 +262,7 @@ test("guard: Object.prototype.get or .value added after its load break neither t
     })()`,
     ctx,
   );
-  expect(result).toEqual({ block: "acceptee", callback: "Règle DNR refusée par WebAiOs (redirect)" });
+  expect(result).toEqual({ block: "acceptee", callback: "Règle DNR refusée par Ressac (redirect)" });
   expect(received).toEqual([{ addRules: [{ id: 2, action: { type: "block" } }] }]);
 });
 
@@ -299,9 +299,9 @@ test("guard: a sparse list is refused (an accessor on Array.prototype[0] is neve
     ctx,
   );
   expect(result).toEqual({
-    dnr: "Règle DNR refusée par WebAiOs (tableau à trous)",
-    long: "Règle DNR refusée par WebAiOs (tableau trop long)",
-    tabs: "Arguments refusés par WebAiOs (tableau à trous)",
+    dnr: "Règle DNR refusée par Ressac (tableau à trous)",
+    long: "Règle DNR refusée par Ressac (tableau trop long)",
+    tabs: "Arguments refusés par Ressac (tableau à trous)",
     read: 0,
   });
   expect(received).toEqual([{ addRules: [{ id: 2, priority: 1, action: { type: "block" }, condition: {} }, { id: 2, priority: 1, action: { type: "block" }, condition: {} }] }]);
@@ -346,32 +346,32 @@ test("guard: replacing Promise.prototype.then, Function.prototype.apply, Array.i
     ctx,
   );
   expect(received).toEqual([]);
-  expect(result).toEqual({ denial: "Règle DNR refusée par WebAiOs (redirect)", stolen: 0 });
+  expect(result).toEqual({ denial: "Règle DNR refusée par Ressac (redirect)", stolen: 0 });
 });
 
 // --- Task 13: scripts placed by the background, content scripts' context.
 
-const PAGE_GUARDS = ["webaios-page-fixes.js", "webaios-page-guard.js", "webaios-scope.js"];
-const marker = (n: number) => `webaios-files/${n}.js`;
+const PAGE_GUARDS = ["ressac-page-fixes.js", "ressac-page-guard.js", "ressac-scope.js"];
+const marker = (n: number) => `ressac-files/${n}.js`;
 
-test("guard: executeScript / insertCSS to a view that is not a tab (invisible read): « Onglet refusé par WebAiOs »; documentIds, world MAIN, without tabId: refused", async () => {
+test("guard: executeScript / insertCSS to a view that is not a tab (invisible read): « Onglet refusé par Ressac »; documentIds, world MAIN, without tabId: refused", async () => {
   const { chrome, calls: calls } = guardContext({ tabs: [4, 6], nonTabs: [6] });
-  await expect(chrome.scripting.executeScript({ target: { tabId: 6 }, files: ["x.js"] })).rejects.toThrow("Onglet refusé par WebAiOs");
-  await expect(chrome.scripting.insertCSS({ target: { tabId: 6 }, css: "p{}" })).rejects.toThrow("Onglet refusé par WebAiOs");
-  await expect(chrome.tabs.insertCSS(6, { code: "p{}" })).rejects.toThrow("Onglet refusé par WebAiOs");
+  await expect(chrome.scripting.executeScript({ target: { tabId: 6 }, files: ["x.js"] })).rejects.toThrow("Onglet refusé par Ressac");
+  await expect(chrome.scripting.insertCSS({ target: { tabId: 6 }, css: "p{}" })).rejects.toThrow("Onglet refusé par Ressac");
+  await expect(chrome.tabs.insertCSS(6, { code: "p{}" })).rejects.toThrow("Onglet refusé par Ressac");
   await expect(chrome.scripting.executeScript({ target: { tabId: 4, documentIds: ["D"] }, files: ["x.js"] })).rejects.toThrow(
-    "Arguments refusés par WebAiOs (documentIds)",
+    "Arguments refusés par Ressac (documentIds)",
   );
-  await expect(chrome.scripting.executeScript({ target: { tabId: 6, frameIds: [0] }, files: ["x.js"] })).rejects.toThrow("Onglet refusé par WebAiOs");
-  await expect(chrome.scripting.executeScript({ target: { frameIds: [0] }, files: ["x.js"] })).rejects.toThrow("Site refusé par WebAiOs");
+  await expect(chrome.scripting.executeScript({ target: { tabId: 6, frameIds: [0] }, files: ["x.js"] })).rejects.toThrow("Onglet refusé par Ressac");
+  await expect(chrome.scripting.executeScript({ target: { frameIds: [0] }, files: ["x.js"] })).rejects.toThrow("Site refusé par Ressac");
   await expect(chrome.scripting.executeScript({ target: { tabId: 4 }, files: ["x.js"], world: "MAIN" })).rejects.toThrow(
-    "Arguments refusés par WebAiOs (world MAIN)",
+    "Arguments refusés par Ressac (world MAIN)",
   );
   expect(calls).toEqual([]);
   const seen = await new Promise((ok) =>
     chrome.scripting.executeScript({ target: { tabId: 6 }, files: ["x.js"] }, () => ok((chrome.runtime.lastError as { message: string } | undefined)?.message)),
   );
-  expect(seen).toBe("Onglet refusé par WebAiOs");
+  expect(seen).toBe("Onglet refusé par Ressac");
 });
 
 test("guard: executeScript({ files }): only files from the table, guards first; ({ func }): guards, then the function in the same documents; without a returned documentId, refused", async () => {
@@ -380,8 +380,8 @@ test("guard: executeScript({ files }): only files from the table, guards first; 
     d.files ? [{ frameId: 0, ...(withoutDocument ? {} : { documentId: "D0" }) }, { frameId: 3, documentId: "D3" }] : [{ frameId: 0, result: 2 }],
   );
   const g = guardContext({ tabs: [4] }, { executeScript: native });
-  for (const f of ["inconnu.js", "../a.js", "/a.js", "./a.js", "s.css", "webaios-page-guard.js"]) {
-    await expect(g.chrome.scripting.executeScript({ target: { tabId: 4 }, files: [f] }), f).rejects.toThrow(`Arguments refusés par WebAiOs (fichier refusé : ${f})`);
+  for (const f of ["inconnu.js", "../a.js", "/a.js", "./a.js", "s.css", "ressac-page-guard.js"]) {
+    await expect(g.chrome.scripting.executeScript({ target: { tabId: 4 }, files: [f] }), f).rejects.toThrow(`Arguments refusés par Ressac (fichier refusé : ${f})`);
   }
   expect(native).not.toHaveBeenCalled();
   await g.chrome.scripting.executeScript({ target: { tabId: 4, allFrames: true }, files: ["a.js", "c/d.js"] });
@@ -394,7 +394,7 @@ test("guard: executeScript({ files }): only files from the table, guards first; 
   // A document without an id: the function does not go (it could run in a fresh document, without a guard).
   withoutDocument = true;
   const before = native.mock.calls.length;
-  await expect(g.chrome.scripting.executeScript({ target: { tabId: 4, allFrames: true }, func: f })).rejects.toThrow("Arguments refusés par WebAiOs (documentId absent)");
+  await expect(g.chrome.scripting.executeScript({ target: { tabId: 4, allFrames: true }, func: f })).rejects.toThrow("Arguments refusés par Ressac (documentId absent)");
   expect(native.mock.calls.length).toBe(before + 1);
 });
 
@@ -418,16 +418,16 @@ test("guard: registerContentScripts / updateContentScripts only register the gua
   // The extension poisons what a split would consult, then tries to get a file outside the table registered.
   // The prototype of the guard world's strings (the context's `String` is vitest's: not touched).
   runInContext('const S = "".__proto__; S[Symbol.split] = () => ["a.js"]; S.split = () => ["a.js"]; S.indexOf = () => -1; S.slice = () => "a.js";', ctx as object);
-  for (const js of ["../a.js", "x/../../a.js", "/a.js", "./a.js", "a\\b.js", "", "webaios-page-guard.js", "inconnu.js", "s.css"]) {
+  for (const js of ["../a.js", "x/../../a.js", "/a.js", "./a.js", "a\\b.js", "", "ressac-page-guard.js", "inconnu.js", "s.css"]) {
     await expect(chrome.scripting.registerContentScripts([{ id: "x", matches: ["https://hote.test/*"], js: [js] }]), js).rejects.toThrow(
-      `Arguments refusés par WebAiOs (fichier refusé : ${js})`,
+      `Arguments refusés par Ressac (fichier refusé : ${js})`,
     );
   }
   await expect(chrome.scripting.registerContentScripts([{ id: "x", matches: ["https://hote.test/*"], css: ["a.js"] }])).rejects.toThrow(
-    "Arguments refusés par WebAiOs (fichier refusé : a.js)",
+    "Arguments refusés par Ressac (fichier refusé : a.js)",
   );
   await expect(chrome.scripting.registerContentScripts([{ id: "x", matches: ["https://hote.test/*"], js: ["a.js"], world: "MAIN" }])).rejects.toThrow(
-    "Arguments refusés par WebAiOs (world MAIN)",
+    "Arguments refusés par Ressac (world MAIN)",
   );
   expect(calls).toHaveLength(1);
 });
@@ -454,13 +454,13 @@ test("guard: tabs.executeScript (MV2) first passes the page guards in the same f
     ...PAGE_GUARDS.map((f) => ["tabs.executeScript", [4, { file: f, allFrames: true, runAt: "document_idle" }]]),
     ["tabs.executeScript", [4, { file: "a.js", allFrames: true, runAt: "document_idle" }]],
   ]);
-  await expect(chrome.tabs.executeScript(4, { file: "../a.js" })).rejects.toThrow("Arguments refusés par WebAiOs (fichier refusé : ../a.js)");
+  await expect(chrome.tabs.executeScript(4, { file: "../a.js" })).rejects.toThrow("Arguments refusés par Ressac (fichier refusé : ../a.js)");
   expect(calls).toHaveLength(4);
 });
 
 test("guard: on the context's request, the background injects the markers' files (CSS then JS, guards first) in the sender's exact document, only if it is a tab", async () => {
   const { chrome, calls: calls, emit: emit } = guardContext({ nonTabs: [6] });
-  expect(await emit({ webaios: "context", files: [3, 0, 2] }, { tab: { id: 4 }, frameId: 2, documentId: "D" })).toEqual({ tab: true });
+  expect(await emit({ ressac: "context", files: [3, 0, 2] }, { tab: { id: 4 }, frameId: 2, documentId: "D" })).toEqual({ tab: true });
   const target = { tabId: 4, documentIds: ["D"] };
   expect(calls).toEqual([
     ["scripting.insertCSS", [{ target, files: ["s.css"] }]],
@@ -468,14 +468,14 @@ test("guard: on the context's request, the background injects the markers' files
   ]);
   // Without documentId: the sender's frame.
   calls.length = 0;
-  expect(await emit({ webaios: "context", files: [0] }, { tab: { id: 4 }, frameId: 2 })).toEqual({ tab: true });
+  expect(await emit({ ressac: "context", files: [0] }, { tab: { id: 4 }, frameId: 2 })).toEqual({ tab: true });
   expect(calls).toEqual([["scripting.executeScript", [{ target: { tabId: 4, frameIds: [2] }, files: [...PAGE_GUARDS, "a.js"], injectImmediately: true }]]]);
   // An invisible read, an unknown marker, an index that is not a number: nothing is injected.
   calls.length = 0;
-  expect(await emit({ webaios: "context", files: [0, 3] }, { tab: { id: 6 }, frameId: 0, documentId: "I" })).toEqual({ tab: false });
-  expect(await emit({ webaios: "context", files: [99] }, { tab: { id: 4 }, frameId: 0, documentId: "D" })).toEqual({ tab: false });
-  expect(await emit({ webaios: "context", files: ["0"] }, { tab: { id: 4 }, frameId: 0, documentId: "D" })).toEqual({ tab: false });
-  expect(await emit({ webaios: "context", files: [0] }, {})).toEqual({ tab: false });
+  expect(await emit({ ressac: "context", files: [0, 3] }, { tab: { id: 6 }, frameId: 0, documentId: "I" })).toEqual({ tab: false });
+  expect(await emit({ ressac: "context", files: [99] }, { tab: { id: 4 }, frameId: 0, documentId: "D" })).toEqual({ tab: false });
+  expect(await emit({ ressac: "context", files: ["0"] }, { tab: { id: 4 }, frameId: 0, documentId: "D" })).toEqual({ tab: false });
+  expect(await emit({ ressac: "context", files: [0] }, {})).toEqual({ tab: false });
   expect(calls).toEqual([]);
 });
 
@@ -483,8 +483,8 @@ test("guard: in an agent page (popup, options), the context is neither answered 
   const { chrome, calls: calls, emit: emit } = guardContext({}, {}, { page: true });
   const seen: unknown[] = [];
   (chrome.runtime.onMessage as { addListener(f: unknown): void }).addListener((m: unknown) => void seen.push(m));
-  expect(await emit({ webaios: "context", files: [3, 0] }, { tab: { id: 4 }, frameId: 0, documentId: "D" })).toBe("aucune réponse");
-  expect(await emit({ webaios: "context" }, { tab: { id: 4 } })).toBe("aucune réponse");
+  expect(await emit({ ressac: "context", files: [3, 0] }, { tab: { id: 4 }, frameId: 0, documentId: "D" })).toBe("aucune réponse");
+  expect(await emit({ ressac: "context" }, { tab: { id: 4 } })).toBe("aucune réponse");
   expect(calls).toEqual([]);
   expect(seen).toEqual([]);
 });
@@ -494,12 +494,12 @@ test("guard: an index outside the table (poisoned prototypes, negative, fraction
   // In the guard's world: what `table[n]` would read through the prototype chain for an n outside the table.
   runInContext('const fake = { kind: "js", path: "hors-liste.js" }; ({}).__proto__[999] = fake; [].__proto__[5] = fake; ({}).__proto__["-1"] = fake; ({}).__proto__["1.5"] = fake;', ctx as object);
   for (const n of [999, 5, -1, 1.5]) {
-    expect(await emit({ webaios: "context", files: [n] }, { tab: { id: 4 }, frameId: 0, documentId: "D" }), String(n)).toEqual({ tab: false });
+    expect(await emit({ ressac: "context", files: [n] }, { tab: { id: 4 }, frameId: 0, documentId: "D" }), String(n)).toEqual({ tab: false });
   }
   expect(calls).toEqual([]);
 });
 
-test("guard: onMessage answers { webaios: \"context\" } with isTab(sender.tab.id); the agent's listeners never see that message", async () => {
+test("guard: onMessage answers { ressac: \"context\" } with isTab(sender.tab.id); the agent's listeners never see that message", async () => {
   const { chrome, emit: emit } = guardContext({ nonTabs: [6] });
   const seen: unknown[] = [];
   // The agent tries to answer « onglet » itself in the guard's place.
@@ -510,16 +510,16 @@ test("guard: onMessage answers { webaios: \"context\" } with isTab(sender.tab.id
   const onMessage = chrome.runtime.onMessage as { addListener(f: unknown): void; removeListener(f: unknown): void; hasListener(f: unknown): boolean };
   onMessage.addListener(agent);
   expect(onMessage.hasListener(agent)).toBe(true);
-  expect(await emit({ webaios: "context" }, { tab: { id: 6 } })).toEqual({ tab: false });
-  expect(await emit({ webaios: "context" }, { tab: { id: 4 } })).toEqual({ tab: true });
-  expect(await emit({ webaios: "context" }, {})).toEqual({ tab: false });
+  expect(await emit({ ressac: "context" }, { tab: { id: 6 } })).toEqual({ tab: false });
+  expect(await emit({ ressac: "context" }, { tab: { id: 4 } })).toEqual({ tab: true });
+  expect(await emit({ ressac: "context" }, {})).toEqual({ tab: false });
   // Through the prototype's method, taken apart: always wrapped.
   const byProto = (m: unknown, _e: unknown, reply: (x: unknown) => void) => {
     seen.push(m);
     reply({ tab: true });
   };
   (Object.getPrototypeOf(onMessage) as { addListener: Function }).addListener.call(onMessage, byProto);
-  expect(await emit({ webaios: "context" }, { tab: { id: 6 } })).toEqual({ tab: false });
+  expect(await emit({ ressac: "context" }, { tab: { id: 6 } })).toEqual({ tab: false });
   expect(seen).toEqual([]);
   (Object.getPrototypeOf(onMessage) as { removeListener: Function }).removeListener.call(onMessage, byProto);
   // The other messages reach it.

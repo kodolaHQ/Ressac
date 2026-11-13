@@ -12,7 +12,7 @@ import {
   type ExternalRegistry,
   type Remarks,
   type DeclarationResult,
-} from "@webaios/kernel";
+} from "@ressac/kernel";
 import type { ExternalsState } from "../../shared/api";
 
 const DEFAULT_NAME = "Claude Code";
@@ -60,7 +60,7 @@ export async function startExternals(o: {
             .ensureReference()
             .catch((e) => console.error("[external] first review snapshot failed:", e));
         }
-        if (r.first) o.notify({ title: "WebAiOs", text: `${client.name} a branché le projet ${r.project.name}` });
+        if (r.first) o.notify({ title: "Ressac", text: `${client.name} a branché le projet ${r.project.name}` });
         return { project: r.project, ...(r.readable ? {} : { warning: UNREADABLE_WARNING }) };
       },
     });

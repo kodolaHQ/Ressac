@@ -12,7 +12,7 @@ index 02d026777b1eaf39a481d8f98c38ce9b17692784..e9d90eb75812ea559d3a63922237e4eb
 +        browsingContext,
 +        tid,
 +        "presence",
-+        "Les passkeys du Mac (Touch ID, trousseau iCloud) ne sont pas disponibles dans cette version de WebAiOs. " +
++        "Les passkeys du Mac (Touch ID, trousseau iCloud) ne sont pas disponibles dans cette version de Ressac. " +
 +          "Seule une clé de sécurité USB fonctionne : branchez-la et touchez-la, ou annulez et choisissez une autre méthode de connexion.",
 +        mainAction,
 +        secondaryActions,

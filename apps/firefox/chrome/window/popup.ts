@@ -1,14 +1,14 @@
 import type { TabId } from "../../shared/model";
 
 /**
- * The WebAiOs tab behind a popup: its opener's tab, or, for a popup opened by a popup (the steps of a sign-in),
+ * The Ressac tab behind a popup: its opener's tab, or, for a popup opened by a popup (the steps of a sign-in),
  * the tab behind that one. None once the opener and its tab are gone.
  */
 function popupSource(win: Window): TabId | undefined {
   let bc = win.gBrowser.selectedBrowser.browsingContext?.opener?.top;
   while (bc) {
     const browser = bc.embedderElement;
-    const tabId = browser?.ownerDocument.defaultView?.gBrowser?.getTabForBrowser(browser)?.getAttribute("webaios-tab-id");
+    const tabId = browser?.ownerDocument.defaultView?.gBrowser?.getTabForBrowser(browser)?.getAttribute("ressac-tab-id");
     if (tabId) return tabId;
     bc = bc.opener?.top;
   }
@@ -17,7 +17,7 @@ function popupSource(win: Window): TabId | undefined {
 
 /**
  * A popup stays a plain Firefox window (no address bar): its title always shows the site, against
- * phishing, and its target=_blank links become WebAiOs tabs right after the source tab. Run as the popup's document
+ * phishing, and its target=_blank links become Ressac tabs right after the source tab. Run as the popup's document
  * loads, before its page can open anything.
  */
 export function setupPopup(win: Window): void {
@@ -38,5 +38,5 @@ export function setupPopup(win: Window): void {
   gBrowser.updateTitlebar();
   // Firefox sends a popup's new tabs to its most recent full window, with no opener tab: that window's TabSync reads
   // the source here (its addTab is given the popup's browser as openerBrowser).
-  win.webaiosPopupSource = popupSource(win);
+  win.ressacPopupSource = popupSource(win);
 }

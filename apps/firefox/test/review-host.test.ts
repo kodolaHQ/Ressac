@@ -20,7 +20,7 @@ const text = (...changed: number[]) => thirty.map((l, i) => (changed.includes(i 
 
 describe("review service", () => {
   function prepare() {
-    const root = realpathSync(mkdtempSync(join(tmpdir(), "webaios-review-")));
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "ressac-review-")));
     dirs.push(root);
     const projects = join(root, "projects");
     const sites = join(root, "sites");
@@ -206,7 +206,7 @@ describe("review service", () => {
   it("priseEnChargeSites snapshots valid sites only; assurer a second time does not move the reference", async () => {
     const s = prepare();
     await s.service.handleSites(["tuning", "../x"]);
-    const ref = join(s.review, "site-tuning.git", "refs", "webaios", "relu");
+    const ref = join(s.review, "site-tuning.git", "refs", "ressac", "relu");
     expect(existsSync(ref)).toBe(true);
     expect(readdirSync(s.review).filter((n) => n.endsWith(".git"))).toEqual(["site-tuning.git"]);
     const before = readFileSync(ref, "utf8");
@@ -225,7 +225,7 @@ describe("review service", () => {
     await s.service.ensure("site-absent");
     expect(existsSync(s.review)).toBe(false);
     await s.service.ensure("site-tuning");
-    expect(existsSync(join(s.review, "site-tuning.git", "refs", "webaios", "relu"))).toBe(true);
+    expect(existsSync(join(s.review, "site-tuning.git", "refs", "ressac", "relu"))).toBe(true);
   });
 
   it("envoyer of a site follows projectForSite", async () => {
@@ -259,7 +259,7 @@ describe("review service", () => {
   it("a snapshot taken between erase and the trash is erased by the second erase, also after the trash", async () => {
     const s = prepare();
     await s.service.handleSites(["tuning"]);
-    const ref = join(s.review, "site-tuning.git", "refs", "webaios", "relu");
+    const ref = join(s.review, "site-tuning.git", "refs", "ressac", "relu");
     const first = s.service.erase("site-tuning");
     const photo = s.service.handleSites(["tuning"]);
     await Promise.all([first, photo]);

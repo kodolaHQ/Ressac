@@ -2,7 +2,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "vitest";
-import { readUrlState, type DeclarationSite } from "@webaios/kernel";
+import { readUrlState, type DeclarationSite } from "@ressac/kernel";
 import { TRACKING_INTERVAL_MS } from "../../shared/sites";
 import { UrlTracking } from "../../core/sites/tracking";
 
@@ -19,7 +19,7 @@ const declaration: DeclarationSite = {
 
 function tracking(links: string[] | Error) {
   const signals: (AbortSignal | undefined)[] = [];
-  const sitesFolder = mkdtempSync(join(tmpdir(), "webaios-suivi-"));
+  const sitesFolder = mkdtempSync(join(tmpdir(), "ressac-suivi-"));
   let now = 1_000_000;
   let reads = 0;
   const s = new UrlTracking({
@@ -109,7 +109,7 @@ test("a failed read counts in the interval: 30 s later, trop-tot", async () => {
 });
 
 test("the cancellation signal is passed to the read; a cancelled read gives introuvable and changes nothing", async () => {
-  const sitesFolder = mkdtempSync(join(tmpdir(), "webaios-suivi-"));
+  const sitesFolder = mkdtempSync(join(tmpdir(), "ressac-suivi-"));
   const control = new AbortController();
   const s = new UrlTracking({
     readLinks: (_p, signal) => new Promise((_ok, non) => signal?.addEventListener("abort", () => non(new Error("annulée")))),

@@ -1,22 +1,22 @@
 import { createReporter, launchSession, parseDsn, type ReportedError } from "../../shared/telemetry";
 
-const ENABLED = "webaios.telemetry.enabled";
-const INSTALL_ID = "webaios.telemetry.installId";
+const ENABLED = "ressac.telemetry.enabled";
+const INSTALL_ID = "ressac.telemetry.installId";
 // Our own chrome only: a web page's errors are its own (and would carry its addresses).
 const CRASH_TAB_SEND = "browser.tabs.crashReporting.sendReport";
-const OURS = "chrome://browser/content/webaios/";
+const OURS = "chrome://browser/content/ressac/";
 
 /**
  * Error reports to Sentry: our chrome's console errors and what the store passes in (the host's).
- * Inactive without a DSN (the build's, or WEBAIOS_SENTRY_DSN); off while the pref is false.
+ * Inactive without a DSN (the build's, or RESSAC_SENTRY_DSN); off while the pref is false.
  */
 export function installTelemetry(): { report(e: ReportedError): void; active: boolean } {
-  const dsn = Services.env.get("WEBAIOS_SENTRY_DSN") || __WEBAIOS_SENTRY_DSN__;
+  const dsn = Services.env.get("RESSAC_SENTRY_DSN") || __RESSAC_SENTRY_DSN__;
   const active = parseDsn(dsn) !== null;
   const enabled = () => Services.prefs.getBoolPref(ENABLED, false);
   const reporter = createReporter({
     dsn,
-    release: __WEBAIOS_VERSION__,
+    release: __RESSAC_VERSION__,
     home: Services.dirsvc.get("Home", Ci.nsIFile).path,
     enabled,
     post: (url, body) => fetch(url, { method: "POST", body }),
@@ -39,9 +39,9 @@ export function installTelemetry(): { report(e: ReportedError): void; active: bo
   });
   launchSession({
     dsn,
-    release: __WEBAIOS_VERSION__,
+    release: __RESSAC_VERSION__,
     // The once-ever notice (chrome/window) shows on the first launch: count from the next one, after the user could say no.
-    enabled: () => enabled() && Services.prefs.getBoolPref("webaios.telemetry.noticeShown", false),
+    enabled: () => enabled() && Services.prefs.getBoolPref("ressac.telemetry.noticeShown", false),
     post: (url, body) => fetch(url, { method: "POST", body }),
     ids: {
       get: () => Services.prefs.getStringPref(INSTALL_ID, "") || undefined,

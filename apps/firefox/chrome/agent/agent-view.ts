@@ -14,7 +14,7 @@ export interface AgentView {
   state(): AgentViewState | null;
   onState(callback: (s: AgentViewState | null) => void): () => void;
   watch(callback: (frame: string | null) => void): () => void;
-  /** Tests only (WEBAIOS_TEST_AGENT_VIEW): the captures taken and how long each took, in ms. */
+  /** Tests only (RESSAC_TEST_AGENT_VIEW): the captures taken and how long each took, in ms. */
   readonly test?: { captures: number; ms: number[] };
 }
 
@@ -27,7 +27,7 @@ export function createAgentView(o: { store: Store; host: AgentHost; access: () =
   const activity = createActivity(Date.now);
   const listeners = new Set<(s: AgentViewState | null) => void>();
   const watchers = new Set<(frame: string | null) => void>();
-  const test = Services.env.get("WEBAIOS_TEST_AGENT_VIEW") ? { captures: 0, ms: [] as number[] } : undefined;
+  const test = Services.env.get("RESSAC_TEST_AGENT_VIEW") ? { captures: 0, ms: [] as number[] } : undefined;
   let shown: AgentViewState | null = null;
   /** The tab loaded or changed since the last frame. */
   let moved = true;

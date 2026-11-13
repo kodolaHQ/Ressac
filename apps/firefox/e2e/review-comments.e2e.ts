@@ -6,7 +6,7 @@ import { afterAll, afterEach, expect, it } from "vitest";
 import { NO_CLIENT } from "../../../packages/kernel/src/design/projects";
 import { PAGE_LINE_CHANGED as LINE_CHANGED, RANGE_OUTSIDE_BLOCK, reviewUrl } from "../shared/model";
 import { state, waitFor } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { declareProject, LINES, modified, openApplications, refreshReview, textOf, writeAppJs } from "./review";
 import { writeSite } from "./sites";
@@ -16,7 +16,7 @@ import { click, inUi, missingApi, waitUi } from "./ui";
 // sent), and Review Focus 5.
 
 const dirs: string[] = [];
-let w: LaunchedWebAiOs | undefined;
+let w: LaunchedRessac | undefined;
 let m: Marionette;
 afterEach(async () => {
   try {
@@ -30,16 +30,16 @@ afterAll(async () => {
   for (const d of dirs) await rm(d, { recursive: true, force: true });
 });
 
-/** WebAiOs on a temporary data folder (`prepare` writes into it first), the Applications page open. */
-async function launch(o: { prepare?: (dataDir: string) => void } = {}): Promise<LaunchedWebAiOs> {
-  const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
-  const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
+/** Ressac on a temporary data folder (`prepare` writes into it first), the Applications page open. */
+async function launch(o: { prepare?: (dataDir: string) => void } = {}): Promise<LaunchedRessac> {
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
+  const profile = await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
   dirs.push(dataDir, profile);
   o.prepare?.(dataDir);
-  w = await launchWebAiOs({ dataDir, profile });
+  w = await launchRessac({ dataDir, profile });
   m = w.marionette;
   await m.setContext("chrome");
-  await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+  await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
   await openApplications(m);
   return w;
 }
@@ -121,7 +121,7 @@ const SITE = { declaration: { name: "Essai", url: "https://essai.example/", doma
 /** A site app « essai » (app.js, line 15 changed after its first photo), its Review page open on app.js. */
 async function siteOnAppJs(): Promise<void> {
   await launch({ prepare: (d) => writeSite(d, "essai", SITE) });
-  await expect.poll(() => existsSync(path.join(w!.dataDir, "design", "review", "site-essai.git", "refs", "webaios", "relu")), { timeout: 15_000 }).toBe(true);
+  await expect.poll(() => existsSync(path.join(w!.dataDir, "design", "review", "site-essai.git", "refs", "ressac", "relu")), { timeout: 15_000 }).toBe(true);
   writeAppJs(path.join(w!.dataDir, "workspace", "sites", "essai"), modified(15));
   await click(m, tid("site-essai-review"));
   await waitUi(m, `return !!doc.querySelector('${PAGE}')`);
@@ -141,16 +141,16 @@ it("+ on line 15 of app.js, « garder l'ancien nom »: a comment under the line;
   expect(await text(COMMENT)).not.toContain("envoyé");
   expect(await text(SEND)).toBe("Envoyer 1 commentaire à l'agent");
   // The home page's panel closed with the Applications tab: the send opens it again.
-  await waitFor(m, "return document.getElementById('webaios-agent').hidden", (v) => v === true);
+  await waitFor(m, "return document.getElementById('ressac-agent').hidden", (v) => v === true);
   await click(m, SEND);
   const sent = `1) "app.js":15-15 : « garder l'ancien nom »`;
-  await waitFor(m, "return !document.getElementById('webaios-agent').hidden", (v) => v === true);
+  await waitFor(m, "return !document.getElementById('ressac-agent').hidden", (v) => v === true);
   await waitUi(m, `return ${TERMINAL}.includes(arguments[0])`, [sent], 20_000, "agent");
   await expect.poll(agentInput, { timeout: 10_000 }).toContain(sent);
-  expect(agentInput()).toContain("/workspace/.webaios/remarks/site-essai/");
+  expect(agentInput()).toContain("/workspace/.ressac/remarks/site-essai/");
   await expect.poll(agentInput, { timeout: 5_000 }).toMatch(/\] [^\r]*\r$/);
   await waitText(COMMENT, "envoyé");
-  const batches = path.join(w!.dataDir, "workspace", ".webaios", "remarks", "site-essai");
+  const batches = path.join(w!.dataDir, "workspace", ".ressac", "remarks", "site-essai");
   expect(filesOf(batches).some((f) => f.endsWith("batch.json"))).toBe(true);
 });
 

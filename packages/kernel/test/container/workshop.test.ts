@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { TOOLS_FOLDERS } from "../../src/container/runner.js";
 import { fakeRunner } from "../helpers/fake-runner.js";
 
-const paths = spacePaths("/Users/t/WebAiOs");
+const paths = spacePaths("/Users/t/Ressac");
 
 test("docker not found → docker-absent, without an exception", async () => {
   expect(await new Workshop({ paths: paths, docker: null }).state()).toBe("docker-absent");
@@ -64,16 +64,16 @@ test("ensureStarted on absent: build if the image is missing then run with the r
   ]);
   expect(await new Workshop({ paths: paths, docker: "docker", run: runCall }).ensureStarted()).toBe("demarre");
   const build = calls.find((a) => a.args[0] === "build")!;
-  expect(build.args.slice(0, 4)).toEqual(["build", "-t", "webaios-workshop:1", "--label"]);
+  expect(build.args.slice(0, 4)).toEqual(["build", "-t", "ressac-workshop:1", "--label"]);
   expect(build.args).toContain("-f");
   const run = calls.find((a) => a.args[0] === "run")!;
   expect(run.args).toEqual(expect.arrayContaining([
-    "--name", "webaios-workshop",
+    "--name", "ressac-workshop",
     "127.0.0.1:5280-5299:5280-5299",
     "webaios-home:/home/node",
-    "/Users/t/WebAiOs:/workspace",
+    "/Users/t/Ressac:/workspace",
     "host.docker.internal:host-gateway",
-    "webaios-workshop:1",
+    "ressac-workshop:1",
   ]));
   expect(run.args.slice(-2)).toEqual(["sleep", "infinity"]);
 });
@@ -86,17 +86,17 @@ test("ensureStarted on arrete → docker start", async () => {
     [/ start /, () => ((started = true), { code: 0 })],
   ]);
   expect(await new Workshop({ paths: paths, docker: "docker", run: runCall }).ensureStarted()).toBe("demarre");
-  expect(calls.some((a) => a.args.join(" ") === "start webaios-workshop")).toBe(true);
+  expect(calls.some((a) => a.args.join(" ") === "start ressac-workshop")).toBe(true);
   expect(calls.some((a) => a.args[0] === "run")).toBe(false);
 });
 
 test("execCommand interactive and non-interactive", () => {
   const a = new Workshop({ paths: paths, docker: "/opt/homebrew/bin/docker" });
   expect(a.execCommand(["claude"], { interactive: true })).toEqual([
-    "/opt/homebrew/bin/docker", "exec", "-it", "-w", "/workspace", "webaios-workshop", "claude",
+    "/opt/homebrew/bin/docker", "exec", "-it", "-w", "/workspace", "ressac-workshop", "claude",
   ]);
   expect(a.execCommand(["claude", "-p", "x"], { interactive: false })).toEqual([
-    "/opt/homebrew/bin/docker", "exec", "-w", "/workspace", "webaios-workshop", "claude", "-p", "x",
+    "/opt/homebrew/bin/docker", "exec", "-w", "/workspace", "ressac-workshop", "claude", "-p", "x",
   ]);
 });
 
@@ -133,7 +133,7 @@ function fakeDocker(o: { source: string; containerHash: string; imageHash: strin
     [/ image inspect /, { code: 0, stdout: `${o.imageHash}\n` }],
     [/ inspect -f \{\{\.State\.Running\}\}/, () => ({ code: 0, stdout: recreated ? "true\n" : (o.running ?? "true\n") })],
     [/ inspect -f .*Mounts/, () => ({ code: 0, stdout: recreated ? "" : `${o.source}|${o.containerHash}\n` })],
-    [/ rm -f webaios-workshop/, () => ((recreated = true), { code: 0 })],
+    [/ rm -f ressac-workshop/, () => ((recreated = true), { code: 0 })],
   ]);
   return f;
 }
@@ -149,7 +149,7 @@ test("existing container mounted on another folder → removed then recreated", 
   const e = dockerfileHash();
   const { run: runCall, calls: calls } = fakeDocker({ source: "/tmp/ailleurs", containerHash: e, imageHash: e });
   await new Workshop({ paths: paths, docker: "docker", run: runCall }).ensureStarted();
-  expect(calls.some((a) => a.args.join(" ") === "rm -f webaios-workshop")).toBe(true);
+  expect(calls.some((a) => a.args.join(" ") === "rm -f ressac-workshop")).toBe(true);
   expect(calls.some((a) => a.args[0] === "run")).toBe(true);
 });
 
@@ -157,21 +157,21 @@ test("modified Dockerfile → image rebuilt and container recreated", async () =
   const { run: runCall, calls: calls } = fakeDocker({ source: paths.root, containerHash: "ancienne", imageHash: "ancienne" });
   await new Workshop({ paths: paths, docker: "docker", run: runCall }).ensureStarted();
   const build = calls.find((a) => a.args[0] === "build")!;
-  expect(build.args).toContain(`webaios.dockerfile=${dockerfileHash()}`);
-  expect(calls.some((a) => a.args.join(" ") === "rm -f webaios-workshop")).toBe(true);
+  expect(build.args).toContain(`ressac.dockerfile=${dockerfileHash()}`);
+  expect(calls.some((a) => a.args.join(" ") === "rm -f ressac-workshop")).toBe(true);
 });
 
 test("interactive session: its PID is noted in the container, and stopping it kills it there (killing the docker client is not enough)", async () => {
   const { run: runCall, calls: calls } = fakeRunner([]);
   const a = new Workshop({ paths: paths, docker: "/opt/homebrew/bin/docker", run: runCall });
-  const pid = "/tmp/webaios-session-ab12.pid";
+  const pid = "/tmp/ressac-session-ab12.pid";
   expect(a.sessionCommand("ab12", ["claude", "--x"])).toEqual([
-    "/opt/homebrew/bin/docker", "exec", "-it", "-e", "WEBAIOS_SESSION=ab12", "-w", "/workspace", "webaios-workshop",
-    "sh", "-c", `echo $$ > ${pid}; exec "$@"`, "webaios-session", "claude", "--x",
+    "/opt/homebrew/bin/docker", "exec", "-it", "-e", "RESSAC_SESSION=ab12", "-w", "/workspace", "ressac-workshop",
+    "sh", "-c", `echo $$ > ${pid}; exec "$@"`, "ressac-session", "claude", "--x",
   ]);
   await a.stopSession("ab12");
   const call = calls.find((x) => x.args[0] === "exec")!;
-  expect(call.args.slice(0, 4)).toEqual(["exec", "webaios-workshop", "sh", "-c"]);
+  expect(call.args.slice(0, 4)).toEqual(["exec", "ressac-workshop", "sh", "-c"]);
   expect(call.args[4]).toContain(`cat ${pid}`);
   expect(call.args[4]).toBe(sessionStopScript(pid, "ab12"));
   expect(() => a.sessionCommand("../x", ["claude"])).toThrow();
@@ -244,9 +244,9 @@ const alive = (pid: number) => {
 };
 
 test("the stop script kills an agent that ignores HUP and TERM (claude intercepts them), and its whole group", async () => {
-  const f = join(mkdtempSync(join(tmpdir(), "webaios-arret-")), "session.pid");
+  const f = join(mkdtempSync(join(tmpdir(), "ressac-arret-")), "session.pid");
   // Like commandeSession: the shell notes its PID then becomes the agent; here an agent deaf to HUP and TERM, with a child.
-  const agent = spawn("sh", ["-c", `echo $$ > ${f}; exec "$@"`, "webaios-session", "sh", "-c", "trap '' HUP TERM; sleep 60 & wait"], {
+  const agent = spawn("sh", ["-c", `echo $$ > ${f}; exec "$@"`, "ressac-session", "sh", "-c", "trap '' HUP TERM; sleep 60 & wait"], {
     detached: true,
     stdio: "ignore",
   });
@@ -265,9 +265,9 @@ test("the stop script kills an agent that ignores HUP and TERM (claude intercept
 test("appCommand", () => {
   const a = new Workshop({ paths: paths, docker: "/opt/homebrew/bin/docker" });
   expect(a.appCommand("todo", "npx vite --port {port}", 5281)).toEqual([
-    "/opt/homebrew/bin/docker", "exec", "-e", "WEBAIOS_APP=todo", "-e", "PORT=5281", "-w", "/workspace/projects/todo", "webaios-workshop",
-    "sh", "-c", `mkdir -p /workspace/.webaios/logs; exec >"/workspace/.webaios/logs/$1.log" 2>&1; eval "$2"`,
-    "webaios-app", "todo", "npx vite --port 5281",
+    "/opt/homebrew/bin/docker", "exec", "-e", "RESSAC_APP=todo", "-e", "PORT=5281", "-w", "/workspace/projects/todo", "ressac-workshop",
+    "sh", "-c", `mkdir -p /workspace/.ressac/logs; exec >"/workspace/.ressac/logs/$1.log" 2>&1; eval "$2"`,
+    "ressac-app", "todo", "npx vite --port 5281",
   ]);
 });
 
@@ -275,19 +275,19 @@ test("stopApp only targets its own mark", async () => {
   const { run: runCall, calls: calls } = fakeRunner([]);
   await new Workshop({ paths: paths, docker: "docker", run: runCall }).stopApp("todo");
   const call = calls.find((x) => x.args[0] === "exec")!;
-  expect(call.args.slice(0, 4)).toEqual(["exec", "webaios-workshop", "sh", "-c"]);
-  expect(call.args[4]).toContain("WEBAIOS_APP=todo");
-  expect(call.args[4]).not.toContain("WEBAIOS_SESSION");
+  expect(call.args.slice(0, 4)).toEqual(["exec", "ressac-workshop", "sh", "-c"]);
+  expect(call.args[4]).toContain("RESSAC_APP=todo");
+  expect(call.args[4]).not.toContain("RESSAC_SESSION");
   expect(call.args[4]).toContain("signaler KILL");
   await expect(new Workshop({ paths: paths, docker: "docker", run: runCall }).stopApp("x'y")).rejects.toThrow();
 });
 
-test("stopOrphanApps vise WEBAIOS_APP=.*", async () => {
+test("stopOrphanApps vise RESSAC_APP=.*", async () => {
   const { run: runCall, calls: calls } = fakeRunner([]);
   await new Workshop({ paths: paths, docker: "docker", run: runCall }).stopOrphanApps();
   const script = calls.find((x) => x.args[0] === "exec")!.args[4]!;
-  expect(script).toContain("WEBAIOS_APP=.*");
-  expect(script).not.toContain("WEBAIOS_SESSION");
+  expect(script).toContain("RESSAC_APP=.*");
+  expect(script).not.toContain("RESSAC_SESSION");
 });
 
 test("stopApp: the dot in a folder name is not a grep wildcard", async () => {
@@ -295,50 +295,50 @@ test("stopApp: the dot in a folder name is not a grep wildcard", async () => {
   await new Workshop({ paths: paths, docker: "docker", run: runCall }).stopApp("my.app");
   const script = calls.find((x) => x.args[0] === "exec")!.args[4]!;
   const pattern = /grep -qzx '([^']*)'/.exec(script)![1]!;
-  expect(pattern).toBe("WEBAIOS_APP=my\\.app");
+  expect(pattern).toBe("RESSAC_APP=my\\.app");
   // The pattern as grep reads it: « my.app » is targeted, « myxapp » is not.
   const targets = (value: string) =>
     new Promise<boolean>((ok) => execFile("sh", ["-c", `printf '%s' "$1" | grep -qx "$2"`, "sh", value, pattern], (e) => ok(!e)));
-  expect(await targets("WEBAIOS_APP=my.app")).toBe(true);
-  expect(await targets("WEBAIOS_APP=myxapp")).toBe(false);
+  expect(await targets("RESSAC_APP=my.app")).toBe(true);
+  expect(await targets("RESSAC_APP=myxapp")).toBe(false);
 });
 
-test("harvestCommand mounts the engine read-only and launches /opt/webaios/engine/harvester.mjs", () => {
+test("harvestCommand mounts the engine read-only and launches /opt/ressac/engine/harvester.mjs", () => {
   const workshop = new Workshop({ paths: paths, docker: "/usr/local/bin/docker" });
-  const c = workshop.harvestCommand("meteo", "/Users/t/WebAiOs/home/widgets/meteo", "/app/docker/engine");
+  const c = workshop.harvestCommand("meteo", "/Users/t/Ressac/home/widgets/meteo", "/app/docker/engine");
   expect(c).toEqual([
     "/usr/local/bin/docker", "run", "-i", "--rm",
-    "--name", "webaios-harvest-meteo",
+    "--name", "ressac-harvest-meteo",
     "--network", "none",
     "--read-only",
     "--tmpfs", "/tmp",
-    "-v", "/Users/t/WebAiOs/home/widgets/meteo:/widget:ro",
-    "-v", "/app/docker/engine:/opt/webaios/engine:ro",
+    "-v", "/Users/t/Ressac/home/widgets/meteo:/widget:ro",
+    "-v", "/app/docker/engine:/opt/ressac/engine:ro",
     "--memory", "512m",
     "--pids-limit", "128",
     IMAGE,
     "timeout", "-k", "5", "180",
-    "node", "/opt/webaios/engine/harvester.mjs", "/widget",
+    "node", "/opt/ressac/engine/harvester.mjs", "/widget",
   ]);
   // The engine folder is mounted as is, not its parent: nothing else of the package enters the container.
   expect(() => workshop.harvestCommand("meteo", "/d", "/app/x:y")).toThrow();
 });
 
-test("harvestCommand of an action names the container webaios-action-<id>; of a widget, webaios-harvest-<id>", async () => {
+test("harvestCommand of an action names the container ressac-action-<id>; of a widget, ressac-harvest-<id>", async () => {
   const workshop = new Workshop({ paths: paths, docker: "/usr/local/bin/docker" });
   const name = (c: string[]) => c[c.indexOf("--name") + 1];
-  expect(name(workshop.harvestCommand({ type: "action", id: "gitlab" }, "/d", "/app/docker/engine"))).toBe("webaios-action-gitlab");
-  expect(name(workshop.harvestCommand({ type: "widget", id: "meteo" }, "/d", "/app/docker/engine"))).toBe("webaios-harvest-meteo");
-  expect(name(workshop.harvestCommand("meteo", "/d", "/app/docker/engine"))).toBe("webaios-harvest-meteo");
-  expect(harvestName({ type: "action", id: "gitlab" })).toBe("webaios-action-gitlab");
-  expect(harvestName("meteo")).toBe("webaios-harvest-meteo");
+  expect(name(workshop.harvestCommand({ type: "action", id: "gitlab" }, "/d", "/app/docker/engine"))).toBe("ressac-action-gitlab");
+  expect(name(workshop.harvestCommand({ type: "widget", id: "meteo" }, "/d", "/app/docker/engine"))).toBe("ressac-harvest-meteo");
+  expect(name(workshop.harvestCommand("meteo", "/d", "/app/docker/engine"))).toBe("ressac-harvest-meteo");
+  expect(harvestName({ type: "action", id: "gitlab" })).toBe("ressac-action-gitlab");
+  expect(harvestName("meteo")).toBe("ressac-harvest-meteo");
   expect(() => harvestName({ type: "action", id: "../x" })).toThrow();
   // The removal targets the same name.
   const calls: string[][] = [];
   const deleter = new Workshop({ paths: paths, docker: "/usr/local/bin/docker", run: async (_c, args) => (calls.push(args), { code: 0, stdout: "", stderr: "" }) });
   await deleter.deleteHarvest({ type: "action", id: "gitlab" });
   await deleter.deleteHarvest("meteo");
-  expect(calls).toEqual([["rm", "-f", "webaios-action-gitlab"], ["rm", "-f", "webaios-harvest-meteo"]]);
+  expect(calls).toEqual([["rm", "-f", "ressac-action-gitlab"], ["rm", "-f", "ressac-harvest-meteo"]]);
 });
 
 test("harvestCommand with delaiS 1830: timeout -k 5 1830", () => {
@@ -361,31 +361,31 @@ async function quotedNames(): Promise<string[]> {
   const workshop = new Workshop({ paths: paths, docker: "docker", run: runCall });
   await workshop.ensureStarted();
   await workshop.stopOrphanSessions();
-  // the image is also called webaios-workshop:1, so only container-name positions count
-  return calls.flatMap((a) => a.args.filter((x, i) => /^webaios-workshop(-test)?$/.test(x) && a.args[i - 1] !== "-t"));
+  // the image is also called ressac-workshop:1, so only container-name positions count
+  return calls.flatMap((a) => a.args.filter((x, i) => /^ressac-workshop(-test)?$/.test(x) && a.args[i - 1] !== "-t"));
 }
 
-test("uses WEBAIOS_CONTAINER for every docker command", async () => {
-  vi.stubEnv("WEBAIOS_CONTAINER", "webaios-workshop-test");
+test("uses RESSAC_CONTAINER for every docker command", async () => {
+  vi.stubEnv("RESSAC_CONTAINER", "ressac-workshop-test");
   try {
     const names = await quotedNames();
     expect(names.length).toBeGreaterThan(2);
-    expect(new Set(names)).toEqual(new Set(["webaios-workshop-test"]));
+    expect(new Set(names)).toEqual(new Set(["ressac-workshop-test"]));
   } finally {
     vi.unstubAllEnvs();
   }
 });
 
-test("defaults to webaios-workshop", async () => {
-  vi.stubEnv("WEBAIOS_CONTAINER", "");
+test("defaults to ressac-workshop", async () => {
+  vi.stubEnv("RESSAC_CONTAINER", "");
   try {
-    expect(new Set(await quotedNames())).toEqual(new Set(["webaios-workshop"]));
+    expect(new Set(await quotedNames())).toEqual(new Set(["ressac-workshop"]));
   } finally {
     vi.unstubAllEnvs();
   }
 });
 
-test("WEBAIOS_CONTAINER_PORTS gives the published range and tells it to the container; invalid falls back to 5280-5299", async () => {
+test("RESSAC_CONTAINER_PORTS gives the published range and tells it to the container; invalid falls back to 5280-5299", async () => {
   const runArgs = async () => {
     const { run: runCall, calls: calls } = fakeRunner([
       [/ image inspect /, { code: 0 }],
@@ -395,14 +395,14 @@ test("WEBAIOS_CONTAINER_PORTS gives the published range and tells it to the cont
     return calls.find((a) => a.args[0] === "run")!.args;
   };
   try {
-    vi.stubEnv("WEBAIOS_CONTAINER_PORTS", "5300-5319");
+    vi.stubEnv("RESSAC_CONTAINER_PORTS", "5300-5319");
     expect(containerPortRange()).toEqual([5300, 5319]);
-    expect(await runArgs()).toEqual(expect.arrayContaining(["127.0.0.1:5300-5319:5300-5319", "WEBAIOS_PORTS=5300-5319"]));
+    expect(await runArgs()).toEqual(expect.arrayContaining(["127.0.0.1:5300-5319:5300-5319", "RESSAC_PORTS=5300-5319"]));
     for (const invalid of ["", "abc", "5319-5300", "80-90"]) {
-      vi.stubEnv("WEBAIOS_CONTAINER_PORTS", invalid);
+      vi.stubEnv("RESSAC_CONTAINER_PORTS", invalid);
       expect(containerPortRange()).toEqual([5280, 5299]);
     }
-    expect(await runArgs()).toEqual(expect.arrayContaining(["127.0.0.1:5280-5299:5280-5299", "WEBAIOS_PORTS=5280-5299"]));
+    expect(await runArgs()).toEqual(expect.arrayContaining(["127.0.0.1:5280-5299:5280-5299", "RESSAC_PORTS=5280-5299"]));
   } finally {
     vi.unstubAllEnvs();
   }
@@ -418,7 +418,7 @@ test("a failed docker run removes the half-created container, so the next start 
   const workshop = new Workshop({ paths: paths, docker: "docker", run: runCall });
   await expect(workshop.ensureStarted()).rejects.toThrow("port is already allocated");
   const iRun = calls.findIndex((a) => a.args[0] === "run");
-  expect(calls.slice(iRun + 1).some((a) => a.args.join(" ") === "rm -f webaios-workshop")).toBe(true);
+  expect(calls.slice(iRun + 1).some((a) => a.args.join(" ") === "rm -f ressac-workshop")).toBe(true);
   await workshop.ensureStarted();
   expect(runs).toBe(2);
 });
@@ -435,9 +435,9 @@ describe("restart, rebuild, exec", () => {
     ]);
     expect(await new Workshop({ paths, docker: "docker", run: runCall }).restart()).toBe("demarre");
     const lines = calls.map((c) => c.args.join(" "));
-    expect(lines.indexOf("stop -t 2 webaios-workshop")).toBeGreaterThan(-1);
-    expect(lines.findIndex((l) => l.startsWith("inspect"))).toBeGreaterThan(lines.indexOf("stop -t 2 webaios-workshop"));
-    expect(lines).toContain("start webaios-workshop");
+    expect(lines.indexOf("stop -t 2 ressac-workshop")).toBeGreaterThan(-1);
+    expect(lines.findIndex((l) => l.startsWith("inspect"))).toBeGreaterThan(lines.indexOf("stop -t 2 ressac-workshop"));
+    expect(lines).toContain("start ressac-workshop");
   });
 
   const rebuildRules = () => {
@@ -455,7 +455,7 @@ describe("restart, rebuild, exec", () => {
     const names = calls.map((c) => c.args[0]);
     expect(names.indexOf("rm")).toBeLessThan(names.indexOf("build"));
     expect(names.indexOf("build")).toBeLessThan(names.indexOf("run"));
-    expect(calls.find((c) => c.args[0] === "rm")!.args).toEqual(["rm", "-f", "webaios-workshop"]);
+    expect(calls.find((c) => c.args[0] === "rm")!.args).toEqual(["rm", "-f", "ressac-workshop"]);
     const build = calls.find((c) => c.args[0] === "build")!;
     expect(build.args).toEqual(expect.arrayContaining(["--no-cache", "--pull"]));
     expect(calls.find((c) => c.args[0] === "run")!.args).toEqual(
@@ -474,7 +474,7 @@ describe("restart, rebuild, exec", () => {
     const { run: runCall, calls } = rebuildRules();
     const w = new Workshop({ paths, docker: "docker", run: runCall });
     await Promise.all([w.ensureStarted(), w.rebuild()]);
-    expect(calls.map((c) => c.args.join(" "))).toContain("rm -f webaios-workshop");
+    expect(calls.map((c) => c.args.join(" "))).toContain("rm -f ressac-workshop");
     expect(calls.some((c) => c.args[0] === "build" && c.args.includes("--no-cache"))).toBe(true);
   });
 
@@ -490,16 +490,16 @@ describe("restart, rebuild, exec", () => {
   test("exec", async () => {
     const { run: runCall, calls } = fakeRunner([]);
     await new Workshop({ paths, docker: "docker", run: runCall }).exec(["claude", "auth", "status", "--json"]);
-    expect(calls[0]!.args).toEqual(["exec", "webaios-workshop", "claude", "auth", "status", "--json"]);
+    expect(calls[0]!.args).toEqual(["exec", "ressac-workshop", "claude", "auth", "status", "--json"]);
   });
 });
 
 test("sessionCommand passes env variables by name only", () => {
   const w = new Workshop({ paths: spacePaths("/x"), docker: "/d", run: fakeRunner([]).run });
-  const argv = w.sessionCommand("s1", ["codex"], ["WEBAIOS_MCP_TOKEN"]);
-  const at = argv.indexOf("WEBAIOS_MCP_TOKEN");
+  const argv = w.sessionCommand("s1", ["codex"], ["RESSAC_MCP_TOKEN"]);
+  const at = argv.indexOf("RESSAC_MCP_TOKEN");
   expect(argv[at - 1]).toBe("-e");
-  expect(argv.some((a) => a.startsWith("WEBAIOS_MCP_TOKEN="))).toBe(false);
+  expect(argv.some((a) => a.startsWith("RESSAC_MCP_TOKEN="))).toBe(false);
 });
 
 describe("first build progress", () => {

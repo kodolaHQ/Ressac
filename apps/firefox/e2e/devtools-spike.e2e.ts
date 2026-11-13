@@ -9,13 +9,13 @@ import { summarizeProfile } from "../../../packages/kernel/src/devtools/summarie
 import { geckoToCpuProfile } from "../chrome/store/devtools";
 import { cleanupXpis, installAddon } from "./addons";
 import { dispatch, state, waitFor } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { waitUi } from "./ui";
 
 // Probes of plan 28's unknowns (docs/superpowers/notes/2026-11-05-outils-dev-recherche.md, D1-D9): the agent's dev
 // tools on one tab, inside the browser process, without any listening port. They print what they see rather than
-// assert it: rerun them with WEBAIOS_SPIKE=1 after a Firefox version change and compare. No network.
+// assert it: rerun them with RESSAC_SPIKE=1 after a Firefox version change and compare. No network.
 
 const note = (what: string, v: unknown) => console.log(`[spike] ${what}: ${JSON.stringify(v)}`);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -79,7 +79,7 @@ async function startPages(): Promise<{ url: string; hits: { path: string; h: Par
 
 async function ready(m: Marionette): Promise<void> {
   await m.setContext("chrome");
-  await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+  await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
   // The home page's agent session settles first: quitting during its start-up leaves writers in the data dir.
   await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
 }
@@ -87,7 +87,7 @@ async function ready(m: Marionette): Promise<void> {
 const chrome = <T = any>(m: Marionette, body: string, args: unknown[] = []) => m.execute<T>(`return (async () => { ${body} })();`, args);
 
 let opened = 0;
-/** Opens `url` (made unique) in a WebAiOs tab of the first window and waits for its script; the browser is window.spikeBrowsers[name]. */
+/** Opens `url` (made unique) in a Ressac tab of the first window and waits for its script; the browser is window.spikeBrowsers[name]. */
 async function open(m: Marionette, name: string, page: string): Promise<void> {
   const url = `${page}${page.includes("?") ? "&" : "?"}k=${++opened}`;
   await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url });
@@ -225,8 +225,8 @@ const EVAL = `
   }
   return out;`;
 
-/** Each WebAiOs (Gecko) process's listening TCP sockets (D8), Marionette's own port (the control) set apart. */
-async function listening(m: Marionette, w: LaunchedWebAiOs): Promise<{ pids: number; marionetteSeen: boolean; listen: string[] }> {
+/** Each Ressac (Gecko) process's listening TCP sockets (D8), Marionette's own port (the control) set apart. */
+async function listening(m: Marionette, w: LaunchedRessac): Promise<{ pids: number; marionetteSeen: boolean; listen: string[] }> {
   const pids = await chrome<number[]>(m, `const i = await ChromeUtils.requestProcInfo(); return [i.pid, ...i.children.map((c) => c.pid)];`);
   const marionettePort = (await readFile(path.join(w.profile, "MarionetteActivePort"), "utf8")).trim();
   // lsof exits 1 when one pid has nothing to list: its stdout still holds the others.
@@ -235,16 +235,16 @@ async function listening(m: Marionette, w: LaunchedWebAiOs): Promise<{ pids: num
   return { pids: pids.length, marionetteSeen: lines.some((l) => l.includes(`:${marionettePort} `)), listen: lines.filter((l) => !l.includes(`:${marionettePort} `)) };
 }
 
-describe.skipIf(!process.env.WEBAIOS_SPIKE)("agent dev tools spike", () => {
+describe.skipIf(!process.env.RESSAC_SPIKE)("agent dev tools spike", () => {
   let pages: Awaited<ReturnType<typeof startPages>>;
   let other: Awaited<ReturnType<typeof startPages>>;
-  let w: LaunchedWebAiOs;
+  let w: LaunchedRessac;
   let m: Marionette;
   let before: Awaited<ReturnType<typeof listening>>;
   beforeAll(async () => {
     pages = await startPages();
     other = await startPages();
-    w = await launchWebAiOs();
+    w = await launchRessac();
     m = w.marionette;
     await ready(m);
     before = await listening(m, w);
@@ -259,8 +259,8 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("agent dev tools spike", () => {
   it("D9 + D1: an in-process DevTools client per tab; console and errors of this tab only; reload", { timeout: 120_000 }, async () => {
     // A content script that logs on every page of the test sites (an extension's messages must not reach the tab's buffer).
     const addon = await installAddon(m, {
-      id: "logger@webaios.test",
-      manifest: { manifest_version: 2, name: "Logger", version: "1.0", browser_specific_settings: { gecko: { id: "logger@webaios.test" } },
+      id: "logger@ressac.test",
+      manifest: { manifest_version: 2, name: "Logger", version: "1.0", browser_specific_settings: { gecko: { id: "logger@ressac.test" } },
         content_scripts: [{ matches: ["http://127.0.0.1/*"], js: ["cs.js"], run_at: "document_end" }] },
       files: { "cs.js": 'console.log("spike-content-script", location.search);' },
     });
@@ -482,7 +482,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("agent dev tools spike", () => {
     note("D9 existing actors in the tab (window global)", await chrome(m, `
       const wg = window.spikeBrowsers.a.browsingContext.currentWindowGlobal;
       const out = {};
-      for (const name of ["WebAiOsPage", "Conduits", "MarionetteCommands"]) { try { out[name] = !!wg.getActor(name); } catch (e) { out[name] = e.name; } }
+      for (const name of ["RessacPage", "Conduits", "MarionetteCommands"]) { try { out[name] = !!wg.getActor(name); } catch (e) { out[name] = e.name; } }
       try { out["DevToolsProcess (process actor)"] = !!wg.domProcess.getActor("DevToolsProcess"); } catch (e) { out["DevToolsProcess (process actor)"] = e.name; }
       return out;`));
   });

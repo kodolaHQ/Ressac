@@ -10,7 +10,7 @@ let fake: string;
 let items: string;
 let log: string;
 
-// A fake `security` holding several items under webaios-amo (JSON list of {acct, secret}), journalling every call.
+// A fake `security` holding several items under ressac-amo (JSON list of {acct, secret}), journalling every call.
 beforeEach(async () => {
   dir = await mkdtemp(path.join(tmpdir(), "amo-kc-"));
   fake = path.join(dir, "security");
@@ -75,7 +75,7 @@ describe("Mozilla account keychain", () => {
   });
 
   it("test keychain file: read by readAmoKey, no real security", async () => {
-    const env = { WEBAIOS_TEST_KEYCHAIN: path.join(dir, "kc") };
+    const env = { RESSAC_TEST_KEYCHAIN: path.join(dir, "kc") };
     const kc = amoKeychain({ command: "/nonexistent", env });
     expect(await kc.issuer()).toBeNull();
     await kc.write("user:1:2", "s3cret");

@@ -18,9 +18,9 @@ function clone(v: unknown): unknown {
   }
 }
 
-export class WebAiOsDesignParent extends JSWindowActorParent {}
+export class RessacDesignParent extends JSWindowActorParent {}
 
-export class WebAiOsDesignChild extends JSWindowActorChild {
+export class RessacDesignChild extends JSWindowActorChild {
   private viewfinderSandbox: any = null;
   private unguardCurrent: (() => void) | null = null;
 
@@ -28,7 +28,7 @@ export class WebAiOsDesignChild extends JSWindowActorChild {
   private viewfinder(): any {
     if (!this.viewfinderSandbox) {
       const win = this.contentWindow;
-      this.viewfinderSandbox = Cu.Sandbox((this.document as any).nodePrincipal, { sandboxPrototype: win, wantXrays: true, wantComponents: false, sameZoneAs: win, sandboxName: "WebAiOs · viewfinder" });
+      this.viewfinderSandbox = Cu.Sandbox((this.document as any).nodePrincipal, { sandboxPrototype: win, wantXrays: true, wantComponents: false, sameZoneAs: win, sandboxName: "Ressac · viewfinder" });
       // The page's legacy `Components` shim would show through the prototype.
       Object.defineProperty(this.viewfinderSandbox, "Components", { value: undefined });
     }
@@ -100,7 +100,7 @@ export class WebAiOsDesignChild extends JSWindowActorChild {
     const guard = this.guard(sandbox);
     let r: unknown = null;
     try {
-      r = await Cu.evalInSandbox(code, sandbox, "latest", "webaios-viewfinder.js", 1);
+      r = await Cu.evalInSandbox(code, sandbox, "latest", "ressac-viewfinder.js", 1);
     } finally {
       // After a capture the rest of a double click is swallowed for 500 ms (Electron's __viewfinderSwallow); else at once.
       if (r) guard.later(500);
@@ -121,7 +121,7 @@ export class WebAiOsDesignChild extends JSWindowActorChild {
       case "arm":
         return top ? this.arm(code) : null;
       case "stop":
-        if (this.viewfinderSandbox) Cu.evalInSandbox(code, this.viewfinderSandbox, "latest", "webaios-viewfinder-stop.js", 1);
+        if (this.viewfinderSandbox) Cu.evalInSandbox(code, this.viewfinderSandbox, "latest", "ressac-viewfinder-stop.js", 1);
         // Also ends the 500 ms swallow after a capture, as Electron's ARRET does with __viewfinderSwallow.
         this.unguardCurrent?.();
         return true;
@@ -129,8 +129,8 @@ export class WebAiOsDesignChild extends JSWindowActorChild {
       case "source":
         try {
           const win = this.contentWindow;
-          const world = Cu.Sandbox((this.document as any).nodePrincipal, { sandboxPrototype: win, wantXrays: false, wantComponents: false, sameZoneAs: win, sandboxName: "WebAiOs · source" });
-          return clone(Cu.evalInSandbox(code, world, "latest", "webaios-source.js", 1));
+          const world = Cu.Sandbox((this.document as any).nodePrincipal, { sandboxPrototype: win, wantXrays: false, wantComponents: false, sameZoneAs: win, sandboxName: "Ressac · source" });
+          return clone(Cu.evalInSandbox(code, world, "latest", "ressac-source.js", 1));
         } catch {
           return null;
         }

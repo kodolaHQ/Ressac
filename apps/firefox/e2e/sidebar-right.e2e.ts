@@ -1,20 +1,20 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { dispatch, state, waitFor } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
 import { click, inUi, waitUi } from "./ui";
 
 let server: Awaited<ReturnType<typeof startServer>>;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 beforeAll(async () => (server = await startServer()));
 afterAll(() => server?.close());
 beforeEach(async () => {
-  w = await launchWebAiOs();
+  w = await launchRessac();
   m = w.marionette;
   await m.setContext("chrome");
-  await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+  await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
   await waitUi(m, "return !!doc.querySelector('[data-testid=\"sidebar\"]')");
 });
 afterEach(() => w?.close());
@@ -22,11 +22,11 @@ afterEach(() => w?.close());
 const width = () => m.execute<number>("return window.innerWidth");
 const rect = (sel: string) =>
   inUi<{ left: number; right: number }>(m, "const r = doc.querySelector(arguments[0]).getBoundingClientRect(); return { left: r.left, right: r.right };", [sel]);
-const agentWidth = () => m.execute<number>("return document.getElementById('webaios-agent').getBoundingClientRect().width");
+const agentWidth = () => m.execute<number>("return document.getElementById('ressac-agent').getBoundingClientRect().width");
 const setSide = (side: "left" | "right") => dispatch(m, { type: "setSidebarSide", side });
 
 /** A native press on the agent's handle, a move of `dx`, the release: Gecko's own pointer capture does the rest. */
-async function dragHandle(dx: number, from = "const r = document.getElementById('webaios-agent').getBoundingClientRect(); return r.right - 3;"): Promise<void> {
+async function dragHandle(dx: number, from = "const r = document.getElementById('ressac-agent').getBoundingClientRect(); return r.right - 3;"): Promise<void> {
   const x = await m.execute<number>(from);
   const native = (px: number, type: string) =>
     m.execute(
@@ -41,24 +41,24 @@ async function dragHandle(dx: number, from = "const r = document.getElementById(
 }
 
 describe("the sidebar's width", () => {
-  const sidebar = () => m.execute<{ left: number; width: number }>("const r = document.getElementById('webaios-sidebar').getBoundingClientRect(); return { left: r.left, width: r.width };");
+  const sidebar = () => m.execute<{ left: number; width: number }>("const r = document.getElementById('ressac-sidebar').getBoundingClientRect(); return { left: r.left, width: r.width };");
   const pageLeft = () => m.execute<number>("return document.getElementById('tabbrowser-tabbox').getBoundingClientRect().left");
   const openPage = async () => {
     await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url: `${server.url}/a.html` });
-    await waitFor(m, "return !document.getElementById('webaios-sidebar').hasAttribute('full')", (v) => v === true);
+    await waitFor(m, "return !document.getElementById('ressac-sidebar').hasAttribute('full')", (v) => v === true);
   };
 
   it("dragging its inner edge widens it, the page follows, the state keeps it; clamped at 180 and 480", async () => {
     await openPage();
     expect((await sidebar()).width).toBe(240);
     await dragHandle(60, "return 237;");
-    await waitFor(m, "return document.getElementById('webaios-sidebar').getBoundingClientRect().width", (v: number) => v === 300);
-    await waitFor(m, "return window.webaiosWindow && document.getElementById('tabbrowser-tabbox').getBoundingClientRect().left", (v: number) => v === 300);
+    await waitFor(m, "return document.getElementById('ressac-sidebar').getBoundingClientRect().width", (v: number) => v === 300);
+    await waitFor(m, "return window.ressacWindow && document.getElementById('tabbrowser-tabbox').getBoundingClientRect().left", (v: number) => v === 300);
     expect((await state(m)).settings.sidebarWidth).toBe(300);
     await dragHandle(-400, "return 297;");
-    await waitFor(m, "return document.getElementById('webaios-sidebar').getBoundingClientRect().width", (v: number) => v === 180);
+    await waitFor(m, "return document.getElementById('ressac-sidebar').getBoundingClientRect().width", (v: number) => v === 180);
     await dragHandle(700, "return 177;");
-    await waitFor(m, "return document.getElementById('webaios-sidebar').getBoundingClientRect().width", (v: number) => v === 480);
+    await waitFor(m, "return document.getElementById('ressac-sidebar').getBoundingClientRect().width", (v: number) => v === 480);
     expect(await pageLeft()).toBe(480);
   });
 
@@ -67,7 +67,7 @@ describe("the sidebar's width", () => {
     await openPage();
     const win = await width();
     await dragHandle(-60, "return window.innerWidth - 237;");
-    await waitFor(m, "return document.getElementById('webaios-sidebar').getBoundingClientRect().width", (v: number) => v === 300);
+    await waitFor(m, "return document.getElementById('ressac-sidebar').getBoundingClientRect().width", (v: number) => v === 300);
     expect((await sidebar()).left).toBe(win - 300);
     expect((await state(m)).settings.sidebarWidth).toBe(300);
   });
@@ -111,11 +111,11 @@ describe("the sidebar on the right", () => {
 
   it("the URL field clears the window buttons, at the same spot as on the left", async () => {
     const field = () => inUi<number>(m, "return doc.querySelector('input').getBoundingClientRect().left - doc.querySelector('[data-testid=\"sidebar\"]').getBoundingClientRect().left");
-    const buttons = () => m.execute<{ left: number; right: number }>("const r = document.getElementById('webaios-window-buttons').getBoundingClientRect(); return { left: r.left, right: r.right };");
-    const sidebarLeft = () => m.execute<number>("return document.getElementById('webaios-sidebar').getBoundingClientRect().left");
+    const buttons = () => m.execute<{ left: number; right: number }>("const r = document.getElementById('ressac-window-buttons').getBoundingClientRect(); return { left: r.left, right: r.right };");
+    const sidebarLeft = () => m.execute<number>("return document.getElementById('ressac-sidebar').getBoundingClientRect().left");
     // The back, forward and reload buttons sit right of the buttons, on the navigation row above the field.
     await setSide("right");
-    await waitFor(m, "return document.getElementById('webaios-sidebar').getBoundingClientRect().left", (v: number) => v > 0);
+    await waitFor(m, "return document.getElementById('ressac-sidebar').getBoundingClientRect().left", (v: number) => v > 0);
     const b = await buttons();
     // In window coordinates: the iframe's own offset plus the row's.
     const nav = await inUi<number>(m, "return frame.getBoundingClientRect().left + doc.querySelector('.navigation button').getBoundingClientRect().left");
@@ -128,14 +128,14 @@ describe("the sidebar on the right", () => {
     await setSide("right");
     await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url: `${server.url}/icone` });
     await click(m, '[data-testid="agent-button"]');
-    await waitFor(m, "return !document.getElementById('webaios-agent').hidden", (v) => v === true);
+    await waitFor(m, "return !document.getElementById('ressac-agent').hidden", (v) => v === true);
     const before = await agentWidth();
     await dragHandle(300);
-    await waitFor(m, "return document.getElementById('webaios-agent').getBoundingClientRect().width", (v: number) => v === before + 300);
+    await waitFor(m, "return document.getElementById('ressac-agent').getBoundingClientRect().width", (v: number) => v === before + 300);
     // Beyond the maximum (room for the page stays): clamped like the left side.
     await dragHandle(450);
     const win = await width();
-    await waitFor(m, "return document.getElementById('webaios-agent').getBoundingClientRect().width", (v: number) => v === Math.min(1000, win - 240 - 300));
+    await waitFor(m, "return document.getElementById('ressac-agent').getBoundingClientRect().width", (v: number) => v === Math.min(1000, win - 240 - 300));
     expect(await agentWidth()).toBeLessThanOrEqual(1000);
   });
 });

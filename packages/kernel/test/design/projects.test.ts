@@ -25,7 +25,7 @@ describe("projectForUrl", () => {
     expect(projectForUrl("http://127.0.0.1:4321/", context())).toEqual({ type: "externe", project: "ext-0123456789abcdef", folder: external.folder, name: "site", client: "c1" });
   });
   test("everything else gives null", () => {
-    for (const u of ["https://localhost:4321", "http://exemple.fr:4321", "http://localhost:4322", "file:///tmp/x", "webaios://applications", "http://localhost/", "pas une url"]) {
+    for (const u of ["https://localhost:4321", "http://exemple.fr:4321", "http://localhost:4322", "file:///tmp/x", "ressac://applications", "http://localhost/", "pas une url"]) {
       expect(projectForUrl(u, context())).toBeNull();
     }
   });
@@ -38,8 +38,8 @@ describe("containerRanges", () => {
     expect(containerRanges("n'importe")).toEqual([[5280, 5299]]);
     expect(containerRanges("5280-5299")).toEqual([[5280, 5299]]);
   });
-  test("honours WEBAIOS_CONTAINER_PORTS", () => {
-    vi.stubEnv("WEBAIOS_CONTAINER_PORTS", "5300-5319");
+  test("honours RESSAC_CONTAINER_PORTS", () => {
+    vi.stubEnv("RESSAC_CONTAINER_PORTS", "5300-5319");
     try {
       expect(containerRanges(undefined)).toEqual([[5300, 5319]]);
     } finally {
@@ -62,11 +62,11 @@ describe("ids", () => {
 });
 
 describe("dossiers", () => {
-  const d: DesignFolders = { spaceRemarks: "/r/.webaios/remarks", private: "/u/design" };
+  const d: DesignFolders = { spaceRemarks: "/r/.ressac/remarks", private: "/u/design" };
   test("remarksFolder", () => {
     expect(remarksFolder(d, "ext-0123456789abcdef")).toBe("/u/design/remarks/ext-0123456789abcdef");
-    expect(remarksFolder(d, "app-essai")).toBe("/r/.webaios/remarks/app-essai");
-    expect(remarksFolder(d, "demo-5280")).toBe("/r/.webaios/remarks/demo-5280");
+    expect(remarksFolder(d, "app-essai")).toBe("/r/.ressac/remarks/app-essai");
+    expect(remarksFolder(d, "demo-5280")).toBe("/r/.ressac/remarks/demo-5280");
   });
   test("reviewStore and commentsFile under prive/review", () => {
     expect(reviewStore(d, "app-essai")).toBe("/u/design/review/app-essai.git");

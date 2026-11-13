@@ -7,13 +7,13 @@ const asText = (v) => (typeof v === "string" ? v : "");
 /** The kernel refuses a query of more than 500 characters (SearchWebArgs). */
 const QUERY_MAX = 500;
 
-async function search({ params, fill, webaios }) {
+async function search({ params, fill, ressac }) {
   const query = fill(params.query, { maxText: QUERY_MAX }).text.trim().slice(0, QUERY_MAX);
   // An empty query (all-blank values): nothing to search for, like an absent value.
   if (!query) throw new MissingValue("query");
   let results;
   try {
-    results = await webaios.searchWeb(query, { count: params.count ?? 8 });
+    results = await ressac.searchWeb(query, { count: params.count ?? 8 });
   } catch (e) {
     const text = String(e?.message ?? e);
     throw NOT_RUN_MESSAGES.includes(text) ? new ItemNotRun(text) : e;

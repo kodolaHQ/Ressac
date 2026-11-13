@@ -96,7 +96,7 @@ export class ReviewService {
 
   /**
    * An agent app's folder, if it is a real folder under the projects folder: never a symlink (the container writes
-   * into ~/WebAiOs/projects and could plant a link to the home folder there).
+   * into ~/Ressac/projects and could plant a link to the home folder there).
    */
   private async appFolder(d: string): Promise<string | null> {
     const folder = join(this.o.paths.projects, d);
@@ -110,8 +110,8 @@ export class ReviewService {
   }
 
   /**
-   * A site app's folder (`~/WebAiOs/sites/<id>`), if it is a real folder under the sites folder: never a symlink
-   * (the agent writes into ~/WebAiOs/sites and could plant a link to the home folder there).
+   * A site app's folder (`~/Ressac/sites/<id>`), if it is a real folder under the sites folder: never a symlink
+   * (the agent writes into ~/Ressac/sites and could plant a link to the home folder there).
    */
   private async siteFolder(id: string): Promise<string | null> {
     if (!ID_SITE.test(id)) return null;

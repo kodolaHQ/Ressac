@@ -359,7 +359,7 @@ function createToolsServer(
   recaps?: Recaps,
   onActivity?: (a: AgentActivity) => void,
 ): McpServer {
-  const server = new McpServer({ name: "webaios", version: "0.1.0" });
+  const server = new McpServer({ name: "ressac", version: "0.1.0" });
 
   async function tab(id: string): Promise<TabInfo> {
     const o = (await bridge.listTabs()).find((x) => x.id === id);
@@ -773,7 +773,7 @@ function createToolsServer(
     server.registerTool(
       "launch_app",
       {
-        description: "Lance le projet /workspace/projects/<folder> d'après son webaios.json et ouvre sa fenêtre pour l'utilisateur.",
+        description: "Lance le projet /workspace/projects/<folder> d'après son ressac.json et ouvre sa fenêtre pour l'utilisateur.",
         inputSchema: { folder: folderSchema },
       },
       protect(async ({ folder: folder }) => {
@@ -1388,7 +1388,7 @@ function registerSitesTools(
     "list_sites",
     {
       description:
-        "Les applis de site de l'utilisateur (~/WebAiOs/sites/<id>/) : id · nom · domaine actuel · ouverte|fermée. Jamais une page, un titre de page ni la mémoire.",
+        "Les applis de site de l'utilisateur (~/Ressac/sites/<id>/) : id · nom · domaine actuel · ouverte|fermée. Jamais une page, un titre de page ni la mémoire.",
       inputSchema: {},
     },
     protect(async () => {

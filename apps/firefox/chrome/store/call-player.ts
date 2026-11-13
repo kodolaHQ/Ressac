@@ -17,7 +17,7 @@ export function installCallPlayer(): void {
     // As Firefox: a player the user closed does not come back until the tab was shown again.
     if (PictureInPicture.weakAutoPipBrowserClosedDeliberately.has(browser)) return void PictureInPicture.weakAutoPipBrowserClosedDeliberately.delete(browser);
     try {
-      context.currentWindowGlobal?.getActor("WebAiOsCall").sendAsyncMessage("call:leave");
+      context.currentWindowGlobal?.getActor("RessacCall").sendAsyncMessage("call:leave");
     } catch {
       // No call actor in this frame (not http(s)): nothing floats.
     }

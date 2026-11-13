@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { existsSync } from "node:fs";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 
 function alive(pid: number): boolean {
   try {
@@ -11,14 +11,14 @@ function alive(pid: number): boolean {
   }
 }
 
-describe("closing WebAiOs-Firefox", () => {
-  let w: LaunchedWebAiOs | undefined;
+describe("closing Ressac", () => {
+  let w: LaunchedRessac | undefined;
   afterEach(async () => {
     if (w && alive(w.pid)) process.kill(w.pid, "SIGKILL");
   });
 
   it("kills a wedged instance and removes its profile", async () => {
-    w = await launchWebAiOs();
+    w = await launchRessac();
     await w.marionette.command("WebDriver:SetTimeouts", { script: null });
     // A script that never settles: Marionette answers commands in order, so Quit would wait forever behind it.
     void w.marionette.execute("return new Promise(() => {})").catch(() => {});

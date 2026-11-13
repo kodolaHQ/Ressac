@@ -2,11 +2,11 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { waitFor } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { waitUi } from "./ui";
 
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 // The kernel's gap between two reads of a site: a request must come at least this long (minus clock slack) after the previous.
 const GAP_MS = 900;
 
@@ -45,7 +45,7 @@ async function site(name: string): Promise<Site> {
 
 let a: Site;
 let b: Site;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 const urlA = (p: string) => `http://site-a.test:${a.port}${p}`;
 const urlB = (p: string) => `http://site-b.test:${b.port}${p}`;
@@ -56,10 +56,10 @@ beforeAll(async () => {
   [a, b] = await Promise.all([site("site-a"), site("site-b")]);
   a.peer = `http://site-b.test:${b.port}/bounce`;
   b.peer = `http://site-a.test:${a.port}/bounce`;
-  w = await launchWebAiOs({ env: { WEBAIOS_TEST_PUBLIC_ADDRESSES: "127.0.0.1", WEBAIOS_TEST_PACED_READ: "1" } });
+  w = await launchRessac({ env: { RESSAC_TEST_PUBLIC_ADDRESSES: "127.0.0.1", RESSAC_TEST_PACED_READ: "1" } });
   m = w.marionette;
   await m.setContext("chrome");
-  await waitFor(m, "return !!window.webaiosWindow", (v) => v === true);
+  await waitFor(m, "return !!window.ressacWindow", (v) => v === true);
   await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
   await m.execute(
     `const o = Cc["@mozilla.org/network/native-dns-override;1"].getService(Ci.nsINativeDNSResolverOverride);

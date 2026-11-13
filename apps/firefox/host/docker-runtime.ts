@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import type { DockerStatus } from "../shared/settings.ts";
 
-/** The container apps WebAiOs knows how to start, in order of preference. */
+/** The container apps Ressac knows how to start, in order of preference. */
 const APPS = [
   { name: "OrbStack", path: "/Applications/OrbStack.app" },
   { name: "Docker Desktop", path: "/Applications/Docker.app" },
@@ -12,7 +12,7 @@ export const DOCKER_NOT_STARTED = "Docker n'a pas démarré";
 export interface DockerRuntimeOptions {
   /** True when the docker daemon answers. */
   running: () => Promise<boolean>;
-  /** False under tests: WebAiOs then starts nothing. */
+  /** False under tests: Ressac then starts nothing. */
   managed: boolean;
   exists?: (path: string) => boolean;
   run?: (cmd: string, args: string[]) => Promise<number>;

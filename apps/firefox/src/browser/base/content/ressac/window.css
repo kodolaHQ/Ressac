@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* Only the WebAiOs window: popups stay plain Firefox windows. */
+/* Only the Ressac window: popups stay plain Firefox windows. */
 
 /* The UI's tokens the window itself paints with (ui/theme.css is bundled with the UI documents, not loaded here). The
    controller sets --a1..--a3 and both accents inline on the root from the active space's aura.
@@ -12,11 +12,11 @@
 @property --a3 { syntax: "<color>"; inherits: true; initial-value: #FFD36E; }
 @property --ang { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
 /* Registered so the agent panel's slide can transition it (the page's margin follows the same value). */
-@property --webaios-agent { syntax: "<length>"; inherits: true; initial-value: 0px; }
+@property --ressac-agent { syntax: "<length>"; inherits: true; initial-value: 0px; }
 /* The search band's room above the page (its height and the gap under it): the page follows its enter and leave. */
-@property --webaios-search-band { syntax: "<length>"; inherits: true; initial-value: 0px; }
+@property --ressac-search-band { syntax: "<length>"; inherits: true; initial-value: 0px; }
 
-:root[webaios-main] {
+:root[ressac-main] {
   --bg: #0E1014;
   --text: #ECEEF2;
   --border: rgb(255 255 255 / 0.09);
@@ -29,14 +29,14 @@
   --glass-edge: rgb(255 255 255 / 0.1);
   --page-shadow: 0 2px 6px rgb(0 0 0 / 0.3), 0 12px 40px -16px rgb(0 0 0 / 0.6);
   --aura-d: 900ms ease-in-out;
-  /* The search band's room: out on a fade, in on the spring (the controller's webaios-search-band attribute). */
-  --webaios-band-t: 150ms ease-out;
-  transition: --a1 var(--aura-d), --a2 var(--aura-d), --a3 var(--aura-d), --webaios-search-band var(--webaios-band-t);
+  /* The search band's room: out on a fade, in on the spring (the controller's ressac-search-band attribute). */
+  --ressac-band-t: 150ms ease-out;
+  transition: --a1 var(--aura-d), --a2 var(--aura-d), --a3 var(--aura-d), --ressac-search-band var(--ressac-band-t);
   background: var(--bg);
 }
 
 @media (prefers-color-scheme: light) {
-  :root[webaios-main] {
+  :root[ressac-main] {
     --bg: #F1F3F6;
     --text: #15171C;
     --border: rgb(21 23 28 / 0.1);
@@ -52,12 +52,12 @@
 }
 
 /* Firefox paints its chrome boxes: the aura shows through them, the page keeps its own sheet. */
-:root[webaios-main] :is(body, #browser, #tabbrowser-tabbox, #tabbrowser-tabpanels, #appcontent) {
+:root[ressac-main] :is(body, #browser, #tabbrowser-tabbox, #tabbrowser-tabpanels, #appcontent) {
   background: transparent !important;
 }
 
 /* The aura, behind the page and both UI iframes (whose bodies are transparent). */
-:root[webaios-main] #webaios-aura {
+:root[ressac-main] #ressac-aura {
   position: fixed;
   inset: 0;
   overflow: hidden;
@@ -66,7 +66,7 @@
   background: var(--bg);
 }
 
-:root[webaios-main] #webaios-aura i {
+:root[ressac-main] #ressac-aura i {
   position: absolute;
   width: 66%;
   aspect-ratio: 1;
@@ -77,39 +77,39 @@
 
 /* Dark: coloured light on a night base, dimmer and richer rather than washed to brown. */
 @media (prefers-color-scheme: dark) {
-  :root[webaios-main] #webaios-aura i {
+  :root[ressac-main] #ressac-aura i {
     filter: blur(80px) saturate(1.45);
     opacity: 0.55;
   }
 }
 
-:root[webaios-main] #webaios-aura i:nth-child(1) { background: var(--a1); left: -8%; top: -16%; animation: webaios-drift1 22s ease-in-out infinite alternate; }
-:root[webaios-main] #webaios-aura i:nth-child(2) { background: var(--a2); right: -20%; top: 2%; animation: webaios-drift2 26s ease-in-out infinite alternate; }
-:root[webaios-main] #webaios-aura i:nth-child(3) { background: var(--a3); left: 14%; bottom: -27%; animation: webaios-drift3 30s ease-in-out infinite alternate; }
+:root[ressac-main] #ressac-aura i:nth-child(1) { background: var(--a1); left: -8%; top: -16%; animation: ressac-drift1 22s ease-in-out infinite alternate; }
+:root[ressac-main] #ressac-aura i:nth-child(2) { background: var(--a2); right: -20%; top: 2%; animation: ressac-drift2 26s ease-in-out infinite alternate; }
+:root[ressac-main] #ressac-aura i:nth-child(3) { background: var(--a3); left: 14%; bottom: -27%; animation: ressac-drift3 30s ease-in-out infinite alternate; }
 
-@keyframes webaios-drift1 { to { transform: translate(14%, 10%) scale(1.1); } }
-@keyframes webaios-drift2 { to { transform: translate(-12%, 14%) scale(0.92); } }
-@keyframes webaios-drift3 { to { transform: translate(10%, -12%) scale(1.08); } }
+@keyframes ressac-drift1 { to { transform: translate(14%, 10%) scale(1.1); } }
+@keyframes ressac-drift2 { to { transform: translate(-12%, 14%) scale(0.92); } }
+@keyframes ressac-drift3 { to { transform: translate(10%, -12%) scale(1.08); } }
 
 /* No drift while another app has the focus, none at all with reduced motion. */
-:root[webaios-main]:-moz-window-inactive #webaios-aura i {
+:root[ressac-main]:-moz-window-inactive #ressac-aura i {
   animation-play-state: paused;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  :root[webaios-main] #webaios-aura i {
+  :root[ressac-main] #ressac-aura i {
     /* Over each light's own animation (:nth-child, more specific). */
     animation: none !important;
   }
 }
 
-/* Firefox's tab strip, navigation bar and bookmarks bar give way to the WebAiOs UI. */
-:root[webaios-main] #navigator-toolbox {
+/* Firefox's tab strip, navigation bar and bookmarks bar give way to the Ressac UI. */
+:root[ressac-main] #navigator-toolbox {
   display: none !important;
 }
 
 /* The macOS window buttons, centred on the sidebar's first row (Firefox's own box is in the hidden toolbox). */
-:root[webaios-main] #webaios-window-buttons {
+:root[ressac-main] #ressac-window-buttons {
   appearance: auto;
   -moz-default-appearance: -moz-window-button-box;
   position: fixed;
@@ -117,94 +117,94 @@
   left: 16px;
 }
 
-:root[webaios-main] #webaios-window-buttons[hidden] {
+:root[ressac-main] #ressac-window-buttons[hidden] {
   display: none;
 }
 
 /* HTML fullscreen (a video): only the page stays. Important: both widths are set inline on the root. */
-:root[webaios-main][inDOMFullscreen] {
-  --webaios-sidebar: 0px !important;
-  --webaios-agent: 0px !important;
-  --webaios-basket: 0px !important;
+:root[ressac-main][inDOMFullscreen] {
+  --ressac-sidebar: 0px !important;
+  --ressac-agent: 0px !important;
+  --ressac-basket: 0px !important;
 }
 
 /* The UI column on the left; `full` (overlays, empty page) covers the whole window. In compact mode the sidebar floats
    over the page: `folded` drops the iframe once it has slid out (App.svelte's 200 ms), so that the page gets the mouse. */
-:root[webaios-main] #webaios-sidebar {
+:root[ressac-main] #ressac-sidebar {
   position: fixed;
   top: 0;
   left: 0;
   height: 100%;
-  width: var(--webaios-sidebar-w, 240px);
+  width: var(--ressac-sidebar-w, 240px);
   border: none;
   /* Above #tabbrowser-tabbox (z-index 2 in Firefox), for painting and for the mouse. */
   z-index: 3;
 }
 
-:root[webaios-main] #webaios-sidebar[folded]:not([full]) {
+:root[ressac-main] #ressac-sidebar[folded]:not([full]) {
   width: 0;
   transition: width 0s 200ms;
 }
 
-:root[webaios-main][inDOMFullscreen] #webaios-sidebar:not([full]) {
+:root[ressac-main][inDOMFullscreen] #ressac-sidebar:not([full]) {
   width: 0;
 }
 
-:root[webaios-main] #webaios-sidebar[full] {
+:root[ressac-main] #ressac-sidebar[full] {
   /* The agent panel stays beside it. */
-  width: calc(100% - var(--webaios-agent, 0px));
+  width: calc(100% - var(--ressac-agent, 0px));
 }
 
 /* Overlays (command bar, modals, ⌃Tab panel) cover the agent panel too. */
-:root[webaios-main] #webaios-sidebar[full][over] {
+:root[ressac-main] #ressac-sidebar[full][over] {
   width: 100%;
   z-index: 4;
 }
 
-/* The agent panel on the right, --webaios-agent wide (0 when closed): the page sits between both iframes. */
-:root[webaios-main] #webaios-agent {
+/* The agent panel on the right, --ressac-agent wide (0 when closed): the page sits between both iframes. */
+:root[ressac-main] #ressac-agent {
   position: fixed;
   top: 0;
   right: 0;
   height: 100%;
-  /* Always its open width, slid out by what --webaios-agent lacks: the terminal never reflows during the slide. */
-  width: var(--webaios-agent-w, 0px);
-  transform: translateX(calc(var(--webaios-agent-w, 0px) - var(--webaios-agent, 0px)));
+  /* Always its open width, slid out by what --ressac-agent lacks: the terminal never reflows during the slide. */
+  width: var(--ressac-agent-w, 0px);
+  transform: translateX(calc(var(--ressac-agent-w, 0px) - var(--ressac-agent, 0px)));
   border: none;
   z-index: 3;
 }
 
-/* Opening or closing (controller: webaios-agent-sliding for the slide's length, never while the handle is dragged): the
+/* Opening or closing (controller: ressac-agent-sliding for the slide's length, never while the handle is dragged): the
    panel slides in from the right, the page making room in step; closed, the controller hides it once out. */
-:root[webaios-main] {
-  --webaios-slide: 380ms cubic-bezier(0.2, 0.8, 0.2, 1);
+:root[ressac-main] {
+  --ressac-slide: 380ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
-:root[webaios-main][webaios-agent-sliding] {
-  transition: --a1 var(--aura-d), --a2 var(--aura-d), --a3 var(--aura-d), --webaios-agent var(--webaios-slide), --webaios-search-band var(--webaios-band-t);
+:root[ressac-main][ressac-agent-sliding] {
+  transition: --a1 var(--aura-d), --a2 var(--aura-d), --a3 var(--aura-d), --ressac-agent var(--ressac-slide), --ressac-search-band var(--ressac-band-t);
 }
 @media (prefers-reduced-motion: reduce) {
   /* No slide: the panel fades. */
-  :root[webaios-main][webaios-agent-sliding] {
-    transition: --a1 var(--aura-d), --a2 var(--aura-d), --a3 var(--aura-d), --webaios-search-band var(--webaios-band-t);
+  :root[ressac-main][ressac-agent-sliding] {
+    transition: --a1 var(--aura-d), --a2 var(--aura-d), --a3 var(--aura-d), --ressac-search-band var(--ressac-band-t);
   }
-  :root[webaios-main] #webaios-agent {
+  :root[ressac-main] #ressac-agent {
     transition: opacity 150ms ease-out;
   }
-  :root[webaios-main]:not([webaios-agent-open]) #webaios-agent {
+  :root[ressac-main]:not([ressac-agent-open]) #ressac-agent {
     opacity: 0;
   }
 }
 
 /* Not display: none, which drops the panel document's layout: on reopening, the terminal could not take the keyboard
    until it is rebuilt. */
-:root[webaios-main] #webaios-agent[hidden] {
+:root[ressac-main] #ressac-agent[hidden] {
   display: inline;
   visibility: hidden;
 }
 
 /* The strip of aura above the page moves the window, like a title bar: between the sidebar and the agent panel, whose
    own documents set their drag areas. */
-:root[webaios-main] body::before {
+:root[ressac-main] body::before {
   content: "";
   position: fixed;
   top: 0;
@@ -214,14 +214,14 @@
   -moz-window-dragging: drag;
 }
 
-:root[webaios-main] #tabbrowser-tabbox {
-  /* Below the site question's banner, --webaios-banner high (0 without one). */
-  margin-top: calc(var(--webaios-banner, 0px) + var(--webaios-search-band, 0px) + 8px);
+:root[ressac-main] #tabbrowser-tabbox {
+  /* Below the site question's banner, --ressac-banner high (0 without one). */
+  margin-top: calc(var(--ressac-banner, 0px) + var(--ressac-search-band, 0px) + 8px);
   margin-bottom: 8px;
   /* Compact mode (no sidebar column): 8 px of aura on the left too. */
-  margin-inline-start: max(var(--webaios-sidebar, 240px), 8px);
-  /* The design mode's cart column, --webaios-basket wide (unset when closed), sits between the page and the agent panel. */
-  margin-inline-end: calc(var(--webaios-agent, 0px) + var(--webaios-basket, 0px) + 8px);
+  margin-inline-start: max(var(--ressac-sidebar, 240px), 8px);
+  /* The design mode's cart column, --ressac-basket wide (unset when closed), sits between the page and the agent panel. */
+  margin-inline-end: calc(var(--ressac-agent, 0px) + var(--ressac-basket, 0px) + 8px);
   /* The page sits framed on the aura. */
   border-radius: 12px;
   overflow: clip;
@@ -230,26 +230,26 @@
 
 /* No web page shown (the parking tab, or the UI covering the page's place): the page box steps aside, the aura shows
    under the UI's own internal pages. An overlay ([over]) over a web page keeps it visible under its veil. */
-:root[webaios-main]:is(:has(tab[webaios-parking][selected]), :has(#webaios-sidebar[full]:not([over]))) #tabbrowser-tabbox {
+:root[ressac-main]:is(:has(tab[ressac-parking][selected]), :has(#ressac-sidebar[full]:not([over]))) #tabbrowser-tabbox {
   opacity: 0;
 }
 
 /* A video in fullscreen: only the page, edge to edge. */
-:root[webaios-main][inDOMFullscreen] #tabbrowser-tabbox {
+:root[ressac-main][inDOMFullscreen] #tabbrowser-tabbox {
   margin: 0;
   border-radius: 0;
   box-shadow: none;
 }
 
-/* The agent's halo (controller: webaios-agent-working while one of its tools runs on the displayed tab): a light that
+/* The agent's halo (controller: ressac-agent-working while one of its tools runs on the displayed tab): a light that
    runs around the page (::after) over an inner glow (::before). Inside the tabbox, which clips: over the page, never
    taking the mouse. Always there at opacity 0, its spin paused, so it fades in and out. App and site app windows
    (app-window.ts, site-window.ts) light it the same way around their view. */
-:root:is([webaios-main], [webaios-app], [webaios-site]) #tabbrowser-tabbox {
+:root:is([ressac-main], [ressac-app], [ressac-site]) #tabbrowser-tabbox {
   position: relative;
 }
-:root:is([webaios-main], [webaios-app], [webaios-site]) #tabbrowser-tabbox::before,
-:root:is([webaios-main], [webaios-app], [webaios-site]) #tabbrowser-tabbox::after {
+:root:is([ressac-main], [ressac-app], [ressac-site]) #tabbrowser-tabbox::before,
+:root:is([ressac-main], [ressac-app], [ressac-site]) #tabbrowser-tabbox::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -259,102 +259,102 @@
   opacity: 0;
   transition: opacity 400ms;
 }
-:root:is([webaios-main], [webaios-app], [webaios-site]) #tabbrowser-tabbox::before {
+:root:is([ressac-main], [ressac-app], [ressac-site]) #tabbrowser-tabbox::before {
   box-shadow: inset 0 0 40px -12px var(--a2);
 }
-:root:is([webaios-main], [webaios-app], [webaios-site]) #tabbrowser-tabbox::after {
+:root:is([ressac-main], [ressac-app], [ressac-site]) #tabbrowser-tabbox::after {
   padding: 2px;
   background: conic-gradient(from var(--ang), transparent 0 55%, var(--a1) 70%, var(--a2) 82%, var(--a3) 92%, transparent);
   mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
-  animation: webaios-spin 1.8s linear infinite paused;
+  animation: ressac-spin 1.8s linear infinite paused;
 }
-:root:is([webaios-main], [webaios-app], [webaios-site])[webaios-agent-working] #tabbrowser-tabbox::before,
-:root:is([webaios-main], [webaios-app], [webaios-site])[webaios-agent-working] #tabbrowser-tabbox::after {
+:root:is([ressac-main], [ressac-app], [ressac-site])[ressac-agent-working] #tabbrowser-tabbox::before,
+:root:is([ressac-main], [ressac-app], [ressac-site])[ressac-agent-working] #tabbrowser-tabbox::after {
   opacity: 1;
 }
-:root:is([webaios-main], [webaios-app], [webaios-site])[webaios-agent-working] #tabbrowser-tabbox::after {
+:root:is([ressac-main], [ressac-app], [ressac-site])[ressac-agent-working] #tabbrowser-tabbox::after {
   animation-play-state: running;
 }
 /* A video in fullscreen: no halo over it. */
-:root:is([webaios-main], [webaios-app], [webaios-site])[inDOMFullscreen] #tabbrowser-tabbox::before,
-:root:is([webaios-main], [webaios-app], [webaios-site])[inDOMFullscreen] #tabbrowser-tabbox::after {
+:root:is([ressac-main], [ressac-app], [ressac-site])[inDOMFullscreen] #tabbrowser-tabbox::before,
+:root:is([ressac-main], [ressac-app], [ressac-site])[inDOMFullscreen] #tabbrowser-tabbox::after {
   display: none;
 }
-@keyframes webaios-spin { to { --ang: 360deg; } }
+@keyframes ressac-spin { to { --ang: 360deg; } }
 @media (prefers-reduced-motion: reduce) {
   /* A still ring. */
-  :root:is([webaios-main], [webaios-app], [webaios-site]) #tabbrowser-tabbox::after {
+  :root:is([ressac-main], [ressac-app], [ressac-site]) #tabbrowser-tabbox::after {
     animation: none !important;
   }
 }
 
 /* The design mode's cart column (chrome/window/design-overlays.ts): the whole height of the page's area, left of the
    agent panel, never over the page (spike S3). */
-:root[webaios-main] #webaios-design-volet {
-  top: calc(var(--webaios-banner, 0px) + var(--webaios-search-band, 0px));
+:root[ressac-main] #ressac-design-volet {
+  top: calc(var(--ressac-banner, 0px) + var(--ressac-search-band, 0px));
   /* Not bottom: 0, which leaves an iframe at its intrinsic 150 px. */
-  height: calc(100% - var(--webaios-banner, 0px) - var(--webaios-search-band, 0px));
-  right: var(--webaios-agent, 0px);
-  width: var(--webaios-basket, 0px);
+  height: calc(100% - var(--ressac-banner, 0px) - var(--ressac-search-band, 0px));
+  right: var(--ressac-agent, 0px);
+  width: var(--ressac-basket, 0px);
 }
 
 /* The pill of the agent's last tab (chrome/window/agent-pill.ts): at the page's bottom right corner, its document sizes it. */
-:root[webaios-main] #webaios-agent-pill {
+:root[ressac-main] #ressac-agent-pill {
   bottom: 8px;
-  right: calc(var(--webaios-agent, 0px) + var(--webaios-basket, 0px) + 8px);
+  right: calc(var(--ressac-agent, 0px) + var(--ressac-basket, 0px) + 8px);
 }
-:root[webaios-main][webaios-sidebar-side="right"] #webaios-agent-pill {
-  right: max(var(--webaios-sidebar, 240px), 8px);
+:root[ressac-main][ressac-sidebar-side="right"] #ressac-agent-pill {
+  right: max(var(--ressac-sidebar, 240px), 8px);
 }
-:root[webaios-main][inDOMFullscreen] #webaios-agent-pill {
+:root[ressac-main][inDOMFullscreen] #ressac-agent-pill {
   display: none;
 }
 
-/* The sidebar on the right (settings.sidebarSide, the controller's webaios-sidebar-side): a full mirror, the agent panel on
+/* The sidebar on the right (settings.sidebarSide, the controller's ressac-sidebar-side): a full mirror, the agent panel on
    the left, the design cart still between the page and the agent. The window buttons keep their place in the sidebar's
    first row, which stays the window's drag area. */
-:root[webaios-main][webaios-sidebar-side="right"] #webaios-window-buttons {
-  left: calc(100% - var(--webaios-sidebar-w, 240px) + 16px);
+:root[ressac-main][ressac-sidebar-side="right"] #ressac-window-buttons {
+  left: calc(100% - var(--ressac-sidebar-w, 240px) + 16px);
 }
-:root[webaios-main][webaios-sidebar-side="right"] #webaios-sidebar {
+:root[ressac-main][ressac-sidebar-side="right"] #ressac-sidebar {
   left: auto;
   right: 0;
 }
-:root[webaios-main][webaios-sidebar-side="right"] #webaios-agent {
+:root[ressac-main][ressac-sidebar-side="right"] #ressac-agent {
   right: auto;
   left: 0;
-  transform: translateX(calc(var(--webaios-agent, 0px) - var(--webaios-agent-w, 0px)));
+  transform: translateX(calc(var(--ressac-agent, 0px) - var(--ressac-agent-w, 0px)));
 }
 /* Not in HTML fullscreen, whose margin: 0 this would override. */
-:root[webaios-main][webaios-sidebar-side="right"]:not([inDOMFullscreen]) #tabbrowser-tabbox {
-  margin-inline-start: calc(var(--webaios-agent, 0px) + var(--webaios-basket, 0px) + 8px);
-  margin-inline-end: max(var(--webaios-sidebar, 240px), 8px);
+:root[ressac-main][ressac-sidebar-side="right"]:not([inDOMFullscreen]) #tabbrowser-tabbox {
+  margin-inline-start: calc(var(--ressac-agent, 0px) + var(--ressac-basket, 0px) + 8px);
+  margin-inline-end: max(var(--ressac-sidebar, 240px), 8px);
 }
-:root[webaios-main][webaios-sidebar-side="right"] #webaios-design-volet {
+:root[ressac-main][ressac-sidebar-side="right"] #ressac-design-volet {
   right: auto;
-  left: var(--webaios-agent, 0px);
+  left: var(--ressac-agent, 0px);
 }
-:root[webaios-main][webaios-sidebar-side="right"] #webaios-banner {
-  left: var(--webaios-agent, 0px);
-  right: var(--webaios-sidebar, 240px);
+:root[ressac-main][ressac-sidebar-side="right"] #ressac-banner {
+  left: var(--ressac-agent, 0px);
+  right: var(--ressac-sidebar, 240px);
 }
-/* Switching sides (controller: webaios-side-switch "in" right after the swap): a fade in, never a slide across. */
-@keyframes webaios-side-in { from { opacity: 0; } }
-:root[webaios-main][webaios-side-switch] :is(#webaios-sidebar, #webaios-agent, #tabbrowser-tabbox) {
-  animation: webaios-side-in 150ms ease-out;
+/* Switching sides (controller: ressac-side-switch "in" right after the swap): a fade in, never a slide across. */
+@keyframes ressac-side-in { from { opacity: 0; } }
+:root[ressac-main][ressac-side-switch] :is(#ressac-sidebar, #ressac-agent, #tabbrowser-tabbox) {
+  animation: ressac-side-in 150ms ease-out;
 }
 
 /* Firefox's separator under its hidden toolbar: the page goes up to the window's top edge. */
-:root[webaios-main] .browserContainer {
+:root[ressac-main] .browserContainer {
   border-block-start: none !important;
 }
 
 /* A site's question, above the page, on the window's tokens. */
-:root[webaios-main] #webaios-banner {
+:root[ressac-main] #ressac-banner {
   position: fixed;
   top: 0;
-  left: var(--webaios-sidebar, 240px);
-  right: var(--webaios-agent, 0px);
+  left: var(--ressac-sidebar, 240px);
+  right: var(--ressac-agent, 0px);
   z-index: 2;
   display: flex;
   align-items: center;
@@ -366,15 +366,15 @@
   font: message-box;
 }
 
-:root[webaios-main] #webaios-banner[hidden] {
+:root[ressac-main] #ressac-banner[hidden] {
   display: none;
 }
 
-:root[webaios-main] #webaios-banner span {
+:root[ressac-main] #ressac-banner span {
   flex: 1;
 }
 
-:root[webaios-main] #webaios-banner button {
+:root[ressac-main] #ressac-banner button {
   padding: 4px 10px;
   border-radius: 6px;
   border: 1px solid var(--border);
@@ -382,23 +382,23 @@
   color: var(--text);
 }
 
-:root[webaios-main] #webaios-banner button.allow {
+:root[ressac-main] #ressac-banner button.allow {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-ink);
 }
 
 /* The agent's search band (chrome/window/search-band.ts): a glass pill lined up with the page (same insets, 8 px above
-   and below), under the site question's banner. --webaios-search-band is its height plus the gap under it. It enters on
+   and below), under the site question's banner. --ressac-search-band is its height plus the gap under it. It enters on
    the spring and leaves by a fade (visibility waits for it); reduced motion keeps only a short fade. */
-:root[webaios-main][webaios-search-band] {
-  --webaios-band-t: 460ms linear(0, 0.06 2.4%, 0.24 5.1%, 0.55 9.4%, 0.84 14.6%, 1.01 19.4%, 1.07 23.2%, 1.08 26.6%, 1.05 32.8%, 1 41%, 0.99 50%, 1);
+:root[ressac-main][ressac-search-band] {
+  --ressac-band-t: 460ms linear(0, 0.06 2.4%, 0.24 5.1%, 0.55 9.4%, 0.84 14.6%, 1.01 19.4%, 1.07 23.2%, 1.08 26.6%, 1.05 32.8%, 1 41%, 0.99 50%, 1);
 }
-:root[webaios-main] #webaios-search-band {
+:root[ressac-main] #ressac-search-band {
   position: fixed;
-  top: calc(var(--webaios-banner, 0px) + 8px);
-  left: max(var(--webaios-sidebar, 240px), 8px);
-  right: calc(var(--webaios-agent, 0px) + var(--webaios-basket, 0px) + 8px);
+  top: calc(var(--ressac-banner, 0px) + 8px);
+  left: max(var(--ressac-sidebar, 240px), 8px);
+  right: calc(var(--ressac-agent, 0px) + var(--ressac-basket, 0px) + 8px);
   z-index: 1;
   box-sizing: border-box;
   display: flex;
@@ -417,21 +417,21 @@
   transform: translateY(-8px);
   transition: opacity 150ms ease-out, transform 150ms ease-out, visibility 0s 150ms;
 }
-:root[webaios-main][webaios-sidebar-side="right"] #webaios-search-band {
-  left: calc(var(--webaios-agent, 0px) + var(--webaios-basket, 0px) + 8px);
-  right: max(var(--webaios-sidebar, 240px), 8px);
+:root[ressac-main][ressac-sidebar-side="right"] #ressac-search-band {
+  left: calc(var(--ressac-agent, 0px) + var(--ressac-basket, 0px) + 8px);
+  right: max(var(--ressac-sidebar, 240px), 8px);
 }
-:root[webaios-main] #webaios-search-band[data-shown] {
+:root[ressac-main] #ressac-search-band[data-shown] {
   opacity: 1;
   visibility: visible;
   transform: none;
-  transition: opacity var(--webaios-band-t), transform var(--webaios-band-t), visibility 0s;
+  transition: opacity var(--ressac-band-t), transform var(--ressac-band-t), visibility 0s;
 }
 /* The outline stays inside the rounded shape. */
-:root[webaios-main] #webaios-search-band[data-state="yours"] {
+:root[ressac-main] #ressac-search-band[data-state="yours"] {
   box-shadow: inset 0 0 0 1.5px var(--accent);
 }
-:root[webaios-main] #webaios-search-band .dot {
+:root[ressac-main] #ressac-search-band .dot {
   flex: none;
   width: 8px;
   height: 8px;
@@ -439,35 +439,35 @@
   background: var(--accent);
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 25%, transparent);
 }
-:root[webaios-main] #webaios-search-band[data-state="working"] .dot {
-  animation: webaios-band-pulse 1.8s ease-in-out infinite;
+:root[ressac-main] #ressac-search-band[data-state="working"] .dot {
+  animation: ressac-band-pulse 1.8s ease-in-out infinite;
 }
-:root[webaios-main] #webaios-search-band[data-state="idle"] .dot {
+:root[ressac-main] #ressac-search-band[data-state="idle"] .dot {
   background: var(--text-muted);
   box-shadow: none;
 }
-@keyframes webaios-band-pulse { 50% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--accent) 0%, transparent); } }
-:root[webaios-main] #webaios-search-band .what {
+@keyframes ressac-band-pulse { 50% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--accent) 0%, transparent); } }
+:root[ressac-main] #ressac-search-band .what {
   flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-:root[webaios-main] #webaios-search-band[data-state="yours"] .what {
+:root[ressac-main] #ressac-search-band[data-state="yours"] .what {
   /* The user's instructions wrap, whole (a long address too); the band grows and the page follows (ResizeObserver). */
   white-space: normal;
   overflow-wrap: anywhere;
 }
-:root[webaios-main] #webaios-search-band small {
+:root[ressac-main] #ressac-search-band small {
   margin-inline-start: 8px;
   color: var(--text-muted);
   font-size: inherit;
 }
-:root[webaios-main] #webaios-search-band [hidden] {
+:root[ressac-main] #ressac-search-band [hidden] {
   display: none;
 }
-:root[webaios-main] #webaios-search-band button {
+:root[ressac-main] #ressac-search-band button {
   flex: none;
   padding: 4px 10px;
   border-radius: 10px;
@@ -477,27 +477,27 @@
   font: inherit;
   font-size: 12px;
 }
-:root[webaios-main] #webaios-search-band button.go {
+:root[ressac-main] #ressac-search-band button.go {
   background: var(--accent);
   border-color: transparent;
   color: var(--accent-ink);
   font-weight: 600;
 }
 @media (prefers-reduced-motion: reduce) {
-  :root[webaios-main],
-  :root[webaios-main][webaios-search-band] { --webaios-band-t: 150ms ease-out; }
-  :root[webaios-main] #webaios-search-band,
-  :root[webaios-main] #webaios-search-band[data-shown] { transform: none; }
-  :root[webaios-main] #webaios-search-band[data-state="working"] .dot { animation: none; }
+  :root[ressac-main],
+  :root[ressac-main][ressac-search-band] { --ressac-band-t: 150ms ease-out; }
+  :root[ressac-main] #ressac-search-band,
+  :root[ressac-main] #ressac-search-band[data-shown] { transform: none; }
+  :root[ressac-main] #ressac-search-band[data-state="working"] .dot { animation: none; }
 }
 
 /* A site app's window (store/sites.ts): its bar on top, 36 px (HAUTEUR_BARRE_SITE), above the app view. */
-:root[webaios-site] {
+:root[ressac-site] {
   min-width: 360px;
   min-height: 240px;
 }
 
-:root[webaios-site] #webaios-site-bar {
+:root[ressac-site] #ressac-site-bar {
   display: block;
   border: none;
   width: 100%;
@@ -506,12 +506,12 @@
 }
 
 /* The view right under the bar (Firefox draws a 1px line above the page). */
-:root[webaios-site] #tabbrowser-tabpanels .browserContainer {
+:root[ressac-site] #tabbrowser-tabpanels .browserContainer {
   border-block-start: none;
 }
 
 /* The home screen: the bar's document covers the window; the site's page stays loaded behind it. */
-:root[webaios-site][webaios-site-home] #webaios-site-bar {
+:root[ressac-site][ressac-site-home] #ressac-site-bar {
   position: fixed;
   inset: 0;
   height: 100%;
@@ -519,6 +519,6 @@
 }
 
 /* An element in fullscreen: the view takes the whole window, the bar comes back on exit. */
-:root[webaios-site][inDOMFullscreen] #webaios-site-bar {
+:root[ressac-site][inDOMFullscreen] #ressac-site-bar {
   display: none;
 }

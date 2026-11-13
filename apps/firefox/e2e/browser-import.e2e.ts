@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ImportProgress, ImportSource } from "../shared/api";
 import type { Visit } from "../shared/model";
 import { dispatch, state } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { click, inUi, missingApi, pressKeys, typeText, waitUi } from "./ui";
 
@@ -15,7 +15,7 @@ import { click, inUi, missingApi, pressKeys, typeText, waitUi } from "./ui";
 // Task 4: the import screen, on welcome page 2 and in Réglages › Données.
 // Task 3: a fake Arc sidebar and Zen session (the unit test fixtures), their spaces brought into the store.
 
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 let home = "";
 let csv = "";
@@ -81,7 +81,7 @@ function fakeArcAndZen(root: string): void {
 }
 
 beforeAll(async () => {
-  home = await mkdtemp(join(os.tmpdir(), "webaios-import-home-"));
+  home = await mkdtemp(join(os.tmpdir(), "ressac-import-home-"));
   fakeChrome();
   fakeArcAndZen(home);
   // An empty Safari folder: offered, but its engine migrator never runs under a test home (every type fails as without Full Disk Access).
@@ -89,10 +89,10 @@ beforeAll(async () => {
   csv = join(home, "passwords.csv");
   writeFileSync(csv, "url,username,password\nhttps://site1.example,alice,secret-1\nhttps://site2.example,bob,secret-2\n");
   // A copy left by a quit mid-import: removed at startup.
-  dataDir = await mkdtemp(join(os.tmpdir(), "webaios-data-"));
+  dataDir = await mkdtemp(join(os.tmpdir(), "ressac-data-"));
   mkdirSync(join(dataDir, "import-tmp/chrome/Default"), { recursive: true });
   writeFileSync(join(dataDir, "import-tmp/chrome/Default/Login Data"), "copie");
-  w = await launchWebAiOs({ dataDir, env: { WEBAIOS_TEST_IMPORT_HOME: home, WEBAIOS_TEST_IMPORT_CSV: csv, WEBAIOS_TEST_REVEAL: join(home, "opened.txt") } });
+  w = await launchRessac({ dataDir, env: { RESSAC_TEST_IMPORT_HOME: home, RESSAC_TEST_IMPORT_CSV: csv, RESSAC_TEST_REVEAL: join(home, "opened.txt") } });
   m = w.marionette;
   await m.setContext("chrome");
 });
@@ -106,7 +106,7 @@ afterAll(async () => {
   }
 });
 
-const api = <T>(call: string, args: unknown[] = []) => inUi<T>(m, `return JSON.parse(JSON.stringify(await ui.webaios.browserImport.${call}));`, args);
+const api = <T>(call: string, args: unknown[] = []) => inUi<T>(m, `return JSON.parse(JSON.stringify(await ui.ressac.browserImport.${call}));`, args);
 async function finished(): Promise<ImportProgress> {
   const deadline = Date.now() + 30_000;
   for (;;) {
@@ -125,7 +125,7 @@ const bookmarks = (url: string) =>
     })();`,
     [url],
   );
-const history = () => inUi<Visit[]>(m, `return JSON.parse(JSON.stringify(await ui.webaios.history.search("lue", 50)));`);
+const history = () => inUi<Visit[]>(m, `return JSON.parse(JSON.stringify(await ui.ressac.history.search("lue", 50)));`);
 const notifications = () =>
   readFileSync(join(w.dataDir, "notifications.jsonl"), "utf8")
     .trim()
@@ -151,7 +151,7 @@ describe("import from another browser", () => {
     const start = { source: "chrome", profile: "Default", types: ["bookmarks", "history", "passwords"] };
     const [first, second] = await inUi<unknown[]>(
       m,
-      "const a = ui.webaios.browserImport.start(arguments[0]); const b = ui.webaios.browserImport.start(arguments[0]); return JSON.parse(JSON.stringify(await Promise.all([a, b])));",
+      "const a = ui.ressac.browserImport.start(arguments[0]); const b = ui.ressac.browserImport.start(arguments[0]); return JSON.parse(JSON.stringify(await Promise.all([a, b])));",
       [start],
     );
     expect(first).toEqual({ ok: true });
@@ -260,8 +260,8 @@ describe("import from another browser", () => {
     for (const t of ["bookmarks", "history", "passwords"]) expect(await checked(`import-type-${t}`)).toBe(true);
     await gone("import-type-spaces");
     expect(await there("import-guide")).toBe(false);
-    if (process.env.WEBAIOS_SHOT) await new Promise((r) => setTimeout(r, 1_000)); // the page's rise ends
-    if (process.env.WEBAIOS_SHOT) writeFileSync(process.env.WEBAIOS_SHOT, Buffer.from((await m.command<{ value: string }>("WebDriver:TakeScreenshot", { full: false, hash: false })).value, "base64"));
+    if (process.env.RESSAC_SHOT) await new Promise((r) => setTimeout(r, 1_000)); // the page's rise ends
+    if (process.env.RESSAC_SHOT) writeFileSync(process.env.RESSAC_SHOT, Buffer.from((await m.command<{ value: string }>("WebDriver:TakeScreenshot", { full: false, hash: false })).value, "base64"));
     await click(m, '[data-testid="import-start"]');
     await shows("import-started", "Import lancé : une notification vous préviendra à la fin.");
     expect((await finished()).source).toBe("chrome");
@@ -315,7 +315,7 @@ describe("import from another browser", () => {
     await click(m, '[data-testid="settings-release-notes"]');
     await shows("release-notes", "Nouveautés");
     await shows("release-notes", "Import depuis un autre navigateur");
-    if (process.env.WEBAIOS_SHOT) await new Promise((r) => setTimeout(r, 1_000));
-    if (process.env.WEBAIOS_SHOT) writeFileSync(process.env.WEBAIOS_SHOT + ".notes.png", Buffer.from((await m.command<{ value: string }>("WebDriver:TakeScreenshot", { full: false, hash: false })).value, "base64"));
+    if (process.env.RESSAC_SHOT) await new Promise((r) => setTimeout(r, 1_000));
+    if (process.env.RESSAC_SHOT) writeFileSync(process.env.RESSAC_SHOT + ".notes.png", Buffer.from((await m.command<{ value: string }>("WebDriver:TakeScreenshot", { full: false, hash: false })).value, "base64"));
   });
 });

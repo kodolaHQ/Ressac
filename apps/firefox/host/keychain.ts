@@ -5,8 +5,8 @@ import { KEYCHAIN_DELAY_MS, readAmoKey } from "./extensions/amo";
 
 const run = promisify(execFile);
 
-export const CODEX_KEY = { service: "webaios-codex-api", account: "default" };
-export const CLAUDE_KEY = { service: "webaios-claude-api", account: "default" };
+export const CODEX_KEY = { service: "ressac-codex-api", account: "default" };
+export const CLAUDE_KEY = { service: "ressac-claude-api", account: "default" };
 export const KEY_PATTERN = /^[A-Za-z0-9._~+/=:-]{1,512}$/;
 export const INVALID_KEY = "Clé invalide : lettres, chiffres et . _ ~ + / = : - seulement";
 
@@ -19,14 +19,14 @@ export interface Keychain {
 
 /**
  * A compatible API key in the macOS keychain (Codex's by default). The key goes to `security` through stdin only (never argv, visible in `ps`),
- * and the output of `security` is never logged. `env.WEBAIOS_TEST_KEYCHAIN` = a file standing in for the keychain (tests, e2e).
+ * and the output of `security` is never logged. `env.RESSAC_TEST_KEYCHAIN` = a file standing in for the keychain (tests, e2e).
  */
 export function keychain(o: { service?: string; account?: string; command?: string; delayMs?: number; env?: NodeJS.ProcessEnv } = {}): Keychain {
   const command = o.command ?? "security";
   const timeout = o.delayMs ?? KEYCHAIN_DELAY_MS;
   const service = o.service ?? CODEX_KEY.service;
   const account = o.account ?? CODEX_KEY.account;
-  const testFile = (o.env ?? process.env).WEBAIOS_TEST_KEYCHAIN;
+  const testFile = (o.env ?? process.env).RESSAC_TEST_KEYCHAIN;
   const file = testFile && service === CLAUDE_KEY.service ? `${testFile}.claude` : testFile;
   const ids = ["-s", service, "-a", account];
   const find = async (extra: string[]) => {
@@ -61,17 +61,17 @@ export function keychain(o: { service?: string; account?: string; command?: stri
   };
 }
 
-export const AMO_SERVICE = "webaios-amo";
+export const AMO_SERVICE = "ressac-amo";
 export const ISSUER_PATTERN = /^user:\d+:\d+$/;
 
 /**
  * The Mozilla (AMO) developer account: the JWT issuer is the item's account, the JWT secret its password. Only one item stays under the service.
- * `env.WEBAIOS_TEST_KEYCHAIN` = a ".amo" file holding "issuer:secret" (tests, e2e).
+ * `env.RESSAC_TEST_KEYCHAIN` = a ".amo" file holding "issuer:secret" (tests, e2e).
  */
 export function amoKeychain(o: { command?: string; delayMs?: number; env?: NodeJS.ProcessEnv } = {}) {
   const env = o.env ?? process.env;
   const command = o.command ?? "security";
-  const file = env.WEBAIOS_TEST_KEYCHAIN && `${env.WEBAIOS_TEST_KEYCHAIN}.amo`;
+  const file = env.RESSAC_TEST_KEYCHAIN && `${env.RESSAC_TEST_KEYCHAIN}.amo`;
   const remove = async () => {
     if (file) return rm(file, { force: true });
     // `delete-generic-password` removes one item per call: go on until none is left (44 = absent).

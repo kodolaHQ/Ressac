@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { BlockCatalogEntry, BlockFamily } from "@webaios/kernel";
+  import type { BlockCatalogEntry, BlockFamily } from "@ressac/kernel";
   import { DRAG_BLOCK } from "./add";
 
   /**

@@ -8,7 +8,7 @@
   import SiteIcon from "./components/SiteIcon.svelte";
 
   /** The agent's last tab, as a pill over this window's pages (chrome/window/agent-pill.ts sizes its frame to it). */
-  const api = window.webaios;
+  const api = window.ressac;
   let view = $state<AgentViewState | null>(api.agentView.state());
   let appState = $state<BrowserState | null>(null);
   /** ✕: hidden until the hold ends (state null); the next activity shows it again. */
@@ -87,7 +87,7 @@
 <style>
   .root { position: fixed; right: 0; bottom: 0; width: max-content; }
   /* Over the site: no blur reaches it, the dense glass keeps it readable. Enter on the spring, leave by a fade (DESIGN.md). */
-  .pill { position: relative; margin: 10px; border-radius: 999px; background: var(--glass-dense); border: 1px solid var(--glass-edge); box-shadow: var(--float); color: var(--text); font: 500 12px var(--font-ui); animation: webaios-rise var(--spring-d) var(--spring) backwards; }
+  .pill { position: relative; margin: 10px; border-radius: 999px; background: var(--glass-dense); border: 1px solid var(--glass-edge); box-shadow: var(--float); color: var(--text); font: 500 12px var(--font-ui); animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   .pill.grown { border-radius: 12px; }
   button { all: unset; cursor: pointer; transition: transform var(--tap), background var(--tap); }
   button:active { transform: scale(0.97); }
@@ -97,7 +97,7 @@
   .line { display: flex; align-items: center; gap: 7px; max-width: 360px; }
   .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .label.running { color: var(--accent); }
-  .frame { display: grid; place-items: center; width: 360px; aspect-ratio: 16 / 10; border-radius: 8px; overflow: hidden; background: var(--glass-hi); animation: webaios-rise var(--spring-d) var(--spring) backwards; }
+  .frame { display: grid; place-items: center; width: 360px; aspect-ratio: 16 / 10; border-radius: 8px; overflow: hidden; background: var(--glass-hi); animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   .frame img { width: 100%; height: 100%; object-fit: cover; object-position: top; }
   .site { display: flex; flex-direction: column; align-items: center; gap: 6px; color: var(--text-muted); }
   .toggle, .close { position: absolute; bottom: 5px; display: grid; place-content: center; width: 20px; height: 20px; border-radius: 50%; color: var(--text-muted); }

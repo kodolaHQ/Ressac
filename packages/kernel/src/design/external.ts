@@ -10,10 +10,10 @@ import { externalId, type ExternalClient, type ExternalProject } from "./project
 export const FOLDER_NOT_ABSOLUTE = "Le dossier doit être un chemin absolu.";
 export const FOLDER_NOT_FOUND = "Ce dossier n'existe pas sur le Mac.";
 export const FOLDER_TOO_LARGE = "Ce dossier est trop large : ni /, ni le dossier personnel.";
-export const SPACE_FOLDER = "Ce dossier est dans l'espace de WebAiOs : ses applis se relisent depuis la page Applications.";
-export const UNREADABLE_WARNING = "WebAiOs ne peut pas lire ce dossier : la relecture sera indisponible tant que l'utilisateur n'a pas donné l'accès";
+export const SPACE_FOLDER = "Ce dossier est dans l'espace de Ressac : ses applis se relisent depuis la page Applications.";
+export const UNREADABLE_WARNING = "Ressac ne peut pas lire ce dossier : la relecture sera indisponible tant que l'utilisateur n'a pas donné l'accès";
 export const deniedPort = (p: number): string =>
-  `Port ${p} refusé : entre 1024 et 65535, hors des ports du conteneur de WebAiOs (${containerPortRange().join("–")} et ceux des applis).`;
+  `Port ${p} refusé : entre 1024 et 65535, hors des ports du conteneur de Ressac (${containerPortRange().join("–")} et ceux des applis).`;
 
 const ProjectSchema = z.object({
   id: z.string().regex(/^[0-9a-f]{16}$/),

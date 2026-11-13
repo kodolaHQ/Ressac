@@ -280,7 +280,7 @@
   .guide-y { left: 0; right: 0; height: 1px; }
   .empty { margin: 24px 0; text-align: center; font-size: 13px; color: var(--home-text-muted); }
   .veil { position: fixed; inset: 0; display: grid; place-content: center; background: var(--veil); backdrop-filter: blur(6px); z-index: 10; }
-  .confirmation { max-width: 420px; padding: 18px 20px; border-radius: 16px; background: var(--glass-dense); border: 1px solid var(--glass-edge); box-shadow: var(--modal-shadow); color: var(--text); animation: webaios-drop var(--spring-d) var(--spring) backwards; }
+  .confirmation { max-width: 420px; padding: 18px 20px; border-radius: 16px; background: var(--glass-dense); border: 1px solid var(--glass-edge); box-shadow: var(--modal-shadow); color: var(--text); animation: ressac-drop var(--spring-d) var(--spring) backwards; }
   .confirmation p { margin: 0 0 14px; }
   .buttons { display: flex; justify-content: flex-end; gap: 8px; }
   .buttons button { padding: 7px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: 600 12.5px var(--font-ui); transition: transform var(--tap); }

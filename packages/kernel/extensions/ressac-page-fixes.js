@@ -1,4 +1,4 @@
-// WebAiOs: fixes placed at the head of an extension's content scripts. chrome.storage.sync is replaced by
+// Ressac: fixes placed at the head of an extension's content scripts. chrome.storage.sync is replaced by
 // chrome.storage.local, and `browser` points at `chrome` (extensions written for Firefox). No effect if already done.
 (() => {
   const c = globalThis.chrome;

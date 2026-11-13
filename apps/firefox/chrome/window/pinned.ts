@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-export const PINNED_PREF = "webaios.extensions.pinned";
+export const PINNED_PREF = "ressac.extensions.pinned";
 
 /** The pinned add-on ids from the pref's JSON; anything unreadable is []. */
 export function parsePinned(raw: string): string[] {

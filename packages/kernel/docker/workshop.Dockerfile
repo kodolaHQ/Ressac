@@ -1,4 +1,4 @@
-# WebAiOs "workshop" container: the agent works in it, isolated from the Mac.
+# Ressac "workshop" container: the agent works in it, isolated from the Mac.
 # The slim base and the cleaned npm cache keep the image at about 1.4 GB (2.3 GB on the full base).
 FROM node:22-bookworm-slim
 

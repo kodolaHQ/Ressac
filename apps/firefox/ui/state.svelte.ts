@@ -1,10 +1,10 @@
-import type { ApiWebaios } from "../shared/api";
+import type { ApiRessac } from "../shared/api";
 import { workflowUrlTarget, type PendingRequest, type WindowState, type BrowserState, type TabId, type Tab, type Download } from "../shared/model";
 import { targetKey } from "./builder/target";
 import { confirmClose, keepCodesOf } from "./builder/codes.svelte";
 
-// Typed as the shared ApiWebaios: ui/api.ts declares window.webaios as its wider ApiFirefox.
-export const api = (window as unknown as { webaios: ApiWebaios }).webaios;
+// Typed as the shared ApiRessac: ui/api.ts declares window.ressac as its wider ApiFirefox.
+export const api = (window as unknown as { ressac: ApiRessac }).ressac;
 
 /** Local copy of the state broadcast by the main process; only modified through `api.agir`. */
 export const appState = $state<{ value: BrowserState | null }>({ value: null });

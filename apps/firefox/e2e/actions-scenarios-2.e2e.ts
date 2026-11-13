@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from "vitest";
 import { actionsDataDir, EXECUTION, openAction, runsOnDisk, runStatuses, startActionServers, tid, uiQueries, waitKernel, writePagesAction, writeResult, writeRunnableAction } from "./actions";
 import { waitReady } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { click, inUi, missingApi, waitUi } from "./ui";
 import { writeWidget } from "./workflows";
@@ -15,7 +15,7 @@ import { writeWidget } from "./workflows";
 
 let servers: Awaited<ReturnType<typeof startActionServers>>;
 let dirs: { dataDir: string; profile: string };
-let w: LaunchedWebAiOs | undefined;
+let w: LaunchedRessac | undefined;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -24,7 +24,7 @@ beforeAll(async () => {
 });
 beforeEach(async () => {
   servers.reset();
-  dirs = { dataDir: await mkdtemp(path.join(os.tmpdir(), "webaios-data-")), profile: await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-")) };
+  dirs = { dataDir: await mkdtemp(path.join(os.tmpdir(), "ressac-data-")), profile: await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-")) };
 });
 afterEach(async () => {
   await w?.close();
@@ -36,10 +36,10 @@ afterAll(() => servers?.close());
 
 /** Launches on the test's folders (kept); `height` tall enough for the home page's widgets. */
 async function launch(height?: number): Promise<{ m: Marionette; q: ReturnType<typeof uiQueries> }> {
-  w = await launchWebAiOs({
+  w = await launchRessac({
     ...dirs,
     ...(height ? { height } : {}),
-    env: { WEBAIOS_OLLAMA_URL: servers.ollama.url, WEBAIOS_KEV_URL: servers.kev.url, WEBAIOS_TEST_LOCAL_ADDRESSES: "1" },
+    env: { RESSAC_OLLAMA_URL: servers.ollama.url, RESSAC_KEV_URL: servers.kev.url, RESSAC_TEST_LOCAL_ADDRESSES: "1" },
   });
   const m = w.marionette;
   await m.setContext("chrome");
@@ -53,7 +53,7 @@ async function quit(m: Marionette): Promise<void> {
   w = undefined;
 }
 
-const direct = (m: Marionette) => inUi<{ running: { action: string }[]; waiting: { action: string }[] }>(m, "return JSON.parse(JSON.stringify(await ui.webaios.actions.live()));");
+const direct = (m: Marionette) => inUi<{ running: { action: string }[]; waiting: { action: string }[] }>(m, "return JSON.parse(JSON.stringify(await ui.ressac.actions.live()));");
 
 /** Polls `read` until `ok` accepts it; fails with the last value. */
 async function until<T>(read: () => T | Promise<T>, ok: (v: T) => boolean, ms = 30_000): Promise<T> {
@@ -134,7 +134,7 @@ it("the Gmail widget (account, harvest.mjs) and a watch update as before while a
     harvest: { minutes: 60 },
     declaration: { sources: { account: ["127.0.0.1"], public: [] }, config: { url: `${site}/court` } },
     files: {
-      "harvest.mjs": "export default async (webaios) => ({ titre: (await webaios.readPage(webaios.config.url, { account: true })).title });",
+      "harvest.mjs": "export default async (ressac) => ({ titre: (await ressac.readPage(ressac.config.url, { account: true })).title });",
       "example.json": JSON.stringify({ example: "gmail" }),
       "display.html": WIDGET_DISPLAY,
     },
@@ -173,7 +173,7 @@ it("the Gmail widget (account, harvest.mjs) and a watch update as before while a
   const { m } = await launch(1400);
   await untilEqual(() => shown(m, "gmail"), '{"example":"gmail"}');
   await waitKernel(m);
-  await inUi(m, "void ui.webaios.actions.launch('pages', null);");
+  await inUi(m, "void ui.ressac.actions.launch('pages', null);");
   const running = async () => (await direct(m)).running.map((c) => c.action);
   await untilEqual(running, ["pages"]);
 

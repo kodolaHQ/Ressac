@@ -6,11 +6,11 @@ import type { Action } from "../shared/api";
 import { callMcpTool } from "../test/mcp";
 import { actionsDataDir, listen, openAction, runsOnDisk, tid, uiQueries, waitKernel, writeAction, writeRunnableAction, type TestServer } from "./actions";
 import { dispatch, state, waitReady } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { click, inUi, missingApi, pressKeys, waitUi } from "./ui";
 
-// The workflow builder opened on an action (webaios://workflow/action/<id>): the Action panel, ▶ Lancer with the input, a replay whose page shows in the preview without becoming the last
+// The workflow builder opened on an action (ressac://workflow/action/<id>): the Action panel, ▶ Lancer with the input, a replay whose page shows in the preview without becoming the last
 // result. Gemma absent: the fallback layout.
 
 const GITLAB_INSTRUCTION = "Un tableau des tickets, les plus urgents d'abord";
@@ -36,7 +36,7 @@ const writeGitlab = (id: string, mark = "un") =>
   });
 const actionDir = (id: string) => path.join(w.dataDir, "workspace", "actions", id);
 
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 let q: ReturnType<typeof uiQueries>;
 let ollama: TestServer;
@@ -75,7 +75,7 @@ beforeAll(async () => {
   // A fake Ollama without Gemma (the fallback layout) and a fake Kev: nothing leaves for a real one.
   ollama = await listen((_req, res) => void res.writeHead(200, { "Content-Type": "application/json" }).end('{"models":[]}'));
   kev = await listen((_req, res) => void res.writeHead(200, { "Content-Type": "application/json" }).end('{"data":[]}'));
-  w = await launchWebAiOs({ height: 1400, env: { WEBAIOS_OLLAMA_URL: ollama.url, WEBAIOS_KEV_URL: kev.url } });
+  w = await launchRessac({ height: 1400, env: { RESSAC_OLLAMA_URL: ollama.url, RESSAC_KEV_URL: kev.url } });
   m = w.marionette;
   q = uiQueries(m);
   await m.setContext("chrome");
@@ -94,7 +94,7 @@ describe("the builder of an action", () => {
     await writeRunnableAction(w.dataDir, "courrier-b", { name: "Courrier", account: ["127.0.0.1"], code: `export default async () => ({ messages: [{ sujet: "Bonjour" }] });` });
     // Straight to the builder: the action page would ask for the grant itself.
     const s = await state(m);
-    await dispatch(m, { type: "openTab", windowId: s.windows[0]!.id, url: "webaios://workflow/action/courrier-b", activate: true });
+    await dispatch(m, { type: "openTab", windowId: s.windows[0]!.id, url: "ressac://workflow/action/courrier-b", activate: true });
     await visible(tid("builder"));
     await waitUi(m, "return !doc.querySelector(arguments[0])?.disabled;", [tid("launch")], 30_000);
     await click(m, tid("launch"));
@@ -164,7 +164,7 @@ describe("the builder of an action", () => {
     expect(await runsOnDisk(w.dataDir, "gitlab-b")).toEqual([]);
     await click(m, tid("launch"));
     await waitUi(m, "return doc.activeElement === doc.querySelector(arguments[0]);", [tid("launch-input")]);
-    await inUi(m, `const f = doc.querySelector(arguments[0]); f.value = "webaios"; f.dispatchEvent(new ui.Event("input", { bubbles: true }));`, [tid("launch-input")]);
+    await inUi(m, `const f = doc.querySelector(arguments[0]); f.value = "ressac"; f.dispatchEvent(new ui.Event("input", { bubbles: true }));`, [tid("launch-input")]);
     await pressKeys(m, "Enter");
     await q.waitCount(ask, 0);
     const [file] = await poll(() => runsOnDisk(w.dataDir, "gitlab-b"), (l) => l.length === 1, "one run");
@@ -174,18 +174,18 @@ describe("the builder of an action", () => {
     await waitUi(m, "return doc.querySelector(arguments[0]).getAttribute('aria-pressed') === 'true';", [button], 30_000);
     expect(await q.text(button)).toContain("Manuelle");
     await q.waitText(tid("pill-lire"), "1");
-    expect(await readJson(path.join(actionsDataDir(w.dataDir), "gitlab-b", "runs", file!))).toMatchObject({ trigger: "manual", input: "webaios", status: "succeeded" });
+    expect(await readJson(path.join(actionsDataDir(w.dataDir), "gitlab-b", "runs", file!))).toMatchObject({ trigger: "manual", input: "ressac", status: "succeeded" });
     // The preview shows this run's page (the agent's components are never loaded there).
     await click(m, tid("preview-button"));
-    await q.waitContains(tid("action-preview"), "ticket-webaios-un", 30_000);
+    await q.waitContains(tid("action-preview"), "ticket-ressac-un", 30_000);
   });
 
   // constructeur.spec.ts:1637
   it("replaying from a block: the preview shows a page, the action page's last result does not change", { timeout: 150_000 }, async () => {
     await writeGitlab("gitlab-c", "un");
     await openActionBuilder("gitlab-c");
-    // A real run, launched from the page (its input: « webaios »). Not awaited in the script: a run may outlast its timeout.
-    await inUi(m, "void ui.webaios.actions.launch('gitlab-c', 'webaios');");
+    // A real run, launched from the page (its input: « ressac »). Not awaited in the script: a run may outlast its timeout.
+    await inUi(m, "void ui.ressac.actions.launch('gitlab-c', 'ressac');");
     const [file] = await poll(() => runsOnDisk(w.dataDir, "gitlab-c"), (l) => l.length === 1, "the real run");
     const origin = file!.replace(/\.json$/, "");
     const run = await poll(() => readJson(path.join(actionsDataDir(w.dataDir), "gitlab-c", "runs", file!)), (e) => e.status !== "running", "its end", 60_000);
@@ -207,15 +207,15 @@ describe("the builder of an action", () => {
     const preview = tid("action-preview");
     await visible(`${preview} ${tid("page-render")}`);
     // The trial takes the original run's input.
-    await q.waitContains(preview, "ticket-webaios-deux", 30_000);
+    await q.waitContains(preview, "ticket-ressac-deux", 30_000);
     // Choosing the real run: the preview shows its page.
     await click(m, tid(`execution-${origin}`));
-    await q.waitContains(preview, "ticket-webaios-un", 30_000);
+    await q.waitContains(preview, "ticket-ressac-un", 30_000);
     // The action's last result stays the real run: its page does not show the trial.
-    expect(await inUi(m, "return ui.webaios.actions.page('gitlab-c', null).then((p) => p?.run);")).toBe(origin);
+    expect(await inUi(m, "return ui.ressac.actions.page('gitlab-c', null).then((p) => p?.run);")).toBe(origin);
     await openAction(m, "gitlab-c", NAME);
-    await q.waitContains(`${tid("page-action")} ${tid("page-render")}`, "ticket-webaios-un", 30_000);
-    expect(await q.text(tid("page-action"))).not.toContain("ticket-webaios-deux");
+    await q.waitContains(`${tid("page-action")} ${tid("page-render")}`, "ticket-ressac-un", 30_000);
+    expect(await q.text(tid("page-action"))).not.toContain("ticket-ressac-deux");
   });
 
   it("an action's builder tab in a private space shows ACTIONS_IN_PRIVATE_SPACE", { timeout: 60_000 }, async () => {
@@ -231,9 +231,9 @@ describe("the builder of an action", () => {
       expect(
         await inUi(
           m,
-          `const c = arguments[0], wf = ui.webaios.workflow;
+          `const c = arguments[0], wf = ui.ressac.workflow;
           return Promise.all([wf.read(c), wf.save(c, { version: 1, blocks: [], links: [] }), wf.readCode(c, "lire.mjs"), wf.saveCode(c, "lire.mjs", "x"),
-            wf.replay(c, "2026-10-31T08-00-00-000Z", "lire"), wf.run(c, "webaios")]).then((r) => JSON.parse(JSON.stringify(r)));`,
+            wf.replay(c, "2026-10-31T08-00-00-000Z", "lire"), wf.run(c, "ressac")]).then((r) => JSON.parse(JSON.stringify(r)));`,
           [target],
         ),
       ).toEqual([

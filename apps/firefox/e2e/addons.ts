@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 import type { Marionette } from "./marionette";
 import { ICON } from "./server";
 
-/** A test WebExtension: its manifest (MV2, gecko id `<name>@webaios.test`) and its other files. */
+/** A test WebExtension: its manifest (MV2, gecko id `<name>@ressac.test`) and its other files. */
 export interface Fixture {
   id: string;
   manifest: Record<string, unknown>;
@@ -22,7 +22,7 @@ export async function cleanupXpis(): Promise<void> {
 
 /** Writes the fixture to a temp dir, zips it (`zip -qr`) into a temp .xpi; returns its path. */
 export async function writeXpi(f: Fixture): Promise<string> {
-  const dir = await mkdtemp(path.join(os.tmpdir(), "webaios-addon-"));
+  const dir = await mkdtemp(path.join(os.tmpdir(), "ressac-addon-"));
   xpiDirs.push(dir);
   const src = path.join(dir, "src");
   for (const [name, content] of Object.entries({ ...f.files, "manifest.json": JSON.stringify(f.manifest) })) {
@@ -46,7 +46,7 @@ export async function uninstallAddon(m: Marionette, id: string): Promise<void> {
 
 /** MV2, a browser action with an icon and a popup whose title becomes « Popup de test prête » once its script ran. */
 export function button(o: { name?: string; badge?: string } = {}): Fixture {
-  const id = "button@webaios.test";
+  const id = "button@ressac.test";
   return {
     id,
     manifest: {
@@ -71,7 +71,7 @@ const gecko = (id: string) => ({ manifest_version: 2, version: "1.0", browser_sp
 
 /** Cancels any request for pub.js (webRequest blocking). */
 export function blocker(): Fixture {
-  const id = "blocker@webaios.test";
+  const id = "blocker@ressac.test";
   return {
     id,
     manifest: { ...gecko(id), name: "Bloqueur", permissions: ["webRequest", "webRequestBlocking", "<all_urls>"], background: { scripts: ["background.js"] } },
@@ -81,7 +81,7 @@ export function blocker(): Fixture {
 
 /** A content script CSS on every page that hides #cache-moi. */
 export function hider(): Fixture {
-  const id = "hider@webaios.test";
+  const id = "hider@ressac.test";
   return {
     id,
     manifest: { ...gecko(id), name: "Cacheur", content_scripts: [{ matches: ["<all_urls>"], css: ["hide.css"] }] },
@@ -91,7 +91,7 @@ export function hider(): Fixture {
 
 /** Notes to `base`/note/<what> on runtime.onInstalled (`installed-<reason>`, plus `-from-<previousVersion>` on update) and at each background start (`started`). */
 export function installed(base: string): Fixture {
-  const id = "installed@webaios.test";
+  const id = "installed@ressac.test";
   return {
     id,
     manifest: { ...gecko(id), name: "Installé", permissions: ["<all_urls>"], background: { scripts: ["background.js"] } },
@@ -109,7 +109,7 @@ note("started");`,
  * `ouvrir-page`, tabs.create({ url: "page.html" }) (its own page « Page de la sonde », by a relative URL).
  */
 export function probe(): Fixture {
-  const id = "probe@webaios.test";
+  const id = "probe@ressac.test";
   return {
     id,
     manifest: {
@@ -131,7 +131,7 @@ else if (u.includes("ouvrir-page")) browser.runtime.sendMessage({ url: "page.htm
 
 /** An options page (options_ui, open_in_tab as asked); a page whose query is `?options` makes its background call runtime.openOptionsPage(). */
 export function options(o: { inTab: boolean }): Fixture {
-  const id = `options-${o.inTab ? "tab" : "embedded"}@webaios.test`;
+  const id = `options-${o.inTab ? "tab" : "embedded"}@ressac.test`;
   return {
     id,
     manifest: {
@@ -152,7 +152,7 @@ export function options(o: { inTab: boolean }): Fixture {
 
 /** Notes `ci-` + encodeURIComponent(JSON.stringify(names)) of the contextual identities it can see, to `base`/note/. */
 export function identities(base: string): Fixture {
-  const id = "identities@webaios.test";
+  const id = "identities@ressac.test";
   return {
     id,
     manifest: { ...gecko(id), name: "Identités", permissions: ["contextualIdentities", "cookies", "<all_urls>"], background: { scripts: ["background.js"] } },
@@ -164,7 +164,7 @@ export function identities(base: string): Fixture {
 
 /** A content script on every page (document_end) that appends <p id="addon-mark">MARQUE-MODULE</p>. */
 export function marker(): Fixture {
-  const id = "marker@webaios.test";
+  const id = "marker@ressac.test";
   return {
     id,
     manifest: { ...gecko(id), name: "Marqueur", content_scripts: [{ matches: ["<all_urls>"], js: ["content.js"], run_at: "document_end" }] },
@@ -174,7 +174,7 @@ export function marker(): Fixture {
 
 /** Notes `seen` to `base`/note/ for each request its webRequest listener observes on /texte.html. */
 export function watcher(base: string): Fixture {
-  const id = "watcher@webaios.test";
+  const id = "watcher@ressac.test";
   return {
     id,
     manifest: { ...gecko(id), name: "Guetteur", permissions: ["webRequest", "<all_urls>"], background: { scripts: ["background.js"] } },

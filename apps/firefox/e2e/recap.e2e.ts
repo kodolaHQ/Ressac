@@ -9,12 +9,12 @@ import { urlRecap } from "../shared/model";
 import { tid, uiQueries } from "./actions";
 import { dispatch, state, waitFor } from "./firefox";
 import { callTool } from "./mcp";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { ICON, startServer } from "./server";
 import { click, inUi, missingApi, waitUi } from "./ui";
 
-// The agent's recap: published with show_recap, drawn as a webaios://recap/<id> tab. A link is clickable only if the
+// The agent's recap: published with show_recap, drawn as a ressac://recap/<id> tab. A link is clickable only if the
 // agent read its address. exemple.invalide resolves to the machine, so an opened link leaves nothing.
 
 const READ = "https://exemple.invalide/velo-1";
@@ -56,11 +56,11 @@ beforeAll(async () => {
 afterAll(() => server?.close());
 
 /** Waits for the kernel's MCP config and the agent. */
-async function ready(w: LaunchedWebAiOs): Promise<Marionette> {
+async function ready(w: LaunchedRessac): Promise<Marionette> {
   const m = w.marionette;
   await m.setContext("chrome");
-  await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
-  const config = join(w.dataDir, "workspace", ".webaios", "mcp.json");
+  await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
+  const config = join(w.dataDir, "workspace", ".ressac", "mcp.json");
   for (const deadline = Date.now() + 20_000; !existsSync(config); await sleep(100)) if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
   await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
   return m;
@@ -77,7 +77,7 @@ const RESULTS = {
   best: { name: "Yuba Spicy Curry", price: "1 850 €", url: READ },
   others: [{ name: "Babboe Curve", price: "1 400 €", url: NEVER_READ, warnings: ["batterie 70 %"] }],
 };
-async function publish(w: LaunchedWebAiOs, title: string, id?: string): Promise<string> {
+async function publish(w: LaunchedRessac, title: string, id?: string): Promise<string> {
   const r = await callTool(w.dataDir, "show_recap", { ...(id ? { id } : {}), title, results: RESULTS, plan: plan(title) });
   const found = /Récap (\S+) ouvert/.exec(r.text);
   if (!found) throw new Error(`show_recap: ${r.text}`);
@@ -91,12 +91,12 @@ const activeTab = async (m: Marionette) => {
 const recapTabs = async (m: Marionette, id: string) => Object.values((await state(m)).tabs).filter((t) => t.url === urlRecap(id));
 
 describe("recap tab", () => {
-  let w: LaunchedWebAiOs;
+  let w: LaunchedRessac;
   let m: Marionette;
   let q: ReturnType<typeof uiQueries>;
   let id: string;
   beforeAll(async () => {
-    w = await launchWebAiOs({ env: { WEBAIOS_MEMORY_LOOP: "1", WEBAIOS_TEST_SEARCH_URL: `${server.url}/annonces.html?q=%s`, WEBAIOS_TEST_ACTION_IMAGES: server.url }, prefs: PREFS });
+    w = await launchRessac({ env: { RESSAC_MEMORY_LOOP: "1", RESSAC_TEST_SEARCH_URL: `${server.url}/annonces.html?q=%s`, RESSAC_TEST_ACTION_IMAGES: server.url }, prefs: PREFS });
     m = await ready(w);
     q = uiQueries(m);
   }, 60_000);
@@ -107,7 +107,7 @@ describe("recap tab", () => {
 
   it("a published recap opens as a tab, links read are clickable, others are text", async () => {
     const tab = /Onglet : (\S+)/.exec((await callTool(w.dataDir, "search_web", { query: "vélo cargo", goal: "lire" })).text)![1]!;
-    // The search tab shows the results page (WEBAIOS_TEST_SEARCH_URL): read it with its links and their photos.
+    // The search tab shows the results page (RESSAC_TEST_SEARCH_URL): read it with its links and their photos.
     const read = (await callTool(w.dataDir, "read_tab", { id: tab, links: true })).text;
     expect(read).toContain(`${READ} — photo : ${PHOTO}`);
     expect(read).toContain(`${TERN} — photo : ${PHOTO_TERN}`);
@@ -215,11 +215,11 @@ describe("recap tab", () => {
 
 describe("recap after a restart", () => {
   it("a recap survives a restart", async () => {
-    const dataDir = await mkdtemp(join(os.tmpdir(), "webaios-data-"));
-    const profile = await mkdtemp(join(os.tmpdir(), "webaios-firefox-"));
-    let w: LaunchedWebAiOs | undefined;
+    const dataDir = await mkdtemp(join(os.tmpdir(), "ressac-data-"));
+    const profile = await mkdtemp(join(os.tmpdir(), "ressac-firefox-"));
+    let w: LaunchedRessac | undefined;
     try {
-      w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_MEMORY_LOOP: "1" }, prefs: PREFS });
+      w = await launchRessac({ dataDir, profile, env: { RESSAC_MEMORY_LOOP: "1" }, prefs: PREFS });
       let m = await ready(w);
       const id = await publish(w, "Vélos cargo");
       for (const deadline = Date.now() + 10_000; (await activeTab(m))?.url !== urlRecap(id); await sleep(100)) if (Date.now() > deadline) throw new Error("the recap tab is not active");
@@ -228,10 +228,10 @@ describe("recap after a restart", () => {
       w = undefined;
       expect(existsSync(join(dataDir, "recaps", `${id}.json`))).toBe(true);
 
-      w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_MEMORY_LOOP: "1" }, prefs: PREFS });
+      w = await launchRessac({ dataDir, profile, env: { RESSAC_MEMORY_LOOP: "1" }, prefs: PREFS });
       m = w.marionette;
       await m.setContext("chrome");
-      await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+      await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
       for (const deadline = Date.now() + 15_000; (await activeTab(m))?.url !== urlRecap(id); await sleep(100)) if (Date.now() > deadline) throw new Error("the recap tab was not restored");
       await waitUi(m, "return doc.querySelector(arguments[0])?.textContent === 'Vélos cargo';", [tid("block-title")], 20_000);
       expect(await inUi(m, "return !!doc.querySelector(arguments[0]);", [tid("recap-gone")])).toBe(false);
@@ -245,7 +245,7 @@ describe("recap after a restart", () => {
 
 describe("forgotten recap", () => {
   it("a recap not shown during 7 days of use closes by itself", async () => {
-    const w = await launchWebAiOs({ env: { WEBAIOS_MEMORY_LOOP: "1", WEBAIOS_TEST_RECAP_DAY_MS: "300", WEBAIOS_TEST_SEARCH_URL: `${server.url}/annonces.html?q=%s`, WEBAIOS_TEST_ACTION_IMAGES: server.url }, prefs: PREFS });
+    const w = await launchRessac({ env: { RESSAC_MEMORY_LOOP: "1", RESSAC_TEST_RECAP_DAY_MS: "300", RESSAC_TEST_SEARCH_URL: `${server.url}/annonces.html?q=%s`, RESSAC_TEST_ACTION_IMAGES: server.url }, prefs: PREFS });
     try {
       const m = await ready(w);
       const q = uiQueries(m);

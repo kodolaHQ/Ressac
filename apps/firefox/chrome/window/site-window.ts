@@ -1,5 +1,5 @@
 // A site app's window: browser.xhtml opened by store/sites.ts without a toolbar, marked from its creation, never a
-// WebAiOs main window. One <browser> (the app view, in the app's container), Firefox's tabs and toolbars hidden, the
+// Ressac main window. One <browser> (the app view, in the app's container), Firefox's tabs and toolbars hidden, the
 // bar's frame on top (sidebar.html?site=<id>, ui/SiteWindow.svelte).
 import { createHalo } from "../../core/halo";
 import { HOST_EXITED } from "../agent/host";
@@ -8,27 +8,27 @@ import { createSiteAddons, type WindowAddons } from "./addons";
 import { cutFrameNetwork } from "./frame-network";
 import { FIREFOX_COMMANDS, FIREFOX_KEYS, liveBindings, shortcutFor } from "./keys";
 
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const XHTML = "http://www.w3.org/1999/xhtml";
 // Keep in sync with store/sites.ts SITE_WINDOW_KEY.
-const SITE_WINDOW_KEY = "webaios-site";
+const SITE_WINDOW_KEY = "ressac-site";
 
 declare global {
   interface Window {
     /** In a site app's window: what its bar drives (ui/site-api.ts), and its add-on buttons once Firefox's startup is done. */
-    webaiosSiteWindow?: SiteWindowController & { addons?: WindowAddons };
+    ressacSiteWindow?: SiteWindowController & { addons?: WindowAddons };
   }
 }
 
 type Sites = typeof import("../store/sites").sites;
 const sitesModule = (): Sites => ChromeUtils.importESModule(STORE).sites;
-const designShortcut = (win: Window) => void ChromeUtils.importESModule(STORE).ready.then((store: import("../store").WebAiOsStore) => store.design.shortcut(win));
+const designShortcut = (win: Window) => void ChromeUtils.importESModule(STORE).ready.then((store: import("../store").RessacStore) => store.design.shortcut(win));
 
 /** The agent's halo around this app window's view while one of its tools runs on its tab (`app:<folder>`, `site:<id>`), as in the main window. */
 export function showHalo(win: Window, id: string): void {
-  void ChromeUtils.importESModule(STORE).ready.then((store: import("../store").WebAiOsStore) => {
+  void ChromeUtils.importESModule(STORE).ready.then((store: import("../store").RessacStore) => {
     if (win.closed) return;
-    const halo = createHalo((on) => win.document.documentElement.toggleAttribute("webaios-agent-working", on));
+    const halo = createHalo((on) => win.document.documentElement.toggleAttribute("ressac-agent-working", on));
     const update = () => halo.update(!!store.access.tabs[id]?.running);
     const offs = [store.agent.on("access", update), store.agent.on(HOST_EXITED, update)];
     update();
@@ -86,25 +86,25 @@ function routeOpens(win: Window, id: string, small = false): void {
 
 // The errors an add-on's tabs call receives. Thrown as plain objects: Firefox's extension code passes their
 // message on, where an Error from this window would reach the add-on as « An unexpected error occurred ».
-const PROTECTED = { message: "Onglet protégé par WebAiOs" };
-const REFUSED = { message: "Chargement refusé par WebAiOs" };
+const PROTECTED = { message: "Onglet protégé par Ressac" };
+const REFUSED = { message: "Chargement refusé par Ressac" };
 
 // An agent app's view too (its window: window/app-window.ts).
-const isSiteTab = (tab: any) => !!tab?.ownerDocument?.documentElement && ["webaios-site", "webaios-app"].some((x) => tab.ownerDocument.documentElement.hasAttribute(x));
+const isSiteTab = (tab: any) => !!tab?.ownerDocument?.documentElement && ["ressac-site", "ressac-app"].some((x) => tab.ownerDocument.documentElement.hasAttribute(x));
 
 /**
  * The app view is never a tab add-ons can close, move out, add to, or send off the web (spec §4.9). Its window has one
  * tab, the view: removing or detaching it is refused, and so is any new tab. tabs.update goes through
  * fixupAndLoadURIString: refused unless the view shows the site (never the page hidden under the home or
- * the grant card) and the address is http(s). WebAiOs's own loads (the system principal) pass. Its reload, goBack and
+ * the grant card) and the address is http(s). Ressac's own loads (the system principal) pass. Its reload, goBack and
  * goForward are stopped by the request guard (store/sites.ts). windows.remove of this window is refused;
- * WebAiOs's own close() calls, ⌘W and the window's close button still close it.
+ * Ressac's own close() calls, ⌘W and the window's close button still close it.
  * `showsPage`: may an add-on load in the view now (an agent app's window: always; the guard keeps it on its origin)?
  */
 export function protectView(win: Window, showsPage: () => boolean): void {
   const close = win.close;
   win.close = function () {
-    // ext-windows.js's windows.remove calls window.close(): no other way to tell an add-on's call from WebAiOs's.
+    // ext-windows.js's windows.remove calls window.close(): no other way to tell an add-on's call from Ressac's.
     if (new Error().stack?.includes("/ext-windows.js")) throw PROTECTED;
     return close.call(this);
   };
@@ -155,11 +155,11 @@ export function setupSiteWindow(win: Window, id: string): SiteWindowController |
     return null;
   }
   const doc = win.document;
-  doc.documentElement.setAttribute("webaios-site", id);
+  doc.documentElement.setAttribute("ressac-site", id);
   showHalo(win, `site:${id}`);
   doc.getElementById("navigator-toolbox")!.hidden = true;
   const bar = doc.createElementNS(XHTML, "iframe") as HTMLIFrameElement;
-  bar.id = "webaios-site-bar";
+  bar.id = "ressac-site-bar";
   doc.getElementById("browser")!.before(bar);
   const mayLoad = cutFrameNetwork(bar);
   routeOpens(win, id);
@@ -180,7 +180,7 @@ export function setupSiteWindow(win: Window, id: string): SiteWindowController |
   bar.addEventListener("load", () => bar.contentWindow!.addEventListener("keydown", onKeyDown, true));
   // The site's code was not reviewed: its beforeunload never keeps the app from closing.
   win.CanCloseWindow = () => true;
-  win.webaiosSiteWindow = controller;
+  win.ressacSiteWindow = controller;
   // Now: gBrowser and its one browser, the view, exist (browser-main.js's DOMContentLoaded ran before this one).
   protectView(win, () => controller.state().viewState === "site");
   void win.delayedStartupPromise.then(() => {
@@ -190,7 +190,7 @@ export function setupSiteWindow(win: Window, id: string): SiteWindowController |
     gBrowser.updateTitlebar();
     sites.attach(id, gBrowser.selectedBrowser);
     controller.addons = createSiteAddons(win, controller);
-    if (mayLoad) bar.src = `chrome://browser/content/webaios/sidebar.html?site=${encodeURIComponent(id)}`;
+    if (mayLoad) bar.src = `chrome://browser/content/ressac/sidebar.html?site=${encodeURIComponent(id)}`;
   });
   return controller;
 }
@@ -200,7 +200,7 @@ export function setupSiteWindow(win: Window, id: string): SiteWindowController |
  * address bar shows the site, against phishing), its own opens routed as the app's.
  */
 export function setupSiteSmallWindow(win: Window, id: string): void {
-  win.document.documentElement.setAttribute("webaios-site-small", id);
+  win.document.documentElement.setAttribute("ressac-site-small", id);
   // ⇧⌘D: the avis in the app's bar (store.design.shortcut), never Firefox's « bookmark all tabs »; no other key is taken.
   for (const k of ["bookmarkAllTabsKb", "Browser:BookmarkAllTabs"]) win.document.getElementById(k)?.setAttribute("disabled", "true");
   const bindings = liveBindings();

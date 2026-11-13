@@ -1,15 +1,15 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { button, cleanupXpis, installAddon, uninstallAddon } from "./addons";
 import { dispatch, inWindow, newWindow, state, waitFor, waitReady, waitWindowCount } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
 
-// The window side of the sidebar's add-on strip (chrome/window/addons.ts), on window.webaiosWindow.addons.
+// The window side of the sidebar's add-on strip (chrome/window/addons.ts), on window.ressacWindow.addons.
 
-const ID = "button@webaios.test";
+const ID = "button@ressac.test";
 let server: Awaited<ReturnType<typeof startServer>>;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 beforeAll(async () => (server = await startServer()));
 afterAll(async () => {
@@ -17,20 +17,20 @@ afterAll(async () => {
   await cleanupXpis();
 });
 beforeEach(async () => {
-  w = await launchWebAiOs();
+  w = await launchRessac();
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
   // window.changes counts onChange calls.
-  await m.execute("window.changes = 0; window.webaiosWindow.addons.onChange(() => window.changes++)");
+  await m.execute("window.changes = 0; window.ressacWindow.addons.onChange(() => window.changes++)");
 });
 afterEach(() => w?.close());
 
-const A = "window.webaiosWindow.addons";
+const A = "window.ressacWindow.addons";
 const buttons = () => m.execute<any[]>(`return ${A}.buttons()`);
 const changes = () => m.execute<number>("return window.changes");
 const windowId = async () => (await state(m)).windows[0]!.id;
-/** Opens `path` in a WebAiOs tab and waits until it is displayed and loaded. */
+/** Opens `path` in a Ressac tab and waits until it is displayed and loaded. */
 async function open(path: string): Promise<void> {
   const url = server.url + path;
   await dispatch(m, { type: "openTab", windowId: await windowId(), url });
@@ -47,8 +47,8 @@ const clickAndWait = (rect: { x: number; y: number; width: number; height: numbe
       const popup = () => document.querySelector("browser.webextension-popup-browser");
       await until(() => popup()?.contentTitle === "Popup de test prête" && popup().closest("panel")?.state === "open");
       const panel = popup()?.closest("panel");
-      const anchor = document.getElementById("webaios-action-anchor").getBoundingClientRect();
-      const frame = document.getElementById("webaios-sidebar");
+      const anchor = document.getElementById("ressac-action-anchor").getBoundingClientRect();
+      const frame = document.getElementById("ressac-sidebar");
       const f = frame.getBoundingClientRect();
       return {
         title: popup()?.contentTitle,
@@ -93,7 +93,7 @@ describe("add-on strip, window side", () => {
     expect(await changes()).toBeGreaterThan(seen);
     seen = await changes();
     await dispatch(m, { type: "openApps", windowId: await windowId() });
-    await waitFor(m, "return gBrowser.selectedTab.hasAttribute('webaios-parking')", (v) => v === true);
+    await waitFor(m, "return gBrowser.selectedTab.hasAttribute('ressac-parking')", (v) => v === true);
     expect((await buttons())[0].enabled).toBe(false);
     expect(await changes()).toBeGreaterThan(seen);
   });
@@ -103,7 +103,7 @@ describe("add-on strip, window side", () => {
     await open("/texte.html");
     await waitFor(m, `return ${A}.buttons()[0]?.enabled`, (v) => v === true);
     const r = await clickAndWait({ x: 10, y: 80, width: 24, height: 24 });
-    expect(r).toMatchObject({ title: "Popup de test prête", anchorId: "webaios-action-anchor" });
+    expect(r).toMatchObject({ title: "Popup de test prête", anchorId: "ressac-action-anchor" });
     r.anchor.forEach((v: number, i: number) => expect(Math.abs(v - r.expected[i])).toBeLessThanOrEqual(1));
     expect(Math.abs(r.panelLeft - r.anchorScreenLeft)).toBeLessThanOrEqual(2);
     await m.execute(CLOSE_POPUP);
@@ -126,7 +126,7 @@ describe("add-on strip, window side", () => {
     await installAddon(m, button());
     await waitFor(m, `return ${A}.buttons()`, (l: any[]) => l.length === 1);
     await m.execute(`${A}.pin(arguments[0], true)`, [ID]);
-    expect(await m.execute("return Services.prefs.getStringPref('webaios.extensions.pinned')")).toBe(JSON.stringify([ID]));
+    expect(await m.execute("return Services.prefs.getStringPref('ressac.extensions.pinned')")).toBe(JSON.stringify([ID]));
     expect((await buttons())[0].pinned).toBe(true);
     const second = await newWindow(m);
     expect(await inWindow(m, second, () => buttons().then((l) => l[0]?.pinned))).toBe(true);
@@ -140,19 +140,19 @@ describe("add-on strip, window side", () => {
     await m.execute("window.close()");
     await waitWindowCount(m, 1);
     await m.command("WebDriver:SwitchToWindow", { handle: second, focus: false });
-    await m.execute(`window.changes = 0; ${A}.onChange(() => window.changes++); window.webaiosErrors = [];
-      Services.console.registerListener({ observe: (e) => e instanceof Ci.nsIScriptError && !(e.flags & Ci.nsIScriptError.warningFlag) && e.sourceName.includes("webaios") && window.webaiosErrors.push(e.errorMessage) });`);
+    await m.execute(`window.changes = 0; ${A}.onChange(() => window.changes++); window.ressacErrors = [];
+      Services.console.registerListener({ observe: (e) => e instanceof Ci.nsIScriptError && !(e.flags & Ci.nsIScriptError.warningFlag) && e.sourceName.includes("ressac") && window.ressacErrors.push(e.errorMessage) });`);
     await waitFor(m, `return ${A}.buttons()`, (l: any[]) => l.length === 1);
     await m.execute("gUnifiedExtensions.browserActionFor(WebExtensionPolicy.getByID(arguments[0])).action.setPropertyFromDetails({}, 'badgeText', '7')", [ID]);
     await waitFor(m, "return window.changes", (n: number) => n > 0);
     expect((await buttons())[0].badge).toBe("7");
-    expect(await m.execute("return window.webaiosErrors")).toEqual([]);
+    expect(await m.execute("return window.ressacErrors")).toEqual([]);
   });
 
   it("an uninstalled pinned add-on leaves the strip", async () => {
-    // Errors reported by the window's script (chrome://browser/content/webaios/…) while the add-on goes.
-    await m.execute(`window.webaiosErrors = [];
-      Services.console.registerListener({ observe: (e) => e instanceof Ci.nsIScriptError && !(e.flags & Ci.nsIScriptError.warningFlag) && e.sourceName.includes("webaios") && window.webaiosErrors.push(e.errorMessage) });`);
+    // Errors reported by the window's script (chrome://browser/content/ressac/…) while the add-on goes.
+    await m.execute(`window.ressacErrors = [];
+      Services.console.registerListener({ observe: (e) => e instanceof Ci.nsIScriptError && !(e.flags & Ci.nsIScriptError.warningFlag) && e.sourceName.includes("ressac") && window.ressacErrors.push(e.errorMessage) });`);
     await installAddon(m, button());
     await waitFor(m, `return ${A}.buttons()`, (l: any[]) => l.length === 1);
     await m.execute(`${A}.pin(arguments[0], true)`, [ID]);
@@ -172,8 +172,8 @@ describe("add-on strip, window side", () => {
     await uninstallAddon(m, ID);
     await waitFor(m, `return ${A}.buttons()`, (l: any[]) => l.length === 0);
     expect(await changes()).toBeGreaterThan(seen);
-    expect(await m.execute("return Services.prefs.getStringPref('webaios.extensions.pinned')")).toBe(JSON.stringify([ID]));
-    expect(await m.execute("return window.webaiosErrors")).toEqual([]);
+    expect(await m.execute("return Services.prefs.getStringPref('ressac.extensions.pinned')")).toBe(JSON.stringify([ID]));
+    expect(await m.execute("return window.ressacErrors")).toEqual([]);
   });
 
   it("a click does not move an open prompt", async () => {
@@ -192,7 +192,7 @@ describe("add-on strip, window side", () => {
     const r = await clickAndWait({ x: 10, y: 80, width: 24, height: 24 });
     expect(r.title).toBe("Popup de test prête");
     // anchorNode alone can name the old anchor of a closed panel.
-    expect(await m.execute("return [PopupNotifications.panel.state, PopupNotifications.panel.anchorNode?.id]")).toEqual(["open", "webaios-anchor"]);
+    expect(await m.execute("return [PopupNotifications.panel.state, PopupNotifications.panel.anchorNode?.id]")).toEqual(["open", "ressac-anchor"]);
     await m.execute(CLOSE_POPUP);
   });
 

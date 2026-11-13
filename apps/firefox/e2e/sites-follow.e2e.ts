@@ -5,14 +5,14 @@ import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { testActor } from "./agent-extensions";
 import { waitReady, windowHandles } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { SITE_HOME, grantSite, inSiteBar, inSiteView, resolveLocalHosts, siteWindowCount, siteWindowExpr, startSitesServer, writeSite } from "./sites";
 import { missingApi } from "./ui";
 
 // Plan 32 Task 4: the address follow.
 
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const HOSTS = ["vidola-a.localhost", "vidola-b.localhost", "pub.localhost", "adresses.localhost", "compte.localhost", "vidola.adresses.localhost"];
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const NOTICE_CHANGED = "Vidola a changé d'adresse : vidola-b.localhost. Il faudra peut-être te reconnecter.";
@@ -20,7 +20,7 @@ const UNCHANGED_NOTICE = "Vidola ne répond pas, et sa page de référence donne
 const SERIES = '<title>The Bear</title><div class="shorts" id="shorts">shorts</div><p>épisode</p>';
 
 let server: Awaited<ReturnType<typeof startSitesServer>>;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 let dataDir: string;
 let profile: string;
@@ -70,11 +70,11 @@ async function realClickInHome(id: string, selector: string): Promise<void> {
     let found = false;
     for (const h of await windowHandles(m)) {
       await m.command("WebDriver:SwitchToWindow", { handle: h, focus: false });
-      if ((found = (await m.execute<string | null>(`return document.documentElement.getAttribute("webaios-site");`)) === id)) break;
+      if ((found = (await m.execute<string | null>(`return document.documentElement.getAttribute("ressac-site");`)) === id)) break;
     }
     if (!found) throw new Error(`no window for ${id}`);
     const [x, y] = await m.execute<[number, number]>(
-      `const bar = document.getElementById("webaios-site-bar");
+      `const bar = document.getElementById("ressac-site-bar");
        const home = bar.contentDocument.querySelector('[data-testid="site-home-frame"]');
        const b = bar.getBoundingClientRect(), h = home.getBoundingClientRect(), e = home.contentDocument.querySelector(arguments[0]).getBoundingClientRect();
        return [Math.round(b.left + h.left + e.left + e.width / 2), Math.round(b.top + h.top + e.top + e.height / 2)];`,
@@ -115,10 +115,10 @@ beforeAll(async () => {
   server.define("vidola-b.localhost", "/film/2", "<title>Film 2 B</title>");
   server.define("pub.localhost", "/x", "<title>Pub</title>");
   server.define("pub.localhost", "/arrivee", "<title>Arrivée pub</title>");
-  dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
-  profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
+  dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
+  profile = await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
   const actor = testActor(profile);
-  w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_LOCAL_ADDRESSES: "1", ...actor.env }, prefs: actor.prefs });
+  w = await launchRessac({ dataDir, profile, env: { RESSAC_TEST_LOCAL_ADDRESSES: "1", ...actor.env }, prefs: actor.prefs });
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
@@ -224,7 +224,7 @@ describe("site app address follow", () => {
     // by tabs of the main window. (The app's own container cannot be written from outside its view: the request guard
     // refuses any other browser, and Services.cookies.add stores nothing in this profile.)
     const seen = await m.execute<number>(
-      `return (async (url) => { const win = [...Services.wm.getEnumerator("navigator:browser")].find((x) => !x.document.documentElement.hasAttribute("webaios-site"));
+      `return (async (url) => { const win = [...Services.wm.getEnumerator("navigator:browser")].find((x) => !x.document.documentElement.hasAttribute("ressac-site"));
        const system = Services.scriptSecurityManager.getSystemPrincipal();
        for (const userContextId of [0, 1]) {
          const tab = win.gBrowser.addTab(url, { userContextId, triggeringPrincipal: system });
@@ -283,7 +283,7 @@ describe("site app address follow", () => {
     await viewAt("t66", b("/film/2"));
   });
 
-  it("↻ in the bar while vidola-a now redirects to pub.localhost: the follow starts (reload is a load WebAiOs started)", async () => {
+  it("↻ in the bar while vidola-a now redirects to pub.localhost: the follow starts (reload is a load Ressac started)", async () => {
     let parked = false;
     server.define("vidola-a.localhost", "/recharge", (_req, res) => (parked ? res.writeHead(302, { Location: pub("/arrivee") }).end() : res.writeHead(200, { "Content-Type": "text/html" }).end("<title>R</title>ok")));
     await setup("t68", declaration(a("/recharge")));

@@ -16,7 +16,7 @@ const exists = (c: string) => stat(c).then(() => true, () => false);
 
 async function frame(start = new Date("2026-11-02T10:00:00Z")) {
   const base = await tempFolder();
-  const folders: DesignFolders = { spaceRemarks: join(base, "WebAiOs/.webaios/remarks"), private: join(base, "design") };
+  const folders: DesignFolders = { spaceRemarks: join(base, "Ressac/.ressac/remarks"), private: join(base, "design") };
   const clock = { t: start };
   const r = new Remarks({ folders: folders, now: () => clock.t });
   return { folders: folders, clock: clock, r };

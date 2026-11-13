@@ -164,7 +164,7 @@ export class FileActions {
       }
     } catch (e) {
       // The exception text may quote what the action read: only a fixed kernel message is returned.
-      console.error(`[webaios] action ${d.id} :`, e);
+      console.error(`[ressac] action ${d.id} :`, e);
       return { status: "failed", error: INTERNAL_ACTION_ERROR, kernelError: true };
     }
   }
@@ -257,7 +257,7 @@ export class FileActions {
     try {
       this.o.onLive(this.direct());
     } catch (e) {
-      console.error("[webaios] actions tracking:", e);
+      console.error("[ressac] actions tracking:", e);
     }
   }
 }

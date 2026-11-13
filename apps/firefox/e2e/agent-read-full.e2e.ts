@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from "vitest";
 import { waitFor } from "./firefox";
 import { callTool } from "./mcp";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
 import { waitUi } from "./ui";
@@ -12,7 +12,7 @@ import { waitUi } from "./ui";
 let server: Awaited<ReturnType<typeof startServer>>;
 /** Same site as `server` (same address), another origin (another port): its frame shares the page's process. */
 let other: Awaited<ReturnType<typeof startServer>>;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 /** /bloque.html answers 403 (a check page) until a test lets it through. */
 let blocked = true;
@@ -106,11 +106,11 @@ for (let i = 0; i < 5000; i++) {
 });
 afterAll(() => Promise.all([server?.close(), other?.close()]));
 beforeEach(async () => {
-  w = await launchWebAiOs({ env: { WEBAIOS_MEMORY_LOOP: "1", WEBAIOS_TEST_SEARCH_URL: `${server.url}/sommaire.html?q=%s` } });
+  w = await launchRessac({ env: { RESSAC_MEMORY_LOOP: "1", RESSAC_TEST_SEARCH_URL: `${server.url}/sommaire.html?q=%s` } });
   m = w.marionette;
   await m.setContext("chrome");
-  await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
-  const config = join(w.dataDir, "workspace", ".webaios", "mcp.json");
+  await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
+  const config = join(w.dataDir, "workspace", ".ressac", "mcp.json");
   for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
     if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
   await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
@@ -235,8 +235,8 @@ it("a check page is handed to the user; after Continuer the agent gets the page 
   const reading = callTool(w.dataDir, "read_tab", { id });
   expect(await bandText()).toMatch(/^Bloqué par une vérification\. À vous : /);
   blocked = false;
-  await m.execute(`const t = gBrowser.tabs.find((t) => t.getAttribute("webaios-tab-id") === arguments[0]); t.linkedBrowser.reload();`, [id]);
-  await waitFor(m, `return gBrowser.tabs.find((t) => t.getAttribute("webaios-tab-id") === ${JSON.stringify(id)}).linkedBrowser.contentTitle`, (v) => v === "Débloquée");
+  await m.execute(`const t = gBrowser.tabs.find((t) => t.getAttribute("ressac-tab-id") === arguments[0]); t.linkedBrowser.reload();`, [id]);
+  await waitFor(m, `return gBrowser.tabs.find((t) => t.getAttribute("ressac-tab-id") === ${JSON.stringify(id)}).linkedBrowser.contentTitle`, (v) => v === "Débloquée");
   await press("search-continue");
   const r = (await reading).text;
   expect(r).toContain("La page est de nouveau à toi (elle était bloquée).");

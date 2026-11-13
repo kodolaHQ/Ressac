@@ -65,7 +65,7 @@ export interface OptionsAction {
   onStep(e: "layout"): void;
   /** A builder trial: replays from `depart` with the upstream outputs of run `origine`. */
   attempt?: { origin: string; start: string };
-  /** True when the kernel stops: the run is then « interrupted » by WebAiOs, not by the user. */
+  /** True when the kernel stops: the run is then « interrupted » by Ressac, not by the user. */
   interrupted?: () => boolean;
   localAddresses?: boolean;
   pacing?: Pacing;
@@ -248,7 +248,7 @@ export async function runAction(o: OptionsAction): Promise<LaunchResult> {
   });
   const pending = await lost();
   if (pending) return pending;
-  // WebAiOs stops during the layout: the run is interrupted, with no result or memory. (The user's « Stop »,
+  // Ressac stops during the layout: the run is interrupted, with no result or memory. (The user's « Stop »,
   // on the other hand, keeps the result with the fallback layout.)
   if (o.interrupted?.() === true) {
     markInterrupted(execution);
@@ -262,7 +262,7 @@ export async function runAction(o: OptionsAction): Promise<LaunchResult> {
     writtenResult = true;
   } catch (e) {
     // Too big (or disk): the run fails kernel-side, with no result.
-    console.error(`[webaios] result of action ${id}:`, message(e));
+    console.error(`[ressac] result of action ${id}:`, message(e));
     execution.status = "failed";
     execution.error = RESULT_TOO_BIG;
     execution.kernelError = true;

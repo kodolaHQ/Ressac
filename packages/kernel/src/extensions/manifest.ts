@@ -100,24 +100,24 @@ function parseRules(
   }
 }
 
-function parseNetwork(webaios: unknown, denial: string[]): string[] {
-  const o = object(webaios ?? {});
+function parseNetwork(ressac: unknown, denial: string[]): string[] {
+  const o = object(ressac ?? {});
   if (!o) {
-    denial.push("webaios.json : contenu invalide");
+    denial.push("ressac.json : contenu invalide");
     return [];
   }
   if (o.network === undefined) return [];
   if (!Array.isArray(o.network)) {
-    denial.push("webaios.json : « network » doit être une liste de domaines");
+    denial.push("ressac.json : « network » doit être une liste de domaines");
     return [];
   }
   if (o.network.length > NETWORK_MAX) {
-    denial.push(`webaios.json : ${NETWORK_MAX} domaines au plus (${o.network.length} demandés)`);
+    denial.push(`ressac.json : ${NETWORK_MAX} domaines au plus (${o.network.length} demandés)`);
   }
   const valid: string[] = [];
   for (const d of o.network) {
     if (typeof d === "string" && DOMAIN.test(d)) valid.push(d);
-    else denial.push(`webaios.json : domaine invalide « ${String(d)} »`);
+    else denial.push(`ressac.json : domaine invalide « ${String(d)} »`);
   }
   return sortedUnique(valid);
 }
@@ -160,7 +160,7 @@ export function parseManifest(
   raw: unknown,
   o: {
     source: SourceExtension;
-    webaios?: unknown;
+    ressac?: unknown;
     rules?: Record<string, unknown>;
     /** The content of the catalogs of `fichiersMessages` (absent or unreadable: `undefined`), for a `__MSG_…__` name. */
     messages?: readonly unknown[];
@@ -234,7 +234,7 @@ export function parseManifest(
       denial.push("optional_host_permissions refusé : déclare ces hôtes dans host_permissions");
     }
   }
-  const network = agent ? parseNetwork(o.webaios, denial) : [];
+  const network = agent ? parseNetwork(o.ressac, denial) : [];
 
   const scope: Scope = {
     permissions,
@@ -305,7 +305,7 @@ export function scopeLabels(p: Scope, source: SourceExtension): string[] {
   added(has("clipboardWrite"), "Écrire dans le presse-papiers");
   added(
     has("activeTab"),
-    "Agir sur l'onglet affiché quand tu cliques sur son bouton (non pris en charge par WebAiOs)",
+    "Agir sur l'onglet affiché quand tu cliques sur son bouton (non pris en charge par Ressac)",
   );
   if (source === "store") {
     added(has("webRequest"), "Observer les requêtes des pages");

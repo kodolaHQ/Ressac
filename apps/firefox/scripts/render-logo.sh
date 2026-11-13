@@ -4,7 +4,7 @@
 set -euo pipefail
 CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 [ -x "$CHROME" ] || { echo "render-logo: Google Chrome not found at $CHROME" >&2; exit 1; }
-B="$(cd "$(dirname "$0")/../configs/branding/webaios" && pwd)"
+B="$(cd "$(dirname "$0")/../configs/branding/ressac" && pwd)"
 T="$(mktemp -d)"
 shot() { # <query> <out> <size WxH>
   "$CHROME" --headless --disable-gpu --hide-scrollbars --force-device-scale-factor=1 --default-background-color=00000000 \

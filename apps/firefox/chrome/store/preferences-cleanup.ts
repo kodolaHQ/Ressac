@@ -1,18 +1,18 @@
-// about:preferences (« Réglages avancés du navigateur ») without what contradicts WebAiOs: a user stylesheet hides it.
+// about:preferences (« Réglages avancés du navigateur ») without what contradicts Ressac: a user stylesheet hides it.
 
 /** Navigation buttons, each with the pane it shows. */
 const CATEGORIES: Record<string, string> = {
-  // Firefox account and sync: WebAiOs keeps its own data.
+  // Firefox account and sync: Ressac keeps its own data.
   "category-sync": "paneSync",
   // Home page and startup: the store restores the spaces and their tabs.
   "category-home": "paneHome",
   // Firefox Labs: Mozilla's experiments.
   "category-experimental": "paneExperimental",
-  // Firefox's version and updates: WebAiOs ships its own.
+  // Firefox's version and updates: Ressac ships its own.
   "category-about-firefox": "paneAbout",
   // Mozilla's other products.
   "category-more-from-mozilla": "paneMoreFromMozilla",
-  // Firefox's AI features: the agent is WebAiOs's.
+  // Firefox's AI features: the agent is Ressac's.
   "category-ai-features": "paneAi",
 };
 export const HIDDEN_CATEGORIES = Object.keys(CATEGORIES);
@@ -27,9 +27,9 @@ export const HIDDEN_GROUPS = [
   "profiles",
   // Default browser: external links would open tabs outside the store.
   "defaultBrowser",
-  // WebAiOs keeps its own history.
+  // Ressac keeps its own history.
   "history",
-  // Site permissions are kept by WebAiOs (copied into Firefox), listed and revoked in its Settings page.
+  // Site permissions are kept by Ressac (copied into Firefox), listed and revoked in its Settings page.
   "permissions",
   // Mozilla's data collection and services.
   "dataCollection",

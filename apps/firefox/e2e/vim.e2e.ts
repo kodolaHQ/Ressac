@@ -6,13 +6,13 @@ import type { ServerResponse } from "node:http";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { openTab, testActor } from "./agent-extensions";
 import { dispatch, state, waitFor } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
 import { inBrowser } from "./sites";
 import { click, inUi, pressKeys, typeText, waitUi } from "./ui";
 
-// Plan 50 Tasks 4-5: the vim mode's actor (WebAiOsVim): scrolling, history, tabs, link hints, find; never in a field
+// Plan 50 Tasks 4-5: the vim mode's actor (RessacVim): scrolling, history, tabs, link hints, find; never in a field
 // nor outside web tabs.
 
 const B = "gBrowser.selectedBrowser";
@@ -55,20 +55,20 @@ const send = (body: string, headers: Record<string, string> = {}) => (_req: unkn
   void res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", ...headers }).end(body);
 
 let server: Awaited<ReturnType<typeof startServer>>;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 const dirs: string[] = [];
 
 beforeAll(async () => {
   server = await startServer({ routes: { "/vim": send(PAGE), "/vim2": send(PAGE), "/hints": send(HINTS, { "Content-Security-Policy": "style-src 'nonce-n0'" }), "/nolinks": send(NO_LINKS), "/inner": send(INNER) } });
-  const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
-  const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
+  const profile = await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
   dirs.push(dataDir, profile);
   const a = testActor(profile);
-  w = await launchWebAiOs({ dataDir, profile, env: a.env, prefs: { ...a.prefs, "browser.navigation.requireUserInteraction": false } });
+  w = await launchRessac({ dataDir, profile, env: a.env, prefs: { ...a.prefs, "browser.navigation.requireUserInteraction": false } });
   m = w.marionette;
   await m.setContext("chrome");
-  await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+  await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
 }, 120_000);
 afterAll(async () => {
   await w?.close();
@@ -80,7 +80,7 @@ const inPage = <T = unknown>(script: string) => inBrowser<T>(m, B, script);
 const setVim = (enabled: boolean) => dispatch(m, { type: "setVimMode", enabled });
 /** The page's actor has asked its mode (its parent exists), and the answer had time to come back. */
 async function actorReady() {
-  await waitFor(m, `return !!${B}.browsingContext.currentWindowGlobal?.getExistingActor("WebAiOsVim")`, (v) => v === true);
+  await waitFor(m, `return !!${B}.browsingContext.currentWindowGlobal?.getExistingActor("RessacVim")`, (v) => v === true);
   await sleep(200);
 }
 /** Opens `p` in a new tab, focused on its body; returns the tab id. */
@@ -261,7 +261,7 @@ describe("vim mode: hints, find, inner scrolling", () => {
     // The page's CSP (nonce'd styles only) does not reach the labels' style; they are in Geist Mono.
     expect(shown[0]!.position).toBe("absolute");
     await expect
-      .poll(() => inBrowser<boolean>(m, B, `return [...document.fonts].some((f) => f.family.includes("WebAiOs Geist Mono") && f.status === "loaded");`, { system: true }))
+      .poll(() => inBrowser<boolean>(m, B, `return [...document.fonts].some((f) => f.family.includes("Ressac Geist Mono") && f.status === "loaded");`, { system: true }))
       .toBe(true);
     await typeText(m, shown.find((h) => h.link === "l3")!.label);
     await waitFor(m, `return ${B}.currentURI.spec`, (v: string) => v.endsWith("/vim2?n=3"));
@@ -357,7 +357,7 @@ async function threeTabs(): Promise<string[]> {
   return [await open(`/vim?${n}-1`), await open(`/vim?${n}-2`), await open(`/vim?${n}-3`)];
 }
 const commandField = () =>
-  waitUi(m, "return doc.activeElement?.dataset.testid === 'command-input' && document.activeElement === document.getElementById('webaios-sidebar')");
+  waitUi(m, "return doc.activeElement?.dataset.testid === 'command-input' && document.activeElement === document.getElementById('ressac-sidebar')");
 const commandValue = () => inUi<string>(m, "return doc.querySelector('[data-testid=\"command-input\"]').value");
 
 describe("vim mode: tabs and spaces", () => {
@@ -572,7 +572,7 @@ describe("vim mode off, or outside web tabs", () => {
     await openTab(m, `${server.url}/vim`);
     await m.execute(`${B}.focus();`);
     // Not registered: getActor throws (an unregistered name), where a registered actor would be made.
-    expect(await m.execute<string>(`try { ${B}.browsingContext.currentWindowGlobal.getActor("WebAiOsVim"); return "made"; } catch (e) { return e.name; }`)).toBe("NotFoundError");
+    expect(await m.execute<string>(`try { ${B}.browsingContext.currentWindowGlobal.getActor("RessacVim"); return "made"; } catch (e) { return e.name; }`)).toBe("NotFoundError");
     await pressKeys(m, "j");
     await expect.poll(seen).toContain("keydown:j");
     expect(await scrollY()).toBe(0);
@@ -585,7 +585,7 @@ describe("vim mode off, or outside web tabs", () => {
     await expect.poll(hints).not.toBeNull();
     await setVim(false);
     await expect.poll(hints).toBeNull();
-    await expect.poll(() => m.execute<boolean>(`return !!${B}.browsingContext.currentWindowGlobal.getExistingActor("WebAiOsVim");`)).toBe(false);
+    await expect.poll(() => m.execute<boolean>(`return !!${B}.browsingContext.currentWindowGlobal.getExistingActor("RessacVim");`)).toBe(false);
     await pressKeys(m, "j");
     await expect.poll(seen).toContain("keydown:j");
     expect(await scrollY()).toBe(0);

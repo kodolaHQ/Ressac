@@ -66,11 +66,11 @@ declare class JSWindowActorChild {
   sendAsyncMessage(name: string, data?: unknown): void;
 }
 // Absolute paths frozen by Vite `define` in the store bundle (scripts/paths.ts).
-declare const __WEBAIOS_NODE__: string;
-declare const __WEBAIOS_TSX__: string;
-declare const __WEBAIOS_HOST__: string;
-declare const __WEBAIOS_SENTRY_DSN__: string;
-declare const __WEBAIOS_VERSION__: string;
+declare const __RESSAC_NODE__: string;
+declare const __RESSAC_TSX__: string;
+declare const __RESSAC_HOST__: string;
+declare const __RESSAC_SENTRY_DSN__: string;
+declare const __RESSAC_VERSION__: string;
 // Vite's raw imports (a file's text, bundled).
 declare module "*?raw" {
   const text: string;

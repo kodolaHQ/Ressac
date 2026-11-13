@@ -129,7 +129,7 @@
   header { display: flex; align-items: center; justify-content: space-between; }
   h2 { margin: 0; font: 650 18px/1.2 var(--font-display); letter-spacing: -0.02em; }
   ul { list-style: none; margin: 0; padding: 0; overflow: auto; flex: 1; display: flex; flex-direction: column; gap: 6px; }
-  li { background: var(--sheet); border: 1px solid var(--border); border-radius: 12px; padding: 8px 10px; box-shadow: var(--lift); animation: webaios-rise var(--spring-d) var(--spring) backwards; }
+  li { background: var(--sheet); border: 1px solid var(--border); border-radius: 12px; padding: 8px 10px; box-shadow: var(--lift); animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   .head { display: flex; align-items: center; gap: 6px; }
   .tag { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--accent); font: 11.5px var(--font-mono); }
   .text { margin: 4px 0 0; white-space: pre-wrap; word-break: break-word; }

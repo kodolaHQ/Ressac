@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { MemoryEntry, PositionVideo } from "@webaios/kernel";
+import type { MemoryEntry, PositionVideo } from "@ressac/kernel";
 
 /** Messages and types of a site app's window, also read by the UI (`site.html`, Applications page). */
 
@@ -30,7 +30,7 @@ export const FORGET_MEMORY = "Oublier ce que l'appli a retenu";
 export const confirmForget = (name: string) => `Oublier tout ce que « ${name} » a retenu (séries, positions des vidéos) ?`;
 export const confirmSiteDeletion = (name: string) =>
   `Supprimer « ${name} » ? Sa connexion et sa mémoire sont effacées, son dossier va à la corbeille.`;
-export const editWithAgent = (id: string) => `Appli de site ~/WebAiOs/sites/${id}/ : `;
+export const editWithAgent = (id: string) => `Appli de site ~/Ressac/sites/${id}/ : `;
 
 export type BarNotice =
   | { kind: "link-blocked"; domain: string } // the blocked URL stays in the main process
@@ -73,8 +73,8 @@ export type SiteWindowState = {
 /** Maximum length of an address requested by the home (open, image). */
 export const HOME_URL_MAX = 2000;
 
-/** Home screen scheme: `webaios-site://<id>/<path in home/>`. */
-export const SCHEMA_SITE = "webaios-site";
+/** Home screen scheme: `ressac-site://<id>/<path in home/>`. */
+export const SCHEMA_SITE = "ressac-site";
 /** Maximum size of a site image requested by the home (rendered as `data:`). */
 export const IMAGE_SITE_MAX = 2 * 1024 * 1024;
 /** Minimum gap between two addresses opened by the home. */
@@ -99,12 +99,12 @@ export const CONSOLE_TWEAK_TEXT_MAX = 2000;
 export const CONSOLE_TWEAK_SOURCE_MAX = 500;
 /** Total of the kept texts per open app: beyond it, the oldest are forgotten. */
 export const CONSOLE_TWEAKS_TOTAL = 32_000;
-/** Prefix of the tweaks' sources (`webaios-tweak://<id>/<file>`), to recognize their console messages. */
-export const tweakSource = (id: string, file: string) => `webaios-tweak://${id}/${file}`;
+/** Prefix of the tweaks' sources (`ressac-tweak://<id>/<file>`), to recognize their console messages. */
+export const tweakSource = (id: string, file: string) => `ressac-tweak://${id}/${file}`;
 
 /**
- * What the site actor (chrome/agent/site-actor.ts) puts into a frame of a site app's view. `pont`: `webaiosSite` in the
- * tweaks' world (main frame on the site only); `reprise`: the video resume (WebAiOs's code).
+ * What the site actor (chrome/agent/site-actor.ts) puts into a frame of a site app's view. `pont`: `ressacSite` in the
+ * tweaks' world (main frame on the site only); `reprise`: the video resume (Ressac's code).
  */
 export type FrameInjection = { css: string[]; js: { code: string; name: string }[]; guard: string | null; hosts: string[]; bridge: boolean; resume: boolean };
 

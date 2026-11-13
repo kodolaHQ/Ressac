@@ -1,4 +1,4 @@
-import { ACTION_UNKNOWN as KERNEL_ACTION_UNKNOWN, NO_RESULT as KERNEL_NO_RESULT, FALLBACK_MENTION as KERNEL_FALLBACK_MENTION } from "@webaios/kernel";
+import { ACTION_UNKNOWN as KERNEL_ACTION_UNKNOWN, NO_RESULT as KERNEL_NO_RESULT, FALLBACK_MENTION as KERNEL_FALLBACK_MENTION } from "@ressac/kernel";
 import { expect, test } from "vitest";
 import { ACTION_UNKNOWN, NO_RESULT, FALLBACK_MENTION } from "../../shared/actions";
 import { sortLines } from "../../ui/action/sort";

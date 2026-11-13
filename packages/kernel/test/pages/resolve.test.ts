@@ -19,7 +19,7 @@ const fr = new Intl.NumberFormat("fr-FR");
 
 const results = {
   project: {
-    name: "WebAiOs", url: "https://gitlab.com/p", total: 1234.5,
+    name: "Ressac", url: "https://gitlab.com/p", total: 1234.5,
     traps: ["javascript:alert(1)", "http://127.0.0.1/admin", "http://192.168.1.2/", "http://[::1]/", "https://user:mdp@gitlab.com/"],
   },
   announcements: [
@@ -36,7 +36,7 @@ const one = (block: PlanBlock, o?: Parameters<typeof render>[1]) => render([bloc
 describe("resolvePage", () => {
   it("link whose url is in the results: url kept", () => {
     const b = one({ component: "link", props: { object: "project", url: "url", textField: "name" } });
-    expect(b).toEqual({ component: "link", props: { link: { text: "WebAiOs", url: "https://gitlab.com/p" } } });
+    expect(b).toEqual({ component: "link", props: { link: { text: "Ressac", url: "https://gitlab.com/p" } } });
     const t = one({ component: "link", props: { object: "project", url: "url", text: "Le projet" } });
     expect(t.props.link).toEqual({ text: "Le projet", url: "https://gitlab.com/p" });
   });
@@ -158,8 +158,8 @@ describe("resolvePage", () => {
     const p = page.blocks.map((b) => ("props" in b ? b.props : b));
     expect(p[2]).toEqual({ level: "info", title: "E", text: null, items: ["Clio", "208", "Mégane"], others: 0 });
     expect(p[3]).toEqual({ figures: [{ value: "3", label: "n" }] });
-    expect(p[4]).toEqual({ fields: [{ label: "name", value: "WebAiOs" }, { label: "url", value: "https://gitlab.com/p" }, { label: "total", value: fr.format(1234.5) }], others: 0 });
-    expect(p[5]).toEqual({ fields: [{ label: "Nom", value: "WebAiOs" }], others: 0 });
+    expect(p[4]).toEqual({ fields: [{ label: "name", value: "Ressac" }, { label: "url", value: "https://gitlab.com/p" }, { label: "total", value: fr.format(1234.5) }], others: 0 });
+    expect(p[5]).toEqual({ fields: [{ label: "Nom", value: "Ressac" }], others: 0 });
     expect(p[6]).toEqual({ values: ["Renault", "Peugeot", "Renault"], others: 0 });
     expect(p[7]).toEqual({ values: results.project.traps, others: 0 });
     expect(page.blocks[8]).toEqual({ component: "group", props: { title: "G", collapsed: true }, blocks: [{ component: "title", props: { text: "dans" } }] });

@@ -112,10 +112,10 @@ describe("checkDataFormat", () => {
 describe("backupDate", () => {
   const ts = "2026-11-10T13-35-12-345Z";
   it("recognises what checkDataFormat writes", () => {
-    expect(backupDate("/u/WebAiOs", `/u/WebAiOs.backup-${ts}`)).toBe("2026-11-10T13:35:12.345Z");
-    expect(backupDate("/u/WebAiOs", `/u/WebAiOs.backup-${ts}-1`)).toBe("2026-11-10T13:35:12.345Z");
+    expect(backupDate("/u/Ressac", `/u/Ressac.backup-${ts}`)).toBe("2026-11-10T13:35:12.345Z");
+    expect(backupDate("/u/Ressac", `/u/Ressac.backup-${ts}-1`)).toBe("2026-11-10T13:35:12.345Z");
   });
   it("rejects anything else", () => {
-    for (const p of ["/u/WebAiOs", "/u/WebAiOs.backup-x", `/u/WebAiOs.backup-${ts}/../x`, `/u/Autre.backup-${ts}`]) expect(backupDate("/u/WebAiOs", p)).toBeNull();
+    for (const p of ["/u/Ressac", "/u/Ressac.backup-x", `/u/Ressac.backup-${ts}/../x`, `/u/Autre.backup-${ts}`]) expect(backupDate("/u/Ressac", p)).toBeNull();
   });
 });

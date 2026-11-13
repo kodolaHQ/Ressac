@@ -62,7 +62,7 @@ export function createHost(o: {
     const proc = await Subprocess.call({
       command: cmd.command,
       arguments: cmd.arguments,
-      environment: { ...cmd.environment, WEBAIOS_DATA_DIR: o.dataDir },
+      environment: { ...cmd.environment, RESSAC_DATA_DIR: o.dataDir },
       environmentAppend: true,
       stderr: "pipe",
     });

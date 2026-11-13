@@ -2,15 +2,15 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import type { BrowserState, Tab } from "../shared/model";
 import { button, cleanupXpis, installAddon, options, probe, uninstallAddon } from "./addons";
 import { dispatch, inWindow, newWindow, state, waitFor, waitReady } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
 
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
-// Tabs opened by add-ons, and about:addons, as WebAiOs tabs.
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
+// Tabs opened by add-ons, and about:addons, as Ressac tabs.
 
 let server: Awaited<ReturnType<typeof startServer>>;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 beforeAll(async () => (server = await startServer()));
 afterAll(async () => {
@@ -18,7 +18,7 @@ afterAll(async () => {
   await cleanupXpis();
 });
 beforeEach(async () => {
-  w = await launchWebAiOs();
+  w = await launchRessac();
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
@@ -37,10 +37,10 @@ async function waitState<T>(read: (s: BrowserState) => T, ok: (v: T) => boolean,
   }
 }
 const tabWith = (part: string) => waitState((s) => Object.values(s.tabs).find((o) => o.url.includes(part)), (o) => !!o) as Promise<Tab>;
-const selectedId = () => m.execute<string | null>("return gBrowser.selectedTab.getAttribute('webaios-tab-id')");
-/** A chrome script returning `expr` about the about:addons page `win` of WebAiOs tab `id` (it lives in the parent process). */
+const selectedId = () => m.execute<string | null>("return gBrowser.selectedTab.getAttribute('ressac-tab-id')");
+/** A chrome script returning `expr` about the about:addons page `win` of Ressac tab `id` (it lives in the parent process). */
 const onPage = (id: string, expr: string) =>
-  `const win = gBrowser.tabs.find((t) => t.getAttribute("webaios-tab-id") === ${JSON.stringify(id)})?.linkedBrowser.contentWindow; return ${expr};`;
+  `const win = gBrowser.tabs.find((t) => t.getAttribute("ressac-tab-id") === ${JSON.stringify(id)})?.linkedBrowser.contentWindow; return ${expr};`;
 const VIEW = "win?.gViewController?.currentViewId ?? null";
 
 /** Three steps: the trigger page opens in space A, then the window goes to space B at once. */
@@ -85,7 +85,7 @@ describe("tabs opened by add-ons", () => {
     const container = await m.execute<number>(`return (async () => (await ChromeUtils.importESModule("${STORE}").ready).containerFor(arguments[0]))();`, [profileB]);
     const xul = await waitFor(
       m,
-      `const t = gBrowser.tabs.find((t) => t.getAttribute("webaios-tab-id") === "${opened.id}");
+      `const t = gBrowser.tabs.find((t) => t.getAttribute("ressac-tab-id") === "${opened.id}");
        return t && { userContextId: t.userContextId, url: t.linkedBrowser.currentURI.spec };`,
       (v: { userContextId: number; url: string } | undefined) => !!v?.url.includes("ouverte-par-sonde"),
     );
@@ -111,13 +111,13 @@ const openOptionsPage = (id: string) =>
   );
 
 describe("options pages in a tab", () => {
-  it("open as a visible WebAiOs tab when no page is displayed, every time", async () => {
+  it("open as a visible Ressac tab when no page is displayed, every time", async () => {
     const id = await installAddon(m, options({ inTab: true }));
     for (let i = 0; i < 2; i++) {
       await openOptionsPage(id);
       const page = await tabWith("/options.html");
-      await waitFor(m, "return gBrowser.selectedTab.getAttribute('webaios-tab-id')", (v) => v === page.id);
-      expect(await m.execute("return gBrowser.tabs.filter((t) => t.hasAttribute('webaios-parking')).map((t) => t.linkedBrowser.currentURI.spec)")).toEqual(["about:blank"]);
+      await waitFor(m, "return gBrowser.selectedTab.getAttribute('ressac-tab-id')", (v) => v === page.id);
+      expect(await m.execute("return gBrowser.tabs.filter((t) => t.hasAttribute('ressac-parking')).map((t) => t.linkedBrowser.currentURI.spec)")).toEqual(["about:blank"]);
       await dispatch(m, { type: "closeTab", id: page.id });
     }
   });
@@ -126,7 +126,7 @@ describe("options pages in a tab", () => {
     const id = await installAddon(m, options({ inTab: true }));
     await openOptionsPage(id);
     const page = await tabWith("/options.html");
-    await waitFor(m, "return gBrowser.selectedTab.getAttribute('webaios-tab-id')", (v) => v === page.id);
+    await waitFor(m, "return gBrowser.selectedTab.getAttribute('ressac-tab-id')", (v) => v === page.id);
     const windowId = (await win()).id;
     await dispatch(m, { type: "openTab", windowId: windowId, url: `${server.url}/a.html` });
     await dispatch(m, { type: "createSpace", name: "B", icon: "🅱", private: false, profile: "default", windowId: windowId });
@@ -140,7 +140,7 @@ describe("options pages in a tab", () => {
 });
 
 describe("about:addons", () => {
-  it("Tools › Add-ons opens about:addons once, as a WebAiOs tab", async () => {
+  it("Tools › Add-ons opens about:addons once, as a Ressac tab", async () => {
     await installAddon(m, button());
     await m.execute('document.getElementById("menu_openAddons").doCommand(); document.getElementById("menu_openAddons").doCommand();');
     const tab = await tabWith("about:addons");
@@ -148,10 +148,10 @@ describe("about:addons", () => {
     const s = await state(m);
     expect(Object.values(s.tabs).filter((o) => o.url.startsWith("about:addons"))).toHaveLength(1);
     expect(s.windows[0]!.active[s.windows[0]!.activeSpace]).toBe(tab.id);
-    await waitFor(m, onPage(tab.id, `win.document.querySelector('addon-card[addon-id="button@webaios.test"]')?.textContent ?? ""`), (t: string) => t.includes("Bouton de test"));
+    await waitFor(m, onPage(tab.id, `win.document.querySelector('addon-card[addon-id="button@ressac.test"]')?.textContent ?? ""`), (t: string) => t.includes("Bouton de test"));
   });
 
-  it("an add-on's options open as WebAiOs tabs", async () => {
+  it("an add-on's options open as Ressac tabs", async () => {
     const windowId = (await win()).id;
     const inTab = await installAddon(m, options({ inTab: true }));
     await dispatch(m, { type: "openTab", windowId: windowId, url: `${server.url}/a.html?options` });
@@ -171,7 +171,7 @@ describe("about:addons", () => {
     const second = await newWindow(m);
     const id2 = await inWindow(m, second, async () => {
       await m.execute("return BrowserAddonUI.openAddonsMgr().then(() => 0)");
-      return m.execute<string>("return window.webaiosWindow.windowId");
+      return m.execute<string>("return window.ressacWindow.windowId");
     });
     const tab = await tabWith("about:addons");
     expect(tab.windowId).toBe(id2);

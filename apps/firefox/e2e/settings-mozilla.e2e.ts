@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { BrowserState } from "../shared/model";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { waitFor, waitReady } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { click, inUi, missingApi, waitUi } from "./ui";
 
@@ -12,14 +12,14 @@ import { click, inUi, missingApi, waitUi } from "./ui";
 
 const PAGE = '[data-testid="settings-page"]';
 const CARD = '[data-testid="mozilla-account"]';
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
-const SHOTS = join(import.meta.dirname, "../../../.superpowers/sdd/2026-11-11-webaios-plan-51-extensions-explications/shots");
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
+const SHOTS = join(import.meta.dirname, "../../../.superpowers/sdd/2026-11-11-ressac-plan-51-extensions-explications/shots");
 const SECRET = "e2e-mozilla-secret";
 const NO_WEB = { "network.proxy.type": 1, "network.proxy.http": "127.0.0.1", "network.proxy.http_port": 1, "network.proxy.ssl": "127.0.0.1", "network.proxy.ssl_port": 1 };
 
-let w: LaunchedWebAiOs | undefined;
+let w: LaunchedRessac | undefined;
 let m: Marionette;
-const temp = mkdtempSync(join(os.tmpdir(), "webaios-mozilla-"));
+const temp = mkdtempSync(join(os.tmpdir(), "ressac-mozilla-"));
 afterEach(async () => {
   try {
     if (w) expect(await missingApi(m)).toEqual([]);
@@ -49,7 +49,7 @@ function filesWith(dir: string, text: string): string[] {
 describe("Mozilla account in Settings", () => {
   it("not connected, connect, never shows the secret, remove; the link opens the keys page", { timeout: 90_000 }, async () => {
     const keyFile = join(temp, "keychain");
-    w = await launchWebAiOs({ env: { WEBAIOS_OLLAMA_URL: "http://127.0.0.1:9", WEBAIOS_TEST_KEYCHAIN: keyFile }, prefs: NO_WEB });
+    w = await launchRessac({ env: { RESSAC_OLLAMA_URL: "http://127.0.0.1:9", RESSAC_TEST_KEYCHAIN: keyFile }, prefs: NO_WEB });
     m = w.marionette;
     await m.setContext("chrome");
     await waitReady(m);
@@ -73,7 +73,7 @@ describe("Mozilla account in Settings", () => {
     expect(readFileSync(`${keyFile}.amo`, "utf8")).toBe(`user:12345:678:${SECRET}`);
     // The secret reaches no file of the profile or the data folder (the stand-in keychain apart).
     expect(filesWith(w.dataDir, SECRET)).toEqual([]);
-    if (process.env.WEBAIOS_E2E_SHOTS) {
+    if (process.env.RESSAC_E2E_SHOTS) {
       mkdirSync(SHOTS, { recursive: true });
       await inUi(m, "doc.querySelector(arguments[0]).scrollIntoView({ block: 'center' })", [CARD]);
       const png = (await m.command<{ value: string }>("WebDriver:TakeScreenshot", { full: false, hash: false })).value;

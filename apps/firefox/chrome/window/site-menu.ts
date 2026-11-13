@@ -4,19 +4,19 @@
 
 import type { WindowId } from "../../shared/model";
 import { tabProfile } from "../../shared/model";
-import type { WebAiOsStore } from "../store";
+import type { RessacStore } from "../store";
 
 /**
  * The « Navigation » menu entry « Oublier les autorisations de ce site » (oublierAutorisations): forgets the
  * active tab's origin in its space's profile. A menu in this window's menu bar, before « Fenêtre » (spike P9).
  */
-export function mountSiteMenu(win: Window, store: WebAiOsStore, windowId: WindowId): void {
+export function mountSiteMenu(win: Window, store: RessacStore, windowId: WindowId): void {
   const doc = win.document as Document & { createXULElement(tag: string): Element };
   const menu = doc.createXULElement("menu");
   menu.setAttribute("label", "Navigation");
   const popup = doc.createXULElement("menupopup");
   const item = doc.createXULElement("menuitem");
-  item.id = "webaios-forget-permissions";
+  item.id = "ressac-forget-permissions";
   item.setAttribute("label", "Oublier les autorisations de ce site");
   item.addEventListener("command", () => {
     const f = store.state.windows.find((x) => x.id === windowId);

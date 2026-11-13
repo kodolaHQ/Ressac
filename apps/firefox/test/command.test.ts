@@ -93,7 +93,7 @@ test("default parameter: the web address displayed without an anchor, nothing fo
   expect(defaultParam("https://www.youtube.com/watch?v=abc#t=3")).toBe("https://www.youtube.com/watch?v=abc");
   expect(defaultParam("http://exemple.fr/")).toBe("http://exemple.fr/");
   expect(defaultParam("https://moi:secret@exemple.fr/p")).toBe("https://exemple.fr/p");
-  expect(defaultParam("webaios://historique")).toBe("");
+  expect(defaultParam("ressac://historique")).toBe("");
   expect(defaultParam("about:blank")).toBe("");
   expect(defaultParam(undefined)).toBe("");
   expect(defaultParam(`https://x.fr/?q=${"a".repeat(2000)}`)).toBe("");

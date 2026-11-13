@@ -2,21 +2,21 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import type { Action } from "../shared/api";
 import type { Space } from "../shared/model";
 import { dispatch, state, waitFor } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
 import { click, inUi, missingApi, pressKeys, typeText, waitUi } from "./ui";
 
 let server: Awaited<ReturnType<typeof startServer>>;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 beforeAll(async () => (server = await startServer()));
 afterAll(() => server?.close());
 beforeEach(async () => {
-  w = await launchWebAiOs();
+  w = await launchRessac();
   m = w.marionette;
   await m.setContext("chrome");
-  await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+  await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
   await waitUi(m, "return !!doc.querySelector('[data-testid=\"sidebar\"]')");
 });
 afterEach(async () => {

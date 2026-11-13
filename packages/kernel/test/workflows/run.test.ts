@@ -1194,7 +1194,7 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
 
   /** The workshop's real command, kept to read its `timeout`. */
   const connectWorkshop = (b: Bench) => {
-    const workshop = new Workshop({ paths: spacePaths("/Users/t/WebAiOs"), docker: "/usr/local/bin/docker" });
+    const workshop = new Workshop({ paths: spacePaths("/Users/t/Ressac"), docker: "/usr/local/bin/docker" });
     const commands: string[][] = [];
     b.infra.workshop = {
       harvestCommand: (id, d, m, s) => {

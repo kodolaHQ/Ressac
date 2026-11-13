@@ -3,7 +3,7 @@
 // from what the frame says. Also the tweaks' console and the memory relay to the host.
 import type { TweaksRead } from "../../../../packages/kernel/src/sites/read";
 import { relativeUrl } from "../../../../packages/kernel/src/sites/urls";
-import GUARD from "../../../../packages/kernel/extensions/webaios-page-guard.js?raw";
+import GUARD from "../../../../packages/kernel/extensions/ressac-page-guard.js?raw";
 import { tweakSource, type FrameInjection } from "../../shared/sites";
 import { addTweakConsole, injectionFor, resumeInFrame, type TweakError, type MemoryResponse } from "../../core/sites/injection";
 import { MEMORY_DENIAL } from "../../host/site-memory";
@@ -73,7 +73,7 @@ export async function frameMemory(wgp: any, s: FrameSite | undefined, sendReques
 
 /**
  * The view's console: an error the actor relays from a frame of the app's view, whose
- * source is named as one of the app's tweaks (`webaios-tweak://<id>/`), kept in its console, bounded. The frame is
+ * source is named as one of the app's tweaks (`ressac-tweak://<id>/`), kept in its console, bounded. The frame is
  * known from its WindowGlobalParent (the caller's siteOfFrame): the sign-in window or another app naming its code so
  * reaches no app's console. The text comes from a web process: bounded by addTweakConsole.
  */

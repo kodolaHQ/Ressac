@@ -59,9 +59,9 @@
         <b>Le partage d'écran ne marche plus</b>
         <span class="muted">
           {#if repaired}
-            Quittez puis rouvrez WebAiOs. Au prochain partage, macOS redemandera l'autorisation.
+            Quittez puis rouvrez Ressac. Au prochain partage, macOS redemandera l'autorisation.
           {:else if repaired === false}
-            La réparation a échoué. Dans Réglages Système › Confidentialité et sécurité › Enregistrement de l'écran, retirez WebAiOs puis relancez-le.
+            La réparation a échoué. Dans Réglages Système › Confidentialité et sécurité › Enregistrement de l'écran, retirez Ressac puis relancez-le.
           {:else}
             Après une mise à jour, macOS peut bloquer le partage alors qu'il paraît autorisé. Réparer lui fait redemander l'autorisation.
           {/if}

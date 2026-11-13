@@ -44,7 +44,7 @@ afterEach(() => {
   brackets.beforeRename = null;
 });
 
-const GUARDS = ["webaios-page-fixes.js", "webaios-page-guard.js", "webaios-background-guard.js"];
+const GUARDS = ["ressac-page-fixes.js", "ressac-page-guard.js", "ressac-background-guard.js"];
 
 async function write(folder: string, files: Record<string, string | object>): Promise<void> {
   for (const [path, content] of Object.entries(files)) {
@@ -90,14 +90,14 @@ describe("prepareCopy", () => {
     );
   });
 
-  it("with webaios.json { reseau: [\"api.exemple.com\"] }: connect-src contains https:// and wss://api.exemple.com, webaios.json absent from the copy", async () => {
-    const src = await source({ "manifest.json": baseManifest(), "webaios.json": { network: ["api.exemple.com"] } });
+  it("with ressac.json { reseau: [\"api.exemple.com\"] }: connect-src contains https:// and wss://api.exemple.com, ressac.json absent from the copy", async () => {
+    const src = await source({ "manifest.json": baseManifest(), "ressac.json": { network: ["api.exemple.com"] } });
     const c = await target();
     const { analysis: analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
     expect(analysis.scope.network).toEqual(["api.exemple.com"]);
     const m = await readJson(join(c, "manifest.json"));
     expect(m.content_security_policy.extension_pages).toContain("connect-src 'self' https://api.exemple.com wss://api.exemple.com;");
-    expect(existsSync(join(c, "webaios.json"))).toBe(false);
+    expect(existsSync(join(c, "ressac.json"))).toBe(false);
   });
 
   it("key and update_url removed", async () => {
@@ -110,9 +110,9 @@ describe("prepareCopy", () => {
     expect(m.name).toBe("Essai");
   });
 
-  it("a content_scripts entry declares only WebAiOs files (fixes, guard, scope, one marker per agent file, CSS first); the agent's files stay as they are, the table is at the head of the background guard", async () => {
+  it("a content_scripts entry declares only Ressac files (fixes, guard, scope, one marker per agent file, CSS first); the agent's files stay as they are, the table is at the head of the background guard", async () => {
     // evade.js would close a text wrapper: it is never pasted into another file anymore.
-    const evade = "});\ndocument.documentElement.setAttribute('data-evade', '1');\nglobalThis.__webaiosApres(() => {\n";
+    const evade = "});\ndocument.documentElement.setAttribute('data-evade', '1');\nglobalThis.__ressacApres(() => {\n";
     const src = await source({
       "manifest.json": baseManifest({
         host_permissions: ["https://h.example/*"],
@@ -122,7 +122,7 @@ describe("prepareCopy", () => {
           { matches: ["https://b.example/*"], css: ["s.css"] },
         ],
       }),
-      "webaios.json": { network: ["api.exemple.com"] },
+      "ressac.json": { network: ["api.exemple.com"] },
       "a.js": "function double(x) { return 2 * x; }",
       "b.js": "globalThis.resultat = double(21);",
       "c/d.js": "3",
@@ -136,29 +136,29 @@ describe("prepareCopy", () => {
     const m = await readJson(join(c, "manifest.json"));
     // Table: each .js and .css file of the agent, sorted; one marker each.
     const table = [["a.js", "js"], ["b.js", "js"], ["c/d.js", "js"], ["evade.js", "js"], ["s.css", "css"]];
-    const head = ["webaios-page-fixes.js", "webaios-page-guard.js", "webaios-scope.js"];
-    const markers = (...n: number[]) => n.map((i) => `webaios-files/${i}.js`);
+    const head = ["ressac-page-fixes.js", "ressac-page-guard.js", "ressac-scope.js"];
+    const markers = (...n: number[]) => n.map((i) => `ressac-files/${i}.js`);
     expect(m.content_scripts).toEqual([
       { matches: ["https://a.example/*"], js: [...head, ...markers(4, 0, 1)], run_at: "document_start" },
       { matches: ["https://b.example/*"], js: [...head, ...markers(2, 3)] },
       { matches: ["https://b.example/*"], js: [...head, ...markers(4)] },
     ]);
     for (let i = 0; i < table.length; i++) {
-      expect(await readFile(join(c, `webaios-files/${i}.js`), "utf8")).toBe(`globalThis.__webaiosFile(${i});\n`);
+      expect(await readFile(join(c, `ressac-files/${i}.js`), "utf8")).toBe(`globalThis.__ressacFile(${i});\n`);
     }
-    expect(existsSync(join(c, "webaios-files/5.js"))).toBe(false);
+    expect(existsSync(join(c, "ressac-files/5.js"))).toBe(false);
     // The agent's files: intact, never wrapped nor grouped.
     expect(await readFile(join(c, "evade.js"), "utf8")).toBe(evade);
-    expect(existsSync(join(c, "webaios-env"))).toBe(false);
-    expect(existsSync(join(c, "webaios-cs-0.js"))).toBe(false);
+    expect(existsSync(join(c, "ressac-env"))).toBe(false);
+    expect(existsSync(join(c, "ressac-cs-0.js"))).toBe(false);
     // The background injects them by scripting, in the content scripts' sites.
     expect(m.permissions).toEqual(["scripting"]);
     expect(m.host_permissions).toEqual(["https://h.example/*", "https://a.example/*", "https://b.example/*"]);
-    const background = await readFile(join(c, "webaios-background-guard.js"), "utf8");
-    expect(background.startsWith(`const __webaiosFiles = ${JSON.stringify(table)};\n`)).toBe(true);
-    expect(background.endsWith(await readFile(join(DEFAULT_GUARDS, "webaios-background-guard.js"), "utf8"))).toBe(true);
-    expect(await readFile(join(c, "webaios-scope.js"), "utf8")).toBe(
-      `globalThis.__webaiosScope(${JSON.stringify({ network: ["api.exemple.com"], hosts: analysis.scope.hosts })});\n`,
+    const background = await readFile(join(c, "ressac-background-guard.js"), "utf8");
+    expect(background.startsWith(`const __ressacFiles = ${JSON.stringify(table)};\n`)).toBe(true);
+    expect(background.endsWith(await readFile(join(DEFAULT_GUARDS, "ressac-background-guard.js"), "utf8"))).toBe(true);
+    expect(await readFile(join(c, "ressac-scope.js"), "utf8")).toBe(
+      `globalThis.__ressacScope(${JSON.stringify({ network: ["api.exemple.com"], hosts: analysis.scope.hosts })});\n`,
     );
     for (const g of GUARDS) expect(existsSync(join(c, g)), g).toBe(true);
   });
@@ -197,7 +197,7 @@ describe("prepareCopy", () => {
       messages.push(msg);
       callback({ tab: true });
     });
-    expect(messages).toEqual([{ webaios: "context", files: [2, 0, 1] }]);
+    expect(messages).toEqual([{ ressac: "context", files: [2, 0, 1] }]);
     expect(yes.ctx.vu).toBeUndefined();
     expect(yes.errors).toEqual([]);
     // No answer: lastError read, retries, then abandonment written with the reason.
@@ -231,14 +231,14 @@ describe("prepareCopy", () => {
     expect(existsSync(c)).toBe(false);
   });
 
-  it("classic service worker: webaios-background.js does importScripts of both; module: import of both, type module kept", async () => {
+  it("classic service worker: ressac-background.js does importScripts of both; module: import of both, type module kept", async () => {
     const src = await source({ "manifest.json": baseManifest({ background: { service_worker: "bg/sw.js" } }), "bg/sw.js": "" });
     const c = await target();
     await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
     const m = await readJson(join(c, "manifest.json"));
-    expect(m.background).toEqual({ service_worker: "webaios-background.js" });
-    const background = await readFile(join(c, "webaios-background.js"), "utf8");
-    expect(background).toContain('importScripts("webaios-background-guard.js", "bg/sw.js")');
+    expect(m.background).toEqual({ service_worker: "ressac-background.js" });
+    const background = await readFile(join(c, "ressac-background.js"), "utf8");
+    expect(background).toContain('importScripts("ressac-background-guard.js", "bg/sw.js")');
     expect(existsSync(join(c, "bg/sw.js"))).toBe(true);
 
     const srcM = await source({
@@ -248,25 +248,25 @@ describe("prepareCopy", () => {
     const cM = await target();
     await prepareCopy({ source: srcM, target: cM, keptFolder: DEFAULT_GUARDS });
     const mM = await readJson(join(cM, "manifest.json"));
-    expect(mM.background).toEqual({ service_worker: "webaios-background.js", type: "module" });
-    const backgroundM = await readFile(join(cM, "webaios-background.js"), "utf8");
+    expect(mM.background).toEqual({ service_worker: "ressac-background.js", type: "module" });
+    const backgroundM = await readFile(join(cM, "ressac-background.js"), "utf8");
     const imports = [...backgroundM.matchAll(/^import "(.+)";$/gm)].map((x) => x[1]);
-    expect(imports).toEqual(["./webaios-background-guard.js", "./sw.js"]);
+    expect(imports).toEqual(["./ressac-background-guard.js", "./sw.js"]);
   });
 
-  it("without a background: a minimal webaios-background.js service worker (the guard alone) is declared, for onInstalled and the rulesets", async () => {
+  it("without a background: a minimal ressac-background.js service worker (the guard alone) is declared, for onInstalled and the rulesets", async () => {
     const src = await source({ "manifest.json": baseManifest() });
     const c = await target();
     await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
     const m = await readJson(join(c, "manifest.json"));
-    expect(m.background).toEqual({ service_worker: "webaios-background.js" });
-    const background = await readFile(join(c, "webaios-background.js"), "utf8");
-    expect(background).toContain('importScripts("webaios-background-guard.js");');
+    expect(m.background).toEqual({ service_worker: "ressac-background.js" });
+    const background = await readFile(join(c, "ressac-background.js"), "utf8");
+    expect(background).toContain('importScripts("ressac-background-guard.js");');
     expect([...background.matchAll(/importScripts\(/g)]).toHaveLength(1);
   });
 
   it("the background guard is prefixed to each HTML page (raw bytes, absolute path), the existing scripts stay after", async () => {
-    const GUARD = '<script src="/webaios-background-guard.js"></script>';
+    const GUARD = '<script src="/ressac-background-guard.js"></script>';
     const src = await source({
       "manifest.json": baseManifest(),
       "popup.html": '<!doctype html><html><head><meta charset="utf-8"><script src="popup.js"></script></head><body></body></html>',
@@ -282,7 +282,7 @@ describe("prepareCopy", () => {
 
     const popup = await readFile(join(c, "popup.html"), "utf8");
     expect(popup).toBe('<!doctype html>' + GUARD + '<html><head><meta charset="utf-8"><script src="popup.js"></script></head><body></body></html>');
-    expect(scripts(popup)).toEqual(['<script src="/webaios-background-guard.js">', '<script src="popup.js">']);
+    expect(scripts(popup)).toEqual(['<script src="/ressac-background-guard.js">', '<script src="popup.js">']);
     expect(await readFile(join(c, "pages/options.html"), "utf8")).toBe(GUARD + '<p>options</p><script src="options.js"></script>');
     expect(await readFile(join(c, "commentaire.html"), "utf8")).toBe(GUARD + '<!-- <head> --><head><script src="a.js"></script></head>');
     expect(await readFile(join(c, "base.htm"), "utf8")).toBe(GUARD + '<html><base href="x/"><head><script src="a.js"></script></head></html>');
@@ -442,8 +442,8 @@ describe("prepareCopy", () => {
     expect(existsSync(c)).toBe(false);
   });
 
-  it("a file name reserved for WebAiOs is refused, whatever the case", async () => {
-    for (const name of ["webaios-background.js", "WebAiOs-Fond.js", "WEBAIOS-GARDE-PAGE.JS", "webaios-files/0.js", "webaios-scope.js", "Webaios-Env/a.js"]) {
+  it("a file name reserved for Ressac is refused, whatever the case", async () => {
+    for (const name of ["ressac-background.js", "Ressac-Fond.js", "RESSAC-GARDE-PAGE.JS", "ressac-files/0.js", "ressac-scope.js", "Ressac-Env/a.js"]) {
       const src = await source({ "manifest.json": baseManifest(), [name]: "1" });
       const { analysis: analysis } = await prepareCopy({ source: src, target: await target(), keptFolder: DEFAULT_GUARDS });
       expect(analysis.denial.some((r) => r.includes(name)), name).toBe(true);
@@ -566,7 +566,7 @@ describe("prepareCopy", () => {
 
     const second = await source({ "manifest.json": baseManifest({ version: "2.0" }), "b.js": "b" });
     await prepareCopy({ source: second, target: c, keptFolder: DEFAULT_GUARDS });
-    expect((await readdir(c)).sort()).toEqual(["b.js", "manifest.json", "webaios-files", "webaios-background.js", "webaios-scope.js", ...GUARDS].sort());
+    expect((await readdir(c)).sort()).toEqual(["b.js", "manifest.json", "ressac-files", "ressac-background.js", "ressac-scope.js", ...GUARDS].sort());
     expect((await readJson(join(c, "manifest.json"))).version).toBe("2.0");
     // Neither a temporary folder nor an old copy left alongside.
     expect(await readdir(dirname(c))).toEqual(["essai"]);
@@ -584,9 +584,9 @@ describe("prepareCopy", () => {
   });
 });
 
-describe("webaios-page-fixes.js", () => {
+describe("ressac-page-fixes.js", () => {
   it("redefines storage.sync on storage.local and sets browser, no effect the second time", async () => {
-    const code = await readFile(join(DEFAULT_GUARDS, "webaios-page-fixes.js"), "utf8");
+    const code = await readFile(join(DEFAULT_GUARDS, "ressac-page-fixes.js"), "utf8");
     const local = { name: "local" };
     const chrome = { storage: { local, sync: { name: "sync" } } };
     const ctx: Record<string, unknown> = { chrome };

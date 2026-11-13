@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack } from "svelte";
-  import type { DirectAction } from "@webaios/kernel";
+  import type { DirectAction } from "@ressac/kernel";
   import { PENDING, readingOf, PAGE_LAYOUT } from "../../shared/actions";
   import { api } from "../state.svelte";
 

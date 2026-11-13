@@ -17,7 +17,7 @@ export type Shortcut =
   | { type: "compact" }
   /** ⌘Y, ⇧⌘J: a UI panel (menu items « Historique » and « Téléchargements »). */
   | { type: "panel"; p: Panel }
-  /** ⌘N, ⇧⌘W: a WebAiOs window, through Firefox's own window opening and closing (the window registry binds them). */
+  /** ⌘N, ⇧⌘W: a Ressac window, through Firefox's own window opening and closing (the window registry binds them). */
   | { type: "window" }
   | { type: "closeWindow" }
   /** ⇧⌘A: the Applications page (menu item « Applications »), not Firefox's add-ons. */
@@ -31,7 +31,7 @@ export type Shortcut =
 
 type Keys = { key: string; code: string; metaKey: boolean; ctrlKey: boolean; shiftKey: boolean; altKey: boolean };
 
-/** WebAiOs's menu accelerators (macOS: ⌘ is Meta), the fixed ones and `bindings`. Digits are read on the physical key: ⌘1 types “&” in AZERTY. */
+/** Ressac's menu accelerators (macOS: ⌘ is Meta), the fixed ones and `bindings`. Digits are read on the physical key: ⌘1 types “&” in AZERTY. */
 export function shortcutFor(e: Keys, bindings: Bindings): Shortcut | null {
   // ShortcutUtils' PREVIOUS_TAB/NEXT_TAB (and ⌃⇧PageUp/PageDown, which move the tab) on macOS.
   if (
@@ -56,8 +56,8 @@ export function shortcutFor(e: Keys, bindings: Bindings): Shortcut | null {
 
 /** For windows that have no store at hand: the bindings from the store's state at each keydown, the defaults until it is ready. */
 export function liveBindings(): () => Bindings {
-  let store: import("../store").WebAiOsStore | undefined;
-  void ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready.then((s: import("../store").WebAiOsStore) => (store = s));
+  let store: import("../store").RessacStore | undefined;
+  void ChromeUtils.importESModule("chrome://browser/content/ressac/store.sys.mjs").ready.then((s: import("../store").RessacStore) => (store = s));
   return () => effectiveBindings(store?.state.settings.shortcuts ?? {});
 }
 
@@ -95,7 +95,7 @@ export const SETTINGS_MENU_ITEMS = ["menu_preferences", "menu_settings"];
 /**
  * Firefox's <command>s (and macOS menu items) that open or close tabs and windows behind the store's back: disabling a
  * <key> leaves the native menu bar running them. ⌘T, ⌘W and ⇧⌘T keep working through shortcutFor. New Window and Close
- * Window stay: a new full window becomes a WebAiOs window (the window registry), a closed one leaves it.
+ * Window stay: a new full window becomes a Ressac window (the window registry), a closed one leaves it.
  */
 export const FIREFOX_COMMANDS = [
   "cmd_newNavigatorTab",

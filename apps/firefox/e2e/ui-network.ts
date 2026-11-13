@@ -11,7 +11,7 @@ import type { Marionette } from "./marionette";
 // any name (IPv4 only); the hostResolver log (MOZ_LOG) shows which names were asked.
 
 /** Each name a probe uses ends with it. */
-export const SFX = `w${Date.now()}.webaios-test.example`;
+export const SFX = `w${Date.now()}.ressac-test.example`;
 /** No name goes to the real resolver; ICE may send to the loopback STUN witness (without it a zero UDP count proves nothing, S3). */
 export const NET_PREFS = { "network.dns.native-is-localhost": true, "network.trr.mode": 5, "media.peerconnection.ice.loopback": true };
 /** Every process logs the names it asks for into `logDir`. */
@@ -158,8 +158,8 @@ export function consoleWith(m: Marionette, text: string): Promise<string[]> {
 /** The net's refusals so far (`[ui-network] refused …`). */
 export const uiRefusals = (m: Marionette): Promise<string[]> => consoleWith(m, "[ui-network] refused");
 
-/** resource://<name>/ serves `dir`; by default webaios-test-net, a name outside the UI's prefixes: such a page is the UI's only through its ancestor. */
-export function testPages(m: Marionette, dir: string, name = "webaios-test-net"): Promise<unknown> {
+/** resource://<name>/ serves `dir`; by default ressac-test-net, a name outside the UI's prefixes: such a page is the UI's only through its ancestor. */
+export function testPages(m: Marionette, dir: string, name = "ressac-test-net"): Promise<unknown> {
   return m.execute(
     `const res = Services.io.getProtocolHandler("resource").QueryInterface(Ci.nsIResProtocolHandler);
      const { FileUtils } = ChromeUtils.importESModule("resource://gre/modules/FileUtils.sys.mjs");

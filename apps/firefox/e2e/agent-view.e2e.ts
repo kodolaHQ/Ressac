@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { dispatch, state, waitFor } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import { callTool } from "./mcp";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
@@ -10,7 +10,7 @@ import { click, inUi, waitUi } from "./ui";
 
 // The agent's last tab: its activity from the host, and thumbnails taken only while someone watches.
 
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** Chrome-context script body run with `v` = the store's agentView. */
 const PILL = '[data-testid="agent-pill"]';
@@ -18,16 +18,16 @@ const view = <T>(m: Marionette, body: string) => m.execute<T>(`return (async () 
 const VIEW_STATE = `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).agentView.state())();`;
 
 let server: Awaited<ReturnType<typeof startServer>>;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 beforeAll(async () => {
   server = await startServer({ routes: { "/": (_, res) => res.writeHead(200, { "Content-Type": "text/html" }).end("<title>demo</title><h1 style='font-size:80px'>demo</h1>") } });
   // The demo port is the kernel's own: the agent's tabs there get every right, no consent card.
-  w = await launchWebAiOs({ env: { WEBAIOS_CONTAINER_PORTS: `${server.port}-${server.port}`, WEBAIOS_TEST_AGENT_VIEW: "1" } });
+  w = await launchRessac({ env: { RESSAC_CONTAINER_PORTS: `${server.port}-${server.port}`, RESSAC_TEST_AGENT_VIEW: "1" } });
   m = w.marionette;
   await m.setContext("chrome");
-  await waitFor(m, "return !!window.webaiosWindow", (v) => v === true);
-  const config = join(w.dataDir, "workspace", ".webaios", "mcp.json");
+  await waitFor(m, "return !!window.ressacWindow", (v) => v === true);
+  const config = join(w.dataDir, "workspace", ".ressac", "mcp.json");
   for (const deadline = Date.now() + 20_000; !existsSync(config); await sleep(100)) if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
   // The agent's session takes back every access when it starts: tools are called after it.
   await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
@@ -101,16 +101,16 @@ describe("the agent's view", () => {
     expect(await inUi(m, `return doc.querySelector('${PILL}').getAttribute("aria-label")`, [], "agentview")).toBe("Voir l'onglet de l'agent");
     // It opens on a thumbnail of the agent's tab.
     await waitUi(m, `return doc.querySelector('[data-testid="agent-pill-frame"] img')?.src.startsWith("data:image/jpeg")`, [], 10_000, "agentview");
-    await waitFor<number>(m, `return document.getElementById("webaios-agent-pill").clientWidth;`, (w) => w > 360, 5_000);
+    await waitFor<number>(m, `return document.getElementById("ressac-agent-pill").clientWidth;`, (w) => w > 360, 5_000);
 
     // Reduced by hand, it is a line; the frame covers only the pill: the rest of the page keeps the mouse.
     await click(m, '[data-testid="agent-pill-toggle"]', { frame: "agentview" });
     await waitUi(m, `return !doc.querySelector('[data-testid="agent-pill-frame"]')`, [], 5_000, "agentview");
-    const [width, height] = await waitFor<number[]>(m, `const f = document.getElementById("webaios-agent-pill"); return [f.clientWidth, f.clientHeight];`, ([w = 0, h = 0]) => w > 0 && w < 400 && h < 80, 5_000);
+    const [width, height] = await waitFor<number[]>(m, `const f = document.getElementById("ressac-agent-pill"); return [f.clientWidth, f.clientHeight];`, ([w = 0, h = 0]) => w > 0 && w < 400 && h < 80, 5_000);
     expect(width).toBeGreaterThan(0);
     expect(height).toBeLessThan(80);
     await click(m, '[data-testid="agent-pill-toggle"]', { frame: "agentview" });
-    await waitFor<number>(m, `return document.getElementById("webaios-agent-pill").clientWidth;`, (w) => w > 360, 5_000);
+    await waitFor<number>(m, `return document.getElementById("ressac-agent-pill").clientWidth;`, (w) => w > 360, 5_000);
 
     // A click opens the agent's tab, where the pill has no reason to be.
     await click(m, PILL, { frame: "agentview" });
@@ -123,7 +123,7 @@ describe("the agent's view", () => {
     await pillShown();
     const recap = await callTool(w.dataDir, "show_recap", { title: "Pastille", results: { items: [{ name: "A" }] }, plan: { blocks: [{ component: "cards", props: { items: "items", title: "name" } }] } });
     expect(recap.text, recap.text).toMatch(/Récap \S+ ouvert/);
-    for (const deadline = Date.now() + 10_000; !(await activeTab())?.url.startsWith("webaios://recap/"); await sleep(100)) if (Date.now() > deadline) throw new Error("the recap tab is not active");
+    for (const deadline = Date.now() + 10_000; !(await activeTab())?.url.startsWith("ressac://recap/"); await sleep(100)) if (Date.now() > deadline) throw new Error("the recap tab is not active");
     await pillGone();
 
     // ✕ hides it, and it stays hidden while the agent's tab is held.
@@ -133,6 +133,6 @@ describe("the agent's view", () => {
     await pillGone();
     await sleep(1_000);
     expect(await inUi(m, `return !!doc.querySelector('${PILL}')`, [], "agentview")).toBe(false);
-    expect(await m.execute<number>(`return document.getElementById("webaios-agent-pill").clientWidth;`)).toBe(0);
+    expect(await m.execute<number>(`return document.getElementById("ressac-agent-pill").clientWidth;`)).toBe(0);
   }, 90_000);
 });

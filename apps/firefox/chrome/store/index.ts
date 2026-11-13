@@ -39,7 +39,7 @@ import { gestureGuard } from "../../shared/widget-gesture";
 const { AsyncShutdown } = ChromeUtils.importESModule("resource://gre/modules/AsyncShutdown.sys.mjs");
 const { BrowserWindowTracker } = ChromeUtils.importESModule("resource:///modules/BrowserWindowTracker.sys.mjs");
 
-export interface WebAiOsStore extends Store {
+export interface RessacStore extends Store {
   readonly dataDir: string;
   /** Where an unreadable session was set aside at startup, or null. */
   readonly setAside: string | null;
@@ -63,7 +63,7 @@ export interface WebAiOsStore extends Store {
   readonly downloads: DownloadsList;
   /** The agent's « lire l'onglet » cards waiting for an answer. */
   readonly questions: Questions;
-  /** The WebAiOs windows open: each full browser window claims a window of the state. */
+  /** The Ressac windows open: each full browser window claims a window of the state. */
   readonly windows: WindowRegistry;
   /** What sites may do (notifications, position, camera, micro, MIDI, DRM, screen), asked once per profile and origin. */
   readonly sitePermissions: SitePermissions;
@@ -75,9 +75,9 @@ export interface WebAiOsStore extends Store {
   readonly agentView: AgentView;
   /** The agent's dev tools on tabs, owned by the running kernel. */
   readonly devtools: DevTools;
-  /** The site apps' windows (never WebAiOs windows), opened and closed as the host asks. */
+  /** The site apps' windows (never Ressac windows), opened and closed as the host asks. */
   readonly sites: SiteApps;
-  /** The agent apps' windows (never WebAiOs windows), opened and closed as the host asks. */
+  /** The agent apps' windows (never Ressac windows), opened and closed as the host asks. */
   readonly apps: AgentApps;
   /** The design mode of each main window's tab and agent app window (spec §5.4-5.5). */
   readonly design: DesignService;
@@ -90,19 +90,19 @@ export interface WebAiOsStore extends Store {
   readonly actionMedia: { image(url: string): Promise<string | null>; serve(name: string): Promise<string | null>; release(name: string): Promise<void> };
 }
 
-const PAGE_ACTOR = "chrome://browser/content/webaios/page-actor.sys.mjs";
+const PAGE_ACTOR = "chrome://browser/content/ressac/page-actor.sys.mjs";
 
 /**
- * An actor's module (`extension-actor`, `site-actor`). Tests only: WEBAIOS_TEST_EXTENSION_ACTOR names a folder holding
+ * An actor's module (`extension-actor`, `site-actor`). Tests only: RESSAC_TEST_EXTENSION_ACTOR names a folder holding
  * both, served by a resource:// substitution (the content sandbox reads it only with
  * security.sandbox.content.mac.testing_read_path1 set to that folder: spike S5), so the e2e run without a rebuild of the app.
  */
 function actorModule(name: string): string {
-  const dir = Services.env.get("WEBAIOS_TEST_EXTENSION_ACTOR");
-  if (!dir) return `chrome://browser/content/webaios/${name}.sys.mjs`;
+  const dir = Services.env.get("RESSAC_TEST_EXTENSION_ACTOR");
+  if (!dir) return `chrome://browser/content/ressac/${name}.sys.mjs`;
   const { FileUtils } = ChromeUtils.importESModule("resource://gre/modules/FileUtils.sys.mjs");
-  Services.io.getProtocolHandler("resource").QueryInterface(Ci.nsIResProtocolHandler).setSubstitution("webaios-test", Services.io.newFileURI(new FileUtils.File(dir)));
-  return `resource://webaios-test/${name}.sys.mjs`;
+  Services.io.getProtocolHandler("resource").QueryInterface(Ci.nsIResProtocolHandler).setSubstitution("ressac-test", Services.io.newFileURI(new FileUtils.File(dir)));
+  return `resource://ressac-test/${name}.sys.mjs`;
 }
 
 /** Firefox's permission types behind each decision we mirror (what the page reads through Notification.permission, permissions.query, MIDI). */
@@ -141,15 +141,15 @@ const firefoxPermissions = {
 };
 
 const dataDir =
-  Services.env.get("WEBAIOS_DATA_DIR") || PathUtils.join(Services.dirsvc.get("Home", Ci.nsIFile).path, "WebAiOs");
+  Services.env.get("RESSAC_DATA_DIR") || PathUtils.join(Services.dirsvc.get("Home", Ci.nsIFile).path, "Ressac");
 
 const widgetGestures = gestureGuard<string>();
 
 let uiNetState: UiNetworkState;
 
-async function start(): Promise<WebAiOsStore> {
+async function start(): Promise<RessacStore> {
   // The UI's network net first, before any await: the windows read its state before they give their frames a src.
-  uiNetState = installUiNetwork(Services.env.get("WEBAIOS_TEST_UI_NETWORK_FAIL") || null);
+  uiNetState = installUiNetwork(Services.env.get("RESSAC_TEST_UI_NETWORK_FAIL") || null);
   // Before anything else can fail: its errors are reported.
   const telemetry = installTelemetry();
   // Before anything touches the data folder: an unknown format sets it aside (workspace/ stays).
@@ -165,25 +165,25 @@ async function start(): Promise<WebAiOsStore> {
   Services.prefs.getDefaultBranch("").setBoolPref("privacy.popups.showBrowserMessage", false);
   // Fullscreen is granted without a question and without Firefox's warning over the page (spike P8).
   Services.prefs.getDefaultBranch("").setIntPref("full-screen-api.warning.timeout", 0);
-  // The browser's advanced settings without what contradicts WebAiOs.
+  // The browser's advanced settings without what contradicts Ressac.
   installPreferencesCleanup();
-  // Mozilla's update server offers Widevine (DRM) only to a Firefox version: under WebAiOs's own version it answers
+  // Mozilla's update server offers Widevine (DRM) only to a Firefox version: under Ressac's own version it answers
   // with no module, and no DRM site ever plays.
   const gmp = Services.prefs.getDefaultBranch("").getCharPref("media.gmp-manager.url", "");
   if (gmp.includes("%VERSION%")) Services.prefs.getDefaultBranch("").setCharPref("media.gmp-manager.url", gmp.replace("%VERSION%", Services.appinfo.platformVersion));
-  // Sites that sniff the user agent (WhatsApp Web) take the trailing « WebAiOs/<version> » token for an old Firefox
+  // Sites that sniff the user agent (WhatsApp Web) take the trailing « Ressac/<version> » token for an old Firefox
   // and refuse to load: sites get the exact Firefox user agent of this engine.
   const http = Cc["@mozilla.org/network/protocol;1?name=http"].getService(Ci.nsIHttpProtocolHandler);
-  Services.prefs.getDefaultBranch("").setCharPref("general.useragent.override", http.userAgent.replace(/ WebAiOs\/\S+/, ""));
+  Services.prefs.getDefaultBranch("").setCharPref("general.useragent.override", http.userAgent.replace(/ Ressac\/\S+/, ""));
   // The widget displays' copies are a disposable cache: clearing them at startup never serves a copy made by an older
   // sanitizer (CSP_WIDGET, containsNetworkHint).
-  await IOUtils.remove(PathUtils.join(dataDir, "webaios-widgets"), { recursive: true, ignoreAbsent: true }).catch((e) => console.warn("[widget] copies not erasedes :", e));
+  await IOUtils.remove(PathUtils.join(dataDir, "ressac-widgets"), { recursive: true, ignoreAbsent: true }).catch((e) => console.warn("[widget] copies not erasedes :", e));
   // The site apps' served home copies too (the same sanitizer).
-  await IOUtils.remove(PathUtils.join(dataDir, "webaios-sites"), { recursive: true, ignoreAbsent: true }).catch((e) => console.warn("[sites] copies not erased :", e));
+  await IOUtils.remove(PathUtils.join(dataDir, "ressac-sites"), { recursive: true, ignoreAbsent: true }).catch((e) => console.warn("[sites] copies not erased :", e));
   // The agent components' copies too.
-  await IOUtils.remove(PathUtils.join(dataDir, "webaios-components"), { recursive: true, ignoreAbsent: true }).catch((e) => console.warn("[actions] copies not erfacées :", e));
+  await IOUtils.remove(PathUtils.join(dataDir, "ressac-components"), { recursive: true, ignoreAbsent: true }).catch((e) => console.warn("[actions] copies not erfacées :", e));
   let setAside: string | null = null;
-  const store = createStore(await loadSession(dataDir, (p) => (setAside = p)).then((s) => (Services.env.get("WEBAIOS_SKIP_WELCOME") === "1" ? { ...s, settings: { ...s.settings, onboarded: true, seenVersion: s.settings.seenVersion ?? __WEBAIOS_VERSION__ } } : s)).then((s) => withEssentials(s)));
+  const store = createStore(await loadSession(dataDir, (p) => (setAside = p)).then((s) => (Services.env.get("RESSAC_SKIP_WELCOME") === "1" ? { ...s, settings: { ...s.settings, onboarded: true, seenVersion: s.settings.seenVersion ?? __RESSAC_VERSION__ } } : s)).then((s) => withEssentials(s)));
   const questions = new Questions(store, () => sites.forAgent(), () => apps.forAgent());
   // A site app or agent app window closed: the agent's questions on it fall.
   sites.onClosed(() => questions.dropStale());
@@ -198,11 +198,11 @@ async function start(): Promise<WebAiOsStore> {
     sitePermissions,
     tabOf: (browser) => {
       const win = browser.ownerDocument.defaultView;
-      const tabId = win?.gBrowser?.getTabForBrowser(browser)?.getAttribute("webaios-tab-id") ?? win?.webaiosPopupSource;
+      const tabId = win?.gBrowser?.getTabForBrowser(browser)?.getAttribute("ressac-tab-id") ?? win?.ressacPopupSource;
       const tab = tabId ? store.state.tabs[tabId] : undefined;
       return tab ? { tabId: tabId, windowId: tab.windowId, profile: tabProfile(store.state, tab) } : null;
     },
-    isInvisible: (browser) => browser.getAttribute("messagemanagergroup") === "webaios-reading",
+    isInvisible: (browser) => browser.getAttribute("messagemanagergroup") === "ressac-reading",
   });
   const recorder = new SessionRecorder(dataDir);
   const flush = () => recorder.clear();
@@ -219,29 +219,29 @@ async function start(): Promise<WebAiOsStore> {
       }
   });
   // After the recorder subscribed: the version seen is saved even if nothing else changes.
-  store.dispatch({ type: "noteVersion", version: __WEBAIOS_VERSION__ });
-  AsyncShutdown.profileBeforeChange.addBlocker("WebAiOs: save the session", flush);
-  ChromeUtils.registerWindowActor("WebAiOsPage", {
+  store.dispatch({ type: "noteVersion", version: __RESSAC_VERSION__ });
+  AsyncShutdown.profileBeforeChange.addBlocker("Ressac: save the session", flush);
+  ChromeUtils.registerWindowActor("RessacPage", {
     parent: { esModuleURI: PAGE_ACTOR },
     child: { esModuleURI: PAGE_ACTOR },
     matches: ["http://*/*", "https://*/*", "file:///*"],
     // The child only reads and answers: nothing a compromised web process sends can make the parent act.
     safeForUntrustedWebProcess: true,
-    messageManagerGroups: ["browsers", "webaios-reading"],
+    messageManagerGroups: ["browsers", "ressac-reading"],
   });
-  ChromeUtils.registerWindowActor("WebAiOsReading", {
+  ChromeUtils.registerWindowActor("RessacReading", {
     parent: { esModuleURI: PAGE_ACTOR },
     child: { esModuleURI: PAGE_ACTOR, events: { DOMWindowCreated: {} } },
     allFrames: true,
     // Only turns retargeting off in its own frame: nothing it answers makes the parent act.
     safeForUntrustedWebProcess: true,
-    messageManagerGroups: ["webaios-reading"],
+    messageManagerGroups: ["ressac-reading"],
   });
   const extensionActor = actorModule("extension-actor");
   // The agent's extension pages: background and popup (webext-browsers), options or pages in a tab (browsers). No
   // `matches`: the about:blank frames that inherit an agent page's principal must be reached too (the child filters
   // on the document's principal).
-  ChromeUtils.registerWindowActor("WebAiOsExtension", {
+  ChromeUtils.registerWindowActor("RessacExtension", {
     parent: { esModuleURI: extensionActor },
     child: { esModuleURI: extensionActor, events: { DOMWindowCreated: {} } },
     remoteTypes: ["extension"],
@@ -251,7 +251,7 @@ async function start(): Promise<WebAiOsStore> {
   // Site apps: every frame of a tab browser, about:blank and srcdoc ones too (no `matches`); the child asks only in an
   // open app's container, for an http(s), about:blank or about:srcdoc document.
   const siteActor = actorModule("site-actor");
-  ChromeUtils.registerWindowActor("WebAiOsSite", {
+  ChromeUtils.registerWindowActor("RessacSite", {
     parent: { esModuleURI: siteActor },
     child: { esModuleURI: siteActor, events: { DOMWindowCreated: {}, DOMContentLoaded: { capture: true } } },
     allFrames: true,
@@ -263,7 +263,7 @@ async function start(): Promise<WebAiOsStore> {
   // The design mode's viewfinder (design-actor.ts): every http(s) frame, so the guard reaches a frame of another process.
   // Only on the parent's demand (no events); the parent has no receiveMessage, so a web process cannot make it act.
   const designActor = actorModule("design-actor");
-  ChromeUtils.registerWindowActor("WebAiOsDesign", {
+  ChromeUtils.registerWindowActor("RessacDesign", {
     parent: { esModuleURI: designActor },
     child: { esModuleURI: designActor },
     matches: ["http://*/*", "https://*/*"],
@@ -274,7 +274,7 @@ async function start(): Promise<WebAiOsStore> {
   // Calls (call-actor.ts): every http(s) frame, a call's video may sit in one. The child acts on the parent's demand;
   // the parent only relays a call's state (two booleans) to the window of its own tab.
   const callActor = actorModule("call-actor");
-  ChromeUtils.registerWindowActor("WebAiOsCall", {
+  ChromeUtils.registerWindowActor("RessacCall", {
     parent: { esModuleURI: callActor },
     child: { esModuleURI: callActor },
     matches: ["http://*/*", "https://*/*"],
@@ -288,8 +288,8 @@ async function start(): Promise<WebAiOsStore> {
   // drops their listeners and layer); registering reaches the pages already open through `tell`.
   const vimActor = actorModule("vim-actor");
   const setVimActor = (on: boolean) => {
-    if (!on) return ChromeUtils.unregisterWindowActor("WebAiOsVim");
-    ChromeUtils.registerWindowActor("WebAiOsVim", {
+    if (!on) return ChromeUtils.unregisterWindowActor("RessacVim");
+    ChromeUtils.registerWindowActor("RessacVim", {
       parent: { esModuleURI: vimActor },
       child: { esModuleURI: vimActor, events: { DOMWindowCreated: {}, pageshow: {} } },
       matches: ["http://*/*", "https://*/*"],
@@ -300,7 +300,7 @@ async function start(): Promise<WebAiOsStore> {
       for (const b of win.gBrowser?.browsers ?? [])
         if (/^https?:/.test(b.currentURI?.spec ?? ""))
           try {
-            b.browsingContext?.currentWindowGlobal?.getActor("WebAiOsVim").tell();
+            b.browsingContext?.currentWindowGlobal?.getActor("RessacVim").tell();
           } catch (e) {
             console.error("[vim] mode not sent:", e);
           }
@@ -311,7 +311,7 @@ async function start(): Promise<WebAiOsStore> {
   });
   // The agent's extensions' consoles, in every content process: a content script writes in a web process (spike S6).
   // What it relays is untrusted there: the parent checks it (agentExtensions.relayConsole).
-  ChromeUtils.registerProcessActor("WebAiOsConsole", {
+  ChromeUtils.registerProcessActor("RessacConsole", {
     parent: { esModuleURI: extensionActor },
     child: { esModuleURI: extensionActor, observers: ["content-document-global-created"] },
     safeForUntrustedWebProcess: true,
@@ -319,7 +319,7 @@ async function start(): Promise<WebAiOsStore> {
   for (const p of ChromeUtils.getAllDOMProcesses())
     if (p.remoteType)
       try {
-        p.getActor("WebAiOsConsole").sendAsyncMessage("start");
+        p.getActor("RessacConsole").sendAsyncMessage("start");
       } catch (e) {
         console.error("[extensions] console relay not started:", e);
       }
@@ -440,7 +440,7 @@ async function start(): Promise<WebAiOsStore> {
   const agentView = createAgentView({ store, host: agent, access: () => access, windows });
   agent.ensure().catch((e) => console.error("[agent] the kernel did not start:", e));
   // No `node … host.ts` may outlive the app: its sessions and MCP server stop with it.
-  AsyncShutdown.profileBeforeChange.addBlocker("WebAiOs: stop the agent host", () => agent.stop());
+  AsyncShutdown.profileBeforeChange.addBlocker("Ressac: stop the agent host", () => agent.stop());
   return {
     get state() {
       return store.state;
@@ -478,7 +478,7 @@ async function start(): Promise<WebAiOsStore> {
   };
 }
 
-export const ready: Promise<WebAiOsStore> = start();
+export const ready: Promise<RessacStore> = start();
 // Site app windows: read synchronously by a window as it loads (chrome/window/site-window.ts).
 export { sites, publishSiteFrames } from "./sites";
 // Agent app windows: read synchronously by a window as it loads (chrome/window/app-window.ts).

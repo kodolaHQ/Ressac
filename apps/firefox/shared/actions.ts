@@ -1,4 +1,4 @@
-import type { Execution } from "@webaios/kernel";
+import type { Execution } from "@ressac/kernel";
 
 /** The actions: UI messages, addresses of the images and components (also read by the UI). */
 export const ACTIONS_IN_PRIVATE_SPACE = "Les actions ne sont pas disponibles dans un espace privé";
@@ -13,11 +13,11 @@ export const FALLBACK_MENTION = "mise en page simple";
 export const NO_RESULT = "Aucun résultat";
 /** Copied from the kernel (actions/run.ts; same equality test). */
 export const ACTION_UNKNOWN = "Action inconnue";
-/** A `webaios://action/<id>/<execution>` page whose execution was erased (or never existed). */
+/** A `ressac://action/<id>/<execution>` page whose execution was erased (or never existed). */
 export const RESULT_GONE = "Ce résultat n'existe plus";
 
 /** An action's result images, fetched by the chrome (chrome/store/action-media.ts). */
-export const SCHEMA_IMAGE = "webaios-image";
+export const SCHEMA_IMAGE = "ressac-image";
 
 export const urlImage = (id: string, execution: string, url: string) => `${SCHEMA_IMAGE}://${id}/${execution}?u=${encodeURIComponent(url)}`;
 

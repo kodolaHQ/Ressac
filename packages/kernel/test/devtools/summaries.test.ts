@@ -168,7 +168,7 @@ describe("memory summary", () => {
 
 const census = (objects: Record<string, [number, number]>, total: number): string =>
   JSON.stringify({
-    format: "webaios-firefox-census",
+    format: "ressac-firefox-census",
     total,
     byConstructor: Object.entries(objects).map(([name, [count, size]]) => ({ name: name, count: count, size: size })),
   });

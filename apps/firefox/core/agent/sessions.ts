@@ -1,4 +1,4 @@
-import { WorkshopError, type BuildProgress } from "@webaios/kernel";
+import { WorkshopError, type BuildProgress } from "@ressac/kernel";
 import type { AgentPanelState, TerminalSize } from "../../shared/api";
 import type { WindowId } from "../../shared/model";
 

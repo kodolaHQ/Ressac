@@ -1,9 +1,9 @@
 // Spike S8 (plan 35, docs/superpowers/notes/2026-11-06-mode-design-firefox-spikes.md): an agent app's window, built
 // the way store/sites.ts builds a site app's, with an origin rule (http://localhost:<port>) instead of domains.
-// Throwaway: imported in the parent from resource://webaios-spike-apps/ by apps.e2e.ts. Not product code.
+// Throwaway: imported in the parent from resource://ressac-spike-apps/ by apps.e2e.ts. Not product code.
 
 const { ContextualIdentityService } = ChromeUtils.importESModule("moz-src:///toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs");
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const PREFIX = "userContextIdInternal.webaios-app-";
 const ICON_MAX = 64 * 1024;
 
@@ -19,7 +19,7 @@ const sameOrigin = (a, b) => {
   }
 };
 
-/** containers.ts's containerFor, under the `webaios-app-` prefix. */
+/** containers.ts's containerFor, under the `ressac-app-` prefix. */
 export function containerFor(folder) {
   const name = PREFIX + folder;
   const found = ContextualIdentityService.getPrivateIdentity(name);
@@ -84,7 +84,7 @@ const observer = {
 };
 
 /** sites.ts's viewPolicy: an app view loads only http(s) documents (file:, data:, blob:, external schemes refused). */
-const POLICY_CONTRACT = "@webaios/spike-app-view-policy;1";
+const POLICY_CONTRACT = "@ressac/spike-app-view-policy;1";
 const policy = {
   classID: Components.ID("{3b0e6a52-7c1d-4e8f-9a21-5d4c3b2a1f09}"),
   QueryInterface: ChromeUtils.generateQI(["nsIContentPolicy", "nsIFactory"]),
@@ -127,7 +127,7 @@ export async function open(folder, origin, path = "/") {
   apps.set(folder, a);
   await new Promise((r) => win.addEventListener("load", r, { once: true }));
   await win.delayedStartupPromise;
-  win.document.documentElement.setAttribute("webaios-spike-app", folder);
+  win.document.documentElement.setAttribute("ressac-spike-app", folder);
   win.document.getElementById("navigator-toolbox").hidden = true;
   win.CanCloseWindow = () => true;
   // site-window.ts's routeOpens: window.open and target=_blank become a main window tab; nothing opens here.
@@ -160,7 +160,7 @@ export async function open(folder, origin, path = "/") {
   return { userContextId, browserId: a.view.browserId };
 }
 
-/** WebAiOs's own load in the view (the system principal), resolved when it stops. */
+/** Ressac's own load in the view (the system principal), resolved when it stops. */
 export function load(folder, url) {
   const view = apps.get(folder).view;
   return new Promise((resolve) => {

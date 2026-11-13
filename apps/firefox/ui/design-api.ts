@@ -1,4 +1,4 @@
-import type { Action, ApiDesign, ApiWebaios, ShownElement, ExternalsState, BatchShown, ExtensionResult } from "../shared/api";
+import type { Action, ApiDesign, ApiRessac, ShownElement, ExternalsState, BatchShown, ExtensionResult } from "../shared/api";
 import type { WindowId } from "../shared/model";
 import { HOST_EXITED, type AgentHost } from "../chrome/agent/host";
 import type { WindowController } from "../chrome/window/controller";
@@ -30,12 +30,12 @@ export function createExternalApi(o: {
   window: WindowId;
   dispatch: (a: Action) => void;
   untilUnload: (f: () => void) => () => void;
-}): ApiWebaios["external"] {
+}): ApiRessac["external"] {
   const { host } = o;
   const call = (method: string, params: unknown) =>
     host.request(method, params).then(
       () => {},
-      (e) => console.error(`[webaios] ${method} :`, local(e).message),
+      (e) => console.error(`[ressac] ${method} :`, local(e).message),
     );
   return {
     // A host that does not answer: the off server with its reason (spec §5.10).
@@ -68,14 +68,14 @@ export function createExternalApi(o: {
         (name) => {
           if (typeof name === "string") o.dispatch({ type: "openReview", windowId: o.window, project: "ext-" + id, name: name.slice(0, 80) });
         },
-        (e) => console.error("[webaios] externes.nom :", local(e).message),
+        (e) => console.error("[ressac] externes.nom :", local(e).message),
       );
     },
   };
 }
 
 /** The Review page: the shared guards, then the handler of the same name; a rejection keeps its message. */
-export function createReviewApi(o: { host: Pick<AgentHost, "request"> }): ApiWebaios["review"] {
+export function createReviewApi(o: { host: Pick<AgentHost, "request"> }): ApiRessac["review"] {
   const ask = <T>(method: string, params: Record<string, unknown>): Promise<T> =>
     o.host.request<T>(method, params).then(
       (v) => structuredClone(v),

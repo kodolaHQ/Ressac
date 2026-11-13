@@ -5,18 +5,18 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { APPS_ENV, appWindowExpr, inAppView, launchAttempt, writeProject } from "./apps";
 import { dispatch, state, waitFor, waitReady } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
 import { grantSite, inSiteView, siteWindowExpr, writeSite } from "./sites";
 import { consoleWith, DATA_PNG, NET_PREFS, netEnv, resolvedNames, rtcPage, SFX, startNetWitness, testPages, uiRefusals, widgetFiles } from "./ui-network";
 
-// The UI's network (spec 2026-11-08-webaios-firefox-reseau-interfaces-design.md): nothing the UI shows reaches a server
+// The UI's network (spec 2026-11-08-ressac-firefox-reseau-interfaces-design.md): nothing the UI shows reaches a server
 // or makes a name resolve. One launch for the file. Ports: 15365 (HTTP/WS, logged by host), 15366 (TCP counter: fake
 // TURN), 15367 (UDP counter: fake STUN), 15370-15374 (agent apps). The zero counters are the acceptance.
 
 const HTTP = 15365;
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const host = (name: string) => `${name}.${SFX}:${HTTP}`;
 
@@ -140,7 +140,7 @@ const DNS_SCRIPT =
   "create:TypeError inner:TypeError srcdoc:TypeError meta:TypeError image:passé ancre:passé createDocument:TypeError importNode:TypeError htmlDocument:TypeError fragment:TypeError execCommand:TypeError srcdocEntites:TypeError";
 
 /**
- * Links a person presses: #l opens its address in a tab through webaiosOpen (the click handler), #p is a plain link,
+ * Links a person presses: #l opens its address in a tab through ressacOpen (the click handler), #p is a plain link,
  * #s an SVG link. The display's own capture listener tries to stop every mousedown before the chrome sees it.
  */
 /**
@@ -186,11 +186,11 @@ const linksDisplay = `<!doctype html><meta charset="utf-8"><title>lien</title>
 <script>
   addEventListener("mousedown", (e) => e.stopImmediatePropagation(), true);
   const l = document.getElementById("l");
-  l.addEventListener("click", (e) => { e.preventDefault(); l.dataset.clicks = String(Number(l.dataset.clicks || 0) + 1); webaiosOpen("http://${host("ouvert")}/ouvert"); });
+  l.addEventListener("click", (e) => { e.preventDefault(); l.dataset.clicks = String(Number(l.dataset.clicks || 0) + 1); ressacOpen("http://${host("ouvert")}/ouvert"); });
 </script>`;
 
 describe("the UI's network", () => {
-  let w: LaunchedWebAiOs;
+  let w: LaunchedRessac;
   let m: Marionette;
   let dataDir: string;
   let logDir: string;
@@ -201,15 +201,15 @@ describe("the UI's network", () => {
   /** A frame `<iframe sandbox="allow-scripts">` appended to the sidebar on `src`; resolves once its document is `src`. */
   const sidebarFrame = (id: string, src: string, sandbox: string | null = "allow-scripts") =>
     m.execute(
-      `return (async () => { const sb = document.getElementById("webaios-sidebar").contentDocument;
+      `return (async () => { const sb = document.getElementById("ressac-sidebar").contentDocument;
        const f = sb.createElement("iframe"); f.id = arguments[0]; if (arguments[2] !== null) f.setAttribute("sandbox", arguments[2]); f.style.cssText = "width:20px;height:20px;border:0";
        sb.body.append(f); f.setAttribute("src", arguments[1]);
        for (let i = 0; i < 100 && f.contentDocument?.documentURI !== arguments[1]; i++) await new Promise((r) => setTimeout(r, 50));
        return f.contentDocument?.documentURI; })();`,
       [id, src, sandbox],
     );
-  const widgetDoc = (id: string) => `document.getElementById("webaios-sidebar").contentDocument.querySelector('[data-testid="widget-${id}"] iframe')?.contentDocument`;
-  const widgetFrame = (id: string) => `document.getElementById("webaios-sidebar").contentDocument.querySelector('[data-testid="widget-${id}"] iframe')`;
+  const widgetDoc = (id: string) => `document.getElementById("ressac-sidebar").contentDocument.querySelector('[data-testid="widget-${id}"] iframe')?.contentDocument`;
+  const widgetFrame = (id: string) => `document.getElementById("ressac-sidebar").contentDocument.querySelector('[data-testid="widget-${id}"] iframe')`;
   /** A frame's cut, read on its docShell: { dns: allowDNSPrefetch, mail: appType is APP_TYPE_MAIL, uri: its document }. */
   const CUT = `const cut = (el) => { const ds = el?.frameLoader?.docShell; return ds ? { dns: ds.allowDNSPrefetch, mail: ds.appType === Ci.nsIDocShell.APP_TYPE_MAIL, uri: el.contentDocument?.documentURI } : null; };`;
   const tcpSince = (n: number) => net.tcp.length - n;
@@ -219,7 +219,7 @@ describe("the UI's network", () => {
    */
   const press = (id: string, sel: string, click: boolean) =>
     m.execute<string | null>(
-      `return (async () => { const sb = document.getElementById("webaios-sidebar"), ui = sb.contentWindow, f = ${widgetFrame(id)};
+      `return (async () => { const sb = document.getElementById("ressac-sidebar"), ui = sb.contentWindow, f = ${widgetFrame(id)};
        f.scrollIntoView({ block: "center" });
        await new Promise((r) => ui.requestAnimationFrame(r));
        const el = f.contentDocument.querySelector(arguments[0]);
@@ -243,9 +243,9 @@ describe("the UI's network", () => {
 
   beforeAll(async () => {
     net = await startNetWitness({ http: HTTP, raw: 15366, udp: 15367 });
-    dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
-    logDir = await mkdtemp(path.join(os.tmpdir(), "webaios-dnslog-"));
-    pages = await mkdtemp(path.join(os.tmpdir(), "webaios-net-pages-"));
+    dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
+    logDir = await mkdtemp(path.join(os.tmpdir(), "ressac-dnslog-"));
+    pages = await mkdtemp(path.join(os.tmpdir(), "ressac-net-pages-"));
     writeFileSync(path.join(pages, "rtc.html"), rtcPage("rtcp"));
     writeFileSync(path.join(pages, "loads.html"), loadsPage);
     writeFileSync(path.join(pages, "wt.html"), webTransportPage);
@@ -275,7 +275,7 @@ describe("the UI's network", () => {
     const withHome = { name: "Netsite accueil", url: `http://netsite-accueil.localhost:${HTTP}/page`, domains: ["netsite-accueil.localhost"] };
     writeSite(dataDir, "netsite-accueil", { declaration: withHome, files: { "home/index.html": '<!doctype html><meta charset="utf-8"><p id="h">accueil</p>' } });
     await grantSite(dataDir, "netsite-accueil", withHome);
-    w = await launchWebAiOs({ dataDir, prefs: NET_PREFS, env: { ...netEnv(logDir), WEBAIOS_TEST_LOCAL_ADDRESSES: "1", ...APPS_ENV([15370, 15374]) } });
+    w = await launchRessac({ dataDir, prefs: NET_PREFS, env: { ...netEnv(logDir), RESSAC_TEST_LOCAL_ADDRESSES: "1", ...APPS_ENV([15370, 15374]) } });
     m = w.marionette;
     await m.setContext("chrome");
     await waitReady(m);
@@ -305,9 +305,9 @@ describe("the UI's network", () => {
     expect(await data("fuite")).toBe('"reste"');
     expect(await data("fuite-data")).toBe('"reste"');
     const uris = await m.execute<string[]>(
-      `return ["espion", "fuite", "fuite-data", "fuite-cadres"].map((id) => document.getElementById("webaios-sidebar").contentDocument.querySelector('[data-testid="widget-' + id + '"] iframe')?.contentDocument?.documentURI ?? "none");`,
+      `return ["espion", "fuite", "fuite-data", "fuite-cadres"].map((id) => document.getElementById("ressac-sidebar").contentDocument.querySelector('[data-testid="widget-' + id + '"] iframe')?.contentDocument?.documentURI ?? "none");`,
     );
-    for (const u of uris) expect(u, "each widget frame stays on its copy").toMatch(/^resource:\/\/webaios-widget-/);
+    for (const u of uris) expect(u, "each widget frame stays on its copy").toMatch(/^resource:\/\/ressac-widget-/);
     expect(net.hits.filter((h) => /espion|fuite/.test(h.label + h.path)).map((h) => `${h.label} ${h.method} ${h.path}`)).toEqual([]);
     expect((await names()).filter((n) => /espion|fuite/.test(n)), "no name resolved").toEqual([]);
     expect(net.tcp.length, "TCP connections to the fake TURN").toBe(0);
@@ -318,8 +318,8 @@ describe("the UI's network", () => {
   it("the net: a UI document without the widget guard reaches no server by WebRTC", { timeout: 120_000 }, async () => {
     const tcp0 = net.tcp.length;
     const udp0 = net.udp.length;
-    expect(await sidebarFrame("rtc-net", "resource://webaios-test-net/rtc.html")).toBe("resource://webaios-test-net/rtc.html");
-    const result = () => m.execute<string | null>(`return document.getElementById("webaios-sidebar").contentDocument.getElementById("rtc-net")?.contentDocument?.getElementById("r")?.textContent ?? null;`);
+    expect(await sidebarFrame("rtc-net", "resource://ressac-test-net/rtc.html")).toBe("resource://ressac-test-net/rtc.html");
+    const result = () => m.execute<string | null>(`return document.getElementById("ressac-sidebar").contentDocument.getElementById("rtc-net")?.contentDocument?.getElementById("r")?.textContent ?? null;`);
     await expect.poll(result, { timeout: 30_000 }).toMatch(/^\[/);
     await sleep(3000);
     const [main, blank] = JSON.parse((await result())!) as { result?: string; ms?: number; error?: string }[];
@@ -334,7 +334,7 @@ describe("the UI's network", () => {
   it("the sidebar and the agent panel load nothing from the web: an <img> and a background-image in http, https or ws, even 127.0.0.1, are refused; a data: image shows", { timeout: 120_000 }, async () => {
     const widths = await m.execute<Record<string, number>>(
       `return (async () => { const out = {};
-       for (const [tag, id] of [["sb", "webaios-sidebar"], ["ag", "webaios-agent"]]) {
+       for (const [tag, id] of [["sb", "ressac-sidebar"], ["ag", "ressac-agent"]]) {
          const d = document.getElementById(id).contentDocument;
          const u = (name, scheme = "http") => scheme + "://" + name + "." + arguments[0] + ":${HTTP}/" + name;
          for (const src of [u(tag + "-img"), u(tag + "-imgs", "https"), "http://127.0.0.1:${HTTP}/" + tag + "-local.png"]) { const i = d.createElement("img"); i.src = src; d.body.append(i); }
@@ -357,13 +357,13 @@ describe("the UI's network", () => {
 
   it("an unguarded opaque page in the sidebar loads nothing: fetch, WebSocket, sendBeacon, img, font, frame, a worker's fetch and WebSocket, WebTransport", { timeout: 120_000 }, async () => {
     const udp0 = net.udp.length;
-    expect(await sidebarFrame("loads-net", "resource://webaios-test-net/loads.html")).toBe("resource://webaios-test-net/loads.html");
+    expect(await sidebarFrame("loads-net", "resource://ressac-test-net/loads.html")).toBe("resource://ressac-test-net/loads.html");
     // WebTransport and, in the parent process, a worker's fetch have no context: they are judged by their principal, so
     // their pages are served under a UI prefix (still unguarded, no CSP).
-    await testPages(m, pages, "webaios-widget-test-net");
-    expect(await sidebarFrame("wt-net", "resource://webaios-widget-test-net/wt.html")).toBe("resource://webaios-widget-test-net/wt.html");
-    expect(await sidebarFrame("worker-net", "resource://webaios-widget-test-net/worker.html", null)).toBe("resource://webaios-widget-test-net/worker.html");
-    const title = (id: string) => m.execute<string>(`return document.getElementById("webaios-sidebar").contentDocument.getElementById(arguments[0]).contentDocument.title;`, [id]);
+    await testPages(m, pages, "ressac-widget-test-net");
+    expect(await sidebarFrame("wt-net", "resource://ressac-widget-test-net/wt.html")).toBe("resource://ressac-widget-test-net/wt.html");
+    expect(await sidebarFrame("worker-net", "resource://ressac-widget-test-net/worker.html", null)).toBe("resource://ressac-widget-test-net/worker.html");
+    const title = (id: string) => m.execute<string>(`return document.getElementById("ressac-sidebar").contentDocument.getElementById(arguments[0]).contentDocument.title;`, [id]);
     await expect.poll(() => title("worker-net"), { timeout: 10_000 }).toBe("worker ran");
     expect(await title("wt-net")).toBe("function");
     await sleep(3000);
@@ -383,7 +383,7 @@ describe("the UI's network", () => {
     await expect.poll(() => m.execute(`return ${widgetDoc("actus-tech")}?.querySelector("#list li")?.textContent ?? "";`), { timeout: 10_000 }).toContain("Un modèle de langage");
     // A link and a preconnect, inserted by the chrome, in a widget, its about:blank child and the sidebar.
     await m.execute(
-      `return (async () => { const sb = document.getElementById("webaios-sidebar").contentDocument, wd = ${widgetDoc("sonde")};
+      `return (async () => { const sb = document.getElementById("ressac-sidebar").contentDocument, wd = ${widgetDoc("sonde")};
        const blank = wd.createElement("iframe"); wd.body.append(blank);
        for (let i = 0; i < 40 && blank.contentDocument?.readyState !== "complete"; i++) await new Promise((r) => setTimeout(r, 50));
        const add = (doc, tag) => {
@@ -402,27 +402,27 @@ describe("the UI's network", () => {
   });
 
   it("the five UI frames are cut before they load", { timeout: 120_000 }, async () => {
-    await expect.poll(() => existsSync(path.join(dataDir, "workspace", ".webaios", "mcp.json")), { timeout: 15_000 }).toBe(true);
+    await expect.poll(() => existsSync(path.join(dataDir, "workspace", ".ressac", "mcp.json")), { timeout: 15_000 }).toBe(true);
     await launchAttempt(dataDir);
     await m.execute(`return (async () => { const store = await ChromeUtils.importESModule("${STORE}").ready; await store.agent.request("sites.act", { id: "netsite", action: "open", window: store.state.windows[0].id }); })();`);
     const frames = () =>
       m.execute(
         `${CUT} const site = ${siteWindowExpr("netsite")}, app = ${appWindowExpr("essai")};
-         return { sidebar: cut(document.getElementById("webaios-sidebar")), agent: cut(document.getElementById("webaios-agent")), bar: cut(site?.document.getElementById("webaios-site-bar")),
-                  badge: cut(app?.document.getElementById("webaios-app-badge")), drag: document.getElementById("webaios-sidebar").contentWindow.docShell.windowDraggingAllowed };`,
+         return { sidebar: cut(document.getElementById("ressac-sidebar")), agent: cut(document.getElementById("ressac-agent")), bar: cut(site?.document.getElementById("ressac-site-bar")),
+                  badge: cut(app?.document.getElementById("ressac-app-badge")), drag: document.getElementById("ressac-sidebar").contentWindow.docShell.windowDraggingAllowed };`,
       );
-    const page = (p: string) => ({ dns: false, mail: true, uri: `chrome://browser/content/webaios/${p}` });
+    const page = (p: string) => ({ dns: false, mail: true, uri: `chrome://browser/content/ressac/${p}` });
     await expect.poll(frames, { timeout: 20_000 }).toEqual({ sidebar: page("sidebar.html"), agent: page("agent.html"), bar: page("sidebar.html?site=netsite"), badge: page("sidebar.html?badge=app%3Aessai"), drag: true });
   });
 
   it("the badge and the site bar are cut; their loads are refused", { timeout: 60_000 }, async () => {
-    const badge = `${appWindowExpr("essai")}.document.getElementById("webaios-app-badge")`;
+    const badge = `${appWindowExpr("essai")}.document.getElementById("ressac-app-badge")`;
     const size = () => m.execute<number[]>(`const r = ${badge}.getBoundingClientRect(); return [r.width, r.height];`);
-    await expect.poll(() => m.execute(`return !!${badge}.contentDocument.querySelector('[data-testid="webaios-pill"]');`), { timeout: 15_000 }).toBe(true);
+    await expect.poll(() => m.execute(`return !!${badge}.contentDocument.querySelector('[data-testid="ressac-pill"]');`), { timeout: 15_000 }).toBe(true);
     // 88×28: 48×28 and the agent's access button (apps-badge.e2e.ts).
     await expect.poll(size, { timeout: 10_000 }).toEqual([88, 28]);
     await m.execute(
-      `for (const [tag, d] of [["bar", ${siteWindowExpr("netsite")}.document.getElementById("webaios-site-bar").contentDocument], ["badge", ${badge}.contentDocument]]) {
+      `for (const [tag, d] of [["bar", ${siteWindowExpr("netsite")}.document.getElementById("ressac-site-bar").contentDocument], ["badge", ${badge}.contentDocument]]) {
          const i = d.createElement("img"); i.style.cssText = "position:absolute;width:1px;height:1px"; i.src = "http://" + tag + "-img." + arguments[0] + ":${HTTP}/" + tag + "-img.png"; d.body.append(i);
        }`,
       [SFX],
@@ -445,7 +445,7 @@ describe("the UI's network", () => {
     await expect.poll(async () => (id = Object.entries((await state(m)).tabs).find(([, o]) => o.url.includes("/avec-icone"))?.[0] ?? ""), { timeout: 10_000 }).not.toBe("");
     const icon = () =>
       m.execute<{ src: string; width: number } | null>(
-        `const i = document.getElementById("webaios-sidebar").contentDocument.querySelector(arguments[0]); return i ? { src: i.src, width: i.complete ? i.naturalWidth : 0 } : null;`,
+        `const i = document.getElementById("ressac-sidebar").contentDocument.querySelector(arguments[0]); return i ? { src: i.src, width: i.complete ? i.naturalWidth : 0 } : null;`,
         [`[data-testid="tab-${id}"] img`],
       );
     await expect.poll(async () => (await icon())?.width, { timeout: 15_000 }).toBe(1);
@@ -514,15 +514,15 @@ describe("the UI's network", () => {
       await expect.poll(() => tcpSince(tcp0), { timeout: 10_000, message: name }).toBeGreaterThan(0);
     }
     // The opaque home of netsite-accueil is the UI's: its image is refused.
-    const home = `${siteWindowExpr("netsite-accueil")}?.document.getElementById("webaios-site-bar")?.contentDocument?.querySelector('[data-testid="site-home-frame"]')?.contentDocument`;
+    const home = `${siteWindowExpr("netsite-accueil")}?.document.getElementById("ressac-site-bar")?.contentDocument?.querySelector('[data-testid="site-home-frame"]')?.contentDocument`;
     await expect.poll(() => m.execute(`return ${home}?.getElementById("h")?.textContent ?? null;`), { timeout: 15_000 }).toBe("accueil");
     await m.execute(`const d = ${home}; const i = d.createElement("img"); i.src = arguments[0]; d.body.append(i);`, [`http://${host("netsite-img")}/x.png`]);
     await sleep(3000);
     expect(net.hits.filter((h) => h.label === "netsite-img")).toEqual([]);
     expect((await names()).filter((n) => n === "netsite-img")).toEqual([]);
     const refused = (await uiRefusals(m)).slice(refused0);
-    // Measured: the home's own CSP (img-src data: resource://webaios-site-…) refuses it before the content policy is asked.
-    expect((await consoleWith(m, "netsite-img.")).join("\n")).toMatch(/Content-Security-Policy.*netsite-img\..*img-src data: resource:\/\/webaios-site-netsite-accueil-/);
+    // Measured: the home's own CSP (img-src data: resource://ressac-site-…) refuses it before the content policy is asked.
+    expect((await consoleWith(m, "netsite-img.")).join("\n")).toMatch(/Content-Security-Policy.*netsite-img\..*img-src data: resource:\/\/ressac-site-netsite-accueil-/);
     // Behind the CSP, the net would refuse it too: the predicate judges the home the UI's.
     expect(await m.execute(`return ChromeUtils.importESModule("${STORE}").uiNetwork.isUiDocument(${home});`)).toBe(true);
     expect(refused.filter((r) => /netsite(-accueil)?\.localhost|\/page|localhost:/.test(r) || r.includes(`:${port}`))).toEqual([]);
@@ -563,7 +563,7 @@ describe("the UI's network", () => {
     const dns = await m.execute(
       `const out = {};
        for (const id of ["sonde", "tard"]) {
-         const f = document.getElementById("webaios-sidebar").contentDocument.querySelector('[data-testid="widget-' + id + '"] iframe'), d = f.contentDocument;
+         const f = document.getElementById("ressac-sidebar").contentDocument.querySelector('[data-testid="widget-' + id + '"] iframe'), d = f.contentDocument;
          const a = d.createElement("a"); a.href = "http://rr-" + id + "." + arguments[0] + ":15366/"; a.textContent = "rr"; d.body.append(a);
          out[id] = f.frameLoader.docShell.allowDNSPrefetch;
        }
@@ -600,7 +600,7 @@ describe("the UI's network", () => {
   it("hovering a widget's link resolves no name and opens no connection", { timeout: 60_000 }, async () => {
     const tcp0 = net.tcp.length;
     await m.execute(
-      `return (async () => { const sb = document.getElementById("webaios-sidebar"), ui = sb.contentWindow, f = ${widgetFrame("ombre")};
+      `return (async () => { const sb = document.getElementById("ressac-sidebar"), ui = sb.contentWindow, f = ${widgetFrame("ombre")};
        f.scrollIntoView({ block: "center" });
        await new Promise((r) => ui.requestAnimationFrame(r));
        const r = f.getBoundingClientRect(), q = f.contentDocument.getElementById("hv").getBoundingClientRect();
@@ -615,7 +615,7 @@ describe("the UI's network", () => {
     expect(await press("lien", "#p", true)).toBe("iframe");
     await sleep(3000);
     expect(net.hits.filter((h) => h.label === "plain")).toEqual([]);
-    expect(await m.execute(`return ${widgetDoc("lien")}?.documentURI;`)).toMatch(/^resource:\/\/webaios-widget-lien\//);
+    expect(await m.execute(`return ${widgetDoc("lien")}?.documentURI;`)).toMatch(/^resource:\/\/ressac-widget-lien\//);
     // Measured: the sidebar's CSP (frame-src resource:) refuses it before the content policy is asked.
     expect((await consoleWith(m, "plain.")).join("\n")).toMatch(/Content-Security-Policy.*plain\..*frame-src resource:/);
   });
@@ -626,7 +626,7 @@ describe("the UI's network", () => {
     await sleep(2000);
     const enterOn = (sel: string) =>
       m.execute<string | null>(
-        `const sb = document.getElementById("webaios-sidebar"), d = ${widgetDoc("lien")}, el = d.querySelector(arguments[0]);
+        `const sb = document.getElementById("ressac-sidebar"), d = ${widgetDoc("lien")}, el = d.querySelector(arguments[0]);
          window.focus(); el.focus();
          const focused = d.activeElement?.id ?? null;
          const tip = Cc["@mozilla.org/text-input-processor;1"].createInstance(Ci.nsITextInputProcessor);
@@ -670,7 +670,7 @@ describe("the UI's network", () => {
     const tcp0 = net.tcp.length;
     const http0 = net.httpConns();
     const hit = await m.execute(
-      `return (async () => { const sb = document.getElementById("webaios-sidebar"), d = sb.contentDocument, ui = sb.contentWindow;
+      `return (async () => { const sb = document.getElementById("ressac-sidebar"), d = sb.contentDocument, ui = sb.contentWindow;
        const a = d.createElement("a"); a.id = "sys-md"; a.href = "http://sys-md." + arguments[0] + ":15366/"; a.textContent = "sys sys sys";
        a.style.cssText = "position:fixed;left:20px;top:200px;z-index:2147483647;font-size:20px;background:white";
        d.body.append(a);
@@ -703,14 +703,14 @@ describe("the UI's network", () => {
     const tcp0 = net.tcp.length;
     const http0 = net.httpConns();
     // Refused at once (NS_ERROR_CONTENT_BLOCKED, thrown by the setter): what counts is that nothing reaches the server.
-    for (const [tag, id] of [["ag", "webaios-agent"], ["sb", "webaios-sidebar"]])
+    for (const [tag, id] of [["ag", "ressac-agent"], ["sb", "ressac-sidebar"]])
       await m.execute(`try { document.getElementById(arguments[0]).contentWindow.location.href = arguments[1]; } catch (e) {}`, [id, `http://${host(`selfnav-${tag}`)}/selfnav-${tag}`]);
     await sleep(3000);
     expect(net.hits.filter((h) => h.label.startsWith("selfnav-")).map((h) => `${h.label} ${h.path}`)).toEqual([]);
     expect({ names: (await names()).filter((n) => n.startsWith("selfnav-")), tcp: tcpSince(tcp0), httpConns: net.httpConns() - http0 }).toEqual({ names: [], tcp: 0, httpConns: 0 });
-    expect(await m.execute(`return ["webaios-agent", "webaios-sidebar"].map((id) => document.getElementById(id).contentDocument?.documentURI);`)).toEqual([
-      "chrome://browser/content/webaios/agent.html",
-      "chrome://browser/content/webaios/sidebar.html",
+    expect(await m.execute(`return ["ressac-agent", "ressac-sidebar"].map((id) => document.getElementById(id).contentDocument?.documentURI);`)).toEqual([
+      "chrome://browser/content/ressac/agent.html",
+      "chrome://browser/content/ressac/sidebar.html",
     ]);
     // Measured: browser.xhtml's CSP (frame-src chrome:) refuses both before the content policy or the observer is asked.
     const csp = (await consoleWith(m, "selfnav-")).join("\n");

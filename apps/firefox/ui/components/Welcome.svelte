@@ -111,13 +111,13 @@
 
 <div class="welcome" style={Object.entries(auraVariables(aura)).map(([k, v]) => `${k}:${v}`).join(";")}>
   <div class="aura" aria-hidden="true"><i></i><i></i><i></i></div>
-  <div class="panel" role="dialog" aria-modal="true" aria-label="Bienvenue dans WebAiOs">
+  <div class="panel" role="dialog" aria-modal="true" aria-label="Bienvenue dans Ressac">
     {#key step.page}
       <section class="page" data-testid="welcome-{step.page}">
         {#if step.page === 1}
           <div class="hero">
             <img src="chrome://branding/content/about-logo.svg" alt="" width="96" height="96" />
-            <h1 class="brand">webaios</h1>
+            <h1 class="brand">ressac</h1>
             <p class="lead">Un navigateur calme, avec un agent quand vous le voulez.</p>
           </div>
           {@render actions("Commencer", false)}
@@ -171,7 +171,7 @@
           <p>Une petite IA tourne sur votre Mac, en plus de l'agent. Elle est gratuite et rien de ce qu'elle lit ne quitte votre machine. Elle sert à :</p>
           <ul>
             <li>surveiller l'agent : elle le met en pause quand une de ses actions paraît étrange ;</li>
-            <li>trier pour vous : quand WebAiOs suit un sujet à votre place, elle choisit ce qui mérite de vous être montré ;</li>
+            <li>trier pour vous : quand Ressac suit un sujet à votre place, elle choisit ce qui mérite de vous être montré ;</li>
             <li>rédiger les résumés.</li>
           </ul>
           <p>Il lui faut Ollama, le logiciel libre qui la fait fonctionner, et deux modèles à télécharger.</p>
@@ -193,7 +193,7 @@
             {:else if pulling}
               {@render status("welcome-ollama", "ok", "Installation lancée : une notification vous préviendra quand ce sera prêt. Le suivi est dans Réglages › IA locale.")}
             {:else if runtime?.kind === "absent"}
-              {@render status("welcome-ollama", "warn", pullError ?? "L'IA locale n'est pas installée. WebAiOs télécharge Ollama (190 Mo), puis ses modèles (plusieurs Go).")}
+              {@render status("welcome-ollama", "warn", pullError ?? "L'IA locale n'est pas installée. Ressac télécharge Ollama (190 Mo), puis ses modèles (plusieurs Go).")}
               <button type="button" data-testid="welcome-install-ai" onclick={() => void pullInBackground([OLLAMA_ITSELF, ...missing])}>Installer en arrière-plan</button>
             {:else if runtime?.kind === "stopped"}
               {@render status("welcome-ollama", "warn", pullError ?? "Ollama est installé mais arrêté.")}
@@ -218,7 +218,7 @@
               {/each}
             </div>
             <div class="check">
-              <p class="note">Pour recevoir les alertes des sites et de la veille, autorisez les notifications de WebAiOs dans les Réglages Système.</p>
+              <p class="note">Pour recevoir les alertes des sites et de la veille, autorisez les notifications de Ressac dans les Réglages Système.</p>
               <button type="button" data-testid="welcome-notifications" onclick={() => api.settings.openNotificationSettings()}>Ouvrir les réglages de notifications</button>
             </div>
             <div class="actions">
@@ -278,9 +278,9 @@
     font-size: 14px;
     line-height: 1.5;
     -moz-window-dragging: no-drag;
-    animation: webaios-drop var(--spring-d) var(--spring) backwards;
+    animation: ressac-drop var(--spring-d) var(--spring) backwards;
   }
-  .page { display: flex; flex-direction: column; gap: 14px; min-height: 352px; animation: webaios-rise var(--spring-d) var(--spring) backwards; }
+  .page { display: flex; flex-direction: column; gap: 14px; min-height: 352px; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   form { display: contents; }
   h2 { margin: 0; font: 600 26px/1.15 var(--font-display); letter-spacing: -0.02em; }
   p { margin: 0; }

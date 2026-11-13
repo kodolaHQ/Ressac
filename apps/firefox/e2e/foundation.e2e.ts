@@ -2,18 +2,18 @@ import { realpathSync } from "node:fs";
 import os from "node:os";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { dispatch, state, waitFor } from "./firefox";
-import { FAKE_TOOLS, launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { FAKE_TOOLS, launchRessac, type LaunchedRessac } from "./launch";
 
-describe("WebAiOs-Firefox foundation", () => {
-  let w: LaunchedWebAiOs;
+describe("Ressac foundation", () => {
+  let w: LaunchedRessac;
   beforeAll(async () => {
-    w = await launchWebAiOs();
+    w = await launchRessac();
     await w.marionette.setContext("chrome");
   });
   afterAll(() => w?.close());
 
   it("starts headless and answers", async () => {
-    expect(await w.marionette.execute("return Services.appinfo.name")).toBe("WebAiOs");
+    expect(await w.marionette.execute("return Services.appinfo.name")).toBe("Ressac");
   });
 
   it("uses the temporary profile", async () => {
@@ -28,7 +28,7 @@ describe("WebAiOs-Firefox foundation", () => {
     expect(await w.marionette.execute("return gBrowser.tabs.length")).toBe(1);
   });
 
-  it("applies the WebAiOs default prefs", async () => {
+  it("applies the Ressac default prefs", async () => {
     expect(
       await w.marionette.execute(
         "return [Services.prefs.getBoolPref('devtools.chrome.enabled'), Services.prefs.getBoolPref('devtools.debugger.remote-enabled'), Services.prefs.getIntPref('browser.tabs.inTitlebar')]",
@@ -60,7 +60,7 @@ describe("WebAiOs-Firefox foundation", () => {
   it("renders the sidebar as HTML", async () => {
     // Waits for the sidebar iframe to load, then reads its root element.
     const root = await w.marionette.execute<{ ns: string; text: string } | null>(`return (async () => {
-      const frame = document.getElementById("webaios-sidebar");
+      const frame = document.getElementById("ressac-sidebar");
       if (!frame) return null;
       for (let i = 0; i < 100; i++) {
         const el = frame.contentDocument?.querySelector('[data-testid="sidebar"]');
@@ -75,7 +75,7 @@ describe("WebAiOs-Firefox foundation", () => {
 
   it("the UI uses the bundled Aura fonts and tokens", async () => {
     const r = await w.marionette.execute<{ family: string; faces: number; a1: string; accent: string } | null>(`return (async () => {
-      const frame = document.getElementById("webaios-sidebar");
+      const frame = document.getElementById("ressac-sidebar");
       for (let i = 0; i < 100 && !frame?.contentDocument?.querySelector('[data-testid="sidebar"]'); i++) await new Promise((r) => setTimeout(r, 100));
       const d = frame?.contentDocument;
       if (!d) return null;
@@ -98,7 +98,7 @@ describe("WebAiOs-Firefox foundation", () => {
   });
 
   it("covers the window left of the agent panel with the UI while no page is shown, then keeps the left 240 px", async () => {
-    const rect = "const r = document.getElementById('webaios-sidebar')?.getBoundingClientRect(); return r ? { left: r.left, width: r.width } : null";
+    const rect = "const r = document.getElementById('ressac-sidebar')?.getBoundingClientRect(); return r ? { left: r.left, width: r.width } : null";
     // The home page opens the 420 px agent panel.
     await waitFor(w.marionette, rect, (r: { left: number; width: number } | null) => r?.left === 0 && r.width === 1280 - 420);
     const f = (await state(w.marionette)).windows[0]!;
@@ -114,7 +114,7 @@ describe("WebAiOs-Firefox foundation", () => {
       });
       for (let i = 0; i < 100 && b.contentTitle !== "essai"; i++) await new Promise((res) => setTimeout(res, 100));
       const rect = b.getBoundingClientRect();
-      const agent = document.getElementById("webaios-agent");
+      const agent = document.getElementById("ressac-agent");
       return { title: b.contentTitle, left: rect.left, right: rect.left + rect.width, edge: agent.hidden ? window.innerWidth : agent.getBoundingClientRect().left };
     })();`);
     expect(r.title).toBe("essai");
@@ -124,16 +124,16 @@ describe("WebAiOs-Firefox foundation", () => {
   });
 });
 
-describe("several WebAiOs-Firefox instances", () => {
+describe("several Ressac instances", () => {
   it("two launches in parallel", async () => {
     // allSettled: if one launch fails, the other one is still closed.
-    const launches = await Promise.allSettled([launchWebAiOs(), launchWebAiOs()]);
+    const launches = await Promise.allSettled([launchRessac(), launchRessac()]);
     const started = launches.flatMap((l) => (l.status === "fulfilled" ? [l.value] : []));
     try {
       expect(started).toHaveLength(2);
       for (const w of started) {
         await w.marionette.setContext("chrome");
-        expect(await w.marionette.execute("return Services.appinfo.name")).toBe("WebAiOs");
+        expect(await w.marionette.execute("return Services.appinfo.name")).toBe("Ressac");
       }
       expect(started[0]!.profile).not.toBe(started[1]!.profile);
     } finally {
@@ -142,10 +142,10 @@ describe("several WebAiOs-Firefox instances", () => {
   });
 
   it("passes extra environment variables and puts the fake docker first on PATH", async () => {
-    const p = await launchWebAiOs({ env: { WEBAIOS_PROBE: "1" } });
+    const p = await launchRessac({ env: { RESSAC_PROBE: "1" } });
     try {
       await p.marionette.setContext("chrome");
-      const [probe, path] = await p.marionette.execute<[string, string]>("return [Services.env.get('WEBAIOS_PROBE'), Services.env.get('PATH')]");
+      const [probe, path] = await p.marionette.execute<[string, string]>("return [Services.env.get('RESSAC_PROBE'), Services.env.get('PATH')]");
       expect(probe).toBe("1");
       expect(path.startsWith(FAKE_TOOLS + ":")).toBe(true);
     } finally {

@@ -9,20 +9,20 @@ import { readHome } from "../../../packages/kernel/src/home/read";
 import { spacePaths } from "../../../packages/kernel/src/paths";
 import type { Action } from "../shared/api";
 import { dispatch, state, waitFor } from "./firefox";
-import { FAKE_TOOLS, launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { FAKE_TOOLS, launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { inUi } from "./ui";
 
 // Probes of plan "home page and widgets" (docs/superpowers/notes/2026-11-05-accueil-widgets-recherche.md, P1-P7). They
-// print what they see rather than assert it: rerun with WEBAIOS_SPIKE=1 after a Firefox version change and compare.
+// print what they see rather than assert it: rerun with RESSAC_SPIKE=1 after a Firefox version change and compare.
 // No product code: the protocol handler and the window actor live in this file, served from a temp folder.
 //
 // The widget document is loaded in a windowless browser's <browser> element (a content browsing context, the same
 // mechanism as the invisible reads): every chrome:// document (the sidebar included) carries `frame-src chrome:`, so an
 // <iframe> to the widget scheme is blocked there before the scheme is even consulted (P2).
 
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
-const SCHEME = "webaios-widget";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
+const SCHEME = "ressac-widget";
 const note = (what: string, v: unknown) => console.log(`[spike] ${what}: ${JSON.stringify(v)}`);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -84,7 +84,7 @@ export class WidgetSpikeParent extends JSWindowActorParent {
       store = { import: String(e).slice(0, 200) };
     }
     try {
-      Services.prefs.setStringPref("webaios.spike.actor", JSON.stringify({ child: m.data, parent: store, top: this.manager && this.manager.documentPrincipal ? this.manager.documentPrincipal.origin : null }));
+      Services.prefs.setStringPref("ressac.spike.actor", JSON.stringify({ child: m.data, parent: store, top: this.manager && this.manager.documentPrincipal ? this.manager.documentPrincipal.origin : null }));
     } catch (e) {}
   }
 }
@@ -198,27 +198,27 @@ const done = (title: string | null | undefined) => {
 const consoleSince = (m: Marionette, from: number) =>
   chrome<any[]>(
     m,
-    `return Services.console.getMessageArray().slice(arguments[0]).map((e) => String(e.message || e)).filter((t) => /webaios-widget|Content Security Policy|CSP/i.test(t)).slice(-8);`,
+    `return Services.console.getMessageArray().slice(arguments[0]).map((e) => String(e.message || e)).filter((t) => /ressac-widget|Content Security Policy|CSP/i.test(t)).slice(-8);`,
     [from],
   );
 
-describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
+describe.skipIf(!process.env.RESSAC_SPIKE)("widget home spike", () => {
   let pages: Awaited<ReturnType<typeof startPages>>;
-  let w: LaunchedWebAiOs;
+  let w: LaunchedRessac;
   let m: Marionette;
   let tmp: string;
   let notifications: string;
 
   beforeAll(async () => {
     pages = await startPages();
-    tmp = await mkdtemp(path.join(os.tmpdir(), "webaios-spike-widgets-"));
+    tmp = await mkdtemp(path.join(os.tmpdir(), "ressac-spike-widgets-"));
     notifications = path.join(tmp, "notifications.jsonl");
     await writeFile(path.join(tmp, "spike-parent.sys.mjs"), ACTOR_PARENT);
     await writeFile(path.join(tmp, "spike-child.sys.mjs"), ACTOR_CHILD);
-    w = await launchWebAiOs({ env: { WEBAIOS_TEST_NOTIFICATIONS: notifications, WEBAIOS_HOST_TEST: "1" } });
+    w = await launchRessac({ env: { RESSAC_TEST_NOTIFICATIONS: notifications, RESSAC_HOST_TEST: "1" } });
     m = w.marionette;
     await m.setContext("chrome");
-    await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+    await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
     await chrome(m, HOST);
 
     // P1: the scheme, registered at runtime from the parent (nsIIOService.registerProtocolHandler).
@@ -272,9 +272,9 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
         `
         const dir = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
         dir.initWithPath(arguments[0]);
-        Services.io.getProtocolHandler("resource").QueryInterface(Ci.nsIResProtocolHandler).setSubstitution("webaios-spike", Services.io.newFileURI(dir));
-        const uriParent = "resource://webaios-spike/spike-parent.sys.mjs";
-        const uriChild = "resource://webaios-spike/spike-child.sys.mjs";
+        Services.io.getProtocolHandler("resource").QueryInterface(Ci.nsIResProtocolHandler).setSubstitution("ressac-spike", Services.io.newFileURI(dir));
+        const uriParent = "resource://ressac-spike/spike-parent.sys.mjs";
+        const uriChild = "resource://ressac-spike/spike-child.sys.mjs";
         let imported;
         try { const a = ChromeUtils.importESModule(uriParent); const b = ChromeUtils.importESModule(uriChild); imported = { parent: typeof a.WidgetSpikeParent, child: typeof b.WidgetSpikeChild }; } catch (e) { imported = { err: String(e).slice(0, 200) }; }
         const patterns = {};
@@ -283,7 +283,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
         }
         let registered;
         try {
-          ChromeUtils.registerWindowActor("WebAiOsWidgetSpike", { parent: { esModuleURI: uriParent }, child: { esModuleURI: uriChild, events: { DOMWindowCreated: {} } }, allFrames: true, includeChrome: true, safeForUntrustedWebProcess: true });
+          ChromeUtils.registerWindowActor("RessacWidgetSpike", { parent: { esModuleURI: uriParent }, child: { esModuleURI: uriChild, events: { DOMWindowCreated: {} } }, allFrames: true, includeChrome: true, safeForUntrustedWebProcess: true });
           registered = "ok (no matches: the child filters on the URL)";
         } catch (e) { registered = String(e).slice(0, 200); }
         return { imported, patterns, registered };
@@ -295,7 +295,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
 
   afterAll(async () => {
     try {
-      await chrome(m, "try { window.spikeClose(); } catch (e) {} try { ChromeUtils.unregisterWindowActor('WebAiOsWidgetSpike'); } catch (e) {} try { Services.io.unregisterProtocolHandler('webaios-widget'); } catch (e) {}");
+      await chrome(m, "try { window.spikeClose(); } catch (e) {} try { ChromeUtils.unregisterWindowActor('RessacWidgetSpike'); } catch (e) {} try { Services.io.unregisterProtocolHandler('ressac-widget'); } catch (e) {}");
     } catch {
       // the app may be gone already
     }
@@ -304,7 +304,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
     if (tmp) await rm(tmp, { recursive: true, force: true });
   });
 
-  it("P1: webaios-widget: registered from chrome, served by an InputStreamChannel, the CSP, Trusted Types, WebRTC", { timeout: 120_000 }, async () => {
+  it("P1: ressac-widget: registered from chrome, served by an InputStreamChannel, the CSP, Trusted Types, WebRTC", { timeout: 120_000 }, async () => {
     // The scheme's own document: the channel is created, but a remote content document does not commit (P2).
     const scheme = await openWidget(m, `${SCHEME}://demo/display.html?v=1`);
     note("P1 the widget document itself", scheme);
@@ -320,7 +320,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
     note("P1 another path (404)", missing);
 
     // The product flags (URI_DANGEROUS_TO_LOAD) refuse a frame from another document: the earlier run showed
-    // "Security Error: Content at … may not load or link to webaios-widget://…" (a page framing it crashed the probe's
+    // "Security Error: Content at … may not load or link to ressac-widget://…" (a page framing it crashed the probe's
     // windowless host here, so it is not repeated).
     note(
       "P1 probe flag",
@@ -389,11 +389,11 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
     // The scheme's own document does not commit remotely; the same page over http exercises the actor (URL filter actor=1).
     const r = await openWidget(m, `${pages.url}/p?page=1&actor=1`);
     await sleep(800);
-    const actor = await chrome(m, `try { return JSON.parse(Services.prefs.getStringPref("webaios.spike.actor")); } catch (e) { return String(e).slice(0, 160); }`);
+    const actor = await chrome(m, `try { return JSON.parse(Services.prefs.getStringPref("ressac.spike.actor")); } catch (e) { return String(e).slice(0, 160); }`);
     const diag = await chrome(m, `
       const wg = window.spikeBrowserEl.browsingContext.currentWindowGlobal;
       let parentActor;
-      try { parentActor = !!wg.getActor("WebAiOsWidgetSpike"); } catch (e) { parentActor = String(e).slice(0, 240); }
+      try { parentActor = !!wg.getActor("RessacWidgetSpike"); } catch (e) { parentActor = String(e).slice(0, 240); }
       return { parentActor, console: Services.console.getMessageArray().slice(-8).map((e) => String(e.message || e)).filter((t) => /actor|resource|spike/i.test(t)) };`);
     note("P3 actor", { load: { url: r.url, remote: r.remote }, page: done(r.title), actor, diag });
 
@@ -430,14 +430,14 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
       const service = () => Cc["@mozilla.org/alerts-service;1"].getService(Ci.nsIAlertsService);
       const show = async () => {
         const n = Cc["@mozilla.org/alert-notification;1"].createInstance(Ci.nsIAlertNotification);
-        n.init("webaios-spike", "", "Spike", "nothing visible", false, "cookie-spike");
+        n.init("ressac-spike", "", "Spike", "nothing visible", false, "cookie-spike");
         const seen = [];
         const obs = { observe: (s, topic) => seen.push(topic), QueryInterface: ChromeUtils.generateQI(["nsIObserver"]) };
         let err = null;
         try { service().showAlert(n, obs); } catch (e) { err = String(e).slice(0, 200); }
         await new Promise((r) => setTimeout(r, 800));
         const wins = [...Services.wm.getEnumerator(null)].map((x) => x.document.documentURI.split("/").pop());
-        try { service().closeAlert("webaios-spike"); } catch (e) {}
+        try { service().closeAlert("ressac-spike"); } catch (e) {}
         return { err, seen, wins };
       };
       const backend = (() => { try { Cc["@mozilla.org/system-alerts-service;1"].getService(Ci.nsIAlertsService); return "present"; } catch (e) { return String(e).slice(0, 120); } })();
@@ -451,7 +451,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
     );
     note("P4 alerts service", alerts);
     note("P4 test file", { path: notifications, exists: await readFile(notifications, "utf8").then(() => true, () => false) });
-    // The e2e path is the host writing the file (task 4): launchWebAiOs passes WEBAIOS_TEST_NOTIFICATIONS to the app.
+    // The e2e path is the host writing the file (task 4): launchRessac passes RESSAC_TEST_NOTIFICATIONS to the app.
     await writeFile(notifications, JSON.stringify({ title: "spike", text: "P4" }) + "\n", { flag: "a" });
     note("P4 test file after one write", { lines: (await readFile(notifications, "utf8")).trim().split("\n").length });
   });
@@ -527,8 +527,8 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
     );
     const tree = async (dir: string) => readdir(dir).catch(() => []);
     note("P6 host files", {
-      space: await tree(path.join(root, ".webaios")),
-      profiles: await tree(path.join(root, ".webaios", "profiles")),
+      space: await tree(path.join(root, ".ressac")),
+      profiles: await tree(path.join(root, ".ressac", "profiles")),
       history: await readFile(path.join(w.dataDir, "history.sqlite"), "utf8").then(() => true, () => false),
     });
   });
@@ -559,9 +559,9 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
     });
 
     const fakeDocker = (() => {
-      const env = { ...process.env, PATH: `${FAKE_TOOLS}${path.delimiter}${process.env.PATH ?? ""}`, WEBAIOS_ROOT: path.join(w.dataDir, "workspace") };
+      const env = { ...process.env, PATH: `${FAKE_TOOLS}${path.delimiter}${process.env.PATH ?? ""}`, RESSAC_ROOT: path.join(w.dataDir, "workspace") };
       try {
-        return { ok: true, out: execFileSync("docker", ["inspect", "webaios-workshop-firefox"], { env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim().slice(0, 120) };
+        return { ok: true, out: execFileSync("docker", ["inspect", "ressac-workshop-firefox"], { env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim().slice(0, 120) };
       } catch (e: any) {
         return { ok: false, err: String(e.stdout || e.message).slice(0, 200) };
       }
@@ -570,7 +570,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
     note("P7 Docker atelier", {
       fakeDocker,
       fakeTools: FAKE_TOOLS,
-      container: "webaios-workshop-firefox",
+      container: "ressac-workshop-firefox",
       ports: "5300-5319",
       harvestStates: (await readHome(spacePaths(path.join(w.dataDir, "workspace")), path.join(w.dataDir, "widgets"))).widgets.flatMap((x) => ("error" in x ? [] : [{ id: x.id, state: x.state }])),
     });

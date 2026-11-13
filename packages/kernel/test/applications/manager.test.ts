@@ -44,7 +44,7 @@ async function space(projects: Record<string, string | null> = { todo: '{"name":
   const c = spacePaths(await tempFolder());
   for (const [folder, manifest] of Object.entries(projects)) {
     await mkdir(join(c.projects, folder), { recursive: true });
-    if (manifest !== null) await writeFile(join(c.projects, folder, "webaios.json"), manifest);
+    if (manifest !== null) await writeFile(join(c.projects, folder, "ressac.json"), manifest);
   }
   return c;
 }
@@ -74,7 +74,7 @@ function prepare(o: {
     onChange: () => states.push(g.stateOf("todo")),
   });
   managers.push(g);
-  const stops = () => calls.filter((a) => a.args[0] === "exec" && a.args[4]?.includes("WEBAIOS_APP=")).map((a) => a.args[4]!);
+  const stops = () => calls.filter((a) => a.args[0] === "exec" && a.args[4]?.includes("RESSAC_APP=")).map((a) => a.args[4]!);
   return { g, workshop: workshop, process: process, states: states, calls: calls, stops: stops };
 }
 
@@ -90,7 +90,7 @@ test("lancer: free port, en-marche when the port answers", async () => {
   expect(states).toEqual(["launching", "running"]);
   expect(process).toHaveLength(1);
   expect(process[0]!.argv).toContain("-e");
-  expect(process[0]!.argv).toContain("WEBAIOS_APP=todo");
+  expect(process[0]!.argv).toContain("RESSAC_APP=todo");
   expect(process[0]!.argv.at(-1)).toBe("npx vite --port 5280");
   expect(await g.list()).toMatchObject([{ folder: "todo", state: "running", port: 5280 }]);
 });
@@ -143,7 +143,7 @@ test("the port never answers: error after readyDelayMs, process stopped", async 
   expect(app.error).toContain("5280");
   expect(process[0]!.killed).toBe(true);
   expect(stops()).toHaveLength(1);
-  expect(stops()[0]).toContain("WEBAIOS_APP=todo");
+  expect(stops()[0]).toContain("RESSAC_APP=todo");
   // The killed process's end does not replace the error.
   process[0]!.finish(null);
   expect((await g.list())[0]).toMatchObject({ state: "error", error: app.error });
@@ -238,7 +238,7 @@ test("the project watching does not wait for the orphan cleanup (Docker starting
   const startup = g.start();
   await sleep(400);
   await mkdir(join(c.projects, "nouveau"), { recursive: true });
-  await writeFile(join(c.projects, "nouveau", "webaios.json"), '{"type":"poc","launch":"x"}');
+  await writeFile(join(c.projects, "nouveau", "ressac.json"), '{"type":"poc","launch":"x"}');
   await until(() => states.length > 0);
   cleanup.resolve();
   await startup;
@@ -286,7 +286,7 @@ test("without a fiche or unknown folder: lancer refuses", async () => {
   await expect(g.launch("brut")).rejects.toThrow(/sans fiche/);
   await expect(g.launch("absent")).rejects.toThrow(/inconnu/);
   expect(process).toHaveLength(0);
-  expect(await g.list()).toMatchObject([{ folder: "brut", type: "no-manifest", noManifest: "pas de webaios.json", state: "stopped" }]);
+  expect(await g.list()).toMatchObject([{ folder: "brut", type: "no-manifest", noManifest: "pas de ressac.json", state: "stopped" }]);
 });
 
 test("oublier: a project recreated under the same name no longer shows the old error", async () => {
@@ -316,12 +316,12 @@ test("container stopped: preparation then launch", async () => {
   expect(states).toEqual(["preparing", "launching", "running"]);
 });
 
-test("demarrer stops the WEBAIOS_APP orphans", async () => {
+test("demarrer stops the RESSAC_APP orphans", async () => {
   const c = await space();
   const { g, stops: stops } = prepare({ paths: c });
   await g.start();
   expect(stops()).toHaveLength(1);
-  expect(stops()[0]).toContain("WEBAIOS_APP=.*");
+  expect(stops()[0]).toContain("RESSAC_APP=.*");
 });
 
 test("demarrer on a stopped container: nothing to stop", async () => {

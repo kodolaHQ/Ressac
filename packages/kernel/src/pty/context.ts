@@ -26,13 +26,13 @@ export function appPrefix(a: { name: string; folder: string; noManifest: boolean
   const folder = clean(a.folder);
   // Window open: the agent knows it can connect the dev tools to it.
   const win = a.running ? ` — fenêtre : onglet app:${folder} (outils de développement disponibles)` : "";
-  if (a.noManifest) return `[projet sans fiche webaios.json : /workspace/projects/${folder}${win}] `;
+  if (a.noManifest) return `[projet sans fiche ressac.json : /workspace/projects/${folder}${win}] `;
   const name = truncate(clean(a.name), TITLE_LENGTH);
-  return `[application : ${name} — /workspace/projects/${folder} — journal : /workspace/.webaios/logs/${folder}.log${win}] `;
+  return `[application : ${name} — /workspace/projects/${folder} — journal : /workspace/.ressac/logs/${folder}.log${win}] `;
 }
 
-/** The home screen of a site app (`webaios-site://<id>/…`), to tell apart from third-party site pages. */
-const HOME_URL = /^webaios-site:/i;
+/** The home screen of a site app (`ressac-site://<id>/…`), to tell apart from third-party site pages. */
+const HOME_URL = /^ressac-site:/i;
 const REMARK_LENGTH = 200;
 const REMARKS_LENGTH_MAX = 2000;
 const DATA_LENGTH = 120;
@@ -50,7 +50,7 @@ export function remarksPrefix(r: {
   batchPath: string;
 }): string {
   const p = r.project;
-  // Site app: a remark aimed at the home screen (agent code, `webaios-site:`) is marked [accueil].
+  // Site app: a remark aimed at the home screen (agent code, `ressac-site:`) is marked [accueil].
   const ofHome = (e: Batch["items"][number]) => p.type === "site" && e.type === "design" && HOME_URL.test(e.context.url);
   const target =
     p.type === "site" && r.batch.items.some(ofHome)

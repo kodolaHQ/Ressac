@@ -10,7 +10,7 @@ import { SPACE_FOLDER } from "../../../packages/kernel/src/design/external";
 import { HOST_STOPPED } from "../chrome/agent/host";
 import { failureReason } from "../shared/design-guards";
 import { waitFor } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { connectClient, declareProject, mcpClient, modified, openApplications, projectDir, rawStatus, readNotifications, textOf, writeAppJs } from "./review";
 import { click, inUi, missingApi, waitUi } from "./ui";
@@ -18,9 +18,9 @@ import { click, inUi, missingApi, waitUi } from "./ui";
 // Plan 34 Task 3: the Applications page's « Projets externes » section and
 // one test per guarantee of the external MCP server (spec §5.2, §7).
 
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const dirs: string[] = [];
-let w: LaunchedWebAiOs | undefined;
+let w: LaunchedRessac | undefined;
 let m: Marionette;
 let notifications: string;
 afterEach(async () => {
@@ -35,17 +35,17 @@ afterAll(async () => {
   for (const d of dirs) await rm(d, { recursive: true, force: true });
 });
 
-/** WebAiOs on a temporary data folder and profile (kept until the end, to scan them), the Applications page open. */
-async function launch(env: Record<string, string> = {}): Promise<LaunchedWebAiOs> {
-  const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
-  const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
-  const outside = await mkdtemp(path.join(os.tmpdir(), "webaios-notif-"));
+/** Ressac on a temporary data folder and profile (kept until the end, to scan them), the Applications page open. */
+async function launch(env: Record<string, string> = {}): Promise<LaunchedRessac> {
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
+  const profile = await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
+  const outside = await mkdtemp(path.join(os.tmpdir(), "ressac-notif-"));
   dirs.push(dataDir, profile, outside);
   notifications = path.join(outside, "notifications.jsonl");
-  w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_NOTIFICATIONS: notifications, ...env } });
+  w = await launchRessac({ dataDir, profile, env: { RESSAC_TEST_NOTIFICATIONS: notifications, ...env } });
   m = w.marionette;
   await m.setContext("chrome");
-  await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+  await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
   await openApplications(m);
   return w;
 }
@@ -96,7 +96,7 @@ async function freePort(): Promise<number> {
 it("« Brancher un Claude Code »: the command with the real port and a 64-hex token, gone on « Fermer »; external-clients.json without the token", async () => {
   await launch();
   const { command: command, port, token: token } = await connectClient(m);
-  expect(command).toBe(`claude mcp add --transport http --scope user webaios-remarks http://127.0.0.1:${port}/mcp-external --header "Authorization: Bearer ${token}"`);
+  expect(command).toBe(`claude mcp add --transport http --scope user ressac-remarks http://127.0.0.1:${port}/mcp-external --header "Authorization: Bearer ${token}"`);
   expect(port).toBeGreaterThan(0);
   expect(port).not.toBe(5279);
   await waitCount(tid("external-client"), 1);
@@ -123,7 +123,7 @@ it("declare_project: the external-project line shows; one notification only, eve
     await waitCount(tid("external-project"), 1);
     const line = (await text(tid("external-project")))!;
     for (const t of ["mon-site", folder, "18765", "Claude Code"]) expect(line).toContain(t);
-    await expect.poll(() => readNotifications(notifications), { timeout: 10_000 }).toEqual([{ title: "WebAiOs", text: "Claude Code a branché le projet mon-site" }]);
+    await expect.poll(() => readNotifications(notifications), { timeout: 10_000 }).toEqual([{ title: "Ressac", text: "Claude Code a branché le projet mon-site" }]);
     await c.callTool({ name: "declare_project", arguments: { folder: folder, ports: [18765] } });
     await new Promise((r) => setTimeout(r, 500));
     expect(readNotifications(notifications)).toHaveLength(1);
@@ -178,7 +178,7 @@ it("a port held elsewhere: the section says so, « Brancher » is greyed, and no
   await new Promise<void>((ok) => held.listen(0, "127.0.0.1", ok));
   const port = (held.address() as { port: number }).port;
   try {
-    await launch({ WEBAIOS_PORT_MCP_EXTERNAL: String(port) });
+    await launch({ RESSAC_PORT_MCP_EXTERNAL: String(port) });
     await waitText(tid("external-reason"), `Le port ${port} est pris : le MCP externe est éteint.`, 15_000);
     expect(await connectDisabled()).toBe(true);
     // No fallback: no port of the host answers like the external server (Origin → 403 before any token, as the
@@ -198,8 +198,8 @@ it("a port held elsewhere: the section says so, « Brancher » is greyed, and no
 });
 
 // externes.spec.ts:296
-it("an invalid port (WEBAIOS_PORT_MCP_EXTERNAL=abc): the section says the external MCP could not start", async () => {
-  await launch({ WEBAIOS_PORT_MCP_EXTERNAL: "abc" });
+it("an invalid port (RESSAC_PORT_MCP_EXTERNAL=abc): the section says the external MCP could not start", async () => {
+  await launch({ RESSAC_PORT_MCP_EXTERNAL: "abc" });
   await waitUi(m, "return doc.querySelector('[data-testid=\"external-reason\"]')?.textContent.startsWith(arguments[0])", ["Le MCP externe n'a pas pu démarrer : "], 15_000);
   expect(await connectDisabled()).toBe(true);
 });
@@ -212,15 +212,15 @@ it("a foreign Host, an Origin header, no token, the kernel's main token and a se
   expect(await rawStatus(port, { Host: host, Origin: `http://127.0.0.1:${port}` })).toBe(403);
   expect(await rawStatus(port, { Host: host })).toBe(401);
   const space = path.join(w!.dataDir, "workspace");
-  const auth = (config: string) => JSON.parse(readFileSync(config, "utf8")).mcpServers.webaios.headers.Authorization as string;
-  const mainConfig = path.join(space, ".webaios", "mcp.json");
+  const auth = (config: string) => JSON.parse(readFileSync(config, "utf8")).mcpServers.ressac.headers.Authorization as string;
+  const mainConfig = path.join(space, ".ressac", "mcp.json");
   await expect.poll(() => existsSync(mainConfig), { timeout: 20_000 }).toBe(true);
   expect(await rawStatus(port, { Host: host, Authorization: auth(mainConfig) })).toBe(401);
   // The open agent panel's session (as agent-panel.e2e.ts:73): its config path, /workspace being <dataDir>/espace.
   const args = path.join(space, "fake-agent-args.json");
   await expect.poll(() => existsSync(args), { timeout: 20_000 }).toBe(true);
   const sessionConfig = (JSON.parse(readFileSync(args, "utf8")) as string[]).at(-1)!;
-  expect(sessionConfig).toMatch(/^\/workspace\/\.webaios\/sessions\/[0-9a-f]{16}\.json$/);
+  expect(sessionConfig).toMatch(/^\/workspace\/\.ressac\/sessions\/[0-9a-f]{16}\.json$/);
   expect(await rawStatus(port, { Host: host, Authorization: auth(path.join(space, sessionConfig.slice("/workspace/".length))) })).toBe(401);
 });
 
@@ -280,7 +280,7 @@ it("the token appears in no file under <dataDir> nor the profile", async () => {
 // Review Focus 1
 it("after a host restart the server comes back on the same port and the same token still connects", { timeout: 120_000 }, async () => {
   const port = await freePort();
-  await launch({ WEBAIOS_PORT_MCP_EXTERNAL: String(port) });
+  await launch({ RESSAC_PORT_MCP_EXTERNAL: String(port) });
   const { port: shown, token: token } = await connectClient(m);
   expect(shown).toBe(port);
   await click(m, tid("close-command"));

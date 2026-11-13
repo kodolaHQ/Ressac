@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Background, Controls, SvelteFlow, useSvelteFlow, type Connection, type Edge, type NodeTypes } from "@xyflow/svelte";
   import { untrack } from "svelte";
-  import type { BlockCatalogEntry } from "@webaios/kernel";
+  import type { BlockCatalogEntry } from "@ressac/kernel";
   import { link, deleteBlocks, deleteLink } from "./draft";
   import { DRAG_BLOCK } from "./add";
   import type { Edit } from "./edit.svelte";

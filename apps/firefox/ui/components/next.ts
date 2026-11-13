@@ -1,4 +1,4 @@
-import type { WidgetState } from "@webaios/kernel";
+import type { WidgetState } from "@ressac/kernel";
 
 const two = (n: number) => String(n).padStart(2, "0");
 const MINUTE = 60_000;

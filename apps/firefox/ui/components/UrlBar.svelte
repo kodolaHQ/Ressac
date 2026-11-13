@@ -153,7 +153,7 @@
   .line :global(.extensions) { padding-right: 3px; }
   form { position: relative; flex: 1; min-width: 80px; height: 34px; }
   .access { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); }
-  .suggestions { position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 5; list-style: none; margin: 0; padding: 4px; background: var(--sheet); border: 1px solid var(--glass-edge); border-radius: 12px; box-shadow: var(--modal-shadow); animation: webaios-drop var(--spring-d) var(--spring) both; }
+  .suggestions { position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 5; list-style: none; margin: 0; padding: 4px; background: var(--sheet); border: 1px solid var(--glass-edge); border-radius: 12px; box-shadow: var(--modal-shadow); animation: ressac-drop var(--spring-d) var(--spring) both; }
   .suggestions li { display: flex; flex-direction: column; padding: 6px 9px; border-radius: 8px; color: var(--text); }
   .suggestions li[aria-selected="true"], .suggestions li:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
   .suggestions span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

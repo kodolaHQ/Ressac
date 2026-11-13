@@ -5,11 +5,11 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { dispatch, inWindow, newWindow, state, waitFor } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { waitUi } from "./ui";
 
-// Site permissions through the WebAiOs banner (chrome/window/site-banner.ts, chrome/store/permission-hooks.ts). No
+// Site permissions through the Ressac banner (chrome/window/site-banner.ts, chrome/store/permission-hooks.ts). No
 // network, no real device (spike P1, P7).
 
 /** What `/p?do=<what>` runs as it loads (`&auto`) or on a click of #go; its title is then "done:<json>". */
@@ -41,7 +41,7 @@ const ACTIONS = {
   blocked: async () => window.open("/p?do=none", "_blank") === null,
   fs: async () => (await document.documentElement.requestFullscreen(), "full"),
   clipr: () => navigator.clipboard.readText(),
-  proto: async () => { location.href = "webaios-test:hello"; return "navigated"; },
+  proto: async () => { location.href = "ressac-test:hello"; return "navigated"; },
   popup: async () => !!window.open("/p?do=notif&auto&popup", "notif", "width=500,height=600"),
 };
 const q = new URLSearchParams(location.search);
@@ -66,7 +66,7 @@ const PREFS = {
   "geo.provider.network.url": 'data:application/json,{"location":{"lat":48.8566,"lng":2.3522},"accuracy":42}',
 };
 
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const NAVIGABLES = "chrome://remote/content/shared/NavigableManager.sys.mjs";
 const BANNER = '[data-testid="permission-request"]';
 
@@ -87,7 +87,7 @@ async function startPages(): Promise<{ url: string; port: number; handled: strin
 describe("site permissions", () => {
   const servers: Awaited<ReturnType<typeof startPages>>[] = [];
   let dirs: { dataDir: string; profile: string };
-  let w: LaunchedWebAiOs;
+  let w: LaunchedRessac;
   let m: Marionette;
   let opened = 0;
 
@@ -99,16 +99,16 @@ describe("site permissions", () => {
   };
 
   async function launch(first = true): Promise<void> {
-    w = await launchWebAiOs({ ...dirs, prefs: PREFS });
+    w = await launchRessac({ ...dirs, prefs: PREFS });
     m = w.marionette;
     await m.setContext("chrome");
-    await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+    await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
     // The home page's agent session settles first: quitting during its start-up leaves writers in the data dir. A
     // restart shows the restored tabs, not the home page.
     if (first) await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
   }
 
-  /** Opens `/p?do=<what>` (made unique) of `base` in a WebAiOs tab of the first window; returns its tab id once loaded. */
+  /** Opens `/p?do=<what>` (made unique) of `base` in a Ressac tab of the first window; returns its tab id once loaded. */
   async function open(base: string, what: string, o: { auto?: boolean; extra?: string } = { auto: true }): Promise<string> {
     const url = `${base}/p?do=${what}${o.auto ? "&auto" : ""}${o.extra ?? ""}&k=${++opened}`;
     const s = await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url });
@@ -116,7 +116,7 @@ describe("site permissions", () => {
     await waitFor(m, `return !!${browser(id)}?.contentTitle`, (v) => v === true);
     return id;
   }
-  const browser = (id: string) => `gBrowser.tabs.find((t) => t.getAttribute("webaios-tab-id") === ${JSON.stringify(id)})?.linkedBrowser`;
+  const browser = (id: string) => `gBrowser.tabs.find((t) => t.getAttribute("ressac-tab-id") === ${JSON.stringify(id)})?.linkedBrowser`;
   /** The page's result: its title once "done:…" (or "frame:done:…"). */
   async function result(id: string): Promise<unknown> {
     const t = await waitFor<string>(m, `return ${browser(id)}.contentTitle`, (t) => /^(frame:)?done:/.test(t), 20_000);
@@ -156,7 +156,7 @@ describe("site permissions", () => {
   }
 
   beforeAll(async () => {
-    dirs = { dataDir: await mkdtemp(path.join(os.tmpdir(), "webaios-data-")), profile: await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-")) };
+    dirs = { dataDir: await mkdtemp(path.join(os.tmpdir(), "ressac-data-")), profile: await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-")) };
     await launch();
   }, 90_000);
   afterAll(async () => {
@@ -398,10 +398,10 @@ describe("site permissions", () => {
     const base = await origin();
     const handler = await origin();
     const handled = servers[servers.length - 1]!.handled;
-    // A web handler for webaios-test:, so Firefox knows an application for it (spike P5).
+    // A web handler for ressac-test:, so Firefox knows an application for it (spike P5).
     await chrome(
       `const eps = Cc["@mozilla.org/uriloader/external-protocol-service;1"].getService(Ci.nsIExternalProtocolService);
-       const info = eps.getProtocolHandlerInfo("webaios-test");
+       const info = eps.getProtocolHandlerInfo("ressac-test");
        const app = Cc["@mozilla.org/uriloader/web-handler-app;1"].createInstance(Ci.nsIWebHandlerApp);
        app.name = "test"; app.uriTemplate = arguments[0] + "/handled?u=%s";
        info.possibleApplicationHandlers.appendElement(app);
@@ -411,7 +411,7 @@ describe("site permissions", () => {
     );
     const id = await open(base, "proto", {});
     await clickGo(id);
-    expect(await waitBanner((t) => t !== null)).toMatch(/^127\.0\.0\.1:\d+ veut ouvrir un lien dans une autre application : webaios-test:hello$/);
+    expect(await waitBanner((t) => t !== null)).toMatch(/^127\.0\.0\.1:\d+ veut ouvrir un lien dans une autre application : ressac-test:hello$/);
     await answer("Refuser");
     await waitBanner((t) => t === null);
     await new Promise((r) => setTimeout(r, 500));
@@ -455,7 +455,7 @@ describe("site permissions", () => {
     for (const end = Date.now() + 10_000; !(await ok()); await new Promise((r) => setTimeout(r, 100))) if (Date.now() > end) throw new Error("timed out");
   };
   /** Triggers the « Navigation » menu entry of the current window by its command, as a click on it does. */
-  const forgetFromMenu = () => m.execute(`document.getElementById("webaios-forget-permissions").doCommand();`);
+  const forgetFromMenu = () => m.execute(`document.getElementById("ressac-forget-permissions").doCommand();`);
 
   it("Oublier les autorisations de ce site: the page asks again, Notification.permission goes back to 'default'", { timeout: 60_000 }, async () => {
     const base = await origin();
@@ -518,16 +518,16 @@ describe("site permissions", () => {
   });
 
   it("a link to another application typed in the address bar: the banner in the displayed site's name", { timeout: 60_000 }, async () => {
-    // The webaios-test: handler registered by the previous test stays known to this profile.
+    // The ressac-test: handler registered by the previous test stays known to this profile.
     const id = await open(await origin(), "none", {});
     // As the address bar does: a load with the system principal, no page behind it.
-    await m.execute(`${browser(id)}.fixupAndLoadURIString("webaios-test:typed", { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });`);
-    expect(await waitBanner((t) => t !== null)).toMatch(/^127\.0\.0\.1:\d+ veut ouvrir un lien dans une autre application : webaios-test:typed$/);
+    await m.execute(`${browser(id)}.fixupAndLoadURIString("ressac-test:typed", { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });`);
+    expect(await waitBanner((t) => t !== null)).toMatch(/^127\.0\.0\.1:\d+ veut ouvrir un lien dans une autre application : ressac-test:typed$/);
     await answer("Refuser");
     await waitBanner((t) => t === null);
   });
 
-  it("DRM modules are requested from Mozilla under Firefox's version, not WebAiOs's", async () => {
+  it("DRM modules are requested from Mozilla under Firefox's version, not Ressac's", async () => {
     // Under the app's own version (0.1.0) Mozilla's update server offers no Widevine, so no DRM ever works.
     const url = await chrome<string>(`Services.prefs.clearUserPref("media.gmp-manager.url");
       const { GMPInstallManager } = ChromeUtils.importESModule("resource://gre/modules/GMPInstallManager.sys.mjs");

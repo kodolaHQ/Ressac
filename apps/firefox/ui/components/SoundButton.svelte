@@ -19,13 +19,13 @@
     out:fade={{ duration: 150 }}
     onclick={(e) => {
       e.stopPropagation();
-      window.parent.webaiosWindow?.toggleMute(tab.id);
+      window.parent.ressacWindow?.toggleMute(tab.id);
     }}><Icon name={tab.sound === "muted" ? "sound-off" : "sound"} {size} /></button
   >
 {/if}
 
 <style>
-  .sound { all: unset; flex: none; display: grid; place-content: center; width: 20px; height: 20px; border-radius: 6px; color: var(--text-muted); -moz-window-dragging: no-drag; animation: webaios-rise var(--spring-d) var(--spring) backwards; transition: transform var(--tap), background var(--tap), color var(--tap); }
+  .sound { all: unset; flex: none; display: grid; place-content: center; width: 20px; height: 20px; border-radius: 6px; color: var(--text-muted); -moz-window-dragging: no-drag; animation: ressac-rise var(--spring-d) var(--spring) backwards; transition: transform var(--tap), background var(--tap), color var(--tap); }
   .sound:hover { background: var(--glass-hi); color: var(--text); }
   .sound:active { transform: scale(0.97); }
   .sound:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }

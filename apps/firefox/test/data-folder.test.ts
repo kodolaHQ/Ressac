@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { checkDataFormat } from "../core/state/format";
 import { EXPORT_EXCLUDED, deleteBackup, exportData, listBackups } from "../host/data-folder";
 
-const tmp = async () => join(await mkdtemp(join(tmpdir(), "folder-")), "WebAiOs");
+const tmp = async () => join(await mkdtemp(join(tmpdir(), "folder-")), "Ressac");
 const exists = (p: string) => stat(p).then(() => true, () => false);
 async function seed(dir: string) {
   await mkdir(join(dir, "workspace/projects"), { recursive: true });
@@ -48,7 +48,7 @@ describe("data folder", () => {
   it("export", async () => {
     const dir = await tmp();
     await seed(dir);
-    for (const f of ["widgets/w/state.json", "local-ai/kev/x", "webaios-widgets/y", "import-tmp/chrome/Login Data"]) {
+    for (const f of ["widgets/w/state.json", "local-ai/kev/x", "ressac-widgets/y", "import-tmp/chrome/Login Data"]) {
       await mkdir(join(dir, f, ".."), { recursive: true });
       await writeFile(join(dir, f), "x");
     }
@@ -56,8 +56,8 @@ describe("data folder", () => {
     const now = new Date("2026-11-10T10:00:00Z");
     const out = await exportData(dir, to, now);
     const out2 = await exportData(dir, to, now);
-    expect(out).toBe(join(to, "WebAiOs-donnees-2026-11-10.zip"));
-    expect(out2).toBe(join(to, "WebAiOs-donnees-2026-11-10 (2).zip"));
+    expect(out).toBe(join(to, "Ressac-donnees-2026-11-10.zip"));
+    expect(out2).toBe(join(to, "Ressac-donnees-2026-11-10 (2).zip"));
     const entries = execFileSync("unzip", ["-Z1", out], { encoding: "utf8" }).split("\n").filter(Boolean);
     expect(entries).toContain("session.json");
     expect(entries).toContain("widgets/w/state.json");

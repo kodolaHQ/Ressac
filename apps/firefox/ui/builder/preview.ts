@@ -1,4 +1,4 @@
-import type { Execution, ResumeExecution } from "@webaios/kernel";
+import type { Execution, ResumeExecution } from "@ressac/kernel";
 
 /**
  * The widget preview's data for the chosen run: the output of its `sortie` block if it is kept in full; otherwise,

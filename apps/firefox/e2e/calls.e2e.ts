@@ -1,7 +1,7 @@
 import { createServer, type Server } from "node:http";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from "vitest";
 import { dispatch, state, waitFor } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { click, inUi, waitUi } from "./ui";
 
@@ -25,7 +25,7 @@ navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then((s) => {
 
 let server: Server;
 let url: string;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 beforeAll(async () => {
   server = createServer((req, res) => res.writeHead(200, { "content-type": "text/html; charset=utf-8" }).end(req.url === "/call" ? CALL : "<title>Autre</title>autre")).listen(0);
@@ -33,10 +33,10 @@ beforeAll(async () => {
 });
 afterAll(() => server?.close());
 beforeEach(async () => {
-  w = await launchWebAiOs();
+  w = await launchRessac();
   m = w.marionette;
   await m.setContext("chrome");
-  await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+  await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
   await m.execute(`Services.prefs.setBoolPref("media.navigator.streams.fake", true); Services.prefs.setBoolPref("media.navigator.permission.disabled", true);
     // Fake devices count as a capture only with this one.
     Services.prefs.setBoolPref("media.navigator.permission.fake", true);`);
@@ -56,7 +56,7 @@ const bar = () =>
 const waitBar = (mic: string, camera: string) =>
   waitUi(m, `const b = doc.querySelector('[data-testid="call-bar"]'); return b?.querySelector('[data-testid="call-mic"]').getAttribute("aria-pressed") === arguments[0] && b.querySelector('[data-testid="call-camera"]').getAttribute("aria-pressed") === arguments[1];`, [mic, camera]);
 const callTitle = (id: string, title: string) =>
-  waitFor(m, `return gBrowser.tabs.find((t) => t.getAttribute("webaios-tab-id") === ${JSON.stringify(id)})?.linkedBrowser.contentTitle`, (v: string) => v === title);
+  waitFor(m, `return gBrowser.tabs.find((t) => t.getAttribute("ressac-tab-id") === ${JSON.stringify(id)})?.linkedBrowser.contentTitle`, (v: string) => v === title);
 
 it("leaving a call's tab floats its video and shows the call bar; its buttons mute what the tab sends; back to the call puts everything away", async () => {
   // A page without a call: nothing floats, no bar.
@@ -76,7 +76,7 @@ it("leaving a call's tab floats its video and shows the call bar; its buttons mu
   await waitBar("true", "false");
   // Back to the call: its tab is shown, the bar and the floating video go.
   await click(m, '[data-testid="call-back"]');
-  await waitFor(m, `return gBrowser.selectedTab.getAttribute("webaios-tab-id")`, (v: string) => v === call);
+  await waitFor(m, `return gBrowser.selectedTab.getAttribute("ressac-tab-id")`, (v: string) => v === call);
   await waitUi(m, `return !doc.querySelector('[data-testid="call-bar"]')`);
   await waitFor(m, `return [...Services.wm.getEnumerator("Toolkit:PictureInPicture")].length`, (v: number) => v === 0);
   expect((await state(m)).tabs[call]!.call).toBeUndefined();
@@ -84,7 +84,7 @@ it("leaving a call's tab floats its video and shows the call bar; its buttons mu
 
 it("on a known site the buttons press the site's own shortcut, as a trusted key, and show what the site then sends", async () => {
   const key = (k: string, code: number) => ({ key: k, code: "Key" + k.toUpperCase(), keyCode: code, meta: true });
-  await m.execute(`Services.prefs.setStringPref("webaios.call.sites", arguments[0])`, [JSON.stringify([{ host: "^127\\.0\\.0\\.1$", mic: key("d", 68), camera: key("e", 69) }])]);
+  await m.execute(`Services.prefs.setStringPref("ressac.call.sites", arguments[0])`, [JSON.stringify([{ host: "^127\\.0\\.0\\.1$", mic: key("d", 68), camera: key("e", 69) }])]);
   const call = await open("/call");
   await callTitle(call, "Appel en cours");
   await open("/other");

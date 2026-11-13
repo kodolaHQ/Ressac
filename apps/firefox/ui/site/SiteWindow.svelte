@@ -7,7 +7,7 @@
   import type { ApiSite } from "../../shared/api";
 
   /** The only API of this page: the main process knows which app it is the interface of. */
-  const api = (window as unknown as { webaios: { site: ApiSite } }).webaios.site;
+  const api = (window as unknown as { ressac: { site: ApiSite } }).ressac.site;
   let appState = $state<SiteWindowState | null>(null);
 
   onMount(() => {

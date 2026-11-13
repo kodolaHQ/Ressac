@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Execution } from "@webaios/kernel";
+  import type { Execution } from "@ressac/kernel";
   import type { ActionShown } from "../../shared/actions";
   import { api } from "../state.svelte";
   import Icon from "./Icon.svelte";
@@ -160,7 +160,7 @@
   .buttons button:hover { background: var(--bg-active); }
   :is(.buttons, .confirmation) button:active { transform: scale(0.97); }
   .veil { position: fixed; inset: 0; -webkit-app-region: no-drag; display: grid; place-content: center; background: var(--veil); backdrop-filter: blur(6px); z-index: 10; }
-  .confirmation { max-width: 420px; padding: 18px 20px; border-radius: 16px; background: var(--glass-dense); border: 1px solid var(--glass-edge); box-shadow: var(--modal-shadow); color: var(--text); animation: webaios-drop var(--spring-d) var(--spring) backwards; }
+  .confirmation { max-width: 420px; padding: 18px 20px; border-radius: 16px; background: var(--glass-dense); border: 1px solid var(--glass-edge); box-shadow: var(--modal-shadow); color: var(--text); animation: ressac-drop var(--spring-d) var(--spring) backwards; }
   .confirmation p { margin: 0 0 14px; }
   .confirm-buttons { display: flex; justify-content: flex-end; gap: 8px; }
   .confirmation .confirm { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }

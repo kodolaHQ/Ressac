@@ -1,22 +1,22 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { BrowserState } from "../shared/model";
 import { dispatch, state, waitFor } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
 import { inUi, missingApi, pressKeys, waitUi } from "./ui";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 let server: Awaited<ReturnType<typeof startServer>>;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 beforeAll(async () => (server = await startServer()));
 afterAll(() => server?.close());
 beforeEach(async () => {
-  w = await launchWebAiOs();
+  w = await launchRessac();
   m = w.marionette;
   await m.setContext("chrome");
-  await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+  await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
   await waitUi(m, "return !!doc.querySelector('[data-testid=\"sidebar\"]')");
 });
 afterEach(async () => {
@@ -58,7 +58,7 @@ async function submit(text: string): Promise<void> {
 /** The keyboard goes to the displayed web page. */
 const focusPage = () => m.execute("gBrowser.selectedBrowser.focus()");
 
-describe("WebAiOs shortcuts", () => {
+describe("Ressac shortcuts", () => {
   it("⌘T opens the command bar, not a Firefox tab", async () => {
     const a = await open("/a.html");
     await waitTitle(a, "Page A");
@@ -78,7 +78,7 @@ describe("WebAiOs shortcuts", () => {
     await pressKeys(m, "Meta+,");
     await sleep(500);
     const s = await state(m);
-    const pages = Object.values(s.tabs).filter((o) => o.url === "webaios://settings");
+    const pages = Object.values(s.tabs).filter((o) => o.url === "ressac://settings");
     expect(pages).toHaveLength(1);
     expect(pages[0]).toMatchObject({ title: "Réglages" });
     expect(s.windows[0]!.active[s.windows[0]!.activeSpace]).toBe(pages[0]!.id);
@@ -117,14 +117,14 @@ describe("WebAiOs shortcuts", () => {
       await pressKeys(m, combo);
       await new Promise((r) => setTimeout(r, 200));
       expect([combo, (await win()).activeSpace, await activeId()]).toEqual([combo, second, b]);
-      expect(await m.execute<string | null>("return gBrowser.selectedTab.getAttribute('webaios-tab-id')")).toBe(b);
+      expect(await m.execute<string | null>("return gBrowser.selectedTab.getAttribute('ressac-tab-id')")).toBe(b);
     }
   });
 
   it("⌘[ and ⌘] follow the tab's history", async () => {
     const a = await open("/a.html");
     await waitTitle(a, "Page A");
-    await m.execute("window.webaiosWindow.navigate(arguments[0], arguments[1])", [a, server.url + "/b.html"]);
+    await m.execute("window.ressacWindow.navigate(arguments[0], arguments[1])", [a, server.url + "/b.html"]);
     await waitTitle(a, "Page B");
     await focusPage();
     await pressKeys(m, "Meta+[");

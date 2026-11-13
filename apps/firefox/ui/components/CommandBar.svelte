@@ -383,7 +383,7 @@
     box-shadow: var(--modal-shadow);
     backdrop-filter: blur(30px) saturate(1.8);
     font-size: 14px;
-    animation: webaios-drop var(--spring-d) var(--spring) backwards;
+    animation: ressac-drop var(--spring-d) var(--spring) backwards;
   }
   input { width: 100%; box-sizing: border-box; padding: 16px 18px; font: 400 17px var(--font-ui); color: var(--text); background: transparent; border: 0; border-bottom: 1px solid var(--border); outline: none; }
   input::placeholder { color: var(--text-muted); }
@@ -402,7 +402,7 @@
   .pictogram[data-type="action"] { color: var(--accent); }
   .param-line { display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 14px; border-bottom: 1px solid var(--border); }
   .param-line input { border: 0; padding: 8px 4px; }
-  .pill { display: inline-flex; align-items: center; gap: 5px; flex: none; max-width: 45%; padding: 4px 10px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; animation: webaios-drop var(--spring-d) var(--spring) backwards; }
+  .pill { display: inline-flex; align-items: center; gap: 5px; flex: none; max-width: 45%; padding: 4px 10px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; animation: ressac-drop var(--spring-d) var(--spring) backwards; }
   .help { margin: 10px 18px 12px; font-size: 12px; color: var(--text-muted); }
   .tag { margin-left: auto; flex: none; color: var(--text-muted); font: 11px var(--font-mono); }
   .detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font: 12px var(--font-mono); }

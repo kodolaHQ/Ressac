@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { Action } from "../shared/api";
 import { dispatch, inWindow, newWindow, state, waitFor, waitReady, waitWindowCount, windowHandles } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
 import { inUi, pressKeys, waitUi } from "./ui";
@@ -12,7 +12,7 @@ import { inUi, pressKeys, waitUi } from "./ui";
 let server: Awaited<ReturnType<typeof startServer>>;
 let dataDir: string;
 let profile: string;
-let w: LaunchedWebAiOs | undefined;
+let w: LaunchedRessac | undefined;
 beforeAll(async () => (server = await startServer()));
 afterAll(() => server?.close());
 afterEach(async () => {
@@ -24,12 +24,12 @@ afterEach(async () => {
 
 /** Launches on the shared dataDir/profile (created on first use) and waits until the window has loaded its state. */
 async function start(): Promise<Marionette> {
-  dataDir ??= await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
-  profile ??= await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
-  w = await launchWebAiOs({ dataDir, profile });
+  dataDir ??= await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
+  profile ??= await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
+  w = await launchRessac({ dataDir, profile });
   const m = w.marionette;
   await m.setContext("chrome");
-  await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+  await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
   await waitUi(m, "return !!doc.querySelector('[data-testid=\"sidebar\"]')");
   return m;
 }
@@ -39,7 +39,7 @@ async function quit(): Promise<void> {
   w = undefined;
 }
 const win = async (m: Marionette) => (await state(m)).windows[0]!;
-const marked = (m: Marionette) => m.execute<number>("return gBrowser.tabs.filter((t) => t.hasAttribute('webaios-tab-id')).length");
+const marked = (m: Marionette) => m.execute<number>("return gBrowser.tabs.filter((t) => t.hasAttribute('ressac-tab-id')).length");
 
 // Each test starts from fresh folders.
 const fresh = () => {
@@ -97,7 +97,7 @@ describe("restore at startup", () => {
       seen.push(
         await inWindow(m, handle, async () => {
           await waitReady(m);
-          const id = await m.execute<string>("return window.webaiosWindow.windowId");
+          const id = await m.execute<string>("return window.ressacWindow.windowId");
           const pair = await inUi(m, `return [doc.querySelector('[data-testid^="space-"][aria-current="true"]')?.textContent.trim(), doc.querySelectorAll('[data-testid^="tab-"]').length]`);
           return { handle, id, pair };
         }),
@@ -117,9 +117,9 @@ describe("restore at startup", () => {
     expect(Object.values(after.tabs).filter((o) => o.windowId === after.windows[1]!.id).map((o) => o.link?.type)).toEqual(["essential"]);
     expect(urls(after)).toEqual(urls(before));
     // The essential loads at launch, without being shown.
-    await waitFor(m, `const t = gBrowser.tabs.find((t) => t.getAttribute('webaios-tab-id') === ${JSON.stringify(b)}); return !!t && !t.selected && t.linkedBrowser.currentURI.spec.endsWith('/b.html')`, (v) => v === true);
+    await waitFor(m, `const t = gBrowser.tabs.find((t) => t.getAttribute('ressac-tab-id') === ${JSON.stringify(b)}); return !!t && !t.selected && t.linkedBrowser.currentURI.spec.endsWith('/b.html')`, (v) => v === true);
     // The active tab of the active space is displayed, on its page.
-    await waitFor(m, "return gBrowser.selectedTab.getAttribute('webaios-tab-id')", (v) => v === c);
+    await waitFor(m, "return gBrowser.selectedTab.getAttribute('ressac-tab-id')", (v) => v === c);
     await waitFor(m, "return gBrowser.selectedBrowser.currentURI.spec", (v) => v === server.url + "/b.html?n=1");
     // Pages loaded in this run keep their URL at the next start too (no about:blank written back while quitting).
     await quit();
@@ -132,7 +132,7 @@ describe("restore at startup", () => {
     let m = await start();
     const windowId = (await win(m)).id;
     await m.execute("window.resizeTo(1000, 700)");
-    const width = `return (async () => (await ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready).state.windows.find((f) => f.id === ${JSON.stringify(windowId)})?.frame?.width)();`;
+    const width = `return (async () => (await ChromeUtils.importESModule("chrome://browser/content/ressac/store.sys.mjs").ready).state.windows.find((f) => f.id === ${JSON.stringify(windowId)})?.frame?.width)();`;
     await waitFor(m, width, (v) => v === 1000);
     await quit();
 
@@ -150,7 +150,7 @@ describe("restore at startup", () => {
       const after = await dispatch(m, { type: "openTab", windowId: windowId, url: server.url + p });
       return Object.keys(after.tabs).find((id) => !before.has(id))!;
     };
-    const title = (id: string, t: string) => waitFor(m, `return (async () => (await ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready).state.tabs[${JSON.stringify(id)}]?.title)();`, (v) => v === t);
+    const title = (id: string, t: string) => waitFor(m, `return (async () => (await ChromeUtils.importESModule("chrome://browser/content/ressac/store.sys.mjs").ready).state.tabs[${JSON.stringify(id)}]?.title)();`, (v) => v === t);
     await title(await open("/cookie"), "cookie");
     await quit();
 
@@ -164,7 +164,7 @@ describe("restore at startup", () => {
     const windowId = (await win(m)).id;
     await m.execute(
       `return (async () => {
-        const store = await ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready;
+        const store = await ChromeUtils.importESModule("chrome://browser/content/ressac/store.sys.mjs").ready;
         for (let i = 0; i < 100; i++) store.dispatch({ type: "openTab", windowId: arguments[0], url: arguments[1] + "/b.html?n=" + i, activate: i === 99 });
         await store.flush();
       })();`,
@@ -179,7 +179,7 @@ describe("restore at startup", () => {
     expect(await marked(m)).toBe(1);
     expect(await m.execute<number>("return gBrowser.tabs.length")).toBe(2);
     await dispatch(m, { type: "activateTab", id: f.order[f.activeSpace]![0]! });
-    await waitFor(m, "return gBrowser.tabs.filter((t) => t.hasAttribute('webaios-tab-id')).length", (n) => n === 2);
+    await waitFor(m, "return gBrowser.tabs.filter((t) => t.hasAttribute('ressac-tab-id')).length", (n) => n === 2);
   });
 
   it("keeps the chosen search engine and uses it from ⌘T", async () => {
@@ -192,14 +192,14 @@ describe("restore at startup", () => {
     expect((await state(m)).settings.engine).toBe("duckduckgo");
     // No network in tests: watch the requests and cancel them.
     await m.execute(`
-      window.webaiosRequests = [];
-      Services.obs.addObserver({ observe(ch) { ch.QueryInterface(Ci.nsIChannel); if (ch.URI.host === "duckduckgo.com") { window.webaiosRequests.push(ch.URI.spec); ch.cancel(Cr.NS_ERROR_ABORT); } } }, "http-on-modify-request");
+      window.ressacRequests = [];
+      Services.obs.addObserver({ observe(ch) { ch.QueryInterface(Ci.nsIChannel); if (ch.URI.host === "duckduckgo.com") { window.ressacRequests.push(ch.URI.spec); ch.cancel(Cr.NS_ERROR_ABORT); } } }, "http-on-modify-request");
     `);
     await pressKeys(m, "Meta+t");
     await waitUi(m, "return doc.activeElement?.dataset.testid === 'command-input'");
     await inUi(m, `const f = doc.activeElement; f.value = "chat"; f.dispatchEvent(new ui.Event("input", { bubbles: true }));`);
     await pressKeys(m, "Enter");
-    await waitFor(m, "return window.webaiosRequests", (r: string[]) => r.includes("https://duckduckgo.com/?q=chat"));
+    await waitFor(m, "return window.ressacRequests", (r: string[]) => r.includes("https://duckduckgo.com/?q=chat"));
   });
 
   it("a change made right before quitting survives (no wait for the 500 ms recorder)", async () => {
@@ -213,20 +213,20 @@ describe("restore at startup", () => {
 
   it("an unreadable session: one notification, with the .corrupt path", async () => {
     fresh();
-    dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
+    dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
     await writeFile(path.join(dataDir, "session.json"), "{ not json");
     const m = await start();
     const aside = (await readdir(dataDir)).find((n) => n.endsWith(".corrupt"))!;
     const text = await waitFor<string[]>(
       m,
-      `return (async () => { const nb = window.gNotificationBox; return [...nb.allNotifications].filter((n) => n.getAttribute("value") === "webaios-session-set-aside").map((n) => n.label?.textContent ?? n.messageText?.textContent ?? n.label ?? ""); })();`,
+      `return (async () => { const nb = window.gNotificationBox; return [...nb.allNotifications].filter((n) => n.getAttribute("value") === "ressac-session-set-aside").map((n) => n.label?.textContent ?? n.messageText?.textContent ?? n.label ?? ""); })();`,
       (v) => v.length > 0,
     );
     await new Promise((r) => setTimeout(r, 500)); // a duplicate would show up by now
-    const again = await m.execute<number>(`return [...window.gNotificationBox.allNotifications].filter((n) => n.getAttribute("value") === "webaios-session-set-aside").length`);
+    const again = await m.execute<number>(`return [...window.gNotificationBox.allNotifications].filter((n) => n.getAttribute("value") === "ressac-session-set-aside").length`);
     expect(again).toBe(1);
     expect(text).toHaveLength(1);
     expect(text[0]).toContain(path.join(dataDir, aside));
-    expect(text[0]).toContain("WebAiOs repart avec une session neuve");
+    expect(text[0]).toContain("Ressac repart avec une session neuve");
   });
 });

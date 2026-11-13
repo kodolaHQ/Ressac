@@ -210,7 +210,7 @@ export async function initSpace(c: SpacePaths, models = DEFAULT_TEMPLATES): Prom
     try {
       if (await updateStartDisplay(c, models, id)) created.push(join(c.widgets, id, "display.html"));
     } catch (e) {
-      console.error(`[webaios] display update of widget ${id}:`, e);
+      console.error(`[ressac] display update of widget ${id}:`, e);
     }
   }
   await mkdir(c.projects, { recursive: true });

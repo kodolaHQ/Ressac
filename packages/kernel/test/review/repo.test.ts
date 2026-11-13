@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { ACCESS_DENIED, ReviewStore, ReviewError, GIT_REQUIRED, gitAvailable } from "../../src/review/repo.js";
 import { tempFolder } from "../helpers/temp.js";
 
-const GIT = process.env.WEBAIOS_GIT ?? "/usr/bin/git";
+const GIT = process.env.RESSAC_GIT ?? "/usr/bin/git";
 let root: string;
 let folder: string;
 let repo: string;
@@ -31,11 +31,11 @@ describe("reference", () => {
     expect(await gitAvailable()).toBe(true);
     expect(await gitAvailable("/chemin/absent")).toBe(false);
   });
-  test("assurerReference creates refs/webaios/relu in the private repo; a second call returns false; no .git in the folder", async () => {
+  test("assurerReference creates refs/ressac/relu in the private repo; a second call returns false; no .git in the folder", async () => {
     await write("a.txt", "a\n");
     expect(await r.ensureReference()).toBe(true);
     expect(await r.ensureReference()).toBe(false);
-    const ref = execFileSync(GIT, ["--git-dir", repo, "rev-parse", "refs/webaios/relu"]).toString().trim();
+    const ref = execFileSync(GIT, ["--git-dir", repo, "rev-parse", "refs/ressac/relu"]).toString().trim();
     expect(ref).toMatch(/^[0-9a-f]{40,64}$/);
     expect(await readdir(folder)).toEqual(["a.txt"]);
   });
@@ -196,13 +196,13 @@ describe("erreurs", () => {
     await writeFile(fake, "#!/bin/sh\necho 'xcrun: error' >&2\nexit 1\n", { mode: 0o755 });
     await expect(new ReviewStore({ repo, folder: folder, git: fake }).ensureReference()).rejects.toMatchObject({ reason: GIT_REQUIRED });
   });
-  test("WEBAIOS_GIT=/chemin/absent : GIT_REQUIRED", async () => {
-    const before = process.env.WEBAIOS_GIT;
-    process.env.WEBAIOS_GIT = "/chemin/absent";
+  test("RESSAC_GIT=/chemin/absent : GIT_REQUIRED", async () => {
+    const before = process.env.RESSAC_GIT;
+    process.env.RESSAC_GIT = "/chemin/absent";
     try {
       await expect(new ReviewStore({ repo, folder: folder }).ensureReference()).rejects.toMatchObject({ reason: GIT_REQUIRED });
     } finally {
-      if (before === undefined) delete process.env.WEBAIOS_GIT; else process.env.WEBAIOS_GIT = before;
+      if (before === undefined) delete process.env.RESSAC_GIT; else process.env.RESSAC_GIT = before;
     }
   });
   test.skipIf(process.getuid?.() === 0)("sous-dossier chmod 000 : ACCES_REFUSE", async () => {

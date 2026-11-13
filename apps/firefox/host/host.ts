@@ -10,11 +10,11 @@ process.stdout.write = process.stderr.write.bind(process.stderr) as typeof proce
 console.log = console.info = console.debug = console.error;
 // Firefox gone: its pipe breaks, and the end of stdin stops everything below.
 process.stdout.on("error", () => {});
-process.on("unhandledRejection", (e) => console.error("[webaios] unhandled rejection:", e));
+process.on("unhandledRejection", (e) => console.error("[ressac] unhandled rejection:", e));
 
-process.env.WEBAIOS_CONTAINER ||= "webaios-workshop-firefox";
+process.env.RESSAC_CONTAINER ||= "ressac-workshop-firefox";
 // The existing container's name and host ports: renaming them would orphan it.
-process.env.WEBAIOS_CONTAINER_PORTS ||= "5300-5319";
+process.env.RESSAC_CONTAINER_PORTS ||= "5300-5319";
 
 const { join } = await import("node:path");
 const { createInterface } = await import("node:readline");
@@ -67,9 +67,9 @@ const {
   builderSelection,
 } = await import("../shared/api.ts");
 
-const dataDir = process.env.WEBAIOS_DATA_DIR;
+const dataDir = process.env.RESSAC_DATA_DIR;
 if (!dataDir) {
-  console.error("[webaios] WEBAIOS_DATA_DIR manquant");
+  console.error("[ressac] RESSAC_DATA_DIR manquant");
   process.exit(2);
 }
 const root = join(dataDir, "workspace");
@@ -77,8 +77,8 @@ const paths = spacePaths(root);
 // Widgets' data, states and grants: outside the space.
 const widgetsFolder = join(dataDir, "widgets");
 // Outside the agent's kernel: the history works even when the kernel does not start.
-const MEMORY_LOOP = process.env.WEBAIOS_MEMORY_LOOP === "1";
-// The pages whose text the history keeps for the agent's memory: http(s), never the machine (unless WEBAIOS_MEMORY_LOOP).
+const MEMORY_LOOP = process.env.RESSAC_MEMORY_LOOP === "1";
+// The pages whose text the history keeps for the agent's memory: http(s), never the machine (unless RESSAC_MEMORY_LOOP).
 const keepable = (url: string) => {
   try {
     const u = new URL(url);
@@ -94,13 +94,13 @@ const hist = (() => {
     h.purge();
     return h;
   } catch (e) {
-    console.error("[webaios] the history could not open:", e);
+    console.error("[ressac] the history could not open:", e);
     return undefined;
   }
 })();
 const purge = setInterval(() => hist?.purge(), 6 * 60 * 60 * 1000);
 purge.unref();
-const duckduckgo = process.env.WEBAIOS_TEST_DUCKDUCKGO_URL;
+const duckduckgo = process.env.RESSAC_TEST_DUCKDUCKGO_URL;
 // Shown when the widgets service has no kernel.
 const AGENT_STOPPED_MESSAGE = "Le service des widgets ne répond pas (agent arrêté ?)";
 // The answer to a bad builder argument.
@@ -153,23 +153,23 @@ const broadcastAccess = () => {
 const ai = new LocalAi({ folder: join(dataDir, "local-ai"), run: defaultRunner, decisionModel: "pplx-decider-flash" });
 
 // The host is Node and cannot call Cc: in tests it writes the file, otherwise the chrome store shows the alert.
-// Another address imposed (a remote Ollama, a test): WebAiOs then starts and installs nothing.
-// WEBAIOS_TEST_OLLAMA_KIND (e2e): a fixed status and actions that touch nothing, to show each state of the pages.
-const fakeOllama = process.env.WEBAIOS_TEST_OLLAMA_KIND;
+// Another address imposed (a remote Ollama, a test): Ressac then starts and installs nothing.
+// RESSAC_TEST_OLLAMA_KIND (e2e): a fixed status and actions that touch nothing, to show each state of the pages.
+const fakeOllama = process.env.RESSAC_TEST_OLLAMA_KIND;
 const ollama = fakeOllama
   ? { status: async () => ({ kind: fakeOllama, version: "0.30.0", min: OLLAMA_MIN }) as OllamaStatus, start: async () => {}, install: async (progress: (p: number | null) => void) => progress(50), close: () => {} }
-  : createOllamaRuntime({ url: ai.ollamaUrl, dataDir, managed: process.platform === "darwin" && ai.ollamaUrl === OLLAMA_LOCAL_URL && !process.env.WEBAIOS_TEST_NO_SYSTEM });
-// An installed Ollama that is not running is started with WebAiOs; nothing is ever downloaded without a click.
-void ollama.status().then((s) => (s.kind === "stopped" ? ollama.start() : undefined)).catch((e) => console.error("[webaios] Ollama did not start:", e));
-// WEBAIOS_TEST_DOCKER_KIND (e2e): a fixed status and a start that touches nothing.
-const fakeDocker = process.env.WEBAIOS_TEST_DOCKER_KIND;
+  : createOllamaRuntime({ url: ai.ollamaUrl, dataDir, managed: process.platform === "darwin" && ai.ollamaUrl === OLLAMA_LOCAL_URL && !process.env.RESSAC_TEST_NO_SYSTEM });
+// An installed Ollama that is not running is started with Ressac; nothing is ever downloaded without a click.
+void ollama.status().then((s) => (s.kind === "stopped" ? ollama.start() : undefined)).catch((e) => console.error("[ressac] Ollama did not start:", e));
+// RESSAC_TEST_DOCKER_KIND (e2e): a fixed status and a start that touches nothing.
+const fakeDocker = process.env.RESSAC_TEST_DOCKER_KIND;
 const docker = fakeDocker
   ? { status: async () => ({ kind: fakeDocker, app: "OrbStack" }) as DockerStatus, start: async () => {} }
-  : createDockerRuntime({ running: async () => (await workshop.state()) !== "docker-absent", managed: process.platform === "darwin" && !process.env.WEBAIOS_TEST_NO_SYSTEM });
-// An installed container app that is not running is started with WebAiOs, and left running at quit.
-void docker.status().then((s) => (s.kind === "stopped" ? docker.start() : undefined)).catch((e) => console.error("[webaios] Docker did not start:", e));
+  : createDockerRuntime({ running: async () => (await workshop.state()) !== "docker-absent", managed: process.platform === "darwin" && !process.env.RESSAC_TEST_NO_SYSTEM });
+// An installed container app that is not running is started with Ressac, and left running at quit.
+void docker.status().then((s) => (s.kind === "stopped" ? docker.start() : undefined)).catch((e) => console.error("[ressac] Docker did not start:", e));
 const notify = (n: { title: string; text: string }) => {
-  const file = process.env.WEBAIOS_TEST_NOTIFICATIONS;
+  const file = process.env.RESSAC_TEST_NOTIFICATIONS;
   if (file) return void appendFileSync(file, JSON.stringify({ title: n.title, text: n.text }) + "\n");
   rpc.notify("home.notification", { title: n.title, text: n.text });
 };
@@ -183,7 +183,7 @@ const launchKernel = (profileId: string): Promise<Kernel | null> => {
     widgetsFolder: widgetsFolder,
     actionsFolder: actionsFolder,
     recapsFolder: recapsFolder,
-    ...(process.env.WEBAIOS_TEST_RECAP_DAY_MS ? { recapsDayMs: Number(process.env.WEBAIOS_TEST_RECAP_DAY_MS) } : {}),
+    ...(process.env.RESSAC_TEST_RECAP_DAY_MS ? { recapsDayMs: Number(process.env.RESSAC_TEST_RECAP_DAY_MS) } : {}),
     onRecapChange: (id) => rpc.notify("recaps.changed", { id }),
     onActivity: (a) => rpc.notify("agent.activity", a),
     ai: ai,
@@ -196,7 +196,7 @@ const launchKernel = (profileId: string): Promise<Kernel | null> => {
     // Widgets and actions wrote something, or a grant changed: the page reads again.
     onChange: () => rpc.notify("home.change"),
     notify: notify,
-    ...(process.env.WEBAIOS_TEST_LOCAL_ADDRESSES === "1" ? { localAddresses: true } : {}),
+    ...(process.env.RESSAC_TEST_LOCAL_ADDRESSES === "1" ? { localAddresses: true } : {}),
     ...(duckduckgo ? { searchUrl: duckduckgo } : {}),
   }).then(
     (n) => {
@@ -213,7 +213,7 @@ const launchKernel = (profileId: string): Promise<Kernel | null> => {
       try {
         homeStop = n.watchHome(() => rpc.notify("home.change"));
       } catch (e) {
-        console.error("[webaios] the home watch did not start:", e);
+        console.error("[ressac] the home watch did not start:", e);
       }
       broadcastAccess();
       // Each kernel start (a restart included): what the pages read while it was down is read again.
@@ -222,7 +222,7 @@ const launchKernel = (profileId: string): Promise<Kernel | null> => {
     },
     (e: Error) => {
       error = e.message;
-      console.error("[webaios] the kernel failed to start:", e);
+      console.error("[ressac] the kernel failed to start:", e);
       return null;
     },
   );
@@ -276,9 +276,9 @@ const stop = () =>
   (stopping ??= (async () => {
     // Started first (spike S8) but not awaited before the others: a slow docker must not eat the 5 s quit delay
     // before the history is closed. Settled alone:
-    // its failure never skips the stops below. WEBAIOS_TEST_APPS_STOP_FAILS: tests only.
-    const appsStopped = (process.env.WEBAIOS_TEST_APPS_STOP_FAILS === "1" ? Promise.reject(new Error("simulated apps stop")) : apps.stop()).catch((e) =>
-      console.error("[webaios] the apps did not stop:", e),
+    // its failure never skips the stops below. RESSAC_TEST_APPS_STOP_FAILS: tests only.
+    const appsStopped = (process.env.RESSAC_TEST_APPS_STOP_FAILS === "1" ? Promise.reject(new Error("simulated apps stop")) : apps.stop()).catch((e) =>
+      console.error("[ressac] the apps did not stop:", e),
     );
     extensions.stop();
     settings.stopLogins();
@@ -300,7 +300,7 @@ const sessions = new SessionsAgent({
   async open(f, t, { profile, resume, onBuildProgress }) {
     const n = await ready;
     if (!n) throw new Error(error ?? "le noyau de l'agent n'a pas démarré");
-    // A container app WebAiOs is starting (or can start): the panel stays on « Préparation » until Docker answers.
+    // A container app Ressac is starting (or can start): the panel stays on « Préparation » until Docker answers.
     await docker.start().catch(() => {});
     if (profile !== "codex" && profile !== "claude") return n.openAgentSession({ ...t, window: f, profile, resume, onBuildProgress });
     const e = profile === "claude" ? claudeEngine : engine; // one snapshot: the env must match the relay token
@@ -383,10 +383,10 @@ const rpc = createRpc({
         );
         const [placements, theme] = await Promise.all([readFreeLayout(n.paths), readTheme(n.paths)]);
         // An invalid theme keeps the default: it is reported, never rewritten.
-        if (theme.error) console.warn(`[webaios] ${theme.error}`);
+        if (theme.error) console.warn(`[ressac] ${theme.error}`);
         return toShownWidgets({ state: state, placements, theme: theme.theme, mtimes });
       } catch (e) {
-        console.error("[webaios] home page unreadable:", e);
+        console.error("[ressac] home page unreadable:", e);
         return { widgets: [], theme: null };
       }
     },
@@ -396,7 +396,7 @@ const rpc = createRpc({
         const ids = (await readHome(paths, widgetsFolder)).widgets.map((w) => w.id);
         await placeWidgets(paths, validatePlacements(p?.placements, ids));
       } catch (e) {
-        console.error("[webaios] layout not written:", e);
+        console.error("[ressac] layout not written:", e);
         // The UI already showed the gesture's preview: it re-reads the old layout instead of leaving it on screen.
         rpc.notify("home.change");
       }
@@ -406,7 +406,7 @@ const rpc = createRpc({
       // The grant and the data read with the account leave with the widget (through the kernel, which also writes the grants).
       void removeWidget(paths, id, denyWidget).then(
         () => rpc.notify("home.change"),
-        (e) => console.error(`[webaios] widget ${id} not removed:`, e),
+        (e) => console.error(`[ressac] widget ${id} not removed:`, e),
       );
     },
     "home.grant": async (p: { id: string; profile: string; account: string[]; public: string[] }) => {
@@ -417,7 +417,7 @@ const rpc = createRpc({
         await n.grant(p);
         return { ok: true as const };
       } catch (e) {
-        console.error(`[webaios] grant of widget ${p?.id}:`, e);
+        console.error(`[ressac] grant of widget ${p?.id}:`, e);
         // The UI re-reads the page: the new request is displayed.
         rpc.notify("home.change");
         return { ok: false as const, error: (e as Error).message };
@@ -426,12 +426,12 @@ const rpc = createRpc({
     "home.denyGrant": async (p: { id?: unknown }) => {
       const n = await ready;
       if (!n || typeof p?.id !== "string") return;
-      await n.denyGrant(p.id).catch((e) => console.error(`[webaios] grant removal of widget ${p.id}:`, e));
+      await n.denyGrant(p.id).catch((e) => console.error(`[ressac] grant removal of widget ${p.id}:`, e));
     },
     "home.harvest": async (p: { id?: unknown }) => {
       const n = await ready;
       if (!n || typeof p?.id !== "string") return;
-      await n.harvestNow(p.id).catch((e) => console.error(`[webaios] harvest of widget ${p.id}:`, e));
+      await n.harvestNow(p.id).catch((e) => console.error(`[ressac] harvest of widget ${p.id}:`, e));
     },
     // Read without the kernel, like the home page: the executions, outside the space.
     "home.runs": (p: { id?: unknown }) => executionsWidget(widgetsFolder, typeof p?.id === "string" ? p.id : ""),
@@ -504,7 +504,7 @@ const rpc = createRpc({
         const r = await n.harvestNow(id, "manual");
         return r.run === undefined ? {} : { run: r.run };
       } catch (e) {
-        console.error(`[webaios] run of widget ${id}:`, e);
+        console.error(`[ressac] run of widget ${id}:`, e);
         return {};
       }
     },
@@ -623,16 +623,16 @@ const rpc = createRpc({
     },
     // Sent by the chrome on each host start, with the about:addons changes seen while no host ran (applied first:
     // never reinstalled); answered when every granted extension is handled. A failed start is retried by the next one.
-    "extensions.ready": async (p: { outsideWebaios?: { addonId: string; what: "uninstalled" | "disabled" }[]; crashes?: { addonId?: unknown; at?: unknown }[] }) => {
+    "extensions.ready": async (p: { outsideRessac?: { addonId: string; what: "uninstalled" | "disabled" }[]; crashes?: { addonId?: unknown; at?: unknown }[] }) => {
       for (const c of Array.isArray(p?.crashes) ? p.crashes : []) extensions.crash(c?.addonId, c?.at);
-      for (const h of p?.outsideWebaios ?? []) await extensions.outsideWebaios(h.addonId, h.what);
+      for (const h of p?.outsideRessac ?? []) await extensions.outsideRessac(h.addonId, h.what);
       return (extensionsStartup ??= extensions.start().catch((e) => {
         extensionsStartup = undefined;
         throw e;
       }));
     },
-    "extensions.outsideWebaios": (p: { addonId: string; what: "uninstalled" | "disabled" }) =>
-      extensions.outsideWebaios(p.addonId, p.what),
+    "extensions.outsideRessac": (p: { addonId: string; what: "uninstalled" | "disabled" }) =>
+      extensions.outsideRessac(p.addonId, p.what),
     "extensions.ran": (p: { addonId: string; profile: string; readable: boolean }) => extensions.ran(p.addonId, p.profile, p.readable),
     // A content script's message is readable only from a tab the agent can read as it is noted:
     // tabReadableByAgent): asked of the policy here, which knows an agent-opened tab before Firefox hears of it.
@@ -662,7 +662,7 @@ const rpc = createRpc({
     // The RPC signal is ignored on purpose: the kernel's Pacing hands the lane back (partie=false) when the read has already ended, and rpc.ts drops a late answer.
     "read.changeHost": (p: { read: string; host: string }) => bridge.changeHost(p.read, p.host),
     // Tests only: a paced read through a Pacing shared by the calls, as a workflow's web widget does.
-    ...(process.env.WEBAIOS_TEST_PACED_READ === "1"
+    ...(process.env.RESSAC_TEST_PACED_READ === "1"
       ? {
           "test.pacedRead": ({ url }: { url: string }) =>
             testPacing.read(new URL(url).hostname, (ch) => bridge.readPageInvisible(url, { profile: null, changeHost: ch })),
@@ -674,7 +674,7 @@ const rpc = createRpc({
     // The settings page (host/settings.ts): `settings` is made after `sites` and `actions`, below.
     ...Object.fromEntries(SETTINGS_METHODS.map((k) => [k, (p: unknown) => settings[k]!(p)])),
     ...Object.fromEntries(DESIGN_METHODS.map((k) => [k, (p: unknown) => design.handlers[k]!(p)])),
-    ...(process.env.WEBAIOS_HOST_TEST === "1" ? { "debug.log": (p: { text: string }) => console.log(p.text) } : {}),
+    ...(process.env.RESSAC_HOST_TEST === "1" ? { "debug.log": (p: { text: string }) => console.log(p.text) } : {}),
   },
 });
 // Errors go to Firefox, which reports them (chrome/store/telemetry.ts), on top of the stderr log.
@@ -684,7 +684,7 @@ const reportError = (e: unknown) => {
 };
 process.on("unhandledRejection", reportError);
 process.on("uncaughtException", (e) => {
-  console.error("[webaios] uncaught exception:", e);
+  console.error("[ressac] uncaught exception:", e);
   reportError(e);
   // Exit once the notification is flushed: stdout is an asynchronous pipe on macOS.
   writeStdout("", () => process.exit(1));
@@ -699,7 +699,7 @@ const extensions = new ExtensionsAgent({ folder: join(dataDir, "extensions"), ag
 const sites = createSites({
   paths: paths,
   dataDir,
-  localAddresses: process.env.WEBAIOS_TEST_LOCAL_ADDRESSES === "1",
+  localAddresses: process.env.RESSAC_TEST_LOCAL_ADDRESSES === "1",
   chrome: {
     open: (s, frame, tweaks) => rpc.request("sites.open", [s, frame, tweaks]),
     close: (id) => rpc.request("sites.close", [id]),
@@ -718,7 +718,7 @@ const sites = createSites({
   },
   // The public read (a throwaway container, no profile): never the app's cookies nor the user's.
   readLinks: async (page, signal) =>
-    (await bridge.readPageInvisible(page, { profile: null, ...(process.env.WEBAIOS_TEST_LOCAL_ADDRESSES === "1" ? { localAddresses: true } : {}), ...(signal ? { signal } : {}) })).links.map((l) => l.url),
+    (await bridge.readPageInvisible(page, { profile: null, ...(process.env.RESSAC_TEST_LOCAL_ADDRESSES === "1" ? { localAddresses: true } : {}), ...(signal ? { signal } : {}) })).links.map((l) => l.url),
   // The review takes a new app's first snapshot.
   broadcast: () => {
     rpc.notify("sites.change");
@@ -774,7 +774,7 @@ const apps = createApplicationsHost({
 const design = createDesignHost({
   dataDir,
   paths: paths,
-  port: externalMcpPort(process.env.WEBAIOS_PORT_MCP_EXTERNAL),
+  port: externalMcpPort(process.env.RESSAC_PORT_MCP_EXTERNAL),
   sites: () => sites.list().then((l) => l.map(({ id, name: name }) => ({ id, name: name }))),
   // Every app (apps.liste() keeps the running ones only).
   siteApps: () => apps.manager.list(),
@@ -791,7 +791,7 @@ let actionsStop: (() => Promise<void>) | undefined;
 try {
   actionsStop = watchActions(paths, () => rpc.notify("actions.change"));
 } catch (e) {
-  console.error("[webaios] the actions watch did not start:", e);
+  console.error("[ressac] the actions watch did not start:", e);
 }
 const settings = createSettingsHandlers({
   workshop,

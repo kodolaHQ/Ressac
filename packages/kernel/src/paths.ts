@@ -2,7 +2,7 @@ import { homedir } from "node:os";
 import { dirname, join, relative, isAbsolute } from "node:path";
 
 /** Kernel package root in dev; once shipped, the folder holding `templates/`, `extensions/` and `docker/`. */
-export const KERNEL_ROOT = process.env.WEBAIOS_KERNEL_RESOURCES ?? join(import.meta.dirname, "..");
+export const KERNEL_ROOT = process.env.RESSAC_KERNEL_RESOURCES ?? join(import.meta.dirname, "..");
 
 export const CONTAINER_PATH = "/workspace";
 
@@ -13,7 +13,7 @@ export interface SpacePaths {
   widgets: string;
   layout: string;
   projects: string;
-  /** Internal folder `.webaios` (profiles, MCP config). */
+  /** Internal folder `.ressac` (profiles, MCP config). */
   internal: string;
   profiles: string;
   mcpConfig: string;
@@ -25,14 +25,14 @@ export interface SpacePaths {
   actions: string;
   /** Page components written by the agent (`<folder>/component.json`). */
   components: string;
-  /** Site apps written by the agent (`<id>/site.json`, `home/`, `tweaks/`); WebAiOs never writes there. */
+  /** Site apps written by the agent (`<id>/site.json`, `home/`, `tweaks/`); Ressac never writes there. */
   sites: string;
 }
 
 export function spacePaths(root?: string): SpacePaths {
-  const r = root ?? process.env.WEBAIOS_ROOT ?? join(homedir(), "WebAiOs");
+  const r = root ?? process.env.RESSAC_ROOT ?? join(homedir(), "Ressac");
   const home = join(r, "home");
-  const internal = join(r, ".webaios");
+  const internal = join(r, ".ressac");
   return {
     root: r,
     home: home,

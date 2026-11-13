@@ -2,7 +2,7 @@
   import type { WorkflowEdit } from "../../shared/api";
 
   /**
-   * The action, read-only: `action.json` is never written by WebAiOs (its sources, its input and its page layout
+   * The action, read-only: `action.json` is never written by Ressac (its sources, its input and its page layout
    * instruction are changed by asking the agent). Everything shows as text.
    */
   let { action }: { action: NonNullable<WorkflowEdit["action"]> | null } = $props();

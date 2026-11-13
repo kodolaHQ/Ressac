@@ -6,14 +6,14 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { rectCapture, viewfinderScript } from "../../core/design/viewfinder";
 import { dispatch, state, waitFor, waitReady } from "../firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "../launch";
+import { launchRessac, type LaunchedRessac } from "../launch";
 import type { Marionette } from "../marionette";
 import { pressKeys } from "../ui";
 
 // Plan 35's spikes S1–S4 (docs/superpowers/notes/2026-11-06-mode-design-firefox-spikes.md): the viewfinder in an
 // Xray sandbox of a runtime-registered actor, drawSnapshot, a chrome overlay frame, the source read. No build:ui: the
-// actor and the overlay page are served from resource://webaios-spike-design/ (this folder). Security lines are
-// asserted; the rest is printed as `[spike] <what>: <JSON>`. Rerun with WEBAIOS_SPIKE=1 after a Firefox version change.
+// actor and the overlay page are served from resource://ressac-spike-design/ (this folder). Security lines are
+// asserted; the rest is printed as `[spike] <what>: <JSON>`. Rerun with RESSAC_SPIKE=1 after a Firefox version change.
 
 const note = (what: string, v: unknown) => console.log(`[spike] ${what}: ${JSON.stringify(v)}`);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -89,19 +89,19 @@ async function buildSvelte(dir: string): Promise<string> {
   return out;
 }
 
-describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () => {
+describe.skipIf(!process.env.RESSAC_SPIKE)("design mode spikes (plan 35)", () => {
   let server: Server;
   let base: string;
   let svelteOut: string;
   let tmp: string;
-  let w: LaunchedWebAiOs;
+  let w: LaunchedRessac;
   let m: Marionette;
 
   beforeAll(async () => {
     // Under node_modules (ignored by git): the component's `svelte` import resolves to this package's Svelte.
     const cache = path.resolve(import.meta.dirname, "../../node_modules/.cache");
     await mkdir(cache, { recursive: true });
-    tmp = await mkdtemp(path.join(cache, "webaios-design-spike-"));
+    tmp = await mkdtemp(path.join(cache, "ressac-design-spike-"));
     svelteOut = await buildSvelte(tmp);
     server = createServer(async (req, res) => {
       const route = new URL(req.url ?? "/", "http://x").pathname;
@@ -125,11 +125,11 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
     await new Promise<void>((ok) => server.listen(0, "127.0.0.1", ok));
     base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     // The content sandbox reads this folder only (test pref, as agent-extensions.ts testActor): the actor's module.
-    w = await launchWebAiOs({
+    w = await launchRessac({
       prefs: {
         "security.sandbox.content.mac.testing_read_path1": realpathSync(import.meta.dirname) + "/",
-        // WEBAIOS_SPIKE_DPR=2: a Retina-like density for S2 (headless is 1 otherwise).
-        ...(process.env.WEBAIOS_SPIKE_DPR ? { "layout.css.devPixelsPerPx": process.env.WEBAIOS_SPIKE_DPR } : {}),
+        // RESSAC_SPIKE_DPR=2: a Retina-like density for S2 (headless is 1 otherwise).
+        ...(process.env.RESSAC_SPIKE_DPR ? { "layout.css.devPixelsPerPx": process.env.RESSAC_SPIKE_DPR } : {}),
       },
     });
     m = w.marionette;
@@ -139,9 +139,9 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
       m,
       `const res = Services.io.getProtocolHandler("resource").QueryInterface(Ci.nsIResProtocolHandler);
        const { FileUtils } = ChromeUtils.importESModule("resource://gre/modules/FileUtils.sys.mjs");
-       res.setSubstitution("webaios-spike-design", Services.io.newFileURI(new FileUtils.File(arguments[0])));
-       const uri = "resource://webaios-spike-design/design-actor.sys.mjs";
-       ChromeUtils.registerWindowActor("WebAiOsSpikeDesign", { parent: { esModuleURI: uri }, child: { esModuleURI: uri }, matches: ["http://*/*"], messageManagerGroups: ["browsers"], safeForUntrustedWebProcess: true });
+       res.setSubstitution("ressac-spike-design", Services.io.newFileURI(new FileUtils.File(arguments[0])));
+       const uri = "resource://ressac-spike-design/design-actor.sys.mjs";
+       ChromeUtils.registerWindowActor("RessacSpikeDesign", { parent: { esModuleURI: uri }, child: { esModuleURI: uri }, matches: ["http://*/*"], messageManagerGroups: ["browsers"], safeForUntrustedWebProcess: true });
        return "ok";`,
       [import.meta.dirname],
     );
@@ -153,7 +153,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
     if (tmp) await rm(tmp, { recursive: true, force: true });
   });
 
-  const ACTOR = `gBrowser.selectedBrowser.browsingContext.currentWindowGlobal.getActor("WebAiOsSpikeDesign")`;
+  const ACTOR = `gBrowser.selectedBrowser.browsingContext.currentWindowGlobal.getActor("RessacSpikeDesign")`;
   const ask = <T = any>(name: string, data: unknown = {}) => chrome<T>(m, `return ${ACTOR}.sendQuery(arguments[0], arguments[1]);`, [name, data]);
   const inPage = <T = any>(code: string) => ask<T>("page", { code });
   const probe = <T = any>(code: string) => ask<T>("probe", { code });
@@ -204,7 +204,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
     expect(frame.cadre.display).toBe("block");
     expect(frame.etiquette.text).toBe("input#email.champ");
     // What the page sees of the host: no shadow root.
-    expect(await inPage("document.querySelector('webaios-viewfinder').shadowRoot")).toBeNull();
+    expect(await inPage("document.querySelector('ressac-viewfinder').shadowRoot")).toBeNull();
     await mouse("#envoyer");
     const c = await result();
     note("S1 capture #envoyer", { ...c.r, html: c.r?.html?.slice(0, 60), styles: Object.keys(c.r?.styles ?? {}).length });
@@ -511,7 +511,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
     const c = await chrome(
       m,
       `const b = gBrowser.selectedBrowser, br = b.getBoundingClientRect();
-       const r = await b.browsingContext.currentWindowGlobal.getActor("WebAiOsSpikeDesign").sendQuery("probe", { code: "(() => { const f = document.querySelector('#cadre').getBoundingClientRect(), d = document.querySelector('#cadre').contentDocument.querySelector('#dans').getBoundingClientRect(); return { x: f.x + d.x + d.width / 2, y: f.y + d.y + d.height / 2 }; })()" });
+       const r = await b.browsingContext.currentWindowGlobal.getActor("RessacSpikeDesign").sendQuery("probe", { code: "(() => { const f = document.querySelector('#cadre').getBoundingClientRect(), d = document.querySelector('#cadre').contentDocument.querySelector('#dans').getBoundingClientRect(); return { x: f.x + d.x + d.width / 2, y: f.y + d.y + d.height / 2 }; })()" });
        const x = br.left + r.x, y = br.top + r.y;
        for (const t of ["mousedown", "mouseup"]) window.synthesizeMouseEvent(t, x, y, { button: 0, clickCount: 1 });
        return r;`,
@@ -702,16 +702,16 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
     await sleep(200);
     const back = { pageTyped: await inPage("window.typed"), hasFocus: await inPage("document.hasFocus()"), chromeActive: await chrome(m, "return document.activeElement?.localName;") };
     note("S3 keyboard", { inFrame, pageDuring, back });
-    // The cart column: 300 px on the right; the page shrinks by it (as --webaios-agent does).
+    // The cart column: 300 px on the right; the page shrinks by it (as --ressac-agent does).
     const column = await chrome(
       m,
       `const b = gBrowser.selectedBrowser;
        const w0 = b.getBoundingClientRect().width;
        const v = document.createElementNS("http://www.w3.org/1999/xhtml", "iframe");
        v.id = "spike-volet";
-       v.style.cssText = "position:fixed;z-index:3;border:none;top:0;height:100%;width:300px;right:var(--webaios-agent, 0px);background:rgb(30,30,30)";
+       v.style.cssText = "position:fixed;z-index:3;border:none;top:0;height:100%;width:300px;right:var(--ressac-agent, 0px);background:rgb(30,30,30)";
        document.getElementById("browser").append(v);
-       document.getElementById("tabbrowser-tabbox").style.marginInlineEnd = "calc(var(--webaios-agent, 0px) + 300px)";
+       document.getElementById("tabbrowser-tabbox").style.marginInlineEnd = "calc(var(--ressac-agent, 0px) + 300px)";
        await new Promise((r) => setTimeout(r, 300));
        const br = b.getBoundingClientRect(), vr = v.getBoundingClientRect();
        const out = { before: w0, after: br.width, browserRight: br.right, voletLeft: vr.left, atVolet: document.elementFromPoint(vr.left + 10, 100)?.id };
@@ -783,7 +783,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
     expect(bad2.kept).toEqual({ file: "a.svelte" });
     expect(throwing.kept).toBeNull();
     const after = await inPage<string[]>("Object.keys(window).sort()");
-    expect(after.filter((k) => /viewfinder|webaios/i.test(k))).toEqual([]);
+    expect(after.filter((k) => /viewfinder|ressac/i.test(k))).toEqual([]);
     note("S4 page globals added (the test's own getterRuns only)", after.filter((k) => !keys.includes(k)));
   });
 

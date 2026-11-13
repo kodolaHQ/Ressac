@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { dispatch, state, waitFor, waitReady } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { click, inUi, missingApi, waitUi } from "./ui";
 import { openBuilder, readWorkflow, widgetDir, writeWidget } from "./workflows";
@@ -40,7 +40,7 @@ type Box = { x: number; y: number; width: number; height: number };
 const overlap = (a: Box, b: Box) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
 
 let dataDir: string;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 
 // Local test servers: the site the widgets read, a fake Kev (an « IA » text scores 0.9) and a fake Ollama without Gemma.
@@ -177,7 +177,7 @@ beforeAll(async () => {
   });
   ollama = await listen((_req, res) => void res.writeHead(200, { "Content-Type": "application/json" }).end('{"models":[]}'));
 
-  dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-builder-runs-"));
+  dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-builder-runs-"));
   await writeWatch("lancer", { slow: true });
   await writeWatch("rejouer");
   await dropState("rejouer");
@@ -198,7 +198,7 @@ beforeAll(async () => {
     harvest: { minutes: 60 },
     declaration: { sources: { account: ["127.0.0.1"], public: [] }, config: { url: `${site.url}/boite` } },
     files: {
-      "harvest.mjs": "export default async (webaios) => ({ vu: (await webaios.readPage(webaios.config.url, { account: true })).title });",
+      "harvest.mjs": "export default async (ressac) => ({ vu: (await ressac.readPage(ressac.config.url, { account: true })).title });",
       "example.json": JSON.stringify({ example: "gmail" }),
     },
   });
@@ -256,7 +256,7 @@ beforeAll(async () => {
   });
   await writeWatch("relance", { slow: true });
 
-  w = await launchWebAiOs({ dataDir, height: 1400, env: { WEBAIOS_KEV_URL: kev.url, WEBAIOS_OLLAMA_URL: ollama.url, WEBAIOS_TEST_LOCAL_ADDRESSES: "1" } });
+  w = await launchRessac({ dataDir, height: 1400, env: { RESSAC_KEV_URL: kev.url, RESSAC_OLLAMA_URL: ollama.url, RESSAC_TEST_LOCAL_ADDRESSES: "1" } });
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
@@ -268,7 +268,7 @@ afterAll(async () => {
 });
 afterEach(async () => {
   expect(await missingApi(m)).toEqual([]);
-  for (const o of Object.values((await state(m)).tabs)) if (o.url.startsWith("webaios://workflow/")) await dispatch(m, { type: "closeTab", id: o.id });
+  for (const o of Object.values((await state(m)).tabs)) if (o.url.startsWith("ressac://workflow/")) await dispatch(m, { type: "closeTab", id: o.id });
 });
 
 /** Back to the home page of the window. */
@@ -308,7 +308,7 @@ const textOf = (css: string) => inUi<string | null>(m, `return ${el(css)}?.textC
 const shown = (css: string) => inUi<string>(m, `return ${el(`${css} iframe`)}?.contentDocument?.getElementById("donnees")?.textContent ?? ""`);
 const preview = () => shown(tid("widget-preview"));
 const homeData = (id: string) => shown(tid(`widget-${id}`));
-const harvest = (id: string) => inUi(m, "ui.webaios.home.harvest(arguments[0])", [id]);
+const harvest = (id: string) => inUi(m, "ui.ressac.home.harvest(arguments[0])", [id]);
 const runs = async (id: string) => (existsSync(executionsOf(id)) ? (await readdir(executionsOf(id))).filter((f) => f.endsWith(".json")).sort() : []);
 
 /** A trusted mouse gesture on the centre of `css`: down, moves to (+dx, +dy) in `steps`, up. */
@@ -345,15 +345,15 @@ const pressEnter = () => m.execute(
 const trackErrors = () =>
   inUi(
     m,
-    `ui.webaiosErrors = [];
-     if (ui.webaiosErrorsTracked) return;
-     ui.webaiosErrorsTracked = true;
+    `ui.ressacErrors = [];
+     if (ui.ressacErrorsTracked) return;
+     ui.ressacErrorsTracked = true;
      const error = ui.console.error.bind(ui.console);
-     ui.console.error = (...a) => (ui.webaiosErrors.push(a.map(String).join(" ")), error(...a));
-     ui.addEventListener("error", (e) => ui.webaiosErrors.push(e.message));
-     ui.addEventListener("unhandledrejection", (e) => ui.webaiosErrors.push(String(e.reason)));`,
+     ui.console.error = (...a) => (ui.ressacErrors.push(a.map(String).join(" ")), error(...a));
+     ui.addEventListener("error", (e) => ui.ressacErrors.push(e.message));
+     ui.addEventListener("unhandledrejection", (e) => ui.ressacErrors.push(String(e.reason)));`,
   );
-const errors = () => inUi<string[]>(m, "return [...ui.webaiosErrors]");
+const errors = () => inUi<string[]>(m, "return [...ui.ressacErrors]");
 
 /** The agent rewrites workflow.json (atomic write, like its tools). */
 async function writeAsAgent(id: string, workflow: unknown): Promise<void> {
@@ -362,7 +362,7 @@ async function writeAsAgent(id: string, workflow: unknown): Promise<void> {
   await rename(`${file}.agent`, file);
 }
 const thresholdOf = async (id: string) => (await readWorkflow(dataDir, id)).blocks.find((b: { id: string }) => b.id === "tri").params.threshold;
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const agent = (body: string) => m.execute(`return (async () => { const agent = (await ChromeUtils.importESModule("${STORE}").ready).agent; ${body} })();`);
 
 describe("the workflow builder's runs", () => {

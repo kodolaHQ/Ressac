@@ -109,7 +109,7 @@ const MIGRATION = "moz-src:///browser/components/migration";
 export function chromiumMigrator(def: SourceDef, root: string): any {
   const Base = ChromeUtils.importESModule(`${MIGRATION}/ChromeProfileMigrator.sys.mjs`)[def.engineClass!];
   const m = new (class extends Base {
-    // The engine resolves the folder from the real home: ours follows WEBAIOS_TEST_IMPORT_HOME and the copy.
+    // The engine resolves the folder from the real home: ours follows RESSAC_TEST_IMPORT_HOME and the copy.
     async _getChromeUserDataPathIfExists() {
       return (await IOUtils.exists(root)) ? root : null;
     }

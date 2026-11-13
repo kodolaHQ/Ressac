@@ -1,7 +1,7 @@
 {
-  "name": "webaios-local",
+  "name": "ressac-local",
   "owner": {
-    "name": "WebAiOs"
+    "name": "Ressac"
   },
   "plugins": [
     {

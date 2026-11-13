@@ -1,5 +1,5 @@
 // The design mode in the chrome (spec §5.4-5.5): the design service on the
-// WebAiOsDesign actor (chrome/agent/design-actor.ts, packaged: never changed here) and the targets' <browser>s.
+// RessacDesign actor (chrome/agent/design-actor.ts, packaged: never changed here) and the targets' <browser>s.
 // The actor's limits are handled here: a frame's guard has no timeout (every frame guarded is unguarded on every exit),
 // a second arm may leave the first pending (never armed twice, stale answers dropped by generation), and its stop may
 // throw or hang (timed out, then the top window is unguarded).
@@ -70,7 +70,7 @@ export interface DesignService {
   overlays: DesignOverlays;
 }
 
-const ACTOR = "WebAiOsDesign";
+const ACTOR = "RessacDesign";
 /** Mine: a stop the actor does not answer within this is given up, then the top window is unguarded. */
 export const STOP_TIMEOUT_MS = 1000;
 /** The actor keeps the top's guard 500 ms after a capture (the rest of a double click): the frames' too. */
@@ -202,7 +202,7 @@ export function createDesign(o: {
   const current = (s: Session, g: number) => sessions.get(s.key) === s && s.generation === g;
 
   const giveKeyboard = (s: Session) => {
-    if (s.target.type !== "window" && Services.env.get("WEBAIOS_INVISIBLE") !== "1" && !s.win.closed) s.win.focus();
+    if (s.target.type !== "window" && Services.env.get("RESSAC_INVISIBLE") !== "1" && !s.win.closed) s.win.focus();
     s.browser.focus();
   };
 
@@ -282,7 +282,7 @@ export function createDesign(o: {
     if (!current(s, g)) return;
     const { rect, ...context } = capture;
     // The home's address as the kernel knows it (no served copy's token): it tags such remarks [accueil] (pty/context.ts).
-    if (s.home && s.target.type === "site") context.url = `webaios-site://${s.target.id}${new URL(context.url).pathname}`;
+    if (s.home && s.target.type === "site") context.url = `ressac-site://${s.target.id}${new URL(context.url).pathname}`;
     s.pending = { context: { ...context, source }, capture: png };
     const v = view(s.target);
     if (v?.browser !== s.browser || pageOf(s.browser) !== s.wgp || s.win.closed) return service.stop(s.target);
@@ -402,13 +402,13 @@ export function createDesign(o: {
 
     shortcut(win) {
       const doc = win.document.documentElement;
-      const windowId = (win as any).webaiosWindow?.windowId as WindowId | undefined;
+      const windowId = (win as any).ressacWindow?.windowId as WindowId | undefined;
       const main = !!windowId && o.windows.get(windowId)?.window === win;
       const app = o.apps.folderOf(win);
       const choice = chooseDesignTarget({
         app: app,
-        site: doc.getAttribute("webaios-site") ?? undefined,
-        siteSmall: doc.getAttribute("webaios-site-small") ?? undefined,
+        site: doc.getAttribute("ressac-site") ?? undefined,
+        siteSmall: doc.getAttribute("ressac-site-small") ?? undefined,
         otherWindow: !main && !app,
         activeWindow: main ? windowId : undefined,
       });

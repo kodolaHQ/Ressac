@@ -20,9 +20,9 @@ import { frameError, frameInjection, frameMemory, framePosition, frameResume, si
 import { forgetHome, serveHome, servedHost, siteImage } from "./site-home";
 
 // Keep in sync with agent/site-actor.ts SITE_FRAMES.
-const SITE_FRAMES = "webaios-sites";
+const SITE_FRAMES = "ressac-sites";
 /** The window.arguments[1] key that marks a site app window from its creation (read before store.windows.claim). */
-export const SITE_WINDOW_KEY = "webaios-site";
+export const SITE_WINDOW_KEY = "ressac-site";
 /** 1200 × 800 by default, 360 × 240 at least. */
 const SIZE = { width: 1200, height: 800 };
 const MIN = { width: 360, height: 240 };
@@ -33,7 +33,7 @@ export function publishSiteFrames(map: Map<number, string>): void {
   Services.ppmm.sharedData.flush();
 }
 
-/** What the bar (ui/site-api.ts) drives, through `window.parent.webaiosSiteWindow`. */
+/** What the bar (ui/site-api.ts) drives, through `window.parent.ressacSiteWindow`. */
 export interface SiteWindowController {
   state(): SiteWindowState;
   onState(cb: (e: SiteWindowState) => void): () => void;
@@ -112,13 +112,13 @@ interface OpenSite {
   home: Promise<string | null> | null;
   /** When the home last opened an address. */
   lastHomeOpen: number;
-  /** The address of the last load WebAiOs started in the view: the address follow reads it back. */
+  /** The address of the last load Ressac started in the view: the address follow reads it back. */
   target: string | null;
   /** A reading of the reference page is under way (the bar's button shows it). */
   searching: boolean;
   /** The host's mention (address changed, not found…); a blocked link replaces it: the bar shows one mention. */
   hostNotice: BarNotice | null;
-  /** WebAiOs just started a load in the view; `wanted`: the view's current load is one (chargementVoulu). */
+  /** Ressac just started a load in the view; `wanted`: the view's current load is one (chargementVoulu). */
   wantNext: boolean;
   wanted: boolean;
 }
@@ -138,7 +138,7 @@ const closeListeners = new Set<() => void>();
 const context = (s: OpenSite): NavigationContext => ({
   domains: s.site.domains,
   login: s.site.declaration.login ?? [],
-  localAddresses: Services.env.get("WEBAIOS_TEST_LOCAL_ADDRESSES") === "1",
+  localAddresses: Services.env.get("RESSAC_TEST_LOCAL_ADDRESSES") === "1",
 });
 
 function hostOf(url: string): string {
@@ -161,7 +161,7 @@ function follow(s: OpenSite, url: string | null): void {
   host?.notify("sites.lookup", { id: s.site.id, url });
 }
 
-/** A reload is a load WebAiOs started too (measured: the system principal): the follow aims at the page reloaded. */
+/** A reload is a load Ressac started too (measured: the system principal): the follow aims at the page reloaded. */
 function reloadView(s: OpenSite): void {
   s.wantNext = true;
   s.target = s.view?.currentURI?.spec ?? s.target;
@@ -215,12 +215,12 @@ const observer = {
     const ctx = context(s);
     const inView = browserId === s.view?.browserId;
     if (inView || s.small.has(browserId)) {
-      // A new load (not a redirect of one) is wanted if WebAiOs just started it; its redirects keep that.
+      // A new load (not a redirect of one) is wanted if Ressac just started it; its redirects keep that.
       if (inView && li.redirectChain.length === 0) {
         s.wanted = s.wantNext;
         s.wantNext = false;
       }
-      // Under the home or the card, the view loads only what WebAiOs starts. An add-on's tabs.reload,
+      // Under the home or the card, the view loads only what Ressac starts. An add-on's tabs.reload,
       // goBack or goForward (no fixupAndLoadURIString to refuse them, see site-window.ts) is cancelled before it is sent.
       // The page's own navigations wait for « Entrer » too; Firefox's add-ons run in every app (§4.9).
       if (inView && s.viewState !== "site" && !s.wanted) {
@@ -231,7 +231,7 @@ const observer = {
       ch.cancel(Cr.NS_BINDING_ABORTED);
       // A sign-in window's refused page is not mentioned.
       if (inView) block(s, url);
-      // Sent off the site (a parked domain) during a load WebAiOs started (loadInView loads as the system principal): the
+      // Sent off the site (a parked domain) during a load Ressac started (loadInView loads as the system principal): the
       // site may have moved. A redirect after a click in the page has the page's principal: nothing is read.
       if (inView && li.triggeringPrincipal.isSystemPrincipal && li.redirectChain.length > 0) follow(s, s.target);
       return;
@@ -256,7 +256,7 @@ export function installGuard(): void {
   if (observing) return;
   observing = true;
   Services.obs.addObserver(observer, "http-on-modify-request");
-  Components.manager.QueryInterface(Ci.nsIComponentRegistrar).registerFactory(viewPolicy.classID, "WebAiOs site view policy", POLICY_CONTRACT, viewPolicy);
+  Components.manager.QueryInterface(Ci.nsIComponentRegistrar).registerFactory(viewPolicy.classID, "Ressac site view policy", POLICY_CONTRACT, viewPolicy);
   Services.catMan.addCategoryEntry("content-policy", POLICY_CONTRACT, POLICY_CONTRACT, false, true);
 }
 
@@ -284,7 +284,7 @@ const NETWORK_ERRORS = new Set<number>([
   Cr.NS_ERROR_PROXY_CONNECTION_REFUSED,
 ]);
 
-const POLICY_CONTRACT = "@webaios/site-view-policy;1";
+const POLICY_CONTRACT = "@ressac/site-view-policy;1";
 /**
  * The app view shows only the web. A top-level load of the view that
  * is not http(s) (file: from ⌘O or a dropped file, mailto: and other external schemes before the OS handler is asked,
@@ -383,7 +383,7 @@ function nextView(s: OpenSite): void {
 function broadcast(s: OpenSite): void {
   if (s.window.closed) return;
   // The bar's frame covers the window on the home screen and on the grant card (window.css): the view stays behind.
-  s.window.document.documentElement.toggleAttribute("webaios-site-home", s.viewState !== "site");
+  s.window.document.documentElement.toggleAttribute("ressac-site-home", s.viewState !== "site");
   const e = stateOf(s);
   for (const cb of s.listeners) cb(e);
 }
@@ -465,7 +465,7 @@ function controllerOf(s: OpenSite): SiteWindowController {
       };
       progress.addProgressListener(listener, Ci.nsIWebProgress.NOTIFY_STATE_DOCUMENT);
       // Kept on the frame, and gone with it (with its docShell): the docShell holds its progress listeners weakly.
-      (frame as any).webaiosHomeGuard = listener;
+      (frame as any).ressacHomeGuard = listener;
     },
     image: async (url) => (open.get(id) === s && typeof url === "string" ? siteImage(s.userContextId, url, s.site.domains) : null),
     homeUrl: () => (open.get(id) === s && s.site.hasHome ? (s.home ??= serveHome(dataDir, id)) : Promise.resolve(null)),
@@ -495,7 +495,7 @@ function attach(s: OpenSite, browser: any): void {
   // A page kept in the bfcache comes back without a request, so without the request guard (measured: history.back()
   // to a removed domain, zero request): none is kept, dropped at each location change and when the rules change.
   // Kept on the window: the browser holds its progress listeners weakly.
-  const listener = ((win as any).webaiosSiteProgress = {
+  const listener = ((win as any).ressacSiteProgress = {
     QueryInterface: ChromeUtils.generateQI(["nsIWebProgressListener", "nsISupportsWeakReference"]),
     // The view's own page did not answer (DNS, refused, timeout, reset, offline). Never
     // NS_BINDING_ABORTED, which is our own refusals.
@@ -520,7 +520,7 @@ function attach(s: OpenSite, browser: any): void {
   });
   browser.addProgressListener(listener, Ci.nsIWebProgress.NOTIFY_LOCATION | Ci.nsIWebProgress.NOTIFY_STATE_DOCUMENT);
   // An element's fullscreen in or out (the design mode stops, ✎ greys): the state is broadcast. Kept on the window.
-  const fullscreen = ((win as any).webaiosSiteFullscreen = new (win as any).MutationObserver(() => broadcast(s)));
+  const fullscreen = ((win as any).ressacSiteFullscreen = new (win as any).MutationObserver(() => broadcast(s)));
   fullscreen.observe(win.document.documentElement, { attributes: true, attributeFilter: ["inDOMFullscreen"] });
   // The favicon Firefox shows for the page (a data: URL from its FaviconLoader).
   let favicon: string | null = null;
@@ -575,7 +575,7 @@ function closed(s: OpenSite): void {
     }
   // Its sign-in windows close with it (the request guard refuses any page of a closed app's container anyway).
   // Only this app's: a main window is never closed here, whatever its tab's container.
-  for (const w of Services.wm.getEnumerator("navigator:browser")) if (w.document.documentElement.getAttribute("webaios-site-small") === id) w.close();
+  for (const w of Services.wm.getEnumerator("navigator:browser")) if (w.document.documentElement.getAttribute("ressac-site-small") === id) w.close();
 }
 
 /** Sign-in windows opened by sites.routeOpen, and the address each loads once set up (takeSmallUrl). */
@@ -690,7 +690,7 @@ export const sites = {
     const s = open.get(id);
     if (s) broadcast(s);
   },
-  /** The agent's dev tools reload the view: that load is WebAiOs's, not an add-on's (the M1 net spares it under the home). */
+  /** The agent's dev tools reload the view: that load is Ressac's, not an add-on's (the M1 net spares it under the home). */
   markWanted(id: string): void {
     const s = open.get(id);
     if (s) s.wantNext = true;
@@ -770,7 +770,7 @@ export const sites = {
     let home: HTMLIFrameElement | null = null;
     let bounds = rect(s.view);
     if (s.viewState === "home") {
-      const bar = win.document.getElementById("webaios-site-bar") as HTMLIFrameElement | null;
+      const bar = win.document.getElementById("ressac-site-bar") as HTMLIFrameElement | null;
       const f = bar?.contentDocument?.querySelector('[data-testid="site-home-frame"]') as HTMLIFrameElement | null;
       const spec = f?.contentDocument?.documentURI;
       if (bar && f && spec && spec !== "about:blank" && homePage(id, { spec })) {
@@ -801,7 +801,7 @@ export const sites = {
       broadcast(s);
     }, INFO_NOTICE_DURATION_MS);
   },
-  /** A load WebAiOs wants, on the app's domains only; kept for after the card. */
+  /** A load Ressac wants, on the app's domains only; kept for after the card. */
   navigateForAgent(id: string, url: string): "loaded" | "pending" | "refused" {
     const s = open.get(id);
     if (!s?.view || s.window.closed || openDecision(url, context(s)) !== "in-app") return "refused";

@@ -1,20 +1,20 @@
 import type { AuraId } from "./aura";
 import type { HintId } from "./hints";
-import type { DevRight, TabAccessState, Owner } from "@webaios/kernel";
+import type { DevRight, TabAccessState, Owner } from "@ressac/kernel";
 import type { Binding, ShortcutId } from "./shortcuts";
 import type { ExtensionCard } from "./extensions";
 import type { ClaudeEngine, CodexEngine, DecisionModel } from "./settings";
 
 /** Internal Applications page: a tab without a web page, displayed by the UI. */
-export const URL_APPLICATIONS = "webaios://apps";
+export const URL_APPLICATIONS = "ressac://apps";
 /** Internal Extensions page (Store and agent), displayed by the UI. */
-export const URL_EXTENSIONS = "webaios://extensions";
+export const URL_EXTENSIONS = "ressac://extensions";
 /** Internal Settings page, displayed by the UI. */
-export const URL_SETTINGS = "webaios://settings";
+export const URL_SETTINGS = "ressac://settings";
 /** Internal « Nouveautés » page (shared/release-notes.ts), displayed by the UI. */
-export const URL_RELEASE_NOTES = "webaios://release-notes";
-/** Internal « Voir le workflow » page of a widget: `webaios://workflow/<widget id>`. */
-export const WORKFLOW_PREFIX = "webaios://workflow/";
+export const URL_RELEASE_NOTES = "ressac://release-notes";
+/** Internal « Voir le workflow » page of a widget: `ressac://workflow/<widget id>`. */
+export const WORKFLOW_PREFIX = "ressac://workflow/";
 export const urlWorkflow = (id: string) => WORKFLOW_PREFIX + id;
 /** The widget of a « Voir le workflow » page, or null if the URL is not one. */
 export function widgetOfWorkflowUrl(url: string): string | null {
@@ -22,8 +22,8 @@ export function widgetOfWorkflowUrl(url: string): string | null {
   const id = url.slice(WORKFLOW_PREFIX.length);
   return /^[a-z0-9-]{1,100}$/.test(id) ? id : null;
 }
-/** Internal « Voir le workflow » page of an action: `webaios://workflow/action/<action id>`. */
-export const WORKFLOW_ACTION_PREFIX = "webaios://workflow/action/";
+/** Internal « Voir le workflow » page of an action: `ressac://workflow/action/<action id>`. */
+export const WORKFLOW_ACTION_PREFIX = "ressac://workflow/action/";
 const ID_ACTION = /^[a-z0-9-]{1,60}$/;
 /** What a « Voir le workflow » page opens (widget or action), or null if the URL is not one. */
 export function workflowUrlTarget(url: string): Owner | null {
@@ -35,9 +35,9 @@ export function workflowUrlTarget(url: string): Owner | null {
   return widget ? { type: "widget", id: widget } : null;
 }
 /** Internal « Actions » page: the list of actions. */
-export const URL_ACTIONS = "webaios://actions";
-/** Page of an action: `webaios://action/<id>` (the latest result) or `webaios://action/<id>/<execution>`. */
-export const ACTION_PREFIX = "webaios://action/";
+export const URL_ACTIONS = "ressac://actions";
+/** Page of an action: `ressac://action/<id>` (the latest result) or `ressac://action/<id>/<execution>`. */
+export const ACTION_PREFIX = "ressac://action/";
 const ID_EXECUTION = /^[0-9TZ-]+(?:-attempt)?$/;
 export const urlAction = (id: string, execution?: string) => ACTION_PREFIX + id + (execution ? `/${execution}` : "");
 /** The action (and execution) of an action page, or null if the URL is not one (never a path). */
@@ -48,8 +48,8 @@ export function actionOfUrl(url: string): { id: string; run: string | null } | n
   if (run === undefined) return { id, run: null };
   return run.length <= 64 && ID_EXECUTION.test(run) ? { id, run } : null;
 }
-/** Page of a recap the agent published: `webaios://recap/<id>`. */
-export const RECAP_PREFIX = "webaios://recap/";
+/** Page of a recap the agent published: `ressac://recap/<id>`. */
+export const RECAP_PREFIX = "ressac://recap/";
 /** Mirrors the kernel's ID_RECAP (packages/kernel/src/recaps/recaps.ts); the model cannot import the kernel. */
 const ID_RECAP = /^[0-9a-f-]{36}$/;
 export const urlRecap = (id: string) => RECAP_PREFIX + id;
@@ -59,8 +59,8 @@ export function recapOfUrl(url: string): string | null {
   const id = url.slice(RECAP_PREFIX.length);
   return ID_RECAP.test(id) ? id : null;
 }
-/** An internal page (`webaios:`) has no view: the UI displays it, like the blank page. */
-export const hasView = (url: string) => !url.startsWith("webaios:");
+/** An internal page (`ressac:`) has no view: the UI displays it, like the blank page. */
+export const hasView = (url: string) => !url.startsWith("ressac:");
 
 /** The site displayed for a request: the origin's host, or the text as is if it is not one (about:blank…). */
 export function siteOf(origin: string): string {
@@ -137,7 +137,7 @@ export interface Folder {
 
 /** A login profile: cookies, signed-in accounts and site permissions (one Chromium session). */
 export type ProfileId = string;
-/** The login profile from before configurable spaces (partition `persist:webaios`). */
+/** The login profile from before configurable spaces (partition `persist:ressac`). */
 export const DEFAULT_PROFILE: ProfileId = "default";
 /** The agent's own login profile (its cookies): never a space's profile, only a tab's. */
 export const AGENT_PROFILE: ProfileId = "agent";
@@ -195,7 +195,7 @@ export interface BrowserState {
   essentials: Favorite[];
   tabs: Record<TabId, Tab>;
   windows: WindowState[];
-  settings: { engine: SearchEngine; /** Profil d'agent (fichier .webaios/profiles/<id>.json). */ agentProfile: string;
+  settings: { engine: SearchEngine; /** Profil d'agent (fichier .ressac/profiles/<id>.json). */ agentProfile: string;
     /** Width of the agent panel, in pixels (the user sets it by dragging its left edge). */
     agentPanelWidth: number;
     /** Width of the tab sidebar (px), dragged by its inner edge. */
@@ -207,7 +207,7 @@ export interface BrowserState {
     claudeEngine: ClaudeEngine;
     /** False until the first-launch welcome is finished (or skipped). */
     onboarded: boolean;
-    /** The WebAiOs version of the last launch; null before any launch that records it. */
+    /** The Ressac version of the last launch; null before any launch that records it. */
     seenVersion: string | null;
     /** Tips and first-time notes: shown while enabled, each at most once. */
     hints: { enabled: boolean; seen: HintId[] };
@@ -357,8 +357,8 @@ export const BAR_WIDTH_MAX = 480;
 /** Once revealed, the bar stays open as long as the mouse does not go beyond its width by more than this margin (px). */
 export const BAR_MARGIN = 40;
 
-/** A project's Review page (plan 17): `webaios://review/<project>`, one per project and per window. */
-export const REVIEW_PREFIX = "webaios://review/";
+/** A project's Review page (plan 17): `ressac://review/<project>`, one per project and per window. */
+export const REVIEW_PREFIX = "ressac://review/";
 /** Copy of the kernel's `PROJECT_ID` (the UI does not import its values); a test checks that they match. */
 const PAGE_PROJECT_ID = /^(app-[A-Za-z0-9][A-Za-z0-9._-]*|ext-[0-9a-f]{16}|demo-\d{1,5}|site-[a-z0-9][a-z0-9-]{0,59})$/;
 export const reviewUrl = (project: string) => REVIEW_PREFIX + project;

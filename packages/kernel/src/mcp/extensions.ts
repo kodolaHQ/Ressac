@@ -64,7 +64,7 @@ function failure(rep: { error: string; denied?: boolean; removed?: boolean }): R
 
 /**
  * The extensions for the agent, provided by the browser. `id` is the extension's folder in
- * `~/WebAiOs/extensions/` (or `agent:<dossier>`). The browser also refuses any extension that is not the agent's
+ * `~/Ressac/extensions/` (or `agent:<dossier>`). The browser also refuses any extension that is not the agent's
  * for the console and its unlocking (second barrier).
  */
 export interface ExtensionsTools {
@@ -161,7 +161,7 @@ export function registerExtensionsTools(
     "list_extensions",
     {
       description:
-        "Extensions de WebAiOs (celles de l'utilisateur et les tiennes, ~/WebAiOs/extensions/<id>) : une ligne par extension, " +
+        "Extensions de Ressac (celles de l'utilisateur et les tiennes, ~/Ressac/extensions/<id>) : une ligne par extension, " +
         "clé · nom · version · source · espaces où elle est active (les espaces privés sont seulement comptés) · erreurs.",
       inputSchema: {},
     },
@@ -176,7 +176,7 @@ export function registerExtensionsTools(
     "request_extension",
     {
       description:
-        "Demande à l'utilisateur d'activer ton extension ~/WebAiOs/extensions/<id> dans un espace (par défaut l'espace actif de ta " +
+        "Demande à l'utilisateur d'activer ton extension ~/Ressac/extensions/<id> dans un espace (par défaut l'espace actif de ta " +
         "fenêtre) : une carte d'accord lui montre ses droits, ses sites et son accès au réseau, et l'outil attend sa réponse. " +
         "Une extension déjà accordée et active dans cet espace : rien n'est redemandé.",
       inputSchema: { id: ID_EXTENSION, space: z.string().max(200).optional() },
@@ -196,7 +196,7 @@ export function registerExtensionsTools(
     "reload_extension",
     {
       description:
-        "Recharge ton extension après une modification de ~/WebAiOs/extensions/<id>. Sans nouveau droit, nouveau site ni " +
+        "Recharge ton extension après une modification de ~/Ressac/extensions/<id>. Sans nouveau droit, nouveau site ni " +
         "nouvel accès au réseau, elle repart sans rien demander (state : reloaded) ; sinon elle est désactivée (state : " +
         "disabled) jusqu'à un nouvel accord ; un refus de la copie (state : refused) ne change rien.",
       inputSchema: { id: ID_EXTENSION },

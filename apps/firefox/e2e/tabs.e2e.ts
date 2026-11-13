@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import type { Action } from "../shared/api";
 import type { BrowserState } from "../shared/model";
 import { dispatch, state, waitFor } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
 import { click as clickUi, missingApi, pressKeys, waitUi } from "./ui";
@@ -11,17 +11,17 @@ import { click as clickUi, missingApi, pressKeys, waitUi } from "./ui";
 const NAVIGABLES = "chrome://remote/content/shared/NavigableManager.sys.mjs";
 
 let server: Awaited<ReturnType<typeof startServer>>;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 beforeAll(async () => (server = await startServer()));
 afterAll(() => server?.close());
-// Each test launches its own WebAiOs.
+// Each test launches its own Ressac.
 beforeEach(async () => {
-  w = await launchWebAiOs();
+  w = await launchRessac();
   m = w.marionette;
   await m.setContext("chrome");
   // The window controller is up once it has marked the parking tab.
-  await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+  await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
 });
 afterEach(() => w?.close());
 
@@ -49,16 +49,16 @@ function waitState<T>(read: (s: BrowserState) => T, ok: (v: T) => boolean, ms = 
 }
 const waitTitle = (id: string, title: string) => waitState((s) => s.tabs[id]?.title, (t) => t === title);
 
-const markedTabs = () => m.execute<number>("return gBrowser.tabs.filter((t) => t.hasAttribute('webaios-tab-id')).length");
+const markedTabs = () => m.execute<number>("return gBrowser.tabs.filter((t) => t.hasAttribute('ressac-tab-id')).length");
 const selected = () =>
   m.execute<{ id: string | null; parking: boolean }>(
-    "return { id: gBrowser.selectedTab.getAttribute('webaios-tab-id'), parking: gBrowser.selectedTab.hasAttribute('webaios-parking') }",
+    "return { id: gBrowser.selectedTab.getAttribute('ressac-tab-id'), parking: gBrowser.selectedTab.hasAttribute('ressac-parking') }",
   );
 
-/** Runs `script` in the page of WebAiOs tab `id` (content context), then comes back to the chrome context. */
+/** Runs `script` in the page of Ressac tab `id` (content context), then comes back to the chrome context. */
 async function inPage<T>(id: string, script: string): Promise<T> {
   const handle = await m.execute<string>(
-    `const t = gBrowser.tabs.find((t) => t.getAttribute("webaios-tab-id") === arguments[0]);
+    `const t = gBrowser.tabs.find((t) => t.getAttribute("ressac-tab-id") === arguments[0]);
      return ChromeUtils.importESModule("${NAVIGABLES}").NavigableManager.getIdForBrowser(t.linkedBrowser);`,
     [id],
   );
@@ -102,9 +102,9 @@ async function clickHere(selector: string, shift = false): Promise<void> {
   }
 }
 
-const POPUPS = "[...Services.wm.getEnumerator('navigator:browser')].filter((w) => !w.document.documentElement.hasAttribute('webaios-main'))";
+const POPUPS = "[...Services.wm.getEnumerator('navigator:browser')].filter((w) => !w.document.documentElement.hasAttribute('ressac-main'))";
 
-/** Runs `fn` in the content of the popup whose URL contains `url`, then comes back to the WebAiOs window. */
+/** Runs `fn` in the content of the popup whose URL contains `url`, then comes back to the Ressac window. */
 async function inPopup<T>(url: string, fn: () => Promise<T>): Promise<T> {
   const main = (await m.command<{ value: string }>("WebDriver:GetWindowHandle")).value;
   const handle = await m.execute<string>(
@@ -122,10 +122,10 @@ async function inPopup<T>(url: string, fn: () => Promise<T>): Promise<T> {
 
 const clickInPopup = (url: string, selector: string) => inPopup(url, () => clickHere(selector));
 
-/** Kills the content process of WebAiOs tab `id`, as a crash would. */
+/** Kills the content process of Ressac tab `id`, as a crash would. */
 const crash = (id: string) =>
   m.execute(
-    `const b = gBrowser.tabs.find((t) => t.getAttribute("webaios-tab-id") === arguments[0]).linkedBrowser;
+    `const b = gBrowser.tabs.find((t) => t.getAttribute("ressac-tab-id") === arguments[0]).linkedBrowser;
      Cc["@mozilla.org/processtools-service;1"].getService(Ci.nsIProcessToolsService).crash(b.browsingContext.currentWindowGlobal.domProcess.osPid);`,
     [id],
   );
@@ -137,7 +137,7 @@ const windowCount = () => m.execute<number>("return [...Services.wm.getEnumerato
 describe("window controller", () => {
   it("loads a tab opened by dispatch and reports its title", async () => {
     // Records every URL the state gives the tab: the XUL tab's initial about:blank must not leak into it.
-    await m.execute(`window.urls = new Set(); window.webaiosWindow.store.subscribe((s) => { for (const o of Object.values(s.tabs)) urls.add(o.url); });`);
+    await m.execute(`window.urls = new Set(); window.ressacWindow.store.subscribe((s) => { for (const o of Object.values(s.tabs)) urls.add(o.url); });`);
     const id = await open("/a.html");
     await waitTitle(id, "Page A");
     await waitState((s) => s.tabs[id]!.loading, (c) => c === false);
@@ -146,13 +146,13 @@ describe("window controller", () => {
   });
 
   it("navigates like the address bar, and goes back", async () => {
-    await m.execute("webaiosWindow.navigate(null, arguments[0])", [server.url + "/a.html"]);
+    await m.execute("ressacWindow.navigate(null, arguments[0])", [server.url + "/a.html"]);
     const id = Object.keys((await state(m)).tabs)[0]!;
     await waitTitle(id, "Page A");
-    await m.execute("webaiosWindow.navigate(arguments[0], arguments[1])", [id, server.url + "/b.html"]);
+    await m.execute("ressacWindow.navigate(arguments[0], arguments[1])", [id, server.url + "/b.html"]);
     await waitTitle(id, "Page B");
     expect((await state(m)).tabs[id]!.canGoBack).toBe(true);
-    await m.execute("webaiosWindow.command(arguments[0], 'back')", [id]);
+    await m.execute("ressacWindow.command(arguments[0], 'back')", [id]);
     await waitTitle(id, "Page A");
   });
 
@@ -185,9 +185,9 @@ describe("window controller", () => {
     await click(a, "#lien");
     const b = (await waitState((s) => s.windows[0]!, (f) => f.order[f.activeSpace]!.length === 2)).order[(await win()).activeSpace]![1]!;
     await waitTitle(b, "Page B");
-    await m.execute("window.webaiosWindow.closeTab(arguments[0])", [b]);
+    await m.execute("window.ressacWindow.closeTab(arguments[0])", [b]);
     await waitState((s) => Object.keys(s.tabs), (ids) => ids.join() === a);
-    await waitFor(m, "return gBrowser.selectedTab.getAttribute('webaios-tab-id')", (v) => v === a);
+    await waitFor(m, "return gBrowser.selectedTab.getAttribute('ressac-tab-id')", (v) => v === a);
     // Painted: the link's text darkens some pixel of the page's top-left corner (a snapshot, as Marionette's screenshot).
     const corner = `const r = gBrowser.selectedBrowser.getBoundingClientRect();
       const c = await window.browsingContext.currentWindowGlobal.drawSnapshot(new DOMRect(r.left, r.top, 120, 40), 1, "white");
@@ -208,14 +208,14 @@ describe("window controller", () => {
     await waitTitle(b, "Page B");
     expect((await state(m)).tabs[b]!.spaceId).toBe(space);
     const ids = await m.execute<number[]>(
-      "return arguments[0].map((id) => gBrowser.tabs.find((t) => t.getAttribute('webaios-tab-id') === id).userContextId)",
+      "return arguments[0].map((id) => gBrowser.tabs.find((t) => t.getAttribute('ressac-tab-id') === id).userContextId)",
       [[a, b]],
     );
     expect(ids[0]).not.toBe(0);
     expect(ids[1]).toBe(ids[0]);
   });
 
-  it("never turns Firefox's own tabs into WebAiOs tabs", async () => {
+  it("never turns Firefox's own tabs into Ressac tabs", async () => {
     expect(Object.keys((await state(m)).tabs)).toHaveLength(0);
     const a = await open("/a.html");
     await waitTitle(a, "Page A");
@@ -224,7 +224,7 @@ describe("window controller", () => {
     expect(Object.keys((await state(m)).tabs)).toHaveLength(0);
     expect(await selected()).toEqual({ id: null, parking: true });
     expect(await markedTabs()).toBe(0);
-    // Closing the parking tab itself: Firefox's replacement tab parks the window, it is no WebAiOs tab.
+    // Closing the parking tab itself: Firefox's replacement tab parks the window, it is no Ressac tab.
     await m.execute("gBrowser.removeTab(gBrowser.selectedTab)");
     await new Promise((r) => setTimeout(r, 500));
     expect(Object.keys((await state(m)).tabs)).toHaveLength(0);
@@ -300,7 +300,7 @@ describe("window controller", () => {
     await m.execute("gBrowser.removeTab(gBrowser.selectedTab)");
     await waitState((s) => !!s.tabs[b], (v) => !v);
     expect((await win()).activeSpace).toBe(spaceB);
-    expect(await m.execute<boolean>("return gBrowser.selectedTab.hasAttribute('webaios-parking')")).toBe(true);
+    expect(await m.execute<boolean>("return gBrowser.selectedTab.hasAttribute('ressac-parking')")).toBe(true);
   });
 
   it("opens a window.open popup with dimensions as a separate window; closing it keeps the app", async () => {
@@ -312,7 +312,7 @@ describe("window controller", () => {
     await waitFor(m, `return ${POPUPS}.length`, (n) => n === 0);
     await new Promise((r) => setTimeout(r, 500));
     expect(await windowCount()).toBe(1);
-    expect(await m.execute("return !!window.webaiosWindow")).toBe(true);
+    expect(await m.execute("return !!window.ressacWindow")).toBe(true);
     expect(Object.keys((await state(m)).tabs)).toEqual([a]);
   });
 
@@ -386,7 +386,7 @@ describe("window controller", () => {
     expect((await state(m)).tabs[a]).toBeDefined();
     await clickUi(m, '[data-testid="content-zone"] button', { text: "Recharger" });
     await waitUi(m, `return !${CONTENT_TEXT}.includes("Cette page a planté.")`);
-    await waitFor(m, "return gBrowser.selectedTab.getAttribute('webaios-tab-id')", (v) => v === id);
+    await waitFor(m, "return gBrowser.selectedTab.getAttribute('ressac-tab-id')", (v) => v === id);
     await waitState((s) => s.tabs[id]?.crashed, (p) => p === false);
     await waitFor(m, "return gBrowser.selectedBrowser.contentTitle", (t) => t === "Plante");
     expect(await missingApi(m)).toEqual([]);
@@ -397,8 +397,8 @@ describe("window controller", () => {
     await waitTitle(id, "Plante");
     await crash(id);
     await waitUi(m, `return ${CONTENT_TEXT}.includes("Cette page a planté.")`);
-    await m.execute("window.webaiosWindow.navigate(arguments[0], arguments[1])", [id, server.url + "/a.html"]);
-    await waitFor(m, "return gBrowser.selectedTab.getAttribute('webaios-tab-id')", (v) => v === id);
+    await m.execute("window.ressacWindow.navigate(arguments[0], arguments[1])", [id, server.url + "/a.html"]);
+    await waitFor(m, "return gBrowser.selectedTab.getAttribute('ressac-tab-id')", (v) => v === id);
     await waitFor(m, "return gBrowser.selectedBrowser.contentTitle", (t) => t === "Page A");
     await waitUi(m, `return !${CONTENT_TEXT}.includes("Cette page a planté.")`);
     expect((await state(m)).tabs[id]?.crashed).toBe(false);
@@ -462,7 +462,7 @@ describe("leaving a page with unsaved changes", () => {
       await m.setContext("chrome");
       const id = await unsavedForm();
       const handle = await m.execute<string>(
-        `return ChromeUtils.importESModule("${NAVIGABLES}").NavigableManager.getIdForBrowser(gBrowser.tabs.find((t) => t.getAttribute("webaios-tab-id") === arguments[0]).linkedBrowser);`,
+        `return ChromeUtils.importESModule("${NAVIGABLES}").NavigableManager.getIdForBrowser(gBrowser.tabs.find((t) => t.getAttribute("ressac-tab-id") === arguments[0]).linkedBrowser);`,
         [id],
       );
       await pressKeys(m, "Meta+w");
@@ -484,17 +484,17 @@ describe("leaving a page with unsaved changes", () => {
     await m.setContext("chrome");
     const id = await unsavedForm();
     const handle = await m.execute<string>(
-      `return ChromeUtils.importESModule("${NAVIGABLES}").NavigableManager.getIdForBrowser(gBrowser.tabs.find((t) => t.getAttribute("webaios-tab-id") === arguments[0]).linkedBrowser);`,
+      `return ChromeUtils.importESModule("${NAVIGABLES}").NavigableManager.getIdForBrowser(gBrowser.tabs.find((t) => t.getAttribute("ressac-tab-id") === arguments[0]).linkedBrowser);`,
       [id],
     );
     const b = await open("/b.html");
     await waitTitle(b, "Page B");
     // Every active tab of the state, from here on: no chrome script runs while the prompt is open.
-    await m.execute(`const c = window.webaiosWindow;
+    await m.execute(`const c = window.ressacWindow;
       window.actives = [];
       c.store.subscribe((s) => { const f = s.windows.find((x) => x.id === c.windowId); window.actives.push(f.active[f.activeSpace]); });`);
     // The sidebar's close button on the form's row.
-    await m.execute("window.webaiosWindow.closeTab(arguments[0])", [id]);
+    await m.execute("window.ressacWindow.closeTab(arguments[0])", [id]);
     const deadline = Date.now() + 5_000;
     let text: string | null = null;
     while (!(text = await onAlert<string>(handle, "WebDriver:GetAlertText")) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 100));
@@ -502,7 +502,7 @@ describe("leaving a page with unsaved changes", () => {
     await onAlert(handle, "WebDriver:DismissAlert");
     // Asked in front, its own tab active in the state, then the previous one again.
     expect(await m.execute<string[]>("return [...new Set(window.actives)]")).toEqual([id, b]);
-    await waitFor(m, "return gBrowser.selectedTab.getAttribute('webaios-tab-id')", (v) => v === b);
+    await waitFor(m, "return gBrowser.selectedTab.getAttribute('ressac-tab-id')", (v) => v === b);
     const after = await win();
     expect(after.active[after.activeSpace]).toBe(b);
     expect((await state(m)).tabs[id]).toBeDefined();

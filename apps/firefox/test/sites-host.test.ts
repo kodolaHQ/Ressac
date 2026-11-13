@@ -516,10 +516,10 @@ describe("outils", () => {
     await mem.clear();
     expect((await m.sites.tools.memory("vidola"))!.values).toHaveProperty("serie");
     // Closed: no console. Open: the chrome's.
-    m.setErrors([{ when: "q", text: "boum", source: "webaios-tweak://vidola/a.js:1", sourceVerified: false }]);
+    m.setErrors([{ when: "q", text: "boum", source: "ressac-tweak://vidola/a.js:1", sourceVerified: false }]);
     expect(await m.sites.tools.errors("vidola")).toEqual([]);
     await m.sites.openById("vidola");
-    expect(await m.sites.tools.errors("vidola")).toEqual([{ when: "q", text: "boum", source: "webaios-tweak://vidola/a.js:1", sourceVerified: false }]);
+    expect(await m.sites.tools.errors("vidola")).toEqual([{ when: "q", text: "boum", source: "ressac-tweak://vidola/a.js:1", sourceVerified: false }]);
     expect(await m.sites.tools.memory("inconnu")).toBeNull();
     expect(await m.sites.tools.errors("inconnu")).toBeNull();
     expect(await m.sites.tools.open("inconnu")).toBe(false);

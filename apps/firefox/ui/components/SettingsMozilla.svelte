@@ -27,7 +27,7 @@
   <div class="row">
     <div class="grow">
       <b>Compte Mozilla (extensions de l'agent)</b>
-      <span class="muted">Firefox n'installe que des extensions signées par Mozilla. WebAiOs les fait signer avec votre compte développeur Mozilla (gratuit).</span>
+      <span class="muted">Firefox n'installe que des extensions signées par Mozilla. Ressac les fait signer avec votre compte développeur Mozilla (gratuit).</span>
       {#if saved}<code class="muted" data-testid="mozilla-issuer">{issuer}</code>{/if}
     </div>
     <span class="pill" data-tone={saved ? "ok" : "warn"} data-testid="mozilla-state">{saved ? "Compte branché" : "Non branché"}</span>

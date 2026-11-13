@@ -143,7 +143,7 @@
 <style>
   /* Buttons as on the welcome; Réglages styles its own over these (its rules are more specific). */
   .import { display: flex; flex-direction: column; gap: 12px; }
-  .import > *, .guide .note { animation: webaios-rise var(--spring-d) var(--spring) backwards; }
+  .import > *, .guide .note { animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   .note { color: var(--text-muted); font-size: 13px; }
   .row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 
@@ -165,11 +165,11 @@
   input[type="checkbox"]:checked { border-color: var(--accent); background-color: var(--accent); background-image: var(--tick); }
 
   .options { display: flex; flex-direction: column; gap: 12px; }
-  .profile, .guide { animation: webaios-rise var(--spring-d) var(--spring) backwards; }
+  .profile, .guide { animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   .profile { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 13px; }
   select { padding: 5px 8px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: 13px var(--font-ui); }
   .types { display: flex; flex-wrap: wrap; gap: 8px 18px; }
-  .types label { display: inline-flex; align-items: center; gap: 7px; animation: webaios-rise var(--spring-d) var(--spring) backwards; }
+  .types label { display: inline-flex; align-items: center; gap: 7px; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   .guide { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 16px; background: var(--glass-hi); border: 1px solid var(--glass-edge); }
   .guide ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 2px; }
 

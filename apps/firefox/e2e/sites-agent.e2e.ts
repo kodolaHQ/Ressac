@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { testActor } from "./agent-extensions";
 import { state, waitFor, waitReady } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
 import { grantSite, inSiteView, resolveLocalHosts, siteWindowCount, siteWindowExpr, startSitesServer, writeSite } from "./sites";
@@ -15,7 +15,7 @@ import { click, inUi, missingApi, waitUi } from "./ui";
 // the case seen on 2026-11-06 (open_site, then
 // read_tab on the app showed no card and answered « Onglet introuvable »).
 
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const HOSTS = ["vidola-a.localhost", "pub.localhost", "compte.localhost", "mail.localhost", "flemmix.localhost"];
 const DENIAL = "Accès refusé par l'utilisateur à cet onglet.";
 const CARD = '[data-testid="widget-data-request"]';
@@ -23,7 +23,7 @@ const DEVTOOLS = '[data-testid="devtools-request"]';
 const ALLOW = "Autoriser pour cette conversation";
 
 let server: Awaited<ReturnType<typeof startSitesServer>>;
-let w: LaunchedWebAiOs | undefined;
+let w: LaunchedRessac | undefined;
 let m: Marionette;
 let dataDir: string;
 let profile: string;
@@ -48,17 +48,17 @@ const gone = (selector: string) => waitUi(m, `return !doc.querySelector(${JSON.s
 
 /** Launches with these apps written; returns once the agent's session is up (its start takes back every grant). */
 async function start(sites: Record<string, object> = { vidola: vidola() }, prepare?: () => Promise<void> | void) {
-  dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
-  profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
+  dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
+  profile = await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
   for (const [id, declaration] of Object.entries(sites)) writeSite(dataDir, id, { declaration });
   await prepare?.();
   const actor = testActor(profile);
-  w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_LOCAL_ADDRESSES: "1", ...actor.env }, prefs: actor.prefs });
+  w = await launchRessac({ dataDir, profile, env: { RESSAC_TEST_LOCAL_ADDRESSES: "1", ...actor.env }, prefs: actor.prefs });
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
   await resolveLocalHosts(m, HOSTS);
-  const config = path.join(dataDir, "workspace", ".webaios", "mcp.json");
+  const config = path.join(dataDir, "workspace", ".ressac", "mcp.json");
   for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
     if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
   await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
@@ -235,7 +235,7 @@ describe("the agent on a site app window", () => {
     expect((await call("tweak_errors", { id: "vidola" })).text).toContain("Erreurs de console des retouches");
     expect(await shown(CARD)).toBe(false);
     // A read lights the agent's halo around the app's view, as in the main window.
-    const working = `return ${siteWindowExpr("vidola")}?.document.documentElement.hasAttribute("webaios-agent-working");`;
+    const working = `return ${siteWindowExpr("vidola")}?.document.documentElement.hasAttribute("ressac-agent-working");`;
     const reading = call("read_tab", { id: "site:vidola" });
     await waitFor(m, working, (v) => v === true, 2_000);
     await reading;
@@ -297,7 +297,7 @@ describe("the agent on a site app window", () => {
       writeSite(dataDir, "vidola", { declaration: vidola(), files: { "home/index.html": "<p>accueil</p>" } });
     });
     await openSite();
-    const view = () => m.execute<string>(`return ${siteWindowExpr("vidola")}.webaiosSiteWindow.state().viewState;`);
+    const view = () => m.execute<string>(`return ${siteWindowExpr("vidola")}.ressacSiteWindow.state().viewState;`);
     const film = url("/film/2");
     const navigating = call("navigate", { id: "site:vidola", url: film });
     await cardText();
@@ -306,7 +306,7 @@ describe("the agent on a site app window", () => {
     await expect.poll(() => viewUrl(), { timeout: 15_000 }).toBe(film);
     const hits = () => server.requests.filter((r) => r.path === "/film/2").length;
     await expect.poll(hits, { timeout: 10_000 }).toBe(1);
-    await m.execute(`${siteWindowExpr("vidola")}.webaiosSiteWindow.home()`);
+    await m.execute(`${siteWindowExpr("vidola")}.ressacSiteWindow.home()`);
     const before = hits();
     expect(await view()).toBe("home");
     const reloading = call("reload", { id: "site:vidola" });

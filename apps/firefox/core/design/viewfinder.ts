@@ -1,4 +1,4 @@
-import { HTML_MAX, CAPTURE_MARGIN, USEFUL_STYLES, TRUNCATED, type DesignContext } from "@webaios/kernel";
+import { HTML_MAX, CAPTURE_MARGIN, USEFUL_STYLES, TRUNCATED, type DesignContext } from "@ressac/kernel";
 
 export interface ViewfinderCapture extends Omit<DesignContext, "source"> {
   rect: { x: number; y: number; width: number; height: number };
@@ -18,7 +18,7 @@ export function viewfinderScript(): string {
   const HTML_MAX = ${HTML_MAX};
   const TRONQUE = ${JSON.stringify(TRUNCATED)};
   return new Promise((resolve) => {
-    const hote = document.createElement("webaios-viewfinder");
+    const hote = document.createElement("ressac-viewfinder");
     const ombre = hote.attachShadow({ mode: "closed" });
     const base = "position:fixed;pointer-events:none;z-index:2147483647;";
     const cadre = document.createElement("div");

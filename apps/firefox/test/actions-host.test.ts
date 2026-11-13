@@ -28,9 +28,9 @@ afterEach(() => {
 
 /** A temporary space with these actions (`action.json`), and the folder of their data outside the space. */
 function space(declarations: Record<string, object>): { c: SpacePaths; actionsFolder: string } {
-  const root = mkdtempSync(join(tmpdir(), "webaios-actions-host-"));
+  const root = mkdtempSync(join(tmpdir(), "ressac-actions-host-"));
   dirs.push(root);
-  const c = spacePaths(join(root, "WebAiOs"));
+  const c = spacePaths(join(root, "Ressac"));
   for (const [id, d] of Object.entries(declarations)) {
     mkdirSync(join(c.actions, id), { recursive: true });
     writeFileSync(join(c.actions, id, "action.json"), JSON.stringify(d));

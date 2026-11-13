@@ -104,7 +104,7 @@
     cursor: pointer;
     outline: none;
     transition: transform var(--spring-d) var(--spring), border-color var(--tap), box-shadow var(--tap);
-    animation: webaios-rise var(--spring-d) var(--spring) backwards;
+    animation: ressac-rise var(--spring-d) var(--spring) backwards;
   }
   .card[aria-selected="true"] { transform: scale(1.04); border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), var(--modal-shadow); }
   .card:active { transform: scale(0.97); }

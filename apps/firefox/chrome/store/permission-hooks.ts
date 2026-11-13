@@ -38,7 +38,7 @@ function watchGone(browser: any, cb: () => void): () => void {
  */
 export function registerPermissionHooks(o: {
   sitePermissions: SitePermissions;
-  /** The WebAiOs tab behind a browser (a popup's: its opener's tab), or null. */
+  /** The Ressac tab behind a browser (a popup's: its opener's tab), or null. */
   tabOf(browser: any): { tabId: TabId; windowId: WindowId; profile: ProfileId } | null;
   isInvisible(browser: any): boolean;
 }): () => void {

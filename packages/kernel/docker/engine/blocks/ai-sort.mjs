@@ -6,10 +6,10 @@ export default {
   perItem: "always",
   // No score at all (Kev down): the sort fails clearly rather than returning an empty list.
   failIfAllFail: true,
-  async processItem({ params, fill, webaios }) {
+  async processItem({ params, fill, ressac }) {
     const { text: state } = fill(params.text);
     const { text: instructions } = fill(params.question);
-    const r = await webaios.kev(state, { q: { type: "noul", instructions } });
+    const r = await ressac.kev(state, { q: { type: "noul", instructions } });
     const raw = r?.q?.noul;
     // Like `Number(...)` today, a number written as text is read; nothing, or anything else, is not a score.
     const score = typeof raw === "number" ? raw : typeof raw === "string" && raw.trim() !== "" ? Number(raw) : NaN;

@@ -7,7 +7,7 @@ index a15f250512fc77e6384aeb6ca832d47726912042..af87f6877ced6971324a3d3920b4d635
    for (const auto& listener : mListeners) {
      if (params) {
 -      *params &= listener->RequestedInputProcessingParams(mGraph);
-+      // WebAiOs: a page that opens a raw microphone next to a processed one (Google Meet) keeps the platform's
++      // Ressac: a page that opens a raw microphone next to a processed one (Google Meet) keeps the platform's
 +      // voice processing; without it the processed track falls back to a far weaker gain (about 20 dB quieter).
 +      *params |= listener->RequestedInputProcessingParams(mGraph);
      } else {

@@ -6,7 +6,7 @@
   import { api, appState, currentWindow } from "./state.svelte";
   import { AGENT_WIDTH_MAX, AGENT_WIDTH_MIN } from "../shared/model";
 
-  const win = window.parent.webaiosWindow!;
+  const win = window.parent.ressacWindow!;
   const winState = $derived(currentWindow());
   const agentPanelOpen = $derived(winState?.agentPanelOpen ?? false);
   const activeTab = $derived.by(() => {

@@ -1,11 +1,11 @@
-// Spikes S1–S3 of docs/superpowers/specs/2026-11-08-webaios-firefox-reseau-interfaces-design.md: a throwaway
+// Spikes S1–S3 of docs/superpowers/specs/2026-11-08-ressac-firefox-reseau-interfaces-design.md: a throwaway
 // prototype of the spec's four pieces (the predicate, the content policy, the opening-request observer, the docShell
 // flags, the PeerConnection:request refusal), switchable at run time so each layer is measured alone.
-// Imported in the parent from resource://webaios-spike-net/ by ui-network-spike.e2e.ts. Not product code.
+// Imported in the parent from resource://ressac-spike-net/ by ui-network-spike.e2e.ts. Not product code.
 
 const { setTimeout } = ChromeUtils.importESModule("resource://gre/modules/Timer.sys.mjs");
 
-const UI_PREFIXES = ["chrome://browser/content/webaios/", "resource://webaios-widget-", "resource://webaios-component-", "resource://webaios-site-"];
+const UI_PREFIXES = ["chrome://browser/content/ressac/", "resource://ressac-widget-", "resource://ressac-component-", "resource://ressac-site-"];
 const BLOCKED_SCHEMES = new Set(["http", "https", "ws", "wss"]);
 
 /** policy: off | log | reject; observer: off | log | cancel; webrtc: off | deny. */
@@ -89,7 +89,7 @@ function describe(uri, li) {
   };
 }
 
-const POLICY_CONTRACT = "@webaios/spike-ui-network-policy;1";
+const POLICY_CONTRACT = "@ressac/spike-ui-network-policy;1";
 const policy = {
   classID: Components.ID("{3b0d8f52-6c41-4e7a-9a2f-7d5c1e8b4a93}"),
   QueryInterface: ChromeUtils.generateQI(["nsIContentPolicy", "nsIFactory"]),

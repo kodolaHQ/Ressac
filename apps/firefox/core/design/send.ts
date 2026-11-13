@@ -1,4 +1,4 @@
-import { pathInContainer, remarksPrefix, type SpacePaths, type ProjectId, type Batch, type TrackedProject } from "@webaios/kernel";
+import { pathInContainer, remarksPrefix, type SpacePaths, type ProjectId, type Batch, type TrackedProject } from "@ressac/kernel";
 import type { WindowId } from "../../shared/model";
 
 export interface SendOptions {

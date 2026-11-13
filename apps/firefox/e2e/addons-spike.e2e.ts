@@ -4,25 +4,25 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { button, installAddon, writeXpi, type Fixture } from "./addons";
 import { dispatch, state, waitFor } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
 import { waitUi } from "./ui";
 
 // Probes of plan 23's unknowns (docs/superpowers/notes/2026-11-04-modules-firefox-essai.md). They print what they see
-// rather than assert it: rerun them with WEBAIOS_SPIKE=1 after a Firefox version change and compare with the note.
+// rather than assert it: rerun them with RESSAC_SPIKE=1 after a Firefox version change and compare with the note.
 
 const NAVIGABLES = "chrome://remote/content/shared/NavigableManager.sys.mjs";
 const note = (what: string, v: unknown) => console.log(`[spike] ${what}: ${JSON.stringify(v)}`);
 
 /** A content script on every page that appends <p id="addon-mark">MARQUE-MODULE</p>. */
 const marker: Fixture = {
-  id: "mark@webaios.test",
+  id: "mark@ressac.test",
   manifest: {
     manifest_version: 2,
     name: "Marque",
     version: "1.0",
-    browser_specific_settings: { gecko: { id: "mark@webaios.test" } },
+    browser_specific_settings: { gecko: { id: "mark@ressac.test" } },
     content_scripts: [{ matches: ["<all_urls>"], js: ["mark.js"] }],
   },
   files: { "mark.js": 'const p = document.createElement("p"); p.id = "addon-mark"; p.textContent = "MARQUE-MODULE"; document.body.append(p);' },
@@ -30,12 +30,12 @@ const marker: Fixture = {
 
 /** Cancels every request to /fichier.txt (webRequest). */
 const blocker: Fixture = {
-  id: "block@webaios.test",
+  id: "block@ressac.test",
   manifest: {
     manifest_version: 2,
     name: "Bloqueur",
     version: "1.0",
-    browser_specific_settings: { gecko: { id: "block@webaios.test" } },
+    browser_specific_settings: { gecko: { id: "block@ressac.test" } },
     permissions: ["webRequest", "webRequestBlocking", "<all_urls>"],
     background: { scripts: ["background.js"] },
   },
@@ -44,22 +44,22 @@ const blocker: Fixture = {
 
 /** Asks for permissions, so that installing it shows the permissions prompt. */
 const asking: Fixture = {
-  id: "asking@webaios.test",
+  id: "asking@ressac.test",
   manifest: {
     manifest_version: 2,
     name: "Demande",
     version: "1.0",
-    browser_specific_settings: { gecko: { id: "asking@webaios.test" } },
+    browser_specific_settings: { gecko: { id: "asking@ressac.test" } },
     permissions: ["tabs", "<all_urls>"],
   },
 };
 
-/** Creates (once) a 24×24 fixed XUL box at (20, 60) in the window, id `webaios-anchor`. */
+/** Creates (once) a 24×24 fixed XUL box at (20, 60) in the window, id `ressac-anchor`. */
 const ANCHOR = `
-  let box = document.getElementById("webaios-anchor");
+  let box = document.getElementById("ressac-anchor");
   if (!box) {
     box = document.createXULElement("box");
-    box.id = "webaios-anchor";
+    box.id = "ressac-anchor";
     box.style.cssText = "position: fixed; left: 20px; top: 60px; width: 24px; height: 24px;";
     document.documentElement.append(box);
   }`;
@@ -78,12 +78,12 @@ const PANEL_STATE = `
 
 async function ready(m: Marionette): Promise<void> {
   await m.setContext("chrome");
-  await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+  await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
   // The home page's agent session settles first: quitting during its start-up leaves writers in the data dir.
   await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
 }
 
-/** Opens `url` in a WebAiOs tab and waits until the selected browser shows it; returns the WebAiOs tab id. */
+/** Opens `url` in a Ressac tab and waits until the selected browser shows it; returns the Ressac tab id. */
 async function open(m: Marionette, url: string): Promise<string> {
   const before = new Set(Object.keys((await state(m)).tabs));
   const s = await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url });
@@ -91,17 +91,17 @@ async function open(m: Marionette, url: string): Promise<string> {
   return Object.keys(s.tabs).find((id) => !before.has(id))!;
 }
 
-describe.skipIf(!process.env.WEBAIOS_SPIKE)("add-on spike", () => {
+describe.skipIf(!process.env.RESSAC_SPIKE)("add-on spike", () => {
   let server: Awaited<ReturnType<typeof startServer>>;
   beforeAll(async () => (server = await startServer()));
   afterAll(() => server?.close());
 
   describe("one session", () => {
-    let w: LaunchedWebAiOs;
+    let w: LaunchedRessac;
     let m: Marionette;
     let id: string;
     beforeAll(async () => {
-      w = await launchWebAiOs();
+      w = await launchRessac();
       m = w.marionette;
       await ready(m);
     });
@@ -109,7 +109,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("add-on spike", () => {
 
     it("S0: a temporary unsigned xpi installs", async () => {
       id = await installAddon(m, button());
-      expect(id).toBe("button@webaios.test");
+      expect(id).toBe("button@ressac.test");
       const active = await m.execute<boolean>("return WebExtensionPolicy.getByID(arguments[0])?.active === true", [id]);
       note("S0 id, active", { id, active });
       expect(active).toBe(true);
@@ -149,14 +149,14 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("add-on spike", () => {
       );
 
     it("S1: popup on our anchor (option A), parking tab then a page", async () => {
-      note("S1 parking shown", await m.execute("return gBrowser.selectedTab.hasAttribute('webaios-parking')"));
+      note("S1 parking shown", await m.execute("return gBrowser.selectedTab.hasAttribute('ressac-parking')"));
       note("S1 A on parking", await popupOnBox());
       await open(m, `${server.url}/texte.html`);
       note("S1 A on page", await popupOnBox());
       // Away from the window's left edge, which direction does the panel take by itself?
-      await m.execute('document.getElementById("webaios-anchor").style.left = "300px"');
+      await m.execute('document.getElementById("ressac-anchor").style.left = "300px"');
       note("S1 A on page, box at x=300", await popupOnBox());
-      await m.execute('document.getElementById("webaios-anchor").style.left = "20px"');
+      await m.execute('document.getElementById("ressac-anchor").style.left = "20px"');
     });
 
     it("S1: option B, hidden toolbox, visible unified-extensions-button, triggerAction", async () => {
@@ -213,7 +213,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("add-on spike", () => {
 
     const HOOKS = `
       ${ANCHOR}
-      gUnifiedExtensions.getPopupAnchorID = (b) => { b["webaios-anchorpopupnotificationanchor"] = box; return "webaios-anchor"; };
+      gUnifiedExtensions.getPopupAnchorID = (b) => { b["ressac-anchorpopupnotificationanchor"] = box; return "ressac-anchor"; };
       PopupNotifications._getVisibleAnchorElement = (el) => (el?.checkVisibility({ visibilityProperty: true }) ? el : box);`;
 
     it("S2: site and add-on prompts, with and without our hooks", async () => {
@@ -314,7 +314,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("add-on spike", () => {
       note("S3 private, blocked request reached the server", reached());
     });
 
-    it("S6: about:addons in a WebAiOs tab", async () => {
+    it("S6: about:addons in a Ressac tab", async () => {
       await m.execute(`window.spikeEmLoaded = 0; Services.obs.addObserver(() => window.spikeEmLoaded++, "EM-loaded");`);
       const s = await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url: "about:addons" });
       const tabId = Object.entries(s.tabs).find(([, o]) => o.url === "about:addons")?.[0];
@@ -325,7 +325,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("add-on spike", () => {
         "S6 page",
         await m.execute(
           `return (async () => {
-            const tab = gBrowser.tabs.find((t) => t.getAttribute("webaios-tab-id") === arguments[0]);
+            const tab = gBrowser.tabs.find((t) => t.getAttribute("ressac-tab-id") === arguments[0]);
             const win = tab?.linkedBrowser.contentWindow;
             const out = { xulTab: !!tab, selected: tab?.selected, remote: tab?.linkedBrowser.isRemoteBrowser, url: tab?.linkedBrowser.currentURI.spec, hasLoadView: typeof win?.loadView, emLoaded: window.spikeEmLoaded };
             if (typeof win?.loadView === "function") {
@@ -347,8 +347,8 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("add-on spike", () => {
       );
       // A manifest asking for a recent Firefox, as most AMO add-ons do.
       const strict: Fixture = {
-        id: "strict@webaios.test",
-        manifest: { manifest_version: 2, name: "Récent", version: "1.0", browser_specific_settings: { gecko: { id: "strict@webaios.test", strict_min_version: "115.0" } } },
+        id: "strict@ressac.test",
+        manifest: { manifest_version: 2, name: "Récent", version: "1.0", browser_specific_settings: { gecko: { id: "strict@ressac.test", strict_min_version: "115.0" } } },
       };
       let installed: unknown;
       try {
@@ -361,7 +361,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("add-on spike", () => {
         "S7 strict_min_version 115.0 add-on",
         await m.execute(`return (async () => {
           const { AddonManager } = ChromeUtils.importESModule("resource://gre/modules/AddonManager.sys.mjs");
-          const a = await AddonManager.getAddonByID("strict@webaios.test");
+          const a = await AddonManager.getAddonByID("strict@ressac.test");
           return a && { isActive: a.isActive, isCompatible: a.isCompatible, appDisabled: a.appDisabled };
         })();`),
       );
@@ -369,15 +369,15 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("add-on spike", () => {
   });
 
   it("S4: a public container turned internal keeps its id and cookies across a restart", async () => {
-    const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
-    const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
+    const profile = await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
+    const dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
     const CIS = 'ChromeUtils.importESModule("moz-src:///toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs").ContextualIdentityService';
     const cookies = `return Services.cookies.getCookiesFromHost("127.0.0.1", { userContextId: arguments[0] }).map((c) => c.name + "=" + c.value);`;
     try {
-      let w = await launchWebAiOs({ profile, dataDir });
+      let w = await launchRessac({ profile, dataDir });
       let m = w.marionette;
       await ready(m);
-      const userContextId = await m.execute<number>(`return ${CIS}.create("webaios-p1", "fence", "blue").userContextId;`);
+      const userContextId = await m.execute<number>(`return ${CIS}.create("ressac-p1", "fence", "blue").userContextId;`);
       await m.execute(
         `return (async () => {
           const tab = gBrowser.addTab(arguments[0], { userContextId: arguments[1], triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });
@@ -403,7 +403,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("add-on spike", () => {
         ),
       );
       await w.close();
-      w = await launchWebAiOs({ profile, dataDir });
+      w = await launchRessac({ profile, dataDir });
       m = w.marionette;
       await ready(m);
       note(
@@ -440,8 +440,8 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("add-on spike", () => {
   });
 
   it("S5: a non-temporary unsigned install under the automation pref", { timeout: 120_000 }, async () => {
-    const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
-    const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
+    const profile = await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
+    const dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
     const o = {
       profile,
       dataDir,
@@ -450,11 +450,11 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("add-on spike", () => {
     };
     const addon = `return (async () => {
       const { AddonManager } = ChromeUtils.importESModule("resource://gre/modules/AddonManager.sys.mjs");
-      const a = await AddonManager.getAddonByID("button@webaios.test");
+      const a = await AddonManager.getAddonByID("button@ressac.test");
       return a && { active: a.isActive, temporary: a.temporarilyInstalled, signedState: a.signedState };
     })();`;
     try {
-      let w = await launchWebAiOs(o);
+      let w = await launchRessac(o);
       let m = w.marionette;
       await ready(m);
       note("S5 isInAutomation", await m.execute("return Cu.isInAutomation"));
@@ -467,7 +467,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("add-on spike", () => {
       note("S5 install", installed);
       note("S5 add-on", await m.execute(addon));
       await w.close();
-      w = await launchWebAiOs(o);
+      w = await launchRessac(o);
       m = w.marionette;
       await ready(m);
       note("S5 add-on after restart", await m.execute(addon));
@@ -507,7 +507,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("add-on spike", () => {
 });
 
 /**
- * Loads `url` in a normal WebAiOs tab or, with `windowless`, in a copy of the agent's windowless browser (private
+ * Loads `url` in a normal Ressac tab or, with `windowless`, in a copy of the agent's windowless browser (private
  * with `priv`, in a fresh internal container); reads it with the page actor; reports whether #addon-mark is there.
  * The windowless browser first loads /fichier.txt, which the blocker cancels (webRequest), then its cookies.
  */
@@ -517,7 +517,7 @@ function probeMark(m: Marionette, url: string, priv: boolean, windowless = false
       await open(m, url);
       await new Promise((r) => setTimeout(r, 1000));
       return m.execute(
-        `return (async () => (await gBrowser.selectedBrowser.browsingContext.currentWindowGlobal.getActor("WebAiOsPage").sendQuery("html", { max: 100000 })).includes("addon-mark"))();`,
+        `return (async () => (await gBrowser.selectedBrowser.browsingContext.currentWindowGlobal.getActor("RessacPage").sendQuery("html", { max: 100000 })).includes("addon-mark"))();`,
       );
     })();
   return m.execute(
@@ -546,14 +546,14 @@ function probeMark(m: Marionette, url: string, priv: boolean, windowless = false
         });
         const doc = windowless.document;
         const browser = doc.createXULElement("browser");
-        for (const [k, v] of Object.entries({ type: "content", remote: "true", maychangeremoteness: "true", disableglobalhistory: "true", messagemanagergroup: "webaios-reading", manualactiveness: "true", usercontextid: String(userContextId) }))
+        for (const [k, v] of Object.entries({ type: "content", remote: "true", maychangeremoteness: "true", disableglobalhistory: "true", messagemanagergroup: "ressac-reading", manualactiveness: "true", usercontextid: String(userContextId) }))
           browser.setAttribute(k, v);
         browser.style.width = "1280px";
         browser.style.height = "900px";
         doc.documentElement.appendChild(browser);
         for (let i = 0; i < 500 && !browser.browsingContext.currentWindowGlobal; i++) await new Promise((r) => setTimeout(r, 10));
         out.usePrivateBrowsing = browser.browsingContext.usePrivateBrowsing;
-        try { await browser.browsingContext.currentWindowGlobal.getActor("WebAiOsReading").sendQuery("prepare"); out.prepare = "ok"; } catch (e) { out.prepare = String(e); }
+        try { await browser.browsingContext.currentWindowGlobal.getActor("RessacReading").sendQuery("prepare"); out.prepare = "ok"; } catch (e) { out.prepare = String(e); }
         browser.docShellIsActive = true;
         const load = async (u) => {
           const uri = Services.io.newURI(u);
@@ -565,7 +565,7 @@ function probeMark(m: Marionette, url: string, priv: boolean, windowless = false
         await load(url);
         out.url = browser.currentURI.spec;
         out.originAttributes = browser.browsingContext.currentWindowGlobal?.documentPrincipal.originAttributes;
-        try { out.mark = (await browser.browsingContext.currentWindowGlobal.getActor("WebAiOsPage").sendQuery("html", { max: 100000 })).includes("addon-mark"); } catch (e) { out.mark = String(e); }
+        try { out.mark = (await browser.browsingContext.currentWindowGlobal.getActor("RessacPage").sendQuery("html", { max: 100000 })).includes("addon-mark"); } catch (e) { out.mark = String(e); }
         // Private cookies of this container, and whether clearing the container pattern removes them.
         await load(new URL("/cookie", url).href);
         const oa = { userContextId, privateBrowsingId: priv ? 1 : 0 };

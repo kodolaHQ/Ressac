@@ -29,7 +29,7 @@ function setup(answers: Record<string, (p: any) => unknown> = {}) {
     windowId: "W",
     openAgent,
     switchAgent,
-    dataDir: "/u/WebAiOs",
+    dataDir: "/u/Ressac",
   });
   return { api, calls, chrome, forget, dispatched, openAgent, switchAgent };
 }
@@ -64,14 +64,14 @@ describe("settings api", () => {
     expect(await api.workshop()).toBeNull();
     expect((await api.grants()).map((r) => r.kind)).toEqual(["site"]);
     expect(await api.restartWorkshop(true)).toEqual({ ok: false, error: "L'agent ne répond pas" });
-    expect(api.dataDir()).toBe("/u/WebAiOs");
+    expect(api.dataDir()).toBe("/u/Ressac");
     expect(await api.backups()).toEqual([]);
     expect(await api.logout("claude")).toEqual([]);
   });
 
   it("the data folder does not wait for the backups", async () => {
     const { api } = setup({ "settings.backups": () => new Promise(() => {}) });
-    expect(api.dataDir()).toBe("/u/WebAiOs");
+    expect(api.dataDir()).toBe("/u/Ressac");
   });
 
   it("login: a panel answer switches the agent and opens the panel; a device code is returned as is; a silent host is an error", async () => {
@@ -128,7 +128,7 @@ describe("settings api", () => {
   });
 
   it("export reveals", async () => {
-    const path = "/u/Downloads/WebAiOs-donnees-2026-11-10.zip";
+    const path = "/u/Downloads/Ressac-donnees-2026-11-10.zip";
     const { api, calls, chrome } = setup({ "settings.export": () => ({ ok: true, path }) });
     expect(await api.exportData()).toEqual({ ok: true, path });
     expect(calls[0]!.params).toEqual({ to: "/u/Downloads" });
@@ -136,9 +136,9 @@ describe("settings api", () => {
   });
 
   it("revealable", () => {
-    const r = (p: string) => revealable("/u/WebAiOs", "/u/Downloads", p);
-    for (const p of ["/u/WebAiOs", "/u/WebAiOs.backup-2026-11-10T13-35-12-345Z", "/u/Downloads/WebAiOs-donnees-2026-11-10 (2).zip", "/u/WebAiOs/workspace/browsing-notes.md"]) expect(r(p)).toBe(true);
-    for (const p of ["/u/WebAiOs/workspace", "/u/WebAiOs.backup-x", "/u/Downloads/autre.zip", "/u/Downloads/../WebAiOs-donnees-2026-11-10.zip", "/etc"]) expect(r(p)).toBe(false);
+    const r = (p: string) => revealable("/u/Ressac", "/u/Downloads", p);
+    for (const p of ["/u/Ressac", "/u/Ressac.backup-2026-11-10T13-35-12-345Z", "/u/Downloads/Ressac-donnees-2026-11-10 (2).zip", "/u/Ressac/workspace/browsing-notes.md"]) expect(r(p)).toBe(true);
+    for (const p of ["/u/Ressac/workspace", "/u/Ressac.backup-x", "/u/Downloads/autre.zip", "/u/Downloads/../Ressac-donnees-2026-11-10.zip", "/etc"]) expect(r(p)).toBe(false);
   });
 
   it("default browser: read and asked through the chrome", async () => {
@@ -149,8 +149,8 @@ describe("settings api", () => {
   });
 
   it("bundleId reads the identifier macOS knows the app by", () => {
-    expect(bundleId("<dict>\n\t<key>CFBundleIdentifier</key>\n\t<string>fr.webaios.fr.webaios.browser</string>\n</dict>")).toBe("fr.webaios.fr.webaios.browser");
-    expect(bundleId("<dict><key>CFBundleName</key><string>WebAiOs</string></dict>")).toBeNull();
+    expect(bundleId("<dict>\n\t<key>CFBundleIdentifier</key>\n\t<string>fr.ressac.fr.ressac.browser</string>\n</dict>")).toBe("fr.ressac.fr.ressac.browser");
+    expect(bundleId("<dict><key>CFBundleName</key><string>Ressac</string></dict>")).toBeNull();
     expect(bundleId("<key>CFBundleIdentifier</key><string>a; rm -rf /</string>")).toBeNull();
   });
 

@@ -1,4 +1,4 @@
-import { changeUrl, readUrlState, findUrl, type DeclarationSite, type UrlState } from "@webaios/kernel";
+import { changeUrl, readUrlState, findUrl, type DeclarationSite, type UrlState } from "@ressac/kernel";
 import { TRACKING_INTERVAL_MS } from "../../shared/sites";
 
 export type TrackingResult = { t: "change"; domain: string; state: UrlState } | { t: "not-found" } | { t: "unchanged" } | { t: "too-soon" };

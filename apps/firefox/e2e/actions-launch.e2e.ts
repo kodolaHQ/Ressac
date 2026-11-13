@@ -4,7 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Action } from "../shared/api";
 import { actionsDataDir, runsOnDisk, startActionServers, tid, uiQueries, waitKernel, writeAction, writeRunnableAction } from "./actions";
 import { dispatch, state, waitFor, waitReady } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
 import { click, inUi, missingApi, pressKeys, waitUi } from "./ui";
@@ -12,23 +12,23 @@ import { click, inUi, missingApi, pressKeys, waitUi } from "./ui";
 // Launching actions from the empty page and the ⌘T bar. One launch for the file: each test starts on a fresh empty page
 // in a public space. A proxy on a closed port keeps searches and addresses from leaving the machine; the local servers are not proxied.
 
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const NAME_TICKETS = "Mes tickets GitLab à traiter";
 
 let servers: Awaited<ReturnType<typeof startActionServers>>;
 let pages: Awaited<ReturnType<typeof startServer>>;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 let q: ReturnType<typeof uiQueries>;
 
 const lines = (type: string) => `[data-testid="command-row"][data-type="${type}"]`;
 const focused = (testid: string) =>
-  waitUi(m, "return doc.activeElement?.dataset.testid === arguments[0] && document.activeElement === document.getElementById('webaios-sidebar');", [testid]);
+  waitUi(m, "return doc.activeElement?.dataset.testid === arguments[0] && document.activeElement === document.getElementById('ressac-sidebar');", [testid]);
 /** Types `text` in the field with the keyboard (an input event, as Playwright's fill). */
 const fill = (testid: string, text: string) =>
   inUi(m, `const f = doc.querySelector(arguments[0]); f.focus(); f.value = arguments[1]; f.dispatchEvent(new ui.Event("input", { bubbles: true }));`, [tid(testid), text]);
 const visible = (selector: string, ms = 30_000) => waitUi(m, "const e = doc.querySelector(arguments[0]); return !!e && e.getBoundingClientRect().height > 0;", [selector], ms);
-const listCalls = () => m.execute<number>("return window.webaiosListCalls;");
+const listCalls = () => m.execute<number>("return window.ressacListCalls;");
 const tabUrls = async () => Object.values((await state(m)).tabs).map((o) => o.url);
 async function setPrivate(isPrivate: boolean): Promise<void> {
   const s = await state(m);
@@ -44,7 +44,7 @@ async function openPage(p: string, title: string): Promise<string> {
   return url;
 }
 /** The action is in the list the kernel gives. */
-const listed = (id: string) => waitUi(m, "return (await ui.webaios.actions.list()).some((a) => a.id === arguments[0]);", [id], 30_000);
+const listed = (id: string) => waitUi(m, "return (await ui.ressac.actions.list()).some((a) => a.id === arguments[0]);", [id], 30_000);
 /** Opens the empty page (« Nouvel onglet »), its field focused. */
 async function emptyPage(): Promise<void> {
   await click(m, tid("new-tab"));
@@ -61,8 +61,8 @@ async function openBar(): Promise<void> {
 beforeAll(async () => {
   servers = await startActionServers();
   pages = await startServer();
-  w = await launchWebAiOs({
-    env: { WEBAIOS_OLLAMA_URL: servers.ollama.url, WEBAIOS_KEV_URL: servers.kev.url, WEBAIOS_TEST_LOCAL_ADDRESSES: "1" },
+  w = await launchRessac({
+    env: { RESSAC_OLLAMA_URL: servers.ollama.url, RESSAC_KEV_URL: servers.kev.url, RESSAC_TEST_LOCAL_ADDRESSES: "1" },
     prefs: { "network.proxy.type": 1, "network.proxy.http": "127.0.0.1", "network.proxy.http_port": 1, "network.proxy.ssl": "127.0.0.1", "network.proxy.ssl_port": 1 },
   });
   m = w.marionette;
@@ -83,8 +83,8 @@ beforeAll(async () => {
   await m.execute(`return (async () => {
     const agent = (await ChromeUtils.importESModule("${STORE}").ready).agent;
     const request = agent.request.bind(agent);
-    window.webaiosListCalls = 0;
-    agent.request = (method, params) => (method === "actions.list" && window.webaiosListCalls++, request(method, params));
+    window.ressacListCalls = 0;
+    agent.request = (method, params) => (method === "actions.list" && window.ressacListCalls++, request(method, params));
   })();`);
 }, 90_000);
 beforeEach(async () => {
@@ -178,7 +178,7 @@ describe("launching from the empty page", () => {
   // actions.spec.ts:943
   it("private space: no suggestion, the list is not even asked for (even when the actions change)", async () => {
     await setPrivate(true);
-    await m.execute("window.webaiosListCalls = 0;");
+    await m.execute("window.ressacListCalls = 0;");
     await emptyPage();
     await writeRunnableAction(w.dataDir, "privee", { name: "Autre privee", code: "export default async () => [];" });
     await fill("empty-page-input", "autre");
@@ -190,9 +190,9 @@ describe("launching from the empty page", () => {
   // actions.spec.ts:956
   it("normal space: an actions change asks for the list again (the counter works)", async () => {
     await emptyPage();
-    await m.execute("window.webaiosListCalls = 0;");
+    await m.execute("window.ressacListCalls = 0;");
     await writeRunnableAction(w.dataDir, "nouvelle", { name: "Autre nouvelle", code: "export default async () => [];" });
-    await waitFor(m, "return window.webaiosListCalls;", (n: number) => n > 0, 15_000);
+    await waitFor(m, "return window.ressacListCalls;", (n: number) => n > 0, 15_000);
     await fill("empty-page-input", "autre");
     await q.waitContains(tid("suggestions-actions"), "Autre nouvelle");
   });
@@ -258,7 +258,7 @@ describe("launching from the command bar", () => {
     await focused("command-param");
     expect(await q.value(tid("command-param"))).toBe(url);
     // Held, ⌫ clears the field without going back; released then pressed again, it goes back, text intact.
-    await m.execute(`const tip = (window.webaiosTestTip ??= Cc["@mozilla.org/text-input-processor;1"].createInstance(Ci.nsITextInputProcessor));
+    await m.execute(`const tip = (window.ressacTestTip ??= Cc["@mozilla.org/text-input-processor;1"].createInstance(Ci.nsITextInputProcessor));
       tip.beginInputTransactionForTests(window);
       tip.keydown(new KeyboardEvent("", { key: "Backspace", code: "Backspace" }));
       tip.keydown(new KeyboardEvent("", { key: "Backspace", code: "Backspace", repeat: true }));

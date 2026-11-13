@@ -8,7 +8,7 @@ import { UNAVAILABLE_DESIGN } from "../shared/design-guards";
 import { openTab, testActor } from "./agent-extensions";
 import { pageLog, clearLog, startDesignServers, stopActor, trustedMouse } from "./design";
 import { pressClosing, waitFor, waitReady, waitWindowCount } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { inBrowser, resolveLocalHosts } from "./sites";
 
@@ -17,26 +17,26 @@ import { inBrowser, resolveLocalHosts } from "./sites";
 
 const PORT = 15303;
 const B = "gBrowser.selectedBrowser";
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 let servers: Awaited<ReturnType<typeof startDesignServers>>;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 const dirs: string[] = [];
-const launched: LaunchedWebAiOs[] = [];
+const launched: LaunchedRessac[] = [];
 
-/** A WebAiOs on the demo's port block, its overlays recorded in `window.__overlay`, its host answering. */
-async function boot(prefs: Record<string, string | number | boolean> = {}): Promise<LaunchedWebAiOs> {
-  const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
-  const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
+/** A Ressac on the demo's port block, its overlays recorded in `window.__overlay`, its host answering. */
+async function boot(prefs: Record<string, string | number | boolean> = {}): Promise<LaunchedRessac> {
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
+  const profile = await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
   dirs.push(dataDir, profile);
   const a = testActor(profile);
-  const l = await launchWebAiOs({ dataDir, profile, env: { ...a.env, WEBAIOS_APP_PORTS: "15300-15304" }, prefs: { ...a.prefs, ...prefs } });
+  const l = await launchRessac({ dataDir, profile, env: { ...a.env, RESSAC_APP_PORTS: "15300-15304" }, prefs: { ...a.prefs, ...prefs } });
   launched.push(l);
   const mm = l.marionette;
   await mm.setContext("chrome");
-  await waitFor(mm, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+  await waitFor(mm, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
   await resolveLocalHosts(mm, ["localhost"]);
   await mm.execute(`return (async () => {
     const d = (await ChromeUtils.importESModule("${STORE}").ready).design;
@@ -49,7 +49,7 @@ async function boot(prefs: Record<string, string | number | boolean> = {}): Prom
     return 1;
   })();`);
   // The host answers design.suivi (not "projet" for a parking tab: null, or a rejection while it starts).
-  await waitFor(mm, `return (async () => { const d = (await ChromeUtils.importESModule("${STORE}").ready).design; return d.state({ type: "window", windowId: window.webaiosWindow.windowId }).then(() => true, () => false); })();`, (v) => v === true, 30_000);
+  await waitFor(mm, `return (async () => { const d = (await ChromeUtils.importESModule("${STORE}").ready).design; return d.state({ type: "window", windowId: window.ressacWindow.windowId }).then(() => true, () => false); })();`, (v) => v === true, 30_000);
   return l;
 }
 
@@ -67,7 +67,7 @@ afterAll(async () => {
 /** Runs `body` with `d` the design service and `t` this window's target; `args` are `args`. */
 const svc = <R = unknown>(body: string, args: unknown[] = []) =>
   m.execute<R>(
-    `return (async (args) => { const d = (await ChromeUtils.importESModule("${STORE}").ready).design; const t = { type: "window", windowId: window.webaiosWindow.windowId }; ${body} })([...arguments]);`,
+    `return (async (args) => { const d = (await ChromeUtils.importESModule("${STORE}").ready).design; const t = { type: "window", windowId: window.ressacWindow.windowId }; ${body} })([...arguments]);`,
     args,
   );
 const state = () => svc<{ active: boolean; basket: number; unavailable: string | null; project: { project: string } | null }>("return await d.state(t);");
@@ -80,7 +80,7 @@ async function open(p: string, base = servers.page): Promise<void> {
   await m.execute(`${B}.focus();`);
 }
 const inPage = <T = unknown>(script: string) => inBrowser<T>(m, B, script);
-const hosts = () => inPage<number>(`return document.querySelectorAll("webaios-viewfinder").length;`);
+const hosts = () => inPage<number>(`return document.querySelectorAll("ressac-viewfinder").length;`);
 const bubbles = () => m.execute<{ place: { x: number; y: number; width: number; height: number }; ctx: { label: string; source: string | null; project: string; mode: string } }[]>(
   `return window.__overlay.filter((e) => e.op === "show" && e.ctx.mode === "bubble");`,
 );
@@ -101,7 +101,7 @@ async function aim(sel: string) {
  */
 const record = (o: { arm?: string; stop?: "hang" | "throw" } = {}) =>
   m.execute(
-    `const a = ${B}.browsingContext.currentWindowGlobal.getActor("WebAiOsDesign"), [o] = arguments;
+    `const a = ${B}.browsingContext.currentWindowGlobal.getActor("RessacDesign"), [o] = arguments;
      const real = (a.__real ??= a.sendQuery);
      window.__queries = [];
      a.sendQuery = (n, data) => {
@@ -115,10 +115,10 @@ const record = (o: { arm?: string; stop?: "hang" | "throw" } = {}) =>
     [o],
   );
 const queries = () => m.execute<string[]>("return window.__queries;");
-const unrecord = () => m.execute(`const a = ${B}.browsingContext.currentWindowGlobal.getActor("WebAiOsDesign"); if (a.__real) a.sendQuery = a.__real; return 1;`);
+const unrecord = () => m.execute(`const a = ${B}.browsingContext.currentWindowGlobal.getActor("RessacDesign"); if (a.__real) a.sendQuery = a.__real; return 1;`);
 
 /** The PNGs of the demo's cart on disk. */
-const pngs = (l: LaunchedWebAiOs) =>
+const pngs = (l: LaunchedRessac) =>
   (readdirSync(l.dataDir, { recursive: true }) as string[]).filter((f) => f.endsWith(".png") && f.includes(`demo-${PORT}`)).map((f) => path.join(l.dataDir, f));
 
 /** The PNG's size (IHDR), the colours at `at` and every colour in it, decoded by the chrome. */
@@ -289,7 +289,7 @@ describe("design service", () => {
     await open("/");
     await toggle();
     await expect.poll(hosts, { timeout: 10_000 }).toBe(1);
-    expect(await inBrowser<number>(m, "window.__designTabA.linkedBrowser", `return document.querySelectorAll("webaios-viewfinder").length;`)).toBe(0);
+    expect(await inBrowser<number>(m, "window.__designTabA.linkedBrowser", `return document.querySelectorAll("ressac-viewfinder").length;`)).toBe(0);
     await stopMode();
   });
 
@@ -431,7 +431,7 @@ describe("design service", () => {
     await open("/");
     await svc("await d.openCart(t); return 1;");
     expect(await svc("return d.overlayContext(t)?.mode ?? null;")).toBe("basket");
-    const id = await m.execute<string>("return window.webaiosWindow.windowId;");
+    const id = await m.execute<string>("return window.ressacWindow.windowId;");
     // A module timer outlives the window: once it is gone, it reopens one as the Dock would.
     await m.execute(
       `const { setTimeout } = ChromeUtils.importESModule("resource://gre/modules/Timer.sys.mjs");
@@ -444,8 +444,8 @@ describe("design service", () => {
     const reopened = (await waitWindowCount(m, 1, 20_000)).find((h) => h !== old)!;
     await m.command("WebDriver:SwitchToWindow", { handle: reopened, focus: false });
     await waitReady(m);
-    await waitFor(m, "return !!window.webaiosWindow;", (v) => v === true);
-    expect(await m.execute("return window.webaiosWindow.windowId;")).toBe(id);
+    await waitFor(m, "return !!window.ressacWindow;", (v) => v === true);
+    expect(await m.execute("return window.ressacWindow.windowId;")).toBe(id);
     expect(await svc("return d.overlayContext(t);")).toBeNull();
     // The recorder lived in the closed window: set again for the tests after.
     await m.execute(`return (async () => { const d = (await ChromeUtils.importESModule("${STORE}").ready).design;

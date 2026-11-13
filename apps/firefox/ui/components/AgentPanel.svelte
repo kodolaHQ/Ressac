@@ -134,7 +134,7 @@
     const pending = visible && firstTimePending("agent");
     const done = !firstTimePending("agent");
     untrack(() => {
-      if (pending) giveBack ??= window.parent.webaiosWindow?.rememberFocus();
+      if (pending) giveBack ??= window.parent.ressacWindow?.rememberFocus();
       else if (done && giveBack) {
         const back = giveBack;
         const asked = userAsked;

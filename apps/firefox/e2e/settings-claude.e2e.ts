@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { ClaudeEngine } from "../shared/settings";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { waitFor, waitReady } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
 import { click, inUi, missingApi, waitUi } from "./ui";
@@ -14,7 +14,7 @@ import { click, inUi, missingApi, waitUi } from "./ui";
 const PAGE = '[data-testid="settings-page"]';
 const CARD = '[data-testid="claude-engine"]';
 const SECRET = "sk-ant-e2e-secret";
-const SHOTS = join(import.meta.dirname, "../../../.superpowers/sdd/2026-11-11-webaios-plan-48-moteurs-claude/shots");
+const SHOTS = join(import.meta.dirname, "../../../.superpowers/sdd/2026-11-11-ressac-plan-48-moteurs-claude/shots");
 const NO_WEB = { "network.proxy.type": 1, "network.proxy.http": "127.0.0.1", "network.proxy.http_port": 1, "network.proxy.ssl": "127.0.0.1", "network.proxy.ssl_port": 1 };
 
 /** A fake Ollama: two installed models. */
@@ -31,9 +31,9 @@ beforeAll(async () => {
 });
 afterAll(() => ollama?.close());
 
-let w: LaunchedWebAiOs | undefined;
+let w: LaunchedRessac | undefined;
 let m: Marionette;
-const temp = mkdtempSync(join(os.tmpdir(), "webaios-claude-"));
+const temp = mkdtempSync(join(os.tmpdir(), "ressac-claude-"));
 afterEach(async () => {
   try {
     if (w) expect(await missingApi(m)).toEqual([]);
@@ -45,7 +45,7 @@ afterEach(async () => {
 afterAll(() => rmSync(temp, { recursive: true, force: true }));
 
 async function launch(o: { env?: Record<string, string>; prefs?: Record<string, string | number | boolean> } = {}): Promise<void> {
-  w = await launchWebAiOs({ env: { WEBAIOS_OLLAMA_URL: "http://127.0.0.1:9", ...o.env }, prefs: { ...NO_WEB, ...o.prefs } });
+  w = await launchRessac({ env: { RESSAC_OLLAMA_URL: "http://127.0.0.1:9", ...o.env }, prefs: { ...NO_WEB, ...o.prefs } });
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
@@ -71,7 +71,7 @@ const engineSaved = (ok: (e: ClaudeEngine) => boolean) => waitFor(m, "return tru
 const options = () => waitUi<string[]>(m, "const s = doc.querySelector(arguments[0]); return s?.tagName === 'SELECT' && s.options.length > 1 && [...s.options].map((o) => o.textContent.trim())", [inCard("ollama-model")]);
 /** Points Claude's Ollama address at `url` before Ollama is chosen: the default one would read this Mac's real Ollama. */
 const ollamaAt = (url: string) =>
-  inUi(m, "ui.webaios.settings.chooseClaudeEngine(arguments[0])", [{ kind: "subscription", ollamaUrl: url, ollamaModel: "", apiUrl: "", apiModel: "" }]);
+  inUi(m, "ui.ressac.settings.chooseClaudeEngine(arguments[0])", [{ kind: "subscription", ollamaUrl: url, ollamaModel: "", apiUrl: "", apiModel: "" }]);
 const HINT = "Claude Code vous demande de vous connecter dans le panneau de l'agent ; sinon, tapez /login.";
 
 /** The Claude card in light and in dark, for a look by eye (DESIGN.md). */
@@ -104,7 +104,7 @@ describe("Claude in Settings", () => {
     await engineSaved((e) => e.kind === "ollama" && e.ollamaModel === "ornith:35b" && e.ollamaUrl === ollama.url);
     expect(await inUi(m, "return doc.querySelector(arguments[0]).textContent", ['[data-testid="agent-claude"]'])).not.toContain(HINT);
     expect(await inUi(m, "return doc.querySelector('[data-testid=agent-claude] [data-testid=agent-login]')?.classList.contains('primary')")).toBe(false);
-    if (process.env.WEBAIOS_E2E_SHOTS) await screenshots();
+    if (process.env.RESSAC_E2E_SHOTS) await screenshots();
   });
 
   it("Ollama: Claude's session gets the engine environment", { timeout: 90_000 }, async () => {
@@ -115,10 +115,10 @@ describe("Claude in Settings", () => {
     await fill("ollama-model", "ornith:35b");
     await engineSaved((e) => e.kind === "ollama" && e.ollamaModel === "ornith:35b");
     const envFile = join(w!.dataDir, "workspace", "fake-agent-env.json");
-    await inUi(m, "ui.webaios.agent.switch('codex')");
+    await inUi(m, "ui.ressac.agent.switch('codex')");
     await waitFor(m, "return true", () => existsSync(envFile), 30_000);
     rmSync(envFile);
-    await inUi(m, "ui.webaios.agent.switch('claude')");
+    await inUi(m, "ui.ressac.agent.switch('claude')");
     await waitFor(m, "return true", () => read(envFile).includes("ANTHROPIC_BASE_URL"), 30_000);
     expect(JSON.parse(read(envFile))).toMatchObject({ ANTHROPIC_BASE_URL: ollama.url.replace("127.0.0.1", "host.docker.internal"), ANTHROPIC_MODEL: "ornith:35b", ANTHROPIC_DEFAULT_SONNET_MODEL: "ornith:35b", CLAUDE_CODE_SUBAGENT_MODEL: "ornith:35b" });
   });
@@ -128,7 +128,7 @@ describe("Claude in Settings", () => {
     await ollamaAt(ollama.url);
     await click(m, inCard("engine-ollama"));
     await options();
-    await inUi(m, "ui.webaios.settings.chooseClaudeEngine({ ...arguments[0], ollamaModel: 'gone:1b' })", [{ kind: "ollama", ollamaUrl: ollama.url, ollamaModel: "", apiUrl: "", apiModel: "" }]);
+    await inUi(m, "ui.ressac.settings.chooseClaudeEngine({ ...arguments[0], ollamaModel: 'gone:1b' })", [{ kind: "ollama", ollamaUrl: ollama.url, ollamaModel: "", apiUrl: "", apiModel: "" }]);
     await waitUi(m, "const s = doc.querySelector(arguments[0]); return s.options[s.selectedIndex]?.textContent.trim() === 'gone:1b (non installé)'", [inCard("ollama-model")]);
     const asked = ollama.paths.filter((p) => p === "/api/tags").length;
     await click(m, inCard("ollama-refresh"));
@@ -149,7 +149,7 @@ describe("Claude in Settings", () => {
 
   it("API compatible: the key goes to Claude's keychain entry, never to session.json", { timeout: 60_000 }, async () => {
     const keyFile = join(temp, "keychain");
-    await launch({ env: { WEBAIOS_TEST_KEYCHAIN: keyFile } });
+    await launch({ env: { RESSAC_TEST_KEYCHAIN: keyFile } });
     await click(m, inCard("engine-api"));
     expect(await inUi(m, "return doc.querySelector(arguments[0]).placeholder", [inCard("api-url")])).toBe("https://api.exemple.com (sans /v1)");
     await fill("api-url", "https://api.example.com");

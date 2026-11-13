@@ -31,7 +31,7 @@ export function cardOf(
 const UNSUPPORTED_RIGHTS = ["activeTab", "nativeMessaging", "userScripts", "sidePanel", "identity", "tabCapture", "desktopCapture", "pageCapture", "debugger", "proxy", "ttsEngine", "tts"];
 const KEYS_NOT_TAKEN: Record<string, string> = { side_panel: "sidePanel", devtools_page: "devtools_page", omnibox: "omnibox", chrome_url_overrides: "chrome_url_overrides" };
 
-/** What the manifest asks for that WebAiOs does not support, in list order, without duplicates (pure). */
+/** What the manifest asks for that Ressac does not support, in list order, without duplicates (pure). */
 export function unsupported(manifest: unknown): string[] {
   if (typeof manifest !== "object" || manifest === null) return [];
   const m = manifest as Record<string, unknown>;

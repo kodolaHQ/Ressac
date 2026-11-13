@@ -78,8 +78,8 @@ export interface ExtensionsState {
 
 const ID_STORE = /^[a-p]{32}$/;
 const ID_AGENT = /^[a-z0-9-]{1,40}$/;
-/** WebAiOs-Firefox: an agent extension's add-on id (`<id>@agent.webaios`), its id in `consolesMasquees`. */
-const ID_FIREFOX_AGENT = /^[a-z0-9-]{1,40}@agent\.webaios$/;
+/** Ressac: an agent extension's add-on id (`<id>@agent.ressac`), its id in `consolesMasquees`. */
+const ID_FIREFOX_AGENT = /^[a-z0-9-]{1,40}@agent\.ressac$/;
 
 export function readKey(key: string): { source: SourceExtension; id: string } | null {
   const i = key.indexOf(":");

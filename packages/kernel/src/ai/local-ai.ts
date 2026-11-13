@@ -141,7 +141,7 @@ export class LocalAi {
   private closed = false;
   /** Install in progress: its cancellation and its end (successful or not). */
   private installation?: { controller: AbortController; end: Promise<unknown> };
-  // Modifiable: Kev's address, imposed by WEBAIOS_KEV_URL or computed from the port.
+  // Modifiable: Kev's address, imposed by RESSAC_KEV_URL or computed from the port.
   private kevUrl: string;
   private readonly kevForced: boolean;
   readonly ollamaUrl: string;
@@ -156,11 +156,11 @@ export class LocalAi {
 
   constructor(private readonly o: LocalAiOptions) {
     this.port = o.port ?? 8008;
-    const imposed = o.kevUrl ?? process.env.WEBAIOS_KEV_URL;
+    const imposed = o.kevUrl ?? process.env.RESSAC_KEV_URL;
     this.kevForced = Boolean(imposed);
     this.decisionModel = o.decisionModel;
     this.kevUrl = imposed ?? `http://127.0.0.1:${this.port}`;
-    this.ollamaUrl = o.ollamaUrl ?? process.env.WEBAIOS_OLLAMA_URL ?? "http://127.0.0.1:11434";
+    this.ollamaUrl = o.ollamaUrl ?? process.env.RESSAC_OLLAMA_URL ?? "http://127.0.0.1:11434";
     this.inactivityMs = o.inactivityMs ?? 600_000;
     this.clock = o.clock ?? Date.now;
     this.launch = o.launch ?? defaultLaunch;

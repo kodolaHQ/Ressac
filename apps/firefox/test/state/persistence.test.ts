@@ -9,7 +9,7 @@ import { loadSession, SessionRecorder } from "../../core/state/persistence";
 import type { BrowserState } from "../../shared/model";
 import { DEFAULT_CLAUDE_ENGINE, DEFAULT_CODEX_ENGINE } from "../../shared/settings";
 
-const folder = () => mkdtempSync(join(tmpdir(), "webaios-session-"));
+const folder = () => mkdtempSync(join(tmpdir(), "ressac-session-"));
 const set_aside = (d: string, suffix: string) => readdirSync(d).filter((f) => f.startsWith("session.json.") && f.endsWith(suffix));
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 

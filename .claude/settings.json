@@ -1,7 +1,7 @@
 {
   "enabledPlugins": {
     "typescript-lsp@claude-plugins-official": false,
-    "tsgo-lsp@webaios-local": true,
-    "svelte-lsp@webaios-local": true
+    "tsgo-lsp@ressac-local": true,
+    "svelte-lsp@ressac-local": true
   }
 }

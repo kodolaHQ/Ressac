@@ -1,4 +1,4 @@
-import type { BlockCatalogEntry } from "@webaios/kernel";
+import type { BlockCatalogEntry } from "@ressac/kernel";
 
 export type FormField = BlockCatalogEntry["fields"][number];
 

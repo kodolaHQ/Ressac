@@ -200,10 +200,10 @@ test("staleQuestion: a dev-tools request lapses if the tab changes site; a site-
   expect(staleQuestion({ ...dev, target: "app:essai", origin: "http://localhost:15280" }, e())).toBe(false);
 });
 
-test("a webaios: tab is neither listed nor active for the agent", () => {
+test("a ressac: tab is neither listed nor active for the agent", () => {
   const { e, ag, F } = prepare();
   const id = Object.values(e().tabs).find((o) => o.windowId === F)!.id;
-  ag({ type: "updateTab", id, fields: { url: "webaios://apps" } });
+  ag({ type: "updateTab", id, fields: { url: "ressac://apps" } });
   expect(tabInfos(e()).map((o) => o.url)).toEqual(["https://b.test/"]);
   expect(activeTabOf(e(), F)).toBeNull();
 });
@@ -379,7 +379,7 @@ test("staleSiteQuestion: a question on site:<id> lapses with its window; the dev
   expect(staleSiteQuestion(dev, [{ ...opened[0]!, url: "https://compte.example/connexion" }])).toBe(true);
   // Neither a question without a site: target, nor the app's card (no target).
   expect(staleSiteQuestion({ ...dev, target: "app:essai" }, [])).toBe(false);
-  expect(staleSiteQuestion({ id: "s", tabId: null, origin: "webaios-site://vidola", permissions: ["widget-data" as const], site: "vidola" }, [])).toBe(false);
+  expect(staleSiteQuestion({ id: "s", tabId: null, origin: "ressac-site://vidola", permissions: ["widget-data" as const], site: "vidola" }, [])).toBe(false);
 });
 
 test("staleQuestion: a site-app window is not a closed tab (tracked separately)", () => {

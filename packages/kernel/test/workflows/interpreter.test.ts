@@ -60,7 +60,7 @@ describe("interpreter (in the container)", () => {
     expect(r.terminal).toEqual({ t: "end", data: { a: { inputOfA: null }, b: "B" } });
   });
 
-  it("code receives (entree, webaios) with config, precedent, maintenant, journal; its log lines are attached to the block and also go to stderr", async () => {
+  it("code receives (entree, ressac) with config, precedent, maintenant, journal; its log lines are attached to the block and also go to stderr", async () => {
     const r = await launch({
       workflow: {
         version: 1,
@@ -91,7 +91,7 @@ describe("interpreter (in the container)", () => {
     expect(r.calls[0]!.a).toEqual({ url: "https://a.fr/" });
   });
 
-  it("code with appel: recolte calls default(webaios) as today", async () => {
+  it("code with appel: recolte calls default(ressac) as today", async () => {
     const r = await launch({
       workflow: {
         version: 1,
@@ -272,7 +272,7 @@ describe("interpreter (in the container)", () => {
     expect(out.trim().split("\n").map((l) => JSON.parse(l))).toEqual([{ t: "failure", error: "start sans workflow" }]);
   });
 
-  it("the implicit workflow of a harvest.mjs: default(webaios) with the debut config, log on stderr", async () => {
+  it("the implicit workflow of a harvest.mjs: default(ressac) with the debut config, log on stderr", async () => {
     const r = await launch({
       workflow: implicitWorkflow(),
       config: { a: 1 },
@@ -511,7 +511,7 @@ describe("interpreter: input and progress (actions)", () => {
       input: "clio lyon",
     });
     expect(view).toBe("clio lyon");
-    // A widget (without input): nothing new in webaios.
+    // A widget (without input): nothing new in ressac.
     const widget = await launch({ workflow: { ...workflow, blocks: [block("lire", "code", { source: "c.mjs" }), block("c", "code", { source: "c.mjs" }), output] }, files: files });
     expect(widget.terminal).toEqual({ t: "end", data: { input: null, hasKey: false } });
   });

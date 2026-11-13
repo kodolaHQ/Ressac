@@ -1,8 +1,8 @@
 ac_add_options --enable-application=browser
 ac_add_options --with-app-name=${binName}
-ac_add_options --with-app-basename=WebAiOs
+ac_add_options --with-app-basename=Ressac
 export MOZ_BRANDING_DIRECTORY=${brandingDir}
-ac_add_options --with-distribution-id=fr.webaios
+ac_add_options --with-distribution-id=fr.ressac
 ac_add_options --disable-updater
 ac_add_options --enable-path-remapping=c,rust
 # Crash reports never reach Mozilla, dev builds included; a package points them at our Sentry.

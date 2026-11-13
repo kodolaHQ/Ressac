@@ -5,12 +5,12 @@ import { VIM_KEYS } from "../shared/vim-keys";
 vi.stubGlobal("ChromeUtils", { importESModule: () => ({ setTimeout, clearTimeout }) });
 vi.stubGlobal("JSWindowActorParent", class {});
 vi.stubGlobal("JSWindowActorChild", class {});
-const { WebAiOsVimChild } = await import("../chrome/agent/vim-actor");
+const { RessacVimChild } = await import("../chrome/agent/vim-actor");
 
 /** Runs `keys` on a fresh child whose effects are recorded instead of done; returns the effects, or null if a key was refused. */
 function effects(keys: string[]): string[] | null {
   const log: string[] = [];
-  const child = new WebAiOsVimChild() as any;
+  const child = new RessacVimChild() as any;
   for (const name of ["scroll", "scrollTo", "showHints", "setPaused", "toggleHelp", "sendAsyncMessage"])
     child[name] = (...args: unknown[]) => {
       log.push(`${name}${JSON.stringify(args)}`);

@@ -5,7 +5,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { writeAgentExtension } from "./extensions/fixtures";
 import { agentAddons, grant, inPage, launchWithAmo, openTab } from "./agent-extensions";
 import { waitFor } from "./firefox";
-import type { LaunchedWebAiOs } from "./launch";
+import type { LaunchedRessac } from "./launch";
 import { callTool } from "./mcp";
 import { startServer } from "./server";
 
@@ -16,21 +16,21 @@ const manifest = (matches: string[]) => ({ manifest_version: 3, name: "Cacheur d
 const CACHE = "#cache-moi { display: none !important; }\n";
 const CACHE_ALL = "#cache-moi, #reste { display: none !important; }\n";
 const GRANT = { permissions: [], hosts: [HOST], network: [], allSites: false, allSitesScripts: false, scripts: true };
-const ID = "cacheur@agent.webaios";
+const ID = "cacheur@agent.ressac";
 
 let server: Awaited<ReturnType<typeof startServer>>;
 beforeAll(async () => (server = await startServer()));
 afterAll(() => server?.close());
 
 const dirs: string[] = [];
-const opened: LaunchedWebAiOs[] = [];
+const opened: LaunchedRessac[] = [];
 afterEach(async () => {
   for (const w of opened.splice(0)) await w.close();
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
-/** A data folder (the agent's ~/WebAiOs is its espace/) and a profile, kept across restarts. */
+/** A data folder (the agent's ~/Ressac is its espace/) and a profile, kept across restarts. */
 const folders = () => {
-  const d = { dataDir: mkdtempSync(path.join(os.tmpdir(), "webaios-data-")), profile: mkdtempSync(path.join(os.tmpdir(), "webaios-firefox-")) };
+  const d = { dataDir: mkdtempSync(path.join(os.tmpdir(), "ressac-data-")), profile: mkdtempSync(path.join(os.tmpdir(), "ressac-firefox-")) };
   dirs.push(d.dataDir, d.profile);
   return d;
 };
@@ -42,12 +42,12 @@ const launch = async (o: Parameters<typeof launchWithAmo>[0]) => {
 };
 const registry = (dataDir: string) =>
   (JSON.parse(readFileSync(path.join(dataDir, "extensions", "state.json"), "utf8")) as { extensions: Record<string, unknown> }).extensions;
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 /** The first host answered extensions.pret: every granted extension is handled. */
-const settle = (w: LaunchedWebAiOs) =>
+const settle = (w: LaunchedRessac) =>
   w.marionette.execute(`return (async () => { await (await ChromeUtils.importESModule("${STORE}").ready).agentExtensions.ready; })();`);
 /** The agent's add-on installed, active, at `version` (a signing with the fake AMO takes a few seconds). */
-const waitAddon = (w: LaunchedWebAiOs, version: string) =>
+const waitAddon = (w: LaunchedRessac, version: string) =>
   waitFor(w.marionette, `return (async () => {
     const { AddonManager } = ChromeUtils.importESModule("resource://gre/modules/AddonManager.sys.mjs");
     const a = await AddonManager.getAddonByID(${JSON.stringify(ID)});
@@ -78,7 +78,7 @@ describe("agent extensions: registry, signed install, restart", () => {
   it("a fake grant written in the agent folder activates nothing", async () => {
     const f = folders();
     writeAgentExtension(root(f.dataDir), "cacheur", { "manifest.json": manifest([HOST]), "cache.css": CACHE });
-    // The registry as WebAiOs would write it, but in the agent's folder (and in the extension's own).
+    // The registry as Ressac would write it, but in the agent's folder (and in the extension's own).
     grant(root(f.dataDir), "cacheur", GRANT);
     copyFileSync(path.join(root(f.dataDir), "extensions", "state.json"), path.join(root(f.dataDir), "extensions", "cacheur", "state.json"));
     const w = await launch(f);
@@ -101,7 +101,7 @@ describe("agent extensions: registry, signed install, restart", () => {
   });
 
   // The page half of extensions-agent.spec.ts:102: the page guard asks the background, which injects the CSS once the
-  // extension actor answers isTab for this WebAiOs tab.
+  // extension actor answers isTab for this Ressac tab.
   it("granted: its content script hides #cache-moi", async () => {
     const f = folders();
     writeAgentExtension(root(f.dataDir), "cacheur", { "manifest.json": manifest([HOST]), "cache.css": CACHE });
@@ -127,12 +127,12 @@ describe("agent extensions: registry, signed install, restart", () => {
     await waitAddon(w, "1.0.0.1");
     await w.close();
     // Written again by the next kernel: its own port and token.
-    rmSync(path.join(root(f.dataDir), ".webaios", "mcp.json"));
+    rmSync(path.join(root(f.dataDir), ".ressac", "mcp.json"));
 
     w = await launch({ ...f, amo: { delayMs: 60_000 } });
     await waitAddon(w, "1.0.0.1");
     writeAgentExtension(root(f.dataDir), "cacheur", { "cache.css": CACHE_ALL });
-    await until(() => existsSync(path.join(root(f.dataDir), ".webaios", "mcp.json")));
+    await until(() => existsSync(path.join(root(f.dataDir), ".ressac", "mcp.json")));
     // Never answered: the app quits during the signature.
     callTool(f.dataDir, "reload_extension", { id: "cacheur" }).catch(() => {});
     const amo = w.amo;
@@ -161,8 +161,8 @@ describe("agent extensions: registry, signed install, restart", () => {
     expect(await agentAddons(w.marionette)).toEqual([]);
   });
 
-  // A removal landing while WebAiOs still installs the add-on (Firefox's onInstalled comes before install() resolves):
-  // it is the user's, not WebAiOs's; the kernel must not install it back.
+  // A removal landing while Ressac still installs the add-on (Firefox's onInstalled comes before install() resolves):
+  // it is the user's, not Ressac's; the kernel must not install it back.
   it("uninstalled from about:addons during an install of ours: gone from the registry, not installed back", async () => {
     const f = folders();
     writeAgentExtension(root(f.dataDir), "cacheur", { "manifest.json": manifest([HOST]), "cache.css": CACHE });
@@ -179,7 +179,7 @@ describe("agent extensions: registry, signed install, restart", () => {
       AddonManager.addAddonListener(l);
     })();`);
     writeAgentExtension(root(f.dataDir), "cacheur", { "cache.css": CACHE_ALL });
-    await until(() => existsSync(path.join(root(f.dataDir), ".webaios", "mcp.json")));
+    await until(() => existsSync(path.join(root(f.dataDir), ".ressac", "mcp.json")));
     await callTool(f.dataDir, "reload_extension", { id: "cacheur" }).catch(() => {});
     await until(() => !("agent:cacheur" in registry(f.dataDir)));
     await settle(w);
@@ -201,7 +201,7 @@ describe("agent extensions: registry, signed install, restart", () => {
     await until(() => !("agent:cacheur" in registry(f.dataDir)), 30_000);
     expect(await agentAddons(w.marionette)).toEqual([]);
     await w.close();
-    rmSync(path.join(root(f.dataDir), ".webaios", "mcp.json"));
+    rmSync(path.join(root(f.dataDir), ".ressac", "mcp.json"));
 
     w = await launch(f);
     await settle(w);

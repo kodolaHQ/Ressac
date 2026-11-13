@@ -4,5 +4,5 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 export async function tempFolder(): Promise<string> {
-  return realpathSync(await mkdtemp(join(tmpdir(), "webaios-")));
+  return realpathSync(await mkdtemp(join(tmpdir(), "ressac-")));
 }

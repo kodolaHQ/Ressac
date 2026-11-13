@@ -168,7 +168,7 @@
   header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
   h1 { margin: 0; font: 650 26px/1.1 var(--font-display); letter-spacing: -0.02em; }
   .cutoff { display: flex; align-items: center; gap: 8px; }
-  .help { margin-bottom: 14px; padding: 14px 16px; border-radius: 16px; border: 1px solid var(--glass-edge); background: var(--glass-dense, var(--glass)); box-shadow: var(--lift); animation: webaios-rise var(--spring-d) var(--spring) backwards; }
+  .help { margin-bottom: 14px; padding: 14px 16px; border-radius: 16px; border: 1px solid var(--glass-edge); background: var(--glass-dense, var(--glass)); box-shadow: var(--lift); animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   .help-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .help h2 { margin: 0; font: 650 17px/1.2 var(--font-display); }
   .help ol { margin: 10px 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
@@ -195,7 +195,7 @@
   .details dt { color: var(--text-muted); }
   .details dd { margin: 0; display: flex; flex-direction: column; overflow-wrap: anywhere; }
   .veil { position: fixed; inset: 0; display: grid; place-content: center; background: var(--veil); backdrop-filter: blur(6px); z-index: 10; }
-  .confirmation { max-width: 420px; padding: 18px 20px; border-radius: 16px; background: var(--glass-dense); border: 1px solid var(--glass-edge); box-shadow: var(--modal-shadow); color: var(--text); animation: webaios-drop var(--spring-d) var(--spring) backwards; }
+  .confirmation { max-width: 420px; padding: 18px 20px; border-radius: 16px; background: var(--glass-dense); border: 1px solid var(--glass-edge); box-shadow: var(--modal-shadow); color: var(--text); animation: ressac-drop var(--spring-d) var(--spring) backwards; }
   .confirmation p { margin: 0 0 14px; }
   .buttons { display: flex; justify-content: flex-end; gap: 8px; }
   .buttons .confirm { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }

@@ -40,7 +40,7 @@ async function seedFirstTimeNotesSeen(dataDir: string): Promise<void> {
   await writeFile(file, JSON.stringify(s));
 }
 
-export interface LaunchedWebAiOs {
+export interface LaunchedRessac {
   marionette: Marionette;
   profile: string;
   dataDir: string;
@@ -50,8 +50,8 @@ export interface LaunchedWebAiOs {
 
 function binary(): string {
   // The same app a person launches: an unbranded build (Nightly.app) is a misconfigured checkout, not a fallback.
-  const file = path.join(DIST, "WebAiOs.app/Contents/MacOS/webaios");
-  if (!existsSync(file)) throw new Error("build missing: pnpm --filter firefox-webaios build");
+  const file = path.join(DIST, "Ressac.app/Contents/MacOS/ressac");
+  if (!existsSync(file)) throw new Error("build missing: pnpm --filter firefox-ressac build");
   return file;
 }
 
@@ -66,14 +66,14 @@ async function waitFor<T>(read: () => Promise<T | undefined>, ms: number, what: 
 }
 
 /**
- * Launches WebAiOs-Firefox headless (`headed` shows its window). Folders passed in are reused and kept (to restart on the same data); the others
- * are temporary and deleted on close. `prefs` are appended to the profile's user.js (reduced motion is on unless `prefs` sets `ui.prefersReducedMotion` to 0). WEBAIOS_DATA_DIR is always set, so tests never touch the real data folder.
+ * Launches Ressac headless (`headed` shows its window). Folders passed in are reused and kept (to restart on the same data); the others
+ * are temporary and deleted on close. `prefs` are appended to the profile's user.js (reduced motion is on unless `prefs` sets `ui.prefersReducedMotion` to 0). RESSAC_DATA_DIR is always set, so tests never touch the real data folder.
  * A data folder without a space's widgets folder gets the starter widgets without their harvest (`starterHarvests` keeps
  * them, and their real-web reads: prefer a local server). `firstTimeNotes` leaves the one-time notes unseen (a new session has them seen). `output`: a file that gets the browser's stdout and stderr.
  */
-export async function launchWebAiOs(o: { headed?: boolean; width?: number; height?: number; dataDir?: string; profile?: string; env?: Record<string, string | undefined>; prefs?: Record<string, string | number | boolean>; starterHarvests?: boolean; firstTimeNotes?: boolean; output?: string } = {}): Promise<LaunchedWebAiOs> {
-  const profile = o.profile ?? (await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-")));
-  const dataDir = o.dataDir ?? (await mkdtemp(path.join(os.tmpdir(), "webaios-data-")));
+export async function launchRessac(o: { headed?: boolean; width?: number; height?: number; dataDir?: string; profile?: string; env?: Record<string, string | undefined>; prefs?: Record<string, string | number | boolean>; starterHarvests?: boolean; firstTimeNotes?: boolean; output?: string } = {}): Promise<LaunchedRessac> {
+  const profile = o.profile ?? (await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-")));
+  const dataDir = o.dataDir ?? (await mkdtemp(path.join(os.tmpdir(), "ressac-data-")));
   const cleanup = () =>
     Promise.all([o.profile ? undefined : rm(profile, { recursive: true, force: true }), o.dataDir ? undefined : rm(dataDir, { recursive: true, force: true })]);
   // The current data format: without the marker the store would set the folder aside.
@@ -100,24 +100,24 @@ export async function launchWebAiOs(o: { headed?: boolean; width?: number; heigh
     { stdio: ["ignore", out, out], env: {
         ...process.env,
         MOZ_REMOTE_ALLOW_SYSTEM_ACCESS: "1",
-        WEBAIOS_DATA_DIR: dataDir,
+        RESSAC_DATA_DIR: dataDir,
         // The fake agent writes its traces there.
-        WEBAIOS_ROOT: path.join(dataDir, "workspace"),
+        RESSAC_ROOT: path.join(dataDir, "workspace"),
         // A free port: never the real 5279.
-        WEBAIOS_PORT_MCP_EXTERNAL: "0",
+        RESSAC_PORT_MCP_EXTERNAL: "0",
         // The host's notifications go to a file, never to the owner's screen (a test passes its own file to read them).
-        WEBAIOS_TEST_NOTIFICATIONS: path.join(dataDir, "notifications.jsonl"),
+        RESSAC_TEST_NOTIFICATIONS: path.join(dataDir, "notifications.jsonl"),
         // No real Sentry from a test: only one that passes a DSN itself gets one.
-        WEBAIOS_SENTRY_DSN: "",
+        RESSAC_SENTRY_DSN: "",
         // The import screen never reads the owner's browsers: an empty home (a test passes its own fake one).
-        WEBAIOS_TEST_IMPORT_HOME: path.join(dataDir, "import-home"),
+        RESSAC_TEST_IMPORT_HOME: path.join(dataDir, "import-home"),
         // No welcome screen in front of the tests.
-        WEBAIOS_SKIP_WELCOME: "1",
+        RESSAC_SKIP_WELCOME: "1",
         // Réglages never changes the owner's macOS: his default browser and his screen recording grant stay his.
-        WEBAIOS_TEST_NO_SYSTEM: "1",
+        RESSAC_TEST_NO_SYSTEM: "1",
         // Never the decision model running on this machine (nothing listens there): the search watcher lets every action
         // pass. A test with a fake passes its own; `undefined` (dropped by spawn) restores the kernel's default.
-        WEBAIOS_KEV_URL: "http://127.0.0.1:9",
+        RESSAC_KEV_URL: "http://127.0.0.1:9",
         ...o.env,
         PATH: `${FAKE_TOOLS}${path.delimiter}${process.env.PATH ?? ""}`,
       }, },

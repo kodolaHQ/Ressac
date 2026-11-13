@@ -3,12 +3,12 @@ import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, it } from "vitest";
 import type { Action } from "../shared/api";
 import { dispatch, state, waitFor } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { waitUi } from "./ui";
 
 // Probes of plan 26's unknowns (docs/superpowers/notes/2026-11-05-permissions-sites-recherche.md, P1-P9). They print
-// what they see rather than assert it: rerun them with WEBAIOS_SPIKE=1 after a Firefox version change and compare.
+// what they see rather than assert it: rerun them with RESSAC_SPIKE=1 after a Firefox version change and compare.
 // No network, no real device: fake media, test geolocation provider, test MIDI ports, ClearKey, a web protocol handler.
 
 const note = (what: string, v: unknown) => console.log(`[spike] ${what}: ${JSON.stringify(v)}`);
@@ -47,12 +47,12 @@ const ACTIONS = `{
     return { keySystem: a.keySystem, config: a.getConfiguration().initDataTypes, keys };
   },
   drm2: async () => Promise.all([ACTIONS.drm(), ACTIONS.drm()]),
-  clipw: async () => (await navigator.clipboard.writeText("webaios-spike"), "written"),
+  clipw: async () => (await navigator.clipboard.writeText("ressac-spike"), "written"),
   clipr: () => navigator.clipboard.readText(),
   fs: async () => (await document.documentElement.requestFullscreen(), !!document.fullscreenElement),
   autoplay: async () => { const a = new Audio((${WAV})()); const policy = navigator.getAutoplayPolicy?.("mediaelement") ?? "no getAutoplayPolicy"; const r = await Promise.race([a.play().then(() => "played"), new Promise((ok) => setTimeout(() => ok("play() still pending after 3 s"), 3000))]); a.pause(); return { policy, play: r }; },
   popup: async () => !!window.open("/p?do=none", "_blank"),
-  proto: async () => { location.href = "webaios-spike:hello-from-page"; return "navigated"; },
+  proto: async () => { location.href = "ressac-spike:hello-from-page"; return "navigated"; },
   query: async () => {
     const out = { notification: Notification.permission };
     for (const name of ["notifications", "geolocation", "camera", "microphone", "midi", "persistent-storage", "storage-access", "xr"]) {
@@ -113,13 +113,13 @@ const PREFS = {
  * The hooks under test, installed in the chrome: an Integration.contentPermission override, a wrap of
  * WebRTCParent.receiveMessage and of nsContentDispatchChooser.handleURI. Each logs what it receives in window.spike.log
  * and answers per window.spike.answer[<type>] ("allow", "cancel", "hold" = keep the request, "pass" = Firefox's own).
- * Requests from the invisible reads' browsers (messagemanagergroup webaios-reading) are always cancelled.
+ * Requests from the invisible reads' browsers (messagemanagergroup ressac-reading) are always cancelled.
  */
 const HOOKS = `
   if (window.spike) return "already";
   const spike = (window.spike = { log: [], held: [], answer: {} });
   const group = (el) => el?.getAttribute?.("messagemanagergroup") ?? null;
-  const tabOf = (el) => { const g = el?.ownerDocument?.defaultView?.gBrowser; return g ? (g.getTabForBrowser(el)?.getAttribute("webaios-tab-id") ?? "no tab id") : "no gBrowser"; };
+  const tabOf = (el) => { const g = el?.ownerDocument?.defaultView?.gBrowser; return g ? (g.getTabForBrowser(el)?.getAttribute("ressac-tab-id") ?? "no tab id") : "no gBrowser"; };
   const { Integration } = ChromeUtils.importESModule("resource://gre/modules/Integration.sys.mjs");
   spike.factory = (base) => ({
     __proto__: base,
@@ -134,7 +134,7 @@ const HOOKS = `
         element: request.element?.localName ?? null, group: group(request.element), tab: tabOf(request.element),
         gesture: request.hasValidTransientUserGestureActivation, delegated: request.isRequestDelegatedToUnsafeThirdParty, window: !!request.window,
       };
-      const answer = entry.group === "webaios-reading" ? "cancel" : (spike.answer[type] ?? "hold");
+      const answer = entry.group === "ressac-reading" ? "cancel" : (spike.answer[type] ?? "hold");
       entry.answer = answer;
       if (answer === "pass") { spike.log.push(entry); return base.createPermissionPrompt.call(this, type, request); }
       return {
@@ -163,7 +163,7 @@ const HOOKS = `
       userContextId: this.manager.documentPrincipal.originAttributes.userContextId, group: group(el), tab: tabOf(el),
       video: dev(d.videoInputDevices), audio: dev(d.audioInputDevices),
     };
-    const answer = entry.group === "webaios-reading" ? "deny" : (spike.answer[d.sharingScreen ? "screen" : "media"] ?? "hold");
+    const answer = entry.group === "ressac-reading" ? "deny" : (spike.answer[d.sharingScreen ? "screen" : "media"] ?? "hold");
     entry.answer = answer;
     spike.log.push(entry);
     if (answer === "pass") return receive.call(this, msg);
@@ -183,7 +183,7 @@ const HOOKS = `
     const el = bc?.top?.embedderElement;
     const entry = { hook: "dispatch", scheme: handler.type, uri: uri.spec, origin: principal?.origin ?? null, userContextId: principal?.originAttributes?.userContextId ?? null,
       group: group(el), tab: tabOf(el), external, gesture, preferredAction: handler.preferredAction, alwaysAsk: handler.alwaysAskBeforeHandling };
-    const answer = entry.group === "webaios-reading" ? "cancel" : (spike.answer.protocol ?? "cancel");
+    const answer = entry.group === "ressac-reading" ? "cancel" : (spike.answer.protocol ?? "cancel");
     entry.answer = answer;
     spike.log.push(entry);
     if (answer === "pass") return handle.apply(this, arguments);
@@ -205,7 +205,7 @@ const FIREFOX_UI = `
 
 async function ready(m: Marionette): Promise<void> {
   await m.setContext("chrome");
-  await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+  await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
   // The home page's agent session settles first: quitting during its start-up leaves writers in the data dir.
   await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
 }
@@ -214,7 +214,7 @@ const NAVIGABLES = "chrome://remote/content/shared/NavigableManager.sys.mjs";
 const chrome = <T = any>(m: Marionette, body: string, args: unknown[] = []) => m.execute<T>(`return (async () => { ${body} })();`, args);
 
 let opened = 0;
-/** Opens `url` (made unique: earlier tabs stay open) in a WebAiOs tab of the first window, waits until it is loaded; its browser is window.spikeBrowser. */
+/** Opens `url` (made unique: earlier tabs stay open) in a Ressac tab of the first window, waits until it is loaded; its browser is window.spikeBrowser. */
 async function open(m: Marionette, page: string): Promise<void> {
   const url = `${page}${page.includes("?") ? "&" : "?"}k=${++opened}`;
   await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url });
@@ -271,9 +271,9 @@ async function navigate(m: Marionette, url: string): Promise<void> {
   await waitFor(m, `return window.spikeBrowser.currentURI.spec === ${JSON.stringify(url)} && !!window.spikeBrowser.contentTitle;`, (v) => v === true);
 }
 
-/** Closes window.spikeBrowser's WebAiOs tab. */
+/** Closes window.spikeBrowser's Ressac tab. */
 const closeTab = (m: Marionette) =>
-  m.execute("return gBrowser.getTabForBrowser(window.spikeBrowser).getAttribute('webaios-tab-id');").then((id) => dispatch(m, { type: "closeTab", id: id as string }));
+  m.execute("return gBrowser.getTabForBrowser(window.spikeBrowser).getAttribute('ressac-tab-id');").then((id) => dispatch(m, { type: "closeTab", id: id as string }));
 
 /** The hook log since `from`, and the requests held. */
 const logSince = (m: Marionette, from: number) => chrome<any[]>(m, `return window.spike.log.slice(arguments[0]);`, [from]);
@@ -294,15 +294,15 @@ const release = (m: Marionette, how: "allow" | "cancel") =>
     return out;`, [how]);
 const firefoxUi = (m: Marionette) => chrome(m, FIREFOX_UI);
 
-describe.skipIf(!process.env.WEBAIOS_SPIKE)("site permissions spike", () => {
+describe.skipIf(!process.env.RESSAC_SPIKE)("site permissions spike", () => {
   let pages: Awaited<ReturnType<typeof startPages>>;
   let other: Awaited<ReturnType<typeof startPages>>;
-  let w: LaunchedWebAiOs;
+  let w: LaunchedRessac;
   let m: Marionette;
   beforeAll(async () => {
     pages = await startPages();
     other = await startPages();
-    w = await launchWebAiOs({ prefs: PREFS });
+    w = await launchRessac({ prefs: PREFS });
     m = w.marionette;
     await ready(m);
     note("hooks", await chrome(m, HOOKS));
@@ -465,17 +465,17 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site permissions spike", () => {
   });
 
   it("P5: a link to another application (ContentDispatchChooser)", { timeout: 120_000 }, async () => {
-    // A web handler for webaios-spike:, so Firefox knows an "application" for it (else NS_ERROR_UNKNOWN_PROTOCOL).
+    // A web handler for ressac-spike:, so Firefox knows an "application" for it (else NS_ERROR_UNKNOWN_PROTOCOL).
     note("P5 handler", await chrome(m, `
       const eps = Cc["@mozilla.org/uriloader/external-protocol-service;1"].getService(Ci.nsIExternalProtocolService);
-      const before = eps.externalProtocolHandlerExists("webaios-spike");
-      const info = eps.getProtocolHandlerInfo("webaios-spike");
+      const before = eps.externalProtocolHandlerExists("ressac-spike");
+      const info = eps.getProtocolHandlerInfo("ressac-spike");
       const app = Cc["@mozilla.org/uriloader/web-handler-app;1"].createInstance(Ci.nsIWebHandlerApp);
       app.name = "spike"; app.uriTemplate = arguments[0] + "/handled?u=%s";
       info.possibleApplicationHandlers.appendElement(app);
       info.preferredApplicationHandler = app; info.preferredAction = Ci.nsIHandlerInfo.useHelperApp; info.alwaysAskBeforeHandling = false;
       Cc["@mozilla.org/uriloader/handler-service;1"].getService(Ci.nsIHandlerService).store(info);
-      return { before, after: eps.externalProtocolHandlerExists("webaios-spike") };`, [other.url]));
+      return { before, after: eps.externalProtocolHandlerExists("ressac-spike") };`, [other.url]));
     for (const [answer, auto] of [["pass", false], ["cancel", false], ["allow", false], ["allow", true]] as const) {
       await setAnswers(m, { protocol: answer });
       const from = await logLength(m);
@@ -540,7 +540,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site permissions spike", () => {
   });
 
   it("P7: an invisible read's requests: how each hook recognises its browser", { timeout: 180_000 }, async () => {
-    const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+    const STORE = "chrome://browser/content/ressac/store.sys.mjs";
     for (const what of ["notif", "geo", "both", "midi", "drm", "proto"]) {
       const from = await logLength(m);
       const r = await chrome(m, `
@@ -616,7 +616,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site permissions spike", () => {
       if (!bar) return { bar: null };
       const ids = [...bar.children].map((c) => c.id + (c.hidden ? " (hidden)" : ""));
       const menu = document.createXULElement("menu");
-      menu.id = "webaios-spike-menu"; menu.setAttribute("label", "Navigation");
+      menu.id = "ressac-spike-menu"; menu.setAttribute("label", "Navigation");
       const popup = document.createXULElement("menupopup");
       const item = document.createXULElement("menuitem");
       item.setAttribute("label", "Oublier les autorisations de ce site");
@@ -631,7 +631,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site permissions spike", () => {
   });
 
   it("P3b: screen sharing with the ScreenCaptureKit picker turned off (mirror once: a launch of its own)", { timeout: 120_000 }, async () => {
-    const w2 = await launchWebAiOs({ prefs: { ...PREFS, "media.getdisplaymedia.screencapturekit.picker.enabled": false } });
+    const w2 = await launchRessac({ prefs: { ...PREFS, "media.getdisplaymedia.screencapturekit.picker.enabled": false } });
     try {
       const m2 = w2.marionette;
       await ready(m2);

@@ -14,7 +14,7 @@ import { promisify } from "node:util";
  * `statutFichier`: the version's file ends in that status ("disabled": AMO rejected it after validation).
  */
 export async function startFakeAmo(o: { denial?: string; delayMs?: number; httpError?: number; pollError?: number; fileStatus?: string } = {}) {
-  const dir = await mkdtemp(path.join(os.tmpdir(), "webaios-fake-amo-"));
+  const dir = await mkdtemp(path.join(os.tmpdir(), "ressac-fake-amo-"));
   const sends: { guid: string; version: string; auth: string; method: string }[] = [];
   const uploads = new Map<string, string>();
   const versions = new Map<string, { xpi: string; ready: number }>();

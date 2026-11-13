@@ -6,7 +6,7 @@ import type { PlanPage } from "./plan.js";
 import { lastResortLayout, fallbackLayout } from "./fallback.js";
 import { validatePlan } from "./validate.js";
 
-// The layout of an action: Gemma chooses components and fills them in by reference, WebAiOs validates. A second
+// The layout of an action: Gemma chooses components and fills them in by reference, Ressac validates. A second
 // try receives the reasons for the denial; without Gemma, too slow, or off twice, the fallback layout.
 // The delay starts from the real start of the first call (not the request, which may wait in the queue) and covers both.
 

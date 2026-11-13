@@ -2,15 +2,15 @@ import { afterEach, expect, it } from "vitest";
 import type { BrowserState } from "../shared/model";
 import { HIDDEN_CATEGORIES, HIDDEN_GROUPS } from "../chrome/store/preferences-cleanup";
 import { dispatch, state, waitFor, waitReady } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { click, missingApi, waitUi } from "./ui";
 
-// Plan 44 Task 7: about:preferences without what contradicts WebAiOs; the tabs it opens join the store.
+// Plan 44 Task 7: about:preferences without what contradicts Ressac; the tabs it opens join the store.
 
 const activeTab = (s: BrowserState) => s.tabs[s.windows[0]!.active[s.windows[0]!.activeSpace]!];
 
-let w: LaunchedWebAiOs | undefined;
+let w: LaunchedRessac | undefined;
 let m: Marionette;
 afterEach(async () => {
   try {
@@ -22,7 +22,7 @@ afterEach(async () => {
 });
 
 async function launch(): Promise<void> {
-  w = await launchWebAiOs();
+  w = await launchRessac();
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
@@ -56,7 +56,7 @@ const GENERAL = ["downloads", "fonts", "zoom", "browserLanguage", "networkProxy"
 const PRIVACY = ["passwords", "cookiesAndSiteData"];
 const SEARCH = ["defaultEngine"];
 
-it("hidden: Firefox's panes and groups that contradict WebAiOs are not shown", async () => {
+it("hidden: Firefox's panes and groups that contradict Ressac are not shown", async () => {
   await launch();
   await openPrefs();
   for (const [pane, rendered] of [["paneGeneral", GENERAL], ["panePrivacy", PRIVACY], ["paneSearch", SEARCH]] as const) {
@@ -81,7 +81,7 @@ it("kept: the browser's own settings stay", async () => {
   await showPane("paneSearch", SEARCH);
 });
 
-// Kept despite its « Firefox Relay » (email masks): the passwords group is a setting WebAiOs keeps.
+// Kept despite its « Firefox Relay » (email masks): the passwords group is a setting Ressac keeps.
 const BRANDED = '[groupid="passwords"], [data-srd-groupid="passwords"]';
 
 it("no brand: General and Privacy name neither Firefox nor Mozilla", async () => {
@@ -103,9 +103,9 @@ it("logins tab: the saved passwords open in a store tab of the current space", a
   await waitFor(m, "return gBrowser.selectedBrowser.contentDocument?.readyState === 'complete' && !!gBrowser.selectedBrowser.contentDocument.defaultView.gotoPref", (v) => v === true);
   await showPane("panePrivacy", PRIVACY);
   await inPrefs(`deepFind(doc.documentElement, "#showPasswords, #manageSavedPasswords").click();`);
-  const s = await waitFor<BrowserState>(m, `return (async () => (await ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready).state)();`, (s) => !!activeTab(s)?.url.startsWith("about:logins"));
+  const s = await waitFor<BrowserState>(m, `return (async () => (await ChromeUtils.importESModule("chrome://browser/content/ressac/store.sys.mjs").ready).state)();`, (s) => !!activeTab(s)?.url.startsWith("about:logins"));
   expect(activeTab(s)!.spaceId).toBe(s.windows[0]!.activeSpace);
-  expect(await m.execute("return gBrowser.selectedTab.getAttribute('webaios-tab-id')")).toBe(s.windows[0]!.active[s.windows[0]!.activeSpace]);
+  expect(await m.execute("return gBrowser.selectedTab.getAttribute('ressac-tab-id')")).toBe(s.windows[0]!.active[s.windows[0]!.activeSpace]);
 });
 
 it("other tabs opened while the preferences show keep their own space and container", async () => {
@@ -125,7 +125,7 @@ it("other tabs opened while the preferences show keep their own space and contai
   const added = Object.keys(after.tabs).filter((id) => !before.includes(id));
   expect(added).toHaveLength(1);
   const xul = await m.execute<{ count: number; userContextId: number }>(
-    `return (async () => { await window.webaiosWindow.ensure(arguments[0]); const t = gBrowser.tabs.filter((t) => t.getAttribute("webaios-tab-id") === arguments[0]); return { count: t.length, userContextId: t[0].userContextId }; })();`,
+    `return (async () => { await window.ressacWindow.ensure(arguments[0]); const t = gBrowser.tabs.filter((t) => t.getAttribute("ressac-tab-id") === arguments[0]); return { count: t.length, userContextId: t[0].userContextId }; })();`,
     [added[0]],
   );
   expect(xul).toEqual({ count: 1, userContextId: 0 });

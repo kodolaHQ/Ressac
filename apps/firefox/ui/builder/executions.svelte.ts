@@ -1,8 +1,8 @@
-import type { DirectWidget, DirectState, Execution, AttemptResult, ResumeExecution } from "@webaios/kernel";
-import type { ApiWebaios } from "../../shared/api";
+import type { DirectWidget, DirectState, Execution, AttemptResult, ResumeExecution } from "@ressac/kernel";
+import type { ApiRessac } from "../../shared/api";
 import { isActionKey } from "./target";
 
-export type SourceExecutions = Pick<ApiWebaios["home"], "runs" | "run">;
+export type SourceExecutions = Pick<ApiRessac["home"], "runs" | "run">;
 /**
  * « ▶ Lancer », « Rejouer depuis ce bloc » and live tracking, addressed by the workflow's key (`targetKey`). `launch`
  * returns an action's refusal (`error`); a widget's never returns one.
@@ -141,7 +141,7 @@ export class Executions {
       if (execution !== undefined) this.keep(execution);
       else if (r.error) this.denial = r.error;
     } catch (e) {
-      console.error(`[webaios] run of widget ${this.widget}:`, e);
+      console.error(`[ressac] run of widget ${this.widget}:`, e);
     } finally {
       this.request = false;
     }

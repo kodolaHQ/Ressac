@@ -25,8 +25,8 @@ const expectedList = [
   "browsing-notes.md",
   "home/layout.json",
   ...Object.entries(START_FILES).flatMap(([w, files]) => files.map((f) => `home/widgets/${w}/${f}`)),
-  ".webaios/profiles/claude.json",
-  ".webaios/profiles/codex.json",
+  ".ressac/profiles/claude.json",
+  ".ressac/profiles/codex.json",
 ];
 
 test("creates the full space in an empty folder", async () => {
@@ -203,7 +203,7 @@ test("the profile shipped before the English formats (profil-claude.json) is a k
 
 test("the AGENTS.md template is pinned: before editing it, add this hash to OLD_AGENTS, then update the pin", async () => {
   expect(sha256(await readFile(join(import.meta.dirname, "..", "..", "templates", "AGENTS.md")))).toBe(
-    "6ecc3a5571398b8490f4b384b32c191e56111e3eebe092e1ccf03790f2ec845b",
+    "61587f52b36c18ba852c01ef047a3ff4e7b4bbdab790f9683028c338d9cdd569",
   );
   expect(OLD_AGENTS.has("6ecc3a5571398b8490f4b384b32c191e56111e3eebe092e1ccf03790f2ec845b")).toBe(true);
   expect(OLD_AGENTS.has("ff0f49e00a04cec590ee023394221e8bbf28dd0439a628e48ea307acaffa0a8e")).toBe(true);
@@ -216,7 +216,7 @@ test("the hash of every shipped version is kept: the list only grows", () => {
 
 test("the AGENTS.md template describes the design mode remarks of site apps", async () => {
   const text = await readFile(join(DEFAULT_TEMPLATES, "AGENTS.md"), "utf8");
-  for (const pattern of ["Remarques du mode design", "/workspace/.webaios/remarks/site-<id>/", "MutationObserver", "third-party-site", "home/"]) {
+  for (const pattern of ["Remarques du mode design", "/workspace/.ressac/remarks/site-<id>/", "MutationObserver", "third-party-site", "home/"]) {
     expect(text, pattern).toContain(pattern);
   }
 });

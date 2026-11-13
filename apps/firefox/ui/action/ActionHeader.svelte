@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Execution, ResumeExecution } from "@webaios/kernel";
+  import type { Execution, ResumeExecution } from "@ressac/kernel";
 
   /**
    * An action page's header: its name, its input, « Relancer » (« Lancer » when there is no result yet), « Voir le
@@ -136,7 +136,7 @@
   .main:hover:not(:disabled) { background: color-mix(in oklab, var(--accent) 88%, var(--text)); }
   .time { color: var(--text-muted); font-size: 12px; }
   .previous { position: relative; }
-  .menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 5; display: flex; flex-direction: column; min-width: 260px; max-height: 320px; overflow-y: auto; padding: 4px; border: 1px solid var(--glass-edge); border-radius: 12px; background: var(--glass-dense); box-shadow: var(--modal-shadow); animation: webaios-drop var(--spring-d) var(--spring) backwards; }
+  .menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 5; display: flex; flex-direction: column; min-width: 260px; max-height: 320px; overflow-y: auto; padding: 4px; border: 1px solid var(--glass-edge); border-radius: 12px; background: var(--glass-dense); box-shadow: var(--modal-shadow); animation: ressac-drop var(--spring-d) var(--spring) backwards; }
   .menu button { display: flex; gap: 8px; align-items: baseline; border: none; background: none; text-align: left; white-space: nowrap; }
   .menu button:hover { background: var(--bg-hover); }
   .muted { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; }

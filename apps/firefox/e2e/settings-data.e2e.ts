@@ -4,7 +4,7 @@ import os from "node:os";
 import { basename, dirname, join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { dispatch, state, waitFor, waitReady } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
 import { click, inUi, waitUi } from "./ui";
@@ -15,7 +15,7 @@ let server: Awaited<ReturnType<typeof startServer>>;
 beforeAll(async () => (server = await startServer()));
 afterAll(() => server?.close());
 
-let w: LaunchedWebAiOs | undefined;
+let w: LaunchedRessac | undefined;
 let m: Marionette;
 /** Folders this test made (data folder and its backups, profile, downloads), removed after it. */
 let made: string[] = [];
@@ -36,12 +36,12 @@ const temp = async (prefix: string) => {
   return d;
 };
 async function prepare(): Promise<void> {
-  dataDir = await temp("webaios-data-");
+  dataDir = await temp("ressac-data-");
   reveals = join(dataDir, "..", `${basename(dataDir)}-reveals.txt`);
   made.push(reveals);
 }
 async function launch(o: { env?: Record<string, string>; profile?: string; prefs?: Record<string, string | number | boolean> } = {}): Promise<void> {
-  w = await launchWebAiOs({ dataDir, profile: o.profile, prefs: o.prefs, env: { WEBAIOS_TEST_REVEAL: reveals, WEBAIOS_OLLAMA_URL: "http://127.0.0.1:9", ...o.env } });
+  w = await launchRessac({ dataDir, profile: o.profile, prefs: o.prefs, env: { RESSAC_TEST_REVEAL: reveals, RESSAC_OLLAMA_URL: "http://127.0.0.1:9", ...o.env } });
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
@@ -61,7 +61,7 @@ describe("Settings page, permissions and data", () => {
     await launch();
     await openPage("permissions");
     await click(m, '[data-testid="screen-sharing-repair-button"]');
-    await waitUi(m, `return doc.querySelector('[data-testid="screen-sharing-repair"]')?.textContent.includes("Quittez puis rouvrez WebAiOs")`);
+    await waitUi(m, `return doc.querySelector('[data-testid="screen-sharing-repair"]')?.textContent.includes("Quittez puis rouvrez Ressac")`);
   });
 
   it("permissions: a site decision and a widget grant; Retirer forgets the site", async () => {
@@ -105,17 +105,17 @@ describe("Settings page, permissions and data", () => {
 
   it("export: a zip lands in the downloads folder", async () => {
     await prepare();
-    const downloads = await temp("webaios-downloads-");
+    const downloads = await temp("ressac-downloads-");
     await launch({ prefs: { "browser.download.dir": downloads, "browser.download.folderList": 2 } });
     await openPage();
     await click(m, '[data-testid="data-export"]');
     await waitUi(m, `return doc.querySelector('[data-testid="settings-data"]').textContent.includes("Exporté dans")`, [], 30_000);
-    expect(readdirSync(downloads).some((n) => /^WebAiOs-donnees-.*\.zip$/.test(n))).toBe(true);
+    expect(readdirSync(downloads).some((n) => /^Ressac-donnees-.*\.zip$/.test(n))).toBe(true);
   });
 
   it("reset: a cancelled quit resets nothing, and says so", async () => {
     await prepare();
-    await launch({ env: { WEBAIOS_TEST_NO_RESTART: "1" } });
+    await launch({ env: { RESSAC_TEST_NO_RESTART: "1" } });
     // Like Firefox's « downloads in progress » question answered « stay ».
     await m.execute(`window.keepQuit = { observe: (s) => (s.QueryInterface(Ci.nsISupportsPRBool).data = true) }; Services.obs.addObserver(window.keepQuit, "quit-application-requested");`);
     await openPage();
@@ -128,10 +128,10 @@ describe("Settings page, permissions and data", () => {
 
   it("reset: data set aside, the workspace stays, a fresh start", { timeout: 90_000 }, async () => {
     await prepare();
-    const profile = await temp("webaios-firefox-");
+    const profile = await temp("ressac-firefox-");
     mkdirSync(join(dataDir, "workspace", "projects", "a"), { recursive: true });
     writeFileSync(join(dataDir, "workspace", "projects", "a", "x.txt"), "x");
-    await launch({ profile, env: { WEBAIOS_TEST_NO_RESTART: "1" } });
+    await launch({ profile, env: { RESSAC_TEST_NO_RESTART: "1" } });
     const old = `${server.url}/ancienne`;
     await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url: old, activate: false });
     // The session is written before the reset sets it aside.
@@ -149,7 +149,7 @@ describe("Settings page, permissions and data", () => {
         return false;
       }
     };
-    for (const deadline = Date.now() + 30_000; alive(); await new Promise((r) => setTimeout(r, 200))) if (Date.now() > deadline) throw new Error("WebAiOs did not quit");
+    for (const deadline = Date.now() + 30_000; alive(); await new Promise((r) => setTimeout(r, 200))) if (Date.now() > deadline) throw new Error("Ressac did not quit");
     await w!.close();
     await launch({ profile });
     const backups = readdirSync(dirname(dataDir)).filter((n) => n.startsWith(`${basename(dataDir)}.backup-`));
@@ -158,10 +158,10 @@ describe("Settings page, permissions and data", () => {
     expect(existsSync(join(dataDir, "workspace", "projects", "a", "x.txt"))).toBe(true);
     const notes = await waitFor<string[]>(
       m,
-      `return [...window.gNotificationBox.allNotifications].filter((n) => n.getAttribute("value") === "webaios-data-set-aside").map((n) => n.label?.textContent ?? n.messageText?.textContent ?? n.label ?? "");`,
+      `return [...window.gNotificationBox.allNotifications].filter((n) => n.getAttribute("value") === "ressac-data-set-aside").map((n) => n.label?.textContent ?? n.messageText?.textContent ?? n.label ?? "");`,
       (v) => v.length > 0,
     );
-    expect(notes[0]).toContain("WebAiOs repart à neuf");
+    expect(notes[0]).toContain("Ressac repart à neuf");
     expect(Object.values((await state(m)).tabs).some((t) => t.url === old)).toBe(false);
   });
 });

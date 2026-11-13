@@ -221,34 +221,34 @@ describe("runHarvest", () => {
   });
 
   it("harvestCommand mounts the widget as :ro, cuts the network (--network none) and mounts nothing else from the space", async () => {
-    const workshop = new Workshop({ paths: spacePaths("/Users/t/WebAiOs"), docker: "/usr/local/bin/docker" });
-    const c = workshop.harvestCommand("meteo", "/Users/t/WebAiOs/home/widgets/meteo", "/app/docker/engine");
+    const workshop = new Workshop({ paths: spacePaths("/Users/t/Ressac"), docker: "/usr/local/bin/docker" });
+    const c = workshop.harvestCommand("meteo", "/Users/t/Ressac/home/widgets/meteo", "/app/docker/engine");
     expect(c).toEqual([
       "/usr/local/bin/docker", "run", "-i", "--rm",
-      "--name", "webaios-harvest-meteo",
+      "--name", "ressac-harvest-meteo",
       "--network", "none",
       "--read-only",
       "--tmpfs", "/tmp",
-      "-v", "/Users/t/WebAiOs/home/widgets/meteo:/widget:ro",
-      "-v", "/app/docker/engine:/opt/webaios/engine:ro",
+      "-v", "/Users/t/Ressac/home/widgets/meteo:/widget:ro",
+      "-v", "/app/docker/engine:/opt/ressac/engine:ro",
       "--memory", "512m",
       "--pids-limit", "128",
       IMAGE,
       "timeout", "-k", "5", "180",
-      "node", "/opt/webaios/engine/harvester.mjs", "/widget",
+      "node", "/opt/ressac/engine/harvester.mjs", "/widget",
     ]);
     const volumes = c.flatMap((x, i) => (c[i - 1] === "-v" ? [x] : []));
     expect(volumes).toHaveLength(2);
     expect(volumes.every((v) => v.endsWith(":ro"))).toBe(true);
-    expect(c.filter((x) => x.includes("/Users/t/WebAiOs")).every((x) => x.startsWith("/Users/t/WebAiOs/home/widgets/meteo:"))).toBe(true);
+    expect(c.filter((x) => x.includes("/Users/t/Ressac")).every((x) => x.startsWith("/Users/t/Ressac/home/widgets/meteo:"))).toBe(true);
     expect(() => workshop.harvestCommand("../x", "/d", "/r")).toThrow();
-    expect(() => new Workshop({ paths: spacePaths("/Users/t/WebAiOs"), docker: null }).harvestCommand("meteo", "/d", "/r")).toThrow();
+    expect(() => new Workshop({ paths: spacePaths("/Users/t/Ressac"), docker: null }).harvestCommand("meteo", "/d", "/r")).toThrow();
   });
 
   it("supprimerRecolte forces the container's removal", async () => {
     const ctx = await prepare("meteo", "export default async () => 1;");
     await ctx.workshop.deleteHarvest("meteo");
-    expect(ctx.run.calls.map((a) => [a.command, ...a.args])).toEqual([["docker", "rm", "-f", "webaios-harvest-meteo"]]);
+    expect(ctx.run.calls.map((a) => [a.command, ...a.args])).toEqual([["docker", "rm", "-f", "ressac-harvest-meteo"]]);
   });
 
   it("a harvest that fails keeps the previous data and records the error and the log", async () => {
@@ -289,7 +289,7 @@ describe("runHarvest", () => {
     expect(Date.now() - start).toBeLessThan(5000);
     expect(r.state).toMatchObject({ status: "error", error: "Délai dépassé" });
     expect(ctx.killed).toBeGreaterThan(0);
-    expect(ctx.run.calls.some((a) => a.args.join(" ") === "rm -f webaios-harvest-lent")).toBe(true);
+    expect(ctx.run.calls.some((a) => a.args.join(" ") === "rm -f ressac-harvest-lent")).toBe(true);
     expect(await readJson(join(ctx.widgetsFolder, "lent", "data.json"))).toEqual({ old: true });
   });
 
@@ -914,7 +914,7 @@ describe("runHarvest, through the widget's workflow", () => {
     const r = await runHarvest({ ...optionsOf(ctx), delayMs: 300, interrupted: () => true });
     const e = await runOf(ctx, r.run);
     // The message is the kernel's (not « Délai dépassé »); the started block is interrupted, the output never launched.
-    expect(e).toMatchObject({ status: "interrupted", error: "Interrompue : WebAiOs s'est arrêté", kernelError: true });
+    expect(e).toMatchObject({ status: "interrupted", error: "Interrompue : Ressac s'est arrêté", kernelError: true });
     expect(e.blocks.map((b) => [b.id, b.status])).toEqual([["harvest", "interrupted"], ["output", "not-run"]]);
     expect(kernelError(e.error!)).toBe(true);
   });
@@ -1155,7 +1155,7 @@ describe("runAttempt", () => {
     const r = await attempt(ctx, origin.id, "harvest", { delayMs: 300, interrupted: () => true });
     expect(r).toEqual({ ok: true, run: attemptId(NOW.toISOString()), status: "interrupted" });
     const e = (await readRun(dataOf(ctx), attemptId(NOW.toISOString())))!;
-    expect(e).toMatchObject({ status: "interrupted", error: "Interrompue : WebAiOs s'est arrêté", kernelError: true });
+    expect(e).toMatchObject({ status: "interrupted", error: "Interrompue : Ressac s'est arrêté", kernelError: true });
     expect(e.blocks.map((b) => [b.id, b.status])).toEqual([["harvest", "interrupted"], ["output", "not-run"]]);
     expect(await snapshot(ctx)).toEqual(before);
   });

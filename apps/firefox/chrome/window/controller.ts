@@ -8,7 +8,7 @@ import { toNeighbour, toNextSpace, toNth } from "../../core/shortcuts";
 import { effectiveBindings } from "../../shared/shortcuts";
 import { leftZone, exitZone, type LeftZone } from "../../shared/reveal";
 import { mountCalls } from "./calls";
-import type { WebAiOsStore } from "../store";
+import type { RessacStore } from "../store";
 import { HOST_EXITED } from "../agent/host";
 import { createAddons, type WindowAddons } from "./addons";
 import { routeAddonsManager } from "./addons-manager";
@@ -23,7 +23,7 @@ import { trackVisits } from "./visits";
 
 export interface WindowController {
   readonly windowId: WindowId;
-  readonly store: WebAiOsStore;
+  readonly store: RessacStore;
   /** toUrl(input, moteur); a tab with a XUL tab loads it, one without gets majOnglet{url}; null opens a new tab. */
   navigate(tabId: TabId | null, input: string): void;
   /**
@@ -99,7 +99,7 @@ export function createController(
   gBrowser: any,
   frame: HTMLIFrameElement,
   agentFrame: HTMLIFrameElement,
-  store: WebAiOsStore,
+  store: RessacStore,
   windowId: WindowId,
 ): WindowController {
   const tabs = new TabSync(gBrowser, store, windowId);
@@ -139,9 +139,9 @@ export function createController(
     },
     { once: true },
   );
-  // The agent panel: --webaios-agent is its width when open, 0 when closed (the page and the UI make room for it).
+  // The agent panel: --ressac-agent is its width when open, 0 when closed (the page and the UI make room for it).
   const agentOpen = (state: BrowserState) => !!state.windows.find((x) => x.id === windowId)?.agentPanelOpen;
-  // The slide's length in window.css (--webaios-slide, 380 ms), plus a few frames of margin.
+  // The slide's length in window.css (--ressac-slide, 380 ms), plus a few frames of margin.
   const SLIDE_MS = 450;
   let slideEnd: ReturnType<typeof setTimeout> | undefined;
   const showAgent = (state: BrowserState) => {
@@ -154,19 +154,19 @@ export function createController(
     const root = document.documentElement;
     // A change of open state slides (window.css); a width change alone (the saved drag) does not. Closed, the panel
     // hides once it has slid out.
-    if (open !== root.hasAttribute("webaios-agent-open")) {
-      root.toggleAttribute("webaios-agent-open", open);
-      root.setAttribute("webaios-agent-sliding", "");
+    if (open !== root.hasAttribute("ressac-agent-open")) {
+      root.toggleAttribute("ressac-agent-open", open);
+      root.setAttribute("ressac-agent-sliding", "");
       clearTimeout(slideEnd);
       slideEnd = setTimeout(() => {
-        root.removeAttribute("webaios-agent-sliding");
+        root.removeAttribute("ressac-agent-sliding");
         if (!agentOpen(store.state)) agentFrame.hidden = true;
       }, SLIDE_MS);
     }
     if (open) agentFrame.hidden = false;
     const width = Math.min(AGENT_WIDTH_MAX, Math.max(AGENT_WIDTH_MIN, state.settings.agentPanelWidth));
-    root.style.setProperty("--webaios-agent-w", `${width}px`);
-    root.style.setProperty("--webaios-agent", open ? `${width}px` : "0px");
+    root.style.setProperty("--ressac-agent-w", `${width}px`);
+    root.style.setProperty("--ressac-agent", open ? `${width}px` : "0px");
     // Laid out now: the panel focuses its terminal right after this change, which needs the iframe visible.
     agentFrame.getBoundingClientRect();
   };
@@ -177,19 +177,19 @@ export function createController(
       if (agentOpen(state) !== agentOpen(previous) || state.settings.agentPanelWidth !== previous.settings.agentPanelWidth) showAgent(state);
     }),
   );
-  // The sidebar's side (window.css mirrors on webaios-sidebar-side). A switch swaps at once, in step with the UI pages
+  // The sidebar's side (window.css mirrors on ressac-sidebar-side). A switch swaps at once, in step with the UI pages
   // that read the same state, then fades in; reduced motion skips the fade.
   const FADE_MS = 150;
   let sideFade: ReturnType<typeof setTimeout> | undefined;
   const sideOf = (state: BrowserState) => state.settings.sidebarSide;
   const placeSide = (fade: boolean) => {
     const root = document.documentElement;
-    root.setAttribute("webaios-sidebar-side", sideOf(store.state));
+    root.setAttribute("ressac-sidebar-side", sideOf(store.state));
     clearTimeout(sideFade);
-    root.removeAttribute("webaios-side-switch");
+    root.removeAttribute("ressac-side-switch");
     if (!fade || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    root.setAttribute("webaios-side-switch", "in");
-    sideFade = setTimeout(() => root.removeAttribute("webaios-side-switch"), FADE_MS);
+    root.setAttribute("ressac-side-switch", "in");
+    sideFade = setTimeout(() => root.removeAttribute("ressac-side-switch"), FADE_MS);
   };
   placeSide(false);
   unsubscribe.push(
@@ -214,7 +214,7 @@ export function createController(
     }),
   );
   // The agent's halo: lit while one of its tools runs on the displayed tab (a tab or space switch is a state change).
-  const halo = createHalo((on) => document.documentElement.toggleAttribute("webaios-agent-working", on));
+  const halo = createHalo((on) => document.documentElement.toggleAttribute("ressac-agent-working", on));
   let haloTab: TabId | null | undefined;
   const updateHalo = () => {
     const f = store.state.windows.find((x) => x.id === windowId);
@@ -365,7 +365,7 @@ export function createController(
   // ⇧click asks Firefox for a new window: a page's link opens a background tab instead, as ⌘click (TabSync adopts it).
   const openLinkIn = window.openLinkIn;
   window.openLinkIn = (url, where, params) => {
-    const fromTab = params?.openerBrowser && gBrowser.getTabForBrowser(params.openerBrowser)?.hasAttribute("webaios-tab-id");
+    const fromTab = params?.openerBrowser && gBrowser.getTabForBrowser(params.openerBrowser)?.hasAttribute("ressac-tab-id");
     openLinkIn(url, where === "window" && fromTab ? "tab" : where, params);
   };
   // Quitting asks no page. Every quit path asks each window (CanClose) right after quit-application-requested,
@@ -390,8 +390,8 @@ export function createController(
   unsubscribe.push(calls.dispose);
   const showSidebarWidth = (px: number) => {
     barWidth = px;
-    document.documentElement.style.setProperty("--webaios-sidebar-w", `${px}px`);
-    if (columnShown) document.documentElement.style.setProperty("--webaios-sidebar", `${px}px`);
+    document.documentElement.style.setProperty("--ressac-sidebar-w", `${px}px`);
+    if (columnShown) document.documentElement.style.setProperty("--ressac-sidebar", `${px}px`);
   };
   showSidebarWidth(barWidth);
   // Only on a change of its own, as for the agent panel: an unrelated action keeps a width being dragged.
@@ -413,7 +413,7 @@ export function createController(
     item.addEventListener("command", onCommand);
     unsubscribe.push(() => item.removeEventListener("command", onCommand));
   }
-  // The macOS menu bar fires View › Sidebar items by their own key (⇧⌘H) even with the <key> disabled; WebAiOs has
+  // The macOS menu bar fires View › Sidebar items by their own key (⇧⌘H) even with the <key> disabled; Ressac has
   // no native sidebar, so every item is off, including the ones SidebarController adds or re-enables later.
   const sidebarMenu = document.getElementById("viewSidebarMenu");
   if (sidebarMenu) {
@@ -529,12 +529,12 @@ export function createController(
     },
     setSidebarColumn(shown) {
       columnShown = shown;
-      document.documentElement.style.setProperty("--webaios-sidebar", `${shown ? barWidth : 0}px`);
+      document.documentElement.style.setProperty("--ressac-sidebar", `${shown ? barWidth : 0}px`);
     },
     setSidebarVisible(visible) {
       frame.toggleAttribute("folded", !visible);
       // They sit in the sidebar's first row: nothing else is under them.
-      document.getElementById("webaios-window-buttons")!.toggleAttribute("hidden", !visible);
+      document.getElementById("ressac-window-buttons")!.toggleAttribute("hidden", !visible);
     },
     sidebarWidth: () => (columnShown ? barWidth : 0),
     setSidebarWidth: showSidebarWidth,
@@ -555,9 +555,9 @@ export function createController(
     togglePlayback: (id) => tabs.togglePlayback(id),
     setAgentWidth(px) {
       if (!agentOpen(store.state)) return;
-      document.documentElement.removeAttribute("webaios-agent-sliding");
-      document.documentElement.style.setProperty("--webaios-agent-w", `${px}px`);
-      document.documentElement.style.setProperty("--webaios-agent", `${px}px`);
+      document.documentElement.removeAttribute("ressac-agent-sliding");
+      document.documentElement.style.setProperty("--ressac-agent-w", `${px}px`);
+      document.documentElement.style.setProperty("--ressac-agent", `${px}px`);
     },
     openAgent() {
       if (!agentOpen(store.state)) store.dispatch({ type: "toggleAgentPanel", windowId: windowId });

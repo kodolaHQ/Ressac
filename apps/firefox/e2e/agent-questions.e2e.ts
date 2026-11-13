@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Action } from "../shared/api";
 import { dispatch, inWindow, newWindow, pressClosing, state, waitFor, waitWindowCount } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
 import { startServer } from "./server";
@@ -14,16 +14,16 @@ const REFUSED = "Accès refusé par l'utilisateur à cet onglet.";
 const CARD = '[data-testid="permission-request"]';
 
 let server: Awaited<ReturnType<typeof startServer>>;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 beforeAll(async () => (server = await startServer()));
 afterAll(() => server?.close());
 beforeEach(async () => {
-  w = await launchWebAiOs();
+  w = await launchRessac();
   m = w.marionette;
   await m.setContext("chrome");
-  await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
-  const config = join(w.dataDir, "workspace", ".webaios", "mcp.json");
+  await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
+  const config = join(w.dataDir, "workspace", ".ressac", "mcp.json");
   for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
     if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
   // The home page's panel starts the agent's session, which takes back every access: tools are called after it.
@@ -61,24 +61,24 @@ it("the card covers the whole window, agent panel included, and gives the termin
   // The panel opened on another tab: only that one is shared with the agent.
   await openTab("/b.html");
   if (!(await state(m)).windows[0]!.agentPanelOpen) await dispatch(m, { type: "toggleAgentPanel", windowId: (await state(m)).windows[0]!.id });
-  await waitFor(m, "return document.getElementById('webaios-agent').getBoundingClientRect().width", (v: number) => v > 0);
-  await m.execute("document.getElementById('webaios-agent').focus()");
-  expect(await m.execute("return document.activeElement?.id")).toBe("webaios-agent");
+  await waitFor(m, "return document.getElementById('ressac-agent').getBoundingClientRect().width", (v: number) => v > 0);
+  await m.execute("document.getElementById('ressac-agent').focus()");
+  expect(await m.execute("return document.activeElement?.id")).toBe("ressac-agent");
   const reading = call("read_tab", { id });
   await cardText();
   const sizes = await m.execute<{ frame: number; window: number; over: string }>(
     `return {
-      frame: document.getElementById('webaios-sidebar').getBoundingClientRect().width,
+      frame: document.getElementById('ressac-sidebar').getBoundingClientRect().width,
       window: window.innerWidth,
       over: document.elementFromPoint(innerWidth - 10, innerHeight / 2)?.id,
     };`,
   );
   expect(sizes.frame).toBe(sizes.window);
-  expect(sizes.over).toBe("webaios-sidebar");
+  expect(sizes.over).toBe("ressac-sidebar");
   await answer("Refuser");
   await reading;
   await cardGone();
-  await waitFor(m, "return document.activeElement?.id", (v) => v === "webaios-agent");
+  await waitFor(m, "return document.activeElement?.id", (v) => v === "ressac-agent");
 });
 
 it("Autoriser une fois: the page is read and the question does not come back for the same site", async () => {
@@ -143,12 +143,12 @@ it("the access badge shows on a tab the agent reads and Couper removes it", asyn
   expect(await missingApi(m)).toEqual([]);
 });
 
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 /** The handle of each open window, by its state window id. */
 async function handlesById(): Promise<Record<string, string>> {
   const r: Record<string, string> = {};
   for (const h of await m.command<string[]>("WebDriver:GetWindowHandles"))
-    r[await inWindow(m, h, () => m.execute<string>("return window.webaiosWindow.windowId"))] = h;
+    r[await inWindow(m, h, () => m.execute<string>("return window.ressacWindow.windowId"))] = h;
   return r;
 }
 const activeId = () => m.execute<string>(`return (async () => (await ChromeUtils.importESModule("${STORE}").ready).windows.active())()`);
@@ -179,7 +179,7 @@ it("sending a message from a tab shares it", async () => {
   await togglePanel();
   await togglePanel();
   await openTab("/texte.html");
-  expect(await m.execute("return !document.getElementById('webaios-agent').hidden")).toBe(true);
+  expect(await m.execute("return !document.getElementById('ressac-agent').hidden")).toBe(true);
   await click(m, ".xterm-screen", { frame: "agent" });
   await typeText(m, "salut");
   await pressKeys(m, "Enter");
@@ -206,7 +206,7 @@ describe("several windows", () => {
     const id = await openTab("/texte.html");
     // Opening the panel on the tab gives it to the agent.
     if (!(await state(m)).windows[0]!.agentPanelOpen) await dispatch(m, { type: "toggleAgentPanel", windowId: (await state(m)).windows[0]!.id });
-    await waitFor(m, "return !document.getElementById('webaios-agent').hidden", (v) => v === true);
+    await waitFor(m, "return !document.getElementById('ressac-agent').hidden", (v) => v === true);
     expect((await call("read_tab", { id })).text).toContain("Le chat dort");
     const second = await newWindow(m);
     await inWindow(m, second, () => waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent"));

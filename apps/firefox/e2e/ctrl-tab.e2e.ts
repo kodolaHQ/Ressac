@@ -1,21 +1,21 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { BrowserState } from "../shared/model";
 import { dispatch, state, waitFor } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
 import { inUi, keyDown, keyUp, missingApi, pressKeys, waitUi } from "./ui";
 
 let server: Awaited<ReturnType<typeof startServer>>;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 beforeAll(async () => (server = await startServer()));
 afterAll(() => server?.close());
 beforeEach(async () => {
-  w = await launchWebAiOs();
+  w = await launchRessac();
   m = w.marionette;
   await m.setContext("chrome");
-  await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+  await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
   await waitUi(m, "return !!doc.querySelector('[data-testid=\"sidebar\"]')");
 });
 afterEach(async () => {
@@ -81,8 +81,8 @@ describe("⌃Tab", () => {
     await waitActive(b);
     await sleep(300);
     expect(await panelShown()).toBe(false);
-    // Firefox's own ⌃Tab did not move as well: the selected XUL tab is the active WebAiOs tab.
-    expect(await m.execute<string>("return gBrowser.selectedTab.getAttribute('webaios-tab-id')")).toBe(b);
+    // Firefox's own ⌃Tab did not move as well: the selected XUL tab is the active Ressac tab.
+    expect(await m.execute<string>("return gBrowser.selectedTab.getAttribute('ressac-tab-id')")).toBe(b);
     expect(await activeId()).toBe(b);
   });
 
@@ -119,12 +119,12 @@ describe("⌃Tab", () => {
     await waitPanel(false);
     await waitFor(m, "return Services.focus.focusedElement === gBrowser.selectedBrowser", (v) => v === true);
     // raccourcis.spec.ts:145, brief press: the UI never took the keyboard, so it gives nothing back.
-    await m.execute(`window.webaiosTestUiFocus = 0;
-      document.getElementById("webaios-sidebar").addEventListener("focus", () => window.webaiosTestUiFocus++);`);
+    await m.execute(`window.ressacTestUiFocus = 0;
+      document.getElementById("ressac-sidebar").addEventListener("focus", () => window.ressacTestUiFocus++);`);
     await pressKeys(m, "Control+Tab");
     await waitActive(c);
     await sleep(300);
-    expect(await m.execute("return window.webaiosTestUiFocus")).toBe(0);
+    expect(await m.execute("return window.ressacTestUiFocus")).toBe(0);
     expect(await pageFocused()).toBe(true);
   });
 

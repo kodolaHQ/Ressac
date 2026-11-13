@@ -4,18 +4,18 @@
 // runs an extension's content scripts: the sandbox sees the page's DOM through Xrays, neither the page's JS objects
 // nor the chrome.
 // Kept small: the build copies this file, so any change here needs a rebuild of the app (build:ui).
-import type { WebAiOsStore } from "../store";
+import type { RessacStore } from "../store";
 import type { FrameInjection } from "../../shared/sites";
 import type { MemoryResponse } from "../../core/sites/injection";
 import { VIDEO_EVENTS, ResumeTracking } from "../../core/resume";
 
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 // Keep in sync with store/sites.ts SITE_FRAMES.
-const SITE_FRAMES = "webaios-sites";
+const SITE_FRAMES = "ressac-sites";
 const OPS = ["remember", "read", "forget"] as const;
 const UNAVAILABLE = "Mémoire de l'appli indisponible";
 // Keep in sync with shared/sites.ts tweakSource.
-const SOURCE = "webaios-tweak://";
+const SOURCE = "ressac-tweak://";
 
 /**
  * The tweaks' errors, seen in this content process (the parent's copy of a forwarded error has no window id): each
@@ -30,7 +30,7 @@ function relayErrors(): void {
     observe(m: any) {
       if (!(m instanceof Ci.nsIScriptError) || !String(m.sourceName).startsWith(SOURCE) || !m.innerWindowID) return;
       try {
-        WindowGlobalChild.getByInnerWindowId(m.innerWindowID)?.getActor("WebAiOsSite").sendAsyncMessage("error", { text: String(m.errorMessage), source: String(m.sourceName), line: Number(m.lineNumber) || 0 });
+        WindowGlobalChild.getByInnerWindowId(m.innerWindowID)?.getActor("RessacSite").sendAsyncMessage("error", { text: String(m.errorMessage), source: String(m.sourceName), line: Number(m.lineNumber) || 0 });
       } catch {
         // The window or its actor is gone.
       }
@@ -42,10 +42,10 @@ function relayErrors(): void {
  * A web process is untrusted: only the message's name and the bounded fields of a memory request or an error are read; the
  * frame's address, place and view come from this actor's WindowGlobalParent.
  */
-export class WebAiOsSiteParent extends JSWindowActorParent {
+export class RessacSiteParent extends JSWindowActorParent {
   async receiveMessage(m: { name: string; data?: unknown }): Promise<FrameInjection | MemoryResponse | number | null> {
     if (!["injection", "memory", "error", "position", "resume"].includes(m.name)) return null;
-    const { sites } = (await ChromeUtils.importESModule(STORE).ready) as WebAiOsStore;
+    const { sites } = (await ChromeUtils.importESModule(STORE).ready) as RessacStore;
     if (m.name === "injection") return sites.frameInjection(this.manager);
     if (m.name === "memory") return sites.frameMemory(this.manager, m.data);
     if (m.name === "resume") return sites.frameResume(this.manager, m.data);
@@ -62,7 +62,7 @@ function valid(r: unknown): FrameInjection | null {
   return Array.isArray(i.css) && Array.isArray(i.js) && Array.isArray(i.hosts) ? i : null;
 }
 
-export class WebAiOsSiteChild extends JSWindowActorChild {
+export class RessacSiteChild extends JSWindowActorChild {
   /** The scripts waiting for DOMContentLoaded. */
   private pending: (() => void) | null = null;
   private resumed = false;
@@ -94,13 +94,13 @@ export class WebAiOsSiteChild extends JSWindowActorChild {
       try {
         win.windowUtils.loadSheetUsingURIString(`data:text/css;charset=utf-8,${encodeURIComponent(css)}`, win.windowUtils.AUTHOR_SHEET);
       } catch (e) {
-        console.error("[webaios] CSS tweak not applied:", e);
+        console.error("[ressac] CSS tweak not applied:", e);
       }
     if (i.resume === true) this.resume();
     if (i.js.length === 0 || typeof i.guard !== "string") return;
     const kept = i.guard;
     const doc = this.document as any;
-    const sandbox = Cu.Sandbox(doc.nodePrincipal, { sandboxPrototype: win, wantXrays: true, wantComponents: false, sameZoneAs: win, sandboxName: "WebAiOs · tweaks" });
+    const sandbox = Cu.Sandbox(doc.nodePrincipal, { sandboxPrototype: win, wantXrays: true, wantComponents: false, sameZoneAs: win, sandboxName: "Ressac · tweaks" });
     // The page's own legacy `Components` shim (constants only) would show through the prototype: shadowed.
     Object.defineProperty(sandbox, "Components", { value: undefined });
     relayErrors();
@@ -119,7 +119,7 @@ export class WebAiOsSiteChild extends JSWindowActorChild {
       }
     };
     // The guard first, alone: without it, none of the agent's scripts runs.
-    if (!run(kept, "webaios-page-guard.js") || !run(`__webaiosScope(${JSON.stringify({ network: [], hosts: i.hosts })})`, "webaios-scope.js")) return;
+    if (!run(kept, "ressac-page-guard.js") || !run(`__ressacScope(${JSON.stringify({ network: [], hosts: i.hosts })})`, "ressac-scope.js")) return;
     if (i.bridge) this.bridge(sandbox);
     const scripts = () => {
       for (const { code, name: name } of i.js) run(code, name);
@@ -165,9 +165,9 @@ export class WebAiOsSiteChild extends JSWindowActorChild {
       );
   }
 
-  /** `webaiosSite` in the sandbox: promises of the sandbox, one request each; a refusal rejects with the memory's message. */
+  /** `ressacSite` in the sandbox: promises of the sandbox, one request each; a refusal rejects with the memory's message. */
   private bridge(sandbox: any) {
-    const api = Cu.createObjectIn(sandbox, { defineAs: "webaiosSite" });
+    const api = Cu.createObjectIn(sandbox, { defineAs: "ressacSite" });
     for (const op of OPS)
       Cu.exportFunction(
         (key: unknown, value: unknown) =>

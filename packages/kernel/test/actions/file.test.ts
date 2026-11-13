@@ -270,7 +270,7 @@ describe("FileActions", () => {
     const r = await a.end;
     expect(r.status).toBe("interrupted");
     const e = await readRun(join(actionsFolder, "public"), r.run!);
-    expect(e).toMatchObject({ status: "interrupted", error: "Interrompue : WebAiOs s'est arrêté", kernelError: true });
+    expect(e).toMatchObject({ status: "interrupted", error: "Interrompue : Ressac s'est arrêté", kernelError: true });
     expect(deleted).toContainEqual({ type: "action", id: "public" });
     // After the stop, nothing leaves anymore.
     expect((await f.launch("public", { input: null, trigger: "manual" }).end).status).toBe("interrupted");

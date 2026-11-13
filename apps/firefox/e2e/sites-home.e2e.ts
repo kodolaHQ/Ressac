@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { testActor } from "./agent-extensions";
 import { waitReady, windowHandles } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { SITE_HOME, inBrowser, inSiteBar, inSiteView, resolveLocalHosts, siteWindowExpr, startSitesServer, writeSite } from "./sites";
 import { missingApi } from "./ui";
@@ -14,7 +14,7 @@ import { missingApi } from "./ui";
 // home (SITE_HOME) as is, plus a probe script the test drives by
 // posting it commands from the chrome: what it then does is the home's own page code (fetch, image, navigation…).
 
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const HOSTS = ["vidola-a.localhost", "vidola-b.localhost", "pub.localhost"];
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=", "base64");
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -63,7 +63,7 @@ const HOME = SITE_HOME + PROBE;
 const AUTO = HOME.replace('parent.postMessage({ type: "ready" }, "*");', 'parent.postMessage({ type: "ready" }, "*"); parent.postMessage({ type: "open", url: "/serie/the-bear?e=9" }, "*");');
 
 let server: Awaited<ReturnType<typeof startSitesServer>>;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 let dataDir: string;
 let profile: string;
@@ -78,7 +78,7 @@ const viewState = (id: string) =>
   m.execute<{ url: string; visible: boolean } | null>(
     `const win = ${siteWindowExpr(id)}; if (!win?.gBrowser) return null;
      const spec = win.gBrowser.selectedBrowser.currentURI?.spec ?? "";
-     return { url: spec === "about:blank" ? "" : spec, visible: !win.document.documentElement.hasAttribute("webaios-site-home") };`,
+     return { url: spec === "about:blank" ? "" : spec, visible: !win.document.documentElement.hasAttribute("ressac-site-home") };`,
   );
 
 /** Chrome body with `home` = the home's iframe in the bar, `fw` = its page window (Xrays waived): `null` until it shows its home. */
@@ -88,7 +88,7 @@ const inHome = <T = unknown>(id: string, body: string, args: unknown[] = []) =>
     id,
     `const home = doc.querySelector('[data-testid="site-home-frame"]');
      const fw = home?.contentDocument?.defaultView?.wrappedJSObject;
-     if (!fw || !String(home.contentDocument.documentURI).startsWith("resource://webaios-site-")) return null;
+     if (!fw || !String(home.contentDocument.documentURI).startsWith("resource://ressac-site-")) return null;
      ${body}`,
     args,
   );
@@ -120,11 +120,11 @@ async function realClick(id: string, selector: string): Promise<void> {
     let found = false;
     for (const h of await windowHandles(m)) {
       await m.command("WebDriver:SwitchToWindow", { handle: h, focus: false });
-      if ((found = (await m.execute<string | null>(`return document.documentElement.getAttribute("webaios-site");`)) === id)) break;
+      if ((found = (await m.execute<string | null>(`return document.documentElement.getAttribute("ressac-site");`)) === id)) break;
     }
     if (!found) throw new Error(`no window for ${id}`);
     const [x, y] = await m.execute<[number, number]>(
-      `const bar = document.getElementById("webaios-site-bar");
+      `const bar = document.getElementById("ressac-site-bar");
        const home = bar.contentDocument.querySelector('[data-testid="site-home-frame"]');
        const b = bar.getBoundingClientRect(), h = home.getBoundingClientRect(), e = home.contentDocument.querySelector(arguments[0]).getBoundingClientRect();
        return [Math.round(b.left + h.left + e.left + e.width / 2), Math.round(b.top + h.top + e.top + e.height / 2)];`,
@@ -178,8 +178,8 @@ beforeAll(async () => {
   server.define("vidola-a.localhost", "/img/123", (_req, res) => res.writeHead(302, { Location: "/affiche.png" }).end());
   server.define("vidola-a.localhost", "/img/pub", (_req, res) => res.writeHead(302, { Location: server.url("pub.localhost", "/pub.png") }).end());
   for (let i = 0; i < 5; i++) server.define("vidola-a.localhost", `/boucle/${i}`, (_req, res) => res.writeHead(302, { Location: `/boucle/${i + 1}` }).end());
-  dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
-  profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
+  dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
+  profile = await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
   const declaration = { name: "Vidola", url: url("/"), domains: ["vidola-a.localhost"], login: ["compte.localhost"] };
   // Written before the launch: the watcher sees no initial event that would reread the apps on the way.
   // Documents with scripts that would run without the home's CSP (no meta in them) if the frame loaded them.
@@ -194,7 +194,7 @@ beforeAll(async () => {
   writeMemory("auto");
   writeMemory("demenage", "vidola-b.localhost");
   const actor = testActor(profile);
-  w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_LOCAL_ADDRESSES: "1", ...actor.env }, prefs: actor.prefs });
+  w = await launchRessac({ dataDir, profile, env: { RESSAC_TEST_LOCAL_ADDRESSES: "1", ...actor.env }, prefs: actor.prefs });
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
@@ -237,11 +237,11 @@ describe("site app home screen", () => {
     await openHome();
     const frame = await inHome<{ sandbox: string; src: string }>("vidola", `return { sandbox: home.getAttribute("sandbox"), src: home.src };`);
     expect(frame.sandbox).toBe("allow-scripts");
-    expect(frame.src).toMatch(/^resource:\/\/webaios-site-vidola-[0-9a-f]{32}\/index\.html$/);
+    expect(frame.src).toMatch(/^resource:\/\/ressac-site-vidola-[0-9a-f]{32}\/index\.html$/);
     await expect.poll(() => inHome("vidola", `return home.contentDocument.getElementById("series").textContent;`)).toBe("encours.the-bear : The Bear /serie/the-bear?e=4");
     expect(await inHome("vidola", `return home.contentDocument.getElementById("domaine").textContent;`)).toBe("vidola-a.localhost");
-    // Opaque origin, the guard in place (no WebRTC, WebTransport nor XSLT), no WebAiOs API.
-    expect(await inHome("vidola", `return [fw.origin, typeof fw.RTCPeerConnection, typeof fw.WebTransport, typeof fw.XSLTProcessor, typeof fw.webaios];`)).toEqual(["null", "undefined", "undefined", "undefined", "undefined"]);
+    // Opaque origin, the guard in place (no WebRTC, WebTransport nor XSLT), no Ressac API.
+    expect(await inHome("vidola", `return [fw.origin, typeof fw.RTCPeerConnection, typeof fw.WebTransport, typeof fw.XSLTProcessor, typeof fw.ressac];`)).toEqual(["null", "undefined", "undefined", "undefined", "undefined"]);
     expect(await inSiteBar(m, "vidola", `return doc.querySelector('[data-testid="site-enter"]').textContent;`)).toBe("Entrer dans le site");
   });
 
@@ -260,7 +260,7 @@ describe("site app home screen", () => {
     for (const address of ["javascript:alert(1)", "//pub.localhost/x", "https://pub.localhost/", url("/x", "pub.localhost"), "/\\pub.localhost/x", "x".repeat(2001)]) await clickOpen("vidola", address);
     await ask("vidola", { type: "open", url: "javascript:alert(1)" });
     // The same refusals through the bar's API (what the relay calls).
-    const api = (a: string) => inSiteBar<boolean>(m, "vidola", "return await doc.defaultView.webaios.site.open(arguments[0]);", [a]);
+    const api = (a: string) => inSiteBar<boolean>(m, "vidola", "return await doc.defaultView.ressac.site.open(arguments[0]);", [a]);
     expect(await api("javascript:alert(1)")).toBe(false);
     expect(await api("https://pub.localhost/")).toBe(false);
     await sleep(500);
@@ -295,7 +295,7 @@ describe("site app home screen", () => {
     // The frame navigating to the web, then to another app's home: refused.
     await probe("vidola", { attempt: "aller", url: spy("nav") });
     await sleep(500);
-    await probe("vidola", { attempt: "aller", url: "resource://webaios-site-autre/1/index.html" }).catch(() => {});
+    await probe("vidola", { attempt: "aller", url: "resource://ressac-site-autre/1/index.html" }).catch(() => {});
     await sleep(800);
     expect(server.requests).toEqual([]);
     const urls = await inSiteBar<string[]>(m, "vidola", `return [...doc.querySelectorAll("iframe")].map((f) => String(f.contentDocument?.documentURI ?? ""));`);
@@ -313,7 +313,7 @@ describe("site app home screen", () => {
     };
     // The home's own code: Firefox refuses its navigations to resource: (« Access … from script denied »), a real
     // click on a link and a <meta refresh> do nothing (measured).
-    for (const target of ["x.svg", "x.xhtml", "img/logo.png", "resource://webaios-site-autre/1/index.html"]) {
+    for (const target of ["x.svg", "x.xhtml", "img/logo.png", "resource://ressac-site-autre/1/index.html"]) {
       await probe("vidola", { attempt: "aller", url: target });
       await same(`aller ${target}`);
     }
@@ -345,7 +345,7 @@ describe("site app home screen", () => {
     expect(images.find((x) => x.n === 1)?.data).toBe(`data:image/png;base64,${PNG.toString("base64")}`);
     expect(images.find((x) => x.n === 2)?.data).toBeNull();
     expect(server.requests.map((r) => [r.host, r.path, r.cookie])).toEqual([["vidola-a.localhost", "/affiche.png", "essai=appli"]]);
-    // Its own images (accueil/img/) load from the served copy, without going through WebAiOs.
+    // Its own images (accueil/img/) load from the served copy, without going through Ressac.
     await probe("vidola", { attempt: "logo", url: "img/logo.png" });
     await expect.poll(() => inHome("vidola", "return fw.logo ?? null;")).toBe(1);
   });
@@ -394,7 +394,7 @@ describe("site app home screen", () => {
     await inStore(`store.dispatch({ type: "openTab", windowId: store.state.windows[0].id, url: arguments[0], activate: true });`, [probeFn]);
     await expect.poll(() => m.execute<boolean>(`const b = gBrowser.selectedBrowser; return b.currentURI.spec === arguments[0] && !b.webProgress.isLoadingDocument;`, [probeFn]), { timeout: 15_000 }).toBe(true);
     // The former forms (the id as host, a counter), the substitution root, and the copy actually served.
-    const guessable = ["resource://webaios-site-vidola", "resource://webaios-site-vidola/1", "resource://webaios-site-vidola/2"];
+    const guessable = ["resource://ressac-site-vidola", "resource://ressac-site-vidola/1", "resource://ressac-site-vidola/2"];
     const urls = [...guessable, real].flatMap((b) => [`${b}/`, `${b}/index.html`, `${b}/app.js`, `${b}/style.css`, `${b}/img/logo.png`]);
     const results = await inBrowser<Record<string, string>>(
       m,

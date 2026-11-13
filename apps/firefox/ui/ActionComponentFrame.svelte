@@ -3,14 +3,14 @@
    * An agent component in a sandboxed opaque frame (`sandbox="allow-scripts"`),
    * served from its sanitized resource:// copy (chrome/store/action-media.ts), served again on each actions.change (the
    * agent may have rewritten it: a new mtime, a new URL). It gets its props, the theme, the Aura tokens and its width by message; its
-   * `parent.postMessage` reaches the chrome as a `webaios-component` event (the copy's bridge), listened on the window
-   * root. It can only ask for its height; anything else, a `webaiosOpen` link included, is ignored.
+   * `parent.postMessage` reaches the chrome as a `ressac-component` event (the copy's bridge), listened on the window
+   * root. It can only ask for its height; anything else, a `ressacOpen` link included, is ignored.
    */
   let { name: name, props }: { name: string; props: Record<string, unknown> } = $props();
 
   const MIN_HEIGHT = 20;
   const MAX_HEIGHT = 2000;
-  const actions = window.webaios.actions;
+  const actions = window.ressac.actions;
   let iframe = $state<HTMLIFrameElement>();
   let src = $state<string | null>(null);
   let width = $state(0);
@@ -92,12 +92,12 @@
     };
     // The window root sees the events of the window's in-process frames (SiteHomeFrame.svelte); untrusted ones too.
     const root = (window as unknown as { windowRoot: EventTarget }).windowRoot;
-    (root.addEventListener as (t: string, l: EventListener, c: boolean, untrusted: boolean) => void)("webaios-component", onMessage, true, true);
+    (root.addEventListener as (t: string, l: EventListener, c: boolean, untrusted: boolean) => void)("ressac-component", onMessage, true, true);
     // An iframe of this chrome page never gets `load`: DOMFrameContentLoaded comes once the component's scripts have run.
     const onLoaded = (e: Event) => iframe && e.target === iframe && send();
     document.addEventListener("DOMFrameContentLoaded", onLoaded, true);
     return () => {
-      root.removeEventListener("webaios-component", onMessage, true);
+      root.removeEventListener("ressac-component", onMessage, true);
       document.removeEventListener("DOMFrameContentLoaded", onLoaded, true);
     };
   });

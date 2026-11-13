@@ -4,7 +4,7 @@ import type { BrowserState } from "../shared/model";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { dispatch, state, waitFor, waitReady } from "./firefox";
 import { SHELL_SERVICE } from "../chrome/store/settings";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
 import { click, inUi, missingApi, pressKeys, waitUi } from "./ui";
@@ -12,7 +12,7 @@ import { click, inUi, missingApi, pressKeys, waitUi } from "./ui";
 // Plan 44 Task 6: the Settings page (agents, local AI, workshop, privacy, about).
 
 const PAGE = '[data-testid="settings-page"]';
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const activeTab = (s: BrowserState) => s.tabs[s.windows[0]!.active[s.windows[0]!.activeSpace]!];
 
@@ -26,7 +26,7 @@ beforeAll(async () => {
 });
 afterAll(() => server?.close());
 
-let w: LaunchedWebAiOs | undefined;
+let w: LaunchedRessac | undefined;
 let m: Marionette;
 afterEach(async () => {
   try {
@@ -37,10 +37,10 @@ afterEach(async () => {
   }
 });
 
-/** Launches with `files` written under the workspace (WEBAIOS_ROOT). Ollama is unreachable unless the test points it elsewhere. */
+/** Launches with `files` written under the workspace (RESSAC_ROOT). Ollama is unreachable unless the test points it elsewhere. */
 async function launch(env: Record<string, string> = {}, files: Record<string, string> = {}): Promise<void> {
   // The kernel's own decision-model address: these tests read the decision model found in Ollama, which an imposed one hides.
-  w = await launchWebAiOs({ env: { WEBAIOS_OLLAMA_URL: "http://127.0.0.1:9", WEBAIOS_KEV_URL: undefined, ...env } });
+  w = await launchRessac({ env: { RESSAC_OLLAMA_URL: "http://127.0.0.1:9", RESSAC_KEV_URL: undefined, ...env } });
   for (const [name, text] of Object.entries(files)) {
     mkdirSync(join(w.dataDir, "workspace"), { recursive: true });
     writeFileSync(join(w.dataDir, "workspace", name), text);
@@ -62,7 +62,7 @@ const go = async (id: string) => {
 const text = (id: string) => inUi<string>(m, "return doc.querySelector(arguments[0])?.textContent.replace(/\\s+/g, ' ') ?? ''", [`[data-testid="${id}"]`]);
 const shows = (id: string, wanted: string, ms = 10_000) =>
   waitUi(m, "return doc.querySelector(arguments[0])?.textContent.replace(/\\s+/g, ' ').includes(arguments[1])", [`[data-testid="${id}"]`, wanted], ms);
-const settingsTabs = async () => Object.values((await state(m)).tabs).filter((t) => t.url === "webaios://settings");
+const settingsTabs = async () => Object.values((await state(m)).tabs).filter((t) => t.url === "ressac://settings");
 
 describe("Settings page", () => {
   it("opens from the sidebar button; ⌘, then keeps a single tab", async () => {
@@ -101,8 +101,8 @@ describe("Settings page", () => {
 
   it("host stopped: agents and local AI say the agent does not answer", async () => {
     await launch();
-    await m.execute(`return (async () => { await window.webaiosWindow.store.agent.stop(); return true; })();`);
-    await waitFor<number | null>(m, `return window.webaiosWindow.store.agent.pid;`, (pid) => pid === null);
+    await m.execute(`return (async () => { await window.ressacWindow.store.agent.stop(); return true; })();`);
+    await waitFor<number | null>(m, `return window.ressacWindow.store.agent.pid;`, (pid) => pid === null);
     await openPage();
     await shows("settings-agents", "L'agent ne répond pas.");
     await go("ai");
@@ -152,7 +152,7 @@ describe("Settings page", () => {
   });
 
   it("workshop: a container app installed but stopped offers « Démarrer OrbStack »", async () => {
-    await launch({ FAKE_DOCKER_ABSENT: "1", WEBAIOS_TEST_DOCKER_KIND: "stopped" });
+    await launch({ FAKE_DOCKER_ABSENT: "1", RESSAC_TEST_DOCKER_KIND: "stopped" });
     await openPage();
     await go("workshop");
     await shows("docker-start", "Démarrer OrbStack");
@@ -160,7 +160,7 @@ describe("Settings page", () => {
 
   it("local AI: an absent Ollama offers its download, a stopped one « Démarrer », an old one « Mettre à jour Ollama »", async () => {
     for (const [kind, id, label] of [["absent", "pull-ollama", "Télécharger Ollama (190 Mo)"], ["stopped", "ollama-start", "Démarrer"], ["outdated", "ollama-update", "Mettre à jour Ollama"]] as const) {
-      await launch({ WEBAIOS_TEST_OLLAMA_KIND: kind });
+      await launch({ RESSAC_TEST_OLLAMA_KIND: kind });
       await openPage();
       await go("ai");
       await shows(id, label);
@@ -171,7 +171,7 @@ describe("Settings page", () => {
   });
 
   it("local AI: Ollama reachable, Gemma installed, Kev unavailable", async () => {
-    await launch({ WEBAIOS_OLLAMA_URL: server.url });
+    await launch({ RESSAC_OLLAMA_URL: server.url });
     await openPage();
     await go("ai");
     await shows("ai-ollama", "joignable");
@@ -200,7 +200,7 @@ describe("Settings page", () => {
       },
     });
     try {
-      await launch({ WEBAIOS_OLLAMA_URL: ollama.url });
+      await launch({ RESSAC_OLLAMA_URL: ollama.url });
       await openPage();
       await go("ai");
       await shows("ai-gemma", "absent");
@@ -208,7 +208,7 @@ describe("Settings page", () => {
       expect(await inUi(m, `return doc.querySelectorAll('[data-testid="pull-decision"]').length`)).toBe(0); // installed: no button
       await click(m, '[data-testid="pull-gemma"]');
       await shows("ai-gemma", "Téléchargement 40 %");
-      if (process.env.WEBAIOS_SHOT) writeFileSync(process.env.WEBAIOS_SHOT, Buffer.from((await m.command<{ value: string }>("WebDriver:TakeScreenshot", { full: false, hash: false })).value, "base64"));
+      if (process.env.RESSAC_SHOT) writeFileSync(process.env.RESSAC_SHOT, Buffer.from((await m.command<{ value: string }>("WebDriver:TakeScreenshot", { full: false, hash: false })).value, "base64"));
       release();
       await shows("ai-gemma", "installé");
       expect(await text("ai-gemma")).not.toContain("Télécharger");
@@ -238,7 +238,7 @@ describe("Settings page", () => {
   });
 
   it("default browser: without the test guard, the row shows what macOS says (read only)", async () => {
-    await launch({ WEBAIOS_TEST_NO_SYSTEM: "" });
+    await launch({ RESSAC_TEST_NO_SYSTEM: "" });
     const real = await m.execute<boolean>(`return ChromeUtils.importESModule(arguments[0]).ShellService.isDefaultBrowser(false)`, [SHELL_SERVICE]);
     await openPage();
     await go("privacy");
@@ -253,13 +253,13 @@ describe("Settings page", () => {
     await shows("settings-privacy", "Cette version n'envoie rien.");
     expect(await inUi(m, `return doc.querySelector('[data-testid="telemetry-switch"]').disabled`)).toBe(true);
     await w!.close();
-    await launch({ WEBAIOS_SENTRY_DSN: `http://k@127.0.0.1:${server.port}/1` });
-    await m.execute(`Services.prefs.setBoolPref("webaios.telemetry.enabled", true);`);
+    await launch({ RESSAC_SENTRY_DSN: `http://k@127.0.0.1:${server.port}/1` });
+    await m.execute(`Services.prefs.setBoolPref("ressac.telemetry.enabled", true);`);
     await openPage();
     await go("privacy");
     await waitUi(m, `const s = doc.querySelector('[data-testid="telemetry-switch"]'); return s && !s.disabled && s.checked`);
     await click(m, '[data-testid="telemetry-switch"]');
-    await waitFor(m, `return Services.prefs.getBoolPref("webaios.telemetry.enabled", true)`, (v) => v === false);
+    await waitFor(m, `return Services.prefs.getBoolPref("ressac.telemetry.enabled", true)`, (v) => v === false);
   });
 
   it("privacy: the navigation sidebar's side is saved", async () => {

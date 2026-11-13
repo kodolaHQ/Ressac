@@ -7,7 +7,7 @@ const off = () => () => {};
 /**
  * The API of the site bar (SiteWindow.svelte), on the window's controller. What comes out of the chrome is
  * copied (structuredClone): the bar never holds the store's objects. The extension members do nothing: the add-on
- * buttons read the window's own (SiteAddonsStrip.svelte, webaiosSiteWindow.addons), the extension menu is aliased away.
+ * buttons read the window's own (SiteAddonsStrip.svelte, ressacSiteWindow.addons), the extension menu is aliased away.
  * The design mode is the window's: the controller knows the app, the bar sends no target.
  */
 export function createSiteApi(c: SiteWindowController): ApiSite {
@@ -43,7 +43,7 @@ export function createSiteApi(c: SiteWindowController): ApiSite {
     image: async (url) => c.image(url),
     extensions: {
       list: async () => [],
-      toggle: async () => ({ ok: false, error: "Pas encore disponible dans WebAiOs-Firefox." }),
+      toggle: async () => ({ ok: false, error: "Pas encore disponible dans Ressac." }),
       bar: async () => ({ partition: "", tab: null, actions: [] }),
       onChange: off,
       manage: () => {},
@@ -69,11 +69,11 @@ export function createSiteApi(c: SiteWindowController): ApiSite {
 }
 
 /**
- * The whole `window.webaios` of a site bar or an app badge. The sidebar bundle also evaluates the main UI's modules,
+ * The whole `window.ressac` of a site bar or an app badge. The sidebar bundle also evaluates the main UI's modules,
  * which subscribe as they load (state.svelte.ts: surEtat, telechargements.liste()…): any member but `members`' own is
  * inert (callable, every property and result is itself, its `then` never calls back), and never mounted here.
  */
-export function inertWebaios(members: object): unknown {
+export function inertRessac(members: object): unknown {
   const inert: object = new Proxy(function () {}, { get: () => inert, apply: () => inert });
   return new Proxy(members, { get: (t, k) => (Object.hasOwn(t, k) ? t[k as keyof typeof t] : inert) });
 }

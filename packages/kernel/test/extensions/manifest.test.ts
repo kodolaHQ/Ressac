@@ -91,15 +91,15 @@ test("agent: static rule redirect, modifyHeaders, regexSubstitution refused, eac
   ]);
 });
 
-test("agent: webaios.json with 11 domains or a wildcard refused; reseau sorted", () => {
+test("agent: ressac.json with 11 domains or a wildcard refused; reseau sorted", () => {
   const eleven = Array.from({ length: 11 }, (_, i) => `a${i}.exemple.com`);
-  expect(parseManifest(base, { source: "agent", webaios: { network: eleven } }).denial).toHaveLength(1);
-  const wildcard = parseManifest(base, { source: "agent", webaios: { network: ["*.x.com"] } });
-  expect(wildcard.denial).toEqual(["webaios.json : domaine invalide « *.x.com »"]);
-  const ok = parseManifest(base, { source: "agent", webaios: { network: ["b.com", "a.com"] } });
+  expect(parseManifest(base, { source: "agent", ressac: { network: eleven } }).denial).toHaveLength(1);
+  const wildcard = parseManifest(base, { source: "agent", ressac: { network: ["*.x.com"] } });
+  expect(wildcard.denial).toEqual(["ressac.json : domaine invalide « *.x.com »"]);
+  const ok = parseManifest(base, { source: "agent", ressac: { network: ["b.com", "a.com"] } });
   expect(ok.denial).toEqual([]);
   expect(ok.scope.network).toEqual(["a.com", "b.com"]);
-  expect(parseManifest(base, { source: "store", webaios: { network: ["a.com"] } }).scope.network).toEqual([]);
+  expect(parseManifest(base, { source: "store", ressac: { network: ["a.com"] } }).scope.network).toEqual([]);
 });
 
 test("agent: content_script world MAIN refused; the Store accepts it", () => {
@@ -199,7 +199,7 @@ test("labels: unknown right and order", () => {
   expect(scopeLabels(a.scope, "agent")).toEqual([
     "Modifier l'apparence et le contenu des pages",
     "Voir la liste des onglets et leurs adresses",
-    "Agir sur l'onglet affiché quand tu cliques sur son bouton (non pris en charge par WebAiOs)",
+    "Agir sur l'onglet affiché quand tu cliques sur son bouton (non pris en charge par Ressac)",
     "Droit « idle »",
   ]);
 });

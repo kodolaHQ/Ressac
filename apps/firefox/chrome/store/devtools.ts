@@ -203,7 +203,7 @@ export function censusToSnapshot(census: Record<string, Leaf | Record<string, Le
     if (typeof (v as Leaf).count === "number") add(key, v as Leaf);
     else for (const [name, l] of Object.entries(v ?? {})) if (typeof l?.count === "number") add(name, l);
   }
-  return { format: "webaios-firefox-census", total, byConstructor: [...byName.values()] };
+  return { format: "ressac-firefox-census", total, byConstructor: [...byName.values()] };
 }
 
 interface GeckoThread {
@@ -291,7 +291,7 @@ export function createDevTools(o: {
   sites?: { viewFor(id: string): { browser: any; window: Window } | undefined; markWanted(id: string): void; onClosed(cb: () => void): unknown };
   apps?: { viewFor(folder: string): { browser: any; window: Window } | undefined; onClosed(cb: () => void): unknown };
 }): DevTools {
-  /** The top-level reload of the agent's dev tools; on a site app it is WebAiOs's load, so the M1 net spares it under the home. */
+  /** The top-level reload of the agent's dev tools; on a site app it is Ressac's load, so the M1 net spares it under the home. */
   const reloadTop = (id: string, s: { commands: any }, noCache: boolean) => {
     if (id.startsWith(SITE_PREFIX)) o.sites?.markWanted(id.slice(SITE_PREFIX.length));
     return s.commands.targetCommand.reloadTopLevelTarget(noCache);
@@ -675,7 +675,7 @@ export function createDevTools(o: {
     },
     async call(token, method, args, signal) {
       if (token !== current) throw new Error(REVOKED_TEXT);
-      if (!Object.hasOwn(impl, method) || !Array.isArray(args)) throw new Error(`Pas encore disponible dans WebAiOs-Firefox : ${String(method)}`);
+      if (!Object.hasOwn(impl, method) || !Array.isArray(args)) throw new Error(`Pas encore disponible dans Ressac : ${String(method)}`);
       const r = await (impl as Record<string, (...a: unknown[]) => Promise<unknown>>)[method]!(...args, signal);
       if (token !== current) {
         // An attachment that ended after the revocation is undone.

@@ -1,4 +1,4 @@
-import type { DevRight, PageBlock, PageLink, TabInfo, TabRead, Zone } from "@webaios/kernel";
+import type { DevRight, PageBlock, PageLink, TabInfo, TabRead, Zone } from "@ressac/kernel";
 import { privateTab, recapOfUrl, type Decision, type PendingRequest, type Outcome, type WindowState, type BrowserState, type SpaceId, type WindowId, type Tab } from "../../shared/model";
 
 const info = (state: BrowserState, o: Tab): TabInfo => ({
@@ -8,8 +8,8 @@ const info = (state: BrowserState, o: Tab): TabInfo => ({
   space: state.spaces.find((e) => e.id === o.spaceId)?.name ?? "",
 });
 
-/** WebAiOs internal pages (`webaios:`): the agent never sees them. */
-const internal = (o: Tab) => o.url.startsWith("webaios:");
+/** Ressac internal pages (`ressac:`): the agent never sees them. */
+const internal = (o: Tab) => o.url.startsWith("ressac:");
 
 /** The agent sees the tab: neither an internal page, nor a tab of a private space (spec §3.3). */
 const visible = (state: BrowserState, o: Tab) => !internal(o) && !privateTab(state, o);

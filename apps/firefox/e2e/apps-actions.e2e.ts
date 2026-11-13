@@ -30,7 +30,7 @@ const rowShown = (folder: string, ms = 10_000) => waitUi(p!.m, "return !!doc.que
 const rowText = (folder: string) => inUi<string>(p!.m, "return doc.querySelector(arguments[0])?.textContent ?? ''", [appRow(folder)]);
 const filterText = (id: string) => inUi<string | null>(p!.m, "return doc.querySelector(arguments[0])?.textContent.replace(/\\s+/g, ' ').trim() ?? null", [`[data-testid="filter-${id}"]`]);
 /** The page's own api call, as the component makes it. */
-const act = (folder: string, action: string) => inUi(p!.m, "ui.webaios.apps.act(arguments[0], arguments[1]);", [folder, action]);
+const act = (folder: string, action: string) => inUi(p!.m, "ui.ressac.apps.act(arguments[0], arguments[1]);", [folder, action]);
 const panelOpen = async () => !!(await state(p!.m)).windows[0]!.agentPanelOpen;
 /** The app's container (`userContextIdInternal.webaios-app-<dossier>`), or null. */
 const container = (folder: string) =>
@@ -85,15 +85,15 @@ describe("Applications page actions", () => {
     await act("essai", "delete");
     for (const d of ["..", ".", "", "essai/..", "../espace"]) await act(d, "delete");
     await sleep(500);
-    expect(existsSync(path.join(project("essai"), "webaios.json"))).toBe(true);
+    expect(existsSync(path.join(project("essai"), "ressac.json"))).toBe(true);
     expect(existsSync(project("zod"))).toBe(true);
     await rowState(m, "essai", "running");
   });
 
   // applications.spec.ts:476
   it("Afficher le dossier shows it without opening anything (an « x.app » folder would be launched)", async () => {
-    const reveals = path.join(os.tmpdir(), `webaios-reveal-${process.pid}-${Date.now()}.txt`);
-    p = await openAppsPage(BLOCK, { projects: false, prepare: (d) => writeProject(d, "x.app", { manifest: { name: "Piège" } }), env: { WEBAIOS_TEST_REVEAL: reveals } });
+    const reveals = path.join(os.tmpdir(), `ressac-reveal-${process.pid}-${Date.now()}.txt`);
+    p = await openAppsPage(BLOCK, { projects: false, prepare: (d) => writeProject(d, "x.app", { manifest: { name: "Piège" } }), env: { RESSAC_TEST_REVEAL: reveals } });
     const m = p.m;
     const windows = () => m.execute<number>(`return [...Services.wm.getEnumerator("navigator:browser")].length;`);
     const tabs = async () => Object.keys((await state(m)).tabs).length;
@@ -114,7 +114,7 @@ describe("Applications page actions", () => {
     p = await openAppsPage(BLOCK);
     await expect.poll(() => filterText("app"), { timeout: 10_000 }).toBe("Applications 1");
     await rowMenu(p.m, "zod", "Passer en application");
-    const manifest = () => JSON.parse(readFileSync(path.join(project("zod"), "webaios.json"), "utf8")) as { type: string; origin?: string };
+    const manifest = () => JSON.parse(readFileSync(path.join(project("zod"), "ressac.json"), "utf8")) as { type: string; origin?: string };
     await expect.poll(() => manifest().type, { timeout: 10_000 }).toBe("app");
     expect(manifest().origin).toBe("https://github.com/colinhacks/zod");
     await expect.poll(() => filterText("app"), { timeout: 10_000 }).toBe("Applications 2");
@@ -129,7 +129,7 @@ describe("Applications page actions", () => {
     await rowButton(p.m, "essai", "Déboguer");
     await expect.poll(panelOpen, { timeout: 10_000 }).toBe(true);
     await waitUi(p.m, "return doc.querySelector('.xterm-rows')?.textContent.includes('fake agent ready>')", [], 20_000, "agent");
-    await expect.poll(() => agentInput(p!.dataDir), { timeout: 10_000 }).toBe("[application : Essai — /workspace/projects/essai — journal : /workspace/.webaios/logs/essai.log] ");
+    await expect.poll(() => agentInput(p!.dataDir), { timeout: 10_000 }).toBe("[application : Essai — /workspace/projects/essai — journal : /workspace/.ressac/logs/essai.log] ");
     await sleep(300);
     expect(agentInput(p.dataDir)).not.toContain("\r");
   });
@@ -138,7 +138,7 @@ describe("Applications page actions", () => {
   it("Déboguer a project without manifest", async () => {
     p = await openAppsPage(BLOCK);
     await rowButton(p.m, "vieux", "Déboguer");
-    await expect.poll(() => agentInput(p!.dataDir), { timeout: 10_000 }).toBe("[projet sans fiche webaios.json : /workspace/projects/vieux] ");
+    await expect.poll(() => agentInput(p!.dataDir), { timeout: 10_000 }).toBe("[projet sans fiche ressac.json : /workspace/projects/vieux] ");
   });
 
   // applications.spec.ts:530
@@ -160,7 +160,7 @@ describe("Applications page actions", () => {
   it("a folder with an unsupported name can be debugged and deleted", async () => {
     p = await openAppsPage(BLOCK, { noManifest: ["Mon Projet"] });
     await rowButton(p.m, "Mon Projet", "Déboguer");
-    await expect.poll(() => agentInput(p!.dataDir), { timeout: 10_000 }).toBe("[projet sans fiche webaios.json : /workspace/projects/Mon Projet] ");
+    await expect.poll(() => agentInput(p!.dataDir), { timeout: 10_000 }).toBe("[projet sans fiche ressac.json : /workspace/projects/Mon Projet] ");
     // Déboguer focuses the agent and retries 100 ms later if the terminal lost it (AgentPanel): a sidebar click inside
     // that window gets its menu closed by the retry. A person is never that fast; the test waits it out.
     await new Promise((r) => setTimeout(r, 200));

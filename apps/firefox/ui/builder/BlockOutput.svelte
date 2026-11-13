@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Execution, ResumeExecution } from "@webaios/kernel";
+  import type { Execution, ResumeExecution } from "@ressac/kernel";
 
   /**
    * What the block produced at the chosen run: status, duration, items, error, log and collapsible output. Everything

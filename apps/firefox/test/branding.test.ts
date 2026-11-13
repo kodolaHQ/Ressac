@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const dir = join(__dirname, "../configs/branding/webaios");
+const dir = join(__dirname, "../configs/branding/ressac");
 const sizes = [16, 22, 24, 32, 48, 64, 128, 256, 512];
 
 describe("Halo branding", () => {

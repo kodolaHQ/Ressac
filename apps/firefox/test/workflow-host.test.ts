@@ -95,8 +95,8 @@ describe("WriteQueue", () => {
 
 describe("workflowOpen", () => {
   it("gives the open widget and the block selected on it only", () => {
-    expect(workflowOpen("webaios://workflow/veille", { widget: "veille", block: "tri" })).toEqual({ widget: "veille", block: "tri" });
-    expect(workflowOpen("webaios://workflow/veille", { widget: "autre", block: "tri" })).toEqual({ widget: "veille", block: null });
+    expect(workflowOpen("ressac://workflow/veille", { widget: "veille", block: "tri" })).toEqual({ widget: "veille", block: "tri" });
+    expect(workflowOpen("ressac://workflow/veille", { widget: "autre", block: "tri" })).toEqual({ widget: "veille", block: null });
     expect(workflowOpen("https://x.test/", { widget: "veille", block: "tri" })).toBeNull();
     expect(workflowOpen(undefined, undefined)).toBeNull();
   });
@@ -124,9 +124,9 @@ describe("fenetres.actives mirror", () => {
     const notify = (m: string, p: unknown) => void sent.push([m, p]);
     sendMirror(store, windows, notify);
     trackState(store, { notify, request: () => Promise.resolve() } as unknown as Parameters<typeof trackState>[1], windows);
-    store.dispatch({ type: "openTab", windowId: f, url: "webaios://workflow/veille" }, () => "t1");
+    store.dispatch({ type: "openTab", windowId: f, url: "ressac://workflow/veille" }, () => "t1");
     store.dispatch({ type: "openTab", windowId: f, url: "https://x.test/" }, () => "t2");
-    expect(sent.filter(([m]) => m === "windows.active").map(([, p]) => p)).toEqual([{ [f]: null }, { [f]: "webaios://workflow/veille" }, { [f]: null }]);
+    expect(sent.filter(([m]) => m === "windows.active").map(([, p]) => p)).toEqual([{ [f]: null }, { [f]: "ressac://workflow/veille" }, { [f]: null }]);
   });
 });
 

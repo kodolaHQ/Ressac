@@ -6,7 +6,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { reviewUrl } from "../shared/model";
 import { APPS_ENV, appRow, appWindowExpr, closeAppsPage, inAppView, launchAttempt, rowButton, rowMenuItems, writeProject, type AppsPage } from "./apps";
 import { dispatch, state, waitFor, waitReady } from "./firefox";
-import { launchWebAiOs } from "./launch";
+import { launchRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
 import { LINES, reviewedRef, writeAppJs } from "./review";
@@ -22,8 +22,8 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** Runs `body` in the chrome with `win` (app `dossier`'s window), `f` (its badge frame) and `doc` (the badge's document). */
 const inBadge = <T = unknown>(m: Marionette, folder: string, body: string, args: unknown[] = []) =>
   m.execute<T>(
-    `return (async () => { const win = ${appWindowExpr(folder)}; const f = win?.document.getElementById("webaios-app-badge"); const doc = f?.contentDocument;
-     if (!doc?.querySelector('[data-testid="webaios-pill"]')) return null; ${body} })();`,
+    `return (async () => { const win = ${appWindowExpr(folder)}; const f = win?.document.getElementById("ressac-app-badge"); const doc = f?.contentDocument;
+     if (!doc?.querySelector('[data-testid="ressac-pill"]')) return null; ${body} })();`,
     args,
   );
 /** The badge frame's place in its window: [right margin, top, width, height]. */
@@ -43,35 +43,35 @@ async function cutAccess(m: Marionette, folder: string): Promise<void> {
   await expect.poll(() => inBadge(m, folder, `return doc.querySelectorAll('[data-testid="access-pill"]').length;`), { timeout: 10_000 }).toBe(0);
 }
 /** The access the badge's own api gives, its tab ids. */
-const badgeAccess = (m: Marionette, folder: string) => inBadge<string[]>(m, folder, "return Object.keys((await f.contentWindow.webaios.access.state()).tabs);");
+const badgeAccess = (m: Marionette, folder: string) => inBadge<string[]>(m, folder, "return Object.keys((await f.contentWindow.ressac.access.state()).tabs);");
 const reviewTabs = async (m: Marionette, project: string) => Object.values((await state(m)).tabs).filter((o) => o.url === reviewUrl(project));
 
-describe("one WebAiOs, essai and autre launched in each test", () => {
+describe("one Ressac, essai and autre launched in each test", () => {
   let p: AppsPage;
   let m: Marionette;
 
   beforeAll(async () => {
-    const dataDir = await mkdtemp(join(os.tmpdir(), "webaios-data-"));
-    const profile = await mkdtemp(join(os.tmpdir(), "webaios-firefox-"));
+    const dataDir = await mkdtemp(join(os.tmpdir(), "ressac-data-"));
+    const profile = await mkdtemp(join(os.tmpdir(), "ressac-firefox-"));
     // relecture.spec.ts:20-27: essai with app.js (30 lines) and logo.bin; autre a second application; vieux without manifest.
     writeProject(dataDir, "essai", { manifest: { name: "Essai" } });
     writeAppJs(join(dataDir, "workspace", "projects", "essai"), LINES);
     writeFileSync(join(dataDir, "workspace", "projects", "essai", "logo.bin"), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
     writeProject(dataDir, "autre", { manifest: { name: "Autre" } });
     writeProject(dataDir, "vieux");
-    const w = await launchWebAiOs({ dataDir, profile, env: APPS_ENV(BLOCK) });
+    const w = await launchRessac({ dataDir, profile, env: APPS_ENV(BLOCK) });
     m = w.marionette;
     p = { w, m, dataDir, profile };
     await m.setContext("chrome");
     await waitReady(m);
     // Not expect.poll: run from beforeAll.
-    for (const end = Date.now() + 15_000; !existsSync(join(dataDir, "workspace", ".webaios", "mcp.json")); await sleep(100))
+    for (const end = Date.now() + 15_000; !existsSync(join(dataDir, "workspace", ".ressac", "mcp.json")); await sleep(100))
       if (Date.now() > end) throw new Error("the MCP server did not start");
   }, 90_000);
   afterAll(() => closeAppsPage(p));
   afterEach(async () => {
     for (const folder of ["essai", "autre"]) await callTool(p.dataDir, "stop_app", { folder: folder }).catch(() => {});
-    await waitFor(m, `return [...Services.wm.getEnumerator("navigator:browser")].filter((w) => w.document.documentElement.hasAttribute("webaios-app")).length;`, (n) => n === 0);
+    await waitFor(m, `return [...Services.wm.getEnumerator("navigator:browser")].filter((w) => w.document.documentElement.hasAttribute("ressac-app")).length;`, (n) => n === 0);
     await waitFor(m, "for (const t of gBrowser.tabs.slice(1)) gBrowser.removeTab(t); return gBrowser.tabs.length;", (n) => n === 1);
   });
   /** App `dossier` launched with the agent's tool, its view loaded and its badge mounted. */
@@ -83,10 +83,10 @@ describe("one WebAiOs, essai and autre launched in each test", () => {
   }
 
   // relecture.spec.ts:52
-  it("at start the first photo of essai exists (refs/webaios/relu under <dataDir>/design/review/app-essai.git) and no .git appears in projets/essai", async () => {
+  it("at start the first photo of essai exists (refs/ressac/relu under <dataDir>/design/review/app-essai.git) and no .git appears in projets/essai", async () => {
     await expect.poll(() => existsSync(reviewedRef(p.dataDir, "app-essai")), { timeout: 15_000 }).toBe(true);
     const projects = join(p.dataDir, "workspace", "projects");
-    expect(readdirSync(join(projects, "essai")).sort()).toEqual(["app.js", "logo.bin", "serveur.mjs", "webaios.json"]);
+    expect(readdirSync(join(projects, "essai")).sort()).toEqual(["app.js", "logo.bin", "serveur.mjs", "ressac.json"]);
     expect(existsSync(join(projects, ".git"))).toBe(false);
     // A project without manifest gets no snapshot.
     expect(existsSync(reviewedRef(p.dataDir, "app-vieux"))).toBe(false);
@@ -97,12 +97,12 @@ describe("one WebAiOs, essai and autre launched in each test", () => {
     await cutAccess(m, "essai");
     await sized(m, "essai", 48, 28);
     const placed = await m.execute<{ view: number[]; frame: number[] }>(
-      `const win = ${appWindowExpr("essai")}, v = win.gBrowser.selectedBrowser.getBoundingClientRect(), r = win.document.getElementById("webaios-app-badge").getBoundingClientRect();
+      `const win = ${appWindowExpr("essai")}, v = win.gBrowser.selectedBrowser.getBoundingClientRect(), r = win.document.getElementById("ressac-app-badge").getBoundingClientRect();
        return { view: [v.left, v.top, v.width, v.height], frame: [r.left, r.top, r.width, r.height] };`,
     );
     const [fx, fy, fw, fh] = placed.frame as [number, number, number, number];
     const [bx, by, bw, bh] = placed.view as [number, number, number, number];
-    // The paint (spike S8): the WebAiOs button in the badge, the page around it and through its transparent corner.
+    // The paint (spike S8): the Ressac button in the badge, the page around it and through its transparent corner.
     const shot = await m.execute<{ button: number[]; corner: number[]; outside: number[] }>(
       `return (async () => { const win = ${appWindowExpr("essai")}, [fx, fy, fw, fh, bx, by] = arguments;
        const shot = await win.browsingContext.currentWindowGlobal.drawSnapshot(null, win.devicePixelRatio, "white");
@@ -128,7 +128,7 @@ describe("one WebAiOs, essai and autre launched in each test", () => {
        return out; })();`,
       [fx, fy, fw, fh, bx, by],
     );
-    expect(routed).toEqual({ onBadge: "iframe#webaios-app-badge", beside: "browser" });
+    expect(routed).toEqual({ onBadge: "iframe#ressac-app-badge", beside: "browser" });
     await expect.poll(() => inAppView<string[]>(m, "essai", "return window.got;"), { timeout: 10_000 }).toEqual(["mousedown@100,300", "click@100,300"]);
     // Security: the page has no frame nor node more, its size is the view's, and under the badge it finds its own body.
     const pageView = await inAppView(m, "essai", `const e = document.elementFromPoint(innerWidth - 12 - ${fw / 2}, 12 + ${fh / 2}); return { under: e && e.localName, frames: window.length, iframes: document.querySelectorAll("iframe").length, innerWidth, innerHeight };`);
@@ -139,7 +139,7 @@ describe("one WebAiOs, essai and autre launched in each test", () => {
     await launched();
     await cutAccess(m, "essai");
     await sized(m, "essai", 48, 28);
-    await clickBadge(m, "essai", '[data-testid="webaios-pill"]');
+    await clickBadge(m, "essai", '[data-testid="ressac-pill"]');
     await sized(m, "essai", 300, 320);
     expect(await inBadge(m, "essai", `return [...doc.querySelectorAll('[role="menuitem"]')].map((e) => e.textContent.trim());`)).toEqual(["Mode design ⇧⌘D", "Panier (0)", "Voir les modifications de l'agent"]);
     await inBadge(m, "essai", `f.contentWindow.dispatchEvent(new f.contentWindow.KeyboardEvent("keydown", { key: "Escape", bubbles: true })); return 1;`);
@@ -174,7 +174,7 @@ describe("one WebAiOs, essai and autre launched in each test", () => {
     await launched("autre");
     await callTool(p.dataDir, "read_tab", { id: "app:essai" });
     // What a change sends: each badge hears only its own app.
-    const listen = (d: string) => inBadge(m, d, "const w = f.contentWindow; w.heard = []; w.webaios.onAccess((e) => w.heard.push(Object.keys(e.tabs).join(','))); return 1;");
+    const listen = (d: string) => inBadge(m, d, "const w = f.contentWindow; w.heard = []; w.ressac.onAccess((e) => w.heard.push(Object.keys(e.tabs).join(','))); return 1;");
     await listen("essai");
     await listen("autre");
     await cutAccess(m, "autre");
@@ -187,7 +187,7 @@ describe("one WebAiOs, essai and autre launched in each test", () => {
     expect(new Set(await heard("essai"))).toEqual(new Set(["app:essai"]));
     expect(new Set(await heard("autre"))).toEqual(new Set([""]));
     // Security: a badge cuts only its own app's access.
-    await inBadge(m, "autre", `f.contentWindow.webaios.access.cut("app:essai"); return 1;`);
+    await inBadge(m, "autre", `f.contentWindow.ressac.access.cut("app:essai"); return 1;`);
     await sleep(700);
     await sized(m, "essai", 88, 28);
     expect(await badgeAccess(m, "essai")).toEqual(["app:essai"]);
@@ -199,13 +199,13 @@ describe("one WebAiOs, essai and autre launched in each test", () => {
       m,
       "essai",
       `const w = f.contentWindow;
-       const e = await w.webaios.access.state();
+       const e = await w.ressac.access.state();
        const t = e.tabs["app:essai"];
        return { state: Object.getPrototypeOf(e) === w.Object.prototype, tabs: Object.getPrototypeOf(e.tabs) === w.Object.prototype, tab: !!t && Object.getPrototypeOf(t) === w.Object.prototype };`,
     );
     expect(realms).toEqual({ state: true, tabs: true, tab: true });
     // A change sent to the badge is a copy too.
-    await inBadge(m, "essai", "const w = f.contentWindow; w.copies = []; w.webaios.onAccess((x) => w.copies.push(Object.getPrototypeOf(x) === w.Object.prototype && Object.getPrototypeOf(x.tabs) === w.Object.prototype)); return 1;");
+    await inBadge(m, "essai", "const w = f.contentWindow; w.copies = []; w.ressac.onAccess((x) => w.copies.push(Object.getPrototypeOf(x) === w.Object.prototype && Object.getPrototypeOf(x.tabs) === w.Object.prototype)); return 1;");
     await cutAccess(m, "essai");
     await expect.poll(() => inBadge<boolean[]>(m, "essai", "return [...f.contentWindow.copies];"), { timeout: 10_000 }).toContain(true);
     expect((await inBadge<boolean[]>(m, "essai", "return [...f.contentWindow.copies];"))!.every(Boolean)).toBe(true);
@@ -223,7 +223,7 @@ describe("one WebAiOs, essai and autre launched in each test", () => {
     await waitUi(m, "return !!doc.querySelector('[data-testid=\"review-page\"]')", [], 15_000);
     await expect.poll(async () => (await reviewTabs(m, "app-essai")).map((o) => o.title), { timeout: 10_000 }).toEqual(["Relecture — Essai"]);
     // The UI refuses a folder name a shell would not take, and a project without manifest, before any page.
-    await inUi(m, "ui.webaios.apps.act('../x', 'review'); ui.webaios.apps.act('vieux', 'review'); return 1;");
+    await inUi(m, "ui.ressac.apps.act('../x', 'review'); ui.ressac.apps.act('vieux', 'review'); return 1;");
     await sleep(500);
     expect(Object.values((await state(m)).tabs).filter((o) => o.url.startsWith(reviewUrl("app-"))).length).toBe(1);
   });
@@ -232,7 +232,7 @@ describe("one WebAiOs, essai and autre launched in each test", () => {
   it("Voir les modifications de l'agent from the badge opens the same page in the main window, without a second tab", async () => {
     await launched();
     for (let i = 0; i < 2; i++) {
-      await clickBadge(m, "essai", '[data-testid="webaios-pill"]');
+      await clickBadge(m, "essai", '[data-testid="ressac-pill"]');
       await clickBadge(m, "essai", '[role="menuitem"]', "Voir les modifications de l'agent");
       await expect.poll(async () => (await reviewTabs(m, "app-essai")).map((o) => o.title), { timeout: 10_000 }).toEqual(["Relecture — Essai"]);
     }

@@ -1,4 +1,4 @@
-import type { DirectWidget } from "@webaios/kernel";
+import type { DirectWidget } from "@ressac/kernel";
 
 export type Badge = { status: string; items: number | null };
 

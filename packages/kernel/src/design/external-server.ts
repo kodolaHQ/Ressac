@@ -16,7 +16,7 @@ export const undeclaredProject = (d: string): string =>
   `Ce dossier n'est pas un projet déclaré par ce client : ${d}. Appelle declare_project avec ton dossier de travail.`;
 export const NO_REMARK = "Aucune remarque en attente pour ce projet.";
 export const pluggedCommand = (port: number, token: string): string =>
-  `claude mcp add --transport http --scope user webaios-remarks http://127.0.0.1:${port}/mcp-external --header "Authorization: Bearer ${token}"`;
+  `claude mcp add --transport http --scope user ressac-remarks http://127.0.0.1:${port}/mcp-external --header "Authorization: Bearer ${token}"`;
 export const portTaken = (port: number): string => `Le port ${port} est pris : le MCP externe est éteint.`;
 
 const CAPTURE_MAX = 8 * 1024 * 1024;
@@ -70,7 +70,7 @@ function createExternalServer(o: {
   declare(client: ExternalClient, d: { folder: string; ports: number[]; name?: string }): Promise<DeclarationResult>;
 }): McpServer {
   const { registry: registry, remarks: remarks, client } = o;
-  const server = new McpServer({ name: "webaios-remarks", version: "1.0.0" });
+  const server = new McpServer({ name: "ressac-remarks", version: "1.0.0" });
   const protect =
     <A>(f: (a: A) => Promise<Result>) =>
     async (a: A): Promise<Result> => {
@@ -91,7 +91,7 @@ function createExternalServer(o: {
   server.registerTool(
     "declare_project",
     {
-      description: `Déclare à WebAiOs le projet que tu développes, pour que l'utilisateur puisse t'envoyer des remarques sur ses pages ; ${FOLDER_DESC}, et les ports de ses serveurs de développement.`,
+      description: `Déclare à Ressac le projet que tu développes, pour que l'utilisateur puisse t'envoyer des remarques sur ses pages ; ${FOLDER_DESC}, et les ports de ses serveurs de développement.`,
       inputSchema: { folder: folder, ports: z.array(z.number()).describe("Ports locaux du projet (1 à 10)."), name: z.string().optional() },
     },
     protect(async ({ folder: d, ports, name: name }) => {

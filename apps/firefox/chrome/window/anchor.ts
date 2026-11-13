@@ -10,9 +10,9 @@ export interface Rect {
 }
 
 export interface Anchors {
-  /** #webaios-anchor: prompts of add-ons and sites, on the sidebar's address bar. */
+  /** #ressac-anchor: prompts of add-ons and sites, on the sidebar's address bar. */
   readonly prompt: Element;
-  /** #webaios-action-anchor: add-on popups, moved onto the clicked button. */
+  /** #ressac-action-anchor: add-on popups, moved onto the clicked button. */
   readonly action: Element;
   /** Puts the action anchor on `rect`, given in the sidebar iframe's coordinates. */
   placeAction(rect: Rect): void;
@@ -20,7 +20,7 @@ export interface Anchors {
 
 /**
  * Creates both anchors in browser.xhtml and hooks gUnifiedExtensions, PopupNotifications and PanelUI. Firefox anchors
- * these on its toolbar, which WebAiOs hides: without the hooks a prompt opens at the window's (0, 0), with no arrow.
+ * these on its toolbar, which Ressac hides: without the hooks a prompt opens at the window's (0, 0), with no arrow.
  * Call after delayedStartupPromise (PopupNotifications is a lazy getter). The hooks go with the window.
  */
 export function setupAnchors(win: Window, frame: HTMLIFrameElement): Anchors {
@@ -33,8 +33,8 @@ export function setupAnchors(win: Window, frame: HTMLIFrameElement): Anchors {
     doc.documentElement.append(el);
     return el;
   };
-  const prompt = box("webaios-anchor");
-  const action = box("webaios-action-anchor");
+  const prompt = box("ressac-anchor");
+  const action = box("ressac-action-anchor");
   /** `rect` in the iframe's coordinates, onto `el` in the window's. */
   const place = (el: HTMLElement, rect: Rect) => {
     const f = frame.getBoundingClientRect();
@@ -53,8 +53,8 @@ export function setupAnchors(win: Window, frame: HTMLIFrameElement): Anchors {
   };
 
   w.gUnifiedExtensions.getPopupAnchorID = (browser: any) => {
-    browser["webaios-anchorpopupnotificationanchor"] = placePrompt();
-    return "webaios-anchor";
+    browser["ressac-anchorpopupnotificationanchor"] = placePrompt();
+    return "ressac-anchor";
   };
   // Not Firefox's own fallback chain (PopupNotificationsBeforeAnchor, gURLBar): those all sit in the hidden toolbar.
   w.PopupNotifications._getVisibleAnchorElement = (el: Element | null) => {
@@ -63,7 +63,7 @@ export function setupAnchors(win: Window, frame: HTMLIFrameElement): Anchors {
   };
   // Stock Firefox dismisses the open prompt on a tab switch, which cancels a removeOnDismissal one (upstream test
   // browser_permissions_dismiss.js, test_tab_switch_dismiss); a dismissed prompt is then reached from its urlbar icon.
-  // WebAiOs has no urlbar icon, so it keeps every prompt (sites' too) and it comes back with its tab: hidden here without
+  // Ressac has no urlbar icon, so it keeps every prompt (sites' too) and it comes back with its tab: hidden here without
   // dismissal. Relies on the private _hidePanel/_ignoreDismissal: re-check on Firefox upgrades.
   w.gBrowser.tabContainer.addEventListener("TabSelect", () => w.PopupNotifications.isPanelOpen && w.PopupNotifications._hidePanel(), true);
   const panelAnchor = w.PanelUI._getPanelAnchor;

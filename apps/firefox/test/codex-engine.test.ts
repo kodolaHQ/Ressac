@@ -11,21 +11,21 @@ describe("codexEngineArgs", () => {
   it("ollama", () => {
     expect(codexEngineArgs(e({ kind: "ollama", ollamaUrl: "http://host.docker.internal:11434/" }), null)).toEqual({
       args: [
-        "-c", 'model_provider="webaios-ollama"',
-        "-c", 'model_providers.webaios-ollama={name="Ollama",base_url="http://host.docker.internal:11434/v1",env_key="WEBAIOS_ENGINE_TOKEN"}',
+        "-c", 'model_provider="ressac-ollama"',
+        "-c", 'model_providers.ressac-ollama={name="Ollama",base_url="http://host.docker.internal:11434/v1",env_key="RESSAC_ENGINE_TOKEN"}',
         "-m", "gpt-oss:20b",
       ],
-      env: { WEBAIOS_ENGINE_TOKEN: "ollama" },
+      env: { RESSAC_ENGINE_TOKEN: "ollama" },
     });
   });
   it("api", () => {
     expect(codexEngineArgs(e({ kind: "api", apiUrl: "https://x.test/v1", apiModel: "m1" }), { url: "http://host.docker.internal:5555", token: "t" })).toEqual({
       args: [
-        "-c", 'model_provider="webaios-api"',
-        "-c", 'model_providers.webaios-api={name="API compatible",base_url="http://host.docker.internal:5555",env_key="WEBAIOS_ENGINE_TOKEN"}',
+        "-c", 'model_provider="ressac-api"',
+        "-c", 'model_providers.ressac-api={name="API compatible",base_url="http://host.docker.internal:5555",env_key="RESSAC_ENGINE_TOKEN"}',
         "-m", "m1",
       ],
-      env: { WEBAIOS_ENGINE_TOKEN: "t" },
+      env: { RESSAC_ENGINE_TOKEN: "t" },
     });
   });
   it("api: a bad address names the problem", () => {

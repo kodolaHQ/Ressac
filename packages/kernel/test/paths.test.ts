@@ -3,25 +3,25 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { pathInContainer, spacePaths } from "../src/paths.js";
 
-const old = process.env.WEBAIOS_ROOT;
+const old = process.env.RESSAC_ROOT;
 afterEach(() => {
-  if (old === undefined) delete process.env.WEBAIOS_ROOT;
-  else process.env.WEBAIOS_ROOT = old;
+  if (old === undefined) delete process.env.RESSAC_ROOT;
+  else process.env.RESSAC_ROOT = old;
 });
 
-test("default paths under ~/WebAiOs", () => {
-  delete process.env.WEBAIOS_ROOT;
+test("default paths under ~/Ressac", () => {
+  delete process.env.RESSAC_ROOT;
   const c = spacePaths();
-  expect(c.root).toBe(join(homedir(), "WebAiOs"));
-  expect(c.widgets).toBe(join(homedir(), "WebAiOs", "home", "widgets"));
-  expect(c.mcpConfig).toBe(join(homedir(), "WebAiOs", ".webaios", "mcp.json"));
+  expect(c.root).toBe(join(homedir(), "Ressac"));
+  expect(c.widgets).toBe(join(homedir(), "Ressac", "home", "widgets"));
+  expect(c.mcpConfig).toBe(join(homedir(), "Ressac", ".ressac", "mcp.json"));
 });
 
-test("WEBAIOS_ROOT overrides the root", () => {
-  process.env.WEBAIOS_ROOT = "/tmp/ailleurs";
+test("RESSAC_ROOT overrides the root", () => {
+  process.env.RESSAC_ROOT = "/tmp/ailleurs";
   const c = spacePaths();
   expect(c.root).toBe("/tmp/ailleurs");
-  expect(c.profiles).toBe("/tmp/ailleurs/.webaios/profiles");
+  expect(c.profiles).toBe("/tmp/ailleurs/.ressac/profiles");
 });
 
 test("pathInContainer translates a space path and refuses the rest", () => {

@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { openTab, testActor } from "./agent-extensions";
 import { startDesignServers } from "./design";
 import { waitFor } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { click, pressKeys, waitUi } from "./ui";
 
@@ -13,20 +13,20 @@ import { click, pressKeys, waitUi } from "./ui";
 
 const NOTE = '[data-testid="first-time-design"]';
 let demo: Awaited<ReturnType<typeof startDesignServers>>;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 const dirs: string[] = [];
 
 beforeAll(async () => {
   demo = await startDesignServers({ port: 15340 });
-  const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
-  const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
+  const profile = await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
   dirs.push(dataDir, profile);
   const a = testActor(profile);
-  w = await launchWebAiOs({ dataDir, profile, env: { ...a.env, WEBAIOS_APP_PORTS: "15340-15344" }, prefs: a.prefs, firstTimeNotes: true });
+  w = await launchRessac({ dataDir, profile, env: { ...a.env, RESSAC_APP_PORTS: "15340-15344" }, prefs: a.prefs, firstTimeNotes: true });
   m = w.marionette;
   await m.setContext("chrome");
-  await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+  await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
 }, 120_000);
 afterAll(async () => {
   await w?.close();

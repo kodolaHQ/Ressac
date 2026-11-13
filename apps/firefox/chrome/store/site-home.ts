@@ -1,5 +1,5 @@
 // A site app's home screen, written by the agent in `<dataDir>/workspace/sites/<id>/home/`: the served copy (a
-// webaios-site: scheme cannot be registered here: a resource:// substitution serves a sanitized
+// ressac-site: scheme cannot be registered here: a resource:// substitution serves a sanitized
 // copy), and the site images it asks for, loaded in the app's container.
 import { IMAGE_SITE_MAX } from "../../shared/sites";
 import { localUrl } from "../../../../packages/kernel/src/workflows/access";
@@ -24,11 +24,11 @@ const FILE_DIRECTIVES = new Set(["script-src", "style-src", "img-src", "font-src
  */
 export const HOME_TYPES = new Set([".html", ".js", ".css", ".json", ".txt", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif", ".svg", ".ico", ".woff", ".woff2", ".ttf", ".otf"]);
 const extension = (segment: string) => (segment.lastIndexOf(".") > 0 ? segment.slice(segment.lastIndexOf(".")).toLowerCase() : "");
-const substitution = (key: string) => `webaios-site-${key}`;
+const substitution = (key: string) => `ressac-site-${key}`;
 
 /**
- * The home's CSP, with the served copy's files at `resource://webaios-site-<key>` (`key`: see serveHome) in
- * place of `webaios-site://<id>`.
+ * The home's CSP, with the served copy's files at `resource://ressac-site-<key>` (`key`: see serveHome) in
+ * place of `ressac-site://<id>`.
  */
 export function cspFirefoxHome(key: string): string {
   return CSP_WIDGET.split("; ")
@@ -39,7 +39,7 @@ export function cspFirefoxHome(key: string): string {
 /**
  * Home pages call `parent.postMessage`; from a sandboxed opaque frame Firefox refuses it towards a chrome
  * parent. Run first in the served copy (page world): `parent` (a [Replaceable] property) becomes an object whose
- * postMessage dispatches `webaios-home` on the frame's window, its detail the message as JSON, for the chrome to read.
+ * postMessage dispatches `ressac-home` on the frame's window, its detail the message as JSON, for the chrome to read.
  * Self-contained, serialized with toString().
  */
 export function homeBridge(): void {
@@ -47,7 +47,7 @@ export function homeBridge(): void {
   const stringify = JSON.stringify;
   const Custom = w.CustomEvent;
   const dispatch = w.dispatchEvent.bind(w);
-  w.parent = Object.freeze({ postMessage: (m: unknown) => void dispatch(new Custom("webaios-home", { detail: stringify(m) })) });
+  w.parent = Object.freeze({ postMessage: (m: unknown) => void dispatch(new Custom("ressac-home", { detail: stringify(m) })) });
 }
 
 export const HOME_BRIDGE = `<script>(${homeBridge.toString()})();</script>`;
@@ -88,11 +88,11 @@ function substitute(name: string, dir: string | null): void {
 }
 
 /**
- * Copies `<dataDir>/workspace/sites/<id>/home/` into `<dataDir>/webaios-sites/<id>/<token>/` with these
+ * Copies `<dataDir>/workspace/sites/<id>/home/` into `<dataDir>/ressac-sites/<id>/<token>/` with these
  * rules: the app folder named exactly `id` (a case-insensitive disk would find « Vidola » for
  * « vidola »), no symbolic link anywhere on a path, no hidden segment, `FICHIER_ACCUEIL_MAX` at most per file,
  * only the served types (HOME_TYPES); the `.html` pages go through homeServed. Points
- * `resource://webaios-site-<id>-<token>/` straight at that folder (the previous serve's substitution and folder go) and returns its `index.html`, or null (no home page, or a refused folder).
+ * `resource://ressac-site-<id>-<token>/` straight at that folder (the previous serve's substitution and folder go) and returns its `index.html`, or null (no home page, or a refused folder).
  * The token is random at each serve: the substitution is content-accessible (ALLOW_CONTENT_ACCESS, below), so neither
  * its host nor any root above it may be guessable by a web page.
  * shortcut: files are checked by realpath then read by path (IOUtils has no O_NOFOLLOW): a link swapped in between is
@@ -124,11 +124,11 @@ async function serveNow(dataDir: string, id: string): Promise<string | null> {
     if (realPath(source) !== expected) return null;
     const token = Services.uuid.generateUUID().toString().replace(/[{}-]/g, "");
     const key = `${id}-${token}`;
-    const copies = PathUtils.join(dataDir, "webaios-sites", id);
+    const copies = PathUtils.join(dataDir, "ressac-sites", id);
     const target = PathUtils.join(copies, token);
     await IOUtils.makeDirectory(copies, { createAncestors: true, ignoreExisting: true });
-    // The copies stay inside <dataDir>/webaios-sites: a copies folder that is a link is refused.
-    const root = realPath(PathUtils.join(dataDir, "webaios-sites"));
+    // The copies stay inside <dataDir>/ressac-sites: a copies folder that is a link is refused.
+    const root = realPath(PathUtils.join(dataDir, "ressac-sites"));
     if (!root || realPath(copies) !== PathUtils.join(root, id)) return null;
     await IOUtils.makeDirectory(target, { ignoreExisting: true });
     let index = false;
@@ -174,7 +174,7 @@ async function serveNow(dataDir: string, id: string): Promise<string | null> {
   }
 }
 
-/** The host of the copy app `id`'s home is served under now (`webaios-site-<id>-<token>`), or undefined. */
+/** The host of the copy app `id`'s home is served under now (`ressac-site-<id>-<token>`), or undefined. */
 export const servedHost = (id: string): string | undefined => current.get(id);
 
 /** « Supprimer »: the app's served home goes, its substitution and its copies. */
@@ -185,7 +185,7 @@ export async function forgetHome(dataDir: string, id: string): Promise<void> {
   const name = current.get(id);
   current.delete(id);
   if (name) substitute(name, null);
-  await IOUtils.remove(PathUtils.join(dataDir, "webaios-sites", id), { recursive: true, ignoreAbsent: true });
+  await IOUtils.remove(PathUtils.join(dataDir, "ressac-sites", id), { recursive: true, ignoreAbsent: true });
 }
 
 // --- Images: loaded through a channel, on Uint8Array.

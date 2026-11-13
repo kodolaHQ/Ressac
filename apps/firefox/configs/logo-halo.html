@@ -4,7 +4,7 @@
 <!-- Source of the app icon: render with scripts/render-logo.sh. ?small drops the page (<= 32 px), ?mac adds the macOS transparent margin, ?word renders the wordmark. -->
 <style>
 @property --ang { syntax: "<angle>"; inherits: false; initial-value: 49deg; }
-@font-face { font-family: "Funnel Display"; font-weight: 300 800; src: url("../src/browser/base/content/webaios/fonts/FunnelDisplay-latin.woff2") format("woff2"); }
+@font-face { font-family: "Funnel Display"; font-weight: 300 800; src: url("../src/browser/base/content/ressac/fonts/FunnelDisplay-latin.woff2") format("woff2"); }
 :root { --a1: #FF9F7A; --a2: #FF6F91; --a3: #FFD36E; }
 * { box-sizing: border-box; }
 html, body { margin: 0; background: transparent; width: 1024px; height: 1024px; overflow: hidden; }
@@ -41,6 +41,6 @@ html, body { margin: 0; background: transparent; width: 1024px; height: 1024px; 
 </div></div></div>
 <script>
 const q = location.search;
-if (q.includes("word")) { document.body.style.cssText = "width:auto;height:auto"; document.documentElement.style.cssText = "width:auto;height:auto"; document.body.innerHTML = '<div class="word">webaios</div>'; }
+if (q.includes("word")) { document.body.style.cssText = "width:auto;height:auto"; document.documentElement.style.cssText = "width:auto;height:auto"; document.body.innerHTML = '<div class="word">ressac</div>'; }
 else document.getElementById("root").className = (q.includes("small") ? "small " : "") + (q.includes("mac") ? "mac" : "");
 </script>

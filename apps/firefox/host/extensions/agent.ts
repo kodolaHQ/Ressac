@@ -44,7 +44,7 @@ export const ACTIVATION_REMOVED = REQUEST_REMOVED;
 export const ALL_CUT_AGENT = "Les extensions sont toutes désactivées : rien n'est activé";
 const REMOVED_DURING_CARD = "Extension retirée pendant la carte : rien n'est activé";
 const SPACE_GONE = "Espace disparu pendant la carte : rien n'est activé";
-export const folderAbsent = (id: string) => `${FOLDER_ABSENT} : ~/WebAiOs/extensions/${id} n'existe plus (recrée-le, puis reload_extension)`;
+export const folderAbsent = (id: string) => `${FOLDER_ABSENT} : ~/Ressac/extensions/${id} n'existe plus (recrée-le, puis reload_extension)`;
 export const NO_GRANT = "Extension sans accord : demande d'abord son activation";
 /** Firefox refused the signed .xpi. */
 export const installationImpossible = (m: string) => "Installation impossible : " + m.slice(0, 2000);
@@ -633,15 +633,15 @@ export class ExtensionsAgent {
 
   /**
    * « Supprimer »: uninstalled, copy and signed .xpi deleted, registry entry removed; amo-versions.json kept (AMO never reuses a number).
-   * `outsideWebaios`: about:addons' pending removal, which its Undo may have cancelled since: then nothing changes.
+   * `outsideRessac`: about:addons' pending removal, which its Undo may have cancelled since: then nothing changes.
    */
-  remove(key: string, outsideWebaios = false): Promise<void> {
+  remove(key: string, outsideRessac = false): Promise<void> {
     const id = this.id(key);
     if (!id) return Promise.reject(new Error(`Identifiant d'extension invalide : ${key}`));
     this.cards.get(key)?.abort();
     return this.queued(key, async () => {
       // Uninstalled first: an entry gone while the add-on stays installed would run without a grant.
-      const done = await this.o.rpc.request("extensions.uninstall", outsideWebaios ? { addonId: addonIdOf(id), unlessUndone: true } : { addonId: addonIdOf(id) });
+      const done = await this.o.rpc.request("extensions.uninstall", outsideRessac ? { addonId: addonIdOf(id), unlessUndone: true } : { addonId: addonIdOf(id) });
       if (done === false) return;
       await this.edit((e) => (key in e.extensions ? remove(e, key) : e));
       this.consoles.forget(addonIdOf(id));
@@ -652,7 +652,7 @@ export class ExtensionsAgent {
   }
 
   /** about:addons removed it (« Supprimer », grant deleted) or disabled it (« Désactiver partout ») (decision 6). */
-  async outsideWebaios(addonId: string, what: "uninstalled" | "disabled"): Promise<void> {
+  async outsideRessac(addonId: string, what: "uninstalled" | "disabled"): Promise<void> {
     if (!addonId.endsWith(ID_SUFFIX)) return;
     const key = this.key(addonId.slice(0, -ID_SUFFIX.length));
     if (!key || !(key in (await readExtensionsState(this.o.folder)).extensions)) return;
@@ -840,7 +840,7 @@ export class ExtensionsAgent {
 
   /** `active` false: Firefox installs it only over a present add-on (disabled first), never fresh. */
   private install(id: string, xpi: string, version: string, active: boolean): Promise<{ version: string } | null> {
-    return this.o.rpc.request("extensions.install", { addonId: addonIdOf(id), xpi, temporary: !!this.env.WEBAIOS_TEST_AMO_URL, version, active: active });
+    return this.o.rpc.request("extensions.install", { addonId: addonIdOf(id), xpi, temporary: !!this.env.RESSAC_TEST_AMO_URL, version, active: active });
   }
 
   /**
@@ -998,7 +998,7 @@ export class ExtensionsAgent {
     await mkdir(signs, { recursive: true });
     try {
       await zipper(p.staging, sending);
-      await sign({ xpi: sending, guid: addonIdOf(id), version, key: amoKey, base: this.env.WEBAIOS_TEST_AMO_URL || AMO_URL, output: waiting, signal: this.stopSignal.signal });
+      await sign({ xpi: sending, guid: addonIdOf(id), version, key: amoKey, base: this.env.RESSAC_TEST_AMO_URL || AMO_URL, output: waiting, signal: this.stopSignal.signal });
     } catch (e) {
       await rm(waiting, { force: true });
       return { ok: false, error: e instanceof SignatureError ? e.message : signatureImpossible((e as Error).message) };
@@ -1049,8 +1049,8 @@ export class ExtensionsAgent {
       const manifest = JSON.parse(await readFile(join(staging, "manifest.json"), "utf8"));
       const denial = firefoxDenial(manifest, await readdir(staging, { recursive: true }));
       if (denial.length > 0) return deny(denial);
-      // The original classic background, read from the copy's own generated webaios-background.js (never the agent's folder again).
-      const background = /^importScripts\("webaios-background-guard\.js", ("(?:[^"\\]|\\.)*")\);$/m.exec(await readFile(join(staging, "webaios-background.js"), "utf8"));
+      // The original classic background, read from the copy's own generated ressac-background.js (never the agent's folder again).
+      const background = /^importScripts\("ressac-background-guard\.js", ("(?:[^"\\]|\\.)*")\);$/m.exec(await readFile(join(staging, "ressac-background.js"), "utf8"));
       return { ok: true, analysis: r.analysis, hash: r.hash, staging, originalBackground: background ? (JSON.parse(background[1]!) as string) : undefined };
     } catch (e) {
       return deny([`Copie impossible : ${(e as Error).message}`]);

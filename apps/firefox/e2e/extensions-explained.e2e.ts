@@ -3,7 +3,7 @@ import os from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { dispatch, state, waitReady } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { click, inUi, missingApi, waitUi } from "./ui";
 
@@ -11,12 +11,12 @@ import { click, inUi, missingApi, waitUi } from "./ui";
 
 const PAGE = '[data-testid="page-extensions"]';
 const HELP = '[data-testid="extensions-help"]';
-const SHOTS = join(import.meta.dirname, "../../../.superpowers/sdd/2026-11-11-webaios-plan-51-extensions-explications/shots");
+const SHOTS = join(import.meta.dirname, "../../../.superpowers/sdd/2026-11-11-ressac-plan-51-extensions-explications/shots");
 const NO_WEB = { "network.proxy.type": 1, "network.proxy.http": "127.0.0.1", "network.proxy.http_port": 1, "network.proxy.ssl": "127.0.0.1", "network.proxy.ssl_port": 1 };
 
-let w: LaunchedWebAiOs | undefined;
+let w: LaunchedRessac | undefined;
 let m: Marionette;
-const temp = mkdtempSync(join(os.tmpdir(), "webaios-ext-explained-"));
+const temp = mkdtempSync(join(os.tmpdir(), "ressac-ext-explained-"));
 afterEach(async () => {
   try {
     if (w) expect(await missingApi(m)).toEqual([]);
@@ -31,13 +31,13 @@ const text = (selector: string) => inUi<string>(m, "return (doc.querySelector(ar
 const has = (selector: string) => inUi<boolean>(m, "return !!doc.querySelector(arguments[0])", [selector]);
 const seen = async () => (await state(m)).settings.hints.seen;
 async function openExtensions(): Promise<void> {
-  await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url: "webaios://extensions", activate: true });
+  await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url: "ressac://extensions", activate: true });
   await waitUi(m, "return !!doc.querySelector(arguments[0])", [PAGE]);
 }
 
 describe("the Extensions page explains itself", () => {
   it("shows the three steps, no store field, vous; Fermer sticks across a reload; the link brings it back", { timeout: 90_000 }, async () => {
-    w = await launchWebAiOs({ env: { WEBAIOS_OLLAMA_URL: "http://127.0.0.1:9", WEBAIOS_TEST_KEYCHAIN: join(temp, "keychain") }, prefs: NO_WEB, firstTimeNotes: true });
+    w = await launchRessac({ env: { RESSAC_OLLAMA_URL: "http://127.0.0.1:9", RESSAC_TEST_KEYCHAIN: join(temp, "keychain") }, prefs: NO_WEB, firstTimeNotes: true });
     m = w.marionette;
     await m.setContext("chrome");
     await waitReady(m);
@@ -59,7 +59,7 @@ describe("the Extensions page explains itself", () => {
     await waitUi(m, "return doc.querySelector(arguments[0]).textContent.includes('Aucune extension.')", [PAGE]);
     expect(await text(PAGE)).toContain("Aucune extension. Demandez à l'agent d'en écrire une, ou installez-en depuis addons.mozilla.org.");
     expect(await text(PAGE)).not.toMatch(/\b(tu|ton|tes|Ajoute)\b/);
-    if (process.env.WEBAIOS_E2E_SHOTS) {
+    if (process.env.RESSAC_E2E_SHOTS) {
       mkdirSync(SHOTS, { recursive: true });
       await new Promise((r) => setTimeout(r, 800)); // the entrance spring
       const png = (await m.command<{ value: string }>("WebDriver:TakeScreenshot", { full: false, hash: false })).value;
@@ -85,7 +85,7 @@ describe("the Extensions page explains itself", () => {
   });
 
   it("step 1 reads « Compte branché » once the account is saved", { timeout: 90_000 }, async () => {
-    w = await launchWebAiOs({ env: { WEBAIOS_OLLAMA_URL: "http://127.0.0.1:9", WEBAIOS_TEST_KEYCHAIN: join(temp, "keychain2") }, prefs: NO_WEB, firstTimeNotes: true });
+    w = await launchRessac({ env: { RESSAC_OLLAMA_URL: "http://127.0.0.1:9", RESSAC_TEST_KEYCHAIN: join(temp, "keychain2") }, prefs: NO_WEB, firstTimeNotes: true });
     m = w.marionette;
     await m.setContext("chrome");
     await waitReady(m);

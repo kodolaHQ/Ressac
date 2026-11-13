@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { blocker, cleanupXpis, hider, installAddon, installed, uninstallAddon } from "./addons";
 import { dispatch, state, waitFor } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
 
@@ -19,9 +19,9 @@ afterAll(async () => {
 });
 
 const ready = (m: Marionette) =>
-  waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+  waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
 
-/** Opens `path` in a WebAiOs tab, waits until it is loaded; returns the tab id. */
+/** Opens `path` in a Ressac tab, waits until it is loaded; returns the tab id. */
 async function open(m: Marionette, path: string): Promise<string> {
   const before = new Set(Object.keys((await state(m)).tabs));
   const s = await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url: server.url + path });
@@ -29,10 +29,10 @@ async function open(m: Marionette, path: string): Promise<string> {
   return Object.keys(s.tabs).find((id) => !before.has(id))!;
 }
 
-/** Runs `script` in the content page of WebAiOs tab `id`, then comes back to the chrome context. */
+/** Runs `script` in the content page of Ressac tab `id`, then comes back to the chrome context. */
 async function inPage<T>(m: Marionette, id: string, script: string): Promise<T> {
   const handle = await m.execute<string>(
-    `const t = gBrowser.tabs.find((t) => t.getAttribute("webaios-tab-id") === arguments[0]);
+    `const t = gBrowser.tabs.find((t) => t.getAttribute("ressac-tab-id") === arguments[0]);
      return ChromeUtils.importESModule("${NAVIGABLES}").NavigableManager.getIdForBrowser(t.linkedBrowser);`,
     [id],
   );
@@ -46,10 +46,10 @@ async function inPage<T>(m: Marionette, id: string, script: string): Promise<T> 
 }
 
 describe("add-ons in pages", () => {
-  let w: LaunchedWebAiOs;
+  let w: LaunchedRessac;
   let m: Marionette;
   beforeAll(async () => {
-    w = await launchWebAiOs();
+    w = await launchRessac();
     m = w.marionette;
     await m.setContext("chrome");
     await ready(m);
@@ -91,9 +91,9 @@ describe("runtime.onInstalled", () => {
       }
     };
     // Kept across the restart, so we own them.
-    const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
-    const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
-    let w = await launchWebAiOs({ ...o, profile, dataDir });
+    const profile = await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
+    const dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
+    let w = await launchRessac({ ...o, profile, dataDir });
     try {
       await w.marionette.setContext("chrome");
       await ready(w.marionette);
@@ -103,7 +103,7 @@ describe("runtime.onInstalled", () => {
     } finally {
       await w.close();
     }
-    w = await launchWebAiOs({ ...o, profile, dataDir });
+    w = await launchRessac({ ...o, profile, dataDir });
     try {
       await until(() => notes("started"), 2);
       await new Promise((r) => setTimeout(r, 1000));

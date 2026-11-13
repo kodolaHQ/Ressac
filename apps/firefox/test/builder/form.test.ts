@@ -1,4 +1,4 @@
-import { blockCatalog } from "@webaios/kernel";
+import { blockCatalog } from "@ressac/kernel";
 import { expect, test } from "vitest";
 import { shownFields, entryOf, paramsWith, textOf } from "../../ui/builder/form";
 

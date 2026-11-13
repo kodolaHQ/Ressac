@@ -1,5 +1,5 @@
-import type { Warning, BlockCatalogEntry } from "@webaios/kernel";
-import type { ApiWebaios, WorkflowEdit } from "../../shared/api";
+import type { Warning, BlockCatalogEntry } from "@ressac/kernel";
+import type { ApiRessac, WorkflowEdit } from "../../shared/api";
 import { CODE_MODEL, freshParams } from "./add";
 import { addBlock, move, History, sameDraft, followFile, toDraft, type Draft } from "./draft";
 import { arrange, shownPositions, withoutLayout } from "./layout";
@@ -13,10 +13,10 @@ export type SaveState = "saved" | "saving" | { invalid: string; block?: string }
 export type Load = "loading" | "ready" | "not-found" | { unreadable: string };
 /** Reading and writing the workflow, addressed by the workflow's key (`targetKey`). */
 export type Depot = {
-  read(key: string): ReturnType<ApiWebaios["workflow"]["read"]>;
-  save(key: string, draft: Draft): ReturnType<ApiWebaios["workflow"]["save"]>;
-  readCode(key: string, name: string): ReturnType<ApiWebaios["workflow"]["readCode"]>;
-  saveCode(key: string, name: string, text: string): ReturnType<ApiWebaios["workflow"]["saveCode"]>;
+  read(key: string): ReturnType<ApiRessac["workflow"]["read"]>;
+  save(key: string, draft: Draft): ReturnType<ApiRessac["workflow"]["save"]>;
+  readCode(key: string, name: string): ReturnType<ApiRessac["workflow"]["readCode"]>;
+  saveCode(key: string, name: string, text: string): ReturnType<ApiRessac["workflow"]["saveCode"]>;
 };
 export type Viewport = { x: number; y: number; zoom: number };
 
@@ -385,7 +385,7 @@ export function forgetEdits(presents: Iterable<string>): void {
 
 let tracking = false;
 /** Once per window: on each change of home, the edits of departed widgets are forgotten. */
-export function followDisappearances(home: Pick<ApiWebaios["home"], "read" | "onChange">): void {
+export function followDisappearances(home: Pick<ApiRessac["home"], "read" | "onChange">): void {
   if (tracking) return;
   tracking = true;
   home.onChange(() => {

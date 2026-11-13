@@ -5,7 +5,7 @@ import { join } from "node:path";
 import type { BrowserState } from "../shared/model";
 import { afterEach, describe, expect, it } from "vitest";
 import { dispatch, state, waitFor, waitReady } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import { startServer } from "./server";
 import type { Marionette } from "./marionette";
 import { click, inUi, keyDown, keyUp, missingApi, pressKeys, waitUi } from "./ui";
@@ -17,7 +17,7 @@ const NO_WEB = { "network.proxy.type": 1, "network.proxy.http": "127.0.0.1", "ne
 const LAYER = '[data-testid="welcome-layer"]';
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-let w: LaunchedWebAiOs | undefined;
+let w: LaunchedRessac | undefined;
 let m: Marionette;
 const dirs: string[] = [];
 afterEach(async () => {
@@ -33,8 +33,8 @@ afterEach(async () => {
 /** A launch that shows the welcome (unless `welcome` is false: the tests' default, which skips it). Ollama unreachable. */
 async function launch(o: { welcome?: boolean; env?: Record<string, string>; dataDir?: string; firstTimeNotes?: boolean } = {}): Promise<void> {
   // The kernel's own decision-model address: the welcome reads the decision model found in Ollama, which an imposed one hides.
-  const env = { WEBAIOS_OLLAMA_URL: "http://127.0.0.1:9", WEBAIOS_KEV_URL: undefined, ...(o.welcome === false ? {} : { WEBAIOS_SKIP_WELCOME: "0" }), ...o.env };
-  w = await launchWebAiOs({ env, prefs: NO_WEB, dataDir: o.dataDir, firstTimeNotes: o.firstTimeNotes });
+  const env = { RESSAC_OLLAMA_URL: "http://127.0.0.1:9", RESSAC_KEV_URL: undefined, ...(o.welcome === false ? {} : { RESSAC_SKIP_WELCOME: "0" }), ...o.env };
+  w = await launchRessac({ env, prefs: NO_WEB, dataDir: o.dataDir, firstTimeNotes: o.firstTimeNotes });
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
@@ -91,7 +91,7 @@ describe("welcome", () => {
     await shows("welcome-docker", "OrbStack n'est pas lancé ou pas installé.");
     // An install link opens its page and the welcome steps aside; the pill brings it back on the same step.
     await press("welcome-install-docker");
-    await waitFor<BrowserState>(m, `return (async () => (await ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready).state)();`, (s) =>
+    await waitFor<BrowserState>(m, `return (async () => (await ChromeUtils.importESModule("chrome://browser/content/ressac/store.sys.mjs").ready).state)();`, (s) =>
       Object.values(s.tabs).some((t) => t.url === "https://orbstack.dev/download"),
     );
     await layerGone();
@@ -151,7 +151,7 @@ describe("welcome", () => {
       },
     });
     try {
-      await launch({ env: { WEBAIOS_OLLAMA_URL: ollama.url } });
+      await launch({ env: { RESSAC_OLLAMA_URL: ollama.url } });
       await forward(1, 5);
       await shows("welcome-ollama", "Ollama est prêt.");
       await shows("welcome-models", "Il manque les modèles d'IA locale (plusieurs Go).");
@@ -171,14 +171,14 @@ describe("welcome", () => {
   });
 
   it("a container app installed but stopped: the welcome offers to start it", async () => {
-    await launch({ env: { WEBAIOS_TEST_DOCKER_KIND: "stopped", FAKE_DOCKER_ABSENT: "1" } });
+    await launch({ env: { RESSAC_TEST_DOCKER_KIND: "stopped", FAKE_DOCKER_ABSENT: "1" } });
     await forward(1, 4);
     await shows("welcome-docker", "OrbStack est installé mais arrêté.");
     await shows("welcome-start-docker", "Démarrer OrbStack");
   });
 
   it("no Ollama on the machine: « Installer en arrière-plan » starts the install, and the welcome goes on", async () => {
-    await launch({ env: { WEBAIOS_TEST_OLLAMA_KIND: "absent" } });
+    await launch({ env: { RESSAC_TEST_OLLAMA_KIND: "absent" } });
     await forward(1, 5);
     await shows("welcome-ollama", "L'IA locale n'est pas installée");
     await press("welcome-install-ai");
@@ -188,12 +188,12 @@ describe("welcome", () => {
   });
 
   it("an Ollama too old or stopped: the welcome invites to update it, or offers to start it", async () => {
-    await launch({ env: { WEBAIOS_TEST_OLLAMA_KIND: "outdated" } });
+    await launch({ env: { RESSAC_TEST_OLLAMA_KIND: "outdated" } });
     await forward(1, 5);
     await shows("welcome-ollama", "Ollama 0.30.0 est trop ancien pour l'IA locale : il faut la version 0.40.0 ou plus.");
     await shown("welcome-update-ollama");
     await w!.close();
-    await launch({ env: { WEBAIOS_TEST_OLLAMA_KIND: "stopped" } });
+    await launch({ env: { RESSAC_TEST_OLLAMA_KIND: "stopped" } });
     await forward(1, 5);
     await shows("welcome-ollama", "Ollama est installé mais arrêté.");
     await shown("welcome-start-ollama");
@@ -201,8 +201,8 @@ describe("welcome", () => {
 
   it("a silent host: neither state can be checked", async () => {
     await launch({ welcome: false });
-    await m.execute(`return (async () => { await window.webaiosWindow.store.agent.stop(); return true; })();`);
-    await waitFor<number | null>(m, `return window.webaiosWindow.store.agent.pid;`, (pid) => pid === null);
+    await m.execute(`return (async () => { await window.ressacWindow.store.agent.stop(); return true; })();`);
+    await waitFor<number | null>(m, `return window.ressacWindow.store.agent.pid;`, (pid) => pid === null);
     await click(m, '[data-testid="settings-button"]');
     await click(m, '[data-testid="settings-nav-about"]');
     await click(m, '[data-testid="settings-replay-welcome"]');
@@ -229,7 +229,7 @@ describe("welcome", () => {
     await press("welcome-aura-lagon");
     await press("welcome-finish");
     await layerGone();
-    const s = await waitFor<BrowserState>(m, `return (async () => (await ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready).state)();`, (s) => s.settings.onboarded);
+    const s = await waitFor<BrowserState>(m, `return (async () => (await ChromeUtils.importESModule("chrome://browser/content/ressac/store.sys.mjs").ready).state)();`, (s) => s.settings.onboarded);
     expect(s.spaces).toHaveLength(1);
     expect(activeSpace(s)).toMatchObject({ name: "Travail", aura: "lagon", icon: "🏠", private: false });
     await w!.close();
@@ -246,10 +246,10 @@ describe("welcome", () => {
   });
 
   it("the last page opens macOS's notification settings and stays", async () => {
-    const dir = await mkdtemp(join(os.tmpdir(), "webaios-welcome-"));
+    const dir = await mkdtemp(join(os.tmpdir(), "ressac-welcome-"));
     dirs.push(dir);
     const opened = join(dir, "opened.txt");
-    await launch({ env: { WEBAIOS_TEST_REVEAL: opened } });
+    await launch({ env: { RESSAC_TEST_REVEAL: opened } });
     await forward(1, 6);
     await press("welcome-notifications");
     const read = () => (existsSync(opened) ? readFileSync(opened, "utf8") : "");
@@ -259,7 +259,7 @@ describe("welcome", () => {
   });
 
   it("relaunch after finishing", async () => {
-    const dataDir = await mkdtemp(join(os.tmpdir(), "webaios-welcome-"));
+    const dataDir = await mkdtemp(join(os.tmpdir(), "ressac-welcome-"));
     dirs.push(dataDir);
     await launch({ dataDir });
     await forward(1, 6);
@@ -283,7 +283,7 @@ describe("welcome", () => {
     await fill("welcome-space-name", "Maison");
     await press("welcome-finish");
     await layerGone();
-    const s = await waitFor<BrowserState>(m, `return (async () => (await ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready).state)();`, (s) => s.settings.onboarded);
+    const s = await waitFor<BrowserState>(m, `return (async () => (await ChromeUtils.importESModule("chrome://browser/content/ressac/store.sys.mjs").ready).state)();`, (s) => s.settings.onboarded);
     expect(s.spaces).toHaveLength(1);
     expect(activeSpace(s).name).toBe("Maison");
     // Finished on the last page: a second replay starts at the beginning again.
@@ -298,14 +298,14 @@ describe("welcome", () => {
     await layerGone();
     // The home page opens the agent panel: its note takes the keyboard.
     await waitUi(m, "return !!doc.querySelector(arguments[0])", ['[data-testid="first-time-agent"]'], 10_000, "agent");
-    expect(await m.execute<string>("return document.activeElement?.id;")).toBe("webaios-agent");
+    expect(await m.execute<string>("return document.activeElement?.id;")).toBe("ressac-agent");
     expect(await inUi(m, "return doc.activeElement?.dataset.testid;", [], "agent")).toBe("first-time-ok");
     expect(await inUi(m, `return !!doc.querySelector('[data-testid="tip-card"]')`)).toBe(false);
     await click(m, '[data-testid="first-time-ok"]', { frame: "agent" });
     await waitUi(m, "return !doc.querySelector(arguments[0])", ['[data-testid="first-time-agent"]'], 10_000, "agent");
     // The tip takes its turn, and the keyboard is back where it was: the empty page's field.
     await shown("tip-card");
-    await waitUi(m, "return document.activeElement?.id === 'webaios-sidebar' && doc.activeElement?.dataset.testid === 'empty-page-input'");
+    await waitUi(m, "return document.activeElement?.id === 'ressac-sidebar' && doc.activeElement?.dataset.testid === 'empty-page-input'");
   });
 
   it("default launch skips it", async () => {

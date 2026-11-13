@@ -5,7 +5,7 @@ import { mkdir, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { OllamaStatus } from "../shared/settings.ts";
 
-/** The Ollama WebAiOs downloads when the machine has none: the official archive, checked against its published hash. */
+/** The Ollama Ressac downloads when the machine has none: the official archive, checked against its published hash. */
 export const OLLAMA_VERSION = "0.40.13";
 export const OLLAMA_SHA256 = "bae29252232b9e1358cf5801a7d65a07442af18fb5467cb68c7fc3711f59c511";
 export const OLLAMA_ARCHIVE = `https://github.com/ollama/ollama/releases/download/v${OLLAMA_VERSION}/ollama-darwin.tgz`;
@@ -30,7 +30,7 @@ export interface OllamaRuntimeOptions {
   /** The address the local AI calls. */
   url: string;
   dataDir: string;
-  /** False when the address is not this machine's default one: WebAiOs then starts and installs nothing. */
+  /** False when the address is not this machine's default one: Ressac then starts and installs nothing. */
   managed: boolean;
   fetch?: typeof fetch;
   exists?: (path: string) => boolean;
@@ -62,7 +62,7 @@ export function createOllamaRuntime(o: OllamaRuntimeOptions) {
   const archive = o.archive ?? { url: OLLAMA_ARCHIVE, sha256: OLLAMA_SHA256 };
   const folder = join(o.dataDir, "ollama", OLLAMA_VERSION);
   const own = join(folder, "ollama");
-  /** The `ollama serve` this process started (its own copy or a command-line install); stopped with WebAiOs. */
+  /** The `ollama serve` this process started (its own copy or a command-line install); stopped with Ressac. */
   let child: { kill(): void } | undefined;
   let starting: Promise<void> | undefined;
 
@@ -82,7 +82,7 @@ export function createOllamaRuntime(o: OllamaRuntimeOptions) {
     return { kind: exists(APP) || CLIS.some(exists) || exists(own) ? "stopped" : "absent" };
   }
 
-  /** Starts the installed Ollama (the app first, then a command-line install, then WebAiOs's own copy) and waits for it. */
+  /** Starts the installed Ollama (the app first, then a command-line install, then Ressac's own copy) and waits for it. */
   function start(): Promise<void> {
     starting ??= (async () => {
       if (!o.managed || (await version()) !== undefined) return;
@@ -101,7 +101,7 @@ export function createOllamaRuntime(o: OllamaRuntimeOptions) {
     return starting;
   }
 
-  /** Downloads WebAiOs's own Ollama (skipped when it is already there), then starts it. `progress`: 0-100, null without a total. */
+  /** Downloads Ressac's own Ollama (skipped when it is already there), then starts it. `progress`: 0-100, null without a total. */
   async function install(progress: (percent: number | null) => void): Promise<void> {
     if (!o.managed) throw new Error(NOT_STARTED);
     if (!exists(own)) {

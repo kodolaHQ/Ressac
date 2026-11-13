@@ -10,7 +10,7 @@
     return id ? appState.value?.tabs[id]?.link?.id : undefined;
   });
 
-  const MOVE = "application/x-webaios-essentiel";
+  const MOVE = "application/x-ressac-essentiel";
   /** The essential under a dragged one: it shows where the drop lands. */
   let over = $state<string | null>(null);
 
@@ -27,11 +27,11 @@
   data-testid="essentials"
   role="group"
   aria-label="Essentiels"
-  ondragover={(e) => e.dataTransfer?.types.includes("application/x-webaios-onglet") && e.preventDefault()}
+  ondragover={(e) => e.dataTransfer?.types.includes("application/x-ressac-onglet") && e.preventDefault()}
   ondrop={(e) => {
     // An essential dropped back in its own grid (between two cells) stays one.
     if (e.dataTransfer?.types.includes(MOVE)) return e.stopPropagation();
-    const id = e.dataTransfer?.getData("application/x-webaios-onglet");
+    const id = e.dataTransfer?.getData("application/x-ressac-onglet");
     if (id) api.dispatch({ type: "addEssential", id });
   }}
 >

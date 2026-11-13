@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { dispatch, state, waitFor, waitReady, waitWindowCount } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { click, inUi, waitUi } from "./ui";
 
@@ -155,12 +155,12 @@ const DISPLAY_DATA = `<!doctype html><meta charset="utf-8"><pre id="donnees"></p
 
 describe("the home page", () => {
   let dataDir: string;
-  let w: LaunchedWebAiOs;
+  let w: LaunchedRessac;
   let m: Marionette;
   let notifications: string;
 
   beforeAll(async () => {
-    dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-accueil-"));
+    dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-accueil-"));
     notifications = path.join(dataDir, "notifications.jsonl");
     await mkdir(path.join(HOME(dataDir), "widgets"), { recursive: true });
     await writeWidget(dataDir, "alpha", { name: "Alpha", display: DISPLAY("alpha") });
@@ -175,8 +175,8 @@ describe("the home page", () => {
       name: "Lien",
       display: `<!doctype html><meta charset="utf-8"><title>lien</title><button id="go">ouvrir</button>
 <script>
-  webaiosOpen("https://exemple.invalid/auto");
-  document.getElementById("go").onclick = () => webaiosOpen("https://exemple.invalid/clic");
+  ressacOpen("https://exemple.invalid/auto");
+  document.getElementById("go").onclick = () => ressacOpen("https://exemple.invalid/clic");
 </script>`,
     });
     // A widget that reads with the account: the grant banner shows as long as no grant is given. Its harvest only reads
@@ -246,7 +246,7 @@ describe("the home page", () => {
       { id: "retrait", x: 500, y: 800, w: 250, h: 180 },
     ]);
     // A test notification is a file, never a macOS bubble.
-    w = await launchWebAiOs({ dataDir, env: { WEBAIOS_TEST_NOTIFICATIONS: notifications } });
+    w = await launchRessac({ dataDir, env: { RESSAC_TEST_NOTIFICATIONS: notifications } });
     m = w.marionette;
     await m.setContext("chrome");
     await waitReady(m);
@@ -256,7 +256,7 @@ describe("the home page", () => {
     await rm(dataDir, { recursive: true, force: true });
   });
 
-  it("the screen without a tab shows the folder's widgets, served by resource://webaios-widget-", async () => {
+  it("the screen without a tab shows the folder's widgets, served by resource://ressac-widget-", async () => {
     const titles = await wait(
       () => inUi<string[]>(m, `return [...doc.querySelectorAll('[data-testid="widget-title"]')].map((e) => e.textContent);`),
       (ts) => ts.length === 10,
@@ -265,7 +265,7 @@ describe("the home page", () => {
     );
     expect(titles).toEqual(["Alpha", "Beta", "Refus", "Lien", "Compte", "Sans accord", "Lent", "Échec", "Veille", "Retrait"]);
     const src = await inUi(m, `return doc.querySelector('[data-testid="widget-alpha"] iframe')?.getAttribute("src") ?? "";`);
-    expect(src).toMatch(/^resource:\/\/webaios-widget-alpha\/display-\d+\.html$/);
+    expect(src).toMatch(/^resource:\/\/ressac-widget-alpha\/display-\d+\.html$/);
     // The frame is isolated: the widget's document does not have the sidebar's system principal (opaque origin, sandbox).
     const system = await waitUi<string>(
       m,
@@ -389,7 +389,7 @@ describe("the home page", () => {
     await new Promise((r) => setTimeout(r, 500));
     expect(await waitWindowCount(m, 1)).toHaveLength(1);
     // No top-level <browser> loads the resource:// substitution: it is a frame of the sidebar.
-    const top = await waitFor<number>(m, `return [...gBrowser.browsers].filter((b) => b.currentURI?.spec?.startsWith("resource://webaios-widget-")).length;`, (n) => n === 0);
+    const top = await waitFor<number>(m, `return [...gBrowser.browsers].filter((b) => b.currentURI?.spec?.startsWith("resource://ressac-widget-")).length;`, (n) => n === 0);
     expect(top).toBe(0);
   });
 
@@ -496,7 +496,7 @@ describe("the home page", () => {
     expect(await readJson<{ status: string; error: string }>(STATE(dataDir, "echec"))).toMatchObject({ status: "error", error: "boum" });
   });
 
-  it("a news harvest writes its notification into WEBAIOS_TEST_NOTIFICATIONS", async () => {
+  it("a news harvest writes its notification into RESSAC_TEST_NOTIFICATIONS", async () => {
     const lines = await wait(
       async () => ((existsSync(notifications) ? (await readFile(notifications, "utf8")).trim().split("\n").filter(Boolean) : []).map((l) => JSON.parse(l) as { title: string; text: string })),
       (ls) => ls.some((n) => n.title === "Veille"),
@@ -533,8 +533,8 @@ describe("the home page", () => {
   });
 
   it("host stopped: the actions stay without effect and the page stays displayed", async () => {
-    await m.execute(`return (async () => { await window.webaiosWindow.store.agent.stop(); return true; })();`);
-    await waitFor<number | null>(m, `return window.webaiosWindow.store.agent.pid;`, (pid) => pid === null);
+    await m.execute(`return (async () => { await window.ressacWindow.store.agent.stop(); return true; })();`);
+    await waitFor<number | null>(m, `return window.ressacWindow.store.agent.pid;`, (pid) => pid === null);
     await harvest(m, "veille");
     const text = await wait(() => widgetText(m, "veille"), (t) => t.includes("Sans effet pour l'instant"), "l'avertissement sans effet", 12_000);
     expect(text).toContain("le service des widgets ne répond pas");
@@ -548,15 +548,15 @@ describe("the home page", () => {
 // Widgets with no harvest: nothing the new kernel does writes, so only its start can make the page read again.
 describe("the home page after a host restart", () => {
   let dataDir: string;
-  let w: LaunchedWebAiOs;
+  let w: LaunchedRessac;
   let m: Marionette;
   const titles = () => inUi<string[]>(m, `return [...doc.querySelectorAll('[data-testid="widget-title"]')].map((e) => e.textContent);`);
 
   beforeAll(async () => {
-    dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-accueil-relance-"));
+    dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-accueil-relance-"));
     await mkdir(path.join(HOME(dataDir), "widgets"), { recursive: true });
     await writeWidget(dataDir, "alpha", { name: "Alpha", display: DISPLAY("alpha") });
-    w = await launchWebAiOs({ dataDir });
+    w = await launchRessac({ dataDir });
     m = w.marionette;
     await m.setContext("chrome");
     await waitReady(m);
@@ -568,21 +568,21 @@ describe("the home page after a host restart", () => {
   });
 
   it("a widget added while the host was stopped shows once it starts again (Réessayer)", async () => {
-    await m.execute(`return (async () => { await window.webaiosWindow.store.agent.stop(); return true; })();`);
-    await waitFor<number | null>(m, `return window.webaiosWindow.store.agent.pid;`, (pid) => pid === null);
+    await m.execute(`return (async () => { await window.ressacWindow.store.agent.stop(); return true; })();`);
+    await waitFor<number | null>(m, `return window.ressacWindow.store.agent.pid;`, (pid) => pid === null);
     await writeWidget(dataDir, "pendant-arret", { name: "Pendant l'arrêt", display: DISPLAY("pendant-arret") });
-    await m.execute(`return (async () => { await window.webaiosWindow.store.agent.ensure(); return true; })();`);
+    await m.execute(`return (async () => { await window.ressacWindow.store.agent.ensure(); return true; })();`);
     expect(await wait(titles, (ts) => ts.includes("Pendant l'arrêt"), "the widget added while the host was stopped", 20_000)).toContain("Alpha");
   });
 });
 
 describe("the home page, workshop stopped", () => {
   let dataDir: string;
-  let w: LaunchedWebAiOs;
+  let w: LaunchedRessac;
   let m: Marionette;
 
   beforeAll(async () => {
-    dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-accueil-atelier-"));
+    dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-accueil-atelier-"));
     await mkdir(path.join(HOME(dataDir), "widgets"), { recursive: true });
     await writeWidget(dataDir, "veille", {
       name: "Veille",
@@ -594,7 +594,7 @@ describe("the home page, workshop stopped", () => {
     await writeJson(DATA(dataDir, "veille"), { old: true });
     await writeJson(STATE(dataDir, "veille"), { status: "ok", lastUpdate: "2026-01-01T00:00:00.000Z", lastAttempt: "2026-01-01T00:00:00.000Z" });
     await writeLayout(dataDir, [{ id: "veille", x: 0, y: 0, w: 250, h: 180 }]);
-    w = await launchWebAiOs({ dataDir, env: { FAKE_DOCKER_ABSENT: "1" } });
+    w = await launchRessac({ dataDir, env: { FAKE_DOCKER_ABSENT: "1" } });
     m = w.marionette;
     await m.setContext("chrome");
     await waitReady(m);

@@ -7,7 +7,7 @@ import type { Backup } from "../shared/settings";
 
 const run = promisify(execFile);
 
-export const EXPORT_EXCLUDED = ["workspace", "local-ai", "webaios-widgets", "webaios-sites", "webaios-components", "import-tmp"];
+export const EXPORT_EXCLUDED = ["workspace", "local-ai", "ressac-widgets", "ressac-sites", "ressac-components", "import-tmp"];
 
 export async function listBackups(dataDir: string): Promise<Backup[]> {
   const parent = dirname(dataDir);
@@ -29,7 +29,7 @@ export async function deleteBackup(dataDir: string, path: string): Promise<void>
 
 /** Zips the data folder minus the heavy or reinstallable parts; returns the zip path. */
 export async function exportData(dataDir: string, toDir: string, now: Date = new Date()): Promise<string> {
-  const base = join(toDir, `WebAiOs-donnees-${now.toISOString().slice(0, 10)}`);
+  const base = join(toDir, `Ressac-donnees-${now.toISOString().slice(0, 10)}`);
   let out = `${base}.zip`;
   for (let i = 2; await stat(out).then(() => true, () => false); i++) out = `${base} (${i}).zip`;
   await run("/usr/bin/zip", ["-r", "-q", "-y", out, ".", "-x", ...EXPORT_EXCLUDED.flatMap((n) => [`${n}/*`, n])], { cwd: dataDir });

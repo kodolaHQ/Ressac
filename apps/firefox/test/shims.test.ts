@@ -51,7 +51,7 @@ describe("node:url shim", () => {
   });
 });
 
-describe("@webaios/kernel shim: what viewfinder.ts imports", () => {
+describe("@ressac/kernel shim: what viewfinder.ts imports", () => {
   it("drift: HTML_MAX, CAPTURE_MARGIN, VIEWFINDER_WORLD, USEFUL_STYLES, TRUNCATED and truncateHtml match design/remarks.ts", async () => {
     const shim = await import("../chrome/shims/kernel");
     const real = await import("../../../packages/kernel/src/design/remarks");

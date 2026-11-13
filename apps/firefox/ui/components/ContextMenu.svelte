@@ -44,7 +44,7 @@
     border: 1px solid var(--glass-edge);
     border-radius: 12px;
     box-shadow: var(--modal-shadow);
-    animation: webaios-drop var(--spring-d) var(--spring) backwards;
+    animation: ressac-drop var(--spring-d) var(--spring) backwards;
     -webkit-app-region: no-drag;
   }
   button {

@@ -2,7 +2,7 @@
   import type { OverlayApi, OverlayContext } from "../shared/api";
   import DesignBasket from "./components/DesignBasket.svelte";
 
-  const api = window.webaios as unknown as OverlayApi;
+  const api = window.ressac as unknown as OverlayApi;
   let context = $state<OverlayContext | null>(null);
   let text = $state("");
   let error = $state<string | null>(null);
@@ -70,7 +70,7 @@
 
 <style>
   :global(html), :global(body), :global(#app) { margin: 0; height: 100%; overflow: hidden; }
-  .bubble { box-sizing: border-box; height: 100%; display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; background: var(--glass-dense); color: var(--text); border: 1px solid var(--accent); border-radius: 12px; font-size: 12px; animation: webaios-drop var(--spring-d) var(--spring) backwards; }
+  .bubble { box-sizing: border-box; height: 100%; display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; background: var(--glass-dense); color: var(--text); border: 1px solid var(--accent); border-radius: 12px; font-size: 12px; animation: ressac-drop var(--spring-d) var(--spring) backwards; }
   .head { display: flex; gap: 6px; align-items: baseline; min-width: 0; }
   .tag { color: var(--accent); font-family: var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .source { color: var(--text-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -8,7 +8,7 @@ import { CONSOLE_BACKGROUND_HIDDEN, OBSERVED_BACKGROUND_CONSOLE, EXTENSION_CONSO
 import { deniedSignature } from "../host/extensions/amo";
 import { agentAddons, launchWithAmo, openTab } from "./agent-extensions";
 import { dispatch, newWindow, state, waitFor, waitWindowCount } from "./firefox";
-import type { LaunchedWebAiOs } from "./launch";
+import type { LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
 import { startServer } from "./server";
@@ -17,7 +17,7 @@ import { click, inUi, pressKeys, waitUi } from "./ui";
 // The agent's extension tools and their card (posed straight through the store's Questions; its answer is written to a file).
 const MODAL = '[data-testid="request-modal"]';
 const CARD = '[data-testid="extension-request"]';
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const HOST = "http://127.0.0.1/*";
 const PRIVATE_PROFILE_ERROR = "Donne à cet espace privé son propre profil pour y utiliser des extensions de l'agent";
 const BACKGROUND_ONLY = {
@@ -35,20 +35,20 @@ const UNLOCK = '[data-testid="extension-console-request"]';
 const hider = (matches: string[]) => ({ manifest_version: 3, name: "Cacheur de l'agent", version: "1.0.0", content_scripts: [{ matches, css: ["cache.css"] }] });
 
 const dirs: string[] = [];
-const opened: LaunchedWebAiOs[] = [];
+const opened: LaunchedRessac[] = [];
 afterEach(async () => {
   for (const w of opened.splice(0)) await w.close();
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
 
-/** WebAiOs with the fake AMO, the agent's session started (a new conversation takes down the cards asked before it). */
+/** Ressac with the fake AMO, the agent's session started (a new conversation takes down the cards asked before it). */
 async function launch(o: { amo?: Parameters<typeof launchWithAmo>[0]["amo"] } = {}) {
-  const dataDir = mkdtempSync(path.join(os.tmpdir(), "webaios-data-"));
-  const profile = mkdtempSync(path.join(os.tmpdir(), "webaios-firefox-"));
+  const dataDir = mkdtempSync(path.join(os.tmpdir(), "ressac-data-"));
+  const profile = mkdtempSync(path.join(os.tmpdir(), "ressac-firefox-"));
   dirs.push(dataDir, profile);
   const w = await launchWithAmo({ dataDir, profile, ...o });
   opened.push(w);
-  const config = path.join(dataDir, "workspace", ".webaios", "mcp.json");
+  const config = path.join(dataDir, "workspace", ".ressac", "mcp.json");
   for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
     if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
   await waitUi(w.marionette, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
@@ -91,7 +91,7 @@ describe("the agent's tools and their card", () => {
     const w = await launch();
     writeAgentExtension(w.root, "fond", BACKGROUND_ONLY);
     expect(await enabledByAgent(w, "fond", "Fond de l'agent")).toMatch(/^Activée dans « .+ »\.$/);
-    expect(await agentAddons(w.marionette)).toEqual([{ id: "fond@agent.webaios", version: "1.0.0.1", isActive: true }]);
+    expect(await agentAddons(w.marionette)).toEqual([{ id: "fond@agent.ressac", version: "1.0.0.1", isActive: true }]);
     await cardGone(w.marionette);
     expect((await w.call("list_extensions")).text).toMatch(/^agent:fond · Fond de l'agent · 1\.0\.0 · agent · actives dans : [^·]+ · erreurs : aucune$/m);
     // extension_console gives its background's console.log.
@@ -123,10 +123,10 @@ describe("the agent's tools and their card", () => {
     expect(r).toContain("request_extension");
     await waitFor(w.marionette, `return (async () => {
       const { AddonManager } = ChromeUtils.importESModule("resource://gre/modules/AddonManager.sys.mjs");
-      return (await AddonManager.getAddonByID("cacheur@agent.webaios"))?.isActive;
+      return (await AddonManager.getAddonByID("cacheur@agent.ressac"))?.isActive;
     })();`, (v) => v === false);
     expect(await enabledByAgent(w, "cacheur", "Cacheur de l'agent")).toMatch(/^Activée dans « .+ »\.$/);
-    await waitAddon(w.marionette, "cacheur@agent.webaios", "1.0.0.2");
+    await waitAddon(w.marionette, "cacheur@agent.ressac", "1.0.0.2");
     expect((await w.call("list_extensions")).text).toMatch(/^agent:cacheur · Cacheur de l'agent · 1\.0\.0 · agent · actives dans : [^·]+ · /m);
   });
 
@@ -138,7 +138,7 @@ describe("the agent's tools and their card", () => {
     writeAgentExtension(w.root, "cacheur", { "cache.css": "#cache-moi, #reste { display: none !important; }\n" });
     expect((await w.call("reload_extension", { id: "cacheur" })).text).toBe("state : reloaded");
     expect(await inUi(w.marionette, `return !!doc.querySelector(${JSON.stringify(MODAL)})`)).toBe(false);
-    await waitAddon(w.marionette, "cacheur@agent.webaios", "1.0.0.2");
+    await waitAddon(w.marionette, "cacheur@agent.ressac", "1.0.0.2");
   });
 
   it("AMO refuses: the agent gets AMO's message; nothing installed", async () => {
@@ -161,7 +161,7 @@ describe("the grant card", () => {
     w ??= await launch();
     const m = w.marionette;
     const s = await state(m);
-    const win = await m.execute<string>("return window.webaiosWindow.windowId");
+    const win = await m.execute<string>("return window.ressacWindow.windowId");
     const space = s.spaces.find((e) => e.id === (overrides.spaceId ?? s.windows.find((f) => f.id === win)!.activeSpace))!;
     const card = {
       key: "agent:essai", name: "Essai", source: "agent", version: "1.0.0", rights: ["Modifier l'apparence et le contenu des pages"],
@@ -187,7 +187,7 @@ describe("the grant card", () => {
   }
   /** The card has the keyboard and Enter is armed. */
   const armed = (m: Marionette) =>
-    waitUi(m, `return !!doc.querySelector('${MODAL}[data-armed]') && !!doc.activeElement?.closest('${MODAL}') && document.activeElement?.id === "webaios-sidebar"`);
+    waitUi(m, `return !!doc.querySelector('${MODAL}[data-armed]') && !!doc.activeElement?.closest('${MODAL}') && document.activeElement?.id === "ressac-sidebar"`);
 
   it("an agent card without network says « Elle ne peut rien envoyer vers internet. »", async () => {
     const { m, wait: wait } = await withCard({ otherSpaces: ["Lecture"], alsoReplaces: ["Travail", "Achats"] });
@@ -273,7 +273,7 @@ describe("the grant card", () => {
 
   it("a card gone stale (space deleted) falls and counts as a refusal", async () => {
     const w = await launch();
-    const windowId = await w.marionette.execute<string>("return window.webaiosWindow.windowId");
+    const windowId = await w.marionette.execute<string>("return window.ressacWindow.windowId");
     const reading = (await dispatch(w.marionette, { type: "createSpace", name: "Lecture", icon: "📚", private: false, profile: "default", windowId: windowId } as Action)).spaces.at(-1)!;
     const { m, wait: wait } = await withCard({ spaceId: reading.id }, w);
     await dispatch(m, { type: "deleteSpace", id: reading.id } as Action);
@@ -383,7 +383,7 @@ r.onsuccess = () => { const t = r.result.transaction("s", "readwrite"); t.object
     // Removed from about:addons: « Supprimer » (decision 6).
     await m.execute(`return (async () => {
       const { AddonManager } = ChromeUtils.importESModule("resource://gre/modules/AddonManager.sys.mjs");
-      await (await AddonManager.getAddonByID("journal@agent.webaios")).uninstall();
+      await (await AddonManager.getAddonByID("journal@agent.ressac")).uninstall();
     })();`);
     for (const deadline = Date.now() + 15_000; "agent:journal" in registry(w.dataDir); await new Promise((r) => setTimeout(r, 100)))
       if (Date.now() > deadline) throw new Error("not removed");

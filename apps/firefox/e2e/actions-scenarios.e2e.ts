@@ -19,12 +19,12 @@ import {
   writeRunnableAction,
 } from "./actions";
 import { dispatch, state, waitReady } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { click, inUi, missingApi, pressKeys, waitUi } from "./ui";
 
 // Whole scenarios of an action: Gemma's plan, the results' images through
-// the test hook (WEBAIOS_TEST_ACTION_IMAGES: `https://<host><path>` is asked from the local image server, which notes
+// the test hook (RESSAC_TEST_ACTION_IMAGES: `https://<host><path>` is asked from the local image server, which notes
 // each request with its Cookie and Referer). One launch for the file; the actions are written before it.
 
 const SECRET = "jeton-du-compte-4242";
@@ -72,7 +72,7 @@ const TICKETS_PLAN = {
 };
 
 let servers: Awaited<ReturnType<typeof startActionServers>>;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 let q: ReturnType<typeof uiQueries>;
 
@@ -104,8 +104,8 @@ const tabUrls = async () => Object.values((await state(m)).tabs).map((o) => o.ur
 beforeAll(async () => {
   servers = await startActionServers();
   const site = servers.site.url;
-  w = await launchWebAiOs({
-    env: { WEBAIOS_OLLAMA_URL: servers.ollama.url, WEBAIOS_KEV_URL: servers.kev.url, WEBAIOS_TEST_LOCAL_ADDRESSES: "1", WEBAIOS_TEST_ACTION_IMAGES: servers.images.url },
+  w = await launchRessac({
+    env: { RESSAC_OLLAMA_URL: servers.ollama.url, RESSAC_KEV_URL: servers.kev.url, RESSAC_TEST_LOCAL_ADDRESSES: "1", RESSAC_TEST_ACTION_IMAGES: servers.images.url },
   });
   m = w.marionette;
   q = uiQueries(m);
@@ -155,7 +155,7 @@ beforeAll(async () => {
   const grant = { domains: ["127.0.0.1"], public: [], profile: "default" };
   await mkdir(actionsDataDir(d), { recursive: true });
   await writeFile(path.join(actionsDataDir(d), "grants.json"), JSON.stringify({ hostile: grant, [TICKETS]: grant }));
-  for (const id of ["annonces-leboncoin", "hostile", TICKETS, "taches", "un", "deux", "trois"]) await waitUi(m, "return (await ui.webaios.actions.list()).some((a) => a.id === arguments[0]);", [id], 30_000);
+  for (const id of ["annonces-leboncoin", "hostile", TICKETS, "taches", "un", "deux", "trois"]) await waitUi(m, "return (await ui.ressac.actions.list()).some((a) => a.id === arguments[0]);", [id], 30_000);
 }, 90_000);
 beforeEach(async () => {
   servers.reset();
@@ -245,12 +245,12 @@ describe("action scenarios", () => {
   it("three actions launched: the third says « En attente : deux actions tournent déjà », then runs", { timeout: 150_000 }, async () => {
     servers.settings.siteSlownessMs = 3000;
     // The first two, launched as the agent or the Actions page would (without waiting for their end).
-    await inUi(m, "void ui.webaios.actions.launch('un', null); void ui.webaios.actions.launch('deux', null);");
-    await waitUi(m, "return (await ui.webaios.actions.live()).running.length === 2;", [], 30_000);
+    await inUi(m, "void ui.ressac.actions.launch('un', null); void ui.ressac.actions.launch('deux', null);");
+    await waitUi(m, "return (await ui.ressac.actions.live()).running.length === 2;", [], 30_000);
     await openAction(m, "trois", "Pages trois");
     await click(m, tid("relaunch-action"));
     await q.waitText(tid("pending"), "En attente : deux actions tournent déjà", 30_000);
-    const feed = await inUi<{ running: { action: string }[]; waiting: { action: string }[] }>(m, "return JSON.parse(JSON.stringify(await ui.webaios.actions.live()));");
+    const feed = await inUi<{ running: { action: string }[]; waiting: { action: string }[] }>(m, "return JSON.parse(JSON.stringify(await ui.ressac.actions.live()));");
     expect(feed.waiting.map((a) => a.action)).toEqual(["trois"]);
     expect(feed.running.map((a) => a.action).sort()).toEqual(["deux", "un"]);
     // A slot frees up: the third runs, then shows its page.

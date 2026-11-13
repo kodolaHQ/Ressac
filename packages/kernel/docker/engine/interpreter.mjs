@@ -8,13 +8,13 @@
 //     async finalize(list, ctx),       // optional, per item: returns { output } from the enriched list
 //     failIfAllFail: true,             // optional, per item: the block fails if no item that was run succeeded
 //   }
-// ctx = { input, params, config, memory, now, webaios, log, folder, fill, partial, item?, userInput? }
-//   - `userInput` (action run with a text only): that text; also `webaios.input` for the agent's code, and
+// ctx = { input, params, config, memory, now, ressac, log, folder, fill, partial, item?, userInput? }
+//   - `userInput` (action run with a text only): that text; also `ressac.input` for the agent's code, and
 //     `{input}` in the templates.
 //   - `now`: the ISO time of `start`, the date of what the block keeps this time.
 //   - `memory`: what the block kept last time (null otherwise); `run` returns the new one in `memory`.
 //     Per item, the block's memory is that of `reuse`, held by the interpreter.
-//   - `log(text)`: a line attached to the block. `webaios.log(...)` also goes to stderr.
+//   - `log(text)`: a line attached to the block. `ressac.log(...)` also goes to stderr.
 //   - `fill(template, { url, maxText })` fills in with the current item (in simple mode: the input) and the config;
 //     an absent value throws MissingValue: in simple mode the output is null, per item the item stays without a
 //     field; in both cases, a log line and no error.
@@ -27,7 +27,7 @@
 // module does not read it in `processItem`.
 import { ItemNotRun } from "./errors.mjs";
 import { MissingValue, readPath, fill } from "./templates.mjs";
-import { createWebaios, format } from "./webaios.mjs";
+import { createRessac, format } from "./ressac.mjs";
 import code from "./blocks/code.mjs";
 import aiWrite from "./blocks/ai-write.mjs";
 import aiSort from "./blocks/ai-sort.mjs";
@@ -522,7 +522,7 @@ export async function runWorkflow({
   }
 
   const logOf = (id) => (text) => trace({ t: "log", block: id, text: truncate(String(text), TRACE_TEXT_MAX) });
-  /** What a block receives, besides the input: config, memory, clock, log, `webaios`. */
+  /** What a block receives, besides the input: config, memory, clock, log, `ressac`. */
   const blockOptions = (id, block, log) => ({
     blocks,
     config,
@@ -533,7 +533,7 @@ export async function runWorkflow({
     clock,
     log,
     memory: memory[id]?.type === block.type ? memory[id].value : null,
-    webaios: createWebaios({
+    ressac: createRessac({
       call,
       config,
       previous,
@@ -869,7 +869,7 @@ function blockContext(block, input, o) {
     config: o.config,
     memory: o.memory,
     now: o.now,
-    webaios: o.webaios,
+    ressac: o.ressac,
     log: o.log,
     folder: o.folder,
     ...(o.userInput !== undefined ? { userInput: o.userInput } : {}),

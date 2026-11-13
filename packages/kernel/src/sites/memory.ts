@@ -93,7 +93,7 @@ const valueSize = (key: string, url: string | null, when: string, text: string) 
 const positionSize = (key: string, p: PositionVideo) => bytes(JSON.stringify(key)) + 1 + bytes(JSON.stringify(p)) + 1;
 
 /**
- * `<sitesFolder>/<id>/memory.json`, outside ~/WebAiOs. Written at most once per `ECRITURE_MEMOIRE_MS`.
+ * `<sitesFolder>/<id>/memory.json`, outside ~/Ressac. Written at most once per `ECRITURE_MEMOIRE_MS`.
  * A write that fails keeps the data in memory: the next change (or `vider()`) tries again.
  * The consumer must call `vider()` when the app closes, otherwise the pending deferred write is lost.
  */

@@ -142,7 +142,7 @@ export async function writeActionWithResult(
 
 /** Opens action `id`'s page in a tab of the first window, once the kernel serves it: nothing is launched. */
 export async function openActionPage(m: Marionette, id: string, name: string, run = EXECUTION): Promise<void> {
-  await waitUi(m, "return ui.webaios.actions.page(arguments[0], arguments[1]).then((p) => p !== null);", [id, run], 30_000);
+  await waitUi(m, "return ui.ressac.actions.page(arguments[0], arguments[1]).then((p) => p !== null);", [id, run], 30_000);
   await dispatch(m, { type: "openAction", windowId: (await state(m)).windows[0]!.id, id, name: name, run });
   await waitUi(m, `return !!doc.querySelector('[data-testid="page-render"]');`, [], 30_000);
 }
@@ -152,7 +152,7 @@ export const WITHOUT_KERNEL = "Le service des actions ne r√©pond pas (agent arr√
 
 /** Waits until the kernel serves the actions: an unknown action is then refused as such. */
 export async function waitKernel(m: Marionette): Promise<void> {
-  await waitUi(m, "return ui.webaios.actions.launch('inconnue-du-test', null).then((r) => r.error !== arguments[0]);", [WITHOUT_KERNEL], 30_000);
+  await waitUi(m, "return ui.ressac.actions.launch('inconnue-du-test', null).then((r) => r.error !== arguments[0]);", [WITHOUT_KERNEL], 30_000);
 }
 
 /** Opens the action's page (its last result, or `execution`) without launching anything. */

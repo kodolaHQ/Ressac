@@ -6,7 +6,7 @@
 export const MOUSE = ["pointerdown", "pointerup", "mousedown", "mouseup", "click", "auxclick", "dblclick", "contextmenu"];
 
 // In the parent process evalInSandbox refuses a plain filename (« unsafe filename »).
-const FILE = "chrome://browser/content/webaios/";
+const FILE = "chrome://browser/content/ressac/";
 
 /** Every answer is plain data: what the home's world made is never handed on as is. */
 function clone(v: unknown): unknown {
@@ -26,7 +26,7 @@ export function homeViewfinder(frame: HTMLIFrameElement): { query(name: "arm" | 
   /** The viewfinder's sandbox: an Xray view of the home (its objects unseen, its hooks never called), one per document. */
   const viewfinder = (hdoc: Document, hwin: Window) => {
     if (!sandbox || sandboxDoc !== hdoc) {
-      sandbox = Cu.Sandbox((hdoc as any).nodePrincipal, { sandboxPrototype: hwin, wantXrays: true, wantComponents: false, sameZoneAs: hwin, sandboxName: "WebAiOs · viewfinder" });
+      sandbox = Cu.Sandbox((hdoc as any).nodePrincipal, { sandboxPrototype: hwin, wantXrays: true, wantComponents: false, sameZoneAs: hwin, sandboxName: "Ressac · viewfinder" });
       // The legacy `Components` shim would show through the prototype.
       Object.defineProperty(sandbox, "Components", { value: undefined });
       sandboxDoc = hdoc;
@@ -125,10 +125,10 @@ export function homeViewfinder(frame: HTMLIFrameElement): { query(name: "arm" | 
       // Only where the home's events reach the frame first (S6); else nothing is set.
       if ((hwin as any).docShell.chromeEventHandler !== frame) return null;
       // Only the app's served home (never a system-principal document, nor the frame's initial about:blank).
-      if ((hdoc as any).nodePrincipal.isSystemPrincipal || !hdoc.documentURI.startsWith("resource://webaios-site-")) return null;
+      if ((hdoc as any).nodePrincipal.isSystemPrincipal || !hdoc.documentURI.startsWith("resource://ressac-site-")) return null;
       const sb = viewfinder(hdoc, hwin);
       g = guard(sb, hdoc, () => hidden(null));
-      pending = Promise.resolve(Cu.evalInSandbox(code, sb, "latest", FILE + "webaios-viewfinder.js", 1));
+      pending = Promise.resolve(Cu.evalInSandbox(code, sb, "latest", FILE + "ressac-viewfinder.js", 1));
     } catch {
       unguard();
       return null;
@@ -155,7 +155,7 @@ export function homeViewfinder(frame: HTMLIFrameElement): { query(name: "arm" | 
         case "stop":
           // Synchronous: « Entrer dans le site » removes the frame right after the state change that calls this.
           try {
-            if (sandbox) Cu.evalInSandbox(code, sandbox, "latest", FILE + "webaios-viewfinder-stop.js", 1);
+            if (sandbox) Cu.evalInSandbox(code, sandbox, "latest", FILE + "ressac-viewfinder-stop.js", 1);
           } catch {
             // The home's document is gone, the viewfinder with it.
           }
@@ -166,8 +166,8 @@ export function homeViewfinder(frame: HTMLIFrameElement): { query(name: "arm" | 
           try {
             const hdoc = frame.contentDocument!;
             const hwin = hdoc.defaultView!;
-            const world = Cu.Sandbox((hdoc as any).nodePrincipal, { sandboxPrototype: hwin, wantXrays: false, wantComponents: false, sameZoneAs: hwin, sandboxName: "WebAiOs · source" });
-            return clone(Cu.evalInSandbox(code, world, "latest", FILE + "webaios-source.js", 1));
+            const world = Cu.Sandbox((hdoc as any).nodePrincipal, { sandboxPrototype: hwin, wantXrays: false, wantComponents: false, sameZoneAs: hwin, sandboxName: "Ressac · source" });
+            return clone(Cu.evalInSandbox(code, world, "latest", FILE + "ressac-source.js", 1));
           } catch {
             return null;
           }

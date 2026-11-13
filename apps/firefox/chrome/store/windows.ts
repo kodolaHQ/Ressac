@@ -17,7 +17,7 @@ export interface WindowRegistry {
   /** The window is gone: calls onRelease first; among others, fermerFenetre; the last one, or any while
    *  Services.startup.shuttingDown, stays in the state (kept: the next claim takes it back). */
   release(windowId: WindowId): void;
-  /** Decision 3. undefined while no WebAiOs window is open. */
+  /** Decision 3. undefined while no Ressac window is open. */
   active(): WindowId | undefined;
   /** The open window and its controller, if any. */
   get(windowId: WindowId): { window: Window; controller: WindowController } | undefined;
@@ -107,7 +107,7 @@ export function createWindowRegistry(o: {
     },
     get(windowId) {
       const window = bound.get(windowId);
-      const controller = window?.webaiosWindow;
+      const controller = window?.ressacWindow;
       return window && controller ? { window, controller } : undefined;
     },
   };

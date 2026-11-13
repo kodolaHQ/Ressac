@@ -24,9 +24,9 @@ const pageText = () => inUi<string>(p!.m, "return doc.querySelector(arguments[0]
 const rowText = (folder: string) => inUi<string>(p!.m, "return doc.querySelector(arguments[0])?.textContent ?? ''", [appRow(folder)]);
 const filterText = (id: string) => inUi<string | null>(p!.m, "return doc.querySelector(arguments[0])?.textContent.replace(/\\s+/g, ' ').trim() ?? null", [`[data-testid="filter-${id}"]`]);
 const rows = (n: number, ms = 10_000) => waitUi(p!.m, `return doc.querySelectorAll('[data-testid^="app-"]').length === arguments[0];`, [n], ms);
-const pageTabs = async () => Object.values((await state(p!.m)).tabs).filter((o) => o.url === "webaios://apps").length;
+const pageTabs = async () => Object.values((await state(p!.m)).tabs).filter((o) => o.url === "ressac://apps").length;
 const windowId = async () => (await state(p!.m)).windows[0]!.id;
-const appWindows = () => p!.m.execute<number>(`return [...Services.wm.getEnumerator("navigator:browser")].filter((w) => w.document.documentElement.hasAttribute("webaios-app")).length;`);
+const appWindows = () => p!.m.execute<number>(`return [...Services.wm.getEnumerator("navigator:browser")].filter((w) => w.document.documentElement.hasAttribute("ressac-app")).length;`);
 /** A mouse move through the widget, as an OS one (compact.e2e.ts). */
 const moveMouse = (x: number) =>
   p!.m.execute(
@@ -163,7 +163,7 @@ describe("Applications page", () => {
     await sleep(500);
     writeProject(p.dataDir, "nouveau", { manifest: { name: "Nouveau" } });
     await waitUi(p.m, "return !!doc.querySelector(arguments[0])", [appRow("nouveau")], 4_000);
-    expect(stopsLog(p.dataDir)).not.toContain("WEBAIOS_APP=.*");
+    expect(stopsLog(p.dataDir)).not.toContain("RESSAC_APP=.*");
   });
 
   // applications.spec.ts:398
@@ -204,8 +204,8 @@ describe("Applications page", () => {
     const m = p.m;
     await pageShown(true);
     await rows(3);
-    expect(await m.execute<boolean>(`return [...Services.wm.getEnumerator("navigator:browser")].some((w) => w.gBrowser.browsers.some((b) => b.currentURI.spec.startsWith("webaios:")));`)).toBe(false);
-    const recents = await inUi<{ url: string }[]>(m, "return await ui.webaios.history.recent();");
-    expect(recents.some((v) => v.url.startsWith("webaios:"))).toBe(false);
+    expect(await m.execute<boolean>(`return [...Services.wm.getEnumerator("navigator:browser")].some((w) => w.gBrowser.browsers.some((b) => b.currentURI.spec.startsWith("ressac:")));`)).toBe(false);
+    const recents = await inUi<{ url: string }[]>(m, "return await ui.ressac.history.recent();");
+    expect(recents.some((v) => v.url.startsWith("ressac:"))).toBe(false);
   });
 });

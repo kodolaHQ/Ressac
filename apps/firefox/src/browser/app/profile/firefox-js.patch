@@ -7,4 +7,4 @@ index 0f4b291..cf5bf1b 100644
    pref("browser.macAppMenu.setAsDefaultShown", false);
  #endif
 +
-+#include webaios.js
++#include ressac.js

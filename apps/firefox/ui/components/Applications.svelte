@@ -140,7 +140,7 @@
    */
   function short(reason: string | undefined): string | undefined {
     if (!reason) return undefined;
-    const m = /^(webaios\.json invalide : )(\[[\s\S]*)$/.exec(reason);
+    const m = /^(ressac\.json invalide : )(\[[\s\S]*)$/.exec(reason);
     if (m) {
       try {
         const [p] = JSON.parse(m[2]!) as { path?: (string | number)[]; message?: string }[];
@@ -402,7 +402,7 @@
   .actions button:active:not(:disabled) { transform: scale(0.97); }
   .actions button:disabled { opacity: 0.5; }
   .veil { position: fixed; inset: 0; display: grid; place-content: center; background: var(--veil); backdrop-filter: blur(6px); z-index: 10; }
-  .confirmation { max-width: 420px; padding: 18px 20px; border-radius: 16px; background: var(--glass-dense); border: 1px solid var(--glass-edge); box-shadow: var(--modal-shadow); color: var(--text); animation: webaios-drop var(--spring-d) var(--spring) backwards; }
+  .confirmation { max-width: 420px; padding: 18px 20px; border-radius: 16px; background: var(--glass-dense); border: 1px solid var(--glass-edge); box-shadow: var(--modal-shadow); color: var(--text); animation: ressac-drop var(--spring-d) var(--spring) backwards; }
   .confirmation p { margin: 0 0 14px; }
   .buttons { display: flex; justify-content: flex-end; gap: 8px; }
   .buttons button { padding: 7px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: 600 12.5px var(--font-ui); transition: transform var(--tap); }

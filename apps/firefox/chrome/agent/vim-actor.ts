@@ -1,6 +1,6 @@
 // The vim mode's actor (plan 50, spec §2): vim keys in the top http(s) document of a main window's web tab.
 // Registered only while the setting is on (store/index.ts): off, no page has a vim actor or listener.
-// The parent decides whether the mode applies to a document (a main window, a WebAiOs tab) and tells the child: when
+// The parent decides whether the mode applies to a document (a main window, a Ressac tab) and tells the child: when
 // the child asks (a new document, a page back from the bfcache) and when the actor is registered for open pages.
 // The child listens on its chrome event handler, in front of every page listener (the design actor's guard): a key it
 // takes never reaches the page. Packaged: a change here needs build:ui.
@@ -18,8 +18,8 @@ const HINT_KEYS = "asdfghjkl";
 /** The labels' and the pill's fade out, in ms (none under reduced motion). */
 const FADE_MS = 150;
 /** The labels' and the pill's font (the UI's woff2), under a name of our own in the page's font set. */
-const MONO_URL = "chrome://browser/content/webaios/fonts/GeistMono-latin.woff2";
-const MONO_FAMILY = "WebAiOs Geist Mono";
+const MONO_URL = "chrome://browser/content/ressac/fonts/GeistMono-latin.woff2";
+const MONO_FAMILY = "Ressac Geist Mono";
 /** The parent's copy of the font, read once. */
 let monoBytes: Promise<ArrayBuffer> | undefined;
 /** The pause's pill (French UI copy). */
@@ -31,7 +31,7 @@ const LAYER_CSS = `
 :host { all: initial !important; position: fixed !important; inset: 0 !important; z-index: 2147483647 !important; pointer-events: none !important; display: block !important; }
 .hints, .pill, .help { transition: opacity ${FADE_MS}ms ease-out; }
 .hint, .pill, .help { position: absolute; border: 1px solid var(--border); background: color-mix(in srgb, var(--sheet) 86%, transparent);
-  backdrop-filter: blur(12px) saturate(1.4); font: 500 11px/1.4 "WebAiOs Geist Mono", "Geist Mono", ui-monospace, monospace; white-space: nowrap; }
+  backdrop-filter: blur(12px) saturate(1.4); font: 500 11px/1.4 "Ressac Geist Mono", "Geist Mono", ui-monospace, monospace; white-space: nowrap; }
 .hint, .pill, .help { animation: in 460ms linear(0, .06 2.4%, .24 5.1%, .55 9.4%, .84 14.6%, 1.01 19.4%, 1.07 23.2%, 1.08 26.6%, 1.05 32.8%, 1 41%, .99 50%, 1); }
 .hint { padding: 1px 4px; border-radius: 6px; color: var(--accent); text-transform: uppercase; letter-spacing: .02em; transition: opacity ${FADE_MS}ms ease-out; }
 .hint b { font-weight: 500; opacity: .45; }
@@ -43,7 +43,7 @@ const LAYER_CSS = `
 .help h3:first-child { margin-top: 0; }
 .row { display: grid; grid-template-columns: 84px 1fr; gap: 10px; padding: 2px 0; }
 .keys { display: flex; flex-wrap: wrap; gap: 6px; }
-kbd { font: 500 11px/1.45 "WebAiOs Geist Mono", "Geist Mono", ui-monospace, monospace; color: var(--accent); }
+kbd { font: 500 11px/1.45 "Ressac Geist Mono", "Geist Mono", ui-monospace, monospace; color: var(--accent); }
 .gone, .out { opacity: 0; }
 @keyframes in { from { opacity: 0; transform: scale(.85); } }
 @media (prefers-reduced-motion: reduce) { .hints, .hint, .pill, .help { transition: none; animation: none; } }
@@ -68,14 +68,14 @@ function hintLabels(n: number): string[] {
  * its own browsing context, and only while the mode is on there; the worst a compromised page can do is what vim keys do
  * to its own tab.
  */
-export class WebAiOsVimParent extends JSWindowActorParent {
-  /** The main window's controller and this document's WebAiOs tab, when the mode applies here. */
+export class RessacVimParent extends JSWindowActorParent {
+  /** The main window's controller and this document's Ressac tab, when the mode applies here. */
   private target(): { controller: any; tabId: string; browser: any } | null {
     const browser = this.browsingContext?.top?.embedderElement;
     const win = browser?.ownerDocument?.defaultView;
     // Only main windows have a controller: site app, agent app and popup windows are left alone (v1).
-    const controller = win?.webaiosWindow;
-    const tabId = win?.gBrowser?.getTabForBrowser(browser)?.getAttribute("webaios-tab-id");
+    const controller = win?.ressacWindow;
+    const tabId = win?.gBrowser?.getTabForBrowser(browser)?.getAttribute("ressac-tab-id");
     return controller?.store.state.settings.vimMode && tabId ? { controller, tabId, browser } : null;
   }
 
@@ -167,7 +167,7 @@ const MODIFIER_KEYS = new Set(["Shift", "Control", "Alt", "Meta", "CapsLock", "A
 /** What the child hears on the tab's chrome event handler, in the capture phase. */
 const EVENTS = ["keydown", "keypress", "keyup", "mousedown", "mouseover", "scroll", "pagehide"];
 
-export class WebAiOsVimChild extends JSWindowActorChild {
+export class RessacVimChild extends JSWindowActorChild {
   private on = false;
   private prefix = "";
   private prefixTimer: unknown;

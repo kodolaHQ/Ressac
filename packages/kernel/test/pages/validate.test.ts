@@ -7,7 +7,7 @@ const tickets = [
   { id: 2, title: "Doc", priority: "basse", url: "https://gitlab.com/t/2", author: { name: "Bob" } },
   { id: 3, title: "Lent", priority: "haute", url: "https://gitlab.com/t/3", author: { name: "Cy" } },
 ];
-const results = { tickets, project: { name: "WebAiOs", url: "https://gitlab.com/p" } };
+const results = { tickets, project: { name: "Ressac", url: "https://gitlab.com/p" } };
 const graph: ComponentDefinition = {
   name: "graphique-barres", description: "Barres", origin: "agent",
   properties: {

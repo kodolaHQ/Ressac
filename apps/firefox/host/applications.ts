@@ -11,7 +11,7 @@ import { SchemaActionApplication, type ApplicationList } from "../shared/api.ts"
 import type { FrameBounds, WindowId } from "../shared/model.ts";
 import { SiteRecords } from "./sites.ts";
 
-/** `min-max` port range from WEBAIOS_APP_PORTS (tests), otherwise the kernel's. */
+/** `min-max` port range from RESSAC_APP_PORTS (tests), otherwise the kernel's. */
 export function portRange(value: string | undefined): [number, number] | undefined {
   const m = /^(\d+)-(\d+)$/.exec(value ?? "");
   return m ? [Number(m[1]), Number(m[2])] : undefined;
@@ -53,8 +53,8 @@ export function createApplicationsHost(o: {
   const running = new Map<string, number>();
   /** Last launch requested per folder: it resolves only after the earlier ones (the manager chains them). */
   const last = new Map<string, Promise<unknown>>();
-  const delay = Number(process.env.WEBAIOS_APP_DELAY_MS);
-  const ports = portRange(process.env.WEBAIOS_APP_PORTS);
+  const delay = Number(process.env.RESSAC_APP_DELAY_MS);
+  const ports = portRange(process.env.RESSAC_APP_PORTS);
   const report = (folder: string, what: string) => (e: unknown) => console.error(`[applications] ${folder} not ${what}:`, e);
 
   const close = (folder: string) => {

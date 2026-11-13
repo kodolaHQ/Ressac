@@ -3,7 +3,7 @@ import type { BrowserState } from "../shared/model";
 import type { Marionette } from "./marionette";
 import { pressKeys, waitUi } from "./ui";
 
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 
 /** The current state (chrome context). */
 export async function state(m: Marionette): Promise<BrowserState> {
@@ -54,9 +54,9 @@ export async function inWindow<T>(m: Marionette, handle: string, fn: () => Promi
   }
 }
 
-/** The current window is WebAiOs: its controller, its parking tab and its sidebar are up. */
+/** The current window is Ressac: its controller, its parking tab and its sidebar are up. */
 export async function waitReady(m: Marionette): Promise<void> {
-  await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+  await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
   await waitUi(m, "return !!doc.querySelector('[data-testid=\"sidebar\"]')");
 }
 
@@ -66,7 +66,7 @@ export const pressClosing = (m: Marionette, combo: string) =>
     if (!/no such window/.test(String(e))) throw e;
   });
 
-/** ⌘N from the current window (one open): waits for the second WebAiOs window to be up; returns its handle. */
+/** ⌘N from the current window (one open): waits for the second Ressac window to be up; returns its handle. */
 export async function newWindow(m: Marionette): Promise<string> {
   const old = (await m.command<{ value: string }>("WebDriver:GetWindowHandle")).value;
   await pressKeys(m, "Meta+n");

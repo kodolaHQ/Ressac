@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Builds the friends' beta DMG: dist/WebAiOs-<version>.dmg. Run through scripts/env.sh (`pnpm run package`).
+# Builds the friends' beta DMG: dist/Ressac-<version>.dmg. Run through scripts/env.sh (`pnpm run package`).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 app_dir=$PWD
@@ -7,9 +7,9 @@ repo_root=${app_dir:h:h}
 engine=$app_dir/engine
 objdist=$engine/obj-aarch64-apple-darwin/dist
 work=$app_dir/dist/package
-app=$work/WebAiOs.app
+app=$work/Ressac.app
 res=$app/Contents/Resources
-host=$res/webaios-host
+host=$res/ressac-host
 kernel=$repo_root/packages/kernel
 
 node_version=v22.23.2
@@ -27,7 +27,7 @@ dev_ui_dirty=
 # exit, not return: zsh skips the EXIT trap (the retry) when errexit fires on a function return.
 restore_dev_ui() {
   step "Restoring the dev UI bundles"
-  env -u WEBAIOS_PACKAGE -u WEBAIOS_SENTRY_DSN corepack pnpm run build:ui || { print -u2 -- "package: could not restore the dev UI, run build:ui"; exit 1 }
+  env -u RESSAC_PACKAGE -u RESSAC_SENTRY_DSN corepack pnpm run build:ui || { print -u2 -- "package: could not restore the dev UI, run build:ui"; exit 1 }
   dev_ui_dirty=
 }
 node_x=
@@ -38,22 +38,22 @@ cleanup() {
 trap cleanup EXIT
 
 # 1. Version and telemetry.
-# The WebAiOs version lives in package.json (the UI bakes it in); surfer.json's displayVersion only moves with the engine.
+# The Ressac version lives in package.json (the UI bakes it in); surfer.json's displayVersion only moves with the engine.
 version=$(node -p 'require("./package.json").version')
 [[ -n $version ]] || fail "no version in package.json"
-dsn=${WEBAIOS_SENTRY_DSN:-}
+dsn=${RESSAC_SENTRY_DSN:-}
 minidump_url=
 if [[ -z $dsn ]]; then
-  print -ru2 -- "warning: WEBAIOS_SENTRY_DSN is empty, packaging without telemetry"
+  print -ru2 -- "warning: RESSAC_SENTRY_DSN is empty, packaging without telemetry"
 else
   # Same transform as parseDsn in shared/telemetry.ts.
-  [[ $dsn =~ '^(https?)://([^@/[:space:]]+)@([^/[:space:]]+)/([0-9]+)$' ]] || fail "WEBAIOS_SENTRY_DSN is not a valid Sentry DSN"
+  [[ $dsn =~ '^(https?)://([^@/[:space:]]+)@([^/[:space:]]+)/([0-9]+)$' ]] || fail "RESSAC_SENTRY_DSN is not a valid Sentry DSN"
   minidump_url="${match[1]}://${match[3]}/api/${match[4]}/minidump/?sentry_key=${match[2]}"
 fi
-step "Packaging WebAiOs $version"
+step "Packaging Ressac $version"
 
-# 2. Build. WEBAIOS_PACKAGE=1 blanks the dev host paths in the store bundle; the DSN is baked in here.
-export WEBAIOS_PACKAGE=1
+# 2. Build. RESSAC_PACKAGE=1 blanks the dev host paths in the store bundle; the DSN is baked in here.
+export RESSAC_PACKAGE=1
 build_id() { grep -s '^BuildID=' $objdist/bin/application.ini || true }
 before=$(build_id)
 dev_ui_dirty=1
@@ -65,14 +65,14 @@ corepack pnpm run build:host
 # 3. mach package directly: `surfer package` then wants locales and a MAR we do not ship.
 step "mach package"
 (cd $engine && ./mach package)
-staged=$objdist/webaios/WebAiOs.app
+staged=$objdist/ressac/Ressac.app
 [[ -d $staged ]] || fail "mach package did not stage $staged"
 rm -rf $work
 mkdir -p $work
 ditto $staged $app
 # The icons come from the engine's copy of the branding, refreshed only by engine:import: catch a stale one.
 for icon in firefox.icns Assets.car; do
-  cmp -s $app_dir/configs/branding/webaios/$icon $res/$icon || fail "$icon in the app differs from configs/branding/webaios (copy it into engine/browser/branding/webaios, or run engine:import, then package again)"
+  cmp -s $app_dir/configs/branding/ressac/$icon $res/$icon || fail "$icon in the app differs from configs/branding/ressac (copy it into engine/browser/branding/ressac, or run engine:import, then package again)"
 done
 dev_files=$(find $app \( -iname '*gtest*' -o -name 'xpcshell*' -o -name .lldbinit \) -print)
 [[ -z $dev_files ]] || fail "test files in the staged app:\n$dev_files"
@@ -91,7 +91,7 @@ node_x=$(mktemp -d)
 tar -xzf $node_cache/$node_tar -C $node_x node-$node_version-darwin-arm64/bin/node node-$node_version-darwin-arm64/LICENSE
 
 # 5. The bundled host: the layout chrome/agent/command.ts expects (see test/host-bundle.test.ts).
-step "webaios-host"
+step "ressac-host"
 pty=$(realpath $kernel/node_modules/node-pty)
 mkdir -p $host/node_modules/node-pty/prebuilds $host/kernel $host/LICENSES
 cp $node_x/node-$node_version-darwin-arm64/bin/node $host/node
@@ -101,7 +101,7 @@ cp -R $pty/package.json $pty/lib $pty/LICENSE $host/node_modules/node-pty/
 cp -R $pty/prebuilds/darwin-arm64 $host/node_modules/node-pty/prebuilds/
 for d in templates extensions docker; do cp -R $kernel/$d $host/kernel/$d; done
 # Only names, versions, licenses: pnpm's JSON also lists this Mac's install paths.
-# firefox-webaios without --prod: its UI and host bundles ship code from its devDependencies.
+# firefox-ressac without --prod: its UI and host bundles ship code from its devDependencies.
 (cd $kernel && corepack pnpm licenses list --prod --json) > $node_x/kernel.json
 corepack pnpm licenses list --json > $node_x/app.json
 node -e '
@@ -130,7 +130,7 @@ leaks=$(grep -rl --binary-files=text -e "$HOME" -e "$repo_root" $app || true)
 # 8. Ad hoc signature: the friends allow it once in System Settings.
 step "Signing"
 plutil -replace CFBundleShortVersionString -string $version $app/Contents/Info.plist
-# WebAiOs asks for macOS 14: the Ollama it can install for the local AI does not run below (Firefox itself says 10.15).
+# Ressac asks for macOS 14: the Ollama it can install for the local AI does not run below (Firefox itself says 10.15).
 plutil -replace LSMinimumSystemVersion -string 14.0 $app/Contents/Info.plist
 codesign --force --deep --sign - $app
 codesign --verify --deep --strict $app || fail "codesign --verify failed"
@@ -138,8 +138,8 @@ codesign --verify --deep --strict $app || fail "codesign --verify failed"
 # 9. DMG.
 step "DMG"
 ln -s /Applications $work/Applications
-dmg=$app_dir/dist/WebAiOs-$version.dmg
-hdiutil create -volname "WebAiOs $version" -srcfolder $work -format UDZO -ov $dmg
+dmg=$app_dir/dist/Ressac-$version.dmg
+hdiutil create -volname "Ressac $version" -srcfolder $work -format UDZO -ov $dmg
 
 # 10. Native crash symbols (optional).
 if [[ -n ${SENTRY_AUTH_TOKEN:-} && -n ${SENTRY_ORG:-} && -n ${SENTRY_PROJECT:-} ]]; then

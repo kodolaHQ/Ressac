@@ -265,7 +265,7 @@
     {:else if current === "ai"}
       <section data-testid="settings-ai">
         <h2>IA locale</h2>
-        <p class="muted">Une petite IA tourne sur votre Mac, en plus de l'agent : elle le met en pause quand une de ses actions paraît étrange, trie ce que WebAiOs suit pour vous et rédige les résumés. Elle est gratuite et rien de ce qu'elle lit ne quitte votre machine. Il lui faut Ollama, le logiciel libre qui la fait fonctionner, et deux modèles.</p>
+        <p class="muted">Une petite IA tourne sur votre Mac, en plus de l'agent : elle le met en pause quand une de ses actions paraît étrange, trie ce que Ressac suit pour vous et rédige les résumés. Elle est gratuite et rien de ce qu'elle lit ne quitte votre machine. Il lui faut Ollama, le logiciel libre qui la fait fonctionner, et deux modèles.</p>
         {#if !ai}
           <p><span class="pill" data-tone="warn">Vérification…</span></p>
         {:else if !ai.ollamaUrl}
@@ -417,7 +417,7 @@
           <div class="row" data-testid="settings-default-browser">
             <div class="grow">
               <b>Navigateur par défaut</b>
-              <span class="muted">Les liens des autres applications s'ouvrent dans WebAiOs.</span>
+              <span class="muted">Les liens des autres applications s'ouvrent dans Ressac.</span>
             </div>
             {#if isDefault}
               <span class="pill" data-tone="ok" data-testid="default-browser-state">Par défaut</span>
@@ -448,7 +448,7 @@
         <h2>À propos</h2>
         <div class="panel">
           <div class="row">
-            <b class="grow" data-testid="app-version">{version === null ? "" : `WebAiOs ${version}`}</b>
+            <b class="grow" data-testid="app-version">{version === null ? "" : `Ressac ${version}`}</b>
             <button data-testid="settings-release-notes" onclick={() => api.dispatch({ type: "openReleaseNotes", windowId: api.windowId })}>Nouveautés</button>
             <button data-testid="settings-replay-welcome" onclick={() => api.dispatch({ type: "replayOnboarding" })}>Revoir l'accueil</button>
             <button data-testid="open-advanced" onclick={() => s.openAdvanced()}>Réglages avancés du navigateur</button>
@@ -504,7 +504,7 @@
   .content :global(button.danger) { color: var(--in-error); }
   .settings :global(.buttons) { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
   .settings :global(.buttons.start) { justify-content: flex-start; margin-top: 14px; }
-  .settings :global(.confirmation) { margin: 12px 0; padding: 14px 16px; border-radius: 16px; background: var(--sheet); border: 1px solid var(--border); box-shadow: var(--lift); animation: webaios-rise var(--spring-d) var(--spring) backwards; }
+  .settings :global(.confirmation) { margin: 12px 0; padding: 14px 16px; border-radius: 16px; background: var(--sheet); border: 1px solid var(--border); box-shadow: var(--lift); animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   .settings :global(.confirmation p) { margin: 0 0 12px; }
   .settings :global(.panel .confirmation) { margin: 0 14px 12px; background: var(--glass-hi); box-shadow: none; }
   select { padding: 5px 8px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: 12px var(--font-ui); }

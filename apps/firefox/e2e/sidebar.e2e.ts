@@ -3,21 +3,21 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import type { Action } from "../shared/api";
 import type { BrowserState } from "../shared/model";
 import { dispatch, state, waitFor } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
 import { click, inUi, missingApi, pixel, pressKeys, typeText, waitUi } from "./ui";
 
 let server: Awaited<ReturnType<typeof startServer>>;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 beforeAll(async () => (server = await startServer()));
 afterAll(() => server?.close());
 beforeEach(async () => {
-  w = await launchWebAiOs();
+  w = await launchRessac();
   m = w.marionette;
   await m.setContext("chrome");
-  await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+  await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
   await waitUi(m, "return !!doc.querySelector('[data-testid=\"sidebar\"]')");
 });
 afterEach(async () => {
@@ -68,7 +68,7 @@ const emptyPageFocused = () =>
   waitUi(
     m,
     `return !!doc.querySelector('[data-testid="empty-page"]') && doc.activeElement?.dataset.testid === "empty-page-input"
-       && document.activeElement === document.getElementById("webaios-sidebar");`,
+       && document.activeElement === document.getElementById("ressac-sidebar");`,
   );
 
 // getComputedStyle does not expose -moz-window-dragging: the last matching rule gives it (a chrome rule keeps it when parsed).
@@ -165,7 +165,7 @@ describe("the sidebar's layout", () => {
   });
 });
 
-describe("WebAiOs sidebar", () => {
+describe("Ressac sidebar", () => {
   it("“Nouvel onglet” shows the empty page with its field focused; Enter opens the address", async () => {
     const a = await open("/a.html");
     await waitTitle(a, "Page A");
@@ -208,7 +208,7 @@ describe("WebAiOs sidebar", () => {
     await inUi(
       m,
       `const dt = new ui.DataTransfer();
-       dt.setData("application/x-webaios-onglet", arguments[0]);
+       dt.setData("application/x-ressac-onglet", arguments[0]);
        const target = doc.querySelector('[data-testid="tab-' + arguments[1] + '"]');
        const r = target.getBoundingClientRect();
        for (const type of ["dragover", "drop"])
@@ -226,7 +226,7 @@ describe("WebAiOs sidebar", () => {
     await waitTitle(b, "Page B");
     // The page's own state and its browsing context survive a move; a reload would lose both.
     const page = `for (const w of Services.wm.getEnumerator("navigator:browser")) {
-        const t = w.gBrowser?.tabs.find((t) => t.getAttribute("webaios-tab-id") === ${JSON.stringify(b)});
+        const t = w.gBrowser?.tabs.find((t) => t.getAttribute("ressac-tab-id") === ${JSON.stringify(b)});
         if (t) return { context: t.linkedBrowser.browsingContext.id, windows: [...Services.wm.getEnumerator("navigator:browser")].length, selected: t.selected };
       }
       return null;`;
@@ -295,10 +295,10 @@ describe("WebAiOs sidebar", () => {
     await click(m, '[data-testid^="folder-"] .head');
     await waitUi(m, "return doc.querySelectorAll(arguments[0]).length === 0", [inside]);
     expect((await state(m)).spaces[0]!.folders).toMatchObject([{ name: "Docs", collapsed: true }]);
-    if (process.env.WEBAIOS_SHOT) {
+    if (process.env.RESSAC_SHOT) {
       await click(m, '[data-testid^="folder-"] .head');
       await new Promise((r) => setTimeout(r, 1_000));
-      writeFileSync(process.env.WEBAIOS_SHOT, Buffer.from((await m.command<{ value: string }>("WebDriver:TakeScreenshot", { full: false, hash: false })).value, "base64"));
+      writeFileSync(process.env.RESSAC_SHOT, Buffer.from((await m.command<{ value: string }>("WebDriver:TakeScreenshot", { full: false, hash: false })).value, "base64"));
     }
     await click(m, '[data-testid^="folder-"] .head', { button: 2 });
     await click(m, '[role="menuitem"]', { text: "Supprimer le dossier" });
@@ -340,7 +340,7 @@ describe("WebAiOs sidebar", () => {
     const b = await open("/b.html");
     await dispatch(m, { type: "closeTab", id: a });
     const fresh = await waitState((s) => Object.values(s.tabs).find((o) => o.link?.type === "essential" && o.url.endsWith("/a.html"))?.id, (id) => !!id && id !== a);
-    const xul = `const tab = [...gBrowser.tabs].find((t) => t.getAttribute("webaios-tab-id") === arguments[0]); const br = tab?.linkedBrowser;
+    const xul = `const tab = [...gBrowser.tabs].find((t) => t.getAttribute("ressac-tab-id") === arguments[0]); const br = tab?.linkedBrowser;
       return tab ? { url: br.currentURI.spec, done: !br.webProgress.isLoadingDocument, selected: tab.selected, kept: tab.undiscardable } : null;`;
     const deadline = Date.now() + 10_000;
     let seen: any;
@@ -352,7 +352,7 @@ describe("WebAiOs sidebar", () => {
 
     // Right click › Décharger: the page closes and the tile dims; a click loads it again.
     const tile = '[data-testid="essentials"] [data-testid^="favorite-"]';
-    const has = `return gBrowser.tabs.some((t) => t.getAttribute("webaios-tab-id") === arguments[0]);`;
+    const has = `return gBrowser.tabs.some((t) => t.getAttribute("ressac-tab-id") === arguments[0]);`;
     await click(m, tile, { button: 2 });
     await click(m, '[role="menuitem"]', { text: "Décharger" });
     await waitUi(m, "return doc.querySelector(arguments[0]).classList.contains('unloaded')", [tile]);
@@ -373,7 +373,7 @@ describe("WebAiOs sidebar", () => {
     await dispatch(m, { type: "addEssential", id: tab });
     const [a] = (await state(m)).essentials.map((f) => f.id);
     const drop = `const dt = new ui.DataTransfer();
-       dt.setData("application/x-webaios-essentiel", arguments[0]);
+       dt.setData("application/x-ressac-essentiel", arguments[0]);
        const target = doc.querySelector(arguments[1]);
        for (const type of ["dragover", "drop"]) target.dispatchEvent(new ui.DragEvent(type, { dataTransfer: dt, bubbles: true, cancelable: true }));`;
     await waitUi(m, `return !!doc.querySelector('[data-testid="favorite-${a}"]')`);
@@ -392,7 +392,7 @@ describe("WebAiOs sidebar", () => {
     await inUi(
       m,
       `const dt = new ui.DataTransfer();
-       dt.setData("application/x-webaios-essentiel", arguments[0]);
+       dt.setData("application/x-ressac-essentiel", arguments[0]);
        const target = doc.querySelector('[data-testid="favorite-' + arguments[1] + '"]');
        for (const type of ["dragover", "drop"]) target.dispatchEvent(new ui.DragEvent(type, { dataTransfer: dt, bubbles: true, cancelable: true }));`,
       [c, a],
@@ -427,7 +427,7 @@ describe("WebAiOs sidebar", () => {
     const id = await open("/icone");
     await waitTitle(id, "icone");
     // The UI shrinks to its column once a web page is displayed.
-    await waitFor(m, "return document.getElementById('webaios-sidebar').hasAttribute('full')", (v) => v === false);
+    await waitFor(m, "return document.getElementById('ressac-sidebar').hasAttribute('full')", (v) => v === false);
     // The page may paint a moment after its title arrives.
     for (let i = 0; i < 50 && (await pixel(m, 900, 400)).join() !== "255,0,0"; i++) await new Promise((r) => setTimeout(r, 100));
     expect(await pixel(m, 900, 400)).toEqual([255, 0, 0]);
@@ -446,12 +446,12 @@ describe("WebAiOs sidebar", () => {
     expect(await m.execute("return getComputedStyle(document.getElementById('tabbrowser-tabbox')).opacity")).toBe("0");
   });
 
-  it("shows an internal webaios: page as not yet available", async () => {
-    // An internal page WebAiOs-Firefox does not know.
-    await dispatch(m, { type: "openTab", windowId: (await win()).id, url: "webaios://inconnue" });
+  it("shows an internal ressac: page as not yet available", async () => {
+    // An internal page Ressac does not know.
+    await dispatch(m, { type: "openTab", windowId: (await win()).id, url: "ressac://inconnue" });
     const text = await waitUi<string>(m, "return doc.querySelector('[data-testid=\"internal-page\"]')?.textContent");
-    expect(text).toBe("Pas encore disponible dans WebAiOs-Firefox.");
-    expect(await m.execute("return document.getElementById('webaios-sidebar').hasAttribute('full')")).toBe(true);
+    expect(text).toBe("Pas encore disponible dans Ressac.");
+    expect(await m.execute("return document.getElementById('ressac-sidebar').hasAttribute('full')")).toBe(true);
   });
 
   it("shows the favicon a page declares", async () => {

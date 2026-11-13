@@ -9,7 +9,7 @@ test("writeMcpConfig writes the claude-json format as 0600", async () => {
   await writeMcpConfig(c, "claude-json", { url: "http://host.docker.internal:4242/mcp", token: "abc" });
   expect(JSON.parse(await readFile(c.mcpConfig, "utf8"))).toEqual({
     mcpServers: {
-      webaios: { type: "http", url: "http://host.docker.internal:4242/mcp", headers: { Authorization: "Bearer abc" } },
+      ressac: { type: "http", url: "http://host.docker.internal:4242/mcp", headers: { Authorization: "Bearer abc" } },
     },
   });
   expect((await stat(c.mcpConfig)).mode & 0o777).toBe(0o600);
@@ -19,13 +19,13 @@ test("rewriting the config keeps mode 0600", async () => {
   const c = spacePaths(await tempFolder());
   await writeMcpConfig(c, "claude-json", { url: "http://a/mcp", token: "1" });
   await writeMcpConfig(c, "claude-json", { url: "http://b/mcp", token: "2" });
-  expect(JSON.parse(await readFile(c.mcpConfig, "utf8")).mcpServers.webaios.url).toBe("http://b/mcp");
+  expect(JSON.parse(await readFile(c.mcpConfig, "utf8")).mcpServers.ressac.url).toBe("http://b/mcp");
   expect((await stat(c.mcpConfig)).mode & 0o777).toBe(0o600);
 });
 
 test("mcpArgument declares the server for Codex with the token read from the environment", () => {
   expect(mcpArgument({ url: "http://host.docker.internal:4321/mcp" })).toBe(
-    'mcp_servers.webaios={url="http://host.docker.internal:4321/mcp",bearer_token_env_var="WEBAIOS_MCP_TOKEN"}',
+    'mcp_servers.ressac={url="http://host.docker.internal:4321/mcp",bearer_token_env_var="RESSAC_MCP_TOKEN"}',
   );
 });
 

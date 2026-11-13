@@ -6,34 +6,34 @@ import { cleanCapture } from "../chrome/store/design-copies";
 import { openTab, testActor } from "./agent-extensions";
 import { armActor, askActor, center, clearLog, guardFrame, pageLog, readSource, startDesignServers, stopActor, trustedMouse, unguardFrame } from "./design";
 import { waitFor } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { inBrowser, resolveLocalHosts } from "./sites";
 import { pressKeys } from "./ui";
 
-// Plan 35a Task 1: the design viewfinder actor (WebAiOsDesign), and the guard of
+// Plan 35a Task 1: the design viewfinder actor (RessacDesign), and the guard of
 // the spikes' « Correctif S1 », in the top window and in every process-root frame.
 
 const B = "gBrowser.selectedBrowser";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 let servers: Awaited<ReturnType<typeof startDesignServers>>;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 const dirs: string[] = [];
 
 beforeAll(async () => {
   servers = await startDesignServers();
-  const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
-  const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
+  const profile = await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
   dirs.push(dataDir, profile);
   const a = testActor(profile);
   // One web process per site: « two tabs in one process » is then a fact, not a chance. Back goes to a page left
   // without a user gesture (the bfcache test).
-  w = await launchWebAiOs({ dataDir, profile, env: a.env, prefs: { ...a.prefs, "dom.ipc.processCount.webIsolated": 1, "browser.navigation.requireUserInteraction": false } });
+  w = await launchRessac({ dataDir, profile, env: a.env, prefs: { ...a.prefs, "dom.ipc.processCount.webIsolated": 1, "browser.navigation.requireUserInteraction": false } });
   m = w.marionette;
   await m.setContext("chrome");
-  await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+  await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
   await resolveLocalHosts(m, ["localhost"]);
 }, 120_000);
 afterAll(async () => {
@@ -47,7 +47,7 @@ async function open(p: string): Promise<void> {
   await m.execute(`${B}.focus();`);
 }
 const inPage = <T = unknown>(script: string) => inBrowser<T>(m, B, script);
-const hosts = () => inPage<number>(`return document.querySelectorAll("webaios-viewfinder").length;`);
+const hosts = () => inPage<number>(`return document.querySelectorAll("ressac-viewfinder").length;`);
 /** Arms the viewfinder and waits for its host element. */
 async function arm() {
   const a = await armActor(m, B);
@@ -131,7 +131,7 @@ describe("design viewfinder actor", () => {
     expect(await readSource(m, B, "#nue")).toEqual({ file: "a.svelte" });
     await pageSets(`Object.defineProperty(document.querySelector("#nue"), "__svelte_meta", { get() { throw new Error("no"); } })`);
     expect(await readSource(m, B, "#nue")).toBeNull();
-    expect(await inPage("return Object.keys(window.wrappedJSObject ?? window).filter((k) => /viewfinder|webaios/i.test(k));")).toEqual([]);
+    expect(await inPage("return Object.keys(window.wrappedJSObject ?? window).filter((k) => /viewfinder|ressac/i.test(k));")).toEqual([]);
   });
 
   // design.spec.ts:174

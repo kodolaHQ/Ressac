@@ -1,6 +1,6 @@
 import type { Band, WindowId } from "../../shared/model";
 import { HOST_EXITED } from "../agent/host";
-import type { WebAiOsStore } from "../store";
+import type { RessacStore } from "../store";
 
 const XHTML = "http://www.w3.org/1999/xhtml";
 
@@ -14,9 +14,9 @@ export const stats = (b: Band, now: number) => `${b.pages} ${b.pages === 1 ? "pa
 /**
  * The band of the agent's search tab, above the page, shown while that tab is the window's active one. It says what the
  * agent does, and in « à vous » hands the page back to the user (Continuer). The page moves down by its height
- * (--webaios-search-band, under the site banner's --webaios-banner). Returns what takes it down.
+ * (--ressac-search-band, under the site banner's --ressac-banner). Returns what takes it down.
  */
-export function mountSearchBand(win: Window, store: WebAiOsStore, windowId: WindowId): () => void {
+export function mountSearchBand(win: Window, store: RessacStore, windowId: WindowId): () => void {
   const doc = win.document;
   const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string) => {
     const e = doc.createElementNS(XHTML, tag) as HTMLElementTagNameMap[K];
@@ -24,7 +24,7 @@ export function mountSearchBand(win: Window, store: WebAiOsStore, windowId: Wind
     return e;
   };
   const band = el("div");
-  band.id = "webaios-search-band";
+  band.id = "ressac-search-band";
   band.dataset.testid = "search-band";
   band.setAttribute("role", "status");
   band.setAttribute("aria-label", "Recherche de l'agent");
@@ -81,11 +81,11 @@ export function mountSearchBand(win: Window, store: WebAiOsStore, windowId: Wind
       clearInterval(tick);
       tick = undefined;
     }
-    doc.documentElement.toggleAttribute("webaios-search-band", !!b);
+    doc.documentElement.toggleAttribute("ressac-search-band", !!b);
     resize();
   };
   // Its room: its height and the 8 px gap under it, as the page has to the window's edge.
-  const resize = () => doc.documentElement.style.setProperty("--webaios-search-band", shown ? `${band.getBoundingClientRect().height + 8}px` : "0px");
+  const resize = () => doc.documentElement.style.setProperty("--ressac-search-band", shown ? `${band.getBoundingClientRect().height + 8}px` : "0px");
   const observer = new ResizeObserver(resize);
   observer.observe(band);
   render();

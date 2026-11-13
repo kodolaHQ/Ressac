@@ -3,11 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { WindowId, TabId } from "../../shared/model";
-import type { WebAiOsStore } from "../store";
+import type { RessacStore } from "../store";
 import type { TabSync } from "./tabs";
 
-/** Replaces win.BrowserAddonUI.openAddonsMgr: about:addons is a WebAiOs tab of this window's active space. */
-export function routeAddonsManager(win: Window, store: WebAiOsStore, windowId: WindowId, tabs: TabSync): void {
+/** Replaces win.BrowserAddonUI.openAddonsMgr: about:addons is a Ressac tab of this window's active space. */
+export function routeAddonsManager(win: Window, store: RessacStore, windowId: WindowId, tabs: TabSync): void {
   (win as any).BrowserAddonUI.openAddonsMgr = async (view?: string): Promise<Window> => {
     const state = store.state;
     const f = state.windows.find((x) => x.id === windowId);

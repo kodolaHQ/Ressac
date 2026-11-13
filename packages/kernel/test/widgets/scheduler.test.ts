@@ -122,7 +122,7 @@ async function prepare(o: { workshop?: WorkshopState; status?: WidgetState["stat
     setWorkshop: (e: WorkshopState) => (workshopState = e),
     set: (d: Date) => (now = d),
     clock: clock,
-    /** A new scheduler on the same folders (WebAiOs relaunched); the caller stopped the previous one. */
+    /** A new scheduler on the same folders (Ressac relaunched); the caller stopped the previous one. */
     relaunch: () => (p = new WidgetsScheduler(options())),
   };
 }
@@ -1046,7 +1046,7 @@ test("Mac asleep over several hours: a single catch-up on wake", async () => {
 test("midnight: the hour missed the day before is not caught up, the next day's is", async () => {
   const { p, c, harvests: harvests, set: fixer, widgetsFolder: widgetsFolder } = await prepare();
   await writeMorning(c, { hours: ["07:00", "22:00"] });
-  // 22:00 missed on the 29th (WebAiOs closed); reopened after midnight.
+  // 22:00 missed on the 29th (Ressac closed); reopened after midnight.
   await writeWidgetState(widgetsFolder, "matin", { status: "ok", lastUpdate: null, lastAttempt: null, hours: { done: "2026-10-29T07:00", failures: null } });
   for (const [h, m] of [[0, 0], [0, 1], [3, 0], [6, 59]] as const) {
     fixer(at(h, m, 30));

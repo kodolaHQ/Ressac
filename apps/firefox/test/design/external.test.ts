@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ReviewStore, reviewStore, externalProject, ExternalRegistry, Remarks } from "@webaios/kernel";
+import { ReviewStore, reviewStore, externalProject, ExternalRegistry, Remarks } from "@ressac/kernel";
 import { startExternals } from "../../core/design/external";
 
 const folders: string[] = [];
@@ -13,9 +13,9 @@ afterEach(async () => {
 });
 
 async function prepare(port: number) {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "webaios-externes-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "ressac-externes-")));
   folders.push(root);
-  const designFolders = { spaceRemarks: join(root, "workspace", ".webaios", "remarks"), private: join(root, "prive") };
+  const designFolders = { spaceRemarks: join(root, "workspace", ".ressac", "remarks"), private: join(root, "prive") };
   mkdirSync(designFolders.private, { recursive: true });
   const registry = await ExternalRegistry.open(designFolders.private);
   const service = await startExternals({

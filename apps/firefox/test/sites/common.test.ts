@@ -19,7 +19,7 @@ test("messages of a site app's window", () => {
   expect(tweaksGrantTitle("Vidola")).toBe("Autoriser les retouches de « Vidola » ?");
   expect(confirmForget("Vidola")).toBe("Oublier tout ce que « Vidola » a retenu (séries, positions des vidéos) ?");
   expect(confirmSiteDeletion("Vidola")).toBe("Supprimer « Vidola » ? Sa connexion et sa mémoire sont effacées, son dossier va à la corbeille.");
-  expect(editWithAgent("vidola")).toBe("Appli de site ~/WebAiOs/sites/vidola/ : ");
+  expect(editWithAgent("vidola")).toBe("Appli de site ~/Ressac/sites/vidola/ : ");
 });
 
 test("HomeMessage: the three allowed messages", () => {

@@ -6,7 +6,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { openTab, testActor } from "./agent-extensions";
 import { startDesignServers } from "./design";
 import { dispatch, state, waitFor, waitReady, windowHandles } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
 import { startServer } from "./server";
@@ -28,7 +28,7 @@ const page = (title: string, body: string) => (_: unknown, res: import("node:htt
 let server: Awaited<ReturnType<typeof startServer>>;
 let design: Awaited<ReturnType<typeof startDesignServers>>;
 let sites: Awaited<ReturnType<typeof startSitesServer>>;
-let w: LaunchedWebAiOs | undefined;
+let w: LaunchedRessac | undefined;
 const dirs: string[] = [];
 beforeAll(async () => {
   mkdirSync(OUT, { recursive: true });
@@ -69,10 +69,10 @@ async function shoot(m: Marionette, name: string): Promise<void> {
 describe("aura tour", () => {
   for (const [theme, dark] of [["sombre", 1], ["clair", 0]] as const) {
     it(`captures the chrome surfaces (${theme})`, async () => {
-      w = await launchWebAiOs({ prefs: { "ui.systemUsesDarkTheme": dark, "ui.prefersReducedMotion": 0 } });
+      w = await launchRessac({ prefs: { "ui.systemUsesDarkTheme": dark, "ui.prefersReducedMotion": 0 } });
       const m = w.marionette;
       await m.setContext("chrome");
-      await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+      await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
       await waitUi(m, "return !!doc.querySelector('[data-testid=\"sidebar\"]')");
       const windowId = (await state(m)).windows[0]!.id;
       // The home page's panel starts the agent's session, which takes back every access: tools are called after it.
@@ -83,7 +83,7 @@ describe("aura tour", () => {
       await shoot(m, `1-window-${theme}`);
 
       await click(m, '[data-testid="agent-button"]');
-      await waitFor(m, "return !document.getElementById('webaios-agent').hidden", (v) => v === true);
+      await waitFor(m, "return !document.getElementById('ressac-agent').hidden", (v) => v === true);
       await shoot(m, `5-agent-${theme}`);
 
       // An access card: the agent asks to read a tab it was not given (opening the panel shared the shown one).
@@ -100,7 +100,7 @@ describe("aura tour", () => {
       await shoot(m, `7-access-bubble-${theme}`);
       await pressKeys(m, "Escape");
       await click(m, '[data-testid="agent-button"]');
-      await waitFor(m, "return document.getElementById('webaios-agent').hidden", (v) => v === true);
+      await waitFor(m, "return document.getElementById('ressac-agent').hidden", (v) => v === true);
 
       await click(m, '[data-testid="new-space"]');
       await waitUi(m, "return doc.querySelector('[data-testid=\"space-modal\"] h2')?.textContent === 'Nouvel espace'");
@@ -154,8 +154,8 @@ describe("aura tour", () => {
 
   for (const [theme, dark] of [["sombre", 1], ["clair", 0]] as const) {
     it(`captures the internal pages (${theme})`, async () => {
-      const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
-      const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
+      const dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
+      const profile = await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
       dirs.push(dataDir, profile);
       await writeWidget(dataDir, "veille", {
         name: "Veille",
@@ -176,10 +176,10 @@ describe("aura tour", () => {
       });
       writeSite(dataDir, "carnet", { declaration: { name: "Carnet", url: sites.url("carnet.localhost", "/"), domains: ["carnet.localhost"] } });
       const actor = testActor(profile);
-      w = await launchWebAiOs({
+      w = await launchRessac({
         dataDir,
         profile,
-        env: { ...actor.env, WEBAIOS_APP_PORTS: "15335-15339", WEBAIOS_TEST_LOCAL_ADDRESSES: "1", WEBAIOS_OLLAMA_URL: "http://127.0.0.1:9" },
+        env: { ...actor.env, RESSAC_APP_PORTS: "15335-15339", RESSAC_TEST_LOCAL_ADDRESSES: "1", RESSAC_OLLAMA_URL: "http://127.0.0.1:9" },
         prefs: { ...actor.prefs, "ui.systemUsesDarkTheme": dark, "ui.prefersReducedMotion": 0 },
       });
       const m = w.marionette;
@@ -218,15 +218,15 @@ describe("aura tour", () => {
 
       // Design mode on the demo page: the cart column beside the page.
       await openTab(m, `${design.page}/`);
-      await inUi(m, "ui.webaios.design.toggle(); return 1;");
-      await waitFor(m, "const f = document.getElementById('webaios-design-volet'); return !!f && f.getBoundingClientRect().width > 0;", (v) => v === true, 15_000);
+      await inUi(m, "ui.ressac.design.toggle(); return 1;");
+      await waitFor(m, "const f = document.getElementById('ressac-design-volet'); return !!f && f.getBoundingClientRect().width > 0;", (v) => v === true, 15_000);
       await shoot(m, `16-design-${theme}`);
-      await inUi(m, "ui.webaios.design.toggle(); return 1;");
+      await inUi(m, "ui.ressac.design.toggle(); return 1;");
 
       // A site app's own window: its bar over the site.
       const before = await windowHandles(m);
       await m.execute(
-        `return (async () => { const store = await ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready;
+        `return (async () => { const store = await ChromeUtils.importESModule("chrome://browser/content/ressac/store.sys.mjs").ready;
           await store.agent.request("sites.act", { id: "carnet", action: "open", window: store.state.windows[0].id }); })();`,
       );
       await waitFor(m, `const w = ${siteWindowExpr("carnet")}; return !!w && w.gBrowser.selectedBrowser.currentURI.spec.includes("carnet.localhost");`, (v) => v === true, 15_000);

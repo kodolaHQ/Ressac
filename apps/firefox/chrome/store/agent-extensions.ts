@@ -16,11 +16,11 @@ const { FileUtils } = ChromeUtils.importESModule("resource://gre/modules/FileUti
 const { ExtensionParent } = ChromeUtils.importESModule("resource://gre/modules/ExtensionParent.sys.mjs");
 
 // Keep in sync with host/extensions/firefox-copy.ts ID_SUFFIX.
-const SUFFIX = "@agent.webaios";
+const SUFFIX = "@agent.ressac";
 const REFUSED_CALLS = new Set(["tabs.captureVisibleTab", "tabs.captureTab", "tabs.detectLanguage", "tabs.saveAsPDF", "tabs.print", "tabs.printPreview", "tabs.toggleReaderMode"]);
 // Keep in sync with chrome/window/tabs.ts (not imported: it runs window code at load).
-const TAB_ID = "webaios-tab-id";
-const PARKING = "webaios-parking";
+const TAB_ID = "ressac-tab-id";
+const PARKING = "ressac-parking";
 // Keep in sync with CONSOLE_LENGTH_MAX (packages/kernel/src/mcp/extensions.ts): a message is never longer than an answer.
 const CONSOLE_TEXT_MAX = 100_000;
 
@@ -49,7 +49,7 @@ export interface AgentExtensions {
   shownIn(addonId: string, profile: ProfileId, isPrivate: boolean): boolean;
   /** `cb` after each new set of grants (extensions.portees). */
   onScopes(cb: () => void): () => void;
-  /** The extension actor's checkpoints (window.__webaios), for the add-on id read from the page's principal. */
+  /** The extension actor's checkpoints (window.__ressac), for the add-on id read from the page's principal. */
   check(addonId: string, kind: CheckKind, value: unknown): boolean;
   /** The console actor's message from content process `from`: relayed to the kernel for an installed agent extension. */
   relayConsole(from: { childID: number; remoteType: string }, data: unknown): void;
@@ -89,7 +89,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
         let path = p.xpi;
         if (p.temporary) {
           // A temporary add-on is read from its file for as long as it runs: a copy of ours, which the kernel moves.
-          const dir = PathUtils.join(PathUtils.tempDir, "webaios-agent-addons");
+          const dir = PathUtils.join(PathUtils.tempDir, "ressac-agent-addons");
           await IOUtils.makeDirectory(dir, { ignoreExisting: true });
           path = PathUtils.join(dir, `${id}-${p.version}.xpi`);
           await IOUtils.copy(p.xpi, path);
@@ -148,7 +148,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
   const pending = new Map<string, "uninstalled" | "disabled">();
   const send = (addonId: string, what: "uninstalled" | "disabled") =>
     host()
-      .request("extensions.outsideWebaios", { addonId, what: what })
+      .request("extensions.outsideRessac", { addonId, what: what })
       .then(() => pending.get(addonId) === what && pending.delete(addonId))
       .catch(() => {});
   AddonManager.addAddonListener({
@@ -194,7 +194,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
     }
   };
 
-  /** A WebAiOs tab's state entry and space; never the parking tab, never an invisible read (not a tab at all). */
+  /** A Ressac tab's state entry and space; never the parking tab, never an invisible read (not a tab at all). */
   const tabModelOf = (tab: any) => {
     const tabModel = !tab || tab.hasAttribute?.(PARKING) ? undefined : store.state.tabs[tab.getAttribute?.(TAB_ID) ?? ""];
     const space = tabModel && store.state.spaces.find((e) => e.id === tabModel.spaceId);
@@ -268,7 +268,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
         return typeof spec === "string" && agentAllowedHost(spec, scope.grant);
       }
       case "isTab": {
-        // A WebAiOs tab of a non-private space, in the container of a profile where the extension is active (spec choice
+        // A Ressac tab of a non-private space, in the container of a profile where the extension is active (spec choice
         // 2: its content scripts follow its spaces).
         const tab = tabOf(value);
         const t = tabModelOf(tab);
@@ -284,7 +284,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
 
   /**
    * A console message an agent extension wrote in a content process (spike S6): from the extension
-   * process, its own pages (`onglet` null); from a web process, a content script: the WebAiOs tab of a non-private space
+   * process, its own pages (`onglet` null); from a web process, a content script: the Ressac tab of a non-private space
    * it came from (else none), whose readability the kernel decides as it notes it (its policy,
    * ongletLisibleParAgent). A web process is untrusted: the window must be one of its own, looked up here.
    */
@@ -330,7 +330,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
   const recvAPICall = api.conduit.recv.get("APICall");
   api.conduit.recv.set("APICall", (data: { childId: number; callId?: number; path: string }, meta: unknown) => {
     if (REFUSED_CALLS.has(data.path) && api.getContextUnchecked(data.childId)?.extension?.id?.endsWith(SUFFIX)) {
-      if (data.callId) api.conduit.sendCallResult(data.childId, { childId: data.childId, callId: data.callId, path: data.path, error: { message: `${data.path} non pris en charge par WebAiOs` } });
+      if (data.callId) api.conduit.sendCallResult(data.childId, { childId: data.childId, callId: data.callId, path: data.path, error: { message: `${data.path} non pris en charge par Ressac` } });
       return;
     }
     return recvAPICall(data, meta);
@@ -390,7 +390,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
       const sent = [...pending].map(([addonId, what]) => ({ addonId, what: what }));
       const crashes = [...crashesPending];
       host()
-        .request("extensions.ready", { outsideWebaios: sent, crashes: crashes })
+        .request("extensions.ready", { outsideRessac: sent, crashes: crashes })
         .then(
           () => {
             sent.forEach((h) => pending.get(h.addonId) === h.what && pending.delete(h.addonId));
@@ -474,7 +474,7 @@ function watchCrashes(crashed: (addonId: string) => void): { backgroundError(add
   });
 
   let pinged: ReturnType<typeof ChromeUtils.getAllDOMProcesses>[number] | undefined;
-  const testWindow = Number(Services.env.get("WEBAIOS_TEST_WATCHDOG_MS"));
+  const testWindow = Number(Services.env.get("RESSAC_TEST_WATCHDOG_MS"));
   const watchdog = createWatchdog({
     // e2e only (three kills in 60 s); floored so it can never make the watchdog trigger-happy.
     ...(testWindow > 0 ? { windowMs: Math.max(testWindow, 2_000) } : {}),
@@ -485,7 +485,7 @@ function watchCrashes(crashed: (addonId: string) => void): { backgroundError(add
     ping: () => {
       pinged = ChromeUtils.getAllDOMProcesses().find((x) => x.remoteType === "extension");
       const p = pinged;
-      return p ? Promise.resolve().then(() => p.getActor("WebAiOsConsole").sendQuery("ping")) : Promise.resolve();
+      return p ? Promise.resolve().then(() => p.getActor("RessacConsole").sendQuery("ping")) : Promise.resolve();
     },
     kill: () => {
       if (!pinged?.canSend || running.size === 0) return;

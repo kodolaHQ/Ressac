@@ -9,7 +9,7 @@ import { testActor } from "./agent-extensions";
 import { agentInput, APPS_ENV, appWindowExpr, inAppView, killFakeApps, launchAttempt, rowButton, rowMenu, rowState, writeProject } from "./apps";
 import { startDesignServers, trustedMouse } from "./design";
 import { dispatch, inWindow, state, waitFor, waitReady, windowHandles } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
 import { LINES, writeAppJs } from "./review";
@@ -21,7 +21,7 @@ import { click, pressKeys, typeText, waitUi } from "./ui";
 
 const BLOCK: [number, number] = [15320, 15324];
 const DEMO = 15324;
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const APP = appWindowExpr("essai");
 const VIEW = "gBrowser.selectedBrowser";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -34,7 +34,7 @@ createServer((req, res) => {
 }).listen(Number(process.env.PORT));
 `;
 
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 let dataDir: string;
 let profile: string;
@@ -42,18 +42,18 @@ let demo: Awaited<ReturnType<typeof startDesignServers>>;
 
 beforeAll(async () => {
   demo = await startDesignServers({ port: DEMO });
-  dataDir = await mkdtemp(join(os.tmpdir(), "webaios-data-"));
-  profile = await mkdtemp(join(os.tmpdir(), "webaios-firefox-"));
+  dataDir = await mkdtemp(join(os.tmpdir(), "ressac-data-"));
+  profile = await mkdtemp(join(os.tmpdir(), "ressac-firefox-"));
   writeProject(dataDir, "essai", { manifest: { name: "Essai" }, server: "form" });
   writeFileSync(join(dataDir, "workspace", "projects", "essai", "serveur.mjs"), SERVER);
   writeAppJs(join(dataDir, "workspace", "projects", "essai"), LINES);
   const a = testActor(profile);
-  w = await launchWebAiOs({ dataDir, profile, env: { ...APPS_ENV(BLOCK), ...a.env }, prefs: a.prefs });
+  w = await launchRessac({ dataDir, profile, env: { ...APPS_ENV(BLOCK), ...a.env }, prefs: a.prefs });
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
   // Not expect.poll: run from beforeAll.
-  for (const end = Date.now() + 15_000; !existsSync(join(dataDir, "workspace", ".webaios", "mcp.json")); await sleep(100))
+  for (const end = Date.now() + 15_000; !existsSync(join(dataDir, "workspace", ".ressac", "mcp.json")); await sleep(100))
     if (Date.now() > end) throw new Error("the MCP server did not start");
 }, 120_000);
 afterAll(async () => {
@@ -64,7 +64,7 @@ afterAll(async () => {
 });
 afterEach(async () => {
   await callTool(dataDir, "stop_app", { folder: "essai" }).catch(() => {});
-  await waitFor(m, `return [...Services.wm.getEnumerator("navigator:browser")].filter((w) => w.document.documentElement.hasAttribute("webaios-app")).length;`, (n) => n === 0);
+  await waitFor(m, `return [...Services.wm.getEnumerator("navigator:browser")].filter((w) => w.document.documentElement.hasAttribute("ressac-app")).length;`, (n) => n === 0);
   await waitFor(m, "for (const t of gBrowser.tabs.slice(1)) gBrowser.removeTab(t); return gBrowser.tabs.length;", (n) => n === 1);
   // Each test starts with an empty cart.
   await svc(`for (const e of await store.agent.request("design.basket", { project: "app-essai" })) await store.agent.request("design.remove", { project: "app-essai", id: e.id }); return 1;`);
@@ -74,19 +74,19 @@ afterEach(async () => {
 const svc = <R = unknown>(body: string, args: unknown[] = []) =>
   m.execute<R>(
     `return (async (args) => { const store = await ChromeUtils.importESModule("${STORE}").ready, d = store.design; const t = { type: "app", folder: "essai" };
-     const main = { type: "window", windowId: window.webaiosWindow?.windowId }; ${body} })([...arguments]);`,
+     const main = { type: "window", windowId: window.ressacWindow?.windowId }; ${body} })([...arguments]);`,
     args,
   );
 const designState = () => svc<{ active: boolean; basket: number; project: { project: string } | null }>("return await d.state(t);");
 /** The host's cart of app-essai (whether its window is open or not). */
 const cart = () => svc<number>(`return (await store.agent.request("design.tracking", { project: "app-essai" })).basket;`);
-const hosts = () => inAppView<number>(m, "essai", `return document.querySelectorAll("webaios-viewfinder").length;`).catch(() => -1);
+const hosts = () => inAppView<number>(m, "essai", `return document.querySelectorAll("ressac-viewfinder").length;`).catch(() => -1);
 
 /** The essai window's chrome handle (Marionette's chrome context), waited for. */
 async function appHandle(): Promise<string> {
   for (const end = Date.now() + 15_000; Date.now() < end; await sleep(100))
     for (const h of await windowHandles(m)) {
-      const folder = await inWindow(m, h, () => m.execute<string | null>(`return document.documentElement.getAttribute("webaios-app");`)).catch(() => null);
+      const folder = await inWindow(m, h, () => m.execute<string | null>(`return document.documentElement.getAttribute("ressac-app");`)).catch(() => null);
       if (folder === "essai") return h;
     }
   throw new Error("no essai window");
@@ -108,8 +108,8 @@ const loadedAt = async (url: string) => {
 /** Runs `body` with `win` (essai's window), `f` (its badge frame) and `doc` (the badge's document); null while it is not mounted. */
 const badge = <T = unknown>(body: string, args: unknown[] = []) =>
   m.execute<T | null>(
-    `return (async () => { const win = ${APP}; const f = win?.document.getElementById("webaios-app-badge"); const doc = f?.contentDocument;
-     if (!doc?.querySelector('[data-testid="webaios-pill"]')) return null; ${body} })();`,
+    `return (async () => { const win = ${APP}; const f = win?.document.getElementById("ressac-app-badge"); const doc = f?.contentDocument;
+     if (!doc?.querySelector('[data-testid="ressac-pill"]')) return null; ${body} })();`,
     args,
   );
 const badgeSize = () => badge<number[]>("const r = f.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)];");
@@ -119,14 +119,14 @@ const clickBadge = (selector: string, text?: string) =>
     .toBe(true);
 /** The badge's menu item `name`. */
 async function menu(name: string): Promise<void> {
-  await clickBadge(tid("webaios-pill"));
+  await clickBadge(tid("ressac-pill"));
   await clickBadge('[role="menuitem"]', name);
 }
 
 /** `body` with `doc` the document of essai's design overlay frame; null while it is absent or hidden. */
 const overlay = <T = unknown>(body: string) =>
   m.execute<T | null>(
-    `const f = ${APP}?.document.getElementById("webaios-design-calque");
+    `const f = ${APP}?.document.getElementById("ressac-design-calque");
      if (!f || f.style.display === "none" || !f.getBoundingClientRect().width) return null;
      const doc = f.contentDocument;
      return (() => { ${body} })();`,
@@ -157,13 +157,13 @@ async function add(text: string): Promise<void> {
 }
 const reviewTabs = async () => Object.values((await state(m)).tabs).filter((o) => o.url === reviewUrl("app-essai"));
 
-it("design.spec.ts:426 an app window launched from the Applications page: the WebAiOs badge, Mode design, the bubble in its overlay, Panier", async () => {
+it("design.spec.ts:426 an app window launched from the Applications page: the Ressac badge, Mode design, the bubble in its overlay, Panier", async () => {
   const windowId = (await state(m)).windows[0]!.id;
   await dispatch(m, { type: "openApps", windowId: windowId });
   await rowButton(m, "essai", "Lancer");
   await rowState(m, "essai", "running");
   await expect.poll(() => inAppView<string>(m, "essai", "return document.title;").catch(() => null), { timeout: 15_000 }).toBe("Inscription");
-  // The app launched is « built »: the agent has access (88×28). Cut, the WebAiOs button stays alone (48×28).
+  // The app launched is « built »: the agent has access (88×28). Cut, the Ressac button stays alone (48×28).
   await expect.poll(() => badge<number>(`return doc.querySelectorAll('${tid("access-pill")}').length;`), { timeout: 10_000 }).toBe(1);
   await expect.poll(badgeSize, { timeout: 10_000 }).toEqual([88, 28]);
   await clickBadge(tid("access-pill"));
@@ -173,7 +173,7 @@ it("design.spec.ts:426 an app window launched from the Applications page: the We
   await modeOn();
   await aim("#email", "input#email.champ");
   // The overlay is a frame of the app window, never of the main window.
-  expect(await m.execute("return !!document.getElementById('webaios-design-calque');")).toBe(false);
+  expect(await m.execute("return !!document.getElementById('ressac-design-calque');")).toBe(false);
   await add("Champ plus large");
   // « Panier »: the overlay shows the app's cart, on the right, 340 px wide, 12 px from the edges; the page keeps its width.
   const width = await inAppView<number>(m, "essai", "return innerWidth;");
@@ -182,10 +182,10 @@ it("design.spec.ts:426 an app window launched from the Applications page: the We
   expect(await overlay<number>(`return doc.querySelectorAll('${tid("basket-remark")}').length;`)).toBe(1);
   await expect.poll(sendText, { timeout: 10_000 }).toBe("Envoyer 1 remarque à l'agent");
   expect(
-    await m.execute(`const win = ${APP}, r = win.document.getElementById("webaios-design-calque").getBoundingClientRect(); return [Math.round(win.innerWidth - r.right), Math.round(r.top), Math.round(r.width), Math.round(win.innerHeight - r.bottom)];`),
+    await m.execute(`const win = ${APP}, r = win.document.getElementById("ressac-design-calque").getBoundingClientRect(); return [Math.round(win.innerWidth - r.right), Math.round(r.top), Math.round(r.width), Math.round(win.innerHeight - r.bottom)];`),
   ).toEqual([12, 12, 340, 12]);
   expect(await inAppView<number>(m, "essai", "return innerWidth;")).toBe(width);
-  expect(readdirSync(join(dataDir, "workspace", ".webaios", "remarks"))).toEqual(["app-essai"]);
+  expect(readdirSync(join(dataDir, "workspace", ".ressac", "remarks"))).toEqual(["app-essai"]);
 });
 
 it("design.spec.ts:529 app window essai: sending from the overlay sends to the main window's terminal", async () => {
@@ -197,9 +197,9 @@ it("design.spec.ts:529 app window essai: sending from the overlay sends to the m
   await expect.poll(sendText, { timeout: 10_000 }).toBe("Envoyer 1 remarque à l'agent");
   const before = agentInput(dataDir);
   await inApp(() => click(m, tid("send-remarks"), { frame: "overlay" }));
-  await waitFor(m, "return !document.getElementById('webaios-agent').hidden", (v) => v === true);
+  await waitFor(m, "return !document.getElementById('ressac-agent').hidden", (v) => v === true);
   await expect.poll(() => agentInput(dataDir).slice(before.length), { timeout: 20_000 }).toContain("appli Essai (/workspace/projects/essai)");
-  expect(agentInput(dataDir)).toContain("/workspace/.webaios/remarks/app-essai/");
+  expect(agentInput(dataDir)).toContain("/workspace/.ressac/remarks/app-essai/");
   await expect.poll(() => agentInput(dataDir), { timeout: 5_000 }).toMatch(/\] [^\r]*\r$/);
   await expect.poll(() => overlay<number>(`return doc.querySelectorAll('${tid("batch-sent")}').length;`), { timeout: 10_000 }).toBe(1);
 });
@@ -234,7 +234,7 @@ it("⇧⌘D in the app window toggles its own mode, never the main window's tab"
   await expect.poll(hosts, { timeout: 10_000 }).toBe(1);
   expect((await svc<{ active: boolean }>("return await d.state(main);")).active).toBe(false);
   expect(await svc("return d.overlayContext(main);")).toBeNull();
-  expect(await inBrowser<number>(m, VIEW, `return document.querySelectorAll("webaios-viewfinder").length;`)).toBe(0);
+  expect(await inBrowser<number>(m, VIEW, `return document.querySelectorAll("ressac-viewfinder").length;`)).toBe(0);
   // Firefox's « bookmark all tabs » stays off in the app window.
   expect(await m.execute(`return ["bookmarkAllTabsKb", "Browser:BookmarkAllTabs"].map((id) => ${APP}.document.getElementById(id)?.getAttribute("disabled"));`)).toEqual(["true", "true"]);
   expect((await windowHandles(m)).length).toBe(handles);
@@ -330,7 +330,7 @@ describe("no main window", () => {
     await m.execute("window.close();");
     await m.command("WebDriver:SwitchToWindow", { handle: app, focus: false });
     await expect.poll(async () => (await windowHandles(m)).includes(main), { timeout: 10_000 }).toBe(false);
-    expect(await m.execute(`return [...Services.wm.getEnumerator("navigator:browser")].filter((w) => !w.document.documentElement.hasAttribute("webaios-app")).length;`)).toBe(0);
+    expect(await m.execute(`return [...Services.wm.getEnumerator("navigator:browser")].filter((w) => !w.document.documentElement.hasAttribute("ressac-app")).length;`)).toBe(0);
     const before = agentInput(dataDir);
     await click(m, tid("send-remarks"), { frame: "overlay" });
     await expect.poll(() => agentInput(dataDir).slice(before.length), { timeout: 30_000 }).toContain("appli Essai (/workspace/projects/essai)");
@@ -339,10 +339,10 @@ describe("no main window", () => {
     let opened: string | undefined;
     for (const end = Date.now() + 10_000; !opened && Date.now() < end; await sleep(100))
       for (const h of await windowHandles(m))
-        if (h !== app && (await inWindow(m, h, () => m.execute<boolean>("return !!window.webaiosWindow;")).catch(() => false))) opened = h;
+        if (h !== app && (await inWindow(m, h, () => m.execute<boolean>("return !!window.ressacWindow;")).catch(() => false))) opened = h;
     expect(opened).toBeTruthy();
     await m.command("WebDriver:SwitchToWindow", { handle: opened!, focus: false });
     await waitReady(m);
-    await waitFor(m, "return !document.getElementById('webaios-agent').hidden", (v) => v === true);
+    await waitFor(m, "return !document.getElementById('ressac-agent').hidden", (v) => v === true);
   });
 });

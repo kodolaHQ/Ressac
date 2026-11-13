@@ -1,4 +1,4 @@
-import { localUrl } from "@webaios/kernel";
+import { localUrl } from "@ressac/kernel";
 import type { BrowserState, ProfileId } from "../../shared/model";
 
 /** At most 2 MB of rendered HTML for an invisible HTML read. */

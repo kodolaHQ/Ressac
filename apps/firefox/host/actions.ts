@@ -127,7 +127,7 @@ export function createActionsHost(o: {
     writing = writing
       .then(() => mkdir(o.actionsFolder, { recursive: true }))
       .then(() => writeFile(denialFile, t))
-      .catch((e) => console.error("[webaios] action refusals not saved:", e));
+      .catch((e) => console.error("[ressac] action refusals not saved:", e));
   };
   /** Followed launches, per action: a deletion forgets them, their end notes nothing (action made again under the same id). */
   const trackedLaunches = new Map<string, Set<Promise<LaunchResult>>>();
@@ -239,7 +239,7 @@ export function createActionsHost(o: {
         await trashAction(o.paths, id, forget);
         return { ok: true };
       } catch (e) {
-        console.error(`[webaios] action ${id} not deleted:`, e);
+        console.error(`[ressac] action ${id} not deleted:`, e);
         return { ok: false, error: "L'action n'a pas pu être supprimée" };
       }
     },

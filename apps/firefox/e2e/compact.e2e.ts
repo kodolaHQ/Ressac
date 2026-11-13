@@ -1,20 +1,20 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { dispatch, state, waitFor } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
 import { click, inUi, missingApi, pressKeys, waitUi } from "./ui";
 
 let server: Awaited<ReturnType<typeof startServer>>;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 beforeAll(async () => (server = await startServer()));
 afterAll(() => server?.close());
 beforeEach(async () => {
-  w = await launchWebAiOs();
+  w = await launchRessac();
   m = w.marionette;
   await m.setContext("chrome");
-  await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+  await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
   await waitUi(m, "return !!doc.querySelector('[data-testid=\"sidebar\"]')");
 });
 afterEach(async () => {
@@ -84,7 +84,7 @@ describe("compact mode", () => {
   });
 
   it("the macOS window buttons go with the sidebar", async () => {
-    const buttons = () => m.execute<boolean>(`return document.getElementById("webaios-window-buttons").checkVisibility();`);
+    const buttons = () => m.execute<boolean>(`return document.getElementById("ressac-window-buttons").checkVisibility();`);
     await openPage();
     expect(await m.execute(`return document.documentElement.hasAttribute("customtitlebar");`)).toBe(true);
     expect(await buttons()).toBe(true);
@@ -136,7 +136,7 @@ describe("compact mode", () => {
     const shown = await inUi<{ frame: number; left: number; free: number }>(
       m,
       `return { frame: frame.getBoundingClientRect().width, left: doc.querySelector('[data-testid="content-zone"]').getBoundingClientRect().left,
-        free: document.getElementById("webaios-agent").getBoundingClientRect().left };`,
+        free: document.getElementById("ressac-agent").getBoundingClientRect().left };`,
     );
     expect(shown).toMatchObject({ frame: shown.free, left: 0 });
   });
@@ -157,7 +157,7 @@ describe("compact mode", () => {
 
   describe("with the sidebar on the right", () => {
     const toRight = () => dispatch(m, { type: "setSidebarSide", side: "right" });
-    const frameRight = () => m.execute<number>(`return document.getElementById("webaios-sidebar").getBoundingClientRect().right;`);
+    const frameRight = () => m.execute<number>(`return document.getElementById("ressac-sidebar").getBoundingClientRect().right;`);
 
     it("the right edge reveals it over the page, leaving hides it", async () => {
       await openPage();
@@ -189,7 +189,7 @@ describe("compact mode", () => {
       await waitSidebar(false);
       const page = () => m.execute<{ uri: string; inner: number }>(`return { uri: gBrowser.selectedBrowser.currentURI.spec, inner: gBrowser.selectedBrowser.innerWindowID };`);
       const before = await page();
-      const agentLeft = "return document.getElementById('webaios-agent').getBoundingClientRect().left";
+      const agentLeft = "return document.getElementById('ressac-agent').getBoundingClientRect().left";
       const width = await m.execute<number>("return window.innerWidth");
       await waitFor(m, agentLeft, (v) => v === width - 420);
 

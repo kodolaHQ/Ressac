@@ -56,14 +56,14 @@ const sameLists = (a: readonly string[], b: readonly string[]): boolean => {
   return x.length === y.length && x.every((v, i) => v === y[i]);
 };
 
-/** Folder of the dev tools' raw profiles (distinct from `.webaios/profiles`, that of the agent profiles). */
+/** Folder of the dev tools' raw profiles (distinct from `.ressac/profiles`, that of the agent profiles). */
 export const PROFILING_FOLDER = "profiling";
 
-/** `.webaios/profiling` or `projects/<folder>/.webaios/profiling`, in segments relative to the root. */
+/** `.ressac/profiling` or `projects/<folder>/.ressac/profiling`, in segments relative to the root. */
 const profilingFolder = (parts: string[]): boolean =>
   parts.every(safeSegment) &&
-  ((parts.length === 2 && parts[0] === ".webaios" && parts[1] === PROFILING_FOLDER) ||
-    (parts.length === 4 && parts[0] === "projects" && parts[2] === ".webaios" && parts[3] === PROFILING_FOLDER));
+  ((parts.length === 2 && parts[0] === ".ressac" && parts[1] === PROFILING_FOLDER) ||
+    (parts.length === 4 && parts[0] === "projects" && parts[2] === ".ressac" && parts[3] === PROFILING_FOLDER));
 
 const code = (e: unknown): string | undefined => (e as NodeJS.ErrnoException).code;
 
@@ -72,7 +72,7 @@ export const PRIVATE_PROFILE_PREFIX = "profile:";
 
 /**
  * Raw profiles of the dev tools, written by the browser (spec §6). What the agent built goes into
- * the workspace: in the project for an application (`projects/<folder>/.webaios/profiling`), in `.webaios/profiling`
+ * the workspace: in the project for an application (`projects/<folder>/.ressac/profiling`), in `.ressac/profiling`
  * otherwise. The profile of another site (its heap contains tokens and personal data) stays outside the mount, in
  * `dossierPrive` (the browser's profile), and the agent only gets a `profile:<name>` reference. Only these folders
  * are read or erased. The workspace is mounted writable in the container: the agent can put symbolic links in it,
@@ -151,7 +151,7 @@ export function profileFiles(paths: SpacePaths, privateFolder?: string): Profile
         return PRIVATE_PROFILE_PREFIX + name;
       }
       if (o.app !== undefined && !safeSegment(o.app)) throw new Error(`Dossier d'application invalide : ${o.app}`);
-      const parts = o.app === undefined ? [".webaios", PROFILING_FOLDER] : ["projects", o.app, ".webaios", PROFILING_FOLDER];
+      const parts = o.app === undefined ? [".ressac", PROFILING_FOLDER] : ["projects", o.app, ".ressac", PROFILING_FOLDER];
       const containerPath = `${CONTAINER_PATH}/${[...parts, name].join("/")}`;
       const folder = await descend(parts, true, containerPath);
       // « wx »: never over an existing file or link.
@@ -328,11 +328,11 @@ export async function createKernel(o: {
   if (!profile) throw new Error(`Profil d'agent inconnu : ${profileId}`);
 
   const policy = new AccessPolicy(o.portBuilt ? { portBuilt: o.portBuilt } : {});
-  const search = new SearchSessions({ show: (tabId, band) => void o.bridge.search?.band(tabId, band).catch((e) => console.error("[webaios] search band:", e)) });
+  const search = new SearchSessions({ show: (tabId, band) => void o.bridge.search?.band(tabId, band).catch((e) => console.error("[ressac] search band:", e)) });
   const { widgetsFolder: widgetsFolder } = o;
   const { actionsFolder: actionsFolder } = o;
   // An action deleted (or put in the trash) since the last launch: its data and grant go.
-  await forgetGoneActions(paths, actionsFolder).catch((e) => console.error("[webaios] forgetting gone actions:", e));
+  await forgetGoneActions(paths, actionsFolder).catch((e) => console.error("[ressac] forgetting gone actions:", e));
   const ai = o.ai ?? null;
   // Access specific to this kernel, closed with it: a harvest still in flight at shutdown does not relaunch Kev.
   const aiAccess = ai?.access() ?? null;
@@ -342,7 +342,7 @@ export async function createKernel(o: {
     try {
       o.onChange?.();
     } catch (e) {
-      console.error("[webaios] widgets recall:", e);
+      console.error("[ressac] widgets recall:", e);
     }
   };
   const widget = async (id: string): Promise<WidgetRead | undefined> =>
@@ -398,7 +398,7 @@ export async function createKernel(o: {
         await recaps.remove(id);
       }
     } catch (e) {
-      console.error("[webaios] recap sweep:", e);
+      console.error("[ressac] recap sweep:", e);
     }
   };
   const sweeper = recaps ? setInterval(() => void sweepRecaps(), Math.min(3600_000, dayMs)) : null;
@@ -425,7 +425,7 @@ export async function createKernel(o: {
             try {
               o.onActivity!(a);
             } catch (e) {
-              console.error("[webaios] onActivity:", e);
+              console.error("[ressac] onActivity:", e);
             }
           },
         }
@@ -439,7 +439,7 @@ export async function createKernel(o: {
               try {
                 if (r.ok) o.onRecapChange?.(r.id);
               } catch (e) {
-                console.error("[webaios] onRecapChange:", e);
+                console.error("[ressac] onRecapChange:", e);
               }
               return r;
             },
@@ -450,7 +450,7 @@ export async function createKernel(o: {
   try {
     // Session configs left by a crash: their tokens are worth nothing any more.
     // A failure does not prevent starting: dead tokens are harmless.
-    await rm(sessionsFolder(paths), { recursive: true, force: true }).catch((e) => console.error("[webaios] session configs purge:", e));
+    await rm(sessionsFolder(paths), { recursive: true, force: true }).catch((e) => console.error("[ressac] session configs purge:", e));
     // The one config file whatever the default profile (Codex takes its server by argument): window-less sessions, tools.
     await writeMcpConfig(paths, "claude-json", { url: server.containerUrl, token: token });
   } catch (e) {
@@ -487,7 +487,7 @@ export async function createKernel(o: {
         try {
           callback(e);
         } catch (err) {
-          console.error("[webaios] suivi en direct :", err);
+          console.error("[ressac] suivi en direct :", err);
         }
       }
     },
@@ -520,7 +520,7 @@ export async function createKernel(o: {
         try {
           callback(e);
         } catch (err) {
-          console.error("[webaios] actions tracking:", err);
+          console.error("[ressac] actions tracking:", err);
         }
       }
     },
@@ -619,7 +619,7 @@ export async function createKernel(o: {
         if (sessionToken === undefined) return Promise.resolve();
         server.closeSession(sessionToken);
         sessionToken = undefined;
-        return rm(configSession, { force: true }).catch((e) => console.error("[webaios] session config deletion:", e));
+        return rm(configSession, { force: true }).catch((e) => console.error("[ressac] session config deletion:", e));
       };
       try {
         if (win !== undefined) sessionToken = server.openSession(win, chosen.name);
@@ -668,7 +668,7 @@ export async function createKernel(o: {
       await giveGrant(widgetsFolder, id, { domains: [...account].sort(), public: [...publics].sort(), profile: profileName });
       report();
       // The harvest takes time: it follows in the background and reports its own changes.
-      scheduler.harvestNow(id).catch((e) => console.error("[webaios] harvest after grant:", e));
+      scheduler.harvestNow(id).catch((e) => console.error("[ressac] harvest after grant:", e));
     },
     async denyGrant(id) {
       await removeGrant(widgetsFolder, id);
@@ -696,7 +696,7 @@ export async function createKernel(o: {
       policy.reset();
       search.reset();
       await Promise.all([scheduler.stop(), fileActions.stopAll()]);
-      await aiAccess?.close().catch((e) => console.error("[webaios] local AI stop:", e));
+      await aiAccess?.close().catch((e) => console.error("[ressac] local AI stop:", e));
       await server.stop();
       owner?.release();
     },

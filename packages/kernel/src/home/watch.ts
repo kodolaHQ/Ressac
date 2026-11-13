@@ -10,7 +10,7 @@ function watchDirs(folders: string[], callback: () => void): () => Promise<void>
   let timer: NodeJS.Timeout | undefined;
   const observer = watch(folders, { ignoreInitial: true, ignored: (p) => p.endsWith(".tmp") || p.endsWith(".nouveau") });
   // Chokidar emits its errors rather than throwing them: without a listener, they would be lost.
-  observer.on("error", (e) => console.error("[webaios] the folder watch failed:", e));
+  observer.on("error", (e) => console.error("[ressac] the folder watch failed:", e));
   observer.on("all", () => {
     clearTimeout(timer);
     timer = setTimeout(callback, GROUPING_MS);

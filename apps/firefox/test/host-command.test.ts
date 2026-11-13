@@ -4,7 +4,7 @@ let hostCommand: typeof import("../chrome/agent/command").hostCommand;
 
 beforeAll(async () => {
   // Build-time defines in the real bundle; plain globals under vitest.
-  Object.assign(globalThis, { __WEBAIOS_NODE__: "/dev/node", __WEBAIOS_TSX__: "/dev/tsx", __WEBAIOS_HOST__: "/dev/host.ts" });
+  Object.assign(globalThis, { __RESSAC_NODE__: "/dev/node", __RESSAC_TSX__: "/dev/tsx", __RESSAC_HOST__: "/dev/host.ts" });
   ({ hostCommand } = await import("../chrome/agent/command"));
 });
 
@@ -12,11 +12,11 @@ describe("hostCommand", () => {
   it("bundled: runs the shipped node and host.mjs", async () => {
     const seen: string[] = [];
     const c = await hostCommand("/App/Resources", async (p) => (seen.push(p), true));
-    expect(seen).toEqual(["/App/Resources/webaios-host/host.mjs"]);
+    expect(seen).toEqual(["/App/Resources/ressac-host/host.mjs"]);
     expect(c).toEqual({
-      command: "/App/Resources/webaios-host/node",
-      arguments: ["/App/Resources/webaios-host/host.mjs"],
-      environment: { WEBAIOS_KERNEL_RESOURCES: "/App/Resources/webaios-host/kernel" },
+      command: "/App/Resources/ressac-host/node",
+      arguments: ["/App/Resources/ressac-host/host.mjs"],
+      environment: { RESSAC_KERNEL_RESOURCES: "/App/Resources/ressac-host/kernel" },
     });
   });
 
@@ -30,12 +30,12 @@ describe("hostCommand", () => {
 
   it("packaged without the host: throws instead of using dev paths", async () => {
     const g = globalThis as any;
-    const saved = g.__WEBAIOS_HOST__;
-    g.__WEBAIOS_HOST__ = "";
+    const saved = g.__RESSAC_HOST__;
+    g.__RESSAC_HOST__ = "";
     try {
       await expect(hostCommand("/App/Resources", async () => false)).rejects.toThrow("agent host is missing");
     } finally {
-      g.__WEBAIOS_HOST__ = saved;
+      g.__RESSAC_HOST__ = saved;
     }
   });
 });

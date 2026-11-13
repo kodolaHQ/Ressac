@@ -1,10 +1,10 @@
-import type { BlockCatalogEntry } from "@webaios/kernel";
+import type { BlockCatalogEntry } from "@ressac/kernel";
 import { COLUMN_PX, ROW_PX } from "./layout";
 
 type Position = { x: number; y: number };
 
 /** The file of a new `code` block: it returns its input as is. */
-export const CODE_MODEL = "export default async (input, webaios) => {\n  return input;\n};\n";
+export const CODE_MODEL = "export default async (input, ressac) => {\n  return input;\n};\n";
 
 /**
  * Parameters of a new block: the required fields that have a neutral value in the catalog (`list.keep`: 10…). A
@@ -24,4 +24,4 @@ export function freeSlot(point: Position, busy: Iterable<Position>): Position {
 }
 
 /** MIME type of a block dragged from the palette. */
-export const DRAG_BLOCK = "application/x-webaios-bloc";
+export const DRAG_BLOCK = "application/x-ressac-bloc";

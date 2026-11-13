@@ -4,17 +4,17 @@ import { afterAll, beforeAll, beforeEach, afterEach, describe, expect, it } from
 import type { Action } from "../shared/api";
 import type { Visit } from "../shared/model";
 import { dispatch, inWindow, newWindow, state, waitFor } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
 import { startServer } from "./server";
 import { click, inUi, missingApi, pressKeys, waitUi } from "./ui";
 
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const NAVIGABLES = "chrome://remote/content/shared/NavigableManager.sys.mjs";
 
 let server: Awaited<ReturnType<typeof startServer>>;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 let base: string;
 beforeAll(async () => {
@@ -23,10 +23,10 @@ beforeAll(async () => {
 });
 afterAll(() => server?.close());
 beforeEach(async () => {
-  w = await launchWebAiOs({ env: { WEBAIOS_TEST_PUBLIC_ADDRESSES: "127.0.0.1", WEBAIOS_MEMORY_LOOP: "1" } });
+  w = await launchRessac({ env: { RESSAC_TEST_PUBLIC_ADDRESSES: "127.0.0.1", RESSAC_MEMORY_LOOP: "1" } });
   m = w.marionette;
   await m.setContext("chrome");
-  await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+  await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
 });
 afterEach(async () => {
   try {
@@ -36,7 +36,7 @@ afterEach(async () => {
   }
 });
 
-const recents = () => inUi<Visit[]>(m, "return JSON.parse(JSON.stringify(await ui.webaios.history.recent()));");
+const recents = () => inUi<Visit[]>(m, "return JSON.parse(JSON.stringify(await ui.ressac.history.recent()));");
 const urls = async () => (await recents()).map((v) => v.url).sort();
 async function until<T>(read: () => Promise<T>, ok: (v: T) => boolean, ms = 10_000): Promise<T> {
   const deadline = Date.now() + ms;
@@ -73,7 +73,7 @@ describe("history noted in the kernel", () => {
     expect(await urls()).toEqual([`${base}/a.html`]);
     const id = Object.keys(s.tabs).at(-1)!;
     const handle = await m.execute<string>(
-      `const t = gBrowser.tabs.find((t) => t.getAttribute("webaios-tab-id") === arguments[0]);
+      `const t = gBrowser.tabs.find((t) => t.getAttribute("ressac-tab-id") === arguments[0]);
        return ChromeUtils.importESModule("${NAVIGABLES}").NavigableManager.getIdForBrowser(t.linkedBrowser);`,
       [id],
     );
@@ -102,7 +102,7 @@ describe("history noted in the kernel", () => {
 
   it("a visit is noted with its window's space", async () => {
     const other = await newWindow(m);
-    const id = await inWindow(m, other, () => m.execute<string>("return window.webaiosWindow.windowId"));
+    const id = await inWindow(m, other, () => m.execute<string>("return window.ressacWindow.windowId"));
     const s = await dispatch(m, { type: "createSpace", name: "B", icon: "🅱", private: false, profile: "default", windowId: id });
     const b = s.spaces.at(-1)!.id;
     await open(`${base}/a.html`, id);
@@ -134,7 +134,7 @@ describe("history noted in the kernel", () => {
   });
 
   it("the agent finds a visited page by its title", async () => {
-    const config = join(w.dataDir, "workspace", ".webaios", "mcp.json");
+    const config = join(w.dataDir, "workspace", ".ressac", "mcp.json");
     await until(async () => existsSync(config), Boolean, 20_000);
     await open(`${base}/a.html`);
     await loaded("/a.html");

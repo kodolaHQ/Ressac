@@ -6,18 +6,19 @@ import { CONTAINER_PATH, KERNEL_ROOT, type SpacePaths } from "../paths.js";
 import type { Owner } from "../workflows/schema.js";
 import { defaultRunner, type RunResult, type Runner } from "./runner.js";
 
-export const CONTAINER_NAME = "webaios-workshop";
+export const CONTAINER_NAME = "ressac-workshop";
 // Read on every call so a second app (Firefox build) can run its own container.
-export const containerName = (): string => process.env.WEBAIOS_CONTAINER || CONTAINER_NAME;
-export const IMAGE = "webaios-workshop:1";
+export const containerName = (): string => process.env.RESSAC_CONTAINER || CONTAINER_NAME;
+export const IMAGE = "ressac-workshop:1";
+// Stored format kept across the rename to Ressac: a Docker volume cannot be renamed, and this one holds the agent's logins.
 export const VOLUME_HOME = "webaios-home";
 /**
  * Ports published by the container, the same on the Mac and inside: 5280-5299 by default, out of Vite's range (5173…).
- * Two containers cannot publish the same ports, so a second app (Firefox build) sets WEBAIOS_CONTAINER_PORTS (`min-max`).
+ * Two containers cannot publish the same ports, so a second app (Firefox build) sets RESSAC_CONTAINER_PORTS (`min-max`).
  * Read on every call, like containerName().
  */
 export function containerPortRange(): [number, number] {
-  const m = /^(\d{4,5})-(\d{4,5})$/.exec(process.env.WEBAIOS_CONTAINER_PORTS ?? "");
+  const m = /^(\d{4,5})-(\d{4,5})$/.exec(process.env.RESSAC_CONTAINER_PORTS ?? "");
   const [min, max] = m ? [Number(m[1]), Number(m[2])] : [0, 0];
   return min >= 1024 && max <= 65535 && min <= max ? [min, max] : [5280, 5299];
 }
@@ -52,7 +53,7 @@ export function parseBuildStep(line: string): Pick<BuildProgress, "step" | "of" 
 /** Dockerfile folder in the package; a browser that embeds the kernel can provide another. */
 export const DEFAULT_DOCKER_FOLDER = join(KERNEL_ROOT, "docker");
 const dockerfile = (folder: string) => join(folder, "workshop.Dockerfile");
-const HASH_LABEL = "webaios.dockerfile";
+const HASH_LABEL = "ressac.dockerfile";
 
 /** Hash of the Dockerfile: the image and the container carry it as a label, to know whether they are up to date. */
 export function dockerfileHash(dockerFolder = DEFAULT_DOCKER_FOLDER): string {
@@ -68,13 +69,13 @@ function normalize(path: string): string {
 }
 
 /**
- * Name of a run's container: `webaios-harvest-<id>` for a widget (a bare id is a widget's),
- * `webaios-action-<id>` for an action. The id goes into a docker name, any dubious id is refused.
+ * Name of a run's container: `ressac-harvest-<id>` for a widget (a bare id is a widget's),
+ * `ressac-action-<id>` for an action. The id goes into a docker name, any dubious id is refused.
  */
 export function harvestName(p: string | Owner): string {
   const { type, id } = typeof p === "string" ? { type: "widget" as const, id: p } : p;
   if (!/^[a-z0-9-]+$/.test(id)) throw new Error(`id ${type === "widget" ? "de widget" : "d'action"} invalide : ${id}`);
-  return type === "widget" ? `webaios-harvest-${id}` : `webaios-action-${id}`;
+  return type === "widget" ? `ressac-harvest-${id}` : `ressac-action-${id}`;
 }
 
 /** Maximum duration of a harvest in its container (seconds), before SIGTERM then SIGKILL 5 s later. */
@@ -105,11 +106,11 @@ export function findDocker(
 
 function sessionFile(id: string): string {
   if (!/^[a-z0-9]+$/.test(id)) throw new Error(`id de session invalide : ${id}`);
-  return `/tmp/webaios-session-${id}.pid`;
+  return `/tmp/ressac-session-${id}.pid`;
 }
 
 /** Variable set on each session: everything the agent launches inherits it, even detached from its group (nohup, setsid). */
-export const VARIABLE_SESSION = "WEBAIOS_SESSION";
+export const VARIABLE_SESSION = "RESSAC_SESSION";
 
 /**
  * Sends HUP, then TERM, then KILL to the processes listed by the shell function `cibles` (pid, or -pgid for a group).
@@ -147,11 +148,11 @@ export function sessionStopScript(f: string, id: string): string {
 
 /** Stops all marked sessions, whatever their window (see arreterSessionsOrphelines). */
 export function orphanStopScript(): string {
-  return ["rm -f /tmp/webaios-session-*.pid", ...escalate(marks(`${VARIABLE_SESSION}=.*`))].join("\n");
+  return ["rm -f /tmp/ressac-session-*.pid", ...escalate(marks(`${VARIABLE_SESSION}=.*`))].join("\n");
 }
 
-/** Mark of the processes of a launched app: never confused with that of sessions (`WEBAIOS_SESSION`). */
-export const VARIABLE_APPLICATION = "WEBAIOS_APP";
+/** Mark of the processes of a launched app: never confused with that of sessions (`RESSAC_SESSION`). */
+export const VARIABLE_APPLICATION = "RESSAC_APP";
 
 export class Workshop {
   private readonly paths: SpacePaths;
@@ -288,7 +289,7 @@ export class Workshop {
       "-v", `${VOLUME_HOME}:/home/node`,
       "-p", `127.0.0.1:${ports}:${ports}`,
       // AGENTS.md tells the agent to keep its hand-run servers in this range.
-      "-e", `WEBAIOS_PORTS=${ports}`,
+      "-e", `RESSAC_PORTS=${ports}`,
       "-w", CONTAINER_PATH,
       IMAGE,
       "sleep", "infinity",
@@ -317,12 +318,12 @@ export class Workshop {
       "--read-only",
       "--tmpfs", "/tmp",
       "-v", `${filesFolder}:/widget:ro`,
-      "-v", `${engine}:/opt/webaios/engine:ro`,
+      "-v", `${engine}:/opt/ressac/engine:ro`,
       "--memory", "512m",
       "--pids-limit", "128",
       IMAGE,
       "timeout", "-k", "5", String(delayS),
-      "node", "/opt/webaios/engine/harvester.mjs", "/widget",
+      "node", "/opt/ressac/engine/harvester.mjs", "/widget",
     ];
   }
 
@@ -337,7 +338,7 @@ export class Workshop {
    */
   sessionCommand(id: string, argv: string[], passEnv: string[] = []): string[] {
     const f = sessionFile(id);
-    return this.execCommand(["sh", "-c", `echo $$ > ${f}; exec "$@"`, "webaios-session", ...argv], { interactive: true, env: { [VARIABLE_SESSION]: id }, passEnv: passEnv });
+    return this.execCommand(["sh", "-c", `echo $$ > ${f}; exec "$@"`, "ressac-session", ...argv], { interactive: true, env: { [VARIABLE_SESSION]: id }, passEnv: passEnv });
   }
 
   async stopSession(id: string): Promise<void> {
@@ -360,9 +361,9 @@ export class Workshop {
    */
   appCommand(folder: string, command: string, port: number): string[] {
     appFolder(folder);
-    const logs = `${CONTAINER_PATH}/.webaios/logs`;
+    const logs = `${CONTAINER_PATH}/.ressac/logs`;
     return this.execCommand(
-      ["sh", "-c", `mkdir -p ${logs}; exec >"${logs}/$1.log" 2>&1; eval "$2"`, "webaios-app", folder, command.replaceAll("{port}", String(port))],
+      ["sh", "-c", `mkdir -p ${logs}; exec >"${logs}/$1.log" 2>&1; eval "$2"`, "ressac-app", folder, command.replaceAll("{port}", String(port))],
       { interactive: false, env: { [VARIABLE_APPLICATION]: folder, PORT: String(port) }, folder: `${CONTAINER_PATH}/projects/${folder}` },
     );
   }

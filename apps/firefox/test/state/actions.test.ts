@@ -656,7 +656,7 @@ test("openApps reuses the window's existing tab", () => {
 });
 
 test("openExtensions opens or activates the page, like openApps", () => {
-  expect(URL_EXTENSIONS).toBe("webaios://extensions");
+  expect(URL_EXTENSIONS).toBe("ressac://extensions");
   expect(hasView(URL_EXTENSIONS)).toBe(false);
   open("https://a.test/");
   ag({ type: "openExtensions", windowId: F });
@@ -679,7 +679,7 @@ test("openExtensions opens or activates the page, like openApps", () => {
 });
 
 test("openSettings opens or activates the Réglages page, once for the window", () => {
-  expect(URL_SETTINGS).toBe("webaios://settings");
+  expect(URL_SETTINGS).toBe("ressac://settings");
   open("https://a.test/");
   ag({ type: "openSettings", windowId: F });
   const pages = () => Object.values(e.tabs).filter((o) => o.url === URL_SETTINGS);
@@ -712,13 +712,13 @@ test("chooseCodexEngine changes the setting; the same engine again changes nothi
   expect(SchemaAction.safeParse({ type: "chooseCodexEngine", engine: { ...api, apiModel: "a b" } }).success).toBe(false);
 });
 
-test("openWorkflow opens a titled webaios://workflow/<id> tab, then returns to it instead of opening a second one", () => {
+test("openWorkflow opens a titled ressac://workflow/<id> tab, then returns to it instead of opening a second one", () => {
   open("https://a.test/");
   ag({ type: "openWorkflow", windowId: F, id: "meteo", name: "Météo" });
   const pages = (id = "meteo") => Object.values(e.tabs).filter((o) => o.url === urlWorkflow(id) && o.spaceId === P);
   expect(pages()).toHaveLength(1);
   const page = pages()[0]!;
-  expect(page).toMatchObject({ url: "webaios://workflow/meteo", title: "Workflow — Météo", spaceId: P });
+  expect(page).toMatchObject({ url: "ressac://workflow/meteo", title: "Workflow — Météo", spaceId: P });
   expect(active()).toBe(page.id);
   const before = e;
   ag({ type: "openWorkflow", windowId: F, id: "meteo", name: "Météo" });
@@ -743,10 +743,10 @@ test("openWorkflow opens a titled webaios://workflow/<id> tab, then returns to i
   expect(pages()[0]).toMatchObject({ id: page.id, title: "Workflow — Météo de Lyon" });
 });
 
-test("openAction opens a webaios://action/<id> tab titled with the name, then returns to it instead of opening a second one", () => {
+test("openAction opens a ressac://action/<id> tab titled with the name, then returns to it instead of opening a second one", () => {
   open("https://a.test/");
   ag({ type: "openAction", windowId: F, id: "gitlab", name: "GitLab" });
-  const pages = () => Object.values(e.tabs).filter((o) => o.url.startsWith("webaios://action/gitlab"));
+  const pages = () => Object.values(e.tabs).filter((o) => o.url.startsWith("ressac://action/gitlab"));
   expect(pages()).toHaveLength(1);
   const page = pages()[0]!;
   expect(page).toMatchObject({ url: urlAction("gitlab"), title: "GitLab", spaceId: P });
@@ -778,13 +778,13 @@ test("openAction looks only in the active space; with execution, changes its URL
   open("https://b.test/");
   const ex = "2026-10-31T10-00-00-000Z";
   ag({ type: "openAction", windowId: F, id: "gitlab", name: "GitLab", run: ex });
-  expect(Object.values(e.tabs).filter((o) => o.spaceId === P && o.url.startsWith("webaios://action/"))).toHaveLength(1);
+  expect(Object.values(e.tabs).filter((o) => o.spaceId === P && o.url.startsWith("ressac://action/"))).toHaveLength(1);
   expect(fen().activeSpace).toBe(P);
   expect(active()).toBe(page);
   expect(e.tabs[page]).toMatchObject({ url: urlAction("gitlab", ex), title: "GitLab" });
   // The tab shows a specific run: it stays the action's tab (same id), the name follows.
   ag({ type: "openAction", windowId: F, id: "gitlab", name: "Mes tickets" });
-  expect(Object.values(e.tabs).filter((o) => o.spaceId === P && o.url.startsWith("webaios://action/"))).toHaveLength(1);
+  expect(Object.values(e.tabs).filter((o) => o.spaceId === P && o.url.startsWith("ressac://action/"))).toHaveLength(1);
   expect(e.tabs[page]).toMatchObject({ url: urlAction("gitlab", ex), title: "Mes tickets" });
   // Invalid run: refused by the schema, never a URL.
   expect(SchemaAction.safeParse({ type: "openAction", windowId: F, id: "gitlab", name: "GitLab", run: "./" }).success).toBe(false);
@@ -803,13 +803,13 @@ test("openAction neither opens nor finds anything in a private space, and never 
 const R1 = "0b6f4a52-3c1d-4e8f-9a7b-2c5d6e7f8a90";
 const R2 = "1c7a5b63-4d2e-4f90-8b8c-3d6e7f809ba1";
 
-test("recapOfUrl: the id of a webaios://recap/<id> tab, null for anything else", () => {
-  expect(urlRecap(R1)).toBe(`webaios://recap/${R1}`);
+test("recapOfUrl: the id of a ressac://recap/<id> tab, null for anything else", () => {
+  expect(urlRecap(R1)).toBe(`ressac://recap/${R1}`);
   expect(recapOfUrl(urlRecap(R1))).toBe(R1);
-  expect(recapOfUrl("webaios://recap/../x")).toBeNull();
-  expect(recapOfUrl(`webaios://recap/${R1}/x`)).toBeNull();
+  expect(recapOfUrl("ressac://recap/../x")).toBeNull();
+  expect(recapOfUrl(`ressac://recap/${R1}/x`)).toBeNull();
   expect(recapOfUrl(urlAction("gitlab"))).toBeNull();
-  expect(recapOfUrl(`https://a.test/webaios://recap/${R1}`)).toBeNull();
+  expect(recapOfUrl(`https://a.test/ressac://recap/${R1}`)).toBeNull();
 });
 
 test("openRecap opens an active ✦ tab titled with the recap, then reuses it (any window), its title following", () => {
@@ -864,11 +864,11 @@ test("openActions opens the single « Actions » page, then returns to it", () =
   expect(active()).toBe(pages()[0]!.id);
 });
 
-test("openWorkflow of an action opens webaios://workflow/action/<id>", () => {
+test("openWorkflow of an action opens ressac://workflow/action/<id>", () => {
   ag({ type: "openWorkflow", windowId: F, id: "gitlab", name: "GitLab", owner: "action" });
-  expect(Object.values(e.tabs)[0]).toMatchObject({ url: "webaios://workflow/action/gitlab", title: "Workflow — GitLab" });
+  expect(Object.values(e.tabs)[0]).toMatchObject({ url: "ressac://workflow/action/gitlab", title: "Workflow — GitLab" });
   ag({ type: "openWorkflow", windowId: F, id: "gitlab", name: "GitLab" });
-  expect(Object.values(e.tabs).map((o) => o.url)).toEqual(["webaios://workflow/action/gitlab", urlWorkflow("gitlab")]);
+  expect(Object.values(e.tabs).map((o) => o.url)).toEqual(["ressac://workflow/action/gitlab", urlWorkflow("gitlab")]);
 });
 
 test("profilesInUse: by identifier, spaces included", () => {
@@ -878,13 +878,13 @@ test("profilesInUse: by identifier, spaces included", () => {
 });
 
 // Plan 17, task 11: a project's review page.
-test("openReview opens webaios://review/app-essai titled « Relecture — Essai »; a second call returns to the same tab", async () => {
+test("openReview opens ressac://review/app-essai titled « Relecture — Essai »; a second call returns to the same tab", async () => {
   const { reviewUrl } = await import("../../shared/model");
   ag({ type: "openReview", windowId: F, project: "app-essai", name: "Essai" });
-  const pages = () => Object.values(e.tabs).filter((o) => o.url === "webaios://review/app-essai");
+  const pages = () => Object.values(e.tabs).filter((o) => o.url === "ressac://review/app-essai");
   expect(pages()).toHaveLength(1);
   expect(pages()[0]).toMatchObject({ title: "Relecture — Essai" });
-  expect(reviewUrl("app-essai")).toBe("webaios://review/app-essai");
+  expect(reviewUrl("app-essai")).toBe("ressac://review/app-essai");
   open("https://b.test/");
   ag({ type: "openReview", windowId: F, project: "app-essai", name: "Essai" });
   expect(pages()).toHaveLength(1);
@@ -892,24 +892,24 @@ test("openReview opens webaios://review/app-essai titled « Relecture — Essai 
   expect(SchemaAction.safeParse({ type: "openReview", windowId: F, project: "../x", name: "x" }).success).toBe(false);
 });
 
-test("reviewUrlProject refuses webaios://review/../x and webaios://review/app-", async () => {
+test("reviewUrlProject refuses ressac://review/../x and ressac://review/app-", async () => {
   const { reviewUrlProject } = await import("../../shared/model");
-  const { PROJECT_ID } = await import("@webaios/kernel");
-  expect(reviewUrlProject("webaios://review/../x")).toBeNull();
-  expect(reviewUrlProject("webaios://review/app-")).toBeNull();
-  expect(reviewUrlProject("webaios://review/app-essai/x")).toBeNull();
-  expect(reviewUrlProject("webaios://apps")).toBeNull();
-  expect(reviewUrlProject("webaios://review/app-essai")).toBe("app-essai");
-  expect(reviewUrlProject("webaios://review/ext-0123456789abcdef")).toBe("ext-0123456789abcdef");
+  const { PROJECT_ID } = await import("@ressac/kernel");
+  expect(reviewUrlProject("ressac://review/../x")).toBeNull();
+  expect(reviewUrlProject("ressac://review/app-")).toBeNull();
+  expect(reviewUrlProject("ressac://review/app-essai/x")).toBeNull();
+  expect(reviewUrlProject("ressac://apps")).toBeNull();
+  expect(reviewUrlProject("ressac://review/app-essai")).toBe("app-essai");
+  expect(reviewUrlProject("ressac://review/ext-0123456789abcdef")).toBe("ext-0123456789abcdef");
   // The UI copies follow the kernel.
   const { NOT_DISPLAYABLE } = await import("../../shared/model");
-  const { BINARY_FILE, FILE_TOO_BIG } = await import("@webaios/kernel");
+  const { BINARY_FILE, FILE_TOO_BIG } = await import("@ressac/kernel");
   expect(NOT_DISPLAYABLE).toEqual({ binary: BINARY_FILE, "too-big": FILE_TOO_BIG });
   const { PAGE_LINE_CHANGED } = await import("../../shared/model");
-  const { LINE_CHANGED } = await import("@webaios/kernel");
+  const { LINE_CHANGED } = await import("@ressac/kernel");
   expect(PAGE_LINE_CHANGED).toBe(LINE_CHANGED);
   for (const p of ["app-essai", "app-.x", "ext-0123456789abcdef", "ext-0123", "demo-15283", "demo-", "app-a/b", "site-tuning", "site-", "site-A", "site-../x"])
-    expect(reviewUrlProject(`webaios://review/${p}`) !== null).toBe(PROJECT_ID.test(p));
+    expect(reviewUrlProject(`ressac://review/${p}`) !== null).toBe(PROJECT_ID.test(p));
 });
 
 test("createSpace without aura gives aube; updateSpace of the aura alone is a change", () => {

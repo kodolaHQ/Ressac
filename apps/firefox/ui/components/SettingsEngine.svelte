@@ -134,7 +134,7 @@
   .key { display: flex; align-items: center; gap: 8px; }
   .key input { flex: 1; }
   .muted { font-size: 12px; }
-  .alert { animation: webaios-rise var(--spring-d) var(--spring) backwards; }
+  .alert { animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   .engine :global(:is(input:not([type="radio"]), select)) { padding: 5px 9px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: 12px var(--font-ui); }
   .engine :global(:is(input:not([type="radio"]), select):focus) { border-color: var(--accent); outline: none; }
 </style>

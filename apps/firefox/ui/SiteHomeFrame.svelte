@@ -6,14 +6,14 @@
   /**
    * The app's home screen, written by the agent, in a sandboxed opaque frame
    * (`sandbox="allow-scripts"`) served from its sanitized copy (chrome/store/site-home.ts). Its `parent.postMessage`
-   * reaches the chrome as a `webaios-home` event (the copy's bridge), listened above the frame on the window root,
+   * reaches the chrome as a `ressac-home` event (the copy's bridge), listened above the frame on the window root,
    * before it loads. A message counts only from this frame showing this app's home; real presses are seen on the
    * frame's window (isTrusted), as for the widgets (WidgetFrame.svelte).
    */
   let { id, api }: { id: string; api: ApiSite } = $props();
   let frame = $state<HTMLIFrameElement>();
   let src = $state<string | null>(null);
-  const controller = window.parent.webaiosSiteWindow!;
+  const controller = window.parent.ressacSiteWindow!;
 
   /** The frame's document is a page of this app's served home copy (never an address it navigated to). */
   function ours(): boolean {
@@ -65,7 +65,7 @@
     };
     // The window root sees the events of the window's in-process frames, the `ready` sent while the home is parsed too.
     const root = (window as unknown as { windowRoot: EventTarget }).windowRoot;
-    (root.addEventListener as (t: string, l: EventListener, c: boolean, untrusted: boolean) => void)("webaios-home", onMessage, true, true);
+    (root.addEventListener as (t: string, l: EventListener, c: boolean, untrusted: boolean) => void)("ressac-home", onMessage, true, true);
     // An iframe of this chrome page never gets `load`: DOMFrameContentLoaded comes once the home's scripts have run.
     const onLoaded = (e: Event) => {
       if (!frame || e.target !== frame) return;
@@ -81,7 +81,7 @@
     const endState = api.onState(refresh);
     const end = api.onMemory(send);
     return () => {
-      root.removeEventListener("webaios-home", onMessage, true);
+      root.removeEventListener("ressac-home", onMessage, true);
       document.removeEventListener("DOMFrameContentLoaded", onLoaded, true);
       gestureWindow?.removeEventListener("pointerdown", gesture, true);
       endState();

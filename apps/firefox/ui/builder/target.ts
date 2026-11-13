@@ -1,5 +1,5 @@
-import type { DirectWidget, ActionsState, DirectState, Owner } from "@webaios/kernel";
-import type { ApiWebaios } from "../../shared/api";
+import type { DirectWidget, ActionsState, DirectState, Owner } from "@ressac/kernel";
+import type { ApiRessac } from "../../shared/api";
 import type { Depot } from "./edit.svelte";
 import type { Launcher, SourceExecutions } from "./executions.svelte";
 
@@ -15,7 +15,7 @@ export const targetOfKey = (key: string): Owner =>
 export const isActionKey = (key: string): boolean => key.startsWith(ACTION_PREFIX);
 
 /** Reading and writing the workflow and its codes, addressed by key. */
-export function repoOf(w: Pick<ApiWebaios["workflow"], "read" | "save" | "readCode" | "saveCode">): Depot {
+export function repoOf(w: Pick<ApiRessac["workflow"], "read" | "save" | "readCode" | "saveCode">): Depot {
   return {
     read: (key) => w.read(targetOfKey(key)),
     save: (key, b) => w.save(targetOfKey(key), b),
@@ -25,7 +25,7 @@ export function repoOf(w: Pick<ApiWebaios["workflow"], "read" | "save" | "readCo
 }
 
 /** The runs of a widget (stored with home) or of an action. */
-export function runsSourceOf(api: Pick<ApiWebaios, "home" | "actions">, target: Owner): SourceExecutions {
+export function runsSourceOf(api: Pick<ApiRessac, "home" | "actions">, target: Owner): SourceExecutions {
   if (target.type === "widget") return api.home;
   return { runs: () => api.actions.runs(target.id), run: (_key, e) => api.actions.run(target.id, e) };
 }
@@ -46,7 +46,7 @@ export function actionsDirect(e: ActionsState): DirectState {
 }
 
 /** « ▶ Lancer », « Rejouer » and live tracking: the widgets', or the actions'. */
-export function launcherOf(api: Pick<ApiWebaios, "workflow" | "actions">, target: Owner): Launcher {
+export function launcherOf(api: Pick<ApiRessac, "workflow" | "actions">, target: Owner): Launcher {
   const w = api.workflow;
   const common = {
     launch: (key: string, input?: string | null) => w.run(targetOfKey(key), input),

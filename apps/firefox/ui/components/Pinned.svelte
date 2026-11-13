@@ -10,7 +10,7 @@
   /** A space's pinned tabs: its folders first (one level, Arc/Zen model), then the pinned tabs outside any folder. */
   let { window: win, space, activeLink }: { window: WindowState; space: Space; activeLink: string | undefined } = $props();
 
-  const TAB = "application/x-webaios-onglet";
+  const TAB = "application/x-ressac-onglet";
   const loose = $derived(space.pinned.filter((f) => !space.folders.some((d) => d.id === f.folder)));
   let renaming = $state<string | null>(null);
   /** A folder was just asked for: its name is typed in place as soon as it exists. */
@@ -110,7 +110,7 @@
   .pinned, .inside { list-style: none; margin: 0; padding: 0; }
   .pinned { min-height: 8px; }
   .inside { padding-left: 14px; }
-  li { position: relative; animation: webaios-rise var(--spring-d) var(--spring) backwards; }
+  li { position: relative; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   .sound { position: absolute; right: 8px; top: 8px; }
   button { all: unset; display: flex; align-items: center; gap: 10px; width: calc(100% - 20px); height: 36px; padding: 0 10px; border-radius: 10px; color: var(--text); transition: transform var(--tap), background var(--tap); }
   button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

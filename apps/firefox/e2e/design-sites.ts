@@ -7,7 +7,7 @@ import { inSiteBar, inSiteView, siteWindowExpr } from "./sites";
 // The design mode in site apps' windows (plan 36): e2e helpers and pages, from the spikes S5-S7
 // (e2e/spikes/design-sites.e2e.ts, copied, the spike file left as is). Chrome context.
 
-export const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+export const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const MOUSE = ["pointerdown", "pointerup", "mousedown", "mouseup", "click", "auxclick", "contextmenu", "dblclick"];
 
 /** The site window of app `id` and its view's <browser> (chrome expressions). */
@@ -40,7 +40,7 @@ export const S5_PAGE = HOOKS_PAGE.replace('<button type="submit" id="envoyer">',
 );
 
 /**
- * Spike S5's tweak, run in WebAiOsSite's sandbox after the password guard: it listens first (window capture), hooks
+ * Spike S5's tweak, run in RessacSite's sandbox after the password guard: it listens first (window capture), hooks
  * the prototypes the viewfinder calls (in its own world), fakes the viewfinder's globals, and on « essai » writes what
  * it sees into the DOM.
  */
@@ -56,7 +56,7 @@ globalThis.__viewfinderStop = () => log.fake++; globalThis.__viewfinderSwallow =
 globalThis.__retoucheSecret = "r";
 R.dataset.retouche = "oui";
 document.addEventListener("essai", () => {
-  const hosts = document.getElementsByTagName("webaios-viewfinder");
+  const hosts = document.getElementsByTagName("ressac-viewfinder");
   const pw = document.getElementById("mdp");
   R.dataset.sonde = JSON.stringify({ log, hosts: hosts.length, shadow: hosts[0] ? String(hosts[0].shadowRoot) : "none", closed: hosts[0] ? typeof hosts[0].openOrClosedShadowRoot : "none",
     pw: pw.value, pwAttr: String(pw.getAttribute("value")), fakeIsMine: globalThis.__viewfinderStop.toString().includes("log.fake") });
@@ -75,7 +75,7 @@ export async function openSite(m: Marionette, id: string): Promise<void> {
   await expect.poll(() => viewOf(m, id), { timeout: 15_000 }).not.toBeNull();
 }
 
-/** The site view of app `id`, on `path` of its start address (loaded by WebAiOs), its document complete. */
+/** The site view of app `id`, on `path` of its start address (loaded by Ressac), its document complete. */
 export async function toSite(m: Marionette, id: string, path = "/"): Promise<string> {
   await openSite(m, id);
   if ((await viewOf(m, id)) !== "site") await inStore(m, `store.sites.controller(arguments[0]).enter();`, [id]);
@@ -93,7 +93,7 @@ export async function toHome(m: Marionette, id: string): Promise<void> {
   if ((await viewOf(m, id)) !== "home") await inStore(m, `store.sites.controller(arguments[0]).home();`, [id]);
   await expect
     .poll(() => inSiteBar<string | null>(m, id, `const h = doc.querySelector('[data-testid="site-home-frame"]'); const d = h?.contentDocument; return d?.readyState === "complete" ? String(d.documentURI) : null;`), { timeout: 15_000 })
-    .toMatch(/^resource:\/\/webaios-site-/);
+    .toMatch(/^resource:\/\/ressac-site-/);
 }
 
 /** A trusted gesture sent by the site window (as a person's mouse): a move, then a click of `button` unless `move`. */
@@ -140,16 +140,16 @@ export const homePoint = (m: Marionette, id: string, sel: string) =>
   inSiteBar<{ x: number; y: number }>(
     m,
     id,
-    `const b = win.document.getElementById("webaios-site-bar").getBoundingClientRect(), f = doc.querySelector('[data-testid="site-home-frame"]');
+    `const b = win.document.getElementById("ressac-site-bar").getBoundingClientRect(), f = doc.querySelector('[data-testid="site-home-frame"]');
      const h = f.getBoundingClientRect(), e = f.contentDocument.querySelector(arguments[0]).getBoundingClientRect();
      return { x: b.left + h.left + f.clientLeft + e.left + e.width / 2, y: b.top + h.top + f.clientTop + e.top + e.height / 2 };`,
     [sel],
   );
 
-/** `body` with `f` the site window's overlay frame (#webaios-design-calque) and `doc` its document; null while it is absent or hidden. */
+/** `body` with `f` the site window's overlay frame (#ressac-design-calque) and `doc` its document; null while it is absent or hidden. */
 export const overlayOf = <T = unknown>(m: Marionette, id: string, body: string, args: unknown[] = []) =>
   m.execute<T | null>(
-    `const win = ${siteExpr(id)}, f = win?.document.getElementById("webaios-design-calque");
+    `const win = ${siteExpr(id)}, f = win?.document.getElementById("ressac-design-calque");
      if (!f || f.style.display === "none" || !f.getBoundingClientRect().width) return null;
      const doc = f.contentDocument;
      return (() => { ${body} })();`,

@@ -1,25 +1,25 @@
 import { backupDate, RESET_FILE } from "../../core/state/format";
 
-const ENABLED = "webaios.telemetry.enabled";
+const ENABLED = "ressac.telemetry.enabled";
 /** Firefox's own default browser service. */
 export const SHELL_SERVICE = "moz-src:///browser/components/shell/ShellService.sys.mjs";
-const EXPORT_NAME = /^WebAiOs-donnees-\d{4}-\d{2}-\d{2}( \(\d+\))?\.zip$/;
+const EXPORT_NAME = /^Ressac-donnees-\d{4}-\d{2}-\d{2}( \(\d+\))?\.zip$/;
 
 export interface SettingsChrome {
   telemetry(): { available: boolean; enabled: boolean };
   setTelemetry(enabled: boolean): void;
   version(): string;
   reveal(path: string): void;
-  /** macOS's System Settings › Notifications: a site's or the watch's notification never shows while WebAiOs is off there. */
+  /** macOS's System Settings › Notifications: a site's or the watch's notification never shows while Ressac is off there. */
   openNotificationSettings(): void;
   /** System Settings › Privacy & Security › Full Disk Access: Safari's bookmarks and history are behind it. */
   openFullDiskAccessSettings(): void;
-  /** Whether macOS opens web links with WebAiOs. */
+  /** Whether macOS opens web links with Ressac. */
   defaultBrowser(): boolean;
   /** Asks macOS, which shows its own confirmation: the answer comes later, in `defaultBrowser()`. */
   setDefaultBrowser(): void;
   /**
-   * Forgets macOS's screen recording grant for WebAiOs, so macOS asks again at the next share (after a relaunch). A new
+   * Forgets macOS's screen recording grant for Ressac, so macOS asks again at the next share (after a relaunch). A new
    * version signed ad hoc is another application for macOS: the old grant still shows as on but no longer counts.
    */
   repairScreenSharing(): Promise<boolean>;
@@ -42,7 +42,7 @@ export function bundleId(plist: string): string | null {
 }
 
 function openSystemSettings(url: string): void {
-  const test = Services.env.get("WEBAIOS_TEST_REVEAL");
+  const test = Services.env.get("RESSAC_TEST_REVEAL");
   if (test) return void IOUtils.writeUTF8(test, url + "\n", { mode: "appendOrCreate" }).catch((e: unknown) => console.warn("[settings] open not noted:", e));
   try {
     const handler = Cc["@mozilla.org/uriloader/external-protocol-service;1"].getService(Ci.nsIExternalProtocolService).getProtocolHandlerInfo("x-apple.systempreferences");
@@ -56,16 +56,16 @@ function openSystemSettings(url: string): void {
 export function createSettingsChrome(dataDir: string, telemetryActive: boolean): SettingsChrome {
   let lastExportFolder = "";
   // A test never changes the owner's macOS (default browser, screen recording grant): the request is only remembered.
-  const test = !!Services.env.get("WEBAIOS_TEST_NO_SYSTEM");
+  const test = !!Services.env.get("RESSAC_TEST_NO_SYSTEM");
   let testDefault = false;
   const shell = () => ChromeUtils.importESModule(SHELL_SERVICE).ShellService;
   return {
     telemetry: () => ({ available: telemetryActive, enabled: Services.prefs.getBoolPref(ENABLED, false) }),
     setTelemetry: (enabled) => Services.prefs.setBoolPref(ENABLED, enabled === true),
-    version: () => __WEBAIOS_VERSION__,
+    version: () => __RESSAC_VERSION__,
     reveal(path) {
       if (!revealable(dataDir, lastExportFolder, path)) return;
-      const test = Services.env.get("WEBAIOS_TEST_REVEAL");
+      const test = Services.env.get("RESSAC_TEST_REVEAL");
       if (test) return void IOUtils.writeUTF8(test, path + "\n", { mode: "appendOrCreate" }).catch((e: unknown) => console.warn("[settings] reveal not noted:", e));
       try {
         const f = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
@@ -97,7 +97,7 @@ export function createSettingsChrome(dataDir: string, telemetryActive: boolean):
     async repairScreenSharing() {
       if (test) return true;
       try {
-        // WebAiOs.app/Contents/MacOS/webaios → WebAiOs.app/Contents/Info.plist
+        // Ressac.app/Contents/MacOS/ressac → Ressac.app/Contents/Info.plist
         const id = bundleId(await IOUtils.readUTF8(PathUtils.join(Services.dirsvc.get("XREExeF", Ci.nsIFile).parent.parent.path, "Info.plist")));
         if (!id) throw new Error("no CFBundleIdentifier in Info.plist");
         const { Subprocess } = ChromeUtils.importESModule("resource://gre/modules/Subprocess.sys.mjs");
@@ -119,7 +119,7 @@ export function createSettingsChrome(dataDir: string, telemetryActive: boolean):
       // skip their pages' questions. A quit kept by an observer or a window must not reset at some later launch.
       const cancel = Cc["@mozilla.org/supports-PRBool;1"].createInstance(Ci.nsISupportsPRBool);
       Services.obs.notifyObservers(cancel, "quit-application-requested", "restart");
-      if (!cancel.data) Services.startup.quit(Ci.nsIAppStartup.eAttemptQuit | (Services.env.get("WEBAIOS_TEST_NO_RESTART") === "1" ? 0 : Ci.nsIAppStartup.eRestart));
+      if (!cancel.data) Services.startup.quit(Ci.nsIAppStartup.eAttemptQuit | (Services.env.get("RESSAC_TEST_NO_RESTART") === "1" ? 0 : Ci.nsIAppStartup.eRestart));
       // attemptingQuit: every window agreed to close (shuttingDown waits for them to be closed).
       if (!cancel.data && Services.startup.attemptingQuit) return true;
       await IOUtils.remove(marker, { ignoreAbsent: true });

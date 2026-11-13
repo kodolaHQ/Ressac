@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { testActor } from "./agent-extensions";
 import { waitReady } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { grantSite, inBrowser, inSiteBar, inSiteView, resolveLocalHosts, siteWindowExpr, startSitesServer, writeSite } from "./sites";
 import { missingApi } from "./ui";
@@ -13,7 +13,7 @@ import { missingApi } from "./ui";
 // Plan 32 Task 1: the agent's tweaks in each frame of a site app's view (Xray sandbox per document), plus the
 // sign-in window and two apps side by side.
 
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const HOSTS = ["vidola-a.localhost", "vidola-b.localhost", "pub.localhost", "lecteur.localhost", "compte.localhost"];
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -23,10 +23,10 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  */
 const TWEAK_SERIES = `
 const racine = document.documentElement;
-racine.dataset.monde = JSON.stringify({ require: typeof require, ipcRenderer: typeof ipcRenderer, process: typeof process, pont: typeof webaiosSite,
+racine.dataset.monde = JSON.stringify({ require: typeof require, ipcRenderer: typeof ipcRenderer, process: typeof process, pont: typeof ressacSite,
   Components: typeof Components, ChromeUtils: typeof ChromeUtils, Services: typeof Services });
 document.body.dataset.retouche = "oui";
-webaiosSite.remember("encours.the-bear", { titre: "The Bear", episode: "S2E4" }).then(() => (racine.dataset.kept = "oui"), (e) => (racine.dataset.kept = "refus:" + e.message));
+ressacSite.remember("encours.the-bear", { titre: "The Bear", episode: "S2E4" }).then(() => (racine.dataset.kept = "oui"), (e) => (racine.dataset.kept = "refus:" + e.message));
 const repondre = (p) => p.then((r) => (racine.dataset.resultat = "ok:" + r), (e) => (racine.dataset.resultat = "refus:" + (e && e.message)));
 document.addEventListener("essai", () => {
   const c = racine.dataset.commande;
@@ -34,14 +34,14 @@ document.addEventListener("essai", () => {
   else if (c === "fetch-pub") repondre(Promise.resolve().then(() => fetch(racine.dataset.pub)).then((r) => r.status));
   else if (c === "fetch-site") repondre(fetch("/film/2").then((r) => r.status));
   else if (c === "elargir") {
-    __webaiosScope({ network: [racine.dataset.pubHote], hosts: ["<all_urls>"] });
+    __ressacScope({ network: [racine.dataset.pubHote], hosts: ["<all_urls>"] });
     repondre(Promise.resolve().then(() => fetch(racine.dataset.pub)).then((r) => r.status));
-  } else if (c === "non-json") repondre(webaiosSite.remember("f", () => 1));
-  else if (c === "lire") repondre(webaiosSite.read("encours.the-bear").then((v) => JSON.stringify(v)));
+  } else if (c === "non-json") repondre(ressacSite.remember("f", () => 1));
+  else if (c === "lire") repondre(ressacSite.read("encours.the-bear").then((v) => JSON.stringify(v)));
 });`;
 
 let server: Awaited<ReturnType<typeof startSitesServer>>;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 let dataDir: string;
 let profile: string;
@@ -61,7 +61,7 @@ const vidola = () => ({
 });
 /** The second app (Review Focus 2): its own domain, memory and console. */
 const other = () => ({ name: "Autre", url: url("/serie/b", "vidola-b.localhost"), domains: ["vidola-b.localhost"], tweaks: [{ matches: ["/serie/*"], js: ["b.js"] }] });
-const B_JS = 'webaiosSite.remember("b", 1).then(() => (document.documentElement.dataset.kept = "oui")); throw new Error("erreur de B");';
+const B_JS = 'ressacSite.remember("b", 1).then(() => (document.documentElement.dataset.kept = "oui")); throw new Error("erreur de B");';
 
 const inStore = <T = unknown>(body: string, args: unknown[] = []) =>
   m.execute<T>(`return (async () => { const store = await ChromeUtils.importESModule("${STORE}").ready; ${body} })();`, args);
@@ -111,14 +111,14 @@ beforeAll(async () => {
   );
   server.define("compte.localhost", "/connexion", "<title>Connexion</title>");
   server.define("vidola-b.localhost", "/serie/b", "<title>B</title><p>b</p>");
-  dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
-  profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
+  dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
+  profile = await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
   writeSite(dataDir, "vidola", {
     declaration: vidola(),
     files: {
       "tweaks/serie.js": TWEAK_SERIES,
       "tweaks/cacher.css": ".shorts { display: none; }",
-      "tweaks/cadre.js": 'document.documentElement.dataset.cadre = "oui"; document.documentElement.dataset.pont = typeof webaiosSite;',
+      "tweaks/cadre.js": 'document.documentElement.dataset.cadre = "oui"; document.documentElement.dataset.pont = typeof ressacSite;',
       "tweaks/erreur.js": 'throw new Error("retouche cassée");',
       "tweaks/apres.js": 'document.documentElement.dataset.apres = "oui"; setTimeout(() => { throw new Error("plus tard"); });',
     },
@@ -127,7 +127,7 @@ beforeAll(async () => {
   await grantSite(dataDir, "vidola", vidola());
   await grantSite(dataDir, "autre", other());
   const actor = testActor(profile);
-  w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_LOCAL_ADDRESSES: "1", ...actor.env }, prefs: actor.prefs });
+  w = await launchRessac({ dataDir, profile, env: { RESSAC_TEST_LOCAL_ADDRESSES: "1", ...actor.env }, prefs: actor.prefs });
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
@@ -144,7 +144,7 @@ afterEach(async () => {
   try {
     expect(await missingApi(m)).toEqual([]);
   } finally {
-    await m.execute(`for (const x of [...Services.wm.getEnumerator("navigator:browser")]) if (x.document.documentElement.hasAttribute("webaios-site-small")) x.close();`).catch(() => {});
+    await m.execute(`for (const x of [...Services.wm.getEnumerator("navigator:browser")]) if (x.document.documentElement.hasAttribute("ressac-site-small")) x.close();`).catch(() => {});
     await inStore(`for (const id of store.sites.openIds()) await store.sites.close(id);`).catch(() => {});
   }
 });
@@ -155,7 +155,7 @@ describe("tweaks", () => {
     await expect.poll(() => view('getComputedStyle(document.getElementById("shorts")).display')).toBe("none");
   });
 
-  it('a JS tweak remembers encours.the-bear through webaiosSite.remember; the memory read by the test has adresse "/serie/the-bear" (sites.spec.ts:815)', async () => {
+  it('a JS tweak remembers encours.the-bear through ressacSite.remember; the memory read by the test has adresse "/serie/the-bear" (sites.spec.ts:815)', async () => {
     await openAt("vidola", "/serie/the-bear");
     await expect.poll(() => view("document.documentElement.dataset.kept")).toBe("oui");
     await expect.poll(() => memory("vidola")?.values?.["encours.the-bear"] ?? null, { timeout: 5000 }).toMatchObject({ value: { titre: "The Bear", episode: "S2E4" }, url: "/serie/the-bear" });
@@ -172,14 +172,14 @@ describe("tweaks", () => {
     });
   });
 
-  it("in the page's world: window.webaiosSite is undefined and the DOM is changed (sites.spec.ts:836)", async () => {
+  it("in the page's world: window.ressacSite is undefined and the DOM is changed (sites.spec.ts:836)", async () => {
     await openAt("vidola", "/serie/the-bear");
     await expect.poll(() => view("document.body.dataset.retouche")).toBe("oui");
-    expect(await pageTypeof("window.webaiosSite")).toBe("undefined");
-    expect(await pageTypeof("__webaiosScope")).toBe("undefined");
+    expect(await pageTypeof("window.ressacSite")).toBe("undefined");
+    expect(await pageTypeof("__ressacScope")).toBe("undefined");
   });
 
-  it('in the lecteur.localhost sub-frame matching cadres: the tweak runs, typeof webaiosSite === "undefined" (sites.spec.ts:844)', async () => {
+  it('in the lecteur.localhost sub-frame matching cadres: the tweak runs, typeof ressacSite === "undefined" (sites.spec.ts:844)', async () => {
     await openAt("vidola", "/serie/the-bear");
     await go("/lecteur");
     await expect.poll(() => view("document.documentElement.dataset.cadre ?? null", { frame: 0 }), { timeout: 10_000 }).toBe("oui");
@@ -207,7 +207,7 @@ describe("tweaks", () => {
     expect(await command("mdp")).toBe("valeur:");
   });
 
-  it("__webaiosScope called again with <all_urls>: fetch to pub.localhost still rejected (sites.spec.ts:876)", async () => {
+  it("__ressacScope called again with <all_urls>: fetch to pub.localhost still rejected (sites.spec.ts:876)", async () => {
     await openAt("vidola", "/serie/the-bear");
     await expect.poll(() => view("document.body.dataset.retouche")).toBe("oui");
     await view(`(document.documentElement.dataset.pub = ${JSON.stringify(url("/x", "pub.localhost"))}, document.documentElement.dataset.pubHote = "pub.localhost", 1)`);
@@ -223,7 +223,7 @@ describe("tweaks", () => {
     await expect.poll(async () => (await errors()).map((e) => e.text).join("\n"), { timeout: 10_000 }).toContain("retouche cassée");
     await expect.poll(async () => (await errors()).map((e) => e.text).join("\n"), { timeout: 10_000 }).toContain("plus tard");
     const e = (await errors()).find((x) => x.text.includes("retouche cassée"))!;
-    expect(e.source).toMatch(/^webaios-tweak:\/\/vidola\/erreur\.js/);
+    expect(e.source).toMatch(/^ressac-tweak:\/\/vidola\/erreur\.js/);
     // The source says it is a tweak: nothing proves it (the page can name itself so).
     expect(e.sourceVerified).toBe(false);
     expect(await view('document.getElementById("p").textContent')).toBe("la page marche");
@@ -232,7 +232,7 @@ describe("tweaks", () => {
   it("a tweak that throws later (setTimeout) is in tweak_errors too, with its source; the console empties when the window closes", async () => {
     await openAt("vidola", "/serie/the-bear");
     await go("/erreur");
-    await expect.poll(async () => (await errors()).find((e) => e.text.includes("plus tard"))?.source ?? null, { timeout: 10_000 }).toMatch(/^webaios-tweak:\/\/vidola\/apres\.js/);
+    await expect.poll(async () => (await errors()).find((e) => e.text.includes("plus tard"))?.source ?? null, { timeout: 10_000 }).toMatch(/^ressac-tweak:\/\/vidola\/apres\.js/);
     await inStore(`await store.sites.close("vidola");`);
     expect(await errors()).toEqual([]);
   });
@@ -292,11 +292,11 @@ describe("tweaks", () => {
       }
     });
 
-  it("the sign-in window gets no tweak, no webaiosSite and no resume (Review Focus 1)", async () => {
+  it("the sign-in window gets no tweak, no ressacSite and no resume (Review Focus 1)", async () => {
     await openAt("vidola", "/serie/the-bear");
     await expect.poll(() => view("document.documentElement.dataset.kept")).toBe("oui");
     await inStore(`store.sites.routeOpen("vidola", arguments[0]);`, [url("/connexion", "compte.localhost")]);
-    const small = `[...Services.wm.getEnumerator("navigator:browser")].find((x) => x.document.documentElement.getAttribute("webaios-site-small") === "vidola")?.gBrowser.selectedBrowser`;
+    const small = `[...Services.wm.getEnumerator("navigator:browser")].find((x) => x.document.documentElement.getAttribute("ressac-site-small") === "vidola")?.gBrowser.selectedBrowser`;
     await expect.poll(() => m.execute(`return ${small}?.currentURI?.spec ?? null;`), { timeout: 10_000 }).toBe(url("/connexion", "compte.localhost"));
     // In the same container, on a page of the app that its tweaks match.
     await inBrowser(m, small, `location.href = ${JSON.stringify(url("/serie/the-bear"))}; return 1;`);

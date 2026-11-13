@@ -10,7 +10,7 @@ let path: string;
 const date = (iso: string) => new Date(iso);
 
 beforeEach(() => {
-  path = join(mkdtempSync(join(tmpdir(), "webaios-hist-")), "history.sqlite");
+  path = join(mkdtempSync(join(tmpdir(), "ressac-hist-")), "history.sqlite");
   h = new History(path);
 });
 afterEach(() => h.close());

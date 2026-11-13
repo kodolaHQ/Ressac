@@ -6,7 +6,7 @@
   // The add-on buttons of the active window (chrome/window/addons.ts), copied into this document like ui/api.ts does.
   // `window` only opens the agent's Extensions page: the window announces changes itself (onChange, every tab switch).
   let { window: win }: { window: WindowState } = $props();
-  const addons = window.parent.webaiosWindow!.addons;
+  const addons = window.parent.ressacWindow!.addons;
   let buttons = $state<AddonButton[]>(structuredClone(addons.buttons()));
   let updates = $state<PendingUpdate[]>(structuredClone(addons.updates()));
   let open = $state(false);
@@ -97,7 +97,7 @@
   .menu { all: unset; position: relative; width: 28px; height: 28px; display: grid; place-content: center; border-radius: 8px; color: var(--text-muted); font-size: 18px; transition: transform var(--tap), background-color var(--tap); }
   .point { position: absolute; right: 4px; top: 4px; width: 7px; height: 7px; border-radius: 50%; background: var(--in-error); box-shadow: 0 0 0 1.5px var(--sheet); }
   /* min-width: 0: without it a long name (nowrap) would widen the panel, a flexible item of the row, out of the bar. */
-  .panel { -webkit-app-region: no-drag; flex-basis: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; margin-top: 6px; padding: 6px; border: 1px solid var(--glass-edge); border-radius: 12px; background: var(--glass-hi); animation: webaios-rise var(--spring-d) var(--spring) backwards; }
+  .panel { -webkit-app-region: no-drag; flex-basis: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; margin-top: 6px; padding: 6px; border: 1px solid var(--glass-edge); border-radius: 12px; background: var(--glass-hi); animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   ul { list-style: none; margin: 0; padding: 0; }
   li { display: flex; align-items: center; gap: 6px; padding: 2px 4px; }
   .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }

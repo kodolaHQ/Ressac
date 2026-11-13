@@ -18,7 +18,7 @@
   $effect(() => void load());
 
   const RESET =
-    "Réinitialiser WebAiOs ? Ses données (espaces, onglets, historique, réglages, données des widgets et des actions, installation de Kev (IA locale, à réinstaller)) sont mises de côté dans une sauvegarde, puis WebAiOs redémarre à neuf. Restent en place : le dossier workspace (vos projets et ce que l'agent a créé), les connexions de Claude et de Codex (boutons Se déconnecter, section Agents), la clé de l'API compatible de Codex (Trousseau macOS), les cookies et mots de passe du navigateur (Réglages avancés du navigateur).";
+    "Réinitialiser Ressac ? Ses données (espaces, onglets, historique, réglages, données des widgets et des actions, installation de Kev (IA locale, à réinstaller)) sont mises de côté dans une sauvegarde, puis Ressac redémarre à neuf. Restent en place : le dossier workspace (vos projets et ce que l'agent a créé), les connexions de Claude et de Codex (boutons Se déconnecter, section Agents), la clé de l'API compatible de Codex (Trousseau macOS), les cookies et mots de passe du navigateur (Réglages avancés du navigateur).";
   const date = (iso: string) => new Date(iso).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" });
   const number = (n: number) => n.toLocaleString("fr-FR", { maximumFractionDigits: 1 });
   // shortcut: assumes a macOS home under /Users, display only; take the home from the chrome if another OS ships.
@@ -111,5 +111,5 @@
 </section>
 
 <style>
-  .import { padding: 14px; animation: webaios-rise var(--spring-d) var(--spring) backwards; }
+  .import { padding: 14px; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
 </style>

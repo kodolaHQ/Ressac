@@ -13,7 +13,7 @@ export const PATH_MATCHES = 'tweaks.matches : des chemins qui commencent par « 
 export const tweakFileNotFound = (f: string) => `tweaks : fichier introuvable ou trop gros : ${f}`;
 export const INVALID_DOMAIN = "domains, login : de vrais noms de domaine (avec un point), jamais une adresse IP ni locale";
 export const SITE_ID_ERROR = "nom de dossier non pris en charge : minuscules, chiffres et tirets seulement, 60 caractères au plus (ex. mon-site)";
-/** The id serves as host of `webaios-site://<id>` and as partition `persist:site-<id>`. */
+/** The id serves as host of `ressac-site://<id>` and as partition `persist:site-<id>`. */
 export const ID_SITE = /^[a-z0-9][a-z0-9-]{0,59}$/;
 export const HTTPS_ONLY = "url : https seulement, jamais une adresse locale";
 

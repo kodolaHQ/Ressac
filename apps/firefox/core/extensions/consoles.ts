@@ -1,4 +1,4 @@
-import type { AgentConsole, MessageConsole } from "@webaios/kernel";
+import type { AgentConsole, MessageConsole } from "@ressac/kernel";
 
 /** Messages kept per extension: the oldest drop. */
 export const CONSOLE_MAX = 500;

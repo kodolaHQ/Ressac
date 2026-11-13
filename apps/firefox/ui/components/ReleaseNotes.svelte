@@ -8,7 +8,7 @@
     <h1>Nouveautés</h1>
     {#each RELEASE_NOTES as n (n.version)}
       <article data-testid="release-{n.version}">
-        <h2>WebAiOs {n.version} <span>{n.date}</span></h2>
+        <h2>Ressac {n.version} <span>{n.date}</span></h2>
         <ul class="panel">
           {#each n.items as item (item)}<li>{item}</li>{/each}
         </ul>
@@ -19,7 +19,7 @@
 
 <style>
   .notes { height: 100%; overflow-y: auto; color: var(--text); font-size: 13px; }
-  .content { max-width: 720px; margin: 0 auto; padding: 26px 32px; animation: webaios-rise var(--spring-d) var(--spring) backwards; }
+  .content { max-width: 720px; margin: 0 auto; padding: 26px 32px; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   h1 { margin: 0 0 22px; font: 650 26px/1.1 var(--font-display); letter-spacing: -0.02em; }
   h2 { margin: 22px 4px 8px; font: 600 15px var(--font-ui); }
   h2 span { margin-left: 6px; font-weight: 400; color: var(--text-muted); }

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const ID = "reseau@agent.webaios";
+const ID = "reseau@agent.ressac";
 const GRANT = { permissions: [], hosts: ["https://hote.test/*"], network: ["accorde.test"], allSites: false, allSitesScripts: false, scripts: false };
 const HOST = "0f7c6f4e-1111-4222-8333-444455556666";
 
@@ -74,7 +74,7 @@ async function load(
   vi.stubGlobal("Cr", { NS_BINDING_ABORTED: 0x804b0002 });
   vi.stubGlobal("Services", { obs: { addObserver: (o: (s: unknown) => void, topic: string) => topic === "http-on-modify-request" && (observer = o) }, console: { registerListener: () => {} }, env: { get: () => "" } });
   const { createAgentExtensions } = await import("../chrome/store/agent-extensions");
-  // WebAiOs tabs onglet-<n>: 5 is in a private space, 6 in another profile's, the others in the default one.
+  // Ressac tabs onglet-<n>: 5 is in a private space, 6 in another profile's, the others in the default one.
   const spaces = [
     { id: "e1", private: false, profile: "default" },
     { id: "e2", private: true, profile: "secret" },
@@ -115,7 +115,7 @@ describe("agent extension checkpoints", () => {
     call(2, "tabs.captureVisibleTab");
     expect(parentApi.reached).toEqual(["tabs.query", "tabs.captureVisibleTab"]);
     expect(parentApi.sent).toHaveLength(7);
-    expect(parentApi.sent[0]).toEqual({ childId: 1, callId: 7, path: "tabs.captureVisibleTab", error: { message: "tabs.captureVisibleTab non pris en charge par WebAiOs" } });
+    expect(parentApi.sent[0]).toEqual({ childId: 1, callId: 7, path: "tabs.captureVisibleTab", error: { message: "tabs.captureVisibleTab non pris en charge par Ressac" } });
   });
 
   it("check: urlAllowed accepts its own moz-extension host and a granted network domain only", async () => {
@@ -129,7 +129,7 @@ describe("agent extension checkpoints", () => {
     for (const refused of ["data:text/html,x", "javascript:alert(1)", "moz-extension://autre-hote/page.html", "https://autre.test/", "https://u:p@accorde.test/", 42, null])
       expect(ok(refused)).toBe(false);
     // Not granted, not active, or not answered yet: nothing passes.
-    expect(x.check("autre@agent.webaios", "urlAllowed", "https://accorde.test/")).toBe(false);
+    expect(x.check("autre@agent.ressac", "urlAllowed", "https://accorde.test/")).toBe(false);
     grant(x, false);
     expect(ok("https://accorde.test/")).toBe(false);
   });
@@ -159,11 +159,11 @@ describe("agent extension checkpoints", () => {
     }
   });
 
-  it("check: hostAllowed reads the tab's address, isTab a WebAiOs tab only (never the parking tab)", async () => {
+  it("check: hostAllowed reads the tab's address, isTab a Ressac tab only (never the parking tab)", async () => {
     const x = await load({
-      1: { attrs: ["webaios-tab-id"], url: "https://hote.test/a" },
-      2: { attrs: ["webaios-tab-id"], url: "https://autre.test/" },
-      3: { attrs: ["webaios-tab-id", "webaios-parking"], url: "about:blank" },
+      1: { attrs: ["ressac-tab-id"], url: "https://hote.test/a" },
+      2: { attrs: ["ressac-tab-id"], url: "https://autre.test/" },
+      3: { attrs: ["ressac-tab-id", "ressac-parking"], url: "about:blank" },
       4: { attrs: [], url: "https://hote.test/b" },
     });
     grant(x);
@@ -173,7 +173,7 @@ describe("agent extension checkpoints", () => {
 
   it("check: isTab is false in a private space; a tab the agent cannot read sends extensions.aTourne once per profile", async () => {
     const requests: unknown[][] = [];
-    const tab = { attrs: ["webaios-tab-id"], url: "https://hote.test/a" };
+    const tab = { attrs: ["ressac-tab-id"], url: "https://hote.test/a" };
     const x = await load({ 1: tab, 2: tab, 5: tab }, { read: ["tab-1"], requests });
     grant(x);
     expect(x.check(ID, "isTab", 5)).toBe(false);
@@ -185,19 +185,19 @@ describe("agent extension checkpoints", () => {
   });
 
   it("check: isTab is false in a profile where the extension is not active, or in a container not its space's", async () => {
-    const x = await load({ 1: { attrs: ["webaios-tab-id"], url: "https://hote.test/a" }, 2: { attrs: ["webaios-tab-id"], url: "https://hote.test/a", ctx: 3 }, 6: { attrs: ["webaios-tab-id"], url: "https://hote.test/a" } });
+    const x = await load({ 1: { attrs: ["ressac-tab-id"], url: "https://hote.test/a" }, 2: { attrs: ["ressac-tab-id"], url: "https://hote.test/a", ctx: 3 }, 6: { attrs: ["ressac-tab-id"], url: "https://hote.test/a" } });
     grant(x);
     expect([1, 2, 6].map((t) => x.check(ID, "isTab", t))).toEqual([true, false, false]);
   });
 
   it("extensions.rechargerOnglets reloads, once, the tabs of those profiles its scripts were let into, even after a navigation", async () => {
-    const tab3: FakeTab = { attrs: ["webaios-tab-id"], url: "https://hote.test/c" };
-    const x = await load({ 1: { attrs: ["webaios-tab-id"], url: "https://hote.test/a" }, 2: { attrs: ["webaios-tab-id"], url: "https://hote.test/b" }, 3: tab3, 4: { attrs: ["webaios-tab-id"], url: "https://hote.test/d" } });
+    const tab3: FakeTab = { attrs: ["ressac-tab-id"], url: "https://hote.test/c" };
+    const x = await load({ 1: { attrs: ["ressac-tab-id"], url: "https://hote.test/a" }, 2: { attrs: ["ressac-tab-id"], url: "https://hote.test/b" }, 3: tab3, 4: { attrs: ["ressac-tab-id"], url: "https://hote.test/d" } });
     grant(x);
     for (const t of [1, 3, 4]) x.check(ID, "isTab", t);
     tab3.doc = 2;
     const reload = (p: unknown) => x.handlers["extensions.reloadTabs"]!(p, new AbortController().signal);
-    reload({ addonId: "autre@agent.webaios", profiles: ["default"] });
+    reload({ addonId: "autre@agent.ressac", profiles: ["default"] });
     expect(reloads).toEqual([]);
     reload({ addonId: ID, profiles: ["default"] });
     expect(reloads).toEqual([1, 3, 4]);
@@ -206,13 +206,13 @@ describe("agent extension checkpoints", () => {
   });
 
   it("a profile turned private reloads at once, without the host, every tab an agent script was let into there", async () => {
-    const x = await load({ 1: { attrs: ["webaios-tab-id"], url: "https://hote.test/a" }, 2: { attrs: ["webaios-tab-id"], url: "https://hote.test/b" } });
+    const x = await load({ 1: { attrs: ["ressac-tab-id"], url: "https://hote.test/a" }, 2: { attrs: ["ressac-tab-id"], url: "https://hote.test/b" } });
     x.handlers["extensions.scopes"]!(
-      { [ID]: { key: "agent:reseau", grant: GRANT, profiles: ["default"], active: true }, "autre@agent.webaios": { key: "agent:autre", grant: GRANT, profiles: ["default"], active: true } },
+      { [ID]: { key: "agent:reseau", grant: GRANT, profiles: ["default"], active: true }, "autre@agent.ressac": { key: "agent:autre", grant: GRANT, profiles: ["default"], active: true } },
       new AbortController().signal,
     );
     x.check(ID, "isTab", 1);
-    x.check("autre@agent.webaios", "isTab", 2);
+    x.check("autre@agent.ressac", "isTab", 2);
     // Switched off there since (out of its profiles): its script still runs, the tab reloads all the same.
     grant(x);
     x.setSpaces([{ id: "e1", private: false, profile: "default" }, { id: "e2", private: true, profile: "secret" }, { id: "e3", private: false, profile: "autre" }]);
@@ -235,7 +235,7 @@ describe("agent extension checkpoints", () => {
   it("an agent extension's TabManager never reaches the parking tab nor a private space's tab", async () => {
     const extension = { id: ID, uninstallURL: null, tabManager: { canAccessTab: (_: unknown) => true } };
     const tab = (attrs: string[]) => ({ attrs, url: "https://hote.test/a" });
-    await load({ 1: tab(["webaios-tab-id"]), 3: tab(["webaios-tab-id", "webaios-parking"]), 5: tab(["webaios-tab-id"]), 6: tab(["webaios-tab-id"]) }, { running: [extension] });
+    await load({ 1: tab(["ressac-tab-id"]), 3: tab(["ressac-tab-id", "ressac-parking"]), 5: tab(["ressac-tab-id"]), 6: tab(["ressac-tab-id"]) }, { running: [extension] });
     const { tabTracker } = (globalThis as any).ChromeUtils.importESModule().ExtensionParent.apiManager.global;
     expect([1, 3, 5, 6].map((id) => extension.tabManager.canAccessTab(tabTracker.getTab(id)))).toEqual([true, false, false, true]);
   });
@@ -252,7 +252,7 @@ describe("agent extension checkpoints", () => {
     expect(request("https://autre.test/page", { loading: null, triggering: ID })).toBe(true);
     expect(request("https://hote.test/page", { loading: null, triggering: ID })).toBe(false);
     // Another add-on, a page, a content script (expanded principal: no addonId), the system: not concerned.
-    expect(request("https://autre.test/x", { loading: "autre@webaios.test", triggering: "autre@webaios.test" })).toBe(false);
+    expect(request("https://autre.test/x", { loading: "autre@ressac.test", triggering: "autre@ressac.test" })).toBe(false);
     expect(request("https://autre.test/x", { loading: "", triggering: "" })).toBe(false);
     expect(request("https://autre.test/x", { loading: null, triggering: undefined })).toBe(false);
   });

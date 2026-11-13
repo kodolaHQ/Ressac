@@ -1,19 +1,19 @@
 import type { Marionette } from "./marionette";
 
-/** The UI iframes: the sidebar (`#webaios-sidebar`), the agent panel (`#webaios-agent`) and the design overlays, with what shows each is mounted. */
+/** The UI iframes: the sidebar (`#ressac-sidebar`), the agent panel (`#ressac-agent`) and the design overlays, with what shows each is mounted. */
 const FRAMES = {
-  sidebar: { id: "webaios-sidebar", mounted: '[data-testid="sidebar"]' },
-  agent: { id: "webaios-agent", mounted: '[data-testid="agent-panel"]' },
+  sidebar: { id: "ressac-sidebar", mounted: '[data-testid="sidebar"]' },
+  agent: { id: "ressac-agent", mounted: '[data-testid="agent-panel"]' },
   // The design mode's overlay (bubble, message) and a main window's cart column (chrome/window/design-overlays.ts).
-  overlay: { id: "webaios-design-calque", mounted: "#app" },
-  panel: { id: "webaios-design-volet", mounted: "#app" },
+  overlay: { id: "ressac-design-calque", mounted: "#app" },
+  panel: { id: "ressac-design-volet", mounted: "#app" },
   // The pill of the agent's last tab (chrome/window/agent-pill.ts).
-  agentview: { id: "webaios-agent-pill", mounted: "#app" },
+  agentview: { id: "ressac-agent-pill", mounted: "#app" },
 };
 export type Frame = keyof typeof FRAMES;
 
 /**
- * Runs `body` (an async function body, chrome context) with `doc` = the document of a WebAiOs UI iframe (the sidebar by
+ * Runs `body` (an async function body, chrome context) with `doc` = the document of a Ressac UI iframe (the sidebar by
  * default) and `ui` = its window. `arguments[i]` are the args. Waits up to 10 s for the UI to be mounted.
  */
 export function inUi<T = unknown>(m: Marionette, body: string, args: unknown[] = [], frame: Frame = "sidebar"): Promise<T> {
@@ -73,7 +73,7 @@ export async function click(m: Marionette, selector: string, o: { button?: 0 | 2
   );
 }
 
-const TIP = `const tip = (window.webaiosTestTip ??= Cc["@mozilla.org/text-input-processor;1"].createInstance(Ci.nsITextInputProcessor));
+const TIP = `const tip = (window.ressacTestTip ??= Cc["@mozilla.org/text-input-processor;1"].createInstance(Ci.nsITextInputProcessor));
   tip.beginInputTransactionForTests(window);
   const CODES = { "[": "BracketLeft", "]": "BracketRight", "{": "BracketLeft", "}": "BracketRight", Meta: "MetaLeft", Control: "ControlLeft", Shift: "ShiftLeft", Alt: "AltLeft", " ": "Space", "-": "Minus", ",": "Comma", "/": "Slash", "?": "Slash", "$": "Digit4" };
   const ev = (key) => new KeyboardEvent("", { key, code: CODES[key] ?? (/^[0-9]$/.test(key) ? "Digit" + key : key.length === 1 ? "Key" + key.toUpperCase() : key) });`;
@@ -99,9 +99,9 @@ export async function typeText(m: Marionette, text: string): Promise<void> {
   for (const k of text) await pressKeys(m, k);
 }
 
-/** ApiWebaios members the UI reached that the Firefox api does not implement. */
+/** ApiRessac members the UI reached that the Firefox api does not implement. */
 export function missingApi(m: Marionette): Promise<string[]> {
-  return inUi(m, "return [...(ui.webaiosMissingApi ?? [])]");
+  return inUi(m, "return [...(ui.ressacMissingApi ?? [])]");
 }
 
 /** The RGB colour at (x, y) of a Marionette screenshot of the browser window (chrome context). */

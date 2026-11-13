@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Action } from "../shared/api";
 import { openAction, runsOnDisk, startActionServers, tid, uiQueries, waitKernel, writePagesAction, writeResult, writeRunnableAction } from "./actions";
 import { dispatch, state, waitReady } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { click, inUi, missingApi, waitUi } from "./ui";
 
@@ -10,10 +10,10 @@ import { click, inUi, missingApi, waitUi } from "./ui";
 // grant, a private space, a closed tab, a run or an action that no longer exists.
 
 let servers: Awaited<ReturnType<typeof startActionServers>>;
-const launched: LaunchedWebAiOs[] = [];
+const launched: LaunchedRessac[] = [];
 
 async function launch(env: Record<string, string> = {}) {
-  const w = await launchWebAiOs({ env: { WEBAIOS_OLLAMA_URL: servers.ollama.url, WEBAIOS_KEV_URL: servers.kev.url, WEBAIOS_TEST_LOCAL_ADDRESSES: "1", ...env } });
+  const w = await launchRessac({ env: { RESSAC_OLLAMA_URL: servers.ollama.url, RESSAC_KEV_URL: servers.kev.url, RESSAC_TEST_LOCAL_ADDRESSES: "1", ...env } });
   launched.push(w);
   const m = w.marionette;
   await m.setContext("chrome");
@@ -46,7 +46,7 @@ it("workshop stopped (no Docker): « Relancer » shows the error instead of noth
 });
 
 describe("action results", () => {
-  let w: LaunchedWebAiOs;
+  let w: LaunchedRessac;
   let m: Marionette;
   let q: ReturnType<typeof uiQueries>;
   beforeAll(async () => {
@@ -89,17 +89,17 @@ describe("action results", () => {
     await click(m, tid("relaunch-action"));
     await waitUi(m, "return !!doc.querySelector(arguments[0]);", [tid("action-progress")], 30_000);
     // Closing the tab does not stop the run.
-    const tab = Object.values((await state(m)).tabs).find((o) => o.url.startsWith("webaios://action/pages"))!;
+    const tab = Object.values((await state(m)).tabs).find((o) => o.url.startsWith("ressac://action/pages"))!;
     await dispatch(m, { type: "closeTab", id: tab.id });
     // The tabs of this file's earlier tests stay open: another action's page may show now, never this one.
     await waitUi(m, "return doc.querySelector(arguments[0])?.textContent !== 'Pages';", [tid("action-title")]);
-    expect(Object.values((await state(m)).tabs).some((o) => o.url.startsWith("webaios://action/pages"))).toBe(false);
+    expect(Object.values((await state(m)).tabs).some((o) => o.url.startsWith("ressac://action/pages"))).toBe(false);
     for (const deadline = Date.now() + 60_000; (await runsOnDisk(w.dataDir, "pages")).length !== 1; ) {
       if (Date.now() > deadline) throw new Error("no run written");
       await new Promise((r) => setTimeout(r, 200));
     }
     const execution = (await runsOnDisk(w.dataDir, "pages"))[0]!.replace(/\.json$/, "");
-    await waitUi(m, "return ui.webaios.actions.live().then((d) => d.running.length === 0);", [], 30_000);
+    await waitUi(m, "return ui.ressac.actions.live().then((d) => d.running.length === 0);", [], 30_000);
     await openAction(m, "pages", "Pages");
     await waitUi(m, "return !!doc.querySelector(arguments[0]);", [tid("page-render")], 30_000);
     await click(m, tid("previous-results"));
@@ -118,21 +118,21 @@ describe("action results", () => {
     await click(m, tid("show-latest-result"));
     await q.waitText(tid("block-title"), "Dernier");
     await q.waitCount(tid("result-gone"), 0);
-    await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url: "webaios://action/inconnue" });
+    await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url: "ressac://action/inconnue" });
     await q.waitText(tid("action-error"), "Action inconnue");
     expect(servers.ollama.prompts.length).toBe(prompts);
     expect(await runsOnDisk(w.dataDir, "annonces")).toEqual([`${LAST}.json`]);
   });
 
   // actions.spec.ts:712 (last: it leaves the window's space private)
-  it("a webaios://action/x tab in a private space: ACTIONS_IN_PRIVATE_SPACE, nothing launched", async () => {
+  it("a ressac://action/x tab in a private space: ACTIONS_IN_PRIVATE_SPACE, nothing launched", async () => {
     await writeRunnableAction(w.dataDir, "x", { name: "X", code: "export default async () => ({ a: 1 });" });
     await writeResult(w.dataDir, "x", "2026-10-31T08-00-00-000Z", "2026-10-31T08:00:00.000Z", "Secret");
     const prompts = servers.ollama.prompts.length;
     const s = await state(m);
     const e = s.spaces.find((x) => x.id === s.windows[0]!.activeSpace)!;
     await dispatch(m, { type: "updateSpace", id: e.id, name: e.name, icon: e.icon, private: true, profile: e.profile } as Action);
-    await dispatch(m, { type: "openTab", windowId: s.windows[0]!.id, url: "webaios://action/x" });
+    await dispatch(m, { type: "openTab", windowId: s.windows[0]!.id, url: "ressac://action/x" });
     await q.waitText(tid("action-private-space"), "Les actions ne sont pas disponibles dans un espace privé");
     expect(await q.count(tid("page-action"))).toBe(0);
     expect(await inUi(m, "return doc.body.textContent.includes('Secret');")).toBe(false);

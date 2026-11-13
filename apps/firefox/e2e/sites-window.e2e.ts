@@ -5,21 +5,21 @@ import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { testActor } from "./agent-extensions";
 import { dispatch, inWindow, pressClosing, state, waitFor, waitReady, windowHandles } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { inSiteBar, inSiteView, resolveLocalHosts, siteWindowCount, siteWindowExpr, startSitesServer, writeSite } from "./sites";
 import { inUi, keyDown, keyUp, missingApi, pressKeys, waitUi } from "./ui";
 
 // Plan 31 Task 3: the site app window and its bar.
 
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const NAVIGABLES = "chrome://remote/content/shared/NavigableManager.sys.mjs";
 const HOSTS = ["vidola-a.localhost", "pub.localhost", "compte.localhost"];
 const BAR = 36;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 let server: Awaited<ReturnType<typeof startSitesServer>>;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 let dataDir: string;
 let profile: string;
@@ -30,14 +30,14 @@ const url = (p: string) => server.url("vidola-a.localhost", p);
 
 async function launch(): Promise<void> {
   const actor = testActor(profile);
-  w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_LOCAL_ADDRESSES: "1", ...actor.env }, prefs: actor.prefs });
+  w = await launchRessac({ dataDir, profile, env: { RESSAC_TEST_LOCAL_ADDRESSES: "1", ...actor.env }, prefs: actor.prefs });
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
   await resolveLocalHosts(m, HOSTS);
 }
 
-/** In the chrome context, with `store` = the WebAiOs store. */
+/** In the chrome context, with `store` = the Ressac store. */
 const inStore = <T = unknown>(body: string, args: unknown[] = []) =>
   m.execute<T>(`return (async () => { const store = await ChromeUtils.importESModule("${STORE}").ready; ${body} })();`, args);
 /** « Ouvrir » on the app's row, as the Applications page sends it: through the host, which asks the chrome. */
@@ -72,7 +72,7 @@ const disabled = (testid: string) => waitBar<string>(`return String(doc.querySel
 /** The bar's frame and the view, in the window's CSS pixels. */
 const layout = () =>
   m.execute<{ bar: [number, number, string]; view: [number, number, number, number]; inner: [number, number] }>(
-    `const win = ${site}; const f = win.document.getElementById("webaios-site-bar"); const fr = f.getBoundingClientRect(); const b = win.gBrowser.selectedBrowser.getBoundingClientRect();
+    `const win = ${site}; const f = win.document.getElementById("ressac-site-bar"); const fr = f.getBoundingClientRect(); const b = win.gBrowser.selectedBrowser.getBoundingClientRect();
      return { bar: [fr.top, fr.height, win.getComputedStyle(f).display], view: [b.top, b.left, b.width, b.height], inner: [win.innerWidth, win.innerHeight] };`,
   );
 /** A WebDriver pointer click on `selector` in the app view, with `button` and the keys held. */
@@ -94,7 +94,7 @@ async function clickInView(selector: string, o: { button?: number; meta?: boolea
   }
 }
 const browserWindows = () => m.execute<number>(`return [...Services.wm.getEnumerator("navigator:browser")].length;`);
-const mainTabs = () => m.execute<number>(`return [...Services.wm.getEnumerator("navigator:browser")].filter((x) => x.document.documentElement.hasAttribute("webaios-main")).reduce((n, x) => n + x.gBrowser.tabs.length, 0);`);
+const mainTabs = () => m.execute<number>(`return [...Services.wm.getEnumerator("navigator:browser")].filter((x) => x.document.documentElement.hasAttribute("ressac-main")).reduce((n, x) => n + x.gBrowser.tabs.length, 0);`);
 
 beforeAll(async () => {
   server = await startSitesServer();
@@ -109,8 +109,8 @@ beforeAll(async () => {
   d("/fichier", (_req, res) => res.writeHead(200, { "Content-Type": "text/plain", "Content-Disposition": 'attachment; filename="fichier.txt"' }).end("Bonjour"));
   server.define("pub.localhost", "/x", "<title>Pub</title>");
   server.define("compte.localhost", "/connexion", "<title>Connexion</title>");
-  dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
-  profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
+  dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
+  profile = await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
   const vidola = { name: "Vidola", url: url("/"), domains: ["vidola-a.localhost"], login: ["compte.localhost"] };
   // Written before the launch: the watcher sees no initial event that would reread the app on the way.
   writeSite(dataDir, "vidola", { declaration: vidola });
@@ -229,7 +229,7 @@ describe("site app window", () => {
     await inStore(`store.containerFor("profil-essai");`);
     for (const c of [null, "userContextIdInternal.webaios-site-autre", "userContextIdInternal.webaios-profil-essai"]) expect(await cookies(c), String(c)).toEqual([]);
     await sleep(2000);
-    expect(await inUi(m, "return await ui.webaios.history.search('vidola', 50, false);")).toEqual([]);
+    expect(await inUi(m, "return await ui.ressac.history.search('vidola', 50, false);")).toEqual([]);
     expect(Object.values((await state(m)).tabs).some((o) => o.url.includes("vidola"))).toBe(false);
   });
 
@@ -252,7 +252,7 @@ describe("site app window", () => {
     const attached = await inStore<boolean>(
       `await store.agent.request("sites.act", { id: "vidola", action: "open", window: store.state.windows[0].id });
        const win = store.sites.windowOf("vidola");
-       const attached = !!win.webaiosSiteProgress;
+       const attached = !!win.ressacSiteProgress;
        win.close();
        return attached;`,
     );
@@ -270,19 +270,19 @@ describe("site app window", () => {
     await inSiteView(m, "vidola", "location.href = '/fichier'; return 1;");
     await expect.poll(() => server.requests.some((r) => r.path === "/fichier")).toBe(true);
     await sleep(1500);
-    expect(await inUi(m, "return (await ui.webaios.downloads.list()).length;")).toBe(0);
+    expect(await inUi(m, "return (await ui.ressac.downloads.list()).length;")).toBe(0);
     expect(await m.execute(`return (async () => { const { Downloads } = ChromeUtils.importESModule("resource://gre/modules/Downloads.sys.mjs"); return (await (await Downloads.getList(Downloads.ALL)).getAll()).length; })();`)).toBe(0);
     expect(readdirSync(dl)).toEqual([]);
   });
 
-  it("the site window is never a WebAiOs window", async () => {
+  it("the site window is never a Ressac window", async () => {
     const f = (await state(m)).windows[0]!;
     // ⌃Tab needs two tabs to walk.
     for (const u of [server.url("compte.localhost", "/connexion"), server.url("pub.localhost", "/x")]) await dispatch(m, { type: "openTab", windowId: f.id, url: u });
     const tabs = await mainTabs();
     await openAndWait();
     expect((await state(m)).windows.map((x) => x.id)).toEqual([f.id]);
-    expect(await m.execute(`const win = ${site}; return [!!win.webaiosWindow, win.document.documentElement.hasAttribute("webaios-main")];`)).toEqual([false, false]);
+    expect(await m.execute(`const win = ${site}; return [!!win.ressacWindow, win.document.documentElement.hasAttribute("ressac-main")];`)).toEqual([false, false]);
     await m.execute(`${site}.focus();`);
     await sleep(300);
     expect(await inStore(`return store.windows.active();`)).toBe(f.id);
@@ -302,12 +302,12 @@ describe("site app window", () => {
     // selected browser carries the container, the attribute the old closing rule read.
     await m.execute(
       `const b = gBrowser.selectedBrowser;
-       b.setAttribute("webaios-test-usercontextid", b.getAttribute("usercontextid") ?? "");
+       b.setAttribute("ressac-test-usercontextid", b.getAttribute("usercontextid") ?? "");
        b.setAttribute("usercontextid", ${view}.getAttribute("usercontextid"));`,
     );
     try {
       await inStore(`store.sites.routeOpen("vidola", arguments[0]);`, [server.url("compte.localhost", "/connexion")]);
-      const small = `[...Services.wm.getEnumerator("navigator:browser")].find((x) => x.document.documentElement.getAttribute("webaios-site-small") === "vidola")`;
+      const small = `[...Services.wm.getEnumerator("navigator:browser")].find((x) => x.document.documentElement.getAttribute("ressac-site-small") === "vidola")`;
       await waitFor(m, `return !!${small};`, (v) => v === true);
       const before = await browserWindows();
       // The scenario holds: the main window shows its tab in the app's container.
@@ -316,12 +316,12 @@ describe("site app window", () => {
       await waitFor(m, `return !${site} && !${small};`, (v) => v === true);
       await sleep(500);
       expect(await browserWindows()).toBe(before - 2);
-      expect(await m.execute(`return !!window.webaiosWindow && !window.closed;`)).toBe(true);
+      expect(await m.execute(`return !!window.ressacWindow && !window.closed;`)).toBe(true);
     } finally {
       await m.execute(
-        `const b = gBrowser.selectedBrowser; const was = b.getAttribute("webaios-test-usercontextid");
+        `const b = gBrowser.selectedBrowser; const was = b.getAttribute("ressac-test-usercontextid");
          if (was) b.setAttribute("usercontextid", was); else b.removeAttribute("usercontextid");
-         b.removeAttribute("webaios-test-usercontextid");`,
+         b.removeAttribute("ressac-test-usercontextid");`,
       ).catch(() => {});
     }
   });
@@ -332,9 +332,9 @@ describe("site app window", () => {
     const tabCount = Object.keys((await state(m)).tabs).length;
     // Every tab opened in any browser window meanwhile, even one the guard closes at once.
     await m.execute(
-      `window.webaiosTestOpened = [];
+      `window.ressacTestOpened = [];
        for (const x of Services.wm.getEnumerator("navigator:browser"))
-         x.gBrowser.tabContainer.addEventListener("TabOpen", () => window.webaiosTestOpened.push(x.document.documentElement.hasAttribute("webaios-site") ? "site" : "other"));`,
+         x.gBrowser.tabContainer.addEventListener("TabOpen", () => window.ressacTestOpened.push(x.document.documentElement.hasAttribute("ressac-site") ? "site" : "other"));`,
     );
     // On the site: the app view goes there.
     await clickInView("#film", { button: 1 });
@@ -350,7 +350,7 @@ describe("site app window", () => {
     expect(await m.execute(`return ${site}.gBrowser.tabs.length;`)).toBe(1);
     expect(await mainTabs()).toBe(tabs);
     expect(Object.keys((await state(m)).tabs).length).toBe(tabCount);
-    expect(await m.execute(`return window.webaiosTestOpened;`)).toEqual([]);
+    expect(await m.execute(`return window.ressacTestOpened;`)).toEqual([]);
   });
 
   // Last: it restarts the browser.
@@ -360,7 +360,7 @@ describe("site app window", () => {
     await launch();
     await sleep(1000);
     expect(await browserWindows()).toBe(1);
-    expect(await m.execute(`return document.documentElement.hasAttribute("webaios-main");`)).toBe(true);
+    expect(await m.execute(`return document.documentElement.hasAttribute("ressac-main");`)).toBe(true);
     expect(await siteWindowCount(m, "vidola")).toBe(0);
     const s = await state(m);
     expect(s.windows).toHaveLength(1);

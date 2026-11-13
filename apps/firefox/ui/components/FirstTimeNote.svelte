@@ -26,7 +26,7 @@
 <style>
   .layer { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; padding: 16px; }
   .veil { background: var(--overlay-veil); }
-  .card { display: flex; flex-direction: column; gap: 10px; max-width: 340px; padding: 18px; border-radius: 16px; border: 1px solid var(--glass-edge); background: var(--glass-dense, var(--glass)); backdrop-filter: blur(20px); box-shadow: var(--float); color: var(--text); animation: webaios-rise var(--spring-d) var(--spring) backwards; }
+  .card { display: flex; flex-direction: column; gap: 10px; max-width: 340px; padding: 18px; border-radius: 16px; border: 1px solid var(--glass-edge); background: var(--glass-dense, var(--glass)); backdrop-filter: blur(20px); box-shadow: var(--float); color: var(--text); animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   h2 { margin: 0; font: 650 22px/1.1 var(--font-display); letter-spacing: -0.02em; }
   p { margin: 0; font-size: 14px; line-height: 1.45; color: var(--text-muted); }
   button { align-self: flex-end; padding: 6px 14px; border-radius: 10px; border: 1px solid var(--accent); background: var(--accent); color: var(--accent-ink); font: 600 13px var(--font-ui); transition: transform var(--tap); }

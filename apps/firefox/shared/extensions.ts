@@ -1,4 +1,4 @@
-import type { SourceExtension } from "@webaios/kernel";
+import type { SourceExtension } from "@ressac/kernel";
 
 /** A row of the « Extensions » section of a space's settings (everything is displayed as text there). */
 export interface SpaceExtensionLine {
@@ -74,7 +74,7 @@ export interface ExtensionLine {
   disabled: string | null;
   /** Store: the version of an update waiting for the user's grant. */
   pendingUpdate: string | null;
-  /** Manifest rights and keys that WebAiOs does not support. */
+  /** Manifest rights and keys that Ressac does not support. */
   unsupported: string[];
   pinned: boolean;
   /** Agent: the user unlocked its console for the agent (in memory, until one of them closes it again). */

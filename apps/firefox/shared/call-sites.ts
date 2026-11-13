@@ -21,7 +21,7 @@ const D: CallKey = { key: "d", code: "KeyD", keyCode: 68, meta: true };
 const E: CallKey = { key: "e", code: "KeyE", keyCode: 69, meta: true };
 const shifted = (letter: string): CallKey => ({ key: letter, code: `Key${letter}`, keyCode: letter.charCodeAt(0), meta: true, shift: true });
 
-/** The sites' own macOS shortcuts (their help pages, 2026-11). More can be added without a build: pref `webaios.call.sites` (a JSON array). */
+/** The sites' own macOS shortcuts (their help pages, 2026-11). More can be added without a build: pref `ressac.call.sites` (a JSON array). */
 export const CALL_SITES: CallSite[] = [
   { host: "^meet\\.google\\.com$", mic: D, camera: E, buttons: "button[data-is-muted]" },
   { host: "(^|\\.)teams\\.(microsoft\\.com|live\\.com|cloud\\.microsoft)$", mic: shifted("M"), camera: shifted("O") },

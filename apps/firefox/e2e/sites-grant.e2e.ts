@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { testActor } from "./agent-extensions";
 import { waitReady } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { inSiteBar, inSiteView, resolveLocalHosts, siteWindowExpr, startSitesServer, writeSite } from "./sites";
 import { missingApi } from "./ui";
@@ -13,12 +13,12 @@ import { missingApi } from "./ui";
 // Plan 32 Task 2: the « Autoriser les retouches » grant card. No no-drag buttons:
 // the bar keeps Firefox's native title bar, nothing drags it.
 
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const HOSTS = ["vidola-a.localhost", "lecteur.localhost", "compte.localhost"];
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 let server: Awaited<ReturnType<typeof startSitesServer>>;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 let dataDir: string;
 let profile: string;
@@ -47,9 +47,9 @@ const viewState = (id = "vidola") =>
   m.execute<{ url: string; visible: boolean } | null>(
     `const win = ${siteWindowExpr(id)}; if (!win?.gBrowser) return null;
      const spec = win.gBrowser.selectedBrowser.currentURI?.spec ?? "";
-     return { url: spec === "about:blank" ? "" : spec, visible: !win.document.documentElement.hasAttribute("webaios-site-home") };`,
+     return { url: spec === "about:blank" ? "" : spec, visible: !win.document.documentElement.hasAttribute("ressac-site-home") };`,
   );
-const state = (id = "vidola") => m.execute<{ viewState: string; hasHome: boolean; grant: { hash: string; login: string[]; tracked: string[] } | null }>(`return JSON.parse(JSON.stringify(${siteWindowExpr(id)}.webaiosSiteWindow.state()));`);
+const state = (id = "vidola") => m.execute<{ viewState: string; hasHome: boolean; grant: { hash: string; login: string[]; tracked: string[] } | null }>(`return JSON.parse(JSON.stringify(${siteWindowExpr(id)}.ressacSiteWindow.state()));`);
 const view = <T = unknown>(expr: string, o: { id?: string; frame?: number } = {}) => inSiteView<T>(m, o.id ?? "vidola", `return ${expr};`, { frame: o.frame }).catch(() => null);
 const shorts = () => view('getComputedStyle(document.getElementById("shorts")).display');
 const tweak = () => view("document.body.dataset.retouche ?? null");
@@ -60,7 +60,7 @@ const heading = () => inSiteBar<string | null>(m, "vidola", `return doc.querySel
 /** A click on a bar button, once there. */
 const click = (testid: string, id = "vidola") =>
   inSiteBar(m, id, `for (let i = 0; i < 100 && !doc.querySelector('[data-testid="' + arguments[0] + '"]'); i++) await new Promise((r) => setTimeout(r, 100)); doc.querySelector('[data-testid="' + arguments[0] + '"]').click(); return true;`, [testid]);
-const barApi = <T>(body: string, args: unknown[] = []) => inSiteBar<T>(m, "vidola", `const site = doc.defaultView.webaios.site; ${body}`, args);
+const barApi = <T>(body: string, args: unknown[] = []) => inSiteBar<T>(m, "vidola", `const site = doc.defaultView.ressac.site; ${body}`, args);
 const rewriteDeclaration = (d: object) => writeFileSync(path.join(dataDir, "workspace", "sites", "vidola", "site.json"), JSON.stringify(d));
 
 /** Opens the app and waits for its card. */
@@ -80,11 +80,11 @@ beforeAll(async () => {
   server.define("vidola-a.localhost", "/serie/the-bear", '<title>The Bear</title><div class="shorts" id="shorts">shorts</div><p>épisode</p>');
   server.define("vidola-a.localhost", "/lecteur", `<title>Lecteur</title><div class="shorts" id="shorts">shorts</div><iframe id="l" src="${url("/v", "lecteur.localhost")}"></iframe>`);
   server.define("lecteur.localhost", "/v", "<title>Vidéo</title><p>vidéo</p>");
-  dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
-  profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
+  dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
+  profile = await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
   writeSite(dataDir, "vidola", { declaration: declaration(), files: FILES });
   const actor = testActor(profile);
-  w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_LOCAL_ADDRESSES: "1", ...actor.env }, prefs: actor.prefs });
+  w = await launchRessac({ dataDir, profile, env: { RESSAC_TEST_LOCAL_ADDRESSES: "1", ...actor.env }, prefs: actor.prefs });
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
@@ -206,7 +206,7 @@ describe("grant card", () => {
     await sleep(300);
     expect(await shorts()).toBe("block");
     expect(await tweak()).toBeNull();
-    expect(await m.execute<number>(`return [...Services.wm.getEnumerator("navigator:browser")].filter((w) => w.document.documentElement.getAttribute("webaios-site") === "vidola").length;`)).toBe(1);
+    expect(await m.execute<number>(`return [...Services.wm.getEnumerator("navigator:browser")].filter((w) => w.document.documentElement.getAttribute("ressac-site") === "vidola").length;`)).toBe(1);
   });
 
   it("Allow with the hash of v1 after v2 was written: nothing is granted, the card stays and shows v2 (sites.spec.ts:1115)", async () => {
@@ -262,7 +262,7 @@ describe("grant card", () => {
     const hash = (await state()).grant!.hash;
     const attack = `(() => {
       const r = [];
-      for (const t of [() => typeof window.parent.webaiosSiteWindow, () => typeof top.webaiosSiteWindow, () => typeof top.webaios, () => typeof window.webaiosSiteWindow, () => typeof window.webaios]) {
+      for (const t of [() => typeof window.parent.ressacSiteWindow, () => typeof top.ressacSiteWindow, () => typeof top.ressac, () => typeof window.ressacSiteWindow, () => typeof window.ressac]) {
         try { r.push(t()); } catch (e) { r.push("blocked"); }
       }
       for (const target of [window.parent, window.top]) {
@@ -298,7 +298,7 @@ describe("home frame", () => {
     addEventListener("message", (e) => {
       if (!e.data || e.data.essai !== "attaque") return;
       const r = [];
-      for (const t of [() => typeof parent.webaiosSiteWindow, () => typeof top.webaios, () => typeof top.webaiosSiteWindow]) {
+      for (const t of [() => typeof parent.ressacSiteWindow, () => typeof top.ressac, () => typeof top.ressacSiteWindow]) {
         try { r.push(t()); } catch (err) { r.push("blocked"); }
       }
       window.attaque = r;
@@ -323,7 +323,7 @@ describe("home frame", () => {
         "vidola",
         `const home = doc.querySelector('[data-testid="site-home-frame"]');
          const fw = home?.contentDocument?.defaultView?.wrappedJSObject;
-         if (!fw || !String(home.contentDocument.documentURI).startsWith("resource://webaios-site-")) return null;
+         if (!fw || !String(home.contentDocument.documentURI).startsWith("resource://ressac-site-")) return null;
          ${body}`,
         [hash],
       );

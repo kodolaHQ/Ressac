@@ -1,5 +1,5 @@
 import type { PendingRequest, WindowId } from "../../shared/model";
-import type { WebAiOsStore } from "../store";
+import type { RessacStore } from "../store";
 import type { SitePermission } from "../store/site-permissions";
 import { bannerText } from "./banner-text";
 
@@ -9,14 +9,14 @@ const AGENT = ["read-tab", "devtools", "widget-data", "extension", "extension-co
 
 /**
  * The site question of the displayed tab, above the page, which moves down by its height
- * (--webaios-banner): the oldest question for this window or its active tab. Returns what
+ * (--ressac-banner): the oldest question for this window or its active tab. Returns what
  * takes it down.
  */
-export function mountSiteBanner(win: Window, store: WebAiOsStore, windowId: WindowId): () => void {
+export function mountSiteBanner(win: Window, store: RessacStore, windowId: WindowId): () => void {
   const doc = win.document;
   const el = <K extends keyof HTMLElementTagNameMap>(tag: K) => doc.createElementNS(XHTML, tag) as HTMLElementTagNameMap[K];
   const banner = el("div");
-  banner.id = "webaios-banner";
+  banner.id = "ressac-banner";
   banner.dataset.testid = "permission-request";
   banner.setAttribute("role", "alertdialog");
   banner.setAttribute("aria-label", "Demande d'autorisation");
@@ -42,7 +42,7 @@ export function mountSiteBanner(win: Window, store: WebAiOsStore, windowId: Wind
     if (shown) text.textContent = bannerText(shown as PendingRequest & { permissions: SitePermission[] });
   };
   // Its height follows its text (a long link wraps) and the window's width.
-  const resize = new ResizeObserver(() => doc.documentElement.style.setProperty("--webaios-banner", `${banner.getBoundingClientRect().height}px`));
+  const resize = new ResizeObserver(() => doc.documentElement.style.setProperty("--ressac-banner", `${banner.getBoundingClientRect().height}px`));
   resize.observe(banner);
   render();
   const off = [store.questions.onChange(render), store.subscribe(render)];

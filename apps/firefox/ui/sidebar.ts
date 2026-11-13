@@ -1,4 +1,4 @@
-// First: ui/state.svelte.ts reads window.webaios as soon as a component imports it.
+// First: ui/state.svelte.ts reads window.ressac as soon as a component imports it.
 import "./install-api";
 import { mount } from "svelte";
 // Theme tokens.

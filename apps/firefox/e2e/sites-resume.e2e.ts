@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { testActor } from "./agent-extensions";
 import { waitReady } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { grantSite, inBrowser, inSiteBar, inSiteView, resolveLocalHosts, serveWav, silenceWav, siteWindowExpr, startSitesServer, writeSite } from "./sites";
 import { missingApi } from "./ui";
@@ -13,12 +13,12 @@ import { missingApi } from "./ui";
 // Plan 32 Task 3: the video resume in the frames of a site app's view, plus an about:srcdoc
 // player, untrusted events, the sign-in window and a host restart.
 
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const HOSTS = ["vidola-a.localhost", "pub.localhost", "lecteur.localhost", "compte.localhost"];
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 let server: Awaited<ReturnType<typeof startSitesServer>>;
-let w: LaunchedWebAiOs | undefined;
+let w: LaunchedRessac | undefined;
 let m: Marionette;
 let dataDir: string;
 let profile: string;
@@ -53,8 +53,8 @@ async function openAndWait(path: string, id = "vidola") {
 
 /** A fresh app and browser (each test: the memory is the host's, read once). `accord: false` leaves the card up. */
 async function start(o: { grant?: boolean; decl?: object; positions?: Record<string, { t: number; duration: number }> } = {}) {
-  dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
-  profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
+  dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
+  profile = await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
   const decl = o.decl ?? declaration();
   writeSite(dataDir, "vidola", { declaration: decl });
   if (o.grant !== false) await grantSite(dataDir, "vidola", decl);
@@ -64,7 +64,7 @@ async function start(o: { grant?: boolean; decl?: object; positions?: Record<str
     writeFileSync(memoryFile(), JSON.stringify({ version: 1, values: {}, positions: Object.fromEntries(Object.entries(o.positions).map(([k, v]) => [k, { ...v, when: when }])) }));
   }
   const actor = testActor(profile);
-  w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_LOCAL_ADDRESSES: "1", ...actor.env }, prefs: actor.prefs });
+  w = await launchRessac({ dataDir, profile, env: { RESSAC_TEST_LOCAL_ADDRESSES: "1", ...actor.env }, prefs: actor.prefs });
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
@@ -204,7 +204,7 @@ describe("video resume", () => {
     await start({ decl: declaration("/vide"), positions: { "/episode/4": { t: 70, duration: 90 } } });
     await openAndWait("/vide");
     await inStore(`store.sites.routeOpen("vidola", arguments[0]);`, [url("/connexion", "compte.localhost")]);
-    const small = `[...Services.wm.getEnumerator("navigator:browser")].find((x) => x.document.documentElement.getAttribute("webaios-site-small") === "vidola")?.gBrowser.selectedBrowser`;
+    const small = `[...Services.wm.getEnumerator("navigator:browser")].find((x) => x.document.documentElement.getAttribute("ressac-site-small") === "vidola")?.gBrowser.selectedBrowser`;
     await expect.poll(() => m.execute(`return ${small}?.currentURI?.spec ?? null;`), { timeout: 10_000 }).toBe(url("/connexion", "compte.localhost"));
     // A page of the app, with its player, in the small window (the same container).
     await inBrowser(m, small, `location.href = ${JSON.stringify(url("/episode/4"))}; return 1;`);
@@ -224,7 +224,7 @@ describe("video resume", () => {
     writeSite(dataDir, "vidola", {
       declaration: declaration("/episode/4", { tweaks: [{ matches: ["/episode/*"], js: ["m.js"] }] }),
       files: {
-        "tweaks/m.js": 'document.addEventListener("essai", () => webaiosSite.remember("k", 1).then(() => (document.documentElement.dataset.r = "ok"), (e) => (document.documentElement.dataset.r = "refus:" + e.message)));',
+        "tweaks/m.js": 'document.addEventListener("essai", () => ressacSite.remember("k", 1).then(() => (document.documentElement.dataset.r = "ok"), (e) => (document.documentElement.dataset.r = "refus:" + e.message)));',
       },
     });
     await openAndWait("/episode/4");

@@ -20,7 +20,7 @@
 {/if}
 
 <style>
-  .crashed { display: grid; place-content: center; justify-items: center; gap: 10px; height: 100%; padding: 24px; text-align: center; color: var(--text); animation: webaios-rise var(--spring-d) var(--spring) backwards; }
+  .crashed { display: grid; place-content: center; justify-items: center; gap: 10px; height: 100%; padding: 24px; text-align: center; color: var(--text); animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   p { margin: 0; }
   .title { font: 650 26px/1.15 var(--font-display); letter-spacing: -0.02em; }
   .detail { max-width: 520px; color: var(--text-muted); font: 12px var(--font-mono); word-break: break-all; }

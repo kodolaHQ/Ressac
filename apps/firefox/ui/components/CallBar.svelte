@@ -11,7 +11,7 @@
   const calls = $derived(Object.values(appState.value?.tabs ?? {}).filter((t) => t.call && t.windowId === win.id));
   /** Tabs with a media session (a video, music) that are not the one shown; a call has its own bar. */
   const playing = $derived(Object.values(appState.value?.tabs ?? {}).filter((t) => t.playback && !t.call && t.windowId === win.id && win.active[win.activeSpace] !== t.id));
-  const press = (id: string, which: "mic" | "camera") => window.parent.webaiosWindow?.pressCall(id, which);
+  const press = (id: string, which: "mic" | "camera") => window.parent.ressacWindow?.pressCall(id, which);
 </script>
 
 {#each calls as tab (tab.id)}
@@ -51,7 +51,7 @@
       data-testid="media-play"
       aria-label={tab.playback === "playing" ? "Mettre en pause" : "Reprendre la lecture"}
       title={tab.playback === "playing" ? "Mettre en pause" : "Reprendre la lecture"}
-      onclick={() => window.parent.webaiosWindow?.togglePlayback(tab.id)}><Icon name={tab.playback === "playing" ? "pause" : "play"} size={16} /></button
+      onclick={() => window.parent.ressacWindow?.togglePlayback(tab.id)}><Icon name={tab.playback === "playing" ? "pause" : "play"} size={16} /></button
     >
     <SoundButton {tab} size={16} />
   </div>
@@ -59,7 +59,7 @@
 
 <style>
   /* A glass pill above the footer: enter spring, exit fade (DESIGN.md). */
-  .call { display: flex; align-items: center; gap: 2px; margin: 6px 0; padding: 4px; border-radius: 12px; background: color-mix(in srgb, var(--glass-hi) 60%, transparent); box-shadow: inset 0 0 0 1px var(--glass-edge); -moz-window-dragging: no-drag; animation: webaios-rise var(--spring-d) var(--spring) backwards; }
+  .call { display: flex; align-items: center; gap: 2px; margin: 6px 0; padding: 4px; border-radius: 12px; background: color-mix(in srgb, var(--glass-hi) 60%, transparent); box-shadow: inset 0 0 0 1px var(--glass-edge); -moz-window-dragging: no-drag; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   button { all: unset; display: flex; align-items: center; border-radius: 8px; transition: transform var(--tap), background var(--tap), color var(--tap); }
   button:hover { background: var(--glass-hi); }
   button:active { transform: scale(0.97); }

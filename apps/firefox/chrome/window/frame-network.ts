@@ -1,8 +1,8 @@
-// The UI's network, pieces 3 and 5 (spec 2026-11-08-webaios-firefox-reseau-interfaces-design.md, spike S1): every UI
+// The UI's network, pieces 3 and 5 (spec 2026-11-08-ressac-firefox-reseau-interfaces-design.md, spike S1): every UI
 // frame's docShell is cut from DNS prefetch and preloads before its src, and its window's link presses warm no
 // connection. Bundled in window.js and in the store (design-overlays.ts): each copy guards a window once.
 
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 type UiNetwork = typeof import("../store").uiNetwork;
 const uiNetwork = (): UiNetwork => ChromeUtils.importESModule(STORE).uiNetwork;
 

@@ -6,21 +6,21 @@ import { cleanCapture, cleanSource, firefoxViewfinderScript, BASKET_WIDTH, MARGI
 import { testActor } from "../agent-extensions";
 import { armActor, HOOKS_PAGE, stopActor } from "../design";
 import { waitReady } from "../firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "../launch";
+import { launchRessac, type LaunchedRessac } from "../launch";
 import type { Marionette } from "../marionette";
 import { grantSite, inSiteBar, inSiteView, resolveLocalHosts, siteWindowExpr, startSitesServer, writeSite } from "../sites";
 
-// Spikes S5-S7 of plan 36 (spec 2026-11-06-webaios-firefox-mode-design-design.md §6): the design mode in a site app's
-// window, on the current build, with the WebAiOsDesign actor as shipped (`pnpm ui`'s copy, or the packaged one with
-// WEBAIOS_E2E_PACKAGED_ACTOR=1). The home's viewfinder (S6) and the overlay (S7) are done from the chrome, as plan 36
-// would. Security lines are asserted; the rest is printed as `[spike] <what>: <JSON>`. Rerun with WEBAIOS_SPIKE=1.
+// Spikes S5-S7 of plan 36 (spec 2026-11-06-ressac-firefox-mode-design-design.md §6): the design mode in a site app's
+// window, on the current build, with the RessacDesign actor as shipped (`pnpm ui`'s copy, or the packaged one with
+// RESSAC_E2E_PACKAGED_ACTOR=1). The home's viewfinder (S6) and the overlay (S7) are done from the chrome, as plan 36
+// would. Security lines are asserted; the rest is printed as `[spike] <what>: <JSON>`. Rerun with RESSAC_SPIKE=1.
 // Port 15330 (block 15330-15344).
 
 const ID = "vidola";
 const PORT = 15330;
 const SITE = siteWindowExpr(ID);
 const VIEW = `${SITE}.gBrowser.selectedBrowser`;
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const MOUSE = ["pointerdown", "pointerup", "mousedown", "mouseup", "click", "auxclick", "contextmenu", "dblclick"];
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const note = (what: string, v: unknown) => console.log(`[spike] ${what}: ${JSON.stringify(v)}`);
@@ -32,7 +32,7 @@ const S5_PAGE = HOOKS_PAGE.replace('<button type="submit" id="envoyer">', '<inpu
 );
 
 /**
- * The agent's tweak, run in WebAiOsSite's sandbox after the password guard: it listens first (window capture), hooks
+ * The agent's tweak, run in RessacSite's sandbox after the password guard: it listens first (window capture), hooks
  * the prototypes the viewfinder calls (in its own world), fakes the viewfinder's globals, and on « essai » writes
  * what it sees into the DOM. It never calls a hooked function itself.
  */
@@ -48,7 +48,7 @@ globalThis.__viewfinderStop = () => log.fake++; globalThis.__viewfinderSwallow =
 globalThis.__retoucheSecret = "r";
 R.dataset.retouche = "oui";
 document.addEventListener("essai", () => {
-  const hosts = document.getElementsByTagName("webaios-viewfinder");
+  const hosts = document.getElementsByTagName("ressac-viewfinder");
   const pw = document.getElementById("mdp");
   R.dataset.sonde = JSON.stringify({ log, hosts: hosts.length, shadow: hosts[0] ? String(hosts[0].shadowRoot) : "none", closed: hosts[0] ? typeof hosts[0].openOrClosedShadowRoot : "none",
     pw: pw.value, pwAttr: String(pw.getAttribute("value")), fakeIsMine: globalThis.__viewfinderStop.toString().includes("log.fake") });
@@ -70,7 +70,7 @@ const HOME = `<!doctype html><meta charset="utf-8"><title>Accueil</title>
 <script>parent.postMessage({ type: "ready" }, "*");</script>`;
 
 let server: Awaited<ReturnType<typeof startSitesServer>>;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 const dirs: string[] = [];
 const url = (p: string) => server.url("vidola-a.localhost", p);
@@ -140,29 +140,29 @@ async function toHome(): Promise<void> {
   if ((await viewOf()) !== "home") await inStore(`store.sites.controller(arguments[0]).home();`, [ID]);
   await expect
     .poll(() => inSiteBar<string | null>(m, ID, `const h = doc.querySelector('[data-testid="site-home-frame"]'); const d = h?.contentDocument; return d?.readyState === "complete" && d.getElementById("cible") ? String(d.documentURI) : null;`), { timeout: 15_000 })
-    .toMatch(/^resource:\/\/webaios-site-/);
+    .toMatch(/^resource:\/\/ressac-site-/);
 }
 
 /** The PNG pixel at (x, y) of a snapshot (an ImageBitmap) of `size`, as "r,g,b" (chrome code). */
 const PIXELS = `const pixels = (bmp, pts) => { const c = win.document.createElementNS("http://www.w3.org/1999/xhtml", "canvas"); c.width = bmp.width; c.height = bmp.height;
   const g = c.getContext("2d"); g.drawImage(bmp, 0, 0); return pts.map(([x, y]) => [...g.getImageData(Math.round(x), Math.round(y), 1, 1).data].slice(0, 3).join(",")); };`;
 
-describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5-S7 (plan 36)", () => {
+describe.skipIf(!process.env.RESSAC_SPIKE)("design mode in site apps, spikes S5-S7 (plan 36)", () => {
   beforeAll(async () => {
     server = await startSitesServer({ port: PORT });
     server.define("vidola-a.localhost", "/design", S5_PAGE);
-    const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
-    const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
+    const dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
+    const profile = await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
     dirs.push(dataDir, profile);
     writeSite(dataDir, ID, { declaration: vidola(), files: { "tweaks/sonde.js": TWEAK, "tweaks/cacher.css": ".cache { display: none; }", "home/index.html": HOME } });
     await grantSite(dataDir, ID, vidola());
     const a = testActor(profile);
-    w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_LOCAL_ADDRESSES: "1", ...a.env }, prefs: a.prefs });
+    w = await launchRessac({ dataDir, profile, env: { RESSAC_TEST_LOCAL_ADDRESSES: "1", ...a.env }, prefs: a.prefs });
     m = w.marionette;
     await m.setContext("chrome");
     await waitReady(m);
     await resolveLocalHosts(m, ["vidola-a.localhost"]);
-    note("actor", process.env.WEBAIOS_E2E_PACKAGED_ACTOR === "1" ? "packaged (build:ui)" : "pnpm ui copy (testActor)");
+    note("actor", process.env.RESSAC_E2E_PACKAGED_ACTOR === "1" ? "packaged (build:ui)" : "pnpm ui copy (testActor)");
   }, 120_000);
   afterAll(async () => {
     await w?.close();
@@ -184,14 +184,14 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
     expect(before.pw).toBe("");
 
     // The viewfinder's sandbox, probed through the shipped actor's arm (its code is the parent's to send).
-    const probe = `(() => ({ webaiosSite: typeof webaiosSite, scope: typeof __webaiosScope, file: typeof __webaiosFile, tweakSecret: typeof __retoucheSecret,
+    const probe = `(() => ({ ressacSite: typeof ressacSite, scope: typeof __ressacScope, file: typeof __ressacFile, tweakSecret: typeof __retoucheSecret,
       pageSecret: typeof pageSecret, stop: typeof __viewfinderStop, Components: typeof Components, ChromeUtils: typeof ChromeUtils, Services: typeof Services,
       pwLength: document.getElementById("mdp").value.length,
       nativeValue: String(Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").get).includes("[native code]"),
       nativeAttach: String(Element.prototype.attachShadow).includes("[native code]"), nativeQsa: String(Document.prototype.querySelectorAll).includes("[native code]") }))()`;
     const sees = await (await armActor(m, VIEW, probe)).result();
     note("S5 viewfinder sandbox sees", sees);
-    expect(sees).toMatchObject({ r: { webaiosSite: "undefined", scope: "undefined", file: "undefined", tweakSecret: "undefined", pageSecret: "undefined", stop: "undefined", Components: "undefined", ChromeUtils: "undefined", Services: "undefined", nativeValue: true, nativeAttach: true, nativeQsa: true } });
+    expect(sees).toMatchObject({ r: { ressacSite: "undefined", scope: "undefined", file: "undefined", tweakSecret: "undefined", pageSecret: "undefined", stop: "undefined", Components: "undefined", ChromeUtils: "undefined", Services: "undefined", nativeValue: true, nativeAttach: true, nativeQsa: true } });
     await sleep(600);
 
     // Marionette's content scripts run in the page's world: every point is read first, then the page's log is emptied.
@@ -199,7 +199,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
     const pageKeys0 = await view<string[]>("Object.keys(window)");
     await view("(window.log.hooked.length = 0, 1)");
     const a = await armActor(m, VIEW);
-    await expect.poll(() => view("document.getElementsByTagName('webaios-viewfinder').length"), { timeout: 10_000 }).toBe(1);
+    await expect.poll(() => view("document.getElementsByTagName('ressac-viewfinder').length"), { timeout: 10_000 }).toBe(1);
     const during = await tweak();
     note("S5 retouche while aiming", during);
     expect(during.pw).toBe("");
@@ -241,16 +241,16 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
     expect(pageKeys1?.filter((k) => !pageKeys0?.includes(k))).toEqual([]);
     await sleep(600);
     // The tweak's world and the page's world after: no viewfinder global, no host.
-    expect(await view("document.getElementsByTagName('webaios-viewfinder').length")).toBe(0);
+    expect(await view("document.getElementsByTagName('ressac-viewfinder').length")).toBe(0);
     const pageTypeof = await view<string>(
-      `(() => { const s = document.createElement("script"); s.textContent = "document.documentElement.dataset.vu = [typeof webaiosSite, typeof __webaiosScope, typeof __retoucheSecret].join()"; document.documentElement.append(s); s.remove(); return document.documentElement.dataset.vu; })()`,
+      `(() => { const s = document.createElement("script"); s.textContent = "document.documentElement.dataset.vu = [typeof ressacSite, typeof __ressacScope, typeof __retoucheSecret].join()"; document.documentElement.append(s); s.remove(); return document.documentElement.dataset.vu; })()`,
     );
-    note("S5 page world typeof webaiosSite, __webaiosScope, __retoucheSecret", pageTypeof);
+    note("S5 page world typeof ressacSite, __ressacScope, __retoucheSecret", pageTypeof);
     expect(pageTypeof).toBe("undefined,undefined,undefined");
 
     // Escape (trusted) while aiming ends it with null; the tweak does not see it.
     const e = await armActor(m, VIEW);
-    await expect.poll(() => view("document.getElementsByTagName('webaios-viewfinder').length"), { timeout: 10_000 }).toBe(1);
+    await expect.poll(() => view("document.getElementsByTagName('ressac-viewfinder').length"), { timeout: 10_000 }).toBe(1);
     await siteKey("Escape");
     const esc = await e.result(3000);
     note("S5 Escape", { esc, tweakKeys: (await tweak()).log.keys });
@@ -273,7 +273,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
          const top = await wg.drawSnapshot(new win.DOMRect(0, 0, 200, 20), 1, "white", { drawView: true });
          const whole = await win.browsingContext.currentWindowGlobal.drawSnapshot(null, 1, "white");
          const out = { size: [bmp.width, bmp.height], rc, page: pixels(bmp, [[bmp.width / 2, bmp.height / 2], [1, 1]]), viewTop: pixels(top, [[100, 2]]),
-           window: pixels(whole, [[b.left + rc.x + rc.width / 2, b.top + rc.y + rc.height / 2], [100, 10]]), barBottom: win.document.getElementById("webaios-site-bar").getBoundingClientRect().bottom, viewTopY: b.top };
+           window: pixels(whole, [[b.left + rc.x + rc.width / 2, b.top + rc.y + rc.height / 2], [100, 10]]), barBottom: win.document.getElementById("ressac-site-bar").getBoundingClientRect().bottom, viewTopY: b.top };
          cover.remove();
          return out;
        })(arguments);`,
@@ -321,13 +321,13 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
        s.arm = (code) => {
          s.guard();
          s.result = "pending";
-         CU.evalInSandbox(code, sb, "latest", "chrome://browser/content/webaios/webaios-viewfinder.js", 1).then(
+         CU.evalInSandbox(code, sb, "latest", "chrome://browser/content/ressac/ressac-viewfinder.js", 1).then(
            (r) => { s.result = r ? JSON.parse(JSON.stringify(r)) : null; r ? s.later() : s.unguard(); },
            (e) => { s.result = { e: String(e) }; s.unguard(); },
          );
        };
-       s.stop = (code) => { try { CU.evalInSandbox(code, sb, "latest", "chrome://browser/content/webaios/webaios-viewfinder-stop.js", 1); s.stopped = "ok"; } catch (e) { s.stopped = String(e); } s.unguard(); };
-       return { handlerIsFrame: handler === home, handlerIsBar: handler === win.document.getElementById("webaios-site-bar"), handlerIsRoot: handler === win.windowRoot,
+       s.stop = (code) => { try { CU.evalInSandbox(code, sb, "latest", "chrome://browser/content/ressac/ressac-viewfinder-stop.js", 1); s.stopped = "ok"; } catch (e) { s.stopped = String(e); } s.unguard(); };
+       return { handlerIsFrame: handler === home, handlerIsBar: handler === win.document.getElementById("ressac-site-bar"), handlerIsRoot: handler === win.windowRoot,
          handler: ChromeUtils.getClassName(handler) + (handler.localName ? ":" + handler.localName : ""),
          principal: { isNull: hdoc.nodePrincipal.isNullPrincipal, origin: hdoc.nodePrincipal.origin }, uri: String(hdoc.documentURI).replace(/-[0-9a-f]{32}/, "-<token>"),
          itemType: hwin.docShell.itemType, sandboxFlags: home.browsingContext.sandboxFlags, wgp: ChromeUtils.getClassName(wg), inProcess: wg.isInProcess, processRoot: wg.isProcessRoot, osPid: wg.osPid, sameAsChrome: wg.osPid === win.browsingContext.currentWindowGlobal.osPid };`,
@@ -342,15 +342,15 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
        return s.CU.evalInSandbox(\`(() => {
          const t = (f) => { try { const v = f(); return v === null || v === undefined ? String(v) : typeof v === "object" || typeof v === "function" ? typeof v + ":" + Object.prototype.toString.call(v) : String(v); } catch (e) { return "throws:" + String(e).slice(0, 90); } };
          return { Components: typeof Components, ChromeUtils: typeof ChromeUtils, Services: typeof Services, Cu: typeof Cu, docShell: typeof docShell, gBrowser: typeof gBrowser,
-           webaiosSiteWindow: typeof webaiosSiteWindow, windowRoot: typeof windowRoot, homeSecret: typeof homeSecret, origin: location.origin,
+           ressacSiteWindow: typeof ressacSiteWindow, windowRoot: typeof windowRoot, homeSecret: typeof homeSecret, origin: location.origin,
            parentIsSelf: t(() => parent === window), topIsSelf: t(() => top === window), topIsParent: t(() => top === parent), frameElement: t(() => frameElement),
            parentDocument: t(() => parent.document), topDocument: t(() => top.document), parentHref: t(() => parent.location.href), topHref: t(() => top.location.href),
-           parentSiteWindow: t(() => parent.webaiosSiteWindow), topGBrowser: t(() => top.gBrowser), topSiteWindow: t(() => top.webaiosSiteWindow), parentFrames: t(() => parent.frames.length),
+           parentSiteWindow: t(() => parent.ressacSiteWindow), topGBrowser: t(() => top.gBrowser), topSiteWindow: t(() => top.ressacSiteWindow), parentFrames: t(() => parent.frames.length),
            opener: t(() => opener), ownerGlobal: t(() => document.ownerGlobal), defaultViewParent: t(() => document.defaultView.parent.document) };
-       })()\`, s.sb, "latest", "chrome://browser/content/webaios/spike-reach.js", 1);`,
+       })()\`, s.sb, "latest", "chrome://browser/content/ressac/spike-reach.js", 1);`,
     );
     note("S6 viewfinder sandbox reach", reach);
-    expect(reach).toMatchObject({ Components: "undefined", ChromeUtils: "undefined", Services: "undefined", Cu: "undefined", docShell: "undefined", gBrowser: "undefined", webaiosSiteWindow: "undefined", windowRoot: "undefined", homeSecret: "undefined" });
+    expect(reach).toMatchObject({ Components: "undefined", ChromeUtils: "undefined", Services: "undefined", Cu: "undefined", docShell: "undefined", gBrowser: "undefined", ressacSiteWindow: "undefined", windowRoot: "undefined", homeSecret: "undefined" });
     for (const k of ["parentDocument", "topDocument", "parentHref", "topHref", "parentSiteWindow", "topGBrowser", "topSiteWindow", "defaultViewParent"]) expect(String((reach as Record<string, string>)[k])).toMatch(/^throws:|^undefined$/);
     expect((reach as Record<string, string>).frameElement).toBe("null");
 
@@ -359,15 +359,15 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
       inSiteBar<{ x: number; y: number }>(
         m,
         ID,
-        `const s = win.__s6; const b = win.document.getElementById("webaios-site-bar").getBoundingClientRect(), h = s.home.getBoundingClientRect(), e = s.hdoc.querySelector(arguments[0]).getBoundingClientRect();
+        `const s = win.__s6; const b = win.document.getElementById("ressac-site-bar").getBoundingClientRect(), h = s.home.getBoundingClientRect(), e = s.hdoc.querySelector(arguments[0]).getBoundingClientRect();
          return { x: b.left + h.left + e.left + e.width / 2, y: b.top + h.top + e.top + e.height / 2 };`,
         [sel],
       );
     const state = () => inSiteBar<any>(m, ID, `const s = win.__s6;
       if (Components.utils.isDeadWrapper(s.hdoc) || !s.hdoc.defaultView) return { dead: true, result: s.result, seen: s.seen.slice(), frameConnected: !Components.utils.isDeadWrapper(s.home) && s.home.isConnected };
-      const host = s.hdoc.querySelector("webaios-viewfinder"); const sh = host?.openOrClosedShadowRoot;
+      const host = s.hdoc.querySelector("ressac-viewfinder"); const sh = host?.openOrClosedShadowRoot;
       const st = (el) => el && { display: el.style.display, left: el.style.left, top: el.style.top, width: el.style.width, height: el.style.height, text: el.textContent };
-      return { result: s.result, hosts: s.hdoc.querySelectorAll("webaios-viewfinder").length, pageShadow: String(host?.wrappedJSObject?.shadowRoot ?? "none"), cadre: st(sh?.children[0]), etiquette: st(sh?.children[1]),
+      return { result: s.result, hosts: s.hdoc.querySelectorAll("ressac-viewfinder").length, pageShadow: String(host?.wrappedJSObject?.shadowRoot ?? "none"), cadre: st(sh?.children[0]), etiquette: st(sh?.children[1]),
         log: JSON.parse(JSON.stringify(s.hwin.wrappedJSObject.log)), seen: s.seen.slice(), sbGlobals: typeof s.sb.__viewfinderStop };`);
     await inSiteBar(m, ID, `win.__s6.arm(arguments[0]); return 1;`, [firefoxViewfinderScript()]);
     await expect.poll(async () => (await state()).hosts, { timeout: 5000 }).toBe(1);
@@ -395,7 +395,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
       m,
       ID,
       `const s = win.__s6; const world = s.CU.Sandbox(s.hdoc.nodePrincipal, { sandboxPrototype: s.hwin, wantXrays: false, wantComponents: false, sameZoneAs: s.hwin });
-       return [arguments[0], arguments[1]].map((code) => { try { return JSON.parse(JSON.stringify(s.CU.evalInSandbox(code, world, "latest", "chrome://browser/content/webaios/webaios-source.js", 1) ?? null)); } catch (e) { return { e: String(e) }; } });`,
+       return [arguments[0], arguments[1]].map((code) => { try { return JSON.parse(JSON.stringify(s.CU.evalInSandbox(code, world, "latest", "chrome://browser/content/ressac/ressac-source.js", 1) ?? null)); } catch (e) { return { e: String(e) }; } });`,
       [sourceExpression("#cible"), sourceExpression("#nue")],
     );
     note("S6 source", { raw, kept: (raw as unknown[]).map(cleanSource) });
@@ -408,7 +408,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
       m,
       ID,
       `const s = win.__s6; const rc = arguments[0]; ${PIXELS}
-       const h = s.home.getBoundingClientRect(), b = win.document.getElementById("webaios-site-bar").getBoundingClientRect();
+       const h = s.home.getBoundingClientRect(), b = win.document.getElementById("ressac-site-bar").getBoundingClientRect();
        const cover = doc.createElement("div");
        cover.style.cssText = "position:fixed;z-index:10;background:rgb(255,0,255);left:" + (h.left + rc.x) + "px;top:" + (h.top + rc.y) + "px;width:" + rc.width + "px;height:" + rc.height + "px";
        doc.body.append(cover);
@@ -438,17 +438,17 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
       m,
       ID,
       `const s = win.__s6, stop = arguments[0]; s.states = []; s.seen.length = 0;
-       s.offState = win.webaiosSiteWindow.onState((e) => { s.states.push(e.viewState); if (e.viewState !== "home") s.stop(stop); });
+       s.offState = win.ressacSiteWindow.onState((e) => { s.states.push(e.viewState); if (e.viewState !== "home") s.stop(stop); });
        s.arm(arguments[1]); return 1;`,
       [STOP_SCRIPT, firefoxViewfinderScript()],
     );
     await expect.poll(async () => (await state()).hosts, { timeout: 5000 }).toBe(1);
-    const enter = await inSiteBar<{ x: number; y: number }>(m, ID, `const b = win.document.getElementById("webaios-site-bar").getBoundingClientRect(), e = doc.querySelector('[data-testid="site-enter"]').getBoundingClientRect(); return { x: b.left + e.left + e.width / 2, y: b.top + e.top + e.height / 2 };`);
+    const enter = await inSiteBar<{ x: number; y: number }>(m, ID, `const b = win.document.getElementById("ressac-site-bar").getBoundingClientRect(), e = doc.querySelector('[data-testid="site-enter"]').getBoundingClientRect(); return { x: b.left + e.left + e.width / 2, y: b.top + e.top + e.height / 2 };`);
     await siteMouse(enter);
     await expect.poll(viewOf, { timeout: 5000 }).toBe("site");
     await sleep(300);
     const stopped = await state();
-    const states = await inSiteBar(m, ID, `const s = win.__s6; s.offState(); return { states: s.states, stopped: s.stopped, homeShown: win.document.documentElement.hasAttribute("webaios-site-home"),
+    const states = await inSiteBar(m, ID, `const s = win.__s6; s.offState(); return { states: s.states, stopped: s.stopped, homeShown: win.document.documentElement.hasAttribute("ressac-site-home"),
       homeFrames: doc.querySelectorAll('[data-testid="site-home-frame"]').length };`);
     note("S6 enter the site", { ...(states as object), ...stopped });
     // The click was the bar's: the guard on the home's frame never saw it.
@@ -460,7 +460,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
     await toSite();
     const dims = await m.execute<{ view: number[]; bar: number[]; inner: number[] }>(
       `const win = ${SITE}; const r = (e) => { const b = e.getBoundingClientRect(); return [b.x, b.y, b.width, b.height]; };
-       return { view: r(${VIEW}), bar: r(win.document.getElementById("webaios-site-bar")), inner: [win.innerWidth, win.innerHeight] };`,
+       return { view: r(${VIEW}), bar: r(win.document.getElementById("ressac-site-bar")), inner: [win.innerWidth, win.innerHeight] };`,
     );
     const [vx, vy, vw, vh] = dims.view;
     const [l, h] = dims.inner;
@@ -485,8 +485,8 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
            f.style.cssText = "position: fixed; z-index: 3; border: 0; background: transparent; left:" + p.x + "px; top:" + p.y + "px; width:" + p.width + "px; height:" + p.height + "px";
            doc.getElementById("browser").append(f);
            const ctx = { mode, message: null, projet: "site-vidola", etiquette: "input#email.champ", source: null, destination: null, sansDestination: null, avertissement: mode === "bulle" ? "Capture d'un site tiers" : null };
-           f.webaiosOverlay = { api: { contexte: async () => ctx, ajouter: async () => ({ ok: true }), annuler: () => {}, panier: async () => [], lots: async () => [], retirer: async () => {}, traite: async () => {}, envoyer: async () => ({ ok: true }), surChange: () => () => {} } };
-           f.src = "chrome://browser/content/webaios/sidebar.html?overlay";
+           f.ressacOverlay = { api: { contexte: async () => ctx, ajouter: async () => ({ ok: true }), annuler: () => {}, panier: async () => [], lots: async () => [], retirer: async () => {}, traite: async () => {}, envoyer: async () => ({ ok: true }), surChange: () => () => {} } };
+           f.src = "chrome://browser/content/ressac/sidebar.html?overlay";
            for (let i = 0; i < 100 && !(f.contentDocument?.readyState === "complete" && f.contentDocument.body?.textContent.trim()); i++) await new Promise((r) => setTimeout(r, 50));
            return { uri: f.contentDocument?.documentURI, text: f.contentDocument?.body?.textContent.trim().slice(0, 60) };
          })(arguments);`,
@@ -496,7 +496,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
     const check = (place: { x: number; y: number; width: number; height: number }) =>
       m.execute(
         `return (async ([p]) => {
-           const win = ${SITE}, doc = win.document, bar = doc.getElementById("webaios-site-bar"), bdoc = bar.contentDocument;
+           const win = ${SITE}, doc = win.document, bar = doc.getElementById("ressac-site-bar"), bdoc = bar.contentDocument;
            const hit = (x, y) => { const e = doc.elementFromPoint(x, y); return e ? e.localName + (e.id ? "#" + e.id : "") : null; };
            const got = [];
            const l = (e) => got.push(e.type + ":" + e.isTrusted + "@" + Math.round(e.clientX) + "," + Math.round(e.clientY));
@@ -525,7 +525,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
     const bc = bubbleCheck as { frame: { top: number }; hits: Record<string, string>; barGot: string[] };
     expect(bc.frame.top).toBeGreaterThanOrEqual(barBottom);
     expect(bc.hits.frameCentre).toBe("iframe#spike-calque");
-    expect(bc.hits.barAboveFrame).toBe("iframe#webaios-site-bar");
+    expect(bc.hits.barAboveFrame).toBe("iframe#ressac-site-bar");
     expect(bc.barGot.length).toBe(1);
     expect(afterBubble[1]).toBe(before[1]);
 
@@ -534,21 +534,21 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
     note("S7 cart", { loaded: basket, ...(cartCheck as object) });
     const cc = cartCheck as typeof bc;
     expect(cc.frame.top).toBeGreaterThanOrEqual(barBottom);
-    expect(cc.hits.barAboveFrame).toBe("iframe#webaios-site-bar");
-    expect(cc.hits.barRight).toBe("iframe#webaios-site-bar");
+    expect(cc.hits.barAboveFrame).toBe("iframe#ressac-site-bar");
+    expect(cc.hits.barRight).toBe("iframe#ressac-site-bar");
     expect(cc.barGot.length).toBe(1);
 
     // On the home, the bar's document covers the window (position fixed, z-index 3): the overlay must still be on top.
     await inStore(`store.sites.controller(arguments[0]).home();`, [ID]);
-    await expect.poll(() => m.execute(`return ${SITE}.document.documentElement.hasAttribute("webaios-site-home");`)).toBe(true);
-    const homeRect = await inSiteBar<number[]>(m, ID, `const b = win.document.getElementById("webaios-site-bar").getBoundingClientRect(), h = doc.querySelector('[data-testid="site-home-frame"]').getBoundingClientRect(); return [b.left + h.left, b.top + h.top, h.width, h.height];`);
+    await expect.poll(() => m.execute(`return ${SITE}.document.documentElement.hasAttribute("ressac-site-home");`)).toBe(true);
+    const homeRect = await inSiteBar<number[]>(m, ID, `const b = win.document.getElementById("ressac-site-bar").getBoundingClientRect(), h = doc.querySelector('[data-testid="site-home-frame"]').getBoundingClientRect(); return [b.left + h.left, b.top + h.top, h.width, h.height];`);
     const onHome = bubbleSlot({ x: 40, y: 60, width: 120, height: 40 }, 1, { x: homeRect[0]!, y: homeRect[1]!, width: homeRect[2]!, height: homeRect[3]! }, [l!, h!], { minHeight: homeRect[1]! });
     await show("bubble", onHome);
     const homeCheck = await check(onHome);
     note("S7 bubble over the home", { homeRect, onHome, ...(homeCheck as object) });
     const hc = homeCheck as typeof bc;
     expect(hc.hits.frameCentre).toBe("iframe#spike-calque");
-    expect(hc.hits.barAboveFrame).toBe("iframe#webaios-site-bar");
+    expect(hc.hits.barAboveFrame).toBe("iframe#ressac-site-bar");
     expect(hc.barGot.length).toBe(1);
     await m.execute(`${SITE}.document.getElementById("spike-calque")?.remove();`);
   });

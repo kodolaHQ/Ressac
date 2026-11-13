@@ -1,12 +1,12 @@
-// WebAiOs: guard of the content scripts of the agent's extensions (passwords, context, network). Task 13 of plan 12.
+// Ressac: guard of the content scripts of the agent's extensions (passwords, context, network). Task 13 of plan 12.
 //
 // Runs in the extension's isolated world, before its scripts. A content script of the agent (manifest or
-// `scripting.registerContentScripts`) only declares WebAiOs files: `webaios-page-fixes.js`, this guard,
-// `webaios-scope.js` (the granted scope), then one marker per agent file (`webaios-files/<n>.js`, which calls
-// `__webaiosFile(n)`). The guard then asks the background: `chrome.runtime.sendMessage({ webaios: "context",
+// `scripting.registerContentScripts`) only declares Ressac files: `ressac-page-fixes.js`, this guard,
+// `ressac-scope.js` (the granted scope), then one marker per agent file (`ressac-files/<n>.js`, which calls
+// `__ressacFile(n)`). The guard then asks the background: `chrome.runtime.sendMessage({ ressac: "context",
 // files })`. The background guard asks the main process whether the sender is a tab view (never an invisible
 // read); only then does it inject these files, CSS then JS, into the exact document that asked, through
-// `scripting` (in this same world, after this guard). Nothing of the agent is pasted into a WebAiOs file: there is
+// `scripting` (in this same world, after this guard). Nothing of the agent is pasted into a Ressac file: there is
 // no wrapper to close. Consequence: `run_at` becomes "after the answer" (a round trip to the background), and without an
 // answer after 20 tries, the abandonment is written to the console. The guard is set only once per world;
 // `executeScript` also puts it at the head of its files.
@@ -59,7 +59,7 @@
   const g = globalThis;
   const descriptor = Object.getOwnPropertyDescriptor;
   // Already set in this world (another entry, executeScript): own property, which a named element of the page does not make.
-  if (descriptor(g, "__webaiosFile")) return;
+  if (descriptor(g, "__ressacFile")) return;
   const apply_ = Reflect.apply;
   const build = Reflect.construct;
   const define = Object.defineProperty;
@@ -87,7 +87,7 @@
   const index_ = String.prototype.indexOf;
   const text = (v) => `${v}`;
 
-  const URL_REFUSED = "URL refusée par WebAiOs";
+  const URL_REFUSED = "URL refusée par Ressac";
 
   // --- Scope and context
 
@@ -97,7 +97,7 @@
       define(obj, name, { __proto__: null, value: value_, writable: false, configurable: false, enumerable: false });
       return true;
     } catch (e) {
-      if (logError) apply_(logError, g.console, [`[webaios] garde de page non posée sur ${name} :`, e]);
+      if (logError) apply_(logError, g.console, [`[ressac] garde de page non posée sur ${name} :`, e]);
       return false;
     }
   };
@@ -121,7 +121,7 @@
     }
     return r;
   };
-  freezeOn(g, "__webaiosScope", (p) => {
+  freezeOn(g, "__ressacScope", (p) => {
     if (portee !== null || p === null || typeof p !== "object") return;
     const network = descriptor(p, "network");
     const hosts = descriptor(p, "hosts");
@@ -140,7 +140,7 @@
     return m && typeof m.value === "string" ? m.value : "erreur inconnue";
   };
 
-  // The markers (`webaios-files/<n>.js`) deposit the index of each agent file; once the task is done, the
+  // The markers (`ressac-files/<n>.js`) deposit the index of each agent file; once the task is done, the
   // guard asks the background to inject them. The requests go one after the other (the order of the files is kept).
   const toAsk = [];
   let planned = false;
@@ -149,7 +149,7 @@
   const nextOne = () => {
     if (pending || toAsk.length === 0) return;
     if (!send) {
-      if (logError) apply_(logError, g.console, ["[webaios] scripts de l'agent non lancés : chrome.runtime.sendMessage absent"]);
+      if (logError) apply_(logError, g.console, ["[ressac] scripts de l'agent non lancés : chrome.runtime.sendMessage absent"]);
       toAsk.length = 0;
       return;
     }
@@ -169,12 +169,12 @@
           apply_(timer, g, [attempt, 250]);
           return;
         }
-        if (logError) apply_(logError, g.console, [`[webaios] scripts de l'agent non lancés après ${attempts} essais : ${reason}`]);
+        if (logError) apply_(logError, g.console, [`[ressac] scripts de l'agent non lancés après ${attempts} essais : ${reason}`]);
         finish();
       };
       try {
         apply_(send, runtime, [
-          { __proto__: null, webaios: "context", files: lot },
+          { __proto__: null, ressac: "context", files: lot },
           (r) => {
             // Read during the callback: otherwise Chromium writes "Unchecked runtime.lastError".
             const err = lastErr();
@@ -189,7 +189,7 @@
     };
     attempt();
   };
-  freezeOn(g, "__webaiosFile", (n) => {
+  freezeOn(g, "__ressacFile", (n) => {
     if (typeof n !== "number") return;
     toAsk[toAsk.length] = n;
     if (planned) return;
@@ -348,7 +348,7 @@
         configurable: false,
       });
     } catch (e) {
-      if (logError) apply_(logError, g.console, [`[webaios] garde de page non posée sur ${name} :`, e]);
+      if (logError) apply_(logError, g.console, [`[ressac] garde de page non posée sur ${name} :`, e]);
     }
   };
   if (HIE && typeOf_) hideGetter(HIE.prototype, "defaultValue", isPassword);

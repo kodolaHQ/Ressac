@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { NO_WORKFLOW_OPEN } from "../../../packages/kernel/src/index";
 import { inWindow, newWindow, waitFor, waitReady, waitWindowCount } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
 import { callMcpTool } from "../test/mcp";
@@ -34,7 +34,7 @@ const WATCH_WORKFLOW = {
 };
 
 let dataDir: string;
-let w: LaunchedWebAiOs | undefined;
+let w: LaunchedRessac | undefined;
 let m: Marionette;
 
 afterEach(async () => {
@@ -46,7 +46,7 @@ afterEach(async () => {
 
 /** Launches on a data folder with the widgets « veille » and « autre » (WATCH_WORKFLOW) and « casse » (unreadable). */
 async function launch(): Promise<void> {
-  dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-builder-agent-"));
+  dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-builder-agent-"));
   const files = {
     "liens.mjs": "export default async (page) => page.links;",
     "textes.mjs": "export default async (liens) => ({ liens: liens.map((l) => l.text) });",
@@ -54,7 +54,7 @@ async function launch(): Promise<void> {
   for (const id of ["veille", "autre"])
     await writeWidget(dataDir, id, { name: id === "veille" ? "Veille" : "Autre", harvest: { minutes: 60 }, declaration: { config: { url: "https://exemple.invalid/liens" } }, workflow: WATCH_WORKFLOW, files: files });
   await writeWidget(dataDir, "casse", { name: "Cassé", harvest: { minutes: 60 }, workflow: '{ "version": 1, "blocks": [ { "id": "page", "type": "source.pa' });
-  w = await launchWebAiOs({ dataDir, height: 1400 });
+  w = await launchRessac({ dataDir, height: 1400 });
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
@@ -72,12 +72,12 @@ async function oneTerminal(): Promise<void> {
   expect(await inUi(m, "return doc.querySelectorAll('.xterm').length", [], "agent")).toBe(1);
   expect(await inUi(m, "return doc.querySelectorAll('.xterm').length")).toBe(0);
 }
-const panelShown = () => m.execute<boolean>("return !document.getElementById('webaios-agent').hidden");
-const shown = () => waitFor(m, "return !document.getElementById('webaios-agent').hidden", (v) => v === true);
-const hidden = () => waitFor(m, "return document.getElementById('webaios-agent').hidden", (v) => v === true);
+const panelShown = () => m.execute<boolean>("return !document.getElementById('ressac-agent').hidden");
+const shown = () => waitFor(m, "return !document.getElementById('ressac-agent').hidden", (v) => v === true);
+const hidden = () => waitFor(m, "return document.getElementById('ressac-agent').hidden", (v) => v === true);
 /** The keyboard is in the terminal: the agent frame has the focus and, in it, xterm's textarea. */
 const terminalFocused = async () =>
-  (await m.execute("return document.activeElement?.id")) === "webaios-agent" &&
+  (await m.execute("return document.activeElement?.id")) === "ressac-agent" &&
   (await inUi<boolean>(m, "return !!doc.activeElement?.classList.contains('xterm-helper-textarea')", [], "agent"));
 const agentTabSelected = () => inUi<string | null>(m, "return doc.querySelector('[data-testid=\"agent-tab\"]')?.getAttribute('aria-selected') ?? null");
 const waitAgentTab = () => waitUi(m, "return doc.querySelector('[data-testid=\"agent-tab\"]')?.getAttribute('aria-selected') === 'true'");
@@ -108,7 +108,7 @@ async function builder(id: string): Promise<void> {
 }
 
 /** The agent session's own MCP config of the window whose agent started last (the fake agent logs its args). */
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const lastSessionConfig = () =>
   path.join(dataDir, "workspace", (JSON.parse(read(path.join(dataDir, "workspace", "fake-agent-args.json"))) as string[]).at(-1)!.replace(/^\/workspace\//, ""));
 const workflowOpen = async (config: string) => (await callMcpTool(path.join(dataDir, "workspace"), "open_workflow", {}, config)).text;

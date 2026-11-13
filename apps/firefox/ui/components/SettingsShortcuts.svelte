@@ -4,7 +4,7 @@
   import { bindingFromKey, bindingLabel, bindingProblem, effectiveBindings, sameBinding, SHORTCUT_IDS, SHORTCUTS, type ShortcutId } from "../../shared/shortcuts";
   import { api, appState } from "../state.svelte";
 
-  const win = window.parent.webaiosWindow!;
+  const win = window.parent.ressacWindow!;
   const FIXED = [
     ["Onglet 1 à 9", "⌘1–9"],
     ["Espace 1 à 9", "⌃1–9"],
@@ -125,7 +125,7 @@
   .switch:checked { background: var(--accent); }
   .switch:checked::after { left: 16px; }
   kbd { font: 12px var(--font-mono); color: var(--text-muted); }
-  .vim-keys { animation: webaios-rise var(--spring-d) var(--spring) backwards; }
+  .vim-keys { animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   .vim-keys .keys { display: flex; gap: 8px; width: 84px; flex: none; }
   .vim-keys kbd { color: var(--accent); }
 </style>

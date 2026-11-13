@@ -104,7 +104,7 @@ export interface SitesHost {
   grant(id: string, yes: boolean, hash: string): Promise<void>;
   /** The grant is withdrawn (settings page); an open app gets its card back. */
   revokeGrant(id: string): Promise<void>;
-  /** `webaiosSite` of an open app's main page; the chrome checked the sender, the grant and the address. */
+  /** `ressacSite` of an open app's main page; the chrome checked the sender, the grant and the address. */
   memoryOp(request: unknown): Promise<MemoryResponse>;
   /** A video position of an open app's page (`sites.position`), and the position to resume (`sites.resume`); the chrome checked the frame. */
   position(request: unknown): Promise<void>;

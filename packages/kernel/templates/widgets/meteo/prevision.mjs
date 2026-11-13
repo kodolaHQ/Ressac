@@ -11,15 +11,15 @@ const LABELS = {
 const label = (code) => LABELS[code] ?? "Temps inconnu";
 
 /** `geo`: the geocoding response (null without a city set). */
-export default async (geo, webaios) => {
-  const city = typeof webaios.config?.ville === "string" ? webaios.config.ville.trim() : "";
+export default async (geo, ressac) => {
+  const city = typeof ressac.config?.ville === "string" ? ressac.config.ville.trim() : "";
   if (!city) return { ville: null };
 
   const place = geo?.results?.[0];
   if (!place || typeof place.latitude !== "number" || typeof place.longitude !== "number") {
     throw new Error(`Ville introuvable : ${city}`);
   }
-  const p = await webaios.fetch(
+  const p = await ressac.fetch(
     `https://api.open-meteo.com/v1/forecast?latitude=${place.latitude}&longitude=${place.longitude}` +
       "&current=temperature_2m,weather_code&hourly=temperature_2m,weather_code" +
       "&daily=temperature_2m_max,temperature_2m_min,weather_code&timezone=auto&forecast_days=5",

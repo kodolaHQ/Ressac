@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { RenderedBlock, RenderedPage } from "@webaios/kernel";
+  import type { RenderedBlock, RenderedPage } from "@ressac/kernel";
   import { NO_RESULT, FALLBACK_MENTION } from "../../shared/actions";
   import ComponentFrame from "../ActionComponentFrame.svelte";
   import Cards from "./blocks/Cards.svelte";

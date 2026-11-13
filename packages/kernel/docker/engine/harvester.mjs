@@ -10,7 +10,7 @@
 import { createInterface } from "node:readline";
 import { resolve } from "node:path";
 import { deadlineOf, runWorkflow } from "./interpreter.mjs";
-import { format } from "./webaios.mjs";
+import { format } from "./ressac.mjs";
 
 const LINE_MAX = 4 * 1024 * 1024;
 const output = process.stdout;
@@ -110,7 +110,7 @@ async function main() {
     replay: start.replay ?? null,
     // Long or as-it-goes run: memory sent along the way (`memory` lines) and before `failure`.
     progressive: start.progressive === true,
-    // Action only: the input (templates, `ctx.userInput`, `webaios.input`) and the progress of per-item blocks.
+    // Action only: the input (templates, `ctx.userInput`, `ressac.input`) and the progress of per-item blocks.
     input: typeof start.input === "string" ? start.input : undefined,
     progress: start.progress === true,
   });

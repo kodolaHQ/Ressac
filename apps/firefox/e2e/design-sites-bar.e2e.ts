@@ -6,7 +6,7 @@ import { CAPTURE_WARNING_SITE, UNAVAILABLE_DESIGN_SITE } from "../shared/design-
 import { testActor } from "./agent-extensions";
 import { WITH_HOME, withHomeDeclaration, overlayOf, LOGIN_PAGE, inStore, keyIn, openSite, siteExpr, siteKey, siteMouse, toSite, TUNING_PAGE, tuningDeclaration, viewExpr, viewPoint, OTHER_PAGE } from "./design-sites";
 import { waitFor, waitReady } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { grantSite, inSiteBar, inSiteView, resolveLocalHosts, startSitesServer, writeSite } from "./sites";
 
@@ -20,7 +20,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const T = (id: string) => ({ type: "site", id });
 
 let server: Awaited<ReturnType<typeof startSitesServer>>;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 const dirs: string[] = [];
 const url = (host: string, path = "/") => server.url(host, path);
@@ -30,8 +30,8 @@ beforeAll(async () => {
   server.define("tuning-a.localhost", "/", TUNING_PAGE);
   server.define("tuning-a.localhost", "/autre", OTHER_PAGE);
   server.define("compte-tuning.localhost", "/connexion", LOGIN_PAGE);
-  const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
-  const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
+  const profile = await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
   dirs.push(dataDir, profile);
   writeSite(dataDir, "tuning", { declaration: tuningDeclaration(url), files: { "tweaks/tuning.css": "/* rien */" } });
   writeSite(dataDir, "avec-accueil", { declaration: withHomeDeclaration(url), files: { "home/index.html": WITH_HOME } });
@@ -39,7 +39,7 @@ beforeAll(async () => {
   await grantSite(dataDir, "tuning", tuningDeclaration(url));
   const a = testActor(profile);
   // An element's fullscreen without a gesture (as design-sites-view.e2e.ts).
-  w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_LOCAL_ADDRESSES: "1", ...a.env }, prefs: { ...a.prefs, "full-screen-api.allow-trusted-requests-only": false } });
+  w = await launchRessac({ dataDir, profile, env: { RESSAC_TEST_LOCAL_ADDRESSES: "1", ...a.env }, prefs: { ...a.prefs, "full-screen-api.allow-trusted-requests-only": false } });
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
@@ -57,7 +57,7 @@ afterEach(async () => {
 
 const state = (id: string) => inStore<{ active: boolean; unavailable: string | null; basket: number }>(m, "return await store.design.state(arguments[0]);", [T(id)]);
 const bubble = (id: string) => inStore<{ label: string } | null>(m, 'return store.design.overlayContext(arguments[0], ["bubble"]);', [T(id)]);
-const hosts = (id: string) => inSiteView<number>(m, id, `return document.getElementsByTagName("webaios-viewfinder").length;`).catch(() => -1);
+const hosts = (id: string) => inSiteView<number>(m, id, `return document.getElementsByTagName("ressac-viewfinder").length;`).catch(() => -1);
 const view = <T = unknown>(id: string, expr: string) => inSiteView<T>(m, id, `return ${expr};`).catch(() => null);
 const overlayTop = (id: string) => overlayOf<number>(m, id, "return f.getBoundingClientRect().y;");
 const tid = (t: string) => `[data-testid="${t}"]`;
@@ -79,7 +79,7 @@ const barPoint = (id: string, t: string) =>
   inSiteBar<{ x: number; y: number }>(
     m,
     id,
-    `const b = win.document.getElementById("webaios-site-bar").getBoundingClientRect(), r = doc.querySelector('${tid(t)}').getBoundingClientRect();
+    `const b = win.document.getElementById("ressac-site-bar").getBoundingClientRect(), r = doc.querySelector('${tid(t)}').getBoundingClientRect();
      return { x: b.left + r.left + r.width / 2, y: b.top + r.top + r.height / 2 };`,
   );
 /** An element's fullscreen in the app's page: Firefox denies it to a page whose window is not in front. */
@@ -176,7 +176,7 @@ it("unavailable on the login page and in fullscreen", async () => {
   }
 });
 
-const SMALL = `[...Services.wm.getEnumerator("navigator:browser")].find((x) => x.document.documentElement.getAttribute("webaios-site-small") === "tuning")`;
+const SMALL = `[...Services.wm.getEnumerator("navigator:browser")].find((x) => x.document.documentElement.getAttribute("ressac-site-small") === "tuning")`;
 async function openSmall() {
   await inStore(m, `store.sites.routeOpen("tuning", arguments[0]); return 1;`, [url("compte-tuning.localhost", "/connexion")]);
   const target = JSON.stringify(url("compte-tuning.localhost", "/connexion"));

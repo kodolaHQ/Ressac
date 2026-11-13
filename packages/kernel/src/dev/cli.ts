@@ -30,7 +30,7 @@ const bridge = new Proxy(fake, {
 }) as BrowserBridge;
 
 // Widgets' and actions' data: outside the workspace, in a temporary folder (no browser profile here).
-const kernel = await createKernel({ bridge: bridge, widgetsFolder: join(tmpdir(), "webaios-dev-widgets"), actionsFolder: join(tmpdir(), "webaios-dev-actions") });
+const kernel = await createKernel({ bridge: bridge, widgetsFolder: join(tmpdir(), "ressac-dev-widgets"), actionsFolder: join(tmpdir(), "ressac-dev-actions") });
 log = join(kernel.paths.internal, "dev-pont.log");
 console.log(`Space: ${kernel.paths.root}\nFake browser calls: tail -f ${log}\nCtrl-] to quit.\n`);
 

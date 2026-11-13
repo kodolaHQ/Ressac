@@ -1,7 +1,7 @@
 import { isIP } from "../shims/net";
 import { localUrl } from "../shims/kernel";
 
-const TEST_PUBLIC = "WEBAIOS_TEST_PUBLIC_ADDRESSES";
+const TEST_PUBLIC = "RESSAC_TEST_PUBLIC_ADDRESSES";
 
 /**
  * Addresses e2e tests serve their "public" pages from (comma separated). Firefox honours them only under automation:

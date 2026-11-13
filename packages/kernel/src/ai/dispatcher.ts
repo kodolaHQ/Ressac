@@ -67,7 +67,7 @@ export function createAiDispatcher(ai: AiAccess, o: { concurrent?: number } = {}
           try {
             call.onStartup?.();
           } catch (e) {
-            console.error("[webaios] start of an AI call:", e);
+            console.error("[ressac] start of an AI call:", e);
           }
           return call.launch();
         })

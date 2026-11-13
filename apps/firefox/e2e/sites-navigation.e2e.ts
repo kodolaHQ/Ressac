@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { testActor } from "./agent-extensions";
 import { inWindow, newWindow, state, waitFor, waitReady, windowHandles } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { inBrowser, inSiteBar, inSiteView, resolveLocalHosts, siteWindowExpr, startSitesServer, writeSite } from "./sites";
 import { missingApi, pressKeys } from "./ui";
@@ -12,7 +12,7 @@ import { missingApi, pressKeys } from "./ui";
 // Plan 31 Task 4: navigation kept on the app's domains, the sign-in window, permissions and « Ouvrir dans un onglet »,
 // plus the plan's Review Focus 4.
 
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const NAVIGABLES = "chrome://remote/content/shared/NavigableManager.sys.mjs";
 const HOSTS = ["vidola-a.localhost", "vidola-b.localhost", "pub.localhost", "autre-pub.localhost", "compte.localhost"];
 const META = "";
@@ -20,7 +20,7 @@ const ALT = "";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 let server: Awaited<ReturnType<typeof startSitesServer>>;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 let dataDir: string;
 let profile: string;
@@ -30,7 +30,7 @@ const view = `${site}.gBrowser.selectedBrowser`;
 const url = (p: string) => server.url("vidola-a.localhost", p);
 const pub = (p: string) => server.url("pub.localhost", p);
 const login = () => server.url("compte.localhost", "/connexion");
-const small = `[...Services.wm.getEnumerator("navigator:browser")].find((x) => x.document.documentElement.getAttribute("webaios-site-small") === "vidola")`;
+const small = `[...Services.wm.getEnumerator("navigator:browser")].find((x) => x.document.documentElement.getAttribute("ressac-site-small") === "vidola")`;
 const vidola = () => ({ name: "Vidola", url: url("/"), domains: ["vidola-a.localhost"], login: ["compte.localhost"] });
 /** What reached pub.localhost during this test, the home page's ad frame aside. */
 const nothingToPub = () => server.requests.filter((r) => r.host === "pub.localhost" && r.path !== "/cadre").map((r) => r.path);
@@ -86,12 +86,12 @@ async function clickInView(selector: string, key: string): Promise<void> {
 }
 const browserWindows = () => m.execute<number>(`return [...Services.wm.getEnumerator("navigator:browser")].length;`);
 const tabUrls = async () => Object.values((await state(m)).tabs).map((o) => o.url);
-/** Counts every tab opened in any browser window from now on (window.webaiosTestOpened), even one closed at once. */
+/** Counts every tab opened in any browser window from now on (window.ressacTestOpened), even one closed at once. */
 const countTabOpens = () =>
   m.execute(
-    `window.webaiosTestOpened = [];
+    `window.ressacTestOpened = [];
      for (const x of Services.wm.getEnumerator("navigator:browser"))
-       x.gBrowser.tabContainer.addEventListener("TabOpen", () => window.webaiosTestOpened.push(x.document.documentElement.hasAttribute("webaios-site") ? "site" : "other"));`,
+       x.gBrowser.tabContainer.addEventListener("TabOpen", () => window.ressacTestOpened.push(x.document.documentElement.hasAttribute("ressac-site") ? "site" : "other"));`,
   );
 
 beforeAll(async () => {
@@ -114,12 +114,12 @@ beforeAll(async () => {
   server.define("pub.localhost", "/arrivee", "<title>Arrivée pub</title>");
   server.define("compte.localhost", "/connexion", "<title>Connexion</title>");
   server.define("vidola-b.localhost", "/", "<title>Vidola B</title>");
-  dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
-  profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
+  dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
+  profile = await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
   writeSite(dataDir, "vidola", { declaration: vidola() });
   writeSite(dataDir, "deux", { declaration: { ...vidola(), name: "Deux", domains: ["vidola-a.localhost", "vidola-b.localhost"] } });
   const actor = testActor(profile);
-  w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_LOCAL_ADDRESSES: "1", ...actor.env }, prefs: actor.prefs });
+  w = await launchRessac({ dataDir, profile, env: { RESSAC_TEST_LOCAL_ADDRESSES: "1", ...actor.env }, prefs: actor.prefs });
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
@@ -137,7 +137,7 @@ afterEach(async () => {
     expect(await missingApi(m)).toEqual([]);
   } finally {
     await inStore(`for (const id of store.sites.openIds()) await store.sites.close(id);`).catch(() => {});
-    await m.execute(`for (const x of [...Services.wm.getEnumerator("navigator:browser")]) if (x.document.documentElement.hasAttribute("webaios-site-small")) x.close();`).catch(() => {});
+    await m.execute(`for (const x of [...Services.wm.getEnumerator("navigator:browser")]) if (x.document.documentElement.hasAttribute("ressac-site-small")) x.close();`).catch(() => {});
   }
 });
 
@@ -337,13 +337,13 @@ describe("site app navigation", () => {
     await openAndWait();
     await waitBar(`return true;`);
     // Every state the controller sends to the bar.
-    await m.execute(`const win = ${site}; win.webaiosTestSent = 0; win.webaiosSiteWindow.onState(() => win.webaiosTestSent++);`);
+    await m.execute(`const win = ${site}; win.ressacTestSent = 0; win.ressacSiteWindow.onState(() => win.ressacTestSent++);`);
     const a = JSON.stringify(pub("/x"));
     const b = JSON.stringify(server.url("autre-pub.localhost", "/x"));
     await inSiteView(m, "vidola", `for (let i = 0; i < 20; i++) window.open(i % 2 ? ${a} : ${b}); return 1;`, { gesture: true });
     await waitNotice("pub.localhost");
     await sleep(1200);
-    const sent = await m.execute<number>(`return ${site}.webaiosTestSent;`);
+    const sent = await m.execute<number>(`return ${site}.ressacTestSent;`);
     expect(sent).toBeGreaterThanOrEqual(1);
     expect(sent).toBeLessThanOrEqual(3);
     await waitNotice("pub.localhost");
@@ -357,10 +357,10 @@ describe("site app navigation", () => {
     await m.execute(
       `const reg = Components.manager.QueryInterface(Ci.nsIComponentRegistrar);
        const contract = "@mozilla.org/content-dispatch-chooser;1";
-       window.webaiosTestChooser = { cid: reg.contractIDToCID(contract), mine: Services.uuid.generateUUID(), seen: [] };
-       const chooser = { QueryInterface: ChromeUtils.generateQI(["nsIContentDispatchChooser"]), handleURI: (_h, uri) => void window.webaiosTestChooser.seen.push(uri.spec) };
-       window.webaiosTestChooser.factory = { QueryInterface: ChromeUtils.generateQI(["nsIFactory"]), createInstance: (iid) => chooser.QueryInterface(iid) };
-       reg.registerFactory(window.webaiosTestChooser.mine, "test chooser", contract, window.webaiosTestChooser.factory);`,
+       window.ressacTestChooser = { cid: reg.contractIDToCID(contract), mine: Services.uuid.generateUUID(), seen: [] };
+       const chooser = { QueryInterface: ChromeUtils.generateQI(["nsIContentDispatchChooser"]), handleURI: (_h, uri) => void window.ressacTestChooser.seen.push(uri.spec) };
+       window.ressacTestChooser.factory = { QueryInterface: ChromeUtils.generateQI(["nsIFactory"]), createInstance: (iid) => chooser.QueryInterface(iid) };
+       reg.registerFactory(window.ressacTestChooser.mine, "test chooser", contract, window.ressacTestChooser.factory);`,
     );
     // Each vector is checked on its own: one that gets through is reported, and the view is put back on the site.
     const stays = async (what: string) => {
@@ -384,7 +384,7 @@ describe("site app navigation", () => {
         await inSiteView(m, "vidola", `location.href = ${JSON.stringify(target)}; return 1;`, { gesture: true });
         await stays(target);
       }
-      expect.soft(await m.execute(`return window.webaiosTestChooser.seen;`), "OS handler").toEqual([]);
+      expect.soft(await m.execute(`return window.ressacTestChooser.seen;`), "OS handler").toEqual([]);
       await inSiteView(m, "vidola", "location.href = URL.createObjectURL(new Blob(['<title>blob</title>'], { type: 'text/html' })); return 1;", { gesture: true });
       await stays("blob:");
       // From the pub.localhost frame (cross-origin), its own blob: as top.location.
@@ -392,7 +392,7 @@ describe("site app navigation", () => {
       await stays("blob: from a cross-origin frame");
     } finally {
       await m.execute(
-        `const reg = Components.manager.QueryInterface(Ci.nsIComponentRegistrar); const t = window.webaiosTestChooser;
+        `const reg = Components.manager.QueryInterface(Ci.nsIComponentRegistrar); const t = window.ressacTestChooser;
          reg.unregisterFactory(t.mine, t.factory); reg.registerFactory(t.cid, "", "@mozilla.org/content-dispatch-chooser;1", null);`,
       );
     }
@@ -434,8 +434,8 @@ describe("site app navigation", () => {
         const sites = ChromeUtils.importESModule("${STORE}").sites;
         const old = sites.windowOf("vidola");
         const site = sites.siteOf("vidola");
-        const marked = () => [...Services.wm.getEnumerator("navigator:browser")].some((x) => x.document.documentElement.getAttribute("webaios-site-small") === "vidola");
-        old.addEventListener("unload", () => { const end = Date.now() + 5000; Services.tm.spinEventLoopUntil("webaios test", () => marked() || Date.now() > end); }, true);
+        const marked = () => [...Services.wm.getEnumerator("navigator:browser")].some((x) => x.document.documentElement.getAttribute("ressac-site-small") === "vidola");
+        old.addEventListener("unload", () => { const end = Date.now() + 5000; Services.tm.spinEventLoopUntil("ressac test", () => marked() || Date.now() > end); }, true);
         old.close();
         sites.open(site);
         sites.routeOpen("vidola", arguments[0]);
@@ -452,7 +452,7 @@ describe("site app navigation", () => {
   it("Open in a tab targets the last main window; Firefox tab commands are inert in the app", { timeout: 60_000 }, async () => {
     const first = (await m.command<{ value: string }>("WebDriver:GetWindowHandle")).value;
     const second = await newWindow(m);
-    const idOf = (h: string) => inWindow(m, h, () => m.execute<string>(`return window.webaiosWindow.windowId;`));
+    const idOf = (h: string) => inWindow(m, h, () => m.execute<string>(`return window.ressacWindow.windowId;`));
     const ids = { [first]: await idOf(first), [second]: await idOf(second) };
     const before = new Set(await windowHandles(m));
     await openAndWait();
@@ -479,7 +479,7 @@ describe("site app navigation", () => {
     await countTabOpens();
     for (const combo of ["Meta+t", "Meta+l", "Control+Tab", "Meta+["]) await inWindow(m, app, () => pressKeys(m, combo));
     await sleep(800);
-    expect(await m.execute(`return window.webaiosTestOpened;`)).toEqual([]);
+    expect(await m.execute(`return window.ressacTestOpened;`)).toEqual([]);
     expect(await m.execute(`return ${site}.gBrowser.tabs.length;`)).toBe(1);
     expect(await viewUrl()).toBe(url("/film/2"));
     expect(await m.execute(`return ${site}.gURLBar.focused;`)).toBe(false);
@@ -488,9 +488,9 @@ describe("site app navigation", () => {
     const mains = (await state(m)).windows.length;
     await inWindow(m, app, () => pressKeys(m, "Meta+n"));
     await expect.poll(async () => (await state(m)).windows.length, { timeout: 10_000 }).toBe(mains + 1);
-    await waitFor(m, `return [...Services.wm.getEnumerator("navigator:browser")].filter((x) => x.document.documentElement.hasAttribute("webaios-main")).length;`, (v) => v === 3);
+    await waitFor(m, `return [...Services.wm.getEnumerator("navigator:browser")].filter((x) => x.document.documentElement.hasAttribute("ressac-main")).length;`, (v) => v === 3);
     for (const h of await windowHandles(m)) if (h !== first && h !== app) await inWindow(m, h, () => m.execute(`window.close();`));
-    await waitFor(m, `return [...Services.wm.getEnumerator("navigator:browser")].filter((x) => x.document.documentElement.hasAttribute("webaios-main")).length;`, (v) => v === 1);
+    await waitFor(m, `return [...Services.wm.getEnumerator("navigator:browser")].filter((x) => x.document.documentElement.hasAttribute("ressac-main")).length;`, (v) => v === 1);
   });
 
   // Last: it closes the main window.
@@ -500,11 +500,11 @@ describe("site app navigation", () => {
     const app = (await windowHandles(m)).find((h) => !before.has(h))!;
     await m.execute(`window.close();`);
     await m.command("WebDriver:SwitchToWindow", { handle: app, focus: false });
-    await waitFor(m, `return [...Services.wm.getEnumerator("navigator:browser")].filter((x) => x.document.documentElement.hasAttribute("webaios-main")).length;`, (v) => v === 0);
+    await waitFor(m, `return [...Services.wm.getEnumerator("navigator:browser")].filter((x) => x.document.documentElement.hasAttribute("ressac-main")).length;`, (v) => v === 0);
     await inSiteView(m, "vidola", "document.getElementById('pub').click(); return 1;", { gesture: true });
     await waitNotice("pub.localhost");
     await barClick("site-open-tab");
-    await waitFor(m, `return [...Services.wm.getEnumerator("navigator:browser")].filter((x) => x.document.documentElement.hasAttribute("webaios-main")).length;`, (v) => v === 1);
+    await waitFor(m, `return [...Services.wm.getEnumerator("navigator:browser")].filter((x) => x.document.documentElement.hasAttribute("ressac-main")).length;`, (v) => v === 1);
     await expect.poll(async () => {
       const s = await state(m);
       const f = s.windows[0];

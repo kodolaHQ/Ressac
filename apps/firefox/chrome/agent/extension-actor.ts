@@ -1,20 +1,20 @@
-// Extension actor: on the agent's extension pages (background, popup, options), a frozen window.__webaios asks the
+// Extension actor: on the agent's extension pages (background, popup, options), a frozen window.__ressac asks the
 // parent, which reads the add-on id from the document's principal (never from the page) and answers from the grants.
 // The console process actor relays the agent's extensions' console messages from every content process.
 // Kept small: the build copies this file, so any change here needs a rebuild of the app (build:ui).
-import type { WebAiOsStore } from "../store";
+import type { RessacStore } from "../store";
 import type { CheckKind } from "../store/agent-extensions";
 
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 // Keep in sync with host/extensions/firefox-copy.ts ID_SUFFIX.
-const SUFFIX = "@agent.webaios";
+const SUFFIX = "@agent.ressac";
 const KINDS: readonly string[] = ["urlAllowed", "hostAllowed", "isTab"] satisfies CheckKind[];
 
-export class WebAiOsExtensionParent extends JSWindowActorParent {
+export class RessacExtensionParent extends JSWindowActorParent {
   async receiveMessage(m: { name: string; data?: unknown }): Promise<boolean> {
     if (!KINDS.includes(m.name)) return false;
     const addonId: string = this.manager.documentPrincipal.addonId;
-    const { agentExtensions } = (await ChromeUtils.importESModule(STORE).ready) as WebAiOsStore;
+    const { agentExtensions } = (await ChromeUtils.importESModule(STORE).ready) as RessacStore;
     await agentExtensions.scopesKnown();
     return agentExtensions.check(addonId, m.name as CheckKind, m.data);
   }
@@ -23,7 +23,7 @@ export class WebAiOsExtensionParent extends JSWindowActorParent {
 /** Neutralised in a frame that is not one of the extension's own documents (about:blank, srcdoc). */
 const FRAME_REMOVED = ["chrome", "browser", "RTCPeerConnection", "webkitRTCPeerConnection", "RTCDataChannel"];
 
-export class WebAiOsExtensionChild extends JSWindowActorChild {
+export class RessacExtensionChild extends JSWindowActorChild {
   // DOMWindowCreated: before the page's first script (spike S5), and as an about:blank frame is created, before the
   // script that created it reads it.
   handleEvent() {
@@ -42,7 +42,7 @@ export class WebAiOsExtensionChild extends JSWindowActorChild {
         { defineAs: kind },
       );
     Object.freeze(Cu.waiveXrays(api));
-    Object.defineProperty(win.wrappedJSObject, "__webaios", { value: api, writable: false, configurable: false, enumerable: false });
+    Object.defineProperty(win.wrappedJSObject, "__ressac", { value: api, writable: false, configurable: false, enumerable: false });
     // An agent page opens nothing itself (chrome.tabs.create, checked, does).
     Object.defineProperty(win.wrappedJSObject, "open", { value: Cu.exportFunction(() => null, win), writable: false, configurable: false, enumerable: true });
     // An about:blank or srcdoc frame inherits the extension's principal, and Firefox gives it the whole extension API
@@ -72,10 +72,10 @@ function textOf(args: unknown): string {
 }
 
 /** The console relay's parent: what a content process relays goes to the store, which checks it (a web process is untrusted). */
-export class WebAiOsConsoleParent extends JSProcessActorParent {
+export class RessacConsoleParent extends JSProcessActorParent {
   async receiveMessage(m: { name: string; data?: unknown }): Promise<void> {
     if (m.name !== "console") return;
-    const { agentExtensions } = (await ChromeUtils.importESModule(STORE).ready) as WebAiOsStore;
+    const { agentExtensions } = (await ChromeUtils.importESModule(STORE).ready) as RessacStore;
     agentExtensions.relayConsole(this.manager, m.data);
   }
 }
@@ -85,7 +85,7 @@ export class WebAiOsConsoleParent extends JSProcessActorParent {
  * pages in the extension process, their content scripts in web processes — sent as text to the parent. Started by the
  * first document of the process (observer) or by the parent, once.
  */
-export class WebAiOsConsoleChild extends JSProcessActorChild {
+export class RessacConsoleChild extends JSProcessActorChild {
   private started = false;
 
   observe() {

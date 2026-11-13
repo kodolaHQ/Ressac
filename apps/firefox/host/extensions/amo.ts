@@ -14,8 +14,8 @@ export const KEYS_ABSENT = "Compte Mozilla non branché : Réglages › Agents �
 export const deniedSignature = (m: string) => "Signature refusée par addons.mozilla.org : " + m.slice(0, 2000);
 export const SLOW_SIGNATURE = "Signature trop longue : addons.mozilla.org n'a pas rendu le module à temps. Réessayez reload_extension.";
 export const signatureImpossible = (m: string) => "Signature impossible (réseau ou addons.mozilla.org) : " + m;
-export const VERSION_FOUR = "version : trois nombres au plus (WebAiOs ajoute le quatrième)";
-export const GECKO_ID = "browser_specific_settings.gecko.id refusé : WebAiOs pose l'identifiant";
+export const VERSION_FOUR = "version : trois nombres au plus (Ressac ajoute le quatrième)";
+export const GECKO_ID = "browser_specific_settings.gecko.id refusé : Ressac pose l'identifiant";
 
 export interface AmoKey {
   emitter: string;
@@ -26,7 +26,7 @@ export interface AmoKey {
 export const KEYCHAIN_DELAY_MS = 10_000;
 
 /**
- * Test: WEBAIOS_TEST_AMO_URL set → WEBAIOS_TEST_AMO_KEYS ("emetteur:secret") or null; else WEBAIOS_TEST_KEYCHAIN's ".amo" file; else the keychain (service webaios-amo),
+ * Test: RESSAC_TEST_AMO_URL set → RESSAC_TEST_AMO_KEYS ("emetteur:secret") or null; else RESSAC_TEST_KEYCHAIN's ".amo" file; else the keychain (service ressac-amo),
  * null when absent or too slow. `command` and `delai` are only there for tests.
  */
 export async function readAmoKey(env: NodeJS.ProcessEnv = process.env, o: { command?: string; delay?: number } = {}): Promise<AmoKey | null> {
@@ -35,10 +35,10 @@ export async function readAmoKey(env: NodeJS.ProcessEnv = process.env, o: { comm
     const i = keys?.lastIndexOf(":") ?? -1;
     return keys && i > 0 && i < keys.length - 1 ? { emitter: keys.slice(0, i), secret: keys.slice(i + 1) } : null;
   };
-  if (env.WEBAIOS_TEST_AMO_URL) return split(env.WEBAIOS_TEST_AMO_KEYS);
-  if (env.WEBAIOS_TEST_KEYCHAIN) return split(await readFile(`${env.WEBAIOS_TEST_KEYCHAIN}.amo`, "utf8").catch(() => undefined));
+  if (env.RESSAC_TEST_AMO_URL) return split(env.RESSAC_TEST_AMO_KEYS);
+  if (env.RESSAC_TEST_KEYCHAIN) return split(await readFile(`${env.RESSAC_TEST_KEYCHAIN}.amo`, "utf8").catch(() => undefined));
   try {
-    const security = (args: string[]) => run(o.command ?? "security", ["find-generic-password", "-s", "webaios-amo", ...args], { timeout: o.delay ?? KEYCHAIN_DELAY_MS });
+    const security = (args: string[]) => run(o.command ?? "security", ["find-generic-password", "-s", "ressac-amo", ...args], { timeout: o.delay ?? KEYCHAIN_DELAY_MS });
     const [{ stdout: attrs }, { stdout: secret }] = await Promise.all([security([]), security(["-w"])]);
     const issuer = /"acct"<blob>="([^"]*)"/.exec(attrs)?.[1];
     return issuer && secret.trim() ? { emitter: issuer, secret: secret.trim() } : null;

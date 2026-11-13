@@ -6,7 +6,7 @@
   // copied into this document. Only in the « site » view: on the home or the card a popup would have no page shown.
   // `api` is a prop of the bar, unused: ApiSite.extensions stays inert in Firefox.
   let { onSite: onSite }: { api: ApiSite; onSite: boolean } = $props();
-  const addons = window.parent.webaiosSiteWindow!.addons!;
+  const addons = window.parent.ressacSiteWindow!.addons!;
   let buttons = $state<AddonButton[]>(structuredClone(addons.buttons()));
 
   $effect(() => {

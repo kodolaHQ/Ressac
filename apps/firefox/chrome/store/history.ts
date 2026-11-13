@@ -4,7 +4,7 @@ import type { AgentHost } from "../agent/host";
 import type { Store } from "./store";
 
 export interface History {
-  /** A committed top-level navigation of a WebAiOs tab; private and space read from the state now. http(s) only. */
+  /** A committed top-level navigation of a Ressac tab; private and space read from the state now. http(s) only. */
   visit(id: TabId, url: string, title: string): void;
   title(id: TabId, url: string, title: string): void;
   /** The agent's memory of a page: dropped by the kernel for a private visit or a loopback URL. */

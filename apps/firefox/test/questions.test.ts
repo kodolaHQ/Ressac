@@ -118,9 +118,9 @@ it("the widget data card: the origin per kind; Autoriser answers true; a site ap
     questions.askWidgetData({ id: "vidola", name: "Vidola", agent: "Claude", kind: "site" }, win),
   ];
   expect(questions.pending()).toMatchObject([
-    { origin: "webaios-widget://meteo", permissions: ["widget-data"], title: "Météo", widget: "meteo", agent: "Claude", windowId: win },
-    { origin: "webaios://action/envoi", action: "envoi" },
-    { origin: "webaios-site://vidola", site: "vidola" },
+    { origin: "ressac-widget://meteo", permissions: ["widget-data"], title: "Météo", widget: "meteo", agent: "Claude", windowId: win },
+    { origin: "ressac://action/envoi", action: "envoi" },
+    { origin: "ressac-site://vidola", site: "vidola" },
   ]);
   for (const q of questions.pending()) questions.answer(q.id, "allow");
   expect(await Promise.all(kinds)).toEqual([true, true, true]);

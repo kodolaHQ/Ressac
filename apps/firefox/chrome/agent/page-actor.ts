@@ -1,6 +1,6 @@
 // Page actor: the parent asks, the child reads the page (Xray view: the page cannot fake what is read).
 // Kept small: the build copies this file, so any change here needs a rebuild of the app (build:ui).
-export class WebAiOsPageParent extends JSWindowActorParent {}
+export class RessacPageParent extends JSWindowActorParent {}
 
 /** The largest page text the agent reads. */
 const TEXT_MAX = 100_000;
@@ -330,7 +330,7 @@ async function pdfText(doc: Document, win: Window, max: number): Promise<string 
   return pages.join("\n\n").slice(0, max);
 }
 
-export class WebAiOsPageChild extends JSWindowActorChild {
+export class RessacPageChild extends JSWindowActorChild {
   receiveMessage(m: { name: string; data?: any }) {
     const doc = this.document;
     // The page's http(s) links, deduplicated, at most `max`.
@@ -415,12 +415,12 @@ export class WebAiOsPageChild extends JSWindowActorChild {
 }
 
 /**
- * Invisible reads only (messagemanagergroup webaios-reading), in every frame: what a page cannot display is refused
+ * Invisible reads only (messagemanagergroup ressac-reading), in every frame: what a page cannot display is refused
  * (DONT_RETARGET), never downloaded nor handed to an app. Set on each new document, the parent also asks it once
  * before the read loads: a browsing context replaced by a navigation starts without it.
  */
-export class WebAiOsReadingParent extends JSWindowActorParent {}
-export class WebAiOsReadingChild extends JSWindowActorChild {
+export class RessacReadingParent extends JSWindowActorParent {}
+export class RessacReadingChild extends JSWindowActorChild {
   handleEvent() {
     this.docShell.allowContentRetargeting = false;
   }

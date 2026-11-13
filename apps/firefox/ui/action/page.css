@@ -18,7 +18,7 @@
 }
 .pa-blocks { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 /* What appears comes in on the spring (DESIGN.md); a page read again keeps its elements, so nothing replays. */
-.page-action > .pa-blocks > * { animation: webaios-rise var(--spring-d) var(--spring) both; }
+.page-action > .pa-blocks > * { animation: ressac-rise var(--spring-d) var(--spring) both; }
 
 .pa-head { display: flex; justify-content: space-between; align-items: end; gap: 20px; }
 .pa-head-text { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
@@ -90,7 +90,7 @@
   .pa-highlight .pa-photo { min-height: 0; aspect-ratio: 16 / 10; }
 }
 
-.pa-image { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; background: var(--glass-hi); animation: webaios-rise var(--spring-d) var(--spring) both; }
+.pa-image { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; background: var(--glass-hi); animation: ressac-rise var(--spring-d) var(--spring) both; }
 .pa-image-neutral { display: block; width: 100%; aspect-ratio: 16 / 10; background: color-mix(in oklab, var(--a1) 14%, var(--glass-hi)); }
 
 .pa-scroll { overflow-x: auto; border: 1px solid var(--glass-edge); border-radius: 16px; background: var(--glass); box-shadow: var(--lift); }

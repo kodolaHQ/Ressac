@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack } from "svelte";
-  import type { DevRight, TabAccessState } from "@webaios/kernel";
+  import type { DevRight, TabAccessState } from "@ressac/kernel";
   import { access, accessApi } from "../access.svelte";
 
   let { id, state: appState, anchor: anchor }: { id: string; state: TabAccessState; anchor: HTMLElement } = $props();
@@ -61,7 +61,7 @@
 </div>
 
 <style>
-  .bubble { position: fixed; z-index: 30; box-sizing: border-box; padding: 12px; background: var(--glass-dense); backdrop-filter: blur(30px) saturate(1.8); color: var(--text); border: 1px solid var(--glass-edge); border-radius: 14px; box-shadow: var(--modal-shadow); font-size: 12px; font-weight: 400; cursor: default; text-align: left; transform-origin: top center; animation: webaios-drop var(--spring-d) var(--spring) backwards; }
+  .bubble { position: fixed; z-index: 30; box-sizing: border-box; padding: 12px; background: var(--glass-dense); backdrop-filter: blur(30px) saturate(1.8); color: var(--text); border: 1px solid var(--glass-edge); border-radius: 14px; box-shadow: var(--modal-shadow); font-size: 12px; font-weight: 400; cursor: default; text-align: left; transform-origin: top center; animation: ressac-drop var(--spring-d) var(--spring) backwards; }
   .bubble:focus { outline: none; }
   h4 { margin: 0 0 8px; font: 600 13px/1.25 var(--font-display); }
   ul { list-style: none; margin: 0 0 8px; padding: 0; }

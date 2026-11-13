@@ -3,24 +3,24 @@ import os from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { dispatch, inWindow, newWindow, pressClosing, state, waitFor, waitReady, waitWindowCount } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
 import { startServer } from "./server";
 import { click, inUi, pressKeys, typeText, waitUi } from "./ui";
 
 let server: Awaited<ReturnType<typeof startServer>>;
-let w: LaunchedWebAiOs | undefined;
+let w: LaunchedRessac | undefined;
 let m: Marionette;
 beforeAll(async () => (server = await startServer()));
 afterAll(() => server?.close());
 afterEach(() => w?.close());
 
 async function launch(env?: Record<string, string>, dataDir?: string, prefs?: Record<string, number>): Promise<void> {
-  w = await launchWebAiOs({ env, dataDir, prefs });
+  w = await launchRessac({ env, dataDir, prefs });
   m = w.marionette;
   await m.setContext("chrome");
-  await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+  await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
 }
 
 const read = (file: string) => (existsSync(file) ? readFileSync(file, "utf8") : "");
@@ -29,8 +29,8 @@ const TERMINAL = "return (doc.querySelector('.xterm-rows')?.textContent ?? '').r
 const terminalShows = (text: string, ms = 20_000) => waitUi(m, `${TERMINAL}.includes(arguments[0])`, [text], ms, "agent");
 const terminalText = () => inUi<string>(m, TERMINAL, [], "agent");
 const toggleWithButton = () => click(m, '[data-testid="agent-button"]');
-const shown = () => waitFor(m, "return !document.getElementById('webaios-agent').hidden", (v) => v === true);
-const hidden = () => waitFor(m, "return document.getElementById('webaios-agent').hidden", (v) => v === true);
+const shown = () => waitFor(m, "return !document.getElementById('ressac-agent').hidden", (v) => v === true);
+const hidden = () => waitFor(m, "return document.getElementById('ressac-agent').hidden", (v) => v === true);
 /** Opens a tab and waits for its page; the panel the home page opened closes. */
 async function openTab(path: string): Promise<void> {
   await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url: `${server.url}${path}` });
@@ -56,10 +56,10 @@ it("the home page opens the panel, which runs the fake agent", async () => {
   await launch();
   await shown();
   await terminalShows("fake agent ready>");
-  expect(await inUi(m, "return [...(ui.webaiosMissingApi ?? [])]", [], "agent")).toEqual([]);
+  expect(await inUi(m, "return [...(ui.ressacMissingApi ?? [])]", [], "agent")).toEqual([]);
 });
 
-const SESSION_CONFIG = /^\/workspace\/\.webaios\/sessions\/[0-9a-f]{16}\.json$/;
+const SESSION_CONFIG = /^\/workspace\/\.ressac\/sessions\/[0-9a-f]{16}\.json$/;
 const panelShows = (text: string, ms = 20_000) =>
   waitUi(m, "return doc.querySelector('[data-testid=\"agent-panel\"]').textContent.includes(arguments[0])", [text], ms, "agent");
 const retryButton = () => waitUi(m, "return [...doc.querySelectorAll('button')].some((b) => b.textContent === 'Réessayer')", [], 10_000, "agent");
@@ -107,12 +107,12 @@ it("a container that cannot start → error and Réessayer", async () => {
   await retryButton();
 });
 
-it("a second profile in .webaios/profiles appears in the panel; choosing it restarts the agent with its command", async () => {
-  const dataDir = mkdtempSync(join(os.tmpdir(), "webaios-data-"));
+it("a second profile in .ressac/profiles appears in the panel; choosing it restarts the agent with its command", async () => {
+  const dataDir = mkdtempSync(join(os.tmpdir(), "ressac-data-"));
   try {
-    mkdirSync(join(dataDir, "workspace", ".webaios", "profiles"), { recursive: true });
+    mkdirSync(join(dataDir, "workspace", ".ressac", "profiles"), { recursive: true });
     writeFileSync(
-      join(dataDir, "workspace", ".webaios", "profiles", "autre.json"),
+      join(dataDir, "workspace", ".ressac", "profiles", "autre.json"),
       JSON.stringify({ id: "autre", name: "Autre", interactive: ["autre-agent", "--mcp", "{mcpConfig}"], nonInteractive: ["autre-agent", "-p", "{consigne}"], mcpConfig: "claude-json" }),
     );
     await launch(undefined, dataDir);
@@ -200,7 +200,7 @@ describe("the agent selector", () => {
     const third = (await waitWindowCount(m, 3)).find((h) => h !== a && h !== second)!;
     await inWindow(m, third, () => waitReady(m));
     await inWindow(m, third, async () => {
-      await waitFor(m, "return !document.getElementById('webaios-agent').hidden", (v) => v === true);
+      await waitFor(m, "return !document.getElementById('ressac-agent').hidden", (v) => v === true);
       await waitUi(m, `return doc.querySelector(${JSON.stringify(SELECT)})?.value === "codex"`, [], 20_000, "agent");
     });
   });
@@ -212,7 +212,7 @@ describe("the agent selector", () => {
     await pick("codex");
     await panelShows("Codex n'est pas connecté à votre compte ChatGPT.");
     await click(m, '[data-testid="agent-login-settings"]', { frame: "agent" });
-    for (const end = Date.now() + 10_000; !Object.values((await state(m)).tabs).some((t) => t.url === "webaios://settings"); await new Promise((r) => setTimeout(r, 100)))
+    for (const end = Date.now() + 10_000; !Object.values((await state(m)).tabs).some((t) => t.url === "ressac://settings"); await new Promise((r) => setTimeout(r, 100)))
       if (Date.now() > end) throw new Error("Settings did not open");
   });
 });
@@ -337,7 +337,7 @@ it.each([
   await m.execute("gBrowser.selectedBrowser.focus()");
   await pressKeys(m, "Meta+j");
   await shown();
-  await waitFor(m, "return document.activeElement?.id", (v) => v === "webaios-agent");
+  await waitFor(m, "return document.activeElement?.id", (v) => v === "ressac-agent");
   await waitUi(m, "return doc.activeElement?.classList.contains('xterm-helper-textarea')", [], 10_000, "agent");
   // Keys typed next go to the agent, after the context prefix opening the panel wrote.
   await send("clavier");
@@ -357,7 +357,7 @@ it("the page narrows by the panel width", async () => {
   expect(await m.execute("return gBrowser.selectedBrowser.getBoundingClientRect().right")).toBe(width - 8);
   await toggleWithButton();
   await waitFor(m, "return gBrowser.selectedBrowser.getBoundingClientRect().right", (v) => v === width - 420 - 8);
-  expect(await m.execute("return document.getElementById('webaios-agent').getBoundingClientRect().left")).toBe(width - 420);
+  expect(await m.execute("return document.getElementById('ressac-agent').getBoundingClientRect().left")).toBe(width - 420);
 });
 
 it("with the sidebar on the right, the panel opens on the left and the page sits between", async () => {
@@ -367,12 +367,12 @@ it("with the sidebar on the right, the panel opens on the left and the page sits
   const width = await m.execute<number>("return window.innerWidth");
   const rect = (id: string) => m.execute<{ left: number; right: number }>(`const r = document.getElementById(arguments[0]).getBoundingClientRect(); return { left: r.left, right: r.right };`, [id]);
   await waitFor(m, "return gBrowser.selectedBrowser.getBoundingClientRect().right", (v) => v === width - 240);
-  expect((await rect("webaios-sidebar")).right).toBe(width);
+  expect((await rect("ressac-sidebar")).right).toBe(width);
   expect(await m.execute("return gBrowser.selectedBrowser.getBoundingClientRect().left")).toBe(8);
   await toggleWithButton();
   await waitFor(m, "return gBrowser.selectedBrowser.getBoundingClientRect().left", (v) => v === 420 + 8);
   expect(await m.execute("return gBrowser.selectedBrowser.getBoundingClientRect().right")).toBe(width - 240);
-  expect(await rect("webaios-agent")).toEqual({ left: 0, right: 420 });
+  expect(await rect("ressac-agent")).toEqual({ left: 0, right: 420 });
 });
 
 it("opening the panel on a tab shares it: current_page reads without asking", async () => {
@@ -403,7 +403,7 @@ describe("one agent session per window", () => {
       await new Promise((r) => setTimeout(r, 100));
     }
     const log = join(w!.dataDir, "workspace", "fake-docker-stops.log");
-    for (const end = Date.now() + 10_000; !/webaios-session-[0-9a-f]+\.pid[\s\S]*signaler KILL/.test(read(log)); await new Promise((r) => setTimeout(r, 100)))
+    for (const end = Date.now() + 10_000; !/ressac-session-[0-9a-f]+\.pid[\s\S]*signaler KILL/.test(read(log)); await new Promise((r) => setTimeout(r, 100)))
       if (Date.now() > end) throw new Error(`no kill logged: ${read(log)}`);
   };
 
@@ -469,11 +469,11 @@ describe("one agent session per window", () => {
     await terminalShows("fake agent ready>");
     const a = (await m.command<{ value: string }>("WebDriver:GetWindowHandle")).value;
     const second = await newWindow(m);
-    const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+    const STORE = "chrome://browser/content/ressac/store.sys.mjs";
     const active = () => m.execute<string>(`return (async () => (await ChromeUtils.importESModule("${STORE}").ready).windows.active())()`);
     const focus = async (h: string) => {
       await m.command("WebDriver:SwitchToWindow", { handle: h, focus: true });
-      const id = await m.execute<string>("return window.webaiosWindow.windowId");
+      const id = await m.execute<string>("return window.ressacWindow.windowId");
       for (const end = Date.now() + 10_000; (await active()) !== id; await new Promise((r) => setTimeout(r, 100)))
         if (Date.now() > end) throw new Error("the window did not become active");
       return id;
@@ -482,7 +482,7 @@ describe("one agent session per window", () => {
     const b = await inWindow(m, second, async () => {
       await shown();
       await terminalShows("fake agent ready>");
-      return m.execute<string>("return window.webaiosWindow.windowId");
+      return m.execute<string>("return window.ressacWindow.windowId");
     });
     await dispatch(m, { type: "openTab", windowId: b, url: `${server.url}/texte.html` });
     await dispatch(m, { type: "toggleAgentPanel", windowId: b });
@@ -537,7 +537,7 @@ it("text the agent copies itself (OSC 52, Claude Code's mouse selection) reaches
   await expect.poll(clipboardText, { timeout: 5_000 }).toBe("copié par l'agent ✓");
 });
 
-it("sites get the engine's plain Firefox user agent, with no WebAiOs token (WhatsApp Web refuses it)", async () => {
+it("sites get the engine's plain Firefox user agent, with no Ressac token (WhatsApp Web refuses it)", async () => {
   await launch();
   const ua = await m.execute<string>(`return Cc["@mozilla.org/network/protocol;1?name=http"].getService(Ci.nsIHttpProtocolHandler).userAgent`);
   expect(ua).toMatch(/ Gecko\/20100101 Firefox\/\d+\.\d+$/);
@@ -571,21 +571,21 @@ it("⌘J: the terminal takes the keyboard back when the window's focus is lost d
   // The loss, without a race against the panel's retries (100 and 500 ms): for 150 ms from the first request, the
   // frame's focus does nothing, as when the window's focus is lost in the handover. No timer on this side, which a
   // loaded machine fires late (measured: a 200 ms timer at 577 ms, after the last retry).
-  await m.execute(`const frame = document.getElementById("webaios-agent");
+  await m.execute(`const frame = document.getElementById("ressac-agent");
     const focus = frame.focus.bind(frame);
     let first;
-    window.webaiosTestLost = [];
+    window.ressacTestLost = [];
     frame.focus = (...a) => {
       first ??= performance.now();
       if (performance.now() - first >= 150) return focus(...a);
-      queueMicrotask(() => window.webaiosTestLost.push(document.activeElement?.id || document.activeElement?.localName));
+      queueMicrotask(() => window.ressacTestLost.push(document.activeElement?.id || document.activeElement?.localName));
     };`);
   await pressKeys(m, "Meta+j");
   await shown();
-  await waitFor(m, "return document.activeElement?.id", (v) => v === "webaios-agent");
+  await waitFor(m, "return document.activeElement?.id", (v) => v === "ressac-agent");
   await waitUi(m, "return doc.activeElement?.classList.contains('xterm-helper-textarea')", [], 10_000, "agent");
   // The first requests were lost for real: the keyboard was still on the page after them.
-  expect(await m.execute<string[]>("return window.webaiosTestLost")).toContain("browser");
+  expect(await m.execute<string[]>("return window.ressacTestLost")).toContain("browser");
 });
 
 it("the first build shows its step and the elapsed minutes in the panel", async () => {

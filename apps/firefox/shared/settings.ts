@@ -28,7 +28,7 @@ export type SettingsResult = { ok: true } | { ok: false; error: string };
 
 /** The one-time notice about error reports, also the Settings switch's description. */
 export const TELEMETRY_NOTICE =
-  "WebAiOs envoie à son développeur les plantages et les erreurs, sans adresse de page, pour corriger les bugs de la bêta, et à chaque lancement un identifiant d'installation anonyme pour compter les utilisateurs. Un plantage peut contenir des fragments de mémoire.";
+  "Ressac envoie à son développeur les plantages et les erreurs, sans adresse de page, pour corriger les bugs de la bêta, et à chaque lancement un identifiant d'installation anonyme pour compter les utilisateurs. Un plantage peut contenir des fragments de mémoire.";
 
 export type CodexEngineKind = "chatgpt" | "ollama" | "api";
 export interface CodexEngine {
@@ -96,9 +96,9 @@ export function apiUrlProblem(url: string): string | null {
   return "Adresse invalide (https://…)";
 }
 
-/** What WebAiOs found of Docker on this machine. `stopped`: an app it can start (`app`: its name). `unmanaged`: under tests. */
+/** What Ressac found of Docker on this machine. `stopped`: an app it can start (`app`: its name). `unmanaged`: under tests. */
 export type DockerStatus = { kind: "ready" | "absent" | "unmanaged" } | { kind: "stopped"; app: string };
-/** What WebAiOs found of Ollama on this machine. `unmanaged`: another address is imposed, WebAiOs starts and installs nothing. */
+/** What Ressac found of Ollama on this machine. `unmanaged`: another address is imposed, Ressac starts and installs nothing. */
 export type OllamaStatus = { kind: "ready"; version: string } | { kind: "outdated"; version: string; min: string } | { kind: "stopped" | "absent" | "unmanaged" };
 /** The name the download of Ollama itself goes under, next to the model names. */
 export const OLLAMA_ITSELF = "ollama";

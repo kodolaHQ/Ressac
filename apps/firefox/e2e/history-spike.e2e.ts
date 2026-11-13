@@ -3,13 +3,13 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, it } from "vitest";
 import { dispatch, state, waitFor } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
 import { pressKeys } from "./ui";
 
 // Probes of plan 24's unknowns (docs/superpowers/notes/2026-11-04-historique-telechargements-essai.md). They print what they
-// see rather than assert it: rerun them with WEBAIOS_SPIKE=1 after a Firefox version change and compare with the note.
+// see rather than assert it: rerun them with RESSAC_SPIKE=1 after a Firefox version change and compare with the note.
 
 const NAVIGABLES = "chrome://remote/content/shared/NavigableManager.sys.mjs";
 const note = (what: string, v: unknown) => console.log(`[spike] ${what}: ${JSON.stringify(v)}`);
@@ -17,22 +17,22 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const PLACES_OFF = 'Services.prefs.getDefaultBranch("").setBoolPref("places.history.enabled", false);';
 
 let server: Awaited<ReturnType<typeof startServer>>;
-let w: LaunchedWebAiOs | undefined;
+let w: LaunchedRessac | undefined;
 let m: Marionette;
 const dirs: string[] = [];
 
 async function launch(o: { placesOff: boolean; profile?: string; dataDir?: string; dl?: string }): Promise<string> {
-  const dl = o.dl ?? (await mkdtemp(path.join(os.tmpdir(), "webaios-dl-")));
+  const dl = o.dl ?? (await mkdtemp(path.join(os.tmpdir(), "ressac-dl-")));
   if (!o.dl) dirs.push(dl);
-  w = await launchWebAiOs({ profile: o.profile, dataDir: o.dataDir, prefs: { "browser.download.folderList": 2, "browser.download.dir": dl } });
+  w = await launchRessac({ profile: o.profile, dataDir: o.dataDir, prefs: { "browser.download.folderList": 2, "browser.download.dir": dl } });
   m = w.marionette;
   await m.setContext("chrome");
-  await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+  await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
   if (o.placesOff) await m.execute(PLACES_OFF);
   return dl;
 }
 
-/** Opens `url` in a WebAiOs tab and waits until it is loaded; returns the tab id. */
+/** Opens `url` in a Ressac tab and waits until it is loaded; returns the tab id. */
 async function open(url: string): Promise<string> {
   const before = new Set(Object.keys((await state(m)).tabs));
   const s = await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url });
@@ -46,7 +46,7 @@ const hasVisits = (url: string) => m.execute<boolean>("return PlacesUtils.histor
 
 async function inPage<T>(id: string, script: string): Promise<T> {
   const handle = await m.execute<string>(
-    `const t = gBrowser.tabs.find((t) => t.getAttribute("webaios-tab-id") === arguments[0]);
+    `const t = gBrowser.tabs.find((t) => t.getAttribute("ressac-tab-id") === arguments[0]);
      return ChromeUtils.importESModule("${NAVIGABLES}").NavigableManager.getIdForBrowser(t.linkedBrowser);`,
     [id],
   );
@@ -65,7 +65,7 @@ const DOWNLOADS = `return (async () => {
   return (await list.getAll()).map((d) => ({ succeeded: d.succeeded, path: d.target.path, currentBytes: d.currentBytes, totalBytes: d.totalBytes, hasProgress: d.hasProgress, startTime: String(d.startTime) }));
 })();`;
 
-describe.skipIf(!process.env.WEBAIOS_SPIKE)("history and downloads spike", () => {
+describe.skipIf(!process.env.RESSAC_SPIKE)("history and downloads spike", () => {
   beforeAll(async () => (server = await startServer()));
   afterAll(async () => {
     await server?.close();
@@ -88,7 +88,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("history and downloads spike", () =>
       await sleep(3000);
       note(`${tag} favicon of /icone in the state`, (await state(m)).tabs[id]?.favicon);
       note(`${tag} tab image / mIconURL of /icone's browser`, await m.execute(
-        `const t = gBrowser.tabs.find((t) => t.getAttribute("webaios-tab-id") === arguments[0]); return { image: t.image, mIconURL: t.linkedBrowser.mIconURL ?? null };`,
+        `const t = gBrowser.tabs.find((t) => t.getAttribute("ressac-tab-id") === arguments[0]); return { image: t.image, mIconURL: t.linkedBrowser.mIconURL ?? null };`,
         [id],
       ));
       await m.execute("gBrowser.selectedBrowser.loadURI(Services.io.newURI(arguments[0]), { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });", [b]);
@@ -100,7 +100,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("history and downloads spike", () =>
       await loaded(icon).then(() => note(`${tag} Meta+[ goes back to /icone`, true), async () => note(`${tag} Meta+[`, { now: await current() }));
       await pressKeys(m, "Meta+]");
       await loaded(b).then(() => note(`${tag} Meta+] goes forward to b.html`, true), async () => note(`${tag} Meta+]`, { now: await current() }));
-      const tabs = () => m.execute<number>("return gBrowser.tabs.filter((t) => t.hasAttribute('webaios-tab-id')).length");
+      const tabs = () => m.execute<number>("return gBrowser.tabs.filter((t) => t.hasAttribute('ressac-tab-id')).length");
       const before = await tabs();
       await pressKeys(m, "Meta+w");
       await sleep(800);
@@ -130,8 +130,8 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("history and downloads spike", () =>
   }
 
   it("S2: slow download and cancel", async () => {
-    const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-spike-profile-"));
-    const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-spike-data-"));
+    const profile = await mkdtemp(path.join(os.tmpdir(), "ressac-spike-profile-"));
+    const dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-spike-data-"));
     dirs.push(profile, dataDir);
     const dl = path.join(dataDir, "dl");
     await mkdir(dl);
@@ -163,8 +163,8 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("history and downloads spike", () =>
   for (const placesOff of [true, false]) {
     it(`S2: restart with Places ${placesOff ? "off" : "on"}`, async () => {
       const tag = `S2 restart ${placesOff ? "off" : "on"}`;
-      const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-spike-profile-"));
-      const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-spike-data-"));
+      const profile = await mkdtemp(path.join(os.tmpdir(), "ressac-spike-profile-"));
+      const dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-spike-data-"));
       dirs.push(profile, dataDir);
       const dl = path.join(dataDir, "dl");
       await mkdir(dl);

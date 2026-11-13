@@ -19,7 +19,7 @@ const APP_PREFIX = "app:";
 /** As the page actor. */
 const TEXT_MAX = 100_000;
 
-const internal = (o: Tab) => o.url.startsWith("webaios:");
+const internal = (o: Tab) => o.url.startsWith("ressac:");
 
 /** What the host's bridge mirrors for its two synchronous methods (estPrive, ongletActifPrive). */
 function privateMirror(state: BrowserState, windows: WindowRegistry): { privateTabs: string[]; activePrivate: boolean } {
@@ -103,7 +103,7 @@ export function bridgeHandlers(
   };
   /** `capture`: also the blocks, reader text, structured data and response facts (the search reads only). */
   const getText = async (browser: any, capture = false) => {
-    const r = await browser.browsingContext.currentWindowGlobal.getActor("WebAiOsPage").sendQuery("getText", { capture });
+    const r = await browser.browsingContext.currentWindowGlobal.getActor("RessacPage").sendQuery("getText", { capture });
     // The child runs in a web process: its answer is not trusted.
     const text = String(r?.text ?? "").slice(0, TEXT_MAX);
     const selection = String(r?.selection ?? "").slice(0, TEXT_MAX);
@@ -165,7 +165,7 @@ export function bridgeHandlers(
     },
     // The agent's search tab, in its own login profile; `reuse`: that tab goes to the new address instead.
     "search.open": async ([win, target, reuse]: [WindowId | undefined, { query: string } | { url: string }, string?]) => {
-      const template = Services.env.get("WEBAIOS_TEST_SEARCH_URL") || ENGINES[store.state.settings.engine];
+      const template = Services.env.get("RESSAC_TEST_SEARCH_URL") || ENGINES[store.state.settings.engine];
       const url = "query" in target ? template.replace("%s", encodeURIComponent(target.query)) : target.url;
       if (reuse !== undefined && store.state.tabs[reuse]) {
         tab(reuse);

@@ -28,7 +28,7 @@ const io: string[] = [];
 const substitutions = new Map<string, string | null>();
 
 beforeAll(() => {
-  root = realpathSync(mkdtempSync(join(tmpdir(), "webaios-action-media-")));
+  root = realpathSync(mkdtempSync(join(tmpdir(), "ressac-action-media-")));
   const log =
     <A extends unknown[], R>(name: string, f: (...a: A) => R) =>
     (...a: A) => (io.push(name), f(...a));
@@ -67,7 +67,7 @@ beforeAll(() => {
     },
     ChromeUtils: { importESModule: () => ({ FileUtils: { File: class { constructor(public path: string) {} } } }) },
     Services: {
-      env: { get: (k: string) => (k === "WEBAIOS_TEST_ACTION_IMAGES" ? env : "") },
+      env: { get: (k: string) => (k === "RESSAC_TEST_ACTION_IMAGES" ? env : "") },
       io: {
         getProtocolHandler: () => ({ QueryInterface: () => ({ setSubstitution: (n: string, uri: { spec: string } | null) => substitutions.set(n, uri && uri.spec) }) }),
         newFileURI: (f: { path: string }) => ({ spec: `file://${f.path}` }),
@@ -123,24 +123,24 @@ describe("agent components", () => {
   it("serves one sanitized copy per name, kept until its last page lets it go", async () => {
     write("barres", "<!doctype html><p>barres</p>");
     const url = await serveComponent(data(), "barres");
-    expect(url).toMatch(/^resource:\/\/webaios-component-barres\/component-\d+\.html$/);
-    const copies = join(data(), "webaios-components", "barres");
+    expect(url).toMatch(/^resource:\/\/ressac-component-barres\/component-\d+\.html$/);
+    const copies = join(data(), "ressac-components", "barres");
     const served = readFileSync(join(copies, new URL(url!).pathname.slice(1)), "utf8");
     expect(served).toContain('http-equiv="Content-Security-Policy"');
-    expect(served).toContain("webaios-component");
+    expect(served).toContain("ressac-component");
     expect(served).toContain('defineProperty(w, "Components"');
     // The browser fonts, inlined (font-src data:) under the families the tokens name, after the CSP meta.
     expect(served).toContain(`font-family: "Geist"; font-weight: 300 700; font-style: normal; font-display: block; src: url("data:font/woff2;base64,${btoa("Geist-latin.woff2")}")`);
     for (const family of ["Funnel Display", "Geist Mono"]) expect(served).toContain(`font-family: "${family}"`);
     expect(served).not.toContain("chrome://");
     expect(served.indexOf("@font-face")).toBeGreaterThan(served.indexOf("Content-Security-Policy"));
-    expect(substitutions.get("webaios-component-barres")).toBe(`file://${copies}`);
+    expect(substitutions.get("ressac-component-barres")).toBe(`file://${copies}`);
     expect(await serveComponent(data(), "barres")).toBe(url);
     expect(readdirSync(copies)).toHaveLength(1);
     await releaseComponent(data(), "barres");
-    expect(substitutions.get("webaios-component-barres")).toBe(`file://${copies}`);
+    expect(substitutions.get("ressac-component-barres")).toBe(`file://${copies}`);
     await releaseComponent(data(), "barres");
-    expect(substitutions.get("webaios-component-barres")).toBeNull();
+    expect(substitutions.get("ressac-component-barres")).toBeNull();
     expect(existsSync(copies)).toBe(false);
   });
 

@@ -18,7 +18,7 @@ afterEach(async () => {
 });
 
 async function xpiOf(guid: string, version: string): Promise<{ xpi: string; output: string }> {
-  const d = mkdtempSync(join(tmpdir(), "webaios-amo-test-"));
+  const d = mkdtempSync(join(tmpdir(), "ressac-amo-test-"));
   dirs.push(d);
   mkdirSync(join(d, "copie"));
   writeFileSync(join(d, "copie", "manifest.json"), JSON.stringify({ manifest_version: 2, name: "t", version, browser_specific_settings: { gecko: { id: guid } } }));
@@ -36,10 +36,10 @@ const fake = async (o?: Parameters<typeof startFakeAmo>[0]) => {
 describe("AMO client", () => {
   it("signs a new id then a new version; the JWT carries the issuer", async () => {
     const amo = await fake();
-    const a = await xpiOf("t@agent.webaios", "1.0.0.1");
-    await sign({ ...a, guid: "t@agent.webaios", version: "1.0.0.1", key: key, base: amo.url, stepMs: 10 });
-    const b = await xpiOf("t@agent.webaios", "1.0.0.2");
-    await sign({ ...b, guid: "t@agent.webaios", version: "1.0.0.2", key: key, base: amo.url, stepMs: 10 });
+    const a = await xpiOf("t@agent.ressac", "1.0.0.1");
+    await sign({ ...a, guid: "t@agent.ressac", version: "1.0.0.1", key: key, base: amo.url, stepMs: 10 });
+    const b = await xpiOf("t@agent.ressac", "1.0.0.2");
+    await sign({ ...b, guid: "t@agent.ressac", version: "1.0.0.2", key: key, base: amo.url, stepMs: 10 });
     expect(amo.sends.map((e) => [e.method, e.version])).toEqual([["PUT", "1.0.0.1"], ["POST", "1.0.0.2"]]);
     for (const e of amo.sends) {
       expect(e.auth.startsWith("JWT ")).toBe(true);
@@ -54,8 +54,8 @@ describe("AMO client", () => {
   it("an AMO refusal comes back as is; a stall times out; a 500 is a network error", async () => {
     const error = async (o: Parameters<typeof startFakeAmo>[0], extra: { delay?: number } = {}) => {
       const amo = await fake(o);
-      const a = await xpiOf("t@agent.webaios", "1.0.0.1");
-      const e = await sign({ ...a, guid: "t@agent.webaios", version: "1.0.0.1", key: key, base: amo.url, stepMs: 10, ...extra }).then(() => null, (x) => x);
+      const a = await xpiOf("t@agent.ressac", "1.0.0.1");
+      const e = await sign({ ...a, guid: "t@agent.ressac", version: "1.0.0.1", key: key, base: amo.url, stepMs: 10, ...extra }).then(() => null, (x) => x);
       expect(e).toBeInstanceOf(SignatureError);
       expect(e.message).not.toContain(key.secret);
       return e.message;
@@ -68,9 +68,9 @@ describe("AMO client", () => {
 
   it("a version AMO rejects after validation is refused at once, with AMO's text", async () => {
     const amo = await fake({ fileStatus: "disabled" });
-    const a = await xpiOf("t@agent.webaios", "1.0.0.1");
+    const a = await xpiOf("t@agent.ressac", "1.0.0.1");
     const start = Date.now();
-    const e = await sign({ ...a, guid: "t@agent.webaios", version: "1.0.0.1", key: key, base: amo.url, stepMs: 10, delay: 5000 }).then(() => null, (x) => x);
+    const e = await sign({ ...a, guid: "t@agent.ressac", version: "1.0.0.1", key: key, base: amo.url, stepMs: 10, delay: 5000 }).then(() => null, (x) => x);
     expect(e).toBeInstanceOf(SignatureError);
     expect(e.message.startsWith(deniedSignature(""))).toBe(true);
     expect(e.message).toContain("disabled");
@@ -78,7 +78,7 @@ describe("AMO client", () => {
   });
 
   it("keychain: a `security` that hangs counts as keys absent, its output never shown", async () => {
-    const d = mkdtempSync(join(tmpdir(), "webaios-amo-test-"));
+    const d = mkdtempSync(join(tmpdir(), "ressac-amo-test-"));
     dirs.push(d);
     const slow = join(d, "security");
     writeFileSync(slow, "#!/bin/sh\necho 'keychain: \"acct\"<blob>=\"user:1:abc\"'\necho s3cr3t-do-not-leak\nexec sleep 30\n", { mode: 0o755 });
@@ -94,16 +94,16 @@ describe("AMO client", () => {
   });
 
   it("keys: test env, absent", async () => {
-    expect(await readAmoKey({ WEBAIOS_TEST_AMO_URL: "x", WEBAIOS_TEST_AMO_KEYS: "e:s" })).toEqual({ emitter: "e", secret: "s" });
-    expect(await readAmoKey({ WEBAIOS_TEST_AMO_URL: "x", WEBAIOS_TEST_AMO_KEYS: "user:1:abc:s" })).toEqual({ emitter: "user:1:abc", secret: "s" });
-    expect(await readAmoKey({ WEBAIOS_TEST_AMO_URL: "x" })).toBeNull();
+    expect(await readAmoKey({ RESSAC_TEST_AMO_URL: "x", RESSAC_TEST_AMO_KEYS: "e:s" })).toEqual({ emitter: "e", secret: "s" });
+    expect(await readAmoKey({ RESSAC_TEST_AMO_URL: "x", RESSAC_TEST_AMO_KEYS: "user:1:abc:s" })).toEqual({ emitter: "user:1:abc", secret: "s" });
+    expect(await readAmoKey({ RESSAC_TEST_AMO_URL: "x" })).toBeNull();
   });
 
   // Real AMO, under the owner's account: a real guarded copy of an agent extension, version 1 (new add-on) then 2 (existing one).
-  it.skipIf(process.env.WEBAIOS_AMO !== "1")("real AMO: signs a guarded agent copy, then a second version", { timeout: 40 * 60_000 }, async () => {
+  it.skipIf(process.env.RESSAC_AMO !== "1")("real AMO: signs a guarded agent copy, then a second version", { timeout: 40 * 60_000 }, async () => {
     const k = await readAmoKey({});
     if (!k) throw new Error("AMO keys absent from the keychain");
-    const d = mkdtempSync(join(tmpdir(), "webaios-amo-real-"));
+    const d = mkdtempSync(join(tmpdir(), "ressac-amo-real-"));
     dirs.push(d);
     const folder = `essai-${Date.now()}`;
     const source = join(d, folder);
@@ -115,7 +115,7 @@ describe("AMO client", () => {
         join(source, "manifest.json"),
         JSON.stringify({
           manifest_version: 3,
-          name: "WebAiOs essai",
+          name: "Ressac essai",
           version: "1.0.0",
           background: { service_worker: "fond.js" },
           permissions: ["storage"],
@@ -128,7 +128,7 @@ describe("AMO client", () => {
       expect(r.analysis.denial).toEqual([]);
       const raw = JSON.parse(readFileSync(join(staging, "manifest.json"), "utf8"));
       expect(firefoxDenial(raw, readdirSync(staging, { recursive: true }) as string[])).toEqual([]);
-      const f = /^importScripts\("webaios-background-guard\.js", ("(?:[^"\\]|\\.)*")\);$/m.exec(readFileSync(join(staging, "webaios-background.js"), "utf8"));
+      const f = /^importScripts\("ressac-background-guard\.js", ("(?:[^"\\]|\\.)*")\);$/m.exec(readFileSync(join(staging, "ressac-background.js"), "utf8"));
       const manifest = firefoxManifest(raw, folder, n, f ? (JSON.parse(f[1]!) as string) : undefined);
       writeFileSync(join(staging, "manifest.json"), JSON.stringify(manifest, null, 2));
       const xpi = join(d, `${n}.xpi`);

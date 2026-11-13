@@ -4,27 +4,27 @@ import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from "vitest";
 import type { Action } from "../shared/api";
 import { dispatch, state, waitFor } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
 import { startServer } from "./server";
 import { waitUi } from "./ui";
 
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const PRIVATE_TEXT = "Cet onglet est dans un espace privé : l'agent n'y a pas accès.";
 
 let server: Awaited<ReturnType<typeof startServer>>;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 beforeAll(async () => (server = await startServer()));
 afterAll(() => server?.close());
 beforeEach(async () => {
-  w = await launchWebAiOs({ env: { WEBAIOS_MEMORY_LOOP: "1" } });
+  w = await launchRessac({ env: { RESSAC_MEMORY_LOOP: "1" } });
   m = w.marionette;
   await m.setContext("chrome");
-  await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+  await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
   // The kernel is up once its MCP config is written.
-  const config = join(w.dataDir, "workspace", ".webaios", "mcp.json");
+  const config = join(w.dataDir, "workspace", ".ressac", "mcp.json");
   for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
     if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
   // The home page's panel starts the agent's session, which takes back every access: tools are called after it.
@@ -100,10 +100,10 @@ it("an agent tab sent to the background stays readable and capturable", async ()
 it("navigate loads the agent tab and leaves the keyboard where it was", async () => {
   const { text: id } = await call("open_tab", { url: `${server.url}/a.html` });
   await loaded("/a.html");
-  await m.execute("document.getElementById('webaios-sidebar').focus()");
+  await m.execute("document.getElementById('ressac-sidebar').focus()");
   expect((await call("navigate", { id, url: `${server.url}/b.html` })).error).toBe(false);
   await loaded("/b.html");
-  expect(await m.execute("return document.activeElement?.id")).toBe("webaios-sidebar");
+  expect(await m.execute("return document.activeElement?.id")).toBe("ressac-sidebar");
 });
 
 it("private space: the tab disappears from list_tabs, read_tab / capture_screen / current_page answer PRIVATE_TEXT, open_tab is refused", async () => {
@@ -144,7 +144,7 @@ it("read_tab on a crashed tab answers an error within 15 s", async () => {
   const { text: id } = await call("open_tab", { url: `${server.url}/plante.html` });
   await loaded("/plante.html");
   await m.execute(
-    `const b = gBrowser.tabs.find((t) => t.getAttribute("webaios-tab-id") === arguments[0]).linkedBrowser;
+    `const b = gBrowser.tabs.find((t) => t.getAttribute("ressac-tab-id") === arguments[0]).linkedBrowser;
      Cc["@mozilla.org/processtools-service;1"].getService(Ci.nsIProcessToolsService).crash(b.browsingContext.currentWindowGlobal.domProcess.osPid);`,
     [id],
   );
@@ -159,7 +159,7 @@ it("read_tab on a crashed tab answers an error within 15 s", async () => {
   await loaded("/texte.html");
   // The agent's loads never use the system principal (step 3), revived tab included.
   const principal = await m.execute(
-    `const h = gBrowser.tabs.find((t) => t.getAttribute("webaios-tab-id") === arguments[0]).linkedBrowser.browsingContext.sessionHistory;
+    `const h = gBrowser.tabs.find((t) => t.getAttribute("ressac-tab-id") === arguments[0]).linkedBrowser.browsingContext.sessionHistory;
      const p = h.getEntryAtIndex(h.index).triggeringPrincipal;
      return { system: p.isSystemPrincipal, origin: p.origin };`,
     [id],
@@ -170,13 +170,13 @@ it("read_tab on a crashed tab answers an error within 15 s", async () => {
 
 const crash = (id: string) =>
   m.execute(
-    `const b = gBrowser.tabs.find((t) => t.getAttribute("webaios-tab-id") === arguments[0]).linkedBrowser;
+    `const b = gBrowser.tabs.find((t) => t.getAttribute("ressac-tab-id") === arguments[0]).linkedBrowser;
      Cc["@mozilla.org/processtools-service;1"].getService(Ci.nsIProcessToolsService).crash(b.browsingContext.currentWindowGlobal.domProcess.osPid);`,
     [id],
   );
 const triggeringPrincipal = (id: string) =>
   m.execute(
-    `const h = gBrowser.tabs.find((t) => t.getAttribute("webaios-tab-id") === arguments[0]).linkedBrowser.browsingContext.sessionHistory;
+    `const h = gBrowser.tabs.find((t) => t.getAttribute("ressac-tab-id") === arguments[0]).linkedBrowser.browsingContext.sessionHistory;
      const p = h.getEntryAtIndex(h.index).triggeringPrincipal;
      return { system: p.isSystemPrincipal, origin: p.origin };`,
     [id],
@@ -199,7 +199,7 @@ it("read_tab on a tab that crashes while loading answers the crash error at once
   await loaded("/texte.html");
   // A load that never ends: the read waits for it.
   await call("navigate", { id, url: `${server.url}/lent` });
-  await poll(() => m.execute(`return gBrowser.tabs.find((t) => t.getAttribute("webaios-tab-id") === arguments[0]).linkedBrowser.webProgress.isLoadingDocument`, [id]), (v) => v === true);
+  await poll(() => m.execute(`return gBrowser.tabs.find((t) => t.getAttribute("ressac-tab-id") === arguments[0]).linkedBrowser.webProgress.isLoadingDocument`, [id]), (v) => v === true);
   const start = Date.now();
   const read = call("read_tab", { id });
   await new Promise((r) => setTimeout(r, 500));

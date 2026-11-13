@@ -2,9 +2,9 @@ import { z } from "zod";
 import { AURA_IDS } from "./aura";
 import { HINT_IDS } from "./hints";
 import { SHORTCUT_IDS } from "./shortcuts";
-import { validFolder, ID_EXECUTION, ID_SITE, type Application, type Warning, type BlockCatalogEntry, type DeclarationWidget, type DirectState, type DraftRead, type SaveResult, type AttemptResult, type DevRight, type AiState, type WidgetState, type Execution, type ResumeExecution, type ActionsState, type PageAction, type LaunchResult, type Owner, type RenderedPage } from "@webaios/kernel";
-import type { BatchState, ProjectId, ExternalProject, TrackedProject } from "@webaios/kernel";
-import { PROJECT_ID, type Comment, type DiffFile, type ModifiedFile } from "@webaios/kernel";
+import { validFolder, ID_EXECUTION, ID_SITE, type Application, type Warning, type BlockCatalogEntry, type DeclarationWidget, type DirectState, type DraftRead, type SaveResult, type AttemptResult, type DevRight, type AiState, type WidgetState, type Execution, type ResumeExecution, type ActionsState, type PageAction, type LaunchResult, type Owner, type RenderedPage } from "@ressac/kernel";
+import type { BatchState, ProjectId, ExternalProject, TrackedProject } from "@ressac/kernel";
+import { PROJECT_ID, type Comment, type DiffFile, type ModifiedFile } from "@ressac/kernel";
 import { ClaudeEngineSchema, CodexEngineSchema, type OllamaStatus, type DockerStatus, type AgentAccount, type Backup, type CodexEngine, type ClaudeEngine, type DecisionModel, type LoginResult, type GrantKind, type GrantRow, type SettingsResult, type WorkshopOperation, type PullProgress } from "./settings";
 import type { WorkshopState } from "../../../packages/kernel/src/container/workshop.ts";
 import type { ActionShown } from "./actions";
@@ -111,11 +111,11 @@ export const SchemaAction = z.discriminatedUnion("type", [
     windowId: id,
     id: z.string().regex(/^[a-z0-9-]+$/).max(100),
     name: z.string().max(60),
-    /** An action's workflow (`webaios://workflow/action/<id>`) rather than a widget's. */
+    /** An action's workflow (`ressac://workflow/action/<id>`) rather than a widget's. */
     owner: z.literal("action").optional(),
   }),
   /**
-   * Activates the page of action `id` in this window (a `webaios://action/<id>[/…]` tab, in a non-private space),
+   * Activates the page of action `id` in this window (a `ressac://action/<id>[/…]` tab, in a non-private space),
    * or opens it; `execution` shows that result there.
    */
   z.object({
@@ -189,8 +189,8 @@ export interface AgentViewState {
   running: boolean;
 }
 
-/** The API the UI gets as `window.webaios` (ui/install-api.ts). */
-export interface ApiWebaios {
+/** The API the UI gets as `window.ressac` (ui/install-api.ts). */
+export interface ApiRessac {
   windowId: WindowId;
   dispatch(action: Action): void;
   onState(callback: (e: BrowserState) => void): () => void;
@@ -303,8 +303,8 @@ export interface ApiWebaios {
     run(id: string, execution: string): Promise<Execution | null>;
   };
   /**
-   * The visual builder of workflows: a widget's (page `webaios://workflow/<id>`) or an action's
-   * (`webaios://workflow/action/<id>`, refused when the window's active space is private).
+   * The visual builder of workflows: a widget's (page `ressac://workflow/<id>`) or an action's
+   * (`ressac://workflow/action/<id>`, refused when the window's active space is private).
    */
   workflow: {
     catalog(): Promise<BlockCatalogEntry[]>;
@@ -336,7 +336,7 @@ export interface ApiWebaios {
     onProgress(callback: (line: string) => void): () => void;
   };
   /**
-   * The actions (`~/WebAiOs/actions`) and their pages. Refused when the window's active space is private
+   * The actions (`~/Ressac/actions`) and their pages. Refused when the window's active space is private
    * (`ACTIONS_IN_PRIVATE_SPACE`, or nothing: `[]`, `null`).
    */
   actions: {
@@ -372,7 +372,7 @@ export interface ApiWebaios {
     viewWorkflow(id: string): void;
   };
   /**
-   * The agent's recaps (`webaios://recap/<id>`), served by the host whether or not the kernel runs. Nothing in a private
+   * The agent's recaps (`ressac://recap/<id>`), served by the host whether or not the kernel runs. Nothing in a private
    * space (`null`, no link opened).
    */
   recaps: {
@@ -504,7 +504,7 @@ export interface SettingsApi {
   telemetry(): Promise<{ available: boolean; enabled: boolean }>;
   setTelemetry(enabled: boolean): void;
   version(): Promise<string>;
-  /** Whether macOS opens web links with WebAiOs. */
+  /** Whether macOS opens web links with Ressac. */
   defaultBrowser(): Promise<boolean>;
   /** macOS asks for confirmation itself: read `defaultBrowser()` again for the answer. */
   setDefaultBrowser(): void;
@@ -578,7 +578,7 @@ export type AgentPanelState =
   | { state: "done"; code: number };
 
 const idWidget = z.string().regex(/^[a-z0-9-]+$/).max(100);
-/** Id of an action (name of its folder under `~/WebAiOs/actions`). */
+/** Id of an action (name of its folder under `~/Ressac/actions`). */
 export const SchemaIdAction = z.string().regex(/^[a-z0-9-]{1,60}$/);
 /** Input of an action coming from the UI: bounded here, cut by the kernel. */
 export const ActionInputSchema = z.string().max(2000).nullable();
@@ -644,7 +644,7 @@ export type WorkflowEdit = DraftRead & {
     web: boolean;
     harvest: { minutes: number | null; hours: string[]; maxDurationMinutes: number | null; notify: boolean } | null;
   };
-  /** What `action.json` declares, read-only (never written by WebAiOs). Absent for a widget. */
+  /** What `action.json` declares, read-only (never written by Ressac). Absent for a widget. */
   action?: {
     name: string;
     account: string[];
@@ -681,7 +681,7 @@ export type ShownWidget =
       name: string;
       placement: Placement;
       sizes: DeclarationWidget["sizes"];
-      /** `webaios-widget://<id>/display.html?v=<mtime>`, or null until the agent has written the display. */
+      /** `ressac-widget://<id>/display.html?v=<mtime>`, or null until the agent has written the display. */
       src: string | null;
       data: unknown | null;
       example: unknown | null;
@@ -718,7 +718,7 @@ export interface LocalAiStateShown {
 }
 
 /** What an app window's badge UI gets (ui/badge-api.ts): the agent's access and its app's design mode. */
-export type BadgeApi = Pick<ApiWebaios, "access" | "onAccess"> & {
+export type BadgeApi = Pick<ApiRessac, "access" | "onAccess"> & {
   /** Asks the main process to enlarge (bubble open) or shrink the badge's view. */
   badgeSize(opened: boolean): void;
   /** The design mode of the app window; « Panier » opens it in the window's overlay. */

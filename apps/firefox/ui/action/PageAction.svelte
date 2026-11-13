@@ -1,7 +1,7 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import { fade } from "svelte/transition";
-  import type { ActionsState, PageAction, ResumeExecution } from "@webaios/kernel";
+  import type { ActionsState, PageAction, ResumeExecution } from "@ressac/kernel";
   import { ACTION_UNKNOWN, NO_RESULT, RESULT_GONE, type ActionShown } from "../../shared/actions";
   import AccountGrantCard from "../components/AccountGrantCard.svelte";
   import { api } from "../state.svelte";
@@ -11,7 +11,7 @@
   import { actionContext } from "./types";
 
   /**
-   * The page `webaios://action/<id>[/<run>]`: the requested result (the latest without `execution`), the progress of a
+   * The page `ressac://action/<id>[/<run>]`: the requested result (the latest without `execution`), the progress of a
    * running run, the states (grant, error, empty, never run). Opening, reloading or restoring it never launches
    * anything: only « Lancer »/« Relancer » (or Enter in the input) and the account grant launch the action.
    */
@@ -74,7 +74,7 @@
         review = setTimeout(() => void load(), 2000);
       }
     } catch (e) {
-      console.error(`[webaios] page of action ${id}:`, e);
+      console.error(`[ressac] page of action ${id}:`, e);
     }
   }
 

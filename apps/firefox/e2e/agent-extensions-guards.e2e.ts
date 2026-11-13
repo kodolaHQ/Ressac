@@ -10,14 +10,14 @@ import { writeAgentExtension } from "./extensions/fixtures";
 import { installAddon } from "./addons";
 import { agentAddons, grant, inPage, launchWithAmo, openTab } from "./agent-extensions";
 import { waitFor } from "./firefox";
-import type { LaunchedWebAiOs } from "./launch";
+import type { LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
 
 // The agent extensions' network guard. Firefox sends every https request to a recording proxy, which answers CONNECT and
 // serves the tunnel with a self-signed certificate (Firefox's certificate checks turned off for the run). « Nothing
 // leaves » is checked by `hits`: what the proxy saw, by host and path (a bare tunnel is « (connexion) »).
-const ID = "reseau@agent.webaios";
+const ID = "reseau@agent.ressac";
 
 type Hit = { host: string; path: string };
 let proxy: { port: number; hits: Hit[]; close(): Promise<void> };
@@ -25,7 +25,7 @@ let certs: string;
 let server: Awaited<ReturnType<typeof startServer>>;
 beforeAll(async () => {
   server = await startServer();
-  certs = mkdtempSync(path.join(os.tmpdir(), "webaios-cert-"));
+  certs = mkdtempSync(path.join(os.tmpdir(), "ressac-cert-"));
   const [key, cert] = [path.join(certs, "key.pem"), path.join(certs, "cert.pem")];
   execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", key, "-out", cert, "-days", "2", "-subj", "/CN=accorde.test"], { stdio: "ignore" });
   const hits: Hit[] = [];
@@ -100,7 +100,7 @@ const EXTENSION_NETWORK = {
     background: { service_worker: "fond.js" },
     action: { default_popup: "page.html" },
   },
-  "webaios.json": { network: ["accorde.test"] },
+  "ressac.json": { network: ["accorde.test"] },
   "fond.js": `const resultats = {};
 const essai = async (nom, f) => {
   try {
@@ -218,7 +218,7 @@ document.title = JSON.stringify(vu);
     } catch (e) { dnr = String(e && e.message); }
     let rtc;
     try { new w.RTCPeerConnection(); rtc = "creee"; } catch (e) { rtc = String(e && e.message); }
-    return { chrome: typeof c, tabs: typeof (c && c.tabs), dnrFige: d ? d.configurable === false : null, dnr, rtc: typeof w.RTCPeerConnection, rtcEssai: rtc, webaios: typeof w.__webaios, protocole: w.location.protocol };
+    return { chrome: typeof c, tabs: typeof (c && c.tabs), dnrFige: d ? d.configurable === false : null, dnr, rtc: typeof w.RTCPeerConnection, rtcEssai: rtc, ressac: typeof w.__ressac, protocole: w.location.protocol };
   };
   // Firefox: a frame that is cross-origin to the page (srcdoc) is out of its reach.
   const sonder = async (w, nom) => { try { return await sonderNu(w, nom); } catch (e) { if (e && e.name === "SecurityError") return { inaccessible: true }; throw e; } };
@@ -331,13 +331,13 @@ document.title = JSON.stringify(vu);
   document.body.appendChild(propre);
   await new Promise((ok) => propre.addEventListener("load", ok, { once: true }));
   await new Promise((ok) => setTimeout(ok, 500));
-  vu.propre = { titre: propre.contentDocument.title, chrome: typeof propre.contentWindow.chrome, webaios: typeof propre.contentWindow.__webaios };
+  vu.propre = { titre: propre.contentDocument.title, chrome: typeof propre.contentWindow.chrome, ressac: typeof propre.contentWindow.__ressac };
   vu.regles = (await chrome.declarativeNetRequest.getDynamicRules()).map((r) => r.action.type);
   document.title = JSON.stringify(vu);
 })().catch((e) => (document.title = "erreur " + e));
 `,
   "srcdoc.js": `(async () => {
-  const vu = { chrome: typeof chrome, webaios: typeof __webaios, rtc: typeof RTCPeerConnection };
+  const vu = { chrome: typeof chrome, ressac: typeof __ressac, rtc: typeof RTCPeerConnection };
   try { await chrome.declarativeNetRequest.updateDynamicRules({ removeRuleIds: [5], addRules: [{ id: 5, priority: 1, action: { type: "redirect", redirect: { url: "https://autre.test/fuite-srcdoc" } }, condition: { urlFilter: "/rien-srcdoc", resourceTypes: ["xmlhttprequest"] } }] }); vu.dnr = "acceptee"; } catch (e) { vu.dnr = "refusee"; }
   try { vu.ouvre = String(open("https://autre.test/srcdoc-ouvre")); } catch (e) { vu.ouvre = "erreur"; }
   parent.postMessage(vu, "*");
@@ -412,9 +412,9 @@ const EXTENSION_GUARD = {
       { matches: ["https://hote.test/*"], js: ["evade.js"], css: ["fuite.css"], run_at: "document_start" },
     ],
   },
-  "webaios.json": { network: ["accorde.test"] },
+  "ressac.json": { network: ["accorde.test"] },
   // Written to break out of a textual wrapper (`});` … `(() => {`): runs nowhere, not even before the background's answer.
-  "evade.js": '});\ndocument.documentElement.setAttribute("data-evade", "1");\nglobalThis.__webaiosApres(() => {\n',
+  "evade.js": '});\ndocument.documentElement.setAttribute("data-evade", "1");\nglobalThis.__ressacApres(() => {\n',
   // An agent stylesheet that loads an image from autre.test: never requested from an invisible read.
   "fuite.css": "html { background-image: url(https://autre.test/cs-css); }\n",
   // Without a lexical declaration: rerun in the same world, it would count every pass (contenu.js, for its part, would throw on its `const`).
@@ -472,14 +472,14 @@ document.body.append(" AGENT-VU ");
   "injecte.js": `document.getElementById("mdp").value + "|" + document.getElementById("texte").value;\n`,
   "fond.js": `// It tries to answer « onglet » to the page guard in its place: the background guard does not let it see it.
 chrome.runtime.onMessage.addListener((m, _e, repondre) => {
-  if (m && m.webaios === "context") repondre({ tab: true });
+  if (m && m.ressac === "context") repondre({ tab: true });
 });
 // And through the event prototype's method, taken apart.
 let porteur = chrome.runtime.onMessage;
 while (porteur && !Object.prototype.hasOwnProperty.call(Object.getPrototypeOf(porteur) || {}, "addListener")) porteur = Object.getPrototypeOf(porteur);
 const ajouterNatif = porteur ? Object.getPrototypeOf(porteur).addListener : chrome.runtime.onMessage.addListener;
 ajouterNatif.call(chrome.runtime.onMessage, (m, _e, repondre) => {
-  if (m && m.webaios === "context") repondre({ tab: true });
+  if (m && m.ressac === "context") repondre({ tab: true });
 });
 // Where are the event's methods, and are they the guard's (non-configurable)?
 const porteurs = [];
@@ -534,19 +534,19 @@ const GRANT_KEPT = {
 };
 
 const dirs: string[] = [];
-const opened: LaunchedWebAiOs[] = [];
+const opened: LaunchedRessac[] = [];
 afterEach(async () => {
   for (const w of opened.splice(0)) await w.close();
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
 
-/** The « réseau » extension granted, WebAiOs launched behind the recording proxy; resolves once it is installed and running. */
+/** The « réseau » extension granted, Ressac launched behind the recording proxy; resolves once it is installed and running. */
 const launchNetwork = () => launchAgent("reseau", EXTENSION_NETWORK, NETWORK_GRANT);
 
-/** Agent extension `nom` granted, WebAiOs launched behind the recording proxy; resolves once it is installed and running. */
-async function launchAgent(name: string, files: Record<string, string | object>, access: object): Promise<LaunchedWebAiOs & { uuid: string; dataDir: string }> {
-  const id = `${name}@agent.webaios`;
-  const f = { dataDir: mkdtempSync(path.join(os.tmpdir(), "webaios-data-")), profile: mkdtempSync(path.join(os.tmpdir(), "webaios-firefox-")) };
+/** Agent extension `nom` granted, Ressac launched behind the recording proxy; resolves once it is installed and running. */
+async function launchAgent(name: string, files: Record<string, string | object>, access: object): Promise<LaunchedRessac & { uuid: string; dataDir: string }> {
+  const id = `${name}@agent.ressac`;
+  const f = { dataDir: mkdtempSync(path.join(os.tmpdir(), "ressac-data-")), profile: mkdtempSync(path.join(os.tmpdir(), "ressac-firefox-")) };
   dirs.push(f.dataDir, f.profile);
   writeAgentExtension(path.join(f.dataDir, "workspace"), name, files);
   grant(f.dataDir, name, access);
@@ -577,7 +577,7 @@ async function launchAgent(name: string, files: Record<string, string | object>,
 }
 
 /** The background's startup tries are over (its block rule set): the results it kept, read from its page. */
-const backgroundResults = async (w: LaunchedWebAiOs & { uuid: string }) =>
+const backgroundResults = async (w: LaunchedRessac & { uuid: string }) =>
   JSON.parse((await extensionPage(w.marionette, `moz-extension://${w.uuid}/resultats.html`, 0)).title) as Record<string, unknown>;
 
 /**
@@ -619,7 +619,7 @@ function checkFrames(title: string): void {
   expect(seen.regles).toEqual(["block"]);
 }
 
-const order = async (w: LaunchedWebAiOs & { uuid: string }, what: string) => (await extensionPage(w.marionette, `moz-extension://${w.uuid}/ordre.html?${what}`, 0)).title;
+const order = async (w: LaunchedRessac & { uuid: string }, what: string) => (await extensionPage(w.marionette, `moz-extension://${w.uuid}/ordre.html?${what}`, 0)).title;
 
 describe("agent extensions: network guard", () => {
   it("the background cannot send to a domain not granted (fetch, WebSocket); to the granted one, yes", async () => {
@@ -647,12 +647,12 @@ describe("agent extensions: network guard", () => {
     const w = await launchNetwork();
     const r = await backgroundResults(w);
     expect(r).toMatchObject({
-      ongletRefuse: { erreur: "URL refusée par WebAiOs" },
-      ongletDonnees: { erreur: "URL refusée par WebAiOs" },
+      ongletRefuse: { erreur: "URL refusée par Ressac" },
+      ongletDonnees: { erreur: "URL refusée par Ressac" },
       ongletPermis: { ok: "number" },
-      fenetreRefusee: { erreur: "URL refusée par WebAiOs" },
-      dnrRedirect: { erreur: "Règle DNR refusée par WebAiOs (redirect)" },
-      dnrEntetes: { erreur: "Règle DNR refusée par WebAiOs (modifyHeaders)" },
+      fenetreRefusee: { erreur: "URL refusée par Ressac" },
+      dnrRedirect: { erreur: "Règle DNR refusée par Ressac (redirect)" },
+      dnrEntetes: { erreur: "Règle DNR refusée par Ressac (modifyHeaders)" },
       dnrBlock: { ok: "acceptee" },
       dnrRegles: { ok: ["block"] },
       rtc: { ok: "undefined" },
@@ -668,7 +668,7 @@ describe("agent extensions: network guard", () => {
   it("with an agent extension running, another add-on still blocks (DNR) and sends where it likes; pages load", async () => {
     const w = await launchNetwork();
     const m = w.marionette;
-    const other = "bloqueur-statique@webaios.test";
+    const other = "bloqueur-statique@ressac.test";
     await installAddon(m, {
       id: other,
       manifest: {
@@ -708,8 +708,8 @@ describe("agent extensions: network guard", () => {
     await until(() => hitsTo("hote.test", "/ancre").length > 0);
     // Firefox may refuse an absolute popup address itself.
     expect(await order(w, "popup-fuite")).toMatch(/^(fait|Access denied for URL https:\/\/autre\.test\/popup-fuite)$/);
-    await waitFor(m, `return !!window.webaiosWindow.addons.buttons().find((b) => b.id === ${JSON.stringify(ID)})?.enabled`, (v) => v === true);
-    await m.execute(`window.webaiosWindow.addons.click(arguments[0], { x: 0, y: 0, width: 24, height: 24 });`, [ID]);
+    await waitFor(m, `return !!window.ressacWindow.addons.buttons().find((b) => b.id === ${JSON.stringify(ID)})?.enabled`, (v) => v === true);
+    await m.execute(`window.ressacWindow.addons.click(arguments[0], { x: 0, y: 0, width: 24, height: 24 });`, [ID]);
     await sleep(1500);
     expect(hitsTo("autre.test")).toEqual([]);
   });
@@ -720,7 +720,7 @@ describe("agent extensions: network guard", () => {
     const w = await launchNetwork();
     await backgroundResults(w);
     const page = await extensionPage(w.marionette, `moz-extension://${w.uuid}/tableaux.html`, 0);
-    expect(JSON.parse(page.title)).toEqual({ erreur: "Règle DNR refusée par WebAiOs (tableau à trous)", lus: 0, regles: ["block"] });
+    expect(JSON.parse(page.title)).toEqual({ erreur: "Règle DNR refusée par Ressac (tableau à trous)", lus: 0, regles: ["block"] });
   });
 
   it("dns-prefetch, preconnect, prefetch… links of an agent page to a domain not granted contact nothing", async () => {
@@ -759,14 +759,14 @@ describe("agent extensions: network guard", () => {
 
   // Firefox has rights the guard must refuse too (review probe): refused at the copy, before any card or signature.
   it("an agent extension asking identity, notifications, dns or find is refused at the copy: nothing signed, nothing installed", async () => {
-    const f = { dataDir: mkdtempSync(path.join(os.tmpdir(), "webaios-data-")), profile: mkdtempSync(path.join(os.tmpdir(), "webaios-firefox-")) };
+    const f = { dataDir: mkdtempSync(path.join(os.tmpdir(), "ressac-data-")), profile: mkdtempSync(path.join(os.tmpdir(), "ressac-firefox-")) };
     dirs.push(f.dataDir, f.profile);
     const perms = ["cookies", "declarativeNetRequest", "storage", "tabs", "identity", "notifications", "dns", "find"];
     writeAgentExtension(path.join(f.dataDir, "workspace"), "reseau", { ...EXTENSION_NETWORK, "manifest.json": { ...EXTENSION_NETWORK["manifest.json"], permissions: perms } });
     grant(f.dataDir, "reseau", { ...NETWORK_GRANT, permissions: perms });
     const w = await launchWithAmo(f);
     opened.push(w);
-    await w.marionette.execute(`return (async () => { await (await ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready).agentExtensions.ready; })();`);
+    await w.marionette.execute(`return (async () => { await (await ChromeUtils.importESModule("chrome://browser/content/ressac/store.sys.mjs").ready).agentExtensions.ready; })();`);
     expect(w.amo.sends).toEqual([]);
     expect(await agentAddons(w.marionette)).toEqual([]);
     expect(proxy.hits.filter((h) => h.host.endsWith("autre.test"))).toEqual([]);
@@ -792,8 +792,8 @@ describe("agent extensions: network guard", () => {
     expect(await order(w, "popup-capture")).toBe("fait");
     await openTab(m, "https://autre.test/lisible");
     await until(() => hitsTo("autre.test", "/lisible").length > 0);
-    await waitFor(m, `return !!window.webaiosWindow.addons.buttons().find((b) => b.id === ${JSON.stringify(ID)})?.enabled`, (v) => v === true);
-    await m.execute(`window.webaiosWindow.addons.click(arguments[0], { x: 0, y: 0, width: 24, height: 24 });`, [ID]);
+    await waitFor(m, `return !!window.ressacWindow.addons.buttons().find((b) => b.id === ${JSON.stringify(ID)})?.enabled`, (v) => v === true);
+    await m.execute(`window.ressacWindow.addons.click(arguments[0], { x: 0, y: 0, width: 24, height: 24 });`, [ID]);
     const title = await waitFor<string | null>(
       m,
       `const b = [...document.querySelectorAll("browser")].find((b) => b.currentURI?.spec.endsWith("/capture.html"));
@@ -813,8 +813,8 @@ describe("agent extensions: network guard", () => {
     await openTab(m, "https://hote.test/ancre-cadres");
     await until(() => hitsTo("hote.test", "/ancre-cadres").length > 0);
     expect(await order(w, "popup-cadres")).toBe("fait");
-    await waitFor(m, `return !!window.webaiosWindow.addons.buttons().find((b) => b.id === ${JSON.stringify(ID)})?.enabled`, (v) => v === true);
-    await m.execute(`window.webaiosWindow.addons.click(arguments[0], { x: 0, y: 0, width: 24, height: 24 });`, [ID]);
+    await waitFor(m, `return !!window.ressacWindow.addons.buttons().find((b) => b.id === ${JSON.stringify(ID)})?.enabled`, (v) => v === true);
+    await m.execute(`window.ressacWindow.addons.click(arguments[0], { x: 0, y: 0, width: 24, height: 24 });`, [ID]);
     // The popup's browser (webext-browsers) on cadre.html: its title is the report.
     const title = await waitFor<string | null>(
       m,
@@ -853,7 +853,7 @@ describe("agent extensions: network guard", () => {
 // The agent's content scripts.
 describe("agent extensions: content scripts", () => {
   const launchGuard = () => launchAgent("garde", EXTENSION_GUARD, GRANT_KEPT);
-  /** What the agent's content script noted in WebAiOs tab `tab` (null: nothing). */
+  /** What the agent's content script noted in Ressac tab `tab` (null: nothing). */
   const seenByAgent = async (m: Marionette, tab: string) => {
     const raw = await inPage<string | null>(m, tab, "return document.documentElement.getAttribute('data-agent')");
     return typeof raw === "string" ? (JSON.parse(raw) as Record<string, any>) : null;
@@ -932,14 +932,14 @@ describe("agent extensions: content scripts", () => {
     for (const path of ["/cs-fetch", "/cs-image", "/cs-xhr", "/cs-beacon", "/cs-ws", "/cs-source", "/cs-attribut", "/cs-lien", "/cs-ouvre"])
       expect(hitsTo("autre.test", path), path).toEqual([]);
     expect(seen.reseau).toMatchObject({
-      "fetch-autre.test": "URL refusée par WebAiOs",
-      "image-autre.test": "URL refusée par WebAiOs",
-      "xhr-autre": "URL refusée par WebAiOs",
+      "fetch-autre.test": "URL refusée par Ressac",
+      "image-autre.test": "URL refusée par Ressac",
+      "xhr-autre": "URL refusée par Ressac",
       "beacon-autre": "refusé",
-      "ws-autre": "URL refusée par WebAiOs",
-      "source-autre": "URL refusée par WebAiOs",
-      "attribut-autre": "URL refusée par WebAiOs",
-      "lien-autre": "URL refusée par WebAiOs",
+      "ws-autre": "URL refusée par Ressac",
+      "source-autre": "URL refusée par Ressac",
+      "attribut-autre": "URL refusée par Ressac",
+      "lien-autre": "URL refusée par Ressac",
       "ouvrir-autre": "null",
       "fetch-hote.test": "parti",
       "image-hote.test": "parti",
@@ -964,7 +964,7 @@ describe("agent extensions: content scripts", () => {
       };
       Services.obs.addObserver(o, "http-on-modify-request");`);
     await m.execute(`window.reading = null;
-      ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready
+      ChromeUtils.importESModule("chrome://browser/content/ressac/store.sys.mjs").ready
         .then((s) => s.readPage("https://hote.test/lecture", { profile: "default", domains: ["hote.test"], localAddresses: true }))
         .then((p) => (window.reading = { ok: p }), (e) => (window.reading = { err: String(e?.message ?? e) }));`);
     const readingTabId = await waitFor<number | null>(m, "return window.readingTabId", (v) => v !== null);
@@ -1017,10 +1017,10 @@ document.documentElement.setAttribute("data-sonde", JSON.stringify(r));`,
       open: "null",
       selfOpen: "null",
       "open-nu": "null",
-      fetch: "URL refusée par WebAiOs",
-      xhr: "URL refusée par WebAiOs",
-      ws: "URL refusée par WebAiOs",
-      source: "URL refusée par WebAiOs",
+      fetch: "URL refusée par Ressac",
+      xhr: "URL refusée par Ressac",
+      ws: "URL refusée par Ressac",
+      source: "URL refusée par Ressac",
       "fetch-hote": "parti",
     });
     expect(hitsTo("autre.test")).toEqual([]);
@@ -1105,9 +1105,9 @@ noter();`,
     const tab = await openTab(m, "https://hote.test/formulaire?masque");
     expect((await poll(() => seenByAgent(m, tab), (v) => v?.ecoute === true))?.ecoute).toBe(true);
     const registry = () => JSON.parse(readFileSync(path.join(w.dataDir, "extensions", "state.json"), "utf8"));
-    await until(() => registry().hiddenConsoles?.includes("garde@agent.webaios"));
+    await until(() => registry().hiddenConsoles?.includes("garde@agent.ressac"));
     expect(registry().extensions["agent:garde"].hiddenConsole).toEqual(["default"]);
-    expect(registry().hiddenConsoles).toEqual(["garde@agent.webaios"]);
+    expect(registry().hiddenConsoles).toEqual(["garde@agent.ressac"]);
   });
 });
 
@@ -1118,7 +1118,7 @@ describe("agent extensions: tabs without the tabs right or a host", () => {
    */
   const spy = (manifest: object) => ({
     "manifest.json": { manifest_version: 3, name: "Espion de l'agent", version: "1.0.0", background: { service_worker: "fond.js" }, ...manifest },
-    "webaios.json": { network: [] },
+    "ressac.json": { network: [] },
     "fond.js": `const montrer = (t) => ({ id: t.id, url: t.url ?? null, title: t.title ?? null, favIconUrl: t.favIconUrl ?? null, pendingUrl: t.pendingUrl ?? null });
 const events = [];
 chrome.tabs.onUpdated.addListener((id, c, t) => events.push({ update: c, tab: montrer(t) }));
@@ -1141,12 +1141,12 @@ chrome.runtime.onMessage.addListener((m, _e, repondre) => {
   });
   const grantOf = (permissions: string[], hosts: string[]) => ({ permissions, hosts: hosts, network: [], allSites: false, allSitesScripts: false, scripts: false });
   type Seen = { id: number; url: string | null; title: string | null; favIconUrl: string | null; pendingUrl: string | null };
-  const snap = async (w: LaunchedWebAiOs & { uuid: string }) =>
+  const snap = async (w: LaunchedRessac & { uuid: string }) =>
     JSON.parse(await order(w, "snap")) as { query: Seen[]; gets: Seen[]; windows: Seen[]; events: ({ update?: object; tab: Seen } | { created: Seen })[] };
   const everything = (v: object) => JSON.stringify(v);
 
   /** Opens an own-site and a foreign tab, waits for the proxy to have served both. */
-  async function openBoth(w: LaunchedWebAiOs) {
+  async function openBoth(w: LaunchedRessac) {
     await openTab(w.marionette, "https://hote.test/a");
     await until(() => hitsTo("hote.test", "/a").length > 0);
     await openTab(w.marionette, "https://autre.test/b");

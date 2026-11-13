@@ -1,15 +1,15 @@
 {
-  "name": "firefox-webaios",
+  "name": "firefox-ressac",
   "private": true,
   "version": "0.1.3",
   "type": "module",
   "scripts": {
     "engine:install": "zsh scripts/env.sh zsh scripts/engine.sh install",
     "engine:link": "zsh scripts/env.sh zsh scripts/engine.sh link",
-    "engine:import": "zsh scripts/ui.sh && zsh scripts/engine.sh prune && zsh scripts/env.sh surfer set brand webaios && zsh scripts/env.sh surfer import",
+    "engine:import": "zsh scripts/ui.sh && zsh scripts/engine.sh prune && zsh scripts/env.sh surfer set brand ressac && zsh scripts/env.sh surfer import",
     "engine:bootstrap": "zsh scripts/env.sh zsh -c 'cd engine && ./mach --no-interactive bootstrap --application-choice browser'",
-    "build": "zsh scripts/ui.sh && zsh scripts/env.sh surfer set brand webaios && zsh scripts/env.sh surfer build",
-    "build:ui": "zsh scripts/ui.sh && zsh scripts/env.sh surfer set brand webaios && zsh scripts/env.sh surfer build --ui",
+    "build": "zsh scripts/ui.sh && zsh scripts/env.sh surfer set brand ressac && zsh scripts/env.sh surfer build",
+    "build:ui": "zsh scripts/ui.sh && zsh scripts/env.sh surfer set brand ressac && zsh scripts/env.sh surfer build --ui",
     "build:host": "vite build --mode host",
     "test": "vitest run",
     "e2e": "vitest run -c vitest.e2e.config.ts",
@@ -18,7 +18,7 @@
     "package": "zsh scripts/env.sh zsh scripts/package.sh"
   },
   "dependencies": {
-    "@webaios/kernel": "workspace:*"
+    "@ressac/kernel": "workspace:*"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "1.32.2",

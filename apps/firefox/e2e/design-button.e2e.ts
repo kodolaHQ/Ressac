@@ -8,7 +8,7 @@ import { UNAVAILABLE_DESIGN } from "../shared/design-guards";
 import { openTab, testActor } from "./agent-extensions";
 import { startDesignServers, trustedMouse } from "./design";
 import { dispatch, inWindow, newWindow, state, waitFor, waitWindowCount } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { declareProject, openApplications } from "./review";
 import { inBrowser, resolveLocalHosts } from "./sites";
@@ -20,28 +20,28 @@ import { click, inUi, pressKeys, typeText } from "./ui";
 const PORT = 15313;
 const BLOCK = "15310-15314";
 const B = "gBrowser.selectedBrowser";
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const tid = (id: string) => `[data-testid="${id}"]`;
 
 let demo: Awaited<ReturnType<typeof startDesignServers>>;
 /** An external project's pages: 127.0.0.1 on a free port, outside the block (declared by the MCP client later). */
 let ext: Awaited<ReturnType<typeof startDesignServers>>;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 const dirs: string[] = [];
 
 async function boot(env: Record<string, string> = {}): Promise<void> {
-  const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
-  const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
+  const profile = await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
   dirs.push(dataDir, profile);
   const a = testActor(profile);
-  w = await launchWebAiOs({ dataDir, profile, env: { ...a.env, WEBAIOS_APP_PORTS: BLOCK, ...env }, prefs: a.prefs });
+  w = await launchRessac({ dataDir, profile, env: { ...a.env, RESSAC_APP_PORTS: BLOCK, ...env }, prefs: a.prefs });
   m = w.marionette;
   await m.setContext("chrome");
-  await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+  await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
   await resolveLocalHosts(m, ["localhost"]);
-  await waitFor(m, `return (async () => { const d = (await ChromeUtils.importESModule("${STORE}").ready).design; return d.state({ type: "window", windowId: window.webaiosWindow.windowId }).then(() => true, () => false); })();`, (v) => v === true, 30_000);
+  await waitFor(m, `return (async () => { const d = (await ChromeUtils.importESModule("${STORE}").ready).design; return d.state({ type: "window", windowId: window.ressacWindow.windowId }).then(() => true, () => false); })();`, (v) => v === true, 30_000);
 }
 
 beforeAll(async () => {
@@ -59,11 +59,11 @@ afterAll(async () => {
 /** Runs `body` with `d` the design service, `t` the current window's target, `store` the store. */
 const svc = <R = unknown>(body: string, args: unknown[] = []) =>
   m.execute<R>(
-    `return (async (args) => { const store = await ChromeUtils.importESModule("${STORE}").ready, d = store.design; const t = { type: "window", windowId: window.webaiosWindow.windowId }; ${body} })([...arguments]);`,
+    `return (async (args) => { const store = await ChromeUtils.importESModule("${STORE}").ready, d = store.design; const t = { type: "window", windowId: window.ressacWindow.windowId }; ${body} })([...arguments]);`,
     args,
   );
 const designState = () => svc<{ active: boolean; basket: number; project: { project: string } | null }>("return await d.state(t);");
-const hosts = () => inBrowser<number>(m, B, `return document.querySelectorAll("webaios-viewfinder").length;`);
+const hosts = () => inBrowser<number>(m, B, `return document.querySelectorAll("ressac-viewfinder").length;`);
 const button = () =>
   inUi<{ disabled: boolean; title: string; pressed: string; count: string | null } | null>(
     m,
@@ -80,12 +80,12 @@ async function open(url: string): Promise<string> {
 }
 const activate = async (id: string) => {
   await dispatch(m, { type: "activateTab", id });
-  await waitFor(m, `return gBrowser.selectedTab.getAttribute("webaios-tab-id") === ${JSON.stringify(id)};`, (v) => v === true);
+  await waitFor(m, `return gBrowser.selectedTab.getAttribute("ressac-tab-id") === ${JSON.stringify(id)};`, (v) => v === true);
   await m.execute(`${B}.focus();`);
 };
 
 /** A chrome frame's state: shown (laid out), its rectangle, and `body` run in its document (`doc`). */
-const frameOf = <T = unknown>(id: "webaios-design-calque" | "webaios-design-volet", body = "return null;") =>
+const frameOf = <T = unknown>(id: "ressac-design-calque" | "ressac-design-volet", body = "return null;") =>
   m.execute<{ shown: boolean; rect: { x: number; y: number; width: number; height: number }; v: T } | null>(
     `const f = document.getElementById(arguments[0]);
      if (!f) return null;
@@ -95,13 +95,13 @@ const frameOf = <T = unknown>(id: "webaios-design-calque" | "webaios-design-vole
   );
 /** The message's text while its frame shows it, else null. */
 const message = async () => {
-  const f = await frameOf<string | null>("webaios-design-calque", `return doc?.querySelector('${tid("message-design")}')?.textContent ?? null;`);
+  const f = await frameOf<string | null>("ressac-design-calque", `return doc?.querySelector('${tid("message-design")}')?.textContent ?? null;`);
   return f?.shown ? f.v : null;
 };
-const columnShown = async () => (await frameOf("webaios-design-volet"))?.shown ?? false;
+const columnShown = async () => (await frameOf("ressac-design-volet"))?.shown ?? false;
 const sendButton = () =>
   frameOf<{ text: string; disabled: boolean; cart: string } | null>(
-    "webaios-design-volet",
+    "ressac-design-volet",
     `const b = doc?.querySelector('${tid("send-remarks")}'); return b && { text: b.textContent, disabled: b.disabled, cart: doc.querySelector('${tid("design-basket")}').textContent };`,
   ).then((f) => f?.v ?? null);
 
@@ -126,7 +126,7 @@ async function modeOff() {
 async function remark(text: string) {
   const n = (await designState()).basket;
   await trustedMouse(m, B, "#email");
-  await expect.poll(() => frameOf<string | null>("webaios-design-calque", "return doc.activeElement?.localName ?? null;").then((f) => f?.v), { timeout: 10_000 }).toBe("textarea");
+  await expect.poll(() => frameOf<string | null>("ressac-design-calque", "return doc.activeElement?.localName ?? null;").then((f) => f?.v), { timeout: 10_000 }).toBe("textarea");
   await typeText(m, text);
   await click(m, "button.add-button", { frame: "overlay" });
   await expect.poll(async () => (await designState()).basket, { timeout: 10_000 }).toBe(n + 1);
@@ -154,14 +154,14 @@ describe("outside the followed projects", () => {
     expect(await hosts()).toBe(0);
     // 12 px from the top and the right of the <browser>, 360×56.
     const b = await m.execute<{ x: number; y: number; width: number }>(`const r = ${B}.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width };`);
-    expect((await frameOf("webaios-design-calque"))!.rect).toEqual({ x: b.x + b.width - 12 - 360, y: b.y + 12, width: 360, height: 56 });
+    expect((await frameOf("ressac-design-calque"))!.rect).toEqual({ x: b.x + b.width - 12 - 360, y: b.y + 12, width: 360, height: 56 });
     // The message never takes the keyboard.
     expect(await m.execute("return document.activeElement === gBrowser.selectedBrowser;")).toBe(true);
     await sleep(2500);
     expect(await message()).toBe(UNAVAILABLE_DESIGN);
     await expect.poll(message, { timeout: 10_000 }).toBeNull();
     expect(Date.now() - shownAt).toBeGreaterThanOrEqual(3500);
-    expect(await frameOf("webaios-design-calque").then((f) => f?.shown)).toBe(false);
+    expect(await frameOf("ressac-design-calque").then((f) => f?.shown)).toBe(false);
 
     // The next key in the page.
     await pressKeys(m, "Meta+Shift+d");
@@ -174,8 +174,8 @@ describe("outside the followed projects", () => {
     // The next key in the window's UI.
     await pressKeys(m, "Meta+Shift+d");
     await expect.poll(message, { timeout: 10_000 }).toBe(UNAVAILABLE_DESIGN);
-    await m.execute(`document.getElementById("webaios-sidebar").focus();`);
-    expect(await m.execute("return document.activeElement?.id;")).toBe("webaios-sidebar");
+    await m.execute(`document.getElementById("ressac-sidebar").focus();`);
+    expect(await m.execute("return document.activeElement?.id;")).toBe("ressac-sidebar");
     t = Date.now();
     await pressKeys(m, "a");
     await expect.poll(message, { timeout: 10_000 }).toBeNull();
@@ -273,10 +273,10 @@ describe("on the demo", () => {
     const a = (await m.command<{ value: string }>("WebDriver:GetWindowHandle")).value;
     await open(`${demo.page}/`);
     await modeOn();
-    const fa = await m.execute<string>("return window.webaiosWindow.windowId;");
+    const fa = await m.execute<string>("return window.ressacWindow.windowId;");
     const b = await newWindow(m);
     const fb = await inWindow(m, b, async () => {
-      const f = await m.execute<string>("return window.webaiosWindow.windowId;");
+      const f = await m.execute<string>("return window.ressacWindow.windowId;");
       await dispatch(m, { type: "openTab", windowId: f, url: `${demo.page}/x` });
       await waitFor(m, "return !gBrowser.selectedBrowser.webProgress.isLoadingDocument && gBrowser.selectedBrowser.currentURI.spec.endsWith('/x')", (v) => v === true);
       await m.execute(`${B}.focus();`);
@@ -373,9 +373,9 @@ describe("an external project", () => {
 });
 
 describe("without git", () => {
-  it("relecture.spec.ts:200 without git (WEBAIOS_GIT absent), the design mode still works on an external project", async () => {
+  it("relecture.spec.ts:200 without git (RESSAC_GIT absent), the design mode still works on an external project", async () => {
     await w.close();
-    await boot({ WEBAIOS_GIT: "/chemin/absent" });
+    await boot({ RESSAC_GIT: "/chemin/absent" });
     await openApplications(m);
     const p = await declareProject(m, { dataDir: w.dataDir, ports: [Number(new URL(ext.page).port)], snapshot: false });
     try {

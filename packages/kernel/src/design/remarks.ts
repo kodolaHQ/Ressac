@@ -104,7 +104,7 @@ export class Remarks {
   private isPrivate(p: ProjectId): boolean { return p.startsWith("ext-"); }
 
   /**
-   * Before writing on the space side (mounted writable in the container): neither `.webaios`, nor the remarks root, nor the
+   * Before writing on the space side (mounted writable in the container): neither `.ressac`, nor the remarks root, nor the
    * project folder, nor the batch's are symbolic links (a missing one will be created as a real folder).
    */
   private async noLink(p: ProjectId, batch?: string): Promise<void> {

@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { WindowId } from "../../shared/model";
-import type { WebAiOsStore } from "../store";
+import type { RessacStore } from "../store";
 import type { SiteWindowController } from "../store/sites";
 import { setupAnchors, type Anchors, type Rect } from "./anchor";
 import { PINNED_PREF, parsePinned, setPinned } from "./pinned";
@@ -15,7 +15,7 @@ const { ExtensionsUI } = ChromeUtils.importESModule("resource:///modules/Extensi
 const { BrowserWindowTracker } = ChromeUtils.importESModule("resource:///modules/BrowserWindowTracker.sys.mjs");
 const ADDONS_LIST = "addons://list/extension";
 // Keep in sync with host/extensions/firefox-copy.ts ID_SUFFIX.
-const AGENT_SUFFIX = "@agent.webaios";
+const AGENT_SUFFIX = "@agent.ressac";
 
 export interface AddonButton {
   id: string;
@@ -59,7 +59,7 @@ export function createAddons(o: {
   gBrowser: any;
   tabs: TabSync;
   anchors: Anchors;
-  store: WebAiOsStore;
+  store: RessacStore;
   windowId: WindowId;
 }): WindowAddons {
   const activeSpace = () => {
@@ -99,7 +99,7 @@ export function createAddons(o: {
  */
 export function createSiteAddons(win: Window, view: SiteWindowController): WindowAddons {
   const w = win as any;
-  const bar = win.document.getElementById("webaios-site-bar") as HTMLIFrameElement;
+  const bar = win.document.getElementById("ressac-site-bar") as HTMLIFrameElement;
   return addonsCore({
     win,
     gBrowser: w.gBrowser,

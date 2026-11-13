@@ -10,7 +10,7 @@ import { appContainer, isAppContainer, removeAppContainer } from "./containers";
 import { frameFeatures, frameOf, installGuard, openInContainer } from "./sites";
 
 /** The window.arguments[1] key that marks an agent app window from its creation (read before anything claims it). */
-export const APP_WINDOW_KEY = "webaios-app";
+export const APP_WINDOW_KEY = "ressac-app";
 
 interface OpenApp {
   folder: string;
@@ -21,7 +21,7 @@ interface OpenApp {
   window: Window;
   /** The app view's <browser>, once the window is set up (app-window.ts). */
   view: any;
-  /** A close WebAiOs wanted (the app stopped, its host gone): it does not stop the app. */
+  /** A close Ressac wanted (the app stopped, its host gone): it does not stop the app. */
   wanted: boolean;
 }
 
@@ -44,7 +44,7 @@ export interface BadgeChrome {
   design: { state(): Promise<DesignState>; toggle(): void; basket(): void; review(): void };
 }
 
-// Badge sizes: closed, the WebAiOs button alone or with the agent's access; open, its bubble or menu.
+// Badge sizes: closed, the Ressac button alone or with the agent's access; open, its bubble or menu.
 const BADGE = { closed: [48, 28], withAccess: [88, 28], open: [300, 320] } as const;
 
 const sameOrigin = (url: string, origin: string) => {
@@ -72,7 +72,7 @@ const PERMISSIONS = ["desktop-notification", "geo", "camera", "microphone", "scr
 
 /**
  * The app's code was not reviewed: no permission in its window. Its asks are already
- * refused (permission-hooks.ts: a <browser> with no WebAiOs tab); denied here too, so the page reads « denied ».
+ * refused (permission-hooks.ts: a <browser> with no Ressac tab); denied here too, so the page reads « denied ».
  */
 function denyPermissions(a: OpenApp): void {
   const principal = Services.scriptSecurityManager.createContentPrincipal(Services.io.newURI(a.origin), { userContextId: a.userContextId });
@@ -155,7 +155,7 @@ export const apps = {
     };
     Services.ww.registerNotification(onClose);
   },
-  /** A close WebAiOs wants (the app stopped): the page is not asked, the host is not told it was closed by the user. */
+  /** A close Ressac wants (the app stopped): the page is not asked, the host is not told it was closed by the user. */
   async close(folder: string): Promise<void> {
     const a = open.get(folder);
     if (a) await closeWindow(a);
@@ -174,13 +174,13 @@ export const apps = {
   },
   /**
    * « Afficher le dossier »: `<dataDir>/workspace/projects/<dossier>` shown in the Finder, never opened (an `x.app` folder
-   * would launch). One path segment only. WEBAIOS_TEST_REVEAL (e2e): the path is appended to
+   * would launch). One path segment only. RESSAC_TEST_REVEAL (e2e): the path is appended to
    * that file instead.
    */
   reveal(folder: string): void {
     if (typeof folder !== "string" || folder === "" || folder === "." || folder === ".." || /[/\\\0]/.test(folder) || !dataDir) return;
     const path = PathUtils.join(dataDir, "workspace", "projects", folder);
-    const test = Services.env.get("WEBAIOS_TEST_REVEAL");
+    const test = Services.env.get("RESSAC_TEST_REVEAL");
     if (test) return void IOUtils.writeUTF8(test, path + "\n", { mode: "appendOrCreate" }).catch((e: unknown) => console.warn("[apps] reveal not noted:", e));
     try {
       const f = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);

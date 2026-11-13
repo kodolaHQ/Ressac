@@ -154,7 +154,7 @@ async function createBrowser(userContextId: number, o: { private: boolean }): Pr
       remote: "true",
       maychangeremoteness: "true",
       disableglobalhistory: "true",
-      messagemanagergroup: "webaios-reading",
+      messagemanagergroup: "ressac-reading",
       manualactiveness: "true",
       usercontextid: String(userContextId),
     }))
@@ -164,10 +164,10 @@ async function createBrowser(userContextId: number, o: { private: boolean }): Pr
     doc.documentElement.appendChild(browser);
     // No sandbox flags on the read's top document: Firefox refuses a COOP page in a sandboxed one (Google, YouTube).
     // Without them, print() and alert() open no window and do not hang the read, popups need a user gesture a read
-    // never makes (both checked by e2e); downloads are refused by WebAiOsReadingChild, asked here first.
+    // never makes (both checked by e2e); downloads are refused by RessacReadingChild, asked here first.
     for (const until = Date.now() + 5_000; !browser.browsingContext.currentWindowGlobal; await new Promise((r) => setTimeout(r, 10)))
       if (Date.now() > until) throw new Error("Préparation de la page impossible");
-    await browser.browsingContext.currentWindowGlobal.getActor("WebAiOsReading").sendQuery("prepare");
+    await browser.browsingContext.currentWindowGlobal.getActor("RessacReading").sendQuery("prepare");
     browser.browsingContext.mediaController?.mute();
     // Not throttled as a background tab.
     browser.docShellIsActive = true;
@@ -344,7 +344,7 @@ function readIn<T>(
     const block = (target: string) => finish({ error: new Error(`Navigation bloquée : ${hostOf(target)} est hors des domaines permis`) });
     const abort = () => finish({ error: signal!.reason });
     const current = () => browser.currentURI?.spec ?? "";
-    const actor = () => browser.browsingContext.currentWindowGlobal.getActor("WebAiOsPage");
+    const actor = () => browser.browsingContext.currentWindowGlobal.getActor("RessacPage");
 
     // Ended on finish: the browser stays guarded for local addresses (its unload, a pagehide beacon, comes later).
     // A paced read also stops at a document of another site than the one it started on (resumed after its turn).
@@ -370,7 +370,7 @@ function readIn<T>(
         } else if (state & L.STATE_STOP) {
           loading = false;
           // NS_BINDING_ABORTED: a navigation replaced by another (script redirect, meta refresh), not a failure.
-          // NS_ERROR_WONT_HANDLE_CONTENT: a download refused (WebAiOsReadingChild), e.g. a link with `download`; the page
+          // NS_ERROR_WONT_HANDLE_CONTENT: a download refused (RessacReadingChild), e.g. a link with `download`; the page
           // already shown stays and is read. With nothing shown yet, the read itself was the download: it fails.
           // Not in Cr: compared by name.
           const refused = ChromeUtils.getXPCOMErrorName(status) === "NS_ERROR_WONT_HANDLE_CONTENT" && current() !== "about:blank";

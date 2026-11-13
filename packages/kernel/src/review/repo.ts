@@ -13,7 +13,7 @@ export const DIFF_LINES_LIMIT = 5000;
 export const DIFF_CONTEXT = 3;
 export const EXCLUSIONS = [".git", "node_modules", ".DS_Store", "dist", "build", ".next"];
 
-const REF = "refs/webaios/relu";
+const REF = "refs/ressac/relu";
 const PATHS_BATCH = 200;
 
 export class ReviewError extends Error {
@@ -27,7 +27,7 @@ export interface ModifiedFile { path: string; status: "added" | "modified" | "de
 export interface Comparison { reviewedTree: string; currentTree: string; files: ModifiedFile[] }
 export interface DiffFile { path: string; status: ModifiedFile["status"]; displayable: ModifiedFile["displayable"]; blocks: Block[] }
 
-const defaultGit = () => process.env.WEBAIOS_GIT ?? "/usr/bin/git";
+const defaultGit = () => process.env.RESSAC_GIT ?? "/usr/bin/git";
 
 function launch(git: string, args: string[], env: NodeJS.ProcessEnv, cwd?: string, warnings?: { text: string }): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -85,9 +85,9 @@ export class ReviewStore {
       GIT_CEILING_DIRECTORIES: dirname(this.folder),
       GIT_DIR: this.repo,
       GIT_WORK_TREE: this.folder,
-      GIT_INDEX_FILE: join(this.repo, "index-webaios"),
-      GIT_AUTHOR_NAME: "WebAiOs", GIT_AUTHOR_EMAIL: "webaios@localhost",
-      GIT_COMMITTER_NAME: "WebAiOs", GIT_COMMITTER_EMAIL: "webaios@localhost",
+      GIT_INDEX_FILE: join(this.repo, "index-ressac"),
+      GIT_AUTHOR_NAME: "Ressac", GIT_AUTHOR_EMAIL: "ressac@localhost",
+      GIT_COMMITTER_NAME: "Ressac", GIT_COMMITTER_EMAIL: "ressac@localhost",
     };
   }
 

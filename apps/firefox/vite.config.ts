@@ -11,28 +11,28 @@ const INJECTED_CSS = ["ui/site/SiteWindow.svelte", "ui/SiteAddonsStrip.svelte"];
 for (const f of INJECTED_CSS) if (!existsSync(new URL(f, import.meta.url))) throw new Error(`INJECTED_CSS: ${f} is missing`);
 
 // Three bundles, one per `--mode` (scripts/ui.sh builds all of them):
-// - sidebar: privileged Firefox page (chrome://browser/content/webaios/sidebar.html), one script and one stylesheet
+// - sidebar: privileged Firefox page (chrome://browser/content/ressac/sidebar.html), one script and one stylesheet
 //   with fixed names, no eval (privileged documents have a strict CSP);
 // - window: script loaded in every browser window;
 // - agent: the agent panel, same kind of page as the sidebar (agent.html, agent.js, agent.css);
 // - actor: ES modules for the page, extension, site, design and vim JSWindowActors (page-actor.sys.mjs, extension-actor.sys.mjs, site-actor.sys.mjs, design-actor.sys.mjs, vim-actor.sys.mjs, call-actor.sys.mjs);
 // - host: the agent host as one Node ES module (dist-host/host.mjs), everything bundled but node-pty;
 // - store: ES module loaded by resource://, the Node state code bundled with shims for node:fs/crypto/path.
-//   WEBAIOS_PACKAGE=1 blanks the dev host paths (this Mac's absolute paths) so a shipped app leaks none.
+//   RESSAC_PACKAGE=1 blanks the dev host paths (this Mac's absolute paths) so a shipped app leaks none.
 export default defineConfig(({ mode }) => {
-  const outDir = "src/browser/base/content/webaios";
-  const packaged = process.env.WEBAIOS_PACKAGE === "1";
+  const outDir = "src/browser/base/content/ressac";
+  const packaged = process.env.RESSAC_PACKAGE === "1";
   if (mode === "store")
     return {
       define: {
         "process.pid": "0",
-        __WEBAIOS_NODE__: JSON.stringify(packaged ? "" : nodePath),
-        __WEBAIOS_TSX__: JSON.stringify(packaged ? "" : tsxPath),
-        __WEBAIOS_HOST__: JSON.stringify(packaged ? "" : hostPath),
+        __RESSAC_NODE__: JSON.stringify(packaged ? "" : nodePath),
+        __RESSAC_TSX__: JSON.stringify(packaged ? "" : tsxPath),
+        __RESSAC_HOST__: JSON.stringify(packaged ? "" : hostPath),
         // Where error reports go (chrome/store/telemetry.ts): only a packaged build bakes it in, a dev build sends nothing.
-        __WEBAIOS_SENTRY_DSN__: JSON.stringify(packaged ? (process.env.WEBAIOS_SENTRY_DSN ?? "") : ""),
-        // The WebAiOs version (package.json), outside the compiled engine: bumping it costs a build:ui, not a Gecko rebuild.
-        __WEBAIOS_VERSION__: JSON.stringify(JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")).version),
+        __RESSAC_SENTRY_DSN__: JSON.stringify(packaged ? (process.env.RESSAC_SENTRY_DSN ?? "") : ""),
+        // The Ressac version (package.json), outside the compiled engine: bumping it costs a build:ui, not a Gecko rebuild.
+        __RESSAC_VERSION__: JSON.stringify(JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")).version),
       },
       resolve: {
         alias: {
@@ -40,7 +40,7 @@ export default defineConfig(({ mode }) => {
           "node:fs/promises": shim("fs"),
           "node:fs": shim("fs"),
           "node:path": shim("path"),
-          "@webaios/kernel": shim("kernel"),
+          "@ressac/kernel": shim("kernel"),
           "node:net": shim("net"),
           "node:url": shim("url"),
           "node:dns": shim("empty"),
@@ -89,7 +89,7 @@ export default defineConfig(({ mode }) => {
         {
           name: "preprocessor-directive",
           writeBundle(o: { dir?: string }) {
-            for (const [name, define] of [["page-actor", "WEBAIOS_PAGE_ACTOR"], ["extension-actor", "WEBAIOS_EXTENSION_ACTOR"], ["site-actor", "WEBAIOS_SITE_ACTOR"], ["design-actor", "WEBAIOS_DESIGN_ACTOR"], ["vim-actor", "WEBAIOS_VIM_ACTOR"], ["call-actor", "WEBAIOS_CALL_ACTOR"]]) {
+            for (const [name, define] of [["page-actor", "RESSAC_PAGE_ACTOR"], ["extension-actor", "RESSAC_EXTENSION_ACTOR"], ["site-actor", "RESSAC_SITE_ACTOR"], ["design-actor", "RESSAC_DESIGN_ACTOR"], ["vim-actor", "RESSAC_VIM_ACTOR"], ["call-actor", "RESSAC_CALL_ACTOR"]]) {
               const file = `${o.dir}/${name}.sys.mjs`;
               writeFileSync(file, `#define ${define}\n${readFileSync(file, "utf8")}`);
             }
@@ -99,7 +99,7 @@ export default defineConfig(({ mode }) => {
     };
   if (mode === "window")
     return {
-      build: { outDir, emptyOutDir: false, lib: { entry: "chrome/window/index.ts", formats: ["iife"], name: "webaiosWindow", fileName: () => "window.js" } },
+      build: { outDir, emptyOutDir: false, lib: { entry: "chrome/window/index.ts", formats: ["iife"], name: "ressacWindow", fileName: () => "window.js" } },
     };
   const panel = mode === "agent" ? "agent" : "sidebar";
   return {
@@ -112,7 +112,7 @@ export default defineConfig(({ mode }) => {
       outDir,
       emptyOutDir: false,
       cssCodeSplit: false,
-      lib: { entry: `ui/${panel}.ts`, formats: ["iife"], name: `webaios${panel}`, fileName: () => `${panel}.js`, cssFileName: panel },
+      lib: { entry: `ui/${panel}.ts`, formats: ["iife"], name: `ressac${panel}`, fileName: () => `${panel}.js`, cssFileName: panel },
     },
   };
 });

@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync, type StatementSync } from "node:sqlite";
-import type { HistoryResult } from "@webaios/kernel";
+import type { HistoryResult } from "@ressac/kernel";
 import type { Visit } from "../shared/model";
 
 export type { HistoryResult, Visit };

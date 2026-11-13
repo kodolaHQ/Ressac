@@ -1,8 +1,8 @@
 {
-  "name": "WebAiOs",
-  "vendor": "WebAiOs",
-  "appId": "fr.webaios.browser",
-  "binaryName": "webaios",
+  "name": "Ressac",
+  "vendor": "Ressac",
+  "appId": "fr.ressac.browser",
+  "binaryName": "ressac",
   "version": {
     "product": "firefox",
     "version": "159.0.1"
@@ -12,11 +12,11 @@
   },
   "addons": {},
   "brands": {
-    "webaios": {
+    "ressac": {
       "backgroundColor": "#1e1e22",
-      "brandShorterName": "WebAiOs",
-      "brandShortName": "WebAiOs",
-      "brandFullName": "WebAiOs",
+      "brandShorterName": "Ressac",
+      "brandShortName": "Ressac",
+      "brandFullName": "Ressac",
       "release": {
         "displayVersion": "0.1.1"
       }

@@ -8,14 +8,14 @@ import os from "node:os";
 import { writeAction } from "./actions";
 import { testActor } from "./agent-extensions";
 import { SITE_HOME, resolveLocalHosts, siteWindowCount, startSitesServer, writeSite } from "./sites";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
 import { startServer } from "./server";
 import { click, inUi, missingApi, pixel, pressKeys, typeText, waitUi } from "./ui";
 
 let server: Awaited<ReturnType<typeof startServer>>;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 beforeAll(async () => (server = await startServer()));
 const kept: string[] = [];
@@ -24,10 +24,10 @@ afterAll(async () => {
   for (const d of kept) await rm(d, { recursive: true, force: true });
 });
 beforeEach(async () => {
-  w = await launchWebAiOs();
+  w = await launchRessac();
   m = w.marionette;
   await m.setContext("chrome");
-  await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+  await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
   await waitUi(m, "return !!doc.querySelector('[data-testid=\"sidebar\"]')");
 });
 afterEach(async () => {
@@ -61,7 +61,7 @@ const waitTitle = (id: string, title: string) => waitState((s) => s.tabs[id]?.ti
 const waitBar = (open: boolean) => waitUi(m, "return !!doc.querySelector('[data-testid=\"command-bar\"]') === arguments[0]", [open]);
 /** The bar's field has the keyboard: focused in the UI, and the UI iframe focused in the window. */
 const fieldFocused = () =>
-  waitUi(m, "return doc.activeElement?.dataset.testid === 'command-input' && document.activeElement === document.getElementById('webaios-sidebar')");
+  waitUi(m, "return doc.activeElement?.dataset.testid === 'command-input' && document.activeElement === document.getElementById('ressac-sidebar')");
 const fieldValue = () => inUi<string>(m, "return doc.querySelector('[data-testid=\"command-input\"]').value");
 async function type(text: string): Promise<void> {
   await fieldFocused();
@@ -70,7 +70,7 @@ async function type(text: string): Promise<void> {
 const selectedType = () => inUi<string | undefined>(m, "return doc.querySelector('[data-testid=\"command-row\"][aria-selected=\"true\"]')?.dataset.type");
 /** The history has `part` (a visit is noted a moment after the load). */
 const visited = (part: string) =>
-  waitUi(m, "return (await ui.webaios.history.search(arguments[0], 5, true)).length > 0", [part], 15_000);
+  waitUi(m, "return (await ui.ressac.history.search(arguments[0], 5, true)).length > 0", [part], 15_000);
 async function withPageA(): Promise<string> {
   const a = await open("/a.html");
   await waitTitle(a, "Page A");
@@ -79,7 +79,7 @@ async function withPageA(): Promise<string> {
 
 /** The empty page's field has the keyboard. */
 const emptyPageFocused = () =>
-  waitUi(m, "return doc.activeElement?.dataset.testid === 'empty-page-input' && document.activeElement === document.getElementById('webaios-sidebar')");
+  waitUi(m, "return doc.activeElement?.dataset.testid === 'empty-page-input' && document.activeElement === document.getElementById('ressac-sidebar')");
 const veilClick = () => inUi(m, `for (const type of ["mousedown", "mouseup"]) ui.synthesizeMouseEvent(type, 5, 5, { button: 0, clickCount: 1 });`);
 /** A click in the bar's box margin, off the field and the lines (6, 6: Gecko hit-tests 3, 3 outside the 12 px rounded corner). */
 const marginClick = () =>
@@ -91,7 +91,7 @@ const marginClick = () =>
 const cardInFocus = () => inUi<boolean>(m, "return !!doc.activeElement?.closest('[data-testid=\"request-modal\"]')");
 /** The agent is up and a user tab (not shared with it) is shown: what makes it ask to read the tab. */
 async function withAgentAndTab(): Promise<string> {
-  const config = join(w.dataDir, "workspace", ".webaios", "mcp.json");
+  const config = join(w.dataDir, "workspace", ".ressac", "mcp.json");
   for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
     if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
   // The home page's panel starts the agent's session, which takes back every access: the tool is called after it.
@@ -139,26 +139,26 @@ describe("Command bar", () => {
     // Relaunched on a data folder that holds the app before the start (the watcher sees no initial event).
     await w.close();
     const sites = await startSitesServer();
-    const dataDir = await mkdtemp(join(os.tmpdir(), "webaios-data-"));
-    const profile = await mkdtemp(join(os.tmpdir(), "webaios-firefox-"));
+    const dataDir = await mkdtemp(join(os.tmpdir(), "ressac-data-"));
+    const profile = await mkdtemp(join(os.tmpdir(), "ressac-firefox-"));
     try {
       writeSite(dataDir, "vidola", {
         declaration: { name: "Vidola", url: sites.url("vidola-a.localhost", "/"), domains: ["vidola-a.localhost"], login: [] },
         files: { "home/index.html": SITE_HOME },
       });
       const actor = testActor(profile);
-      w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_LOCAL_ADDRESSES: "1", ...actor.env }, prefs: actor.prefs });
+      w = await launchRessac({ dataDir, profile, env: { RESSAC_TEST_LOCAL_ADDRESSES: "1", ...actor.env }, prefs: actor.prefs });
       m = w.marionette;
       await m.setContext("chrome");
-      await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+      await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
       await waitUi(m, "return !!doc.querySelector('[data-testid=\"sidebar\"]')");
       await resolveLocalHosts(m, ["vidola-a.localhost"]);
-      await waitUi(m, "return (await ui.webaios.sites.list()).some((s) => s.id === 'vidola')", [], 30_000);
+      await waitUi(m, "return (await ui.ressac.sites.list()).some((s) => s.id === 'vidola')", [], 30_000);
       await pressKeys(m, "Meta+t");
       await type("Vidola");
       await waitUi(m, "return doc.querySelectorAll('[data-testid=\"command-row\"][data-type=\"app\"]').length === 1");
       await click(m, '[data-testid="command-row"][data-type="app"] button');
-      await waitFor(m, "return [...Services.wm.getEnumerator('navigator:browser')].some((w) => w.document.documentElement.getAttribute('webaios-site') === 'vidola')", (v) => v === true);
+      await waitFor(m, "return [...Services.wm.getEnumerator('navigator:browser')].some((w) => w.document.documentElement.getAttribute('ressac-site') === 'vidola')", (v) => v === true);
       expect(await siteWindowCount(m, "vidola")).toBe(1);
       await waitBar(false);
     } finally {
@@ -220,7 +220,7 @@ describe("Command bar", () => {
     await fieldFocused();
     await pressKeys(m, "Escape");
     await waitBar(false);
-    await waitFor(m, "return document.getElementById('webaios-sidebar').hasAttribute('full')", (v) => v === false);
+    await waitFor(m, "return document.getElementById('ressac-sidebar').hasAttribute('full')", (v) => v === false);
     await waitFor(m, "return document.activeElement === gBrowser.selectedBrowser", (v) => v === true);
   });
 
@@ -307,7 +307,7 @@ describe("Command bar", () => {
   // barre-commande.spec.ts:284
   it("an empty ⌘T: the actions, then the other open tabs, not the shown one; Enter shows the empty page", async () => {
     await writeAction(w.dataDir, "sans-workflow", { name: "Zorglub" });
-    await waitUi(m, "return (await ui.webaios.actions.list()).length > 0", [], 30_000);
+    await waitUi(m, "return (await ui.ressac.actions.list()).length > 0", [], 30_000);
     await withPageA();
     const b = await open("/b.html");
     await waitTitle(b, "Page B");
@@ -352,7 +352,7 @@ describe("Command bar", () => {
     const reading = readTab(id);
     await waitUi(m, "return !!doc.querySelector('[data-testid=\"request-modal\"]')");
     await waitBar(false);
-    await waitUi(m, "return !!doc.activeElement?.closest('[data-testid=\"request-modal\"]') && document.activeElement === document.getElementById('webaios-sidebar')");
+    await waitUi(m, "return !!doc.activeElement?.closest('[data-testid=\"request-modal\"]') && document.activeElement === document.getElementById('ressac-sidebar')");
     expect(await pending(reading, 300)).toBe("pending");
   });
 
@@ -453,7 +453,7 @@ describe("Command bar", () => {
     const id = await open("/b.html");
     await waitTitle(id, "Page B");
     await visited("b.html");
-    await inUi(m, "ui.webaios.navigate(arguments[0], arguments[1])", [id, server.url + "/a.html"]);
+    await inUi(m, "ui.ressac.navigate(arguments[0], arguments[1])", [id, server.url + "/a.html"]);
     await waitTitle(id, "Page A");
     await pressKeys(m, "Meta+t");
     await type("b.html");
@@ -473,7 +473,7 @@ describe("Command bar", () => {
     await dispatch(m, { type: "createSpace", name: "Travail", icon: "💼", private: false, profile: "default", windowId: (await win()).id });
     const b = await open("/a.html");
     await waitTitle(b, "Page A");
-    await waitUi(m, "return (await ui.webaios.history.recent()).length === 2", [], 15_000);
+    await waitUi(m, "return (await ui.ressac.history.recent()).length === 2", [], 15_000);
     // Open tabs hide their own history line: close both.
     for (const id of [a, b]) await dispatch(m, { type: "closeTab", id });
     await pressKeys(m, "Meta+t");

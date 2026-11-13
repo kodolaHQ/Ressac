@@ -180,7 +180,7 @@ export class WidgetsScheduler {
     try {
       this.o.onLive(this.direct());
     } catch (e) {
-      console.error("[webaios] suivi en direct :", e);
+      console.error("[ressac] suivi en direct :", e);
     }
   }
 
@@ -260,7 +260,7 @@ export class WidgetsScheduler {
 
   /** A background error must never bring the browser down. */
   private inBackground(o: { onLaunch: boolean }): void {
-    this.check(o).catch((e) => console.error("[webaios] widgets harvest:", e));
+    this.check(o).catch((e) => console.error("[ressac] widgets harvest:", e));
   }
 
   /**
@@ -320,7 +320,7 @@ export class WidgetsScheduler {
         const before = e.before && e.before.status !== "running" && e.before.status !== "grant-required" ? e.before : { status: "ok" as const };
         return { ...before, lastUpdate: e.lastUpdate, lastAttempt: e.lastAttempt, ...(e.hours ? { hours: e.hours } : {}) };
       }).catch((e) => {
-        console.error(`[webaios] state of widget ${d.name}:`, e);
+        console.error(`[ressac] state of widget ${d.name}:`, e);
         return null;
       });
       if (!restored) continue;
@@ -332,7 +332,7 @@ export class WidgetsScheduler {
     try {
       this.o.onChange?.();
     } catch (e) {
-      console.error("[webaios] states reset at startup:", e);
+      console.error("[ressac] states reset at startup:", e);
     }
   }
 
@@ -372,7 +372,7 @@ export class WidgetsScheduler {
         return true;
       });
       if (route === "long") {
-        task.catch((e) => console.error(`[webaios] harvest of widget ${id}:`, e));
+        task.catch((e) => console.error(`[ressac] harvest of widget ${id}:`, e));
         continue;
       }
       if (await task) harvests.push(id);
@@ -533,7 +533,7 @@ export class WidgetsScheduler {
       this.o.onChange?.();
       return state?.hours ?? null;
     } catch (e) {
-      console.error(`[webaios] hours tracking of widget ${id}:`, e);
+      console.error(`[ressac] hours tracking of widget ${id}:`, e);
       return null;
     }
   }
@@ -553,7 +553,7 @@ export class WidgetsScheduler {
     } catch (e) {
       // The harvest may have written en-cours before failing (disk, container…): the widget must not stay there. The exception's
       // text is not kept (it may quote what the widget read): only a fixed kernel message is.
-      console.error(`[webaios] harvest of widget ${w.id}:`, e);
+      console.error(`[ressac] harvest of widget ${w.id}:`, e);
       state = this.stopped
         ? before
         : // `derniereTentative` is always the start of the attempt, as in the harvest.
@@ -582,7 +582,7 @@ export class WidgetsScheduler {
       const title = w.declaration.name.replace(/[\p{Cc}\p{Cf}]/gu, " ").replace(/\s+/g, " ").trim() || w.id;
       this.o.notify({ widget: w.id, title: title, text: notificationText(fresh) });
     } catch (e) {
-      console.error(`[webaios] notification of widget ${w.id}:`, e);
+      console.error(`[ressac] notification of widget ${w.id}:`, e);
     }
   }
 
@@ -632,7 +632,7 @@ export class WidgetsScheduler {
           );
         } catch (e) {
           // The exception's text may quote what the widget read: only a fixed kernel message is returned.
-          console.error(`[webaios] trial of widget ${id}:`, e);
+          console.error(`[ressac] trial of widget ${id}:`, e);
           return { ok: false, error: INTERNAL_HARVEST_ERROR };
         }
       });

@@ -41,7 +41,7 @@
 </ul>
 
 <style>
-  .suggestions-actions { -webkit-app-region: no-drag; list-style: none; margin: 6px 0 0; padding: 6px; border-radius: 16px; border: 1px solid var(--glass-edge); background: var(--glass); backdrop-filter: blur(30px) saturate(1.8); box-shadow: var(--modal-shadow); animation: webaios-drop var(--spring-d) var(--spring) backwards; }
+  .suggestions-actions { -webkit-app-region: no-drag; list-style: none; margin: 6px 0 0; padding: 6px; border-radius: 16px; border: 1px solid var(--glass-edge); background: var(--glass); backdrop-filter: blur(30px) saturate(1.8); box-shadow: var(--modal-shadow); animation: ressac-drop var(--spring-d) var(--spring) backwards; }
   li { padding: 9px 12px; border-radius: 10px; cursor: pointer; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: background var(--tap); }
   li.usual { color: var(--text-muted); }
   li:hover { background: color-mix(in srgb, var(--glass-hi) 55%, transparent); }

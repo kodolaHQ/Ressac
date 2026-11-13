@@ -347,7 +347,7 @@ describe("runAction", () => {
         }),
     );
     const r = await runAction(options(b, "simple", { ai: ai, signal: stop.signal, interrupted: () => quit }));
-    expect(r).toMatchObject({ status: "interrupted", error: "Interrompue : WebAiOs s'est arrêté", kernelError: true });
+    expect(r).toMatchObject({ status: "interrupted", error: "Interrompue : Ressac s'est arrêté", kernelError: true });
     expect(await readRun(join(b.actionsFolder, "simple"), r.run!)).toMatchObject({ status: "interrupted" });
     expect(await readResult(b.actionsFolder, "simple", r.run!)).toBeNull();
   });
@@ -392,7 +392,7 @@ describe("runAction", () => {
     const r = await end;
     expect(r.status).toBe("interrupted");
     const e = await readRun(join(b.actionsFolder, "public"), r.run!);
-    expect(e).toMatchObject({ status: "interrupted", error: "Interrompue : WebAiOs s'est arrêté", kernelError: true });
+    expect(e).toMatchObject({ status: "interrupted", error: "Interrompue : Ressac s'est arrêté", kernelError: true });
   });
 
   it("the workflow's traces are relayed", async () => {

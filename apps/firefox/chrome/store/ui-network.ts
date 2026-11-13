@@ -1,10 +1,10 @@
-// The UI's network (spec 2026-11-08-webaios-firefox-reseau-interfaces-design.md): nothing
+// The UI's network (spec 2026-11-08-ressac-firefox-reseau-interfaces-design.md): nothing
 // the UI shows (sidebar, agent panel, overlays, badges, site bar, widgets, components, site homes, their frames) loads
 // from http(s)/ws(s), whatever the host. A content policy refuses the opaque documents' loads before their channel
 // exists; an http-on-opening-request observer cancels the rest (the only layer of the system documents, which Firefox
 // exempts from content policies); a PeerConnection:request observer denies their WebRTC. Measured: spikes S1–S3.
 
-export const UI_PREFIXES: readonly string[] = ["chrome://browser/content/webaios/", "resource://webaios-widget-", "resource://webaios-component-", "resource://webaios-site-"];
+export const UI_PREFIXES: readonly string[] = ["chrome://browser/content/ressac/", "resource://ressac-widget-", "resource://ressac-component-", "resource://ressac-site-"];
 const BLOCKED = /^(https?|wss?):/i;
 
 /** http, https, ws, wss whatever the host; `view-source:` prefixes are stripped first. Every other scheme passes. */
@@ -70,7 +70,7 @@ export function isUiLoad(li: { loadingDocument: Document | null; browsingContext
 
 const refused = (type: unknown, spec: string) => console.warn("[ui-network] refused", type, String(spec).slice(0, 80));
 
-const POLICY_CONTRACT = "@webaios/ui-network-policy;1";
+const POLICY_CONTRACT = "@ressac/ui-network-policy;1";
 export const uiPolicy = {
   classID: Components.ID("{8e2c4a71-5f3d-4b9e-a6c0-1d7f2b9e3c58}"),
   QueryInterface: ChromeUtils.generateQI(["nsIContentPolicy", "nsIFactory"]),
@@ -107,11 +107,11 @@ export interface UiNetworkState {
   webrtc: boolean;
 }
 
-/** Registers the policy, then the observer, then the WebRTC refusal, each in its own try (console.error on failure). `fail` forces one step to throw (e2e: WEBAIOS_TEST_UI_NETWORK_FAIL). */
+/** Registers the policy, then the observer, then the WebRTC refusal, each in its own try (console.error on failure). `fail` forces one step to throw (e2e: RESSAC_TEST_UI_NETWORK_FAIL). */
 export function installUiNetwork(fail?: string | null): UiNetworkState {
   const step = (name: keyof UiNetworkState, install: () => void): boolean => {
     try {
-      if (fail === name) throw new Error("forced by WEBAIOS_TEST_UI_NETWORK_FAIL");
+      if (fail === name) throw new Error("forced by RESSAC_TEST_UI_NETWORK_FAIL");
       install();
       return true;
     } catch (e) {
@@ -121,7 +121,7 @@ export function installUiNetwork(fail?: string | null): UiNetworkState {
   };
   return {
     policy: step("policy", () => {
-      Components.manager.QueryInterface(Ci.nsIComponentRegistrar).registerFactory(uiPolicy.classID, "WebAiOs UI network policy", POLICY_CONTRACT, uiPolicy);
+      Components.manager.QueryInterface(Ci.nsIComponentRegistrar).registerFactory(uiPolicy.classID, "Ressac UI network policy", POLICY_CONTRACT, uiPolicy);
       Services.catMan.addCategoryEntry("content-policy", POLICY_CONTRACT, POLICY_CONTRACT, false, true);
     }),
     observer: step("observer", () => Services.obs.addObserver(openingObserver, "http-on-opening-request")),

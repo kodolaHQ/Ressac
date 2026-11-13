@@ -8,7 +8,7 @@ import { promisify } from "node:util";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import type { Action } from "../shared/api";
 import { dispatch, state, waitFor } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
 import { cleanupXpis, installAddon, uninstallAddon } from "./addons";
@@ -18,10 +18,10 @@ import { TEXT_CUT, SITE_CHANGED_TEXT } from "../../../packages/kernel/src/mcp/de
 // Which one the kernel answers depends on whether the new page committed before it read the tab list.
 const CUT_BY_OWN_NAVIGATION = [TEXT_CUT, SITE_CHANGED_TEXT];
 
-// The agent's dev tools on a WebAiOs-Firefox tab (plan 28, task 3): console, network,
+// The agent's dev tools on a Ressac tab (plan 28, task 3): console, network,
 // evaluation and reload; task 4 for profiling and memory; task 5 for the consent card of a third-party tab, the badge and cuts.
 
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const PRIVATE_TEXT = "Cet onglet est dans un espace privé : l'agent n'y a pas accès.";
 
 /** The demo: logs `tag-<log>` at load when asked, "page chargée" always; boum() throws, parler() logs. */
@@ -39,7 +39,7 @@ if (log) { console.log("tag-" + log); fetch("/data.json?log=" + log); }
 console.log("page chargée");
 </script>`;
 
-/** The demo server, on a random port given to the kernel as its demo range (never the real 5300-5319 of a running WebAiOs). */
+/** The demo server, on a random port given to the kernel as its demo range (never the real 5300-5319 of a running Ressac). */
 async function startDemo(): Promise<{ port: number; url: string; hits: string[]; close(): Promise<void> }> {
   const hits: string[] = [];
   const server: Server = createServer((req, res) => {
@@ -56,8 +56,8 @@ async function startDemo(): Promise<{ port: number; url: string; hits: string[];
   return { port, url: `http://127.0.0.1:${port}`, hits, close: () => new Promise((ok) => (server.close(() => ok()), server.closeAllConnections())) };
 }
 
-/** Each WebAiOs (Gecko) process's listening TCP sockets, Marionette's own port set apart (spike D8). */
-async function listening(m: Marionette, w: LaunchedWebAiOs): Promise<string[]> {
+/** Each Ressac (Gecko) process's listening TCP sockets, Marionette's own port set apart (spike D8). */
+async function listening(m: Marionette, w: LaunchedRessac): Promise<string[]> {
   const pids = await m.execute<number[]>("return (async () => { const i = await ChromeUtils.requestProcInfo(); return [i.pid, ...i.children.map((c) => c.pid)]; })();");
   const marionettePort = (await readFile(path.join(w.profile, "MarionetteActivePort"), "utf8")).trim();
   // lsof exits 1 when one pid has nothing to list: its stdout still holds the others.
@@ -68,10 +68,10 @@ async function listening(m: Marionette, w: LaunchedWebAiOs): Promise<string[]> {
 let demo: Awaited<ReturnType<typeof startDemo>>;
 /** The same page on another random port: not a demo, a third-party site. */
 let third: Awaited<ReturnType<typeof startDemo>>;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 let before: string[];
-const config = () => path.join(w.dataDir, "workspace", ".webaios", "mcp.json");
+const config = () => path.join(w.dataDir, "workspace", ".ressac", "mcp.json");
 
 async function kernelUp(): Promise<void> {
   for (const deadline = Date.now() + 20_000; !existsSync(config()); await new Promise((r) => setTimeout(r, 100)))
@@ -81,10 +81,10 @@ async function kernelUp(): Promise<void> {
 beforeAll(async () => {
   demo = await startDemo();
   third = await startDemo();
-  w = await launchWebAiOs({ env: { WEBAIOS_CONTAINER_PORTS: `${demo.port}-${demo.port}` } });
+  w = await launchRessac({ env: { RESSAC_CONTAINER_PORTS: `${demo.port}-${demo.port}` } });
   m = w.marionette;
   await m.setContext("chrome");
-  await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+  await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
   await kernelUp();
   // The home page's panel starts the agent's session, which takes back every access: tools are called after it.
   await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
@@ -216,8 +216,8 @@ it("read_console and read_network show nothing from an extension that writes to 
     throw new Error("BAVARD-EXCEPTION");
   });`;
   const addon = await installAddon(m, {
-    id: "bavard@webaios.test",
-    manifest: { manifest_version: 2, name: "Bavard", version: "1.0", browser_specific_settings: { gecko: { id: "bavard@webaios.test" } },
+    id: "bavard@ressac.test",
+    manifest: { manifest_version: 2, name: "Bavard", version: "1.0", browser_specific_settings: { gecko: { id: "bavard@ressac.test" } },
       content_scripts: [{ matches: ["http://127.0.0.1/*"], js: ["cs.js"], run_at: "document_start" }] },
     files: { "cs.js": script },
   });
@@ -605,7 +605,7 @@ it("the user's devtools open on the tab: they stay usable, and the agent reads t
   await poll(() => tool("read_console", { id }), (t) => t.includes("apres-boite"));
 }, 60_000);
 
-const PROFILING = () => path.join(w.dataDir, "workspace", ".webaios", "profiling");
+const PROFILING = () => path.join(w.dataDir, "workspace", ".ressac", "profiling");
 const profiles = () => (existsSync(PROFILING()) ? readdirSync(PROFILING()) : []);
 const profilerActive = () => m.execute<boolean>("return Services.profiler.IsActive();");
 
@@ -616,7 +616,7 @@ it("demo: profile_performance (2 s) returns a summary with the page's costly fun
     const r = await tool("profile_performance", { id, duration_s: 2 });
     expect(r).toMatch(/^busyLoop \(http:\/\/127\.0\.0\.1:\d+\/:\d+\) — [\d.]+ ms, [\d.]+ %$/m);
     for (const metric of ["Nodes", "JSHeapUsedSize", "LayoutCount", "ScriptDuration", "TaskDuration"]) expect(r).toContain(`${metric} : `);
-    const relPath = /Profil : \/workspace\/(\.webaios\/profiling\/\S+\.cpuprofile)$/m.exec(r)?.[1];
+    const relPath = /Profil : \/workspace\/(\.ressac\/profiling\/\S+\.cpuprofile)$/m.exec(r)?.[1];
     expect(relPath, r).toBeDefined();
     const profile = JSON.parse(readFileSync(path.join(w.dataDir, "workspace", relPath!), "utf8"));
     expect(profile.nodes.some((n: { callFrame: { functionName: string } }) => n.callFrame.functionName === "busyLoop")).toBe(true);
@@ -632,7 +632,7 @@ it("demo: profile_performance with recharger returns a summary", async () => {
   const r = await tool("profile_performance", { id, reload: true });
   expect(r).toMatch(/^busyLoop \(/m);
   expect(r).toContain("ScriptDuration : ");
-  expect(r).toMatch(/Profil : \/workspace\/\.webaios\/profiling\/\S+\.cpuprofile$/m);
+  expect(r).toMatch(/Profil : \/workspace\/\.ressac\/profiling\/\S+\.cpuprofile$/m);
   expect(await profilerActive()).toBe(false);
 }, 60_000);
 
@@ -654,7 +654,7 @@ it("demo: two memory_snapshot then compare_memory: the type the page makes grow 
   const snapshot = async () => {
     const r = await tool("memory_snapshot", { id });
     expect(r).toMatch(/^Total : [\d.]+ Ko$/m);
-    const relPath = /Instantané : (\/workspace\/\.webaios\/profiling\/\S+\.heapsnapshot)$/m.exec(r)?.[1];
+    const relPath = /Instantané : (\/workspace\/\.ressac\/profiling\/\S+\.heapsnapshot)$/m.exec(r)?.[1];
     expect(relPath, r).toBeDefined();
     return relPath!;
   };

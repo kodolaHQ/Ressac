@@ -1,4 +1,4 @@
-import type { Execution, ResumeExecution } from "@webaios/kernel";
+import type { Execution, ResumeExecution } from "@ressac/kernel";
 import { expect, test } from "vitest";
 import { previewData } from "../../ui/builder/preview";
 

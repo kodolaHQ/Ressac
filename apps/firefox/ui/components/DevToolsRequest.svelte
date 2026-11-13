@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack } from "svelte";
-  import type { DevRight } from "@webaios/kernel";
+  import type { DevRight } from "@ressac/kernel";
   import { siteOf, type PendingRequest } from "../../shared/model";
   import { api } from "../state.svelte";
 

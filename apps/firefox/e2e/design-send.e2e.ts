@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { openTab, testActor } from "./agent-extensions";
 import { startDesignServers, trustedMouse } from "./design";
 import { dispatch, waitFor } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { declareProject, modified, openApplications, refreshReview, textOf, writeAppJs } from "./review";
 import { inBrowser, resolveLocalHosts } from "./sites";
@@ -19,7 +19,7 @@ import { click, typeText, waitUi } from "./ui";
 const PORT = 15318;
 const BLOCK = "15315-15319";
 const B = "gBrowser.selectedBrowser";
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const tid = (id: string) => `[data-testid="${id}"]`;
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -27,23 +27,23 @@ const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 let demo: Awaited<ReturnType<typeof startDesignServers>>;
 /** An external project's pages: 127.0.0.1 on a free port, outside the block (declared by the MCP client later). */
 let ext: Awaited<ReturnType<typeof startDesignServers>>;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 const dirs: string[] = [];
 
 beforeAll(async () => {
   demo = await startDesignServers({ port: PORT });
   ext = await startDesignServers();
-  const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
-  const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
+  const profile = await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
   dirs.push(dataDir, profile);
   const a = testActor(profile);
-  w = await launchWebAiOs({ dataDir, profile, env: { ...a.env, WEBAIOS_APP_PORTS: BLOCK }, prefs: a.prefs });
+  w = await launchRessac({ dataDir, profile, env: { ...a.env, RESSAC_APP_PORTS: BLOCK }, prefs: a.prefs });
   m = w.marionette;
   await m.setContext("chrome");
-  await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+  await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
   await resolveLocalHosts(m, ["localhost"]);
-  await waitFor(m, `return (async () => { const d = (await ChromeUtils.importESModule("${STORE}").ready).design; return d.state({ type: "window", windowId: window.webaiosWindow.windowId }).then(() => true, () => false); })();`, (v) => v === true, 30_000);
+  await waitFor(m, `return (async () => { const d = (await ChromeUtils.importESModule("${STORE}").ready).design; return d.state({ type: "window", windowId: window.ressacWindow.windowId }).then(() => true, () => false); })();`, (v) => v === true, 30_000);
 }, 120_000);
 afterAll(async () => {
   await w?.close();
@@ -55,11 +55,11 @@ afterAll(async () => {
 /** Runs `body` with `d` the design service, `t` the current window's target, `store` the store. */
 const svc = <R = unknown>(body: string, args: unknown[] = []) =>
   m.execute<R>(
-    `return (async (args) => { const store = await ChromeUtils.importESModule("${STORE}").ready, d = store.design; const t = { type: "window", windowId: window.webaiosWindow.windowId }; ${body} })([...arguments]);`,
+    `return (async (args) => { const store = await ChromeUtils.importESModule("${STORE}").ready, d = store.design; const t = { type: "window", windowId: window.ressacWindow.windowId }; ${body} })([...arguments]);`,
     args,
   );
 const state = () => svc<{ active: boolean; basket: number }>("return await d.state(t);");
-const hosts = () => inBrowser<number>(m, B, `return document.querySelectorAll("webaios-viewfinder").length;`);
+const hosts = () => inBrowser<number>(m, B, `return document.querySelectorAll("ressac-viewfinder").length;`);
 
 async function open(url: string): Promise<string> {
   const id = await openTab(m, url);
@@ -68,7 +68,7 @@ async function open(url: string): Promise<string> {
 }
 const activate = async (id: string) => {
   await dispatch(m, { type: "activateTab", id });
-  await waitFor(m, `return gBrowser.selectedTab.getAttribute("webaios-tab-id") === ${JSON.stringify(id)};`, (v) => v === true);
+  await waitFor(m, `return gBrowser.selectedTab.getAttribute("ressac-tab-id") === ${JSON.stringify(id)};`, (v) => v === true);
   await m.execute(`${B}.focus();`);
 };
 
@@ -81,8 +81,8 @@ const frame = <T = unknown>(id: string, body: string) =>
      return (() => { ${body} })();`,
     [id],
   );
-const column = <T = unknown>(body: string) => frame<T>("webaios-design-volet", body);
-const bubble = <T = unknown>(body: string) => frame<T>("webaios-design-calque", body);
+const column = <T = unknown>(body: string) => frame<T>("ressac-design-volet", body);
+const bubble = <T = unknown>(body: string) => frame<T>("ressac-design-calque", body);
 const sendText = () => column<string | null>(`return doc?.querySelector('${tid("send-remarks")}')?.textContent ?? null;`);
 const cartCount = () => column<number>(`return doc?.querySelectorAll('${tid("basket-remark")}').length ?? 0;`);
 const batchList = () =>
@@ -133,18 +133,18 @@ describe("to the agent", () => {
     await remark("#envoyer", "button#envoyer", "Bouton en vert");
     await expect.poll(sendText, { timeout: 10_000 }).toBe("Envoyer 2 remarques à l'agent");
     await click(m, tid("send-remarks"), { frame: "panel" });
-    await waitFor(m, "return !document.getElementById('webaios-agent').hidden", (v) => v === true);
+    await waitFor(m, "return !document.getElementById('ressac-agent').hidden", (v) => v === true);
     await waitUi(m, `return ${TERMINAL}.includes("fake agent ready>")`, [], 20_000, "agent");
     await expect.poll(agentInput, { timeout: 10_000 }).toMatch(new RegExp(`^\\[remarques de .+ — démo http://(localhost|127\\.0\\.0\\.1):${PORT} : 1\\) `));
-    expect(agentInput()).toContain(`/workspace/.webaios/remarks/demo-${PORT}/`);
+    expect(agentInput()).toContain(`/workspace/.ressac/remarks/demo-${PORT}/`);
     // Enter comes once, after the text (core/agent/sessions.ts SUBMIT_DELAY_MS).
     await expect.poll(agentInput, { timeout: 5_000 }).toMatch(/\] [^\r]*\r$/);
-    const dir = path.join(w.dataDir, "workspace", ".webaios", "remarks", `demo-${PORT}`);
+    const dir = path.join(w.dataDir, "workspace", ".ressac", "remarks", `demo-${PORT}`);
     const batches = readdirSync(dir).filter((n) => /^\d{8}T\d{6}Z-[0-9a-f]{4}$/.test(n));
     expect(batches).toHaveLength(1);
     expect(existsSync(path.join(dir, batches[0]!, "batch.json"))).toBe(true);
     expect(readdirSync(path.join(dir, batches[0]!)).filter((n) => n.endsWith(".png"))).toHaveLength(2);
-    expect(agentInput()).toContain(`/workspace/.webaios/remarks/demo-${PORT}/${batches[0]}/batch.json] `);
+    expect(agentInput()).toContain(`/workspace/.ressac/remarks/demo-${PORT}/${batches[0]}/batch.json] `);
     await expect.poll(cartCount, { timeout: 10_000 }).toBe(0);
     await expect.poll(batchList, { timeout: 10_000 }).toEqual([expect.objectContaining({ state: "pending", handled: true })]);
     expect((await batchList())![0]!.text).toContain("en attente");

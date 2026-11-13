@@ -1,5 +1,5 @@
 import type { ShownSite } from "../shared/sites";
-import type { Action, ApiWebaios, LocalAiStateShown, AgentPanelState, ApplicationList, ExtensionResult, ShownWidget } from "../shared/api";
+import type { Action, ApiRessac, LocalAiStateShown, AgentPanelState, ApplicationList, ExtensionResult, ShownWidget } from "../shared/api";
 import type { ExtensionLine, SpaceExtensionLine } from "../shared/extensions";
 import type { HomeTheme } from "../../../packages/kernel/src/home/theme.ts";
 import type { FreePlacement } from "../../../packages/kernel/src/home/schemas.ts";
@@ -14,7 +14,7 @@ import { createActionsApi, createRecapsApi, activeSpacePrivate, type ActionsFire
 import { createSettingsApi } from "./settings-api";
 import { createDesignApi, createExternalApi, createReviewApi } from "./design-api";
 
-/** What the Firefox page reads: the widgets, plus the theme the ApiWebaios type does not carry. */
+/** What the Firefox page reads: the widgets, plus the theme the ApiRessac type does not carry. */
 export interface HomeRead {
   widgets: ShownWidget[];
   theme: HomeTheme | null;
@@ -24,13 +24,13 @@ export interface HomeRead {
  * The UI's API, with the home page's read widened to carry the theme and free placements (Task 7), and
  * the actions' result images and components asked of the chrome.
  */
-export interface ApiFirefox extends Omit<ApiWebaios, "home" | "actions" | "recaps"> {
+export interface ApiFirefox extends Omit<ApiRessac, "home" | "actions" | "recaps"> {
   actions: ActionsFirefox;
   recaps: RecapsFirefox;
-  home: Omit<ApiWebaios["home"], "read" | "place"> & {
+  home: Omit<ApiRessac["home"], "read" | "place"> & {
     read(): Promise<HomeRead>;
     place(placements: FreePlacement[]): void;
-    /** A real pointerdown in a widget's display, seen by the UI's chrome listener (not in the ApiWebaios type). */
+    /** A real pointerdown in a widget's display, seen by the UI's chrome listener (not in the ApiRessac type). */
     gesture(id: string): void;
   };
   /** The design mode's cart column, opened or closed by App.svelte (ZoneContenu's rule), on the project of the active tab. */
@@ -41,9 +41,9 @@ export interface ApiFirefox extends Omit<ApiWebaios, "home" | "actions" | "recap
 
 declare global {
   interface Window {
-    webaios: ApiFirefox;
-    /** ApiWebaios members the UI reached that this api does not implement (read by the e2e). */
-    webaiosMissingApi?: Set<string>;
+    ressac: ApiFirefox;
+    /** ApiRessac members the UI reached that this api does not implement (read by the e2e). */
+    ressacMissingApi?: Set<string>;
   }
 }
 
@@ -51,7 +51,7 @@ declare global {
 const AGENT_STOPPED_MESSAGE = "Le service des widgets ne répond pas (agent arrêté ?)";
 
 /**
- * Serves each widget's display: writes its sanitized copy under `<dataDir>/webaios-widgets/<id>/` and points `src` at
+ * Serves each widget's display: writes its sanitized copy under `<dataDir>/ressac-widgets/<id>/` and points `src` at
  * its resource:// URL. The widgets served last time and gone now lose their substitution and their copies.
  */
 export async function serveDisplays(
@@ -78,11 +78,11 @@ export async function serveDisplays(
 }
 
 /**
- * `window.webaios`, on the Firefox window controller. What is not migrated yet (applications, sites,
- * extensions, actions) answers empty; any other member is recorded in `window.webaiosMissingApi` and is undefined.
+ * `window.ressac`, on the Firefox window controller. What is not migrated yet (applications, sites,
+ * extensions, actions) answers empty; any other member is recorded in `window.ressacMissingApi` and is undefined.
  */
 export function createApi(win: WindowController): ApiFirefox {
-  const missing = (window.webaiosMissingApi ??= new Set());
+  const missing = (window.ressacMissingApi ??= new Set());
   // The store outlives this document: a listener into a dead document would throw on every call.
   const untilUnload = (unsubscribe: () => void) => {
     window.addEventListener("unload", unsubscribe, { once: true });
@@ -219,10 +219,10 @@ export function createApi(win: WindowController): ApiFirefox {
       open: (url, id) => {
         // Only just after a real click in this widget's display (one link per click), and one per second at most: a
         // display that would burst links could make data leave.
-        if (!win.store.widgetGestures.accept(windowId, id)) return console.warn("[webaios] widget link ignored (no click in the widget):", url);
+        if (!win.store.widgetGestures.accept(windowId, id)) return console.warn("[ressac] widget link ignored (no click in the widget):", url);
         const now = Date.now();
-        if (now - lastLink < 1000) return console.warn("[webaios] widget link ignored (too soon):", url);
-        if (!openableUrl(url)) return console.warn("[webaios] widget link refused:", url);
+        if (now - lastLink < 1000) return console.warn("[ressac] widget link ignored (too soon):", url);
+        if (!openableUrl(url)) return console.warn("[ressac] widget link refused:", url);
         lastLink = now;
         win.store.dispatch({ type: "openTab", windowId: windowId, url, activate: true });
       },
@@ -267,7 +267,7 @@ export function createApi(win: WindowController): ApiFirefox {
               const a = l.apps.find((x) => x.folder === folder);
               if (a && a.type !== "no-manifest") win.store.dispatch({ type: "openReview", windowId: windowId, project: "app-" + folder, name: a.name.slice(0, 80) });
             })
-            .catch((e) => console.error("[webaios] app review :", e));
+            .catch((e) => console.error("[ressac] app review :", e));
         }
         // « Déboguer »: the host pre-fills the terminal and opens the panel (design.donnerAgent).
         host.notify("apps.act", { folder: folder, action, window: windowId });
@@ -288,7 +288,7 @@ export function createApi(win: WindowController): ApiFirefox {
         if (action === "review")
           return void api.sites!.list()
             .then((l) => win.store.dispatch({ type: "openReview", windowId: windowId, project: "site-" + id, name: (l.find((s) => s.id === id)?.name ?? id).slice(0, 80) }))
-            .catch((e) => console.error("[webaios] site review :", e));
+            .catch((e) => console.error("[ressac] site review :", e));
         host.notify("sites.act", { id, action, window: windowId });
         if (action === "edit") win.openAgent();
       },
@@ -298,7 +298,7 @@ export function createApi(win: WindowController): ApiFirefox {
     // The local AI's state; its install and feed are not migrated.
     ai: {
       state: () => ask<LocalAiStateShown>("ai.state", undefined, { state: "error", error: "L'agent ne répond pas" }),
-    } as Partial<ApiWebaios["ai"]> as ApiWebaios["ai"],
+    } as Partial<ApiRessac["ai"]> as ApiRessac["ai"],
     // The Review page: its comparisons and comments, kept by the kernel host.
     review: createReviewApi({ host }),
     settings: createSettingsApi({
@@ -342,7 +342,7 @@ export function createApi(win: WindowController): ApiFirefox {
       review: (key) => extension("extensions.review", { key: key, window: windowId }),
       reenable: (key) => extension("extensions.reenable", { key: key }),
       cutUnlock: (key) => extension("extensions.cutUnlock", { key: key }),
-    } as Partial<ApiWebaios["extensions"]> as ApiWebaios["extensions"],
+    } as Partial<ApiRessac["extensions"]> as ApiRessac["extensions"],
     // The workflow builder: its reads and writes in the kernel host. An action's is refused in a private space with the
     // shapes of the builder's answers; its reads are checked again once answered.
     workflow: {

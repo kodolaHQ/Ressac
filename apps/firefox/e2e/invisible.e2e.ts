@@ -2,18 +2,18 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Action } from "../shared/api";
 import { cleanupXpis, installAddon, marker, uninstallAddon, watcher } from "./addons";
 import { dispatch, state, waitFor } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
 import { waitUi } from "./ui";
 
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 
 // The page server is on 127.0.0.1, declared public for these tests only; the trap is on ::1, reached through the
 // public name localtest.me (overridden to ::1 in Firefox's resolver). Nothing may ever reach the trap.
 let page: Awaited<ReturnType<typeof startServer>>;
 let trap: Awaited<ReturnType<typeof startServer>>;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 let trapBase: string;
 beforeAll(async () => {
@@ -21,10 +21,10 @@ beforeAll(async () => {
   trap = await startServer({ host: "::1" });
   trapBase = `http://localtest.me:${trap.port}`;
   // Honoured by Firefox only under automation (Marionette running).
-  w = await launchWebAiOs({ env: { WEBAIOS_TEST_PUBLIC_ADDRESSES: "127.0.0.1" } });
+  w = await launchRessac({ env: { RESSAC_TEST_PUBLIC_ADDRESSES: "127.0.0.1" } });
   m = w.marionette;
   await m.setContext("chrome");
-  await waitFor(m, "return !!window.webaiosWindow", (v) => v === true);
+  await waitFor(m, "return !!window.ressacWindow", (v) => v === true);
   // The home page's agent session settles first: quitting during its start-up leaves writers in the data dir.
   await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
   await m.execute(`Cc["@mozilla.org/network/native-dns-override;1"].getService(Ci.nsINativeDNSResolverOverride).addIPOverride("localtest.me", "::1");`);
@@ -189,7 +189,7 @@ describe("add-ons", () => {
       await waitFor(
         m,
         `return (async () => {
-          try { return (await gBrowser.selectedBrowser.browsingContext.currentWindowGlobal.getActor("WebAiOsPage").sendQuery("html", { max: 100000 })).includes("addon-mark"); } catch { return false; }
+          try { return (await gBrowser.selectedBrowser.browsingContext.currentWindowGlobal.getActor("RessacPage").sendQuery("html", { max: 100000 })).includes("addon-mark"); } catch { return false; }
         })();`,
         (v) => v === true,
       );

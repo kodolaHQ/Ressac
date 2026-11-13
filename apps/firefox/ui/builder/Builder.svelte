@@ -2,7 +2,7 @@
   import "@xyflow/svelte/dist/style.css";
   import { SvelteFlowProvider } from "@xyflow/svelte";
   import { untrack } from "svelte";
-  import type { BlockCatalogEntry, Owner } from "@webaios/kernel";
+  import type { BlockCatalogEntry, Owner } from "@ressac/kernel";
   import { focusAgent } from "../components/agent.svelte";
   import { api } from "../state.svelte";
   import { freeSlot } from "./add";
@@ -23,8 +23,8 @@
   import type { ActionShown } from "../../shared/actions";
 
   /**
-   * The builder of a widget's workflow (page `webaios://workflow/<id>`) or an action's
-   * (`webaios://workflow/action/<id>`): same canvas; an action has its panel, its input at launch and its page
+   * The builder of a widget's workflow (page `ressac://workflow/<id>`) or an action's
+   * (`ressac://workflow/action/<id>`): same canvas; an action has its panel, its input at launch and its page
    * preview.
    */
   let { target: target }: { target: Owner } = $props();
@@ -336,7 +336,7 @@
   .error { color: var(--in-error); white-space: pre-wrap; word-break: break-word; }
   .veil { position: absolute; inset: 0; z-index: 10; display: flex; align-items: flex-start; justify-content: center; padding-top: 80px; background: var(--veil); backdrop-filter: blur(6px); }
   .request form { display: flex; flex-direction: column; gap: 12px; }
-  .request { width: 340px; max-width: calc(100% - 32px); padding: 18px 20px; border-radius: 16px; border: 1px solid var(--glass-edge); background: var(--glass-dense); box-shadow: var(--modal-shadow); font-size: 13px; animation: webaios-drop var(--spring-d) var(--spring) backwards; }
+  .request { width: 340px; max-width: calc(100% - 32px); padding: 18px 20px; border-radius: 16px; border: 1px solid var(--glass-edge); background: var(--glass-dense); box-shadow: var(--modal-shadow); font-size: 13px; animation: ressac-drop var(--spring-d) var(--spring) backwards; }
   .request label { display: flex; flex-direction: column; gap: 6px; }
   .request input { padding: 7px 9px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: inherit; }
   .buttons { display: flex; justify-content: flex-end; gap: 8px; }

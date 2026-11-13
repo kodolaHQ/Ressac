@@ -131,15 +131,15 @@ describe("fichier state.json", () => {
     const id = "b".repeat(32);
     await writeFile(
       join(folder, "state.json"),
-      JSON.stringify({ version: 1, allCut: false, extensions: { [A]: entry("agent") }, hiddenConsoles: [id, "pas-un-id", 3, "garde@agent.webaios", "garde@autre.org"] }),
+      JSON.stringify({ version: 1, allCut: false, extensions: { [A]: entry("agent") }, hiddenConsoles: [id, "pas-un-id", 3, "garde@agent.ressac", "garde@autre.org"] }),
     );
     const parsed = await readExtensionsState(folder);
-    expect(parsed.hiddenConsoles).toEqual([id, "garde@agent.webaios"]);
-    expect(remove(parsed, A).hiddenConsoles).toEqual([id, "garde@agent.webaios"]);
+    expect(parsed.hiddenConsoles).toEqual([id, "garde@agent.ressac"]);
+    expect(remove(parsed, A).hiddenConsoles).toEqual([id, "garde@agent.ressac"]);
     await changeExtensionsState(folder, (e) => remove(e, A), () => none);
     const reviewed = await readExtensionsState(folder);
     expect(reviewed.extensions).toEqual({});
-    expect(reviewed.hiddenConsoles).toEqual([id, "garde@agent.webaios"]);
+    expect(reviewed.hiddenConsoles).toEqual([id, "garde@agent.ressac"]);
   });
 
   const written = (folder: string, content: string) => writeFile(join(folder, "state.json"), content);

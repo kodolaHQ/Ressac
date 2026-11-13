@@ -1,5 +1,5 @@
 import type { TabId } from "../../shared/model";
-import type { WebAiOsStore } from "../store";
+import type { RessacStore } from "../store";
 import { TAB_ID } from "./tabs";
 
 /**
@@ -7,21 +7,21 @@ import { TAB_ID } from "./tabs";
  * when it is left gets `call` in the state, kept up to date by its actor until the call ends or the tab is shown again.
  * Returns the bar's buttons (`press`) and what takes the listeners down.
  */
-export function mountCalls(win: any, store: WebAiOsStore): { press(id: TabId, which: "mic" | "camera"): void; dispose(): void } {
+export function mountCalls(win: any, store: RessacStore): { press(id: TabId, which: "mic" | "camera"): void; dispose(): void } {
   const gBrowser = win.gBrowser;
   const idOf = (tab: any): TabId | null => tab?.getAttribute?.(TAB_ID) ?? null;
   const tabOf = (id: TabId) => gBrowser.tabs.find((t: any) => idOf(t) === id);
   const actor = (tab: any) => {
     try {
-      return tab.linkedBrowser.browsingContext?.currentWindowGlobal?.getActor("WebAiOsCall");
+      return tab.linkedBrowser.browsingContext?.currentWindowGlobal?.getActor("RessacCall");
     } catch {
       return undefined; // not an http(s) page
     }
   };
-  /** Sites added without a build: pref `webaios.call.sites`, a JSON array of CallSite (shared/call-sites.ts). */
+  /** Sites added without a build: pref `ressac.call.sites`, a JSON array of CallSite (shared/call-sites.ts). */
   const moreSites = (): unknown[] => {
     try {
-      const more = JSON.parse(Services.prefs.getStringPref("webaios.call.sites", "[]"));
+      const more = JSON.parse(Services.prefs.getStringPref("ressac.call.sites", "[]"));
       return Array.isArray(more) ? more : [];
     } catch {
       return [];
@@ -52,7 +52,7 @@ export function mountCalls(win: any, store: WebAiOsStore): { press(id: TabId, wh
         if (!browser?.browsingContext || gBrowser.selectedTab === tab || PictureInPicture.weakAutoPipBrowserClosedDeliberately.has(browser)) return;
         for (const context of browser.browsingContext.getAllBrowsingContextsInSubtree())
           try {
-            context.currentWindowGlobal?.getActor("WebAiOsCall").sendAsyncMessage("call:leave");
+            context.currentWindowGlobal?.getActor("RessacCall").sendAsyncMessage("call:leave");
           } catch {
             // not an http(s) frame
           }
@@ -84,7 +84,7 @@ export function mountCalls(win: any, store: WebAiOsStore): { press(id: TabId, wh
       set(id, call);
     },
   };
-  Services.obs.addObserver(observer, "webaios-call-state");
+  Services.obs.addObserver(observer, "ressac-call-state");
   return {
     press(id, which) {
       if (store.state.tabs[id]?.call) actor(tabOf(id))?.sendAsyncMessage("call:press", which);
@@ -92,7 +92,7 @@ export function mountCalls(win: any, store: WebAiOsStore): { press(id: TabId, wh
     dispose() {
       gBrowser.tabContainer.removeEventListener("TabSelect", onSelect);
       gBrowser.tabContainer.removeEventListener("TabClose", onClose);
-      Services.obs.removeObserver(observer, "webaios-call-state");
+      Services.obs.removeObserver(observer, "ressac-call-state");
     },
   };
 }

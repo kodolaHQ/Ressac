@@ -1,15 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { dispatch, state, waitReady } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { click, inUi, missingApi, pressKeys, waitUi } from "./ui";
 
 // Plan 50 Task 2: Settings › Raccourcis.
 
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 beforeEach(async () => {
-  w = await launchWebAiOs({ env: { WEBAIOS_OLLAMA_URL: "http://127.0.0.1:9" } });
+  w = await launchRessac({ env: { RESSAC_OLLAMA_URL: "http://127.0.0.1:9" } });
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
@@ -116,13 +116,13 @@ describe("Settings › Raccourcis", () => {
   });
 
   it("a remapped design shortcut reaches the design state's listeners at once", async () => {
-    const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+    const STORE = "chrome://browser/content/ressac/store.sys.mjs";
     await m.execute(`return (async () => { const d = (await ChromeUtils.importESModule("${STORE}").ready).design; window.__designChanges = 0; d.onChange(() => window.__designChanges++); return 1; })();`);
     await edit("design");
     await pressKeys(m, "Meta+Shift+e");
     await waitUi(m, "return !!doc.querySelector(arguments[0])", ['[data-testid="shortcut-design-reset"]']);
     expect(await m.execute<number>("return window.__designChanges;")).toBeGreaterThan(0);
-    const label = await m.execute<string>(`return (async () => (await (await ChromeUtils.importESModule("${STORE}").ready).design.state({ type: "window", windowId: window.webaiosWindow.windowId })).shortcut)();`);
+    const label = await m.execute<string>(`return (async () => (await (await ChromeUtils.importESModule("${STORE}").ready).design.state({ type: "window", windowId: window.ressacWindow.windowId })).shortcut)();`);
     expect(label).toBe("⇧⌘E");
   });
 

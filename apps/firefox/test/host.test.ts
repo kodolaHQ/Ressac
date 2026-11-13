@@ -40,24 +40,24 @@ const hosts: Host[] = [];
 
 /** `o.dataDir`: restart on that folder; `o.handlers`: more requests answered as Firefox. */
 function startHost(env: Record<string, string> = {}, prepare?: (dataDir: string) => void, o: { dataDir?: string; handlers?: Record<string, Handler> } = {}): Host {
-  const dataDir = o.dataDir ?? realpathSync(mkdtempSync(join(tmpdir(), "webaios-host-")));
+  const dataDir = o.dataDir ?? realpathSync(mkdtempSync(join(tmpdir(), "ressac-host-")));
   prepare?.(dataDir);
   const root = join(dataDir, "workspace");
   const log = join(dataDir, "docker.log");
-  const { WEBAIOS_CONTAINER: _, WEBAIOS_CONTAINER_PORTS: __, ...parent } = process.env;
+  const { RESSAC_CONTAINER: _, RESSAC_CONTAINER_PORTS: __, ...parent } = process.env;
   const child = spawn(nodePath, ["--import", tsxPath, hostPath], {
     env: {
       ...parent,
-      WEBAIOS_DATA_DIR: dataDir,
+      RESSAC_DATA_DIR: dataDir,
       // The fake docker and fake agent write their traces there.
-      WEBAIOS_ROOT: root,
+      RESSAC_ROOT: root,
       FAKE_DOCKER_LOG: log,
-      WEBAIOS_HOST_TEST: "1",
+      RESSAC_HOST_TEST: "1",
       // The host must not start the machine's real Ollama or container app.
-      WEBAIOS_TEST_NO_SYSTEM: "1",
+      RESSAC_TEST_NO_SYSTEM: "1",
       PATH: `${tools}:${process.env.PATH}`,
       // A free port: never the real 5279.
-      WEBAIOS_PORT_MCP_EXTERNAL: "0",
+      RESSAC_PORT_MCP_EXTERNAL: "0",
       ...env,
     },
   });
@@ -130,13 +130,13 @@ describe("agent host", { timeout: 30_000 }, () => {
     }
     expect(e?.server.state).toBe("ready");
     expect(e?.server.port).toBeGreaterThan(0);
-    expect(existsSync(join(h.root, ".webaios", "mcp.json"))).toBe(false);
+    expect(existsSync(join(h.root, ".ressac", "mcp.json"))).toBe(false);
   });
 
   it("creates the space and MCP config, list_tabs goes through Firefox", async () => {
     const h = startHost();
     expect(await h.rpc.request("start", { agentProfile: "claude" })).toEqual({ agent: expect.any(String) });
-    expect(existsSync(join(h.root, ".webaios", "mcp.json"))).toBe(true);
+    expect(existsSync(join(h.root, ".ressac", "mcp.json"))).toBe(true);
     const r = await callMcpTool(h.root, "list_tabs");
     expect(r.text).toContain("onglet non partagé");
   });
@@ -171,10 +171,10 @@ describe("agent host", { timeout: 30_000 }, () => {
     await h.rpc.request("start", { agentProfile: "claude" });
     await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
     await until(() => h.data().includes("fake agent ready>"));
-    const mcp = readFileSync(join(h.root, ".webaios", "mcp.json"), "utf8");
+    const mcp = readFileSync(join(h.root, ".ressac", "mcp.json"), "utf8");
     const stops = readFileSync(join(h.root, "fake-docker-stops.log"), "utf8"); // start-up orphan sweep only
     expect(await h.rpc.request("start", { agentProfile: "claude" })).toEqual({ agent: expect.any(String) });
-    expect(readFileSync(join(h.root, ".webaios", "mcp.json"), "utf8")).toBe(mcp);
+    expect(readFileSync(join(h.root, ".ressac", "mcp.json"), "utf8")).toBe(mcp);
     h.rpc.notify("agent.write", { window: "f1", data: "encore\r" });
     await until(() => h.data().includes("encore"));
     expect(readFileSync(join(h.root, "fake-docker-stops.log"), "utf8")).toBe(stops);
@@ -182,8 +182,8 @@ describe("agent host", { timeout: 30_000 }, () => {
 
   it("agent.profils asked while the kernel starts lists the default profile it prepares", async () => {
     const h = startHost();
-    mkdirSync(join(h.root, ".webaios", "profiles"), { recursive: true });
-    writeFileSync(join(h.root, ".webaios", "profiles", "autre.json"), JSON.stringify({ id: "autre", name: "Autre", interactive: ["a"], nonInteractive: ["a"], mcpConfig: "claude-json" }));
+    mkdirSync(join(h.root, ".ressac", "profiles"), { recursive: true });
+    writeFileSync(join(h.root, ".ressac", "profiles", "autre.json"), JSON.stringify({ id: "autre", name: "Autre", interactive: ["a"], nonInteractive: ["a"], mcpConfig: "claude-json" }));
     const started = h.rpc.request("start", { agentProfile: "claude" });
     expect((await h.rpc.request<{ id: string }[]>("agent.profiles")).map((p) => p.id)).toEqual(["autre", "claude", "codex"]);
     await started;
@@ -191,7 +191,7 @@ describe("agent host", { timeout: 30_000 }, () => {
 
   const args = (h: Host) => JSON.parse(readFileSync(join(h.root, "fake-agent-args.json"), "utf8")) as string[];
   const stopsLog = (h: Host) => (existsSync(join(h.root, "fake-docker-stops.log")) ? readFileSync(join(h.root, "fake-docker-stops.log"), "utf8") : "");
-  const sessionStops = (h: Host) => stopsLog(h).split("\n").filter((l) => l.includes("webaios-session-")).length;
+  const sessionStops = (h: Host) => stopsLog(h).split("\n").filter((l) => l.includes("ressac-session-")).length;
   /** Starts the window's agent and waits for its prompt; returns the arguments it got. */
   const agentReady = async (h: Host, f: string) => {
     const before = h.data().split("fake agent ready>").length;
@@ -232,14 +232,14 @@ describe("agent host", { timeout: 30_000 }, () => {
 
   it("codex with the compatible API: engine arguments through the relay, never the key", async () => {
     const key = "sk-secret-123";
-    const keyFile = join(mkdtempSync(join(tmpdir(), "webaios-key-")), "key");
+    const keyFile = join(mkdtempSync(join(tmpdir(), "ressac-key-")), "key");
     writeFileSync(keyFile, key);
-    const k = startHost({ WEBAIOS_TEST_KEYCHAIN: keyFile });
+    const k = startHost({ RESSAC_TEST_KEYCHAIN: keyFile });
     k.rpc.notify("agent.codexEngine", { engine: { kind: "api", apiUrl: "https://api.example/v1", apiModel: "m", ollamaUrl: "", ollamaModel: "" } });
     await k.rpc.request("start", { agentProfile: "codex" });
     const a = await agentReady(k, "f1");
     expect(a[0]).toBe("codex");
-    expect(a).toContain('model_provider="webaios-api"');
+    expect(a).toContain('model_provider="ressac-api"');
     expect(a[a.indexOf("-m") + 1]).toBe("m");
     expect(a.some((x) => x.includes(key))).toBe(false);
     expect(readFileSync(k.log, "utf8")).not.toContain(key);
@@ -247,9 +247,9 @@ describe("agent host", { timeout: 30_000 }, () => {
 
   it("claude with the compatible API: the env holds the relay token, never the key", async () => {
     const key = "sk-secret-456";
-    const keyFile = join(mkdtempSync(join(tmpdir(), "webaios-key-")), "key");
+    const keyFile = join(mkdtempSync(join(tmpdir(), "ressac-key-")), "key");
     writeFileSync(`${keyFile}.claude`, key);
-    const k = startHost({ WEBAIOS_TEST_KEYCHAIN: keyFile });
+    const k = startHost({ RESSAC_TEST_KEYCHAIN: keyFile });
     k.rpc.notify("agent.claudeEngine", { engine: { kind: "api", apiUrl: "https://api.example/v1", apiModel: "m", ollamaUrl: "", ollamaModel: "" } });
     await k.rpc.request("start", { agentProfile: "claude" });
     const a = await agentReady(k, "f1");
@@ -301,8 +301,8 @@ describe("agent host", { timeout: 30_000 }, () => {
     await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
     await until(() => h.data().includes("fake agent ready>"));
     const lines = readFileSync(h.log, "utf8").split("\n");
-    expect(lines.some((l) => l.includes("webaios-workshop-firefox"))).toBe(true);
-    expect(lines.filter((l) => / webaios-workshop( |$)/.test(l))).toEqual([]);
+    expect(lines.some((l) => l.includes("ressac-workshop-firefox"))).toBe(true);
+    expect(lines.filter((l) => / ressac-workshop( |$)/.test(l))).toEqual([]);
   });
 
   it("publishes its own port range, 5300-5319", async () => {
@@ -312,7 +312,7 @@ describe("agent host", { timeout: 30_000 }, () => {
     await until(() => h.data().includes("fake agent ready>"));
     const run = readFileSync(h.log, "utf8").split("\n").find((l) => l.startsWith("run -d"));
     expect(run).toContain("127.0.0.1:5300-5319:5300-5319");
-    expect(run).toContain("WEBAIOS_PORTS=5300-5319");
+    expect(run).toContain("RESSAC_PORTS=5300-5319");
   });
 
   it("arreter stops sessions, then the process exits 0", async () => {
@@ -322,13 +322,13 @@ describe("agent host", { timeout: 30_000 }, () => {
     await until(() => h.data().includes("fake agent ready>"));
     await h.rpc.request("stop");
     expect(await h.exited).toBe(0);
-    expect(readFileSync(join(h.root, "fake-docker-stops.log"), "utf8")).toContain("webaios-session");
+    expect(readFileSync(join(h.root, "fake-docker-stops.log"), "utf8")).toContain("ressac-session");
   });
 
   it("open_workflow: the window's selection on its open workflow, forgotten when the window closes", async () => {
     const h = startHost();
     await h.rpc.request("start", { agentProfile: "claude" });
-    const sessions = join(h.root, ".webaios", "sessions");
+    const sessions = join(h.root, ".ressac", "sessions");
     /** Starts an agent session for w1 and returns its own MCP config (its token names the window). */
     const session = async () => {
       const before = existsSync(sessions) ? readdirSync(sessions) : [];
@@ -339,7 +339,7 @@ describe("agent host", { timeout: 30_000 }, () => {
     };
     const first = await session();
     h.rpc.notify("workflow.selection", { window: "w1", target: { type: "widget", id: "veille" }, block: "tri" });
-    h.rpc.notify("windows.active", { w1: "webaios://workflow/veille" });
+    h.rpc.notify("windows.active", { w1: "ressac://workflow/veille" });
     await h.rpc.request("access.state"); // stdin is read in order: the notifications are applied
     expect((await callMcpTool(h.root, "open_workflow", {}, first)).text).toBe(JSON.stringify({ widget: "veille", block: "tri" }));
     h.rpc.notify("agent.closeWindow", { window: "w1" });
@@ -466,7 +466,7 @@ describe("history", { timeout: 30_000 }, () => {
 describe("agent extensions", { timeout: 60_000 }, () => {
   const HOST = "http://127.0.0.1/*";
   const GRANT = { permissions: [], hosts: [HOST], network: [], allSites: false, allSitesScripts: false, scripts: true };
-  const ID = "ma-ext@agent.webaios";
+  const ID = "ma-ext@agent.ressac";
   const amos: Awaited<ReturnType<typeof startFakeAmo>>[] = [];
   afterEach(async () => {
     for (const a of amos.splice(0)) await a.close();
@@ -549,8 +549,8 @@ describe("agent extensions", { timeout: 60_000 }, () => {
   // `cles: false`: no AMO keys.
   const launch = (amo: { url: string }, f: ReturnType<typeof firefox>, o: { dataDir?: string; prepare?: (d: string) => void; keys?: false } = {}) => {
     f.presents.clear();
-    const keys: Record<string, string> = o.keys === false ? {} : { WEBAIOS_TEST_AMO_KEYS: "user:1:abc:test-secret" };
-    return startHost({ WEBAIOS_TEST_AMO_URL: amo.url, ...keys }, o.prepare, { dataDir: o.dataDir, handlers: f.handlers });
+    const keys: Record<string, string> = o.keys === false ? {} : { RESSAC_TEST_AMO_KEYS: "user:1:abc:test-secret" };
+    return startHost({ RESSAC_TEST_AMO_URL: amo.url, ...keys }, o.prepare, { dataDir: o.dataDir, handlers: f.handlers });
   };
   /** An agent tool, once the kernel runs. */
   const tool = async (h: Host, name: string, args: Record<string, unknown> = {}) => {
@@ -590,7 +590,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const f = firefox();
     const h = launch(amo, f, { prepare });
     await h.rpc.request("extensions.ready", {});
-    expect(f.installs[0]!.manifest.background).toEqual({ scripts: ["webaios-background-guard.js", "fond.js"] });
+    expect(f.installs[0]!.manifest.background).toEqual({ scripts: ["ressac-background-guard.js", "fond.js"] });
     expect(f.installs[0]!.manifest.browser_specific_settings.gecko.id).toBe(ID);
   });
 
@@ -655,7 +655,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const f = firefox();
     let h = launch(amo, f, { prepare });
     await h.rpc.request("extensions.ready", {});
-    h.rpc.notify("extensions.outsideWebaios", { addonId: ID, what: "uninstalled" });
+    h.rpc.notify("extensions.outsideRessac", { addonId: ID, what: "uninstalled" });
     await until(() => entry(h.dataDir) === undefined);
     await until(() => JSON.stringify(f.scopes.at(-1)) === "{}");
     expect(existsSync(join(h.dataDir, "extensions", "signed", "ma-ext.xpi"))).toBe(false);
@@ -674,7 +674,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     f.handlers["extensions.uninstall"] = (p: unknown) => (requests.push(p), false);
     const h = launch(amo, f, { prepare });
     await h.rpc.request("extensions.ready", {});
-    await h.rpc.request("extensions.outsideWebaios", { addonId: ID, what: "uninstalled" });
+    await h.rpc.request("extensions.outsideRessac", { addonId: ID, what: "uninstalled" });
     expect(requests).toEqual([{ addonId: ID, unlessUndone: true }]);
     expect(entry(h.dataDir)).toMatchObject({ grant: GRANT, profiles: ["default"] });
     expect(existsSync(join(h.dataDir, "extensions", "signed", "ma-ext.xpi"))).toBe(true);
@@ -710,7 +710,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     expect(entry(h.dataDir)?.hiddenConsole).toEqual(["default"]);
     expect(registry().hiddenConsoles).toEqual([ID]);
     // Never emptied: it outlives « Supprimer ».
-    h.rpc.notify("extensions.outsideWebaios", { addonId: ID, what: "uninstalled" });
+    h.rpc.notify("extensions.outsideRessac", { addonId: ID, what: "uninstalled" });
     await until(() => entry(h.dataDir) === undefined);
     expect(registry().hiddenConsoles).toEqual([ID]);
   });
@@ -723,7 +723,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     await h.rpc.request("start", { agentProfile: "claude" });
     const m = (text: string) => ({ timestamp: Date.now(), level: "log", text: text });
     h.rpc.notify("extensions.console", { addonId: ID, message: m("fond démarré"), tab: null });
-    // The user gives t1 to the agent; t2 is not shared; null: no WebAiOs tab (a reading, a private space).
+    // The user gives t1 to the agent; t2 is not shared; null: no Ressac tab (a reading, a private space).
     await h.rpc.request("agent.send", { tab: tabs[0] });
     h.rpc.notify("extensions.console", { addonId: ID, message: m("contenu:/a.html"), tab: { tabId: "t2", url: tabs[1]!.url } });
     h.rpc.notify("extensions.console", { addonId: ID, message: m("contenu:/lecture"), tab: { tabId: null, url: "" } });
@@ -788,7 +788,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const amo = await fakeAmo();
     const f = firefox();
     const h = launch(amo, f, { prepare });
-    await h.rpc.request("extensions.ready", { outsideWebaios: [{ addonId: ID, what: "uninstalled" }] });
+    await h.rpc.request("extensions.ready", { outsideRessac: [{ addonId: ID, what: "uninstalled" }] });
     expect(f.installs).toEqual([]);
     expect(amo.sends).toEqual([]);
     expect(entry(h.dataDir)).toBeUndefined();
@@ -1042,7 +1042,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const h = launch(amo, f, { prepare: source });
     expect(await tool(h, "request_extension", { id: "ma-ext" })).toBe("Activée dans « Perso ».");
     // Not an agent extension, or not one of its keys: never counted.
-    for (const addonId of ["autre@exemple.org", "../x@agent.webaios", 3]) h.rpc.notify("extensions.crash", { addonId });
+    for (const addonId of ["autre@exemple.org", "../x@agent.ressac", 3]) h.rpc.notify("extensions.crash", { addonId });
     for (let i = 0; i < 2; i++) h.rpc.notify("extensions.crash", { addonId: ID });
     expect(await tool(h, "list_extensions")).toContain("erreurs : aucune");
     h.rpc.notify("extensions.crash", { addonId: ID });
@@ -1074,7 +1074,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
 
 describe("agent applications", { timeout: 30_000 }, () => {
   // Their own block, apart from every e2e file's (plans 35a and 35b).
-  const APPS = { WEBAIOS_APP_PORTS: "15325-15329", WEBAIOS_APP_DELAY_MS: "3000" };
+  const APPS = { RESSAC_APP_PORTS: "15325-15329", RESSAC_APP_DELAY_MS: "3000" };
   type List = { workshop: string; apps: { folder: string; state: string; port?: number; favicon?: string; lastLaunch?: string }[] };
   /** Writes a project with an "ok" server: projets/essai, named Essai. */
   const writeAttempt = (dataDir: string) => {
@@ -1089,7 +1089,7 @@ createServer((req, res) => {
 }).listen(Number(process.env.PORT));
 `,
     );
-    writeFileSync(join(path, "webaios.json"), JSON.stringify({ type: "app", launch: "node serveur.mjs", name: "Essai" }));
+    writeFileSync(join(path, "ressac.json"), JSON.stringify({ type: "app", launch: "node serveur.mjs", name: "Essai" }));
   };
   /** A host with the essai project and a fake chrome noting the apps.* requests. */
   const startApps = (env: Record<string, string> = {}, handlers: Record<string, Handler> = {}) => {
@@ -1126,7 +1126,7 @@ createServer((req, res) => {
     expect(l.apps).toEqual([expect.objectContaining({ folder: "essai", name: "Essai", state: "stopped" })]);
   });
 
-  it("lancer asks the chrome to open the app on a port of WEBAIOS_APP_PORTS, and notes dernierLancement", async () => {
+  it("lancer asks the chrome to open the app on a port of RESSAC_APP_PORTS, and notes dernierLancement", async () => {
     const { h, chrome } = startApps();
     await launched(h, chrome);
     const [a] = chrome.openings;
@@ -1144,10 +1144,10 @@ createServer((req, res) => {
     const before = stops(h);
     h.rpc.notify("apps.windowClosed", { folder: "essai", byUser: false });
     await new Promise((r) => setTimeout(r, 500));
-    expect(stops(h).slice(before.length)).not.toContain("WEBAIOS_APP=essai");
+    expect(stops(h).slice(before.length)).not.toContain("RESSAC_APP=essai");
     expect((await attempt(h))?.state).toBe("running");
     h.rpc.notify("apps.windowClosed", { folder: "essai", byUser: true });
-    await until(() => stops(h).slice(before.length).includes("WEBAIOS_APP=essai"));
+    await until(() => stops(h).slice(before.length).includes("RESSAC_APP=essai"));
     expect((await attempt(h))?.state).toBe("stopped");
   });
 
@@ -1159,7 +1159,7 @@ createServer((req, res) => {
     act(h, "delete", "../x");
     await new Promise((r) => setTimeout(r, 500));
     await list(h);
-    expect(existsSync(join(h.root, "projects", "essai", "webaios.json"))).toBe(true);
+    expect(existsSync(join(h.root, "projects", "essai", "ressac.json"))).toBe(true);
     expect(existsSync(join(h.root, "x"))).toBe(true);
     expect(chrome.erased).toEqual([]);
   });
@@ -1214,8 +1214,8 @@ createServer((req, res) => {
     expect(await h.exited).toBe(0);
     // Started first, then run side by side with the sessions' stop: both happen before the exit.
     const after = stops(h).slice(before);
-    expect(after).toContain("WEBAIOS_APP=essai");
-    expect(after).toContain("cat /tmp/webaios-session-");
+    expect(after).toContain("RESSAC_APP=essai");
+    expect(after).toContain("cat /tmp/ressac-session-");
   });
 
   it("a slow apps stop at quit does not hold back the sessions' stop", async () => {
@@ -1227,19 +1227,19 @@ createServer((req, res) => {
     const before = stops(h).length;
     h.child.stdin.end();
     // The apps' docker answers after 4 s: the sessions are stopped well before.
-    await until(() => stops(h).slice(before).includes("cat /tmp/webaios-session-"), 2_500);
+    await until(() => stops(h).slice(before).includes("cat /tmp/ressac-session-"), 2_500);
     expect(await h.exited).toBe(0);
   });
 
   it("a failed apps stop at quit still stops the sessions", async () => {
-    const { h } = startApps({ WEBAIOS_TEST_APPS_STOP_FAILS: "1" });
+    const { h } = startApps({ RESSAC_TEST_APPS_STOP_FAILS: "1" });
     await h.rpc.request("start", { agentProfile: "claude" });
     await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
     await until(() => h.data().includes("fake agent ready>"));
     const before = stops(h).length;
     h.child.stdin.end();
     expect(await h.exited).toBe(0);
-    expect(stops(h).slice(before)).toContain("cat /tmp/webaios-session-");
+    expect(stops(h).slice(before)).toContain("cat /tmp/ressac-session-");
     expect(h.stderr()).toContain("simulated apps stop");
   });
 

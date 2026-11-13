@@ -91,12 +91,12 @@ export async function deleteDataAction(actionsFolder: string, id: string): Promi
     await clearRunsAndMemory(folder);
     await rm(resultsFolder(folder), { recursive: true, force: true });
   });
-  // The action's folder goes if empty; what WebAiOs did not put there stays.
+  // The action's folder goes if empty; what Ressac did not put there stays.
   await rmdir(folder).catch(() => {});
 }
 
 /**
- * At startup: for each `<actionsFolder>/<id>` without `~/WebAiOs/actions/<id>` (action deleted or put in the
+ * At startup: for each `<actionsFolder>/<id>` without `~/Ressac/actions/<id>` (action deleted or put in the
  * trash), data and grant are erased. Actions still there, and what is not an action folder, stay.
  */
 export async function forgetGoneActions(c: SpacePaths, actionsFolder: string): Promise<void> {

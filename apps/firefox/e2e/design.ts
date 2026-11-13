@@ -57,7 +57,7 @@ const send = (body: string, headers: Record<string, string> = {}) => (_req: unkn
 /**
  * Two servers on 127.0.0.1: the pages (`page`, reached as 127.0.0.1) and the frame (`frame`, reached as localhost: another
  * site, so another process). `/`, `/x`, `/hooks`, `/csp`, `/oop` (DESIGN_PAGE with the frame), `/cible` and `/frame` on
- * both. `port`: the pages' port (a demo port in WEBAIOS_APP_PORTS makes them a demo project).
+ * both. `port`: the pages' port (a demo port in RESSAC_APP_PORTS makes them a demo project).
  */
 export async function startDesignServers(o: { port?: number } = {}): Promise<{ page: string; frame: string; paths: string[]; close(): Promise<void> }> {
   let frame = "";
@@ -76,7 +76,7 @@ export async function startDesignServers(o: { port?: number } = {}): Promise<{ p
 }
 
 const actor = (browserExpr: string, frame?: number) =>
-  `${browserExpr}.browsingContext${frame === undefined ? "" : `.children[${frame}]`}.currentWindowGlobal.getActor("WebAiOsDesign")`;
+  `${browserExpr}.browsingContext${frame === undefined ? "" : `.children[${frame}]`}.currentWindowGlobal.getActor("RessacDesign")`;
 
 /**
  * Arms the viewfinder in the top window of `browserExpr` (Firefox's script by default); `result(ms)` waits for its answer:
@@ -104,7 +104,7 @@ export const guardFrame = (m: Marionette, browserExpr: string, i: number) =>
   m.execute<unknown>(
     `const wg = ${browserExpr}.browsingContext.children[arguments[0]].currentWindowGlobal;
      if (!wg.isProcessRoot) throw new Error("not a process root");
-     return wg.getActor("WebAiOsDesign").sendQuery("guard");`,
+     return wg.getActor("RessacDesign").sendQuery("guard");`,
     [i],
   );
 

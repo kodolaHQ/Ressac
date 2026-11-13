@@ -112,7 +112,7 @@ export const WidgetState = z.object({
     })
     .optional(),
   /**
-   * During a run (status running): the previous state, put back at the next start if WebAiOs stopped
+   * During a run (status running): the previous state, put back at the next start if Ressac stopped
    * abruptly. Never displayed; absent outside a run.
    */
   before: z.object({ status: WidgetStatus, error: z.string().optional(), kernelError: z.literal(true).optional() }).optional(),

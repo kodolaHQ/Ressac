@@ -6,7 +6,7 @@ import type { BrowserState } from "../shared/model";
 import type { CodexEngine } from "../shared/settings";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { waitFor, waitReady } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
 import { click, inUi, missingApi, waitUi } from "./ui";
@@ -15,7 +15,7 @@ import { click, inUi, missingApi, waitUi } from "./ui";
 
 const PAGE = '[data-testid="settings-page"]';
 const CARD = '[data-testid="codex-engine"]';
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const SECRET = "sk-e2e-secret";
 // Any https page the test opens fails on a dead proxy: no real web.
 const NO_WEB = { "network.proxy.type": 1, "network.proxy.http": "127.0.0.1", "network.proxy.http_port": 1, "network.proxy.ssl": "127.0.0.1", "network.proxy.ssl_port": 1 };
@@ -41,9 +41,9 @@ beforeAll(async () => {
 });
 afterAll(() => server?.close());
 
-let w: LaunchedWebAiOs | undefined;
+let w: LaunchedRessac | undefined;
 let m: Marionette;
-const temp = mkdtempSync(join(os.tmpdir(), "webaios-codex-"));
+const temp = mkdtempSync(join(os.tmpdir(), "ressac-codex-"));
 afterEach(async () => {
   try {
     if (w) expect(await missingApi(m)).toEqual([]);
@@ -55,7 +55,7 @@ afterEach(async () => {
 afterAll(() => rmSync(temp, { recursive: true, force: true }));
 
 async function launch(o: { env?: Record<string, string>; output?: string; prefs?: Record<string, string | number | boolean> } = {}): Promise<void> {
-  w = await launchWebAiOs({ env: { WEBAIOS_OLLAMA_URL: "http://127.0.0.1:9", ...o.env }, prefs: { ...NO_WEB, ...o.prefs }, output: o.output });
+  w = await launchRessac({ env: { RESSAC_OLLAMA_URL: "http://127.0.0.1:9", ...o.env }, prefs: { ...NO_WEB, ...o.prefs }, output: o.output });
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
@@ -142,7 +142,7 @@ describe("Codex in Settings", () => {
   it("key never leaves the keychain", { timeout: 90_000 }, async () => {
     const keyFile = join(temp, "keychain");
     const output = join(temp, "output.log");
-    await launch({ env: { WEBAIOS_TEST_KEYCHAIN: keyFile }, output, prefs: { "devtools.console.stdout.chrome": true } });
+    await launch({ env: { RESSAC_TEST_KEYCHAIN: keyFile }, output, prefs: { "devtools.console.stdout.chrome": true } });
     await click(m, `${CARD} [data-testid="engine-api"]`);
     await fill("api-url", `${server.url}/v1`);
     await fill("api-model", "m");
@@ -155,18 +155,18 @@ describe("Codex in Settings", () => {
     expect(read(keyFile)).toBe(SECRET);
 
     const args = join(w!.dataDir, "workspace", "fake-agent-args.json");
-    await inUi(m, "ui.webaios.agent.switch('codex')");
-    await waitFor(m, "return true", () => read(args).includes("webaios-api"), 30_000);
+    await inUi(m, "ui.ressac.agent.switch('codex')");
+    await waitFor(m, "return true", () => read(args).includes("ressac-api"), 30_000);
     const argv = JSON.parse(read(args)) as string[];
-    expect(argv).toContain('model_provider="webaios-api"');
+    expect(argv).toContain('model_provider="ressac-api"');
     const relayUrl = /base_url="([^"]+)"/.exec(argv.join(" "))?.[1];
     expect(relayUrl).toMatch(/^http:\/\/host\.docker\.internal:\d+$/);
     const env = JSON.parse(read(join(w!.dataDir, "workspace", "fake-agent-env.json"))) as Record<string, string>;
-    expect(env.WEBAIOS_ENGINE_TOKEN).toMatch(/.{16,}/);
+    expect(env.RESSAC_ENGINE_TOKEN).toMatch(/.{16,}/);
 
     const r = await fetch(relayUrl!.replace("host.docker.internal", "127.0.0.1") + "/responses", {
       method: "POST",
-      headers: { authorization: `Bearer ${env.WEBAIOS_ENGINE_TOKEN}`, "content-type": "application/json" },
+      headers: { authorization: `Bearer ${env.RESSAC_ENGINE_TOKEN}`, "content-type": "application/json" },
       body: "{}",
     });
     expect(r.status).toBe(200);

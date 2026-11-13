@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { testActor } from "./agent-extensions";
 import { state, waitReady, windowHandles } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { grantSite, inSiteBar, inSiteView, resolveLocalHosts, serveWav, silenceWav, siteWindowCount, siteWindowExpr, startSitesServer, writeSite } from "./sites";
 import { missingApi } from "./ui";
@@ -16,7 +16,7 @@ import { missingApi } from "./ui";
 // player's time then plays and pauses (trusted events), and a resumed player is checked on its time, not on playing.
 // « No window ever shown » has no headless probe: the window and tab counts stand in for it.
 
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const CIS = "moz-src:///toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs";
 const HOSTS = ["vidola-a.localhost", "vidola-b.localhost", "lecteur.localhost", "images.localhost", "pub.localhost", "adresses.localhost", "youtube.localhost", "accounts.localhost"];
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=", "base64");
@@ -41,7 +41,7 @@ const cssOf = (file: string): string => {
 };
 
 let server: Awaited<ReturnType<typeof startSitesServer>>;
-let w: LaunchedWebAiOs | undefined;
+let w: LaunchedRessac | undefined;
 let m: Marionette;
 let dataDir: string;
 let profile: string;
@@ -115,7 +115,7 @@ const inHome = <T = unknown>(body: string) =>
     "vidola",
     `const home = doc.querySelector('[data-testid="site-home-frame"]');
      const hd = home?.contentDocument;
-     if (!hd || !String(hd.documentURI).startsWith("resource://webaios-site-")) return null;
+     if (!hd || !String(hd.documentURI).startsWith("resource://ressac-site-")) return null;
      ${body}`,
   );
 const homeList = () => inHome<string | null>(`return hd.getElementById("list")?.textContent ?? null;`);
@@ -132,11 +132,11 @@ async function clickSeriesCard(): Promise<void> {
     let found = false;
     for (const h of await windowHandles(m)) {
       await m.command("WebDriver:SwitchToWindow", { handle: h, focus: false });
-      if ((found = (await m.execute<string | null>(`return document.documentElement.getAttribute("webaios-site");`)) === "vidola")) break;
+      if ((found = (await m.execute<string | null>(`return document.documentElement.getAttribute("ressac-site");`)) === "vidola")) break;
     }
     if (!found) throw new Error("no window for vidola");
     const [x, y] = await m.execute<[number, number]>(
-      `const bar = document.getElementById("webaios-site-bar");
+      `const bar = document.getElementById("ressac-site-bar");
        const home = bar.contentDocument.querySelector('[data-testid="site-home-frame"]');
        const b = bar.getBoundingClientRect(), h = home.getBoundingClientRect(), e = home.contentDocument.querySelector("#list button").getBoundingClientRect();
        return [Math.round(b.left + h.left + e.left + e.width / 2), Math.round(b.top + h.top + e.top + e.height / 2)];`,
@@ -175,16 +175,16 @@ async function closeSiteWindow(id = "vidola") {
 /** Launches on `dataDir`/`profile` (kept: a second launch restarts on the same data). */
 async function launch() {
   const actor = testActor(profile);
-  w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_LOCAL_ADDRESSES: "1", ...actor.env }, prefs: actor.prefs });
+  w = await launchRessac({ dataDir, profile, env: { RESSAC_TEST_LOCAL_ADDRESSES: "1", ...actor.env }, prefs: actor.prefs });
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
   await resolveLocalHosts(m, HOSTS);
 }
-/** Launches WebAiOs with the Vidola app written, `accord` given or not. */
+/** Launches Ressac with the Vidola app written, `accord` given or not. */
 async function startVidola(grant: boolean) {
-  dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
-  profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
+  dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
+  profile = await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
   const s = siteVidola();
   writeSite(dataDir, "vidola", s);
   if (grant) await grantSite(dataDir, "vidola", s.declaration);
@@ -317,15 +317,15 @@ describe("end to end (AGENTS.md's examples)", () => {
     await expect.poll(() => text("vidola", "site-notice"), { timeout: 15_000 }).toBe("Vidola a changé d'adresse : vidola-b.localhost. Il faudra peut-être te reconnecter.");
     expect(await text("vidola", "site-domain")).toBe("vidola-b.localhost");
     await barClick("vidola", "site-home");
-    await expect.poll(() => m.execute<boolean>(`return ${siteWindowExpr("vidola")}.document.documentElement.hasAttribute("webaios-site-home");`)).toBe(true);
+    await expect.poll(() => m.execute<boolean>(`return ${siteWindowExpr("vidola")}.document.documentElement.hasAttribute("ressac-site-home");`)).toBe(true);
     await waitSeriesCard(/^data:image\/png;base64,/);
     await clickSeriesCard();
     await expectResumed("vidola-b.localhost");
   });
 
-  it("YouTube: the Shorts shelves and entry hidden (the example's CSS and JS), the sign-in cookie holds after a restart of WebAiOs (same profile) and exists in no tab (sites.spec.ts:2080)", { timeout: 150_000 }, async () => {
-    dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
-    profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
+  it("YouTube: the Shorts shelves and entry hidden (the example's CSS and JS), the sign-in cookie holds after a restart of Ressac (same profile) and exists in no tab (sites.spec.ts:2080)", { timeout: 150_000 }, async () => {
+    dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
+    profile = await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
     writeSite(dataDir, "youtube", siteYoutube());
     await launch();
     const shelves = () =>
@@ -370,13 +370,13 @@ describe("end to end (AGENTS.md's examples)", () => {
     // The app's own window is made: counted from here, with a probe on every window's tab opens.
     const windows = await browserWindows();
     await m.execute(
-      `window.webaiosTestOpened = [];
-       for (const x of Services.wm.getEnumerator("navigator:browser")) x.gBrowser.tabContainer.addEventListener("TabOpen", () => window.webaiosTestOpened.push(1));`,
+      `window.ressacTestOpened = [];
+       for (const x of Services.wm.getEnumerator("navigator:browser")) x.gBrowser.tabContainer.addEventListener("TabOpen", () => window.ressacTestOpened.push(1));`,
     );
     const beacons = (p: string, refused: number) => server.requests.filter((r) => r.path === `${p}?ouvertures=${p === "/balise" ? 5 : 3}&refus=${refused}`).length;
     const stable = async () => {
       expect(await browserWindows()).toBe(windows);
-      expect(await m.execute<number[]>("return window.webaiosTestOpened;")).toEqual([]);
+      expect(await m.execute<number[]>("return window.ressacTestOpened;")).toEqual([]);
       expect(await tabUrls()).toEqual(tabs);
     };
     await view(`(location.href = ${JSON.stringify(EPISODE)}, 1)`);

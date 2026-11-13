@@ -7,20 +7,20 @@ node_modules/
 .claude/settings.local.json
 apps/firefox/engine
 apps/firefox/.surfer/
-apps/firefox/src/browser/base/content/webaios/sidebar.js
-apps/firefox/src/browser/base/content/webaios/sidebar.css
-apps/firefox/src/browser/base/content/webaios/window.js
-apps/firefox/src/browser/base/content/webaios/store.sys.mjs
-apps/firefox/src/browser/base/content/webaios/agent.js
-apps/firefox/src/browser/base/content/webaios/agent.css
-apps/firefox/src/browser/base/content/webaios/page-actor.sys.mjs
-apps/firefox/src/browser/base/content/webaios/extension-actor.sys.mjs
-apps/firefox/src/browser/base/content/webaios/site-actor.sys.mjs
-apps/firefox/src/browser/base/content/webaios/design-actor.sys.mjs
-apps/firefox/src/browser/base/content/webaios/vim-actor.sys.mjs
-apps/firefox/src/browser/base/content/webaios/call-actor.sys.mjs
+apps/firefox/src/browser/base/content/ressac/sidebar.js
+apps/firefox/src/browser/base/content/ressac/sidebar.css
+apps/firefox/src/browser/base/content/ressac/window.js
+apps/firefox/src/browser/base/content/ressac/store.sys.mjs
+apps/firefox/src/browser/base/content/ressac/agent.js
+apps/firefox/src/browser/base/content/ressac/agent.css
+apps/firefox/src/browser/base/content/ressac/page-actor.sys.mjs
+apps/firefox/src/browser/base/content/ressac/extension-actor.sys.mjs
+apps/firefox/src/browser/base/content/ressac/site-actor.sys.mjs
+apps/firefox/src/browser/base/content/ressac/design-actor.sys.mjs
+apps/firefox/src/browser/base/content/ressac/vim-actor.sys.mjs
+apps/firefox/src/browser/base/content/ressac/call-actor.sys.mjs
 
-# Specs, plans and notes live outside the repo (../WebAiOs-docs); docs/superpowers is a local link to them
+# Specs, plans and notes live outside the repo (../Ressac-docs); docs/superpowers is a local link to them
 docs/superpowers
 
 # Packaging outputs

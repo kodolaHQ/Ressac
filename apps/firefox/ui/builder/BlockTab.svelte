@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { BlockCatalogEntry } from "@webaios/kernel";
+  import type { BlockCatalogEntry } from "@ressac/kernel";
   import { availableFields } from "./fields";
   import type { Edit } from "./edit.svelte";
   import CodeEditor from "./CodeEditor.svelte";

@@ -4,7 +4,7 @@ import os from "node:os";
 import { join } from "node:path";
 import { expect } from "vitest";
 import { dispatch, state, waitReady } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
 import { inBrowser } from "./sites";
@@ -13,7 +13,7 @@ import { click, inUi, waitUi } from "./ui";
 // Agent app helpers.
 
 /** A fake app's ports (one block of 5 per e2e file: they run in parallel) and a short delay before « En erreur ». */
-export const APPS_ENV = (block: [number, number]) => ({ WEBAIOS_APP_PORTS: `${block[0]}-${block[1]}`, WEBAIOS_APP_DELAY_MS: "3000" });
+export const APPS_ENV = (block: [number, number]) => ({ RESSAC_APP_PORTS: `${block[0]}-${block[1]}`, RESSAC_APP_DELAY_MS: "3000" });
 
 // 1×1 PNG, the app's same-origin icon.
 const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
@@ -54,14 +54,14 @@ createServer((req, res) => {
 
 /**
  * Writes a project: `<dataDir>/workspace/projects/<dossier>/` with `serveur.mjs` and, if `manifeste` is given,
- * `webaios.json` (a string is written as is; an object completes `{ type: "app", launch: "node serveur.mjs" }`).
+ * `ressac.json` (a string is written as is; an object completes `{ type: "app", launch: "node serveur.mjs" }`).
  */
 export function writeProject(dataDir: string, folder: string, o: { manifest?: object | string; server?: keyof typeof SERVERS } = {}): void {
   const dir = join(dataDir, "workspace", "projects", folder);
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, "serveur.mjs"), SERVERS[o.server ?? "ok"](folder));
   if (o.manifest === undefined) return;
-  writeFileSync(join(dir, "webaios.json"), typeof o.manifest === "string" ? o.manifest : JSON.stringify({ type: "app", launch: "node serveur.mjs", ...o.manifest }));
+  writeFileSync(join(dir, "ressac.json"), typeof o.manifest === "string" ? o.manifest : JSON.stringify({ type: "app", launch: "node serveur.mjs", ...o.manifest }));
 }
 
 /** Launches app « essai » with the agent's tool; returns its port. */
@@ -73,7 +73,7 @@ export async function launchAttempt(dataDir: string): Promise<number> {
 
 /** Chrome-context expression: the window of app `dossier` (the attribute set by setupAppWindow), or undefined. */
 export const appWindowExpr = (folder: string) =>
-  `[...Services.wm.getEnumerator("navigator:browser")].find((w) => w.document.documentElement.getAttribute("webaios-app") === ${JSON.stringify(folder)})`;
+  `[...Services.wm.getEnumerator("navigator:browser")].find((w) => w.document.documentElement.getAttribute("ressac-app") === ${JSON.stringify(folder)})`;
 
 /** Runs `script` in the content of app `dossier`'s view (see inBrowser). */
 export const inAppView = <T>(m: Marionette, folder: string, script: string, o: { frame?: number; gesture?: boolean } = {}): Promise<T> =>
@@ -114,7 +114,7 @@ export const agentInput = (dataDir: string): string => {
 };
 
 export interface AppsPage {
-  w: LaunchedWebAiOs;
+  w: LaunchedRessac;
   m: Marionette;
   dataDir: string;
   profile: string;
@@ -129,8 +129,8 @@ export async function openAppsPage(
   block: [number, number],
   o: { env?: Record<string, string>; projects?: boolean; slow?: boolean; noManifest?: string[]; prepare?: (dataDir: string) => void; dataDir?: string; profile?: string; page?: boolean } = {},
 ): Promise<AppsPage> {
-  const dataDir = o.dataDir ?? (await mkdtemp(join(os.tmpdir(), "webaios-data-")));
-  const profile = o.profile ?? (await mkdtemp(join(os.tmpdir(), "webaios-firefox-")));
+  const dataDir = o.dataDir ?? (await mkdtemp(join(os.tmpdir(), "ressac-data-")));
+  const profile = o.profile ?? (await mkdtemp(join(os.tmpdir(), "ressac-firefox-")));
   if (!o.dataDir) {
     if (o.projects ?? true) {
       writeProject(dataDir, "essai", { manifest: { name: "Essai", ...(o.slow ? { launch: "sleep 1 && node serveur.mjs" } : {}) } });
@@ -140,11 +140,11 @@ export async function openAppsPage(
     for (const d of o.noManifest ?? []) writeProject(dataDir, d);
     o.prepare?.(dataDir);
   }
-  const w = await launchWebAiOs({ dataDir, profile, env: { ...APPS_ENV(block), ...o.env } });
+  const w = await launchRessac({ dataDir, profile, env: { ...APPS_ENV(block), ...o.env } });
   const m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
-  await expect.poll(() => existsSync(join(dataDir, "workspace", ".webaios", "mcp.json")), { timeout: 15_000 }).toBe(true);
+  await expect.poll(() => existsSync(join(dataDir, "workspace", ".ressac", "mcp.json")), { timeout: 15_000 }).toBe(true);
   if (o.page ?? true) {
     await dispatch(m, { type: "openApps", windowId: (await state(m)).windows[0]!.id });
     await waitUi(m, "return !!doc.querySelector('[data-testid=\"page-applications\"]')");
@@ -152,7 +152,7 @@ export async function openAppsPage(
   return { w, m, dataDir, profile };
 }
 
-/** Closes WebAiOs, kills the fake apps left, removes its folders. */
+/** Closes Ressac, kills the fake apps left, removes its folders. */
 export async function closeAppsPage(p: AppsPage | undefined): Promise<void> {
   if (!p) return;
   await p.w.close();

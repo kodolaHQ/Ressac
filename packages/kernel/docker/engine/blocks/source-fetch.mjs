@@ -1,8 +1,8 @@
 // source.fetch: public GET (text or JSON) through today's `fetch` call.
 
-async function fetchUrl({ params, fill, webaios }) {
+async function fetchUrl({ params, fill, ressac }) {
   const { text: url } = fill(params.url, { url: true });
-  return webaios.fetch(url, { format: params.format ?? "text" });
+  return ressac.fetch(url, { format: params.format ?? "text" });
 }
 
 export default {

@@ -6,7 +6,7 @@ import { initialState } from "../core/state/initial-state";
 import { validFolder as kernelValidFolder } from "../../../packages/kernel/src/applications/manifest";
 import { validFolder } from "../chrome/store/app-folder";
 
-// A login profile's container is `webaios-<id>`, a site app's `webaios-site-<id>`, an agent app's `webaios-app-<dossier>`:
+// A login profile's container is `ressac-<id>`, a site app's `ressac-site-<id>`, an agent app's `ressac-app-<dossier>`:
 // no profile id may start like the other two, or a profile would share an app's cookies (spike S8).
 describe("container names", () => {
   it("no login profile id starts with app- or site-", () => {

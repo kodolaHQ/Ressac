@@ -4,6 +4,7 @@ import { DEFAULT_PROFILE } from "../../shared/model";
 const { ContextualIdentityService } = ChromeUtils.importESModule("moz-src:///toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs");
 
 /** Internal identity name of a login profile's container. */
+// Stored format kept across the rename to Ressac: the key of every container in the profile's containers.json.
 export const internalName = (id: ProfileId) => `userContextIdInternal.webaios-${id}`;
 
 /**
@@ -42,7 +43,7 @@ export function removeContainer(profile: ProfileId): void {
 /** userContextId of site app `id`'s private container (`userContextIdInternal.webaios-site-<id>`), created on first use. */
 export const siteContainer = (id: string): number => containerFor(`site-${id}`);
 
-/** Is this a private container whose internal name starts with `webaios-<prefix>`? */
+/** Is this a private container whose internal name starts with `ressac-<prefix>`? */
 function hasPrefix(userContextId: number, prefix: string): boolean {
   if (!userContextId) return false;
   ContextualIdentityService.ensureDataReady();

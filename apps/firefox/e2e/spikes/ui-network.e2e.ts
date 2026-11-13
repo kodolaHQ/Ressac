@@ -8,29 +8,29 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { testActor } from "../agent-extensions";
 import { dispatch, state, waitFor, waitReady } from "../firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "../launch";
+import { launchRessac, type LaunchedRessac } from "../launch";
 import type { Marionette } from "../marionette";
 import { writeSite } from "../sites";
 
-// Spikes S1–S3 of docs/superpowers/specs/2026-11-08-webaios-firefox-reseau-interfaces-design.md (note:
+// Spikes S1–S3 of docs/superpowers/specs/2026-11-08-ressac-firefox-reseau-interfaces-design.md (note:
 // docs/superpowers/notes/2026-11-08-reseau-interfaces-spikes.md). The spec's mechanisms are prototyped in
 // ui-network-spike.sys.mjs, loaded in the parent from this folder (no build:ui), switched layer by layer.
 // Measures are printed as `[spike] <what>: <JSON>`; the security lines are asserted at the end of each spike.
-// Rerun with WEBAIOS_SPIKE=1 (WEBAIOS_SPIKE_LOOPBACK=1: media.peerconnection.ice.loopback, so the UDP witness counts).
+// Rerun with RESSAC_SPIKE=1 (RESSAC_SPIKE_LOOPBACK=1: media.peerconnection.ice.loopback, so the UDP witness counts).
 //
 // Nothing reaches the real internet: every name is under SFX and network.dns.native-is-localhost answers 127.0.0.1
 // for any name (IPv4 only); the hostResolver log (MOZ_LOG) shows which names were asked. Ports: 15368 (HTTP/WS with a
 // log), 15369 (a TCP counter: fake TURN and the hints' target; and a UDP counter: fake STUN).
 
-// WEBAIOS_SPIKE_OUT=<file> also appends each note there (vitest hides a passed test's console).
+// RESSAC_SPIKE_OUT=<file> also appends each note there (vitest hides a passed test's console).
 const note = (what: string, v: unknown) => {
   const line = `[spike] ${what}: ${JSON.stringify(v)}`;
   console.log(line);
-  if (process.env.WEBAIOS_SPIKE_OUT) appendFileSync(process.env.WEBAIOS_SPIKE_OUT, line + "\n");
+  if (process.env.RESSAC_SPIKE_OUT) appendFileSync(process.env.RESSAC_SPIKE_OUT, line + "\n");
 };
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const MODULE = "resource://webaios-spike-net/ui-network-spike.sys.mjs";
-const SFX = `w${Date.now()}.webaios-test.example`;
+const MODULE = "resource://ressac-spike-net/ui-network-spike.sys.mjs";
+const SFX = `w${Date.now()}.ressac-test.example`;
 const HTTP = 15368;
 const RAW = 15369;
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
@@ -129,9 +129,9 @@ function widgetFiles(dataDir: string, id: string, display: string): void {
   writeFileSync(path.join(dir, "display.html"), display);
 }
 
-describe.skipIf(!process.env.WEBAIOS_SPIKE)("the UI's network, spikes S1–S3", () => {
+describe.skipIf(!process.env.RESSAC_SPIKE)("the UI's network, spikes S1–S3", () => {
   const servers: { close(): void }[] = [];
-  let w: LaunchedWebAiOs;
+  let w: LaunchedRessac;
   let m: Marionette;
   let dataDir: string;
   let profile: string;
@@ -142,7 +142,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("the UI's network, spikes S1–S3", 
   const chrome = <T = any>(body: string, args: unknown[] = []) =>
     m.execute<T>(
       `return (async () => { const N = ChromeUtils.importESModule("${MODULE}");
-       const sidebar = document.getElementById("webaios-sidebar"), agent = document.getElementById("webaios-agent"), sb = sidebar.contentDocument;
+       const sidebar = document.getElementById("ressac-sidebar"), agent = document.getElementById("ressac-agent"), sb = sidebar.contentDocument;
        const widget = (id) => sb.querySelector('[data-testid="widget-' + id + '"] iframe');
        ${body} })();`,
       args,
@@ -163,7 +163,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("the UI's network, spikes S1–S3", 
   /** Rewrites a widget's display and waits until its frame shows `marker`. */
   async function display(id: string, html: string, marker: string): Promise<void> {
     widgetFiles(dataDir, id, html);
-    await waitFor(m, `const f = document.getElementById("webaios-sidebar").contentDocument.querySelector('[data-testid="widget-${id}"] iframe'); return f?.contentDocument?.body?.textContent ?? "";`, (t: string) => t.includes(marker), 20_000);
+    await waitFor(m, `const f = document.getElementById("ressac-sidebar").contentDocument.querySelector('[data-testid="widget-${id}"] iframe'); return f?.contentDocument?.body?.textContent ?? "";`, (t: string) => t.includes(marker), 20_000);
   }
   async function closeTabs(): Promise<void> {
     for (const id of Object.keys((await state(m)).tabs)) await dispatch(m, { type: "closeTab", id } as never);
@@ -206,10 +206,10 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("the UI's network, spikes S1–S3", 
     await new Promise<void>((ok) => stun.bind(RAW, "127.0.0.1", ok));
     servers.push(stun);
 
-    dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
-    profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
-    logDir = await mkdtemp(path.join(os.tmpdir(), "webaios-dnslog-"));
-    pages = await mkdtemp(path.join(os.tmpdir(), "webaios-spike-pages-"));
+    dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
+    profile = await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
+    logDir = await mkdtemp(path.join(os.tmpdir(), "ressac-dnslog-"));
+    pages = await mkdtemp(path.join(os.tmpdir(), "ressac-spike-pages-"));
     for (const p of ["a", "b", "c"]) writeFileSync(path.join(pages, `s1-${p}.html`), hintsPage(p));
     for (const p of ["p0", "p1", "p2"]) for (const d of ["cp", "tp"]) writeFileSync(path.join(pages, `s2-${p}-${d}.html`), loadsPage(p, d));
     for (const p of ["s3o", "s3d"]) writeFileSync(path.join(pages, `rtc-${p}.html`), rtcPage(`${p}-tp`));
@@ -220,12 +220,12 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("the UI's network, spikes S1–S3", 
       files: { "home/index.html": '<!doctype html><meta charset="utf-8"><p id="h">accueil</p>' },
     });
     const actor = testActor(profile);
-    w = await launchWebAiOs({
+    w = await launchRessac({
       dataDir,
       profile,
       // ice.loopback: lets ICE send to the loopback STUN witness (spike only; measured with and without in the note).
-      prefs: { ...actor.prefs, "network.dns.native-is-localhost": true, "network.trr.mode": 5, ...(process.env.WEBAIOS_SPIKE_LOOPBACK ? { "media.peerconnection.ice.loopback": true } : {}) },
-      env: { ...actor.env, WEBAIOS_TEST_LOCAL_ADDRESSES: "1", MOZ_LOG: "sync,nsHostResolver:5", MOZ_LOG_FILE: path.join(logDir, "moz.log") },
+      prefs: { ...actor.prefs, "network.dns.native-is-localhost": true, "network.trr.mode": 5, ...(process.env.RESSAC_SPIKE_LOOPBACK ? { "media.peerconnection.ice.loopback": true } : {}) },
+      env: { ...actor.env, RESSAC_TEST_LOCAL_ADDRESSES: "1", MOZ_LOG: "sync,nsHostResolver:5", MOZ_LOG_FILE: path.join(logDir, "moz.log") },
     });
     m = w.marionette;
     await m.setContext("chrome");
@@ -233,8 +233,8 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("the UI's network, spikes S1–S3", 
     await m.execute(
       `const res = Services.io.getProtocolHandler("resource").QueryInterface(Ci.nsIResProtocolHandler);
        const { FileUtils } = ChromeUtils.importESModule("resource://gre/modules/FileUtils.sys.mjs");
-       res.setSubstitution("webaios-spike-net", Services.io.newFileURI(new FileUtils.File(arguments[0])));
-       for (const n of ["webaios-spike-page", "webaios-component-spike", "webaios-site-spike"]) res.setSubstitution(n, Services.io.newFileURI(new FileUtils.File(arguments[1])));`,
+       res.setSubstitution("ressac-spike-net", Services.io.newFileURI(new FileUtils.File(arguments[0])));
+       for (const n of ["ressac-spike-page", "ressac-component-spike", "ressac-site-spike"]) res.setSubstitution(n, Services.io.newFileURI(new FileUtils.File(arguments[1])));`,
       [import.meta.dirname, pages],
     );
     await chrome("N.install();");
@@ -259,7 +259,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("the UI's network, spikes S1–S3", 
        await step("wd", () => N.insertHints(wd, p + "-wd", sfx));
        await step("wb", async () => { frames.blank = await N.addFrame(wd); return N.insertHints(frames.blank.contentDocument, p + "-wb", sfx); });
        await step("wsd", async () => { frames.sd = await N.addFrame(wd, { srcdoc: "<p>s</p>" }); return [frames.sd.contentDocument?.documentURI, N.insertHints(frames.sd.contentDocument, p + "-wsd", sfx)]; });
-       await step("tp", async () => { frames.tp = await N.addFrame(sb, { sandbox: "allow-scripts" }, "resource://webaios-spike-page/s1-" + p + ".html"); return [frames.tp.contentDocument?.documentURI, N.insertHints(frames.tp.contentDocument, p + "-tpd", sfx)]; });
+       await step("tp", async () => { frames.tp = await N.addFrame(sb, { sandbox: "allow-scripts" }, "resource://ressac-spike-page/s1-" + p + ".html"); return [frames.tp.contentDocument?.documentURI, N.insertHints(frames.tp.contentDocument, p + "-tpd", sfx)]; });
        await step("flags", () => ({ sidebar: N.flags(sidebar), agent: N.flags(agent), widget: N.flags(widget("sonde")), blank: frames.blank && N.flags(frames.blank), tp: frames.tp && N.flags(frames.tp) }));
        return out;`,
       [p, SFX],
@@ -352,11 +352,11 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("the UI's network, spikes S1–S3", 
 
   /** A policy/observer record, compacted: label of the host, type, loading document, node, principals, context, verdict. */
   const compact = (r: any) =>
-    `${label(new URL(r.uri.startsWith("moz-remote-image") ? decodeURIComponent(r.uri.split("url=")[1] ?? "") || "http://x" : r.uri.replace(/^wss?:/, "http:")).host)} t${r.type} doc=${(r.doc ?? "-").replace(/^(chrome:\/\/browser\/content\/webaios\/|resource:\/\/)/, "").slice(0, 40)} node=${r.node ?? "-"} L=${r.loading} T=${r.triggering} bc=${r.bc ? (r.bc.content ? "content" : "chrome") : "-"} ui=${r.ui}`;
+    `${label(new URL(r.uri.startsWith("moz-remote-image") ? decodeURIComponent(r.uri.split("url=")[1] ?? "") || "http://x" : r.uri.replace(/^wss?:/, "http:")).host)} t${r.type} doc=${(r.doc ?? "-").replace(/^(chrome:\/\/browser\/content\/ressac\/|resource:\/\/)/, "").slice(0, 40)} node=${r.node ?? "-"} L=${r.loading} T=${r.triggering} bc=${r.bc ? (r.bc.content ? "content" : "chrome") : "-"} ui=${r.ui}`;
   const logs = () => chrome<{ policy: number; observer: number; webrtc: number }>("return { policy: N.log.policy.length, observer: N.log.observer.length, webrtc: N.log.webrtc.length };");
   const logsSince = (l: { policy: number; observer: number }) =>
     chrome<{ policy: any[]; observer: any[] }>("return { policy: N.log.policy.slice(arguments[0]), observer: N.log.observer.slice(arguments[1]) };", [l.policy, l.observer]);
-  const site = `[...Services.wm.getEnumerator("navigator:browser")].find((x) => x.document.documentElement.getAttribute("webaios-site") === "netsite")`;
+  const site = `[...Services.wm.getEnumerator("navigator:browser")].find((x) => x.document.documentElement.getAttribute("ressac-site") === "netsite")`;
 
   async function s2Phase(p: string) {
     await display("sonde", loadsWidget(p), `sonde ${p}`);
@@ -367,14 +367,14 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("the UI's network, spikes S1–S3", 
        const step = async (k, f) => { try { out[k] = await f(); } catch (e) { out[k] = "ERR " + String(e).slice(0, 100); } };
        const wd = widget("sonde").contentDocument;
        const win = ${site};
-       const bar = win?.document.getElementById("webaios-site-bar")?.contentDocument;
+       const bar = win?.document.getElementById("ressac-site-bar")?.contentDocument;
        const home = bar?.querySelector('[data-testid="site-home-frame"]')?.contentDocument;
        await step("sb", () => N.insertLoads(sb, p + "-sb", sfx));
        await step("ag", () => N.insertLoads(agent.contentDocument, p + "-ag", sfx));
        await step("wd", () => N.insertLoads(wd, p + "-wd", sfx));
        await step("wb", async () => N.insertLoads((await N.addFrame(wd)).contentDocument, p + "-wb", sfx));
        await step("wsd", async () => { const f = await N.addFrame(wd, { srcdoc: "<p>s</p>" }); return [f.contentDocument.documentURI, N.insertLoads(f.contentDocument, p + "-wsd", sfx)]; });
-       for (const [d, sub] of [["cp", "webaios-component-spike"], ["tp", "webaios-spike-page"]])
+       for (const [d, sub] of [["cp", "ressac-component-spike"], ["tp", "ressac-spike-page"]])
          await step(d, async () => { const f = await N.addFrame(sb, { sandbox: "allow-scripts" }, "resource://" + sub + "/s2-" + p + "-" + d + ".html"); return [f.contentDocument.documentURI, N.insertLoads(f.contentDocument, p + "-" + d, sfx)]; });
        await step("bar", () => (bar ? [bar.documentURI, N.insertLoads(bar, p + "-bar", sfx)] : "no bar"));
        await step("sh", () => (home ? [home.documentURI, N.insertLoads(home, p + "-sh", sfx)] : "no home"));
@@ -400,12 +400,12 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("the UI's network, spikes S1–S3", 
   it("S2: who a load belongs to, and what a refusal leaves (DNS, connection)", { timeout: 300_000 }, async () => {
     const opened = await m
       .execute(
-        `return (async () => { const store = await ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready;
+        `return (async () => { const store = await ChromeUtils.importESModule("chrome://browser/content/ressac/store.sys.mjs").ready;
          return await store.agent.request("sites.act", { id: "netsite", action: "open", window: store.state.windows[0].id }); })();`,
       )
       .then((v) => v, (e) => `ERR ${e}`);
-    const bar = await waitFor(m, `const w = ${site}; const b = w?.document.getElementById("webaios-site-bar")?.contentDocument; const h = b?.querySelector('[data-testid="site-home-frame"]')?.contentDocument; return { bar: b?.documentURI ?? null, home: h?.documentURI ?? null, view: w?.gBrowser.selectedBrowser.currentURI.spec ?? null };`, (v: any) => !!v.bar && !!v.home, 20_000).catch((e) => String(e));
-    const list = await m.execute(`return (async () => { const store = await ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready; return await store.agent.request("sites.list"); })();`).catch((e) => String(e));
+    const bar = await waitFor(m, `const w = ${site}; const b = w?.document.getElementById("ressac-site-bar")?.contentDocument; const h = b?.querySelector('[data-testid="site-home-frame"]')?.contentDocument; return { bar: b?.documentURI ?? null, home: h?.documentURI ?? null, view: w?.gBrowser.selectedBrowser.currentURI.spec ?? null };`, (v: any) => !!v.bar && !!v.home, 20_000).catch((e) => String(e));
+    const list = await m.execute(`return (async () => { const store = await ChromeUtils.importESModule("chrome://browser/content/ressac/store.sys.mjs").ready; return await store.agent.request("sites.list"); })();`).catch((e) => String(e));
     note("S2 site app opened", { opened, bar, list: list });
 
     const p0 = await s2Phase("p0");
@@ -425,7 +425,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("the UI's network, spikes S1–S3", 
     await openTab(`http://wt-tab.${SFX}:${HTTP}/page`);
     await sleep(1500);
     witness.read = await m.execute(
-      `return (async () => { const s = await ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready;
+      `return (async () => { const s = await ChromeUtils.importESModule("chrome://browser/content/ressac/store.sys.mjs").ready;
        try { const r = await s.readPage(arguments[0], { profile: null, localAddresses: true }); return r.title; } catch (e) { return "ERR " + e; } })();`,
       [`http://wt-read.${SFX}:${HTTP}/page`],
     );
@@ -481,20 +481,20 @@ witness.siteView = await m.execute(`const b = ${site}?.gBrowser.selectedBrowser;
       `const d = (${frameExpr})?.contentDocument; const s = d?.querySelector("iframe[srcdoc]")?.contentDocument;
        return { main: d?.getElementById("r")?.textContent ?? null, srcdoc: s?.getElementById("r")?.textContent ?? null, srcdocUri: s?.documentURI ?? null };`;
     const settle = async (frameExpr: string) => {
-      await waitFor(m, `const widget = (id) => document.getElementById("webaios-sidebar").contentDocument.querySelector('[data-testid="widget-' + id + '"] iframe'); ${results(frameExpr)}`, (v: any) => v.main?.startsWith("["), 30_000);
+      await waitFor(m, `const widget = (id) => document.getElementById("ressac-sidebar").contentDocument.querySelector('[data-testid="widget-' + id + '"] iframe'); ${results(frameExpr)}`, (v: any) => v.main?.startsWith("["), 30_000);
       await sleep(8000);
-      return m.execute(`const widget = (id) => document.getElementById("webaios-sidebar").contentDocument.querySelector('[data-testid="widget-' + id + '"] iframe'); ${results(frameExpr)}`);
+      return m.execute(`const widget = (id) => document.getElementById("ressac-sidebar").contentDocument.querySelector('[data-testid="widget-' + id + '"] iframe'); ${results(frameExpr)}`);
     };
     for (const [ph, mode] of [["s3o", "off"], ["s3d", "deny"]] as const) {
       await chrome("N.mode.webrtc = arguments[0];", [mode]);
       await run(`${ph} widget (served, guarded)`, async () => {
         widgetFiles(dataDir, "rtc", rtcPage(`${ph}-w`));
-        await waitFor(m, `const f = document.getElementById("webaios-sidebar").contentDocument.querySelector('[data-testid="widget-rtc"] iframe'); return f?.contentDocument?.documentElement?.innerHTML.includes(${JSON.stringify(`${ph}-w-main`)}) ?? false;`, (v) => v === true, 20_000);
+        await waitFor(m, `const f = document.getElementById("ressac-sidebar").contentDocument.querySelector('[data-testid="widget-rtc"] iframe'); return f?.contentDocument?.documentElement?.innerHTML.includes(${JSON.stringify(`${ph}-w-main`)}) ?? false;`, (v) => v === true, 20_000);
         return settle(`widget("rtc")`);
       });
       await run(`${ph} unguarded page in the sidebar`, async () => {
-        await chrome("const f = await N.addFrame(sb, { sandbox: 'allow-scripts', id: 'rtc-' + arguments[0] }, 'resource://webaios-spike-page/rtc-' + arguments[0] + '.html'); return f.contentDocument.documentURI;", [ph]);
-        return settle(`document.getElementById("webaios-sidebar").contentDocument.getElementById("rtc-${ph}")`);
+        await chrome("const f = await N.addFrame(sb, { sandbox: 'allow-scripts', id: 'rtc-' + arguments[0] }, 'resource://ressac-spike-page/rtc-' + arguments[0] + '.html'); return f.contentDocument.documentURI;", [ph]);
+        return settle(`document.getElementById("ressac-sidebar").contentDocument.getElementById("rtc-${ph}")`);
       });
       await run(`${ph} sidebar (system principal)`, () => chrome("return await N.rtc(sb.defaultView.RTCPeerConnection, arguments[0], arguments[1]);", [`${ph}-sb`, SFX]));
     }

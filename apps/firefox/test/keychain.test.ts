@@ -46,7 +46,7 @@ describe("keychain", () => {
     const l = await journal();
     expect(l).toHaveLength(1);
     expect(l[0]!.argv).toEqual(["-i"]);
-    expect(l[0]!.stdin).toBe('add-generic-password -U -s webaios-codex-api -a default -w "sk-abc_123"\n');
+    expect(l[0]!.stdin).toBe('add-generic-password -U -s ressac-codex-api -a default -w "sk-abc_123"\n');
     expect(l.some((e) => e.argv.join(" ").includes("sk-abc_123"))).toBe(false);
   });
 
@@ -79,12 +79,12 @@ describe("keychain", () => {
     await writeFile(state, "44\n");
     const l = await journal();
     expect(l[0]!.argv).not.toContain("-w");
-    expect(l[2]!.argv).toEqual(["delete-generic-password", "-s", "webaios-codex-api", "-a", "default"]);
+    expect(l[2]!.argv).toEqual(["delete-generic-password", "-s", "ressac-codex-api", "-a", "default"]);
   });
 
   it("test file", async () => {
     const file = path.join(dir, "kc-file");
-    const kc = keychain({ command: fake, env: { WEBAIOS_TEST_KEYCHAIN: file } });
+    const kc = keychain({ command: fake, env: { RESSAC_TEST_KEYCHAIN: file } });
     expect(await kc.has()).toBe(false);
     await kc.write("sk-1");
     expect(await kc.read()).toBe("sk-1");
@@ -98,9 +98,9 @@ describe("keychain", () => {
 
   it("Claude's key: its own service and its own test file", async () => {
     await keychain({ command: fake, service: CLAUDE_KEY.service }).write("sk-ant-1");
-    expect((await journal())[0]!.stdin).toBe('add-generic-password -U -s webaios-claude-api -a default -w "sk-ant-1"\n');
+    expect((await journal())[0]!.stdin).toBe('add-generic-password -U -s ressac-claude-api -a default -w "sk-ant-1"\n');
     const file = path.join(dir, "kc-file");
-    const env = { WEBAIOS_TEST_KEYCHAIN: file };
+    const env = { RESSAC_TEST_KEYCHAIN: file };
     await keychain({ command: fake, env }).write("sk-codex");
     await keychain({ command: fake, env, service: CLAUDE_KEY.service }).write("sk-claude");
     expect(await readFile(file, "utf8")).toBe("sk-codex");

@@ -1,4 +1,4 @@
-// The `webaios` API given to the widgets' code (harvest.mjs, `code` blocks): every access goes through a call to the kernel.
+// The `ressac` API given to the widgets' code (harvest.mjs, `code` blocks): every access goes through a call to the kernel.
 import { parseFeed } from "./feed.mjs";
 
 /** A log line: texts as they are, the rest as JSON. */
@@ -6,9 +6,9 @@ export const format = (...a) => a.map((x) => (typeof x === "string" ? x : JSON.s
 
 /**
  * `call(f, a)` sends a call to the kernel and waits for its answer; `log(...a)` receives the lines of
- * `webaios.log`; `input` (action only) becomes `webaios.input`.
+ * `ressac.log`; `input` (action only) becomes `ressac.input`.
  */
-export function createWebaios({ call, config, previous, now, log, input }) {
+export function createRessac({ call, config, previous, now, log, input }) {
   async function sort(items, { question, text, threshold = 0.5, parallel = 8 } = {}) {
     const list = [...items];
     const scores = new Array(list.length);

@@ -6,7 +6,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { SITE_UNKNOWN, SITE_DENIED } from "../../../packages/kernel/src/mcp/server";
 import { testActor } from "./agent-extensions";
 import { dispatch, state, waitFor } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
 import { SITE_HOME, inSiteBar, inSiteView, resolveLocalHosts, siteWindowCount, startSitesServer, writeSite, type SiteTest } from "./sites";
@@ -15,20 +15,20 @@ import { click, inUi, missingApi, waitUi } from "./ui";
 // Plan 31 Task 6: the Applications page's « Sites » section and the agent's site
 // tools.
 
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const HOSTS = ["vidola-a.localhost", "vidola-b.localhost"];
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 let server: Awaited<ReturnType<typeof startSitesServer>>;
 const dirs: string[] = [];
-const opened: LaunchedWebAiOs[] = [];
+const opened: LaunchedRessac[] = [];
 beforeAll(async () => (server = await startSitesServer()));
 afterAll(async () => {
   await server?.close();
   for (const d of dirs) await rm(d, { recursive: true, force: true });
 });
 
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 afterEach(async () => {
   try {
@@ -52,18 +52,18 @@ function writeMemory(dataDir: string, id = "vidola"): void {
   );
 }
 
-/** WebAiOs on a data folder where `prepare` has written the apps; the Applications page open when `page`. */
+/** Ressac on a data folder where `prepare` has written the apps; the Applications page open when `page`. */
 async function launch(o: { prepare?: (dataDir: string) => void; page?: boolean } = {}) {
-  const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
-  const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
+  const profile = await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
   dirs.push(dataDir, profile);
   o.prepare?.(dataDir);
   const actor = testActor(profile);
-  w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_LOCAL_ADDRESSES: "1", ...actor.env }, prefs: actor.prefs });
+  w = await launchRessac({ dataDir, profile, env: { RESSAC_TEST_LOCAL_ADDRESSES: "1", ...actor.env }, prefs: actor.prefs });
   opened.push(w);
   m = w.marionette;
   await m.setContext("chrome");
-  await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+  await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
   await resolveLocalHosts(m, HOSTS);
   if (o.page !== false) await openPage();
   return { dataDir, profile };
@@ -96,7 +96,7 @@ const series = (id: string) =>
     m,
     id,
     `const home = doc.querySelector('[data-testid="site-home-frame"]');
-     if (!String(home?.contentDocument?.documentURI).startsWith("resource://webaios-site-")) return null;
+     if (!String(home?.contentDocument?.documentURI).startsWith("resource://ressac-site-")) return null;
      return home.contentDocument.getElementById("series").textContent;`,
   );
 /** A trusted click on a bar button. */
@@ -116,7 +116,7 @@ async function enter(id: string, address: string): Promise<void> {
   await waitFor(m, `const w = ${siteExpr(id)}; return w?.gBrowser.selectedBrowser.currentURI.spec;`, (v) => v === address, 15_000);
   await waitFor(m, `return ${siteExpr(id)}.gBrowser.selectedBrowser.contentDocument?.readyState ?? null;`, (v) => v === "complete").catch(() => {});
 }
-const siteExpr = (id: string) => `[...Services.wm.getEnumerator("navigator:browser")].find((w) => w.document.documentElement.getAttribute("webaios-site") === ${JSON.stringify(id)})`;
+const siteExpr = (id: string) => `[...Services.wm.getEnumerator("navigator:browser")].find((w) => w.document.documentElement.getAttribute("ressac-site") === ${JSON.stringify(id)})`;
 
 /** Vidola (with a home), Autre (its current address kept in the profile), and a broken site.json. */
 const section = (dataDir: string) => {
@@ -163,10 +163,10 @@ describe("Applications page, Sites section", () => {
     expect(await windows("vidola")).toBe(1);
   });
 
-  it("Modifier avec l'agent: the agent panel opens and its terminal holds « Appli de site ~/WebAiOs/sites/vidola/ : »", async () => {
+  it("Modifier avec l'agent: the agent panel opens and its terminal holds « Appli de site ~/Ressac/sites/vidola/ : »", async () => {
     await launch({ prepare: section });
     await click(m, '[data-testid="site-vidola-edit"]');
-    const text = "Appli de site ~/WebAiOs/sites/vidola/ :";
+    const text = "Appli de site ~/Ressac/sites/vidola/ :";
     await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes(arguments[0])", [text], 20_000, "agent");
   });
 
@@ -286,7 +286,7 @@ describe("Applications page, Sites section", () => {
 describe("the agent's site tools", () => {
   async function withAgent(prepare: (dataDir: string) => void = (d) => writeSite(d, "vidola", vidola())) {
     const l = await launch({ prepare, page: false });
-    const config = path.join(l.dataDir, "workspace", ".webaios", "mcp.json");
+    const config = path.join(l.dataDir, "workspace", ".ressac", "mcp.json");
     for (const deadline = Date.now() + 20_000; !existsSync(config); await sleep(100)) if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
     await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
     return l;

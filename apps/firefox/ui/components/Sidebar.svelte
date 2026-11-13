@@ -58,9 +58,9 @@
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     class="scrolling"
-    ondragover={(e) => e.dataTransfer?.types.includes("application/x-webaios-essentiel") && e.preventDefault()}
+    ondragover={(e) => e.dataTransfer?.types.includes("application/x-ressac-essentiel") && e.preventDefault()}
     ondrop={(e) => {
-      const favoriteId = e.dataTransfer?.getData("application/x-webaios-essentiel");
+      const favoriteId = e.dataTransfer?.getData("application/x-ressac-essentiel");
       if (favoriteId) api.dispatch({ type: "removeEssential", favoriteId });
     }}
   >
@@ -168,8 +168,8 @@
   .tool:first-of-type { margin-left: auto; }
   .fold { position: relative; margin-left: auto; }
   /* The tools rise from ⋯ on the spring, one after the other. */
-  .pop { position: absolute; right: -4px; bottom: calc(100% + 6px); display: flex; flex-direction: column; gap: 2px; padding: 4px; background: var(--glass-dense); backdrop-filter: blur(30px) saturate(1.8); border: 1px solid var(--glass-edge); border-radius: 12px; box-shadow: var(--modal-shadow); transform-origin: bottom right; animation: webaios-rise var(--spring-d) var(--spring) backwards; }
-  .pop .tool { margin: 0; animation: webaios-rise var(--spring-d) var(--spring) backwards; animation-delay: calc((3 - var(--i)) * 35ms); }
+  .pop { position: absolute; right: -4px; bottom: calc(100% + 6px); display: flex; flex-direction: column; gap: 2px; padding: 4px; background: var(--glass-dense); backdrop-filter: blur(30px) saturate(1.8); border: 1px solid var(--glass-edge); border-radius: 12px; box-shadow: var(--modal-shadow); transform-origin: bottom right; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
+  .pop .tool { margin: 0; animation: ressac-rise var(--spring-d) var(--spring) backwards; animation-delay: calc((3 - var(--i)) * 35ms); }
   .downloads { all: unset; position: relative; width: 28px; height: 28px; display: grid; place-content: center; border-radius: 8px; color: var(--text-muted); transition: transform var(--tap), background var(--tap), color var(--tap); }
   .tool { all: unset; -webkit-app-region: no-drag; width: 28px; height: 28px; display: grid; place-content: center; border-radius: 8px; color: var(--text-muted); transition: transform var(--tap), background var(--tap), color var(--tap); }
   .tool:hover, .downloads:hover { background: var(--glass-hi); color: var(--text); }

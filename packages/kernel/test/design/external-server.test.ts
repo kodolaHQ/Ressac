@@ -30,9 +30,9 @@ afterEach(async () => {
 
 async function frame() {
   const base = await tempFolder();
-  const folders: DesignFolders = { spaceRemarks: join(base, "WebAiOs/.webaios/remarks"), private: join(base, "design") };
+  const folders: DesignFolders = { spaceRemarks: join(base, "Ressac/.ressac/remarks"), private: join(base, "design") };
   const homeDir = join(base, "maison");
-  const spaceRoot = join(base, "WebAiOs");
+  const spaceRoot = join(base, "Ressac");
   await mkdir(homeDir, { recursive: true });
   await mkdir(spaceRoot, { recursive: true });
   const registry = await ExternalRegistry.open(folders.private);
@@ -336,7 +336,7 @@ describe("serveur MCP externe", () => {
     const k2 = await startExternalServer({
       registry: k.registry, remarks: k.remarks, port: 0,
       declare: async (client, d) => {
-        const r = await k.registry.declare(client.id, d, { ranges: [[5280, 5299]], spaceRoot: join(k.base, "WebAiOs"), home: join(k.base, "maison") });
+        const r = await k.registry.declare(client.id, d, { ranges: [[5280, 5299]], spaceRoot: join(k.base, "Ressac"), home: join(k.base, "maison") });
         return { project: r.project, warning: UNREADABLE_WARNING };
       },
     });

@@ -1,4 +1,4 @@
-import type { DirectWidget, DirectState, Execution, ResumeExecution } from "@webaios/kernel";
+import type { DirectWidget, DirectState, Execution, ResumeExecution } from "@ressac/kernel";
 import { beforeEach, expect, test } from "vitest";
 import { Executions, forgetRunChoices, type Launcher, type SourceExecutions } from "../../ui/builder/executions.svelte";
 

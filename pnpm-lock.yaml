@@ -171,7 +171,7 @@ importers:
 
   apps/firefox:
     dependencies:
-      '@webaios/kernel':
+      '@ressac/kernel':
         specifier: workspace:*
         version: link:../../packages/kernel
     devDependencies:

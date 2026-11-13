@@ -10,12 +10,12 @@ afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force
 
 describe("Firefox copy", () => {
   it("manifest: gecko id, background scripts, counted version", () => {
-    const classic = firefoxManifest({ version: "1.2", background: { service_worker: "webaios-background.js" } }, "ma-ext", 7, "./fond.js");
-    expect(classic.background).toEqual({ scripts: ["webaios-background-guard.js", "fond.js"] });
+    const classic = firefoxManifest({ version: "1.2", background: { service_worker: "ressac-background.js" } }, "ma-ext", 7, "./fond.js");
+    expect(classic.background).toEqual({ scripts: ["ressac-background-guard.js", "fond.js"] });
     expect(classic.version).toBe("1.2.0.7");
-    expect(classic.browser_specific_settings).toEqual({ gecko: { id: "ma-ext@agent.webaios", data_collection_permissions: { required: ["none"] } } });
-    expect(firefoxManifest({ version: "1.2", background: { service_worker: "webaios-background.js", type: "module" } }, "ma-ext", 1, undefined).background).toEqual({ scripts: ["webaios-background.js"], type: "module" });
-    expect(firefoxManifest({ version: "1", background: { service_worker: "webaios-background.js" } }, "ma-ext", 1, undefined).background).toEqual({ scripts: ["webaios-background-guard.js"] });
+    expect(classic.browser_specific_settings).toEqual({ gecko: { id: "ma-ext@agent.ressac", data_collection_permissions: { required: ["none"] } } });
+    expect(firefoxManifest({ version: "1.2", background: { service_worker: "ressac-background.js", type: "module" } }, "ma-ext", 1, undefined).background).toEqual({ scripts: ["ressac-background.js"], type: "module" });
+    expect(firefoxManifest({ version: "1", background: { service_worker: "ressac-background.js" } }, "ma-ext", 1, undefined).background).toEqual({ scripts: ["ressac-background-guard.js"] });
     // Pages sandboxed without allow-popups: document.open(url, "_blank") and <a target=_blank> open nothing.
     const csp = firefoxManifest({ version: "1", content_security_policy: { extension_pages: "default-src 'self'" } }, "ma-ext", 1, undefined).content_security_policy;
     expect(csp).toEqual({ extension_pages: "default-src 'self'; sandbox allow-scripts allow-same-origin allow-forms allow-modals" });
@@ -31,7 +31,7 @@ describe("Firefox copy", () => {
   });
 
   it("refusals: a right agent extensions cannot use, or a manifest key that grants a power", () => {
-    const right = (n: string) => `Droit non pris en charge par WebAiOs : ${n}`;
+    const right = (n: string) => `Droit non pris en charge par Ressac : ${n}`;
     const allowed = ["scripting", "storage", "unlimitedStorage", "tabs", "contextMenus", "cookies", "webNavigation", "alarms", "offscreen", "clipboardRead", "clipboardWrite", "declarativeNetRequest", "declarativeNetRequestWithHostAccess", "declarativeNetRequestFeedback"];
     expect(firefoxDenial({ version: "1", permissions: allowed }, [])).toEqual([]);
     expect(firefoxDenial({ version: "1", permissions: ["storage", "identity", "notifications", "dns", "find", "activeTab", "https://x.test/*"] }, [])).toEqual(
@@ -44,7 +44,7 @@ describe("Firefox copy", () => {
   });
 
   it("version counter: increases per id, survives, never lowered", async () => {
-    const d = mkdtempSync(join(tmpdir(), "webaios-amo-versions-"));
+    const d = mkdtempSync(join(tmpdir(), "ressac-amo-versions-"));
     dirs.push(d);
     expect(await nextVersion(d, "a")).toBe(1);
     expect(await nextVersion(d, "a")).toBe(2);

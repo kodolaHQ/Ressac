@@ -4,11 +4,11 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { GECKO_ID, VERSION_FOUR } from "./amo";
 
-export const ID_SUFFIX = "@agent.webaios";
+export const ID_SUFFIX = "@agent.ressac";
 export const addonIdOf = (folder: string) => `${folder}${ID_SUFFIX}`;
 
-const KEEP_BACKGROUND = "webaios-background-guard.js";
-const BACKGROUND = "webaios-background.js";
+const KEEP_BACKGROUND = "ressac-background-guard.js";
+const BACKGROUND = "ressac-background.js";
 const GENERATED_PAGE = "_generated_background_page.html";
 const SANDBOX = "sandbox allow-scripts allow-same-origin allow-forms allow-modals";
 
@@ -16,15 +16,15 @@ const object = (v: unknown): Record<string, any> | undefined => (v && typeof v =
 
 /**
  * The rights an agent extension may hold in Firefox: the `connus` of
- * packages/kernel/src/extensions/manifeste.ts, but notifications, which WebAiOs never shows, and activeTab, which WebAiOs
+ * packages/kernel/src/extensions/manifeste.ts, but notifications, which Ressac never shows, and activeTab, which Ressac
  * lists as unsupported and with which Firefox lets a click capture a tab), plus declarativeNetRequest*.
- * Firefox has more (identity, dns, find, menus…), which no WebAiOs guard closes: refused.
+ * Firefox has more (identity, dns, find, menus…), which no Ressac guard closes: refused.
  */
 const ALLOWED_RIGHTS = new Set(["scripting", "storage", "unlimitedStorage", "tabs", "contextMenus", "cookies", "webNavigation", "alarms", "offscreen", "clipboardRead", "clipboardWrite"]);
 /** Firefox manifest keys that grant a power outside the guards (a search engine, URL handlers, user scripts, privileged APIs, the address bar). */
 const KEYS_DENIED = ["chrome_settings_overrides", "protocol_handlers", "user_scripts", "experiment_apis", "theme_experiment", "omnibox"];
-/** WebAiOs's own refusal text (decision 9's style). */
-export const unsupportedRight = (name: string) => `Droit non pris en charge par WebAiOs : ${name}`;
+/** Ressac's own refusal text (decision 9's style). */
+export const unsupportedRight = (name: string) => `Droit non pris en charge par Ressac : ${name}`;
 
 /**
  * Refusals prepareCopy does not make (GECKO_ID, VERSION_FOUR, a file named _generated_background_page.html, a
@@ -40,14 +40,14 @@ export function firefoxDenial(manifest: Record<string, unknown>, files: readonly
   if (gecko && "id" in gecko) denial.push(GECKO_ID);
   if (typeof manifest.version === "string" && manifest.version.split(".").length > 3) denial.push(VERSION_FOUR);
   // Same text as prepareCopy's reserved names (packages/kernel/src/extensions/copie.ts); the guard finds the background by this name.
-  if (files.includes(GENERATED_PAGE)) denial.push(`Nom de fichier réservé à WebAiOs : ${GENERATED_PAGE}`);
+  if (files.includes(GENERATED_PAGE)) denial.push(`Nom de fichier réservé à Ressac : ${GENERATED_PAGE}`);
   return denial;
 }
 
 /**
  * The copy's manifest for Firefox (decisions 2, 3): gecko id, background.scripts, version `<a>.<b>.<c>.<n>`. Pure.
  * `m` is prepareCopy's manifest; `fondOriginal` (required, so a forgotten argument cannot drop the background) is the agent's `background.service_worker` (only the generated
- * webaios-background.js knows it after the copy), used for a classic background.
+ * ressac-background.js knows it after the copy), used for a classic background.
  */
 export function firefoxManifest(m: Record<string, unknown>, folder: string, n: number, originalBackground: string | undefined): Record<string, unknown> {
   const background = object(m.background);

@@ -7,7 +7,7 @@ import { DISABLED_CRASHES } from "../shared/extensions-messages";
 import { button, cleanupXpis, installAddon } from "./addons";
 import { agentAddons, grant, launchWithAmo, openTab } from "./agent-extensions";
 import { state, waitFor } from "./firefox";
-import type { LaunchedWebAiOs } from "./launch";
+import type { LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
 import { startServer } from "./server";
@@ -63,23 +63,23 @@ beforeAll(async () => (server = await startServer()));
 afterAll(() => server?.close());
 
 const dirs: string[] = [];
-const opened: LaunchedWebAiOs[] = [];
+const opened: LaunchedRessac[] = [];
 afterEach(async () => {
   for (const w of opened.splice(0)) await w.close();
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
   await cleanupXpis();
 });
 
-/** WebAiOs with the fake AMO; `prepare` writes the agent's folder and the registry first. `agent`: the agent's session started. */
+/** Ressac with the fake AMO; `prepare` writes the agent's folder and the registry first. `agent`: the agent's session started. */
 async function launch(o: { prepare?: (root: string, dataDir: string) => void; agent?: boolean; dirs?: { dataDir: string; profile: string }; env?: Record<string, string> } = {}) {
-  const d = o.dirs ?? { dataDir: mkdtempSync(path.join(os.tmpdir(), "webaios-data-")), profile: mkdtempSync(path.join(os.tmpdir(), "webaios-firefox-")) };
+  const d = o.dirs ?? { dataDir: mkdtempSync(path.join(os.tmpdir(), "ressac-data-")), profile: mkdtempSync(path.join(os.tmpdir(), "ressac-firefox-")) };
   if (!o.dirs) dirs.push(d.dataDir, d.profile);
   const root = path.join(d.dataDir, "workspace");
   o.prepare?.(root, d.dataDir);
   const w = await launchWithAmo({ ...d, env: o.env });
   opened.push(w);
   if (o.agent) {
-    const config = path.join(root, ".webaios", "mcp.json");
+    const config = path.join(root, ".ressac", "mcp.json");
     for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
       if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
     await waitUi(w.marionette, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
@@ -152,7 +152,7 @@ describe("the Extensions page", () => {
   it("lists source, the agent's version (without the counter), rights, sites and spaces; Détails opens", async () => {
     const w = await launch({ prepare: (root, dataDir) => (writeAgentExtension(root, "cacheur", HIDER), grant(dataDir, "cacheur", GRANT)) });
     const m = w.marionette;
-    await waitActive(m, "cacheur@agent.webaios", true);
+    await waitActive(m, "cacheur@agent.ressac", true);
     expect((await agentAddons(m))[0]!.version).toBe("1.2.0.1");
     await openPage(m);
     await waitRow(m, "Cacheur de l'agent", true);
@@ -171,7 +171,7 @@ describe("the Extensions page", () => {
     const w = await launch();
     const m = w.marionette;
     await openPage(m);
-    expect(Object.values((await state(m)).tabs).map((o) => o.url)).toContain("webaios://extensions");
+    expect(Object.values((await state(m)).tabs).map((o) => o.url)).toContain("ressac://extensions");
     // the list loads after the page shows
     await waitUi(m, `return doc.querySelector(${JSON.stringify(PAGE)}).textContent.includes("Aucune extension.")`);
     await fromStrip(m, "Gérer les extensions");
@@ -183,11 +183,11 @@ describe("the Extensions page", () => {
   it("« Désactiver toutes les extensions »: the agent's add-ons disabled, still after a restart; unticked, they run again", async () => {
     const first = await launch({ prepare: (root, dataDir) => (writeAgentExtension(root, "cacheur", HIDER), grant(dataDir, "cacheur", GRANT)) });
     let m = first.marionette;
-    await waitActive(m, "cacheur@agent.webaios", true);
+    await waitActive(m, "cacheur@agent.ressac", true);
     await openPage(m);
     await click(m, '[data-testid="extensions-off"]');
     await waitUi(m, `return doc.querySelector('[data-testid="extensions-off"]').checked`);
-    await waitActive(m, "cacheur@agent.webaios", false);
+    await waitActive(m, "cacheur@agent.ressac", false);
     expect(registry(first.dataDir).allCut).toBe(true);
     // Disabled, never uninstalled (decision 4): its grant stays.
     expect(registry(first.dataDir).extensions["agent:cacheur"]?.profiles).toEqual(["default"]);
@@ -195,13 +195,13 @@ describe("the Extensions page", () => {
 
     const w = await launch({ dirs: { dataDir: first.dataDir, profile: first.profile } });
     m = w.marionette;
-    await m.execute(`return (async () => { await (await ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready).agentExtensions.ready; })();`);
+    await m.execute(`return (async () => { await (await ChromeUtils.importESModule("chrome://browser/content/ressac/store.sys.mjs").ready).agentExtensions.ready; })();`);
     expect((await agentAddons(m)).filter((a) => a.isActive)).toEqual([]);
     await openPage(m);
     await waitUi(m, `return doc.querySelector('[data-testid="extensions-off"]')?.checked`);
     await waitRow(m, "Cacheur de l'agent", true);
     await click(m, '[data-testid="extensions-off"]');
-    await waitActive(m, "cacheur@agent.webaios", true);
+    await waitActive(m, "cacheur@agent.ressac", true);
     expect(registry(w.dataDir).allCut).toBe(false);
   });
 
@@ -213,12 +213,12 @@ describe("the Extensions page", () => {
     await consoleUntil(w, "memoire", "lu:{}");
     await openPage(m);
     await rowButton(m, "Mémoire de l'agent", "Désactiver partout");
-    await waitActive(m, "memoire@agent.webaios", false);
+    await waitActive(m, "memoire@agent.ressac", false);
     expect(registry(w.dataDir).extensions["agent:memoire"]?.profiles).toEqual([]);
     await waitRow(m, "Mémoire de l'agent", true);
     expect(await row(m, "Mémoire de l'agent")).toContain("Espaces : Active nulle part");
     expect(await enabledByAgent(w, "memoire", "Mémoire de l'agent")).toMatch(/^Activée/);
-    await waitActive(m, "memoire@agent.webaios", true);
+    await waitActive(m, "memoire@agent.ressac", true);
     await consoleUntil(w, "memoire", 'lu:{"k":"gardé"}');
   });
 
@@ -237,7 +237,7 @@ describe("the Extensions page", () => {
     expect(existsSync(path.join(w.dataDir, "extensions", "copies", "memoire"))).toBe(false);
     // Granted again: a fresh storage, and the next version number (amo-versions.json is never cleared).
     expect(await enabledByAgent(w, "memoire", "Mémoire de l'agent")).toMatch(/^Activée/);
-    await waitActive(m, "memoire@agent.webaios", true);
+    await waitActive(m, "memoire@agent.ressac", true);
     expect((await agentAddons(m))[0]!.version).toBe("1.0.0.2");
     expect(await consoleUntil(w, "memoire", "lu:")).not.toContain("gardé");
   });
@@ -286,14 +286,14 @@ describe("crashes", () => {
   /** Waits until the page's row for `nom` says it was disabled for its crashes, then « Réactiver » brings it back. */
   async function disabledThenReactivated(w: Launched, id: string, name: string): Promise<void> {
     const m = w.marionette;
-    await waitActive(m, `${id}@agent.webaios`, false);
+    await waitActive(m, `${id}@agent.ressac`, false);
     expect(registry(w.dataDir).extensions[`agent:${id}`]).toMatchObject({ profiles: ["default"], disabled: { reason: "crashes" } });
     expect((await w.call("list_extensions")).text).toContain(DISABLED_CRASHES);
     await openPage(m);
     await waitRow(m, name, true);
     expect(await row(m, name)).toContain(DISABLED_CRASHES);
     await rowButton(m, name, "Réactiver");
-    await waitActive(m, `${id}@agent.webaios`, true);
+    await waitActive(m, `${id}@agent.ressac`, true);
     expect(registry(w.dataDir).extensions[`agent:${id}`]).toMatchObject({ profiles: ["default"], disabled: null });
     await waitUi(m, `return ![...doc.querySelectorAll(arguments[0])].some((l) => l.textContent.includes(arguments[1]))`, [LINE, DISABLED_CRASHES]);
   }
@@ -337,12 +337,12 @@ describe("crashes", () => {
     // Time for a crash count to reach the kernel.
     await new Promise((r) => setTimeout(r, 1000));
     expect(registry(w.dataDir).extensions["agent:popup"]?.disabled).toBeNull();
-    expect(await agentAddons(w.marionette)).toEqual([expect.objectContaining({ id: "popup@agent.webaios", isActive: true })]);
+    expect(await agentAddons(w.marionette)).toEqual([expect.objectContaining({ id: "popup@agent.ressac", isActive: true })]);
   });
 
   it("a background that hangs the extension process: killed, and the third time disabled", { timeout: 150_000 }, async () => {
     // Three kills must fit in a minute: 3 s windows here instead of 10 s.
-    const w = await launch({ agent: true, env: { WEBAIOS_TEST_WATCHDOG_MS: "3000" } });
+    const w = await launch({ agent: true, env: { RESSAC_TEST_WATCHDOG_MS: "3000" } });
     const m = w.marionette;
     writeAgentExtension(w.root, "boucle", LOOP);
     const extensionProcess = () => m.execute<number | null>(`return ChromeUtils.getAllDOMProcesses().find((p) => p.remoteType === "extension")?.childID ?? null`);

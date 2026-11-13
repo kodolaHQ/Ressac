@@ -1,19 +1,19 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { openAction, runsOnDisk, startActionServers, tid, uiQueries, waitKernel, writeAction, writePagesAction, writeResult, writeRunnableAction } from "./actions";
 import { waitFor, waitReady } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { click, inUi, missingApi, waitUi } from "./ui";
 
 // Real runs of an action from its page: the fake docker (the engine runs
 // on the Mac), a slow local site and a fake Ollama (Gemma) noting each prompt. Reopening a page launches nothing.
 
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 /** The kernel's message for an action without workflow.json (actions/run.ts). */
 const WITHOUT_WORKFLOW = "Cette action n'a pas de workflow.json";
 
 let servers: Awaited<ReturnType<typeof startActionServers>>;
-let w: LaunchedWebAiOs;
+let w: LaunchedRessac;
 let m: Marionette;
 let q: ReturnType<typeof uiQueries>;
 const visible = (selector: string, ms = 30_000) => waitUi(m, "const e = doc.querySelector(arguments[0]); return !!e && e.getBoundingClientRect().height > 0;", [selector], ms);
@@ -21,7 +21,7 @@ const disabled = (selector: string) => inUi<boolean>(m, "return doc.querySelecto
 
 beforeAll(async () => {
   servers = await startActionServers();
-  w = await launchWebAiOs({ env: { WEBAIOS_OLLAMA_URL: servers.ollama.url, WEBAIOS_KEV_URL: servers.kev.url, WEBAIOS_TEST_LOCAL_ADDRESSES: "1" } });
+  w = await launchRessac({ env: { RESSAC_OLLAMA_URL: servers.ollama.url, RESSAC_KEV_URL: servers.kev.url, RESSAC_TEST_LOCAL_ADDRESSES: "1" } });
   m = w.marionette;
   q = uiQueries(m);
   await m.setContext("chrome");
@@ -86,7 +86,7 @@ describe("action runs", () => {
     // The button is greyed while it runs; one more launch (the agent, another window) gives the same run.
     expect(await disabled(tid("relaunch-action"))).toBe(true);
     // Each lancer resolves at the run's end (15-38 s): started in the page, awaited outside the 30 s script timeout.
-    await inUi(m, "ui.__r = null; Promise.all([ui.webaios.actions.launch('pages-c', null), ui.webaios.actions.launch('pages-c', null)]).then((r) => (ui.__r = JSON.parse(JSON.stringify(r))));");
+    await inUi(m, "ui.__r = null; Promise.all([ui.ressac.actions.launch('pages-c', null), ui.ressac.actions.launch('pages-c', null)]).then((r) => (ui.__r = JSON.parse(JSON.stringify(r))));");
     const [a, b] = await waitUi<{ run?: string }[]>(m, "return ui.__r;", [], 90_000);
     expect(a!.run).toBeTruthy();
     expect(b!.run).toBe(a!.run);

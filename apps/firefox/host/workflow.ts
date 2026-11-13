@@ -25,8 +25,8 @@ import type { WorkflowEdit, BuilderSelection } from "../shared/api.ts";
 // The widget and action parts of the workflow builder.
 
 /**
- * What the agent may know of a window's builder: only whether its active tab is `webaios://workflow/<widget>` or
- * `webaios://workflow/action/<action>`; the block only if the selection is on that very workflow.
+ * What the agent may know of a window's builder: only whether its active tab is `ressac://workflow/<widget>` or
+ * `ressac://workflow/action/<action>`; the block only if the selection is on that very workflow.
  */
 export function workflowOpen(activeUrl: string | undefined, selection: BuilderSelection | undefined): OpenWorkflow | null {
   const target = activeUrl ? workflowUrlTarget(activeUrl) : null;
@@ -139,7 +139,7 @@ export async function readEdit(c: Context, id: string): Promise<WorkflowEdit | n
       },
     };
   } catch (e) {
-    console.error(`[webaios] reading the workflow of widget ${id}:`, e);
+    console.error(`[ressac] reading the workflow of widget ${id}:`, e);
     return null;
   }
 }
@@ -158,7 +158,7 @@ export async function saveEdit(c: Context, id: string, raw: unknown): Promise<Sa
     });
     return { ...r, warnings: r.ok ? warningsOf(raw, d.declaration) : [] };
   } catch (e) {
-    console.error(`[webaios] saving the workflow of widget ${id}:`, e);
+    console.error(`[ressac] saving the workflow of widget ${id}:`, e);
     return { ok: false, error: UNREADABLE_MESSAGE, warnings: [] };
   }
 }
@@ -176,12 +176,12 @@ export async function saveCode(paths: SpacePaths, id: string, name: string, text
   try {
     return await storeCode(folder, name, text);
   } catch (e) {
-    console.error(`[webaios] code of widget ${id}:`, e);
+    console.error(`[ressac] code of widget ${id}:`, e);
     return { ok: false, error: UNREADABLE_MESSAGE };
   }
 }
 
-// --- An action's workflow (`webaios://workflow/action/<id>`).
+// --- An action's workflow (`ressac://workflow/action/<id>`).
 
 type ActionContext = { paths: SpacePaths; actionsFolder: string };
 
@@ -225,7 +225,7 @@ export async function readActionEdit(c: ActionContext, id: string): Promise<Work
       },
     };
   } catch (e) {
-    console.error(`[webaios] reading the workflow of action ${id}:`, e);
+    console.error(`[ressac] reading the workflow of action ${id}:`, e);
     return null;
   }
 }
@@ -244,7 +244,7 @@ export async function saveActionEdit(c: ActionContext, id: string, raw: unknown)
     });
     return { ...r, warnings: r.ok ? actionWarnings(raw, d.declaration) : [] };
   } catch (e) {
-    console.error(`[webaios] saving the workflow of action ${id}:`, e);
+    console.error(`[ressac] saving the workflow of action ${id}:`, e);
     return { ok: false, error: UNREADABLE_MESSAGE, warnings: [] };
   }
 }
@@ -262,7 +262,7 @@ export async function saveActionCode(paths: SpacePaths, id: string, name: string
   try {
     return await storeCode(folder, name, text);
   } catch (e) {
-    console.error(`[webaios] code of action ${id}:`, e);
+    console.error(`[ressac] code of action ${id}:`, e);
     return { ok: false, error: UNREADABLE_MESSAGE };
   }
 }

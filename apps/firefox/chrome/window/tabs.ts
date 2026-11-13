@@ -1,10 +1,10 @@
 import type { Action } from "../../shared/api";
 import type { BrowserState, WindowId, TabId, Tab } from "../../shared/model";
 import { hasView, tabProfile } from "../../shared/model";
-import type { WebAiOsStore } from "../store";
+import type { RessacStore } from "../store";
 
-export const TAB_ID = "webaios-tab-id";
-export const PARKING = "webaios-parking";
+export const TAB_ID = "ressac-tab-id";
+export const PARKING = "ressac-parking";
 const { STATE_START, STATE_STOP, STATE_IS_NETWORK, LOCATION_CHANGE_ERROR_PAGE } = Ci.nsIWebProgressListener;
 /** The errors refused before any request, by their about:neterror code (nsDocShell::DisplayLoadError); others keep the code. */
 const REFUSED: Record<string, string> = {
@@ -17,17 +17,17 @@ const errorName = (code: string | null) => (code ? (REFUSED[code] ?? code) : "Er
 type TabFields = Extract<Action, { type: "updateTab" }>["fields"];
 
 /**
- * Keeps the XUL tabs of one window in line with its WebAiOs tabs: a XUL tab is created when its
- * WebAiOs tab first becomes active, kept until it leaves the state, and the startup tab parks the window (about:blank,
+ * Keeps the XUL tabs of one window in line with its Ressac tabs: a XUL tab is created when its
+ * Ressac tab first becomes active, kept until it leaves the state, and the startup tab parks the window (about:blank,
  * never removed) while no web page is displayed. Page events come back as majOnglet; tabs opened by pages and add-ons are adopted.
  */
 export class TabSync {
   private readonly tabs = new Map<TabId, any>();
-  /** XUL tabs whose WebAiOs tab moved to another window: kept, page running, until that window adopts them. */
+  /** XUL tabs whose Ressac tab moved to another window: kept, page running, until that window adopts them. */
   private readonly leaving = new Map<TabId, any>();
   private parking: any;
   private creating = false;
-  /** While a popup's link opens here: the WebAiOs tab behind the popup. */
+  /** While a popup's link opens here: the Ressac tab behind the popup. */
   private fromPopup: TabId | undefined;
   /** While an add-on opens a tab here (tabs.create, its options page): they load with its principal. */
   private fromAddon = false;
@@ -40,7 +40,7 @@ export class TabSync {
 
   constructor(
     private readonly gBrowser: any,
-    private readonly store: WebAiOsStore,
+    private readonly store: RessacStore,
     private readonly windowId: WindowId,
   ) {
     this.park(gBrowser.tabs[0]);
@@ -49,7 +49,7 @@ export class TabSync {
     const addTab = gBrowser.addTab.bind(gBrowser);
     gBrowser.addTab = (uri: string, options: { openerBrowser?: any; triggeringPrincipal?: any; userContextId?: number } = {}) => {
       try {
-        this.fromPopup = options.openerBrowser?.ownerDocument.defaultView?.webaiosPopupSource;
+        this.fromPopup = options.openerBrowser?.ownerDocument.defaultView?.ressacPopupSource;
         this.fromAddon = !!options.triggeringPrincipal?.addonId;
         // Our own creations (another space's tab, the parking tab) keep the container they ask for.
         const shown = gBrowser.selectedTab;
@@ -132,13 +132,13 @@ export class TabSync {
     Object.defineProperties(tab, { isEmpty: { get: () => false }, isEmptyIgnoringLoad: { get: () => false } });
   }
 
-  /** The XUL tab of a WebAiOs tab, if it has one. */
+  /** The XUL tab of a Ressac tab, if it has one. */
   tab(id: TabId): any {
     return this.tabs.get(id);
   }
 
   /**
-   * The browser of a WebAiOs tab for the agent, even one never displayed: its XUL tab is created in the background
+   * The browser of a Ressac tab for the agent, even one never displayed: its XUL tab is created in the background
    * (not selected), then loaded (15 s at most).
    */
   async ensure(id: TabId): Promise<any> {
@@ -190,7 +190,7 @@ export class TabSync {
     });
   }
 
-  /** The WebAiOs tab displayed in the window, or null when the parking tab is. */
+  /** The Ressac tab displayed in the window, or null when the parking tab is. */
   displayed(): TabId | null {
     return this.gBrowser.selectedTab.getAttribute(TAB_ID);
   }

@@ -1,4 +1,4 @@
-import type { Execution, ResumeExecution } from "@webaios/kernel";
+import type { Execution, ResumeExecution } from "@ressac/kernel";
 
 /** Labels of a run, for the runs bar and a block's tab. */
 export const TRIGGERS: Record<Execution["trigger"], string> = { scheduled: "Planifiée", manual: "Manuelle", agent: "Par l'agent", replay: "Essai" };

@@ -75,14 +75,14 @@
   function gesture(e: PointerEvent) {
     if (e.isTrusted) api.home.gesture(widget.id);
   }
-  // The widget's link: `webaiosOpen` (provided by the guard in the page's world) emits this event, which the
+  // The widget's link: `ressacOpen` (provided by the guard in the page's world) emits this event, which the
   // parent chrome listens to (an opaque origin cannot post it a message). The request stays subject to the gesture.
   function link(e: Event) {
     api.home.open(String((e as CustomEvent).detail), widget.id);
   }
   function detachGesture() {
     gestureWindow?.removeEventListener("pointerdown", gesture, true);
-    gestureWindow?.removeEventListener("webaios-open", link, true);
+    gestureWindow?.removeEventListener("ressac-open", link, true);
     gestureWindow = null;
   }
   function attachGesture() {
@@ -94,7 +94,7 @@
     // forge; the guard's state does not change that. It protects data output, not this link.
     gestureWindow = frame as unknown as Window;
     frame.addEventListener("pointerdown", gesture as EventListener, true);
-    frame.addEventListener("webaios-open", link, true);
+    frame.addEventListener("ressac-open", link, true);
   }
   onMount(attachGesture);
   onDestroy(detachGesture);

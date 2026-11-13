@@ -1,13 +1,13 @@
 // An agent app's window: browser.xhtml opened by store/apps.ts without a toolbar, marked from its creation, never a
-// WebAiOs main window. One <browser> (the app view, in the app's container), Firefox's tabs and toolbars hidden.
+// Ressac main window. One <browser> (the app view, in the app's container), Firefox's tabs and toolbars hidden.
 import { sameOrigin, FAVICON_SIZE } from "../../core/applications/favicon";
 import { cutFrameNetwork } from "./frame-network";
 import { FIREFOX_COMMANDS, FIREFOX_KEYS, liveBindings, shortcutFor } from "./keys";
 import { protectView, showHalo } from "./site-window";
 
-const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 // Keep in sync with store/apps.ts APP_WINDOW_KEY.
-const APP_WINDOW_KEY = "webaios-app";
+const APP_WINDOW_KEY = "ressac-app";
 
 type Apps = typeof import("../store/apps").apps;
 const appsModule = (): Apps => ChromeUtils.importESModule(STORE).apps;
@@ -67,12 +67,12 @@ export function closeAppPopup(win: Window): boolean {
 
 /**
  * The badge: a transparent chrome frame over the view's top right corner, sidebar.html?badge=.
- * The page cannot see it (the view is remote); it gets only its app's access, through `webaiosOverlay`.
+ * The page cannot see it (the view is remote); it gets only its app's access, through `ressacOverlay`.
  */
 function addBadge(win: Window, apps: Apps, folder: string): void {
   const doc = win.document;
-  const frame = doc.createElementNS("http://www.w3.org/1999/xhtml", "iframe") as HTMLIFrameElement & { webaiosOverlay?: unknown };
-  frame.id = "webaios-app-badge";
+  const frame = doc.createElementNS("http://www.w3.org/1999/xhtml", "iframe") as HTMLIFrameElement & { ressacOverlay?: unknown };
+  frame.id = "ressac-app-badge";
   // Out of the flow before it is appended (spike S8): in #browser's flex row a default iframe pushes the view aside.
   frame.style.cssText = "position: fixed; top: 12px; right: 12px; z-index: 3; border: none; background: transparent; width: 48px; height: 28px";
   const api = apps.badge(win, (width, height) => {
@@ -81,8 +81,8 @@ function addBadge(win: Window, apps: Apps, folder: string): void {
   });
   if (!api) return;
   doc.getElementById("browser")!.append(frame);
-  frame.webaiosOverlay = { api };
-  if (cutFrameNetwork(frame)) frame.src = "chrome://browser/content/webaios/sidebar.html?badge=" + encodeURIComponent("app:" + folder);
+  frame.ressacOverlay = { api };
+  if (cutFrameNetwork(frame)) frame.src = "chrome://browser/content/ressac/sidebar.html?badge=" + encodeURIComponent("app:" + folder);
 }
 
 /** Run at the window's DOMContentLoaded, before anything could claim it; the view is attached once Firefox's startup is done. */
@@ -92,7 +92,7 @@ export function setupAppWindow(win: Window, folder: string): void {
   // Closed (stopped) while its window was opening.
   if (app?.folder !== folder) return void win.close();
   const doc = win.document;
-  doc.documentElement.setAttribute("webaios-app", folder);
+  doc.documentElement.setAttribute("ressac-app", folder);
   showHalo(win, `app:${folder}`);
   doc.getElementById("navigator-toolbox")!.hidden = true;
   routeOpens(win, apps);
@@ -110,7 +110,7 @@ export function setupAppWindow(win: Window, folder: string): void {
       if (s.type === "window") win.OpenBrowserWindow();
       else if (s.type === "closeWindow" || (s.type === "shortcut" && s.r === "closeTab")) win.close();
       else if (s.type === "navigate" && (s.c === "reload" || s.c === "reloadHard")) win.gBrowser.selectedBrowser.reload();
-      else if (s.type === "design") void ChromeUtils.importESModule(STORE).ready.then((store: import("../store").WebAiOsStore) => store.design.shortcut(win));
+      else if (s.type === "design") void ChromeUtils.importESModule(STORE).ready.then((store: import("../store").RessacStore) => store.design.shortcut(win));
     },
     true,
   );
@@ -151,7 +151,7 @@ export function setupAppWindow(win: Window, folder: string): void {
     });
     // Each new top document: the host's policy follows it. A page kept in the bfcache would come back without a request
     // (without the guard: an old port after a relaunch), so none is kept. Kept on the window: held weakly by the browser.
-    const listener = ((win as any).webaiosAppProgress = {
+    const listener = ((win as any).ressacAppProgress = {
       QueryInterface: ChromeUtils.generateQI(["nsIWebProgressListener", "nsISupportsWeakReference"]),
       onLocationChange(progress: any, _request: unknown, location: any, flags: number) {
         if (!progress.isTopLevel) return;
