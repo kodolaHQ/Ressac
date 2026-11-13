@@ -15,10 +15,15 @@ export interface PageReadOptions {
   scroll?: number;
 }
 
+/** Where a link sits on its page, best first for the agent. */
+export type Zone = "main" | "other" | "aside" | "header" | "nav" | "footer" | "lang";
+
 /** A link of a page, as the agent sees it. */
 export interface PageLink {
   text: string;
   url: string;
+  /** Absent: `other`. */
+  zone?: Zone;
 }
 
 export interface TabInfo {

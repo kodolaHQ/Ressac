@@ -1,0 +1,45 @@
+import { expect, test } from "vitest";
+import { rankLinks, unwrapLink } from "../../src/mcp/links.js";
+
+test("unwrapLink decodes DuckDuckGo and Google result redirects, nothing else", () => {
+  expect(unwrapLink("https://duckduckgo.com/l/?uddg=https%3A%2F%2Fex.fr%2Fa&rut=x")).toBe("https://ex.fr/a");
+  expect(unwrapLink("https://html.duckduckgo.com/l/?uddg=https%3A%2F%2Fex.fr%2Fa")).toBe("https://ex.fr/a");
+  expect(unwrapLink("https://www.google.fr/url?q=https%3A%2F%2Fex.fr%2Fb&sa=U")).toBe("https://ex.fr/b");
+  expect(unwrapLink("https://google.com/url?q=https%3A%2F%2Fex.fr%2Fb")).toBe("https://ex.fr/b");
+  for (const u of [
+    "https://evil.fr/l/?uddg=https%3A%2F%2Fex.fr",
+    "https://duckduckgo.com.evil.fr/l/?uddg=https%3A%2F%2Fex.fr",
+    "https://duckduckgo.com/l/?uddg=javascript%3Aalert(1)",
+    "https://www.google.fr/search?q=x",
+  ])
+    expect(unwrapLink(u)).toBe(u);
+});
+
+test("rankLinks: main first, then other, nav, footer; document order within a zone", () => {
+  const r = rankLinks(
+    [
+      { text: "Mentions", url: "https://ex.fr/legal", zone: "footer" },
+      { text: "Accueil", url: "https://ex.fr/", zone: "nav" },
+      { text: "Article", url: "https://ex.fr/art", zone: "main" },
+      { text: "Ailleurs", url: "https://ex.fr/x" },
+      { text: "Suite", url: "https://ex.fr/suite", zone: "main" },
+    ],
+    "https://ex.fr/page",
+  );
+  expect(r.map((l) => l.text)).toEqual(["Article", "Suite", "Ailleurs", "Accueil", "Mentions"]);
+});
+
+test("rankLinks: copies of one address collapse to one, at their best zone; self and empty links go", () => {
+  const wrapped = `https://duckduckgo.com/l/?uddg=${encodeURIComponent("https://ex.fr/a")}`;
+  const r = rankLinks(
+    [
+      { text: "Menu A", url: "https://ex.fr/a", zone: "nav" },
+      { text: "Lire A", url: wrapped, zone: "main" },
+      { text: "Commentaires", url: "https://ex.fr/a#comments", zone: "main" },
+      { text: "Ici", url: "https://ex.fr/page#top", zone: "main" },
+      { text: "  ", url: "https://ex.fr/b", zone: "main" },
+    ],
+    "https://ex.fr/page",
+  );
+  expect(r).toEqual([{ text: "Lire A", url: "https://ex.fr/a", zone: "main" }]);
+});
