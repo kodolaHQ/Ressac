@@ -42,7 +42,15 @@ const tabElement = (id: number, t: FakeTab) => {
 
 /** An installed add-on as AddonManager lists it; `uninstalled` once uninstall() ran. */
 type FakeAddon = { id: string; uninstalled?: boolean; uninstall(): Promise<void> };
-const addon = (id: string): FakeAddon => ({ id, async uninstall() { this.uninstalled = true; } });
+const addon = (id: string, fails?: "throws" | "rejects"): FakeAddon => ({
+  id,
+  uninstall() {
+    if (fails === "throws") throw new Error("uninstall refused");
+    if (fails === "rejects") return Promise.reject(new Error("uninstall refused"));
+    this.uninstalled = true;
+    return Promise.resolve();
+  },
+});
 
 /** The chrome module with Firefox simulated: one policy (ID → HOST), tabs by id with their attributes and address. */
 async function load(
@@ -269,5 +277,41 @@ describe("agent extensions installed before the rename", () => {
     await load({}, { addons, prefs });
     await vi.waitFor(() => expect(addons.map((a) => !!a.uninstalled)).toEqual([true, false, false]));
     expect(JSON.parse(prefs["ressac.extensions.pinned"])).toEqual(["foo@agent.ressac", "ublock@raymondhill.net"]);
+  });
+
+  it("an uninstall that fails leaves the others uninstalled and the pinned list cleaned", async () => {
+    const addons = [addon("a@agent.webaios", "throws"), addon("b@agent.webaios", "rejects"), addon("c@agent.webaios")];
+    const prefs = { "ressac.extensions.pinned": JSON.stringify(["a@agent.webaios", "c@agent.webaios", "x@y"]) };
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await load({}, { addons, prefs });
+      await vi.waitFor(() => expect(JSON.parse(prefs["ressac.extensions.pinned"])).toEqual(["x@y"]));
+      expect(addons.map((a) => !!a.uninstalled)).toEqual([false, false, true]);
+    } finally {
+      errors.mockRestore();
+    }
+  });
+
+  it("until it is gone, every guard treats one as the agent's with no grant: denied", async () => {
+    const OLD = "foo@agent.webaios";
+    // Running already: its uninstall URL (opened by Firefox as it goes) and its tab access are guarded.
+    const running = { id: OLD, uninstallURL: "https://autre.test/bye" as string | null, tabManager: { canAccessTab: () => true } };
+    const x = await load({}, { running: [running], addons: [addon(OLD), addon("ublock@raymondhill.net")] });
+    expect(running.uninstallURL).toBeNull();
+    // Not listed as the person's own extension.
+    expect(((await x.handlers["extensions.amo"]!({}, new AbortController().signal)) as { id: string }[]).map((a) => a.id)).toEqual(["ublock@raymondhill.net"]);
+    grant(x);
+    // The network guard.
+    expect(request("https://accorde.test/x", { loading: OLD, triggering: OLD })).toBe(true);
+    expect(request("https://autre.test/page", { loading: null, triggering: OLD })).toBe(true);
+    // The refused calls.
+    contexts[3] = OLD;
+    parentApi.reached = [];
+    parentApi.conduit.recv.get("APICall")!({ childId: 3, callId: 1, path: "tabs.captureVisibleTab" } as never, {});
+    expect(parentApi.reached).toEqual([]);
+    delete contexts[3];
+    // Shown nowhere, checks false.
+    expect(x.shownIn(OLD, "default", false)).toBe(false);
+    expect(x.check(OLD, "urlAllowed", "https://accorde.test/")).toBe(false);
   });
 });

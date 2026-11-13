@@ -20,6 +20,8 @@ const { ExtensionParent } = ChromeUtils.importESModule("resource://gre/modules/E
 const SUFFIX = "@agent.ressac";
 /** Read for add-ons the agent installed before the rename to Ressac: no guard applies to them any more. */
 const LEGACY_SUFFIX = "@agent.webaios";
+/** The agent's, old id included: an old one has no scope, so every guard denies it until it is uninstalled. */
+const isAgentId = (id: string) => id.endsWith(SUFFIX) || id.endsWith(LEGACY_SUFFIX);
 const REFUSED_CALLS = new Set(["tabs.captureVisibleTab", "tabs.captureTab", "tabs.detectLanguage", "tabs.saveAsPDF", "tabs.print", "tabs.printPreview", "tabs.toggleReaderMode"]);
 // Keep in sync with chrome/window/tabs.ts (not imported: it runs window code at load).
 const TAB_ID = "ressac-tab-id";
@@ -60,8 +62,6 @@ export interface AgentExtensions {
 
 /** Firefox's side of the agent's extensions: the kernel host decides, this installs, enables, disables, uninstalls. */
 export function createAgentExtensions(store: Store, windows: WindowRegistry, questions: Questions, host: () => AgentHost, access: () => AccessState): AgentExtensions {
-  // First: an old-suffix add-on would run unguarded. The host drops their registry entries: the agent asks for them again.
-  void uninstallLegacy().catch((e) => console.error("[extensions] add-ons from before the rename not uninstalled:", e));
   // The add-on changes this module is making, as `<addonId> <quoi>`: only those AddonManager events are ours. A removal
   // in about:addons while we install or reload the same add-on is still the user's (an install fires no uninstall event).
   const ours = new Set<string>();
@@ -140,7 +140,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
     // Firefox's own add-ons for list_extensions (decision 7): AMO extensions, not the agent's, nor built-in, system or hidden ones.
     "extensions.amo": async () =>
       (await AddonManager.getAddonsByTypes(["extension"]))
-        .filter((a: { id: string; isBuiltin: boolean; isSystem: boolean; hidden: boolean }) => !a.id.endsWith(SUFFIX) && !a.isBuiltin && !a.isSystem && !a.hidden)
+        .filter((a: { id: string; isBuiltin: boolean; isSystem: boolean; hidden: boolean }) => !isAgentId(a.id) && !a.isBuiltin && !a.isSystem && !a.hidden)
         .map((a: { id: string; name: string; version: string; isActive: boolean }) => ({ id: a.id, name: a.name, version: a.version, active: a.isActive })),
     "browser.spaces": () => ({
       spaces: store.state.spaces,
@@ -325,7 +325,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
     const channel = subject.QueryInterface(Ci.nsIHttpChannel);
     const info = channel.loadInfo;
     const addonId: string = info.loadingPrincipal?.addonId || info.triggeringPrincipal?.addonId || "";
-    if (addonId.endsWith(SUFFIX) && !check(addonId, "urlAllowed", channel.URI.spec)) channel.cancel(Cr.NS_BINDING_ABORTED);
+    if (isAgentId(addonId) && !check(addonId, "urlAllowed", channel.URI.spec)) channel.cancel(Cr.NS_BINDING_ABORTED);
   }, "http-on-modify-request");
   // Firefox grants activeTab to an MV3 extension on a click of its button, its menu
   // item or its command even without the right (originControls): refused in the parent, for every page of the agent's
@@ -334,7 +334,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
   const api = ExtensionParent.ParentAPIManager;
   const recvAPICall = api.conduit.recv.get("APICall");
   api.conduit.recv.set("APICall", (data: { childId: number; callId?: number; path: string }, meta: unknown) => {
-    if (REFUSED_CALLS.has(data.path) && api.getContextUnchecked(data.childId)?.extension?.id?.endsWith(SUFFIX)) {
+    if (REFUSED_CALLS.has(data.path) && isAgentId(api.getContextUnchecked(data.childId)?.extension?.id ?? "")) {
       if (data.callId) api.conduit.sendCallResult(data.childId, { childId: data.childId, callId: data.callId, path: data.path, error: { message: `${data.path} non pris en charge par Ressac` } });
       return;
     }
@@ -346,7 +346,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
   // tabs right. Nor a tab of a private space: an agent extension never runs in a private space.
   // canAccessTab is what Firefox's TabManager asks before it wraps any tab for the extension.
   const guardExtension = (extension: { id: string; uninstallURL: string | null; tabManager: { canAccessTab(tab: any): boolean } }) => {
-    if (!extension?.id?.endsWith(SUFFIX)) return;
+    if (!isAgentId(extension?.id ?? "")) return;
     const manager = extension.tabManager;
     const canAccess = manager.canAccessTab.bind(manager);
     manager.canAccessTab = (tab) => !tab.hasAttribute(PARKING) && !tabModelOf(tab)?.space.private && canAccess(tab);
@@ -359,6 +359,9 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
   };
   ExtensionParent.apiManager.on("startup", (_: string, extension: any) => guardExtension(extension));
   for (const policy of WebExtensionPolicy.getActiveExtensions()) if (policy.extension) guardExtension(policy.extension);
+  // After the guards: an old-id add-on is denied everything (its uninstall URL included) until it is gone. The host drops
+  // their registry entries: the agent asks for them again.
+  void uninstallLegacy();
 
   // Crashes not acknowledged by a host: sent again with the next extensions.pret, at most PLANTAGES_MAX per extension.
   const crashesPending: { addonId: string; at: number }[] = [];
@@ -380,7 +383,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
     ready,
     scopesKnown,
     shownIn(addonId, profile, isPrivate) {
-      if (!addonId.endsWith(SUFFIX)) return true;
+      if (!isAgentId(addonId)) return true;
       const scope = Object.hasOwn(scopes, addonId) ? scopes[addonId]! : null;
       return !isPrivate && !!scope?.active && scope.profiles.includes(profile);
     },
@@ -512,7 +515,17 @@ function watchCrashes(crashed: (addonId: string) => void): { backgroundError(add
 
 /** Uninstalls the agent's add-ons installed before the rename and takes them off the toolbar's pinned list. */
 async function uninstallLegacy(): Promise<void> {
-  for (const a of await AddonManager.getAddonsByTypes(["extension"])) if (a.id.endsWith(LEGACY_SUFFIX)) await a.uninstall();
+  try {
+    for (const a of await AddonManager.getAddonsByTypes(["extension"]))
+      if (a.id.endsWith(LEGACY_SUFFIX))
+        try {
+          await a.uninstall();
+        } catch (e) {
+          console.error(`[extensions] ${a.id} from before the rename not uninstalled:`, e);
+        }
+  } catch (e) {
+    console.error("[extensions] add-ons from before the rename not listed:", e);
+  }
   const pinned = parsePinned(Services.prefs.getStringPref(PINNED_PREF, "[]"));
   const kept = pinned.filter((id) => !id.endsWith(LEGACY_SUFFIX));
   if (kept.length !== pinned.length) Services.prefs.setStringPref(PINNED_PREF, JSON.stringify(kept));

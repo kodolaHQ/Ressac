@@ -8,6 +8,8 @@ import type { CheckKind } from "../store/agent-extensions";
 const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 // Keep in sync with host/extensions/firefox-copy.ts ID_SUFFIX.
 const SUFFIX = "@agent.ressac";
+/** Read for add-ons installed before the rename to Ressac: their pages get the same neutralisation, and no grant. */
+const LEGACY_SUFFIX = "@agent.webaios";
 const KINDS: readonly string[] = ["urlAllowed", "hostAllowed", "isTab"] satisfies CheckKind[];
 
 export class RessacExtensionParent extends JSWindowActorParent {
@@ -29,7 +31,8 @@ export class RessacExtensionChild extends JSWindowActorChild {
   handleEvent() {
     const win = this.contentWindow as any;
     // Any page of an add-on with the agent's suffix; the parent answers false for one it did not grant.
-    if (!(this.document as any).nodePrincipal.addonId?.endsWith(SUFFIX)) return;
+    const id: string = (this.document as any).nodePrincipal.addonId ?? "";
+    if (!id.endsWith(SUFFIX) && !id.endsWith(LEGACY_SUFFIX)) return;
     const api = Cu.createObjectIn(win);
     for (const kind of KINDS)
       Cu.exportFunction(

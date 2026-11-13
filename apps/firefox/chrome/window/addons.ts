@@ -16,6 +16,8 @@ const { BrowserWindowTracker } = ChromeUtils.importESModule("resource:///modules
 const ADDONS_LIST = "addons://list/extension";
 // Keep in sync with host/extensions/firefox-copy.ts ID_SUFFIX.
 const AGENT_SUFFIX = "@agent.ressac";
+/** Read for add-ons installed before the rename to Ressac: never shown either. */
+const LEGACY_AGENT_SUFFIX = "@agent.webaios";
 
 export interface AddonButton {
   id: string;
@@ -104,7 +106,7 @@ export function createSiteAddons(win: Window, view: SiteWindowController): Windo
     win,
     gBrowser: w.gBrowser,
     anchors: setupAnchors(win, bar),
-    shown: (id) => !id.endsWith(AGENT_SUFFIX),
+    shown: (id) => !id.endsWith(AGENT_SUFFIX) && !id.endsWith(LEGACY_AGENT_SUFFIX),
     page: () => view.state().viewState === "site" && /^https?:/.test(w.gBrowser.selectedBrowser.currentURI?.spec ?? ""),
     watch: [(notify) => view.onState(notify)],
     manage() {
