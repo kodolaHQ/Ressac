@@ -193,5 +193,7 @@ export class RessacSiteChild extends JSWindowActorChild {
         { defineAs: op },
       );
     Object.freeze(Cu.waiveXrays(api));
+    // Tweaks written before the rename to Ressac call it by its old name.
+    Object.defineProperty(sandbox, "webaiosSite", { value: api });
   }
 }

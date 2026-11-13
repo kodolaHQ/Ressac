@@ -176,7 +176,8 @@ describe("the home page", () => {
       display: `<!doctype html><meta charset="utf-8"><title>lien</title><button id="go">ouvrir</button>
 <script>
   ressacOpen("https://exemple.invalid/auto");
-  document.getElementById("go").onclick = () => ressacOpen("https://exemple.invalid/clic");
+  // The name a widget written before the rename to Ressac calls.
+  document.getElementById("go").onclick = () => webaiosOpen("https://exemple.invalid/clic");
 </script>`,
     });
     // A widget that reads with the account: the grant banner shows as long as no grant is given. Its harvest only reads

@@ -323,7 +323,8 @@ describe("add-ons and what the agent adds to the app", () => {
       vidola: {
         declaration: series(),
         files: {
-          "tweaks/serie.js": `ressacSite.remember("encours.the-bear", ${JSON.stringify(KEPT)}).then(() => (document.documentElement.dataset.kept = "oui"));`,
+          // The name a tweak written before the rename to Ressac calls: the same memory as ressacSite.
+          "tweaks/serie.js": `webaiosSite.remember("encours.the-bear", ${JSON.stringify(KEPT)}).then(() => (document.documentElement.dataset.kept = webaiosSite === ressacSite ? "oui" : "non"));`,
           "tweaks/cacher.css": ".shorts { display: none; }",
         },
       },

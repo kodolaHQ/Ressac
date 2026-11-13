@@ -173,6 +173,8 @@ function widgetGuard(pattern: string): void {
   // Firefox: a sandboxed resource frame cannot post to its chrome parent (measured: Permission denied to access
   // property "postMessage"). The widget's link goes through this page-world helper, a custom event the chrome listens for.
   w.ressacOpen = (url: unknown) => w.dispatchEvent(new CustomEvent("ressac-open", { detail: String(url) }));
+  // Widgets written before the rename to Ressac call it by its old name.
+  w.webaiosOpen = w.ressacOpen;
   // Last: see the comment on widgetGuard.
   const absents = [
     "RTCPeerConnection",
