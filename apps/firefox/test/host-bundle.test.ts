@@ -31,6 +31,8 @@ it("the compiled host runs alone and finds its kernel resources", { timeout: 30_
       ...process.env,
       WEBAIOS_KERNEL_RESOURCES: join(tmp, "kernel"),
       WEBAIOS_DATA_DIR: dataDir,
+      // The host must not start the machine's real Ollama or container app.
+      WEBAIOS_TEST_NO_SYSTEM: "1",
       WEBAIOS_ROOT: root,
       WEBAIOS_HOST_TEST: "1",
       WEBAIOS_PORT_MCP_EXTERNAL: "0",

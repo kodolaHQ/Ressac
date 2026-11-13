@@ -53,6 +53,8 @@ function startHost(env: Record<string, string> = {}, prepare?: (dataDir: string)
       WEBAIOS_ROOT: root,
       FAKE_DOCKER_LOG: log,
       WEBAIOS_HOST_TEST: "1",
+      // The host must not start the machine's real Ollama or container app.
+      WEBAIOS_TEST_NO_SYSTEM: "1",
       PATH: `${tools}:${process.env.PATH}`,
       // A free port: never the real 5279.
       WEBAIOS_PORT_MCP_EXTERNAL: "0",
