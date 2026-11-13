@@ -7,6 +7,7 @@ import {
   DevToolsBusy,
   ProfileDenied,
   SiteChanged,
+  type TabRead,
   type BrowserHistory,
   type MessageConsole,
   type TabInfo,
@@ -152,6 +153,8 @@ export class FakeBridge implements BrowserBridge {
   linkSequence?: PageLink[][];
   /** The next reads refused because the tab went to another site meanwhile (an engine redirect). */
   siteChanges = 0;
+  /** What the browser would add to a read of a tab at this address (status, blocks, structured data…). */
+  captures = new Map<string, Partial<TabRead>>();
   readPageInvisible?: (url: string, o: PageReadOptions) => Promise<ReadPage>;
   readHtmlInvisible?: (url: string, o: { localAddresses?: boolean; signal?: AbortSignal }) => Promise<{ url: string; html: string }>;
   /** Suspended reads in progress, by URL: `relacher` lets them finish. */
@@ -436,7 +439,7 @@ export class FakeBridge implements BrowserBridge {
     }
     const seq = this.linkSequence;
     const links = seq?.length ? (seq.length > 1 ? seq.shift()! : seq[0]!) : [{ text: "Annonce", url: "https://exemple.fr/a" }];
-    return { text: `Texte de ${o.title} (${o.url})`, links };
+    return { text: `Texte de ${o.title} (${o.url})`, links, ...this.captures.get(o.url) };
   }
 
   async openTab(url: string, space?: string) {

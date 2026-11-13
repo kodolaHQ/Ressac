@@ -21,7 +21,8 @@ import type { Watcher } from "../search/watcher.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import type { ServerNotification, ServerRequest } from "@modelcontextprotocol/sdk/types.js";
 import { unwrapLink, rankLinks } from "./links.js";
-import { TabNotFound, PrivateTab, SiteChanged, PRIVATE_TEXT, type TabInfo, type PageLink, type BrowserDevTools, type BrowserBridge, type HistoryResult } from "./bridge.js";
+import { pageState, reducedPage, stateLine } from "./reduce.js";
+import { TabNotFound, PrivateTab, SiteChanged, PRIVATE_TEXT, type TabInfo, type PageLink, type TabRead, type BrowserDevTools, type BrowserBridge, type HistoryResult } from "./bridge.js";
 
 export const UNREAD_ADDRESS_TEXT = "Adresse non lue dans cette recherche : tu ne peux suivre que les liens des pages lues ici.";
 /** While the user has the search tab (a hand_over or a watcher pause), the agent gets nothing from it. */
@@ -38,6 +39,10 @@ const READ_PAGE_MS = 30_000;
 const EMPTY_SPAN_MS = 1500;
 const LINKS_SHOWN = 40;
 const LISTS_KEPT = 200;
+/** The reduced page of a search read, and of each page of read_pages. */
+const SEARCH_PAGE_MAX = 8_000;
+const READ_PAGES_PAGE_MAX = 3_000;
+const reducedNote = (shown: number, total: number) => `(Page réduite : ${shown} passages sur ${total} ; read_tab avec full: true donne toute la page.)`;
 export const LINKS_HEADER = 'Liens (numérotés, les plus utiles d\'abord ; navigate accepte {"link": n}) :';
 const unknownLink = (n: number) => `Lien ${n} inconnu : relis l'onglet avec links: true.`;
 /** Every address a read makes free to follow: each link as read, and the target of an engine redirect. */
@@ -399,7 +404,8 @@ function createToolsServer(
     }
   }
 
-  const present = (o: TabInfo, r: { text: string; selection?: string; links?: PageLink[] }, withLinks: boolean, head: string[] = []): Result => {
+  /** `view`: a search read's state line and, unless the whole text is asked, its reduced page. */
+  const present = (o: TabInfo, r: TabRead, withLinks: boolean, head: string[] = [], view?: { state: string; text?: string; shown?: number; total?: number }): Result => {
     const ranked = withLinks ? rankLinks(r.links ?? [], o.url) : [];
     const top = ranked.slice(0, LINKS_SHOWN);
     if (withLinks) {
@@ -412,7 +418,9 @@ function createToolsServer(
     const shown = top.length
       ? ["", LINKS_HEADER, ...top.map((l, i) => `${i}. ${l.text} — ${l.url}`), ...(rest > 0 ? [`(${rest} autres liens non montrés)`] : [])]
       : [];
-    return text([...head, `Titre : ${o.title}`, `URL : ${o.url}`, ...(r.selection ? [`Sélection : ${r.selection}`] : []), "", r.text, ...shown].join("\n"));
+    const body = view?.text ?? r.text;
+    const note = view?.text !== undefined && view.shown! < view.total! ? ["", reducedNote(view.shown!, view.total!)] : [];
+    return text([...head, `Titre : ${o.title}`, `URL : ${o.url}`, ...(view ? [view.state] : []), ...(r.selection ? [`Sélection : ${r.selection}`] : []), "", body, ...note, ...shown].join("\n"));
   };
 
   /**
@@ -420,7 +428,14 @@ function createToolsServer(
    * (results can come late), or three over at least `emptySpanMs` give none (a « no result » page), 5 s at most. Every link read becomes free to
    * follow, whether or not it is shown. Stopped or closed meanwhile: the answer says so and nothing is kept.
    */
-  async function readSearch(key: string, o: TabInfo, withLinks: boolean, label: string, head: string[] = []): Promise<Result> {
+  async function readSearch(
+    key: string,
+    o: TabInfo,
+    withLinks: boolean,
+    label: string,
+    head: string[] = [],
+    opts: { full?: boolean; extra?: RequestHandlerExtra<ServerRequest, ServerNotification>; handed?: boolean } = {},
+  ): Promise<Result> {
     const sessions = searching!.sessions;
     const r = await sessions.step(o.id, label, async () => {
       const end = Date.now() + SETTLE_MAX_MS;
@@ -452,7 +467,51 @@ function createToolsServer(
     if (typeof r === "string") return text(r, r === HANDING_TEXT);
     const now = (await bridge.listTabs()).find((x) => x.id === o.id) ?? o;
     sessions.pageRead(o.id, now.url, readUrls(r.links));
-    return present(now, r, withLinks, head);
+    const state = pageState(r, now.url, now.title);
+    // A check page or a login: the user gets the page without the agent deciding it, then it is read again (once).
+    if (!opts.handed && (state === "bloquée" || state === "connexion demandée")) {
+      const lead = state === "bloquée" ? "Bloqué par une vérification. À vous : passez-la, puis Continuer." : "Connexion demandée. À vous : connectez-vous si vous le voulez, puis Continuer.";
+      const h = await awaitHand(o.id, lead, opts.extra);
+      if (!("path" in h)) return h;
+      const back = [`La page est de nouveau à toi (elle était ${state}).`, h.path.length ? `Chemin suivi par l'utilisateur :\n${h.path.join("\n")}` : "L'utilisateur n'a pas changé de page."];
+      return readSearch(key, now, withLinks, label, [...head, ...back], { ...opts, handed: true });
+    }
+    const line = stateLine(r, now.url, now.title);
+    if (opts.full) return present(now, r, withLinks, head, { state: line });
+    return present(now, r, withLinks, head, { state: line, ...reducedPage(r, sessions.current(key)?.goal ?? "", SEARCH_PAGE_MAX) });
+  }
+
+  /** Hands the search tab to the user (band « à vous ») and waits for Continuer; a cancelled call hands it back. */
+  async function awaitHand(id: string, lead: string, extra?: RequestHandlerExtra<ServerRequest, ServerNotification>): Promise<Result | { path: string[] }> {
+    const sessions = searching!.sessions;
+    // Same heartbeat as request_extension: the user may take longer than the client's silence timeout.
+    const progressToken = extra?._meta?.progressToken;
+    let progress = 0;
+    const beat =
+      progressToken === undefined
+        ? undefined
+        : setInterval(() => void extra!.sendNotification({ method: "notifications/progress", params: { progressToken, progress: ++progress } }).catch(() => {}), beatMs ?? 30_000);
+    try {
+      const waiting = sessions.handOver(id, lead);
+      // A cancelled call (the agent was interrupted) hands the page back: nobody waits for the user any more.
+      const abandon = () => sessions.abandon(id);
+      extra?.signal.addEventListener("abort", abandon, { once: true });
+      if (extra?.signal.aborted) abandon();
+      let r;
+      try {
+        r = await waiting;
+      } finally {
+        extra?.signal.removeEventListener("abort", abandon);
+      }
+      if (r.outcome === "stop") {
+        sessions.takeStop(win ?? MAIN_WINDOW, id);
+        return text(STOP_TEXT);
+      }
+      if (r.outcome === "closed") return text(CLOSED_TEXT);
+      return { path: r.path.filter((u) => u.length <= URL_MAX) };
+    } finally {
+      clearInterval(beat);
+    }
   }
 
   const cut = (x: string) => x.slice(0, 200);
@@ -502,12 +561,12 @@ function createToolsServer(
   /** The search tab `id` is the user's for now (a hand is open on it). */
   const handing = (id: string | undefined) => !!id && !!searching?.sessions.handing(id);
 
-  async function content(o: TabInfo, withLinks = false, signal?: AbortSignal): Promise<Result> {
+  async function content(o: TabInfo, withLinks = false, signal?: AbortSignal, full = false, extra?: RequestHandlerExtra<ServerRequest, ServerNotification>): Promise<Result> {
     if (handing(o.id)) return text(HANDING_TEXT, true);
     if (searching?.sessions.takeStop(win ?? MAIN_WINDOW, o.id)) return text(STOP_TEXT);
     if (searching?.sessions.owns(o.id)) {
       searching.sessions.log(o.id, { tool: "read_tab" });
-      return readSearch(win ?? MAIN_WINDOW, o, withLinks, "Lecture de la page");
+      return readSearch(win ?? MAIN_WINDOW, o, withLinks, "Lecture de la page", [], { full, extra });
     }
     const other = await watch({ tool: "read_tab", url: o.url.slice(0, 500) }, "lecture d'un autre onglet", signal);
     if (other) return text(other);
@@ -562,8 +621,13 @@ function createToolsServer(
 
   server.registerTool(
     "read_tab",
-    { description: "Texte principal d'un onglet donné. Avec links: true, ajoute les liens de la page.", inputSchema: { id: z.string(), links: z.boolean().optional() } },
-    protect(async ({ id, links }, extra) => content(await tab(id), links, extra?.signal)),
+    {
+      description:
+        "Texte principal d'un onglet donné. Avec links: true, ajoute les liens de la page. Sur l'onglet de recherche : l'état de la page et une page réduite " +
+        "aux passages utiles pour ton but ; full: true donne toute la page.",
+      inputSchema: { id: z.string(), links: z.boolean().optional(), full: z.boolean().optional() },
+    },
+    protect(async ({ id, links, full }, extra) => content(await tab(id), links, extra?.signal, full, extra)),
   );
 
   server.registerTool(
@@ -770,7 +834,7 @@ function createToolsServer(
               o = await search.open(win ?? undefined, { query }, o.id);
             }
           }
-          return readSearch(key, o, true, `Recherche : ${query}`, [`Onglet : ${o.id}`]);
+          return readSearch(key, o, true, `Recherche : ${query}`, [`Onglet : ${o.id}`], { extra });
         });
         searching.chains.set(key, mine);
         return mine;
@@ -851,7 +915,9 @@ function createToolsServer(
                 if (!sessions.owns(id)) return;
                 const now = (await bridge.listTabs()).find((x) => x.id === t!.id) ?? t;
                 sessions.pageRead(id, now.url, readUrls(r.links));
-                sections.set(u, [`Titre : ${now.title}`, `URL : ${now.url}`, "", r.text].join("\n"));
+                const state = pageState(r, now.url, now.title);
+                const body = state === "ok" || state === "pdf" ? reducedPage(r, sessions.current(key)?.goal ?? "", READ_PAGES_PAGE_MAX).text : "";
+                sections.set(u, [`Titre : ${now.title}`, `URL : ${now.url}`, stateLine(r, now.url, now.title), "", body].join("\n"));
               } catch (e) {
                 sections.set(u, `Erreur : ${e instanceof Error ? e.message : String(e)}`);
               } finally {
@@ -888,35 +954,16 @@ function createToolsServer(
       },
       async ({ id, reason, kind }, extra: RequestHandlerExtra<ServerRequest, ServerNotification>) => {
         if (!sessions.owns(id)) return text("hand_over ne vaut que pour l'onglet de recherche en cours.", true);
-        // Same heartbeat as request_extension: the user may take longer than the client's silence timeout.
-        const progressToken = extra._meta?.progressToken;
-        let progress = 0;
-        const beat =
-          progressToken === undefined
-            ? undefined
-            : setInterval(() => void extra.sendNotification({ method: "notifications/progress", params: { progressToken, progress: ++progress } }).catch(() => {}), beatMs ?? 30_000);
-        try {
-          const lead = kind === "verification" ? "Bloqué par une vérification. À vous : " : "Je ne trouve pas mon chemin. À vous : ";
-          const waiting = sessions.handOver(id, lead + reason.slice(0, 200));
-          // A cancelled call (the agent was interrupted) hands the page back: nobody waits for the user any more.
-          const abandon = () => sessions.abandon(id);
-          extra.signal.addEventListener("abort", abandon, { once: true });
-          if (extra.signal.aborted) abandon();
-          let r;
-          try { r = await waiting; } finally { extra.signal.removeEventListener("abort", abandon); }
-          if (r.outcome === "stop") { sessions.takeStop(win ?? MAIN_WINDOW, id); return text(STOP_TEXT); }
-          if (r.outcome === "closed") return text(CLOSED_TEXT);
-          const path = r.path.filter((u) => u.length <= URL_MAX);
-          return text(
-            [
-              "La page est de nouveau à toi : relis-la.",
-              path.length ? `Chemin suivi par l'utilisateur :\n${path.join("\n")}` : "L'utilisateur n'a pas changé de page.",
-              ...(kind === "lost" ? ["Note une leçon générale dans /workspace/browsing-notes.md (ce qu'il faut essayer la prochaine fois, pas la recette d'un site, jamais ce que l'utilisateur a tapé)."] : []),
-            ].join("\n"),
-          );
-        } finally {
-          clearInterval(beat);
-        }
+        const lead = kind === "verification" ? "Bloqué par une vérification. À vous : " : "Je ne trouve pas mon chemin. À vous : ";
+        const h = await awaitHand(id, lead + reason.slice(0, 200), extra);
+        if (!("path" in h)) return h;
+        return text(
+          [
+            "La page est de nouveau à toi : relis-la.",
+            h.path.length ? `Chemin suivi par l'utilisateur :\n${h.path.join("\n")}` : "L'utilisateur n'a pas changé de page.",
+            ...(kind === "lost" ? ["Note une leçon générale dans /workspace/browsing-notes.md (ce qu'il faut essayer la prochaine fois, pas la recette d'un site, jamais ce que l'utilisateur a tapé)."] : []),
+          ].join("\n"),
+        );
       },
     );
   }
