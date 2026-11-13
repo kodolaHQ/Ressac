@@ -123,12 +123,13 @@
     {#if denial}<p class="refusal" data-testid="action-refusal">{denial}</p>{/if}
   </form>
   <TipCard />
-  <Essentials window={win} large />
+  <!-- The sidebar already shows the essentials: here only when it is hidden (compact), not twice. -->
+  {#if win.compact}<Essentials window={win} large />{/if}
   <Home />
 </div>
 
 <style>
-  .empty-page { position: relative; display: flex; flex-direction: column; align-items: center; gap: 32px; padding-top: 12vh; height: 100%; box-sizing: border-box; overflow-y: auto; }
+  .empty-page { position: relative; display: flex; flex-direction: column; align-items: center; gap: 20px; padding-top: clamp(24px, 6vh, 72px); height: 100%; box-sizing: border-box; overflow-y: auto; }
   form { width: min(560px, 80%); }
   input { width: 100%; box-sizing: border-box; padding: 12px 16px; font-size: 16px; border-radius: 16px; border: 1px solid var(--glass-edge); background: var(--glass); box-shadow: var(--float); color: var(--text); outline: none; transition: border-color var(--tap), box-shadow var(--tap); }
   .refusal { margin: 6px 4px 0; color: var(--in-error); font-size: 13px; }

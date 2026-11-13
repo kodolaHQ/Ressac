@@ -286,8 +286,11 @@ describe("the home page", () => {
     expect(titles).toContain("Nouveau");
   });
 
-  it("a tall home page keeps the favourites whole, above the widgets", async () => {
+  it("a tall home page keeps the favourites whole, above the widgets (compact: the sidebar no longer shows them)", async () => {
     const s = await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url: "https://exemple.invalid/favori" });
+    // With the sidebar in view the page does not repeat them.
+    expect(await inUi(m, `return !doc.querySelector('[data-testid="essentials-empty-page"]')`)).toBe(true);
+    await dispatch(m, { type: "toggleCompact", windowId: s.windows[0]!.id });
     const tab = Object.entries(s.tabs).find(([, o]) => o.url.includes("/favori"))![0];
     await dispatch(m, { type: "addEssential", id: tab });
     await dispatch(m, { type: "closeTab", id: tab });
