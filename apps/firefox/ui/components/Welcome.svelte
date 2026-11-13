@@ -187,7 +187,7 @@
             {:else if pulling}
               {@render status("welcome-ollama", "ok", "Installation lancée : une notification vous préviendra quand ce sera prêt. Le suivi est dans Réglages › IA locale.")}
             {:else if runtime?.kind === "absent"}
-              {@render status("welcome-ollama", "warn", pullError ?? "L'IA locale n'est pas installée : Ollama et ses modèles (plusieurs Go).")}
+              {@render status("welcome-ollama", "warn", pullError ?? "L'IA locale n'est pas installée. WebAiOs télécharge Ollama (190 Mo), puis ses modèles (plusieurs Go).")}
               <button type="button" data-testid="welcome-install-ai" onclick={() => void pullInBackground([OLLAMA_ITSELF, ...missing])}>Installer en arrière-plan</button>
             {:else if runtime?.kind === "stopped"}
               {@render status("welcome-ollama", "warn", pullError ?? "Ollama est installé mais arrêté.")}

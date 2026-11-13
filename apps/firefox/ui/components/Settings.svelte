@@ -281,7 +281,7 @@
                 <span class="pill" data-tone="warn">arrêté</span>
                 <button data-testid="ollama-start" disabled={startingOllama} onclick={() => void startOllama()}>{startingOllama ? "Démarrage…" : "Démarrer"}</button>
               {:else if ollama?.kind === "absent"}
-                {@render pullPill(OLLAMA_ITSELF, false, "ollama", "Installer")}
+                {@render pullPill(OLLAMA_ITSELF, false, "ollama", "Télécharger Ollama (190 Mo)")}
               {:else}
                 <span class="pill" data-tone={v?.ollama ? "ok" : "warn"}>{v?.ollama ? "joignable" : "injoignable"}</span>
               {/if}

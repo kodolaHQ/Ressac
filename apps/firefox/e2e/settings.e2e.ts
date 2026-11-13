@@ -158,8 +158,8 @@ describe("Settings page", () => {
     await shows("docker-start", "Démarrer OrbStack");
   });
 
-  it("local AI: an absent Ollama offers « Installer », a stopped one « Démarrer », an old one « Mettre à jour Ollama »", async () => {
-    for (const [kind, id, label] of [["absent", "pull-ollama", "Installer"], ["stopped", "ollama-start", "Démarrer"], ["outdated", "ollama-update", "Mettre à jour Ollama"]] as const) {
+  it("local AI: an absent Ollama offers its download, a stopped one « Démarrer », an old one « Mettre à jour Ollama »", async () => {
+    for (const [kind, id, label] of [["absent", "pull-ollama", "Télécharger Ollama (190 Mo)"], ["stopped", "ollama-start", "Démarrer"], ["outdated", "ollama-update", "Mettre à jour Ollama"]] as const) {
       await launch({ WEBAIOS_TEST_OLLAMA_KIND: kind });
       await openPage();
       await go("ai");
