@@ -76,6 +76,9 @@ for icon in firefox.icns Assets.car; do
 done
 dev_files=$(find $app \( -iname '*gtest*' -o -name 'xpcshell*' -o -name .lldbinit \) -print)
 [[ -z $dev_files ]] || fail "test files in the staged app:\n$dev_files"
+# An incremental build after the rename keeps the old launcher and helpers in dist/bin, and mach package copies them.
+old_files=$(find $app -iname '*webaios*' -print)
+[[ -z $old_files ]] || fail "old-name files in the staged app (stale build products, delete them from the object directory's dist/bin):\n$old_files"
 if grep -q 'mozilla.com' $res/application.ini; then fail "application.ini still points at Mozilla's crash server (mozconfig MOZ_CRASHREPORTER_URL)"; fi
 restore_dev_ui
 
