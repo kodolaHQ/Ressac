@@ -1,7 +1,7 @@
 {
   "name": "Ressac",
   "vendor": "Ressac",
-  "appId": "fr.ressac.browser",
+  "appId": "browser",
   "binaryName": "ressac",
   "version": {
     "product": "firefox",
