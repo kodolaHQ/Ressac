@@ -265,6 +265,7 @@
     {:else if current === "ai"}
       <section data-testid="settings-ai">
         <h2>IA locale</h2>
+        <p class="muted">Deux petits modèles tournent sur votre Mac, avec Ollama. L'un trie ce que trouvent vos veilles et surveille les actions de l'agent ; l'autre rédige les résumés. Rien de ce qu'ils lisent ne part sur Internet.</p>
         {#if !ai}
           <p><span class="pill" data-tone="warn">Vérification…</span></p>
         {:else if !ai.ollamaUrl}

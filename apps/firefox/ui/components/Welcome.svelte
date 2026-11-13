@@ -168,7 +168,7 @@
           {@render actions("Continuer", true)}
         {:else if step.page === 5}
           <h2>L'IA locale</h2>
-          <p>Avec Ollama, la veille et les décisions tournent sur votre Mac : rien ne part sur Internet.</p>
+          <p>Deux petits modèles tournent sur votre Mac, avec Ollama, le logiciel libre qui les fait fonctionner. L'un trie ce que trouvent vos veilles et surveille les actions de l'agent ; l'autre rédige les résumés. Rien de ce qu'ils lisent ne part sur Internet.</p>
           <div class="check">
             {#if ollama === undefined}
               {@render status("welcome-ollama", "warn", "Vérification…")}
