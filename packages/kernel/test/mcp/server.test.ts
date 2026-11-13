@@ -107,8 +107,17 @@ test("read_tab lists the links ranked by zone, 40 numbered, then how many are le
   bridge.linkSequence = [[...many, { text: "Article", url: "https://exemple.fr/art", zone: "main" }]];
   const r = text(await client.callTool({ name: "read_tab", arguments: { id: "gmail", links: true } }));
   expect(r).toContain(`${LINKS_HEADER}\n0. Article — https://exemple.fr/art\n1. Menu 0 — https://exemple.fr/m0`);
-  expect(r).toContain("39. Menu 38 — https://exemple.fr/m38\n(6 autres liens non montrés)");
+  expect(r).toContain("39. Menu 38 — https://exemple.fr/m38\n(6 autres liens non montrés ; read_tab avec full: true les donne tous)");
   expect(r).not.toContain("Menu 39");
+});
+
+test("read_tab with full: true lists every link read, so the agent never needs page scripts for them", async () => {
+  policy.grant(gmail);
+  const many = Array.from({ length: 300 }, (_, i) => ({ text: `Lien ${i}`, url: `https://exemple.fr/l${i}`, zone: "main" as const }));
+  bridge.linkSequence = [many, many];
+  const r = text(await client.callTool({ name: "read_tab", arguments: { id: "gmail", links: true, full: true } }));
+  expect(r).toContain("299. Lien 299 — https://exemple.fr/l299");
+  expect(r).not.toContain("non montrés");
 });
 
 test("navigate by link number opens the last listed address of that tab; a new read renumbers", async () => {

@@ -405,10 +405,10 @@ function createToolsServer(
     }
   }
 
-  /** `view`: a search read's state line and, unless the whole text is asked, its reduced page. */
-  const present = (o: TabInfo, r: TabRead, withLinks: boolean, head: string[] = [], view?: { state: string; text?: string; shown?: number; total?: number }): Result => {
+  /** `view`: a search read's state line and, unless the whole text is asked, its reduced page. `full`: every link read. */
+  const present = (o: TabInfo, r: TabRead, withLinks: boolean, head: string[] = [], view?: { state: string; text?: string; shown?: number; total?: number }, full = false): Result => {
     const ranked = withLinks ? rankLinks(r.links ?? [], o.url) : [];
-    const top = ranked.slice(0, LINKS_SHOWN);
+    const top = full ? ranked : ranked.slice(0, LINKS_SHOWN);
     if (withLinks) {
       listed.delete(o.id);
       listed.set(o.id, top.map((l) => l.url));
@@ -417,7 +417,7 @@ function createToolsServer(
     }
     const rest = ranked.length - top.length;
     const shown = top.length
-      ? ["", LINKS_HEADER, ...top.map((l, i) => `${i}. ${l.text} — ${l.url}`), ...(rest > 0 ? [`(${rest} autres liens non montrés)`] : [])]
+      ? ["", LINKS_HEADER, ...top.map((l, i) => `${i}. ${l.text} — ${l.url}`), ...(rest > 0 ? [`(${rest} autres liens non montrés ; read_tab avec full: true les donne tous)`] : [])]
       : [];
     const body = view?.text ?? r.text;
     const note = view?.text !== undefined && view.shown! < view.total! ? ["", reducedNote(view.shown!, view.total!)] : [];
@@ -480,7 +480,7 @@ function createToolsServer(
       return readSearch(key, now, withLinks, label, [...head, ...back], { ...opts, handed: true });
     }
     const line = stateLine(r, now.url, now.title);
-    if (opts.full) return present(now, r, withLinks, head, { state: line });
+    if (opts.full) return present(now, r, withLinks, head, { state: line }, true);
     return present(now, r, withLinks, head, { state: line, ...reducedPage(r, sessions.current(key)?.goal ?? "", SEARCH_PAGE_MAX) });
   }
 
@@ -574,7 +574,7 @@ function createToolsServer(
     const other = await watch({ tool: "read_tab", url: o.url.slice(0, 500) }, "lecture d'un autre onglet", signal);
     if (other) return text(other);
     if (!(await access(o))) return text(DENIAL_TEXT);
-    return present(o, await working(o.id, () => bridge.readText(o.id)), withLinks);
+    return present(o, await working(o.id, () => bridge.readText(o.id)), withLinks, [], undefined, full);
   }
 
   /** Turns a bridge error into a readable tool error rather than a crash. A private tab is not an error. */
@@ -626,8 +626,8 @@ function createToolsServer(
     "read_tab",
     {
       description:
-        "Texte principal d'un onglet donné. Avec links: true, ajoute les liens de la page. Sur l'onglet de recherche : l'état de la page et une page réduite " +
-        "aux passages utiles pour ton but ; full: true donne toute la page.",
+        "Texte principal d'un onglet donné. Avec links: true, ajoute les liens de la page (les 40 plus utiles ; avec full: true, tous). Sur l'onglet de recherche : " +
+        "l'état de la page et une page réduite aux passages utiles pour ton but ; full: true donne toute la page.",
       inputSchema: { id: z.string(), links: z.boolean().optional(), full: z.boolean().optional() },
     },
     protect(async ({ id, links, full }, extra) => content(await tab(id), links, extra?.signal, full, extra)),
