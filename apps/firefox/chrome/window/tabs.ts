@@ -33,6 +33,8 @@ export class TabSync {
   private fromAddon = false;
   /** While about:preferences, shown in a tab of ours, opens one (saved passwords): it opens it with no opener. */
   private fromPreferences = false;
+  /** While a link from another app opens here (Ressac as macOS's default browser): Firefox gives it no opener. */
+  private fromExternal = false;
   /** While TabSync selects or removes a XUL tab: what Firefox selects then is not the user's choice. */
   private selecting = false;
   /** The status of each browser's last failed load, until its next one starts. */
@@ -47,15 +49,17 @@ export class TabSync {
     // A popup's link reaches this window with no opener tab, only its popup's browser (TabOpen fires inside addTab).
     // shortcut: the tab lands in Firefox's most recent window, not always the source tab's; upgrade if several windows make it wrong in use
     const addTab = gBrowser.addTab.bind(gBrowser);
-    gBrowser.addTab = (uri: string, options: { openerBrowser?: any; triggeringPrincipal?: any; userContextId?: number } = {}) => {
+    gBrowser.addTab = (uri: string, options: { openerBrowser?: any; triggeringPrincipal?: any; userContextId?: number; fromExternal?: boolean } = {}) => {
       try {
         this.fromPopup = options.openerBrowser?.ownerDocument.defaultView?.ressacPopupSource;
         this.fromAddon = !!options.triggeringPrincipal?.addonId;
         // Our own creations (another space's tab, the parking tab) keep the container they ask for.
         const shown = gBrowser.selectedTab;
         this.fromPreferences = !this.creating && shown.hasAttribute(TAB_ID) && /^about:(preferences|settings)\b/.test(shown.linkedBrowser.currentURI?.spec ?? "");
-        // An add-on's or the preferences' tab joins the active space: loaded in its container from the first request (unless the add-on chose one).
-        if ((this.fromAddon || this.fromPreferences) && options.userContextId === undefined) {
+        this.fromExternal = options.fromExternal === true;
+        // An add-on's, the preferences' or another app's tab joins the active space: loaded in its container from the first
+        // request (unless the add-on chose one; Firefox always passes the default container for an external link).
+        if (((this.fromAddon || this.fromPreferences) && options.userContextId === undefined) || this.fromExternal) {
           const state = this.store.state;
           const f = state.windows.find((x) => x.id === this.windowId);
           const space = f && state.spaces.find((e) => e.id === f.activeSpace);
@@ -66,6 +70,7 @@ export class TabSync {
         this.fromPopup = undefined;
         this.fromAddon = false;
         this.fromPreferences = false;
+        this.fromExternal = false;
       }
     };
     const strip = gBrowser.tabContainer;
@@ -348,8 +353,8 @@ export class TabSync {
     }
     const opener = this.fromPopup ?? tab.openerTab?.getAttribute(TAB_ID);
     // Only pages and add-ons open tabs we adopt; any other (about:newtab from a menu…) is Firefox's own: keep our tab displayed.
-    if (!opener && !this.fromAddon && !this.fromPreferences) return void queueMicrotask(() => tab.selected && this.sync(this.store.state));
-    // A page's tab opens next to its source; an add-on's or the preferences' in the window's active space.
+    if (!opener && !this.fromAddon && !this.fromPreferences && !this.fromExternal) return void queueMicrotask(() => tab.selected && this.sync(this.store.state));
+    // A page's tab opens next to its source; an add-on's, the preferences' or another app's in the window's active space.
     const f = this.store.state.windows.find((x) => x.id === this.windowId);
     const after = opener ?? f?.active[f.activeSpace];
     const id: TabId = crypto.randomUUID();
