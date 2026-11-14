@@ -22,7 +22,7 @@ const { createInterface } = await import("node:readline");
 const { appendFileSync } = await import("node:fs");
 const { stat } = await import("node:fs/promises");
 // Imported after the env is set and stdout redirected: nothing in the kernel can write to stdout at load time.
-const { ACTION_UNKNOWN, Workshop, blockCatalog, loadProfiles, spacePaths, createKernel, createRunner, LocalAi, readHome, readFreeLayout, readTheme, Pacing, contextPrefix, removeGrant, deleteData, watchActions, createRecaps, ID_RECAP } = await import("../../../packages/kernel/src/index.ts");
+const { ACTION_UNKNOWN, Workshop, blockCatalog, loadProfiles, spacePaths, createKernel, createRunner, LocalAi, readHome, readFreeLayout, readTheme, Pacing, contextPrefix, handOffText, removeGrant, deleteData, watchActions, createRecaps, ID_RECAP } = await import("../../../packages/kernel/src/index.ts");
 const { SessionsAgent } = await import("../core/agent/sessions.ts");
 const { History } = await import("../core/history.ts");
 const { createRpc } = await import("../shared/rpc.ts");
@@ -613,6 +613,12 @@ const rpc = createRpc({
     "ask.find": (p: { question?: unknown }) => {
       if (typeof p?.question !== "string") throw new Error("ask.find: invalid question");
       return ask.find(p.question, hostLocale());
+    },
+    "ask.handOff": (p: { window?: unknown; question?: unknown; shown?: unknown }) => {
+      if (typeof p?.window !== "string" || typeof p.question !== "string" || !Array.isArray(p.shown)) throw new Error("ask.handOff: invalid params");
+      const str = (x: unknown) => typeof x === "string";
+      const shown = p.shown.filter((h) => str(h?.url) && str(h?.title) && str(h?.lastVisit));
+      sessions.prefill(p.window, handOffText(p.question, shown, hostSay("ask-shown-pages")), undefined, true);
     },
     stop: async () => {
       try {

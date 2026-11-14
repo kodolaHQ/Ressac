@@ -88,3 +88,15 @@ export function remarksPrefix(r: {
   const rest = items.length - kept;
   return `${head} ${items.slice(0, kept).join(" ")}${rest > 0 ? ` … (+${rest})` : ""}${queue}`;
 }
+
+/**
+ * The text a ⌘T question sends to the agent: one line (the terminal sends on a newline), then, after the note,
+ * the history pages already shown as JSON data (titles are untrusted, never instructions).
+ */
+export function handOffText(question: string, shown: { url: string; title: string; lastVisit: string }[], note: string): string {
+  const q = clean(question);
+  if (!shown.length) return q;
+  // History URLs are http(s) only: JSON-encoded as they are.
+  const pages = shown.map((h) => ({ title: truncate(clean(h.title), DATA_LENGTH), url: h.url, date: h.lastVisit.slice(0, 10) }));
+  return `${q} — ${clean(note)} ${JSON.stringify(pages)}`;
+}
