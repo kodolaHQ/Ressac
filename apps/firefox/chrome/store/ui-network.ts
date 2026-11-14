@@ -87,6 +87,9 @@ const openingObserver = {
   observe(subject: any): void {
     const channel = subject.QueryInterface(Ci.nsIChannel);
     if (!isUiLoad(channel.loadInfo) || !isBlockedAddress(channel.URI.spec)) return;
+    // Firefox's direct-proxy fast path (no proxy set, most Macs) starts the DNS prefetch right after this observer,
+    // cancelled or not: no network I/O skips both the proxy step and the prefetch.
+    channel.loadFlags |= Ci.nsICachingChannel.LOAD_NO_NETWORK_IO;
     channel.cancel(Cr.NS_BINDING_ABORTED);
     refused(channel.loadInfo.externalContentPolicyType, channel.URI.spec);
   },

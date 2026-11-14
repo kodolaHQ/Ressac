@@ -86,6 +86,8 @@ const newStatuses = async (id: string, before: number) => (await runStatuses(w.d
 async function waitTicketsPage(): Promise<void> {
   const page = tid("page-render");
   await visible(page, 60_000);
+  // A relaunch fades the previous version out (150 ms) over the new one: read once only one is left.
+  await q.waitCount(page, 1);
   await q.waitText(`${page} ${tid("block-figure")} .value`, "2", 30_000);
   expect(await q.text(`${page} ${tid("block-figure")}`)).toContain("Tickets urgents");
   const box = (await q.text(`${page} ${tid("block-callout")}`)) ?? "";

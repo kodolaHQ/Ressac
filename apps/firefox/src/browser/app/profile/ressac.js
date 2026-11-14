@@ -59,8 +59,3 @@ pref("general.useragent.compatMode.firefox", true);
 // Crash and error reports (chrome/store/telemetry.ts): on unless turned off; the first-run notice says so once.
 pref("ressac.telemetry.enabled", true);
 pref("ressac.telemetry.noticeShown", false);
-
-// The UI's network guard cancels its loads at http-on-opening-request. With no proxy set (most Macs), Firefox's
-// direct-proxy fast path starts the channel's DNS prefetch right after, cancelled or not: the slow path resolves
-// the proxy asynchronously and stops on the cancel, so a refused load never resolves its name.
-pref("network.proxy.fast_path_system_direct", false);
