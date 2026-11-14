@@ -20,7 +20,7 @@ After a clone:
 - `npm ci` in `.claude/marketplace-local/plugins/svelte-lsp`.
 - Declare the local plugin marketplace in `.claude/settings.local.json` (git-ignored, absolute path): `extraKnownMarketplaces.ressac-local` = `{"source": "directory", "path": "<repo>/.claude/marketplace-local"}`.
 
-Every visual change follows `DESIGN.md`. New code, comments and identifiers are in English; the UI text is French.
+Every visual change follows `docs/DESIGN.md`. New code, comments and identifiers are in English; the UI text is French.
 
 ## e2e tests
 

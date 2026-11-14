@@ -11,12 +11,12 @@ Thanks for looking at Ressac. It is a small project in beta, so a few rules keep
 
 ## Setting up
 
-Follow « Build from source » in the [README](README.md). The first full build takes about 20 minutes; after that most changes only need `pnpm ui` or `pnpm build:ui` (about 20 seconds), see « Work loop » in [apps/firefox/README.md](apps/firefox/README.md). Read [ARCHITECTURE.md](ARCHITECTURE.md) to find your way.
+Follow « Build from source » in the [README](README.md). The first full build takes about 20 minutes; after that most changes only need `pnpm ui` or `pnpm build:ui` (about 20 seconds), see « Work loop » in [apps/firefox/README.md](apps/firefox/README.md). Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) to find your way.
 
 ## Rules for the code
 
 - **Code, comments and identifiers are in English. The interface is in French and English**: every new string goes in both files under `apps/firefox/locales/`.
-- **Every visual change follows [DESIGN.md](DESIGN.md)**, including its animations: nothing appears or disappears without a transition.
+- **Every visual change follows [docs/DESIGN.md](docs/DESIGN.md)**, including its animations: nothing appears or disappears without a transition.
 - Keep changes small and focused. Prefer the helpers and patterns already in the code to new ones.
 - Add a test for new logic: a unit test when it can live in `core/` or the kernel, an e2e test when it needs the browser.
 - A deliberate limitation gets a comment `shortcut: <the limit>, <when to lift it>`.

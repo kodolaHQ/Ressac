@@ -1,6 +1,6 @@
 # Architecture
 
-A one-page map of Ressac for a first-time reader. The details of each mechanism are in [apps/firefox/README.md](apps/firefox/README.md).
+A one-page map of Ressac for a first-time reader. The details of each mechanism are in [apps/firefox/README.md](../apps/firefox/README.md).
 
 ## The big picture
 
@@ -52,7 +52,7 @@ Ressac is Firefox with a new interface on top and an agent beside it. Firefox do
 
 ## Build
 
-[surfer](https://github.com/zen-browser/surfer) downloads Firefox into `engine/` (a symlink to a folder outside the repo), links `src/` into it, applies the patches and runs `mach`. `scripts/ui.sh` builds the TypeScript and Svelte bundles into `src/browser/base/content/ressac/`. Most UI work never recompiles Gecko: see « Work loop » in [apps/firefox/README.md](apps/firefox/README.md).
+[surfer](https://github.com/zen-browser/surfer) downloads Firefox into `engine/` (a symlink to a folder outside the repo), links `src/` into it, applies the patches and runs `mach`. `scripts/ui.sh` builds the TypeScript and Svelte bundles into `src/browser/base/content/ressac/`. Most UI work never recompiles Gecko: see « Work loop » in [apps/firefox/README.md](../apps/firefox/README.md).
 
 ## Names you will meet
 
