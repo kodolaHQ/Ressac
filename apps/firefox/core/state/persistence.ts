@@ -126,11 +126,19 @@ async function setAside(path: string, reason: "corrupt" | "unreadable"): Promise
 }
 
 /** A user who already had a session (even a damaged one) is not welcomed again. */
-function known(s: BrowserState): BrowserState {
+function known(s: BrowserState, text?: string): BrowserState {
   s.settings.onboarded = true;
-  // No welcome to ask, and this user already had AI.
-  s.settings.aiEnabled = true;
+  // No welcome to ask: AI stays as the user left it if the damaged file still says so, else on (they already had it).
+  s.settings.aiEnabled = aiEnabledIn(text) !== false;
   return s;
+}
+
+function aiEnabledIn(text: string | undefined): unknown {
+  try {
+    return text === undefined ? undefined : JSON.parse(text)?.settings?.aiEnabled;
+  } catch {
+    return undefined;
+  }
 }
 
 /** `kept` receives the name under which an unreadable session was set aside, to tell the user. */
@@ -160,7 +168,7 @@ export async function loadSession(folder: string, kept?: (path: string) => void)
   } catch {
     const name = await setAside(path, "corrupt");
     if (name) kept?.(name);
-    return known(initialState());
+    return known(initialState(), text);
   }
 }
 

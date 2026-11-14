@@ -124,6 +124,11 @@ test("AI: an existing session keeps it on, a new install starts off, aiSetup is 
   const bad = folder();
   writeFileSync(join(bad, "session.json"), "{ not json");
   expect((await loadSession(bad)).settings.aiEnabled).toBe(true);
+  // Valid JSON failing the schema: an explicit false survives, anything else stays on.
+  writeFileSync(join(bad, "session.json"), JSON.stringify({ spaces: 3, settings: { aiEnabled: false } }));
+  expect((await loadSession(bad)).settings.aiEnabled).toBe(false);
+  writeFileSync(join(bad, "session.json"), JSON.stringify({ spaces: 3, settings: { aiEnabled: "no" } }));
+  expect((await loadSession(bad)).settings.aiEnabled).toBe(true);
   const recorder = new SessionRecorder(d, 10_000);
   recorder.schedule({ ...initialState(), aiSetup: true, welcomeReplay: true });
   await recorder.clear();
