@@ -514,6 +514,13 @@ test("chooseLanguage and setLocale; an unknown language is refused", () => {
   expect(SchemaAction.safeParse({ type: "chooseLanguage", language: "system" }).success).toBe(true);
 });
 
+test("chooseAppearance: like the Mac by default; an unknown look is refused", () => {
+  expect(e.settings.appearance).toBe("system");
+  ag({ type: "chooseAppearance", appearance: "dark" });
+  expect(e.settings.appearance).toBe("dark");
+  expect(SchemaAction.safeParse({ type: "chooseAppearance", appearance: "sepia" }).success).toBe(false);
+});
+
 test("chooseEngine custom: the address is kept when another engine is chosen; an invalid one is refused", () => {
   ag({ type: "chooseEngine", engine: "custom", custom: "https://kagi.com/search?q=%s" });
   expect(e.settings).toMatchObject({ engine: "custom", customEngine: "https://kagi.com/search?q=%s" });

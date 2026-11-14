@@ -3,6 +3,8 @@
   import { AURA_IDS, AURAS, auraVariables, type AuraId } from "../../shared/aura";
   import type { ImportSource, SettingsApi } from "../../shared/api";
   import { OLLAMA_ITSELF, type DockerStatus, type OllamaStatus } from "../../shared/settings";
+  import { SEARCH_ENGINES, type SearchEngine } from "../../shared/search";
+  import { APPEARANCES } from "../../shared/model";
   import { shortcutLabel } from "../../shared/shortcuts";
   import type { WindowState } from "../../shared/model";
   import { aiOn, api, appState } from "../state.svelte";
@@ -13,8 +15,8 @@
   import { welcomeStep as step } from "./welcome-step.svelte";
 
   /**
-   * The first-launch welcome: seven pages on the aura, then the browser. Nothing is saved before « Ouvrir le navigateur »,
-   * except an import from another browser, started on page 2, and the answer to « Activer l'IA ? » (page 4): « Oui » turns
+   * The first-launch welcome: nine pages on the aura, then the browser. Nothing is saved before « Ouvrir le navigateur »,
+   * except an import from another browser, started on page 2, the appearance (page 9, shown at once), and the answer to « Activer l'IA ? » (page 4): « Oui » turns
    * AI on at once, since the Docker and Ollama pages need the host's AI side.
    * Mode `ai` (the AI setup, from « Activer l'IA »): the Docker and Ollama pages alone, ending on « Terminer ».
    * An install link steps it aside (unmounted, its page kept in `step`): coming back checks the page's state again.
@@ -23,8 +25,14 @@
 
   // Only a replay: a first welcome left after « Oui » (AI on, nothing finished) asks again at the next launch.
   if (step.aiAtStart === undefined) step.aiAtStart = !!appState.value?.welcomeReplay && aiOn();
-  /** Page numbers shown, in order: « Plus tard » on page 4, or AI already on at a replay, skips the AI pages 5-6. */
-  const pages = $derived(mode === "ai" ? [5, 6] : step.aiAtStart ? [1, 2, 3, 7] : aiOn() ? [1, 2, 3, 4, 5, 6, 7] : [1, 2, 3, 4, 7]);
+  /**
+   * Page numbers shown, in order (8 the search engine and 9 the appearance were added after the others): « Plus tard » on page 4, or AI
+   * already on at a replay, skips the AI pages 5-6.
+   */
+  const pages = $derived(mode === "ai" ? [5, 6] : step.aiAtStart ? [1, 2, 3, 8, 9, 7] : aiOn() ? [1, 2, 3, 8, 9, 4, 5, 6, 7] : [1, 2, 3, 8, 9, 4, 7]);
+  // A first launch proposes DuckDuckGo; a replay starts on the engine in use.
+  step.engine ??= untrack(() => (appState.value?.welcomeReplay ? appState.value.settings.engine : "duckduckgo"));
+  const ENGINES = Object.entries(SEARCH_ENGINES) as [Exclude<SearchEngine, "custom">, { label: string }][];
   const page = $derived(pages.includes(step.page) ? step.page : pages[0]!);
   const at = $derived(pages.indexOf(page));
   const AGENTS = [["claude", "Claude Code"], ["codex", "Codex"]] as const;
@@ -112,6 +120,7 @@
     const s = space;
     const n = name.trim();
     if (s && ((n && n !== s.name) || aura !== s.aura)) api.dispatch({ type: "updateSpace", id: s.id, name: n || s.name, icon: s.icon, private: s.private, profile: s.profile, aura });
+    if (step.engine && step.engine !== appState.value?.settings.engine) api.dispatch({ type: "chooseEngine", engine: step.engine });
     api.dispatch(step.aiAtStart ? { type: "finishOnboarding" } : { type: "finishOnboarding", ai: aiOn() });
   }
 </script>
@@ -155,6 +164,31 @@
               <li><kbd>{label("command")}</kbd> {t("home-welcome-sidebar-command")}</li>
             </ul>
           </div>
+          {@render actions(t("home-welcome-next"), false)}
+        {:else if page === 8}
+          <h2>{t("home-welcome-engine-title")}</h2>
+          <p>{t("home-welcome-engine-intro")}</p>
+          <div class="engines" role="radiogroup" aria-label={t("home-welcome-engine-group")}>
+            {#each ENGINES as [id, e] (id)}
+              <label class="agent">
+                <input type="radio" name="welcome-engine" data-testid="welcome-engine-{id}" checked={step.engine === id} onchange={() => (step.engine = id)} />
+                {e.label}
+              </label>
+            {/each}
+          </div>
+          <p class="note">{t("home-welcome-engine-later")}</p>
+          {@render actions(t("home-welcome-next"), false)}
+        {:else if page === 9}
+          <h2>{t("home-welcome-appearance-title")}</h2>
+          <div class="engines" role="radiogroup" aria-label={t("settings-appearance-label")}>
+            {#each APPEARANCES as appearance (appearance)}
+              <label class="agent">
+                <input type="radio" name="welcome-appearance" data-testid="welcome-appearance-{appearance}" checked={(appState.value?.settings.appearance ?? "system") === appearance} onchange={() => api.dispatch({ type: "chooseAppearance", appearance })} />
+                {t(`settings-appearance-${appearance}`)}
+              </label>
+            {/each}
+          </div>
+          <p class="note">{t("home-welcome-appearance-later")}</p>
           {@render actions(t("home-welcome-next"), false)}
         {:else if page === 4}
           <h2>{t("home-welcome-ai-ask-title")}</h2>
@@ -339,6 +373,7 @@
   .grow { flex: 1; }
 
   .agents { display: flex; gap: 8px; }
+  .engines { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
   .agent { flex: 1; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--glass-hi); font-weight: 600; transition: border-color var(--tap), transform var(--tap); }
   .agent:has(:checked) { border-color: var(--accent); }
   .agent:active { transform: scale(0.97); }

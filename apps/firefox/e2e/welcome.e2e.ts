@@ -8,6 +8,7 @@ import { dispatch, state, waitFor, waitReady } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import { startServer } from "./server";
 import { listen } from "./actions";
+import { inPage, openTab } from "./agent-extensions";
 import type { Marionette } from "./marionette";
 import { click, inUi, keyDown, keyUp, missingApi, pressKeys, waitUi } from "./ui";
 
@@ -47,7 +48,7 @@ const shows = (id: string, wanted: string, ms = 10_000) =>
 /** Clicks a control of the page shown, once it is there. */
 const press = async (id: string) => click(m, `${LAYER} [data-testid="${id}"]`);
 /** From page `from` to page `to` of `pages`, by each page's main button (« Oui » on page 4). */
-async function forward(from: number, to: number, pages = [1, 2, 3, 4, 5, 6, 7]): Promise<void> {
+async function forward(from: number, to: number, pages = [1, 2, 3, 8, 9, 4, 5, 6, 7]): Promise<void> {
   for (const p of pages.slice(pages.indexOf(from), pages.indexOf(to))) {
     await shown(`welcome-${p}`);
     await press("welcome-next");
@@ -85,10 +86,14 @@ describe("welcome", () => {
     await press("welcome-next");
     await shows("welcome-3", "Vos onglets vivent à gauche");
     await press("welcome-next");
+    await shows("welcome-8", "Quel moteur de recherche ?");
+    await press("welcome-next");
+    await shows("welcome-9", "Claire ou sombre ?");
+    await press("welcome-next");
     await shows("welcome-4", "Activer l'IA ?");
     // « Retour » goes back a page.
     await press("welcome-back");
-    await shown("welcome-3");
+    await shown("welcome-9");
   });
 
   it("no docker, no ollama, still through", async () => {
@@ -285,7 +290,7 @@ describe("welcome", () => {
     await click(m, '[data-testid="settings-replay-welcome"]');
     await shown("welcome-1");
     // AI already on: no question, no Docker or Ollama page.
-    await forward(1, 7, [1, 2, 3, 7]);
+    await forward(1, 7, [1, 2, 3, 8, 9, 7]);
     await fill("welcome-space-name", "Maison");
     await press("welcome-finish");
     await layerGone();
@@ -338,6 +343,45 @@ describe("welcome", () => {
     }
   });
 
+  it("search engine: DuckDuckGo by default, another one picked is saved at the end", async () => {
+    await launch();
+    await forward(1, 8);
+    expect(await inUi(m, "return doc.querySelector(arguments[0]).checked", [`${LAYER} [data-testid="welcome-engine-duckduckgo"]`])).toBe(true);
+    await press("welcome-engine-qwant");
+    // Kept through « Retour » and back.
+    await press("welcome-back");
+    await press("welcome-next");
+    expect(await inUi(m, "return doc.querySelector(arguments[0]).checked", [`${LAYER} [data-testid="welcome-engine-qwant"]`])).toBe(true);
+    await forward(8, 7);
+    await press("welcome-finish");
+    await layerGone();
+    await saved((s) => s.settings?.onboarded === true && s.settings.engine === "qwant");
+  });
+
+  it("appearance: like the Mac by default, light or dark shows at once, web pages included", async () => {
+    await launch();
+    await forward(1, 9);
+    expect(await inUi(m, "return doc.querySelector(arguments[0]).checked", [`${LAYER} [data-testid="welcome-appearance-system"]`])).toBe(true);
+    for (const [appearance, dark] of [["dark", true], ["light", false]] as const) {
+      await press(`welcome-appearance-${appearance}`);
+      await waitUi(m, "return matchMedia('(prefers-color-scheme: dark)').matches === arguments[0]", [dark]);
+      await waitFor(m, "return window.matchMedia('(prefers-color-scheme: dark)').matches", (v) => v === dark);
+    }
+    await press("welcome-appearance-dark");
+    await forward(9, 7);
+    await press("welcome-finish");
+    await layerGone();
+    await saved((s) => s.settings?.appearance === "dark");
+    // A web page follows it too.
+    const page = await startServer({ routes: { "/": (_q, res) => res.end("<!doctype html><title>t</title>") } });
+    try {
+      const tab = await openTab(m, page.url + "/");
+      expect(await inPage(m, tab, "return matchMedia('(prefers-color-scheme: dark)').matches")).toBe(true);
+    } finally {
+      await page.close();
+    }
+  });
+
   it("yes shows Docker then Ollama, and saves AI on", async () => {
     await launch();
     await forward(1, 4);
@@ -349,7 +393,7 @@ describe("welcome", () => {
     await shown("welcome-7");
     await press("welcome-finish");
     await layerGone();
-    await saved((s) => s.settings?.onboarded === true && s.settings.aiEnabled === true);
+    await saved((s) => s.settings?.onboarded === true && s.settings.aiEnabled === true && s.settings.engine === "duckduckgo");
   });
 
   it("yes, back, then later saves AI off", async () => {
@@ -381,7 +425,7 @@ describe("welcome", () => {
     await click(m, '[data-testid="settings-button"]');
     await click(m, '[data-testid="settings-nav-about"]');
     await click(m, '[data-testid="settings-replay-welcome"]');
-    await forward(1, 7, [1, 2, 3, 7]);
+    await forward(1, 7, [1, 2, 3, 8, 9, 7]);
     await press("welcome-finish");
     await layerGone();
     await saved((s) => s.settings?.onboarded === true && s.settings.aiEnabled === true);

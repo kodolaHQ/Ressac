@@ -27,6 +27,7 @@
   import { t } from "../i18n.svelte";
   import { LOCALES, languageName } from "../../shared/i18n";
   import { SEARCH_ENGINES, customEngineError, type SearchEngine } from "../../shared/search";
+  import { APPEARANCES } from "../../shared/model";
   import Icon from "./Icon.svelte";
   import SettingsMozilla from "./SettingsMozilla.svelte";
   import SettingsEngine from "./SettingsEngine.svelte";
@@ -525,6 +526,22 @@
                     checked={(appState.value?.settings.sidebarSide ?? "left") === side}
                     onchange={() => api.dispatch({ type: "setSidebarSide", side })}
                   />{t(name)}
+                </label>
+              {/each}
+            </div>
+          </div>
+          <div class="row">
+            <b class="grow" id="appearance-label">{t("settings-appearance-label")}</b>
+            <div role="radiogroup" aria-labelledby="appearance-label" class="kinds">
+              {#each APPEARANCES as appearance (appearance)}
+                <label>
+                  <input
+                    type="radio"
+                    name="appearance"
+                    data-testid="settings-appearance-{appearance}"
+                    checked={(appState.value?.settings.appearance ?? "system") === appearance}
+                    onchange={() => api.dispatch({ type: "chooseAppearance", appearance })}
+                  />{t(`settings-appearance-${appearance}`)}
                 </label>
               {/each}
             </div>

@@ -5,6 +5,10 @@ import type { Binding, ShortcutId } from "./shortcuts";
 import type { ExtensionCard } from "./extensions";
 import type { ClaudeEngine, CodexEngine, DecisionModel } from "./settings";
 
+/** The look: the Mac's, light or dark (Réglages and the welcome, in this order). */
+export const APPEARANCES = ["system", "light", "dark"] as const;
+export type Appearance = (typeof APPEARANCES)[number];
+
 /** Internal Applications page: a tab without a web page, displayed by the UI. */
 export const URL_APPLICATIONS = "ressac://apps";
 /** Internal Extensions page (Store and agent), displayed by the UI. */
@@ -232,6 +236,8 @@ export interface BrowserState {
     sidebarSide: "left" | "right";
     /** Vim keys in web tabs (off by default). */
     vimMode: boolean;
+    /** Light or dark look, or the Mac's (the default). */
+    appearance: Appearance;
     /** At launch each window shows the home page instead of the tab it was left on (on by default). */
     startOnHome: boolean;
     /** « system » (the Mac's language when Ressac has it) or a shipped language code (shared/i18n.ts). */

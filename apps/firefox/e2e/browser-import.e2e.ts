@@ -271,7 +271,11 @@ describe("import from another browser", () => {
     await shows("import-failed-passwords", "Mots de passe : fichier illisible");
     await click(m, '[data-testid="welcome-next"]');
     await shows("welcome-3", "Vos onglets vivent à gauche");
-    // A replay with AI on: page 3 goes straight to the first space.
+    // A replay with AI on: page 3, the search engine, the appearance, then straight to the first space.
+    await click(m, '[data-testid="welcome-next"]');
+    await shows("welcome-8", "Quel moteur de recherche ?");
+    await click(m, '[data-testid="welcome-next"]');
+    await shows("welcome-9", "Claire ou sombre ?");
     await click(m, '[data-testid="welcome-next"]');
     await shows("welcome-7", "");
     await click(m, '[data-testid="welcome-finish"]');

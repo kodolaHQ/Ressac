@@ -1,5 +1,5 @@
 import { shortcutLabel } from "../../shared/shortcuts";
-import type { Decision, AccessState, WindowId, ProfileId } from "../../shared/model";
+import type { Decision, AccessState, WindowId, ProfileId, Appearance } from "../../shared/model";
 import { privateTab, tabProfile, profilesInUse } from "../../shared/model";
 import type { ReportedError } from "../../shared/telemetry";
 import { checkDataFormat } from "../../core/state/format";
@@ -389,6 +389,12 @@ async function start(): Promise<RessacStore> {
             console.error("[vim] mode not sent:", e);
           }
   };
+  // Appearance: the look-and-feel override that the chrome, our frames and the web pages (prefers-color-scheme) follow.
+  const showAppearance = (a: Appearance) =>
+    a === "system" ? Services.prefs.clearUserPref("ui.systemUsesDarkTheme") : Services.prefs.setIntPref("ui.systemUsesDarkTheme", a === "dark" ? 1 : 0);
+  // « system » at launch leaves the pref alone (a test's own override; ours was cleared when the setting changed).
+  if (store.state.settings.appearance !== "system") showAppearance(store.state.settings.appearance);
+  store.subscribe((s, p) => s.settings.appearance !== p.settings.appearance && showAppearance(s.settings.appearance));
   if (store.state.settings.vimMode) setVimActor(true);
   store.subscribe((s, p) => {
     if (s.settings.vimMode !== p.settings.vimMode) setVimActor(s.settings.vimMode);

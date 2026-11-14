@@ -716,6 +716,11 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       d.settings.startOnHome = a.enabled;
       return true;
     }
+    case "chooseAppearance": {
+      if (d.settings.appearance === a.appearance) return false;
+      d.settings.appearance = a.appearance;
+      return true;
+    }
     case "chooseLanguage": {
       if (d.settings.language === a.language) return false;
       d.settings.language = a.language;

@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import type { BrowserState } from "../../shared/model";
-import { LANGUAGE_SETTING } from "../../shared/model";
+import { APPEARANCES, LANGUAGE_SETTING } from "../../shared/model";
 import { AURA_IDS, DEFAULT_AURA } from "../../shared/aura";
 import { CUSTOM_ENGINE_MAX, SEARCH_ENGINE_IDS, customEngineError } from "../../shared/search";
 import { ClaudeEngineSchema, CodexEngineSchema, DEFAULT_CLAUDE_ENGINE, DEFAULT_CODEX_ENGINE } from "../../shared/settings";
@@ -75,6 +75,7 @@ const SchemaSession = z.object({
     aiEnabled: z.boolean().catch(true),
     // A session saved before the setting existed gets the default.
     startOnHome: z.boolean().catch(true),
+    appearance: z.enum(APPEARANCES).catch("system"),
     // A session saved before languages existed was in French: it stays so. A language no longer shipped → the Mac's.
     language: z
       .string()

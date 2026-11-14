@@ -484,6 +484,18 @@ test("startOnHome: each window loads on the home page, its tabs kept; off, on th
   expect((await loadSession(d)).settings.startOnHome).toBe(true);
 });
 
+test("appearance: kept; missing or unknown, like the Mac", async () => {
+  const d = folder();
+  const saved = initialState();
+  writeFileSync(join(d, "session.json"), JSON.stringify({ ...saved, settings: { ...saved.settings, appearance: "dark" } }));
+  expect((await loadSession(d)).settings.appearance).toBe("dark");
+  const { appearance: _, ...old } = saved.settings;
+  writeFileSync(join(d, "session.json"), JSON.stringify({ ...saved, settings: old }));
+  expect((await loadSession(d)).settings.appearance).toBe("system");
+  writeFileSync(join(d, "session.json"), JSON.stringify({ ...saved, settings: { ...saved.settings, appearance: "sepia" } }));
+  expect((await loadSession(d)).settings.appearance).toBe("system");
+});
+
 test("addresses saved before the rename (webaios://) load as ressac:// in every kind of field", async () => {
   const d = folder();
   const state = richState();
