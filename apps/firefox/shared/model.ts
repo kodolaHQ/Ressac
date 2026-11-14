@@ -399,3 +399,8 @@ export const NOT_DISPLAYABLE = { binary: "fichier binaire", "too-big": "fichier 
 export const PAGE_LINE_CHANGED = "la ligne a changé";
 /** A comment covers displayed lines of a single block of the diff, without a gap (page and main process). */
 export const RANGE_OUTSIDE_BLOCK = "Un commentaire porte sur des lignes d'un seul bloc du diff.";
+
+/** A page the ⌘T bar's Demander mode found in the history (`ask.find`). */
+export type AskHit = { url: string; title: string; lastVisit: string; excerpt: string | null };
+/** `ask.find`'s answer: 1 to 3 pages, or hand the question to the agent. */
+export type AskResult = { kind: "page"; hits: AskHit[] } | { kind: "agent" };

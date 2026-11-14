@@ -366,6 +366,21 @@ export class LocalAi {
     }
   }
 
+  /** Asks Ollama to load the installed Gemma build (a request without a prompt only loads it), so a later call skips the cold start. Never throws. */
+  async warm(): Promise<void> {
+    if (this.closed) return;
+    try {
+      const model = (this.gemmaModel ??= await this.detectGemma());
+      if (!model) return;
+      await fetch(`${this.ollamaUrl}/api/generate`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ model, keep_alive: "10m" }),
+        signal: AbortSignal.timeout(GEMMA_DELAY_MS),
+      });
+    } catch { /* Ollama unreachable: the real call will say so */ }
+  }
+
   /** Stops Kev for good: kev() and gemma() are refused afterwards (arreter(), on the other hand, allows a relaunch). */
   async close(): Promise<void> {
     this.closed = true;
