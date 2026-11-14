@@ -7,7 +7,7 @@
 <p align="center">
   <strong>A browser that grows with you.</strong><br>
   Calm and minimal out of the box. Switch on the AI when you need it for harder work.<br><br>
-  <a href="https://getressac.app">getressac.app</a> · <a href="README.fr.md">Lire en français</a>
+  <a href="README.fr.md">Lire en français</a>
 </p>
 
 <p align="center"><sub>Closed beta · macOS 14+ · Apple Silicon · Open source</sub></p>
@@ -72,7 +72,7 @@ During the beta, Ressac sends crash and error reports (without page addresses) a
 
 ## Get Ressac
 
-Ressac is in closed beta: [request an invite](https://getressac.app). Testers get a DMG signed and notarized by Apple, and Ressac then updates itself.
+Ressac is in closed beta, with a small group of testers. They get a DMG signed and notarized by Apple, and Ressac then updates itself.
 
 - **To browse**: macOS 14 or later, Apple Silicon.
 - **For the agent**: Docker ([OrbStack](https://orbstack.dev) or Docker Desktop) and a Claude or ChatGPT account (or an API key). Ressac starts the container app itself when it is installed.

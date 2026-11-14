@@ -7,7 +7,7 @@
 <p align="center">
   <strong>Un navigateur qui grandit avec toi.</strong><br>
   Sobre au départ. L'IA quand tu en as besoin.<br><br>
-  <a href="https://getressac.app/fr/">getressac.app</a> · <a href="README.md">Read in English</a>
+  <a href="README.md">Read in English</a>
 </p>
 
 <p align="center"><sub>Bêta fermée · macOS 14+ · Apple Silicon · Open source</sub></p>
@@ -72,7 +72,7 @@ Pendant la bêta, Ressac envoie à son développeur les plantages et les erreurs
 
 ## Obtenir Ressac
 
-Ressac est en bêta fermée : [demande une invitation](https://getressac.app/fr/). Les testeurs reçoivent un DMG signé et notarisé par Apple, puis Ressac se met à jour tout seul.
+Ressac est en bêta fermée, avec un petit groupe de testeurs. Ils reçoivent un DMG signé et notarisé par Apple, puis Ressac se met à jour tout seul.
 
 - **Pour naviguer** : macOS 14 ou plus récent, puce Apple.
 - **Pour l'agent** : Docker ([OrbStack](https://orbstack.dev) ou Docker Desktop) et un compte Claude ou ChatGPT (ou une clé d'API). Ressac démarre lui-même l'app de conteneurs si elle est installée.
