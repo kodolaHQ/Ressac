@@ -10,7 +10,7 @@ const observers: [unknown, string][] = [];
 const categories: string[] = [];
 let registerFactory = vi.fn();
 Object.assign(globalThis as any, {
-  Ci: { nsIContentPolicy: { ACCEPT, REJECT_REQUEST: REJECT, TYPE_WEB_TRANSPORT: 59 }, nsIDocShell: { APP_TYPE_MAIL: MAIL }, nsIComponentRegistrar: "registrar", nsIChannel: "channel" },
+  Ci: { nsIContentPolicy: { ACCEPT, REJECT_REQUEST: REJECT, TYPE_WEB_TRANSPORT: 59 }, nsIDocShell: { APP_TYPE_MAIL: MAIL }, nsIComponentRegistrar: "registrar", nsIChannel: "channel", nsICachingChannel: { LOAD_NO_NETWORK_IO: 1 << 26 } },
   Cr: { NS_BINDING_ABORTED: 0x804b0002 },
   Components: { ID: (s: string) => s, manager: { QueryInterface: () => ({ registerFactory: (...a: unknown[]) => registerFactory(...a) }) } },
   ChromeUtils: { generateQI: () => () => ({}) },
@@ -142,11 +142,13 @@ describe("ui-network", () => {
     observers.length = 0;
     N.installUiNetwork();
     const [opening, webrtc] = observers.map(([o]) => o as { observe(s: unknown): void });
-    const channel = (spec: string, d: unknown) => ({ QueryInterface() { return this; }, URI: { spec }, loadInfo: li(d), cancel: vi.fn() });
+    const channel = (spec: string, d: unknown) => ({ QueryInterface() { return this; }, URI: { spec }, loadInfo: li(d), loadFlags: 0, cancel: vi.fn() });
     for (const [spec, d, cut] of [["http://a.example/", sidebar, true], ["data:,x", sidebar, false], ["http://a.example/", tab, false]] as const) {
       const c = channel(spec, d);
       opening!.observe(c);
       expect(c.cancel.mock.calls.length, `${spec} ${d.documentURI}`).toBe(cut ? 1 : 0);
+      // A cut load does no network I/O: no proxy step, no DNS prefetch.
+      expect(c.loadFlags, `${spec} ${d.documentURI}`).toBe(cut ? 1 << 26 : 0);
     }
     const notify = (globalThis as any).Services.obs.notifyObservers;
     for (const [d, deny] of [[widget, true], [tab, false], [null, false]] as const) {
