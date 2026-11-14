@@ -2,7 +2,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, beforeEach, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { History, IMPORTED_SPACE } from "../core/history";
 
 let h: History;
@@ -331,4 +331,57 @@ test("importVisits: http(s) only, retention, upsert keeps latest, not private, s
   const t = Date.now();
   expect(h.importVisits(many)).toBe(10_000);
   expect(Date.now() - t).toBeLessThan(2000);
+});
+
+describe("findPages: every group must match, title and URL before kept text", () => {
+  let h: History;
+  const d = (day: number) => new Date(2026, 10, day, 12);
+  beforeEach(() => {
+    h = new History(join(mkdtempSync(join(tmpdir(), "ressac-find-")), "history.sqlite"));
+  });
+  afterEach(() => h.close());
+  const visit = (url: string, title: string, text: string | null, date: Date, priv = false) => {
+    h.note({ url, title, spaceId: "s", private: priv, date });
+    if (text !== null) h.keep({ url, spaceId: "s", title, text, date });
+  };
+  const urls = (q: Parameters<History["findPages"]>[0]) => h.findPages(q).map((r) => r.url);
+
+  test("an English title found from French words with English variants, noise left out", () => {
+    visit("https://www.youtube.com/watch?v=a", "I discovered a sound that leaks your exact location", null, d(12));
+    visit("https://github.com/x/readme", "README", "son lieu vidéo sound location everything", d(14));
+    visit("https://www.leboncoin.fr/recherche?text=videoprojecteur", "« vidéoprojecteur 4K »", null, d(13));
+    expect(urls({ groups: [["son", "sound"], ["lieu", "location"]], limit: 3 })).toEqual(["https://www.youtube.com/watch?v=a", "https://github.com/x/readme"]);
+  });
+
+  test("one group missing → not a hit (AND across groups, OR inside)", () => {
+    visit("https://a.fr/", "Le son du mascaret", null, d(12));
+    expect(urls({ groups: [["son"], ["lieu", "location"]], limit: 3 })).toEqual([]);
+  });
+
+  test("a word matches at a word start, not inside another word", () => {
+    visit("https://a.fr/", "Jason and the season", null, d(12));
+    visit("https://b.fr/", "Sons et lieux", null, d(12));
+    expect(urls({ groups: [["son"], ["lieu"]], limit: 3 })).toEqual(["https://b.fr/"]);
+  });
+
+  test("sites filter, period applies, private visits never", () => {
+    visit("https://www.youtube.com/watch?v=1", "Mascaret", null, d(12));
+    visit("https://m.youtube.com/watch?v=2", "Mascaret mobile", null, d(13));
+    visit("https://blog.fr/m", "Mascaret", null, d(13));
+    visit("https://www.youtube.com/watch?v=3", "Mascaret ancien", null, d(1));
+    visit("https://www.youtube.com/watch?v=4", "Mascaret secret", null, d(13), true);
+    expect(urls({ groups: [["mascaret"]], sites: ["youtube.com"], since: d(10), limit: 5 })).toEqual(["https://m.youtube.com/watch?v=2", "https://www.youtube.com/watch?v=1"]);
+  });
+
+  test("from 3 groups on, a title may miss one (a model's extra idea); with 2, never", () => {
+    visit("https://www.youtube.com/watch?v=a", "I discovered a sound that leaks your exact location", null, d(12));
+    expect(urls({ groups: [["son", "sound"], ["lieu", "location"], ["trouver", "find"]], limit: 3 })).toEqual(["https://www.youtube.com/watch?v=a"]);
+    expect(urls({ groups: [["son", "sound"], ["trouver", "find"]], limit: 3 })).toEqual([]);
+  });
+
+  test("accents and case folded; FTS operators in words are literal", () => {
+    visit("https://a.fr/", "L'ÉTÉ à Bordeaux", null, d(12));
+    expect(urls({ groups: [["ete"], ["bordeaux"]], limit: 3 })).toEqual(["https://a.fr/"]);
+    expect(() => h.findPages({ groups: [['a" OR "b'], ["NEAR("]], limit: 3 })).not.toThrow();
+  });
 });
