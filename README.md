@@ -79,7 +79,11 @@ corepack pnpm --filter firefox-ressac engine:import    # applies the patches
 corepack pnpm --filter firefox-ressac build            # full build, about 20 min
 ```
 
-Everything else (architecture, UI-only builds, tests, packaging) is in [apps/firefox/README.md](apps/firefox/README.md). Visual rules are in [DESIGN.md](DESIGN.md).
+Start with [ARCHITECTURE.md](ARCHITECTURE.md) for a map of the code. Everything else (UI-only builds, tests, packaging, each mechanism) is in [apps/firefox/README.md](apps/firefox/README.md). Visual rules are in [DESIGN.md](DESIGN.md).
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Found a security issue? Report it privately, see [SECURITY.md](SECURITY.md).
 
 ## Credits
 
