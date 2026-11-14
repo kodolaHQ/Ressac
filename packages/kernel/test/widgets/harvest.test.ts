@@ -14,7 +14,7 @@ import { writeData, writeWidgetState, readWidgetState, deleteData } from "../../
 import { LocalAi } from "../../src/ai/local-ai.js";
 import { FakeBridge } from "../../src/mcp/fake-bridge.js";
 import { giveGrant, readGrants, removeGrant } from "../../src/widgets/grants.js";
-import { kernelError, runAttempt, runHarvest, type ProcessLauncher } from "../../src/widgets/harvest.js";
+import { kernelError, runAttempt, runHarvest, WORKSHOP_STOPPED_ERROR, INTERRUPTED_ERROR, type ProcessLauncher } from "../../src/widgets/harvest.js";
 import { PROFILE_DENIED } from "../../src/workflows/run.js";
 import { writeRun, attemptId, readRun, listRuns, type Execution } from "../../src/workflows/executions.js";
 import { withMemory, writeMemory, readMemory } from "../../src/workflows/memory.js";
@@ -142,7 +142,7 @@ const readBridge = (deny: string[] = [], redirects?: Record<string, string>) =>
 
 const readCalls = (p: FakeBridge) => p.calls.filter((a) => a.method === "readPageInvisible");
 
-async function harvest(ctx: Context, o: { ai?: LocalAi | Pick<LocalAi, "kev" | "gemma">; bridge?: FakeBridge; delayMs?: number } = {}) {
+async function harvest(ctx: Context, o: { ai?: LocalAi | Pick<LocalAi, "kev" | "gemma">; bridge?: FakeBridge; delayMs?: number; locale?: () => string } = {}) {
   return runHarvest({
     id: ctx.widget.id,
     widget: ctx.widget,
@@ -153,6 +153,7 @@ async function harvest(ctx: Context, o: { ai?: LocalAi | Pick<LocalAi, "kev" | "
     ai: (o.ai ?? (await ai())) as LocalAi,
     bridge: o.bridge ?? readBridge(),
     clock: clock,
+    locale: o.locale ?? (() => "fr"),
     delayMs: o.delayMs,
     localAddresses: true,
   });
@@ -168,6 +169,7 @@ const optionsOf = (ctx: Context) => ({
   ai: null,
   bridge: readBridge(),
   clock: clock,
+  locale: () => "fr",
   localAddresses: true,
 });
 
@@ -288,6 +290,9 @@ describe("runHarvest", () => {
     const r = await harvest(ctx, { delayMs: 600 });
     expect(Date.now() - start).toBeLessThan(5000);
     expect(r.state).toMatchObject({ status: "error", error: "Délai dépassé" });
+    // The same run in English writes English, and the kernel still recognises it.
+    const en = await harvest(ctx, { delayMs: 600, locale: () => "en" });
+    expect(en.state).toMatchObject({ status: "error", error: "Timed out", kernelError: true });
     expect(ctx.killed).toBeGreaterThan(0);
     expect(ctx.run.calls.some((a) => a.args.join(" ") === "rm -f ressac-harvest-lent")).toBe(true);
     expect(await readJson(join(ctx.widgetsFolder, "lent", "data.json"))).toEqual({ old: true });
@@ -336,7 +341,7 @@ describe("runHarvest", () => {
     const ctx = await prepare("public", `export default async (w) => w.fetch("${web.url}/").catch((e) => e.message);`);
     const r = await runHarvest({
       id: "public", widget: ctx.widget, widgetsFolder: ctx.widgetsFolder, engine: ENGINE, workshop: ctx.workshop,
-      launch: ctx.launch, ai: await ai(), bridge: readBridge(), clock: clock,
+      launch: ctx.launch, ai: await ai(), bridge: readBridge(), clock: clock, locale: () => "fr",
     });
     expect(r.data).toMatch(/locale/);
     expect(web.requests).toHaveLength(0);
@@ -352,7 +357,7 @@ describe("runHarvest", () => {
     const bridge = readBridge();
     const r = await runHarvest({
       id: "public", widget: ctx.widget, widgetsFolder: ctx.widgetsFolder, engine: ENGINE, workshop: ctx.workshop,
-      launch: ctx.launch, ai: await ai(), bridge: bridge, clock: clock,
+      launch: ctx.launch, ai: await ai(), bridge: bridge, clock: clock, locale: () => "fr",
     });
     const [rec, page] = r.data as string[];
     expect(rec).toMatch(/^refus: .*locale/);
@@ -607,6 +612,15 @@ describe("runHarvest, widget with an account", () => {
   });
 
   it("erreurDuNoyau: fixed kernel messages recognized, widget text not", () => {
+    // Written in English now, stored in French before: both are the kernel's.
+    expect(kernelError("Timed out")).toBe(true);
+    expect(kernelError("Response too large")).toBe(true);
+    expect(kernelError("Grant required to read with your account: app.daily.dev")).toBe(true);
+    expect(kernelError("Grant required to read with your account: SECRET account")).toBe(false);
+    expect(kernelError(WORKSHOP_STOPPED_ERROR("en"))).toBe(true);
+    expect(kernelError(INTERRUPTED_ERROR("en"))).toBe(true);
+    expect(kernelError(PROFILE_DENIED("en"))).toBe(true);
+    expect(kernelError("Timed out SECRET")).toBe(false);
     expect(kernelError("Délai dépassé")).toBe(true);
     expect(kernelError("Réponse trop grande")).toBe(true);
     expect(kernelError("Accord requis pour lire avec ton compte : app.daily.dev")).toBe(true);
@@ -860,7 +874,7 @@ describe("runHarvest, through the widget's workflow", () => {
     await traces(ctx);
     await giveGrant(ctx.widgetsFolder, "daily", { domains: ["app.daily.dev"], public: ["127.0.0.1"], profile: "prive" });
     const r = await harvest(ctx, { bridge: readBridge(["prive"]) });
-    expect(r.state).toMatchObject({ status: "grant-required", error: PROFILE_DENIED, kernelError: true });
+    expect(r.state).toMatchObject({ status: "grant-required", error: PROFILE_DENIED("fr"), kernelError: true });
     expect(await readGrants(ctx.widgetsFolder)).toEqual({});
     expect(existsSync(join(ctx.widgetsFolder, "daily", "data.json"))).toBe(false);
     expect(existsSync(join(ctx.widgetsFolder, "daily", "memory.json"))).toBe(false);
@@ -1128,13 +1142,13 @@ describe("runAttempt", () => {
     await giveGrant(ctx.widgetsFolder, "daily", { domains: ["app.daily.dev"], public: ["127.0.0.1"], profile: "prive" });
     const onChange = vi.fn();
     const r = await attempt(ctx, real.run!, "harvest", { bridge: readBridge(["prive"]), onChange: onChange });
-    expect(r).toEqual({ ok: false, error: PROFILE_DENIED });
+    expect(r).toEqual({ ok: false, error: PROFILE_DENIED("fr") });
     expect(await listRuns(dataOf(ctx))).toEqual([]);
     expect(await readGrants(ctx.widgetsFolder)).toEqual({});
     expect(existsSync(join(dataOf(ctx), "data.json"))).toBe(false);
     expect(await readWidgetState(ctx.widgetsFolder, "daily")).toMatchObject({
       status: "grant-required",
-      error: PROFILE_DENIED,
+      error: PROFILE_DENIED("fr"),
       kernelError: true,
       lastUpdate: real.state.lastUpdate,
       lastAttempt: real.state.lastAttempt,

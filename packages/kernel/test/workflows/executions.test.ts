@@ -186,7 +186,7 @@ test("an action run (owner action, saisie « clio lyon ») is written and re-rea
   const e: Execution = { ...execution(timestamp(0), [block("a", { x: 1 })]), owner: { type: "action", id: "recherche" }, input: "clio lyon" };
   await writeRun(d, e);
   expect(await readRun(d, e.id)).toEqual(e);
-  expect(ACTION_STOPPED).toBe("Arrêtée à ta demande");
+  expect(ACTION_STOPPED("fr")).toBe("Arrêtée à ta demande");
 });
 
 test("a widget run written before this plan re-reads unchanged", async () => {

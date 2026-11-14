@@ -2,12 +2,13 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
+import { say } from "../i18n.js";
 import type { Owner } from "./schema.js";
 
 export const OUTPUT_MAX_BYTES = 256 * 1024;
 export const RUN_MAX_BYTES = 4 * 1024 * 1024;
 /** The reason for an action run stopped by the user. */
-export const ACTION_STOPPED = "Arrêtée à ta demande";
+export const ACTION_STOPPED = (locale: string) => say(locale, "kernel-err-action-stopped");
 export const KEPT_RUNS = 20;
 /** Tries (builder replays) have their own quota: they never push out a real run. */
 export const KEPT_ATTEMPTS = 10;

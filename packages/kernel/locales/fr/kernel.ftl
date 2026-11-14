@@ -24,3 +24,33 @@ kernel-ai-git-clone-failed = git clone a échoué : { $error }
 kernel-ai-commit-mismatch = Le commit de Kev n'est pas celui attendu ({ $expected }) : { $found }
 kernel-ai-uv-sync-failed = uv sync a échoué : { $error }
 kernel-ai-pull-failed = ollama pull a échoué : { $error }
+
+# Erreurs que le noyau écrit dans les exécutions des widgets et des actions (montrées sur les cartes). Les textes gardés restent dans leur langue.
+kernel-err-timeout = Délai dépassé
+kernel-err-response-too-big = Réponse trop grande
+kernel-err-profile-denied = Le profil de connexion choisi n'est plus utilisable (supprimé ou utilisé par un espace privé) : accord à redonner
+kernel-err-workshop-stopped = Mise à jour impossible : atelier arrêté
+kernel-err-internal-harvest = Mise à jour impossible : erreur interne du navigateur
+kernel-err-no-workflow = Ce widget n'a ni workflow.json ni harvest.mjs
+kernel-err-interrupted = Interrompue : Ressac s'est arrêté
+kernel-err-grant-required = Accord requis pour lire avec ton compte : { $domains }
+kernel-err-no-result = La récolte s'est arrêtée sans résultat (code { $code })
+kernel-err-action-stopped = Arrêtée à ta demande
+kernel-err-action-internal = Action impossible : erreur interne du navigateur
+kernel-err-action-no-workflow = Cette action n'a pas de workflow.json
+kernel-err-result-too-big = Résultats trop gros pour être gardés
+kernel-err-cannot-launch = Récolte impossible à lancer : { $error }
+kernel-err-data-too-big = Données trop grosses (2 Mo au plus)
+kernel-memory-not-kept = Mémoire des blocs non gardée : plus de 3 Mo (l'ancienne reste)
+kernel-log-lines-cut = … { $n } lignes coupées
+
+# Erreurs de la carte d'accord (affichées dessous).
+kernel-grant-action-unknown = Action inconnue : { $id }
+kernel-grant-action-unreadable = Action illisible : { $error }
+kernel-grant-action-no-account = L'action { $id } ne lit pas avec un compte
+kernel-grant-action-changed = La déclaration de l'action { $id } a changé depuis l'affichage de la demande : rien n'est accordé, relis la nouvelle demande.
+kernel-grant-widget-unknown = Widget inconnu : { $id }
+kernel-grant-widget-unreadable = Widget illisible : { $error }
+kernel-grant-widget-no-account = Le widget { $id } ne lit pas avec un compte
+kernel-grant-widget-changed = La déclaration du widget { $id } a changé depuis l'affichage de la demande : rien n'est accordé, relis la nouvelle demande.
+kernel-widget-invalid = widget.json invalide : { $error }

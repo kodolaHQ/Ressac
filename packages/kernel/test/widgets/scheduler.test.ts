@@ -394,10 +394,10 @@ test("a harvest that throws an error after writing in-progress leaves a kernel e
     status: "error",
     lastUpdate: "2026-10-27T08:00:00.000Z",
     lastAttempt: START.toISOString(),
-    error: INTERNAL_HARVEST_ERROR,
+    error: INTERNAL_HARVEST_ERROR("fr"),
     kernelError: true,
   });
-  expect(kernelError(INTERNAL_HARVEST_ERROR)).toBe(true);
+  expect(kernelError(INTERNAL_HARVEST_ERROR("fr"))).toBe(true);
   expect(changes).toHaveBeenCalled();
   // Same through the background check.
   await writeWidgetState(widgetsFolder, "actus", { status: "running", lastUpdate: null, lastAttempt: null });
@@ -615,7 +615,7 @@ test("workshop stopped: rejouer refuses without changing the state", async () =>
   const { p, harvestAttempt: harvestAttempt, widgetsFolder: widgetsFolder, changes: changes } = await prepare({ workshop: "arrete" });
   const state: WidgetState = { status: "ok", lastUpdate: "2026-10-27T08:00:00.000Z", lastAttempt: "2026-10-27T08:00:00.000Z" };
   await writeWidgetState(widgetsFolder, "actus", state);
-  expect(await p.replay("actus", "o", "liste")).toEqual({ ok: false, error: WORKSHOP_STOPPED_ERROR });
+  expect(await p.replay("actus", "o", "liste")).toEqual({ ok: false, error: WORKSHOP_STOPPED_ERROR("fr") });
   expect(harvestAttempt).not.toHaveBeenCalled();
   expect(await readWidgetState(widgetsFolder, "actus")).toEqual(state);
   expect(changes).not.toHaveBeenCalled();

@@ -149,7 +149,7 @@ async function bench(
         }),
       ai: null,
       bridge: o.bridge ?? new FakeBridge([], { active: null, allow: false, read: { pages: [] } }),
-      clock: () => NOW,
+      clock: () => NOW, locale: () => "fr",
       delayMs: o.delayMs,
       localAddresses: true,
     },
@@ -342,9 +342,9 @@ describe("executerWorkflow", () => {
     });
     const r = await runWorkflow(b.ctx, b.infra);
     expect(r.issue).toMatchObject({ t: "end", memory: null });
-    expect(r.log).toContain(MEMORY_NOT_KEPT);
+    expect(r.log).toContain(MEMORY_NOT_KEPT("fr"));
     // Also in the run, in the output block's log.
-    expect(r.run.blocks.find((x) => x.id === "sortie")!.log).toEqual([MEMORY_NOT_KEPT]);
+    expect(r.run.blocks.find((x) => x.id === "sortie")!.log).toEqual([MEMORY_NOT_KEPT("fr")]);
   });
 
   it("a trace of a started block without an end gives it failed; block log bounded to 200 lines of 500 characters", async () => {
@@ -402,7 +402,7 @@ describe("executerWorkflow", () => {
     const b = await bench(chain("a"), { "a.mjs": `export default async (e, w) => w.readPage("https://app.daily.dev/", { account: true });` }, { account: ["app.daily.dev"], grant: { profile: "perso" }, bridge: bridge });
     const r = await runWorkflow(b.ctx, b.infra);
     expect(b.denialPending).toBe(1);
-    expect(r.issue).toEqual({ t: "stop", status: "grant-required", error: PROFILE_DENIED });
+    expect(r.issue).toEqual({ t: "stop", status: "grant-required", error: PROFILE_DENIED("fr") });
     expect(r.run.status).toBe("grant-required");
   });
 
@@ -1745,8 +1745,8 @@ describe("executerWorkflow: input, progress, reads and stop (actions)", () => {
     };
     const r = await runWorkflow(b.ctx, b.infra);
     expect(tue).toBe(1);
-    expect(r.issue).toEqual({ t: "stop", status: "error", error: ACTION_STOPPED });
-    expect(r.run).toMatchObject({ status: "interrupted", error: ACTION_STOPPED, kernelError: true });
+    expect(r.issue).toEqual({ t: "stop", status: "error", error: ACTION_STOPPED("fr") });
+    expect(r.run).toMatchObject({ status: "interrupted", error: ACTION_STOPPED("fr"), kernelError: true });
     expect(r.run.blocks[0]!.status).toBe("interrupted");
     expect(b.deleted).toEqual(["action:gitlab", "action:gitlab"]);
   });
@@ -1758,7 +1758,7 @@ describe("executerWorkflow: input, progress, reads and stop (actions)", () => {
     b.ctx.signal = stop.signal;
     const r = await runWorkflow(b.ctx, b.infra);
     expect(b.commands).toEqual([]);
-    expect(r.run).toMatchObject({ status: "interrupted", error: ACTION_STOPPED, kernelError: true });
+    expect(r.run).toMatchObject({ status: "interrupted", error: ACTION_STOPPED("fr"), kernelError: true });
   });
 
   it("an avancement line with faits > total is rejected", async () => {

@@ -1,3 +1,4 @@
+import { say } from "../i18n.js";
 import { spawn } from "node:child_process";
 import type { Readable, Writable } from "node:stream";
 import { HARVEST_DELAY_S, type Workshop } from "../container/workshop.js";
@@ -94,8 +95,7 @@ export function runDelays(maxDurationMinutes: number | undefined): { containerS:
   return { containerS: maxDurationMinutes * 60 + 30, kernelMs: maxDurationMinutes * 60_000 + 50_000, limitMs: maxDurationMinutes * 60_000 };
 }
 
-export const PROFILE_DENIED =
-  "Le profil de connexion choisi n'est plus utilisable (supprimé ou utilisé par un espace privé) : accord à redonner";
+export const PROFILE_DENIED = (locale: string) => say(locale, "kernel-err-profile-denied");
 
 const MAX_CALLS_IN_FLIGHT = 32;
 /**
@@ -105,7 +105,7 @@ const MAX_CALLS_IN_FLIGHT = 32;
 export const LOG_MAX = 2000;
 export const MAX_ERROR = 500;
 /** Kernel remark when the returned blocks' memory is too big for its file. */
-export const MEMORY_NOT_KEPT = "Mémoire des blocs non gardée : plus de 3 Mo (l'ancienne reste)";
+export const MEMORY_NOT_KEPT = (locale: string) => say(locale, "kernel-memory-not-kept");
 const BLOCK_LOG_LINES = 200;
 const LOG_BLOCK_CHARS = 500;
 
@@ -157,6 +157,8 @@ export type DirectTrace =
   | { block: string; step: "read"; host: string };
 
 export interface InfraWorkflow {
+  /** The shown language, read when an error is written (default: English). */
+  locale?: () => string;
   /** Folder of the engine on the Mac (`docker/engine`), mounted read-only. */
   engine: string;
   workshop: Pick<Workshop, "harvestCommand" | "deleteHarvest">;
@@ -225,6 +227,7 @@ export async function runWorkflow(
   infra: InfraWorkflow,
 ): Promise<{ issue: WorkflowOutcome; run: Execution; log: string }> {
   const clock = infra.clock;
+  const locale = () => infra.locale?.() ?? "en";
   const localUrls = infra.localAddresses ?? false;
   const start = clock().toISOString();
   const { workflow, order: order } = ctx.valid;
@@ -262,7 +265,7 @@ export async function runWorkflow(
       const b: BlockTrace = { ...t };
       // Started without an end: the container stopped during the block (or was stopped on request).
       if (started && !finished) b.status = stoppedBySignal ? "interrupted" : "failed";
-      if (cuts > 0) b.log = [`… ${cuts} lignes coupées`, ...t.log];
+      if (cuts > 0) b.log = [say(locale(), "kernel-log-lines-cut", { n: cuts }), ...t.log];
       return b;
     });
     const status: Execution["status"] =
@@ -334,7 +337,7 @@ export async function runWorkflow(
   // Stopped before even leaving: nothing is launched.
   if (ctx.signal?.aborted) {
     stoppedBySignal = true;
-    return conclude({ t: "stop", status: "error", error: ACTION_STOPPED });
+    return conclude({ t: "stop", status: "error", error: ACTION_STOPPED(locale()) });
   }
 
   let process: HarvestProcess;
@@ -342,7 +345,7 @@ export async function runWorkflow(
     const [cmd, ...argv] = infra.workshop.harvestCommand(ctx.owner, ctx.filesFolder, infra.engine, delays.containerS);
     process = (infra.launch ?? defaultLaunch)(cmd!, argv);
   } catch (e) {
-    return conclude({ t: "stop", status: "error", error: `Récolte impossible à lancer : ${message(e)}` });
+    return conclude({ t: "stop", status: "error", error: say(locale(), "kernel-err-cannot-launch", { error: message(e) }) });
   }
 
   let stop: Stop | null = null;
@@ -396,11 +399,11 @@ export async function runWorkflow(
     runEnd.abort(new Error("Exécution arrêtée"));
     process.kill();
   };
-  const timer = setTimeout(() => stopRun({ status: "error", error: "Délai dépassé" }), infra.delayMs ?? delays.kernelMs);
+  const timer = setTimeout(() => stopRun({ status: "error", error: say(locale(), "kernel-err-timeout") }), infra.delayMs ?? delays.kernelMs);
   const onSignal = () => {
     if (stop) return;
     stoppedBySignal = true;
-    stopRun({ status: "error", error: ACTION_STOPPED });
+    stopRun({ status: "error", error: ACTION_STOPPED(locale()) });
   };
   ctx.signal?.addEventListener("abort", onSignal, { once: true });
 
@@ -469,7 +472,7 @@ export async function runWorkflow(
         try {
           await ctx.onProfileDenied();
         } finally {
-          stopRun({ status: "grant-required", error: PROFILE_DENIED });
+          stopRun({ status: "grant-required", error: PROFILE_DENIED(locale()) });
         }
         return NO_RESPONSE;
       }
@@ -572,7 +575,7 @@ export async function runWorkflow(
       const filtered = markMemory(m.memory as BlocksMemory, types, hashes);
       const tooBig = Buffer.byteLength(JSON.stringify({ version: 1, blocks: filtered })) > MEMORY_MAX_BYTES;
       receivedMemory = tooBig ? null : filtered;
-      remark = tooBig ? MEMORY_NOT_KEPT : null;
+      remark = tooBig ? MEMORY_NOT_KEPT(locale()) : null;
       if (progressive && !outputDone) heldMemory = { memory: tooBig ? null : filtered, receivedAt: clock().getTime() };
       return;
     }
@@ -700,7 +703,7 @@ export async function runWorkflow(
     let startLine = 0;
     for (let i = d.indexOf(10); i >= 0; i = d.indexOf(10, startLine)) {
       const chunk = d.subarray(startLine, i);
-      if (size + chunk.length > LINE_MAX_BYTES) return stopRun({ status: "error", error: "Réponse trop grande" });
+      if (size + chunk.length > LINE_MAX_BYTES) return stopRun({ status: "error", error: say(locale(), "kernel-err-response-too-big") });
       const line = Buffer.concat([...buffer, chunk]).toString("utf8");
       buffer = [];
       size = 0;
@@ -711,7 +714,7 @@ export async function runWorkflow(
     const rest = d.subarray(startLine);
     if (!rest.length) return;
     size += rest.length;
-    if (size > LINE_MAX_BYTES) return stopRun({ status: "error", error: "Réponse trop grande" });
+    if (size > LINE_MAX_BYTES) return stopRun({ status: "error", error: say(locale(), "kernel-err-response-too-big") });
     buffer.push(Buffer.from(rest));
   });
 
@@ -734,9 +737,9 @@ export async function runWorkflow(
     return conclude({ t: "end", output: { to: ctx.valid.output.to, value: end.data }, memory: receivedMemory });
   }
   if (end?.t === "failure") return conclude(withMemory(failure(end.error, true)));
-  if (code === 124) return conclude(withMemory(failure("Délai dépassé", false)));
+  if (code === 124) return conclude(withMemory(failure(say(locale(), "kernel-err-timeout"), false)));
   // The exit code is chosen by the agent's code: it could encode account data in it.
-  return conclude(withMemory(failure(`La récolte s'est arrêtée sans résultat (code ${code ?? "aucun"})`, true)));
+  return conclude(withMemory(failure(say(locale(), "kernel-err-no-result", { code: String(code ?? "aucun") }), true)));
 }
 
 /** What is sent to the container: the entries of the same type and, if they have one, of the same hash. Without the hash. */

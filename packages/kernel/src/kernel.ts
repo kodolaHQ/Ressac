@@ -1,3 +1,4 @@
+import { say } from "./i18n.js";
 import { randomBytes } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, mkdir, open, realpath, rm, unlink, writeFile } from "node:fs/promises";
@@ -329,6 +330,7 @@ export async function createKernel(o: {
   const run = o.run ?? defaultRunner;
   await initSpace(paths, o.resources ? join(o.resources, "templates") : undefined);
 
+  const loc = () => o.locale?.() ?? "en";
   const profileId = o.profileId ?? "claude";
   const profile = (await loadProfiles(paths)).profiles.find((p) => p.id === profileId);
   if (!profile) throw new Error(`Profil d'agent inconnu : ${profileId}`);
@@ -352,7 +354,7 @@ export async function createKernel(o: {
     }
   };
   const widget = async (id: string): Promise<WidgetRead | undefined> =>
-    (await readHome(paths, widgetsFolder)).widgets.find((w) => w.id === id);
+    (await readHome(paths, widgetsFolder, loc())).widgets.find((w) => w.id === id);
   // Read by the agent through its MCP tools. A widget whose declaration is unreadable, or that has a recorded grant, counts
   // as reading with the user's account: its data may have been harvested with it.
   const widgetsTools: WidgetsTools = {
@@ -511,6 +513,7 @@ export async function createKernel(o: {
   await scheduler.start();
   const actionSubscribers = new Set<(e: ActionsState) => void>();
   const fileActions = new FileActions({
+    ...(o.locale ? { locale: o.locale } : {}),
     paths: paths,
     actionsFolder: actionsFolder,
     engine: engine,
@@ -568,12 +571,12 @@ export async function createKernel(o: {
     },
     async grant({ id, profile: profileName, account: shown, public: shownPublic }) {
       const a = await readAction(paths, id);
-      if (!a) throw new Error(`Action inconnue : ${id}`);
-      if ("error" in a) throw new Error(`Action illisible : ${a.error}`);
+      if (!a) throw new Error(say(loc(), "kernel-grant-action-unknown", { id }));
+      if ("error" in a) throw new Error(say(loc(), "kernel-grant-action-unreadable", { error: a.error }));
       const { account: account, public: publics } = a.declaration.sources;
-      if (!account.length) throw new Error(`L'action ${id} ne lit pas avec un compte`);
+      if (!account.length) throw new Error(say(loc(), "kernel-grant-action-no-account", { id }));
       if (!sameLists(account, shown) || !sameLists(publics, shownPublic)) {
-        throw new Error(`La déclaration de l'action ${id} a changé depuis l'affichage de la demande : rien n'est accordé, relis la nouvelle demande.`);
+        throw new Error(say(loc(), "kernel-grant-action-changed", { id }));
       }
       await giveGrant(actionsFolder, id, { domains: [...account].sort(), public: [...publics].sort(), profile: profileName });
     },
@@ -655,7 +658,7 @@ export async function createKernel(o: {
         throw e;
       }
     },
-    readHome: () => readHome(paths, widgetsFolder),
+    readHome: () => readHome(paths, widgetsFolder, loc()),
     watchHome: (callback) => watchHome(paths, callback),
     harvestNow: (id, trigger) => scheduler.harvestNow(id, trigger),
     replay: (id, origin, start) => scheduler.replay(id, origin, start),
@@ -667,12 +670,12 @@ export async function createKernel(o: {
     ai: ai,
     async grant({ id, profile: profileName, account: shown, public: shownPublic }) {
       const w = await widget(id);
-      if (!w) throw new Error(`Widget inconnu : ${id}`);
-      if ("error" in w) throw new Error(`Widget illisible : ${w.error}`);
+      if (!w) throw new Error(say(loc(), "kernel-grant-widget-unknown", { id }));
+      if ("error" in w) throw new Error(say(loc(), "kernel-grant-widget-unreadable", { error: w.error }));
       const { account: account, public: publics } = w.declaration.sources;
-      if (!account.length) throw new Error(`Le widget ${id} ne lit pas avec un compte`);
+      if (!account.length) throw new Error(say(loc(), "kernel-grant-widget-no-account", { id }));
       if (!sameLists(account, shown) || !sameLists(publics, shownPublic)) {
-        throw new Error(`La déclaration du widget ${id} a changé depuis l'affichage de la demande : rien n'est accordé, relis la nouvelle demande.`);
+        throw new Error(say(loc(), "kernel-grant-widget-changed", { id }));
       }
       await giveGrant(widgetsFolder, id, { domains: [...account].sort(), public: [...publics].sort(), profile: profileName });
       report();
@@ -690,7 +693,7 @@ export async function createKernel(o: {
           status: "grant-required",
           lastUpdate: before.lastUpdate,
           lastAttempt: before.lastAttempt,
-          error: grantRequired(w.declaration),
+          error: grantRequired(w.declaration, loc()),
           kernelError: true,
         });
       }

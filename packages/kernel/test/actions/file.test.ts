@@ -44,6 +44,7 @@ async function prepare(o: Partial<OptionsFileActions> = {}) {
     bridge: new FakeBridge([], { active: null, allow: false }),
     dispatcher: null,
     clock: clock,
+    locale: () => "fr",
     onLive: (e) => directs.push(e),
     ...o,
   });

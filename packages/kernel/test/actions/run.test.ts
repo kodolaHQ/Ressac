@@ -112,6 +112,7 @@ const options = (b: Bench, id: string, o: Partial<OptionsAction> = {}): OptionsA
   bridge: b.bridge,
   ai: fakeGemma(),
   clock: clock,
+  locale: () => "fr",
   input: null,
   trigger: "manual",
   signal: new AbortController().signal,
@@ -155,7 +156,7 @@ describe("runAction", () => {
   it("without a grant: accord-requis, no container launched, nothing written", async () => {
     const b = await prepare("gitlab", GITLAB, CODE_GITLAB);
     const r = await runAction(options(b, "gitlab"));
-    expect(r).toEqual({ status: "grant-required", error: actionGrantRequired(DeclarationAction.parse(GITLAB)), kernelError: true });
+    expect(r).toEqual({ status: "grant-required", error: actionGrantRequired(DeclarationAction.parse(GITLAB), "fr"), kernelError: true });
     expect(r.error).toBe("Accord requis pour lire avec ton compte : gitlab.com");
     expect(b.commands).toEqual([]);
     expect(existsSync(join(b.actionsFolder, "gitlab"))).toBe(false);
@@ -361,9 +362,9 @@ describe("runAction", () => {
     await waitUntil(() => b.bridge.calls.some((a) => a.method === "readPageInvisible"));
     stop.abort();
     const r = await end;
-    expect(r).toMatchObject({ status: "interrupted", error: ACTION_STOPPED, kernelError: true });
+    expect(r).toMatchObject({ status: "interrupted", error: ACTION_STOPPED("fr"), kernelError: true });
     const e = await readRun(join(b.actionsFolder, "public"), r.run!);
-    expect(e).toMatchObject({ status: "interrupted", error: ACTION_STOPPED });
+    expect(e).toMatchObject({ status: "interrupted", error: ACTION_STOPPED("fr") });
     expect(await readResult(b.actionsFolder, "public", r.run!)).toBeNull();
 
     // During the layout: Gemma waits, the stop gives the fallback layout.
