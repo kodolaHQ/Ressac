@@ -504,6 +504,15 @@ test("toggleCompact, toggleAgentPanel, chooseEngine", () => {
   expect(e.settings.engine).toBe("qwant");
 });
 
+test("chooseEngine custom: the address is kept when another engine is chosen; an invalid one is refused", () => {
+  ag({ type: "chooseEngine", engine: "custom", custom: "https://kagi.com/search?q=%s" });
+  expect(e.settings).toMatchObject({ engine: "custom", customEngine: "https://kagi.com/search?q=%s" });
+  ag({ type: "chooseEngine", engine: "brave" });
+  expect(e.settings).toMatchObject({ engine: "brave", customEngine: "https://kagi.com/search?q=%s" });
+  expect(SchemaAction.safeParse({ type: "chooseEngine", engine: "custom", custom: "http://x.com/?q=%s" }).success).toBe(false);
+  expect(SchemaAction.safeParse({ type: "chooseEngine", engine: "custom", custom: "https://x.com/" }).success).toBe(false);
+});
+
 test("frameWindow keeps the size and position; unknown window → same reference", () => {
   expect(fen().frame).toBeNull();
   ag({ type: "frameWindow", id: F, frame: { x: 10, y: 20, width: 800, height: 600 } });

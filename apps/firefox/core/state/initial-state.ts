@@ -23,7 +23,7 @@ export function initialState(genId: () => string = randomUUID): BrowserState {
         frame: null,
       },
     ],
-    settings: { engine: "google", agentProfile: "claude", agentPanelWidth: 420, sidebarWidth: 240, decisionModel: "pplx-decider-flash", codexEngine: { ...DEFAULT_CODEX_ENGINE }, claudeEngine: { ...DEFAULT_CLAUDE_ENGINE }, onboarded: false, seenVersion: null, hints: { enabled: true, seen: [] }, sidebarSide: "left", shortcuts: {}, vimMode: false, startOnHome: true },
+    settings: { engine: "google", customEngine: null, agentProfile: "claude", agentPanelWidth: 420, sidebarWidth: 240, decisionModel: "pplx-decider-flash", codexEngine: { ...DEFAULT_CODEX_ENGINE }, claudeEngine: { ...DEFAULT_CLAUDE_ENGINE }, onboarded: false, seenVersion: null, hints: { enabled: true, seen: [] }, sidebarSide: "left", shortcuts: {}, vimMode: false, startOnHome: true },
     update: null,
   };
 }

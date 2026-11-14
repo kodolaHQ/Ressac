@@ -596,7 +596,11 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       return true;
     }
     case "chooseEngine": {
+      const custom = a.custom?.trim() ?? d.settings.customEngine;
+      if (a.engine === "custom" && !custom) return false;
+      if (d.settings.engine === a.engine && d.settings.customEngine === custom) return false;
       d.settings.engine = a.engine;
+      d.settings.customEngine = custom;
       return true;
     }
     case "chooseAgentProfile": {

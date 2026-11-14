@@ -2,6 +2,7 @@ import { z } from "zod";
 import { AURA_IDS } from "./aura";
 import { HINT_IDS } from "./hints";
 import { SHORTCUT_IDS } from "./shortcuts";
+import { CUSTOM_ENGINE_MAX, SEARCH_ENGINE_IDS, customEngineError } from "./search";
 import { validFolder, ID_EXECUTION, ID_SITE, type Application, type Warning, type BlockCatalogEntry, type DeclarationWidget, type DirectState, type DraftRead, type SaveResult, type AttemptResult, type DevRight, type AiState, type WidgetState, type Execution, type ResumeExecution, type ActionsState, type PageAction, type LaunchResult, type Owner, type RenderedPage } from "@ressac/kernel";
 import type { BatchState, ProjectId, ExternalProject, TrackedProject } from "@ressac/kernel";
 import { PROJECT_ID, type Comment, type DiffFile, type ModifiedFile } from "@ressac/kernel";
@@ -15,7 +16,7 @@ import type { Decision, PendingRequest, AccessState, BrowserState, SpaceId, Wind
 
 const id = z.string().min(1);
 const frame = z.object({ x: z.number(), y: z.number(), width: z.number().positive(), height: z.number().positive() });
-const engine = z.enum(["google", "duckduckgo", "qwant"]);
+const engine = z.enum(SEARCH_ENGINE_IDS);
 /** A favorite given by its address (an import), not by an open tab. */
 const favoriteLink = z.object({ url: z.string().regex(/^https?:\/\//), title: z.string() });
 
@@ -136,7 +137,8 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("openActions"), windowId: id }),
   /** Automatic opening and closing of the panel by the home page (not an action of the user). */
   z.object({ type: z.literal("homeAgentPanel"), windowId: id, open: z.boolean() }),
-  z.object({ type: z.literal("chooseEngine"), engine: engine }),
+  /** `custom`: the user's own address (https, `%s` for the words); `engine: "custom"` without it reuses the one kept. */
+  z.object({ type: z.literal("chooseEngine"), engine: engine, custom: z.string().max(CUSTOM_ENGINE_MAX).refine((u) => !customEngineError(u)).optional() }),
   z.object({ type: z.literal("chooseAgentProfile"), profile: z.string().regex(/^[\w-]+$/).max(64) }),
   z.object({ type: z.literal("chooseCodexEngine"), engine: CodexEngineSchema }),
   z.object({ type: z.literal("chooseClaudeEngine"), engine: ClaudeEngineSchema }),
