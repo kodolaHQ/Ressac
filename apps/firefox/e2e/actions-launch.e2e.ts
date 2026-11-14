@@ -252,9 +252,15 @@ describe("launching from the command bar", () => {
     await focused("command-input");
     expect(await q.value(tid("command-input"))).toBe("résumé");
     expect(await q.count(tid("command-bar"))).toBe(1);
-    // The action stays chosen: Tab asks for it too; ⌫ clears the selection, then ⌫ on the empty field goes back.
+    // The action stays chosen. Tab switches to Demander (no input asked) and back; Enter asks for it again.
+    // ⌫ clears the selection, then ⌫ on the empty field goes back.
     expect(await inUi(m, "return doc.querySelector(arguments[0]).getAttribute('aria-selected');", [lines("action")])).toBe("true");
     await pressKeys(m, "Tab");
+    await q.waitText(`${tid("command-mode")} [aria-current="true"]`, "Demander");
+    expect(await q.count(tid("command-param"))).toBe(0);
+    await pressKeys(m, "Tab");
+    await q.waitText(`${tid("command-mode")} [aria-current="true"]`, "Chercher");
+    await pressKeys(m, "Enter");
     await focused("command-param");
     expect(await q.value(tid("command-param"))).toBe(url);
     // Held, ⌫ clears the field without going back; released then pressed again, it goes back, text intact.
