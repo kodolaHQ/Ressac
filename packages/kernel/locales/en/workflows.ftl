@@ -79,7 +79,6 @@ workflows-warn-domain = undeclared domain: { $host }
 workflows-warn-config = config.{ $key } is missing from the widget's configuration
 
 # Run.
-kernel-err-no-result-no-code = The harvest ended without a result
 
 # Blocks: names and descriptions.
 workflows-block-ai-sort = Sort with Kev

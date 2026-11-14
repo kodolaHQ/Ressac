@@ -5,7 +5,7 @@ import { validFolder } from "../applications/manifest.js";
 import { CONTAINER_PATH, KERNEL_ROOT, type SpacePaths } from "../paths.js";
 import type { Owner } from "../workflows/schema.js";
 import { say } from "../i18n.js";
-import { defaultRunner, type RunResult, type Runner } from "./runner.js";
+import { createRunner, type RunResult, type Runner } from "./runner.js";
 
 export const CONTAINER_NAME = "ressac-workshop";
 // Read on every call so a second app (Firefox build) can run its own container.
@@ -184,7 +184,7 @@ export class Workshop {
     this.locale = o.locale ?? (() => "en");
     this.dockerFolder = o.dockerFolder ?? DEFAULT_DOCKER_FOLDER;
     this.paths = o.paths;
-    this.run = o.run ?? defaultRunner;
+    this.run = o.run ?? createRunner(this.locale);
     this.lookup = o.docker === undefined ? (o.findDocker ?? findDocker) : () => o.docker ?? null;
   }
 

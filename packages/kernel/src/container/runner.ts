@@ -1,6 +1,7 @@
 import { execFile, spawn } from "node:child_process";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { say } from "../i18n.js";
 
 export interface RunResult {
   code: number;
@@ -59,9 +60,9 @@ export const TOOLS_FOLDERS = [
 /** PATH enriched with tool folders (the app launched from the Finder has a minimal PATH). */
 export const toolsPath = (): string => [process.env.PATH ?? "", ...TOOLS_FOLDERS].filter(Boolean).join(":");
 
-/** Launches a command without ever throwing: a failure reads in `code`. */
-export const defaultRunner: Runner = (command, args, opts = {}) => {
-  if (opts.signal) return runCancelable(command, args, opts.signal, opts.delayMs);
+/** A runner whose own texts (timeout, cancel, command not found) are in the language of `locale()`. */
+export const createRunner = (locale: () => string = () => "en"): Runner => (command, args, opts = {}) => {
+  if (opts.signal) return runCancelable(command, args, opts.signal, opts.delayMs, locale);
   return new Promise((resolve) => {
     const PATH = toolsPath();
     const child = execFile(
@@ -71,8 +72,8 @@ export const defaultRunner: Runner = (command, args, opts = {}) => {
       (error, stdout, stderr) => {
         if (!error) return resolve({ code: 0, stdout, stderr });
         const e = error as NodeJS.ErrnoException & { killed?: boolean; code?: number | string };
-        if (e.code === "ENOENT") return resolve({ code: 127, stdout, stderr: `${command} not found` });
-        if (e.killed && opts.delayMs) return resolve({ code: CODE_TIMEOUT_EXCEEDED, stdout, stderr: "Timed out" });
+        if (e.code === "ENOENT") return resolve({ code: 127, stdout, stderr: say(locale(), "kernel-run-not-found", { command }) });
+        if (e.killed && opts.delayMs) return resolve({ code: CODE_TIMEOUT_EXCEEDED, stdout, stderr: say(locale(), "kernel-err-timeout") });
         resolve({ code: typeof e.code === "number" ? e.code : 1, stdout, stderr });
       },
     );
@@ -81,14 +82,17 @@ export const defaultRunner: Runner = (command, args, opts = {}) => {
   });
 };
 
+/** Launches a command without ever throwing: a failure reads in `code`. Its own texts are in English; see `createRunner`. */
+export const defaultRunner: Runner = createRunner();
+
 /**
  * Cancellable variant: the command lives in its own process group (git launches git-remote-https, uv its
  * compilations; execFile cannot create one). Cancelling, or exceeding the timeout, sends SIGTERM to the group, then
  * SIGKILL after 2 s if it is still alive; if Node exits before, the group is killed at exit.
  */
-function runCancelable(command: string, args: string[], signal: AbortSignal, delayMs?: number): Promise<RunResult> {
+function runCancelable(command: string, args: string[], signal: AbortSignal, delayMs: number | undefined, locale: () => string): Promise<RunResult> {
   return new Promise((resolve) => {
-    if (signal.aborted) return resolve({ code: CODE_CANCELLED, stdout: "", stderr: "Cancelled" });
+    if (signal.aborted) return resolve({ code: CODE_CANCELLED, stdout: "", stderr: say(locale(), "kernel-run-cancelled") });
     const child = spawn(command, args, { env: { ...process.env, PATH: toolsPath() }, stdio: ["ignore", "pipe", "pipe"], detached: true });
     const pid = child.pid;
     if (pid !== undefined) keepGroup(pid);
@@ -125,11 +129,11 @@ function runCancelable(command: string, args: string[], signal: AbortSignal, del
       resolve(r);
     };
     child.on("error", (e: NodeJS.ErrnoException) =>
-      finish(e.code === "ENOENT" ? { code: 127, ...sorties, stderr: `${command} not found` } : { code: 1, ...sorties, stderr: e.message }),
+      finish(e.code === "ENOENT" ? { code: 127, ...sorties, stderr: say(locale(), "kernel-run-not-found", { command }) } : { code: 1, ...sorties, stderr: e.message }),
     );
     child.on("close", (code) => {
-      if (signal.aborted) return finish({ code: CODE_CANCELLED, ...sorties, stderr: sorties.stderr || "Cancelled" });
-      if (delayExceeded) return finish({ code: CODE_TIMEOUT_EXCEEDED, ...sorties, stderr: "Timed out" });
+      if (signal.aborted) return finish({ code: CODE_CANCELLED, ...sorties, stderr: sorties.stderr || say(locale(), "kernel-run-cancelled") });
+      if (delayExceeded) return finish({ code: CODE_TIMEOUT_EXCEEDED, ...sorties, stderr: say(locale(), "kernel-err-timeout") });
       finish({ code: code ?? 1, ...sorties });
     });
   });

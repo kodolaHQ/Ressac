@@ -35,6 +35,7 @@ kernel-err-no-workflow = Ce widget n'a ni workflow.json ni harvest.mjs
 kernel-err-interrupted = Interrompue : Ressac s'est arrêté
 kernel-err-grant-required = Accord requis pour lire avec ton compte : { $domains }
 kernel-err-no-result = La récolte s'est arrêtée sans résultat (code { $code })
+kernel-err-no-result-no-code = La récolte s'est arrêtée sans résultat
 kernel-err-action-stopped = Arrêtée à ta demande
 kernel-err-action-internal = Action impossible : erreur interne du navigateur
 kernel-err-action-no-workflow = Cette action n'a pas de workflow.json
@@ -54,3 +55,7 @@ kernel-grant-widget-unreadable = Widget illisible : { $error }
 kernel-grant-widget-no-account = Le widget { $id } ne lit pas avec un compte
 kernel-grant-widget-changed = La déclaration du widget { $id } a changé depuis l'affichage de la demande : rien n'est accordé, relis la nouvelle demande.
 kernel-widget-invalid = widget.json invalide : { $error }
+
+# Texts of the command runner (shown in install and workshop errors).
+kernel-run-not-found = { $command } introuvable
+kernel-run-cancelled = Annulé

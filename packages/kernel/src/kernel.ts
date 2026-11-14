@@ -12,7 +12,7 @@ import { watchHome } from "./home/watch.js";
 import { loadProfiles, buildCommand } from "./profiles/profile.js";
 import { writeMcpConfig, writeSessionConfig, mcpArgument, MCP_TOKEN_VARIABLE } from "./profiles/config-mcp.js";
 import { Workshop, DEFAULT_DOCKER_FOLDER, type BuildProgress, type WorkshopState } from "./container/workshop.js";
-import { defaultRunner, type Runner } from "./container/runner.js";
+import { createRunner, type Runner } from "./container/runner.js";
 import { SessionAgent } from "./pty/session.js";
 import { AccessPolicy } from "./access/policy.js";
 import { SearchSessions } from "./search/sessions.js";
@@ -327,10 +327,10 @@ export async function createKernel(o: {
   sites?: SitesTools;
 }): Promise<Kernel> {
   const paths = spacePaths(o.root);
-  const run = o.run ?? defaultRunner;
   await initSpace(paths, o.resources ? join(o.resources, "templates") : undefined);
 
   const loc = () => o.locale?.() ?? "en";
+  const run = o.run ?? createRunner(loc);
   const profileId = o.profileId ?? "claude";
   const profile = (await loadProfiles(paths)).profiles.find((p) => p.id === profileId);
   if (!profile) throw new Error(`Profil d'agent inconnu : ${profileId}`);

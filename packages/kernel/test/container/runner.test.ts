@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CODE_CANCELLED, CODE_TIMEOUT_EXCEEDED, defaultRunner } from "../../src/container/runner.js";
+import { CODE_CANCELLED, CODE_TIMEOUT_EXCEEDED, createRunner, defaultRunner } from "../../src/container/runner.js";
 
 test("a non-zero code is returned as is, without disguising stderr", async () => {
   expect(await defaultRunner("sh", ["-c", "echo sortie; exit 3"])).toEqual({ code: 3, stdout: "sortie\n", stderr: "" });
@@ -59,4 +59,16 @@ test("with a (non-cancelled) signal: output, code, timeout and command not found
   expect(await defaultRunner("sh", ["-c", "echo sortie; echo err >&2; exit 3"], { signal })).toEqual({ code: 3, stdout: "sortie\n", stderr: "err\n" });
   expect((await defaultRunner("commande-qui-n-existe-pas", [], { signal })).code).toBe(127);
   expect((await defaultRunner("sleep", ["5"], { delayMs: 100, signal })).code).toBe(CODE_TIMEOUT_EXCEEDED);
+});
+
+test("the runner's own texts follow its locale getter", async () => {
+  const fr = createRunner(() => "fr");
+  const en = createRunner(() => "en");
+  expect((await fr("ressac-absent-command", [])).stderr).toBe("ressac-absent-command introuvable");
+  expect((await en("ressac-absent-command", [])).stderr).toBe("ressac-absent-command not found");
+  expect((await fr("sleep", ["5"], { delayMs: 100 })).stderr).toBe("Délai dépassé");
+  expect((await en("sleep", ["5"], { delayMs: 100 })).stderr).toBe("Timed out");
+  const signal = AbortSignal.abort();
+  expect((await fr("sleep", ["5"], { signal })).stderr).toBe("Annulé");
+  expect((await en("sleep", ["5"], { signal })).stderr).toBe("Cancelled");
 });

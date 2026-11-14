@@ -79,7 +79,6 @@ workflows-warn-domain = domaine non déclaré : { $host }
 workflows-warn-config = config.{ $key } absent de la configuration du widget
 
 # Exécution.
-kernel-err-no-result-no-code = La récolte s'est arrêtée sans résultat
 
 # Blocs : noms et descriptions.
 workflows-block-ai-sort = Trier avec Kev
