@@ -305,6 +305,44 @@ describe("Ressac sidebar", () => {
     await waitUi(m, `return !doc.querySelector('[data-testid^="folder-"]') && doc.querySelectorAll(arguments[0]).length === 1`, [favorite]);
   });
 
+  it("right click → « Renommer » names a pinned tab in place; an empty name takes back the page title", async () => {
+    const a = await open("/a.html");
+    await waitTitle(a, "Page A");
+    await dispatch(m, { type: "pinTab", id: a });
+    const favorite = '[data-testid="pinned"] [data-testid^="favorite-"]';
+    await waitUi(m, "return doc.querySelectorAll(arguments[0]).length === 1", [favorite]);
+    const rename = async (name: string) => {
+      await click(m, favorite, { button: 2 });
+      await click(m, '[role="menuitem"]', { text: "Renommer" });
+      await waitUi(m, `return doc.activeElement?.dataset.testid === "favorite-name"`);
+      if (name) await typeText(m, name);
+      else await pressKeys(m, "Backspace");
+      await pressKeys(m, "Enter");
+    };
+    await rename("Mon site");
+    await waitUi(m, "return doc.querySelector(arguments[0])?.textContent === 'Mon site'", [favorite + " > span:last-child"]);
+    expect((await state(m)).spaces[0]!.pinned[0]!.title).toBe("Mon site");
+    await rename("");
+    await waitUi(m, "return doc.querySelector(arguments[0])?.textContent === 'Page A'", [favorite + " > span:last-child"]);
+  });
+
+  it("a two-finger swipe on the sidebar moves one space, and stops at the first one", async () => {
+    await dispatch(m, { type: "createSpace", name: "Boulot", icon: "💼", private: false, profile: "default", windowId: (await win()).id });
+    const s = await state(m);
+    const [first, second] = s.spaces.map((e) => e.id);
+    expect(s.windows[0]!.activeSpace).toBe(second);
+    const swipe = async (dx: number) => {
+      await inUi(m, `const bar = doc.querySelector('[data-testid="sidebar"]'); for (let i = 0; i < 6; i++) bar.dispatchEvent(new doc.defaultView.WheelEvent("wheel", { deltaX: arguments[0], bubbles: true }));`, [dx]);
+      await new Promise((r) => setTimeout(r, 400));
+    };
+    await swipe(-30);
+    expect(await waitState((st) => st.windows[0]!.activeSpace, (v) => v === first)).toBe(first);
+    await swipe(-30);
+    expect((await state(m)).windows[0]!.activeSpace).toBe(first);
+    await swipe(30);
+    expect(await waitState((st) => st.windows[0]!.activeSpace, (v) => v === second)).toBe(second);
+  });
+
   it("right click → « Envoyer vers » moves the tab to the other space, in the background", async () => {
     const home = (await win()).activeSpace;
     await dispatch(m, { type: "createSpace", name: "Boulot", icon: "💼", private: false, profile: "default", windowId: (await win()).id });

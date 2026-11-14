@@ -384,6 +384,12 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       folder.name = a.name;
       return true;
     }
+    case "renameFavorite": {
+      const favorite = d.spaces.find((e) => e.id === a.spaceId)?.pinned.find((x) => x.id === a.favoriteId);
+      if (!favorite || favorite.title === a.title) return false;
+      favorite.title = a.title;
+      return true;
+    }
     case "deleteFolder": {
       const space = d.spaces.find((e) => e.id === a.spaceId);
       if (!space?.folders.some((x) => x.id === a.id)) return false;

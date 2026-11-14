@@ -72,6 +72,8 @@ export const SchemaAction = z.discriminatedUnion("type", [
   /** `favoriteId`: a pinned tab of the space that starts in the new folder. */
   z.object({ type: z.literal("createFolder"), spaceId: id, name: z.string().min(1), favoriteId: id.optional() }),
   z.object({ type: z.literal("renameFolder"), spaceId: id, id, name: z.string().min(1) }),
+  /** A pinned tab's own name: the sidebar shows it whatever title the page takes. */
+  z.object({ type: z.literal("renameFavorite"), spaceId: id, favoriteId: id, title: z.string().min(1) }),
   /** Its pinned tabs stay pinned, outside any folder. */
   z.object({ type: z.literal("deleteFolder"), spaceId: id, id }),
   z.object({ type: z.literal("toggleFolder"), spaceId: id, id }),

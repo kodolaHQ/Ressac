@@ -28,12 +28,12 @@ export function toNeighbour(state: BrowserState, windowId: WindowId, delta: 1 | 
   return toElement(windowId, items[(from + delta + items.length) % items.length]);
 }
 
-/** gs / gS (vim mode): the window's next / previous space, wrapping. */
-export function toNextSpace(state: BrowserState, windowId: WindowId, delta: 1 | -1): Action | null {
+/** gs / gS (vim mode): the window's next / previous space, wrapping; a sidebar swipe stops at the ends (`wrap` false). */
+export function toNextSpace(state: BrowserState, windowId: WindowId, delta: 1 | -1, wrap = true): Action | null {
   const f = state.windows.find((x) => x.id === windowId);
   const i = state.spaces.findIndex((e) => e.id === f?.activeSpace);
   const n = state.spaces.length;
-  if (i < 0 || n < 2) return null;
+  if (i < 0 || n < 2 || (!wrap && (i + delta < 0 || i + delta >= n))) return null;
   return { type: "activateSpace", windowId: windowId, id: state.spaces[(i + delta + n) % n]!.id };
 }
 
