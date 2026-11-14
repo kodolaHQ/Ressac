@@ -405,6 +405,14 @@ test("a harvest that throws an error after writing in-progress leaves a kernel e
   expect((await readWidgetState(widgetsFolder, "actus")).status).toBe("error");
 });
 
+test("a broken widget harvested now reaches the harvest with its read error in the shown language", async () => {
+  const { p, c, harvest } = await prepare();
+  await writeWidget(c, "casse", "{", {});
+  await p.harvestNow("casse");
+  const seen = harvest.mock.calls.map(([r]) => r.widget).find((w) => w.id === "casse") as { error?: string } | undefined;
+  expect(seen?.error).toMatch(/^widget\.json invalide : /);
+});
+
 test("at each check, grants and data of a widget whose folder disappeared are erased", async () => {
   const { p, widgetsFolder: widgetsFolder, c } = await prepare();
   for (const id of ["actus", "parti"]) {

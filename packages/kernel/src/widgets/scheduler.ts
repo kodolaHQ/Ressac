@@ -277,7 +277,7 @@ export class WidgetsScheduler {
   }
 
   private async widgets(): Promise<WidgetRead[]> {
-    return (await readHome(this.o.paths, this.o.widgetsFolder)).widgets;
+    return (await readHome(this.o.paths, this.o.widgetsFolder, this.locale())).widgets;
   }
 
   /** The widget's lane from its declaration read now (short if unknown or unreadable). */
