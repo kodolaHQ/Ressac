@@ -43,6 +43,15 @@ pref("browser.sessionstore.max_tabs_undo", 0);
 pref("browser.tabs.closeWindowWithLastTab", false);
 pref("browser.tabs.warnOnClose", false);
 pref("browser.ctrlTab.sortByRecentlyUsed", false);
+pref("browser.sessionstore.max_windows_undo", 0);
+
+// Firefox features that compete with Ressac's own (the menu items are hidden by chrome/window/firefox-items.ts):
+// a second profile, Firefox's sidebar, split view, its AI chat panel.
+pref("browser.profiles.enabled", false);
+pref("sidebar.revamp", false);
+pref("sidebar.visibility", "hide-sidebar");
+pref("browser.tabs.splitView.enabled", false);
+pref("browser.ml.chat.enabled", false);
 
 // AMO and many sites look for the Firefox/ token in the user agent: nsHttpHandler appends Firefox/<version> when this is on.
 pref("general.useragent.compatMode.firefox", true);

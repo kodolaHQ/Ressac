@@ -527,3 +527,8 @@
 :root[ressac-site][inDOMFullscreen] #ressac-site-bar {
   display: none;
 }
+
+/* Firefox's own sidebar (Ressac draws its own): never shown, whatever its prefs or keys say. */
+:root[ressac-main] :is(#sidebar-container, #sidebar-box, #sidebar-splitter, #sidebar-launcher-splitter) {
+  display: none !important;
+}
