@@ -52,6 +52,10 @@ The local AI needs an Ollama that answers on `127.0.0.1:11434` (`host/ollama-run
 
 Same idea for the container app (`host/docker-runtime.ts`): when Docker does not answer and OrbStack or Docker Desktop is installed, Ressac opens it in the background at launch (`open -ga`), and the welcome and Settings › Atelier show « Démarrer <app> » if that failed. Ressac never quits it and never installs it: with none on the machine the pages keep the link to OrbStack's download. `RESSAC_TEST_DOCKER_KIND` fixes the status for the e2e.
 
+## AI features switch
+
+`settings.aiEnabled` (Settings › IA; the welcome's page « Activer l'IA ? » asks first) turns every AI feature on or off. Existing sessions keep it on; a fresh install starts with the question. Off, the chrome tells the host (`start` and the live `ai.enabled` message, applied in order): `host/host.ts` starts no Docker, Ollama or kernel, and refuses their work with `Error("ai-off")`. Every AI entry point (agent panel, command bar, home, empty page, agent apps) shows the `AiAsleep` card (`ui/components/AiAsleep.svelte`) instead, with a button to switch AI on. Switching on after the welcome runs the AI-only setup. In the e2e, `RESSAC_TEST_AI=0` starts with AI off (`launchRessac({ ai: false })`; the default is on).
+
 ## Work loop
 
 - Changed `ui/` or `chrome/` (files already declared in `jar.inc.mn`): `pnpm ui`, then restart the app with `-purgecaches` (otherwise an existing profile keeps running the old scripts from its startup cache). No `mach`, no build: the app reads our files through symlinks.

@@ -66,6 +66,7 @@ Le *ressac*, c'est la vague qui revient vers le rivage. Tu envoies l'agent sur l
 
 - **Pas de compte.** Ressac n'en demande aucun. L'agent utilise ton propre compte Claude ou ChatGPT, une clé d'API, ou des modèles locaux.
 - **Ta navigation reste sur ton Mac.** L'agent ne voit que les pages qu'il ouvre dans son onglet et ce que tu lui donnes.
+- **L'IA reste éteinte tant que tu ne l'actives pas.** Docker, Ollama et l'agent ne démarrent qu'une fois que tu as dit oui.
 - **Open source.** Construit sur Firefox, sous licence MPL 2.0.
 
 Pendant la bêta, Ressac envoie à son développeur les plantages et les erreurs (sans adresse de page) et un identifiant d'installation anonyme, pour corriger les bugs ; désactivable dans Réglages › Vie privée.
