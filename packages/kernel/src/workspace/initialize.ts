@@ -239,7 +239,11 @@ async function swapWidget(c: SpacePaths, models: string, lang: string, langs: st
 }
 
 /** sha256 of old shipped versions of the `CLAUDE.md` and agent profile templates: a copy left as shipped is replaced. */
-export const OLD_CLAUDE_MD: ReadonlySet<string> = new Set(["11baa6aab5848a8fff974dabc5e78e9ccc69b8d2a53a91d23fa9a3f0ca73632b"]);
+// The old ones only asked the agent to read AGENTS.md: it skipped it when the first message was a task.
+export const OLD_CLAUDE_MD: ReadonlySet<string> = new Set([
+  "11baa6aab5848a8fff974dabc5e78e9ccc69b8d2a53a91d23fa9a3f0ca73632b",
+  "4690fb441d1ffb32d9e9915a8fc65545f25de774d368c48041e86de43d7a8cab",
+]);
 export const OLD_AGENT_PROFILE: ReadonlySet<string> = new Set([
   "2e20e733cc7c9aa30c807e227a6547824afbfc1f6a8ffe0c005cc9f51c039085",
   "0fb830fc421a5c48f8de042d8e7e722a4e8c4ef38c6c2e4738ac8b389b4f4816",
