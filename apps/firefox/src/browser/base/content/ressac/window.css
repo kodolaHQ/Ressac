@@ -108,6 +108,11 @@
   display: none !important;
 }
 
+/* Firefox's update doorhangers would anchor to its hidden app menu button: Ressac shows its own update card. */
+:root[ressac-main] #appMenu-notification-popup {
+  display: none !important;
+}
+
 /* The macOS window buttons, centred on the sidebar's first row (Firefox's own box is in the hidden toolbox). */
 :root[ressac-main] #ressac-window-buttons {
   appearance: auto;

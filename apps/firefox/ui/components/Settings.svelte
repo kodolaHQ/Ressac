@@ -21,6 +21,7 @@
 <script lang="ts">
   import type { LocalAiStateShown, SettingsApi } from "../../shared/api";
   import { OLLAMA_ITSELF, TELEMETRY_NOTICE, type DockerStatus, type AgentAccount, type DecisionModel, type LoginResult, type PullProgress, type WorkshopOperation } from "../../shared/settings";
+  import { updateStatusText } from "../../core/update";
   import { api, appState } from "../state.svelte";
   import Icon from "./Icon.svelte";
   import SettingsMozilla from "./SettingsMozilla.svelte";
@@ -31,6 +32,7 @@
 
   // Each section loads on its own: a slow Docker never holds the version or the data folder.
   const s = api.settings;
+  const update = $derived(appState.value?.update ?? null);
   type WorkshopState = NonNullable<Awaited<ReturnType<SettingsApi["workshop"]>>>;
 
   let agents = $state<AgentAccount[] | null>(null);
@@ -447,12 +449,24 @@
       <section data-testid="settings-about">
         <h2>À propos</h2>
         <div class="panel">
-          <div class="row">
-            <b class="grow" data-testid="app-version">{version === null ? "" : `Ressac ${version}`}</b>
+          <div class="row about-head">
+            <b class="grow version" data-testid="app-version">{version === null ? "" : `Ressac ${version}`}</b>
             <button data-testid="settings-release-notes" onclick={() => api.dispatch({ type: "openReleaseNotes", windowId: api.windowId })}>Nouveautés</button>
             <button data-testid="settings-replay-welcome" onclick={() => api.dispatch({ type: "replayOnboarding" })}>Revoir l'accueil</button>
             <button data-testid="open-advanced" onclick={() => s.openAdvanced()}>Réglages avancés du navigateur</button>
           </div>
+          {#if update && update.phase !== "disabled"}
+            <div class="row">
+              <span class="grow" data-testid="update-status" aria-live="polite">{updateStatusText(update)}</span>
+              {#if update.phase === "idle" || update.phase === "unreachable"}
+                <button data-testid="update-check" onclick={() => s.checkForUpdate()}>Rechercher une mise à jour</button>
+              {:else if update.phase === "ready"}
+                <button class="primary" data-testid="update-restart" onclick={() => s.restartToUpdate()}>Redémarrer maintenant</button>
+              {:else if update.phase === "failed" || update.phase === "unwritable"}
+                <button data-testid="update-download" onclick={() => s.openUrl("https://updates.getressac.app/download/Ressac.dmg")}>Télécharger la dernière version</button>
+              {/if}
+            </div>
+          {/if}
         </div>
         <h3>Crédits</h3>
         <div class="panel" data-testid="settings-credits">
@@ -492,6 +506,8 @@
   .kinds { display: flex; gap: 16px; }
   .kinds label { display: inline-flex; align-items: center; gap: 6px; }
   .settings :global(.grow) { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+  .settings :global(.about-head) { flex-wrap: wrap; }
+  .settings :global(b.version) { flex: 1 0 auto; white-space: nowrap; }
   .settings :global(.grow b), .settings :global(b.grow) { font-weight: 600; }
   .settings :global(.grow .muted) { font-size: 12px; }
   /* A state: a dot of its tone and the text. */

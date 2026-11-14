@@ -8,14 +8,15 @@
     "engine:link": "zsh scripts/env.sh zsh scripts/engine.sh link",
     "engine:import": "zsh scripts/ui.sh && zsh scripts/engine.sh prune && zsh scripts/env.sh surfer set brand ressac && zsh scripts/env.sh surfer import",
     "engine:bootstrap": "zsh scripts/env.sh zsh -c 'cd engine && ./mach --no-interactive bootstrap --application-choice browser'",
-    "build": "zsh scripts/ui.sh && zsh scripts/env.sh surfer set brand ressac && zsh scripts/env.sh surfer build",
-    "build:ui": "zsh scripts/ui.sh && zsh scripts/env.sh surfer set brand ressac && zsh scripts/env.sh surfer build --ui",
+    "build": "zsh scripts/ui.sh && zsh scripts/env.sh surfer set brand ressac && zsh scripts/env.sh surfer build && zsh scripts/dev-policy.sh",
+    "build:ui": "zsh scripts/ui.sh && zsh scripts/env.sh surfer set brand ressac && zsh scripts/env.sh surfer build --ui && zsh scripts/dev-policy.sh",
     "build:host": "vite build --mode host",
     "test": "vitest run",
     "e2e": "vitest run -c vitest.e2e.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "ui": "zsh scripts/ui.sh",
-    "package": "zsh scripts/env.sh zsh scripts/package.sh"
+    "package": "zsh scripts/env.sh zsh scripts/package.sh",
+    "release:publish": "zsh scripts/env.sh zsh scripts/publish.sh"
   },
   "dependencies": {
     "@ressac/kernel": "workspace:*"

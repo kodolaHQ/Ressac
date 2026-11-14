@@ -139,6 +139,7 @@ export async function loadSession(folder: string, kept?: (path: string) => void)
     if (parsed.settings.startOnHome) for (const f of parsed.windows) f.active[f.activeSpace] = null;
     return {
       ...parsed,
+      update: null,
       tabs: Object.fromEntries(Object.entries(parsed.tabs).map(([id, o]) => [id, { ...o, ...VOLATILE }])),
     };
   } catch {
@@ -194,7 +195,8 @@ export class SessionRecorder {
     try {
       const file = await fs.open(temp, "w");
       try {
-        await file.writeFile(JSON.stringify({ ...state, tabs: tabs }, null, 2));
+        const { update: _update, ...saved } = state;
+        await file.writeFile(JSON.stringify({ ...saved, tabs: tabs }, null, 2));
         await file.sync(); // on disk before the rename: a power cut does not leave an empty file
       } finally {
         await file.close();

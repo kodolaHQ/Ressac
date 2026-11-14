@@ -27,6 +27,8 @@ export interface SettingsChrome {
   exportFolder(): Promise<string>;
   /** false: the quit was cancelled (a window or an observer kept it), and the reset request is withdrawn. */
   reset(): Promise<boolean>;
+  checkForUpdate(): void;
+  restartToUpdate(): void;
 }
 
 /** What « Afficher dans le Finder » may show: the data folder, the agent's browsing notes, a backup, or an export file directly in the export folder. */
@@ -54,7 +56,7 @@ function openSystemSettings(url: string): void {
   }
 }
 
-export function createSettingsChrome(dataDir: string, telemetryActive: boolean): SettingsChrome {
+export function createSettingsChrome(dataDir: string, telemetryActive: boolean, updates: { check(): void; restart(): void }): SettingsChrome {
   let lastExportFolder = "";
   // A test never changes the owner's macOS (default browser, screen recording grant): the request is only remembered.
   const test = !!Services.env.get("RESSAC_TEST_NO_SYSTEM");
@@ -64,6 +66,8 @@ export function createSettingsChrome(dataDir: string, telemetryActive: boolean):
     telemetry: () => ({ available: telemetryActive, enabled: Services.prefs.getBoolPref(ENABLED, false) }),
     setTelemetry: (enabled) => Services.prefs.setBoolPref(ENABLED, enabled === true),
     version: () => __RESSAC_VERSION__,
+    checkForUpdate: () => updates.check(),
+    restartToUpdate: () => updates.restart(),
     reveal(path) {
       if (!revealable(dataDir, lastExportFolder, path)) return;
       const test = Services.env.get("RESSAC_TEST_REVEAL");

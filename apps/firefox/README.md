@@ -487,3 +487,13 @@ Full build 20–23 min; `build:ui` after a UI change 17 s; adding the sidebar fi
 ## Release notes
 
 `shared/release-notes.ts` lists what changed, newest first. At each start the store dispatches `noteVersion` with the running version: when it differs from `settings.seenVersion` and the newest entry is for that version, the internal page `ressac://release-notes` (« Nouveautés ») opens once. A first launch only records the version. The page stays reachable from Réglages › À propos. When bumping `version` in `package.json`, add its entry.
+
+## Publish a release
+
+For a version that goes to testers only. Ressac updates itself from `https://updates.getressac.app` (Cloudflare R2 bucket `ressac-update`, or `RESSAC_R2_BUCKET`).
+
+1. Bump `version` in `package.json` and add its entry at the top of `shared/release-notes.ts`.
+2. `pnpm run package` with the signing, notarization and MAR key set up: it writes `dist/Ressac-<version>.dmg`, `.mar` and `dist/update.xml`.
+3. `pnpm run release:publish` (once before: `npx wrangler login`). `scripts/publish.sh` refuses unless the DMG is notarized, the MAR verifies against `dep1.der`, `update.xml` and the top release notes entry are for this version, and `releases/<version>/` is not on the server yet (a published version is never rewritten). It then uploads `releases/<version>/Ressac-<version>.mar` and `.dmg`, `download/Ressac.dmg` (the stable download link, `Cache-Control: max-age=300` so Cloudflare does not keep an old one), and last `updates/browser/Darwin_aarch64-gcc3/ressac/update.xml` with `Cache-Control: no-cache`, so it never points at a file not uploaded yet. Not `pnpm publish`: that is pnpm's own command. If an upload fails halfway, run it again: a MAR already on the server that is byte-identical to `dist/`'s is a retry and the uploads resume; a different one is refused.
+
+Rolling back is a new version: put the old code back, bump to a new, higher number (Ressac drops any update whose version is not above the running one, see `chrome/store/updates.ts`; Firefox itself only skips the same build ID, since every Ressac MAR carries the same Gecko version), add its notes entry (« Retour en arrière sur … »), package and publish as above.

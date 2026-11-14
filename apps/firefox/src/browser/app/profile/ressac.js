@@ -20,10 +20,19 @@ pref("startup.homepage_welcome_url", "");
 pref("startup.homepage_welcome_url.additional", "");
 pref("startup.homepage_override_url", "");
 pref("datareporting.policy.dataSubmissionEnabled", false);
-// The branding template points at another browser's site: blank its pages until Ressac has its own.
-pref("app.update.url.manual", "");
-pref("app.update.url.details", "");
 pref("browser.migrate.showBookmarksToolbarAfterMigration", false);
+
+// Updates (the packaged app only: dev builds carry a DisableAppUpdate policy, Marionette sets app.update.disabledForTesting).
+pref("app.update.url.manual", "https://updates.getressac.app/download/Ressac.dmg");
+pref("app.update.url.details", "");
+// Checked every 12 h (the replaced branding prefs carried it).
+pref("app.update.interval", 43200);
+// A staged update waits for the user's « Redémarrer maintenant », never a restart behind their back.
+pref("app.update.noWindowAutoRestart.enabled", false);
+// Firefox's own update UI hangs off its hidden app menu: its badge never shows, and its restart doorhanger waits
+// the longest a timer allows (24.8 days, in seconds; above it setTimeout fires at once). Ressac shows its own card.
+pref("app.update.promptWaitTime", 2147483);
+pref("app.update.notifyDuringDownload", false);
 
 // Our tabs have a single source of truth (ours): no Firefox start page, new-tab page, session restore or tab-close behaviour.
 pref("browser.startup.page", 0);

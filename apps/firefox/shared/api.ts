@@ -143,6 +143,10 @@ export const SchemaAction = z.discriminatedUnion("type", [
   /** At each start: records the running version, and opens « Nouveautés » when it changed and has notes. */
   z.object({ type: z.literal("noteVersion"), version: z.string().min(1) }),
   z.object({ type: z.literal("openReleaseNotes"), windowId: id }),
+  /** Firefox's updater state (chrome only); keeps « Plus tard » unless the version changes. */
+  z.object({ type: z.literal("setUpdate"), update: z.object({ phase: z.enum(["idle", "checking", "downloading", "ready", "failed", "unreachable", "unwritable", "disabled"]), version: z.string().nullable(), progress: z.number().min(0).max(100).nullable() }) }),
+  /** « Plus tard » on the update card: hidden until another version is ready or the next launch. */
+  z.object({ type: z.literal("dismissUpdate") }),
   z.object({ type: z.literal("markHintSeen"), id: z.enum(HINT_IDS) }),
   z.object({ type: z.literal("setHintsEnabled"), enabled: z.boolean() }),
   z.object({ type: z.literal("setVimMode"), enabled: z.boolean() }),
@@ -517,6 +521,10 @@ export interface SettingsApi {
   openNotificationSettings(): void;
   /** macOS's System Settings › Privacy & Security › Full Disk Access. */
   openFullDiskAccessSettings(): void;
+  /** Asks Firefox's updater now; the answer arrives in the state's `update`. */
+  checkForUpdate(): void;
+  /** Quits and reopens Ressac on the downloaded update. */
+  restartToUpdate(): void;
 }
 
 
