@@ -17,7 +17,8 @@ describe("updater configuration", () => {
   });
 
   it("both MAR certificates are ours", () => {
-    const [d1, d2] = ["dep1.der", "dep2.der"].map((f) => join(certs, f));
+    const d1 = join(certs, "dep1.der");
+    const d2 = join(certs, "dep2.der");
     expect(existsSync(d1) && existsSync(d2)).toBe(true);
     expect(readFileSync(d1).equals(readFileSync(d2))).toBe(true);
     const subject = execFileSync("openssl", ["x509", "-inform", "DER", "-noout", "-subject", "-in", d1], { encoding: "utf8" });
@@ -29,6 +30,7 @@ describe("updater configuration", () => {
     expect(prefs).toContain('pref("app.update.url.manual", "https://updates.getressac.app/download/Ressac.dmg");');
     expect(prefs).toContain('pref("app.update.url.details", "");');
     expect(prefs).toContain('pref("app.update.noWindowAutoRestart.enabled", false);');
+    expect(prefs).toContain('pref("app.update.interval", 43200);');
   });
 
   it("the generated branding prefs (Zen's links, loaded after ressac.js) are replaced", () => {
@@ -43,5 +45,7 @@ describe("updater configuration", () => {
     expect(script).toContain("dist/Ressac.app");
     expect(script).toContain("/Contents/Resources/distribution/policies.json");
     expect(script).toContain('{"policies":{"DisableAppUpdate":true}}');
+    // A missing dev app must fail the build, not leave an app that updates itself.
+    expect(script).not.toMatch(/\|\| exit 0/);
   });
 });

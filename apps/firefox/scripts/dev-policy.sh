@@ -3,6 +3,6 @@
 set -e
 cd "$(dirname "$0")/.."
 app=engine/obj-aarch64-apple-darwin/dist/Ressac.app
-[[ -d $app ]] || exit 0
+[[ -d $app ]] || { print -u2 "dev-policy: $app is missing, the dev app would update itself"; exit 1; }
 mkdir -p $app/Contents/Resources/distribution
 print '{"policies":{"DisableAppUpdate":true}}' > $app/Contents/Resources/distribution/policies.json

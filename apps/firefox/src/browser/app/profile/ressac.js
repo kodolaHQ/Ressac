@@ -25,6 +25,8 @@ pref("browser.migrate.showBookmarksToolbarAfterMigration", false);
 // Updates (the packaged app only: dev builds carry a DisableAppUpdate policy, Marionette sets app.update.disabledForTesting).
 pref("app.update.url.manual", "https://updates.getressac.app/download/Ressac.dmg");
 pref("app.update.url.details", "");
+// Checked every 12 h (the replaced branding prefs carried it).
+pref("app.update.interval", 43200);
 // A staged update waits for the user's « Redémarrer maintenant », never a restart behind their back.
 pref("app.update.noWindowAutoRestart.enabled", false);
 // Firefox's own update UI hangs off its hidden app menu: its badge never shows, and its restart doorhanger waits
