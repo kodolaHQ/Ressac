@@ -10,3 +10,11 @@ test("the vim table's French messages follow shared/vim-keys.ts", () => {
   });
   expect(format("fr", "agent-vim-key-escape")).toBe("Échap");
 });
+
+test("the vim actor's French fallback matches the French messages", async () => {
+  const { FRENCH_VIM_TEXTS, VIM_KEYS } = await import("../shared/vim-keys");
+  const { format } = await import("../shared/i18n");
+  expect(FRENCH_VIM_TEXTS.paused).toBe(format("fr", "chrome-vim-paused"));
+  expect(FRENCH_VIM_TEXTS.escape).toBe(format("fr", "agent-vim-key-escape"));
+  expect(FRENCH_VIM_TEXTS.titles).toEqual(VIM_KEYS.map((_, gi) => format("fr", `agent-vim-${gi}-title`)));
+});

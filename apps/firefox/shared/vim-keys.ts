@@ -48,3 +48,14 @@ export const VIM_KEYS: readonly { title: string; rows: readonly { keys: readonly
     ],
   },
 ];
+
+/** The `?` sheet and pause pill texts in the shown language, formatted by the window (the page-side actor carries no translations). */
+export type VimTexts = { paused: string; escape: string; titles: string[]; rows: string[][] };
+
+/** Before the window answered: the French of VIM_KEYS. */
+export const FRENCH_VIM_TEXTS: VimTexts = {
+  paused: "vim en pause · ⇧Échap pour reprendre",
+  escape: "Échap",
+  titles: VIM_KEYS.map((g) => g.title),
+  rows: VIM_KEYS.map((g) => g.rows.map((r) => r.action)),
+};
