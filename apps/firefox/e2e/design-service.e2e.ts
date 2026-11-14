@@ -7,7 +7,7 @@ import { bubbleSlot, rectCapture } from "../chrome/store/design-copies";
 import { UNAVAILABLE_DESIGN } from "../shared/design-guards";
 import { openTab, testActor } from "./agent-extensions";
 import { pageLog, clearLog, startDesignServers, stopActor, trustedMouse } from "./design";
-import { pressClosing, waitFor, waitReady, waitWindowCount } from "./firefox";
+import { dispatch, pressClosing, waitFor, waitReady, waitWindowCount } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { inBrowser, resolveLocalHosts } from "./sites";
@@ -452,6 +452,15 @@ describe("design service", () => {
       window.__overlay = [];
       d.overlays = { show: (key, win, place, ctx) => window.__overlay.push({ op: "show", key, place, ctx: JSON.parse(JSON.stringify(ctx)) }), hide: (key, mode) => window.__overlay.push({ op: "hide", key, mode }), forget: (key) => window.__overlay.push({ op: "forget", key }) };
       return 1; })();`);
+  });
+
+  it("AI switched off while the mode is on: the mode stops", async () => {
+    await open("/");
+    await toggle();
+    await expect.poll(hosts, { timeout: 10_000 }).toBe(1);
+    await dispatch(m, { type: "disableAi" });
+    await expect.poll(async () => (await state()).active, { timeout: 10_000 }).toBe(false);
+    expect(await hosts()).toBe(0);
   });
 
   it("the host stopped: toggle does nothing, etat rejects", async () => {

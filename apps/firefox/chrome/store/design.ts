@@ -52,6 +52,8 @@ export interface DesignService {
   /** ⇧⌘D in `win`: the design target of that window; a site app's sign-in window: the avis in the app's bar. */
   shortcut(win: Window): void;
   stop(t: DesignTarget): Promise<void>;
+  /** Every running session stops (AI switched off). */
+  stopAll(): Promise<void>;
   /** The bubble's « Ajouter ». */
   add(t: DesignTarget, text: string): Promise<ExtensionResult>;
   /** Bubble Annuler/Escape, message click, cart « Fermer ». */
@@ -445,6 +447,10 @@ export function createDesign(o: {
       hide(s.key, "bubble");
       notify();
       await disarm(s);
+    },
+
+    async stopAll() {
+      await Promise.all([...sessions.values()].map((s) => service.stop(s.target)));
     },
 
     async add(t, text) {

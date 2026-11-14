@@ -512,6 +512,7 @@ async function start(): Promise<RessacStore> {
   store.subscribe((s, p) => {
     if (shortcutLabel("design", s.settings) !== shortcutLabel("design", p.settings) || s.locale !== p.locale) design.refresh();
     if (s.locale !== p.locale) relabelSiteWindows();
+    if (p.settings.aiEnabled && !s.settings.aiEnabled) void design.stopAll();
   });
   bindApps(agent, openInTab, dataDir, { access: () => access, design, locale: () => store.state.locale });
   const history = createHistory(store, agent);

@@ -357,9 +357,11 @@ const applyAi = async () => {
   if (!aiWoken && !kernelLaunched) return;
   aiWoken = false;
   kernelLaunched = false;
+  // The kernel first: its widget scheduler must not start a harvest while the sessions and apps stop. Its stop only
+  // drops the sessions' MCP tokens (idempotent with their own end); the sessions themselves stop below.
+  ready = ready.then(async (n) => (await stopKernel(n), null));
   await sessions.stopAll();
   await apps.stop().catch((e) => console.error("[ressac] the apps did not stop:", e));
-  ready = ready.then(async (n) => (await stopKernel(n), null));
   await ready;
 };
 
@@ -883,7 +885,10 @@ const design = createDesignHost({
   // Every app (apps.liste() keeps the running ones only).
   siteApps: () => apps.manager.list(),
   // Remarks from the cart and comments from the review: already reviewed by the user, so sent right away.
-  prefill: (f, t) => sessions.prefill(f, t, undefined, true),
+  // AI off: no agent will read it, nothing is kept for a later session.
+  prefill: (f, t) => {
+    if (aiOn) sessions.prefill(f, t, undefined, true);
+  },
   chrome: { agentWindow: () => rpc.request("design.agentWindow"), giveAgent: (f) => rpc.notify("design.giveAgent", [f]) },
   notify: notify,
   broadcast: () => (rpc.notify("external.change"), rpc.notify("design.change")),
