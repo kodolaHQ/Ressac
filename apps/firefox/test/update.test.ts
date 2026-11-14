@@ -130,6 +130,7 @@ describe("installUpdates", () => {
       obs: { addObserver: () => {} },
       vc: { compare },
       appinfo: { version: "0.1.1" },
+      ww: { registerNotification: () => {} },
       prefs: { setCharPref: (k: string, v: string) => void (prefs[k] = v) },
     });
     vi.stubGlobal("ChromeUtils", { importESModule: () => ({ AppUpdater }) });
