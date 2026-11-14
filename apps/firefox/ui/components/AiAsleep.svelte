@@ -5,9 +5,11 @@
 
   /** Shown instead of an AI feature while settings.aiEnabled is off: what it does, and the way to turn AI on. */
   let { feature }: { feature: "agent" | "apps" | "actions" | "widgets" | "workflows" | "review" | "settings" } = $props();
+  let card: HTMLElement;
 </script>
 
-<aside class="asleep" data-testid="ai-asleep-{feature}" out:fade={{ duration: 150 }}>
+<!-- A fade never ends in a hidden panel (no frames): a card that is not on screen leaves at once, else it stays over the agent. -->
+<aside class="asleep" data-testid="ai-asleep-{feature}" bind:this={card} out:fade={{ duration: card?.getClientRects().length ? 150 : 0 }}>
   <b>{t("ai-asleep-title")}</b>
   <p>{t(`ai-asleep-${feature}`)}</p>
   <div class="row">

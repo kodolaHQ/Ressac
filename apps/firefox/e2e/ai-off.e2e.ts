@@ -177,6 +177,24 @@ it("off: after « Activer l'IA » and the AI setup, the agent panel attaches the
   await waitUi(m, "return (doc.querySelector('.xterm-rows')?.textContent ?? '').includes('fake agent ready>')", [], 20_000, "agent");
 });
 
+// « Plus tard » at the welcome, AI turned on from Réglages, then back to the home page.
+it("on from Réglages, then home: the panel the home opens shows the agent, not the card", async () => {
+  await launch(false);
+  const windowId = (await state(m)).windows[0]!.id;
+  const before = new Set(Object.keys((await state(m)).tabs));
+  const settings = Object.keys((await dispatch(m, { type: "openSettings", windowId })).tabs).find((id) => !before.has(id))!;
+  await dispatch(m, { type: "enableAi" });
+  await dispatch(m, { type: "finishAiSetup" });
+  await waitUi(m, `return !doc.querySelector('${tid("welcome-layer")}')`);
+  await dispatch(m, { type: "closeTab", id: settings });
+  // Back on home, AI on: the home page opens the panel itself.
+  await panelShown(true);
+  await waitUi(m, "return (doc.querySelector('.xterm-rows')?.textContent ?? '').includes('fake agent ready>')", [], 20_000, "agent");
+  // The card's fade-out started while the panel was hidden: it must not stay on screen.
+  await new Promise((r) => setTimeout(r, 500));
+  expect(await inUi(m, "return !!doc.querySelector(arguments[0])", [tid("ai-asleep-agent")], "agent")).toBe(false);
+});
+
 it("off then on without relaunch: ⌘J shows a fresh agent session, no click", { timeout: 90_000 }, async () => {
   await launch(true);
   await panelShown(true);
