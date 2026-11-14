@@ -80,7 +80,8 @@ export interface AccessState {
 }
 export type SpaceId = string;
 export type WindowId = string;
-export type SearchEngine = "google" | "duckduckgo" | "qwant";
+import type { SearchEngine } from "./search";
+export type { SearchEngine } from "./search";
 
 /** Mirrors the kernel's Band (packages/kernel/src/search/sessions.ts); the model cannot import the kernel. */
 export type Band = { state: "working" | "yours" | "idle"; text: string; pages: number; startedAt: number };
@@ -206,7 +207,7 @@ export interface BrowserState {
   essentials: Favorite[];
   tabs: Record<TabId, Tab>;
   windows: WindowState[];
-  settings: { engine: SearchEngine; /** Profil d'agent (fichier .ressac/profiles/<id>.json). */ agentProfile: string;
+  settings: { engine: SearchEngine; /** The address « Autre… » searches with (`%s` = the words), kept when another engine is chosen. */ customEngine: string | null; /** Profil d'agent (fichier .ressac/profiles/<id>.json). */ agentProfile: string;
     /** Width of the agent panel, in pixels (the user sets it by dragging its left edge). */
     agentPanelWidth: number;
     /** Width of the tab sidebar (px), dragged by its inner edge. */

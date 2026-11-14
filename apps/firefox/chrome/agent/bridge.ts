@@ -1,7 +1,7 @@
 import { navigationOutsideSite, TabNotFound, PrivateTab, SiteChanged, type DevRight, type TabInfo, type PageReadOptions } from "../shims/kernel";
 import type { BrowserState, WindowId, Tab, Band } from "../../shared/model";
 import { privateTab, recapOfUrl, WORKFLOW_PREFIX, AGENT_PROFILE } from "../../shared/model";
-import { ENGINES } from "../../core/url";
+import { searchTemplate } from "../../shared/search";
 import { boundCapture, boundLinks, policyChanges, closedRecaps, activeRecap, shownRecaps, tabInfos, activeTabOf, appTab, siteTab, originOf, SITE_PREFIX, resolveSpace } from "../../core/agent/bridge";
 import type { Handler } from "../../shared/rpc";
 import type { AgentApps } from "../store/apps";
@@ -165,7 +165,7 @@ export function bridgeHandlers(
     },
     // The agent's search tab, in its own login profile; `reuse`: that tab goes to the new address instead.
     "search.open": async ([win, target, reuse]: [WindowId | undefined, { query: string } | { url: string }, string?]) => {
-      const template = Services.env.get("RESSAC_TEST_SEARCH_URL") || ENGINES[store.state.settings.engine];
+      const template = Services.env.get("RESSAC_TEST_SEARCH_URL") || searchTemplate(store.state.settings);
       const url = "query" in target ? template.replace("%s", encodeURIComponent(target.query)) : target.url;
       if (reuse !== undefined && store.state.tabs[reuse]) {
         tab(reuse);

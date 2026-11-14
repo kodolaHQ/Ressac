@@ -79,6 +79,22 @@ test("a session saved before the windows' frame loads (frame = null)", async () 
   expect(set_aside(d, ".corrupt")).toEqual([]);
 });
 
+test("a session from before the custom engine loads unchanged; an unknown engine falls back to Google", async () => {
+  const d = folder();
+  const old = structuredClone(initialState()) as unknown as { settings: Record<string, unknown> };
+  delete old.settings.customEngine;
+  old.settings.engine = "qwant";
+  writeFileSync(join(d, "session.json"), JSON.stringify(old));
+  expect((await loadSession(d)).settings).toMatchObject({ engine: "qwant", customEngine: null });
+  old.settings.customEngine = "http://x.com/?q=%s";
+  writeFileSync(join(d, "session.json"), JSON.stringify(old));
+  expect((await loadSession(d)).settings.customEngine).toBeNull();
+  old.settings.engine = "yahoo";
+  writeFileSync(join(d, "session.json"), JSON.stringify(old));
+  expect((await loadSession(d)).settings.engine).toBe("google");
+  expect(set_aside(d, ".corrupt")).toEqual([]);
+});
+
 test("missing file → initial state", async () => {
   const e = await loadSession(folder());
   expect(e.spaces).toHaveLength(1);

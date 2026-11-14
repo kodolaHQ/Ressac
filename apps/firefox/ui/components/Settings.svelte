@@ -23,6 +23,7 @@
   import { OLLAMA_ITSELF, TELEMETRY_NOTICE, type DockerStatus, type AgentAccount, type DecisionModel, type LoginResult, type PullProgress, type WorkshopOperation } from "../../shared/settings";
   import { updateStatusText } from "../../core/update";
   import { api, appState } from "../state.svelte";
+  import { SEARCH_ENGINES, customEngineError, type SearchEngine } from "../../shared/search";
   import Icon from "./Icon.svelte";
   import SettingsMozilla from "./SettingsMozilla.svelte";
   import SettingsEngine from "./SettingsEngine.svelte";
@@ -189,6 +190,26 @@
   });
   let version = $state<string | null>(null);
   $effect(() => void s.version().then((t) => (version = t)));
+
+  // « Autre… » shows its field before any valid address: the engine only changes once the address is accepted.
+  let customOpen = $state(false);
+  let engineError = $state<string | null>(null);
+  const shownEngine = $derived<SearchEngine>(customOpen ? "custom" : (appState.value?.settings.engine ?? "google"));
+  function pickEngine(engine: SearchEngine) {
+    engineError = null;
+    const kept = appState.value?.settings.customEngine;
+    customOpen = engine === "custom" && (!kept || !!customEngineError(kept));
+    if (!customOpen) api.dispatch({ type: "chooseEngine", engine });
+  }
+  function saveCustomEngine(url: string) {
+    engineError = customEngineError(url);
+    if (engineError) return;
+    customOpen = false;
+    api.dispatch({ type: "chooseEngine", engine: "custom", custom: url.trim() });
+  }
+  const focusField = (node: HTMLInputElement) => {
+    if (customOpen) node.focus();
+  };
 </script>
 
 <!-- The pill of a local model: « installé », or « absent » with a download button once Ollama answers. -->
@@ -384,6 +405,34 @@
         {/if}
         <h2>Interface</h2>
         <div class="panel">
+          <div class="row" data-testid="settings-search">
+            <div class="grow">
+              <label for="settings-engine"><b>Moteur de recherche</b></label>
+              <span class="muted" id="engine-help">L'agent cherche aussi avec ce moteur. Un moteur qui demande un compte peut le gêner.</span>
+            </div>
+            <select id="settings-engine" data-testid="settings-engine" aria-describedby="engine-help" value={shownEngine} onchange={(e) => pickEngine(e.currentTarget.value as SearchEngine)}>
+              {#each Object.entries(SEARCH_ENGINES) as [id, e] (id)}<option value={id}>{e.label}</option>{/each}
+              <option value="custom">Autre…</option>
+            </select>
+          </div>
+          {#if shownEngine === "custom"}
+            <div class="row custom-engine">
+              <div class="grow">
+                <label for="settings-engine-custom"><b>Adresse de recherche</b></label>
+                <input
+                  id="settings-engine-custom"
+                  data-testid="settings-engine-custom"
+                  placeholder="https://kagi.com/search?q=%s"
+                  spellcheck="false"
+                  value={appState.value?.settings.customEngine ?? ""}
+                  use:focusField
+                  onchange={(e) => saveCustomEngine(e.currentTarget.value)}
+                  onkeydown={(e) => e.key === "Enter" && saveCustomEngine(e.currentTarget.value)}
+                />
+                {#if engineError}<span class="pill" data-tone="error" data-testid="settings-engine-error">{engineError}</span>{/if}
+              </div>
+            </div>
+          {/if}
           <div class="row">
             <div class="grow">
               <label for="hints-switch"><b>Astuces</b></label>
@@ -530,6 +579,8 @@
   .settings :global(.panel .confirmation) { margin: 0 14px 12px; background: var(--glass-hi); box-shadow: none; }
   select { padding: 5px 8px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: 12px var(--font-ui); }
   .switch { appearance: none; position: relative; width: 34px; height: 20px; margin: 0; flex: none; border-radius: 10px; background: var(--bg-active); transition: background var(--tap); }
+  .custom-engine { animation: ressac-rise var(--spring-d) var(--spring) backwards; }
+  .custom-engine input { display: block; box-sizing: border-box; width: 100%; margin: 6px 0; }
   .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--on-color); box-shadow: var(--float); transition: left var(--spring-d) var(--spring); }
   .switch:checked { background: var(--accent); }
   .switch:checked::after { left: 16px; }

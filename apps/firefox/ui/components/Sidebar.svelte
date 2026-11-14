@@ -34,6 +34,38 @@
     const action = appState.value && toNextSpace(appState.value, win.id, delta, false);
     if (action) api.dispatch(action);
   });
+  // Not passive (Svelte's onwheel is): a horizontal move left unhandled lets Firefox track it as its own back / forward
+  // swipe, which then swallows the next gestures over the sidebar.
+  const swipeArea = (node: HTMLElement) => {
+    const onWheel = (e: WheelEvent) => {
+      // The space row scrolls sideways itself when it is full.
+      if ((e.target as Element).closest?.(".spaces")) return;
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) e.preventDefault();
+      swipe(e);
+    };
+    node.addEventListener("wheel", onWheel, { passive: false });
+    return { destroy: () => node.removeEventListener("wheel", onWheel) };
+  };
+  // A space change slides the list in from the side it comes from, with the spring (a short fade under reduced motion).
+  let list = $state<HTMLElement>();
+  let scroller = $state<HTMLElement>();
+  let shownSpace: string | undefined;
+  $effect(() => {
+    const id = win.activeSpace;
+    const spaces = appState.value?.spaces ?? [];
+    const from = spaces.findIndex((e) => e.id === shownSpace);
+    shownSpace = id;
+    if (!list || from < 0 || id === spaces[from]?.id) return;
+    const side = spaces.findIndex((e) => e.id === id) > from ? 1 : -1;
+    // The new space starts at its top, not at the scroll position of the last one.
+    if (scroller) scroller.scrollTop = 0;
+    const css = getComputedStyle(list);
+    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    list.animate(
+      [{ opacity: 0, transform: still ? "none" : `translateX(${side * 28}px)` }, { opacity: 1, transform: "none" }],
+      { duration: parseFloat(css.getPropertyValue("--spring-d")) || 460, easing: still ? "ease-out" : css.getPropertyValue("--spring") || "ease-out" },
+    );
+  });
   const running = $derived(downloads.list.filter((t) => t.state === "in-progress"));
   const progression = $derived.by(() => {
     const total = running.reduce((s, t) => s + t.total, 0);
@@ -60,12 +92,13 @@
   onblur={() => (toolsOpen = false)}
 />
 
-<aside class="bar" data-testid="sidebar" hidden={hidden} onwheel={swipe}>
+<aside class="bar" data-testid="sidebar" hidden={hidden} use:swipeArea>
   <UrlBar window={win} />
   <!-- An essential dragged out of its grid and dropped anywhere below is no longer one: its open tab joins the list. -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     class="scrolling"
+    bind:this={scroller}
     ondragover={(e) => e.dataTransfer?.types.includes("application/x-ressac-essentiel") && e.preventDefault()}
     ondrop={(e) => {
       const favoriteId = e.dataTransfer?.getData("application/x-ressac-essentiel");
@@ -73,6 +106,8 @@
     }}
   >
     <Essentials window={win} />
+    <!-- What belongs to the space: it alone slides on a space change, the shared essentials stay put. -->
+    <div class="space-content" bind:this={list}>
     {#if space}<Pinned bind:this={pinned} window={win} {space} {activeLink} />{/if}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="space" data-testid="space-title" oncontextmenu={(e) => openMenu(e, [{ label: "Nouveau dossier", dispatch: () => pinned?.newFolder() }])}>{space?.icon} {space?.name}</div>
@@ -81,6 +116,7 @@
       ><Icon name="plus" size={14} /> Nouvel onglet<kbd>{key("command")}</kbd></button
     >
     <TabList window={win} agent />
+    </div>
   </div>
   <UpdateCard />
   <CallBar window={win} />
@@ -167,7 +203,8 @@
     -webkit-app-region: drag;
   }
   .bar[hidden] { display: none; }
-  .scrolling { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; margin-top: 14px; -webkit-app-region: no-drag; }
+  .space-content { display: flex; flex-direction: column; gap: 6px; }
+  .scrolling { flex: 1; overflow-x: clip; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; margin-top: 14px; -webkit-app-region: no-drag; }
   .bar :global(nav) { -webkit-app-region: no-drag; }
   .new:active, .tool:active, .downloads:active { transform: scale(0.97); }
   /* One row: the spaces take what the tools leave and scroll past it; a space deletion confirmation gets the full width. */

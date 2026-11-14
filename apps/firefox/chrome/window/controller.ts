@@ -2,6 +2,7 @@ import type { TabCycleMessage, Panel, TabsPanel, ShortcutAction } from "../../sh
 import { workflowUrlTarget, historyContext, AGENT_WIDTH_MAX, AGENT_WIDTH_MIN, type FrameBounds, type BrowserState, type WindowId, type TabId } from "../../shared/model";
 import { auraVariables, DEFAULT_AURA, type AuraId } from "../../shared/aura";
 import { toUrl } from "../../core/url";
+import { searchTemplate } from "../../shared/search";
 import { createHalo } from "../../core/halo";
 import { TabCycle } from "../../core/tab-cycle";
 import { toNeighbour, toNextSpace, toNth } from "../../core/shortcuts";
@@ -430,7 +431,7 @@ export function createController(
     windowId: windowId,
     store,
     navigate(tabId, input) {
-      const url = toUrl(input, store.state.settings.engine);
+      const url = toUrl(input, searchTemplate(store.state.settings));
       if (!url) return;
       if (!tabId) return void store.dispatch({ type: "openTab", windowId: windowId, url });
       if (revive(tabId, url)) return;
