@@ -146,3 +146,5 @@ workflows-field-scroll-help = Pour une page qui charge en défilant. Vide ou 0 :
 workflows-field-search-query = Recherche
 workflows-field-result-count = Nombre de résultats
 workflows-field-results-field = Champ des résultats
+
+workflows-default-question = Est-ce intéressant ?

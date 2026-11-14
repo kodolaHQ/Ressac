@@ -234,7 +234,7 @@ export async function readActionEdit(c: ActionContext, id: string): Promise<Work
 export async function saveActionEdit(c: ActionContext, id: string, raw: unknown): Promise<SaveResult & { warnings: Warning[] }> {
   try {
     const d = await declarationAction(c.paths, id);
-    if (!d) return { ok: false, error: ACTION_UNKNOWN, warnings: [] };
+    if (!d) return { ok: false, error: ACTION_UNKNOWN(hostLocale()), warnings: [] };
     if ("error" in d) return { ok: false, error: d.error, warnings: [] };
     const r = await saveWorkflow({
       filesFolder: d.folder,
@@ -251,14 +251,14 @@ export async function saveActionEdit(c: ActionContext, id: string, raw: unknown)
 
 export async function readActionCode(paths: SpacePaths, id: string, name: string): Promise<{ text: string } | { absent: true } | { error: string }> {
   const folder = await actionFolder(paths, id);
-  if (!folder) return { error: ACTION_UNKNOWN };
+  if (!folder) return { error: ACTION_UNKNOWN(hostLocale()) };
   return readCodeFile(folder, name, hostLocale());
 }
 
 /** Call inside `inSeries`: the folder is checked again just before writing. */
 export async function saveActionCode(paths: SpacePaths, id: string, name: string, text: string): Promise<{ ok: true } | { ok: false; error: string }> {
   const folder = await actionFolder(paths, id);
-  if (!folder) return { ok: false, error: ACTION_UNKNOWN };
+  if (!folder) return { ok: false, error: ACTION_UNKNOWN(hostLocale()) };
   try {
     return await storeCode(folder, name, text, hostLocale());
   } catch (e) {

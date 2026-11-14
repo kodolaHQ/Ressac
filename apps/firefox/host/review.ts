@@ -30,7 +30,7 @@ import { RANGE_OUTSIDE_BLOCK } from "../shared/model.ts";
 import { hostSay } from "./locale.ts";
 
 /** Reason shown for a project the review does not know (demo, forgotten external project, vanished folder). */
-export const UNKNOWN_PROJECT = "projet inconnu";
+export const UNKNOWN_PROJECT = () => hostSay("host-review-unknown-project");
 /** Most lines one `lignes` call returns (the page asks for 20 at a time). */
 export const MAX_LINES = 200;
 /** Most comparisons kept per project (a page may show a comparison older than the latest). */
@@ -220,7 +220,7 @@ export class ReviewService {
     const project = await this.project(p);
     if (!project) {
       this.comparisons.delete(p);
-      return { state: "unavailable", name: p, reason: UNKNOWN_PROJECT };
+      return { state: "unavailable", name: p, reason: UNKNOWN_PROJECT() };
     }
     try {
       let g = token ? this.comparisons.get(p)?.find((x) => x.token === token) : undefined;
@@ -247,7 +247,7 @@ export class ReviewService {
     const g = this.comparisons.get(p)?.find((x) => x.token === token);
     if (!g) throw new Error(UNKNOWN_COMPARISON());
     const f = g.comparison.files.find((x) => x.path === path);
-    if (!f) throw new Error("fichier absent de la relecture");
+    if (!f) throw new Error(hostSay("host-review-file-absent"));
     return { ...g, file: f };
   }
 
@@ -314,7 +314,7 @@ export class ReviewService {
   }
 
   private destination(s: TrackedProject | null): { destination: string | null; noDestination: string | null } {
-    if (!s) return { destination: null, noDestination: UNKNOWN_PROJECT };
+    if (!s) return { destination: null, noDestination: UNKNOWN_PROJECT() };
     const d = destinationOf(s, this.o.registry()?.clients() ?? []);
     return "label" in d ? { destination: d.label, noDestination: null } : { destination: null, noDestination: d.unavailable };
   }
@@ -355,7 +355,7 @@ export class ReviewService {
   async send(p: ProjectId): Promise<ExtensionResult> {
     try {
       const s = await this.tracking(p);
-      if (!s) return { ok: false, error: UNKNOWN_PROJECT };
+      if (!s) return { ok: false, error: UNKNOWN_PROJECT() };
       let destination: { destination: "agent" | "mcp"; client?: string } = { destination: "agent" };
       if (s.type === "externe") {
         const d = destinationOf(s, this.o.registry()?.clients() ?? []);

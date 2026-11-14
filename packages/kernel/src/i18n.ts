@@ -24,7 +24,13 @@ export function say(locale: string, id: string, args?: Record<string, string | n
   for (const l of locale === REFERENCE ? [REFERENCE] : [locale, REFERENCE]) {
     const b = bundle(l);
     const message = b?.getMessage(id);
-    if (b && message?.value) return b.formatPattern(message.value, args);
+    if (b && message?.value) {
+      const errors: Error[] = [];
+      const text = b.formatPattern(message.value, args, errors);
+      // A missing variable keeps its placeholder: `say` runs inside error paths and must not throw.
+      if (errors.length) console.error(`[ressac] i18n ${id}:`, errors);
+      return text;
+    }
   }
   return id;
 }

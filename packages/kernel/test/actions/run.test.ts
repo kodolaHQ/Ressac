@@ -12,10 +12,11 @@ import { withMemory, readMemory } from "../../src/workflows/memory.js";
 import type { ProcessLauncher, DirectTrace } from "../../src/workflows/run.js";
 import type { AiAccessRun } from "../../src/ai/dispatcher.js";
 import { lastResult, readResult } from "../../src/actions/data.js";
-import { ACTION_UNKNOWN, actionGrantRequired, runAction, requiredInput, type OptionsAction, type TraceAction } from "../../src/actions/run.js";
+import { ACTION_UNKNOWN as unknownIn, actionGrantRequired, runAction, requiredInput, type OptionsAction, type TraceAction } from "../../src/actions/run.js";
 import { DeclarationAction } from "../../src/actions/schemas.js";
 import { tempFolder } from "../helpers/temp.js";
 
+const ACTION_UNKNOWN = unknownIn("fr");
 const ENGINE = join(import.meta.dirname, "..", "..", "docker", "engine");
 const SCRIPT = join(ENGINE, "harvester.mjs");
 let instant = Date.parse("2026-10-31T10:00:00.000Z");
@@ -194,9 +195,9 @@ describe("runAction", () => {
     const b = await prepare("leboncoin", { name: "Leboncoin", sources: {}, input: { label: "Recherche" } }, `export default async (e, w) => ({ q: w.input });`);
     for (const input of [null, "   "]) {
       const r = await runAction(options(b, "leboncoin", { input: input }));
-      expect(r).toEqual({ status: "invalid", error: requiredInput("Recherche"), kernelError: true });
+      expect(r).toEqual({ status: "invalid", error: requiredInput("fr", "Recherche"), kernelError: true });
     }
-    expect(requiredInput("Recherche")).toBe("Saisie requise : Recherche");
+    expect(requiredInput("fr", "Recherche")).toBe("Saisie requise : Recherche");
     expect(b.commands).toEqual([]);
   });
 

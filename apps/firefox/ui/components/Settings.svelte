@@ -24,8 +24,6 @@
   import { updateStatusText } from "../../core/update";
   import { api, appState } from "../state.svelte";
   import { t } from "../i18n.svelte";
-  import { fade } from "svelte/transition";
-  let languageChanged = $state(false);
   import { LOCALES, languageName } from "../../shared/i18n";
   import { SEARCH_ENGINES, customEngineError, type SearchEngine } from "../../shared/search";
   import Icon from "./Icon.svelte";
@@ -35,6 +33,7 @@
   import SettingsPermissions from "./SettingsPermissions.svelte";
   import SettingsShortcuts from "./SettingsShortcuts.svelte";
 
+  let languageChanged = $state(false);
   // Each section loads on its own: a slow Docker never holds the version or the data folder.
   const s = api.settings;
   const update = $derived(appState.value?.update ?? null);
@@ -414,7 +413,7 @@
             </select>
           </div>
           {#if languageChanged && appState.value}
-            <p class="muted language-note" data-testid="settings-language-note" out:fade={{ duration: 150 }}>{t("settings-language-agent-note", { language: new Intl.DisplayNames([appState.value.locale], { type: "language" }).of(appState.value.locale) ?? appState.value.locale })}</p>
+            <p class="muted language-note" data-testid="settings-language-note">{t("settings-language-agent-note", { language: new Intl.DisplayNames([appState.value.locale], { type: "language" }).of(appState.value.locale) ?? appState.value.locale })}</p>
           {/if}
           <div class="row" data-testid="settings-search">
             <div class="grow">

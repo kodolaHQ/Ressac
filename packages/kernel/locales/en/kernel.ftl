@@ -59,3 +59,13 @@ kernel-widget-invalid = widget.json invalid: { $error }
 # Texts of the command runner (shown in install and workshop errors).
 kernel-run-not-found = { $command } not found
 kernel-run-cancelled = Cancelled
+
+# Errors shown in the interface (unknown action, input, replay, workshop).
+kernel-err-action-unknown = Unknown action
+kernel-err-input-required = Input required: { $label }
+kernel-err-workshop-unavailable = Container unavailable ({ $state })
+kernel-replay-not-found = Replay impossible: run not found
+kernel-replay-block-absent = Replay impossible: block « { $id } » is not in the workflow
+kernel-replay-output-missing = Replay impossible: the output of « { $id } » is missing from this run
+kernel-replay-output-truncated = Replay impossible: the output of « { $id } » was truncated in this run
+kernel-replay-too-big = Replay impossible: the outputs to resume exceed 4 MB

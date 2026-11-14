@@ -11,7 +11,7 @@ export const definition: BlockDefinition = {
   description: "workflows-block-ai-sort-desc",
   input: "required",
   fields: [
-    { name: "question", label: "workflows-field-question", help: "workflows-field-question-help", required: true, default: "Est-ce intéressant ?", kind: "template" },
+    { name: "question", label: "workflows-field-question", help: "workflows-field-question-help", required: true, defaultText: "workflows-default-question", kind: "template" },
     { name: "text", label: "workflows-field-judged-text", help: "workflows-help-templates", required: true, default: "{title}", kind: "template" },
     { name: "threshold", label: "workflows-field-threshold", required: false, default: 0.5, kind: "number", min: 0, max: 1 },
     { name: "field", label: "workflows-field-score-field", required: false, default: "score", kind: "text" },

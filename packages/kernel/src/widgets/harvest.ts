@@ -474,7 +474,7 @@ export async function runAttempt(o: HarvestOptions & { origin: string; start: st
   }
 
   const [origin, earlier] = await originChain(dataFolder, o.origin);
-  const plan = replayPlan(valid, origin, o.start, earlier);
+  const plan = replayPlan(valid, origin, o.start, earlier, loc(o));
   if (!plan.ok) return denial(plan.error);
   const previous = await readData(widgetsFolder, id);
   const config = declaration.config ?? null;
@@ -486,7 +486,7 @@ export async function runAttempt(o: HarvestOptions & { origin: string; start: st
   // Measured before any container, on the line as it will go out: the harvester would refuse it, and nothing must be written.
   const now = clock().toISOString();
   if (startTooBig({ previous: previous, now: now, config, workflow, replay: replay, ...(limitMs !== undefined ? { limitMs: limitMs } : {}) })) {
-    return denial(REPLAY_TOO_BIG);
+    return denial(REPLAY_TOO_BIG(loc(o)));
   }
 
   const { issue: outcome, run: execution } = await runWorkflow(
@@ -506,7 +506,7 @@ export async function runAttempt(o: HarvestOptions & { origin: string; start: st
     infraOf(o, clock),
   );
   // The executor's safety net (the measure here must have refused before): a refusal, nothing written.
-  if (outcome.t === "stop" && outcome.error === REPLAY_TOO_BIG) return denial(REPLAY_TOO_BIG);
+  if (outcome.t === "stop" && outcome.error === REPLAY_TOO_BIG(loc(o))) return denial(REPLAY_TOO_BIG(loc(o)));
 
   // The grant may have been withdrawn during the try, or during its write: nothing read with it remains.
   const removed = async () => {

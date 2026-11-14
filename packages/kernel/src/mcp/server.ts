@@ -9,7 +9,7 @@ import type { WidgetState } from "../home/schemas.js";
 import { inEveryLanguage } from "../errors.js";
 import { ID_EXECUTION, type Execution, type ResumeExecution } from "../workflows/executions.js";
 import { kernelError } from "../widgets/harvest.js";
-import { ACTION_UNKNOWN, requiredInput, type LaunchResult } from "../actions/run.js";
+import { requiredInput, type LaunchResult } from "../actions/run.js";
 import type { PlanPage } from "../pages/plan.js";
 import { ID_SITE } from "../sites/schemas.js";
 import type { MemoryContent } from "../sites/memory.js";
@@ -217,7 +217,7 @@ export const RESERVED_ACTION_ERROR = "L'action a échoué (détail réservé : d
 // Stored errors keep the language they were written in: every shipped language matches.
 const FIXED_ACTION_ERRORS = new Set([
   ...["kernel-err-action-stopped", "kernel-err-action-no-workflow", "kernel-err-result-too-big", "kernel-err-action-internal"].flatMap((id) => inEveryLanguage(id)),
-  ACTION_UNKNOWN,
+  ...inEveryLanguage("kernel-err-action-unknown"),
 ]);
 const kernelActionError = (error: string) => FIXED_ACTION_ERRORS.has(error) || kernelError(error);
 const ID_WIDGET = z.string().regex(/^[a-z0-9-]+$/, "id de widget : minuscules, chiffres et tirets");
@@ -1254,7 +1254,7 @@ function registerActionsTools(
     protect(async ({ id, input: input }) => {
       const before = await read(id);
       if (before.input !== null && (input === undefined || input.trim() === "")) {
-        return text(json({ status: "invalid", error: requiredInput(before.input) }));
+        return text(json({ status: "invalid", error: requiredInput("fr", before.input) }));
       }
       const end = await a.tools.launch(id, input);
       const after = (await a.tools.read(id)) ?? before;

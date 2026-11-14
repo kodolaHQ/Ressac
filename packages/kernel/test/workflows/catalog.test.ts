@@ -115,6 +115,13 @@ test("web.search is in the Sources family, after Récupérer une adresse", () =>
   expect(BLOCK_REGISTRY.get("web.search")!.chain).toBe(true);
 });
 
+test("the ai.sort question default follows the catalog's language", () => {
+  const question = (l: string) => blockCatalog(l).find((b) => b.type === "ai.sort")!.fields.find((f) => f.name === "question")!;
+  expect(question("fr").default).toBe("Est-ce intéressant ?");
+  expect(question("en").default).toBe("Is it interesting?");
+  expect("defaultText" in question("en")).toBe(false);
+});
+
 test("the catalog speaks the asked language; every label, description and help is a known message", () => {
   expect(blockCatalog("en").find((b) => b.type === "output")!.label).toBe("Output to the widget");
   expect(blockCatalog().find((b) => b.type === "output")!.label).toBe("Output to the widget");

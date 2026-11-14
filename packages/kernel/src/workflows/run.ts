@@ -328,7 +328,7 @@ export async function runWorkflow(
   });
   // Safety net: the caller measures before (`startTooBig`) to refuse without writing anything; the harvester would refuse the line.
   if (replay && Buffer.byteLength(startLine) > LINE_MAX_BYTES) {
-    return conclude({ t: "stop", status: "error", error: REPLAY_TOO_BIG });
+    return conclude({ t: "stop", status: "error", error: REPLAY_TOO_BIG(locale()) });
   }
 
   // A container of the same name left by an abrupt stop would make `docker run` fail (125); the queues only launch

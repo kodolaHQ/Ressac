@@ -231,7 +231,7 @@ test("one edition per widget in the window", () => {
 test("new parameters: neutral values for required fields, no invented address", () => {
   expect(freshParams(catalog("list.keep"))).toEqual({ count: 10 });
   expect(freshParams(catalog("list.new"))).toEqual({ key: "url" });
-  expect(freshParams(catalog("ai.sort"))).toEqual({ question: "Est-ce intéressant ?", text: "{title}" });
+  expect(freshParams(catalog("ai.sort"))).toEqual({ question: "Is it interesting?", text: "{title}" });
   expect(freshParams(catalog("source.page"))).toEqual({});
 });
 

@@ -9,6 +9,7 @@ import type { Workshop } from "../container/workshop.js";
 import type { LocalAi } from "../ai/local-ai.js";
 import { createAiDispatcher, type AiDispatcher } from "../ai/dispatcher.js";
 import type { BrowserBridge } from "../mcp/bridge.js";
+import { say } from "../i18n.js";
 import { readGrants, removeGrant } from "./grants.js";
 import { currentSlot, dueHour, trackingAfter, type HourOutcome, type HoursTracking } from "./hours.js";
 import type { DirectTrace } from "../workflows/run.js";
@@ -626,7 +627,7 @@ export class WidgetsScheduler {
     try {
       return await this.inItsLane(id, async (w): Promise<AttemptResult> => {
         request.started();
-        if (!w) return { ok: false, error: `Widget inconnu : ${id}` };
+        if (!w) return { ok: false, error: say(this.locale(), "kernel-grant-widget-unknown", { id }) };
         if (this.stopped) return { ok: false, error: INTERRUPTED_ERROR(this.locale()) };
         if (!(await this.workshopStarted())) return { ok: false, error: WORKSHOP_STOPPED_ERROR(this.locale()) };
         if (this.stopped) return { ok: false, error: INTERRUPTED_ERROR(this.locale()) };

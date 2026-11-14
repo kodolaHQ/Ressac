@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { say } from "../src/i18n.js";
@@ -15,4 +15,12 @@ test("say follows the locale, falls back to English, then to the id", () => {
 
 test("messages.ts is up to date with locales/", () => {
   expect(readFileSync(join(import.meta.dirname, "../src/i18n/messages.ts"), "utf8")).toBe(generate());
+});
+
+test("a message formatted with a missing variable returns text and does not throw", () => {
+  const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+  expect(() => say("en", "kernel-grant-widget-unknown")).not.toThrow();
+  expect(say("en", "kernel-grant-widget-unknown")).toContain("Unknown widget");
+  expect(spy).toHaveBeenCalled();
+  spy.mockRestore();
 });

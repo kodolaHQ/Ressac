@@ -103,7 +103,7 @@ async function filesOf(folder: string, prefix = ""): Promise<string[]> {
 
 /** The languages the templates have: one folder each. */
 async function languagesOf(models: string): Promise<string[]> {
-  return (await readdir(models, { withFileTypes: true })).filter((e) => e.isDirectory()).map((e) => e.name);
+  return (await readdir(models, { withFileTypes: true })).filter((e) => e.isDirectory() && /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$/.test(e.name)).map((e) => e.name);
 }
 
 /** The template `rel` in `lang`, else in English (a file a language lacks). */
@@ -151,6 +151,8 @@ async function matches(c: SpacePaths, models: string, lang: string, langs: strin
 /**
  * sha256 hashes of the shipped versions of the starter widgets' `display.html`. A display left at one of them is replaced by the
  * current template; a display modified by the user or the agent (unknown hash) is not touched.
+ * Every hash here is a French display and `updateStartDisplay` copies the `fr` one: an English display hash must not be
+ * added without first splitting this set per language.
  */
 export const DISPLAYS_SHIPPED: Record<"meteo" | "actus-tech" | "daily-dev", ReadonlySet<string>> = {
   meteo: new Set([

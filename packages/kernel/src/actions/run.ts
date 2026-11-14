@@ -31,8 +31,8 @@ import { writeResult, deleteDataAction } from "./data.js";
 import { readAction, actionWorkflow } from "./read.js";
 import type { DeclarationAction } from "./schemas.js";
 
-export const ACTION_UNKNOWN = "Action inconnue";
-export const requiredInput = (label: string) => `Saisie requise : ${label}`;
+export const ACTION_UNKNOWN = (locale: string) => say(locale, "kernel-err-action-unknown");
+export const requiredInput = (locale: string, label: string) => say(locale, "kernel-err-input-required", { label });
 /** Same text as for a widget. */
 export const actionGrantRequired = (d: DeclarationAction, locale: string) => grantRequired(d, locale);
 export const ACTION_WITHOUT_WORKFLOW = (locale: string) => say(locale, "kernel-err-action-no-workflow");
@@ -108,7 +108,7 @@ export async function runAction(o: OptionsAction): Promise<LaunchResult> {
   const clock = o.clock ?? (() => new Date());
   const loc = () => o.locale?.() ?? "en";
   const action = await readAction(paths, id);
-  if (!action) return denial(ACTION_UNKNOWN);
+  if (!action) return denial(ACTION_UNKNOWN(loc()));
   // The read error of action.json quotes its content (key names): it is not a fixed kernel text.
   if ("error" in action) return denial(action.error, false);
   const wf = await actionWorkflow(action, loc());
@@ -123,7 +123,7 @@ export async function runAction(o: OptionsAction): Promise<LaunchResult> {
   // A trial resumes the upstream outputs of a run: its input too, in the absence of a new one.
   const replay = o.attempt ? await originChain(dataFolder, o.attempt.origin) : null;
   const input = declaration.input ? cutInput(o.input ?? replay?.[0]?.input ?? null) : null;
-  if (declaration.input && input === null) return denial(requiredInput(declaration.input.label));
+  if (declaration.input && input === null) return denial(requiredInput(loc(), declaration.input.label));
 
   if (!(await validGrant(actionsFolder, id, declaration))) {
     return { status: "grant-required", error: actionGrantRequired(declaration, loc()), kernelError: true };
@@ -131,7 +131,7 @@ export async function runAction(o: OptionsAction): Promise<LaunchResult> {
 
   let plan: Extract<ReturnType<typeof replayPlan>, { ok: true }> | null = null;
   if (o.attempt && replay) {
-    const p = replayPlan(valid, replay[0], o.attempt.start, replay[1]);
+    const p = replayPlan(valid, replay[0], o.attempt.start, replay[1], loc());
     if (!p.ok) return denial(p.error);
     const { limitMs: limitMs } = runDelays(declaration.maxDurationMinutes);
     const workflow = { blocks: valid.workflow.blocks, links: valid.workflow.links, order: valid.order };
@@ -145,7 +145,7 @@ export async function runAction(o: OptionsAction): Promise<LaunchResult> {
       ...(input !== null ? { input: input } : {}),
       progress: true as const,
     };
-    if (startTooBig(start)) return denial(REPLAY_TOO_BIG);
+    if (startTooBig(start)) return denial(REPLAY_TOO_BIG(loc()));
     plan = p;
   }
 
@@ -193,7 +193,7 @@ export async function runAction(o: OptionsAction): Promise<LaunchResult> {
       ...(o.searchUrl !== undefined ? { searchUrl: o.searchUrl } : {}),
     },
   );
-  if (outcome.t === "stop" && outcome.error === REPLAY_TOO_BIG) return denial(REPLAY_TOO_BIG);
+  if (outcome.t === "stop" && outcome.error === REPLAY_TOO_BIG(loc())) return denial(REPLAY_TOO_BIG(loc()));
   if (plan && o.attempt) {
     execution.id = attemptId(execution.start);
     execution.attempt = { start: o.attempt.start, origin: plan.origin };
@@ -220,7 +220,7 @@ export async function runAction(o: OptionsAction): Promise<LaunchResult> {
     }
     if (!(await present())) {
       await forgetThisRun(dataFolder, execution.id, { run: runWritten, result: writtenResult });
-      return denial(ACTION_UNKNOWN);
+      return denial(ACTION_UNKNOWN(loc()));
     }
     return null;
   };

@@ -882,7 +882,7 @@ test("launch_action with an account: the actions' fixed messages pass, not an id
   const { tools: tools, set: fixer } = fakeActions();
   await withActions(tools);
   // Written in English or stored in French: both pass.
-  for (const error of [...["fr", "en"].flatMap((l) => [ACTION_WITHOUT_WORKFLOW(l), ACTION_STOPPED(l), RESULT_TOO_BIG(l), INTERNAL_ACTION_ERROR(l)]), ACTION_UNKNOWN]) {
+  for (const error of [...["fr", "en"].flatMap((l) => [ACTION_WITHOUT_WORKFLOW(l), ACTION_STOPPED(l), RESULT_TOO_BIG(l), INTERNAL_ACTION_ERROR(l), ACTION_UNKNOWN(l)])]) {
     fixer({ status: "failed", error: error, kernelError: true });
     expect(JSON.parse(text(await client.callTool({ name: "launch_action", arguments: { id: "courrier" } }))).error).toBe(error);
     // Without `erreurNoyau`, the same text could have been written by the action's code: reserved.
@@ -897,7 +897,7 @@ test("launch_action: required input missing → requiredInput error, nothing is 
   const { tools: tools, launchedList: launched } = fakeActions();
   await withActions(tools);
   const t = text(await client.callTool({ name: "launch_action", arguments: { id: "veille" } }));
-  expect(t).toContain(requiredInput("Sujet"));
+  expect(t).toContain(requiredInput("fr", "Sujet"));
   expect(launched).toEqual([]);
 });
 

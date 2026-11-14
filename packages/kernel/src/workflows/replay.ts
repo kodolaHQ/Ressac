@@ -1,9 +1,9 @@
+import { say } from "../i18n.js";
 import type { Execution } from "./executions.js";
 import type { ValidWorkflow } from "./validate.js";
 
-export const REPLAY_PREFIX = "Rejeu impossible : ";
 /** Refusal when a replay's start line exceeds 4 MB (measured by `startTooBig`, before any launch). */
-export const REPLAY_TOO_BIG = `${REPLAY_PREFIX}les sorties à reprendre dépassent 4 Mo`;
+export const REPLAY_TOO_BIG = (locale: string) => say(locale, "kernel-replay-too-big");
 
 export type ReplayPlan =
   | { ok: true; reruns: string[]; outputs: Record<string, unknown>; resumed: Record<string, number | null>; origin: string }
@@ -20,10 +20,10 @@ export const REPLAY_DEPTH = 8;
  * the taken outputs come from when there is only one, otherwise the given origin. Pure: no file
  * read, the size of what is taken is measured separately (`startTooBig`).
  */
-export function replayPlan(valid: ValidWorkflow, origin: Execution | null, start: string, earlier: Execution[] = []): ReplayPlan {
-  const denial = (cause: string): ReplayPlan => ({ ok: false, error: REPLAY_PREFIX + cause });
-  if (!origin) return denial("exécution introuvable");
-  if (!valid.order.includes(start)) return denial(`le bloc « ${start} » n'est pas dans le workflow`);
+export function replayPlan(valid: ValidWorkflow, origin: Execution | null, start: string, earlier: Execution[] = [], locale = "en"): ReplayPlan {
+  const denial = (id: string, block?: string): ReplayPlan => ({ ok: false, error: say(locale, id, { id: block ?? "" }) });
+  if (!origin) return denial("kernel-replay-not-found");
+  if (!valid.order.includes(start)) return denial("kernel-replay-block-absent", start);
 
   const next = new Map<string, string[]>();
   for (const l of valid.workflow.links) next.set(l.from, [...(next.get(l.from) ?? []), l.to]);
@@ -48,9 +48,9 @@ export function replayPlan(valid: ValidWorkflow, origin: Execution | null, start
         break;
       }
     }
-    if (!trace || (trace.status !== "succeeded" && trace.status !== "partial")) return denial(`la sortie de « ${id} » manque dans cette exécution`);
-    if (trace.outputTruncated) return denial(`la sortie de « ${id} » a été tronquée dans cette exécution`);
-    if (trace.output === undefined) return denial(`la sortie de « ${id} » manque dans cette exécution`);
+    if (!trace || (trace.status !== "succeeded" && trace.status !== "partial")) return denial("kernel-replay-output-missing", id);
+    if (trace.outputTruncated) return denial("kernel-replay-output-truncated", id);
+    if (trace.output === undefined) return denial("kernel-replay-output-missing", id);
     outputs[id] = trace.output;
     resumed[id] = trace.items;
   }

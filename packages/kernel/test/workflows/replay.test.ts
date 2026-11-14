@@ -1,8 +1,9 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "vitest";
-import { LINE_MAX_BYTES, startTooBig, lineStart, lineStartBytes, replayPlan, validateWorkflow, type Execution, type BlockTrace, type ValidWorkflow } from "../../src/index.js";
+import { LINE_MAX_BYTES, startTooBig, lineStart, lineStartBytes, replayPlan as planIn, validateWorkflow, type Execution, type BlockTrace, type ValidWorkflow } from "../../src/index.js";
 
+const replayPlan = (v: ValidWorkflow, o: Execution | null, start: string, earlier: Execution[] = []) => planIn(v, o, start, earlier, "fr");
 const raw = JSON.parse(readFileSync(join(import.meta.dirname, "..", "..", "templates", "fr", "widgets", "actus-tech", "workflow.json"), "utf8"));
 const r = validateWorkflow(raw);
 if (!r.ok) throw new Error(r.error);

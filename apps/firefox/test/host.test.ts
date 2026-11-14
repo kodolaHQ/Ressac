@@ -132,6 +132,16 @@ describe("agent host", { timeout: 30_000 }, () => {
     expect(await h.rpc.request("debug.locale")).toEqual({ locale: "fr", relocalized: 1 });
   });
 
+  it("a language change that lands while the kernel is starting is applied once it is up", async () => {
+    const h = startHost();
+    const started = h.rpc.request("start", { agentProfile: "claude", locale: "en" });
+    h.rpc.notify("settings.locale", { locale: "fr" });
+    await started;
+    const agents = join(h.root, "AGENTS.md");
+    const french = readFileSync(join(import.meta.dirname, "..", "..", "..", "packages", "kernel", "templates", "fr", "AGENTS.md"), "utf8");
+    await until(() => existsSync(agents) && readFileSync(agents, "utf8") === french, 5_000);
+  });
+
   it("the host starts the external MCP without the kernel", async () => {
     const h = startHost();
     let e: { server: { state: string; port?: number } } | undefined;

@@ -20,7 +20,12 @@ const FAMILIES: BlockFamily[] = ["Sources", "Listes", "IA", "Logique/Code", "Sor
 /** The block types, grouped by family then in registry order; texts in the language of `locale` (definitions hold message ids). */
 export function blockCatalog(locale = "en"): BlockCatalogEntry[] {
   const fields = (d: BlockDefinition) =>
-    structuredClone(d.fields).map((f) => ({ ...f, label: say(locale, f.label), ...(f.help === undefined ? {} : { help: say(locale, f.help) }) }));
+    structuredClone(d.fields).map(({ defaultText, ...f }) => ({
+      ...f,
+      label: say(locale, f.label),
+      ...(f.help === undefined ? {} : { help: say(locale, f.help) }),
+      ...(defaultText === undefined ? {} : { default: say(locale, defaultText) }),
+    }));
   const blocks = [...BLOCK_REGISTRY.values()].map((d) => ({
     type: d.type,
     label: say(locale, d.label),

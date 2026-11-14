@@ -28,6 +28,8 @@ export type FormField = {
   required: boolean;
   /** Schema default value; for a required field, a neutral value that pre-fills a new block. */
   default?: unknown;
+  /** Message id of a default that follows the shown language (replaces `default` in the catalog). */
+  defaultText?: string;
   kind: "text" | "template" | "number" | "checkbox" | "choice" | "texts";
   choices?: string[];
   min?: number;

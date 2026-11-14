@@ -673,10 +673,10 @@ describe("executerWorkflow", () => {
       const b = await bench(chain("a", "b", "c"));
       b.ctx.replay = { ...replayFromC, outputs: { b: "x".repeat(LINE_MAX_BYTES) } };
       const r = await runWorkflow(b.ctx, b.infra);
-      expect(r.issue).toEqual({ t: "stop", status: "error", error: REPLAY_TOO_BIG });
-      expect(REPLAY_TOO_BIG).toBe("Rejeu impossible : les sorties à reprendre dépassent 4 Mo");
+      expect(r.issue).toEqual({ t: "stop", status: "error", error: REPLAY_TOO_BIG("fr") });
+      expect(REPLAY_TOO_BIG("fr")).toBe("Rejeu impossible : les sorties à reprendre dépassent 4 Mo");
       expect(b.commands).toEqual([]);
-      expect(r.run).toMatchObject({ status: "failed", error: REPLAY_TOO_BIG, kernelError: true });
+      expect(r.run).toMatchObject({ status: "failed", error: REPLAY_TOO_BIG("fr"), kernelError: true });
     });
   });
 

@@ -59,3 +59,13 @@ kernel-widget-invalid = widget.json invalide : { $error }
 # Texts of the command runner (shown in install and workshop errors).
 kernel-run-not-found = { $command } introuvable
 kernel-run-cancelled = Annulé
+
+# Erreurs montrées dans l'interface (action inconnue, saisie, rejeu, atelier).
+kernel-err-action-unknown = Action inconnue
+kernel-err-input-required = Saisie requise : { $label }
+kernel-err-workshop-unavailable = Conteneur indisponible ({ $state })
+kernel-replay-not-found = Rejeu impossible : exécution introuvable
+kernel-replay-block-absent = Rejeu impossible : le bloc « { $id } » n'est pas dans le workflow
+kernel-replay-output-missing = Rejeu impossible : la sortie de « { $id } » manque dans cette exécution
+kernel-replay-output-truncated = Rejeu impossible : la sortie de « { $id } » a été tronquée dans cette exécution
+kernel-replay-too-big = Rejeu impossible : les sorties à reprendre dépassent 4 Mo

@@ -357,7 +357,8 @@ const rpc = createRpc({
       if (typeof p?.locale !== "string" || p.locale === hostLocale()) return;
       setHostLocale(p.locale);
       relocalized++;
-      void kernel?.relocalize().catch((e) => console.error("[ressac] relocalize failed:", e));
+      // `ready` also covers a kernel being created or restarted: the change is applied once it is up.
+      void ready.then((n) => n?.relocalize()).catch((e) => console.error("[ressac] relocalize failed:", e));
     },
     "agent.claudeEngine": (p: { engine: unknown }) => {
       const r = ClaudeEngineSchema.safeParse(p?.engine);
@@ -532,7 +533,7 @@ const rpc = createRpc({
     // schemas; a bad one gets an empty answer.
     "actions.list": () => actions.list(),
     "actions.prepare": (p: { id?: unknown; input?: unknown }) =>
-      idAction(p?.id) && ActionInputSchema.safeParse(p.input ?? null).success ? actions.prepare(p.id, (p.input ?? null) as string | null) : { ok: false, error: ACTION_UNKNOWN },
+      idAction(p?.id) && ActionInputSchema.safeParse(p.input ?? null).success ? actions.prepare(p.id, (p.input ?? null) as string | null) : { ok: false, error: ACTION_UNKNOWN(hostLocale()) },
     "actions.name": (p: { id?: unknown }) => (idAction(p?.id) ? actions.name(p.id) : null),
     "actions.launch": (p: { id?: unknown; input?: unknown }) =>
       idAction(p?.id) && ActionInputSchema.safeParse(p.input ?? null).success

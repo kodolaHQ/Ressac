@@ -25,7 +25,7 @@ import {
 import type { ActionShown } from "../shared/actions.ts";
 import type { Grant } from "../shared/api.ts";
 import { openableUrl } from "../ui/home-profiles.ts";
-import { hostSay } from "./locale.ts";
+import { hostLocale, hostSay } from "./locale.ts";
 
 // The disk and kernel half of the actions service.
 
@@ -164,7 +164,7 @@ export function createActionsHost(o: {
       const kernel = o.kernel();
       if (!kernel) return { ok: false, error: NO_KERNEL_MESSAGE() };
       const a = await read(id);
-      if (!a) return { ok: false, error: ACTION_UNKNOWN };
+      if (!a) return { ok: false, error: ACTION_UNKNOWN(hostLocale()) };
       const d = kernel.actions.direct();
       const running = d.running.some((x) => x.action === id) || d.waiting.some((x) => x.action === id);
       // Required input missing: the page opens with its field to fill, nothing is launched.
@@ -223,7 +223,7 @@ export function createActionsHost(o: {
       await kernel?.actions.denyGrant(id);
     },
     async delete(id: string): Promise<{ ok: true } | { ok: false; error: string }> {
-      if (!(await read(id))) return { ok: false, error: ACTION_UNKNOWN };
+      if (!(await read(id))) return { ok: false, error: ACTION_UNKNOWN(hostLocale()) };
       // Stopped first: otherwise it would run to its maximum duration with nothing left to stop it.
       o.kernel()?.actions.stop(id);
       // Removed from disk too: an action made again under the same id would find this refusal at the next start.

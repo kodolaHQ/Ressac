@@ -146,3 +146,5 @@ workflows-field-scroll-help = For a page that loads as you scroll. Empty or 0: n
 workflows-field-search-query = Search
 workflows-field-result-count = Number of results
 workflows-field-results-field = Results field
+
+workflows-default-question = Is it interesting?
