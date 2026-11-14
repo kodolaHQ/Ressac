@@ -100,7 +100,7 @@ export function createAsk(o: {
       const sites = VIDEO_WORDS.test(question) ? [...new Set([...q.sites, ...VIDEO_SITES])] : q.sites;
       const hits: AskHit[] = history
         .findPages({ groups: q.groups, since: q.since, until: q.until, sites, limit: 3 })
-        .map((r) => ({ url: r.url, title: r.title, lastVisit: r.lastVisit, excerpt: r.excerpt || null }));
+        .map((r) => ({ url: r.url, title: r.title, lastVisit: r.lastVisit, excerpt: r.excerpt || null, favicon: r.favicon }));
       return hits.length ? { kind: "page", hits } : AGENT;
     },
   };

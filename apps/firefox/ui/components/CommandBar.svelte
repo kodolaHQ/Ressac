@@ -362,9 +362,8 @@
 
   const label = (l: CommandLine): string =>
     l.type === "default" ? l.label : l.type === "action" ? l.name : l.type === "tab" ? l.tab.title : l.type === "app" ? l.app.name : l.title || l.url;
-  // History keeps no favicon: the site's, at the usual address (except in a private visit, nothing leaves).
-  const siteFavicon = (url: string): string | null => (/^https?:\/\//i.test(url) ? `${new URL(url).origin}/favicon.ico` : null);
-  const visitFavicon = (url: string): string | null => (hist.some((v) => v.url === url && !v.private) ? siteFavicon(url) : null);
+  // The UI has no network: history gives the site's last favicon seen, as a data: URL.
+  const visitFavicon = (url: string): string | null => hist.find((v) => v.url === url)?.favicon ?? null;
   const host = (url: string): string => {
     try {
       return new URL(url).hostname.replace(/^www\./, "");
@@ -473,7 +472,7 @@
           {#each hits as h, i (h.url)}
             <li role="option" aria-selected={i === askChosen} data-testid="command-ask-hit">
               <button type="button" tabindex="-1" class:chosen-one={i === askChosen} onmousemove={() => (askChosen = i)} onclick={() => openHit(h)}>
-                <span class="pictogram"><SiteIcon favicon={siteFavicon(h.url)} title={h.title} /></span>
+                <span class="pictogram"><SiteIcon favicon={h.favicon} title={h.title} /></span>
                 <span class="label">{h.title || h.url}</span>
                 <span class="detail">{h.excerpt ?? h.url}</span>
                 <span class="tag">{host(h.url)} · {visitedWhen(h.lastVisit)}</span>

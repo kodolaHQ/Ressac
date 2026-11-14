@@ -22,7 +22,7 @@ test("handOff asks the host, then opens that window's agent", async () => {
   const order: string[] = [];
   const host = hostWith(async (m) => void order.push(m));
   const openAgent = vi.fn(() => void order.push("open"));
-  const shown = [{ url: "https://a.test/", title: "A", lastVisit: "2026-11-11T00:00:00Z", excerpt: null }];
+  const shown = [{ url: "https://a.test/", title: "A", lastVisit: "2026-11-11T00:00:00Z", excerpt: null, favicon: null }];
   expect(await createAsk(host, openAgent).handOff("w1", "q", shown)).toBe(true);
   expect(host.request).toHaveBeenCalledWith("ask.handOff", { window: "w1", question: "q", shown });
   expect(openAgent).toHaveBeenCalledWith("w1");

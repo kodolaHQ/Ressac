@@ -439,6 +439,17 @@ describe("history", { timeout: 30_000 }, () => {
     expect(await h.rpc.request("history.recent", {})).toEqual([]);
   });
 
+  it("history.icon gives non-private visits their site's favicon", async () => {
+    const h = startHost();
+    visit(h, "https://a.test/", "A");
+    visit(h, "https://p.test/", "P", { private: true, spaceId: "p" });
+    h.rpc.notify("history.icon", { url: "https://a.test/", spaceId: "e1", icon: "data:image/png;base64,AAAA" });
+    h.rpc.notify("history.icon", { url: "https://p.test/", spaceId: "p", icon: "data:image/png;base64,BBBB" });
+    await settle(h);
+    const recents = (await h.rpc.request("history.recent", {})) as { url: string; favicon: string | null }[];
+    expect(Object.fromEntries(recents.map((v) => [v.url, v.favicon]))).toEqual({ "https://a.test/": "data:image/png;base64,AAAA", "https://p.test/": null });
+  });
+
   it("search_history finds a non-private visit, never a private one", async () => {
     const h = startHost();
     await h.rpc.request("start", { agentProfile: "claude" });

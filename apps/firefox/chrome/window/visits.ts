@@ -100,5 +100,6 @@ export function trackVisits(gBrowser: any, history: History, context: (id: strin
     const tab: any = e.target;
     const id = idOf(tab);
     if (id && e.detail.changed.includes("label")) history.title(id, tab.linkedBrowser.currentURI?.spec ?? "", tab.label);
+    if (id && e.detail.changed.includes("image")) history.icon(id, tab.linkedBrowser.currentURI?.spec ?? "", tab.getAttribute("image") ?? "");
   });
 }

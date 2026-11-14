@@ -5,6 +5,8 @@ import type { HistoryResult } from "@ressac/kernel";
 import type { Visit } from "../shared/model";
 
 export type { HistoryResult, Visit };
+/** A ⌘T hit: the agent's result plus the site's favicon (the agent never needs it). */
+export type PageHit = HistoryResult & { favicon: string | null };
 
 const COLUMNS = `url, title, last_visit AS lastVisit, visits, space_id AS spaceId, private,
   EXISTS (SELECT 1 FROM texts t WHERE t.url = visits.url AND t.space_id = visits.space_id) AS kept`;
@@ -18,6 +20,17 @@ export const BYTES_CAP = 1_000_000_000; // UTF-8 of `text`, all pages together
 const AGENT_LIMIT = { default: 20, max: 50 };
 /** Words of the excerpt returned to the agent (64 at most for FTS5): about 300 characters. */
 const SNIPPET_WORDS = 54;
+/** Characters of a site's favicon kept for the ⌘T rows: a data: URL, larger ones are dropped. */
+export const ICON_MAX = 16 * 1024;
+
+const hostOf = (url: string) => {
+  try {
+    const u = new URL(url);
+    return /^https?:$/.test(u.protocol) ? u.hostname : null;
+  } catch {
+    return null;
+  }
+};
 
 /** Lowercase without accents: « Été » and « ete » find each other (SQLite's LIKE only folds ASCII). */
 const fold = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
@@ -29,7 +42,7 @@ export class History {
     | "note" | "updateTitle" | "search" | "searchDistinct" | "recents" | "eraseSince" | "clearAll" | "makePrivate"
     | "keep" | "updateTitleText" | "isPrivate" | "forgetText" | "forgetSpaceTexts" | "eraseTextsSince"
     | "eraseOrphanTexts" | "clearAllTexts" | "purgeBefore" | "totalBytes" | "oldTexts" | "forgetTextId"
-    | "keptText" | "visitsOf" | "excerpt" | "importVisit",
+    | "keptText" | "visitsOf" | "excerpt" | "importVisit" | "noteIcon" | "icon" | "clearIcons" | "eraseOrphanIcons",
     StatementSync
   >;
   private byteCap: number;
@@ -93,6 +106,16 @@ export class History {
         SELECT title, last_visit AS date, visits FROM visits
         WHERE url = :url AND private = 0 AND last_visit >= :since AND last_visit <= :until
         ORDER BY last_visit DESC`),
+      noteIcon: this.db.prepare(
+        "INSERT INTO icons (host, icon, date) VALUES (?, ?, ?) ON CONFLICT (host) DO UPDATE SET icon = excluded.icon, date = excluded.date",
+      ),
+      icon: this.db.prepare("SELECT icon FROM icons WHERE host = ?"),
+      clearIcons: this.db.prepare("DELETE FROM icons"),
+      // An http(s) URL's host ends at `/` or `:` (a port); `_` in LIKE may keep an icon too many, never drop one.
+      eraseOrphanIcons: this.db.prepare(`
+        DELETE FROM icons WHERE NOT EXISTS (SELECT 1 FROM visits v WHERE
+          v.url LIKE 'https://' || icons.host || '/%' OR v.url LIKE 'http://' || icons.host || '/%' OR
+          v.url LIKE 'https://' || icons.host || ':%' OR v.url LIKE 'http://' || icons.host || ':%')`),
       excerpt: this.db.prepare(
         `SELECT snippet(texts_fts, 2, '', '', '…', ${SNIPPET_WORDS}) AS excerpt FROM texts_fts WHERE texts_fts MATCH ? AND rowid = ?`,
       ),
@@ -142,6 +165,8 @@ export class History {
           INSERT INTO texts_fts (texts_fts, rowid, title, url, text) VALUES ('delete', old.id, old.title, old.url, old.text);
           INSERT INTO texts_fts (rowid, title, url, text) VALUES (new.id, new.title, new.url, new.text);
         END;`);
+      // The last favicon seen per site: the UI has no network, so the ⌘T rows show this data: URL.
+      this.db.exec("CREATE TABLE IF NOT EXISTS icons (host TEXT PRIMARY KEY, icon TEXT NOT NULL, date TEXT NOT NULL)");
       this.db.exec("COMMIT");
     } catch (e) {
       this.db.exec("ROLLBACK");
@@ -174,6 +199,20 @@ export class History {
     if (!this.db.isOpen) return;
     this.req.updateTitle.run(title, url, spaceId);
     this.req.updateTitleText.run(title, url, spaceId, title);
+  }
+
+  /** Keeps the site's favicon (a data:image/ URL up to ICON_MAX characters) for an http(s) page; never from a private visit. */
+  noteIcon(url: string, spaceId: string, icon: string): void {
+    if (!this.db.isOpen) return;
+    const host = hostOf(url);
+    if (!host || typeof icon !== "string" || !icon.startsWith("data:image/") || icon.length > ICON_MAX) return;
+    if (this.req.isPrivate.get(url, spaceId)) return;
+    this.req.noteIcon.run(host, icon, new Date().toISOString());
+  }
+
+  private favicon(url: string): string | null {
+    const host = hostOf(url);
+    return host ? ((this.req.icon.get(host) as { icon: string } | undefined)?.icon ?? null) : null;
   }
 
   /** The space became private: all its already recorded visits become so, and their kept text is forgotten. */
@@ -284,7 +323,7 @@ export class History {
    * URL hold every group come first (most recent first), then pages whose kept text does (best rank first).
    * Non-private visits only, within [since, until], optionally on `sites` (a host or its subdomains).
    */
-  findPages(q: { groups: string[][]; since?: Date; until?: Date; sites?: string[]; limit: number }): HistoryResult[] {
+  findPages(q: { groups: string[][]; since?: Date; until?: Date; sites?: string[]; limit: number }): PageHit[] {
     if (!this.db.isOpen) return [];
     const groups = q.groups.map((g) => g.map((w) => fold(w).trim()).filter(Boolean)).filter((g) => g.length);
     if (!groups.length) return [];
@@ -330,6 +369,7 @@ export class History {
       lastVisit: r.lastVisit,
       visits: r.visits,
       excerpt: r.id === null ? "" : ((this.req.excerpt.get(fts, r.id) as { excerpt: string } | undefined)?.excerpt ?? ""),
+      favicon: this.favicon(r.url),
     }));
   }
 
@@ -346,7 +386,7 @@ export class History {
   }
 
   private lines(raw: Record<string, unknown>[]): Visit[] {
-    return raw.map((l) => ({ ...l, private: l.private === 1, kept: l.kept === 1 }) as unknown as Visit);
+    return raw.map((l) => ({ ...l, private: l.private === 1, kept: l.kept === 1, favicon: this.favicon(String(l.url)) }) as unknown as Visit);
   }
 
   /** Erases the visits and kept text since `from` (everything without a date), and the text whose visit is erased. */
@@ -357,9 +397,11 @@ export class History {
         this.req.eraseSince.run(from.toISOString());
         this.req.eraseTextsSince.run(from.toISOString());
         this.req.eraseOrphanTexts.run();
+        this.req.eraseOrphanIcons.run();
       } else {
         this.req.clearAll.run();
         this.req.clearAllTexts.run();
+        this.req.clearIcons.run();
       }
     });
   }

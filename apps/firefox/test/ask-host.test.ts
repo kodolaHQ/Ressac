@@ -38,7 +38,7 @@ test("a page question finds the recent visit, the older one is left out by since
   const r = await ask.find("la vidéo du mascaret l'autre jour", "fr");
   expect(r).toEqual({
     kind: "page",
-    hits: [{ url: "https://www.youtube.com/watch?v=1", title: "Le mascaret de la Dordogne", lastVisit: daysAgo(3).toISOString(), excerpt: expect.stringContaining("mascaret") }],
+    hits: [{ url: "https://www.youtube.com/watch?v=1", title: "Le mascaret de la Dordogne", lastVisit: daysAgo(3).toISOString(), excerpt: expect.stringContaining("mascaret"), favicon: null }],
   });
 });
 
@@ -48,7 +48,7 @@ test("an already parsed answer works too; until covers its whole day", async () 
   const { ask } = make(page({ since: "2026-11-13", until: "2026-11-13" }));
   expect(await ask.find("le mascaret d'hier", "fr")).toEqual({
     kind: "page",
-    hits: [{ url: "https://a.fr/", title: "Mascaret hier soir", lastVisit: new Date(2026, 10, 13, 23, 30).toISOString(), excerpt: null }],
+    hits: [{ url: "https://a.fr/", title: "Mascaret hier soir", lastVisit: new Date(2026, 10, 13, 23, 30).toISOString(), excerpt: null, favicon: null }],
   });
 });
 
