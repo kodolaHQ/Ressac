@@ -22,11 +22,11 @@ const visit = (url: string, title: string, text: string | null, date: Date, priv
 
 const make = (answer: unknown, o: { timeoutMs?: number } = {}) => {
   const gemma = vi.fn(async (_: { prompt: string; json?: boolean; signal?: AbortSignal }) => answer);
-  const check = vi.fn(async () => ({ kev: false, uv: false, ollama: true, gemma: true, gemmaModel: "gemma4:e4b" as string | null, decision: false }));
+  const hasGemma = vi.fn(async () => true);
   const warm = vi.fn(async () => {});
   const history = { searchForAgent: vi.fn((q: Parameters<History["searchForAgent"]>[0]) => h.searchForAgent(q)) };
-  const ask = createAsk({ ai: { gemma, check, warm }, history: () => history, now: () => NOW, ...o });
-  return { ask, gemma, check, warm, history };
+  const ask = createAsk({ ai: { gemma, hasGemma, warm }, history: () => history, now: () => NOW, ...o });
+  return { ask, gemma, hasGemma, warm, history };
 };
 
 const page = (extra: Record<string, unknown> = {}) => ({ kind: "page", terms: ["mascaret", "mascarets"], ...extra });
@@ -106,7 +106,7 @@ test("gemma throwing, or no history → agent", async () => {
   const { ask, gemma } = make(page());
   gemma.mockRejectedValueOnce(new Error("Ollama n'est pas lancé"));
   expect(await ask.find("mascaret", "fr")).toEqual({ kind: "agent" });
-  const none = createAsk({ ai: { gemma: async () => page(), check: async () => ({}) as never, warm: async () => {} }, history: () => null, now: () => NOW });
+  const none = createAsk({ ai: { gemma: async () => page(), hasGemma: async () => true, warm: async () => {} }, history: () => null, now: () => NOW });
   expect(await none.find("mascaret", "fr")).toEqual({ kind: "agent" });
 });
 
@@ -132,12 +132,12 @@ test("the prompt asks for JSON and gives today's date and weekday, in the UI lan
   expect(en!.prompt).toContain("Saturday");
 });
 
-test("usable: Ollama and Gemma both there; a failing check is false; warm calls the AI", async () => {
-  const { ask, check, warm } = make(null);
+test("usable: whatever hasGemma says, false when it rejects; warm calls the AI", async () => {
+  const { ask, hasGemma, warm } = make(null);
   expect(await ask.usable()).toBe(true);
-  check.mockResolvedValueOnce({ kev: false, uv: false, ollama: true, gemma: false, gemmaModel: null, decision: false });
+  hasGemma.mockResolvedValueOnce(false);
   expect(await ask.usable()).toBe(false);
-  check.mockRejectedValueOnce(new Error("boom"));
+  hasGemma.mockRejectedValueOnce(new Error("boom"));
   expect(await ask.usable()).toBe(false);
   ask.warm();
   expect(warm).toHaveBeenCalled();

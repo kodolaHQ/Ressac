@@ -66,7 +66,7 @@ const onSite = (url: string, sites: string[]) => {
 };
 
 export function createAsk(o: {
-  ai: Pick<LocalAi, "gemma" | "check" | "warm">;
+  ai: Pick<LocalAi, "gemma" | "hasGemma" | "warm">;
   history: () => Pick<History, "searchForAgent"> | null;
   now?: () => Date;
   timeoutMs?: number;
@@ -75,12 +75,7 @@ export function createAsk(o: {
   const timeoutMs = o.timeoutMs ?? 4000;
   return {
     async usable(): Promise<boolean> {
-      try {
-        const c = await o.ai.check();
-        return c.ollama && c.gemma;
-      } catch {
-        return false;
-      }
+      return o.ai.hasGemma().catch(() => false);
     },
     warm(): void {
       void o.ai.warm();

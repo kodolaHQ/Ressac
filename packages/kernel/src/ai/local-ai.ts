@@ -366,6 +366,12 @@ export class LocalAi {
     }
   }
 
+  /** Ollama answers and a Gemma build is installed (only Ollama's tags are read: no uv probe). Never throws. */
+  async hasGemma(): Promise<boolean> {
+    this.gemmaModel = await this.detectGemma();
+    return this.gemmaModel !== undefined;
+  }
+
   /** Asks Ollama to load the installed Gemma build (a request without a prompt only loads it), so a later call skips the cold start. Never throws. */
   async warm(): Promise<void> {
     if (this.closed) return;
