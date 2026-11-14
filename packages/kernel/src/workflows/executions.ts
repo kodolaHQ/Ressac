@@ -90,11 +90,11 @@ export function cut(text: string, bytes: number): string {
 
 // Safety net: an output that is too big is kept as text (the start of its JSON) and marked; if the file
 // still exceeds 4 MB, the biggest outputs go first.
-function truncate(entry: Execution): Execution {
+function truncate(entry: Execution, locale: string): Execution {
   const e: Execution = entry.error === undefined ? entry : { ...entry, error: cut(entry.error, MAX_ERROR_BYTES) };
   const sizes: number[] = [];
   const blocks = e.blocks.map((b0, i) => {
-    const b = clampText(b0);
+    const b = clampText(b0, locale);
     sizes[i] = 0;
     if (b.output === undefined) return b;
     const text = JSON.stringify(b.output) ?? "null";
@@ -129,26 +129,26 @@ function truncate(entry: Execution): Execution {
       }
     }
     if (worst < 0 || blocks[worst]!.log.length <= 1) break;
-    blocks[worst] = { ...blocks[worst]!, log: [`… ${blocks[worst]!.log.length} lignes coupées`] };
+    blocks[worst] = { ...blocks[worst]!, log: [say(locale, "kernel-log-lines-cut", { n: String(blocks[worst]!.log.length) })] };
     current = { ...e, blocks: blocks };
   }
   return current;
 }
 
 // Error and log of a block: lines of 2 KB at most, 200 lines at most (the last ones are kept).
-function clampText(b: BlockTrace): BlockTrace {
+function clampText(b: BlockTrace, locale: string): BlockTrace {
   let log = b.log.map((l) => (Buffer.byteLength(l) > LINE_MAX_BYTES ? cut(l, LINE_MAX_BYTES) : l));
   if (log.length > MAX_LINES) {
-    log = [`… ${log.length - MAX_LINES} lignes coupées`, ...log.slice(-MAX_LINES)];
+    log = [say(locale, "kernel-log-lines-cut", { n: String(log.length - MAX_LINES) }), ...log.slice(-MAX_LINES)];
   }
   return { ...b, log: log, ...(b.error === undefined ? {} : { error: cut(b.error, MAX_ERROR_BYTES) }) };
 }
 
 /** Writes a run (truncated if needed) and only keeps the 20 most recent real ones, and the 10 most recent tries. */
-export async function writeRun(dataFolder: string, e: Execution): Promise<void> {
+export async function writeRun(dataFolder: string, e: Execution, locale = "en"): Promise<void> {
   if (!ID_EXECUTION.test(e.id)) throw new Error(`id d'exécution invalide : ${e.id}`);
   const folder = runsFolder(dataFolder);
-  await writeAtomic(join(folder, `${e.id}.json`), JSON.stringify(truncate(e), null, 2));
+  await writeAtomic(join(folder, `${e.id}.json`), JSON.stringify(truncate(e, locale), null, 2));
   const names = await runNames(folder);
   for (const [group, kept] of [
     [names.filter((n) => !n.endsWith(`${ATTEMPT_SUFFIX}.json`)), KEPT_RUNS],

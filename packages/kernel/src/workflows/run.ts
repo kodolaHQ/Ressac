@@ -265,7 +265,7 @@ export async function runWorkflow(
       const b: BlockTrace = { ...t };
       // Started without an end: the container stopped during the block (or was stopped on request).
       if (started && !finished) b.status = stoppedBySignal ? "interrupted" : "failed";
-      if (cuts > 0) b.log = [say(locale(), "kernel-log-lines-cut", { n: cuts }), ...t.log];
+      if (cuts > 0) b.log = [say(locale(), "kernel-log-lines-cut", { n: String(cuts) }), ...t.log];
       return b;
     });
     const status: Execution["status"] =
@@ -483,7 +483,7 @@ export async function runWorkflow(
   const searchWeb = async (a: unknown): Promise<unknown> => {
     const { query: request, count: count } = args(SearchWebArgs, a, "searchWeb");
     // Refused here even if the validation let it through: a `code` block or a harvest.mjs may call searchWeb.
-    if (!web) throw new Error(WEB_REQUIRED);
+    if (!web) throw new Error(WEB_REQUIRED(locale()));
     if (searchDenied) throw new Error(SEARCHES_STOPPED);
     if (searches >= MAX_SEARCHES) throw new Error(SEARCHES_CAP);
     const readHtml = infra.bridge.readHtmlInvisible?.bind(infra.bridge);
@@ -739,7 +739,7 @@ export async function runWorkflow(
   if (end?.t === "failure") return conclude(withMemory(failure(end.error, true)));
   if (code === 124) return conclude(withMemory(failure(say(locale(), "kernel-err-timeout"), false)));
   // The exit code is chosen by the agent's code: it could encode account data in it.
-  return conclude(withMemory(failure(say(locale(), "kernel-err-no-result", { code: String(code ?? "aucun") }), true)));
+  return conclude(withMemory(failure(code === null || code === undefined ? say(locale(), "kernel-err-no-result-no-code") : say(locale(), "kernel-err-no-result", { code: String(code) }), true)));
 }
 
 /** What is sent to the container: the entries of the same type and, if they have one, of the same hash. Without the hash. */

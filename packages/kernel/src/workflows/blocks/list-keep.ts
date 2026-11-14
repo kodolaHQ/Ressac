@@ -3,12 +3,12 @@ import type { BlockDefinition } from "./common.js";
 
 export const definition: BlockDefinition = {
   type: "list.keep",
-  label: "Garder les N premiers",
+  label: "workflows-block-list-keep",
   family: "Listes",
-  description: "Garde les premiers éléments de la liste.",
+  description: "workflows-block-list-keep-desc",
   input: "required",
   fields: [
-    { name: "count", label: "Nombre d'éléments", required: true, default: 10, kind: "number", min: 1, max: 1000, integer: true },
+    { name: "count", label: "workflows-field-count", required: true, default: 10, kind: "number", min: 1, max: 1000, integer: true },
   ],
   perItem: "no",
   chain: false,

@@ -111,7 +111,7 @@ export async function runAction(o: OptionsAction): Promise<LaunchResult> {
   if (!action) return denial(ACTION_UNKNOWN);
   // The read error of action.json quotes its content (key names): it is not a fixed kernel text.
   if ("error" in action) return denial(action.error, false);
-  const wf = await actionWorkflow(action);
+  const wf = await actionWorkflow(action, loc());
   if (wf.t === "absent") return denial(ACTION_WITHOUT_WORKFLOW(loc()));
   if (wf.t !== "ok") return denial(truncate(wf.error, MAX_ERROR), wf.t !== "unreadable");
   const { valid: valid } = wf;
@@ -205,7 +205,7 @@ export async function runAction(o: OptionsAction): Promise<LaunchResult> {
   let runWritten = false;
   let writtenResult = false;
   const keepRun = async () => {
-    await writeRun(dataFolder, execution);
+    await writeRun(dataFolder, execution, loc());
     runWritten = true;
   };
   /**

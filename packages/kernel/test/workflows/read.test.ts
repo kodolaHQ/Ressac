@@ -2,8 +2,9 @@ import { afterEach, beforeEach, expect, test } from "vitest";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readWorkflow, type ValidationResult } from "../../src/index.js";
+import { readWorkflow as readIn, DEFAULT_CONTEXT, type ValidationContext, type ValidationResult } from "../../src/index.js";
 
+const readWorkflow = (folder: string, ctx: ValidationContext = DEFAULT_CONTEXT) => readIn(folder, { ...ctx, locale: "fr" });
 const errorOf = (r: ValidationResult | undefined) => (r && !r.ok ? r.error : undefined);
 
 let root: string;

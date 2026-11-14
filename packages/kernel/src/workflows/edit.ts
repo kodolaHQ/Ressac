@@ -1,5 +1,6 @@
 import { readFile, realpath, stat } from "node:fs/promises";
 import { join, sep } from "node:path";
+import { say } from "../i18n.js";
 import { writeAtomic } from "./executions.js";
 import { exists, readRawWorkflow } from "./read.js";
 import { withMemory, writeMemory, paramsHash, canonicalJson, readMemory } from "./memory.js";
@@ -19,7 +20,6 @@ import {
 export const CODE_MAX_BYTES = 256 * 1024;
 export const CODE_NAME = /^[a-z0-9-]+\.mjs$/;
 
-const WIDGET_NOT_FOUND = "Widget introuvable";
 
 export type DraftRead = {
   origin: "file" | "implicit";
@@ -58,8 +58,8 @@ async function folderExists(folder: string): Promise<boolean> {
  */
 export async function readDraft(filesFolder: string, ctx: ValidationContext = DEFAULT_CONTEXT): Promise<DraftRead | null> {
   if (await exists(join(filesFolder, "workflow.json"))) {
-    const parsed = await readRawWorkflow(filesFolder);
-    if ("error" in parsed) return { origin: "file", raw: null, validation: resume(workflowError(parsed.error)) };
+    const parsed = await readRawWorkflow(filesFolder, ctx.locale);
+    if ("error" in parsed) return { origin: "file", raw: null, validation: resume(workflowError(ctx.locale ?? "en", parsed.error)) };
     return { origin: "file", raw: parsed.raw, validation: resume(validateWorkflow(parsed.raw, ctx)) };
   }
   if (await exists(join(filesFolder, "harvest.mjs"))) {
@@ -93,21 +93,22 @@ export async function saveWorkflow(o: {
   context?: ValidationContext;
 }): Promise<SaveResult> {
   const context = o.context ?? DEFAULT_CONTEXT;
+  const locale = context.locale ?? "en";
   const r = validateWorkflow(o.raw, context);
   if (!r.ok) return { ok: false, error: r.error, ...(r.block === undefined ? {} : { block: r.block }) };
-  if (!(await folderExists(o.filesFolder))) return { ok: false, error: WIDGET_NOT_FOUND };
+  if (!(await folderExists(o.filesFolder))) return { ok: false, error: say(locale, "workflows-save-widget-not-found") };
 
   for (const b of r.valid.workflow.blocks) {
     if (b.type !== "code") continue;
     const source = String(b.params.source);
-    if (!(await exists(join(o.filesFolder, source)))) return { ok: false, error: `Non enregistré : fichier ${source} absent`, block: b.id };
+    if (!(await exists(join(o.filesFolder, source)))) return { ok: false, error: say(locale, "workflows-save-code-absent", { source }), block: b.id };
   }
 
   const text = JSON.stringify(o.raw, null, 2) + "\n";
-  if (Buffer.byteLength(text) > WORKFLOW_MAX_SIZE) return { ok: false, error: `Workflow trop gros : ${WORKFLOW_MAX_SIZE / 1024} Ko au plus` };
+  if (Buffer.byteLength(text) > WORKFLOW_MAX_SIZE) return { ok: false, error: say(locale, "workflows-save-too-big", { kb: String(WORKFLOW_MAX_SIZE / 1024) }) };
   const target = join(o.filesFolder, "workflow.json");
   if ((await exists(target)) && !(await inFolder(o.filesFolder, "workflow.json"))) {
-    return { ok: false, error: "workflow.json sort du dossier du widget" };
+    return { ok: false, error: say(locale, "workflows-file-leaves-folder") };
   }
 
   const before = await currentWorkflow(o.filesFolder, context);
@@ -140,34 +141,32 @@ export async function saveWorkflow(o: {
   return { ok: true, written: true, memoryErased: erasedMemory };
 }
 
-const INVALID_NAME = "Nom de fichier invalide";
-const TOO_BIG = `Fichier trop gros : ${CODE_MAX_BYTES / 1024} Ko au plus`;
-const LEAVES_FOLDER = "Le fichier sort du dossier du widget";
+const tooBig = (locale: string) => say(locale, "workflows-code-too-big", { kb: String(CODE_MAX_BYTES / 1024) });
 
-export async function readCodeFile(filesFolder: string, name: string): Promise<{ text: string } | { absent: true } | { error: string }> {
-  if (!CODE_NAME.test(name)) return { error: INVALID_NAME };
+export async function readCodeFile(filesFolder: string, name: string, locale = "en"): Promise<{ text: string } | { absent: true } | { error: string }> {
+  if (!CODE_NAME.test(name)) return { error: say(locale, "workflows-code-invalid-name") };
   const path = join(filesFolder, name);
   if (!(await exists(path))) return { absent: true };
   try {
-    if (!(await inFolder(filesFolder, name))) return { error: LEAVES_FOLDER };
-    if ((await stat(path)).size > CODE_MAX_BYTES) return { error: TOO_BIG };
+    if (!(await inFolder(filesFolder, name))) return { error: say(locale, "workflows-code-leaves-folder") };
+    if ((await stat(path)).size > CODE_MAX_BYTES) return { error: tooBig(locale) };
     return { text: await readFile(path, "utf8") };
   } catch {
-    return { error: "Fichier illisible" };
+    return { error: say(locale, "workflows-code-unreadable") };
   }
 }
 
 /** Writes a widget's `.mjs` as is: its content is neither checked nor run. */
-export async function storeCode(filesFolder: string, name: string, text: string): Promise<{ ok: true } | { ok: false; error: string }> {
-  if (!CODE_NAME.test(name)) return { ok: false, error: INVALID_NAME };
-  if (Buffer.byteLength(text) > CODE_MAX_BYTES) return { ok: false, error: TOO_BIG };
-  if (!(await folderExists(filesFolder))) return { ok: false, error: WIDGET_NOT_FOUND };
+export async function storeCode(filesFolder: string, name: string, text: string, locale = "en"): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!CODE_NAME.test(name)) return { ok: false, error: say(locale, "workflows-code-invalid-name") };
+  if (Buffer.byteLength(text) > CODE_MAX_BYTES) return { ok: false, error: tooBig(locale) };
+  if (!(await folderExists(filesFolder))) return { ok: false, error: say(locale, "workflows-save-widget-not-found") };
   const path = join(filesFolder, name);
-  if ((await exists(path)) && !(await inFolder(filesFolder, name))) return { ok: false, error: LEAVES_FOLDER };
+  if ((await exists(path)) && !(await inFolder(filesFolder, name))) return { ok: false, error: say(locale, "workflows-code-leaves-folder") };
   try {
     await writeAtomic(path, text);
   } catch {
-    return { ok: false, error: "Écriture impossible" };
+    return { ok: false, error: say(locale, "workflows-code-write-failed") };
   }
   return { ok: true };
 }

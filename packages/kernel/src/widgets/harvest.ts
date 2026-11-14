@@ -28,7 +28,7 @@ import { withMemory, writeMemory, readMemory, type BlocksMemory } from "../workf
 import { countNew } from "./novelties.js";
 import { startTooBig } from "../workflows/protocol.js";
 import { REPLAY_DEPTH, REPLAY_TOO_BIG, replayPlan } from "../workflows/replay.js";
-import { INVALID_WORKFLOW_PREFIX, type Owner } from "../workflows/schema.js";
+import { type Owner } from "../workflows/schema.js";
 import type { ValidationContext, ValidWorkflow } from "../workflows/validate.js";
 
 // Moved into the workflow engine; re-exported for the modules and tests that take them here.
@@ -105,7 +105,7 @@ const ERROR_PATTERNS = [
   ...grantRequiredPatterns(),
   // Written by the validation of workflow.json (drafted by the agent), never by the container. A widget can throw the same
   // text: it is then `erreurNoyau` (absent) that says so.
-  new RegExp(`^${escapeChar(INVALID_WORKFLOW_PREFIX)}`),
+  ...inEveryLanguage("workflows-invalid-prefix").map((p) => new RegExp(`^${escapeChar(p)}`)),
 ];
 
 /**
@@ -126,13 +126,13 @@ type WidgetWorkflow =
   | { t: "invalid"; error: string };
 
 /** What the widget's declaration changes to the rules of its workflow. */
-export function validationContext(d: DeclarationWidget): ValidationContext {
-  return { web: d.sources.web, maxDurationMinutes: d.harvest?.maxDurationMinutes ?? null, owner: "widget", input: false };
+export function validationContext(d: DeclarationWidget, locale = "en"): ValidationContext {
+  return { web: d.sources.web, maxDurationMinutes: d.harvest?.maxDurationMinutes ?? null, owner: "widget", input: false, locale: locale };
 }
 
-async function widgetWorkflow(widget: WidgetRead): Promise<WidgetWorkflow> {
+async function widgetWorkflow(widget: WidgetRead, locale: string): Promise<WidgetWorkflow> {
   if ("error" in widget) return { t: "unreadable", error: widget.error };
-  const parsed = await readWorkflow(widget.folder, validationContext(widget.declaration));
+  const parsed = await readWorkflow(widget.folder, validationContext(widget.declaration, locale));
   if (!parsed) return { t: "absent" };
   if (!parsed.result.ok) return { t: "invalid", error: truncate(parsed.result.error, MAX_ERROR) };
   return { t: "ok", valid: parsed.result.valid, declaration: widget.declaration };
@@ -293,11 +293,11 @@ export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
       kernelError: true,
       blocks: blocks,
     };
-    await writeRun(dataFolder, e);
+    await writeRun(dataFolder, e, loc(o));
     return e.id;
   };
 
-  const parsed = await widgetWorkflow(widget);
+  const parsed = await widgetWorkflow(widget, loc(o));
   // The widget's read error may quote its files: it counts as written by the widget.
   if (parsed.t === "unreadable") return conclude({ status: "error", error: parsed.error, widgetError: true });
   if (parsed.t === "absent") return conclude({ status: "error", error: NO_WORKFLOW_ERROR(loc(o)) });
@@ -387,7 +387,7 @@ export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
    * previous memory stays, except for a progressive run that returns its last safe memory (`memoire`).
    */
   const concludeWithoutData = async (e: Execution, r: Parameters<typeof conclude>[0], memory?: BlocksMemory | null): Promise<HarvestResult> => {
-    await writeRun(dataFolder, e);
+    await writeRun(dataFolder, e, loc(o));
     if (await removedGrant()) return denied();
     if (memory) {
       await keepMemory(memory);
@@ -418,7 +418,7 @@ export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
       }
       if (await removedGrant()) return denied();
     }
-    await writeRun(dataFolder, execution);
+    await writeRun(dataFolder, execution, loc(o));
     if (await removedGrant()) return denied();
     const ok = await conclude({ status: "ok", data: outcome.output.value, log: log, run: execution.id });
     // Withdrawn during the state write: « ok » must not overwrite the accord-requis written by refuserAccord.
@@ -462,7 +462,7 @@ export async function runAttempt(o: HarvestOptions & { origin: string; start: st
   const dataFolder = join(widgetsFolder, id);
   const denial = (error: string): AttemptResult => ({ ok: false, error: error });
 
-  const parsed = await widgetWorkflow(widget);
+  const parsed = await widgetWorkflow(widget, loc(o));
   if (parsed.t === "absent") return denial(NO_WORKFLOW_ERROR(loc(o)));
   if (parsed.t !== "ok") return denial(parsed.error);
   const { valid: valid, declaration } = parsed;
@@ -522,7 +522,7 @@ export async function runAttempt(o: HarvestOptions & { origin: string; start: st
   execution.id = attemptId(execution.start);
   execution.attempt = { start: o.start, origin: plan.origin };
   if (outcome.t !== "end" && o.interrupted?.() === true && execution.status !== "grant-required") markInterrupted(execution, loc(o));
-  await writeRun(dataFolder, execution);
+  await writeRun(dataFolder, execution, loc(o));
   const after = await removed();
   if (after) return after;
   return { ok: true, run: execution.id, status: execution.status };

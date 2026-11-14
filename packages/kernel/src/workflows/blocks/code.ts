@@ -3,20 +3,20 @@ import type { BlockDefinition } from "./common.js";
 
 export const definition: BlockDefinition = {
   type: "code",
-  label: "Code",
+  label: "workflows-block-code",
   family: "Logique/Code",
-  description: "Exécute un fichier .mjs du widget sur l'entrée reçue.",
+  description: "workflows-block-code-desc",
   input: "optional",
   fields: [
-    { name: "source", label: "Fichier", help: "Un fichier .mjs du dossier du widget.", required: true, default: "code.mjs", kind: "text" },
-    { name: "call", label: "Appel", required: false, default: "input", kind: "choice", choices: ["input", "harvest"] },
+    { name: "source", label: "workflows-field-file", help: "workflows-field-file-help", required: true, default: "code.mjs", kind: "text" },
+    { name: "call", label: "workflows-field-call", required: false, default: "input", kind: "choice", choices: ["input", "harvest"] },
   ],
   perItem: "no",
   chain: false,
   params: z
     .object({
       // A file name from the widget's folder, nothing else: no path, no « .. ».
-      source: z.string().regex(/^[a-z0-9-]+\.mjs$/, "fichier .mjs du dossier du widget attendu"),
+      source: z.string().regex(/^[a-z0-9-]+\.mjs$/, "workflows-val-mjs-file"),
       call: z.enum(["input", "harvest"]).default("input"),
     })
     .strict(),

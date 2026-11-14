@@ -71,8 +71,8 @@ export const defaultRunner: Runner = (command, args, opts = {}) => {
       (error, stdout, stderr) => {
         if (!error) return resolve({ code: 0, stdout, stderr });
         const e = error as NodeJS.ErrnoException & { killed?: boolean; code?: number | string };
-        if (e.code === "ENOENT") return resolve({ code: 127, stdout, stderr: `${command} introuvable` });
-        if (e.killed && opts.delayMs) return resolve({ code: CODE_TIMEOUT_EXCEEDED, stdout, stderr: "Délai dépassé" });
+        if (e.code === "ENOENT") return resolve({ code: 127, stdout, stderr: `${command} not found` });
+        if (e.killed && opts.delayMs) return resolve({ code: CODE_TIMEOUT_EXCEEDED, stdout, stderr: "Timed out" });
         resolve({ code: typeof e.code === "number" ? e.code : 1, stdout, stderr });
       },
     );
@@ -88,7 +88,7 @@ export const defaultRunner: Runner = (command, args, opts = {}) => {
  */
 function runCancelable(command: string, args: string[], signal: AbortSignal, delayMs?: number): Promise<RunResult> {
   return new Promise((resolve) => {
-    if (signal.aborted) return resolve({ code: CODE_CANCELLED, stdout: "", stderr: "Annulé" });
+    if (signal.aborted) return resolve({ code: CODE_CANCELLED, stdout: "", stderr: "Cancelled" });
     const child = spawn(command, args, { env: { ...process.env, PATH: toolsPath() }, stdio: ["ignore", "pipe", "pipe"], detached: true });
     const pid = child.pid;
     if (pid !== undefined) keepGroup(pid);
@@ -125,11 +125,11 @@ function runCancelable(command: string, args: string[], signal: AbortSignal, del
       resolve(r);
     };
     child.on("error", (e: NodeJS.ErrnoException) =>
-      finish(e.code === "ENOENT" ? { code: 127, ...sorties, stderr: `${command} introuvable` } : { code: 1, ...sorties, stderr: e.message }),
+      finish(e.code === "ENOENT" ? { code: 127, ...sorties, stderr: `${command} not found` } : { code: 1, ...sorties, stderr: e.message }),
     );
     child.on("close", (code) => {
-      if (signal.aborted) return finish({ code: CODE_CANCELLED, ...sorties, stderr: sorties.stderr || "Annulé" });
-      if (delayExceeded) return finish({ code: CODE_TIMEOUT_EXCEEDED, ...sorties, stderr: "Délai dépassé" });
+      if (signal.aborted) return finish({ code: CODE_CANCELLED, ...sorties, stderr: sorties.stderr || "Cancelled" });
+      if (delayExceeded) return finish({ code: CODE_TIMEOUT_EXCEEDED, ...sorties, stderr: "Timed out" });
       finish({ code: code ?? 1, ...sorties });
     });
   });

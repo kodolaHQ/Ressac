@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
-import { STREAMING_WARNING, INPUT_WARNING, WEB_WITHOUT_DURATION_WARNING, warnWorkflow, validateWorkflow, type Workflow } from "../../src/index.js";
+import { STREAMING_WARNING, INPUT_WARNING, WEB_WITHOUT_DURATION_WARNING, warnWorkflow as warnIn, validateWorkflow, type Workflow } from "../../src/index.js";
 
+const warnWorkflow = (w: Workflow, ctx: Parameters<typeof warnIn>[1], valid?: Parameters<typeof warnIn>[2]) => warnIn(w, { ...ctx, locale: "fr" }, valid);
 const block = (id: string, type: string, params: Record<string, unknown>) => ({ id, type, position: { x: 0, y: 0 }, params: params });
 const wf = (...blocks: ReturnType<typeof block>[]): Workflow => ({ version: 1, blocks: blocks, links: [] });
 const account = { sources: { account: ["app.daily.dev"], public: ["hn.algolia.com"] }, config: {} };
@@ -62,16 +63,16 @@ test("live behind list.keep: STREAMING_WARNING on the output; behind a chain: no
     if (!r.ok) throw new Error(r.error);
     return warnWorkflow(r.valid.workflow, without, r.valid);
   };
-  expect(warn(raw(block("g", "list.keep", { count: 2 })))).toEqual([{ block: "s", message: STREAMING_WARNING }]);
+  expect(warn(raw(block("g", "list.keep", { count: 2 })))).toEqual([{ block: "s", message: STREAMING_WARNING("fr") }]);
   expect(warn(raw(block("p", "source.page", { url: "https://x.fr/{url}", perItem: true })))).toEqual([]);
-  expect(STREAMING_WARNING).toBe("rien à publier au fil de l'eau : l'entrée de la sortie n'est pas traitée élément par élément");
+  expect(STREAMING_WARNING("fr")).toBe("rien à publier au fil de l'eau : l'entrée de la sortie n'est pas traitée élément par élément");
 });
 
 test("web.search without a declared maximum duration: warning (not an error); with one, or without the context, nothing", () => {
   const w = wf(block("c", "web.search", { query: "x" }), block("p", "source.page", { url: "https://a.fr" }));
   const withoutAccount = { sources: { account: [], public: [] }, config: {} };
-  expect(WEB_WITHOUT_DURATION_WARNING).toBe("sans maxDurationMinutes, ce widget peut être coupé à 150 s : demande à l'agent de déclarer maxDurationMinutes");
-  expect(warnWorkflow(w, { ...withoutAccount, maxDurationMinutes: null })).toEqual([{ block: "c", message: WEB_WITHOUT_DURATION_WARNING }]);
+  expect(WEB_WITHOUT_DURATION_WARNING("fr")).toBe("sans maxDurationMinutes, ce widget peut être coupé à 150 s : demande à l'agent de déclarer maxDurationMinutes");
+  expect(warnWorkflow(w, { ...withoutAccount, maxDurationMinutes: null })).toEqual([{ block: "c", message: WEB_WITHOUT_DURATION_WARNING("fr") }]);
   expect(warnWorkflow(w, { ...withoutAccount, maxDurationMinutes: 30 })).toEqual([]);
   expect(warnWorkflow(w, withoutAccount)).toEqual([]);
 });
@@ -84,12 +85,23 @@ test("optional {config.ville?}: never flagged, even absent from the config", () 
 test("{input} in source.page of an action without input: INPUT_WARNING; with input: none; in a widget: none", () => {
   const w = wf(block("p", "source.page", { url: "https://x.fr/?q={input}" }), block("q", "source.page", { url: "https://x.fr/?q={input?}" }), block("r", "source.page", { url: "https://x.fr/" }));
   const base = { sources: { account: [], public: [] }, config: {} };
-  expect(INPUT_WARNING).toBe("{input} : l'action ne déclare pas de saisie (input)");
+  expect(INPUT_WARNING("fr")).toBe("{input} : l'action ne déclare pas de saisie (input)");
   expect(warnWorkflow(w, { ...base, owner: "action", input: false })).toEqual([
-    { block: "p", message: INPUT_WARNING },
-    { block: "q", message: INPUT_WARNING },
+    { block: "p", message: INPUT_WARNING("fr") },
+    { block: "q", message: INPUT_WARNING("fr") },
   ]);
   expect(warnWorkflow(w, { ...base, owner: "action", input: true })).toEqual([]);
   expect(warnWorkflow(w, { ...base, owner: "widget", input: false })).toEqual([]);
   expect(warnWorkflow(w, base)).toEqual([]);
+});
+
+test("the warnings follow the language of the context", () => {
+  const w = wf(block("c", "web.search", { query: "q" }));
+  expect(warnIn(w, { sources: { account: [], public: [] }, config: {}, maxDurationMinutes: null, locale: "en" })).toEqual([
+    { block: "c", message: "without maxDurationMinutes, this widget may be cut off at 150 s: ask the agent to declare maxDurationMinutes" },
+  ]);
+  expect(warnIn(wf(block("r", "source.page", { url: "{config.mot}" })), { sources: { account: [], public: [] }, config: {}, locale: "en" })).toEqual([
+    { block: "r", message: "config.mot is missing from the widget's configuration" },
+  ]);
+  expect(INPUT_WARNING("en")).toBe("{input}: the action does not declare an input (input)");
 });

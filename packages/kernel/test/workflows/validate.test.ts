@@ -1,8 +1,10 @@
 import { readFileSync } from "node:fs";
 import { expect, test } from "vitest";
-import { DEFAULT_CONTEXT, STREAMING_ACTION, OUTPUT_PAGE_DENIED, OUTPUT_PAGE_REQUIRED, WEB_REQUIRED, validateWorkflow, implicitWorkflow } from "../../src/index.js";
+import { DEFAULT_CONTEXT, STREAMING_ACTION, OUTPUT_PAGE_DENIED, OUTPUT_PAGE_REQUIRED, WEB_REQUIRED, validateWorkflow as validateIn, implicitWorkflow, type ValidationContext } from "../../src/index.js";
+import { kernelError } from "../../src/widgets/harvest.js";
 import { BLOCK_REGISTRY } from "../../src/workflows/blocks/index.js";
 
+const validateWorkflow = (raw: unknown, ctx: ValidationContext = DEFAULT_CONTEXT) => validateIn(raw, { ...ctx, locale: "fr" });
 const output = (id = "s", extra: object = {}) => ({ id, type: "output", params: { to: "widget", ...extra } });
 const wf = (blocks: unknown[], links: unknown[] = []) => ({ version: 1, blocks: blocks, links: links });
 const denial = (raw: unknown): string => {
@@ -255,7 +257,7 @@ const withSearch = (params: Record<string, unknown> = {}) =>
   );
 
 test('web.search without web: « Workflow invalide : web.search : le widget doit déclarer "web": true », block concerned', () => {
-  expect(WEB_REQUIRED).toBe('web.search : le widget doit déclarer "web": true');
+  expect(WEB_REQUIRED("fr")).toBe('web.search : le widget doit déclarer "web": true');
   const expected = { ok: false, error: 'Workflow invalide : web.search : le widget doit déclarer "web": true', block: "w" };
   expect(validateWorkflow(withSearch())).toEqual(expected);
   expect(validateWorkflow(withSearch(), { web: false, maxDurationMinutes: 30, owner: "widget" as const, input: false })).toEqual(expected);
@@ -277,13 +279,13 @@ const withOutput = (extra: object, to?: string) =>
   wf([stream, { id: "s", type: "output", params: { ...(to === undefined ? {} : { to: to }), ...extra } }], [{ from: "f", to: "s" }]);
 
 test("a widget with to \"page\" is refused (OUTPUT_PAGE_DENIED, block = the output)", () => {
-  expect(OUTPUT_PAGE_DENIED).toBe('output : to "page" seulement dans une action');
-  expect(validateWorkflow(withOutput({}, "page"))).toEqual({ ok: false, error: "Workflow invalide : " + OUTPUT_PAGE_DENIED, block: "s" });
+  expect(OUTPUT_PAGE_DENIED("fr")).toBe('output : to "page" seulement dans une action');
+  expect(validateWorkflow(withOutput({}, "page"))).toEqual({ ok: false, error: "Workflow invalide : " + OUTPUT_PAGE_DENIED("fr"), block: "s" });
 });
 
 test("an action with to \"widget\" or without to is refused (OUTPUT_PAGE_REQUIRED)", () => {
-  expect(OUTPUT_PAGE_REQUIRED).toBe('output : une action rend une page (to: "page")');
-  const expected = { ok: false, error: "Workflow invalide : " + OUTPUT_PAGE_REQUIRED, block: "s" };
+  expect(OUTPUT_PAGE_REQUIRED("fr")).toBe('output : une action rend une page (to: "page")');
+  const expected = { ok: false, error: "Workflow invalide : " + OUTPUT_PAGE_REQUIRED("fr"), block: "s" };
   expect(validateWorkflow(withOutput({}, "widget"), action)).toEqual(expected);
   expect(validateWorkflow(withOutput({}), action)).toEqual(expected);
 });
@@ -295,8 +297,8 @@ test("an action with to \"page\" is valid, output.to === \"page\"", () => {
 });
 
 test("live in an action: STREAMING_ACTION", () => {
-  expect(STREAMING_ACTION).toBe("output.live : pas dans une action");
-  expect(validateWorkflow(withOutput({ live: true }, "page"), action)).toEqual({ ok: false, error: "Workflow invalide : " + STREAMING_ACTION, block: "s" });
+  expect(STREAMING_ACTION("fr")).toBe("output.live : pas dans une action");
+  expect(validateWorkflow(withOutput({ live: true }, "page"), action)).toEqual({ ok: false, error: "Workflow invalide : " + STREAMING_ACTION("fr"), block: "s" });
   expect(validateWorkflow(withOutput({ live: false }, "page"), action).ok).toBe(true);
 });
 
@@ -306,4 +308,19 @@ test("a widget's validated parameters are identical to before (to \"widget\", no
   expect(DEFAULT_CONTEXT).toEqual({ web: false, maxDurationMinutes: null, owner: "widget", input: false });
   expect(r.valid.workflow.blocks.find((b) => b.id === "output")!.params).toEqual({ to: "widget" });
   expect(validateWorkflow(withOutput({})).ok).toBe(true);
+});
+
+test("the messages follow the language of the context; a stored French error is still recognised", () => {
+  const en = { ...DEFAULT_CONTEXT, locale: "en" };
+  expect(validateIn(wf([output("s"), output("t")]), en)).toEqual({ ok: false, error: "Invalid workflow: several outputs: s, t" });
+  expect(validateIn(wf([{ id: "w", type: "web.search", params: { query: "q" } }, output()], [{ from: "w", to: "s" }]), en)).toMatchObject({
+    error: 'Invalid workflow: web.search: the widget must declare "web": true',
+  });
+  expect(validateIn(wf([{ id: "p", type: "source.page", params: { url: "u", scroll: 99 } }, output()], [{ from: "p", to: "s" }]), en)).toMatchObject({
+    error: "Invalid workflow: p.scroll: 20 at most",
+  });
+  expect(validateIn(wf([{ id: "k", type: "list.keep", params: { count: 1 } }, output()], [{ from: "k", to: "s" }]), en)).toMatchObject({ error: "Invalid workflow: k: missing input (link a block before it)" });
+  expect(validateIn(wf([{ id: "o", type: "output", params: { to: "ailleurs" } }]), en)).toMatchObject({ error: expect.stringContaining("unknown to: ailleurs") });
+  expect(kernelError("Workflow invalide : cycle : a → b → a")).toBe(true);
+  expect(kernelError("Invalid workflow: cycle: a → b → a")).toBe(true);
 });

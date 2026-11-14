@@ -1,5 +1,6 @@
 import { lstat, readFile, realpath, stat } from "node:fs/promises";
 import { join, sep } from "node:path";
+import { say } from "../i18n.js";
 import { WORKFLOW_MAX_SIZE } from "./schema.js";
 import { DEFAULT_CONTEXT, workflowError, validateWorkflow, implicitWorkflow, type ValidationContext, type ValidationResult } from "./validate.js";
 
@@ -16,21 +17,21 @@ export async function exists(path: string): Promise<boolean> {
 }
 
 /** Reads workflow.json as JSON, without following a symbolic link that would leave the widget's folder. */
-export async function readRawWorkflow(folder: string): Promise<{ raw: unknown } | { error: string }> {
+export async function readRawWorkflow(folder: string, locale = "en"): Promise<{ raw: unknown } | { error: string }> {
   try {
     const [root, real] = await Promise.all([realpath(folder), realpath(join(folder, "workflow.json"))]);
-    if (!real.startsWith(root + sep)) return { error: "workflow.json sort du dossier du widget" };
-    if ((await stat(real)).size > WORKFLOW_MAX_SIZE) return { error: `workflow.json dépasse ${WORKFLOW_MAX_SIZE / 1024} Ko` };
+    if (!real.startsWith(root + sep)) return { error: say(locale, "workflows-file-leaves-folder") };
+    if ((await stat(real)).size > WORKFLOW_MAX_SIZE) return { error: say(locale, "workflows-file-too-big", { kb: String(WORKFLOW_MAX_SIZE / 1024) }) };
     return { raw: JSON.parse(await readFile(real, "utf8")) };
   } catch (e) {
     // Fixed text: the system's message would quote Mac paths.
-    return { error: e instanceof SyntaxError ? "workflow.json illisible (pas du JSON valide)" : "workflow.json illisible" };
+    return { error: say(locale, e instanceof SyntaxError ? "workflows-file-bad-json" : "workflows-file-unreadable") };
   }
 }
 
 async function readTextFile(folder: string, ctx: ValidationContext): Promise<ValidationResult> {
-  const parsed = await readRawWorkflow(folder);
-  return "error" in parsed ? workflowError(parsed.error) : validateWorkflow(parsed.raw, ctx);
+  const parsed = await readRawWorkflow(folder, ctx.locale);
+  return "error" in parsed ? workflowError(ctx.locale ?? "en", parsed.error) : validateWorkflow(parsed.raw, ctx);
 }
 
 /**

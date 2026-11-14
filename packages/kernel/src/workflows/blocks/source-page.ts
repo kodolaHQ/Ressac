@@ -4,17 +4,17 @@ import { FIELD_PER_ELEMENT, fieldsPerElementOnly, Template, ParamsPerElement, ty
 
 export const definition: BlockDefinition = {
   type: "source.page",
-  label: "Lire une page",
+  label: "workflows-block-source-page",
   family: "Sources",
-  description: "Lit le texte d'une page web.",
+  description: "workflows-block-source-page-desc",
   input: "perItem",
   fields: [
-    { name: "url", label: "Adresse", help: "Les {chemins} sont remplacés par les valeurs de l'élément.", required: true, kind: "template" },
-    { name: "account", label: "Avec mon compte", required: false, default: false, kind: "checkbox" },
+    { name: "url", label: "workflows-field-address", help: "workflows-help-templates", required: true, kind: "template" },
+    { name: "account", label: "workflows-field-account", required: false, default: false, kind: "checkbox" },
     {
       name: "scroll",
-      label: "Écrans à faire défiler",
-      help: "Pour une page qui charge en défilant. Vide ou 0 : pas de défilement.",
+      label: "workflows-field-scroll",
+      help: "workflows-field-scroll-help",
       required: false,
       kind: "number",
       min: 0,
@@ -23,7 +23,7 @@ export const definition: BlockDefinition = {
     },
     FIELD_PER_ELEMENT,
     ...fieldsPerElementOnly(),
-    { name: "field", label: "Champ du résultat", required: false, default: "page", kind: "text" },
+    { name: "field", label: "workflows-field-result-field", required: false, default: "page", kind: "text" },
   ],
   perItem: "option",
   chain: true,

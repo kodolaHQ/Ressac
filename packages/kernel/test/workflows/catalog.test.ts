@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import { blockCatalog } from "../../src/index.js";
 import { BLOCK_REGISTRY } from "../../src/workflows/blocks/index.js";
 
-const catalog = blockCatalog();
+const catalog = blockCatalog("fr");
 const from = (type: string) => catalog.find((b) => b.type === type)!;
 const field = (type: string, name: string) => from(type).fields.find((c) => c.name === name)!;
 
@@ -113,4 +113,14 @@ test("web.search is in the Sources family, after Récupérer une adresse", () =>
   expect(field("web.search", "count")).toMatchObject({ kind: "number", required: false, default: 8, min: 1, max: 20, integer: true });
   expect(field("web.search", "field")).toMatchObject({ kind: "text", required: false, default: "search" });
   expect(BLOCK_REGISTRY.get("web.search")!.chain).toBe(true);
+});
+
+test("the catalog speaks the asked language; every label, description and help is a known message", () => {
+  expect(blockCatalog("en").find((b) => b.type === "output")!.label).toBe("Output to the widget");
+  expect(blockCatalog().find((b) => b.type === "output")!.label).toBe("Output to the widget");
+  for (const locale of ["fr", "en"]) {
+    for (const b of blockCatalog(locale)) {
+      for (const text of [b.label, b.description, ...b.fields.flatMap((c) => [c.label, c.help ?? ""])]) expect(text, `${locale} ${b.type}`).not.toMatch(/^workflows-/);
+    }
+  }
 });

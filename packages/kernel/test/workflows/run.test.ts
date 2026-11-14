@@ -789,7 +789,7 @@ describe("executerWorkflow: web search and open reads", () => {
   it("without web: WEB_REQUIRED, no call to the bridge", async () => {
     const { b, bridge: bridge } = await webBench(afterwards([`w.searchWeb("x")`]), { html: { [searchUrl("x", BASE)]: page("results.html") } });
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(value(r)).toEqual([`erreur: ${WEB_REQUIRED}`]);
+    expect(value(r)).toEqual([`erreur: ${WEB_REQUIRED("fr")}`]);
     expect(bridge.calls).toEqual([]);
   });
 
@@ -801,7 +801,7 @@ describe("executerWorkflow: web search and open reads", () => {
       html: { [searchUrl("x", BASE)]: page("results.html") },
     });
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(value(r)).toEqual([`erreur: ${WEB_REQUIRED}`]);
+    expect(value(r)).toEqual([`erreur: ${WEB_REQUIRED("fr")}`]);
     expect(html()).toEqual([]);
   });
 

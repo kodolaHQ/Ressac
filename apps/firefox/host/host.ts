@@ -449,7 +449,7 @@ const rpc = createRpc({
       executionWidget(widgetsFolder, typeof p?.id === "string" ? p.id : "", typeof p?.run === "string" ? p.run : ""),
     // The workflow builder: inputs checked with the shared
     // schemas, a bad one answered with INVALID_ARGUMENT's shape. The private-space refusal of an action is the chrome's (api.ts).
-    "workflow.catalog": () => blockCatalog(),
+    "workflow.catalog": () => blockCatalog(hostLocale()),
     "workflow.read": (p: { target?: unknown }) => {
       const target = TargetSchema.safeParse(p?.target);
       if (!target.success) return null;
