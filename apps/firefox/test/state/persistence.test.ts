@@ -117,7 +117,13 @@ test("AI: an existing session keeps it on, a new install starts off, aiSetup is 
   delete old.settings.aiEnabled;
   writeFileSync(join(d, "session.json"), JSON.stringify(old));
   expect((await loadSession(d)).settings.aiEnabled).toBe(true);
+  old.settings.aiEnabled = "yes";
+  writeFileSync(join(d, "session.json"), JSON.stringify(old));
+  expect((await loadSession(d)).settings.aiEnabled).toBe(true);
   expect(initialState().settings.aiEnabled).toBe(false);
+  const bad = folder();
+  writeFileSync(join(bad, "session.json"), "{ not json");
+  expect((await loadSession(bad)).settings.aiEnabled).toBe(true);
   const recorder = new SessionRecorder(d, 10_000);
   recorder.schedule({ ...initialState(), aiSetup: true });
   await recorder.clear();

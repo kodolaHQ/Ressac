@@ -72,7 +72,7 @@ const SchemaSession = z.object({
     sidebarSide: z.enum(["left", "right"]).catch("left"),
     vimMode: z.boolean().catch(false),
     // A session saved before the setting existed already had AI: it stays on.
-    aiEnabled: z.boolean().default(true),
+    aiEnabled: z.boolean().catch(true),
     // A session saved before the setting existed gets the default.
     startOnHome: z.boolean().catch(true),
     // A session saved before languages existed was in French: it stays so. A language no longer shipped → the Mac's.
@@ -128,6 +128,8 @@ async function setAside(path: string, reason: "corrupt" | "unreadable"): Promise
 /** A user who already had a session (even a damaged one) is not welcomed again. */
 function known(s: BrowserState): BrowserState {
   s.settings.onboarded = true;
+  // No welcome to ask, and this user already had AI.
+  s.settings.aiEnabled = true;
   return s;
 }
 
