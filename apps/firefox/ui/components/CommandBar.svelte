@@ -95,7 +95,8 @@
   $effect(() => {
     const t = text.trim();
     const n = ++request;
-    if (!t) {
+    // Demander hides these lines: no lookup until back in Chercher (this effect re-runs on the switch).
+    if (!t || asking) {
       hist = [];
       marks = [];
       return;
@@ -154,6 +155,7 @@
 
   /** Hands the question to the agent; the bar closes once the agent panel took it, else it stays with the question. */
   function handOff(question: string, shown: AskHit[]) {
+    if (working) return;
     const o = command.open;
     working = true;
     void api.ask.handOff(win.id, question, shown).then((ok) => {
@@ -171,7 +173,6 @@
   }
 
   async function askEnter() {
-    if (working) return;
     if (hits) {
       const h = hits[askChosen];
       if (h) openHit(h);
@@ -179,7 +180,7 @@
       return;
     }
     const question = text.trim().slice(0, ASK_MAX);
-    if (!question) return;
+    if (!question || working) return;
     const o = command.open;
     const n = ++asked;
     working = true;
@@ -333,9 +334,10 @@
     if (e.key === "Tab") {
       if (!e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) toggleMode();
     } else if (asking) {
+      // Arrows stop here even without hits: the modals under the veil must not get them.
       const n = hits ? hits.length + 1 : 0;
-      if (e.key === "ArrowDown" && n) askChosen = (askChosen + 1) % n;
-      else if (e.key === "ArrowUp" && n) askChosen = (askChosen - 1 + n) % n;
+      if (e.key === "ArrowDown") n && (askChosen = (askChosen + 1) % n);
+      else if (e.key === "ArrowUp") n && (askChosen = (askChosen - 1 + n) % n);
       else if (e.key === "Enter") {
         if (!e.repeat) void askEnter();
       } else return;
