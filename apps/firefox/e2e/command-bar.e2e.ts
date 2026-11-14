@@ -466,6 +466,18 @@ describe("Command bar", () => {
     expect(s).toHaveLength(2);
   });
 
+  it("a history row shows the site's favicon seen on its tab, as a data: URL", async () => {
+    const id = await open("/icone");
+    await waitTitle(id, "icone");
+    await waitState((s) => s.tabs[id]?.favicon ?? "", (f) => f.startsWith("data:image/"));
+    await waitUi(m, "return (await ui.ressac.history.search('icone', 5, true))[0]?.favicon?.startsWith('data:image/')", [], 15_000);
+    await inUi(m, "ui.ressac.navigate(arguments[0], arguments[1])", [id, server.url + "/a.html"]);
+    await waitTitle(id, "Page A");
+    await pressKeys(m, "Meta+t");
+    await type("icone");
+    await waitUi(m, `return doc.querySelector('[data-testid="command-row"][data-type="history"] img')?.getAttribute("src")?.startsWith("data:image/") ?? false`);
+  });
+
   // historique.spec.ts:81
   it("a URL visited in two spaces is offered once", async () => {
     const a = await open("/a.html");

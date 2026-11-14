@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { History, IMPORTED_SPACE } from "../core/history";
+import { History, ICON_MAX, IMPORTED_SPACE } from "../core/history";
 
 let h: History;
 let path: string;
@@ -18,7 +18,7 @@ afterEach(() => h.close());
 test("noting the same URL twice → one row, visites = 2, title updated", () => {
   h.note({ spaceId: "", private: false, url: "https://a.fr/", title: "Ancien", date: date("2026-10-01T10:00:00Z") });
   h.note({ spaceId: "", private: false, url: "https://a.fr/", title: "Nouveau", date: date("2026-10-02T10:00:00Z") });
-  expect(h.recents()).toEqual([{ url: "https://a.fr/", title: "Nouveau", lastVisit: "2026-10-02T10:00:00.000Z", visits: 2, spaceId: "", private: false, kept: false }]);
+  expect(h.recents()).toEqual([{ url: "https://a.fr/", title: "Nouveau", lastVisit: "2026-10-02T10:00:00.000Z", visits: 2, spaceId: "", private: false, kept: false, favicon: null }]);
 });
 
 test("rechercher finds by title and by URL, case-insensitively", () => {
@@ -383,5 +383,44 @@ describe("findPages: every group must match, title and URL before kept text", ()
     visit("https://a.fr/", "L'ÉTÉ à Bordeaux", null, d(12));
     expect(urls({ groups: [["ete"], ["bordeaux"]], limit: 3 })).toEqual(["https://a.fr/"]);
     expect(() => h.findPages({ groups: [['a" OR "b'], ["NEAR("]], limit: 3 })).not.toThrow();
+  });
+});
+
+describe("site favicons", () => {
+  const ICON = "data:image/png;base64,AAAA";
+  const visit = (url: string, spaceId = "e", priv = false) => h.note({ url, title: url, spaceId, private: priv });
+
+  test("noteIcon keeps a data:image/ icon per host, returned by search, recents and findPages", () => {
+    visit("https://a.fr/page");
+    visit("https://a.fr/autre");
+    visit("https://b.fr/");
+    h.noteIcon("https://a.fr/page", "e", ICON);
+    expect(h.search("a.fr").map((v) => v.favicon)).toEqual([ICON, ICON]);
+    expect(h.search("a.fr", 50, true).map((v) => v.favicon)).toEqual([ICON, ICON]);
+    expect(h.recents().find((v) => v.url === "https://b.fr/")?.favicon).toBeNull();
+    expect(h.findPages({ groups: [["autre"]], limit: 3 })).toMatchObject([{ url: "https://a.fr/autre", favicon: ICON }]);
+  });
+
+  test("noteIcon ignores http icons, oversize icons, non-http pages and private visits", () => {
+    visit("https://a.fr/");
+    visit("https://p.fr/", "P", true);
+    h.noteIcon("https://a.fr/", "e", "https://a.fr/favicon.ico");
+    h.noteIcon("https://a.fr/", "e", `data:image/png;base64,${"A".repeat(ICON_MAX)}`);
+    h.noteIcon("file:///x.html", "e", ICON);
+    h.noteIcon("https://p.fr/", "P", ICON);
+    expect(h.recents().map((v) => v.favicon)).toEqual([null, null]);
+  });
+
+  test("erase() drops every icon; erase(from) drops only those of hosts left without a visit", () => {
+    h.note({ url: "https://vieux.fr/", title: "V", spaceId: "e", private: false, date: date("2026-10-01T00:00:00Z") });
+    h.note({ url: "https://neuf.fr:8080/", title: "N", spaceId: "e", private: false, date: date("2026-10-05T00:00:00Z") });
+    h.noteIcon("https://vieux.fr/", "e", ICON);
+    h.noteIcon("https://neuf.fr:8080/", "e", ICON);
+    h.erase(date("2026-10-04T00:00:00Z"));
+    h.note({ url: "https://neuf.fr/", title: "N", spaceId: "e", private: false });
+    expect(h.recents().map((v) => [v.url, v.favicon])).toEqual([["https://neuf.fr/", null], ["https://vieux.fr/", ICON]]);
+    h.erase();
+    h.note({ url: "https://vieux.fr/", title: "V", spaceId: "e", private: false });
+    expect(h.recents()[0]!.favicon).toBeNull();
   });
 });

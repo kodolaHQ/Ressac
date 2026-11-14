@@ -7,6 +7,8 @@ export interface History {
   /** A committed top-level navigation of a Ressac tab; private and space read from the state now. http(s) only. */
   visit(id: TabId, url: string, title: string): void;
   title(id: TabId, url: string, title: string): void;
+  /** The tab's favicon (data:image/ only), kept per site for the ⌘T rows; never from a private space. */
+  icon(id: TabId, url: string, icon: string): void;
   /** The agent's memory of a page: dropped by the kernel for a private visit or a loopback URL. */
   retain(r: { url: string; spaceId: string; title: string; text: string }): void;
   /** Never rejects: [] while the host is down. */
@@ -34,6 +36,10 @@ export function createHistory(store: Store, host: AgentHost): History {
     title(id, url, title) {
       const c = context(id, url);
       if (c) host.notify("history.title", { url, spaceId: c.spaceId, title: title });
+    },
+    icon(id, url, icon) {
+      const c = context(id, url);
+      if (c && !c.private && icon.startsWith("data:image/")) host.notify("history.icon", { url, spaceId: c.spaceId, icon: icon });
     },
     retain: (r) => host.notify("history.keep", r),
     search: (text, limit, distinct) => ask("history.search", { text: text, limit: limit, distinct: distinct }, []),

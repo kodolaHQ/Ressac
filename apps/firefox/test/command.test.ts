@@ -7,7 +7,7 @@ import { projectSiteApp, siteSiteApp, paramRequest, commandLines, defaultParam, 
 
 const action = (id: string, name: string): ActionShown => ({ id, name: name, description: "", keywords: [], input: null, account: [], public: [], grant: true, last: null });
 const tab = (id: string, title: string, url = `https://${id}.fr/`): SourceTab => ({ id, title: title, url, favicon: null });
-const visit = (url: string, title = url): Visit => ({ url, title: title, lastVisit: "2026-01-01T00:00:00Z", visits: 1, spaceId: "e", private: false, kept: false });
+const visit = (url: string, title = url): Visit => ({ url, title: title, lastVisit: "2026-01-01T00:00:00Z", visits: 1, spaceId: "e", private: false, kept: false, favicon: null });
 const app = (id: string, name: string): SiteApp => ({ kind: "site", id, name: name, action: "open", favicon: null });
 const EMPTY: CommandSources = { actions: [], tabs: [], siteApps: [], history: [], bookmarks: [] };
 

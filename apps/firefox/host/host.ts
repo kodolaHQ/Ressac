@@ -600,6 +600,7 @@ const rpc = createRpc({
       return { count: hist?.importVisits(visits) ?? 0 };
     },
     "history.title": (p: { url: string; spaceId: string; title: string }) => hist?.updateTitle(p.url, p.spaceId, p.title),
+    "history.icon": (p: { url: string; spaceId: string; icon: string }) => hist?.noteIcon(p.url, p.spaceId, p.icon),
     "history.keep": (p: { url: string; spaceId: string; title: string; text: string }) => {
       if (keepable(p.url)) hist?.keep({ ...p, text: String(p.text) });
     },

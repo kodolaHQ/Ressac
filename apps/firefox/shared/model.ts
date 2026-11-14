@@ -294,6 +294,8 @@ export interface Visit {
   private: boolean;
   /** This visit's text is kept in the agent's memory. */
   kept: boolean;
+  /** The site's last favicon seen, a data:image/ URL (the UI has no network to fetch one). */
+  favicon: string | null;
 }
 
 export interface Download {
@@ -401,6 +403,6 @@ export const PAGE_LINE_CHANGED = "la ligne a changé";
 export const RANGE_OUTSIDE_BLOCK = "Un commentaire porte sur des lignes d'un seul bloc du diff.";
 
 /** A page the ⌘T bar's Demander mode found in the history (`ask.find`). */
-export type AskHit = { url: string; title: string; lastVisit: string; excerpt: string | null };
+export type AskHit = { url: string; title: string; lastVisit: string; excerpt: string | null; favicon: string | null };
 /** `ask.find`'s answer: 1 to 3 pages, or hand the question to the agent. */
 export type AskResult = { kind: "page"; hits: AskHit[] } | { kind: "agent" };
