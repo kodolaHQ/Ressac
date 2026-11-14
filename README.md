@@ -5,33 +5,41 @@
 <h1 align="center">Ressac</h1>
 
 <p align="center">
-  A macOS browser built on Firefox, with an AI agent at its side.<br>
-  <a href="README.fr.md">Lire en français</a>
+  <strong>A browser that grows with you.</strong><br>
+  Calm and minimal out of the box. Switch on the AI when you need it for harder work.<br><br>
+  <a href="https://getressac.app">getressac.app</a> · <a href="README.fr.md">Lire en français</a>
 </p>
+
+<p align="center"><sub>Closed beta · macOS 14+ · Apple Silicon · Open source</sub></p>
 
 <p align="center"><img src="docs/images/overview.jpg" alt="Ressac: sidebar with spaces, essentials and pinned tabs"></p>
 
-> **Beta.** Ressac is used every day by a small group of testers. Expect rough edges, and tell us about them.
+## Day one: just a calm browser
 
-*Ressac* is French for backwash: the wave that comes back to the shore. You send the agent out on the web, and it comes back with the answer.
+Firefox under the hood, a quiet sidebar, nothing to sign up for, nothing to switch on.
 
-## What it does
+- A vertical sidebar with **essentials** that stay loaded, pinned tabs and folders.
+- Import from Arc, Chrome, Brave, Edge, Vivaldi, Opera, Safari, Firefox and Zen, spaces and open tabs included.
+- Firefox add-ons work.
+- A bar for calls (Meet, Teams, Zoom…) and for audio or video playing in the background.
 
-**A calmer browser**
-- A vertical sidebar with **spaces**, each with its own colour, **essentials** that stay loaded, pinned tabs and folders.
+## Your way: spaces, auras, shortcuts
+
+- **Spaces**, each with its own colour, its aura, and its own logins if you want.
 - A command bar on <kbd>⌘T</kbd> / <kbd>⌘L</kbd> for addresses, bookmarks, history, tabs and actions; <kbd>⌃Tab</kbd> through recent tabs.
 - Remappable shortcuts and an optional Vim mode.
 - **Site apps**: a website in its own window, with its own logins, that remembers where you were.
-- A bar for calls (Meet, Teams, Zoom…) and for audio or video playing in the background.
-- Import from Arc, Chrome, Brave, Edge, Vivaldi, Opera, Safari, Firefox and Zen, spaces and open tabs included.
-- Firefox add-ons work.
+
+## When you're ready: switch on the AI
+
+*Ressac* is French for backwash: the wave that comes back to the shore. Send the agent out on the web, and it comes back with the answer.
 
 **An agent that browses with you**
 - Claude Code or Codex runs in a sandboxed container on your Mac, with **your own account**.
 - It browses in its own tab, which you can watch; a thumbnail shows what it is doing while you keep working.
 - Before a purchase or a choice, it fills a **live recap**: criteria, independent sources, offers, sourced pros and cons.
 - It asks before opening an address it wrote itself, and hands back control when a page needs you (a login, a captcha).
-- It can build site apps, actions and add-ons for you, and change a page's look on request (design mode).
+- It builds site apps, actions, add-ons and widgets for you, and changes a page's look on request (design mode).
 
 <p align="center"><img src="docs/images/live-recap.gif" alt="The agent researches robot vacuums and fills a live recap"></p>
 
@@ -54,19 +62,23 @@
   </tr>
 </table>
 
-## Install
+## Local and open
 
-Download the latest DMG from [Releases](../../releases), open it and drag Ressac to Applications. Ressac is signed and notarized by Apple.
+- **No account.** Ressac itself needs none. The agent uses your own Claude or ChatGPT account, an API key, or local models.
+- **Your browsing stays on your Mac.** The agent only sees the pages it opens in its own tab and what you give it.
+- **Open source.** Built on Firefox, under the MPL 2.0.
 
-- macOS 14 or later, Apple Silicon.
+During the beta, Ressac sends crash and error reports (without page addresses) and an anonymous install id to its developer, to fix bugs; turn it off in Réglages › Vie privée.
+
+## Get Ressac
+
+Ressac is in closed beta: [request an invite](https://getressac.app). Testers get a DMG signed and notarized by Apple, and Ressac then updates itself.
+
+- **To browse**: macOS 14 or later, Apple Silicon.
 - **For the agent**: Docker ([OrbStack](https://orbstack.dev) or Docker Desktop) and a Claude or ChatGPT account (or an API key). Ressac starts the container app itself when it is installed.
-- **For local AI** (optional): [Ollama](https://ollama.com). Ressac starts it, or downloads it for you (190 MB).
+- **For local AI**: [Ollama](https://ollama.com). Ressac starts it, or downloads it for you (190 MB).
 
 Coming from WebAiOs (Ressac's former name)? Quit it first: Ressac carries over your data, profile, passwords and add-ons at its first launch.
-
-## Privacy
-
-Your browsing data stays on your Mac. The agent only sees the pages it opens in its own tab and what you give it. Ressac sends crash and error reports (without page addresses) and an anonymous install id to its developer, to fix beta bugs; turn it off in Réglages › Vie privée.
 
 ## Build from source
 
