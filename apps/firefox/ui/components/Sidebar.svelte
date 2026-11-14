@@ -12,6 +12,7 @@
   import CallBar from "./CallBar.svelte";
   import UpdateCard from "./UpdateCard.svelte";
   import SpaceSelector from "./SpaceSelector.svelte";
+  import { t } from "../i18n.svelte";
   import { createSwipe } from "./swipe";
   import { toNextSpace } from "../../core/shortcuts";
 
@@ -110,10 +111,10 @@
     <div class="space-content" bind:this={list}>
     {#if space}<Pinned bind:this={pinned} window={win} {space} {activeLink} />{/if}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="space" data-testid="space-title" oncontextmenu={(e) => openMenu(e, [{ label: "Nouveau dossier", dispatch: () => pinned?.newFolder() }])}>{space?.icon} {space?.name}</div>
+    <div class="space" data-testid="space-title" oncontextmenu={(e) => openMenu(e, [{ label: t("sidebar-new-folder"), dispatch: () => pinned?.newFolder() }])}>{space?.icon} {space?.name}</div>
     <TabList window={win} />
     <button class="new" data-testid="new-tab" onclick={() => api.dispatch({ type: "showBlankPage", windowId: win.id })}
-      ><Icon name="plus" size={14} /> Nouvel onglet<kbd>{key("command")}</kbd></button
+      ><Icon name="plus" size={14} /> {t("sidebar-new-tab")}<kbd>{key("command")}</kbd></button
     >
     <TabList window={win} agent />
     </div>
@@ -127,8 +128,8 @@
       class="tool"
       style:--i={0}
       data-testid="agent-button"
-      aria-label="Agent ({key("agent")})"
-      title="Agent ({key("agent")})"
+      aria-label={t("sidebar-tool-agent", { key: key("agent") })}
+      title={t("sidebar-tool-agent", { key: key("agent") })}
       aria-pressed={!builder && win.agentPanelOpen}
       onclick={() => (builder ? builderAgent?.() : api.dispatch({ type: "toggleAgentPanel", windowId: win.id }))}><Icon name="agent" /></button
     >
@@ -136,8 +137,8 @@
       class="tool"
       style:--i={1}
       data-testid="applications-button"
-      aria-label="Applications ({key("apps")})"
-      title="Applications ({key("apps")})"
+      aria-label={t("sidebar-tool-apps", { key: key("apps") })}
+      title={t("sidebar-tool-apps", { key: key("apps") })}
       aria-pressed={activeTab?.url === URL_APPLICATIONS}
       onclick={() => api.dispatch({ type: "openApps", windowId: win.id })}><Icon name="apps" /></button
     >
@@ -145,8 +146,8 @@
       class="tool"
       style:--i={2}
       data-testid="actions-button"
-      aria-label="Actions"
-      title="Actions"
+      aria-label={t("sidebar-tool-actions")}
+      title={t("sidebar-tool-actions")}
       aria-pressed={activeTab?.url === URL_ACTIONS}
       onclick={() => api.dispatch({ type: "openActions", windowId: win.id })}><Icon name="actions" /></button
     >
@@ -154,8 +155,8 @@
       class="tool"
       style:--i={3}
       data-testid="settings-button"
-      aria-label="Réglages ({key("settings")})"
-      title="Réglages ({key("settings")})"
+      aria-label={t("sidebar-tool-settings", { key: key("settings") })}
+      title={t("sidebar-tool-settings", { key: key("settings") })}
       aria-pressed={activeTab?.url === URL_SETTINGS}
       onclick={() => api.dispatch({ type: "openSettings", windowId: win.id })}><Icon name="settings" /></button
     >
@@ -169,8 +170,8 @@
         <button
           class="tool"
           data-testid="tools-button"
-          aria-label="Outils"
-          title="Outils"
+          aria-label={t("sidebar-tools")}
+          title={t("sidebar-tools")}
           aria-expanded={toolsOpen}
           class:on={toolsOpen || win.agentPanelOpen || [URL_APPLICATIONS, URL_ACTIONS, URL_SETTINGS].includes(activeTab?.url ?? "")}
           onclick={() => (toolsOpen = !toolsOpen)}><Icon name="options" /></button
@@ -180,7 +181,7 @@
       {@render tools()}
     {/if}
     {#if downloads.list.length}
-      <button class="downloads" aria-label="Téléchargements" title="Téléchargements" onclick={() => togglePanel?.("downloads")}>
+      <button class="downloads" aria-label={t("sidebar-downloads")} title={t("sidebar-downloads")} onclick={() => togglePanel?.("downloads")}>
         <Icon name="download" />
         {#if running.length}<span class="pill" style:--p={progression}></span>{/if}
       </button>

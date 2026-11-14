@@ -78,24 +78,24 @@ describe("isStaleUpdate", () => {
 describe("update texts", () => {
   const u = (phase: UpdateShown["phase"], version: string | null, progress: number | null = null): UpdateShown => ({ phase, version, progress, dismissed: false });
   it("name the version when known", () => {
-    expect(updateCardTitle("0.1.5")).toBe("Ressac 0.1.5 est prête");
-    expect(updateStatusText(u("downloading", "0.1.5", 40))).toBe("Téléchargement de 0.1.5… 40 %");
-    expect(updateStatusText(u("ready", "0.1.5"))).toBe("0.1.5 prête, installée au redémarrage");
+    expect(updateCardTitle("0.1.5", "fr")).toBe("Ressac 0.1.5 est prête");
+    expect(updateStatusText(u("downloading", "0.1.5", 40), "fr")).toBe("Téléchargement de 0.1.5… 40 %");
+    expect(updateStatusText(u("ready", "0.1.5"), "fr")).toBe("0.1.5 prête, installée au redémarrage");
   });
   it("read right without a version", () => {
     for (const v of [null, ""]) {
-      expect(updateCardTitle(v)).toBe("Une mise à jour est prête");
-      expect(updateStatusText(u("downloading", v))).toBe("Téléchargement…");
-      expect(updateStatusText(u("ready", v))).toBe("Mise à jour prête, installée au redémarrage");
+      expect(updateCardTitle(v, "fr")).toBe("Une mise à jour est prête");
+      expect(updateStatusText(u("downloading", v), "fr")).toBe("Téléchargement…");
+      expect(updateStatusText(u("ready", v), "fr")).toBe("Mise à jour prête, installée au redémarrage");
     }
   });
   it("other phases", () => {
-    expect(updateStatusText(u("idle", null))).toBe("À jour");
-    expect(updateStatusText(u("checking", null))).toBe("Recherche…");
-    expect(updateStatusText(u("failed", ""))).toBe("La mise à jour a échoué");
-    expect(updateStatusText(u("unreachable", null))).toBe("Impossible de vérifier pour le moment");
+    expect(updateStatusText(u("idle", null), "fr")).toBe("À jour");
+    expect(updateStatusText(u("checking", null), "fr")).toBe("Recherche…");
+    expect(updateStatusText(u("failed", ""), "fr")).toBe("La mise à jour a échoué");
+    expect(updateStatusText(u("unreachable", null), "fr")).toBe("Impossible de vérifier pour le moment");
     // The app folder is not writable: À propos shows only the DMG link.
-    expect(updateStatusText(u("unwritable", null))).toBe("");
+    expect(updateStatusText(u("unwritable", null), "fr")).toBe("");
   });
 });
 

@@ -1,4 +1,5 @@
 import type { WidgetState } from "@ressac/kernel";
+import { format } from "../../shared/i18n";
 
 const two = (n: number) => String(n).padStart(2, "0");
 const MINUTE = 60_000;
@@ -13,9 +14,9 @@ const MAX_HOUR_RETRIES = 3;
 export type NextState = Pick<WidgetState, "status" | "lastAttempt" | "hours">;
 
 /** « aujourd'hui HH:MM » or « demain HH:MM » (never further: a fixed hour comes back tomorrow at the latest). */
-function label(when: Date, now: Date): string {
+function label(when: Date, now: Date, locale: string): string {
   const sameDay = when.toDateString() === now.toDateString();
-  return `${sameDay ? "aujourd'hui" : "demain"} ${two(when.getHours())}:${two(when.getMinutes())}`;
+  return format(locale, sameDay ? "sidebar-next-today" : "sidebar-next-tomorrow", { time: `${two(when.getHours())}:${two(when.getMinutes())}` });
 }
 
 const instant = (iso: string | null | undefined) => (iso ? Date.parse(iso) : NaN);
@@ -51,6 +52,7 @@ export function nextRun(
   now: Date,
   frequency?: { minutes: number; lastUpdate: string | null },
   appState?: NextState,
+  locale = "fr",
 ): string | null {
   if (hours.length === 0) return null;
   const current = `${two(now.getHours())}:${two(now.getMinutes())}`;
@@ -65,7 +67,7 @@ export function nextRun(
     // To the minute: the second is not shown.
     next.setSeconds(0, 0);
   }
-  if (!frequency) return label(next, now);
+  if (!frequency) return label(next, now, locale);
   const markers = [now.getTime()];
   const last = instant(frequency.lastUpdate);
   if (!Number.isNaN(last)) markers.push(last + frequency.minutes * MINUTE);
@@ -74,5 +76,5 @@ export function nextRun(
   const byFrequency = new Date(Math.max(...markers));
   // To the minute: the second is not shown.
   byFrequency.setSeconds(0, 0);
-  return label(byFrequency < next ? byFrequency : next, now);
+  return label(byFrequency < next ? byFrequency : next, now, locale);
 }

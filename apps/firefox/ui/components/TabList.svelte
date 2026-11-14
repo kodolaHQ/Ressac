@@ -7,6 +7,7 @@
   import SiteIcon from "./SiteIcon.svelte";
   import SoundButton from "./SoundButton.svelte";
   import { openMenu } from "./menu.svelte";
+  import { t } from "../i18n.svelte";
 
   /** `agent`: the agent's browsing tabs (its own login profile), in their section; otherwise the user's tabs. */
   let { window: win, agent = false }: { window: WindowState; agent?: boolean } = $props();
@@ -56,11 +57,11 @@
 
 {#if agent && order.length}
   <button class="section" data-testid="agent-tabs" aria-expanded={!folded} onclick={() => (folded = !folded)} transition:fade={{ duration: 150 }}
-    ><Icon name="chevron" size={10} />Agent<span class="count">{order.length}</span></button
+    ><Icon name="chevron" size={10} />{t("sidebar-agent-section")}<span class="count">{order.length}</span></button
   >
 {/if}
 {#if !(agent && folded)}
-<ul class="tabs" role="tablist" aria-orientation="vertical" aria-label={agent ? "Onglets de l'agent" : undefined}>
+<ul class="tabs" role="tablist" aria-orientation="vertical" aria-label={agent ? t("sidebar-agent-tabs") : undefined}>
   <li class="highlight" role="presentation" aria-hidden="true" class:shown={activeIndex >= 0} style:transform="translateY({Math.max(activeIndex, 0) * 36}px)"></li>
   {#each order as id, index (id)}
     {@const tab = appState.value?.tabs[id]}
@@ -91,25 +92,25 @@
         onauxclick={(e) => e.button === 1 && closeTab(id)}
         oncontextmenu={(e) =>
           openMenu(e, agent ? [
-            { label: "Garder dans mes onglets", dispatch: () => keep(id) },
-            { label: "Fermer", dispatch: () => closeTab(id) },
+            { label: t("sidebar-tab-keep"), dispatch: () => keep(id) },
+            { label: t("sidebar-tab-close-menu"), dispatch: () => closeTab(id) },
           ] : [
-            { label: "Épingler", dispatch: () => api.dispatch({ type: "pinTab", id }) },
-            { label: "Ajouter aux essentiels", dispatch: () => api.dispatch({ type: "addEssential", id }) },
-            ...(appState.value?.spaces ?? []).filter((s) => s.id !== win.activeSpace).map((s) => ({ label: `Envoyer vers ${s.icon} ${s.name}`, dispatch: () => api.dispatch({ type: "moveTabToSpace", id, spaceId: s.id }) })),
-            ...(order.length > 1 ? [{ label: "Déplacer vers une nouvelle fenêtre", dispatch: () => api.dispatch({ type: "moveTabToNewWindow", id }) }] : []),
-            { label: "Fermer", dispatch: () => closeTab(id) },
+            { label: t("sidebar-tab-pin"), dispatch: () => api.dispatch({ type: "pinTab", id }) },
+            { label: t("sidebar-tab-essential"), dispatch: () => api.dispatch({ type: "addEssential", id }) },
+            ...(appState.value?.spaces ?? []).filter((s) => s.id !== win.activeSpace).map((s) => ({ label: t("sidebar-tab-send", { space: `${s.icon} ${s.name}` }), dispatch: () => api.dispatch({ type: "moveTabToSpace", id, spaceId: s.id }) })),
+            ...(order.length > 1 ? [{ label: t("sidebar-tab-new-window"), dispatch: () => api.dispatch({ type: "moveTabToNewWindow", id }) }] : []),
+            { label: t("sidebar-tab-close-menu"), dispatch: () => closeTab(id) },
           ])}
       >
-        {#if tab.loading}<span class="spinner" aria-label="Chargement"></span>{:else}<SiteIcon favicon={tab.favicon} title={tab.title} />{/if}
+        {#if tab.loading}<span class="spinner" aria-label={t("sidebar-tab-loading")}></span>{:else}<SiteIcon favicon={tab.favicon} title={tab.title} />{/if}
         <span class="title">{tab.title}</span>
         <SoundButton {tab} />
         {#if agentRights}<AccessBadge {id} state={agentRights} />{/if}
-        {#if tab.agentSearch?.state === "yours"}<span class="yours-tag" data-testid="tab-yours" out:fade={{ duration: 150 }}>à vous</span>{/if}
-        {#if tab.openedByAgent}<span class="agent" title="Ouvert par l'agent">✦</span>{/if}
+        {#if tab.agentSearch?.state === "yours"}<span class="yours-tag" data-testid="tab-yours" out:fade={{ duration: 150 }}>{t("sidebar-tab-yours")}</span>{/if}
+        {#if tab.openedByAgent}<span class="agent" title={t("sidebar-tab-by-agent")}>✦</span>{/if}
         <button
           class="close"
-          aria-label="Fermer l'onglet"
+          aria-label={t("sidebar-tab-close")}
           onclick={(e) => {
             e.stopPropagation();
             closeTab(id);

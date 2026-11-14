@@ -4,6 +4,7 @@ import type { ExtensionLine, SpaceExtensionLine } from "../shared/extensions";
 import type { HomeTheme } from "../../../packages/kernel/src/home/theme.ts";
 import type { FreePlacement } from "../../../packages/kernel/src/home/schemas.ts";
 import type { Execution, ResumeExecution } from "../../../packages/kernel/src/workflows/executions.ts";
+import { format } from "../shared/i18n";
 import { HOST_EXITED } from "../chrome/agent/host";
 import { validFolder } from "../chrome/store/app-folder";
 import type { WindowController } from "../chrome/window/controller";
@@ -47,9 +48,6 @@ declare global {
   }
 }
 
-// Same text as host/host.ts's (a Node module this bundle cannot import).
-const AGENT_STOPPED_MESSAGE = "Le service des widgets ne répond pas (agent arrêté ?)";
-
 /**
  * Serves each widget's display: writes its sanitized copy under `<dataDir>/ressac-widgets/<id>/` and points `src` at
  * its resource:// URL. The widgets served last time and gone now lose their substitution and their copies.
@@ -90,6 +88,8 @@ export function createApi(win: WindowController): ApiFirefox {
   };
   const host = win.store.agent;
   const windowId = win.windowId;
+  const say = (id: string) => format(win.store.state.locale, id);
+  const agentStopped = () => say("sidebar-api-widgets-down");
   const windowApi = { state: () => win.store.state, dispatch: (a: Action) => win.store.dispatch(a), host, window: windowId, untilUnload, media: win.store.actionMedia };
   let lastSelection: unknown; // the last workflow.selection this window sent
   /** When this window last opened a widget link: a display cannot make links leave in a burst. */
@@ -229,7 +229,7 @@ export function createApi(win: WindowController): ApiFirefox {
       profilesForGrant: async () => profilesForGrant(win.store.state, windowId),
       grant: async (a) => {
         // The state is read again at the moment of the grant: never a private space's profile.
-        if (!readableProfiles(win.store.state).includes(a.profile)) return { ok: false as const, error: "Ce profil ne peut pas servir à un accord" };
+        if (!readableProfiles(win.store.state).includes(a.profile)) return { ok: false as const, error: say("sidebar-api-profile-grant") };
         return host.request<{ ok: true } | { ok: false; error: string }>("home.grant", a).then(
           (r) => structuredClone(r),
           (e) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) }),
@@ -297,7 +297,7 @@ export function createApi(win: WindowController): ApiFirefox {
     external: createExternalApi({ host, window: windowId, dispatch: (a) => win.store.dispatch(a), untilUnload }),
     // The local AI's state; its install and feed are not migrated.
     ai: {
-      state: () => ask<LocalAiStateShown>("ai.state", undefined, { state: "error", error: "L'agent ne répond pas" }),
+      state: () => ask<LocalAiStateShown>("ai.state", undefined, { state: "error", error: say("sidebar-api-agent-silent") }),
     } as Partial<ApiRessac["ai"]> as ApiRessac["ai"],
     // The Review page: its comparisons and comments, kept by the kernel host.
     review: createReviewApi({ host }),
@@ -351,15 +351,15 @@ export function createApi(win: WindowController): ApiFirefox {
       save: async (target, draft) =>
         privateAction(target)
           ? { ok: false, error: ACTIONS_IN_PRIVATE_SPACE, warnings: [] }
-          : ask("workflow.save", { target: target, draft: draft }, { ok: false, error: AGENT_STOPPED_MESSAGE, warnings: [] }),
+          : ask("workflow.save", { target: target, draft: draft }, { ok: false, error: agentStopped(), warnings: [] }),
       readCode: async (target, name) =>
         privateAction(target)
           ? { error: ACTIONS_IN_PRIVATE_SPACE }
-          : ask("workflow.readCode", { target: target, name: name }, { error: AGENT_STOPPED_MESSAGE }).then((r) => (privateAction(target) ? { error: ACTIONS_IN_PRIVATE_SPACE } : r)),
+          : ask("workflow.readCode", { target: target, name: name }, { error: agentStopped() }).then((r) => (privateAction(target) ? { error: ACTIONS_IN_PRIVATE_SPACE } : r)),
       saveCode: async (target, name, text) =>
-        privateAction(target) ? { ok: false, error: ACTIONS_IN_PRIVATE_SPACE } : ask("workflow.saveCode", { target: target, name: name, text: text }, { ok: false, error: AGENT_STOPPED_MESSAGE }),
+        privateAction(target) ? { ok: false, error: ACTIONS_IN_PRIVATE_SPACE } : ask("workflow.saveCode", { target: target, name: name, text: text }, { ok: false, error: agentStopped() }),
       replay: async (target, run, block) =>
-        privateAction(target) ? { ok: false, error: ACTIONS_IN_PRIVATE_SPACE } : ask("workflow.replay", { target: target, run: run, block: block }, { ok: false, error: AGENT_STOPPED_MESSAGE }),
+        privateAction(target) ? { ok: false, error: ACTIONS_IN_PRIVATE_SPACE } : ask("workflow.replay", { target: target, run: run, block: block }, { ok: false, error: agentStopped() }),
       run: async (target, input) => (privateAction(target) ? { error: ACTIONS_IN_PRIVATE_SPACE } : ask("workflow.run", { target: target, input: input ?? null }, {})),
       selection(target, block) {
         // The host keeps it in memory only: resent on `access`, which a host sends once its kernel has started (and on policy

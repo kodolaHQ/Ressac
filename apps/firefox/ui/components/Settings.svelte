@@ -512,7 +512,7 @@
           </div>
           {#if update && update.phase !== "disabled"}
             <div class="row">
-              <span class="grow" data-testid="update-status" aria-live="polite">{updateStatusText(update)}</span>
+              <span class="grow" data-testid="update-status" aria-live="polite">{updateStatusText(update, appState.value?.locale ?? "fr")}</span>
               {#if update.phase === "idle" || update.phase === "unreachable"}
                 <button data-testid="update-check" onclick={() => s.checkForUpdate()}>{t("settings-about-update-check")}</button>
               {:else if update.phase === "ready"}

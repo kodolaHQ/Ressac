@@ -3,6 +3,7 @@
   import { VIM_KEYS } from "../../shared/vim-keys";
   import { bindingFromKey, bindingLabel, bindingProblem, effectiveBindings, sameBinding, SHORTCUT_IDS, SHORTCUTS, type ShortcutId } from "../../shared/shortcuts";
   import { api, appState } from "../state.svelte";
+  import { t } from "../i18n.svelte";
 
   const win = window.parent.ressacWindow!;
   const FIXED = [
@@ -33,8 +34,8 @@
     const id = capturing;
     if (key === "escape") return void (capturing = null);
     const binding = bindingFromKey(e);
-    const text = bindingProblem(id, binding, effective);
-    if (text) problem = { id, text };
+    const refused = bindingProblem(id, binding, effective);
+    if (refused) problem = { id, text: refused.problem === "taken" ? t("sidebar-binding-taken", { action: t(SHORTCUTS[refused.by].label) }) : t(`sidebar-binding-${refused.problem}`) };
     else api.dispatch(sameBinding(binding, SHORTCUTS[id].default) ? { type: "resetShortcut", id } : { type: "setShortcut", id, binding });
     capturing = null;
   }
@@ -94,7 +95,7 @@
     {#each SHORTCUT_IDS as id (id)}
       <div class="row" data-testid="shortcut-{id}">
         <div class="grow">
-          <b>{SHORTCUTS[id].label}</b>
+          <b>{t(SHORTCUTS[id].label)}</b>
           {#if problem?.id === id}<span class="alert" role="alert" transition:fade={{ duration: 150 }}>{problem.text}</span>{/if}
         </div>
         {#if capturing === id}

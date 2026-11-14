@@ -2,7 +2,25 @@ import { readFileSync } from "node:fs";
 import { expect, test } from "vitest";
 
 // Screens already moved to Fluent messages: no French may remain in them outside t("…") calls.
-const TRANSLATED = ["ui/components/Settings.svelte"];
+const TRANSLATED = [
+  "ui/components/Settings.svelte",
+  "ui/components/Sidebar.svelte",
+  "ui/components/TabList.svelte",
+  "ui/components/Pinned.svelte",
+  "ui/components/SpaceSelector.svelte",
+  "ui/components/SpaceModal.svelte",
+  "ui/components/CommandBar.svelte",
+  "ui/components/CallBar.svelte",
+  "ui/components/UpdateCard.svelte",
+  "ui/components/EmptyPage.svelte",
+  "ui/components/Downloads.svelte",
+  "ui/components/History.svelte",
+  "ui/components/AccessBubble.svelte",
+  "ui/components/AccountGrantCard.svelte",
+  "ui/components/TipCard.svelte",
+  "ui/components/FirstTimeNote.svelte",
+  "ui/ExtensionsStrip.svelte",
+];
 
 function visibleCode(source: string): string {
   return source

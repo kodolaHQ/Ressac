@@ -4,6 +4,7 @@
   import WidgetFrame from "./WidgetFrame.svelte";
   import Icon from "./components/Icon.svelte";
   import { nextRun } from "./components/next";
+  import { appState } from "./state.svelte";
   import { freeUnits } from "./free-grid";
 
   let {
@@ -56,6 +57,7 @@
           now,
           widget.minutes !== null ? { minutes: widget.minutes, lastUpdate: widget.state.lastUpdate } : undefined,
           widget.state,
+          appState.value?.locale,
         ),
   );
 

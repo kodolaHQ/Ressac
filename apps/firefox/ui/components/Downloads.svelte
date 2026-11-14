@@ -1,50 +1,52 @@
 <script lang="ts">
   import Icon from "./Icon.svelte";
   import type { Download } from "../../shared/model";
-  import { api, downloads } from "../state.svelte";
+  import { api, appState, downloads } from "../state.svelte";
+  import { t } from "../i18n.svelte";
 
   let { close: close }: { close: () => void } = $props();
 
   function size(bytes: number): string {
-    if (bytes < 1024) return `${bytes} o`;
-    if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(0)} Ko`;
-    if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} Mo`;
-    return `${(bytes / 1024 ** 3).toFixed(2)} Go`;
+    const number = (n: number, digits: number) => new Intl.NumberFormat(appState.value?.locale ?? "fr", { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(n);
+    if (bytes < 1024) return t("sidebar-size-b", { n: bytes });
+    if (bytes < 1024 ** 2) return t("sidebar-size-kb", { n: number(bytes / 1024, 0) });
+    if (bytes < 1024 ** 3) return t("sidebar-size-mb", { n: number(bytes / 1024 ** 2, 1) });
+    return t("sidebar-size-gb", { n: number(bytes / 1024 ** 3, 2) });
   }
 
   const LABELS: Record<Download["state"], string> = {
-    "in-progress": "En cours",
-    done: "Terminé",
-    canceled: "Annulé",
-    interrupted: "Interrompu",
+    "in-progress": "sidebar-download-in-progress",
+    done: "sidebar-download-done",
+    canceled: "sidebar-download-canceled",
+    interrupted: "sidebar-download-interrupted",
   };
 </script>
 
 <svelte:window onkeydown={(e) => e.key === "Escape" && close()} />
 
-<section class="downloads" data-testid="downloads" aria-label="Téléchargements">
+<section class="downloads" data-testid="downloads" aria-label={t("sidebar-downloads")}>
   <header>
-    <h1>Téléchargements</h1>
-    <button class="close" aria-label="Fermer les téléchargements" onclick={close}><Icon name="close" size={12} /></button>
+    <h1>{t("sidebar-downloads")}</h1>
+    <button class="close" aria-label={t("sidebar-downloads-close")} onclick={close}><Icon name="close" size={12} /></button>
   </header>
   <ul>
-    {#each downloads.list as t (t.id)}
-      <li data-testid="download" data-state={t.state}>
+    {#each downloads.list as dl (dl.id)}
+      <li data-testid="download" data-state={dl.state}>
         <div class="infos">
-          <span class="name">{t.name}</span>
+          <span class="name">{dl.name}</span>
           <span class="detail">
-            {LABELS[t.state]} · {t.state === "in-progress" && t.total ? `${size(t.received)} sur ${size(t.total)}` : size(t.received)}
+            {t(LABELS[dl.state])} · {dl.state === "in-progress" && dl.total ? t("sidebar-download-of", { received: size(dl.received), total: size(dl.total) }) : size(dl.received)}
           </span>
-          {#if t.state === "in-progress"}
-            <progress max={t.total || undefined} value={t.total ? t.received : undefined}></progress>
+          {#if dl.state === "in-progress"}
+            <progress max={dl.total || undefined} value={dl.total ? dl.received : undefined}></progress>
           {/if}
         </div>
-        {#if t.state === "done"}<button onclick={() => api.downloads.open(t.id)}>Ouvrir</button>{/if}
-        {#if t.state === "in-progress"}<button onclick={() => api.downloads.cancel(t.id)}>Annuler</button>{/if}
-        <button onclick={() => api.downloads.show(t.id)}>Afficher dans le Finder</button>
+        {#if dl.state === "done"}<button onclick={() => api.downloads.open(dl.id)}>{t("sidebar-download-open")}</button>{/if}
+        {#if dl.state === "in-progress"}<button onclick={() => api.downloads.cancel(dl.id)}>{t("sidebar-cancel")}</button>{/if}
+        <button onclick={() => api.downloads.show(dl.id)}>{t("sidebar-download-show")}</button>
       </li>
     {:else}
-      <p class="empty">Aucun téléchargement pendant cette session.</p>
+      <p class="empty">{t("sidebar-download-none")}</p>
     {/each}
   </ul>
 </section>

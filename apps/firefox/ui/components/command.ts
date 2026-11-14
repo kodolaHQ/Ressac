@@ -2,6 +2,7 @@ import type { ApplicationShown } from "../../shared/api";
 import type { TabId, Visit } from "../../shared/model";
 import type { ActionShown } from "../../shared/actions";
 import type { ShownSite } from "../../shared/sites";
+import { format } from "../../shared/i18n";
 import { normalize, suggestionsActions } from "./suggestions";
 
 export type SourceTab = { id: TabId; title: string; url: string; favicon: string | null };
@@ -32,9 +33,9 @@ function recentActions(actions: ActionShown[]): ActionShown[] {
  * The command bar's rows, in order: default, actions, tabs, apps, history. Empty field: home first (Enter leads
  * there), then actions and the open tabs, without the shown tab (`shownTab`).
  */
-export function commandLines(text: string, sources: CommandSources, urlActive: string | null, shownTab: TabId | null = null): CommandLine[] {
+export function commandLines(text: string, sources: CommandSources, urlActive: string | null, shownTab: TabId | null = null, locale = "fr"): CommandLine[] {
   const t = text.trim();
-  const label = !t ? "Page d'accueil" : /^\S+\.\S+$/.test(t) ? `Ouvrir ${t}` : `Rechercher « ${t} »`;
+  const label = !t ? format(locale, "sidebar-command-home") : /^\S+\.\S+$/.test(t) ? format(locale, "sidebar-command-open", { target: t }) : format(locale, "sidebar-command-search", { query: t });
   const lines: CommandLine[] = [{ type: "default", text: t, label: label }];
   if (!t) {
     for (const a of recentActions(sources.actions)) lines.push({ type: "action", id: a.id, name: a.name, input: null, param: a.input?.label ?? null });
@@ -67,7 +68,13 @@ export function commandLines(text: string, sources: CommandSources, urlActive: s
 
 export type Section = "actions" | "tabs" | "apps" | "history" | "bookmarks";
 
-export const SECTION_TITLES: Record<Section, string> = { actions: "Actions", tabs: "Onglets ouverts", apps: "Applis", history: "Historique", bookmarks: "Favoris" };
+const SECTION_TITLES: Record<Section, string> = {
+  actions: "sidebar-section-actions",
+  tabs: "sidebar-section-tabs",
+  apps: "sidebar-section-apps",
+  history: "sidebar-section-history",
+  bookmarks: "sidebar-section-bookmarks",
+};
 
 /** A row's section: the default row has none, it stays first without a title. */
 export function sectionOf(l: CommandLine): Section | null {
@@ -75,9 +82,9 @@ export function sectionOf(l: CommandLine): Section | null {
 }
 
 /** The title to put before row `i`: its section's when it opens one, null otherwise. */
-export function titleBefore(lines: CommandLine[], i: number): string | null {
+export function titleBefore(lines: CommandLine[], i: number, locale = "fr"): string | null {
   const s = sectionOf(lines[i]!);
-  return s !== null && (i === 0 || sectionOf(lines[i - 1]!) !== s) ? SECTION_TITLES[s] : null;
+  return s !== null && (i === 0 || sectionOf(lines[i - 1]!) !== s) ? format(locale, SECTION_TITLES[s]) : null;
 }
 
 /** An action missing its input: the bar asks for it before launching. */

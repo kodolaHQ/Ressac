@@ -3,6 +3,7 @@
   import { nextTip } from "../../shared/hints";
   import { shortcutLabel } from "../../shared/shortcuts";
   import { appState } from "../state.svelte";
+  import { t } from "../i18n.svelte";
   import { openCommand } from "./command.svelte";
   import { agentNoteShowing, markSeen } from "./hints";
 
@@ -25,14 +26,14 @@
 
 {#if tip}
   <aside class="tip" data-testid="tip-card" out:fade={{ duration: 150 }}>
-    <b>Astuce</b>
-    <p>{tip.text.replace("{key}", key ?? "")}</p>
+    <b>{t("sidebar-tip-title")}</b>
+    <p>{t(tip.text, { key: key ?? "" })}</p>
     <div class="row">
       {#if key}<kbd>{key}</kbd>{/if}
       <span class="grow"></span>
-      {#if tip.tryIt}<button type="button" class="primary" data-testid="tip-try" onclick={tryIt}>Essayer</button>{/if}
-      <button type="button" data-testid="tip-next" onclick={() => markSeen(tip.id)}>Une autre</button>
-      <button type="button" class="close" data-testid="tip-close" aria-label="Fermer l'astuce" onclick={() => markSeen(tip.id)}>×</button>
+      {#if tip.tryIt}<button type="button" class="primary" data-testid="tip-try" onclick={tryIt}>{t("sidebar-tip-try")}</button>{/if}
+      <button type="button" data-testid="tip-next" onclick={() => markSeen(tip.id)}>{t("sidebar-tip-next")}</button>
+      <button type="button" class="close" data-testid="tip-close" aria-label={t("sidebar-tip-close")} onclick={() => markSeen(tip.id)}>×</button>
     </div>
   </aside>
 {/if}

@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { ProfileForGrant } from "../../shared/api";
+  import { t } from "../i18n.svelte";
 
   let {
     subject: subject,
@@ -38,18 +39,18 @@
 
 <div class="veil">
   <div class="card" role="dialog" aria-modal="true" aria-labelledby="grant-title" data-testid="grant-card">
-    <h2 id="grant-title">{#if subject === "action"}Autoriser l'action « {name} » à lire avec ton compte{:else}Autoriser « {name} » à lire avec ton compte{/if}</h2>
-    <p data-testid="grant-account">{subject === "action" ? "Cette action" : "Ce widget"} veut lire {domains.join(", ")} avec ton compte, connecté avec le profil choisi.</p>
+    <h2 id="grant-title">{t(subject === "action" ? "sidebar-grant-title-action" : "sidebar-grant-title-widget", { name })}</h2>
+    <p data-testid="grant-account">{t(subject === "action" ? "sidebar-grant-account-action" : "sidebar-grant-account-widget", { domains: domains.join(", ") })}</p>
     <p data-testid="grant-public">
-      {#if publics.length}Et pourra contacter : {publics.join(", ")}.{:else}Et ne contactera aucun autre site.{/if}
+      {#if publics.length}{t("sidebar-grant-public", { domains: publics.join(", ") })}{:else}{t("sidebar-grant-public-none")}{/if}
     </p>
-    <p>Les profils des espaces privés ne sont jamais proposés.</p>
+    <p>{t("sidebar-grant-private")}</p>
     {#if error}
-      <p class="error">Profils illisibles : {error}</p>
+      <p class="error">{t("sidebar-grant-error", { error })}</p>
     {:else if profiles === null}
-      <p>Chargement des profils…</p>
+      <p>{t("sidebar-grant-loading")}</p>
     {:else if profiles.length === 0}
-      <p>Aucun profil utilisable.</p>
+      <p>{t("sidebar-grant-none")}</p>
     {:else}
       <div class="profiles" role="radiogroup">
         {#each profiles as p (p.id)}
@@ -58,8 +59,8 @@
       </div>
     {/if}
     <div class="buttons">
-      <button onclick={close}>Annuler</button>
-      <button class="main" disabled={!chosen} onclick={() => chosen && allow(chosen)}>Autoriser</button>
+      <button onclick={close}>{t("sidebar-cancel")}</button>
+      <button class="main" disabled={!chosen} onclick={() => chosen && allow(chosen)}>{t("sidebar-grant-allow")}</button>
     </div>
   </div>
 </div>

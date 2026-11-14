@@ -1,3 +1,4 @@
+import { format } from "../shared/i18n";
 import type { UpdatePhase, UpdateShown } from "../shared/model";
 
 /** AppUpdater.STATUS key names (toolkit/mozapps/update/AppUpdater.sys.mjs) → what Ressac shows. */
@@ -34,23 +35,27 @@ export const isSignatureFailure = (errorCode: number): boolean => errorCode >= 1
 export const isStaleUpdate = (phase: UpdatePhase, version: string | null, running: string, compare: (a: string, b: string) => number): boolean =>
   (phase === "downloading" || phase === "ready") && !!version && compare(version, running) <= 0;
 
-export const updateCardTitle = (version: string | null): string => (version ? `Ressac ${version} est prête` : "Une mise à jour est prête");
+export const updateCardTitle = (version: string | null, locale: string): string =>
+  version ? format(locale, "sidebar-update-title", { version }) : format(locale, "sidebar-update-title-plain");
 
 /** Réglages › À propos. Unwritable shows only the DMG link. */
-export function updateStatusText(u: UpdateShown): string {
+export function updateStatusText(u: UpdateShown, locale: string): string {
+  const say = (id: string, args?: Record<string, string | number>) => format(locale, id, args);
   switch (u.phase) {
     case "idle":
-      return "À jour";
+      return say("sidebar-update-idle");
     case "checking":
-      return "Recherche…";
-    case "downloading":
-      return `${u.version ? `Téléchargement de ${u.version}…` : "Téléchargement…"}${u.progress === null ? "" : ` ${u.progress} %`}`;
+      return say("sidebar-update-checking");
+    case "downloading": {
+      const text = u.version ? say("sidebar-update-downloading-version", { version: u.version }) : say("sidebar-update-downloading");
+      return u.progress === null ? text : `${text} ${u.progress} %`;
+    }
     case "ready":
-      return u.version ? `${u.version} prête, installée au redémarrage` : "Mise à jour prête, installée au redémarrage";
+      return u.version ? say("sidebar-update-ready-version", { version: u.version }) : say("sidebar-update-ready");
     case "unreachable":
-      return "Impossible de vérifier pour le moment";
+      return say("sidebar-update-unreachable");
     case "failed":
-      return "La mise à jour a échoué";
+      return say("sidebar-update-failed");
     default:
       return "";
   }

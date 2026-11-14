@@ -7,7 +7,7 @@ const profiles = [{ id: "default" }, { id: "p1" }, { id: "p2" }];
 
 test("new space: « Nouveau profil » creates one, then each used profile with all its spaces", () => {
   const spaces = [space("a", "Perso", "default"), space("b", "Travail", "p1"), space("c", "Clients", "p1")];
-  expect(profileOptions(spaces, profiles.slice(0, 2), null)).toEqual([
+  expect(profileOptions(spaces, profiles.slice(0, 2), null, "fr")).toEqual([
     { value: "new", label: "Nouveau profil" },
     { value: "default", label: "Partagé avec « Perso »" },
     { value: "p1", label: "Partagé avec « Travail, Clients »" },
@@ -16,7 +16,7 @@ test("new space: « Nouveau profil » creates one, then each used profile with a
 
 test("settings: the space being set is not named, and a profile it alone has is not shared", () => {
   const spaces = [space("a", "Perso", "default"), space("b", "Travail", "p1"), space("c", "Banque", "p2")];
-  expect(profileOptions(spaces, profiles, "c")).toEqual([
+  expect(profileOptions(spaces, profiles, "c", "fr")).toEqual([
     { value: "p2", label: "Son propre profil" },
     { value: "default", label: "Partagé avec « Perso »" },
     { value: "p1", label: "Partagé avec « Travail »" },
@@ -25,7 +25,7 @@ test("settings: the space being set is not named, and a profile it alone has is 
 
 test("settings of a space that shares its profile: its own profile creates a new one", () => {
   const spaces = [space("a", "Perso", "default"), space("b", "Travail", "default")];
-  expect(profileOptions(spaces, [{ id: "default" }], "b")).toEqual([
+  expect(profileOptions(spaces, [{ id: "default" }], "b", "fr")).toEqual([
     { value: "new", label: "Son propre profil" },
     { value: "default", label: "Partagé avec « Perso »" },
   ]);
@@ -33,7 +33,7 @@ test("settings of a space that shares its profile: its own profile creates a new
 
 test("a profile that no space uses is not offered", () => {
   const spaces = [space("a", "Perso", "p1")];
-  expect(profileOptions(spaces, [{ id: "default" }, { id: "p1" }], null)).toEqual([
+  expect(profileOptions(spaces, [{ id: "default" }, { id: "p1" }], null, "fr")).toEqual([
     { value: "new", label: "Nouveau profil" },
     { value: "p1", label: "Partagé avec « Perso »" },
   ]);
@@ -62,6 +62,6 @@ test("settings: leaving the last use of a non-default profile loses the sign-ins
 test("new space: no preselected profile, and « à choisir » is never an option nor a loss", () => {
   const spaces = [space("a", "Perso", "default"), space("d", "Banque", "p2")];
   expect(PROFILE_TO_CHOOSE).toBe("");
-  expect(profileOptions(spaces, profiles, null).map((o) => o.value)).not.toContain(PROFILE_TO_CHOOSE);
+  expect(profileOptions(spaces, profiles, null, "fr").map((o) => o.value)).not.toContain(PROFILE_TO_CHOOSE);
   expect(choiceLosesConnections(spaces, null, PROFILE_TO_CHOOSE)).toBe(false);
 });

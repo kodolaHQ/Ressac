@@ -1,3 +1,4 @@
+import { format } from "../../shared/i18n";
 import { DEFAULT_PROFILE, type Space, type SpaceId, type ProfileId, type ConnectionProfile } from "../../shared/model";
 
 /** Choice of a space's sign-in profile, as `createSpace` and `updateSpace` receive it. */
@@ -17,15 +18,15 @@ export interface ProfileOption {
  * other space. « Son propre profil » keeps the space's current profile if it is the only one using it (creating a
  * new one would erase its sign-ins).
  */
-export function profileOptions(spaces: Space[], profiles: ConnectionProfile[], spaceId: SpaceId | null): ProfileOption[] {
+export function profileOptions(spaces: Space[], profiles: ConnectionProfile[], spaceId: SpaceId | null, locale: string): ProfileOption[] {
   const rule = spaces.find((e) => e.id === spaceId);
   const others = spaces.filter((e) => e.id !== spaceId);
   const clean: ProfileChoice = rule && !others.some((e) => e.profile === rule.profile) ? rule.profile : "new";
   const shared = profiles.flatMap((p) => {
     const names = others.filter((e) => e.profile === p.id).map((e) => e.name);
-    return names.length > 0 ? [{ value: p.id, label: `Partagé avec « ${names.join(", ")} »` }] : [];
+    return names.length > 0 ? [{ value: p.id, label: format(locale, "sidebar-profile-shared", { names: names.join(", ") }) }] : [];
   });
-  return [{ value: clean, label: rule ? "Son propre profil" : "Nouveau profil" }, ...shared];
+  return [{ value: clean, label: format(locale, rule ? "sidebar-profile-own" : "sidebar-profile-new") }, ...shared];
 }
 
 /** Deleting this space erases its sign-ins: it is the last one using a profile other than the default. */

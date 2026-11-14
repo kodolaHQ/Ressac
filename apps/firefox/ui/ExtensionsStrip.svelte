@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { WindowState } from "../shared/model";
   import { api } from "./state.svelte";
+  import { t } from "./i18n.svelte";
   import type { AddonButton, PendingUpdate } from "../chrome/window/addons";
 
   // The add-on buttons of the active window (chrome/window/addons.ts), copied into this document like ui/api.ts does.
@@ -50,36 +51,36 @@
 
 <div class="extensions" data-testid="extensions-bar">
   {#each pinned as b (b.id)}{@render button(b)}{/each}
-  <button class="menu" data-testid="menu-extensions" aria-label="Extensions" title="Extensions" aria-expanded={open} onclick={() => (open = !open)}>
+  <button class="menu" data-testid="menu-extensions" aria-label={t("sidebar-extensions")} title={t("sidebar-extensions")} aria-expanded={open} onclick={() => (open = !open)}>
     ⧉{#if updates.length > 0}<span class="point"></span>{/if}
   </button>
 </div>
 {#if open}
   <!-- In the sidebar, never over the page. -->
-  <div class="panel" data-testid="extensions-panel" role="region" aria-label="Extensions">
-    {#if buttons.length === 0}<p class="empty">Aucune extension active.</p>{/if}
+  <div class="panel" data-testid="extensions-panel" role="region" aria-label={t("sidebar-extensions")}>
+    {#if buttons.length === 0}<p class="empty">{t("sidebar-extensions-none")}</p>{/if}
     <ul>
       {#each unpinned as b (b.id)}
         <li data-testid="extension-bar-row">
           {@render button(b)}
           <span class="name">{b.name}</span>
-          <button class="link" onclick={() => addons.pin(b.id, true)}>Épingler</button>
+          <button class="link" onclick={() => addons.pin(b.id, true)}>{t("sidebar-extensions-pin")}</button>
         </li>
       {/each}
       {#each pinned as b (b.id)}
         <li data-testid="extension-bar-row">
           <span class="name">{b.name}</span>
-          <button class="link" onclick={() => addons.pin(b.id, false)}>Détacher</button>
+          <button class="link" onclick={() => addons.pin(b.id, false)}>{t("sidebar-extensions-unpin")}</button>
         </li>
       {/each}
       {#each updates as u (u.id)}
         <li data-testid="extension-update">
-          <span class="name">{u.name} : mise à jour en attente de ton accord.</span>
-          <button class="link" onclick={act(() => addons.reviewUpdate(u.id))}>Revoir la mise à jour</button>
+          <span class="name">{t("sidebar-extensions-update-pending", { name: u.name })}</span>
+          <button class="link" onclick={act(() => addons.reviewUpdate(u.id))}>{t("sidebar-extensions-update-review")}</button>
         </li>
       {/each}
     </ul>
-    <button class="manage" onclick={act(() => addons.manage())}>Gérer les extensions</button>
+    <button class="manage" onclick={act(() => addons.manage())}>{t("sidebar-extensions-manage")}</button>
     <button class="manage" onclick={act(() => api.dispatch({ type: "openExtensions", windowId: win.id }))}>Extensions de l'agent</button>
     <button class="manage" onclick={act(() => addons.findMore())}>Trouver des modules</button>
   </div>

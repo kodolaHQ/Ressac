@@ -8,6 +8,7 @@
   import SuggestionsActions from "./ActionSuggestions.svelte";
   import { suggestionsActions } from "./suggestions";
   import type { ActionShown } from "../../shared/actions";
+  import { t } from "../i18n.svelte";
 
   let { window: win }: { window: WindowState } = $props();
   let input = $state("");
@@ -46,7 +47,7 @@
   let closed = $state(false);
   let chosen = $state(-1);
   const suggestions = $derived(inPrivate || closed ? [] : suggestionsActions(input, actions));
-  const usualLine = $derived(/^\S+\.\S+$/.test(input.trim()) ? `Ouvrir ${input.trim()}` : `Rechercher « ${input.trim()} »`);
+  const usualLine = $derived(/^\S+\.\S+$/.test(input.trim()) ? t("sidebar-command-open", { target: input.trim() }) : t("sidebar-command-search", { query: input.trim() }));
 
   let denial = $state("");
   const keys = $derived(suggestions.map((x) => x.id).join("\0"));
@@ -65,7 +66,7 @@
             denial = "";
           } else denial = r.error;
         },
-        () => (denial = "Le service des actions ne répond pas"),
+        () => (denial = t("sidebar-command-actions-down")),
       );
     } else if (input.trim()) {
       api.navigate(null, input.trim());
@@ -109,7 +110,7 @@
       onfocus={() => (closed = false)}
       onkeydown={key}
       data-testid="empty-page-input"
-      placeholder="Rechercher ou saisir une adresse"
+      placeholder={t("sidebar-command-placeholder")}
       spellcheck="false"
       role={suggestions.length ? "combobox" : undefined}
       aria-expanded={suggestions.length ? true : undefined}
