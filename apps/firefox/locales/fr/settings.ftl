@@ -1,0 +1,100 @@
+# The Settings page.
+
+settings-title = Réglages
+settings-nav-label = Sections des réglages
+settings-section-agents = Agents
+settings-section-ai = IA locale
+settings-section-workshop = Conteneur
+settings-section-permissions = Permissions
+settings-section-data = Données
+settings-section-privacy = Vie privée
+settings-section-shortcuts = Raccourcis
+settings-section-about = À propos
+
+settings-checking = Vérification…
+settings-error = Erreur : { $error }
+settings-agent-silent = L'agent ne répond pas
+settings-agent-silent-sentence = L'agent ne répond pas.
+
+settings-agent-logged-in-account = Connecté ({ $account })
+settings-agent-logged-in = Connecté
+settings-agent-logged-out = Non connecté
+settings-agent-docker-absent = Docker n'est pas lancé : voir Conteneur.
+settings-agent-no-container = L'atelier de l'agent n'est pas démarré : voir Conteneur.
+settings-agent-device-code = Ouvrez la page de connexion et saisissez le code
+settings-agent-device-waiting = En attente de la connexion…
+settings-agent-panel-login = Claude Code vous demande de vous connecter dans le panneau de l'agent ; sinon, tapez /login.
+settings-agent-codex-login = Connexion avec votre abonnement ChatGPT : un code à saisir sur le site d'OpenAI.
+settings-agent-open-chats = Les conversations déjà ouvertes continuent jusqu'à leur relance.
+settings-agent-device-open = Ouvrir la page de connexion
+settings-agent-login = Se connecter
+settings-agent-logout = Se déconnecter
+
+settings-ai-intro = Une petite IA tourne sur votre Mac, en plus de l'agent : elle le met en pause quand une de ses actions paraît étrange, trie ce que Ressac suit pour vous et rédige les résumés. Elle est gratuite et rien de ce qu'elle lit ne quitte votre machine. Il lui faut Ollama, le logiciel libre qui la fait fonctionner, et deux modèles.
+settings-ai-ollama-outdated = version { $version }, il faut la { $min }
+settings-ai-ollama-update = Mettre à jour Ollama
+settings-ai-ollama-stopped = arrêté
+settings-ai-ollama-starting = Démarrage…
+settings-ai-ollama-start = Démarrer
+settings-ai-ollama-download = Télécharger Ollama (190 Mo)
+settings-ai-ollama-reachable = joignable
+settings-ai-ollama-unreachable = injoignable
+settings-ai-gemma-present = Widgets et veille : Gemma ({ $model })
+settings-ai-gemma-absent = Widgets et veille : Gemma absent
+settings-ai-decision-model = Modèle de décision
+settings-ai-large-download = Plusieurs Go : le téléchargement peut prendre un moment.
+
+settings-pill-installed = installé
+settings-pill-absent = absent
+settings-pull-download = Télécharger
+settings-pull-progress-unknown = Téléchargement…
+settings-pull-progress = Téléchargement { $percent } %
+
+settings-workshop-name = Atelier de l'agent
+settings-workshop-started = Atelier démarré
+settings-workshop-stopped = Atelier arrêté
+settings-workshop-absent = Atelier pas encore créé : il se construit à la première ouverture de l'agent.
+settings-workshop-docker-absent = Docker (OrbStack) n'est pas lancé ou pas installé.
+settings-workshop-restarting = Redémarrage…
+settings-workshop-rebuilding = Reconstruction… (quelques minutes)
+settings-workshop-confirm-restart = Les agents et les applis en cours s'arrêtent, puis les agents se relancent.
+settings-workshop-confirm-rebuild = La reconstruction réinstalle Claude Code et Codex et prend quelques minutes. Les agents et les applis en cours s'arrêtent ; vos projets et les connexions de Claude et de Codex restent.
+settings-docker-start = Démarrer { $app }
+settings-docker-install = Installer OrbStack
+settings-restart = Redémarrer
+settings-rebuild = Reconstruire
+settings-cancel = Annuler
+
+settings-telemetry-label = Envoyer les plantages et les erreurs
+settings-telemetry-unavailable = Cette version n'envoie rien.
+
+settings-interface = Interface
+settings-language-label = Langue
+settings-language-system-named = Langue du Mac ({ $name })
+settings-language-system = Langue du Mac
+settings-engine-label = Moteur de recherche
+settings-engine-help = L'agent cherche aussi avec ce moteur. Un moteur qui demande un compte peut le gêner.
+settings-engine-other = Autre…
+settings-engine-custom-label = Adresse de recherche
+settings-hints-label = Astuces
+settings-hints-help = Des conseils sur la page d'accueil et à la première ouverture de l'agent, du mode design et des actions.
+settings-start-home-label = Ouvrir sur la page d'accueil
+settings-start-home-help = Au lancement, chaque fenêtre montre la page d'accueil plutôt que le dernier onglet vu. Les onglets restent ouverts.
+settings-default-browser-label = Navigateur par défaut
+settings-default-browser-help = Les liens des autres applications s'ouvrent dans Ressac.
+settings-default-browser-is = Par défaut
+settings-default-browser-set = Définir par défaut
+settings-sidebar-label = Barre de navigation
+settings-sidebar-left = À gauche
+settings-sidebar-right = À droite
+
+settings-about-release-notes = Nouveautés
+settings-about-replay-welcome = Revoir l'accueil
+settings-about-advanced = Réglages avancés du navigateur
+settings-about-update-check = Rechercher une mise à jour
+settings-about-update-restart = Redémarrer maintenant
+settings-about-update-download = Télécharger la dernière version
+settings-credits = Crédits
+settings-credits-built-on-before = Ressac est construit sur
+settings-credits-built-on-after = de Mozilla et partage sa licence, la MPL 2.0.
+settings-credits-licenses-before = Il embarque Node.js et node-pty (licence MIT) et les polices Geist et Funnel Display (licence OFL). L'IA locale passe par Ollama (MIT), avec les modèles Gemma 4 de Google et pplx-decider-flash de Perplexity (Apache 2.0), téléchargés à la demande. Les agents utilisent Claude Code ou Codex avec votre propre compte. Les licences complètes sont dans l'application, dossier
