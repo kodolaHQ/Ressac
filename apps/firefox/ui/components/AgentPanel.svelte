@@ -99,9 +99,13 @@
   let detach: (() => void) | undefined;
   $effect(() => () => detach?.());
   $effect(() => {
+    if (!aiOn()) terminalAgent.sleep();
+  });
+  $effect(() => {
     // AI off: the terminal is not attached, so no agent session starts.
     if (!visible || !aiOn()) return;
     detach ??= terminalAgent.attacher(hostEl);
+    terminalAgent.wake();
     terminalAgent.adjust();
     const obs = new ResizeObserver(() => terminalAgent.adjust());
     obs.observe(hostEl);

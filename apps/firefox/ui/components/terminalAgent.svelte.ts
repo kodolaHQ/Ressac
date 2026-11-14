@@ -152,6 +152,18 @@ export function hasFocus(): boolean {
   return !!terminal?.textarea && terminal.textarea === document.activeElement && window.parent.document.activeElement === window.frameElement;
 }
 
+/** Set when AI goes off with a terminal: the host ended its session, the next shown host starts a new one. */
+let asleep = false;
+export function sleep(): void {
+  if (terminal) asleep = true;
+}
+/** AI on again and a host shown: a session the switch-off ended starts afresh (once, whichever host asks). */
+export function wake(): void {
+  if (!asleep) return;
+  asleep = false;
+  reset();
+}
+
 /** New session (Réessayer, Relancer): the screen starts from scratch. */
 export function reset(): void {
   terminal?.reset();

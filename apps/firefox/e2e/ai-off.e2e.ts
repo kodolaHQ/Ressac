@@ -177,6 +177,28 @@ it("off: after « Activer l'IA » and the AI setup, the agent panel attaches the
   await waitUi(m, "return (doc.querySelector('.xterm-rows')?.textContent ?? '').includes('fake agent ready>')", [], 20_000, "agent");
 });
 
+it("off then on without relaunch: ⌘J shows a fresh agent session, no click", { timeout: 90_000 }, async () => {
+  await launch(true);
+  await panelShown(true);
+  const xterm = "return (doc.querySelector('.xterm-rows')?.textContent ?? '')";
+  await waitUi(m, `${xterm}.includes('fake agent ready>')`, [], 20_000, "agent");
+  const pidFile = join(w!.dataDir, "workspace", "fake-agent-pid");
+  const first = readFileSync(pidFile, "utf8");
+  await dispatch(m, { type: "disableAi" });
+  await panelShown(false);
+  await dispatch(m, { type: "enableAi" });
+  // The AI-only setup, if it shows: its Docker and Ollama pages.
+  for (const page of ["welcome-5", "welcome-6"])
+    if (await waitUi(m, `return !!doc.querySelector('${tid(page)}')`, [], 3_000).then(() => true, () => false))
+      await click(m, `${tid("welcome-layer")} ${tid("welcome-next")}`);
+  await waitUi(m, `return !doc.querySelector('${tid("welcome-layer")}')`);
+  await pressKeys(m, "Meta+j");
+  await panelShown(true);
+  // A new agent process, its prompt on a live (unmasked) terminal.
+  await waitFor(m, "return 1", () => readFileSync(pidFile, "utf8") !== first, 20_000);
+  await waitUi(m, `if (doc.querySelector('.terminal.masked')) return false; ${xterm}.includes('fake agent ready>')`, [], 20_000, "agent");
+});
+
 it("off: Demander shows the asleep line and nothing reaches Ollama or the agent", async () => {
   ollama.log.length = 0;
   await launch(false);
