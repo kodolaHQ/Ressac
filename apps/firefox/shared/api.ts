@@ -144,7 +144,7 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("noteVersion"), version: z.string().min(1) }),
   z.object({ type: z.literal("openReleaseNotes"), windowId: id }),
   /** Firefox's updater state (chrome only); keeps « Plus tard » unless the version changes. */
-  z.object({ type: z.literal("setUpdate"), update: z.object({ phase: z.enum(["idle", "checking", "downloading", "ready", "failed", "unwritable", "disabled"]), version: z.string().nullable(), progress: z.number().min(0).max(100).nullable() }) }),
+  z.object({ type: z.literal("setUpdate"), update: z.object({ phase: z.enum(["idle", "checking", "downloading", "ready", "failed", "unreachable", "unwritable", "disabled"]), version: z.string().nullable(), progress: z.number().min(0).max(100).nullable() }) }),
   /** « Plus tard » on the update card: hidden until another version is ready or the next launch. */
   z.object({ type: z.literal("dismissUpdate") }),
   z.object({ type: z.literal("markHintSeen"), id: z.enum(HINT_IDS) }),

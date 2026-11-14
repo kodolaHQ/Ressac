@@ -23,7 +23,7 @@ describe("updatePhase", () => {
     // Auto mode downloads by itself: this status only waits for a user's go Ressac never asks for.
     ["DOWNLOAD_AND_INSTALL", "idle"],
     ["DOWNLOAD_FAILED", "failed"],
-    ["CHECKING_FAILED", "failed"],
+    ["CHECKING_FAILED", "unreachable"],
     ["INTERNAL_ERROR", "failed"],
     ["NO_UPDATER", "disabled"],
     ["UNSUPPORTED_SYSTEM", "disabled"],
@@ -93,6 +93,7 @@ describe("update texts", () => {
     expect(updateStatusText(u("idle", null))).toBe("À jour");
     expect(updateStatusText(u("checking", null))).toBe("Recherche…");
     expect(updateStatusText(u("failed", ""))).toBe("La mise à jour a échoué");
+    expect(updateStatusText(u("unreachable", null))).toBe("Impossible de vérifier pour le moment");
     // The app folder is not writable: À propos shows only the DMG link.
     expect(updateStatusText(u("unwritable", null))).toBe("");
   });

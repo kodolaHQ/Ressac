@@ -4,7 +4,7 @@ import type { ReportedError } from "../../shared/telemetry";
 import { isSignatureFailure, isStaleUpdate, updatePhase } from "../../core/update";
 import { relaunchAfterQuit, relaunchEnv } from "./relaunch";
 
-const PHASES: readonly UpdatePhase[] = ["idle", "checking", "downloading", "ready", "failed", "unwritable", "disabled"];
+const PHASES: readonly UpdatePhase[] = ["idle", "checking", "downloading", "ready", "failed", "unreachable", "unwritable", "disabled"];
 
 /**
  * Firefox's updater (AppUpdater) mirrored into the state's `update`. One check at start; Firefox's own timer keeps

@@ -185,7 +185,7 @@ export interface WindowState {
   frame: FrameBounds | null;
 }
 
-export type UpdatePhase = "idle" | "checking" | "downloading" | "ready" | "failed" | "unwritable" | "disabled";
+export type UpdatePhase = "idle" | "checking" | "downloading" | "ready" | "failed" | "unreachable" | "unwritable" | "disabled";
 export interface UpdateShown {
   phase: UpdatePhase;
   /** package.json version of the update, when known */

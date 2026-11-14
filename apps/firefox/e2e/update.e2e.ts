@@ -67,6 +67,15 @@ it("failed: no card, À propos offers the latest version's download", async () =
   expect(await has("update-card")).toBe(false);
 });
 
+it("unreachable: no card, À propos says so and offers a new check, not the download", async () => {
+  await launch({ RESSAC_TEST_UPDATE: "unreachable:" });
+  await openAbout();
+  await waitUi(m, `return doc.querySelector('[data-testid="update-status"]')?.textContent.trim() === "Impossible de vérifier pour le moment"`);
+  expect(await has("update-check")).toBe(true);
+  expect(await has("update-download")).toBe(false);
+  expect(await has("update-card")).toBe(false);
+});
+
 it("updater disabled (the dev app's policy): no card, no status", async () => {
   await launch();
   await openAbout();

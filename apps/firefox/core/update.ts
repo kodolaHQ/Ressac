@@ -7,7 +7,7 @@ const PHASES: Record<string, UpdatePhase> = {
   STAGING: "downloading",
   READY_FOR_RESTART: "ready",
   DOWNLOAD_FAILED: "failed",
-  CHECKING_FAILED: "failed",
+  CHECKING_FAILED: "unreachable",
   INTERNAL_ERROR: "failed",
   NO_UPDATER: "disabled",
   UNSUPPORTED_SYSTEM: "disabled",
@@ -47,6 +47,8 @@ export function updateStatusText(u: UpdateShown): string {
       return `${u.version ? `Téléchargement de ${u.version}…` : "Téléchargement…"}${u.progress === null ? "" : ` ${u.progress} %`}`;
     case "ready":
       return u.version ? `${u.version} prête, installée au redémarrage` : "Mise à jour prête, installée au redémarrage";
+    case "unreachable":
+      return "Impossible de vérifier pour le moment";
     case "failed":
       return "La mise à jour a échoué";
     default:
