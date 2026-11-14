@@ -98,6 +98,7 @@
     void tick().then(() => focusAgent.n++);
   }
   $effect(() => api.onPanel(togglePanel));
+  $effect(() => api.design.onChange(() => void rereadDesign()));
   // ZoneContenu's design mode: it follows the tab shown and its address (the chrome stops the mode if it changes).
   $effect(() => {
     void activeTab?.id;
