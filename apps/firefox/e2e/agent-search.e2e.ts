@@ -154,6 +154,8 @@ it("late results are returned", async () => {
   const config = join(w.dataDir, "workspace", ".ressac", "mcp.json");
   for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
     if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
+  // The home page opens the agent's session, which resets the searches: the agent searches only once it is ready.
+  await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
   const r = (await callTool(w.dataDir, "search_web", { query: "x", goal: "but" })).text;
   expect(r).toContain(`Lien — ${server.url}/lien.html`);
 });
@@ -168,6 +170,8 @@ it("the engine redirecting to another origin: search_web, then read_tab right af
   const config = join(w.dataDir, "workspace", ".ressac", "mcp.json");
   for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
     if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
+  // The home page opens the agent's session, which resets the searches: the agent searches only once it is ready.
+  await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
   const r = (await callTool(w.dataDir, "search_web", { query: "x", goal: "but" })).text;
   expect(r).not.toContain("changé de site");
   const link = `${local}/l/?uddg=${encodeURIComponent(`${server.url}/a.html`)}`;

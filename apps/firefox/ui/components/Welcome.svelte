@@ -5,7 +5,7 @@
   import { OLLAMA_ITSELF, type DockerStatus, type OllamaStatus } from "../../shared/settings";
   import { shortcutLabel } from "../../shared/shortcuts";
   import type { WindowState } from "../../shared/model";
-  import { api, appState } from "../state.svelte";
+  import { aiOn, api, appState } from "../state.svelte";
   import { t, tAround } from "../i18n.svelte";
   import AuraDot from "./AuraDot.svelte";
   import BrowserImport from "./BrowserImport.svelte";
@@ -13,13 +13,20 @@
   import { welcomeStep as step } from "./welcome-step.svelte";
 
   /**
-   * The first-launch welcome: six pages on the aura, then the browser. Nothing is saved before « Ouvrir le navigateur »,
-   * except an import from another browser, started on page 2.
-   * An install link steps it aside (unmounted, its page kept in `step`): coming back checks Docker and Ollama again.
+   * The first-launch welcome: seven pages on the aura, then the browser. Nothing is saved before « Ouvrir le navigateur »,
+   * except an import from another browser, started on page 2, and the answer to « Activer l'IA ? » (page 4): « Oui » turns
+   * AI on at once, since the Docker and Ollama pages need the host's AI side.
+   * Mode `ai` (the AI setup, from « Activer l'IA »): the Docker and Ollama pages alone, ending on « Terminer ».
+   * An install link steps it aside (unmounted, its page kept in `step`): coming back checks the page's state again.
    */
-  let { window: win }: { window: WindowState } = $props();
+  let { window: win, mode = "full" }: { window: WindowState; mode?: "full" | "ai" } = $props();
 
-  const PAGES = 6;
+  // Only a replay: a first welcome left after « Oui » (AI on, nothing finished) asks again at the next launch.
+  if (step.aiAtStart === undefined) step.aiAtStart = !!appState.value?.welcomeReplay && aiOn();
+  /** Page numbers shown, in order: « Plus tard » on page 4, or AI already on at a replay, skips the AI pages 5-6. */
+  const pages = $derived(mode === "ai" ? [5, 6] : step.aiAtStart ? [1, 2, 3, 7] : aiOn() ? [1, 2, 3, 4, 5, 6, 7] : [1, 2, 3, 4, 7]);
+  const page = $derived(pages.includes(step.page) ? step.page : pages[0]!);
+  const at = $derived(pages.indexOf(page));
   const AGENTS = [["claude", "Claude Code"], ["codex", "Codex"]] as const;
   const space = $derived(appState.value?.spaces.find((s) => s.id === win.activeSpace));
   const label = (id: "command" | "agent") => shortcutLabel(id, appState.value?.settings);
@@ -73,13 +80,25 @@
     pulling = r.ok;
     pullError = r.ok ? null : r.error;
   }
+  // Each state is checked when its page first shows (only after « Oui »: no Docker or Ollama call while AI is off).
+  let checked = { docker: false, ollama: false };
   $effect(() => {
-    void checkDocker();
-    void checkOllama();
+    if (page === 5 && !checked.docker) {
+      checked.docker = true;
+      void checkDocker();
+    }
+    if (page === 6 && !checked.ollama) {
+      checked.ollama = true;
+      void checkOllama();
+    }
   });
 
-  const next = () => (step.page = Math.min(PAGES, step.page + 1));
-  const back = () => (step.page = Math.max(1, step.page - 1));
+  const next = () => (step.page = pages[Math.min(pages.length - 1, at + 1)]!);
+  const back = () => (step.page = pages[Math.max(0, at - 1)]!);
+  function answer(yes: boolean) {
+    if (yes !== aiOn()) api.dispatch({ type: yes ? "enableAi" : "disableAi" });
+    step.page = yes ? 5 : 7;
+  }
   /** The download page opens in a tab, and the welcome steps aside so that it shows. */
   function install(url: string) {
     api.settings.openUrl(url);
@@ -93,16 +112,16 @@
     const s = space;
     const n = name.trim();
     if (s && ((n && n !== s.name) || aura !== s.aura)) api.dispatch({ type: "updateSpace", id: s.id, name: n || s.name, icon: s.icon, private: s.private, profile: s.profile, aura });
-    api.dispatch({ type: "finishOnboarding" });
+    api.dispatch(step.aiAtStart ? { type: "finishOnboarding" } : { type: "finishOnboarding", ai: aiOn() });
   }
 </script>
 
-{#snippet actions(label: string, later: boolean)}
+{#snippet actions(label: string, later: boolean, onNext = next, onLater = next)}
   <div class="actions">
-    {#if step.page > 1}<button type="button" class="quiet" data-testid="welcome-back" onclick={back}>{t("home-welcome-back")}</button>{/if}
+    {#if at > 0}<button type="button" class="quiet" data-testid="welcome-back" onclick={back}>{t("home-welcome-back")}</button>{/if}
     <span class="grow"></span>
-    {#if later}<button type="button" class="quiet" data-testid="welcome-later" onclick={next}>{t("home-welcome-later")}</button>{/if}
-    <button type="button" class="primary" data-testid="welcome-next" use:focus onclick={next}>{label}</button>
+    {#if later}<button type="button" class="quiet" data-testid="welcome-later" onclick={onLater}>{t("home-welcome-later")}</button>{/if}
+    <button type="button" class="primary" data-testid="welcome-next" use:focus onclick={onNext}>{label}</button>
   </div>
 {/snippet}
 
@@ -113,20 +132,20 @@
 <div class="welcome" style={Object.entries(auraVariables(aura)).map(([k, v]) => `${k}:${v}`).join(";")}>
   <div class="aura" aria-hidden="true"><i></i><i></i><i></i></div>
   <div class="panel" role="dialog" aria-modal="true" aria-label={t("home-welcome-label")}>
-    {#key step.page}
-      <section class="page" data-testid="welcome-{step.page}">
-        {#if step.page === 1}
+    {#key page}
+      <section class="page" data-testid="welcome-{page}">
+        {#if page === 1}
           <div class="hero">
             <img src="chrome://branding/content/about-logo.svg" alt="" width="96" height="96" />
             <h1 class="brand">ressac</h1>
             <p class="lead">{t("home-welcome-tagline")}</p>
           </div>
           {@render actions(t("home-welcome-start"), false)}
-        {:else if step.page === 2}
+        {:else if page === 2}
           <h2>{t("home-welcome-import-title")}</h2>
           <BrowserImport bind:sources />
           {@render actions(t("home-welcome-continue"), !!sources?.length)}
-        {:else if step.page === 3}
+        {:else if page === 3}
           <h2>{t("home-welcome-sidebar-title")}</h2>
           <div class="sidebar">
             <SidebarSketch key={label("command")} />
@@ -137,7 +156,15 @@
             </ul>
           </div>
           {@render actions(t("home-welcome-next"), false)}
-        {:else if step.page === 4}
+        {:else if page === 4}
+          <h2>{t("home-welcome-ai-ask-title")}</h2>
+          <div class="ask" data-testid="welcome-ai">
+            <p>{t("home-welcome-ai-ask-intro")}</p>
+            <p>{t("home-welcome-ai-ask-needs")}</p>
+            <p class="note">{t("home-welcome-ai-ask-later")}</p>
+          </div>
+          {@render actions(t("home-welcome-yes"), true, () => answer(true), () => answer(false))}
+        {:else if page === 5}
           <h2>{t("home-welcome-agent-title")}</h2>
           <p>{t("home-welcome-agent-intro")}</p>
           <div class="check">
@@ -167,7 +194,7 @@
           </div>
           {#if docker && docker !== "docker-absent"}{@const [before, after] = tAround("home-welcome-agent-login", "key")}<p class="note">{before}<kbd>{label("agent")}</kbd>{after}</p>{/if}
           {@render actions(t("home-welcome-continue"), true)}
-        {:else if step.page === 5}
+        {:else if page === 6}
           <h2>{t("home-welcome-ai-title")}</h2>
           <p>{t("home-welcome-ai-intro")}</p>
           <ul>
@@ -205,7 +232,11 @@
               <button type="button" data-testid="welcome-recheck" onclick={() => void checkOllama()}>{t("home-welcome-recheck")}</button>
             {/if}
           </div>
-          {@render actions(t("home-welcome-continue"), true)}
+          {#if mode === "ai"}
+            {@render actions(t("home-welcome-done"), false, () => api.dispatch({ type: "finishAiSetup" }))}
+          {:else}
+            {@render actions(t("home-welcome-continue"), true)}
+          {/if}
         {:else}
           <form onsubmit={finish}>
             <h2>{t("home-welcome-ready-title")}</h2>
@@ -231,8 +262,8 @@
         {/if}
       </section>
     {/key}
-    <ol class="dots" aria-label={t("home-welcome-page", { page: step.page, total: PAGES })}>
-      {#each { length: PAGES } as _, i (i)}<li aria-hidden="true" class:current={i + 1 === step.page}></li>{/each}
+    <ol class="dots" aria-label={t("home-welcome-page", { page: at + 1, total: pages.length })}>
+      {#each pages as p, i (p)}<li aria-hidden="true" class:current={i === at}></li>{/each}
     </ol>
   </div>
 </div>
@@ -291,6 +322,8 @@
   .hero img { width: 96px; height: 96px; filter: drop-shadow(var(--modal-shadow)); }
   .brand { margin: 6px 0 0; font: 600 44px/1 var(--font-display); letter-spacing: -0.03em; }
   .lead { max-width: 30ch; color: var(--text-muted); font-size: 15px; }
+
+  .ask { display: flex; flex-direction: column; gap: 10px; }
 
   .sidebar { display: flex; align-items: center; gap: 22px; }
   .sidebar ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 12px; }

@@ -271,7 +271,9 @@ describe("import from another browser", () => {
     await shows("import-failed-passwords", "Mots de passe : fichier illisible");
     await click(m, '[data-testid="welcome-next"]');
     await shows("welcome-3", "Vos onglets vivent à gauche");
-    for (let p = 3; p < 6; p++) await click(m, '[data-testid="welcome-next"]');
+    // A replay with AI on: page 3 goes straight to the first space.
+    await click(m, '[data-testid="welcome-next"]');
+    await shows("welcome-7", "");
     await click(m, '[data-testid="welcome-finish"]');
     await waitUi(m, `return !doc.querySelector('[data-testid="welcome-layer"]')`);
   });

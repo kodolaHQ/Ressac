@@ -953,6 +953,31 @@ test("updateSpace without aura keeps a non-default aura; the same aura again cha
   expect(e).toBe(before);
 });
 
+test("AI actions", () => {
+  e = initialState(genId);
+  ag({ type: "finishOnboarding", ai: false });
+  expect(e.settings.aiEnabled).toBe(false);
+  expect(e.settings.onboarded).toBe(true);
+  ag({ type: "finishOnboarding" });
+  expect(e.settings.aiEnabled).toBe(false);
+  // « Oui » in the welcome: AI on at once, and finishing the welcome ends the setup.
+  ag({ type: "enableAi" });
+  ag({ type: "finishOnboarding", ai: true });
+  expect([e.settings.aiEnabled, e.aiSetup]).toEqual([true, false]);
+  ag({ type: "enableAi" });
+  expect([e.settings.aiEnabled, e.aiSetup]).toEqual([true, true]);
+  ag({ type: "finishAiSetup" });
+  expect(e.aiSetup).toBe(false);
+  const before = e;
+  ag({ type: "enableAi" });
+  expect(e).not.toBe(before);
+  expect(e.aiSetup).toBe(true);
+  e.windows[0]!.agentPanelOpen = true;
+  ag({ type: "disableAi" });
+  expect([e.settings.aiEnabled, e.aiSetup]).toEqual([false, false]);
+  expect(e.windows.every((f) => !f.agentPanelOpen)).toBe(true);
+});
+
 test("onboarding actions and hints", () => {
   e = initialState(genId);
   expect(e.settings.onboarded).toBe(false);
@@ -965,7 +990,10 @@ test("onboarding actions and hints", () => {
   expect(e.settings.onboarded).toBe(true);
   expect(changed({ type: "finishOnboarding" })).toBe(false);
   ag({ type: "replayOnboarding" });
-  expect(e.settings.onboarded).toBe(false);
+  expect([e.settings.onboarded, e.welcomeReplay]).toEqual([false, true]);
+  ag({ type: "finishOnboarding" });
+  expect(e.welcomeReplay).toBe(false);
+  ag({ type: "replayOnboarding" });
   expect(changed({ type: "markHintSeen", id: "agent" })).toBe(true);
   expect(changed({ type: "markHintSeen", id: "agent" })).toBe(false);
   expect(e.settings.hints.seen).toEqual(["agent"]);

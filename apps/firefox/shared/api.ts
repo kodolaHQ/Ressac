@@ -143,7 +143,10 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("chooseAgentProfile"), profile: z.string().regex(/^[\w-]+$/).max(64) }),
   z.object({ type: z.literal("chooseCodexEngine"), engine: CodexEngineSchema }),
   z.object({ type: z.literal("chooseClaudeEngine"), engine: ClaudeEngineSchema }),
-  z.object({ type: z.literal("finishOnboarding") }),
+  z.object({ type: z.literal("finishOnboarding"), ai: z.boolean().optional() }),
+  z.object({ type: z.literal("enableAi") }),
+  z.object({ type: z.literal("disableAi") }),
+  z.object({ type: z.literal("finishAiSetup") }),
   z.object({ type: z.literal("replayOnboarding") }),
   /** At each start: records the running version, and opens « Nouveautés » when it changed and has notes. */
   z.object({ type: z.literal("noteVersion"), version: z.string().min(1) }),

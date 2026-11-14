@@ -27,6 +27,8 @@ export interface ApplicationsHost {
   handlers: Record<string, (p: any) => unknown>;
   /** Running apps with a port: projectForUrl's appsLancees (plan 35b) and the review's applis. */
   list(): Promise<Application[]>;
+  /** AI on: the orphan apps' cleanup, the projects watch and the Docker probe start; idempotent until stop(). */
+  wake(): void;
   /** toutArreter, arreterSurveillance, then the memory written. */
   stop(): Promise<void>;
 }
@@ -108,10 +110,8 @@ export function createApplicationsHost(o: {
       o.broadcast();
     },
   });
-  // Once per host life, in the background: windows never wait for Docker.
-  manager.start().catch((e) => console.error("[applications] start failed:", e));
-  // The list never waits for it: the page is re-read when Docker's state changes.
-  const docker = new DockerProbe({ probe: () => o.workshop.state(), onChange: o.broadcast });
+  // Made by wake(): before it (AI off), nothing here runs docker. The list never waits for it: the page is re-read when Docker's state changes.
+  let docker: DockerProbe | undefined;
 
   /** Erases the folder, the container and its memory; refused while the app runs or starts. */
   async function remove(folder: string): Promise<void> {
@@ -176,7 +176,7 @@ export function createApplicationsHost(o: {
     "apps.list": async (): Promise<ApplicationList> => {
       const applications = await manager.list();
       return {
-        workshop: docker.value(),
+        workshop: docker?.value() ?? "ok",
         apps: applications.map((a) => {
           const { favicon, lastLaunch: lastLaunch } = memory.read(a.folder);
           return { ...a, ...(favicon ? { favicon } : {}), ...(lastLaunch ? { lastLaunch: lastLaunch } : {}) };
@@ -224,7 +224,14 @@ export function createApplicationsHost(o: {
     manager: manager,
     handlers,
     list: async () => (await manager.list()).filter((a) => a.state === "running" && a.port !== undefined),
+    wake() {
+      if (docker) return;
+      docker = new DockerProbe({ probe: () => o.workshop.state(), onChange: o.broadcast });
+      // In the background: windows never wait for Docker.
+      manager.start().catch((e) => console.error("[applications] start failed:", e));
+    },
     async stop() {
+      docker = undefined;
       try {
         await manager.stopAll();
         await manager.stopWatching();

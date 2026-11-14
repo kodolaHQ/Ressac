@@ -1,5 +1,5 @@
 import type { HintId } from "../../shared/hints";
-import { api, appState, currentWindow } from "../state.svelte";
+import { aiOn, api, appState, currentWindow } from "../state.svelte";
 
 /** Marks a hint seen; no dispatch when it already is (gestures call this at every use). */
 export function markSeen(id: HintId): void {
@@ -14,4 +14,4 @@ export function firstTimePending(id: HintId): boolean {
 }
 
 /** The agent note is showing: its panel is open in this window and it is not seen yet. The other notes and tips wait. */
-export const agentNoteShowing = (): boolean => !!currentWindow()?.agentPanelOpen && firstTimePending("agent");
+export const agentNoteShowing = (): boolean => aiOn() && !!currentWindow()?.agentPanelOpen && firstTimePending("agent");

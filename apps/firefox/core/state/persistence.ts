@@ -71,6 +71,8 @@ const SchemaSession = z.object({
       .catch(() => ({ enabled: true, seen: (Object.keys(FIRST_TIME) as HintId[]).filter((id) => id !== "extensions") })),
     sidebarSide: z.enum(["left", "right"]).catch("left"),
     vimMode: z.boolean().catch(false),
+    // A session saved before the setting existed already had AI: it stays on.
+    aiEnabled: z.boolean().catch(true),
     // A session saved before the setting existed gets the default.
     startOnHome: z.boolean().catch(true),
     // A session saved before languages existed was in French: it stays so. A language no longer shipped → the Mac's.
@@ -124,9 +126,19 @@ async function setAside(path: string, reason: "corrupt" | "unreadable"): Promise
 }
 
 /** A user who already had a session (even a damaged one) is not welcomed again. */
-function known(s: BrowserState): BrowserState {
+function known(s: BrowserState, text?: string): BrowserState {
   s.settings.onboarded = true;
+  // No welcome to ask: AI stays as the user left it if the damaged file still says so, else on (they already had it).
+  s.settings.aiEnabled = aiEnabledIn(text) !== false;
   return s;
+}
+
+function aiEnabledIn(text: string | undefined): unknown {
+  try {
+    return text === undefined ? undefined : JSON.parse(text)?.settings?.aiEnabled;
+  } catch {
+    return undefined;
+  }
 }
 
 /** `kept` receives the name under which an unreadable session was set aside, to tell the user. */
@@ -149,12 +161,14 @@ export async function loadSession(folder: string, kept?: (path: string) => void)
       ...parsed,
       update: null,
       locale: "en",
+      aiSetup: false,
+      welcomeReplay: false,
       tabs: Object.fromEntries(Object.entries(parsed.tabs).map(([id, o]) => [id, { ...o, ...VOLATILE }])),
     };
   } catch {
     const name = await setAside(path, "corrupt");
     if (name) kept?.(name);
-    return known(initialState());
+    return known(initialState(), text);
   }
 }
 
@@ -201,7 +215,7 @@ export class SessionRecorder {
       Object.entries(state.tabs).map(([id, { loading: load, canGoBack: canGoBack, canGoForward: canAdvance, crashed: crashes, error: error, agentSearch: _band, call: _call, sound: _sound, playback: _playback, unloaded: _unloaded, ...rest }]) => [id, rest]),
     );
     const target = join(this.folder, FILE);
-    const { update: _update, locale: _locale, ...saved } = state;
+    const { update: _update, locale: _locale, aiSetup: _aiSetup, welcomeReplay: _welcomeReplay, ...saved } = state;
     const text = JSON.stringify({ ...saved, tabs: tabs }, null, 2);
     this.onDisk ??= await fs.readFile(target, "utf8").catch(() => null);
     if (text === this.onDisk) return;

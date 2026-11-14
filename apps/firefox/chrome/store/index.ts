@@ -243,7 +243,13 @@ async function start(): Promise<RessacStore> {
   // The agent components' copies too.
   await IOUtils.remove(PathUtils.join(dataDir, "ressac-components"), { recursive: true, ignoreAbsent: true }).catch((e) => console.warn("[actions] copies not erfacées :", e));
   let setAside: string | null = null;
-  const store = createStore(await loadSession(dataDir, (p) => (setAside = p)).then((s) => (Services.env.get("RESSAC_SKIP_WELCOME") === "1" ? { ...s, settings: { ...s.settings, onboarded: true, seenVersion: s.settings.seenVersion ?? __RESSAC_VERSION__ } } : s)).then((s) => withEssentials(s)));
+  const store = createStore(await loadSession(dataDir, (p) => (setAside = p)).then((s) => {
+    const skip = Services.env.get("RESSAC_SKIP_WELCOME") === "1";
+    const aiOff = Services.env.get("RESSAC_TEST_AI") === "0";
+    // A test launch skips the welcome: AI on for a fresh profile unless the test asks for it off.
+    const aiEnabled = aiOff ? false : skip && !s.settings.onboarded ? true : s.settings.aiEnabled;
+    return skip ? { ...s, settings: { ...s.settings, onboarded: true, aiEnabled, seenVersion: s.settings.seenVersion ?? __RESSAC_VERSION__ } } : s;
+  }).then((s) => withEssentials(s)));
   const questions = new Questions(store, () => sites.forAgent(), () => apps.forAgent());
   // A site app or agent app window closed: the agent's questions on it fall.
   sites.onClosed(() => questions.dropStale());
@@ -464,6 +470,7 @@ async function start(): Promise<RessacStore> {
     dataDir,
     agentProfile: () => store.state.settings.agentProfile,
     locale: () => store.state.locale,
+    aiEnabled: () => store.state.settings.aiEnabled,
     handlers: {
       ...bridgeHandlers(store, questions, windows, devtools, () => agent, sites, apps),
       ...agentExtensions.handlers,
@@ -498,13 +505,14 @@ async function start(): Promise<RessacStore> {
     store.dispatch({ type: "openTab", windowId: windowId, url });
     toFront(windowId);
   };
-  const design = createDesign({ agent, windows, apps, sites, dispatch: store.dispatch, mainWindow, toFront, shortcutLabel: () => shortcutLabel("design", store.state.settings), locale: () => store.state.locale });
+  const design = createDesign({ agent, windows, apps, sites, dispatch: store.dispatch, mainWindow, toFront, shortcutLabel: () => shortcutLabel("design", store.state.settings), locale: () => store.state.locale, aiOn: () => store.state.settings.aiEnabled, giveAgent });
   bindSites(agent, dataDir, openInTab, design, () => store.state.locale);
   design.overlays = createOverlays({ design, host: agent });
   // A remapped design shortcut: the windows re-read the label (a site app's « Mode design (⇧⌘D) » tooltip).
   store.subscribe((s, p) => {
     if (shortcutLabel("design", s.settings) !== shortcutLabel("design", p.settings) || s.locale !== p.locale) design.refresh();
     if (s.locale !== p.locale) relabelSiteWindows();
+    if (p.settings.aiEnabled && !s.settings.aiEnabled) void design.stopAll();
   });
   bindApps(agent, openInTab, dataDir, { access: () => access, design, locale: () => store.state.locale });
   const history = createHistory(store, agent);

@@ -628,12 +628,34 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       return true;
     }
     case "finishOnboarding": {
-      if (d.settings.onboarded) return false;
+      const aiChanged = a.ai !== undefined && d.settings.aiEnabled !== a.ai;
+      if (d.settings.onboarded && !aiChanged && !d.aiSetup && !d.welcomeReplay) return false;
       d.settings.onboarded = true;
+      d.welcomeReplay = false;
+      // « Oui » in the welcome turns AI on at once (enableAi): the full welcome ends that setup too.
+      d.aiSetup = false;
+      if (a.ai !== undefined) d.settings.aiEnabled = a.ai;
+      return true;
+    }
+    case "enableAi": {
+      d.settings.aiEnabled = true;
+      d.aiSetup = true;
+      return true;
+    }
+    case "disableAi": {
+      d.settings.aiEnabled = false;
+      d.aiSetup = false;
+      for (const f of d.windows) f.agentPanelOpen = false;
+      return true;
+    }
+    case "finishAiSetup": {
+      if (!d.aiSetup) return false;
+      d.aiSetup = false;
       return true;
     }
     case "replayOnboarding": {
       d.settings.onboarded = false;
+      d.welcomeReplay = true;
       return true;
     }
     case "noteVersion": {

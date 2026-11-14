@@ -44,7 +44,7 @@ it("the compiled host runs alone and finds its kernel resources", { timeout: 30_
   const rpc = createRpc({ send: (l) => child.stdin.write(l + "\n"), handlers: {} });
   createInterface({ input: child.stdout }).on("line", (l) => rpc.receive(l));
   try {
-    expect(await rpc.request("start", { agentProfile: "claude" })).toEqual({ agent: expect.any(String) });
+    expect(await rpc.request("start", { agentProfile: "claude", aiEnabled: true })).toEqual({ agent: expect.any(String) });
   } catch (e) {
     throw new Error(`${e}\n${err}`);
   } finally {

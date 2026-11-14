@@ -268,6 +268,7 @@ export function trackState(store: Store, host: AgentHost, windows: WindowRegistr
       const tab = opened && activeTabOf(state, f.id);
       if (tab) host.notify("agent.panelOpened", { window: f.id, tab: tab });
     }
+    if (state.settings.aiEnabled !== previous.settings.aiEnabled) host.notify("ai.enabled", { on: state.settings.aiEnabled });
     if (state.settings.decisionModel !== previous.settings.decisionModel) host.notify("ai.decisionModel", { model: state.settings.decisionModel });
     if (state.settings.codexEngine !== previous.settings.codexEngine) host.notify("agent.codexEngine", { engine: state.settings.codexEngine });
     if (state.locale !== previous.locale) host.notify("settings.locale", { locale: state.locale });

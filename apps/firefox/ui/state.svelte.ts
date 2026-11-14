@@ -20,6 +20,9 @@ api.onState((e) => {
   );
 });
 
+/** settings.aiEnabled: off, every AI entry point shows the asleep card (AiAsleep) and calls nothing. */
+export const aiOn = (): boolean => appState.value?.settings.aiEnabled ?? false;
+
 /** The state of the window showing this interface. */
 export function currentWindow(): WindowState | undefined {
   return appState.value?.windows.find((f) => f.id === api.windowId);

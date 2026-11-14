@@ -164,15 +164,37 @@ const fakeOllama = process.env.RESSAC_TEST_OLLAMA_KIND;
 const ollama = fakeOllama
   ? { status: async () => ({ kind: fakeOllama, version: "0.30.0", min: OLLAMA_MIN }) as OllamaStatus, start: async () => {}, install: async (progress: (p: number | null) => void) => progress(50), close: () => {} }
   : createOllamaRuntime({ url: ai.ollamaUrl, dataDir, managed: process.platform === "darwin" && ai.ollamaUrl === OLLAMA_LOCAL_URL && !process.env.RESSAC_TEST_NO_SYSTEM });
-// An installed Ollama that is not running is started with Ressac; nothing is ever downloaded without a click.
-void ollama.status().then((s) => (s.kind === "stopped" ? ollama.start() : undefined)).catch((e) => console.error("[ressac] Ollama did not start:", e));
 // RESSAC_TEST_DOCKER_KIND (e2e): a fixed status and a start that touches nothing.
 const fakeDocker = process.env.RESSAC_TEST_DOCKER_KIND;
 const docker = fakeDocker
   ? { status: async () => ({ kind: fakeDocker, app: "OrbStack" }) as DockerStatus, start: async () => {} }
   : createDockerRuntime({ running: async () => (await workshop.state()) !== "docker-absent", managed: process.platform === "darwin" && !process.env.RESSAC_TEST_NO_SYSTEM });
-// An installed container app that is not running is started with Ressac, and left running at quit.
-void docker.status().then((s) => (s.kind === "stopped" ? docker.start() : undefined)).catch((e) => console.error("[ressac] Docker did not start:", e));
+// AI on (settings.aiEnabled, told by the chrome's `start` and `ai.enabled`): off, nothing below touches Docker or Ollama.
+let aiOn = false;
+let aiWoken = false;
+// Once per off → on: an installed Ollama or container app that is not running is started, and left running at quit
+// (nothing is ever downloaded without a click).
+const wakeAi = () => {
+  if (aiWoken) return;
+  aiWoken = true;
+  void ollama.status().then((s) => (s.kind === "stopped" ? ollama.start() : undefined)).catch((e) => console.error("[ressac] Ollama did not start:", e));
+  void docker.status().then((s) => (s.kind === "stopped" ? docker.start() : undefined)).catch((e) => console.error("[ressac] Docker did not start:", e));
+};
+/** Wraps a handler that reaches Docker or Ollama: refused while AI is off, whatever the UI shows. */
+const aiOnly =
+  <P, R>(f: (p: P) => R) =>
+  (p: P): R => {
+    if (!aiOn) throw new Error("ai-off");
+    return f(p);
+  };
+// `start` and `ai.enabled` run one after the other (the RPC runs each message in its own microtask): a quick off → on
+// must not see on's wake undone by off's stops still in flight. An off waits for a kernel launch in flight, then stops it.
+let aiSwitch: Promise<unknown> = Promise.resolve();
+const serialAi = <R,>(f: () => Promise<R>): Promise<R> => {
+  const run = aiSwitch.then(f);
+  aiSwitch = run.catch(() => {});
+  return run;
+};
 const notify = (n: { title: string; text: string }) => {
   const file = process.env.RESSAC_TEST_NOTIFICATIONS;
   if (file) return void appendFileSync(file, JSON.stringify({ title: n.title, text: n.text }) + "\n");
@@ -302,13 +324,59 @@ const stop = () =>
     await appsStopped;
   })());
 
+// The settings handlers that reach Docker (the workshop, the agents' accounts) or Ollama.
+const AI_SETTINGS = new Set<string>([
+  "settings.agents",
+  "settings.login",
+  "settings.logout",
+  "settings.ollamaModels",
+  "settings.workshop",
+  "settings.docker",
+  "settings.startDocker",
+  "settings.restartWorkshop",
+  "ai.state",
+  "settings.pullModel",
+  "settings.pullInBackground",
+  "settings.startOllama",
+]);
+type StartParams = { agentProfile: string; locale?: string; aiEnabled?: boolean };
+// Brings the host to `aiOn`, the latest wanted state (set at once by `start` and `ai.enabled`, before their turn in
+// serialAi): a step queued behind a newer switch converges to it. On: Docker, Ollama, the apps and the kernel (once; a
+// failed start is retried). Off: the sessions, the apps and the kernel stop (after a launch in flight, chained on `ready`).
+const applyAi = async () => {
+  if (aiOn) {
+    wakeAi();
+    apps.wake();
+    if (!kernelLaunched || !(await ready)) {
+      kernelLaunched = true;
+      ready = ready.then(stopKernel).then(() => launchKernel(defaultProfile));
+    }
+    await ready;
+    return;
+  }
+  if (!aiWoken && !kernelLaunched) return;
+  aiWoken = false;
+  kernelLaunched = false;
+  // The kernel first: its widget scheduler must not start a harvest while the sessions and apps stop. Its stop only
+  // drops the sessions' MCP tokens (idempotent with their own end); the sessions themselves stop below.
+  ready = ready.then(async (n) => (await stopKernel(n), null));
+  await sessions.stopAll();
+  await apps.stop().catch((e) => console.error("[ressac] the apps did not stop:", e));
+  await ready;
+};
+
 const sessions = new SessionsAgent({
   defaultProfile: () => defaultProfile,
   async open(f, t, { profile, resume, onBuildProgress }) {
+    if (!aiOn) throw new Error("ai-off");
+    await aiSwitch;
     const n = await ready;
     if (!n) throw new Error(error ?? hostSay("host-kernel-not-started"));
+    // AI turned off while waiting: no further docker command.
+    if (!aiOn) throw new Error("ai-off");
     // A container app Ressac is starting (or can start): the panel stays on « Préparation » until Docker answers.
     await docker.start().catch(() => {});
+    if (!aiOn) throw new Error("ai-off");
     if (profile !== "codex" && profile !== "claude") return n.openAgentSession({ ...t, window: f, profile, resume, onBuildProgress });
     const e = profile === "claude" ? claudeEngine : engine; // one snapshot: the env must match the relay token
     const token = e.kind === "api" && (await keys[profile].has()) ? relay.openSession(profile === "claude" ? withoutV1(e.apiUrl) : e.apiUrl, profile) : null;
@@ -336,15 +404,20 @@ const sessions = new SessionsAgent({
 const rpc = createRpc({
   send: (line) => void writeStdout(line + "\n"),
   handlers: {
-    // Sets the default profile; the kernel starts once (its sessions stay), a failed start is retried.
-    start: async (p: { agentProfile: string; locale?: string }) => {
+    // Sets the default profile and AI's state; with AI on the kernel starts once (its sessions stay).
+    start: (p: StartParams) => {
       defaultProfile = p.agentProfile;
       if (typeof p.locale === "string") setHostLocale(p.locale);
-      if (!kernelLaunched || !(await ready)) {
-        kernelLaunched = true;
-        ready = ready.then(stopKernel).then(() => launchKernel(p.agentProfile));
-      }
-      return start();
+      aiOn = p.aiEnabled === true;
+      return serialAi(async () => {
+        await applyAi();
+        return aiOn ? start() : null;
+      });
+    },
+    // Live switch (Réglages). Docker, OrbStack and Ollama are left running when off: they may serve the user's own work.
+    "ai.enabled": (p: { on?: unknown }) => {
+      aiOn = p?.on === true;
+      return serialAi(applyAi).catch((e) => console.error(`[ressac] AI ${aiOn ? "on" : "off"} failed:`, e));
     },
     // Only new windows take the new default: open agents stay.
     changeProfile: (p: { agentProfile: string }) => void (defaultProfile = p.agentProfile),
@@ -369,7 +442,8 @@ const rpc = createRpc({
       if (r.success) claudeEngine = r.data;
     },
     "agent.profiles": async () => {
-      // The kernel writes the default profile while it starts: the panel may ask before that.
+      // The kernel writes the default profile while it starts: the panel may ask before that (or before its launch is queued).
+      await aiSwitch;
       await ready;
       try {
         return (await loadProfiles(paths)).profiles.map((x) => ({ id: x.id, name: x.name }));
@@ -609,20 +683,20 @@ const rpc = createRpc({
     "history.recent": () => hist?.recents() ?? [],
     "history.clear": (p: { since?: string }) => hist?.erase(p.since ? new Date(p.since) : undefined),
     "history.forgetText": (p: { url: string; spaceId: string }) => hist?.forgetText(p.url, p.spaceId),
-    "ask.usable": () => ask.usable(),
-    "ask.warm": () => ask.warm(),
-    "ask.find": (p: { question?: unknown }) => {
+    "ask.usable": () => aiOn && ask.usable(),
+    "ask.warm": () => void (aiOn && ask.warm()),
+    "ask.find": aiOnly((p: { question?: unknown }) => {
       if (typeof p?.question !== "string") throw new Error("ask.find: invalid question");
       return ask.find(p.question.slice(0, 2000), hostLocale());
-    },
-    "ask.handOff": (p: { window?: unknown; question?: unknown; shown?: unknown }) => {
+    }),
+    "ask.handOff": aiOnly((p: { window?: unknown; question?: unknown; shown?: unknown }) => {
       if (typeof p?.window !== "string" || typeof p.question !== "string" || !Array.isArray(p.shown)) throw new Error("ask.handOff: invalid params");
       const str = (x: unknown) => typeof x === "string";
       const shown = (p.shown as Partial<Record<"url" | "title" | "lastVisit", unknown>>[])
         .filter((h): h is { url: string; title: string; lastVisit: string } => str(h?.url) && str(h?.title) && str(h?.lastVisit))
         .slice(0, 3);
       sessions.prefill(p.window, handOffText(p.question.slice(0, 2000), shown, hostSay("host-ask-shown-pages")), undefined, true);
-    },
+    }),
     stop: async () => {
       try {
         await stop();
@@ -699,10 +773,11 @@ const rpc = createRpc({
         }
       : {}),
     // The agent's applications (host/applications.ts): `apps` is made after the RPC, below.
-    ...Object.fromEntries(["apps.list", "apps.act", "apps.windowClosed", "apps.navigation", "apps.note"].map((k) => [k, (p: unknown) => apps.handlers[k]!(p)])),
+    ...Object.fromEntries(["apps.list", "apps.windowClosed", "apps.navigation", "apps.note"].map((k) => [k, (p: unknown) => apps.handlers[k]!(p)])),
+    "apps.act": aiOnly((p: unknown) => apps.handlers["apps.act"]!(p)),
     // Design mode's host side (host/design.ts): `design` is made after `sites`, below.
     // The settings page (host/settings.ts): `settings` is made after `sites` and `actions`, below.
-    ...Object.fromEntries(SETTINGS_METHODS.map((k) => [k, (p: unknown) => settings[k]!(p)])),
+    ...Object.fromEntries(SETTINGS_METHODS.map((k) => [k, AI_SETTINGS.has(k) ? aiOnly((p: unknown) => settings[k]!(p)) : (p: unknown) => settings[k]!(p)])),
     ...Object.fromEntries(DESIGN_METHODS.map((k) => [k, (p: unknown) => design.handlers[k]!(p)])),
     ...(process.env.RESSAC_HOST_TEST === "1" ? { "debug.locale": () => ({ locale: hostLocale(), relocalized }), "debug.log": (p: { text: string }) => console.log(p.text) } : {}),
   },
@@ -810,7 +885,10 @@ const design = createDesignHost({
   // Every app (apps.liste() keeps the running ones only).
   siteApps: () => apps.manager.list(),
   // Remarks from the cart and comments from the review: already reviewed by the user, so sent right away.
-  prefill: (f, t) => sessions.prefill(f, t, undefined, true),
+  // AI off: no agent will read it, nothing is kept for a later session.
+  prefill: (f, t) => {
+    if (aiOn) sessions.prefill(f, t, undefined, true);
+  },
   chrome: { agentWindow: () => rpc.request("design.agentWindow"), giveAgent: (f) => rpc.notify("design.giveAgent", [f]) },
   notify: notify,
   broadcast: () => (rpc.notify("external.change"), rpc.notify("design.change")),

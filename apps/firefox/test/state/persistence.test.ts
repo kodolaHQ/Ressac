@@ -111,6 +111,33 @@ test("a session from before languages stays French; the shown language is never 
   expect(JSON.parse(readFileSync(join(d, "session.json"), "utf8")).locale).toBeUndefined();
 });
 
+test("AI: an existing session keeps it on, a new install starts off, aiSetup is never saved", async () => {
+  const d = folder();
+  const old = structuredClone(initialState()) as unknown as { settings: Record<string, unknown> };
+  delete old.settings.aiEnabled;
+  writeFileSync(join(d, "session.json"), JSON.stringify(old));
+  expect((await loadSession(d)).settings.aiEnabled).toBe(true);
+  old.settings.aiEnabled = "yes";
+  writeFileSync(join(d, "session.json"), JSON.stringify(old));
+  expect((await loadSession(d)).settings.aiEnabled).toBe(true);
+  expect(initialState().settings.aiEnabled).toBe(false);
+  const bad = folder();
+  writeFileSync(join(bad, "session.json"), "{ not json");
+  expect((await loadSession(bad)).settings.aiEnabled).toBe(true);
+  // Valid JSON failing the schema: an explicit false survives, anything else stays on.
+  writeFileSync(join(bad, "session.json"), JSON.stringify({ spaces: 3, settings: { aiEnabled: false } }));
+  expect((await loadSession(bad)).settings.aiEnabled).toBe(false);
+  writeFileSync(join(bad, "session.json"), JSON.stringify({ spaces: 3, settings: { aiEnabled: "no" } }));
+  expect((await loadSession(bad)).settings.aiEnabled).toBe(true);
+  const recorder = new SessionRecorder(d, 10_000);
+  recorder.schedule({ ...initialState(), aiSetup: true, welcomeReplay: true });
+  await recorder.clear();
+  expect(JSON.parse(readFileSync(join(d, "session.json"), "utf8")).aiSetup).toBeUndefined();
+  expect(JSON.parse(readFileSync(join(d, "session.json"), "utf8")).welcomeReplay).toBeUndefined();
+  expect((await loadSession(d)).aiSetup).toBe(false);
+  expect((await loadSession(d)).welcomeReplay).toBe(false);
+});
+
 test("missing file → initial state", async () => {
   const e = await loadSession(folder());
   expect(e.spaces).toHaveLength(1);

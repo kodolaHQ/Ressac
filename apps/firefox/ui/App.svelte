@@ -32,7 +32,8 @@
   import { isAgentRequest } from "./components/modal.svelte";
   import { menu } from "./components/menu.svelte";
   import { spaceSettings } from "./components/spaceSettings.svelte";
-  import { access, api, requestOf, appState, currentWindow, closeTab } from "./state.svelte";
+  import { access, aiOn, api, requestOf, appState, currentWindow, closeTab } from "./state.svelte";
+  import AiAsleep from "./components/AiAsleep.svelte";
   import { BAR_WIDTH, BAR_WIDTH_MAX, BAR_WIDTH_MIN, actionOfUrl, recapOfUrl, hasView, workflowUrlTarget, reviewUrlProject, URL_ACTIONS, URL_APPLICATIONS, URL_EXTENSIONS, URL_RELEASE_NOTES, URL_SETTINGS } from "../shared/model";
   import { hide, INITIAL_REVEAL, onZone, type LeftZone } from "../shared/reveal";
   import type { Panel, TabsPanel as TabPanel } from "../shared/api";
@@ -47,8 +48,16 @@
 
   const winState = $derived(currentWindow());
   const sidebarRight = $derived(appState.value?.settings.sidebarSide === "right");
-  /** The first-launch welcome covers the whole window until it is finished, unless it stepped aside for an install page. */
-  const unfinished = $derived(!!winState && appState.value?.settings.onboarded === false);
+  /**
+   * The first-launch welcome covers the whole window until it is finished, unless it stepped aside for an install page.
+   * The AI setup (« Activer l'IA ») is the welcome in its AI-only mode; the full welcome takes precedence.
+   */
+  const unfinished = $derived(!!winState && (appState.value?.settings.onboarded === false || !!appState.value?.aiSetup));
+  /** Kept through the fade out: once finished, neither field says which welcome it was. */
+  let welcomeMode = $state<"full" | "ai">("full");
+  $effect(() => {
+    if (unfinished) welcomeMode = appState.value?.settings.onboarded === false ? "full" : "ai";
+  });
   const welcome = $derived(unfinished && !welcomeStep.aside);
   $effect(() => win.setWelcome(welcome));
   /** The welcome's layer: it stays (and keeps the whole window) for its fade out once the welcome steps aside or ends. */
@@ -61,7 +70,7 @@
   });
   // Finished (here or in another window), once its layer is gone: a later « Revoir l'accueil » starts at the beginning.
   $effect(() => {
-    if (!unfinished && !welcomeLayer) untrack(() => Object.assign(welcomeStep, { page: 1, aside: false }));
+    if (!unfinished && !welcomeLayer) untrack(() => Object.assign(welcomeStep, { page: 1, aside: false, aiAtStart: undefined }));
   });
   const activeTab = $derived.by(() => {
     const id = winState?.active[winState.activeSpace];
@@ -288,25 +297,31 @@
     {:else if activeTab?.url === URL_EXTENSIONS}
       <Extensions />
     {:else if activeTab?.url === URL_APPLICATIONS}
-      <Applications />
+      {#if aiOn()}<Applications />{:else}<AiAsleep feature="apps" />{/if}
     {:else if activeTab?.url === URL_SETTINGS}
       <Settings />
     {:else if activeTab?.url === URL_RELEASE_NOTES}
       <ReleaseNotes />
     {:else if activeTab?.url === URL_ACTIONS}
-      {#if privateAction}
+      {#if !aiOn()}
+        <AiAsleep feature="actions" />
+      {:else if privateAction}
         <p class="crashed" data-testid="action-private-space">{t("action-private")}</p>
       {:else}
         <Actions />
       {/if}
     {:else if builderTarget}
-      {#if builderTarget.type === "action" && privateAction}
+      {#if !aiOn()}
+        <AiAsleep feature="workflows" />
+      {:else if builderTarget.type === "action" && privateAction}
         <p class="crashed" data-testid="action-private-space">{t("action-private")}</p>
       {:else}
         {#key `${builderTarget.type}:${builderTarget.id}`}<WorkflowBuilder target={builderTarget} />{/key}
       {/if}
     {:else if pageAction}
-      {#if privateAction}
+      {#if !aiOn()}
+        <AiAsleep feature="actions" />
+      {:else if privateAction}
         <p class="crashed" data-testid="action-private-space">{t("action-private")}</p>
       {:else}
         {#key `${pageAction.id}/${pageAction.run}`}<PageAction id={pageAction.id} run={pageAction.run} />{/key}
@@ -318,7 +333,7 @@
         {#key pageRecap}<PageRecap id={pageRecap} />{/key}
       {/if}
     {:else if reviewProject}
-      {#key `${activeTab?.id}:${reviewProject}`}<Review project={reviewProject} tabId={activeTab?.id ?? ""} />{/key}
+      {#if !aiOn()}<AiAsleep feature="review" />{:else}{#key `${activeTab?.id}:${reviewProject}`}<Review project={reviewProject} tabId={activeTab?.id ?? ""} />{/key}{/if}
     {:else if activeTab && !pageWeb}
       <InternalPage />
     {/if}
@@ -350,11 +365,11 @@
     <FrozenBackground tabId={activeTab?.id ?? null} onReady={() => {}} />
     <FirstTimeNote id="design" />
   </div>
-{:else if !modalOpen && !agentNoteShowing() && activeTab?.url === URL_ACTIONS && !privateAction}
+{:else if aiOn() && !modalOpen && !agentNoteShowing() && activeTab?.url === URL_ACTIONS && !privateAction}
   <FirstTimeNote id="actions" veil />
 {/if}
 {#if welcomeLayer && winState}
-  <div class="welcome-layer" class:leaving={!welcome} data-testid="welcome-layer"><Welcome window={winState} /></div>
+  <div class="welcome-layer" class:leaving={!welcome} data-testid="welcome-layer"><Welcome window={winState} mode={welcomeMode} /></div>
 {/if}
 
 <style>

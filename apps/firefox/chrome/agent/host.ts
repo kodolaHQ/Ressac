@@ -43,6 +43,8 @@ export function createHost(o: {
   dataDir: string;
   agentProfile: () => string;
   locale: () => string;
+  /** settings.aiEnabled: off, the host starts no Docker, Ollama nor kernel. */
+  aiEnabled: () => boolean;
   /** The requests the host sends to Firefox (the browser bridge). */
   handlers: Record<string, Handler>;
   /** Each new process, before any other message: what the host must know first (private tabs mirror). */
@@ -116,7 +118,7 @@ export function createHost(o: {
         current = spawn();
         current.catch(() => (current = null));
       }
-      await host.request("start", { agentProfile: o.agentProfile(), locale: o.locale() });
+      await host.request("start", { agentProfile: o.agentProfile(), locale: o.locale(), aiEnabled: o.aiEnabled() });
     },
     async stop() {
       const r = await current?.catch(() => null);

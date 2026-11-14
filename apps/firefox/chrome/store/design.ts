@@ -52,6 +52,8 @@ export interface DesignService {
   /** ⇧⌘D in `win`: the design target of that window; a site app's sign-in window: the avis in the app's bar. */
   shortcut(win: Window): void;
   stop(t: DesignTarget): Promise<void>;
+  /** Every running session stops (AI switched off). */
+  stopAll(): Promise<void>;
   /** The bubble's « Ajouter ». */
   add(t: DesignTarget, text: string): Promise<ExtensionResult>;
   /** Bubble Annuler/Escape, message click, cart « Fermer ». */
@@ -160,6 +162,10 @@ export function createDesign(o: {
   /** The shown language, for the overlays' own texts. */
   locale(): string;
   toFront(f: WindowId): void;
+  /** settings.aiEnabled: off, the mode does not start and the agent panel shows its asleep card instead. */
+  aiOn(): boolean;
+  /** Opens the window's agent panel, the window in front (design.giveAgent). */
+  giveAgent(f: WindowId): void;
 }): DesignService {
   const sessions = new Map<string, Session>();
   /** Calques.contexte: what each key's overlay shows, the bubble first, then the cart, then the message. */
@@ -196,6 +202,11 @@ export function createDesign(o: {
     return v ? { browser: v.browser, win: v.window } : null;
   };
   const pageOf = (b: any) => b.browsingContext?.currentWindowGlobal;
+  /** AI off: the asleep card in the agent panel of `f`, or of the main window for a site or an app. */
+  const asleep = async (f?: WindowId) => {
+    const target = f ?? (await o.mainWindow());
+    if (target) o.giveAgent(target);
+  };
   /** The project of the page's own document (`wgp`, the one armed), never of the <browser>'s address, which a commit moves first. */
   const tracking = (t: DesignTarget, v: View, wgp: any = pageOf(v.browser)) =>
     o.agent.request<DesignTracking | null>(
@@ -336,6 +347,7 @@ export function createDesign(o: {
     async toggle(t) {
       const key = targetKey(t);
       if (sessions.has(key)) return service.stop(t);
+      if (!o.aiOn()) return asleep(t.type === "window" ? t.windowId : undefined);
       const site = t.type === "site" ? o.sites.designView(t.id) : null;
       // Unavailable in the site app's window: why, in its bar; nothing injected.
       if (t.type === "site" && !site?.available) return o.sites.infoNotice(t.id, UNAVAIL_SITE());
@@ -410,6 +422,7 @@ export function createDesign(o: {
       const doc = win.document.documentElement;
       const windowId = (win as any).ressacWindow?.windowId as WindowId | undefined;
       const main = !!windowId && o.windows.get(windowId)?.window === win;
+      if (!o.aiOn()) return void asleep(main ? windowId : undefined);
       const app = o.apps.folderOf(win);
       const choice = chooseDesignTarget({
         app: app,
@@ -434,6 +447,10 @@ export function createDesign(o: {
       hide(s.key, "bubble");
       notify();
       await disarm(s);
+    },
+
+    async stopAll() {
+      await Promise.all([...sessions.values()].map((s) => service.stop(s.target)));
     },
 
     async add(t, text) {

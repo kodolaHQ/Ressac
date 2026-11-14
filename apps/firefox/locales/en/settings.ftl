@@ -3,6 +3,8 @@
 settings-title = Settings
 settings-nav-label = Settings sections
 settings-section-agents = Agents
+settings-ai-switch = AI features
+settings-ai-switch-note = The agent, local AI and widgets. Off, Ressac starts neither Docker nor Ollama.
 settings-section-ai = Local AI
 settings-section-workshop = Container
 settings-section-permissions = Permissions
