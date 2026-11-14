@@ -6,7 +6,6 @@
 #            so after another checkout (or a deleted worktree) ran the import, its files would stay in the build.
 set -e
 cd "${0:A:h}/.."
-# Kept until the machine's folder is renamed by hand to ~/Ressac-firefox (then change this line).
 TARGET="$HOME/Ressac-firefox/engine"
 case "$1" in
   install)
