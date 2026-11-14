@@ -154,14 +154,26 @@ test("createKernel reads models and Dockerfile from resources", async () => {
 test("relocalize swaps the untouched templates to the new language", async () => {
   const root = await tempFolder();
   let locale = "fr";
+  let order: string[] = [];
   const { run: run } = fakeRunner([[/ info$/, { code: 1, stderr: "absent" }]]);
-  kernel = await createKernel({ locale: () => locale, widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run });
+  kernel = await createKernel({ locale: () => order.shift() ?? locale, widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run });
   const templates = join(import.meta.dirname, "..", "templates");
   expect(await readFile(join(root, "AGENTS.md"), "utf8")).toBe(await readFile(join(templates, "fr", "AGENTS.md"), "utf8"));
   locale = "en";
   await kernel.relocalize();
   expect(await readFile(join(root, "AGENTS.md"), "utf8")).toBe(await readFile(join(templates, "en", "AGENTS.md"), "utf8"));
   expect(await readFile(join(root, "home", "widgets", "meteo", "widget.json"), "utf8")).toBe(await readFile(join(templates, "en", "widgets", "meteo", "widget.json"), "utf8"));
+  // Two quick changes: the runs do not overlap, the end state is entirely the last language.
+  // Each run reads the language once when it starts: fr for the first, then en.
+  order = ["fr", "en"];
+  await Promise.all([kernel.relocalize(), kernel.relocalize()]);
+  expect(order).toEqual([]);
+  for (const f of ["AGENTS.md", "CLAUDE.md", "browsing-notes.md"]) expect(await readFile(join(root, f), "utf8"), f).toBe(await readFile(join(templates, "en", f), "utf8"));
+  for (const id of ["meteo", "actus-tech", "daily-dev"]) {
+    for (const f of await readdir(join(templates, "en", "widgets", id))) {
+      expect(await readFile(join(root, "home", "widgets", id, f), "utf8"), `${id}/${f}`).toBe(await readFile(join(templates, "en", "widgets", id, f), "utf8"));
+    }
+  }
 });
 
 test("createKernel reuses the provided workshop", async () => {

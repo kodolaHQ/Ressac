@@ -330,6 +330,7 @@ export async function createKernel(o: {
   const loc = () => o.locale?.() ?? "en";
   const templates = o.resources ? join(o.resources, "templates") : undefined;
   await initSpace(paths, loc(), templates);
+  let relocalizing: Promise<void> = Promise.resolve();
 
   const run = o.run ?? createRunner(loc);
   const profileId = o.profileId ?? "claude";
@@ -602,9 +603,8 @@ export async function createKernel(o: {
     agent: profile.name,
     workshopState: () => workshop.state(),
     locale: loc,
-    relocalize: async () => {
-      await initSpace(paths, loc(), templates);
-    },
+    // Serialized: two quick changes never run two swaps at once (each run reads loc() when it starts, the last one wins).
+    relocalize: () => (relocalizing = relocalizing.catch(() => {}).then(() => initSpace(paths, loc(), templates)).then(() => {})),
     async openAgentSession({ cols, rows, window: win, profile: profileChoice, resume, extra, onBuildProgress }) {
       const chosen = profileChoice === undefined ? profile : (await loadProfiles(paths)).profiles.find((p) => p.id === profileChoice);
       if (!chosen) throw new Error(`Profil d'agent inconnu : ${profileChoice}`);

@@ -423,3 +423,14 @@ test("a widget with an edited workflow.json is kept whole, its old shipped displ
   expect(await readFile(join(c.widgets, "daily-dev", "widget.json"), "utf8")).toBe(await readFile(join(FR, "widgets", "daily-dev", "widget.json"), "utf8"));
   expect(await readFile(join(c.widgets, "daily-dev", "display.html"), "utf8")).toBe(await readFile(join(FR, "widgets", "daily-dev", "display.html"), "utf8"));
 });
+
+test("a starter widget with a template file deleted is kept whole on a switch", async () => {
+  const c = spacePaths(await tempFolder());
+  await initSpace(c, "fr");
+  await rm(join(c.widgets, "meteo", "example.json"));
+  await initSpace(c, "en");
+  expect(existsSync(join(c.widgets, "meteo", "example.json"))).toBe(false);
+  for (const f of START_FILES.meteo!.filter((f) => f !== "example.json")) {
+    expect(await readFile(join(c.widgets, "meteo", f), "utf8"), f).toBe(await readFile(join(FR, "widgets", "meteo", f), "utf8"));
+  }
+});

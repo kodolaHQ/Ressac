@@ -207,8 +207,8 @@ async function updateStartDisplay(c: SpacePaths, models: string, id: keyof typeo
 
 /**
  * Puts a starter widget in `lang` when every template file it still has is a shipped version (any language's current
- * file, or a known `display.html`) and one of them differs from `lang`'s. A widget with an edited file, a symbolic link
- * or an absent widget is left whole; files that are not templates (its data) are never touched.
+ * file, or a known `display.html`) and one of them differs from `lang`'s. A widget with an edited or missing file, a
+ * symbolic link or an absent widget is left whole; files that are not templates (its data) are never touched.
  */
 async function swapWidget(c: SpacePaths, models: string, lang: string, langs: string[], id: string): Promise<string[]> {
   const folder = join(c.widgets, id);
@@ -220,10 +220,10 @@ async function swapWidget(c: SpacePaths, models: string, lang: string, langs: st
     const file = join(folder, name);
     const source = localized(models, lang, join("widgets", id, name));
     const target = existsSync(source) ? await readFile(source) : null;
-    if (!(await lstat(file).catch(() => null))) {
-      if (target) toWrite.push([source, file]);
-      continue;
-    }
+    // A missing template file counts as an edit: the widget is kept whole.
+    // shortcut: assumes every language ships the same file set for a widget; a file added in one language only would
+    // freeze that widget in the others, so list such files per language if it ever happens.
+    if (!(await lstat(file).catch(() => null))) return [];
     const content = await ordinaryFile(file);
     if (!content) return [];
     const shipped =
@@ -232,8 +232,6 @@ async function swapWidget(c: SpacePaths, models: string, lang: string, langs: st
     if (!shipped) return [];
     if (target && !content.equals(target)) toWrite.push([source, file]);
   }
-  // Only absent files to write: the widget is already in `lang` (a deleted file stays deleted).
-  if (!toWrite.some(([, file]) => existsSync(file))) return [];
   for (const [source, file] of toWrite) await copyFile(source, file);
   return toWrite.map(([, file]) => file);
 }
