@@ -365,7 +365,7 @@
     <FrozenBackground tabId={activeTab?.id ?? null} onReady={() => {}} />
     <FirstTimeNote id="design" />
   </div>
-{:else if !modalOpen && !agentNoteShowing() && activeTab?.url === URL_ACTIONS && !privateAction}
+{:else if aiOn() && !modalOpen && !agentNoteShowing() && activeTab?.url === URL_ACTIONS && !privateAction}
   <FirstTimeNote id="actions" veil />
 {/if}
 {#if welcomeLayer && winState}

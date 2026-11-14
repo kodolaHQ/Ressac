@@ -54,7 +54,7 @@ Same idea for the container app (`host/docker-runtime.ts`): when Docker does not
 
 ## AI features switch
 
-`settings.aiEnabled` (Settings › IA; the welcome's page « Activer l'IA ? » asks first) turns every AI feature on or off. Existing sessions keep it on; a fresh install starts with the question. Off, the chrome tells the host (`start` and the live `ai.enabled` message, applied in order): `host/host.ts` starts no Docker, Ollama or kernel, and refuses their work with `Error("ai-off")`. Every AI entry point (agent panel, command bar, home, empty page, agent apps) shows the `AiAsleep` card (`ui/components/AiAsleep.svelte`) instead, with a button to switch AI on. Switching on after the welcome runs the AI-only setup. In the e2e, `RESSAC_TEST_AI=0` starts with AI off (`launchRessac({ ai: false })`; the default is on).
+`settings.aiEnabled` (Réglages › Agents; the welcome's page « Activer l'IA ? » asks first) turns every AI feature on or off. Existing sessions keep it on; a fresh install starts with the question. Off, the chrome tells the host (`start` and the live `ai.enabled` message, applied in order): `host/host.ts` starts no Docker, Ollama or kernel, and refuses their work with `Error("ai-off")`. Every AI entry point (agent panel, command bar, home, empty page, agent apps) shows the `AiAsleep` card (`ui/components/AiAsleep.svelte`) instead, with a button to switch AI on. Switching on after the welcome runs the AI-only setup. In the e2e, `RESSAC_TEST_AI=0` starts with AI off (`launchRessac({ ai: false })`; the default is on).
 
 ## Work loop
 
