@@ -7,7 +7,7 @@ import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { inUi } from "./ui";
 
-// Plan 33's spike (docs/superpowers/notes/2026-11-06-actions-firefox-spike.md): S1, an agent component in a sandboxed
+// Plan 33's spike: S1, an agent component in a sandboxed
 // frame of the sidebar, served by store.actionMedia.serve; S2, the result images' anonymous channel. Rerun with
 // RESSAC_SPIKE=1 after a Firefox version change and compare: the security lines are asserted.
 

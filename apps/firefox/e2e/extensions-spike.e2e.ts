@@ -15,8 +15,8 @@ import type { Marionette } from "./marionette";
 import { ICON, startServer } from "./server";
 import { waitUi } from "./ui";
 
-// Probes of plan 25's unknowns (docs/superpowers/notes/2026-11-04-extensions-agent-essai.md). They print what they see
-// rather than assert it: rerun them with RESSAC_SPIKE=1 after a Firefox version change and compare with the note.
+// Probes of plan 25's unknowns. They print what they see
+// rather than assert it: rerun them with RESSAC_SPIKE=1 after a Firefox version change and compare with the previous run.
 // S1 signs for real on addons.mozilla.org: only with RESSAC_AMO=1, the network and the keychain's AMO keys.
 
 const note = (what: string, v: unknown) => console.log(`[spike] ${what}: ${JSON.stringify(v)}`);

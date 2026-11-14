@@ -13,7 +13,7 @@ import { FAKE_TOOLS, launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { inUi } from "./ui";
 
-// Probes of plan "home page and widgets" (docs/superpowers/notes/2026-11-05-accueil-widgets-recherche.md, P1-P7). They
+// Probes of plan "home page and widgets" (P1-P7). They
 // print what they see rather than assert it: rerun with RESSAC_SPIKE=1 after a Firefox version change and compare.
 // No product code: the protocol handler and the window actor live in this file, served from a temp folder.
 //

@@ -12,8 +12,7 @@ import { launchRessac, type LaunchedRessac } from "../launch";
 import type { Marionette } from "../marionette";
 import { writeSite } from "../sites";
 
-// Spikes S1–S3 of docs/superpowers/specs/2026-11-08-ressac-firefox-reseau-interfaces-design.md (note:
-// docs/superpowers/notes/2026-11-08-reseau-interfaces-spikes.md). The spec's mechanisms are prototyped in
+// Spikes S1–S3 of plan 37's UI network guard. The spec's mechanisms are prototyped in
 // ui-network-spike.sys.mjs, loaded in the parent from this folder (no build:ui), switched layer by layer.
 // Measures are printed as `[spike] <what>: <JSON>`; the security lines are asserted at the end of each spike.
 // Rerun with RESSAC_SPIKE=1 (RESSAC_SPIKE_LOOPBACK=1: media.peerconnection.ice.loopback, so the UDP witness counts).

@@ -8,8 +8,8 @@ import type { Marionette } from "./marionette";
 import { startServer } from "./server";
 import { pressKeys } from "./ui";
 
-// Probes of plan 24's unknowns (docs/superpowers/notes/2026-11-04-historique-telechargements-essai.md). They print what they
-// see rather than assert it: rerun them with RESSAC_SPIKE=1 after a Firefox version change and compare with the note.
+// Probes of plan 24's unknowns. They print what they
+// see rather than assert it: rerun them with RESSAC_SPIKE=1 after a Firefox version change and compare with the previous run.
 
 const NAVIGABLES = "chrome://remote/content/shared/NavigableManager.sys.mjs";
 const note = (what: string, v: unknown) => console.log(`[spike] ${what}: ${JSON.stringify(v)}`);

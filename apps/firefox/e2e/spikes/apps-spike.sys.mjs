@@ -1,4 +1,4 @@
-// Spike S8 (plan 35, docs/superpowers/notes/2026-11-06-mode-design-firefox-spikes.md): an agent app's window, built
+// Spike S8 (plan 35): an agent app's window, built
 // the way store/sites.ts builds a site app's, with an origin rule (http://localhost:<port>) instead of domains.
 // Throwaway: imported in the parent from resource://ressac-spike-apps/ by apps.e2e.ts. Not product code.
 

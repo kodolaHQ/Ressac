@@ -13,7 +13,7 @@ import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { waitUi } from "./ui";
 
-// Probes of plan 28's unknowns (docs/superpowers/notes/2026-11-05-outils-dev-recherche.md, D1-D9): the agent's dev
+// Probes of plan 28's unknowns (D1-D9): the agent's dev
 // tools on one tab, inside the browser process, without any listening port. They print what they see rather than
 // assert it: rerun them with RESSAC_SPIKE=1 after a Firefox version change and compare. No network.
 

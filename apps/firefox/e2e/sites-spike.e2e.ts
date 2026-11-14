@@ -11,7 +11,7 @@ import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { SITE_HOME, inBrowser, inSiteBar, inSiteView, resolveLocalHosts, siteWindowCount, siteWindowExpr, startSitesServer } from "./sites";
 
-// Plan 31's spike (docs/superpowers/notes/2026-11-06-applis-de-site-firefox-spike.md): the site app window, routing
+// Plan 31's spike: the site app window, routing
 // without a request, the Xray sandbox, the test home page. The probes print what they see rather than assert it:
 // rerun with RESSAC_SPIKE=1 after a Firefox version change and compare.
 

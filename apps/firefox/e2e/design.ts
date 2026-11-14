@@ -7,7 +7,7 @@ import { startServer } from "./server";
 import { inBrowser } from "./sites";
 
 // The design mode's e2e helpers and pages (plans 35a and 35b), from the spikes of
-// docs/superpowers/notes/2026-11-06-mode-design-firefox-spikes.md (e2e/spikes/design.e2e.ts). Chrome context.
+// e2e/spikes/design.e2e.ts. Chrome context.
 
 /** design.html (form#inscription, input#email.champ, button#envoyer, a#lien, a data-source, #nue, ul > li × 3), plus a page global the viewfinder must not see. */
 export const DESIGN_PAGE = readFileSync(path.resolve(import.meta.dirname, "pages/design.html"), "utf8").replace("window.reactions = [];", 'window.reactions = []; window.pageSecret = "secret";');

@@ -5,7 +5,7 @@ import { launchRessac, type LaunchedRessac } from "../launch";
 import type { Marionette } from "../marionette";
 import { inBrowser } from "../sites";
 
-// Plan 35's spike S8 (docs/superpowers/notes/2026-11-06-mode-design-firefox-spikes.md, « S8, les applis de l'agent »):
+// Plan 35's spike S8:
 // an agent app's window as store/sites.ts builds a site app's (apps-spike.sys.mjs, loaded in the parent from this
 // folder: no build:ui), its badge, its favicon's source, its request guard, its container, and quitting.
 // Security lines are asserted; the rest is printed as `[spike] <what>: <JSON>`. Rerun with RESSAC_SPIKE=1.

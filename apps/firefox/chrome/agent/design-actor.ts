@@ -1,4 +1,5 @@
-// The design mode's viewfinder actor (spec §5.4, « Correctif S1 » of docs/superpowers/notes/2026-11-06-mode-design-firefox-spikes.md).
+// The design mode's viewfinder actor (spec §5.4). Its guard on chromeEventHandler
+// runs before any page listener, so a page listening on window in capture never sees the user's click.
 // The child exists only when the parent asks (no events) and never sends a message of its own; the viewfinder's code
 // comes from the parent with each query (chrome/store/design-copies.ts), so it changes without a rebuild.
 // Kept small: the build copies this file, so any change here needs a rebuild of the app (build:ui).

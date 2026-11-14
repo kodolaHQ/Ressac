@@ -1,4 +1,4 @@
-// Throwaway actor of plan 35's spike (docs/superpowers/notes/2026-11-06-mode-design-firefox-spikes.md). Registered at
+// Throwaway actor of plan 35's spike. Registered at
 // runtime by e2e/spikes/design.e2e.ts from a resource:// substitution: no build:ui. Not product code.
 
 import { clearTimeout, setTimeout } from "resource://gre/modules/Timer.sys.mjs";

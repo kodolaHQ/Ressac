@@ -10,7 +10,7 @@ import { launchRessac, type LaunchedRessac } from "../launch";
 import type { Marionette } from "../marionette";
 import { pressKeys } from "../ui";
 
-// Plan 35's spikes S1–S4 (docs/superpowers/notes/2026-11-06-mode-design-firefox-spikes.md): the viewfinder in an
+// Plan 35's spikes S1–S4: the viewfinder in an
 // Xray sandbox of a runtime-registered actor, drawSnapshot, a chrome overlay frame, the source read. No build:ui: the
 // actor and the overlay page are served from resource://ressac-spike-design/ (this folder). Security lines are
 // asserted; the rest is printed as `[spike] <what>: <JSON>`. Rerun with RESSAC_SPIKE=1 after a Firefox version change.

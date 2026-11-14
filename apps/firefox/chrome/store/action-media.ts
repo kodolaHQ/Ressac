@@ -1,6 +1,6 @@
 // What an action's page shows besides its text: the result images, loaded anonymously in a container of their own,
 // and the agent's components, served as sanitized resource:// copies (the widget displays' mechanism, plan 27) with
-// the site home's parent.postMessage bridge (plan 31). Spike: docs/superpowers/notes/2026-11-06-actions-firefox-spike.md.
+// the site home's parent.postMessage bridge (plan 31). Probed by e2e/actions-spike.e2e.ts.
 import { openableUrl } from "../../ui/home-profiles";
 import { CSP_WIDGET, displayServed } from "../window/widget-frame";
 import { containerFor } from "./containers";

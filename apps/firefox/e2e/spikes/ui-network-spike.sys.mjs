@@ -1,4 +1,4 @@
-// Spikes S1–S3 of docs/superpowers/specs/2026-11-08-ressac-firefox-reseau-interfaces-design.md: a throwaway
+// Spikes S1–S3 of plan 37's UI network guard: a throwaway
 // prototype of the spec's four pieces (the predicate, the content policy, the opening-request observer, the docShell
 // flags, the PeerConnection:request refusal), switchable at run time so each layer is measured alone.
 // Imported in the parent from resource://ressac-spike-net/ by ui-network-spike.e2e.ts. Not product code.

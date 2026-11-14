@@ -103,7 +103,7 @@ Add-ons are shared by every login profile. Signing is required (`MOZ_REQUIRE_SIG
 - Profile containers are internal (`userContextIdInternal.webaios-<id>`, private non-policy identities, so add-ons such as Multi-Account Containers never list them).
 - The agent's public reads run in a private windowless browser (`privateBrowsingId: 1`): add-ons (`webRequest` included) do not run there. Its cookies are cleared with `{ userContextId, privateBrowsingId: 1 }`.
 - The user agent has `Firefox/<version>` (`general.useragent.compatMode.firefox` in `ressac.js`, needs `pnpm build:ui`): AMO needs it to offer « Add to Firefox ».
-- After a Firefox upgrade, rerun the probes: `RESSAC_SPIKE=1 pnpm exec vitest run -c vitest.e2e.config.ts e2e/addons-spike.e2e.ts --silent=false`. Private fields we rely on: `lastClickInfo`, `openPopupWithoutUserInteraction`, `_getVisibleAnchorElement`, `_getPanelAnchor`, `_hidePanel` / `_ignoreDismissal`, `ContextualIdentityService._identities` / `_lastUserContextId`, the parking tab `isEmpty` override. Details and limits: `docs/superpowers/notes/2026-11-04-modules-firefox-essai.md`.
+- After a Firefox upgrade, rerun the probes: `RESSAC_SPIKE=1 pnpm exec vitest run -c vitest.e2e.config.ts e2e/addons-spike.e2e.ts --silent=false`. Private fields we rely on: `lastClickInfo`, `openPopupWithoutUserInteraction`, `_getVisibleAnchorElement`, `_getPanelAnchor`, `_hidePanel` / `_ignoreDismissal`, `ContextualIdentityService._identities` / `_lastUserContextId`, the parking tab `isEmpty` override.
 
 Limits:
 
@@ -128,7 +128,7 @@ Setup and files:
 - The Extensions page opens with a « Comment ça marche » block (shown first time via the `extensions` hint in `shared/hints.ts`, also reachable from a link that opens Settings › Agents). It explains the agent's extensions, the signing delay and the Mozilla account. The old Chrome Web Store install path is gone: store add-ons come from addons.mozilla.org in a tab, and their source label reads « addons.mozilla.org ».
 - Files in `<dataDir>/extensions`: `state.json` (registry: grants, scopes, state), `copies/<folder>@agent.ressac/` (the modified copy), `signed/` (the signed `.xpi` kept, reinstalled at startup if missing), `amo-versions.json` (the counter per id; never lowered nor cleared, not even by « Supprimer », because AMO never reuses a number).
 - Id `<folder>@agent.ressac`; version `<a>.<b>.<c>.<n>` (the agent's version completed with zeros to three numbers, then the counter; four numbers are refused).
-- Signing takes 154 to 298 s (median 284 s, spike S1, `docs/superpowers/notes/2026-11-04-extensions-agent-essai.md`); the timeout is `SIGNATURE_DELAY_MS` = 900 000 ms.
+- Signing takes 154 to 298 s (median 284 s, spike S1); the timeout is `SIGNATURE_DELAY_MS` = 900 000 ms.
 - The actor `extension-actor.sys.mjs` is a packaged file (jar line): run `pnpm build:ui` after pulling it. The e2e load it instead through a `resource://` substitution (`RESSAC_TEST_EXTENSION_ACTOR=<src/browser/base/content/ressac>` plus the `security.sandbox.content.mac.testing_read_path1` pref); after a `build:ui`, rerun the `agent-extensions-*.e2e.ts` files once without that variable.
 - Messages between the window and the host: `extensions.*` (`list`, `scopes`, `grant`, `install`, `toggle`, `remove`, `console`, `crash`, `amo`, …).
 - Tests: the e2e never reach the network. `RESSAC_TEST_AMO_URL` (API base of `test/fake-amo.ts`) and `RESSAC_TEST_AMO_KEYS` (`issuer:secret`, absent = no keys) make the chrome install what the fake server returns as a temporary add-on; `RESSAC_TEST_WATCHDOG_MS` shortens the crash watchdog window. The one real test is `RESSAC_AMO=1 pnpm exec vitest run test/amo.test.ts` (keys in the keychain, network, one throwaway signature). `RESSAC_SPIKE=1` runs the probes of `e2e/extensions-spike.e2e.ts`.
@@ -167,7 +167,7 @@ Limits:
 - Visits are noted by `chrome/window/visits.ts`; the page text the agent can search is retained through the actor's `getText` message (`body.innerText` only). Private spaces are replayed to the host on each host start.
 - The download list is Firefox's (`Downloads.getList`), shown in the UI's downloads panel; it is kept for the session only.
 - Native keys and commands that would open Firefox's own history, bookmarks or downloads UI are disabled (⌘Y, ⇧⌘H, ⇧⌘O, ⇧⌘⌫, `Browser:ShowAllHistory`, `Browser:ShowAllBookmarks`, `Tools:Downloads`, `Tools:Sanitize`).
-- After a Firefox upgrade, rerun the probes: `RESSAC_SPIKE=1 pnpm exec vitest run -c vitest.e2e.config.ts e2e/history-spike.e2e.ts --silent=false`. Details: `docs/superpowers/notes/2026-11-04-historique-telechargements-essai.md`.
+- After a Firefox upgrade, rerun the probes: `RESSAC_SPIKE=1 pnpm exec vitest run -c vitest.e2e.config.ts e2e/history-spike.e2e.ts --silent=false`.
 
 Limits:
 
@@ -223,7 +223,7 @@ Limits:
 - The hooks (`chrome/store/permission-hooks.ts`): `Integration.contentPermission` (position, notifications, DRM via `media.eme.require-app-approval`, MIDI), a wrap of `WebRTCParent.prototype.receiveMessage` (camera, micro, screen), of `nsContentDispatchChooser.prototype.handleURI` (external links) and `ClipboardContextMenu.confirmUserPaste` (clipboard reads). A page that navigates or closes during its question drops it (refused this time, asked again next time). Invisible reads are refused.
 - Prefs set on the default branch at startup: `media.autoplay.default=0` (sounds play without a click), `privacy.popups.showBrowserMessage=false` (no popup-blocked bar), `full-screen-api.warning.timeout=0` (no fullscreen warning).
 - « Navigation > Oublier les autorisations de ce site » in the menu bar forgets the active tab's origin in its space's profile.
-- After a Firefox upgrade, rerun the probes: `RESSAC_SPIKE=1 pnpm exec vitest run -c vitest.e2e.config.ts e2e/permissions-spike.e2e.ts --silent=false`. Details: `docs/superpowers/notes/2026-11-05-permissions-sites-recherche.md`.
+- After a Firefox upgrade, rerun the probes: `RESSAC_SPIKE=1 pnpm exec vitest run -c vitest.e2e.config.ts e2e/permissions-spike.e2e.ts --silent=false`.
 
 Limits:
 
@@ -283,7 +283,7 @@ Limits:
 - Images: the host checks the conditions (no account, no accord, kept run, `https` address present as is in the results, neither local nor private); the chrome then loads the image through an anonymous channel (`LOAD_ANONYMOUS`: no cookie sent or stored, no referrer) in the internal `webaios-action-images` container, at most 3 checked redirects, `image/*` only, 5 MB at most, and gives it to the UI as `data:` (`ui/ActionImage.svelte`). Images load lazily (`IntersectionObserver`), once each; a decode error shows the neutral slot. The e2e set `RESSAC_TEST_ACTION_IMAGES=<origin>`: `https://<host><path>` is then asked from `<origin>/<host><path>`, a local server, and every redirect is refused; nothing leaves the machine.
 - Components: a sanitized copy of `component.html` in `<dataDir>/ressac-components/<name>/component-<mtime>.html`, served by the `resource://ressac-component-<name>/` substitution (no content access) in a `sandbox="allow-scripts"` frame, with `CSP_WIDGET`, the widget guard and `COMPONENT_BRIDGE` first (`ui/ActionComponentFrame.svelte`). The bridge turns `parent.postMessage` into a `ressac-component` event; only a `{type:"height", px}` from this frame, showing the current copy, counts (clamped to 20–2000). The substitution and copies go when the last page showing the component closes; the folder is emptied at store start. `Components` is hidden in component frames only: it is Firefox's leftover web object (interfaces only), harmless, hidden so component pages never see it. A component cannot navigate to another `resource:` page, and a self-navigation to http reaches nothing.
 - Builder: the action part of the builder is in `host/workflow.ts`; saves go through the `action:<id>` write queue.
-- Tests: `e2e/actions-*.e2e.ts`, `e2e/builder-actions.e2e.ts`, the actions part of `e2e/command-bar.e2e.ts`; the probes `RESSAC_SPIKE=1 … e2e/actions-spike.e2e.ts`. Mechanisms, limits and manual checks: `docs/superpowers/notes/2026-11-06-actions-firefox-spike.md` (« Plan 33 »).
+- Tests: `e2e/actions-*.e2e.ts`, `e2e/builder-actions.e2e.ts`, the actions part of `e2e/command-bar.e2e.ts`; the probes `RESSAC_SPIKE=1 … e2e/actions-spike.e2e.ts`.
 
 Limits:
 
@@ -303,7 +303,7 @@ Limits:
   - **video resume** (`ResumeTracking` of `core/resume.ts` in the actor, positions kept by the host) and the **address follow** (`UrlTracking` of `core/sites/tracking.ts`);
   - the **agent's tools** on `site:<id>` (`list_tabs`, `read_tab`, `capture_screen`, `navigate`, dev tools) behind the app's « widget_data » card;
   - **add-on buttons** in the app bar (`createSiteAddons`, `ui/SiteAddonsStrip.svelte`); the view is protected from add-ons (no remove, move, adopt, `windows.remove`, non-http loads; the request guard's net).
-- The end-to-end scenario with AGENTS.md's examples: `e2e/sites-scenario.e2e.ts`. The manual checks of plan 32 are in `docs/superpowers/notes/2026-11-06-applis-de-site-firefox-spike.md` (« Plan 32 »).
+- The end-to-end scenario with AGENTS.md's examples: `e2e/sites-scenario.e2e.ts`.
 - The probes: `RESSAC_SPIKE=1 corepack pnpm --filter firefox-ressac exec vitest run -c vitest.e2e.config.ts e2e/sites-spike.e2e.ts`, to run again after each Firefox update (measures the window, the routing, the sandbox and the home).
 
 Limits:
@@ -327,7 +327,7 @@ Limits:
 - The Review page covers these apps: the first snapshot is taken at start (apps without a manifest are skipped).
 - The design viewfinder runs in the `RessacDesign` actor (`chrome/agent/design-actor.ts`, every frame, http/https). It is the one packaged file of this plan: after a change to it, ask for `build:ui` (the e2e use `testActor`, the packaged one with `RESSAC_E2E_PACKAGED_ACTOR=1`). Its guard sits on the `chromeEventHandler`; a cross-origin frame in another process is guarded by its own actor.
 - Copies with drift tests: `validFolder` (`chrome/store/app-folder.ts`, `test/containers.test.ts`), the home's `MOUSE` (`chrome/store/design-home.ts`, `test/design-copies.test.ts`).
-- Tests: `e2e/apps-window.e2e.ts`, `apps-page`, `apps-actions`, `apps-badge`, `design-actor`. The test ports (with their gaps), the limits and the manual checks are in `docs/superpowers/notes/2026-11-06-mode-design-firefox.md` (« Plan 35a »).
+- Tests: `e2e/apps-window.e2e.ts`, `apps-page`, `apps-actions`, `apps-badge`, `design-actor`.
 
 Limits:
 
@@ -394,7 +394,7 @@ Limits: no links in cross-origin iframes; not in site app or agent app windows; 
 - Agent app windows: the badge's « Mode design », « Panier » and « Relire ce projet » act on the window's own app; ⇧⌘D inside toggles its own mode.
 - Copies with drift tests: `shared/design-guards.ts` (`test/review-host.test.ts`), `chrome/shims/kernel.ts` (`test/shims.test.ts`).
 - Site app windows (plan 36): the ✎ button of the app bar (with its chevron: « Panier », « Relire ce projet ») and ⇧⌘D toggle the mode of that app; the target comes from the window, never from the page. The viewfinder is the packaged `RessacDesign` actor in its own sandbox next to the retouches' (no `build:ui`), without the source read; the bubble warns that a third-party page is captured. The app's home is a `resource://` frame of the bar in the parent process: the chrome aims it without an actor (`chrome/store/design-home.ts`, a Xray sandbox per document, armed only on the served home), and its remarks are tagged `[home]`. Unavailable on the accord card, the login page, in fullscreen (a 5 s `info` notice in the bar). ⌂, « Entrer dans le site », fullscreen, another document (a retouche reloads the view) or the window closing end the mode; the cart stays. In the small sign-in window ⇧⌘D toggles nothing and shows the notice. With the host down ✎ keeps its last state. The home's `source` read runs synchronously in the parent process: a home that loops in `closest` freezes the browser.
-- Tests: `e2e/design-service.e2e.ts`, `design-overlay`, `design-button`, `design-send`, `design-apps` (ports 15300-15324), `design-sites-view`, `-bar`, `-home`, `-send` (15345-15364, helpers in `design-sites.ts`); the actor ones also run packaged with `RESSAC_E2E_PACKAGED_ACTOR=1` (`design-actor`, `design-service`). The test ports (with their gaps), the limits and the manual checks are in `docs/superpowers/notes/2026-11-06-mode-design-firefox.md` (« Plan 35b » and « Plan 36 »).
+- Tests: `e2e/design-service.e2e.ts`, `design-overlay`, `design-button`, `design-send`, `design-apps` (ports 15300-15324), `design-sites-view`, `-bar`, `-home`, `-send` (15345-15364, helpers in `design-sites.ts`); the actor ones also run packaged with `RESSAC_E2E_PACKAGED_ACTOR=1` (`design-actor`, `design-service`).
 
 Limits:
 
@@ -408,7 +408,7 @@ The host runs the external MCP server (port 5279, `RESSAC_PORT_MCP_EXTERNAL` cha
 - The « Projets externes » section of the Applications page connects a Claude Code (the command with the token shows once), declares projects, revokes a client, forgets a project. A project folder under the data folder is refused (`SPACE_FOLDER`). Registries, private repositories (`design/review/`) and batches (`design/remarks/`) live under `<dataDir>/design`, never in the space.
 - The Review page (`ressac://review`) shows the diff of an external project or of a site app since the last « Marquer comme relu ». Comments go to Claude Code (`read_remarks`, `wait_for_remarks`) or, for a site app, into the agent panel: the text waits there and Enter sends it (`design.agentWindow`, `design.giveAgent`).
 - `host/review.ts` (the review service) and `shared/design-guards.ts` (the input checks) are tested by `test/review-host.test.ts`. `core/design/external.ts` and `send.ts` are imported as is.
-- Tests: `e2e/external-mcp.e2e.ts`, `e2e/review.e2e.ts`, `e2e/review-comments.e2e.ts`. The manual checks and the test ports (with their gaps) are in `docs/superpowers/notes/2026-11-06-mode-design-firefox.md` (« Plan 34 »).
+- Tests: `e2e/external-mcp.e2e.ts`, `e2e/review.e2e.ts`, `e2e/review-comments.e2e.ts`.
 
 ## The UI's network
 
@@ -434,7 +434,7 @@ Limits:
 - A widget link press loses focus. A plain `<a href>` in a widget no longer navigates its frame.
 - Favicons are fetched by the tab, with its container's cookies, never by the UI.
 
-Tests: `test/ui-network.test.ts`, `e2e/ui-network.e2e.ts`, `e2e/ui-network-fail.e2e.ts` (helpers in `e2e/ui-network.ts`). Notes and manual checks: `docs/superpowers/notes/2026-11-08-reseau-interfaces-spikes.md` (« Construction (plan 37) »).
+Tests: `test/ui-network.test.ts`, `e2e/ui-network.e2e.ts`, `e2e/ui-network-fail.e2e.ts` (helpers in `e2e/ui-network.ts`).
 
 ## Not migrated yet (step 4)
 

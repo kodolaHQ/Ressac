@@ -7,7 +7,7 @@ import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { waitUi } from "./ui";
 
-// Probes of plan 26's unknowns (docs/superpowers/notes/2026-11-05-permissions-sites-recherche.md, P1-P9). They print
+// Probes of plan 26's unknowns (P1-P9). They print
 // what they see rather than assert it: rerun them with RESSAC_SPIKE=1 after a Firefox version change and compare.
 // No network, no real device: fake media, test geolocation provider, test MIDI ports, ClearKey, a web protocol handler.
 
