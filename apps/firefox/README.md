@@ -12,9 +12,8 @@ Ressac rebuilt on stable Firefox. Built with [surfer](https://github.com/zen-bro
 
 ```sh
 pnpm --filter firefox-ressac engine:install   # downloads Firefox 159.0.1, moves it out of the repo, links it
-cd apps/firefox && pnpm exec surfer set brand ressac
-pnpm engine:import                             # links src/ and applies the patches
-pnpm build                                     # full build (~20 min)
+pnpm --filter firefox-ressac engine:import    # links src/ and applies the patches
+pnpm --filter firefox-ressac build            # full build (~20 min)
 ```
 
 In a new checkout or worktree: `pnpm engine:link` then `pnpm engine:import`. The `engine` tree is shared between checkouts: run `engine:import` in the checkout you work in before building.
@@ -435,12 +434,11 @@ Limits:
 
 Tests: `test/ui-network.test.ts`, `e2e/ui-network.e2e.ts`, `e2e/ui-network-fail.e2e.ts` (helpers in `e2e/ui-network.ts`).
 
-## Not migrated yet (step 4)
+## Known gaps
 
 - site-app permission checks;
 - the host does not restart on its own after a crash: « Réessayer » in the panel relaunches it;
-- design mode;
-- internal `ressac:` pages: a "not available yet" message;
+- internal `ressac:` pages without a Firefox version yet show a "not available yet" message;
 - tab previews in ⌃Tab: the cards show the icon;
 - zoom is not tracked in the state;
 
@@ -468,10 +466,6 @@ A tab that uses the camera or the microphone when it is left (`TabSelect`, `chro
 - Sound pictogram: `tab.sound` (`"playing"` / `"muted"`, volatile) follows the XUL tab's `soundplaying` and `muted` attributes (`TabAttrModified`, `chrome/window/tabs.ts`). `ui/components/SoundButton.svelte` shows it on the tab's row, on its pinned row and in the media bar; a click calls `tab.toggleMuteAudio()` (`ressacWindow.toggleMute`). A muted tab keeps its pictogram until unmuted. Essentials (icon tiles) have none.
 - Media bar: `tab.playback` (`"playing"` / `"paused"`, volatile) follows the tab's `browsingContext.mediaController` (Firefox's media keys' session: `activated`, `deactivated`, `playbackstatechange`), listened to from the first sound or when the tab is left. `"paused"` is kept only for a background tab that was playing (a tab left with nothing playing has no bar). A tab with `playback` that is not the one shown gets a bar above the sidebar's footer (in `CallBar.svelte`, under the calls): back to the tab, play / pause (`mediaController.play()` / `pause("user")`: `pause` needs its reason), sound. A tab in a call has the call bar only. Videos do not float (calls only).
 - Tests: `e2e/media-bar.e2e.ts`. Sound does not decode in a hidden test browser, so real playback (the session's events, play / pause on a real page) is not covered there.
-
-## Measured times (M5 Pro, 2026-11-03, Firefox 159 + Zen patches)
-
-Full build 20–23 min; `build:ui` after a UI change 17 s; adding the sidebar files (`jar.mn` + `browser.xhtml` patches) 21 s; one C++ or Objective-C++ file 23–25 s; build with no change 21 s.
 
 ## Pitfalls
 
