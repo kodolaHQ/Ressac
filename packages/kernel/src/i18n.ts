@@ -28,3 +28,9 @@ export function say(locale: string, id: string, args?: Record<string, string | n
   }
   return id;
 }
+
+/** The language's name in English, for a prompt the model reads (« French »). */
+export const englishLanguageName = (locale: string): string => new Intl.DisplayNames(["en"], { type: "language" }).of(locale) ?? locale;
+
+/** The line telling an agent which language to reply in; English whatever the language, the model reads it. */
+export const replyLanguageLine = (locale: string): string => `Always reply to the user in ${englishLanguageName(locale)}, whatever language the instructions are written in.`;

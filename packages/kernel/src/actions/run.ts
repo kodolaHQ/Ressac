@@ -249,6 +249,7 @@ export async function runAction(o: OptionsAction): Promise<LaunchResult> {
     catalog: catalog,
     ai: o.ai,
     signal: o.signal,
+    locale: loc(),
     ...(o.layoutDelayMs !== undefined ? { delayMs: o.layoutDelayMs } : {}),
   });
   const pending = await lost();

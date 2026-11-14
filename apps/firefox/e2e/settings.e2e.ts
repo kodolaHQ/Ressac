@@ -260,9 +260,11 @@ describe("Settings page", () => {
     const language = () => waitFor(m, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).state.settings.language)();`, () => true);
     await pick("en");
     await shows("settings-nav-about", "About");
+    await shows("settings-language-note", "The agent will speak English from its next session.");
     expect(await language()).toBe("en");
     await pick("fr");
     await shows("settings-nav-about", "À propos");
+    await shows("settings-language-note", "L'agent parlera français à sa prochaine session.");
     expect(await language()).toBe("fr");
   });
 

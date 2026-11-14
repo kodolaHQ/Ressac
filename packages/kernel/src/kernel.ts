@@ -1,4 +1,4 @@
-import { say } from "./i18n.js";
+import { say, replyLanguageLine } from "./i18n.js";
 import { randomBytes } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, mkdir, open, realpath, rm, unlink, writeFile } from "node:fs/promises";
@@ -648,7 +648,11 @@ export async function createKernel(o: {
           mcpConfig = pathInContainer(sessionToken !== undefined ? configSession : paths.mcpConfig, paths);
           env = { ...extra?.env };
         }
-        const command = [...buildCommand(chosen, resume && chosen.resume ? "resume" : "interactive", { mcpConfig: mcpConfig }), ...(extra?.args ?? [])];
+        // Reply language, for the shipped programs only (a custom profile command is the user's). Read now: an open session keeps its language.
+        const program = chosen.interactive[0];
+        const reply = replyLanguageLine(loc());
+        const language = program === "claude" ? ["--append-system-prompt", reply] : program === "codex" ? ["-c", `developer_instructions=${JSON.stringify(reply)}`] : [];
+        const command = [...buildCommand(chosen, resume && chosen.resume ? "resume" : "interactive", { mcpConfig: mcpConfig }), ...language, ...(extra?.args ?? [])];
         const session = SessionAgent.start(workshop.sessionCommand(id, command, Object.keys(env)), { cols, rows, env: env, stopRemote: () => workshop.stopSession(id) });
         openSessions.add(clean);
         session.onEnd(() => {

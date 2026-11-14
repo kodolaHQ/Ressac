@@ -335,7 +335,7 @@ test("kernel: rejouer goes through the scheduler queue; surDirect follows the qu
 });
 
 // Docker « ready » (fake executor); the session pty launches a fake binary that sleeps, never the real Docker.
-async function createReady() {
+async function createReady(locale: () => string = () => "fr") {
   const root = await tempFolder();
   const { run: run } = fakeRunner([
     [/ info$/, { code: 0 }],
@@ -345,7 +345,7 @@ async function createReady() {
   const runUpToDate: typeof run = (c, args, o) =>
     args.includes("{{.State.Running}}") ? run(c, args, o) : args[0] === "inspect" ? Promise.resolve({ code: 0, stdout: `${root}|${dockerfileHash()}\n`, stderr: "" }) : run(c, args, o);
   const workshop = await workshopWithoutDocker(root, runUpToDate);
-  kernel = await createKernel({ locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: runUpToDate, workshop: workshop });
+  kernel = await createKernel({ locale: locale, widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: runUpToDate, workshop: workshop });
   return kernel;
 }
 
@@ -492,8 +492,8 @@ describe("openAgentSession with a profile", () => {
     await started(async (n, start) => {
       const s = await n.openAgentSession({ cols: 80, rows: 24, window: "f1", profile: "codex" });
       const [command, o] = start.mock.calls[0]!;
-      expect(command.at(-1)).toMatch(/^mcp_servers\.ressac=\{url="http:\/\/host\.docker\.internal:\d+\/mcp",bearer_token_env_var="RESSAC_MCP_TOKEN"\}$/);
-      expect(command.at(-2)).toBe("-c");
+      expect(command.find((a) => a.startsWith("mcp_servers."))).toMatch(/^mcp_servers\.ressac=\{url="http:\/\/host\.docker\.internal:\d+\/mcp",bearer_token_env_var="RESSAC_MCP_TOKEN"\}$/);
+      expect(command[command.findIndex((a) => a.startsWith("mcp_servers.")) - 1]).toBe("-c");
       expect(command.some((a) => a.startsWith("RESSAC_MCP_TOKEN="))).toBe(false);
       expect(o.env!.RESSAC_MCP_TOKEN).toMatch(/^[0-9a-f]{64}$/);
       expect(existsSync(join(n.paths.internal, "sessions"))).toBe(false);
@@ -511,6 +511,30 @@ describe("openAgentSession with a profile", () => {
       expect(command[command.indexOf("RESSAC_ENGINE_TOKEN") - 1]).toBe("-e");
       await s.stop();
     });
+  });
+
+  test("reply language: claude and codex get it at session open, an open session keeps its own, a custom command is untouched", async () => {
+    let lang = "en";
+    const n = await createReady(() => lang);
+    const start = vi.spyOn(SessionAgent, "start");
+    try {
+      const a = await n.openAgentSession({ cols: 80, rows: 24, window: "f1", profile: "claude" });
+      lang = "fr";
+      const b = await n.openAgentSession({ cols: 80, rows: 24, window: "f2", profile: "claude" });
+      const c = await n.openAgentSession({ cols: 80, rows: 24, window: "f3", profile: "codex" });
+      const line = (l: string) => `Always reply to the user in ${l}, whatever language the instructions are written in.`;
+      const [first, second, third] = start.mock.calls.map((x) => x[0]);
+      expect(first![first!.indexOf("--append-system-prompt") + 1]).toBe(line("English"));
+      expect(second![second!.indexOf("--append-system-prompt") + 1]).toBe(line("French"));
+      expect(third).toContain(`developer_instructions=${JSON.stringify(line("French"))}`);
+      await writeFile(join(n.paths.profiles, "custom.json"), JSON.stringify({ id: "custom", name: "Custom", interactive: ["mytool", "{mcpConfig}"], nonInteractive: ["mytool", "{prompt}"], mcpConfig: "claude-json" }));
+      const d = await n.openAgentSession({ cols: 80, rows: 24, window: "f4", profile: "custom" });
+      const fourth = start.mock.calls[3]![0];
+      expect(fourth.join(" ")).not.toMatch(/reply to the user|developer_instructions|append-system-prompt/);
+      for (const s of [a, b, c, d]) await s.stop();
+    } finally {
+      start.mockRestore();
+    }
   });
 
   test("an unknown profile is rejected; claude still writes its 0600 session file", async () => {

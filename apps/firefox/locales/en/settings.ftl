@@ -72,6 +72,7 @@ settings-interface = Interface
 settings-language-label = Language
 settings-language-system-named = Mac language ({ $name })
 settings-language-system = Mac language
+settings-language-agent-note = The agent will speak { $language } from its next session.
 settings-engine-label = Search engine
 settings-engine-help = The agent searches with this engine too. An engine that asks for an account may get in its way.
 settings-engine-other = Other…

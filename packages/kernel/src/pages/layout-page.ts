@@ -4,6 +4,7 @@ import type { ComponentDefinition } from "./catalog.js";
 import { catalogText } from "./catalog.js";
 import type { PlanPage } from "./plan.js";
 import { lastResortLayout, fallbackLayout } from "./fallback.js";
+import { englishLanguageName } from "../i18n.js";
 import { validatePlan } from "./validate.js";
 
 // The layout of an action: Gemma chooses components and fills them in by reference, Ressac validates. A second
@@ -26,10 +27,11 @@ const NON_JSON = "la réponse n'est pas du JSON valide";
 
 const MARKS = (s: string) => s.replaceAll(">>>", "›››").replaceAll("<<<", "‹‹‹");
 
-export function pageLayoutPrompt(o: { prompt: string | null; catalog: string; preview: string; errors?: string[] }): string {
+export function pageLayoutPrompt(o: { prompt: string | null; catalog: string; preview: string; errors?: string[]; locale?: string }): string {
   const parts = [
     "Tu mets en page le résultat d'une action pour l'utilisateur. Tu composes une page avec les composants du catalogue, en les remplissant par RÉFÉRENCE aux résultats : tu n'écris jamais toi-même une valeur, un chiffre ou une adresse qui se trouve dans les résultats, et tu n'en inventes aucune.",
     'Réponds par un seul JSON : { "blocks": [ { "component": "nom", "props": { … } }, … ] }. Les composants « group » (enfants dans "blocks") et « columns » (enfants dans "left" et "right") contiennent d\'autres blocs, sur un seul niveau.',
+    `Write every text you produce in ${englishLanguageName(o.locale ?? "en")}.`,
     "Catalogue des composants :\n" + o.catalog,
     [
       "Les références (propriétés de genre « reference ») sont des textes :",
@@ -67,7 +69,7 @@ function readJson(response: unknown): { value: unknown } | null {
 
 export async function layOut(o: {
   results: unknown; prompt: string | null; catalog: ComponentDefinition[]; ai: GemmaAccess | null;
-  signal?: AbortSignal; delayMs?: number;
+  signal?: AbortSignal; delayMs?: number; locale?: string;
 }): Promise<PageLayout> {
   if (emptyResults(o.results)) return { plan: null, fallback: false, empty: true, attempts: 0 };
   const fallback = (reason: string, attempts: 0 | 1 | 2): PageLayout => {
@@ -98,7 +100,7 @@ export async function layOut(o: {
     let errors: string[] | undefined;
     for (let n = 1; n <= 2; n++) {
       attempts = n as 1 | 2;
-      const prompt = pageLayoutPrompt({ prompt: o.prompt, catalog: catalog, preview: preview, errors: errors });
+      const prompt = pageLayoutPrompt({ prompt: o.prompt, catalog: catalog, preview: preview, errors: errors, ...(o.locale ? { locale: o.locale } : {}) });
       let response: unknown;
       try {
         response = await ai.gemma({ prompt, json: true }, { onStartup: atStartup, signal: ctl.signal });
