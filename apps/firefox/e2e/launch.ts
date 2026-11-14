@@ -37,6 +37,8 @@ async function seedFirstTimeNotesSeen(dataDir: string): Promise<void> {
   s.settings.hints.seen = Object.keys(FIRST_TIME) as FirstTimeId[];
   // Tests that restart on the same data come back to the tab they left; the launch on home has its own test.
   s.settings.startOnHome = false;
+  // The tests read French text.
+  s.settings.language = "fr";
   await writeFile(file, JSON.stringify(s));
 }
 

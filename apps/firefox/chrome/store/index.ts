@@ -38,6 +38,7 @@ import { createSettingsChrome, type SettingsChrome } from "./settings";
 import { createWindowRegistry, type WindowRegistry } from "./windows";
 import { installUiNetwork, isUiDocument, type UiNetworkState } from "./ui-network";
 import { gestureGuard } from "../../shared/widget-gesture";
+import { resolveLocale } from "../../shared/i18n";
 
 const { AsyncShutdown } = ChromeUtils.importESModule("resource://gre/modules/AsyncShutdown.sys.mjs");
 const { BrowserWindowTracker } = ChromeUtils.importESModule("resource:///modules/BrowserWindowTracker.sys.mjs");
@@ -277,6 +278,10 @@ async function start(): Promise<RessacStore> {
   // After the recorder subscribed: the version seen is saved even if nothing else changes.
   store.dispatch({ type: "noteVersion", version: __RESSAC_VERSION__ });
   const updates = installUpdates(store.dispatch, telemetry.report);
+  // The language shown: the setting, « system » resolved against the Mac's languages (read again on each change).
+  const showLocale = () => store.dispatch({ type: "setLocale", locale: resolveLocale(store.state.settings.language, Services.locale.systemLocales) });
+  showLocale();
+  store.subscribe((s, p) => s.settings.language !== p.settings.language && showLocale());
   AsyncShutdown.profileBeforeChange.addBlocker("Ressac: save the session", flush);
   ChromeUtils.registerWindowActor("RessacPage", {
     parent: { esModuleURI: PAGE_ACTOR },

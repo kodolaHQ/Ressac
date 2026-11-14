@@ -693,6 +693,16 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       d.settings.startOnHome = a.enabled;
       return true;
     }
+    case "chooseLanguage": {
+      if (d.settings.language === a.language) return false;
+      d.settings.language = a.language;
+      return true;
+    }
+    case "setLocale": {
+      if (d.locale === a.locale) return false;
+      d.locale = a.locale;
+      return true;
+    }
     case "setSidebarSide": {
       if (d.settings.sidebarSide === a.side) return false;
       d.settings.sidebarSide = a.side;
