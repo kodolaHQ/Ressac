@@ -990,7 +990,10 @@ test("onboarding actions and hints", () => {
   expect(e.settings.onboarded).toBe(true);
   expect(changed({ type: "finishOnboarding" })).toBe(false);
   ag({ type: "replayOnboarding" });
-  expect(e.settings.onboarded).toBe(false);
+  expect([e.settings.onboarded, e.welcomeReplay]).toEqual([false, true]);
+  ag({ type: "finishOnboarding" });
+  expect(e.welcomeReplay).toBe(false);
+  ag({ type: "replayOnboarding" });
   expect(changed({ type: "markHintSeen", id: "agent" })).toBe(true);
   expect(changed({ type: "markHintSeen", id: "agent" })).toBe(false);
   expect(e.settings.hints.seen).toEqual(["agent"]);

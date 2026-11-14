@@ -125,10 +125,12 @@ test("AI: an existing session keeps it on, a new install starts off, aiSetup is 
   writeFileSync(join(bad, "session.json"), "{ not json");
   expect((await loadSession(bad)).settings.aiEnabled).toBe(true);
   const recorder = new SessionRecorder(d, 10_000);
-  recorder.schedule({ ...initialState(), aiSetup: true });
+  recorder.schedule({ ...initialState(), aiSetup: true, welcomeReplay: true });
   await recorder.clear();
   expect(JSON.parse(readFileSync(join(d, "session.json"), "utf8")).aiSetup).toBeUndefined();
+  expect(JSON.parse(readFileSync(join(d, "session.json"), "utf8")).welcomeReplay).toBeUndefined();
   expect((await loadSession(d)).aiSetup).toBe(false);
+  expect((await loadSession(d)).welcomeReplay).toBe(false);
 });
 
 test("missing file → initial state", async () => {

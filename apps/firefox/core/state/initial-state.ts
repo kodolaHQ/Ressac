@@ -27,5 +27,6 @@ export function initialState(genId: () => string = randomUUID): BrowserState {
     update: null,
     locale: "en",
     aiSetup: false,
+    welcomeReplay: false,
   };
 }

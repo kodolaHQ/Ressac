@@ -629,8 +629,9 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
     }
     case "finishOnboarding": {
       const aiChanged = a.ai !== undefined && d.settings.aiEnabled !== a.ai;
-      if (d.settings.onboarded && !aiChanged && !d.aiSetup) return false;
+      if (d.settings.onboarded && !aiChanged && !d.aiSetup && !d.welcomeReplay) return false;
       d.settings.onboarded = true;
+      d.welcomeReplay = false;
       // « Oui » in the welcome turns AI on at once (enableAi): the full welcome ends that setup too.
       d.aiSetup = false;
       if (a.ai !== undefined) d.settings.aiEnabled = a.ai;
@@ -654,6 +655,7 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
     }
     case "replayOnboarding": {
       d.settings.onboarded = false;
+      d.welcomeReplay = true;
       return true;
     }
     case "noteVersion": {

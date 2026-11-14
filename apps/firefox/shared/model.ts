@@ -247,6 +247,8 @@ export interface BrowserState {
   locale: string;
   /** The AI-only setup is showing (after enabling AI from Réglages). Volatile, never saved. */
   aiSetup: boolean;
+  /** The welcome showing is a replay (« Revoir l'accueil »), not a first launch. Volatile, never saved. */
+  welcomeReplay: boolean;
 }
 
 /**

@@ -21,7 +21,8 @@
    */
   let { window: win, mode = "full" }: { window: WindowState; mode?: "full" | "ai" } = $props();
 
-  if (step.aiAtStart === undefined) step.aiAtStart = aiOn();
+  // Only a replay: a first welcome left after « Oui » (AI on, nothing finished) asks again at the next launch.
+  if (step.aiAtStart === undefined) step.aiAtStart = !!appState.value?.welcomeReplay && aiOn();
   /** Page numbers shown, in order: « Plus tard » on page 4, or AI already on at a replay, skips the AI pages 5-6. */
   const pages = $derived(mode === "ai" ? [5, 6] : step.aiAtStart ? [1, 2, 3, 7] : aiOn() ? [1, 2, 3, 4, 5, 6, 7] : [1, 2, 3, 4, 7]);
   const page = $derived(pages.includes(step.page) ? step.page : pages[0]!);
@@ -82,8 +83,14 @@
   // Each state is checked when its page first shows (only after « Oui »: no Docker or Ollama call while AI is off).
   let checked = { docker: false, ollama: false };
   $effect(() => {
-    if (page === 5 && !checked.docker) void (checked.docker = true, checkDocker());
-    if (page === 6 && !checked.ollama) void (checked.ollama = true, checkOllama());
+    if (page === 5 && !checked.docker) {
+      checked.docker = true;
+      void checkDocker();
+    }
+    if (page === 6 && !checked.ollama) {
+      checked.ollama = true;
+      void checkOllama();
+    }
   });
 
   const next = () => (step.page = pages[Math.min(pages.length - 1, at + 1)]!);

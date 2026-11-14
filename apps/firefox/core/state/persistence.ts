@@ -154,6 +154,7 @@ export async function loadSession(folder: string, kept?: (path: string) => void)
       update: null,
       locale: "en",
       aiSetup: false,
+      welcomeReplay: false,
       tabs: Object.fromEntries(Object.entries(parsed.tabs).map(([id, o]) => [id, { ...o, ...VOLATILE }])),
     };
   } catch {
@@ -206,7 +207,7 @@ export class SessionRecorder {
       Object.entries(state.tabs).map(([id, { loading: load, canGoBack: canGoBack, canGoForward: canAdvance, crashed: crashes, error: error, agentSearch: _band, call: _call, sound: _sound, playback: _playback, unloaded: _unloaded, ...rest }]) => [id, rest]),
     );
     const target = join(this.folder, FILE);
-    const { update: _update, locale: _locale, aiSetup: _aiSetup, ...saved } = state;
+    const { update: _update, locale: _locale, aiSetup: _aiSetup, welcomeReplay: _welcomeReplay, ...saved } = state;
     const text = JSON.stringify({ ...saved, tabs: tabs }, null, 2);
     this.onDisk ??= await fs.readFile(target, "utf8").catch(() => null);
     if (text === this.onDisk) return;

@@ -215,7 +215,7 @@ describe("welcome", () => {
     await shows("welcome-docker", "Impossible de vérifier pour l'instant.");
     await shown("welcome-recheck");
     await press("welcome-next");
-    await shows("welcome-6", "Ollama n'est pas installé ou pas lancé.");
+    await shows("welcome-ollama", "Ollama n'est pas installé ou pas lancé.");
   });
 
   it("agent choice", async () => {
@@ -350,6 +350,30 @@ describe("welcome", () => {
     await press("welcome-finish");
     await layerGone();
     await saved((s) => s.settings?.onboarded === true && s.settings.aiEnabled === true);
+  });
+
+  it("yes, back, then later saves AI off", async () => {
+    await launch();
+    await forward(1, 5);
+    await press("welcome-back");
+    await shown("welcome-ai");
+    await press("welcome-later");
+    await shown("welcome-7");
+    await press("welcome-finish");
+    await layerGone();
+    await saved((s) => s.settings?.onboarded === true && s.settings.aiEnabled === false);
+  });
+
+  it("a first welcome left after yes asks again at the next launch", async () => {
+    const dataDir = await mkdtemp(join(os.tmpdir(), "ressac-welcome-"));
+    dirs.push(dataDir);
+    await launch({ dataDir });
+    await forward(1, 5);
+    await saved((s) => s.settings?.aiEnabled === true && s.settings.onboarded === false);
+    await w!.close();
+    await launch({ dataDir });
+    await forward(1, 4);
+    await shown("welcome-ai");
   });
 
   it("replay with AI on keeps it on", async () => {
