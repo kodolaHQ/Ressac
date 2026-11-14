@@ -23,8 +23,18 @@ test("handOff asks the host, then opens that window's agent", async () => {
   const host = hostWith(async (m) => void order.push(m));
   const openAgent = vi.fn(() => void order.push("open"));
   const shown = [{ url: "https://a.test/", title: "A", lastVisit: "2026-11-11T00:00:00Z", excerpt: null }];
-  await createAsk(host, openAgent).handOff("w1", "q", shown);
+  expect(await createAsk(host, openAgent).handOff("w1", "q", shown)).toBe(true);
   expect(host.request).toHaveBeenCalledWith("ask.handOff", { window: "w1", question: "q", shown });
   expect(openAgent).toHaveBeenCalledWith("w1");
   expect(order).toEqual(["ask.handOff", "open"]);
+});
+
+test("handOff refused by the host: false, the panel stays closed", async () => {
+  const error = vi.spyOn(console, "error").mockImplementation(() => {});
+  const openAgent = vi.fn();
+  const host = hostWith(() => Promise.reject(new Error("down")));
+  expect(await createAsk(host, openAgent).handOff("w1", "q", [])).toBe(false);
+  expect(openAgent).not.toHaveBeenCalled();
+  expect(error).toHaveBeenCalled();
+  error.mockRestore();
 });

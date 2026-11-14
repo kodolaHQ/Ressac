@@ -617,7 +617,7 @@ const rpc = createRpc({
     "ask.handOff": (p: { window?: unknown; question?: unknown; shown?: unknown }) => {
       if (typeof p?.window !== "string" || typeof p.question !== "string" || !Array.isArray(p.shown)) throw new Error("ask.handOff: invalid params");
       const str = (x: unknown) => typeof x === "string";
-      const shown = p.shown.filter((h) => str(h?.url) && str(h?.title) && str(h?.lastVisit));
+      const shown = (p.shown as Partial<Record<"url" | "title" | "lastVisit", unknown>>[]).filter((h): h is { url: string; title: string; lastVisit: string } => str(h?.url) && str(h?.title) && str(h?.lastVisit));
       sessions.prefill(p.window, handOffText(p.question, shown, hostSay("ask-shown-pages")), undefined, true);
     },
     stop: async () => {

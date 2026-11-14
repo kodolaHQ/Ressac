@@ -236,8 +236,8 @@ export interface ApiRessac {
     warm(): void;
     /** Never rejects: { kind: "agent" } while the host is down. */
     find(question: string): Promise<AskResult>;
-    /** Sends the question, with the pages already shown, to the window's agent and opens its panel. */
-    handOff(windowId: WindowId, question: string, shown: AskHit[]): Promise<void>;
+    /** Sends the question, with the pages already shown, to the window's agent and opens its panel; false when nothing was sent (panel left closed). */
+    handOff(windowId: WindowId, question: string, shown: AskHit[]): Promise<boolean>;
   };
   downloads: {
     list(): Promise<Download[]>;
