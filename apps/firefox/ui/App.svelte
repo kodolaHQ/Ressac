@@ -32,7 +32,8 @@
   import { isAgentRequest } from "./components/modal.svelte";
   import { menu } from "./components/menu.svelte";
   import { spaceSettings } from "./components/spaceSettings.svelte";
-  import { access, api, requestOf, appState, currentWindow, closeTab } from "./state.svelte";
+  import { access, aiOn, api, requestOf, appState, currentWindow, closeTab } from "./state.svelte";
+  import AiAsleep from "./components/AiAsleep.svelte";
   import { BAR_WIDTH, BAR_WIDTH_MAX, BAR_WIDTH_MIN, actionOfUrl, recapOfUrl, hasView, workflowUrlTarget, reviewUrlProject, URL_ACTIONS, URL_APPLICATIONS, URL_EXTENSIONS, URL_RELEASE_NOTES, URL_SETTINGS } from "../shared/model";
   import { hide, INITIAL_REVEAL, onZone, type LeftZone } from "../shared/reveal";
   import type { Panel, TabsPanel as TabPanel } from "../shared/api";
@@ -288,25 +289,31 @@
     {:else if activeTab?.url === URL_EXTENSIONS}
       <Extensions />
     {:else if activeTab?.url === URL_APPLICATIONS}
-      <Applications />
+      {#if aiOn()}<Applications />{:else}<AiAsleep feature="apps" />{/if}
     {:else if activeTab?.url === URL_SETTINGS}
       <Settings />
     {:else if activeTab?.url === URL_RELEASE_NOTES}
       <ReleaseNotes />
     {:else if activeTab?.url === URL_ACTIONS}
-      {#if privateAction}
+      {#if !aiOn()}
+        <AiAsleep feature="actions" />
+      {:else if privateAction}
         <p class="crashed" data-testid="action-private-space">{t("action-private")}</p>
       {:else}
         <Actions />
       {/if}
     {:else if builderTarget}
-      {#if builderTarget.type === "action" && privateAction}
+      {#if !aiOn()}
+        <AiAsleep feature="workflows" />
+      {:else if builderTarget.type === "action" && privateAction}
         <p class="crashed" data-testid="action-private-space">{t("action-private")}</p>
       {:else}
         {#key `${builderTarget.type}:${builderTarget.id}`}<WorkflowBuilder target={builderTarget} />{/key}
       {/if}
     {:else if pageAction}
-      {#if privateAction}
+      {#if !aiOn()}
+        <AiAsleep feature="actions" />
+      {:else if privateAction}
         <p class="crashed" data-testid="action-private-space">{t("action-private")}</p>
       {:else}
         {#key `${pageAction.id}/${pageAction.run}`}<PageAction id={pageAction.id} run={pageAction.run} />{/key}
@@ -318,7 +325,7 @@
         {#key pageRecap}<PageRecap id={pageRecap} />{/key}
       {/if}
     {:else if reviewProject}
-      {#key `${activeTab?.id}:${reviewProject}`}<Review project={reviewProject} tabId={activeTab?.id ?? ""} />{/key}
+      {#if !aiOn()}<AiAsleep feature="review" />{:else}{#key `${activeTab?.id}:${reviewProject}`}<Review project={reviewProject} tabId={activeTab?.id ?? ""} />{/key}{/if}
     {:else if activeTab && !pageWeb}
       <InternalPage />
     {/if}

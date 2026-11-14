@@ -2,7 +2,7 @@
   import type { WindowState } from "../../shared/model";
   import { onMount, untrack } from "svelte";
   import { focusEmptyPage } from "./command.svelte";
-  import { api, appState } from "../state.svelte";
+  import { aiOn, api, appState } from "../state.svelte";
   import Home from "../Home.svelte";
   import TipCard from "./TipCard.svelte";
   import SuggestionsActions from "./ActionSuggestions.svelte";
@@ -20,13 +20,13 @@
     if (focusEmptyPage.n > 0) untrack(() => field?.focus());
   });
 
-  // Actions are not available in a private space (a missing space counts as private): the list is then not even
-  // requested.
-  const inPrivate = $derived(appState.value?.spaces.find((e) => e.id === win.activeSpace)?.private ?? true);
+  // Actions are not available with AI off nor in a private space (a missing space counts as private): the list is then
+  // not even requested.
+  const noActions = $derived(!aiOn() || (appState.value?.spaces.find((e) => e.id === win.activeSpace)?.private ?? true));
   let actions = $state.raw<ActionShown[]>([]);
   let last = 0;
   $effect(() => {
-    if (inPrivate) {
+    if (noActions) {
       actions = [];
       return;
     }
@@ -46,7 +46,7 @@
   // Escape closes the list until the next keystroke.
   let closed = $state(false);
   let chosen = $state(-1);
-  const suggestions = $derived(inPrivate || closed ? [] : suggestionsActions(input, actions));
+  const suggestions = $derived(noActions || closed ? [] : suggestionsActions(input, actions));
   const usualLine = $derived(/^\S+\.\S+$/.test(input.trim()) ? t("sidebar-command-open", { target: input.trim() }) : t("sidebar-command-search", { query: input.trim() }));
 
   let denial = $state("");

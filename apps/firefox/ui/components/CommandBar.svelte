@@ -2,7 +2,7 @@
   import { tick, untrack } from "svelte";
   import { fade } from "svelte/transition";
   import type { WindowState, Tab, TabId, AskHit } from "../../shared/model";
-  import { api, appState } from "../state.svelte";
+  import { aiOn, api, appState } from "../state.svelte";
   import { closeCommand, command, focusEmptyPage } from "./command.svelte";
   import {
     LIMITS,
@@ -43,8 +43,8 @@
     closePanel: () => void;
   } = $props();
 
-  // Actions are not available in a private space (a missing space counts as private), like on the empty page.
-  const inPrivate = $derived(appState.value?.spaces.find((e) => e.id === win.activeSpace)?.private ?? true);
+  // Actions are not available with AI off nor in a private space (a missing space counts as private), like on the empty page.
+  const noActions = $derived(!aiOn() || (appState.value?.spaces.find((e) => e.id === win.activeSpace)?.private ?? true));
   let actions = $state.raw<ActionShown[]>([]);
   let projects = $state.raw<SiteApp[]>([]);
   let sites = $state.raw<SiteApp[]>([]);
@@ -66,7 +66,7 @@
   }
 
   $effect(() => {
-    if (inPrivate) {
+    if (noActions) {
       actions = [];
       return;
     }
@@ -148,7 +148,8 @@
   function toggleMode() {
     asking = !asking;
     clearAsk();
-    if (asking && !usable) {
+    // AI off: nothing is asked of the local AI; the list shows the asleep line.
+    if (asking && !usable && aiOn()) {
       usable = api.ask.usable();
       api.ask.warm();
     }
@@ -186,7 +187,7 @@
       return;
     }
     const question = text.trim().slice(0, ASK_MAX);
-    if (!question || working) return;
+    if (!question || working || !aiOn()) return;
     const o = command.open;
     const n = ++asked;
     working = true;
@@ -467,7 +468,15 @@
     </div>
     {#if denial}<p class="refusal" data-testid="command-refusal">{denial}</p>{/if}
     {#if asking}
-      {#if hits}
+      {#if !aiOn()}
+        <ul out:fade={{ duration: 150 }}>
+          <li class="asleep" data-testid="ai-asleep-ask">
+            <span class="pictogram" data-type="action"><Icon name="agent" size={14} /></span>
+            <span class="label">{t("ai-asleep-title")}</span>
+            <button type="button" tabindex="-1" class="enable" onclick={() => api.dispatch({ type: "enableAi" })}>{t("ai-asleep-enable")}</button>
+          </li>
+        </ul>
+      {:else if hits}
         <ul role="listbox" out:fade={{ duration: 150 }}>
           {#each hits as h, i (h.url)}
             <li role="option" aria-selected={i === askChosen} data-testid="command-ask-hit">
@@ -556,6 +565,8 @@
   .param-line { display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 14px; border-bottom: 1px solid var(--border); }
   .param-line input { border: 0; padding: 8px 4px; }
   .pill { display: inline-flex; align-items: center; gap: 5px; flex: none; max-width: 45%; padding: 4px 10px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; animation: ressac-drop var(--spring-d) var(--spring) backwards; }
+  .asleep { display: flex; align-items: center; gap: 10px; padding: 8px 12px; animation: ressac-drop var(--spring-d) var(--spring) backwards; }
+  .asleep .enable { width: auto; margin-left: auto; flex: none; padding: 5px 12px; background: var(--accent); color: var(--accent-ink); font-weight: 600; font-size: 13px; }
   .help { margin: 10px 18px 12px; font-size: 12px; color: var(--text-muted); }
   .tag { margin-left: auto; flex: none; color: var(--text-muted); font: 11px var(--font-mono); }
   .detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font: 12px var(--font-mono); }

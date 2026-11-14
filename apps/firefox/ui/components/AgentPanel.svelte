@@ -1,6 +1,7 @@
 <script lang="ts">
   import { tick, untrack } from "svelte";
-  import { api, appState as browserState } from "../state.svelte";
+  import { aiOn, api, appState as browserState } from "../state.svelte";
+  import AiAsleep from "./AiAsleep.svelte";
   import { t } from "../i18n.svelte";
   import type { AgentAccount } from "../../shared/settings";
   import { focusAgent } from "./agent.svelte";
@@ -60,7 +61,7 @@
   let current = $state<string | null>(null);
   const refreshAccounts = () => api.settings.agents().then((a) => (accounts = a), () => {});
   $effect(() => {
-    if (!visible) return;
+    if (!visible || !aiOn()) return;
     api.agent.profiles().then((p) => (profiles = p), () => {});
     void refreshAccounts();
   });
@@ -73,7 +74,7 @@
   };
   $effect(() => {
     void appState;
-    void readCurrent();
+    if (aiOn()) void readCurrent();
   });
   const account = (id: string | null) => accounts.find((a) => a.id === id);
   /** Whether an agent runs on its subscription (the sign-in it needs); Claude or Codex on Ollama or an API does not. */
@@ -96,7 +97,8 @@
   let detach: (() => void) | undefined;
   $effect(() => () => detach?.());
   $effect(() => {
-    if (!visible) return;
+    // AI off: the terminal is not attached, so no agent session starts.
+    if (!visible || !aiOn()) return;
     detach ??= terminalAgent.attacher(hostEl);
     terminalAgent.adjust();
     const obs = new ResizeObserver(() => terminalAgent.adjust());
@@ -156,6 +158,9 @@
   {#if !builtIn}
     <div class="handle" data-testid="agent-handle" role="separator" aria-orientation="vertical" aria-label={t("agent-panel-handle")} onpointerdown={tirer}></div>
   {/if}
+  {#if !aiOn()}
+    <AiAsleep feature="agent" />
+  {:else}
   <header>
     <!-- The agent's mark: the aura's three hues, turning while it answers. -->
     <span class="orb" class:busy={terminalAgent.agent.busy} data-testid="agent-orb" aria-hidden="true"></span>
@@ -192,7 +197,8 @@
     <p class="message">{t("agent-panel-done")}</p>
     <button onclick={terminalAgent.reset}>{t("agent-panel-restart")}</button>
   {/if}
-  <div class="terminal" bind:this={hostEl} class:masked={appState.state !== "active" && appState.state !== "done"}></div>
+  {/if}
+  <div class="terminal" bind:this={hostEl} hidden={!aiOn()} class:masked={appState.state !== "active" && appState.state !== "done"}></div>
 </section>
 
 <style>
@@ -223,4 +229,5 @@
   .terminal { position: relative; flex: 1; min-height: 0; margin: 0 6px 6px; border-radius: 11px; background: var(--sheet); box-shadow: inset 0 0 0 1px var(--border); }
   .built-in .terminal { margin: 0; border-radius: 0; box-shadow: none; }
   .terminal.masked { visibility: hidden; }
+  .terminal[hidden] { display: none; }
 </style>

@@ -22,7 +22,8 @@
   import type { LocalAiStateShown, SettingsApi } from "../../shared/api";
   import { OLLAMA_ITSELF, type DockerStatus, type AgentAccount, type DecisionModel, type LoginResult, type PullProgress, type WorkshopOperation } from "../../shared/settings";
   import { updateStatusText } from "../../core/update";
-  import { api, appState } from "../state.svelte";
+  import { aiOn, api, appState } from "../state.svelte";
+  import AiAsleep from "./AiAsleep.svelte";
   import { t } from "../i18n.svelte";
   import { LOCALES, languageName } from "../../shared/i18n";
   import { SEARCH_ENGINES, customEngineError, type SearchEngine } from "../../shared/search";
@@ -47,11 +48,12 @@
     // A finished sign-in forgets its code: after a logout, the row offers Se connecter again.
     for (const a of agents) if (a.state === "logged-in") delete logins[a.id];
   };
-  $effect(() => void loadAgents());
+  // AI off: Agents, IA locale and Atelier show the asleep card and ask nothing of the host.
+  $effect(() => void (aiOn() && loadAgents()));
   // Claude signs in in the agent panel (which builds the workshop if needed), Codex by a code on OpenAI's site: re-read only while one is awaited (a Codex code shown, or Claude signed out).
   const signIn = (a: AgentAccount) => a.state === "logged-out" || a.state === "no-container";
   $effect(() => {
-    if (!agents?.some((a) => signIn(a) && (a.login === "panel" || logins[a.id] !== undefined))) return;
+    if (!aiOn() || !agents?.some((a) => signIn(a) && (a.login === "panel" || logins[a.id] !== undefined))) return;
     const t = setInterval(() => void loadAgents(), 5_000);
     return () => clearInterval(t);
   });
@@ -88,7 +90,7 @@
   // Re-read on a model change too: the host checks the model it was told to use.
   $effect(() => {
     void model;
-    void api.ai.state().then((r) => (ai = r));
+    if (aiOn()) void api.ai.state().then((r) => (ai = r));
   });
 
   // Model downloads: the host runs one at a time and reports it; polled like the workshop operation.
@@ -117,6 +119,7 @@
   // A pull started elsewhere (the welcome, another window) shows here until it ends.
   $effect(() => {
     let timer: ReturnType<typeof setInterval> | undefined;
+    if (!aiOn()) return;
     void s.pullProgress().then((p) => {
       if (!p || pulling) return;
       pulling = p;
@@ -151,7 +154,7 @@
     workshopError = r.ok ? null : r.error;
     await loadWorkshop();
   }
-  $effect(() => void loadWorkshop());
+  $effect(() => void (aiOn() && loadWorkshop()));
   $effect(() => {
     if (!operation) return;
     const t = setInterval(() => void loadWorkshop(), 2_000);
@@ -238,7 +241,27 @@
     {#if current === "agents"}
       <section data-testid="settings-agents">
         <h2>{t("settings-section-agents")}</h2>
-        {#if !agents}
+        <div class="panel">
+          <div class="row">
+            <div class="grow">
+              <label for="ai-switch"><b>{t("settings-ai-switch")}</b></label>
+              <span class="muted" id="ai-switch-note">{t("settings-ai-switch-note")}</span>
+            </div>
+            <input
+              id="ai-switch"
+              class="switch"
+              type="checkbox"
+              role="switch"
+              data-testid="settings-ai-switch"
+              aria-describedby="ai-switch-note"
+              checked={aiOn()}
+              onchange={(e) => api.dispatch({ type: e.currentTarget.checked ? "enableAi" : "disableAi" })}
+            />
+          </div>
+        </div>
+        {#if !aiOn()}
+          <AiAsleep feature="settings" />
+        {:else if !agents}
           <p><span class="pill" data-tone="warn">{t("settings-checking")}</span></p>
         {:else}
           <div class="panel">
@@ -283,13 +306,15 @@
             {/each}
           </div>
         {/if}
-        <SettingsMozilla />
+        {#if aiOn()}<SettingsMozilla />{/if}
       </section>
     {:else if current === "ai"}
       <section data-testid="settings-ai">
         <h2>{t("settings-section-ai")}</h2>
         <p class="muted">{t("settings-ai-intro")}</p>
-        {#if !ai}
+        {#if !aiOn()}
+          <AiAsleep feature="settings" />
+        {:else if !ai}
           <p><span class="pill" data-tone="warn">{t("settings-checking")}</span></p>
         {:else if !ai.ollamaUrl}
           <!-- Only the silent host gives no address; a failed check still shows Ollama as unreachable. -->
@@ -336,7 +361,9 @@
     {:else if current === "workshop"}
       <section data-testid="settings-workshop">
         <h2>{t("settings-section-workshop")}</h2>
-        {#if workshop === undefined}
+        {#if !aiOn()}
+          <AiAsleep feature="settings" />
+        {:else if workshop === undefined}
           <p><span class="pill" data-tone="warn">{t("settings-checking")}</span></p>
         {:else}
           <div class="panel">

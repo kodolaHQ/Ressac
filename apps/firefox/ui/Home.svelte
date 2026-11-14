@@ -2,7 +2,8 @@
   import type { ShownWidget } from "../shared/api";
   import type { FreePlacement } from "../../../packages/kernel/src/home/schemas";
   import type { HomeTheme } from "../../../packages/kernel/src/home/theme";
-  import { api } from "./state.svelte";
+  import { aiOn, api } from "./state.svelte";
+  import AiAsleep from "./components/AiAsleep.svelte";
   import { t } from "./i18n.svelte";
   import AccountGrantCard from "./components/AccountGrantCard.svelte";
   import HomeWidget from "./HomeWidget.svelte";
@@ -34,7 +35,9 @@
       () => {},
     );
   }
+  // AI off: no kernel, no widgets to read; the asleep card stands in for them.
   $effect(() => {
+    if (!aiOn()) return;
     load();
     return api.home.onChange(load);
   });
@@ -153,7 +156,9 @@
 <svelte:window onpointermove={move} onpointerup={() => finish(false)} onpointercancel={() => finish(true)} />
 
 <section class="home" style={styleTheme} data-testid="home" data-theme={theme ? "agent" : "default"}>
-  {#if widgets.length}
+  {#if !aiOn()}
+    <AiAsleep feature="widgets" />
+  {:else if widgets.length}
     <div class="grid" class:gesture={inGesture} bind:clientWidth={widthPx} style:height="{height}px">
       {#each widgets as widget (widget.id)}
         {@const p = placements.get(widget.id) ?? widget.placement}

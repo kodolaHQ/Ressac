@@ -3,6 +3,8 @@
 settings-title = Réglages
 settings-nav-label = Sections des réglages
 settings-section-agents = Agents
+settings-ai-switch = Fonctions IA
+settings-ai-switch-note = L'agent, l'IA locale et les widgets. Éteintes, Ressac ne lance ni Docker ni Ollama.
 settings-section-ai = IA locale
 settings-section-workshop = Conteneur
 settings-section-permissions = Permissions
