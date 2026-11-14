@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import type { BrowserState } from "../../shared/model";
+import { LANGUAGE_SETTING } from "../../shared/model";
 import { AURA_IDS, DEFAULT_AURA } from "../../shared/aura";
 import { CUSTOM_ENGINE_MAX, SEARCH_ENGINE_IDS, customEngineError } from "../../shared/search";
 import { ClaudeEngineSchema, CodexEngineSchema, DEFAULT_CLAUDE_ENGINE, DEFAULT_CODEX_ENGINE } from "../../shared/settings";
@@ -72,6 +73,12 @@ const SchemaSession = z.object({
     vimMode: z.boolean().catch(false),
     // A session saved before the setting existed gets the default.
     startOnHome: z.boolean().catch(true),
+    // A session saved before languages existed was in French: it stays so. A language no longer shipped → the Mac's.
+    language: z
+      .string()
+      .default("fr")
+      .catch("system")
+      .transform((l) => (LANGUAGE_SETTING.test(l) ? l : "system")),
     // An unknown id or a malformed binding is dropped; the rest is kept.
     shortcuts: z
       .record(z.string(), z.unknown())
@@ -141,6 +148,7 @@ export async function loadSession(folder: string, kept?: (path: string) => void)
     return {
       ...parsed,
       update: null,
+      locale: "en",
       tabs: Object.fromEntries(Object.entries(parsed.tabs).map(([id, o]) => [id, { ...o, ...VOLATILE }])),
     };
   } catch {
@@ -196,7 +204,7 @@ export class SessionRecorder {
     try {
       const file = await fs.open(temp, "w");
       try {
-        const { update: _update, ...saved } = state;
+        const { update: _update, locale: _locale, ...saved } = state;
         await file.writeFile(JSON.stringify({ ...saved, tabs: tabs }, null, 2));
         await file.sync(); // on disk before the rename: a power cut does not leave an empty file
       } finally {

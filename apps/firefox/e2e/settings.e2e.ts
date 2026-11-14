@@ -252,6 +252,20 @@ describe("Settings page", () => {
     expect(await inUi(m, `return !doc.querySelector('[data-testid="settings-engine-error"]')`)).toBe(true);
   });
 
+  it("language: switching to English retitles the page without reload, and back", async () => {
+    await launch();
+    await openPage();
+    await go("privacy");
+    const pick = (value: string) => inUi(m, `const s = doc.querySelector('[data-testid="settings-language"]'); s.value = arguments[0]; s.dispatchEvent(new Event("change", { bubbles: true }));`, [value]);
+    const language = () => waitFor(m, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).state.settings.language)();`, () => true);
+    await pick("en");
+    await shows("settings-nav-about", "About");
+    expect(await language()).toBe("en");
+    await pick("fr");
+    await shows("settings-nav-about", "À propos");
+    expect(await language()).toBe("fr");
+  });
+
   it("default browser: the button asks, then the row says it is the default", async () => {
     await launch();
     await openPage();

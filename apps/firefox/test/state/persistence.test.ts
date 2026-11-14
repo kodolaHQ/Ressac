@@ -95,6 +95,22 @@ test("a session from before the custom engine loads unchanged; an unknown engine
   expect(set_aside(d, ".corrupt")).toEqual([]);
 });
 
+test("a session from before languages stays French; the shown language is never saved", async () => {
+  const d = folder();
+  const old = structuredClone(initialState()) as unknown as { settings: Record<string, unknown>; locale?: string };
+  delete old.settings.language;
+  delete old.locale;
+  writeFileSync(join(d, "session.json"), JSON.stringify(old));
+  expect((await loadSession(d)).settings.language).toBe("fr");
+  old.settings.language = "../x";
+  writeFileSync(join(d, "session.json"), JSON.stringify(old));
+  expect((await loadSession(d)).settings.language).toBe("system");
+  const recorder = new SessionRecorder(d, 10_000);
+  recorder.schedule({ ...initialState(), locale: "fr" });
+  await recorder.clear();
+  expect(JSON.parse(readFileSync(join(d, "session.json"), "utf8")).locale).toBeUndefined();
+});
+
 test("missing file → initial state", async () => {
   const e = await loadSession(folder());
   expect(e.spaces).toHaveLength(1);

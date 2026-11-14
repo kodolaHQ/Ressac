@@ -504,6 +504,16 @@ test("toggleCompact, toggleAgentPanel, chooseEngine", () => {
   expect(e.settings.engine).toBe("qwant");
 });
 
+test("chooseLanguage and setLocale; an unknown language is refused", () => {
+  expect(e.settings.language).toBe("system");
+  ag({ type: "chooseLanguage", language: "en" });
+  expect(e.settings.language).toBe("en");
+  ag({ type: "setLocale", locale: "fr" });
+  expect(e.locale).toBe("fr");
+  expect(SchemaAction.safeParse({ type: "chooseLanguage", language: "<script>" }).success).toBe(false);
+  expect(SchemaAction.safeParse({ type: "chooseLanguage", language: "system" }).success).toBe(true);
+});
+
 test("chooseEngine custom: the address is kept when another engine is chosen; an invalid one is refused", () => {
   ag({ type: "chooseEngine", engine: "custom", custom: "https://kagi.com/search?q=%s" });
   expect(e.settings).toMatchObject({ engine: "custom", customEngine: "https://kagi.com/search?q=%s" });

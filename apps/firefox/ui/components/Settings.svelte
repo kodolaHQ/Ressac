@@ -2,15 +2,15 @@
   import type { IconName } from "./Icon.svelte";
 
   const SECTIONS = [
-    { id: "agents", label: "Agents", icon: "agent" },
-    { id: "ai", label: "IA locale", icon: "cpu" },
-    { id: "workshop", label: "Conteneur", icon: "box" },
-    { id: "permissions", label: "Permissions", icon: "key" },
-    { id: "data", label: "Données", icon: "database" },
-    { id: "privacy", label: "Vie privée", icon: "lock" },
-    { id: "shortcuts", label: "Raccourcis", icon: "keyboard" },
-    { id: "about", label: "À propos", icon: "info" },
-  ] as const satisfies readonly { id: string; label: string; icon: IconName }[];
+    { id: "agents", icon: "agent" },
+    { id: "ai", icon: "cpu" },
+    { id: "workshop", icon: "box" },
+    { id: "permissions", icon: "key" },
+    { id: "data", icon: "database" },
+    { id: "privacy", icon: "lock" },
+    { id: "shortcuts", icon: "keyboard" },
+    { id: "about", icon: "info" },
+  ] as const satisfies readonly { id: string; icon: IconName }[];
   type SectionId = (typeof SECTIONS)[number]["id"];
   // Module-level: the page is remounted on each tab switch and comes back to the last section seen.
   let current = $state<SectionId>("agents");
@@ -23,6 +23,8 @@
   import { OLLAMA_ITSELF, TELEMETRY_NOTICE, type DockerStatus, type AgentAccount, type DecisionModel, type LoginResult, type PullProgress, type WorkshopOperation } from "../../shared/settings";
   import { updateStatusText } from "../../core/update";
   import { api, appState } from "../state.svelte";
+  import { t } from "../i18n.svelte";
+  import { LOCALES, languageName } from "../../shared/i18n";
   import { SEARCH_ENGINES, customEngineError, type SearchEngine } from "../../shared/search";
   import Icon from "./Icon.svelte";
   import SettingsMozilla from "./SettingsMozilla.svelte";
@@ -55,15 +57,15 @@
   function agentText(a: AgentAccount): string {
     switch (a.state) {
       case "logged-in":
-        return a.account ? `Connecté (${a.account})` : "Connecté";
+        return a.account ? t("settings-agent-logged-in-account", { account: a.account }) : t("settings-agent-logged-in");
       case "logged-out":
-        return "Non connecté";
+        return t("settings-agent-logged-out");
       case "docker-absent":
-        return "Docker n'est pas lancé : voir Conteneur.";
+        return t("settings-agent-docker-absent");
       case "no-container":
-        return "L'atelier de l'agent n'est pas démarré : voir Conteneur.";
+        return t("settings-agent-no-container");
       case "error":
-        return `Erreur : ${a.error ?? ""}`;
+        return t("settings-error", { error: a.error ?? "" });
     }
   }
   function agentTone(a: AgentAccount): string {
@@ -126,7 +128,7 @@
     });
     return () => clearInterval(timer);
   });
-  const pullLabel = (p: PullProgress) => (p.percent === null ? "Téléchargement…" : `Téléchargement ${p.percent} %`);
+  const pullLabel = (p: PullProgress) => (p.percent === null ? t("settings-pull-progress-unknown") : t("settings-pull-progress", { percent: p.percent }));
 
   /** undefined: loading; null: the host does not answer. */
   let workshop = $state<WorkshopState | null | undefined>(undefined);
@@ -155,16 +157,13 @@
     return () => clearInterval(t);
   });
   const WORKSHOP: Record<WorkshopState, string> = {
-    demarre: "Atelier démarré",
-    arrete: "Atelier arrêté",
-    absent: "Atelier pas encore créé : il se construit à la première ouverture de l'agent.",
-    "docker-absent": "Docker (OrbStack) n'est pas lancé ou pas installé.",
+    demarre: "settings-workshop-started",
+    arrete: "settings-workshop-stopped",
+    absent: "settings-workshop-absent",
+    "docker-absent": "settings-workshop-docker-absent",
   };
   const WORKSHOP_TONE: Record<WorkshopState, string> = { demarre: "ok", arrete: "off", absent: "off", "docker-absent": "warn" };
-  const CONFIRM = {
-    restart: "Les agents et les applis en cours s'arrêtent, puis les agents se relancent.",
-    rebuild: "La reconstruction réinstalle Claude Code et Codex et prend quelques minutes. Les agents et les applis en cours s'arrêtent ; vos projets et les connexions de Claude et de Codex restent.",
-  };
+  const CONFIRM = { restart: "settings-workshop-confirm-restart", rebuild: "settings-workshop-confirm-rebuild" };
   async function operate(kind: "restart" | "rebuild") {
     asking = null;
     workshopError = null;
@@ -213,23 +212,23 @@
 </script>
 
 <!-- The pill of a local model: « installé », or « absent » with a download button once Ollama answers. -->
-{#snippet pullPill(name: string, installed: boolean, id: string, action = "Télécharger")}
+{#snippet pullPill(name: string, installed: boolean, id: string, action = "settings-pull-download")}
   {#if installed}
-    <span class="pill" data-tone="ok">installé</span>
+    <span class="pill" data-tone="ok">{t("settings-pill-installed")}</span>
   {:else if pulling?.name === name}
     <span class="pill" data-tone="warn" data-testid="pull-progress-{id}">{pullLabel(pulling)}</span>
   {:else}
-    <span class="pill" data-tone="off">absent</span>
-    {#if v?.ollama || name === OLLAMA_ITSELF}<button data-testid="pull-{id}" disabled={!!pulling} onclick={() => void pullModel(name)}>{action}</button>{/if}
+    <span class="pill" data-tone="off">{t("settings-pill-absent")}</span>
+    {#if v?.ollama || name === OLLAMA_ITSELF}<button data-testid="pull-{id}" disabled={!!pulling} onclick={() => void pullModel(name)}>{t(action)}</button>{/if}
   {/if}
 {/snippet}
 
-<section class="settings" data-testid="settings-page" aria-label="Réglages">
-  <nav aria-label="Sections des réglages">
-    <h1>Réglages</h1>
+<section class="settings" data-testid="settings-page" aria-label={t("settings-title")}>
+  <nav aria-label={t("settings-nav-label")}>
+    <h1>{t("settings-title")}</h1>
     {#each SECTIONS as sec (sec.id)}
       <button data-testid="settings-nav-{sec.id}" aria-current={current === sec.id ? "page" : undefined} onclick={() => (current = sec.id)}>
-        <Icon name={sec.icon} />{sec.label}
+        <Icon name={sec.icon} />{t(`settings-section-${sec.id}`)}
       </button>
     {/each}
   </nav>
@@ -237,9 +236,9 @@
   <div class="content">
     {#if current === "agents"}
       <section data-testid="settings-agents">
-        <h2>Agents</h2>
+        <h2>{t("settings-section-agents")}</h2>
         {#if !agents}
-          <p><span class="pill" data-tone="warn">Vérification…</span></p>
+          <p><span class="pill" data-tone="warn">{t("settings-checking")}</span></p>
         {:else}
           <div class="panel">
             {#each agents as a (a.id)}
@@ -249,37 +248,37 @@
                   {#if signIn(a)}
                     {@const l = logins[a.id]}
                     {#if l?.kind === "device"}
-                      <span class="muted">Ouvrez la page de connexion et saisissez le code <code data-testid="device-code">{l.code}</code></span>
-                      <span class="muted">En attente de la connexion…</span>
+                      <span class="muted">{t("settings-agent-device-code")} <code data-testid="device-code">{l.code}</code></span>
+                      <span class="muted">{t("settings-agent-device-waiting")}</span>
                     {:else if l?.kind === "error"}
-                      <span class="alert">Erreur : {l.error}</span>
+                      <span class="alert">{t("settings-error", { error: l.error })}</span>
                     {:else if a.login === "panel"}
                       <!-- Claude on Ollama or an API starts without its subscription: no nudge to sign in. -->
                       {#if (appState.value?.settings.claudeEngine.kind ?? "subscription") === "subscription"}
-                        <span class="muted">Claude Code vous demande de vous connecter dans le panneau de l'agent ; sinon, tapez /login.</span>
+                        <span class="muted">{t("settings-agent-panel-login")}</span>
                       {/if}
                     {:else}
-                      <span class="muted">Connexion avec votre abonnement ChatGPT : un code à saisir sur le site d'OpenAI.</span>
+                      <span class="muted">{t("settings-agent-codex-login")}</span>
                     {/if}
                   {:else if a.state === "logged-in"}
-                    <span class="muted">Les conversations déjà ouvertes continuent jusqu'à leur relance.</span>
+                    <span class="muted">{t("settings-agent-open-chats")}</span>
                   {/if}
                 </div>
                 <span class="pill" data-tone={agentTone(a)}>{agentText(a)}</span>
                 {#if signIn(a)}
                   {@const l = logins[a.id]}
                   {#if l?.kind === "device"}
-                    <button class="primary" data-testid="device-open" onclick={() => s.openUrl(l.url)}>Ouvrir la page de connexion</button>
+                    <button class="primary" data-testid="device-open" onclick={() => s.openUrl(l.url)}>{t("settings-agent-device-open")}</button>
                   {:else}
-                    <button class:primary={a.id !== "claude" || (appState.value?.settings.claudeEngine.kind ?? "subscription") === "subscription"} data-testid="agent-login" disabled={l === null} onclick={() => void login(a.id)}>Se connecter</button>
+                    <button class:primary={a.id !== "claude" || (appState.value?.settings.claudeEngine.kind ?? "subscription") === "subscription"} data-testid="agent-login" disabled={l === null} onclick={() => void login(a.id)}>{t("settings-agent-login")}</button>
                   {/if}
                 {:else if a.state === "logged-in"}
-                  <button data-testid="agent-logout" onclick={() => void logout(a.id)}>Se déconnecter</button>
+                  <button data-testid="agent-logout" onclick={() => void logout(a.id)}>{t("settings-agent-logout")}</button>
                 {/if}
               </div>
               {#if a.id === "claude" || a.id === "codex"}<SettingsEngine agent={a.id} />{/if}
             {:else}
-              <div class="row"><span class="pill" data-tone="error">L'agent ne répond pas.</span></div>
+              <div class="row"><span class="pill" data-tone="error">{t("settings-agent-silent-sentence")}</span></div>
             {/each}
           </div>
         {/if}
@@ -287,81 +286,81 @@
       </section>
     {:else if current === "ai"}
       <section data-testid="settings-ai">
-        <h2>IA locale</h2>
-        <p class="muted">Une petite IA tourne sur votre Mac, en plus de l'agent : elle le met en pause quand une de ses actions paraît étrange, trie ce que Ressac suit pour vous et rédige les résumés. Elle est gratuite et rien de ce qu'elle lit ne quitte votre machine. Il lui faut Ollama, le logiciel libre qui la fait fonctionner, et deux modèles.</p>
+        <h2>{t("settings-section-ai")}</h2>
+        <p class="muted">{t("settings-ai-intro")}</p>
         {#if !ai}
-          <p><span class="pill" data-tone="warn">Vérification…</span></p>
+          <p><span class="pill" data-tone="warn">{t("settings-checking")}</span></p>
         {:else if !ai.ollamaUrl}
           <!-- Only the silent host gives no address; a failed check still shows Ollama as unreachable. -->
-          <p><span class="pill" data-tone="error" data-testid="ai-error">{ai.error ?? "L'agent ne répond pas"}</span></p>
+          <p><span class="pill" data-tone="error" data-testid="ai-error">{ai.error ?? t("settings-agent-silent")}</span></p>
         {:else}
           <div class="panel">
             <div class="row" data-testid="ai-ollama">
               <div class="grow"><b>Ollama</b><code class="muted">{ai.ollamaUrl}</code></div>
               {#if ollama?.kind === "outdated"}
-                <span class="pill" data-tone="warn">version {ollama.version}, il faut la {ollama.min}</span>
-                <button data-testid="ollama-update" onclick={() => s.openUrl("https://ollama.com/download")}>Mettre à jour Ollama</button>
+                <span class="pill" data-tone="warn">{t("settings-ai-ollama-outdated", { version: ollama.version, min: ollama.min })}</span>
+                <button data-testid="ollama-update" onclick={() => s.openUrl("https://ollama.com/download")}>{t("settings-ai-ollama-update")}</button>
               {:else if ollama?.kind === "stopped"}
-                <span class="pill" data-tone="warn">arrêté</span>
-                <button data-testid="ollama-start" disabled={startingOllama} onclick={() => void startOllama()}>{startingOllama ? "Démarrage…" : "Démarrer"}</button>
+                <span class="pill" data-tone="warn">{t("settings-ai-ollama-stopped")}</span>
+                <button data-testid="ollama-start" disabled={startingOllama} onclick={() => void startOllama()}>{startingOllama ? t("settings-ai-ollama-starting") : t("settings-ai-ollama-start")}</button>
               {:else if ollama?.kind === "absent"}
-                {@render pullPill(OLLAMA_ITSELF, false, "ollama", "Télécharger Ollama (190 Mo)")}
+                {@render pullPill(OLLAMA_ITSELF, false, "ollama", "settings-ai-ollama-download")}
               {:else}
-                <span class="pill" data-tone={v?.ollama ? "ok" : "warn"}>{v?.ollama ? "joignable" : "injoignable"}</span>
+                <span class="pill" data-tone={v?.ollama ? "ok" : "warn"}>{v?.ollama ? t("settings-ai-ollama-reachable") : t("settings-ai-ollama-unreachable")}</span>
               {/if}
             </div>
             <div class="row" data-testid="ai-gemma">
-              <div class="grow"><b>Gemma</b><span class="muted">Widgets et veille : {v?.gemmaModel ? `Gemma (${v.gemmaModel})` : "Gemma absent"}</span></div>
+              <div class="grow"><b>Gemma</b><span class="muted">{v?.gemmaModel ? t("settings-ai-gemma-present", { model: v.gemmaModel }) : t("settings-ai-gemma-absent")}</span></div>
               {@render pullPill("gemma4:e4b-mlx", !!v?.gemma, "gemma")}
             </div>
             <div class="row">
-              <label class="grow" for="decision-model"><b>Modèle de décision</b></label>
+              <label class="grow" for="decision-model"><b>{t("settings-ai-decision-model")}</b></label>
               <select id="decision-model" data-testid="ai-decision-model" value={model} onchange={(e) => s.chooseDecisionModel(e.currentTarget.value as DecisionModel)}>
                 <option value="pplx-decider-flash">pplx-decider-flash (Ollama)</option>
                 <option value="kev" disabled={!kevReady}>Kev (local)</option>
               </select>
               {#if model === "kev"}
-                <span class="pill" data-tone={kevReady ? "ok" : "off"}>{kevReady ? "installé" : "absent"}</span>
+                <span class="pill" data-tone={kevReady ? "ok" : "off"}>{kevReady ? t("settings-pill-installed") : t("settings-pill-absent")}</span>
               {:else}
                 {@render pullPill("pplx-decider-flash", !!v?.decision, "decision")}
               {/if}
             </div>
             {#if pullError}<div class="row"><span class="pill" data-tone="error" data-testid="pull-error">{pullError}</span></div>{/if}
             {#if v?.ollama && (!v.gemma || (model !== "kev" && !v.decision))}
-              <div class="row"><span class="muted">Plusieurs Go : le téléchargement peut prendre un moment.</span></div>
+              <div class="row"><span class="muted">{t("settings-ai-large-download")}</span></div>
             {/if}
           </div>
         {/if}
       </section>
     {:else if current === "workshop"}
       <section data-testid="settings-workshop">
-        <h2>Conteneur</h2>
+        <h2>{t("settings-section-workshop")}</h2>
         {#if workshop === undefined}
-          <p><span class="pill" data-tone="warn">Vérification…</span></p>
+          <p><span class="pill" data-tone="warn">{t("settings-checking")}</span></p>
         {:else}
           <div class="panel">
             <div class="row">
-              <div class="grow"><b>Atelier de l'agent</b></div>
+              <div class="grow"><b>{t("settings-workshop-name")}</b></div>
               <span class="pill" data-tone={operation ? "warn" : workshop ? WORKSHOP_TONE[workshop] : "error"} data-testid="workshop-state">
-                {operation === "restart" ? "Redémarrage…" : operation === "rebuild" ? "Reconstruction… (quelques minutes)" : workshop ? WORKSHOP[workshop] : "L'agent ne répond pas"}
+                {operation === "restart" ? t("settings-workshop-restarting") : operation === "rebuild" ? t("settings-workshop-rebuilding") : workshop ? t(WORKSHOP[workshop]) : t("settings-agent-silent")}
               </span>
               {#if workshop === "docker-absent" && docker?.kind === "stopped"}
-                <button class="primary" data-testid="docker-start" disabled={startingDocker} onclick={() => void startDocker()}>{startingDocker ? "Démarrage…" : `Démarrer ${docker.app}`}</button>
+                <button class="primary" data-testid="docker-start" disabled={startingDocker} onclick={() => void startDocker()}>{startingDocker ? t("settings-ai-ollama-starting") : t("settings-docker-start", { app: docker.app })}</button>
               {:else if workshop === "docker-absent"}
-                <button class="primary" onclick={() => s.openUrl("https://orbstack.dev/download")}>Installer OrbStack</button>
+                <button class="primary" onclick={() => s.openUrl("https://orbstack.dev/download")}>{t("settings-docker-install")}</button>
               {/if}
-              <button data-testid="workshop-restart" disabled={!!operation} onclick={() => (asking = "restart")}>Redémarrer</button>
-              <button data-testid="workshop-rebuild" disabled={!!operation} onclick={() => (asking = "rebuild")}>Reconstruire</button>
+              <button data-testid="workshop-restart" disabled={!!operation} onclick={() => (asking = "restart")}>{t("settings-restart")}</button>
+              <button data-testid="workshop-rebuild" disabled={!!operation} onclick={() => (asking = "rebuild")}>{t("settings-rebuild")}</button>
             </div>
           </div>
           {#if workshopError}<p class="alert" role="status">{workshopError}</p>{/if}
           {#if asking && !operation}
             {@const kind = asking}
-            <div class="confirmation" role="alertdialog" aria-label={kind === "restart" ? "Redémarrer" : "Reconstruire"}>
-              <p>{CONFIRM[kind]}</p>
+            <div class="confirmation" role="alertdialog" aria-label={kind === "restart" ? t("settings-restart") : t("settings-rebuild")}>
+              <p>{t(CONFIRM[kind])}</p>
               <div class="buttons">
-                <button onclick={() => (asking = null)}>Annuler</button>
-                <button class="primary" data-testid="confirm-workshop" onclick={() => void operate(kind)}>{kind === "restart" ? "Redémarrer" : "Reconstruire"}</button>
+                <button onclick={() => (asking = null)}>{t("settings-cancel")}</button>
+                <button class="primary" data-testid="confirm-workshop" onclick={() => void operate(kind)}>{kind === "restart" ? t("settings-restart") : t("settings-rebuild")}</button>
               </div>
             </div>
           {/if}
@@ -375,14 +374,14 @@
       <SettingsShortcuts />
     {:else if current === "privacy"}
       <section data-testid="settings-privacy">
-        <h2>Vie privée</h2>
+        <h2>{t("settings-section-privacy")}</h2>
         {#if !telemetry}
-          <p><span class="pill" data-tone="warn">Vérification…</span></p>
+          <p><span class="pill" data-tone="warn">{t("settings-checking")}</span></p>
         {:else}
           <div class="panel">
             <div class="row">
               <div class="grow">
-                <label for="telemetry-switch"><b>Envoyer les plantages et les erreurs</b></label>
+                <label for="telemetry-switch"><b>{t("settings-telemetry-label")}</b></label>
                 <span class="muted" id="telemetry-notice">{TELEMETRY_NOTICE}</span>
               </div>
               <input
@@ -401,24 +400,31 @@
               />
             </div>
           </div>
-          {#if !telemetry.available}<p class="muted">Cette version n'envoie rien.</p>{/if}
+          {#if !telemetry.available}<p class="muted">{t("settings-telemetry-unavailable")}</p>{/if}
         {/if}
-        <h2>Interface</h2>
+        <h2>{t("settings-interface")}</h2>
         <div class="panel">
+          <div class="row">
+            <label class="grow" for="settings-language"><b>{t("settings-language-label")}</b></label>
+            <select id="settings-language" data-testid="settings-language" value={appState.value?.settings.language ?? "system"} onchange={(e) => api.dispatch({ type: "chooseLanguage", language: e.currentTarget.value })}>
+              <option value="system">{appState.value?.settings.language === "system" ? t("settings-language-system-named", { name: languageName(appState.value.locale) }) : t("settings-language-system")}</option>
+              {#each LOCALES as code (code)}<option value={code}>{languageName(code)}</option>{/each}
+            </select>
+          </div>
           <div class="row" data-testid="settings-search">
             <div class="grow">
-              <label for="settings-engine"><b>Moteur de recherche</b></label>
-              <span class="muted" id="engine-help">L'agent cherche aussi avec ce moteur. Un moteur qui demande un compte peut le gêner.</span>
+              <label for="settings-engine"><b>{t("settings-engine-label")}</b></label>
+              <span class="muted" id="engine-help">{t("settings-engine-help")}</span>
             </div>
             <select id="settings-engine" data-testid="settings-engine" aria-describedby="engine-help" value={shownEngine} onchange={(e) => pickEngine(e.currentTarget.value as SearchEngine)}>
               {#each Object.entries(SEARCH_ENGINES) as [id, e] (id)}<option value={id}>{e.label}</option>{/each}
-              <option value="custom">Autre…</option>
+              <option value="custom">{t("settings-engine-other")}</option>
             </select>
           </div>
           {#if shownEngine === "custom"}
             <div class="row custom-engine">
               <div class="grow">
-                <label for="settings-engine-custom"><b>Adresse de recherche</b></label>
+                <label for="settings-engine-custom"><b>{t("settings-engine-custom-label")}</b></label>
                 <input
                   id="settings-engine-custom"
                   data-testid="settings-engine-custom"
@@ -435,8 +441,8 @@
           {/if}
           <div class="row">
             <div class="grow">
-              <label for="hints-switch"><b>Astuces</b></label>
-              <span class="muted" id="hints-help">Des conseils sur la page d'accueil et à la première ouverture de l'agent, du mode design et des actions.</span>
+              <label for="hints-switch"><b>{t("settings-hints-label")}</b></label>
+              <span class="muted" id="hints-help">{t("settings-hints-help")}</span>
             </div>
             <input
               id="hints-switch"
@@ -451,8 +457,8 @@
           </div>
           <div class="row">
             <div class="grow">
-              <label for="start-home-switch"><b>Ouvrir sur la page d'accueil</b></label>
-              <span class="muted" id="start-home-help">Au lancement, chaque fenêtre montre la page d'accueil plutôt que le dernier onglet vu. Les onglets restent ouverts.</span>
+              <label for="start-home-switch"><b>{t("settings-start-home-label")}</b></label>
+              <span class="muted" id="start-home-help">{t("settings-start-home-help")}</span>
             </div>
             <input
               id="start-home-switch"
@@ -467,19 +473,19 @@
           </div>
           <div class="row" data-testid="settings-default-browser">
             <div class="grow">
-              <b>Navigateur par défaut</b>
-              <span class="muted">Les liens des autres applications s'ouvrent dans Ressac.</span>
+              <b>{t("settings-default-browser-label")}</b>
+              <span class="muted">{t("settings-default-browser-help")}</span>
             </div>
             {#if isDefault}
-              <span class="pill" data-tone="ok" data-testid="default-browser-state">Par défaut</span>
+              <span class="pill" data-tone="ok" data-testid="default-browser-state">{t("settings-default-browser-is")}</span>
             {:else if isDefault === false}
-              <button data-testid="default-browser-set" onclick={() => (s.setDefaultBrowser(), (askedDefault = true))}>Définir par défaut</button>
+              <button data-testid="default-browser-set" onclick={() => (s.setDefaultBrowser(), (askedDefault = true))}>{t("settings-default-browser-set")}</button>
             {/if}
           </div>
           <div class="row">
-            <b class="grow" id="sidebar-side-label">Barre de navigation</b>
+            <b class="grow" id="sidebar-side-label">{t("settings-sidebar-label")}</b>
             <div role="radiogroup" aria-labelledby="sidebar-side-label" class="kinds">
-              {#each [["left", "À gauche"], ["right", "À droite"]] as const as [side, name]}
+              {#each [["left", "settings-sidebar-left"], ["right", "settings-sidebar-right"]] as const as [side, name]}
                 <label>
                   <input
                     type="radio"
@@ -487,7 +493,7 @@
                     data-testid="settings-sidebar-{side}"
                     checked={(appState.value?.settings.sidebarSide ?? "left") === side}
                     onchange={() => api.dispatch({ type: "setSidebarSide", side })}
-                  />{name}
+                  />{t(name)}
                 </label>
               {/each}
             </div>
@@ -496,31 +502,31 @@
       </section>
     {:else}
       <section data-testid="settings-about">
-        <h2>À propos</h2>
+        <h2>{t("settings-section-about")}</h2>
         <div class="panel">
           <div class="row about-head">
             <b class="grow version" data-testid="app-version">{version === null ? "" : `Ressac ${version}`}</b>
-            <button data-testid="settings-release-notes" onclick={() => api.dispatch({ type: "openReleaseNotes", windowId: api.windowId })}>Nouveautés</button>
-            <button data-testid="settings-replay-welcome" onclick={() => api.dispatch({ type: "replayOnboarding" })}>Revoir l'accueil</button>
-            <button data-testid="open-advanced" onclick={() => s.openAdvanced()}>Réglages avancés du navigateur</button>
+            <button data-testid="settings-release-notes" onclick={() => api.dispatch({ type: "openReleaseNotes", windowId: api.windowId })}>{t("settings-about-release-notes")}</button>
+            <button data-testid="settings-replay-welcome" onclick={() => api.dispatch({ type: "replayOnboarding" })}>{t("settings-about-replay-welcome")}</button>
+            <button data-testid="open-advanced" onclick={() => s.openAdvanced()}>{t("settings-about-advanced")}</button>
           </div>
           {#if update && update.phase !== "disabled"}
             <div class="row">
               <span class="grow" data-testid="update-status" aria-live="polite">{updateStatusText(update)}</span>
               {#if update.phase === "idle" || update.phase === "unreachable"}
-                <button data-testid="update-check" onclick={() => s.checkForUpdate()}>Rechercher une mise à jour</button>
+                <button data-testid="update-check" onclick={() => s.checkForUpdate()}>{t("settings-about-update-check")}</button>
               {:else if update.phase === "ready"}
-                <button class="primary" data-testid="update-restart" onclick={() => s.restartToUpdate()}>Redémarrer maintenant</button>
+                <button class="primary" data-testid="update-restart" onclick={() => s.restartToUpdate()}>{t("settings-about-update-restart")}</button>
               {:else if update.phase === "failed" || update.phase === "unwritable"}
-                <button data-testid="update-download" onclick={() => s.openUrl("https://updates.getressac.app/download/Ressac.dmg")}>Télécharger la dernière version</button>
+                <button data-testid="update-download" onclick={() => s.openUrl("https://updates.getressac.app/download/Ressac.dmg")}>{t("settings-about-update-download")}</button>
               {/if}
             </div>
           {/if}
         </div>
-        <h3>Crédits</h3>
+        <h3>{t("settings-credits")}</h3>
         <div class="panel" data-testid="settings-credits">
-          <p>Ressac est construit sur <b>Firefox</b> de Mozilla et partage sa licence, la MPL 2.0.</p>
-          <p class="muted">Il embarque Node.js et node-pty (licence MIT) et les polices Geist et Funnel Display (licence OFL). L'IA locale passe par Ollama (MIT), avec les modèles Gemma 4 de Google et pplx-decider-flash de Perplexity (Apache 2.0), téléchargés à la demande. Les agents utilisent Claude Code ou Codex avec votre propre compte. Les licences complètes sont dans l'application, dossier <code>Contents/Resources/ressac-host/LICENSES</code>.</p>
+          <p>{t("settings-credits-built-on-before")} <b>Firefox</b> {t("settings-credits-built-on-after")}</p>
+          <p class="muted">{t("settings-credits-licenses-before")} <code>Contents/Resources/ressac-host/LICENSES</code>.</p>
         </div>
       </section>
     {/if}

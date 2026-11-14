@@ -80,6 +80,11 @@ export interface AccessState {
 }
 export type SpaceId = string;
 export type WindowId = string;
+/**
+ * `settings.language`: « system » or a BCP 47 code. Only its shape is checked here (the kernel runs outside Vite and
+ * cannot list locales/): a code Ressac does not ship is shown in English (shared/i18n.ts resolveLocale).
+ */
+export const LANGUAGE_SETTING = /^(system|[a-z]{2,3}(-[A-Za-z0-9]{2,8})*)$/;
 import type { SearchEngine } from "./search";
 export type { SearchEngine } from "./search";
 
@@ -229,11 +234,15 @@ export interface BrowserState {
     vimMode: boolean;
     /** At launch each window shows the home page instead of the tab it was left on (on by default). */
     startOnHome: boolean;
+    /** « system » (the Mac's language when Ressac has it) or a shipped language code (shared/i18n.ts). */
+    language: string;
     /** The user's own bindings; an action absent here keeps its default (shared/shortcuts.ts). */
     shortcuts: Partial<Record<ShortcutId, Binding>>;
   };
   /** The app update, as Firefox's updater reports it; null until known. Volatile, never saved. */
   update: UpdateShown | null;
+  /** The language shown, `settings.language` resolved by the chrome against the Mac's languages. Volatile, never saved. */
+  locale: string;
 }
 
 /**
