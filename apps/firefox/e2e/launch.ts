@@ -12,7 +12,7 @@ import { Marionette } from "./marionette";
 export const FAKE_TOOLS = path.resolve(import.meta.dirname, "../test/tools");
 const DIST = path.resolve(import.meta.dirname, "../engine/obj-aarch64-apple-darwin/dist");
 // The product's starter widgets, the ones the space setup copies into a new space.
-const STARTER_WIDGETS = path.resolve(import.meta.dirname, "../../../packages/kernel/templates/widgets");
+const STARTER_WIDGETS = path.resolve(import.meta.dirname, "../../../packages/kernel/templates/fr/widgets");
 
 /**
  * A new space gets the starter widgets, harvested at launch on the real web (the fake docker runs harvests on the Mac).

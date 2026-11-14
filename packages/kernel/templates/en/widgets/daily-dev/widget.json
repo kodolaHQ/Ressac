@@ -1,0 +1,32 @@
+{
+  "name": "daily.dev",
+  "description": "Your daily.dev \"For you\" feed, the most interesting articles summarized",
+  "sizes": {
+    "min": {
+      "w": 2,
+      "h": 2
+    },
+    "max": {
+      "w": 12,
+      "h": 10
+    },
+    "default": {
+      "w": 6,
+      "h": 5
+    }
+  },
+  "harvest": {
+    "minutes": 120
+  },
+  "sources": {
+    "account": [
+      "app.daily.dev"
+    ],
+    "public": [
+      "app.daily.dev"
+    ]
+  },
+  "config": {
+    "interets": "AI and language models, local AI, coding agents, Svelte, Electron, TypeScript, web development, browsers, computer security"
+  }
+}

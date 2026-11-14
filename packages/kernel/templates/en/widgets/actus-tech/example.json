@@ -1,0 +1,30 @@
+{
+  "articles": [
+    {
+      "title": "A 4-billion-parameter language model runs on a laptop",
+      "url": "https://news.ycombinator.com/item?id=1",
+      "source": "news.ycombinator.com",
+      "score": 0.93,
+      "summary": "Researchers show that a small quantized model gets results close to models ten times its size. It runs without a dedicated graphics card."
+    },
+    {
+      "title": "Electron 40: stronger process isolation",
+      "url": "https://lobste.rs/s/example",
+      "source": "lobste.rs",
+      "score": 0.88,
+      "summary": "The new version hardens the renderer sandbox and simplifies permission handling."
+    },
+    {
+      "title": "Svelte 6: runes become the norm",
+      "url": "https://news.ycombinator.com/item?id=2",
+      "source": "news.ycombinator.com",
+      "score": 0.81
+    },
+    {
+      "title": "A flaw in a major browser gets an emergency fix",
+      "url": "https://www.theverge.com/example",
+      "source": "www.theverge.com",
+      "score": 0.74
+    }
+  ]
+}

@@ -188,8 +188,8 @@ test("the missing input comes after the unique output and the cycles", () => {
 
 test("the implicit workflow and the three shipped templates stay valid", () => {
   expect(validateWorkflow(implicitWorkflow()).ok).toBe(true);
-  for (const m of ["meteo", "actus-tech", "daily-dev"]) {
-    const raw = JSON.parse(readFileSync(new URL(`../../templates/widgets/${m}/workflow.json`, import.meta.url), "utf8"));
+  for (const m of ["fr/widgets/meteo", "fr/widgets/actus-tech", "fr/widgets/daily-dev", "en/widgets/meteo", "en/widgets/actus-tech", "en/widgets/daily-dev"]) {
+    const raw = JSON.parse(readFileSync(new URL(`../../templates/${m}/workflow.json`, import.meta.url), "utf8"));
     const r = validateWorkflow(raw);
     expect(r.ok, m + (r.ok ? "" : " : " + r.error)).toBe(true);
   }
@@ -243,8 +243,8 @@ test("output: live optional, absent from the validated parameters when not writt
 
 test("the three shipped templates and the implicit workflow stay valid, default context", () => {
   expect(validateWorkflow(implicitWorkflow(), DEFAULT_CONTEXT).ok).toBe(true);
-  for (const m of ["meteo", "actus-tech", "daily-dev"]) {
-    const raw = JSON.parse(readFileSync(new URL(`../../templates/widgets/${m}/workflow.json`, import.meta.url), "utf8"));
+  for (const m of ["fr/widgets/meteo", "fr/widgets/actus-tech", "fr/widgets/daily-dev", "en/widgets/meteo", "en/widgets/actus-tech", "en/widgets/daily-dev"]) {
+    const raw = JSON.parse(readFileSync(new URL(`../../templates/${m}/workflow.json`, import.meta.url), "utf8"));
     const r = validateWorkflow(raw, DEFAULT_CONTEXT);
     expect(r.ok, m + (r.ok ? "" : " : " + r.error)).toBe(true);
   }

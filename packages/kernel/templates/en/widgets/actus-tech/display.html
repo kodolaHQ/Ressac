@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Articles</title>
+<style>
+  :root { color-scheme: light dark; --background: #ffffff; --text: #1c1c1e; --muted: #6b6b70; --link: #0b57d0; --line: #e4e4e7; }
+  @media (prefers-color-scheme: dark) { :root { --background: #1c1c1e; --text: #f2f2f4; --muted: #9a9aa2; --link: #8ab4f8; --line: #3a3a3e; } }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--background); color: var(--text); font: 13px/1.35 system-ui, -apple-system, sans-serif; }
+  body { padding: 8px 10px; overflow: auto; }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li { padding: 5px 0; border-bottom: 1px solid var(--line); }
+  li:last-child { border-bottom: 0; }
+  button.title { all: unset; cursor: pointer; font-weight: 600; color: var(--link); display: block; }
+  button.title:hover, button.title:focus-visible { text-decoration: underline; }
+  .inert { font-weight: 600; }
+  .source { color: var(--muted); font-size: 11px; }
+  .summary { margin: 2px 0 0; color: var(--text); font-size: 12px; }
+  .empty { color: var(--muted); }
+  body.narrow .summary, body.narrow .source { display: none; }
+</style>
+</head>
+<body class="narrow">
+<ul id="list"></ul>
+<script>
+  const openLink = (url) => (window.ressacOpen ? window.ressacOpen(url) : parent.postMessage({ type: "open", url }, "*"));
+  function render(m) {
+    const data = m.data || {};
+    const articles = Array.isArray(data.articles) ? data.articles : [];
+    const large = (m.px && m.px.width >= 360) || (m.size && m.size.w >= 4) || (m.px && m.px.height >= 300);
+    document.body.className = large ? "large" : "narrow";
+    const list = document.getElementById("list");
+    list.replaceChildren();
+    if (!articles.length) {
+      const li = document.createElement("li");
+      li.className = "empty";
+      li.textContent = "No articles yet.";
+      list.append(li);
+      return;
+    }
+    for (const a of articles) {
+      const li = document.createElement("li");
+      const url = String(a.url ?? "");
+      let openable = false;
+      try { const pr = new URL(url).protocol; openable = pr === "http:" || pr === "https:"; } catch {}
+      if (openable) {
+        const b = document.createElement("button");
+        b.className = "title";
+        b.type = "button";
+        b.textContent = String(a.title ?? "");
+        b.addEventListener("click", () => openLink(url));
+        li.append(b);
+      } else {
+        const t = document.createElement("div");
+        t.className = "title inert";
+        t.textContent = String(a.title ?? "");
+        li.append(t);
+      }
+      if (a.source) {
+        const s = document.createElement("div");
+        s.className = "source";
+        s.textContent = String(a.source);
+        li.append(s);
+      }
+      if (a.summary) {
+        const p = document.createElement("p");
+        p.className = "summary";
+        p.textContent = String(a.summary);
+        li.append(p);
+      }
+      list.append(li);
+    }
+  }
+  // Firefox: a sandboxed resource:// frame does not see parent, e.source === parent is false there.
+  addEventListener("message", (e) => { if (e.data && e.data.type === "widget") render(e.data); });
+</script>
+</body>
+</html>

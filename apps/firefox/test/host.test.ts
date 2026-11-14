@@ -123,8 +123,12 @@ describe("agent host", { timeout: 30_000 }, () => {
     const h = startHost();
     await h.rpc.request("start", { agentProfile: "claude", locale: "en" });
     expect(await h.rpc.request("debug.locale")).toEqual({ locale: "en", relocalized: 0 });
+    const agents = join(h.root, "AGENTS.md");
+    const template = (lang: string) => readFileSync(join(import.meta.dirname, "..", "..", "..", "packages", "kernel", "templates", lang, "AGENTS.md"), "utf8");
+    expect(readFileSync(agents, "utf8")).toBe(template("en"));
     h.rpc.notify("settings.locale", { locale: "fr" });
-    await new Promise((r) => setTimeout(r, 200));
+    // The kernel's relocalize ran: the untouched AGENTS.md switched to French.
+    await until(() => readFileSync(agents, "utf8") === template("fr"), 5_000);
     expect(await h.rpc.request("debug.locale")).toEqual({ locale: "fr", relocalized: 1 });
   });
 

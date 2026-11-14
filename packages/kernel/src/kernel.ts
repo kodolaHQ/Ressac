@@ -226,7 +226,7 @@ export interface Kernel {
   workshopState(): Promise<WorkshopState>;
   /** The language the interface shows (« fr », « en »). */
   locale(): string;
-  /** The language changed: texts the kernel wrote in the old one are rewritten (nothing yet). */
+  /** The language changed: the agent's templates and starter widgets left untouched switch to it. */
   relocalize(): Promise<void>;
   /** New conversation: erases the authorizations. Signal the current tab (interactionUtilisateur) afterwards. */
   openAgentSession(o: {
@@ -327,9 +327,10 @@ export async function createKernel(o: {
   sites?: SitesTools;
 }): Promise<Kernel> {
   const paths = spacePaths(o.root);
-  await initSpace(paths, o.resources ? join(o.resources, "templates") : undefined);
-
   const loc = () => o.locale?.() ?? "en";
+  const templates = o.resources ? join(o.resources, "templates") : undefined;
+  await initSpace(paths, loc(), templates);
+
   const run = o.run ?? createRunner(loc);
   const profileId = o.profileId ?? "claude";
   const profile = (await loadProfiles(paths)).profiles.find((p) => p.id === profileId);
@@ -600,8 +601,10 @@ export async function createKernel(o: {
     search: search,
     agent: profile.name,
     workshopState: () => workshop.state(),
-    locale: o.locale ?? (() => "en"),
-    relocalize: async () => {},
+    locale: loc,
+    relocalize: async () => {
+      await initSpace(paths, loc(), templates);
+    },
     async openAgentSession({ cols, rows, window: win, profile: profileChoice, resume, extra, onBuildProgress }) {
       const chosen = profileChoice === undefined ? profile : (await loadProfiles(paths)).profiles.find((p) => p.id === profileChoice);
       if (!chosen) throw new Error(`Profil d'agent inconnu : ${profileChoice}`);

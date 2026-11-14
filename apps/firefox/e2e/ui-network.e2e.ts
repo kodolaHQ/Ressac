@@ -263,7 +263,7 @@ describe("the UI's network", () => {
     widgetFiles(dataDir, "dns-entites-hex", `<!doctype html><iframe srcdoc="&#x26;lt;link rel=dns-prefetch href=//entite-hex.${SFX}>"></iframe><p id="ok">pas refusé</p>`);
     widgetFiles(dataDir, "dns-script", dnsScriptDisplay);
     // A starter widget still shows.
-    const starter = path.resolve(import.meta.dirname, "../../../packages/kernel/templates/widgets/actus-tech");
+    const starter = path.resolve(import.meta.dirname, "../../../packages/kernel/templates/fr/widgets/actus-tech");
     widgetFiles(dataDir, "actus-tech", readFileSync(path.join(starter, "display.html"), "utf8"), JSON.parse(readFileSync(path.join(starter, "example.json"), "utf8")));
     widgetFiles(dataDir, "sonde", DISPLAY);
     widgetFiles(dataDir, "lien", linksDisplay);

@@ -1,0 +1,168 @@
+{
+  "version": 1,
+  "blocks": [
+    {
+      "id": "flux",
+      "type": "source.feed",
+      "name": "Tech feeds",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "params": {
+        "urls": [
+          "https://news.ycombinator.com/rss",
+          "https://lobste.rs/rss",
+          "https://www.theverge.com/rss/index.xml"
+        ]
+      }
+    },
+    {
+      "id": "uniques",
+      "type": "list.dedupe",
+      "name": "No duplicates",
+      "position": {
+        "x": 260,
+        "y": 0
+      },
+      "params": {
+        "keys": [
+          "url",
+          "title"
+        ]
+      }
+    },
+    {
+      "id": "tri",
+      "type": "ai.sort",
+      "name": "Sorted by Kev by your interests",
+      "position": {
+        "x": 520,
+        "y": 0
+      },
+      "params": {
+        "question": "Is this article of interest to someone who follows: {config.interets}?",
+        "text": "Title: {title}\nSource: {source}",
+        "threshold": 0.6,
+        "onError": "skip"
+      }
+    },
+    {
+      "id": "top",
+      "type": "list.keep",
+      "name": "The best 15",
+      "position": {
+        "x": 780,
+        "y": 0
+      },
+      "params": {
+        "count": 15
+      }
+    },
+    {
+      "id": "a-resumer",
+      "type": "list.keep",
+      "name": "The first 8 to summarize",
+      "position": {
+        "x": 780,
+        "y": 160
+      },
+      "params": {
+        "count": 8
+      }
+    },
+    {
+      "id": "pages",
+      "type": "source.page",
+      "name": "Read each article",
+      "position": {
+        "x": 1040,
+        "y": 160
+      },
+      "params": {
+        "url": "{url}",
+        "perItem": true,
+        "field": "page",
+        "budgetSeconds": 60
+      }
+    },
+    {
+      "id": "resumes",
+      "type": "ai.write",
+      "name": "Summary by Gemma",
+      "position": {
+        "x": 1300,
+        "y": 160
+      },
+      "params": {
+        "prompt": "Summarize in English, in 2 sentences at most, the content of the page below. Reply with the summary only.\n\nTitle: {title}\n\n--- START OF CONTENT ---\n{page.text}\n--- END OF CONTENT ---",
+        "perItem": true,
+        "field": "summary",
+        "maxText": 12000,
+        "reuse": "url",
+        "budgetSeconds": 60
+      }
+    },
+    {
+      "id": "articles",
+      "type": "code",
+      "name": "Articles and summaries",
+      "position": {
+        "x": 1560,
+        "y": 0
+      },
+      "params": {
+        "source": "articles.mjs"
+      }
+    },
+    {
+      "id": "sortie",
+      "type": "output",
+      "position": {
+        "x": 1820,
+        "y": 0
+      },
+      "params": {
+        "to": "widget"
+      }
+    }
+  ],
+  "links": [
+    {
+      "from": "flux",
+      "to": "uniques"
+    },
+    {
+      "from": "uniques",
+      "to": "tri"
+    },
+    {
+      "from": "tri",
+      "to": "top"
+    },
+    {
+      "from": "top",
+      "to": "a-resumer"
+    },
+    {
+      "from": "a-resumer",
+      "to": "pages"
+    },
+    {
+      "from": "pages",
+      "to": "resumes"
+    },
+    {
+      "from": "top",
+      "to": "articles"
+    },
+    {
+      "from": "resumes",
+      "to": "articles"
+    },
+    {
+      "from": "articles",
+      "to": "sortie"
+    }
+  ]
+}

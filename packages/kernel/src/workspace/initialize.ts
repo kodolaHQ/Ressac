@@ -5,13 +5,19 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { KERNEL_ROOT, type SpacePaths } from "../paths.js";
 
-/** Templates folder of the package; a browser that embeds the kernel can provide another. */
+/**
+ * Templates folder of the package; a browser that embeds the kernel can provide another. The texts and starter widgets
+ * are in one folder per language (`fr/`, `en/`); the profiles and the layout are at the root.
+ */
 export const DEFAULT_TEMPLATES = join(KERNEL_ROOT, "templates");
+
+/** The language whose templates stand in for a language or a file the templates lack. */
+const FALLBACK = "en";
 
 /**
  * sha256 hashes of old versions of the AGENTS.md template. An AGENTS.md that has one is left as
  * is: it is replaced by the current template. To complete with each new template version: add
- * the old version's hash (`shasum -a 256 templates/AGENTS.md`) before modifying it.
+ * the old version's hash (`shasum -a 256 templates/<language>/AGENTS.md`) before modifying it.
  */
 export const OLD_AGENTS = new Set([
   "6ecc3a5571398b8490f4b384b32c191e56111e3eebe092e1ccf03790f2ec845b",
@@ -75,7 +81,7 @@ export const OLD_AGENTS = new Set([
 
 const hash = (content: Buffer) => createHash("sha256").update(content).digest("hex");
 
-/** A copy left at a shipped version (its hash is in `old`) that differs from the current template: it is replaced. */
+/** A copy left at a shipped version (its hash is in `old`) that differs from the template to place: it is replaced. */
 async function leftAtOldTemplate(path: string, template: string, old: ReadonlySet<string>): Promise<boolean> {
   try {
     const h = hash(await readFile(path));
@@ -95,22 +101,49 @@ async function filesOf(folder: string, prefix = ""): Promise<string[]> {
   return output;
 }
 
+/** The languages the templates have: one folder each. */
+async function languagesOf(models: string): Promise<string[]> {
+  return (await readdir(models, { withFileTypes: true })).filter((e) => e.isDirectory()).map((e) => e.name);
+}
+
+/** The template `rel` in `lang`, else in English (a file a language lacks). */
+const localized = (models: string, lang: string, rel: string) => {
+  const own = join(models, lang, rel);
+  return existsSync(own) ? own : join(models, FALLBACK, rel);
+};
+
+/** The sha256 of `rel` in every language that has it. */
+async function currentHashes(models: string, langs: string[], rel: string): Promise<string[]> {
+  const out: string[] = [];
+  for (const l of langs) {
+    const content = await ordinaryFile(join(models, l, rel));
+    if (content) out.push(hash(content));
+  }
+  return out;
+}
+
+/** The texts written in the language of the space: swapped on a language change while untouched. */
+const LOCALIZED_TEXTS = ["AGENTS.md", "CLAUDE.md", "browsing-notes.md"];
+
 /**
- * Template file → destination in the workspace. Starter widgets are only placed if `home/widgets/`
- * does not exist: a widget deleted by the user must not come back.
+ * Template file → destination in the workspace, and the hashes of the shipped versions the destination may be replaced
+ * from. Starter widgets are only placed if `home/widgets/` does not exist: a widget deleted by the user must not come back.
  */
-async function matches(c: SpacePaths, models: string): Promise<[string, string][]> {
-  const pairs: [string, string][] = [
-    ["AGENTS.md", join(c.root, "AGENTS.md")],
-    ["CLAUDE.md", join(c.root, "CLAUDE.md")],
-    // Shared by the user and the agent: created once, never in OLD_TEMPLATES, so never refreshed.
-    ["browsing-notes.md", join(c.root, "browsing-notes.md")],
-    ["agent-profile.json", join(c.profiles, "claude.json")],
-    ["codex-profile.json", join(c.profiles, "codex.json")],
-    ["layout.json", c.layout],
-  ];
+async function matches(c: SpacePaths, models: string, lang: string, langs: string[]): Promise<[string, string, ReadonlySet<string> | undefined][]> {
+  const pairs: [string, string, ReadonlySet<string> | undefined][] = [];
+  for (const f of LOCALIZED_TEXTS) {
+    // Any language's current template counts as shipped: an untouched copy follows the language.
+    const known = new Set([...(OLD_TEMPLATES[f] ?? []), ...(await currentHashes(models, langs, f))]);
+    pairs.push([localized(models, lang, f), join(c.root, f), known]);
+  }
+  pairs.push(
+    [join(models, "agent-profile.json"), join(c.profiles, "claude.json"), OLD_AGENT_PROFILE],
+    [join(models, "codex-profile.json"), join(c.profiles, "codex.json"), OLD_CODEX_PROFILE],
+    [join(models, "layout.json"), c.layout, undefined],
+  );
   if (!existsSync(c.widgets)) {
-    for (const f of await filesOf(join(models, "widgets"))) pairs.push([join("widgets", f), join(c.widgets, f)]);
+    const files = new Set([...(await filesOf(join(models, lang, "widgets"))), ...(await filesOf(join(models, FALLBACK, "widgets")))]);
+    for (const f of files) pairs.push([localized(models, lang, join("widgets", f)), join(c.widgets, f), undefined]);
   }
   return pairs;
 }
@@ -156,18 +189,53 @@ async function ordinaryFile(path: string): Promise<Buffer | null> {
 }
 
 /**
- * Replaces the `display.html` of a starter widget left at a shipped version (known hash) with the template's.
- * A modified display, a symbolic link or an absent widget are not touched.
+ * Replaces the `display.html` of a starter widget left at a shipped version (known hash) with the template's, for a
+ * widget `swapWidget` left alone (another of its files was edited). A modified display, a symbolic link or an absent
+ * widget are not touched.
  */
 async function updateStartDisplay(c: SpacePaths, models: string, id: keyof typeof DISPLAYS_SHIPPED): Promise<boolean> {
   const file = join(c.widgets, id, "display.html");
   const content = await ordinaryFile(file);
   if (!content || !DISPLAYS_SHIPPED[id].has(hash(content))) return false;
-  const model = join(models, "widgets", id, "display.html");
+  // Every display shipped before the languages is French: its update stays French, never mixing languages in a widget.
+  const model = join(models, "fr", "widgets", id, "display.html");
   if (!existsSync(model)) return false;
   if (content.equals(await readFile(model))) return false;
   await copyFile(model, file);
   return true;
+}
+
+/**
+ * Puts a starter widget in `lang` when every template file it still has is a shipped version (any language's current
+ * file, or a known `display.html`) and one of them differs from `lang`'s. A widget with an edited file, a symbolic link
+ * or an absent widget is left whole; files that are not templates (its data) are never touched.
+ */
+async function swapWidget(c: SpacePaths, models: string, lang: string, langs: string[], id: string): Promise<string[]> {
+  const folder = join(c.widgets, id);
+  if (!(await lstat(folder).catch(() => null))?.isDirectory()) return [];
+  const names = new Set<string>();
+  for (const l of langs) if (existsSync(join(models, l, "widgets", id))) for (const f of await filesOf(join(models, l, "widgets", id))) names.add(f);
+  const toWrite: [string, string][] = [];
+  for (const name of names) {
+    const file = join(folder, name);
+    const source = localized(models, lang, join("widgets", id, name));
+    const target = existsSync(source) ? await readFile(source) : null;
+    if (!(await lstat(file).catch(() => null))) {
+      if (target) toWrite.push([source, file]);
+      continue;
+    }
+    const content = await ordinaryFile(file);
+    if (!content) return [];
+    const shipped =
+      (await currentHashes(models, langs, join("widgets", id, name))).includes(hash(content)) ||
+      (name === "display.html" && (DISPLAYS_SHIPPED[id as keyof typeof DISPLAYS_SHIPPED]?.has(hash(content)) ?? false));
+    if (!shipped) return [];
+    if (target && !content.equals(target)) toWrite.push([source, file]);
+  }
+  // Only absent files to write: the widget is already in `lang` (a deleted file stays deleted).
+  if (!toWrite.some(([, file]) => existsSync(file))) return [];
+  for (const [source, file] of toWrite) await copyFile(source, file);
+  return toWrite.map(([, file]) => file);
 }
 
 /** sha256 of old shipped versions of the `CLAUDE.md` and agent profile templates: a copy left as shipped is replaced. */
@@ -179,39 +247,47 @@ export const OLD_AGENT_PROFILE: ReadonlySet<string> = new Set([
 ]);
 export const OLD_CODEX_PROFILE: ReadonlySet<string> = new Set<string>();
 
-/** The templates replaced when the user's copy is still a shipped version (the hashes of every old version). */
+/** The hashes of every old shipped version of the language texts (browsing-notes.md: none, only the current ones). */
 const OLD_TEMPLATES: Readonly<Record<string, ReadonlySet<string>>> = {
   "AGENTS.md": OLD_AGENTS,
   "CLAUDE.md": OLD_CLAUDE_MD,
-  "agent-profile.json": OLD_AGENT_PROFILE,
-  "codex-profile.json": OLD_CODEX_PROFILE,
 };
 
 /**
- * Creates the workspace from the templates, without overwriting an existing file, except AGENTS.md, CLAUDE.md and the
- * agent profile left at an old shipped version.
+ * Creates the workspace from the templates of `locale` (English when the templates lack it), without overwriting an
+ * existing file, except a copy left at a shipped version: AGENTS.md, CLAUDE.md, browsing-notes.md and the starter
+ * widgets follow the language while untouched, AGENTS.md, CLAUDE.md and the agent profiles are refreshed when old.
+ * Run again on a language change.
  */
-export async function initSpace(c: SpacePaths, models = DEFAULT_TEMPLATES): Promise<{ created: string[] }> {
+export async function initSpace(c: SpacePaths, locale = FALLBACK, models = DEFAULT_TEMPLATES): Promise<{ created: string[] }> {
+  const langs = await languagesOf(models);
+  // Only a language the templates have: `locale` never builds a path out of the templates folder.
+  const lang = langs.includes(locale) ? locale : FALLBACK;
   const created: string[] = [];
-  for (const [model, destination] of await matches(c, models)) {
-    const old = OLD_TEMPLATES[model];
-    const update = old !== undefined && (await leftAtOldTemplate(destination, join(models, model), old));
+  for (const [model, destination, old] of await matches(c, models, lang, langs)) {
+    const update = old !== undefined && (await leftAtOldTemplate(destination, model, old));
     if (existsSync(destination) && !update) continue;
     await mkdir(dirname(destination), { recursive: true });
     try {
       // COPYFILE_EXCL: if the file appears in the meantime, we do not overwrite it.
-      await copyFile(join(models, model), destination, update ? 0 : constants.COPYFILE_EXCL);
+      await copyFile(model, destination, update ? 0 : constants.COPYFILE_EXCL);
       created.push(destination);
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
     }
   }
-  for (const id of Object.keys(DISPLAYS_SHIPPED) as (keyof typeof DISPLAYS_SHIPPED)[]) {
-    // Best effort, widget by widget: a failed display never blocks launch.
+  const starters = new Set<string>();
+  for (const l of langs) if (existsSync(join(models, l, "widgets"))) for (const e of await readdir(join(models, l, "widgets"))) starters.add(e);
+  for (const id of starters) {
+    // Best effort, widget by widget: a failed widget never blocks launch.
     try {
-      if (await updateStartDisplay(c, models, id)) created.push(join(c.widgets, id, "display.html"));
+      const swapped = await swapWidget(c, models, lang, langs, id);
+      created.push(...swapped);
+      if (!swapped.length && id in DISPLAYS_SHIPPED && (await updateStartDisplay(c, models, id as keyof typeof DISPLAYS_SHIPPED))) {
+        created.push(join(c.widgets, id, "display.html"));
+      }
     } catch (e) {
-      console.error(`[ressac] display update of widget ${id}:`, e);
+      console.error(`[ressac] update of starter widget ${id}:`, e);
     }
   }
   await mkdir(c.projects, { recursive: true });

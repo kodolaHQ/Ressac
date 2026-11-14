@@ -145,10 +145,23 @@ test("createKernel reads models and Dockerfile from resources", async () => {
   const copy = await tempFolder();
   await cp(join(import.meta.dirname, "..", "templates"), join(copy, "templates"), { recursive: true });
   await cp(join(import.meta.dirname, "..", "docker"), join(copy, "docker"), { recursive: true });
-  await writeFile(join(copy, "templates", "AGENTS.md"), "# copie");
+  await writeFile(join(copy, "templates", "fr", "AGENTS.md"), "# copie");
   const { run: run } = fakeRunner([[/ info$/, { code: 1, stderr: "absent" }]]);
   kernel = await createKernel({ locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, resources: copy, run: run });
   expect(await readFile(join(root, "AGENTS.md"), "utf8")).toBe("# copie");
+});
+
+test("relocalize swaps the untouched templates to the new language", async () => {
+  const root = await tempFolder();
+  let locale = "fr";
+  const { run: run } = fakeRunner([[/ info$/, { code: 1, stderr: "absent" }]]);
+  kernel = await createKernel({ locale: () => locale, widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run });
+  const templates = join(import.meta.dirname, "..", "templates");
+  expect(await readFile(join(root, "AGENTS.md"), "utf8")).toBe(await readFile(join(templates, "fr", "AGENTS.md"), "utf8"));
+  locale = "en";
+  await kernel.relocalize();
+  expect(await readFile(join(root, "AGENTS.md"), "utf8")).toBe(await readFile(join(templates, "en", "AGENTS.md"), "utf8"));
+  expect(await readFile(join(root, "home", "widgets", "meteo", "widget.json"), "utf8")).toBe(await readFile(join(templates, "en", "widgets", "meteo", "widget.json"), "utf8"));
 });
 
 test("createKernel reuses the provided workshop", async () => {
