@@ -9,7 +9,7 @@
   <a href="README.fr.md">Lire en français</a>
 </p>
 
-<p align="center"><img src="docs/images/overview.jpg" alt="Ressac: sidebar with spaces, essentials and pinned tabs"></p>
+<p align="center"><img src="docs/images/overview-en.jpg" alt="Ressac: a calm page, the sidebar with its tabs and spaces"></p>
 
 > **Beta.** Ressac is used every day by a small group of testers. Expect rough edges, and tell us about them.
 
@@ -33,7 +33,7 @@
 - It asks before opening an address it wrote itself, and hands back control when a page needs you (a login, a captcha).
 - It can build site apps, actions and add-ons for you, and change a page's look on request (design mode).
 
-<p align="center"><img src="docs/images/live-recap.gif" alt="The agent researches robot vacuums and fills a live recap"></p>
+<p align="center"><img src="docs/images/live-recap-en.gif" alt="The agent compares the world's biggest tidal bores and fills a live recap"></p>
 
 **Local AI**
 - **Workflows** and **watches** run on your Mac with Ollama: a small model decides, another one writes.
@@ -41,15 +41,15 @@
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/images/agent.jpg" alt="The agent reads sources while its recap fills in"><br><sub>The agent reads sources while its recap fills in</sub></td>
-    <td width="50%"><img src="docs/images/command-bar.jpg" alt="The ⌘T command bar"><br><sub>The ⌘T command bar</sub></td>
+    <td width="50%"><img src="docs/images/agent-en.jpg" alt="The agent reads sources while its recap fills in"><br><sub>The agent reads sources while its recap fills in</sub></td>
+    <td width="50%"><img src="docs/images/command-bar-en.jpg" alt="The ⌘T command bar"><br><sub>The ⌘T command bar</sub></td>
   </tr>
   <tr>
     <td width="50%"><img src="docs/images/workflow-builder.jpg" alt="A workflow, block by block"><br><sub>A workflow, block by block</sub></td>
     <td width="50%"><img src="docs/images/site-app.jpg" alt="A site app in its own window"><br><sub>A site app in its own window</sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="docs/images/home.jpg" alt="Home and widgets, written by local models"><br><sub>Home and widgets, written by local models</sub></td>
+    <td width="50%"><img src="docs/images/home-en.jpg" alt="Home, its widgets and the spaces at the foot of the sidebar"><br><sub>Home, its widgets and the spaces at the foot of the sidebar</sub></td>
     <td width="50%"><img src="docs/images/call-bar.jpg" alt="The call bar at the foot of the sidebar"><br><sub>The call bar at the foot of the sidebar</sub></td>
   </tr>
 </table>
