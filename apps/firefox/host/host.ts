@@ -179,6 +179,7 @@ const launchKernel = (profileId: string): Promise<Kernel | null> => {
   return createKernel({
     bridge: bridge,
     profileId: profileId,
+    locale: () => locale,
     root: root,
     widgetsFolder: widgetsFolder,
     actionsFolder: actionsFolder,
@@ -259,6 +260,9 @@ let kernelLaunched = false;
 // Codex's and Claude's engines (Settings › Agents) and the relay that adds each one's compatible API key, which stays on the Mac.
 let engine = DEFAULT_CODEX_ENGINE;
 let claudeEngine = DEFAULT_CLAUDE_ENGINE;
+// The language the interface shows: the kernel writes its texts in it.
+let locale = "fr";
+let relocalized = 0;
 const keys = { codex: keychain(), claude: keychain(CLAUDE_KEY) };
 const cachedKeys: { codex?: string; claude?: string } = {};
 // Called after a key is written or removed (Settings › Agents).
@@ -330,8 +334,9 @@ const rpc = createRpc({
   send: (line) => void writeStdout(line + "\n"),
   handlers: {
     // Sets the default profile; the kernel starts once (its sessions stay), a failed start is retried.
-    start: async (p: { agentProfile: string }) => {
+    start: async (p: { agentProfile: string; locale?: string }) => {
       defaultProfile = p.agentProfile;
+      if (typeof p.locale === "string") locale = p.locale;
       if (!kernelLaunched || !(await ready)) {
         kernelLaunched = true;
         ready = ready.then(stopKernel).then(() => launchKernel(p.agentProfile));
@@ -348,6 +353,12 @@ const rpc = createRpc({
     "agent.codexEngine": (p: { engine: unknown }) => {
       const r = CodexEngineSchema.safeParse(p?.engine);
       if (r.success) engine = r.data;
+    },
+    "settings.locale": (p: { locale: unknown }) => {
+      if (typeof p?.locale !== "string" || p.locale === locale) return;
+      locale = p.locale;
+      relocalized++;
+      void kernel?.relocalize().catch((e) => console.error("[ressac] relocalize failed:", e));
     },
     "agent.claudeEngine": (p: { engine: unknown }) => {
       const r = ClaudeEngineSchema.safeParse(p?.engine);
@@ -674,7 +685,7 @@ const rpc = createRpc({
     // The settings page (host/settings.ts): `settings` is made after `sites` and `actions`, below.
     ...Object.fromEntries(SETTINGS_METHODS.map((k) => [k, (p: unknown) => settings[k]!(p)])),
     ...Object.fromEntries(DESIGN_METHODS.map((k) => [k, (p: unknown) => design.handlers[k]!(p)])),
-    ...(process.env.RESSAC_HOST_TEST === "1" ? { "debug.log": (p: { text: string }) => console.log(p.text) } : {}),
+    ...(process.env.RESSAC_HOST_TEST === "1" ? { "debug.locale": () => ({ locale, relocalized }), "debug.log": (p: { text: string }) => console.log(p.text) } : {}),
   },
 });
 // Errors go to Firefox, which reports them (chrome/store/telemetry.ts), on top of the stderr log.

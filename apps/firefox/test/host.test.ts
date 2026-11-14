@@ -119,6 +119,15 @@ afterEach(async () => {
 });
 
 describe("agent host", { timeout: 30_000 }, () => {
+  it("the kernel learns the shown language at start and at each change", async () => {
+    const h = startHost();
+    await h.rpc.request("start", { agentProfile: "claude", locale: "en" });
+    expect(await h.rpc.request("debug.locale")).toEqual({ locale: "en", relocalized: 0 });
+    h.rpc.notify("settings.locale", { locale: "fr" });
+    await new Promise((r) => setTimeout(r, 200));
+    expect(await h.rpc.request("debug.locale")).toEqual({ locale: "fr", relocalized: 1 });
+  });
+
   it("the host starts the external MCP without the kernel", async () => {
     const h = startHost();
     let e: { server: { state: string; port?: number } } | undefined;

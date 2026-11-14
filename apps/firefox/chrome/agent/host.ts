@@ -40,6 +40,7 @@ async function readLines(pipe: any, cb: (line: string) => void): Promise<void> {
 export function createHost(o: {
   dataDir: string;
   agentProfile: () => string;
+  locale: () => string;
   /** The requests the host sends to Firefox (the browser bridge). */
   handlers: Record<string, Handler>;
   /** Each new process, before any other message: what the host must know first (private tabs mirror). */
@@ -113,7 +114,7 @@ export function createHost(o: {
         current = spawn();
         current.catch(() => (current = null));
       }
-      await host.request("start", { agentProfile: o.agentProfile() });
+      await host.request("start", { agentProfile: o.agentProfile(), locale: o.locale() });
     },
     async stop() {
       const r = await current?.catch(() => null);

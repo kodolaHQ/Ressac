@@ -1,4 +1,5 @@
 import { expect, test } from "vitest";
+import { KERNEL_SOURCES } from "../../../packages/kernel/src/index";
 import { format, languageName, LOCALES, localeIssues, localeIssuesOf, resolveLocale } from "../shared/i18n";
 
 test("the shipped languages, English first", () => {
@@ -47,4 +48,8 @@ test("an unknown message, a renamed variable, a syntax error and a gap in French
     ]),
   );
   expect(issues.some((i) => i.startsWith("de:"))).toBe(false);
+});
+
+test("the kernel's languages follow the same parity rules", () => {
+  expect(localeIssuesOf(KERNEL_SOURCES)).toEqual([]);
 });

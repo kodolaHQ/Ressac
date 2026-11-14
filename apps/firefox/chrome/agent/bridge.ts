@@ -270,6 +270,7 @@ export function trackState(store: Store, host: AgentHost, windows: WindowRegistr
     }
     if (state.settings.decisionModel !== previous.settings.decisionModel) host.notify("ai.decisionModel", { model: state.settings.decisionModel });
     if (state.settings.codexEngine !== previous.settings.codexEngine) host.notify("agent.codexEngine", { engine: state.settings.codexEngine });
+    if (state.locale !== previous.locale) host.notify("settings.locale", { locale: state.locale });
     if (state.settings.claudeEngine !== previous.settings.claudeEngine) host.notify("agent.claudeEngine", { engine: state.settings.claudeEngine });
     if (state.settings.agentProfile !== previous.settings.agentProfile)
       host.request("changeProfile", { agentProfile: state.settings.agentProfile }).catch((e) => console.error("[agent] profile change failed:", e));

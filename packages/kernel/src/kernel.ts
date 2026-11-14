@@ -223,6 +223,10 @@ export interface Kernel {
   /** Name of the agent of this kernel's profile (the one that holds the accesses). */
   agent: string;
   workshopState(): Promise<WorkshopState>;
+  /** The language the interface shows (« fr », « en »). */
+  locale(): string;
+  /** The language changed: texts the kernel wrote in the old one are rewritten (nothing yet). */
+  relocalize(): Promise<void>;
   /** New conversation: erases the authorizations. Signal the current tab (interactionUtilisateur) afterwards. */
   openAgentSession(o: {
     cols: number;
@@ -268,6 +272,8 @@ export interface Kernel {
 /** The single entry point for a browser: it gives its bridge, the kernel does the rest. */
 export async function createKernel(o: {
   bridge: BrowserBridge;
+  /** The language shown, read each time a text is written (default English). */
+  locale?: () => string;
   root?: string;
   run?: Runner;
   clock?: () => Date;
@@ -590,6 +596,8 @@ export async function createKernel(o: {
     search: search,
     agent: profile.name,
     workshopState: () => workshop.state(),
+    locale: o.locale ?? (() => "en"),
+    relocalize: async () => {},
     async openAgentSession({ cols, rows, window: win, profile: profileChoice, resume, extra, onBuildProgress }) {
       const chosen = profileChoice === undefined ? profile : (await loadProfiles(paths)).profiles.find((p) => p.id === profileChoice);
       if (!chosen) throw new Error(`Profil d'agent inconnu : ${profileChoice}`);
