@@ -78,3 +78,14 @@ test("vim gs / gS: the next / previous space, wrapping; one space, nothing", () 
   ag(toNextSpace(e, F, 1));
   expect(toNextSpace(e, F, -1)).toEqual({ type: "activateSpace", windowId: F, id: second });
 });
+
+test("sidebar swipe: the next / previous space without wrapping", () => {
+  ag({ type: "createSpace", name: "B", icon: "b", private: false, profile: "default", windowId: F });
+  const first = e.spaces[0]!.id;
+  const last = e.spaces.at(-1)!.id;
+  ag({ type: "activateSpace", windowId: F, id: last });
+  expect(toNextSpace(e, F, 1, false)).toBeNull();
+  ag({ type: "activateSpace", windowId: F, id: first });
+  expect(toNextSpace(e, F, -1, false)).toBeNull();
+  expect(toNextSpace(e, F, 1, false)).toEqual({ type: "activateSpace", windowId: F, id: e.spaces[1]!.id });
+});

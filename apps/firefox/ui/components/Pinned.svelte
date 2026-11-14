@@ -30,7 +30,14 @@
     renaming = null;
     if (name.trim()) api.dispatch({ type: "renameFolder", spaceId: space.id, id, name: name.trim() });
   }
+  /** An empty name takes back the open tab's page title; with no open tab, nothing changes. */
+  function renameFavorite(f: Favorite, name: string) {
+    renaming = null;
+    const title = name.trim() || tabOf(f)?.title;
+    if (title) api.dispatch({ type: "renameFavorite", spaceId: space.id, favoriteId: f.id, title });
+  }
   const favoriteMenu = (f: Favorite): MenuEntry[] => [
+    { label: "Renommer", dispatch: () => (renaming = f.id) },
     { label: "Retirer", dispatch: () => api.dispatch({ type: "unpin", spaceId: space.id, favoriteId: f.id }) },
     ...space.folders.filter((d) => d.id !== f.folder).map((d) => ({ label: `Déplacer dans ${d.name}`, dispatch: () => api.dispatch({ type: "moveToFolder", spaceId: space.id, favoriteId: f.id, folderId: d.id }) })),
     ...(f.folder ? [{ label: "Sortir du dossier", dispatch: () => api.dispatch({ type: "moveToFolder", spaceId: space.id, favoriteId: f.id, folderId: null }) }] : []),
@@ -49,6 +56,17 @@
 
 {#snippet row(f: Favorite)}
   <li out:fade={{ duration: 150 }}>
+    {#if renaming === f.id}
+      <!-- Enter or leaving the field keeps the name, Escape the old one. -->
+      <input
+        data-testid="favorite-name"
+        aria-label="Nom de l'onglet épinglé"
+        value={f.title}
+        use:focus
+        onblur={(e) => renaming === f.id && renameFavorite(f, e.currentTarget.value)}
+        onkeydown={(e) => (e.key === "Enter" ? renameFavorite(f, e.currentTarget.value) : e.key === "Escape" && (renaming = null))}
+      />
+    {:else}
     <button
       data-testid="favorite-{f.id}"
       class:active={f.id === activeLink}
@@ -59,6 +77,7 @@
       <SiteIcon favicon={tabOf(f)?.favicon ?? f.favicon} title={f.title} />
       <span>{f.title}</span>
     </button>
+    {/if}
     {#if tabOf(f)}<span class="sound"><SoundButton tab={tabOf(f)!} /></span>{/if}
   </li>
 {/snippet}

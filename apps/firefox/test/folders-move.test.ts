@@ -82,3 +82,15 @@ describe("folders of pinned tabs", () => {
     expect(run(s, { type: "deleteFolder", spaceId: a, id: "nope" })).toBe(s);
   });
 });
+
+describe("renameFavorite", () => {
+  it("renames a pinned tab; the same name or an unknown favorite changes nothing", () => {
+    const { s, a, tabs } = start();
+    const pinned = run(s, { type: "pinTab", id: tabs[0]! });
+    const f = pinned.spaces[0]!.pinned[0]!;
+    const after = run(pinned, { type: "renameFavorite", spaceId: a, favoriteId: f.id, title: "Mon site" });
+    expect(after.spaces[0]!.pinned[0]!.title).toBe("Mon site");
+    expect(run(after, { type: "renameFavorite", spaceId: a, favoriteId: f.id, title: "Mon site" })).toBe(after);
+    expect(run(after, { type: "renameFavorite", spaceId: a, favoriteId: "nope", title: "X" })).toBe(after);
+  });
+});

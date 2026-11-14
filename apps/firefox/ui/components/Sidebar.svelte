@@ -12,6 +12,8 @@
   import CallBar from "./CallBar.svelte";
   import UpdateCard from "./UpdateCard.svelte";
   import SpaceSelector from "./SpaceSelector.svelte";
+  import { createSwipe } from "./swipe";
+  import { toNextSpace } from "../../core/shortcuts";
 
   const key = (id: ShortcutId) => shortcutLabel(id, appState.value?.settings);
 
@@ -27,6 +29,11 @@
     /** ✦ on a builder tab: its « Agent » tab (instead of the side panel). */
     builderAgent?: () => void;
   } = $props();
+  // Two fingers across the sidebar: the neighbouring space (the page keeps the gesture for back / forward).
+  const swipe = createSwipe((delta) => {
+    const action = appState.value && toNextSpace(appState.value, win.id, delta, false);
+    if (action) api.dispatch(action);
+  });
   const running = $derived(downloads.list.filter((t) => t.state === "in-progress"));
   const progression = $derived.by(() => {
     const total = running.reduce((s, t) => s + t.total, 0);
@@ -53,7 +60,7 @@
   onblur={() => (toolsOpen = false)}
 />
 
-<aside class="bar" data-testid="sidebar" hidden={hidden}>
+<aside class="bar" data-testid="sidebar" hidden={hidden} onwheel={swipe}>
   <UrlBar window={win} />
   <!-- An essential dragged out of its grid and dropped anywhere below is no longer one: its open tab joins the list. -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
