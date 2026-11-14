@@ -1,5 +1,6 @@
 <script lang="ts">
   import { untrack } from "svelte";
+  import { t } from "../i18n.svelte";
   import { api } from "../state.svelte";
   import { repoOf, isActionKey } from "./target";
   import { CodeFile } from "./codes.svelte";
@@ -38,17 +39,17 @@
 
 <section class="code">
   <div class="head">
-    <span class="title">Code <code>{name}</code></span>
-    {#if file.unsaved}<span class="unsaved" data-testid="code-unsaved">Code non enregistré</span>{/if}
+    <span class="title">{t("builder-code-title")} <code>{name}</code></span>
+    {#if file.unsaved}<span class="unsaved" data-testid="code-unsaved">{t("builder-code-unsaved")}</span>{/if}
     <button data-testid="save-code" disabled={!file.unsaved || file.recording || file.disk === undefined} onclick={() => file.save()}
-      >Enregistrer le code</button
+      >{t("builder-code-save")}</button
     >
   </div>
   {#if file.changedOnDisk}
     <div class="banner" role="status" data-testid="code-change">
-      <span>Le fichier a changé sur le disque</span>
-      <button data-testid="reload-code" onclick={() => file.reload()}>Recharger</button>
-      <button data-testid="keep-code" onclick={() => file.keepMine()}>Garder le mien</button>
+      <span>{t("builder-code-changed")}</span>
+      <button data-testid="reload-code" onclick={() => file.reload()}>{t("builder-code-reload")}</button>
+      <button data-testid="keep-code" onclick={() => file.keepMine()}>{t("builder-code-keep")}</button>
     </div>
   {/if}
   {#if file.error}<p class="error" data-testid="code-error">{file.error}</p>{/if}

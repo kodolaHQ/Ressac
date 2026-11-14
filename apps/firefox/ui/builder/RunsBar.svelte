@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Executions } from "./executions.svelte";
-  import { TRIGGERS, outputElements, hour, STATUSES, TINTS } from "./labels";
+  import { t } from "../i18n.svelte";
+  import { trigger, outputElements, hour, status, TINTS } from "./labels";
 
   /**
    * The bottom bar: the last 8 runs (choosing one updates the badges, the « Bloc » tab and the preview) and
@@ -23,7 +24,7 @@
 
   const last = $derived(executions.list.slice(0, 8));
   const chosen = $derived(executions.chosen?.id ?? null);
-  const elements = (n: number | null) => (n === null ? "" : `${n} élément${n > 1 ? "s" : ""}`);
+  const elements = (n: number | null) => (n === null ? "" : t("builder-elements", { count: n }));
 </script>
 
 <footer class="bar">
@@ -35,27 +36,27 @@
             data-testid="execution-{e.id}"
             class:active={e.id === chosen}
             aria-pressed={e.id === chosen}
-            title={e.attempt ? `Essai depuis « ${e.attempt.start} »` : undefined}
+            title={e.attempt ? t("builder-attempt-since", { start: e.attempt.start }) : undefined}
             onclick={() => void executions.choose(e.id).catch(() => {})}
           >
             <span class="pill {TINTS[e.status]}"></span>
             <span>{hour(e.start)}</span>
-            <span class="muted">{TRIGGERS[e.trigger]}</span>
-            <span>{STATUSES[e.status]}</span>
+            <span class="muted">{trigger(e.trigger)}</span>
+            <span>{status(e.status)}</span>
             {#if elements(outputElements(e, output))}<span class="muted">{elements(outputElements(e, output))}</span>{/if}
-            {#if e.attempt}<span class="trial">essai</span>{/if}
+            {#if e.attempt}<span class="trial">{t("builder-attempt-tag")}</span>{/if}
           </button>
         </li>
       {:else}
-        <li class="muted empty">Aucune exécution pour l'instant.</li>
+        <li class="muted empty">{t("builder-no-run")}</li>
       {/each}
     </ul>
     <button
       class="replay"
       data-testid="replay"
       disabled={selection === null || chosen === null || executions.busy || !replayable}
-      title={selection === null ? "Sélectionne un bloc" : undefined}
-      onclick={() => selection !== null && void executions.replay(selection).catch(() => {})}>Rejouer depuis ce bloc</button
+      title={selection === null ? t("builder-replay-select") : undefined}
+      onclick={() => selection !== null && void executions.replay(selection).catch(() => {})}>{t("builder-replay")}</button
     >
   </div>
   {#if executions.denial}<p class="refusal" data-testid="replay-refusal">{executions.denial}</p>{/if}

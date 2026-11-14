@@ -2,7 +2,8 @@
   import { untrack } from "svelte";
   import { fade } from "svelte/transition";
   import type { ActionsState, PageAction, ResumeExecution } from "@ressac/kernel";
-  import { ACTION_UNKNOWN, NO_RESULT, RESULT_GONE, type ActionShown } from "../../shared/actions";
+  import type { ActionShown } from "../../shared/actions";
+  import { t } from "../i18n.svelte";
   import AccountGrantCard from "../components/AccountGrantCard.svelte";
   import { api } from "../state.svelte";
   import ActionProgress from "./ActionProgress.svelte";
@@ -123,7 +124,7 @@
       const r = await api.actions.launch(id, action.input ? input : null);
       // Nothing written (workshop stopped, workflow.json missing or invalid, grant required…): the page could not re-read it.
       if (!r.run) {
-        launchError = r.error ?? "L'action n'a pas pu être lancée";
+        launchError = r.error ?? t("action-launch-failed");
         cardOpen = true;
       } else if (execution !== null && r.run && r.run !== execution) {
         // The page showed a specific result: it switches to this one.
@@ -143,7 +144,7 @@
     // The grant covers exactly what the card showed.
     const r = await api.actions.grant({ id, profile: profile, account: [...action.account], public: [...action.public] });
     if (!r.ok) {
-      launchError = `Accord non enregistré : ${r.error}`;
+      launchError = t("builder-grant-error", { reason: r.error });
       await load();
       return;
     }
@@ -158,7 +159,7 @@
 
 <div class="scrolled" data-testid="page-action">
   {#if action === null}
-    <p class="message error" data-testid="action-error">{ACTION_UNKNOWN}</p>
+    <p class="message error" data-testid="action-error">{t("action-unknown")}</p>
   {:else if action}
     <ActionHeader
       name={action.name}
@@ -178,8 +179,8 @@
       {#if action.error}<p class="message error">{action.error}</p>{/if}
       {#if grantNeed}
         <div class="message grant" data-testid="grant-required">
-          <p>Accord requis pour lire avec ton compte : {action.account.join(", ")}</p>
-          <button onclick={() => (cardOpen = true)}>Autoriser…</button>
+          <p>{t("action-grant-required", { domains: action.account.join(", ") })}</p>
+          <button onclick={() => (cardOpen = true)}>{t("action-authorize")}</button>
         </div>
       {/if}
       {#if shownError}
@@ -189,15 +190,15 @@
       {/if}
       {#if loaded === null && execution !== null}
         <div class="message gone" data-testid="result-gone">
-          <p>{RESULT_GONE}</p>
+          <p>{t("action-result-gone")}</p>
           {#if previous && previous.length > 0}
-            <button data-testid="show-latest-result" onclick={() => choose(previous![0]!.id)}>Voir le dernier résultat</button>
+            <button data-testid="show-latest-result" onclick={() => choose(previous![0]!.id)}>{t("action-show-latest")}</button>
           {/if}
         </div>
       {:else if loaded === null && !lastWithoutResult && !action.input && !grantNeed && !shownError}
-        <p class="message" data-testid="nothing-found">Pas encore de résultat</p>
+        <p class="message" data-testid="nothing-found">{t("action-not-yet")}</p>
       {:else if loaded?.page?.empty}
-        <p class="message" data-testid="no-result">{NO_RESULT}</p>
+        <p class="message" data-testid="no-result">{t("action-no-result")}</p>
       {:else if loaded?.page && ctx}
         <!-- Another run: the old page fades out while the new one rises in the same grid cell. -->
         <div class="swap">

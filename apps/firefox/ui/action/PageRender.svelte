@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { RenderedBlock, RenderedPage } from "@ressac/kernel";
-  import { NO_RESULT, FALLBACK_MENTION } from "../../shared/actions";
+  import { t } from "../i18n.svelte";
   import ComponentFrame from "../ActionComponentFrame.svelte";
   import Cards from "./blocks/Cards.svelte";
   import Fields from "./blocks/Fields.svelte";
@@ -78,8 +78,8 @@
 {/snippet}
 
 <div class="page-action" data-testid="page-render">
-  {#if page.fallback}<p class="pa-mention" data-testid="fallback-mention">{FALLBACK_MENTION}</p>{/if}
-  {#if page.blocks.length === 0}<p class="pa-empty">{NO_RESULT}</p>{/if}
+  {#if page.fallback}<p class="pa-mention" data-testid="fallback-mention">{t("action-fallback-mention")}</p>{/if}
+  {#if page.blocks.length === 0}<p class="pa-empty">{t("action-no-result")}</p>{/if}
   <div class="pa-blocks">
     {#if head}
       <div class="pa-head">

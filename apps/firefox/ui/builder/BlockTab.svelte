@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { BlockCatalogEntry } from "@ressac/kernel";
+  import { t } from "../i18n.svelte";
   import { availableFields } from "./fields";
   import type { Edit } from "./edit.svelte";
   import CodeEditor from "./CodeEditor.svelte";
@@ -51,7 +52,7 @@
       {#if c}
         <BlockForm editing={edit} block={block} catalog={c} available={available} />
       {:else}
-        <p class="muted">Type de bloc inconnu : ses réglages ne s'éditent pas ici.</p>
+        <p class="muted">{t("builder-block-unknown")}</p>
       {/if}
       {#if source}
         {#key source}<CodeEditor {widget} name={source} />{/key}

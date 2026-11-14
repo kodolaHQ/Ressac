@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Executions } from "./executions.svelte";
-  import { date, TRIGGERS, duration, STATUSES, TINTS } from "./labels";
+  import { t } from "../i18n.svelte";
+  import { date, trigger, duration, status, TINTS } from "./labels";
 
   /** The « Exécutions » tab: the whole kept history, trials marked with their starting block. Choosing one goes back there. */
   let { runs: executions, onchosen: onchoose }: { runs: Executions; onchosen: () => void } = $props();
@@ -15,7 +16,7 @@
 
 <section class="list" data-testid="executions-list">
   {#if executions.list.length === 0}
-    <p class="muted">Aucune exécution pour l'instant.</p>
+    <p class="muted">{t("builder-no-run")}</p>
   {:else}
     <ul>
       {#each executions.list as e (e.id)}
@@ -23,10 +24,10 @@
           <button data-testid="execution-{e.id}" class:active={e.id === chosen} aria-pressed={e.id === chosen} onclick={() => void choose(e.id)}>
             <span class="pill {TINTS[e.status]}"></span>
             <span class="when">{date(e.start)}</span>
-            <span>{TRIGGERS[e.trigger]}</span>
-            <span>{STATUSES[e.status]}</span>
+            <span>{trigger(e.trigger)}</span>
+            <span>{status(e.status)}</span>
             <span class="muted">{duration(e.start, e.end)}</span>
-            {#if e.attempt}<span class="trial">essai depuis « {e.attempt.start} »</span>{/if}
+            {#if e.attempt}<span class="trial">{t("builder-attempt-since-lower", { start: e.attempt.start })}</span>{/if}
           </button>
         </li>
       {/each}

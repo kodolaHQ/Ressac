@@ -1,5 +1,7 @@
 <script lang="ts">
   import type { Execution, ResumeExecution } from "@ressac/kernel";
+  import { t } from "../i18n.svelte";
+  import { appState } from "../state.svelte";
 
   /**
    * An action page's header: its name, its input, « Relancer » (« Lancer » when there is no result yet), « Voir le
@@ -37,18 +39,11 @@
   let menuOpen = $state(false);
   const missingInput = $derived(inputLabel !== null && input.trim() === "");
 
-  const FORMAT = new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" });
   const hour = (iso: string) => {
     const d = new Date(iso);
-    return Number.isNaN(d.getTime()) ? iso : FORMAT.format(d);
+    return Number.isNaN(d.getTime()) ? iso : new Intl.DateTimeFormat(appState.value?.locale ?? "fr", { dateStyle: "medium", timeStyle: "short" }).format(d);
   };
-  const STATUSES: Record<Execution["status"], string> = {
-    succeeded: "réussie",
-    partial: "partielle",
-    failed: "échouée",
-    interrupted: "interrompue",
-    "grant-required": "accord requis",
-  };
+  const status = (s: Execution["status"]) => t(`builder-status-lower-${s}`);
 
   function validate() {
     if (!busy && !missingInput) launch();
@@ -89,14 +84,14 @@
       </label>
     {/if}
     <button class="main" data-testid="relaunch-action" disabled={busy || missingInput} onclick={validate}>
-      {alreadyLaunched ? "Relancer" : "Lancer"}
+      {t(alreadyLaunched ? "action-relaunch" : "action-launch")}
     </button>
-    <button data-testid="show-workflow" onclick={seeWorkflow}>Voir le workflow</button>
+    <button data-testid="show-workflow" onclick={seeWorkflow}>{t("action-show-workflow")}</button>
     {#if start}<span class="time" data-testid="result-time">{hour(start)}</span>{/if}
     {#if previous && previous.length > 0}
       <div class="previous">
         <button data-testid="previous-results" aria-haspopup="menu" aria-expanded={menuOpen} onclick={() => (menuOpen = !menuOpen)}>
-          Résultats précédents
+          {t("action-previous")}
         </button>
         {#if menuOpen}
           <div class="menu" role="menu">
@@ -111,7 +106,7 @@
               >
                 <span>{hour(e.start)}</span>
                 {#if e.input}<span class="muted">{e.input}</span>{/if}
-                <span class="status {e.status}">{STATUSES[e.status]}</span>
+                <span class="status {e.status}">{status(e.status)}</span>
               </button>
             {/each}
           </div>

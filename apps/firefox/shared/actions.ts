@@ -5,16 +5,11 @@ export const ACTIONS_IN_PRIVATE_SPACE = "Les actions ne sont pas disponibles dan
 export const RECAPS_IN_PRIVATE_SPACE = "Les récaps ne sont pas disponibles dans un espace privé";
 /** The builder starts or replays an action that is already running (from its page, another window…): nothing goes out. */
 export const ACTION_ALREADY_RUNNING = "L'action tourne déjà";
-export const PENDING = "En attente : deux actions tournent déjà";
-export const PAGE_LAYOUT = "Mise en page…";
-export const readingOf = (host: string) => `Lecture de ${host}…`;
 /** Copied from the kernel (pages/resolve.ts; a test checks equality): the UI imports only types from it. */
 export const FALLBACK_MENTION = "mise en page simple";
 export const NO_RESULT = "Aucun résultat";
 /** Copied from the kernel (actions/run.ts; same equality test). */
 export const ACTION_UNKNOWN = "Action inconnue";
-/** A `ressac://action/<id>/<execution>` page whose execution was erased (or never existed). */
-export const RESULT_GONE = "Ce résultat n'existe plus";
 
 /** An action's result images, fetched by the chrome (chrome/store/action-media.ts). */
 export const SCHEMA_IMAGE = "ressac-image";
