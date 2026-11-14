@@ -5,7 +5,7 @@
 
   /** Shown instead of an AI feature while settings.aiEnabled is off: what it does, and the way to turn AI on. */
   let { feature }: { feature: "agent" | "apps" | "actions" | "widgets" | "workflows" | "review" | "settings" } = $props();
-  let card: HTMLElement;
+  let card = $state<HTMLElement>();
 </script>
 
 <!-- A fade never ends in a hidden panel (no frames): a card that is not on screen leaves at once, else it stays over the agent. -->
