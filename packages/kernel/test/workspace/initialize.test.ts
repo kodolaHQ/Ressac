@@ -336,7 +336,7 @@ test("a new space in English gets the English AGENTS.md, CLAUDE.md, notes and wi
   const c = spacePaths(await tempFolder());
   await initSpace(c, "en");
   for (const f of ["AGENTS.md", "CLAUDE.md", "browsing-notes.md"]) expect(await readFile(join(c.root, f), "utf8"), f).toBe(await readFile(join(EN, f), "utf8"));
-  expect(await readFile(join(c.root, "CLAUDE.md"), "utf8")).toBe("Read and apply /workspace/AGENTS.md.\n");
+  expect(await readFile(join(c.root, "CLAUDE.md"), "utf8")).toBe("@AGENTS.md\n");
   await expectWidgetsIn(c, EN);
   const tech = DeclarationWidget.parse(JSON.parse(await readFile(join(c.widgets, "actus-tech", "widget.json"), "utf8")));
   expect(tech.sources.public).not.toContain("next.ink");
@@ -433,4 +433,10 @@ test("a starter widget with a template file deleted is kept whole on a switch", 
   for (const f of START_FILES.meteo!.filter((f) => f !== "example.json")) {
     expect(await readFile(join(c.widgets, "meteo", f), "utf8"), f).toBe(await readFile(join(FR, "widgets", "meteo", f), "utf8"));
   }
+});
+
+test("CLAUDE.md imports AGENTS.md (loaded at start, not left to the agent); the old pointer versions are replaced", async () => {
+  for (const l of ["fr", "en"]) expect((await readFile(join(DEFAULT_TEMPLATES, l, "CLAUDE.md"), "utf8")).trim()).toBe("@AGENTS.md");
+  expect(OLD_CLAUDE_MD.has("11baa6aab5848a8fff974dabc5e78e9ccc69b8d2a53a91d23fa9a3f0ca73632b")).toBe(true); // « Lis et applique /workspace/AGENTS.md. »
+  expect(OLD_CLAUDE_MD.has("4690fb441d1ffb32d9e9915a8fc65545f25de774d368c48041e86de43d7a8cab")).toBe(true); // « Read and apply /workspace/AGENTS.md. »
 });
