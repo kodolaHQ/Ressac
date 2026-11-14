@@ -71,7 +71,8 @@ export function createSettingsChrome(dataDir: string, telemetryActive: boolean, 
     version: () => __RESSAC_VERSION__,
     checkForUpdate: () => updates.check(),
     restartToUpdate: () => updates.restart(),
-    updateDownloadUrl: () => updateDownloadUrl(Services.appinfo.updateURL),
+    // The packaged app's feed is its AppUpdateURL policy (scripts/package.sh), as for Firefox's own check.
+    updateDownloadUrl: () => updateDownloadUrl(String(Services.policies?.getActivePolicies()?.AppUpdateURL ?? Services.appinfo.updateURL)),
     reveal(path) {
       if (!revealable(dataDir, lastExportFolder, path)) return;
       const test = Services.env.get("RESSAC_TEST_REVEAL");

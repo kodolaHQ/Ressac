@@ -129,12 +129,6 @@ else
   sed -i '' '/^\[Crash Reporter\]/,/^\[/s|^Enabled=.*|Enabled=0|' $res/application.ini
   crash_section | grep -qx 'Enabled=0' || fail "could not disable the crash reporter in application.ini"
 fi
-# The update feed, under the secret folder. Without a key the app keeps Firefox's path, which nothing publishes to.
-if [[ -n $update_key ]]; then
-  feed="https://updates.getressac.app/updates/$update_key/browser/%BUILD_TARGET%/%CHANNEL%/update.xml"
-  sed -i '' "/^\[AppUpdate\]/,/^\[/s|^URL=.*|URL=$feed|" $res/application.ini
-  sed -n '/^\[AppUpdate\]/,/^\[/p' $res/application.ini | grep -qxF "URL=$feed" || fail "could not set the update URL in application.ini"
-fi
 
 # 7. No path of this Mac may ship.
 step "Leak check"
@@ -143,6 +137,16 @@ leaks=$(grep -rl --binary-files=text -e "$HOME" -e "$repo_root" $app || true)
 # The dev app's policy keeps it from updating (scripts/dev-policy.sh): the packaged app must update itself.
 rm -f $res/distribution/policies.json
 if grep -rq DisableAppUpdate $res/distribution 2>/dev/null; then fail "the staged app still disables updates (Contents/Resources/distribution)"; fi
+# The update feed, under the secret folder, through the AppUpdateURL policy: Firefox ignores application.ini's
+# [AppUpdate] URL (the binary carries its own copy). Without a key the app keeps the compiled-in public path, which
+# nothing publishes to.
+if [[ -n $update_key ]]; then
+  feed="https://updates.getressac.app/updates/$update_key/browser/Darwin_aarch64-gcc3/ressac/update.xml"
+  mkdir -p $res/distribution
+  print -r -- "{\"policies\": {\"AppUpdateURL\": \"$feed\"}}" > $res/distribution/policies.json
+  node -e 'if (JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).policies.AppUpdateURL !== process.argv[2]) process.exit(1)' \
+    $res/distribution/policies.json "$feed" || fail "could not write the update feed policy"
+fi
 # The update removes what precomplete lists: regenerate it now that ressac-host is in.
 (cd $res && python3 $engine/config/createprecomplete.py)
 
