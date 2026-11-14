@@ -77,3 +77,33 @@ describe("engine.sh prune", () => {
     expect(exists(path.join(dir, "this-checkout"))).toBe(true);
   });
 });
+
+describe("package.sh update archive", () => {
+  const sh = readFileSync(new URL("../scripts/package.sh", import.meta.url), "utf8");
+  const at = (s: string) => {
+    const i = sh.indexOf(s);
+    expect(i, s).toBeGreaterThan(-1);
+    return i;
+  };
+
+  it("drops the dev update policy and regenerates precomplete before signing", () => {
+    const signing = at('step "Signing"');
+    expect(at("rm -f $res/distribution/policies.json")).toBeLessThan(signing);
+    expect(at("grep -rq DisableAppUpdate $res/distribution")).toBeLessThan(signing);
+    expect(at("createprecomplete.py")).toBeLessThan(signing);
+  });
+
+  it("builds, signs and verifies the full MAR after codesign --verify, then writes update.xml", () => {
+    const verify = at("codesign --verify --deep --strict $app");
+    const full = at("make_full_update.sh");
+    const sign = at("-n ressac-mar -s");
+    const check = at("signmar -D $app_dir/src/toolkit/mozapps/update/updater/dep1.der -v $mar");
+    const xml = at("scripts/update-xml.mjs");
+    expect(verify).toBeLessThan(full);
+    expect(full).toBeLessThan(sign);
+    expect(sign).toBeLessThan(check);
+    expect(check).toBeLessThan(xml);
+    expect(xml).toBeLessThan(at('step "DMG"'));
+    expect(sh).toContain("warning: no MAR key, packaging without an update archive");
+  });
+});

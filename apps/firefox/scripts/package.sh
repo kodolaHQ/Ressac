@@ -62,7 +62,7 @@ corepack pnpm run build
 [[ $(build_id) != "$before" && -n $(build_id) ]] || fail "the build did not run (unimported patches? run engine:import first)"
 corepack pnpm run build:host
 
-# 3. mach package directly: `surfer package` then wants locales and a MAR we do not ship.
+# 3. mach package directly: `surfer package` then wants locales, and its MAR would be built before our signature (step 9 builds ours).
 step "mach package"
 (cd $engine && ./mach package)
 staged=$objdist/ressac/Ressac.app
@@ -129,6 +129,11 @@ fi
 step "Leak check"
 leaks=$(grep -rl --binary-files=text -e "$HOME" -e "$repo_root" $app || true)
 [[ -z $leaks ]] || fail "this Mac's paths ($HOME) found in:\n$leaks"
+# The dev app's policy keeps it from updating (scripts/dev-policy.sh): the packaged app must update itself.
+rm -f $res/distribution/policies.json
+if grep -rq DisableAppUpdate $res/distribution 2>/dev/null; then fail "the staged app still disables updates (Contents/Resources/distribution)"; fi
+# The update removes what precomplete lists: regenerate it now that ressac-host is in.
+(cd $res && python3 $engine/config/createprecomplete.py)
 
 # 8. Signature. RESSAC_SIGN_IDENTITY (a "Developer ID Application: …" in the keychain) signs for real; unset, ad hoc.
 step "Signing"
@@ -152,7 +157,36 @@ else
 fi
 codesign --verify --deep --strict $app || fail "codesign --verify failed"
 
-# 9. DMG, notarized when RESSAC_NOTARY_PROFILE names a `xcrun notarytool store-credentials` profile.
+# 9. Full update archive of the signed app, signed with our MAR key (scripts/mar-key.sh), and its update.xml. Nothing is uploaded.
+mar_p12=$HOME/.config/ressac/mar-signing.p12
+# A stale update.xml from an earlier run must not outlive this one.
+rm -f $app_dir/dist/update.xml
+mar_pw=$(security find-generic-password -s ressac-mar-signing -w 2>/dev/null || true)
+if [[ ! -f $mar_p12 || -z $mar_pw ]]; then
+  print -ru2 -- "warning: no MAR key, packaging without an update archive"
+else
+  step "Update archive"
+  # The key only lives in this throwaway NSS db, under $node_x, which cleanup deletes.
+  db=$node_x/nssdb
+  mkdir -p $db
+  export DYLD_LIBRARY_PATH=$objdist/bin
+  $objdist/bin/certutil -N -d $db --empty-password
+  $objdist/bin/pk12util -i $mar_p12 -d $db -W "$mar_pw" -K '' >/dev/null || fail "pk12util could not import $mar_p12"
+  unsigned=$node_x/unsigned.mar
+  mar=$app_dir/dist/Ressac-$version.mar
+  gecko_version=$(sed -n 's/^Version=//p' $res/application.ini)
+  MAR=$objdist/host/bin/mar MOZ_PRODUCT_VERSION=$gecko_version MAR_CHANNEL_ID=ressac \
+    $engine/tools/update-packaging/make_full_update.sh -q $unsigned $app || fail "make_full_update.sh failed"
+  rm -f $mar
+  $objdist/bin/signmar -d $db -n ressac-mar -s $unsigned $mar || fail "signmar could not sign the update archive"
+  # Checked against the public certificate the app ships, not the key.
+  $objdist/bin/signmar -D $app_dir/src/toolkit/mozapps/update/updater/dep1.der -v $mar || { rm -f $mar; fail "the update archive's signature does not verify" }
+  unset DYLD_LIBRARY_PATH
+  node scripts/update-xml.mjs $mar $res/application.ini $version > $app_dir/dist/update.xml
+  print -r -- "$mar ($(( $(stat -f %z $mar) / 1048576 )) MB), $app_dir/dist/update.xml"
+fi
+
+# 10. DMG, notarized when RESSAC_NOTARY_PROFILE names a `xcrun notarytool store-credentials` profile.
 step "DMG"
 ln -s /Applications $work/Applications
 dmg=$app_dir/dist/Ressac-$version.dmg
@@ -170,7 +204,7 @@ if [[ -n $identity ]]; then
   fi
 fi
 
-# 10. Native crash symbols (optional).
+# 11. Native crash symbols (optional).
 if [[ -n ${SENTRY_AUTH_TOKEN:-} && -n ${SENTRY_ORG:-} && -n ${SENTRY_PROJECT:-} ]]; then
   step "Uploading symbols"
   (cd $engine && ./mach buildsymbols)
