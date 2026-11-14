@@ -652,7 +652,9 @@ export async function createKernel(o: {
         const program = chosen.interactive[0];
         const reply = replyLanguageLine(loc());
         const language = program === "claude" ? ["--append-system-prompt", reply] : program === "codex" ? ["-c", `developer_instructions=${JSON.stringify(reply)}`] : [];
-        const command = [...buildCommand(chosen, resume && chosen.resume ? "resume" : "interactive", { mcpConfig: mcpConfig }), ...language, ...(extra?.args ?? [])];
+        const built = buildCommand(chosen, resume && chosen.resume ? "resume" : "interactive", { mcpConfig: mcpConfig });
+        // Right after the program: the profile's own arguments keep their order (the MCP config stays last).
+        const command = [built[0]!, ...language, ...built.slice(1), ...(extra?.args ?? [])];
         const session = SessionAgent.start(workshop.sessionCommand(id, command, Object.keys(env)), { cols, rows, env: env, stopRemote: () => workshop.stopSession(id) });
         openSessions.add(clean);
         session.onEnd(() => {

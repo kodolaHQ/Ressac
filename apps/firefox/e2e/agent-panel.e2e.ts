@@ -76,6 +76,8 @@ it("the home page's panel runs the real CLI with the session's MCP config", asyn
   await terminalShows("fake agent ready>");
   expect(JSON.parse(read(join(w!.dataDir, "workspace", "fake-agent-args.json")))).toEqual([
     "claude",
+    "--append-system-prompt",
+    "Always reply to the user in French, whatever language the instructions are written in.",
     "--disallowedTools",
     "WebSearch,WebFetch",
     "--dangerously-skip-permissions",

@@ -505,7 +505,8 @@ describe("openAgentSession with a profile", () => {
     await started(async (n, start) => {
       const s = await n.openAgentSession({ cols: 80, rows: 24, window: "f1", profile: "codex", resume: true, extra: { args: ["-m", "x"], env: { RESSAC_ENGINE_TOKEN: "t" } } });
       const [command, o] = start.mock.calls[0]!;
-      expect(command.slice(command.indexOf("codex"), command.indexOf("codex") + 3)).toEqual(["codex", "resume", "--last"]);
+      const at = command.indexOf("codex");
+      expect(command.slice(at + 3, at + 5)).toEqual(["resume", "--last"]); // after `-c developer_instructions=…`
       expect(command.slice(-2)).toEqual(["-m", "x"]);
       expect(o.env!.RESSAC_ENGINE_TOKEN).toBe("t");
       expect(command[command.indexOf("RESSAC_ENGINE_TOKEN") - 1]).toBe("-e");
