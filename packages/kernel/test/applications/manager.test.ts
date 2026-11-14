@@ -65,6 +65,7 @@ function prepare(o: {
   const states: AppState[] = [];
   const g: ApplicationManager = new ApplicationManager({
     paths: o.paths,
+    locale: () => "fr",
     workshop: workshop,
     launcher: launcher,
     ports: o.ports ?? [5280, 5284],

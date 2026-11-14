@@ -123,7 +123,7 @@ const recapsFolder = join(dataDir, "recaps");
 const recaps = createRecaps({ folder: recapsFolder });
 const idRecap = (v: unknown): v is string => typeof v === "string" && ID_RECAP.test(v);
 // One container for the agent (whatever its profile) and the apps it launches: the kernel's own default (kernel.ts:389).
-const workshop = new Workshop({ paths: paths });
+const workshop = new Workshop({ paths: paths, locale: () => hostLocale() });
 
 let kernel: Kernel | null = null;
 let error: string | null = null;
@@ -151,7 +151,7 @@ const broadcastAccess = () => {
 
 // The local AI for harvests: Gemma and the decision model both run in Ollama (same
 // /v1/systemone answers). Nothing is installed here: a missing model fails with Ollama's answer.
-const ai = new LocalAi({ folder: join(dataDir, "local-ai"), run: defaultRunner, decisionModel: "pplx-decider-flash" });
+const ai = new LocalAi({ folder: join(dataDir, "local-ai"), run: defaultRunner, decisionModel: "pplx-decider-flash", locale: () => hostLocale() });
 
 // The host is Node and cannot call Cc: in tests it writes the file, otherwise the chrome store shows the alert.
 // Another address imposed (a remote Ollama, a test): Ressac then starts and installs nothing.
@@ -749,6 +749,7 @@ const sites = createSites({
 });
 // The agent's applications: the gestionnaire, the Docker probe, the memory; the windows are the chrome's.
 const apps = createApplicationsHost({
+  locale: () => hostLocale(),
   paths: paths,
   dataDir,
   workshop: workshop,

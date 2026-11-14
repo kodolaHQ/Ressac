@@ -506,7 +506,7 @@ describe("first build progress", () => {
   const sample = readFileSync(new URL("../fixtures/buildkit-plain-progress.txt", import.meta.url), "utf8");
 
   test("the parser reads the steps of a recorded BuildKit plain output", () => {
-    const steps = sample.split("\n").map(parseBuildStep).filter(Boolean);
+    const steps = sample.split("\n").map((l) => parseBuildStep(l, "fr")).filter(Boolean);
     expect(steps).toEqual([
       { step: 1, of: 3, label: "Téléchargement de l'image de base" },
       { step: 2, of: 3, label: "Outils système" },
@@ -515,10 +515,12 @@ describe("first build progress", () => {
   });
 
   test("the parser ignores non-BuildKit output and labels other RUNs", () => {
-    expect(parseBuildStep("Step 2/3 : RUN apt-get update")).toBeNull();
-    expect(parseBuildStep("#5 DONE 38.2s")).toBeNull();
-    expect(parseBuildStep("")).toBeNull();
-    expect(parseBuildStep("#8 [stage-1 2/4] RUN make")).toEqual({ step: 2, of: 4, label: "Préparation" });
+    expect(parseBuildStep("Step 2/3 : RUN apt-get update", "fr")).toBeNull();
+    expect(parseBuildStep("#5 DONE 38.2s", "fr")).toBeNull();
+    expect(parseBuildStep("", "fr")).toBeNull();
+    expect(parseBuildStep("#8 [stage-1 2/4] RUN make", "fr")).toEqual({ step: 2, of: 4, label: "Préparation" });
+    expect(parseBuildStep("#8 [stage-1 2/4] RUN make", "en")).toEqual({ step: 2, of: 4, label: "Preparing" });
+    expect(parseBuildStep("#5 [1/3] FROM node", "en")?.label).toBe("Downloading the base image");
   });
 
   test("every subscriber hears the steps, even a late one, across split chunks", async () => {

@@ -93,6 +93,7 @@ async function prepare(o: { workshop?: WorkshopState; status?: WidgetState["stat
   const workshop = { state: async () => workshopState, harvestCommand: () => ["docker"], deleteHarvest: async (_id: string) => {} };
   const options = (): SchedulerOptions => ({
     paths: c,
+    locale: () => "fr",
     widgetsFolder: widgetsFolder,
     engine: "/engine",
     workshop: workshop,

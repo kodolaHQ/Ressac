@@ -467,7 +467,7 @@ export async function createKernel(o: {
 
   // Navigation must never wait for Docker (spec §9): the first image build takes
   // minutes, and a failure (port in use…) only concerns the agent.
-  const workshop = o.workshop ?? new Workshop({ paths: paths, run: run, ...(o.resources ? { dockerFolder: join(o.resources, "docker") } : {}) });
+  const workshop = o.workshop ?? new Workshop({ paths: paths, run: run, ...(o.locale ? { locale: o.locale } : {}), ...(o.resources ? { dockerFolder: join(o.resources, "docker") } : {}) });
   // The container is prepared from launch. If it fails, the first session returns this failure rather than rebuilding
   // everything right away; the following ones (Réessayer) try again. Once successful, it is re-checked (quick probe).
   // Before any session, the agents left by a previous app are stopped.
@@ -480,6 +480,7 @@ export async function createKernel(o: {
   const engine = o.engine ?? (o.resources ? join(o.resources, "docker", "engine") : join(DEFAULT_DOCKER_FOLDER, "engine"));
   const directSubscribers = new Set<(e: DirectState) => void>();
   const scheduler = new WidgetsScheduler({
+    ...(o.locale ? { locale: o.locale } : {}),
     paths: paths,
     widgetsFolder: widgetsFolder,
     engine: engine,

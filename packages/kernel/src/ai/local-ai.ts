@@ -1,3 +1,4 @@
+import { say } from "../i18n.js";
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { rename, rm } from "node:fs/promises";
@@ -33,6 +34,8 @@ export interface LocalAiOptions {
   idleCheckMs?: number;
   /** Maximum wait, at close, for a cancelled install to finish (3 s by default). */
   cancelDelayMs?: number;
+  /** The shown language, read when an install error is written (default: English). */
+  locale?: () => string;
 }
 
 export const DEPOT_KEV = "https://github.com/jaredpalmer/kev.git";
@@ -115,7 +118,6 @@ const checkAbort = (signal?: AbortSignal) => {
 const wait = (ms: number) => new Promise<void>((ok) => setTimeout(ok, ms));
 
 export const AI_CLOSED_ERROR = "IA locale fermée";
-export const INSTALL_CANCELLED_ERROR = "Installation annulée";
 /** Maximum wait for a cancelled install to finish when the app quits. */
 const CANCEL_DELAY_MS = 3000;
 
@@ -153,6 +155,10 @@ export class LocalAi {
   private readonly inactivityMs: number;
   private readonly clock: () => number;
   private readonly launch: NonNullable<LocalAiOptions["launch"]>;
+
+  private say(id: string, args?: Record<string, string | number>): string {
+    return say(this.o.locale?.() ?? "en", id, args);
+  }
 
   constructor(private readonly o: LocalAiOptions) {
     this.port = o.port ?? 8008;
@@ -223,7 +229,7 @@ export class LocalAi {
    */
   install(progress: (line: string) => void): Promise<void> {
     if (this.closed) return Promise.reject(new Error(AI_CLOSED_ERROR));
-    if (this.installation) return Promise.reject(new Error("Installation déjà en cours"));
+    if (this.installation) return Promise.reject(new Error(this.say("kernel-ai-install-running")));
     const controller = new AbortController();
     const end = this.installWith(controller.signal, progress).finally(() => {
       if (this.installation?.controller === controller) this.installation = undefined;
@@ -239,7 +245,7 @@ export class LocalAi {
 
   private async installWith(signal: AbortSignal, progress: (line: string) => void): Promise<void> {
     const checkCancel = () => {
-      if (signal.aborted) throw new Error(INSTALL_CANCELLED_ERROR);
+      if (signal.aborted) throw new Error(this.say("kernel-ai-install-cancelled"));
     };
     const run = async (cmd: string, args: string[], delayMs?: number) => {
       checkCancel();
@@ -255,14 +261,14 @@ export class LocalAi {
       return r;
     };
     // 1. uv
-    if ((await launch("uv", ["--version"], 10_000)).code !== 0) throw new Error("installe uv : brew install uv");
+    if ((await launch("uv", ["--version"], 10_000)).code !== 0) throw new Error(this.say("kernel-ai-install-uv"));
     // 2. Kev repo at the pinned commit, cloned aside then renamed. The clone folder belongs only to this code: what is left
     // of an interrupted clone (app killed before it could erase it) is erased before recloning.
     if (!existsSync(join(this.kevFolder, ".git"))) {
       await rm(this.cloneFolder, { recursive: true, force: true });
       try {
         const r = await launch("git", ["clone", "--depth", "1", "--branch", TAG_KEV, DEPOT_KEV, this.cloneFolder]);
-        if (r.code !== 0) throw new Error(`git clone a échoué : ${r.stderr.trim()}`);
+        if (r.code !== 0) throw new Error(this.say("kernel-ai-git-clone-failed", { error: r.stderr.trim() }));
         await rename(this.cloneFolder, this.kevFolder);
       } catch (e) {
         await rm(this.cloneFolder, { recursive: true, force: true }).catch(() => {});
@@ -271,15 +277,15 @@ export class LocalAi {
     }
     const head = await run("git", ["-C", this.kevFolder, "rev-parse", "HEAD"]);
     if (head.code !== 0 || head.stdout.trim() !== COMMIT_KEV) {
-      throw new Error(`Le commit de Kev n'est pas celui attendu (${COMMIT_KEV}) : ${head.stdout.trim() || head.stderr.trim()}`);
+      throw new Error(this.say("kernel-ai-commit-mismatch", { expected: COMMIT_KEV, found: head.stdout.trim() || head.stderr.trim() }));
     }
     // 3. dependencies (an interrupted sync is resumed by the next one, or by `uv run` at Kev's start)
     const sync = await launch("uv", ["sync", "--extra", "serve", "--project", this.kevFolder]);
-    if (sync.code !== 0) throw new Error(`uv sync a échoué : ${sync.stderr.trim()}`);
+    if (sync.code !== 0) throw new Error(this.say("kernel-ai-uv-sync-failed", { error: sync.stderr.trim() }));
     // 4. Gemma model. Killing `ollama pull` cuts its request to the Ollama server, which stops the download and keeps its
     // chunks for resuming: they are Ollama's (shared with the user), we do not touch them.
     const pulled = await launch("ollama", ["pull", GEMMA_MODEL]);
-    if (pulled.code !== 0) throw new Error(`ollama pull a échoué : ${pulled.stderr.trim()}`);
+    if (pulled.code !== 0) throw new Error(this.say("kernel-ai-pull-failed", { error: pulled.stderr.trim() }));
   }
 
   async kev(body: { state: unknown; questions: Record<string, unknown> }, o: { signal?: AbortSignal } = {}): Promise<unknown> {

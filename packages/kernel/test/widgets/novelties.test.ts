@@ -29,7 +29,9 @@ describe("novelties", () => {
   });
 
   it("texteNotification(1) and (7)", () => {
-    expect(notificationText(1)).toBe("1 nouvel élément");
-    expect(notificationText(7)).toBe("7 nouveaux éléments");
+    expect(notificationText(1, "fr")).toBe("1 nouvel élément");
+    expect(notificationText(1, "en")).toBe("1 new item");
+    expect(notificationText(7, "fr")).toBe("7 nouveaux éléments");
+    expect(notificationText(7, "en")).toBe("7 new items");
   });
 });

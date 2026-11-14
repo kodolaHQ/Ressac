@@ -88,6 +88,8 @@ export type Harvester = (o: HarvestOptions) => Promise<HarvestResult>;
 export type Tryer = (o: HarvestOptions & { origin: string; start: string }) => Promise<AttemptResult>;
 
 export interface SchedulerOptions {
+  /** The shown language, read when a notification is written (default: English). */
+  locale?: () => string;
   paths: SpacePaths;
   widgetsFolder: string;
   /** Folder of the workflow engine (`docker/engine`), mounted read-only in the container. */
@@ -580,7 +582,7 @@ export class WidgetsScheduler {
     try {
       // `nom` is written by the agent: control and invisible characters replaced, on a single line.
       const title = w.declaration.name.replace(/[\p{Cc}\p{Cf}]/gu, " ").replace(/\s+/g, " ").trim() || w.id;
-      this.o.notify({ widget: w.id, title: title, text: notificationText(fresh) });
+      this.o.notify({ widget: w.id, title: title, text: notificationText(fresh, this.o.locale?.() ?? "en") });
     } catch (e) {
       console.error(`[ressac] notification of widget ${w.id}:`, e);
     }
