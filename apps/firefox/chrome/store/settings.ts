@@ -1,4 +1,5 @@
 import { backupDate, RESET_FILE } from "../../core/state/format";
+import { updateDownloadUrl } from "../../core/update";
 import { relaunchAfterQuit } from "./relaunch";
 
 const ENABLED = "ressac.telemetry.enabled";
@@ -29,6 +30,8 @@ export interface SettingsChrome {
   reset(): Promise<boolean>;
   checkForUpdate(): void;
   restartToUpdate(): void;
+  /** The latest DMG, next to this build's update feed. */
+  updateDownloadUrl(): string;
 }
 
 /** What « Afficher dans le Finder » may show: the data folder, the agent's browsing notes, a backup, or an export file directly in the export folder. */
@@ -68,6 +71,7 @@ export function createSettingsChrome(dataDir: string, telemetryActive: boolean, 
     version: () => __RESSAC_VERSION__,
     checkForUpdate: () => updates.check(),
     restartToUpdate: () => updates.restart(),
+    updateDownloadUrl: () => updateDownloadUrl(Services.appinfo.updateURL),
     reveal(path) {
       if (!revealable(dataDir, lastExportFolder, path)) return;
       const test = Services.env.get("RESSAC_TEST_REVEAL");

@@ -118,6 +118,7 @@ export function createSettingsApi(o: {
     openFullDiskAccessSettings: () => o.chrome.openFullDiskAccessSettings(),
     checkForUpdate: () => o.chrome.checkForUpdate(),
     restartToUpdate: () => o.chrome.restartToUpdate(),
+    downloadUpdate: () => o.dispatch({ type: "openTab", windowId: o.windowId, url: o.chrome.updateDownloadUrl(), activate: true }),
     openUrl(url) {
       if (typeof url === "string" && url.startsWith("https://")) o.dispatch({ type: "openTab", windowId: o.windowId, url, activate: true });
     },

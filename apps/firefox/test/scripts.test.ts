@@ -104,7 +104,14 @@ describe("package.sh update archive", () => {
     expect(sign).toBeLessThan(check);
     expect(check).toBeLessThan(xml);
     expect(xml).toBeLessThan(at('step "DMG"'));
-    expect(sh).toContain("warning: no MAR key, packaging without an update archive");
+    expect(sh).toContain("warning: no MAR key or no RESSAC_UPDATE_KEY, packaging without an update archive");
+  });
+
+  it("points the app's update feed at the secret folder before signing, and update.xml at the same key", () => {
+    expect(at('feed="https://updates.getressac.app/updates/$update_key/browser/%BUILD_TARGET%/%CHANNEL%/update.xml"')).toBeLessThan(at('step "Signing"'));
+    expect(sh).toContain('grep -qxF "URL=$feed" || fail');
+    expect(sh).toContain("update-xml.mjs $mar $res/application.ini $version $update_key");
+    expect(sh).toContain("[[ -z $update_key || $update_key =~ '^[a-z0-9]{24,64}$' ]]");
   });
 
   it("hands the MAR key password to pk12util in a mode-600 file, never on its command line", () => {

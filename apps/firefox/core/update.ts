@@ -60,3 +60,9 @@ export function updateStatusText(u: UpdateShown, locale: string): string {
       return "";
   }
 }
+
+/**
+ * The latest DMG sits next to the update feed (scripts/publish.sh): `<host>/updates/<key>/browser/…/update.xml` gives
+ * `<host>/updates/<key>/Ressac.dmg`. The key is set at package time only, so the link is not in the code.
+ */
+export const updateDownloadUrl = (feedUrl: string): string => feedUrl.replace(/\/browser\/.*$/, "/Ressac.dmg");

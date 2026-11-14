@@ -522,7 +522,7 @@
               {:else if update.phase === "ready"}
                 <button class="primary" data-testid="update-restart" onclick={() => s.restartToUpdate()}>{t("settings-about-update-restart")}</button>
               {:else if update.phase === "failed" || update.phase === "unwritable"}
-                <button data-testid="update-download" onclick={() => s.openUrl("https://updates.getressac.app/download/Ressac.dmg")}>{t("settings-about-update-download")}</button>
+                <button data-testid="update-download" onclick={() => s.downloadUpdate()}>{t("settings-about-update-download")}</button>
               {/if}
             </div>
           {/if}
