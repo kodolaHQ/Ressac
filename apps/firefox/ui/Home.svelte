@@ -3,6 +3,7 @@
   import type { FreePlacement } from "../../../packages/kernel/src/home/schemas";
   import type { HomeTheme } from "../../../packages/kernel/src/home/theme";
   import { api } from "./state.svelte";
+  import { t } from "./i18n.svelte";
   import AccountGrantCard from "./components/AccountGrantCard.svelte";
   import HomeWidget from "./HomeWidget.svelte";
   import { moveFree, freeGuides, FREE_WIDTH, resizeFree, freeSizes } from "./free-grid";
@@ -10,7 +11,6 @@
 
   /** How long an action may leave the page unchanged before a warning shows (widget service missing…). */
   const NO_EFFECT_DELAY_MS = 6000;
-  const NO_EFFECT = "Sans effet pour l'instant : le service des widgets ne répond pas (agent arrêté ?).";
   // An unreadable widget has no declared sizes: it may take whatever room it wants.
   const FREE_SIZES = { min: { w: 1, h: 1 }, max: { w: FREE_WIDTH, h: 1000 } };
 
@@ -66,7 +66,7 @@
     withoutWarning(id);
     action();
     // The wait stays after the warning: it is the widget's change that lifts both.
-    const timer = setTimeout(() => (warnings = { ...warnings, [id]: NO_EFFECT }), NO_EFFECT_DELAY_MS);
+    const timer = setTimeout(() => (warnings = { ...warnings, [id]: t("home-no-effect") }), NO_EFFECT_DELAY_MS);
     waits.set(id, { signature: signature(id), timer: timer });
   }
   function checkPending() {
@@ -191,7 +191,7 @@
       {/each}
     </div>
   {:else if onLoaded}
-    <p class="empty" data-testid="home-empty">Aucun widget pour l'instant. Demande à l'agent de créer le premier.</p>
+    <p class="empty" data-testid="home-empty">{t("home-empty")}</p>
   {/if}
 </section>
 
@@ -217,7 +217,7 @@
             // Refused (the request changed meanwhile…): nothing is granted, the banner shows the new request.
             clearTimeout(waits.get(id)?.timer);
             waits.delete(id);
-            warnings = { ...warnings, [id]: `Accord non enregistré : ${r.error}` };
+            warnings = { ...warnings, [id]: t("home-grant-not-saved", { error: r.error }) };
             load();
           },
           () => {},
@@ -231,9 +231,9 @@
   {@const target = toRemove}
   <div class="veil">
     <div class="confirmation" role="alertdialog" aria-modal="true" data-testid="removal-confirmation">
-      <p>Retirer « {name(target)} » de la page d'accueil ?</p>
+      <p>{t("home-remove-confirm", { name: name(target) })}</p>
       <div class="buttons">
-        <button onclick={() => (toRemove = null)}>Annuler</button>
+        <button onclick={() => (toRemove = null)}>{t("home-cancel")}</button>
         <button
           class="main"
           onclick={() => {
@@ -241,7 +241,7 @@
             toRemove = null;
             widgets = widgets.filter((w) => w.id !== id);
             api.home.remove(id);
-          }}>Retirer</button
+          }}>{t("home-remove")}</button
         >
       </div>
     </div>

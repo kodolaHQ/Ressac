@@ -226,7 +226,7 @@ export function createApi(win: WindowController): ApiFirefox {
         lastLink = now;
         win.store.dispatch({ type: "openTab", windowId: windowId, url, activate: true });
       },
-      profilesForGrant: async () => profilesForGrant(win.store.state, windowId),
+      profilesForGrant: async () => profilesForGrant(win.store.state, windowId, (id, args) => format(win.store.state.locale, id, args)),
       grant: async (a) => {
         // The state is read again at the moment of the grant: never a private space's profile.
         if (!readableProfiles(win.store.state).includes(a.profile)) return { ok: false as const, error: say("sidebar-api-profile-grant") };

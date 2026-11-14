@@ -20,6 +20,18 @@ const TRANSLATED = [
   "ui/components/TipCard.svelte",
   "ui/components/FirstTimeNote.svelte",
   "ui/ExtensionsStrip.svelte",
+  "ui/components/Welcome.svelte",
+  "ui/components/BrowserImport.svelte",
+  "ui/components/ReleaseNotes.svelte",
+  "ui/components/RequestModal.svelte",
+  "ui/components/ExtensionRequest.svelte",
+  "ui/components/DevToolsRequest.svelte",
+  "ui/components/Extensions.svelte",
+  "ui/components/Applications.svelte",
+  "ui/components/ExternalProjects.svelte",
+  "ui/Home.svelte",
+  "ui/HomeWidget.svelte",
+  "ui/WidgetFrame.svelte",
 ];
 
 function visibleCode(source: string): string {

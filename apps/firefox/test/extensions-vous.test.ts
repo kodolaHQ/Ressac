@@ -8,7 +8,7 @@ const TU = /\b(tu|ton|ta|tes|te)\b|Réessaie|\bréactive\b|\bouvre\b|\binstalle\
 
 test("user-visible extension messages use « vous »", () => {
   const strings = (Object.values(messages) as unknown[]).filter((m): m is string => typeof m === "string");
-  const texts = [SLOW_SIGNATURE, REVIEW_DURING_OUTAGE, messages.unlockedConsoleText("X", ["A"]), ...strings];
+  const texts = [SLOW_SIGNATURE, REVIEW_DURING_OUTAGE, ...strings];
   expect(texts.length).toBeGreaterThan(8);
   for (const t of texts) expect(t, t).not.toMatch(TU);
 });

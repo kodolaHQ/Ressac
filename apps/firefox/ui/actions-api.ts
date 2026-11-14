@@ -3,6 +3,7 @@ import type { Action, ApiRessac } from "../shared/api";
 import type { BrowserState, WindowId } from "../shared/model";
 import { HOST_EXITED, type AgentHost } from "../chrome/agent/host";
 import type { RessacStore } from "../chrome/store";
+import { format } from "../shared/i18n";
 import { readableProfiles, profilesForGrant } from "./home-profiles";
 
 // The window half of the actions service: private spaces, dispatches, the pace of
@@ -199,7 +200,7 @@ export function createActionsApi(o: WindowApiOptions): ActionsFirefox {
     openLink: (id, run, url) => openPaced(url, () => ask("actions.linkAllowed", { id, run, url }, () => false)),
     profilesForGrant: async () => {
       const s = o.state();
-      return !s || isPrivate() ? [] : profilesForGrant(s, win);
+      return !s || isPrivate() ? [] : profilesForGrant(s, win, (id, args) => format(s.locale, id, args));
     },
     async grant(a) {
       if (isPrivate()) return denial;

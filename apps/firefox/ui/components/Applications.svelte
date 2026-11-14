@@ -1,7 +1,8 @@
 <script lang="ts">
   import type { ActionApplication, ApplicationShown, ApplicationList } from "../../shared/api";
-  import { confirmForget, confirmSiteDeletion, FORGET_MEMORY, type ActionSite, type ShownSite } from "../../shared/sites";
-  import { api } from "../state.svelte";
+  import type { ActionSite, ShownSite } from "../../shared/sites";
+  import { api, appState } from "../state.svelte";
+  import { t } from "../i18n.svelte";
   import Icon from "./Icon.svelte";
   import ExternalProjects from "./ExternalProjects.svelte";
   import { openMenu, type MenuEntry } from "./menu.svelte";
@@ -19,24 +20,15 @@
     stopped: (a) => a.state === "stopped",
     error: (a) => a.state === "error",
   };
-  /** « Sans fiche » and « En erreur » only appear if they hold at least one project. */
-  const GROUPS: { title: string; filters: { id: Filter; label: string; ifPresent?: boolean }[] }[] = [
+  /** « No manifest » and « Failed » only appear if they hold at least one project. Ids: home-apps-group-<title>, home-apps-filter-<id>. */
+  const GROUPS: { title: "type" | "state"; filters: { id: Filter; ifPresent?: boolean }[] }[] = [
     {
-      title: "Type",
-      filters: [
-        { id: "all", label: "Tout" },
-        { id: "app", label: "Applications" },
-        { id: "poc", label: "POC et tests" },
-        { id: "no-manifest", label: "Sans fiche", ifPresent: true },
-      ],
+      title: "type",
+      filters: [{ id: "all" }, { id: "app" }, { id: "poc" }, { id: "no-manifest", ifPresent: true }],
     },
     {
-      title: "État",
-      filters: [
-        { id: "running", label: "En marche" },
-        { id: "stopped", label: "Arrêtées" },
-        { id: "error", label: "En erreur", ifPresent: true },
-      ],
+      title: "state",
+      filters: [{ id: "running" }, { id: "stopped" }, { id: "error", ifPresent: true }],
     },
   ];
 
@@ -107,30 +99,21 @@
 
   const withoutDocker = $derived(data.workshop === "docker-absent");
 
-  const TYPES = { app: "Application", poc: "POC", "no-manifest": "Sans fiche" } as const;
-  const STATES = {
-    stopped: "Arrêtée",
-    preparing: "Préparation de l'atelier…",
-    launching: "Lancement…",
-    running: "En marche",
-    error: "En erreur",
-  } as const;
-
-  /** « hier », « il y a 3 j », « 22 oct. » */
+  /** « yesterday », « 3d ago », « Oct 22 » */
   function when(iso: string): string {
     const d = new Date(iso);
     const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
     const gap = Math.round((day(new Date()) - day(d)) / 86_400_000);
-    if (gap <= 0) return "aujourd'hui";
-    if (gap === 1) return "hier";
-    if (gap < 7) return `il y a ${gap} j`;
-    return d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+    if (gap <= 0) return t("home-apps-today");
+    if (gap === 1) return t("home-apps-yesterday");
+    if (gap < 7) return t("home-apps-days-ago", { days: gap });
+    return d.toLocaleDateString(appState.value?.locale ?? "fr", { day: "numeric", month: "short" });
   }
 
   function details(a: ApplicationShown): string {
-    const chunks: string[] = [TYPES[a.type]];
-    if (a.origin) chunks.push(`depuis ${a.origin.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")}`);
-    chunks.push(a.port !== undefined && active(a) ? `port ${a.port}` : when(a.createdAt));
+    const chunks: string[] = [t(`home-apps-type-${a.type}`)];
+    if (a.origin) chunks.push(t("home-apps-from", { origin: a.origin.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "") }));
+    chunks.push(a.port !== undefined && active(a) ? t("home-apps-port", { port: String(a.port) }) : when(a.createdAt));
     return chunks.join(" · ");
   }
 
@@ -160,50 +143,50 @@
       label: label,
       dispatch: () => (action === "delete" ? (toDelete = a) : act(a, action)),
     });
-    const promote = a.type === "poc" ? [entry("Passer en application", "promote")] : [];
-    if (a.type === "no-manifest") return { buttons: [{ label: "Déboguer", action: "debug" }], menu: [entry("Supprimer", "delete")] };
+    const promote = a.type === "poc" ? [entry(t("home-apps-promote"), "promote")] : [];
+    if (a.type === "no-manifest") return { buttons: [{ label: t("home-apps-debug"), action: "debug" }], menu: [entry(t("home-delete"), "delete")] };
     switch (a.state) {
       case "preparing":
       case "launching":
-        return { buttons: [{ label: "Arrêter", action: "stop" }], menu: [entry("Déboguer", "debug"), entry("Modifications", "review")] };
+        return { buttons: [{ label: t("home-apps-stop"), action: "stop" }], menu: [entry(t("home-apps-debug"), "debug"), entry(t("home-apps-changes"), "review")] };
       case "running":
         return {
           buttons: [
-            { label: "Ouvrir", action: "open" },
-            { label: "Arrêter", action: "stop" },
+            { label: t("home-apps-open"), action: "open" },
+            { label: t("home-apps-stop"), action: "stop" },
           ],
-          menu: [entry("Relancer", "relaunch"), entry("Déboguer", "debug"), entry("Modifications", "review")],
+          menu: [entry(t("home-apps-relaunch"), "relaunch"), entry(t("home-apps-debug"), "debug"), entry(t("home-apps-changes"), "review")],
         };
       case "error":
         return {
           buttons: [
-            { label: "Relancer", action: "relaunch", launched: true },
-            { label: "Déboguer", action: "debug" },
-            { label: "Modifications", action: "review" },
+            { label: t("home-apps-relaunch"), action: "relaunch", launched: true },
+            { label: t("home-apps-debug"), action: "debug" },
+            { label: t("home-apps-changes"), action: "review" },
           ],
-          menu: [entry("Supprimer", "delete"), ...promote],
+          menu: [entry(t("home-delete"), "delete"), ...promote],
         };
       case "stopped":
         return {
           buttons: [
-            { label: "Lancer", action: "launch", launched: true },
-            { label: "Déboguer", action: "debug" },
-            { label: "Modifications", action: "review" },
+            { label: t("home-apps-launch"), action: "launch", launched: true },
+            { label: t("home-apps-debug"), action: "debug" },
+            { label: t("home-apps-changes"), action: "review" },
           ],
-          menu: [entry("Supprimer", "delete"), ...promote, entry("Afficher le dossier", "folder")],
+          menu: [entry(t("home-delete"), "delete"), ...promote, entry(t("home-apps-folder"), "folder")],
         };
     }
   }
 </script>
 
-<section class="applications" data-testid="page-applications" aria-label="Applications">
-  <nav class="pane" aria-label="Filtres">
-    <h1>Applications</h1>
+<section class="applications" data-testid="page-applications" aria-label={t("home-apps-title")}>
+  <nav class="pane" aria-label={t("home-apps-filters")}>
+    <h1>{t("home-apps-title")}</h1>
     {#each GROUPS as g (g.title)}
-      <h2>{g.title}</h2>
+      <h2>{t(`home-apps-group-${g.title}`)}</h2>
       {#each g.filters.filter((x) => !x.ifPresent || account(x.id) > 0) as x (x.id)}
         <button data-testid="filter-{x.id}" class:active={effectiveFilter === x.id} aria-pressed={effectiveFilter === x.id} onclick={() => (filter = x.id)}
-          >{x.label} <span class="n">{account(x.id)}</span></button
+          >{t(`home-apps-filter-${x.id}`)} <span class="n">{account(x.id)}</span></button
         >
       {/each}
     {/each}
@@ -211,13 +194,13 @@
   <div class="main">
     <label class="search-box">
       <Icon name="find" size={14} />
-      <input bind:this={field} bind:value={text} type="search" data-testid="applications-search" placeholder="Chercher une appli…" spellcheck="false" />
+      <input bind:this={field} bind:value={text} type="search" data-testid="applications-search" placeholder={t("home-apps-search")} spellcheck="false" />
     </label>
     {#if withoutDocker}
-      <p class="banner" role="status">Docker n'est pas lancé. La liste reste visible, mais aucune appli ne peut être lancée.</p>
+      <p class="banner" role="status">{t("home-apps-no-docker")}</p>
     {/if}
     {#if loaded && data.apps.length === 0 && sites.length === 0}
-      <p class="empty">Rien ici pour l'instant. Demande à l'agent de tester un package ou de construire une app.</p>
+      <p class="empty">{t("home-apps-empty")}</p>
     {:else}
       <ul>
         {#each lines as a (a.folder)}
@@ -231,9 +214,9 @@
               <span>{details(a)}</span>
             </div>
             {#if a.type === "no-manifest"}
-              <span class="state" title={short(a.noManifest)}><span class="pill stopped"></span>Sans fiche</span>
+              <span class="state" title={short(a.noManifest)}><span class="pill stopped"></span>{t("home-apps-type-no-manifest")}</span>
             {:else}
-              <span class="state" title={short(a.error)}><span class="pill {a.state}"></span>{STATES[a.state]}</span>
+              <span class="state" title={short(a.error)}><span class="pill {a.state}"></span>{t(`home-apps-state-${a.state}`)}</span>
             {/if}
             <div class="actions">
               {#each buttons as b (b.action)}
@@ -241,8 +224,8 @@
               {/each}
               <button
                 class="options"
-                aria-label="Plus d'actions"
-                title="Plus d'actions"
+                aria-label={t("home-apps-more")}
+                title={t("home-apps-more")}
                 onclick={(e) => {
                   e.stopPropagation(); // the window would close the menu right away
                   openMenu(e, menu, { free: true });
@@ -251,13 +234,13 @@
             </div>
           </li>
         {:else}
-          {#if siteRows.length === 0}<li class="none">Aucune appli ne correspond.</li>{/if}
+          {#if siteRows.length === 0}<li class="none">{t("home-apps-no-match")}</li>{/if}
         {/each}
       </ul>
     {/if}
     {#if siteRows.length > 0}
-      <section class="sites" data-testid="section-sites" aria-label="Sites">
-        <h2 class="sites-title">Sites</h2>
+      <section class="sites" data-testid="section-sites" aria-label={t("home-apps-sites")}>
+        <h2 class="sites-title">{t("home-apps-sites")}</h2>
         <ul>
           {#each siteRows as s (s.id)}
             <li data-testid="site-{s.id}" data-open={s.open}>
@@ -269,9 +252,9 @@
                 <span>{s.domain ?? s.id}</span>
               </div>
               {#if s.error !== undefined}
-                <span class="state" title={s.error}><span class="pill error"></span>Sans fiche</span>
+                <span class="state" title={s.error}><span class="pill error"></span>{t("home-apps-type-no-manifest")}</span>
               {:else}
-                <span class="state"><span class="pill {s.open ? 'running' : 'stopped'}"></span>{s.open ? "Ouverte" : "Fermée"}</span>
+                <span class="state"><span class="pill {s.open ? 'running' : 'stopped'}"></span>{s.open ? t("home-apps-site-open") : t("home-apps-site-closed")}</span>
               {/if}
               {#if s.error !== undefined}
                 <span class="site-error" data-testid="site-{s.id}-error">{s.error}</span>
@@ -282,13 +265,13 @@
               {#if !s.noActions}
               <div class="actions">
                 {#if s.error === undefined}
-                  <button data-testid="site-{s.id}-open" onclick={() => actSite(s, "open")}>Ouvrir</button>
+                  <button data-testid="site-{s.id}-open" onclick={() => actSite(s, "open")}>{t("home-apps-open")}</button>
                 {/if}
-                <button data-testid="site-{s.id}-edit" onclick={() => actSite(s, "edit")}>Modifier avec l'agent</button>
-                <button data-testid="site-{s.id}-forget" onclick={() => (siteToForget = s)}>{FORGET_MEMORY}</button>
-                <button data-testid="site-{s.id}-folder" onclick={() => actSite(s, "folder")}>Afficher le dossier</button>
-                <button data-testid="site-{s.id}-review" onclick={() => actSite(s, "review")}>Modifications</button>
-                <button data-testid="site-{s.id}-delete" onclick={() => (siteToDelete = s)}>Supprimer</button>
+                <button data-testid="site-{s.id}-edit" onclick={() => actSite(s, "edit")}>{t("home-apps-site-edit")}</button>
+                <button data-testid="site-{s.id}-forget" onclick={() => (siteToForget = s)}>{t("home-apps-site-forget")}</button>
+                <button data-testid="site-{s.id}-folder" onclick={() => actSite(s, "folder")}>{t("home-apps-folder")}</button>
+                <button data-testid="site-{s.id}-review" onclick={() => actSite(s, "review")}>{t("home-apps-changes")}</button>
+                <button data-testid="site-{s.id}-delete" onclick={() => (siteToDelete = s)}>{t("home-delete")}</button>
               </div>
               {/if}
             </li>
@@ -304,9 +287,9 @@
   {@const target = siteToForget}
   <div class="veil">
     <div class="confirmation" role="alertdialog" aria-modal="true" data-testid="site-forget-confirmation">
-      <p>{confirmForget(target.name)}</p>
+      <p>{t("home-apps-forget-confirm", { name: target.name })}</p>
       <div class="buttons">
-        <button onclick={() => (siteToForget = null)}>Annuler</button>
+        <button onclick={() => (siteToForget = null)}>{t("home-cancel")}</button>
         <button
           class="confirm"
           data-testid="confirm-site-forget"
@@ -314,7 +297,7 @@
             const s = target;
             siteToForget = null;
             actSite(s, "forget");
-          }}>Oublier</button
+          }}>{t("home-apps-forget")}</button
         >
       </div>
     </div>
@@ -325,9 +308,9 @@
   {@const target = siteToDelete}
   <div class="veil">
     <div class="confirmation" role="alertdialog" aria-modal="true" data-testid="site-delete-confirmation">
-      <p>{confirmSiteDeletion(target.name)}</p>
+      <p>{t("home-apps-site-delete-confirm", { name: target.name })}</p>
       <div class="buttons">
-        <button onclick={() => (siteToDelete = null)}>Annuler</button>
+        <button onclick={() => (siteToDelete = null)}>{t("home-cancel")}</button>
         <button
           class="confirm"
           data-testid="confirm-site-delete"
@@ -335,7 +318,7 @@
             const s = target;
             siteToDelete = null;
             actSite(s, "delete");
-          }}>Supprimer</button
+          }}>{t("home-delete")}</button
         >
       </div>
     </div>
@@ -346,16 +329,16 @@
   {@const target = toDelete}
   <div class="veil">
     <div class="confirmation" role="alertdialog" aria-modal="true" data-testid="delete-confirmation">
-      <p>Supprimer « {target.name} » ? Son dossier sera effacé.</p>
+      <p>{t("home-apps-delete-confirm", { name: target.name })}</p>
       <div class="buttons">
-        <button onclick={() => (toDelete = null)}>Annuler</button>
+        <button onclick={() => (toDelete = null)}>{t("home-cancel")}</button>
         <button
           class="confirm"
           onclick={() => {
             const a = target; // {@const} is re-read: after toDelete = null, cible is null
             toDelete = null;
             act(a, "delete");
-          }}>Supprimer</button
+          }}>{t("home-delete")}</button
         >
       </div>
     </div>

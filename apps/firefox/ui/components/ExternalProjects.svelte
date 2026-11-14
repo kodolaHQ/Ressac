@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ExternalsState } from "../../shared/api";
-  import { api } from "../state.svelte";
+  import { api, appState as shell } from "../state.svelte";
+  import { t } from "../i18n.svelte";
 
   let appState = $state<ExternalsState | null>(null);
   let request = 0;
@@ -29,7 +30,7 @@
       name = null;
       copy = false;
     } catch {
-      error = "Le branchement a échoué.";
+      error = t("home-external-failed");
     }
   }
   function closeCommand() {
@@ -48,8 +49,8 @@
   const turnedOff = $derived(appState?.server.state === "off");
 </script>
 
-<section class="external" data-testid="external-projects" aria-label="Projets externes">
-  <h2 class="title">Projets externes</h2>
+<section class="external" data-testid="external-projects" aria-label={t("home-external-title")}>
+  <h2 class="title">{t("home-external-title")}</h2>
   {#if appState}
     {#if appState.server.state === "off"}
       <p class="reason" data-testid="external-reason">{appState.server.reason}</p>
@@ -61,11 +62,11 @@
             <b>{p.name}</b>
             <span>{p.folder}</span>
           </div>
-          <span class="meta">Ports {p.ports.join(", ")}</span>
-          <span class="meta">{p.clientName ?? "aucun client"}</span>
+          <span class="meta">{t("home-external-ports", { ports: p.ports.join(", ") })}</span>
+          <span class="meta">{p.clientName ?? t("home-external-no-client")}</span>
           <div class="actions">
-            <button onclick={() => api.external.review(p.id)}>Modifications</button>
-            <button onclick={() => void api.external.forget(p.id)}>Oublier</button>
+            <button onclick={() => api.external.review(p.id)}>{t("home-external-review")}</button>
+            <button onclick={() => void api.external.forget(p.id)}>{t("home-external-forget")}</button>
           </div>
         </li>
       {/each}
@@ -73,26 +74,26 @@
         <li data-testid="external-client">
           <div class="name">
             <b>{c.name}</b>
-            <span>Branché le {new Date(c.created).toLocaleDateString("fr-FR")}</span>
+            <span>{t("home-external-connected-on", { date: new Date(c.created).toLocaleDateString(shell.value?.locale ?? "fr") })}</span>
           </div>
           <div class="actions">
-            <button onclick={() => void api.external.revoke(c.id)}>Révoquer</button>
+            <button onclick={() => void api.external.revoke(c.id)}>{t("home-external-revoke")}</button>
           </div>
         </li>
       {/each}
       {#if appState.projects.length === 0 && appState.clients.length === 0}
-        <li class="none">Aucun Claude Code branché.</li>
+        <li class="none">{t("home-external-none")}</li>
       {/if}
     </ul>
   {/if}
 
   {#if command !== null}
     <div class="command">
-      <p>Colle cette commande dans un terminal : elle ne sera plus affichée.</p>
+      <p>{t("home-external-command")}</p>
       <code data-testid="connect-command">{command}</code>
       <div class="actions">
-        <button data-testid="copy-command" onclick={copyCommand}>{copy ? "Copié" : "Copier"}</button>
-        <button data-testid="close-command" onclick={closeCommand}>Fermer</button>
+        <button data-testid="copy-command" onclick={copyCommand}>{copy ? t("home-external-copied") : t("home-external-copy")}</button>
+        <button data-testid="close-command" onclick={closeCommand}>{t("home-close")}</button>
       </div>
     </div>
   {:else if name !== null}
@@ -103,12 +104,12 @@
         void connect();
       }}
     >
-      <label>Nom du client <input data-testid="connect-name" bind:value={name} placeholder="Claude Code" maxlength="60" /></label>
-      <button type="submit" data-testid="confirm-connect">Brancher</button>
-      <button type="button" onclick={() => (name = null)}>Annuler</button>
+      <label>{t("home-external-client-name")} <input data-testid="connect-name" bind:value={name} placeholder="Claude Code" maxlength="60" /></label>
+      <button type="submit" data-testid="confirm-connect">{t("home-external-confirm")}</button>
+      <button type="button" onclick={() => (name = null)}>{t("home-cancel")}</button>
     </form>
   {:else}
-    <button class="connect" data-testid="connect-external" disabled={turnedOff || appState === null} onclick={() => (name = "Claude Code")}>Brancher un Claude Code</button>
+    <button class="connect" data-testid="connect-external" disabled={turnedOff || appState === null} onclick={() => (name = "Claude Code")}>{t("home-external-connect")}</button>
   {/if}
   {#if error}<p class="reason" role="alert">{error}</p>{/if}
 </section>

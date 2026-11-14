@@ -1,6 +1,9 @@
 import { expect, test } from "vitest";
 import type { Space, WindowState, BrowserState, SpaceId, ProfileId } from "../shared/model";
+import { format } from "../shared/i18n";
 import { profileLabel, profilesForGrant, openableUrl } from "../ui/home-profiles";
+
+const say = (id: string, args?: Record<string, string>) => format("fr", id, args);
 
 const space = (id: string, name: string, profile: ProfileId, isPrivate = false): Space => ({
   id,
@@ -33,7 +36,7 @@ test("a profile used by a private space is excluded, even shared with a non-priv
     ["default", "perso", "prive"],
     [win("f1", "e1")],
   );
-  expect(profilesForGrant(s, "f1").map((p) => p.id)).toEqual(["default"]);
+  expect(profilesForGrant(s, "f1", say).map((p) => p.id)).toEqual(["default"]);
 });
 
 test("the window's active space's profile is ticked by default, if it is readable", () => {
@@ -42,17 +45,17 @@ test("the window's active space's profile is ticked by default, if it is readabl
     ["default", "perso", "prive"],
     [win("f1", "e1"), win("f2", "e3")],
   );
-  expect(profilesForGrant(s, "f1")).toEqual([
+  expect(profilesForGrant(s, "f1", say)).toEqual([
     { id: "default", label: "Profil de « Boulot »", isDefault: false },
     { id: "perso", label: "Profil de « Perso »", isDefault: true },
   ]);
   // The active space is private: its profile is excluded, so nothing is ticked.
-  expect(profilesForGrant(s, "f2").every((p) => !p.isDefault)).toBe(true);
+  expect(profilesForGrant(s, "f2", say).every((p) => !p.isDefault)).toBe(true);
 });
 
 test("a profile without a space keeps a neutral label", () => {
   const s = state([space("e1", "Perso", "perso")], ["perso", "autre"], [win("f1", "e1")]);
-  expect(profilesForGrant(s, "f1")).toContainEqual({ id: "autre", label: "Profil « autre »", isDefault: false });
+  expect(profilesForGrant(s, "f1", say)).toContainEqual({ id: "autre", label: "Profil « autre »", isDefault: false });
 });
 
 test("a widget link: http(s) only, never the machine nor the local network", () => {
@@ -71,6 +74,6 @@ test("a widget link: http(s) only, never the machine nor the local network", () 
 
 test("profileLabel: a profile shared by two spaces lists both; one without a space is neutral", () => {
   const s = state([space("e1", "Perso", "perso"), space("e2", "Travail", "perso")], ["perso", "autre"], []);
-  expect(profileLabel(s, "perso")).toBe("Profil de « Perso, Travail »");
-  expect(profileLabel(s, "autre")).toBe("Profil « autre »");
+  expect(profileLabel(s, "perso", say)).toBe("Profil de « Perso, Travail »");
+  expect(profileLabel(s, "autre", say)).toBe("Profil « autre »");
 });

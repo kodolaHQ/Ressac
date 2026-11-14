@@ -1,11 +1,12 @@
 <script lang="ts">
   import { RELEASE_NOTES } from "../../shared/release-notes";
+  import { t } from "../i18n.svelte";
 </script>
 
 <!-- The internal « Nouveautés » page: opened once after an update, and from Réglages › À propos. -->
 <section class="notes" data-testid="release-notes">
   <div class="content">
-    <h1>Nouveautés</h1>
+    <h1>{t("home-notes-title")}</h1>
     {#each RELEASE_NOTES as n (n.version)}
       <article data-testid="release-{n.version}">
         <h2>Ressac {n.version} <span>{n.date}</span></h2>

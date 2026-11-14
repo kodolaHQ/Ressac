@@ -1,9 +1,10 @@
 <script lang="ts">
   import type { ExtensionLine } from "../../shared/extensions";
-  import { activeIn, CONSOLE_UNLOCKED_PAGE, DISABLED_CRASHES, DISABLED_SCOPE } from "../../shared/extensions-messages";
+  import { DISABLED_CRASHES, DISABLED_SCOPE } from "../../shared/extensions-messages";
   import type { ExtensionResult } from "../../shared/api";
   import { fade } from "svelte/transition";
   import { api, appState } from "../state.svelte";
+  import { t } from "../i18n.svelte";
   import { markSeen } from "./hints";
   import { showAgentsSection } from "./Settings.svelte";
 
@@ -51,13 +52,17 @@
     await load();
   }
 
-  const date = (iso: string) => new Date(iso).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" });
-  const spaces = (l: ExtensionLine) => (l.spaces.length ? l.spaces.map((e) => `« ${e.name} » (profil ${e.profile})`).join(", ") : l.siteApps.length ? "aucun" : "Active nulle part");
+  const date = (iso: string) => new Date(iso).toLocaleString(appState.value?.locale ?? "fr", { dateStyle: "medium", timeStyle: "short" });
+  const spaces = (l: ExtensionLine) =>
+    l.spaces.length ? l.spaces.map((e) => t("home-extensions-space-item", { name: e.name, profile: e.profile })).join(", ") : l.siteApps.length ? t("home-extensions-none") : t("home-extensions-nowhere");
+  const list = (items: string[], sep: string, none: string) => (items.length ? items.join(sep) : none);
+  /** The host sends its two deactivation messages as French sentinels; the page shows them in the current language. */
+  const disabledText = (d: string) => (d === DISABLED_CRASHES ? t("home-extensions-disabled-crashes") : d === DISABLED_SCOPE ? t("home-extensions-disabled-scope") : d);
 </script>
 
-<section class="extensions" data-testid="page-extensions" aria-label="Extensions">
+<section class="extensions" data-testid="page-extensions" aria-label={t("home-extensions-title")}>
   <header>
-    <h1>Extensions</h1>
+    <h1>{t("home-extensions-title")}</h1>
     <label class="cutoff">
       <input
         type="checkbox"
@@ -66,74 +71,74 @@
         checked={cuts}
         onchange={(e) => void make(api.extensions.cutAll(e.currentTarget.checked))}
       />
-      Désactiver toutes les extensions
+      {t("home-extensions-cut-all")}
     </label>
   </header>
   {#if helpShown}
     <div class="help" data-testid="extensions-help" out:fade={{ duration: 150 }}>
       <div class="help-head">
-        <h2>Comment ça marche</h2>
-        <button data-testid="extensions-help-close" onclick={closeHelp}>Fermer</button>
+        <h2>{t("home-extensions-help")}</h2>
+        <button data-testid="extensions-help-close" onclick={closeHelp}>{t("home-close")}</button>
       </div>
       <ol>
         <li>
-          <b>Branchez votre compte Mozilla</b> (une fois). Firefox n'installe que des extensions signées par Mozilla.
-          {#if accountSaved}<span class="ok">Compte branché</span>{:else}<button class="primary" data-testid="extensions-connect" onclick={connect}>Brancher mon compte Mozilla</button>{/if}
+          <b>{t("home-extensions-step1")}</b>{t("home-extensions-step1-text")}
+          {#if accountSaved}<span class="ok">{t("home-extensions-connected")}</span>{:else}<button class="primary" data-testid="extensions-connect" onclick={connect}>{t("home-extensions-connect")}</button>{/if}
         </li>
-        <li><b>Demandez à l'agent</b> : « écris-moi une extension qui… ». Il l'écrit, la fait signer (comptez quelques minutes), puis vous demande votre accord pour l'installer, avec ses droits et ses sites.</li>
-        <li><b>Gérez-la ici</b> : l'activer par espace, voir ses erreurs, la faire modifier par l'agent, la supprimer.</li>
+        <li><b>{t("home-extensions-step2")}</b>{t("home-extensions-step2-text")}</li>
+        <li><b>{t("home-extensions-step3")}</b>{t("home-extensions-step3-text")}</li>
       </ol>
-      <p class="muted">La signature envoie le code de l'extension à Mozilla ; elle n'est pas publiée sur le catalogue public.</p>
+      <p class="muted">{t("home-extensions-help-note")}</p>
     </div>
   {:else}
-    <button class="link" data-testid="extensions-help-link" onclick={() => (reopened = true)}>Comment ça marche</button>
+    <button class="link" data-testid="extensions-help-link" onclick={() => (reopened = true)}>{t("home-extensions-help")}</button>
   {/if}
   {#if message}<p class="message" role="status" data-testid="message-extensions">{message}</p>{/if}
-  {#if cuts}<p class="banner" role="status">Toutes les extensions sont désactivées : aucune n'est chargée, même après un redémarrage.</p>{/if}
+  {#if cuts}<p class="banner" role="status">{t("home-extensions-all-cut")}</p>{/if}
   {#if chargee && lines.length === 0}
-    <p class="empty">Aucune extension. Demandez à l'agent d'en écrire une, ou installez-en depuis addons.mozilla.org.</p>
+    <p class="empty">{t("home-extensions-empty")}</p>
   {/if}
   <ul>
     {#each lines as l (l.key)}
       <li data-testid="extension-page" data-key={l.key}>
         <div class="head">
           <b>{l.name}</b>
-          <span class="muted">{l.source === "store" ? "addons.mozilla.org" : "Écrite par l'agent"} · {l.version}</span>
+          <span class="muted">{l.source === "store" ? "addons.mozilla.org" : t("home-by-agent")} · {l.version}</span>
         </div>
-        {#if l.disabled}<p class="alert">{l.disabled}</p>{/if}
-        {#if l.consoleUnlocked}<p class="alert" data-testid="console-unlocked">{CONSOLE_UNLOCKED_PAGE}</p>{/if}
-        {#if l.pendingUpdate}<p class="muted">Mise à jour {l.pendingUpdate} en attente de votre accord.</p>{/if}
-        <p>Droits : {l.rights.length ? l.rights.join(" · ") : "aucun"}</p>
-        <p>Sites : {l.allSites ? "tous les sites" : l.sites.length ? l.sites.join(", ") : "aucun"}</p>
-        <p>Espaces : {spaces(l)}</p>
-        {#if l.siteApps.length}<p data-testid="extension-apps">{activeIn(l.siteApps)}</p>{/if}
-        {#if l.modifiedAt}<p class="muted">Modifiée le {date(l.modifiedAt)}</p>{/if}
-        {#if l.unsupported.length}<p class="muted">Non pris en charge : {l.unsupported.join(", ")}</p>{/if}
+        {#if l.disabled}<p class="alert">{disabledText(l.disabled)}</p>{/if}
+        {#if l.consoleUnlocked}<p class="alert" data-testid="console-unlocked">{t("home-extensions-console-unlocked")}</p>{/if}
+        {#if l.pendingUpdate}<p class="muted">{t("home-extensions-pending-update", { version: l.pendingUpdate })}</p>{/if}
+        <p>{t("home-extensions-rights", { list: list(l.rights, " · ", t("home-extensions-none")) })}</p>
+        <p>{t("home-extensions-sites", { list: l.allSites ? t("home-extensions-all-sites") : list(l.sites, ", ", t("home-extensions-none")) })}</p>
+        <p>{t("home-extensions-spaces", { list: spaces(l) })}</p>
+        {#if l.siteApps.length}<p data-testid="extension-apps">{t("home-extensions-active-in", { names: l.siteApps.join(", ") })}</p>{/if}
+        {#if l.modifiedAt}<p class="muted">{t("home-extensions-modified", { date: date(l.modifiedAt) })}</p>{/if}
+        {#if l.unsupported.length}<p class="muted">{t("home-extensions-unsupported", { list: l.unsupported.join(", ") })}</p>{/if}
         {#if l.errors.length}
-          <p class="alert">Erreurs : {details[l.key] ? l.errors.join(" ; ") : l.errors[l.errors.length - 1]}</p>
+          <p class="alert">{t("home-extensions-errors", { list: details[l.key] ? l.errors.join(" ; ") : l.errors[l.errors.length - 1]! })}</p>
         {/if}
         {#if details[l.key]}
           <dl class="details" data-testid="extension-details">
-            <dt>Clé</dt>
+            <dt>{t("home-extensions-key")}</dt>
             <dd>{l.key}</dd>
-            <dt>Droits</dt>
-            <dd>{#each l.rights as d (d)}<span>{d}</span>{:else}aucun{/each}</dd>
-            <dt>Sites</dt>
-            <dd>{#each l.sites as s (s)}<span>{s}</span>{:else}aucun{/each}</dd>
-            <dt>Erreurs</dt>
-            <dd>{#each l.errors as e, i (i)}<span>{e}</span>{:else}aucune{/each}</dd>
+            <dt>{t("home-extensions-label-rights")}</dt>
+            <dd>{#each l.rights as d (d)}<span>{d}</span>{:else}{t("home-extensions-none")}{/each}</dd>
+            <dt>{t("home-extensions-label-sites")}</dt>
+            <dd>{#each l.sites as s (s)}<span>{s}</span>{:else}{t("home-extensions-none")}{/each}</dd>
+            <dt>{t("home-extensions-label-errors")}</dt>
+            <dd>{#each l.errors as e, i (i)}<span>{e}</span>{:else}{t("home-extensions-none-f")}{/each}</dd>
           </dl>
         {/if}
         <div class="actions">
-          {#if l.pendingUpdate}<button onclick={() => void make(api.extensions.review(l.key))}>Revoir la mise à jour</button>{/if}
+          {#if l.pendingUpdate}<button onclick={() => void make(api.extensions.review(l.key))}>{t("home-extensions-review-update")}</button>{/if}
           {#if l.source === "agent" && l.disabled === DISABLED_SCOPE}
-            <button onclick={() => void make(api.extensions.review(l.key))}>Revoir l'accord</button>
+            <button onclick={() => void make(api.extensions.review(l.key))}>{t("home-extensions-review-grant")}</button>
           {/if}
-          {#if l.disabled === DISABLED_CRASHES}<button onclick={() => void make(api.extensions.reenable(l.key))}>Réactiver</button>{/if}
-          {#if l.consoleUnlocked}<button onclick={() => void make(api.extensions.cutUnlock(l.key))}>Couper le déblocage</button>{/if}
-          <button disabled={l.spaces.length === 0 && l.siteApps.length === 0} onclick={() => void make(api.extensions.disableEverywhere(l.key))}>Désactiver partout</button>
-          <button onclick={() => (toDelete = l)}>Supprimer</button>
-          <button aria-expanded={!!details[l.key]} onclick={() => (details[l.key] = !details[l.key])}>Détails</button>
+          {#if l.disabled === DISABLED_CRASHES}<button onclick={() => void make(api.extensions.reenable(l.key))}>{t("home-extensions-reenable")}</button>{/if}
+          {#if l.consoleUnlocked}<button onclick={() => void make(api.extensions.cutUnlock(l.key))}>{t("home-extensions-cut-unlock")}</button>{/if}
+          <button disabled={l.spaces.length === 0 && l.siteApps.length === 0} onclick={() => void make(api.extensions.disableEverywhere(l.key))}>{t("home-extensions-disable-everywhere")}</button>
+          <button onclick={() => (toDelete = l)}>{t("home-delete")}</button>
+          <button aria-expanded={!!details[l.key]} onclick={() => (details[l.key] = !details[l.key])}>{t("home-extensions-details")}</button>
         </div>
       </li>
     {/each}
@@ -144,19 +149,17 @@
   <div class="veil">
     <div class="confirmation" role="alertdialog" aria-modal="true" data-testid="extension-delete-confirmation">
       <p>
-        Supprimer « {target.name} » ? {target.source === "store"
-          ? "Elle sera désinstallée de tous les profils."
-          : "Son accord et sa copie seront effacés ; le dossier de l'agent reste."}
+        {t(target.source === "store" ? "home-extensions-delete-store" : "home-extensions-delete-agent", { name: target.name })}
       </p>
       <div class="buttons">
-        <button onclick={() => (toDelete = null)}>Annuler</button>
+        <button onclick={() => (toDelete = null)}>{t("home-cancel")}</button>
         <button
           class="confirm"
           onclick={() => {
             const key = target.key; // {@const} is re-read: after toDelete = null, cible is null
             toDelete = null;
             void make(api.extensions.remove(key));
-          }}>Supprimer</button
+          }}>{t("home-delete")}</button
         >
       </div>
     </div>

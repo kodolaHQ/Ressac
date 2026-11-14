@@ -6,6 +6,7 @@
   import { shortcutLabel } from "../../shared/shortcuts";
   import type { WindowState } from "../../shared/model";
   import { api, appState } from "../state.svelte";
+  import { t } from "../i18n.svelte";
   import AuraDot from "./AuraDot.svelte";
   import BrowserImport from "./BrowserImport.svelte";
   import SidebarSketch from "./SidebarSketch.svelte";
@@ -98,9 +99,9 @@
 
 {#snippet actions(label: string, later: boolean)}
   <div class="actions">
-    {#if step.page > 1}<button type="button" class="quiet" data-testid="welcome-back" onclick={back}>Retour</button>{/if}
+    {#if step.page > 1}<button type="button" class="quiet" data-testid="welcome-back" onclick={back}>{t("home-welcome-back")}</button>{/if}
     <span class="grow"></span>
-    {#if later}<button type="button" class="quiet" data-testid="welcome-later" onclick={next}>Plus tard</button>{/if}
+    {#if later}<button type="button" class="quiet" data-testid="welcome-later" onclick={next}>{t("home-welcome-later")}</button>{/if}
     <button type="button" class="primary" data-testid="welcome-next" use:focus onclick={next}>{label}</button>
   </div>
 {/snippet}
@@ -111,52 +112,52 @@
 
 <div class="welcome" style={Object.entries(auraVariables(aura)).map(([k, v]) => `${k}:${v}`).join(";")}>
   <div class="aura" aria-hidden="true"><i></i><i></i><i></i></div>
-  <div class="panel" role="dialog" aria-modal="true" aria-label="Bienvenue dans Ressac">
+  <div class="panel" role="dialog" aria-modal="true" aria-label={t("home-welcome-label")}>
     {#key step.page}
       <section class="page" data-testid="welcome-{step.page}">
         {#if step.page === 1}
           <div class="hero">
             <img src="chrome://branding/content/about-logo.svg" alt="" width="96" height="96" />
             <h1 class="brand">ressac</h1>
-            <p class="lead">Un navigateur calme, avec un agent quand vous le voulez.</p>
+            <p class="lead">{t("home-welcome-tagline")}</p>
           </div>
-          {@render actions("Commencer", false)}
+          {@render actions(t("home-welcome-start"), false)}
         {:else if step.page === 2}
-          <h2>Vous venez d'un autre navigateur ?</h2>
+          <h2>{t("home-welcome-import-title")}</h2>
           <BrowserImport bind:sources />
-          {@render actions("Continuer", !!sources?.length)}
+          {@render actions(t("home-welcome-continue"), !!sources?.length)}
         {:else if step.page === 3}
-          <h2>Vos onglets vivent à gauche</h2>
+          <h2>{t("home-welcome-sidebar-title")}</h2>
           <div class="sidebar">
             <SidebarSketch key={label("command")} />
             <ul>
-              <li>Les onglets de l'espace en cours, en liste.</li>
-              <li>Les espaces en bas : un par sujet, chacun avec son aura.</li>
-              <li><kbd>{label("command")}</kbd> ouvre un onglet ou cherche partout.</li>
+              <li>{t("home-welcome-sidebar-tabs")}</li>
+              <li>{t("home-welcome-sidebar-spaces")}</li>
+              <li><kbd>{label("command")}</kbd> {t("home-welcome-sidebar-command")}</li>
             </ul>
           </div>
-          {@render actions("Suivant", false)}
+          {@render actions(t("home-welcome-next"), false)}
         {:else if step.page === 4}
-          <h2>Brancher un agent</h2>
-          <p>Claude Code et Codex travaillent dans un conteneur à part, sur votre Mac. Il leur faut OrbStack (ou Docker Desktop).</p>
+          <h2>{t("home-welcome-agent-title")}</h2>
+          <p>{t("home-welcome-agent-intro")}</p>
           <div class="check">
             {#if docker === undefined}
-              {@render status("welcome-docker", "warn", "Vérification…")}
+              {@render status("welcome-docker", "warn", t("home-welcome-checking"))}
             {:else if docker === "docker-absent" && dockerApp?.kind === "stopped"}
-              {@render status("welcome-docker", "warn", dockerError ?? `${dockerApp.app} est installé mais arrêté.`)}
-              <button type="button" data-testid="welcome-start-docker" onclick={() => void startDocker()}>Démarrer {dockerApp.app}</button>
+              {@render status("welcome-docker", "warn", dockerError ?? t("home-welcome-docker-stopped", { app: dockerApp.app }))}
+              <button type="button" data-testid="welcome-start-docker" onclick={() => void startDocker()}>{t("home-welcome-docker-start", { app: dockerApp.app })}</button>
             {:else if docker === "docker-absent"}
-              {@render status("welcome-docker", "warn", "OrbStack n'est pas lancé ou pas installé.")}
-              <button type="button" data-testid="welcome-install-docker" onclick={() => install("https://orbstack.dev/download")}>Installer OrbStack</button>
-              <button type="button" data-testid="welcome-recheck" onclick={() => void checkDocker()}>Vérifier à nouveau</button>
+              {@render status("welcome-docker", "warn", t("home-welcome-docker-absent"))}
+              <button type="button" data-testid="welcome-install-docker" onclick={() => install("https://orbstack.dev/download")}>{t("home-welcome-docker-install")}</button>
+              <button type="button" data-testid="welcome-recheck" onclick={() => void checkDocker()}>{t("home-welcome-recheck")}</button>
             {:else if docker === null}
-              {@render status("welcome-docker", "off", "Impossible de vérifier pour l'instant.")}
-              <button type="button" data-testid="welcome-recheck" onclick={() => void checkDocker()}>Vérifier à nouveau</button>
+              {@render status("welcome-docker", "off", t("home-welcome-docker-unreachable"))}
+              <button type="button" data-testid="welcome-recheck" onclick={() => void checkDocker()}>{t("home-welcome-recheck")}</button>
             {:else}
-              {@render status("welcome-docker", "ok", "Docker est prêt.")}
+              {@render status("welcome-docker", "ok", t("home-welcome-docker-ready"))}
             {/if}
           </div>
-          <div class="agents" role="radiogroup" aria-label="Agent">
+          <div class="agents" role="radiogroup" aria-label={t("home-welcome-agent-group")}>
             {#each AGENTS as [id, label] (id)}
               <label class="agent">
                 <input type="radio" name="welcome-agent" data-testid="welcome-agent-{id}" checked={profile === id} onchange={() => void api.agent.switch(id)} />
@@ -164,73 +165,73 @@
               </label>
             {/each}
           </div>
-          {#if docker && docker !== "docker-absent"}<p class="note">Vous vous connecterez la première fois que vous ouvrirez l'agent (<kbd>{label("agent")}</kbd>).</p>{/if}
-          {@render actions("Continuer", true)}
+          {#if docker && docker !== "docker-absent"}<p class="note">{t("home-welcome-agent-login", { key: label("agent") })}</p>{/if}
+          {@render actions(t("home-welcome-continue"), true)}
         {:else if step.page === 5}
-          <h2>L'IA locale</h2>
-          <p>Une petite IA tourne sur votre Mac, en plus de l'agent. Elle est gratuite et rien de ce qu'elle lit ne quitte votre machine. Elle sert à :</p>
+          <h2>{t("home-welcome-ai-title")}</h2>
+          <p>{t("home-welcome-ai-intro")}</p>
           <ul>
-            <li>surveiller l'agent : elle le met en pause quand une de ses actions paraît étrange ;</li>
-            <li>trier pour vous : quand Ressac suit un sujet à votre place, elle choisit ce qui mérite de vous être montré ;</li>
-            <li>rédiger les résumés.</li>
+            <li>{t("home-welcome-ai-guard")}</li>
+            <li>{t("home-welcome-ai-triage")}</li>
+            <li>{t("home-welcome-ai-summaries")}</li>
           </ul>
-          <p>Il lui faut Ollama, le logiciel libre qui la fait fonctionner, et deux modèles à télécharger.</p>
+          <p>{t("home-welcome-ai-needs")}</p>
           <div class="check">
             {#if ollama === undefined}
-              {@render status("welcome-ollama", "warn", "Vérification…")}
+              {@render status("welcome-ollama", "warn", t("home-welcome-checking"))}
             {:else if runtime?.kind === "outdated"}
-              {@render status("welcome-ollama", "warn", `Ollama ${runtime.version} est trop ancien pour l'IA locale : il faut la version ${runtime.min} ou plus.`)}
-              <button type="button" data-testid="welcome-update-ollama" onclick={() => install("https://ollama.com/download")}>Mettre à jour Ollama</button>
-              <button type="button" data-testid="welcome-recheck" onclick={() => void checkOllama()}>Vérifier à nouveau</button>
+              {@render status("welcome-ollama", "warn", t("home-welcome-ollama-outdated", { version: runtime.version, min: runtime.min }))}
+              <button type="button" data-testid="welcome-update-ollama" onclick={() => install("https://ollama.com/download")}>{t("home-welcome-ollama-update")}</button>
+              <button type="button" data-testid="welcome-recheck" onclick={() => void checkOllama()}>{t("home-welcome-recheck")}</button>
             {:else if ollama}
-              {@render status("welcome-ollama", "ok", "Ollama est prêt.")}
+              {@render status("welcome-ollama", "ok", t("home-welcome-ollama-ready"))}
               {#if pulling}
-                {@render status("welcome-models", "ok", "Téléchargement lancé : une notification vous préviendra quand ce sera prêt. Le suivi est dans Réglages › IA locale.")}
+                {@render status("welcome-models", "ok", t("home-welcome-models-started"))}
               {:else if missing.length}
-                {@render status("welcome-models", "warn", pullError ?? "Il manque les modèles d'IA locale (plusieurs Go).")}
-                <button type="button" data-testid="welcome-pull" onclick={() => void pullInBackground()}>Télécharger en arrière-plan</button>
+                {@render status("welcome-models", "warn", pullError ?? t("home-welcome-models-missing"))}
+                <button type="button" data-testid="welcome-pull" onclick={() => void pullInBackground()}>{t("home-welcome-models-pull")}</button>
               {/if}
             {:else if pulling}
-              {@render status("welcome-ollama", "ok", "Installation lancée : une notification vous préviendra quand ce sera prêt. Le suivi est dans Réglages › IA locale.")}
+              {@render status("welcome-ollama", "ok", t("home-welcome-ai-installing"))}
             {:else if runtime?.kind === "absent"}
-              {@render status("welcome-ollama", "warn", pullError ?? "L'IA locale n'est pas installée. Ressac télécharge Ollama (190 Mo), puis ses modèles (plusieurs Go).")}
-              <button type="button" data-testid="welcome-install-ai" onclick={() => void pullInBackground([OLLAMA_ITSELF, ...missing])}>Installer en arrière-plan</button>
+              {@render status("welcome-ollama", "warn", pullError ?? t("home-welcome-ai-absent"))}
+              <button type="button" data-testid="welcome-install-ai" onclick={() => void pullInBackground([OLLAMA_ITSELF, ...missing])}>{t("home-welcome-ai-install")}</button>
             {:else if runtime?.kind === "stopped"}
-              {@render status("welcome-ollama", "warn", pullError ?? "Ollama est installé mais arrêté.")}
-              <button type="button" data-testid="welcome-start-ollama" onclick={() => void startOllama()}>Démarrer Ollama</button>
+              {@render status("welcome-ollama", "warn", pullError ?? t("home-welcome-ollama-stopped"))}
+              <button type="button" data-testid="welcome-start-ollama" onclick={() => void startOllama()}>{t("home-welcome-ollama-start")}</button>
             {:else}
-              {@render status("welcome-ollama", "warn", "Ollama n'est pas installé ou pas lancé.")}
-              <button type="button" data-testid="welcome-install-ollama" onclick={() => install("https://ollama.com/download")}>Installer Ollama</button>
-              <button type="button" data-testid="welcome-recheck" onclick={() => void checkOllama()}>Vérifier à nouveau</button>
+              {@render status("welcome-ollama", "warn", t("home-welcome-ollama-missing"))}
+              <button type="button" data-testid="welcome-install-ollama" onclick={() => install("https://ollama.com/download")}>{t("home-welcome-ollama-install")}</button>
+              <button type="button" data-testid="welcome-recheck" onclick={() => void checkOllama()}>{t("home-welcome-recheck")}</button>
             {/if}
           </div>
-          {@render actions("Continuer", true)}
+          {@render actions(t("home-welcome-continue"), true)}
         {:else}
           <form onsubmit={finish}>
-            <h2>C'est prêt</h2>
-            <label class="label" for="welcome-space-name">Votre premier espace</label>
+            <h2>{t("home-welcome-ready-title")}</h2>
+            <label class="label" for="welcome-space-name">{t("home-welcome-space-label")}</label>
             <input id="welcome-space-name" data-testid="welcome-space-name" bind:value={name} placeholder={space?.name} />
-            <div class="auras" role="radiogroup" aria-label="Aura">
+            <div class="auras" role="radiogroup" aria-label={t("home-welcome-aura-group")}>
               {#each AURA_IDS as id (id)}
-                <button type="button" class="aura-choice" role="radio" aria-checked={aura === id} aria-label="Aura {AURAS[id].name}" title={AURAS[id].name} data-testid="welcome-aura-{id}" onclick={() => (aura = id)}>
+                <button type="button" class="aura-choice" role="radio" aria-checked={aura === id} aria-label={t("home-welcome-aura-choice", { name: AURAS[id].name })} title={AURAS[id].name} data-testid="welcome-aura-{id}" onclick={() => (aura = id)}>
                   <AuraDot aura={id} size={22} />
                 </button>
               {/each}
             </div>
             <div class="check">
-              <p class="note">Pour recevoir les alertes des sites et de la veille, autorisez les notifications de Ressac dans les Réglages Système.</p>
-              <button type="button" data-testid="welcome-notifications" onclick={() => api.settings.openNotificationSettings()}>Ouvrir les réglages de notifications</button>
+              <p class="note">{t("home-welcome-notifications-note")}</p>
+              <button type="button" data-testid="welcome-notifications" onclick={() => api.settings.openNotificationSettings()}>{t("home-welcome-notifications-open")}</button>
             </div>
             <div class="actions">
-              <button type="button" class="quiet" data-testid="welcome-back" onclick={back}>Retour</button>
+              <button type="button" class="quiet" data-testid="welcome-back" onclick={back}>{t("home-welcome-back")}</button>
               <span class="grow"></span>
-              <button type="submit" class="primary" data-testid="welcome-finish" use:focus>Ouvrir le navigateur</button>
+              <button type="submit" class="primary" data-testid="welcome-finish" use:focus>{t("home-welcome-finish")}</button>
             </div>
           </form>
         {/if}
       </section>
     {/key}
-    <ol class="dots" aria-label="Page {step.page} sur {PAGES}">
+    <ol class="dots" aria-label={t("home-welcome-page", { page: step.page, total: PAGES })}>
       {#each { length: PAGES } as _, i (i)}<li aria-hidden="true" class:current={i + 1 === step.page}></li>{/each}
     </ol>
   </div>

@@ -2,6 +2,7 @@
   import type { GrantRow } from "../../shared/settings";
   import { profileLabel } from "../home-profiles";
   import { api, appState } from "../state.svelte";
+  import { t } from "../i18n.svelte";
 
   // Styles come from Settings.svelte.
   let rows = $state<GrantRow[] | null>(null);
@@ -32,7 +33,7 @@
             <div class="grow">
               <b>{r.name}</b>
               <span class="muted">{r.detail}</span>
-              {#if r.profile && appState.value}<span class="muted">{profileLabel(appState.value, r.profile)}</span>{/if}
+              {#if r.profile && appState.value}<span class="muted">{profileLabel(appState.value, r.profile, t)}</span>{/if}
             </div>
             <button class="danger" data-testid="grant-revoke" onclick={() => (r.kind === "widget" || r.kind === "action" ? (asking = r) : void revoke(r))}>Retirer</button>
           </div>

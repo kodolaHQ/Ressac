@@ -5,6 +5,7 @@
   import Icon from "./components/Icon.svelte";
   import { nextRun } from "./components/next";
   import { appState } from "./state.svelte";
+  import { t } from "./i18n.svelte";
   import { freeUnits } from "./free-grid";
 
   let {
@@ -38,7 +39,7 @@
   } = $props();
 
   const date = (iso: string | null | undefined) =>
-    iso ? new Date(iso).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" }) : "date inconnue";
+    iso ? new Date(iso).toLocaleString(appState.value?.locale ?? "fr", { dateStyle: "short", timeStyle: "short" }) : t("home-widget-unknown-date");
 
   let menuOpen = $state(false);
 
@@ -76,38 +77,38 @@
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <header onpointerdown={handle}>
     {#if "error" in widget}
-      <p class="unreadable">Widget « {widget.id} » illisible : {widget.error}</p>
+      <p class="unreadable">{t("home-widget-unreadable", { id: widget.id, error: widget.error })}</p>
     {:else}
       <h2 data-testid="widget-title">{widget.name}</h2>
       {#if widget.state.status === "running"}
         {#if widget.state.progress}
-          <span class="badge" data-testid="progress">mise à jour… {widget.state.progress.done} / {widget.state.progress.total}</span>
+          <span class="badge" data-testid="progress">{t("home-widget-progress", { done: String(widget.state.progress.done), total: String(widget.state.progress.total) })}</span>
         {:else}
-          <span class="badge">mise à jour…</span>
+          <span class="badge">{t("home-widget-updating")}</span>
         {/if}
       {:else if widget.state.status === "error"}
         <span class="badge failure" title={widget.state.log ?? ""}
-          >échec du {date(widget.state.lastAttempt)} : {widget.state.error ?? "erreur inconnue"}</span
+          >{t("home-widget-failed", { date: date(widget.state.lastAttempt), error: widget.state.error ?? t("home-widget-unknown-error") })}</span
         >
       {:else if widget.state.status === "workshop-stopped"}
-        <span class="badge failure">mise à jour impossible : atelier arrêté</span>
+        <span class="badge failure">{t("home-widget-workshop-stopped")}</span>
       {:else if next}
-        <span class="badge muted" data-testid="next-run">prochaine : {next}</span>
+        <span class="badge muted" data-testid="next-run">{t("home-widget-next", { next })}</span>
       {/if}
     {/if}
     <div class="actions">
-      <button class="menu" aria-label="Options du widget" title="Options du widget" onclick={() => (menuOpen = !menuOpen)}>
+      <button class="menu" aria-label={t("home-widget-options")} title={t("home-widget-options")} onclick={() => (menuOpen = !menuOpen)}>
         <Icon name="options" size={14} />
       </button>
       {#if menuOpen}
         <div class="list" role="menu">
           {#if !("error" in widget)}
-            <button role="menuitem" onclick={() => ((menuOpen = false), harvest())}>Mettre à jour maintenant</button>
+            <button role="menuitem" onclick={() => ((menuOpen = false), harvest())}>{t("home-widget-update-now")}</button>
             {#if widget.hasHarvest}
-              <button role="menuitem" onclick={() => ((menuOpen = false), seeWorkflow())}>Voir / modifier le workflow</button>
+              <button role="menuitem" onclick={() => ((menuOpen = false), seeWorkflow())}>{t("home-widget-workflow")}</button>
             {/if}
           {/if}
-          <button role="menuitem" onclick={() => ((menuOpen = false), remove())}>Retirer</button>
+          <button role="menuitem" onclick={() => ((menuOpen = false), remove())}>{t("home-remove")}</button>
         </div>
       {/if}
     </div>
@@ -116,10 +117,12 @@
     {#if widget.state.status === "grant-required" && !denied}
       <div class="banner" data-testid="grant-banner">
         <span
-          >Ce widget veut lire {widget.account.join(", ")} avec ton compte{#if widget.public.length}, et pourra contacter : {widget.public.join(", ")}{:else}, et ne contactera aucun autre site{/if}.</span
+          >{widget.public.length
+            ? t("home-widget-grant-public", { account: widget.account.join(", "), public: widget.public.join(", ") })
+            : t("home-widget-grant-private", { account: widget.account.join(", ") })}</span
         >
-        <button onclick={allow}>Autoriser…</button>
-        <button onclick={deny}>Refuser</button>
+        <button onclick={allow}>{t("home-widget-allow")}</button>
+        <button onclick={deny}>{t("home-deny")}</button>
       </div>
     {/if}
     {#if warning}<p class="warning">{warning}</p>{/if}
@@ -133,7 +136,7 @@
     <p class="warning">{warning}</p>
   {/if}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="resize-handle" data-testid="resize-handle" title="Redimensionner" onpointerdown={(e) => ((menuOpen = false), beginGesture("resize", e))}></div>
+  <div class="resize-handle" data-testid="resize-handle" title={t("home-widget-resize")} onpointerdown={(e) => ((menuOpen = false), beginGesture("resize", e))}></div>
 </article>
 
 <style>
