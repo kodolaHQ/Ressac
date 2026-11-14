@@ -171,7 +171,9 @@ else
   mkdir -p $db
   export DYLD_LIBRARY_PATH=$objdist/bin
   $objdist/bin/certutil -N -d $db --empty-password
-  $objdist/bin/pk12util -i $mar_p12 -d $db -W "$mar_pw" -K '' >/dev/null || fail "pk12util could not import $mar_p12"
+  # The password goes through a mode-600 file: on argv any local process could read it.
+  (umask 077; print -rn -- "$mar_pw" > $node_x/mar-pw)
+  $objdist/bin/pk12util -i $mar_p12 -d $db -w $node_x/mar-pw -K '' >/dev/null || fail "pk12util could not import $mar_p12"
   unsigned=$node_x/unsigned.mar
   mar=$app_dir/dist/Ressac-$version.mar
   gecko_version=$(sed -n 's/^Version=//p' $res/application.ini)

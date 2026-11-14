@@ -106,4 +106,9 @@ describe("package.sh update archive", () => {
     expect(xml).toBeLessThan(at('step "DMG"'));
     expect(sh).toContain("warning: no MAR key, packaging without an update archive");
   });
+
+  it("hands the MAR key password to pk12util in a mode-600 file, never on its command line", () => {
+    expect(sh).not.toMatch(/pk12util[^\n]*-W/);
+    expect(at("umask 077")).toBeLessThan(at("pk12util -i $mar_p12 -d $db -w $node_x/mar-pw"));
+  });
 });

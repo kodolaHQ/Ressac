@@ -57,6 +57,10 @@ async function publish(root: string, extra: Record<string, string | undefined> =
 }
 
 describe("publish.sh", () => {
+  it("never waits forever on the already-published check", () => {
+    expect(readFileSync(new URL("../scripts/publish.sh", import.meta.url), "utf8")).toMatch(/curl --max-time 30 /);
+  });
+
   it("is the release:publish script, not pnpm's own publish", () => {
     expect(scripts["release:publish"]).toBe("zsh scripts/env.sh zsh scripts/publish.sh");
     expect(scripts.publish).toBeUndefined();
@@ -74,6 +78,8 @@ describe("publish.sh", () => {
     ]);
     for (const l of puts) expect(l).toMatch(/^wrangler r2 object put .* --remote/);
     expect(puts[3]).toContain("--cache-control no-cache");
+    // Cloudflare caches .dmg by default: the stable link must not serve an old version for long.
+    expect(puts[2]).toContain("--cache-control public, max-age=300");
     expect(puts[2]).toMatch(/--file \S+\/dist\/Ressac-1\.2\.3\.dmg/);
   });
 
