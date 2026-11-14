@@ -24,12 +24,12 @@ const make = (answer: unknown, o: { timeoutMs?: number } = {}) => {
   const gemma = vi.fn(async (_: { prompt: string; json?: boolean; signal?: AbortSignal }) => answer);
   const hasGemma = vi.fn(async () => true);
   const warm = vi.fn(async () => {});
-  const history = { searchForAgent: vi.fn((q: Parameters<History["searchForAgent"]>[0]) => h.searchForAgent(q)) };
+  const history = { findPages: vi.fn((q: Parameters<History["findPages"]>[0]) => h.findPages(q)) };
   const ask = createAsk({ ai: { gemma, hasGemma, warm }, history: () => history, now: () => NOW, ...o });
   return { ask, gemma, hasGemma, warm, history };
 };
 
-const page = (extra: Record<string, unknown> = {}) => ({ kind: "page", terms: ["mascaret", "mascarets"], ...extra });
+const page = (extra: Record<string, unknown> = {}) => ({ kind: "page", groups: [["mascaret", "mascarets", "tidal bore"]], ...extra });
 
 test("a page question finds the recent visit, the older one is left out by since", async () => {
   visit("https://www.youtube.com/watch?v=1", "Le mascaret de la Dordogne", "vidéo du mascaret à Saint-Pardon", daysAgo(3));
@@ -52,14 +52,23 @@ test("an already parsed answer works too; until covers its whole day", async () 
   });
 });
 
-test("a hinted site ranks first", async () => {
+test("named sites filter; a video question keeps video sites even when the model forgets them", async () => {
   visit("https://blog.fr/mascaret", "Mascaret", "mascaret mascaret mascaret", daysAgo(1));
-  visit("https://www.youtube.com/watch?v=2", "Vidéo", "le mascaret", daysAgo(2));
+  visit("https://www.youtube.com/watch?v=2", "Le mascaret en vidéo", null, daysAgo(2));
   const plain = await make(page()).ask.find("le mascaret", "fr");
   expect(plain.kind === "page" && plain.hits.map((x) => x.url)).toEqual(["https://blog.fr/mascaret", "https://www.youtube.com/watch?v=2"]);
-  const { ask } = make(page({ sites: ["youtube.com"] }));
-  const r = await ask.find("la vidéo du mascaret", "fr");
-  expect(r.kind === "page" && r.hits.map((x) => x.url)).toEqual(["https://www.youtube.com/watch?v=2", "https://blog.fr/mascaret"]);
+  const hinted = await make(page({ sites: ["youtube.com"] })).ask.find("le mascaret", "fr");
+  expect(hinted.kind === "page" && hinted.hits.map((x) => x.url)).toEqual(["https://www.youtube.com/watch?v=2"]);
+  const forgot = await make(page()).ask.find("la vidéo du mascaret", "fr");
+  expect(forgot.kind === "page" && forgot.hits.map((x) => x.url)).toEqual(["https://www.youtube.com/watch?v=2"]);
+});
+
+test("every group must match: noise holding one idea is not a hit", async () => {
+  visit("https://www.leboncoin.fr/recherche?text=videoprojecteur", "vidéoprojecteur 4K", null, daysAgo(1));
+  visit("https://www.youtube.com/watch?v=s", "I discovered a sound that leaks your exact location", null, daysAgo(2));
+  const { ask } = make({ kind: "page", groups: [["son", "sound"], ["lieu", "location"]] });
+  const r = await ask.find("une vidéo sur trouver un lieu à partir d'un son", "fr");
+  expect(r.kind === "page" && r.hits.map((x) => x.url)).toEqual(["https://www.youtube.com/watch?v=s"]);
 });
 
 test("sites that are not strings are ignored, not malformed", async () => {
@@ -68,12 +77,12 @@ test("sites that are not strings are ignored, not malformed", async () => {
   expect((await ask.find("mascaret", "fr")).kind).toBe("page");
 });
 
-test("5 matches → 3 hits, searched with limit 20", async () => {
+test("5 matches → 3 hits", async () => {
   for (let i = 0; i < 5; i++) visit(`https://s${i}.fr/`, `Mascaret ${i}`, null, daysAgo(i + 1));
   const { ask, history } = make(page());
   const r = await ask.find("mascaret", "fr");
   expect(r.kind === "page" && r.hits.length).toBe(3);
-  expect(history.searchForAgent).toHaveBeenCalledWith({ query: "mascaret mascarets", since: undefined, until: undefined, limit: 20 });
+  expect(history.findPages).toHaveBeenCalledWith({ groups: [["mascaret", "mascarets", "tidal bore"]], since: undefined, until: undefined, sites: [], limit: 3 });
 });
 
 test("a private visit is not a hit; no match → agent", async () => {
@@ -85,21 +94,23 @@ test("a private visit is not a hit; no match → agent", async () => {
 test("kind other → agent, history not searched", async () => {
   const { ask, history } = make({ kind: "other" });
   expect(await ask.find("résume cette page", "fr")).toEqual({ kind: "agent" });
-  expect(history.searchForAgent).not.toHaveBeenCalled();
+  expect(history.findPages).not.toHaveBeenCalled();
 });
 
 test.each([
   ["non-JSON", "pas du json"],
-  ["terms not strings", page({ terms: [1] })],
-  ["empty terms", page({ terms: [] })],
+  ["a group not of strings", page({ groups: [[1]] })],
+  ["no groups", page({ groups: [] })],
+  ["an empty group", page({ groups: [[]] })],
+  ["groups of plain strings", page({ groups: ["mascaret"] })],
   ["since not a date", page({ since: "hier" })],
   ["since an impossible date", page({ since: "2026-02-31" })],
-  ["too many terms", page({ terms: ["a", "b", "c", "d", "e", "f", "g", "h", "i"] })],
+  ["too many groups", page({ groups: [["a"], ["b"], ["c"], ["d"], ["e"]] })],
 ])("malformed answer (%s) → agent", async (_, answer) => {
   visit("https://a.fr/", "Mascaret", null, daysAgo(1));
   const { ask, history } = make(answer);
   expect(await ask.find("mascaret", "fr")).toEqual({ kind: "agent" });
-  expect(history.searchForAgent).not.toHaveBeenCalled();
+  expect(history.findPages).not.toHaveBeenCalled();
 });
 
 test("gemma throwing, or no history → agent", async () => {

@@ -131,7 +131,7 @@ describe("the ⌘T bar's Chercher / Demander switch", () => {
 
   it("a page answer: the hits and « Demander à l'agent », Enter opens the first in a new tab", async () => {
     const url = await seed("/b.html", "Le mascaret de la Seine", "Le mascaret remonte la Seine à chaque grande marée.");
-    answer = { kind: "page", terms: ["mascaret"] };
+    answer = { kind: "page", groups: [["mascaret"]] };
     const tabsBefore = Object.keys((await state(m)).tabs).length;
     await ask("c'était quoi la page sur les mascarets");
     expect(await q.count(tid("command-ask-hit"))).toBe(0);
@@ -160,7 +160,7 @@ describe("the ⌘T bar's Chercher / Demander switch", () => {
     await waitFor(m, "return gBrowser.selectedBrowser.contentTitle", (v) => v === "Page B");
     // Matched by its address: the page it shows may already have its own text kept.
     await seed("/a.html", "Page A", "Une barre de marée sur la Garonne.");
-    answer = { kind: "page", terms: ["a.html"] };
+    answer = { kind: "page", groups: [["a.html"]] };
     const tabsBefore = Object.keys((await state(m)).tabs).length;
     await ask("la page sur la Garonne");
     await pressKeys(m, "Enter");
@@ -179,7 +179,7 @@ describe("the ⌘T bar's Chercher / Demander switch", () => {
     await waitFor(m, "return gBrowser.selectedBrowser.contentTitle", (v) => v === "Page A");
     await dispatch(m, { type: "createSpace", name: "Pro", icon: "💼", private: false, profile: "default", windowId: (await win()).id });
     await seed("/a.html", "Page A", "Une barre de marée sur la Garonne.");
-    answer = { kind: "page", terms: ["a.html"] };
+    answer = { kind: "page", groups: [["a.html"]] };
     const tabsBefore = Object.keys((await state(m)).tabs).length;
     await ask("la page sur la Garonne");
     await pressKeys(m, "Enter");
@@ -205,8 +205,8 @@ describe("the ⌘T bar's Chercher / Demander switch", () => {
 
   it("« Demander à l'agent » after the hits: one line with the question and the hits' URLs", async () => {
     const url = await seed("/b.html", "Le mascaret de la Seine", "Le mascaret remonte la Seine.");
-    answer = { kind: "page", terms: ["mascaret"] };
-    await ask("la vidéo sur les mascarets");
+    answer = { kind: "page", groups: [["mascaret"]] };
+    await ask("la page sur les mascarets");
     await pressKeys(m, "Enter");
     await q.waitCount(tid("command-ask-agent"), 1);
     // ↑ from the first hit wraps to the last line.
@@ -217,7 +217,7 @@ describe("the ⌘T bar's Chercher / Demander switch", () => {
     await agentPanelShown();
     await expect.poll(() => agentInput(w.dataDir), { timeout: 20_000 }).toMatch(/\r/);
     const line = agentInput(w.dataDir).split("\r")[0]!;
-    expect(line.startsWith("la vidéo sur les mascarets — ")).toBe(true);
+    expect(line.startsWith("la page sur les mascarets — ")).toBe(true);
     expect(line).toContain(JSON.stringify(url));
     expect(line).not.toContain("\n");
   });
@@ -234,7 +234,7 @@ describe("the ⌘T bar's Chercher / Demander switch", () => {
 
   it("typing after the hits clears them", async () => {
     await seed("/b.html", "Le mascaret de la Seine", "Le mascaret remonte la Seine.");
-    answer = { kind: "page", terms: ["mascaret"] };
+    answer = { kind: "page", groups: [["mascaret"]] };
     await ask("les mascarets");
     await pressKeys(m, "Enter");
     await q.waitCount(tid("command-ask-hit"), 1);

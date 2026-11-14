@@ -278,6 +278,61 @@ export class History {
     });
   }
 
+  /**
+   * Precise search for the ⌘T bar (few hits, all relevant), unlike searchForAgent's wide one: every group must match
+   * (variants of a group are alternatives), each word at a word start, case and accents folded. Pages whose title or
+   * URL hold every group come first (most recent first), then pages whose kept text does (best rank first).
+   * Non-private visits only, within [since, until], optionally on `sites` (a host or its subdomains).
+   */
+  findPages(q: { groups: string[][]; since?: Date; until?: Date; sites?: string[]; limit: number }): HistoryResult[] {
+    if (!this.db.isOpen) return [];
+    const groups = q.groups.map((g) => g.map((w) => fold(w).trim()).filter(Boolean)).filter((g) => g.length);
+    if (!groups.length) return [];
+    const period = { since: q.since?.toISOString() ?? "", until: q.until?.toISOString() ?? "￿" };
+    const sites = (q.sites ?? []).map((s) => s.toLowerCase());
+    const onSites = (url: string) => {
+      if (!sites.length) return true;
+      try {
+        const host = new URL(url).hostname;
+        return sites.some((s) => host === s || host.endsWith(`.${s}`));
+      } catch {
+        return false;
+      }
+    };
+    const escape = (w: string) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const patterns = groups.map((g) => new RegExp(`(?:^|[^\\p{L}\\p{N}])(?:${g.map(escape).join("|")})`, "u"));
+    const fts = groups.map((g) => `(${g.map((w) => `"${w.replaceAll('"', '""')}"`).join(" OR ")})`).join(" AND ");
+    const rows = this.db
+      .prepare(`
+        SELECT v.url, MAX(v.last_visit) AS lastVisit, SUM(v.visits) AS visits,
+          (SELECT title FROM visits w WHERE w.url = v.url AND w.private = 0 ORDER BY w.last_visit DESC LIMIT 1) AS title,
+          (SELECT t.id FROM texts_fts JOIN texts t ON t.id = texts_fts.rowid WHERE texts_fts MATCH :fts AND t.url = v.url LIMIT 1) AS id,
+          (SELECT bm25(texts_fts) FROM texts_fts JOIN texts t ON t.id = texts_fts.rowid WHERE texts_fts MATCH :fts AND t.url = v.url LIMIT 1) AS score
+        FROM visits v WHERE v.private = 0 AND v.last_visit >= :since AND v.last_visit <= :until
+        GROUP BY v.url`)
+      .all({ ...period, fts }) as { url: string; lastVisit: string; visits: number; title: string; id: number | null; score: number | null }[];
+    // A small model often adds one idea too many: from 3 groups on, a title may miss one.
+    const needed = groups.length >= 3 ? groups.length - 1 : groups.length;
+    const inTitle = (r: (typeof rows)[number]) => {
+      const s = fold(`${r.title} ${r.url}`);
+      return patterns.filter((p) => p.test(s)).length;
+    };
+    const ranked = rows
+      .filter((r) => onSites(r.url))
+      .map((r) => ({ r, title: inTitle(r) }))
+      .map((x) => ({ ...x, title: x.title >= needed ? x.title : 0 }))
+      .filter((x) => x.title || x.r.id !== null)
+      .sort((a, b) => b.title - a.title || (a.title ? b.r.lastVisit.localeCompare(a.r.lastVisit) : a.r.score! - b.r.score!))
+      .slice(0, q.limit);
+    return ranked.map(({ r }) => ({
+      url: r.url,
+      title: r.title,
+      lastVisit: r.lastVisit,
+      visits: r.visits,
+      excerpt: r.id === null ? "" : ((this.req.excerpt.get(fts, r.id) as { excerpt: string } | undefined)?.excerpt ?? ""),
+    }));
+  }
+
   /** Substring insensitive to case and accents on the URL and title; `%`, `_` and `\` are literal. */
   search(text: string, limit = 50, distinct = false): Visit[] {
     if (!this.db.isOpen) return [];
