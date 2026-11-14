@@ -294,6 +294,8 @@ export function createApi(win: WindowController): ApiFirefox {
           return void api.sites!.list()
             .then((l) => win.store.dispatch({ type: "openReview", windowId: windowId, project: "site-" + id, name: (l.find((s) => s.id === id)?.name ?? id).slice(0, 80) }))
             .catch((e) => console.error("[ressac] site review :", e));
+        // AI off: no prefill for the agent (it would show once AI is on), only the panel and its asleep card.
+        if (action === "edit" && !win.store.state.settings.aiEnabled) return win.openAgent();
         host.notify("sites.act", { id, action, window: windowId });
         if (action === "edit") win.openAgent();
       },

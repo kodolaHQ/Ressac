@@ -21,6 +21,8 @@
     resize?: (width: number, end: boolean) => void;
   } = $props();
   let section: HTMLElement;
+  /** The agent's first-time note waits, unseen, while AI is off. */
+  const notePending = () => aiOn() && firstTimePending("agent");
 
   /** The panel is on the left when the sidebar is on the right: the handle follows the panel's inner edge. */
   const sidebarRight = $derived(browserState.value?.settings.sidebarSide === "right");
@@ -122,9 +124,9 @@
     }
     if (n === served) return;
     served = n;
-    if (firstTimePending("agent")) userAsked = true;
+    if (notePending()) userAsked = true;
     // The first-time note keeps the keyboard until Compris.
-    const aim = () => visible && !firstTimePending("agent") && terminalAgent.focus();
+    const aim = () => visible && !notePending() && terminalAgent.focus();
     void tick().then(aim);
     const relaunches = [100, 500].map((ms) => setTimeout(() => !terminalAgent.hasFocus() && aim(), ms));
     return () => relaunches.forEach(clearTimeout);
@@ -134,8 +136,8 @@
   let giveBack: (() => void) | undefined;
   let userAsked = false;
   $effect.pre(() => {
-    const pending = visible && firstTimePending("agent");
-    const done = !firstTimePending("agent");
+    const pending = visible && notePending();
+    const done = !notePending();
     untrack(() => {
       if (pending) giveBack ??= window.parent.ressacWindow?.rememberFocus();
       else if (done && giveBack) {
@@ -149,12 +151,12 @@
   });
   // Shown with its note pending, the panel gives the keyboard to the note's button.
   $effect(() => {
-    if (visible && firstTimePending("agent")) void tick().then(() => section?.querySelector<HTMLElement>('[data-testid="first-time-ok"]')?.focus());
+    if (visible && notePending()) void tick().then(() => section?.querySelector<HTMLElement>('[data-testid="first-time-ok"]')?.focus());
   });
 </script>
 
 <section class="agent" class:built-in={builtIn} class:right={sidebarRight} data-testid={builtIn ? "built-in-agent-terminal" : "agent-panel"} hidden={!visible} bind:this={section}>
-  <FirstTimeNote id="agent" />
+  {#if aiOn()}<FirstTimeNote id="agent" />{/if}
   {#if !builtIn}
     <div class="handle" data-testid="agent-handle" role="separator" aria-orientation="vertical" aria-label={t("agent-panel-handle")} onpointerdown={tirer}></div>
   {/if}

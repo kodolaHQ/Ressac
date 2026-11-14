@@ -72,7 +72,14 @@
     }
     return follow(() => api.actions.list(), (l) => (actions = l), (r) => api.actions.onChange(r));
   });
-  $effect(() => follow(() => api.apps.list(), (l) => (projects = l.apps.map(projectSiteApp).filter((a) => a !== null)), (r) => api.apps.onChange(r)));
+  // The agent's apps need AI: off, their lines are hidden like the actions'.
+  $effect(() => {
+    if (!aiOn()) {
+      projects = [];
+      return;
+    }
+    return follow(() => api.apps.list(), (l) => (projects = l.apps.map(projectSiteApp).filter((a) => a !== null)), (r) => api.apps.onChange(r));
+  });
   $effect(() => follow(() => api.sites.list(), (l) => (sites = l.map(siteSiteApp)), (r) => api.sites.onChange(r)));
 
   // The tabs the active space shows: same scope as ⌃Tab.
@@ -155,6 +162,13 @@
     }
     void tick().then(() => field?.focus());
   }
+
+  // AI turned on from the asleep line while Demander is open: the local AI is asked as on a switch to Demander.
+  $effect(() => {
+    if (!aiOn() || !untrack(() => asking && !usable)) return;
+    usable = api.ask.usable();
+    api.ask.warm();
+  });
 
   /** Hands the question to the agent; the bar closes once the agent panel took it, else it stays with the question. */
   function handOff(question: string, shown: AskHit[]) {

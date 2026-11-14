@@ -7,6 +7,7 @@ import { initialState } from "../core/state/initial-state";
 import { FIRST_TIME, type FirstTimeId } from "../shared/hints";
 import { listen, tid, writeAction, type TestServer } from "./actions";
 import { openTab } from "./agent-extensions";
+import { writeProject } from "./apps";
 import { dispatch, state, waitFor } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
@@ -121,7 +122,10 @@ it("off: shortcuts show the asleep card and start nothing", async () => {
 });
 
 it("off: AI pages show the asleep card, action suggestions are hidden", async () => {
-  await launch(false, (d) => writeAction(d, "tickets", { name: "Tickets GitLab", keywords: ["tickets"] }));
+  await launch(false, async (d) => {
+    await writeAction(d, "tickets", { name: "Tickets GitLab", keywords: ["tickets"] });
+    writeProject(d, "tickets", { manifest: { name: "Tickets board" } });
+  });
   await shown(tid("ai-asleep-widgets"));
   expect(await inUi(m, "return !!doc.querySelector('[data-testid=\"home-empty\"]')")).toBe(false);
   await inUi(m, `const f = doc.querySelector('${tid("empty-page-input")}'); f.value = "tickets"; f.dispatchEvent(new ui.Event("input", { bubbles: true }));`);
@@ -131,12 +135,17 @@ it("off: AI pages show the asleep card, action suggestions are hidden", async ()
   await waitUi(m, `return doc.activeElement?.dataset.testid === "command-input"`);
   await inUi(m, `const f = doc.activeElement; f.value = "tickets"; f.dispatchEvent(new ui.Event("input", { bubbles: true }));`);
   await new Promise((r) => setTimeout(r, 1_000));
-  expect(await inUi(m, `return doc.querySelectorAll('${tid("command-row")}[data-type="action"]').length`)).toBe(0);
+  expect(await inUi(m, `return doc.querySelectorAll('${tid("command-row")}[data-type="action"], ${tid("command-row")}[data-type="app"]').length`)).toBe(0);
   await pressKeys(m, "Escape");
   await click(m, tid("actions-button"));
   await shown(tid("ai-asleep-actions"));
   await dispatch(m, { type: "openWorkflow", windowId: (await state(m)).windows[0]!.id, id: "starter", name: "Starter" });
   await shown(tid("ai-asleep-workflows"));
+  const windowId = (await state(m)).windows[0]!.id;
+  await dispatch(m, { type: "openAction", windowId, id: "tickets", name: "Tickets GitLab" });
+  await shown(`${tid("content-zone")} ${tid("ai-asleep-actions")}`);
+  await dispatch(m, { type: "openReview", windowId, project: "app-tickets", name: "Tickets board" });
+  await shown(tid("ai-asleep-review"));
   await click(m, tid("settings-button"));
   await shown(tid("settings-ai-switch"));
   await shown(tid("ai-asleep-settings"));
