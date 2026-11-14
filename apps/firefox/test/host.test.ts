@@ -178,6 +178,47 @@ describe("agent host", { timeout: 30_000 }, () => {
     await until(() => JSON.stringify(h.states.slice(states)).includes("ai-off"));
   });
 
+  it("off then on sent back to back: the kernel is up and the apps woken again at the end", async () => {
+    const h = startHost();
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
+    // The apps' orphan sweep runs at each wake.
+    const sweeps = () => (existsSync(join(h.root, "fake-docker-stops.log")) ? readFileSync(join(h.root, "fake-docker-stops.log"), "utf8").split("RESSAC_APP=.*").length - 1 : 0);
+    await until(() => sweeps() === 1);
+    // A running session makes the off's stops take a while.
+    await h.rpc.request("agent.start", { window: "f0", size: { cols: 80, rows: 24 } });
+    await until(() => h.data().includes("fake agent ready>"));
+    h.rpc.notify("ai.enabled", { on: false });
+    // Off is under way (its stops in flight) when on arrives.
+    await h.rpc.request("access.state");
+    h.rpc.notify("ai.enabled", { on: true });
+    await until(() => sweeps() === 2);
+    const before = h.data().split("fake agent ready>").length;
+    await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
+    await until(() => h.data().split("fake agent ready>").length > before);
+  });
+
+  it("AI off: the host refuses what reaches Docker or Ollama", async () => {
+    const { createServer } = await import("node:http");
+    let requests = 0;
+    const ollama = createServer((_req, res) => (requests++, res.writeHead(200, { "Content-Type": "application/json" }).end('{"models":[]}')));
+    await new Promise<void>((r) => ollama.listen(0, "127.0.0.1", r));
+    try {
+      const h = startHost({ RESSAC_OLLAMA_URL: `http://127.0.0.1:${(ollama.address() as { port: number }).port}` });
+      expect(await h.rpc.request("start", { agentProfile: "claude", aiEnabled: false })).toBe(null);
+      expect(await h.rpc.request("ask.usable")).toBe(false);
+      await h.rpc.request("ask.warm");
+      await expect(h.rpc.request("ask.find", { question: "q" })).rejects.toThrow("ai-off");
+      await expect(h.rpc.request("apps.act", { folder: "essai", action: "launch", window: "f1" })).rejects.toThrow("ai-off");
+      await expect(h.rpc.request("settings.startDocker")).rejects.toThrow("ai-off");
+      await expect(h.rpc.request("settings.pullModel", { name: "gemma" })).rejects.toThrow("ai-off");
+      await new Promise((r) => setTimeout(r, 500));
+      expect(requests).toBe(0);
+      expect(existsSync(h.log) ? readFileSync(h.log, "utf8") : "").toBe("");
+    } finally {
+      ollama.close();
+    }
+  });
+
   it("creates the space and MCP config, list_tabs goes through Firefox", async () => {
     const h = startHost();
     expect(await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true })).toEqual({ agent: expect.any(String) });
@@ -1160,6 +1201,8 @@ createServer((req, res) => {
         ...handlers,
       },
     });
+    // The apps need AI on (apps.act is refused while off).
+    h.rpc.notify("ai.enabled", { on: true });
     return { h, chrome };
   };
   const list = (h: Host) => h.rpc.request<List>("apps.list");
