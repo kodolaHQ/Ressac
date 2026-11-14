@@ -11,23 +11,14 @@ export function createSwipe(onStep: (delta: 1 | -1) => void, now = () => Date.no
   let sum = 0;
   let last = -Infinity;
   let done = false;
-  // After a step, macOS momentum only decays: deltas rising again once they died down mean new fingers on the pad.
-  let peak = 0;
-  let low = Infinity;
   return (e: { deltaX: number; deltaY: number }): void => {
     const t = now();
-    const x = Math.abs(e.deltaX);
     if (t - last > QUIET_MS) [sum, done] = [0, false];
     last = t;
-    if (x <= Math.abs(e.deltaY)) return;
-    if (done) {
-      [peak, low] = [Math.max(peak, x), Math.min(low, x)];
-      if (low >= peak / 3 || x < low * 2 + 4) return;
-      [sum, done] = [0, false];
-    }
+    if (done || Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
     sum += e.deltaX;
     if (Math.abs(sum) < THRESHOLD) return;
-    [done, peak, low] = [true, x, x];
+    done = true;
     onStep(sum > 0 ? 1 : -1);
   };
 }
