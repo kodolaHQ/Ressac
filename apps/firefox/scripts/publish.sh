@@ -3,6 +3,8 @@
 # Needs a one-time `npx wrangler login`. Test hooks: RESSAC_PUBLISH_DRY_RUN=1 prints the uploads instead of running them,
 # RESSAC_PUBLISH_SKIP_APPLE=1 skips the notarization checks, RESSAC_PUBLISH_HOST replaces the public host for the "already published" check.
 set -euo pipefail
+# The last two only count in a dry run: a variable left exported must never weaken a real publish.
+[[ -n ${RESSAC_PUBLISH_DRY_RUN:-} ]] || unset RESSAC_PUBLISH_SKIP_APPLE RESSAC_PUBLISH_HOST
 cd "$(dirname "$0")/.."
 app_dir=$PWD
 objdist=$app_dir/engine/obj-aarch64-apple-darwin/dist
@@ -18,7 +20,7 @@ dmg=$app_dir/dist/Ressac-$version.dmg
 mar=$app_dir/dist/Ressac-$version.mar
 xml=$app_dir/dist/update.xml
 for f in $dmg $mar $xml; do [[ -f $f ]] || fail "$f is missing, run package first"; done
-grep -q "displayVersion=\"$version\"" $xml || fail "dist/update.xml is not for $version, run package again"
+grep -qF "displayVersion=\"$version\"" $xml || fail "dist/update.xml is not for $version, run package again"
 # Entries are newest first: the first version in the file is the top entry.
 notes=$(grep -m1 -oE 'version: "[^"]+"' shared/release-notes.ts || true)
 [[ $notes == "version: \"$version\"" ]] || fail "the top entry of shared/release-notes.ts is not $version"
@@ -28,9 +30,18 @@ if [[ -z ${RESSAC_PUBLISH_SKIP_APPLE:-} ]]; then
 fi
 DYLD_LIBRARY_PATH=$objdist/bin $objdist/bin/signmar -D $app_dir/src/toolkit/mozapps/update/updater/dep1.der -v $mar \
   || fail "the MAR is not signed by our key"
-# A published version is never rewritten. Only a 404 lets us go on; anything else (200, no network) stops.
-code=$(curl -s -o /dev/null -I -w '%{http_code}' $public/releases/$version/Ressac-$version.mar || true)
-[[ $code == 404 ]] || fail "$version may already be published (HTTP $code on $public/releases/$version/Ressac-$version.mar): bump the version"
+# A published version is never rewritten: a 404 goes on, the same MAR already there is a retry after a failed upload
+# (the MAR names the build, so the DMG is not compared), anything else (another MAR, no network) stops.
+remote=$(mktemp)
+trap 'rm -f $remote' EXIT
+url=$public/releases/$version/Ressac-$version.mar
+code=$(curl -s -o $remote -w '%{http_code}' "$url?t=$(date +%s)" || true)
+if [[ $code == 200 ]]; then
+  cmp -s $remote $mar || fail "$version is already published with another MAR ($url): bump the version"
+  print -r -- "$version is already up with this same MAR: resuming the upload"
+elif [[ $code != 404 ]]; then
+  fail "cannot tell whether $version is already published (HTTP $code on $url)"
+fi
 
 put() {
   local key=$1; shift

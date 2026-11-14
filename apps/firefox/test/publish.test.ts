@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import os from "node:os";
@@ -9,11 +9,13 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const { scripts } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { scripts: Record<string, string> };
 
-// Stands in for updates.getressac.app: only the 0.9.9 MAR is "already published".
+// Stands in for updates.getressac.app: 0.9.9 is up with the fixture's MAR, 0.9.8 with another one.
 let host = "";
+const published: Record<string, string> = { "/releases/0.9.9/Ressac-0.9.9.mar": "mar", "/releases/0.9.8/Ressac-0.9.8.mar": "other" };
 const server = createServer((req, res) => {
-  res.statusCode = req.url === "/releases/0.9.9/Ressac-0.9.9.mar" ? 200 : 404;
-  res.end();
+  const body = published[new URL(req.url ?? "/", "http://x").pathname];
+  res.statusCode = body === undefined ? 404 : 200;
+  res.end(body);
 });
 beforeAll(async () => {
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
@@ -41,8 +43,8 @@ function fixture(o: { version?: string; notes?: string; xml?: string; mar?: bool
   return root;
 }
 
-async function publish(root: string) {
-  const env = { ...process.env, RESSAC_PUBLISH_DRY_RUN: "1", RESSAC_PUBLISH_SKIP_APPLE: "1", RESSAC_PUBLISH_HOST: host };
+async function publish(root: string, extra: Record<string, string | undefined> = {}) {
+  const env = { ...process.env, RESSAC_PUBLISH_DRY_RUN: "1", RESSAC_PUBLISH_SKIP_APPLE: "1", RESSAC_PUBLISH_HOST: host, ...extra };
   try {
     const { stdout } = await promisify(execFile)("zsh", [path.join(root, "scripts/publish.sh")], { env });
     return { code: 0, stdout, stderr: "" };
@@ -80,7 +82,7 @@ describe("publish.sh", () => {
     ["update.xml is for another version", { xml: "1.2.2" }, /update\.xml is not for 1\.2\.3/],
     ["the newest release notes are for another version", { notes: "1.2.2" }, /release-notes\.ts is not 1\.2\.3/],
     ["the MAR's signature does not verify", { signmarOk: false }, /not signed by our key/],
-    ["the version is already published", { version: "0.9.9" }, /already be published \(HTTP 200/],
+    ["the version is already published with another MAR", { version: "0.9.8" }, /already published with another MAR/],
   ];
   for (const [why, o, reason] of refusals) {
     it(`refuses when ${why}`, async () => {
@@ -90,4 +92,23 @@ describe("publish.sh", () => {
       expect(stdout).not.toMatch(/^wrangler /m);
     });
   }
+
+  it("resumes a version already up with the same MAR (a retry after a failed upload)", async () => {
+    const { code, stdout } = await publish(fixture({ version: "0.9.9" }));
+    expect(code).toBe(0);
+    expect(stdout.split("\n").filter((l) => l.startsWith("wrangler "))).toHaveLength(4);
+  });
+
+  it("ignores the test variables outside a dry run: the Apple checks still run, nothing is uploaded", async () => {
+    // A fake npx first on PATH: should the script ever get past the checks, it records the call and uploads nothing.
+    const bin = mkdtempSync(path.join(os.tmpdir(), "ressac-npx-"));
+    const record = path.join(bin, "called");
+    writeFileSync(path.join(bin, "npx"), `#!/bin/sh\necho "$@" > ${record}\nexit 1\n`);
+    chmodSync(path.join(bin, "npx"), 0o755);
+    const { code, stderr } = await publish(fixture(), { RESSAC_PUBLISH_DRY_RUN: undefined, PATH: `${bin}:${process.env.PATH}` });
+    expect(code).not.toBe(0);
+    expect(stderr).toMatch(/not notarized/);
+    expect(existsSync(record)).toBe(false);
+    rmSync(bin, { recursive: true, force: true });
+  });
 });
