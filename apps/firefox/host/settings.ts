@@ -9,6 +9,7 @@ import { deleteBackup, exportData, listBackups } from "./data-folder.ts";
 import { OLLAMA_ITSELF, type AgentAccount, type DecisionModel, type LoginResult, type WorkshopOperation, type GrantKind, type GrantRow, type SettingsResult, type PullProgress } from "../shared/settings.ts";
 import type { OllamaRuntime } from "./ollama-runtime.ts";
 import type { DockerRuntime } from "./docker-runtime.ts";
+import { hostSay } from "./locale.ts";
 
 // The settings page's host side: agent accounts, workshop, local AI, durable grants, data backups.
 
@@ -43,7 +44,7 @@ export const AGENT_ACCOUNTS: {
     parse({ stdout, stderr }) {
       const t = stdout + stderr;
       if (t.includes("Logged in using ChatGPT")) return { loggedIn: true, account: "ChatGPT" };
-      if (t.includes("API key configured")) return { loggedIn: true, account: "clé d'API" };
+      if (t.includes("API key configured")) return { loggedIn: true, account: hostSay("host-account-api-key") };
       if (t.includes("Not logged in")) return { loggedIn: false };
       throw new Error(tail(t));
     },
@@ -84,7 +85,7 @@ export const SETTINGS_METHODS = [
 
 const KEY = /^[a-z0-9-]{1,100}$/;
 const tail = (s: string) => s.trim().split("\n").slice(-3).join("\n").slice(-300);
-const PULL_BUSY = "Un téléchargement est déjà en cours";
+const PULL_BUSY = () => hostSay("host-pull-busy");
 const failure = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export interface SettingsOptions {
@@ -126,7 +127,7 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
   let pull: PullProgress | null = null;
   /** One model at a time, from any window; `pull` is set before the first await, so a second caller sees it. */
   const pullOne = async (name: string) => {
-    if (pull) throw new Error(PULL_BUSY);
+    if (pull) throw new Error(PULL_BUSY());
     pull = { name, percent: null, status: "" };
     try {
       if (name === OLLAMA_ITSELF) await o.ollama.install((percent) => (pull = { name, percent, status: "" }));
@@ -164,11 +165,11 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
     for (const [kind, folder] of [["widget", o.widgetsFolder], ["action", o.actionsFolder]] as const) {
       const names = await o.names(kind);
       for (const [key, g] of Object.entries(await readGrants(folder)))
-        rows.push({ kind, key, name: names[key] ?? key, profile: g.profile, detail: `Lit avec votre compte : ${g.domains.join(", ")}` });
+        rows.push({ kind, key, name: names[key] ?? key, profile: g.profile, detail: hostSay("host-grant-reads", { domains: g.domains.join(", ") }) });
     }
     const names = await o.names("siteApp");
     for (const key of Object.keys(await readSiteGrants(o.dataDir)))
-      rows.push({ kind: "siteApp", key, name: names[key] ?? key, profile: null, detail: "Retouches et lecture de l'appli accordées" });
+      rows.push({ kind: "siteApp", key, name: names[key] ?? key, profile: null, detail: hostSay("host-grant-site-app") });
     return rows;
   }
 
@@ -187,9 +188,9 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
     "settings.agents": agents,
     "settings.login": async (p: { id?: unknown }): Promise<LoginResult> => {
       const a = AGENT_ACCOUNTS.find((x) => x.id === p?.id);
-      if (!a) return { kind: "error", error: "Agent inconnu." };
+      if (!a) return { kind: "error", error: hostSay("host-unknown-agent") };
       if (a.login.kind === "panel") return { kind: "panel" };
-      if ((await o.workshop.state()) !== "demarre") return { kind: "error", error: "L'atelier de l'agent n'est pas démarré : voir Conteneur." };
+      if ((await o.workshop.state()) !== "demarre") return { kind: "error", error: hostSay("host-workshop-not-started") };
       stopLogins();
       try {
         signIn = startDeviceLogin(o.deviceCommand(a.login.argv));
@@ -198,11 +199,11 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
       }
       const r = await signIn.result;
       // A workshop built before Codex has no `codex` yet (docker exec: exit 127).
-      if (r.kind === "error" && /executable file not found|command not found|codex: not found/.test(r.error)) return { kind: "error", error: "Codex n'est pas encore installé dans l'atelier : ouvrez la vue agent ou redémarrez l'atelier (section Conteneur)." };
+      if (r.kind === "error" && /executable file not found|command not found|codex: not found/.test(r.error)) return { kind: "error", error: hostSay("host-codex-missing") };
       return r;
     },
     "settings.codexKey": (p: { key?: unknown }) => keyResult("codex", async () => {
-      if (typeof p?.key !== "string") throw new Error(INVALID_KEY);
+      if (typeof p?.key !== "string") throw new Error(INVALID_KEY());
       await o.keychain.write(p.key);
     }),
     "settings.codexKeySaved": () => o.keychain.has(),
@@ -213,7 +214,7 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
     },
     "settings.setAmoAccount": async (p: { issuer?: unknown; secret?: unknown }): Promise<SettingsResult> => {
       try {
-        if (typeof p?.issuer !== "string" || typeof p?.secret !== "string") throw new Error(INVALID_KEY);
+        if (typeof p?.issuer !== "string" || typeof p?.secret !== "string") throw new Error(INVALID_KEY());
         await o.amoKeychain.write(p.issuer, p.secret);
         return { ok: true };
       } catch (e) {
@@ -229,7 +230,7 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
       }
     },
     "settings.claudeKey": (p: { key?: unknown }) => keyResult("claude", async () => {
-      if (typeof p?.key !== "string") throw new Error(INVALID_KEY);
+      if (typeof p?.key !== "string") throw new Error(INVALID_KEY());
       await o.claudeKeychain.write(p.key);
     }),
     "settings.claudeKeySaved": () => o.claudeKeychain.has(),
@@ -251,7 +252,7 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
       }
     },
     "settings.restartWorkshop": async (p: { fresh?: unknown }): Promise<SettingsResult> => {
-      if (operation) return { ok: false, error: "Une opération sur l'atelier est déjà en cours." };
+      if (operation) return { ok: false, error: hostSay("host-workshop-busy") };
       operation = p?.fresh === true ? "rebuild" : "restart";
       try {
         await o.stopApps();
@@ -290,7 +291,7 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
       }
     },
     "settings.pullModel": async (p: { name?: unknown }): Promise<SettingsResult> => {
-      if (pull) return { ok: false, error: PULL_BUSY };
+      if (pull) return { ok: false, error: PULL_BUSY() };
       try {
         await pullOne(String(p?.name));
         return { ok: true };
@@ -300,15 +301,15 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
     },
     // The welcome's download: answers at once, pulls one model after the other, and says the end in a notification.
     "settings.pullInBackground": (p: { names?: unknown }): SettingsResult => {
-      if (pull) return { ok: false, error: PULL_BUSY };
+      if (pull) return { ok: false, error: PULL_BUSY() };
       const names = Array.isArray(p?.names) ? p.names.map(String) : [];
-      if (!names.length || names.some((n) => n !== OLLAMA_ITSELF && !PULLABLE_MODELS.includes(n))) return { ok: false, error: UNSUPPORTED_MODEL };
+      if (!names.length || names.some((n) => n !== OLLAMA_ITSELF && !PULLABLE_MODELS.includes(n))) return { ok: false, error: UNSUPPORTED_MODEL() };
       void (async () => {
         try {
           for (const n of names) await pullOne(n);
-          o.notify({ title: "L'IA locale est prête", text: "Les modèles sont téléchargés : la veille et les décisions tournent sur votre Mac." });
+          o.notify({ title: hostSay("host-ai-ready-title"), text: hostSay("host-ai-ready-text") });
         } catch (e) {
-          o.notify({ title: "Le téléchargement de l'IA locale a échoué", text: `${failure(e)}. Réessayez depuis Réglages › IA locale.` });
+          o.notify({ title: hostSay("host-ai-failed-title"), text: hostSay("host-ai-failed-text", { reason: failure(e) }) });
         }
       })();
       return { ok: true };

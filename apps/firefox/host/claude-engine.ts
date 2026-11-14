@@ -1,5 +1,6 @@
 import { apiUrlProblem, ClaudeEngineSchema, type ClaudeEngine } from "../shared/settings";
 import { href, incomplete, NO_KEY } from "./codex-engine";
+import { hostSay } from "./locale.ts";
 
 // Seen with the real CLI (plan 48 task 2): without the per-tier variables, the tier aliases and subagents ask for Anthropic model ids.
 const MODEL_VARIABLES = ["ANTHROPIC_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "ANTHROPIC_DEFAULT_FABLE_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL"];
@@ -22,16 +23,16 @@ const env = (baseUrl: string, token: string, model: string) => ({
 
 /** The `claude` environment for the chosen engine. The API key never appears here: `api` goes through the relay. */
 export function claudeEngineEnv(e: ClaudeEngine, relay: { url: string; token: string } | null): { args: string[]; env: Record<string, string> } {
-  if (!ClaudeEngineSchema.safeParse(e).success) throw incomplete(e.kind === "api" ? "l'API compatible" : "Ollama");
+  if (!ClaudeEngineSchema.safeParse(e).success) throw incomplete(e.kind === "api" ? "api" : "ollama");
   if (e.kind === "subscription") return { args: [], env: {} };
   if (e.kind === "ollama") {
-    if (!e.ollamaUrl || !e.ollamaModel) throw incomplete("Ollama");
-    return { args: [], env: env(withoutV1(forContainer(href(e.ollamaUrl, "Ollama"))), "ollama", e.ollamaModel) };
+    if (!e.ollamaUrl || !e.ollamaModel) throw incomplete("ollama");
+    return { args: [], env: env(withoutV1(forContainer(href(e.ollamaUrl, "ollama"))), "ollama", e.ollamaModel) };
   }
-  if (!e.apiUrl || !e.apiModel) throw incomplete("l'API compatible");
-  href(e.apiUrl, "l'API compatible");
+  if (!e.apiUrl || !e.apiModel) throw incomplete("api");
+  href(e.apiUrl, "api");
   const bad = apiUrlProblem(e.apiUrl);
-  if (bad) throw new Error(`${bad} (Réglages › Agents)`);
-  if (!relay) throw new Error(NO_KEY);
+  if (bad) throw new Error(hostSay("host-engine-in-settings", { problem: bad }));
+  if (!relay) throw new Error(NO_KEY());
   return { args: [], env: env(new URL(relay.url).href, relay.token, e.apiModel) };
 }

@@ -27,6 +27,7 @@ import {
 } from "../../../packages/kernel/src/index.ts";
 import type { ExtensionResult, ReviewView } from "../shared/api.ts";
 import { RANGE_OUTSIDE_BLOCK } from "../shared/model.ts";
+import { hostSay } from "./locale.ts";
 
 /** Reason shown for a project the review does not know (demo, forgotten external project, vanished folder). */
 export const UNKNOWN_PROJECT = "projet inconnu";
@@ -41,7 +42,7 @@ export const REVIEW_TOKEN = /^[0-9a-f]{40}:[0-9a-f]{40}$/;
 const tokenOf = (c: Comparison) => `${c.reviewedTree}:${c.currentTree}`;
 export { RANGE_OUTSIDE_BLOCK };
 /** "Send" with no unresolved comment. */
-export const NO_COMMENT = "Aucun commentaire à envoyer.";
+export const NO_COMMENT = () => hostSay("host-review-no-comment");
 
 /**
  * A comment's lines, read from the kept diff: those of a single block whose position (new number, that of the next
@@ -238,7 +239,7 @@ export class ReviewService {
     } catch (e) {
       if (e instanceof ReviewError) return { state: "unavailable", name: project.name, reason: e.reason };
       console.error(`[review] comparison of ${p}:`, e);
-      return { state: "unavailable", name: project.name, reason: "la comparaison a échoué" };
+      return { state: "unavailable", name: project.name, reason: hostSay("host-review-failed") };
     }
   }
 
@@ -363,7 +364,7 @@ export class ReviewService {
       }
       const comments = this.commentsOf(p);
       const a = await comments.toSend();
-      if (a.length === 0) return { ok: false, error: NO_COMMENT };
+      if (a.length === 0) return { ok: false, error: NO_COMMENT() };
       const batch = await this.o.remarks.sendReview(
         p,
         a.map((c) => ({ text: c.text, context: { file: c.file, start: c.start, end: c.end, lines: c.lines } })),

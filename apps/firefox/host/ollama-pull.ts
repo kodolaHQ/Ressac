@@ -1,16 +1,17 @@
 import type { PullProgress } from "../shared/settings.ts";
+import { hostSay } from "./locale.ts";
 
 export const PULLABLE_MODELS = ["gemma4:e4b-mlx", "pplx-decider-flash"];
-export const UNSUPPORTED_MODEL = "Modèle non pris en charge";
+export const UNSUPPORTED_MODEL = () => hostSay("host-unsupported-model");
 
 /**
  * Pulls `name` through Ollama's API (`POST /api/pull`, NDJSON), reporting each line. Resolves when the last line is
  * `success`; rejects with Ollama's own message otherwise. No cancel: Ollama keeps the downloaded chunks and resumes later.
  */
 export async function pullOllamaModel(url: string, name: string, onProgress: (p: PullProgress) => void, f: typeof fetch = fetch): Promise<void> {
-  if (!PULLABLE_MODELS.includes(name)) throw new Error(UNSUPPORTED_MODEL);
+  if (!PULLABLE_MODELS.includes(name)) throw new Error(UNSUPPORTED_MODEL());
   const res = await f(`${url.replace(/\/$/, "")}/api/pull`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: name, stream: true }) });
-  if (!res.ok || !res.body) throw new Error((await res.text().catch(() => "")).trim() || `Ollama a répondu ${res.status}`);
+  if (!res.ok || !res.body) throw new Error((await res.text().catch(() => "")).trim() || hostSay("host-ollama-replied", { status: String(res.status) }));
   let done = false;
   const line = (l: string) => {
     if (!l.trim()) return;
@@ -18,7 +19,7 @@ export async function pullOllamaModel(url: string, name: string, onProgress: (p:
     try {
       j = JSON.parse(l);
     } catch {
-      throw new Error(`Réponse inattendue d'Ollama : ${l.slice(0, 120)}`);
+      throw new Error(hostSay("host-ollama-unexpected", { line: l.slice(0, 120) }));
     }
     if (j.error) throw new Error(j.error);
     const status = j.status ?? "";
@@ -33,5 +34,5 @@ export async function pullOllamaModel(url: string, name: string, onProgress: (p:
     lines.forEach(line);
   }
   line(rest);
-  if (!done) throw new Error("Le téléchargement s'est interrompu");
+  if (!done) throw new Error(hostSay("host-download-interrupted"));
 }

@@ -164,3 +164,4 @@ chrome-pill-hide = Masquer
 
 # Mode vim dans les pages.
 chrome-vim-paused = vim en pause · ⇧Échap pour reprendre
+chrome-host-stopped = Le noyau de l'agent s'est arrêté.

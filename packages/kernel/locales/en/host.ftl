@@ -1,0 +1,39 @@
+# Texts the host (the agent's process) shows the user: Settings, cards, notifications.
+
+host-actions-no-kernel = The actions service is not answering (agent stopped?)
+host-widgets-no-kernel = The widgets service is not answering (agent stopped?)
+host-action-launch-failed = The action could not be launched
+host-action-delete-failed = The action could not be deleted
+host-kernel-not-started = the agent's kernel did not start
+host-invalid-params = Invalid parameters
+host-external-starting = The external MCP is starting
+host-no-key = No key saved for the compatible API (Settings › Agents).
+host-engine-incomplete-ollama = Set Ollama's address and model in Settings › Agents.
+host-engine-incomplete-api = Set the compatible API's address and model in Settings › Agents.
+host-engine-in-settings = { $problem } (Settings › Agents)
+host-invalid-key = Invalid key: only letters, digits and . _ ~ + / = : -
+host-unsupported-model = Unsupported model
+host-ollama-replied = Ollama replied { $status }
+host-ollama-unexpected = Unexpected reply from Ollama: { $line }
+host-download-interrupted = The download was interrupted
+host-docker-not-started = Docker did not start
+host-ollama-not-started = Ollama did not start
+host-ollama-bad-archive = The Ollama download is corrupted: try again.
+host-ollama-download-failed = The Ollama download failed ({ $status })
+host-ollama-down = Ollama does not answer at this address.
+host-pull-busy = A download is already in progress
+host-account-api-key = API key
+host-grant-site-app = Touch-ups and reading of the app granted
+host-grant-reads = Reads with your account: { $domains }
+host-unknown-agent = Unknown agent.
+host-workshop-not-started = The agent's workshop is not started: see Container.
+host-codex-missing = Codex is not installed in the workshop yet: open the agent view or restart the workshop (Container section).
+host-workshop-busy = An operation on the workshop is already in progress.
+host-ai-ready-title = Local AI is ready
+host-ai-ready-text = The models are downloaded: monitoring and decisions run on your Mac.
+host-ai-failed-title = The local AI download failed
+host-ai-failed-text = { $reason }. Try again from Settings › Local AI.
+host-site-trash-failed = Folder not moved to the trash: the sign-in and memory are erased, the folder stays.
+host-review-no-comment = No comment to send.
+host-review-failed = the comparison failed
+host-invalid-address = Invalid address

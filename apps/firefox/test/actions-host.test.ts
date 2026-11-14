@@ -177,7 +177,7 @@ describe("preparer", () => {
     const { h } = host();
     expect(await h.prepare("inconnue", null)).toEqual({ ok: false, error: "Action inconnue" });
     expect(await h.prepare("../x", null)).toEqual({ ok: false, error: "Action inconnue" });
-    expect(await host({ noKernel: true }).h.prepare("gitlab", null)).toEqual({ ok: false, error: NO_KERNEL_MESSAGE });
+    expect(await host({ noKernel: true }).h.prepare("gitlab", null)).toEqual({ ok: false, error: NO_KERNEL_MESSAGE() });
   });
 });
 
@@ -190,7 +190,7 @@ describe("lancer, refusals and deletion", () => {
     h.stop("leboncoin");
     expect(launched).toEqual([{ id: "leboncoin", input: "clio" }]);
     expect(stoppedList).toEqual(["leboncoin"]);
-    expect(await create(null).launch("gitlab", null)).toEqual({ status: "invalid", error: NO_KERNEL_MESSAGE });
+    expect(await create(null).launch("gitlab", null)).toEqual({ status: "invalid", error: NO_KERNEL_MESSAGE() });
   });
 
   it("executions and execution read the disk without the kernel and refuse bad ids; page is refused", async () => {
@@ -204,7 +204,7 @@ describe("lancer, refusals and deletion", () => {
     expect(await h.run("../x", ex)).toBeNull();
     expect(await h.direct()).toEqual({ running: [], waiting: [] });
     // The page is the kernel's: refused without it, so the chrome reads it again once the kernel runs.
-    await expect(h.page("gitlab", null)).rejects.toThrow(NO_KERNEL_MESSAGE);
+    await expect(h.page("gitlab", null)).rejects.toThrow(NO_KERNEL_MESSAGE());
   });
 
   // actions.test.ts:462
@@ -289,7 +289,7 @@ describe("lancer, refusals and deletion", () => {
   it("accorder answers the kernel's refusal as an error", async () => {
     const { h, create: create } = host();
     expect(await h.grant({ id: "gitlab", profile: "default", account: ["gitlab.com"], public: [] })).toEqual({ ok: true });
-    expect(await create(null).grant({ id: "gitlab", profile: "default", account: [], public: [] })).toEqual({ ok: false, error: NO_KERNEL_MESSAGE });
+    expect(await create(null).grant({ id: "gitlab", profile: "default", account: [], public: [] })).toEqual({ ok: false, error: NO_KERNEL_MESSAGE() });
   });
 });
 

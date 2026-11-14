@@ -4,6 +4,7 @@ import { createWriteStream, existsSync } from "node:fs";
 import { mkdir, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { OllamaStatus } from "../shared/settings.ts";
+import { hostSay } from "./locale.ts";
 
 /** The Ollama Ressac downloads when the machine has none: the official archive, checked against its published hash. */
 export const OLLAMA_VERSION = "0.40.13";
@@ -15,8 +16,8 @@ export const OLLAMA_LOCAL_URL = "http://127.0.0.1:11434";
 const APP = "/Applications/Ollama.app";
 const CLIS = ["/opt/homebrew/bin/ollama", "/usr/local/bin/ollama"];
 
-export const NOT_STARTED = "Ollama n'a pas démarré";
-export const BAD_ARCHIVE = "Le téléchargement d'Ollama est corrompu : réessayez.";
+export const NOT_STARTED = () => hostSay("host-ollama-not-started");
+export const BAD_ARCHIVE = () => hostSay("host-ollama-bad-archive");
 
 /** True when version `a` is older than `b` (numeric parts; a missing or odd part counts as 0). */
 export function olderThan(a: string, b: string): boolean {
@@ -89,28 +90,28 @@ export function createOllamaRuntime(o: OllamaRuntimeOptions) {
       if (exists(APP)) await run("open", ["-ga", APP]);
       else {
         const binary = [...CLIS, own].find(exists);
-        if (!binary) throw new Error(NOT_STARTED);
+        if (!binary) throw new Error(NOT_STARTED());
         child = launch(binary, ["serve"]);
       }
       for (const end = Date.now() + (o.startDelayMs ?? 30_000); Date.now() < end; ) {
         if ((await version()) !== undefined) return;
         await new Promise((r) => setTimeout(r, o.pollMs ?? 500));
       }
-      throw new Error(NOT_STARTED);
+      throw new Error(NOT_STARTED());
     })().finally(() => (starting = undefined));
     return starting;
   }
 
   /** Downloads Ressac's own Ollama (skipped when it is already there), then starts it. `progress`: 0-100, null without a total. */
   async function install(progress: (percent: number | null) => void): Promise<void> {
-    if (!o.managed) throw new Error(NOT_STARTED);
+    if (!o.managed) throw new Error(NOT_STARTED());
     if (!exists(own)) {
       const part = `${folder}.part`;
       await rm(part, { recursive: true, force: true });
       await mkdir(part, { recursive: true });
       try {
         const r = await f(archive.url);
-        if (!r.ok || !r.body) throw new Error(`Le téléchargement d'Ollama a échoué (${r.status})`);
+        if (!r.ok || !r.body) throw new Error(hostSay("host-ollama-download-failed", { status: String(r.status) }));
         const total = Number(r.headers.get("content-length")) || 0;
         const tgz = join(part, "ollama.tgz");
         const file = createWriteStream(tgz);
@@ -123,8 +124,8 @@ export function createOllamaRuntime(o: OllamaRuntimeOptions) {
           progress(total ? Math.min(100, Math.round((got / total) * 100)) : null);
         }
         await new Promise<void>((ok, ko) => file.end((e?: Error | null) => (e ? ko(e) : ok())));
-        if (hash.digest("hex") !== archive.sha256) throw new Error(BAD_ARCHIVE);
-        if ((await run("tar", ["-xzf", tgz, "-C", part])) !== 0) throw new Error(BAD_ARCHIVE);
+        if (hash.digest("hex") !== archive.sha256) throw new Error(BAD_ARCHIVE());
+        if ((await run("tar", ["-xzf", tgz, "-C", part])) !== 0) throw new Error(BAD_ARCHIVE());
         await rm(tgz, { force: true });
         await rm(folder, { recursive: true, force: true });
         await rename(part, folder);

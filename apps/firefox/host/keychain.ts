@@ -2,6 +2,7 @@ import { execFile, spawn } from "node:child_process";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { KEYCHAIN_DELAY_MS, readAmoKey } from "./extensions/amo";
+import { hostSay } from "./locale.ts";
 
 const run = promisify(execFile);
 
@@ -13,7 +14,7 @@ export const LEGACY_SERVICE_PREFIX = "webaios-";
 const ABSENT = 44;
 export const legacyService = (service: string) => (service.startsWith("ressac-") ? LEGACY_SERVICE_PREFIX + service.slice("ressac-".length) : null);
 export const KEY_PATTERN = /^[A-Za-z0-9._~+/=:-]{1,512}$/;
-export const INVALID_KEY = "Clé invalide : lettres, chiffres et . _ ~ + / = : - seulement";
+export const INVALID_KEY = () => hostSay("host-invalid-key");
 
 export interface Keychain {
   read(): Promise<string | null>;
@@ -66,7 +67,7 @@ export function keychain(o: { service?: string; account?: string; command?: stri
       return found === "absent" ? (await legacy()) !== null : found !== null;
     },
     async write(key) {
-      if (!KEY_PATTERN.test(key)) throw new Error(INVALID_KEY);
+      if (!KEY_PATTERN.test(key)) throw new Error(INVALID_KEY());
       if (file) return writeFile(file, key, { mode: 0o600 }).then(() => undefined);
       await new Promise<void>((resolve, reject) => {
         const p = spawn(command, ["-i"], { stdio: ["pipe", "ignore", "ignore"], timeout });
@@ -117,7 +118,7 @@ export function amoKeychain(o: { command?: string; delayMs?: number; env?: NodeJ
     /** The saved issuer (the secret never leaves the keychain), or null. */
     issuer: async () => (await readAmoKey(env, { command, delay: o.delayMs }))?.emitter ?? null,
     async write(issuer: string, secret: string) {
-      if (!ISSUER_PATTERN.test(issuer) || !KEY_PATTERN.test(secret)) throw new Error(INVALID_KEY);
+      if (!ISSUER_PATTERN.test(issuer) || !KEY_PATTERN.test(secret)) throw new Error(INVALID_KEY());
       if (file) return writeFile(file, `${issuer}:${secret}`, { mode: 0o600 });
       await remove();
       await keychain({ service: AMO_SERVICE, account: issuer, command, delayMs: o.delayMs, env: {} }).write(secret);

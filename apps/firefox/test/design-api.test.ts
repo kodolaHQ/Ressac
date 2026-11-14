@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Action } from "../shared/api";
-import { HOST_EXITED, HOST_STOPPED, type AgentHost } from "../chrome/agent/host";
+import { HOST_EXITED, hostStopped, type AgentHost } from "../chrome/agent/host";
 import { failureReason } from "../shared/design-guards";
 import { createExternalApi, createReviewApi } from "../ui/design-api";
 
@@ -12,7 +12,7 @@ function setup(answers: Record<string, (p: any) => unknown> = {}) {
     request: async (method: string, params?: unknown) => {
       calls.push({ method, params });
       const a = answers[method];
-      if (!a) throw new Error(HOST_STOPPED);
+      if (!a) throw new Error(hostStopped("fr"));
       return a(params);
     },
     on(method: string, cb: (p: unknown) => void) {
@@ -48,13 +48,13 @@ describe("createExternalApi", () => {
 
   it("a host that rejects gives the off shape with failureReason", async () => {
     const { api } = setup();
-    expect(await api.list()).toEqual({ server: { state: "off", reason: failureReason(new Error(HOST_STOPPED)) }, projects: [], clients: [] });
-    expect(failureReason(new Error(HOST_STOPPED))).toBe(`Le MCP externe n'a pas pu démarrer : ${HOST_STOPPED}`);
+    expect(await api.list()).toEqual({ server: { state: "off", reason: failureReason(new Error(hostStopped("fr"))) }, projects: [], clients: [] });
+    expect(failureReason(new Error(hostStopped("fr")))).toBe(`Le MCP externe n'a pas pu démarrer : ${hostStopped("fr")}`);
   });
 
   it("a rejected brancher rejects with the host's message", async () => {
     const { api } = setup();
-    await expect(api.connect("Claude Code")).rejects.toThrow(HOST_STOPPED);
+    await expect(api.connect("Claude Code")).rejects.toThrow(hostStopped("fr"));
   });
 
   it("onChange calls back on externes.change, a host exit and the chrome's accueil.change", () => {
@@ -62,7 +62,7 @@ describe("createExternalApi", () => {
     const cb = vi.fn();
     const off = api.onChange(cb);
     emit("external.change");
-    emit(HOST_EXITED, { message: HOST_STOPPED });
+    emit(HOST_EXITED, { message: hostStopped("fr") });
     emit("home.change");
     expect(cb).toHaveBeenCalledTimes(3);
     off();

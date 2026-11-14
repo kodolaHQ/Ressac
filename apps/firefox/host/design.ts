@@ -16,6 +16,7 @@ import {
   checkCapture, checkClientName, checkComment, checkDesignContext, checkLines, checkPath, checkProject, checkResolved, checkText, checkToken, CLIENT_ID,
   DESIGN_ID_MAX, EXTERNAL_ID, ID_PROJECT, INVALID_REQUEST, REMARK_TEXT_MAX, URL_MAX,
 } from "../shared/design-guards.ts";
+import { hostSay } from "./locale.ts";
 
 /** The external MCP port: the asked one, else 5279; a bad value gives NaN, which the server refuses. */
 export const externalMcpPort = (v: string | undefined): number => Number(v ?? EXTERNAL_MCP_PORT);
@@ -228,10 +229,10 @@ export function createDesignHost(o: {
 
   const handlers: Record<(typeof DESIGN_METHODS)[number], (p: Params) => unknown> = {
     "external.list": (): ExternalsState =>
-      externals?.state() ?? { server: { state: "off", reason: failure ?? "Le MCP externe démarre" }, projects: [], clients: [] },
+      externals?.state() ?? { server: { state: "off", reason: failure ?? hostSay("host-external-starting") }, projects: [], clients: [] },
     "external.connect": (p) => {
       const name = checkClientName(p?.name);
-      if (!externals) throw new Error(failure ?? "Le MCP externe démarre");
+      if (!externals) throw new Error(failure ?? hostSay("host-external-starting"));
       return externals.connect(name);
     },
     // A bad id does nothing.
