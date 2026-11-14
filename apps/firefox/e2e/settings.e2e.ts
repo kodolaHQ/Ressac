@@ -228,6 +228,30 @@ describe("Settings page", () => {
     await waitFor(m, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).state.settings.startOnHome)();`, (v) => v === true);
   });
 
+  it("search engine: a known one at once; « Autre… » takes an https address with %s, refused otherwise", async () => {
+    await launch();
+    await openPage();
+    await go("privacy");
+    const engine = () => waitFor(m, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).state.settings)();`, () => true) as Promise<BrowserState["settings"]>;
+    const pick = (value: string) => inUi(m, `const s = doc.querySelector('[data-testid="settings-engine"]'); s.value = arguments[0]; s.dispatchEvent(new Event("change", { bubbles: true }));`, [value]);
+    await pick("duckduckgo");
+    await waitFor(m, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).state.settings.engine)();`, (v) => v === "duckduckgo");
+    await pick("custom");
+    await waitUi(m, `return doc.activeElement?.dataset.testid === "settings-engine-custom"`);
+    expect((await engine()).engine).toBe("duckduckgo");
+    // Some address characters have no key for the test keyboard: the value is set, Enter is a real key.
+    const fill = (url: string) => inUi(m, `doc.querySelector('[data-testid="settings-engine-custom"]').value = arguments[0]`, [url]);
+    await fill("http://x.com/?q=%s");
+    await pressKeys(m, "Enter");
+    await shows("settings-engine-error", "L'adresse doit commencer par https://");
+    expect((await engine()).engine).toBe("duckduckgo");
+    await fill("https://kagi.com/search?q=%s");
+    await pressKeys(m, "Enter");
+    await waitFor(m, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).state.settings.engine)();`, (v) => v === "custom");
+    expect(await engine()).toMatchObject({ engine: "custom", customEngine: "https://kagi.com/search?q=%s" });
+    expect(await inUi(m, `return !doc.querySelector('[data-testid="settings-engine-error"]')`)).toBe(true);
+  });
+
   it("default browser: the button asks, then the row says it is the default", async () => {
     await launch();
     await openPage();
