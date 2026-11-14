@@ -4,6 +4,7 @@
   import type { AgentViewState } from "../shared/api";
   import { recapOfUrl, type BrowserState } from "../shared/model";
   import { activeSpacePrivate } from "./actions-api";
+  import { format } from "../shared/i18n";
   import Icon from "./components/Icon.svelte";
   import SiteIcon from "./components/SiteIcon.svelte";
 
@@ -17,6 +18,7 @@
   let reduced = $state(false);
   const grown = $derived(!reduced);
   let thumbnail = $state<string | null>(null);
+  const say = (id: string) => format(appState?.locale ?? "fr", id);
   let root = $state<HTMLElement>();
   $effect(() =>
     api.agentView.onState((s) => {
@@ -67,7 +69,7 @@
       out:fade={{ duration: 150 }}
       onoutroend={() => setTimeout(measure)}
     >
-      <button class="open" data-testid="agent-pill" aria-label="Voir l'onglet de l'agent" title={view.title} onclick={() => api.agentView.open()}>
+      <button class="open" data-testid="agent-pill" aria-label={say("chrome-pill-open")} title={view.title} onclick={() => api.agentView.open()}>
         {#if grown}
           <span class="frame" data-testid="agent-pill-frame">
             {#if thumbnail}<img src={thumbnail} alt="" />{:else}<span class="site"><SiteIcon favicon={view.icon ?? null} title={view.site} size={24} />{view.site}</span>{/if}
@@ -78,8 +80,8 @@
           <span class="label" class:running={view.running}>{view.label}</span>
         </span>
       </button>
-      <button class="toggle" data-testid="agent-pill-toggle" aria-label={reduced ? "Agrandir" : "Réduire"} title={reduced ? "Agrandir" : "Réduire"} onclick={() => (reduced = !reduced)}><Icon name="chevron" size={12} /></button>
-      <button class="close" data-testid="agent-pill-close" aria-label="Masquer" title="Masquer" onclick={() => (dismissed = true)}><Icon name="close" size={12} /></button>
+      <button class="toggle" data-testid="agent-pill-toggle" aria-label={reduced ? say("chrome-pill-grow") : say("chrome-pill-reduce")} title={reduced ? say("chrome-pill-grow") : say("chrome-pill-reduce")} onclick={() => (reduced = !reduced)}><Icon name="chevron" size={12} /></button>
+      <button class="close" data-testid="agent-pill-close" aria-label={say("chrome-pill-hide")} title={say("chrome-pill-hide")} onclick={() => (dismissed = true)}><Icon name="close" size={12} /></button>
     </div>
   {/if}
 </div>

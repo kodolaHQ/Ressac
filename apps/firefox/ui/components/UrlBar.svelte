@@ -6,6 +6,7 @@
   import type { WindowState, Visit } from "../../shared/model";
   import { shortcutLabel } from "../../shared/shortcuts";
   import { accessOf, api, appState } from "../state.svelte";
+  import { t } from "../i18n.svelte";
 
   let { window: win }: { window: WindowState } = $props();
   const tab = $derived.by(() => {
@@ -71,17 +72,17 @@
 </script>
 
 <div class="navigation">
-  <button aria-label="Reculer" disabled={!tab?.canGoBack} onclick={() => tab && api.command(tab.id, "back")}><Icon name="back" /></button>
-  <button aria-label="Avancer" disabled={!tab?.canGoForward} onclick={() => tab && api.command(tab.id, "forward")}><Icon name="forward" /></button>
+  <button aria-label={t("chrome-ui-back")} disabled={!tab?.canGoBack} onclick={() => tab && api.command(tab.id, "back")}><Icon name="back" /></button>
+  <button aria-label={t("chrome-ui-forward")} disabled={!tab?.canGoForward} onclick={() => tab && api.command(tab.id, "forward")}><Icon name="forward" /></button>
   {#if tab?.loading}
-    <button aria-label="Arrêter" onclick={() => api.command(tab.id, "stop")}><Icon name="close" /></button>
+    <button aria-label={t("chrome-ui-stop")} onclick={() => api.command(tab.id, "stop")}><Icon name="close" /></button>
   {:else}
-    <button aria-label="Recharger" disabled={!tab} onclick={() => tab && api.command(tab.id, "reload")}><Icon name="reload" /></button>
+    <button aria-label={t("chrome-ui-reload")} disabled={!tab} onclick={() => tab && api.command(tab.id, "reload")}><Icon name="reload" /></button>
   {/if}
   <button
     class="compact"
-    aria-label={win.compact ? "Quitter le mode compact" : "Mode compact"}
-    title="{win.compact ? "Quitter le mode compact" : "Mode compact"} ({shortcutLabel("compact", appState.value?.settings)})"
+    aria-label={win.compact ? t("chrome-ui-compact-leave") : t("chrome-ui-compact")}
+    title="{win.compact ? t("chrome-ui-compact-leave") : t("chrome-ui-compact")} ({shortcutLabel("compact", appState.value?.settings)})"
     aria-pressed={win.compact}
     onclick={() => api.dispatch({ type: "toggleCompact", windowId: win.id })}><Icon name="bar" /></button>
   <DesignButton />
@@ -93,7 +94,7 @@
     data-testid="address-bar"
     class:with-access={agentRights}
     value={input ?? (tab ? hostName(tab.url) : "")}
-    placeholder="Rechercher ou saisir une adresse"
+    placeholder={t("chrome-ui-address")}
     spellcheck="false"
     oninput={(e) => {
       input = e.currentTarget.value;

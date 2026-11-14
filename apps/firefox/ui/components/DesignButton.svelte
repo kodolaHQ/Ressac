@@ -1,6 +1,7 @@
 <script lang="ts">
   import { shortcutLabel } from "../../shared/shortcuts";
   import { api, appState } from "../state.svelte";
+  import { t } from "../i18n.svelte";
   import { design } from "./design.svelte";
   import { openMenu, type MenuEntry } from "./menu.svelte";
 
@@ -8,9 +9,9 @@
   const unavailable = $derived(!e || e.unavailable !== null);
 
   function menu(ev: MouseEvent) {
-    const entries: MenuEntry[] = [{ label: "Panier", dispatch: () => (design.basketRequested = true) }];
+    const entries: MenuEntry[] = [{ label: t("chrome-site-basket"), dispatch: () => (design.basketRequested = true) }];
     // Task 11: the review of the agent's apps and external projects.
-    if (e?.project && e.project.type !== "demo") entries.push({ label: "Voir les modifications de l'agent", dispatch: () => api.design.review() });
+    if (e?.project && e.project.type !== "demo") entries.push({ label: t("chrome-site-review"), dispatch: () => api.design.review() });
     openMenu(ev, entries);
   }
 </script>
@@ -19,14 +20,14 @@
   <button
     class="button"
     data-testid="design-button"
-    aria-label="Mode design"
+    aria-label={t("chrome-site-design")}
     aria-pressed={e?.active ?? false}
     disabled={unavailable}
-    title={unavailable ? (e?.unavailable ?? "") : `Mode design (${shortcutLabel("design", appState.value?.settings)})`}
+    title={unavailable ? (e?.unavailable ?? "") : t("chrome-site-design-title", { shortcut: shortcutLabel("design", appState.value?.settings) })}
     onclick={() => api.design.toggle()}
     >✎{#if e && e.basket > 0}<span class="counter" data-testid="basket-counter">{e.basket}</span>{/if}</button
   >
-  <button class="chevron" aria-label="Menu du mode design" disabled={unavailable} onclick={menu}>▾</button>
+  <button class="chevron" aria-label={t("chrome-site-design-menu")} disabled={unavailable} onclick={menu}>▾</button>
 </span>
 
 <style>

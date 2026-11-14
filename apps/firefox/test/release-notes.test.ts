@@ -25,7 +25,7 @@ describe("release notes at startup", () => {
     for (const before of [null, "0.0.1"]) {
       const s = note(onboarded(before), latest);
       const w = s.windows[0]!;
-      expect(pages(s).map((t) => t.title)).toEqual(["Nouveautés"]);
+      expect(pages(s).map((t) => t.title)).toEqual(["What's new"]);
       expect(w.active[w.activeSpace]).toBe(pages(s)[0]!.id);
       expect(note(s, latest)).toBe(s);
     }

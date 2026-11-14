@@ -707,7 +707,7 @@ test("openSettings opens or activates the Réglages page, once for the window", 
   const pages = () => Object.values(e.tabs).filter((o) => o.url === URL_SETTINGS);
   expect(pages()).toHaveLength(1);
   const page = pages()[0]!;
-  expect(page).toMatchObject({ title: "Réglages", spaceId: P });
+  expect(page).toMatchObject({ title: "Settings", spaceId: P });
   expect(active()).toBe(page.id);
   ag({ type: "createSpace", name: "Boulot", icon: "💼", private: false, profile: "default", windowId: F });
   ag({ type: "openSettings", windowId: F });
@@ -905,7 +905,7 @@ test("openReview opens ressac://review/app-essai titled « Relecture — Essai �
   ag({ type: "openReview", windowId: F, project: "app-essai", name: "Essai" });
   const pages = () => Object.values(e.tabs).filter((o) => o.url === "ressac://review/app-essai");
   expect(pages()).toHaveLength(1);
-  expect(pages()[0]).toMatchObject({ title: "Relecture — Essai" });
+  expect(pages()[0]).toMatchObject({ title: "Review — Essai" });
   expect(reviewUrl("app-essai")).toBe("ressac://review/app-essai");
   open("https://b.test/");
   ag({ type: "openReview", windowId: F, project: "app-essai", name: "Essai" });

@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { TabsPanel } from "../../shared/api";
   import { api, appState } from "../state.svelte";
+  import { t } from "../i18n.svelte";
   import AuraEmoji from "./AuraEmoji.svelte";
   import SiteIcon from "./SiteIcon.svelte";
 
@@ -47,7 +48,7 @@
   }}
 />
 
-<div class="panel" data-testid="tabs-panel" role="listbox" aria-label="Onglets récents">
+<div class="panel" data-testid="tabs-panel" role="listbox" aria-label={t("chrome-ui-recent-tabs")}>
   {#each panel.cards as card, i (card.id)}
     {@const space = spaceOf(card.id)}
     <div

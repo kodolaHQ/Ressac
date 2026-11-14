@@ -10,7 +10,7 @@ import { cutFrameNetwork } from "./frame-network";
 import { setupPopup } from "./popup";
 import { mountSiteMenu } from "./site-menu";
 import { refuseSiteTabs, setupSiteSmallWindow, setupSiteWindow, siteIdOf, siteOfContainer } from "./site-window";
-import { TELEMETRY_NOTICE } from "../../shared/settings";
+import { format } from "../../shared/i18n";
 
 const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const { PrivateBrowsingUtils } = ChromeUtils.importESModule("resource://gre/modules/PrivateBrowsingUtils.sys.mjs");
@@ -102,7 +102,7 @@ window.addEventListener(
         void window.gNotificationBox.appendNotification(
           "ressac-session-set-aside",
           {
-            label: `Ressac repart avec une session neuve. L'ancienne est gardée dans ${store.setAside}`,
+            label: format(store.state.locale, "chrome-session-set-aside", { path: store.setAside }),
             priority: window.gNotificationBox.PRIORITY_WARNING_HIGH,
           },
           [],
@@ -113,10 +113,7 @@ window.addEventListener(
         void window.gNotificationBox.appendNotification(
           "ressac-data-set-aside",
           {
-            label:
-              reason === "reset"
-                ? `Ressac repart à neuf. Ses anciennes données sont gardées dans ${backup} (Réglages › Données). Vos projets n'ont pas bougé.`
-                : `Ressac ne reconnaît pas le format de ses données : il repart à neuf et les garde dans ${backup}. Vos projets n'ont pas bougé.`,
+            label: format(store.state.locale, reason === "reset" ? "chrome-data-reset" : "chrome-data-unknown-format", { backup }),
             priority: reason === "reset" ? window.gNotificationBox.PRIORITY_INFO_HIGH : window.gNotificationBox.PRIORITY_WARNING_HIGH,
           },
           [],
@@ -128,12 +125,12 @@ window.addEventListener(
         void window.gNotificationBox.appendNotification(
           "ressac-telemetry",
           {
-            label: TELEMETRY_NOTICE,
+            label: format(store.state.locale, "agent-telemetry-notice"),
             priority: window.gNotificationBox.PRIORITY_INFO_HIGH,
           },
           [
-            { label: "Couper l'envoi", callback: () => Services.prefs.setBoolPref("ressac.telemetry.enabled", false) },
-            { label: "D'accord", callback: () => {} },
+            { label: format(store.state.locale, "chrome-telemetry-stop"), callback: () => Services.prefs.setBoolPref("ressac.telemetry.enabled", false) },
+            { label: format(store.state.locale, "chrome-telemetry-ok"), callback: () => {} },
           ],
         );
       }

@@ -10,7 +10,6 @@ import { validFolder } from "../chrome/store/app-folder";
 import type { WindowController } from "../chrome/window/controller";
 import { forgetWidget, prepareWidget } from "../chrome/window/widget-frame";
 import { readableProfiles, profilesForGrant, openableUrl } from "./home-profiles";
-import { ACTIONS_IN_PRIVATE_SPACE } from "../shared/actions";
 import { createActionsApi, createRecapsApi, activeSpacePrivate, type ActionsFirefox, type RecapsFirefox } from "./actions-api";
 import { createSettingsApi } from "./settings-api";
 import { createDesignApi, createExternalApi, createReviewApi } from "./design-api";
@@ -351,17 +350,17 @@ export function createApi(win: WindowController): ApiFirefox {
       read: async (target) => (privateAction(target) ? null : ask("workflow.read", { target: target }, null).then((r) => (privateAction(target) ? null : r))),
       save: async (target, draft) =>
         privateAction(target)
-          ? { ok: false, error: ACTIONS_IN_PRIVATE_SPACE, warnings: [] }
+          ? { ok: false, error: say("action-private"), warnings: [] }
           : ask("workflow.save", { target: target, draft: draft }, { ok: false, error: agentStopped(), warnings: [] }),
       readCode: async (target, name) =>
         privateAction(target)
-          ? { error: ACTIONS_IN_PRIVATE_SPACE }
-          : ask("workflow.readCode", { target: target, name: name }, { error: agentStopped() }).then((r) => (privateAction(target) ? { error: ACTIONS_IN_PRIVATE_SPACE } : r)),
+          ? { error: say("action-private") }
+          : ask("workflow.readCode", { target: target, name: name }, { error: agentStopped() }).then((r) => (privateAction(target) ? { error: say("action-private") } : r)),
       saveCode: async (target, name, text) =>
-        privateAction(target) ? { ok: false, error: ACTIONS_IN_PRIVATE_SPACE } : ask("workflow.saveCode", { target: target, name: name, text: text }, { ok: false, error: agentStopped() }),
+        privateAction(target) ? { ok: false, error: say("action-private") } : ask("workflow.saveCode", { target: target, name: name, text: text }, { ok: false, error: agentStopped() }),
       replay: async (target, run, block) =>
-        privateAction(target) ? { ok: false, error: ACTIONS_IN_PRIVATE_SPACE } : ask("workflow.replay", { target: target, run: run, block: block }, { ok: false, error: agentStopped() }),
-      run: async (target, input) => (privateAction(target) ? { error: ACTIONS_IN_PRIVATE_SPACE } : ask("workflow.run", { target: target, input: input ?? null }, {})),
+        privateAction(target) ? { ok: false, error: say("action-private") } : ask("workflow.replay", { target: target, run: run, block: block }, { ok: false, error: agentStopped() }),
+      run: async (target, input) => (privateAction(target) ? { error: say("action-private") } : ask("workflow.run", { target: target, input: input ?? null }, {})),
       selection(target, block) {
         // The host keeps it in memory only: resent on `access`, which a host sends once its kernel has started (and on policy
         // changes, harmless: the same selection again).

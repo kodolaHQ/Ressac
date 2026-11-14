@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { WindowState, Favorite } from "../../shared/model";
   import { api, appState } from "../state.svelte";
+  import { t } from "../i18n.svelte";
   import SiteIcon from "./SiteIcon.svelte";
   import { openMenu } from "./menu.svelte";
 
@@ -26,7 +27,7 @@
   class="essentials"
   data-testid="essentials"
   role="group"
-  aria-label="Essentiels"
+  aria-label={t("chrome-ui-essentials")}
   ondragover={(e) => e.dataTransfer?.types.includes("application/x-ressac-onglet") && e.preventDefault()}
   ondrop={(e) => {
     // An essential dropped back in its own grid (between two cells) stays one.
@@ -66,8 +67,8 @@
       onkeydown={(e) => (e.key === "Enter" || e.key === " ") && open(favorite)}
       oncontextmenu={(e) =>
         openMenu(e, [
-          ...(tabOf(favorite) && !tabOf(favorite)?.unloaded ? [{ label: "Décharger", dispatch: () => api.dispatch({ type: "unloadEssential", windowId: win.id, favoriteId: favorite.id }) }] : []),
-          { label: "Retirer", dispatch: () => api.dispatch({ type: "removeEssential", favoriteId: favorite.id }) },
+          ...(tabOf(favorite) && !tabOf(favorite)?.unloaded ? [{ label: t("chrome-ui-unload"), dispatch: () => api.dispatch({ type: "unloadEssential", windowId: win.id, favoriteId: favorite.id }) }] : []),
+          { label: t("chrome-ui-remove"), dispatch: () => api.dispatch({ type: "removeEssential", favoriteId: favorite.id }) },
         ])}
     >
       <SiteIcon favicon={tabOf(favorite)?.favicon ?? favorite.favicon} title={favorite.title} size={18} />

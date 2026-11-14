@@ -349,7 +349,7 @@ export interface ApiRessac {
   };
   /**
    * The actions (`~/Ressac/actions`) and their pages. Refused when the window's active space is private
-   * (`ACTIONS_IN_PRIVATE_SPACE`, or nothing: `[]`, `null`).
+   * (`action-private`, or nothing: `[]`, `null`).
    */
   actions: {
     list(): Promise<ActionShown[]>;
@@ -737,6 +737,8 @@ export interface LocalAiStateShown {
 export type BadgeApi = Pick<ApiRessac, "access" | "onAccess"> & {
   /** Asks the main process to enlarge (bubble open) or shrink the badge's view. */
   badgeSize(opened: boolean): void;
+  /** The language shown (the badge frame has no browser state). */
+  locale(): string;
   /** The design mode of the app window; « Panier » opens it in the window's overlay. */
   design: { state(): Promise<DesignState>; toggle(): void; basket(): void; review(): void };
 };

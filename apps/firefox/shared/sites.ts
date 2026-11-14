@@ -15,21 +15,10 @@ export const TRACKING_INTERVAL_MS = 60_000;
 /** Maximum size of the icon declared by a site app. */
 export const ICON_MAX = 256 * 1024;
 
-export const ENTER_THE_SITE = "Entrer dans le site";
-export const blockedLink = (domain: string) => `Lien vers ${domain} bloqué`;
-export const OPEN_IN_A_TAB = "Ouvrir dans un onglet";
-export const SEARCH_URL = "Chercher la nouvelle adresse";
 /** `hote` : celui de `suiviAdresse.page`. */
 export const urlNotFound = (host: string) => `Adresse introuvable sur ${host}`;
 export const urlChanged = (name: string, domain: string) => `${name} a changé d'adresse : ${domain}. Il faudra peut-être te reconnecter.`;
 export const urlUnchanged = (name: string) => `${name} ne répond pas, et sa page de référence donne toujours la même adresse`;
-export const tweaksGrantTitle = (name: string) => `Autoriser les retouches de « ${name} » ?`;
-export const ALLOW = "Autoriser";
-export const NO_TWEAKS = "Ouvrir sans retouches";
-export const FORGET_MEMORY = "Oublier ce que l'appli a retenu";
-export const confirmForget = (name: string) => `Oublier tout ce que « ${name} » a retenu (séries, positions des vidéos) ?`;
-export const confirmSiteDeletion = (name: string) =>
-  `Supprimer « ${name} » ? Sa connexion et sa mémoire sont effacées, son dossier va à la corbeille.`;
 export const editWithAgent = (id: string) => `Appli de site ~/Ressac/sites/${id}/ : `;
 
 export type BarNotice =
@@ -68,6 +57,8 @@ export type SiteWindowState = {
   search: boolean;
   notice: BarNotice | null;
   grant: SiteGrantRequest | null;
+  /** The language shown (the window has no browser state to read it from). */
+  locale: string;
 };
 
 /** Maximum length of an address requested by the home (open, image). */

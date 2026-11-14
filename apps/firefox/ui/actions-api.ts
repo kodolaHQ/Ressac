@@ -1,4 +1,3 @@
-import { ACTIONS_IN_PRIVATE_SPACE } from "../shared/actions";
 import type { Action, ApiRessac } from "../shared/api";
 import type { BrowserState, WindowId } from "../shared/model";
 import { HOST_EXITED, type AgentHost } from "../chrome/agent/host";
@@ -91,8 +90,6 @@ export function createRecapsApi(o: WindowApiOptions): RecapsFirefox {
   };
 }
 
-// Shown when the actions service has no kernel (same texts as host/actions.ts).
-const NO_KERNEL_MESSAGE = "Le service des actions ne répond pas (agent arrêté ?)";
 const NO_ACTION = () => ({ running: [], waiting: [] });
 
 export function createActionsApi(o: WindowApiOptions): ActionsFirefox {
@@ -102,7 +99,9 @@ export function createActionsApi(o: WindowApiOptions): ActionsFirefox {
     const s = o.state();
     return !s || activeSpacePrivate(s, win);
   };
-  const denial = { ok: false as const, error: ACTIONS_IN_PRIVATE_SPACE };
+  const say = (id: string) => format(o.state()?.locale ?? "fr", id);
+  const noKernel = () => say("chrome-actions-no-kernel");
+  const privateDenial = () => ({ ok: false as const, error: say("action-private") });
   /** The host stopped or did not answer a request: the next `access` reads again (afterRestart). */
   let hostDown = false;
   /** The `access` handled so far: a refusal answered before one of them but handled after it still reads again. */
@@ -172,17 +171,17 @@ export function createActionsApi(o: WindowApiOptions): ActionsFirefox {
     },
     // Read without launching, check private again, open the page, then launch: in two host calls.
     async open(id, input) {
-      if (isPrivate()) return denial;
+      if (isPrivate()) return privateDenial();
       const p = await ask<{ ok: true; name: string; launch: boolean } | { ok: false; error: string } | null>("actions.prepare", { id, input: input }, () => null);
-      if (isPrivate()) return denial;
-      if (!p) return { ok: false, error: NO_KERNEL_MESSAGE };
+      if (isPrivate()) return privateDenial();
+      if (!p) return { ok: false, error: noKernel() };
       if (!p.ok) return p;
       o.dispatch({ type: "openAction", windowId: win, id, name: p.name });
       // A host that dies meanwhile: the next `access` reads the page again, as after a rejected `ask`.
       if (p.launch) host.request("actions.launch", { id, input: input }).catch((e) => ((hostDown = true), console.error(`[ressac] action ${id} :`, e)));
       return { ok: true };
     },
-    launch: (id, input) => ask("actions.launch", { id, input: input }, () => ({ status: "invalid" as const, error: isPrivate() ? ACTIONS_IN_PRIVATE_SPACE : NO_KERNEL_MESSAGE })),
+    launch: (id, input) => ask("actions.launch", { id, input: input }, () => ({ status: "invalid" as const, error: isPrivate() ? say("action-private") : noKernel() })),
     stop(id) {
       if (!isPrivate()) host.notify("actions.stop", { id });
     },
@@ -203,15 +202,15 @@ export function createActionsApi(o: WindowApiOptions): ActionsFirefox {
       return !s || isPrivate() ? [] : profilesForGrant(s, win, (id, args) => format(s.locale, id, args));
     },
     async grant(a) {
-      if (isPrivate()) return denial;
+      if (isPrivate()) return privateDenial();
       // Never a profile a private space uses: the state is read again at the moment of the grant.
-      if (!readableProfiles(o.state()!).includes(a.profile)) return { ok: false, error: "Ce profil ne peut pas servir à un accord" };
+      if (!readableProfiles(o.state()!).includes(a.profile)) return { ok: false, error: say("chrome-actions-profile-refused") };
       // A host that does not answer means no kernel; the kernel's own refusals come back as answers.
       const r = await host.request<{ ok: true } | { ok: false; error: string }>("actions.grant", a).then(
         (v) => structuredClone(v),
-        () => ({ ok: false as const, error: NO_KERNEL_MESSAGE }),
+        () => ({ ok: false as const, error: noKernel() }),
       );
-      return isPrivate() ? denial : r;
+      return isPrivate() ? privateDenial() : r;
     },
     async denyGrant(id) {
       if (isPrivate()) return;
@@ -222,13 +221,13 @@ export function createActionsApi(o: WindowApiOptions): ActionsFirefox {
       );
     },
     async delete(id) {
-      if (isPrivate()) return denial;
+      if (isPrivate()) return privateDenial();
       const r = await host.request<{ ok: true } | { ok: false; error: string }>("actions.delete", { id }).then(
         (v) => structuredClone(v),
-        () => ((hostDown = true), { ok: false as const, error: NO_KERNEL_MESSAGE }),
+        () => ((hostDown = true), { ok: false as const, error: noKernel() }),
       );
       if (r.ok) forget(id);
-      return isPrivate() ? denial : r;
+      return isPrivate() ? privateDenial() : r;
     },
     async viewWorkflow(id) {
       const name = await ask<string | null>("actions.name", { id }, () => null);

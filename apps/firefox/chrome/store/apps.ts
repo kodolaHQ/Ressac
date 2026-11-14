@@ -33,6 +33,8 @@ let dataDir = "";
 let quitting = false;
 const closeListeners = new Set<() => void>();
 let access: () => AccessState = () => ({ agent: "L'agent", tabs: {} });
+/** The language shown (set by bindApps; the badge frame has no browser state). */
+let shownLocale: () => string = () => "fr";
 let design: Pick<DesignService, "state" | "toggle" | "openCart" | "review"> | null = null;
 
 /** What the badge frame of an app window gets from the chrome (ui/badge-api.ts copies every value it hands over). */
@@ -40,6 +42,8 @@ export interface BadgeChrome {
   access: { state(): AccessState; cut(id: unknown, right: unknown): void };
   onAccess(cb: (e: AccessState) => void): () => void;
   badgeSize(openedApp: unknown): void;
+  /** The language shown. */
+  locale(): string;
   /** Its window's design mode (target `app`, from the window, never from the frame). */
   design: { state(): Promise<DesignState>; toggle(): void; basket(): void; review(): void };
 }
@@ -334,6 +338,7 @@ export const apps = {
         listeners.add(cb);
         return () => void listeners.delete(cb);
       },
+      locale: () => shownLocale(),
       badgeSize(openedApp) {
         if (typeof openedApp !== "boolean") return;
         opened = openedApp;
@@ -384,7 +389,8 @@ const redirects = {
  * Started with the store: the host the windows report to, the main window tab for what leaves an app, the agent's
  * access (the badges) and the design mode of each app window.
  */
-export function bindApps(agent: AgentHost, openInTab: (url: string) => void, dir: string, o: { access: () => AccessState; design: NonNullable<typeof design> }): void {
+export function bindApps(agent: AgentHost, openInTab: (url: string) => void, dir: string, o: { access: () => AccessState; design: NonNullable<typeof design>; locale: () => string }): void {
+  shownLocale = o.locale;
   host = agent;
   dataDir = dir;
   openTab = openInTab;

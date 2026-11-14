@@ -346,6 +346,14 @@ function noteFrame(s: OpenSite): void {
   if (frame) host?.notify("sites.note", { id: s.site.id, frame: frame });
 }
 
+/** The language shown, set by bindSites (« fr » only before it). */
+let shownLocale: () => string = () => "fr";
+
+/** The language changed: every open app window reads its state again. */
+export function relabelSiteWindows(): void {
+  for (const s of open.values()) broadcast(s);
+}
+
 function stateOf(s: OpenSite): SiteWindowState {
   const url: string = s.view?.currentURI?.spec ?? "";
   return {
@@ -360,6 +368,7 @@ function stateOf(s: OpenSite): SiteWindowState {
     search: s.searching,
     notice: s.notice.notice ?? s.hostNotice,
     grant: s.viewState === "grant" ? s.site.request : null,
+    locale: shownLocale(),
   };
 }
 
@@ -922,7 +931,8 @@ export const sites = {
 export type SiteApps = typeof sites;
 
 /** Started with the store: the host the windows report to, and where the served home copies live. */
-export function bindSites(agent: AgentHost, dir: string, openInTab: (url: string) => void, d: NonNullable<typeof design>): void {
+export function bindSites(agent: AgentHost, dir: string, openInTab: (url: string) => void, d: NonNullable<typeof design>, locale: () => string): void {
+  shownLocale = locale;
   host = agent;
   dataDir = dir;
   openTab = openInTab;

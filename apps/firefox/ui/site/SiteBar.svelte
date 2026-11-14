@@ -2,7 +2,8 @@
   import Icon from "../components/Icon.svelte";
   import SiteDesignButton from "./SiteDesignButton.svelte";
   import SiteExtensionsButtons from "../SiteAddonsStrip.svelte";
-  import { SITE_BAR_HEIGHT, SEARCH_URL, blockedLink, OPEN_IN_A_TAB, type SiteWindowState } from "../../shared/sites";
+  import { ts } from "./locale.svelte";
+  import { SITE_BAR_HEIGHT, type SiteWindowState } from "../../shared/sites";
   import type { ApiSite } from "../../shared/api";
 
   let { state: appState, api }: { state: SiteWindowState; api: ApiSite } = $props();
@@ -16,12 +17,12 @@
 <!-- The background is draggable (moves the window); each button and the mention are clickable (no-drag). -->
 <header data-testid="site-bar" class:mac style:height="{SITE_BAR_HEIGHT}px">
   <nav>
-    <button data-testid="site-back" aria-label="Reculer" disabled={!onSite || !appState.canGoBack} onclick={() => api.previous()}><Icon name="back" /></button>
-    <button data-testid="site-forward" aria-label="Avancer" disabled={!onSite || !appState.canGoForward} onclick={() => api.next()}><Icon name="forward" /></button>
+    <button data-testid="site-back" aria-label={ts("chrome-site-back")} disabled={!onSite || !appState.canGoBack} onclick={() => api.previous()}><Icon name="back" /></button>
+    <button data-testid="site-forward" aria-label={ts("chrome-site-forward")} disabled={!onSite || !appState.canGoForward} onclick={() => api.next()}><Icon name="forward" /></button>
     {#if appState.hasHome}
-      <button data-testid="site-home" aria-label="Accueil de l'appli" aria-pressed={appState.viewState === "home"} disabled={appState.viewState === "grant"} onclick={() => api.home()}><Icon name="home" /></button>
+      <button data-testid="site-home" aria-label={ts("chrome-site-home")} aria-pressed={appState.viewState === "home"} disabled={appState.viewState === "grant"} onclick={() => api.home()}><Icon name="home" /></button>
     {/if}
-    <button data-testid="site-reload" aria-label="Recharger" disabled={!onSite} onclick={() => api.reload()}><Icon name="reload" /></button>
+    <button data-testid="site-reload" aria-label={ts("chrome-site-reload")} disabled={!onSite} onclick={() => api.reload()}><Icon name="reload" /></button>
   </nav>
   <div class="title">
     {#if !menuDesign}
@@ -30,13 +31,13 @@
     {/if}
   </div>
   {#if appState.tracking && onSite}
-    <button data-testid="site-search-address" class="search" disabled={appState.search} aria-busy={appState.search} onclick={() => api.lookupAddress()}>{SEARCH_URL}</button>
+    <button data-testid="site-search-address" class="search" disabled={appState.search} aria-busy={appState.search} onclick={() => api.lookupAddress()}>{ts("chrome-site-search-address")}</button>
   {/if}
   {#if appState.notice}
     <div data-testid="site-notice" class="notice" data-kind={appState.notice.kind} role="status">
       {#if appState.notice.kind === "link-blocked"}
-        <span>{blockedLink(appState.notice.domain)}</span>
-        <button data-testid="site-open-tab" onclick={() => api.openBlocked()}>{OPEN_IN_A_TAB}</button>
+        <span>{ts("chrome-site-link-blocked", { domain: appState.notice.domain })}</span>
+        <button data-testid="site-open-tab" onclick={() => api.openBlocked()}>{ts("chrome-site-open-tab")}</button>
       {:else}
         <span>{appState.notice.text}</span>
       {/if}

@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { ALLOW, NO_TWEAKS, tweaksGrantTitle, type SiteGrantRequest } from "../../shared/sites";
+  import { ts } from "./locale.svelte";
+  import type { SiteGrantRequest } from "../../shared/sites";
 
   /**
    * The grant card for the app's tweaks, in its window: what the agent asks for (domains, sign-in, frames,
@@ -18,36 +19,36 @@
 
 <section class="zone" data-testid="site-grant-zone">
   <div class="card" role="dialog" aria-labelledby="site-grant-title" data-testid="site-grant-card">
-    <h2 id="site-grant-title">{tweaksGrantTitle(grant.name)}</h2>
+    <h2 id="site-grant-title">{ts("chrome-grant-title", { name: grant.name })}</h2>
     <dl>
-      <dt>Domaines</dt>
+      <dt>{ts("chrome-grant-domains")}</dt>
       <dd data-testid="site-grant-domains">{grant.domains.join(", ")}</dd>
       {#if grant.tracked.length}
-        <dt>Adresses suivies</dt>
+        <dt>{ts("chrome-grant-tracked")}</dt>
         <dd data-testid="site-grant-tracking">{grant.tracked.join(", ")}</dd>
       {/if}
       {#if grant.login.length}
-        <dt>Connexion</dt>
+        <dt>{ts("chrome-grant-sign-in")}</dt>
         <dd data-testid="site-grant-sign-in">{grant.login.join(", ")}</dd>
       {/if}
       {#if grant.frames.length}
-        <dt>Cadres</dt>
+        <dt>{ts("chrome-grant-frames")}</dt>
         <dd data-testid="site-grant-frames">
           {#each grant.frames as c (c)}<code>{c}</code>{/each}
         </dd>
       {/if}
       {#if grant.files.length}
-        <dt>Injecte</dt>
+        <dt>{ts("chrome-grant-injects")}</dt>
         <dd data-testid="site-grant-files">
           {#each grant.files as f (f)}<code>{f}</code>{/each}
         </dd>
       {/if}
     </dl>
-    {#if grant.resume}<p data-testid="site-grant-resume">Reprend les vidéos à la minute</p>{/if}
-    <p class="muted">Ses retouches voient et modifient les pages de ces domaines. Une image ajoutée à la page peut encore envoyer des données à un autre site.</p>
+    {#if grant.resume}<p data-testid="site-grant-resume">{ts("chrome-grant-resume")}</p>{/if}
+    <p class="muted">{ts("chrome-grant-warning")}</p>
     <div class="buttons">
-      <button data-testid="refuse-site" disabled={running} onclick={() => choose(false)}>{NO_TWEAKS}</button>
-      <button data-testid="grant-site" class="main" disabled={running} onclick={() => choose(true)}>{ALLOW}</button>
+      <button data-testid="refuse-site" disabled={running} onclick={() => choose(false)}>{ts("chrome-grant-refuse")}</button>
+      <button data-testid="grant-site" class="main" disabled={running} onclick={() => choose(true)}>{ts("chrome-grant-allow")}</button>
     </div>
   </div>
 </section>

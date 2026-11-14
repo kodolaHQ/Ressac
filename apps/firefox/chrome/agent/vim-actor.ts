@@ -5,6 +5,7 @@
 // The child listens on its chrome event handler, in front of every page listener (the design actor's guard): a key it
 // takes never reaches the page. Packaged: a change here needs build:ui.
 
+import { format } from "../../shared/i18n";
 import { VIM_KEYS } from "../../shared/vim-keys";
 
 const { setTimeout, clearTimeout } = ChromeUtils.importESModule("resource://gre/modules/Timer.sys.mjs");
@@ -23,7 +24,6 @@ const MONO_FAMILY = "Ressac Geist Mono";
 /** The parent's copy of the font, read once. */
 let monoBytes: Promise<ArrayBuffer> | undefined;
 /** The pause's pill (French UI copy). */
-const PAUSED = "vim en pause · ⇧Échap pour reprendre";
 // The actor's layer, a closed shadow root in the page: the link hints, the pause's pill and the `?` sheet. `:host` important
 // declarations win over the page's. Glass, Geist Mono and the space's aura accent (DESIGN.md), on the window's own
 // tokens (the parent sends them: see "vim:style").
@@ -79,14 +79,20 @@ export class RessacVimParent extends JSWindowActorParent {
     return controller?.store.state.settings.vimMode && tabId ? { controller, tabId, browser } : null;
   }
 
-  /** Sends the child its mode (the setting changed). */
-  tell(): void {
-    this.sendAsyncMessage("vim:mode", { on: !!this.target() });
+  /** The language shown by this tab's window (the page has no browser state). */
+  private locale(): string {
+    const win = this.browsingContext?.top?.embedderElement?.ownerDocument?.defaultView;
+    return win?.ressacWindow?.store.state.locale ?? "fr";
   }
 
-  receiveMessage(m: { name: string; data?: unknown }): boolean | null {
+  /** Sends the child its mode and the language (the setting changed). */
+  tell(): void {
+    this.sendAsyncMessage("vim:mode", { on: !!this.target(), locale: this.locale() });
+  }
+
+  receiveMessage(m: { name: string; data?: unknown }): boolean | { on: boolean; locale: string } | null {
     const t = this.target();
-    if (m.name === "vim:state") return !!t;
+    if (m.name === "vim:state") return { on: !!t, locale: this.locale() };
     if (!t) return null;
     // The same calls as ⌘[ / ⌘] / ⌘R and ⌘W (controller.ts), so the store stays in step.
     if (m.name === "vim:back") t.controller.command(t.tabId, "back");
@@ -169,6 +175,8 @@ const EVENTS = ["keydown", "keypress", "keyup", "mousedown", "mouseover", "scrol
 
 export class RessacVimChild extends JSWindowActorChild {
   private on = false;
+  /** The language of the pause pill and the `?` sheet, told by the parent. */
+  private locale = "fr";
   private prefix = "";
   private prefixTimer: unknown;
   /** The codes of keys taken on keydown: their keyup is taken too. */
@@ -191,7 +199,11 @@ export class RessacVimChild extends JSWindowActorChild {
     if (e.target !== this.document || !e.isTrusted) return;
     this.listen();
     this.sendQuery("vim:state").then(
-      (on) => (this.on = on === true),
+      (state) => {
+        const { on, locale } = (state ?? {}) as { on?: unknown; locale?: unknown };
+        this.on = on === true;
+        if (typeof locale === "string") this.locale = locale;
+      },
       () => {},
     );
   }
@@ -207,9 +219,10 @@ export class RessacVimChild extends JSWindowActorChild {
   }
 
   // The actor just registered on a page already open (no DOMWindowCreated): the parent tells it.
-  receiveMessage(m: { name: string; data?: { on?: unknown } }): void {
+  receiveMessage(m: { name: string; data?: { on?: unknown; locale?: unknown } }): void {
     if (m.name !== "vim:mode") return;
     this.on = m.data?.on === true;
+    if (typeof m.data?.locale === "string") this.locale = m.data.locale;
     if (this.on) return this.listen();
     if (this.paused) this.setPaused(false);
     if (this.help) this.toggleHelp();
@@ -481,7 +494,7 @@ export class RessacVimChild extends JSWindowActorChild {
     if (on && !this.pill) {
       this.pill = this.document.createElement("div");
       this.pill.className = "pill";
-      this.pill.textContent = PAUSED;
+      this.pill.textContent = format(this.locale, "chrome-vim-paused");
       this.mount(this.pill);
     } else if (!on && this.pill) {
       this.unmount(this.pill);
@@ -499,16 +512,18 @@ export class RessacVimChild extends JSWindowActorChild {
     const doc = this.document;
     const make = (tag: string, className: string, text = "") => Object.assign(doc.createElement(tag), { className, textContent: text });
     const help = make("div", "help");
-    for (const group of VIM_KEYS) {
-      help.append(make("h3", "", group.title));
-      for (const row of group.rows) {
+    // The texts are the Settings table's messages, found by position (test/agent-vim-i18n.test.ts); the sheet's keys are French.
+    const key = (k: string) => k.replace(/\u00c9chap$/, format(this.locale, "agent-vim-key-escape"));
+    VIM_KEYS.forEach((group, gi) => {
+      help.append(make("h3", "", format(this.locale, `agent-vim-${gi}-title`)));
+      group.rows.forEach((row, ri) => {
         const keys = make("span", "keys");
-        keys.append(...row.keys.map((k) => make("kbd", "", k)));
+        keys.append(...row.keys.map((k) => make("kbd", "", key(k))));
         const line = make("div", "row");
-        line.append(keys, make("span", "", row.action));
+        line.append(keys, make("span", "", format(this.locale, `agent-vim-${gi}-${ri}`)));
         help.append(line);
-      }
-    }
+      });
+    });
     this.help = help;
     this.mount(help);
   }

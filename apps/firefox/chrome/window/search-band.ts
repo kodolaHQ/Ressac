@@ -1,3 +1,4 @@
+import { format } from "../../shared/i18n";
 import type { Band, WindowId } from "../../shared/model";
 import { HOST_EXITED } from "../agent/host";
 import type { RessacStore } from "../store";
@@ -5,11 +6,11 @@ import type { RessacStore } from "../store";
 const XHTML = "http://www.w3.org/1999/xhtml";
 
 /** « 40 s », « 1 min 50 ». */
-export function duration(ms: number): string {
+export function duration(ms: number, locale: string): string {
   const s = Math.max(0, Math.floor(ms / 1000));
-  return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, "0")}`;
+  return s < 60 ? format(locale, "chrome-duration-seconds", { s: String(s) }) : format(locale, "chrome-duration-minutes", { m: String(Math.floor(s / 60)), s: String(s % 60).padStart(2, "0") });
 }
-export const stats = (b: Band, now: number) => `${b.pages} ${b.pages === 1 ? "page lue" : "pages lues"} · ${duration(now - b.startedAt)}`;
+export const stats = (b: Band, now: number, locale: string) => format(locale, "chrome-search-stats", { pages: b.pages, duration: duration(now - b.startedAt, locale) });
 
 /**
  * The band of the agent's search tab, above the page, shown while that tab is the window's active one. It says what the
@@ -27,7 +28,6 @@ export function mountSearchBand(win: Window, store: RessacStore, windowId: Windo
   band.id = "ressac-search-band";
   band.dataset.testid = "search-band";
   band.setAttribute("role", "status");
-  band.setAttribute("aria-label", "Recherche de l'agent");
   band.setAttribute("aria-live", "off"); // set before any text changes, so a screen reader announces the « à vous » text
   const dot = el("span", "dot");
   const what = el("span", "what");
@@ -35,16 +35,15 @@ export function mountSearchBand(win: Window, store: RessacStore, windowId: Windo
   text.dataset.testid = "search-band-text";
   const small = el("small");
   what.append(text, small);
-  const button = (label: string, testid: string, cls = "") => {
+  const button = (testid: string, cls = "") => {
     const b = el("button", cls);
     b.type = "button";
-    b.textContent = label;
     b.dataset.testid = testid;
     return b;
   };
-  const go = button("Continuer", "search-continue", "go");
-  const stop = button("Arrêter", "search-stop");
-  const close = button("Fermer", "search-close");
+  const go = button("search-continue", "go");
+  const stop = button("search-stop");
+  const close = button("search-close");
   band.append(dot, what, go, stop, close);
   doc.getElementById("browser")!.append(band);
 
@@ -57,9 +56,14 @@ export function mountSearchBand(win: Window, store: RessacStore, windowId: Windo
   close.addEventListener("click", call("search.dismiss"));
 
   const paint = () => {
-    if (shown?.state === "working") small.textContent = stats(shown, Date.now());
+    if (shown?.state === "working") small.textContent = stats(shown, Date.now(), store.state.locale);
   };
   const render = () => {
+    const say = (id: string) => format(store.state.locale, id);
+    band.setAttribute("aria-label", say("chrome-search-label"));
+    go.textContent = say("chrome-search-continue");
+    stop.textContent = say("chrome-search-stop");
+    close.textContent = say("chrome-search-close");
     const f = store.state.windows.find((x) => x.id === windowId);
     const active = f?.active[f.activeSpace];
     const b = active ? store.state.tabs[active]?.agentSearch : undefined;
@@ -70,7 +74,7 @@ export function mountSearchBand(win: Window, store: RessacStore, windowId: Windo
       band.setAttribute("aria-live", b.state === "yours" ? "polite" : "off");
       band.dataset.state = b.state;
       text.textContent = b.text;
-      small.textContent = b.state === "yours" ? "" : stats(b, Date.now());
+      small.textContent = b.state === "yours" ? "" : stats(b, Date.now(), store.state.locale);
     }
     band.toggleAttribute("data-shown", !!b);
     go.hidden = b?.state !== "yours";

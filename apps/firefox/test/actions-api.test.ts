@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ACTIONS_IN_PRIVATE_SPACE } from "../shared/actions";
+import { format } from "../shared/i18n";
+
+/** The state of these tests shows English. */
+const ACTIONS_IN_PRIVATE_SPACE = format("en", "action-private");
 import type { Action } from "../shared/api";
 import type { BrowserState } from "../shared/model";
 import { apply } from "../core/state/actions";
@@ -168,7 +171,7 @@ describe("createActionsApi", () => {
   it("a stopped host gives the answers without a kernel", async () => {
     const { F, api } = setup();
     const a = api(F);
-    expect(await a.launch("x", null)).toEqual({ status: "invalid", error: "Le service des actions ne répond pas (agent arrêté ?)" });
+    expect(await a.launch("x", null)).toEqual({ status: "invalid", error: "The actions service is not responding (agent stopped?)" });
     expect(await a.list()).toEqual([]);
     expect(await a.page("x", null)).toBeNull();
     expect(await a.live()).toEqual(NONE);
@@ -180,7 +183,7 @@ describe("createActionsApi", () => {
     const bank = state().spaces.find((e) => e.private)!.profile;
     set(apply(state(), { type: "activateSpace", windowId: F, id: state().spaces[0]!.id }, genId));
     const a = api(F);
-    expect(await a.grant({ id: "gitlab", profile: bank, account: ["gitlab.com"], public: [] })).toEqual({ ok: false, error: "Ce profil ne peut pas servir à un accord" });
+    expect(await a.grant({ id: "gitlab", profile: bank, account: ["gitlab.com"], public: [] })).toEqual({ ok: false, error: "That profile can't be used for a grant" });
     expect(calls).toEqual([]);
     expect(await a.grant({ id: "gitlab", profile: "default", account: ["gitlab.com"], public: [] })).toEqual({ ok: true });
     expect((await a.profilesForGrant()).map((p) => p.id)).toEqual(["default"]);
@@ -344,7 +347,7 @@ describe("createActionsApi", () => {
     a.onChange(change);
     const read = a.page("annonces", null);
     await vi.waitFor(() => expect(deny).toBeTypeOf("function"));
-    deny(new Error("Le service des actions ne répond pas (agent arrêté ?)"));
+    deny(new Error("The actions service is not responding (agent stopped?)"));
     emit("access");
     expect(await read).toBeNull();
     expect(change).toHaveBeenCalledTimes(1);
@@ -368,7 +371,7 @@ describe("createActionsApi", () => {
     const stopped = setup();
     expect(await stopped.api(stopped.F).grant({ id: "gitlab", profile: "default", account: ["gitlab.com"], public: [] })).toEqual({
       ok: false,
-      error: "Le service des actions ne répond pas (agent arrêté ?)",
+      error: "The actions service is not responding (agent stopped?)",
     });
     let turn = () => {};
     const s = setup({ "actions.grant": () => (turn(), { ok: true }) });
@@ -436,7 +439,7 @@ describe("createActionsApi", () => {
 
   it("ouvrir: a stopped host is a missing kernel; a failed launch goes to the console and reads again on the next acces", async () => {
     const stopped = setup();
-    expect(await stopped.api(stopped.F).open("gitlab", null)).toEqual({ ok: false, error: "Le service des actions ne répond pas (agent arrêté ?)" });
+    expect(await stopped.api(stopped.F).open("gitlab", null)).toEqual({ ok: false, error: "The actions service is not responding (agent stopped?)" });
     expect(stopped.dispatched).toEqual([]);
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const s = setup({ "actions.prepare": prepare() });
@@ -475,7 +478,7 @@ describe("createActionsApi", () => {
     expect(await a.delete("gitlab")).toEqual({ ok: true });
     up = false;
     expect(await a.list()).toEqual([]);
-    expect(await a.delete("gitlab")).toEqual({ ok: false, error: "Le service des actions ne répond pas (agent arrêté ?)" });
+    expect(await a.delete("gitlab")).toEqual({ ok: false, error: "The actions service is not responding (agent stopped?)" });
     expect(calls.filter((c) => c.method === "actions.denyGrant" || c.method === "actions.delete").map((c) => c.params)).toEqual([{ id: "gitlab" }, { id: "gitlab" }, { id: "gitlab" }]);
     calls.length = 0;
     turnPrivate();

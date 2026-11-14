@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { format } from "../../shared/i18n";
 import type { WindowId } from "../../shared/model";
 import { tabProfile } from "../../shared/model";
 import type { RessacStore } from "../store";
@@ -13,11 +14,16 @@ import type { RessacStore } from "../store";
 export function mountSiteMenu(win: Window, store: RessacStore, windowId: WindowId): void {
   const doc = win.document as Document & { createXULElement(tag: string): Element };
   const menu = doc.createXULElement("menu");
-  menu.setAttribute("label", "Navigation");
   const popup = doc.createXULElement("menupopup");
   const item = doc.createXULElement("menuitem");
   item.id = "ressac-forget-permissions";
-  item.setAttribute("label", "Oublier les autorisations de ce site");
+  // The labels follow the language chosen in Settings (re-set on each change).
+  const label = () => {
+    menu.setAttribute("label", format(store.state.locale, "chrome-menu-navigation"));
+    item.setAttribute("label", format(store.state.locale, "chrome-menu-forget-permissions"));
+  };
+  label();
+  store.subscribe((s, p) => s.locale !== p.locale && label());
   item.addEventListener("command", () => {
     const f = store.state.windows.find((x) => x.id === windowId);
     const tab = f && store.state.tabs[f.active[f.activeSpace] ?? ""];

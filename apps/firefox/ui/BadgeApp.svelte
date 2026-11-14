@@ -2,6 +2,7 @@
   import type { DesignState } from "../shared/api";
   import { access, accessOf } from "./access.svelte";
   import AccessBadge from "./components/AccessBadge.svelte";
+  import { language, t } from "./i18n.svelte";
 
   /** `app:<folder>`: the only id whose access this view shows. */
   let { id }: { id: string } = $props();
@@ -10,11 +11,14 @@
   let menuOpen = $state(false);
   let design = $state<DesignState | null>(null);
   let root = $state<HTMLElement>();
+  // This frame has no browser state: it asks for the language when it loads and each time its menu opens.
+  language.override = api.locale();
   // The view grows while the bubble or the menu is open, and only gets in the app's way during that time.
   $effect(() => api.badgeSize(access.openBubbles > 0 || menuOpen));
 
   async function toggleMenu() {
     menuOpen = !menuOpen;
+    language.override = api.locale();
     if (menuOpen) design = await api.design.state().catch(() => null);
   }
   function choose(act: () => void) {
@@ -35,9 +39,9 @@
       <button class="pill" data-testid="ressac-pill" aria-label="Ressac" aria-haspopup="menu" aria-expanded={menuOpen} onclick={toggleMenu}>✎</button>
       {#if menuOpen}
         <div class="menu" role="menu">
-          <button role="menuitem" class:active={design?.active} onclick={() => choose(() => api.design.toggle())}>Mode design {#if design}<kbd>{design.shortcut}</kbd>{/if}</button>
-          <button role="menuitem" onclick={() => choose(() => api.design.basket())}>Panier ({design?.basket ?? 0})</button>
-          <button role="menuitem" onclick={() => choose(() => api.design.review())}>Voir les modifications de l'agent</button>
+          <button role="menuitem" class:active={design?.active} onclick={() => choose(() => api.design.toggle())}>{t("chrome-site-design")} {#if design}<kbd>{design.shortcut}</kbd>{/if}</button>
+          <button role="menuitem" onclick={() => choose(() => api.design.basket())}>{t("chrome-badge-basket", { count: String(design?.basket ?? 0) })}</button>
+          <button role="menuitem" onclick={() => choose(() => api.design.review())}>{t("chrome-site-review")}</button>
         </div>
       {/if}
     </span>

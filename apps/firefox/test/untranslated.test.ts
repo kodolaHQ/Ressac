@@ -64,6 +64,20 @@ const TRANSLATED = [
   "ui/action/PageRender.svelte",
   "ui/action/blocks/Table.svelte",
   "ui/components/Actions.svelte",
+  "ui/site/SiteBar.svelte",
+  "ui/site/SiteGrantCard.svelte",
+  "ui/site/SiteDesignButton.svelte",
+  "ui/SiteHomeFrame.svelte",
+  "ui/components/UrlBar.svelte",
+  "ui/components/Essentials.svelte",
+  "ui/components/TabsPanel.svelte",
+  "ui/components/DesignButton.svelte",
+  "ui/components/SoundButton.svelte",
+  "ui/components/AccessBadge.svelte",
+  "ui/BadgeApp.svelte",
+  "ui/AgentPill.svelte",
+  "ui/PageError.svelte",
+  "ui/WidgetPreview.svelte",
 ];
 
 function visibleCode(source: string): string {

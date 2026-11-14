@@ -1,3 +1,4 @@
+import { format } from "../../shared/i18n";
 import type { TabCycleMessage, Panel, TabsPanel, ShortcutAction } from "../../shared/api";
 import { workflowUrlTarget, historyContext, AGENT_WIDTH_MAX, AGENT_WIDTH_MIN, type FrameBounds, type BrowserState, type WindowId, type TabId } from "../../shared/model";
 import { auraVariables, DEFAULT_AURA, type AuraId } from "../../shared/aura";
@@ -496,11 +497,11 @@ export function createController(
         const result = await prompt.asyncConfirmEx(
           browser.browsingContext,
           prompt.MODAL_TYPE_TAB,
-          "Quitter ce site ?",
-          "Les modifications que vous avez faites ne seront peut-être pas enregistrées.",
+          format(store.state.locale, "chrome-leave-title"),
+          format(store.state.locale, "chrome-leave-text"),
           flags,
-          "Quitter",
-          "Rester",
+          format(store.state.locale, "chrome-leave-leave"),
+          format(store.state.locale, "chrome-leave-stay"),
           null,
           null,
           {},
