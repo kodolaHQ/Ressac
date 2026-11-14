@@ -6,6 +6,12 @@ export function relaunchArgs(pid: number, app: string, env: Record<string, strin
   return ["-c", RELAUNCH_SCRIPT, "sh", String(pid), ...Object.entries(env).flatMap(([k, v]) => ["--env", `${k}=${v}`]), app];
 }
 
+/** The variables a relaunched process must keep (its profile, the carry-over's mark): `open` passes none of ours otherwise. */
+export const RELAUNCH_ENV = ["XRE_PROFILE_PATH", "XRE_PROFILE_LOCAL_PATH", "RESSAC_CARRIED_RESTART"];
+
+/** RELAUNCH_ENV's values in this process, unset ones left out. */
+export const relaunchEnv = (): Record<string, string> => Object.fromEntries(RELAUNCH_ENV.map((k) => [k, Services.env.get(k)]).filter(([, v]) => v));
+
 /**
  * Reopens the app once this process has quit; the caller quits. Firefox's own restart (eRestart) cannot work here: on
  * macOS it relaunches through updater.app (nsCommandLineServiceMac.mm), which a build without the updater does not ship.

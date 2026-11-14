@@ -185,6 +185,17 @@ export interface WindowState {
   frame: FrameBounds | null;
 }
 
+export type UpdatePhase = "idle" | "checking" | "downloading" | "ready" | "failed" | "unwritable" | "disabled";
+export interface UpdateShown {
+  phase: UpdatePhase;
+  /** package.json version of the update, when known */
+  version: string | null;
+  /** 0-100 while downloading, else null */
+  progress: number | null;
+  /** « Plus tard » clicked this session */
+  dismissed: boolean;
+}
+
 export interface BrowserState {
   version: 3;
   /** Au moins un espace. */
@@ -220,6 +231,8 @@ export interface BrowserState {
     /** The user's own bindings; an action absent here keeps its default (shared/shortcuts.ts). */
     shortcuts: Partial<Record<ShortcutId, Binding>>;
   };
+  /** The app update, as Firefox's updater reports it; null until known. Volatile, never saved. */
+  update: UpdateShown | null;
 }
 
 /**

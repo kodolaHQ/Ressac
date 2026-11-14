@@ -630,6 +630,18 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       if (f && d.settings.onboarded && RELEASE_NOTES[0]?.version === a.version) openInternalPage(d, genId, f.id, URL_RELEASE_NOTES, "Nouveautés");
       return true;
     }
+    case "setUpdate": {
+      const old = d.update;
+      const dismissed = !!old?.dismissed && old.version === a.update.version;
+      if (old && old.phase === a.update.phase && old.version === a.update.version && old.progress === a.update.progress && old.dismissed === dismissed) return false;
+      d.update = { ...a.update, dismissed };
+      return true;
+    }
+    case "dismissUpdate": {
+      if (!d.update || d.update.dismissed) return false;
+      d.update.dismissed = true;
+      return true;
+    }
     case "openReleaseNotes":
       return openInternalPage(d, genId, a.windowId, URL_RELEASE_NOTES, "Nouveautés");
     case "markHintSeen": {

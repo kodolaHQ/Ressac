@@ -30,7 +30,8 @@ import { registerPermissionHooks } from "./permission-hooks";
 import { createSitePermissions, type SitePermission, type SitePermissions } from "./site-permissions";
 import { bindSites, sites, type SiteApps } from "./sites";
 import { createStore, type Store } from "./store";
-import { relaunchAfterQuit } from "./relaunch";
+import { relaunchAfterQuit, relaunchEnv } from "./relaunch";
+import { installUpdates } from "./updates";
 import { installPreferencesCleanup } from "./preferences-cleanup";
 import { installTelemetry } from "./telemetry";
 import { createSettingsChrome, type SettingsChrome } from "./settings";
@@ -200,9 +201,8 @@ async function start(): Promise<RessacStore> {
       restart: null,
     }[carried];
     if (why) Services.prompt.alert(null, "Ressac", why);
-    // The variables the carry-over set for the restarted process: `open` gives a new app none of ours otherwise.
-    if (carried === "restart")
-      relaunchAfterQuit(Object.fromEntries(["XRE_PROFILE_PATH", "XRE_PROFILE_LOCAL_PATH", "RESSAC_CARRIED_RESTART"].map((k) => [k, Services.env.get(k)]).filter(([, v]) => v)));
+    // The variables the carry-over set for the restarted process.
+    if (carried === "restart") relaunchAfterQuit(relaunchEnv());
     Services.startup.quit(Ci.nsIAppStartup.eAttemptQuit);
     return new Promise<never>(() => {});
   }
@@ -276,6 +276,7 @@ async function start(): Promise<RessacStore> {
   });
   // After the recorder subscribed: the version seen is saved even if nothing else changes.
   store.dispatch({ type: "noteVersion", version: __RESSAC_VERSION__ });
+  const updates = installUpdates(store.dispatch, telemetry.report);
   AsyncShutdown.profileBeforeChange.addBlocker("Ressac: save the session", flush);
   ChromeUtils.registerWindowActor("RessacPage", {
     parent: { esModuleURI: PAGE_ACTOR },
@@ -507,7 +508,7 @@ async function start(): Promise<RessacStore> {
     setAside,
     dataSetAside,
     telemetryActive: telemetry.active,
-    settings: createSettingsChrome(dataDir, telemetry.active),
+    settings: createSettingsChrome(dataDir, telemetry.active, updates),
     browserImport: createBrowserImporter(dataDir, agent, store),
     bookmarks: { search: searchBookmarks },
     flush,
