@@ -10,6 +10,7 @@
   import TabList from "./TabList.svelte";
   import { openMenu } from "./menu.svelte";
   import CallBar from "./CallBar.svelte";
+  import UpdateCard from "./UpdateCard.svelte";
   import SpaceSelector from "./SpaceSelector.svelte";
 
   const key = (id: ShortcutId) => shortcutLabel(id, appState.value?.settings);
@@ -74,6 +75,7 @@
     >
     <TabList window={win} agent />
   </div>
+  <UpdateCard />
   <CallBar window={win} />
   <footer>
     <SpaceSelector window={win} />

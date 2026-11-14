@@ -31,6 +31,7 @@
 
   // Each section loads on its own: a slow Docker never holds the version or the data folder.
   const s = api.settings;
+  const update = $derived(appState.value?.update ?? null);
   type WorkshopState = NonNullable<Awaited<ReturnType<SettingsApi["workshop"]>>>;
 
   let agents = $state<AgentAccount[] | null>(null);
@@ -453,6 +454,20 @@
             <button data-testid="settings-replay-welcome" onclick={() => api.dispatch({ type: "replayOnboarding" })}>Revoir l'accueil</button>
             <button data-testid="open-advanced" onclick={() => s.openAdvanced()}>Réglages avancés du navigateur</button>
           </div>
+          {#if update && update.phase !== "disabled"}
+            <div class="row">
+              <span class="grow" data-testid="update-status"
+                >{#if update.phase === "idle"}À jour{:else if update.phase === "checking"}Recherche…{:else if update.phase === "downloading"}Téléchargement de {update.version}…{update.progress === null ? "" : ` ${update.progress} %`}{:else if update.phase === "ready"}{update.version} prête, installée au redémarrage{:else}La mise à jour a échoué{/if}</span
+              >
+              {#if update.phase === "idle"}
+                <button data-testid="update-check" onclick={() => s.checkForUpdate()}>Rechercher une mise à jour</button>
+              {:else if update.phase === "ready"}
+                <button class="primary" data-testid="update-restart" onclick={() => s.restartToUpdate()}>Redémarrer maintenant</button>
+              {:else if update.phase === "failed" || update.phase === "unwritable"}
+                <button data-testid="update-download" onclick={() => s.openUrl("https://updates.getressac.app/download/Ressac.dmg")}>Télécharger la dernière version</button>
+              {/if}
+            </div>
+          {/if}
         </div>
         <h3>Crédits</h3>
         <div class="panel" data-testid="settings-credits">
