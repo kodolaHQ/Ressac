@@ -38,6 +38,8 @@
   // swipe, which then swallows the next gestures over the sidebar.
   const swipeArea = (node: HTMLElement) => {
     const onWheel = (e: WheelEvent) => {
+      // The space row scrolls sideways itself when it is full.
+      if ((e.target as Element).closest?.(".spaces")) return;
       if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) e.preventDefault();
       swipe(e);
     };

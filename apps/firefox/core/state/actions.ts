@@ -1,4 +1,5 @@
 import { RELEASE_NOTES } from "../../shared/release-notes";
+import { customEngineError } from "../../shared/search";
 import { randomUUID } from "node:crypto";
 import type { Action } from "../../shared/api";
 import { DEFAULT_AURA } from "../../shared/aura";
@@ -597,7 +598,9 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
     }
     case "chooseEngine": {
       const custom = a.custom?.trim() ?? d.settings.customEngine;
-      if (a.engine === "custom" && !custom) return false;
+      // Checked here too: the chrome dispatches actions without parsing them.
+      if (a.custom !== undefined && customEngineError(a.custom)) return false;
+      if (a.engine === "custom" && (!custom || customEngineError(custom))) return false;
       if (d.settings.engine === a.engine && d.settings.customEngine === custom) return false;
       d.settings.engine = a.engine;
       d.settings.customEngine = custom;

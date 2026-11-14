@@ -86,6 +86,9 @@ test("a session from before the custom engine loads unchanged; an unknown engine
   old.settings.engine = "qwant";
   writeFileSync(join(d, "session.json"), JSON.stringify(old));
   expect((await loadSession(d)).settings).toMatchObject({ engine: "qwant", customEngine: null });
+  old.settings.customEngine = "http://x.com/?q=%s";
+  writeFileSync(join(d, "session.json"), JSON.stringify(old));
+  expect((await loadSession(d)).settings.customEngine).toBeNull();
   old.settings.engine = "yahoo";
   writeFileSync(join(d, "session.json"), JSON.stringify(old));
   expect((await loadSession(d)).settings.engine).toBe("google");

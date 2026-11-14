@@ -511,6 +511,9 @@ test("chooseEngine custom: the address is kept when another engine is chosen; an
   expect(e.settings).toMatchObject({ engine: "brave", customEngine: "https://kagi.com/search?q=%s" });
   expect(SchemaAction.safeParse({ type: "chooseEngine", engine: "custom", custom: "http://x.com/?q=%s" }).success).toBe(false);
   expect(SchemaAction.safeParse({ type: "chooseEngine", engine: "custom", custom: "https://x.com/" }).success).toBe(false);
+  // Unparsed, as the chrome dispatches it: the reducer refuses it too.
+  ag({ type: "chooseEngine", engine: "custom", custom: "javascript:alert(1)//%s" });
+  expect(e.settings.customEngine).toBe("https://kagi.com/search?q=%s");
 });
 
 test("frameWindow keeps the size and position; unknown window → same reference", () => {
