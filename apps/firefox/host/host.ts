@@ -164,15 +164,22 @@ const fakeOllama = process.env.RESSAC_TEST_OLLAMA_KIND;
 const ollama = fakeOllama
   ? { status: async () => ({ kind: fakeOllama, version: "0.30.0", min: OLLAMA_MIN }) as OllamaStatus, start: async () => {}, install: async (progress: (p: number | null) => void) => progress(50), close: () => {} }
   : createOllamaRuntime({ url: ai.ollamaUrl, dataDir, managed: process.platform === "darwin" && ai.ollamaUrl === OLLAMA_LOCAL_URL && !process.env.RESSAC_TEST_NO_SYSTEM });
-// An installed Ollama that is not running is started with Ressac; nothing is ever downloaded without a click.
-void ollama.status().then((s) => (s.kind === "stopped" ? ollama.start() : undefined)).catch((e) => console.error("[ressac] Ollama did not start:", e));
 // RESSAC_TEST_DOCKER_KIND (e2e): a fixed status and a start that touches nothing.
 const fakeDocker = process.env.RESSAC_TEST_DOCKER_KIND;
 const docker = fakeDocker
   ? { status: async () => ({ kind: fakeDocker, app: "OrbStack" }) as DockerStatus, start: async () => {} }
   : createDockerRuntime({ running: async () => (await workshop.state()) !== "docker-absent", managed: process.platform === "darwin" && !process.env.RESSAC_TEST_NO_SYSTEM });
-// An installed container app that is not running is started with Ressac, and left running at quit.
-void docker.status().then((s) => (s.kind === "stopped" ? docker.start() : undefined)).catch((e) => console.error("[ressac] Docker did not start:", e));
+// AI on (settings.aiEnabled, told by the chrome's `start` and `ai.enabled`): off, nothing below touches Docker or Ollama.
+let aiOn = false;
+let aiWoken = false;
+// Once per off → on: an installed Ollama or container app that is not running is started, and left running at quit
+// (nothing is ever downloaded without a click).
+const wakeAi = () => {
+  if (aiWoken) return;
+  aiWoken = true;
+  void ollama.status().then((s) => (s.kind === "stopped" ? ollama.start() : undefined)).catch((e) => console.error("[ressac] Ollama did not start:", e));
+  void docker.status().then((s) => (s.kind === "stopped" ? docker.start() : undefined)).catch((e) => console.error("[ressac] Docker did not start:", e));
+};
 const notify = (n: { title: string; text: string }) => {
   const file = process.env.RESSAC_TEST_NOTIFICATIONS;
   if (file) return void appendFileSync(file, JSON.stringify({ title: n.title, text: n.text }) + "\n");
@@ -302,9 +309,26 @@ const stop = () =>
     await appsStopped;
   })());
 
+type StartParams = { agentProfile: string; locale?: string; aiEnabled?: boolean };
+// Sets the default profile; with AI on the kernel starts once (its sessions stay), a failed start is retried.
+const startHost = async (p: StartParams) => {
+  defaultProfile = p.agentProfile;
+  if (typeof p.locale === "string") setHostLocale(p.locale);
+  aiOn = p.aiEnabled === true;
+  if (!aiOn) return null;
+  wakeAi();
+  apps.wake();
+  if (!kernelLaunched || !(await ready)) {
+    kernelLaunched = true;
+    ready = ready.then(stopKernel).then(() => launchKernel(p.agentProfile));
+  }
+  return start();
+};
+
 const sessions = new SessionsAgent({
   defaultProfile: () => defaultProfile,
   async open(f, t, { profile, resume, onBuildProgress }) {
+    if (!aiOn) throw new Error("ai-off");
     const n = await ready;
     if (!n) throw new Error(error ?? hostSay("host-kernel-not-started"));
     // A container app Ressac is starting (or can start): the panel stays on « Préparation » until Docker answers.
@@ -336,15 +360,21 @@ const sessions = new SessionsAgent({
 const rpc = createRpc({
   send: (line) => void writeStdout(line + "\n"),
   handlers: {
-    // Sets the default profile; the kernel starts once (its sessions stay), a failed start is retried.
-    start: async (p: { agentProfile: string; locale?: string }) => {
-      defaultProfile = p.agentProfile;
-      if (typeof p.locale === "string") setHostLocale(p.locale);
-      if (!kernelLaunched || !(await ready)) {
-        kernelLaunched = true;
-        ready = ready.then(stopKernel).then(() => launchKernel(p.agentProfile));
+    start: (p: StartParams) => startHost(p),
+    // Live switch (Réglages): on starts what `start` starts; off ends the sessions, the apps and the kernel (its scheduler
+    // with it). Docker, OrbStack and Ollama are left running: they may serve the user's own work.
+    "ai.enabled": async (p: { on?: unknown }) => {
+      if (p?.on === true) {
+        await startHost({ agentProfile: defaultProfile, aiEnabled: true });
+        return;
       }
-      return start();
+      aiOn = false;
+      aiWoken = false;
+      kernelLaunched = false;
+      await sessions.stopAll();
+      await apps.stop().catch((e) => console.error("[ressac] the apps did not stop:", e));
+      ready = ready.then(async (n) => (await stopKernel(n), null));
+      await ready;
     },
     // Only new windows take the new default: open agents stay.
     changeProfile: (p: { agentProfile: string }) => void (defaultProfile = p.agentProfile),

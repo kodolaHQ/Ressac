@@ -121,7 +121,7 @@ afterEach(async () => {
 describe("agent host", { timeout: 30_000 }, () => {
   it("the kernel learns the shown language at start and at each change", async () => {
     const h = startHost();
-    await h.rpc.request("start", { agentProfile: "claude", locale: "en" });
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true, locale: "en" });
     expect(await h.rpc.request("debug.locale")).toEqual({ locale: "en", relocalized: 0 });
     const agents = join(h.root, "AGENTS.md");
     const template = (lang: string) => readFileSync(join(import.meta.dirname, "..", "..", "..", "packages", "kernel", "templates", lang, "AGENTS.md"), "utf8");
@@ -134,7 +134,7 @@ describe("agent host", { timeout: 30_000 }, () => {
 
   it("a language change that lands while the kernel is starting is applied once it is up", async () => {
     const h = startHost();
-    const started = h.rpc.request("start", { agentProfile: "claude", locale: "en" });
+    const started = h.rpc.request("start", { agentProfile: "claude", aiEnabled: true, locale: "en" });
     h.rpc.notify("settings.locale", { locale: "fr" });
     await started;
     const agents = join(h.root, "AGENTS.md");
@@ -156,9 +156,31 @@ describe("agent host", { timeout: 30_000 }, () => {
     expect(existsSync(join(h.root, ".ressac", "mcp.json"))).toBe(false);
   });
 
+  it("AI off: start runs no docker and makes no kernel; ai.enabled turns it on, then off", async () => {
+    const h = startHost();
+    const calls = () => (existsSync(h.log) ? readFileSync(h.log, "utf8") : "");
+    expect(await h.rpc.request("start", { agentProfile: "claude", aiEnabled: false })).toBe(null);
+    await new Promise((r) => setTimeout(r, 1_000));
+    expect(calls()).toBe("");
+    expect(existsSync(join(h.root, ".ressac", "mcp.json"))).toBe(false);
+    // The session fails with « ai-off » (the panel shows an error state); nothing reaches docker.
+    await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
+    await until(() => JSON.stringify(h.states).includes("ai-off"));
+    expect(calls()).toBe("");
+    await h.rpc.request("ai.enabled", { on: true });
+    expect(existsSync(join(h.root, ".ressac", "mcp.json"))).toBe(true);
+    expect(calls()).toMatch(/^info/m);
+    await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
+    await until(() => h.data().includes("fake agent ready>"));
+    const states = h.states.length;
+    await h.rpc.request("ai.enabled", { on: false });
+    await h.rpc.request("agent.start", { window: "f2", size: { cols: 80, rows: 24 } });
+    await until(() => JSON.stringify(h.states.slice(states)).includes("ai-off"));
+  });
+
   it("creates the space and MCP config, list_tabs goes through Firefox", async () => {
     const h = startHost();
-    expect(await h.rpc.request("start", { agentProfile: "claude" })).toEqual({ agent: expect.any(String) });
+    expect(await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true })).toEqual({ agent: expect.any(String) });
     expect(existsSync(join(h.root, ".ressac", "mcp.json"))).toBe(true);
     const r = await callMcpTool(h.root, "list_tabs");
     expect(r.text).toContain("onglet non partagé");
@@ -166,7 +188,7 @@ describe("agent host", { timeout: 30_000 }, () => {
 
   it("a private tab is hidden from the agent", async () => {
     const h = startHost();
-    await h.rpc.request("start", { agentProfile: "claude" });
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
     expect((await callMcpTool(h.root, "read_tab", { id: "t3" })).text).not.toBe(PRIVATE_TEXT);
     h.rpc.notify("privateTabs", { privateTabs: ["t3"], activePrivate: true });
     await h.rpc.request("access.state"); // stdin is read in order: the notification is applied
@@ -176,13 +198,13 @@ describe("agent host", { timeout: 30_000 }, () => {
 
   it("capture_screen returns the PNG Firefox sent", async () => {
     const h = startHost();
-    await h.rpc.request("start", { agentProfile: "claude" });
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
     expect((await callMcpTool(h.root, "capture_screen", { id: "t1" })).image).toBe(png);
   });
 
   it("the terminal reaches the fake agent", async () => {
     const h = startHost();
-    await h.rpc.request("start", { agentProfile: "claude" });
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
     await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
     await until(() => h.data().includes("fake agent ready>"));
     h.rpc.notify("agent.write", { window: "f1", data: "bonjour\r" });
@@ -191,12 +213,12 @@ describe("agent host", { timeout: 30_000 }, () => {
 
   it("a repeat demarrer with the same profile keeps the kernel and its sessions", async () => {
     const h = startHost();
-    await h.rpc.request("start", { agentProfile: "claude" });
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
     await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
     await until(() => h.data().includes("fake agent ready>"));
     const mcp = readFileSync(join(h.root, ".ressac", "mcp.json"), "utf8");
     const stops = readFileSync(join(h.root, "fake-docker-stops.log"), "utf8"); // start-up orphan sweep only
-    expect(await h.rpc.request("start", { agentProfile: "claude" })).toEqual({ agent: expect.any(String) });
+    expect(await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true })).toEqual({ agent: expect.any(String) });
     expect(readFileSync(join(h.root, ".ressac", "mcp.json"), "utf8")).toBe(mcp);
     h.rpc.notify("agent.write", { window: "f1", data: "encore\r" });
     await until(() => h.data().includes("encore"));
@@ -207,7 +229,7 @@ describe("agent host", { timeout: 30_000 }, () => {
     const h = startHost();
     mkdirSync(join(h.root, ".ressac", "profiles"), { recursive: true });
     writeFileSync(join(h.root, ".ressac", "profiles", "autre.json"), JSON.stringify({ id: "autre", name: "Autre", interactive: ["a"], nonInteractive: ["a"], mcpConfig: "claude-json" }));
-    const started = h.rpc.request("start", { agentProfile: "claude" });
+    const started = h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
     expect((await h.rpc.request<{ id: string }[]>("agent.profiles")).map((p) => p.id)).toEqual(["autre", "claude", "codex"]);
     await started;
   });
@@ -225,10 +247,10 @@ describe("agent host", { timeout: 30_000 }, () => {
 
   it("changing the default does not touch open agents", async () => {
     const h = startHost();
-    await h.rpc.request("start", { agentProfile: "claude" });
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
     await agentReady(h, "f1");
     const before = stopsLog(h);
-    expect(await h.rpc.request("start", { agentProfile: "codex" })).toEqual({ agent: expect.any(String) });
+    expect(await h.rpc.request("start", { agentProfile: "codex", aiEnabled: true })).toEqual({ agent: expect.any(String) });
     expect((await agentReady(h, "f2"))[0]).toBe("codex");
     expect(stopsLog(h)).toBe(before);
     expect(await h.rpc.request("agent.current", { window: "f1" })).toBe("claude");
@@ -236,7 +258,7 @@ describe("agent host", { timeout: 30_000 }, () => {
 
   it("agent.switch: only this window's agent, resumed on the way back", async () => {
     const h = startHost();
-    await h.rpc.request("start", { agentProfile: "claude" });
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
     await agentReady(h, "f1");
     const stops = sessionStops(h);
     const ready = h.data().split("fake agent ready>").length;
@@ -259,7 +281,7 @@ describe("agent host", { timeout: 30_000 }, () => {
     writeFileSync(keyFile, key);
     const k = startHost({ RESSAC_TEST_KEYCHAIN: keyFile });
     k.rpc.notify("agent.codexEngine", { engine: { kind: "api", apiUrl: "https://api.example/v1", apiModel: "m", ollamaUrl: "", ollamaModel: "" } });
-    await k.rpc.request("start", { agentProfile: "codex" });
+    await k.rpc.request("start", { agentProfile: "codex", aiEnabled: true });
     const a = await agentReady(k, "f1");
     expect(a[0]).toBe("codex");
     expect(a).toContain('model_provider="ressac-api"');
@@ -274,7 +296,7 @@ describe("agent host", { timeout: 30_000 }, () => {
     writeFileSync(`${keyFile}.claude`, key);
     const k = startHost({ RESSAC_TEST_KEYCHAIN: keyFile });
     k.rpc.notify("agent.claudeEngine", { engine: { kind: "api", apiUrl: "https://api.example/v1", apiModel: "m", ollamaUrl: "", ollamaModel: "" } });
-    await k.rpc.request("start", { agentProfile: "claude" });
+    await k.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
     const a = await agentReady(k, "f1");
     expect(a.some((x) => x.includes(key))).toBe(false);
     const envFile = join(k.dataDir, "workspace", "fake-agent-env.json");
@@ -289,7 +311,7 @@ describe("agent host", { timeout: 30_000 }, () => {
   it("claude with the compatible API and no key: NO_KEY, never the subscription", async () => {
     const h = startHost();
     h.rpc.notify("agent.claudeEngine", { engine: { kind: "api", apiUrl: "https://api.example", apiModel: "m", ollamaUrl: "", ollamaModel: "" } });
-    await h.rpc.request("start", { agentProfile: "claude" });
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
     await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
     await until(() => h.states.some((e) => (e as { state: string }).state === "error"));
     expect(h.states.at(-1)).toEqual({ state: "error", message: "Aucune clé enregistrée pour l'API compatible (Réglages › Agents)." });
@@ -298,7 +320,7 @@ describe("agent host", { timeout: 30_000 }, () => {
   it("codex engine incomplete: no key → the panel says why", async () => {
     const h = startHost();
     h.rpc.notify("agent.codexEngine", { engine: { kind: "api", apiUrl: "https://api.example/v1", apiModel: "m", ollamaUrl: "", ollamaModel: "" } });
-    await h.rpc.request("start", { agentProfile: "codex" });
+    await h.rpc.request("start", { agentProfile: "codex", aiEnabled: true });
     await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
     await until(() => h.states.some((e) => (e as { state: string }).state === "error"));
     expect(h.states.at(-1)).toEqual({ state: "error", message: "Aucune clé enregistrée pour l'API compatible (Réglages › Agents)." });
@@ -306,7 +328,7 @@ describe("agent host", { timeout: 30_000 }, () => {
 
   it("docker absent → etat docker-absent", async () => {
     const h = startHost({ FAKE_DOCKER_ABSENT: "1" });
-    await h.rpc.request("start", { agentProfile: "claude" });
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
     await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
     await until(() => h.states.some((e) => (e as { state: string }).state === "docker-absent"));
   });
@@ -320,7 +342,7 @@ describe("agent host", { timeout: 30_000 }, () => {
 
   it("uses its own docker container", async () => {
     const h = startHost();
-    await h.rpc.request("start", { agentProfile: "claude" });
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
     await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
     await until(() => h.data().includes("fake agent ready>"));
     const lines = readFileSync(h.log, "utf8").split("\n");
@@ -330,7 +352,7 @@ describe("agent host", { timeout: 30_000 }, () => {
 
   it("publishes its own port range, 5300-5319", async () => {
     const h = startHost({ FAKE_DOCKER_NO_CONTAINER: "1" });
-    await h.rpc.request("start", { agentProfile: "claude" });
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
     await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
     await until(() => h.data().includes("fake agent ready>"));
     const run = readFileSync(h.log, "utf8").split("\n").find((l) => l.startsWith("run -d"));
@@ -340,7 +362,7 @@ describe("agent host", { timeout: 30_000 }, () => {
 
   it("arreter stops sessions, then the process exits 0", async () => {
     const h = startHost();
-    await h.rpc.request("start", { agentProfile: "claude" });
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
     await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
     await until(() => h.data().includes("fake agent ready>"));
     await h.rpc.request("stop");
@@ -350,7 +372,7 @@ describe("agent host", { timeout: 30_000 }, () => {
 
   it("open_workflow: the window's selection on its open workflow, forgotten when the window closes", async () => {
     const h = startHost();
-    await h.rpc.request("start", { agentProfile: "claude" });
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
     const sessions = join(h.root, ".ressac", "sessions");
     /** Starts an agent session for w1 and returns its own MCP config (its token names the window). */
     const session = async () => {
@@ -398,7 +420,7 @@ describe("agent host", { timeout: 30_000 }, () => {
         "sites.openIds": () => ["vidola"],
       },
     });
-    await h.rpc.request("start", { agentProfile: "claude" });
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
     await h.rpc.request("sites.ready");
     const navigate = (url: string) => callMcpTool(h.root, "navigate", { id: "site:vidola", url });
     expect((await navigate("https://vidola.test/film/2")).text).toBe("Appli de site site:vidola → https://vidola.test/film/2");
@@ -413,7 +435,7 @@ describe("agent host", { timeout: 30_000 }, () => {
 
   it("stdin closed → the host exits", async () => {
     const h = startHost();
-    await h.rpc.request("start", { agentProfile: "claude" });
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
     h.child.stdin.end();
     expect(await h.exited).toBe(0);
   });
@@ -452,7 +474,7 @@ describe("history", { timeout: 30_000 }, () => {
 
   it("search_history finds a non-private visit, never a private one", async () => {
     const h = startHost();
-    await h.rpc.request("start", { agentProfile: "claude" });
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
     visit(h, "https://a.test/", "Alpha");
     visit(h, "https://b.test/", "Alpha privé", { private: true });
     await settle(h);
@@ -464,7 +486,7 @@ describe("history", { timeout: 30_000 }, () => {
 
   it("retained text is found by the agent, never for a loopback URL", async () => {
     const h = startHost();
-    await h.rpc.request("start", { agentProfile: "claude" });
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
     visit(h, "https://a.test/", "Alpha");
     h.rpc.notify("history.keep", { url: "https://a.test/", spaceId: "e1", title: "Alpha", text: "Le chat dort" });
     visit(h, "http://127.0.0.1/x", "Local");
@@ -482,7 +504,7 @@ describe("history", { timeout: 30_000 }, () => {
     visit(h, "https://a.test/", "Page A");
     expect(await h.rpc.request("history.recent", {})).toEqual([]);
     expect(await h.rpc.request("history.search", { text: "page" })).toEqual([]);
-    await h.rpc.request("start", { agentProfile: "claude" });
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
     await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
     await until(() => h.data().includes("fake agent ready>"));
     expect(h.stderr()).toContain("history");
@@ -588,7 +610,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
   };
   /** An agent tool, once the kernel runs. */
   const tool = async (h: Host, name: string, args: Record<string, unknown> = {}) => {
-    await h.rpc.request("start", { agentProfile: "claude" });
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
     return (await callMcpTool(h.root, name, args)).text;
   };
   const stop = async (h: Host) => {
@@ -655,7 +677,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const amo = await fakeAmo({ delayMs: 500 });
     const f = firefox();
     const h = launch(amo, f, { prepare });
-    await h.rpc.request("start", { agentProfile: "claude" });
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
     const [a, b] = await Promise.all([tool(h, "reload_extension", { id: "ma-ext" }), tool(h, "reload_extension", { id: "ma-ext" })]);
     expect([a, b]).toEqual(["state : reloaded", "state : reloaded"]);
     expect(amo.sends.map((e) => e.version)).toEqual(["1.0.0.1"]);
@@ -754,7 +776,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const f = firefox();
     // No site nor observing right: its background's console shows until it runs in a tab the agent cannot read.
     const h = launch(amo, f, { prepare: (d) => grant(d, ["default"], { ...GRANT, hosts: [], scripts: false }) });
-    await h.rpc.request("start", { agentProfile: "claude" });
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
     const m = (text: string) => ({ timestamp: Date.now(), level: "log", text: text });
     h.rpc.notify("extensions.console", { addonId: ID, message: m("fond démarré"), tab: null });
     // The user gives t1 to the agent; t2 is not shared; null: no Ressac tab (a reading, a private space).
@@ -979,7 +1001,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
       throw new Error("AddonManager absent");
     };
     const h = launch(amo, f, { prepare: (d) => grant(d, ["default"], { ...GRANT, hosts: [], scripts: false }) });
-    await h.rpc.request("start", { agentProfile: "claude" });
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
     const m = (text: string) => ({ timestamp: Date.now(), level: "error", text: text });
     h.rpc.notify("extensions.console", { addonId: ID, message: m("fond cassé"), tab: null });
     // From a tab the agent cannot read: never in its list.
@@ -1228,7 +1250,7 @@ createServer((req, res) => {
   it("deboguer pre-fills the window's agent and opens its panel", async () => {
     const given: unknown[] = [];
     const { h } = startApps({}, { "design.giveAgent": (p: unknown) => void given.push(p) });
-    await h.rpc.request("start", { agentProfile: "claude" });
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
     await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
     await until(() => h.data().includes("fake agent ready>"));
     act(h, "debug");
@@ -1239,7 +1261,7 @@ createServer((req, res) => {
 
   it("the host stops the apps and the sessions on stdin close", async () => {
     const { h, chrome } = startApps();
-    await h.rpc.request("start", { agentProfile: "claude" });
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
     await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
     await until(() => h.data().includes("fake agent ready>"));
     await launched(h, chrome);
@@ -1254,7 +1276,7 @@ createServer((req, res) => {
 
   it("a slow apps stop at quit does not hold back the sessions' stop", async () => {
     const { h, chrome } = startApps({ FAKE_DOCKER_SLOW_APP_STOP: "4" });
-    await h.rpc.request("start", { agentProfile: "claude" });
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
     await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
     await until(() => h.data().includes("fake agent ready>"));
     await launched(h, chrome);
@@ -1267,7 +1289,7 @@ createServer((req, res) => {
 
   it("a failed apps stop at quit still stops the sessions", async () => {
     const { h } = startApps({ RESSAC_TEST_APPS_STOP_FAILS: "1" });
-    await h.rpc.request("start", { agentProfile: "claude" });
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
     await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
     await until(() => h.data().includes("fake agent ready>"));
     const before = stops(h).length;

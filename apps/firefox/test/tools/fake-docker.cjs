@@ -7,6 +7,8 @@ const { spawn, spawnSync } = require("node:child_process");
 
 const args = process.argv.slice(2);
 const env = process.env;
+// Every call, one per line (a script's newlines escaped), for the tests that check nothing runs docker (AI off).
+if (env.RESSAC_ROOT) appendFileSync(join(env.RESSAC_ROOT, "fake-docker-all.log"), `${args.join(" ").replaceAll("\n", "\\n")}\n`);
 const failing = env.FAKE_DOCKER_FAILURE === "1";
 const quit = (code, out = "", err = "") => {
   if (out) process.stdout.write(out);

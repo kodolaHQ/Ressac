@@ -9,6 +9,7 @@
   const win = window.parent.ressacWindow!;
   const winState = $derived(currentWindow());
   const agentPanelOpen = $derived(winState?.agentPanelOpen ?? false);
+  const aiOn = $derived(appState.value?.settings.aiEnabled ?? false);
   const activeTab = $derived.by(() => {
     const id = winState?.active[winState.activeSpace];
     return id ? appState.value?.tabs[id] : undefined;
@@ -47,7 +48,7 @@
       expected = v;
       api.dispatch({ type: "homeAgentPanel", windowId: f.id, open: v });
     };
-    if (onHome && !isOpen && !panelClosedOnHome) {
+    if (onHome && !isOpen && !panelClosedOnHome && aiOn) {
       openedByHome = true;
       ask(true);
     } else if (!onHome && isOpen && openedByHome) {

@@ -470,6 +470,7 @@ async function start(): Promise<RessacStore> {
     dataDir,
     agentProfile: () => store.state.settings.agentProfile,
     locale: () => store.state.locale,
+    aiEnabled: () => store.state.settings.aiEnabled,
     handlers: {
       ...bridgeHandlers(store, questions, windows, devtools, () => agent, sites, apps),
       ...agentExtensions.handlers,
