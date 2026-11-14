@@ -28,3 +28,14 @@ test("a strong swipe, its momentum uneven, moves one space only", () => {
   [4, 30, 90, 140, 120, 60, 20, 8, 25, 60, 30, 6, 2, 9, 3, 1].forEach((x) => (swipe({ deltaX: x, deltaY: 0 }), (now += 16)));
   expect(got).toEqual([1]);
 });
+
+test("a second swipe during the first one's momentum still switches", () => {
+  const got: number[] = [];
+  let now = 0;
+  const swipe = createSwipe((d) => got.push(d), () => now);
+  const feed = (deltas: number[]) => deltas.forEach((x) => (swipe({ deltaX: x, deltaY: 0 }), (now += 16)));
+  feed([4, 30, 90, 140, 120, 60, 30, 18, 12]);
+  // New fingers cut the momentum: tiny deltas, then a clear rise.
+  feed([2, 5, 14, 40, 90, 60, 20]);
+  expect(got).toEqual([1, 1]);
+});
