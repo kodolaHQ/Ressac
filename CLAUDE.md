@@ -26,7 +26,7 @@ Every visual change follows `DESIGN.md`.
 
 ## Version and DMG
 
-- The Ressac version is `"version"` in `apps/firefox/package.json`. To ship a DMG to testers, bump it there, then run `(set -a; . ~/.config/ressac/sentry.env; set +a; echo N | corepack pnpm --filter firefox-ressac run package)`. Sentry's release, Réglages › À propos, the DMG name and the Finder version all follow it. The package step takes a normal build.
+- The Ressac version is `"version"` in `apps/firefox/package.json`. To ship a DMG to testers, bump it there, then run `(set -a; . ~/.config/ressac/sentry.env; set +a; echo N | corepack pnpm --filter firefox-ressac run package)`. Sentry's release, Réglages › À propos, the DMG name and the Finder version all follow it. The package step takes a normal build. The same file sets `RESSAC_SIGN_IDENTITY` (Developer ID) and `RESSAC_NOTARY_PROFILE` (notarytool profile): without them the DMG is ad hoc signed and Gatekeeper blocks it.
 - Never change `displayVersion` in `apps/firefox/surfer.json` for a Ressac release. It is compiled into Gecko, so a change forces a near-full engine rebuild (40+ min). It only moves with a Firefox engine update.
 - Bump only for a DMG that actually goes to testers, not for every test build.
 - With each bump, add the version's entry at the top of `apps/firefox/shared/release-notes.ts`: the « Nouveautés » page opens after the update only if the newest entry is for the running version.

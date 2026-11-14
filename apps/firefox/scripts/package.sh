@@ -130,19 +130,45 @@ step "Leak check"
 leaks=$(grep -rl --binary-files=text -e "$HOME" -e "$repo_root" $app || true)
 [[ -z $leaks ]] || fail "this Mac's paths ($HOME) found in:\n$leaks"
 
-# 8. Ad hoc signature: the friends allow it once in System Settings.
+# 8. Signature. RESSAC_SIGN_IDENTITY (a "Developer ID Application: …" in the keychain) signs for real; unset, ad hoc.
 step "Signing"
 plutil -replace CFBundleShortVersionString -string $version $app/Contents/Info.plist
 # Ressac asks for macOS 14: the Ollama it can install for the local AI does not run below (Firefox itself says 10.15).
 plutil -replace LSMinimumSystemVersion -string 14.0 $app/Contents/Info.plist
-codesign --force --deep --sign - $app
+identity=${RESSAC_SIGN_IDENTITY:-}
+if [[ -z $identity ]]; then
+  print -ru2 -- "warning: RESSAC_SIGN_IDENTITY is empty, ad hoc signature (Gatekeeper will block the app)"
+  codesign --force --deep --sign - $app
+else
+  # Firefox's own signer: each helper gets its entitlements from the engine's taskcluster/config.yml.
+  # without-restricted: no passkey entitlement until Apple grants it (it needs a provisioning profile).
+  (cd $engine && ./mach macos-sign -a $app -s "$identity" -e production-without-restricted -c release) || fail "mach macos-sign failed"
+  # mach does not know our bundled host: sign it, then reseal the app with the entitlements mach gave it.
+  pty_bin=$host/node_modules/node-pty/prebuilds/darwin-arm64
+  codesign --force --timestamp --options runtime --sign "$identity" $pty_bin/pty.node $pty_bin/spawn-helper
+  codesign --force --timestamp --options runtime --entitlements $app_dir/scripts/node-entitlements.plist --sign "$identity" $host/node
+  codesign -d --entitlements - --xml $app > $node_x/app-entitlements.plist
+  codesign --force --timestamp --options runtime --entitlements $node_x/app-entitlements.plist --sign "$identity" $app
+fi
 codesign --verify --deep --strict $app || fail "codesign --verify failed"
 
-# 9. DMG.
+# 9. DMG, notarized when RESSAC_NOTARY_PROFILE names a `xcrun notarytool store-credentials` profile.
 step "DMG"
 ln -s /Applications $work/Applications
 dmg=$app_dir/dist/Ressac-$version.dmg
 hdiutil create -volname "Ressac $version" -srcfolder $work -format UDZO -ov $dmg
+if [[ -n $identity ]]; then
+  codesign --timestamp --sign "$identity" $dmg
+  if [[ -n ${RESSAC_NOTARY_PROFILE:-} ]]; then
+    step "Notarization (a few minutes)"
+    xcrun notarytool submit $dmg --keychain-profile $RESSAC_NOTARY_PROFILE --wait | tee $node_x/notary.txt
+    grep -q 'status: Accepted' $node_x/notary.txt || fail "notarization refused, see: xcrun notarytool log <id> --keychain-profile $RESSAC_NOTARY_PROFILE"
+    xcrun stapler staple $dmg
+    spctl -a -t open --context context:primary-signature $dmg || fail "Gatekeeper rejects the DMG"
+  else
+    print -ru2 -- "warning: RESSAC_NOTARY_PROFILE is empty, DMG not notarized (Gatekeeper will block the app)"
+  fi
+fi
 
 # 10. Native crash symbols (optional).
 if [[ -n ${SENTRY_AUTH_TOKEN:-} && -n ${SENTRY_ORG:-} && -n ${SENTRY_PROJECT:-} ]]; then
