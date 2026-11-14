@@ -12,7 +12,7 @@
 
 <p align="center"><sub>Bêta fermée · macOS 14+ · Apple Silicon · Open source</sub></p>
 
-<p align="center"><img src="docs/images/overview.jpg" alt="Ressac : barre latérale avec espaces, essentiels et onglets épinglés"></p>
+<p align="center"><img src="docs/images/overview-fr.jpg" alt="Ressac : une page calme, la barre latérale avec ses onglets et ses espaces"></p>
 
 ## Le premier jour : juste un navigateur calme
 
@@ -41,7 +41,7 @@ Le *ressac*, c'est la vague qui revient vers le rivage. Tu envoies l'agent sur l
 - Il demande avant d'ouvrir une adresse qu'il a écrite lui-même, et te rend la main quand une page a besoin de toi (connexion, captcha).
 - Il te crée des applis de site, des actions, des extensions et des widgets, et change l'apparence d'une page à la demande (mode design).
 
-<p align="center"><img src="docs/images/live-recap.gif" alt="L'agent compare des aspirateurs robots et remplit un récap en direct"></p>
+<p align="center"><img src="docs/images/live-recap-fr.gif" alt="L'agent compare les plus grands mascarets du monde et remplit un récap en direct"></p>
 
 **L'IA locale**
 - Des **workflows** et des **veilles** qui tournent sur ton Mac avec Ollama : un petit modèle décide, un autre écrit.
@@ -49,15 +49,15 @@ Le *ressac*, c'est la vague qui revient vers le rivage. Tu envoies l'agent sur l
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/images/agent.jpg" alt="L'agent lit ses sources pendant que son récap se remplit"><br><sub>L'agent lit ses sources pendant que son récap se remplit</sub></td>
-    <td width="50%"><img src="docs/images/command-bar.jpg" alt="La barre de commande ⌘T"><br><sub>La barre de commande ⌘T</sub></td>
+    <td width="50%"><img src="docs/images/agent-fr.jpg" alt="L'agent lit ses sources pendant que son récap se remplit"><br><sub>L'agent lit ses sources pendant que son récap se remplit</sub></td>
+    <td width="50%"><img src="docs/images/command-bar-fr.jpg" alt="La barre de commande ⌘T"><br><sub>La barre de commande ⌘T</sub></td>
   </tr>
   <tr>
     <td width="50%"><img src="docs/images/workflow-builder.jpg" alt="Un workflow, bloc par bloc"><br><sub>Un workflow, bloc par bloc</sub></td>
     <td width="50%"><img src="docs/images/site-app.jpg" alt="Une appli de site dans sa fenêtre"><br><sub>Une appli de site dans sa fenêtre</sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="docs/images/home.jpg" alt="L'accueil et ses widgets, écrits par les modèles locaux"><br><sub>L'accueil et ses widgets, écrits par les modèles locaux</sub></td>
+    <td width="50%"><img src="docs/images/home-fr.jpg" alt="L'accueil, ses widgets et les espaces en bas de la barre latérale"><br><sub>L'accueil, ses widgets et les espaces en bas de la barre latérale</sub></td>
     <td width="50%"><img src="docs/images/call-bar.jpg" alt="La barre d'appel en bas de la barre latérale"><br><sub>La barre d'appel en bas de la barre latérale</sub></td>
   </tr>
 </table>
