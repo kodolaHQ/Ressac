@@ -113,7 +113,8 @@ describe("package.sh update archive", () => {
     expect(feed).toBeLessThan(at('step "Signing"'));
     expect(sh).toContain('{\\"policies\\": {\\"AppUpdateURL\\": \\"$feed\\"}}');
     expect(sh).not.toContain("[AppUpdate\\]");
-    expect(sh).toContain("update-xml.mjs $mar $res/application.ini $version $update_key");
+    expect(sh).toContain("update-xml.mjs $mar $res/application.ini $version $update_key ${build_ids[1]}");
+    expect(sh).toContain("strings -a $app/Contents/MacOS/ressac | grep -xE '20[0-9]{12}'");
     expect(sh).toContain("[[ -z $update_key || $update_key =~ '^[a-z0-9]{24,64}$' ]]");
   });
 

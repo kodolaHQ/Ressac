@@ -199,7 +199,10 @@ else
   # Checked against the public certificate the app ships, not the key.
   $objdist/bin/signmar -D $app_dir/src/toolkit/mozapps/update/updater/dep1.der -v $mar || { rm -f $mar; fail "the update archive's signature does not verify" }
   unset DYLD_LIBRARY_PATH
-  node scripts/update-xml.mjs $mar $res/application.ini $version $update_key > $app_dir/dist/update.xml
+  # Firefox compares update.xml's buildID with the one compiled into the binary, not application.ini's (scripts/update-xml.mjs).
+  build_ids=($(strings -a $app/Contents/MacOS/ressac | grep -xE '20[0-9]{12}' || true))
+  (( ${#build_ids} == 1 )) || fail "expected one build ID in Contents/MacOS/ressac, found ${#build_ids}"
+  node scripts/update-xml.mjs $mar $res/application.ini $version $update_key ${build_ids[1]} > $app_dir/dist/update.xml
   print -r -- "$mar ($(( $(stat -f %z $mar) / 1048576 )) MB), $app_dir/dist/update.xml"
 fi
 
