@@ -6,7 +6,7 @@
   import { shortcutLabel } from "../../shared/shortcuts";
   import type { WindowState } from "../../shared/model";
   import { api, appState } from "../state.svelte";
-  import { t } from "../i18n.svelte";
+  import { t, tAround } from "../i18n.svelte";
   import AuraDot from "./AuraDot.svelte";
   import BrowserImport from "./BrowserImport.svelte";
   import SidebarSketch from "./SidebarSketch.svelte";
@@ -165,7 +165,7 @@
               </label>
             {/each}
           </div>
-          {#if docker && docker !== "docker-absent"}<p class="note">{t("home-welcome-agent-login", { key: label("agent") })}</p>{/if}
+          {#if docker && docker !== "docker-absent"}{@const [before, after] = tAround("home-welcome-agent-login", "key")}<p class="note">{before}<kbd>{label("agent")}</kbd>{after}</p>{/if}
           {@render actions(t("home-welcome-continue"), true)}
         {:else if step.page === 5}
           <h2>{t("home-welcome-ai-title")}</h2>
