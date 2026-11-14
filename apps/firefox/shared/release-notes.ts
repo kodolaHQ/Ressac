@@ -1,6 +1,23 @@
 /** What changed for the user, newest first. Add an entry when bumping `version` in package.json: its page opens once after the update. */
 export const RELEASE_NOTES: { version: string; date: string; items: string[] }[] = [
   {
+    version: "0.1.4",
+    date: "novembre 2026",
+    items: [
+      "WebAiOs s'appelle maintenant Ressac. Au premier lancement, Ressac reprend vos espaces, onglets, mots de passe, extensions et réglages, puis se relance une fois. Quittez WebAiOs avant d'ouvrir Ressac.",
+      "Ce qui ne suit pas : les cartes bancaires enregistrées sont à ressaisir, et les extensions installées par l'agent sont à lui redemander.",
+      "Ressac est signé et vérifié par Apple : plus besoin de « Ouvrir quand même ». macOS redemande une dernière fois l'accès à la caméra, au micro, au partage d'écran et aux notifications.",
+      "Avant un achat ou un choix, l'agent remplit un récapitulatif en direct dans un onglet : critères, sources, offres, avantages et inconvénients sourcés.",
+      "Une vignette montre ce que fait l'agent par-dessus vos autres onglets, et ses onglets ont leur propre section dans la barre latérale.",
+      "Les récapitulatifs oubliés se ferment après sept jours d'utilisation.",
+      "Ressac démarre lui-même OrbStack, Docker Desktop ou Ollama s'ils sont installés, et télécharge Ollama (190 Mo) en un clic s'il manque. L'atelier de l'agent est plus léger (1,4 Go au lieu de 2,3 Go).",
+      "Réglages : définir Ressac comme navigateur par défaut, et réparer le partage d'écran après une mise à jour.",
+      "Le navigateur s'ouvre sur l'accueil (un réglage le désactive), et l'accueil ne répète plus les essentiels.",
+      "Un onglet lâché hors de la fenêtre part dans une nouvelle fenêtre, sa page toujours en marche. Un essentiel tiré hors de sa grille redevient un onglet.",
+      "macOS 14 minimum.",
+    ],
+  },
+  {
     version: "0.1.3",
     date: "novembre 2026",
     items: [
