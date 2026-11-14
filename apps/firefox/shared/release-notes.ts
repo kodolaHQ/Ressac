@@ -1,6 +1,20 @@
 /** What changed for the user, newest first. Add an entry when bumping `version` in package.json: its page opens once after the update. */
 export const RELEASE_NOTES: { version: string; date: string; items: string[] }[] = [
   {
+    version: "0.1.5",
+    date: "novembre 2026",
+    items: [
+      "Ressac se met à jour tout seul : la nouvelle version se télécharge en arrière-plan, une carte « Ressac … est prête » propose de redémarrer, sinon elle s'installe au prochain lancement. Réglages › À propos permet aussi de rechercher une mise à jour. C'est la dernière version à installer à la main.",
+      "L'IA devient optionnelle : l'accueil vous demande si vous voulez l'activer. Sans elle, Ressac reste un navigateur, et rien ne tourne en arrière-plan (ni Docker, ni Ollama). Elle s'active à tout moment dans Réglages › Agents. Si vous l'utilisiez déjà, elle reste activée.",
+      "Ressac parle français ou anglais (Réglages › Vie privée › Langue), et l'agent vous répond dans la langue choisie.",
+      "⌘T : posez une question au lieu de chercher (« Demander ») ; l'IA locale retrouve la page dans votre historique, ou passe la question à l'agent.",
+      "Apparence claire, sombre ou comme le Mac, dans l'accueil et dans Réglages › Vie privée.",
+      "L'accueil propose aussi de choisir votre moteur de recherche.",
+      "Les fonctions de Firefox qui doublaient celles de Ressac sont masquées.",
+      "L'historique dans ⌘T affiche l'icône de chaque site.",
+    ],
+  },
+  {
     version: "0.1.4",
     date: "novembre 2026",
     items: [
