@@ -19,6 +19,7 @@ import { createOverlays } from "../window/design-overlays";
 import { createDevTools, type DevTools } from "./devtools";
 import { createDownloads, type DownloadsList } from "./downloads";
 import { createHistory, type History } from "./history";
+import { createAsk, type Ask } from "./ask";
 import { createBrowserImporter } from "./import/importer";
 import { carryOver, carryPrefs, tellOnce, unfinished, type CarryResult, type ProfileService } from "./carry-over";
 import type { BrowserImportApi } from "../../shared/api";
@@ -63,6 +64,8 @@ export interface RessacStore extends Store {
   readonly agent: AgentHost;
   /** The noted visits, kept by the kernel host. */
   readonly history: History;
+  /** The ⌘T questions: quick history search, else the agent. */
+  readonly ask: Ask;
   /** The session's downloads, followed from Firefox's own list (not kept across a restart). */
   readonly downloads: DownloadsList;
   /** The agent's « lire l'onglet » cards waiting for an answer. */
@@ -452,6 +455,11 @@ async function start(): Promise<RessacStore> {
     if (win.windowState === win.STATE_MINIMIZED) (win as any).restore();
     win.focus();
   };
+  // The agent's panel with the keyboard, its window in front.
+  const giveAgent = (win: WindowId) => {
+    windows.get(win)?.controller.openAgent();
+    toFront(win);
+  };
   const agent = createHost({
     dataDir,
     agentProfile: () => store.state.settings.agentProfile,
@@ -464,10 +472,7 @@ async function start(): Promise<RessacStore> {
       "bookmarks.search": ([text, limit]: [string, number]) => searchBookmarks(text, limit),
       // A review batch for the agent (host/design.ts): its window, then its panel with the keyboard, in front.
       "design.agentWindow": async () => (await mainWindow()) ?? null,
-      "design.giveAgent": ([win]: [WindowId]) => {
-        windows.get(win)?.controller.openAgent();
-        toFront(win);
-      },
+      "design.giveAgent": ([win]: [WindowId]) => giveAgent(win),
     },
     onStart: (notify) => {
       sendMirror(store, windows, notify);
@@ -503,6 +508,7 @@ async function start(): Promise<RessacStore> {
   });
   bindApps(agent, openInTab, dataDir, { access: () => access, design, locale: () => store.state.locale });
   const history = createHistory(store, agent);
+  const ask = createAsk(agent, giveAgent);
   registerHomeNotifications(agent);
   // A site app's downloads are cancelled: an app downloads nothing.
   const downloads = await createDownloads(isSiteContainer);
@@ -538,6 +544,7 @@ async function start(): Promise<RessacStore> {
     containerFor,
     agent,
     history,
+    ask,
     downloads,
     questions,
     windows,

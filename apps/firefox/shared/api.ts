@@ -13,7 +13,7 @@ import type { ActionShown } from "./actions";
 import type { ActionSite, SiteWindowState, MessageToHome, ShownSite } from "./sites";
 import type { ExtensionsBar, ExtensionLine, SpaceExtensionLine, SiteExtensionLine } from "./extensions";
 import type { LeftZone } from "./reveal";
-import type { Decision, PendingRequest, AccessState, BrowserState, SpaceId, WindowId, TabId, Download, Visit } from "./model";
+import type { Decision, PendingRequest, AccessState, BrowserState, SpaceId, WindowId, TabId, Download, Visit, AskHit, AskResult } from "./model";
 
 const id = z.string().min(1);
 const frame = z.object({ x: z.number(), y: z.number(), width: z.number().positive(), height: z.number().positive() });
@@ -228,6 +228,16 @@ export interface ApiRessac {
     clear(from?: string): Promise<void>;
     /** Forgets the text kept for a visit (a URL in a space), without deleting the visit. */
     forgetText(url: string, spaceId: string): Promise<void>;
+  };
+  /** The ⌘T questions (Demander): quick history search, else the agent. */
+  ask: {
+    /** False while the host is down or Gemma is missing. */
+    usable(): Promise<boolean>;
+    warm(): void;
+    /** Never rejects: { kind: "agent" } while the host is down. */
+    find(question: string): Promise<AskResult>;
+    /** Sends the question, with the pages already shown, to the window's agent and opens its panel; false when nothing was sent (panel left closed). */
+    handOff(windowId: WindowId, question: string, shown: AskHit[]): Promise<boolean>;
   };
   downloads: {
     list(): Promise<Download[]>;

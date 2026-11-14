@@ -162,6 +162,12 @@ export function createApi(win: WindowController): ApiFirefox {
       clear: (from) => win.store.history.clear(from),
       forgetText: (url, spaceId) => win.store.history.forgetText(url, spaceId),
     },
+    ask: {
+      usable: () => win.store.ask.usable(),
+      warm: () => win.store.ask.warm(),
+      find: (question) => win.store.ask.find(question).then((r) => structuredClone(r)),
+      handOff: (windowId, question, shown) => win.store.ask.handOff(windowId, question, shown),
+    },
     // The list lives in the store's realm: the UI gets copies made in this realm.
     downloads: {
       list: async () => structuredClone(win.store.downloads.list()),

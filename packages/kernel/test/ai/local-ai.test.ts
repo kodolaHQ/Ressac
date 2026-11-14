@@ -127,6 +127,26 @@ describe("LocalAi", () => {
     expect(chats()[1]!.body.format).toBeUndefined();
   });
 
+  it("hasGemma() reads only Ollama's tags: true with a Gemma build, false without one or when Ollama is down", async () => {
+    const { run, calls } = fakeRunner([]);
+    const yes = new LocalAi({ folder: await tempFolder(), run, ollamaUrl: keep(await fakeOllama("", ["gemma4:e4b"])).url });
+    expect(await yes.hasGemma()).toBe(true);
+    const no = new LocalAi({ folder: await tempFolder(), run, ollamaUrl: keep(await fakeOllama("", ["llama3"])).url });
+    expect(await no.hasGemma()).toBe(false);
+    const down = new LocalAi({ folder: await tempFolder(), run, ollamaUrl: await unreachableUrl() });
+    expect(await down.hasGemma()).toBe(false);
+    expect(calls).toEqual([]); // no uv probe
+  });
+
+  it("warm() asks Ollama to load the detected Gemma build (no prompt, keep_alive 10m) and never throws", async () => {
+    const ollama = keep(await fakeOllama("", ["gemma4:e4b"]));
+    const ai = new LocalAi({ folder: await tempFolder(), run: fakeRunner([]).run, ollamaUrl: ollama.url });
+    await ai.warm(); // the fake answers 404 on /api/generate: still no throw
+    expect(ollama.requests.find((r) => r.url === "/api/generate")!.body).toEqual({ model: "gemma4:e4b", keep_alive: "10m" });
+    const down = new LocalAi({ folder: await tempFolder(), run: fakeRunner([]).run, ollamaUrl: await unreachableUrl() });
+    await expect(down.warm()).resolves.toBeUndefined();
+  });
+
   it("gemma with a raised signal aborts the request to Ollama (fake server)", async () => {
     const ollama = keep(await fakeSilentOllama());
     const { run: run } = fakeRunner([]);

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { tick, untrack } from "svelte";
-  import type { WindowState, Tab } from "../../shared/model";
+  import { fade } from "svelte/transition";
+  import type { WindowState, Tab, TabId, AskHit } from "../../shared/model";
   import { api, appState } from "../state.svelte";
   import { closeCommand, command, focusEmptyPage } from "./command.svelte";
   import {
@@ -94,7 +95,8 @@
   $effect(() => {
     const t = text.trim();
     const n = ++request;
-    if (!t) {
+    // Demander hides these lines: no lookup until back in Chercher (this effect re-runs on the switch).
+    if (!t || asking) {
       hist = [];
       marks = [];
       return;
@@ -129,10 +131,95 @@
   /** Changes on each launch and each list ↔ input switch: the reply of an abandoned launch is ignored. */
   let launch = 0;
 
+  /** Demander mode: a question goes to the local quick search, then to the agent. */
+  let asking = $state(false);
+  /** Whether the local AI can triage, asked once per opening on the first switch to Demander. */
+  let usable: Promise<boolean> | null = null;
+  /** The quick search's pages, null before Enter. */
+  let hits = $state.raw<AskHit[] | null>(null);
+  let askChosen = $state(0);
+  let working = $state(false);
+  /** A hand-off is pending: typing does not end its `working`, so a second Enter cannot start a find it would close. */
+  let handing = false;
+  /** Changes on each question, keystroke, switch and opening: a late answer for an abandoned one is ignored. */
+  let asked = 0;
+  const ASK_MAX = 2000;
+
+  function toggleMode() {
+    asking = !asking;
+    clearAsk();
+    if (asking && !usable) {
+      usable = api.ask.usable();
+      api.ask.warm();
+    }
+    void tick().then(() => field?.focus());
+  }
+
+  /** Hands the question to the agent; the bar closes once the agent panel took it, else it stays with the question. */
+  function handOff(question: string, shown: AskHit[]) {
+    if (working) return;
+    const o = command.open;
+    working = true;
+    handing = true;
+    const done = (ok: boolean) => {
+      if (o !== command.open) return;
+      working = false;
+      handing = false;
+      if (ok) closeCommand();
+      else denial = t("sidebar-command-ask-down");
+    };
+    void api.ask.handOff(win.id, question, shown).then(done, () => done(false));
+  }
+
+  /** Typing again: back to before Enter, a pending answer ignored. */
+  function clearAsk() {
+    asked++;
+    hits = null;
+    if (!handing) working = false;
+  }
+
+  async function askEnter() {
+    if (hits) {
+      const h = hits[askChosen];
+      if (h) openHit(h);
+      else handOff(text.trim().slice(0, ASK_MAX), hits);
+      return;
+    }
+    const question = text.trim().slice(0, ASK_MAX);
+    if (!question || working) return;
+    const o = command.open;
+    const n = ++asked;
+    working = true;
+    const r = (await usable) ? await api.ask.find(question) : ({ kind: "agent" } as const);
+    if (o !== command.open || n !== asked) return;
+    working = false;
+    if (r.kind === "agent") handOff(question, []);
+    else {
+      hits = r.hits;
+      askChosen = 0;
+    }
+  }
+
+  /** A tab of this window already on that address takes it (activateTab switches to its space), else a new tab. */
+  function openHit(h: AskHit) {
+    const here = tabs.find((o) => o.url === h.url);
+    const there = here ? undefined : Object.values(appState.value?.tabs ?? {}).find((o) => o.windowId === win.id && o.url === h.url);
+    if (here) activate(here.id);
+    else if (there) api.dispatch({ type: "activateTab", id: there.id });
+    else api.navigate(null, h.url);
+    closeCommand(true);
+  }
+
   // On each opening (the first, or a reopening in the other mode): starting input, all selected in « actif » mode.
   $effect(() => {
     const o = command.open;
     if (!o) return;
+    asking = false;
+    usable = null;
+    hits = null;
+    working = false;
+    handing = false;
+    asked++;
     runningAction = false;
     param = null;
     text = o.text;
@@ -163,13 +250,16 @@
     }
     if (l.type === "default") api.navigate(target, l.text);
     else if (l.type === "history" || l.type === "bookmark") api.navigate(target, l.url);
-    else if (l.type === "tab") {
-      // Like the sidebar and ⌃Tab: an essential opens through its favorite (its tab may belong to a sibling space).
-      const link = appState.value?.tabs[l.tab.id]?.link;
-      api.dispatch(link?.type === "essential" ? { type: "openFavorite", windowId: win.id, kind: "essential", id: link.id } : { type: "activateTab", id: l.tab.id });
-    } else if (l.app.kind === "project") api.apps.act(l.app.id, l.app.action);
+    else if (l.type === "tab") activate(l.tab.id);
+    else if (l.app.kind === "project") api.apps.act(l.app.id, l.app.action);
     else api.sites.act(l.app.id, "open");
     closeCommand(true);
+  }
+
+  // Like the sidebar and ⌃Tab: an essential opens through its favorite (its tab may belong to a sibling space).
+  function activate(id: TabId) {
+    const link = appState.value?.tabs[id]?.link;
+    api.dispatch(link?.type === "essential" ? { type: "openFavorite", windowId: win.id, kind: "essential", id: link.id } : { type: "activateTab", id });
   }
 
   /** Opens the action's page and launches it with `saisie` (without a required input and absent: the page asks for it). */
@@ -250,15 +340,21 @@
    */
   function key(e: KeyboardEvent) {
     if (e.isComposing) return;
-    if (e.key === "ArrowDown") choose((chosen + 1) % Math.max(lines.length, 1));
+    if (e.key === "Tab") {
+      if (!e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) toggleMode();
+    } else if (asking) {
+      // Arrows stop here even without hits: the modals under the veil must not get them.
+      const n = hits ? hits.length + 1 : 0;
+      if (e.key === "ArrowDown") n && (askChosen = (askChosen + 1) % n);
+      else if (e.key === "ArrowUp") n && (askChosen = (askChosen - 1 + n) % n);
+      else if (e.key === "Enter") {
+        if (!e.repeat) void askEnter();
+      } else return;
+    } else if (e.key === "ArrowDown") choose((chosen + 1) % Math.max(lines.length, 1));
     else if (e.key === "ArrowUp") choose((chosen - 1 + lines.length) % Math.max(lines.length, 1));
     else if (e.key === "Enter") {
       const l = lines[chosen];
       if (l && !e.repeat) run(l);
-    } else if (e.key === "Tab") {
-      // Tab on an action awaiting its input: it is given right away, like Enter.
-      const l = lines[chosen];
-      if (l && paramRequest(l) && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) enterParam(l);
     } else return;
     e.preventDefault();
     e.stopPropagation();
@@ -267,8 +363,21 @@
   const label = (l: CommandLine): string =>
     l.type === "default" ? l.label : l.type === "action" ? l.name : l.type === "tab" ? l.tab.title : l.type === "app" ? l.app.name : l.title || l.url;
   // History keeps no favicon: the site's, at the usual address (except in a private visit, nothing leaves).
-  const visitFavicon = (url: string): string | null =>
-    /^https?:\/\//i.test(url) && hist.some((v) => v.url === url && !v.private) ? `${new URL(url).origin}/favicon.ico` : null;
+  const siteFavicon = (url: string): string | null => (/^https?:\/\//i.test(url) ? `${new URL(url).origin}/favicon.ico` : null);
+  const visitFavicon = (url: string): string | null => (hist.some((v) => v.url === url && !v.private) ? siteFavicon(url) : null);
+  const host = (url: string): string => {
+    try {
+      return new URL(url).hostname.replace(/^www\./, "");
+    } catch {
+      return url;
+    }
+  };
+  /** « aujourd'hui », « hier », « il y a 3 jours »: calendar days in local time. */
+  function visitedWhen(iso: string): string {
+    const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+    const gap = Math.round((day(new Date()) - day(new Date(iso))) / 86_400_000);
+    return gap <= 0 ? t("sidebar-ask-today") : gap === 1 ? t("sidebar-ask-yesterday") : t("sidebar-ask-days-ago", { days: gap });
+  }
   const favicon = (l: CommandLine): string | null =>
     l.type === "tab" ? l.tab.favicon : l.type === "app" ? l.app.favicon : l.type === "history" ? visitFavicon(l.url) : null;
   const badgeText = (l: CommandLine): string =>
@@ -339,18 +448,48 @@
       <p class="help" data-testid="param-help">{t("sidebar-command-param-help", { label: param.label })}</p>
       {#if denial}<p class="refusal" data-testid="command-refusal">{denial}</p>{/if}
     {:else}
-    <input
-      bind:this={field}
-      bind:value={text}
-      oninput={() => (choose(0), (denial = ""))}
-      onkeydown={key}
-      data-testid="command-input"
-      placeholder={t("sidebar-command-placeholder")}
-      spellcheck="false"
-      autocomplete="off"
-    />
+    <div class="field-line">
+      <input
+        bind:this={field}
+        bind:value={text}
+        oninput={() => (choose(0), (denial = ""), asking && clearAsk())}
+        onkeydown={key}
+        data-testid="command-input"
+        placeholder={t(asking ? "sidebar-command-ask-placeholder" : "sidebar-command-placeholder")}
+        spellcheck="false"
+        autocomplete="off"
+      />
+      {#if working}<span class="working" data-testid="command-ask-working" role="status" aria-label={t("sidebar-command-ask-working")} out:fade={{ duration: 150 }}></span>{/if}
+      <span class="mode-hint">{t("sidebar-command-mode-hint")}</span>
+      <button type="button" tabindex="-1" class="mode" class:asking data-testid="command-mode" onclick={toggleMode}>
+        <span aria-current={!asking}>{t("sidebar-command-mode-search")}</span>
+        <span aria-current={asking} data-testid="command-mode-ask">{t("sidebar-command-mode-ask")}</span>
+      </button>
+    </div>
     {#if denial}<p class="refusal" data-testid="command-refusal">{denial}</p>{/if}
-    <ul role="listbox">
+    {#if asking}
+      {#if hits}
+        <ul role="listbox" out:fade={{ duration: 150 }}>
+          {#each hits as h, i (h.url)}
+            <li role="option" aria-selected={i === askChosen} data-testid="command-ask-hit">
+              <button type="button" tabindex="-1" class:chosen-one={i === askChosen} onmousemove={() => (askChosen = i)} onclick={() => openHit(h)}>
+                <span class="pictogram"><SiteIcon favicon={siteFavicon(h.url)} title={h.title} /></span>
+                <span class="label">{h.title || h.url}</span>
+                <span class="detail">{h.excerpt ?? h.url}</span>
+                <span class="tag">{host(h.url)} · {visitedWhen(h.lastVisit)}</span>
+              </button>
+            </li>
+          {/each}
+          <li role="option" aria-selected={askChosen === hits.length} data-testid="command-ask-agent">
+            <button type="button" tabindex="-1" class:chosen-one={askChosen === hits.length} onmousemove={() => hits && (askChosen = hits.length)} onclick={() => hits && handOff(text.trim().slice(0, ASK_MAX), hits)}>
+              <span class="pictogram" data-type="action"><Icon name="agent" size={14} /></span>
+              <span class="label">{t("sidebar-command-ask-agent")}</span>
+            </button>
+          </li>
+        </ul>
+      {/if}
+    {:else}
+    <ul role="listbox" class="lines" out:fade={{ duration: 150 }}>
       {#each lines as l, i (i)}
         {@const title = titleBefore(lines, i, appState.value?.locale ?? "fr")}
         {#if title}<li role="presentation" class="section" data-testid="command-section">{title}</li>{/if}
@@ -366,6 +505,7 @@
         </li>
       {/each}
     </ul>
+    {/if}
     {/if}
   </div>
 </div>
@@ -386,6 +526,19 @@
     font-size: 14px;
     animation: ressac-drop var(--spring-d) var(--spring) backwards;
   }
+  .field-line { display: flex; align-items: center; gap: 8px; padding-right: 10px; border-bottom: 1px solid var(--border); }
+  .field-line input { flex: 1; min-width: 0; border-bottom: 0; }
+  .mode-hint { flex: none; color: var(--text-muted); font: 11px var(--font-mono); white-space: nowrap; }
+  /* Two-state pill: the thumb slides on the spring under the active word. */
+  .mode { position: relative; display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; flex: none; width: auto; padding: 2px; gap: 0; border-radius: 999px; background: var(--glass-hi); border: 1px solid var(--border); font-size: 12px; cursor: pointer; }
+  .mode::before { content: ""; position: absolute; top: 2px; bottom: 2px; left: 2px; width: calc(50% - 2px); border-radius: 999px; background: var(--accent); transition: transform var(--spring-d) var(--spring); }
+  .mode.asking::before { transform: translateX(100%); }
+  .mode span { position: relative; padding: 3px 10px; text-align: center; color: var(--text-muted); transition: color var(--tap); }
+  .mode span[aria-current="true"] { color: var(--accent-ink); font-weight: 500; }
+  .working { flex: none; width: 12px; height: 12px; animation: ressac-drop var(--spring-d) var(--spring) backwards; }
+  .working::after { content: ""; display: block; box-sizing: border-box; width: 100%; height: 100%; border-radius: 50%; border: 2px solid var(--border); border-top-color: var(--accent); animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  [data-testid="command-ask-hit"], [data-testid="command-ask-agent"], .lines { animation: ressac-drop var(--spring-d) var(--spring) backwards; }
   input { width: 100%; box-sizing: border-box; padding: 16px 18px; font: 400 17px var(--font-ui); color: var(--text); background: transparent; border: 0; border-bottom: 1px solid var(--border); outline: none; }
   input::placeholder { color: var(--text-muted); }
   ul { list-style: none; margin: 0; padding: 6px; }

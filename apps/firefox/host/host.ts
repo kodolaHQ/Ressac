@@ -22,12 +22,13 @@ const { createInterface } = await import("node:readline");
 const { appendFileSync } = await import("node:fs");
 const { stat } = await import("node:fs/promises");
 // Imported after the env is set and stdout redirected: nothing in the kernel can write to stdout at load time.
-const { ACTION_UNKNOWN, Workshop, blockCatalog, loadProfiles, spacePaths, createKernel, createRunner, LocalAi, readHome, readFreeLayout, readTheme, Pacing, contextPrefix, removeGrant, deleteData, watchActions, createRecaps, ID_RECAP } = await import("../../../packages/kernel/src/index.ts");
+const { ACTION_UNKNOWN, Workshop, blockCatalog, loadProfiles, spacePaths, createKernel, createRunner, LocalAi, readHome, readFreeLayout, readTheme, Pacing, contextPrefix, handOffText, removeGrant, deleteData, watchActions, createRecaps, ID_RECAP } = await import("../../../packages/kernel/src/index.ts");
 const { SessionsAgent } = await import("../core/agent/sessions.ts");
 const { History } = await import("../core/history.ts");
 const { createRpc } = await import("../shared/rpc.ts");
 const { RemoteBridge } = await import("./remote-bridge.ts");
 const { createSites } = await import("./sites.ts");
+const { createAsk } = await import("./ask.ts");
 const { createDesignHost, DESIGN_METHODS, externalMcpPort } = await import("./design.ts");
 const { createSettingsHandlers, SETTINGS_METHODS } = await import("./settings.ts");
 const { createOllamaRuntime, OLLAMA_LOCAL_URL, OLLAMA_MIN } = await import("./ollama-runtime.ts");
@@ -152,6 +153,9 @@ const broadcastAccess = () => {
 // The local AI for harvests: Gemma and the decision model both run in Ollama (same
 // /v1/systemone answers). Nothing is installed here: a missing model fails with Ollama's answer.
 const ai = new LocalAi({ folder: join(dataDir, "local-ai"), run: createRunner(() => hostLocale()), decisionModel: "pplx-decider-flash", locale: () => hostLocale() });
+
+// The ⌘T bar's Demander mode: calls Gemma directly, outside the workflows' dispatcher queue.
+const ask = createAsk({ ai, history: () => hist ?? null });
 
 // The host is Node and cannot call Cc: in tests it writes the file, otherwise the chrome store shows the alert.
 // Another address imposed (a remote Ollama, a test): Ressac then starts and installs nothing.
@@ -604,6 +608,20 @@ const rpc = createRpc({
     "history.recent": () => hist?.recents() ?? [],
     "history.clear": (p: { since?: string }) => hist?.erase(p.since ? new Date(p.since) : undefined),
     "history.forgetText": (p: { url: string; spaceId: string }) => hist?.forgetText(p.url, p.spaceId),
+    "ask.usable": () => ask.usable(),
+    "ask.warm": () => ask.warm(),
+    "ask.find": (p: { question?: unknown }) => {
+      if (typeof p?.question !== "string") throw new Error("ask.find: invalid question");
+      return ask.find(p.question.slice(0, 2000), hostLocale());
+    },
+    "ask.handOff": (p: { window?: unknown; question?: unknown; shown?: unknown }) => {
+      if (typeof p?.window !== "string" || typeof p.question !== "string" || !Array.isArray(p.shown)) throw new Error("ask.handOff: invalid params");
+      const str = (x: unknown) => typeof x === "string";
+      const shown = (p.shown as Partial<Record<"url" | "title" | "lastVisit", unknown>>[])
+        .filter((h): h is { url: string; title: string; lastVisit: string } => str(h?.url) && str(h?.title) && str(h?.lastVisit))
+        .slice(0, 3);
+      sessions.prefill(p.window, handOffText(p.question.slice(0, 2000), shown, hostSay("host-ask-shown-pages")), undefined, true);
+    },
     stop: async () => {
       try {
         await stop();
