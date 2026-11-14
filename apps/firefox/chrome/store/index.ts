@@ -279,7 +279,17 @@ async function start(): Promise<RessacStore> {
   store.dispatch({ type: "noteVersion", version: __RESSAC_VERSION__ });
   const updates = installUpdates(store.dispatch, telemetry.report);
   // The language shown: the setting, « system » resolved against the Mac's languages (read again on each change).
-  const showLocale = () => store.dispatch({ type: "setLocale", locale: resolveLocale(store.state.settings.language, Services.locale.systemLocales) });
+  const showLocale = () => {
+    let system: string[] = [];
+    try {
+      const test = Services.env.get("RESSAC_TEST_MAC_LANGUAGES");
+      system = test ? test.split(",") : Cc["@mozilla.org/intl/ospreferences;1"].getService(Ci.mozIOSPreferences).systemLocales;
+    } catch (e) {
+      // Never worth a broken start: without the Mac's languages, « system » shows English.
+      console.error("[store] the Mac's languages are unreadable:", e);
+    }
+    store.dispatch({ type: "setLocale", locale: resolveLocale(store.state.settings.language, system) });
+  };
   showLocale();
   store.subscribe((s, p) => s.settings.language !== p.settings.language && showLocale());
   AsyncShutdown.profileBeforeChange.addBlocker("Ressac: save the session", flush);
