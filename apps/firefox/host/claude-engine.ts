@@ -31,8 +31,7 @@ export function claudeEngineEnv(e: ClaudeEngine, relay: { url: string; token: st
   }
   if (!e.apiUrl || !e.apiModel) throw incomplete("api");
   href(e.apiUrl, "api");
-  const bad = apiUrlProblem(e.apiUrl);
-  if (bad) throw new Error(hostSay("host-engine-in-settings", { problem: bad }));
+  if (apiUrlProblem(e.apiUrl)) throw new Error(hostSay("host-engine-in-settings", { problem: hostSay("host-engine-url-invalid") }));
   if (!relay) throw new Error(NO_KEY());
   return { args: [], env: env(new URL(relay.url).href, relay.token, e.apiModel) };
 }

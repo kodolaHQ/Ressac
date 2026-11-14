@@ -21,6 +21,7 @@ import {
 } from "../../../packages/kernel/src/index.ts";
 import { workflowUrlTarget } from "../shared/model.ts";
 import type { WorkflowEdit, BuilderSelection } from "../shared/api.ts";
+import { hostSay } from "./locale.ts";
 
 // The widget and action parts of the workflow builder.
 
@@ -149,7 +150,7 @@ export async function saveEdit(c: Context, id: string, raw: unknown): Promise<Sa
   try {
     const d = await readDeclaration(c.paths, id);
     if ("invalid" in d) return { ok: false, error: `widget.json invalide : ${d.invalid}`, warnings: [] };
-    if (!("declaration" in d)) return { ok: false, error: "Widget introuvable", warnings: [] };
+    if (!("declaration" in d)) return { ok: false, error: hostSay("host-widget-not-found"), warnings: [] };
     const r = await saveWorkflow({
       filesFolder: d.folder,
       dataFolder: join(c.widgetsFolder, id),
@@ -165,14 +166,14 @@ export async function saveEdit(c: Context, id: string, raw: unknown): Promise<Sa
 
 export async function readCode(paths: SpacePaths, id: string, name: string): Promise<{ text: string } | { absent: true } | { error: string }> {
   const folder = await widgetFolderOn(paths, id);
-  if (!folder) return { error: "Widget introuvable" };
+  if (!folder) return { error: hostSay("host-widget-not-found") };
   return readCodeFile(folder, name);
 }
 
 /** Call inside `inSeries`: the folder is checked again just before writing. */
 export async function saveCode(paths: SpacePaths, id: string, name: string, text: string): Promise<{ ok: true } | { ok: false; error: string }> {
   const folder = await widgetFolderOn(paths, id);
-  if (!folder) return { ok: false, error: "Widget introuvable" };
+  if (!folder) return { ok: false, error: hostSay("host-widget-not-found") };
   try {
     return await storeCode(folder, name, text);
   } catch (e) {

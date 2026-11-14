@@ -5,6 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 // A cycle (keychain.ts reads keys through readAmoKey): both only call each other inside functions.
 import { AMO_SERVICE, keychain, legacyService } from "../keychain";
+import { hostSay } from "../locale.ts";
 
 const run = promisify(execFile);
 
@@ -12,7 +13,7 @@ export const AMO_URL = "https://addons.mozilla.org";
 /** 3 x the slowest signing measured (298 s, plan 25 spike): AMO signs in 2.5 to 5 minutes. */
 export const SIGNATURE_DELAY_MS = 900_000;
 
-export const KEYS_ABSENT = "Compte Mozilla non branché : Réglages › Agents › Compte Mozilla. Rien n'est parti chez Mozilla.";
+export const KEYS_ABSENT = () => hostSay("host-amo-keys-absent");
 export const deniedSignature = (m: string) => "Signature refusée par addons.mozilla.org : " + m.slice(0, 2000);
 export const SLOW_SIGNATURE = "Signature trop longue : addons.mozilla.org n'a pas rendu le module à temps. Réessayez reload_extension.";
 export const signatureImpossible = (m: string) => "Signature impossible (réseau ou addons.mozilla.org) : " + m;

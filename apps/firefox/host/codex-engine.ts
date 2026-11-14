@@ -29,8 +29,7 @@ export function codexEngineArgs(e: CodexEngine, relay: { url: string; token: str
   }
   if (!e.apiUrl || !e.apiModel) throw incomplete("api");
   href(e.apiUrl, "api");
-  const bad = apiUrlProblem(e.apiUrl);
-  if (bad) throw new Error(hostSay("host-engine-in-settings", { problem: bad }));
+  if (apiUrlProblem(e.apiUrl)) throw new Error(hostSay("host-engine-in-settings", { problem: hostSay("host-engine-url-invalid") }));
   if (!relay) throw new Error(NO_KEY());
   return { args: [...provider("ressac-api", "API compatible", new URL(relay.url).href.replace(/\/$/, "")), "-m", e.apiModel], env: { [ENGINE_TOKEN_VARIABLE]: relay.token } };
 }

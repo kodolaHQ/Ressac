@@ -105,7 +105,7 @@ const duckduckgo = process.env.RESSAC_TEST_DUCKDUCKGO_URL;
 // Shown when the widgets service has no kernel.
 const AGENT_STOPPED_MESSAGE = () => hostSay("host-widgets-no-kernel");
 // The answer to a bad builder argument.
-const INVALID_ARGUMENT = { ok: false as const, error: "Argument invalide" };
+const INVALID_ARGUMENT = () => ({ ok: false as const, error: hostSay("host-invalid-argument") });
 // The workflow builder: the block selected in each window, the workflow page each window shows (chrome's mirror).
 const selections = new Map<string, BuilderSelection>();
 let actives = new Map<string, string>();
@@ -458,7 +458,7 @@ const rpc = createRpc({
     "workflow.save": (p: { target?: unknown; draft?: unknown }) => {
       const target = TargetSchema.safeParse(p?.target);
       const draft = DraftSchema.safeParse(p?.draft);
-      if (!target.success || !draft.success) return { ...INVALID_ARGUMENT, warnings: [] };
+      if (!target.success || !draft.success) return { ...INVALID_ARGUMENT(), warnings: [] };
       const id = target.data.id;
       if (target.data.type === "action") return writes.inSeries(`action:${id}`, () => saveActionEdit(actionsContext, id, draft.data));
       return writes.inSeries(id, () => saveEdit(widgetsContext, id, draft.data));
@@ -466,14 +466,14 @@ const rpc = createRpc({
     "workflow.readCode": (p: { target?: unknown; name?: unknown }) => {
       const target = TargetSchema.safeParse(p?.target);
       const name = NameCodeSchema.safeParse(p?.name);
-      if (!target.success || !name.success) return { error: INVALID_ARGUMENT.error };
+      if (!target.success || !name.success) return { error: INVALID_ARGUMENT().error };
       return target.data.type === "widget" ? readCode(paths, target.data.id, name.data) : readActionCode(paths, target.data.id, name.data);
     },
     "workflow.saveCode": (p: { target?: unknown; name?: unknown; text?: unknown }) => {
       const target = TargetSchema.safeParse(p?.target);
       const name = NameCodeSchema.safeParse(p?.name);
       const text = SchemaCodeWorkflow.safeParse(p?.text);
-      if (!target.success || !name.success || !text.success) return INVALID_ARGUMENT;
+      if (!target.success || !name.success || !text.success) return INVALID_ARGUMENT();
       const id = target.data.id;
       if (target.data.type === "action") return writes.inSeries(`action:${id}`, () => saveActionCode(paths, id, name.data, text.data));
       return writes.inSeries(id, () => saveCode(paths, id, name.data, text.data));
@@ -482,7 +482,7 @@ const rpc = createRpc({
       const target = TargetSchema.safeParse(p?.target);
       const execution = SchemaIdExecution.safeParse(p?.run);
       const block = WorkflowBlockSchema.safeParse(p?.block);
-      if (!target.success || !execution.success || !block.success) return INVALID_ARGUMENT;
+      if (!target.success || !execution.success || !block.success) return INVALID_ARGUMENT();
       const n = await ready;
       if (!n) return { ok: false as const, error: AGENT_STOPPED_MESSAGE() };
       if (target.data.type === "widget") return n.replay(target.data.id, execution.data, block.data);
@@ -537,7 +537,7 @@ const rpc = createRpc({
     "actions.launch": (p: { id?: unknown; input?: unknown }) =>
       idAction(p?.id) && ActionInputSchema.safeParse(p.input ?? null).success
         ? actions.launch(p.id, (p.input ?? null) as string | null)
-        : { status: "invalid", error: "Demande invalide" },
+        : { status: "invalid", error: hostSay("host-invalid-request") },
     "actions.stop": (p: { id?: unknown }) => void (idAction(p?.id) && actions.stop(p.id)),
     "actions.page": (p: { id?: unknown; run?: unknown }) =>
       idAction(p?.id) && (p.run === null || executionAction(p.run)) ? actions.page(p.id, p.run) : null,
@@ -555,10 +555,10 @@ const rpc = createRpc({
     "recaps.closed": (p: { id?: unknown }) => (idRecap(p?.id) ? recaps.remove(p.id) : undefined),
     "actions.grant": (p: unknown) => {
       const r = GrantSchema.safeParse(p);
-      return r.success && idAction(r.data.id) ? actions.grant(r.data) : { ok: false, error: "Demande d'accord invalide" };
+      return r.success && idAction(r.data.id) ? actions.grant(r.data) : { ok: false, error: hostSay("host-invalid-grant-request") };
     },
     "actions.denyGrant": (p: { id?: unknown }) => (idAction(p?.id) ? actions.denyGrant(p.id) : undefined),
-    "actions.delete": (p: { id?: unknown }) => (idAction(p?.id) ? actions.delete(p.id) : { ok: false, error: "Demande invalide" }),
+    "actions.delete": (p: { id?: unknown }) => (idAction(p?.id) ? actions.delete(p.id) : { ok: false, error: hostSay("host-invalid-request") }),
     // Site apps (the window is the chrome's). A bad action is ignored.
     // The open apps are known again: the Applications page reads them (it read « fermée » while the host was down).
     "sites.ready": () => sites.resync().then(() => rpc.notify("sites.change")),

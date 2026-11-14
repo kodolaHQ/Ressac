@@ -74,8 +74,8 @@ describe("review service", () => {
     s.write("quatre\n");
     expect(await s.service.open(EXT, v1.token)).toMatchObject({ state: "ok", token: v1.token });
     expect(await added(v1.token)).toEqual(["deux"]);
-    await expect(s.service.file(EXT, unknown, "a.txt")).rejects.toThrow(UNKNOWN_COMPARISON);
-    await expect(s.service.lines(EXT, unknown, "a.txt", 1, 2)).rejects.toThrow(UNKNOWN_COMPARISON);
+    await expect(s.service.file(EXT, unknown, "a.txt")).rejects.toThrow(UNKNOWN_COMPARISON());
+    await expect(s.service.lines(EXT, unknown, "a.txt", 1, 2)).rejects.toThrow(UNKNOWN_COMPARISON());
   });
 
   it("keeps at most 8 comparisons per project: the oldest drops", async () => {
@@ -86,7 +86,7 @@ describe("review service", () => {
       s.write(`v${i}\n`);
       tokens.push(ok(await s.service.open(EXT)).token);
     }
-    await expect(s.service.file(EXT, tokens[0]!, "a.txt")).rejects.toThrow(UNKNOWN_COMPARISON);
+    await expect(s.service.file(EXT, tokens[0]!, "a.txt")).rejects.toThrow(UNKNOWN_COMPARISON());
     expect((await s.service.file(EXT, tokens[1]!, "a.txt")).path).toBe("a.txt");
   }, 20_000);
 
@@ -97,7 +97,7 @@ describe("review service", () => {
     expect(await c(5, 25, "trop large")).toEqual({ ok: false, error: RANGE_OUTSIDE_BLOCK });
     expect(await c(1, 3, "hors du diff")).toEqual({ ok: false, error: RANGE_OUTSIDE_BLOCK });
     expect(await c(4, 5, "  ")).toMatchObject({ ok: false });
-    expect(await c(4, 5, "x", unknown)).toEqual({ ok: false, error: UNKNOWN_COMPARISON });
+    expect(await c(4, 5, "x", unknown)).toEqual({ ok: false, error: UNKNOWN_COMPARISON() });
     expect(await c(4, 5, "bien")).toEqual({ ok: true });
     const [first] = await s.service.comments(EXT);
     expect(first).toMatchObject({ file: "a.txt", start: 4, end: 5, text: "bien", sent: false, resolved: false });
@@ -110,8 +110,8 @@ describe("review service", () => {
     s.write("autre\n", "b.txt");
     const after = ok(await s.service.reviewed(EXT, v.token));
     expect(after.comparison.files.map((f) => f.path)).toEqual(["b.txt"]);
-    await expect(s.service.reviewed(EXT, v.token)).rejects.toThrow(UNKNOWN_COMPARISON);
-    await expect(s.service.reviewed(EXT, unknown)).rejects.toThrow(UNKNOWN_COMPARISON);
+    await expect(s.service.reviewed(EXT, v.token)).rejects.toThrow(UNKNOWN_COMPARISON());
+    await expect(s.service.reviewed(EXT, unknown)).rejects.toThrow(UNKNOWN_COMPARISON());
   });
 
   it("relu drops resolved comments and keeps the others", async () => {
@@ -250,7 +250,7 @@ describe("review service", () => {
     await s.service.erase("site-tuning");
     expect(existsSync(join(s.review, "site-tuning.git"))).toBe(false);
     expect(existsSync(join(s.review, "site-tuning.comments.json"))).toBe(false);
-    await expect(s.service.file("site-tuning", v.token, "site.json")).rejects.toThrow(UNKNOWN_COMPARISON);
+    await expect(s.service.file("site-tuning", v.token, "site.json")).rejects.toThrow(UNKNOWN_COMPARISON());
     expect(await s.service.comments("site-tuning")).toEqual([]);
     await s.service.ensure("site-tuning");
     expect(await s.service.open("site-tuning")).toMatchObject({ state: "ok", comparison: { files: [] } });

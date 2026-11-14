@@ -36,7 +36,7 @@ export const MAX_LINES = 200;
 /** Most comparisons kept per project (a page may show a comparison older than the latest). */
 export const KEPT_COMPARISONS = 8;
 /** A page asks for a comparison that is no longer kept (or never made). */
-export const UNKNOWN_COMPARISON = "Cette comparaison n'est plus gardée : Rafraîchis la relecture.";
+export const UNKNOWN_COMPARISON = () => hostSay("host-review-unknown-comparison");
 /** A comparison's token: its two trees (reviewed, current). */
 export const REVIEW_TOKEN = /^[0-9a-f]{40}:[0-9a-f]{40}$/;
 const tokenOf = (c: Comparison) => `${c.reviewedTree}:${c.currentTree}`;
@@ -245,7 +245,7 @@ export class ReviewService {
 
   private guard(p: ProjectId, token: string, path: string) {
     const g = this.comparisons.get(p)?.find((x) => x.token === token);
-    if (!g) throw new Error(UNKNOWN_COMPARISON);
+    if (!g) throw new Error(UNKNOWN_COMPARISON());
     const f = g.comparison.files.find((x) => x.path === path);
     if (!f) throw new Error("fichier absent de la relecture");
     return { ...g, file: f };
@@ -386,7 +386,7 @@ export class ReviewService {
    */
   async reviewed(p: ProjectId, token: string): Promise<ReviewView> {
     const g = this.comparison(p, token);
-    if (!g) throw new Error(UNKNOWN_COMPARISON);
+    if (!g) throw new Error(UNKNOWN_COMPARISON());
     await g.repo.keep(g.comparison.currentTree);
     await this.commentsOf(p).afterReviewed();
     this.comparisons.delete(p);
