@@ -16,6 +16,13 @@
   }: { catalog: BlockCatalogEntry[]; hasOutput: boolean; web: boolean; action?: boolean; onadd: (type: string) => void } = $props();
 
   const NO_WEB = $derived(t(action ? "builder-palette-no-web-action" : "builder-palette-no-web-widget"));
+  const FAMILY_ID = new Map<BlockFamily, string>([
+    ["Sources", "builder-family-sources"],
+    ["Listes", "builder-family-lists"],
+    ["IA", "builder-family-ai"],
+    ["Logique/Code", "builder-family-logic-code"],
+    ["Sortie", "builder-family-output"],
+  ]);
   const grayed = (type: string) => type === "web.search" && !web;
 
   let collapsed = $state<Partial<Record<BlockFamily, boolean>>>({});
@@ -31,7 +38,7 @@
   {#each families as [family, blocks] (family)}
     <section>
       <button class="family" aria-expanded={!collapsed[family]} onclick={() => (collapsed[family] = !collapsed[family])}>
-        <span class="chevron" class:folded={collapsed[family]}>▾</span>{family}
+        <span class="chevron" class:folded={collapsed[family]}>▾</span>{t(FAMILY_ID.get(family)!)}
       </button>
       {#if !collapsed[family]}
         <ul>

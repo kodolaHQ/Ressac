@@ -182,3 +182,9 @@ actions-delete = Delete
 actions-confirm-grant = Remove the permission of "{ $name }"? Its runs, results and memory will be erased.
 actions-confirm-delete = Delete "{ $name }"? Its folder goes to the Trash; its results and permission will be erased.
 actions-cancel = Cancel
+
+builder-family-sources = Sources
+builder-family-lists = Lists
+builder-family-ai = AI
+builder-family-logic-code = Logic/Code
+builder-family-output = Output
