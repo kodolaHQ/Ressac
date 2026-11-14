@@ -1,7 +1,8 @@
 <script lang="ts">
   import type { DiffComment, DiffFile } from "../../shared/api";
-  import { EXPANDED_LINES, NOT_DISPLAYABLE, RANGE_OUTSIDE_BLOCK } from "../../shared/model";
+  import { EXPANDED_LINES } from "../../shared/model";
   import { api } from "../state.svelte";
+  import { t } from "../i18n.svelte";
   import ReviewComment from "./ReviewComment.svelte";
 
   /**
@@ -58,7 +59,7 @@
     error = null;
     if (expand && selection) {
       if (selection.block !== block) {
-        error = RANGE_OUTSIDE_BLOCK;
+        error = t("agent-diff-range-outside");
         selection = { ...selection, end: selection.anchor };
         return;
       }
@@ -88,7 +89,7 @@
         onChange();
       } else error = r.error;
     } catch {
-      error = "Le commentaire n'a pas pu être enregistré.";
+      error = t("agent-diff-comment-failed");
     } finally {
       sending = false;
     }
@@ -195,8 +196,8 @@
   ><span class="margin"><button
         class="add-button"
         data-testid="add-comment"
-        aria-label="Commenter la ligne {position(diff.blocks[block]!, k)}"
-        title="Commenter (Maj+clic ou glisser : plusieurs lignes)"
+        aria-label={t("agent-diff-comment-line", { line: String(position(diff.blocks[block]!, k)) })}
+        title={t("agent-diff-comment-title")}
         onmousedown={(e) => {
           if (e.button !== 0) return;
           e.preventDefault();
@@ -210,13 +211,13 @@
   {#each places.under.get(`${block}:${k}`) ?? [] as c (c.id)}<ReviewComment project={project} comment={c} onChange={onChange} />{/each}
   {#if range && range.block === block && range.last === k}
     <form class="form" data-testid="comment-form" onsubmit={(e) => { e.preventDefault(); void validate(); }}>
-      <div class="range">{range.start === range.end ? `Ligne ${range.start}` : `Lignes ${range.start}–${range.end}`}</div>
+      <div class="range">{range.start === range.end ? t("agent-comment-line", { line: String(range.start) }) : t("agent-comment-lines", { start: String(range.start), end: String(range.end) })}</div>
       <!-- svelte-ignore a11y_autofocus -->
-      <textarea bind:value={text} rows="3" autofocus placeholder="DiffComment (texte simple, Markdown montré tel quel)" onkeydown={key}></textarea>
+      <textarea bind:value={text} rows="3" autofocus placeholder={t("agent-diff-comment-placeholder")} onkeydown={key}></textarea>
       {#if error}<p class="error" data-testid="comment-error">{error}</p>{/if}
       <div class="actions">
-        <button type="button" onclick={close}>Annuler</button>
-        <button type="submit" disabled={sending || text.trim() === ""}>Commenter</button>
+        <button type="button" onclick={close}>{t("agent-cancel")}</button>
+        <button type="submit" disabled={sending || text.trim() === ""}>{t("agent-diff-comment-submit")}</button>
       </div>
     </form>
   {/if}
@@ -225,19 +226,19 @@
 {#snippet interval(i: number)}
   {#each intervals[i]?.lines ?? [] as l (l.new)}{@render row(l)}{/each}
   {#if remaining(i)}
-    <button class="expand" data-testid="expand-context" disabled={onLoaded !== null} onclick={() => void expand(i)}>Afficher les lignes cachées</button>
+    <button class="expand" data-testid="expand-context" disabled={onLoaded !== null} onclick={() => void expand(i)}>{t("agent-diff-expand")}</button>
   {/if}
 {/snippet}
 
 <svelte:window onmouseup={() => (dragged = false)} />
 
-<section class="diff" data-testid="diff-file" aria-label="Diff de {diff.path}">
+<section class="diff" data-testid="diff-file" aria-label={t("agent-diff-label", { path: diff.path })}>
   <h3 class="path">{diff.path}</h3>
   {#each places.elsewhere as c (c.id)}<ReviewComment project={project} comment={c} onChange={onChange} />{/each}
   {#if diff.displayable !== true}
-    <p class="not-displayable">{NOT_DISPLAYABLE[diff.displayable]}</p>
+    <p class="not-displayable">{t(diff.displayable === "binary" ? "agent-diff-binary" : "agent-diff-too-big")}</p>
   {:else if diff.blocks.length === 0}
-    <p class="not-displayable">Aucune ligne modifiée.</p>
+    <p class="not-displayable">{t("agent-diff-no-lines")}</p>
   {:else}
     <div class="code-diff">
       {#each diff.blocks as b, i (i)}

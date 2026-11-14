@@ -9,6 +9,7 @@
     type CodexEngine,
   } from "../../shared/settings";
   import { api, appState } from "../state.svelte";
+  import { t } from "../i18n.svelte";
   import OllamaModelPicker from "./OllamaModelPicker.svelte";
 
   // An agent's engine (Settings › Agents): its subscription, Ollama or a compatible API whose key stays in the keychain.
@@ -20,15 +21,15 @@
       name: "Claude",
       agentName: "Claude Code",
       kinds: [
-        { kind: "subscription", label: "Abonnement Claude" },
+        { kind: "subscription", label: t("agent-engine-kind-subscription") },
         { kind: "ollama", label: "Ollama" },
-        { kind: "api", label: "API compatible" },
+        { kind: "api", label: t("agent-engine-kind-api") },
       ],
       schema: ClaudeEngineSchema,
       fallback: DEFAULT_CLAUDE_ENGINE,
       // Claude Code appends /v1/messages itself.
-      apiPlaceholder: "https://api.exemple.com (sans /v1)",
-      apiFormat: "L'API doit accepter le format de l'API Claude (/v1/messages).",
+      apiPlaceholder: t("agent-engine-api-placeholder-claude"),
+      apiFormat: t("agent-engine-api-format-claude"),
       choose: (e: Engine) => s.chooseClaudeEngine(e as ClaudeEngine),
       keySaved: s.claudeKeySaved,
       setKey: s.setClaudeKey,
@@ -38,14 +39,14 @@
       name: "Codex",
       agentName: "Codex",
       kinds: [
-        { kind: "chatgpt", label: "Abonnement ChatGPT" },
+        { kind: "chatgpt", label: t("agent-engine-kind-chatgpt") },
         { kind: "ollama", label: "Ollama" },
-        { kind: "api", label: "API compatible OpenAI" },
+        { kind: "api", label: t("agent-engine-kind-api-openai") },
       ],
       schema: CodexEngineSchema,
       fallback: DEFAULT_CODEX_ENGINE,
       apiPlaceholder: "https://openrouter.ai/api/v1",
-      apiFormat: "L'API doit accepter le format Responses d'OpenAI (/responses).",
+      apiFormat: t("agent-engine-api-format-codex"),
       choose: (e: Engine) => s.chooseCodexEngine(e as CodexEngine),
       keySaved: s.codexKeySaved,
       setKey: s.setCodexKey,
@@ -60,7 +61,11 @@
   function change(field: Field, value: string) {
     const next = { ...engine, [field]: value.trim() };
     const problem =
-      field === "apiUrl" ? apiUrlProblem(next.apiUrl) : A.schema.safeParse(next).success ? null : field === "ollamaUrl" ? "Adresse invalide" : "Modèle invalide";
+      field === "apiUrl"
+        ? apiUrlProblem(next.apiUrl) && t("agent-engine-url-invalid-https")
+        : A.schema.safeParse(next).success
+          ? null
+          : t(field === "ollamaUrl" ? "agent-engine-url-invalid" : "agent-engine-model-invalid");
     problems = { ...problems, [field]: problem ?? undefined };
     if (!problem) A.choose(next);
   }
@@ -91,38 +96,38 @@
 {/snippet}
 
 <div class="engine" data-testid="{agent}-engine">
-  <b>Moteur de {A.name}</b>
-  <div class="kinds" role="radiogroup" aria-label="Moteur de {A.name}">
+  <b>{t("agent-engine-title", { name: A.name })}</b>
+  <div class="kinds" role="radiogroup" aria-label={t("agent-engine-title", { name: A.name })}>
     {#each A.kinds as k (k.kind)}
       <label><input type="radio" name="{agent}-engine" data-testid="engine-{k.kind}" checked={engine.kind === k.kind} onchange={() => A.choose({ ...engine, kind: k.kind } as Engine)} />{k.label}</label>
     {/each}
   </div>
   {#if engine.kind === "ollama"}
-    {#if agent === "claude"}<span class="muted">Claude Code envoie de très longues consignes : prenez un grand modèle avec une grande fenêtre de contexte.</span>{/if}
-    {@render text("ollamaUrl", "Adresse (vue depuis le conteneur)")}
+    {#if agent === "claude"}<span class="muted">{t("agent-engine-claude-ollama-note")}</span>{/if}
+    {@render text("ollamaUrl", t("agent-engine-ollama-url"))}
     <div class="field">
-      <span>Modèle</span>
+      <span>{t("agent-engine-model")}</span>
       <OllamaModelPicker url={engine.ollamaUrl} value={engine.ollamaModel} onchange={(name) => change("ollamaModel", name)} />
       {#if problems.ollamaModel}<span class="alert" role="status">{problems.ollamaModel}</span>{/if}
     </div>
   {:else if engine.kind === "api"}
-    {@render text("apiUrl", "Adresse", A.apiPlaceholder)}
-    {@render text("apiModel", "Modèle")}
+    {@render text("apiUrl", t("agent-engine-url"), A.apiPlaceholder)}
+    {@render text("apiModel", t("agent-engine-model"))}
     <div class="field">
-      <label for="{agent}-api-key">Clé</label>
+      <label for="{agent}-api-key">{t("agent-engine-key")}</label>
       <div class="key">
         {#if keySaved}
-          <span class="pill" data-tone="ok" data-testid="api-key-saved">clé enregistrée</span>
-          <button data-testid="api-key-delete" onclick={() => void deleteKey()}>Effacer la clé</button>
+          <span class="pill" data-tone="ok" data-testid="api-key-saved">{t("agent-engine-key-saved")}</span>
+          <button data-testid="api-key-delete" onclick={() => void deleteKey()}>{t("agent-engine-key-delete")}</button>
         {/if}
         <input id="{agent}-api-key" data-testid="api-key" type="password" autocomplete="off" spellcheck="false" bind:value={key} />
-        <button data-testid="api-key-save" disabled={!key.trim()} onclick={() => void saveKey()}>Enregistrer la clé</button>
+        <button data-testid="api-key-save" disabled={!key.trim()} onclick={() => void saveKey()}>{t("agent-engine-key-save")}</button>
       </div>
       {#if keyError}<span class="alert" role="status">{keyError}</span>{/if}
     </div>
-    <span class="muted">{A.apiFormat} La clé reste dans le Trousseau de votre Mac : {A.agentName} ne la voit jamais.</span>
+    <span class="muted">{t("agent-engine-api-note", { format: A.apiFormat, agent: A.agentName })}</span>
   {/if}
-  <span class="muted">S'applique à la prochaine conversation avec {A.name}.</span>
+  <span class="muted">{t("agent-engine-next-chat", { name: A.name })}</span>
 </div>
 
 <style>

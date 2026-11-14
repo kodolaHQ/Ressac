@@ -165,6 +165,8 @@ export class SessionRecorder {
   /** Chained writes, never simultaneous. */
   private writing: Promise<void> = Promise.resolve();
   private number = 0;
+  /** The file's text, read before the first write: an unchanged session (only volatile fields moved) is not rewritten. */
+  private onDisk: string | null | undefined;
 
   constructor(
     private readonly folder: string,
@@ -199,18 +201,22 @@ export class SessionRecorder {
       Object.entries(state.tabs).map(([id, { loading: load, canGoBack: canGoBack, canGoForward: canAdvance, crashed: crashes, error: error, agentSearch: _band, call: _call, sound: _sound, playback: _playback, unloaded: _unloaded, ...rest }]) => [id, rest]),
     );
     const target = join(this.folder, FILE);
+    const { update: _update, locale: _locale, ...saved } = state;
+    const text = JSON.stringify({ ...saved, tabs: tabs }, null, 2);
+    this.onDisk ??= await fs.readFile(target, "utf8").catch(() => null);
+    if (text === this.onDisk) return;
     const temp = `${target}.${process.pid}.${++this.number}.tmp`;
     await fs.mkdir(this.folder, { recursive: true });
     try {
       const file = await fs.open(temp, "w");
       try {
-        const { update: _update, locale: _locale, ...saved } = state;
-        await file.writeFile(JSON.stringify({ ...saved, tabs: tabs }, null, 2));
+        await file.writeFile(text);
         await file.sync(); // on disk before the rename: a power cut does not leave an empty file
       } finally {
         await file.close();
       }
       await fs.rename(temp, target);
+      this.onDisk = text;
     } catch (e) {
       await fs.rm(temp, { force: true });
       throw e;

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { site } from "./locale.svelte";
   import SiteBar from "./SiteBar.svelte";
   import HomeFrame from "../SiteHomeFrame.svelte";
   import SiteGrantCard from "./SiteGrantCard.svelte";
@@ -11,9 +12,9 @@
   let appState = $state<SiteWindowState | null>(null);
 
   onMount(() => {
-    const end = api.onState((e) => (appState = e));
+    const end = api.onState((e) => ((appState = e), (site.locale = e.locale)));
     void api.state().then((e) => {
-      if (e && !appState) appState = e;
+      if (e && !appState) (appState = e), (site.locale = e.locale);
     });
     return end;
   });

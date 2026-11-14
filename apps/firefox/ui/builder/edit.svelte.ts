@@ -1,5 +1,6 @@
 import type { Warning, BlockCatalogEntry } from "@ressac/kernel";
 import type { ApiRessac, WorkflowEdit } from "../../shared/api";
+import { say } from "./say";
 import { CODE_MODEL, freshParams } from "./add";
 import { addBlock, move, History, sameDraft, followFile, toDraft, type Draft } from "./draft";
 import { arrange, shownPositions, withoutLayout } from "./layout";
@@ -22,7 +23,7 @@ export type Viewport = { x: number; y: number; zoom: number };
 
 const UNSAVED_PREFIX = /^Non enregistré : /;
 /** A gesture while the banner offers the agent's version: nothing goes out before the user's choice. */
-export const AWAITING_CHOICE = "l'agent a modifié le workflow, choisis une version";
+export const AWAITING_CHOICE = "builder-awaiting-choice";
 const sameJson = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 /**
@@ -84,7 +85,7 @@ export class Edit {
     this.origin = l.origin;
     const disk = l.raw === null ? null : toDraft(l.raw);
     if (!disk) {
-      this.loading = { unreadable: l.validation.ok ? "workflow.json illisible" : l.validation.error };
+      this.loading = { unreadable: l.validation.ok ? say("builder-workflow-unreadable") : l.validation.error };
       this.diskValid = false;
       return;
     }
@@ -226,7 +227,7 @@ export class Edit {
       const source = await this.freeFile(c.type);
       // Never another block's file: without a free name (or without being able to write the template), the block is not added.
       if (!source) {
-        this.recordingState = { error: "aucun nom de fichier libre pour le bloc Code" };
+        this.recordingState = { error: say("builder-no-free-code-file") };
         return "";
       }
       const r = await this.repo.saveCode(this.id, source, CODE_MODEL);
@@ -336,7 +337,7 @@ export class Edit {
         try {
           r = await this.repo.save(this.id, b);
         } catch (e) {
-          r = { error: (e as Error).message || "Enregistrement impossible" };
+          r = { error: (e as Error).message || say("builder-save-impossible") };
         }
         this.sent = this.sent.filter((x) => x !== b);
         if ("ok" in r && r.ok) {

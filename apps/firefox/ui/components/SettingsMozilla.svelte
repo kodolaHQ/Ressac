@@ -1,5 +1,6 @@
 <script lang="ts">
   import { api } from "../state.svelte";
+  import { t } from "../i18n.svelte";
 
   const s = api.settings;
   let saved = $state(false);
@@ -26,22 +27,22 @@
 <div class="panel" data-testid="mozilla-account">
   <div class="row">
     <div class="grow">
-      <b>Compte Mozilla (extensions de l'agent)</b>
-      <span class="muted">Firefox n'installe que des extensions signées par Mozilla. Ressac les fait signer avec votre compte développeur Mozilla (gratuit).</span>
+      <b>{t("agent-mozilla-title")}</b>
+      <span class="muted">{t("agent-mozilla-help")}</span>
       {#if saved}<code class="muted" data-testid="mozilla-issuer">{issuer}</code>{/if}
     </div>
-    <span class="pill" data-tone={saved ? "ok" : "warn"} data-testid="mozilla-state">{saved ? "Compte branché" : "Non branché"}</span>
-    {#if saved}<button data-testid="mozilla-delete" onclick={() => void remove()}>Retirer</button>{/if}
+    <span class="pill" data-tone={saved ? "ok" : "warn"} data-testid="mozilla-state">{saved ? t("agent-mozilla-on") : t("agent-mozilla-off")}</span>
+    {#if saved}<button data-testid="mozilla-delete" onclick={() => void remove()}>{t("agent-mozilla-remove")}</button>{/if}
   </div>
   {#if !saved}
     <div class="form">
       <span class="muted">
-        <a href="https://addons.mozilla.org/developers/addon/api/key/" data-testid="mozilla-link" onclick={(e) => (e.preventDefault(), s.openUrl(e.currentTarget.href))}>Ouvrir la page des clés Mozilla</a>
-        Connectez-vous ou créez un compte, acceptez l'accord développeur, puis générez des identifiants.
+        <a href="https://addons.mozilla.org/developers/addon/api/key/" data-testid="mozilla-link" onclick={(e) => (e.preventDefault(), s.openUrl(e.currentTarget.href))}>{t("agent-mozilla-link")}</a>
+        {t("agent-mozilla-steps")}
       </span>
-      <label class="field"><span>Émetteur JWT</span><input data-testid="mozilla-issuer-input" bind:value={typedIssuer} placeholder="user:12345:678" autocomplete="off" spellcheck="false" /></label>
-      <label class="field"><span>Secret JWT</span><input data-testid="mozilla-secret-input" type="password" bind:value={secret} autocomplete="off" spellcheck="false" /></label>
-      <div><button class="primary" data-testid="mozilla-save" disabled={!typedIssuer.trim() || !secret.trim()} onclick={() => void save()}>Enregistrer</button></div>
+      <label class="field"><span>{t("agent-mozilla-issuer")}</span><input data-testid="mozilla-issuer-input" bind:value={typedIssuer} placeholder="user:12345:678" autocomplete="off" spellcheck="false" /></label>
+      <label class="field"><span>{t("agent-mozilla-secret")}</span><input data-testid="mozilla-secret-input" type="password" bind:value={secret} autocomplete="off" spellcheck="false" /></label>
+      <div><button class="primary" data-testid="mozilla-save" disabled={!typedIssuer.trim() || !secret.trim()} onclick={() => void save()}>{t("agent-mozilla-save")}</button></div>
     </div>
   {/if}
   {#if error}<div class="row"><span class="alert" role="status">{error}</span></div>{/if}

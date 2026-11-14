@@ -4,6 +4,8 @@
   import type { RenderedBlock, RenderedPage } from "@ressac/kernel";
   import type { AgentViewState } from "../../shared/api";
   import SiteIcon from "../components/SiteIcon.svelte";
+  import { t } from "../i18n.svelte";
+  import { appState } from "../state.svelte";
   import PageRender from "./PageRender.svelte";
   import { sections, type Collection, type PageContext } from "./types";
 
@@ -15,10 +17,9 @@
 
   const recaps = window.ressac.recaps;
   const ctx: PageContext = { openLink: (url) => recaps.openLink(id, url), image: (url) => recaps.image(id, url) };
-  const FORMAT = new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" });
   const date = (iso: string) => {
     const d = new Date(iso);
-    return Number.isNaN(d.getTime()) ? iso : FORMAT.format(d);
+    return Number.isNaN(d.getTime()) ? iso : new Intl.DateTimeFormat(appState.value?.locale ?? "fr", { dateStyle: "medium", timeStyle: "short" }).format(d);
   };
 
   /** undefined: not read yet. */
@@ -84,26 +85,26 @@
   {#key shown === undefined ? "loading" : "gone" in shown ? "gone" : shown.live ? "live" : shown.updated}
     <div class="version" out:fade={{ duration: 150 }}>
       {#if shown === undefined}
-        <p class="message" data-testid="recap-loading">Chargement…</p>
+        <p class="message" data-testid="recap-loading">{t("recap-loading")}</p>
       {:else if "gone" in shown}
-        <p class="message" data-testid="recap-gone">Ce récap a été fermé.</p>
+        <p class="message" data-testid="recap-gone">{t("recap-gone")}</p>
       {:else}
         <div class="head">
           <p class="message" data-testid="recap-meta">
-            Récap de l'agent · {date(shown.updated)}
-            {#if live}<span class="live" data-testid="recap-live" out:fade={{ duration: 150 }}>en direct{count ? ` · ${count} retenue${count > 1 ? "s" : ""}` : ""}</span>{/if}
+            {t("recap-meta", { date: date(shown.updated) })}
+            {#if live}<span class="live" data-testid="recap-live" out:fade={{ duration: 150 }}>{count ? t("recap-live-kept", { count }) : t("recap-live")}</span>{/if}
           </p>
           {#if live && (view || thumbnail)}
             <button class="view" data-testid="recap-agent-view" title={view?.title} disabled={!view} onclick={() => window.ressac.agentView.open()} out:fade={{ duration: 150 }}>
               <span class="frame">
                 {#if thumbnail}<img src={thumbnail} alt="" />{:else if view}<span class="site"><SiteIcon favicon={view.icon ?? null} title={view.site} size={24} />{view.site}</span>{/if}
               </span>
-              <span class="label" class:running={view?.running}>{view ? view.label : "Rédige le récap…"}</span>
+              <span class="label" class:running={view?.running}>{view ? view.label : t("recap-writing")}</span>
             </button>
           {/if}
         </div>
         <PageRender page={shown.page} {ctx} components={false} />
-        <p class="message foot">Ce récap disparaît quand tu fermes l'onglet.</p>
+        <p class="message foot">{t("recap-foot")}</p>
       {/if}
     </div>
   {/key}

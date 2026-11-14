@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { WorkflowEdit } from "../../shared/api";
+  import { t } from "../i18n.svelte";
 
   /** The widget, read-only: its sources and configuration are not edited in the builder. */
   let { widget }: { widget: NonNullable<WorkflowEdit["widget"]> | null } = $props();
@@ -11,22 +12,22 @@
   {#if widget}
     <p class="name" data-testid="widget-name">{widget.name}</p>
     <dl>
-      <dt>Domaines avec compte</dt>
-      <dd data-testid="widget-account">{widget.account.length ? widget.account.join(", ") : "aucun"}</dd>
-      <dt>Domaines publics</dt>
-      <dd data-testid="widget-public">{widget.public.length ? widget.public.join(", ") : "aucun"}</dd>
+      <dt>{t("builder-panel-account")}</dt>
+      <dd data-testid="widget-account">{widget.account.length ? widget.account.join(", ") : t("builder-panel-none")}</dd>
+      <dt>{t("builder-panel-public")}</dt>
+      <dd data-testid="widget-public">{widget.public.length ? widget.public.join(", ") : t("builder-panel-none")}</dd>
     </dl>
-    {#if widget.web}<p class="line" data-testid="widget-web">Accès au web : ouvert</p>{/if}
+    {#if widget.web}<p class="line" data-testid="widget-web">{t("builder-panel-web-open")}</p>{/if}
     {#if widget.harvest?.hours.length}
-      <p class="line" data-testid="widget-hours">Heures prévues : {widget.harvest.hours.join(", ")}</p>
+      <p class="line" data-testid="widget-hours">{t("builder-panel-hours", { hours: widget.harvest.hours.join(", ") })}</p>
     {/if}
-    {#if widget.harvest?.maxDurationMinutes}<p class="line">Durée maximale : {widget.harvest.maxDurationMinutes} min</p>{/if}
-    {#if widget.harvest?.notify}<p class="line">Notification à la fin : oui</p>{/if}
-    <p class="label">Configuration</p>
+    {#if widget.harvest?.maxDurationMinutes}<p class="line">{t("builder-panel-max-duration", { minutes: String(widget.harvest.maxDurationMinutes) })}</p>{/if}
+    {#if widget.harvest?.notify}<p class="line">{t("builder-panel-notify")}</p>{/if}
+    <p class="label">{t("builder-panel-config")}</p>
     <pre data-testid="widget-config">{config}</pre>
   {/if}
-  <p class="muted">Pour changer les sources ou la configuration, demande-le à l'agent.</p>
-  <p class="muted">Sélectionne un bloc pour voir ses réglages.</p>
+  <p class="muted">{t("builder-panel-help-widget")}</p>
+  <p class="muted">{t("builder-panel-select")}</p>
 </section>
 
 <style>

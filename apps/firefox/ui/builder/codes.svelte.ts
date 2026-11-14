@@ -1,4 +1,5 @@
 import { SvelteMap } from "svelte/reactivity";
+import { say } from "./say";
 import { CODE_MODEL } from "./add";
 import type { Depot } from "./edit.svelte";
 
@@ -126,7 +127,7 @@ export class CodeFile {
       else drafts.set(this.key, { text: b.text, base: text });
       this.afterSave?.(this.name);
     } catch (e) {
-      this.error = (e as Error).message || "Enregistrement impossible";
+      this.error = (e as Error).message || say("builder-save-impossible");
     } finally {
       this.recording = false;
     }
@@ -149,14 +150,14 @@ export class CodeFile {
 /** Changing block with `nom`'s code unsaved: the user confirms (the draft stays kept). */
 export function confirmBlockChange(widget: string, name: string): boolean {
   if (!drafts.has(codeKey(widget, name))) return true;
-  return confirm(`Le code de ${name} n'est pas enregistré. Changer de bloc quand même ? Il reste gardé dans cette fenêtre.`);
+  return confirm(say("builder-code-confirm-switch", { name }));
 }
 
 /** Closing the widget's builder with unsaved code: the user confirms, and the draft is dropped. */
 export function confirmClose(widget: string): boolean {
   const names = unsavedCodes(widget);
   if (names.length === 0) return true;
-  if (!confirm(`Le code de ${names.join(", ")} n'est pas enregistré. Fermer quand même ? Il sera perdu.`)) return false;
+  if (!confirm(say("builder-code-confirm-close", { names: names.join(", ") }))) return false;
   forgetCodes(widget);
   return true;
 }

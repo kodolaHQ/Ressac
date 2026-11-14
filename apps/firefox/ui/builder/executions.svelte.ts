@@ -1,5 +1,6 @@
 import type { DirectWidget, DirectState, Execution, AttemptResult, ResumeExecution } from "@ressac/kernel";
 import type { ApiRessac } from "../../shared/api";
+import { say } from "./say";
 import { isActionKey } from "./target";
 
 export type SourceExecutions = Pick<ApiRessac["home"], "runs" | "run">;
@@ -13,9 +14,6 @@ export type Launcher = {
   direct(): Promise<DirectState>;
   onLive(callback: (e: DirectState) => void): () => void;
 };
-
-/** The prefix of the kernel's refusals, reused for a request that fails on the way. */
-const REPLAY_PREFIX = "Rejeu impossible : ";
 
 const sameJson = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
@@ -160,7 +158,7 @@ export class Executions {
       if (r.ok) this.keep(r.run);
       else this.denial = r.error;
     } catch (e) {
-      this.denial = REPLAY_PREFIX + ((e as Error)?.message || "erreur inattendue");
+      this.denial = say("builder-replay-failed", { reason: (e as Error)?.message || say("builder-unexpected-error") });
     } finally {
       this.request = false;
     }

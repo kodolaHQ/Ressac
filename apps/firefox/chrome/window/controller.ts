@@ -1,3 +1,5 @@
+import { format } from "../../shared/i18n";
+import { VIM_KEYS, type VimTexts } from "../../shared/vim-keys";
 import type { TabCycleMessage, Panel, TabsPanel, ShortcutAction } from "../../shared/api";
 import { workflowUrlTarget, historyContext, AGENT_WIDTH_MAX, AGENT_WIDTH_MIN, type FrameBounds, type BrowserState, type WindowId, type TabId } from "../../shared/model";
 import { auraVariables, DEFAULT_AURA, type AuraId } from "../../shared/aura";
@@ -25,6 +27,8 @@ import { trackVisits } from "./visits";
 export interface WindowController {
   readonly windowId: WindowId;
   readonly store: RessacStore;
+  /** The vim sheet and pill in the shown language, for the vim actor (formatted here: the actor's bundle has no Fluent). */
+  vimTexts(): VimTexts;
   /** toUrl(input, moteur); a tab with a XUL tab loads it, one without gets majOnglet{url}; null opens a new tab. */
   navigate(tabId: TabId | null, input: string): void;
   /**
@@ -430,6 +434,15 @@ export function createController(
   const controller: WindowController = {
     windowId: windowId,
     store,
+    vimTexts() {
+      const l = store.state.locale;
+      return {
+        paused: format(l, "chrome-vim-paused"),
+        escape: format(l, "agent-vim-key-escape"),
+        titles: VIM_KEYS.map((_, gi) => format(l, `agent-vim-${gi}-title`)),
+        rows: VIM_KEYS.map((g, gi) => g.rows.map((_, ri) => format(l, `agent-vim-${gi}-${ri}`))),
+      };
+    },
     navigate(tabId, input) {
       const url = toUrl(input, searchTemplate(store.state.settings));
       if (!url) return;
@@ -496,11 +509,11 @@ export function createController(
         const result = await prompt.asyncConfirmEx(
           browser.browsingContext,
           prompt.MODAL_TYPE_TAB,
-          "Quitter ce site ?",
-          "Les modifications que vous avez faites ne seront peut-être pas enregistrées.",
+          format(store.state.locale, "chrome-leave-title"),
+          format(store.state.locale, "chrome-leave-text"),
           flags,
-          "Quitter",
-          "Rester",
+          format(store.state.locale, "chrome-leave-leave"),
+          format(store.state.locale, "chrome-leave-stay"),
           null,
           null,
           {},

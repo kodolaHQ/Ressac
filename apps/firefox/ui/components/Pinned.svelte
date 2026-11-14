@@ -3,6 +3,7 @@
   import type { Favorite, Space, WindowState } from "../../shared/model";
   import { api, appState } from "../state.svelte";
   import Icon from "./Icon.svelte";
+  import { t } from "../i18n.svelte";
   import SiteIcon from "./SiteIcon.svelte";
   import SoundButton from "./SoundButton.svelte";
   import { openMenu, type MenuEntry } from "./menu.svelte";
@@ -24,7 +25,7 @@
 
   export function newFolder(favoriteId?: string) {
     naming = true;
-    api.dispatch({ type: "createFolder", spaceId: space.id, name: "Nouveau dossier", favoriteId });
+    api.dispatch({ type: "createFolder", spaceId: space.id, name: t("sidebar-new-folder"), favoriteId });
   }
   function rename(id: string, name: string) {
     renaming = null;
@@ -37,11 +38,11 @@
     if (title) api.dispatch({ type: "renameFavorite", spaceId: space.id, favoriteId: f.id, title });
   }
   const favoriteMenu = (f: Favorite): MenuEntry[] => [
-    { label: "Renommer", dispatch: () => (renaming = f.id) },
-    { label: "Retirer", dispatch: () => api.dispatch({ type: "unpin", spaceId: space.id, favoriteId: f.id }) },
-    ...space.folders.filter((d) => d.id !== f.folder).map((d) => ({ label: `Déplacer dans ${d.name}`, dispatch: () => api.dispatch({ type: "moveToFolder", spaceId: space.id, favoriteId: f.id, folderId: d.id }) })),
-    ...(f.folder ? [{ label: "Sortir du dossier", dispatch: () => api.dispatch({ type: "moveToFolder", spaceId: space.id, favoriteId: f.id, folderId: null }) }] : []),
-    { label: "Nouveau dossier", dispatch: () => newFolder(f.id) },
+    { label: t("sidebar-pinned-rename"), dispatch: () => (renaming = f.id) },
+    { label: t("sidebar-pinned-remove"), dispatch: () => api.dispatch({ type: "unpin", spaceId: space.id, favoriteId: f.id }) },
+    ...space.folders.filter((d) => d.id !== f.folder).map((d) => ({ label: t("sidebar-pinned-move-into", { folder: d.name }), dispatch: () => api.dispatch({ type: "moveToFolder", spaceId: space.id, favoriteId: f.id, folderId: d.id }) })),
+    ...(f.folder ? [{ label: t("sidebar-pinned-move-out"), dispatch: () => api.dispatch({ type: "moveToFolder", spaceId: space.id, favoriteId: f.id, folderId: null }) }] : []),
+    { label: t("sidebar-new-folder"), dispatch: () => newFolder(f.id) },
   ];
   function drop(e: DragEvent, folderId?: string) {
     e.stopPropagation();
@@ -60,7 +61,7 @@
       <!-- Enter or leaving the field keeps the name, Escape the old one. -->
       <input
         data-testid="favorite-name"
-        aria-label="Nom de l'onglet épinglé"
+        aria-label={t("sidebar-pinned-name")}
         value={f.title}
         use:focus
         onblur={(e) => renaming === f.id && renameFavorite(f, e.currentTarget.value)}
@@ -89,7 +90,7 @@
         <!-- Enter or leaving the field keeps the name, Escape the old one. -->
         <input
           data-testid="folder-name"
-          aria-label="Nom du dossier"
+          aria-label={t("sidebar-folder-name")}
           value={d.name}
           use:focus
           onblur={(e) => renaming === d.id && rename(d.id, e.currentTarget.value)}
@@ -103,8 +104,8 @@
           onclick={(e) => e.button === 0 && api.dispatch({ type: "toggleFolder", spaceId: space.id, id: d.id })}
           oncontextmenu={(e) =>
             openMenu(e, [
-              { label: "Renommer", dispatch: () => (renaming = d.id) },
-              { label: "Supprimer le dossier", dispatch: () => api.dispatch({ type: "deleteFolder", spaceId: space.id, id: d.id }) },
+              { label: t("sidebar-pinned-rename"), dispatch: () => (renaming = d.id) },
+              { label: t("sidebar-folder-delete"), dispatch: () => api.dispatch({ type: "deleteFolder", spaceId: space.id, id: d.id }) },
             ])}
           ondragover={(e) => e.dataTransfer?.types.includes(TAB) && (e.preventDefault(), (over = d.id))}
           ondragleave={() => (over = null)}

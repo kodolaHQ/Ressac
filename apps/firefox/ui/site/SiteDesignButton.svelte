@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { ts } from "./locale.svelte";
   import type { ApiSite, DesignState } from "../../shared/api";
   import type { SiteWindowState } from "../../shared/sites";
 
@@ -47,23 +48,23 @@
 
 <span class="design" bind:this={root}>
   {#if menuOpen}
-    <span class="entries" role="menu" aria-label="Mode design">
-      <button role="menuitem" data-testid="site-menu-design-basket" onclick={() => choose(() => api.design.openBasket())}>Panier</button>
-      <button role="menuitem" data-testid="site-menu-design-review" onclick={() => choose(() => api.design.review())}>Voir les modifications de l'agent</button>
+    <span class="entries" role="menu" aria-label={ts("chrome-site-design")}>
+      <button role="menuitem" data-testid="site-menu-design-basket" onclick={() => choose(() => api.design.openBasket())}>{ts("chrome-site-basket")}</button>
+      <button role="menuitem" data-testid="site-menu-design-review" onclick={() => choose(() => api.design.review())}>{ts("chrome-site-review")}</button>
     </span>
   {/if}
   <button
     class="button"
     data-testid="site-design-button"
-    aria-label="Mode design"
+    aria-label={ts("chrome-site-design")}
     aria-pressed={active}
     disabled={unavailable}
-    title={unavailable ? (design?.unavailable ?? "") : `Mode design (${design?.shortcut ?? ""})`}
+    title={unavailable ? (design?.unavailable ?? "") : ts("chrome-site-design-title", { shortcut: design?.shortcut ?? "" })}
     onclick={() => api.design.toggle()}
     >✎{#if design && design.basket > 0}<span class="counter" data-testid="site-basket-counter">{design.basket}</span>{/if}</button
   >
   <!-- Always active: the basket and the review stay reachable where the mode does not start (home, card…). -->
-  <button class="chevron" data-testid="site-menu-design" aria-label="Menu du mode design" aria-expanded={menuOpen} onclick={() => (menuOpen = !menuOpen)}>▾</button>
+  <button class="chevron" data-testid="site-menu-design" aria-label={ts("chrome-site-design-menu")} aria-expanded={menuOpen} onclick={() => (menuOpen = !menuOpen)}>▾</button>
 </span>
 
 <style>

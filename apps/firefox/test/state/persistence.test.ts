@@ -1,5 +1,5 @@
 import { expect, test, vi } from "vitest";
-import { chmodSync, existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readdirSync, readFileSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import fsp from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -476,4 +476,21 @@ test("addresses saved before the rename (webaios://) load as ressac:// in every 
   expect(s.essentials[0]!.url).toBe("ressac://apps");
   expect(s.spaces[0]!.pinned[0]!.url).toBe("ressac://recap/x");
   expect(s.windows[0]!.recentlyClosed[0]!.url).toBe("ressac://settings#a");
+});
+
+test("the recorder does not rewrite a session whose saved text is unchanged (only update or locale moved)", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "ressac-rec-"));
+  const file = join(dir, "session.json");
+  const s = initialState();
+  const first = new SessionRecorder(dir, 0);
+  first.schedule(s);
+  await first.clear();
+  utimesSync(file, 1000, 1000);
+  const r = new SessionRecorder(dir, 0);
+  r.schedule({ ...s, locale: "fr" });
+  await r.clear();
+  expect(statSync(file).mtimeMs).toBe(1_000_000);
+  r.schedule(apply(s, { type: "chooseLanguage", language: "en" }));
+  await r.clear();
+  expect(statSync(file).mtimeMs).not.toBe(1_000_000);
 });

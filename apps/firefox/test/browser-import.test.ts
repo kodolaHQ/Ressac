@@ -82,10 +82,10 @@ describe("bookmarks dedupe", () => {
 
 describe("end notification", () => {
   it("names what came in, then what failed", () => {
-    const s = summary({ source: "chrome", done: true, counts: { bookmarks: 412, history: 18_000, passwords: 96 }, failed: {} });
+    const s = summary({ source: "chrome", done: true, counts: { bookmarks: 412, history: 18_000, passwords: 96 }, failed: {} }, "fr");
     expect(s.title).toBe("Import terminé");
     expect(s.text.replace(/\s/g, " ")).toBe("412 favoris, 18 000 pages d'historique, 96 mots de passe");
-    const p = summary({ source: "chrome", done: true, counts: { bookmarks: 1, history: 0 }, failed: { passwords: "accès refusé" } });
+    const p = summary({ source: "chrome", done: true, counts: { bookmarks: 1, history: 0 }, failed: { passwords: "accès refusé" } }, "fr");
     expect(p.title).toBe("Import terminé en partie");
     expect(p.text).toBe("1 favori, 0 page d'historique. Non importé : mots de passe (accès refusé)");
   });

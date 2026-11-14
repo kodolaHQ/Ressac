@@ -43,8 +43,8 @@ test("a custom address gets the words encoded once; custom without a valid addre
 });
 
 test("a custom address must be https, carry %s and stay under 2 000 characters", () => {
-  expect(customEngineError("http://x.com/?q=%s")).toBe("L'adresse doit commencer par https://");
-  expect(customEngineError("https://x.com/")).toBe("Il manque %s à la place des mots cherchés");
-  expect(customEngineError("https://x.com/?q=%s&p=" + "a".repeat(2000))).toBe("Adresse trop longue");
+  expect(customEngineError("http://x.com/?q=%s")).toBe("agent-engine-custom-https");
+  expect(customEngineError("https://x.com/")).toBe("agent-engine-custom-missing-s");
+  expect(customEngineError("https://x.com/?q=%s&p=" + "a".repeat(2000))).toBe("agent-engine-custom-too-long");
   expect(customEngineError("https://kagi.com/search?q=%s")).toBeNull();
 });

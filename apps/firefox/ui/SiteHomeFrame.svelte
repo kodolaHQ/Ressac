@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { ENTER_THE_SITE, HomeMessage, type MessageToHome } from "../shared/sites";
+  import { ts } from "./site/locale.svelte";
+  import { HomeMessage, type MessageToHome } from "../shared/sites";
   import type { ApiSite } from "../shared/api";
 
   /**
@@ -91,9 +92,9 @@
 </script>
 
 <section class="home" data-testid="site-home-zone">
-  <iframe bind:this={frame} data-testid="site-home-frame" title="Accueil de l'appli" sandbox="allow-scripts" src={src ?? "about:blank"}></iframe>
+  <iframe bind:this={frame} data-testid="site-home-frame" title={ts("chrome-site-home")} sandbox="allow-scripts" src={src ?? "about:blank"}></iframe>
   <footer>
-    <button data-testid="site-enter" onclick={() => api.enter()}>{ENTER_THE_SITE}</button>
+    <button data-testid="site-enter" onclick={() => api.enter()}>{ts("chrome-site-enter")}</button>
   </footer>
 </section>
 

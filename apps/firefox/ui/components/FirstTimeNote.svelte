@@ -2,6 +2,7 @@
   import { fade } from "svelte/transition";
   import { FIRST_TIME, type FirstTimeId } from "../../shared/hints";
   import { firstTimePending, markSeen } from "./hints";
+  import { t } from "../i18n.svelte";
 
   /** `veil`: dims what is behind (the main window); in a frame of its own the note fills the frame. */
   let { id, veil = false }: { id: FirstTimeId; veil?: boolean } = $props();
@@ -15,10 +16,10 @@
 
 {#if firstTimePending(id)}
   <div class="layer" class:veil data-testid="first-time-{id}" out:fade={{ duration: 150 }}>
-    <div class="card" role="dialog" aria-modal="true" aria-label={note.title}>
-      <h2>{note.title}</h2>
-      <p>{note.text}</p>
-      <button bind:this={ok} type="button" data-testid="first-time-ok" onclick={() => markSeen(id)}>Compris</button>
+    <div class="card" role="dialog" aria-modal="true" aria-label={t(note.title)}>
+      <h2>{t(note.title)}</h2>
+      <p>{t(note.text)}</p>
+      <button bind:this={ok} type="button" data-testid="first-time-ok" onclick={() => markSeen(id)}>{t("sidebar-first-ok")}</button>
     </div>
   </div>
 {/if}

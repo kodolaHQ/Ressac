@@ -2,15 +2,16 @@
   import { untrack } from "svelte";
   import type { DevRight, TabAccessState } from "@ressac/kernel";
   import { access, accessApi } from "../access.svelte";
+  import { t } from "../i18n.svelte";
 
   let { id, state: appState, anchor: anchor }: { id: string; state: TabAccessState; anchor: HTMLElement } = $props();
 
   const MARGIN = 8;
   const RIGHTS: Record<DevRight, { icon: string; name: string }> = {
-    console: { icon: "👁", name: "Console et erreurs" },
-    network: { icon: "👁", name: "Réseau" },
-    performance: { icon: "👁", name: "Performances et mémoire" },
-    act: { icon: "⚡", name: "Agir sur la page" },
+    console: { icon: "👁", name: "sidebar-access-console" },
+    network: { icon: "👁", name: "sidebar-access-network" },
+    performance: { icon: "👁", name: "sidebar-access-performance" },
+    act: { icon: "⚡", name: "sidebar-access-act" },
   };
 
   // The web page (a native view) always covers the interface: the bubble stays in the sidebar column, under the
@@ -43,21 +44,21 @@
 
 <svelte:window bind:innerWidth={windowW} bind:innerHeight={windowH} />
 
-<div class="bubble" tabindex="-1" use:subbody bind:clientHeight={height} data-testid="access-bubble" role="dialog" aria-label="Accès de l'agent" style:left="{place.left}px" style:top="{place.top}px" style:width="{place.width}px">
-  <h4>{access.agent} a accès à cet onglet</h4>
+<div class="bubble" tabindex="-1" use:subbody bind:clientHeight={height} data-testid="access-bubble" role="dialog" aria-label={t("sidebar-access-label")} style:left="{place.left}px" style:top="{place.top}px" style:width="{place.width}px">
+  <h4>{t("sidebar-access-title", { agent: access.agent })}</h4>
   <ul>
     {#if appState.read}
-      <li data-line="read"><span>👁 Lecture de la page</span></li>
+      <li data-line="read"><span>👁 {t("sidebar-access-read")}</span></li>
     {/if}
     {#each appState.rights as d (d)}
       <li data-line={d}>
-        <span>{RIGHTS[d].icon} {RIGHTS[d].name}</span>
-        <button class="cut-right" data-right={d} onclick={() => accessApi.access.cut(id, d)}>Couper</button>
+        <span>{RIGHTS[d].icon} {t(RIGHTS[d].name)}</span>
+        <button class="cut-right" data-right={d} onclick={() => accessApi.access.cut(id, d)}>{t("sidebar-access-cut")}</button>
       </li>
     {/each}
   </ul>
-  <p>Cette conversation · tombe si l'onglet change de site</p>
-  <button class="cut" onclick={() => accessApi.access.cut(id)}>Couper l'accès</button>
+  <p>{t("sidebar-access-note")}</p>
+  <button class="cut" onclick={() => accessApi.access.cut(id)}>{t("sidebar-access-cut-all")}</button>
 </div>
 
 <style>

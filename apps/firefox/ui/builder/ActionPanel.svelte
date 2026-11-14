@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { WorkflowEdit } from "../../shared/api";
+  import { t } from "../i18n.svelte";
 
   /**
    * The action, read-only: `action.json` is never written by Ressac (its sources, its input and its page layout
@@ -12,20 +13,20 @@
   {#if action}
     <p class="name" data-testid="action-name">{action.name}</p>
     <dl>
-      <dt>Domaines avec compte</dt>
-      <dd data-testid="action-account">{action.account.length ? action.account.join(", ") : "aucun"}</dd>
-      <dt>Domaines publics</dt>
-      <dd data-testid="action-public">{action.public.length ? action.public.join(", ") : "aucun"}</dd>
-      <dt>Saisie demandée au lancement</dt>
-      <dd data-testid="action-input">{action.input ? action.input.label : "aucune"}</dd>
-      <dt>Consigne de mise en page</dt>
-      <dd class="instruction" data-testid="action-layout">{action.layout ?? "aucune"}</dd>
+      <dt>{t("builder-panel-account")}</dt>
+      <dd data-testid="action-account">{action.account.length ? action.account.join(", ") : t("builder-panel-none")}</dd>
+      <dt>{t("builder-panel-public")}</dt>
+      <dd data-testid="action-public">{action.public.length ? action.public.join(", ") : t("builder-panel-none")}</dd>
+      <dt>{t("builder-panel-input")}</dt>
+      <dd data-testid="action-input">{action.input ? action.input.label : t("builder-panel-none-f")}</dd>
+      <dt>{t("builder-panel-layout")}</dt>
+      <dd class="instruction" data-testid="action-layout">{action.layout ?? t("builder-panel-none-f")}</dd>
     </dl>
-    {#if action.web}<p class="line" data-testid="action-web">Accès au web : ouvert</p>{/if}
-    {#if action.maxDurationMinutes}<p class="line">Durée maximale : {action.maxDurationMinutes} min</p>{/if}
+    {#if action.web}<p class="line" data-testid="action-web">{t("builder-panel-web-open")}</p>{/if}
+    {#if action.maxDurationMinutes}<p class="line">{t("builder-panel-max-duration", { minutes: String(action.maxDurationMinutes) })}</p>{/if}
   {/if}
-  <p class="muted">Pour changer les sources, la saisie ou la mise en page, demande-le à l'agent.</p>
-  <p class="muted">Sélectionne un bloc pour voir ses réglages.</p>
+  <p class="muted">{t("builder-panel-help-action")}</p>
+  <p class="muted">{t("builder-panel-select")}</p>
 </section>
 
 <style>

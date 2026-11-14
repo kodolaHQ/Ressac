@@ -349,7 +349,7 @@ export interface ApiRessac {
   };
   /**
    * The actions (`~/Ressac/actions`) and their pages. Refused when the window's active space is private
-   * (`ACTIONS_IN_PRIVATE_SPACE`, or nothing: `[]`, `null`).
+   * (`action-private`, or nothing: `[]`, `null`).
    */
   actions: {
     list(): Promise<ActionShown[]>;
@@ -737,6 +737,8 @@ export interface LocalAiStateShown {
 export type BadgeApi = Pick<ApiRessac, "access" | "onAccess"> & {
   /** Asks the main process to enlarge (bubble open) or shrink the badge's view. */
   badgeSize(opened: boolean): void;
+  /** The language shown (the badge frame has no browser state). */
+  locale(): string;
   /** The design mode of the app window; « Panier » opens it in the window's overlay. */
   design: { state(): Promise<DesignState>; toggle(): void; basket(): void; review(): void };
 };
@@ -865,6 +867,8 @@ export interface OverlayContext {
   noDestination: string | null;
   /** Bubble of a site app: what will go to the agent (excerpt, capture); null elsewhere. */
   warning: string | null;
+  /** The language the overlay's own texts are shown in (the overlay frame has no browser state). */
+  locale: string;
 }
 /** The single API of the design mode overlay (`design.html`); the main process recognizes its target by the sender. */
 export type OverlayApi = {

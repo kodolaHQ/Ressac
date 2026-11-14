@@ -28,7 +28,7 @@ import { containerFor, existingContainer, isSiteContainer, removeContainer } fro
 import { installCallPlayer } from "./call-player";
 import { registerPermissionHooks } from "./permission-hooks";
 import { createSitePermissions, type SitePermission, type SitePermissions } from "./site-permissions";
-import { bindSites, sites, type SiteApps } from "./sites";
+import { bindSites, relabelSiteWindows, sites, type SiteApps } from "./sites";
 import { createStore, type Store } from "./store";
 import { relaunchAfterQuit, relaunchEnv } from "./relaunch";
 import { installUpdates } from "./updates";
@@ -368,6 +368,9 @@ async function start(): Promise<RessacStore> {
       messageManagerGroups: ["browsers"],
       safeForUntrustedWebProcess: true,
     });
+    tellVimPages();
+  };
+  const tellVimPages = () => {
     for (const win of Services.wm.getEnumerator("navigator:browser"))
       for (const b of win.gBrowser?.browsers ?? [])
         if (/^https?:/.test(b.currentURI?.spec ?? ""))
@@ -380,6 +383,8 @@ async function start(): Promise<RessacStore> {
   if (store.state.settings.vimMode) setVimActor(true);
   store.subscribe((s, p) => {
     if (s.settings.vimMode !== p.settings.vimMode) setVimActor(s.settings.vimMode);
+    // The pause pill and the `?` sheet follow the language.
+    else if (s.settings.vimMode && s.locale !== p.locale) tellVimPages();
   });
   // The agent's extensions' consoles, in every content process: a content script writes in a web process (spike S6).
   // What it relays is untrusted there: the parent checks it (agentExtensions.relayConsole).
@@ -486,14 +491,15 @@ async function start(): Promise<RessacStore> {
     store.dispatch({ type: "openTab", windowId: windowId, url });
     toFront(windowId);
   };
-  const design = createDesign({ agent, windows, apps, sites, dispatch: store.dispatch, mainWindow, toFront, shortcutLabel: () => shortcutLabel("design", store.state.settings) });
-  bindSites(agent, dataDir, openInTab, design);
+  const design = createDesign({ agent, windows, apps, sites, dispatch: store.dispatch, mainWindow, toFront, shortcutLabel: () => shortcutLabel("design", store.state.settings), locale: () => store.state.locale });
+  bindSites(agent, dataDir, openInTab, design, () => store.state.locale);
   design.overlays = createOverlays({ design, host: agent });
   // A remapped design shortcut: the windows re-read the label (a site app's « Mode design (⇧⌘D) » tooltip).
   store.subscribe((s, p) => {
-    if (shortcutLabel("design", s.settings) !== shortcutLabel("design", p.settings)) design.refresh();
+    if (shortcutLabel("design", s.settings) !== shortcutLabel("design", p.settings) || s.locale !== p.locale) design.refresh();
+    if (s.locale !== p.locale) relabelSiteWindows();
   });
-  bindApps(agent, openInTab, dataDir, { access: () => access, design });
+  bindApps(agent, openInTab, dataDir, { access: () => access, design, locale: () => store.state.locale });
   const history = createHistory(store, agent);
   registerHomeNotifications(agent);
   // A site app's downloads are cancelled: an app downloads nothing.

@@ -2,6 +2,7 @@
   import type { PendingRequest } from "../../shared/model";
   import type { ExtensionCard } from "../../shared/extensions";
   import { api } from "../state.svelte";
+  import { t } from "../i18n.svelte";
 
   // Everything from the manifest (name, version, sites, domains) is shown as text, never interpreted.
   let { request: request, card: card }: { request: PendingRequest; card: ExtensionCard } = $props();
@@ -9,7 +10,7 @@
   // Strengthened grant: « Activer » (and Enter, which clicks the primary button) has no effect until the box is checked.
   let included = $state(false);
   const blocked = $derived(card.hardened && !included);
-  const names = (list: string[]) => list.map((n) => `« ${n} »`).join(", ");
+  const names = (list: string[]) => list.map((n) => t("home-quoted", { name: n })).join(", ");
 
   /** The name comes from the manifest: bounded, and shown in its own element (it cannot read as the rest of the title). */
   const NAME_MAX = 60;
@@ -19,73 +20,70 @@
     return car.length > NAME_MAX ? `${car.slice(0, NAME_MAX - 1).join("")}…` : card.name;
   });
   const sites = $derived(
-    card.sites.length > SITES_MAX ? `${card.sites.slice(0, SITES_MAX).join(", ")} et ${card.sites.length - SITES_MAX} autres` : card.sites.join(", "),
+    card.sites.length > SITES_MAX ? t("home-ext-sites-more", { list: card.sites.slice(0, SITES_MAX).join(", "), count: card.sites.length - SITES_MAX }) : card.sites.join(", "),
   );
 </script>
 
 <div data-testid="extension-request">
   {#if card.update}
-    <h3>Mettre à jour <span class="name" data-testid="extension-card-name">« {name} »</span> ?</h3>
-    <div class="subtle">Version {card.update.from} → {card.version}</div>
+    <h3>{t("home-ext-update")} <span class="name" data-testid="extension-card-name">{t("home-quoted", { name })}</span>{t("home-ext-update-end")}</h3>
+    <div class="subtle">{t("home-ext-version", { from: card.update.from, to: card.version })}</div>
   {:else}
-    <h3>Activer <span class="name" data-testid="extension-card-name">« {name} »</span> dans « {card.space} » ?</h3>
+    <h3>{t("home-ext-activate")} <span class="name" data-testid="extension-card-name">{t("home-quoted", { name })}</span> {t("home-ext-activate-in", { space: card.space })}</h3>
   {/if}
-  <div class="subtle">{card.source === "store" ? "addons.mozilla.org" : "Écrite par l'agent"}</div>
+  <div class="subtle">{card.source === "store" ? "addons.mozilla.org" : t("home-by-agent")}</div>
 
   {#if card.rights.length > 0}
-    <p class="title">Ce qu'elle veut faire :</p>
+    <p class="title">{t("home-ext-wants")}</p>
     <ul>
       {#each card.rights as right, i (i)}<li>{right}</li>{/each}
     </ul>
   {/if}
 
   {#if card.allSites}
-    <p class="alert" data-testid="extension-card-all-sites">Sur tous les sites que vous visitez</p>
+    <p class="alert" data-testid="extension-card-all-sites">{t("home-ext-all-sites")}</p>
   {:else if card.sites.length > 0}
-    <p>Sur : {sites}</p>
+    <p>{t("home-ext-sites", { sites })}</p>
   {/if}
 
   {#if card.otherSpaces.length > 0}
-    <p>Elle sera active aussi dans {names(card.otherSpaces)} (même profil).</p>
+    <p>{t("home-ext-other-spaces", { names: names(card.otherSpaces) })}</p>
   {/if}
 
   {#if card.alsoReplaces.length > 0}
-    <p class="alert" data-testid="extension-card-replaces">La nouvelle version remplacera aussi celle de {names(card.alsoReplaces)}.</p>
+    <p class="alert" data-testid="extension-card-replaces">{t("home-ext-also-replaces", { names: names(card.alsoReplaces) })}</p>
   {/if}
 
   {#if card.source === "agent"}
     {#if card.network}
       <p>
-        {card.network.length === 0 ? "Elle ne peut rien envoyer vers internet." : `Elle pourra envoyer des données à : ${card.network.join(", ")}.`}
+        {card.network.length === 0 ? t("home-ext-network-none") : t("home-ext-network", { sites: card.network.join(", ") })}
       </p>
     {/if}
-    <p class="subtle">
-      Ses scripts tournent dans les pages : ils pourraient faire charger une ressource à la page, et ainsi faire sortir des données. Les champs de mot
-      de passe lui sont masqués, sans garantie absolue.
-    </p>
-    <p class="subtle">L'agent ne voit pas ce que cette extension lit sur les onglets que vous ne lui avez pas partagés.</p>
+    <p class="subtle">{t("home-ext-scripts")}</p>
+    <p class="subtle">{t("home-ext-agent-blind")}</p>
   {/if}
 
   {#if card.hardened}
     <div class="strengthened">
-      <p id="extension-card-warning">Elle pourra lire et modifier chaque page de cet espace, comptes connectés compris.</p>
+      <p id="extension-card-warning">{t("home-ext-hardened")}</p>
       <label>
         <input type="checkbox" data-testid="extension-card-confirm" aria-describedby="extension-card-warning" bind:checked={included} />
-        Je comprends : elle lira toutes les pages de cet espace
+        {t("home-ext-confirm")}
       </label>
     </div>
   {/if}
 
   <!-- Enter refuses (Refuser is the primary button): enabling an extension takes a real click. -->
   <div class="actions">
-    <button data-main onclick={() => api.permissions.answer(request.id, "deny")}>Refuser</button>
+    <button data-main onclick={() => api.permissions.answer(request.id, "deny")}>{t("home-deny")}</button>
     <button
       class="allow"
       disabled={blocked}
       aria-describedby={blocked ? "extension-card-reason" : undefined}
-      onclick={() => api.permissions.answer(request.id, "allow", undefined, { confirmed: included })}>Activer</button
+      onclick={() => api.permissions.answer(request.id, "allow", undefined, { confirmed: included })}>{t("home-ext-enable")}</button
     >
-    {#if blocked}<span id="extension-card-reason" class="sr-only">Coche « Je comprends » pour pouvoir l'activer.</span>{/if}
+    {#if blocked}<span id="extension-card-reason" class="sr-only">{t("home-ext-tick-first")}</span>{/if}
   </div>
 </div>
 

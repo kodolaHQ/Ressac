@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { PageAction } from "@ressac/kernel";
-  import { NO_RESULT } from "../../shared/actions";
+  import { t } from "../i18n.svelte";
   import PageRender from "../action/PageRender.svelte";
   import { actionContext } from "../action/types";
   import { api } from "../state.svelte";
@@ -35,19 +35,19 @@
 
 <div class="preview" data-testid="action-preview">
   {#if executions.chosen === null}
-    <p class="muted">Aucune exécution pour l'instant.</p>
+    <p class="muted">{t("builder-no-run")}</p>
   {:else if loaded === undefined}
-    <p class="muted">Chargement…</p>
+    <p class="muted">{t("builder-loading")}</p>
   {:else if loaded === null || !loaded.page}
-    <p class="muted">{loaded?.error ?? "Pas de page pour cette exécution."}</p>
+    <p class="muted">{loaded?.error ?? t("builder-preview-no-page")}</p>
   {:else if loaded.page.empty}
-    <p class="muted">{NO_RESULT}</p>
+    <p class="muted">{t("action-no-result")}</p>
   {:else}
     <div class="page">
       <PageRender page={loaded.page} ctx={actionContext(id, loaded.run)} components={false} />
     </div>
   {/if}
-  {#if executions.chosen?.attempt}<p class="muted mention" data-testid="mention-preview">Aperçu d'un essai : pas le dernier résultat de l'action</p>{/if}
+  {#if executions.chosen?.attempt}<p class="muted mention" data-testid="mention-preview">{t("builder-preview-trial")}</p>{/if}
 </div>
 
 <style>

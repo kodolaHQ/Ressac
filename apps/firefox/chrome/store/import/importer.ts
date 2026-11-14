@@ -1,3 +1,4 @@
+import { format } from "../../../shared/i18n";
 import type { BrowserImportApi, ImportProgress, ImportSource, ImportType } from "../../../shared/api";
 import type { AgentHost } from "../../agent/host";
 import { showAlert } from "../notifications";
@@ -68,32 +69,24 @@ export function pruneBookmarks(items: BookmarkItem[], parentTitle: string, exist
 }
 
 const ORDER: ImportType[] = ["bookmarks", "history", "passwords", "spaces", "tabs"];
-/** Singular, plural, and the type's name in a failure. */
-const LABELS: Record<ImportType, [string, string, string]> = {
-  bookmarks: ["favori", "favoris", "favoris"],
-  history: ["page d'historique", "pages d'historique", "historique"],
-  passwords: ["mot de passe", "mots de passe", "mots de passe"],
-  spaces: ["élément de barre latérale", "éléments de barre latérale", "espaces et onglets épinglés"],
-  tabs: ["onglet ouvert", "onglets ouverts", "onglets ouverts"],
-};
-
 /** The end notification: what came in, then what failed and why. */
-export function summary(p: ImportProgress): { title: string; text: string } {
+export function summary(p: ImportProgress, locale: string): { title: string; text: string } {
   const got = ORDER.filter((t) => p.counts[t] !== undefined)
-    .map((t) => `${p.counts[t]!.toLocaleString("fr-FR")} ${LABELS[t][p.counts[t]! < 2 ? 0 : 1]}`)
+    .map((t) => format(locale, `chrome-import-count-${t}`, { count: p.counts[t]!, shown: p.counts[t]!.toLocaleString(locale) }))
     .join(", ");
   const failed = ORDER.filter((t) => p.failed[t])
-    .map((t) => `${LABELS[t][2]} (${p.failed[t]})`)
+    .map((t) => `${format(locale, `chrome-import-type-${t}`)} (${p.failed[t]})`)
     .join(", ");
-  return { title: failed ? "Import terminé en partie" : "Import terminé", text: [got, failed && `Non importé : ${failed}`].filter(Boolean).join(". ") };
+  const title = format(locale, failed ? "chrome-import-partial" : "chrome-import-done");
+  return { title, text: [got, failed && format(locale, "chrome-import-not-imported", { failed })].filter(Boolean).join(". ") };
 }
 
 /** Why a type could not be read when no error says it: the engine's migrators only say that it failed. */
-function reason(def: SourceDef, type: ImportType, unreadableFile: boolean): string {
-  if (def.kind === "safari") return "accès refusé : autorisez Ressac dans Réglages Système › Confidentialité et sécurité › Accès complet au disque";
-  if (type === "passwords" && def.kind === "chromium" && !unreadableFile) return "accès au trousseau refusé";
+function reason(locale: string, def: SourceDef, type: ImportType, unreadableFile: boolean): string {
+  if (def.kind === "safari") return format(locale, "chrome-import-safari-denied");
+  if (type === "passwords" && def.kind === "chromium" && !unreadableFile) return format(locale, "chrome-import-keychain-denied");
   // Firefox and Zen are always read from a copy: a lock is not the cause.
-  return def.kind === "firefox" ? `profil ${def.name} illisible` : `fichier illisible : fermez ${def.name} puis réessayez`;
+  return def.kind === "firefox" ? format(locale, "chrome-import-profile-unreadable", { name: def.name }) : format(locale, "chrome-import-file-unreadable", { name: def.name });
 }
 
 /** The engine caps Chromium history at 2 000 pages and 180 days: for an import, all of it within our retention. */
@@ -118,6 +111,7 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
   const cleared = IOUtils.remove(tmp, { recursive: true, ignoreAbsent: true }).catch((e: unknown) => console.error("[import] old copy not removed:", e));
   let progress: ImportProgress | null = null;
   let running = false;
+  const say = (id: string, args?: Record<string, string>) => format(store.state.locale, id, args);
 
   async function profilesOf(def: SourceDef): Promise<{ id: string; name: string }[]> {
     const root = sourceRoot(home, def);
@@ -164,17 +158,17 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
   async function importSpaces(def: SourceDef, profile: { id: string } | null, types: ImportType[]): Promise<{ spaces: number; tabs: number }> {
     const arc = def.id === "arc";
     // Arc keeps its sidebar next to its Chromium data folder; Zen, in the profile's session file (written whole, never locked).
-    if (!arc && !profile) throw new Error("profil Zen introuvable");
+    if (!arc && !profile) throw new Error(say("chrome-import-no-zen-profile"));
     const path = arc ? sourceRoot(home, def).replace(/\/User Data$/, "/StorableSidebar.json") : `${profile!.id}/zen-sessions.jsonlz4`;
-    if (!(await IOUtils.exists(path))) throw new Error("aucun espace trouvé");
+    if (!(await IOUtils.exists(path))) throw new Error(say("chrome-import-no-space"));
     let json: unknown;
     try {
       json = await IOUtils.readJSON(path, { decompress: !arc });
     } catch {
-      throw new Error(reason(def, "spaces", true));
+      throw new Error(reason(store.state.locale, def, "spaces", true));
     }
     const read = arc ? parseArcSidebar(json) : parseZenSpaces(json);
-    if (!read) throw new Error(`format ${def.name} non reconnu`);
+    if (!read) throw new Error(say("chrome-import-format", { name: def.name }));
     const [sidebar, tabs] = [types.includes("spaces"), types.includes("tabs")];
     const imported = { spaces: read.spaces.map((s) => ({ name: s.name, pinned: sidebar ? s.pinned : [], tabs: tabs ? s.tabs : [] })), essentials: sidebar ? read.essentials : [] };
     const size = () => store.state.spaces.reduce((n, e) => n + 1 + e.pinned.length, store.state.essentials.length);
@@ -300,8 +294,8 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
         failed = [...failed.filter((t) => !retry.includes(t)), ...(await bad(retry, `${copy}/${profile.id}`))];
       }
       for (const t of asked) {
-        if (failed.includes(t)) p.failed[t] = errors.get(t) ?? reason(def, t, unreadableTypes.has(t));
-        else if (testHome && def.kind === "chromium" && t === "passwords") p.failed[t] = "trousseau non consulté pendant les tests";
+        if (failed.includes(t)) p.failed[t] = errors.get(t) ?? reason(store.state.locale, def, t, unreadableTypes.has(t));
+        else if (testHome && def.kind === "chromium" && t === "passwords") p.failed[t] = say("chrome-import-keychain-test");
         else p.counts[t] = counts[t] ?? 0;
       }
     } catch (e) {
@@ -314,7 +308,7 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
       await IOUtils.remove(tmp, { recursive: true, ignoreAbsent: true }).catch((e: unknown) => console.error("[import] copy not removed:", e));
       p.done = true;
       running = false;
-      const s = summary(p);
+      const s = summary(p, store.state.locale);
       showAlert(s.title, s.text);
     }
   }
@@ -332,16 +326,16 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
       return def ? profilesOf(def) : [];
     },
     async start(o) {
-      if (running) return { ok: false, error: "Un import est déjà en cours" };
+      if (running) return { ok: false, error: say("chrome-import-running") };
       running = true;
       try {
         const def = (await detectSources(home, (path) => IOUtils.exists(path))).find((d) => d.id === o?.source);
-        if (!def) throw new Error("Ce navigateur n'est pas sur ce Mac");
+        if (!def) throw new Error(say("chrome-import-no-browser"));
         const types = Array.isArray(o.types) ? def.types.filter((t) => o.types.includes(t)) : [];
-        if (!types.length) throw new Error("Rien à importer");
+        if (!types.length) throw new Error(say("chrome-import-nothing"));
         const profiles = await profilesOf(def);
         const profile = o.profile === null ? (profiles[0] ?? null) : (profiles.find((p) => p.id === o.profile) ?? null);
-        if (!profile && (o.profile !== null || def.kind !== "safari")) throw new Error("Profil introuvable");
+        if (!profile && (o.profile !== null || def.kind !== "safari")) throw new Error(say("chrome-import-no-profile"));
         progress = { source: def.id, done: false, counts: {}, failed: {} };
         void run(def, profile, types, progress);
         return { ok: true };
@@ -355,10 +349,10 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
       let path = Services.env.get("RESSAC_TEST_IMPORT_CSV");
       if (!path) {
         const fp = Cc["@mozilla.org/filepicker;1"].createInstance(Ci.nsIFilePicker);
-        fp.init(Services.wm.getMostRecentBrowserWindow()?.browsingContext, "Choisissez l'export de vos mots de passe (CSV)", Ci.nsIFilePicker.modeOpen);
+        fp.init(Services.wm.getMostRecentBrowserWindow()?.browsingContext, say("chrome-import-csv-pick"), Ci.nsIFilePicker.modeOpen);
         fp.appendFilter("CSV", "*.csv");
         const r = await new Promise((done) => fp.open(done));
-        if (r !== Ci.nsIFilePicker.returnOK || !fp.file) return { ok: false, error: "Aucun fichier choisi" };
+        if (r !== Ci.nsIFilePicker.returnOK || !fp.file) return { ok: false, error: say("chrome-import-no-file") };
         path = fp.file.path as string;
       }
       try {
@@ -367,8 +361,8 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
         return { ok: true, count: report.filter((r) => r.result === "added" || r.result === "modified").length };
       } catch (e: any) {
         console.error("[import] CSV:", e);
-        if (e?.errorType === "FILE_PERMISSIONS_ERROR" || e?.errorType === "UNABLE_TO_READ_ERROR") return { ok: false, error: "Ce fichier n'a pas pu être lu." };
-        return { ok: false, error: "Ce fichier n'est pas un export de mots de passe (CSV)." };
+        if (e?.errorType === "FILE_PERMISSIONS_ERROR" || e?.errorType === "UNABLE_TO_READ_ERROR") return { ok: false, error: say("chrome-import-csv-unreadable") };
+        return { ok: false, error: say("chrome-import-csv-invalid") };
       }
     },
   };

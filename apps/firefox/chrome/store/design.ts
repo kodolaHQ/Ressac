@@ -9,7 +9,8 @@ import { SITE_BAR_HEIGHT } from "../../shared/sites";
 import type { DesignContext } from "../../../../packages/kernel/src/design/remarks";
 import { chooseDesignTarget } from "../../core/design/foreground";
 import type { DesignTracking } from "../../host/design";
-import { CAPTURE_WARNING_SITE, DESIGN_ID_MAX, ID_PROJECT, INVALID_REQUEST, NOTHING_AIMED, REMARK_TEXT_MAX, UNAVAILABLE_DESIGN, UNAVAILABLE_DESIGN_SITE } from "../../shared/design-guards";
+import { format } from "../../shared/i18n";
+import { DESIGN_ID_MAX, ID_PROJECT, INVALID_REQUEST, NOTHING_AIMED, REMARK_TEXT_MAX } from "../../shared/design-guards";
 import type { AgentHost } from "../agent/host";
 import type { apps as Apps } from "./apps";
 import {
@@ -156,6 +157,8 @@ export function createDesign(o: {
   mainWindow(): Promise<WindowId | undefined>;
   /** The design mode's current key label. */
   shortcutLabel(): string;
+  /** The shown language, for the overlays' own texts. */
+  locale(): string;
   toFront(f: WindowId): void;
 }): DesignService {
   const sessions = new Map<string, Session>();
@@ -213,7 +216,10 @@ export function createDesign(o: {
     service.overlays.hide(key, mode);
     notify();
   };
-  const show = (key: string, win: Window, place: { x: number; y: number; width: number; height: number }, ctx: OverlayContext) => {
+  const UNAVAIL = () => format(o.locale(), "chrome-design-unavailable");
+  const UNAVAIL_SITE = () => format(o.locale(), "chrome-design-unavailable-site");
+  const show = (key: string, win: Window, place: { x: number; y: number; width: number; height: number }, shown: Omit<OverlayContext, "locale">) => {
+    const ctx: OverlayContext = { ...shown, locale: o.locale() };
     const same = JSON.stringify(contexts.get(key)?.[ctx.mode]) === JSON.stringify(ctx);
     contexts.set(key, { ...contexts.get(key), [ctx.mode]: ctx });
     service.overlays.show(key, win, place, ctx);
@@ -291,7 +297,7 @@ export function createDesign(o: {
     const bounds = { x: b.x, y: b.y, width: b.width, height: b.height };
     const win: [number, number] = [s.win.innerWidth, s.win.innerHeight];
     const place = bubbleSlot(rect, s.browser.fullZoom ?? 1, bounds, win, site ? { minHeight: bounds.y, height: SITE_BUBBLE_SIZE.height } : s.home ? { minHeight: bounds.y } : {});
-    show(s.key, s.win, place, { mode: "bubble", message: null, project: s.project.project, label: context.label, source: sourceText(source), ...s.destination, warning: site ? CAPTURE_WARNING_SITE : null });
+    show(s.key, s.win, place, { mode: "bubble", message: null, project: s.project.project, label: context.label, source: sourceText(source), ...s.destination, warning: site ? format(o.locale(), "chrome-design-capture-warning") : null });
   }
 
   /** A throw anywhere after the arm (a bug, a window gone mid-way): the session stops, its frames unguarded. */
@@ -321,9 +327,9 @@ export function createDesign(o: {
       // A host that does not answer rejects: the button keeps its last state.
       const r = s ? await o.agent.request<DesignTracking | null>("design.tracking", { project: s.project.project }) : v ? await tracking(t, v) : null;
       const project = r?.project ?? s?.project ?? null;
-      if (!project) return { active: false, project: null, unavailable: t.type === "site" ? UNAVAILABLE_DESIGN_SITE : UNAVAILABLE_DESIGN, destination: null, noDestination: null, basket: 0, name: "", shortcut: o.shortcutLabel() };
+      if (!project) return { active: false, project: null, unavailable: t.type === "site" ? UNAVAIL_SITE() : UNAVAIL(), destination: null, noDestination: null, basket: 0, name: "", shortcut: o.shortcutLabel() };
       // A site app: its project is known even where the mode does not start (card, sign-in page, fullscreen).
-      const unavailable = t.type === "site" && !s && !o.sites.designView(t.id)?.available ? UNAVAILABLE_DESIGN_SITE : null;
+      const unavailable = t.type === "site" && !s && !o.sites.designView(t.id)?.available ? UNAVAIL_SITE() : null;
       return { active: !!s, project: project, unavailable: unavailable, destination: r?.destination ?? null, noDestination: r?.noDestination ?? null, basket: r?.basket ?? 0, name: r?.name ?? "", shortcut: o.shortcutLabel() };
     },
 
@@ -332,7 +338,7 @@ export function createDesign(o: {
       if (sessions.has(key)) return service.stop(t);
       const site = t.type === "site" ? o.sites.designView(t.id) : null;
       // Unavailable in the site app's window: why, in its bar; nothing injected.
-      if (t.type === "site" && !site?.available) return o.sites.infoNotice(t.id, UNAVAILABLE_DESIGN_SITE);
+      if (t.type === "site" && !site?.available) return o.sites.infoNotice(t.id, UNAVAIL_SITE());
       const v = view(t);
       if (!v) return;
       // The page whose address gives the project, read with the address: the only one ever armed.
@@ -341,7 +347,7 @@ export function createDesign(o: {
       // A site app's view may have changed during the host's answer (⌂, fullscreen, a sign-in page): read again.
       if (t.type === "site" && r && !sessions.has(key)) {
         const now = o.sites.designView(t.id);
-        if (!now?.available) return o.sites.infoNotice(t.id, UNAVAILABLE_DESIGN_SITE);
+        if (!now?.available) return o.sites.infoNotice(t.id, UNAVAIL_SITE());
         if (now.viewState !== site!.viewState) return;
       }
       if (!r || !wgp || sessions.has(key) || view(t)?.browser !== v.browser || pageOf(v.browser) !== wgp) {
@@ -349,7 +355,7 @@ export function createDesign(o: {
         if (r === null && t.type === "window" && !sessions.has(key) && view(t)?.browser === v.browser) {
           const b = v.browser.getBoundingClientRect();
           const place = { x: b.x + b.width - MESSAGE_MARGIN - MESSAGE_WIDTH, y: b.y + MESSAGE_MARGIN, width: MESSAGE_WIDTH, height: MESSAGE_HEIGHT };
-          show(key, v.win, place, { mode: "message", message: UNAVAILABLE_DESIGN, project: "", label: "", source: null, destination: null, noDestination: null, warning: null });
+          show(key, v.win, place, { mode: "message", message: UNAVAIL(), project: "", label: "", source: null, destination: null, noDestination: null, warning: null });
         }
         return;
       }
@@ -412,7 +418,7 @@ export function createDesign(o: {
         otherWindow: !main && !app,
         activeWindow: main ? windowId : undefined,
       });
-      if (choice.type === "site-notice") o.sites.infoNotice(choice.id, UNAVAILABLE_DESIGN_SITE);
+      if (choice.type === "site-notice") o.sites.infoNotice(choice.id, UNAVAIL_SITE());
       else if (choice.type === "target") void service.toggle(choice.target);
     },
 

@@ -1,3 +1,4 @@
+import { format } from "../../shared/i18n";
 import type { PendingRequest, WindowId } from "../../shared/model";
 import type { RessacStore } from "../store";
 import type { SitePermission } from "../store/site-permissions";
@@ -19,13 +20,10 @@ export function mountSiteBanner(win: Window, store: RessacStore, windowId: Windo
   banner.id = "ressac-banner";
   banner.dataset.testid = "permission-request";
   banner.setAttribute("role", "alertdialog");
-  banner.setAttribute("aria-label", "Demande d'autorisation");
   banner.hidden = true;
   const text = el("span");
   const deny = el("button");
-  deny.textContent = "Refuser";
   const allow = el("button");
-  allow.textContent = "Autoriser";
   allow.className = "allow";
   banner.append(text, deny, allow);
   doc.getElementById("browser")!.append(banner);
@@ -34,12 +32,16 @@ export function mountSiteBanner(win: Window, store: RessacStore, windowId: Windo
   deny.addEventListener("click", () => shown && store.questions.answer(shown.id, "deny"));
   allow.addEventListener("click", () => shown && store.questions.answer(shown.id, "allow"));
   const render = () => {
+    const say = (id: string) => format(store.state.locale, id);
+    banner.setAttribute("aria-label", say("chrome-banner-label"));
+    deny.textContent = say("chrome-banner-deny");
+    allow.textContent = say("chrome-banner-allow");
     const f = store.state.windows.find((x) => x.id === windowId);
     const active = f?.active[f.activeSpace];
     const d = store.questions.pending().find((d) => (d.windowId ? d.windowId === windowId : d.tabId === null || d.tabId === active));
     shown = d && !d.permissions.some((p) => AGENT.includes(p)) ? d : undefined;
     banner.hidden = !shown;
-    if (shown) text.textContent = bannerText(shown as PendingRequest & { permissions: SitePermission[] });
+    if (shown) text.textContent = bannerText(shown as PendingRequest & { permissions: SitePermission[] }, store.state.locale);
   };
   // Its height follows its text (a long link wraps) and the window's width.
   const resize = new ResizeObserver(() => doc.documentElement.style.setProperty("--ressac-banner", `${banner.getBoundingClientRect().height}px`));

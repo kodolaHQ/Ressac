@@ -3,15 +3,17 @@
   import type { DevRight } from "@ressac/kernel";
   import { siteOf, type PendingRequest } from "../../shared/model";
   import { api } from "../state.svelte";
+  import { t } from "../i18n.svelte";
 
   let { request: request }: { request: PendingRequest } = $props();
 
   // The four rights, in the card's order. `sensible`: the warning shown below.
-  const RIGHTS: { right: DevRight; icon: string; name: string; detail: string; sensitive?: string }[] = [
-    { right: "console", icon: "👁", name: "Console et erreurs", detail: "Messages, erreurs JavaScript, avertissements" },
-    { right: "network", icon: "👁", name: "Réseau", detail: "Requêtes et réponses de la page", sensitive: "peut contenir des données de connexion" },
-    { right: "performance", icon: "👁", name: "Performances et mémoire", detail: "Profilage, instantanés mémoire" },
-    { right: "act", icon: "⚡", name: "Agir sur la page", detail: "Exécuter du JavaScript, modifier le DOM, recharger", sensitive: "l'agent peut agir en ton nom sur ce site" },
+  // Texts: home-devtools-<right>, -detail and (when `sensitive`) -sensitive.
+  const RIGHTS: { right: DevRight; icon: string; sensitive?: boolean }[] = [
+    { right: "console", icon: "👁" },
+    { right: "network", icon: "👁", sensitive: true },
+    { right: "performance", icon: "👁" },
+    { right: "act", icon: "⚡", sensitive: true },
   ];
 
   // Pre-checked: what the agent asked for; the user can add or remove some.
@@ -24,24 +26,24 @@
 </script>
 
 <div data-testid="devtools-request">
-  <h3>{request.agent ?? "L'agent"} veut accéder aux outils de développement</h3>
-  <div class="site">🔒 {site} · onglet « {request.title ?? site} »</div>
-  <div class="reason">« {request.reason} »</div>
+  <h3>{t("home-devtools-title", { agent: request.agent ?? t("home-agent-cap") })}</h3>
+  <div class="site">🔒 {t("home-devtools-site", { site, tab: request.title ?? site })}</div>
+  <div class="reason">{t("home-quoted", { name: request.reason ?? "" })}</div>
   {#each RIGHTS as d (d.right)}
     <label class="right-side">
       <input type="checkbox" data-right={d.right} checked={checked.includes(d.right)} onchange={(e) => check(d.right, e.currentTarget.checked)} />
       <div>
-        <b>{d.icon} {d.name}</b>
-        <span>{d.detail}</span>
-        {#if d.sensitive}<div class="sensitive">⚠ {d.sensitive}</div>{/if}
+        <b>{d.icon} {t(`home-devtools-${d.right}`)}</b>
+        <span>{t(`home-devtools-${d.right}-detail`)}</span>
+        {#if d.sensitive}<div class="sensitive">⚠ {t(`home-devtools-${d.right}-sensitive`)}</div>{/if}
       </div>
     </label>
   {/each}
   <div class="actions">
-    <button onclick={() => api.permissions.answer(request.id, "deny")}>Refuser</button>
-    <button class="allow" data-main onclick={() => api.permissions.answer(request.id, "allow", $state.snapshot(checked))}>Autoriser la sélection</button>
+    <button onclick={() => api.permissions.answer(request.id, "deny")}>{t("home-deny")}</button>
+    <button class="allow" data-main onclick={() => api.permissions.answer(request.id, "allow", $state.snapshot(checked))}>{t("home-devtools-allow")}</button>
   </div>
-  <div class="note">Valable pour cette conversation · tombe si l'onglet change de site</div>
+  <div class="note">{t("home-devtools-note")}</div>
 </div>
 
 <style>

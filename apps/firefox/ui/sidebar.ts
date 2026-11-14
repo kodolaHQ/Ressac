@@ -29,7 +29,7 @@ else if (params.has("badge") || params.has("overlay") || params.has("agentview")
   // DesignButton's chevron opens the menu on click, and ContextMenu's window click listener would close it
   // at once (Applications.svelte stops the click for that reason): stopped here first, registered before the mount.
   window.addEventListener("click", (e) => {
-    if ((e.target as Element | null)?.closest?.('button[aria-label="Menu du mode design"]')) e.stopImmediatePropagation();
+    if ((e.target as Element | null)?.closest?.('.design > button.chevron')) e.stopImmediatePropagation();
   });
   mount(App, { target: document.body });
 }

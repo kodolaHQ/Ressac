@@ -1,7 +1,7 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import type { DirectAction } from "@ressac/kernel";
-  import { PENDING, readingOf, PAGE_LAYOUT } from "../../shared/actions";
+  import { t } from "../i18n.svelte";
   import { api } from "../state.svelte";
 
   /**
@@ -34,13 +34,13 @@
         .catch(() => {});
     }),
   );
-  const label = (l: (typeof lines)[number]) => (l.status === "running" && l.host ? readingOf(l.host) : ((l.type && labels.get(l.type)) ?? l.id));
+  const label = (l: (typeof lines)[number]) => (l.status === "running" && l.host ? t("action-reading", { host: l.host }) : ((l.type && labels.get(l.type)) ?? l.id));
   const MARKS = { running: "…", succeeded: "✓", partial: "≈", failed: "✗" } as const;
 </script>
 
 <section class="progress" data-testid="action-progress" aria-live="polite">
   {#if pending && !current}
-    <p class="waiting" data-testid="pending">{PENDING}</p>
+    <p class="waiting" data-testid="pending">{t("action-pending")}</p>
   {/if}
   {#if current}
     <ol>
@@ -52,11 +52,11 @@
         </li>
       {/each}
       {#if current.step === "layout"}
-        <li class="running"><span class="mark" aria-hidden="true">…</span><span class="label" data-testid="layout">{PAGE_LAYOUT}</span></li>
+        <li class="running"><span class="mark" aria-hidden="true">…</span><span class="label" data-testid="layout">{t("action-layout")}</span></li>
       {/if}
     </ol>
   {/if}
-  <button data-testid="stop-action" onclick={stop}>Arrêter</button>
+  <button data-testid="stop-action" onclick={stop}>{t("action-stop")}</button>
 </section>
 
 <style>

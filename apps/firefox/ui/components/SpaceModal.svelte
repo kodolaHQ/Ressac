@@ -11,6 +11,7 @@
   import { choiceLosesConnections, profileOptions, PROFILE_TO_CHOOSE } from "./spaceProfiles";
   import { spaceSettings } from "./spaceSettings.svelte";
   import { fade } from "svelte/transition";
+  import { t } from "../i18n.svelte";
 
   /**
    * Creation or settings of a space: the `spaceSettings` draft, mounted as long as it exists. `ongletId`: the page
@@ -28,12 +29,12 @@
   let picking = $state(false);
   const COLUMNS = 8;
   const EMOJIS: [string, string][] = [
-    ["🏠", "Maison"], ["💼", "Travail"], ["🎓", "École"], ["📚", "Lecture"], ["✏️", "Écriture"], ["💻", "Code"], ["🧪", "Science"], ["💡", "Idées"],
-    ["🎮", "Jeux"], ["🎵", "Musique"], ["🎬", "Films"], ["📺", "Séries"], ["📷", "Photo"], ["🎨", "Art"], ["🧶", "Loisirs créatifs"], ["🎲", "Jeux de société"],
-    ["✈️", "Voyage"], ["🗺️", "Carte"], ["🏖️", "Vacances"], ["🚗", "Voiture"], ["🛒", "Courses"], ["🛍️", "Shopping"], ["🍳", "Cuisine"], ["☕", "Café"],
-    ["💰", "Argent"], ["📈", "Bourse"], ["🏦", "Banque"], ["🧾", "Factures"], ["📅", "Agenda"], ["📌", "Projets"], ["📁", "Dossier"], ["📰", "Actualités"],
-    ["❤️", "Santé"], ["🏃", "Sport"], ["🧘", "Bien-être"], ["🌱", "Jardin"], ["🐾", "Animaux"], ["👪", "Famille"], ["👶", "Bébé"], ["🎁", "Cadeaux"],
-    ["⚽", "Football"], ["🚀", "Projet perso"], ["🔧", "Bricolage"], ["🏡", "Immobilier"], ["🌍", "Monde"], ["⭐", "Favoris"], ["🔒", "Privé"], ["🧳", "Déplacements"],
+    ["🏠", "sidebar-emoji-home"], ["💼", "sidebar-emoji-work"], ["🎓", "sidebar-emoji-school"], ["📚", "sidebar-emoji-reading"], ["✏️", "sidebar-emoji-writing"], ["💻", "sidebar-emoji-code"], ["🧪", "sidebar-emoji-science"], ["💡", "sidebar-emoji-ideas"],
+    ["🎮", "sidebar-emoji-games"], ["🎵", "sidebar-emoji-music"], ["🎬", "sidebar-emoji-movies"], ["📺", "sidebar-emoji-tv-shows"], ["📷", "sidebar-emoji-photo"], ["🎨", "sidebar-emoji-art"], ["🧶", "sidebar-emoji-crafts"], ["🎲", "sidebar-emoji-board-games"],
+    ["✈️", "sidebar-emoji-travel"], ["🗺️", "sidebar-emoji-map"], ["🏖️", "sidebar-emoji-holidays"], ["🚗", "sidebar-emoji-car"], ["🛒", "sidebar-emoji-groceries"], ["🛍️", "sidebar-emoji-shopping"], ["🍳", "sidebar-emoji-cooking"], ["☕", "sidebar-emoji-coffee"],
+    ["💰", "sidebar-emoji-money"], ["📈", "sidebar-emoji-stocks"], ["🏦", "sidebar-emoji-bank"], ["🧾", "sidebar-emoji-bills"], ["📅", "sidebar-emoji-calendar"], ["📌", "sidebar-emoji-projects"], ["📁", "sidebar-emoji-folder"], ["📰", "sidebar-emoji-news"],
+    ["❤️", "sidebar-emoji-health"], ["🏃", "sidebar-emoji-sport"], ["🧘", "sidebar-emoji-wellbeing"], ["🌱", "sidebar-emoji-garden"], ["🐾", "sidebar-emoji-pets"], ["👪", "sidebar-emoji-family"], ["👶", "sidebar-emoji-baby"], ["🎁", "sidebar-emoji-gifts"],
+    ["⚽", "sidebar-emoji-football"], ["🚀", "sidebar-emoji-side-project"], ["🔧", "sidebar-emoji-diy"], ["🏡", "sidebar-emoji-real-estate"], ["🌍", "sidebar-emoji-world"], ["⭐", "sidebar-emoji-favorites"], ["🔒", "sidebar-emoji-private"], ["🧳", "sidebar-emoji-commuting"],
   ];
   function pick(emoji: string) {
     draft.icon = emoji;
@@ -59,7 +60,7 @@
   let ready = $state(false);
 
   const spaces = $derived(appState.value?.spaces ?? []);
-  const options = $derived(profileOptions(spaces, appState.value?.profiles ?? [], draft.id));
+  const options = $derived(profileOptions(spaces, appState.value?.profiles ?? [], draft.id, appState.value?.locale ?? "fr"));
   const fresh = $derived(draft.id === null);
   const valid = $derived(draft.name.trim() !== "" && draft.profile !== PROFILE_TO_CHOOSE);
   const losesConnections = $derived(choiceLosesConnections(spaces, draft.id, draft.profile));
@@ -172,7 +173,7 @@
   <FrozenBackground tabId={tabId} onReady={() => (ready = true)} />
   <div class="card" bind:this={card} role="dialog" aria-modal="true" aria-labelledby="space-title">
     <form onsubmit={validate}>
-      <h2 id="space-title">{fresh ? "Nouvel espace" : "Réglages de l'espace"}</h2>
+      <h2 id="space-title">{t(fresh ? "sidebar-space-new" : "sidebar-space-settings-title")}</h2>
       <div class="field">
         <div class="icon-pick">
           <!-- Typing any emoji replaces the current one (selected on focus); the grid offers common ones. -->
@@ -180,7 +181,7 @@
             class="icon"
             bind:this={iconField}
             bind:value={draft.icon}
-            aria-label="Icône"
+            aria-label={t("sidebar-space-icon")}
             maxlength="4"
             aria-haspopup="true"
             aria-expanded={picking}
@@ -200,58 +201,58 @@
             }}
           />
           {#if picking}
-            <div class="emojis" id="space-emojis" role="group" aria-label="Icônes proposées" data-testid="emoji-grid" bind:this={picker} out:fade={{ duration: 120 }}>
-              {#each EMOJIS as [emoji, label] (emoji)}
-                <button type="button" aria-label={label} title={label} aria-pressed={draft.icon === emoji} onkeydown={gridKeys} onclick={() => pick(emoji)}>{emoji}</button>
+            <div class="emojis" id="space-emojis" role="group" aria-label={t("sidebar-space-icons")} data-testid="emoji-grid" bind:this={picker} out:fade={{ duration: 120 }}>
+              {#each EMOJIS as [emoji, id] (emoji)}
+                <button type="button" aria-label={t(id)} title={t(id)} aria-pressed={draft.icon === emoji} onkeydown={gridKeys} onclick={() => pick(emoji)}>{emoji}</button>
               {/each}
             </div>
           {/if}
         </div>
-        <input bind:this={nameField} bind:value={draft.name} aria-label="Nom de l'espace" placeholder="Nom" />
+        <input bind:this={nameField} bind:value={draft.name} aria-label={t("sidebar-space-name")} placeholder={t("sidebar-space-name-placeholder")} />
       </div>
       <div class="block">
-        <span class="label" id="aura-label">Aura</span>
+        <span class="label" id="aura-label">{t("sidebar-space-aura")}</span>
         <div class="auras" role="radiogroup" aria-labelledby="aura-label">
           {#each AURA_IDS as id (id)}
-            <button type="button" class="aura" role="radio" aria-checked={draft.aura === id} aria-label="Aura {AURAS[id].name}" title={AURAS[id].name} onclick={() => (draft.aura = id)}>
+            <button type="button" class="aura" role="radio" aria-checked={draft.aura === id} aria-label={t("sidebar-space-aura-named", { name: AURAS[id].name })} title={AURAS[id].name} onclick={() => (draft.aura = id)}>
               <AuraDot aura={id} size={18} />
             </button>
           {/each}
         </div>
       </div>
       <div class="block">
-        <label class="case"><input type="checkbox" bind:checked={draft.private} aria-describedby="private-note" /> <b>Espace privé</b></label>
-        <p class="note" id="private-note">L'agent ne voit pas ces onglets, ne lit rien, n'a pas les outils de développement, et rien n'est retenu dans sa mémoire.</p>
+        <label class="case"><input type="checkbox" bind:checked={draft.private} aria-describedby="private-note" /> <b>{t("sidebar-space-private-label")}</b></label>
+        <p class="note" id="private-note">{t("sidebar-space-private-note")}</p>
       </div>
       <div class="block">
-        <label class="label" for="space-profile">Profil de connexion</label>
+        <label class="label" for="space-profile">{t("sidebar-space-profile")}</label>
         <select id="space-profile" bind:value={draft.profile} aria-describedby="profile-note">
-          {#if fresh}<option value={PROFILE_TO_CHOOSE} disabled>Choisir un profil…</option>{/if}
+          {#if fresh}<option value={PROFILE_TO_CHOOSE} disabled>{t("sidebar-space-profile-choose")}</option>{/if}
           {#each options as o (o.value)}
             <option value={o.value}>{o.label}</option>
           {/each}
         </select>
         <p class="note" id="profile-note">
-          Cookies, comptes connectés, autorisations des sites. Changer de profil : les onglets de l'espace se rechargent, tu devras peut-être te reconnecter.
+          {t("sidebar-space-profile-note")}
         </p>
-        {#if losesConnections}<p class="note alert" role="alert" data-testid="connections-lost">Les connexions de cet espace seront perdues.</p>{/if}
+        {#if losesConnections}<p class="note alert" role="alert" data-testid="connections-lost">{t("sidebar-space-delete-logins")}</p>{/if}
       </div>
       {#if !fresh}
         <div class="block" data-testid="space-extensions">
-          <span class="label">Extensions</span>
+          <span class="label">{t("sidebar-space-extensions")}</span>
           {#if profileChanged}
-            <p class="note">Enregistre d'abord le changement de profil pour régler ses extensions.</p>
+            <p class="note">{t("sidebar-space-extensions-save-first")}</p>
           {:else if lines && lines.length === 0}
-            <p class="note">Aucune extension installée.</p>
+            <p class="note">{t("sidebar-space-extensions-none")}</p>
           {:else if lines}
             {#each lines as l (l.key)}
               <div class="extension" data-testid="extension-row" data-key={l.key}>
                 <label class="case">
                   <input type="checkbox" role="switch" checked={l.active} disabled={l.greyedOut !== null} onchange={(e) => void toggle(l, e.currentTarget)} />
                   <b>{l.name}</b>
-                  <span class="source">{l.source === "agent" ? "écrite par l'agent" : "addons.mozilla.org"}</span>
+                  <span class="source">{l.source === "agent" ? t("sidebar-space-extension-agent") : "addons.mozilla.org"}</span>
                 </label>
-                {#if l.active && l.alsoIn.length > 0}<p class="note">Active aussi dans « {l.alsoIn.join(", ")} » (même profil)</p>{/if}
+                {#if l.active && l.alsoIn.length > 0}<p class="note">{t("sidebar-space-extension-also", { spaces: l.alsoIn.join(", ") })}</p>{/if}
                 {#if l.greyedOut}<p class="note">{l.greyedOut}</p>{/if}
               </div>
             {/each}
@@ -259,17 +260,17 @@
           {#if extensionError}<p class="note alert" role="alert" data-testid="extension-error">{extensionError}</p>{/if}
           {#if draft.private && warned.sharedPrivate.length > 0}
             <p class="note" data-testid="private-extensions-warning">
-              Cet espace privé partage son profil avec « {warned.sharedPrivate.join(", ")} » : les extensions actives dans ce profil tournent aussi ici. Pour qu'elles n'y tournent jamais, donne-lui son propre profil.
+              {t("sidebar-space-private-shared", { spaces: warned.sharedPrivate.join(", ") })}
             </p>
           {/if}
           {#if warned.agentDisabled.length > 0}
-            <p class="note alert" data-testid="extensions-disabled">En enregistrant, ces extensions de l'agent seront désactivées pour ce profil : {warned.agentDisabled.join(", ")}. Les onglets ouverts où elles tournent seront rechargés.</p>
+            <p class="note alert" data-testid="extensions-disabled">{t("sidebar-space-extensions-disabled", { names: warned.agentDisabled.join(", ") })}</p>
           {/if}
         </div>
       {/if}
       <div class="actions">
-        <button type="button" onclick={close}>Annuler</button>
-        <button type="submit" class="main" disabled={!valid}>{fresh ? "Créer" : "Enregistrer"}</button>
+        <button type="button" onclick={close}>{t("sidebar-cancel")}</button>
+        <button type="submit" class="main" disabled={!valid}>{t(fresh ? "sidebar-create" : "sidebar-save")}</button>
       </div>
     </form>
   </div>

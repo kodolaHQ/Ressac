@@ -1,3 +1,4 @@
+import { format } from "../../shared/i18n";
 import { RELEASE_NOTES } from "../../shared/release-notes";
 import { customEngineError } from "../../shared/search";
 import { randomUUID } from "node:crypto";
@@ -578,10 +579,10 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
     case "openExtensions":
       return openInternalPage(d, genId, a.windowId, URL_EXTENSIONS, "Extensions");
     case "openSettings":
-      return openInternalPage(d, genId, a.windowId, URL_SETTINGS, "Réglages");
+      return openInternalPage(d, genId, a.windowId, URL_SETTINGS, format(d.locale, "chrome-page-settings"));
     // Likewise, a single « Voir le workflow » page per widget and per window.
     case "openWorkflow":
-      return openInternalPage(d, genId, a.windowId, a.owner === "action" ? WORKFLOW_ACTION_PREFIX + a.id : urlWorkflow(a.id), `Workflow — ${a.name}`);
+      return openInternalPage(d, genId, a.windowId, a.owner === "action" ? WORKFLOW_ACTION_PREFIX + a.id : urlWorkflow(a.id), format(d.locale, "chrome-page-workflow", { name: a.name }));
     // A single page per action and per window (whatever result is shown), and a single « Actions » page.
     case "openAction":
       return openAction(d, genId, a);
@@ -640,7 +641,7 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       d.settings.seenVersion = a.version;
       // Not on a first launch (the welcome is still to come), nor for a version without notes.
       const f = d.windows[0];
-      if (f && d.settings.onboarded && RELEASE_NOTES[0]?.version === a.version) openInternalPage(d, genId, f.id, URL_RELEASE_NOTES, "Nouveautés");
+      if (f && d.settings.onboarded && RELEASE_NOTES[0]?.version === a.version) openInternalPage(d, genId, f.id, URL_RELEASE_NOTES, format(d.locale, "chrome-page-release-notes"));
       return true;
     }
     case "setUpdate": {
@@ -656,7 +657,7 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       return true;
     }
     case "openReleaseNotes":
-      return openInternalPage(d, genId, a.windowId, URL_RELEASE_NOTES, "Nouveautés");
+      return openInternalPage(d, genId, a.windowId, URL_RELEASE_NOTES, format(d.locale, "chrome-page-release-notes"));
     case "markHintSeen": {
       if (d.settings.hints.seen.includes(a.id)) return false;
       d.settings.hints.seen.push(a.id);
@@ -722,7 +723,7 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
     }
     // A single Review page per project and per window.
     case "openReview":
-      return openInternalPage(d, genId, a.windowId, reviewUrl(a.project), `Relecture — ${a.name}`);
+      return openInternalPage(d, genId, a.windowId, reviewUrl(a.project), format(d.locale, "chrome-page-review", { name: a.name }));
   }
 }
 

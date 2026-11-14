@@ -6,6 +6,7 @@
   import PageAction from "../ui/action/PageAction.svelte";
   import PageRecap from "../ui/action/PageRecap.svelte";
   import Actions from "./components/Actions.svelte";
+  import { t } from "./i18n.svelte";
   import Applications from "./components/Applications.svelte";
   import CommandBar from "./components/CommandBar.svelte";
   import Sidebar from "./components/Sidebar.svelte";
@@ -33,7 +34,6 @@
   import { spaceSettings } from "./components/spaceSettings.svelte";
   import { access, api, requestOf, appState, currentWindow, closeTab } from "./state.svelte";
   import { BAR_WIDTH, BAR_WIDTH_MAX, BAR_WIDTH_MIN, actionOfUrl, recapOfUrl, hasView, workflowUrlTarget, reviewUrlProject, URL_ACTIONS, URL_APPLICATIONS, URL_EXTENSIONS, URL_RELEASE_NOTES, URL_SETTINGS } from "../shared/model";
-  import { ACTIONS_IN_PRIVATE_SPACE, RECAPS_IN_PRIVATE_SPACE } from "../shared/actions";
   import { hide, INITIAL_REVEAL, onZone, type LeftZone } from "../shared/reveal";
   import type { Panel, TabsPanel as TabPanel } from "../shared/api";
   import type { ApiFirefox } from "./api";
@@ -294,25 +294,25 @@
       <ReleaseNotes />
     {:else if activeTab?.url === URL_ACTIONS}
       {#if privateAction}
-        <p class="crashed" data-testid="action-private-space">{ACTIONS_IN_PRIVATE_SPACE}</p>
+        <p class="crashed" data-testid="action-private-space">{t("action-private")}</p>
       {:else}
         <Actions />
       {/if}
     {:else if builderTarget}
       {#if builderTarget.type === "action" && privateAction}
-        <p class="crashed" data-testid="action-private-space">{ACTIONS_IN_PRIVATE_SPACE}</p>
+        <p class="crashed" data-testid="action-private-space">{t("action-private")}</p>
       {:else}
         {#key `${builderTarget.type}:${builderTarget.id}`}<WorkflowBuilder target={builderTarget} />{/key}
       {/if}
     {:else if pageAction}
       {#if privateAction}
-        <p class="crashed" data-testid="action-private-space">{ACTIONS_IN_PRIVATE_SPACE}</p>
+        <p class="crashed" data-testid="action-private-space">{t("action-private")}</p>
       {:else}
         {#key `${pageAction.id}/${pageAction.run}`}<PageAction id={pageAction.id} run={pageAction.run} />{/key}
       {/if}
     {:else if pageRecap}
       {#if privateAction}
-        <p class="crashed" data-testid="recap-private-space">{RECAPS_IN_PRIVATE_SPACE}</p>
+        <p class="crashed" data-testid="recap-private-space">{t("action-recap-private")}</p>
       {:else}
         {#key pageRecap}<PageRecap id={pageRecap} />{/key}
       {/if}

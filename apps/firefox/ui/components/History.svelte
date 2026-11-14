@@ -2,9 +2,11 @@
   import Icon from "./Icon.svelte";
   import { openMenu } from "./menu.svelte";
   import type { WindowState, Visit } from "../../shared/model";
-  import { api } from "../state.svelte";
+  import { api, appState } from "../state.svelte";
+  import { t } from "../i18n.svelte";
 
   let { window: win, close: close }: { window: WindowState; close: () => void } = $props();
+  const locale = $derived(appState.value?.locale ?? "fr");
   let text = $state("");
   let visits = $state<Visit[]>([]);
   let clearChoice = $state(false);
@@ -27,9 +29,9 @@
     const d = new Date(iso);
     const today = new Date();
     const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
-    if (d.toDateString() === today.toDateString()) return "Aujourd'hui";
-    if (d.toDateString() === yesterday.toDateString()) return "Hier";
-    return d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+    if (d.toDateString() === today.toDateString()) return t("sidebar-history-today");
+    if (d.toDateString() === yesterday.toDateString()) return t("sidebar-history-yesterday");
+    return d.toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
   }
 
   const groups = $derived.by(() => {
@@ -57,7 +59,7 @@
 
   function visitMenu(e: MouseEvent, v: Visit) {
     if (!v.kept) return;
-    openMenu(e, [{ label: "Oublier le texte retenu", dispatch: () => void api.history.forgetText(v.url, v.spaceId).then(load) }], { free: true });
+    openMenu(e, [{ label: t("sidebar-history-forget"), dispatch: () => void api.history.forgetText(v.url, v.spaceId).then(load) }], { free: true });
   }
 
     const dayStart = () => {
@@ -68,21 +70,21 @@
 
 <svelte:window onkeydown={(e) => e.key === "Escape" && close()} />
 
-<section class="history" data-testid="history" aria-label="Historique">
+<section class="history" data-testid="history" aria-label={t("sidebar-history")}>
   <header>
-    <h1>Historique</h1>
-    <input bind:this={field} type="search" bind:value={text} placeholder="Rechercher dans l'historique" spellcheck="false" />
+    <h1>{t("sidebar-history")}</h1>
+    <input bind:this={field} type="search" bind:value={text} placeholder={t("sidebar-history-search")} spellcheck="false" />
     <div class="clear">
-      <button onclick={() => (clearChoice = !clearChoice)}>Effacer l'historique</button>
+      <button onclick={() => (clearChoice = !clearChoice)}>{t("sidebar-history-clear")}</button>
       {#if clearChoice}
         <div class="choice">
-          <button onclick={() => clear(new Date(Date.now() - 3600_000))}>Dernière heure</button>
-          <button onclick={() => clear(dayStart())}>Aujourd'hui</button>
-          <button onclick={() => clear()}>Tout</button>
+          <button onclick={() => clear(new Date(Date.now() - 3600_000))}>{t("sidebar-history-clear-hour")}</button>
+          <button onclick={() => clear(dayStart())}>{t("sidebar-history-today")}</button>
+          <button onclick={() => clear()}>{t("sidebar-history-clear-all")}</button>
         </div>
       {/if}
     </div>
-    <button class="close" aria-label="Fermer l'historique" onclick={close}><Icon name="close" size={12} /></button>
+    <button class="close" aria-label={t("sidebar-history-close")} onclick={close}><Icon name="close" size={12} /></button>
   </header>
   {#each groups as g (g.day)}
     <h2>{g.day}</h2>
@@ -90,17 +92,17 @@
       {#each g.visits as v (`${v.spaceId}|${v.url}`)}
         <li data-private={v.private ? "true" : undefined} data-kept={v.kept ? "true" : undefined}>
           <a href={v.url} onclick={(e) => open(e, v.url)} oncontextmenu={(e) => visitMenu(e, v)}>
-            <span class="time">{new Date(v.lastVisit).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</span>
-            {#if v.private}<span class="padlock" title="Espace privé" aria-label="Espace privé">🔒</span>{/if}
+            <span class="time">{new Date(v.lastVisit).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })}</span>
+            {#if v.private}<span class="padlock" title={t("sidebar-history-private")} aria-label={t("sidebar-history-private")}>🔒</span>{/if}
             <span class="title">{v.title}</span>
-            {#if v.kept}<span class="kept" title="Texte retenu pour l'agent" aria-label="Texte retenu pour l'agent">🧠</span>{/if}
+            {#if v.kept}<span class="kept" title={t("sidebar-history-kept")} aria-label={t("sidebar-history-kept")}>🧠</span>{/if}
             <span class="url">{v.url}</span>
           </a>
         </li>
       {/each}
     </ul>
   {:else}
-    <p class="empty">{text ? "Aucun résultat." : "L'historique est vide."}</p>
+    <p class="empty">{t(text ? "sidebar-history-no-result" : "sidebar-history-empty")}</p>
   {/each}
 </section>
 

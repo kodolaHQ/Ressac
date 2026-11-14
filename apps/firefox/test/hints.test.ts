@@ -10,7 +10,7 @@ test("nextTip walks the tips in order, then returns null", () => {
 
 test("a tip's keys come from the action's binding, not from a literal", () => {
   expect(TIPS.filter((t) => t.shortcut).map((t) => [t.id, t.shortcut])).toEqual([["cmd-t", "command"], ["cmd-l", "address"], ["cmd-j", "agent"]]);
-  expect(TIPS.filter((t) => t.shortcut).every((t) => t.text.startsWith("{key}") && !t.keys)).toBe(true);
+  expect(TIPS.filter((t) => t.shortcut).every((t) => !t.keys)).toBe(true);
   expect(shortcutLabel("agent", { shortcuts: {} })).toBe("⌘J");
   expect(shortcutLabel("agent", { shortcuts: { agent: { key: "k", shift: false, alt: false, ctrl: false, meta: true } } })).toBe("⌘K");
 });

@@ -4,20 +4,21 @@ export type TipId = "ctrl-tab" | "cmd-t" | "cmd-l" | "cmd-j" | "spaces" | "desig
 export type FirstTimeId = "agent" | "design" | "actions" | "extensions";
 export type HintId = TipId | FirstTimeId;
 
-export const TIPS: { id: TipId; text: string; /** A fixed key, shown as is. */ keys?: string; /** A remappable action: its current binding replaces `{key}` in the text. */ shortcut?: ShortcutId; tryIt?: "command" | "agent" }[] = [
-  { id: "ctrl-tab", keys: "⌃Tab", text: "Passez d'un onglet récent à l'autre avec ⌃Tab ; maintenez ⌃ pour choisir dans la liste." },
-  { id: "cmd-t", shortcut: "command", tryIt: "command", text: "{key} ouvre un onglet ou retrouve une page parmi vos onglets, votre historique et le web." },
-  { id: "cmd-l", shortcut: "address", text: "{key} modifie l'adresse de l'onglet affiché." },
-  { id: "cmd-j", shortcut: "agent", tryIt: "agent", text: "{key} ouvre ou ferme le panneau de l'agent." },
-  { id: "spaces", text: "Un espace par sujet : le + en bas de la barre en crée un, avec son aura." },
-  { id: "design-mode", text: "Le crayon en haut de la barre lance le mode design : montrez un élément de la page à l'agent." },
+/** `text` and the first-time `title` / `text` are message ids (locales, sidebar.ftl): the screen calls t(). */
+export const TIPS: { id: TipId; text: string; /** A fixed key, shown as is. */ keys?: string; /** A remappable action: its current binding is the message's `$key`. */ shortcut?: ShortcutId; tryIt?: "command" | "agent" }[] = [
+  { id: "ctrl-tab", keys: "⌃Tab", text: "sidebar-tip-ctrl-tab" },
+  { id: "cmd-t", shortcut: "command", tryIt: "command", text: "sidebar-tip-cmd-t" },
+  { id: "cmd-l", shortcut: "address", text: "sidebar-tip-cmd-l" },
+  { id: "cmd-j", shortcut: "agent", tryIt: "agent", text: "sidebar-tip-cmd-j" },
+  { id: "spaces", text: "sidebar-tip-spaces" },
+  { id: "design-mode", text: "sidebar-tip-design-mode" },
 ];
 
 export const FIRST_TIME: Record<FirstTimeId, { title: string; text: string }> = {
-  agent: { title: "L'agent", text: "Claude Code ou Codex travaille dans un conteneur à part, sur votre Mac. Il ne lit un onglet ou n'agit sur une page qu'avec votre accord, et un halo entoure la page quand il agit." },
-  design: { title: "Le mode design", text: "Cliquez sur un élément de la page pour y laisser une remarque. Vos remarques vont dans le panier, puis à l'agent." },
-  extensions: { title: "Les extensions", text: "L'agent écrit des extensions pour vous ; la page Extensions explique comment elles sont signées, installées et gérées." },
-  actions: { title: "Les actions", text: "Une action est une petite appli que l'agent construit pour vous. Elle ne lit vos comptes qu'avec votre accord." },
+  agent: { title: "sidebar-first-agent-title", text: "sidebar-first-agent-text" },
+  design: { title: "sidebar-first-design-title", text: "sidebar-first-design-text" },
+  extensions: { title: "sidebar-first-extensions-title", text: "sidebar-first-extensions-text" },
+  actions: { title: "sidebar-first-actions-title", text: "sidebar-first-actions-text" },
 };
 
 export const HINT_IDS = [...TIPS.map((t) => t.id), ...(Object.keys(FIRST_TIME) as FirstTimeId[])] as unknown as readonly [HintId, ...HintId[]];

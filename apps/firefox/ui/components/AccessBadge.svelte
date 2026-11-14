@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { TabAccessState } from "@ressac/kernel";
   import AccessBubble from "./AccessBubble.svelte";
+  import { t } from "../i18n.svelte";
 
   let { id, state: appState }: { id: string; state: TabAccessState } = $props();
   const level = $derived(appState.rights.includes("act") ? "act" : "read");
@@ -21,7 +22,7 @@
     class:pulse={appState.running}
     data-testid="access-pill"
     data-level={level}
-    aria-label="Accès de l'agent à cet onglet"
+    aria-label={t("chrome-ui-access")}
     aria-expanded={opened}
     draggable="false"
     onclick={(e) => {

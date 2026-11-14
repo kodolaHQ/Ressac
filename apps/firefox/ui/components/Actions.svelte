@@ -1,19 +1,15 @@
 <script lang="ts">
   import type { Execution } from "@ressac/kernel";
+  import { t } from "../i18n.svelte";
+  import { appState } from "../state.svelte";
   import type { ActionShown } from "../../shared/actions";
   import { api } from "../state.svelte";
   import Icon from "./Icon.svelte";
 
-  const STATUSES: Record<Execution["status"], string> = {
-    succeeded: "Réussie",
-    partial: "Partielle",
-    failed: "Échouée",
-    interrupted: "Interrompue",
-    "grant-required": "Accord requis",
-  };
+  const status = (s: Execution["status"]) => t(`builder-status-${s}`);
 
   /** Same text as the kernel (actions/run.ts). */
-  const requiredInput = (label: string) => `Saisie requise : ${label}`;
+  const requiredInput = (label: string) => t("actions-input-required", { label });
 
   let list = $state<ActionShown[]>([]);
   let chargee = $state(false);
@@ -70,16 +66,16 @@
   }
 
   /** « 30 oct. 08:00 » */
-  const when = (iso: string) => new Date(iso).toLocaleString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  const when = (iso: string) => new Date(iso).toLocaleString(appState.value?.locale ?? "fr", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
-  const last = (a: ActionShown) => (a.last ? `${STATUSES[a.last.status]} · ${when(a.last.start)}` : "Jamais lancée");
+  const last = (a: ActionShown) => (a.last ? `${status(a.last.status)} · ${when(a.last.start)}` : t("actions-last-never"));
 </script>
 
-<section class="actions" data-testid="page-actions" aria-label="Actions">
-  <h1>Actions</h1>
+<section class="actions" data-testid="page-actions" aria-label={t("actions-title")}>
+  <h1>{t("actions-title")}</h1>
   {#if denial}<p class="banner" role="status" data-testid="actions-refusal">{denial}</p>{/if}
   {#if chargee && list.length === 0}
-    <p class="empty">Aucune action. Demande à l'agent de t'en créer une.</p>
+    <p class="empty">{t("actions-empty")}</p>
   {:else}
     <ul>
       {#each list as a (a.id)}
@@ -111,11 +107,11 @@
           </div>
           <div class="buttons">
             {#if !a.error}
-              <button data-testid="launch-{a.id}" onclick={() => requestLaunch(a)}><Icon name="actions" size={12} /> Lancer</button>
+              <button data-testid="launch-{a.id}" onclick={() => requestLaunch(a)}><Icon name="actions" size={12} /> {t("actions-launch")}</button>
             {/if}
-            <button data-testid="show-workflow-{a.id}" onclick={() => api.actions.viewWorkflow(a.id)}>Voir le workflow</button>
-            {#if a.grant}<button data-testid="remove-grant-{a.id}" onclick={() => (toConfirm = { action: a, kind: "grant" })}>Retirer l'accord</button>{/if}
-            <button data-testid="delete-{a.id}" onclick={() => (toConfirm = { action: a, kind: "delete" })}>Supprimer</button>
+            <button data-testid="show-workflow-{a.id}" onclick={() => api.actions.viewWorkflow(a.id)}>{t("actions-show-workflow")}</button>
+            {#if a.grant}<button data-testid="remove-grant-{a.id}" onclick={() => (toConfirm = { action: a, kind: "grant" })}>{t("actions-remove-grant")}</button>{/if}
+            <button data-testid="delete-{a.id}" onclick={() => (toConfirm = { action: a, kind: "delete" })}>{t("actions-delete")}</button>
           </div>
         </li>
       {/each}
@@ -129,13 +125,13 @@
   <div class="veil" data-testid="action-delete-veil">
     <div class="confirmation" role="alertdialog" aria-modal="true" data-testid="action-delete-confirmation">
       {#if c.kind === "grant"}
-        <p>Retirer l'accord de « {target.name} » ? Ses exécutions, ses résultats et sa mémoire seront effacés.</p>
+        <p>{t("actions-confirm-grant", { name: target.name })}</p>
       {:else}
-        <p>Supprimer « {target.name} » ? Son dossier ira dans la corbeille ; ses résultats et son accord seront effacés.</p>
+        <p>{t("actions-confirm-delete", { name: target.name })}</p>
       {/if}
       <div class="confirm-buttons">
-        <button data-testid="cancel-action-delete" onclick={() => (toConfirm = null)}>Annuler</button>
-        <button class="confirm" data-testid="confirm-action-delete" onclick={() => void confirm(c)}>{c.kind === "grant" ? "Retirer l'accord" : "Supprimer"}</button>
+        <button data-testid="cancel-action-delete" onclick={() => (toConfirm = null)}>{t("actions-cancel")}</button>
+        <button class="confirm" data-testid="confirm-action-delete" onclick={() => void confirm(c)}>{t(c.kind === "grant" ? "actions-remove-grant" : "actions-delete")}</button>
       </div>
     </div>
   </div>

@@ -5,6 +5,7 @@
   import Icon from "./Icon.svelte";
   import SiteIcon from "./SiteIcon.svelte";
   import SoundButton from "./SoundButton.svelte";
+  import { t } from "../i18n.svelte";
 
   /** What goes on in this window's background tabs: a call (back to it, microphone, camera), a video or music (back to it, play / pause, sound). */
   let { window: win }: { window: WindowState } = $props();
@@ -15,8 +16,8 @@
 </script>
 
 {#each calls as tab (tab.id)}
-  <div class="call" data-testid="call-bar" role="group" aria-label="Appel en cours : {tab.title}" out:fade={{ duration: 150 }}>
-    <button class="back" data-testid="call-back" title="Revenir à l'appel : {tab.title}" onclick={() => api.dispatch({ type: "activateTab", id: tab.id })}>
+  <div class="call" data-testid="call-bar" role="group" aria-label={t("sidebar-call-running", { title: tab.title })} out:fade={{ duration: 150 }}>
+    <button class="back" data-testid="call-back" title={t("sidebar-call-back", { title: tab.title })} onclick={() => api.dispatch({ type: "activateTab", id: tab.id })}>
       <SiteIcon favicon={tab.favicon} title={tab.title} />
       <span>{tab.title}</span>
     </button>
@@ -25,8 +26,8 @@
       class:off={!tab.call!.mic}
       data-testid="call-mic"
       aria-pressed={tab.call!.mic}
-      aria-label={tab.call!.mic ? "Couper le micro" : "Activer le micro"}
-      title={tab.call!.mic ? "Couper le micro" : "Activer le micro"}
+      aria-label={t(tab.call!.mic ? "sidebar-call-mic-off" : "sidebar-call-mic-on")}
+      title={t(tab.call!.mic ? "sidebar-call-mic-off" : "sidebar-call-mic-on")}
       onclick={() => press(tab.id, "mic")}><Icon name={tab.call!.mic ? "mic" : "mic-off"} size={16} /></button
     >
     <button
@@ -34,23 +35,23 @@
       class:off={!tab.call!.camera}
       data-testid="call-camera"
       aria-pressed={tab.call!.camera}
-      aria-label={tab.call!.camera ? "Couper la caméra" : "Activer la caméra"}
-      title={tab.call!.camera ? "Couper la caméra" : "Activer la caméra"}
+      aria-label={t(tab.call!.camera ? "sidebar-call-camera-off" : "sidebar-call-camera-on")}
+      title={t(tab.call!.camera ? "sidebar-call-camera-off" : "sidebar-call-camera-on")}
       onclick={() => press(tab.id, "camera")}><Icon name={tab.call!.camera ? "camera" : "camera-off"} size={16} /></button
     >
   </div>
 {/each}
 {#each playing as tab (tab.id)}
-  <div class="call" data-testid="media-bar" role="group" aria-label="Lecture en cours : {tab.title}" out:fade={{ duration: 150 }}>
-    <button class="back" data-testid="media-back" title="Revenir à l'onglet : {tab.title}" onclick={() => api.dispatch({ type: "activateTab", id: tab.id })}>
+  <div class="call" data-testid="media-bar" role="group" aria-label={t("sidebar-media-running", { title: tab.title })} out:fade={{ duration: 150 }}>
+    <button class="back" data-testid="media-back" title={t("sidebar-media-back", { title: tab.title })} onclick={() => api.dispatch({ type: "activateTab", id: tab.id })}>
       <SiteIcon favicon={tab.favicon} title={tab.title} />
       <span>{tab.title}</span>
     </button>
     <button
       class="toggle"
       data-testid="media-play"
-      aria-label={tab.playback === "playing" ? "Mettre en pause" : "Reprendre la lecture"}
-      title={tab.playback === "playing" ? "Mettre en pause" : "Reprendre la lecture"}
+      aria-label={t(tab.playback === "playing" ? "sidebar-media-pause" : "sidebar-media-resume")}
+      title={t(tab.playback === "playing" ? "sidebar-media-pause" : "sidebar-media-resume")}
       onclick={() => window.parent.ressacWindow?.togglePlayback(tab.id)}><Icon name={tab.playback === "playing" ? "pause" : "play"} size={16} /></button
     >
     <SoundButton {tab} size={16} />

@@ -22,6 +22,7 @@ export function createBadgeApi(raw: BadgeChrome): BadgeApi {
       cut: (id, right) => raw.access.cut(id, right),
     },
     onAccess: (cb) => untilUnload(raw.onAccess((e) => cb(structuredClone(e)))),
+    locale: () => String(raw.locale()),
     badgeSize: (opened) => void (typeof opened === "boolean" && raw.badgeSize(opened)),
     design: {
       state: () =>

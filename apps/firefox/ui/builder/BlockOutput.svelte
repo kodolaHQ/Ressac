@@ -1,5 +1,7 @@
 <script lang="ts">
   import type { Execution, ResumeExecution } from "@ressac/kernel";
+  import { t } from "../i18n.svelte";
+  import { appState } from "../state.svelte";
 
   /**
    * What the block produced at the chosen run: status, duration, items, error, log and collapsible output. Everything
@@ -12,14 +14,9 @@
     notFound: notFound,
   }: { block: string; chosen: ResumeExecution | null; run: Execution | null; notFound: boolean } = $props();
 
-  const LABELS: Record<string, string> = {
-    succeeded: "réussi",
-    partial: "partiel",
-    failed: "échoué",
-    interrupted: "interrompu",
-    "not-run": "pas lancé",
-    resumed: "repris",
-  };
+  const LABELS = ["succeeded", "partial", "failed", "interrupted", "not-run", "resumed"];
+  const label = (status: string) => (LABELS.includes(status) ? t(`builder-block-${status}`) : status);
+  const locale = () => appState.value?.locale ?? "fr";
 
   const trace = $derived(execution?.id === chosen?.id ? execution?.blocks.find((b) => b.id === block) : undefined);
   /**
@@ -35,45 +32,45 @@
     if (!start || !end) return null;
     const ms = Date.parse(end) - Date.parse(start);
     if (!Number.isFinite(ms) || ms < 0) return null;
-    return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} s`;
+    return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toLocaleString(locale(), { maximumFractionDigits: 1 })} s`;
   }
-  const hour = (iso: string) => new Date(iso).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "medium" });
+  const hour = (iso: string) => new Date(iso).toLocaleString(locale(), { dateStyle: "short", timeStyle: "medium" });
 </script>
 
 <section class="output" data-testid="block-output">
-  <h3>À l'exécution choisie</h3>
+  <h3>{t("builder-output-title")}</h3>
   {#if !chosen}
-    <p class="muted">Aucune exécution pour l'instant.</p>
+    <p class="muted">{t("builder-no-run")}</p>
   {:else}
-    <p class="muted">{hour(chosen.start)} · {chosen.trigger}{chosen.attempt ? " (essai)" : ""}</p>
+    <p class="muted">{hour(chosen.start)} · {chosen.trigger}{chosen.attempt ? ` ${t("builder-output-trial")}` : ""}</p>
     {#if notFound}
-      <p class="muted" data-testid="execution-missing">Cette exécution n'est plus lisible.</p>
+      <p class="muted" data-testid="execution-missing">{t("builder-output-missing")}</p>
     {:else if execution?.id !== chosen.id}
-      <p class="muted">Chargement…</p>
+      <p class="muted">{t("builder-loading")}</p>
     {:else if !trace}
-      <p class="muted">Ce bloc n'était pas dans cette exécution.</p>
+      <p class="muted">{t("builder-output-not-in-run")}</p>
     {:else}
       <dl>
-        <dt>Statut</dt>
-        <dd data-testid="block-status">{LABELS[trace.status] ?? trace.status}</dd>
-        {#if duration(trace.start, trace.end)}<dt>Durée</dt><dd>{duration(trace.start, trace.end)}</dd>{/if}
-        <dt>Éléments</dt>
+        <dt>{t("builder-output-status")}</dt>
+        <dd data-testid="block-status">{label(trace.status)}</dd>
+        {#if duration(trace.start, trace.end)}<dt>{t("builder-output-duration")}</dt><dd>{duration(trace.start, trace.end)}</dd>{/if}
+        <dt>{t("builder-output-items")}</dt>
         <dd>{trace.items ?? "—"}</dd>
       </dl>
       {#if trace.status === "resumed" && execution.attempt}
-        <p class="muted" data-testid="resumed-output">Sortie reprise de l'exécution {execution.attempt.origin}</p>
+        <p class="muted" data-testid="resumed-output">{t("builder-output-resumed", { run: execution.attempt.origin })}</p>
       {/if}
       {#if trace.error}<p class="error" data-testid="block-run-error">{trace.error}</p>{/if}
       {#if trace.log.length > 0}
         <details>
-          <summary>Journal ({trace.log.length})</summary>
+          <summary>{t("builder-output-log", { count: String(trace.log.length) })}</summary>
           <pre data-testid="block-log">{trace.log.join("\n")}</pre>
         </details>
       {/if}
       {#if trace.output !== undefined || trace.outputTruncated}
         {#key key}
           <details data-testid="collapsible-output" open={opened} ontoggle={(e) => (openedOn = e.currentTarget.open ? key : null)}>
-            <summary>Sortie{trace.outputTruncated ? " (tronquée)" : ""}</summary>
+            <summary>{t(trace.outputTruncated ? "builder-output-truncated" : "builder-output-output")}</summary>
             {#if opened}<pre data-testid="json-output">{json}</pre>{/if}
           </details>
         {/key}

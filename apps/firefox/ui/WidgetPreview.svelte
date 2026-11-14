@@ -2,6 +2,7 @@
   import { untrack } from "svelte";
   import type { ShownWidget } from "../shared/api";
   import { api } from "./state.svelte";
+  import { t } from "./i18n.svelte";
   import { GAP_PX, ROW_PX } from "./grid";
   import { previewData } from "./builder/preview";
   import type { Executions } from "./builder/executions.svelte";
@@ -44,7 +45,7 @@
 
 <div class="preview" data-testid="widget-preview">
   {#if !shown || !preview}
-    <p class="muted">{widget && "error" in widget ? `Widget illisible : ${widget.error}` : "Chargement…"}</p>
+    <p class="muted">{widget && "error" in widget ? t("chrome-ui-widget-unreadable", { reason: widget.error }) : t("chrome-ui-loading")}</p>
   {:else}
     <div class="frame" style:width="{width}px" style:height="{height}px">
       <WidgetFrame
@@ -54,7 +55,7 @@
         state={{ status: shown.state.status, lastUpdate: shown.state.lastUpdate }}
       />
     </div>
-    {#if preview.mention}<p class="muted mention" data-testid="mention-preview">Aperçu : données non gardées dans cette exécution</p>{/if}
+    {#if preview.mention}<p class="muted mention" data-testid="mention-preview">{t("chrome-ui-widget-preview")}</p>{/if}
   {/if}
 </div>
 

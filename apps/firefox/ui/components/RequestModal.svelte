@@ -1,9 +1,10 @@
 <script lang="ts">
   import { command } from "./command.svelte";
   import { onMount, tick, untrack } from "svelte";
-  import { UNLOCK_REASON_LENGTH, unlockedConsoleText } from "../../shared/extensions-messages";
+  import { UNLOCK_REASON_LENGTH } from "../../shared/extensions-messages";
   import { siteOf, type PendingRequest, type TabId } from "../../shared/model";
   import { api } from "../state.svelte";
+  import { t } from "../i18n.svelte";
   import ExtensionRequest from "./ExtensionRequest.svelte";
   import DevToolsRequest from "./DevToolsRequest.svelte";
   import FrozenBackground from "./FrozenBackground.svelte";
@@ -33,6 +34,17 @@
   const extensionName = $derived((request.title ?? request.origin).slice(0, 60));
   /** The spaces the unlock covers: names given by the user, shown as text and bounded. */
   const extensionSpaces = $derived((request.spaces ?? []).slice(0, 20).map((e) => e.slice(0, 60)));
+  const consoleText = $derived(
+    t("home-request-console", {
+      name: extensionName,
+      where:
+        extensionSpaces.length === 0
+          ? t("home-request-console-where-profiles")
+          : extensionSpaces.length === 1
+            ? t("home-request-console-where-space", { space: extensionSpaces[0]! })
+            : t("home-request-console-where-spaces", { spaces: extensionSpaces.map((e) => t("home-quoted", { name: e })).join(", ") }),
+    }),
+  );
   const agentReason = $derived((request.reason ?? "").slice(0, UNLOCK_REASON_LENGTH));
   const agentAddress = $derived(request.permissions.includes("agent-address"));
   const site = $derived(siteOf(request.origin));
@@ -119,21 +131,23 @@
     role="alertdialog"
     aria-modal="true"
     aria-describedby={request.extension?.hardened ? "extension-card-warning" : undefined}
-    aria-label={devTools
-      ? "Demande d'accès aux outils de développement"
-      : widgetData
-        ? request.action !== undefined
-          ? "Demande d'accès aux résultats d'une action"
-          : request.site !== undefined
-            ? "Demande d'accès à une appli de site"
-            : "Demande d'accès aux données d'un widget"
-        : extension
-          ? "Activer une extension"
-          : consoleExtension
-            ? "Débloquer la console d'une extension"
-            : agentAddress
-              ? "L'agent veut ouvrir une adresse qu'il a écrite lui-même"
-              : "Demande d'autorisation"}
+    aria-label={t(
+      devTools
+        ? "home-request-label-devtools"
+        : widgetData
+          ? request.action !== undefined
+            ? "home-request-label-action"
+            : request.site !== undefined
+              ? "home-request-label-site"
+              : "home-request-label-widget"
+          : extension
+            ? "home-request-label-extension"
+            : consoleExtension
+              ? "home-request-label-console"
+              : agentAddress
+                ? "home-request-label-address"
+                : "home-request-label",
+    )}
   >
     {#key request.id}
       {#if devTools}
@@ -144,60 +158,60 @@
         {:else}
           <!-- Never set without a card; if it were, nothing activates without having been shown. -->
           <div class="reading">
-            <p>Demande d'extension illisible.</p>
-            <div class="actions"><button data-main onclick={deny}>Refuser</button></div>
+            <p>{t("home-request-unreadable")}</p>
+            <div class="actions"><button data-main onclick={deny}>{t("home-deny")}</button></div>
           </div>
         {/if}
       {:else if consoleExtension}
         <div class="reading" data-testid="extension-console-request">
-          <p>{unlockedConsoleText(extensionName, extensionSpaces)}</p>
-          {#if agentReason}<p class="reason">Raison donnée par {request.agent ?? "l'agent"} : « {agentReason} »</p>{/if}
+          <p>{consoleText}</p>
+          {#if agentReason}<p class="reason">{t("home-request-console-reason", { agent: request.agent ?? t("home-agent"), reason: agentReason })}</p>{/if}
           <div class="actions">
             <!-- Enter refuses: showing the agent what an extension reads on unshared tabs takes a real click. -->
-            <button data-main onclick={deny}>Refuser</button>
-            <button class="allow" onclick={() => api.permissions.answer(request.id, "allow")}>Débloquer</button>
+            <button data-main onclick={deny}>{t("home-deny")}</button>
+            <button class="allow" onclick={() => api.permissions.answer(request.id, "allow")}>{t("home-request-console-unlock")}</button>
           </div>
         </div>
       {:else if agentAddress}
         <div class="reading" data-testid="address-request">
-          <p>L'agent veut ouvrir une adresse qu'il a écrite lui-même</p>
+          <p>{t("home-request-label-address")}</p>
           <p class="address" data-testid="address-request-url">{request.origin}</p>
-          {#if agentReason}<p class="reason">Sa raison : {agentReason}</p>{/if}
-          {#if request.opinion}<p class="reason">Avis du surveillant : {request.opinion.slice(0, UNLOCK_REASON_LENGTH)}</p>{/if}
-          <button class="why-toggle" data-testid="address-request-why" aria-expanded={why} aria-controls="address-request-why" onclick={() => (why = !why)}>Pourquoi on me demande ça ?</button>
+          {#if agentReason}<p class="reason">{t("home-request-address-reason", { reason: agentReason })}</p>{/if}
+          {#if request.opinion}<p class="reason">{t("home-request-address-opinion", { opinion: request.opinion.slice(0, UNLOCK_REASON_LENGTH) })}</p>{/if}
+          <button class="why-toggle" data-testid="address-request-why" aria-expanded={why} aria-controls="address-request-why" onclick={() => (why = !why)}>{t("home-request-why")}</button>
           <div class="why" class:open={why} id="address-request-why" aria-hidden={!why}>
             <div>
-              <p class="reason">Pendant une recherche, l'agent ouvre librement les liens qu'il trouve dans les pages qu'il lit. Cette adresse, il ne l'a trouvée nulle part : il l'a écrite lui-même.</p>
-              <p class="reason">Une page piégée peut lui souffler une adresse qui emporte des informations vers un site inconnu. Un coup d'œil à l'adresse et à sa raison suffit ; dans le doute, « Refuser » : l'agent continue autrement.</p>
+              <p class="reason">{t("home-request-why-1")}</p>
+              <p class="reason">{t("home-request-why-2")}</p>
             </div>
           </div>
           <div class="actions">
             <!-- Enter refuses: an address the agent made up is opened only by a real click. -->
-            <button data-main onclick={deny}>Refuser</button>
-            <button class="allow" onclick={() => api.permissions.answer(request.id, "allow")}>Autoriser</button>
+            <button data-main onclick={deny}>{t("home-deny")}</button>
+            <button class="allow" onclick={() => api.permissions.answer(request.id, "allow")}>{t("home-allow")}</button>
           </div>
         </div>
       {:else if widgetData}
         <div class="reading" data-testid="widget-data-request">
           {#if request.action !== undefined}
-            <p>L'agent veut voir les résultats de l'action « {request.title ?? request.action} » (lus avec ton compte).</p>
+            <p>{t("home-request-widget-action", { title: request.title ?? request.action })}</p>
           {:else if request.site !== undefined}
-            <p data-testid="site-request">L'agent veut voir l'appli de site « {request.title ?? request.site} » (connectée à ton compte) : ses pages et sa mémoire, pour cette conversation.</p>
+            <p data-testid="site-request">{t("home-request-widget-site", { title: request.title ?? request.site })}</p>
           {:else}
-            <p>L'agent veut voir les données du widget « {request.title ?? request.widget} » (lues avec ton compte).</p>
+            <p>{t("home-request-widget", { title: request.title ?? request.widget })}</p>
           {/if}
           <div class="actions">
             <!-- Enter refuses: showing the agent data read with the account takes a real click. -->
-            <button data-main onclick={deny}>Refuser</button>
-            <button class="allow" onclick={() => api.permissions.answer(request.id, "allow")}>Autoriser pour cette conversation</button>
+            <button data-main onclick={deny}>{t("home-deny")}</button>
+            <button class="allow" onclick={() => api.permissions.answer(request.id, "allow")}>{t("home-request-allow-conversation")}</button>
           </div>
         </div>
       {:else}
         <div class="reading" data-testid="permission-request">
-          <p>L'agent veut lire l'onglet « {request.title ?? site} »</p>
+          <p>{t("home-request-tab", { title: request.title ?? site })}</p>
           <div class="actions">
-            <button onclick={deny}>Refuser</button>
-            <button class="allow" data-main onclick={() => api.permissions.answer(request.id, "allow")}>Autoriser une fois</button>
+            <button onclick={deny}>{t("home-deny")}</button>
+            <button class="allow" data-main onclick={() => api.permissions.answer(request.id, "allow")}>{t("home-request-allow-once")}</button>
           </div>
         </div>
       {/if}

@@ -21,6 +21,7 @@
   import type { ActionShown } from "../../shared/actions";
   import type { Visit } from "../../shared/model";
   import SiteIcon from "./SiteIcon.svelte";
+  import { t } from "../i18n.svelte";
   import Icon, { type IconName } from "./Icon.svelte";
 
   /**
@@ -117,7 +118,7 @@
   let paramField: HTMLInputElement | undefined = $state();
 
   const mode = $derived(command.open?.mode ?? "new");
-  const lines: CommandLine[] = $derived(commandLines(text, sources, mode === "active" ? (activeTab?.url ?? null) : null, activeTab?.id ?? null));
+  const lines: CommandLine[] = $derived(commandLines(text, sources, mode === "active" ? (activeTab?.url ?? null) : null, activeTab?.id ?? null, appState.value?.locale ?? "fr"));
   // A late source may shorten the list: the selection stays on a row that exists (the first otherwise).
   const chosen = $derived(rawChosen >= 0 && rawChosen < lines.length ? rawChosen : 0);
   const choose = (i: number) => (rawChosen = i);
@@ -188,7 +189,7 @@
       () => {
         if (o !== command.open || n !== launch) return;
         runningAction = false;
-        denial = "Le service des actions ne répond pas";
+        denial = t("sidebar-command-actions-down");
       },
     );
   }
@@ -271,7 +272,7 @@
   const favicon = (l: CommandLine): string | null =>
     l.type === "tab" ? l.tab.favicon : l.type === "app" ? l.app.favicon : l.type === "history" ? visitFavicon(l.url) : null;
   const badgeText = (l: CommandLine): string =>
-    l.type === "action" ? "Action" : l.type === "tab" ? "Onglet" : l.type === "app" ? "Appli" : l.type === "history" ? "Historique" : l.type === "bookmark" ? "Favori" : "";
+    l.type === "default" ? "" : t(`sidebar-badge-${l.type}`);
   const detail = (l: CommandLine): string =>
     l.type === "tab"
       ? l.tab.url
@@ -279,7 +280,7 @@
         ? l.url
         : l.type === "action"
           ? l.input !== null
-            ? `« ${l.input} »`
+            ? t("sidebar-command-input", { input: l.input })
             : (l.param ?? "")
           : "";
   const pictogram = (l: CommandLine): IconName =>
@@ -318,7 +319,7 @@
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div class="background" onclick={(e) => e.target === e.currentTarget && closeCommand(true)}>
   <!-- A click in the box outside the field (margin, rows, refusal) does not take its focus; a row's click still acts. -->
-  <div class="box" data-testid="command-bar" role="dialog" aria-label="Barre de commande" tabindex="-1" onmousedown={(e) => !(e.target instanceof HTMLInputElement) && e.preventDefault()}>
+  <div class="box" data-testid="command-bar" role="dialog" aria-label={t("sidebar-command-bar")} tabindex="-1" onmousedown={(e) => !(e.target instanceof HTMLInputElement) && e.preventDefault()}>
     {#if param}
       <div class="param-line">
         <span class="pill" data-testid="command-pill"><Icon name="actions" size={13} />{param.name}</span>
@@ -335,7 +336,7 @@
           autocomplete="off"
         />
       </div>
-      <p class="help" data-testid="param-help">{param.label} · Entrée pour lancer · Échap pour revenir</p>
+      <p class="help" data-testid="param-help">{t("sidebar-command-param-help", { label: param.label })}</p>
       {#if denial}<p class="refusal" data-testid="command-refusal">{denial}</p>{/if}
     {:else}
     <input
@@ -344,14 +345,14 @@
       oninput={() => (choose(0), (denial = ""))}
       onkeydown={key}
       data-testid="command-input"
-      placeholder="Rechercher ou saisir une adresse"
+      placeholder={t("sidebar-command-placeholder")}
       spellcheck="false"
       autocomplete="off"
     />
     {#if denial}<p class="refusal" data-testid="command-refusal">{denial}</p>{/if}
     <ul role="listbox">
       {#each lines as l, i (i)}
-        {@const title = titleBefore(lines, i)}
+        {@const title = titleBefore(lines, i, appState.value?.locale ?? "fr")}
         {#if title}<li role="presentation" class="section" data-testid="command-section">{title}</li>{/if}
         <li role="option" aria-selected={i === chosen} data-testid="command-row" data-type={l.type}>
           <button type="button" tabindex="-1" class:chosen-one={i === chosen} onmousemove={() => choose(i)} onclick={() => run(l)}>

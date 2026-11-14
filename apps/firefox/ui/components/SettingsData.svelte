@@ -1,7 +1,8 @@
 <script lang="ts">
   import { fade } from "svelte/transition";
   import type { Backup } from "../../shared/settings";
-  import { api } from "../state.svelte";
+  import { api, appState } from "../state.svelte";
+  import { t } from "../i18n.svelte";
   import BrowserImport from "./BrowserImport.svelte";
 
   // Styles come from Settings.svelte.
@@ -17,14 +18,13 @@
   const load = async () => (backups = await s.backups());
   $effect(() => void load());
 
-  const RESET =
-    "Réinitialiser Ressac ? Ses données (espaces, onglets, historique, réglages, données des widgets et des actions, installation de Kev (IA locale, à réinstaller)) sont mises de côté dans une sauvegarde, puis Ressac redémarre à neuf. Restent en place : le dossier workspace (vos projets et ce que l'agent a créé), les connexions de Claude et de Codex (boutons Se déconnecter, section Agents), la clé de l'API compatible de Codex (Trousseau macOS), les cookies et mots de passe du navigateur (Réglages avancés du navigateur).";
-  const date = (iso: string) => new Date(iso).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" });
-  const number = (n: number) => n.toLocaleString("fr-FR", { maximumFractionDigits: 1 });
+  const locale = () => appState.value?.locale ?? "fr";
+  const date = (iso: string) => new Date(iso).toLocaleString(locale(), { dateStyle: "medium", timeStyle: "short" });
+  const number = (n: number) => n.toLocaleString(locale(), { maximumFractionDigits: 1 });
   // shortcut: assumes a macOS home under /Users, display only; take the home from the chrome if another OS ships.
   const notes = `${dir}/workspace/browsing-notes.md`;
   const shownDir = dir.replace(/^\/Users\/[^/]+(?=\/|$)/, "~");
-  const size = (b: number) => (b >= 1e9 ? `${number(b / 1e9)} Go` : `${number(b / 1e6)} Mo`);
+  const size = (b: number) => (b >= 1e9 ? t("agent-size-gb", { n: number(b / 1e9) }) : t("agent-size-mb", { n: number(b / 1e6) }));
 
   async function deleteBackup(path: string) {
     asking = null;
@@ -37,35 +37,35 @@
     message = null;
     const r = await s.exportData();
     exporting = false;
-    message = r.ok ? `Exporté dans ${r.path}` : r.error;
+    message = r.ok ? t("agent-data-exported", { path: r.path }) : r.error;
   }
   async function reset() {
     asking = null;
-    if (!(await s.reset())) message = "Redémarrage annulé : rien n'a été réinitialisé.";
+    if (!(await s.reset())) message = t("agent-data-reset-cancelled");
   }
 </script>
 
 <section data-testid="settings-data">
-  <h2>Données</h2>
+  <h2>{t("settings-section-data")}</h2>
   <div class="panel">
     <div class="row">
-      <div class="grow"><b>Dossier</b><code class="muted" data-testid="data-dir" title={dir}>{shownDir}</code></div>
-      <button data-testid="data-reveal" onclick={() => s.reveal(dir)}>Afficher dans le Finder</button>
+      <div class="grow"><b>{t("agent-data-folder")}</b><code class="muted" data-testid="data-dir" title={dir}>{shownDir}</code></div>
+      <button data-testid="data-reveal" onclick={() => s.reveal(dir)}>{t("agent-data-reveal")}</button>
     </div>
     <div class="row">
-      <div class="grow"><b>Carnet de recherche</b><span class="muted">Les leçons que l'agent tire de ses recherches : vous pouvez le lire et le corriger.</span></div>
-      <button data-testid="settings-browsing-notes" onclick={() => s.reveal(notes)}>Afficher dans le Finder</button>
+      <div class="grow"><b>{t("agent-data-notes")}</b><span class="muted">{t("agent-data-notes-help")}</span></div>
+      <button data-testid="settings-browsing-notes" onclick={() => s.reveal(notes)}>{t("agent-data-reveal")}</button>
     </div>
   </div>
-  <h3>Importer</h3>
+  <h3>{t("agent-data-import-title")}</h3>
   {#if importing}
     <div class="panel import"><BrowserImport /></div>
   {:else}
-    <div class="buttons start" out:fade={{ duration: 150 }}><button data-testid="data-import" onclick={() => (importing = true)}>Importer depuis un autre navigateur</button></div>
+    <div class="buttons start" out:fade={{ duration: 150 }}><button data-testid="data-import" onclick={() => (importing = true)}>{t("agent-data-import")}</button></div>
   {/if}
-  <h3>Sauvegardes</h3>
+  <h3>{t("agent-data-backups")}</h3>
   {#if !backups}
-    <p><span class="pill" data-tone="warn">Vérification…</span></p>
+    <p><span class="pill" data-tone="warn">{t("settings-checking")}</span></p>
   {:else}
     <div class="panel">
       {#each backups as b (b.path)}
@@ -75,36 +75,36 @@
               <b>{date(b.date)}</b>
               <span class="muted">{size(b.bytes)}</span>
             </div>
-            <button data-testid="backup-reveal" onclick={() => s.reveal(b.path)}>Afficher dans le Finder</button>
-            <button class="danger" data-testid="backup-delete" onclick={() => (asking = { backup: b.path })}>Supprimer</button>
+            <button data-testid="backup-reveal" onclick={() => s.reveal(b.path)}>{t("agent-data-reveal")}</button>
+            <button class="danger" data-testid="backup-delete" onclick={() => (asking = { backup: b.path })}>{t("agent-data-delete")}</button>
           </div>
           {#if typeof asking === "object" && asking?.backup === b.path}
             {@const path = b.path}
-            <div class="confirmation" role="alertdialog" aria-label="Supprimer la sauvegarde">
-              <p>Supprimer définitivement cette sauvegarde ?</p>
+            <div class="confirmation" role="alertdialog" aria-label={t("agent-data-delete-label")}>
+              <p>{t("agent-data-delete-confirm")}</p>
               <div class="buttons">
-                <button onclick={() => (asking = null)}>Annuler</button>
-                <button class="primary" data-testid="confirm-data" onclick={() => void deleteBackup(path)}>Supprimer</button>
+                <button onclick={() => (asking = null)}>{t("agent-cancel")}</button>
+                <button class="primary" data-testid="confirm-data" onclick={() => void deleteBackup(path)}>{t("agent-data-delete")}</button>
               </div>
             </div>
           {/if}
         </div>
       {:else}
-        <div class="row muted">Aucune sauvegarde.</div>
+        <div class="row muted">{t("agent-data-none")}</div>
       {/each}
     </div>
   {/if}
   {#if message}<p role="status">{message}</p>{/if}
   <div class="buttons start">
-    <button class="primary" data-testid="data-export" disabled={exporting} onclick={() => void exportData()}>Exporter</button>
-    <button class="danger" data-testid="data-reset" onclick={() => (asking = "reset")}>Réinitialiser</button>
+    <button class="primary" data-testid="data-export" disabled={exporting} onclick={() => void exportData()}>{t("agent-data-export")}</button>
+    <button class="danger" data-testid="data-reset" onclick={() => (asking = "reset")}>{t("agent-data-reset")}</button>
   </div>
   {#if asking === "reset"}
-    <div class="confirmation" role="alertdialog" aria-label="Réinitialiser">
-      <p>{RESET}</p>
+    <div class="confirmation" role="alertdialog" aria-label={t("agent-data-reset")}>
+      <p>{t("agent-data-reset-confirm")}</p>
       <div class="buttons">
-        <button onclick={() => (asking = null)}>Annuler</button>
-        <button class="primary" data-testid="confirm-reset" onclick={() => void reset()}>Réinitialiser et redémarrer</button>
+        <button onclick={() => (asking = null)}>{t("agent-cancel")}</button>
+        <button class="primary" data-testid="confirm-reset" onclick={() => void reset()}>{t("agent-data-reset-go")}</button>
       </div>
     </div>
   {/if}

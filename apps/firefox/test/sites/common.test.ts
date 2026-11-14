@@ -3,22 +3,14 @@ import {
   urlChanged,
   urlUnchanged,
   urlNotFound,
-  confirmForget,
-  confirmSiteDeletion,
-  blockedLink,
   HomeMessage,
   editWithAgent,
-  tweaksGrantTitle,
 } from "../../shared/sites";
 
 test("messages of a site app's window", () => {
-  expect(blockedLink("pub.localhost")).toBe("Lien vers pub.localhost bloqué");
   expect(urlNotFound("adresses.localhost")).toBe("Adresse introuvable sur adresses.localhost");
   expect(urlChanged("Vidola", "vidola-b.localhost")).toBe("Vidola a changé d'adresse : vidola-b.localhost. Il faudra peut-être te reconnecter.");
   expect(urlUnchanged("Vidola")).toBe("Vidola ne répond pas, et sa page de référence donne toujours la même adresse");
-  expect(tweaksGrantTitle("Vidola")).toBe("Autoriser les retouches de « Vidola » ?");
-  expect(confirmForget("Vidola")).toBe("Oublier tout ce que « Vidola » a retenu (séries, positions des vidéos) ?");
-  expect(confirmSiteDeletion("Vidola")).toBe("Supprimer « Vidola » ? Sa connexion et sa mémoire sont effacées, son dossier va à la corbeille.");
   expect(editWithAgent("vidola")).toBe("Appli de site ~/Ressac/sites/vidola/ : ");
 });
 

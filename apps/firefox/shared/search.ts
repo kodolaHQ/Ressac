@@ -13,12 +13,12 @@ export type SearchEngine = keyof typeof SEARCH_ENGINES | "custom";
 export const SEARCH_ENGINE_IDS = ["google", "duckduckgo", "qwant", "bing", "ecosia", "brave", "startpage", "custom"] as const satisfies readonly SearchEngine[];
 export const CUSTOM_ENGINE_MAX = 2000;
 
-/** Why a custom search address is refused (French, shown under the field), or null when it is fine. */
+/** Why a custom search address is refused, as a message id (Settings shows it with `t`), or null when it is fine. */
 export function customEngineError(url: string): string | null {
   const text = url.trim();
-  if (text.length > CUSTOM_ENGINE_MAX) return "Adresse trop longue";
-  if (!/^https:\/\//i.test(text) || !URL.canParse(text)) return "L'adresse doit commencer par https://";
-  if (!text.includes("%s")) return "Il manque %s à la place des mots cherchés";
+  if (text.length > CUSTOM_ENGINE_MAX) return "agent-engine-custom-too-long";
+  if (!/^https:\/\//i.test(text) || !URL.canParse(text)) return "agent-engine-custom-https";
+  if (!text.includes("%s")) return "agent-engine-custom-missing-s";
   return null;
 }
 

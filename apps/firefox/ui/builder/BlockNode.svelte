@@ -29,6 +29,7 @@
 
 <script lang="ts">
   import { Handle, Position, type NodeProps } from "@xyflow/svelte";
+  import { t } from "../i18n.svelte";
 
   let { id, data, selected }: NodeProps<BlockNode> = $props();
   const mark = $derived(data.error ?? (data.warnings.length ? data.warnings.join("\n") : null));
@@ -53,8 +54,8 @@
   </div>
   <div class="line muted">
     <code>{data.type}</code>
-    {#if data.error !== null}<span class="mark" aria-label="Erreur">!</span>
-    {:else if data.warnings.length}<span class="mark" aria-label="Avertissement">⚠</span>{/if}
+    {#if data.error !== null}<span class="mark" aria-label={t("builder-node-error")}>!</span>
+    {:else if data.warnings.length}<span class="mark" aria-label={t("builder-node-warning")}>⚠</span>{/if}
   </div>
   {#if data.output}<Handle type="source" position={Position.Right} />{/if}
 </div>

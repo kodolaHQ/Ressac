@@ -20,7 +20,7 @@
 
 <script lang="ts">
   import type { LocalAiStateShown, SettingsApi } from "../../shared/api";
-  import { OLLAMA_ITSELF, TELEMETRY_NOTICE, type DockerStatus, type AgentAccount, type DecisionModel, type LoginResult, type PullProgress, type WorkshopOperation } from "../../shared/settings";
+  import { OLLAMA_ITSELF, type DockerStatus, type AgentAccount, type DecisionModel, type LoginResult, type PullProgress, type WorkshopOperation } from "../../shared/settings";
   import { updateStatusText } from "../../core/update";
   import { api, appState } from "../state.svelte";
   import { t } from "../i18n.svelte";
@@ -382,7 +382,7 @@
             <div class="row">
               <div class="grow">
                 <label for="telemetry-switch"><b>{t("settings-telemetry-label")}</b></label>
-                <span class="muted" id="telemetry-notice">{TELEMETRY_NOTICE}</span>
+                <span class="muted" id="telemetry-notice">{t("agent-telemetry-notice")}</span>
               </div>
               <input
                 id="telemetry-switch"
@@ -435,7 +435,7 @@
                   onchange={(e) => saveCustomEngine(e.currentTarget.value)}
                   onkeydown={(e) => e.key === "Enter" && saveCustomEngine(e.currentTarget.value)}
                 />
-                {#if engineError}<span class="pill" data-tone="error" data-testid="settings-engine-error">{engineError}</span>{/if}
+                {#if engineError}<span class="pill" data-tone="error" data-testid="settings-engine-error">{t(engineError)}</span>{/if}
               </div>
             </div>
           {/if}
@@ -512,7 +512,7 @@
           </div>
           {#if update && update.phase !== "disabled"}
             <div class="row">
-              <span class="grow" data-testid="update-status" aria-live="polite">{updateStatusText(update)}</span>
+              <span class="grow" data-testid="update-status" aria-live="polite">{updateStatusText(update, appState.value?.locale ?? "fr")}</span>
               {#if update.phase === "idle" || update.phase === "unreachable"}
                 <button data-testid="update-check" onclick={() => s.checkForUpdate()}>{t("settings-about-update-check")}</button>
               {:else if update.phase === "ready"}

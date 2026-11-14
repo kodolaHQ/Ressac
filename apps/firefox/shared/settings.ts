@@ -26,10 +26,6 @@ export interface GrantRow {
 }
 export type SettingsResult = { ok: true } | { ok: false; error: string };
 
-/** The one-time notice about error reports, also the Settings switch's description. */
-export const TELEMETRY_NOTICE =
-  "Ressac envoie à son développeur les plantages et les erreurs, sans adresse de page, pour corriger les bugs de la bêta, et à chaque lancement un identifiant d'installation anonyme pour compter les utilisateurs. Un plantage peut contenir des fragments de mémoire.";
-
 export type CodexEngineKind = "chatgpt" | "ollama" | "api";
 export interface CodexEngine {
   kind: CodexEngineKind;

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "../../i18n.svelte";
   import PageLink from "../PageLink.svelte";
   import { sortLines } from "../sort";
   import { andOthers, sections, type Collection, type PageContext, type LinkRef as Link } from "../types";
@@ -34,7 +35,7 @@
               <button type="button" onclick={() => sort(c.field)}>{c.label}</button>{#if sorting?.field === c.field}<span class="direction" aria-hidden="true">{sorting.direction === "asc" ? "▲" : "▼"}</span>{/if}
             </th>
           {/each}
-          {#if withLink}<th scope="col">Lien</th>{/if}
+          {#if withLink}<th scope="col">{t("action-table-link")}</th>{/if}
         </tr>
       </thead>
       {#each sorted as s, i (i)}

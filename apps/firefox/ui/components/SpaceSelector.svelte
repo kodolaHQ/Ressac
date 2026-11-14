@@ -5,6 +5,7 @@
   import type { Space, WindowState } from "../../shared/model";
   import { api, appState } from "../state.svelte";
   import { openMenu } from "./menu.svelte";
+  import { t } from "../i18n.svelte";
   import { losesConnections, PROFILE_TO_CHOOSE } from "./spaceProfiles";
   import { spaceSettings } from "./spaceSettings.svelte";
 
@@ -35,19 +36,19 @@
 
 {#if toDelete}
   {@const { space: space, tabs: tabs, logins: connexions } = toDelete}
-  <div class="confirmation" role="alertdialog" aria-label="Supprimer l'espace">
+  <div class="confirmation" role="alertdialog" aria-label={t("sidebar-space-delete-title")}>
     <p>
-      {#if tabs > 0}Supprimer l'espace « {space.name} » et ses {tabs} onglet{tabs > 1 ? "s" : ""} ?{:else}Supprimer l'espace « {space.name} » ?{/if}
-      {#if connexions}Les connexions de cet espace seront perdues.{/if}
+      {#if tabs > 0}{t("sidebar-space-delete-tabs", { name: space.name, tabs })}{:else}{t("sidebar-space-delete", { name: space.name })}{/if}
+      {#if connexions}{t("sidebar-space-delete-logins")}{/if}
     </p>
     <div class="buttons">
-      <button onclick={() => (toDelete = null)}>Annuler</button>
+      <button onclick={() => (toDelete = null)}>{t("sidebar-cancel")}</button>
       <button
         class="danger"
         onclick={() => {
           api.dispatch({ type: "deleteSpace", id: space.id });
           toDelete = null;
-        }}>Supprimer</button
+        }}>{t("sidebar-delete")}</button
       >
     </div>
   </div>
@@ -57,18 +58,18 @@
     <button
       data-testid="space-{space.id}"
       aria-current={space.id === win.activeSpace ? "true" : undefined}
-      title={space.private ? `${space.name} (privé)` : space.name}
+      title={space.private ? t("sidebar-space-private", { name: space.name }) : space.name}
       data-private={space.private || undefined}
       onclick={(e) => e.button === 0 && api.dispatch({ type: "activateSpace", windowId: win.id, id: space.id })}
       oncontextmenu={(e) =>
         openMenu(e, [
-          { label: "Réglages", dispatch: () => set(space) },
-          ...((appState.value?.spaces.length ?? 0) > 1 ? [{ label: "Supprimer", dispatch: () => remove(space) }] : []),
+          { label: t("sidebar-space-settings"), dispatch: () => set(space) },
+          ...((appState.value?.spaces.length ?? 0) > 1 ? [{ label: t("sidebar-delete"), dispatch: () => remove(space) }] : []),
         ])}
       ><AuraEmoji icon={space.icon} aura={space.aura} size={28} />{#if space.private}<span class="padlock" aria-hidden="true">🔒</span>{/if}</button
     >
   {/each}
-  <button data-testid="new-space" title="Nouvel espace" onclick={create}><Icon name="plus" /></button>
+  <button data-testid="new-space" title={t("sidebar-space-new")} onclick={create}><Icon name="plus" /></button>
 </nav>
 
 <style>

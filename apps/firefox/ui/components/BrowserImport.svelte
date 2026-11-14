@@ -2,6 +2,7 @@
   import { fade } from "svelte/transition";
   import type { ImportProgress, ImportSource, ImportSourceId, ImportType } from "../../shared/api";
   import { api } from "../state.svelte";
+  import { t } from "../i18n.svelte";
 
   /**
    * Import from another browser on this Mac: welcome page 2 and Réglages › Données. The run goes on in the host;
@@ -10,7 +11,7 @@
    */
   let { sources = $bindable() }: { sources?: ImportSource[] } = $props();
 
-  const LABELS: Record<ImportType, string> = { bookmarks: "Favoris", history: "Historique", passwords: "Mots de passe", spaces: "Espaces et onglets épinglés", tabs: "Onglets ouverts" };
+  const label = (type: ImportType) => t(`home-import-type-${type}`);
   const bi = api.browserImport;
 
   let chosen = $state<ImportSourceId | null>(null);
@@ -26,7 +27,7 @@
   const source = $derived(sources?.find((s) => s.id === chosen));
   const types = $derived(source?.types.filter((t) => !(t === "passwords" && source.passwordsByCsv)) ?? []);
   const failures = $derived(progress?.done ? (Object.entries(progress.failed) as [ImportType, string][]) : []);
-  const diskAccess = $derived(progress?.source === "safari" && failures.some(([, why]) => why.includes("Accès complet au disque")));
+  const diskAccess = $derived(progress?.source === "safari" && failures.some(([, why]) => why.includes("complet au disque")));
 
   function choose(s: ImportSource) {
     [chosen, profile, profiles, unchecked] = [s.id, null, [], []];
@@ -62,17 +63,17 @@
       refusal = r.ok ? null : r.error;
       watching = r.ok;
     } catch (e) {
-      refusal = `L'import n'a pas pu démarrer : ${e instanceof Error ? e.message : String(e)}`;
+      refusal = t("home-import-start-failed", { reason: e instanceof Error ? e.message : String(e) });
     }
   }
   async function pickCsv() {
     const r = await bi.importPasswordsCsv();
-    csv = !r.ok ? r.error : r.count < 2 ? `${r.count} mot de passe importé` : `${r.count.toLocaleString("fr-FR")} mots de passe importés`;
+    csv = !r.ok ? r.error : t("home-import-csv-result", { count: r.count });
   }
   const guide = (s: ImportSource) =>
     s.id === "safari"
-      ? ["Ouvrez l'app Mots de passe.", "Fichier › Exporter tous les mots de passe…"]
-      : [`Dans ${s.name}, ouvrez about:logins`, "⋯ › Exporter les identifiants"];
+      ? [t("home-import-safari-1"), t("home-import-safari-2")]
+      : [t("home-import-other-1", { name: s.name }), t("home-import-other-2")];
 </script>
 
 {#snippet status(id: string, tone: string, text: string)}
@@ -81,11 +82,11 @@
 
 <div class="import" data-testid="browser-import">
   {#if !sources}
-    {@render status("import-status", "warn", "Vérification…")}
+    {@render status("import-status", "warn", t("home-import-checking"))}
   {:else if !sources.length}
-    {@render status("import-none", "off", "Aucun autre navigateur trouvé sur ce Mac.")}
+    {@render status("import-none", "off", t("home-import-none"))}
   {:else}
-    <div class="sources" role="radiogroup" aria-label="Navigateur">
+    <div class="sources" role="radiogroup" aria-label={t("home-import-browser")}>
       {#each sources as s (s.id)}
         <label class="source">
           <input type="radio" name="import-source" data-testid="import-source-{s.id}" checked={chosen === s.id} onchange={() => choose(s)} />
@@ -97,28 +98,28 @@
     {#if source}
       <div class="options">
         {#if profiles.length > 1}
-          <label class="profile" out:fade={{ duration: 150 }}>Profil
+          <label class="profile" out:fade={{ duration: 150 }}>{t("home-import-profile")}
             <select data-testid="import-profile" bind:value={profile}>
               {#each profiles as p (p.id)}<option value={p.id}>{p.name}</option>{/each}
             </select>
           </label>
         {/if}
         <div class="types">
-          {#each types as t (t)}
+          {#each types as type (type)}
             <label out:fade={{ duration: 150 }}>
-              <input type="checkbox" data-testid="import-type-{t}" checked={!unchecked.includes(t)} onchange={(e) => (unchecked = e.currentTarget.checked ? unchecked.filter((u) => u !== t) : [...unchecked, t])} />
-              {LABELS[t]}
+              <input type="checkbox" data-testid="import-type-{type}" checked={!unchecked.includes(type)} onchange={(e) => (unchecked = e.currentTarget.checked ? unchecked.filter((u) => u !== type) : [...unchecked, type])} />
+              {label(type)}
             </label>
           {/each}
         </div>
         {#if source.passwordsByCsv}
           <div class="guide" data-testid="import-guide" out:fade={{ duration: 150 }}>
-            <b>Mots de passe</b>
+            <b>{t("home-import-passwords")}</b>
             <ol>
-              {#each [...guide(source), "Choisissez le fichier ci-dessous.", "Supprimez ensuite le fichier exporté : il n'est pas chiffré."] as step (step)}<li>{step}</li>{/each}
+              {#each [...guide(source), t("home-import-guide-choose"), t("home-import-guide-delete")] as step (step)}<li>{step}</li>{/each}
             </ol>
             <div class="row">
-              <button type="button" data-testid="import-csv" onclick={() => void pickCsv()}>Choisir le fichier CSV…</button>
+              <button type="button" data-testid="import-csv" onclick={() => void pickCsv()}>{t("home-import-csv-pick")}</button>
               {#if csv}<span class="note" data-testid="import-csv-result" role="status">{csv}</span>{/if}
             </div>
           </div>
@@ -126,15 +127,15 @@
       </div>
     {/if}
     <div class="row">
-      <button type="button" data-testid="import-start" disabled={!types.some((t) => !unchecked.includes(t))} onclick={() => void start()}>Importer</button>
+      <button type="button" data-testid="import-start" disabled={!types.some((t) => !unchecked.includes(t))} onclick={() => void start()}>{t("home-import-start")}</button>
     </div>
     {#if refusal}{@render status("import-refusal", "warn", refusal)}{/if}
-    {#if watching && progress?.done}{@render status("import-done", "ok", "Import terminé.")}
-    {:else if watching}{@render status("import-started", "ok", "Import lancé : une notification vous préviendra à la fin.")}{/if}
-    {#each failures as [t, why] (t)}{@render status(`import-failed-${t}`, "warn", `${LABELS[t]} : ${why}`)}{/each}
+    {#if watching && progress?.done}{@render status("import-done", "ok", t("home-import-done"))}
+    {:else if watching}{@render status("import-started", "ok", t("home-import-started"))}{/if}
+    {#each failures as [type, why] (type)}{@render status(`import-failed-${type}`, "warn", t("home-import-failed", { type: label(type), why }))}{/each}
     {#if diskAccess}
       <div class="row" out:fade={{ duration: 150 }}>
-        <button type="button" data-testid="import-disk-access" onclick={() => api.settings.openFullDiskAccessSettings()}>Ouvrir les réglages</button>
+        <button type="button" data-testid="import-disk-access" onclick={() => api.settings.openFullDiskAccessSettings()}>{t("home-import-disk-access")}</button>
       </div>
     {/if}
   {/if}

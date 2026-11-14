@@ -10,21 +10,24 @@ export function readableProfiles(appState: Pick<BrowserState, "profiles" | "spac
   return appState.profiles.map((p) => p.id).filter((id) => !privates.has(id));
 }
 
-/** « Profil de « Perso, Travail » » (the spaces that use it), or « Profil « id » » with no space. */
-export function profileLabel(state: Pick<BrowserState, "spaces">, id: ProfileId): string {
+/** Formats a message in the shown language. Passed in: the host also imports this module and must not load Fluent. */
+export type Say = (id: string, args?: Record<string, string>) => string;
+
+/** « Profile of « Personal, Work » » (the spaces that use it), or « Profile « id » » with no space. */
+export function profileLabel(state: Pick<BrowserState, "spaces">, id: ProfileId, say: Say): string {
   const spaces = state.spaces.filter((e) => e.profile === id).map((e) => e.name);
-  return spaces.length ? `Profil de « ${spaces.join(", ")} »` : `Profil « ${id} »`;
+  return spaces.length ? say("home-profile-of", { spaces: spaces.join(", ") }) : say("home-profile", { id });
 }
 
 /**
  * The profiles a grant may use: never a private space's (even shared with a non-private space).
  * Checked by default: the window's active space's, if it is readable.
  */
-export function profilesForGrant(appState: Pick<BrowserState, "profiles" | "spaces" | "windows">, windowId: WindowId | undefined): ProfileForGrant[] {
+export function profilesForGrant(appState: Pick<BrowserState, "profiles" | "spaces" | "windows">, windowId: WindowId | undefined, say: Say): ProfileForGrant[] {
   const win = appState.windows.find((f) => f.id === windowId);
   const active = win ? appState.spaces.find((e) => e.id === win.activeSpace)?.profile : undefined;
   return readableProfiles(appState).map((id) => {
-    return { id, label: profileLabel(appState, id), isDefault: id === active };
+    return { id, label: profileLabel(appState, id, say), isDefault: id === active };
   });
 }
 

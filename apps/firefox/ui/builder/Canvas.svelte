@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Background, Controls, SvelteFlow, useSvelteFlow, type Connection, type Edge, type NodeTypes } from "@xyflow/svelte";
   import { untrack } from "svelte";
+  import { t } from "../i18n.svelte";
   import type { BlockCatalogEntry } from "@ressac/kernel";
   import { link, deleteBlocks, deleteLink } from "./draft";
   import { DRAG_BLOCK } from "./add";
@@ -129,7 +130,7 @@
   class="canvas"
   bind:this={zone}
   role="application"
-  aria-label="Canevas du workflow"
+  aria-label={t("builder-canvas")}
   ondragover={(e) => {
     if (e.dataTransfer?.types.includes(DRAG_BLOCK)) e.preventDefault();
   }}

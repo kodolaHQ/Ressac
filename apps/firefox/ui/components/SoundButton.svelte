@@ -2,10 +2,11 @@
   import { fade } from "svelte/transition";
   import type { Tab } from "../../shared/model";
   import Icon from "./Icon.svelte";
+  import { t } from "../i18n.svelte";
 
   /** Where the sound comes from: shown on a tab that plays sound or is muted; a click mutes or unmutes it. */
   let { tab, size = 14 }: { tab: Tab; size?: number } = $props();
-  const label = $derived(tab.sound === "muted" ? "Réactiver le son de l'onglet" : "Couper le son de l'onglet");
+  const label = $derived(tab.sound === "muted" ? t("chrome-ui-unmute") : t("chrome-ui-mute"));
 </script>
 
 {#if tab.sound}

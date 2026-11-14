@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
   import { api } from "./state.svelte";
+  import { t } from "./i18n.svelte";
 
   /**
    * A widget shown in its isolated frame: without allow-same-origin, the code written by the agent runs in an opaque
@@ -120,7 +121,7 @@
     <!-- Without allow-same-origin: the code written by the agent runs in an opaque origin, with no access to the interface. -->
     <iframe bind:this={iframe} src={widget.src} title={widget.name} sandbox="allow-scripts"></iframe>
   {:else}
-    <p class="empty">L'agent n'a pas encore écrit l'affichage de ce widget.</p>
+    <p class="empty">{t("home-widget-no-display")}</p>
   {/if}
 </div>
 

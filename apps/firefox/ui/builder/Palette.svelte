@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { BlockCatalogEntry, BlockFamily } from "@ressac/kernel";
+  import { t } from "../i18n.svelte";
   import { DRAG_BLOCK } from "./add";
 
   /**
@@ -14,11 +15,7 @@
     onadd: onadd,
   }: { catalog: BlockCatalogEntry[]; hasOutput: boolean; web: boolean; action?: boolean; onadd: (type: string) => void } = $props();
 
-  const NO_WEB = $derived(
-    action
-      ? 'L\'action doit déclarer "web": true dans ses sources (action.json) : demande-le à l\'agent.'
-      : 'Le widget doit déclarer "web": true : demande-le à l\'agent.',
-  );
+  const NO_WEB = $derived(t(action ? "builder-palette-no-web-action" : "builder-palette-no-web-widget"));
   const grayed = (type: string) => type === "web.search" && !web;
 
   let collapsed = $state<Partial<Record<BlockFamily, boolean>>>({});
@@ -30,7 +27,7 @@
   });
 </script>
 
-<nav class="palette" aria-label="Blocs">
+<nav class="palette" aria-label={t("builder-palette")}>
   {#each families as [family, blocks] (family)}
     <section>
       <button class="family" aria-expanded={!collapsed[family]} onclick={() => (collapsed[family] = !collapsed[family])}>

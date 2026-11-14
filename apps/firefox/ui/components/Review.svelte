@@ -6,6 +6,7 @@
 <script lang="ts">
   import type { DiffComment, DiffFile as Diff, ModifiedFile, ReviewView } from "../../shared/api";
   import { api } from "../state.svelte";
+  import { t } from "../i18n.svelte";
   import DiffFile from "./DiffFile.svelte";
 
   /**
@@ -27,7 +28,6 @@
   let diffRequest = 0;
 
   const STATUSES = { added: "+", deleted: "−", modified: "~" } as const;
-  const LABELS = { added: "ajouté", deleted: "supprimé", modified: "modifié" } as const;
 
   /** `garder`: the tab's comparison if it is still kept; otherwise (« Rafraîchir ») a new one. */
   async function load(keep: boolean) {
@@ -38,7 +38,7 @@
       if (n !== request) return;
       await show(v);
     } catch {
-      if (n === request) view = { state: "unavailable", name: "", reason: "la relecture n'a pas pu être ouverte" };
+      if (n === request) view = { state: "unavailable", name: "", reason: t("agent-review-open-failed") };
     } finally {
       if (n === request) running = false;
     }
@@ -119,7 +119,7 @@
     } catch {
       if (n === diffRequest) {
         diff = null;
-        diffError = "Ce fichier n'est plus dans cette comparaison : Rafraîchis la relecture.";
+        diffError = t("agent-review-gone");
       }
     }
   }
@@ -135,37 +135,37 @@
   const ofFile = $derived(diff ? comments.filter((c) => c.file === diff!.path) : []);
 </script>
 
-<section class="review" data-testid="review-page" aria-label="Relecture">
+<section class="review" data-testid="review-page" aria-label={t("agent-review-label")}>
   <header>
     <h2>{view?.name ?? ""}</h2>
     {#if view?.state === "ok"}
       {#if toSend > 0}
         <button data-testid="send-comments" disabled={running || view.destination === null} title={view.noDestination ?? ""}
           onclick={() => void sendComments()}
-          >Envoyer {toSend} commentaire{toSend > 1 ? "s" : ""} à {view.destination ?? "personne"}</button
+          >{t("agent-review-send", { count: toSend, destination: view.destination ?? t("agent-review-nobody") })}</button
         >
       {/if}
-      <button data-testid="mark-read" disabled={running || token === null} onclick={() => void markReviewed()}>Marquer comme relu</button>
+      <button data-testid="mark-read" disabled={running || token === null} onclick={() => void markReviewed()}>{t("agent-review-mark-read")}</button>
     {/if}
-    <button onclick={() => void load(false)} disabled={running}>Rafraîchir</button>
+    <button onclick={() => void load(false)} disabled={running}>{t("agent-review-refresh")}</button>
   </header>
   {#if message}<p class="message" data-testid="review-error">{message}</p>{/if}
   {#if view?.state === "unavailable"}
-    <p class="unavailable" data-testid="review-unavailable">Relecture indisponible : {view.reason}</p>
+    <p class="unavailable" data-testid="review-unavailable">{t("agent-review-unavailable", { reason: view.reason })}</p>
   {:else if view?.state === "ok"}
     <div class="body">
-      <nav class="list" aria-label="Fichiers modifiés">
+      <nav class="list" aria-label={t("agent-review-files")}>
         {#if files.length === 0}
-          <p class="empty">Rien n'a changé depuis la dernière relecture.</p>
+          <p class="empty">{t("agent-review-empty")}</p>
         {/if}
         {#each files as f (f.path)}
           <button class="file" class:chosen={f.path === chosen} data-testid="review-file" aria-pressed={f.path === chosen}
-            title={LABELS[f.status]} onclick={() => void display(f.path)}
+            title={t(`agent-review-status-${f.status}`)} onclick={() => void display(f.path)}
             ><span class="status {f.status}">{STATUSES[f.status]}</span><span class="file-name">{f.path}</span><span class="account">+{f.additions} −{f.deletions}</span></button
           >
         {/each}
         {#if comments.length > 0}
-          <h3>Commentaires</h3>
+          <h3>{t("agent-review-comments")}</h3>
           <ul class="comments">
             {#each comments as c (c.id)}
               <li data-testid="review-comment" class:resolved={c.resolved}>

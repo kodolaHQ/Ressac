@@ -1,5 +1,6 @@
 <script lang="ts">
   import { untrack } from "svelte";
+  import { t } from "../i18n.svelte";
   import type { BlockCatalogEntry } from "@ressac/kernel";
   import { set, rename, type Draft } from "./draft";
   import type { Edit } from "./edit.svelte";
@@ -89,7 +90,7 @@
 
 <div class="form">
   <label class="field">
-    <span class="label">Nom</span>
+    <span class="label">{t("builder-field-name")}</span>
     <input
       data-testid="block-name-field"
       value={inputs[NAME] ?? block.name ?? ""}
@@ -101,7 +102,7 @@
     />
   </label>
   <div class="field">
-    <span class="label">Identifiant</span>
+    <span class="label">{t("builder-field-id")}</span>
     <code data-testid="block-id">{id}</code>
   </div>
 
@@ -121,8 +122,8 @@
       <label class="field">
         <span class="label">{f.label}{f.required ? " *" : ""}</span>
         <select data-testid="field-{f.name}" value={typeof v === "string" ? v : ""} onchange={(e) => choose(f, e.currentTarget.value)}>
-          {#if f.required && typeof v !== "string"}<option value="" disabled>— choisir —</option>{/if}
-          {#if !f.required}<option value="">Par défaut{f.default === undefined ? "" : ` (${textOf(f, f.default)})`}</option>{/if}
+          {#if f.required && typeof v !== "string"}<option value="" disabled>{t("builder-field-choose")}</option>{/if}
+          {#if !f.required}<option value="">{f.default === undefined ? t("builder-field-default") : t("builder-field-default-value", { value: textOf(f, f.default) })}</option>{/if}
           {#each f.choices ?? [] as c (c)}<option value={c}>{c}</option>{/each}
           {#if typeof v === "string" && v !== "" && !(f.choices ?? []).includes(v)}<option value={v}>{v}</option>{/if}
         </select>
@@ -131,7 +132,7 @@
       <label class="field">
         <span class="label">
           {f.label}{f.required ? " *" : ""}
-          {#if f.kind === "template"}<span class="mark" title="Les {'{chemins}'} sont remplacés par les valeurs reçues">gabarit</span>{/if}
+          {#if f.kind === "template"}<span class="mark" title={t("builder-field-template-help")}>{t("builder-field-template")}</span>{/if}
         </span>
         {#if f.kind === "number"}
           <input
@@ -169,7 +170,7 @@
             data-testid="field-{f.name}"
             rows={f.kind === "texts" ? 3 : 2}
             value={fieldText(f)}
-            placeholder={f.kind === "texts" ? "Une valeur par ligne" : textOf(f, f.default)}
+            placeholder={f.kind === "texts" ? t("builder-field-one-per-line") : textOf(f, f.default)}
             spellcheck="false"
             onfocus={(e) => enter(f.name, e.currentTarget.value)}
             oninput={(e) => typeText(f.name, e.currentTarget.value)}
@@ -178,7 +179,7 @@
         {/if}
       </label>
       {#if f.kind === "template" && available && available.length > 0}
-        <p class="help" data-testid="available-{f.name}">Champs disponibles : {available.map((c) => `{${c}}`).join(" ")}</p>
+        <p class="help" data-testid="available-{f.name}">{t("builder-field-available", { fields: available.map((c) => `{${c}}`).join(" ") })}</p>
       {/if}
     {/if}
     {#if f.help}<p class="help">{f.help}</p>{/if}

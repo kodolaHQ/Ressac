@@ -2,20 +2,21 @@
   // The page's error and crash messages.
   import type { Tab } from "../shared/model";
   import { api } from "./state.svelte";
+  import { t } from "./i18n.svelte";
 
   let { tab: tab }: { tab: Tab } = $props();
 </script>
 
 {#if tab.error}
   <div class="crashed">
-    <p class="title">Impossible d'ouvrir cette page.</p>
+    <p class="title">{t("chrome-ui-page-error")}</p>
     <p class="detail">{tab.url} — {tab.error}</p>
-    <button onclick={() => api.navigate(tab.id, tab.url)}>Recharger</button>
+    <button onclick={() => api.navigate(tab.id, tab.url)}>{t("chrome-ui-reload")}</button>
   </div>
 {:else if tab.crashed}
   <div class="crashed">
-    <p class="title">Cette page a planté.</p>
-    <button onclick={() => api.command(tab.id, "reload")}>Recharger</button>
+    <p class="title">{t("chrome-ui-page-crashed")}</p>
+    <button onclick={() => api.command(tab.id, "reload")}>{t("chrome-ui-reload")}</button>
   </div>
 {/if}
 
