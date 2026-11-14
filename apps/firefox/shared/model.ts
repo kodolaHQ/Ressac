@@ -238,11 +238,15 @@ export interface BrowserState {
     language: string;
     /** The user's own bindings; an action absent here keeps its default (shared/shortcuts.ts). */
     shortcuts: Partial<Record<ShortcutId, Binding>>;
+    /** The AI part (agent, local models, containers) is on. Off on a new install until the welcome asks; an older session keeps it on. */
+    aiEnabled: boolean;
   };
   /** The app update, as Firefox's updater reports it; null until known. Volatile, never saved. */
   update: UpdateShown | null;
   /** The language shown, `settings.language` resolved by the chrome against the Mac's languages. Volatile, never saved. */
   locale: string;
+  /** The AI-only setup is showing (after enabling AI from Réglages). Volatile, never saved. */
+  aiSetup: boolean;
 }
 
 /**

@@ -953,6 +953,27 @@ test("updateSpace without aura keeps a non-default aura; the same aura again cha
   expect(e).toBe(before);
 });
 
+test("AI actions", () => {
+  e = initialState(genId);
+  ag({ type: "finishOnboarding", ai: false });
+  expect(e.settings.aiEnabled).toBe(false);
+  expect(e.settings.onboarded).toBe(true);
+  ag({ type: "finishOnboarding" });
+  expect(e.settings.aiEnabled).toBe(false);
+  ag({ type: "enableAi" });
+  expect([e.settings.aiEnabled, e.aiSetup]).toEqual([true, true]);
+  ag({ type: "finishAiSetup" });
+  expect(e.aiSetup).toBe(false);
+  const before = e;
+  ag({ type: "enableAi" });
+  expect(e).not.toBe(before);
+  expect(e.aiSetup).toBe(true);
+  e.windows[0]!.agentPanelOpen = true;
+  ag({ type: "disableAi" });
+  expect([e.settings.aiEnabled, e.aiSetup]).toEqual([false, false]);
+  expect(e.windows.every((f) => !f.agentPanelOpen)).toBe(true);
+});
+
 test("onboarding actions and hints", () => {
   e = initialState(genId);
   expect(e.settings.onboarded).toBe(false);

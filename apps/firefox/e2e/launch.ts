@@ -73,7 +73,7 @@ async function waitFor<T>(read: () => Promise<T | undefined>, ms: number, what: 
  * A data folder without a space's widgets folder gets the starter widgets without their harvest (`starterHarvests` keeps
  * them, and their real-web reads: prefer a local server). `firstTimeNotes` leaves the one-time notes unseen (a new session has them seen). `output`: a file that gets the browser's stdout and stderr.
  */
-export async function launchRessac(o: { headed?: boolean; width?: number; height?: number; dataDir?: string; profile?: string; env?: Record<string, string | undefined>; prefs?: Record<string, string | number | boolean>; starterHarvests?: boolean; firstTimeNotes?: boolean; output?: string; realTools?: boolean } = {}): Promise<LaunchedRessac> {
+export async function launchRessac(o: { headed?: boolean; width?: number; height?: number; dataDir?: string; profile?: string; env?: Record<string, string | undefined>; prefs?: Record<string, string | number | boolean>; starterHarvests?: boolean; firstTimeNotes?: boolean; output?: string; realTools?: boolean; ai?: boolean } = {}): Promise<LaunchedRessac> {
   const profile = o.profile ?? (await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-")));
   const dataDir = o.dataDir ?? (await mkdtemp(path.join(os.tmpdir(), "ressac-data-")));
   const cleanup = () =>
@@ -115,6 +115,8 @@ export async function launchRessac(o: { headed?: boolean; width?: number; height
         RESSAC_TEST_IMPORT_HOME: path.join(dataDir, "import-home"),
         // No welcome screen in front of the tests.
         RESSAC_SKIP_WELCOME: "1",
+        // AI on unless the test asks for it off (`ai: false`).
+        RESSAC_TEST_AI: o.ai === false ? "0" : "1",
         // Réglages never changes the owner's macOS: his default browser and his screen recording grant stay his.
         RESSAC_TEST_NO_SYSTEM: "1",
         // Never the decision model running on this machine (nothing listens there): the search watcher lets every action

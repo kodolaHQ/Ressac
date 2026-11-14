@@ -628,8 +628,26 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       return true;
     }
     case "finishOnboarding": {
-      if (d.settings.onboarded) return false;
+      const aiChanged = a.ai !== undefined && d.settings.aiEnabled !== a.ai;
+      if (d.settings.onboarded && !aiChanged) return false;
       d.settings.onboarded = true;
+      if (a.ai !== undefined) d.settings.aiEnabled = a.ai;
+      return true;
+    }
+    case "enableAi": {
+      d.settings.aiEnabled = true;
+      d.aiSetup = true;
+      return true;
+    }
+    case "disableAi": {
+      d.settings.aiEnabled = false;
+      d.aiSetup = false;
+      for (const f of d.windows) f.agentPanelOpen = false;
+      return true;
+    }
+    case "finishAiSetup": {
+      if (!d.aiSetup) return false;
+      d.aiSetup = false;
       return true;
     }
     case "replayOnboarding": {

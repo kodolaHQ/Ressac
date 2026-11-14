@@ -71,6 +71,8 @@ const SchemaSession = z.object({
       .catch(() => ({ enabled: true, seen: (Object.keys(FIRST_TIME) as HintId[]).filter((id) => id !== "extensions") })),
     sidebarSide: z.enum(["left", "right"]).catch("left"),
     vimMode: z.boolean().catch(false),
+    // A session saved before the setting existed already had AI: it stays on.
+    aiEnabled: z.boolean().default(true),
     // A session saved before the setting existed gets the default.
     startOnHome: z.boolean().catch(true),
     // A session saved before languages existed was in French: it stays so. A language no longer shipped → the Mac's.
@@ -149,6 +151,7 @@ export async function loadSession(folder: string, kept?: (path: string) => void)
       ...parsed,
       update: null,
       locale: "en",
+      aiSetup: false,
       tabs: Object.fromEntries(Object.entries(parsed.tabs).map(([id, o]) => [id, { ...o, ...VOLATILE }])),
     };
   } catch {
@@ -201,7 +204,7 @@ export class SessionRecorder {
       Object.entries(state.tabs).map(([id, { loading: load, canGoBack: canGoBack, canGoForward: canAdvance, crashed: crashes, error: error, agentSearch: _band, call: _call, sound: _sound, playback: _playback, unloaded: _unloaded, ...rest }]) => [id, rest]),
     );
     const target = join(this.folder, FILE);
-    const { update: _update, locale: _locale, ...saved } = state;
+    const { update: _update, locale: _locale, aiSetup: _aiSetup, ...saved } = state;
     const text = JSON.stringify({ ...saved, tabs: tabs }, null, 2);
     this.onDisk ??= await fs.readFile(target, "utf8").catch(() => null);
     if (text === this.onDisk) return;

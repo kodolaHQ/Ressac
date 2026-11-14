@@ -111,6 +111,20 @@ test("a session from before languages stays French; the shown language is never 
   expect(JSON.parse(readFileSync(join(d, "session.json"), "utf8")).locale).toBeUndefined();
 });
 
+test("AI: an existing session keeps it on, a new install starts off, aiSetup is never saved", async () => {
+  const d = folder();
+  const old = structuredClone(initialState()) as unknown as { settings: Record<string, unknown> };
+  delete old.settings.aiEnabled;
+  writeFileSync(join(d, "session.json"), JSON.stringify(old));
+  expect((await loadSession(d)).settings.aiEnabled).toBe(true);
+  expect(initialState().settings.aiEnabled).toBe(false);
+  const recorder = new SessionRecorder(d, 10_000);
+  recorder.schedule({ ...initialState(), aiSetup: true });
+  await recorder.clear();
+  expect(JSON.parse(readFileSync(join(d, "session.json"), "utf8")).aiSetup).toBeUndefined();
+  expect((await loadSession(d)).aiSetup).toBe(false);
+});
+
 test("missing file → initial state", async () => {
   const e = await loadSession(folder());
   expect(e.spaces).toHaveLength(1);

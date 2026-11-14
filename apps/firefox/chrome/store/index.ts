@@ -243,7 +243,13 @@ async function start(): Promise<RessacStore> {
   // The agent components' copies too.
   await IOUtils.remove(PathUtils.join(dataDir, "ressac-components"), { recursive: true, ignoreAbsent: true }).catch((e) => console.warn("[actions] copies not erfacées :", e));
   let setAside: string | null = null;
-  const store = createStore(await loadSession(dataDir, (p) => (setAside = p)).then((s) => (Services.env.get("RESSAC_SKIP_WELCOME") === "1" ? { ...s, settings: { ...s.settings, onboarded: true, seenVersion: s.settings.seenVersion ?? __RESSAC_VERSION__ } } : s)).then((s) => withEssentials(s)));
+  const store = createStore(await loadSession(dataDir, (p) => (setAside = p)).then((s) => {
+    const skip = Services.env.get("RESSAC_SKIP_WELCOME") === "1";
+    const aiOff = Services.env.get("RESSAC_TEST_AI") === "0";
+    // A test launch skips the welcome: AI on for a fresh profile unless the test asks for it off.
+    const aiEnabled = aiOff ? false : skip && !s.settings.onboarded ? true : s.settings.aiEnabled;
+    return skip ? { ...s, settings: { ...s.settings, onboarded: true, aiEnabled, seenVersion: s.settings.seenVersion ?? __RESSAC_VERSION__ } } : s;
+  }).then((s) => withEssentials(s)));
   const questions = new Questions(store, () => sites.forAgent(), () => apps.forAgent());
   // A site app or agent app window closed: the agent's questions on it fall.
   sites.onClosed(() => questions.dropStale());
