@@ -26,3 +26,6 @@ docs/superpowers
 # Packaging outputs
 apps/firefox/dist-host/
 apps/firefox/dist/
+
+# Maintainer-only Claude notes
+CLAUDE.local.md

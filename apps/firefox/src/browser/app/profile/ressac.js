@@ -17,8 +17,10 @@ pref("browser.shell.checkDefaultBrowser", false);
 pref("browser.aboutwelcome.enabled", false);
 pref("browser.startup.homepage_override.mstone", "ignore");
 pref("startup.homepage_welcome_url", "");
+pref("startup.homepage_welcome_url.additional", "");
+pref("startup.homepage_override_url", "");
 pref("datareporting.policy.dataSubmissionEnabled", false);
-// The branding template still points at another browser's site: no update page of ours yet.
+// The branding template points at another browser's site: blank its pages until Ressac has its own.
 pref("app.update.url.manual", "");
 pref("app.update.url.details", "");
 pref("browser.migrate.showBookmarksToolbarAfterMigration", false);

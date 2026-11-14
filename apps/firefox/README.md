@@ -12,7 +12,6 @@ Ressac rebuilt on stable Firefox. Built with [surfer](https://github.com/zen-bro
 
 ```sh
 pnpm --filter firefox-ressac engine:install   # downloads Firefox 159.0.1, moves it out of the repo, links it
-zsh apps/firefox/scripts/branding.sh           # placeholder icons (Firefox "unofficial" branding)
 cd apps/firefox && pnpm exec surfer set brand ressac
 pnpm engine:import                             # links src/ and applies the patches
 pnpm build                                     # full build (~20 min)
@@ -272,7 +271,7 @@ Limits:
 - A login profile that becomes private or is deleted does not re-ask at once: the accord is refused at the widget's next scheduled harvest (at the next read; no observer).
 - `display.html` is written by the agent: the CSP and the guard are deterrence, not proof.
 - One home page for every space: widgets, data and accords are not per space.
-- `ai.*` blocks run entirely in Ollama: Gemma (`gemma4:e4b-mlx`) writes, and the decision model `pplx-decider-flash` replaces Kev (same `/v1/systemone` request and answers; compared on the owner's real widgets: 90–100 % same keep/drop decisions, score correlation ~0.9). Gemma is `gemma4:e4b-mlx`, or `gemma4:e4b` when only that one is installed (`check()` reports `gemmaModel`; generation uses the detected one). Réglages › IA locale has a « Télécharger » button next to an absent model while Ollama answers: the host's `settings.pullModel` (`host/ollama-pull.ts`) accepts only `gemma4:e4b-mlx` and the chosen decision model, posts Ollama's `/api/pull`, and the page polls `settings.pullProgress` for the percentage (one pull at a time, no cancel: quitting stops it and Ollama resumes later). A missing model fails the block with `Kev a répondu 404`. `RESSAC_KEV_URL` still points the decisions at a Kev server instead (the e2e use it for their fake).
+- `ai.*` blocks run entirely in Ollama: Gemma (`gemma4:e4b-mlx`) writes, and the decision model `pplx-decider-flash` replaces Kev (same `/v1/systemone` request and answers; compared on real widgets: 90–100 % same keep/drop decisions, score correlation ~0.9). Gemma is `gemma4:e4b-mlx`, or `gemma4:e4b` when only that one is installed (`check()` reports `gemmaModel`; generation uses the detected one). Réglages › IA locale has a « Télécharger » button next to an absent model while Ollama answers: the host's `settings.pullModel` (`host/ollama-pull.ts`) accepts only `gemma4:e4b-mlx` and the chosen decision model, posts Ollama's `/api/pull`, and the page polls `settings.pullProgress` for the percentage (one pull at a time, no cancel: quitting stops it and Ollama resumes later). A missing model fails the block with `Kev a répondu 404`. `RESSAC_KEV_URL` still points the decisions at a Kev server instead (the e2e use it for their fake).
 
 ## Actions
 
@@ -479,7 +478,6 @@ Full build 20–23 min; `build:ui` after a UI change 17 s; adding the sidebar fi
 - The macOS 27 SDK breaks Mozilla's linker (unknown `arm64e.x1`): SDK 26.5 is forced (`configs/macos/mozconfig`, `scripts/env.sh`).
 - A truncated Firefox archive stays cached in `.surfer/engine/` after an interrupted download: delete it.
 - surfer declares a git fork of `is-apple-silicon`, which pnpm rejects: replaced by the registry version (`pnpm-workspace.yaml`).
-- The icons in `configs/branding/ressac/` are placeholders.
 
 ## Folders of pinned tabs, sending a tab to another space
 

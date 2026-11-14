@@ -454,6 +454,11 @@
             <button data-testid="open-advanced" onclick={() => s.openAdvanced()}>Réglages avancés du navigateur</button>
           </div>
         </div>
+        <h3>Crédits</h3>
+        <div class="panel" data-testid="settings-credits">
+          <p>Ressac est construit sur <b>Firefox</b> de Mozilla et partage sa licence, la MPL 2.0.</p>
+          <p class="muted">Il embarque Node.js et node-pty (licence MIT) et les polices Geist et Funnel Display (licence OFL). L'IA locale passe par Ollama (MIT), avec les modèles Gemma 4 de Google et pplx-decider-flash de Perplexity (Apache 2.0), téléchargés à la demande. Les agents utilisent Claude Code ou Codex avec votre propre compte. Les licences complètes sont dans l'application, dossier <code>Contents/Resources/ressac-host/LICENSES</code>.</p>
+        </div>
       </section>
     {/if}
   </div>
