@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { apply } from "../core/state/actions";
 import { initialState } from "../core/state/initial-state";
 import { loadSession, SessionRecorder } from "../core/state/persistence";
-import { isSignatureFailure, isStaleUpdate, showUpdateCard, updateCardTitle, updatePhase, updateStatusText } from "../core/update";
+import { isSignatureFailure, isStaleUpdate, showUpdateCard, updateCardTitle, updateDownloadUrl, updatePhase, updateStatusText } from "../core/update";
 import type { BrowserState, UpdateShown } from "../shared/model";
 
 let n = 0;
@@ -223,5 +223,13 @@ describe("installUpdates", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe("updateDownloadUrl", () => {
+  it("is the latest DMG in the feed's secret folder", () => {
+    expect(updateDownloadUrl("https://updates.getressac.app/updates/k3y/browser/%BUILD_TARGET%/%CHANNEL%/update.xml")).toBe(
+      "https://updates.getressac.app/updates/k3y/Ressac.dmg",
+    );
   });
 });

@@ -543,6 +543,8 @@ export interface SettingsApi {
   checkForUpdate(): void;
   /** Quits and reopens Ressac on the downloaded update. */
   restartToUpdate(): void;
+  /** Opens the latest DMG, next to the update feed this build reads. */
+  downloadUpdate(): void;
 }
 
 

@@ -50,6 +50,11 @@ else
   [[ $dsn =~ '^(https?)://([^@/[:space:]]+)@([^/[:space:]]+)/([0-9]+)$' ]] || fail "RESSAC_SENTRY_DSN is not a valid Sentry DSN"
   minidump_url="${match[1]}://${match[3]}/api/${match[4]}/minidump/?sentry_key=${match[2]}"
 fi
+# RESSAC_UPDATE_KEY names the feed's secret folder, updates.getressac.app/updates/<key>/ (scripts/publish.sh): a beta
+# DMG only goes to invited testers, so its feed and downloads are not at a path written in this public code.
+update_key=${RESSAC_UPDATE_KEY:-}
+[[ -z $update_key || $update_key =~ '^[a-z0-9]{24,64}$' ]] || fail "RESSAC_UPDATE_KEY must be 24 to 64 lowercase letters or digits"
+[[ -n $update_key ]] || print -ru2 -- "warning: RESSAC_UPDATE_KEY is empty, packaging without updates"
 step "Packaging Ressac $version"
 
 # 2. Build. RESSAC_PACKAGE=1 blanks the dev host paths in the store bundle; the DSN is baked in here.
@@ -124,6 +129,12 @@ else
   sed -i '' '/^\[Crash Reporter\]/,/^\[/s|^Enabled=.*|Enabled=0|' $res/application.ini
   crash_section | grep -qx 'Enabled=0' || fail "could not disable the crash reporter in application.ini"
 fi
+# The update feed, under the secret folder. Without a key the app keeps Firefox's path, which nothing publishes to.
+if [[ -n $update_key ]]; then
+  feed="https://updates.getressac.app/updates/$update_key/browser/%BUILD_TARGET%/%CHANNEL%/update.xml"
+  sed -i '' "/^\[AppUpdate\]/,/^\[/s|^URL=.*|URL=$feed|" $res/application.ini
+  sed -n '/^\[AppUpdate\]/,/^\[/p' $res/application.ini | grep -qxF "URL=$feed" || fail "could not set the update URL in application.ini"
+fi
 
 # 7. No path of this Mac may ship.
 step "Leak check"
@@ -162,8 +173,8 @@ mar_p12=$HOME/.config/ressac/mar-signing.p12
 # A stale update.xml from an earlier run must not outlive this one.
 rm -f $app_dir/dist/update.xml
 mar_pw=$(security find-generic-password -s ressac-mar-signing -w 2>/dev/null || true)
-if [[ ! -f $mar_p12 || -z $mar_pw ]]; then
-  print -ru2 -- "warning: no MAR key, packaging without an update archive"
+if [[ ! -f $mar_p12 || -z $mar_pw || -z $update_key ]]; then
+  print -ru2 -- "warning: no MAR key or no RESSAC_UPDATE_KEY, packaging without an update archive"
 else
   step "Update archive"
   # The key only lives in this throwaway NSS db, under $node_x, which cleanup deletes.
@@ -184,7 +195,7 @@ else
   # Checked against the public certificate the app ships, not the key.
   $objdist/bin/signmar -D $app_dir/src/toolkit/mozapps/update/updater/dep1.der -v $mar || { rm -f $mar; fail "the update archive's signature does not verify" }
   unset DYLD_LIBRARY_PATH
-  node scripts/update-xml.mjs $mar $res/application.ini $version > $app_dir/dist/update.xml
+  node scripts/update-xml.mjs $mar $res/application.ini $version $update_key > $app_dir/dist/update.xml
   print -r -- "$mar ($(( $(stat -f %z $mar) / 1048576 )) MB), $app_dir/dist/update.xml"
 fi
 

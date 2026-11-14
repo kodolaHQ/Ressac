@@ -16,7 +16,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "ui": "zsh scripts/ui.sh",
     "package": "zsh scripts/env.sh zsh scripts/package.sh",
-    "release:publish": "zsh scripts/env.sh zsh scripts/publish.sh"
+    "release:publish": "zsh scripts/env.sh zsh scripts/publish.sh",
+    "release:invite": "node scripts/invite-link.mjs"
   },
   "dependencies": {
     "@fluent/bundle": "0.19.1",
