@@ -13,8 +13,9 @@ export const RELAUNCH_ENV = ["XRE_PROFILE_PATH", "XRE_PROFILE_LOCAL_PATH", "RESS
 export const relaunchEnv = (): Record<string, string> => Object.fromEntries(RELAUNCH_ENV.map((k) => [k, Services.env.get(k)]).filter(([, v]) => v));
 
 /**
- * Reopens the app once this process has quit; the caller quits. Firefox's own restart (eRestart) cannot work here: on
- * macOS it relaunches through updater.app (nsCommandLineServiceMac.mm), which a build without the updater does not ship.
+ * Reopens the app once this process has quit; the caller quits. Kept over Firefox's own restart (eRestart, through
+ * updater.app on macOS): `open -n` carries RELAUNCH_ENV and behaves the same whether the build ships the updater or not
+ * (dev builds do not). A pending update is applied at that launch either way.
  */
 export function relaunchAfterQuit(env: Record<string, string> = {}): void {
   // Ressac.app/Contents/MacOS/ressac → Ressac.app

@@ -21,6 +21,7 @@
 <script lang="ts">
   import type { LocalAiStateShown, SettingsApi } from "../../shared/api";
   import { OLLAMA_ITSELF, TELEMETRY_NOTICE, type DockerStatus, type AgentAccount, type DecisionModel, type LoginResult, type PullProgress, type WorkshopOperation } from "../../shared/settings";
+  import { updateStatusText } from "../../core/update";
   import { api, appState } from "../state.svelte";
   import Icon from "./Icon.svelte";
   import SettingsMozilla from "./SettingsMozilla.svelte";
@@ -456,9 +457,7 @@
           </div>
           {#if update && update.phase !== "disabled"}
             <div class="row">
-              <span class="grow" data-testid="update-status"
-                >{#if update.phase === "idle"}À jour{:else if update.phase === "checking"}Recherche…{:else if update.phase === "downloading"}Téléchargement de {update.version}…{update.progress === null ? "" : ` ${update.progress} %`}{:else if update.phase === "ready"}{update.version} prête, installée au redémarrage{:else}La mise à jour a échoué{/if}</span
-              >
+              <span class="grow" data-testid="update-status" aria-live="polite">{updateStatusText(update)}</span>
               {#if update.phase === "idle"}
                 <button data-testid="update-check" onclick={() => s.checkForUpdate()}>Rechercher une mise à jour</button>
               {:else if update.phase === "ready"}

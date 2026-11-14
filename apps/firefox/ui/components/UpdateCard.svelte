@@ -1,6 +1,6 @@
 <script lang="ts">
   import { fade } from "svelte/transition";
-  import { showUpdateCard } from "../../core/update";
+  import { showUpdateCard, updateCardTitle } from "../../core/update";
   import { api, appState } from "../state.svelte";
 
   /** A downloaded update waits for a restart; « Plus tard » hides the card in every window until the next launch. */
@@ -9,7 +9,7 @@
 
 {#if showUpdateCard(update)}
   <aside class="card" data-testid="update-card" out:fade={{ duration: 150 }}>
-    <b>Ressac {update!.version} est prête</b>
+    <b>{updateCardTitle(update!.version)}</b>
     <p>Elle s'installe au redémarrage.</p>
     <div class="row">
       <button type="button" class="primary" data-testid="update-restart" onclick={() => api.settings.restartToUpdate()}>Redémarrer maintenant</button>

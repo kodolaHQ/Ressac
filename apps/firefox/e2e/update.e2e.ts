@@ -52,6 +52,13 @@ it("ready: the card in every window, « Plus tard » hides it everywhere; À pro
   });
 });
 
+it("ready without a known version: no number in the card or in À propos", async () => {
+  await launch({ RESSAC_TEST_UPDATE: "ready" });
+  await waitUi(m, `return doc.querySelector('[data-testid="update-card"] b')?.textContent.trim() === "Une mise à jour est prête"`);
+  await openAbout();
+  await waitUi(m, `return doc.querySelector('[data-testid="update-status"]')?.textContent.trim() === "Mise à jour prête, installée au redémarrage"`);
+});
+
 it("failed: no card, À propos offers the latest version's download", async () => {
   await launch({ RESSAC_TEST_UPDATE: "failed:" });
   await openAbout();
