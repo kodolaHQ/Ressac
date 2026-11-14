@@ -8,7 +8,7 @@ Please **do not open a public issue**. Report it privately through GitHub: the r
 
 <!-- TODO: add a contact email once chosen. -->
 
-Include what you can: the Ressac version (Réglages › À propos), steps to reproduce, and what an attacker gains. You will get an answer within a week. Ressac is a small project in beta: there is no bug bounty.
+Include what you can: the Ressac version (Réglages › À propos), steps to reproduce, and what an attacker gains. You will get an answer as fast as possible. Ressac is a small project in beta: there is no bug bounty.
 
 Bugs in Firefox itself (Gecko, SpiderMonkey, the network stack) belong to [Mozilla's security program](https://www.mozilla.org/security/), unless one of Ressac's patches causes them.
 
