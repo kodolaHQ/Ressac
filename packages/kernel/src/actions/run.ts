@@ -8,7 +8,7 @@ import { BUILTIN_COMPONENTS } from "../pages/catalog.js";
 import { readAgentComponents } from "../pages/agent-components.js";
 import { layOut } from "../pages/layout-page.js";
 import { grantValid, readGrants, removeGrant } from "../widgets/grants.js";
-import { originChain, markInterrupted } from "../widgets/harvest.js";
+import { originChain, markInterrupted, grantRequired } from "../widgets/harvest.js";
 import { message, truncate } from "../workflows/access.js";
 import {
   MAX_ERROR,
@@ -25,17 +25,18 @@ import type { Pacing } from "../workflows/pacing.js";
 import { withMemory, writeMemory, readMemory } from "../workflows/memory.js";
 import { startTooBig } from "../workflows/protocol.js";
 import { REPLAY_TOO_BIG, replayPlan } from "../workflows/replay.js";
+import { say } from "../i18n.js";
 import type { Owner } from "../workflows/schema.js";
 import { writeResult, deleteDataAction } from "./data.js";
 import { readAction, actionWorkflow } from "./read.js";
 import type { DeclarationAction } from "./schemas.js";
 
-export const ACTION_UNKNOWN = "Action inconnue";
-export const requiredInput = (label: string) => `Saisie requise : ${label}`;
+export const ACTION_UNKNOWN = (locale: string) => say(locale, "kernel-err-action-unknown");
+export const requiredInput = (locale: string, label: string) => say(locale, "kernel-err-input-required", { label });
 /** Same text as for a widget. */
-export const actionGrantRequired = (d: DeclarationAction) => `Accord requis pour lire avec ton compte : ${d.sources.account.join(", ")}`;
-export const ACTION_WITHOUT_WORKFLOW = "Cette action n'a pas de workflow.json";
-export const RESULT_TOO_BIG = "Résultats trop gros pour être gardés";
+export const actionGrantRequired = (d: DeclarationAction, locale: string) => grantRequired(d, locale);
+export const ACTION_WITHOUT_WORKFLOW = (locale: string) => say(locale, "kernel-err-action-no-workflow");
+export const RESULT_TOO_BIG = (locale: string) => say(locale, "kernel-err-result-too-big");
 /** Maximum length of the kept input (that of `Execution.saisie`). */
 export const INPUT_MAX = 200;
 
@@ -46,6 +47,8 @@ export type LaunchResult = { status: Execution["status"] | "invalid"; run?: stri
 export type TraceAction = DirectTrace & { type?: string };
 
 export interface OptionsAction {
+  /** The shown language, read when an error is written (default: English). */
+  locale?: () => string;
   id: string;
   paths: SpacePaths;
   /** Runs, results, memory and grants of actions, outside the workspace (`<profile>/actions`). */
@@ -103,12 +106,13 @@ async function validGrant(actionsFolder: string, id: string, d: DeclarationActio
 export async function runAction(o: OptionsAction): Promise<LaunchResult> {
   const { id, paths: paths, actionsFolder: actionsFolder } = o;
   const clock = o.clock ?? (() => new Date());
+  const loc = () => o.locale?.() ?? "en";
   const action = await readAction(paths, id);
-  if (!action) return denial(ACTION_UNKNOWN);
+  if (!action) return denial(ACTION_UNKNOWN(loc()));
   // The read error of action.json quotes its content (key names): it is not a fixed kernel text.
   if ("error" in action) return denial(action.error, false);
-  const wf = await actionWorkflow(action);
-  if (wf.t === "absent") return denial(ACTION_WITHOUT_WORKFLOW);
+  const wf = await actionWorkflow(action, loc());
+  if (wf.t === "absent") return denial(ACTION_WITHOUT_WORKFLOW(loc()));
   if (wf.t !== "ok") return denial(truncate(wf.error, MAX_ERROR), wf.t !== "unreadable");
   const { valid: valid } = wf;
   const { declaration } = action;
@@ -119,15 +123,15 @@ export async function runAction(o: OptionsAction): Promise<LaunchResult> {
   // A trial resumes the upstream outputs of a run: its input too, in the absence of a new one.
   const replay = o.attempt ? await originChain(dataFolder, o.attempt.origin) : null;
   const input = declaration.input ? cutInput(o.input ?? replay?.[0]?.input ?? null) : null;
-  if (declaration.input && input === null) return denial(requiredInput(declaration.input.label));
+  if (declaration.input && input === null) return denial(requiredInput(loc(), declaration.input.label));
 
   if (!(await validGrant(actionsFolder, id, declaration))) {
-    return { status: "grant-required", error: actionGrantRequired(declaration), kernelError: true };
+    return { status: "grant-required", error: actionGrantRequired(declaration, loc()), kernelError: true };
   }
 
   let plan: Extract<ReturnType<typeof replayPlan>, { ok: true }> | null = null;
   if (o.attempt && replay) {
-    const p = replayPlan(valid, replay[0], o.attempt.start, replay[1]);
+    const p = replayPlan(valid, replay[0], o.attempt.start, replay[1], loc());
     if (!p.ok) return denial(p.error);
     const { limitMs: limitMs } = runDelays(declaration.maxDurationMinutes);
     const workflow = { blocks: valid.workflow.blocks, links: valid.workflow.links, order: valid.order };
@@ -141,7 +145,7 @@ export async function runAction(o: OptionsAction): Promise<LaunchResult> {
       ...(input !== null ? { input: input } : {}),
       progress: true as const,
     };
-    if (startTooBig(start)) return denial(REPLAY_TOO_BIG);
+    if (startTooBig(start)) return denial(REPLAY_TOO_BIG(loc()));
     plan = p;
   }
 
@@ -155,7 +159,7 @@ export async function runAction(o: OptionsAction): Promise<LaunchResult> {
       await removeGrant(actionsFolder, id);
       await deleteDataAction(actionsFolder, id);
     },
-    grantRequiredMessage: actionGrantRequired(declaration),
+    grantRequiredMessage: actionGrantRequired(declaration, loc()),
   };
   const maxDurationMinutes = declaration.maxDurationMinutes;
   const { issue: outcome, run: execution } = await runWorkflow(
@@ -182,13 +186,14 @@ export async function runAction(o: OptionsAction): Promise<LaunchResult> {
       ai: o.ai,
       bridge: o.bridge,
       clock: clock,
+      ...(o.locale ? { locale: o.locale } : {}),
       onTrace: (t) => o.onTrace({ ...t, ...(blockTypes.has(t.block) ? { type: blockTypes.get(t.block)! } : {}) }),
       ...(o.localAddresses ? { localAddresses: true } : {}),
       ...(o.pacing ? { pacing: o.pacing } : {}),
       ...(o.searchUrl !== undefined ? { searchUrl: o.searchUrl } : {}),
     },
   );
-  if (outcome.t === "stop" && outcome.error === REPLAY_TOO_BIG) return denial(REPLAY_TOO_BIG);
+  if (outcome.t === "stop" && outcome.error === REPLAY_TOO_BIG(loc())) return denial(REPLAY_TOO_BIG(loc()));
   if (plan && o.attempt) {
     execution.id = attemptId(execution.start);
     execution.attempt = { start: o.attempt.start, origin: plan.origin };
@@ -200,7 +205,7 @@ export async function runAction(o: OptionsAction): Promise<LaunchResult> {
   let runWritten = false;
   let writtenResult = false;
   const keepRun = async () => {
-    await writeRun(dataFolder, execution);
+    await writeRun(dataFolder, execution, loc());
     runWritten = true;
   };
   /**
@@ -211,11 +216,11 @@ export async function runAction(o: OptionsAction): Promise<LaunchResult> {
   const lost = async (): Promise<LaunchResult | null> => {
     if (await removedGrant()) {
       await deleteDataAction(actionsFolder, id);
-      return { status: "grant-required", error: denialMessage(outcome, declaration), kernelError: true };
+      return { status: "grant-required", error: denialMessage(outcome, declaration, loc()), kernelError: true };
     }
     if (!(await present())) {
       await forgetThisRun(dataFolder, execution.id, { run: runWritten, result: writtenResult });
-      return denial(ACTION_UNKNOWN);
+      return denial(ACTION_UNKNOWN(loc()));
     }
     return null;
   };
@@ -230,7 +235,7 @@ export async function runAction(o: OptionsAction): Promise<LaunchResult> {
   });
 
   if (outcome.t !== "end") {
-    if (o.interrupted?.() === true && execution.status !== "grant-required") markInterrupted(execution);
+    if (o.interrupted?.() === true && execution.status !== "grant-required") markInterrupted(execution, loc());
     await keepRun();
     return (await lost()) ?? conclusion();
   }
@@ -244,6 +249,7 @@ export async function runAction(o: OptionsAction): Promise<LaunchResult> {
     catalog: catalog,
     ai: o.ai,
     signal: o.signal,
+    locale: loc(),
     ...(o.layoutDelayMs !== undefined ? { delayMs: o.layoutDelayMs } : {}),
   });
   const pending = await lost();
@@ -251,7 +257,7 @@ export async function runAction(o: OptionsAction): Promise<LaunchResult> {
   // Ressac stops during the layout: the run is interrupted, with no result or memory. (The user's « Stop »,
   // on the other hand, keeps the result with the fallback layout.)
   if (o.interrupted?.() === true) {
-    markInterrupted(execution);
+    markInterrupted(execution, loc());
     await keepRun();
     return (await lost()) ?? conclusion();
   }
@@ -264,7 +270,7 @@ export async function runAction(o: OptionsAction): Promise<LaunchResult> {
     // Too big (or disk): the run fails kernel-side, with no result.
     console.error(`[ressac] result of action ${id}:`, message(e));
     execution.status = "failed";
-    execution.error = RESULT_TOO_BIG;
+    execution.error = RESULT_TOO_BIG(loc());
     execution.kernelError = true;
     await keepRun();
     return (await lost()) ?? conclusion();
@@ -280,7 +286,7 @@ export async function runAction(o: OptionsAction): Promise<LaunchResult> {
       async () => (await removedGrant()) || !(await present()) || (await writeMemory(dataFolder, outcome.memory!)),
     );
     if (!kept) {
-      execution.blocks.find((b) => b.id === valid.output.id)?.log.push(MEMORY_NOT_KEPT);
+      execution.blocks.find((b) => b.id === valid.output.id)?.log.push(MEMORY_NOT_KEPT(loc()));
       await keepRun();
     }
   }
@@ -295,7 +301,7 @@ async function forgetThisRun(dataFolder: string, execution: string, written: { r
 }
 
 /** The message of an action waiting for a new grant: the engine's if it stopped for that (profile denied…). */
-function denialMessage(outcome: WorkflowOutcome, d: DeclarationAction): string {
-  return outcome.t === "stop" && outcome.status === "grant-required" ? outcome.error : actionGrantRequired(d);
+function denialMessage(outcome: WorkflowOutcome, d: DeclarationAction, locale: string): string {
+  return outcome.t === "stop" && outcome.status === "grant-required" ? outcome.error : actionGrantRequired(d, locale);
 }
 

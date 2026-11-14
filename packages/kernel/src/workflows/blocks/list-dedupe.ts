@@ -3,16 +3,16 @@ import type { BlockDefinition } from "./common.js";
 
 export const definition: BlockDefinition = {
   type: "list.dedupe",
-  label: "Dédoublonner",
+  label: "workflows-block-list-dedupe",
   family: "Listes",
-  description: "Retire les éléments qui ont la même valeur pour les clés données.",
+  description: "workflows-block-list-dedupe-desc",
   input: "required",
   fields: [
-    { name: "keys", label: "Clés", help: "Chemins des valeurs qui identifient un élément.", required: true, default: ["url"], kind: "texts" },
+    { name: "keys", label: "workflows-field-keys", help: "workflows-field-keys-help", required: true, default: ["url"], kind: "texts" },
   ],
   perItem: "no",
   chain: false,
   params: z
-    .object({ keys: z.array(z.string().regex(/^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*$/, "chemin de clé invalide")).min(1).max(10) })
+    .object({ keys: z.array(z.string().regex(/^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*$/, "workflows-val-key-path")).min(1).max(10) })
     .strict(),
 };

@@ -63,17 +63,18 @@ export async function readAction(c: SpacePaths, id: string): Promise<ReadAction 
 }
 
 /** What the action's declaration changes to the rules of its workflow. */
-export function actionValidationContext(d: DeclarationAction): ValidationContext {
-  return { web: d.sources.web, maxDurationMinutes: d.maxDurationMinutes ?? null, owner: "action", input: d.input !== undefined };
+export function actionValidationContext(d: DeclarationAction, locale = "en"): ValidationContext {
+  return { web: d.sources.web, maxDurationMinutes: d.maxDurationMinutes ?? null, owner: "action", input: d.input !== undefined, locale: locale };
 }
 
 /** An action's workflow: `workflow.json` only (no implicit workflow from a `harvest.mjs`). Nothing is run. */
 export async function actionWorkflow(
   a: ReadAction,
+  locale = "en",
 ): Promise<{ t: "ok"; valid: ValidWorkflow } | { t: "invalid" | "unreadable"; error: string } | { t: "absent" }> {
   if ("error" in a) return { t: "unreadable", error: a.error };
   if (!(await exists(join(a.folder, "workflow.json")))) return { t: "absent" };
-  const parsed = await readRawWorkflow(a.folder);
-  const r = "error" in parsed ? workflowError(parsed.error) : validateWorkflow(parsed.raw, actionValidationContext(a.declaration));
+  const parsed = await readRawWorkflow(a.folder, locale);
+  const r = "error" in parsed ? workflowError(locale, parsed.error) : validateWorkflow(parsed.raw, actionValidationContext(a.declaration, locale));
   return r.ok ? { t: "ok", valid: r.valid } : { t: "invalid", error: r.error };
 }

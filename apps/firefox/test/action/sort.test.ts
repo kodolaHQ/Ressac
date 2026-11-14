@@ -1,6 +1,6 @@
-import { ACTION_UNKNOWN as KERNEL_ACTION_UNKNOWN, NO_RESULT as KERNEL_NO_RESULT, FALLBACK_MENTION as KERNEL_FALLBACK_MENTION } from "@ressac/kernel";
+import { NO_RESULT as KERNEL_NO_RESULT, FALLBACK_MENTION as KERNEL_FALLBACK_MENTION } from "@ressac/kernel";
 import { expect, test } from "vitest";
-import { ACTION_UNKNOWN, NO_RESULT, FALLBACK_MENTION } from "../../shared/actions";
+import { NO_RESULT, FALLBACK_MENTION } from "../../shared/actions";
 import { sortLines } from "../../ui/action/sort";
 
 const lines = (...v: string[]) => v.map((x) => ({ c: x }));
@@ -32,6 +32,5 @@ test("does not modify the given list", () => {
 
 test("the page's messages are the kernel's", () => {
   expect(FALLBACK_MENTION).toBe(KERNEL_FALLBACK_MENTION);
-  expect(ACTION_UNKNOWN).toBe(KERNEL_ACTION_UNKNOWN);
   expect(NO_RESULT).toBe(KERNEL_NO_RESULT);
 });

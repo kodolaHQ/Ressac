@@ -1,5 +1,5 @@
 import { execFileSync, spawn } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir, homedir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -50,8 +50,9 @@ it("the compiled host runs alone and finds its kernel resources", { timeout: 30_
   } finally {
     child.kill("SIGKILL");
   }
-  const template = readdirSync(join(kernel, "templates"))[0]!;
-  expect(existsSync(join(root, template))).toBe(true);
+  // The space was created from the bundled templates (one folder per language).
+  expect(existsSync(join(kernel, "templates", "en", "AGENTS.md"))).toBe(true);
+  expect(existsSync(join(root, "AGENTS.md"))).toBe(true);
   const text = readFileSync(join(tmp, "host.mjs"), "utf8");
   expect(text).not.toContain(homedir());
   expect(text).not.toContain(join(app, ".."));

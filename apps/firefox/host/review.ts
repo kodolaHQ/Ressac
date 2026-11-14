@@ -27,21 +27,22 @@ import {
 } from "../../../packages/kernel/src/index.ts";
 import type { ExtensionResult, ReviewView } from "../shared/api.ts";
 import { RANGE_OUTSIDE_BLOCK } from "../shared/model.ts";
+import { hostSay } from "./locale.ts";
 
 /** Reason shown for a project the review does not know (demo, forgotten external project, vanished folder). */
-export const UNKNOWN_PROJECT = "projet inconnu";
+export const UNKNOWN_PROJECT = () => hostSay("host-review-unknown-project");
 /** Most lines one `lignes` call returns (the page asks for 20 at a time). */
 export const MAX_LINES = 200;
 /** Most comparisons kept per project (a page may show a comparison older than the latest). */
 export const KEPT_COMPARISONS = 8;
 /** A page asks for a comparison that is no longer kept (or never made). */
-export const UNKNOWN_COMPARISON = "Cette comparaison n'est plus gardée : Rafraîchis la relecture.";
+export const UNKNOWN_COMPARISON = () => hostSay("host-review-unknown-comparison");
 /** A comparison's token: its two trees (reviewed, current). */
 export const REVIEW_TOKEN = /^[0-9a-f]{40}:[0-9a-f]{40}$/;
 const tokenOf = (c: Comparison) => `${c.reviewedTree}:${c.currentTree}`;
 export { RANGE_OUTSIDE_BLOCK };
 /** "Send" with no unresolved comment. */
-export const NO_COMMENT = "Aucun commentaire à envoyer.";
+export const NO_COMMENT = () => hostSay("host-review-no-comment");
 
 /**
  * A comment's lines, read from the kept diff: those of a single block whose position (new number, that of the next
@@ -219,7 +220,7 @@ export class ReviewService {
     const project = await this.project(p);
     if (!project) {
       this.comparisons.delete(p);
-      return { state: "unavailable", name: p, reason: UNKNOWN_PROJECT };
+      return { state: "unavailable", name: p, reason: UNKNOWN_PROJECT() };
     }
     try {
       let g = token ? this.comparisons.get(p)?.find((x) => x.token === token) : undefined;
@@ -238,15 +239,15 @@ export class ReviewService {
     } catch (e) {
       if (e instanceof ReviewError) return { state: "unavailable", name: project.name, reason: e.reason };
       console.error(`[review] comparison of ${p}:`, e);
-      return { state: "unavailable", name: project.name, reason: "la comparaison a échoué" };
+      return { state: "unavailable", name: project.name, reason: hostSay("host-review-failed") };
     }
   }
 
   private guard(p: ProjectId, token: string, path: string) {
     const g = this.comparisons.get(p)?.find((x) => x.token === token);
-    if (!g) throw new Error(UNKNOWN_COMPARISON);
+    if (!g) throw new Error(UNKNOWN_COMPARISON());
     const f = g.comparison.files.find((x) => x.path === path);
-    if (!f) throw new Error("fichier absent de la relecture");
+    if (!f) throw new Error(hostSay("host-review-file-absent"));
     return { ...g, file: f };
   }
 
@@ -313,7 +314,7 @@ export class ReviewService {
   }
 
   private destination(s: TrackedProject | null): { destination: string | null; noDestination: string | null } {
-    if (!s) return { destination: null, noDestination: UNKNOWN_PROJECT };
+    if (!s) return { destination: null, noDestination: UNKNOWN_PROJECT() };
     const d = destinationOf(s, this.o.registry()?.clients() ?? []);
     return "label" in d ? { destination: d.label, noDestination: null } : { destination: null, noDestination: d.unavailable };
   }
@@ -354,7 +355,7 @@ export class ReviewService {
   async send(p: ProjectId): Promise<ExtensionResult> {
     try {
       const s = await this.tracking(p);
-      if (!s) return { ok: false, error: UNKNOWN_PROJECT };
+      if (!s) return { ok: false, error: UNKNOWN_PROJECT() };
       let destination: { destination: "agent" | "mcp"; client?: string } = { destination: "agent" };
       if (s.type === "externe") {
         const d = destinationOf(s, this.o.registry()?.clients() ?? []);
@@ -363,7 +364,7 @@ export class ReviewService {
       }
       const comments = this.commentsOf(p);
       const a = await comments.toSend();
-      if (a.length === 0) return { ok: false, error: NO_COMMENT };
+      if (a.length === 0) return { ok: false, error: NO_COMMENT() };
       const batch = await this.o.remarks.sendReview(
         p,
         a.map((c) => ({ text: c.text, context: { file: c.file, start: c.start, end: c.end, lines: c.lines } })),
@@ -385,7 +386,7 @@ export class ReviewService {
    */
   async reviewed(p: ProjectId, token: string): Promise<ReviewView> {
     const g = this.comparison(p, token);
-    if (!g) throw new Error(UNKNOWN_COMPARISON);
+    if (!g) throw new Error(UNKNOWN_COMPARISON());
     await g.repo.keep(g.comparison.currentTree);
     await this.commentsOf(p).afterReviewed();
     this.comparisons.delete(p);

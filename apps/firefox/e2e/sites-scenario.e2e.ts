@@ -25,7 +25,7 @@ const READER = "/lecteur.html";
 const CARD_TEXT = "the-bear · saison 2, épisode 4 — reprendre à 1:10";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-const AGENTS = readFileSync(path.join(__dirname, "..", "..", "..", "packages", "kernel", "templates", "AGENTS.md"), "utf8");
+const AGENTS = readFileSync(path.join(__dirname, "..", "..", "..", "packages", "kernel", "templates", "fr", "AGENTS.md"), "utf8");
 /** The first code block of AGENTS.md from `marker` on (the marker may be the block's opening itself). */
 const block = (marker: string): string => {
   const i = AGENTS.indexOf(marker);

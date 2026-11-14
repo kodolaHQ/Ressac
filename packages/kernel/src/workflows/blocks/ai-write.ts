@@ -3,15 +3,15 @@ import { FIELD_PER_ELEMENT, fieldsPerElementOnly, Template, ParamsPerElement, ty
 
 export const definition: BlockDefinition = {
   type: "ai.write",
-  label: "Rédiger avec Gemma",
+  label: "workflows-block-ai-write",
   family: "IA",
-  description: "Fait écrire un texte à Gemma à partir d'une consigne.",
+  description: "workflows-block-ai-write-desc",
   input: "perItem",
   fields: [
-    { name: "prompt", label: "Consigne", help: "Les {chemins} sont remplacés par les valeurs de l'élément.", required: true, default: "Résume : {text}", kind: "template" },
-    { name: "field", label: "Champ de la réponse", required: false, default: "text", kind: "text" },
-    { name: "json", label: "Réponse en JSON", required: false, default: false, kind: "checkbox" },
-    { name: "maxText", label: "Taille maximale du texte", required: false, default: 12_000, kind: "number", min: 1, max: 200_000, integer: true },
+    { name: "prompt", label: "workflows-field-prompt", help: "workflows-help-templates", required: true, default: "Résume : {text}", kind: "template" },
+    { name: "field", label: "workflows-field-answer-field", required: false, default: "text", kind: "text" },
+    { name: "json", label: "workflows-field-json", required: false, default: false, kind: "checkbox" },
+    { name: "maxText", label: "workflows-field-max-text", required: false, default: 12_000, kind: "number", min: 1, max: 200_000, integer: true },
     FIELD_PER_ELEMENT,
     ...fieldsPerElementOnly(),
   ],

@@ -5,12 +5,13 @@ import type { BrowserBridge } from "../mcp/bridge.js";
 import { WORKSHOP_STOPPED_ERROR, INTERRUPTED_ERROR } from "../widgets/harvest.js";
 import type { ProcessLauncher } from "../workflows/run.js";
 import { ACTION_STOPPED, type Execution } from "../workflows/executions.js";
+import { say } from "../i18n.js";
 import type { Pacing } from "../workflows/pacing.js";
 import { cutInput, runAction, type OptionsAction, type LaunchResult, type TraceAction } from "./run.js";
 
 /** Different actions running at the same time, at most. */
 export const CONCURRENT_ACTIONS = 2;
-export const INTERNAL_ACTION_ERROR = "Action impossible : erreur interne du navigateur";
+export const INTERNAL_ACTION_ERROR = (locale: string) => say(locale, "kernel-err-action-internal");
 const STOP_WAIT_MS = 15_000;
 
 /** A running action, from its traces: what its page shows during the run. */
@@ -29,6 +30,8 @@ export type ActionLaunch = { already: boolean; end: Promise<LaunchResult> };
 export type { LaunchResult };
 
 export interface OptionsFileActions {
+  /** The shown language, read when an error is written (default: English). */
+  locale?: () => string;
   paths: SpacePaths;
   actionsFolder: string;
   engine: string;
@@ -147,9 +150,13 @@ export class FileActions {
     return { already: false, end: d.end };
   }
 
+  private locale(): string {
+    return this.o.locale?.() ?? "en";
+  }
+
   /** Stopped before running: nothing is written. */
   private stopped(): LaunchResult {
-    return { status: "interrupted", error: this.isStopped ? INTERRUPTED_ERROR : ACTION_STOPPED, kernelError: true };
+    return { status: "interrupted", error: this.isStopped ? INTERRUPTED_ERROR(this.locale()) : ACTION_STOPPED(this.locale()), kernelError: true };
   }
 
   private async unroll(d: Request): Promise<LaunchResult> {
@@ -165,7 +172,7 @@ export class FileActions {
     } catch (e) {
       // The exception text may quote what the action read: only a fixed kernel message is returned.
       console.error(`[ressac] action ${d.id} :`, e);
-      return { status: "failed", error: INTERNAL_ACTION_ERROR, kernelError: true };
+      return { status: "failed", error: INTERNAL_ACTION_ERROR(this.locale()), kernelError: true };
     }
   }
 
@@ -202,7 +209,7 @@ export class FileActions {
     d.direct = tracking;
     this.signalDirect();
     if ((await this.o.workshop.state().catch(() => "absent")) !== "demarre") {
-      return { status: "failed", error: WORKSHOP_STOPPED_ERROR, kernelError: true };
+      return { status: "failed", error: WORKSHOP_STOPPED_ERROR(this.locale()), kernelError: true };
     }
     const onTrace = (t: TraceAction) => {
       if (d.direct !== tracking) return;
@@ -230,6 +237,7 @@ export class FileActions {
         workshop: this.o.workshop,
         ...(this.o.launch ? { launch: this.o.launch } : {}),
         bridge: this.o.bridge,
+        ...(this.o.locale ? { locale: this.o.locale } : {}),
         ai: ai,
         clock: this.o.clock,
         input: d.input,

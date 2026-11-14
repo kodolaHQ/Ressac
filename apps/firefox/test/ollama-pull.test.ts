@@ -28,7 +28,7 @@ const events = (url: string, name: string) => {
 describe("pullOllamaModel", () => {
   it("refuses a name outside the allowlist without any request", async () => {
     const o = await fake((_b, res) => res.end());
-    await expect(pullOllamaModel(o.url, "llama3", () => {})).rejects.toThrow(UNSUPPORTED_MODEL);
+    await expect(pullOllamaModel(o.url, "llama3", () => {})).rejects.toThrow(UNSUPPORTED_MODEL());
     expect(o.requests).toEqual([]);
   });
 

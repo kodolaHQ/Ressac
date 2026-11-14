@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "blocks": [
+    {
+      "id": "ville",
+      "type": "code",
+      "name": "The city set",
+      "position": { "x": 0, "y": 0 },
+      "params": { "source": "ville.mjs" }
+    },
+    {
+      "id": "geo",
+      "type": "source.fetch",
+      "name": "Find the city",
+      "position": { "x": 260, "y": 0 },
+      "params": {
+        "url": "https://geocoding-api.open-meteo.com/v1/search?name={ville}&count=1&language=en",
+        "format": "json"
+      }
+    },
+    {
+      "id": "prevision",
+      "type": "code",
+      "name": "Forecast hour by hour and day by day",
+      "position": { "x": 520, "y": 0 },
+      "params": { "source": "prevision.mjs" }
+    },
+    {
+      "id": "sortie",
+      "type": "output",
+      "position": { "x": 780, "y": 0 },
+      "params": { "to": "widget" }
+    }
+  ],
+  "links": [
+    { "from": "ville", "to": "geo" },
+    { "from": "geo", "to": "prevision" },
+    { "from": "prevision", "to": "sortie" }
+  ]
+}

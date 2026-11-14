@@ -2,6 +2,7 @@ import type { Kernel, TabInfo } from "../../../packages/kernel/src/index.ts";
 import type { FrameBounds } from "../shared/model.ts";
 import type { ClaudeEngine, CodexEngine, DockerStatus, OllamaStatus } from "../shared/settings.ts";
 import type { BuilderSelection, TerminalSize } from "../shared/api.ts";
+import { hostLocale, hostSay, setHostLocale } from "./locale.ts";
 
 // The agent host: Firefox spawns it and talks JSON-RPC over stdin/stdout, one JSON message per line.
 // stdout carries only the RPC: anything else written there would corrupt it, so it goes to stderr.
@@ -21,7 +22,7 @@ const { createInterface } = await import("node:readline");
 const { appendFileSync } = await import("node:fs");
 const { stat } = await import("node:fs/promises");
 // Imported after the env is set and stdout redirected: nothing in the kernel can write to stdout at load time.
-const { ACTION_UNKNOWN, Workshop, blockCatalog, loadProfiles, spacePaths, createKernel, defaultRunner, LocalAi, readHome, readFreeLayout, readTheme, Pacing, contextPrefix, removeGrant, deleteData, watchActions, createRecaps, ID_RECAP } = await import("../../../packages/kernel/src/index.ts");
+const { ACTION_UNKNOWN, Workshop, blockCatalog, loadProfiles, spacePaths, createKernel, createRunner, LocalAi, readHome, readFreeLayout, readTheme, Pacing, contextPrefix, removeGrant, deleteData, watchActions, createRecaps, ID_RECAP } = await import("../../../packages/kernel/src/index.ts");
 const { SessionsAgent } = await import("../core/agent/sessions.ts");
 const { History } = await import("../core/history.ts");
 const { createRpc } = await import("../shared/rpc.ts");
@@ -102,9 +103,9 @@ const purge = setInterval(() => hist?.purge(), 6 * 60 * 60 * 1000);
 purge.unref();
 const duckduckgo = process.env.RESSAC_TEST_DUCKDUCKGO_URL;
 // Shown when the widgets service has no kernel.
-const AGENT_STOPPED_MESSAGE = "Le service des widgets ne répond pas (agent arrêté ?)";
+const AGENT_STOPPED_MESSAGE = () => hostSay("host-widgets-no-kernel");
 // The answer to a bad builder argument.
-const INVALID_ARGUMENT = { ok: false as const, error: "Argument invalide" };
+const INVALID_ARGUMENT = () => ({ ok: false as const, error: hostSay("host-invalid-argument") });
 // The workflow builder: the block selected in each window, the workflow page each window shows (chrome's mirror).
 const selections = new Map<string, BuilderSelection>();
 let actives = new Map<string, string>();
@@ -122,7 +123,7 @@ const recapsFolder = join(dataDir, "recaps");
 const recaps = createRecaps({ folder: recapsFolder });
 const idRecap = (v: unknown): v is string => typeof v === "string" && ID_RECAP.test(v);
 // One container for the agent (whatever its profile) and the apps it launches: the kernel's own default (kernel.ts:389).
-const workshop = new Workshop({ paths: paths });
+const workshop = new Workshop({ paths: paths, locale: () => hostLocale() });
 
 let kernel: Kernel | null = null;
 let error: string | null = null;
@@ -150,7 +151,7 @@ const broadcastAccess = () => {
 
 // The local AI for harvests: Gemma and the decision model both run in Ollama (same
 // /v1/systemone answers). Nothing is installed here: a missing model fails with Ollama's answer.
-const ai = new LocalAi({ folder: join(dataDir, "local-ai"), run: defaultRunner, decisionModel: "pplx-decider-flash" });
+const ai = new LocalAi({ folder: join(dataDir, "local-ai"), run: createRunner(() => hostLocale()), decisionModel: "pplx-decider-flash", locale: () => hostLocale() });
 
 // The host is Node and cannot call Cc: in tests it writes the file, otherwise the chrome store shows the alert.
 // Another address imposed (a remote Ollama, a test): Ressac then starts and installs nothing.
@@ -179,6 +180,7 @@ const launchKernel = (profileId: string): Promise<Kernel | null> => {
   return createKernel({
     bridge: bridge,
     profileId: profileId,
+    locale: () => hostLocale(),
     root: root,
     widgetsFolder: widgetsFolder,
     actionsFolder: actionsFolder,
@@ -240,7 +242,7 @@ const stopKernel = async (n: Kernel | null) => {
 
 const start = async () => {
   const n = await ready;
-  if (!n) throw new Error(error ?? "le noyau de l'agent n'a pas démarré");
+  if (!n) throw new Error(error ?? hostSay("host-kernel-not-started"));
   return { agent: n.agent };
 };
 
@@ -259,6 +261,7 @@ let kernelLaunched = false;
 // Codex's and Claude's engines (Settings › Agents) and the relay that adds each one's compatible API key, which stays on the Mac.
 let engine = DEFAULT_CODEX_ENGINE;
 let claudeEngine = DEFAULT_CLAUDE_ENGINE;
+let relocalized = 0;
 const keys = { codex: keychain(), claude: keychain(CLAUDE_KEY) };
 const cachedKeys: { codex?: string; claude?: string } = {};
 // Called after a key is written or removed (Settings › Agents).
@@ -299,7 +302,7 @@ const sessions = new SessionsAgent({
   defaultProfile: () => defaultProfile,
   async open(f, t, { profile, resume, onBuildProgress }) {
     const n = await ready;
-    if (!n) throw new Error(error ?? "le noyau de l'agent n'a pas démarré");
+    if (!n) throw new Error(error ?? hostSay("host-kernel-not-started"));
     // A container app Ressac is starting (or can start): the panel stays on « Préparation » until Docker answers.
     await docker.start().catch(() => {});
     if (profile !== "codex" && profile !== "claude") return n.openAgentSession({ ...t, window: f, profile, resume, onBuildProgress });
@@ -330,8 +333,9 @@ const rpc = createRpc({
   send: (line) => void writeStdout(line + "\n"),
   handlers: {
     // Sets the default profile; the kernel starts once (its sessions stay), a failed start is retried.
-    start: async (p: { agentProfile: string }) => {
+    start: async (p: { agentProfile: string; locale?: string }) => {
       defaultProfile = p.agentProfile;
+      if (typeof p.locale === "string") setHostLocale(p.locale);
       if (!kernelLaunched || !(await ready)) {
         kernelLaunched = true;
         ready = ready.then(stopKernel).then(() => launchKernel(p.agentProfile));
@@ -348,6 +352,13 @@ const rpc = createRpc({
     "agent.codexEngine": (p: { engine: unknown }) => {
       const r = CodexEngineSchema.safeParse(p?.engine);
       if (r.success) engine = r.data;
+    },
+    "settings.locale": (p: { locale: unknown }) => {
+      if (typeof p?.locale !== "string" || p.locale === hostLocale()) return;
+      setHostLocale(p.locale);
+      relocalized++;
+      // `ready` also covers a kernel being created or restarted: the change is applied once it is up.
+      void ready.then((n) => n?.relocalize()).catch((e) => console.error("[ressac] relocalize failed:", e));
     },
     "agent.claudeEngine": (p: { engine: unknown }) => {
       const r = ClaudeEngineSchema.safeParse(p?.engine);
@@ -411,7 +422,7 @@ const rpc = createRpc({
     },
     "home.grant": async (p: { id: string; profile: string; account: string[]; public: string[] }) => {
       const n = await ready;
-      if (!n) return { ok: false as const, error: AGENT_STOPPED_MESSAGE };
+      if (!n) return { ok: false as const, error: AGENT_STOPPED_MESSAGE() };
       try {
         // The kernel refuses if the declaration is no longer the one the card showed.
         await n.grant(p);
@@ -439,7 +450,7 @@ const rpc = createRpc({
       executionWidget(widgetsFolder, typeof p?.id === "string" ? p.id : "", typeof p?.run === "string" ? p.run : ""),
     // The workflow builder: inputs checked with the shared
     // schemas, a bad one answered with INVALID_ARGUMENT's shape. The private-space refusal of an action is the chrome's (api.ts).
-    "workflow.catalog": () => blockCatalog(),
+    "workflow.catalog": () => blockCatalog(hostLocale()),
     "workflow.read": (p: { target?: unknown }) => {
       const target = TargetSchema.safeParse(p?.target);
       if (!target.success) return null;
@@ -448,7 +459,7 @@ const rpc = createRpc({
     "workflow.save": (p: { target?: unknown; draft?: unknown }) => {
       const target = TargetSchema.safeParse(p?.target);
       const draft = DraftSchema.safeParse(p?.draft);
-      if (!target.success || !draft.success) return { ...INVALID_ARGUMENT, warnings: [] };
+      if (!target.success || !draft.success) return { ...INVALID_ARGUMENT(), warnings: [] };
       const id = target.data.id;
       if (target.data.type === "action") return writes.inSeries(`action:${id}`, () => saveActionEdit(actionsContext, id, draft.data));
       return writes.inSeries(id, () => saveEdit(widgetsContext, id, draft.data));
@@ -456,14 +467,14 @@ const rpc = createRpc({
     "workflow.readCode": (p: { target?: unknown; name?: unknown }) => {
       const target = TargetSchema.safeParse(p?.target);
       const name = NameCodeSchema.safeParse(p?.name);
-      if (!target.success || !name.success) return { error: INVALID_ARGUMENT.error };
+      if (!target.success || !name.success) return { error: INVALID_ARGUMENT().error };
       return target.data.type === "widget" ? readCode(paths, target.data.id, name.data) : readActionCode(paths, target.data.id, name.data);
     },
     "workflow.saveCode": (p: { target?: unknown; name?: unknown; text?: unknown }) => {
       const target = TargetSchema.safeParse(p?.target);
       const name = NameCodeSchema.safeParse(p?.name);
       const text = SchemaCodeWorkflow.safeParse(p?.text);
-      if (!target.success || !name.success || !text.success) return INVALID_ARGUMENT;
+      if (!target.success || !name.success || !text.success) return INVALID_ARGUMENT();
       const id = target.data.id;
       if (target.data.type === "action") return writes.inSeries(`action:${id}`, () => saveActionCode(paths, id, name.data, text.data));
       return writes.inSeries(id, () => saveCode(paths, id, name.data, text.data));
@@ -472,9 +483,9 @@ const rpc = createRpc({
       const target = TargetSchema.safeParse(p?.target);
       const execution = SchemaIdExecution.safeParse(p?.run);
       const block = WorkflowBlockSchema.safeParse(p?.block);
-      if (!target.success || !execution.success || !block.success) return INVALID_ARGUMENT;
+      if (!target.success || !execution.success || !block.success) return INVALID_ARGUMENT();
       const n = await ready;
-      if (!n) return { ok: false as const, error: AGENT_STOPPED_MESSAGE };
+      if (!n) return { ok: false as const, error: AGENT_STOPPED_MESSAGE() };
       if (target.data.type === "widget") return n.replay(target.data.id, execution.data, block.data);
       // A trial: its result shows in the builder's preview, never as the last result.
       const l = n.actions.replay(target.data.id, execution.data, block.data);
@@ -522,12 +533,12 @@ const rpc = createRpc({
     // schemas; a bad one gets an empty answer.
     "actions.list": () => actions.list(),
     "actions.prepare": (p: { id?: unknown; input?: unknown }) =>
-      idAction(p?.id) && ActionInputSchema.safeParse(p.input ?? null).success ? actions.prepare(p.id, (p.input ?? null) as string | null) : { ok: false, error: ACTION_UNKNOWN },
+      idAction(p?.id) && ActionInputSchema.safeParse(p.input ?? null).success ? actions.prepare(p.id, (p.input ?? null) as string | null) : { ok: false, error: ACTION_UNKNOWN(hostLocale()) },
     "actions.name": (p: { id?: unknown }) => (idAction(p?.id) ? actions.name(p.id) : null),
     "actions.launch": (p: { id?: unknown; input?: unknown }) =>
       idAction(p?.id) && ActionInputSchema.safeParse(p.input ?? null).success
         ? actions.launch(p.id, (p.input ?? null) as string | null)
-        : { status: "invalid", error: "Demande invalide" },
+        : { status: "invalid", error: hostSay("host-invalid-request") },
     "actions.stop": (p: { id?: unknown }) => void (idAction(p?.id) && actions.stop(p.id)),
     "actions.page": (p: { id?: unknown; run?: unknown }) =>
       idAction(p?.id) && (p.run === null || executionAction(p.run)) ? actions.page(p.id, p.run) : null,
@@ -545,10 +556,10 @@ const rpc = createRpc({
     "recaps.closed": (p: { id?: unknown }) => (idRecap(p?.id) ? recaps.remove(p.id) : undefined),
     "actions.grant": (p: unknown) => {
       const r = GrantSchema.safeParse(p);
-      return r.success && idAction(r.data.id) ? actions.grant(r.data) : { ok: false, error: "Demande d'accord invalide" };
+      return r.success && idAction(r.data.id) ? actions.grant(r.data) : { ok: false, error: hostSay("host-invalid-grant-request") };
     },
     "actions.denyGrant": (p: { id?: unknown }) => (idAction(p?.id) ? actions.denyGrant(p.id) : undefined),
-    "actions.delete": (p: { id?: unknown }) => (idAction(p?.id) ? actions.delete(p.id) : { ok: false, error: "Demande invalide" }),
+    "actions.delete": (p: { id?: unknown }) => (idAction(p?.id) ? actions.delete(p.id) : { ok: false, error: hostSay("host-invalid-request") }),
     // Site apps (the window is the chrome's). A bad action is ignored.
     // The open apps are known again: the Applications page reads them (it read « fermée » while the host was down).
     "sites.ready": () => sites.resync().then(() => rpc.notify("sites.change")),
@@ -648,7 +659,7 @@ const rpc = createRpc({
     "extensions.toggle": (p: { key?: unknown; spaceId?: unknown; active?: unknown; window?: unknown }) =>
       typeof p?.key === "string" && typeof p.spaceId === "string"
         ? extensions.toggle(p.key, p.spaceId, p.active === true, typeof p.window === "string" ? p.window : null)
-        : { ok: false, error: "Paramètres invalides" },
+        : { ok: false, error: hostSay("host-invalid-params") },
     // The Extensions page (the agent's extensions only, decision 8).
     "extensions.list": () => extensions.entries(),
     "extensions.allCut": () => extensions.cut(),
@@ -674,7 +685,7 @@ const rpc = createRpc({
     // The settings page (host/settings.ts): `settings` is made after `sites` and `actions`, below.
     ...Object.fromEntries(SETTINGS_METHODS.map((k) => [k, (p: unknown) => settings[k]!(p)])),
     ...Object.fromEntries(DESIGN_METHODS.map((k) => [k, (p: unknown) => design.handlers[k]!(p)])),
-    ...(process.env.RESSAC_HOST_TEST === "1" ? { "debug.log": (p: { text: string }) => console.log(p.text) } : {}),
+    ...(process.env.RESSAC_HOST_TEST === "1" ? { "debug.locale": () => ({ locale: hostLocale(), relocalized }), "debug.log": (p: { text: string }) => console.log(p.text) } : {}),
   },
 });
 // Errors go to Firefox, which reports them (chrome/store/telemetry.ts), on top of the stderr log.
@@ -692,7 +703,7 @@ process.on("uncaughtException", (e) => {
 const bridge = new RemoteBridge(rpc, hist, (site, url) => sites.urlAllowed(site, url));
 const testPacing = new Pacing();
 /** A page request on one extension key: a malformed one is refused as text. */
-const byKey = <T,>(p: { key?: unknown } | undefined, f: (key: string) => T) => (typeof p?.key === "string" ? f(p.key) : { ok: false as const, error: "Paramètres invalides" });
+const byKey = <T,>(p: { key?: unknown } | undefined, f: (key: string) => T) => (typeof p?.key === "string" ? f(p.key) : { ok: false as const, error: hostSay("host-invalid-params") });
 // Outside the agent's kernel, like the history: granted extensions run even when the kernel does not start.
 const extensions = new ExtensionsAgent({ folder: join(dataDir, "extensions"), agentFolder: paths.extensions, rpc });
 // Site apps: the Node side (list, memory, deletion); the windows are the chrome's, asked through the RPC.
@@ -739,6 +750,7 @@ const sites = createSites({
 });
 // The agent's applications: the gestionnaire, the Docker probe, the memory; the windows are the chrome's.
 const apps = createApplicationsHost({
+  locale: () => hostLocale(),
   paths: paths,
   dataDir,
   workshop: workshop,

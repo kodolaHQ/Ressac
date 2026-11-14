@@ -4,7 +4,8 @@ import { join } from "node:path";
 import { validFolder } from "../applications/manifest.js";
 import { CONTAINER_PATH, KERNEL_ROOT, type SpacePaths } from "../paths.js";
 import type { Owner } from "../workflows/schema.js";
-import { defaultRunner, type RunResult, type Runner } from "./runner.js";
+import { say } from "../i18n.js";
+import { createRunner, type RunResult, type Runner } from "./runner.js";
 
 export const CONTAINER_NAME = "ressac-workshop";
 // Read on every call so a second app (Firefox build) can run its own container.
@@ -45,14 +46,14 @@ export interface BuildProgress {
 }
 
 /** What a BuildKit plain-progress line says (`#5 [2/3] RUN apt-get …`), or null for any other line. */
-export function parseBuildStep(line: string): Pick<BuildProgress, "step" | "of" | "label"> | null {
+export function parseBuildStep(line: string, locale: string): Pick<BuildProgress, "step" | "of" | "label"> | null {
   const m = /^#\d+ \[(?:[\w-]+ )?(\d+)\/(\d+)\] (FROM|RUN) (.*)$/.exec(line.trim());
   if (!m) return null;
   const label =
-    m[3] === "FROM" ? "Téléchargement de l'image de base"
-    : m[4]!.includes("apt-get") ? "Outils système"
-    : m[4]!.includes("claude-code") ? "Installation de Claude Code et Codex"
-    : "Préparation";
+    m[3] === "FROM" ? say(locale, "kernel-build-base-image")
+    : m[4]!.includes("apt-get") ? say(locale, "kernel-build-system-tools")
+    : m[4]!.includes("claude-code") ? say(locale, "kernel-build-claude-codex")
+    : say(locale, "kernel-build-preparing");
   return { step: Number(m[1]), of: Number(m[2]), label };
 }
 
@@ -170,6 +171,7 @@ export class Workshop {
     return (this.found ??= this.lookup());
   }
   private readonly dockerFolder: string;
+  private readonly locale: () => string;
   /** Startup in progress, shared: two windows opening an agent do not build the image twice. */
   private startup: Promise<WorkshopState> | null = null;
   /** Rebuild in progress, shared: two rebuilds at once build once. */
@@ -178,10 +180,11 @@ export class Workshop {
   private progress: BuildProgress | null = null;
   private readonly listeners = new Set<(p: BuildProgress) => void>();
 
-  constructor(o: { paths: SpacePaths; run?: Runner; docker?: string | null; findDocker?: () => string | null; dockerFolder?: string }) {
+  constructor(o: { paths: SpacePaths; run?: Runner; docker?: string | null; findDocker?: () => string | null; dockerFolder?: string; locale?: () => string }) {
+    this.locale = o.locale ?? (() => "en");
     this.dockerFolder = o.dockerFolder ?? DEFAULT_DOCKER_FOLDER;
     this.paths = o.paths;
-    this.run = o.run ?? defaultRunner;
+    this.run = o.run ?? createRunner(this.locale);
     this.lookup = o.docker === undefined ? (o.findDocker ?? findDocker) : () => o.docker ?? null;
   }
 
@@ -204,7 +207,7 @@ export class Workshop {
       const lines = (pending + chunk).split("\n");
       pending = lines.pop()!;
       for (const line of lines) {
-        const step = parseBuildStep(line);
+        const step = parseBuildStep(line, this.locale());
         if (!step) continue;
         this.progress = { ...step, since };
         for (const l of this.listeners) l(this.progress);
@@ -306,7 +309,7 @@ export class Workshop {
     if (run.code !== 0) {
       // A failed run (port already taken…) can leave the container created without network: the next start must not reuse it.
       await this.launch(["rm", "-f", containerName()], PROBE_DELAY_MS);
-      throw new Error(`Démarrage du conteneur ${containerName()} impossible : ${run.stderr}`);
+      throw new Error(say(this.locale(), "kernel-container-start-failed", { name: containerName(), error: run.stderr }));
     }
     return this.state();
   }

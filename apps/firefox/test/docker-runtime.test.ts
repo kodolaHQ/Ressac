@@ -34,7 +34,7 @@ describe("the Docker runtime", () => {
   });
 
   it("start fails when no app is installed, or when the daemon never answers", async () => {
-    await expect(machine({}).runtime.start()).rejects.toThrow(DOCKER_NOT_STARTED);
-    await expect(machine({ paths: [ORB], startsAfterOpen: false }).runtime.start()).rejects.toThrow(DOCKER_NOT_STARTED);
+    await expect(machine({}).runtime.start()).rejects.toThrow(DOCKER_NOT_STARTED());
+    await expect(machine({ paths: [ORB], startsAfterOpen: false }).runtime.start()).rejects.toThrow(DOCKER_NOT_STARTED());
   });
 });

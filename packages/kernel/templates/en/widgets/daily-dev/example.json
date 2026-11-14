@@ -1,0 +1,24 @@
+{
+  "articles": [
+    {
+      "title": "Building a reliable coding agent with TypeScript",
+      "url": "https://app.daily.dev/posts/example-1",
+      "source": "app.daily.dev",
+      "score": 0.91,
+      "summary": "The article details an agent loop with typed tools, retries on error and an action log."
+    },
+    {
+      "title": "Why local AI changes app privacy",
+      "url": "https://app.daily.dev/posts/example-2",
+      "source": "app.daily.dev",
+      "score": 0.85,
+      "summary": "Running the model on the machine avoids sending data to a third-party service."
+    },
+    {
+      "title": "Svelte and reactive components without magic",
+      "url": "https://app.daily.dev/posts/example-3",
+      "source": "app.daily.dev",
+      "score": 0.77
+    }
+  ]
+}

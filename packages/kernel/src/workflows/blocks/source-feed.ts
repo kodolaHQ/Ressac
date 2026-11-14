@@ -3,13 +3,13 @@ import type { BlockDefinition } from "./common.js";
 
 export const definition: BlockDefinition = {
   type: "source.feed",
-  label: "Lire des flux RSS",
+  label: "workflows-block-source-feed",
   family: "Sources",
-  description: "Lit des flux RSS ou Atom et donne leurs articles.",
+  description: "workflows-block-source-feed-desc",
   input: "optional",
   fields: [
-    { name: "urls", label: "Adresses des flux", required: true, kind: "texts" },
-    { name: "onError", label: "En cas d'erreur", required: false, default: "skip", kind: "choice", choices: ["skip", "fail"] },
+    { name: "urls", label: "workflows-field-feed-urls", required: true, kind: "texts" },
+    { name: "onError", label: "workflows-field-on-error", required: false, default: "skip", kind: "choice", choices: ["skip", "fail"] },
   ],
   perItem: "no",
   chain: false,

@@ -28,6 +28,8 @@ export type FormField = {
   required: boolean;
   /** Schema default value; for a required field, a neutral value that pre-fills a new block. */
   default?: unknown;
+  /** Message id of a default that follows the shown language (replaces `default` in the catalog). */
+  defaultText?: string;
   kind: "text" | "template" | "number" | "checkbox" | "choice" | "texts";
   choices?: string[];
   min?: number;
@@ -43,7 +45,7 @@ export const ParamsPerElement = {
   onError: z.enum(["skip", "fail"]).default("skip"),
   // 170 s at most without a maximum duration of the widget, its duration otherwise: the per-widget bound is in validateWorkflow.
   budgetSeconds: z.number().int().min(1).max(3600).optional(),
-  reuse: z.string().regex(/^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*$/, "chemin de clé invalide").optional(),
+  reuse: z.string().regex(/^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*$/, "workflows-val-key-path").optional(),
   /** Lifetime of a reused result; without a value, forever. Only with `reuse` (validateWorkflow). */
   keepDays: z.number().int().min(1).max(365).optional(),
 };
@@ -54,8 +56,8 @@ export const Template = z.string().min(1).max(20_000);
 /** The `perItem` field and the fields that only make sense when it is true. */
 export const FIELD_PER_ELEMENT: FormField = {
   name: "perItem",
-  label: "Un élément à la fois",
-  help: "Applique le bloc à chaque élément de la liste reçue.",
+  label: "workflows-field-per-item",
+  help: "workflows-field-per-item-help",
   required: false,
   default: false,
   kind: "checkbox",
@@ -63,9 +65,9 @@ export const FIELD_PER_ELEMENT: FormField = {
 
 export function fieldsPerElementOnly(): FormField[] {
   return [
-    { name: "onError", label: "En cas d'erreur", required: false, default: "skip", kind: "choice", choices: ["skip", "fail"], perItemOnly: true },
-    { name: "budgetSeconds", label: "Durée maximale (secondes)", help: "170 s au plus, ou la durée maximale de l'exécution", required: false, kind: "number", min: 1, max: 3600, integer: true, perItemOnly: true },
-    { name: "reuse", label: "Réutiliser un résultat précédent", help: "Chemin de la clé qui identifie l'élément.", required: false, kind: "text", perItemOnly: true },
-    { name: "keepDays", label: "Garder (jours)", help: "Sans valeur : pour toujours.", required: false, kind: "number", min: 1, max: 365, integer: true, perItemOnly: true },
+    { name: "onError", label: "workflows-field-on-error", required: false, default: "skip", kind: "choice", choices: ["skip", "fail"], perItemOnly: true },
+    { name: "budgetSeconds", label: "workflows-field-budget", help: "workflows-field-budget-help", required: false, kind: "number", min: 1, max: 3600, integer: true, perItemOnly: true },
+    { name: "reuse", label: "workflows-field-reuse", help: "workflows-field-reuse-help", required: false, kind: "text", perItemOnly: true },
+    { name: "keepDays", label: "workflows-field-keep-days", help: "workflows-help-no-value", required: false, kind: "number", min: 1, max: 365, integer: true, perItemOnly: true },
   ];
 }

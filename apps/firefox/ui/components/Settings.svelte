@@ -33,6 +33,7 @@
   import SettingsPermissions from "./SettingsPermissions.svelte";
   import SettingsShortcuts from "./SettingsShortcuts.svelte";
 
+  let languageChanged = $state(false);
   // Each section loads on its own: a slow Docker never holds the version or the data folder.
   const s = api.settings;
   const update = $derived(appState.value?.update ?? null);
@@ -406,11 +407,14 @@
         <div class="panel">
           <div class="row">
             <label class="grow" for="settings-language"><b>{t("settings-language-label")}</b></label>
-            <select id="settings-language" data-testid="settings-language" value={appState.value?.settings.language ?? "system"} onchange={(e) => api.dispatch({ type: "chooseLanguage", language: e.currentTarget.value })}>
+            <select id="settings-language" data-testid="settings-language" value={appState.value?.settings.language ?? "system"} onchange={(e) => { languageChanged = true; api.dispatch({ type: "chooseLanguage", language: e.currentTarget.value }); }}>
               <option value="system">{appState.value?.settings.language === "system" ? t("settings-language-system-named", { name: languageName(appState.value.locale) }) : t("settings-language-system")}</option>
               {#each LOCALES as code (code)}<option value={code}>{languageName(code)}</option>{/each}
             </select>
           </div>
+          {#if languageChanged && appState.value}
+            <p class="muted language-note" data-testid="settings-language-note">{t("settings-language-agent-note", { language: new Intl.DisplayNames([appState.value.locale], { type: "language" }).of(appState.value.locale) ?? appState.value.locale })}</p>
+          {/if}
           <div class="row" data-testid="settings-search">
             <div class="grow">
               <label for="settings-engine"><b>{t("settings-engine-label")}</b></label>
@@ -585,6 +589,7 @@
   .settings :global(.panel .confirmation) { margin: 0 14px 12px; background: var(--glass-hi); box-shadow: none; }
   select { padding: 5px 8px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: 12px var(--font-ui); }
   .switch { appearance: none; position: relative; width: 34px; height: 20px; margin: 0; flex: none; border-radius: 10px; background: var(--bg-active); transition: background var(--tap); }
+  .language-note { margin: 0; padding: 0 16px 12px; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   .custom-engine { animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   .custom-engine input { display: block; box-sizing: border-box; width: 100%; margin: 6px 0; }
   .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--on-color); box-shadow: var(--float); transition: left var(--spring-d) var(--spring); }

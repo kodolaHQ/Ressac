@@ -25,10 +25,11 @@ import {
 import type { ActionShown } from "../shared/actions.ts";
 import type { Grant } from "../shared/api.ts";
 import { openableUrl } from "../ui/home-profiles.ts";
+import { hostLocale, hostSay } from "./locale.ts";
 
 // The disk and kernel half of the actions service.
 
-export const NO_KERNEL_MESSAGE = "Le service des actions ne répond pas (agent arrêté ?)";
+export const NO_KERNEL_MESSAGE = () => hostSay("host-actions-no-kernel");
 const NO_ACTION: ActionsState = { running: [], waiting: [] };
 
 /** https only, never the machine. Keep in sync with chrome/store/action-media.ts. */
@@ -140,7 +141,7 @@ export function createActionsHost(o: {
       const tracking = trackedLaunches.get(id)?.delete(end) ?? false;
       if (trackedLaunches.get(id)?.size === 0) trackedLaunches.delete(id);
       if (tracking && !r.run) {
-        launchDenial.set(id, { error: r.error ?? "L'action n'a pas pu être lancée", when: new Date(now()).toISOString() });
+        launchDenial.set(id, { error: r.error ?? hostSay("host-action-launch-failed"), when: new Date(now()).toISOString() });
         recordDenial();
         o.onChange();
       }
@@ -161,9 +162,9 @@ export function createActionsHost(o: {
     /** Reads the action without launching it: `launch` says whether the chrome should launch it after opening its page. */
     async prepare(id: string, input: string | null): Promise<Prepared> {
       const kernel = o.kernel();
-      if (!kernel) return { ok: false, error: NO_KERNEL_MESSAGE };
+      if (!kernel) return { ok: false, error: NO_KERNEL_MESSAGE() };
       const a = await read(id);
-      if (!a) return { ok: false, error: ACTION_UNKNOWN };
+      if (!a) return { ok: false, error: ACTION_UNKNOWN(hostLocale()) };
       const d = kernel.actions.direct();
       const running = d.running.some((x) => x.action === id) || d.waiting.some((x) => x.action === id);
       // Required input missing: the page opens with its field to fill, nothing is launched.
@@ -177,7 +178,7 @@ export function createActionsHost(o: {
     },
     async launch(id: string, input: string | null): Promise<LaunchResult> {
       const kernel = o.kernel();
-      if (!kernel) return { status: "invalid", error: NO_KERNEL_MESSAGE };
+      if (!kernel) return { status: "invalid", error: NO_KERNEL_MESSAGE() };
       return followLaunch(id, kernel.actions.launch(id, { ...(input?.trim() ? { input: input } : {}), trigger: "manual" }).end);
     },
     stop(id: string): void {
@@ -186,7 +187,7 @@ export function createActionsHost(o: {
     async page(id: string, execution: string | null): Promise<PageAction | null> {
       const kernel = o.kernel();
       // Refused, not null (« no result »): a page read before the kernel started reads again on its first `access`.
-      if (!kernel) throw new Error(NO_KERNEL_MESSAGE);
+      if (!kernel) throw new Error(NO_KERNEL_MESSAGE());
       return (await kernel.actions.page(id, execution)) ?? null;
     },
     async runs(id: string): Promise<ResumeExecution[]> {
@@ -206,7 +207,7 @@ export function createActionsHost(o: {
     imageAllowed: (id: string, execution: string, url: string) => actionImageAllowed({ actionsFolder: o.actionsFolder, readAction: read }, id, execution, url),
     async grant(a: Grant): Promise<{ ok: true } | { ok: false; error: string }> {
       const kernel = o.kernel();
-      if (!kernel) return { ok: false, error: NO_KERNEL_MESSAGE };
+      if (!kernel) return { ok: false, error: NO_KERNEL_MESSAGE() };
       try {
         // The kernel refuses if the declaration is no longer the one the card showed.
         await kernel.actions.grant(a);
@@ -222,7 +223,7 @@ export function createActionsHost(o: {
       await kernel?.actions.denyGrant(id);
     },
     async delete(id: string): Promise<{ ok: true } | { ok: false; error: string }> {
-      if (!(await read(id))) return { ok: false, error: ACTION_UNKNOWN };
+      if (!(await read(id))) return { ok: false, error: ACTION_UNKNOWN(hostLocale()) };
       // Stopped first: otherwise it would run to its maximum duration with nothing left to stop it.
       o.kernel()?.actions.stop(id);
       // Removed from disk too: an action made again under the same id would find this refusal at the next start.
@@ -240,7 +241,7 @@ export function createActionsHost(o: {
         return { ok: true };
       } catch (e) {
         console.error(`[ressac] action ${id} not deleted:`, e);
-        return { ok: false, error: "L'action n'a pas pu être supprimée" };
+        return { ok: false, error: hostSay("host-action-delete-failed") };
       }
     },
     /** A finished action has a new last result (written outside the watched space): the list reads again. */

@@ -7,13 +7,18 @@ import {
   writeMemory,
   paramsHash,
   storeCode,
-  saveWorkflow,
-  readDraft,
+  saveWorkflow as saveIn,
+  readDraft as readDraftIn,
   readCodeFile,
+  DEFAULT_CONTEXT,
+  type ValidationContext,
   readMemory,
   withMemory,
   implicitWorkflow,
 } from "../../src/index.js";
+
+const saveWorkflow = (o: Parameters<typeof saveIn>[0]) => saveIn({ ...o, context: { ...(o.context ?? DEFAULT_CONTEXT), locale: "fr" } });
+const readDraft = (folder: string, ctx: ValidationContext = DEFAULT_CONTEXT) => readDraftIn(folder, { ...ctx, locale: "fr" });
 
 let root: string;
 let files: string;

@@ -6,15 +6,15 @@ const { perItem: _byElement, ...commonParams } = ParamsPerElement;
 
 export const definition: BlockDefinition = {
   type: "ai.sort",
-  label: "Trier avec Kev",
+  label: "workflows-block-ai-sort",
   family: "IA",
-  description: "Note chaque élément avec Kev et garde ceux qui passent le seuil.",
+  description: "workflows-block-ai-sort-desc",
   input: "required",
   fields: [
-    { name: "question", label: "Question", help: "Ce que Kev doit juger, par exemple « Est-ce intéressant ? ».", required: true, default: "Est-ce intéressant ?", kind: "template" },
-    { name: "text", label: "Texte à juger", help: "Les {chemins} sont remplacés par les valeurs de l'élément.", required: true, default: "{title}", kind: "template" },
-    { name: "threshold", label: "Seuil", required: false, default: 0.5, kind: "number", min: 0, max: 1 },
-    { name: "field", label: "Champ de la note", required: false, default: "score", kind: "text" },
+    { name: "question", label: "workflows-field-question", help: "workflows-field-question-help", required: true, defaultText: "workflows-default-question", kind: "template" },
+    { name: "text", label: "workflows-field-judged-text", help: "workflows-help-templates", required: true, default: "{title}", kind: "template" },
+    { name: "threshold", label: "workflows-field-threshold", required: false, default: 0.5, kind: "number", min: 0, max: 1 },
+    { name: "field", label: "workflows-field-score-field", required: false, default: "score", kind: "text" },
     // ai.sort always scores item by item: the common fields do not carry the « only per item » mark.
     ...fieldsPerElementOnly().map(({ perItemOnly: _mark, ...c }) => c),
   ],

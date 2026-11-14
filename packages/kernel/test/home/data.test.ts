@@ -26,7 +26,7 @@ test("atomic write of the data and the state; default state when state.json is m
 test("data.json is limited to 2 MB", async () => {
   const d = await tempFolder();
   const big = { t: "x".repeat(2 * 1024 * 1024) };
-  await expect(writeData(d, "w", big)).rejects.toThrow("2 Mo");
+  await expect(writeData(d, "w", big, "fr")).rejects.toThrow("2 Mo");
   await mkdir(join(d, "w"), { recursive: true });
   await writeFile(join(d, "w", "data.json"), JSON.stringify(big));
   expect(await readData(d, "w")).toBeNull();

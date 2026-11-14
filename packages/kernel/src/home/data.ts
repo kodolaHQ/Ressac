@@ -1,3 +1,4 @@
+import { say } from "../i18n.js";
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -28,9 +29,9 @@ export async function readData(widgetsFolder: string, id: string): Promise<unkno
   }
 }
 
-export async function writeData(widgetsFolder: string, id: string, data: unknown): Promise<void> {
+export async function writeData(widgetsFolder: string, id: string, data: unknown, locale = "en"): Promise<void> {
   const text = JSON.stringify(data ?? null);
-  if (Buffer.byteLength(text) > DATA_MAX_SIZE) throw new Error("Données trop grosses (2 Mo au plus)");
+  if (Buffer.byteLength(text) > DATA_MAX_SIZE) throw new Error(say(locale, "kernel-err-data-too-big"));
   await writeAtomic(join(widgetsFolder, id, "data.json"), text);
 }
 

@@ -36,6 +36,7 @@ import type { TweakError, MemoryResponse, OpenableSite } from "../core/sites/inj
 import { UrlTracking } from "../core/sites/tracking.ts";
 import { openDecision } from "../core/sites/navigation.ts";
 import { createPositions, memoryOp } from "./site-memory.ts";
+import { hostSay } from "./locale.ts";
 
 // The site apps service on the host side.
 
@@ -516,7 +517,7 @@ export function createSites(o: {
         await rename(join(o.paths.sites, id), join(trash, `${id}-${Date.now()}`));
       } catch (e) {
         console.error(`[sites] ${id}: folder not moved to the trash:`, e);
-        actionErrors.set(id, "Dossier non mis à la corbeille : la connexion et la mémoire sont effacées, le dossier reste.");
+        actionErrors.set(id, hostSay("host-site-trash-failed"));
       }
     } finally {
       deletions.delete(id);

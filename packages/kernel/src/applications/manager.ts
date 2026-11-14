@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { request } from "node:http";
 import { join } from "node:path";
+import { say } from "../i18n.js";
 import type { SpacePaths } from "../paths.js";
 import { containerPortRange, type Workshop } from "../container/workshop.js";
 import { validFolder, readProjects, watchProjects, type ProjectRead } from "./manifest.js";
@@ -10,7 +11,6 @@ import { validFolder, readProjects, watchProjects, type ProjectRead } from "./ma
 export const READY_DELAY_MS = 60_000;
 const PROBE_INTERVAL_MS = 250;
 const ERROR_LINES = 20;
-export const NO_PORT_LEFT_MESSAGE = "Plus de port libre : arrête une application.";
 
 /** `preparation`: the container starts. */
 export type AppState = "stopped" | "preparing" | "launching" | "running" | "error";
@@ -77,6 +77,7 @@ interface Tracking {
 }
 
 export class ApplicationManager {
+  private readonly locale: () => string;
   private readonly paths: SpacePaths;
   private readonly workshop: Workshop;
   private readonly launcher: Launcher;
@@ -111,7 +112,10 @@ export class ApplicationManager {
     probeIntervalMs?: number;
     probe?: (port: number) => Promise<"http" | "occupe" | "libre">;
     onChange?: () => void;
+    /** The shown language, read when an error is written (default: English). */
+    locale?: () => string;
   }) {
+    this.locale = o.locale ?? (() => "en");
     this.paths = o.paths;
     this.workshop = o.workshop;
     this.launcher = o.launcher ?? defaultLauncher;
@@ -202,7 +206,7 @@ export class ApplicationManager {
         state = await this.workshop.ensureStarted();
         if (l.stop) return this.view(project);
       }
-      if (state === "docker-absent") return end({ state: "error", error: "Docker n'est pas lancé." });
+      if (state === "docker-absent") return end({ state: "error", error: say(this.locale(), "kernel-app-docker-not-running") });
     } catch (e) {
       return end({ state: "error", error: (e as Error).message });
     }
@@ -211,7 +215,7 @@ export class ApplicationManager {
     if (l.stop) return this.view(project);
     const port = await this.choosePort();
     if (l.stop) return this.view(project);
-    if (port === null) return end({ state: "error", error: NO_PORT_LEFT_MESSAGE });
+    if (port === null) return end({ state: "error", error: say(this.locale(), "kernel-app-no-port") });
     this.change(folder, { state: "launching", port, launch: l });
 
     const outcome = new Promise<Outcome>((r) => (l.wake = r));
@@ -245,7 +249,7 @@ export class ApplicationManager {
         await this.unexpectedEnd(folder, l, i.code);
         return this.view(project);
       case "timeout": {
-        const error = await this.withLog(folder, `L'application ne répond pas sur le port ${port} après ${Math.round(this.readyDelayMs / 1000)} s.`);
+        const error = await this.withLog(folder, say(this.locale(), "kernel-app-not-responding", { port: String(port), seconds: Math.round(this.readyDelayMs / 1000) }));
         if (l.stop) return this.view(project);
         // Stop requested before killing: the end of the process does not replace this message.
         l.stop = true;
@@ -259,7 +263,7 @@ export class ApplicationManager {
 
   /** The process ended without a stop request: during launch or running, it is an error. */
   private async unexpectedEnd(folder: string, l: Launch, code: number | null): Promise<void> {
-    const error = await this.withLog(folder, `Arrêtée avec le code ${code ?? "inconnu"}`);
+    const error = await this.withLog(folder, say(this.locale(), code === null ? "kernel-app-exit-unknown" : "kernel-app-exit-code", { code: String(code) }));
     if (l.stop || this.tracked.get(folder)?.launch !== l) return;
     l.stop = true;
     this.change(folder, { state: "error", error: error });

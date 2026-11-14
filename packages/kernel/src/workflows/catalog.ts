@@ -1,5 +1,6 @@
+import { say } from "../i18n.js";
 import { BLOCK_REGISTRY } from "./blocks/index.js";
-import type { FormField, BlockFamily } from "./blocks/common.js";
+import type { BlockDefinition, FormField, BlockFamily } from "./blocks/common.js";
 
 export type { FormField, BlockFamily } from "./blocks/common.js";
 
@@ -16,16 +17,23 @@ export type BlockCatalogEntry = {
 
 const FAMILIES: BlockFamily[] = ["Sources", "Listes", "IA", "Logique/Code", "Sortie"];
 
-/** The block types, grouped by family then in registry order. */
-export function blockCatalog(): BlockCatalogEntry[] {
+/** The block types, grouped by family then in registry order; texts in the language of `locale` (definitions hold message ids). */
+export function blockCatalog(locale = "en"): BlockCatalogEntry[] {
+  const fields = (d: BlockDefinition) =>
+    structuredClone(d.fields).map(({ defaultText, ...f }) => ({
+      ...f,
+      label: say(locale, f.label),
+      ...(f.help === undefined ? {} : { help: say(locale, f.help) }),
+      ...(defaultText === undefined ? {} : { default: say(locale, defaultText) }),
+    }));
   const blocks = [...BLOCK_REGISTRY.values()].map((d) => ({
     type: d.type,
-    label: d.label,
+    label: say(locale, d.label),
     family: d.family,
-    description: d.description,
+    description: say(locale, d.description),
     perItem: d.perItem,
     input: d.input,
-    fields: structuredClone(d.fields),
+    fields: fields(d),
   }));
   return FAMILIES.flatMap((f) => blocks.filter((b) => b.family === f));
 }

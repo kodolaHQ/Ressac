@@ -1,0 +1,33 @@
+{
+  "name": "Tech news",
+  "description": "The tech news that matters right now, sorted by your interests",
+  "sizes": {
+    "min": {
+      "w": 2,
+      "h": 2
+    },
+    "max": {
+      "w": 12,
+      "h": 10
+    },
+    "default": {
+      "w": 6,
+      "h": 5
+    }
+  },
+  "harvest": {
+    "minutes": 60
+  },
+  "sources": {
+    "account": [],
+    "public": [
+      "news.ycombinator.com",
+      "lobste.rs",
+      "www.theverge.com",
+      "hnrss.org"
+    ]
+  },
+  "config": {
+    "interets": "AI and language models, local AI, coding agents, Svelte, Electron, TypeScript, web development, browsers, computer security"
+  }
+}

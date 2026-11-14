@@ -25,7 +25,7 @@ test("an output over 256 KB is kept truncated, as text, and marked truncatedOutp
   const d = await tempFolder();
   const big = { list: Array.from({ length: 40000 }, (_, i) => ({ i, t: "abcdefghij" })) };
   const e = execution(timestamp(0), [block("a", big), block("b", { small: 1 })]);
-  await writeRun(d, e);
+  await writeRun(d, e, "fr");
   const loaded = await readRun(d, e.id);
   const a = loaded!.blocks[0]!;
   expect(a.outputTruncated).toBe(true);
@@ -39,7 +39,7 @@ test("a run file never exceeds 4 MB: the biggest outputs go first", async () => 
   const d = await tempFolder();
   const blocks = Array.from({ length: 20 }, (_, i) => block(`b${i}`, "x".repeat(250 * 1024 - 2 - i)));
   const e = execution(timestamp(0), blocks);
-  await writeRun(d, e);
+  await writeRun(d, e, "fr");
   const file = join(d, "runs", `${e.id}.json`);
   expect((await stat(file)).size).toBeLessThanOrEqual(RUN_MAX_BYTES);
   const loaded = (await readRun(d, e.id))!;
@@ -90,7 +90,7 @@ test("huge logs and errors are bounded: the file stays under 4 MB", async () => 
     log: Array.from({ length: 300 }, (_, j) => `${j} ` + "l".repeat(5000)),
   }));
   const e = { ...execution(timestamp(0), blocks), error: "E".repeat(1024 * 1024) };
-  await writeRun(d, e);
+  await writeRun(d, e, "fr");
   expect((await stat(join(d, "runs", `${e.id}.json`))).size).toBeLessThanOrEqual(RUN_MAX_BYTES);
   const loaded = (await readRun(d, e.id))!;
   expect(Buffer.byteLength(loaded.error!)).toBeLessThanOrEqual(2048);
@@ -102,7 +102,7 @@ test("huge logs and errors are bounded: the file stays under 4 MB", async () => 
 test("listRuns does not re-read an unchanged file (same date, same size), re-reads a rewritten file", async () => {
   const d = await tempFolder();
   const e = execution(timestamp(1), [block("a")]);
-  await writeRun(d, e);
+  await writeRun(d, e, "fr");
   const path = join(d, "runs", `${e.id}.json`);
   // A round date, which utimes can restore identically.
   const date = new Date("2026-10-29T08:00:00.000Z");
@@ -184,15 +184,15 @@ test("clearRunsAndMemory also erases the trials", async () => {
 test("an action run (owner action, saisie « clio lyon ») is written and re-read", async () => {
   const d = await tempFolder();
   const e: Execution = { ...execution(timestamp(0), [block("a", { x: 1 })]), owner: { type: "action", id: "recherche" }, input: "clio lyon" };
-  await writeRun(d, e);
+  await writeRun(d, e, "fr");
   expect(await readRun(d, e.id)).toEqual(e);
-  expect(ACTION_STOPPED).toBe("Arrêtée à ta demande");
+  expect(ACTION_STOPPED("fr")).toBe("Arrêtée à ta demande");
 });
 
 test("a widget run written before this plan re-reads unchanged", async () => {
   const d = await tempFolder();
   const e = execution(timestamp(1), [block("a")]);
-  await writeRun(d, e);
+  await writeRun(d, e, "fr");
   const loaded = (await readRun(d, e.id))!;
   expect(loaded).toEqual(e);
   expect(loaded).not.toHaveProperty("saisie");

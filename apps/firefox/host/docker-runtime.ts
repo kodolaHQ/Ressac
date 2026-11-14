@@ -1,13 +1,14 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import type { DockerStatus } from "../shared/settings.ts";
+import { hostSay } from "./locale.ts";
 
 /** The container apps Ressac knows how to start, in order of preference. */
 const APPS = [
   { name: "OrbStack", path: "/Applications/OrbStack.app" },
   { name: "Docker Desktop", path: "/Applications/Docker.app" },
 ];
-export const DOCKER_NOT_STARTED = "Docker n'a pas démarré";
+export const DOCKER_NOT_STARTED = () => hostSay("host-docker-not-started");
 
 export interface DockerRuntimeOptions {
   /** True when the docker daemon answers. */
@@ -39,13 +40,13 @@ export function createDockerRuntime(o: DockerRuntimeOptions) {
     starting ??= (async () => {
       if (!o.managed || (await o.running())) return;
       const app = installed();
-      if (!app) throw new Error(DOCKER_NOT_STARTED);
+      if (!app) throw new Error(DOCKER_NOT_STARTED());
       await run("open", ["-ga", app.path]);
       for (const end = Date.now() + (o.startDelayMs ?? 60_000); Date.now() < end; ) {
         if (await o.running()) return;
         await new Promise((r) => setTimeout(r, o.pollMs ?? 1000));
       }
-      throw new Error(DOCKER_NOT_STARTED);
+      throw new Error(DOCKER_NOT_STARTED());
     })().finally(() => (starting = undefined));
     return starting;
   }

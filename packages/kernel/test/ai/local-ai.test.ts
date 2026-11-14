@@ -365,11 +365,11 @@ describe("LocalAi", () => {
 
   it("installer() refuses without uv, and refuses an unexpected commit", async () => {
     const withoutUv = fakeRunner([[/^uv --version/, { code: 127 }]]);
-    await expect(new LocalAi({ folder: await tempFolder(), run: withoutUv.run }).install(() => {}))
+    await expect(new LocalAi({ folder: await tempFolder(), run: withoutUv.run, locale: () => "fr" }).install(() => {}))
       .rejects.toThrow("installe uv : brew install uv");
     const folder = await tempFolder();
     const wrong = fakeRunner([[/^git clone/, clone(folder)], [/rev-parse HEAD/, { code: 0, stdout: "deadbeef\n" }]]);
-    await expect(new LocalAi({ folder: folder, run: wrong.run }).install(() => {}))
+    await expect(new LocalAi({ folder: folder, run: wrong.run, locale: () => "fr" }).install(() => {}))
       .rejects.toThrow(/commit/);
   });
 });
@@ -399,7 +399,7 @@ describe("LocalAi : quitter annule l'installation", () => {
   it("fermer() during the clone: the process receives the cancellation, nothing else is launched, the partial clone is erased, then a new install restarts cleanly", async () => {
     const folder = await tempFolder();
     const fake = endlessClone(folder);
-    const ai = new LocalAi({ folder: folder, run: fake.run });
+    const ai = new LocalAi({ folder: folder, run: fake.run, locale: () => "fr" });
     const installation = ai.install(() => {});
     await fake.running;
     await ai.close();
@@ -434,7 +434,7 @@ describe("LocalAi : quitter annule l'installation", () => {
       }
       return fake.run(c, a, o);
     };
-    const ai = new LocalAi({ folder: folder, run: run });
+    const ai = new LocalAi({ folder: folder, run: run, locale: () => "fr" });
     const installation = ai.install(() => {});
     while (!pull) await new Promise((r) => setTimeout(r, 5));
     expect(fake.calls.find((a) => a.args[0] === "sync")!.opts?.signal).toBe(pull);

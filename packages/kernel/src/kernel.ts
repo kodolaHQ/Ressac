@@ -1,3 +1,4 @@
+import { say, replyLanguageLine } from "./i18n.js";
 import { randomBytes } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, mkdir, open, realpath, rm, unlink, writeFile } from "node:fs/promises";
@@ -11,7 +12,7 @@ import { watchHome } from "./home/watch.js";
 import { loadProfiles, buildCommand } from "./profiles/profile.js";
 import { writeMcpConfig, writeSessionConfig, mcpArgument, MCP_TOKEN_VARIABLE } from "./profiles/config-mcp.js";
 import { Workshop, DEFAULT_DOCKER_FOLDER, type BuildProgress, type WorkshopState } from "./container/workshop.js";
-import { defaultRunner, type Runner } from "./container/runner.js";
+import { createRunner, type Runner } from "./container/runner.js";
 import { SessionAgent } from "./pty/session.js";
 import { AccessPolicy } from "./access/policy.js";
 import { SearchSessions } from "./search/sessions.js";
@@ -223,6 +224,10 @@ export interface Kernel {
   /** Name of the agent of this kernel's profile (the one that holds the accesses). */
   agent: string;
   workshopState(): Promise<WorkshopState>;
+  /** The language the interface shows (« fr », « en »). */
+  locale(): string;
+  /** The language changed: the agent's templates and starter widgets left untouched switch to it. */
+  relocalize(): Promise<void>;
   /** New conversation: erases the authorizations. Signal the current tab (interactionUtilisateur) afterwards. */
   openAgentSession(o: {
     cols: number;
@@ -268,6 +273,8 @@ export interface Kernel {
 /** The single entry point for a browser: it gives its bridge, the kernel does the rest. */
 export async function createKernel(o: {
   bridge: BrowserBridge;
+  /** The language shown, read each time a text is written (default English). */
+  locale?: () => string;
   root?: string;
   run?: Runner;
   clock?: () => Date;
@@ -320,9 +327,12 @@ export async function createKernel(o: {
   sites?: SitesTools;
 }): Promise<Kernel> {
   const paths = spacePaths(o.root);
-  const run = o.run ?? defaultRunner;
-  await initSpace(paths, o.resources ? join(o.resources, "templates") : undefined);
+  const loc = () => o.locale?.() ?? "en";
+  const templates = o.resources ? join(o.resources, "templates") : undefined;
+  await initSpace(paths, loc(), templates);
+  let relocalizing: Promise<void> = Promise.resolve();
 
+  const run = o.run ?? createRunner(loc);
   const profileId = o.profileId ?? "claude";
   const profile = (await loadProfiles(paths)).profiles.find((p) => p.id === profileId);
   if (!profile) throw new Error(`Profil d'agent inconnu : ${profileId}`);
@@ -346,7 +356,7 @@ export async function createKernel(o: {
     }
   };
   const widget = async (id: string): Promise<WidgetRead | undefined> =>
-    (await readHome(paths, widgetsFolder)).widgets.find((w) => w.id === id);
+    (await readHome(paths, widgetsFolder, loc())).widgets.find((w) => w.id === id);
   // Read by the agent through its MCP tools. A widget whose declaration is unreadable, or that has a recorded grant, counts
   // as reading with the user's account: its data may have been harvested with it.
   const widgetsTools: WidgetsTools = {
@@ -461,7 +471,7 @@ export async function createKernel(o: {
 
   // Navigation must never wait for Docker (spec §9): the first image build takes
   // minutes, and a failure (port in use…) only concerns the agent.
-  const workshop = o.workshop ?? new Workshop({ paths: paths, run: run, ...(o.resources ? { dockerFolder: join(o.resources, "docker") } : {}) });
+  const workshop = o.workshop ?? new Workshop({ paths: paths, run: run, ...(o.locale ? { locale: o.locale } : {}), ...(o.resources ? { dockerFolder: join(o.resources, "docker") } : {}) });
   // The container is prepared from launch. If it fails, the first session returns this failure rather than rebuilding
   // everything right away; the following ones (Réessayer) try again. Once successful, it is re-checked (quick probe).
   // Before any session, the agents left by a previous app are stopped.
@@ -474,6 +484,7 @@ export async function createKernel(o: {
   const engine = o.engine ?? (o.resources ? join(o.resources, "docker", "engine") : join(DEFAULT_DOCKER_FOLDER, "engine"));
   const directSubscribers = new Set<(e: DirectState) => void>();
   const scheduler = new WidgetsScheduler({
+    ...(o.locale ? { locale: o.locale } : {}),
     paths: paths,
     widgetsFolder: widgetsFolder,
     engine: engine,
@@ -504,6 +515,7 @@ export async function createKernel(o: {
   await scheduler.start();
   const actionSubscribers = new Set<(e: ActionsState) => void>();
   const fileActions = new FileActions({
+    ...(o.locale ? { locale: o.locale } : {}),
     paths: paths,
     actionsFolder: actionsFolder,
     engine: engine,
@@ -561,12 +573,12 @@ export async function createKernel(o: {
     },
     async grant({ id, profile: profileName, account: shown, public: shownPublic }) {
       const a = await readAction(paths, id);
-      if (!a) throw new Error(`Action inconnue : ${id}`);
-      if ("error" in a) throw new Error(`Action illisible : ${a.error}`);
+      if (!a) throw new Error(say(loc(), "kernel-grant-action-unknown", { id }));
+      if ("error" in a) throw new Error(say(loc(), "kernel-grant-action-unreadable", { error: a.error }));
       const { account: account, public: publics } = a.declaration.sources;
-      if (!account.length) throw new Error(`L'action ${id} ne lit pas avec un compte`);
+      if (!account.length) throw new Error(say(loc(), "kernel-grant-action-no-account", { id }));
       if (!sameLists(account, shown) || !sameLists(publics, shownPublic)) {
-        throw new Error(`La déclaration de l'action ${id} a changé depuis l'affichage de la demande : rien n'est accordé, relis la nouvelle demande.`);
+        throw new Error(say(loc(), "kernel-grant-action-changed", { id }));
       }
       await giveGrant(actionsFolder, id, { domains: [...account].sort(), public: [...publics].sort(), profile: profileName });
     },
@@ -590,6 +602,9 @@ export async function createKernel(o: {
     search: search,
     agent: profile.name,
     workshopState: () => workshop.state(),
+    locale: loc,
+    // Serialized: two quick changes never run two swaps at once (each run reads loc() when it starts, the last one wins).
+    relocalize: () => (relocalizing = relocalizing.catch(() => {}).then(() => initSpace(paths, loc(), templates)).then(() => {})),
     async openAgentSession({ cols, rows, window: win, profile: profileChoice, resume, extra, onBuildProgress }) {
       const chosen = profileChoice === undefined ? profile : (await loadProfiles(paths)).profiles.find((p) => p.id === profileChoice);
       if (!chosen) throw new Error(`Profil d'agent inconnu : ${profileChoice}`);
@@ -605,7 +620,7 @@ export async function createKernel(o: {
       } finally {
         unsubscribe?.();
       }
-      if (state !== "demarre") throw new WorkshopError(state);
+      if (state !== "demarre") throw new WorkshopError(state, say(loc(), "kernel-err-workshop-unavailable", { state }));
       // New conversation: no authorization any more. The sessions share the MCP server and therefore the policy:
       // a session of another window also loses its accesses (it will ask again), rather than inheriting them.
       policy.reset();
@@ -633,7 +648,13 @@ export async function createKernel(o: {
           mcpConfig = pathInContainer(sessionToken !== undefined ? configSession : paths.mcpConfig, paths);
           env = { ...extra?.env };
         }
-        const command = [...buildCommand(chosen, resume && chosen.resume ? "resume" : "interactive", { mcpConfig: mcpConfig }), ...(extra?.args ?? [])];
+        // Reply language, for the shipped programs only (a custom profile command is the user's). Read now: an open session keeps its language.
+        const program = chosen.interactive[0];
+        const reply = replyLanguageLine(loc());
+        const language = program === "claude" ? ["--append-system-prompt", reply] : program === "codex" ? ["-c", `developer_instructions=${JSON.stringify(reply)}`] : [];
+        const built = buildCommand(chosen, resume && chosen.resume ? "resume" : "interactive", { mcpConfig: mcpConfig });
+        // Right after the program: the profile's own arguments keep their order (the MCP config stays last).
+        const command = [built[0]!, ...language, ...built.slice(1), ...(extra?.args ?? [])];
         const session = SessionAgent.start(workshop.sessionCommand(id, command, Object.keys(env)), { cols, rows, env: env, stopRemote: () => workshop.stopSession(id) });
         openSessions.add(clean);
         session.onEnd(() => {
@@ -646,7 +667,7 @@ export async function createKernel(o: {
         throw e;
       }
     },
-    readHome: () => readHome(paths, widgetsFolder),
+    readHome: () => readHome(paths, widgetsFolder, loc()),
     watchHome: (callback) => watchHome(paths, callback),
     harvestNow: (id, trigger) => scheduler.harvestNow(id, trigger),
     replay: (id, origin, start) => scheduler.replay(id, origin, start),
@@ -658,12 +679,12 @@ export async function createKernel(o: {
     ai: ai,
     async grant({ id, profile: profileName, account: shown, public: shownPublic }) {
       const w = await widget(id);
-      if (!w) throw new Error(`Widget inconnu : ${id}`);
-      if ("error" in w) throw new Error(`Widget illisible : ${w.error}`);
+      if (!w) throw new Error(say(loc(), "kernel-grant-widget-unknown", { id }));
+      if ("error" in w) throw new Error(say(loc(), "kernel-grant-widget-unreadable", { error: w.error }));
       const { account: account, public: publics } = w.declaration.sources;
-      if (!account.length) throw new Error(`Le widget ${id} ne lit pas avec un compte`);
+      if (!account.length) throw new Error(say(loc(), "kernel-grant-widget-no-account", { id }));
       if (!sameLists(account, shown) || !sameLists(publics, shownPublic)) {
-        throw new Error(`La déclaration du widget ${id} a changé depuis l'affichage de la demande : rien n'est accordé, relis la nouvelle demande.`);
+        throw new Error(say(loc(), "kernel-grant-widget-changed", { id }));
       }
       await giveGrant(widgetsFolder, id, { domains: [...account].sort(), public: [...publics].sort(), profile: profileName });
       report();
@@ -681,7 +702,7 @@ export async function createKernel(o: {
           status: "grant-required",
           lastUpdate: before.lastUpdate,
           lastAttempt: before.lastAttempt,
-          error: grantRequired(w.declaration),
+          error: grantRequired(w.declaration, loc()),
           kernelError: true,
         });
       }

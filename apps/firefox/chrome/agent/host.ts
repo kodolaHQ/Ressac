@@ -1,8 +1,10 @@
 import { createRpc, type Handler, type Rpc } from "../../shared/rpc";
+import { format } from "../../shared/i18n";
 import { hostCommand } from "./command";
 import { lineSplitter } from "./lines";
 
-export const HOST_STOPPED = "Le noyau de l'agent s'est arrêté.";
+/** The shown text when the host process is gone. */
+export const hostStopped = (locale: string) => format(locale, "chrome-host-stopped");
 /** Pseudo-notification sent to `on()` listeners when the host process exits (no automatic restart). */
 export const HOST_EXITED = "$/exited";
 const STOP_TIMEOUT_MS = 5_000;
@@ -40,6 +42,7 @@ async function readLines(pipe: any, cb: (line: string) => void): Promise<void> {
 export function createHost(o: {
   dataDir: string;
   agentProfile: () => string;
+  locale: () => string;
   /** The requests the host sends to Firefox (the browser bridge). */
   handlers: Record<string, Handler>;
   /** Each new process, before any other message: what the host must know first (private tabs mirror). */
@@ -72,12 +75,12 @@ export function createHost(o: {
     const exited = () => {
       if (gone) return;
       gone = true;
-      rpc.close(HOST_STOPPED);
+      rpc.close(hostStopped(o.locale()));
       if (pid === proc.pid) {
         pid = null;
         current = null;
         // Only the current host: an old one exiting late must not report a stop over its successor.
-        for (const l of listeners.get(HOST_EXITED) ?? []) l({ message: HOST_STOPPED });
+        for (const l of listeners.get(HOST_EXITED) ?? []) l({ message: hostStopped(o.locale()) });
       }
     };
     void readLines(proc.stdout, (l) => rpc.receive(l)).then(exited);
@@ -91,7 +94,7 @@ export function createHost(o: {
     return { proc, rpc };
   };
 
-  const running = (): Promise<Running> => current ?? Promise.reject(new Error(HOST_STOPPED));
+  const running = (): Promise<Running> => current ?? Promise.reject(new Error(hostStopped(o.locale())));
 
   const host: AgentHost = {
     request: (method, params, signal) => running().then((r) => r.rpc.request(method, params, signal)),
@@ -113,7 +116,7 @@ export function createHost(o: {
         current = spawn();
         current.catch(() => (current = null));
       }
-      await host.request("start", { agentProfile: o.agentProfile() });
+      await host.request("start", { agentProfile: o.agentProfile(), locale: o.locale() });
     },
     async stop() {
       const r = await current?.catch(() => null);

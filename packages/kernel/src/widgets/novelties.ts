@@ -1,3 +1,4 @@
+import { say } from "../i18n.js";
 import { canonicalJson } from "../workflows/memory.js";
 
 /**
@@ -29,8 +30,8 @@ export function countNew(previous: unknown, data: unknown): number {
   return fresh.size;
 }
 
-export function notificationText(n: number): string {
-  return n === 1 ? "1 nouvel élément" : `${n} nouveaux éléments`;
+export function notificationText(n: number, locale: string): string {
+  return say(locale, "kernel-new-items", { n });
 }
 
 /** What the notification at the end of a watch shows: `titre` = widget name, `texte` = `texteNotification(n)`. */

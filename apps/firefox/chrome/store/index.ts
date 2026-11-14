@@ -455,6 +455,7 @@ async function start(): Promise<RessacStore> {
   const agent = createHost({
     dataDir,
     agentProfile: () => store.state.settings.agentProfile,
+    locale: () => store.state.locale,
     handlers: {
       ...bridgeHandlers(store, questions, windows, devtools, () => agent, sites, apps),
       ...agentExtensions.handlers,
@@ -473,6 +474,7 @@ async function start(): Promise<RessacStore> {
       notify("ai.decisionModel", { model: store.state.settings.decisionModel });
       notify("agent.codexEngine", { engine: store.state.settings.codexEngine });
       notify("agent.claudeEngine", { engine: store.state.settings.claudeEngine });
+      notify("settings.locale", { locale: store.state.locale });
       // A rendrePrive sent while no host ran was dropped: replayed (idempotent) so no private space stays searchable.
       for (const e of store.state.spaces) if (e.private) notify("history.makePrivate", { spaceId: e.id });
       agentExtensions.hostStarted();

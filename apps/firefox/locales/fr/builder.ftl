@@ -182,3 +182,9 @@ actions-delete = Supprimer
 actions-confirm-grant = Retirer l'accord de « { $name } » ? Ses exécutions, ses résultats et sa mémoire seront effacés.
 actions-confirm-delete = Supprimer « { $name } » ? Son dossier ira dans la corbeille ; ses résultats et son accord seront effacés.
 actions-cancel = Annuler
+
+builder-family-sources = Sources
+builder-family-lists = Listes
+builder-family-ai = IA
+builder-family-logic-code = Logique/Code
+builder-family-output = Sortie

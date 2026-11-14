@@ -164,6 +164,10 @@ describe("pageLayoutPrompt", () => {
     expect(q).not.toContain("<<<CONSIGNE");
     expect(q.split("RESULTATS>>>").length).toBe(2);
   });
+  it("tells the language of the texts, named in English", () => {
+    expect(pageLayoutPrompt({ prompt: null, catalog: "", preview: "{}", locale: "fr" })).toContain("Write every text you produce in French.");
+    expect(pageLayoutPrompt({ prompt: null, catalog: "", preview: "{}" })).toContain("in English.");
+  });
   it("errors are passed on as they are", () => {
     expect(pageLayoutPrompt({ prompt: null, catalog: "", preview: "{}", errors: ["1. table : columns requise"] })).toContain("1. table : columns requise");
   });

@@ -563,7 +563,7 @@ export class ExtensionsAgent {
     // A signing will be needed: without keys, nothing is shown and nothing leaves.
     if ((await this.guard(id))?.hash !== p.hash && !(await readAmoKey(this.env))) {
       await clear();
-      return { ok: false, error: KEYS_ABSENT };
+      return { ok: false, error: KEYS_ABSENT() };
     }
     // Already active elsewhere with a narrower grant: the new copy replaces it there too, the card says so.
     const otherProfiles = known?.grant && widenedScope(known.grant, p.analysis.scope) ? known.profiles.filter((x) => x !== profile) : [];
@@ -992,7 +992,7 @@ export class ExtensionsAgent {
   /** nextVersion → firefoxManifest → zipper → signer (signed/<id>.pending.xpi) → extensions.installer → signed/<id>.xpi. */
   private async signAndInstall(id: string, p: { staging: string; originalBackground: string | undefined }, active: boolean): Promise<{ ok: true; version: string } | { ok: false; error: string }> {
     const amoKey = await readAmoKey(this.env);
-    if (!amoKey) return { ok: false, error: KEYS_ABSENT };
+    if (!amoKey) return { ok: false, error: KEYS_ABSENT() };
     const n = await nextVersion(this.o.folder, id);
     const path = join(p.staging, "manifest.json");
     const manifest = firefoxManifest(JSON.parse(await readFile(path, "utf8")), id, n, p.originalBackground);

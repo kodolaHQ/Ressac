@@ -119,6 +119,29 @@ afterEach(async () => {
 });
 
 describe("agent host", { timeout: 30_000 }, () => {
+  it("the kernel learns the shown language at start and at each change", async () => {
+    const h = startHost();
+    await h.rpc.request("start", { agentProfile: "claude", locale: "en" });
+    expect(await h.rpc.request("debug.locale")).toEqual({ locale: "en", relocalized: 0 });
+    const agents = join(h.root, "AGENTS.md");
+    const template = (lang: string) => readFileSync(join(import.meta.dirname, "..", "..", "..", "packages", "kernel", "templates", lang, "AGENTS.md"), "utf8");
+    expect(readFileSync(agents, "utf8")).toBe(template("en"));
+    h.rpc.notify("settings.locale", { locale: "fr" });
+    // The kernel's relocalize ran: the untouched AGENTS.md switched to French.
+    await until(() => readFileSync(agents, "utf8") === template("fr"), 5_000);
+    expect(await h.rpc.request("debug.locale")).toEqual({ locale: "fr", relocalized: 1 });
+  });
+
+  it("a language change that lands while the kernel is starting is applied once it is up", async () => {
+    const h = startHost();
+    const started = h.rpc.request("start", { agentProfile: "claude", locale: "en" });
+    h.rpc.notify("settings.locale", { locale: "fr" });
+    await started;
+    const agents = join(h.root, "AGENTS.md");
+    const french = readFileSync(join(import.meta.dirname, "..", "..", "..", "packages", "kernel", "templates", "fr", "AGENTS.md"), "utf8");
+    await until(() => existsSync(agents) && readFileSync(agents, "utf8") === french, 5_000);
+  });
+
   it("the host starts the external MCP without the kernel", async () => {
     const h = startHost();
     let e: { server: { state: string; port?: number } } | undefined;
@@ -900,7 +923,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const h = launch(amo, f, { prepare: source, keys: false });
     const r = await tool(h, "request_extension", { id: "ma-ext" });
     expect(r).toContain("Compte Mozilla non branché");
-    expect(r).toBe(KEYS_ABSENT);
+    expect(r).toBe(KEYS_ABSENT());
     expect(f.cards).toEqual([]);
     expect(amo.sends).toEqual([]);
   });

@@ -1,0 +1,31 @@
+{
+  "name": "Weather",
+  "description": "The weather where you live, hour by hour then day by day",
+  "sizes": {
+    "min": {
+      "w": 2,
+      "h": 2
+    },
+    "max": {
+      "w": 6,
+      "h": 4
+    },
+    "default": {
+      "w": 3,
+      "h": 2
+    }
+  },
+  "harvest": {
+    "minutes": 60
+  },
+  "sources": {
+    "account": [],
+    "public": [
+      "api.open-meteo.com",
+      "geocoding-api.open-meteo.com"
+    ]
+  },
+  "config": {
+    "ville": null
+  }
+}

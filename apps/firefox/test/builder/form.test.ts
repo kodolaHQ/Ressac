@@ -58,3 +58,12 @@ test("checkbox without a default value (streaming): unticked, the key goes; tick
   // A checkbox with a default value keeps the unticked value as is.
   expect(paramsWith({ perItem: true }, field("ai.write", "perItem"), false)).toEqual({ perItem: false });
 });
+
+test("each block family has a palette name in French (verbatim) and in English", async () => {
+  const { format } = await import("../../shared/i18n");
+  const names = { Sources: ["builder-family-sources", "Sources", "Sources"], Listes: ["builder-family-lists", "Listes", "Lists"], IA: ["builder-family-ai", "IA", "AI"], "Logique/Code": ["builder-family-logic-code", "Logique/Code", "Logic/Code"], Sortie: ["builder-family-output", "Sortie", "Output"] } as const;
+  for (const [id, fr, en] of Object.values(names)) {
+    expect(format("fr", id)).toBe(fr);
+    expect(format("en", id)).toBe(en);
+  }
+});

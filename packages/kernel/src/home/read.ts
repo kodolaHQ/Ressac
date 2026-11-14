@@ -1,3 +1,4 @@
+import { say } from "../i18n.js";
 import { readdir, readFile, realpath } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, sep } from "node:path";
@@ -23,13 +24,13 @@ async function readJsonIn(folder: string, name: string): Promise<unknown> {
   return JSON.parse(await readFile(real, "utf8"));
 }
 
-async function readWidget(c: SpacePaths, widgetsFolder: string, id: string): Promise<WidgetRead> {
+async function readWidget(c: SpacePaths, widgetsFolder: string, id: string, locale: string): Promise<WidgetRead> {
   const folder = join(c.widgets, id);
   let declaration: DeclarationWidget;
   try {
     declaration = DeclarationWidget.parse(await readJsonIn(folder, "widget.json"));
   } catch (e) {
-    return { id, folder: folder, error: `widget.json invalide : ${(e as Error).message}` };
+    return { id, folder: folder, error: say(locale, "kernel-widget-invalid", { error: (e as Error).message }) };
   }
   let example: unknown | null = null;
   try {
@@ -171,13 +172,13 @@ export function placeMissingFree(
 }
 
 /** Reads the home page. A broken widget is reported, it does not prevent reading the others. */
-export async function readHome(c: SpacePaths, widgetsFolder: string): Promise<HomeState> {
+export async function readHome(c: SpacePaths, widgetsFolder: string, locale = "en"): Promise<HomeState> {
   if (!existsSync(c.widgets)) return { layout: [], widgets: [] };
   const ids = (await readdir(c.widgets, { withFileTypes: true }))
     .filter((e) => e.isDirectory() && ID_WIDGET.test(e.name))
     .map((e) => e.name)
     .sort();
-  const widgets = await Promise.all(ids.map((id) => readWidget(c, widgetsFolder, id)));
+  const widgets = await Promise.all(ids.map((id) => readWidget(c, widgetsFolder, id, locale)));
   // A widget in error has no known size: it is not placed.
   const defaults = new Map(widgets.flatMap((w) => ("declaration" in w ? [[w.id, w.declaration.sizes.default] as const] : [])));
   const layout = placeMissing(ids, await readPlacements(c), defaults);

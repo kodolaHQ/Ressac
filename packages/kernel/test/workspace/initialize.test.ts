@@ -11,6 +11,8 @@ import { readReference } from "../../src/pages/plan.js";
 import { tempFolder } from "../helpers/temp.js";
 
 const sha256 = (content: string | Buffer) => createHash("sha256").update(content).digest("hex");
+const FR = join(DEFAULT_TEMPLATES, "fr");
+const EN = join(DEFAULT_TEMPLATES, "en");
 
 /** The starter widgets' files in a new space: workflows, without harvest.mjs. */
 const START_FILES: Record<string, string[]> = {
@@ -71,7 +73,7 @@ test("AGENTS.md mentions the required elements", async () => {
 
 test("a new space gets the three starter widgets and the v2 layout", async () => {
   const c = spacePaths(await tempFolder());
-  await initSpace(c);
+  await initSpace(c, "fr");
   expect((await readdir(c.widgets)).sort()).toEqual(["actus-tech", "daily-dev", "meteo"]);
   const available = Layout.parse(JSON.parse(await readFile(c.layout, "utf8")));
   expect(available.widgets.map((w) => w.id)).toEqual(["actus-tech", "daily-dev", "meteo"]);
@@ -124,7 +126,7 @@ test("two simultaneous initializations create each file only once", async () => 
 
 test("a shipped AGENTS.md (its hash is known) is replaced by the current template", async () => {
   const c = spacePaths(await tempFolder());
-  const model = await readFile(join(DEFAULT_TEMPLATES, "AGENTS.md"), "utf8");
+  const model = await readFile(join(EN, "AGENTS.md"), "utf8");
   const old = "ancien modèle\n";
   const h = sha256(old);
   OLD_AGENTS.add(h);
@@ -156,13 +158,13 @@ test("CLAUDE.md and the agent profile are rewritten only when identical to an ol
     await mkdir(c.profiles, { recursive: true });
     await writeFile(join(c.profiles, "claude.json"), oldProfile);
     await writeFile(join(c.root, "CLAUDE.md"), oldClaude);
-    await initSpace(c);
+    await initSpace(c, "fr");
     expect(await readFile(join(c.profiles, "claude.json"), "utf8")).toBe(await readFile(join(DEFAULT_TEMPLATES, "agent-profile.json"), "utf8"));
-    expect(await readFile(join(c.root, "CLAUDE.md"), "utf8")).toBe(await readFile(join(DEFAULT_TEMPLATES, "CLAUDE.md"), "utf8"));
+    expect(await readFile(join(c.root, "CLAUDE.md"), "utf8")).toBe(await readFile(join(FR, "CLAUDE.md"), "utf8"));
     // edited by the user: kept
     await writeFile(join(c.profiles, "claude.json"), '{"id":"claude","mine":true}');
     await writeFile(join(c.root, "CLAUDE.md"), "Mes règles.\n");
-    await initSpace(c);
+    await initSpace(c, "en");
     expect(await readFile(join(c.profiles, "claude.json"), "utf8")).toBe('{"id":"claude","mine":true}');
     expect(await readFile(join(c.root, "CLAUDE.md"), "utf8")).toBe("Mes règles.\n");
   } finally {
@@ -201,10 +203,9 @@ test("the profile shipped before the English formats (profil-claude.json) is a k
   expect(OLD_AGENTS.has("1adea27921eb609aca3b73c58b690fe912c78a3eeba08a4c930f400862b6be36")).toBe(true);
 });
 
-test("the AGENTS.md template is pinned: before editing it, add this hash to OLD_AGENTS, then update the pin", async () => {
-  expect(sha256(await readFile(join(import.meta.dirname, "..", "..", "templates", "AGENTS.md")))).toBe(
-    "7cd23635e0d47510294b5ee4d3059f4158ea5e94d52b26150bec4a789ac03d46",
-  );
+test("the AGENTS.md templates are pinned: before editing one, add its hash to OLD_AGENTS, then update the pin", async () => {
+  expect(sha256(await readFile(join(FR, "AGENTS.md")))).toBe("7cd23635e0d47510294b5ee4d3059f4158ea5e94d52b26150bec4a789ac03d46");
+  expect(sha256(await readFile(join(EN, "AGENTS.md")))).toBe("834a9884b20b2ca356521226665c976c119d648712364810b56425230b7c3a98");
   expect(OLD_AGENTS.has("6ecc3a5571398b8490f4b384b32c191e56111e3eebe092e1ccf03790f2ec845b")).toBe(true);
   expect(OLD_AGENTS.has("ff0f49e00a04cec590ee023394221e8bbf28dd0439a628e48ea307acaffa0a8e")).toBe(true);
 });
@@ -214,37 +215,39 @@ test("the hash of every shipped version is kept: the list only grows", () => {
   expect(OLD_AGENTS.has("eaf40a1f51b1e62226e5087c7d7a73cf8b48b84e1e4fb214e89a119d0eb71d96")).toBe(true);
 });
 
-test("the AGENTS.md template describes the design mode remarks of site apps", async () => {
-  const text = await readFile(join(DEFAULT_TEMPLATES, "AGENTS.md"), "utf8");
-  for (const pattern of ["Remarques du mode design", "/workspace/.ressac/remarks/site-<id>/", "MutationObserver", "third-party-site", "home/"]) {
-    expect(text, pattern).toContain(pattern);
-  }
-});
+for (const [lang, heading] of [["fr", "Remarques du mode design"], ["en", "Design mode remarks"]] as const) {
+  test(`the AGENTS.md template describes the design mode remarks of site apps (${lang})`, async () => {
+    const text = await readFile(join(DEFAULT_TEMPLATES, lang, "AGENTS.md"), "utf8");
+    for (const pattern of [heading, "/workspace/.ressac/remarks/site-<id>/", "MutationObserver", "third-party-site", "home/"]) {
+      expect(text, pattern).toContain(pattern);
+    }
+  });
 
-test("the site.json examples given in AGENTS.md (YouTube, Vidola) are valid for the site app schema", async () => {
-  const text = await readFile(join(DEFAULT_TEMPLATES, "AGENTS.md"), "utf8");
-  const blocks = [...text.matchAll(/```json site\.json:([a-z]+)\n([\s\S]*?)```/g)].map((m) => ({ name: m[1]!, json: m[2]! }));
-  expect(blocks.map((b) => b.name).sort()).toEqual(["vidola", "youtube"]);
-  for (const { name: name, json } of blocks) {
-    const r = DeclarationSite.safeParse(JSON.parse(json));
-    expect(r.success, `${name} : ${r.success ? "" : r.error.message}`).toBe(true);
-    if (!r.success) continue;
-    expect(checkSiteDeclaration(r.data, { localAddresses: false }), name).toBeNull();
-    // Each declared tweak file is shown in AGENTS.md.
-    for (const r2 of r.data.tweaks) for (const f of [...r2.js, ...r2.css]) expect(text, `${name} : retouches/${f}`).toContain(`tweaks/${f}`);
-  }
-});
+  test(`the site.json examples given in AGENTS.md (YouTube, Vidola) are valid for the site app schema (${lang})`, async () => {
+    const text = await readFile(join(DEFAULT_TEMPLATES, lang, "AGENTS.md"), "utf8");
+    const blocks = [...text.matchAll(/```json site\.json:([a-z]+)\n([\s\S]*?)```/g)].map((m) => ({ name: m[1]!, json: m[2]! }));
+    expect(blocks.map((b) => b.name).sort()).toEqual(["vidola", "youtube"]);
+    for (const { name: name, json } of blocks) {
+      const r = DeclarationSite.safeParse(JSON.parse(json));
+      expect(r.success, `${name} : ${r.success ? "" : r.error.message}`).toBe(true);
+      if (!r.success) continue;
+      expect(checkSiteDeclaration(r.data, { localAddresses: false }), name).toBeNull();
+      // Each declared tweak file is shown in AGENTS.md.
+      for (const r2 of r.data.tweaks) for (const f of [...r2.js, ...r2.css]) expect(text, `${name} : retouches/${f}`).toContain(`tweaks/${f}`);
+    }
+  });
 
-test("the references given as examples in AGENTS.md are valid for the plan reader", async () => {
-  const text = await readFile(join(DEFAULT_TEMPLATES, "AGENTS.md"), "utf8");
-  const blocks = [...text.matchAll(/```reference\n([\s\S]*?)```/g)].map((m) => m[1]!);
-  expect(blocks.length).toBeGreaterThan(0);
-  const references = blocks.flatMap((b) => b.split("\n").filter((l) => l.trim() !== ""));
-  expect(references.length).toBeGreaterThanOrEqual(3);
-  for (const r of references) {
-    expect(readReference(r), r).not.toHaveProperty("error");
-  }
-});
+  test(`the references given as examples in AGENTS.md are valid for the plan reader (${lang})`, async () => {
+    const text = await readFile(join(DEFAULT_TEMPLATES, lang, "AGENTS.md"), "utf8");
+    const blocks = [...text.matchAll(/```reference\n([\s\S]*?)```/g)].map((m) => m[1]!);
+    expect(blocks.length).toBeGreaterThan(0);
+    const references = blocks.flatMap((b) => b.split("\n").filter((l) => l.trim() !== ""));
+    expect(references.length).toBeGreaterThanOrEqual(3);
+    for (const r of references) {
+      expect(readReference(r), r).not.toHaveProperty("error");
+    }
+  });
+}
 
 test("a new space gets the workflows", async () => {
   const c = spacePaths(await tempFolder());
@@ -278,16 +281,16 @@ for (const file of readdirSync(DISPLAYS).sort()) {
   test(`a starter display left at a shipped version is replaced by the template (${file})`, async () => {
     const old = await readFile(join(DISPLAYS, file), "utf8");
     const c = spacePaths(await tempFolder());
-    await initSpace(c);
+    await initSpace(c, "fr");
     await writeFile(join(c.widgets, id, "display.html"), old);
-    const { created: crees } = await initSpace(c);
+    const { created: crees } = await initSpace(c, "fr");
     expect(await readFile(join(c.widgets, id, "display.html"), "utf8")).toBe(
-      await readFile(join(DEFAULT_TEMPLATES, "widgets", id, "display.html"), "utf8"),
+      await readFile(join(FR, "widgets", id, "display.html"), "utf8"),
     );
     // The copy of the current template is already up to date: nothing to replace.
-    if (old !== (await readFile(join(DEFAULT_TEMPLATES, "widgets", id, "display.html"), "utf8"))) expect(crees).toContain(join(c.widgets, id, "display.html"));
+    if (old !== (await readFile(join(FR, "widgets", id, "display.html"), "utf8"))) expect(crees).toContain(join(c.widgets, id, "display.html"));
     // A second launch does nothing anymore.
-    expect((await initSpace(c)).created).toEqual([]);
+    expect((await initSpace(c, "fr")).created).toEqual([]);
   });
 }
 
@@ -295,9 +298,9 @@ test("a starter display modified by the user is left alone", async () => {
   const old = await readFile(join(DISPLAYS, "meteo-4d4c5f1.html"), "utf8");
   const modified = `${old}\n<!-- le mien -->`;
   const c = spacePaths(await tempFolder());
-  await initSpace(c);
+  await initSpace(c, "fr");
   await writeFile(join(c.widgets, "meteo", "display.html"), modified);
-  const { created: crees } = await initSpace(c);
+  const { created: crees } = await initSpace(c, "fr");
   expect(await readFile(join(c.widgets, "meteo", "display.html"), "utf8")).toBe(modified);
   expect(crees).toEqual([]);
 });
@@ -317,4 +320,117 @@ test("a space with only the old claude.json gets codex.json and an updated claud
   await initSpace(c);
   expect(await readFile(join(c.profiles, "codex.json"), "utf8")).toBe('{"id":"codex","mine":true}');
   expect(await readFile(join(c.profiles, "claude.json"), "utf8")).toBe('{"id":"claude","mine":true}');
+});
+
+// ——— Templates per language and the swap on a language change ———
+
+const WIDGETS = ["actus-tech", "daily-dev", "meteo"] as const;
+
+async function expectWidgetsIn(c: ReturnType<typeof spacePaths>, models: string) {
+  for (const [id, files] of Object.entries(START_FILES)) {
+    for (const f of files) expect(await readFile(join(c.widgets, id, f), "utf8"), `${id}/${f}`).toBe(await readFile(join(models, "widgets", id, f), "utf8"));
+  }
+}
+
+test("a new space in English gets the English AGENTS.md, CLAUDE.md, notes and widgets", async () => {
+  const c = spacePaths(await tempFolder());
+  await initSpace(c, "en");
+  for (const f of ["AGENTS.md", "CLAUDE.md", "browsing-notes.md"]) expect(await readFile(join(c.root, f), "utf8"), f).toBe(await readFile(join(EN, f), "utf8"));
+  expect(await readFile(join(c.root, "CLAUDE.md"), "utf8")).toBe("Read and apply /workspace/AGENTS.md.\n");
+  await expectWidgetsIn(c, EN);
+  const tech = DeclarationWidget.parse(JSON.parse(await readFile(join(c.widgets, "actus-tech", "widget.json"), "utf8")));
+  expect(tech.sources.public).not.toContain("next.ink");
+  expect(await readFile(join(c.widgets, "actus-tech", "workflow.json"), "utf8")).not.toContain("next.ink");
+  for (const id of WIDGETS) {
+    expect(await readFile(join(c.widgets, id, "display.html"), "utf8"), id).toContain('<html lang="en">');
+    if (id !== "meteo") expect(await readFile(join(c.widgets, id, "workflow.json"), "utf8"), id).toContain("Summarize in English");
+  }
+});
+
+test("an unknown language (de) gets the English templates", async () => {
+  const c = spacePaths(await tempFolder());
+  await initSpace(c, "de");
+  expect(await readFile(join(c.root, "AGENTS.md"), "utf8")).toBe(await readFile(join(EN, "AGENTS.md"), "utf8"));
+  await expectWidgetsIn(c, EN);
+});
+
+test("a path-like language never leaves the templates folder", async () => {
+  const c = spacePaths(await tempFolder());
+  await initSpace(c, "../templates/fr");
+  expect(await readFile(join(c.root, "AGENTS.md"), "utf8")).toBe(await readFile(join(EN, "AGENTS.md"), "utf8"));
+});
+
+test("a French space left untouched switches to English: AGENTS.md, CLAUDE.md, notes, widgets; data files are kept", async () => {
+  const c = spacePaths(await tempFolder());
+  await initSpace(c, "fr");
+  await writeFile(join(c.widgets, "meteo", "data.json"), '{"ville":"Bordeaux"}');
+  const { created } = await initSpace(c, "en");
+  for (const f of ["AGENTS.md", "CLAUDE.md", "browsing-notes.md"]) expect(await readFile(join(c.root, f), "utf8"), f).toBe(await readFile(join(EN, f), "utf8"));
+  await expectWidgetsIn(c, EN);
+  expect(await readFile(join(c.widgets, "meteo", "data.json"), "utf8")).toBe('{"ville":"Bordeaux"}');
+  expect(created).toContain(join(c.root, "AGENTS.md"));
+  expect((await initSpace(c, "en")).created).toEqual([]);
+  // And back.
+  await initSpace(c, "fr");
+  expect(await readFile(join(c.root, "AGENTS.md"), "utf8")).toBe(await readFile(join(FR, "AGENTS.md"), "utf8"));
+  await expectWidgetsIn(c, FR);
+});
+
+test("edited files stay in their language on a switch", async () => {
+  const c = spacePaths(await tempFolder());
+  await initSpace(c, "fr");
+  const agents = (await readFile(join(c.root, "AGENTS.md"), "utf8")) + "\nMa règle.\n";
+  await writeFile(join(c.root, "AGENTS.md"), agents);
+  await writeFile(join(c.root, "browsing-notes.md"), "my lessons\n");
+  await initSpace(c, "en");
+  expect(await readFile(join(c.root, "AGENTS.md"), "utf8")).toBe(agents);
+  expect(await readFile(join(c.root, "browsing-notes.md"), "utf8")).toBe("my lessons\n");
+  expect(await readFile(join(c.root, "CLAUDE.md"), "utf8")).toBe(await readFile(join(EN, "CLAUDE.md"), "utf8"));
+});
+
+test("an AGENTS.md left at an old shipped version goes to the language asked", async () => {
+  const c = spacePaths(await tempFolder());
+  // The AGENTS.md shipped before the English formats, recognised by its hash only: a stand-in with a known hash.
+  const old = "ancien AGENTS\n";
+  OLD_AGENTS.add(sha256(old));
+  try {
+    await writeFile(join(c.root, "AGENTS.md"), old);
+    await initSpace(c, "en");
+    expect(await readFile(join(c.root, "AGENTS.md"), "utf8")).toBe(await readFile(join(EN, "AGENTS.md"), "utf8"));
+  } finally {
+    OLD_AGENTS.delete(sha256(old));
+  }
+});
+
+test("a widget with an edited display.html is kept whole on a switch; the others switch", async () => {
+  const c = spacePaths(await tempFolder());
+  await initSpace(c, "fr");
+  const display = (await readFile(join(c.widgets, "meteo", "display.html"), "utf8")) + "<!-- mine -->";
+  await writeFile(join(c.widgets, "meteo", "display.html"), display);
+  await initSpace(c, "en");
+  expect(await readFile(join(c.widgets, "meteo", "display.html"), "utf8")).toBe(display);
+  for (const f of START_FILES.meteo!.filter((f) => f !== "display.html")) {
+    expect(await readFile(join(c.widgets, "meteo", f), "utf8"), f).toBe(await readFile(join(FR, "widgets", "meteo", f), "utf8"));
+  }
+  expect(await readFile(join(c.widgets, "actus-tech", "widget.json"), "utf8")).toBe(await readFile(join(EN, "widgets", "actus-tech", "widget.json"), "utf8"));
+});
+
+test("a widget with an edited workflow.json is kept whole, its old shipped display included", async () => {
+  const c = spacePaths(await tempFolder());
+  await initSpace(c, "fr");
+  await writeFile(join(c.widgets, "daily-dev", "workflow.json"), '{"version":1,"blocks":[],"links":[]}');
+  await initSpace(c, "en");
+  expect(await readFile(join(c.widgets, "daily-dev", "widget.json"), "utf8")).toBe(await readFile(join(FR, "widgets", "daily-dev", "widget.json"), "utf8"));
+  expect(await readFile(join(c.widgets, "daily-dev", "display.html"), "utf8")).toBe(await readFile(join(FR, "widgets", "daily-dev", "display.html"), "utf8"));
+});
+
+test("a starter widget with a template file deleted is kept whole on a switch", async () => {
+  const c = spacePaths(await tempFolder());
+  await initSpace(c, "fr");
+  await rm(join(c.widgets, "meteo", "example.json"));
+  await initSpace(c, "en");
+  expect(existsSync(join(c.widgets, "meteo", "example.json"))).toBe(false);
+  for (const f of START_FILES.meteo!.filter((f) => f !== "example.json")) {
+    expect(await readFile(join(c.widgets, "meteo", f), "utf8"), f).toBe(await readFile(join(FR, "widgets", "meteo", f), "utf8"));
+  }
 });

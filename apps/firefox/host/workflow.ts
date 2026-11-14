@@ -21,6 +21,7 @@ import {
 } from "../../../packages/kernel/src/index.ts";
 import { workflowUrlTarget } from "../shared/model.ts";
 import type { WorkflowEdit, BuilderSelection } from "../shared/api.ts";
+import { hostLocale, hostSay } from "./locale.ts";
 
 // The widget and action parts of the workflow builder.
 
@@ -54,7 +55,6 @@ export class WriteQueue {
 
 type Context = { paths: SpacePaths; widgetsFolder: string };
 
-const UNREADABLE_MESSAGE = "Écriture impossible";
 
 /**
  * The widget's folder, or null: the widgets folder must not be a link, the widget folder must be a real folder (not a
@@ -111,8 +111,8 @@ async function readDeclaration(paths: SpacePaths, id: string): Promise<Declarati
 }
 
 function warningsOf(raw: unknown, d: DeclarationWidget): Warning[] {
-  const r = validateWorkflow(raw, validationContext(d));
-  return r.ok ? warnWorkflow(r.valid.workflow, { sources: d.sources, config: d.config, maxDurationMinutes: d.harvest?.maxDurationMinutes ?? null }, r.valid) : [];
+  const r = validateWorkflow(raw, validationContext(d, hostLocale()));
+  return r.ok ? warnWorkflow(r.valid.workflow, { sources: d.sources, config: d.config, maxDurationMinutes: d.harvest?.maxDurationMinutes ?? null, locale: hostLocale() }, r.valid) : [];
 }
 
 /** What the builder opens for a widget; null: unknown widget (or unreadable widget.json), no harvest, or disk error. Writes nothing. */
@@ -120,7 +120,7 @@ export async function readEdit(c: Context, id: string): Promise<WorkflowEdit | n
   try {
     const d = await readDeclaration(c.paths, id);
     if (!("declaration" in d)) return null;
-    const l = await readDraft(d.folder, validationContext(d.declaration));
+    const l = await readDraft(d.folder, validationContext(d.declaration, hostLocale()));
     if (!l) return null;
     const decl = d.declaration;
     const r = decl.harvest;
@@ -148,36 +148,36 @@ export async function readEdit(c: Context, id: string): Promise<WorkflowEdit | n
 export async function saveEdit(c: Context, id: string, raw: unknown): Promise<SaveResult & { warnings: Warning[] }> {
   try {
     const d = await readDeclaration(c.paths, id);
-    if ("invalid" in d) return { ok: false, error: `widget.json invalide : ${d.invalid}`, warnings: [] };
-    if (!("declaration" in d)) return { ok: false, error: "Widget introuvable", warnings: [] };
+    if ("invalid" in d) return { ok: false, error: hostSay("kernel-widget-invalid", { error: d.invalid }), warnings: [] };
+    if (!("declaration" in d)) return { ok: false, error: hostSay("host-widget-not-found"), warnings: [] };
     const r = await saveWorkflow({
       filesFolder: d.folder,
       dataFolder: join(c.widgetsFolder, id),
       raw: raw,
-      context: validationContext(d.declaration),
+      context: validationContext(d.declaration, hostLocale()),
     });
     return { ...r, warnings: r.ok ? warningsOf(raw, d.declaration) : [] };
   } catch (e) {
     console.error(`[ressac] saving the workflow of widget ${id}:`, e);
-    return { ok: false, error: UNREADABLE_MESSAGE, warnings: [] };
+    return { ok: false, error: hostSay("workflows-code-write-failed"), warnings: [] };
   }
 }
 
 export async function readCode(paths: SpacePaths, id: string, name: string): Promise<{ text: string } | { absent: true } | { error: string }> {
   const folder = await widgetFolderOn(paths, id);
-  if (!folder) return { error: "Widget introuvable" };
-  return readCodeFile(folder, name);
+  if (!folder) return { error: hostSay("host-widget-not-found") };
+  return readCodeFile(folder, name, hostLocale());
 }
 
 /** Call inside `inSeries`: the folder is checked again just before writing. */
 export async function saveCode(paths: SpacePaths, id: string, name: string, text: string): Promise<{ ok: true } | { ok: false; error: string }> {
   const folder = await widgetFolderOn(paths, id);
-  if (!folder) return { ok: false, error: "Widget introuvable" };
+  if (!folder) return { ok: false, error: hostSay("host-widget-not-found") };
   try {
-    return await storeCode(folder, name, text);
+    return await storeCode(folder, name, text, hostLocale());
   } catch (e) {
     console.error(`[ressac] code of widget ${id}:`, e);
-    return { ok: false, error: UNREADABLE_MESSAGE };
+    return { ok: false, error: hostSay("workflows-code-write-failed") };
   }
 }
 
@@ -194,11 +194,11 @@ async function declarationAction(paths: SpacePaths, id: string): Promise<{ decla
 }
 
 function actionWarnings(raw: unknown, d: DeclarationAction): Warning[] {
-  const r = validateWorkflow(raw, actionValidationContext(d));
+  const r = validateWorkflow(raw, actionValidationContext(d, hostLocale()));
   if (!r.ok) return [];
   return warnWorkflow(
     r.valid.workflow,
-    { sources: d.sources, config: null, maxDurationMinutes: d.maxDurationMinutes ?? null, owner: "action", input: d.input !== undefined },
+    { sources: d.sources, config: null, maxDurationMinutes: d.maxDurationMinutes ?? null, owner: "action", input: d.input !== undefined, locale: hostLocale() },
     r.valid,
   );
 }
@@ -209,7 +209,7 @@ export async function readActionEdit(c: ActionContext, id: string): Promise<Work
     const d = await declarationAction(c.paths, id);
     if (!d || "error" in d) return null;
     const decl = d.declaration;
-    const l = await readDraft(d.folder, actionValidationContext(decl));
+    const l = await readDraft(d.folder, actionValidationContext(decl, hostLocale()));
     if (!l || l.origin !== "file") return null;
     return {
       ...l,
@@ -234,35 +234,35 @@ export async function readActionEdit(c: ActionContext, id: string): Promise<Work
 export async function saveActionEdit(c: ActionContext, id: string, raw: unknown): Promise<SaveResult & { warnings: Warning[] }> {
   try {
     const d = await declarationAction(c.paths, id);
-    if (!d) return { ok: false, error: ACTION_UNKNOWN, warnings: [] };
+    if (!d) return { ok: false, error: ACTION_UNKNOWN(hostLocale()), warnings: [] };
     if ("error" in d) return { ok: false, error: d.error, warnings: [] };
     const r = await saveWorkflow({
       filesFolder: d.folder,
       dataFolder: join(c.actionsFolder, id),
       raw: raw,
-      context: actionValidationContext(d.declaration),
+      context: actionValidationContext(d.declaration, hostLocale()),
     });
     return { ...r, warnings: r.ok ? actionWarnings(raw, d.declaration) : [] };
   } catch (e) {
     console.error(`[ressac] saving the workflow of action ${id}:`, e);
-    return { ok: false, error: UNREADABLE_MESSAGE, warnings: [] };
+    return { ok: false, error: hostSay("workflows-code-write-failed"), warnings: [] };
   }
 }
 
 export async function readActionCode(paths: SpacePaths, id: string, name: string): Promise<{ text: string } | { absent: true } | { error: string }> {
   const folder = await actionFolder(paths, id);
-  if (!folder) return { error: ACTION_UNKNOWN };
-  return readCodeFile(folder, name);
+  if (!folder) return { error: ACTION_UNKNOWN(hostLocale()) };
+  return readCodeFile(folder, name, hostLocale());
 }
 
 /** Call inside `inSeries`: the folder is checked again just before writing. */
 export async function saveActionCode(paths: SpacePaths, id: string, name: string, text: string): Promise<{ ok: true } | { ok: false; error: string }> {
   const folder = await actionFolder(paths, id);
-  if (!folder) return { ok: false, error: ACTION_UNKNOWN };
+  if (!folder) return { ok: false, error: ACTION_UNKNOWN(hostLocale()) };
   try {
-    return await storeCode(folder, name, text);
+    return await storeCode(folder, name, text, hostLocale());
   } catch (e) {
     console.error(`[ressac] code of action ${id}:`, e);
-    return { ok: false, error: UNREADABLE_MESSAGE };
+    return { ok: false, error: hostSay("workflows-code-write-failed") };
   }
 }

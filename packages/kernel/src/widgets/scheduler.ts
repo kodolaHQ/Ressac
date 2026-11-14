@@ -9,6 +9,7 @@ import type { Workshop } from "../container/workshop.js";
 import type { LocalAi } from "../ai/local-ai.js";
 import { createAiDispatcher, type AiDispatcher } from "../ai/dispatcher.js";
 import type { BrowserBridge } from "../mcp/bridge.js";
+import { say } from "../i18n.js";
 import { readGrants, removeGrant } from "./grants.js";
 import { currentSlot, dueHour, trackingAfter, type HourOutcome, type HoursTracking } from "./hours.js";
 import type { DirectTrace } from "../workflows/run.js";
@@ -88,6 +89,8 @@ export type Harvester = (o: HarvestOptions) => Promise<HarvestResult>;
 export type Tryer = (o: HarvestOptions & { origin: string; start: string }) => Promise<AttemptResult>;
 
 export interface SchedulerOptions {
+  /** The shown language, read when a notification is written (default: English). */
+  locale?: () => string;
   paths: SpacePaths;
   widgetsFolder: string;
   /** Folder of the workflow engine (`docker/engine`), mounted read-only in the container. */
@@ -275,7 +278,7 @@ export class WidgetsScheduler {
   }
 
   private async widgets(): Promise<WidgetRead[]> {
-    return (await readHome(this.o.paths, this.o.widgetsFolder)).widgets;
+    return (await readHome(this.o.paths, this.o.widgetsFolder, this.locale())).widgets;
   }
 
   /** The widget's lane from its declaration read now (short if unknown or unreadable). */
@@ -474,6 +477,10 @@ export class WidgetsScheduler {
   }
 
   /** Without a workshop, nothing runs: the widget keeps its data and says so (a single write). */
+  private locale(): string {
+    return this.o.locale?.() ?? "en";
+  }
+
   private async markWorkshopStopped(w: WidgetRead): Promise<WidgetState> {
     const before = await readWidgetState(this.o.widgetsFolder, w.id);
     if (before.status === "workshop-stopped") return before;
@@ -481,7 +488,7 @@ export class WidgetsScheduler {
       status: "workshop-stopped",
       lastUpdate: before.lastUpdate,
       lastAttempt: before.lastAttempt,
-      error: WORKSHOP_STOPPED_ERROR,
+      error: WORKSHOP_STOPPED_ERROR(this.locale()),
       kernelError: true,
     };
     await writeWidgetState(this.o.widgetsFolder, w.id, state);
@@ -499,6 +506,7 @@ export class WidgetsScheduler {
       ai: ai,
       bridge: this.o.bridge,
       clock: this.o.clock,
+      ...(this.o.locale ? { locale: this.o.locale } : {}),
       ...(this.o.onChange ? { onChange: this.o.onChange } : {}),
       ...(this.o.localAddresses ? { localAddresses: true } : {}),
       ...(this.o.pacing ? { pacing: this.o.pacing } : {}),
@@ -557,7 +565,7 @@ export class WidgetsScheduler {
       state = this.stopped
         ? before
         : // `derniereTentative` is always the start of the attempt, as in the harvest.
-          { status: "error", lastUpdate: before.lastUpdate, lastAttempt: start.toISOString(), error: INTERNAL_HARVEST_ERROR, kernelError: true };
+          { status: "error", lastUpdate: before.lastUpdate, lastAttempt: start.toISOString(), error: INTERNAL_HARVEST_ERROR(this.locale()), kernelError: true };
       await writeWidgetState(this.o.widgetsFolder, w.id, state);
       this.o.onChange?.();
       return { result: state, issue: this.stopped ? "no-effect" : "failure" };
@@ -580,7 +588,7 @@ export class WidgetsScheduler {
     try {
       // `nom` is written by the agent: control and invisible characters replaced, on a single line.
       const title = w.declaration.name.replace(/[\p{Cc}\p{Cf}]/gu, " ").replace(/\s+/g, " ").trim() || w.id;
-      this.o.notify({ widget: w.id, title: title, text: notificationText(fresh) });
+      this.o.notify({ widget: w.id, title: title, text: notificationText(fresh, this.locale()) });
     } catch (e) {
       console.error(`[ressac] notification of widget ${w.id}:`, e);
     }
@@ -619,10 +627,10 @@ export class WidgetsScheduler {
     try {
       return await this.inItsLane(id, async (w): Promise<AttemptResult> => {
         request.started();
-        if (!w) return { ok: false, error: `Widget inconnu : ${id}` };
-        if (this.stopped) return { ok: false, error: INTERRUPTED_ERROR };
-        if (!(await this.workshopStarted())) return { ok: false, error: WORKSHOP_STOPPED_ERROR };
-        if (this.stopped) return { ok: false, error: INTERRUPTED_ERROR };
+        if (!w) return { ok: false, error: say(this.locale(), "kernel-grant-widget-unknown", { id }) };
+        if (this.stopped) return { ok: false, error: INTERRUPTED_ERROR(this.locale()) };
+        if (!(await this.workshopStarted())) return { ok: false, error: WORKSHOP_STOPPED_ERROR(this.locale()) };
+        if (this.stopped) return { ok: false, error: INTERRUPTED_ERROR(this.locale()) };
         try {
           return await this.follow(
             id,
@@ -633,7 +641,7 @@ export class WidgetsScheduler {
         } catch (e) {
           // The exception's text may quote what the widget read: only a fixed kernel message is returned.
           console.error(`[ressac] trial of widget ${id}:`, e);
-          return { ok: false, error: INTERNAL_HARVEST_ERROR };
+          return { ok: false, error: INTERNAL_HARVEST_ERROR(this.locale()) };
         }
       });
     } finally {

@@ -1,4 +1,4 @@
-import { blockCatalog, validateWorkflow, implicitWorkflow } from "@ressac/kernel";
+import { blockCatalog, DEFAULT_CONTEXT, validateWorkflow, implicitWorkflow } from "@ressac/kernel";
 import { expect, test } from "vitest";
 import type { Draft, WorkflowEdit } from "../../shared/api";
 import { CODE_MODEL, freshParams, freeSlot } from "../../ui/builder/add";
@@ -35,7 +35,7 @@ function fake(initial: unknown, files: Record<string, string> = {}) {
   const reading = (): WorkflowEdit | null => {
     if (state.notFound) return null;
     const raw = state.readable ? structuredClone(state.disk) : null;
-    const v = raw === null ? { ok: false as const, error: "Workflow invalide : JSON coupé" } : validateWorkflow(structuredClone(raw));
+    const v = raw === null ? { ok: false as const, error: "Workflow invalide : JSON coupé" } : validateWorkflow(structuredClone(raw), { ...DEFAULT_CONTEXT, locale: "fr" });
     return {
       origin: "file",
       raw: raw,
@@ -48,7 +48,7 @@ function fake(initial: unknown, files: Record<string, string> = {}) {
     read: async () => reading(),
     save: async (_id, b) => {
       if (state.suspended) await new Promise<void>((ok) => pending.push(ok));
-      const v = validateWorkflow(structuredClone(b));
+      const v = validateWorkflow(structuredClone(b), { ...DEFAULT_CONTEXT, locale: "fr" });
       if (!v.ok) return { ok: false, error: v.error, ...(v.block ? { block: v.block } : {}), warnings: [] };
       writes.push(structuredClone(b));
       state.disk = structuredClone(b);
@@ -231,7 +231,7 @@ test("one edition per widget in the window", () => {
 test("new parameters: neutral values for required fields, no invented address", () => {
   expect(freshParams(catalog("list.keep"))).toEqual({ count: 10 });
   expect(freshParams(catalog("list.new"))).toEqual({ key: "url" });
-  expect(freshParams(catalog("ai.sort"))).toEqual({ question: "Est-ce intéressant ?", text: "{title}" });
+  expect(freshParams(catalog("ai.sort"))).toEqual({ question: "Is it interesting?", text: "{title}" });
   expect(freshParams(catalog("source.page"))).toEqual({});
 });
 

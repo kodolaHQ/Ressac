@@ -1,0 +1,119 @@
+{
+  "ville": "London",
+  "actuel": {
+    "temperature": 17,
+    "code": 2,
+    "libelle": "Partly cloudy"
+  },
+  "heures": [
+    {
+      "heure": "14:00",
+      "temperature": 17,
+      "code": 2,
+      "libelle": "Partly cloudy"
+    },
+    {
+      "heure": "15:00",
+      "temperature": 17,
+      "code": 2,
+      "libelle": "Partly cloudy"
+    },
+    {
+      "heure": "16:00",
+      "temperature": 16,
+      "code": 3,
+      "libelle": "Overcast"
+    },
+    {
+      "heure": "17:00",
+      "temperature": 16,
+      "code": 3,
+      "libelle": "Overcast"
+    },
+    {
+      "heure": "18:00",
+      "temperature": 15,
+      "code": 61,
+      "libelle": "Light rain"
+    },
+    {
+      "heure": "19:00",
+      "temperature": 15,
+      "code": 61,
+      "libelle": "Light rain"
+    },
+    {
+      "heure": "20:00",
+      "temperature": 14,
+      "code": 3,
+      "libelle": "Overcast"
+    },
+    {
+      "heure": "21:00",
+      "temperature": 14,
+      "code": 2,
+      "libelle": "Partly cloudy"
+    },
+    {
+      "heure": "22:00",
+      "temperature": 13,
+      "code": 1,
+      "libelle": "Mainly clear"
+    },
+    {
+      "heure": "23:00",
+      "temperature": 13,
+      "code": 0,
+      "libelle": "Clear sky"
+    },
+    {
+      "heure": "00:00",
+      "temperature": 12,
+      "code": 0,
+      "libelle": "Clear sky"
+    },
+    {
+      "heure": "01:00",
+      "temperature": 12,
+      "code": 1,
+      "libelle": "Mainly clear"
+    }
+  ],
+  "jours": [
+    {
+      "date": "2026-10-28",
+      "min": 9,
+      "max": 18,
+      "code": 2,
+      "libelle": "Partly cloudy"
+    },
+    {
+      "date": "2026-10-29",
+      "min": 10,
+      "max": 16,
+      "code": 61,
+      "libelle": "Light rain"
+    },
+    {
+      "date": "2026-10-30",
+      "min": 9,
+      "max": 15,
+      "code": 3,
+      "libelle": "Overcast"
+    },
+    {
+      "date": "2026-10-31",
+      "min": 10,
+      "max": 17,
+      "code": 1,
+      "libelle": "Mainly clear"
+    },
+    {
+      "date": "2026-11-01",
+      "min": 9,
+      "max": 19,
+      "code": 0,
+      "libelle": "Clear sky"
+    }
+  ]
+}

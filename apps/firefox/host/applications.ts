@@ -33,6 +33,7 @@ export interface ApplicationsHost {
 
 export function createApplicationsHost(o: {
   paths: SpacePaths;
+  locale?: () => string;
   dataDir: string;
   workshop: Workshop;
   chrome: {
@@ -98,6 +99,7 @@ export function createApplicationsHost(o: {
 
   const manager: ApplicationManager = new Manager({
     paths: o.paths,
+    ...(o.locale ? { locale: o.locale } : {}),
     workshop: o.workshop,
     ...(ports ? { ports } : {}),
     ...(delay > 0 ? { readyDelayMs: delay } : {}),

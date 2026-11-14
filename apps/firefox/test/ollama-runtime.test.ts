@@ -88,8 +88,8 @@ describe("the Ollama runtime", () => {
   });
 
   it("start fails when nothing is installed, or when Ollama never answers", async () => {
-    await expect(machine({}).runtime.start()).rejects.toThrow(NOT_STARTED);
-    await expect(machine({ paths: [APP], startsAfterLaunch: false }).runtime.start()).rejects.toThrow(NOT_STARTED);
+    await expect(machine({}).runtime.start()).rejects.toThrow(NOT_STARTED());
+    await expect(machine({ paths: [APP], startsAfterLaunch: false }).runtime.start()).rejects.toThrow(NOT_STARTED());
   });
 
   it("install downloads, checks, unpacks, then serves its own copy", async () => {
@@ -104,7 +104,7 @@ describe("the Ollama runtime", () => {
 
   it("install refuses an archive whose hash differs and leaves nothing behind", async () => {
     const m = machine({ archive: archive(), sha256: "0".repeat(64) });
-    await expect(m.runtime.install(() => {})).rejects.toThrow(BAD_ARCHIVE);
+    await expect(m.runtime.install(() => {})).rejects.toThrow(BAD_ARCHIVE());
     expect(existsSync(join(m.dataDir, "ollama", OLLAMA_VERSION))).toBe(false);
     expect(existsSync(join(m.dataDir, "ollama", `${OLLAMA_VERSION}.part`))).toBe(false);
     expect(m.state.launched).toEqual([]);

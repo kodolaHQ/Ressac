@@ -6,10 +6,10 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { Application } from "../applications/manager.js";
 import type { WidgetState } from "../home/schemas.js";
-import { ACTION_STOPPED, ID_EXECUTION, type Execution, type ResumeExecution } from "../workflows/executions.js";
+import { inEveryLanguage } from "../errors.js";
+import { ID_EXECUTION, type Execution, type ResumeExecution } from "../workflows/executions.js";
 import { kernelError } from "../widgets/harvest.js";
-import { ACTION_UNKNOWN, ACTION_WITHOUT_WORKFLOW, RESULT_TOO_BIG, requiredInput, type LaunchResult } from "../actions/run.js";
-import { INTERNAL_ACTION_ERROR } from "../actions/file.js";
+import { requiredInput, type LaunchResult } from "../actions/run.js";
 import type { PlanPage } from "../pages/plan.js";
 import { ID_SITE } from "../sites/schemas.js";
 import type { MemoryContent } from "../sites/memory.js";
@@ -214,7 +214,11 @@ export const RESERVED_ERROR = "La récolte a échoué (détail réservé : deman
 /** Replaces, without a grant, the error of an action with an account that is not a fixed kernel message. */
 export const RESERVED_ACTION_ERROR = "L'action a échoué (détail réservé : demande-le avec action_runs)";
 /** Fixed messages written by the kernel for an action, in addition to those of the widgets (`erreurDuNoyau`). */
-const FIXED_ACTION_ERRORS = new Set([ACTION_STOPPED, ACTION_WITHOUT_WORKFLOW, RESULT_TOO_BIG, INTERNAL_ACTION_ERROR, ACTION_UNKNOWN]);
+// Stored errors keep the language they were written in: every shipped language matches.
+const FIXED_ACTION_ERRORS = new Set([
+  ...["kernel-err-action-stopped", "kernel-err-action-no-workflow", "kernel-err-result-too-big", "kernel-err-action-internal"].flatMap((id) => inEveryLanguage(id)),
+  ...inEveryLanguage("kernel-err-action-unknown"),
+]);
 const kernelActionError = (error: string) => FIXED_ACTION_ERRORS.has(error) || kernelError(error);
 const ID_WIDGET = z.string().regex(/^[a-z0-9-]+$/, "id de widget : minuscules, chiffres et tirets");
 
@@ -1250,7 +1254,7 @@ function registerActionsTools(
     protect(async ({ id, input: input }) => {
       const before = await read(id);
       if (before.input !== null && (input === undefined || input.trim() === "")) {
-        return text(json({ status: "invalid", error: requiredInput(before.input) }));
+        return text(json({ status: "invalid", error: requiredInput("fr", before.input) }));
       }
       const end = await a.tools.launch(id, input);
       const after = (await a.tools.read(id)) ?? before;

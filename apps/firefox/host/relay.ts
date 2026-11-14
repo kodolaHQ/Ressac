@@ -44,7 +44,7 @@ export async function startRelay(o: { readKey(kind: RelayKind): Promise<string |
       else if (req.method !== "POST") status = 405, reply(res, 405, "Méthode non permise");
       else {
         const key = await o.readKey(session.kind);
-        if (!key) status = 503, reply(res, 503, NO_KEY);
+        if (!key) status = 503, reply(res, 503, NO_KEY());
         else {
           const headers = new Headers();
           for (const [k, v] of Object.entries(req.headers)) if (v !== undefined && !DROPPED.has(k)) headers.set(k, [v].flat().join(", "));

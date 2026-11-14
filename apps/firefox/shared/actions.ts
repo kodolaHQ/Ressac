@@ -6,8 +6,6 @@ export const ACTION_ALREADY_RUNNING = "L'action tourne déjà";
 /** Copied from the kernel (pages/resolve.ts; a test checks equality): the UI imports only types from it. */
 export const FALLBACK_MENTION = "mise en page simple";
 export const NO_RESULT = "Aucun résultat";
-/** Copied from the kernel (actions/run.ts; same equality test). */
-export const ACTION_UNKNOWN = "Action inconnue";
 
 /** An action's result images, fetched by the chrome (chrome/store/action-media.ts). */
 export const SCHEMA_IMAGE = "ressac-image";

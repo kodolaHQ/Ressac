@@ -9,9 +9,11 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json",
-    "dev": "tsx src/dev/cli.ts"
+    "dev": "tsx src/dev/cli.ts",
+    "locales": "node scripts/locales.mjs"
   },
   "dependencies": {
+    "@fluent/bundle": "0.19.1",
     "@modelcontextprotocol/sdk": "^1.32.2",
     "chokidar": "^6.0.0",
     "node-pty": "^1.1.0",

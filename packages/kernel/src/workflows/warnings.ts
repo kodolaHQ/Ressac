@@ -1,14 +1,15 @@
+import { say } from "../i18n.js";
 import { BLOCK_REGISTRY } from "./blocks/index.js";
 import { streamingChain } from "./chain.js";
 import type { Workflow } from "./schema.js";
 import type { ValidWorkflow } from "./validate.js";
 
-export const STREAMING_WARNING = "rien à publier au fil de l'eau : l'entrée de la sortie n'est pas traitée élément par élément";
+export const STREAMING_WARNING = (locale: string) => say(locale, "workflows-warn-streaming");
 
 /** A web search quickly takes more than the 150 s of an ordinary run. */
-export const WEB_WITHOUT_DURATION_WARNING = "sans maxDurationMinutes, ce widget peut être coupé à 150 s : demande à l'agent de déclarer maxDurationMinutes";
+export const WEB_WITHOUT_DURATION_WARNING = (locale: string) => say(locale, "workflows-warn-web-no-duration");
 
-export const INPUT_WARNING = "{input} : l'action ne déclare pas de saisie (input)";
+export const INPUT_WARNING = (locale: string) => say(locale, "workflows-warn-input");
 
 export type Warning = { block: string; message: string };
 
@@ -36,10 +37,13 @@ export function warnWorkflow(
     /** An action without `input` receives nothing in `{input}`. */
     owner?: "widget" | "action";
     input?: boolean;
+    /** The language of the messages; English without it. */
+    locale?: string;
   },
   valid?: ValidWorkflow,
 ): Warning[] {
   const r: Warning[] = [];
+  const locale = ctx.locale ?? "en";
   const hasAccount = ctx.sources.account.length > 0;
   const config = ctx.config !== null && typeof ctx.config === "object" ? (ctx.config as Record<string, unknown>) : {};
   for (const b of workflow.blocks) {
@@ -54,7 +58,7 @@ export function warnWorkflow(
       else if (b.type === "source.feed" && Array.isArray(p.urls)) urls = p.urls.filter((u): u is string => typeof u === "string");
       for (const u of urls) {
         const host = hostOf(u);
-        if (host && !allowed.includes(host)) r.push({ block: b.id, message: `domaine non déclaré : ${host}` });
+        if (host && !allowed.includes(host)) r.push({ block: b.id, message: say(locale, "workflows-warn-domain", { host }) });
       }
     }
     const fieldList = BLOCK_REGISTRY.get(b.type)?.fields.filter((c) => c.kind === "template") ?? [];
@@ -72,15 +76,15 @@ export function warnWorkflow(
         const v = b.params[c.name];
         return typeof v === "string" && /\{input\??\}/.test(v);
       });
-      if (hasInput) r.push({ block: b.id, message: INPUT_WARNING });
+      if (hasInput) r.push({ block: b.id, message: INPUT_WARNING(locale) });
     }
-    for (const key of missing) r.push({ block: b.id, message: `config.${key} absent de la configuration du widget` });
-    if (b.type === "web.search" && ctx.maxDurationMinutes === null) r.push({ block: b.id, message: WEB_WITHOUT_DURATION_WARNING });
+    for (const key of missing) r.push({ block: b.id, message: say(locale, "workflows-warn-config", { key }) });
+    if (b.type === "web.search" && ctx.maxDurationMinutes === null) r.push({ block: b.id, message: WEB_WITHOUT_DURATION_WARNING(locale) });
   }
   if (valid) {
     const output = valid.workflow.blocks.find((b) => b.id === valid.output.id);
     if (output?.params.live === true && streamingChain(valid).length === 0) {
-      r.push({ block: valid.output.id, message: STREAMING_WARNING });
+      r.push({ block: valid.output.id, message: STREAMING_WARNING(locale) });
     }
   }
   return r;
