@@ -139,6 +139,8 @@
   let hits = $state.raw<AskHit[] | null>(null);
   let askChosen = $state(0);
   let working = $state(false);
+  /** A hand-off is pending: typing does not end its `working`, so a second Enter cannot start a find it would close. */
+  let handing = false;
   /** Changes on each question, keystroke, switch and opening: a late answer for an abandoned one is ignored. */
   let asked = 0;
   const ASK_MAX = 2000;
@@ -158,18 +160,22 @@
     if (working) return;
     const o = command.open;
     working = true;
-    void api.ask.handOff(win.id, question, shown).then((ok) => {
+    handing = true;
+    const done = (ok: boolean) => {
       if (o !== command.open) return;
       working = false;
+      handing = false;
       if (ok) closeCommand();
-    });
+      else denial = t("sidebar-command-ask-down");
+    };
+    void api.ask.handOff(win.id, question, shown).then(done, () => done(false));
   }
 
   /** Typing again: back to before Enter, a pending answer ignored. */
   function clearAsk() {
     asked++;
     hits = null;
-    working = false;
+    if (!handing) working = false;
   }
 
   async function askEnter() {
@@ -194,10 +200,12 @@
     }
   }
 
-  /** A tab of the active space already on that address takes it, else a new tab. */
+  /** A tab of this window already on that address takes it (activateTab switches to its space), else a new tab. */
   function openHit(h: AskHit) {
-    const open = tabs.find((o) => o.url === h.url);
-    if (open) activate(open.id);
+    const here = tabs.find((o) => o.url === h.url);
+    const there = here ? undefined : Object.values(appState.value?.tabs ?? {}).find((o) => o.windowId === win.id && o.url === h.url);
+    if (here) activate(here.id);
+    else if (there) api.dispatch({ type: "activateTab", id: there.id });
     else api.navigate(null, h.url);
     closeCommand(true);
   }
@@ -210,6 +218,7 @@
     usable = null;
     hits = null;
     working = false;
+    handing = false;
     asked++;
     runningAction = false;
     param = null;
@@ -480,7 +489,7 @@
         </ul>
       {/if}
     {:else}
-    <ul role="listbox">
+    <ul role="listbox" class="lines" out:fade={{ duration: 150 }}>
       {#each lines as l, i (i)}
         {@const title = titleBefore(lines, i, appState.value?.locale ?? "fr")}
         {#if title}<li role="presentation" class="section" data-testid="command-section">{title}</li>{/if}
@@ -529,7 +538,7 @@
   .working { flex: none; width: 12px; height: 12px; animation: ressac-drop var(--spring-d) var(--spring) backwards; }
   .working::after { content: ""; display: block; box-sizing: border-box; width: 100%; height: 100%; border-radius: 50%; border: 2px solid var(--border); border-top-color: var(--accent); animation: spin 0.8s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
-  [data-testid="command-ask-hit"], [data-testid="command-ask-agent"] { animation: ressac-drop var(--spring-d) var(--spring) backwards; }
+  [data-testid="command-ask-hit"], [data-testid="command-ask-agent"], .lines { animation: ressac-drop var(--spring-d) var(--spring) backwards; }
   input { width: 100%; box-sizing: border-box; padding: 16px 18px; font: 400 17px var(--font-ui); color: var(--text); background: transparent; border: 0; border-bottom: 1px solid var(--border); outline: none; }
   input::placeholder { color: var(--text-muted); }
   ul { list-style: none; margin: 0; padding: 6px; }

@@ -46,4 +46,4 @@ host-amo-keys-absent = Compte Mozilla non branché : Réglages › Agents › Co
 host-engine-url-invalid = Adresse invalide (https://…)
 host-review-unknown-project = projet inconnu
 host-review-file-absent = fichier absent de la relecture
-ask-shown-pages = Ressac a déjà proposé ces pages de l'historique, ce n'était aucune d'elles :
+host-ask-shown-pages = Ressac a déjà proposé ces pages de l'historique, ce n'était aucune d'elles :

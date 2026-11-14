@@ -96,7 +96,7 @@ export function remarksPrefix(r: {
 export function handOffText(question: string, shown: { url: string; title: string; lastVisit: string }[], note: string): string {
   const q = clean(question);
   if (!shown.length) return q;
-  // History URLs are http(s) only: JSON-encoded as they are.
-  const pages = shown.map((h) => ({ title: truncate(clean(h.title), DATA_LENGTH), url: h.url, date: h.lastVisit.slice(0, 10) }));
+  // Cleaned too: JSON.stringify leaves DEL (a backspace in the PTY) and U+2028 as they are.
+  const pages = shown.map((h) => ({ title: truncate(clean(h.title), DATA_LENGTH), url: truncate(clean(h.url), URL_LENGTH), date: clean(h.lastVisit).slice(0, 10) }));
   return `${q} — ${clean(note)} ${JSON.stringify(pages)}`;
 }

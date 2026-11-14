@@ -46,4 +46,4 @@ host-amo-keys-absent = Mozilla account not connected: Settings › Agents › Mo
 host-engine-url-invalid = Invalid address (https://…)
 host-review-unknown-project = unknown project
 host-review-file-absent = file absent from the review
-ask-shown-pages = Ressac already suggested these history pages, it was none of them:
+host-ask-shown-pages = Ressac already suggested these history pages, it was none of them:

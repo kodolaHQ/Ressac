@@ -112,7 +112,8 @@ describe("the ⌘T bar's Chercher / Demander switch", () => {
     await fieldFocused();
     expect(await fieldValue()).toBe("mascarets");
     expect(await inUi(m, "return doc.querySelector(arguments[0]).placeholder", [tid("command-input")])).toBe("Posez une question");
-    expect(await q.count(tid("command-row"))).toBe(0);
+    // The Chercher rows fade out (150 ms) before they go.
+    await q.waitCount(tid("command-row"), 0);
     await pressKeys(m, "Tab");
     await waitMode("Chercher");
     expect(await fieldValue()).toBe("mascarets");
@@ -170,6 +171,26 @@ describe("the ⌘T bar's Chercher / Demander switch", () => {
     expect(Object.keys(s.tabs)).toHaveLength(tabsBefore);
     const f = s.windows[0]!;
     expect(f.active[f.activeSpace]).toBe(a);
+  });
+
+  it("a hit open in another space of the window: Enter switches to that space and tab", async () => {
+    const first = (await win()).activeSpace;
+    const a = await openTab("/a.html");
+    await waitFor(m, "return gBrowser.selectedBrowser.contentTitle", (v) => v === "Page A");
+    await dispatch(m, { type: "createSpace", name: "Pro", icon: "💼", private: false, profile: "default", windowId: (await win()).id });
+    await seed("/a.html", "Page A", "Une barre de marée sur la Garonne.");
+    answer = { kind: "page", terms: ["a.html"] };
+    const tabsBefore = Object.keys((await state(m)).tabs).length;
+    await ask("la page sur la Garonne");
+    await pressKeys(m, "Enter");
+    await q.waitCount(tid("command-ask-hit"), 1);
+    await pressKeys(m, "Enter");
+    await waitBar(false);
+    const s = await state(m);
+    expect(Object.keys(s.tabs)).toHaveLength(tabsBefore);
+    const f = s.windows[0]!;
+    expect(f.activeSpace).toBe(first);
+    expect(f.active[first]).toBe(a);
   });
 
   it("an « other » answer: the agent panel opens and gets exactly the question", async () => {

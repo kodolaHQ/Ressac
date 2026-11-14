@@ -83,6 +83,7 @@ sidebar-command-mode-hint = ⇥ pour changer
 sidebar-command-ask-placeholder = Posez une question
 sidebar-command-ask-agent = Demander à l'agent
 sidebar-command-ask-working = Recherche dans l'historique…
+sidebar-command-ask-down = L'agent ne répond pas. Réessayez dans un instant.
 sidebar-ask-today = aujourd'hui
 sidebar-ask-yesterday = hier
 sidebar-ask-days-ago = il y a { $days } jours

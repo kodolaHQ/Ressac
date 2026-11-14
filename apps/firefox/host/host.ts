@@ -612,13 +612,15 @@ const rpc = createRpc({
     "ask.warm": () => ask.warm(),
     "ask.find": (p: { question?: unknown }) => {
       if (typeof p?.question !== "string") throw new Error("ask.find: invalid question");
-      return ask.find(p.question, hostLocale());
+      return ask.find(p.question.slice(0, 2000), hostLocale());
     },
     "ask.handOff": (p: { window?: unknown; question?: unknown; shown?: unknown }) => {
       if (typeof p?.window !== "string" || typeof p.question !== "string" || !Array.isArray(p.shown)) throw new Error("ask.handOff: invalid params");
       const str = (x: unknown) => typeof x === "string";
-      const shown = (p.shown as Partial<Record<"url" | "title" | "lastVisit", unknown>>[]).filter((h): h is { url: string; title: string; lastVisit: string } => str(h?.url) && str(h?.title) && str(h?.lastVisit));
-      sessions.prefill(p.window, handOffText(p.question, shown, hostSay("ask-shown-pages")), undefined, true);
+      const shown = (p.shown as Partial<Record<"url" | "title" | "lastVisit", unknown>>[])
+        .filter((h): h is { url: string; title: string; lastVisit: string } => str(h?.url) && str(h?.title) && str(h?.lastVisit))
+        .slice(0, 3);
+      sessions.prefill(p.window, handOffText(p.question.slice(0, 2000), shown, hostSay("host-ask-shown-pages")), undefined, true);
     },
     stop: async () => {
       try {
