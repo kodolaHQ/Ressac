@@ -15,7 +15,8 @@
     "e2e": "vitest run -c vitest.e2e.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "ui": "zsh scripts/ui.sh",
-    "package": "zsh scripts/env.sh zsh scripts/package.sh"
+    "package": "zsh scripts/env.sh zsh scripts/package.sh",
+    "release:publish": "zsh scripts/env.sh zsh scripts/publish.sh"
   },
   "dependencies": {
     "@ressac/kernel": "workspace:*"
