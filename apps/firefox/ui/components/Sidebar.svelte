@@ -46,6 +46,7 @@
   };
   // A space change slides the list in from the side it comes from, with the spring (a short fade under reduced motion).
   let list = $state<HTMLElement>();
+  let scroller = $state<HTMLElement>();
   let shownSpace: string | undefined;
   $effect(() => {
     const id = win.activeSpace;
@@ -54,6 +55,8 @@
     shownSpace = id;
     if (!list || from < 0 || id === spaces[from]?.id) return;
     const side = spaces.findIndex((e) => e.id === id) > from ? 1 : -1;
+    // The new space starts at its top, not at the scroll position of the last one.
+    if (scroller) scroller.scrollTop = 0;
     const css = getComputedStyle(list);
     const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
     list.animate(
@@ -93,7 +96,7 @@
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     class="scrolling"
-    bind:this={list}
+    bind:this={scroller}
     ondragover={(e) => e.dataTransfer?.types.includes("application/x-ressac-essentiel") && e.preventDefault()}
     ondrop={(e) => {
       const favoriteId = e.dataTransfer?.getData("application/x-ressac-essentiel");
@@ -101,6 +104,8 @@
     }}
   >
     <Essentials window={win} />
+    <!-- What belongs to the space: it alone slides on a space change, the shared essentials stay put. -->
+    <div class="space-content" bind:this={list}>
     {#if space}<Pinned bind:this={pinned} window={win} {space} {activeLink} />{/if}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="space" data-testid="space-title" oncontextmenu={(e) => openMenu(e, [{ label: "Nouveau dossier", dispatch: () => pinned?.newFolder() }])}>{space?.icon} {space?.name}</div>
@@ -109,6 +114,7 @@
       ><Icon name="plus" size={14} /> Nouvel onglet<kbd>{key("command")}</kbd></button
     >
     <TabList window={win} agent />
+    </div>
   </div>
   <UpdateCard />
   <CallBar window={win} />
@@ -195,7 +201,8 @@
     -webkit-app-region: drag;
   }
   .bar[hidden] { display: none; }
-  .scrolling { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; margin-top: 14px; -webkit-app-region: no-drag; }
+  .space-content { display: flex; flex-direction: column; gap: 6px; }
+  .scrolling { flex: 1; overflow-x: clip; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; margin-top: 14px; -webkit-app-region: no-drag; }
   .bar :global(nav) { -webkit-app-region: no-drag; }
   .new:active, .tool:active, .downloads:active { transform: scale(0.97); }
   /* One row: the spaces take what the tools leave and scroll past it; a space deletion confirmation gets the full width. */
