@@ -1,6 +1,7 @@
 <script lang="ts">
   import { tick, untrack } from "svelte";
   import { api, appState as browserState } from "../state.svelte";
+  import { t } from "../i18n.svelte";
   import type { AgentAccount } from "../../shared/settings";
   import { focusAgent } from "./agent.svelte";
   import * as terminalAgent from "./terminalAgent.svelte";
@@ -153,7 +154,7 @@
 <section class="agent" class:built-in={builtIn} class:right={sidebarRight} data-testid={builtIn ? "built-in-agent-terminal" : "agent-panel"} hidden={!visible} bind:this={section}>
   <FirstTimeNote id="agent" />
   {#if !builtIn}
-    <div class="handle" data-testid="agent-handle" role="separator" aria-orientation="vertical" aria-label="Largeur du panneau agent" onpointerdown={tirer}></div>
+    <div class="handle" data-testid="agent-handle" role="separator" aria-orientation="vertical" aria-label={t("agent-panel-handle")} onpointerdown={tirer}></div>
   {/if}
   <header>
     <!-- The agent's mark: the aura's three hues, turning while it answers. -->
@@ -161,35 +162,35 @@
     {#if profileChoice}
       <select
         data-testid="agent-profile"
-        aria-label="Agent"
+        aria-label={t("agent-panel-label")}
         value={current ?? ""}
         onchange={(e) => choose(e.currentTarget.value)}
       >
-        {#each profiles as p (p.id)}<option value={p.id}>{p.name}{account(p.id)?.state === "logged-out" && onSubscription(p.id) ? " (non connecté)" : ""}</option>{/each}
+        {#each profiles as p (p.id)}<option value={p.id}>{account(p.id)?.state === "logged-out" && onSubscription(p.id) ? t("agent-panel-signed-out", { name: p.name }) : p.name}</option>{/each}
       </select>
     {:else}
-      <span class="name">{profiles.find((p) => p.id === current)?.name ?? "Agent"}</span>
+      <span class="name">{profiles.find((p) => p.id === current)?.name ?? t("agent-panel-label")}</span>
     {/if}
   </header>
   {#if signedOutCodex}
-    <p class="message">Codex n'est pas connecté à votre compte ChatGPT.</p>
-    <button data-testid="agent-login-settings" onclick={() => api.dispatch({ type: "openSettings", windowId: api.windowId })}>Se connecter</button>
+    <p class="message">{t("agent-panel-codex-signed-out")}</p>
+    <button data-testid="agent-login-settings" onclick={() => api.dispatch({ type: "openSettings", windowId: api.windowId })}>{t("agent-panel-login")}</button>
   {/if}
   {#if appState.state === "preparing"}
     {#if appState.step !== undefined && appState.since !== undefined}
-      <p class="message" data-testid="agent-build-step">Préparation de l'agent, étape {appState.step}/{appState.of} : {appState.label}… ({Math.max(0, Math.floor((now - appState.since) / 60_000)) || "moins d'une"} min) (la première fois, la construction du conteneur prend quelques minutes)</p>
+      <p class="message" data-testid="agent-build-step">{t("agent-panel-build-step", { step: appState.step, of: appState.of ?? 0, label: appState.label ?? "", minutes: Math.max(0, Math.floor((now - appState.since) / 60_000)) })}</p>
     {:else}
-      <p class="message">Préparation de l'agent… (la première fois, la construction du conteneur prend quelques minutes)</p>
+      <p class="message">{t("agent-panel-preparing")}</p>
     {/if}
   {:else if appState.state === "docker-absent"}
-    <p class="message">Docker n'est pas lancé. La navigation fonctionne ; seul l'agent est indisponible.</p>
-    <button onclick={terminalAgent.reset}>Réessayer</button>
+    <p class="message">{t("agent-panel-docker-absent")}</p>
+    <button onclick={terminalAgent.reset}>{t("agent-panel-retry")}</button>
   {:else if appState.state === "error"}
-    <p class="message">L'agent n'a pas pu démarrer : {appState.message}</p>
-    <button onclick={terminalAgent.reset}>Réessayer</button>
+    <p class="message">{t("agent-panel-error", { message: appState.message })}</p>
+    <button onclick={terminalAgent.reset}>{t("agent-panel-retry")}</button>
   {:else if appState.state === "done"}
-    <p class="message">L'agent s'est arrêté.</p>
-    <button onclick={terminalAgent.reset}>Relancer</button>
+    <p class="message">{t("agent-panel-done")}</p>
+    <button onclick={terminalAgent.reset}>{t("agent-panel-restart")}</button>
   {/if}
   <div class="terminal" bind:this={hostEl} class:masked={appState.state !== "active" && appState.state !== "done"}></div>
 </section>

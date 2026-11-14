@@ -1,13 +1,14 @@
 import type { Action, SettingsApi } from "../shared/api";
+import { format } from "../shared/i18n";
 import type { WindowId } from "../shared/model";
 import type { AgentAccount, Backup, GrantKind, LoginResult, GrantRow, SettingsResult, WorkshopOperation, PullProgress, DockerStatus } from "../shared/settings";
 import type { AgentHost } from "../chrome/agent/host";
 import type { SettingsChrome } from "../chrome/store/settings";
 import type { SitePermissions } from "../chrome/store/site-permissions";
 
-const SILENT: { ok: false; error: string } = { ok: false, error: "L'agent ne répond pas" };
-const LABELS: Record<string, string> = { notifications: "Notifications", geolocation: "Position", "media-camera": "Caméra", "media-micro": "Micro", midi: "MIDI", drm: "Contenu protégé" };
-const DECISIONS = { allow: "autorisé", deny: "refusé" } as const;
+/** The site permissions Settings lists, with their message ids. */
+const LABELS = new Set(["notifications", "geolocation", "media-camera", "media-micro", "midi", "drm"]);
+const DECISIONS = new Set(["allow", "deny"]);
 
 /** The settings page's API: the host's RPCs, the chrome's own actions and the site decisions, with the host's silence handled. */
 export function createSettingsApi(o: {
@@ -19,7 +20,11 @@ export function createSettingsApi(o: {
   openAgent(): void;
   switchAgent(profile: string): void;
   dataDir: string;
+  /** The shown language, read at each call. */
+  locale(): string;
 }): SettingsApi {
+  const say = (id: string, args?: Record<string, string>) => format(o.locale(), id, args);
+  const silent = (): { ok: false; error: string } => ({ ok: false, error: say("sidebar-api-agent-silent") });
   /** A host answer copied into this realm; `fallback` when the host does not answer. */
   const ask = <T>(method: string, params: unknown, fallback: T): Promise<T> => o.host.request<T>(method, params).then((r) => structuredClone(r), () => fallback);
   const agents = () => ask<AgentAccount[]>("settings.agents", undefined, []);
@@ -31,8 +36,8 @@ export function createSettingsApi(o: {
         name = new URL(origin).host;
       } catch {}
       const detail = Object.entries(permissions)
-        .filter(([k]) => k in LABELS)
-        .map(([k, d]) => `${LABELS[k]} : ${DECISIONS[d as keyof typeof DECISIONS] ?? d}`)
+        .filter(([k]) => LABELS.has(k))
+        .map(([k, d]) => say("agent-grants-site-permission", { label: say(`agent-permission-${k}`), decision: DECISIONS.has(d) ? say(`agent-grants-${d === "allow" ? "allowed" : "denied"}`) : d }))
         .sort()
         .join(" · ");
       return { kind: "site", key: `${profile}\n${origin}`, name, profile, detail };
@@ -41,7 +46,7 @@ export function createSettingsApi(o: {
   return {
     agents,
     async login(id) {
-      const r = await ask<LoginResult>("settings.login", { id }, { kind: "error", error: SILENT.error });
+      const r = await ask<LoginResult>("settings.login", { id }, { kind: "error", error: silent().error });
       if (r.kind === "panel") {
         o.switchAgent(id);
         o.openAgent();
@@ -50,34 +55,34 @@ export function createSettingsApi(o: {
     },
     logout: (id) => ask<AgentAccount[]>("settings.logout", { id }, []),
     workshop: () => ask("settings.workshop", undefined, null),
-    restartWorkshop: (fresh) => ask<SettingsResult>("settings.restartWorkshop", { fresh }, SILENT),
+    restartWorkshop: (fresh) => ask<SettingsResult>("settings.restartWorkshop", { fresh }, silent()),
     workshopOperation: () => ask<WorkshopOperation>("settings.workshopOperation", undefined, null),
     chooseDecisionModel: (model) => o.dispatch({ type: "chooseDecisionModel", model }),
     codexKeySaved: () => ask<boolean>("settings.codexKeySaved", undefined, false),
-    setCodexKey: (key) => ask<SettingsResult>("settings.codexKey", { key }, SILENT),
-    deleteCodexKey: () => ask<SettingsResult>("settings.codexKeyDelete", undefined, SILENT),
+    setCodexKey: (key) => ask<SettingsResult>("settings.codexKey", { key }, silent()),
+    deleteCodexKey: () => ask<SettingsResult>("settings.codexKeyDelete", undefined, silent()),
     amoAccount: () => ask<{ saved: boolean; issuer: string | null }>("settings.amoAccount", undefined, { saved: false, issuer: null }),
-    setAmoAccount: (issuer, secret) => ask<SettingsResult>("settings.setAmoAccount", { issuer, secret }, SILENT),
-    deleteAmoAccount: () => ask<SettingsResult>("settings.deleteAmoAccount", undefined, SILENT),
+    setAmoAccount: (issuer, secret) => ask<SettingsResult>("settings.setAmoAccount", { issuer, secret }, silent()),
+    deleteAmoAccount: () => ask<SettingsResult>("settings.deleteAmoAccount", undefined, silent()),
     chooseCodexEngine: (engine) => o.dispatch({ type: "chooseCodexEngine", engine }),
     claudeKeySaved: () => ask<boolean>("settings.claudeKeySaved", undefined, false),
-    setClaudeKey: (key) => ask<SettingsResult>("settings.claudeKey", { key }, SILENT),
-    deleteClaudeKey: () => ask<SettingsResult>("settings.claudeKeyDelete", undefined, SILENT),
+    setClaudeKey: (key) => ask<SettingsResult>("settings.claudeKey", { key }, silent()),
+    deleteClaudeKey: () => ask<SettingsResult>("settings.claudeKeyDelete", undefined, silent()),
     chooseClaudeEngine: (engine) => o.dispatch({ type: "chooseClaudeEngine", engine }),
-    pullModel: (name) => ask<SettingsResult>("settings.pullModel", { name }, SILENT),
+    pullModel: (name) => ask<SettingsResult>("settings.pullModel", { name }, silent()),
     pullProgress: () => ask<PullProgress | null>("settings.pullProgress", undefined, null),
     docker: () => ask<DockerStatus | null>("settings.docker", undefined, null),
-    startDocker: () => ask<SettingsResult>("settings.startDocker", undefined, SILENT),
-    startOllama: () => ask<SettingsResult>("settings.startOllama", undefined, SILENT),
-    pullInBackground: (names) => ask<SettingsResult>("settings.pullInBackground", { names }, SILENT),
-    ollamaModels: (url) => ask("settings.ollamaModels", { url }, { ok: false as const, error: "Ollama ne répond pas à cette adresse." }),
+    startDocker: () => ask<SettingsResult>("settings.startDocker", undefined, silent()),
+    startOllama: () => ask<SettingsResult>("settings.startOllama", undefined, silent()),
+    pullInBackground: (names) => ask<SettingsResult>("settings.pullInBackground", { names }, silent()),
+    ollamaModels: (url) => ask("settings.ollamaModels", { url }, { ok: false as const, error: say("agent-ollama-silent") }),
     async grants() {
       const [sites, host, external] = await Promise.all([
         siteRows(),
         ask<GrantRow[]>("settings.grants", undefined, []),
         ask<{ clients: { id: string; name: string }[] } | null>("external.list", undefined, null),
       ]);
-      const clients: GrantRow[] = (external?.clients ?? []).map((c) => ({ kind: "external", key: c.id, name: c.name, profile: null, detail: "Projets externes du mode design" }));
+      const clients: GrantRow[] = (external?.clients ?? []).map((c) => ({ kind: "external", key: c.id, name: c.name, profile: null, detail: say("agent-grants-external") }));
       return [...sites, ...host, ...clients];
     },
     async revoke(kind: GrantKind, key) {
@@ -90,10 +95,10 @@ export function createSettingsApi(o: {
     dataDir: () => o.dataDir,
     backups: () => ask<Backup[]>("settings.backups", undefined, []),
     reveal: (path) => o.chrome.reveal(path),
-    deleteBackup: (path) => ask<SettingsResult>("settings.deleteBackup", { path }, SILENT),
+    deleteBackup: (path) => ask<SettingsResult>("settings.deleteBackup", { path }, silent()),
     async exportData() {
       const to = await o.chrome.exportFolder();
-      const r = await ask<{ ok: true; path: string } | { ok: false; error: string }>("settings.export", { to }, SILENT);
+      const r = await ask<{ ok: true; path: string } | { ok: false; error: string }>("settings.export", { to }, silent());
       if (r.ok) o.chrome.reveal(r.path);
       return r;
     },

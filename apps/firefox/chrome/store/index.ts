@@ -486,7 +486,7 @@ async function start(): Promise<RessacStore> {
     store.dispatch({ type: "openTab", windowId: windowId, url });
     toFront(windowId);
   };
-  const design = createDesign({ agent, windows, apps, sites, dispatch: store.dispatch, mainWindow, toFront, shortcutLabel: () => shortcutLabel("design", store.state.settings) });
+  const design = createDesign({ agent, windows, apps, sites, dispatch: store.dispatch, mainWindow, toFront, shortcutLabel: () => shortcutLabel("design", store.state.settings), locale: () => store.state.locale });
   bindSites(agent, dataDir, openInTab, design);
   design.overlays = createOverlays({ design, host: agent });
   // A remapped design shortcut: the windows re-read the label (a site app's « Mode design (⇧⌘D) » tooltip).

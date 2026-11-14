@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { DiffComment } from "../../shared/api";
-  import { PAGE_LINE_CHANGED } from "../../shared/model";
   import { api } from "../state.svelte";
+  import { t } from "../i18n.svelte";
 
   /** A review comment under its lines: its text as is (Markdown not rendered), its state, its actions. */
   let { project: project, comment: c, onChange: onChange }: { project: string; comment: DiffComment; onChange: () => void } = $props();
@@ -28,23 +28,23 @@
 
 <div class="comment" class:resolved={c.resolved} data-testid="comment">
   <div class="head">
-    <span class="range">{c.start === c.end ? `Ligne ${c.start}` : `Lignes ${c.start}–${c.end}`}</span>
-    {#if c.sent}<span class="state">envoyé</span>{/if}
-    {#if c.resolved}<span class="state">résolu</span>{/if}
-    {#if c.lineChanged}<span class="state change">{PAGE_LINE_CHANGED}</span>{/if}
+    <span class="range">{c.start === c.end ? t("agent-comment-line", { line: String(c.start) }) : t("agent-comment-lines", { start: String(c.start), end: String(c.end) })}</span>
+    {#if c.sent}<span class="state">{t("agent-comment-sent")}</span>{/if}
+    {#if c.resolved}<span class="state">{t("agent-comment-resolved")}</span>{/if}
+    {#if c.lineChanged}<span class="state change">{t("agent-comment-line-changed")}</span>{/if}
   </div>
   {#if edit !== null}
-    <textarea bind:value={edit} rows="3" aria-label="Texte du commentaire"></textarea>
+    <textarea bind:value={edit} rows="3" aria-label={t("agent-comment-text")}></textarea>
     <div class="actions">
-      <button onclick={() => (edit = null)}>Annuler</button>
-      <button onclick={() => void save()} disabled={edit.trim() === ""}>Enregistrer</button>
+      <button onclick={() => (edit = null)}>{t("agent-cancel")}</button>
+      <button onclick={() => void save()} disabled={edit.trim() === ""}>{t("agent-comment-save")}</button>
     </div>
   {:else}
     <p class="text">{c.text}</p>
     <div class="actions">
-      <button onclick={() => (edit = c.text)}>Modifier</button>
-      <button onclick={() => void act(() => api.review.resolve(project, c.id, !c.resolved))}>{c.resolved ? "Rouvrir" : "Résoudre"}</button>
-      <button onclick={() => void act(() => api.review.deleteComment(project, c.id))}>Supprimer</button>
+      <button onclick={() => (edit = c.text)}>{t("agent-comment-edit")}</button>
+      <button onclick={() => void act(() => api.review.resolve(project, c.id, !c.resolved))}>{c.resolved ? t("agent-comment-reopen") : t("agent-comment-resolve")}</button>
+      <button onclick={() => void act(() => api.review.deleteComment(project, c.id))}>{t("agent-comment-delete")}</button>
     </div>
   {/if}
   {#if error}<p class="error">{error}</p>{/if}

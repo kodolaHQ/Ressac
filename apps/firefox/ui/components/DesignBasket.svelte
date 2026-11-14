@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { ApiDesign, ShownElement, BatchShown } from "../../shared/api";
+  import { format } from "../../shared/i18n";
 
   /** A project's basket: its remarks, and sending to its destination. */
   let {
@@ -8,13 +9,17 @@
     destination,
     noDestination: withoutDestination,
     close: close,
+    locale,
   }: {
     api: Pick<ApiDesign, "basket" | "remove" | "send" | "batches" | "handled" | "onChange">;
     project: string;
     destination: string | null;
     noDestination: string | null;
     close?: () => void;
+    /** The overlay frame has no browser state: the language comes with its context. */
+    locale: string;
   } = $props();
+  const t = (id: string, args?: Record<string, string | number>) => format(locale, id, args);
 
   let elements = $state<ShownElement[]>([]);
   let error = $state<string | null>(null);
@@ -32,10 +37,9 @@
     }
   }
 
-  const STATES = { pending: "en attente", read: "lu", handled: "traité" } as const;
   const hour = (iso: string) => {
     const d = new Date(iso);
-    return Number.isNaN(d.getTime()) ? "" : d.toLocaleString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+    return Number.isNaN(d.getTime()) ? "" : d.toLocaleString(locale, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
   };
   const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
   async function markProcessed(batch: string) {
@@ -55,7 +59,7 @@
   });
 
   const n = $derived(elements.length);
-  const label = $derived(`Envoyer ${n} remarque${n > 1 ? "s" : ""} à ${destination ?? "…"}`);
+  const label = $derived(t("agent-basket-send", { count: n, destination: destination ?? "…" }));
 
   async function send() {
     sending = true;
@@ -74,20 +78,20 @@
   const start = (t: string) => (t.length > 120 ? `${t.slice(0, 120)}…` : t);
 </script>
 
-<aside class="basket" data-testid="design-basket" aria-label="Panier du mode design">
+<aside class="basket" data-testid="design-basket" aria-label={t("agent-basket-label")}>
   <header>
-    <h2>Panier</h2>
-    {#if close}<button class="close" aria-label="Fermer le panier" onclick={close}>×</button>{/if}
+    <h2>{t("agent-basket-title")}</h2>
+    {#if close}<button class="close" aria-label={t("agent-basket-close")} onclick={close}>×</button>{/if}
   </header>
   {#if n === 0}
-    <p class="empty">Aucune remarque. Clique un élément de la page pour en écrire une.</p>
+    <p class="empty">{t("agent-basket-empty")}</p>
   {:else}
     <ul>
       {#each elements as e (e.id)}
         <li data-testid="basket-remark">
           <div class="head">
             <code class="tag">{e.label}</code>
-            <button class="delete" aria-label="Supprimer" onclick={() => void api.remove(project, e.id)}>×</button>
+            <button class="delete" aria-label={t("agent-basket-delete")} onclick={() => void api.remove(project, e.id)}>×</button>
           </div>
           <p class="text">{start(e.text)}</p>
           {#if e.source}<p class="source">{e.source}</p>{/if}
@@ -96,16 +100,16 @@
     </ul>
   {/if}
   {#if batches.length > 0}
-    <section class="sent" aria-label="Lots envoyés">
-      <h3>Envoyés</h3>
+    <section class="sent" aria-label={t("agent-basket-sent-label")}>
+      <h3>{t("agent-basket-sent")}</h3>
       <ul>
         {#each batches as l (l.id)}
           <li data-testid="batch-sent" data-state={l.state}>
             <div class="head">
-              <span class="state">{STATES[l.state]}</span>
-              <span class="when">{hour(l.created)} · {l.destination === "agent" ? "agent" : "Claude Code"} · {l.items.length}</span>
+              <span class="state">{t(`agent-basket-state-${l.state}`)}</span>
+              <span class="when">{hour(l.created)} · {l.destination === "agent" ? t("agent-basket-destination-agent") : "Claude Code"} · {l.items.length}</span>
               {#if l.destination === "agent" && l.state !== "handled"}
-                <button class="handled" onclick={() => void markProcessed(l.id)}>Traité</button>
+                <button class="handled" onclick={() => void markProcessed(l.id)}>{t("agent-basket-handled")}</button>
               {/if}
             </div>
             {#each l.items as e (e.id)}

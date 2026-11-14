@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { OverlayApi, OverlayContext } from "../shared/api";
+  import { format } from "../shared/i18n";
   import DesignBasket from "./components/DesignBasket.svelte";
 
   const api = window.ressac as unknown as OverlayApi;
@@ -8,6 +9,8 @@
   let error = $state<string | null>(null);
   let field = $state<HTMLTextAreaElement>();
   let request = 0;
+  /** This frame has no browser state: the language comes with the context. */
+  const t = (id: string) => format(context?.locale ?? "fr", id);
 
   async function reread() {
     const n = ++request;
@@ -45,17 +48,17 @@
 </script>
 
 {#if context?.mode === "bubble"}
-  <div class="bubble" data-testid="design-bubble" role="dialog" aria-label="Remarque sur l'élément">
+  <div class="bubble" data-testid="design-bubble" role="dialog" aria-label={t("agent-bubble-label")}>
     <div class="head">
       <code class="tag">{context.label}</code>
       {#if context.source}<span class="source">{context.source}</span>{/if}
     </div>
     {#if context.warning}<p class="warning" data-testid="bubble-warning">{context.warning}</p>{/if}
-    <textarea bind:this={field} bind:value={text} onkeydown={clavier} placeholder="Ta remarque sur cet élément" maxlength="4000"></textarea>
+    <textarea bind:this={field} bind:value={text} onkeydown={clavier} placeholder={t("agent-bubble-placeholder")} maxlength="4000"></textarea>
     {#if error}<p class="error" role="alert">{error}</p>{/if}
     <div class="actions">
-      <button class="cancel" onclick={() => api.cancel()}>Annuler</button>
-      <button class="add-button" onclick={() => void add()}>Ajouter au panier <kbd>⌘↩</kbd></button>
+      <button class="cancel" onclick={() => api.cancel()}>{t("agent-cancel")}</button>
+      <button class="add-button" onclick={() => void add()}>{t("agent-bubble-add")} <kbd>⌘↩</kbd></button>
     </div>
   </div>
 {:else if context?.mode === "message"}
@@ -64,7 +67,7 @@
   <div class="message" data-testid="message-design" role="status" onclick={() => api.cancel()}>{context.message}</div>
 {:else if context?.mode === "basket"}
   <div class="pane">
-    <DesignBasket {api} project={context.project} destination={context.destination} noDestination={context.noDestination} close={() => api.cancel()} />
+    <DesignBasket {api} project={context.project} destination={context.destination} noDestination={context.noDestination} locale={context.locale} close={() => api.cancel()} />
   </div>
 {/if}
 

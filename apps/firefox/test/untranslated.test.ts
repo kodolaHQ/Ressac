@@ -4,6 +4,18 @@ import { expect, test } from "vitest";
 // Screens already moved to Fluent messages: no French may remain in them outside t("…") calls.
 const TRANSLATED = [
   "ui/components/Settings.svelte",
+  "ui/components/SettingsEngine.svelte",
+  "ui/components/SettingsData.svelte",
+  "ui/components/SettingsPermissions.svelte",
+  "ui/components/SettingsShortcuts.svelte",
+  "ui/components/SettingsMozilla.svelte",
+  "ui/components/OllamaModelPicker.svelte",
+  "ui/components/AgentPanel.svelte",
+  "ui/components/Review.svelte",
+  "ui/components/ReviewComment.svelte",
+  "ui/components/DiffFile.svelte",
+  "ui/components/DesignBasket.svelte",
+  "ui/DesignApp.svelte",
   "ui/components/Sidebar.svelte",
   "ui/components/TabList.svelte",
   "ui/components/Pinned.svelte",

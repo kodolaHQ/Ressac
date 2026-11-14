@@ -1,5 +1,6 @@
 <script lang="ts">
   import { api } from "../state.svelte";
+  import { t } from "../i18n.svelte";
 
   // An Ollama model picked among the installed ones (read by the host); a name typed by hand when Ollama has none to offer.
   let { url, value, onchange }: { url: string; value: string; onchange: (name: string) => void } = $props();
@@ -12,7 +13,7 @@
     const r = await api.settings.ollamaModels(url);
     if (n !== reads) return;
     models = r.ok && r.models.length ? r.models : null;
-    error = !r.ok ? r.error : r.models.length ? null : "Aucun modèle installé dans Ollama.";
+    error = !r.ok ? r.error : r.models.length ? null : t("agent-ollama-none");
   }
   $effect(() => {
     void url;
@@ -23,15 +24,15 @@
 
 <div class="picker">
   {#if models}
-    <select data-testid="ollama-model" aria-label="Modèle" {value} onchange={(e) => onchange(e.currentTarget.value)}>
-      {#if value === ""}<option value="" disabled>Choisir un modèle</option>{/if}
-      {#if missing}<option value={value}>{value} (non installé)</option>{/if}
+    <select data-testid="ollama-model" aria-label={t("agent-engine-model")} {value} onchange={(e) => onchange(e.currentTarget.value)}>
+      {#if value === ""}<option value="" disabled>{t("agent-ollama-choose")}</option>{/if}
+      {#if missing}<option value={value}>{t("agent-ollama-missing", { name: value })}</option>{/if}
       {#each models as m (m.name)}<option value={m.name}>{m.name}{m.size ? ` · ${m.size}` : ""}</option>{/each}
     </select>
   {:else}
-    <input data-testid="ollama-model" aria-label="Modèle" {value} spellcheck="false" onchange={(e) => onchange(e.currentTarget.value)} />
+    <input data-testid="ollama-model" aria-label={t("agent-engine-model")} {value} spellcheck="false" onchange={(e) => onchange(e.currentTarget.value)} />
   {/if}
-  <button data-testid="ollama-refresh" onclick={() => void read()}>Actualiser</button>
+  <button data-testid="ollama-refresh" onclick={() => void read()}>{t("agent-ollama-refresh")}</button>
 </div>
 {#if error}<span class="alert" role="status">{error}</span>{/if}
 

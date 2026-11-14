@@ -7,10 +7,12 @@
 
   const win = window.parent.ressacWindow!;
   const FIXED = [
-    ["Onglet 1 à 9", "⌘1–9"],
-    ["Espace 1 à 9", "⌃1–9"],
-    ["Onglets récents", "⌃Tab / ⌃⇧Tab"],
+    ["agent-shortcuts-fixed-tab", "⌘1–9"],
+    ["agent-shortcuts-fixed-space", "⌃1–9"],
+    ["agent-shortcuts-fixed-recent", "⌃Tab / ⌃⇧Tab"],
   ];
+  /** The vim table's Escape key is written in French there. */
+  const vimKey = (k: string) => k.replace(/\u00c9chap$/, t("agent-vim-key-escape"));
   const MODIFIER_KEYS = ["meta", "shift", "alt", "control", "capslock", "fn", "os"];
 
   const overrides = $derived(appState.value?.settings.shortcuts ?? {});
@@ -57,12 +59,12 @@
 </script>
 
 <section data-testid="settings-shortcuts">
-  <h2>Raccourcis</h2>
+  <h2>{t("settings-section-shortcuts")}</h2>
   <div class="panel">
     <div class="row">
       <div class="grow">
-        <label for="vim-mode"><b>Mode vim</b></label>
-        <span class="muted" id="vim-mode-help">Des touches à la vim pour se déplacer dans les pages web.</span>
+        <label for="vim-mode"><b>{t("agent-shortcuts-vim")}</b></label>
+        <span class="muted" id="vim-mode-help">{t("agent-shortcuts-vim-help")}</span>
       </div>
       <input
         id="vim-mode"
@@ -78,13 +80,13 @@
   </div>
   {#if appState.value?.settings.vimMode}
     <div class="vim-keys" data-testid="vim-keys" out:fade={{ duration: 150 }}>
-      {#each VIM_KEYS as group (group.title)}
-        <h3>{group.title}</h3>
+      {#each VIM_KEYS as group, gi (group.title)}
+        <h3>{t(`agent-vim-${gi}-title`)}</h3>
         <div class="panel">
-          {#each group.rows as row (row.keys.join())}
+          {#each group.rows as row, ri (row.keys.join())}
             <div class="row">
-              <span class="keys">{#each row.keys as k (k)}<kbd>{k}</kbd>{/each}</span>
-              <span class="grow">{row.action}</span>
+              <span class="keys">{#each row.keys as k (k)}<kbd>{vimKey(k)}</kbd>{/each}</span>
+              <span class="grow">{t(`agent-vim-${gi}-${ri}`)}</span>
             </div>
           {/each}
         </div>
@@ -99,24 +101,24 @@
           {#if problem?.id === id}<span class="alert" role="alert" transition:fade={{ duration: 150 }}>{problem.text}</span>{/if}
         </div>
         {#if capturing === id}
-          <span class="muted" data-testid="shortcut-{id}-prompt">Appuyez sur la nouvelle combinaison…</span>
+          <span class="muted" data-testid="shortcut-{id}-prompt">{t("agent-shortcuts-prompt")}</span>
         {:else}
           <kbd data-testid="shortcut-{id}-key">{bindingLabel(effective[id])}</kbd>
           {#if !sameBinding(effective[id], SHORTCUTS[id].default)}
-            <button data-testid="shortcut-{id}-reset" onclick={() => api.dispatch({ type: "resetShortcut", id })}>Rétablir</button>
+            <button data-testid="shortcut-{id}-reset" onclick={() => api.dispatch({ type: "resetShortcut", id })}>{t("agent-shortcuts-reset")}</button>
           {/if}
-          <button data-testid="shortcut-{id}-edit" onclick={() => start(id)}>Modifier</button>
+          <button data-testid="shortcut-{id}-edit" onclick={() => start(id)}>{t("agent-shortcuts-edit")}</button>
         {/if}
       </div>
     {/each}
     {#each FIXED as [name, keys]}
       <div class="row">
-        <b class="grow">{name}</b>
+        <b class="grow">{t(name)}</b>
         <kbd>{keys}</kbd>
       </div>
     {/each}
   </div>
-  <div class="buttons start"><button data-testid="shortcuts-reset-all" disabled={!Object.keys(overrides).length} onclick={() => api.dispatch({ type: "resetShortcuts" })}>Tout rétablir</button></div>
+  <div class="buttons start"><button data-testid="shortcuts-reset-all" disabled={!Object.keys(overrides).length} onclick={() => api.dispatch({ type: "resetShortcuts" })}>{t("agent-shortcuts-reset-all")}</button></div>
 </section>
 
 <style>

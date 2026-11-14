@@ -156,6 +156,8 @@ export function createDesign(o: {
   mainWindow(): Promise<WindowId | undefined>;
   /** The design mode's current key label. */
   shortcutLabel(): string;
+  /** The shown language, for the overlays' own texts. */
+  locale(): string;
   toFront(f: WindowId): void;
 }): DesignService {
   const sessions = new Map<string, Session>();
@@ -213,7 +215,8 @@ export function createDesign(o: {
     service.overlays.hide(key, mode);
     notify();
   };
-  const show = (key: string, win: Window, place: { x: number; y: number; width: number; height: number }, ctx: OverlayContext) => {
+  const show = (key: string, win: Window, place: { x: number; y: number; width: number; height: number }, shown: Omit<OverlayContext, "locale">) => {
+    const ctx: OverlayContext = { ...shown, locale: o.locale() };
     const same = JSON.stringify(contexts.get(key)?.[ctx.mode]) === JSON.stringify(ctx);
     contexts.set(key, { ...contexts.get(key), [ctx.mode]: ctx });
     service.overlays.show(key, win, place, ctx);

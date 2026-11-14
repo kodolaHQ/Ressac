@@ -865,6 +865,8 @@ export interface OverlayContext {
   noDestination: string | null;
   /** Bubble of a site app: what will go to the agent (excerpt, capture); null elsewhere. */
   warning: string | null;
+  /** The language the overlay's own texts are shown in (the overlay frame has no browser state). */
+  locale: string;
 }
 /** The single API of the design mode overlay (`design.html`); the main process recognizes its target by the sender. */
 export type OverlayApi = {

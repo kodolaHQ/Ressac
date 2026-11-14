@@ -310,6 +310,7 @@ export function createApi(win: WindowController): ApiFirefox {
       openAgent: () => win.openAgent(),
       switchAgent,
       dataDir: win.store.dataDir,
+      locale: () => win.store.state.locale,
     }),
     // Import from another browser: the chrome runs the engine's migrators; answers copied into this realm.
     bookmarks: { search: (text, limit) => win.store.bookmarks.search(text, limit).then((v) => structuredClone(v)) },

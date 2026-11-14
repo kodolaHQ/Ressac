@@ -30,6 +30,7 @@ function setup(answers: Record<string, (p: any) => unknown> = {}) {
     openAgent,
     switchAgent,
     dataDir: "/u/Ressac",
+    locale: () => "fr",
   });
   return { api, calls, chrome, forget, dispatched, openAgent, switchAgent };
 }
