@@ -87,6 +87,16 @@ export const FIREFOX_KEYS = [
   "key_openAddons",
   // ⇧⌘D: Firefox's « bookmark all tabs ».
   "bookmarkAllTabsKb",
+  // ⌘D, ⇧⌘B, ⌘B: Firefox's bookmarks (Ressac has pinned tabs and essentials).
+  "addBookmarkAsKb",
+  "viewBookmarksToolbarKb",
+  "viewBookmarksSidebarKb",
+  // Firefox's own sidebar and its AI chat panel.
+  "viewOpenTabsSidebarKb",
+  "viewGenaiChatSidebarKb",
+  "toggleSidebarKb",
+  // ⌥Home: Firefox's home page (about:blank), not Ressac's.
+  "goHome",
 ];
 
 /** The native Settings menu items: kept in FIREFOX_COMMANDS (site and app windows keep them off), re-enabled in main windows. */
@@ -121,4 +131,11 @@ export const FIREFOX_COMMANDS = [
   "Browser:Screenshot",
   // Bookmarks > Bookmark All Tabs: its menu item keeps the ⇧⌘D of the design mode.
   "Browser:BookmarkAllTabs",
+  "Browser:AddBookmarkAs",
+  "Browser:SearchBookmarks",
+  // Firefox's session restore and import compete with Ressac's own.
+  "Browser:RestoreLastSession",
+  "cmd_file_importFromAnotherBrowser",
+  // Customize mode works on a toolbox Ressac hides.
+  "cmd_CustomizeToolbars",
 ];

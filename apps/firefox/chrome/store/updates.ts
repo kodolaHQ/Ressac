@@ -11,6 +11,18 @@ const PHASES: readonly UpdatePhase[] = ["idle", "checking", "downloading", "read
  * checking (app.update.interval), and a download it starts is followed through a new check.
  */
 export function installUpdates(dispatch: (a: Action) => void, report: (e: ReportedError) => void): { check(): void; restart(): void } {
+  // Firefox's About window has its own update block (download, restart button): Ressac's card and À propos are the ones.
+  Services.ww.registerNotification((subject: unknown, topic: string) => {
+    if (topic !== "domwindowopened") return;
+    const win = subject as unknown as Window;
+    win.addEventListener(
+      "DOMContentLoaded",
+      () => {
+        if (win.document.documentURI === "chrome://browser/content/aboutDialog.xhtml") win.document.getElementById("updateBox")?.setAttribute("hidden", "true");
+      },
+      { once: true },
+    );
+  });
   // RESSAC_TEST_UPDATE=<phase>:<version> (e.g. ready:0.1.5): the dev app's policy disables the updater, so tests set the state.
   const test = Services.env.get("RESSAC_TEST_UPDATE");
   if (test) {
