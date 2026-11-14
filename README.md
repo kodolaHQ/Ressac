@@ -9,7 +9,7 @@
   <a href="README.fr.md">Lire en français</a>
 </p>
 
-<!-- IMAGE 1: overview — sidebar with spaces, essentials, pinned tabs; agent panel closed. docs/images/overview.png -->
+<p align="center"><img src="docs/images/overview.jpg" alt="Ressac: sidebar with spaces, essentials and pinned tabs"></p>
 
 > **Beta.** Ressac is used every day by a small group of testers. Expect rough edges, and tell us about them.
 
@@ -33,13 +33,26 @@
 - It asks before opening an address it wrote itself, and hands back control when a page needs you (a login, a captcha).
 - It can build site apps, actions and add-ons for you, and change a page's look on request (design mode).
 
-<!-- IMAGE 2: live recap — video (MP4, 15–25 s): the agent researches, its thumbnail floats over the page, the recap fills card by card. docs/images/live-recap.mp4 -->
+<p align="center"><img src="docs/images/live-recap.gif" alt="The agent researches robot vacuums and fills a live recap"></p>
 
 **Local AI**
 - **Workflows** and **watches** run on your Mac with Ollama: a small model decides, another one writes.
 - A home page with widgets.
 
-<!-- IMAGES 3–9: agent panel, ⌘T command bar, workflow builder, a site app, home and widgets, call bar, import. docs/images/*.png -->
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/agent.jpg" alt="The agent reads sources while its recap fills in"><br><sub>The agent reads sources while its recap fills in</sub></td>
+    <td width="50%"><img src="docs/images/command-bar.jpg" alt="The ⌘T command bar"><br><sub>The ⌘T command bar</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/workflow-builder.jpg" alt="A workflow, block by block"><br><sub>A workflow, block by block</sub></td>
+    <td width="50%"><img src="docs/images/site-app.jpg" alt="A site app in its own window"><br><sub>A site app in its own window</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/home.jpg" alt="Home and widgets, written by local models"><br><sub>Home and widgets, written by local models</sub></td>
+    <td width="50%"><img src="docs/images/call-bar.jpg" alt="The call bar at the foot of the sidebar"><br><sub>The call bar at the foot of the sidebar</sub></td>
+  </tr>
+</table>
 
 ## Install
 

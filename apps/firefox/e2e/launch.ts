@@ -71,7 +71,7 @@ async function waitFor<T>(read: () => Promise<T | undefined>, ms: number, what: 
  * A data folder without a space's widgets folder gets the starter widgets without their harvest (`starterHarvests` keeps
  * them, and their real-web reads: prefer a local server). `firstTimeNotes` leaves the one-time notes unseen (a new session has them seen). `output`: a file that gets the browser's stdout and stderr.
  */
-export async function launchRessac(o: { headed?: boolean; width?: number; height?: number; dataDir?: string; profile?: string; env?: Record<string, string | undefined>; prefs?: Record<string, string | number | boolean>; starterHarvests?: boolean; firstTimeNotes?: boolean; output?: string } = {}): Promise<LaunchedRessac> {
+export async function launchRessac(o: { headed?: boolean; width?: number; height?: number; dataDir?: string; profile?: string; env?: Record<string, string | undefined>; prefs?: Record<string, string | number | boolean>; starterHarvests?: boolean; firstTimeNotes?: boolean; output?: string; realTools?: boolean } = {}): Promise<LaunchedRessac> {
   const profile = o.profile ?? (await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-")));
   const dataDir = o.dataDir ?? (await mkdtemp(path.join(os.tmpdir(), "ressac-data-")));
   const cleanup = () =>
@@ -119,7 +119,8 @@ export async function launchRessac(o: { headed?: boolean; width?: number; height
         // pass. A test with a fake passes its own; `undefined` (dropped by spawn) restores the kernel's default.
         RESSAC_KEV_URL: "http://127.0.0.1:9",
         ...o.env,
-        PATH: `${FAKE_TOOLS}${path.delimiter}${process.env.PATH ?? ""}`,
+        // realTools: the machine's own docker, claude… (README captures with the real agent), never in a test.
+        PATH: o.realTools ? (process.env.PATH ?? "") : `${FAKE_TOOLS}${path.delimiter}${process.env.PATH ?? ""}`,
       }, },
   );
   if (typeof out === "number") closeSync(out);

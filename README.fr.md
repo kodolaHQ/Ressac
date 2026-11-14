@@ -9,7 +9,7 @@
   <a href="README.md">Read in English</a>
 </p>
 
-<!-- IMAGE 1 : vue d'ensemble — barre latérale avec espaces, essentiels, onglets épinglés ; panneau agent fermé. docs/images/overview.png -->
+<p align="center"><img src="docs/images/overview.jpg" alt="Ressac : barre latérale avec espaces, essentiels et onglets épinglés"></p>
 
 > **Bêta.** Ressac sert tous les jours à un petit groupe de testeurs. Il reste des aspérités : dites-le-nous.
 
@@ -33,13 +33,26 @@ Le *ressac*, c'est la vague qui revient vers le rivage. Vous envoyez l'agent sur
 - Il demande avant d'ouvrir une adresse qu'il a écrite lui-même, et vous rend la main quand une page a besoin de vous (connexion, captcha).
 - Il peut vous créer des applis de site, des actions et des extensions, et changer l'apparence d'une page à la demande (mode design).
 
-<!-- IMAGE 2 : récap en direct — vidéo (MP4, 15 à 25 s) : l'agent cherche, sa vignette flotte sur la page, le récap se remplit carte par carte. docs/images/live-recap.mp4 -->
+<p align="center"><img src="docs/images/live-recap.gif" alt="L'agent compare des aspirateurs robots et remplit un récap en direct"></p>
 
 **L'IA locale**
 - Des **workflows** et des **veilles** qui tournent sur votre Mac avec Ollama : un petit modèle décide, un autre écrit.
 - Une page d'accueil avec des widgets.
 
-<!-- IMAGES 3 à 9 : panneau agent, barre ⌘T, constructeur de workflows, une appli de site, accueil et widgets, barre d'appel, import. docs/images/*.png -->
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/agent.jpg" alt="L'agent lit ses sources pendant que son récap se remplit"><br><sub>L'agent lit ses sources pendant que son récap se remplit</sub></td>
+    <td width="50%"><img src="docs/images/command-bar.jpg" alt="La barre de commande ⌘T"><br><sub>La barre de commande ⌘T</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/workflow-builder.jpg" alt="Un workflow, bloc par bloc"><br><sub>Un workflow, bloc par bloc</sub></td>
+    <td width="50%"><img src="docs/images/site-app.jpg" alt="Une appli de site dans sa fenêtre"><br><sub>Une appli de site dans sa fenêtre</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/home.jpg" alt="L'accueil et ses widgets, écrits par les modèles locaux"><br><sub>L'accueil et ses widgets, écrits par les modèles locaux</sub></td>
+    <td width="50%"><img src="docs/images/call-bar.jpg" alt="La barre d'appel en bas de la barre latérale"><br><sub>La barre d'appel en bas de la barre latérale</sub></td>
+  </tr>
+</table>
 
 ## Installer
 
