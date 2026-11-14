@@ -107,9 +107,12 @@ describe("package.sh update archive", () => {
     expect(sh).toContain("warning: no MAR key or no RESSAC_UPDATE_KEY, packaging without an update archive");
   });
 
-  it("points the app's update feed at the secret folder before signing, and update.xml at the same key", () => {
-    expect(at('feed="https://updates.getressac.app/updates/$update_key/browser/%BUILD_TARGET%/%CHANNEL%/update.xml"')).toBeLessThan(at('step "Signing"'));
-    expect(sh).toContain('grep -qxF "URL=$feed" || fail');
+  it("points the app's update feed at the secret folder through the AppUpdateURL policy, after the dev policy is gone and before signing", () => {
+    const feed = at('feed="https://updates.getressac.app/updates/$update_key/browser/Darwin_aarch64-gcc3/ressac/update.xml"');
+    expect(at("rm -f $res/distribution/policies.json")).toBeLessThan(feed);
+    expect(feed).toBeLessThan(at('step "Signing"'));
+    expect(sh).toContain('{\\"policies\\": {\\"AppUpdateURL\\": \\"$feed\\"}}');
+    expect(sh).not.toContain("[AppUpdate\\]");
     expect(sh).toContain("update-xml.mjs $mar $res/application.ini $version $update_key");
     expect(sh).toContain("[[ -z $update_key || $update_key =~ '^[a-z0-9]{24,64}$' ]]");
   });
