@@ -77,3 +77,38 @@ describe("persistence", () => {
     expect((await loadSession(d)).update).toBeNull();
   });
 });
+
+describe("installUpdates", () => {
+  it("an update already pending at a check gets the manager's version, at start and later", async () => {
+    const { vi } = await import("vitest");
+    const READY = 12;
+    let listener: (status: number) => void = () => {};
+    let readyVersion = "0.1.5";
+    class AppUpdater {
+      static STATUS = { debugStringFor: (s: number) => (s === READY ? "READY_FOR_RESTART" : null) };
+      // check() clears its update and reports READY synchronously when one is pending (AppUpdater.sys.mjs).
+      update = null;
+      addListener(l: (status: number) => void) {
+        listener = l;
+      }
+      async check() {
+        listener(READY);
+      }
+    }
+    vi.stubGlobal("Services", { env: { get: () => "" }, obs: { addObserver: () => {} } });
+    vi.stubGlobal("ChromeUtils", { importESModule: () => ({ AppUpdater }) });
+    vi.stubGlobal("Ci", {});
+    vi.stubGlobal("Cc", { "@mozilla.org/updates/update-manager;1": { getService: () => ({ getReadyUpdate: async () => ({ displayVersion: readyVersion }) }) } });
+    try {
+      const { installUpdates } = await import("../chrome/store/updates");
+      const dispatched: unknown[] = [];
+      const updates = installUpdates((a) => void dispatched.push(a), () => {});
+      await vi.waitFor(() => expect(dispatched).toEqual([{ type: "setUpdate", update: { phase: "ready", version: "0.1.5", progress: null } }]));
+      readyVersion = "0.1.6";
+      updates.check();
+      await vi.waitFor(() => expect(dispatched.at(-1)).toEqual({ type: "setUpdate", update: { phase: "ready", version: "0.1.6", progress: null } }));
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});

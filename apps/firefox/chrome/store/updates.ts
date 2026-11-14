@@ -27,18 +27,18 @@ export function installUpdates(dispatch: (a: Action) => void, report: (e: Report
   const { AppUpdater } = ChromeUtils.importESModule("resource://gre/modules/AppUpdater.sys.mjs");
   const updater = new AppUpdater();
   const um = Cc["@mozilla.org/updates/update-manager;1"].getService(Ci.nsIUpdateManager);
-  let readyVersion: string | null = null;
-  // The ready update's version for a status that carries no update (a check that found it already pending).
-  um.getReadyUpdate().then(
-    (u: { displayVersion?: string } | null) => (readyVersion = u?.displayVersion ?? null),
-    () => {},
-  );
   updater.addListener((status: number, progress?: number, progressMax?: number) => {
     const phase = updatePhase(AppUpdater.STATUS.debugStringFor(status) ?? "");
     const update = updater.update as { displayVersion?: string; errorCode?: number } | null;
-    const version = update?.displayVersion ?? (phase === "ready" ? readyVersion : null);
+    const version = update?.displayVersion ?? null;
     const percent = phase === "downloading" && progress != null && progressMax ? Math.min(100, Math.round((progress / progressMax) * 100)) : null;
-    dispatch({ type: "setUpdate", update: { phase, version, progress: percent } });
+    // A check that finds the update already pending reports READY with no update object: its version is the manager's.
+    if (phase === "ready" && !version)
+      void um.getReadyUpdate().then(
+        (u: { displayVersion?: string } | null) => dispatch({ type: "setUpdate", update: { phase, version: u?.displayVersion ?? null, progress: null } }),
+        (e: unknown) => console.error("[update] ready update not read:", e),
+      );
+    else dispatch({ type: "setUpdate", update: { phase, version, progress: percent } });
     // shortcut: reads the errorCode AppUpdater's own update object carries; a refusal only seen at apply time (after the
     // restart) is not reported here.
     if (phase === "failed" && isSignatureFailure(update?.errorCode ?? 0))
