@@ -48,8 +48,16 @@
 
   const winState = $derived(currentWindow());
   const sidebarRight = $derived(appState.value?.settings.sidebarSide === "right");
-  /** The first-launch welcome covers the whole window until it is finished, unless it stepped aside for an install page. */
-  const unfinished = $derived(!!winState && appState.value?.settings.onboarded === false);
+  /**
+   * The first-launch welcome covers the whole window until it is finished, unless it stepped aside for an install page.
+   * The AI setup (« Activer l'IA ») is the welcome in its AI-only mode; the full welcome takes precedence.
+   */
+  const unfinished = $derived(!!winState && (appState.value?.settings.onboarded === false || !!appState.value?.aiSetup));
+  /** Kept through the fade out: once finished, neither field says which welcome it was. */
+  let welcomeMode = $state<"full" | "ai">("full");
+  $effect(() => {
+    if (unfinished) welcomeMode = appState.value?.settings.onboarded === false ? "full" : "ai";
+  });
   const welcome = $derived(unfinished && !welcomeStep.aside);
   $effect(() => win.setWelcome(welcome));
   /** The welcome's layer: it stays (and keeps the whole window) for its fade out once the welcome steps aside or ends. */
@@ -62,7 +70,7 @@
   });
   // Finished (here or in another window), once its layer is gone: a later « Revoir l'accueil » starts at the beginning.
   $effect(() => {
-    if (!unfinished && !welcomeLayer) untrack(() => Object.assign(welcomeStep, { page: 1, aside: false }));
+    if (!unfinished && !welcomeLayer) untrack(() => Object.assign(welcomeStep, { page: 1, aside: false, aiAtStart: undefined }));
   });
   const activeTab = $derived.by(() => {
     const id = winState?.active[winState.activeSpace];
@@ -361,7 +369,7 @@
   <FirstTimeNote id="actions" veil />
 {/if}
 {#if welcomeLayer && winState}
-  <div class="welcome-layer" class:leaving={!welcome} data-testid="welcome-layer"><Welcome window={winState} /></div>
+  <div class="welcome-layer" class:leaving={!welcome} data-testid="welcome-layer"><Welcome window={winState} mode={welcomeMode} /></div>
 {/if}
 
 <style>

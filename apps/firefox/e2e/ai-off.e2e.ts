@@ -163,6 +163,20 @@ it("off: « Activer l'IA » on the card turns AI on", async () => {
   await expect.poll(async () => (await state(m)).settings.aiEnabled, { timeout: 10_000 }).toBe(true);
 });
 
+it("off: after « Activer l'IA » and the AI setup, the agent panel attaches the agent", async () => {
+  await launch(false);
+  await pressKeys(m, "Meta+j");
+  await shown(tid("ai-asleep-agent"), "agent");
+  await click(m, tid("ai-asleep-enable"), { frame: "agent" });
+  // The welcome's Docker and Ollama pages, alone.
+  await shown(tid("welcome-5"));
+  await click(m, `${tid("welcome-layer")} ${tid("welcome-next")}`);
+  await shown(tid("welcome-6"));
+  await click(m, `${tid("welcome-layer")} ${tid("welcome-next")}`);
+  await waitUi(m, `return !doc.querySelector('${tid("welcome-layer")}')`);
+  await waitUi(m, "return (doc.querySelector('.xterm-rows')?.textContent ?? '').includes('fake agent ready>')", [], 20_000, "agent");
+});
+
 it("off: Demander shows the asleep line and nothing reaches Ollama or the agent", async () => {
   ollama.log.length = 0;
   await launch(false);

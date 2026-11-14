@@ -960,6 +960,10 @@ test("AI actions", () => {
   expect(e.settings.onboarded).toBe(true);
   ag({ type: "finishOnboarding" });
   expect(e.settings.aiEnabled).toBe(false);
+  // « Oui » in the welcome: AI on at once, and finishing the welcome ends the setup.
+  ag({ type: "enableAi" });
+  ag({ type: "finishOnboarding", ai: true });
+  expect([e.settings.aiEnabled, e.aiSetup]).toEqual([true, false]);
   ag({ type: "enableAi" });
   expect([e.settings.aiEnabled, e.aiSetup]).toEqual([true, true]);
   ag({ type: "finishAiSetup" });

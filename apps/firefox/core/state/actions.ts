@@ -629,8 +629,10 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
     }
     case "finishOnboarding": {
       const aiChanged = a.ai !== undefined && d.settings.aiEnabled !== a.ai;
-      if (d.settings.onboarded && !aiChanged) return false;
+      if (d.settings.onboarded && !aiChanged && !d.aiSetup) return false;
       d.settings.onboarded = true;
+      // « Oui » in the welcome turns AI on at once (enableAi): the full welcome ends that setup too.
+      d.aiSetup = false;
       if (a.ai !== undefined) d.settings.aiEnabled = a.ai;
       return true;
     }
