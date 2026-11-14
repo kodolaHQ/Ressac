@@ -120,6 +120,8 @@ export async function launchRessac(o: { headed?: boolean; width?: number; height
         // Never the decision model running on this machine (nothing listens there): the search watcher lets every action
         // pass. A test with a fake passes its own; `undefined` (dropped by spawn) restores the kernel's default.
         RESSAC_KEV_URL: "http://127.0.0.1:9",
+        // A new session follows the Mac's language: the tests read French whatever this machine's language is.
+        RESSAC_TEST_MAC_LANGUAGES: "fr-FR",
         ...o.env,
         // realTools: the machine's own docker, claude… (README captures with the real agent), never in a test.
         PATH: o.realTools ? (process.env.PATH ?? "") : `${FAKE_TOOLS}${path.delimiter}${process.env.PATH ?? ""}`,
