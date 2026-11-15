@@ -36,7 +36,7 @@ test("loadProfiles ignores an invalid profile and reports it", async () => {
   await writeFile(join(c.profiles, "claude.json"), JSON.stringify(claude));
   await writeFile(join(c.profiles, "casse.json"), "{");
   await writeFile(join(c.profiles, "note.txt"), "pas un profil");
-  const { profiles: profiles, errors: errors } = await loadProfiles(c);
+  const { profiles, errors } = await loadProfiles(c);
   expect(profiles.map((p) => p.id)).toEqual(["claude"]);
   expect(errors).toHaveLength(1);
   expect(errors[0]!.file).toBe(join(c.profiles, "casse.json"));

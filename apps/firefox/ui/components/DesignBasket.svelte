@@ -5,10 +5,10 @@
   /** A project's basket: its remarks, and sending to its destination. */
   let {
     api,
-    project: project,
+    project,
     destination,
     noDestination: withoutDestination,
-    close: close,
+    close,
     locale,
   }: {
     api: Pick<ApiDesign, "basket" | "remove" | "send" | "batches" | "handled" | "onChange">;

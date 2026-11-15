@@ -256,7 +256,7 @@ describe("FileActions", () => {
     );
     await writeFile(join(folder, "lire.mjs"), `export default async (e, w) => ({ t: (await w.readPage("https://gitlab.com/x")).titre });`);
     const bridge = new FakeBridge([], { active: null, allow: false, read: { pages: [], suspended: ["https://gitlab.com/x"] } });
-    const { f, actionsFolder: actionsFolder, deleted: deleted } = await prepare({
+    const { f, actionsFolder, deleted } = await prepare({
       paths: c0,
       bridge: bridge,
       localAddresses: true,

@@ -112,7 +112,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** A demo opened by the agent (all four rights, no card), loaded; the first read_console attaches. */
 async function openDemo(query = ""): Promise<string> {
-  const { text: id, error: error } = await call("open_tab", { url: `${demo.url}/${query}` });
+  const { text: id, error } = await call("open_tab", { url: `${demo.url}/${query}` });
   expect(error, id).toBe(false);
   await poll(() => tool("run_js", { id, code: "document.readyState" }), (t) => t === '"complete"');
   expect(await tool("read_console", { id })).not.toContain("Erreur");

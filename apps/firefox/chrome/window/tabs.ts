@@ -1,6 +1,5 @@
 import type { Action } from "../../shared/api";
-import type { BrowserState, WindowId, TabId, Tab } from "../../shared/model";
-import { hasView, tabProfile } from "../../shared/model";
+import { hasView, tabProfile, type BrowserState, type WindowId, type TabId, type Tab } from "../../shared/model";
 import type { RessacStore } from "../store";
 
 export const TAB_ID = "ressac-tab-id";

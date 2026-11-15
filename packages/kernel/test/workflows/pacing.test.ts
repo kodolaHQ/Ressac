@@ -14,7 +14,7 @@ function fake() {
 
 describe("Pacing", () => {
   it("two searches: the second starts 2 s after the end of the first", async () => {
-    const { m, now: now, forward: advance } = fake();
+    const { m, now, forward: advance } = fake();
     const starts: number[] = [];
     const ends: number[] = [];
     const f = async () => { starts.push(now()); advance(300); ends.push(now()); };
@@ -24,7 +24,7 @@ describe("Pacing", () => {
   });
 
   it("two reads of the same host spaced 1 s apart, two hosts at the same time", async () => {
-    const { m, now: now, forward: advance } = fake();
+    const { m, now, forward: advance } = fake();
     const log: string[] = [];
     const reading = (name: string) => async () => { log.push(`${name}@${now()}`); advance(0); };
     await Promise.all([
@@ -53,7 +53,7 @@ describe("Pacing", () => {
   });
 
   it("a search cancelled before its turn does not delay the next one", async () => {
-    const { m, waits: waits } = fake();
+    const { m, waits } = fake();
     await m.search(async () => 1);
     const ctrl = new AbortController();
     ctrl.abort();
@@ -96,7 +96,7 @@ describe("Pacing", () => {
   });
 
   it("www.a.fr and a.fr share a lane, b.fr does not", async () => {
-    const { m, waits: waits } = fake();
+    const { m, waits } = fake();
     await m.read("www.A.fr", async () => {});
     await m.read("a.fr", async () => {});
     expect(waits).toEqual([READS_GAP_MS]);
@@ -105,7 +105,7 @@ describe("Pacing", () => {
   });
 
   it("a clock set back does not lengthen the wait beyond the gap", async () => {
-    const { m, waits: waits, forward: advance } = fake();
+    const { m, waits, forward: advance } = fake();
     await m.search(async () => {});
     advance(-3_600_000);
     await m.search(async () => {});
@@ -122,7 +122,7 @@ describe("Pacing", () => {
   });
 
   it("a search refused before its turn (verifier throws) does not call f and does not consume the gap", async () => {
-    const { m, waits: waits } = fake();
+    const { m, waits } = fake();
     await m.search(async () => 1);
     let calls = 0;
     const denial = () => { throw new Error("refusée"); };
@@ -152,7 +152,7 @@ describe("Pacing", () => {
   });
 
   it("a read redirected to another host waits for that host's gap, and returns the first's lane", async () => {
-    const { m, waits: waits, now: now } = fake();
+    const { m, waits, now } = fake();
     await m.read("b.fr", async () => {});
     let readA = -1;
     await m.read("a.fr", async (changeHost) => {
@@ -169,7 +169,7 @@ describe("Pacing", () => {
   });
 
   it("redirect to the same site (www., uppercase): nothing changes", async () => {
-    const { m, waits: waits } = fake();
+    const { m, waits } = fake();
     await m.read("a.fr", async (changeHost) => {
       await changeHost("WWW.a.fr");
       await changeHost("a.fr");
@@ -202,7 +202,7 @@ describe("Pacing", () => {
   });
 
   it("a.fr → b.fr → a.fr: each lane taken back in turn, without blocking", async () => {
-    const { m, waits: waits } = fake();
+    const { m, waits } = fake();
     await m.read("a.fr", async (changeHost) => {
       await changeHost("b.fr");
       await changeHost("a.fr");

@@ -104,7 +104,7 @@ async function validGrant(actionsFolder: string, id: string, d: DeclarationActio
  * read with it goes. An action whose folder disappeared meanwhile keeps nothing.
  */
 export async function runAction(o: OptionsAction): Promise<LaunchResult> {
-  const { id, paths: paths, actionsFolder: actionsFolder } = o;
+  const { id, paths, actionsFolder } = o;
   const clock = o.clock ?? (() => new Date());
   const loc = () => o.locale?.() ?? "en";
   const action = await readAction(paths, id);
@@ -114,7 +114,7 @@ export async function runAction(o: OptionsAction): Promise<LaunchResult> {
   const wf = await actionWorkflow(action, loc());
   if (wf.t === "absent") return denial(ACTION_WITHOUT_WORKFLOW(loc()));
   if (wf.t !== "ok") return denial(truncate(wf.error, MAX_ERROR), wf.t !== "unreadable");
-  const { valid: valid } = wf;
+  const { valid } = wf;
   const { declaration } = action;
   const dataFolder = join(actionsFolder, id);
   const owner: Owner = { type: "action", id };
@@ -133,7 +133,7 @@ export async function runAction(o: OptionsAction): Promise<LaunchResult> {
   if (o.attempt && replay) {
     const p = replayPlan(valid, replay[0], o.attempt.start, replay[1], loc());
     if (!p.ok) return denial(p.error);
-    const { limitMs: limitMs } = runDelays(declaration.maxDurationMinutes);
+    const { limitMs } = runDelays(declaration.maxDurationMinutes);
     const workflow = { blocks: valid.workflow.blocks, links: valid.workflow.links, order: valid.order };
     const start = {
       previous: null,

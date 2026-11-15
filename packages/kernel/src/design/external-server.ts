@@ -69,7 +69,7 @@ function createExternalServer(o: {
   registry: ExternalRegistry; remarks: Remarks; client: ExternalClient; signal: AbortSignal;
   declare(client: ExternalClient, d: { folder: string; ports: number[]; name?: string }): Promise<DeclarationResult>;
 }): McpServer {
-  const { registry: registry, remarks: remarks, client } = o;
+  const { registry, remarks, client } = o;
   const server = new McpServer({ name: "ressac-remarks", version: "1.0.0" });
   const protect =
     <A>(f: (a: A) => Promise<Result>) =>
@@ -94,7 +94,7 @@ function createExternalServer(o: {
       description: `Déclare à Ressac le projet que tu développes, pour que l'utilisateur puisse t'envoyer des remarques sur ses pages ; ${FOLDER_DESC}, et les ports de ses serveurs de développement.`,
       inputSchema: { folder: folder, ports: z.array(z.number()).describe("Ports locaux du projet (1 à 10)."), name: z.string().optional() },
     },
-    protect(async ({ folder: d, ports, name: name }) => {
+    protect(async ({ folder: d, ports, name }) => {
       const r = await o.declare(client, { folder: d, ports, ...(name !== undefined ? { name: name } : {}) });
       const line = `Projet ${r.project.name} déclaré (id ${r.project.id}), ports ${r.project.ports.join(", ")}.`;
       return text(r.warning ? `${line}\n${r.warning}` : line);
@@ -117,7 +117,7 @@ function createExternalServer(o: {
       description: `Attend que l'utilisateur envoie des remarques sur ton projet (1 à 300 secondes, 60 par défaut), puis les lit ; ${FOLDER_DESC}.`,
       inputSchema: { folder: folder, delay_s: z.number().optional().describe("Délai d'attente en secondes, entre 1 et 300.") },
     },
-    protect(async ({ folder: d, delay_s: delay_s }) => {
+    protect(async ({ folder: d, delay_s }) => {
       const project = await registry.projectOf(client.id, d);
       if (!project) return text(undeclaredProject(d));
       const id = externalProject(project.id);

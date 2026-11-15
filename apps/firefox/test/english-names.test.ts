@@ -135,7 +135,7 @@ test("no binding or file name under apps/firefox and packages/kernel is French",
   const r = spawnSync("git", ["ls-files", "apps/firefox", "packages/kernel"], { cwd: repoRoot, encoding: "utf8" });
   if (r.error || r.status !== 0) return ctx.skip();
   // templates/: its block files are agent data ids.
-  const files = r.stdout.split("\n").filter((f) => f && !/^packages\/kernel\/templates\//.test(f));
+  const files = r.stdout.split("\n").filter((f) => f && !f.startsWith("packages/kernel/templates/"));
   const bad: string[] = [];
   for (const f of files) {
     if (/\.(ts|mts|js|mjs|cjs|svelte)$/.test(f) && french(f.split("/").pop()!).length) bad.push(`${f}: file name`);

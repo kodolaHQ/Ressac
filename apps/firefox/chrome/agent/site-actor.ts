@@ -122,7 +122,7 @@ export class RessacSiteChild extends JSWindowActorChild {
     if (!run(kept, "ressac-page-guard.js") || !run(`__ressacScope(${JSON.stringify({ network: [], hosts: i.hosts })})`, "ressac-scope.js")) return;
     if (i.bridge) this.bridge(sandbox);
     const scripts = () => {
-      for (const { code, name: name } of i.js) run(code, name);
+      for (const { code, name } of i.js) run(code, name);
     };
     if (doc.readyState === "loading") this.pending = scripts;
     else scripts();

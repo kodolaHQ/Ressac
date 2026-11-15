@@ -25,7 +25,7 @@ describe("ExternalRegistry", () => {
   test("brancher creates a client of which only the sha256 of the token is written; clientDuJeton returns it", async () => {
     const c = await frame();
     const r = await ExternalRegistry.open(c.private);
-    const { client, token: token } = await r.connect("Mon Claude");
+    const { client, token } = await r.connect("Mon Claude");
     expect(client.name).toBe("Mon Claude");
     expect(client.hash).toBe(createHash("sha256").update(token).digest("hex"));
     expect(r.tokenClient(token)?.id).toBe(client.id);
@@ -52,8 +52,8 @@ describe("ExternalRegistry", () => {
   test("revoquer: the token no longer works, the projects stay with client null", async () => {
     const c = await frame();
     const r = await ExternalRegistry.open(c.private);
-    const { client, token: token } = await r.connect("x");
-    const { project: project } = await r.declare(client.id, { folder: await c.project("p"), ports: [4321] }, c.options);
+    const { client, token } = await r.connect("x");
+    const { project } = await r.declare(client.id, { folder: await c.project("p"), ports: [4321] }, c.options);
     await r.revoke(client.id);
     expect(r.tokenClient(token)).toBeNull();
     expect(r.clients()).toEqual([]);
@@ -94,7 +94,7 @@ describe("ExternalRegistry", () => {
     }
     await expect(r.declare(client.id, { folder: folder, ports: [] }, c.options)).rejects.toThrow();
     await expect(r.declare(client.id, { folder: folder, ports: Array.from({ length: 11 }, (_, i) => 4000 + i) }, c.options)).rejects.toThrow();
-    const { project: project } = await r.declare(client.id, { folder: folder, ports: [4321] }, c.options);
+    const { project } = await r.declare(client.id, { folder: folder, ports: [4321] }, c.options);
     expect(project.ports).toEqual([4321]);
   });
 
@@ -132,7 +132,7 @@ describe("ExternalRegistry", () => {
     const a = (await r.connect("a")).client;
     const b = (await r.connect("b")).client;
     const folder = await c.project("p");
-    const { project: project } = await r.declare(a.id, { folder: folder, ports: [4321] }, c.options);
+    const { project } = await r.declare(a.id, { folder: folder, ports: [4321] }, c.options);
     expect(await r.projectOf(b.id, folder)).toBeNull();
     expect((await r.projectOf(a.id, `${folder}/`))?.id).toBe(project.id);
     expect(await r.projectOf(a.id, join(c.home, "absent"))).toBeNull();
@@ -178,7 +178,7 @@ describe("ExternalRegistry", () => {
     let n = 0;
     const stop = r.onChange(() => { n++; });
     const { client } = await r.connect("x");
-    const { project: project } = await r.declare(client.id, { folder: await c.project("p"), ports: [4321] }, c.options);
+    const { project } = await r.declare(client.id, { folder: await c.project("p"), ports: [4321] }, c.options);
     await r.forget(project.id);
     expect(r.projects()).toEqual([]);
     expect(n).toBe(3);
@@ -190,7 +190,7 @@ describe("ExternalRegistry", () => {
   test("revoquer: if the write fails, the call is rejected and the client stays consistent with the disk", async () => {
     const c = await frame();
     const r = await ExternalRegistry.open(c.private);
-    const { client, token: token } = await r.connect("x");
+    const { client, token } = await r.connect("x");
     const file = join(c.private, "external-clients.json");
     const content = await readFile(file, "utf8");
     await rm(file);

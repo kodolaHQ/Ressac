@@ -13,7 +13,7 @@
    * A project's Review page: what changed since the last review, with comments on lines. The comparison is made at
    * opening and kept as is until « Rafraîchir »; « Marquer comme relu » records what it shows.
    */
-  let { project: project, tabId: tabId }: { project: string; tabId: string } = $props();
+  let { project, tabId }: { project: string; tabId: string } = $props();
   let token = $state<string | null>(null);
 
   let view = $state<ReviewView | null>(null);

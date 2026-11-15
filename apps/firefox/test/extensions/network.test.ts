@@ -138,7 +138,7 @@ function guardContext(
 }
 
 test("guard: updateDynamicRules / updateSessionRules refuse redirect, modifyHeaders, regexSubstitution, transform; block accepted", async () => {
-  const { chrome, calls: calls } = guardContext();
+  const { chrome, calls } = guardContext();
   const dnr = chrome.declarativeNetRequest;
   const rule = (action: unknown) => ({ addRules: [{ id: 1, priority: 1, action, condition: { urlFilter: "x" } }] });
   await expect(dnr.updateDynamicRules(rule({ type: "redirect", redirect: { url: "https://x.test/" } }))).rejects.toThrow(
@@ -177,7 +177,7 @@ test("guard: a callback receives chrome.runtime.lastError during the call, then 
 });
 
 test("guard: tabs.create, tabs.update, windows.create ask the main process for the address; refusal « URL refusée par Ressac »", async () => {
-  const { chrome, calls: calls } = guardContext({ urls: ["https://www.hote.test/"] });
+  const { chrome, calls } = guardContext({ urls: ["https://www.hote.test/"] });
   await expect(chrome.tabs.create({ url: "https://autre.test/" })).rejects.toThrow("URL refusée par Ressac");
   await expect(chrome.tabs.update(3, { url: "data:text/html,x" })).rejects.toThrow("URL refusée par Ressac");
   await expect(chrome.windows.create({ url: ["https://www.hote.test/", "https://autre.test/"] })).rejects.toThrow("URL refusée par Ressac");
@@ -189,7 +189,7 @@ test("guard: tabs.create, tabs.update, windows.create ask the main process for t
 });
 
 test("guard: scripting.executeScript / insertCSS and tabs.insertCSS only in a tab of a granted site; WebRTC removed", async () => {
-  const { ctx, chrome, calls: calls } = guardContext({ tabs: [4] });
+  const { ctx, chrome, calls } = guardContext({ tabs: [4] });
   await expect(chrome.scripting.executeScript({ target: { tabId: 5 }, func: () => 1 })).rejects.toThrow("Site refusé par Ressac");
   await expect(chrome.scripting.insertCSS({ target: { tabId: 5 }, css: "p{}" })).rejects.toThrow("Site refusé par Ressac");
   // Without a tab: the active tab (here 9, not granted).
@@ -216,7 +216,7 @@ test("guard: without __ressac (preload missing), every address and every tab are
 });
 
 test("guard: arguments are frozen once (copy), checked and passed as is: an accessor that changes its mind does not let a redirect through", async () => {
-  const { chrome, calls: calls } = guardContext({ tabs: [4] });
+  const { chrome, calls } = guardContext({ tabs: [4] });
   let reads = 0;
   const options = {
     get addRules() {
@@ -355,7 +355,7 @@ const PAGE_GUARDS = ["ressac-page-fixes.js", "ressac-page-guard.js", "ressac-sco
 const marker = (n: number) => `ressac-files/${n}.js`;
 
 test("guard: executeScript / insertCSS to a view that is not a tab (invisible read): « Onglet refusé par Ressac »; documentIds, world MAIN, without tabId: refused", async () => {
-  const { chrome, calls: calls } = guardContext({ tabs: [4, 6], nonTabs: [6] });
+  const { chrome, calls } = guardContext({ tabs: [4, 6], nonTabs: [6] });
   await expect(chrome.scripting.executeScript({ target: { tabId: 6 }, files: ["x.js"] })).rejects.toThrow("Onglet refusé par Ressac");
   await expect(chrome.scripting.insertCSS({ target: { tabId: 6 }, css: "p{}" })).rejects.toThrow("Onglet refusé par Ressac");
   await expect(chrome.tabs.insertCSS(6, { code: "p{}" })).rejects.toThrow("Onglet refusé par Ressac");
@@ -399,7 +399,7 @@ test("guard: executeScript({ files }): only files from the table, guards first; 
 });
 
 test("guard: registerContentScripts / updateContentScripts only register the guards and the markers (CSS first); paths outside the table refused, even with a poisoned split", async () => {
-  const { ctx, chrome, calls: calls } = guardContext();
+  const { ctx, chrome, calls } = guardContext();
   await chrome.scripting.registerContentScripts([
     { id: "a", matches: ["https://hote.test/*"], js: ["a.js", "c/d.js"], css: ["s.css"], allFrames: true },
     { id: "b", matches: ["https://hote.test/*"], css: ["s.css"] },
@@ -433,7 +433,7 @@ test("guard: registerContentScripts / updateContentScripts only register the gua
 });
 
 test("guard: getRegisteredContentScripts returns the agent's files; the round trip to updateContentScripts passes; a CSS-only update keeps the registered JS", async () => {
-  const { chrome, calls: calls, saved: saved } = guardContext();
+  const { chrome, calls, saved } = guardContext();
   await chrome.scripting.registerContentScripts([{ id: "a", matches: ["https://hote.test/*"], js: ["a.js", "c/d.js"], css: ["s.css"] }]);
   saved.push(...(calls[0]![1][0] as { id: string }[]));
   const reads = await chrome.scripting.getRegisteredContentScripts();
@@ -448,7 +448,7 @@ test("guard: getRegisteredContentScripts returns the agent's files; the round tr
 });
 
 test("guard: tabs.executeScript (MV2) first passes the page guards in the same frames; a file outside the table is refused", async () => {
-  const { chrome, calls: calls } = guardContext({ tabs: [4] });
+  const { chrome, calls } = guardContext({ tabs: [4] });
   await chrome.tabs.executeScript(4, { file: "a.js", allFrames: true, runAt: "document_idle" });
   expect(calls).toEqual([
     ...PAGE_GUARDS.map((f) => ["tabs.executeScript", [4, { file: f, allFrames: true, runAt: "document_idle" }]]),
@@ -459,7 +459,7 @@ test("guard: tabs.executeScript (MV2) first passes the page guards in the same f
 });
 
 test("guard: on the context's request, the background injects the markers' files (CSS then JS, guards first) in the sender's exact document, only if it is a tab", async () => {
-  const { chrome, calls: calls, emit: emit } = guardContext({ nonTabs: [6] });
+  const { chrome, calls, emit } = guardContext({ nonTabs: [6] });
   expect(await emit({ ressac: "context", files: [3, 0, 2] }, { tab: { id: 4 }, frameId: 2, documentId: "D" })).toEqual({ tab: true });
   const target = { tabId: 4, documentIds: ["D"] };
   expect(calls).toEqual([
@@ -480,7 +480,7 @@ test("guard: on the context's request, the background injects the markers' files
 });
 
 test("guard: in an agent page (popup, options), the context is neither answered nor injected: only the service worker does it; the agent's listeners do not see it either", async () => {
-  const { chrome, calls: calls, emit: emit } = guardContext({}, {}, { page: true });
+  const { chrome, calls, emit } = guardContext({}, {}, { page: true });
   const seen: unknown[] = [];
   (chrome.runtime.onMessage as { addListener(f: unknown): void }).addListener((m: unknown) => void seen.push(m));
   expect(await emit({ ressac: "context", files: [3, 0] }, { tab: { id: 4 }, frameId: 0, documentId: "D" })).toBe("aucune réponse");
@@ -490,7 +490,7 @@ test("guard: in an agent page (popup, options), the context is neither answered 
 });
 
 test("guard: an index outside the table (poisoned prototypes, negative, fractional) never injects anything", async () => {
-  const { ctx, calls: calls, emit: emit } = guardContext();
+  const { ctx, calls, emit } = guardContext();
   // In the guard's world: what `table[n]` would read through the prototype chain for an n outside the table.
   runInContext('const fake = { kind: "js", path: "hors-liste.js" }; ({}).__proto__[999] = fake; [].__proto__[5] = fake; ({}).__proto__["-1"] = fake; ({}).__proto__["1.5"] = fake;', ctx as object);
   for (const n of [999, 5, -1, 1.5]) {
@@ -500,7 +500,7 @@ test("guard: an index outside the table (poisoned prototypes, negative, fraction
 });
 
 test("guard: onMessage answers { ressac: \"context\" } with isTab(sender.tab.id); the agent's listeners never see that message", async () => {
-  const { chrome, emit: emit } = guardContext({ nonTabs: [6] });
+  const { chrome, emit } = guardContext({ nonTabs: [6] });
   const seen: unknown[] = [];
   // The agent tries to answer « onglet » itself in the guard's place.
   const agent = (m: unknown, _e: unknown, reply: (x: unknown) => void) => {

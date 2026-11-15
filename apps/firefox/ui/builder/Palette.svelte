@@ -8,11 +8,11 @@
    * the action, `action`) declares `"web": true`; without it, « Chercher sur le web » is greyed out (the validator would refuse it).
    */
   let {
-    catalog: catalog,
-    hasOutput: hasOutput,
+    catalog,
+    hasOutput,
     web,
     action = false,
-    onadd: onadd,
+    onadd,
   }: { catalog: BlockCatalogEntry[]; hasOutput: boolean; web: boolean; action?: boolean; onadd: (type: string) => void } = $props();
 
   const NO_WEB = $derived(t(action ? "builder-palette-no-web-action" : "builder-palette-no-web-widget"));

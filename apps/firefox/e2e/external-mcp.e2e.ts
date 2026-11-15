@@ -95,7 +95,7 @@ async function freePort(): Promise<number> {
 // externes.spec.ts:50
 it("« Brancher un Claude Code »: the command with the real port and a 64-hex token, gone on « Fermer »; external-clients.json without the token", async () => {
   await launch();
-  const { command: command, port, token: token } = await connectClient(m);
+  const { command, port, token } = await connectClient(m);
   expect(command).toBe(`claude mcp add --transport http --scope user ressac-remarks http://127.0.0.1:${port}/mcp-external --header "Authorization: Bearer ${token}"`);
   expect(port).toBeGreaterThan(0);
   expect(port).not.toBe(5279);
@@ -115,7 +115,7 @@ it("« Brancher un Claude Code »: the command with the real port and a 64-hex t
 it("declare_project: the external-project line shows; one notification only, even after a second declaration", async () => {
   await launch();
   const folder = projectDir("mon-site");
-  const { port, token: token } = await connectClient(m);
+  const { port, token } = await connectClient(m);
   const c = await mcpClient(port, token);
   try {
     const r = await c.callTool({ name: "declare_project", arguments: { folder: folder, ports: [18765] } });
@@ -241,7 +241,7 @@ it("the server listens on 127.0.0.1 only", async () => {
 
 it("a folder under <dataDir> is refused with SPACE_FOLDER", async () => {
   await launch();
-  const { port, token: token } = await connectClient(m);
+  const { port, token } = await connectClient(m);
   const c = await mcpClient(port, token);
   try {
     const inside = [path.join(w!.dataDir, "design", "x"), path.join(w!.dataDir, "workspace", "projects", "x")];
@@ -281,7 +281,7 @@ it("the token appears in no file under <dataDir> nor the profile", async () => {
 it("after a host restart the server comes back on the same port and the same token still connects", { timeout: 120_000 }, async () => {
   const port = await freePort();
   await launch({ RESSAC_PORT_MCP_EXTERNAL: String(port) });
-  const { port: shown, token: token } = await connectClient(m);
+  const { port: shown, token } = await connectClient(m);
   expect(shown).toBe(port);
   await click(m, tid("close-command"));
   const before = await mcpClient(port, token);

@@ -48,7 +48,7 @@ async function frame() {
   });
   toClose.push(() => server.stop());
   const connect = async (name = "Claude") => {
-    const { client, token: token } = await registry.connect(name);
+    const { client, token } = await registry.connect(name);
     const c = new Client({ name: "test", version: "0" });
     await c.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${server.port}/mcp-external`), { requestInit: { headers: { Authorization: `Bearer ${token}` } } }));
     toClose.push(() => c.close());
@@ -103,7 +103,7 @@ describe("serveur MCP externe", () => {
 
   test("Origin: http://evil.example → 403; Host: host.docker.internal:<port> → 403; Host: localhost:<port> accepted; /mcp → 404", async () => {
     const k = await frame();
-    const { token: token } = await k.connect();
+    const { token } = await k.connect();
     const p = k.server.port;
     const auth = { Authorization: `Bearer ${token}` };
     expect(await raw(p, "/mcp-external", { ...auth, Origin: "http://evil.example" })).toBe(403);
@@ -312,7 +312,7 @@ describe("serveur MCP externe", () => {
 
   test("request cut during wait_for_remarks: the wait is abandoned (no kept wake-up)", async () => {
     const k = await frame();
-    const { c, client, token: token } = await k.connect();
+    const { c, client, token } = await k.connect();
     const folder = await k.projectFolder("site");
     await call(c, "declare_project", { folder: folder, ports: [3000] });
     void client;
@@ -341,7 +341,7 @@ describe("serveur MCP externe", () => {
       },
     });
     toClose.push(() => k2.stop());
-    const { token: token } = await k.registry.connect("Z");
+    const { token } = await k.registry.connect("Z");
     const z = new Client({ name: "z", version: "0" });
     await z.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${k2.port}/mcp-external`), { requestInit: { headers: { Authorization: `Bearer ${token}` } } }));
     toClose.push(() => z.close());

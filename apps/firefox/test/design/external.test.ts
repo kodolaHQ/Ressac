@@ -35,7 +35,7 @@ test("a start that fails other than by a taken port (invalid port): off, with th
 });
 
 test("forgetting during the first photo: the private review repository does not come back", async () => {
-  const { root: root, designFolders: designFolders, service } = await prepare(0);
+  const { root, designFolders, service } = await prepare(0);
   const project = join(root, "site");
   mkdirSync(project);
   for (let i = 0; i < 50; i++) writeFileSync(join(project, `f${i}.txt`), `${i}\n`);

@@ -20,9 +20,9 @@
 
   let {
     window: win,
-    hidden: hidden = false,
-    togglePanel: togglePanel,
-    builderAgent: builderAgent,
+    hidden = false,
+    togglePanel,
+    builderAgent,
   }: {
     window: WindowState;
     hidden?: boolean;

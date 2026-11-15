@@ -6,7 +6,7 @@
    * The grant card for the app's tweaks, in its window: what the agent asks for (domains, sign-in, frames,
    * resume) and what it injects. Everything comes from site.json, written by the agent: shown as text, never as HTML.
    */
-  let { grant: grant, onGrant: giveGrant }: { grant: SiteGrantRequest; onGrant: (yes: boolean, hash: string) => Promise<void> } = $props();
+  let { grant, onGrant: giveGrant }: { grant: SiteGrantRequest; onGrant: (yes: boolean, hash: string) => Promise<void> } = $props();
   let running = $state(false);
 
   const choose = (yes: boolean) => {

@@ -12,7 +12,7 @@ type MemoryRequest = { op: "remember"; key: string; value: unknown } | { op: "re
 /** The request's shape, or null. */
 function memoryRequest(d: unknown): MemoryRequest | null {
   if (!d || typeof d !== "object") return null;
-  const { op, key: key } = d as { op?: unknown; key?: unknown };
+  const { op, key } = d as { op?: unknown; key?: unknown };
   if (typeof key !== "string") return null;
   if (op === "remember") return { op, key: key, value: (d as { value?: unknown }).value };
   return op === "read" || op === "forget" ? { op, key: key } : null;
@@ -78,7 +78,7 @@ export function createPositions(o: {
       const p = raw && typeof raw === "object" ? (raw as { id?: unknown; frame?: unknown; url?: unknown; t?: unknown; duration?: unknown; end?: unknown }) : {};
       const target = targetOf(p);
       if (!target || typeof p.frame !== "string" || p.frame.length > FRAME_MAX || !finished(p.t) || !finished(p.duration) || !o.granted(target.id)) return;
-      const { t, duration: duration } = p;
+      const { t, duration } = p;
       const end = p.end === true;
       const generationReceived = generation(target.id);
       const write = () =>

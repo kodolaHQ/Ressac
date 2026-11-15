@@ -11,7 +11,7 @@
    * « Enregistrer le code » or ⌘S writes it. The code never runs here, it is only text.
    */
   /** `widget`: the workflow's key (`targetKey`), a widget's or an action's. */
-  let { widget, name: name }: { widget: string; name: string } = $props();
+  let { widget, name }: { widget: string; name: string } = $props();
   const depot = repoOf(api.workflow);
 
   // svelte-ignore state_referenced_locally

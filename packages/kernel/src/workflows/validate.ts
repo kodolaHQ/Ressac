@@ -70,7 +70,7 @@ function problemText(p: z.core.$ZodIssue, locale: string): string {
     case "invalid_type": {
       const type = TYPES[String(i.expected)];
       const expected = type ? say(locale, type) : say(locale, "workflows-val-type-other", { expected: String(i.expected) });
-      return /received undefined$/.test(p.message) ? say(locale, "workflows-val-missing", { expected }) : expected;
+      return p.message.endsWith("received undefined") ? say(locale, "workflows-val-missing", { expected }) : expected;
     }
     case "too_big": {
       const n = i.maximum;
@@ -98,7 +98,7 @@ function problemText(p: z.core.$ZodIssue, locale: string): string {
 /** First zod problem, in the form « <path> : <message> ». */
 function firstProblem(error: z.ZodError, locale: string, root?: string): string {
   const p = error.issues[0]!;
-  const path = [...p.path.map(String)];
+  const path = p.path.map(String);
   if (p.code === "unrecognized_keys") path.push(...p.keys.slice(0, 1));
   const message = problemText(p, locale);
   const name = [...(root ? [root] : []), ...path].join(".");

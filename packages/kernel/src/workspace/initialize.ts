@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
-import { constants } from "node:fs";
+import { constants, existsSync } from "node:fs";
 import { copyFile, lstat, mkdir, readdir, readFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { KERNEL_ROOT, type SpacePaths } from "../paths.js";
 

@@ -5,7 +5,7 @@
   import { api } from "../state.svelte";
   import { t } from "../i18n.svelte";
 
-  let { request: request }: { request: PendingRequest } = $props();
+  let { request }: { request: PendingRequest } = $props();
 
   // The four rights, in the card's order. `sensible`: the warning shown below.
   // Texts: home-devtools-<right>, -detail and (when `sensitive`) -sensitive.

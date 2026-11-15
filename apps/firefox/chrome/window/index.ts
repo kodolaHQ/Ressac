@@ -88,7 +88,7 @@ window.addEventListener(
     const ready: Promise<RessacStore> = ChromeUtils.importESModule(STORE).ready;
     // After Firefox's own startup: a tab loaded before it (a restored tab) stays on about:blank.
     void Promise.all([ready, window.delayedStartupPromise]).then(([store]) => {
-      const { windowId: windowId, first } = store.windows.claim(window);
+      const { windowId, first } = store.windows.claim(window);
       try {
         window.ressacWindow = createController(window.gBrowser, frame, agentFrame, store, windowId);
       } catch (e) {

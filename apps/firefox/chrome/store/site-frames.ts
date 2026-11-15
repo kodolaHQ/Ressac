@@ -67,7 +67,7 @@ export async function frameMemory(wgp: any, s: FrameSite | undefined, sendReques
   const f = frameOf(wgp, s.view);
   const url = f?.main ? relativeUrl(f.url, s.site.domains) : null;
   if (url === null || !sendRequest || typeof sendRequest !== "object") return denial;
-  const { op, key: key, value: value } = sendRequest as { op?: unknown; key?: unknown; value?: unknown };
+  const { op, key, value } = sendRequest as { op?: unknown; key?: unknown; value?: unknown };
   return request({ id: s.site.id, url: url, op, key: key, value: value });
 }
 
@@ -79,7 +79,7 @@ export async function frameMemory(wgp: any, s: FrameSite | undefined, sendReques
  */
 export function frameError(s: FrameSite | undefined, e: unknown): void {
   if (!s || !e || typeof e !== "object") return;
-  const { text: text, source, line: line } = e as { text?: unknown; source?: unknown; line?: unknown };
+  const { text, source, line } = e as { text?: unknown; source?: unknown; line?: unknown };
   if (typeof text !== "string" || typeof source !== "string" || !source.startsWith(tweakSource(s.site.id, ""))) return;
   const l = typeof line === "number" && Number.isInteger(line) && line > 0 ? line : 0;
   addTweakConsole(s.errors, { text: text, source: l ? `${source}:${l}` : source }, new Date().toISOString());
@@ -102,7 +102,7 @@ function resumePage(wgp: any, s: FrameSite | undefined, localUrls: boolean): { i
 export function framePosition(wgp: any, s: FrameSite | undefined, p: unknown, localUrls: boolean, notify: (p: object) => void): void {
   const page = p && typeof p === "object" ? resumePage(wgp, s, localUrls) : null;
   if (!page) return;
-  const { t, duration: duration, end: end } = p as { t?: unknown; duration?: unknown; end?: unknown };
+  const { t, duration, end } = p as { t?: unknown; duration?: unknown; end?: unknown };
   notify({ ...page, frame: `${wgp.browsingContext.id}:${wgp.innerWindowId}`, t, duration: duration, end: end === true });
 }
 

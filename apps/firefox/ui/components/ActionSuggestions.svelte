@@ -4,9 +4,9 @@
   /** The proposed actions, then the usual row (search or address): `choisie` = -1: no choice. */
   let {
     suggestions,
-    usualLine: usualLine,
-    chosen: chosen,
-    choose: choose,
+    usualLine,
+    chosen,
+    choose,
   }: { suggestions: Suggestion[]; usualLine: string; chosen: number; choose: (i: number) => void } = $props();
 </script>
 

@@ -58,13 +58,13 @@ it("at startup the kernel prepares its space in the data dir and MCP answers", a
 it("list_tabs shows a tab not shared yet as « onglet non partagé »", async () => {
   await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url: `${server.url}/a.html` });
   await loaded("/a.html");
-  const { text: text } = await call("list_tabs");
+  const { text } = await call("list_tabs");
   expect(text).toContain("onglet non partagé");
   expect(text).not.toContain("a.html");
 });
 
 it("open_tab opens an active agent tab, readable and capturable", async () => {
-  const { text: id, error: error } = await call("open_tab", { url: `${server.url}/texte.html` });
+  const { text: id, error } = await call("open_tab", { url: `${server.url}/texte.html` });
   expect(error).toBe(false);
   const s = await state(m);
   expect(s.tabs[id]?.openedByAgent).toBe(true);

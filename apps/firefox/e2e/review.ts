@@ -74,7 +74,7 @@ export async function declareProject(
   const folder = projectDir(o.name ?? "mon-site");
   writeAppJs(folder, LINES);
   writeFileSync(join(folder, "logo.bin"), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
-  const { port, token: token } = await connectClient(m);
+  const { port, token } = await connectClient(m);
   const client = await mcpClient(port, token);
   await client.callTool({ name: "declare_project", arguments: { folder: folder, ports: o.ports ?? [18765] } });
   await waitUi(m, "return !!doc.querySelector('[data-testid=\"external-project\"]')", [], 15_000);

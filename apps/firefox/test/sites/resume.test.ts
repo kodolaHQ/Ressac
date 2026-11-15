@@ -39,7 +39,7 @@ test("the plan's values", () => {
 });
 
 test("timeupdate every second for 35 s: 4 noter (0, 10, 20, 30 s)", async () => {
-  const { s, notes, clock: clock } = tracking();
+  const { s, notes, clock } = tracking();
   const key = {};
   expect(await s.onEvent("play", { currentTime: 0, duration: 1500, key: key })).toBeNull();
   for (let t = 0; t <= 35; t++) {
@@ -55,7 +55,7 @@ test("timeupdate every second for 35 s: 4 noter (0, 10, 20, 30 s)", async () => 
 });
 
 test("pause: noter right away; ended too, marked as the end", async () => {
-  const { s, notes, ends: ends, clock: clock } = tracking();
+  const { s, notes, ends, clock } = tracking();
   const key = {};
   await s.onEvent("play", { currentTime: 0, duration: 1500, key: key });
   await s.onEvent("timeupdate", { currentTime: 1, duration: 1500, key: key });
@@ -72,7 +72,7 @@ test("pause: noter right away; ended too, marked as the end", async () => {
 });
 
 test("30 s video: nothing noted, nothing resumed", async () => {
-  const { s, notes, requests: requests } = tracking(20);
+  const { s, notes, requests } = tracking(20);
   const key = {};
   for (const type of ["loadedmetadata", "play", "timeupdate", "pause", "ended"] as const) {
     expect(await s.onEvent(type, { currentTime: 12, duration: 30, key: key })).toBeNull();
@@ -82,7 +82,7 @@ test("30 s video: nothing noted, nothing resumed", async () => {
 });
 
 test("non-finite (live) or missing duration: ignored", async () => {
-  const { s, notes, requests: requests } = tracking(100);
+  const { s, notes, requests } = tracking(100);
   const key = {};
   for (const duration of [Infinity, NaN]) {
     expect(await s.onEvent("play", { currentTime: 10, duration, key: key })).toBeNull();
@@ -93,7 +93,7 @@ test("non-finite (live) or missing duration: ignored", async () => {
 });
 
 test("play with known position 1390: returns 1385, only once", async () => {
-  const { s, requests: requests, durations: durations } = tracking(1390);
+  const { s, requests, durations } = tracking(1390);
   const key = {};
   expect(await s.onEvent("loadedmetadata", { currentTime: 0, duration: 1500, key: key })).toBe(1385);
   expect(durations).toEqual([1500]);
@@ -116,7 +116,7 @@ test("a position beyond this video's duration, or that is not a number: nothing 
 });
 
 test("nothing is noted before the resume is settled: a timeupdate at 0 s does not overwrite the position", async () => {
-  const { s, notes, defer: defer, reply: reply, clock: clock } = tracking();
+  const { s, notes, defer, reply, clock } = tracking();
   defer();
   const key = {};
   const resume = s.onEvent("play", { currentTime: 0, duration: 1500, key: key });
@@ -140,7 +140,7 @@ test("a request that fails: nothing resumed, the tracking continues", async () =
 });
 
 test("duration known later (stream): the resume is requested at the first event where it is finite", async () => {
-  const { s, requests: requests } = tracking(500);
+  const { s, requests } = tracking(500);
   const key = {};
   expect(await s.onEvent("loadedmetadata", { currentTime: 0, duration: Infinity, key: key })).toBeNull();
   expect(await s.onEvent("timeupdate", { currentTime: 0.2, duration: 1500, key: key })).toBe(495);

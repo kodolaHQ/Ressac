@@ -12,7 +12,6 @@ import {
   MAX_ERROR,
   LOG_MAX,
   MEMORY_NOT_KEPT,
-  PROFILE_DENIED,
   runDelays,
   runWorkflow,
   type WorkflowContext,
@@ -239,7 +238,7 @@ function stateBeforeRun(e: WidgetState): NonNullable<WidgetState["before"]> {
  * withdrawn, everything read with it goes (data, runs, memory) and the widget waits for a new grant.
  */
 export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
-  const { id, widget, widgetsFolder: widgetsFolder } = o;
+  const { id, widget, widgetsFolder } = o;
   if (!ID.test(id) || widget.id !== id) throw new Error(`id de widget invalide : ${id}`);
   const clock = o.clock ?? (() => new Date());
   const dataFolder = join(widgetsFolder, id);
@@ -303,7 +302,7 @@ export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
   if (parsed.t === "absent") return conclude({ status: "error", error: NO_WORKFLOW_ERROR(loc(o)) });
   // workflow.json half-written, unknown block, cycle…: no container is launched, the data stays.
   if (parsed.t === "invalid") return conclude({ status: "error", error: parsed.error, run: await withoutContainer("failed", parsed.error, []) });
-  const { valid: valid, declaration } = parsed;
+  const { valid, declaration } = parsed;
   // A widget that reads with the user's account only runs with their grant (an expired grant is withdrawn, with its data).
   if (!(await validGrant(widgetsFolder, id, declaration)).can) {
     const error = grantRequired(declaration, loc(o));
@@ -456,7 +455,7 @@ export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
  * goes, try included, and the widget goes to `accord-requis`.
  */
 export async function runAttempt(o: HarvestOptions & { origin: string; start: string }): Promise<AttemptResult> {
-  const { id, widget, widgetsFolder: widgetsFolder } = o;
+  const { id, widget, widgetsFolder } = o;
   if (!ID.test(id) || widget.id !== id) throw new Error(`id de widget invalide : ${id}`);
   const clock = o.clock ?? (() => new Date());
   const dataFolder = join(widgetsFolder, id);
@@ -465,7 +464,7 @@ export async function runAttempt(o: HarvestOptions & { origin: string; start: st
   const parsed = await widgetWorkflow(widget, loc(o));
   if (parsed.t === "absent") return denial(NO_WORKFLOW_ERROR(loc(o)));
   if (parsed.t !== "ok") return denial(parsed.error);
-  const { valid: valid, declaration } = parsed;
+  const { valid, declaration } = parsed;
   const grant = await validGrant(widgetsFolder, id, declaration);
   if (!grant.can) {
     // Expired grant withdrawn: the widget waits for a new grant. Never given: nothing is written.
@@ -482,7 +481,7 @@ export async function runAttempt(o: HarvestOptions & { origin: string; start: st
   const replay = { reruns: plan.reruns, outputs: plan.outputs };
   // A try has the delays of the widget's maximum duration (a watch must be tryable), without ever being progressive.
   const maxDurationMinutes = declaration.harvest?.maxDurationMinutes;
-  const { limitMs: limitMs } = runDelays(maxDurationMinutes);
+  const { limitMs } = runDelays(maxDurationMinutes);
   // Measured before any container, on the line as it will go out: the harvester would refuse it, and nothing must be written.
   const now = clock().toISOString();
   if (startTooBig({ previous: previous, now: now, config, workflow, replay: replay, ...(limitMs !== undefined ? { limitMs: limitMs } : {}) })) {

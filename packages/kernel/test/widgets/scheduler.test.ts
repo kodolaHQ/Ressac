@@ -129,7 +129,7 @@ async function prepare(o: { workshop?: WorkshopState; status?: WidgetState["stat
 }
 
 test("a due widget is harvested at startup then according to its frequency (fake clock)", async () => {
-  const { p, harvests: harvests, harvest: harvest, forward: advance } = await prepare();
+  const { p, harvests, harvest, forward: advance } = await prepare();
   await p.start();
   await vi.waitFor(() => expect(harvests).toEqual(["actus"]));
   // The launch check finishes (otherwise the next one would be skipped without checking anything).
@@ -143,7 +143,7 @@ test("a due widget is harvested at startup then according to its frequency (fake
 });
 
 test("the harvest receives the widget, the data folder, the engine and the AI", async () => {
-  const { p, harvest: harvest, widgetsFolder: widgetsFolder, c } = await prepare();
+  const { p, harvest, widgetsFolder, c } = await prepare();
   await p.check({ onLaunch: true });
   const o = harvest.mock.calls[0]![0];
   expect(o).toMatchObject({ id: "actus", widgetsFolder: widgetsFolder, engine: "/engine", ai: null });
@@ -156,7 +156,7 @@ test("with a given dispatcher, the harvests use it", async () => {
   const keys: string[] = [];
   const access = { kev: vi.fn(), gemma: vi.fn(), forget: vi.fn() };
   const dispatcher = { for: (key: string) => (keys.push(key), access) };
-  const { p, harvest: harvest } = await prepare({ options: { dispatcher: dispatcher } });
+  const { p, harvest } = await prepare({ options: { dispatcher: dispatcher } });
   await p.check({ onLaunch: true });
   expect(harvest.mock.calls[0]![0].ai).toBe(access);
   expect(keys).toEqual([`actus:${START.toISOString()}`]);
@@ -165,7 +165,7 @@ test("with a given dispatcher, the harvests use it", async () => {
 
 test("the throttle and the search base are passed to each harvest and each trial; absent, nothing is passed", async () => {
   const pacing = new Pacing();
-  const { p, harvest: harvest, harvestAttempt: harvestAttempt } = await prepare({ options: { pacing: pacing, searchUrl: "http://127.0.0.1:9/html/" } });
+  const { p, harvest, harvestAttempt } = await prepare({ options: { pacing: pacing, searchUrl: "http://127.0.0.1:9/html/" } });
   await p.check({ onLaunch: true });
   await p.harvestNow("actus");
   await p.replay("actus", "x", "recolte");
@@ -181,7 +181,7 @@ test("the throttle and the search base are passed to each harvest and each trial
 });
 
 test("accord-requis is never retried on its own", async () => {
-  const { p, harvests: harvests, widgetsFolder: widgetsFolder, forward: advance } = await prepare();
+  const { p, harvests, widgetsFolder, forward: advance } = await prepare();
   await writeWidgetState(widgetsFolder, "actus", { status: "grant-required", lastUpdate: null, lastAttempt: null, error: "Accord requis" });
   expect(await p.check({ onLaunch: true })).toEqual([]);
   advance(24 * 60 * MIN);
@@ -193,7 +193,7 @@ test("accord-requis is never retried on its own", async () => {
 });
 
 test("workshop stopped: status atelier-arrete, data kept", async () => {
-  const { p, harvests: harvests, widgetsFolder: widgetsFolder, changes: changes, setWorkshop: setWorkshop } = await prepare({ workshop: "arrete" });
+  const { p, harvests, widgetsFolder, changes, setWorkshop } = await prepare({ workshop: "arrete" });
   await writeData(widgetsFolder, "actus", { old: true });
   await writeWidgetState(widgetsFolder, "actus", { status: "ok", lastUpdate: "2026-10-27T08:00:00.000Z", lastAttempt: "2026-10-27T08:00:00.000Z" });
   expect(await p.check({ onLaunch: true })).toEqual([]);
@@ -217,7 +217,7 @@ test("workshop stopped: status atelier-arrete, data kept", async () => {
 });
 
 test("an error is retried after 15 min, not before", async () => {
-  const { p, harvests: harvests, forward: advance } = await prepare({ status: "error" });
+  const { p, harvests, forward: advance } = await prepare({ status: "error" });
   expect(await p.check({ onLaunch: true })).toEqual(["actus"]);
   advance(14 * MIN);
   expect(await p.check({ onLaunch: false })).toEqual([]);
@@ -244,7 +244,7 @@ test("in-progress is relaunched at launch only", () => {
 });
 
 test("harvestNow waits for the harvest in progress: only one at a time", async () => {
-  const { p, harvest: harvest } = await prepare();
+  const { p, harvest } = await prepare();
   let inFlight = 0;
   let max = 0;
   const base = harvest.getMockImplementation()!;
@@ -272,7 +272,7 @@ test("harvestNow on an unknown widget throws an error", async () => {
 });
 
 test("arreter: the harvest in progress is removed and its previous state restored", async () => {
-  const { p, harvest: harvest, widgetsFolder: widgetsFolder, workshop: workshop } = await prepare();
+  const { p, harvest, widgetsFolder, workshop } = await prepare();
   const before: WidgetState = { status: "ok", lastUpdate: "2026-10-27T08:00:00.000Z", lastAttempt: "2026-10-27T08:00:00.000Z" };
   await writeWidgetState(widgetsFolder, "actus", before);
   let kill!: () => void;
@@ -297,7 +297,7 @@ test("arreter: the harvest in progress is removed and its previous state restore
 });
 
 test("arreter while the harvest checks the workshop: it does not start", async () => {
-  const { p, harvest: harvest, workshop: workshop } = await prepare();
+  const { p, harvest, workshop } = await prepare();
   let release!: () => void;
   const checked = vi.fn();
   workshop.state = async () => {
@@ -315,7 +315,7 @@ test("arreter while the harvest checks the workshop: it does not start", async (
 });
 
 test("arreter: a harvest that exceeds the wait sees its container removed once more", async () => {
-  const { widgetsFolder: widgetsFolder, harvest: harvest, workshop: workshop, c } = await prepare();
+  const { widgetsFolder, harvest, workshop, c } = await prepare();
   await p!.stop();
   let launched = false;
   let start!: () => void;
@@ -354,7 +354,7 @@ test("arreter: a harvest that exceeds the wait sees its container removed once m
 });
 
 test("the first check waits for the workshop to be ready: no « atelier arrêté » at launch", async () => {
-  const { widgetsFolder: widgetsFolder, harvest: harvest, workshop: workshop, c, harvests: harvests } = await prepare();
+  const { widgetsFolder, harvest, workshop, c, harvests } = await prepare();
   await p!.stop();
   let state: WorkshopState = "arrete";
   workshop.state = async () => state;
@@ -382,7 +382,7 @@ test("the first check waits for the workshop to be ready: no « atelier arrêté
 });
 
 test("a harvest that throws an error after writing in-progress leaves a kernel error state", async () => {
-  const { p, harvest: harvest, widgetsFolder: widgetsFolder, changes: changes } = await prepare();
+  const { p, harvest, widgetsFolder, changes } = await prepare();
   await writeWidgetState(widgetsFolder, "actus", { status: "ok", lastUpdate: "2026-10-27T08:00:00.000Z", lastAttempt: "2026-10-27T08:00:00.000Z" });
   harvest.mockImplementation(async (o) => {
     await writeWidgetState(o.widgetsFolder, o.id, { status: "running", lastUpdate: "2026-10-27T08:00:00.000Z", lastAttempt: START.toISOString() });
@@ -414,7 +414,7 @@ test("a broken widget harvested now reaches the harvest with its read error in t
 });
 
 test("at each check, grants and data of a widget whose folder disappeared are erased", async () => {
-  const { p, widgetsFolder: widgetsFolder, c } = await prepare();
+  const { p, widgetsFolder, c } = await prepare();
   for (const id of ["actus", "parti"]) {
     await writeData(widgetsFolder, id, { secret: id });
     await giveGrant(widgetsFolder, id, { domains: ["x.fr"], public: [], profile: "defaut" });
@@ -434,7 +434,7 @@ test("at each check, grants and data of a widget whose folder disappeared are er
 });
 
 test("a widget with workflow.json without harvest.mjs is harvested when it is due", async () => {
-  const { p, c, harvests: harvests } = await prepare();
+  const { p, c, harvests } = await prepare();
   await writeWidget(c, "flux", declarationWidget(undefined, { harvest: { minutes: 60 } }), {
     "workflow.json": JSON.stringify({ version: 1, blocks: [{ id: "sortie", type: "output", params: { to: "widget" } }] }),
   });
@@ -443,7 +443,7 @@ test("a widget with workflow.json without harvest.mjs is harvested when it is du
 });
 
 test("trigger: planifiee for the check, manuelle by default for harvestNow, otherwise the requested one", async () => {
-  const { p, harvest: harvest } = await prepare();
+  const { p, harvest } = await prepare();
   await p.check({ onLaunch: true });
   await p.harvestNow("actus");
   await p.harvestNow("actus", "agent");
@@ -452,7 +452,7 @@ test("trigger: planifiee for the check, manuelle by default for harvestNow, othe
 });
 
 test("stop during the run: run interrupted, previous state restored", async () => {
-  const { p, harvest: harvest, widgetsFolder: widgetsFolder, workshop: workshop } = await prepare();
+  const { p, harvest, widgetsFolder, workshop } = await prepare();
   const before: WidgetState = { status: "ok", lastUpdate: "2026-10-27T08:00:00.000Z", lastAttempt: "2026-10-27T08:00:00.000Z" };
   await writeWidgetState(widgetsFolder, "actus", before);
   let kill!: () => void;
@@ -474,7 +474,7 @@ test("stop during the run: run interrupted, previous state restored", async () =
 });
 
 test("the vanished folder also erases runs and memory", async () => {
-  const { p, widgetsFolder: widgetsFolder } = await prepare();
+  const { p, widgetsFolder } = await prepare();
   const folder = join(widgetsFolder, "parti");
   await writeData(widgetsFolder, "parti", { secret: 1 });
   await writeRun(folder, {
@@ -494,7 +494,7 @@ function deferred<T>() {
 }
 
 test("a scheduled run due during a trial waits for its end", async () => {
-  const { p, harvest: harvest, harvestAttempt: harvestAttempt } = await prepare();
+  const { p, harvest, harvestAttempt } = await prepare();
   const log: string[] = [];
   const end = deferred<AttemptResult>();
   harvestAttempt.mockImplementation(async (o) => {
@@ -519,7 +519,7 @@ test("a scheduled run due during a trial waits for its end", async () => {
 });
 
 test("two rejouer requested back to back run one after the other", async () => {
-  const { p, harvestAttempt: harvestAttempt } = await prepare();
+  const { p, harvestAttempt } = await prepare();
   const log: string[] = [];
   const ends = [deferred<void>(), deferred<void>()];
   let n = 0;
@@ -543,7 +543,7 @@ test("two rejouer requested back to back run one after the other", async () => {
 });
 
 test("an avancement or lecture trace does not change a widget's live tracking", async () => {
-  const { p, harvestAttempt: harvestAttempt, directs } = await prepare();
+  const { p, harvestAttempt, directs } = await prepare();
   const seen: { before: DirectState; after: DirectState; reported: number }[] = [];
   harvestAttempt.mockImplementation(async (o) => {
     o.onTrace!({ block: "liste", step: "start" });
@@ -562,7 +562,7 @@ test("an avancement or lecture trace does not change a widget's live tracking", 
 });
 
 test("direct() shows the running widget, its kind and its blocks as traces come, then nothing", async () => {
-  const { p, harvestAttempt: harvestAttempt, directs, widgetsFolder: widgetsFolder } = await prepare();
+  const { p, harvestAttempt, directs, widgetsFolder } = await prepare();
   expect(p.direct()).toEqual({ running: [], waiting: [] });
   const seen: DirectState[] = [];
   harvestAttempt.mockImplementation(async (o) => {
@@ -601,7 +601,7 @@ test("direct() shows the running widget, its kind and its blocks as traces come,
 });
 
 test("waiting lists a widget requested while another runs", async () => {
-  const { p, harvestAttempt: harvestAttempt, harvests: harvests } = await prepare();
+  const { p, harvestAttempt, harvests } = await prepare();
   const end = deferred<void>();
   harvestAttempt.mockImplementation(async () => {
     await end.promise;
@@ -620,7 +620,7 @@ test("waiting lists a widget requested while another runs", async () => {
 });
 
 test("workshop stopped: rejouer refuses without changing the state", async () => {
-  const { p, harvestAttempt: harvestAttempt, widgetsFolder: widgetsFolder, changes: changes } = await prepare({ workshop: "arrete" });
+  const { p, harvestAttempt, widgetsFolder, changes } = await prepare({ workshop: "arrete" });
   const state: WidgetState = { status: "ok", lastUpdate: "2026-10-27T08:00:00.000Z", lastAttempt: "2026-10-27T08:00:00.000Z" };
   await writeWidgetState(widgetsFolder, "actus", state);
   expect(await p.replay("actus", "o", "liste")).toEqual({ ok: false, error: WORKSHOP_STOPPED_ERROR("fr") });
@@ -683,7 +683,7 @@ function keep(harvest: Awaited<ReturnType<typeof prepare>>["harvest"], kept: str
 
 test("routeOf: long beyond LONG_ROUTE_MINUTES (3), short otherwise", async () => {
   expect(LONG_ROUTE_MINUTES).toBe(3);
-  const { c, widgetsFolder: widgetsFolder } = await prepare();
+  const { c, widgetsFolder } = await prepare();
   await writeWatch(c, "trois", 3);
   await writeWatch(c, "quatre", 4);
   const widgets = (await readHome(c, widgetsFolder)).widgets;
@@ -692,7 +692,7 @@ test("routeOf: long beyond LONG_ROUTE_MINUTES (3), short otherwise", async () =>
 });
 
 test("a long run (maxDurationMinutes 30) does not prevent a short widget from running", async () => {
-  const { p, c, harvest: harvest } = await prepare();
+  const { p, c, harvest } = await prepare();
   await writeWatch(c, "veille", 30);
   const r = keep(harvest, ["veille"]);
   // The check launches the watch without waiting for it, and harvests « actus » while it runs.
@@ -707,7 +707,7 @@ test("a long run (maxDurationMinutes 30) does not prevent a short widget from ru
 });
 
 test("two long widgets: one after the other", async () => {
-  const { p, c, harvest: harvest } = await prepare();
+  const { p, c, harvest } = await prepare();
   await writeWatch(c, "veille-a", 30);
   await writeWatch(c, "veille-b", 20);
   const r = keep(harvest, ["veille-a", "veille-b"]);
@@ -725,7 +725,7 @@ test("two long widgets: one after the other", async () => {
 });
 
 test("a long widget and its trial: never at the same time", async () => {
-  const { p, c, harvest: harvest, harvestAttempt: harvestAttempt } = await prepare();
+  const { p, c, harvest, harvestAttempt } = await prepare();
   await writeWatch(c, "veille", 30);
   const r = keep(harvest, ["veille"]);
   harvestAttempt.mockImplementation(async (o) => {
@@ -746,7 +746,7 @@ test("a long widget and its trial: never at the same time", async () => {
 });
 
 test("maxDurationMinutes changed from 30 to 2 during the run: the new request waits for the first to end", async () => {
-  const { p, c, harvest: harvest, harvests: harvests } = await prepare();
+  const { p, c, harvest, harvests } = await prepare();
   await writeWatch(c, "veille", 30);
   const r = keep(harvest, ["veille"]);
   const first = p.harvestNow("veille");
@@ -767,7 +767,7 @@ test("maxDurationMinutes changed from 30 to 2 during the run: the new request wa
 });
 
 test("a check is not stuck by a long run: a short widget due later is harvested", async () => {
-  const { p, c, harvest: harvest, forward: advance } = await prepare();
+  const { p, c, harvest, forward: advance } = await prepare();
   await writeWatch(c, "veille", 30);
   const r = keep(harvest, ["veille"]);
   expect(await p.check({ onLaunch: true })).toEqual(["actus"]);
@@ -782,7 +782,7 @@ test("a check is not stuck by a long run: a short widget due later is harvested"
 });
 
 test("direct().courants lists both runs", async () => {
-  const { p, c, harvest: harvest } = await prepare();
+  const { p, c, harvest } = await prepare();
   await writeWatch(c, "veille", 30);
   const r = keep(harvest, ["veille", "actus"]);
   void p.check({ onLaunch: true });
@@ -803,7 +803,7 @@ test("direct().courants lists both runs", async () => {
 });
 
 test("arreter removes both containers and waits for both lanes", async () => {
-  const { p, c, harvest: harvest, workshop: workshop } = await prepare();
+  const { p, c, harvest, workshop } = await prepare();
   await writeWatch(c, "veille", 30);
   const r = keep(harvest, ["veille", "actus"]);
   const deleted: string[] = [];
@@ -826,7 +826,7 @@ test("arreter removes both containers and waits for both lanes", async () => {
 });
 
 test("arreter: a long run that does not finish is awaited in a bounded way, its container removed twice", async () => {
-  const { p, c, harvest: harvest, workshop: workshop } = await prepare({
+  const { p, c, harvest, workshop } = await prepare({
     options: { stopWaitMs: 1 },
   });
   await writeWatch(c, "veille", 30);
@@ -843,7 +843,7 @@ test("arreter: a long run that does not finish is awaited in a bounded way, its 
 test("the AI goes through the dispatcher: each run has its view, calls reach the given AI, refused after its end", async () => {
   const calls: string[] = [];
   const ai = { kev: async () => "k", gemma: async (o: { prompt: string }) => (calls.push(o.prompt), "g") };
-  const { p, c, harvest: harvest, harvestAttempt: harvestAttempt } = await prepare({ options: { ai: ai } });
+  const { p, c, harvest, harvestAttempt } = await prepare({ options: { ai: ai } });
   await writeWatch(c, "veille", 30);
   const responses: unknown[] = [];
   const base = harvest.getMockImplementation()!;
@@ -869,7 +869,7 @@ test("the AI goes through the dispatcher: each run has its view, calls reach the
 });
 
 test("maxDurationMinutes changed from 2 to 30 while a request waits: it goes into the long lane", async () => {
-  const { p, c, harvest: harvest } = await prepare();
+  const { p, c, harvest } = await prepare();
   await writeWatch(c, "veille", 2);
   const r = keep(harvest, ["veille"]);
   const first = p.harvestNow("veille");
@@ -890,7 +890,7 @@ test("maxDurationMinutes changed from 2 to 30 while a request waits: it goes int
 });
 
 test("widget changed from 30 to 2 just before a trial: the trial goes through during another widget's watch", async () => {
-  const { p, c, harvest: harvest, harvestAttempt: harvestAttempt } = await prepare();
+  const { p, c, harvest, harvestAttempt } = await prepare();
   await writeWatch(c, "veille-a", 30);
   await writeWatch(c, "veille-b", 30);
   const r = keep(harvest, ["veille-a"]);
@@ -918,7 +918,7 @@ async function writeMorning(c: SpacePaths, harvest: { hours: string[]; minutes?:
 const morning = (harvests: string[]) => harvests.filter((x) => x === "matin").length;
 
 test("hours and minutes: both apply", async () => {
-  const { p, c, harvests: harvests, set: fixer, widgetsFolder: widgetsFolder } = await prepare();
+  const { p, c, harvests, set: fixer, widgetsFolder } = await prepare();
   await writeMorning(c, { minutes: 120, hours: ["07:00"] });
   fixer(at(6, 0));
   await p.check({ onLaunch: true });
@@ -943,7 +943,7 @@ test("hours and minutes: both apply", async () => {
 });
 
 test("interrupted: caught up at the next launch the same day", async () => {
-  const { p, c, harvests: harvests, harvest: harvest, set: fixer, widgetsFolder: widgetsFolder, workshop: workshop, relaunch: relaunch } = await prepare();
+  const { p, c, harvests, harvest, set: fixer, widgetsFolder, workshop, relaunch } = await prepare();
   await writeMorning(c, { hours: ["07:00"] });
   const base = harvest.getMockImplementation()!;
   let kill: (() => void) | undefined;
@@ -976,7 +976,7 @@ test("interrupted: caught up at the next launch the same day", async () => {
 });
 
 test("abrupt stop (in-progress at launch): the missed hour is caught up once", async () => {
-  const { p, c, harvests: harvests, harvest: harvest, set: fixer, widgetsFolder: widgetsFolder } = await prepare();
+  const { p, c, harvests, harvest, set: fixer, widgetsFolder } = await prepare();
   await writeMorning(c, { hours: ["07:00", "12:00"] });
   await writeWidgetState(widgetsFolder, "matin", {
     status: "running", lastUpdate: null, lastAttempt: at(12, 0).toISOString(), progress: { done: 7, total: 12 },
@@ -993,7 +993,7 @@ test("abrupt stop (in-progress at launch): the missed hour is caught up once", a
 });
 
 test("in-progress at launch of an hours widget already done today: not relaunched, its state restored", async () => {
-  const { p, c, harvests: harvests, set: fixer, widgetsFolder: widgetsFolder } = await prepare();
+  const { p, c, harvests, set: fixer, widgetsFolder } = await prepare();
   await writeMorning(c, { hours: ["07:00"] });
   const hours = { done: "2026-10-29T07:00", failures: null };
   await writeWidgetState(widgetsFolder, "matin", {
@@ -1007,7 +1007,7 @@ test("in-progress at launch of an hours widget already done today: not relaunche
 });
 
 test("in-progress at launch while a trial waits: the state is restored before any run, the widget relaunched afterwards", async () => {
-  const { p, harvests: harvests, harvestAttempt: harvestAttempt, widgetsFolder: widgetsFolder } = await prepare();
+  const { p, harvests, harvestAttempt, widgetsFolder } = await prepare();
   // Fresh data: only the abrupt stop makes it due at launch.
   await writeWidgetState(widgetsFolder, "actus", { status: "running", lastUpdate: START.toISOString(), lastAttempt: START.toISOString(), progress: { done: 7, total: 12 } });
   const end = deferred<AttemptResult>();
@@ -1027,7 +1027,7 @@ test("in-progress at launch while a trial waits: the state is restored before an
 });
 
 test("a trial does not count for the hour", async () => {
-  const { p, c, harvests: harvests, set: fixer, widgetsFolder: widgetsFolder } = await prepare();
+  const { p, c, harvests, set: fixer, widgetsFolder } = await prepare();
   await writeMorning(c, { hours: ["07:00"] });
   fixer(at(7, 0));
   expect(await p.replay("matin", "o", "liste")).toMatchObject({ ok: true });
@@ -1038,7 +1038,7 @@ test("a trial does not count for the hour", async () => {
 });
 
 test("Mac asleep over several hours: a single catch-up on wake", async () => {
-  const { p, c, harvests: harvests, set: fixer, widgetsFolder: widgetsFolder } = await prepare();
+  const { p, c, harvests, set: fixer, widgetsFolder } = await prepare();
   await writeMorning(c, { hours: ["07:00", "09:00", "12:00"] });
   fixer(at(6, 0));
   await p.check({ onLaunch: true });
@@ -1053,7 +1053,7 @@ test("Mac asleep over several hours: a single catch-up on wake", async () => {
 });
 
 test("midnight: the hour missed the day before is not caught up, the next day's is", async () => {
-  const { p, c, harvests: harvests, set: fixer, widgetsFolder: widgetsFolder } = await prepare();
+  const { p, c, harvests, set: fixer, widgetsFolder } = await prepare();
   await writeMorning(c, { hours: ["07:00", "22:00"] });
   // 22:00 missed on the 29th (Ressac closed); reopened after midnight.
   await writeWidgetState(widgetsFolder, "matin", { status: "ok", lastUpdate: null, lastAttempt: null, hours: { done: "2026-10-29T07:00", failures: null } });
@@ -1069,7 +1069,7 @@ test("midnight: the hour missed the day before is not caught up, the next day's 
 });
 
 test("failures: retried 15 min later, 3 times at most, then nothing until the next hour", async () => {
-  const { p, c, harvests: harvests, set: fixer, widgetsFolder: widgetsFolder } = await prepare({ status: "error" });
+  const { p, c, harvests, set: fixer, widgetsFolder } = await prepare({ status: "error" });
   await writeMorning(c, { hours: ["07:00", "12:00"] });
   const attempts: string[] = [];
   for (let t = at(7, 0).getTime(); t <= at(12, 0).getTime(); t += MIN) {
@@ -1083,7 +1083,7 @@ test("failures: retried 15 min later, 3 times at most, then nothing until the ne
 });
 
 test("a manual run before the first hour does not erase the previous day's tracking; one at 07:10 counts for 07:00", async () => {
-  const { p, c, harvests: harvests, set: fixer, widgetsFolder: widgetsFolder } = await prepare();
+  const { p, c, harvests, set: fixer, widgetsFolder } = await prepare();
   await writeMorning(c, { hours: ["07:00"] });
   const watch = { done: "2026-10-28T07:00", failures: null };
   await writeWidgetState(widgetsFolder, "matin", { status: "ok", lastUpdate: null, lastAttempt: null, hours: watch });
@@ -1098,7 +1098,7 @@ test("a manual run before the first hour does not erase the previous day's track
 });
 
 test("the hours tracking survives a grant removed then granted again", async () => {
-  const { p, c, harvests: harvests, set: fixer, widgetsFolder: widgetsFolder } = await prepare();
+  const { p, c, harvests, set: fixer, widgetsFolder } = await prepare();
   const sources = { account: ["mail.example.com"], public: [] };
   await writeMorning(c, { hours: ["07:00"] }, { sources });
   await giveGrant(widgetsFolder, "matin", { domains: ["mail.example.com"], public: [], profile: "defaut" });
@@ -1125,7 +1125,7 @@ test("the hours tracking survives a grant removed then granted again", async () 
 });
 
 test("watch failing after 30 min: the retry starts at the earliest 15 min after the failure ends", async () => {
-  const { p, c, harvest: harvest, set: fixer, clock: clock, forward: advance, widgetsFolder: widgetsFolder } = await prepare({ status: "error" });
+  const { p, c, harvest, set: fixer, clock, forward: advance, widgetsFolder } = await prepare({ status: "error" });
   await writeMorning(c, { hours: ["07:00", "12:00"] });
   const base = harvest.getMockImplementation()!;
   const starts: string[] = [];
@@ -1145,12 +1145,12 @@ test("watch failing after 30 min: the retry starts at the earliest 15 min after 
     advance(MIN);
   }
   expect(starts).toEqual(["7:00", "7:45", "8:30", "9:15"]);
-  const { hours: hours } = await readWidgetState(widgetsFolder, "matin");
+  const { hours } = await readWidgetState(widgetsFolder, "matin");
   expect(hours?.failures).toMatchObject({ hour: "2026-10-29T07:00", count: 4 });
 });
 
 test("abrupt stop: the state from before the run (error) is restored; clean stop: nothing of the run remains", async () => {
-  const { p, c, harvest: harvest, set: fixer, widgetsFolder: widgetsFolder, workshop: workshop, harvests: harvests } = await prepare();
+  const { p, c, harvest, set: fixer, widgetsFolder, workshop, harvests } = await prepare();
   await writeMorning(c, { hours: ["07:00"] });
   const hours = { done: "2026-10-29T07:00", failures: null };
   await writeWidgetState(widgetsFolder, "matin", {
@@ -1184,7 +1184,7 @@ test("abrupt stop: the state from before the run (error) is restored; clean stop
 });
 
 test("a onChange callback that throws during the startup restore does not block the runs", async () => {
-  const { widgetsFolder: widgetsFolder, harvests: harvests, relaunch: relaunch, p: first } = await prepare({ options: { onChange: () => { throw new Error("rappel"); } } });
+  const { widgetsFolder, harvests, relaunch, p: first } = await prepare({ options: { onChange: () => { throw new Error("rappel"); } } });
   await first.stop();
   await writeWidgetState(widgetsFolder, "actus", { status: "running", lastUpdate: null, lastAttempt: null });
   const p2 = relaunch();
@@ -1262,7 +1262,7 @@ describe("end-of-watch notification", () => {
   });
 
   test("the text contains nothing from the data (trapped listing title)", async () => {
-    const { p, notifications, widgetsFolder: widgetsFolder } = await prepareWatch({ newItems: 1 });
+    const { p, notifications, widgetsFolder } = await prepareWatch({ newItems: 1 });
     await p.harvestNow("veille");
     expect(await readData(widgetsFolder, "veille")).toEqual([{ title: "PIÈGE annonce", url: "https://x.test/1" }]);
     expect(notifications).toHaveLength(1);
@@ -1273,7 +1273,7 @@ describe("end-of-watch notification", () => {
   test("a notifier that throws does not prevent the run from finishing", async () => {
     const errors = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
-      const { p, notify: notify, widgetsFolder: widgetsFolder } = await prepareWatch({ newItems: 3 });
+      const { p, notify, widgetsFolder } = await prepareWatch({ newItems: 3 });
       notify.mockImplementation(() => {
         throw new Error("Notification impossible");
       });
@@ -1290,7 +1290,7 @@ describe("end-of-watch notification", () => {
 
 test("notification: the widget name is cleaned (controls and invisible characters replaced, on one line)", async () => {
   const notifications: NotificationWidget[] = [];
-  const { p, c, harvest: harvest } = await prepare({ options: { notify: (n) => void notifications.push(n) } });
+  const { p, c, harvest } = await prepare({ options: { notify: (n) => void notifications.push(n) } });
   await writeWidget(c, "veille", declarationWidget(undefined, { name: "‮Vélos\n\nd'occasion​\t ", harvest: { minutes: 60, notify: true } }), {
     "harvest.mjs": "export default () => 1",
   });

@@ -227,7 +227,7 @@ for (const [lang, heading] of [["fr", "Remarques du mode design"], ["en", "Desig
     const text = await readFile(join(DEFAULT_TEMPLATES, lang, "AGENTS.md"), "utf8");
     const blocks = [...text.matchAll(/```json site\.json:([a-z]+)\n([\s\S]*?)```/g)].map((m) => ({ name: m[1]!, json: m[2]! }));
     expect(blocks.map((b) => b.name).sort()).toEqual(["vidola", "youtube"]);
-    for (const { name: name, json } of blocks) {
+    for (const { name, json } of blocks) {
       const r = DeclarationSite.safeParse(JSON.parse(json));
       expect(r.success, `${name} : ${r.success ? "" : r.error.message}`).toBe(true);
       if (!r.success) continue;

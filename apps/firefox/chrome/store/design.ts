@@ -7,7 +7,7 @@ import type { OverlayApi, OverlayContext, ShownElement, DesignState, BatchShown,
 import type { WindowId } from "../../shared/model";
 import { SITE_BAR_HEIGHT } from "../../shared/sites";
 import type { DesignContext } from "../../../../packages/kernel/src/design/remarks";
-import { chooseDesignTarget } from "../../core/design/foreground";
+import { chooseDesignTarget, type DesignTarget } from "../../core/design/foreground";
 import type { DesignTracking } from "../../host/design";
 import { format } from "../../shared/i18n";
 import { DESIGN_ID_MAX, ID_PROJECT, INVALID_REQUEST, NOTHING_AIMED, REMARK_TEXT_MAX } from "../../shared/design-guards";
@@ -36,7 +36,7 @@ import type { SiteApps } from "./sites";
 import type { Store } from "./store";
 import type { WindowRegistry } from "./windows";
 
-export type DesignTarget = { type: "window"; windowId: WindowId } | { type: "app"; folder: string } | { type: "site"; id: string };
+export type { DesignTarget };
 
 export interface DesignOverlays {
   show(key: string, win: Window, place: { x: number; y: number; width: number; height: number }, ctx: OverlayContext): void;

@@ -1,5 +1,4 @@
-import type { ProfileId } from "../../shared/model";
-import { DEFAULT_PROFILE } from "../../shared/model";
+import { DEFAULT_PROFILE, type ProfileId } from "../../shared/model";
 
 const { ContextualIdentityService } = ChromeUtils.importESModule("moz-src:///toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs");
 

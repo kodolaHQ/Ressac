@@ -4,7 +4,7 @@
   import { access, accessApi } from "../access.svelte";
   import { t } from "../i18n.svelte";
 
-  let { id, state: appState, anchor: anchor }: { id: string; state: TabAccessState; anchor: HTMLElement } = $props();
+  let { id, state: appState, anchor }: { id: string; state: TabAccessState; anchor: HTMLElement } = $props();
 
   const MARGIN = 8;
   const RIGHTS: Record<DevRight, { icon: string; name: string }> = {

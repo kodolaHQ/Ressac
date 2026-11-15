@@ -1,6 +1,5 @@
 import { shortcutLabel } from "../../shared/shortcuts";
-import type { Decision, AccessState, WindowId, ProfileId, Appearance } from "../../shared/model";
-import { privateTab, tabProfile, profilesInUse } from "../../shared/model";
+import { privateTab, tabProfile, profilesInUse, type Decision, type AccessState, type WindowId, type ProfileId, type Appearance } from "../../shared/model";
 import type { ReportedError } from "../../shared/telemetry";
 import { checkDataFormat } from "../../core/state/format";
 import { loadSession, SessionRecorder } from "../../core/state/persistence";

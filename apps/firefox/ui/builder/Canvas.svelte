@@ -16,10 +16,10 @@
 
   let {
     editing: edit,
-    catalog: catalog,
-    badges: badges,
+    catalog,
+    badges,
     onselection: onselect,
-    onadd: onadd,
+    onadd,
   }: {
     editing: Edit;
     catalog: Map<string, BlockCatalogEntry>;

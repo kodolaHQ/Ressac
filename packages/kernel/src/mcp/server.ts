@@ -665,7 +665,7 @@ function createToolsServer(
         "Ouvre un onglet (par exemple une démo locale servie par le conteneur) et renvoie son id. Pendant une recherche, une adresse web que tu as écrite toi-même demande l'accord de l'utilisateur : donne alors `reason`.",
       inputSchema: { url: z.string(), space: z.string().optional(), reason: z.string().optional() },
     },
-    protect(async ({ url, space: space, reason }, extra) => {
+    protect(async ({ url, space, reason }, extra) => {
       if (!urlWeb(url)) return text(`URL refusée (http ou https uniquement) : ${url}`, true);
       const key = win ?? MAIN_WINDOW;
       const cur = searching?.sessions.current(key);
@@ -780,7 +780,7 @@ function createToolsServer(
         description: "Lance le projet /workspace/projects/<folder> d'après son ressac.json et ouvre sa fenêtre pour l'utilisateur.",
         inputSchema: { folder: folderSchema },
       },
-      protect(async ({ folder: folder }) => {
+      protect(async ({ folder }) => {
         const app = await applications.launch(folder);
         if (app.state === "error") return text(`Application ${folder} en erreur : ${app.error ?? "inconnue"}`, true);
         const url = `http://localhost:${app.port}`;
@@ -803,7 +803,7 @@ function createToolsServer(
     server.registerTool(
       "stop_app",
       { description: "Arrête une application lancée par launch_app et ferme sa fenêtre (quitter l'appli).", inputSchema: { folder: folderSchema } },
-      protect(async ({ folder: folder }) => {
+      protect(async ({ folder }) => {
         await applications.stop(folder);
         return text(`Application ${folder} arrêtée.`);
       }),
@@ -812,7 +812,7 @@ function createToolsServer(
     server.registerTool(
       "app_log",
       { description: "Journal d'une application : à lire quand elle est en erreur.", inputSchema: { folder: folderSchema } },
-      protect(async ({ folder: folder }) => text((await applications.log(folder)) || "Journal vide.")),
+      protect(async ({ folder }) => text((await applications.log(folder)) || "Journal vide.")),
     );
   }
 
@@ -1036,7 +1036,7 @@ function createToolsServer(
           limit: z.number().int().min(1).optional(),
         },
       },
-      protect(async ({ query: request, since: from, until: until, limit: limit }, extra) => {
+      protect(async ({ query: request, since: from, until, limit }, extra) => {
         const stop = await watch({ tool: "search_history", query: request }, "lecture de l'historique", extra?.signal);
         if (stop) return text(stop);
         const results = await hist.find({
@@ -1070,7 +1070,7 @@ function createToolsServer(
         description: "Cherche dans les favoris importés ou enregistrés de l'utilisateur (titre et URL). 20 résultats par défaut, 50 au plus.",
         inputSchema: { query: z.string(), limit: z.number().int().min(1).optional() },
       },
-      protect(async ({ query: request, limit: limit }, extra) => {
+      protect(async ({ query: request, limit }, extra) => {
         const stop = await watch({ tool: "search_bookmarks", query: request }, "lecture des favoris", extra?.signal);
         if (stop) return text(stop);
         const results = await marks.find({ query: request, limit: Math.min(HISTORY_LIMIT.max, limit ?? HISTORY_LIMIT.default) });
@@ -1251,7 +1251,7 @@ function registerActionsTools(
         "l'action demande, s'il y en a un. L'utilisateur voit la page dans les résultats précédents de l'action.",
       inputSchema: { id: ID_WIDGET, input: z.string().max(200).optional() },
     },
-    protect(async ({ id, input: input }) => {
+    protect(async ({ id, input }) => {
       const before = await read(id);
       if (before.input !== null && (input === undefined || input.trim() === "")) {
         return text(json({ status: "invalid", error: requiredInput("fr", before.input) }));

@@ -56,7 +56,7 @@ export function blockLines(diff: DiffFile, start: number, end: number): Comment[
     const positions = new Set(inside.map((l) => l.position));
     let full = true;
     for (let n = start; n <= end && full; n++) full = positions.has(n);
-    if (full) return inside.map(({ mark: mark, text: text }) => ({ mark: mark, text: text }));
+    if (full) return inside.map(({ mark, text }) => ({ mark: mark, text: text }));
   }
   return null;
 }

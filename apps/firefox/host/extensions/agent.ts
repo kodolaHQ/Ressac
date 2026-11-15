@@ -689,7 +689,7 @@ export class ExtensionsAgent {
    * it is disabled where it is active nowhere else.
    */
   async privateProfiles(privates: string[]): Promise<void> {
-    const { removed: removed } = applyPrivateProfiles(await readExtensionsState(this.o.folder), new Set(privates));
+    const { removed } = applyPrivateProfiles(await readExtensionsState(this.o.folder), new Set(privates));
     if (removed.length === 0) return;
     await this.edit((e) => e);
     const byKey = new Map<string, string[]>();
@@ -865,7 +865,7 @@ export class ExtensionsAgent {
       if (p.denial.includes(FOLDER_ABSENT)) await this.o.rpc.request("extensions.enable", { addonId: addonIdOf(id), active: false });
       return { ok: false, error: p.denial.map((r) => (r === FOLDER_ABSENT ? folderAbsent(id) : r)).join(" ; "), denial: p.denial };
     }
-    const { analysis: analysis, hash: hash, staging } = p;
+    const { analysis, hash, staging } = p;
     const clear = () => rm(staging, { recursive: true, force: true });
     if (widenedScope(o.grant, analysis.scope)) {
       await clear();

@@ -11,7 +11,7 @@ export function previewData(o: {
   list: ResumeExecution[];
   widget: { data: unknown; example: unknown };
 }): { data: unknown; mention: boolean } {
-  const { chosen: chosen, detail, widget } = o;
+  const { chosen, detail, widget } = o;
   if (chosen && detail?.id === chosen.id) {
     const output = detail.blocks.find((b) => b.type === "output");
     if (output && output.output !== undefined && !output.outputTruncated) return { data: output.output, mention: false };

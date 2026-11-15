@@ -10,7 +10,7 @@
    * « Mise en page… »; queued: « En attente ».
    * `courante` null and `enAttente` false: nothing to show.
    */
-  let { current: current, waiting: pending, stop: stop }: { current: DirectAction | null; waiting: boolean; stop: () => void } = $props();
+  let { current, waiting: pending, stop }: { current: DirectAction | null; waiting: boolean; stop: () => void } = $props();
 
   // The kernel forgets a per-item block's count when it ends: the line keeps the last one seen (« 3 / 3 »). A new
   // run remounts this component (keyed on its start), nothing gets mixed up.

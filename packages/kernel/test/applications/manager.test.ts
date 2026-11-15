@@ -56,12 +56,12 @@ function prepare(o: {
   inspect?: Response;
   info?: Response;
 }) {
-  const { run: run, calls: calls } = fakeRunner([
+  const { run, calls } = fakeRunner([
     [/ info$/, o.info ?? { code: 0 }],
     [/ inspect /, o.inspect ?? { code: 0, stdout: "true\n" }],
   ]);
   const workshop = new Workshop({ paths: o.paths, docker: "docker", run: run });
-  const { launcher: launcher, process: process } = fakeLauncher();
+  const { launcher, process } = fakeLauncher();
   const states: AppState[] = [];
   const g: ApplicationManager = new ApplicationManager({
     paths: o.paths,
@@ -86,7 +86,7 @@ async function until(condition: () => boolean) {
 
 test("lancer: free port, en-marche when the port answers", async () => {
   const c = await space();
-  const { g, process: process, states: states } = prepare({ paths: c });
+  const { g, process, states } = prepare({ paths: c });
   expect(await g.launch("todo")).toMatchObject({ folder: "todo", name: "Todo", type: "app", state: "running", port: 5280 });
   expect(states).toEqual(["launching", "running"]);
   expect(process).toHaveLength(1);
@@ -120,7 +120,7 @@ test("no more free ports", async () => {
 
 test("the process exits right away: error without waiting for the delay", async () => {
   const c = await space();
-  const { g, process: process } = prepare({ paths: c, probe: scriptedProbe({}) });
+  const { g, process } = prepare({ paths: c, probe: scriptedProbe({}) });
   const result = g.launch("todo");
   await until(() => process.length === 1);
   await mkdir(c.logs, { recursive: true });
@@ -136,7 +136,7 @@ test("the process exits right away: error without waiting for the delay", async 
 
 test("the port never answers: error after readyDelayMs, process stopped", async () => {
   const c = await space();
-  const { g, process: process, stops: stops } = prepare({ paths: c, probe: scriptedProbe({}) });
+  const { g, process, stops } = prepare({ paths: c, probe: scriptedProbe({}) });
   const start = Date.now();
   const app = await g.launch("todo");
   expect(Date.now() - start).toBeGreaterThanOrEqual(190);
@@ -152,7 +152,7 @@ test("the port never answers: error after readyDelayMs, process stopped", async 
 
 test("arreter during the launch: arretee, not an error", async () => {
   const c = await space();
-  const { g, process: process, stops: stops } = prepare({ paths: c, probe: scriptedProbe({}) });
+  const { g, process, stops } = prepare({ paths: c, probe: scriptedProbe({}) });
   const result = g.launch("todo");
   await until(() => process.length === 1);
   await g.stop("todo");
@@ -166,7 +166,7 @@ test("arreter during the launch: arretee, not an error", async () => {
 
 test("arreter while a second launch waits in the queue: it is cancelled too", async () => {
   const c = await space();
-  const { g, process: process } = prepare({ paths: c, probe: scriptedProbe({}) });
+  const { g, process } = prepare({ paths: c, probe: scriptedProbe({}) });
   const first = g.launch("todo");
   await until(() => process.length === 1);
   const second = g.launch("todo");
@@ -179,7 +179,7 @@ test("arreter while a second launch waits in the queue: it is cancelled too", as
 
 test("arreter before the launch has started (project read): arretee, nothing launched", async () => {
   const c = await space();
-  const { g, process: process } = prepare({ paths: c });
+  const { g, process } = prepare({ paths: c });
   const result = g.launch("todo");
   await g.stop("todo");
   expect(await result).toMatchObject({ state: "stopped" });
@@ -202,7 +202,7 @@ function deferred() {
 
 test("a launch right after a stop waits for the stop script to end (which would kill it)", async () => {
   const c = await space();
-  const { g, workshop: workshop, process: process } = prepare({ paths: c, probe: scriptedProbe({ 5280: ["libre", "http", "libre", "http"] }) });
+  const { g, workshop, process } = prepare({ paths: c, probe: scriptedProbe({ 5280: ["libre", "http", "libre", "http"] }) });
   await g.launch("todo");
   const script = deferred();
   vi.spyOn(workshop, "stopApp").mockReturnValue(script.promise);
@@ -218,7 +218,7 @@ test("a launch right after a stop waits for the stop script to end (which would 
 
 test("a launch during the orphan cleanup waits for its end", async () => {
   const c = await space();
-  const { g, workshop: workshop, process: process } = prepare({ paths: c });
+  const { g, workshop, process } = prepare({ paths: c });
   const cleanup = deferred();
   vi.spyOn(workshop, "stopOrphanApps").mockReturnValue(cleanup.promise);
   const startup = g.start();
@@ -233,7 +233,7 @@ test("a launch during the orphan cleanup waits for its end", async () => {
 
 test("the project watching does not wait for the orphan cleanup (Docker starting up)", async () => {
   const c = await space();
-  const { g, workshop: workshop, states: states } = prepare({ paths: c });
+  const { g, workshop, states } = prepare({ paths: c });
   const cleanup = deferred();
   vi.spyOn(workshop, "stopOrphanApps").mockReturnValue(cleanup.promise);
   const startup = g.start();
@@ -247,7 +247,7 @@ test("the project watching does not wait for the orphan cleanup (Docker starting
 
 test("stopAll also cancels a queued launch: nothing is launched after", async () => {
   const c = await space();
-  const { g, process: process } = prepare({ paths: c, probe: scriptedProbe({}) });
+  const { g, process } = prepare({ paths: c, probe: scriptedProbe({}) });
   const first = g.launch("todo");
   await until(() => process.length === 1);
   const second = g.launch("todo");
@@ -261,7 +261,7 @@ test("stopAll also cancels a queued launch: nothing is launched after", async ()
 
 test("stop of the running app by its process ending: error", async () => {
   const c = await space();
-  const { g, process: process, states: states } = prepare({ paths: c });
+  const { g, process, states } = prepare({ paths: c });
   await g.launch("todo");
   process[0]!.finish(1);
   await until(() => states.at(-1) === "error");
@@ -273,7 +273,7 @@ test("stop of the running app by its process ending: error", async () => {
 
 test("relaunching a running app stops it first", async () => {
   const c = await space();
-  const { g, process: process, stops: stops } = prepare({ paths: c, probe: scriptedProbe({ 5280: ["libre", "http", "libre", "http"] }) });
+  const { g, process, stops } = prepare({ paths: c, probe: scriptedProbe({ 5280: ["libre", "http", "libre", "http"] }) });
   await g.launch("todo");
   expect(await g.launch("todo")).toMatchObject({ state: "running", port: 5280 });
   expect(process[0]!.killed).toBe(true);
@@ -283,7 +283,7 @@ test("relaunching a running app stops it first", async () => {
 
 test("without a fiche or unknown folder: lancer refuses", async () => {
   const c = await space({ brut: null });
-  const { g, process: process } = prepare({ paths: c });
+  const { g, process } = prepare({ paths: c });
   await expect(g.launch("brut")).rejects.toThrow(/sans fiche/);
   await expect(g.launch("absent")).rejects.toThrow(/inconnu/);
   expect(process).toHaveLength(0);
@@ -303,14 +303,14 @@ test("oublier: a project recreated under the same name no longer shows the old e
 
 test("docker absent: error Docker n'est pas lancé", async () => {
   const c = await space();
-  const { g, process: process } = prepare({ paths: c, info: { code: 1 } });
+  const { g, process } = prepare({ paths: c, info: { code: 1 } });
   expect(await g.launch("todo")).toMatchObject({ state: "error", error: "Docker n'est pas lancé." });
   expect(process).toHaveLength(0);
 });
 
 test("container stopped: preparation then launch", async () => {
   const c = await space();
-  const { g, workshop: workshop, states: states } = prepare({ paths: c, inspect: { code: 0, stdout: "false\n" } });
+  const { g, workshop, states } = prepare({ paths: c, inspect: { code: 0, stdout: "false\n" } });
   const ensure = vi.spyOn(workshop, "ensureStarted").mockResolvedValue("demarre");
   expect(await g.launch("todo")).toMatchObject({ state: "running" });
   expect(ensure).toHaveBeenCalledOnce();
@@ -319,7 +319,7 @@ test("container stopped: preparation then launch", async () => {
 
 test("demarrer stops the RESSAC_APP orphans", async () => {
   const c = await space();
-  const { g, stops: stops } = prepare({ paths: c });
+  const { g, stops } = prepare({ paths: c });
   await g.start();
   expect(stops()).toHaveLength(1);
   expect(stops()[0]).toContain("RESSAC_APP=.*");
@@ -327,7 +327,7 @@ test("demarrer stops the RESSAC_APP orphans", async () => {
 
 test("demarrer on a stopped container: nothing to stop", async () => {
   const c = await space();
-  const { g, stops: stops } = prepare({ paths: c, inspect: { code: 0, stdout: "false\n" } });
+  const { g, stops } = prepare({ paths: c, inspect: { code: 0, stdout: "false\n" } });
   await g.start();
   expect(stops()).toHaveLength(0);
 });
@@ -337,7 +337,7 @@ test("stopAll stops each running app", async () => {
     todo: '{"type":"app","launch":"x"}',
     autre: '{"type":"poc","launch":"y"}',
   });
-  const { g, process: process, stops: stops } = prepare({ paths: c, probe: scriptedProbe({ 5280: ["libre", "http"], 5281: ["libre", "http"] }) });
+  const { g, process, stops } = prepare({ paths: c, probe: scriptedProbe({ 5280: ["libre", "http"], 5281: ["libre", "http"] }) });
   await g.launch("todo");
   await g.launch("autre");
   await g.stopAll();

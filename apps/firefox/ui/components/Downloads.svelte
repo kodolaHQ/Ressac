@@ -4,7 +4,7 @@
   import { api, appState, downloads } from "../state.svelte";
   import { t } from "../i18n.svelte";
 
-  let { close: close }: { close: () => void } = $props();
+  let { close }: { close: () => void } = $props();
 
   function size(bytes: number): string {
     const number = (n: number, digits: number) => new Intl.NumberFormat(appState.value?.locale ?? "fr", { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(n);

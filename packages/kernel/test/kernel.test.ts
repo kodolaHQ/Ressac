@@ -28,7 +28,7 @@ afterEach(async () => {
 
 async function createWithoutDocker() {
   const root = await tempFolder();
-  const { run: run } = fakeRunner([[/ info$/, { code: 1, stderr: "Cannot connect to the Docker daemon" }]]);
+  const { run } = fakeRunner([[/ info$/, { code: 1, stderr: "Cannot connect to the Docker daemon" }]]);
   kernel = await createKernel({ locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run });
   return kernel;
 }
@@ -71,7 +71,7 @@ test("the MCP server answers with the token, then arreter closes it", async () =
 
 test("profil inconnu → erreur claire", async () => {
   const root = await tempFolder();
-  const { run: run } = fakeRunner([[/ info$/, { code: 1 }]]);
+  const { run } = fakeRunner([[/ info$/, { code: 1 }]]);
   await expect(
     createKernel({ locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run, profileId: "inconnu" }),
   ).rejects.toThrow(/inconnu/);
@@ -79,7 +79,7 @@ test("profil inconnu → erreur claire", async () => {
 
 test("createKernel does not wait for a slow image build", async () => {
   const root = await tempFolder();
-  const { run: run } = fakeRunner([
+  const { run } = fakeRunner([
     [/ info$/, { code: 0 }],
     [/ inspect -f/, { code: 1 }],
     [/ image inspect /, { code: 1 }],
@@ -92,7 +92,7 @@ test("createKernel does not wait for a slow image build", async () => {
 
 test("container start failure: createKernel succeeds, the session throws WorkshopError with the message", async () => {
   const root = await tempFolder();
-  const { run: run } = fakeRunner([
+  const { run } = fakeRunner([
     [/ info$/, { code: 0 }],
     [/ inspect -f/, { code: 1 }],
     [/ image inspect /, { code: 0 }],
@@ -106,7 +106,7 @@ test("container start failure: createKernel succeeds, the session throws Worksho
 
 test("build failed at launch: the first session returns that failure without rebuilding right away", async () => {
   const root = await tempFolder();
-  const { run: run, calls: calls } = fakeRunner([
+  const { run, calls } = fakeRunner([
     [/ info$/, { code: 0 }],
     [/ image inspect /, { code: 1 }],
     [/ inspect -f/, { code: 1 }],
@@ -123,7 +123,7 @@ test("build failed at launch: the first session returns that failure without reb
 
 test("at launch, once the container is ready, the agents of a previous app are stopped before any session", async () => {
   const root = await tempFolder();
-  const { run: run, calls: calls } = fakeRunner([
+  const { run, calls } = fakeRunner([
     [/ info$/, { code: 0 }],
     [/ inspect -f/, { code: 0, stdout: "true\n" }],
   ]);
@@ -146,7 +146,7 @@ test("createKernel reads models and Dockerfile from resources", async () => {
   await cp(join(import.meta.dirname, "..", "templates"), join(copy, "templates"), { recursive: true });
   await cp(join(import.meta.dirname, "..", "docker"), join(copy, "docker"), { recursive: true });
   await writeFile(join(copy, "templates", "fr", "AGENTS.md"), "# copie");
-  const { run: run } = fakeRunner([[/ info$/, { code: 1, stderr: "absent" }]]);
+  const { run } = fakeRunner([[/ info$/, { code: 1, stderr: "absent" }]]);
   kernel = await createKernel({ locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, resources: copy, run: run });
   expect(await readFile(join(root, "AGENTS.md"), "utf8")).toBe("# copie");
 });
@@ -155,7 +155,7 @@ test("relocalize swaps the untouched templates to the new language", async () =>
   const root = await tempFolder();
   let locale = "fr";
   let order: string[] = [];
-  const { run: run } = fakeRunner([[/ info$/, { code: 1, stderr: "absent" }]]);
+  const { run } = fakeRunner([[/ info$/, { code: 1, stderr: "absent" }]]);
   kernel = await createKernel({ locale: () => order.shift() ?? locale, widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run });
   const templates = join(import.meta.dirname, "..", "templates");
   expect(await readFile(join(root, "AGENTS.md"), "utf8")).toBe(await readFile(join(templates, "fr", "AGENTS.md"), "utf8"));
@@ -178,7 +178,7 @@ test("relocalize swaps the untouched templates to the new language", async () =>
 
 test("createKernel reuses the provided workshop", async () => {
   const root = await tempFolder();
-  const { run: run } = fakeRunner([[/ info$/, { code: 1, stderr: "absent" }]]);
+  const { run } = fakeRunner([[/ info$/, { code: 1, stderr: "absent" }]]);
   const workshop = new Workshop({ paths: spacePaths(root), run: run });
   const state = vi.spyOn(workshop, "state").mockResolvedValue("docker-absent");
   kernel = await createKernel({ locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run, workshop: workshop });
@@ -188,7 +188,7 @@ test("createKernel reuses the provided workshop", async () => {
 
 test("arreter: new conversation for the policy (pending cards drop) and dev tools released", async () => {
   const root = await tempFolder();
-  const { run: run } = fakeRunner([[/ info$/, { code: 1 }]]);
+  const { run } = fakeRunner([[/ info$/, { code: 1 }]]);
   const released: number[] = [];
   let n = 0;
   const bridge = new FakeBridge([], { active: null, allow: false, devTools: true });
@@ -208,7 +208,7 @@ test("arreter: new conversation for the policy (pending cards drop) and dev tool
 
 test("kernel: arreter() stops the scheduler and the local AI", async () => {
   const root = await tempFolder();
-  const { run: run } = fakeRunner([[/ info$/, { code: 1 }]]);
+  const { run } = fakeRunner([[/ info$/, { code: 1 }]]);
   const order: string[] = [];
   const original = WidgetsScheduler.prototype.stop;
   const schedule = vi.spyOn(WidgetsScheduler.prototype, "stop").mockImplementation(async function (this: WidgetsScheduler) {
@@ -228,7 +228,7 @@ test("kernel: arreter() stops the scheduler and the local AI", async () => {
 
 test("kernel: readHome reads the widgets; ia is null without local AI", async () => {
   const root = await tempFolder();
-  const { run: run } = fakeRunner([[/ info$/, { code: 1 }]]);
+  const { run } = fakeRunner([[/ info$/, { code: 1 }]]);
   kernel = await createKernel({ locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run });
   await writeWidget(kernel.paths, "meteo", declarationWidget());
   const state = await kernel.readHome();
@@ -239,7 +239,7 @@ test("kernel: readHome reads the widgets; ia is null without local AI", async ()
 test("kernel: accorder records the grant (domains sorted), notifies and starts a harvest; refuserAccord removes it", async () => {
   const root = await tempFolder();
   const widgetsFolder = `${root}-widgets`;
-  const { run: run } = fakeRunner([[/ info$/, { code: 1 }]]);
+  const { run } = fakeRunner([[/ info$/, { code: 1 }]]);
   const onChange = vi.fn();
   kernel = await createKernel({ locale: () => "fr", widgetsFolder: widgetsFolder, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run, onChange: onChange });
   await writeWidget(
@@ -265,7 +265,7 @@ test("kernel: accorder records the grant (domains sorted), notifies and starts a
 
 test("kernel: accorder refuses a widget without an account", async () => {
   const root = await tempFolder();
-  const { run: run } = fakeRunner([[/ info$/, { code: 1 }]]);
+  const { run } = fakeRunner([[/ info$/, { code: 1 }]]);
   kernel = await createKernel({ locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run });
   await writeWidget(kernel.paths, "meteo", declarationWidget());
   await expect(kernel.grant({ id: "meteo", profile: "perso", account: [], public: [] })).rejects.toThrow(/compte/);
@@ -274,7 +274,7 @@ test("kernel: accorder refuses a widget without an account", async () => {
 test("kernel: accorder refuses if the declaration is no longer the one shown to the user (account or public ones)", async () => {
   const root = await tempFolder();
   const widgetsFolder = `${root}-widgets`;
-  const { run: run } = fakeRunner([[/ info$/, { code: 1 }]]);
+  const { run } = fakeRunner([[/ info$/, { code: 1 }]]);
   kernel = await createKernel({ locale: () => "fr", widgetsFolder: widgetsFolder, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run });
   await writeWidget(
     kernel.paths,
@@ -295,7 +295,7 @@ test("kernel: accorder refuses if the declaration is no longer the one shown to 
 test("kernel: refuserAccord erases the data; account removed afterwards → widget_data returns nothing of the account", async () => {
   const root = await tempFolder();
   const widgetsFolder = `${root}-widgets`;
-  const { run: run } = fakeRunner([[/ info$/, { code: 1 }]]);
+  const { run } = fakeRunner([[/ info$/, { code: 1 }]]);
   kernel = await createKernel({ locale: () => "fr", widgetsFolder: widgetsFolder, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run });
   const decl = (account: string[]) => declarationWidget(undefined, { harvest: { minutes: 60 }, sources: { account: account, public: [] } });
   await writeWidget(kernel.paths, "daily", decl(["app.daily.dev"]), { "harvest.mjs": "export default () => 1" });
@@ -337,7 +337,7 @@ test("kernel: rejouer goes through the scheduler queue; surDirect follows the qu
 // Docker « ready » (fake executor); the session pty launches a fake binary that sleeps, never the real Docker.
 async function createReady(locale: () => string = () => "fr") {
   const root = await tempFolder();
-  const { run: run } = fakeRunner([
+  const { run } = fakeRunner([
     [/ info$/, { code: 0 }],
     [/ inspect -f/, { code: 0, stdout: "true\n" }],
   ]);
@@ -370,7 +370,7 @@ test("at kernel startup, session configs left behind by a crash are purged", asy
   const folder = join(spacePaths(root).internal, "sessions");
   await mkdir(folder, { recursive: true });
   await writeFile(join(folder, "reste.json"), "{}");
-  const { run: run } = fakeRunner([[/ info$/, { code: 1 }]]);
+  const { run } = fakeRunner([[/ info$/, { code: 1 }]]);
   kernel = await createKernel({ locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run });
   expect(existsSync(join(folder, "reste.json"))).toBe(false);
 });
@@ -403,7 +403,7 @@ async function createWithActions(prepareSpace?: (root: string, actionsFolder: st
   const root = await tempFolder();
   const actionsFolder = await tempFolder();
   await prepareSpace?.(root, actionsFolder);
-  const { run: run } = fakeRunner([[/ info$/, { code: 1, stderr: "Cannot connect to the Docker daemon" }]]);
+  const { run } = fakeRunner([[/ info$/, { code: 1, stderr: "Cannot connect to the Docker daemon" }]]);
   kernel = await createKernel({ locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: actionsFolder, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run });
   return { n: kernel, actionsFolder: actionsFolder };
 }
@@ -413,7 +413,7 @@ const executionAction = (id: string, start: string): Execution => ({
 });
 
 test("kernel.actions: page(id, null) returns the last resolved result; page of an unknown run: null", async () => {
-  const { n, actionsFolder: actionsFolder } = await createWithActions(async (root) => {
+  const { n, actionsFolder } = await createWithActions(async (root) => {
     const folder = join(spacePaths(root).actions, "gitlab");
     await mkdir(folder, { recursive: true });
     await writeFile(join(folder, "action.json"), JSON.stringify({ name: "GitLab", sources: { account: ["gitlab.com"] } }));
@@ -438,7 +438,7 @@ test("kernel.actions: page(id, null) returns the last resolved result; page of a
 });
 
 test("kernel.actions: page() of an action rewritten without an account but still granted counts as reading with the account", async () => {
-  const { n, actionsFolder: actionsFolder } = await createWithActions(async (root, actionsFolder) => {
+  const { n, actionsFolder } = await createWithActions(async (root, actionsFolder) => {
     const folder = join(spacePaths(root).actions, "gitlab");
     await mkdir(folder, { recursive: true });
     await writeFile(join(folder, "action.json"), JSON.stringify({ name: "GitLab", sources: { web: true } }));
@@ -452,7 +452,7 @@ test("kernel.actions: page() of an action rewritten without an account but still
 });
 
 test("kernel.actions: at startup, the data of a vanished action is erased", async () => {
-  const { actionsFolder: actionsFolder } = await createWithActions(async (root, actionsFolder) => {
+  const { actionsFolder } = await createWithActions(async (root, actionsFolder) => {
     await mkdir(spacePaths(root).actions, { recursive: true });
     await writeRun(join(actionsFolder, "partie"), executionAction("partie", "2026-10-31T08:00:00.000Z"));
     await giveGrant(actionsFolder, "partie", { domains: ["gitlab.com"], public: [], profile: "perso" });
@@ -462,7 +462,7 @@ test("kernel.actions: at startup, the data of a vanished action is erased", asyn
 });
 
 test("kernel.actions: accorder records the grant without running anything; refuserAccord removes it and erases", async () => {
-  const { n, actionsFolder: actionsFolder } = await createWithActions(async (root) => {
+  const { n, actionsFolder } = await createWithActions(async (root) => {
     const folder = join(spacePaths(root).actions, "gitlab");
     await mkdir(folder, { recursive: true });
     await writeFile(join(folder, "action.json"), JSON.stringify({ name: "GitLab", sources: { account: ["gitlab.com"] } }));
@@ -552,7 +552,7 @@ describe("openAgentSession with a profile", () => {
 
 test("kernel: onRecapChange is called once per successful recap publication", async () => {
   const root = await tempFolder();
-  const { run: run } = fakeRunner([[/ info$/, { code: 1 }]]);
+  const { run } = fakeRunner([[/ info$/, { code: 1 }]]);
   const onRecapChange = vi.fn();
   kernel = await createKernel({ locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, recapsFolder: `${root}-recaps`, onRecapChange, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run });
   const mcp = await readMcp(kernel);

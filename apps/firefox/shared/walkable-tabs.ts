@@ -1,5 +1,4 @@
-import type { BrowserState, WindowId, TabId } from "./model";
-import { spaceKey } from "./model";
+import { spaceKey, type BrowserState, type WindowId, type TabId } from "./model";
 
 /** Open tabs the active space can display, in the sidebar order: essentials, pinned, then the others. */
 export function walkableTabs(state: BrowserState, windowId: WindowId): TabId[] {

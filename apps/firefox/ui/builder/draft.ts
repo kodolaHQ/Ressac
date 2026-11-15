@@ -150,7 +150,7 @@ export class History {
  * `envoyes`: drafts sent for saving and not yet confirmed (their echo is ignored).
  */
 export function followFile(o: { local: Draft; lastKnown: Draft | null; disk: Draft | null; sent?: Draft[] }): "ignorer" | "adopter" | "proposer" | "illisible" {
-  const { local, lastKnown: lastKnown, disk: disk } = o;
+  const { local, lastKnown, disk } = o;
   if (!disk) return "illisible";
   if (sameDraft(disk, local)) return "ignorer";
   if (lastKnown && sameDraft(disk, lastKnown)) return "ignorer";

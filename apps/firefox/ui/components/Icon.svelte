@@ -52,7 +52,7 @@
 </script>
 
 <script lang="ts">
-  let { name: name, size: size = 16 }: { name: IconName; size?: number } = $props();
+  let { name, size = 16 }: { name: IconName; size?: number } = $props();
 </script>
 
 <svg

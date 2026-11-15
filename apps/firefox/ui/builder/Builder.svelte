@@ -29,7 +29,7 @@
    * (`ressac://workflow/action/<id>`): same canvas; an action has its panel, its input at launch and its page
    * preview.
    */
-  let { target: target }: { target: Owner } = $props();
+  let { target }: { target: Owner } = $props();
   // svelte-ignore state_referenced_locally
   const isAction = target.type === "action";
   /** This workflow's key in the window states (edits, codes, chosen run). */

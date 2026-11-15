@@ -3,17 +3,14 @@ import { AURA_IDS } from "./aura";
 import { HINT_IDS } from "./hints";
 import { SHORTCUT_IDS } from "./shortcuts";
 import { CUSTOM_ENGINE_MAX, SEARCH_ENGINE_IDS, customEngineError } from "./search";
-import { APPEARANCES, LANGUAGE_SETTING } from "./model";
-import { validFolder, ID_EXECUTION, ID_SITE, type Application, type Warning, type BlockCatalogEntry, type DeclarationWidget, type DirectState, type DraftRead, type SaveResult, type AttemptResult, type DevRight, type AiState, type WidgetState, type Execution, type ResumeExecution, type ActionsState, type PageAction, type LaunchResult, type Owner, type RenderedPage } from "@ressac/kernel";
-import type { BatchState, ProjectId, ExternalProject, TrackedProject } from "@ressac/kernel";
-import { PROJECT_ID, type Comment, type DiffFile, type ModifiedFile } from "@ressac/kernel";
+import { APPEARANCES, LANGUAGE_SETTING, type Decision, type PendingRequest, type AccessState, type BrowserState, type SpaceId, type WindowId, type TabId, type Download, type Visit, type AskHit, type AskResult } from "./model";
+import { validFolder, ID_EXECUTION, ID_SITE, PROJECT_ID, type Application, type Warning, type BlockCatalogEntry, type DeclarationWidget, type DirectState, type DraftRead, type SaveResult, type AttemptResult, type DevRight, type AiState, type WidgetState, type Execution, type ResumeExecution, type ActionsState, type PageAction, type LaunchResult, type Owner, type RenderedPage, type BatchState, type ProjectId, type ExternalProject, type TrackedProject, type Comment, type DiffFile, type ModifiedFile } from "@ressac/kernel";
 import { ClaudeEngineSchema, CodexEngineSchema, type OllamaStatus, type DockerStatus, type AgentAccount, type Backup, type CodexEngine, type ClaudeEngine, type DecisionModel, type LoginResult, type GrantKind, type GrantRow, type SettingsResult, type WorkshopOperation, type PullProgress } from "./settings";
 import type { WorkshopState } from "../../../packages/kernel/src/container/workshop.ts";
 import type { ActionShown } from "./actions";
 import type { ActionSite, SiteWindowState, MessageToHome, ShownSite } from "./sites";
 import type { ExtensionsBar, ExtensionLine, SpaceExtensionLine, SiteExtensionLine } from "./extensions";
 import type { LeftZone } from "./reveal";
-import type { Decision, PendingRequest, AccessState, BrowserState, SpaceId, WindowId, TabId, Download, Visit, AskHit, AskResult } from "./model";
 
 const id = z.string().min(1);
 const frame = z.object({ x: z.number(), y: z.number(), width: z.number().positive(), height: z.number().positive() });
@@ -570,7 +567,7 @@ export const SchemaActionApplication = z
     folder: z.string(),
     action: z.enum(["launch", "stop", "relaunch", "open", "debug", "delete", "promote", "folder", "review"]),
   })
-  .refine(({ folder: folder, action }) => (WHOLE_FOLDER_ACTIONS.has(action) ? validSegment(folder) : validFolder(folder)));
+  .refine(({ folder, action }) => (WHOLE_FOLDER_ACTIONS.has(action) ? validSegment(folder) : validFolder(folder)));
 export type ActionApplication = z.infer<typeof SchemaActionApplication>["action"];
 
 /** An action on a site app: its id follows `ID_SITE` (never a path). */

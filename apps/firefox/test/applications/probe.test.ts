@@ -10,7 +10,7 @@ function manualProbe() {
 const wait = () => new Promise((r) => setTimeout(r, 0));
 
 test("valeur() never waits for the probe, and only starts one at a time", async () => {
-  const { probe: probe, finish: finish } = manualProbe();
+  const { probe, finish } = manualProbe();
   const onChange = vi.fn();
   let t = 0;
   const s = new DockerProbe({ probe: probe, onChange: onChange, freshnessMs: 5000, now: () => t });

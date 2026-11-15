@@ -57,7 +57,7 @@ test("etat selon docker inspect", async () => {
 
 test("ensureStarted on absent: build if the image is missing then run with the right arguments", async () => {
   let launched = false;
-  const { run: runCall, calls: calls } = fakeRunner([
+  const { run: runCall, calls } = fakeRunner([
     [/ image inspect /, { code: 1 }],
     [/ inspect /, () => ({ code: launched ? 0 : 1, stdout: "true\n" })],
     [/ run /, () => ((launched = true), { code: 0 })],
@@ -80,7 +80,7 @@ test("ensureStarted on absent: build if the image is missing then run with the r
 
 test("ensureStarted on arrete → docker start", async () => {
   let started = false;
-  const { run: runCall, calls: calls } = fakeRunner([
+  const { run: runCall, calls } = fakeRunner([
     [/ inspect -f .*Mounts/, { code: 0, stdout: `${paths.root}|${dockerfileHash()}\n` }],
     [/ inspect -f/, () => ({ code: 0, stdout: started ? "true\n" : "false\n" })],
     [/ start /, () => ((started = true), { code: 0 })],
@@ -101,13 +101,13 @@ test("execCommand interactive and non-interactive", () => {
 });
 
 test("the docker probes have a timeout (Docker Desktop stuck at startup)", async () => {
-  const { run: runCall, calls: calls } = fakeRunner([[/ inspect /, { code: 0, stdout: "true\n" }]]);
+  const { run: runCall, calls } = fakeRunner([[/ inspect /, { code: 0, stdout: "true\n" }]]);
   await new Workshop({ paths: paths, docker: "docker", run: runCall }).state();
   for (const a of calls) expect(a.opts?.delayMs, a.args.join(" ")).toBeGreaterThan(0);
 });
 
 test("the published ports avoid Vite's (5173…): 5280-5299", async () => {
-  const { run: runCall, calls: calls } = fakeRunner([
+  const { run: runCall, calls } = fakeRunner([
     [/ image inspect /, { code: 0 }],
     [/ inspect -f/, { code: 1 }],
   ]);
@@ -140,21 +140,21 @@ function fakeDocker(o: { source: string; containerHash: string; imageHash: strin
 
 test("existing container on the right folder and the right image → kept", async () => {
   const e = dockerfileHash();
-  const { run: runCall, calls: calls } = fakeDocker({ source: paths.root, containerHash: e, imageHash: e });
+  const { run: runCall, calls } = fakeDocker({ source: paths.root, containerHash: e, imageHash: e });
   expect(await new Workshop({ paths: paths, docker: "docker", run: runCall }).ensureStarted()).toBe("demarre");
   expect(calls.some((a) => a.args[0] === "rm")).toBe(false);
 });
 
 test("existing container mounted on another folder → removed then recreated", async () => {
   const e = dockerfileHash();
-  const { run: runCall, calls: calls } = fakeDocker({ source: "/tmp/ailleurs", containerHash: e, imageHash: e });
+  const { run: runCall, calls } = fakeDocker({ source: "/tmp/ailleurs", containerHash: e, imageHash: e });
   await new Workshop({ paths: paths, docker: "docker", run: runCall }).ensureStarted();
   expect(calls.some((a) => a.args.join(" ") === "rm -f ressac-workshop")).toBe(true);
   expect(calls.some((a) => a.args[0] === "run")).toBe(true);
 });
 
 test("modified Dockerfile → image rebuilt and container recreated", async () => {
-  const { run: runCall, calls: calls } = fakeDocker({ source: paths.root, containerHash: "ancienne", imageHash: "ancienne" });
+  const { run: runCall, calls } = fakeDocker({ source: paths.root, containerHash: "ancienne", imageHash: "ancienne" });
   await new Workshop({ paths: paths, docker: "docker", run: runCall }).ensureStarted();
   const build = calls.find((a) => a.args[0] === "build")!;
   expect(build.args).toContain(`ressac.dockerfile=${dockerfileHash()}`);
@@ -162,7 +162,7 @@ test("modified Dockerfile → image rebuilt and container recreated", async () =
 });
 
 test("interactive session: its PID is noted in the container, and stopping it kills it there (killing the docker client is not enough)", async () => {
-  const { run: runCall, calls: calls } = fakeRunner([]);
+  const { run: runCall, calls } = fakeRunner([]);
   const a = new Workshop({ paths: paths, docker: "/opt/homebrew/bin/docker", run: runCall });
   const pid = "/tmp/ressac-session-ab12.pid";
   expect(a.sessionCommand("ab12", ["claude", "--x"])).toEqual([
@@ -180,7 +180,7 @@ test("interactive session: its PID is noted in the container, and stopping it ki
 test("two starts at the same time: a single image build and a single container", async () => {
   let finishBuild!: () => void;
   let launched = false;
-  const { run: runCall, calls: calls } = fakeRunner([
+  const { run: runCall, calls } = fakeRunner([
     [/ image inspect /, { code: 1 }],
     [/ inspect /, () => ({ code: launched ? 0 : 1, stdout: "true\n" })],
     [/ build /, () => new Promise((ok) => (finishBuild = () => ok({ code: 0 })))],
@@ -198,7 +198,7 @@ test("two starts at the same time: a single image build and a single container",
 
 test("after a failure, a new start retries", async () => {
   let failures = 0;
-  const { run: runCall, calls: calls } = fakeRunner([
+  const { run: runCall, calls } = fakeRunner([
     [/ image inspect /, { code: 1 }],
     [/ inspect /, { code: 1 }],
     [/ build /, () => (failures++, { code: 1, stderr: "réseau" })],
@@ -224,7 +224,7 @@ test("a failed build keeps only the tail of its output in the error", async () =
 
 test("building and launching the container have a maximum timeout", async () => {
   let launched = false;
-  const { run: runCall, calls: calls } = fakeRunner([
+  const { run: runCall, calls } = fakeRunner([
     [/ image inspect /, { code: 1 }],
     [/ inspect /, () => ({ code: launched ? 0 : 1, stdout: "true\n" })],
     [/ run /, () => ((launched = true), { code: 0 })],
@@ -272,7 +272,7 @@ test("appCommand", () => {
 });
 
 test("stopApp only targets its own mark", async () => {
-  const { run: runCall, calls: calls } = fakeRunner([]);
+  const { run: runCall, calls } = fakeRunner([]);
   await new Workshop({ paths: paths, docker: "docker", run: runCall }).stopApp("todo");
   const call = calls.find((x) => x.args[0] === "exec")!;
   expect(call.args.slice(0, 4)).toEqual(["exec", "ressac-workshop", "sh", "-c"]);
@@ -283,7 +283,7 @@ test("stopApp only targets its own mark", async () => {
 });
 
 test("stopOrphanApps vise RESSAC_APP=.*", async () => {
-  const { run: runCall, calls: calls } = fakeRunner([]);
+  const { run: runCall, calls } = fakeRunner([]);
   await new Workshop({ paths: paths, docker: "docker", run: runCall }).stopOrphanApps();
   const script = calls.find((x) => x.args[0] === "exec")!.args[4]!;
   expect(script).toContain("RESSAC_APP=.*");
@@ -291,7 +291,7 @@ test("stopOrphanApps vise RESSAC_APP=.*", async () => {
 });
 
 test("stopApp: the dot in a folder name is not a grep wildcard", async () => {
-  const { run: runCall, calls: calls } = fakeRunner([]);
+  const { run: runCall, calls } = fakeRunner([]);
   await new Workshop({ paths: paths, docker: "docker", run: runCall }).stopApp("my.app");
   const script = calls.find((x) => x.args[0] === "exec")!.args[4]!;
   const pattern = /grep -qzx '([^']*)'/.exec(script)![1]!;
@@ -353,7 +353,7 @@ test("harvestCommand with delaiS 1830: timeout -k 5 1830", () => {
 
 async function quotedNames(): Promise<string[]> {
   let launched = false;
-  const { run: runCall, calls: calls } = fakeRunner([
+  const { run: runCall, calls } = fakeRunner([
     [/ image inspect /, { code: 0 }],
     [/ inspect /, () => ({ code: launched ? 0 : 1, stdout: "true\n" })],
     [/ run /, () => ((launched = true), { code: 0 })],
@@ -387,7 +387,7 @@ test("defaults to ressac-workshop", async () => {
 
 test("RESSAC_CONTAINER_PORTS gives the published range and tells it to the container; invalid falls back to 5280-5299", async () => {
   const runArgs = async () => {
-    const { run: runCall, calls: calls } = fakeRunner([
+    const { run: runCall, calls } = fakeRunner([
       [/ image inspect /, { code: 0 }],
       [/ inspect -f/, { code: 1 }],
     ]);
@@ -410,7 +410,7 @@ test("RESSAC_CONTAINER_PORTS gives the published range and tells it to the conta
 
 test("a failed docker run removes the half-created container, so the next start retries instead of reusing it", async () => {
   let runs = 0;
-  const { run: runCall, calls: calls } = fakeRunner([
+  const { run: runCall, calls } = fakeRunner([
     [/ image inspect /, { code: 0 }],
     [/ inspect -f/, { code: 1 }],
     [/ run /, () => (++runs === 1 ? { code: 125, stderr: "port is already allocated" } : { code: 0 })],

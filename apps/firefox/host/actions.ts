@@ -116,7 +116,7 @@ export function createActionsHost(o: {
       const parsed: unknown = JSON.parse(t);
       if (typeof parsed !== "object" || parsed === null) return;
       for (const [id, v] of Object.entries(parsed)) {
-        const { error: error, when: when } = (v ?? {}) as { error?: unknown; when?: unknown };
+        const { error, when } = (v ?? {}) as { error?: unknown; when?: unknown };
         if (typeof error === "string" && typeof when === "string") launchDenial.set(id, { error: error, when: when });
       }
     },

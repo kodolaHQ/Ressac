@@ -10,7 +10,7 @@
   import FrozenBackground from "./FrozenBackground.svelte";
 
   /** `ongletId`: the page shown at opening, captured for the background (null: none, or a panel hides it). */
-  let { request: request, tabId: tabId }: { request: PendingRequest; tabId: TabId | null } = $props();
+  let { request, tabId }: { request: PendingRequest; tabId: TabId | null } = $props();
 
   /** Enter only authorizes a card visible for at least this delay: a keystroke meant for the page is not a grant. */
   const ENTRY_DELAY_MS = 400;

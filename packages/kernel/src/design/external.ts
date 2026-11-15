@@ -1,5 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { chmod, copyFile, mkdir, readdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
+import { copyFile, readdir, readFile, realpath, stat } from "node:fs/promises";
 import { basename, isAbsolute, join, relative, sep } from "node:path";
 import { z } from "zod";
 import { containerPortRange } from "../container/workshop.js";
@@ -75,7 +75,7 @@ export class ExternalRegistry {
   // Computes the new state, writes it (clients first), and only then adopts it in memory.
   private edit<T>(computation: () => { projects?: ExternalProject[]; clients?: ExternalClient[]; result: T }): Promise<T> {
     const task = this.writes.then(async () => {
-      const { projects: projects, clients, result: result } = computation();
+      const { projects, clients, result } = computation();
       if (clients) await this.writeFile(CLIENTS_FILE, clients);
       if (projects) await this.writeFile(PROJECTS_FILE, projects);
       if (clients) this.theClients = clients;

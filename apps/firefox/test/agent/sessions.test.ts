@@ -53,7 +53,7 @@ function prepare(open?: () => Promise<SessionLike>) {
 const size = { cols: 80, rows: 24 };
 
 test("starting twice opens only one session; the second call returns the buffer", async () => {
-  const { management: manager, sessions, sends: sends, states: states } = prepare();
+  const { management: manager, sessions, sends, states } = prepare();
   await manager.start("F", size);
   sessions[0]!.emit("bonjour");
   sends.length = 0;
@@ -69,7 +69,7 @@ test("starting twice opens only one session; the second call returns the buffer"
 test("the agent's output goes out in batches: several close chunks, a single send", async () => {
   vi.useFakeTimers();
   try {
-    const { management: manager, sessions, sends: sends } = prepare();
+    const { management: manager, sessions, sends } = prepare();
     await manager.start("F", size);
     for (const d of ["a", "b", "c"]) sessions[0]!.emit(d);
     expect(sends.filter((e) => e.channel === "data")).toEqual([]);
@@ -107,7 +107,7 @@ test("Docker absent → docker-absent; other error → error with message", asyn
 });
 
 test("agent end → termine; demarrer starts a new session", async () => {
-  const { management: manager, sessions, states: states } = prepare();
+  const { management: manager, sessions, states } = prepare();
   await manager.start("F", size);
   sessions[0]!.finish(3);
   expect(states().at(-1)).toEqual({ state: "done", code: 3 });
