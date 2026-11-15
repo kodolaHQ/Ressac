@@ -1,6 +1,17 @@
 /** What changed for the user, newest first. Add an entry when bumping `version` in package.json: its page opens once after the update. */
 export const RELEASE_NOTES: { version: string; date: string; items: string[] }[] = [
   {
+    version: "0.1.6",
+    date: "novembre 2026",
+    items: [
+      "Ressac passe sur Firefox 160, et les menus et pages de Firefox suivent la langue choisie dans Ressac.",
+      "Le réseau de l'agent est limité : il ne joint plus que Claude, OpenAI, les registres npm, PyPI et GitHub, et les domaines que vous ajoutez dans Réglages › Agents › « Domaines autorisés pour l'agent ». Son conteneur est aussi borné en mémoire.",
+      "Si vous changez le moteur de l'agent dans Réglages pendant une conversation, le panneau propose « Relancer » : l'agent repart sur le nouveau moteur et la conversation reprend.",
+      "Tout ce que l'agent ouvre se range dans la section « Agent » de la barre latérale ; « Garder dans mes onglets » le ramène parmi les vôtres.",
+      "Un agent sur un modèle local (Ollama) suit mieux ses consignes et fait son récap. Réglez la longueur de contexte d'Ollama sur 64k au moins (app Ollama › Réglages).",
+    ],
+  },
+  {
     version: "0.1.5",
     date: "novembre 2026",
     items: [
