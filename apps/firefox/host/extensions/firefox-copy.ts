@@ -20,7 +20,9 @@ const object = (v: unknown): Record<string, any> | undefined => (v && typeof v =
  * lists as unsupported and with which Firefox lets a click capture a tab), plus declarativeNetRequest*.
  * Firefox has more (identity, dns, find, menus…), which no Ressac guard closes: refused.
  */
-const ALLOWED_RIGHTS = new Set(["scripting", "storage", "unlimitedStorage", "tabs", "contextMenus", "cookies", "webNavigation", "alarms", "offscreen", "clipboardRead", "clipboardWrite"]);
+// Not « cookies »: Firefox's cookie API takes any container's storeId with the host right alone, so one space's grant
+// would read and set the site's cookies in private spaces and other profiles; no guard limits the store yet.
+const ALLOWED_RIGHTS = new Set(["scripting", "storage", "unlimitedStorage", "tabs", "contextMenus", "webNavigation", "alarms", "offscreen", "clipboardRead", "clipboardWrite"]);
 /** Firefox manifest keys that grant a power outside the guards (a search engine, URL handlers, user scripts, privileged APIs, the address bar). */
 const KEYS_DENIED = ["chrome_settings_overrides", "protocol_handlers", "user_scripts", "experiment_apis", "theme_experiment", "omnibox"];
 /** Ressac's own refusal text (decision 9's style). */

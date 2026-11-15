@@ -280,11 +280,11 @@ export function scopeHash(p: Scope): string {
   return createHash("sha256").update(canonical).digest("hex");
 }
 
-/** Reinforced grant (agent): scripts everywhere, or injection possible everywhere through `scripting`. */
+/** Reinforced grant (agent): scripts everywhere, or injection possible everywhere through `scripting` (which the copy adds to any content script). */
 export function grantStrengthened(p: Scope, source: SourceExtension): boolean {
   return (
     source === "agent" &&
-    (p.allSitesScripts || (p.allSites && p.permissions.includes("scripting")))
+    (p.allSitesScripts || (p.allSites && (p.permissions.includes("scripting") || !!p.scripts)))
   );
 }
 

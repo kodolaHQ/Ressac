@@ -270,6 +270,8 @@ const OLD_TEMPLATES: Readonly<Record<string, ReadonlySet<string>>> = {
     "687a950d62e647363f9c908d8b71356ecef73a70177af831f072aca33d6a1f9d",
     "517252df64b8d493bc8ad0dca33f40273fb3e10b03b5eac23e480de3c2e3d359",
   ]),
+  // The version that still listed `cookies` among the working rights.
+  "guides/extensions.md": new Set(["ab3d59cd7ee04a33e9c29ee43a1bd086d16ca5b038e582b8fb2f756b7135ac9b", "bb0ef51c03aaa9bfc5788348376f42aef8555eb35536f429b30ad7cc92844436"]),
 };
 
 /**

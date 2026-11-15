@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { link, mkdir, readdir, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
+import { copyFile, link, mkdir, readdir, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import { dirname, join } from "node:path";
@@ -274,6 +274,15 @@ describe("prepareCopy", () => {
     const background = await readFile(join(c, "ressac-background.js"), "utf8");
     expect(background).toContain('importScripts("ressac-background-guard.js");');
     expect([...background.matchAll(/importScripts\(/g)]).toHaveLength(1);
+  });
+
+  it("only passive file types are copied: .rdf, .mml, .xbl, .ehtml, .xhtml and a file without an extension are refused, nothing is written", async () => {
+    const src = await source({ "manifest.json": baseManifest(), "p.rdf": "<x/>", "m.mml": "<x/>", "b.xbl": "<x/>", "e.ehtml": "<p>", "d.xhtml": "<x/>", "LICENSE": "MIT", "ok.png": "x", "_locales/fr/messages.json": "{}" });
+    const c = await target();
+    const { analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
+    const refused = analysis.denial.filter((d) => d.startsWith("Type de fichier refusé"));
+    expect(refused.map((d) => d.split(" : ")[1]).sort()).toEqual(["LICENSE", "b.xbl", "d.xhtml", "e.ehtml", "m.mml", "p.rdf"]);
+    await expect(readFile(join(c, "manifest.json"))).rejects.toThrow();
   });
 
   it("the background guard is prefixed to each HTML page (raw bytes, absolute path), the existing scripts stay after", async () => {
@@ -561,10 +570,24 @@ describe("prepareCopy", () => {
     expect(await readdir(dirname(c))).toEqual(["essai"]);
   });
 
+  it("the hash changes with the guards: a Ressac update that changes them redoes the installed copies", async () => {
+    const src = await source({ "manifest.json": baseManifest(), "a.js": "" });
+    const guards = join(await tempFolder(), "guards");
+    await mkdir(guards);
+    for (const g of GUARDS) await copyFile(join(DEFAULT_GUARDS, g), join(guards, g));
+    const before = (await prepareCopy({ source: src, target: await target(), keptFolder: guards })).hash;
+    expect((await prepareCopy({ source: src, target: await target(), keptFolder: guards })).hash).toBe(before);
+    await writeFile(join(guards, "ressac-page-guard.js"), "// new guard\n", { flag: "a" });
+    expect((await prepareCopy({ source: src, target: await target(), keptFolder: guards })).hash).not.toBe(before);
+  });
+
   it("the temporary folder is deleted after a write error", async () => {
     const c = await target();
     const src = await source({ "manifest.json": baseManifest(), "a.js": "" });
-    await expect(prepareCopy({ source: src, target: c, keptFolder: join(src, "absent") })).rejects.toThrow();
+    brackets.beforeRename = (from) => {
+      if (from.endsWith(".tmp")) throw new Error("disque plein");
+    };
+    await expect(prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS })).rejects.toThrow("disque plein");
     expect(existsSync(c)).toBe(false);
     expect(await readdir(dirname(c))).toEqual([]);
   });

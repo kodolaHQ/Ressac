@@ -861,8 +861,8 @@ export class ExtensionsAgent {
   ): Promise<SendResult> {
     const p = prepare ?? (await this.prepare(id));
     if (!p.ok) {
-      // Only a missing folder stops the running version.
-      if (p.denial.includes(FOLDER_ABSENT)) await this.o.rpc.request("extensions.enable", { addonId: addonIdOf(id), active: false });
+      // A missing folder stops the running version; at startup any refusal does (a rule Ressac added since its signing).
+      if (o.startup || p.denial.includes(FOLDER_ABSENT)) await this.o.rpc.request("extensions.enable", { addonId: addonIdOf(id), active: false });
       return { ok: false, error: p.denial.map((r) => (r === FOLDER_ABSENT ? folderAbsent(id) : r)).join(" ; "), denial: p.denial };
     }
     const { analysis, hash, staging } = p;
