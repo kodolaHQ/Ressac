@@ -41,7 +41,7 @@ export class History {
   private req: Record<
     | "note" | "updateTitle" | "search" | "searchDistinct" | "recents" | "eraseSince" | "clearAll" | "makePrivate"
     | "keep" | "updateTitleText" | "isPrivate" | "forgetText" | "forgetSpaceTexts" | "eraseTextsSince"
-    | "eraseOrphanTexts" | "clearAllTexts" | "purgeBefore" | "totalBytes" | "oldTexts" | "forgetTextId"
+    | "eraseOrphanTexts" | "clearAllTexts" | "purgeBefore" | "purgeVisitsBefore" | "totalBytes" | "oldTexts" | "forgetTextId"
     | "keptText" | "visitsOf" | "excerpt" | "importVisit" | "noteIcon" | "icon" | "clearIcons" | "eraseOrphanIcons",
     StatementSync
   >;
@@ -95,6 +95,7 @@ export class History {
       ),
       clearAllTexts: this.db.prepare("DELETE FROM texts"),
       purgeBefore: this.db.prepare("DELETE FROM texts WHERE date < ?"),
+      purgeVisitsBefore: this.db.prepare("DELETE FROM visits WHERE last_visit < ?"),
       totalBytes: this.db.prepare("SELECT COALESCE(SUM(bytes), 0) AS total FROM texts"),
       oldTexts: this.db.prepare("SELECT id, bytes FROM texts ORDER BY date, id"),
       forgetTextId: this.db.prepare("DELETE FROM texts WHERE id = ?"),
@@ -240,11 +241,16 @@ export class History {
     this.req.forgetText.run(url, spaceId);
   }
 
-  /** Forgets text older than RETENTION_DAYS days, then the oldest while the total exceeds the cap. */
+  /** Forgets visits and text older than RETENTION_DAYS days, then the oldest text while the total exceeds the cap. */
   purge(now = new Date()): void {
     if (!this.db.isOpen) return;
     this.transaction(() => {
-      this.req.purgeBefore.run(new Date(now.getTime() - RETENTION_DAYS * 86_400_000).toISOString());
+      const before = new Date(now.getTime() - RETENTION_DAYS * 86_400_000).toISOString();
+      // The same window as the text's: importVisits already keeps no visit older than RETENTION_DAYS.
+      this.req.purgeVisitsBefore.run(before);
+      this.req.purgeBefore.run(before);
+      this.req.eraseOrphanTexts.run();
+      this.req.eraseOrphanIcons.run();
       let total = Number((this.req.totalBytes.get() as { total: number }).total);
       if (total <= this.byteCap) return;
       const toForget: number[] = [];

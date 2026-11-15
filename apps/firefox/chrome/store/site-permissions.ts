@@ -1,4 +1,4 @@
-import { DEFAULT_PROFILE, type Decision, type WindowId, type TabId, type ProfileId, type Outcome, type Permission } from "../../shared/model";
+import { AGENT_PROFILE, DEFAULT_PROFILE, type Decision, type WindowId, type TabId, type ProfileId, type Outcome, type Permission } from "../../shared/model";
 
 export type SitePermission = Permission | "screen-share" | "drm" | "midi";
 
@@ -113,7 +113,8 @@ export function createSitePermissions(o: {
   const ready = (async () => {
     // Firefox starts empty: it is rebuilt from the files, so nothing it kept on its own outlives them.
     mirror(() => o.firefox.remove(null, null));
-    for (const profile of new Set([DEFAULT_PROFILE, ...o.profiles()])) {
+    // The agent's tabs have their own profile, never among the profiles in use.
+    for (const profile of new Set([DEFAULT_PROFILE, AGENT_PROFILE, ...o.profiles()])) {
       const path = fileOf(o.dataDir, profile);
       const text = await files.read(path);
       if (text === null) continue;

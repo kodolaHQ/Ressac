@@ -304,7 +304,7 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
     case "updateTab": {
       const o = d.tabs[a.id];
       // Pages often emit the same values: nothing changed, nothing to rebroadcast.
-      if (!o || Object.entries(a.fields).every(([k, v]) => (o[k as keyof Tab] ?? null) === (v ?? null))) return false;
+      if (!o || unchanged(o, a.fields)) return false;
       Object.assign(o, a.fields);
       return true;
     }
@@ -815,7 +815,13 @@ export function withEssentials(state: BrowserState, genId: () => string = random
   return keepEssentials(draft, genId) ? draft : state;
 }
 
+function unchanged(o: Tab, fields: Partial<Tab>): boolean {
+  return Object.entries(fields).every(([k, v]) => (o[k as keyof Tab] ?? null) === (v ?? null));
+}
+
 export function apply(state: BrowserState, action: Action, genId: () => string = randomUUID): BrowserState {
+  // updateTab fires on every title, icon and load event, mostly with the same values: no copy of the whole state for those.
+  if (action.type === "updateTab" && (!state.tabs[action.id] || unchanged(state.tabs[action.id]!, action.fields))) return state;
   const draft = structuredClone(state);
   if (!handle(draft, action, genId)) return state;
   keepEssentials(draft, genId);

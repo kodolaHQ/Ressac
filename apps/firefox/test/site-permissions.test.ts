@@ -214,6 +214,14 @@ test("at startup, Firefox is emptied then rebuilt from the profiles' files", asy
   ]);
 });
 
+test("at startup, the agent tabs' decisions are loaded too", async () => {
+  disk.set(`${DIR}/permissions-agent.json`, JSON.stringify({ [`${meet} notifications`]: "allow" }));
+  const p = make();
+  await p.ready;
+  expect(p.check("agent", meet, "notifications")).toBe(true);
+  expect(calls).toContainEqual(["set", "agent", meet, "notifications", "allow"]);
+});
+
 test("an unreadable file: no decision, nothing is rewritten before a new decision", async () => {
   const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
   disk.set(FILE, "{pas du json");

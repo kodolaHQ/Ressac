@@ -7,6 +7,7 @@ import type { SiteWindowController } from "../store/sites";
 import { createSiteAddons, type WindowAddons } from "./addons";
 import { cutFrameNetwork } from "./frame-network";
 import { FIREFOX_COMMANDS, FIREFOX_KEYS, liveBindings, shortcutFor } from "./keys";
+import { OWN_ADOPT, TAB_ID } from "./tabs";
 
 const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const XHTML = "http://www.w3.org/1999/xhtml";
@@ -125,19 +126,24 @@ export function protectView(win: Window, showsPage: () => boolean): void {
   };
 }
 
+// A Ressac tab moves between windows through the state only (TabSync): moved by anything else, it would leave the state
+// while its page runs on in a XUL tab nobody shows.
+const isRessacTab = (tab: any, options: any) => !options?.[OWN_ADOPT] && !!tab?.hasAttribute?.(TAB_ID);
+
 /**
- * Any other window (main, popup): a site app's or an agent app's view never comes into it. Neither by adoptTab (an add-on's tabs.move to
- * this window) nor as the tab a new window adopts (windows.create({ tabId })): that one opens empty. Run at
- * DOMContentLoaded (window.js comes after browser-main.js, whose DOMContentLoaded made gBrowser), before
+ * Any other window (main, popup): a site app's or an agent app's view, or a Ressac tab, never comes into it. Neither by adoptTab
+ * (an add-on's tabs.move to this window) nor as the tab a new window adopts (windows.create({ tabId })): that one opens empty.
+ * Run at DOMContentLoaded (window.js comes after browser-main.js, whose DOMContentLoaded made gBrowser), before
  * browser-init.js's onLoad swaps the adopted tab in.
  */
 export function refuseSiteTabs(win: Window): void {
   const init = (win as any).gBrowserInit;
-  if (isSiteTab(init?.getTabToAdopt())) init._clearTabToAdopt();
+  const toAdopt = init?.getTabToAdopt();
+  if (isSiteTab(toAdopt) || isRessacTab(toAdopt, null)) init._clearTabToAdopt();
   const g = win.gBrowser;
   const adopt = g.adoptTab;
   g.adoptTab = function (tab: any, options: unknown) {
-    if (isSiteTab(tab)) throw PROTECTED;
+    if (isSiteTab(tab) || isRessacTab(tab, options)) throw PROTECTED;
     return adopt.call(this, tab, options);
   };
 }

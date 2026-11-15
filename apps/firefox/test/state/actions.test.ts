@@ -1,5 +1,5 @@
 import { validAgentDomain } from "../../shared/settings";
-import { beforeEach, expect, test } from "vitest";
+import { beforeEach, expect, test, vi } from "vitest";
 import { apply, withEssentials } from "../../core/state/actions";
 import { initialState } from "../../core/state/initial-state";
 import { SchemaAction, type Action } from "../../shared/api";
@@ -548,6 +548,18 @@ test("updateTab with no change → same reference (nothing to rebroadcast)", () 
   ag({ type: "updateTab", id: a, fields: { title: "A", loading: true } });
   const before = e;
   expect(apply(e, { type: "updateTab", id: a, fields: { title: "A", loading: true } }, genId)).toBe(before);
+});
+
+test("updateTab with no change copies nothing", () => {
+  const a = open("https://a.test/");
+  ag({ type: "updateTab", id: a, fields: { title: "A" } });
+  const clone = vi.spyOn(globalThis, "structuredClone");
+  try {
+    expect(apply(e, { type: "updateTab", id: a, fields: { title: "A" } }, genId)).toBe(e);
+    expect(clone).not.toHaveBeenCalled();
+  } finally {
+    clone.mockRestore();
+  }
 });
 
 test("updateTab only touches the given fields; unknown id → same reference", () => {
