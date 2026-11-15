@@ -62,14 +62,6 @@ export const DeclarationWidget = z
   });
 export type DeclarationWidget = z.infer<typeof DeclarationWidget>;
 
-export const Placement = z
-  .object({ id: z.string(), x: z.number().int().min(0), y: z.number().int().min(0), w: side, h: side })
-  .refine((p) => p.x + p.w <= COLUMNS, "déborde de la grille");
-export type Placement = z.infer<typeof Placement>;
-
-export const Layout = z.object({ version: z.literal(2), widgets: z.array(Placement) });
-export type Layout = z.infer<typeof Layout>;
-
 /** Thousandths of the home width: the 12-column grid loses its precision there. */
 export const FREE_WIDTH = 1000;
 /** One height unit, in pixels. */
@@ -138,6 +130,5 @@ export type WidgetRead =
   | { id: string; folder: string; error: string };
 
 export interface HomeState {
-  layout: Placement[];
   widgets: WidgetRead[];
 }

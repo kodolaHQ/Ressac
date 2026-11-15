@@ -6,7 +6,7 @@ import { KERNEL_ROOT, type SpacePaths } from "../paths.js";
 
 /**
  * Templates folder of the package; a browser that embeds the kernel can provide another. The texts and starter widgets
- * are in one folder per language (`fr/`, `en/`); the profiles and the layout are at the root.
+ * are in one folder per language (`fr/`, `en/`); the profiles are at the root.
  */
 export const DEFAULT_TEMPLATES = join(KERNEL_ROOT, "templates");
 
@@ -148,7 +148,6 @@ async function matches(c: SpacePaths, models: string, lang: string, langs: strin
   pairs.push(
     [join(models, "agent-profile.json"), join(c.profiles, "claude.json"), OLD_AGENT_PROFILE],
     [join(models, "codex-profile.json"), join(c.profiles, "codex.json"), OLD_CODEX_PROFILE],
-    [join(models, "layout.json"), c.layout, undefined],
   );
   if (!existsSync(c.widgets)) {
     const files = new Set([...(await filesOf(join(models, lang, "widgets"))), ...(await filesOf(join(models, FALLBACK, "widgets")))]);
@@ -260,10 +259,15 @@ export const OLD_AGENT_PROFILE: ReadonlySet<string> = new Set([
 ]);
 export const OLD_CODEX_PROFILE: ReadonlySet<string> = new Set<string>();
 
-/** The hashes of every old shipped version of the language texts (browsing-notes.md: none, only the current ones). */
+/** The hashes of every old shipped version of the language texts (browsing-notes.md and the other guides: none, only the current ones). */
 const OLD_TEMPLATES: Readonly<Record<string, ReadonlySet<string>>> = {
   "AGENTS.md": OLD_AGENTS,
   "CLAUDE.md": OLD_CLAUDE_MD,
+  // The 12-column layout text, replaced by the free layout one.
+  "guides/widgets.md": new Set([
+    "687a950d62e647363f9c908d8b71356ecef73a70177af831f072aca33d6a1f9d",
+    "517252df64b8d493bc8ad0dca33f40273fb3e10b03b5eac23e480de3c2e3d359",
+  ]),
 };
 
 /**

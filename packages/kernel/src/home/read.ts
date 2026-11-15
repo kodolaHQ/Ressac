@@ -5,11 +5,9 @@ import { join, sep } from "node:path";
 import type { SpacePaths } from "../paths.js";
 import { readData, readWidgetState } from "./data.js";
 import {
-  COLUMNS,
   DeclarationWidget,
   FreeLayout,
   FREE_WIDTH,
-  Placement,
   FreePlacement,
   type HomeState,
   type WidgetRead,
@@ -53,53 +51,9 @@ async function readWidget(c: SpacePaths, widgetsFolder: string, id: string, loca
   };
 }
 
-/** Readable placements of layout.json. The old format (`{ ordre }`) or a damaged file gives []. */
-async function readPlacements(c: SpacePaths): Promise<Placement[]> {
-  try {
-    const raw = JSON.parse(await readFile(c.layout, "utf8")) as { version?: unknown; widgets?: unknown };
-    if (raw.version !== 2 || !Array.isArray(raw.widgets)) return [];
-    return raw.widgets.flatMap((w) => {
-      const p = Placement.safeParse(w);
-      return p.success ? [p.data] : [];
-    });
-  } catch {
-    return [];
-  }
-}
-
 type Rectangle = { x: number; y: number; w: number; h: number };
 
 const overlaps = (a: Rectangle, b: Rectangle) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
-
-/** First free spot: rows from top to bottom, then columns left to right. */
-function firstPlace(busy: Rectangle[], w: number, h: number): { x: number; y: number } {
-  for (let y = 0; ; y++) {
-    for (let x = 0; x + w <= COLUMNS; x++) {
-      if (!busy.some((o) => overlaps(o, { x, y, w, h }))) return { x, y };
-    }
-  }
-}
-
-/**
- * Places each widget present on disk. A valid placement is kept; a widget with no
- * placement, or whose placement overlaps another, is put at the first free spot.
- */
-export function placeMissing(ids: string[], wanted: Placement[], defaults: Map<string, { w: number; h: number }>): Placement[] {
-  const kept: Placement[] = [];
-  const alreadySeen = new Set<string>();
-  for (const p of wanted) {
-    if (!defaults.has(p.id) || alreadySeen.has(p.id)) continue; // unknown id or duplicate: ignored
-    alreadySeen.add(p.id);
-    if (!kept.some((r) => overlaps(r, p))) kept.push(p);
-  }
-  const toPlace = [...wanted.map((p) => p.id), ...ids].filter((id, i, all) => defaults.has(id) && all.indexOf(id) === i && !kept.some((r) => r.id === id));
-  for (const id of toPlace) {
-    const old = wanted.find((p) => p.id === id);
-    const { w, h } = old ?? defaults.get(id)!;
-    kept.push({ id, ...firstPlace(kept, w, h), w, h });
-  }
-  return kept;
-}
 
 const STEP_X = 8;
 const STEP_Y = 8;
@@ -143,7 +97,7 @@ export async function readFreeLayout(c: SpacePaths): Promise<FreePlacement[]> {
 }
 
 /**
- * Same contract as placerManquants, in free units: a valid wanted placement is kept, an unknown id or a
+ * Placement in free units: a valid wanted placement is kept, an unknown id or a
  * duplicate is ignored, and each missing widget is put at the first hole with no overlap.
  */
 export function placeMissingFree(
@@ -173,14 +127,10 @@ export function placeMissingFree(
 
 /** Reads the home page. A broken widget is reported, it does not prevent reading the others. */
 export async function readHome(c: SpacePaths, widgetsFolder: string, locale = "en"): Promise<HomeState> {
-  if (!existsSync(c.widgets)) return { layout: [], widgets: [] };
+  if (!existsSync(c.widgets)) return { widgets: [] };
   const ids = (await readdir(c.widgets, { withFileTypes: true }))
     .filter((e) => e.isDirectory() && ID_WIDGET.test(e.name))
     .map((e) => e.name)
     .sort();
-  const widgets = await Promise.all(ids.map((id) => readWidget(c, widgetsFolder, id, locale)));
-  // A widget in error has no known size: it is not placed.
-  const defaults = new Map(widgets.flatMap((w) => ("declaration" in w ? [[w.id, w.declaration.sizes.default] as const] : [])));
-  const layout = placeMissing(ids, await readPlacements(c), defaults);
-  return { layout: layout, widgets };
+  return { widgets: await Promise.all(ids.map((id) => readWidget(c, widgetsFolder, id, locale))) };
 }

@@ -23,7 +23,7 @@ const widget = (o: Partial<Extract<WidgetRead, { declaration: DeclarationWidget 
   ...o,
 });
 
-const state = (widgets: WidgetRead[]): HomeState => ({ layout: [], widgets });
+const state = (widgets: WidgetRead[]): HomeState => ({ widgets });
 
 describe("toShownWidgets", () => {
   it("returns the data, the example, the state and the display versioned by date", () => {

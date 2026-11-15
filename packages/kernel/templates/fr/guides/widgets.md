@@ -41,14 +41,15 @@ Un widget est un dossier `home/widgets/<id>/` (`<id>` : minuscules, chiffres et 
 - `display.html` : HTML, CSS et JS en ligne, **aucune ressource externe**.
 - `example.json` : des données d'exemple, affichées tant qu'aucune récolte n'a réussi.
 
-La grille a 12 colonnes (rangées de 90 px, espacement de 12 px). `home/layout.json`
-place les widgets : `{ "version": 2, "widgets": [{ "id": "meteo", "x": 0, "y": 0, "w": 3, "h": 2 }] }`.
-Pour ajouter un widget, crée son dossier (avec `example.json` et un affichage fonctionnels), puis
-ajoute-le à `layout.json`. Pour le supprimer, retire-le des deux. Les données récoltées (`data.json`) et
-l'état (`state.json`) sont gardés par le navigateur hors de ton espace : ne les écris jamais.
+La taille d'un widget se déclare dans `widget.json` en unités de grille (`sizes`, de 1 à 12 de
+large, 90 px par unité de hauteur). La page place les widgets librement : `home/layout.json`
+(version 3) garde, par widget, `{ "id", "x", "y", "w", "h" }` où `x` et `w` sont des millièmes de
+la largeur de l'accueil et `y` et `h` des pixels. Pour ajouter un widget, crée son dossier (avec
+un `example.json` et un affichage qui fonctionnent) : la page le place au premier emplacement
+libre, à sa taille par défaut. Pour le supprimer, retire son dossier. Les données récoltées
+(`data.json`) et l'état (`state.json`) sont gardés par le navigateur hors de ton espace : ne les écris jamais.
 
-**Ressac** : n'écris jamais `home/layout.json`. La page y place elle-même un widget nouveau (au
-premier emplacement libre) ; ce fichier est en version 3 et n'est écrit que par le navigateur.
+**Ressac** : n'écris jamais `home/layout.json` ; il n'est écrit que par le navigateur.
 
 ### Workflows des widgets
 

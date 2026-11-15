@@ -41,14 +41,15 @@ A widget is a `home/widgets/<id>/` folder (`<id>`: lowercase letters, digits and
 - `display.html`: inline HTML, CSS and JS, **no external resources**.
 - `example.json`: example data, shown as long as no harvest has succeeded.
 
-The grid has 12 columns (90 px rows, 12 px spacing). `home/layout.json`
-places the widgets: `{ "version": 2, "widgets": [{ "id": "meteo", "x": 0, "y": 0, "w": 3, "h": 2 }] }`.
-To add a widget, create its folder (with a working `example.json` and display), then
-add it to `layout.json`. To delete it, remove it from both. The harvested data (`data.json`) and
-the state (`state.json`) are kept by the browser outside your workspace: never write them.
+A widget's size is declared in `widget.json` in grid units (`sizes`, 1 to 12 wide, 90 px per
+height unit). The page places the widgets freely: `home/layout.json` (version 3) holds, per widget,
+`{ "id", "x", "y", "w", "h" }` where `x` and `w` are thousandths of the home width and `y` and `h`
+are pixels. To add a widget, create its folder (with a working `example.json` and display): the
+page places it at the first free spot, at its default size. To delete it, remove its folder. The
+harvested data (`data.json`) and the state (`state.json`) are kept by the browser outside your
+workspace: never write them.
 
-**Ressac**: never write `home/layout.json`. The page places a new widget there itself (at the
-first free spot); this file is at version 3 and is only written by the browser.
+**Ressac**: never write `home/layout.json`; it is only written by the browser.
 
 ### Widget workflows
 
