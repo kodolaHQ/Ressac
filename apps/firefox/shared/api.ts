@@ -279,6 +279,8 @@ export interface ApiRessac {
     current(): Promise<string | null>;
     /** Chooses the profile and switches this window's agent to it; settles once the host has answered (a failure is logged, never thrown). */
     switch(profile: string): Promise<void>;
+    /** After an engine change (Réglages › Agents): restarts this window's agent on the new engine, resuming its conversation. */
+    relaunch(): Promise<void>;
   };
   /** The agent's access to tabs (badges and bubble to cut it). */
   access: {
@@ -604,7 +606,7 @@ export type AgentPanelState =
   | { state: "preparing"; step?: number; of?: number; label?: string; since?: number }
   | { state: "docker-absent" }
   | { state: "error"; message: string }
-  | { state: "active" }
+  | { state: "active"; engineChanged?: true }
   | { state: "done"; code: number };
 
 const idWidget = z.string().regex(/^[a-z0-9-]+$/).max(100);

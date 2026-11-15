@@ -367,3 +367,55 @@ test("a submitted prefill sends Enter apart from its text", async () => {
     vi.useRealTimers();
   }
 });
+
+describe("engine change (Réglages › Agents)", () => {
+  function withEngine() {
+    let engine = "subscription";
+    const opens: { profile: string; resume: boolean }[] = [];
+    const sessions: FakeSession[] = [];
+    const sends: { f: string; channel: string; v: unknown }[] = [];
+    const manager = new SessionsAgent({
+      open: async (_f, _t, s) => {
+        opens.push({ profile: s.profile, resume: s.resume });
+        const x = new FakeSession();
+        sessions.push(x);
+        return x;
+      },
+      defaultProfile: () => "claude",
+      engineOf: () => engine,
+      send: (f, channel, v) => sends.push({ f, channel, v }),
+    });
+    const states = () => sends.filter((e) => e.channel === "state").map((e) => e.v);
+    return { manager, opens, sessions, states, setEngine: (e: string) => (engine = e) };
+  }
+
+  test("a running session is told once; the same engine tells nothing", async () => {
+    const w = withEngine();
+    await w.manager.start("F", size);
+    w.manager.engineChanged("claude");
+    expect(w.states().at(-1)).toEqual({ state: "active" });
+    w.setEngine("ollama");
+    w.manager.engineChanged("claude");
+    w.manager.engineChanged("claude");
+    expect(w.states().filter((s) => (s as { engineChanged?: boolean }).engineChanged)).toHaveLength(1);
+    // Another profile's change does not concern it.
+    w.manager.engineChanged("codex");
+    expect(w.states()).toHaveLength(3);
+    // The panel reopened: the notice is still there.
+    await w.manager.start("F", size);
+    expect(w.states().at(-1)).toEqual({ state: "active", engineChanged: true });
+  });
+
+  test("relaunch: the old session stops, the new one resumes the conversation without the notice", async () => {
+    const w = withEngine();
+    await w.manager.start("F", size);
+    w.setEngine("ollama");
+    w.manager.engineChanged("claude");
+    await w.manager.relaunch("F");
+    expect(w.sessions[0]!.stopped).toBe(true);
+    expect(w.opens).toEqual([{ profile: "claude", resume: false }, { profile: "claude", resume: true }]);
+    expect(w.states().at(-1)).toEqual({ state: "active" });
+    w.manager.engineChanged("claude");
+    expect(w.states().at(-1)).toEqual({ state: "active" });
+  });
+});

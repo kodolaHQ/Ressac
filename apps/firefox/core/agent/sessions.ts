@@ -73,6 +73,10 @@ interface Entry {
   profile: string;
   /** Profiles whose session was active in this window: switching back to one resumes its conversation. */
   ran: Set<string>;
+  /** The engine (Réglages › Agents) the running session started with: a change applies only to the next session. */
+  engine?: string;
+  /** The engine changed since this session started: the panel offers to relaunch it. */
+  engineChanged?: boolean;
 }
 
 /** One agent session per window (spec §8): it survives tab changes and the panel closing. */
@@ -87,6 +91,8 @@ export class SessionsAgent {
       send: (f: WindowId, channel: "data" | "state", v: string | AgentPanelState) => void;
       /** The user submits a message (Enter) in this window's terminal. */
       onSend?: (f: WindowId) => void;
+      /** The engine a new session of `profile` would use, as a comparable key. */
+      engineOf?: (profile: string) => string;
     },
   ) {}
 
@@ -109,7 +115,7 @@ export class SessionsAgent {
     entry.size = size;
     if (entry.session?.active) {
       entry.session.resize(size.cols, size.rows);
-      this.o.send(f, "state", { state: "active" });
+      this.o.send(f, "state", this.activeState(entry));
       // The buffer already contains the pending output: it is not sent a second time.
       this.cancelSend(entry);
       const buffer = entry.buffer.text();
@@ -134,6 +140,8 @@ export class SessionsAgent {
           if (this.inputs.get(f) !== entry) return void s.stop();
           entry.session = s;
           entry.ran.add(entry.profile);
+          entry.engine = this.o.engineOf?.(entry.profile);
+          entry.engineChanged = false;
           s.onData((d) => {
             entry.buffer.add(d);
             entry.toSend += d;
@@ -163,6 +171,29 @@ export class SessionsAgent {
       )
       .finally(() => (entry.startup = undefined));
     return entry.startup;
+  }
+
+  private activeState(e: Entry): AgentPanelState {
+    return e.engineChanged ? { state: "active", engineChanged: true } : { state: "active" };
+  }
+
+  /** The engine of `profile` changed: its running sessions keep the old one until relaunched, the panel says so. */
+  engineChanged(profile: string): void {
+    for (const [f, e] of this.inputs) {
+      if (e.profile !== profile || !e.session?.active || e.engineChanged || e.engine === this.o.engineOf?.(profile)) continue;
+      e.engineChanged = true;
+      this.o.send(f, "state", this.activeState(e));
+    }
+  }
+
+  /** Relancer after an engine change: a new session of the same profile, resuming the conversation. */
+  async relaunch(f: WindowId): Promise<void> {
+    const old = this.inputs.get(f);
+    if (!old) return;
+    this.inputs.delete(f);
+    this.drop(old);
+    const e = this.entry(f, old.size, old.profile, old.ran);
+    await this.start(f, e.size, e.ran.has(e.profile));
   }
 
   private sendOutput(f: WindowId, e: Entry): void {

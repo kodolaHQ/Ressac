@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tick, untrack } from "svelte";
+  import { fade } from "svelte/transition";
   import { aiOn, api, appState as browserState } from "../state.svelte";
   import AiAsleep from "./AiAsleep.svelte";
   import { t } from "../i18n.svelte";
@@ -49,6 +50,7 @@
   }
   let hostEl: HTMLDivElement;
   const appState = $derived(terminalAgent.agent.state);
+  let engineNotice = $state<HTMLElement>();
   /** Ticks while a build step shows, so the elapsed minutes count up. */
   let now = $state(Date.now());
   $effect(() => {
@@ -187,6 +189,13 @@
     <p class="message">{t("agent-panel-codex-signed-out")}</p>
     <button data-testid="agent-login-settings" onclick={() => api.dispatch({ type: "openSettings", windowId: api.windowId })}>{t("agent-panel-login")}</button>
   {/if}
+  {#if appState.state === "active" && appState.engineChanged}
+    <!-- A fade never ends in a hidden panel (no frames): off screen, the notice leaves at once. -->
+    <div class="engine-changed" data-testid="agent-engine-changed" bind:this={engineNotice} out:fade={{ duration: engineNotice?.getClientRects().length ? 150 : 0 }}>
+      <p class="message">{t("agent-panel-engine-changed")}</p>
+      <button data-testid="agent-engine-relaunch" onclick={() => void api.agent.relaunch()}>{t("agent-panel-restart")}</button>
+    </div>
+  {/if}
   {#if appState.state === "preparing"}
     {#if appState.step !== undefined && appState.since !== undefined}
       <p class="message" data-testid="agent-build-step">{t("agent-panel-build-step", { step: appState.step, of: appState.of ?? 0, label: appState.label ?? "", minutes: Math.max(0, Math.floor((now - appState.since) / 60_000)) })}</p>
@@ -235,5 +244,6 @@
   .terminal { position: relative; flex: 1; min-height: 0; margin: 0 6px 6px; border-radius: 11px; background: var(--sheet); box-shadow: inset 0 0 0 1px var(--border); }
   .built-in .terminal { margin: 0; border-radius: 0; box-shadow: none; }
   .terminal.masked { visibility: hidden; }
+  .engine-changed { display: flex; flex-direction: column; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   .terminal[hidden] { display: none; }
 </style>

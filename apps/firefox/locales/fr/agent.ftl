@@ -3,6 +3,7 @@
 ## Moteur d'un agent (Réglages › Agents)
 
 agent-engine-title = Moteur de { $name }
+agent-engine-next-session = Un changement s'applique à la prochaine session ; l'agent ouvert propose de se relancer.
 agent-engine-kind-subscription = Abonnement Claude
 agent-engine-kind-chatgpt = Abonnement ChatGPT
 agent-engine-kind-api = API compatible
@@ -129,6 +130,7 @@ agent-panel-error = L'agent n'a pas pu démarrer : { $message }
 agent-panel-done = L'agent s'est arrêté.
 agent-panel-retry = Réessayer
 agent-panel-restart = Relancer
+agent-panel-engine-changed = Le moteur a changé dans Réglages. Relancez pour l'utiliser : la conversation reprend.
 
 ## Relecture
 

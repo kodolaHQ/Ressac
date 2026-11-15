@@ -372,6 +372,7 @@ const applyAi = async () => {
 
 const sessions = new SessionsAgent({
   defaultProfile: () => defaultProfile,
+  engineOf: (p) => (p === "claude" ? JSON.stringify(claudeEngine) : p === "codex" ? JSON.stringify(engine) : ""),
   async open(f, t, { profile, resume, onBuildProgress }) {
     if (!aiOn) throw new Error("ai-off");
     await aiSwitch;
@@ -434,6 +435,7 @@ const rpc = createRpc({
     // Only new windows take the new default: open agents stay.
     changeProfile: (p: { agentProfile: string }) => void (defaultProfile = p.agentProfile),
     "agent.start": (p: { window: string; size: TerminalSize }) => sessions.start(p.window, p.size),
+    "agent.relaunch": (p: { window: string }) => sessions.relaunch(p.window),
     "agent.switch": async (p: { window: string; profile: unknown }) => {
       if (typeof p.profile === "string" && /^[\w-]{1,64}$/.test(p.profile)) await sessions.switchProfile(p.window, p.profile);
     },
@@ -441,6 +443,7 @@ const rpc = createRpc({
     "agent.codexEngine": (p: { engine: unknown }) => {
       const r = CodexEngineSchema.safeParse(p?.engine);
       if (r.success) engine = r.data;
+      sessions.engineChanged("codex");
     },
     "settings.locale": (p: { locale: unknown }) => {
       if (typeof p?.locale !== "string" || p.locale === hostLocale()) return;
@@ -457,6 +460,7 @@ const rpc = createRpc({
     "agent.claudeEngine": (p: { engine: unknown }) => {
       const r = ClaudeEngineSchema.safeParse(p?.engine);
       if (r.success) claudeEngine = r.data;
+      sessions.engineChanged("claude");
     },
     "agent.profiles": async () => {
       // The kernel writes the default profile while it starts: the panel may ask before that (or before its launch is queued).

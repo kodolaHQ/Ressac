@@ -127,6 +127,29 @@ describe("Claude in Settings", () => {
     expect(sent).toMatchObject({ ANTHROPIC_MODEL: "ornith:35b", ANTHROPIC_DEFAULT_SONNET_MODEL: "ornith:35b", CLAUDE_CODE_SUBAGENT_MODEL: "ornith:35b" });
   });
 
+  it("engine changed while Claude runs: the panel offers Relancer, which resumes on the new engine", { timeout: 90_000 }, async () => {
+    await launch();
+    const envFile = join(w!.dataDir, "workspace", "fake-agent-env.json");
+    await inUi(m, "ui.ressac.agent.switch('codex')");
+    await waitFor(m, "return true", () => existsSync(envFile), 30_000);
+    rmSync(envFile);
+    await inUi(m, "ui.ressac.agent.switch('claude')");
+    await waitFor(m, "return true", () => existsSync(envFile), 30_000);
+    expect(read(envFile)).not.toContain("ANTHROPIC_BASE_URL");
+    rmSync(envFile);
+    await ollamaAt(ollama.url);
+    await inUi(m, "ui.ressac.settings.chooseClaudeEngine(arguments[0])", [{ kind: "ollama", ollamaUrl: ollama.url, ollamaModel: "ornith:35b", apiUrl: "", apiModel: "" }]);
+    await engineSaved((e) => e.kind === "ollama" && e.ollamaModel === "ornith:35b");
+    // The running session keeps its engine: the panel says so, nothing restarts by itself.
+    await waitUi(m, "return !!doc.querySelector('[data-testid=\"agent-engine-changed\"]')", [], 10_000, "agent");
+    expect(existsSync(envFile)).toBe(false);
+    // The panel is closed in this test: a pointer click has nothing to aim at.
+    await inUi(m, "doc.querySelector('[data-testid=\"agent-engine-relaunch\"]').click()", [], "agent");
+    await waitFor(m, "return true", () => existsSync(envFile) && read(envFile).includes("ANTHROPIC_BASE_URL"), 30_000);
+    expect(JSON.parse(read(envFile))).toMatchObject({ ANTHROPIC_MODEL: "ornith:35b" });
+    await waitUi(m, "return !doc.querySelector('[data-testid=\"agent-engine-changed\"]')", [], 10_000, "agent");
+  });
+
   it("a saved model that is gone is marked; Actualiser reads again", async () => {
     await launch();
     await ollamaAt(ollama.url);

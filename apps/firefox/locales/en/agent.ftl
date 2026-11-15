@@ -3,6 +3,7 @@
 ## An agent's engine (Settings › Agents)
 
 agent-engine-title = { $name } engine
+agent-engine-next-session = A change applies to the next session; an open agent offers to restart.
 agent-engine-kind-subscription = Claude subscription
 agent-engine-kind-chatgpt = ChatGPT subscription
 agent-engine-kind-api = Compatible API
@@ -129,6 +130,7 @@ agent-panel-error = The agent could not start: { $message }
 agent-panel-done = The agent has stopped.
 agent-panel-retry = Try again
 agent-panel-restart = Restart
+agent-panel-engine-changed = The engine changed in Settings. Restart to use it: the conversation resumes.
 
 ## Review
 

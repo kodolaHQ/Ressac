@@ -97,6 +97,7 @@
 
 <div class="engine" data-testid="{agent}-engine">
   <b>{t("agent-engine-title", { name: A.name })}</b>
+  <span class="muted" data-testid="{agent}-engine-next-session">{t("agent-engine-next-session")}</span>
   <div class="kinds" role="radiogroup" aria-label={t("agent-engine-title", { name: A.name })}>
     {#each A.kinds as k (k.kind)}
       <label><input type="radio" name="{agent}-engine" data-testid="engine-{k.kind}" checked={engine.kind === k.kind} onchange={() => A.choose({ ...engine, kind: k.kind } as Engine)} />{k.label}</label>

@@ -148,6 +148,7 @@ export function createApi(win: WindowController): ApiFirefox {
       profiles: () => host.request<{ id: string; name: string }[]>("agent.profiles").then((p) => structuredClone(p), () => []),
       current: () => host.request<string>("agent.current", { window: windowId }).then((p) => (typeof p === "string" ? p : null), () => null),
       switch: (profile) => switchAgent(profile),
+      relaunch: () => host.request("agent.relaunch", { window: windowId }).then(() => {}, (e) => console.error("[agent] relaunch failed:", e)),
     },
     tabCycle: (m) => win.tabSwitch(m),
     navigate: (id, input) => win.navigate(id, input),
