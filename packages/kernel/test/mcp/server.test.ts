@@ -2287,6 +2287,8 @@ test("a strange history read is not run: the band names it; Continuer runs it", 
     const pending = call("search_history", { query: "h" });
     await vi.waitFor(() => expect(bands.at(-1)![1]).toMatchObject({ state: "yours", text: BAND("lecture de l'historique", "but") }));
     expect(fake.calls.some((x) => x.method === "history.find")).toBe(false);
+    // Judged before the card: a paused read never puts one up.
+    expect(fake.calls.some((x) => x.method === "askWidgetData")).toBe(false);
     search.continue("search-1");
     await pending;
     expect(fake.calls.some((x) => x.method === "history.find")).toBe(true);

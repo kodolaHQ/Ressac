@@ -155,7 +155,6 @@ describe("history noted in the kernel", () => {
     await dispatch(m, { type: "updateSpace", id: e.id, name: e.name, icon: e.icon, private: true, profile: e.profile } as Action);
     await host("await h.ensure();");
     expect((await until(recents, (r) => r.length === 1))[0]!.private).toBe(true);
-    // A new host is a new conversation: the card is asked again.
     await answerHistory(m, w.dataDir);
     expect((await callTool(w.dataDir, "search_history", { query: "Page A" })).text).not.toContain("a.html");
   });
