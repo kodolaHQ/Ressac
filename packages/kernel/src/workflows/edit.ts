@@ -1,5 +1,5 @@
 import { realpath, stat } from "node:fs/promises";
-import { basename, dirname, join, sep } from "node:path";
+import { join, relative, sep } from "node:path";
 import { inFolder as inConfinedFolder, readFiles, writeEntries, type ReadFiles } from "../workspace/confined.js";
 import { say } from "../i18n.js";
 import { exists, readRawWorkflow } from "./read.js";
@@ -44,12 +44,20 @@ async function inFolder(folder: string, name: string): Promise<boolean> {
   }
 }
 
+/** The confined walk from the space root `root` down to `folder`, each folder entered by name; null if outside it. */
+function walk(root: string, folder: string): [string, string[]] | null {
+  const names = relative(root, folder).split(sep);
+  return names.some((n) => n === "" || n === "..") ? null : [root, names];
+}
+
 /**
- * `text` written atomically as `name` in `folder` by the confined child: the folder entered from its parent, never through
- * a link even one swapped in meanwhile. False if the folder was refused; throws if the write failed.
+ * `text` written atomically as `name` in `folder` by the confined child: every folder from the space root `root` entered
+ * by name, never through a link even one swapped in meanwhile. False if a folder was refused; throws if the write failed.
  */
-async function writeConfined(folder: string, name: string, text: string): Promise<boolean> {
-  const r = await inConfinedFolder(dirname(folder), [basename(folder)], writeEntries, [[[name, Buffer.from(text).toString("base64")]], []]);
+async function writeConfined(root: string, folder: string, name: string, text: string): Promise<boolean> {
+  const w = walk(root, folder);
+  if (!w) return false;
+  const r = await inConfinedFolder(w[0], w[1], writeEntries, [[[name, Buffer.from(text).toString("base64")]], []]);
   if (r === "failed") throw new Error(`${name} not written`);
   return r === "done";
 }
@@ -97,6 +105,8 @@ async function currentWorkflow(folder: string, ctx: ValidationContext): Promise<
  * what the widget declares (`contexteValidation`), the rules from before without it.
  */
 export async function saveWorkflow(o: {
+  /** The space root the files folder lies in: the confined walk starts there. */
+  root: string;
   filesFolder: string;
   dataFolder: string;
   raw: unknown;
@@ -147,16 +157,18 @@ export async function saveWorkflow(o: {
       })
     : [];
 
-  if (!(await writeConfined(o.filesFolder, "workflow.json", text))) return { ok: false, error: say(locale, "workflows-file-leaves-folder") };
+  if (!(await writeConfined(o.root, o.filesFolder, "workflow.json", text))) return { ok: false, error: say(locale, "workflows-file-leaves-folder") };
   return { ok: true, written: true, memoryErased: erasedMemory };
 }
 
 const tooBig = (locale: string) => say(locale, "workflows-code-too-big", { kb: String(CODE_MAX_BYTES / 1024) });
 
-export async function readCodeFile(filesFolder: string, name: string, locale = "en"): Promise<{ text: string } | { absent: true } | { error: string }> {
+export async function readCodeFile(root: string, filesFolder: string, name: string, locale = "en"): Promise<{ text: string } | { absent: true } | { error: string }> {
   if (!CODE_NAME.test(name)) return { error: say(locale, "workflows-code-invalid-name") };
   // Never through a link, even one swapped in meanwhile: read by a child that walks into the folder (confined.ts).
-  const r = await inConfinedFolder<ReadFiles>(dirname(filesFolder), [basename(filesFolder)], readFiles, [[name], CODE_MAX_BYTES, CODE_MAX_BYTES]);
+  const w = walk(root, filesFolder);
+  if (!w) return { error: say(locale, "workflows-code-leaves-folder") };
+  const r = await inConfinedFolder<ReadFiles>(w[0], w[1], readFiles, [[name], CODE_MAX_BYTES, CODE_MAX_BYTES]);
   if (!r) return { error: say(locale, "workflows-code-unreadable") };
   if ("files" in r) return { text: r.files[0]!.text };
   if (r.why === "absent") return { absent: true };
@@ -164,14 +176,14 @@ export async function readCodeFile(filesFolder: string, name: string, locale = "
 }
 
 /** Writes a widget's `.mjs` as is: its content is neither checked nor run. */
-export async function storeCode(filesFolder: string, name: string, text: string, locale = "en"): Promise<{ ok: true } | { ok: false; error: string }> {
+export async function storeCode(root: string, filesFolder: string, name: string, text: string, locale = "en"): Promise<{ ok: true } | { ok: false; error: string }> {
   if (!CODE_NAME.test(name)) return { ok: false, error: say(locale, "workflows-code-invalid-name") };
   if (Buffer.byteLength(text) > CODE_MAX_BYTES) return { ok: false, error: tooBig(locale) };
   if (!(await folderExists(filesFolder))) return { ok: false, error: say(locale, "workflows-save-widget-not-found") };
   const path = join(filesFolder, name);
   if ((await exists(path)) && !(await inFolder(filesFolder, name))) return { ok: false, error: say(locale, "workflows-code-leaves-folder") };
   try {
-    if (!(await writeConfined(filesFolder, name, text))) return { ok: false, error: say(locale, "workflows-code-leaves-folder") };
+    if (!(await writeConfined(root, filesFolder, name, text))) return { ok: false, error: say(locale, "workflows-code-leaves-folder") };
   } catch {
     return { ok: false, error: say(locale, "workflows-code-write-failed") };
   }

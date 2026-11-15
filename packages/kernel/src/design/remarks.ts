@@ -379,7 +379,8 @@ export class Remarks {
             const last = Math.max(...l.items.map((e) => Date.parse(e.handled?.when ?? "") || 0));
             if (last >= limit) continue;
             if (this.isPrivate(p)) await rm(this.batchFolder(p, l.id), { recursive: true, force: true });
-            else await this.removeSpace(p, l.id);
+            // A batch the agent swapped for a link stays: it must not stop the purge of the others.
+            else if (!(await this.removeSpace(p, l.id).then(() => true, () => false))) continue;
             deleted++;
           }
           return deleted;

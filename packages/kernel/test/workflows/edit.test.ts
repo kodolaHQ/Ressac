@@ -44,7 +44,7 @@ const wf = (key = "url", extra: Record<string, unknown> = {}) => ({
   links: [{ from: "a", to: "n" }, { from: "n", to: "s" }],
   ...extra,
 });
-const rec = (raw: unknown) => saveWorkflow({ filesFolder: files, dataFolder: data, raw: raw });
+const rec = (raw: unknown) => saveWorkflow({ root: root, filesFolder: files, dataFolder: data, raw: raw });
 const readJson = async () => JSON.parse(await readFile(join(files, "workflow.json"), "utf8"));
 
 test("a valid workflow is written atomically and re-read identical", async () => {
@@ -179,7 +179,7 @@ test("over 256 KB: refused; widget folder missing: Widget introuvable", async ()
   big.blocks[1]!.params = { key: "x".repeat(300 * 1024) };
   expect((await rec(big)).ok).toBe(false);
   expect(await readdir(files)).toEqual(["a.mjs"]);
-  const r = await saveWorkflow({ filesFolder: join(root, "nulle-part"), dataFolder: data, raw: wf() });
+  const r = await saveWorkflow({ root: root, filesFolder: join(root, "nulle-part"), dataFolder: data, raw: wf() });
   expect(r).toEqual({ ok: false, error: "Widget introuvable" });
 });
 
@@ -197,28 +197,28 @@ test("readDraft returns the JSON even invalid, null for a cut JSON, the implicit
 
 test("readCodeFile / storeCode refuse ../x.mjs, x.js, an outgoing link, over 256 KB; a missing file returns absent", async () => {
   for (const name of ["../x.mjs", "x.js", "A.mjs", "sous/x.mjs"]) {
-    expect(await readCodeFile(files, name)).toHaveProperty("error");
-    expect(await storeCode(files, name, "x")).toMatchObject({ ok: false });
+    expect(await readCodeFile(root, files, name)).toHaveProperty("error");
+    expect(await storeCode(root, files, name, "x")).toMatchObject({ ok: false });
   }
-  expect(await readCodeFile(files, "nouveau.mjs")).toEqual({ absent: true });
-  expect(await readCodeFile(files, "a.mjs")).toEqual({ text: "export default () => []" });
+  expect(await readCodeFile(root, files, "nouveau.mjs")).toEqual({ absent: true });
+  expect(await readCodeFile(root, files, "a.mjs")).toEqual({ text: "export default () => []" });
 
   const outside = join(root, "dehors.mjs");
   await writeFile(outside, "intact");
   await symlink(outside, join(files, "lien.mjs"));
-  const l = await readCodeFile(files, "lien.mjs");
+  const l = await readCodeFile(root, files, "lien.mjs");
   expect(l).toHaveProperty("error");
   expect(JSON.stringify(l)).not.toContain(root);
-  expect(await storeCode(files, "lien.mjs", "écrasé")).toMatchObject({ ok: false });
+  expect(await storeCode(root, files, "lien.mjs", "écrasé")).toMatchObject({ ok: false });
   expect(await readFile(outside, "utf8")).toBe("intact");
 
   const big = "x".repeat(CODE_MAX_BYTES + 1);
-  expect(await storeCode(files, "gros.mjs", big)).toMatchObject({ ok: false });
+  expect(await storeCode(root, files, "gros.mjs", big)).toMatchObject({ ok: false });
   await writeFile(join(files, "gros2.mjs"), big);
-  expect(await readCodeFile(files, "gros2.mjs")).toHaveProperty("error");
+  expect(await readCodeFile(root, files, "gros2.mjs")).toHaveProperty("error");
 
-  expect(await storeCode(files, "nouveau.mjs", "export default 1")).toEqual({ ok: true });
-  expect(await readCodeFile(files, "nouveau.mjs")).toEqual({ text: "export default 1" });
+  expect(await storeCode(root, files, "nouveau.mjs", "export default 1")).toEqual({ ok: true });
+  expect(await readCodeFile(root, files, "nouveau.mjs")).toEqual({ text: "export default 1" });
   expect((await readdir(files)).filter((n) => n.endsWith(".tmp"))).toEqual([]);
 });
 
@@ -227,9 +227,21 @@ test("storeCode and saveWorkflow never write through a widget folder that is a l
   await mkdir(mac);
   const linked = join(root, "lien-ecrit");
   await symlink(mac, linked);
-  expect(await storeCode(linked, "x.mjs", "export default 1")).toMatchObject({ ok: false });
-  expect(await saveWorkflow({ filesFolder: linked, dataFolder: data, raw: wf() })).toMatchObject({ ok: false });
+  expect(await storeCode(root, linked, "x.mjs", "export default 1")).toMatchObject({ ok: false });
+  expect(await saveWorkflow({ root: root, filesFolder: linked, dataFolder: data, raw: wf() })).toMatchObject({ ok: false });
   expect(await readdir(mac)).toEqual([]);
+});
+
+test("a folder above the widget's that is a link is refused too, read and write", async () => {
+  const mac = join(root, "mac-haut");
+  await mkdir(join(mac, "widget"), { recursive: true });
+  await writeFile(join(mac, "widget", "secret.mjs"), "du Mac");
+  await symlink(mac, join(root, "home"));
+  const deep = join(root, "home", "widget");
+  expect(await readCodeFile(root, deep, "secret.mjs")).toHaveProperty("error");
+  expect(await storeCode(root, deep, "x.mjs", "export default 1")).toMatchObject({ ok: false });
+  expect(await saveWorkflow({ root: root, filesFolder: deep, dataFolder: data, raw: wf() })).toMatchObject({ ok: false });
+  expect((await readdir(join(mac, "widget"))).sort()).toEqual(["secret.mjs"]);
 });
 
 test("readCodeFile never reads through a widget folder swapped for a link, nor a named pipe", async () => {
@@ -238,9 +250,9 @@ test("readCodeFile never reads through a widget folder swapped for a link, nor a
   await writeFile(join(mac, "secret.mjs"), "du Mac");
   const linked = join(root, "lien");
   await symlink(mac, linked);
-  expect(await readCodeFile(linked, "secret.mjs")).toHaveProperty("error");
+  expect(await readCodeFile(root, linked, "secret.mjs")).toHaveProperty("error");
   execFileSync("mkfifo", [join(files, "tube.mjs")]);
-  expect(await readCodeFile(files, "tube.mjs")).toHaveProperty("error");
+  expect(await readCodeFile(root, files, "tube.mjs")).toHaveProperty("error");
 });
 
 test("changing list.new's keepDays does not erase its memory; changing key erases it", async () => {
@@ -267,7 +279,7 @@ test("the workflow in place is re-read with the widget's context: a long widget 
     w.links = [{ from: "a", to: "p" }, { from: "p", to: "n" }, { from: "n", to: "s" }];
     return w;
   };
-  const longSave = (raw: unknown) => saveWorkflow({ filesFolder: files, dataFolder: data, raw: raw, context: context });
+  const longSave = (raw: unknown) => saveWorkflow({ root: root, filesFolder: files, dataFolder: data, raw: raw, context: context });
   // Without the context, this workflow is refused (600 s > 170 s).
   expect(await rec(long("url"))).toMatchObject({ ok: false, block: "p" });
   expect(await longSave(long("url"))).toEqual({ ok: true, written: true, memoryErased: [] });
@@ -289,8 +301,8 @@ test("saving web.search in a widget without web: refused, nothing written", asyn
   raw.links = [{ from: "a", to: "w" }, { from: "w", to: "n" }, { from: "n", to: "s" }];
   const expected = { ok: false, error: 'Workflow invalide : web.search : le widget doit déclarer "web": true', block: "w" };
   expect(await rec(raw)).toEqual(expected);
-  expect(await saveWorkflow({ filesFolder: files, dataFolder: data, raw: raw, context: { web: false, maxDurationMinutes: 30, owner: "widget" as const, input: false } })).toEqual(expected);
+  expect(await saveWorkflow({ root: root, filesFolder: files, dataFolder: data, raw: raw, context: { web: false, maxDurationMinutes: 30, owner: "widget" as const, input: false } })).toEqual(expected);
   expect(await readdir(files)).toEqual(["a.mjs"]);
   // With web, the same workflow is written.
-  expect(await saveWorkflow({ filesFolder: files, dataFolder: data, raw: raw, context: { web: true, maxDurationMinutes: null, owner: "widget" as const, input: false } })).toMatchObject({ ok: true, written: true });
+  expect(await saveWorkflow({ root: root, filesFolder: files, dataFolder: data, raw: raw, context: { web: true, maxDurationMinutes: null, owner: "widget" as const, input: false } })).toMatchObject({ ok: true, written: true });
 });

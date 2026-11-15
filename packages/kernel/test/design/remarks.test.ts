@@ -238,6 +238,27 @@ describe("Remarks", () => {
     expect(await exists(victim)).toBe(true);
   });
 
+  test("purge: a space batch it cannot move out does not stop the others, private ones included", async () => {
+    const { folders, clock, r } = await frame();
+    const handled = async (p: string) => {
+      await r.addToBasket(p, { text: "t", context: ctx(), capture: null });
+      const b = await r.sendBasket(p, { destination: "mcp" });
+      await r.markHandled(p, b.items.map((e) => e.id));
+      return b;
+    };
+    await handled("app-a");
+    const b = await handled("app-b");
+    const ext = await handled("ext-0123456789abcdef");
+    clock.t = new Date(clock.t.getTime() + 31 * 86_400_000);
+    const move = (r as unknown as { removeSpace: (p: string, l: string) => Promise<void> });
+    const real = move.removeSpace.bind(r);
+    let first = true;
+    move.removeSpace = (p, l) => (first ? ((first = false), Promise.reject(new Error(FOLDER_LINK))) : real(p, l));
+    expect(await r.purge()).toBe(2);
+    expect(await exists(join(folders.spaceRemarks, "app-b", b.id))).toBe(false);
+    expect(await exists(join(folders.private, "remarks", "ext-0123456789abcdef", ext.id))).toBe(false);
+  });
+
   test("tampered batch.json: id and project imposed by the folder; purge and writes stay within the batch", async () => {
     const { folders, clock, r } = await frame();
     const ext = "ext-0123456789abcdef";
