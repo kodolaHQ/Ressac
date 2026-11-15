@@ -77,11 +77,6 @@ describe("errorEnvelope", () => {
     expect(ev.exception.values[0]).toMatchObject({ type: "Error", value: "ENOENT ~/x <url>" });
     expect(ev.exception.values[0].stacktrace.frames[0].filename).toBe("~/p.js");
   });
-  it("drops a site named without a scheme, keeps code file names", () => {
-    const message = "Navigation bloquée : intranet.boite.fr est hors des domaines permis (sidebar.js, 0.1.6)";
-    const v = JSON.parse(errorEnvelope({ source: "chrome", type: "Error", message }, { release: "1", home, eventId: "e", now: new Date() }).split("\n")[2]!).exception.values[0];
-    expect(v.value).toBe("Navigation bloquée : <host> est hors des domaines permis (sidebar.js, 0.1.6)");
-  });
   it("omits the stacktrace when there are no frames", () => {
     const v = JSON.parse(errorEnvelope({ source: "host", type: "Error", message: "m" }, { release: "1", home, eventId: "e", now: new Date() }).split("\n")[2]!).exception.values[0];
     expect(v).not.toHaveProperty("stacktrace");

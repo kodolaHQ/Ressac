@@ -136,7 +136,7 @@ it("aborting the signal ends the read and closes the windowless browser", async 
 it("a redirect outside the allowed domains stops the read", async () => {
   await m.execute(`Cc["@mozilla.org/network/native-dns-override;1"].getService(Ci.nsINativeDNSResolverOverride).addIPOverride("public.test", "127.0.0.1");`);
   const r = await readPage(`${page.url}/redirige?vers=${encodeURIComponent(`http://public.test:${page.port}/a.html`)}`, { profile: null, domains: ["127.0.0.1"] });
-  expect(r).toMatchObject({ err: "Navigation bloquée : public.test est hors des domaines permis" });
+  expect(r).toMatchObject({ err: "Navigation bloquée : la page mène hors des domaines permis" });
   expect(page.paths).toEqual(["/redirige"]);
 });
 

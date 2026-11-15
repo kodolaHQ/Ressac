@@ -199,7 +199,8 @@ async function load<T>(
     if (profile !== null && !readableProfiles(store.state).includes(profile)) throw new ProfileDenied(profile);
   };
   checkProfile();
-  if (!allowed(url)) throw new Error(`Adresse refusée pour une lecture : ${hostOf(url)}`);
+  // No site name in the message: it may reach the error reports.
+  if (!allowed(url)) throw new Error("Adresse refusée pour une lecture");
   const paced = o.pacedId !== undefined && waitHost !== undefined;
   let target = url;
   // Fixed when the first page starts loading: paced redirections and their waits count in the 30 s.
@@ -341,7 +342,7 @@ function readIn<T>(
       if ("error" in r) reject(r.error);
       else resolve(r.page);
     };
-    const block = (target: string) => finish({ error: new Error(`Navigation bloquée : ${hostOf(target)} est hors des domaines permis`) });
+    const block = (_target: string) => finish({ error: new Error("Navigation bloquée : la page mène hors des domaines permis") });
     const abort = () => finish({ error: signal!.reason });
     const current = () => browser.currentURI?.spec ?? "";
     const actor = () => browser.browsingContext.currentWindowGlobal.getActor("RessacPage");
