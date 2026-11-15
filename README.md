@@ -10,7 +10,7 @@
   <a href="README.fr.md">Lire en français</a>
 </p>
 
-<p align="center"><sub>Closed beta · macOS 14+ · Apple Silicon · Open source</sub></p>
+<p align="center"><sub>Closed beta · macOS 14+ · Apple Silicon · Open source</sub><br><a href="https://getressac.app/#invite"><b>Join the beta</b></a></p>
 
 <p align="center"><img src="docs/images/overview-en.jpg" alt="Ressac: a calm page, the sidebar with its tabs and spaces"></p>
 
@@ -75,7 +75,7 @@ During the beta, Ressac sends crash and error reports (without page addresses) a
 
 ## Get Ressac
 
-Ressac is in closed beta, with a small group of testers. They get a DMG signed and notarized by Apple, and Ressac then updates itself.
+Ressac is in closed beta, with a small group of testers. They get a DMG signed and notarized by Apple, and Ressac then updates itself. **To join, ask for an invite on [getressac.app](https://getressac.app/#invite).**
 
 - **To browse**: macOS 14 or later, Apple Silicon.
 - **For the agent**: Docker ([OrbStack](https://orbstack.dev) or Docker Desktop) and a Claude or ChatGPT account (or an API key). Ressac starts the container app itself when it is installed.
