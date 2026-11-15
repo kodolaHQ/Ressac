@@ -62,7 +62,11 @@ export async function click(m: Marionette, selector: string, o: { button?: 0 | 2
        [x, y] = [r.left + r.width / 2, r.top + r.height / 2];
        const hit = doc.elementFromPoint(x, y);
        const now = [r.left, r.top, r.width, r.height].join();
-       if ((now === before && hit && (el.contains(hit) || hit.contains(el))) || Date.now() > end) break;
+       const under = hit && (el.contains(hit) || hit.contains(el));
+       if ((now === before && under) || Date.now() > end) break;
+       // Content loaded above it can push it out of view after the first scroll (measured: Réglages sections pushed
+       // the Mozilla card 344 px down, the press landed outside the window): scrolled to again.
+       if (!under) el.scrollIntoView({ block: "center" });
        before = now;
      }
      // A right click as Gecko delivers it on macOS: contextmenu on the press, then the release, whose click (button 2) reaches chrome documents.
