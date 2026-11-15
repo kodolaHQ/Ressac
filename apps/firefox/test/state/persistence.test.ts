@@ -547,3 +547,13 @@ test("agentDomains: missing or malformed loads empty, invalid entries are droppe
   writeFileSync(join(d, "session.json"), JSON.stringify(old));
   expect((await loadSession(d)).settings.agentDomains).toEqual(["a.com", "*.b.org"]);
 });
+
+test("agentDomains: duplicates are removed and the list is capped at 100", async () => {
+  const d = folder();
+  const old = structuredClone(initialState()) as unknown as { settings: Record<string, unknown> };
+  old.settings.agentDomains = ["a.com", "a.com", ...Array.from({ length: 150 }, (_, i) => `d${i}.com`)];
+  writeFileSync(join(d, "session.json"), JSON.stringify(old));
+  const got = (await loadSession(d)).settings.agentDomains;
+  expect(got).toHaveLength(100);
+  expect(got.slice(0, 2)).toEqual(["a.com", "d0.com"]);
+});

@@ -1169,10 +1169,10 @@ test("chooseAgentDomains keeps valid domains, lowercased and deduplicated, at mo
   expect(e.settings.agentDomains).toHaveLength(100);
 });
 
-test.each(["example.com", "*.example.com", "a-b.example.co.uk", "Example.com", "example", "*.com", "1.2.3.4", "*.1.2", "example.com:443", "example.com/x", "-a.com", "a..com", "a b.com", ""])(
-  "validAgentDomain agrees with the kernel and the image on %j",
-  (d) => {
-    const expected = /^(\*\.)?([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(d) && !/^[0-9.]+$/.test(d.replace(/^\*\./, ""));
-    expect(validAgentDomain(d)).toBe(expected);
+test.each(["example.com", "*.example.com", "a-b.example.co.uk", "Example.com", "example", "*.com", "1.2.3.4", "*.1.2", "example.com:443", "example.com/x", "-a.com", "a..com", "a b.com", "", `${"a".repeat(64)}.com`, `${"a".repeat(63)}.com`, `${["a".repeat(63), "b".repeat(63), "c".repeat(63), "d".repeat(63)].join(".")}.com`])(
+  "validAgentDomain agrees with the kernel on %j",
+  async (d) => {
+    const { validDomain } = await import("../../../../packages/kernel/src/container/workshop");
+    expect(validAgentDomain(d)).toBe(validDomain(d));
   },
 );

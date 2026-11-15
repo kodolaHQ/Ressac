@@ -206,6 +206,8 @@ export class Workshop {
   private readonly locale: () => string;
   private readonly network: (() => AgentNetwork) | undefined;
   private securing: Promise<void> | null = null;
+  private applying = "";
+  private followUp: Promise<void> | null = null;
   /** Startup in progress, shared: two windows opening an agent do not build the image twice. */
   private startup: Promise<WorkshopState> | null = null;
   /** Rebuild in progress, shared: two rebuilds at once build once. */
@@ -306,8 +308,19 @@ export class Workshop {
   /** One run at a time, shared: two sessions opening together apply the rules once. */
   secureNetwork(): Promise<void> {
     if (!this.network) return Promise.resolve();
-    this.securing ??= this.applyNetwork().finally(() => (this.securing = null));
-    return this.securing;
+    if (!this.securing) {
+      this.securing = this.applyNetwork().finally(() => (this.securing = null));
+      return this.securing;
+    }
+    // Same rules as the running apply read: share it. Otherwise one follow-up (shared by later calls) reads them again.
+    if (JSON.stringify(this.network()) === this.applying) return this.securing;
+    this.followUp ??= this.securing
+      .catch(() => {})
+      .then(() => {
+        this.followUp = null;
+        return this.secureNetwork();
+      });
+    return this.followUp;
   }
 
   /**
@@ -318,7 +331,9 @@ export class Workshop {
     const fail = (error: string): never => {
       throw new Error(say(this.locale(), "kernel-network-failed", { error }));
     };
-    const { ports, domains } = this.network!();
+    const rules = this.network!();
+    this.applying = JSON.stringify(rules);
+    const { ports, domains } = rules;
     const apply = await this.launch(
       ["exec", "-u", "root", "-i", containerName(), "node", "/opt/ressac/ressac-network.mjs", "apply"],
       PROBE_DELAY_MS,

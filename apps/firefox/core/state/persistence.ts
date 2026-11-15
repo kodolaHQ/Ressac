@@ -4,7 +4,7 @@ import { z } from "zod";
 import { APPEARANCES, LANGUAGE_SETTING, type BrowserState } from "../../shared/model";
 import { AURA_IDS, DEFAULT_AURA } from "../../shared/aura";
 import { CUSTOM_ENGINE_MAX, SEARCH_ENGINE_IDS, customEngineError } from "../../shared/search";
-import { ClaudeEngineSchema, CodexEngineSchema, DEFAULT_CLAUDE_ENGINE, DEFAULT_CODEX_ENGINE, validAgentDomain } from "../../shared/settings";
+import { ClaudeEngineSchema, CodexEngineSchema, DEFAULT_CLAUDE_ENGINE, DEFAULT_CODEX_ENGINE, cleanAgentDomains } from "../../shared/settings";
 import { FIRST_TIME, HINT_IDS, type HintId } from "../../shared/hints";
 import { SHORTCUTS, SHORTCUT_IDS, bindingProblem, effectiveBindings, isBinding, pickBinding, type Binding, type ShortcutId } from "../../shared/shortcuts";
 import { initialState } from "./initial-state";
@@ -70,7 +70,7 @@ const SchemaSession = z.object({
       .catch(() => ({ enabled: true, seen: (Object.keys(FIRST_TIME) as HintId[]).filter((id) => id !== "extensions") })),
     sidebarSide: z.enum(["left", "right"]).catch("left"),
     vimMode: z.boolean().catch(false),
-    agentDomains: z.array(z.unknown()).transform((l) => l.filter(validAgentDomain)).catch([]),
+    agentDomains: z.array(z.unknown()).transform(cleanAgentDomains).catch([]),
     // A session saved before the setting existed already had AI: it stays on.
     aiEnabled: z.boolean().catch(true),
     // A session saved before the setting existed gets the default.

@@ -1,7 +1,7 @@
 import { format } from "../../shared/i18n";
 import { RELEASE_NOTES } from "../../shared/release-notes";
 import { customEngineError } from "../../shared/search";
-import { MAX_AGENT_DOMAINS, validAgentDomain } from "../../shared/settings";
+import { cleanAgentDomains } from "../../shared/settings";
 import { randomUUID } from "node:crypto";
 import type { Action } from "../../shared/api";
 import { DEFAULT_AURA } from "../../shared/aura";
@@ -692,7 +692,7 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       return true;
     }
     case "chooseAgentDomains": {
-      const domains = [...new Set(a.domains.map((x) => x.trim().toLowerCase()).filter(validAgentDomain))].slice(0, MAX_AGENT_DOMAINS);
+      const domains = cleanAgentDomains(a.domains.map((x) => x.trim().toLowerCase()));
       if (domains.length === d.settings.agentDomains.length && domains.every((x, i) => x === d.settings.agentDomains[i])) return false;
       d.settings.agentDomains = domains;
       return true;

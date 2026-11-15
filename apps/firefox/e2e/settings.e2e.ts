@@ -99,6 +99,9 @@ describe("Settings page", () => {
     );
     await waitFor(m, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).state.settings.agentDomains)();`, (v) => JSON.stringify(v) === '["exemple.com"]');
     await shows("settings-agent-domains-ignored", "Ignoré : bad domain");
+    // The workshop runs: the change re-applies the rules with the new list.
+    const log = join(w!.dataDir, "workspace", "fake-docker-network.log");
+    await waitFor(m, "return true", () => existsSync(log) && readFileSync(log, "utf8").split("\n").some((l) => l.includes('"exemple.com"')), 15_000);
   });
 
   it("no workshop yet: Se connecter opens the agent panel, which starts it, and the account is re-read", { timeout: 60_000 }, async () => {

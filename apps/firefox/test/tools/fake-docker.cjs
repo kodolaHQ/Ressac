@@ -172,8 +172,13 @@ if (args[0] === "exec") {
   let command = args.slice(args.indexOf("ressac-workshop") + 1);
   // Network securing (Workshop.secureNetwork): the rules apply (stdin drained), the direct probe is blocked (curl exit 7).
   if (command[0] === "node" && command[1] === "/opt/ressac/ressac-network.mjs") {
-    process.stdin.resume();
-    process.stdin.on("end", () => quit(0));
+    let input = "";
+    process.stdin.on("data", (c) => (input += c));
+    // The rules the kernel sent (JSON), one per line: tests read what each apply carried.
+    process.stdin.on("end", () => {
+      appendFileSync(join(env.RESSAC_ROOT, "fake-docker-network.log"), input.replaceAll("\n", "") + "\n");
+      quit(0);
+    });
     return;
   }
   if (command[0] === "curl" && command.includes("https://1.1.1.1")) quit(7);

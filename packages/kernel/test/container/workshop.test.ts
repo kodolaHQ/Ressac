@@ -639,6 +639,24 @@ describe("agent network", () => {
     expect(calls.filter((c) => c.args.includes("apply"))).toHaveLength(1);
   });
 
+  test("a call during an apply queues one follow-up that reads the new domains", async () => {
+    let domains = ["old.example.com"];
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let first = true;
+    const { run, calls } = fakeRunner([[/ apply$/, async () => (first && ((first = false), await gate), { code: 0 })], [/curl/, { code: 7 }]]);
+    const workshop = new Workshop({ paths: paths, docker: "docker", run, network: () => ({ ports: [1], domains }) });
+    const a = workshop.secureNetwork();
+    await new Promise((r) => setTimeout(r, 10));
+    domains = ["new.example.com"];
+    const b = workshop.secureNetwork();
+    const c = workshop.secureNetwork();
+    release();
+    await Promise.all([a, b, c]);
+    const sent = calls.filter((x) => x.args.includes("apply")).map((x) => JSON.parse(x.opts!.input!).domains);
+    expect(sent).toEqual([["old.example.com"], ["new.example.com"]]);
+  });
+
   test("secureNetwork does nothing without a network option", async () => {
     const { workshop, calls } = make([], false);
     await workshop.secureNetwork();

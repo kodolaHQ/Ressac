@@ -8,6 +8,9 @@ export function validAgentDomain(d: unknown): d is string {
   return labels.length >= 2 && labels.every((l) => /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(l) && l.length <= 63) && !/^[0-9.]+$/.test(d.replace(/^\*\./, ""));
 }
 
+/** The saved list: valid entries only, no duplicate, at most MAX_AGENT_DOMAINS. */
+export const cleanAgentDomains = (list: unknown[]): string[] => [...new Set(list.filter(validAgentDomain))].slice(0, MAX_AGENT_DOMAINS);
+
 export type Backup = { path: string; date: string; bytes: number };
 
 /** The workshop restart or rebuild in progress, if any. */

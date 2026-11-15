@@ -45,8 +45,9 @@
   let agents = $state<AgentAccount[] | null>(null);
   // The textarea's draft (null until typed in); a bad line stays listed under it, never saved.
   let domainsText = $state<string | null>(null);
-  const domainLines = (text: string) => text.split("\n").map((l) => l.trim().toLowerCase()).filter((l) => l !== "");
-  const ignoredDomains = $derived(domainsText === null ? [] : domainLines(domainsText).filter((l) => !validAgentDomain(l)));
+  const rawLines = (text: string) => text.split("\n").map((l) => l.trim()).filter((l) => l !== "");
+  const domainLines = (text: string) => rawLines(text).map((l) => l.toLowerCase());
+  const ignoredDomains = $derived(domainsText === null ? [] : [...new Set(rawLines(domainsText).filter((l) => !validAgentDomain(l.toLowerCase())))]);
   /** Each account's sign-in in progress: null while the host starts it, then its code or its error. */
   let logins = $state<Record<string, LoginResult | null>>({});
   const loadAgents = async () => {
@@ -329,7 +330,7 @@
                   onblur={() => domainsText !== null && api.dispatch({ type: "chooseAgentDomains", domains: domainLines(domainsText) })}
                 ></textarea>
                 {#each ignoredDomains as line (line)}
-                  <span class="pill" data-tone="warn" data-testid="settings-agent-domains-ignored" transition:fade={{ duration: 150 }}>{t("settings-agent-domains-ignored", { line })}</span>
+                  <span class="pill" data-tone="warn" data-testid="settings-agent-domains-ignored" out:fade={{ duration: 150 }}>{t("settings-agent-domains-ignored", { line })}</span>
                 {/each}
               </div>
             </div>
@@ -649,7 +650,7 @@
   .settings :global(.pill[data-tone="error"]) { --tone: var(--in-error); }
   .domains textarea { display: block; width: 100%; margin-top: 8px; box-sizing: border-box; font: 12px var(--font-mono, monospace); resize: vertical; padding: 7px 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--sheet); color: var(--text); }
   .domains textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-  .domains .pill { margin-top: 6px; margin-right: 6px; }
+  .domains .pill { margin-top: 6px; margin-right: 6px; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   .content :global(button) { flex: none; padding: 6px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: 600 12px var(--font-ui); transition: transform var(--tap), background var(--tap); }
   .content :global(button:hover:not(:disabled)) { background: var(--bg-active); }
   .content :global(button:active:not(:disabled)) { transform: scale(0.97); }
