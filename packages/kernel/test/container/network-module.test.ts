@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { once } from "node:events";
-import { connect } from "node:net";
+import { connect, createServer as createTcp } from "node:net";
+import http from "node:http";
 // @ts-expect-error plain .mjs that runs inside the image, no type declarations
 import { validDomain, allowed, rules, BASE_DOMAINS, createProxy } from "../../docker/ressac-network.mjs";
 
@@ -8,7 +9,7 @@ describe("validDomain", () => {
   test.each(["example.com", "*.example.com", "a-b.example.co.uk"])("accepts %s", (d) => {
     expect(validDomain(d)).toBe(true);
   });
-  test.each(["Example.com", "example", "*.com", "1.2.3.4", "example.com:443", "example.com/x", "-a.com", "a..com", "", `${"a".repeat(250)}.com`])(
+  test.each(["Example.com", "example", "*.com", "1.2.3.4", "example.com:443", "example.com/x", "-a.com", "a..com", "", `${["a".repeat(63), "b".repeat(63), "c".repeat(63), "d".repeat(63)].join(".")}.com`])(
     "refuses %j",
     (d) => {
       expect(validDomain(d)).toBe(false);
@@ -23,6 +24,7 @@ describe("allowed", () => {
     expect(allowed("example.com", ["*.example.com"])).toBe(false);
     expect(allowed("evil.com", BASE_DOMAINS)).toBe(false);
     expect(allowed("github.com.", BASE_DOMAINS)).toBe(true);
+    expect(allowed("evilexample.com", ["*.example.com"])).toBe(false);
   });
 });
 
@@ -41,15 +43,52 @@ test("rules", () => {
   expect(text).toContain(":OUTPUT ACCEPT");
 });
 
-test("proxy refuses a host outside the list with 403", async () => {
-  const server = createProxy(() => ["example.com"]);
+async function startProxy(ports: number[], httpPort = 80) {
+  const server = createProxy(() => ["localhost"], { ports, httpPort });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
-  const port = (server.address() as { port: number }).port;
-  const socket = connect(port, "127.0.0.1");
-  socket.write("CONNECT evil.com:443 HTTP/1.1\r\nHost: evil.com:443\r\n\r\n");
-  const [data] = await once(socket, "data");
-  expect(String(data)).toContain("403");
-  socket.destroy();
-  server.close();
+  return { server, port: (server.address() as { port: number }).port };
+}
+const ask = async (port: number, head: string) => {
+  const s = connect(port, "127.0.0.1");
+  s.write(head);
+  const [d] = await once(s, "data");
+  return { s, text: String(d) };
+};
+
+describe("proxy", () => {
+  test("allowed CONNECT pipes bytes both ways", async () => {
+    const echo = createTcp((c) => c.pipe(c)).listen(0, "127.0.0.1");
+    await once(echo, "listening");
+    const up = (echo.address() as { port: number }).port;
+    const { server, port } = await startProxy([up]);
+    const { s, text } = await ask(port, `CONNECT localhost:${up} HTTP/1.1\r\nHost: x\r\n\r\n`);
+    expect(text).toContain("200");
+    s.write("ping");
+    const [d] = await once(s, "data");
+    expect(String(d)).toBe("ping");
+    s.destroy();
+    server.close();
+    echo.close();
+  });
+
+  test("refused host and refused port get 403; a reset client does not kill the proxy", async () => {
+    const { server, port } = await startProxy([443]);
+    const { s, text } = await ask(port, "CONNECT evil.com:443 HTTP/1.1\r\nHost: x\r\n\r\n");
+    expect(text).toContain("403");
+    s.resetAndDestroy();
+    expect((await ask(port, "CONNECT localhost:22 HTTP/1.1\r\nHost: x\r\n\r\n")).text).toContain("403");
+    server.close();
+  });
+
+  test("plain-HTTP forward: non-80 port and relative URI get 403", async () => {
+    const { server, port } = await startProxy([443], 80);
+    for (const target of ["http://localhost:8080/", "/relative"]) {
+      const status = await new Promise<number>((resolve) => {
+        http.get({ host: "127.0.0.1", port, path: target, headers: { host: "localhost" } }, (r) => (r.resume(), resolve(r.statusCode ?? 0)));
+      });
+      expect(status).toBe(403);
+    }
+    server.close();
+  });
 });

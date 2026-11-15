@@ -53,32 +53,38 @@ export function rules({ mac, ports }) {
 
 const refusal = (host) => `Ressac: ${host} is not in the agent's allowed domains (Settings › Agent)`;
 
-/** `getDomains` is called per request so a changed list applies to new connections. */
-export function createProxy(getDomains) {
+/** `getDomains` is called per request so a changed list applies to new connections. `opts` exists for tests only. */
+export function createProxy(getDomains, { ports = [443, 80], httpPort = 80 } = {}) {
   const server = http.createServer((req, res) => {
+    req.on("error", () => res.destroy());
+    res.on("error", () => {});
     let url;
     try {
       url = new URL(req.url ?? "");
     } catch {
       url = null;
     }
-    if (!url || url.protocol !== "http:" || (url.port && url.port !== "80") || !allowed(url.hostname, getDomains())) {
+    if (!url || url.protocol !== "http:" || Number(url.port || 80) !== httpPort || !allowed(url.hostname, getDomains())) {
       res.writeHead(403, { "content-type": "text/plain" }).end(refusal(url?.hostname ?? "?"));
       return;
     }
     const headers = { ...req.headers };
     delete headers["proxy-connection"];
-    const out = http.request({ host: url.hostname, port: 80, method: req.method, path: url.pathname + url.search, headers }, (r) => {
+    const fail = () => (res.headersSent ? res.destroy() : res.writeHead(502).end());
+    const out = http.request({ host: url.hostname, port: httpPort, method: req.method, path: url.pathname + url.search, headers }, (r) => {
+      r.on("error", () => res.destroy());
       res.writeHead(r.statusCode ?? 502, r.headers);
       r.pipe(res);
     });
-    out.on("error", () => res.destroyed || res.writeHead(502).end());
+    out.on("error", fail);
     req.pipe(out);
   });
+  server.on("clientError", (_e, socket) => socket.destroy());
   server.on("connect", (req, client, head) => {
+    client.on("error", () => client.destroy());
     const m = /^([^:]+):(\d+)$/.exec(req.url ?? "");
     const port = m ? Number(m[2]) : 0;
-    if (!m || (port !== 443 && port !== 80) || !allowed(m[1], getDomains())) {
+    if (!m || !ports.includes(port) || !allowed(m[1], getDomains())) {
       client.end(`HTTP/1.1 403 Forbidden\r\ncontent-type: text/plain\r\nconnection: close\r\n\r\n${refusal(m ? m[1] : "?")}`);
       return;
     }
@@ -90,7 +96,6 @@ export function createProxy(getDomains) {
       client.pipe(upstream);
     });
     upstream.on("error", () => client.destroy());
-    client.on("error", () => upstream.destroy());
     client.on("close", () => upstream.destroy());
   });
   return server;
@@ -111,6 +116,7 @@ function fileDomains() {
   };
 }
 
+// Any listener on 3128 is safe to reuse: iptables only lets uid ressac-proxy (and root) out, so a rogue one cannot reach the network.
 const listening = () =>
   new Promise((resolve) => {
     const s = net.connect(PROXY_PORT, "127.0.0.1");
@@ -125,6 +131,7 @@ async function apply() {
   if (!Array.isArray(ports) || !ports.every((p) => Number.isInteger(p) && p > 0 && p < 65536)) throw new Error("invalid ports");
   if (!Array.isArray(domains) || domains.length > 100) throw new Error("invalid domains");
   const user = domains.filter(validDomain);
+  for (const d of domains) if (!validDomain(d)) process.stderr.write(`ressac-network: dropped invalid domain ${JSON.stringify(d)}\n`);
   const { address } = await dns.lookup("host.docker.internal", { family: 4 });
   mkdirSync("/etc/ressac", { recursive: true });
   writeFileSync(`${DOMAINS_FILE}.tmp`, JSON.stringify([...new Set([...BASE_DOMAINS, ...user])]));
@@ -132,8 +139,8 @@ async function apply() {
   renameSync(`${DOMAINS_FILE}.tmp`, DOMAINS_FILE);
   execFileSync("iptables-restore", [], { input: rules({ mac: address, ports }) });
   if (!(await listening())) {
-    const uid = Number(execFileSync("id", ["-u", PROXY_USER]).toString());
-    spawn(process.execPath, [process.argv[1], "proxy"], { uid, detached: true, stdio: "ignore" }).unref();
+    const id = (flag) => Number(execFileSync("id", [flag, PROXY_USER]).toString());
+    spawn(process.execPath, [process.argv[1], "proxy"], { uid: id("-u"), gid: id("-g"), detached: true, stdio: "ignore" }).unref();
     for (let i = 0; i < 50 && !(await listening()); i++) await new Promise((r) => setTimeout(r, 100));
     if (!(await listening())) throw new Error("proxy did not start");
   }
@@ -141,6 +148,7 @@ async function apply() {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   if (process.argv[2] === "proxy") {
+    process.on("uncaughtException", (e) => console.error(e));
     createProxy(fileDomains()).listen(PROXY_PORT, "127.0.0.1");
   } else if (process.argv[2] === "apply") {
     apply().catch((e) => {
