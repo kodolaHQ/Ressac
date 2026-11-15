@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { access, appendFile, constants, mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { access, appendFile, constants, lstat, mkdir, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { parseDiff, type Block } from "./diff.js";
 
@@ -59,12 +59,27 @@ const files = new Map<string, Promise<unknown>>();
 export class ReviewStore {
   private readonly repo: string;
   private readonly folder: string;
+  private readonly root: string | undefined;
   private readonly git: string;
 
-  constructor(o: { repo: string; folder: string; git?: string }) {
+  /** `root`: the folder `folder` must be a real direct child of (an agent-writable one, where links can be swapped in). */
+  constructor(o: { repo: string; folder: string; root?: string; git?: string }) {
     this.repo = o.repo;
     this.folder = o.folder;
+    this.root = o.root;
     this.git = o.git ?? defaultGit();
+  }
+
+  /**
+   * The work tree's real path and the dev/ino of it and its parent, taken before and after `git add`: a folder swapped
+   * for a link meanwhile (the agent's, to a folder of the Mac) changes them, and the snapshot is refused.
+   */
+  private async identity(): Promise<{ real: string; marks: string }> {
+    const real = await realpath(this.folder);
+    if (this.root !== undefined && ((await lstat(this.root)).isSymbolicLink() || (await lstat(this.folder)).isSymbolicLink() || dirname(real) !== (await realpath(this.root))))
+      throw new ReviewError(ACCESS_DENIED, this.folder);
+    const [f, p] = await Promise.all([lstat(real), lstat(dirname(real))]);
+    return { real, marks: `${real}|${f.dev}:${f.ino}|${p.dev}:${p.ino}` };
   }
 
   /** The operations on the same repository go one after the other. */
@@ -75,7 +90,7 @@ export class ReviewStore {
     return next;
   }
 
-  private env(): NodeJS.ProcessEnv {
+  private env(workTree = this.folder): NodeJS.ProcessEnv {
     return {
       PATH: process.env.PATH,
       HOME: this.repo,
@@ -86,7 +101,7 @@ export class ReviewStore {
       GIT_OPTIONAL_LOCKS: "0",
       GIT_CEILING_DIRECTORIES: dirname(this.folder),
       GIT_DIR: this.repo,
-      GIT_WORK_TREE: this.folder,
+      GIT_WORK_TREE: workTree,
       GIT_INDEX_FILE: join(this.repo, "index-ressac"),
       GIT_AUTHOR_NAME: "Ressac", GIT_AUTHOR_EMAIL: "ressac@localhost",
       GIT_COMMITTER_NAME: "Ressac", GIT_COMMITTER_EMAIL: "ressac@localhost",
@@ -122,10 +137,11 @@ export class ReviewStore {
 
   private async internalSnapshot(): Promise<string> {
     await this.prepare();
+    const before = await this.identity();
     for (let attempt = 0; ; attempt++) {
       try {
         const av = { text: "" };
-        await launch(this.git, ["add", "-A"], this.env(), this.folder, av);
+        await launch(this.git, ["add", "-A"], this.env(before.real), before.real, av);
         if (/could not open directory|Permission denied|Operation not permitted/i.test(av.text)) throw new ReviewError(ACCESS_DENIED, av.text.trim());
         break;
       } catch (e) {
@@ -138,6 +154,11 @@ export class ReviewStore {
         const pattern = "/" + nested[1]!.replace(/[\\*?[\]!#]/g, "\\$&") + "/\n";
         await appendFile(join(this.repo, "info", "exclude"), pattern);
       }
+    }
+    if ((await this.identity().catch(() => null))?.marks !== before.marks) {
+      // What the index took may be anything: dropped, never written as a tree.
+      await rm(join(this.repo, "index-ressac"), { force: true });
+      throw new ReviewError(ACCESS_DENIED, this.folder);
     }
     return (await this.g(["write-tree"])).trim();
   }
@@ -204,7 +225,8 @@ export class ReviewStore {
 
       const paths = [...statuses.keys()];
       const sizes = new Map<string, number>();
-      for (const [tree, filter] of [[reviewed, (c: string) => statuses.get(c) === "deleted"], [current, (c: string) => statuses.get(c) !== "deleted"]] as const) {
+      // Both versions: a 100 MB file replaced by one line still makes a 100 MB patch.
+      for (const [tree, filter] of [[reviewed, (c: string) => statuses.get(c) !== "added"], [current, (c: string) => statuses.get(c) !== "deleted"]] as const) {
         const wanted = paths.filter(filter);
         for (let i = 0; i < wanted.length; i += PATHS_BATCH) {
           const output = await this.g(["ls-tree", "-r", "-l", "-z", tree, "--", ...wanted.slice(i, i + PATHS_BATCH).map((c) => `:(literal)${c}`)]);
@@ -212,7 +234,7 @@ export class ReviewStore {
             const t = line.indexOf("\t");
             if (t < 0) continue;
             const size = Number(line.slice(0, t).trim().split(/\s+/)[3]);
-            sizes.set(line.slice(t + 1), Number.isFinite(size) ? size : 0);
+            sizes.set(line.slice(t + 1), Math.max(sizes.get(line.slice(t + 1)) ?? 0, Number.isFinite(size) ? size : 0));
           }
         }
       }

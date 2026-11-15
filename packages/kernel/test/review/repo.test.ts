@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { chmod, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readdir, readFile, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { ACCESS_DENIED, ReviewStore, ReviewError, GIT_REQUIRED, gitAvailable } from "../../src/review/repo.js";
@@ -123,6 +123,14 @@ describe("comparer and file", () => {
     expect(by).toEqual({ "bin.dat": "binary", "gros.txt": "too-big", "long.txt": "too-big", "limite.txt": true });
     for (const n of ["bin.dat", "gros.txt", "long.txt"]) expect((await r.file(c, n)).blocks).toEqual([]);
   });
+  test("a big file replaced by one line is too big: its patch would carry the old version", async () => {
+    await write("gros.txt", Buffer.alloc(1048577, 97));
+    await r.ensureReference();
+    await write("gros.txt", "a\n");
+    const c = await r.compare();
+    expect(c.files).toMatchObject([{ path: "gros.txt", displayable: "too-big" }]);
+    expect((await r.file(c, "gros.txt")).blocks).toEqual([]);
+  });
   test("a name that starts with « : » or contains « * » also passes the size check", async () => {
     await r.ensureReference();
     await write(":gros.txt", Buffer.alloc(1048577, 97));
@@ -199,6 +207,34 @@ describe("the project's repo is never touched", () => {
     expect(c.files.every((f) => !f.path.includes(".git/") && f.path !== "sous")).toBe(true);
     await r.keep();
     expect([...(await hash(join(sub, ".git"))), ...(await hash(join(withCommit, ".git")))]).toEqual(before);
+  });
+});
+
+describe("a folder the agent swaps for a link (root given)", () => {
+  const mac = () => join(root, "mac");
+  beforeEach(async () => {
+    await mkdir(mac());
+    await writeFile(join(mac(), "secret.txt"), "du Mac\n");
+  });
+  const refs = () => execFileSync(GIT, ["--git-dir", repo, "for-each-ref"]).toString();
+
+  test("a link planted in place of the folder, or a linked root: refused, nothing kept", async () => {
+    await rm(folder, { recursive: true });
+    await symlink(mac(), folder);
+    await expect(new ReviewStore({ repo, folder, root }).ensureReference()).rejects.toMatchObject({ reason: ACCESS_DENIED });
+    const linked = join(root, "lien");
+    await symlink(root, linked);
+    await expect(new ReviewStore({ repo, folder: join(linked, "projet"), root: linked }).ensureReference()).rejects.toMatchObject({ reason: ACCESS_DENIED });
+  });
+
+  test("swapped during git add: refused, no tree nor ref written", async () => {
+    await write("a.txt", "a\n");
+    const swapping = join(root, "git-swap");
+    await writeFile(swapping, `#!/bin/sh\nif [ "$1" = add ]; then mv "${folder}" "${folder}-old"; ln -s "${mac()}" "${folder}"; fi\nexec "${GIT}" "$@"\n`, { mode: 0o755 });
+    await expect(new ReviewStore({ repo, folder, root, git: swapping }).ensureReference()).rejects.toMatchObject({ reason: ACCESS_DENIED });
+    expect(refs()).toBe("");
+    await rm(folder);
+    await rename(`${folder}-old`, folder);
   });
 });
 

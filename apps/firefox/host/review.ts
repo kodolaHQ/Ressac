@@ -91,8 +91,10 @@ export class ReviewService {
     },
   ) {}
 
+  /** An agent or site app's snapshot stays in a real direct folder of the agent-writable projects or sites folder. */
   private repo(p: ProjectId, folder: string): ReviewStore {
-    return new ReviewStore({ repo: reviewStore(this.o.folders, p), folder: folder, ...(this.o.git ? { git: this.o.git } : {}) });
+    const root = p.startsWith("app-") ? this.o.paths.projects : p.startsWith("site-") ? this.o.paths.sites : undefined;
+    return new ReviewStore({ repo: reviewStore(this.o.folders, p), folder: folder, ...(root ? { root } : {}), ...(this.o.git ? { git: this.o.git } : {}) });
   }
 
   /**
@@ -102,7 +104,7 @@ export class ReviewService {
   private async appFolder(d: string): Promise<string | null> {
     const folder = join(this.o.paths.projects, d);
     try {
-      if (!(await lstat(folder)).isDirectory()) return null;
+      if ((await lstat(this.o.paths.projects)).isSymbolicLink() || !(await lstat(folder)).isDirectory()) return null;
       const [real, base] = await Promise.all([realpath(folder), realpath(this.o.paths.projects)]);
       return real.startsWith(base + sep) ? folder : null;
     } catch {
@@ -118,7 +120,7 @@ export class ReviewService {
     if (!ID_SITE.test(id)) return null;
     const folder = join(this.o.paths.sites, id);
     try {
-      if (!(await lstat(folder)).isDirectory()) return null;
+      if ((await lstat(this.o.paths.sites)).isSymbolicLink() || !(await lstat(folder)).isDirectory()) return null;
       const [real, base] = await Promise.all([realpath(folder), realpath(this.o.paths.sites)]);
       return real.startsWith(base + sep) ? folder : null;
     } catch {

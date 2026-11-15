@@ -477,7 +477,7 @@ function controllerOf(s: OpenSite): SiteWindowController {
       (frame as any).ressacHomeGuard = listener;
     },
     image: async (url) => (open.get(id) === s && typeof url === "string" ? siteImage(s.userContextId, url, s.site.domains) : null),
-    homeUrl: () => (open.get(id) === s && s.site.hasHome ? (s.home ??= serveHome(dataDir, id)) : Promise.resolve(null)),
+    homeUrl: () => (open.get(id) === s && s.site.hasHome ? (s.home ??= serveHome(dataDir, id, (id, token) => (host ? host.request<string[] | null>("sites.copyHome", { id, token }) : Promise.resolve(null)))) : Promise.resolve(null)),
     homeGesture() {
       if (open.get(id) === s) gestures.gesture(id, id);
     },

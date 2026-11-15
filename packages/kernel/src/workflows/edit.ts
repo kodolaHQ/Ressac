@@ -1,4 +1,5 @@
-import { readFile, realpath, stat } from "node:fs/promises";
+import { constants } from "node:fs";
+import { lstat, open, realpath, stat } from "node:fs/promises";
 import { join, sep } from "node:path";
 import { say } from "../i18n.js";
 import { writeAtomic } from "./executions.js";
@@ -149,8 +150,18 @@ export async function readCodeFile(filesFolder: string, name: string, locale = "
   if (!(await exists(path))) return { absent: true };
   try {
     if (!(await inFolder(filesFolder, name))) return { error: say(locale, "workflows-code-leaves-folder") };
-    if ((await stat(path)).size > CODE_MAX_BYTES) return { error: tooBig(locale) };
-    return { text: await readFile(path, "utf8") };
+    const folder = await lstat(filesFolder);
+    if (!folder.isDirectory()) return { error: say(locale, "workflows-code-leaves-folder") };
+    // Never through a link: not the file's (O_NOFOLLOW), nor a folder swapped in since (same folder, same file after the open).
+    const f = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    try {
+      const [info, after, entry] = await Promise.all([f.stat(), lstat(filesFolder), lstat(path)]);
+      if (!info.isFile() || after.dev !== folder.dev || after.ino !== folder.ino || entry.dev !== info.dev || entry.ino !== info.ino) return { error: say(locale, "workflows-code-leaves-folder") };
+      if (info.size > CODE_MAX_BYTES) return { error: tooBig(locale) };
+      return { text: await f.readFile("utf8") };
+    } finally {
+      await f.close();
+    }
   } catch {
     return { error: say(locale, "workflows-code-unreadable") };
   }

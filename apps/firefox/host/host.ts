@@ -28,6 +28,7 @@ const { History } = await import("../core/history.ts");
 const { createRpc } = await import("../shared/rpc.ts");
 const { RemoteBridge } = await import("./remote-bridge.ts");
 const { createSites } = await import("./sites.ts");
+const { copyHomeRequest } = await import("./home-copy.ts");
 const { createAsk } = await import("./ask.ts");
 const { createDesignHost, DESIGN_METHODS, externalMcpPort } = await import("./design.ts");
 const { createSettingsHandlers, SETTINGS_METHODS } = await import("./settings.ts");
@@ -676,6 +677,7 @@ const rpc = createRpc({
     "sites.memoryOp": (p: unknown) => sites.memoryOp(p),
     "sites.position": (p: unknown) => sites.position(p),
     "sites.resume": (p: unknown) => sites.resume(p),
+    "sites.copyHome": (p: { id?: unknown; token?: unknown }) => copyHomeRequest(dataDir, paths.sites, p),
     "sites.lookup": (p: { id?: unknown; url?: unknown }) => {
       if (typeof p?.id === "string" && (p.url === null || typeof p.url === "string")) return sites.lookupAddress(p.id, p.url);
     },
@@ -891,6 +893,8 @@ const apps = createApplicationsHost({
     rpc.notify("design.giveAgent", [f]);
   },
   policy: () => kernel?.policy ?? null,
+  // Its remarks, review repository and comments go with it.
+  erased: (folder) => design.appDeleted(folder),
   // The Applications page reads the list again; design mode too (the running apps' ports may have changed); the review
   // takes a new app's first snapshot.
   broadcast: () => {

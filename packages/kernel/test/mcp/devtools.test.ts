@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { existsSync } from "node:fs";
-import { readdir, writeFile, mkdir, symlink, readFile } from "node:fs/promises";
+import { readdir, writeFile, mkdir, symlink, readFile, truncate } from "node:fs/promises";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -10,7 +10,7 @@ import { FakeBridge } from "../../src/mcp/fake-bridge.js";
 import { startMcpServer, generateToken } from "../../src/mcp/server.js";
 import { DevToolsTracking } from "../../src/devtools/tracking.js";
 import { spacePaths } from "../../src/paths.js";
-import { profileFiles } from "../../src/kernel.js";
+import { PROFILE_MAX_BYTES, profileFiles } from "../../src/kernel.js";
 import { tempFolder } from "../helpers/temp.js";
 
 const github: TabInfo = { id: "github", title: "sveltejs/svelte", url: "https://github.com/sveltejs/svelte", space: "perso" };
@@ -366,6 +366,14 @@ test("profileFiles: refuses a path outside the profile folders", async () => {
   // without a private folder, a third-party site's profile is not saved (never in the space)
   await expect(p.writeProfile(github, "z.cpuprofile", "{}", false)).rejects.toThrow(/indisponible/);
   expect(existsSync(join(r, ".ressac", "profiling", "z.cpuprofile"))).toBe(false);
+});
+
+test("profileFiles: a profile over PROFILE_MAX_BYTES is refused before it is read", async () => {
+  const r = await tempFolder();
+  const p = profileFiles(spacePaths(r));
+  const path = await p.writeProfile(appTodo, "gros.heapsnapshot", "{}", true);
+  await truncate(join(r, "projects", "todo", ".ressac", "profiling", "gros.heapsnapshot"), PROFILE_MAX_BYTES + 1);
+  await expect(p.readProfile(path)).rejects.toThrow(/trop gros/);
 });
 
 test("profileFiles: a profiling folder as a symbolic link is refused, on write as on read", async () => {

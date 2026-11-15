@@ -50,8 +50,11 @@ export function truncateHtml(html: string): string {
   return html.length > HTML_MAX ? html.slice(0, HTML_MAX) + TRUNCATED : html;
 }
 
-/** Space side (read by the container's agent): atomic, default modes. Private side: 0o700/0o600. */
-async function writeAtomic(file: string, content: string | Buffer, isPrivate: boolean): Promise<void> {
+/**
+ * Space side (read by the container's agent): atomic, default modes. Private side: 0o700/0o600. `check` runs right
+ * before the rename (noLink's).
+ */
+async function writeAtomic(file: string, content: string | Buffer, isPrivate: boolean, check?: () => Promise<void>): Promise<void> {
   const folder = dirname(file);
   if (isPrivate) {
     await mkdir(folder, { recursive: true, mode: 0o700 });
@@ -60,6 +63,12 @@ async function writeAtomic(file: string, content: string | Buffer, isPrivate: bo
   const temp = join(folder, `${basename(file)}.${randomBytes(4).toString("hex")}.tmp`);
   await writeFile(temp, content, isPrivate ? { mode: 0o600 } : {});
   if (isPrivate) await chmod(temp, 0o600);
+  try {
+    await check?.();
+  } catch (e) {
+    await rm(temp, { force: true });
+    throw e;
+  }
   await rename(temp, file);
 }
 
@@ -107,14 +116,22 @@ export class Remarks {
    * Before writing on the space side (mounted writable in the container): neither `.ressac`, nor the remarks root, nor the
    * project folder, nor the batch's are symbolic links (a missing one will be created as a real folder).
    */
-  private async noLink(p: ProjectId, batch?: string): Promise<void> {
-    if (this.isPrivate(p)) return;
+  /**
+   * Refuses a link on the way; returns the check to run again right before each write or rename: every folder there,
+   * still no link, the same ones (dev/ino) as now — the agent can swap one for a link in between.
+   */
+  private async noLink(p: ProjectId, batch?: string): Promise<() => Promise<void>> {
+    if (this.isPrivate(p)) return async () => {};
     const root = this.folders.spaceRemarks;
     const paths = [dirname(root), root, this.folder(p), ...(batch ? [this.batchFolder(p, batch)] : [])];
-    for (const c of paths) {
-      const s = await lstat(c).catch(() => null);
-      if (s && !s.isDirectory()) throw new Error(FOLDER_LINK);
-    }
+    const walk = () => Promise.all(paths.map((c) => lstat(c).catch(() => null)));
+    const first = await walk();
+    if (first.some((s) => s && !s.isDirectory())) throw new Error(FOLDER_LINK);
+    return async () => {
+      const now = await walk();
+      const moved = (i: number) => first[i] !== null && (first[i]!.dev !== now[i]!.dev || first[i]!.ino !== now[i]!.ino);
+      if (now.some((s, i) => !s?.isDirectory() || moved(i))) throw new Error(FOLDER_LINK);
+    };
   }
 
   private serialize<T>(p: ProjectId, f: () => Promise<T>): Promise<T> {
@@ -134,13 +151,13 @@ export class Remarks {
   }
   private async writeBasket(p: ProjectId, basket: Element[]): Promise<void> {
     const f = join(this.folder(p), "basket.json");
-    await this.noLink(p);
-    return this.isPrivate(p) ? writePrivateJson(f, basket) : writeAtomic(f, JSON.stringify(basket, null, 2), false);
+    const check = await this.noLink(p);
+    return this.isPrivate(p) ? writePrivateJson(f, basket) : writeAtomic(f, JSON.stringify(basket, null, 2), false, check);
   }
   private async writeBatch(l: Batch): Promise<void> {
     const f = join(this.batchFolder(l.project, l.id), "batch.json");
-    await this.noLink(l.project, l.id);
-    return this.isPrivate(l.project) ? writePrivateJson(f, l) : writeAtomic(f, JSON.stringify(l, null, 2), false);
+    const check = await this.noLink(l.project, l.id);
+    return this.isPrivate(l.project) ? writePrivateJson(f, l) : writeAtomic(f, JSON.stringify(l, null, 2), false, check);
   }
   private async readBatches(p: ProjectId): Promise<Batch[]> {
     let names: string[];
@@ -168,8 +185,8 @@ export class Remarks {
     if (e.text.trim() === "") return Promise.reject(new Error(EMPTY_REMARK));
     return this.serialize(p, async () => {
       const id = `e-${randomBytes(4).toString("hex")}`;
-      await this.noLink(p);
-      if (e.capture) await writeAtomic(join(this.folder(p), `${id}.png`), e.capture, this.isPrivate(p));
+      const check = await this.noLink(p);
+      if (e.capture) await writeAtomic(join(this.folder(p), `${id}.png`), e.capture, this.isPrivate(p), check);
       const element: Element = {
         id, type: "design", text: e.text, context: { ...e.context, html: truncateHtml(e.context.html) },
         capture: e.capture ? `${id}.png` : null,
@@ -220,10 +237,12 @@ export class Remarks {
       if (basket.length === 0) throw new Error(EMPTY_BASKET);
       const batch = this.createBatch(p, basket, d);
       const target = this.batchFolder(p, batch.id);
-      await this.noLink(p, batch.id);
+      const check = await this.noLink(p, batch.id);
       await mkdir(target, { recursive: true, ...(this.isPrivate(p) ? { mode: 0o700 } : {}) });
       for (const e of basket) {
-        if (e.type === "design" && e.capture) await rename(join(this.folder(p), e.capture), join(target, e.capture)).catch(() => undefined);
+        if (e.type !== "design" || !e.capture) continue;
+        await check();
+        await rename(join(this.folder(p), e.capture), join(target, e.capture)).catch(() => undefined);
       }
       await this.writeBatch(batch);
       await this.writeBasket(p, []);

@@ -1,11 +1,26 @@
-import { expect, test } from "vitest";
-import { mkdir, rename, symlink, writeFile } from "node:fs/promises";
+import { expect, test, vi } from "vitest";
+import { mkdir, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { spacePaths } from "../../src/paths.js";
 import { SITE_ID_ERROR, tweakFileNotFound } from "../../src/sites/schemas.js";
 import { readTweaks, readSite, readSites, watchSites, type SiteRead } from "../../src/sites/read.js";
 import { tempFolder } from "../helpers/temp.js";
+
+/** Run once just before the next `open` of the kernel: a swap the agent makes between the checks and the read. */
+const beforeOpen = vi.hoisted(() => ({ run: null as null | (() => Promise<void>) }));
+vi.mock("node:fs/promises", async (original) => {
+  const fs = await original<typeof import("node:fs/promises")>();
+  return {
+    ...fs,
+    open: async (...a: Parameters<typeof fs.open>) => {
+      const run = beforeOpen.run;
+      beforeOpen.run = null;
+      if (run) await run();
+      return fs.open(...a);
+    },
+  };
+});
 
 const o = { localAddresses: false };
 const decl = (name: string, extra: object = {}) =>
@@ -120,6 +135,25 @@ test("readTweaks: a retouches/ folder that is a link outside the site is refused
   await writeFile(join(outside, "a.js"), "secret");
   await symlink(outside, join(c.sites, "r", "tweaks"));
   expect(await readTweaks(withDeclaration(await readSite(c, "r", o)))).toEqual({ error: tweakFileNotFound("a.js") });
+});
+
+test("readTweaks: a folder swapped for a link between the checks and the open is refused", async () => {
+  const c = await space();
+  await site(c, "r", decl("R", { tweaks: [{ matches: ["/*"], js: ["sous/a.js"] }] }));
+  const sous = join(c.sites, "r", "tweaks", "sous");
+  await mkdir(sous, { recursive: true });
+  await writeFile(join(sous, "a.js"), "A");
+  const mac = await tempFolder();
+  await writeFile(join(mac, "a.js"), "secret du Mac");
+  const read = withDeclaration(await readSite(c, "r", o));
+  beforeOpen.run = async () => {
+    await rename(sous, `${sous}-vrai`);
+    await symlink(mac, sous);
+  };
+  expect(await readTweaks(read)).toEqual({ error: tweakFileNotFound("sous/a.js") });
+  await rm(sous);
+  await rename(`${sous}-vrai`, sous);
+  expect(await readTweaks(withDeclaration(await readSite(c, "r", o)))).toEqual({ js: { "sous/a.js": "A" }, css: {} });
 });
 
 test("watchSites signals « retouches » when retouches/a.js changes and « declaration » for site.json", async () => {

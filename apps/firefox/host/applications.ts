@@ -2,7 +2,8 @@
 // Supprimer, Passer en application and
 // Déboguer live here; the window, its container and its guard are the chrome's, asked through `chrome`.
 import fs from "node:fs/promises";
-import { resolve, sep } from "node:path";
+import { randomUUID } from "node:crypto";
+import { join, resolve, sep } from "node:path";
 import { z } from "zod";
 import { validFolder, writeType, ApplicationManager, appPrefix, type Application, type Workshop, type SpacePaths, type TabInfo } from "../../../packages/kernel/src/index.ts";
 import { DockerProbe } from "../core/applications/probe.ts";
@@ -10,6 +11,7 @@ import { FAVICON_SIZE } from "../core/applications/favicon.ts";
 import { SchemaActionApplication, type ApplicationList } from "../shared/api.ts";
 import type { FrameBounds, WindowId } from "../shared/model.ts";
 import { SiteRecords } from "./sites.ts";
+import { inChild, moveEntry } from "./confined.ts";
 
 /** `min-max` port range from RESSAC_APP_PORTS (tests), otherwise the kernel's. */
 export function portRange(value: string | undefined): [number, number] | undefined {
@@ -47,6 +49,8 @@ export function createApplicationsHost(o: {
   debug(win: WindowId, text: string, access?: () => TabInfo | undefined): void;
   policy(): { tabClosed(id: string): void; tabNavigated(id: string, url: string): void; built(o: TabInfo): void } | null;
   broadcast(): void;
+  /** After « Supprimer »: the app's remarks and review go too. */
+  erased?(folder: string): void;
 }): ApplicationsHost {
   // Under <dataDir>, never in <dataDir>/espace that the container mounts.
   const memory = new SiteRecords(o.dataDir, 500, "apps.json");
@@ -124,8 +128,14 @@ export function createApplicationsHost(o: {
     // Stopping cancels the launches that have not started, and we wait for the last one to hand back control.
     await manager.stop(folder);
     await last.get(folder)?.catch(() => {});
-    await fs.rm(target, { recursive: true, force: true });
+    // Moved out of the container's reach first (in the real projects folder, never through a link), then deleted:
+    // a link swapped into the tree during a delete in place would lead rm into a folder of the Mac.
+    const trash = join(o.dataDir, `deleted-app-${randomUUID()}`);
+    const moved = await inChild(moveEntry, [projects, folder, trash]);
+    if (moved === "moved") await fs.rm(trash, { recursive: true, force: true });
+    else if (moved !== "absent") throw new Error(`${target} refusé`);
     await o.chrome.erase(folder);
+    o.erased?.(folder);
     memory.forget(folder);
     manager.forget(folder);
     o.broadcast();
