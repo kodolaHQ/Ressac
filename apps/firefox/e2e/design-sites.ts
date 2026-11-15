@@ -4,8 +4,7 @@ import { HOOKS_PAGE } from "./design";
 import type { Marionette } from "./marionette";
 import { inSiteBar, inSiteView, siteWindowExpr } from "./sites";
 
-// The design mode in site apps' windows (plan 36): e2e helpers and pages, from the spikes S5-S7
-// (e2e/spikes/design-sites.e2e.ts, copied, the spike file left as is). Chrome context.
+// The design mode in site apps' windows (plan 36): e2e helpers and pages. Chrome context.
 
 export const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const MOUSE = ["pointerdown", "pointerup", "mousedown", "mouseup", "click", "auxclick", "contextmenu", "dblclick"];

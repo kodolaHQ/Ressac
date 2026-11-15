@@ -6,7 +6,7 @@ import net from "node:net";
 import path from "node:path";
 import type { Marionette } from "./marionette";
 
-// The UI's network e2e helpers, taken from the spikes (spikes/ui-network.e2e.ts, note 2026-11-08-reseau-interfaces-spikes.md).
+// The UI's network e2e helpers.
 // Nothing reaches the real internet: every name is under SFX and network.dns.native-is-localhost answers 127.0.0.1 for
 // any name (IPv4 only); the hostResolver log (MOZ_LOG) shows which names were asked.
 

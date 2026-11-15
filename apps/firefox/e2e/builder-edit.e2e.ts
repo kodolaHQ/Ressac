@@ -181,7 +181,6 @@ async function builder(id: string): Promise<void> {
 
 const q = (testid: string) => `doc.querySelector('[data-testid="${testid}"]')`;
 /** The text of a testid, or null if absent. */
-const text = (testid: string) => inUi<string | null>(m, `return ${q(testid)}?.textContent.trim() ?? null`);
 const count = (testid: string) => inUi<number>(m, `return doc.querySelectorAll('[data-testid="${testid}"]').length`);
 const value = (testid: string) => inUi<string | null>(m, `return ${q(testid)}?.value ?? null`);
 const waitText = (testid: string, t: string) => waitUi(m, `return ${q(testid)}?.textContent.trim() === arguments[0]`, [t]);

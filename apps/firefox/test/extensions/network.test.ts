@@ -459,7 +459,7 @@ test("guard: tabs.executeScript (MV2) first passes the page guards in the same f
 });
 
 test("guard: on the context's request, the background injects the markers' files (CSS then JS, guards first) in the sender's exact document, only if it is a tab", async () => {
-  const { chrome, calls, emit } = guardContext({ nonTabs: [6] });
+  const { calls, emit } = guardContext({ nonTabs: [6] });
   expect(await emit({ ressac: "context", files: [3, 0, 2] }, { tab: { id: 4 }, frameId: 2, documentId: "D" })).toEqual({ tab: true });
   const target = { tabId: 4, documentIds: ["D"] };
   expect(calls).toEqual([
