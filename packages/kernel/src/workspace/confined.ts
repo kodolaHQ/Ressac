@@ -58,14 +58,14 @@ export function enter(top: string, names: string[], create: boolean): void {
   }
 }
 
-export type ReadFiles = { files: { text: string; mtime: number }[] } | { failed: number; why: "absent" | "refused" | "big" };
+export type ReadFiles = { files: ({ text: string; mtime: number } | null)[] } | { failed: number; why: "absent" | "refused" | "big" };
 
 /**
  * Child side (after `enter`): the files at `paths` (relative, `/`-separated), each folder on the way entered and checked
  * by dev/ino, each file opened by bare name with O_NOFOLLOW, at most `max` bytes each and `totalMax` in all. The first
- * failure stops the reads: its index and why.
+ * failure stops the reads: its index and why; with `skip`, a file that fails is null instead.
  */
-export function readFiles(paths: string[], max: number, totalMax: number): ReadFiles {
+export function readFiles(paths: string[], max: number, totalMax: number, skip = false): ReadFiles {
   const fs = process.getBuiltinModule("node:fs");
   const { O_RDONLY, O_NOFOLLOW, O_NONBLOCK } = fs.constants;
   type Id = { dev: number; ino: number };
@@ -105,21 +105,26 @@ export function readFiles(paths: string[], max: number, totalMax: number): ReadF
       fs.closeSync(fd);
     }
   };
-  const files: { text: string; mtime: number }[] = [];
+  const files: ({ text: string; mtime: number } | null)[] = [];
   for (let i = 0; i < paths.length; i++) {
     const r = one(paths[i]!);
-    if (typeof r === "string") return { failed: i, why: r };
-    files.push(r);
+    if (typeof r === "string" && !skip) return { failed: i, why: r };
+    files.push(typeof r === "string" ? null : r);
   }
   return { files };
+}
+
+/** Child side (after `enter`): the names in the working folder. */
+export function listFolder(): string[] {
+  return process.getBuiltinModule("node:fs").readdirSync(".");
 }
 
 /**
  * Child side (after `enter`): `moves` renamed from the parent folder into this one (`..` is the real parent, never a
  * link), then each `[name, base64]` of `writes` written atomically by bare name (temp O_CREAT|O_EXCL|O_NOFOLLOW, then
- * rename). "failed" if a write failed.
+ * rename), then each of `removes` (a file or a link, never followed) deleted. "failed" if a write or a delete failed.
  */
-export function writeEntries(writes: [string, string][], moves: string[]): "done" | "failed" {
+export function writeEntries(writes: [string, string][], moves: string[], removes: string[] = []): "done" | "failed" {
   const fs = process.getBuiltinModule("node:fs");
   const { randomBytes } = process.getBuiltinModule("node:crypto");
   const { O_WRONLY, O_CREAT, O_EXCL, O_NOFOLLOW } = fs.constants;
@@ -144,6 +149,11 @@ export function writeEntries(writes: [string, string][], moves: string[]): "done
       fs.rmSync(temp, { force: true });
       return "failed";
     }
+  }
+  try {
+    for (const name of removes) fs.rmSync(name, { force: true });
+  } catch {
+    return "failed";
   }
   return "done";
 }

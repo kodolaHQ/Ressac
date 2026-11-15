@@ -311,7 +311,9 @@ describe("Remarks", () => {
     await mkdir(outsideBatch);
     await writeFile(join(outsideBatch, "batch.json"), content);
     await symlink(outsideBatch, batchFolder);
-    await expect(r.markBatchHandled("app-essai", batch.id)).rejects.toThrow(FOLDER_LINK);
+    // Not even read through the link: the batch is unknown.
+    await r.markBatchHandled("app-essai", batch.id);
+    expect(await r.batches("app-essai")).toEqual([]);
     expect(await readFile(join(outsideBatch, "batch.json"), "utf8")).toBe(content);
   });
 
@@ -324,6 +326,41 @@ describe("Remarks", () => {
     await symlink(outside, folder);
     await expect(r.addToBasket("app-essai", { text: "x", context: ctx(), capture: PNG })).rejects.toThrow(FOLDER_LINK);
     expect(await readdir(outside)).toEqual([]);
+  });
+
+  test("a project or batch folder that is a link: nothing read, deleted or purged at its end", async () => {
+    const { folders, clock, r } = await frame();
+    const outside = await tempFolder();
+    const e = await r.addToBasket("app-essai", { text: "x", context: ctx(), capture: PNG });
+    const folder = remarksFolder(folders, "app-essai");
+    // A Mac folder with the same names behind a swapped project folder.
+    await writeFile(join(outside, "basket.json"), JSON.stringify([{ id: e.id, type: "design", text: "du Mac", context: ctx(), capture: `${e.id}.png` }]));
+    await writeFile(join(outside, `${e.id}.png`), "du Mac");
+    await rename(folder, `${folder}-vrai`);
+    await symlink(outside, folder);
+    expect(await r.basket("app-essai")).toEqual([]);
+    await r.removeFromBasket("app-essai", e.id);
+    expect(await readFile(join(outside, `${e.id}.png`), "utf8")).toBe("du Mac");
+    await expect(r.forget("app-essai")).rejects.toThrow(FOLDER_LINK);
+    expect((await readdir(outside)).sort()).toEqual(["basket.json", `${e.id}.png`]);
+    // A handled batch whose folder became a link to a Mac folder: the purge leaves the Mac folder alone.
+    await rm(folder);
+    await rename(`${folder}-vrai`, folder);
+    const batch = await r.sendBasket("app-essai", { destination: "agent" });
+    await r.markBatchHandled("app-essai", batch.id);
+    const batchFolder = r.batchFolder("app-essai", batch.id);
+    const macBatch = join(outside, "lot");
+    await rename(batchFolder, macBatch);
+    await symlink(macBatch, batchFolder);
+    clock.t = new Date(clock.t.getTime() + 40 * 86_400_000);
+    await r.purge();
+    expect(await readdir(macBatch)).toContain("batch.json");
+    // A real one is purged, and forget takes the project folder away.
+    await rm(batchFolder);
+    await rename(macBatch, batchFolder);
+    expect(await r.purge()).toBe(1);
+    await r.forget("app-essai");
+    expect(await exists(folder)).toBe(false);
   });
 
   test("invalid project identifier refused", async () => {
