@@ -1,6 +1,17 @@
 /** What changed for the user, newest first. Add an entry when bumping `version` in package.json: its page opens once after the update. */
 export const RELEASE_NOTES: { version: string; date: string; items: string[] }[] = [
   {
+    version: "0.1.7",
+    date: "novembre 2026",
+    items: [
+      "Fermer une fenêtre ne fait plus disparaître ses onglets : ils passent dans la fenêtre qui reste.",
+      "Ressac consomme beaucoup moins quand il est au premier plan : l'aura ne bouge plus que derrière les pages de Ressac (accueil, réglages). Réglages › Interface › « Aura animée » la fige partout.",
+      "Les modèles locaux (Ollama) libèrent la mémoire une minute après une tâche de fond, au lieu de cinq à dix.",
+      "Sécurité : l'agent ne peut plus atteindre un fichier de votre Mac par un lien posé dans son espace, ni lire ou outiller une page qui a changé de site entre-temps. Les extensions ne peuvent plus cacher ni déplacer les onglets de Ressac.",
+      "Vie privée : les rapports de plantage n'envoient plus l'adresse de la page ouverte, et l'historique oublie les visites de plus de six mois.",
+    ],
+  },
+  {
     version: "0.1.6",
     date: "novembre 2026",
     items: [
