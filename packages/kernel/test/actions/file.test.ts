@@ -106,14 +106,19 @@ describe("FileActions", () => {
     const second = f.launch("a", { input: "autre", trigger: "manual" });
     expect(second.already).toBe(true);
     expect(second.end).toBe(first.end);
-    expect(f.try("a", "x", "y").already).toBe(true);
+    // A builder try is not the real run: it runs on its own, once the run has ended.
+    const attempt = f.try("a", "x", "y");
+    expect(attempt.already).toBe(false);
     await waitUntil(() => r.launchedList.length === 1);
     r.release("a");
     await first.end;
+    await waitUntil(() => r.launchedList.length === 2);
+    r.release("a");
+    await attempt.end;
     // Finished: a new request goes through.
     const third = f.launch("a", { input: null, trigger: "manual" });
     expect(third.already).toBe(false);
-    await waitUntil(() => r.launchedList.length === 2);
+    await waitUntil(() => r.launchedList.length === 3);
     r.release("a");
     await third.end;
   });

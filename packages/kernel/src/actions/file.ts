@@ -139,6 +139,10 @@ export class FileActions {
 
   private ask(id: string, o: Pick<Request, "input" | "trigger" | "attempt">): ActionLaunch {
     const existing = this.perAction.get(id);
+    // A try and a real run never stand for each other: the second one starts once the first has ended.
+    if (existing && (existing.attempt === null) !== (o.attempt === null)) {
+      return { already: false, end: existing.end.catch(() => undefined).then(() => this.ask(id, o).end) };
+    }
     if (existing) return { already: true, end: existing.end };
     if (this.isStopped) return { already: false, end: Promise.resolve(this.stopped()) };
     const d: Request = { id, ...o, ctl: new AbortController(), end: Promise.resolve(this.stopped()), since: this.o.clock().toISOString() };

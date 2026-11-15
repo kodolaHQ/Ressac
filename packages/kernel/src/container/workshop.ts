@@ -58,10 +58,12 @@ export function parseBuildStep(line: string, locale: string): Pick<BuildProgress
 }
 
 /** Bumped with any change to RUN_FLAGS: it goes into the image hash, so the container is recreated (the fake docker of the e2e tests repeats it). */
-export const RUN_FLAGS_VERSION = "1";
+export const RUN_FLAGS_VERSION = "2";
 /** The network, memory and proxy flags of `docker run` (the part after the ports). */
 export const RUN_FLAGS = [
   "--cap-add", "NET_ADMIN",
+  // No setuid route to root for the agent: root alone (docker exec -u root) applies the network rules.
+  "--security-opt", "no-new-privileges",
   "--memory", "4g",
   "--pids-limit", "1024",
   "--sysctl", "net.ipv6.conf.all.disable_ipv6=1",
@@ -425,6 +427,9 @@ export class Workshop {
       "-v", `${engine}:/opt/ressac/engine:ro`,
       "--memory", "512m",
       "--pids-limit", "128",
+      "--cpus", "1",
+      "--cap-drop", "ALL",
+      "--security-opt", "no-new-privileges",
       IMAGE,
       "timeout", "-k", "5", String(delayS),
       "node", "/opt/ressac/engine/harvester.mjs", "/widget",

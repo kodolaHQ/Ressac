@@ -404,9 +404,11 @@ export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
     try {
       if (outcome.output.to === "widget") await writeData(widgetsFolder, id, outcome.output.value, loc(o));
     } catch (e) {
-      // Data refused (too big…): the previous ones stay, the run fails kernel-side.
+      // Data refused (too big…): the previous ones stay, the run fails kernel-side. A disk error names Mac paths: logged, a fixed text goes out.
+      const disk = typeof (e as NodeJS.ErrnoException)?.code === "string";
+      if (disk) console.error("[ressac] widget data write:", e);
       execution.status = "failed";
-      execution.error = truncate(message(e), MAX_ERROR);
+      execution.error = disk ? say(loc(o), "kernel-err-internal-harvest") : truncate(message(e), MAX_ERROR);
       execution.kernelError = true;
       return concludeWithoutData(execution, { status: "error", error: execution.error, log: log });
     }

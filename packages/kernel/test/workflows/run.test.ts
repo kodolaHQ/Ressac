@@ -974,17 +974,17 @@ describe("executerWorkflow: web search and open reads", () => {
     expect(web.requests).toEqual([]);
   });
 
-  it("widget without web: 150 reads go through, no throttle wait", async () => {
+  it("widget without web: 100 reads go through with no throttle wait, the 101st is refused", async () => {
     const spy = new Pacing({ wait: async () => { throw new Error("aucune attente attendue"); } });
     const read = vi.spyOn(spy, "read");
     const search = vi.spyOn(spy, "search");
     const { b, bridge } = await webBench(
-      `export default async (e, w) => { for (let i = 0; i < 150; i++) await w.readPage("https://pages.example/" + i); return "fini"; };`,
+      `export default async (e, w) => { let n = 0; try { for (let i = 0; i < 150; i++) { await w.readPage("https://pages.example/" + i); n++; } } catch (err) { return n + " " + err.message; } return "fini"; };`,
       { pacing: spy },
     );
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(value(r)).toBe("fini");
-    expect(bridge.calls.filter((a) => a.method === "readPageInvisible")).toHaveLength(150);
+    expect(value(r)).toBe(`100 ${TOO_MANY_READS}`);
+    expect(bridge.calls.filter((a) => a.method === "readPageInvisible")).toHaveLength(100);
     expect(read).not.toHaveBeenCalled();
     expect(search).not.toHaveBeenCalled();
   });

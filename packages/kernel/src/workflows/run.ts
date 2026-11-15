@@ -433,13 +433,14 @@ export async function runWorkflow(
   });
 
   /**
-   * An open read (page without account, fetch, feed): for a `web` widget, counted (100 per run) and
-   * paced per host, redirects to another site included (`changeHost`); otherwise, done right away as before.
+   * An open read (page without account, fetch, feed): counted (100 per run) for every owner, so a loop cannot hammer a
+   * site from the user's address all run long; for a `web` widget also paced per host, redirects to another site
+   * included (`changeHost`).
    */
   const openRead = <T>(u: URL, f: (changeHost?: ChangeHost) => Promise<T>): Promise<T> => {
-    if (!web) return f();
     if (openReads >= MAX_OPEN_READS) throw new Error(TOO_MANY_READS);
     openReads++;
+    if (!web) return f();
     return pacing.read(u.hostname, f, runEnd.signal);
   };
 
