@@ -91,8 +91,9 @@ const denial = (error: string, kernel = true): LaunchResult => ({ status: "inval
 async function validGrant(actionsFolder: string, id: string, d: DeclarationAction): Promise<boolean> {
   const saved = (await readGrants(actionsFolder))[id];
   if (saved !== undefined && !grantValid(d, saved)) {
-    await removeGrant(actionsFolder, id);
+    // Data first: until it is gone, the grant still guards it (a crash in between leaves it guarded).
     await deleteDataAction(actionsFolder, id);
+    await removeGrant(actionsFolder, id);
   }
   return d.sources.account.length === 0 || grantValid(d, (await readGrants(actionsFolder))[id]);
 }
@@ -156,8 +157,9 @@ export async function runAction(o: OptionsAction): Promise<LaunchResult> {
       return grantValid(declaration, a) ? { profile: a.profile } : null;
     },
     async onProfileDenied() {
-      await removeGrant(actionsFolder, id);
+      // Data first: until it is gone, the grant still guards it (a crash in between leaves it guarded).
       await deleteDataAction(actionsFolder, id);
+      await removeGrant(actionsFolder, id);
     },
     grantRequiredMessage: actionGrantRequired(declaration, loc()),
   };

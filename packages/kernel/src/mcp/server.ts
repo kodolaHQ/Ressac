@@ -1153,6 +1153,8 @@ function registerWidgetsTools(
     },
     protect(async ({ id }) => {
       const before = await read(id);
+      // A run with the account answers with its status and duration, which its code can shape from the account's data: card first.
+      if (!(await askIfNeeded(id, before))) return text(`L'utilisateur a refusé de lancer le widget ${id}, qui lit avec son compte.`);
       const state = await w.tools.harvest(id);
       const after = (await w.tools.read(id)) ?? before;
       // A declaration that loses its account during the harvest frees nothing: the strictest rule applies.
@@ -1271,6 +1273,8 @@ function registerActionsTools(
       if (before.input !== null && (input === undefined || input.trim() === "")) {
         return text(json({ status: "invalid", error: requiredInput("fr", before.input) }));
       }
+      // Same rule as harvest_widget: the end and the duration of a run with the account are its data.
+      if (!(await askIfNeeded(id, before))) return text(`L'utilisateur a refusé de lancer l'action ${id}, qui lit avec son compte.`);
       const end = await a.tools.launch(id, input);
       const after = (await a.tools.read(id)) ?? before;
       // A declaration that loses its account during the run frees nothing: the strictest rule applies.

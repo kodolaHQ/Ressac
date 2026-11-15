@@ -19,6 +19,8 @@ const FALLBACK = "en";
  * the old version's hash (`shasum -a 256 templates/<language>/AGENTS.md`) before modifying it.
  */
 export const OLD_AGENTS = new Set([
+  "c2af8a5d6880a5dc9e0e76544955b305203ebb453eb5fa7e0bcc86e5eef931f1",
+  "cb5203cc8fdbedc30f1dd77e138716f3ad3fbd27129a935dafc0d71d876ac89a",
   "08de4118ce41e65b76e8b9795595d41e749c9b60d72a4f3f87691d2cbc99e8ab",
   "58be09d0c5a9d6b8a08f055fd4ed62415403b54f0acd4f6596e0473a4b6da875",
   "0465e45d90b43e2ab810f9d47b53d9efbfd72df15831a81c83c38b36f8172341",
@@ -269,6 +271,9 @@ const OLD_TEMPLATES: Readonly<Record<string, ReadonlySet<string>>> = {
   "guides/widgets.md": new Set([
     "687a950d62e647363f9c908d8b71356ecef73a70177af831f072aca33d6a1f9d",
     "517252df64b8d493bc8ad0dca33f40273fb3e10b03b5eac23e480de3c2e3d359",
+    // Before the card in front of harvest_widget.
+    "6e4dc72d2c29b5e7815bb31d7c2c3b1ce12896dc563ede9f3ca0ef3247ce7223",
+    "dc07b4c371b3662618656495fd2ed1868bc0da37f9a27c2a775ec22cbdc57599",
   ]),
   // The version that still listed `cookies` among the working rights.
   "guides/extensions.md": new Set(["ab3d59cd7ee04a33e9c29ee43a1bd086d16ca5b038e582b8fb2f756b7135ac9b", "bb0ef51c03aaa9bfc5788348376f42aef8555eb35536f429b30ad7cc92844436"]),

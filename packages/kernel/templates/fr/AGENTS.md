@@ -200,10 +200,10 @@ group(tickets, priorite)
 | `search_history(query, since?, until?, limit?)` | Cherche dans les pages que l'utilisateur a visitées (titre, URL, texte retenu), sur une période facultative en dates ISO |
 | `search_bookmarks(query, limit?)` | Cherche dans les favoris de l'utilisateur (importés ou enregistrés), par titre ou URL |
 | `read_history(url)` | Texte retenu d'une page de l'historique, pour la résumer |
-| `harvest_widget(id)` | Lance tout de suite la récolte d'un widget et rend `{ status, run?, error?, log?, data? }` (réduit pour un widget avec compte sans accord de l'utilisateur) |
+| `harvest_widget(id)` | Lance tout de suite la récolte d'un widget et rend `{ status, run?, error?, log?, data? }` (widget avec compte : carte d'accord d'abord) |
 | `widget_runs(id, run?)` | Exécutions récentes d'un widget (liste) ou le détail de l'une : statut, blocs, durées, éléments, sorties, journaux ; pour un widget avec compte, statut seul sans l'accord de l'utilisateur |
 | `open_workflow` | Le workflow ouvert dans le constructeur de ta fenêtre, `{ widget, block }` ou `{ action, block }` (`block` : si l'utilisateur en a sélectionné un) : des identifiants seulement |
-| `launch_action(id, input?)` | Lance une action et attend sa fin : `{ status, run?, error? }`, jamais les résultats ; l'utilisateur voit la page dans les résultats précédents de l'action |
+| `launch_action(id, input?)` | Lance une action et attend sa fin : `{ status, run?, error? }`, jamais les résultats (action avec compte : carte d'accord d'abord) ; l'utilisateur voit la page dans les résultats précédents de l'action |
 | `action_runs(id, run?)` | Exécutions récentes d'une action (liste) ou le détail de l'une, plan de la page compris ; pour une action avec compte, statut seul sans l'accord de l'utilisateur |
 | `widget_data(id)` | Dernières données récoltées d'un widget ; pour un widget avec compte, une carte demande l'accord de l'utilisateur |
 | `list_extensions` | Extensions de l'utilisateur (les siennes et les tiennes) : clé, nom, version, source, espaces où elles sont actives (les espaces privés sont seulement comptés), erreurs |

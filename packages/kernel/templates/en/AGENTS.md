@@ -199,10 +199,10 @@ group(tickets, priorite)
 | `search_history(query, since?, until?, limit?)` | Searches the pages the user visited (title, URL, kept text), over an optional period in ISO dates |
 | `search_bookmarks(query, limit?)` | Searches the user's bookmarks (imported or saved), by title or URL |
 | `read_history(url)` | Kept text of a history page, to summarize it |
-| `harvest_widget(id)` | Runs a widget's harvest right away and returns `{ status, run?, error?, log?, data? }` (reduced for a widget with an account without the user's grant) |
+| `harvest_widget(id)` | Runs a widget's harvest right away and returns `{ status, run?, error?, log?, data? }` (widget with an account: grant card first) |
 | `widget_runs(id, run?)` | A widget's recent runs (list) or the detail of one: status, blocks, durations, items, outputs, logs; for a widget with an account, status only without the user's grant |
 | `open_workflow` | The workflow open in your window's builder, `{ widget, block }` or `{ action, block }` (`block`: if the user selected one): identifiers only |
-| `launch_action(id, input?)` | Launches an action and waits for its end: `{ status, run?, error? }`, never the results; the user sees the page in the action's previous results |
+| `launch_action(id, input?)` | Launches an action and waits for its end: `{ status, run?, error? }`, never the results (action with an account: grant card first); the user sees the page in the action's previous results |
 | `action_runs(id, run?)` | An action's recent runs (list) or the detail of one, page plan included; for an action with an account, status only without the user's grant |
 | `widget_data(id)` | A widget's last harvested data; for a widget with an account, a card asks for the user's grant |
 | `list_extensions` | The user's extensions (theirs and yours): key, name, version, source, spaces where they are active (private spaces are only counted), errors |

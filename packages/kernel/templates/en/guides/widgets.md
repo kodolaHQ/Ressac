@@ -377,9 +377,8 @@ saved on its own in `workflow.json`. So:
    to see where it gets stuck. On an error, also read the `log` it returns.
 3. **Privacy**: only ask for the real data of a widget that reads an account
    (`widget_data`) if you cannot move forward otherwise; work with
-   `example.json` first. Without the user's grant, `harvest_widget` only returns, for such a widget, the
-   status and a fixed message: neither the error, nor the log, nor the data. `widget_data`
-   then shows the user a grant card, valid for the conversation.
+   `example.json` first. For such a widget, `harvest_widget` and `widget_data` first show the user
+   a grant card, valid for the conversation; refused, nothing is run or shown.
    Same for `widget_runs`: the list only gives `{ id, status }` per run (a
    partial harvest looks successful there), and asking for the detail shows the user the same grant
    card as `widget_data`; a single grant covers both.

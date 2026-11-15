@@ -233,8 +233,9 @@ export function createActionsHost(o: {
       const forget = async (x: string) => {
         const kernel = o.kernel();
         if (kernel) return kernel.actions.denyGrant(x);
-        await removeGrant(o.actionsFolder, x);
+        // Data first: until it is gone, the grant still guards it (a crash in between leaves it guarded).
         await deleteDataAction(o.actionsFolder, x);
+        await removeGrant(o.actionsFolder, x);
       };
       try {
         await trashAction(o.paths, id, forget);

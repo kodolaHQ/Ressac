@@ -377,9 +377,9 @@ enregistrée toute seule dans `workflow.json`. Donc :
    pour voir où ça coince. En cas d'erreur, lis aussi le `log` qu'il rend.
 3. **Vie privée** : ne demande les vraies données d'un widget qui lit un compte
    (`widget_data`) que si tu ne peux pas avancer autrement ; travaille d'abord avec
-   `example.json`. Sans l'accord de l'utilisateur, `harvest_widget` ne rend pour un tel widget que le
-   statut et un message fixe : ni l'erreur, ni le journal, ni les données. `widget_data`
-   affiche alors à l'utilisateur une carte d'accord, valable pour la conversation.
+   `example.json`. Pour un tel widget, `harvest_widget` et `widget_data` affichent d'abord à
+   l'utilisateur une carte d'accord, valable pour la conversation ; refusée, rien n'est lancé
+   ni montré.
    Pareil pour `widget_runs` : la liste ne donne que `{ id, status }` par exécution (une
    récolte partielle y paraît réussie), et en demander le détail affiche à l'utilisateur la même carte
    d'accord que `widget_data` ; un seul accord couvre les deux.

@@ -589,8 +589,9 @@ export async function createKernel(o: {
       await giveGrant(actionsFolder, id, { domains: [...account].sort(), public: [...publics].sort(), profile: profileName });
     },
     async denyGrant(id) {
-      await removeGrant(actionsFolder, id);
+      // Data first: until it is gone, the grant still guards it.
       await deleteDataAction(actionsFolder, id);
+      await removeGrant(actionsFolder, id);
     },
     replay: (id, origin, start) => fileActions.try(id, origin, start),
     deleteData: (id) => deleteDataAction(actionsFolder, id),
@@ -704,9 +705,9 @@ export async function createKernel(o: {
       scheduler.harvestNow(id).catch((e) => console.error("[ressac] harvest after grant:", e));
     },
     async denyGrant(id) {
-      await removeGrant(widgetsFolder, id);
-      // The data read with this account goes with the grant: without it, nothing protects it any more (account removed…).
+      // The data read with this account goes with the grant, and first: without the grant, nothing protects it any more (account removed…).
       await deleteData(widgetsFolder, id);
+      await removeGrant(widgetsFolder, id);
       const w = await widget(id);
       if (w && !("error" in w) && w.declaration.sources.account.length) {
         const before = await readWidgetState(widgetsFolder, id);

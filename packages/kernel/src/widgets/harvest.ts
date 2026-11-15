@@ -147,8 +147,9 @@ async function validGrant(widgetsFolder: string, id: string, declaration: Declar
   const grantSaved = (await readGrants(widgetsFolder))[id];
   const removed = grantSaved !== undefined && !grantValid(declaration, grantSaved);
   if (removed) {
-    await removeGrant(widgetsFolder, id);
+    // Data first: until it is gone, the grant still guards it (a crash in between leaves it guarded).
     await deleteData(widgetsFolder, id);
+    await removeGrant(widgetsFolder, id);
   }
   const can = declaration.sources.account.length === 0 || grantValid(declaration, (await readGrants(widgetsFolder))[id]);
   return { can: can, removed: removed };
@@ -187,8 +188,9 @@ function grantContext(
     // The grant is withdrawn before the stop: when the run concludes, it no longer exists. What was read with this account goes
     // with it (the widget shows its example until the new grant).
     async onProfileDenied() {
-      await removeGrant(widgetsFolder, id);
+      // Data first: until it is gone, the grant still guards it (a crash in between leaves it guarded).
       await deleteData(widgetsFolder, id);
+      await removeGrant(widgetsFolder, id);
     },
     grantRequiredMessage: grantRequired(declaration, locale),
   };
