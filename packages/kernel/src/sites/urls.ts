@@ -8,7 +8,7 @@ export type UrlState = { current: string; previous: string[]; since: string | nu
 const VALID_HOST = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
 /** Lowercase, trailing dot removed, Unicode converted to ASCII (punycode); "" if the name is invalid. */
 const clean = (h: string) => {
-  const b = h.toLowerCase().replace(/\.+$/, "");
+  const b = h.toLowerCase().replace(/(?<!\.)\.+$/, "");
   if (/[/@:?#\s%\\*[\]]/.test(b)) return "";
   const a = /^[a-z0-9.-]*$/.test(b) ? b : domainToASCII(b);
   return VALID_HOST.test(a) ? a : "";

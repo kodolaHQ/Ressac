@@ -58,7 +58,7 @@ export function changeUrl(sitesFolder: string, id: string, d: DeclarationSite, f
     const currentUrl = await readUrlState(sitesFolder, id);
     let before: string;
     try {
-      before = new URL(d.url).hostname.toLowerCase().replace(/\.+$/, "");
+      before = new URL(d.url).hostname.toLowerCase().replace(/(?<!\.)\.+$/, "");
     } catch {
       before = d.domains[0] ?? "";
     }

@@ -31,7 +31,7 @@ export const message = (e: unknown) => (e instanceof Error ? e.message : String(
  */
 export function localUrl(host: string): boolean {
   // « localhost. » (trailing dot) designates the same machine as « localhost ».
-  const h = host.replace(/^\[|\]$/g, "").toLowerCase().replace(/\.+$/, "");
+  const h = host.replace(/^\[|\]$/g, "").toLowerCase().replace(/(?<!\.)\.+$/, "");
   if (!h || h === "localhost" || /\.(localhost|local|internal|home\.arpa)$/.test(h)) return true;
   if (isIP(h) === 4) {
     const [a = 0, b = 0] = h.split(".").map(Number);
@@ -58,7 +58,7 @@ export function checkUrl(raw: string, domains: readonly string[] | null, localUr
   if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error("Seules les URL http(s) sont permises");
   if (u.username || u.password) throw new Error("URL avec identifiants refusée");
   // The trailing dot (« app.daily.dev. ») does not change the name: it is removed before any comparison.
-  const host = u.hostname.toLowerCase().replace(/\.+$/, "");
+  const host = u.hostname.toLowerCase().replace(/(?<!\.)\.+$/, "");
   if (domains && !domains.includes(host)) throw new Error(`Domaine non déclaré : ${host}`);
   if (!localUrls && localUrl(host)) throw new Error(`Adresse locale refusée : ${host}`);
   return u;

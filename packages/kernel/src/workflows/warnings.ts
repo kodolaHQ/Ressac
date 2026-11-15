@@ -18,7 +18,7 @@ function hostOf(url: string): string | null {
   const m = /^https?:\/\/([^/?#]*)/i.exec(url.trim());
   if (!m || m[1]!.includes("{")) return null;
   try {
-    return new URL(url.trim()).hostname.toLowerCase().replace(/\.+$/, "") || null;
+    return new URL(url.trim()).hostname.toLowerCase().replace(/(?<!\.)\.+$/, "") || null;
   } catch {
     return null;
   }
@@ -67,7 +67,7 @@ export function warnWorkflow(
       const v = b.params[c.name];
       if (typeof v !== "string") continue;
       // An optional marker (`{config.x?}`) does not need the value: it is never reported.
-      for (const m of v.matchAll(/\{config\.([A-Za-z0-9_]+)[^}]*\}/g)) {
+      for (const m of v.matchAll(/\{config\.(\w+)(?:[^}\w][^}]*)?\}/g)) {
         if (!m[0].endsWith("?}") && !Object.hasOwn(config, m[1]!)) missing.add(m[1]!);
       }
     }

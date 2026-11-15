@@ -9,7 +9,7 @@ type Route = { queue: Promise<unknown>; end: number | null; running: number };
 const newRoute = (): Route => ({ queue: Promise.resolve(), end: null, running: 0 });
 
 /** A host's site for the pacing: lowercase host name, without « www. » or trailing dot (no public suffix list). */
-export const sitePacing = (host: string) => host.toLowerCase().replace(/\.+$/, "").replace(/^www\./, "");
+export const sitePacing = (host: string) => host.toLowerCase().replace(/(?<!\.)\.+$/, "").replace(/^www\./, "");
 
 /**
  * Moves a read already started onto another site's lane (redirect): the current lane is released (its

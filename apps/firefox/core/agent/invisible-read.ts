@@ -11,7 +11,7 @@ export function readableProfiles(state: Pick<BrowserState, "profiles" | "spaces"
 }
 
 /** A comparable host name: lowercase, without a trailing dot (`exemple.test.` is `exemple.test`). */
-const normalize = (host: string) => host.toLowerCase().replace(/\.+$/, "");
+const normalize = (host: string) => host.toLowerCase().replace(/(?<!\.)\.+$/, "");
 
 /**
  * The URL may be loaded: http(s) only, never an address of the machine or the local network (except

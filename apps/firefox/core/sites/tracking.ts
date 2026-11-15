@@ -6,7 +6,7 @@ export type TrackingResult = { t: "change"; domain: string; state: UrlState } | 
 /** The host of an address, lowercase and without a trailing dot; "" if it is unreadable. */
 function hostOf(url: string): string {
   try {
-    return new URL(url).hostname.toLowerCase().replace(/\.+$/, "");
+    return new URL(url).hostname.toLowerCase().replace(/(?<!\.)\.+$/, "");
   } catch {
     return "";
   }

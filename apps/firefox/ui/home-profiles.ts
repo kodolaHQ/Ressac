@@ -36,7 +36,7 @@ const isIp = (h: string): 0 | 4 | 6 => (/^(\d{1,3}\.){3}\d{1,3}$/.test(h) ? 4 : 
 
 /** Copy of `adresseLocale` (packages/kernel/src/workflows/acces.ts). */
 export function localUrl(hostName: string): boolean {
-  const h = hostName.replace(/^\[|\]$/g, "").toLowerCase().replace(/\.+$/, "");
+  const h = hostName.replace(/^\[|\]$/g, "").toLowerCase().replace(/(?<!\.)\.+$/, "");
   if (!h || h === "localhost" || /\.(localhost|local|internal|home\.arpa)$/.test(h)) return true;
   if (isIp(h) === 4) {
     const [a = 0, b = 0] = h.split(".").map(Number);

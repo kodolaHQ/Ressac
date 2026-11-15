@@ -563,7 +563,7 @@ export async function runWorkflow(
   /** An accepted read (URL host, or that of the web search), on the last block started and not finished. */
   function reportRead(target: URL | string) {
     const block = opened.at(-1);
-    const host = typeof target === "string" ? target : target.hostname.toLowerCase().replace(/\.+$/, "");
+    const host = typeof target === "string" ? target : target.hostname.toLowerCase().replace(/(?<!\.)\.+$/, "");
     if (block) relay({ block: block.id, step: "read", host: host });
   }
   /** Per block: the time of the last relayed `progress` line. */
