@@ -40,7 +40,7 @@ describe("updater configuration", () => {
 
   it("dev builds never update", () => {
     const scripts = JSON.parse(read("package.json")).scripts;
-    for (const s of ["build", "build:ui"]) expect(scripts[s]).toMatch(/zsh scripts\/dev-policy\.sh$/);
+    for (const s of ["build", "build:ui"]) expect(scripts[s]).toMatch(/zsh scripts\/dev-policy\.sh( &&|$)/);
     const script = read("scripts/dev-policy.sh");
     expect(script).toContain("dist/Ressac.app");
     expect(script).toContain("/Contents/Resources/distribution/policies.json");
