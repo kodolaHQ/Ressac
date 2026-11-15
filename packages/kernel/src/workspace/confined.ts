@@ -3,12 +3,14 @@
 // verified folder before it, so no path is resolved again from the top through a link.
 import { execFile } from "node:child_process";
 
-/** `fn(...args)` in a child Node process, its result as JSON; null if it threw. `fn` must be self-contained (toString()). */
-export function inChild<T>(fn: (...args: any[]) => T, args: unknown[], timeout = 30_000): Promise<T | null> {
-  // tsx (esbuild keepNames) wraps inner functions in __name(), absent in the child.
-  const script = `var __name = (f) => f; process.stdout.write(JSON.stringify((${fn.toString()})(...JSON.parse(process.argv[1]))) ?? "null")`;
+/** Runs `call` (an expression over `args`) in a child Node process, its result as JSON; null if it threw. */
+function run<T>(call: string, args: unknown[], timeout: number): Promise<T | null> {
+  // tsx (esbuild keepNames) wraps inner functions in __name(), absent in the child. The arguments come on stdin: a
+  // capture can exceed the command line's limit.
+  const script = `var __name = (f) => f; const args = JSON.parse(process.getBuiltinModule("node:fs").readFileSync(0, "utf8")); process.stdout.write(JSON.stringify(${call}) ?? "null")`;
   return new Promise((resolve) => {
-    execFile(process.execPath, ["-e", script, JSON.stringify(args)], { encoding: "utf8", timeout, maxBuffer: 1024 * 1024, env: {} }, (err, stdout) => {
+    // 16 MB: the largest read (1 MB of tweaks) even fully escaped by JSON.
+    const child = execFile(process.execPath, ["-e", script], { encoding: "utf8", timeout, maxBuffer: 16 * 1024 * 1024, env: {} }, (err, stdout) => {
       if (err) return resolve(null);
       try {
         resolve(JSON.parse(stdout) as T);
@@ -16,7 +18,134 @@ export function inChild<T>(fn: (...args: any[]) => T, args: unknown[], timeout =
         resolve(null);
       }
     });
+    child.stdin?.on("error", () => {});
+    child.stdin?.end(JSON.stringify(args));
   });
+}
+
+/** `fn(...args)` in a child Node process, its result as JSON; null if it threw. `fn` must be self-contained (toString()). */
+export function inChild<T>(fn: (...args: any[]) => T, args: unknown[], timeout = 30_000): Promise<T | null> {
+  return run(`(${fn.toString()})(...args)`, args, timeout);
+}
+
+/**
+ * `fn(...args)` in a child whose working folder is `<top>/<names…>`, entered by `enter`: so `fn` works by bare names in
+ * the verified folder. Null if a folder was refused or `fn` threw.
+ */
+export function inFolder<T>(top: string, names: string[], fn: (...args: any[]) => T, args: unknown[], o: { create?: boolean; timeout?: number } = {}): Promise<T | null> {
+  return run(`((${enter.toString()})(args[0], args[1], args[2]), (${fn.toString()})(...args.slice(3)))`, [top, names, o.create === true, ...args], o.timeout ?? 30_000);
+}
+
+/**
+ * Child side: chdir into `top` then each of `names`, each a real folder (never a link) checked by dev/ino once entered;
+ * `create`: a missing one is made as a real folder. Throws on a refusal.
+ */
+export function enter(top: string, names: string[], create: boolean): void {
+  const fs = process.getBuiltinModule("node:fs");
+  const step = (path: string) => {
+    const l = fs.lstatSync(path);
+    if (!l.isDirectory()) throw new Error("not a real folder");
+    process.chdir(path);
+    const here = fs.statSync(".");
+    if (here.dev !== l.dev || here.ino !== l.ino) throw new Error("folder changed");
+  };
+  step(top);
+  for (const name of names) {
+    if (name === "" || name === "." || name === ".." || name.includes("/")) throw new Error("bad name");
+    // An existing entry stays as is: the step judges it.
+    if (create) fs.mkdirSync(name, { recursive: true });
+    step(name);
+  }
+}
+
+export type ReadFiles = { files: { text: string; mtime: number }[] } | { failed: number; why: "absent" | "refused" | "big" };
+
+/**
+ * Child side (after `enter`): the files at `paths` (relative, `/`-separated), each folder on the way entered and checked
+ * by dev/ino, each file opened by bare name with O_NOFOLLOW, at most `max` bytes each and `totalMax` in all. The first
+ * failure stops the reads: its index and why.
+ */
+export function readFiles(paths: string[], max: number, totalMax: number): ReadFiles {
+  const fs = process.getBuiltinModule("node:fs");
+  const { O_RDONLY, O_NOFOLLOW, O_NONBLOCK } = fs.constants;
+  type Id = { dev: number; ino: number };
+  const same = (a: Id, b: Id) => a.dev === b.dev && a.ino === b.ino;
+  const home = process.cwd();
+  const top = fs.statSync(".");
+  let total = 0;
+  const one = (path: string): { text: string; mtime: number } | "absent" | "refused" | "big" => {
+    // Back to the verified folder: by path, then checked to be the same.
+    process.chdir(home);
+    if (!same(fs.statSync("."), top)) throw new Error("folder changed");
+    const parts = path.split("/");
+    if (parts.some((p) => p === "" || p === "." || p === "..")) return "refused";
+    const name = parts.pop()!;
+    for (const part of parts) {
+      const l = fs.lstatSync(part, { throwIfNoEntry: false });
+      if (!l) return "absent";
+      if (!l.isDirectory()) return "refused";
+      process.chdir(part);
+      if (!same(fs.statSync("."), l)) return "refused";
+    }
+    const l = fs.lstatSync(name, { throwIfNoEntry: false });
+    if (!l) return "absent";
+    if (!l.isFile()) return "refused";
+    if (l.size > max) return "big";
+    const fd = fs.openSync(name, O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
+    try {
+      const st = fs.fstatSync(fd);
+      if (!st.isFile()) return "refused";
+      const buffer = Buffer.alloc(max + 1);
+      let size = 0;
+      for (let n; size <= max && (n = fs.readSync(fd, buffer, size, max + 1 - size, null)) > 0; ) size += n;
+      // A file that grew since lstat is refused, never cut.
+      if (size > max || (total += size) > totalMax) return "big";
+      return { text: buffer.subarray(0, size).toString("utf8"), mtime: st.mtimeMs };
+    } finally {
+      fs.closeSync(fd);
+    }
+  };
+  const files: { text: string; mtime: number }[] = [];
+  for (let i = 0; i < paths.length; i++) {
+    const r = one(paths[i]!);
+    if (typeof r === "string") return { failed: i, why: r };
+    files.push(r);
+  }
+  return { files };
+}
+
+/**
+ * Child side (after `enter`): `moves` renamed from the parent folder into this one (`..` is the real parent, never a
+ * link), then each `[name, base64]` of `writes` written atomically by bare name (temp O_CREAT|O_EXCL|O_NOFOLLOW, then
+ * rename). "failed" if a write failed.
+ */
+export function writeEntries(writes: [string, string][], moves: string[]): "done" | "failed" {
+  const fs = process.getBuiltinModule("node:fs");
+  const { randomBytes } = process.getBuiltinModule("node:crypto");
+  const { O_WRONLY, O_CREAT, O_EXCL, O_NOFOLLOW } = fs.constants;
+  for (const m of moves) {
+    try {
+      fs.renameSync(`../${m}`, m);
+    } catch {
+      // already moved, or gone
+    }
+  }
+  for (const [name, data] of writes) {
+    const temp = `${name}.${randomBytes(4).toString("hex")}.tmp`;
+    try {
+      const fd = fs.openSync(temp, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o666);
+      try {
+        fs.writeFileSync(fd, Buffer.from(data, "base64"));
+      } finally {
+        fs.closeSync(fd);
+      }
+      fs.renameSync(temp, name);
+    } catch {
+      fs.rmSync(temp, { force: true });
+      return "failed";
+    }
+  }
+  return "done";
 }
 
 /**

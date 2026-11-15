@@ -1,6 +1,6 @@
-import { constants } from "node:fs";
-import { lstat, open, realpath, stat } from "node:fs/promises";
-import { join, sep } from "node:path";
+import { realpath, stat } from "node:fs/promises";
+import { basename, dirname, join, sep } from "node:path";
+import { inFolder as inConfinedFolder, readFiles, type ReadFiles } from "../workspace/confined.js";
 import { say } from "../i18n.js";
 import { writeAtomic } from "./executions.js";
 import { exists, readRawWorkflow } from "./read.js";
@@ -146,25 +146,12 @@ const tooBig = (locale: string) => say(locale, "workflows-code-too-big", { kb: S
 
 export async function readCodeFile(filesFolder: string, name: string, locale = "en"): Promise<{ text: string } | { absent: true } | { error: string }> {
   if (!CODE_NAME.test(name)) return { error: say(locale, "workflows-code-invalid-name") };
-  const path = join(filesFolder, name);
-  if (!(await exists(path))) return { absent: true };
-  try {
-    if (!(await inFolder(filesFolder, name))) return { error: say(locale, "workflows-code-leaves-folder") };
-    const folder = await lstat(filesFolder);
-    if (!folder.isDirectory()) return { error: say(locale, "workflows-code-leaves-folder") };
-    // Never through a link: not the file's (O_NOFOLLOW), nor a folder swapped in since (same folder, same file after the open).
-    const f = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
-    try {
-      const [info, after, entry] = await Promise.all([f.stat(), lstat(filesFolder), lstat(path)]);
-      if (!info.isFile() || after.dev !== folder.dev || after.ino !== folder.ino || entry.dev !== info.dev || entry.ino !== info.ino) return { error: say(locale, "workflows-code-leaves-folder") };
-      if (info.size > CODE_MAX_BYTES) return { error: tooBig(locale) };
-      return { text: await f.readFile("utf8") };
-    } finally {
-      await f.close();
-    }
-  } catch {
-    return { error: say(locale, "workflows-code-unreadable") };
-  }
+  // Never through a link, even one swapped in meanwhile: read by a child that walks into the folder (confined.ts).
+  const r = await inConfinedFolder<ReadFiles>(dirname(filesFolder), [basename(filesFolder)], readFiles, [[name], CODE_MAX_BYTES, CODE_MAX_BYTES]);
+  if (!r) return { error: say(locale, "workflows-code-unreadable") };
+  if ("files" in r) return { text: r.files[0]!.text };
+  if (r.why === "absent") return { absent: true };
+  return { error: r.why === "big" ? tooBig(locale) : say(locale, "workflows-code-leaves-folder") };
 }
 
 /** Writes a widget's `.mjs` as is: its content is neither checked nor run. */

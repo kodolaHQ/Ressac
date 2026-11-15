@@ -1,5 +1,8 @@
 import { expect, test } from "vitest";
-import { inChild } from "../../src/workspace/confined.js";
+import { mkdir, readdir, readFile, symlink, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { inChild, inFolder, readFiles, writeEntries, type ReadFiles } from "../../src/workspace/confined.js";
+import { tempFolder } from "../helpers/temp.js";
 
 declare const __name: <F>(f: F, name: string) => F;
 
@@ -7,4 +10,49 @@ test("inChild: a function compiled with keepNames (tsx) still runs in the child"
   // What esbuild keepNames emits for an inner arrow function.
   const fn = (n: number) => __name((x: number) => x * 2, "double")(n);
   expect(await inChild(fn, [21])).toBe(42);
+});
+
+async function frame() {
+  const root = await tempFolder();
+  const mac = join(root, "mac");
+  await mkdir(join(mac, "sous"), { recursive: true });
+  await writeFile(join(mac, "a.txt"), "secret du Mac");
+  await writeFile(join(mac, "sous", "a.txt"), "secret du Mac");
+  const app = join(root, "space", "app");
+  await mkdir(join(app, "sous"), { recursive: true });
+  await writeFile(join(app, "a.txt"), "A");
+  await writeFile(join(app, "sous", "a.txt"), "B");
+  const read = (paths: string[], max = 10, total = 100, names = ["app"]) => inFolder<ReadFiles>(join(root, "space"), names, readFiles, [paths, max, total]);
+  return { root, mac, app, read };
+}
+
+test("readFiles: reads by bare names; absent, link, .., over a file's or the total cap are reported", async () => {
+  const { mac, app, read } = await frame();
+  expect(await read(["a.txt", "sous/a.txt"])).toMatchObject({ files: [{ text: "A" }, { text: "B" }] });
+  expect(await read(["a.txt", "non.txt"])).toEqual({ failed: 1, why: "absent" });
+  expect(await read(["../app/a.txt"])).toEqual({ failed: 0, why: "refused" });
+  await writeFile(join(app, "gros.txt"), "x".repeat(11));
+  expect(await read(["gros.txt"])).toEqual({ failed: 0, why: "big" });
+  expect(await read(["a.txt", "sous/a.txt"], 10, 1)).toEqual({ failed: 1, why: "big" });
+  await symlink(join(mac, "a.txt"), join(app, "lien.txt"));
+  expect(await read(["lien.txt"])).toEqual({ failed: 0, why: "refused" });
+  await symlink(join(mac, "sous"), join(app, "lien"));
+  expect(await read(["lien/a.txt"])).toEqual({ failed: 0, why: "refused" });
+  // A folder of `names` that is a link: refused before anything is read.
+  await symlink(mac, join(app, "..", "faux"));
+  expect(await read(["a.txt"], 10, 100, ["faux"])).toBeNull();
+});
+
+test("writeEntries: moves from the parent, writes atomically; a folder of the walk that is a link gets nothing", async () => {
+  const { root, mac, app } = await frame();
+  await mkdir(join(app, "lot"));
+  const r = await inFolder(join(root, "space"), ["app", "lot"], writeEntries, [[["b.json", Buffer.from("{}").toString("base64")]], ["a.txt"]]);
+  expect(r).toBe("done");
+  expect((await readdir(join(app, "lot"))).sort()).toEqual(["a.txt", "b.json"]);
+  expect(await readFile(join(app, "lot", "b.json"), "utf8")).toBe("{}");
+  // Missing folders are made with `create`, a link on the way refuses.
+  expect(await inFolder(join(root, "space"), ["app", "neuf"], writeEntries, [[["c", ""]], []], { create: true })).toBe("done");
+  await symlink(mac, join(app, "lien"));
+  expect(await inFolder(join(root, "space"), ["app", "lien"], writeEntries, [[["x", ""]], []], { create: true })).toBeNull();
+  expect((await readdir(mac)).sort()).toEqual(["a.txt", "sous"]);
 });
