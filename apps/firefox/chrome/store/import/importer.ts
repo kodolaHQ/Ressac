@@ -103,6 +103,7 @@ const MIGRATION_UTILS = "moz-src:///browser/components/migration/MigrationUtils.
 export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "request">, store: Pick<Store, "state" | "dispatch">): BrowserImportApi {
   const { MigrationUtils } = ChromeUtils.importESModule(MIGRATION_UTILS);
   const { PlacesUtils } = ChromeUtils.importESModule("resource://gre/modules/PlacesUtils.sys.mjs");
+  const { MigratorBase } = ChromeUtils.importESModule("moz-src:///browser/components/migration/MigratorBase.sys.mjs");
   const BITS: Partial<Record<ImportType, number>> = { bookmarks: MigrationUtils.resourceTypes.BOOKMARKS, history: MigrationUtils.resourceTypes.HISTORY, passwords: MigrationUtils.resourceTypes.PASSWORDS };
   const testHome = Services.env.get("RESSAC_TEST_IMPORT_HOME");
   const home = testHome || Services.dirsvc.get("Home", Ci.nsIFile).path;
@@ -207,6 +208,11 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
     });
     const visits = MigrationUtils.insertVisitsWrapper;
     const bookmarks = MigrationUtils.insertManyBookmarksWrapper;
+    // Firefox 160 reads a Chromium browser's data on macOS 26+ only after a folder picker (getPermissions), which our
+    // import does not show: during the run, it reads as on 159.
+    // shortcut: macOS 27 may show « Data Access Blocked »; upgrade to getPermissions' picker if testers meet it.
+    const needsFolder = MigratorBase.needsFolderSelectionToReadData;
+    MigratorBase.needsFolderSelectionToReadData = () => false;
     let existing: Set<string> | null = null;
     // Our history is the kernel's (Firefox's is off: places.history.enabled), so the visits go there, not into Places.
     MigrationUtils.insertVisitsWrapper = async (pages: PageInfo[]) => {
@@ -305,6 +311,7 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
       for (const [name, saved] of savedPrefs) saved === null ? Services.prefs.clearUserPref(name) : Services.prefs.setIntPref(name, saved);
       MigrationUtils.insertVisitsWrapper = visits;
       MigrationUtils.insertManyBookmarksWrapper = bookmarks;
+      MigratorBase.needsFolderSelectionToReadData = needsFolder;
       await IOUtils.remove(tmp, { recursive: true, ignoreAbsent: true }).catch((e: unknown) => console.error("[import] copy not removed:", e));
       p.done = true;
       running = false;
