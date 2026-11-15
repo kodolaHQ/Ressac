@@ -1,0 +1,30 @@
+diff --git a/browser/base/content/browser.js b/browser/base/content/browser.js
+index 7f605e959f..cfe736db81 100644
+--- a/browser/base/content/browser.js
++++ b/browser/base/content/browser.js
+@@ -2418,24 +2418,7 @@ var XULBrowserWindow = {
+       this.asyncUpdateUI();
+     }
+ 
+-    if (AppConstants.MOZ_CRASHREPORTER && aLocationURI) {
+-      let uri = aLocationURI;
+-      try {
+-        // If the current URI contains a username/password, remove it.
+-        uri = aLocationURI.mutate().setUserPass("").finalize();
+-      } catch (ex) {
+-        /* Ignore failures on about: URIs. */
+-      }
+-
+-      try {
+-        Services.appinfo.annotateCrashReport("URL", uri.spec);
+-      } catch (ex) {
+-        // Don't make noise when the crash reporter is built but not enabled.
+-        if (ex.result != Cr.NS_ERROR_NOT_INITIALIZED) {
+-          throw ex;
+-        }
+-      }
+-    }
++    // Ressac: no page address in crash reports (they go to Ressac's Sentry, and the page may be private).
+   },
+ 
+   _updateElementsForContentType() {
