@@ -1,9 +1,10 @@
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { COMPONENT_HTML_MAX as KERNEL_COMPONENT_HTML_MAX } from "../../../packages/kernel/src/pages/agent-components";
-import { COMPONENT_HTML_MAX, actionImage, actionImageTestUrl, releaseComponent, serveComponent } from "../chrome/store/action-media";
+import { COMPONENT_HTML_MAX, actionImage, actionImageTestUrl, releaseComponent, serveComponent as serveWith } from "../chrome/store/action-media";
+import { copyComponentRequest } from "../host/home-copy";
 
 vi.mock("../chrome/store/containers", () => ({ containerFor: (p: string) => (p === "action-images" ? 7 : -1) }));
 /** The URLs the action images' opener was asked for, and the options it was built with. */
@@ -106,6 +107,7 @@ describe("action result images", () => {
 
 describe("agent components", () => {
   const data = () => join(root, "data");
+  const serveComponent = (dataDir: string, name: string) => serveWith(dataDir, name, (name, token) => copyComponentRequest(dataDir, join(dataDir, "workspace", "components"), { name, token }));
   const write = (name: string, html: string) => {
     mkdirSync(join(data(), "workspace", "components", name), { recursive: true });
     writeFileSync(join(data(), "workspace", "components", name, "component.html"), html);
@@ -148,5 +150,18 @@ describe("agent components", () => {
     write("gros", "x".repeat(256 * 1024 + 1));
     expect(await serveComponent(data(), "gros")).toBeNull();
     expect(await serveComponent(data(), "absent")).toBeNull();
+  });
+
+  it("never serves a component.html that is a link to a file of the Mac, nor through a component folder that is one", async () => {
+    writeFileSync(join(root, "secret.html"), "secret du Mac");
+    mkdirSync(join(data(), "workspace", "components", "lien"), { recursive: true });
+    symlinkSync(join(root, "secret.html"), join(data(), "workspace", "components", "lien", "component.html"));
+    mkdirSync(join(root, "mac"), { recursive: true });
+    writeFileSync(join(root, "mac", "component.html"), "secret du Mac");
+    symlinkSync(join(root, "mac"), join(data(), "workspace", "components", "dossier"));
+    for (const name of ["lien", "dossier"]) {
+      expect(await serveComponent(data(), name)).toBeNull();
+      expect(readdirSync(join(data(), "ressac-components", name))).toEqual([]);
+    }
   });
 });

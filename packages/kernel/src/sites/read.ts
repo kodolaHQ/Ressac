@@ -1,6 +1,7 @@
-import { mkdirSync, constants, type Stats } from "node:fs";
-import { lstat, open, readdir, realpath } from "node:fs/promises";
-import { join, relative, sep } from "node:path";
+import { mkdirSync, constants } from "node:fs";
+import { lstat, open, readdir } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
+import { inFolder, readFiles, type ReadFiles } from "../workspace/confined.js";
 import { watch } from "chokidar";
 import type { SpacePaths } from "../paths.js";
 import {
@@ -23,16 +24,11 @@ const MAX_ERROR = 300;
 const GROUPING_MS = 150;
 
 /** Reads an ordinary file (never a link: O_NOFOLLOW), at most `max` bytes; fails if it is bigger. */
-/**
- * `check`: called with the opened file, after the open (O_NOFOLLOW guards the last part of the path only): refuses a
- * file reached through a folder swapped for a link in the meantime.
- */
-async function readBound(path: string, max: number, check?: (opened: Stats) => Promise<boolean>): Promise<string> {
+async function readBound(path: string, max: number): Promise<string> {
   const f = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     const st = await f.stat();
     if (!st.isFile()) throw new Error("pas un fichier ordinaire");
-    if (check && !(await check(st))) throw new Error("dossier changé");
     if (st.size > max) throw new Error("trop gros");
     const buffer = Buffer.alloc(max + 1);
     let n = 0;
@@ -111,56 +107,19 @@ export async function readSite(c: SpacePaths, id: string, o: { localAddresses: b
   return readOne(c, id, o);
 }
 
-/** Every folder from `folder` down to `path` is still a real folder (no link), and `path` still names the opened file. */
-async function stillReal(folder: string, path: string, opened: Stats): Promise<boolean> {
-  const parts = relative(folder, path).split(sep);
-  if (parts.includes("..")) return false;
-  let p = folder;
-  for (const part of ["", ...parts.slice(0, -1)]) {
-    p = join(p, part);
-    if (!(await lstat(p)).isDirectory()) return false;
-  }
-  const entry = await lstat(path);
-  return entry.dev === opened.dev && entry.ino === opened.ino;
-}
-
 /** The files cited by the tweaks, read under `tweaks/`: never a link, never outside the folder, bounded. */
 export async function readTweaks(s: Extract<SiteRead, { declaration: DeclarationSite }>): Promise<TweaksRead | { error: string }> {
-  const base = join(s.folder, "tweaks");
-  const missing = { error: "tweaks : dossier de l'appli introuvable" };
-  let realRoot: string;
-  try {
-    // Neither the app's folder nor `tweaks/` can be a link (even replaced since the site was read).
-    if (!(await lstat(s.folder)).isDirectory()) return missing;
-    const realFolder = await realpath(s.folder);
-    if (!(await lstat(base)).isDirectory()) throw new Error("pas un dossier");
-    realRoot = await realpath(base);
-    if (!realRoot.startsWith(realFolder + sep)) throw new Error("hors du dossier");
-  } catch {
-    realRoot = "";
-  }
-  const output: TweaksRead = { js: {}, css: {} };
-  let total = 0;
+  const wanted: { kind: "js" | "css"; file: string }[] = [];
   for (const kind of ["js", "css"] as const) {
-    const alreadyRead = new Set<string>();
-    for (const r of s.declaration.tweaks) {
-      for (const f of r[kind]) {
-        if (alreadyRead.has(f)) continue;
-        alreadyRead.add(f);
-        const path = join(base, f);
-        try {
-          const st = await lstat(path);
-          if (!st.isFile() || st.size > TWEAK_MAX) throw new Error("refusé");
-          if (!realRoot || !(await realpath(path)).startsWith(realRoot + sep)) throw new Error("hors du dossier");
-          total += st.size;
-          if (total > TWEAKS_MAX_TOTAL) throw new Error("trop gros");
-          output[kind][f] = await readBound(path, TWEAK_MAX, (opened) => stillReal(s.folder, path, opened));
-        } catch {
-          return { error: tweakFileNotFound(f) };
-        }
-      }
-    }
+    const listed = new Set(s.declaration.tweaks.flatMap((r) => r[kind]));
+    for (const file of listed) wanted.push({ kind, file });
   }
+  // One child for every file: it walks into the app's folder, then each one's folders, never through a link (confined.ts).
+  const r = await inFolder<ReadFiles>(dirname(s.folder), [basename(s.folder)], readFiles, [wanted.map((w) => `tweaks/${w.file}`), TWEAK_MAX, TWEAKS_MAX_TOTAL]);
+  if (!r) return { error: "tweaks : dossier de l'appli introuvable" };
+  if ("failed" in r) return { error: tweakFileNotFound(wanted[r.failed]!.file) };
+  const output: TweaksRead = { js: {}, css: {} };
+  wanted.forEach((w, i) => (output[w.kind][w.file] = r.files[i]!.text));
   return output;
 }
 

@@ -5,13 +5,12 @@ import fs from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { join, resolve, sep } from "node:path";
 import { z } from "zod";
-import { validFolder, writeType, ApplicationManager, appPrefix, type Application, type Workshop, type SpacePaths, type TabInfo } from "../../../packages/kernel/src/index.ts";
+import { inChild, moveEntry, validFolder, writeType, ApplicationManager, appPrefix, type Application, type Workshop, type SpacePaths, type TabInfo } from "../../../packages/kernel/src/index.ts";
 import { DockerProbe } from "../core/applications/probe.ts";
 import { FAVICON_SIZE } from "../core/applications/favicon.ts";
 import { SchemaActionApplication, type ApplicationList } from "../shared/api.ts";
 import type { FrameBounds, WindowId } from "../shared/model.ts";
 import { SiteRecords } from "./sites.ts";
-import { inChild, moveEntry } from "./confined.ts";
 
 /** `min-max` port range from RESSAC_APP_PORTS (tests), otherwise the kernel's. */
 export function portRange(value: string | undefined): [number, number] | undefined {

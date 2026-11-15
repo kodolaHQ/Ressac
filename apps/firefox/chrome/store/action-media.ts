@@ -105,44 +105,43 @@ function queued<T>(name: string, f: () => Promise<T>): Promise<T> {
   return run;
 }
 
+/** The host's `actions.copyComponent`: the component page's mtime once copied as `source-<token>.html`, or null. */
+export type ComponentCopy = (name: string, token: string) => Promise<number | null>;
+
 /**
- * One more page shows component `nom`: copies `<dataDir>/workspace/components/<nom>/component.html` with these rules
- * (no symbolic link on the path, COMPONENT_HTML_MAX at most) into
- * `<dataDir>/ressac-components/<nom>/component-<mtime>.html` through displayServed (the widgets' CSP and guard, then
- * the bridge and the browser fonts; DISPLAY_DENIED on a network hint), and returns its resource:// URL, or null. Each call is paired with a
+ * One more page shows component `nom`: the host copies `<dataDir>/workspace/components/<nom>/component.html` (never
+ * through a link, COMPONENT_HTML_MAX at most) into `<dataDir>/ressac-components/<nom>/`, served from there as
+ * `component-<mtime>.html` through displayServed (the widgets' CSP and guard, then the bridge and the browser fonts;
+ * DISPLAY_DENIED on a network hint), and returns its resource:// URL, or null. Each call is paired with a
  * releaseComponent, null or not.
- * shortcut: checked by realpath then read by path (IOUtils has no O_NOFOLLOW), as serveHome; upgrade with it.
  */
-export function serveComponent(dataDir: string, name: string): Promise<string | null> {
+export function serveComponent(dataDir: string, name: string, copy: ComponentCopy): Promise<string | null> {
   if (typeof name !== "string" || !NAME.test(name)) return Promise.resolve(null);
   refs.set(name, (refs.get(name) ?? 0) + 1);
   return queued(name, async () => {
     try {
       const components = PathUtils.join(dataDir, "workspace", "components");
-      const componentsReal = realPath(components);
-      // An exact name: a case-insensitive disk would find « Barres » for « barres ».
-      if (!componentsReal || isLink(components) || !(await IOUtils.getChildren(components)).some((c) => c.endsWith(`/${name}`))) return null;
-      const source = PathUtils.join(components, name, "component.html");
-      if (realPath(source) !== PathUtils.join(componentsReal, name, "component.html")) return null;
-      const info = await IOUtils.stat(source);
-      if (info.type !== "regular" || info.size > COMPONENT_HTML_MAX) return null;
-      const bytes = await IOUtils.read(source, { maxBytes: COMPONENT_HTML_MAX + 1 });
-      if (bytes.length > COMPONENT_HTML_MAX) return null;
+      // An exact name: a case-insensitive disk would find « Barres » for « barres ». A quick refusal; the host's copy is swap-proof.
+      if (!realPath(components) || isLink(components) || !(await IOUtils.getChildren(components)).some((c) => c.endsWith(`/${name}`))) return null;
       const copies = copiesOf(dataDir, name);
       await IOUtils.makeDirectory(copies, { createAncestors: true, ignoreExisting: true });
       // The copies stay inside <dataDir>/ressac-components: a copies folder that is a link is refused.
       const root = realPath(PathUtils.join(dataDir, "ressac-components"));
       if (!root || realPath(copies) !== PathUtils.join(root, name)) return null;
-      const file = `component-${Math.round(info.lastModified)}.html`;
-      const copy = PathUtils.join(copies, file);
-      if (!(await IOUtils.exists(copy))) {
+      const token = crypto.randomUUID().replace(/-/g, "");
+      const mtime = await copy(name, token);
+      if (mtime === null) return null;
+      const file = `component-${Math.round(mtime)}.html`;
+      const target = PathUtils.join(copies, file);
+      if (!(await IOUtils.exists(target))) {
+        const bytes = await IOUtils.read(PathUtils.join(copies, `source-${token}.html`));
         // Atomic: a frame never reads a half-written copy.
-        const tmp = `${copy}.${crypto.randomUUID()}.tmp`;
+        const tmp = `${target}.${crypto.randomUUID()}.tmp`;
         await IOUtils.writeUTF8(tmp, displayServed(new TextDecoder().decode(bytes), CSP_WIDGET, COMPONENT_BRIDGE + (await componentFonts())));
-        await IOUtils.move(tmp, copy);
+        await IOUtils.move(tmp, target);
       }
-      // One copy per name: a frame still showing an older one has it loaded already.
-      for (const old of await IOUtils.getChildren(copies)) if (old !== copy) await IOUtils.remove(old, { ignoreAbsent: true });
+      // One copy per name (the source copy goes too): a frame still showing an older one has it loaded already.
+      for (const old of await IOUtils.getChildren(copies)) if (old !== target) await IOUtils.remove(old, { ignoreAbsent: true });
       substitute(name, copies);
       return `resource://${substitution(name)}/${file}`;
     } catch (e) {

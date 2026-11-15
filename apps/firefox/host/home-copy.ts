@@ -1,11 +1,13 @@
-// A site app's home screen copied out of the workspace, which the agent writes and can swap links into at any time.
+// A site app's home screen and an agent component's page copied out of the workspace, which the agent writes and can
+// swap links into at any time.
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ID_SITE } from "../../../packages/kernel/src/sites/schemas.ts";
 import { HOME_ENTRIES_MAX, HOME_FILE_MAX, HOME_TYPES } from "../shared/sites.ts";
-import { inChild } from "./confined.ts";
+import { COMPONENT_HTML_MAX, inChild, inFolder, readFiles, type ReadFiles } from "../../../packages/kernel/src/index.ts";
 
 /**
- * Run in a child process (see confined.ts): each folder entered must be the very inode lstat saw in the folder before
+ * Run in a child process (see packages/kernel/src/workspace/confined.ts): each folder entered must be the very inode lstat saw in the folder before
  * it (a link swapped in between lands elsewhere and is refused), each file is opened by its bare name with O_NOFOLLOW:
  * no path is ever resolved again from the top, so no link reaches a file of the Mac. Copies `<sites>/<id>/home/` (names exact, hidden
  * segments, other types and files over `max` skipped) into `target`; returns the copied files, or null.
@@ -80,4 +82,16 @@ export async function copyHome(sites: string, id: string, target: string): Promi
 export function copyHomeRequest(dataDir: string, sites: string, p: { id?: unknown; token?: unknown }): Promise<string[] | null> {
   if (typeof p?.id !== "string" || !ID_SITE.test(p.id) || typeof p.token !== "string" || !/^[0-9a-f]{32}$/.test(p.token)) return Promise.resolve(null);
   return copyHome(sites, p.id, join(dataDir, "ressac-sites", p.id, p.token));
+}
+
+/**
+ * The host's `actions.copyComponent`: `<components>/<name>/component.html` (COMPONENT_HTML_MAX at most), read by the
+ * confined child, into `<dataDir>/ressac-components/<name>/source-<token>.html`, a folder the chrome made; its mtime, or null.
+ */
+export async function copyComponentRequest(dataDir: string, components: string, p: { name?: unknown; token?: unknown }): Promise<number | null> {
+  if (typeof p?.name !== "string" || !/^[a-z0-9-]{1,40}$/.test(p.name) || typeof p.token !== "string" || !/^[0-9a-f]{32}$/.test(p.token)) return null;
+  const r = await inFolder<ReadFiles>(components, [p.name], readFiles, [["component.html"], COMPONENT_HTML_MAX, COMPONENT_HTML_MAX]);
+  if (!r || !("files" in r)) return null;
+  await writeFile(join(dataDir, "ressac-components", p.name, `source-${p.token}.html`), r.files[0]!.text, { flag: "wx" });
+  return r.files[0]!.mtime;
 }

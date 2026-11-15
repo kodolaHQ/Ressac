@@ -179,7 +179,7 @@ it("design.spec.ts:426 an app window launched from the Applications page: the Re
   const width = await inAppView<number>(m, "essai", "return innerWidth;");
   await menu("Panier (1)");
   await expect.poll(() => overlay<boolean>(`return !!doc.querySelector('${tid("design-basket")}');`), { timeout: 10_000 }).toBe(true);
-  expect(await overlay<number>(`return doc.querySelectorAll('${tid("basket-remark")}').length;`)).toBe(1);
+  await expect.poll(() => overlay<number>(`return doc.querySelectorAll('${tid("basket-remark")}').length;`), { timeout: 10_000 }).toBe(1);
   await expect.poll(sendText, { timeout: 10_000 }).toBe("Envoyer 1 remarque à l'agent");
   expect(
     await m.execute(`const win = ${APP}, r = win.document.getElementById("ressac-design-calque").getBoundingClientRect(); return [Math.round(win.innerWidth - r.right), Math.round(r.top), Math.round(r.width), Math.round(win.innerHeight - r.bottom)];`),
@@ -214,6 +214,9 @@ it("relecture.spec.ts:168 Voir les modifications de l'agent from essai's badge, 
     await expect.poll(async () => (await reviewTabs()).map((o) => o.title), { timeout: 10_000 }).toEqual(["Relecture — Essai"]);
   }
   expect((await reviewTabs())[0]!.windowId).toBe((await state(m)).windows[0]!.id);
+  // The second open brings the review tab back to the front once the badge's project is read (a child process, some
+  // tens of ms): Applications opened before that would be covered again.
+  await sleep(500);
   await dispatch(m, { type: "openApps", windowId: (await state(m)).windows[0]!.id });
   await rowMenu(m, "essai", "Modifications");
   await waitUi(m, `return !!doc.querySelector('${tid("review-page")}')`, [], 15_000);

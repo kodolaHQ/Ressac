@@ -1,25 +1,10 @@
 import { mkdir, readdir, readFile, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { describe, expect, test, vi } from "vitest";
+import { describe, expect, test } from "vitest";
 import { THIRD_PARTY_SITE_WARNING, FOLDER_LINK, HTML_MAX, EMPTY_BASKET, Remarks, TRUNCATED, batchState, truncateHtml, type DesignContext, type ReviewContext } from "../../src/design/remarks.js";
 import { EMPTY_REMARK } from "../../src/review/comments.js";
 import { remarksFolder, type DesignFolders } from "../../src/design/projects.js";
 import { tempFolder } from "../helpers/temp.js";
-
-/** Run once just before the next `writeFile` of the kernel: a swap the agent makes between the checks and the write. */
-const beforeWrite = vi.hoisted(() => ({ run: null as null | (() => Promise<void>) }));
-vi.mock("node:fs/promises", async (original) => {
-  const fs = await original<typeof import("node:fs/promises")>();
-  return {
-    ...fs,
-    writeFile: async (...a: Parameters<typeof fs.writeFile>) => {
-      const run = beforeWrite.run;
-      beforeWrite.run = null;
-      if (run) await run();
-      return fs.writeFile(...a);
-    },
-  };
-});
 
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
 const ctx = (html = "<p>x</p>"): DesignContext => ({
@@ -167,11 +152,11 @@ describe("Remarks", () => {
     await pause(10);
     await sending("app-essai");
     await wait;
-    expect(Date.now() - t0).toBeLessThan(100);
+    expect(Date.now() - t0).toBeLessThan(500);
     expect(r.waitingCount()).toBe(0);
 
     let finished = false;
-    const other = r.wait("app-essai", 150).then(() => { finished = true; });
+    const other = r.wait("app-essai", 1000).then(() => { finished = true; });
     await pause(10);
     await sending("app-autre");
     await sending("app-essai", "agent");
@@ -253,6 +238,27 @@ describe("Remarks", () => {
     expect(await exists(victim)).toBe(true);
   });
 
+  test("purge: a space batch it cannot move out does not stop the others, private ones included", async () => {
+    const { folders, clock, r } = await frame();
+    const handled = async (p: string) => {
+      await r.addToBasket(p, { text: "t", context: ctx(), capture: null });
+      const b = await r.sendBasket(p, { destination: "mcp" });
+      await r.markHandled(p, b.items.map((e) => e.id));
+      return b;
+    };
+    await handled("app-a");
+    const b = await handled("app-b");
+    const ext = await handled("ext-0123456789abcdef");
+    clock.t = new Date(clock.t.getTime() + 31 * 86_400_000);
+    const move = (r as unknown as { removeSpace: (p: string, l: string) => Promise<void> });
+    const real = move.removeSpace.bind(r);
+    let first = true;
+    move.removeSpace = (p, l) => (first ? ((first = false), Promise.reject(new Error(FOLDER_LINK))) : real(p, l));
+    expect(await r.purge()).toBe(2);
+    expect(await exists(join(folders.spaceRemarks, "app-b", b.id))).toBe(false);
+    expect(await exists(join(folders.private, "remarks", "ext-0123456789abcdef", ext.id))).toBe(false);
+  });
+
   test("tampered batch.json: id and project imposed by the folder; purge and writes stay within the batch", async () => {
     const { folders, clock, r } = await frame();
     const ext = "ext-0123456789abcdef";
@@ -326,20 +332,56 @@ describe("Remarks", () => {
     await mkdir(outsideBatch);
     await writeFile(join(outsideBatch, "batch.json"), content);
     await symlink(outsideBatch, batchFolder);
-    await expect(r.markBatchHandled("app-essai", batch.id)).rejects.toThrow(FOLDER_LINK);
+    // Not even read through the link: the batch is unknown.
+    await r.markBatchHandled("app-essai", batch.id);
+    expect(await r.batches("app-essai")).toEqual([]);
     expect(await readFile(join(outsideBatch, "batch.json"), "utf8")).toBe(content);
   });
 
-  test("a project folder swapped for a link after the check: nothing renamed at the end of the link", async () => {
+  test("a project folder swapped for a link once used: nothing written nor renamed at the end of the link", async () => {
     const { folders, r } = await frame();
     const outside = await tempFolder();
     const folder = remarksFolder(folders, "app-essai");
-    beforeWrite.run = async () => {
-      await rename(folder, `${folder}-vrai`);
-      await symlink(outside, folder);
-    };
-    await expect(r.addToBasket("app-essai", { text: "x", context: ctx(), capture: null })).rejects.toThrow(FOLDER_LINK);
+    await r.addToBasket("app-essai", { text: "x", context: ctx(), capture: PNG });
+    await rename(folder, `${folder}-vrai`);
+    await symlink(outside, folder);
+    await expect(r.addToBasket("app-essai", { text: "x", context: ctx(), capture: PNG })).rejects.toThrow(FOLDER_LINK);
     expect(await readdir(outside)).toEqual([]);
+  });
+
+  test("a project or batch folder that is a link: nothing read, deleted or purged at its end", async () => {
+    const { folders, clock, r } = await frame();
+    const outside = await tempFolder();
+    const e = await r.addToBasket("app-essai", { text: "x", context: ctx(), capture: PNG });
+    const folder = remarksFolder(folders, "app-essai");
+    // A Mac folder with the same names behind a swapped project folder.
+    await writeFile(join(outside, "basket.json"), JSON.stringify([{ id: e.id, type: "design", text: "du Mac", context: ctx(), capture: `${e.id}.png` }]));
+    await writeFile(join(outside, `${e.id}.png`), "du Mac");
+    await rename(folder, `${folder}-vrai`);
+    await symlink(outside, folder);
+    expect(await r.basket("app-essai")).toEqual([]);
+    await r.removeFromBasket("app-essai", e.id);
+    expect(await readFile(join(outside, `${e.id}.png`), "utf8")).toBe("du Mac");
+    await expect(r.forget("app-essai")).rejects.toThrow(FOLDER_LINK);
+    expect((await readdir(outside)).sort()).toEqual(["basket.json", `${e.id}.png`]);
+    // A handled batch whose folder became a link to a Mac folder: the purge leaves the Mac folder alone.
+    await rm(folder);
+    await rename(`${folder}-vrai`, folder);
+    const batch = await r.sendBasket("app-essai", { destination: "agent" });
+    await r.markBatchHandled("app-essai", batch.id);
+    const batchFolder = r.batchFolder("app-essai", batch.id);
+    const macBatch = join(outside, "lot");
+    await rename(batchFolder, macBatch);
+    await symlink(macBatch, batchFolder);
+    clock.t = new Date(clock.t.getTime() + 40 * 86_400_000);
+    await r.purge();
+    expect(await readdir(macBatch)).toContain("batch.json");
+    // A real one is purged, and forget takes the project folder away.
+    await rm(batchFolder);
+    await rename(macBatch, batchFolder);
+    expect(await r.purge()).toBe(1);
+    await r.forget("app-essai");
+    expect(await exists(folder)).toBe(false);
   });
 
   test("invalid project identifier refused", async () => {

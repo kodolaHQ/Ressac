@@ -1,8 +1,9 @@
 import { randomBytes } from "node:crypto";
-import { chmod, lstat, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { EMPTY_REMARK } from "../review/comments.js";
 import { writePrivateJson } from "./atomic-write.js";
+import { inFolder, listFolder, moveEntry, readFiles, writeEntries, type ReadFiles } from "../workspace/confined.js";
 import { PROJECT_ID, remarksFolder, type DesignFolders, type ProjectId } from "./projects.js";
 
 export const EMPTY_BASKET = "Le panier est vide.";
@@ -50,25 +51,14 @@ export function truncateHtml(html: string): string {
   return html.length > HTML_MAX ? html.slice(0, HTML_MAX) + TRUNCATED : html;
 }
 
-/**
- * Space side (read by the container's agent): atomic, default modes. Private side: 0o700/0o600. `check` runs right
- * before the rename (noLink's).
- */
-async function writeAtomic(file: string, content: string | Buffer, isPrivate: boolean, check?: () => Promise<void>): Promise<void> {
+/** Private side only: atomic, 0o700/0o600. */
+async function writePrivate(file: string, content: Buffer): Promise<void> {
   const folder = dirname(file);
-  if (isPrivate) {
-    await mkdir(folder, { recursive: true, mode: 0o700 });
-    await chmod(folder, 0o700);
-  } else await mkdir(folder, { recursive: true });
+  await mkdir(folder, { recursive: true, mode: 0o700 });
+  await chmod(folder, 0o700);
   const temp = join(folder, `${basename(file)}.${randomBytes(4).toString("hex")}.tmp`);
-  await writeFile(temp, content, isPrivate ? { mode: 0o600 } : {});
-  if (isPrivate) await chmod(temp, 0o600);
-  try {
-    await check?.();
-  } catch (e) {
-    await rm(temp, { force: true });
-    throw e;
-  }
+  await writeFile(temp, content, { mode: 0o600 });
+  await chmod(temp, 0o600);
   await rename(temp, file);
 }
 
@@ -83,9 +73,15 @@ function sanitize(v: unknown): Element[] {
   return output;
 }
 
-async function readJson<T>(file: string): Promise<T | null> {
-  try { return JSON.parse(await readFile(file, "utf8")) as T; } catch { return null; }
+function parse<T>(text: string | undefined): T | null {
+  try { return text === undefined ? null : (JSON.parse(text) as T); } catch { return null; }
 }
+async function readJson<T>(file: string): Promise<T | null> {
+  return parse<T>(await readFile(file, "utf8").catch(() => undefined));
+}
+/** Space side: the largest basket.json or batch.json read, and all batches of a project at most (the child's output is 16 MB). */
+const JSON_MAX = 1024 * 1024;
+const BATCHES_MAX = 6 * 1024 * 1024;
 
 export class Remarks {
   private readonly folders: DesignFolders;
@@ -113,25 +109,38 @@ export class Remarks {
   private isPrivate(p: ProjectId): boolean { return p.startsWith("ext-"); }
 
   /**
-   * Before writing on the space side (mounted writable in the container): neither `.ressac`, nor the remarks root, nor the
-   * project folder, nor the batch's are symbolic links (a missing one will be created as a real folder).
+   * Space side (mounted writable in the container, read by its agent): `writes` (name → content) made atomically, by a
+   * child that enters `.ressac`, the remarks root, the project folder and the batch's, each a real folder (made if missing,
+   * never a link, even one swapped in meanwhile); `moves`: captures of the project folder moved into the batch's first.
    */
-  /**
-   * Refuses a link on the way; returns the check to run again right before each write or rename: every folder there,
-   * still no link, the same ones (dev/ino) as now — the agent can swap one for a link in between.
-   */
-  private async noLink(p: ProjectId, batch?: string): Promise<() => Promise<void>> {
-    if (this.isPrivate(p)) return async () => {};
+  private async writeSpace(p: ProjectId, batch: string | undefined, writes: [string, string | Buffer][], moves: string[] = [], removes: string[] = []): Promise<void> {
+    const [top, names] = await this.spaceWalk(p, batch);
+    const encoded = writes.map(([n, c]) => [n, Buffer.from(c).toString("base64")]);
+    const r = await inFolder(top, names, writeEntries, [encoded, moves, removes], { create: true });
+    if (r === null) throw new Error(FOLDER_LINK);
+    if (r !== "done") throw new Error("écriture des remarques impossible");
+  }
+
+  /** The confined walk to a space-side folder: the workspace, then `.ressac`, the remarks root, `p` and `batch` if given. */
+  private async spaceWalk(p?: ProjectId, batch?: string): Promise<[string, string[]]> {
     const root = this.folders.spaceRemarks;
-    const paths = [dirname(root), root, this.folder(p), ...(batch ? [this.batchFolder(p, batch)] : [])];
-    const walk = () => Promise.all(paths.map((c) => lstat(c).catch(() => null)));
-    const first = await walk();
-    if (first.some((s) => s && !s.isDirectory())) throw new Error(FOLDER_LINK);
-    return async () => {
-      const now = await walk();
-      const moved = (i: number) => first[i] !== null && (first[i]!.dev !== now[i]!.dev || first[i]!.ino !== now[i]!.ino);
-      if (now.some((s, i) => !s?.isDirectory() || moved(i))) throw new Error(FOLDER_LINK);
-    };
+    const top = dirname(dirname(root));
+    await mkdir(top, { recursive: true });
+    return [top, [basename(dirname(root)), basename(root), ...(p ? [p] : []), ...(p && batch ? [basename(this.batchFolder(p, batch))] : [])]];
+  }
+
+  /**
+   * Space side: `<p>` (or its batch `batch`) moved out of the mount by the confined child, from its verified parent, into
+   * the private trash, then deleted there where no link can be swapped in.
+   */
+  private async removeSpace(p: ProjectId, batch?: string): Promise<void> {
+    const [top, names] = await this.spaceWalk(batch ? p : undefined);
+    const trash = join(this.folders.private, "trash");
+    await mkdir(trash, { recursive: true, mode: 0o700 });
+    const to = join(trash, `${batch ?? p}.${randomBytes(4).toString("hex")}`);
+    const r = await inFolder(top, names, moveEntry, [".", batch ?? p, to], { create: true });
+    if (r !== "moved" && r !== "absent") throw new Error(FOLDER_LINK);
+    await rm(to, { recursive: true, force: true });
   }
 
   private serialize<T>(p: ProjectId, f: () => Promise<T>): Promise<T> {
@@ -146,27 +155,44 @@ export class Remarks {
   private notify(p: ProjectId): void { for (const f of [...this.listeners]) f(p); }
 
   private async readBasket(p: ProjectId): Promise<Element[]> {
-    const v = await readJson<Element[]>(join(this.folder(p), "basket.json"));
-    return sanitize(v);
+    if (this.isPrivate(p)) return sanitize(await readJson<Element[]>(join(this.folder(p), "basket.json")));
+    const [top, names] = await this.spaceWalk(p);
+    const r = await inFolder<ReadFiles>(top, names, readFiles, [["basket.json"], JSON_MAX, JSON_MAX]);
+    return sanitize(parse(r && "files" in r ? r.files[0]?.text : undefined));
   }
-  private async writeBasket(p: ProjectId, basket: Element[]): Promise<void> {
-    const f = join(this.folder(p), "basket.json");
-    const check = await this.noLink(p);
-    return this.isPrivate(p) ? writePrivateJson(f, basket) : writeAtomic(f, JSON.stringify(basket, null, 2), false, check);
+  /** `removes`: captures of the project folder deleted after the write. */
+  private async writeBasket(p: ProjectId, basket: Element[], removes: string[] = []): Promise<void> {
+    if (!this.isPrivate(p)) return this.writeSpace(p, undefined, [["basket.json", JSON.stringify(basket, null, 2)]], [], removes);
+    await writePrivateJson(join(this.folder(p), "basket.json"), basket);
+    for (const f of removes) await rm(join(this.folder(p), f), { force: true });
   }
-  private async writeBatch(l: Batch): Promise<void> {
-    const f = join(this.batchFolder(l.project, l.id), "batch.json");
-    const check = await this.noLink(l.project, l.id);
-    return this.isPrivate(l.project) ? writePrivateJson(f, l) : writeAtomic(f, JSON.stringify(l, null, 2), false, check);
+  /** `captures`: moved from the project folder into the batch's first. */
+  private async writeBatch(l: Batch, captures: string[] = []): Promise<void> {
+    if (!this.isPrivate(l.project)) return this.writeSpace(l.project, l.id, [["batch.json", JSON.stringify(l, null, 2)]], captures);
+    const target = this.batchFolder(l.project, l.id);
+    await mkdir(target, { recursive: true, mode: 0o700 });
+    for (const c of captures) await rename(join(this.folder(l.project), c), join(target, c)).catch(() => undefined);
+    return writePrivateJson(join(target, "batch.json"), l);
   }
   private async readBatches(p: ProjectId): Promise<Batch[]> {
     let names: string[];
-    try { names = await readdir(this.folder(p)); } catch { return []; }
-    const batches: Batch[] = [];
-    for (const n of names.filter((x) => BATCH_ID.test(x)).sort().reverse()) {
-      const l = await readJson<Batch>(join(this.folder(p), n, "batch.json"));
-      if (l && Array.isArray(l.items)) batches.push({ ...l, id: n, project: p, items: sanitize(l.items) });
+    let read: (string | undefined)[];
+    if (this.isPrivate(p)) {
+      try { names = (await readdir(this.folder(p))).filter((x) => BATCH_ID.test(x)).sort().reverse(); } catch { return []; }
+      read = await Promise.all(names.map((n) => readFile(join(this.folder(p), n, "batch.json"), "utf8").catch(() => undefined)));
+    } else {
+      const [top, walk] = await this.spaceWalk(p);
+      names = ((await inFolder<string[]>(top, walk, listFolder, [])) ?? []).filter((x) => BATCH_ID.test(x)).sort().reverse();
+      if (names.length === 0) return [];
+      // Newest first: past BATCHES_MAX, the oldest are skipped.
+      const r = await inFolder<ReadFiles>(top, walk, readFiles, [names.map((n) => `${n}/batch.json`), JSON_MAX, BATCHES_MAX, true]);
+      read = r && "files" in r ? r.files.map((f) => f?.text) : [];
     }
+    const batches: Batch[] = [];
+    names.forEach((n, i) => {
+      const l = parse<Batch>(read[i]);
+      if (l && Array.isArray(l.items)) batches.push({ ...l, id: n, project: p, items: sanitize(l.items) });
+    });
     return batches;
   }
 
@@ -185,8 +211,8 @@ export class Remarks {
     if (e.text.trim() === "") return Promise.reject(new Error(EMPTY_REMARK));
     return this.serialize(p, async () => {
       const id = `e-${randomBytes(4).toString("hex")}`;
-      const check = await this.noLink(p);
-      if (e.capture) await writeAtomic(join(this.folder(p), `${id}.png`), e.capture, this.isPrivate(p), check);
+      if (e.capture && this.isPrivate(p)) await writePrivate(join(this.folder(p), `${id}.png`), e.capture);
+      else if (e.capture) await this.writeSpace(p, undefined, [[`${id}.png`, e.capture]]);
       const element: Element = {
         id, type: "design", text: e.text, context: { ...e.context, html: truncateHtml(e.context.html) },
         capture: e.capture ? `${id}.png` : null,
@@ -205,8 +231,7 @@ export class Remarks {
       const basket = await this.readBasket(p);
       const rest = basket.filter((e) => e.id !== id);
       if (rest.length === basket.length) return;
-      await this.writeBasket(p, rest);
-      if (ID_ELEMENT.test(id)) await rm(join(this.folder(p), `${id}.png`), { force: true });
+      await this.writeBasket(p, rest, ID_ELEMENT.test(id) ? [`${id}.png`] : []);
       this.notify(p);
     });
   }
@@ -236,15 +261,7 @@ export class Remarks {
       const basket = await this.readBasket(p);
       if (basket.length === 0) throw new Error(EMPTY_BASKET);
       const batch = this.createBatch(p, basket, d);
-      const target = this.batchFolder(p, batch.id);
-      const check = await this.noLink(p, batch.id);
-      await mkdir(target, { recursive: true, ...(this.isPrivate(p) ? { mode: 0o700 } : {}) });
-      for (const e of basket) {
-        if (e.type !== "design" || !e.capture) continue;
-        await check();
-        await rename(join(this.folder(p), e.capture), join(target, e.capture)).catch(() => undefined);
-      }
-      await this.writeBatch(batch);
+      await this.writeBatch(batch, basket.flatMap((e) => (e.type === "design" && e.capture ? [e.capture] : [])));
       await this.writeBasket(p, []);
       this.notify(p);
       if (d.destination === "mcp") this.wake(p);
@@ -361,7 +378,9 @@ export class Remarks {
             if (batchState(l) !== "handled") continue;
             const last = Math.max(...l.items.map((e) => Date.parse(e.handled?.when ?? "") || 0));
             if (last >= limit) continue;
-            await rm(this.batchFolder(p, l.id), { recursive: true, force: true });
+            if (this.isPrivate(p)) await rm(this.batchFolder(p, l.id), { recursive: true, force: true });
+            // A batch the agent swapped for a link stays: it must not stop the purge of the others.
+            else if (!(await this.removeSpace(p, l.id).then(() => true, () => false))) continue;
             deleted++;
           }
           return deleted;
@@ -374,7 +393,8 @@ export class Remarks {
   async forget(p: ProjectId): Promise<void> {
     this.folder(p);
     return this.serialize(p, async () => {
-      await rm(this.folder(p), { recursive: true, force: true });
+      if (this.isPrivate(p)) await rm(this.folder(p), { recursive: true, force: true });
+      else await this.removeSpace(p);
       this.notify(p);
     });
   }

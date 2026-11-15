@@ -28,7 +28,7 @@ const { History } = await import("../core/history.ts");
 const { createRpc } = await import("../shared/rpc.ts");
 const { RemoteBridge } = await import("./remote-bridge.ts");
 const { createSites } = await import("./sites.ts");
-const { copyHomeRequest } = await import("./home-copy.ts");
+const { copyComponentRequest, copyHomeRequest } = await import("./home-copy.ts");
 const { createAsk } = await import("./ask.ts");
 const { createDesignHost, DESIGN_METHODS, externalMcpPort } = await import("./design.ts");
 const { createSettingsHandlers, SETTINGS_METHODS } = await import("./settings.ts");
@@ -637,6 +637,7 @@ const rpc = createRpc({
     "actions.prepare": (p: { id?: unknown; input?: unknown }) =>
       idAction(p?.id) && ActionInputSchema.safeParse(p.input ?? null).success ? actions.prepare(p.id, (p.input ?? null) as string | null) : { ok: false, error: ACTION_UNKNOWN(hostLocale()) },
     "actions.name": (p: { id?: unknown }) => (idAction(p?.id) ? actions.name(p.id) : null),
+    "actions.copyComponent": (p: { name?: unknown; token?: unknown }) => copyComponentRequest(dataDir, paths.components, p),
     "actions.launch": (p: { id?: unknown; input?: unknown }) =>
       idAction(p?.id) && ActionInputSchema.safeParse(p.input ?? null).success
         ? actions.launch(p.id, (p.input ?? null) as string | null)
