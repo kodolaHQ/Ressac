@@ -204,8 +204,8 @@ test("the profile shipped before the English formats (profil-claude.json) is a k
 });
 
 test("the AGENTS.md templates are pinned: before editing one, add its hash to OLD_AGENTS, then update the pin", async () => {
-  expect(sha256(await readFile(join(FR, "AGENTS.md")))).toBe("7cd23635e0d47510294b5ee4d3059f4158ea5e94d52b26150bec4a789ac03d46");
-  expect(sha256(await readFile(join(EN, "AGENTS.md")))).toBe("834a9884b20b2ca356521226665c976c119d648712364810b56425230b7c3a98");
+  expect(sha256(await readFile(join(FR, "AGENTS.md")))).toBe("28d43b9971947d05d21772e6a7c2014c98b2677aa51e7e2cf87c9a26384bee2d");
+  expect(sha256(await readFile(join(EN, "AGENTS.md")))).toBe("eaed8d1d938c46e5ac2d5958d5b7b3a2d49ae17637395f26da7866ae28f10d00");
   expect(OLD_AGENTS.has("6ecc3a5571398b8490f4b384b32c191e56111e3eebe092e1ccf03790f2ec845b")).toBe(true);
   expect(OLD_AGENTS.has("ff0f49e00a04cec590ee023394221e8bbf28dd0439a628e48ea307acaffa0a8e")).toBe(true);
 });

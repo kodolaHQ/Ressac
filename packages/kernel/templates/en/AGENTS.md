@@ -1163,3 +1163,7 @@ your demos (`$RESSAC_PORTS` ports), you have them all without asking, unless the
 - On a site app (`site:<id>`), you need the app's grant (card « The agent wants to see the site app… ») then the rights through `request_devtools`; `run_js` serves there to read the DOM, never to click, type or submit a form.
 - If the tool answers « Les outils de développement de l'utilisateur sont ouverts sur cet onglet. » (the user's developer tools are open on this tab), wait or ask the user to close them.
 - Performance pass: only when the user asks for it. Launch the app, profile the load, the common interactions and the memory, fix what you find, then make a short before/after report.
+
+## Network
+
+Your outbound access goes through a proxy (already set in your environment) that only allows a list of domains. If a request fails with 403 « Ressac: <host> is not in the agent's allowed domains (Settings › Agent) », tell the user to add that domain in Settings › Agent. Do not try to get around it.
