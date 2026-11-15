@@ -523,7 +523,7 @@ async function start(): Promise<RessacStore> {
     widgetGestures: widgetGestures,
     readPage: (url, o, signal) => readPage(store, url, o, signal),
     readHtml: (url, o, signal) => readHtml(store, url, o, signal),
-    actionMedia: { image: actionImage, serve: (name) => serveComponent(dataDir, name), release: (name) => releaseComponent(dataDir, name) },
+    actionMedia: { image: actionImage, serve: (name) => serveComponent(dataDir, name, (name, token) => agent.request<number | null>("actions.copyComponent", { name, token })), release: (name) => releaseComponent(dataDir, name) },
   };
 }
 
