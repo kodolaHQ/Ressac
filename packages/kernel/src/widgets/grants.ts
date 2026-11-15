@@ -1,7 +1,7 @@
-import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
+import { queued, writeAtomic } from "../workflows/executions.js";
 
 /**
  * The user's grant for a widget to read with its account: the `account` and `public` domains of the declaration at the
@@ -39,27 +39,12 @@ export async function readGrants(widgetsFolder: string): Promise<Record<string, 
 }
 
 /** One write at a time per folder: two simultaneous grants do not erase each other. */
-const files = new Map<string, Promise<unknown>>();
-
 function modify(widgetsFolder: string, change: (a: Record<string, Grant>) => void): Promise<void> {
-  const previous = files.get(widgetsFolder) ?? Promise.resolve();
-  const next = previous.catch(() => {}).then(async () => {
+  return queued(widgetsFolder, async () => {
     const grants = await readGrants(widgetsFolder);
     change(grants);
-    await mkdir(widgetsFolder, { recursive: true });
-    const temp = `${file(widgetsFolder)}.${randomUUID()}.tmp`;
-    try {
-      await writeFile(temp, JSON.stringify(grants, null, 2));
-      await rename(temp, file(widgetsFolder));
-    } finally {
-      await rm(temp, { force: true });
-    }
+    await writeAtomic(file(widgetsFolder), JSON.stringify(grants, null, 2));
   });
-  files.set(widgetsFolder, next);
-  void next.finally(() => {
-    if (files.get(widgetsFolder) === next) files.delete(widgetsFolder);
-  }).catch(() => {});
-  return next;
 }
 
 export async function giveGrant(widgetsFolder: string, id: string, grant: Grant): Promise<void> {

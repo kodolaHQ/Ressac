@@ -1,7 +1,7 @@
-import { randomUUID } from "node:crypto";
-import { copyFile, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { copyFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
+import { queued, writeAtomic } from "../workflows/executions.js";
 import type { Scope, SourceExtension } from "./manifest.js";
 
 export type ProfileId = string;
@@ -211,8 +211,6 @@ export async function readExtensionsState(folder: string): Promise<ExtensionsSta
 }
 
 /** One write at a time per folder; temporary file then `rename`. */
-const files = new Map<string, Promise<unknown>>();
-
 /**
  * Modifies the state, one write at a time. `changer` receives the state and the private profiles; `profilsPrives` is a
  * provider evaluated INSIDE the serialized modification (never captured before), and `appliquerProfilsPrives` is
@@ -224,26 +222,13 @@ export function changeExtensionsState(
   change: (e: ExtensionsState, privateProfiles: ReadonlySet<ProfileId>) => ExtensionsState,
   privateProfiles: () => ReadonlySet<ProfileId>,
 ): Promise<ExtensionsState> {
-  const previous = files.get(folder) ?? Promise.resolve();
-  const next = previous.catch(() => {}).then(async () => {
+  return queued(folder, async () => {
     const parsed = await read(folder);
     if (parsed.future) throw new Error("état des extensions d'une version plus récente");
     const privates = privateProfiles();
     const fresh = applyPrivateProfiles(change(parsed.state, privates), privates).state;
-    await mkdir(folder, { recursive: true });
     if (parsed.damaged) await copyFile(file(folder), `${file(folder)}.damaged-${new Date().toISOString().replace(/[:.]/g, "-")}`);
-    const temp = `${file(folder)}.${randomUUID()}.tmp`;
-    try {
-      await writeFile(temp, JSON.stringify(fresh, null, 2));
-      await rename(temp, file(folder));
-    } finally {
-      await rm(temp, { force: true });
-    }
+    await writeAtomic(file(folder), JSON.stringify(fresh, null, 2));
     return fresh;
   });
-  files.set(folder, next);
-  void next.finally(() => {
-    if (files.get(folder) === next) files.delete(folder);
-  }).catch(() => {});
-  return next;
 }

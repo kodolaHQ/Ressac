@@ -1,7 +1,7 @@
 import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
-import { writeAtomic } from "../workflows/executions.js";
+import { queued, writeAtomic } from "../workflows/executions.js";
 import { removeSiteGrant } from "./grants.js";
 import { effectiveDomains, type UrlState } from "./urls.js";
 import { ID_SITE, type DeclarationSite } from "./schemas.js";
@@ -32,19 +32,6 @@ export async function readUrlState(sitesFolder: string, id: string): Promise<Url
 }
 
 const OLD_MAX = 100;
-const files = new Map<string, Promise<unknown>>();
-
-/** One operation at a time per app (address change, deletion). */
-function queued<T>(key: string, work: () => Promise<T>): Promise<T> {
-  const previous = files.get(key) ?? Promise.resolve();
-  const next = previous.catch(() => {}).then(work);
-  files.set(key, next);
-  void next.finally(() => {
-    if (files.get(key) === next) files.delete(key);
-  }).catch(() => {});
-  return next;
-}
-
 /**
  * The site changed domain: `fresh` becomes the current one, the old current one (failing that the host of the declared address)
  * joins the old ones without duplicates. The writes of a same site go one after the other.

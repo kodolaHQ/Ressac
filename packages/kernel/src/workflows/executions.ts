@@ -77,6 +77,19 @@ export async function writeAtomic(target: string, text: string): Promise<void> {
   }
 }
 
+const queues = new Map<string, Promise<unknown>>();
+
+/** One operation at a time per key: simultaneous read-modify-write cycles do not erase each other. */
+export function queued<T>(key: string, work: () => Promise<T>): Promise<T> {
+  const previous = queues.get(key) ?? Promise.resolve();
+  const next = previous.catch(() => {}).then(work);
+  queues.set(key, next);
+  void next.finally(() => {
+    if (queues.get(key) === next) queues.delete(key);
+  }).catch(() => {});
+  return next;
+}
+
 const LINE_MAX_BYTES = 2 * 1024;
 const MAX_ERROR_BYTES = 2 * 1024;
 const MAX_LINES = 200;
