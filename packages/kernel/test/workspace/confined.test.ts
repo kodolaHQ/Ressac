@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { inChild } from "../host/confined.ts";
+import { inChild } from "../../src/workspace/confined.js";
 
 declare const __name: <F>(f: F, name: string) => F;
 

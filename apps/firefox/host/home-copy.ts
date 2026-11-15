@@ -2,10 +2,10 @@
 import { join } from "node:path";
 import { ID_SITE } from "../../../packages/kernel/src/sites/schemas.ts";
 import { HOME_ENTRIES_MAX, HOME_FILE_MAX, HOME_TYPES } from "../shared/sites.ts";
-import { inChild } from "./confined.ts";
+import { inChild } from "../../../packages/kernel/src/index.ts";
 
 /**
- * Run in a child process (see confined.ts): each folder entered must be the very inode lstat saw in the folder before
+ * Run in a child process (see packages/kernel/src/workspace/confined.ts): each folder entered must be the very inode lstat saw in the folder before
  * it (a link swapped in between lands elsewhere and is refused), each file is opened by its bare name with O_NOFOLLOW:
  * no path is ever resolved again from the top, so no link reaches a file of the Mac. Copies `<sites>/<id>/home/` (names exact, hidden
  * segments, other types and files over `max` skipped) into `target`; returns the copied files, or null.
