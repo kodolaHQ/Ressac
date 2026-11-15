@@ -195,7 +195,7 @@ else
   mar=$app_dir/dist/Ressac-$version.mar
   gecko_version=$(sed -n 's/^Version=//p' $res/application.ini)
   MAR=$objdist/host/bin/mar MOZ_PRODUCT_VERSION=$gecko_version MAR_CHANNEL_ID=ressac \
-    $engine/tools/update-packaging/make_full_update.sh -q $unsigned $app || fail "make_full_update.sh failed"
+    $engine/tools/update-packaging/make_full_update.sh -q $unsigned $app ressac || fail "make_full_update.sh failed"
   rm -f $mar
   $objdist/bin/signmar -d $db -n ressac-mar -s $unsigned $mar || fail "signmar could not sign the update archive"
   # Checked against the public certificate the app ships, not the key.
