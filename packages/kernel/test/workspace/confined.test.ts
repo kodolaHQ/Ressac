@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { mkdir, readdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { inChild, inFolder, readFiles, writeEntries, type ReadFiles } from "../../src/workspace/confined.js";
+import { enter, inChild, inFolder, readFiles, writeEntries, type ReadFiles } from "../../src/workspace/confined.js";
 import { tempFolder } from "../helpers/temp.js";
 
 declare const __name: <F>(f: F, name: string) => F;
@@ -55,4 +55,41 @@ test("writeEntries: moves from the parent, writes atomically; a folder of the wa
   await symlink(mac, join(app, "lien"));
   expect(await inFolder(join(root, "space"), ["app", "lien"], writeEntries, [[["x", ""]], []], { create: true })).toBeNull();
   expect((await readdir(mac)).sort()).toEqual(["a.txt", "sous"]);
+});
+
+/**
+ * Child side: the first lstat of `swapped` renames that folder away and puts a link to `mac` in its place, the swap the
+ * agent can make between the lstat and the chdir; then the real `enter` and `op` run. Self-contained (toString()).
+ */
+function swapThenRun(enterSource: string, opSource: string, top: string, names: string[], args: unknown[], swapped: string, mac: string): unknown {
+  const fs = process.getBuiltinModule("node:fs");
+  const lstat = fs.lstatSync;
+  let done = false;
+  (fs as { lstatSync: unknown }).lstatSync = (p: string, o?: object) => {
+    const r = lstat(p, o as never);
+    if (p === swapped && !done) {
+      done = true;
+      fs.renameSync(p, `${p}-vrai`);
+      fs.symlinkSync(mac, p);
+    }
+    return r;
+  };
+  (0, eval)(`(${enterSource})`)(top, names, true);
+  return (0, eval)(`(${opSource})`)(...args);
+}
+
+test("a folder swapped for a link between its lstat and the chdir is refused: by enter, by readFiles, before a write", async () => {
+  const swapRun = (top: string, names: string[], op: (...a: any[]) => unknown, args: unknown[], swapped: string, mac: string) =>
+    inChild(swapThenRun, [enter.toString(), op.toString(), top, names, args, swapped, mac]);
+  // enter, on a folder of `names`.
+  let f = await frame();
+  expect(await swapRun(join(f.root, "space"), ["app"], readFiles, [["a.txt"], 100, 100], "app", f.mac)).toBeNull();
+  // readFiles, on a folder of the read path.
+  f = await frame();
+  expect(await swapRun(join(f.root, "space"), ["app"], readFiles, [["sous/a.txt"], 100, 100], "sous", f.mac)).toEqual({ failed: 0, why: "refused" });
+  // A write, after enter.
+  f = await frame();
+  expect(await swapRun(join(f.root, "space"), ["app", "sous"], writeEntries, [[["x.json", ""]], []], "sous", f.mac)).toBeNull();
+  expect((await readdir(f.mac)).sort()).toEqual(["a.txt", "sous"]);
+  expect((await readdir(join(f.mac, "sous"))).sort()).toEqual(["a.txt"]);
 });
