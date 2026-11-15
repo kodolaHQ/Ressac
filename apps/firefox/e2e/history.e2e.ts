@@ -6,7 +6,7 @@ import type { Visit } from "../shared/model";
 import { dispatch, inWindow, newWindow, state, waitFor } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
-import { callTool } from "./mcp";
+import { answerHistory, callTool } from "./mcp";
 import { startServer } from "./server";
 import { click, inUi, missingApi, pressKeys, waitUi } from "./ui";
 
@@ -139,6 +139,7 @@ describe("history noted in the kernel", () => {
     await open(`${base}/a.html`);
     await loaded("/a.html");
     await until(recents, (r) => r.some((x) => x.title === "Page A"));
+    await answerHistory(m, w.dataDir);
     expect((await callTool(w.dataDir, "search_history", { query: "Page A" })).text).toContain(`${base}/a.html`);
   });
 
@@ -154,6 +155,8 @@ describe("history noted in the kernel", () => {
     await dispatch(m, { type: "updateSpace", id: e.id, name: e.name, icon: e.icon, private: true, profile: e.profile } as Action);
     await host("await h.ensure();");
     expect((await until(recents, (r) => r.length === 1))[0]!.private).toBe(true);
+    // A new host is a new conversation: the card is asked again.
+    await answerHistory(m, w.dataDir);
     expect((await callTool(w.dataDir, "search_history", { query: "Page A" })).text).not.toContain("a.html");
   });
 });
@@ -183,6 +186,7 @@ describe("the agent's memory retains page text", () => {
   it("the meta description is retained before the body", async () => {
     await open(`${base}/description`);
     await retained("/description");
+    await answerHistory(m, w.dataDir);
     const parsed = (await callTool(w.dataDir, "read_history", { url: `${base}/description` })).text;
     expect(parsed).toMatch(/Resume des licornes\n\nCorps des licornes/);
   });

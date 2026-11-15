@@ -1046,9 +1046,10 @@ function createToolsServer(
         },
       },
       protect(async ({ query: request, since: from, until, limit }, extra) => {
-        if (!(await historyAccess())) return text(HISTORY_DENIED_TEXT);
+        // Judged first: a read the search would pause never puts up a card for nothing.
         const stop = await watch({ tool: "search_history", query: request }, "lecture de l'historique", extra?.signal);
         if (stop) return text(stop);
+        if (!(await historyAccess())) return text(HISTORY_DENIED_TEXT);
         const results = await hist.find({
           query: request,
           limit: Math.min(HISTORY_LIMIT.max, limit ?? HISTORY_LIMIT.default),
@@ -1063,9 +1064,10 @@ function createToolsServer(
       "read_history",
       { description: "Texte retenu d'une page visitée par l'utilisateur (trouvée par search_history), pour la résumer.", inputSchema: { url: z.string() } },
       protect(async ({ url }, extra) => {
-        if (!(await historyAccess())) return text(HISTORY_DENIED_TEXT);
+        // Judged first: a read the search would pause never puts up a card for nothing.
         const stop = await watch({ tool: "read_history", url }, "lecture de l'historique", extra?.signal);
         if (stop) return text(stop);
+        if (!(await historyAccess())) return text(HISTORY_DENIED_TEXT);
         const p = await hist.read(url);
         if (!p) return text(NOTHING_KEPT);
         return text([KEPT_TEXT_PREFIX, `Titre : ${p.title}`, `URL : ${p.url}`, `Date : ${p.date}`, "", p.text].join("\n"));
@@ -1082,9 +1084,10 @@ function createToolsServer(
         inputSchema: { query: z.string(), limit: z.number().int().min(1).optional() },
       },
       protect(async ({ query: request, limit }, extra) => {
-        if (!(await historyAccess())) return text(HISTORY_DENIED_TEXT);
+        // Judged first: a read the search would pause never puts up a card for nothing.
         const stop = await watch({ tool: "search_bookmarks", query: request }, "lecture des favoris", extra?.signal);
         if (stop) return text(stop);
+        if (!(await historyAccess())) return text(HISTORY_DENIED_TEXT);
         const results = await marks.find({ query: request, limit: Math.min(HISTORY_LIMIT.max, limit ?? HISTORY_LIMIT.default) });
         return text(results.map((r) => `${r.title} · ${r.url}`).join("\n") || "Aucun favori trouvé.");
       }),

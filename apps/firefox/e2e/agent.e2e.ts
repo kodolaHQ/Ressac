@@ -5,9 +5,9 @@ import type { Action } from "../shared/api";
 import { dispatch, state, waitFor } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
-import { callTool } from "./mcp";
+import { answerHistory as answerMcpHistory, callTool } from "./mcp";
 import { startServer } from "./server";
-import { click, waitUi } from "./ui";
+import { waitUi } from "./ui";
 
 const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const PRIVATE_TEXT = "Cet onglet est dans un espace privé : l'agent n'y a pas accès.";
@@ -45,14 +45,7 @@ async function poll<T>(read: () => Promise<T>, ok: (v: T) => boolean, ms = 10_00
     await new Promise((r) => setTimeout(r, 100));
   }
 }
-const HISTORY_CARD = '[data-testid="widget-data-request"]';
-/** The history card, put up by a first history read and answered with `button`; resolves with that read. */
-async function answerHistory(button: "Refuser" | "Autoriser pour cette conversation") {
-  const first = call("search_history", { query: "x" });
-  await waitUi(m, `return !!doc.querySelector(${JSON.stringify(`${HISTORY_CARD} [data-testid="history-request"]`)})`, [], 15_000);
-  await click(m, `${HISTORY_CARD} button`, { text: button });
-  return first;
-}
+const answerHistory = (button?: "Refuser" | "Autoriser pour cette conversation") => answerMcpHistory(m, w.dataDir, button);
 async function setActiveSpacePrivate(isPrivate: boolean): Promise<void> {
   const s = await state(m);
   const e = s.spaces.find((x) => x.id === s.windows[0]!.activeSpace)!;

@@ -17,6 +17,9 @@ export const RESET_FILE = ".reset-requested";
 
 const STAMP = /^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z(-\d+)?$/;
 
+/** What a reset or a format change leaves in place: the agent's files, Ressac's own Ollama, and the request itself. */
+const STAYS = ["workspace", "ollama", RESET_FILE];
+
 /** The ISO date of a path that is exactly `<dataDir>.backup-<timestamp>[-n]` (what checkDataFormat writes), else null. */
 export function backupDate(dataDir: string, path: string): string | null {
   const prefix = `${dataDir}.backup-`;
@@ -29,8 +32,6 @@ export function backupDate(dataDir: string, path: string): string | null {
  * sets the whole folder aside (workspace/ stays in place: it holds the user's projects) and starts anew. Returns the
  * backup path and why, or null when nothing was set aside.
  */
-const STAYS = ["workspace", "ollama", RESET_FILE];
-
 export async function checkDataFormat(dataDir: string, now: Date = new Date()): Promise<{ backup: string; reason: "format" | "reset" } | null> {
   const reset = await fs.access(join(dataDir, RESET_FILE)).then(() => true, () => false);
   if (!reset && (await isKnown(dataDir))) return null;
