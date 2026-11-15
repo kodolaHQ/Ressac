@@ -125,7 +125,7 @@ describe("agent components", () => {
   it("serves one sanitized copy per name, kept until its last page lets it go", async () => {
     write("barres", "<!doctype html><p>barres</p>");
     const url = await serveComponent(data(), "barres");
-    expect(url).toMatch(/^resource:\/\/ressac-component-barres\/component-\d+\.html$/);
+    expect(url).toMatch(/^resource:\/\/ressac-component-barres\/component-\d+-\d+\.html$/);
     const copies = join(data(), "ressac-components", "barres");
     const served = readFileSync(join(copies, new URL(url!).pathname.slice(1)), "utf8");
     expect(served).toContain('http-equiv="Content-Security-Policy"');

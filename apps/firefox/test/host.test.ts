@@ -619,7 +619,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
       reloads: [] as unknown[],
       /** Every extensions.redemarrer request (an unchanged reload). */
       restarts: [] as string[],
-      answer: (c: ExtensionCard): GrantResponse => ({ accepted: true, hash: c.hash }),
+      answer: (_c: ExtensionCard): GrantResponse => ({ accepted: true }),
       handlers: {} as Record<string, Handler>,
     };
     f.handlers = {
@@ -949,7 +949,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     expect(f.activations.at(-1)).toEqual({ addonId: ID, active: true });
     expect(f.cards).toEqual([]);
     // Never granted: through its card.
-    f.answer = (c) => ({ accepted: false, hash: c.hash });
+    f.answer = () => ({ accepted: false });
     expect(await h.rpc.request("extensions.toggle", { key: "agent:jamais", spaceId: "e1", active: true })).toMatchObject({ ok: false });
   });
 
@@ -973,10 +973,10 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     f.handlers["extensions.grant"] = (p, s) => (withoutGrant.push(notGranted()), grant(p, s));
     f.handlers["extensions.install"] = (p, s) => (withoutGrant.push(notGranted()), install(p, s));
     const h = launch(amo, f, { prepare: source });
-    f.answer = (c) => ({ accepted: false, hash: c.hash });
+    f.answer = () => ({ accepted: false });
     expect(await tool(h, "request_extension", { id: "ma-ext" })).toBe("Refusée par l'utilisateur.");
     expect(amo.sends).toEqual([]);
-    f.answer = (c) => ({ accepted: true, hash: c.hash });
+    f.answer = () => ({ accepted: true });
     expect(await tool(h, "request_extension", { id: "ma-ext" })).toBe("Activée dans « Perso ».");
     expect(f.cards[1]).toMatchObject({ key: "agent:ma-ext", name: "Cacheur", space: "Perso", spaceId: "e1", sites: [HOST], network: [] });
     expect(f.installs).toEqual([expect.objectContaining({ version: "1.0.0.1" })]);

@@ -126,7 +126,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
     // The grant card, in that window if still open, else the active one; no window: it falls at once.
     "extensions.grant": (p: { card: ExtensionCard; window: string | null }, signal) => {
       const f = p.window && windows.get(p.window) ? p.window : windows.active();
-      return f ? questions.askExtension(p.card, f, signal) : { accepted: false, hash: p.card.hash, removed: true };
+      return f ? questions.askExtension(p.card, f, signal) : { accepted: false, removed: true };
     },
     // The console unlock card, in that window if still open, else the active one; no window: it falls at once.
     "extensions.unlock": (p: { name: string; spaces: string[]; reason: string; agent: string; window: WindowId | null }, signal) => {

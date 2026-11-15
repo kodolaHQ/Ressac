@@ -23,7 +23,7 @@ import { createBrowserImporter } from "./import/importer";
 import type { BrowserImportApi } from "../../shared/api";
 import { searchBookmarks } from "./bookmarks";
 import { registerHomeNotifications } from "./notifications";
-import { containerFor, existingContainer, isSiteContainer, removeContainer } from "./containers";
+import { containerFor, existingContainer, isAppContainer, isSiteContainer, removeContainer } from "./containers";
 import { installCallPlayer } from "./call-player";
 import { registerPermissionHooks } from "./permission-hooks";
 import { createSitePermissions, type SitePermission, type SitePermissions } from "./site-permissions";
@@ -167,8 +167,9 @@ async function start(): Promise<RessacStore> {
   Services.prefs.getDefaultBranch("").setBoolPref("media.eme.require-app-approval", true);
   Services.prefs.getDefaultBranch("").setIntPref("media.autoplay.default", 0);
   Services.prefs.getDefaultBranch("").setBoolPref("privacy.popups.showBrowserMessage", false);
-  // Fullscreen is granted without a question and without Firefox's warning over the page (spike P8).
-  Services.prefs.getDefaultBranch("").setIntPref("full-screen-api.warning.timeout", 0);
+  // Fullscreen is granted without a question (spike P8); Firefox's warning over the page stays, for 1.5 s, so a page
+  // painting a fake Ressac or a fake sign-in once fullscreen is still named.
+  Services.prefs.getDefaultBranch("").setIntPref("full-screen-api.warning.timeout", 1500);
   // The browser's advanced settings without what contradicts Ressac.
   installPreferencesCleanup();
   // Mozilla's update server offers Widevine (DRM) only to a Firefox version: under Ressac's own version it answers
@@ -472,8 +473,8 @@ async function start(): Promise<RessacStore> {
   const history = createHistory(store, agent);
   const ask = createAsk(agent, giveAgent);
   registerHomeNotifications(agent);
-  // A site app's downloads are cancelled: an app downloads nothing.
-  const downloads = await createDownloads(isSiteContainer);
+  // A site app's or an agent app's downloads are cancelled: an app downloads nothing (an agent app would drop files in ~/Downloads unasked).
+  const downloads = await createDownloads((id) => isSiteContainer(id) || isAppContainer(id));
   refreshMirror = trackState(store, agent, windows);
   // Registered before any UI listener: the UI reads `access` once it is updated.
   agent.on("access", (e: AccessState) => (access = e));

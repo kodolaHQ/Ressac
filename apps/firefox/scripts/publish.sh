@@ -48,6 +48,20 @@ if [[ $code == 200 ]]; then
 elif [[ $code != 404 ]]; then
   fail "cannot tell whether $version is already published (HTTP $code on $url)"
 fi
+# Never backwards: the live feed's version must not be newer (testers would all download the older build, which
+# Firefox accepts since the MAR only names the engine's version). No feed yet goes on; no answer stops.
+live=$(mktemp)
+trap 'rm -f $remote $live' EXIT
+feed=$public/$prefix/browser/Darwin_aarch64-gcc3/ressac/update.xml
+code=$(curl --max-time 30 -s -o $live -w '%{http_code}' "$feed?t=$(date +%s)" || true)
+if [[ $code == 200 ]]; then
+  current=$(grep -m1 -oE 'displayVersion="[^"]+"' $live | cut -d'"' -f2 || true)
+  [[ -n $current ]] || fail "the live update.xml has no version ($feed)"
+  newest=$(printf '%s\n%s\n' $current $version | sort -V | tail -1)
+  [[ $newest == $version ]] || fail "$current is live, newer than $version: bump the version"
+elif [[ $code != 404 ]]; then
+  fail "cannot read the live update.xml (HTTP $code on $feed)"
+fi
 
 put() {
   local key=$1; shift

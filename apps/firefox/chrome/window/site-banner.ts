@@ -13,6 +13,9 @@ const AGENT = ["read-tab", "devtools", "widget-data", "extension", "extension-co
  * (--ressac-banner): the oldest question for this window or its active tab. Returns what
  * takes it down.
  */
+/** How long a site request is shown before « Autoriser » takes a click (Firefox's security.dialog_enable_delay is 500). */
+export const ARM_MS = 500;
+
 export function mountSiteBanner(win: Window, store: RessacStore, windowId: WindowId): () => void {
   const doc = win.document;
   const el = <K extends keyof HTMLElementTagNameMap>(tag: K) => doc.createElementNS(XHTML, tag) as HTMLElementTagNameMap[K];
@@ -29,8 +32,20 @@ export function mountSiteBanner(win: Window, store: RessacStore, windowId: Windo
   doc.getElementById("browser")!.append(banner);
 
   let shown: PendingRequest | undefined;
+  // Like Firefox's own prompts: « Autoriser » only takes a click once a request has been shown for ARM_MS, so a page
+  // that asks on a first click cannot land the second one on it.
+  let armTimer: ReturnType<typeof setTimeout> | undefined;
+  let armedFor: string | undefined;
+  const arm = (id: string | undefined) => {
+    if (id === armedFor) return;
+    clearTimeout(armTimer);
+    armedFor = id;
+    allow.style.pointerEvents = "none";
+    delete allow.dataset.armed;
+    if (id !== undefined) armTimer = setTimeout(() => ((allow.style.pointerEvents = ""), (allow.dataset.armed = "")), ARM_MS);
+  };
   deny.addEventListener("click", () => shown && store.questions.answer(shown.id, "deny"));
-  allow.addEventListener("click", () => shown && store.questions.answer(shown.id, "allow"));
+  allow.addEventListener("click", () => shown && allow.dataset.armed !== undefined && store.questions.answer(shown.id, "allow"));
   const render = () => {
     const say = (id: string) => format(store.state.locale, id);
     banner.setAttribute("aria-label", say("chrome-banner-label"));
@@ -41,6 +56,7 @@ export function mountSiteBanner(win: Window, store: RessacStore, windowId: Windo
     const d = store.questions.pending().find((d) => (d.windowId ? d.windowId === windowId : d.tabId === null || d.tabId === active));
     shown = d && !d.permissions.some((p) => AGENT.includes(p)) ? d : undefined;
     banner.hidden = !shown;
+    arm(shown?.id);
     if (shown) text.textContent = bannerText(shown as PendingRequest & { permissions: SitePermission[] }, store.state.locale);
   };
   // Its height follows its text (a long link wraps) and the window's width.
@@ -50,6 +66,7 @@ export function mountSiteBanner(win: Window, store: RessacStore, windowId: Windo
   const off = [store.questions.onChange(render), store.subscribe(render)];
   return () => {
     off.forEach((f) => f());
+    clearTimeout(armTimer);
     resize.disconnect();
   };
 }

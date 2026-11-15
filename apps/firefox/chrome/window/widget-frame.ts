@@ -20,7 +20,7 @@ function substitutionName(id: string): string {
 }
 
 /** The frame's URL: the sanitized copy, dated with the source's mtime (a new mtime reloads the frame). */
-export function displayUrl(id: string, mtime: number): string {
+export function displayUrl(id: string, mtime: number | string): string {
   return `resource://${PREFIX}${id}/display-${mtime}.html`;
 }
 
@@ -42,7 +42,7 @@ async function confinedCopiesFolder(dataDir: string, id: string): Promise<string
 }
 
 /** The sanitized copy of a display: `<copiesFolder>/display-<mtime>.html`. */
-export function copyPath(dataDir: string, id: string, mtime: number): string {
+export function copyPath(dataDir: string, id: string, mtime: number | string): string {
   return PathUtils.join(copiesFolder(dataDir, id), `display-${mtime}.html`);
 }
 
@@ -256,9 +256,11 @@ function substitute(id: string, folder: string | null): void {
 export async function prepareWidget(dataDir: string, id: string): Promise<string | null> {
   const source = sourcePath(dataDir, id);
   if (!source) return null;
-  let mtime: number;
+  // The copy's key: mtime and size, so a rewrite that keeps the old mtime (cp -p, touch -r, a tar) still makes a new copy.
+  let mtime: string;
   try {
-    mtime = Math.round((await IOUtils.stat(source)).lastModified);
+    const info = await IOUtils.stat(source);
+    mtime = `${Math.round(info.lastModified)}-${info.size}`;
   } catch {
     return null;
   }

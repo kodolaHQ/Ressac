@@ -570,7 +570,7 @@ export class ExtensionsAgent {
     const alsoReplace = nav.spaces.filter((e) => !e.private && otherProfiles.includes(e.profile)).map((e) => e.name);
     const card = cardOf(p.analysis, { key: key, space: space, spaces: nav.spaces, alsoReplaces: alsoReplace });
     const r = await this.askGrant(key, card, win, signal);
-    if (!(r.accepted && r.hash === card.hash)) {
+    if (!r.accepted) {
       await clear();
       return { ok: false, error: r.removed ? ACTIVATION_REMOVED : ACTIVATION_DENIED };
     }
@@ -604,7 +604,7 @@ export class ExtensionsAgent {
       const signals = [removal.signal, this.stopSignal.signal, ...(signal ? [signal] : [])];
       return await this.o.rpc.request<GrantResponse>("extensions.grant", { card: card, window: win }, AbortSignal.any(signals));
     } catch {
-      return { accepted: false, hash: card.hash, removed: true };
+      return { accepted: false, removed: true };
     } finally {
       if (this.cards.get(key) === removal) this.cards.delete(key);
     }

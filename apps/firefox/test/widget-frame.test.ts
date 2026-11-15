@@ -10,6 +10,8 @@ import { serveDisplays } from "../ui/api";
 let root: string;
 let widgets: string;
 /** What the resource:// substitution received: name → folder (null: removed). */
+/** The copy's key, as prepareWidget computes it: rounded mtime and size. */
+const keyOf = (p: string) => `${Math.round(statSync(p).mtimeMs)}-${statSync(p).size}`;
 const substitutions = new Map<string, string | null>();
 
 // The module runs in chrome in Firefox (IOUtils/PathUtils/Services/Cc/Ci globals): here, the same ones, on node:fs.
@@ -23,7 +25,7 @@ beforeAll(() => {
   Object.assign(globalThis as any, {
     PathUtils: { join: (...parts: string[]) => join(...parts) },
     IOUtils: {
-      stat: async (p: string) => ({ lastModified: statSync(p).mtimeMs }),
+      stat: async (p: string) => ({ lastModified: statSync(p).mtimeMs, size: statSync(p).size }),
       exists: async (p: string) => existsSync(p),
       makeDirectory: async (p: string) => void mkdirSync(p, { recursive: true }),
       readUTF8: async (p: string) => readFileSync(p, "utf8"),
@@ -73,7 +75,7 @@ describe("served paths", () => {
 describe("prepareWidget", () => {
   it("writes the sanitized copy, sets the substitution and returns the frame's URL", async () => {
     const source = join(widgets, "demo", "display.html");
-    const mtime = Math.round(statSync(source).mtimeMs);
+    const mtime = keyOf(source);
     const url = await prepareWidget(root, "demo");
     expect(url).toBe(displayUrl("demo", mtime));
     const copy = readFileSync(copyPath(root, "demo", mtime), "utf8");
@@ -86,28 +88,38 @@ describe("prepareWidget", () => {
     mkdirSync(join(widgets, "refus"), { recursive: true });
     const source = join(widgets, "refus", "display.html");
     writeFileSync(source, '<!doctype html><link rel="preload" href="https://exemple.test/x"><p>jamais</p>');
-    const mtime = Math.round(statSync(source).mtimeMs);
+    const mtime = keyOf(source);
     expect(await prepareWidget(root, "refus")).toBe(displayUrl("refus", mtime));
     expect(readFileSync(copyPath(root, "refus", mtime), "utf8")).toBe(displayDenied());
   });
 
-  it("does not rewrite the copy when the source's mtime does not change", async () => {
+  it("does not rewrite the copy when the source's mtime and size do not change", async () => {
     const source = join(widgets, "demo", "display.html");
-    const mtime = Math.round(statSync(source).mtimeMs);
-    const copy = copyPath(root, "demo", mtime);
-    const first = readFileSync(copy, "utf8");
-    writeFileSync(source, "<!doctype html><title>réécrit</title>");
-    utimesSync(source, new Date(mtime), new Date(mtime));
-    expect(await prepareWidget(root, "demo")).toBe(displayUrl("demo", mtime));
-    expect(readFileSync(copy, "utf8")).toBe(first);
+    const key = keyOf(source);
+    const copy = copyPath(root, "demo", key);
+    const written = statSync(copy).mtimeMs;
+    expect(await prepareWidget(root, "demo")).toBe(displayUrl("demo", key));
+    expect(statSync(copy).mtimeMs).toBe(written);
+  });
+
+  it("a rewrite that keeps the old mtime but not the size makes a new copy", async () => {
+    const source = join(widgets, "demo", "display.html");
+    const before = await prepareWidget(root, "demo");
+    const { mtime } = statSync(source);
+    writeFileSync(source, "<!doctype html><title>réécrit, même date</title>");
+    utimesSync(source, mtime, mtime);
+    const after = await prepareWidget(root, "demo");
+    expect(after).not.toBe(before);
+    expect(readFileSync(copyPath(root, "demo", keyOf(source)), "utf8")).toContain("même date");
   });
 
   it("removes the old copy when the source changes", async () => {
     const source = join(widgets, "demo", "display.html");
-    const old = Math.round(statSync(source).mtimeMs);
-    const fresh = old + 5000;
+    const old = keyOf(source);
+    const later = statSync(source).mtimeMs + 5000;
     writeFileSync(source, "<!doctype html><title>nouveau</title>");
-    utimesSync(source, new Date(fresh), new Date(fresh));
+    utimesSync(source, new Date(later), new Date(later));
+    const fresh = keyOf(source);
     expect(await prepareWidget(root, "demo")).toBe(displayUrl("demo", fresh));
     expect(existsSync(copyPath(root, "demo", old))).toBe(false);
     expect(readFileSync(copyPath(root, "demo", fresh), "utf8")).toContain("<title>nouveau</title>");
