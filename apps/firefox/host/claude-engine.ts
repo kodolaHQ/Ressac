@@ -27,7 +27,9 @@ export function claudeEngineEnv(e: ClaudeEngine, relay: { url: string; token: st
     if (!relay) throw incomplete("ollama");
     // No CLAUDE_CODE_MAX_CONTEXT_TOKENS: at 32k, Claude Code's reserve for its answer and compaction leaves no room for its own
     // prompt (« context limit reached » at once, seen 2026-11-15); it assumes 1M and never compacts for an unknown model.
-    return { args: [], env: env(new URL(relay.url).href, relay.token, e.ollamaModel) };
+    // Claude Code stops an answer at 32k output tokens for an unknown model (a long agent report hit it, 2026-11-16);
+    // 36k is about what the 64k Ollama context leaves after Claude Code's prompt: more would overflow the window.
+    return { args: [], env: { ...env(new URL(relay.url).href, relay.token, e.ollamaModel), CLAUDE_CODE_MAX_OUTPUT_TOKENS: "36000" } };
   }
   if (!e.apiUrl || !e.apiModel) throw incomplete("api");
   href(e.apiUrl, "api");
