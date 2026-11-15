@@ -1,5 +1,5 @@
 // Stand-in for node:fs/promises, on top of IOUtils (Firefox system modules have no Node). Only the calls the
-// session persistence and the carry-over use. `rename` is IOUtils.move: onto an existing folder it moves INTO it. IOUtils reports a missing file as a DOMException "NotFoundError": map it to ENOENT.
+// session persistence and the data format check use. `rename` is IOUtils.move: onto an existing folder it moves INTO it. IOUtils reports a missing file as a DOMException "NotFoundError": map it to ENOENT.
 const enoent = (path: string): Error => Object.assign(new Error(`ENOENT: no such file or directory, '${path}'`), { code: "ENOENT" });
 const wrap = async <T>(path: string, run: () => Promise<T>): Promise<T> => {
   try {

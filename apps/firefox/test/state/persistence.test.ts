@@ -496,27 +496,6 @@ test("appearance: kept; missing or unknown, like the Mac", async () => {
   expect((await loadSession(d)).settings.appearance).toBe("system");
 });
 
-test("addresses saved before the rename (webaios://) load as ressac:// in every kind of field", async () => {
-  const d = folder();
-  const state = richState();
-  const [a, b] = Object.keys(state.tabs);
-  const w = state.windows[0]!;
-  state.tabs[a!]!.url = "webaios://settings";
-  state.tabs[b!]!.url = "https://webaios.example/webaios://x";
-  state.essentials = [{ id: "e", url: "webaios://apps", title: "Apps", favicon: null }];
-  state.spaces[0]!.pinned = [{ id: "p", url: "webaios://recap/x", title: "R", favicon: null }];
-  w.recentlyClosed = [{ url: "webaios://settings#a", spaceId: w.activeSpace }];
-  const recorder = new SessionRecorder(d);
-  recorder.schedule(state);
-  await recorder.clear();
-  const s = await loadSession(d);
-  expect(s.tabs[a!]!.url).toBe("ressac://settings");
-  expect(s.tabs[b!]!.url).toBe("https://webaios.example/webaios://x");
-  expect(s.essentials[0]!.url).toBe("ressac://apps");
-  expect(s.spaces[0]!.pinned[0]!.url).toBe("ressac://recap/x");
-  expect(s.windows[0]!.recentlyClosed[0]!.url).toBe("ressac://settings#a");
-});
-
 test("the recorder does not rewrite a session whose saved text is unchanged (only update or locale moved)", async () => {
   const dir = mkdtempSync(join(tmpdir(), "ressac-rec-"));
   const file = join(dir, "session.json");

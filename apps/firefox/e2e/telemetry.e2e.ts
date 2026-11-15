@@ -42,8 +42,8 @@ afterEach(async () => {
 });
 
 const dsn = () => `http://k@127.0.0.1:${server.port}/1`;
-async function launch(o: { profile?: string; noDsn?: boolean; prefs?: Record<string, string | boolean> } = {}): Promise<void> {
-  w = await launchRessac({ profile: o.profile, prefs: o.prefs, env: o.noDsn ? {} : { RESSAC_SENTRY_DSN: dsn() } });
+async function launch(o: { profile?: string; noDsn?: boolean } = {}): Promise<void> {
+  w = await launchRessac({ profile: o.profile, env: o.noDsn ? {} : { RESSAC_SENTRY_DSN: dsn() } });
   m = w.marionette;
   await m.setContext("chrome");
   await waitFor(m, "return !!window.ressacWindow", (v) => v === true);
@@ -93,28 +93,6 @@ it("launch: no session before the notice, then one anonymous session with an ins
     await w?.close();
     await rm(profile, { recursive: true, force: true });
   }
-});
-
-// A profile carried over from WebAiOs: its telemetry choices are Ressac's before telemetry starts, never after.
-const userValue = (name: string) => m.execute<boolean>(`return Services.prefs.prefHasUserValue(arguments[0])`, [name]);
-it("carried over from WebAiOs, telemetry on and the notice seen: the launch session already counts with WebAiOs's install id", async () => {
-  // Telemetry copied after it starts would see the notice as not shown yet: no session at this launch.
-  await launch({ prefs: { "webaios.telemetry.noticeShown": true, "webaios.telemetry.installId": "carried-install-id" } });
-  await until(() => sessions.length > 0);
-  expect(sessions[0].did).toBe("carried-install-id");
-  expect(await notices()).toBe(0);
-});
-
-it("carried over from WebAiOs with telemetry off: off from the first instant, nothing sent, no notice", async () => {
-  await launch({ prefs: { "webaios.telemetry.enabled": false, "webaios.telemetry.noticeShown": true } });
-  expect(await m.execute(`return Services.prefs.getBoolPref("ressac.telemetry.enabled")`)).toBe(false);
-  expect(await m.execute(`return Services.prefs.getBoolPref("browser.tabs.crashReporting.sendReport")`)).toBe(false);
-  expect(await userValue("webaios.telemetry.enabled")).toBe(false);
-  await logError("chrome://browser/content/ressac/sidebar.js", "TypeError: carried-off");
-  await settle();
-  expect(sessions).toEqual([]);
-  expect(envelopes.filter((e) => e.event.exception.values[0].value.includes("carried-off"))).toEqual([]);
-  expect(await notices()).toBe(0);
 });
 
 it("host stop: a requested stop sends nothing", async () => {

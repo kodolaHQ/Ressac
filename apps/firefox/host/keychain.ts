@@ -8,11 +8,8 @@ const run = promisify(execFile);
 
 export const CODEX_KEY = { service: "ressac-codex-api", account: "default" };
 export const CLAUDE_KEY = { service: "ressac-claude-api", account: "default" };
-/** Read for keys saved before the rename to Ressac: `webaios-<name>` for `ressac-<name>`. */
-export const LEGACY_SERVICE_PREFIX = "webaios-";
 /** `security`'s exit code for an item not found. */
 const ABSENT = 44;
-export const legacyService = (service: string) => (service.startsWith("ressac-") ? LEGACY_SERVICE_PREFIX + service.slice("ressac-".length) : null);
 export const KEY_PATTERN = /^[A-Za-z0-9._~+/=:-]{1,512}$/;
 export const INVALID_KEY = () => hostSay("host-invalid-key");
 
@@ -35,36 +32,26 @@ export function keychain(o: { service?: string; account?: string; command?: stri
   const testFile = (o.env ?? process.env).RESSAC_TEST_KEYCHAIN;
   const file = testFile && service === CLAUDE_KEY.service ? `${testFile}.claude` : testFile;
   const ids = ["-s", service, "-a", account];
-  const old = legacyService(service);
-  const oldIds = old && ["-s", old, "-a", account];
-  /** The output, or `absent` (not found: the old name may hold it), or null (locked, refused or too slow). */
-  const find = async (extra: string[], at = ids): Promise<string | "absent" | null> => {
+  /** The output, or `absent` (not found), or null (locked, refused or too slow). */
+  const find = async (extra: string[]): Promise<string | "absent" | null> => {
     try {
-      return (await run(command, ["find-generic-password", ...at, ...extra], { timeout })).stdout;
+      return (await run(command, ["find-generic-password", ...ids, ...extra], { timeout })).stdout;
     } catch (e) {
       // The error holds the command's output, so it is never logged.
       return (e as { code?: unknown }).code === ABSENT ? "absent" : null;
     }
-  };
-  /** The key saved under the old name, saved again under the new one; null when there is none. */
-  const legacy = async (): Promise<string | null> => {
-    const found = oldIds && (await find(["-w"], oldIds));
-    if (!found || found === "absent") return null;
-    const key = found.replace(/\r?\n$/, "");
-    await self.write(key).catch(() => {});
-    return key;
   };
   const readFileKey = () => readFile(file!, "utf8").catch(() => null);
   const self: Keychain = {
     async read() {
       if (file) return readFileKey();
       const found = await find(["-w"]);
-      return found === "absent" ? legacy() : (found?.replace(/\r?\n$/, "") ?? null);
+      return found === "absent" ? null : (found?.replace(/\r?\n$/, "") ?? null);
     },
     async has() {
       if (file) return (await readFileKey()) !== null;
       const found = await find([]);
-      return found === "absent" ? (await legacy()) !== null : found !== null;
+      return found !== "absent" && found !== null;
     },
     async write(key) {
       if (!KEY_PATTERN.test(key)) throw new Error(INVALID_KEY());
@@ -79,11 +66,9 @@ export function keychain(o: { service?: string; account?: string; command?: stri
     },
     async remove() {
       if (file) return rm(file, { force: true });
-      // The old name too: a read would bring it back.
-      for (const at of oldIds ? [ids, oldIds] : [ids])
-        await run(command, ["delete-generic-password", ...at], { timeout }).catch((e: { code?: unknown }) => {
-          if (e.code !== ABSENT) throw new Error("Suppression au trousseau impossible"); // absent = done
-        });
+      await run(command, ["delete-generic-password", ...ids], { timeout }).catch((e: { code?: unknown }) => {
+        if (e.code !== ABSENT) throw new Error("Suppression au trousseau impossible"); // absent = done
+      });
     },
   };
   return self;
@@ -102,17 +87,15 @@ export function amoKeychain(o: { command?: string; delayMs?: number; env?: NodeJ
   const file = env.RESSAC_TEST_KEYCHAIN && `${env.RESSAC_TEST_KEYCHAIN}.amo`;
   const remove = async () => {
     if (file) return rm(file, { force: true });
-    // `delete-generic-password` removes one item per call: go on until none is left (44 = absent). The old name
-    // too: a read would bring it back.
-    for (const service of [AMO_SERVICE, legacyService(AMO_SERVICE)!])
-      for (let i = 0; i < 20; i++) {
-        try {
-          await run(command, ["delete-generic-password", "-s", service], { timeout: o.delayMs ?? KEYCHAIN_DELAY_MS });
-        } catch (e) {
-          if ((e as { code?: unknown }).code === ABSENT) break;
-          throw new Error("Suppression au trousseau impossible");
-        }
+    // `delete-generic-password` removes one item per call: go on until none is left (44 = absent).
+    for (let i = 0; i < 20; i++) {
+      try {
+        await run(command, ["delete-generic-password", "-s", AMO_SERVICE], { timeout: o.delayMs ?? KEYCHAIN_DELAY_MS });
+      } catch (e) {
+        if ((e as { code?: unknown }).code === ABSENT) break;
+        throw new Error("Suppression au trousseau impossible");
       }
+    }
   };
   return {
     /** The saved issuer (the secret never leaves the keychain), or null. */

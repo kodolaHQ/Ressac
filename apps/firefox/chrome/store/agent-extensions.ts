@@ -10,7 +10,6 @@ import { createWatchdog } from "./crash-watchdog";
 import { consoleLevel, MAX_CRASHES } from "../../core/extensions/consoles";
 import type { Store } from "./store";
 import type { WindowRegistry } from "./windows";
-import { PINNED_PREF, parsePinned } from "../window/pinned";
 
 const { AddonManager } = ChromeUtils.importESModule("resource://gre/modules/AddonManager.sys.mjs");
 const { FileUtils } = ChromeUtils.importESModule("resource://gre/modules/FileUtils.sys.mjs");
@@ -18,10 +17,7 @@ const { ExtensionParent } = ChromeUtils.importESModule("resource://gre/modules/E
 
 // Keep in sync with host/extensions/firefox-copy.ts ID_SUFFIX.
 const SUFFIX = "@agent.ressac";
-/** Read for add-ons the agent installed before the rename to Ressac: no guard applies to them any more. */
-const LEGACY_SUFFIX = "@agent.webaios";
-/** The agent's, old id included: an old one has no scope, so every guard denies it until it is uninstalled. */
-const isAgentId = (id: string) => id.endsWith(SUFFIX) || id.endsWith(LEGACY_SUFFIX);
+const isAgentId = (id: string) => id.endsWith(SUFFIX);
 const REFUSED_CALLS = new Set(["tabs.captureVisibleTab", "tabs.captureTab", "tabs.detectLanguage", "tabs.saveAsPDF", "tabs.print", "tabs.printPreview", "tabs.toggleReaderMode"]);
 // Keep in sync with chrome/window/tabs.ts (not imported: it runs window code at load).
 const TAB_ID = "ressac-tab-id";
@@ -359,9 +355,6 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
   };
   ExtensionParent.apiManager.on("startup", (_: string, extension: any) => guardExtension(extension));
   for (const policy of WebExtensionPolicy.getActiveExtensions()) if (policy.extension) guardExtension(policy.extension);
-  // After the guards: an old-id add-on is denied everything (its uninstall URL included) until it is gone. The host drops
-  // their registry entries: the agent asks for them again.
-  void uninstallLegacy();
 
   // Crashes not acknowledged by a host: sent again with the next extensions.pret, at most PLANTAGES_MAX per extension.
   const crashesPending: { addonId: string; at: number }[] = [];
@@ -511,22 +504,4 @@ function watchCrashes(crashed: (addonId: string) => void): { backgroundError(add
   Services.obs.addObserver(() => watchdog.wake(), "wake_notification");
 
   return { backgroundError: (addonId, source, text) => half(addonId, source, text, "window") };
-}
-
-/** Uninstalls the agent's add-ons installed before the rename and takes them off the toolbar's pinned list. */
-async function uninstallLegacy(): Promise<void> {
-  try {
-    for (const a of await AddonManager.getAddonsByTypes(["extension"]))
-      if (a.id.endsWith(LEGACY_SUFFIX))
-        try {
-          await a.uninstall();
-        } catch (e) {
-          console.error(`[extensions] ${a.id} from before the rename not uninstalled:`, e);
-        }
-  } catch (e) {
-    console.error("[extensions] add-ons from before the rename not listed:", e);
-  }
-  const pinned = parsePinned(Services.prefs.getStringPref(PINNED_PREF, "[]"));
-  const kept = pinned.filter((id) => !id.endsWith(LEGACY_SUFFIX));
-  if (kept.length !== pinned.length) Services.prefs.setStringPref(PINNED_PREF, JSON.stringify(kept));
 }

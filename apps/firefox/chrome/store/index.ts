@@ -20,7 +20,6 @@ import { createDownloads, type DownloadsList } from "./downloads";
 import { createHistory, type History } from "./history";
 import { createAsk, type Ask } from "./ask";
 import { createBrowserImporter } from "./import/importer";
-import { carryOver, carryPrefs, tellOnce, unfinished, type CarryResult, type ProfileService } from "./carry-over";
 import type { BrowserImportApi } from "../../shared/api";
 import { searchBookmarks } from "./bookmarks";
 import { registerHomeNotifications } from "./notifications";
@@ -30,7 +29,6 @@ import { registerPermissionHooks } from "./permission-hooks";
 import { createSitePermissions, type SitePermission, type SitePermissions } from "./site-permissions";
 import { bindSites, relabelSiteWindows, sites, type SiteApps } from "./sites";
 import { createStore, type Store } from "./store";
-import { relaunchAfterQuit, relaunchEnv } from "./relaunch";
 import { installUpdates } from "./updates";
 import { installPreferencesCleanup } from "./preferences-cleanup";
 import { installTelemetry } from "./telemetry";
@@ -153,64 +151,11 @@ const widgetGestures = gestureGuard<string>();
 
 let uiNetState: UiNetworkState;
 
-/** The carry-over's reach into the system: the profile service takes nsIFile folders. */
-function carryOverOptions() {
-  const service = Cc["@mozilla.org/toolkit/profile-service;1"].getService(Ci.nsIToolkitProfileService);
-  const { FileUtils } = ChromeUtils.importESModule("resource://gre/modules/FileUtils.sys.mjs");
-  const profiles: ProfileService = {
-    get currentProfile() {
-      return service.currentProfile;
-    },
-    get defaultProfile() {
-      return service.defaultProfile;
-    },
-    set defaultProfile(p) {
-      service.defaultProfile = p;
-    },
-    createProfile: (dir, name, source) => service.createProfile(new FileUtils.File(dir), name, source),
-    flush: () => service.flush(),
-  };
-  // UAppData is this app's profile root, ~/Library/Application Support/Ressac, found by the system (not $HOME).
-  return { home: Services.dirsvc.get("Home", Ci.nsIFile).path, appSupport: Services.dirsvc.get("UAppData", Ci.nsIFile).parent.path, profiles, env: Services.env };
-}
-
 async function start(): Promise<RessacStore> {
   // The UI's network net first, before any await: the windows read its state before they give their frames a src.
   uiNetState = installUiNetwork(Services.env.get("RESSAC_TEST_UI_NETWORK_FAIL") || null);
-  // WebAiOs's prefs, carried with its profile, before telemetry reads them: an opt-out holds from the first instant.
-  // Synchronous, and a no-op without webaios.* user values (a fresh profile, a dev or test launch).
-  try {
-    const P = Services.prefs;
-    carryPrefs({
-      has: (n) => P.prefHasUserValue(n),
-      get: (n) => (P.getPrefType(n) === P.PREF_BOOL ? P.getBoolPref(n) : P.getPrefType(n) === P.PREF_INT ? P.getIntPref(n) : P.getStringPref(n)),
-      set: (n, v) => (typeof v === "boolean" ? P.setBoolPref(n, v) : typeof v === "number" ? P.setIntPref(n, v) : P.setStringPref(n, String(v))),
-      clear: (n) => P.clearUserPref(n),
-    });
-  } catch (e) {
-    console.error("[carry-over] prefs not carried:", e);
-  }
   // Before anything else can fail: its errors are reported.
   const telemetry = installTelemetry();
-  // Before anything creates the data folder: a machine that had WebAiOs keeps its data folder and its profile.
-  const carry = carryOverOptions();
-  // A throw (from the launch guard only) starts normally only when there is nothing to carry.
-  const carried: CarryResult = await carryOver(carry).catch(async (e) => (console.error("[carry-over] failed:", e), (await unfinished(carry)) ? "profile-blocked" : "done"));
-  if (carried !== "done") {
-    const why = {
-      blocked: "Quittez WebAiOs, puis relancez Ressac.",
-      "data-blocked": "Ressac n'a pas pu reprendre vos données WebAiOs (dossier WebAiOs de votre dossier personnel). Fermez les applications qui l'utilisent, puis relancez Ressac.",
-      "profile-blocked": "Ressac n'a pas pu terminer la reprise de vos données WebAiOs. Vos données sont intactes. Relancez Ressac ; si ce message revient, signalez-le à la personne qui vous a transmis Ressac.",
-      restart: null,
-    }[carried];
-    if (why) Services.prompt.alert(null, "Ressac", why);
-    // The variables the carry-over set for the restarted process.
-    if (carried === "restart") relaunchAfterQuit(relaunchEnv());
-    Services.startup.quit(Ci.nsIAppStartup.eAttemptQuit);
-    return new Promise<never>(() => {});
-  }
-  if (await tellOnce(carry).catch(() => false))
-    setTimeout(() => Services.prompt.alert(null, "Ressac", "Vos données WebAiOs ont été reprises. Vous pouvez supprimer WebAiOs du dossier Applications. Pour faire de Ressac votre navigateur par défaut : Réglages › Vie privée › Interface."), 0);
   // Before anything touches the data folder: an unknown format sets it aside (workspace/ stays).
   const dataSetAside = await checkDataFormat(dataDir).catch((e) => (console.error("[data] format check failed:", e), null));
   // Our history is the only one: Firefox's would grow unread. Set at runtime on the default branch, before any window

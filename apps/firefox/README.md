@@ -74,26 +74,9 @@ The Ressac state (session, settings) lives in the `data` folder next to `engine/
 
 Two instances must never share a data folder: the session's temporary file name is the same in both (no pid in Firefox), so they would overwrite each other's session.
 
-## Coming from WebAiOs
+## Old names
 
-Ressac was called WebAiOs. At the first launch on a machine that had WebAiOs, `chrome/store/carry-over.ts` runs once. It checks that WebAiOs is not running (otherwise it shows « Quittez WebAiOs, puis relancez Ressac. » and quits), renames `~/WebAiOs` to `~/Ressac` (and `workspace/.webaios` to `.ressac`, the old caches removed), moves the profile last used by the installed WebAiOs into Ressac's profile root, registers it as `webaios-carried`, makes it this install's default and restarts once on it. Its state is `~/Library/Application Support/Ressac/carried.json`. An unfinished carry-over stops Ressac with a message and is retried at the next launch: Ressac never starts on half-carried data. A Ressac.app moved to another folder is pointed back at the carried profile. Ressac returns to the carried profile at every launch, so a default profile chosen by hand in about:profiles is not kept. It never runs on a development or test launch (profile given on the command line, `RESSAC_DATA_DIR`, `RESSAC_TEST_NO_SYSTEM`). There is no way back: the old WebAiOs no longer finds its profile.
-
-Stored formats that keep the old spelling, so nothing has to be migrated: the container identities `userContextIdInternal.webaios-<id>` (logins of spaces, site apps and agent apps), the Docker volume `webaios-home` (the agent's logins) and the carried profile's name `webaios-carried`.
-
-Old names still read: `webaios.json` (new: `ressac.json`), `webaiosOpen` and `webaiosSite` (new: `ressacOpen`, `ressacSite`), `webaios://` addresses in a saved session, the five `webaios.*` prefs (moved to `ressac.*` at start, before telemetry, unless Ressac already has its own value), the three keychain services `webaios-*` (copied to `ressac-*` on first read), the review mark `refs/webaios/relu` of a project reviewed under WebAiOs (until the next « Marquer comme relu » writes `refs/ressac/relu`) and the old workshop container `webaios-<name>` (removed before the new one is created).
-
-Agent extensions: ids are now `<x>@agent.ressac`. One installed under `@agent.webaios` stays guarded until the chrome uninstalls it at start (and drops it from the toolbar's pinned list); its registry entry is forgotten, so it is not reinstalled by itself: the agent has to ask the user again, which signs it again with Mozilla under the new id (its own storage is lost). Its folder in `~/Ressac/extensions/` stays.
-
-Accepted losses:
-
-- Saved payment cards (Firefox encrypts them with a keychain secret labelled with the app's name; passwords are not concerned).
-- The workshop image is rebuilt once under its new name; the old image stays on disk.
-- The `.webaios/` folders inside individual projects (logs, profiling).
-- Telemetry on Firefox's fresh profile: on a launch the carry-over stops with a message, Ressac runs on the empty profile Firefox just made, before WebAiOs's telemetry choice is carried, for as long as the message stays open, and again at each such launch. Only a native crash report can leave then (the session report waits for the notice to have been shown).
-- Each launch from a new path (the DMG, then `/Applications`) leaves an empty `default-ressac` profile folder in Ressac's profile root.
-- A resumed agent conversation still names `mcp__webaios__*` tools in its history.
-- Hand-edited agent instructions that still name `/workspace/.webaios/` paths.
-- The macOS grants (screen recording, camera, microphone, notifications, default browser) are asked again: the bundle id changed.
+Ressac was called WebAiOs. Stored formats that keep the old spelling: the container identities `userContextIdInternal.webaios-<id>` (logins of spaces, site apps and agent apps), the Docker volume `webaios-home` (the agent's logins) and the profile name `webaios-carried`. Old names still read in the agent's own files: `webaios.json` (new: `ressac.json`), `webaiosOpen` and `webaiosSite` (new: `ressacOpen`, `ressacSite`), the review mark `refs/webaios/relu` and the old workshop container `webaios-<name>` (removed before the new one is created).
 
 ## Add-ons
 

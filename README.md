@@ -81,8 +81,6 @@ Ressac is in closed beta, with a small group of testers. They get a DMG signed a
 - **For the agent**: Docker ([OrbStack](https://orbstack.dev) or Docker Desktop) and a Claude or ChatGPT account (or an API key). Ressac starts the container app itself when it is installed.
 - **For local AI**: [Ollama](https://ollama.com). Ressac starts it, or downloads it for you (190 MB).
 
-Coming from WebAiOs (Ressac's former name)? Quit it first: Ressac carries over your data, profile, passwords and add-ons at its first launch.
-
 ## Build from source
 
 Ressac is built with [surfer](https://github.com/zen-browser/surfer), which downloads Firefox and applies Ressac's patches. You need macOS on Apple Silicon, Xcode command line tools, Python 3.10+, Rust, GNU tar, Node 22 and pnpm (through corepack), and about 25 GB of disk.
