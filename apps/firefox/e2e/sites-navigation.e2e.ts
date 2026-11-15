@@ -26,7 +26,8 @@ let dataDir: string;
 let profile: string;
 
 const site = siteWindowExpr("vidola");
-const view = `${site}.gBrowser.selectedBrowser`;
+// `?.`: the window counts once it names itself an app's, a moment after « open » answers.
+const view = `${site}?.gBrowser.selectedBrowser`;
 const url = (p: string) => server.url("vidola-a.localhost", p);
 const pub = (p: string) => server.url("pub.localhost", p);
 const login = () => server.url("compte.localhost", "/connexion");
@@ -44,7 +45,7 @@ const viewAt = (u: string, expr = view) =>
 const viewUrl = () => m.execute<string>(`return ${view}.currentURI.spec;`);
 async function openAndWait(id = "vidola", p = "/"): Promise<void> {
   await openSite(id);
-  await viewAt(url(p), `${siteWindowExpr(id)}.gBrowser.selectedBrowser`);
+  await viewAt(url(p), `${siteWindowExpr(id)}?.gBrowser.selectedBrowser`);
 }
 async function waitBar<T = unknown>(body: string, id = "vidola", ms = 10_000): Promise<T> {
   const deadline = Date.now() + ms;

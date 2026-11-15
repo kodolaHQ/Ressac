@@ -25,7 +25,8 @@ let dataDir: string;
 let profile: string;
 
 const site = `${siteWindowExpr("vidola")}`;
-const view = `${site}.gBrowser.selectedBrowser`;
+// `?.`: the window counts once it names itself an app's, a moment after « open » answers.
+const view = `${site}?.gBrowser.selectedBrowser`;
 const url = (p: string) => server.url("vidola-a.localhost", p);
 
 async function launch(): Promise<void> {

@@ -67,9 +67,11 @@ corepack pnpm run build
 [[ $(build_id) != "$before" && -n $(build_id) ]] || fail "the build did not run (unimported patches? run engine:import first)"
 corepack pnpm run build:host
 
-# 3. mach package directly: `surfer package` then wants locales, and its MAR would be built before our signature (step 9 builds ours).
-step "mach package"
-(cd $engine && ./mach package)
+# 3. mach directly: `surfer package` then wants locales, and its MAR would be built before our signature (step 9 builds ours).
+# Multi-locale: Firefox's own menus and pages in Ressac's languages too.
+locales=($(zsh scripts/locales.sh fetch))
+step "mach package-multi-locale (en-US $locales)"
+(cd $engine && ./mach package-multi-locale --locales en-US $locales)
 staged=$objdist/ressac/Ressac.app
 [[ -d $staged ]] || fail "mach package did not stage $staged"
 rm -rf $work
