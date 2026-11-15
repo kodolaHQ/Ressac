@@ -8,26 +8,21 @@ const MODEL_VARIABLES = ["ANTHROPIC_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL", "ANT
 /** Claude Code appends `/v1/messages` itself: a trailing `/v1` on the address would double it. */
 export const withoutV1 = (url: string) => url.replace(/\/v1\/?$/, "");
 
-/** The container cannot reach the Mac's loopback: its alias is `host.docker.internal`. */
-const forContainer = (url: string) => {
-  const u = new URL(url);
-  if (u.hostname === "localhost" || u.hostname === "127.0.0.1") u.hostname = "host.docker.internal";
-  return u.href;
-};
-
 const env = (baseUrl: string, token: string, model: string) => ({
   ANTHROPIC_BASE_URL: baseUrl.replace(/\/$/, ""),
   ANTHROPIC_AUTH_TOKEN: token,
   ...Object.fromEntries(MODEL_VARIABLES.map((v) => [v, model])),
 });
 
-/** The `claude` environment for the chosen engine. The API key never appears here: `api` goes through the relay. */
+/** The `claude` environment for the chosen engine. The API key never appears here: `api` and `ollama` go through the relay. */
 export function claudeEngineEnv(e: ClaudeEngine, relay: { url: string; token: string } | null): { args: string[]; env: Record<string, string> } {
   if (!ClaudeEngineSchema.safeParse(e).success) throw incomplete(e.kind === "api" ? "api" : "ollama");
   if (e.kind === "subscription") return { args: [], env: {} };
   if (e.kind === "ollama") {
     if (!e.ollamaUrl || !e.ollamaModel) throw incomplete("ollama");
-    return { args: [], env: env(withoutV1(forContainer(href(e.ollamaUrl, "ollama"))), "ollama", e.ollamaModel) };
+    href(e.ollamaUrl, "ollama");
+    if (!relay) throw incomplete("ollama");
+    return { args: [], env: env(new URL(relay.url).href, relay.token, e.ollamaModel) };
   }
   if (!e.apiUrl || !e.apiModel) throw incomplete("api");
   href(e.apiUrl, "api");

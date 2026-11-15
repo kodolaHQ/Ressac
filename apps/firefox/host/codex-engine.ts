@@ -18,14 +18,15 @@ export function href(url: string, who: "ollama" | "api"): string {
   }
 }
 
-/** The `codex` arguments and environment for the chosen engine. The API key never appears here: `api` goes through the relay. */
+/** The `codex` arguments and environment for the chosen engine. The API key never appears here: `api` and `ollama` go through the relay. */
 export function codexEngineArgs(e: CodexEngine, relay: { url: string; token: string } | null): { args: string[]; env: Record<string, string> } {
   if (!CodexEngineSchema.safeParse(e).success) throw incomplete(e.kind === "api" ? "api" : "ollama");
   if (e.kind === "chatgpt") return { args: [], env: {} };
   if (e.kind === "ollama") {
     if (!e.ollamaUrl || !e.ollamaModel) throw incomplete("ollama");
-    const base = href(e.ollamaUrl, "ollama").replace(/\/$/, "") + "/v1";
-    return { args: [...provider("ressac-ollama", "Ollama", base), "-m", e.ollamaModel], env: { [ENGINE_TOKEN_VARIABLE]: "ollama" } };
+    href(e.ollamaUrl, "ollama");
+    if (!relay) throw incomplete("ollama");
+    return { args: [...provider("ressac-ollama", "Ollama", new URL(relay.url).href.replace(/\/$/, "")), "-m", e.ollamaModel], env: { [ENGINE_TOKEN_VARIABLE]: relay.token } };
   }
   if (!e.apiUrl || !e.apiModel) throw incomplete("api");
   href(e.apiUrl, "api");

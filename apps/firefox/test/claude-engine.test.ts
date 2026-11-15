@@ -16,19 +16,13 @@ describe("claudeEngineEnv", () => {
   it("subscription", () => {
     expect(claudeEngineEnv(e({}), null)).toEqual({ args: [], env: {} });
   });
-  it("ollama", () => {
-    expect(claudeEngineEnv(e({ kind: "ollama", ollamaUrl: "http://host.docker.internal:11434/", ollamaModel: "m" }), null)).toEqual({
+  it("ollama goes through the relay, never host.docker.internal:11434", () => {
+    const r = { url: "http://host.docker.internal:5555", token: "t" };
+    expect(claudeEngineEnv(e({ kind: "ollama", ollamaUrl: "http://127.0.0.1:11434/", ollamaModel: "m" }), r)).toEqual({
       args: [],
-      env: { ANTHROPIC_BASE_URL: "http://host.docker.internal:11434", ANTHROPIC_AUTH_TOKEN: "ollama", ...models("m") },
+      env: { ANTHROPIC_BASE_URL: "http://host.docker.internal:5555", ANTHROPIC_AUTH_TOKEN: "t", ...models("m") },
     });
-  });
-  it("a trailing /v1 is dropped, localhost becomes the container alias", () => {
-    const base = (ollamaUrl: string) => claudeEngineEnv(e({ kind: "ollama", ollamaUrl, ollamaModel: "m" }), null).env.ANTHROPIC_BASE_URL;
-    expect(base("http://host.docker.internal:11434/v1/")).toBe("http://host.docker.internal:11434");
-    expect(base("http://localhost:11434/v1")).toBe("http://host.docker.internal:11434");
-    expect(base("http://127.0.0.1:11434/proxy")).toBe("http://host.docker.internal:11434/proxy");
-    expect(withoutV1("https://api.example/v1")).toBe("https://api.example");
-    expect(withoutV1("https://api.example/v10")).toBe("https://api.example/v10");
+    expect(() => claudeEngineEnv(e({ kind: "ollama", ollamaUrl: "http://127.0.0.1:11434/", ollamaModel: "m" }), null)).toThrow("Réglez");
   });
   it("ollama without a model", () => {
     expect(() => claudeEngineEnv(e({ kind: "ollama", ollamaModel: "" }), null)).toThrow("Réglez l'adresse et le modèle d'Ollama dans Réglages › Agents.");

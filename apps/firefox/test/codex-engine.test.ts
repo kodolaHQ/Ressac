@@ -9,14 +9,17 @@ describe("codexEngineArgs", () => {
     expect(codexEngineArgs(e({}), null)).toEqual({ args: [], env: {} });
   });
   it("ollama", () => {
-    expect(codexEngineArgs(e({ kind: "ollama", ollamaUrl: "http://host.docker.internal:11434/" }), null)).toEqual({
+    expect(codexEngineArgs(e({ kind: "ollama", ollamaUrl: "http://127.0.0.1:11434/" }), { url: "http://host.docker.internal:5555", token: "t" })).toEqual({
       args: [
         "-c", 'model_provider="ressac-ollama"',
-        "-c", 'model_providers.ressac-ollama={name="Ollama",base_url="http://host.docker.internal:11434/v1",env_key="RESSAC_ENGINE_TOKEN"}',
+        "-c", 'model_providers.ressac-ollama={name="Ollama",base_url="http://host.docker.internal:5555",env_key="RESSAC_ENGINE_TOKEN"}',
         "-m", "gpt-oss:20b",
       ],
-      env: { RESSAC_ENGINE_TOKEN: "ollama" },
+      env: { RESSAC_ENGINE_TOKEN: "t" },
     });
+  });
+  it("ollama needs the relay", () => {
+    expect(() => codexEngineArgs(e({ kind: "ollama", ollamaUrl: "http://127.0.0.1:11434/" }), null)).toThrow("Réglez");
   });
   it("api", () => {
     expect(codexEngineArgs(e({ kind: "api", apiUrl: "https://x.test/v1", apiModel: "m1" }), { url: "http://host.docker.internal:5555", token: "t" })).toEqual({
@@ -32,10 +35,10 @@ describe("codexEngineArgs", () => {
     expect(() => codexEngineArgs(e({ kind: "api", apiUrl: "http://example.com", apiModel: "m" }), { url: "http://h:1", token: "t" })).toThrow("Adresse invalide (https://…) (Réglages › Agents)");
   });
   it("quotes", () => {
-    const v = codexEngineArgs(e({ kind: "ollama", ollamaUrl: "http://h/a\"b" }), null).args[3]!;
+    const v = codexEngineArgs(e({ kind: "ollama", ollamaUrl: "http://h/" }), { url: "http://h/a\"b", token: "t" }).args[3]!;
     expect(v).toContain("%22");
     expect(v.replace(/\\"/g, "").match(/"/g)!.length % 2).toBe(0);
-    expect(v).toContain('base_url="http://h/a%22b/v1"');
+    expect(v).toContain('base_url="http://h/a%22b"');
   });
   it("incomplete", () => {
     expect(() => codexEngineArgs(e({ kind: "api", apiUrl: "https://x.test", apiModel: "" }), { url: "http://h:1", token: "t" })).toThrow(

@@ -194,4 +194,24 @@ describe("relay", () => {
     expect(await r.text()).toBe('{"error":"bad key ***"}');
     relay.closeSession(t);
   });
+
+  it("ollama: no key, no auth headers, inference paths only", async () => {
+    key = claudeKey = null; // a missing key must not matter
+    const c = relay.openSession(`http://127.0.0.1:${(upstream.address() as AddressInfo).port}`, "claude-ollama");
+    const r = await call("/v1/messages", { headers: { "x-api-key": "from-container" } }, c);
+    expect(r.status).toBe(200);
+    expect(seen[0]!.url).toBe("/v1/messages");
+    expect(seen[0]!.headers.authorization).toBeUndefined();
+    expect(seen[0]!.headers["x-api-key"]).toBeUndefined();
+    expect((await call("/api/pull", {}, c)).status).toBe(404);
+    expect((await call("/chat/completions", {}, c)).status).toBe(404);
+    const x = relay.openSession(base, "codex-ollama");
+    expect((await call("/chat/completions", {}, x)).status).toBe(200);
+    expect(seen[1]!.url).toBe("/v1/chat/completions");
+    expect((await call("/responses", {}, x)).status).toBe(200);
+    expect((await call("/api/blobs/sha256:x", {}, x)).status).toBe(404);
+    expect(seen).toHaveLength(3);
+    relay.closeSession(c);
+    relay.closeSession(x);
+  });
 });
