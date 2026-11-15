@@ -11,7 +11,7 @@ Ressac rebuilt on stable Firefox. Built with [surfer](https://github.com/zen-bro
 ## First install
 
 ```sh
-pnpm --filter firefox-ressac engine:install   # downloads Firefox 159.0.1, moves it out of the repo, links it
+pnpm --filter firefox-ressac engine:install   # downloads Firefox 160.0, moves it out of the repo, links it
 pnpm --filter firefox-ressac engine:import    # links src/ and applies the patches
 pnpm --filter firefox-ressac build            # full build (~20 min)
 ```
