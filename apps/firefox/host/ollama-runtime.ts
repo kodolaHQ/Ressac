@@ -44,7 +44,7 @@ export interface OllamaRuntimeOptions {
   archive?: { url: string; sha256: string };
 }
 
-/** Claude Code's prompt and AGENTS.md alone fill about 30k tokens: below 64k a local agent works at the edge of its window. */
+/** Claude Code's prompt, its tools and AGENTS.md fill a third or more of the 32k Ollama picks on a 48 GB Mac: a local agent needs room to work. */
 const CONTEXT_LENGTH = "65536";
 const defaultRun = (cmd: string, args: string[]) => new Promise<number>((ok) => execFile(cmd, args, (e) => ok(e ? 1 : 0)));
 const defaultLaunch = (cmd: string, args: string[]) => {

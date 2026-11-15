@@ -45,7 +45,7 @@ Ressac is Firefox with a new interface on top and an agent beside it. Firefox do
 | `apps/firefox/host/` | The Node host: JSON-RPC server, Docker and Ollama runtimes, agent engines, keychain. |
 | `apps/firefox/locales/` | Fluent files, French and English. |
 | `packages/kernel/src/` | The kernel: `container/` (the workshop), `pty/` (agent sessions), `mcp/` (tools exposed to the agent), `access/` (what the agent may read), `workflows/`, `widgets/`, `recaps/`, `search/`… |
-| `packages/kernel/templates/` | Instructions shipped to the agent (`AGENTS.md`, `CLAUDE.md`). |
+| `packages/kernel/templates/` | Instructions shipped to the agent (`AGENTS.md`, `CLAUDE.md`, and `guides/` read per task). |
 | `packages/kernel/docker/` | The workshop image and the workflow engine that runs in the harvest container. |
 | `apps/firefox/test/`, `packages/kernel/test/` | Unit tests (Vitest). |
 | `apps/firefox/e2e/` | End-to-end tests: a headless Ressac on a throwaway profile, driven over Marionette, with a fake Docker and fake agents. |

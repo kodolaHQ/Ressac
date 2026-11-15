@@ -8,7 +8,7 @@ export const CSP_WIDGET =
   "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; form-action 'none'; frame-src 'none'; require-trusted-types-for 'script'; trusted-types default";
 /** Served in place of a display that contains a network hint. */
 export const DISPLAY_DENIED =
-  '<!doctype html><meta charset="utf-8"><p style="font: 13px system-ui; color-scheme: light dark; color: light-dark(#c9473e, #e5736b)">Affichage refusé : il contient &lt;link&gt;, &lt;meta http-equiv&gt; ou des règles de spéculation, qui feraient sortir des données. Voir AGENTS.md.</p>';
+  '<!doctype html><meta charset="utf-8"><p style="font: 13px system-ui; color-scheme: light dark; color: light-dark(#c9473e, #e5736b)">Affichage refusé : il contient &lt;link&gt;, &lt;meta http-equiv&gt; ou des règles de spéculation, qui feraient sortir des données. Voir guides/widgets.md.</p>';
 
 const ID_WIDGET = /^[a-z0-9-]+$/;
 const PREFIX = "ressac-widget-";

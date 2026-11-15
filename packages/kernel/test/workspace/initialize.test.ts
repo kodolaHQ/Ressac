@@ -25,6 +25,10 @@ const expectedList = [
   "AGENTS.md",
   "CLAUDE.md",
   "browsing-notes.md",
+  "guides/widgets.md",
+  "guides/extensions.md",
+  "guides/actions.md",
+  "guides/site-apps.md",
   "home/layout.json",
   ...Object.entries(START_FILES).flatMap(([w, files]) => files.map((f) => `home/widgets/${w}/${f}`)),
   ".ressac/profiles/claude.json",
@@ -66,8 +70,20 @@ test("AGENTS.md mentions the required elements", async () => {
   const c = spacePaths(await tempFolder());
   await initSpace(c);
   const text = await readFile(join(c.root, "AGENTS.md"), "utf8");
-  for (const m of ["current_page", "open_tab", "5280", "5299", "0.0.0.0", "state.json", "/workspace/projects"]) {
+  for (const m of ["current_page", "open_tab", "5280", "5299", "0.0.0.0", "/workspace/projects", "show_recap"]) {
     expect(text, m).toContain(m);
+  }
+  expect(await readFile(join(c.root, "guides", "widgets.md"), "utf8")).toContain("state.json");
+});
+
+test("AGENTS.md stays short and every guide it names ships in each language", async () => {
+  for (const dir of [FR, EN]) {
+    const text = await readFile(join(dir, "AGENTS.md"), "utf8");
+    // Loaded whole at every session: a local model's window must keep room for the work.
+    expect(text.length, dir).toBeLessThan(30_000);
+    const named = [...new Set(text.match(/\/workspace\/guides\/[a-z-]+\.md/g))];
+    expect(named.length, dir).toBe(4);
+    for (const g of named) expect(existsSync(join(dir, g.slice("/workspace/".length))), g).toBe(true);
   }
 });
 
@@ -204,8 +220,8 @@ test("the profile shipped before the English formats (profil-claude.json) is a k
 });
 
 test("the AGENTS.md templates are pinned: before editing one, add its hash to OLD_AGENTS, then update the pin", async () => {
-  expect(sha256(await readFile(join(FR, "AGENTS.md")))).toBe("28d43b9971947d05d21772e6a7c2014c98b2677aa51e7e2cf87c9a26384bee2d");
-  expect(sha256(await readFile(join(EN, "AGENTS.md")))).toBe("eaed8d1d938c46e5ac2d5958d5b7b3a2d49ae17637395f26da7866ae28f10d00");
+  expect(sha256(await readFile(join(FR, "AGENTS.md")))).toBe("0465e45d90b43e2ab810f9d47b53d9efbfd72df15831a81c83c38b36f8172341");
+  expect(sha256(await readFile(join(EN, "AGENTS.md")))).toBe("8cc24e0ad5b74c212fe1cb100959d3cfe0a038fd3f424a79714723b36fbc699a");
   expect(OLD_AGENTS.has("6ecc3a5571398b8490f4b384b32c191e56111e3eebe092e1ccf03790f2ec845b")).toBe(true);
   expect(OLD_AGENTS.has("ff0f49e00a04cec590ee023394221e8bbf28dd0439a628e48ea307acaffa0a8e")).toBe(true);
 });
@@ -216,15 +232,15 @@ test("the hash of every shipped version is kept: the list only grows", () => {
 });
 
 for (const [lang, heading] of [["fr", "Remarques du mode design"], ["en", "Design mode remarks"]] as const) {
-  test(`the AGENTS.md template describes the design mode remarks of site apps (${lang})`, async () => {
-    const text = await readFile(join(DEFAULT_TEMPLATES, lang, "AGENTS.md"), "utf8");
+  test(`the site apps guide describes the design mode remarks of site apps (${lang})`, async () => {
+    const text = await readFile(join(DEFAULT_TEMPLATES, lang, "guides", "site-apps.md"), "utf8");
     for (const pattern of [heading, "/workspace/.ressac/remarks/site-<id>/", "MutationObserver", "third-party-site", "home/"]) {
       expect(text, pattern).toContain(pattern);
     }
   });
 
-  test(`the site.json examples given in AGENTS.md (YouTube, Vidola) are valid for the site app schema (${lang})`, async () => {
-    const text = await readFile(join(DEFAULT_TEMPLATES, lang, "AGENTS.md"), "utf8");
+  test(`the site.json examples given in the site apps guide (YouTube, Vidola) are valid for the site app schema (${lang})`, async () => {
+    const text = await readFile(join(DEFAULT_TEMPLATES, lang, "guides", "site-apps.md"), "utf8");
     const blocks = [...text.matchAll(/```json site\.json:([a-z]+)\n([\s\S]*?)```/g)].map((m) => ({ name: m[1]!, json: m[2]! }));
     expect(blocks.map((b) => b.name).sort()).toEqual(["vidola", "youtube"]);
     for (const { name, json } of blocks) {
@@ -232,7 +248,7 @@ for (const [lang, heading] of [["fr", "Remarques du mode design"], ["en", "Desig
       expect(r.success, `${name} : ${r.success ? "" : r.error.message}`).toBe(true);
       if (!r.success) continue;
       expect(checkSiteDeclaration(r.data, { localAddresses: false }), name).toBeNull();
-      // Each declared tweak file is shown in AGENTS.md.
+      // Each declared tweak file is shown in the guide.
       for (const r2 of r.data.tweaks) for (const f of [...r2.js, ...r2.css]) expect(text, `${name} : retouches/${f}`).toContain(`tweaks/${f}`);
     }
   });

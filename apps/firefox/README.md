@@ -305,7 +305,7 @@ Limits:
   - **video resume** (`ResumeTracking` of `core/resume.ts` in the actor, positions kept by the host) and the **address follow** (`UrlTracking` of `core/sites/tracking.ts`);
   - the **agent's tools** on `site:<id>` (`list_tabs`, `read_tab`, `capture_screen`, `navigate`, dev tools) behind the app's « widget_data » card;
   - **add-on buttons** in the app bar (`createSiteAddons`, `ui/SiteAddonsStrip.svelte`); the view is protected from add-ons (no remove, move, adopt, `windows.remove`, non-http loads; the request guard's net).
-- The end-to-end scenario with AGENTS.md's examples: `e2e/sites-scenario.e2e.ts`.
+- The end-to-end scenario with the examples of the site apps guide (`packages/kernel/templates/fr/guides/site-apps.md`): `e2e/sites-scenario.e2e.ts`.
 - The probes: `RESSAC_SPIKE=1 corepack pnpm --filter firefox-ressac exec vitest run -c vitest.e2e.config.ts e2e/sites-spike.e2e.ts`, to run again after each Firefox update (measures the window, the routing, the sandbox and the home).
 
 Limits:

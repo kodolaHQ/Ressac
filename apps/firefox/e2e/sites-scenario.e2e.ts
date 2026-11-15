@@ -10,7 +10,7 @@ import type { Marionette } from "./marionette";
 import { grantSite, inSiteBar, inSiteView, resolveLocalHosts, serveWav, silenceWav, siteWindowCount, siteWindowExpr, startSitesServer, writeSite } from "./sites";
 import { missingApi } from "./ui";
 
-// Plan 32 Task 7: the success scenario, end to end, with the examples of AGENTS.md written as they are (only the
+// Plan 32 Task 7: the success scenario, end to end, with the examples of the site apps guide written as they are (only the
 // domains become `*.localhost`), a local fake YouTube included.
 // Adapted: the headless test Firefox decodes no media (see sites-resume.e2e.ts), so « watch until 1:10 » sets the
 // player's time then plays and pauses (trusted events), and a resumed player is checked on its time, not on playing.
@@ -25,8 +25,8 @@ const READER = "/lecteur.html";
 const CARD_TEXT = "the-bear · saison 2, épisode 4 — reprendre à 1:10";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-const AGENTS = readFileSync(path.join(__dirname, "..", "..", "..", "packages", "kernel", "templates", "fr", "AGENTS.md"), "utf8");
-/** The first code block of AGENTS.md from `marker` on (the marker may be the block's opening itself). */
+const AGENTS = readFileSync(path.join(__dirname, "..", "..", "..", "packages", "kernel", "templates", "fr", "guides", "site-apps.md"), "utf8");
+/** The first code block of the guide from `marker` on (the marker may be the block's opening itself). */
 const block = (marker: string): string => {
   const i = AGENTS.indexOf(marker);
   expect(i, marker).toBeGreaterThan(-1);

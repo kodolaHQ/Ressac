@@ -19,6 +19,8 @@ const FALLBACK = "en";
  * the old version's hash (`shasum -a 256 templates/<language>/AGENTS.md`) before modifying it.
  */
 export const OLD_AGENTS = new Set([
+  "28d43b9971947d05d21772e6a7c2014c98b2677aa51e7e2cf87c9a26384bee2d",
+  "eaed8d1d938c46e5ac2d5958d5b7b3a2d49ae17637395f26da7866ae28f10d00",
   "7cd23635e0d47510294b5ee4d3059f4158ea5e94d52b26150bec4a789ac03d46",
   "834a9884b20b2ca356521226665c976c119d648712364810b56425230b7c3a98",
   "6ecc3a5571398b8490f4b384b32c191e56111e3eebe092e1ccf03790f2ec845b",
@@ -123,8 +125,12 @@ async function currentHashes(models: string, langs: string[], rel: string): Prom
   return out;
 }
 
-/** The texts written in the language of the space: swapped on a language change while untouched. */
-const LOCALIZED_TEXTS = ["AGENTS.md", "CLAUDE.md", "browsing-notes.md"];
+/**
+ * The texts written in the language of the space: swapped on a language change while untouched. The guides hold what
+ * AGENTS.md leaves to a task (widgets, actions…): the agent reads one when its task comes, a local model keeps its window.
+ */
+const GUIDES = ["guides/widgets.md", "guides/extensions.md", "guides/actions.md", "guides/site-apps.md"];
+const LOCALIZED_TEXTS = ["AGENTS.md", "CLAUDE.md", "browsing-notes.md", ...GUIDES];
 
 /**
  * Template file → destination in the workspace, and the hashes of the shipped versions the destination may be replaced
