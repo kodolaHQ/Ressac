@@ -67,7 +67,7 @@ export function warnWorkflow(
       const v = b.params[c.name];
       if (typeof v !== "string") continue;
       // An optional marker (`{config.x?}`) does not need the value: it is never reported.
-      for (const m of v.matchAll(/\{config\.(\w+)(?:[^}\w][^}]*)?\}/g)) {
+      for (const m of v.matchAll(/\{config\.(\w+)(?:[^{}\w][^{}]*)?\}/g)) {
         if (!m[0].endsWith("?}") && !Object.hasOwn(config, m[1]!)) missing.add(m[1]!);
       }
     }
