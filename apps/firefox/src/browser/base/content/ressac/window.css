@@ -91,7 +91,10 @@
 @keyframes ressac-drift2 { to { transform: translate(-12%, 14%) scale(0.92); } }
 @keyframes ressac-drift3 { to { transform: translate(10%, -12%) scale(1.08); } }
 
-/* No drift while another app has the focus, none at all with reduced motion. */
+/* No drift behind a web page or with « Aura animée » off (controller.ts), nor while another app has the focus,
+   none at all with reduced motion. */
+:root[ressac-main][ressac-web-page] #ressac-aura i,
+:root[ressac-main][ressac-aura-still] #ressac-aura i,
 :root[ressac-main]:-moz-window-inactive #ressac-aura i {
   animation-play-state: paused;
 }

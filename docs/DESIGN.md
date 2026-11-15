@@ -29,7 +29,7 @@ Toute retouche visuelle suit ce fichier. Les valeurs vivent dans `apps/firefox/u
 
 ## La charte
 
-- **Aura** : trois teintes floues qui dérivent lentement (`--a1`, `--a2`, `--a3`). Cinq auras : Aube (défaut), Lagon, Verger, Glacier, Braise.
+- **Aura** : trois teintes floues (`--a1`, `--a2`, `--a3`) qui dérivent lentement derrière les pages de Ressac (accueil, réglages, applications…) et restent figées derrière une page web, pour ne pas faire tourner le GPU. Cinq auras : Aube (défaut), Lagon, Verger, Glacier, Braise.
 - **Verre** : le chrome (barre latérale, panneau de l'agent, barre de commande, modales) est un voile translucide posé sur l'aura. L'aura ne touche jamais le contenu des sites : les pages gardent leur propre fond.
 - **Neutres** : gris froids légèrement teintés, clair et sombre. Le thème suit macOS ; sombre par défaut.
 - **Accent** : dérivé de l'aura de l'espace actif, plus de violet fixe. Chaque aura a un accent pour le clair et un pour le sombre (contraste AA). Le texte posé sur l'accent est `#0E1014` en sombre, blanc en clair. Les couleurs d'état (en cours, erreur, arrêté, accès lecture / action) restent sémantiques et indépendantes de l'aura.

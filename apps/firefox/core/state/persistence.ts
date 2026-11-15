@@ -71,6 +71,7 @@ const SchemaSession = z.object({
     aiEnabled: z.boolean().catch(true),
     // A session saved before the setting existed gets the default.
     startOnHome: z.boolean().catch(true),
+    auraMotion: z.boolean().catch(true),
     appearance: z.enum(APPEARANCES).catch("system"),
     // A session saved before languages existed was in French: it stays so. A language no longer shipped → the Mac's.
     language: z

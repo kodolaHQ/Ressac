@@ -592,6 +592,22 @@
               {/each}
             </div>
           </div>
+          <div class="row">
+            <div class="grow">
+              <label for="aura-motion-switch"><b>{t("settings-aura-motion-label")}</b></label>
+              <span class="muted" id="aura-motion-help">{t("settings-aura-motion-help")}</span>
+            </div>
+            <input
+              id="aura-motion-switch"
+              class="switch"
+              type="checkbox"
+              role="switch"
+              data-testid="settings-aura-motion"
+              aria-describedby="aura-motion-help"
+              checked={appState.value?.settings.auraMotion ?? true}
+              onchange={(e) => api.dispatch({ type: "setAuraMotion", enabled: e.currentTarget.checked })}
+            />
+          </div>
         </div>
       </section>
     {:else}

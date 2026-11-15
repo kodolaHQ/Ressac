@@ -484,6 +484,16 @@ test("startOnHome: each window loads on the home page, its tabs kept; off, on th
   expect((await loadSession(d)).settings.startOnHome).toBe(true);
 });
 
+test("auraMotion: off kept; missing, on", async () => {
+  const d = folder();
+  const saved = initialState();
+  writeFileSync(join(d, "session.json"), JSON.stringify({ ...saved, settings: { ...saved.settings, auraMotion: false } }));
+  expect((await loadSession(d)).settings.auraMotion).toBe(false);
+  const { auraMotion: _, ...old } = saved.settings;
+  writeFileSync(join(d, "session.json"), JSON.stringify({ ...saved, settings: old }));
+  expect((await loadSession(d)).settings.auraMotion).toBe(true);
+});
+
 test("appearance: kept; missing or unknown, like the Mac", async () => {
   const d = folder();
   const saved = initialState();

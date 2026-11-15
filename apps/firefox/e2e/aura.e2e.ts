@@ -98,6 +98,25 @@ describe("the window's aura", () => {
     expect(await m.execute(`return getComputedStyle(document.getElementById("tabbrowser-tabbox"), "::after").animationName;`)).toBe("none");
   });
 
+  it("the aura drifts behind Ressac pages only, still behind a web page", async () => {
+    server = await startServer({ routes: { "/": (_, res) => res.writeHead(200, { "Content-Type": "text/html" }).end("<p>web</p>") } });
+    const m = await launch();
+    const windowId = (await state(m)).windows[0]!.id;
+    const web = `return document.documentElement.hasAttribute("ressac-web-page");`;
+    const drift = `return [...document.querySelectorAll("#ressac-aura i")].map((i) => getComputedStyle(i).animationPlayState);`;
+    expect(await m.execute(web)).toBe(false);
+    await dispatch(m, { type: "openTab", windowId, url: `${server.url}/` });
+    await waitFor(m, web, (v) => v === true);
+    expect(await m.execute(drift)).toEqual(["paused", "paused", "paused"]);
+    await dispatch(m, { type: "openTab", windowId, url: "ressac://settings" });
+    await waitFor(m, web, (v) => v === false);
+    await waitFor(m, drift, (v: string[]) => v.every((x) => x === "running"));
+    // « Aura animée » off: still behind Ressac's pages too.
+    await waitUi(m, "doc.querySelector('[data-testid=\"settings-nav-privacy\"]')?.click(); return !!doc.querySelector('[data-testid=\"settings-aura-motion\"]')");
+    await waitUi(m, "doc.querySelector('[data-testid=\"settings-aura-motion\"]').click(); return true");
+    await waitFor(m, drift, (v: string[]) => v.every((x) => x === "paused"));
+  });
+
   it("the halo shows while the agent works on the displayed tab", async () => {
     server = await startServer({ routes: { "/": (_, res) => res.writeHead(200, { "Content-Type": "text/html" }).end("<title>demo</title><p>demo</p>") } });
     // The demo port is the kernel's own: the agent's tabs there get every right, no consent card.

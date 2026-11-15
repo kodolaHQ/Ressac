@@ -240,6 +240,8 @@ export interface BrowserState {
     appearance: Appearance;
     /** At launch each window shows the home page instead of the tab it was left on (on by default). */
     startOnHome: boolean;
+    /** The aura drifts behind Ressac's own pages (on by default); off, it stays still everywhere. */
+    auraMotion: boolean;
     /** « system » (the Mac's language when Ressac has it) or a shipped language code (shared/i18n.ts). */
     language: string;
     /** The user's own bindings; an action absent here keeps its default (shared/shortcuts.ts). */

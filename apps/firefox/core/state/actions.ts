@@ -742,6 +742,11 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       d.settings.startOnHome = a.enabled;
       return true;
     }
+    case "setAuraMotion": {
+      if (d.settings.auraMotion === a.enabled) return false;
+      d.settings.auraMotion = a.enabled;
+      return true;
+    }
     case "chooseAppearance": {
       if (d.settings.appearance === a.appearance) return false;
       d.settings.appearance = a.appearance;

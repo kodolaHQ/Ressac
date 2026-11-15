@@ -1048,6 +1048,16 @@ test("setVimMode toggles the vim keys", () => {
   expect(e).toBe(before);
 });
 
+test("setAuraMotion turns the aura's drift off and on", () => {
+  e = initialState(genId);
+  expect(e.settings.auraMotion).toBe(true);
+  ag({ type: "setAuraMotion", enabled: false });
+  expect(e.settings.auraMotion).toBe(false);
+  const before = e;
+  ag({ type: "setAuraMotion", enabled: false });
+  expect(e).toBe(before);
+});
+
 test("shortcut actions store, refuse and reset bindings", () => {
   e = initialState(genId);
   const changed = (a: Action) => {

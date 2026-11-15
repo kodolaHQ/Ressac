@@ -1,7 +1,7 @@
 import { format } from "../../shared/i18n";
 import { VIM_KEYS, type VimTexts } from "../../shared/vim-keys";
 import type { TabCycleMessage, Panel, TabsPanel, ShortcutAction } from "../../shared/api";
-import { workflowUrlTarget, historyContext, AGENT_WIDTH_MAX, AGENT_WIDTH_MIN, type FrameBounds, type BrowserState, type WindowId, type TabId } from "../../shared/model";
+import { workflowUrlTarget, historyContext, hasView, AGENT_WIDTH_MAX, AGENT_WIDTH_MIN, type FrameBounds, type BrowserState, type WindowId, type TabId } from "../../shared/model";
 import { auraVariables, DEFAULT_AURA, type AuraId } from "../../shared/aura";
 import { toUrl } from "../../core/url";
 import { searchTemplate } from "../../shared/search";
@@ -218,6 +218,20 @@ export function createController(
       if (id !== auraOf(previous)) for (const root of auraRoots()) applyAura(root, id);
     }),
   );
+  // The aura drifts only behind a page the UI draws (home, ressac:, error), as App.svelte's pageWeb: behind a web page its
+  // 70-80px blurs kept the GPU at ~35% while idle. A UI panel over a web tab (history, downloads) keeps it still.
+  const showsWebPage = (state: BrowserState) => {
+    const f = state.windows.find((x) => x.id === windowId);
+    const id = f?.active[f.activeSpace];
+    const tab = id ? state.tabs[id] : undefined;
+    return !!tab && hasView(tab.url) && !tab.crashed && !tab.error;
+  };
+  const markWebPage = (state: BrowserState) => {
+    document.documentElement.toggleAttribute("ressac-web-page", showsWebPage(state));
+    document.documentElement.toggleAttribute("ressac-aura-still", !state.settings.auraMotion);
+  };
+  markWebPage(store.state);
+  unsubscribe.push(store.subscribe(markWebPage));
   // The agent's halo: lit while one of its tools runs on the displayed tab (a tab or space switch is a state change).
   const halo = createHalo((on) => document.documentElement.toggleAttribute("ressac-agent-working", on));
   let haloTab: TabId | null | undefined;
