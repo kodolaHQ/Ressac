@@ -88,7 +88,7 @@ const PULL_BUSY = () => hostSay("host-pull-busy");
 const failure = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export interface SettingsOptions {
-  workshop: Pick<Workshop, "state" | "exec" | "restart" | "rebuild">;
+  workshop: Pick<Workshop, "state" | "exec" | "restart" | "rebuild" | "secureNetwork">;
   ai: Pick<LocalAi, "state" | "check" | "ollamaUrl" | "setDecisionModel">;
   ollama: Pick<OllamaRuntime, "status" | "start" | "install">;
   docker: DockerRuntime;
@@ -192,6 +192,8 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
       if ((await o.workshop.state()) !== "demarre") return { kind: "error", error: hostSay("host-workshop-not-started") };
       stopLogins();
       try {
+        // The login runs the agent's CLI as node: never before the network rules are in place.
+        await o.workshop.secureNetwork();
         signIn = startDeviceLogin(o.deviceCommand(a.login.argv));
       } catch (e) {
         return { kind: "error", error: failure(e) };

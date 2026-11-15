@@ -20,6 +20,7 @@ function setup(over: { state?: string; exec?: (argv: string[]) => unknown; ollam
       exec: exec as any,
       restart: vi.fn(async () => (calls.push("restart"), "demarre" as const)),
       rebuild: vi.fn(async () => (calls.push("rebuild"), "demarre" as const)),
+      secureNetwork: vi.fn(async () => void calls.push("secureNetwork")),
     },
     ai: {
       state: () => ({ state: "stopped" as const }),
@@ -134,6 +135,14 @@ describe("settings host", () => {
     h.stopLogins();
     await vi.waitFor(() => expect(alive()).toEqual([false, false]));
     expect(o.deviceCommand).toHaveBeenCalledWith(["codex", "login", "--device-auth"]);
+    expect(o.workshop.secureNetwork).toHaveBeenCalled();
+  });
+
+  it("login refused while the agent's network cannot be secured: the CLI never runs", async () => {
+    const { h, o } = setup();
+    o.workshop.secureNetwork.mockRejectedValueOnce(new Error("no rules"));
+    expect(await h["settings.login"]!({ id: "codex" })).toMatchObject({ kind: "error" });
+    expect(o.deviceCommand).not.toHaveBeenCalled();
   });
 
   it("login on a workshop built before Codex", async () => {
