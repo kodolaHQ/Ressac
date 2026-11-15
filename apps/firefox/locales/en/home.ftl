@@ -57,6 +57,7 @@ home-welcome-ai-needs = It needs Ollama, the open-source software that runs it, 
 home-welcome-ollama-outdated = Ollama { $version } is too old for local AI: version { $min } or later is required.
 home-welcome-ollama-update = Update Ollama
 home-welcome-ollama-ready = Ollama is ready.
+home-welcome-ollama-context = To run the agent itself on a local model (Settings › Agents), set Ollama's context length to 64k or more: Ollama app › Settings.
 home-welcome-models-started = Download started: a notification will tell you when it is ready. Progress is in Settings › Local AI.
 home-welcome-models-missing = The local AI models are missing (several GB).
 home-welcome-models-pull = Download in the background

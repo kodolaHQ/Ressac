@@ -98,7 +98,7 @@ describe("Claude in Settings", () => {
     await shows(CARD, "Abonnement Claude");
     await ollamaAt(ollama.url);
     await click(m, inCard("engine-ollama"));
-    await shows(CARD, "Claude Code envoie de très longues consignes : prenez un grand modèle avec une grande fenêtre de contexte.");
+    await shows(CARD, "réglez la longueur de contexte d'Ollama sur 64k au moins");
     expect(await options()).toEqual(["Choisir un modèle", "ornith:35b · 35B", "qwen3.5:4b · 4B"]);
     await fill("ollama-model", "ornith:35b");
     await engineSaved((e) => e.kind === "ollama" && e.ollamaModel === "ornith:35b" && e.ollamaUrl === ollama.url);

@@ -104,7 +104,7 @@
     {/each}
   </div>
   {#if engine.kind === "ollama"}
-    {#if agent === "claude"}<span class="muted">{t("agent-engine-claude-ollama-note")}</span>{/if}
+    <span class="muted" data-testid="{agent}-ollama-note">{t("agent-engine-ollama-note")}</span>
     {@render text("ollamaUrl", t("agent-engine-ollama-url"))}
     <div class="field">
       <span>{t("agent-engine-model")}</span>

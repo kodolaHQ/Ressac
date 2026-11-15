@@ -266,6 +266,7 @@
               <button type="button" data-testid="welcome-recheck" onclick={() => void checkOllama()}>{t("home-welcome-recheck")}</button>
             {/if}
           </div>
+          <p class="note" data-testid="welcome-ollama-context">{t("home-welcome-ollama-context")}</p>
           {#if mode === "ai"}
             {@render actions(t("home-welcome-done"), false, () => api.dispatch({ type: "finishAiSetup" }))}
           {:else}

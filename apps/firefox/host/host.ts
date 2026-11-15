@@ -455,6 +455,8 @@ const rpc = createRpc({
     "settings.agentDomains": (p: { domains: unknown }) => {
       agentDomains = Array.isArray(p?.domains) ? cleanAgentDomains(p.domains) : [];
       // New connections follow the list; a running session is not killed. A stopped container has no rules to refresh.
+      // AI off: Docker is never touched; turning AI on starts the workshop, which applies the list then.
+      if (!aiOn) return;
       void workshop.state().then((s) => (s === "demarre" ? workshop.secureNetwork() : undefined)).catch((e) => console.error("[ressac] agent domains not applied:", e));
     },
     "agent.claudeEngine": (p: { engine: unknown }) => {

@@ -57,6 +57,7 @@ home-welcome-ai-needs = Il lui faut Ollama, le logiciel libre qui la fait foncti
 home-welcome-ollama-outdated = Ollama { $version } est trop ancien pour l'IA locale : il faut la version { $min } ou plus.
 home-welcome-ollama-update = Mettre à jour Ollama
 home-welcome-ollama-ready = Ollama est prêt.
+home-welcome-ollama-context = Pour faire tourner l'agent lui-même sur un modèle local (Réglages › Agents), réglez la longueur de contexte d'Ollama sur 64k au moins : app Ollama › Réglages.
 home-welcome-models-started = Téléchargement lancé : une notification vous préviendra quand ce sera prêt. Le suivi est dans Réglages › IA locale.
 home-welcome-models-missing = Il manque les modèles d'IA locale (plusieurs Go).
 home-welcome-models-pull = Télécharger en arrière-plan
