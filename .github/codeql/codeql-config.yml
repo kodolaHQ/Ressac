@@ -1,0 +1,5 @@
+# Test code never ships: its fake servers and page scripts trip CodeQL web rules on purpose.
+paths-ignore:
+  - "**/e2e/**"
+  - "**/test/**"
+  - "**/*.test.ts"
