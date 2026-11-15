@@ -41,7 +41,7 @@ const { startRelay } = await import("./relay.ts");
 const { codexEngineArgs } = await import("./codex-engine.ts");
 const { ollamaRelayTarget } = await import("./ollama-models.ts");
 const { claudeEngineEnv, withoutV1 } = await import("./claude-engine.ts");
-const { ClaudeEngineSchema, CodexEngineSchema, DEFAULT_CLAUDE_ENGINE, DEFAULT_CODEX_ENGINE } = await import("../shared/settings.ts");
+const { ClaudeEngineSchema, CodexEngineSchema, DEFAULT_CLAUDE_ENGINE, DEFAULT_CODEX_ENGINE, validAgentDomain } = await import("../shared/settings.ts");
 const { executionWidget, executionsWidget, placeWidgets, removeWidget, validatePlacements, toShownWidgets } = await import("./widgets.ts");
 const { ACTION_ALREADY_RUNNING } = await import("../shared/actions.ts");
 const {
@@ -125,7 +125,10 @@ const recapsFolder = join(dataDir, "recaps");
 const recaps = createRecaps({ folder: recapsFolder });
 const idRecap = (v: unknown): v is string => typeof v === "string" && ID_RECAP.test(v);
 // One container for the agent (whatever its profile) and the apps it launches: the kernel's own default (kernel.ts:389).
-const workshop = new Workshop({ paths: paths, locale: () => hostLocale() });
+// The user's extra domains (Settings), sent by the chrome at start and on change.
+let agentDomains: string[] = [];
+// Without `network` the kernel applies no firewall: it must stay passed. The MCP port is known once the kernel is up, read at each apply.
+const workshop = new Workshop({ paths: paths, locale: () => hostLocale(), network: () => ({ ports: [kernel?.mcpPort, relay.port].filter((p): p is number => typeof p === "number"), domains: agentDomains }) });
 
 let kernel: Kernel | null = null;
 let error: string | null = null;
@@ -444,6 +447,11 @@ const rpc = createRpc({
       relocalized++;
       // `ready` also covers a kernel being created or restarted: the change is applied once it is up.
       void ready.then((n) => n?.relocalize()).catch((e) => console.error("[ressac] relocalize failed:", e));
+    },
+    "settings.agentDomains": (p: { domains: unknown }) => {
+      agentDomains = Array.isArray(p?.domains) ? p.domains.filter(validAgentDomain) : [];
+      // New connections follow the list; a running session is not killed. A stopped container has no rules to refresh.
+      void workshop.state().then((s) => (s === "demarre" ? workshop.secureNetwork() : undefined)).catch((e) => console.error("[ressac] agent domains not applied:", e));
     },
     "agent.claudeEngine": (p: { engine: unknown }) => {
       const r = ClaudeEngineSchema.safeParse(p?.engine);

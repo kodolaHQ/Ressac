@@ -246,6 +246,8 @@ export interface BrowserState {
     shortcuts: Partial<Record<ShortcutId, Binding>>;
     /** The AI part (agent, local models, containers) is on. Off on a new install until the welcome asks; an older session keeps it on. */
     aiEnabled: boolean;
+    /** Extra domains the agent's container may reach (shared/settings.ts validAgentDomain). */
+    agentDomains: string[];
   };
   /** The app update, as Firefox's updater reports it; null until known. Volatile, never saved. */
   update: UpdateShown | null;

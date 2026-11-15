@@ -533,3 +533,17 @@ test("the recorder does not rewrite a session whose saved text is unchanged (onl
   await r.clear();
   expect(statSync(file).mtimeMs).not.toBe(1_000_000);
 });
+
+test("agentDomains: missing or malformed loads empty, invalid entries are dropped", async () => {
+  const d = folder();
+  const old = structuredClone(initialState()) as unknown as { settings: Record<string, unknown> };
+  delete old.settings.agentDomains;
+  writeFileSync(join(d, "session.json"), JSON.stringify(old));
+  expect((await loadSession(d)).settings.agentDomains).toEqual([]);
+  old.settings.agentDomains = "x";
+  writeFileSync(join(d, "session.json"), JSON.stringify(old));
+  expect((await loadSession(d)).settings.agentDomains).toEqual([]);
+  old.settings.agentDomains = ["a.com", "Bad.com", 3, "*.b.org"];
+  writeFileSync(join(d, "session.json"), JSON.stringify(old));
+  expect((await loadSession(d)).settings.agentDomains).toEqual(["a.com", "*.b.org"]);
+});

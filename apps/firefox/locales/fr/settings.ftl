@@ -105,3 +105,6 @@ settings-credits = Crédits
 settings-credits-built-on-before = Ressac est construit sur
 settings-credits-built-on-after = de Mozilla et partage sa licence, la MPL 2.0.
 settings-credits-licenses-before = Il embarque Node.js et node-pty (licence MIT) et les polices Geist et Funnel Display (licence OFL). L'IA locale passe par Ollama (MIT), avec les modèles Gemma 4 de Google et pplx-decider-flash de Perplexity (Apache 2.0), téléchargés à la demande. Les agents utilisent Claude Code ou Codex avec votre propre compte. Les licences complètes sont dans l'application, dossier
+settings-agent-domains = Domaines autorisés pour l'agent
+settings-agent-domains-help = Un domaine par ligne (`*.exemple.com` pour ses sous-domaines). L'agent joint aussi Claude, OpenAI, npm, PyPI et GitHub.
+settings-agent-domains-ignored = Ignoré : { $line }

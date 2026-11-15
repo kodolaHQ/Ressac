@@ -1,5 +1,13 @@
 import { z } from "zod";
 
+/** Same syntax as the kernel's validDomain and the image's ressac-network.mjs (a test keeps them in agreement). */
+export const MAX_AGENT_DOMAINS = 100;
+export function validAgentDomain(d: unknown): d is string {
+  if (typeof d !== "string" || d.length === 0 || d.length > 253) return false;
+  const labels = (d.startsWith("*.") ? d.slice(2) : d).split(".");
+  return labels.length >= 2 && labels.every((l) => /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(l) && l.length <= 63) && !/^[0-9.]+$/.test(d.replace(/^\*\./, ""));
+}
+
 export type Backup = { path: string; date: string; bytes: number };
 
 /** The workshop restart or rebuild in progress, if any. */

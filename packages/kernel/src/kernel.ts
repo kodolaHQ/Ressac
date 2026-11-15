@@ -222,6 +222,8 @@ export interface Kernel {
   search: SearchSessions;
   /** Name of the agent of this kernel's profile (the one that holds the accesses). */
   agent: string;
+  /** The Mac port of the MCP server: the only one besides the relay's that the agent's container may reach. */
+  mcpPort: number;
   workshopState(): Promise<WorkshopState>;
   /** The language the interface shows (« fr », « en »). */
   locale(): string;
@@ -600,6 +602,7 @@ export async function createKernel(o: {
     policy: policy,
     search: search,
     agent: profile.name,
+    mcpPort: server.port,
     workshopState: () => workshop.state(),
     locale: loc,
     // Serialized: two quick changes never run two swaps at once (each run reads loc() when it starts, the last one wins).

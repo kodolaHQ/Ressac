@@ -105,3 +105,6 @@ settings-credits = Credits
 settings-credits-built-on-before = Ressac is built on
 settings-credits-built-on-after = by Mozilla and shares its license, the MPL 2.0.
 settings-credits-licenses-before = It bundles Node.js and node-pty (MIT license) and the Geist and Funnel Display fonts (OFL license). Local AI runs through Ollama (MIT), with Google's Gemma 4 models and Perplexity's pplx-decider-flash (Apache 2.0), downloaded on demand. Agents use Claude Code or Codex with your own account. The full licenses are in the app, in the folder
+settings-agent-domains = Domains the agent may reach
+settings-agent-domains-help = One domain per line (`*.example.com` for its subdomains). The agent can also reach Claude, OpenAI, npm, PyPI and GitHub.
+settings-agent-domains-ignored = Ignored: { $line }

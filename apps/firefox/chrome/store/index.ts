@@ -495,6 +495,7 @@ async function start(): Promise<RessacStore> {
       notify("agent.codexEngine", { engine: store.state.settings.codexEngine });
       notify("agent.claudeEngine", { engine: store.state.settings.claudeEngine });
       notify("settings.locale", { locale: store.state.locale });
+      notify("settings.agentDomains", { domains: store.state.settings.agentDomains });
       // A rendrePrive sent while no host ran was dropped: replayed (idempotent) so no private space stays searchable.
       for (const e of store.state.spaces) if (e.private) notify("history.makePrivate", { spaceId: e.id });
       agentExtensions.hostStarted();

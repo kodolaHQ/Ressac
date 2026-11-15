@@ -1,3 +1,4 @@
+import { validAgentDomain } from "../../shared/settings";
 import { beforeEach, expect, test } from "vitest";
 import { apply, withEssentials } from "../../core/state/actions";
 import { initialState } from "../../core/state/initial-state";
@@ -1155,3 +1156,23 @@ test("moveTabToNewWindow: the tab leaves for a new window in its space, where it
   expect(to.active[P]).toBe(c);
   expect(e.tabs[c]!.windowId).toBe("W2");
 });
+
+test("chooseAgentDomains keeps valid domains, lowercased and deduplicated, at most 100", () => {
+  e = initialState(genId);
+  expect(e.settings.agentDomains).toEqual([]);
+  ag({ type: "chooseAgentDomains", domains: ["Exemple.com", "exemple.com", "bad domain", "*.com", "1.2.3.4", "*.a.org"] });
+  expect(e.settings.agentDomains).toEqual(["exemple.com", "*.a.org"]);
+  const before = e;
+  ag({ type: "chooseAgentDomains", domains: ["exemple.com", "*.a.org"] });
+  expect(e).toBe(before);
+  ag({ type: "chooseAgentDomains", domains: Array.from({ length: 150 }, (_, i) => `d${i}.com`) });
+  expect(e.settings.agentDomains).toHaveLength(100);
+});
+
+test.each(["example.com", "*.example.com", "a-b.example.co.uk", "Example.com", "example", "*.com", "1.2.3.4", "*.1.2", "example.com:443", "example.com/x", "-a.com", "a..com", "a b.com", ""])(
+  "validAgentDomain agrees with the kernel and the image on %j",
+  (d) => {
+    const expected = /^(\*\.)?([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(d) && !/^[0-9.]+$/.test(d.replace(/^\*\./, ""));
+    expect(validAgentDomain(d)).toBe(expected);
+  },
+);

@@ -88,6 +88,19 @@ describe("Settings page", () => {
     await waitFor(m, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).state.windows[0].agentPanelOpen)();`, (v) => v === true);
   });
 
+  it("Domaines autorisés: valid lines are saved, a bad line is listed and not saved", async () => {
+    await launch();
+    await openPage();
+    await waitUi(m, "return !!doc.querySelector(arguments[0])", ['[data-testid="settings-agent-domains"]']);
+    await inUi(
+      m,
+      `const t = doc.querySelector(arguments[0]); t.focus(); t.value = "exemple.com\\nbad domain"; t.dispatchEvent(new Event("input", { bubbles: true })); t.blur();`,
+      ['[data-testid="settings-agent-domains"]'],
+    );
+    await waitFor(m, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).state.settings.agentDomains)();`, (v) => JSON.stringify(v) === '["exemple.com"]');
+    await shows("settings-agent-domains-ignored", "Ignoré : bad domain");
+  });
+
   it("no workshop yet: Se connecter opens the agent panel, which starts it, and the account is re-read", { timeout: 60_000 }, async () => {
     // The launch's own start fails (port taken): no container until the agent panel starts it again.
     await launch({ FAKE_DOCKER_NO_CONTAINER: "1", FAKE_DOCKER_RUN_FAILED: "1" });

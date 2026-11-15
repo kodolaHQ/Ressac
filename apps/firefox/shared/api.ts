@@ -155,6 +155,7 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("markHintSeen"), id: z.enum(HINT_IDS) }),
   z.object({ type: z.literal("setHintsEnabled"), enabled: z.boolean() }),
   z.object({ type: z.literal("setVimMode"), enabled: z.boolean() }),
+  z.object({ type: z.literal("chooseAgentDomains"), domains: z.array(z.string()) }),
   z.object({ type: z.literal("setSidebarSide"), side: z.enum(["left", "right"]) }),
   z.object({ type: z.literal("setStartOnHome"), enabled: z.boolean() }),
   z.object({ type: z.literal("chooseAppearance"), appearance: z.enum(APPEARANCES) }),

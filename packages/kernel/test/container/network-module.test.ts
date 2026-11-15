@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import { once } from "node:events";
 import { connect, createServer as createTcp } from "node:net";
 import http from "node:http";
+import { validDomain as kernelValidDomain } from "../../src/container/workshop.js";
 // @ts-expect-error plain .mjs that runs inside the image, no type declarations
 import { validDomain, allowed, rules, BASE_DOMAINS, createProxy } from "../../docker/ressac-network.mjs";
 
@@ -90,5 +91,12 @@ describe("proxy", () => {
       expect(status).toBe(403);
     }
     server.close();
+  });
+});
+
+// The settings validator (apps/firefox/shared/settings.ts) repeats these cases in test/state/actions.test.ts; this one holds the kernel and the image together.
+describe("validDomain agreement (image, kernel)", () => {
+  test.each(["example.com", "*.example.com", "a-b.example.co.uk", "Example.com", "example", "*.com", "1.2.3.4", "*.1.2", "example.com:443", "example.com/x", "-a.com", "a..com", "a b.com", ""])("%j", (d) => {
+    expect(kernelValidDomain(d)).toBe(validDomain(d));
   });
 });
