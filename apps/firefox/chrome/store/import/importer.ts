@@ -179,7 +179,7 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
     for (const a of planSpaceImport(store.state, imported)) store.dispatch(a);
     // shortcut: the open tabs all land in the first window, upgrade if importing with several windows open matters.
     const windowId = store.state.windows[0]?.id;
-    if (windowId) for (const a of planTabImport(store.state, imported, windowId)) store.dispatch(a);
+    if (windowId) store.dispatch({ type: "openTabs", tabs: planTabImport(store.state, imported, windowId) });
     return { spaces: size() - before[0]!, tabs: open() - before[1]! };
   }
 

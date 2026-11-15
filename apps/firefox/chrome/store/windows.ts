@@ -15,8 +15,8 @@ export interface WindowRegistry {
   /** Binds a new full browser window; creates a state window (ouvrirFenetre, espaceId of active()) when pickWindow gives null. Bound before any dispatch. */
   claim(win: Window): { windowId: WindowId; first: boolean };
   /** The window is gone: calls onRelease first; among others, fermerFenetre; the last one, or any while
-   *  Services.startup.shuttingDown, stays in the state (kept: the next claim takes it back). */
-  release(windowId: WindowId): void;
+   *  Services.startup.shuttingDown, stays in the state (kept: the next claim takes it back). `keep`: it stays in any case. */
+  release(windowId: WindowId, keep?: boolean): void;
   /** Decision 3. undefined while no Ressac window is open. */
   active(): WindowId | undefined;
   /** The open window and its controller, if any. */
@@ -93,11 +93,12 @@ export function createWindowRegistry(o: {
       openMissing(store.state);
       return { windowId: id, first };
     },
-    release(windowId) {
+    release(windowId, keep = false) {
       if (!bound.delete(windowId)) return;
       if (lastActive === windowId) lastActive = undefined;
       o.onRelease(windowId);
-      forget(windowId);
+      if (keep) kept = windowId;
+      else forget(windowId);
     },
     active() {
       const focused = Services.focus.activeWindow;

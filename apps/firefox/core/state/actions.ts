@@ -260,6 +260,11 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       const f = win(d, a.windowId);
       return !!f && !!open(d, genId, f, a);
     }
+    case "openTabs": {
+      let changed = false;
+      for (const t of a.tabs) changed = handle(d, t, genId) || changed;
+      return changed;
+    }
     case "closeTab": {
       const o = d.tabs[a.id];
       if (!o) return false;
@@ -519,6 +524,7 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       return true;
     }
     case "openWindow": {
+      if (a.id && win(d, a.id)) return false;
       const space = a.spaceId && d.spaces.some((e) => e.id === a.spaceId) ? a.spaceId : d.spaces[0]!.id;
       d.windows.push(newWindow(d, a.id ?? genId(), space));
       return true;
@@ -527,7 +533,7 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       const o = d.tabs[a.id];
       const f = o && win(d, o.windowId);
       // A pinned tab or an essential belongs to its favorite; a window's only tab would leave an empty window behind.
-      if (!o || !f || o.link || !Object.values(d.tabs).some((x) => x.windowId === f.id && !x.link && x.id !== o.id)) return false;
+      if (!o || !f || o.link || (a.windowId && win(d, a.windowId)) || !Object.values(d.tabs).some((x) => x.windowId === f.id && !x.link && x.id !== o.id)) return false;
       const l = list(f, o.spaceId);
       const i = l.indexOf(o.id);
       if (i >= 0) l.splice(i, 1);
@@ -545,15 +551,21 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       const closed = win(d, a.id);
       if (d.windows.length <= 1 || !closed) return false;
       d.windows = d.windows.filter((f) => f.id !== a.id);
-      // Its normal tabs stay recoverable (⇧⌘T) from the remaining window, most recent first.
+      // Its normal tabs move to the remaining window, in their order: closing a window never loses a tab.
+      // Its favorite instances go, the favorites themselves stay.
       const remaining = d.windows[0]!;
-      const fetched = Object.values(closed.order)
-        .flat()
-        .map((id) => d.tabs[id])
-        .filter((o) => !!o)
-        .map((o) => ({ url: o.url, spaceId: o.spaceId }))
-        .reverse();
-      remaining.recentlyClosed = [...fetched, ...remaining.recentlyClosed].slice(0, MAX_CLOSED);
+      const moved = Object.values(closed.order).flat();
+      for (const o of Object.values(d.tabs))
+        if (o.windowId === a.id && !o.link && !moved.includes(o.id)) moved.push(o.id);
+      for (const id of moved) {
+        const o = d.tabs[id];
+        if (!o || o.windowId !== a.id) continue;
+        if (o.link) delete d.tabs[id];
+        else {
+          o.windowId = remaining.id;
+          list(remaining, o.spaceId).push(id);
+        }
+      }
       for (const o of Object.values(d.tabs)) if (o.windowId === a.id) delete d.tabs[o.id];
       return true;
     }
@@ -776,6 +788,9 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
  */
 function keepEssentials(d: Draft, genId: () => string): boolean {
   let created = false;
+  // One pass over the tabs, not one per window and essential: this runs after every action.
+  const have = new Set<string>();
+  for (const o of Object.values(d.tabs)) if (o.link) have.add(`${o.windowId}|${o.link.id}|${spaceKey(d, o.spaceId)}`);
   for (const f of d.windows) {
     // Displayed again, an unloaded essential loads.
     const shown = d.tabs[f.active[f.activeSpace] ?? ""];
@@ -784,7 +799,7 @@ function keepEssentials(d: Draft, genId: () => string): boolean {
     if (!space || space.private) continue;
     const key = spaceKey(d, space.id);
     for (const e of d.essentials) {
-      if (Object.values(d.tabs).some((o) => o.windowId === f.id && o.link?.id === e.id && spaceKey(d, o.spaceId) === key)) continue;
+      if (have.has(`${f.id}|${e.id}|${key}`)) continue;
       // Some callers give the id of the one tab their action opens: never reuse it.
       const id = genId();
       createTab(d, () => (d.tabs[id] ? randomUUID() : id), { windowId: f.id, spaceId: space.id, url: e.url, title: e.title, favicon: e.favicon, link: { type: "essential", id: e.id } });

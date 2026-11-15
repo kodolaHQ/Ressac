@@ -135,8 +135,8 @@ export function planSpaceImport(state: BrowserState, imported: ImportedSpaces): 
  * After `planSpaceImport`'s actions: the open tabs into their space (the normal one of that name) in window
  * `windowId`, in the background, so none loads before it is displayed. An address already open in the space is skipped.
  */
-export function planTabImport(state: BrowserState, imported: ImportedSpaces, windowId: string): Action[] {
-  const actions: Action[] = [];
+export function planTabImport(state: BrowserState, imported: ImportedSpaces, windowId: string): Extract<Action, { type: "openTab" }>[] {
+  const actions: Extract<Action, { type: "openTab" }>[] = [];
   for (const [key, s] of merged(imported)) {
     const space = state.spaces.find((e) => !e.private && e.name.toLowerCase() === key);
     if (!space) continue;

@@ -478,7 +478,7 @@ test("deleting the last space is refused", () => {
   expect(e).toBe(before);
 });
 
-test("openWindow on a given space; closeWindow deletes its tabs", () => {
+test("openWindow on a given space; closeWindow moves its tabs to the remaining window", () => {
   ag({ type: "createSpace", name: "Boulot", icon: "💼", private: false, profile: "default" });
   const B = e.spaces[1]!.id;
   ag({ type: "openWindow", id: "f2", spaceId: B });
@@ -488,7 +488,8 @@ test("openWindow on a given space; closeWindow deletes its tabs", () => {
   const x = Object.keys(e.tabs).at(-1)!;
   ag({ type: "closeWindow", id: "f2" });
   expect(e.windows).toHaveLength(1);
-  expect(e.tabs[x]).toBeUndefined();
+  expect(e.tabs[x]).toMatchObject({ windowId: F, spaceId: B });
+  expect(e.windows[0]!.order[B]).toEqual([x]);
 });
 
 test("closing the last window does not change the state", () => {
@@ -585,15 +586,19 @@ test("showBlankPage: the space no longer has an active tab, its tabs remain", ()
   expect(order()).toEqual([a]);
 });
 
-test("closeWindow: its tabs (all spaces) go into the remaining window's recently closed, ⇧⌘T reopens them", () => {
+test("closeWindow: its tabs (all spaces) move to the remaining window, after its own, in order", () => {
+  const a = open("https://a.fr");
   ag({ type: "openWindow", id: "F2" });
   ag({ type: "openTab", windowId: "F2", url: "https://x.fr" });
+  ag({ type: "openTab", windowId: "F2", url: "https://x2.fr" });
   ag({ type: "createSpace", name: "Boulot", icon: "💼", private: false, profile: "default", windowId: "F2" });
   ag({ type: "openTab", windowId: "F2", url: "https://y.fr" });
+  const urls = (ids: string[] | undefined) => (ids ?? []).map((id) => e.tabs[id]!.url);
   ag({ type: "closeWindow", id: "F2" });
-  expect(fen().recentlyClosed.map((x) => x.url)).toEqual(["https://y.fr", "https://x.fr"]);
-  ag({ type: "reopenClosedTab", windowId: F });
-  expect(Object.values(e.tabs).map((o) => o.url)).toEqual(["https://y.fr"]);
+  expect(Object.values(e.tabs).every((o) => o.windowId === F)).toBe(true);
+  expect(urls(order())).toEqual(["https://a.fr", "https://x.fr", "https://x2.fr"]);
+  expect(urls(fen().order[e.spaces[1]!.id])).toEqual(["https://y.fr"]);
+  expect(fen().recentlyClosed).toEqual([]);
 });
 
 test("chooseAgentProfile changes the setting (claude by default)", () => {
@@ -1187,3 +1192,8 @@ test.each(["example.com", "*.example.com", "a-b.example.co.uk", "Example.com", "
     expect(validAgentDomain(d)).toBe(validDomain(d));
   },
 );
+
+test("openTabs opens every tab in one action, in order", () => {
+  ag({ type: "openTabs", tabs: [{ type: "openTab", windowId: F, url: "https://a.fr", activate: false }, { type: "openTab", windowId: F, url: "https://b.fr", activate: false }] });
+  expect(order().map((id) => e.tabs[id]!.url)).toEqual(["https://a.fr", "https://b.fr"]);
+});

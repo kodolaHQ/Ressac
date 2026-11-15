@@ -18,21 +18,25 @@ const engine = z.enum(SEARCH_ENGINE_IDS);
 /** A favorite given by its address (an import), not by an open tab. */
 const favoriteLink = z.object({ url: z.string().regex(/^https?:\/\//), title: z.string() });
 
+const SchemaOpenTab = z.object({
+  type: z.literal("openTab"),
+  windowId: id,
+  url: z.string(),
+  spaceId: id.optional(),
+  activate: z.boolean().optional(),
+  openedByAgent: z.boolean().optional(),
+  /** The tab's own login profile, instead of its space's. */
+  profile: z.string().min(1).optional(),
+  after: id.optional(),
+  /** Shown until the page loads (an imported tab is not loaded before it is displayed). */
+  title: z.string().optional(),
+});
+
 /** The actions, validated at the entry of the main process: the schema is the source of the type. */
 export const SchemaAction = z.discriminatedUnion("type", [
-  z.object({
-    type: z.literal("openTab"),
-    windowId: id,
-    url: z.string(),
-    spaceId: id.optional(),
-    activate: z.boolean().optional(),
-    openedByAgent: z.boolean().optional(),
-    /** The tab's own login profile, instead of its space's. */
-    profile: z.string().min(1).optional(),
-    after: id.optional(),
-    /** Shown until the page loads (an imported tab is not loaded before it is displayed). */
-    title: z.string().optional(),
-  }),
+  SchemaOpenTab,
+  /** Several tabs in one dispatch (an import): one state copy and one broadcast, not one per tab. */
+  z.object({ type: z.literal("openTabs"), tabs: z.array(SchemaOpenTab) }),
   z.object({ type: z.literal("closeTab"), id }),
   /** A tab the agent opened in the user's profile leaves the « Agent » section for the user's tabs. */
   z.object({ type: z.literal("keepTab"), id }),

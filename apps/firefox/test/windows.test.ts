@@ -55,4 +55,16 @@ describe("createWindowRegistry", () => {
     // Kept: the next window takes it back.
     expect(windows.claim(fakeWindow()).windowId).toBe("a");
   });
+
+  it("a window released with keep (its setup failed) stays in the state with its tabs, among other windows", () => {
+    const restored = apply(apply(initialState(() => "a"), { type: "openWindow", id: "b" }), { type: "openTab", windowId: "b", url: "https://b.test/" }, () => "t");
+    const store = createStore(restored);
+    const windows = createWindowRegistry({ store, open: () => fakeWindow(), onRelease: () => {} });
+    expect(windows.claim(fakeWindow()).windowId).toBe("a");
+    expect(windows.claim(fakeWindow()).windowId).toBe("b");
+    windows.release("b", true);
+    expect(store.state.windows.map((f) => f.id)).toEqual(["a", "b"]);
+    expect(store.state.tabs.t).toMatchObject({ windowId: "b" });
+    expect(windows.claim(fakeWindow()).windowId).toBe("b");
+  });
 });

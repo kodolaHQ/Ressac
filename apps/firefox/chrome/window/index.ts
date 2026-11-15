@@ -92,8 +92,8 @@ window.addEventListener(
       try {
         window.ressacWindow = createController(window.gBrowser, frame, agentFrame, store, windowId);
       } catch (e) {
-        // Not a Ressac window after all: its state window must not stay bound to it.
-        store.windows.release(windowId);
+        // Not a Ressac window after all: unbound, but its state window and tabs stay for the next claim.
+        store.windows.release(windowId, true);
         throw e;
       }
       mountSiteMenu(window, store, windowId);
