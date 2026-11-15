@@ -3,8 +3,20 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { Writable } from "node:stream";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { BAD_ARCHIVE, NOT_STARTED, OLLAMA_VERSION, createOllamaRuntime, olderThan } from "../host/ollama-runtime";
+
+// A full disk, on demand: the archive's write stream fails like ENOSPC.
+const disk = vi.hoisted(() => ({ full: false }));
+vi.mock("node:fs", async (original) => {
+  const fs = await original<typeof import("node:fs")>();
+  return {
+    ...fs,
+    createWriteStream: (...a: Parameters<typeof fs.createWriteStream>) =>
+      disk.full ? new Writable({ write: (_c, _e, done) => done(Object.assign(new Error("ENOSPC: no space left on device"), { code: "ENOSPC" })) }) : fs.createWriteStream(...a),
+  };
+});
 
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })));
@@ -100,6 +112,23 @@ describe("the Ollama runtime", () => {
     expect(seen.at(-1)).toBe(100);
     expect(m.state.launched).toEqual([`${m.own} serve`]);
     expect(await m.runtime.status()).toMatchObject({ kind: "ready" });
+  });
+
+  it("install on a full disk rejects and leaves nothing behind, instead of an uncaught error", async () => {
+    const m = machine({ archive: archive() });
+    const uncaught: unknown[] = [];
+    const onUncaught = (e: unknown) => uncaught.push(e);
+    process.on("uncaughtException", onUncaught);
+    disk.full = true;
+    try {
+      await expect(m.runtime.install(() => {})).rejects.toThrow("ENOSPC");
+    } finally {
+      disk.full = false;
+      process.off("uncaughtException", onUncaught);
+    }
+    expect(uncaught).toEqual([]);
+    expect(existsSync(join(m.dataDir, "ollama", `${OLLAMA_VERSION}.part`))).toBe(false);
+    expect(m.state.launched).toEqual([]);
   });
 
   it("install refuses an archive whose hash differs and leaves nothing behind", async () => {

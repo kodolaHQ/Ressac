@@ -1,0 +1,13 @@
+diff --git a/toolkit/crashreporter/CrashSubmit.sys.mjs b/toolkit/crashreporter/CrashSubmit.sys.mjs
+index 7f92c66e45..0cc9416e28 100644
+--- a/toolkit/crashreporter/CrashSubmit.sys.mjs
++++ b/toolkit/crashreporter/CrashSubmit.sys.mjs
+@@ -151,6 +151,8 @@ Submitter.prototype = {
+     let payload = Object.fromEntries(
+       Object.entries(this.extraKeyVals).filter(
+         ([annotation, _]) =>
++          // Ressac: never the page address (reports go to Ressac's Sentry, the page may be private).
++          annotation !== "URL" &&
+           Services.appinfo.isAnnotationValid(annotation) &&
+           Services.appinfo.isAnnotationAllowedForReport(annotation)
+       )
