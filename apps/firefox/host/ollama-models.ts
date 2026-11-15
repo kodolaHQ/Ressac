@@ -1,10 +1,20 @@
-import { withoutV1 } from "./claude-engine.ts";
+import { withoutV1, withV1 } from "./claude-engine.ts";
 import { modelField } from "../shared/settings.ts";
 import { hostSay } from "./locale.ts";
 
 export type OllamaModels = { ok: true; models: { name: string; size?: string }[] } | { ok: false; error: string };
 
 const down = (): OllamaModels => ({ ok: false, error: hostSay("host-ollama-down") });
+
+/** The Mac cannot resolve the container alias: it reaches the same Ollama on loopback. */
+export const macSideUrl = (url: string): string => {
+  const u = new URL(url);
+  if (u.hostname === "host.docker.internal") u.hostname = "127.0.0.1";
+  return u.href;
+};
+
+/** Where the relay (on the Mac) forwards an Ollama session: Claude Code appends /v1/messages, Codex appends /responses. */
+export const ollamaRelayTarget = (url: string, profile: "claude" | "codex"): string => (profile === "claude" ? withoutV1(macSideUrl(url)).replace(/\/$/, "") : withV1(macSideUrl(url)));
 
 /** Lists the models installed in the Ollama at `url` (read from the host, so the container alias maps to loopback). */
 export async function listOllamaModels(url: string, o: { fetch?: typeof fetch; timeoutMs?: number } = {}): Promise<OllamaModels> {
@@ -15,7 +25,7 @@ export async function listOllamaModels(url: string, o: { fetch?: typeof fetch; t
     return { ok: false, error: hostSay("host-invalid-address") };
   }
   if (u.protocol !== "http:" && u.protocol !== "https:") return { ok: false, error: hostSay("host-invalid-address") };
-  if (u.hostname === "host.docker.internal") u.hostname = "127.0.0.1";
+  u.hostname = new URL(macSideUrl(url)).hostname;
   u.pathname = withoutV1(u.pathname.replace(/\/$/, "")) + "/api/tags";
   u.search = "";
   try {

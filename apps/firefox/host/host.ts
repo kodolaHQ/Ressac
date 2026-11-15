@@ -39,6 +39,7 @@ const { ExtensionsAgent } = await import("./extensions/agent.ts");
 const { CLAUDE_KEY, amoKeychain, keychain } = await import("./keychain.ts");
 const { startRelay } = await import("./relay.ts");
 const { codexEngineArgs } = await import("./codex-engine.ts");
+const { ollamaRelayTarget } = await import("./ollama-models.ts");
 const { claudeEngineEnv, withoutV1 } = await import("./claude-engine.ts");
 const { ClaudeEngineSchema, CodexEngineSchema, DEFAULT_CLAUDE_ENGINE, DEFAULT_CODEX_ENGINE } = await import("../shared/settings.ts");
 const { executionWidget, executionsWidget, placeWidgets, removeWidget, validatePlacements, toShownWidgets } = await import("./widgets.ts");
@@ -385,7 +386,7 @@ const sessions = new SessionsAgent({
       e.kind === "api" && (await keys[profile].has())
         ? relay.openSession(claude ? withoutV1(e.apiUrl) : e.apiUrl, profile)
         : e.kind === "ollama" && e.ollamaUrl
-          ? relay.openSession(claude ? withoutV1(e.ollamaUrl) : e.ollamaUrl.replace(/\/$/, "").replace(/\/v1$/, "") + "/v1", `${profile}-ollama`)
+          ? relay.openSession(ollamaRelayTarget(e.ollamaUrl, profile), `${profile}-ollama`)
           : null;
     try {
       const relayed = token ? { url: relay.containerUrl, token } : null;

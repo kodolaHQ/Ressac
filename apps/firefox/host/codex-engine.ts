@@ -24,7 +24,7 @@ export function codexEngineArgs(e: CodexEngine, relay: { url: string; token: str
   if (e.kind === "chatgpt") return { args: [], env: {} };
   if (e.kind === "ollama") {
     if (!e.ollamaUrl || !e.ollamaModel) throw incomplete("ollama");
-    href(e.ollamaUrl, "ollama");
+    href(e.ollamaUrl, "ollama"); // validation only: the container never sees this address
     if (!relay) throw incomplete("ollama");
     return { args: [...provider("ressac-ollama", "Ollama", new URL(relay.url).href.replace(/\/$/, "")), "-m", e.ollamaModel], env: { [ENGINE_TOKEN_VARIABLE]: relay.token } };
   }

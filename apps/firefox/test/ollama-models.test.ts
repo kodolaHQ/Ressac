@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { listOllamaModels } from "../host/ollama-models";
+import { listOllamaModels, ollamaRelayTarget } from "../host/ollama-models";
 
 const DOWN = { ok: false, error: "Ollama ne répond pas à cette adresse." };
 const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status });
@@ -36,5 +36,15 @@ describe("listOllamaModels", () => {
     expect(await listOllamaModels("file:///etc", { fetch: f.fetch })).toEqual({ ok: false, error: "Adresse invalide" });
     expect(await listOllamaModels("nope", { fetch: f.fetch })).toEqual({ ok: false, error: "Adresse invalide" });
     expect(f.urls).toEqual([]);
+  });
+});
+
+describe("ollamaRelayTarget", () => {
+  it("maps the container alias to loopback, keeps a LAN address, fits each agent's wire path", () => {
+    expect(ollamaRelayTarget("http://host.docker.internal:11434", "claude")).toBe("http://127.0.0.1:11434");
+    expect(ollamaRelayTarget("http://host.docker.internal:11434/v1/", "claude")).toBe("http://127.0.0.1:11434");
+    expect(ollamaRelayTarget("http://host.docker.internal:11434", "codex")).toBe("http://127.0.0.1:11434/v1");
+    expect(ollamaRelayTarget("http://192.168.1.5:11434/v1", "codex")).toBe("http://192.168.1.5:11434/v1");
+    expect(ollamaRelayTarget("http://192.168.1.5:11434/", "claude")).toBe("http://192.168.1.5:11434");
   });
 });

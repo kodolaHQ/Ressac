@@ -123,7 +123,7 @@ describe("Claude in Settings", () => {
     // Through the relay (a random host port), never the Ollama address itself.
     const sent = JSON.parse(read(envFile));
     expect(sent.ANTHROPIC_BASE_URL).toMatch(/^http:\/\/host\.docker\.internal:\d+$/);
-    expect(sent.ANTHROPIC_BASE_URL).not.toContain(new URL(ollama.url).port);
+    expect(new URL(sent.ANTHROPIC_BASE_URL).port).not.toBe(new URL(ollama.url).port);
     expect(sent).toMatchObject({ ANTHROPIC_MODEL: "ornith:35b", ANTHROPIC_DEFAULT_SONNET_MODEL: "ornith:35b", CLAUDE_CODE_SUBAGENT_MODEL: "ornith:35b" });
   });
 
