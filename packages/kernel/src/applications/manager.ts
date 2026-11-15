@@ -1,6 +1,5 @@
 import { spawn } from "node:child_process";
 import { request } from "node:http";
-import { join } from "node:path";
 import { say } from "../i18n.js";
 import { CONTAINER_PATH, type SpacePaths } from "../paths.js";
 import { containerPortRange, type Workshop } from "../container/workshop.js";
