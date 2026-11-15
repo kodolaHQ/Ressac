@@ -102,6 +102,13 @@ describe("Settings page", () => {
     // The workshop runs: the change re-applies the rules with the new list.
     const log = join(w!.dataDir, "workspace", "fake-docker-network.log");
     await waitFor(m, "return true", () => existsSync(log) && readFileSync(log, "utf8").split("\n").some((l) => l.includes('"exemple.com"')), 15_000);
+    // Typed and never left (a click straight into the agent's terminal): saved anyway.
+    await inUi(
+      m,
+      `const t = doc.querySelector(arguments[0]); t.focus(); t.value = "exemple.com\\nautre.org"; t.dispatchEvent(new Event("input", { bubbles: true }));`,
+      ['[data-testid="settings-agent-domains"]'],
+    );
+    await waitFor(m, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).state.settings.agentDomains)();`, (v) => JSON.stringify(v) === '["exemple.com","autre.org"]');
   });
 
   it("no workshop yet: Se connecter opens the agent panel, which starts it, and the account is re-read", { timeout: 60_000 }, async () => {

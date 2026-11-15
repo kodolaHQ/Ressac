@@ -45,6 +45,12 @@
   let agents = $state<AgentAccount[] | null>(null);
   // The textarea's draft (null until typed in); a bad line stays listed under it, never saved.
   let domainsText = $state<string | null>(null);
+  let domainsTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Saved while typing too: a click straight into the agent's terminal may never blur the field (seen 2026-11-15). */
+  const saveDomains = () => {
+    clearTimeout(domainsTimer);
+    if (domainsText !== null) api.dispatch({ type: "chooseAgentDomains", domains: domainLines(domainsText) });
+  };
   const rawLines = (text: string) => text.split("\n").map((l) => l.trim()).filter((l) => l !== "");
   const domainLines = (text: string) => rawLines(text).map((l) => l.toLowerCase());
   const ignoredDomains = $derived(domainsText === null ? [] : [...new Set(rawLines(domainsText).filter((l) => !validAgentDomain(l.toLowerCase())))]);
@@ -326,8 +332,12 @@
                   rows="4"
                   spellcheck="false"
                   value={domainsText ?? appState.value?.settings.agentDomains.join("\n") ?? ""}
-                  oninput={(e) => (domainsText = e.currentTarget.value)}
-                  onblur={() => domainsText !== null && api.dispatch({ type: "chooseAgentDomains", domains: domainLines(domainsText) })}
+                  oninput={(e) => {
+                    domainsText = e.currentTarget.value;
+                    clearTimeout(domainsTimer);
+                    domainsTimer = setTimeout(saveDomains, 500);
+                  }}
+                  onblur={saveDomains}
                 ></textarea>
                 {#each ignoredDomains as line (line)}
                   <span class="pill" data-tone="warn" data-testid="settings-agent-domains-ignored" out:fade={{ duration: 150 }}>{t("settings-agent-domains-ignored", { line })}</span>
