@@ -89,16 +89,17 @@ export interface BrowserBridge {
   /**
    * `capture`: also what only the browser knows (blocks, structured data, reader text, status…), which costs the page
    * a reader-mode parse: asked only for a search read, never for a read of the user's tab.
+   * `expect`: the URL whose access the kernel checked; a tab on another origin when the call lands throws SiteChanged.
    */
-  readText(id: string, o?: { capture?: boolean }): Promise<TabRead>;
+  readText(id: string, o?: { capture?: boolean; expect?: string }): Promise<TabRead>;
   openTab(url: string, space?: string): Promise<TabInfo>;
   /**
    * `"pending"` (site app window only): the tweaks grant card is shown; the address will
    * load after the user's choice.
    */
   navigate(id: string, url: string): Promise<void | "pending">;
-  /** PNG capture of the tab. */
-  capture(id: string): Promise<Buffer>;
+  /** PNG capture of the tab. `expect`: as for readText. */
+  capture(id: string, o?: { expect?: string }): Promise<Buffer>;
   /** Shows the request to the user; true if they accept. */
   askPermission(o: TabInfo): Promise<boolean>;
   /** Dev tools (absent if the browser does not provide them). */
@@ -219,23 +220,27 @@ export interface NetworkRequest {
 /** Result of `run`: the value already serialized (JSON or preview), not truncated; the kernel truncates. */
 export type JsResult = { value: string } | { exception: string };
 
-/** What the browser gives to inspect a tab. */
+/**
+ * What the browser gives to inspect a tab. `origin`: the one whose rights the kernel checked; a tab showing another
+ * origin when the call reaches it (or when the code is about to run) throws SiteChanged.
+ */
 export interface BrowserDevTools {
   /** Throws DevToolsBusy or TabNotFound. */
   attach(id: string): Promise<void>;
   detach(id: string): Promise<void>;
-  console(id: string): Promise<MessageConsole[]>;
-  network(id: string): Promise<NetworkRequest[]>;
-  body(id: string, request: string): Promise<{ body: string; base64: boolean }>;
+  console(id: string, origin: string): Promise<MessageConsole[]>;
+  network(id: string, origin: string): Promise<NetworkRequest[]>;
+  body(id: string, origin: string, request: string): Promise<{ body: string; base64: boolean }>;
   profile(
     id: string,
+    origin: string,
     o: { durationMs?: number; reload?: boolean },
     signal: AbortSignal,
   ): Promise<{ profile: CpuProfile; metrics: Record<string, number> }>;
   /** The raw `.heapsnapshot`. */
-  memorySnapshot(id: string, signal: AbortSignal): Promise<string>;
-  run(id: string, code: string, signal: AbortSignal): Promise<JsResult>;
-  reload(id: string, noCache: boolean): Promise<void>;
+  memorySnapshot(id: string, origin: string, signal: AbortSignal): Promise<string>;
+  run(id: string, origin: string, code: string, signal: AbortSignal): Promise<JsResult>;
+  reload(id: string, origin: string, noCache: boolean): Promise<void>;
   /**
    * Access reserved to a kernel (the browser keeps its tools from one kernel to the next). Creating one revokes the previous:
    * its calls are refused and its attachments drop. `liberer` revokes this one (kernel stopped).

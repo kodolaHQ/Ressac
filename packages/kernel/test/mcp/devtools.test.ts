@@ -157,6 +157,16 @@ test("built (app:todo): read_console and run_js without a request", async () => 
   expect(devRequests()).toHaveLength(0);
 });
 
+test("run_js and read_console on a tab gone to another origin after the kernel's check: SITE_CHANGED, nothing runs there", async () => {
+  await start();
+  policy.tabOpenedByAgent(appTodo);
+  const listed = await bridge.listTabs(); // the kernel checks the tab as it was
+  await bridge.navigate("app:todo", "http://localhost:5281/");
+  bridge.listTabs = async () => listed.map((x) => ({ ...x }));
+  expect(await invoke("run_js", { id: "app:todo", code: "1" })).toBe("L'onglet a changé de site : accès retiré.");
+  expect(await invoke("read_console", { id: "app:todo" })).toBe("L'onglet a changé de site : accès retiré.");
+});
+
 test("run_js truncates a value that is too long", async () => {
   await start();
   policy.tabOpenedByAgent(appTodo);
