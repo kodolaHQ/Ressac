@@ -247,10 +247,12 @@ export class History {
     this.transaction(() => {
       const before = new Date(now.getTime() - RETENTION_DAYS * 86_400_000).toISOString();
       // The same window as the text's: importVisits already keeps no visit older than RETENTION_DAYS.
-      this.req.purgeVisitsBefore.run(before);
-      this.req.purgeBefore.run(before);
-      this.req.eraseOrphanTexts.run();
-      this.req.eraseOrphanIcons.run();
+      const gone = Number(this.req.purgeVisitsBefore.run(before).changes) + Number(this.req.purgeBefore.run(before).changes);
+      // The icon sweep is slow on a long history: only when something was forgotten.
+      if (gone > 0) {
+        this.req.eraseOrphanTexts.run();
+        this.req.eraseOrphanIcons.run();
+      }
       let total = Number((this.req.totalBytes.get() as { total: number }).total);
       if (total <= this.byteCap) return;
       const toForget: number[] = [];

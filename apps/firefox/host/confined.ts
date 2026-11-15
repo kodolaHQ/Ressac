@@ -5,7 +5,8 @@ import { execFile } from "node:child_process";
 
 /** `fn(...args)` in a child Node process, its result as JSON; null if it threw. `fn` must be self-contained (toString()). */
 export function inChild<T>(fn: (...args: any[]) => T, args: unknown[], timeout = 30_000): Promise<T | null> {
-  const script = `process.stdout.write(JSON.stringify((${fn.toString()})(...JSON.parse(process.argv[1]))) ?? "null")`;
+  // tsx (esbuild keepNames) wraps inner functions in __name(), absent in the child.
+  const script = `var __name = (f) => f; process.stdout.write(JSON.stringify((${fn.toString()})(...JSON.parse(process.argv[1]))) ?? "null")`;
   return new Promise((resolve) => {
     execFile(process.execPath, ["-e", script, JSON.stringify(args)], { encoding: "utf8", timeout, maxBuffer: 1024 * 1024, env: {} }, (err, stdout) => {
       if (err) return resolve(null);

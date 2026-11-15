@@ -58,8 +58,8 @@ const sameLists = (a: readonly string[], b: readonly string[]): boolean => {
 
 /** Folder of the dev tools' raw profiles (distinct from `.ressac/profiles`, that of the agent profiles). */
 export const PROFILING_FOLDER = "profiling";
-/** The largest profile read back: about the longest string V8 makes, so a bigger one could never be read anyway. */
-export const PROFILE_MAX_BYTES = 512 * 1024 * 1024;
+/** The largest profile read back (two are parsed side by side): Ressac's own censuses are a few MB. */
+export const PROFILE_MAX_BYTES = 64 * 1024 * 1024;
 
 /** `.ressac/profiling` or `projects/<folder>/.ressac/profiling`, in segments relative to the root. */
 const profilingFolder = (parts: string[]): boolean =>
