@@ -53,6 +53,11 @@ const GEMMA_DELAY_MS = 120_000;
 /** Delay between SIGTERM and SIGKILL when Kev (its group) does not stop. */
 const KILL_DELAY_MS = 5000;
 
+/** Background calls (workflows, watches) free the 5-9 GB model a minute after their last use, not Ollama's 5 min or our old 10. */
+export const BACKGROUND_KEEP_ALIVE = "1m";
+/** ⌘T: the model stays warm between questions (a background call after it brings Ollama back to 1 min). */
+export const INTERACTIVE_KEEP_ALIVE = "10m";
+
 /**
  * Launches the command in its own process group (`uv run` launches a Python child: killing uv alone would leave it
  * orphaned). `arreter` sends SIGTERM to the group, then SIGKILL after `delaiKillMs` if it is still alive. If the Node process
@@ -300,7 +305,7 @@ export class LocalAi {
       r = await fetch(`${model ? this.ollamaUrl : this.kevUrl}/v1/systemone`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(model ? { ...body, model } : body),
+        body: JSON.stringify(model ? { ...body, model, keep_alive: BACKGROUND_KEEP_ALIVE } : body),
         signal: delayAnd(KEV_DELAY_MS, o.signal),
       });
     } catch (e) {
@@ -317,7 +322,8 @@ export class LocalAi {
     }
   }
 
-  async gemma(o: { prompt: string; images?: string[]; json?: boolean; signal?: AbortSignal }): Promise<string | unknown> {
+  /** keepAlive: how long Ollama keeps the model loaded after the call; background work by default, ⌘T asks longer. */
+  async gemma(o: { prompt: string; images?: string[]; json?: boolean; signal?: AbortSignal; keepAlive?: string }): Promise<string | unknown> {
     if (this.closed) throw new Error(AI_CLOSED_ERROR);
     checkAbort(o.signal);
     // Nothing installed: ask for the preferred tag anyway, Ollama's refusal is the error.
@@ -330,7 +336,7 @@ export class LocalAi {
       messages: [message],
       stream: false,
       think: false,
-      keep_alive: "10m",
+      keep_alive: o.keepAlive ?? BACKGROUND_KEEP_ALIVE,
       options: { num_ctx: 16384, temperature: 0.2 },
     };
     if (o.json) body.format = "json";
@@ -381,7 +387,7 @@ export class LocalAi {
       await fetch(`${this.ollamaUrl}/api/generate`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ model, keep_alive: "10m" }),
+        body: JSON.stringify({ model, keep_alive: INTERACTIVE_KEEP_ALIVE }),
         signal: AbortSignal.timeout(GEMMA_DELAY_MS),
       });
     } catch { /* Ollama unreachable: the real call will say so */ }

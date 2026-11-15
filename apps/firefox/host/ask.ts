@@ -1,4 +1,4 @@
-import type { LocalAi } from "../../../packages/kernel/src/index.ts";
+import { INTERACTIVE_KEEP_ALIVE, type LocalAi } from "../../../packages/kernel/src/index.ts";
 import type { History } from "../core/history.ts";
 import type { AskHit, AskResult } from "../shared/model.ts";
 
@@ -88,7 +88,7 @@ export function createAsk(o: {
       const timeout = new Promise<never>((_, no) => (timer = setTimeout(() => (controller.abort(), no(new Error("timeout"))), timeoutMs)));
       let answer: unknown;
       try {
-        answer = await Promise.race([o.ai.gemma({ prompt, json: true, signal: controller.signal }), timeout]);
+        answer = await Promise.race([o.ai.gemma({ prompt, json: true, signal: controller.signal, keepAlive: INTERACTIVE_KEEP_ALIVE }), timeout]);
       } catch {
         return AGENT;
       } finally {

@@ -113,6 +113,12 @@ test.each([
   expect(history.findPages).not.toHaveBeenCalled();
 });
 
+test("⌘T keeps Gemma warm for 10 minutes, unlike background work", async () => {
+  const { ask, gemma } = make(page());
+  await ask.find("mascaret", "fr");
+  expect(gemma.mock.calls[0]![0]).toMatchObject({ keepAlive: "10m" });
+});
+
 test("gemma throwing, or no history → agent", async () => {
   const { ask, gemma } = make(page());
   gemma.mockRejectedValueOnce(new Error("Ollama n'est pas lancé"));

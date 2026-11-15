@@ -95,7 +95,7 @@ describe("LocalAi", () => {
     const questions = { q: { type: "noul", instructions: "ok ?" } };
     expect(await ai.kev({ state: "texte", questions })).toEqual({ q: { type: "noul", noul: 0.91 } });
     const req = ollama.requests.find((x) => x.url === "/v1/systemone")!;
-    expect(req.body).toEqual({ state: "texte", questions, model: "pplx-decider-flash" });
+    expect(req.body).toEqual({ state: "texte", questions, model: "pplx-decider-flash", keep_alive: "1m" });
     expect(launch).not.toHaveBeenCalled();
     expect(ai.state().state).not.toBe("not-installed");
   });
@@ -119,7 +119,7 @@ describe("LocalAi", () => {
     expect(c.model).toBe("gemma4:e4b-mlx");
     expect(c.stream).toBe(false);
     expect(c.think).toBe(false);
-    expect(c.keep_alive).toBe("10m");
+    expect(c.keep_alive).toBe("1m");
     expect(c.format).toBe("json");
     expect(c.options).toEqual({ num_ctx: 16384, temperature: 0.2 });
     expect(c.messages[0]).toMatchObject({ role: "user", content: "salut", images: ["QUJD"] });
