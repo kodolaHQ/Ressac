@@ -12,6 +12,10 @@ updates:
     directory: /packages/kernel/docker
     schedule:
       interval: weekly
+    # A new Node major needs a manual check with claude-code, codex and the network proxy.
+    ignore:
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
