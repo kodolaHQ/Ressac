@@ -109,12 +109,15 @@
   $effect(() => api.onPanel(togglePanel));
   $effect(() => api.design.onChange(() => void rereadDesign()));
   // ZoneContenu's design mode: it follows the tab shown and its address (the chrome stops the mode if it changes).
-  // Primitives: activeTab is a new object at each broadcast, the effect would run (and ask the host) every time.
+  // Primitives: activeTab is a new object at each broadcast, the effect would run (and ask the host) every time. The end
+  // of a load counts: the address is known before its page serves, when the project cannot be told yet.
   const activeId = $derived(activeTab?.id);
   const activeUrl = $derived(activeTab?.url);
+  const activeLoading = $derived(activeTab?.loading);
   $effect(() => {
     void activeId;
     void activeUrl;
+    void activeLoading;
     void rereadDesign();
   });
   /** The cart column: while the design mode is on, or asked by « Panier ». */
