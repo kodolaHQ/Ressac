@@ -361,6 +361,8 @@ it("the band enters and leaves with a transition", async () => {
   await m.execute(`window.__samples = []; window.__sampling = true;
     const tick = () => { const b = document.querySelector('${BAND}'); window.__samples.push({ o: b ? +getComputedStyle(b).opacity : 0, inset: document.getElementById("tabbrowser-tabbox").getBoundingClientRect().top - 8 }); if (window.__sampling) requestAnimationFrame(tick); };
     requestAnimationFrame(tick);`);
+  // The home page opens the agent's session, which resets the searches: the agent searches only once it is ready.
+  await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
   const id = idOf((await callTool(w.dataDir, "search_web", { query: "x", goal: "but" })).text);
   await dispatch(m, { type: "activateTab", id });
   await waitBand((v) => v.shown);
