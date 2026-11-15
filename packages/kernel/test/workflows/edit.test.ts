@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -219,6 +220,17 @@ test("readCodeFile / storeCode refuse ../x.mjs, x.js, an outgoing link, over 256
   expect(await storeCode(files, "nouveau.mjs", "export default 1")).toEqual({ ok: true });
   expect(await readCodeFile(files, "nouveau.mjs")).toEqual({ text: "export default 1" });
   expect((await readdir(files)).filter((n) => n.endsWith(".tmp"))).toEqual([]);
+});
+
+test("readCodeFile never reads through a widget folder swapped for a link, nor a named pipe", async () => {
+  const mac = join(root, "mac");
+  await mkdir(mac);
+  await writeFile(join(mac, "secret.mjs"), "du Mac");
+  const linked = join(root, "lien");
+  await symlink(mac, linked);
+  expect(await readCodeFile(linked, "secret.mjs")).toHaveProperty("error");
+  execFileSync("mkfifo", [join(files, "tube.mjs")]);
+  expect(await readCodeFile(files, "tube.mjs")).toHaveProperty("error");
 });
 
 test("changing list.new's keepDays does not erase its memory; changing key erases it", async () => {

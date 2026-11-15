@@ -1562,7 +1562,6 @@ describe("interpreter: streaming chain", () => {
     "test.fiabilite": step("fiabilite", events, { ...o, ...byBlock.fiabilite }),
     "test.avis": step("avis", events, { ...o, ...byBlock.avis }),
   });
-  const announcement = (n: number) => ({ n, url: `u${n}`, page: `fiche ${n}`, reliability: `fiabilite ${n}`, notice: `avis ${n}` });
   const publications = (r: { traces: any[] }) => r.traces.filter((l) => l.t === "publication");
   const resume = (r: { traces: any[] }) =>
     r.traces.filter((l) => l.t === "block").map((l) => `${l.step}:${l.id}`);

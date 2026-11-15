@@ -71,14 +71,16 @@ export function bridgeHandlers(
   };
   /**
    * Reads the tab's page (its XUL tab created in the background and loaded if needed), then checks the tab did not
-   * become private nor go to another origin meanwhile: access was checked on the URL from before.
+   * become private nor go to another origin meanwhile: access was checked on the URL from before. `expect`: the URL
+   * the kernel checked, before the call reached the browser; a tab already on another origin reads nothing.
    */
-  const outsidePrivate = async <T>(id: string, read: (browser: any) => Promise<T>): Promise<T> => {
+  const outsidePrivate = async <T>(id: string, read: (browser: any) => Promise<T>, expect?: string): Promise<T> => {
     const before = loadedTab(id);
+    const origin = originOf(before.url);
+    if (expect !== undefined && originOf(String(expect)) !== origin) throw new SiteChanged(id);
     const browser = await windowOf(id).controller.ensure(id);
     loadedTab(id); // crashed or failed while it loaded
     const r = await read(browser);
-    const origin = originOf(before.url);
     if (originOf(tab(id).url) !== origin || originOf(browser.currentURI.spec) !== origin)
       throw new SiteChanged(id);
     return r;
@@ -89,16 +91,28 @@ export function bridgeHandlers(
   /**
    * Reads the view of a site app or agent app window: never a site app's bar, home or card, nor an app's badge or
    * overlay. Closed, before or during the read: TabNotFound (a clean answer). Undefined for
-   * any other id.
+   * any other id. `expect`: as for outsidePrivate, checked before and after the read.
    */
-  const onSiteView = <T>(id: string, read: (browser: any, win: Window) => Promise<T>): Promise<T> | undefined => {
+  const onSiteView = <T>(id: string, read: (browser: any, win: Window) => Promise<T>, expect?: string): Promise<T> | undefined => {
     const view = windowView(id);
     if (view === null) return undefined;
     if (!view) return Promise.reject(new TabNotFound(id));
-    return read(view.browser, view.window).catch((e) => {
-      if (windowView(id)?.browser !== view.browser) throw new TabNotFound(id);
-      throw e;
-    });
+    // A blank view (still loading) is listed at its start address, and has nothing to read.
+    const moved = () => {
+      const url = String(view.browser.currentURI?.spec ?? "");
+      return expect !== undefined && url !== "" && url !== "about:blank" && originOf(url) !== originOf(String(expect));
+    };
+    if (moved()) return Promise.reject(new SiteChanged(id));
+    return read(view.browser, view.window).then(
+      (r) => {
+        if (moved()) throw new SiteChanged(id);
+        return r;
+      },
+      (e) => {
+        if (windowView(id)?.browser !== view.browser) throw new TabNotFound(id);
+        throw e;
+      },
+    );
   };
   /** `capture`: also the blocks, reader text, structured data and response facts (the search reads only). */
   const getText = async (browser: any, capture = false) => {
@@ -208,11 +222,12 @@ export function bridgeHandlers(
     },
     "recaps.active": ([win]: [WindowId | null]) => activeRecap(store.state, win ?? windows.active()),
     "recaps.visible": () => shownRecaps(store.state),
-    readText: ([id, o]: [string, { capture?: boolean }?]) => {
+    readText: ([id, o]: [string, { capture?: boolean; expect?: string }?]) => {
       const read = (browser: any) => getText(browser, o?.capture === true);
-      return onSiteView(id, read) ?? outsidePrivate(id, read);
+      return onSiteView(id, read, o?.expect) ?? outsidePrivate(id, read, o?.expect);
     },
-    capture: ([id]: [string]) => onSiteView(id, snapshot) ?? outsidePrivate(id, (browser) => snapshot(browser, windowOf(id).window)),
+    capture: ([id, o]: [string, { expect?: string }?]) =>
+      onSiteView(id, snapshot, o?.expect) ?? outsidePrivate(id, (browser) => snapshot(browser, windowOf(id).window), o?.expect),
     // « L'agent veut lire l'onglet … » in the active window; refused with none to show it. The signal aborts when the
     // host goes: the card falls.
     askPermission: ([o]: [TabInfo], signal) => {

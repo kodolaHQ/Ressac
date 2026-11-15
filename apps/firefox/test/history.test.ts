@@ -179,14 +179,26 @@ test("Visit.retenu tells whether this visit's text (URL and space) is retained; 
   expect(h.recents()).toHaveLength(2);
 });
 
-test("purger erases text older than 183 days and keeps the 182-day-old one", () => {
+test("purger erases visits and text older than 183 days and keeps the 182-day-old ones", () => {
   const now = date("2026-10-28T12:00:00Z");
   visit("https://vieux.fr/", "V", "vieux", { date: new Date(now.getTime() - 184 * DAY).toISOString() });
   visit("https://jeune.fr/", "J", "jeune", { date: new Date(now.getTime() - 182 * DAY).toISOString() });
   h.purge(now);
   expect(h.keptText("https://vieux.fr/")).toBeNull();
   expect(h.keptText("https://jeune.fr/")).not.toBeNull();
-  expect(h.recents()).toHaveLength(2); // the visits remain
+  expect(h.recents().map((v) => v.url)).toEqual(["https://jeune.fr/"]);
+});
+
+test("purger erases the icon of a host with no visit left", () => {
+  const ICON = "data:image/png;base64,AAAA";
+  const now = date("2026-10-28T12:00:00Z");
+  h.note({ url: "https://vieux.fr/", title: "V", spaceId: "A", private: false, date: new Date(now.getTime() - 184 * DAY) });
+  h.note({ url: "https://jeune.fr/", title: "J", spaceId: "A", private: false, date: new Date(now.getTime() - DAY) });
+  h.noteIcon("https://vieux.fr/", "A", ICON);
+  h.noteIcon("https://jeune.fr/", "A", ICON);
+  h.purge(now);
+  h.note({ url: "https://vieux.fr/", title: "V", spaceId: "A", private: false, date: now });
+  expect(Object.fromEntries(h.recents().map((v) => [v.url, v.favicon]))).toEqual({ "https://vieux.fr/": null, "https://jeune.fr/": ICON });
 });
 
 test("beyond the cap, purger erases the oldest text first", () => {

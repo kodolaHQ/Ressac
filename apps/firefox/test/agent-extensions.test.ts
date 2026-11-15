@@ -42,15 +42,6 @@ const tabElement = (id: number, t: FakeTab) => {
 
 /** An installed add-on as AddonManager lists it; `uninstalled` once uninstall() ran. */
 type FakeAddon = { id: string; uninstalled?: boolean; uninstall(): Promise<void> };
-const addon = (id: string, fails?: "throws" | "rejects"): FakeAddon => ({
-  id,
-  uninstall() {
-    if (fails === "throws") throw new Error("uninstall refused");
-    if (fails === "rejects") return Promise.reject(new Error("uninstall refused"));
-    this.uninstalled = true;
-    return Promise.resolve();
-  },
-});
 
 /** The chrome module with Firefox simulated: one policy (ID → HOST), tabs by id with their attributes and address. */
 async function load(

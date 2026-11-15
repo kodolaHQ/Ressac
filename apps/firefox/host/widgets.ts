@@ -1,5 +1,4 @@
-import { randomUUID } from "node:crypto";
-import { mkdir, rename, writeFile } from "node:fs/promises";
+import { mkdir, rename } from "node:fs/promises";
 import { join } from "node:path";
 import {
   ID_EXECUTION,
@@ -14,6 +13,8 @@ import {
   type Execution,
   type ResumeExecution,
   type HomeTheme,
+  queued,
+  writeAtomic,
 } from "../../../packages/kernel/src/index.ts";
 import type { ShownWidget } from "../shared/api.ts";
 
@@ -99,27 +100,13 @@ export function validatePlacements(raw: unknown, ids: readonly string[]): FreePl
   return placements;
 }
 
-/** Writes to layout.json one by one, in request order: none reads the state another is about to change. */
-const layoutQueue = new Map<string, Promise<void>>();
-function inSeries(c: SpacePaths, write: () => Promise<void>): Promise<void> {
-  const next = (layoutQueue.get(c.layout) ?? Promise.resolve()).then(write);
-  const end = next.catch(() => {});
-  layoutQueue.set(c.layout, end);
-  void end.then(() => layoutQueue.get(c.layout) === end && layoutQueue.delete(c.layout));
-  return next;
-}
-
-async function writeLayout(c: SpacePaths, widgets: readonly FreePlacement[]): Promise<void> {
-  await mkdir(c.home, { recursive: true });
-  const temp = `${c.layout}.${randomUUID()}.tmp`;
-  await writeFile(temp, JSON.stringify({ version: 3, widgets }, null, 2));
-  await rename(temp, c.layout);
-}
-
 /** The new layout, already validated: atomic write, in series (two close drags are not lost). */
 export function placeWidgets(c: SpacePaths, placements: readonly FreePlacement[]): Promise<void> {
-  return inSeries(c, () => writeLayout(c, placements));
+  return queued(c.layout, () => writeLayout(c, placements));
 }
+
+const writeLayout = (c: SpacePaths, widgets: readonly FreePlacement[]) =>
+  writeAtomic(c.layout, JSON.stringify({ version: 3, widgets }, null, 2));
 
 /**
  * The user removes a widget: its folder goes to home/.trash (nothing is destroyed), its place is freed and
@@ -127,7 +114,7 @@ export function placeWidgets(c: SpacePaths, placements: readonly FreePlacement[]
  */
 export async function removeWidget(c: SpacePaths, id: string, forget: (id: string) => Promise<void>): Promise<void> {
   if (!ID_WIDGET.test(id)) throw new Error(`id de widget invalide : ${id}`);
-  await inSeries(c, async () => {
+  await queued(c.layout, async () => {
     const remaining = (await readFreeLayout(c)).filter((p) => p.id !== id);
     const trash = join(c.home, ".trash");
     await mkdir(trash, { recursive: true });

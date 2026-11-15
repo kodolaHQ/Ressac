@@ -68,6 +68,16 @@ export const HOME_URL_MAX = 2000;
 export const SCHEMA_SITE = "ressac-site";
 /** Maximum size of a site image requested by the home (rendered as `data:`). */
 export const IMAGE_SITE_MAX = 2 * 1024 * 1024;
+
+/** The largest file of a site app's home screen. */
+export const HOME_FILE_MAX = 2 * 1024 * 1024;
+/** The most files and folders a home screen copies: more and it is not served. */
+export const HOME_ENTRIES_MAX = 500;
+/**
+ * The extensions a home serves: no other file is
+ * copied. resource:// picks a type from the extension, so an .xhtml or .xml would be a document without the home's CSP.
+ */
+export const HOME_TYPES = [".html", ".js", ".css", ".json", ".txt", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif", ".svg", ".ico", ".woff", ".woff2", ".ttf", ".otf"];
 /** Minimum gap between two addresses opened by the home. */
 export const HOME_OPEN_GAP_MS = 1000;
 

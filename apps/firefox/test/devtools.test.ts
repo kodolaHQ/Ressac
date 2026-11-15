@@ -46,34 +46,34 @@ it("a private tab is refused before its page is even looked up", async () => {
   const { devtools, loaded } = setup({ isPrivate: true });
   const { token } = devtools.owner();
   await expect(devtools.call(token, "attach", ["t"])).rejects.toMatchObject({ name: "PrivateTab", id: "t" });
-  await expect(devtools.call(token, "console", ["t"])).rejects.toMatchObject({ name: "PrivateTab" });
+  await expect(devtools.call(token, "console", ["t", "http://127.0.0.1:5300"])).rejects.toMatchObject({ name: "PrivateTab" });
   expect(loaded).toEqual([]);
   expect(devtools.attached()).toEqual([]);
 });
 
 it("an unknown tab: TabNotFound", async () => {
   const { devtools } = setup();
-  await expect(devtools.call(devtools.owner().token, "console", ["gone"])).rejects.toMatchObject({ name: "TabNotFound", id: "gone" });
+  await expect(devtools.call(devtools.owner().token, "console", ["gone", "http://127.0.0.1:5300"])).rejects.toMatchObject({ name: "TabNotFound", id: "gone" });
 });
 
 it("a new owner revokes the previous one; a released owner is refused; a method not provided is refused", async () => {
   const { devtools } = setup();
   const first = devtools.owner().token;
   const second = devtools.owner().token;
-  await expect(devtools.call(first, "console", ["t"])).rejects.toThrow(REVOKED_TEXT);
+  await expect(devtools.call(first, "console", ["t", "http://127.0.0.1:5300"])).rejects.toThrow(REVOKED_TEXT);
   await expect(devtools.call(second, "attaches" as never, [])).rejects.toThrow("Pas encore disponible");
   await expect(devtools.call(second, "constructor" as never, [])).rejects.toThrow("Pas encore disponible");
   devtools.release(first); // not the current one: nothing happens
-  await expect(devtools.call(second, "console", ["t"])).rejects.toThrow("no browser");
+  await expect(devtools.call(second, "console", ["t", "http://127.0.0.1:5300"])).rejects.toThrow("no browser");
   devtools.release();
-  await expect(devtools.call(second, "console", ["t"])).rejects.toThrow(REVOKED_TEXT);
+  await expect(devtools.call(second, "console", ["t", "http://127.0.0.1:5300"])).rejects.toThrow(REVOKED_TEXT);
 });
 
 it("an old owner's call still loading its tab when a new owner comes attaches nothing", async () => {
   let give: (b: unknown) => void = () => {};
   const { devtools } = setup({ ensure: () => new Promise((r) => (give = r)) });
   const before = clients.length;
-  const old = devtools.call(devtools.owner().token, "console", ["t"]);
+  const old = devtools.call(devtools.owner().token, "console", ["t", "http://127.0.0.1:5300"]);
   devtools.owner();
   give(browserAt("http://127.0.0.1:5300/"));
   await expect(old).rejects.toThrow(REVOKED_TEXT);
@@ -86,20 +86,41 @@ it("the tab on another origin (a navigation not heard): the session is dropped a
   const { devtools } = setup({ ensure: async () => browser });
   const { token } = devtools.owner();
   const before = clients.length;
-  await devtools.call(token, "console", ["t"]);
+  await devtools.call(token, "console", ["t", "http://127.0.0.1:5300"]);
   browser.currentURI.spec = "http://localhost:5300/";
-  await devtools.call(token, "console", ["t"]);
+  await devtools.call(token, "console", ["t", "http://localhost:5300"]);
   expect(clients.length - before).toBe(2);
   await new Promise((r) => setTimeout(r, 0));
   expect(clients[before]!.destroyed).toBe(true);
   expect(clients[before + 1]!.destroyed).toBe(false);
 });
 
+it("a call for an origin the tab no longer shows: SiteChanged, no DevTools client attached to the new page", async () => {
+  const { devtools } = setup({ ensure: async () => browserAt("http://localhost:5300/") });
+  const before = clients.length;
+  await expect(devtools.call(devtools.owner().token, "run", ["t", "http://127.0.0.1:5300", "1"])).rejects.toMatchObject({ name: "SiteChanged", id: "t" });
+  expect(clients.length).toBe(before);
+});
+
+it("run retried after a navigation to another origin does not run the code there", async () => {
+  const browser = browserAt("http://127.0.0.1:5300/");
+  liveTarget = { isDestroyed: () => false };
+  let runs = 0;
+  execute = async () => {
+    runs++;
+    browser.currentURI.spec = "http://localhost:5300/";
+    throw new Error("Target already destroyed");
+  };
+  const { devtools } = setup({ ensure: async () => browser });
+  await expect(devtools.call(devtools.owner().token, "run", ["t", "http://127.0.0.1:5300", "1"])).rejects.toMatchObject({ name: "SiteChanged" });
+  expect(runs).toBe(1);
+});
+
 it("a call waiting for the page's next target ends as soon as the session is dropped", async () => {
   const { devtools } = setup({ ensure: async () => browserAt("http://127.0.0.1:5300/") });
   const { token } = devtools.owner();
   const t0 = Date.now();
-  const run = devtools.call(token, "run", ["t", "1"]);
+  const run = devtools.call(token, "run", ["t", "http://127.0.0.1:5300", "1"]);
   await new Promise((r) => setTimeout(r, 50));
   await devtools.call(token, "detach", ["t"]);
   await expect(run).rejects.toThrow("détachés");
@@ -128,7 +149,7 @@ it("memorySnapshot leaves a memory front attached by someone else (the person's 
   liveTarget = { isDestroyed: () => false, getFront: async () => mem };
   try {
     const { devtools } = setup({ ensure: async () => browserAt("http://127.0.0.1:5300/") });
-    const r = JSON.parse(String(await devtools.call(devtools.owner().token, "memorySnapshot", ["t"])));
+    const r = JSON.parse(String(await devtools.call(devtools.owner().token, "memorySnapshot", ["t", "http://127.0.0.1:5300"])));
     expect(r).toEqual({ format: "ressac-firefox-census", total: 80, byConstructor: [{ name: "Object", count: 2, size: 64 }, { name: "strings", count: 1, size: 16 }, { name: "scripts", count: 0, size: 0 }] });
     expect(mem.state).toBe("attached");
     expect(mem.calls).toEqual([]);
@@ -144,7 +165,7 @@ it("two memorySnapshot on one tab at once both answer, and the front they attach
     const browser = browserAt("http://127.0.0.1:5300/");
     const { devtools } = setup({ ensure: async () => browser });
     const { token } = devtools.owner();
-    await Promise.all([devtools.call(token, "memorySnapshot", ["t"]), devtools.call(token, "memorySnapshot", ["t"])]);
+    await Promise.all([devtools.call(token, "memorySnapshot", ["t", "http://127.0.0.1:5300"]), devtools.call(token, "memorySnapshot", ["t", "http://127.0.0.1:5300"])]);
     expect(mem.state).toBe("detached");
   } finally {
     liveTarget = null;
@@ -167,7 +188,7 @@ it("a profile cut while its StartProfiler is still in flight stops the profiler 
   };
   const browser = { ...browserAt("http://127.0.0.1:5300/"), browserId: 1, browsingContext: { currentWindowGlobal: { osPid: 42, innerWindowId: 1 } } };
   const { devtools } = setup({ ensure: async () => browser });
-  await expect(devtools.call(devtools.owner().token, "profile", ["t", { durationMs: 1000 }], cut.signal)).rejects.toBeDefined();
+  await expect(devtools.call(devtools.owner().token, "profile", ["t", "http://127.0.0.1:5300", { durationMs: 1000 }], cut.signal)).rejects.toBeDefined();
   await new Promise((r) => setTimeout(r, 60));
   expect(active).toBe(false);
 });
@@ -226,7 +247,7 @@ it("profiler counts the reflows of the tab's own windows only", async () => {
   const browser = fakeProfiler([7, 8, undefined, 7]);
   liveTarget = { isDestroyed: () => false, getFront: async () => ({ measure: async () => ({ jsObjectsSize: 1, jsStringsSize: 0, jsOtherSize: 0 }) }) };
   const { devtools } = setup({ ensure: async () => browser });
-  const r = (await devtools.call(devtools.owner().token, "profile", ["t", { durationMs: 0 }])) as { metrics: Record<string, number> };
+  const r = (await devtools.call(devtools.owner().token, "profile", ["t", "http://127.0.0.1:5300", { durationMs: 0 }])) as { metrics: Record<string, number> };
   expect(r.metrics.LayoutCount).toBe(3);
 });
 
@@ -237,7 +258,7 @@ it("profiler on a page that never answers its Nodes count or memory measure: the
   execute = () => new Promise(() => {});
   const { devtools } = setup({ ensure: async () => browser });
   let r: { metrics: Record<string, number> } | undefined;
-  void devtools.call(devtools.owner().token, "profile", ["t", { durationMs: 0 }]).then((x) => (r = x as typeof r));
+  void devtools.call(devtools.owner().token, "profile", ["t", "http://127.0.0.1:5300", { durationMs: 0 }]).then((x) => (r = x as typeof r));
   await vi.advanceTimersByTimeAsync(25_000);
   expect(r?.metrics).toBeDefined();
   expect(r!.metrics).not.toHaveProperty("Nodes");
@@ -249,7 +270,7 @@ it("memorySnapshot on a page whose census never comes fails with « La page ne r
   const mem = { ...memoryFront("detached"), takeCensus: () => new Promise(() => {}) };
   liveTarget = { isDestroyed: () => false, getFront: async () => mem };
   const { devtools } = setup({ ensure: async () => browserAt("http://127.0.0.1:5300/") });
-  const pending = devtools.call(devtools.owner().token, "memorySnapshot", ["t"]);
+  const pending = devtools.call(devtools.owner().token, "memorySnapshot", ["t", "http://127.0.0.1:5300"]);
   const outcome = pending.then(() => "answered", (e: Error) => e.message);
   await vi.advanceTimersByTimeAsync(15_000);
   expect(await outcome).toBe("La page ne répond pas.");

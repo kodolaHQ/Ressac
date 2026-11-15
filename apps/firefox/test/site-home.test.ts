@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DISPLAY_DENIED } from "../chrome/window/widget-frame";
-import { HOME_FILE_MAX, HOME_BRIDGE, cspFirefoxHome, forgetHome, homeServed, loadImage, serveHome, type OpenRequest } from "../chrome/store/site-home";
+import { HOME_ENTRIES_MAX, HOME_FILE_MAX, HOME_BRIDGE, cspFirefoxHome, forgetHome, homeServed, loadImage, serveHome as serve, type OpenRequest } from "../chrome/store/site-home";
+import { copyHomeRequest } from "../host/home-copy";
 
 let root: string;
 let data: string;
@@ -61,6 +62,9 @@ beforeAll(() => {
   });
 });
 afterAll(() => rmSync(root, { recursive: true, force: true }));
+
+/** serveHome with the host's real copy, as host.ts wires it. */
+const serveHome = (dataDir: string, id: string) => serve(dataDir, id, (id, token) => copyHomeRequest(dataDir, join(dataDir, "workspace", "sites"), { id, token }));
 
 let n = 0;
 /** A fresh data dir with app `id`'s home files (path → content). */
@@ -249,6 +253,24 @@ describe("serveHome: a hostile home folder (Review Focus 3)", () => {
     symlinkSync(out, join(data, "ressac-sites", "vidola"));
     expect(await serveHome(data, "vidola")).toBeNull();
     expect(readdirSync(out)).toEqual([]);
+  });
+
+  it("serves no home of more than HOME_ENTRIES_MAX files and folders", async () => {
+    const files: Record<string, string> = { "index.html": "<p>accueil</p>" };
+    for (let i = 0; i < HOME_ENTRIES_MAX; i++) files[`f${i}.js`] = "1";
+    app(files);
+    expect(await serveHome(data, "vidola")).toBeNull();
+  });
+
+  it("never follows a link swapped for a folder of the home, even one met by the walk", async () => {
+    const home = app({ "index.html": "<p>accueil</p>", "sous/a.js": "1" });
+    const elsewhere = join(root, `dehors-${n}`);
+    mkdirSync(elsewhere);
+    writeFileSync(join(elsewhere, "secret.js"), "secret du Mac");
+    rmSync(join(home, "sous"), { recursive: true });
+    symlinkSync(elsewhere, join(home, "sous"));
+    const url = await serveHome(data, "vidola");
+    expect(served(url!)).toEqual(["index.html"]);
   });
 
   it("is null without an index.html", async () => {

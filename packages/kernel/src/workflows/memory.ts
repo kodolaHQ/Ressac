@@ -1,7 +1,8 @@
-import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { readFile, rm, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { z } from "zod";
+import { writeAtomic } from "./executions.js";
 
 export const MEMORY_MAX_BYTES = 3 * 1024 * 1024;
 
@@ -69,14 +70,7 @@ export async function writeMemory(dataFolder: string, m: BlocksMemory): Promise<
   const text = JSON.stringify({ version: 1, blocks: m });
   if (Buffer.byteLength(text) > MEMORY_MAX_BYTES) return false;
   const target = join(dataFolder, "memory.json");
-  await mkdir(dataFolder, { recursive: true });
-  const temp = `${target}.${randomUUID()}.tmp`;
-  try {
-    await writeFile(temp, text);
-    await rename(temp, target);
-  } finally {
-    await rm(temp, { force: true });
-  }
+  await writeAtomic(target, text);
   return true;
 }
 

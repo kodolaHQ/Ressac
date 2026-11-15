@@ -62,6 +62,14 @@ const pending = <T>(signal: AbortSignal): Promise<T> =>
     else signal.addEventListener("abort", reject, { once: true });
   });
 
+const originOf = (url: string) => {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return url;
+  }
+};
+
 /** Simulated dev tools: buffers set by the tests. */
 class FakeDevTools implements BrowserDevTools {
   readonly consoles = new Map<string, MessageConsole[]>();
@@ -75,9 +83,11 @@ class FakeDevTools implements BrowserDevTools {
     private readonly block: boolean,
   ) {}
 
-  private check(id: string): void {
-    this.find(id);
+  /** As the browser: a tab no longer on the origin the kernel checked throws SiteChanged. */
+  private check(id: string, origin?: string): void {
+    const tab = this.find(id);
     if (this.busy.has(id)) throw new DevToolsBusy();
+    if (origin !== undefined && originOf(tab.url) !== origin) throw new SiteChanged(id);
   }
 
   async attach(id: string) {
@@ -89,48 +99,48 @@ class FakeDevTools implements BrowserDevTools {
     this.note("detach", id);
   }
 
-  async console(id: string) {
+  async console(id: string, origin: string) {
     this.note("console", id);
-    this.check(id);
+    this.check(id, origin);
     return [...(this.consoles.get(id) ?? [])];
   }
 
-  async network(id: string) {
+  async network(id: string, origin: string) {
     this.note("network", id);
-    this.check(id);
+    this.check(id, origin);
     return [...(this.networks.get(id) ?? [])];
   }
 
-  async body(id: string, request: string) {
+  async body(id: string, origin: string, request: string) {
     this.note("body", id, request);
-    this.check(id);
+    this.check(id, origin);
     return { body: `Corps de ${request}`, base64: false };
   }
 
-  async profile(id: string, o: { durationMs?: number; reload?: boolean }, signal: AbortSignal) {
+  async profile(id: string, origin: string, o: { durationMs?: number; reload?: boolean }, signal: AbortSignal) {
     this.note("profile", id, o);
-    this.check(id);
+    this.check(id, origin);
     if (this.block) return pending<{ profile: CpuProfile; metrics: Record<string, number> }>(signal);
     return { profile: PROFILE, metrics: { Nodes: 42 } };
   }
 
-  async memorySnapshot(id: string, signal: AbortSignal) {
+  async memorySnapshot(id: string, origin: string, signal: AbortSignal) {
     this.note("memorySnapshot", id);
-    this.check(id);
+    this.check(id, origin);
     if (this.block) return pending<string>(signal);
     return heap(this.heapObjects);
   }
 
-  async run(id: string, code: string, _signal: AbortSignal): Promise<JsResult> {
+  async run(id: string, origin: string, code: string, _signal: AbortSignal): Promise<JsResult> {
     this.note("run", id, code);
-    this.check(id);
+    this.check(id, origin);
     if (code.startsWith("throw ")) return { exception: `${code.slice(6)}\n    at <anonymous>:1:1` };
     return { value: JSON.stringify({ code }) };
   }
 
-  async reload(id: string, noCache: boolean) {
+  async reload(id: string, origin: string, noCache: boolean) {
     this.note("reload", id, noCache);
-    this.check(id);
+    this.check(id, origin);
   }
 }
 
@@ -448,10 +458,11 @@ export class FakeBridge implements BrowserBridge {
     return this.tabs.filter((x) => !this.privateTabs.has(x.id)).map((x) => ({ ...x }));
   }
 
-  async readText(id: string, o?: { capture?: boolean }) {
+  async readText(id: string, o?: { capture?: boolean; expect?: string }) {
     if (o) this.note("readText", id, o);
     else this.note("readText", id);
     const tab = this.find(id);
+    if (o?.expect !== undefined && originOf(o.expect) !== originOf(tab.url)) throw new SiteChanged(id);
     if (this.hanging.has(tab.url)) await new Promise(() => {});
     if (this.failing.has(tab.url)) throw new Error("Page illisible");
     if (this.siteChanges > 0) {
@@ -478,8 +489,9 @@ export class FakeBridge implements BrowserBridge {
     o.url = url;
   }
 
-  async capture(id: string) {
+  async capture(id: string, o?: { expect?: string }) {
     this.note("capture", id);
+    if (o?.expect !== undefined && originOf(o.expect) !== originOf(this.find(id).url)) throw new SiteChanged(id);
     this.find(id);
     return PNG;
   }

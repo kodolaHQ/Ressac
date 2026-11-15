@@ -1,22 +1,9 @@
 import { say } from "../i18n.js";
-import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { readFile, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
+import { writeAtomic } from "../workflows/executions.js";
 import { clearRunsAndMemory } from "../workflows/memory.js";
 import { DEFAULT_WIDGET_STATE, WidgetState, DATA_MAX_SIZE } from "./schemas.js";
-
-// A temporary name specific to each write: two simultaneous writes (a grant denied during a harvest)
-// do not trample each other.
-async function writeAtomic(target: string, text: string): Promise<void> {
-  await mkdir(join(target, ".."), { recursive: true });
-  const temp = `${target}.${randomUUID()}.tmp`;
-  try {
-    await writeFile(temp, text);
-    await rename(temp, target);
-  } finally {
-    await rm(temp, { force: true });
-  }
-}
 
 /** Harvested data of a widget, or null if absent, damaged or too big (over 2 MB). */
 export async function readData(widgetsFolder: string, id: string): Promise<unknown | null> {

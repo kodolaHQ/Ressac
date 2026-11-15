@@ -4,6 +4,8 @@ import type { RessacStore } from "../store";
 
 export const TAB_ID = "ressac-tab-id";
 export const PARKING = "ressac-parking";
+/** In adoptTab's options: TabSync itself moves the tab (refuseSiteTabs refuses any other move of a Ressac tab). */
+export const OWN_ADOPT = "ressacOwnAdopt";
 const { STATE_START, STATE_STOP, STATE_IS_NETWORK, LOCATION_CHANGE_ERROR_PAGE } = Ci.nsIWebProgressListener;
 /** The errors refused before any request, by their about:neterror code (nsDocShell::DisplayLoadError); others keep the code. */
 const REFUSED: Record<string, string> = {
@@ -269,7 +271,7 @@ export class TabSync {
       if (w.gBrowser === this.gBrowser) continue;
       const old = w.gBrowser?.tabs.find((t: any) => t.getAttribute(TAB_ID) === id);
       if (!old) continue;
-      const tab = this.gBrowser.adoptTab(old, { tabIndex: this.gBrowser.tabs.length });
+      const tab = this.gBrowser.adoptTab(old, { tabIndex: this.gBrowser.tabs.length, [OWN_ADOPT]: true });
       if (!tab) w.gBrowser.removeTab(old, { skipPermitUnload: true, animate: false });
       return tab ?? undefined;
     }

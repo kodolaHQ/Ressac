@@ -1,10 +1,25 @@
-import { mkdir, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { THIRD_PARTY_SITE_WARNING, FOLDER_LINK, HTML_MAX, EMPTY_BASKET, Remarks, TRUNCATED, batchState, truncateHtml, type DesignContext, type ReviewContext } from "../../src/design/remarks.js";
 import { EMPTY_REMARK } from "../../src/review/comments.js";
 import { remarksFolder, type DesignFolders } from "../../src/design/projects.js";
 import { tempFolder } from "../helpers/temp.js";
+
+/** Run once just before the next `writeFile` of the kernel: a swap the agent makes between the checks and the write. */
+const beforeWrite = vi.hoisted(() => ({ run: null as null | (() => Promise<void>) }));
+vi.mock("node:fs/promises", async (original) => {
+  const fs = await original<typeof import("node:fs/promises")>();
+  return {
+    ...fs,
+    writeFile: async (...a: Parameters<typeof fs.writeFile>) => {
+      const run = beforeWrite.run;
+      beforeWrite.run = null;
+      if (run) await run();
+      return fs.writeFile(...a);
+    },
+  };
+});
 
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
 const ctx = (html = "<p>x</p>"): DesignContext => ({
@@ -313,6 +328,18 @@ describe("Remarks", () => {
     await symlink(outsideBatch, batchFolder);
     await expect(r.markBatchHandled("app-essai", batch.id)).rejects.toThrow(FOLDER_LINK);
     expect(await readFile(join(outsideBatch, "batch.json"), "utf8")).toBe(content);
+  });
+
+  test("a project folder swapped for a link after the check: nothing renamed at the end of the link", async () => {
+    const { folders, r } = await frame();
+    const outside = await tempFolder();
+    const folder = remarksFolder(folders, "app-essai");
+    beforeWrite.run = async () => {
+      await rename(folder, `${folder}-vrai`);
+      await symlink(outside, folder);
+    };
+    await expect(r.addToBasket("app-essai", { text: "x", context: ctx(), capture: null })).rejects.toThrow(FOLDER_LINK);
+    expect(await readdir(outside)).toEqual([]);
   });
 
   test("invalid project identifier refused", async () => {

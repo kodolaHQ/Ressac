@@ -58,6 +58,8 @@ const sameLists = (a: readonly string[], b: readonly string[]): boolean => {
 
 /** Folder of the dev tools' raw profiles (distinct from `.ressac/profiles`, that of the agent profiles). */
 export const PROFILING_FOLDER = "profiling";
+/** The largest profile read back (two are parsed side by side): Ressac's own censuses are a few MB. */
+export const PROFILE_MAX_BYTES = 64 * 1024 * 1024;
 
 /** `.ressac/profiling` or `projects/<folder>/.ressac/profiling`, in segments relative to the root. */
 const profilingFolder = (parts: string[]): boolean =>
@@ -164,7 +166,10 @@ export function profileFiles(paths: SpacePaths, privateFolder?: string): Profile
         throw denial(containerPath);
       });
       try {
-        if (!(await f.stat()).isFile()) throw denial(containerPath);
+        const info = await f.stat();
+        if (!info.isFile()) throw denial(containerPath);
+        // The agent can make a file of any size there: refused before it is read into memory.
+        if (info.size > PROFILE_MAX_BYTES) throw new Error(`Profil trop gros : ${containerPath}`);
         return await f.readFile("utf8");
       } finally {
         await f.close();

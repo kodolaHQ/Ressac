@@ -1,6 +1,6 @@
-import { mkdirSync, constants } from "node:fs";
+import { mkdirSync, constants, type Stats } from "node:fs";
 import { lstat, open, readdir, realpath } from "node:fs/promises";
-import { join, sep } from "node:path";
+import { join, relative, sep } from "node:path";
 import { watch } from "chokidar";
 import type { SpacePaths } from "../paths.js";
 import {
@@ -23,11 +23,16 @@ const MAX_ERROR = 300;
 const GROUPING_MS = 150;
 
 /** Reads an ordinary file (never a link: O_NOFOLLOW), at most `max` bytes; fails if it is bigger. */
-async function readBound(path: string, max: number): Promise<string> {
+/**
+ * `check`: called with the opened file, after the open (O_NOFOLLOW guards the last part of the path only): refuses a
+ * file reached through a folder swapped for a link in the meantime.
+ */
+async function readBound(path: string, max: number, check?: (opened: Stats) => Promise<boolean>): Promise<string> {
   const f = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     const st = await f.stat();
     if (!st.isFile()) throw new Error("pas un fichier ordinaire");
+    if (check && !(await check(st))) throw new Error("dossier changé");
     if (st.size > max) throw new Error("trop gros");
     const buffer = Buffer.alloc(max + 1);
     let n = 0;
@@ -106,6 +111,19 @@ export async function readSite(c: SpacePaths, id: string, o: { localAddresses: b
   return readOne(c, id, o);
 }
 
+/** Every folder from `folder` down to `path` is still a real folder (no link), and `path` still names the opened file. */
+async function stillReal(folder: string, path: string, opened: Stats): Promise<boolean> {
+  const parts = relative(folder, path).split(sep);
+  if (parts.includes("..")) return false;
+  let p = folder;
+  for (const part of ["", ...parts.slice(0, -1)]) {
+    p = join(p, part);
+    if (!(await lstat(p)).isDirectory()) return false;
+  }
+  const entry = await lstat(path);
+  return entry.dev === opened.dev && entry.ino === opened.ino;
+}
+
 /** The files cited by the tweaks, read under `tweaks/`: never a link, never outside the folder, bounded. */
 export async function readTweaks(s: Extract<SiteRead, { declaration: DeclarationSite }>): Promise<TweaksRead | { error: string }> {
   const base = join(s.folder, "tweaks");
@@ -136,7 +154,7 @@ export async function readTweaks(s: Extract<SiteRead, { declaration: Declaration
           if (!realRoot || !(await realpath(path)).startsWith(realRoot + sep)) throw new Error("hors du dossier");
           total += st.size;
           if (total > TWEAKS_MAX_TOTAL) throw new Error("trop gros");
-          output[kind][f] = await readBound(path, TWEAK_MAX);
+          output[kind][f] = await readBound(path, TWEAK_MAX, (opened) => stillReal(s.folder, path, opened));
         } catch {
           return { error: tweakFileNotFound(f) };
         }

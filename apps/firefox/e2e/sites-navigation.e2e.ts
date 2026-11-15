@@ -15,7 +15,6 @@ import { missingApi, pressKeys } from "./ui";
 const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const NAVIGABLES = "chrome://remote/content/shared/NavigableManager.sys.mjs";
 const HOSTS = ["vidola-a.localhost", "vidola-b.localhost", "pub.localhost", "autre-pub.localhost", "compte.localhost"];
-const META = "";
 const ALT = "";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 

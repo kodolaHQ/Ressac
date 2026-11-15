@@ -91,7 +91,9 @@ export function registerPermissionHooks(o: {
     const screen = !!d.sharingScreen;
     // The frame that asks, not the top-level page (spike P2).
     const frame = this.manager.documentPrincipal;
+    let answered = false;
     const respond = (ok: boolean) => {
+      answered = true;
       calls.delete(d.callID);
       try {
         // Screen: the one device that opens macOS's own picker (branch 1 of the notes); none = refused.
@@ -108,7 +110,9 @@ export function registerPermissionHooks(o: {
       } catch {}
     };
     const mediaTypes = [...(d.videoInputDevices.length && !screen ? ["video"] : []), ...(d.audioInputDevices.length ? ["audio"] : [])];
-    calls.set(d.callID, ask(this.browsingContext.top.embedderElement, frame, screen ? { kind: "screen-share" } : { kind: "media", mediaTypes }, respond));
+    const cancel = ask(this.browsingContext.top.embedderElement, frame, screen ? { kind: "screen-share" } : { kind: "media", mediaTypes }, respond);
+    // Refused at once (no tab of ours…): nothing left to cancel.
+    if (!answered) calls.set(d.callID, cancel);
   };
 
   // A link to another application: Firefox's own dialog never shows (spike P5).

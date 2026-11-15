@@ -1,14 +1,13 @@
 // A site app's home screen, written by the agent in `<dataDir>/workspace/sites/<id>/home/`: the served copy (a
 // ressac-site: scheme cannot be registered here: a resource:// substitution serves a sanitized
 // copy), and the site images it asks for, loaded in the app's container.
-import { IMAGE_SITE_MAX } from "../../shared/sites";
+import { HOME_ENTRIES_MAX, HOME_FILE_MAX, HOME_TYPES, IMAGE_SITE_MAX } from "../../shared/sites";
+export { HOME_ENTRIES_MAX, HOME_FILE_MAX, HOME_TYPES };
 import { localUrl } from "../../../../packages/kernel/src/workflows/access";
 import { hostInSite } from "../../../../packages/kernel/src/sites/urls";
 import { ID_SITE } from "../../../../packages/kernel/src/sites/schemas";
 import { CSP_WIDGET, displayServed } from "../window/widget-frame";
 
-/** The largest file of a home screen. */
-export const HOME_FILE_MAX = 2 * 1024 * 1024;
 /** The most redirects an image load follows. */
 export const REDIRECTIONS_IMAGE = 3;
 const IMAGE_DELAY_MS = 10_000;
@@ -18,12 +17,6 @@ const IMAGES_AT_ONCE = 4;
 const IMAGES_WAITING_MAX = 200;
 
 const FILE_DIRECTIVES = new Set(["script-src", "style-src", "img-src", "font-src"]);
-/**
- * The extensions a home serves: no other file is
- * copied. resource:// picks a type from the extension, so an .xhtml or .xml would be a document without the home's CSP.
- */
-export const HOME_TYPES = new Set([".html", ".js", ".css", ".json", ".txt", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif", ".svg", ".ico", ".woff", ".woff2", ".ttf", ".otf"]);
-const extension = (segment: string) => (segment.lastIndexOf(".") > 0 ? segment.slice(segment.lastIndexOf(".")).toLowerCase() : "");
 const substitution = (key: string) => `ressac-site-${key}`;
 
 /**
@@ -88,40 +81,40 @@ function substitute(name: string, dir: string | null): void {
 }
 
 /**
- * Copies `<dataDir>/workspace/sites/<id>/home/` into `<dataDir>/ressac-sites/<id>/<token>/` with these
- * rules: the app folder named exactly `id` (a case-insensitive disk would find « Vidola » for
- * « vidola »), no symbolic link anywhere on a path, no hidden segment, `FICHIER_ACCUEIL_MAX` at most per file,
- * only the served types (HOME_TYPES); the `.html` pages go through homeServed. Points
+ * Has `copy` (the host's walk, host/home-copy.ts) copy `<dataDir>/workspace/sites/<id>/home/` into
+ * `<dataDir>/ressac-sites/<id>/<token>/` with these rules: the app folder named exactly `id`, no symbolic link
+ * anywhere on a path (even one swapped in during the copy), no hidden segment, HOME_FILE_MAX at most per file,
+ * HOME_ENTRIES_MAX entries at most, only the served types (HOME_TYPES); the `.html` pages then go through homeServed. Points
  * `resource://ressac-site-<id>-<token>/` straight at that folder (the previous serve's substitution and folder go) and returns its `index.html`, or null (no home page, or a refused folder).
  * The token is random at each serve: the substitution is content-accessible (ALLOW_CONTENT_ACCESS, below), so neither
  * its host nor any root above it may be guessable by a web page.
- * shortcut: files are checked by realpath then read by path (IOUtils has no O_NOFOLLOW): a link swapped in between is
- * followed; and the whole folder is copied with no file count limit. Upgrade if the agent's folder can be written by an
- * untrusted process.
+ * The copy is the host's: chrome code has no O_NOFOLLOW nor any file identity (IOUtils follows links).
  */
-export function serveHome(dataDir: string, id: string): Promise<string | null> {
+export function serveHome(dataDir: string, id: string, copy: HomeCopy): Promise<string | null> {
   // One serve at a time per app: the agent writes several files in a row, and a serve cleaning up while another copies
   // would delete the other's folder. Each waits for the previous, then publishes and removes the older copies.
-  const run = (serving.get(id) ?? Promise.resolve()).then(() => serveNow(dataDir, id));
+  const run = (serving.get(id) ?? Promise.resolve()).then(() => serveNow(dataDir, id, copy));
   const settled = run.catch(() => {});
   serving.set(id, settled);
   void settled.then(() => serving.get(id) === settled && serving.delete(id));
   return run;
 }
 
+/** The host's `sites.copyHome`: the copied files (relative paths), or null when refused. */
+export type HomeCopy = (id: string, token: string) => Promise<string[] | null>;
+
 /** The serve of each app in progress (the last one started). */
 const serving = new Map<string, Promise<unknown>>();
 
-async function serveNow(dataDir: string, id: string): Promise<string | null> {
+async function serveNow(dataDir: string, id: string, copy: HomeCopy): Promise<string | null> {
   if (typeof id !== "string" || !ID_SITE.test(id)) return null;
   try {
     const sites = PathUtils.join(dataDir, "workspace", "sites");
     const sitesReal = realPath(sites);
     if (!sitesReal || isLink(sites) || !(await IOUtils.getChildren(sites)).some((c) => name(c) === id)) return null;
     const source = PathUtils.join(sites, id, "home");
-    // realpath resolves every link on the path: if it differs from the expected path, a link (or another case) is there.
-    const expected = PathUtils.join(sitesReal, id, "home");
-    if (realPath(source) !== expected) return null;
+    // A quick refusal before anything is made; the host's copy checks again, swap-proof.
+    if (realPath(source) !== PathUtils.join(sitesReal, id, "home")) return null;
     const token = Services.uuid.generateUUID().toString().replace(/[{}-]/g, "");
     const key = `${id}-${token}`;
     const copies = PathUtils.join(dataDir, "ressac-sites", id);
@@ -131,31 +124,13 @@ async function serveNow(dataDir: string, id: string): Promise<string | null> {
     const root = realPath(PathUtils.join(dataDir, "ressac-sites"));
     if (!root || realPath(copies) !== PathUtils.join(root, id)) return null;
     await IOUtils.makeDirectory(target, { ignoreExisting: true });
-    let index = false;
-    const copy = async (from: string, real: string, to: string, top: boolean): Promise<void> => {
-      for (const child of await IOUtils.getChildren(from)) {
-        const segment = name(child);
-        if (!segment || segment.startsWith(".")) continue;
-        const childReal = PathUtils.join(real, segment);
-        if (realPath(child) !== childReal) continue;
-        const info = await IOUtils.stat(child);
-        const out = PathUtils.join(to, segment);
-        if (info.type === "directory") {
-          await IOUtils.makeDirectory(out, { ignoreExisting: true });
-          await copy(child, childReal, out, false);
-          continue;
-        }
-        // A named pipe or a device ("other") is never read.
-        if (info.type !== "regular" || info.size > HOME_FILE_MAX || !HOME_TYPES.has(extension(segment))) continue;
-        const bytes = await IOUtils.read(child, { maxBytes: HOME_FILE_MAX + 1 });
-        // A file that grew since stat is refused, never cut.
-        if (bytes.length > HOME_FILE_MAX) continue;
-        if (/\.html$/i.test(segment)) await IOUtils.writeUTF8(out, homeServed(new TextDecoder().decode(bytes), key));
-        else await IOUtils.write(out, bytes);
-        if (top && segment === "index.html") index = true;
-      }
-    };
-    await copy(source, expected, target, true);
+    const files = (await copy(id, token)) ?? [];
+    // The copy is out of the agent's reach: its pages are read back by path.
+    for (const f of files.filter((f) => /\.html$/i.test(f))) {
+      const out = PathUtils.join(target, ...f.split("/"));
+      await IOUtils.writeUTF8(out, homeServed(new TextDecoder().decode(await IOUtils.read(out)), key));
+    }
+    const index = files.includes("index.html");
     // One copy per app: the previous ones go.
     for (const old of await IOUtils.getChildren(copies)) if (old !== target) await IOUtils.remove(old, { recursive: true, ignoreAbsent: true });
     const previous = current.get(id);

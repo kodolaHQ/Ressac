@@ -54,6 +54,8 @@ export interface DesignHost {
   appsChanged(): void;
   /** A deleted site app: its remarks, review repository and comments erased. */
   siteDeleted(id: string): void;
+  /** A deleted agent app: the same, for `app-<folder>`. */
+  appDeleted(folder: string): void;
   stop(): Promise<void>;
 }
 
@@ -284,16 +286,18 @@ export function createDesignHost(o: {
     "design.send": send,
   };
 
+  const projectDeleted = (p: string) => {
+    if (!ID_PROJECT.test(p)) return;
+    void remarks.forget(p).catch((e) => console.error(`[design] remarks of ${p} not erased:`, e));
+    void review.erase(p).catch((e) => console.error(`[review] review of ${p} not erased:`, e));
+  };
+
   return {
     handlers,
     sitesChanged: takeOverSoon,
     appsChanged: takeOverSoon,
-    siteDeleted: (id) => {
-      const p = `site-${id}`;
-      if (!ID_PROJECT.test(p)) return;
-      void remarks.forget(p).catch((e) => console.error(`[design] remarks of ${id} not erased:`, e));
-      void review.erase(p).catch((e) => console.error(`[review] review of ${id} not erased:`, e));
-    },
+    siteDeleted: (id) => projectDeleted(`site-${id}`),
+    appDeleted: (folder) => projectDeleted(`app-${folder}`),
     stop: async () => {
       clearInterval(purge);
       clearTimeout(takeOverTimer);

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { spacePaths } from "../../src/paths.js";
 import { initSpace, DEFAULT_TEMPLATES, DISPLAYS_SHIPPED, OLD_AGENTS, OLD_AGENT_PROFILE, OLD_CLAUDE_MD } from "../../src/workspace/initialize.js";
 import { createHash } from "node:crypto";
-import { DeclarationWidget, Layout } from "../../src/home/schemas.js";
+import { DeclarationWidget } from "../../src/home/schemas.js";
 import { DeclarationSite, checkSiteDeclaration } from "../../src/sites/schemas.js";
 import { readReference } from "../../src/pages/plan.js";
 import { tempFolder } from "../helpers/temp.js";
@@ -29,7 +29,6 @@ const expectedList = [
   "guides/extensions.md",
   "guides/actions.md",
   "guides/site-apps.md",
-  "home/layout.json",
   ...Object.entries(START_FILES).flatMap(([w, files]) => files.map((f) => `home/widgets/${w}/${f}`)),
   ".ressac/profiles/claude.json",
   ".ressac/profiles/codex.json",
@@ -49,15 +48,10 @@ test("creates the full space in an empty folder", async () => {
 
 test("never overwrites an existing file", async () => {
   const c = spacePaths(await tempFolder());
-  await mkdir(c.home, { recursive: true });
-  const personal = '{"version":2,"widgets":[]}';
   await writeFile(join(c.root, "AGENTS.md"), "perso");
-  await writeFile(c.layout, personal);
   const { created: crees } = await initSpace(c);
   expect(await readFile(join(c.root, "AGENTS.md"), "utf8")).toBe("perso");
-  expect(await readFile(c.layout, "utf8")).toBe(personal);
   expect(crees).not.toContain(join(c.root, "AGENTS.md"));
-  expect(crees).not.toContain(c.layout);
 });
 
 test("idempotent: a second call creates nothing", async () => {
@@ -87,12 +81,11 @@ test("AGENTS.md stays short and every guide it names ships in each language", as
   }
 });
 
-test("a new space gets the three starter widgets and the v2 layout", async () => {
+test("a new space gets the three starter widgets and no layout file", async () => {
   const c = spacePaths(await tempFolder());
   await initSpace(c, "fr");
   expect((await readdir(c.widgets)).sort()).toEqual(["actus-tech", "daily-dev", "meteo"]);
-  const available = Layout.parse(JSON.parse(await readFile(c.layout, "utf8")));
-  expect(available.widgets.map((w) => w.id)).toEqual(["actus-tech", "daily-dev", "meteo"]);
+  expect(existsSync(c.layout)).toBe(false);
   for (const id of ["meteo", "actus-tech", "daily-dev"]) {
     const d = DeclarationWidget.parse(JSON.parse(await readFile(join(c.widgets, id, "widget.json"), "utf8")));
     JSON.parse(await readFile(join(c.widgets, id, "example.json"), "utf8"));
@@ -116,10 +109,8 @@ test("a deleted starter widget does not come back at the next launch", async () 
   const c = spacePaths(await tempFolder());
   await initSpace(c);
   await rm(join(c.widgets, "meteo"), { recursive: true });
-  await writeFile(c.layout, '{"version":2,"widgets":[]}');
   await initSpace(c);
   expect(existsSync(join(c.widgets, "meteo"))).toBe(false);
-  expect(await readFile(c.layout, "utf8")).toBe('{"version":2,"widgets":[]}');
 });
 
 test("AGENTS.md, CLAUDE.md and the profile are recreated if missing", async () => {

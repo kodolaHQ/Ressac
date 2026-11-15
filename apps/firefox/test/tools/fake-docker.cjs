@@ -182,6 +182,12 @@ if (args[0] === "exec") {
     return;
   }
   if (command[0] === "curl" && command.includes("https://1.1.1.1")) quit(7);
+  // An app's log (ApplicationManager.log): tail -n <lines> -- /workspace/<path>, read from the mounted folder.
+  if (command[0] === "tail" && command[3] === "--" && command[4].startsWith("/workspace/")) {
+    const file = join(env.RESSAC_ROOT, command[4].slice("/workspace/".length));
+    if (!existsSync(file)) quit(1, "", "tail: No such file\n");
+    quit(0, readFileSync(file, "utf8").split("\n").slice(-Number(command[2]) - 1).join("\n"));
+  }
   if (options.some((o) => o.startsWith("RESSAC_APP="))) {
     launchApp(options, command);
     return;

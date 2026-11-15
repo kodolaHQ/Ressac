@@ -11,7 +11,7 @@ import {
   memoryText,
   truncate,
 } from "../devtools/summaries.js";
-import { TabNotFound, PrivateTab, DevToolsBusy, PRIVATE_TEXT, type TabInfo, type BrowserDevTools, type BrowserBridge, type NetworkRequest } from "./bridge.js";
+import { TabNotFound, PrivateTab, DevToolsBusy, SiteChanged, PRIVATE_TEXT, type TabInfo, type BrowserDevTools, type BrowserBridge, type NetworkRequest } from "./bridge.js";
 
 export const TOOL_DENIAL_TEXT = "Accès refusé par l'utilisateur à cet outil sur cet onglet.";
 export const TEXT_CUT = "Accès coupé par l'utilisateur.";
@@ -164,13 +164,13 @@ export function registerDevTools(
   /**
    * Runs a call that needs `droit`: asks for it if needed, signals the activity on the tab and interrupts
    * the call as soon as the right drops (cut by the user or site change). The files written for an interrupted call
-   * or one in error are deleted.
+   * or one in error are deleted. `f` gets the origin checked on `o`, which the browser compares with the page it acts on.
    */
   async function withRight(
     id: string,
     right: DevRight,
     tool: string,
-    f: (o: TabInfo, signal: AbortSignal, write: (name: string, content: string) => Promise<string>) => Promise<Result>,
+    f: (o: TabInfo, signal: AbortSignal, write: (name: string, content: string) => Promise<string>, origin: string) => Promise<Result>,
     label?: string,
   ): Promise<Result> {
     const got = await get(id, [right], `L'agent veut utiliser ${tool}.`);
@@ -209,13 +209,15 @@ export function registerDevTools(
       if (signal.aborted) return await interruptionResponse();
       if (label) c.activity?.(id, label);
       const abandon = new Promise<never>((_, ko) => signal.addEventListener("abort", () => ko(new Cut()), { once: true }));
-      const call = f(o, signal, write);
+      // Non-null: a page without an origin holds no right, so check() has already aborted.
+      const call = f(o, signal, write, originOf(o.url)!);
       call.catch(() => {}); // a late result after abandonment is ignored
       const r = await Promise.race([call, abandon]);
       if (signal.aborted) throw new Cut();
       return r;
     } catch (e) {
       await Promise.all(files.map(clear));
+      if (e instanceof SiteChanged) return text(SITE_CHANGED_TEXT);
       if (!signal.aborted && !(e instanceof Cut)) throw e;
       return await interruptionResponse();
     } finally {
@@ -268,10 +270,10 @@ export function registerDevTools(
       inputSchema: { id, since: z.number().optional(), level: z.enum(["log", "info", "warn", "error", "debug"]).optional() },
     },
     protect(async ({ id, since: from, level }) =>
-      withRight(id, "console", "read_console", async (o) => {
+      withRight(id, "console", "read_console", async (o, _signal, _write, at) => {
         // On a third-party site, the URLs of the messages and stacks are masked as in read_network.
         const view = policy.isBuilt(o) ? (t: string) => t : hideUrlsInText;
-        const messages = chronological(await tools.console(id)).filter(
+        const messages = chronological(await tools.console(id, at)).filter(
           (m) => (from === undefined || m.timestamp >= from) && (level === undefined || m.level === level),
         );
         const lines = messages.map((m) => {
@@ -294,8 +296,8 @@ export function registerDevTools(
       inputSchema: { id, filter: z.string().optional() },
     },
     protect(async ({ id, filter }) =>
-      withRight(id, "network", "read_network", async (o) => {
-        const lines = chronological(await tools.network(id))
+      withRight(id, "network", "read_network", async (o, _signal, _write, at) => {
+        const lines = chronological(await tools.network(id, at))
           .map((r) => ({ r, url: viewUrl(o, r) }))
           .filter(({ url }) => !filter || url.includes(filter))
           .map(({ r, url }) =>
@@ -322,13 +324,13 @@ export function registerDevTools(
       inputSchema: { id, request: z.string() },
     },
     protect(async ({ id, request }) =>
-      withRight(id, "network", "read_request", async (o) => {
-        const r = (await tools.network(id)).find((x) => x.id === request);
+      withRight(id, "network", "read_request", async (o, _signal, _write, at) => {
+        const r = (await tools.network(id, at)).find((x) => x.id === request);
         if (!r) return text(`Requête introuvable : ${request}`, true);
         const raw = policy.isBuilt(o);
         let body: string;
         try {
-          const c = await tools.body(id, request);
+          const c = await tools.body(id, at, request);
           body = c.base64 ? `Corps (base64) :\n${truncate(c.body)}` : `Corps :\n${truncate(c.body)}`;
         } catch (e) {
           if (e instanceof DevToolsBusy) throw e;
@@ -362,9 +364,9 @@ export function registerDevTools(
       inputSchema: { id, duration_s: z.number().positive().max(60).optional(), reload: z.boolean().optional() },
     },
     protect(async ({ id, duration_s, reload }) =>
-      withRight(id, "performance", "profile_performance", async (_o, signal, write) => {
+      withRight(id, "performance", "profile_performance", async (_o, signal, write, at) => {
         const options = { ...(duration_s !== undefined ? { durationMs: duration_s * 1000 } : {}), ...(reload ? { reload: reload } : {}) };
-        const { profile, metrics } = await tools.profile(id, options, signal);
+        const { profile, metrics } = await tools.profile(id, at, options, signal);
         const path = await write(profileName("profile_performance", "cpuprofile"), JSON.stringify(profile));
         return text(`${truncate(summarizeProfile(profile, metrics), SUMMARY_LENGTH)}\nProfil : ${path}`);
       }),
@@ -380,8 +382,8 @@ export function registerDevTools(
       inputSchema: { id },
     },
     protect(async ({ id }) =>
-      withRight(id, "performance", "memory_snapshot", async (_o, signal, write) => {
-        const raw = await tools.memorySnapshot(id, signal);
+      withRight(id, "performance", "memory_snapshot", async (_o, signal, write, at) => {
+        const raw = await tools.memorySnapshot(id, at, signal);
         const path = await write(profileName("memory_snapshot", "heapsnapshot"), raw);
         return text(`${truncate(memoryText(summarizeSnapshot(raw)), SUMMARY_LENGTH)}\nInstantané : ${path}`);
       }),
@@ -423,8 +425,8 @@ export function registerDevTools(
       inputSchema: { id, code: z.string() },
     },
     protect(async ({ id, code }) =>
-      withRight(id, "act", "run_js", async (_o, signal) => {
-        const r = await tools.run(id, code, signal);
+      withRight(id, "act", "run_js", async (_o, signal, _write, at) => {
+        const r = await tools.run(id, at, code, signal);
         return "exception" in r ? text(`Exception : ${truncate(r.exception)}`) : text(truncate(r.value));
       }, ACTING),
     ),
@@ -434,8 +436,8 @@ export function registerDevTools(
     "reload",
     { description: "Recharge l'onglet, sans cache si `no_cache`.", inputSchema: { id, no_cache: z.boolean().optional() } },
     protect(async ({ id, no_cache }) =>
-      withRight(id, "act", "reload", async () => {
-        await tools.reload(id, no_cache ?? false);
+      withRight(id, "act", "reload", async (_o, _signal, _write, at) => {
+        await tools.reload(id, at, no_cache ?? false);
         return text(`Onglet ${id} rechargé.`);
       }, ACTING),
     ),

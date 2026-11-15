@@ -13,47 +13,11 @@ async function space() {
   return { c, widgetsFolder: widgetsFolder };
 }
 
-test("reads the widgets and their placement from layout.json", async () => {
+test("reads the widgets of the home folder, sorted", async () => {
   const { c, widgetsFolder } = await space();
-  await writeWidget(c, "a");
   await writeWidget(c, "b");
-  const layout = { version: 2, widgets: [{ id: "b", x: 0, y: 0, w: 3, h: 2 }, { id: "a", x: 5, y: 1, w: 4, h: 4 }, { id: "fantome", x: 0, y: 9, w: 1, h: 1 }] };
-  await writeFile(c.layout, JSON.stringify(layout));
-  const state = await readHome(c, widgetsFolder);
-  expect(state.widgets.map((w) => w.id)).toEqual(["a", "b"]);
-  expect(state.layout).toEqual([
-    { id: "b", x: 0, y: 0, w: 3, h: 2 },
-    { id: "a", x: 5, y: 1, w: 4, h: 4 },
-  ]);
-});
-
-test("a widget without a placement is put at the first free spot, at its default size", async () => {
-  const { c, widgetsFolder } = await space();
-  await writeWidget(c, "a", declarationWidget({ w: 4, h: 2 }));
-  await writeWidget(c, "b", declarationWidget({ w: 6, h: 3 }));
-  await writeWidget(c, "c", declarationWidget({ w: 3, h: 1 }));
-  await writeFile(c.layout, JSON.stringify({ version: 2, widgets: [{ id: "a", x: 0, y: 0, w: 4, h: 2 }] }));
-  const { layout } = await readHome(c, widgetsFolder);
-  expect(layout).toContainEqual({ id: "a", x: 0, y: 0, w: 4, h: 2 });
-  expect(layout).toContainEqual({ id: "b", x: 4, y: 0, w: 6, h: 3 });
-  expect(layout).toContainEqual({ id: "c", x: 0, y: 2, w: 3, h: 1 }); // 10 + 3 would overflow: next row
-});
-
-test("a placement that overlaps or overflows is moved", async () => {
-  const { c, widgetsFolder } = await space();
   await writeWidget(c, "a");
-  await writeWidget(c, "b");
-  await writeWidget(c, "c");
-  await writeFile(
-    c.layout,
-    JSON.stringify({ version: 2, widgets: [{ id: "a", x: 0, y: 0, w: 4, h: 4 }, { id: "b", x: 2, y: 2, w: 4, h: 4 }, { id: "c", x: 10, y: 0, w: 4, h: 4 }] }),
-  );
-  const { layout } = await readHome(c, widgetsFolder);
-  expect(layout).toEqual([
-    { id: "a", x: 0, y: 0, w: 4, h: 4 },
-    { id: "b", x: 4, y: 0, w: 4, h: 4 },
-    { id: "c", x: 8, y: 0, w: 4, h: 4 },
-  ]);
+  expect((await readHome(c, widgetsFolder)).widgets.map((w) => w.id)).toEqual(["a", "b"]);
 });
 
 test("an invalid widget.json gives a WidgetLu in error without preventing the others", async () => {
@@ -62,27 +26,13 @@ test("an invalid widget.json gives a WidgetLu in error without preventing the ot
   await writeWidget(c, "faux", { name: "", sizes: {} });
   await writeWidget(c, "compte-sans-publiques", declarationWidget(undefined, { sources: { account: ["x.test"], public: [] } }));
   await writeWidget(c, "ok");
-  const { widgets, layout } = await readHome(c, widgetsFolder);
+  const { widgets } = await readHome(c, widgetsFolder);
   const broken = widgets.find((w) => w.id === "casse")!;
   expect("error" in broken && broken.error).toContain("widget.json");
   expect("error" in widgets.find((w) => w.id === "faux")!).toBe(true);
   const account = widgets.find((w) => w.id === "compte-sans-publiques")!;
   expect("declaration" in account && account.declaration.sources).toEqual({ account: ["x.test"], public: [], web: false });
   expect("declaration" in widgets.find((w) => w.id === "ok")!).toBe(true);
-  expect(layout.map((p) => p.id).sort()).toEqual(["compte-sans-publiques", "ok"]);
-});
-
-test("a layout in the old format ({ ordre }) is ignored: everything is placed again", async () => {
-  const { c, widgetsFolder } = await space();
-  await writeWidget(c, "b", declarationWidget({ w: 6, h: 2 }));
-  await writeWidget(c, "a", declarationWidget({ w: 6, h: 2 }));
-  await writeFile(c.layout, JSON.stringify({ order: ["b", "a"] }));
-  expect((await readHome(c, widgetsFolder)).layout).toEqual([
-    { id: "a", x: 0, y: 0, w: 6, h: 2 },
-    { id: "b", x: 6, y: 0, w: 6, h: 2 },
-  ]);
-  await writeFile(c.layout, "n'importe quoi");
-  expect((await readHome(c, widgetsFolder)).layout).toHaveLength(2);
 });
 
 test("the data and the state come from widgetsFolder, never from the space", async () => {
@@ -134,5 +84,5 @@ test("a widget.json that is a symbolic link outside the folder is refused", asyn
 
 test("widgets folder absent → empty home", async () => {
   const c = spacePaths(await tempFolder());
-  expect(await readHome(c, await tempFolder())).toEqual({ layout: [], widgets: [] });
+  expect(await readHome(c, await tempFolder())).toEqual({ widgets: [] });
 });

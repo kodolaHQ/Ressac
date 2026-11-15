@@ -599,7 +599,7 @@ function createToolsServer(
     const other = await watch({ tool: "read_tab", url: o.url.slice(0, 500) }, "lecture d'un autre onglet", signal);
     if (other) return text(other);
     if (!(await access(o))) return text(DENIAL_TEXT);
-    return present(o, await working(o.id, () => bridge.readText(o.id), `Lit ${siteOf(o.url)}`), withLinks, [], undefined, full);
+    return present(o, await working(o.id, () => bridge.readText(o.id, { expect: o.url }), `Lit ${siteOf(o.url)}`), withLinks, [], undefined, full);
   }
 
   /** Turns a bridge error into a readable tool error rather than a crash. A private tab is not an error. */
@@ -767,7 +767,7 @@ function createToolsServer(
       if (handing(id) || handing(searching?.sessions.current(win ?? MAIN_WINDOW)?.tabId)) return text(HANDING_TEXT, true);
       const o = await tab(id);
       if (!(await access(o))) return text(DENIAL_TEXT);
-      const png = await working(id, () => bridge.capture(id), `Regarde ${siteOf(o.url)}`);
+      const png = await working(id, () => bridge.capture(id, { expect: o.url }), `Regarde ${siteOf(o.url)}`);
       return { content: [{ type: "image", data: png.toString("base64"), mimeType: "image/png" }] };
     }),
   );

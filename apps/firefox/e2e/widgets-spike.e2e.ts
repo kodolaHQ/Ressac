@@ -489,7 +489,6 @@ describe.skipIf(!process.env.RESSAC_SPIKE)("widget home spike", () => {
     await mkdir(path.join(data, "demo"), { recursive: true });
     await writeFile(path.join(data, "demo", "data.json"), JSON.stringify({ n: 1 }));
     await writeFile(path.join(data, "demo", "state.json"), JSON.stringify({ status: "ok", lastUpdate: null, lastAttempt: null }));
-    await writeFile(path.join(home, "layout.json"), JSON.stringify({ version: 2, widgets: [{ id: "demo", x: 0, y: 0, w: 3, h: 2 }] }));
     await writeFile(path.join(home, "theme.json"), JSON.stringify({ version: 1, background: "#101014", radius: 6 }));
 
     const paths = spacePaths(root);
@@ -498,7 +497,6 @@ describe.skipIf(!process.env.RESSAC_SPIKE)("widget home spike", () => {
       widgetsPath: paths.widgets,
       dataFolder: data,
       widgets: state.widgets.map((x) => ("error" in x ? { id: x.id, error: x.error } : { id: x.id, name: x.declaration.name, hasDisplay: x.hasDisplay, data: x.data, hasHarvest: x.hasHarvest })),
-      layout: state.layout,
       themeExists: await readFile(path.join(home, "theme.json"), "utf8").then(() => true, () => false),
       folder: { widgets: await readdir(widgets), data: await readdir(data) },
     });

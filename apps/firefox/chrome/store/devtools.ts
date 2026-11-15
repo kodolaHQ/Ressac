@@ -4,7 +4,7 @@ import { originOf, SITE_PREFIX } from "../../core/agent/bridge";
 const APP_PREFIX = "app:";
 import { TabBuffer, stackText } from "../../core/devtools/buffer";
 import type { FirefoxSnapshot, CpuProfile } from "../../../../packages/kernel/src/devtools/summaries";
-import { TabNotFound, PrivateTab, type BrowserDevTools, type NetworkRequest, type JsResult } from "../shims/kernel";
+import { TabNotFound, PrivateTab, SiteChanged, type BrowserDevTools, type NetworkRequest, type JsResult } from "../shims/kernel";
 import type { Store } from "./store";
 import type { WindowRegistry } from "./windows";
 
@@ -49,6 +49,7 @@ export interface DevTools {
 }
 
 interface Session {
+  id: string;
   commands: any;
   browser: any;
   buffer: TabBuffer;
@@ -337,7 +338,7 @@ export function createDevTools(o: {
   o.sites?.onClosed(dropClosed);
   o.apps?.onClosed(dropClosed);
 
-  async function attach(win: any, browser: any, dropMe: () => void): Promise<Session> {
+  async function attach(id: string, win: any, browser: any, dropMe: () => void): Promise<Session> {
     const tab = win.gBrowser.getTabForBrowser(browser);
     if (!tab) throw new Error("L'onglet n'a pas de page.");
     const { CommandsFactory } = devtoolsRequire("devtools/shared/commands/commands-factory");
@@ -347,6 +348,7 @@ export function createDevTools(o: {
     const next = () => new Promise<any>((ok, ko) => ((resolveNext = ok), (rejectNext = ko)));
     let leave = () => {};
     const s: Session = {
+      id,
       commands,
       browser,
       buffer: new TabBuffer(),
@@ -405,8 +407,11 @@ export function createDevTools(o: {
     return s;
   }
 
-  /** The tab's session, attached if needed. A private tab is refused before any DevTools client is made for it. */
-  async function session(id: string): Promise<Session> {
+  /**
+   * The tab's session, attached if needed. A private tab is refused before any DevTools client is made for it.
+   * `expect` (every call but attach): the origin the kernel checked; a page on another one throws SiteChanged.
+   */
+  async function session(id: string, expect?: unknown): Promise<Session> {
     const site = isWindow(id);
     const check = () => {
       if (site ? !siteView(id) : !o.store.state.tabs[id]) {
@@ -427,6 +432,10 @@ export function createDevTools(o: {
     const browser = view ? view.browser : await tabWindow!.controller.ensure(id);
     check(); // closed or turned private while it loaded
     if (gen !== generation) throw new Error(REVOKED_TEXT);
+    const expected = () => {
+      if (expect !== undefined && originOf(browser.currentURI.spec) !== expect) throw new SiteChanged(id);
+    };
+    expected();
     let e = entries.get(id);
     // Moved to another window (another browser), or on another site without its will-navigate heard (bfcache…).
     if (e && (e.browser !== browser || originOf(browser.currentURI.spec) !== e.origin)) {
@@ -437,7 +446,7 @@ export function createDevTools(o: {
       const entry: { browser: any; origin: string | null; session: Promise<Session> } = {
         browser,
         origin: originOf(browser.currentURI.spec),
-        session: attach(win, browser, () => {
+        session: attach(id, win, browser, () => {
           if (entries.get(id) === entry) drop(id);
         }),
       };
@@ -446,7 +455,9 @@ export function createDevTools(o: {
       });
       entries.set(id, (e = entry));
     }
-    return e.session;
+    const s = await e.session;
+    expected(); // navigated while the client attached
+    return s;
   }
 
   /** The live top-level target: after a navigation, the new one (note D1: "Target already destroyed" otherwise). */
@@ -461,6 +472,8 @@ export function createDevTools(o: {
   async function run(s: Session, expression: string, extra: object = {}): Promise<any> {
     for (let retry = true; ; retry = false) {
       const target = await top(s);
+      // The session's origin is the one session() checked: the page (a retry's new target) must still be on it.
+      if (originOf(s.browser.currentURI.spec) !== s.origin) throw new SiteChanged(s.id);
       try {
         return await s.commands.scriptCommand.execute(expression, { selectedTargetFront: target, ...extra });
       } catch (e) {
@@ -527,9 +540,9 @@ export function createDevTools(o: {
   const impl = {
     attach: async (id: string) => void (await session(id)),
     detach: async (id: string) => drop(id),
-    console: async (id: string) => (await session(id)).buffer.console(),
-    async network(id: string): Promise<NetworkRequest[]> {
-      const s = await session(id);
+    console: async (id: string, expect: string) => (await session(id, String(expect))).buffer.console(),
+    async network(id: string, expect: string): Promise<NetworkRequest[]> {
+      const s = await session(id, String(expect));
       const ask = (r: any, type: string) => s.commands.client.request({ to: r.actor, type });
       // Asked once the request is over; a request of a page left behind may have lost its actor (empty then).
       await Promise.all(
@@ -542,8 +555,8 @@ export function createDevTools(o: {
       );
       return [...s.requests.entries()].map(([key, r]) => requestOf(r, s.headers.get(key)));
     },
-    async body(id: string, request: string) {
-      const s = await session(id);
+    async body(id: string, expect: string, request: string) {
+      const s = await session(id, String(expect));
       const r = s.requests.get(String(request));
       if (!r) throw new Error(`Requête introuvable : ${request}`);
       const { content } = await s.commands.client.request({ to: r.actor, type: "getResponseContent" });
@@ -552,9 +565,9 @@ export function createDevTools(o: {
         text = (await s.commands.client.request({ to: text.actor, type: "substring", start: 0, end: Math.min(text.length, BODY_MAX) })).substring;
       return { body: String(text ?? ""), base64: content?.encoding === "base64" };
     },
-    async run(id: string, code: string, signal?: AbortSignal): Promise<JsResult> {
+    async run(id: string, expect: string, code: string, signal?: AbortSignal): Promise<JsResult> {
       if (signal?.aborted) throw abortError(signal);
-      const s = await session(id);
+      const s = await session(id, String(expect));
       const stop = new AbortController();
       const work = evaluate(s, String(code), stop.signal);
       work.catch(() => {}); // a late result is dropped
@@ -578,16 +591,16 @@ export function createDevTools(o: {
         stop.abort();
       }
     },
-    async reload(id: string, noCache: boolean): Promise<void> {
-      const s = await session(id);
+    async reload(id: string, expect: string, noCache: boolean): Promise<void> {
+      const s = await session(id, String(expect));
       // Resolves at dom-complete (note D4); a page that never finishes still answers.
       await Promise.race([reloadTop(id, s, !!noCache), sleep(NAVIGATION_TIMEOUT_MS)]);
       if (s.dropped && originOf(urlOf(id)) !== s.origin) throw new Error(SITE_CHANGED_TEXT);
     },
     /** Gecko's profiler on the tab's process only (note D5), converted to a .cpuprofile; always stopped once started here. */
-    async profile(id: string, opts: { durationMs?: number; reload?: boolean }, signal?: AbortSignal) {
+    async profile(id: string, expect: string, opts: { durationMs?: number; reload?: boolean }, signal?: AbortSignal) {
       if (signal?.aborted) throw abortError(signal);
-      const s = await session(id);
+      const s = await session(id, String(expect));
       const wg = s.browser.browsingContext?.currentWindowGlobal;
       if (!wg) throw new Error("L'onglet n'a pas de page.");
       if (profiling || Services.profiler.IsActive()) throw new Error(PROFILER_BUSY_TEXT);
@@ -636,9 +649,9 @@ export function createDevTools(o: {
       }
     },
     /** The memory actor's census (note D6), as the kernel's FirefoxSnapshot: classes, never a string's content. */
-    async memorySnapshot(id: string, signal?: AbortSignal): Promise<string> {
+    async memorySnapshot(id: string, expect: string, signal?: AbortSignal): Promise<string> {
       if (signal?.aborted) throw abortError(signal);
-      const s = await session(id);
+      const s = await session(id, String(expect));
       const c = cut(s, signal);
       try {
         const work = s.memory.then(async () => {

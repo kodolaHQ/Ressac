@@ -3,7 +3,7 @@ import { dispatch, inWindow, newWindow as newWindowIn, pressClosing as pressClos
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
-import { inUi, pressKeys, waitUi } from "./ui";
+import { inUi, waitUi } from "./ui";
 
 let server: Awaited<ReturnType<typeof startServer>>;
 let w: LaunchedRessac;

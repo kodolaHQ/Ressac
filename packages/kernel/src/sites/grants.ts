@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
-import { writeAtomic } from "../workflows/executions.js";
+import { queued, writeAtomic } from "../workflows/executions.js";
 import { ID_SITE, type DeclarationSite } from "./schemas.js";
 
 /**
@@ -100,21 +100,13 @@ async function read(profile: string, strict: boolean): Promise<Record<string, Si
 export const readSiteGrants = (profile: string): Promise<Record<string, SiteRights>> => read(profile, false);
 
 /** One write at a time per file: two simultaneous grants do not erase each other. */
-const files = new Map<string, Promise<unknown>>();
-
 function modify(profile: string, change: (a: Record<string, SiteRights>) => void): Promise<void> {
   const key = siteGrantsFile(profile);
-  const previous = files.get(key) ?? Promise.resolve();
-  const next = previous.catch(() => {}).then(async () => {
+  return queued(key, async () => {
     const grants = await read(profile, true);
     change(grants);
     await writeAtomic(key, JSON.stringify({ ...grants }, null, 2));
   });
-  files.set(key, next);
-  void next.finally(() => {
-    if (files.get(key) === next) files.delete(key);
-  }).catch(() => {});
-  return next;
 }
 
 export async function storeSiteGrant(profile: string, id: string, d: DeclarationSite): Promise<void> {

@@ -89,6 +89,19 @@ test("current_page without interaction → request, refusal → normal answer", 
   expect(requests()).toBe(1);
 });
 
+test("read_tab and capture_screen on a tab gone to another origin after the kernel's check: nothing read", async () => {
+  policy.grant(gmail);
+  const listed = await bridge.listTabs(); // the kernel checks the tab as it was
+  await bridge.navigate("gmail", "https://evil.example/");
+  bridge.listTabs = async () => listed.map((x) => ({ ...x }));
+  const read = text(await client.callTool({ name: "read_tab", arguments: { id: "gmail" } }));
+  expect(read).toContain("changé de site");
+  expect(read).not.toContain("Texte de");
+  const shot = await client.callTool({ name: "capture_screen", arguments: { id: "gmail" } });
+  expect(text(shot)).toContain("changé de site");
+  expect(bridge.calls.find((c) => c.method === "readText")?.args[1]).toEqual({ expect: gmail.url });
+});
+
 test("read_tab on Gmail: request, refusal → normal answer", async () => {
   const r = await client.callTool({ name: "read_tab", arguments: { id: "gmail" } });
   expect(r.isError).toBeFalsy();
@@ -388,6 +401,7 @@ test("launch_app: relaunch on another port, the access targets the new port, not
   const r = await client.callTool({ name: "launch_app", arguments: { folder: "todo" } });
   expect(text(r)).toBe("Application todo en marche sur http://localhost:5281 (onglet app:todo).");
   views = 10; // reloaded on the new port, whatever happens
+  await bridge.navigate("app:todo", fresh.url);
   expect(text(await client.callTool({ name: "read_tab", arguments: { id: "app:todo" } }))).toContain("Texte de Todo");
   expect(requests()).toBe(0);
 });
@@ -2044,7 +2058,7 @@ test("a login page is handed over too; stopping during the hand answers as hand_
 test("only search reads ask the browser for the capture (reader mode, blocks…): never a read of the user's tab", async () => {
   policy.grant(gmail);
   await client.callTool({ name: "read_tab", arguments: { id: "gmail" } });
-  expect(bridge.calls.filter((c) => c.method === "readText").every((c) => c.args[1] === undefined)).toBe(true);
+  expect(bridge.calls.filter((c) => c.method === "readText").every((c) => (c.args[1] as { capture?: boolean } | undefined)?.capture === undefined)).toBe(true);
   await withSearch(async ({ call, fake }) => {
     await call("search_web", { query: "x", goal: "but" });
     const reads = fake.calls.filter((c) => c.method === "readText");

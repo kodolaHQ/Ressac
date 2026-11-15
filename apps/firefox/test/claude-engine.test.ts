@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { claudeEngineEnv, withoutV1 } from "../host/claude-engine";
+import { claudeEngineEnv } from "../host/claude-engine";
 import { DEFAULT_CLAUDE_ENGINE, type ClaudeEngine } from "../shared/settings";
 
 const e = (o: Partial<ClaudeEngine>): ClaudeEngine => ({ ...DEFAULT_CLAUDE_ENGINE, ...o });
