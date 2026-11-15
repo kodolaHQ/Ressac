@@ -23,7 +23,8 @@ const app = (folder: string, type: App["type"] = "app"): App => ({ folder: folde
 
 function prepare(o: { port?: number; window?: string | null; sites?: { id: string; name: string }[]; siteApps?: App[] } = {}) {
   const dataDir = realpathSync(mkdtempSync(join(tmpdir(), "ressac-design-")));
-  cleanup.push(() => rmSync(dataDir, { recursive: true, force: true }));
+  // Tried again: an external project's first review snapshot (git, in the background) may still be writing there.
+  cleanup.push(async () => void (await until(() => { try { rmSync(dataDir, { recursive: true, force: true }); return true; } catch { return false; } }, (done) => done)));
   const paths = spacePaths(join(dataDir, "workspace"));
   mkdirSync(paths.sites, { recursive: true });
   // Outside <dataDir>: a project under it would be refused.
