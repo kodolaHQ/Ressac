@@ -10,7 +10,7 @@ import type { Backup } from "../shared/settings";
 const run = promisify(execFile);
 const HISTORY = "history.sqlite";
 
-export const EXPORT_EXCLUDED = ["workspace", "local-ai", "ressac-widgets", "ressac-sites", "ressac-components", "import-tmp"];
+export const EXPORT_EXCLUDED = ["workspace", "local-ai", "ollama", "ressac-widgets", "ressac-sites", "ressac-components", "import-tmp"];
 
 export async function listBackups(dataDir: string): Promise<Backup[]> {
   const parent = dirname(dataDir);

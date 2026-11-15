@@ -159,10 +159,10 @@ export interface BrowserBridge {
    * « donnees-widget » card: the agent asks to see the data of a widget that reads with the user's account. True
    * if they accept (for the current conversation). `signal` raised: the card no longer has a subject (new conversation,
    * kernel stopped), it is removed and the request answers false. `genre: "action"`: the results of an action, not of a
-   * widget; `genre: "site"`: the pages and memory of a site app (`id` is the app's). Absent: the
+   * widget; `genre: "site"`: the pages and memory of a site app (`id` is the app's); `kind: "history"`: the user's history and bookmarks. Absent: the
    * request is refused.
    */
-  askWidgetData?(o: { id: string; name: string; agent: string; kind?: "action" | "site" }, signal?: AbortSignal): Promise<boolean>;
+  askWidgetData?(o: { id: string; name: string; agent: string; kind?: "action" | "site" | "history" }, signal?: AbortSignal): Promise<boolean>;
   /**
    * Is the address on the domains of the open site app `site` (never those of its login)? False if its
    * window is not open. Absent: the agent navigates no site app.

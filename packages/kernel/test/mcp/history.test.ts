@@ -4,7 +4,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { AccessPolicy } from "../../src/access/policy.js";
 import type { HistoryResult } from "../../src/mcp/bridge.js";
 import { FakeBridge } from "../../src/mcp/fake-bridge.js";
-import { startMcpServer, generateToken } from "../../src/mcp/server.js";
+import { startMcpServer, generateToken, HISTORY_DENIED_TEXT } from "../../src/mcp/server.js";
 
 const token = generateToken();
 let server: Awaited<ReturnType<typeof startMcpServer>> | undefined;
@@ -26,9 +26,13 @@ const withoutText: HistoryResult = {
   excerpt: "",
 };
 
-async function start(hist?: ConstructorParameters<typeof FakeBridge>[1]["history"]) {
-  bridge = new FakeBridge([], { active: null, allow: false, ...(hist ? { history: hist } : {}) });
-  server = await startMcpServer({ bridge: bridge, policy: new AccessPolicy(), token: token });
+let policy: AccessPolicy;
+
+/** `card`: the user's answer to the history card. */
+async function start(hist?: ConstructorParameters<typeof FakeBridge>[1]["history"], card = true) {
+  bridge = new FakeBridge([], { active: null, allow: false, widgetData: card, ...(hist ? { history: hist } : {}) });
+  policy = new AccessPolicy();
+  server = await startMcpServer({ bridge: bridge, policy: policy, token: token });
   client = new Client({ name: "test", version: "0" });
   await client.connect(
     new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${server.port}/mcp`), {
@@ -162,7 +166,7 @@ test("a bridge error is a readable tool error", async () => {
 });
 
 test("search_bookmarks asks the bridge with the default and the maximum limit, and lists title and URL", async () => {
-  bridge = new FakeBridge([], { active: null, allow: false, bookmarks: [{ url: "https://a.example/", title: "Exemple A" }] });
+  bridge = new FakeBridge([], { active: null, allow: false, widgetData: true, bookmarks: [{ url: "https://a.example/", title: "Exemple A" }] });
   server = await startMcpServer({ bridge: bridge, policy: new AccessPolicy(), token: token });
   client = new Client({ name: "test", version: "0" });
   await client.connect(
@@ -174,4 +178,24 @@ test("search_bookmarks asks the bridge with the default and the maximum limit, a
     { query: "exemple", limit: 20 },
     { query: "x", limit: 50 },
   ]);
+});
+
+const cards = () => bridge.calls.filter((a) => a.method === "askWidgetData").map((a) => a.args[0]);
+
+test("history is read only after the card: refused → nothing read; accepted → one card for the conversation, asked again in the next", async () => {
+  let c = await start({ results: [runes] }, false);
+  expect(text(await c.callTool({ name: "search_history", arguments: { query: "runes" } }))).toBe(HISTORY_DENIED_TEXT);
+  expect(text(await c.callTool({ name: "read_history", arguments: { url: runes.url } }))).toBe(HISTORY_DENIED_TEXT);
+  expect(historyCalls()).toEqual([]);
+  expect(bridge.calls.some((a) => a.method === "history.read")).toBe(false);
+  await client!.close();
+  await server!.stop();
+  c = await start({ results: [runes] });
+  await c.callTool({ name: "search_history", arguments: { query: "runes" } });
+  await c.callTool({ name: "read_history", arguments: { url: runes.url } });
+  expect(cards()).toEqual([{ id: "history", name: "", agent: "L'agent", kind: "history" }]);
+  expect(historyCalls()).toHaveLength(1);
+  policy.reset();
+  await c.callTool({ name: "search_history", arguments: { query: "runes" } });
+  expect(cards()).toHaveLength(2);
 });

@@ -4,7 +4,7 @@ import { connect, createServer as createTcp } from "node:net";
 import http from "node:http";
 import { validDomain as kernelValidDomain } from "../../src/container/workshop.js";
 // @ts-expect-error plain .mjs that runs inside the image, no type declarations
-import { validDomain, allowed, rules, BASE_DOMAINS, createProxy } from "../../docker/ressac-network.mjs";
+import { validDomain, allowed, rules, BASE_DOMAINS, createProxy, localAddress } from "../../docker/ressac-network.mjs";
 
 describe("validDomain", () => {
   test.each(["example.com", "*.example.com", "a-b.example.co.uk"])("accepts %s", (d) => {
@@ -44,8 +44,8 @@ test("rules", () => {
   expect(text).toContain(":OUTPUT ACCEPT");
 });
 
-async function startProxy(ports: number[], httpPort = 80) {
-  const server = createProxy(() => ["localhost"], { ports, httpPort });
+async function startProxy(ports: number[], httpPort = 80, localOk = true) {
+  const server = createProxy(() => ["localhost"], { ports, httpPort, localOk });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   return { server, port: (server.address() as { port: number }).port };
@@ -102,6 +102,28 @@ describe("proxy", () => {
       server.close();
       up.close();
     }
+  });
+
+  test("an allowed name that resolves to a local address is refused, by CONNECT and by plain HTTP", async () => {
+    const echo = createTcp((c) => c.pipe(c)).listen(0, "127.0.0.1");
+    await once(echo, "listening");
+    const up = (echo.address() as { port: number }).port;
+    const { server, port } = await startProxy([up], up, false);
+    const { s, text } = await ask(port, `CONNECT localhost:${up} HTTP/1.1\r\nHost: x\r\n\r\n`);
+    expect(text).toContain("403");
+    expect(text).toContain("local or private address");
+    s.destroy();
+    const status = await new Promise<number>((resolve) => {
+      http.get({ host: "127.0.0.1", port, path: `http://localhost:${up}/`, headers: { host: "localhost" } }, (r) => (r.resume(), resolve(r.statusCode ?? 0)));
+    });
+    expect(status).toBe(403);
+    server.close();
+    echo.close();
+  });
+
+  test("localAddress: private, loopback, link-local and mapped ones; public ones pass", () => {
+    for (const [a, f] of [["10.1.2.3", 4], ["127.0.0.1", 4], ["192.168.65.254", 4], ["172.20.0.1", 4], ["169.254.169.254", 4], ["::1", 6], ["fd00::1", 6], ["fe80::1", 6], ["::ffff:10.0.0.1", 6]] as const) expect(localAddress(a, f), a).toBe(true);
+    for (const [a, f] of [["93.184.216.34", 4], ["160.79.104.10", 4], ["2606:4700::1", 6]] as const) expect(localAddress(a, f), a).toBe(false);
   });
 
   test("plain-HTTP forward: non-80 port and relative URI get 403", async () => {

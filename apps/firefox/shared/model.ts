@@ -362,6 +362,8 @@ export interface Request {
   action?: string;
   /** « donnees-widget »: the id of the site app the agent wants to see (its pages and its memory), instead of a widget. */
   site?: string;
+  /** « donnees-widget »: the agent wants to see the user's history and bookmarks, instead of a widget. */
+  history?: boolean;
   /** « lire-onglet »: the question is displayed only in this window (otherwise, according to `ongletId`). */
   windowId?: WindowId;
   /** « lire-onglet » and « outils-dev »: the targeted tab; if it is closed, the question is refused. */
@@ -382,6 +384,9 @@ export interface Request {
 export interface PendingRequest extends Request {
   id: string;
 }
+
+/** A tab or favorite icon over this length (an inline data: icon) is not kept: the state is cloned and saved on every action. */
+export const FAVICON_MAX = 16 * 1024;
 
 /** Bounds of the agent panel width: enough for a readable terminal, never the whole window. */
 export const AGENT_WIDTH_MIN = 280;

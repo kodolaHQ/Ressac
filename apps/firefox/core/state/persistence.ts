@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
-import { APPEARANCES, LANGUAGE_SETTING, type BrowserState } from "../../shared/model";
+import { APPEARANCES, FAVICON_MAX, LANGUAGE_SETTING, type BrowserState } from "../../shared/model";
 import { AURA_IDS, DEFAULT_AURA } from "../../shared/aura";
 import { CUSTOM_ENGINE_MAX, SEARCH_ENGINE_IDS, customEngineError } from "../../shared/search";
 import { ClaudeEngineSchema, CodexEngineSchema, DEFAULT_CLAUDE_ENGINE, DEFAULT_CODEX_ENGINE, cleanAgentDomains } from "../../shared/settings";
@@ -11,31 +11,35 @@ import { initialState } from "./initial-state";
 
 const FILE = "session.json";
 
-const FavoriteSchema = z.object({ id: z.string(), url: z.string(), title: z.string(), favicon: z.string().nullable(), folder: z.string().optional() });
+/** Icons saved before the cap are dropped at load. */
+const favicon = z.string().nullable().transform((f) => (f && f.length > FAVICON_MAX ? null : f));
+const FavoriteSchema = z.object({ id: z.string(), url: z.string(), title: z.string(), favicon: favicon, folder: z.string().optional() });
 
-const SpaceSchema = z.object({ id: z.string(), name: z.string(), icon: z.string(), pinned: z.array(FavoriteSchema), folders: z.array(z.object({ id: z.string(), name: z.string(), collapsed: z.boolean() })).default([]), private: z.boolean(), profile: z.string().min(1), aura: z.enum(AURA_IDS).catch(DEFAULT_AURA) });
+/** A list whose damaged entries are dropped, the rest kept: one bad tab or favorite never costs the whole session. */
+const kept = <T extends z.ZodTypeAny>(schema: T) => z.array(z.unknown()).transform((list) => list.flatMap((v) => { const r = schema.safeParse(v); return r.success ? [r.data as z.infer<T>] : []; }));
+
+const TabSchema = z.object({
+  id: z.string(),
+  windowId: z.string(),
+  spaceId: z.string(),
+  url: z.string(),
+  title: z.string(),
+  favicon: favicon,
+  link: z.object({ type: z.enum(["essential", "pinned"]), id: z.string() }).nullable().catch(null),
+  openedByAgent: z.boolean(),
+  profile: z.string().min(1).optional(),
+  zoom: z.number().catch(1),
+});
+
+const SpaceSchema = z.object({ id: z.string(), name: z.string(), icon: z.string(), pinned: kept(FavoriteSchema), folders: z.array(z.object({ id: z.string(), name: z.string(), collapsed: z.boolean() })).default([]), private: z.boolean(), profile: z.string().min(1), aura: z.enum(AURA_IDS).catch(DEFAULT_AURA) });
 
 /** Version 3. Any other version is unreadable: set aside like a damaged session. */
 const SchemaSession = z.object({
   version: z.literal(3),
   spaces: z.array(SpaceSchema).min(1),
   profiles: z.array(z.object({ id: z.string().min(1) })),
-  essentials: z.array(FavoriteSchema),
-  tabs: z.record(
-    z.string(),
-    z.object({
-      id: z.string(),
-      windowId: z.string(),
-      spaceId: z.string(),
-      url: z.string(),
-      title: z.string(),
-      favicon: z.string().nullable(),
-      link: z.object({ type: z.enum(["essential", "pinned"]), id: z.string() }).nullable(),
-      openedByAgent: z.boolean(),
-      profile: z.string().min(1).optional(),
-      zoom: z.number(),
-    }),
-  ),
+  essentials: kept(FavoriteSchema),
+  tabs: z.record(z.string(), z.unknown()).transform((r) => Object.fromEntries(Object.entries(r).flatMap(([id, v]) => { const t = TabSchema.safeParse(v); return t.success ? [[id, t.data]] : []; }))),
   windows: z
     .array(
       z.object({
@@ -104,6 +108,18 @@ function withProfiles(parsed: z.infer<typeof SchemaSession>): z.infer<typeof Sch
   return missing.length ? { ...parsed, profiles: [...parsed.profiles, ...missing.map((id) => ({ id }))] } : parsed;
 }
 
+/** After dropped tabs or favorites: no window lists a tab that is gone, no tab links to a favorite that is gone. */
+function consistent(parsed: z.infer<typeof SchemaSession>): z.infer<typeof SchemaSession> {
+  const tabs = new Set(Object.keys(parsed.tabs));
+  for (const f of parsed.windows) {
+    for (const [space, list] of Object.entries(f.order)) f.order[space] = list.filter((id) => tabs.has(id));
+    for (const [space, id] of Object.entries(f.active)) if (id !== null && !tabs.has(id)) f.active[space] = null;
+  }
+  const favorites = new Set([...parsed.essentials, ...parsed.spaces.flatMap((e) => e.pinned)].map((x) => x.id));
+  for (const o of Object.values(parsed.tabs)) if (o.link && !favorites.has(o.link.id)) o.link = null;
+  return parsed;
+}
+
 /** A tab's volatile fields are not saved: they restart from their default value. */
 const VOLATILE = { loading: false, canGoBack: false, canGoForward: false, crashed: false, error: null };
 
@@ -152,7 +168,7 @@ export async function loadSession(folder: string, kept?: (path: string) => void)
     return name ? known(initialState()) : initialState();
   }
   try {
-    const parsed = withProfiles(SchemaSession.parse(JSON.parse(text)));
+    const parsed = consistent(withProfiles(SchemaSession.parse(JSON.parse(text))));
     // The tabs are all still there; only what each window shows first changes.
     if (parsed.settings.startOnHome) for (const f of parsed.windows) f.active[f.activeSpace] = null;
     return {

@@ -10,6 +10,7 @@ async function seed(dir: string, marker?: string) {
   await mkdir(join(dir, "workspace/projects"), { recursive: true });
   await writeFile(join(dir, "session.json"), "{}");
   await writeFile(join(dir, "workspace/projects/a.txt"), "a");
+  await mkdir(join(dir, "ollama/0.40.13"), { recursive: true });
   if (marker !== undefined) await writeFile(join(dir, FORMAT_FILE), marker);
 }
 async function expectSetAside(dir: string, result: { backup: string; reason: string } | null) {
@@ -19,6 +20,8 @@ async function expectSetAside(dir: string, result: { backup: string; reason: str
   expect(await readFile(join(backup!, "session.json"), "utf8")).toBe("{}");
   expect(await readFile(join(dir, "workspace/projects/a.txt"), "utf8")).toBe("a");
   expect(await readdir(backup!)).not.toContain("workspace");
+  expect(await readdir(backup!)).not.toContain("ollama");
+  expect(await readdir(join(dir, "ollama"))).toEqual(["0.40.13"]);
   expect(await readFile(join(dir, FORMAT_FILE), "utf8")).toBe(NEW);
 }
 
@@ -32,7 +35,7 @@ describe("checkDataFormat", () => {
     const dir = await tmp();
     await seed(dir, NEW);
     expect(await checkDataFormat(dir)).toBeNull();
-    expect((await readdir(dir)).sort()).toEqual([FORMAT_FILE, "session.json", "workspace"]);
+    expect((await readdir(dir)).sort()).toEqual([FORMAT_FILE, "ollama", "session.json", "workspace"]);
   });
   it("old marker", async () => {
     const dir = await tmp();
@@ -81,7 +84,7 @@ describe("checkDataFormat", () => {
     const backup = await checkDataFormat(dir);
     expect(backup).not.toBeNull();
     expect(await readFile(join(dir, "workspace/projects/a.txt"), "utf8")).toBe("a");
-    expect((await readdir(dir)).sort()).toEqual([FORMAT_FILE, "workspace"]);
+    expect((await readdir(dir)).sort()).toEqual([FORMAT_FILE, "ollama", "workspace"]);
     expect(await readFile(join(dir, FORMAT_FILE), "utf8")).toBe(NEW);
   });
   it("partial failure during a reset keeps the request for the next start", async () => {
@@ -94,7 +97,7 @@ describe("checkDataFormat", () => {
     expect(await readdir(dir)).toContain(RESET_FILE);
     await chmod(join(dir, "stuck"), 0o755);
     expect((await checkDataFormat(dir))?.reason).toBe("reset");
-    expect((await readdir(dir)).sort()).toEqual([FORMAT_FILE, "workspace"]);
+    expect((await readdir(dir)).sort()).toEqual([FORMAT_FILE, "ollama", "workspace"]);
   });
   it("reset requested", async () => {
     const dir = await tmp();

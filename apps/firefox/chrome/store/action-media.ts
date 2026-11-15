@@ -112,7 +112,7 @@ export type ComponentCopy = (name: string, token: string) => Promise<number | nu
  * One more page shows component `nom`: the host copies `<dataDir>/workspace/components/<nom>/component.html` (never
  * through a link, COMPONENT_HTML_MAX at most) into `<dataDir>/ressac-components/<nom>/`, served from there as
  * `component-<mtime>.html` through displayServed (the widgets' CSP and guard, then the bridge and the browser fonts;
- * DISPLAY_DENIED on a network hint), and returns its resource:// URL, or null. Each call is paired with a
+ * displayDenied() on a network hint), and returns its resource:// URL, or null. Each call is paired with a
  * releaseComponent, null or not.
  */
 export function serveComponent(dataDir: string, name: string, copy: ComponentCopy): Promise<string | null> {

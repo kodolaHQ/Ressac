@@ -7,8 +7,9 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends git ripgrep curl ca-certificates build-essential python3 iptables \
  && rm -rf /var/lib/apt/lists/*
 
-# Installed globally (/usr/local), so outside the volume mounted on /home/node.
-RUN npm install -g @anthropic-ai/claude-code @openai/codex \
+# Installed globally (/usr/local), so outside the volume mounted on /home/node. Pinned: every tester runs the same
+# agents, and « Reconstruire » never picks up a broken or compromised release; a bump changes the hash, so images rebuild.
+RUN npm install -g @anthropic-ai/claude-code@2.1.325 @openai/codex@0.169.0 \
  && npm cache clean --force
 
 # Network lock-down: the allowlist proxy runs as its own user, the rules are applied by root at session start.

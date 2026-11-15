@@ -278,3 +278,4 @@ sidebar-emoji-world = World
 sidebar-emoji-favorites = Favorites
 sidebar-emoji-private = Private
 sidebar-emoji-commuting = Commuting
+sidebar-handle = Width of the tab bar

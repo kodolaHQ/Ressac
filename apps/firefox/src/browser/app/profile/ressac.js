@@ -23,7 +23,8 @@ pref("datareporting.policy.dataSubmissionEnabled", false);
 pref("browser.migrate.showBookmarksToolbarAfterMigration", false);
 
 // Updates (the packaged app only: dev builds carry a DisableAppUpdate policy, Marionette sets app.update.disabledForTesting).
-pref("app.update.url.manual", "https://updates.getressac.app/download/Ressac.dmg");
+// Empty: nothing is published at a fixed download address (the feed is invite-only); Ressac's update card carries the link.
+pref("app.update.url.manual", "");
 pref("app.update.url.details", "");
 // Checked every 12 h (the replaced branding prefs carried it).
 pref("app.update.interval", 43200);

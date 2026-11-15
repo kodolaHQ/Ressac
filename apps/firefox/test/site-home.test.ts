@@ -2,7 +2,7 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { DISPLAY_DENIED } from "../chrome/window/widget-frame";
+import { displayDenied } from "../chrome/window/widget-frame";
 import { HOME_ENTRIES_MAX, HOME_FILE_MAX, HOME_BRIDGE, cspFirefoxHome, forgetHome, homeServed, loadImage, serveHome as serve, type OpenRequest } from "../chrome/store/site-home";
 import { copyHomeRequest } from "../host/home-copy";
 
@@ -105,7 +105,7 @@ describe("homeServed", () => {
   });
 
   it("is DISPLAY_DENIED for a page with a network hint", () => {
-    expect(homeServed('<!doctype html><link rel="preload" href="https://x.test/">', "vidola")).toBe(DISPLAY_DENIED);
+    expect(homeServed('<!doctype html><link rel="preload" href="https://x.test/">', "vidola")).toBe(displayDenied());
   });
 });
 
@@ -236,7 +236,7 @@ describe("serveHome: a hostile home folder (Review Focus 3)", () => {
   it("serves DISPLAY_DENIED for an index.html with <link>", async () => {
     app({ "index.html": '<!doctype html><link rel="prefetch" href="https://x.test/"><p>accueil</p>' });
     const url = await serveHome(data, "vidola");
-    expect(copied(url!, "index.html")).toBe(DISPLAY_DENIED);
+    expect(copied(url!, "index.html")).toBe(displayDenied());
   });
 
   it("never finds a « Vidola » folder for the id « vidola », nor a bad id", async () => {

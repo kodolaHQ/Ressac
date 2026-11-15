@@ -247,7 +247,7 @@ export function bridgeHandlers(
     },
     // The « donnees-widget » card in the active window; refused with none to show it. The kernel takes it down (signal)
     // when a new conversation starts.
-    askWidgetData: ([o]: [{ id: string; name: string; agent: string; kind?: "action" | "site" }], signal) => {
+    askWidgetData: ([o]: [{ id: string; name: string; agent: string; kind?: "action" | "site" | "history" }], signal) => {
       const f = windows.active();
       return f ? questions.askWidgetData(o, f, signal) : false;
     },
@@ -274,6 +274,8 @@ export function trackState(store: Store, host: AgentHost, windows: WindowRegistr
     const nextWorkflows = JSON.stringify(activeWorkflows(store.state));
     if (nextWorkflows !== workflows) host.notify("windows.active", JSON.parse((workflows = nextWorkflows)));
   };
+  // `apply` clones the whole state on each action: objects are compared by value, or every action would notify.
+  const changed = (a: unknown, b: unknown) => JSON.stringify(a) !== JSON.stringify(b);
   store.subscribe((state, previous) => {
     refresh();
     const { navigated, closed } = policyChanges(previous, state);
@@ -289,10 +291,10 @@ export function trackState(store: Store, host: AgentHost, windows: WindowRegistr
     }
     if (state.settings.aiEnabled !== previous.settings.aiEnabled) host.notify("ai.enabled", { on: state.settings.aiEnabled });
     if (state.settings.decisionModel !== previous.settings.decisionModel) host.notify("ai.decisionModel", { model: state.settings.decisionModel });
-    if (state.settings.codexEngine !== previous.settings.codexEngine) host.notify("agent.codexEngine", { engine: state.settings.codexEngine });
-    if (state.settings.agentDomains !== previous.settings.agentDomains) host.notify("settings.agentDomains", { domains: state.settings.agentDomains });
+    if (changed(state.settings.codexEngine, previous.settings.codexEngine)) host.notify("agent.codexEngine", { engine: state.settings.codexEngine });
+    if (changed(state.settings.agentDomains, previous.settings.agentDomains)) host.notify("settings.agentDomains", { domains: state.settings.agentDomains });
     if (state.locale !== previous.locale) host.notify("settings.locale", { locale: state.locale });
-    if (state.settings.claudeEngine !== previous.settings.claudeEngine) host.notify("agent.claudeEngine", { engine: state.settings.claudeEngine });
+    if (changed(state.settings.claudeEngine, previous.settings.claudeEngine)) host.notify("agent.claudeEngine", { engine: state.settings.claudeEngine });
     if (state.settings.agentProfile !== previous.settings.agentProfile)
       host.request("changeProfile", { agentProfile: state.settings.agentProfile }).catch((e) => console.error("[agent] profile change failed:", e));
   });

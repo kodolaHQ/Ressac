@@ -114,6 +114,21 @@ describe("the Ollama runtime", () => {
     expect(await m.runtime.status()).toMatchObject({ kind: "ready" });
   });
 
+  it("a copy left by an older Ressac is still started after a version bump, and an install removes it", async () => {
+    const m = machine({ archive: archive() });
+    const old = join(m.dataDir, "ollama", "0.30.1", "ollama");
+    const older = join(m.dataDir, "ollama", "0.9.0", "ollama");
+    for (const p of [old, older]) {
+      mkdirSync(join(p, ".."), { recursive: true });
+      writeFileSync(p, "#!/bin/sh\n");
+    }
+    expect(await m.runtime.status()).toEqual({ kind: "stopped" });
+    await m.runtime.start();
+    expect(m.state.launched).toEqual([`${old} serve`]);
+    await m.runtime.install(() => {});
+    expect([existsSync(m.own), existsSync(old), existsSync(older)]).toEqual([true, false, false]);
+  });
+
   it("install on a full disk rejects and leaves nothing behind, instead of an uncaught error", async () => {
     const m = machine({ archive: archive() });
     const uncaught: unknown[] = [];

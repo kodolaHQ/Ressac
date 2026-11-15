@@ -85,11 +85,16 @@ describe("planSpaceImport", () => {
     expect(apply(after, { type: "addFavorites", spaceId: privateSpace.id, favorites: [{ url: "https://x.example.com/", title: "x" }] })).toBe(after);
   });
 
-  it("only private spaces: the new spaces get a login profile of their own", () => {
+  it("only private spaces: the new spaces share one new login profile, over two passes", () => {
     let s = initialState(genId);
     s = { ...s, spaces: s.spaces.map((e) => ({ ...e, private: true })) };
-    const actions = planSpaceImport(s, arc());
-    expect(actions.filter((a) => a.type === "createSpace").map((a) => a.type === "createSpace" && a.profile)).toEqual(["new", "new"]);
+    const first = planSpaceImport(s, arc());
+    expect(first.filter((a) => a.type === "createSpace").map((a) => a.type === "createSpace" && a.profile)).toEqual(["new"]);
+    s = run(run(s, arc()), arc());
+    const created = s.spaces.filter((e) => !e.private);
+    expect(created.map((e) => e.name)).toEqual(["Travail", "Maison"]);
+    expect(new Set(created.map((e) => e.profile)).size).toBe(1);
+    expect(planSpaceImport(s, arc())).toEqual([]);
   });
 
   it("the reducer keeps only http(s) addresses, once each, in a new space and in the essentials", () => {

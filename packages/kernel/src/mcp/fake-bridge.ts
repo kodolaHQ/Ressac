@@ -189,7 +189,7 @@ export class FakeBridge implements BrowserBridge {
   readHtmlInvisible?: (url: string, o: { localAddresses?: boolean; signal?: AbortSignal }) => Promise<{ url: string; html: string }>;
   /** Suspended reads in progress, by URL: `relacher` lets them finish. */
   private readonly suspended = new Map<string, (() => void)[]>();
-  askWidgetData?: (o: { id: string; name: string; agent: string; kind?: "action" | "site" }, signal?: AbortSignal) => Promise<boolean>;
+  askWidgetData?: (o: { id: string; name: string; agent: string; kind?: "action" | "site" | "history" }, signal?: AbortSignal) => Promise<boolean>;
   /** Domains of each site app (id → domains), for `siteUrlAllowed`. */
   private readonly sites: Record<string, string[]>;
   /** Site apps whose tweaks card is shown: navigating answers « pending ». */

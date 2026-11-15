@@ -295,6 +295,16 @@ export class AccessPolicy {
     return this.widgetsData.has(`action:${id}`);
   }
 
+  /** The user shows the agent their history and bookmarks (card « donnees-widget », kind history), until the next conversation. */
+  grantHistory(): void {
+    this.widgetsData.add("history:");
+    this.change();
+  }
+
+  historyGranted(): boolean {
+    return this.widgetsData.has("history:");
+  }
+
   /**
    * The user opens the site app `id` to the agent (its pages and memory), until the next conversation, as
    * the card showed it (`empreinte` of its declaration): a different hash afterwards does not count.

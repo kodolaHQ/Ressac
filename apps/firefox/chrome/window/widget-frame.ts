@@ -1,3 +1,4 @@
+import { format } from "../../shared/i18n";
 import { NETWORK_HINTS_PATTERN, containsNetworkHint } from "../../shared/network-hints";
 
 /**
@@ -6,9 +7,9 @@ import { NETWORK_HINTS_PATTERN, containsNetworkHint } from "../../shared/network
  */
 export const CSP_WIDGET =
   "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; form-action 'none'; frame-src 'none'; require-trusted-types-for 'script'; trusted-types default";
-/** Served in place of a display that contains a network hint. */
-export const DISPLAY_DENIED =
-  '<!doctype html><meta charset="utf-8"><p style="font: 13px system-ui; color-scheme: light dark; color: light-dark(#c9473e, #e5736b)">Affichage refusé : il contient &lt;link&gt;, &lt;meta http-equiv&gt; ou des règles de spéculation, qui feraient sortir des données. Voir guides/widgets.md.</p>';
+/** Served in place of a display that contains a network hint, in the language Firefox shows (chrome/store sets it). */
+export const displayDenied = (): string =>
+  `<!doctype html><meta charset="utf-8"><p style="font: 13px system-ui; color-scheme: light dark; color: light-dark(#c9473e, #e5736b)">${format((typeof Services === "undefined" ? undefined : Services.locale?.requestedLocales[0]) ?? "en", "chrome-display-denied")}</p>`;
 
 const ID_WIDGET = /^[a-z0-9-]+$/;
 const PREFIX = "ressac-widget-";
@@ -228,11 +229,11 @@ const DOC_PREFIX = /^\s*(?:<!--[\s\S]*?-->\s*)*(?:<!doctype[^>]*>\s*)?/i;
 
 /**
  * The served text: the CSP meta (`csp`) then the guard, then `extra` (an app home's bridge), after any
- * doctype (the doctype stays the first token, no quirks mode) and before any other element; DISPLAY_DENIED if the
+ * doctype (the doctype stays the first token, no quirks mode) and before any other element; displayDenied() if the
  * HTML contains a network hint.
  */
 export function displayServed(html: string, csp = CSP_WIDGET, extra = ""): string {
-  if (containsNetworkHint(html)) return DISPLAY_DENIED;
+  if (containsNetworkHint(html)) return displayDenied();
   const prefix = html.match(DOC_PREFIX)?.[0] ?? "";
   const meta = `<meta http-equiv="Content-Security-Policy" content="${csp}">`;
   return `${prefix}${meta}${GUARD_SCRIPT}${extra}${html.slice(prefix.length)}`;

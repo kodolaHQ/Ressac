@@ -49,7 +49,7 @@ describe("data folder", () => {
   it("export", async () => {
     const dir = await tmp();
     await seed(dir);
-    for (const f of ["widgets/w/state.json", "local-ai/kev/x", "ressac-widgets/y", "import-tmp/chrome/Login Data"]) {
+    for (const f of ["widgets/w/state.json", "local-ai/kev/x", "ollama/0.40.13/ollama", "ressac-widgets/y", "import-tmp/chrome/Login Data"]) {
       await mkdir(join(dir, f, ".."), { recursive: true });
       await writeFile(join(dir, f), "x");
     }

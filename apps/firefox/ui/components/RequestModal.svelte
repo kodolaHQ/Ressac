@@ -139,7 +139,9 @@
             ? "home-request-label-action"
             : request.site !== undefined
               ? "home-request-label-site"
-              : "home-request-label-widget"
+              : request.history
+                ? "home-request-label-history"
+                : "home-request-label-widget"
           : extension
             ? "home-request-label-extension"
             : consoleExtension
@@ -197,6 +199,8 @@
             <p>{t("home-request-widget-action", { title: request.title ?? request.action })}</p>
           {:else if request.site !== undefined}
             <p data-testid="site-request">{t("home-request-widget-site", { title: request.title ?? request.site })}</p>
+          {:else if request.history}
+            <p data-testid="history-request">{t("home-request-history")}</p>
           {:else}
             <p>{t("home-request-widget", { title: request.title ?? request.widget })}</p>
           {/if}
