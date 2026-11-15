@@ -62,7 +62,8 @@ export async function click(m: Marionette, selector: string, o: { button?: 0 | 2
        [x, y] = [r.left + r.width / 2, r.top + r.height / 2];
        const hit = doc.elementFromPoint(x, y);
        const now = [r.left, r.top, r.width, r.height].join();
-       const under = hit && (el.contains(hit) || hit.contains(el));
+       // An element that takes no pointer yet (a card not armed) is not pressable, even with a parent under the pointer.
+       const under = hit && (el.contains(hit) || hit.contains(el)) && doc.defaultView.getComputedStyle(el).pointerEvents !== "none";
        if ((now === before && under) || Date.now() > end) break;
        // Content loaded above it can push it out of view after the first scroll (measured: Réglages sections pushed
        // the Mozilla card 344 px down, the press landed outside the window): scrolled to again.

@@ -266,7 +266,7 @@ describe("the home page", () => {
     );
     expect(titles).toEqual(["Alpha", "Beta", "Refus", "Lien", "Compte", "Sans accord", "Lent", "Échec", "Veille", "Retrait"]);
     const src = await inUi(m, `return doc.querySelector('[data-testid="widget-alpha"] iframe')?.getAttribute("src") ?? "";`);
-    expect(src).toMatch(/^resource:\/\/ressac-widget-alpha\/display-\d+\.html$/);
+    expect(src).toMatch(/^resource:\/\/ressac-widget-alpha\/display-\d+-\d+\.html$/);
     // The frame is isolated: the widget's document does not have the sidebar's system principal (opaque origin, sandbox).
     const system = await waitUi<string>(
       m,

@@ -546,13 +546,15 @@ describe("site permissions", () => {
     expect(url).toContain(`/GMP/${await m.execute<string>("return Services.appinfo.platformVersion;")}/`);
   });
 
-  it("fullscreen: granted without a question, without a Firefox warning on the page", { timeout: 60_000 }, async () => {
+  it("fullscreen: granted without a question; Firefox's warning names the page, then goes", { timeout: 60_000 }, async () => {
     const id = await open(await origin(), "fs", {});
     await clickGo(id);
+    const onScreen = () => m.execute<boolean>(`const w = document.getElementById("fullscreen-warning"); return !!w && !w.hidden && w.hasAttribute("onscreen");`);
     try {
       expect(await result(id)).toEqual({ ok: "full" });
-      await new Promise((r) => setTimeout(r, 500));
-      expect(await m.execute(`const w = document.getElementById("fullscreen-warning"); return !w || w.hidden || !w.hasAttribute("onscreen");`)).toBe(true);
+      await waitFor(m, `const w = document.getElementById("fullscreen-warning"); return !!w && !w.hidden && w.hasAttribute("onscreen");`, (x) => x === true, 5_000);
+      await waitFor(m, `const w = document.getElementById("fullscreen-warning"); return !w || w.hidden || !w.hasAttribute("onscreen");`, (x) => x === true, 10_000);
+      expect(await onScreen()).toBe(false);
       expect(await banner()).toBeNull();
     } finally {
       await chrome(`if (document.fullscreenElement) await document.exitFullscreen(); window.fullScreen = false;`);
