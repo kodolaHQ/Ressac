@@ -65,6 +65,16 @@ describe("data folder", () => {
     expect(entries.filter((e) => EXPORT_EXCLUDED.some((n) => e.startsWith(n)))).toEqual([]);
   });
 
+  it("export: a damaged history goes in raw, the rest is still exported", async () => {
+    const dir = await tmp();
+    await seed(dir);
+    await writeFile(join(dir, "history.sqlite"), "not a database");
+    const out = await exportData(dir, await mkdtemp(join(tmpdir(), "out-")));
+    const entries = execFileSync("unzip", ["-Z1", out], { encoding: "utf8" }).split("\n").filter(Boolean);
+    expect(entries).toContain("session.json");
+    expect(entries).toContain("history.sqlite");
+  });
+
   it("export: the live history (WAL, still open) goes in as one consistent file with its last writes", async () => {
     const dir = await tmp();
     await seed(dir);

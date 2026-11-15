@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { spacePaths, type SpacePaths } from "../../src/paths.js";
@@ -55,10 +55,12 @@ function prepare(o: {
   ports?: [number, number];
   inspect?: Response;
   info?: Response;
+  log?: Response;
 }) {
   const { run, calls } = fakeRunner([
     [/ info$/, o.info ?? { code: 0 }],
     [/ inspect /, o.inspect ?? { code: 0, stdout: "true\n" }],
+    [/ tail -n /, o.log ?? { code: 1 }],
   ]);
   const workshop = new Workshop({ paths: o.paths, docker: "docker", run: run });
   const { launcher, process } = fakeLauncher();
@@ -128,11 +130,9 @@ test("no more free ports", async () => {
 
 test("the process exits right away: error without waiting for the delay", async () => {
   const c = await space();
-  const { g, process } = prepare({ paths: c, probe: scriptedProbe({}) });
+  const { g, process } = prepare({ paths: c, probe: scriptedProbe({}), log: { code: 0, stdout: "démarrage\nboum\n" } });
   const result = g.launch("todo");
   await until(() => process.length === 1);
-  await mkdir(c.logs, { recursive: true });
-  await writeFile(join(c.logs, "todo.log"), "démarrage\nboum\n");
   const start = Date.now();
   process[0]!.finish(3);
   const app = await result;
@@ -354,28 +354,18 @@ test("stopAll stops each running app", async () => {
   expect((await g.list()).map((a) => a.state)).toEqual(["stopped", "stopped"]);
 });
 
-test("log: the last lines, empty if absent", async () => {
+test("log: read in the container as its default user (the agent's), never on the Mac", async () => {
   const c = await space();
-  const { g } = prepare({ paths: c });
-  expect(await g.log("todo")).toBe("");
-  await mkdir(c.logs, { recursive: true });
-  await writeFile(join(c.logs, "todo.log"), "a\nb\nc\n");
+  const { g, calls } = prepare({ paths: c, log: { code: 0, stdout: "b\nc\n" } });
   expect(await g.log("todo", 2)).toBe("b\nc");
+  const exec = calls.find((a) => a.args.includes("tail"))!;
+  expect(exec.args).toEqual(["exec", expect.any(String), "tail", "-n", "2", "--", "/workspace/.ressac/logs/todo.log"]);
   await expect(g.log("../x")).rejects.toThrow();
 });
 
-test("log: a link planted by the agent (file or folder) reads nothing", async () => {
+test("log: empty when the file is absent or the workshop is down", async () => {
   const c = await space();
-  const { g } = prepare({ paths: c });
-  const secret = join(await tempFolder(), "id_ed25519");
-  await writeFile(secret, "SECRET\n");
-  await mkdir(c.logs, { recursive: true });
-  await symlink(secret, join(c.logs, "todo.log"));
-  expect(await g.log("todo")).toBe("");
-  const elsewhere = await tempFolder();
-  await writeFile(join(elsewhere, "todo.log"), "SECRET\n");
-  await rm(c.logs, { recursive: true });
-  await symlink(elsewhere, c.logs);
+  const { g } = prepare({ paths: c, log: { code: 1, stderr: "tail: cannot open" } });
   expect(await g.log("todo")).toBe("");
 });
 

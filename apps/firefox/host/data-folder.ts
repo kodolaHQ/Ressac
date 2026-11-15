@@ -37,21 +37,27 @@ export async function exportData(dataDir: string, toDir: string, now: Date = new
   for (let i = 2; await stat(out).then(() => true, () => false); i++) out = `${base} (${i}).zip`;
   // The history is live (WAL): a raw copy can miss writes or not open. A consistent copy goes in its place.
   const live = join(dataDir, HISTORY);
-  const snapshot = (await stat(live).then(() => true, () => false)) ? await mkdtemp(join(tmpdir(), "ressac-export-")) : null;
+  let snapshot = (await stat(live).then(() => true, () => false)) ? await mkdtemp(join(tmpdir(), "ressac-export-")) : null;
+  const made = snapshot;
   try {
     if (snapshot) {
-      const db = new DatabaseSync(live, { readOnly: true });
       try {
-        db.exec(`VACUUM INTO '${join(snapshot, HISTORY).replaceAll("'", "''")}'`);
-      } finally {
-        db.close();
+        const db = new DatabaseSync(live, { readOnly: true });
+        try {
+          db.exec(`VACUUM INTO '${join(snapshot, HISTORY).replaceAll("'", "''")}'`);
+        } finally {
+          db.close();
+        }
+      } catch {
+        // A damaged or locked history: its raw files go in, the rest of the export still happens.
+        snapshot = null;
       }
     }
-    const history = [HISTORY, `${HISTORY}-wal`, `${HISTORY}-shm`];
+    const history = snapshot ? [HISTORY, `${HISTORY}-wal`, `${HISTORY}-shm`] : [];
     await run("/usr/bin/zip", ["-r", "-q", "-y", out, ".", "-x", ...EXPORT_EXCLUDED.flatMap((n) => [`${n}/*`, n]), ...history], { cwd: dataDir });
     if (snapshot) await run("/usr/bin/zip", ["-q", out, HISTORY], { cwd: snapshot });
   } finally {
-    if (snapshot) await rm(snapshot, { recursive: true, force: true });
+    if (made) await rm(made, { recursive: true, force: true });
   }
   return out;
 }

@@ -1,12 +1,9 @@
 import { spawn } from "node:child_process";
-import { constants } from "node:fs";
-import { open } from "node:fs/promises";
 import { request } from "node:http";
 import { join } from "node:path";
 import { say } from "../i18n.js";
-import type { SpacePaths } from "../paths.js";
+import { CONTAINER_PATH, type SpacePaths } from "../paths.js";
 import { containerPortRange, type Workshop } from "../container/workshop.js";
-import { linkFree } from "../workspace/no-links.js";
 import { validFolder, readProjects, watchProjects, type ProjectRead } from "./manifest.js";
 
 /** Time an app has to answer on its port before « En erreur ». */
@@ -328,23 +325,13 @@ export class ApplicationManager {
     await Promise.all([...folders].map((d) => this.stop(d)));
   }
 
-  /** The last `lignes` lines of the app's log (read on the Mac), empty if it does not exist. */
+  /** The last `lines` lines of the app's log, empty if it does not exist (or the workshop is down). */
   async log(folder: string, lines = 50): Promise<string> {
     if (!validFolder(folder)) throw new Error(`dossier d'application invalide : ${folder}`);
-    // The agent writes in this folder: never a link, neither the folder nor the file (it could point at any Mac file).
-    if (!(await linkFree(this.paths.root, this.paths.logs))) return "";
-    let content: string;
-    try {
-      const f = await open(join(this.paths.logs, `${folder}.log`), constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
-      try {
-        if (!(await f.stat()).isFile()) return "";
-        content = await f.readFile("utf8");
-      } finally {
-        await f.close();
-      }
-    } catch {
-      return "";
-    }
-    return content.replace(/\n+$/, "").split("\n").slice(-lines).join("\n");
+    // Read in the container as its default user, the agent's: a link the agent planted in the log folder reaches
+    // only what it can read already, never a Mac file.
+    const r = await this.workshop.exec(["tail", "-n", String(lines), "--", `${CONTAINER_PATH}/.ressac/logs/${folder}.log`]);
+    return r.code === 0 ? r.stdout.replace(/\n+$/, "") : "";
   }
+
 }
