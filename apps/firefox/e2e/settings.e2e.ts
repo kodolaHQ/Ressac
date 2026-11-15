@@ -112,6 +112,14 @@ describe("Settings page", () => {
     await waitFor(m, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).state.settings.agentDomains)();`, (v) => JSON.stringify(v) === '["exemple.com","autre.org"]');
   });
 
+  it("Zod never tries eval in the privileged bundles (Firefox reports it, Sentry 0.1.6)", async () => {
+    await launch();
+    await openPage();
+    await waitUi(m, "return !!doc.querySelector(arguments[0])", ['[data-testid="settings-agent-domains"]']);
+    const blocked = await m.execute<string[]>("return Services.console.getMessageArray().map((x) => x.message ?? x.errorMessage ?? String(x)).filter((t) => t.includes('eval()'));");
+    expect(blocked).toEqual([]);
+  });
+
   it("Domaines autorisés survive a restart", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "ressac-domains-"));
     // After afterEach has closed the app.

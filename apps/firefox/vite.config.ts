@@ -5,6 +5,8 @@ import { defineConfig } from "vite";
 import { hostPath, nodePath, tsxPath } from "./scripts/paths";
 
 const shim = (name: string) => fileURLToPath(new URL(`chrome/shims/${name}.ts`, import.meta.url));
+// Privileged bundles never let Zod try eval (chrome/shims/zod-jitless.ts). Exact match: the shim's own `zod/v4` is Zod.
+const zodJitless = { find: /^zod$/, replacement: shim("zod") };
 // Mounted only in a site app's bar: their styles are injected there, never bundled into the main UI's stylesheet.
 const INJECTED_CSS = ["ui/site/SiteWindow.svelte", "ui/SiteAddonsStrip.svelte"];
 // A rename must not silently leak these styles into the main UI.
@@ -35,7 +37,7 @@ export default defineConfig(({ mode }) => {
         __RESSAC_VERSION__: JSON.stringify(JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")).version),
       },
       resolve: {
-        alias: {
+        alias: [zodJitless, ...Object.entries({
           "node:crypto": shim("crypto"),
           "node:fs/promises": shim("fs"),
           "node:fs": shim("fs"),
@@ -46,7 +48,7 @@ export default defineConfig(({ mode }) => {
           "node:dns": shim("empty"),
           "node:http": shim("empty"),
           "node:https": shim("empty"),
-        },
+        }).map(([find, replacement]) => ({ find, replacement }))],
       },
       build: {
         outDir,
@@ -73,6 +75,7 @@ export default defineConfig(({ mode }) => {
     };
   if (mode === "actor")
     return {
+      resolve: { alias: [zodJitless] },
       build: {
         outDir,
         emptyOutDir: false,
@@ -99,6 +102,7 @@ export default defineConfig(({ mode }) => {
     };
   if (mode === "window")
     return {
+      resolve: { alias: [zodJitless] },
       build: { outDir, emptyOutDir: false, lib: { entry: "chrome/window/index.ts", formats: ["iife"], name: "ressacWindow", fileName: () => "window.js" } },
     };
   const panel = mode === "agent" ? "agent" : "sidebar";
@@ -108,6 +112,7 @@ export default defineConfig(({ mode }) => {
     plugins: [svelte({ dynamicCompileOptions: ({ filename }) => (INJECTED_CSS.some((f) => filename.endsWith("/" + f)) ? { css: "injected" } : undefined) })],
     // Library mode leaves process.env.NODE_ENV in place (@xyflow/svelte reads it); a privileged page has no process.
     define: { "process.env.NODE_ENV": JSON.stringify("production") },
+    resolve: { alias: [zodJitless] },
     build: {
       outDir,
       emptyOutDir: false,
