@@ -96,6 +96,14 @@ test("lancer: free port, en-marche when the port answers", async () => {
   expect(await g.list()).toMatchObject([{ folder: "todo", state: "running", port: 5280 }]);
 });
 
+test("lancer: a network that cannot be secured fails the launch, nothing runs", async () => {
+  const c = await space();
+  const { g, workshop, process } = prepare({ paths: c });
+  vi.spyOn(workshop, "secureNetwork").mockRejectedValue(new Error("net down"));
+  expect(await g.launch("todo")).toMatchObject({ state: "error", error: "net down" });
+  expect(process).toHaveLength(0);
+});
+
 test("an occupied port is skipped", async () => {
   const c = await space();
   const { g } = prepare({ paths: c, probe: scriptedProbe({ 5280: ["occupe"], 5281: ["libre", "http"] }) });

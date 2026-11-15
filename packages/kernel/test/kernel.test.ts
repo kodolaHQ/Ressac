@@ -349,6 +349,20 @@ async function createReady(locale: () => string = () => "fr") {
   return kernel;
 }
 
+test("a network that cannot be secured refuses the session: WorkshopError, no session config", async () => {
+  const n = await createReady();
+  const { Workshop } = await import("../src/container/workshop.js");
+  const spy = vi.spyOn(Workshop.prototype, "secureNetwork").mockRejectedValue(new Error("net down"));
+  try {
+    const error = await n.openAgentSession({ cols: 80, rows: 24, window: "F1" }).catch((e) => e);
+    expect(error).toBeInstanceOf(WorkshopError);
+    expect(error.message).toBe("net down");
+    expect(await readdir(join(n.paths.internal, "sessions")).catch(() => [])).toEqual([]);
+  } finally {
+    spy.mockRestore();
+  }
+});
+
 test("a session opened for a window writes its own MCP config, deleted when the session ends", async () => {
   const n = await createReady();
   const folder = join(n.paths.internal, "sessions");

@@ -612,6 +612,13 @@ describe("agent network", () => {
     ]) expect(args.filter((a) => a === e), e).toHaveLength(1);
   });
 
+  test("the image hash covers the network module and the run flags version", async () => {
+    const { RUN_FLAGS, RUN_FLAGS_VERSION } = await import("../../src/container/workshop.js");
+    // Changing a flag must bump RUN_FLAGS_VERSION (and the fake docker's copy of it).
+    expect(RUN_FLAGS_VERSION).toBe("1");
+    expect(RUN_FLAGS.join(" ")).toMatchInlineSnapshot(`"--cap-add NET_ADMIN --memory 4g --pids-limit 1024 --sysctl net.ipv6.conf.all.disable_ipv6=1 -e HTTPS_PROXY=http://127.0.0.1:3128 -e https_proxy=http://127.0.0.1:3128 -e HTTP_PROXY=http://127.0.0.1:3128 -e http_proxy=http://127.0.0.1:3128 -e NO_PROXY=localhost,127.0.0.1,host.docker.internal -e no_proxy=localhost,127.0.0.1,host.docker.internal -e NODE_USE_ENV_PROXY=1 -e DISABLE_AUTOUPDATER=1 -e CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1"`);
+  });
+
   test("secureNetwork applies the rules with valid domains only, then probes", async () => {
     const { workshop, calls } = make([[/curl/, { code: 7 }]]);
     await workshop.secureNetwork();
@@ -622,7 +629,14 @@ describe("agent network", () => {
 
   test("secureNetwork fails closed: apply error, or a reachable probe", async () => {
     await expect(make([[/apply/, { code: 1, stderr: "boom\n" }]]).workshop.secureNetwork()).rejects.toThrow(/boom/);
-    await expect(make([[/curl/, { code: 0 }]]).workshop.secureNetwork()).rejects.toThrow(/could not be secured/);
+    for (const code of [0, 35, 60, 124, 126]) await expect(make([[/curl/, { code }]]).workshop.secureNetwork(), String(code)).rejects.toThrow(/could not be secured/);
+    await make([[/curl/, { code: 28 }]]).workshop.secureNetwork();
+  });
+
+  test("concurrent secureNetwork calls share one apply", async () => {
+    const { workshop, calls } = make([[/curl/, { code: 7 }]]);
+    await Promise.all([workshop.secureNetwork(), workshop.secureNetwork()]);
+    expect(calls.filter((c) => c.args.includes("apply"))).toHaveLength(1);
   });
 
   test("secureNetwork does nothing without a network option", async () => {

@@ -70,3 +70,4 @@ kernel-replay-output-missing = Replay impossible: the output of « { $id } » is
 kernel-replay-output-truncated = Replay impossible: the output of « { $id } » was truncated in this run
 kernel-replay-too-big = Replay impossible: the outputs to resume exceed 4 MB
 kernel-network-failed = The agent's network could not be secured: { $error }
+kernel-network-open = direct access is not closed (probe code { $code })

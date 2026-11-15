@@ -207,6 +207,9 @@ export class ApplicationManager {
         if (l.stop) return this.view(project);
       }
       if (state === "docker-absent") return end({ state: "error", error: say(this.locale(), "kernel-app-docker-not-running") });
+      // The app runs agent-written code as `node`: never before the network rules are in place (also when already running).
+      await this.workshop.secureNetwork();
+      if (l.stop) return this.view(project);
     } catch (e) {
       return end({ state: "error", error: (e as Error).message });
     }

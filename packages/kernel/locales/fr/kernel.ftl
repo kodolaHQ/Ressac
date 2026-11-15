@@ -70,3 +70,4 @@ kernel-replay-output-missing = Rejeu impossible : la sortie de « { $id } » man
 kernel-replay-output-truncated = Rejeu impossible : la sortie de « { $id } » a été tronquée dans cette exécution
 kernel-replay-too-big = Rejeu impossible : les sorties à reprendre dépassent 4 Mo
 kernel-network-failed = Le réseau de l'agent n'a pas pu être sécurisé : { $error }
+kernel-network-open = l'accès direct n'est pas fermé (sonde : code { $code })

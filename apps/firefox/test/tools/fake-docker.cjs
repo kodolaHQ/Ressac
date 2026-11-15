@@ -2,7 +2,7 @@
 // Fake docker for the end-to-end tests: no real container, no network. See plan 3.
 const { createHash } = require("node:crypto");
 const { appendFileSync, existsSync, readdirSync, readFileSync, rmSync, writeFileSync } = require("node:fs");
-const { join } = require("node:path");
+const { dirname, join } = require("node:path");
 const { spawn, spawnSync } = require("node:child_process");
 
 const args = process.argv.slice(2);
@@ -54,7 +54,9 @@ if (args[0] === "inspect") {
   const format = args[2] ?? "";
   if (format.includes("State.Running")) quit(0, "true\n");
   const dockerfile = join(__dirname, "..", "..", "..", "..", "packages", "kernel", "docker", "workshop.Dockerfile");
-  const hash = createHash("sha256").update(readFileSync(dockerfile)).digest("hex").slice(0, 12);
+  // Same recipe as the kernel's dockerfileHash: Dockerfile, network module, run-flags version.
+  const network = join(dirname(dockerfile), "ressac-network.mjs");
+  const hash = createHash("sha256").update(readFileSync(dockerfile)).update(readFileSync(network)).update("flags-1").digest("hex").slice(0, 12);
   quit(0, `${env.RESSAC_ROOT}|${hash}\n`);
 }
 /** PID of the `run` client of a harvest in progress, by container name. */

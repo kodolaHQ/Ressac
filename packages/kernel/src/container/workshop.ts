@@ -57,6 +57,21 @@ export function parseBuildStep(line: string, locale: string): Pick<BuildProgress
   return { step: Number(m[1]), of: Number(m[2]), label };
 }
 
+/** Bumped with any change to RUN_FLAGS: it goes into the image hash, so the container is recreated (the fake docker of the e2e tests repeats it). */
+export const RUN_FLAGS_VERSION = "1";
+/** The network, memory and proxy flags of `docker run` (the part after the ports). */
+export const RUN_FLAGS = [
+  "--cap-add", "NET_ADMIN",
+  "--memory", "4g",
+  "--pids-limit", "1024",
+  "--sysctl", "net.ipv6.conf.all.disable_ipv6=1",
+  ...["HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"].flatMap((k) => ["-e", `${k}=http://127.0.0.1:3128`]),
+  ...["NO_PROXY", "no_proxy"].flatMap((k) => ["-e", `${k}=localhost,127.0.0.1,host.docker.internal`]),
+  "-e", "NODE_USE_ENV_PROXY=1",
+  "-e", "DISABLE_AUTOUPDATER=1",
+  "-e", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1",
+];
+
 /** Dockerfile folder in the package; a browser that embeds the kernel can provide another. */
 export const DEFAULT_DOCKER_FOLDER = join(KERNEL_ROOT, "docker");
 const dockerfile = (folder: string) => join(folder, "workshop.Dockerfile");
@@ -64,7 +79,11 @@ const HASH_LABEL = "ressac.dockerfile";
 
 /** Hash of the Dockerfile: the image and the container carry it as a label, to know whether they are up to date. */
 export function dockerfileHash(dockerFolder = DEFAULT_DOCKER_FOLDER): string {
-  return createHash("sha256").update(readFileSync(dockerfile(dockerFolder))).digest("hex").slice(0, 12);
+  const hash = createHash("sha256").update(readFileSync(dockerfile(dockerFolder)));
+  // The network module is copied into the image, and the run flags live in the container: a change to either must rebuild.
+  const network = join(dockerFolder, "ressac-network.mjs");
+  if (existsSync(network)) hash.update(readFileSync(network));
+  return hash.update(`flags-${RUN_FLAGS_VERSION}`).digest("hex").slice(0, 12);
 }
 
 function normalize(path: string): string {
@@ -186,6 +205,7 @@ export class Workshop {
   private readonly dockerFolder: string;
   private readonly locale: () => string;
   private readonly network: (() => AgentNetwork) | undefined;
+  private securing: Promise<void> | null = null;
   /** Startup in progress, shared: two windows opening an agent do not build the image twice. */
   private startup: Promise<WorkshopState> | null = null;
   /** Rebuild in progress, shared: two rebuilds at once build once. */
@@ -204,7 +224,7 @@ export class Workshop {
   }
 
   private launch(args: string[], delayMs?: number, input?: string) {
-    return this.run(this.docker!, args, delayMs || input !== undefined ? { ...(delayMs ? { delayMs } : {}), ...(input !== undefined ? { input } : {}) } : undefined);
+    return this.run(this.docker!, args, { ...(delayMs ? { delayMs } : {}), ...(input !== undefined ? { input } : {}) });
   }
 
   /** Every window waiting on the shared start hears the build's steps. Returns the unsubscribe. */
@@ -283,16 +303,22 @@ export class Workshop {
     return this.launch(["exec", containerName(), ...argv], PROBE_DELAY_MS);
   }
 
+  /** One run at a time, shared: two sessions opening together apply the rules once. */
+  secureNetwork(): Promise<void> {
+    if (!this.network) return Promise.resolve();
+    this.securing ??= this.applyNetwork().finally(() => (this.securing = null));
+    return this.securing;
+  }
+
   /**
    * Installs the network rules and the proxy (as root, JSON on stdin) then checks the web is really closed.
    * Called before every agent session: a restarted container has no rules. Throws if either step fails.
    */
-  async secureNetwork(): Promise<void> {
-    if (!this.network) return;
+  private async applyNetwork(): Promise<void> {
     const fail = (error: string): never => {
       throw new Error(say(this.locale(), "kernel-network-failed", { error }));
     };
-    const { ports, domains } = this.network();
+    const { ports, domains } = this.network!();
     const apply = await this.launch(
       ["exec", "-u", "root", "-i", containerName(), "node", "/opt/ressac/ressac-network.mjs", "apply"],
       PROBE_DELAY_MS,
@@ -300,7 +326,8 @@ export class Workshop {
     );
     if (apply.code !== 0) fail(tail(apply.stderr) || `code ${apply.code}`);
     const probe = await this.launch(["exec", containerName(), "curl", "-s", "--noproxy", "*", "--max-time", "3", "https://1.1.1.1"], PROBE_DELAY_MS);
-    if (probe.code === 0) fail("direct access still open");
+    // Only « refused » (7) or « timed out » (28) proves the direct path is shut; anything else (reachable, TLS error, no curl…) is not proof.
+    if (probe.code !== 7 && probe.code !== 28) fail(say(this.locale(), "kernel-network-open", { code: probe.code }));
   }
 
   private async start(o: { fresh?: boolean } = {}): Promise<WorkshopState> {
@@ -338,15 +365,7 @@ export class Workshop {
       // AGENTS.md tells the agent to keep its hand-run servers in this range.
       "-e", `RESSAC_PORTS=${ports}`,
       // The agent reaches the web only through the allowlist proxy (see secureNetwork); the rules need NET_ADMIN.
-      "--cap-add", "NET_ADMIN",
-      "--memory", "4g",
-      "--pids-limit", "1024",
-      "--sysctl", "net.ipv6.conf.all.disable_ipv6=1",
-      ...["HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"].flatMap((k) => ["-e", `${k}=http://127.0.0.1:3128`]),
-      ...["NO_PROXY", "no_proxy"].flatMap((k) => ["-e", `${k}=localhost,127.0.0.1,host.docker.internal`]),
-      "-e", "NODE_USE_ENV_PROXY=1",
-      "-e", "DISABLE_AUTOUPDATER=1",
-      "-e", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1",
+      ...RUN_FLAGS,
       "-w", CONTAINER_PATH,
       IMAGE,
       "sleep", "infinity",
