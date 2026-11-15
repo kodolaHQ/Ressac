@@ -120,7 +120,11 @@ describe("Claude in Settings", () => {
     rmSync(envFile);
     await inUi(m, "ui.ressac.agent.switch('claude')");
     await waitFor(m, "return true", () => read(envFile).includes("ANTHROPIC_BASE_URL"), 30_000);
-    expect(JSON.parse(read(envFile))).toMatchObject({ ANTHROPIC_BASE_URL: ollama.url.replace("127.0.0.1", "host.docker.internal"), ANTHROPIC_MODEL: "ornith:35b", ANTHROPIC_DEFAULT_SONNET_MODEL: "ornith:35b", CLAUDE_CODE_SUBAGENT_MODEL: "ornith:35b" });
+    // Through the relay (a random host port), never the Ollama address itself.
+    const sent = JSON.parse(read(envFile));
+    expect(sent.ANTHROPIC_BASE_URL).toMatch(/^http:\/\/host\.docker\.internal:\d+$/);
+    expect(sent.ANTHROPIC_BASE_URL).not.toContain(new URL(ollama.url).port);
+    expect(sent).toMatchObject({ ANTHROPIC_MODEL: "ornith:35b", ANTHROPIC_DEFAULT_SONNET_MODEL: "ornith:35b", CLAUDE_CODE_SUBAGENT_MODEL: "ornith:35b" });
   });
 
   it("a saved model that is gone is marked; Actualiser reads again", async () => {
