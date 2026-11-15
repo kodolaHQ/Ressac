@@ -42,7 +42,7 @@ afterEach(async () => {
 });
 
 /** Ressac with the fake AMO, the agent's session started (a new conversation takes down the cards asked before it). */
-async function launch(o: { amo?: Parameters<typeof launchWithAmo>[0]["amo"] } = {}) {
+async function launch(o: { amo?: Parameters<typeof launchWithAmo>[0]["amo"]; env?: Record<string, string> } = {}) {
   const dataDir = mkdtempSync(path.join(os.tmpdir(), "ressac-data-"));
   const profile = mkdtempSync(path.join(os.tmpdir(), "ressac-firefox-"));
   dirs.push(dataDir, profile);
@@ -289,7 +289,8 @@ describe("the console", () => {
 
   /** The journal granted by its card, then a.html opened in a tab of the user's (not shared): its script writes there. */
   async function logInAnUnsharedTab() {
-    const w = await launch();
+    // The server's port as the agent's app range: a tab the agent opens there is its own, readable.
+    const w = await launch({ env: { RESSAC_CONTAINER_PORTS: `${server.port}-${server.port}` } });
     writeAgentExtension(w.root, "journal", LOG);
     expect(await enabledByAgent(w, "journal", "Journal de l'agent")).toMatch(/^Activée dans « .+ »\.$/);
     await cardGone(w.marionette);

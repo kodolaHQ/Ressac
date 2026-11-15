@@ -1,5 +1,4 @@
 import { existsSync } from "node:fs";
-import { createServer, type AddressInfo } from "node:net";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from "vitest";
 import type { Action } from "../shared/api";
@@ -16,10 +15,12 @@ const PRIVATE_TEXT = "Cet onglet est dans un espace privé : l'agent n'y a pas a
 let server: Awaited<ReturnType<typeof startServer>>;
 let w: LaunchedRessac;
 let m: Marionette;
-beforeAll(async () => (server = await startServer()));
+// /reset drops the connection: the page fails to load, on a port the agent may read (see RESSAC_CONTAINER_PORTS).
+beforeAll(async () => (server = await startServer({ routes: { "/reset": (req) => req.socket.destroy() } })));
 afterAll(() => server?.close());
 beforeEach(async () => {
-  w = await launchRessac({ env: { RESSAC_MEMORY_LOOP: "1" } });
+  // The server's port as the agent's app range: the tabs it opens there are its own, readable without a card.
+  w = await launchRessac({ env: { RESSAC_MEMORY_LOOP: "1", RESSAC_CONTAINER_PORTS: `${server.port}-${server.port}` } });
   m = w.marionette;
   await m.setContext("chrome");
   await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
@@ -209,13 +210,7 @@ it("read_tab on a tab that crashes while loading answers the crash error at once
 });
 
 it("read_tab on a tab that failed to load answers an error, not Firefox's error page", async () => {
-  const closed = await new Promise<number>((resolve) => {
-    const srv = createServer().listen(0, "127.0.0.1", () => {
-      const { port } = srv.address() as AddressInfo;
-      srv.close(() => resolve(port));
-    });
-  });
-  const { text: id } = await call("open_tab", { url: `http://127.0.0.1:${closed}/` });
+  const { text: id } = await call("open_tab", { url: `${server.url}/reset` });
   await poll(() => state(m), (s) => !!s.tabs[id]?.error);
   expect(await call("read_tab", { id })).toEqual({ text: "Erreur : La page n'a pas pu être chargée.", error: true });
 });

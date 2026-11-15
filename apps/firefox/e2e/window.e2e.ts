@@ -80,7 +80,7 @@ describe("the Ressac window", () => {
     expect(await inUi(m, "return !!doc.querySelector(arguments[0])", [`[data-testid="tab-${tab}"]`])).toBe(false);
   });
 
-  it("⇧⌘W closes one window among two: it leaves the state, its tabs go to the other's recentlyClosed", async () => {
+  it("⇧⌘W closes one window among two: it leaves the state, its tabs move to the other window", async () => {
     const first = await windowId();
     const other = await newWindow();
     const id = await inWindow(m, other, () => m.execute<string>("return window.ressacWindow.windowId"));
@@ -92,8 +92,11 @@ describe("the Ressac window", () => {
     await waitWindowCount(m, 1);
     const after = await state(m);
     expect(after.windows[0]!.id).toBe(first);
-    expect(after.tabs[tab]).toBeUndefined();
-    expect(after.windows[0]!.recentlyClosed[0]?.url).toBe(server.url + "/a.html");
+    expect(after.tabs[tab]?.windowId).toBe(first);
+    expect(after.windows[0]!.order[after.tabs[tab]!.spaceId]).toContain(tab);
+    // Shown in the remaining window, its page comes back (a XUL tab is only made for the displayed tab).
+    await dispatch(m, { type: "activateTab", id: tab });
+    await waitFor(m, `return gBrowser.tabs.some((t) => t.getAttribute('ressac-tab-id') === ${JSON.stringify(tab)})`, (v) => v === true);
   });
 
   it("macOS: closing the last window keeps the app and its tabs in the state; no XUL tab is left; chooseEngine does not reopen it; the Dock reopens it with its tabs listed", async () => {
