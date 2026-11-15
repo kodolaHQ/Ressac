@@ -73,7 +73,7 @@ describe("the Ollama runtime", () => {
   it("start opens the installed app, and starts nothing when Ollama already answers", async () => {
     const stopped = machine({ paths: [APP] });
     await stopped.runtime.start();
-    expect(stopped.state.ran).toEqual([`open -ga ${APP}`]);
+    expect(stopped.state.ran).toEqual([`open -g --env OLLAMA_CONTEXT_LENGTH=65536 -a ${APP}`]);
     const running = machine({ version: "0.40.13", paths: [APP] });
     await running.runtime.start();
     expect(running.state.ran).toEqual([]);

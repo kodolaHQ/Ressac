@@ -44,9 +44,11 @@ export interface OllamaRuntimeOptions {
   archive?: { url: string; sha256: string };
 }
 
+/** Claude Code's prompt and AGENTS.md alone fill about 30k tokens: below 64k a local agent works at the edge of its window. */
+const CONTEXT_LENGTH = "65536";
 const defaultRun = (cmd: string, args: string[]) => new Promise<number>((ok) => execFile(cmd, args, (e) => ok(e ? 1 : 0)));
 const defaultLaunch = (cmd: string, args: string[]) => {
-  const child = spawn(cmd, args, { stdio: "ignore" });
+  const child = spawn(cmd, args, { stdio: "ignore", env: { ...process.env, OLLAMA_CONTEXT_LENGTH: CONTEXT_LENGTH } });
   child.on("error", () => {});
   return child;
 };
@@ -87,7 +89,8 @@ export function createOllamaRuntime(o: OllamaRuntimeOptions) {
   function start(): Promise<void> {
     starting ??= (async () => {
       if (!o.managed || (await version()) !== undefined) return;
-      if (exists(APP)) await run("open", ["-ga", APP]);
+      // shortcut: an Ollama already running keeps its own context length (its app's setting), Ressac never restarts it.
+      if (exists(APP)) await run("open", ["-g", "--env", `OLLAMA_CONTEXT_LENGTH=${CONTEXT_LENGTH}`, "-a", APP]);
       else {
         const binary = [...CLIS, own].find(exists);
         if (!binary) throw new Error(NOT_STARTED());
