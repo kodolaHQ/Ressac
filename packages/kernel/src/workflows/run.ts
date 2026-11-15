@@ -522,7 +522,6 @@ export async function runWorkflow(
         const { url, format } = args(FetchArgs, a, "fetch");
         const u = checkUrl(url, publicDomains, localUrls);
         reportRead(u);
-        if (!web) return fetch(url, format ?? "text", publicDomains, localUrls, runEnd.signal);
         return openRead(u, (changeHost) => fetch(u.href, format ?? "text", publicDomains, localUrls, runEnd.signal, changeHost));
       }
       case "searchWeb":

@@ -50,6 +50,9 @@ WebRTC (`RTCPeerConnection`…) is absent.
 - Missing: `cookies` (refused: the API would reach the other spaces' cookies), `userScripts`, `sidePanel`, `history`, `bookmarks`, `identity`, `tabGroups`,
   `nativeMessaging`. **`activeTab` is not supported**: ask for `host_permissions`.
   `storage.sync` is the same store as `storage.local`.
+- The copy only takes these file types: `.html` `.htm` `.shtml` `.js` `.mjs` `.css` `.json` `.map`
+  `.wasm` `.png` `.jpg` `.jpeg` `.gif` `.webp` `.avif` `.ico` `.bmp` `.svg` `.woff` `.woff2` `.ttf` `.otf`
+  `.txt` `.md`. Others (`.xml`, `.xhtml`, sounds, `LICENSE`…) stay out of the copy.
 - `tabs.create`, `tabs.update` and `windows.create` only open granted sites (so does the navigation of an
   extension page). `tabs.query` and `tabs.get`
   only give `url`, `title` and favicon with the `tabs` permission or access to the site (as in

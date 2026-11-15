@@ -855,6 +855,16 @@ describe("executerWorkflow: web search and open reads", () => {
     expect(value(r)).toEqual([`erreur: ${UNREADABLE_RESULTS}`, []]);
   });
 
+  it("widget without web: the 101st fetch throws TOO_MANY_READS too", async () => {
+    const web = await webServer({ "/f": (res) => res.end("x") });
+    const { b } = await webBench(
+      `export default async (e, w) => { let n = 0; try { for (let i = 0; i < 150; i++) { await w.fetch("${web.url}/f"); n++; } } catch (err) { return n + " " + err.message; } return "fini"; };`,
+      {},
+    );
+    expect(value(await runWorkflow(b.ctx, b.infra))).toBe(`100 ${TOO_MANY_READS}`);
+    expect(web.requests).toHaveLength(100);
+  });
+
   it("web widget: the 101st open read (pages and feeds) throws TOO_MANY_READS", async () => {
     const web = await webServer({ "/f": (res) => res.end("<rss><channel><item><title>T</title><link>https://x.example/</link></item></channel></rss>") });
     const { pacing, waits } = fakePacing();

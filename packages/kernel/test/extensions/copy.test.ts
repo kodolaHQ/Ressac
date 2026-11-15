@@ -276,13 +276,13 @@ describe("prepareCopy", () => {
     expect([...background.matchAll(/importScripts\(/g)]).toHaveLength(1);
   });
 
-  it("only passive file types are copied: .rdf, .mml, .xbl, .ehtml, .xhtml and a file without an extension are refused, nothing is written", async () => {
-    const src = await source({ "manifest.json": baseManifest(), "p.rdf": "<x/>", "m.mml": "<x/>", "b.xbl": "<x/>", "e.ehtml": "<p>", "d.xhtml": "<x/>", "LICENSE": "MIT", "ok.png": "x", "_locales/fr/messages.json": "{}" });
+  it("only passive file types are copied: .rdf, .mml, .xbl, .ehtml, .xhtml, LICENSE and .DS_Store stay out, without refusing the extension", async () => {
+    const src = await source({ "manifest.json": baseManifest(), "p.rdf": "<x/>", "m.mml": "<x/>", "b.xbl": "<x/>", "e.ehtml": "<p>", "d.xhtml": "<x/>", "LICENSE": "MIT", ".DS_Store": "x", "ok.png": "x", "_locales/fr/messages.json": "{}" });
     const c = await target();
     const { analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
-    const refused = analysis.denial.filter((d) => d.startsWith("Type de fichier refusé"));
-    expect(refused.map((d) => d.split(" : ")[1]).sort()).toEqual(["LICENSE", "b.xbl", "d.xhtml", "e.ehtml", "m.mml", "p.rdf"]);
-    await expect(readFile(join(c, "manifest.json"))).rejects.toThrow();
+    expect(analysis.denial).toEqual([]);
+    for (const f of ["p.rdf", "m.mml", "b.xbl", "e.ehtml", "d.xhtml", "LICENSE", ".DS_Store"]) expect(existsSync(join(c, f)), f).toBe(false);
+    expect(existsSync(join(c, "ok.png"))).toBe(true);
   });
 
   it("the background guard is prefixed to each HTML page (raw bytes, absolute path), the existing scripts stay after", async () => {
@@ -312,13 +312,13 @@ describe("prepareCopy", () => {
     );
   });
 
-  it("files that make a non-HTML document are refused", async () => {
-    for (const ext of ["xhtml", "xht", "xml", "xsl", "xslt", "mht", "mhtml", "XHTML"]) {
+  it("files that make a non-HTML document (or a compressed SVG) stay out of the copy", async () => {
+    for (const ext of ["xhtml", "xht", "xml", "xsl", "xslt", "mht", "mhtml", "XHTML", "svgz"]) {
       const src = await source({ "manifest.json": baseManifest(), [`p.${ext}`]: "<x/>" });
       const c = await target();
       const { analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
-      expect(analysis.denial.some((r) => r.includes(`p.${ext}`)), ext).toBe(true);
-      expect(existsSync(c)).toBe(false);
+      expect(analysis.denial, ext).toEqual([]);
+      expect(existsSync(join(c, `p.${ext}`)), ext).toBe(false);
     }
   });
 
@@ -340,7 +340,7 @@ describe("prepareCopy", () => {
     expect(existsSync(join(c, "icone.svg"))).toBe(true);
   });
 
-  it("SVG: closed rule (namespace prefix, UTF-16, javascript:, entity, invalid bytes), .svgz refused", async () => {
+  it("SVG: closed rule (namespace prefix, UTF-16, javascript:, entity, invalid bytes)", async () => {
     const cas: [string, Buffer | string, string][] = [
       ["s.svg", '<svg xmlns:s="http://www.w3.org/2000/svg"><s:script href="x.js"/></svg>', "script"],
       ["u16.svg", Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('<svg><script href="x.js"/></svg>', "utf16le")]), "UTF-16"],
@@ -350,7 +350,6 @@ describe("prepareCopy", () => {
       ["fo.svg", "<svg><FOREIGNOBJECT/></svg>", "foreignobject"],
       ["on.svg", '<svg><a onfocus="x()"/></svg>', "on…="],
       ["bad.svg", Buffer.from([0x3c, 0x73, 0x76, 0x67, 0xff, 0x2f, 0x3e]), "UTF-8"],
-      ["image.svgz", Buffer.from([0x1f, 0x8b, 0x08]), ".svgz"],
     ];
     for (const [name, content, pattern] of cas) {
       const src = await source({ "manifest.json": baseManifest() });

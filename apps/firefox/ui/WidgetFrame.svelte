@@ -25,7 +25,8 @@
   let height = $state(0);
 
   /** The frame shows the served copy (CSP, guard): never a page it navigated to (a data: URL has neither). */
-  const ours = () => !!widget.src && iframe?.contentDocument?.documentURI === widget.src;
+  // Without the fragment: a widget that sets its own #hash stays on its copy.
+  const ours = () => !!widget.src && iframe?.contentDocument?.documentURI.split("#")[0] === widget.src;
 
   function send() {
     attachGesture();

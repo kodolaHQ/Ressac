@@ -270,8 +270,8 @@ function insertPageGuard(page: Buffer): Buffer {
 
 /**
  * The file types an agent extension may carry: pages (guarded), scripts, styles, data, images (SVG checked), fonts, text.
- * Everything else is refused: Firefox renders more types than a deny list can name as documents where a script runs
- * unguarded (.rdf, .mml, .xbl as XML; .ehtml as HTML).
+ * Everything else is left out of the copy: Firefox renders more types than a deny list can name as documents where a
+ * script runs unguarded (.rdf, .mml, .xbl as XML; .ehtml as HTML).
  */
 const ALLOWED_FILES = /\.(html?|shtml|m?js|css|json|map|wasm|png|jpe?g|gif|webp|avif|ico|bmp|svg|woff2?|ttf|otf|txt|md)$/i;
 const PAGES = /\.(html?|shtml)$/i;
@@ -310,7 +310,6 @@ function filesDenial(files: Map<string, Buffer>): string[] {
     // Any top-level name in « ressac- »: guards, scope, markers (ressac-files/).
     const first = path.split("/")[0]!.normalize("NFC").toLowerCase();
     if (reserved.has(first) || first.startsWith("ressac-")) denial.push(`Nom de fichier réservé à Ressac : ${path}`);
-    if (!ALLOWED_FILES.test(path)) denial.push(`Type de fichier refusé (${/\.([^./]+)$/.exec(path)?.[1]?.toLowerCase() ?? "sans extension"}) : ${path}`);
     if (/\.svg$/i.test(path)) {
       const reason = svgDenial(content);
       if (reason) denial.push(`Image SVG refusée (${reason}) : ${path}`);
@@ -359,7 +358,9 @@ export async function prepareCopy(o: {
   target: string;
   keptFolder: string;
 }): Promise<{ analysis: ManifestAnalysis; hash: string; root?: RootRead }> {
-  const { files, denial: folderDenial, root } = await readFolder(o.source);
+  const { files: all, denial: folderDenial, root } = await readFolder(o.source);
+  // Other types (LICENSE, .DS_Store, .git/, .rdf…) stay out of the copy: never served, never a refusal.
+  const files = new Map([...all].filter(([path]) => ALLOWED_FILES.test(path)));
   const raw = json(files.get("manifest.json"));
   const found = await readManifestFile((name) => files.get(name));
   const ressac = found === undefined ? undefined : (json(found.content) ?? "illisible");
