@@ -1,10 +1,12 @@
 import { spawn } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { open } from "node:fs/promises";
 import { request } from "node:http";
 import { join } from "node:path";
 import { say } from "../i18n.js";
 import type { SpacePaths } from "../paths.js";
 import { containerPortRange, type Workshop } from "../container/workshop.js";
+import { linkFree } from "../workspace/no-links.js";
 import { validFolder, readProjects, watchProjects, type ProjectRead } from "./manifest.js";
 
 /** Time an app has to answer on its port before « En erreur ». */
@@ -329,9 +331,17 @@ export class ApplicationManager {
   /** The last `lignes` lines of the app's log (read on the Mac), empty if it does not exist. */
   async log(folder: string, lines = 50): Promise<string> {
     if (!validFolder(folder)) throw new Error(`dossier d'application invalide : ${folder}`);
+    // The agent writes in this folder: never a link, neither the folder nor the file (it could point at any Mac file).
+    if (!(await linkFree(this.paths.root, this.paths.logs))) return "";
     let content: string;
     try {
-      content = await readFile(join(this.paths.logs, `${folder}.log`), "utf8");
+      const f = await open(join(this.paths.logs, `${folder}.log`), constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+      try {
+        if (!(await f.stat()).isFile()) return "";
+        content = await f.readFile("utf8");
+      } finally {
+        await f.close();
+      }
     } catch {
       return "";
     }

@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { spacePaths, type SpacePaths } from "../../src/paths.js";
@@ -362,6 +362,21 @@ test("log: the last lines, empty if absent", async () => {
   await writeFile(join(c.logs, "todo.log"), "a\nb\nc\n");
   expect(await g.log("todo", 2)).toBe("b\nc");
   await expect(g.log("../x")).rejects.toThrow();
+});
+
+test("log: a link planted by the agent (file or folder) reads nothing", async () => {
+  const c = await space();
+  const { g } = prepare({ paths: c });
+  const secret = join(await tempFolder(), "id_ed25519");
+  await writeFile(secret, "SECRET\n");
+  await mkdir(c.logs, { recursive: true });
+  await symlink(secret, join(c.logs, "todo.log"));
+  expect(await g.log("todo")).toBe("");
+  const elsewhere = await tempFolder();
+  await writeFile(join(elsewhere, "todo.log"), "SECRET\n");
+  await rm(c.logs, { recursive: true });
+  await symlink(elsewhere, c.logs);
+  expect(await g.log("todo")).toBe("");
 });
 
 async function listen(server: Server): Promise<number> {

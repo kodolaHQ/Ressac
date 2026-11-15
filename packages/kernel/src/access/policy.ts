@@ -227,18 +227,20 @@ export class AccessPolicy {
   }
 
   tabOpenedByAgent(o: TabInfo): void {
-    if (isLocal(o.url)) this.allow(o);
+    // Only what the agent serves (its app ports, its app windows): another local port is the user's (a dev
+    // server, an admin page) and asks like any site.
+    if (this.qualify(o.url) || (o.app && isLocal(o.url))) this.allow(o);
     this.built(o);
     this.change();
   }
 
-  /** The agent navigated a tab it had access to itself: access follows on the same site or to a local demo. */
+  /** The agent navigated a tab it had access to itself: access follows on the same site or to one of its apps. */
   navigationByAgent(id: string, url: string): void {
     const org = origin(url);
     this.leaveOrigin(id, org);
     if (org && this.qualify(url)) this.builtTabs.set(id, org);
     if (this.permissions.has(id)) {
-      if (org && (org === this.permissions.get(id) || isLocal(url))) this.permissions.set(id, org);
+      if (org && (org === this.permissions.get(id) || this.qualify(url))) this.permissions.set(id, org);
       else this.permissions.delete(id);
     }
     this.change();

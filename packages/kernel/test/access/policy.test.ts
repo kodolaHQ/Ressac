@@ -108,6 +108,17 @@ test("built: app:<folder> and localhost:5285 opened by the agent have the four r
   expect(p.isBuilt(port3000)).toBe(false);
 });
 
+test("a local port the agent does not serve (the user's dev server) is not readable without a grant", () => {
+  p.tabOpenedByAgent(port3000);
+  expect(p.canRead(port3000)).toBe(false);
+  p.tabOpenedByAgent(app);
+  expect(p.canRead(app)).toBe(true);
+  // From its demo, the agent's navigation to the user's port drops the access.
+  p.tabOpenedByAgent(demo);
+  p.navigationByAgent(demo.id, port3000.url);
+  expect(p.canRead({ ...demo, url: port3000.url })).toBe(false);
+});
+
 test("built: the default demo range follows RESSAC_CONTAINER_PORTS", () => {
   vi.stubEnv("RESSAC_CONTAINER_PORTS", "5300-5319");
   try {
