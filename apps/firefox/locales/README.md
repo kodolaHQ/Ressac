@@ -9,3 +9,5 @@ The interface and the kernel (the agent's host side) each have their own Fluent 
 5. Run the unit tests, in particular the parity tests in `apps/firefox/test/i18n.test.ts`: they fail on a missing or extra id, or a changed variable.
 
 The UI picks the language up by itself: it appears in Settings, under the interface language, and the agent replies in it from its next session.
+
+Firefox's own menus, dialogs and `about:` pages come from Mozilla's translations: name the folder with Mozilla's code (`fr`, `pt-BR`…, see `engine/browser/locales/l10n-changesets.json`) and the build packs them (`scripts/locales.sh`). Some of those texts change only at the next launch.

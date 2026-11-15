@@ -252,20 +252,25 @@ describe("Settings page", () => {
     expect(await inUi(m, `return !doc.querySelector('[data-testid="settings-engine-error"]')`)).toBe(true);
   });
 
-  it("language: switching to English retitles the page without reload, and back", async () => {
+  it("language: switching to English retitles the page without reload, and back; Firefox's menus follow", async () => {
     await launch();
     await openPage();
     await go("privacy");
     const pick = (value: string) => inUi(m, `const s = doc.querySelector('[data-testid="settings-language"]'); s.value = arguments[0]; s.dispatchEvent(new Event("change", { bubbles: true }));`, [value]);
     const language = () => waitFor(m, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).state.settings.language)();`, () => true);
+    // Firefox's own menu bar, from Mozilla's translations packed in the build (scripts/locales.sh).
+    const fileMenu = (label: string) => waitFor(m, `return document.getElementById("file-menu")?.label`, (v) => v === label);
+    await fileMenu("Fichier");
     await pick("en");
     await shows("settings-nav-about", "About");
     await shows("settings-language-note", "The agent will speak English from its next session.");
     expect(await language()).toBe("en");
+    await fileMenu("File");
     await pick("fr");
     await shows("settings-nav-about", "À propos");
     await shows("settings-language-note", "L'agent parlera français à sa prochaine session.");
     expect(await language()).toBe("fr");
+    await fileMenu("Fichier");
   });
 
   it("default browser: the button asks, then the row says it is the default", async () => {

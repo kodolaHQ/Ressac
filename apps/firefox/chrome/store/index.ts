@@ -296,7 +296,10 @@ async function start(): Promise<RessacStore> {
       // Never worth a broken start: without the Mac's languages, « system » shows English.
       console.error("[store] the Mac's languages are unreadable:", e);
     }
-    store.dispatch({ type: "setLocale", locale: resolveLocale(store.state.settings.language, system) });
+    const locale = resolveLocale(store.state.settings.language, system);
+    store.dispatch({ type: "setLocale", locale });
+    // Firefox's own menus and pages follow (its build packs Mozilla's translations, scripts/locales.sh); some only at the next launch.
+    Services.locale.requestedLocales = [locale];
   };
   showLocale();
   store.subscribe((s, p) => s.settings.language !== p.settings.language && showLocale());
