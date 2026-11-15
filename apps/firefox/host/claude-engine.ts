@@ -25,7 +25,9 @@ export function claudeEngineEnv(e: ClaudeEngine, relay: { url: string; token: st
     if (!e.ollamaUrl || !e.ollamaModel) throw incomplete("ollama");
     href(e.ollamaUrl, "ollama"); // validation only: the container never sees this address
     if (!relay) throw incomplete("ollama");
-    return { args: [], env: env(new URL(relay.url).href, relay.token, e.ollamaModel) };
+    // Claude Code assumes 1M tokens for a model it does not know, and would never compact before Ollama's window overflows.
+    // shortcut: the 32k Ollama picks on a 48 GB Mac, not the server's real setting; read it from Ollama if 64k becomes common.
+    return { args: [], env: { ...env(new URL(relay.url).href, relay.token, e.ollamaModel), CLAUDE_CODE_MAX_CONTEXT_TOKENS: "32768" } };
   }
   if (!e.apiUrl || !e.apiModel) throw incomplete("api");
   href(e.apiUrl, "api");

@@ -20,7 +20,7 @@ describe("claudeEngineEnv", () => {
     const r = { url: "http://host.docker.internal:5555", token: "t" };
     expect(claudeEngineEnv(e({ kind: "ollama", ollamaUrl: "http://127.0.0.1:11434/", ollamaModel: "m" }), r)).toEqual({
       args: [],
-      env: { ANTHROPIC_BASE_URL: "http://host.docker.internal:5555", ANTHROPIC_AUTH_TOKEN: "t", ...models("m") },
+      env: { ANTHROPIC_BASE_URL: "http://host.docker.internal:5555", ANTHROPIC_AUTH_TOKEN: "t", ...models("m"), CLAUDE_CODE_MAX_CONTEXT_TOKENS: "32768" },
     });
     expect(() => claudeEngineEnv(e({ kind: "ollama", ollamaUrl: "http://127.0.0.1:11434/", ollamaModel: "m" }), null)).toThrow("Réglez");
   });
