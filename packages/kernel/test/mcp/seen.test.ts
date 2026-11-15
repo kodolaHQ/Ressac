@@ -17,12 +17,13 @@ test("a fragment is dropped when added, never when checked", () => {
   expect(t.has("https://a.fr/p#données")).toBe(false);
 });
 
-test("only http(s) addresses of at most 4096 characters", () => {
+test("only http(s) addresses of at most 2000 characters", () => {
   const s = new SeenUrls();
-  s.add(["javascript:alert(1)", "data:text/html,x", `https://a.fr/${"x".repeat(4096)}`]);
+  const [fits, over] = [`https://a.fr/${"x".repeat(2000 - 13)}`, `https://a.fr/${"x".repeat(2000 - 12)}`];
+  s.add(["javascript:alert(1)", "data:text/html,x", fits, over]);
   expect(s.has("javascript:alert(1)")).toBe(false);
   expect(s.has("data:text/html,x")).toBe(false);
-  expect(s.has(`https://a.fr/${"x".repeat(4096)}`)).toBe(false);
+  expect([s.has(fits), s.has(over)]).toEqual([true, false]);
 });
 
 test("beyond the limit the oldest goes, unless has touched it", () => {

@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { spacePaths } from "../../src/paths.js";
 import { readTheme } from "../../src/home/theme.js";
@@ -46,4 +46,11 @@ test("an unreadable file leaves the file intact", async () => {
   expect(theme).toBeNull();
   expect(error).toContain("theme.json invalide :");
   expect(await readFile(join(c.home, "theme.json"), "utf8")).toBe(content);
+});
+
+test("a theme.json linked to a file of the Mac or a device is refused, never read", async () => {
+  const c = spacePaths(await tempFolder());
+  await mkdir(c.home, { recursive: true });
+  await symlink("/dev/zero", join(c.home, "theme.json"));
+  expect(await readTheme(c)).toEqual({ theme: null, error: "theme.json invalide : pas un fichier" });
 });

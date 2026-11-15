@@ -17,6 +17,9 @@ export const RESET_FILE = ".reset-requested";
 
 const STAMP = /^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z(-\d+)?$/;
 
+/** What a reset or a format change leaves in place: the agent's files, Ressac's own Ollama, and the request itself. */
+const STAYS = ["workspace", "ollama", RESET_FILE];
+
 /** The ISO date of a path that is exactly `<dataDir>.backup-<timestamp>[-n]` (what checkDataFormat writes), else null. */
 export function backupDate(dataDir: string, path: string): string | null {
   const prefix = `${dataDir}.backup-`;
@@ -40,9 +43,10 @@ export async function checkDataFormat(dataDir: string, now: Date = new Date()): 
       if (await fs.access(backup).then(() => false, () => true)) break;
     }
     await fs.mkdir(backup, { recursive: true });
-    // workspace/ never moves, and dataDir always exists; the reset request goes and the format marker comes only once all
-    // else has moved, so a partial failure re-runs, as a reset still, on the next start.
-    for (const name of await fs.readdir(dataDir)) if (name !== "workspace" && name !== RESET_FILE) await fs.rename(join(dataDir, name), join(backup, name));
+    // workspace/ never moves, nor Ressac's own Ollama (a program, not data: it would be downloaded again), and dataDir
+    // always exists; the reset request goes and the format marker comes only once all else has moved, so a partial failure
+    // re-runs, as a reset still, on the next start.
+    for (const name of await fs.readdir(dataDir)) if (!STAYS.includes(name)) await fs.rename(join(dataDir, name), join(backup, name));
   }
   await fs.rm(join(dataDir, RESET_FILE), { force: true });
   await fs.mkdir(dataDir, { recursive: true });

@@ -546,3 +546,41 @@ test("agentDomains: duplicates are removed and the list is capped at 100", async
   expect(got).toHaveLength(100);
   expect(got.slice(0, 2)).toEqual(["a.com", "d0.com"]);
 });
+
+test("a damaged tab or favorite is dropped alone: spaces, settings and the other tabs stay", async () => {
+  const d = folder();
+  const state = richState();
+  const recorder = new SessionRecorder(d);
+  recorder.schedule(state);
+  await recorder.clear();
+  const saved = JSON.parse(readFileSync(join(d, "session.json"), "utf8"));
+  const [a, b] = Object.keys(state.tabs);
+  // a: a field written by a later version in a wrong shape; b's pinned favorite: no url.
+  saved.tabs[a!].title = 5;
+  const space = saved.spaces.find((e: { pinned: unknown[] }) => e.pinned.length);
+  delete space.pinned[0].url;
+  writeFileSync(join(d, "session.json"), JSON.stringify(saved));
+  const loaded = await loadSession(d);
+  expect(set_aside(d, ".corrupt")).toEqual([]);
+  expect(Object.keys(loaded.tabs)).toEqual([b]);
+  expect(loaded.tabs[b!]!.link).toBeNull();
+  expect(loaded.spaces.map((e) => e.name)).toEqual(state.spaces.map((e) => e.name));
+  expect(loaded.spaces.flatMap((e) => e.pinned)).toEqual([]);
+  const w = loaded.windows[0]!;
+  expect(Object.values(w.order).flat()).not.toContain(a);
+  expect(Object.values(w.active)).not.toContain(a);
+  expect(loaded.settings.startOnHome).toBe(false);
+});
+
+test("an icon saved over 16 KB loads as none; a small one is kept", async () => {
+  const d = folder();
+  const state = richState();
+  const [a, b] = Object.keys(state.tabs);
+  state.tabs[a!]!.favicon = "data:image/png;base64," + "A".repeat(20_000);
+  state.tabs[b!]!.favicon = "data:image/png;base64,AAAA";
+  const recorder = new SessionRecorder(d);
+  recorder.schedule(state);
+  await recorder.clear();
+  const loaded = await loadSession(d);
+  expect([loaded.tabs[a!]!.favicon, loaded.tabs[b!]!.favicon]).toEqual([null, "data:image/png;base64,AAAA"]);
+});

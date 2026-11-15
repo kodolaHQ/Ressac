@@ -176,7 +176,7 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
     // Not the tabs the essentials keep loaded: they are favorites, counted with the spaces.
     const open = () => Object.values(store.state.tabs).filter((o) => !o.link).length;
     const before = [size(), open()];
-    for (const a of planSpaceImport(store.state, imported)) store.dispatch(a);
+    for (let pass = 0; pass < 2; pass++) for (const a of planSpaceImport(store.state, imported)) store.dispatch(a);
     // shortcut: the open tabs all land in the first window, upgrade if importing with several windows open matters.
     const windowId = store.state.windows[0]?.id;
     if (windowId) store.dispatch({ type: "openTabs", tabs: planTabImport(store.state, imported, windowId) });

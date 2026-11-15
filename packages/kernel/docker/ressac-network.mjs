@@ -3,6 +3,7 @@
 import http from "node:http";
 import net from "node:net";
 import dns from "node:dns/promises";
+import { lookup as dnsLookup } from "node:dns";
 import { execFileSync, spawn } from "node:child_process";
 import { readFileSync, writeFileSync, mkdirSync, statSync, renameSync, chmodSync } from "node:fs";
 import { pathToFileURL } from "node:url";
@@ -52,9 +53,34 @@ export function rules({ mac, ports }) {
 }
 
 const refusal = (host) => `Ressac: ${host} is not in the agent's allowed domains (Settings › Agent)`;
+const localRefusal = (host) => `Ressac: ${host} resolves to a local or private address, which the agent never reaches`;
+
+const LOCAL = new net.BlockList();
+for (const [a, p] of [["0.0.0.0", 8], ["10.0.0.0", 8], ["100.64.0.0", 10], ["127.0.0.0", 8], ["169.254.0.0", 16], ["172.16.0.0", 12], ["192.168.0.0", 16]]) LOCAL.addSubnet(a, p, "ipv4");
+for (const [a, p] of [["::", 128], ["::1", 128], ["fc00::", 7], ["fe80::", 10]]) LOCAL.addSubnet(a, p, "ipv6");
+
+/** A private, loopback or link-local address (an IPv4-mapped IPv6 one judged as IPv4). */
+export function localAddress(address, family) {
+  const v4 = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(address);
+  if (v4) return LOCAL.check(v4[1], "ipv4");
+  return LOCAL.check(address, family === 6 || family === "IPv6" ? "ipv6" : "ipv4");
+}
+
+/**
+ * The proxy's resolution: an allowed name whose DNS an attacker controls (under a `*.` domain the user added) must not
+ * lead to the Mac, the router or the local network. The checked address is the one connected to.
+ */
+const guardedLookup = (host, opts, cb) =>
+  dnsLookup(host, opts, (err, address, family) => {
+    if (err) return cb(err, address, family);
+    const list = Array.isArray(address) ? address : [{ address, family }];
+    if (list.some((a) => localAddress(a.address, a.family))) return cb(Object.assign(new Error(`${host}: local address`), { code: "ERESSACLOCAL" }));
+    cb(null, address, family);
+  });
 
 /** `getDomains` is called per request so a changed list applies to new connections. `opts` exists for tests only. */
-export function createProxy(getDomains, { ports = [443, 80], httpPort = 80 } = {}) {
+export function createProxy(getDomains, { ports = [443, 80], httpPort = 80, localOk = false } = {}) {
+  const lookup = localOk ? undefined : guardedLookup;
   const server = http.createServer((req, res) => {
     req.on("error", () => res.destroy());
     res.on("error", () => {});
@@ -70,8 +96,8 @@ export function createProxy(getDomains, { ports = [443, 80], httpPort = 80 } = {
     }
     const headers = { ...req.headers, host: url.host };
     delete headers["proxy-connection"];
-    const fail = () => (res.headersSent ? res.destroy() : res.writeHead(502).end());
-    const out = http.request({ host: url.hostname, port: httpPort, method: req.method, path: url.pathname + url.search, headers, agent: new http.Agent() }, (r) => {
+    const fail = (e) => (res.headersSent ? res.destroy() : e?.code === "ERESSACLOCAL" ? res.writeHead(403, { "content-type": "text/plain" }).end(localRefusal(url.hostname)) : res.writeHead(502).end());
+    const out = http.request({ host: url.hostname, port: httpPort, method: req.method, path: url.pathname + url.search, headers, agent: new http.Agent(), ...(lookup ? { lookup } : {}) }, (r) => {
       r.on("error", () => res.destroy());
       res.writeHead(r.statusCode ?? 502, r.headers);
       r.pipe(res);
@@ -89,13 +115,14 @@ export function createProxy(getDomains, { ports = [443, 80], httpPort = 80 } = {
       return;
     }
     // The proxy resolves the name itself: a client-side resolution never picks the destination.
-    const upstream = net.connect(port, m[1].replace(/\.$/, ""), () => {
+    const host = m[1].replace(/\.$/, "");
+    const upstream = net.connect({ port, host, ...(lookup ? { lookup } : {}) }, () => {
       client.write("HTTP/1.1 200 Connection Established\r\n\r\n");
       upstream.write(head);
       upstream.pipe(client);
       client.pipe(upstream);
     });
-    upstream.on("error", () => client.destroy());
+    upstream.on("error", (e) => (e.code === "ERESSACLOCAL" ? client.end(`HTTP/1.1 403 Forbidden\r\ncontent-type: text/plain\r\nconnection: close\r\n\r\n${localRefusal(host)}`) : client.destroy()));
     client.on("close", () => upstream.destroy());
   });
   return server;

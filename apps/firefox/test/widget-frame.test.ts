@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ShownWidget } from "../shared/api";
-import { DISPLAY_DENIED, CSP_WIDGET, displayServed, copyPath, forgetWidget, prepareWidget, displayUrl } from "../chrome/window/widget-frame";
+import { displayDenied, CSP_WIDGET, displayServed, copyPath, forgetWidget, prepareWidget, displayUrl } from "../chrome/window/widget-frame";
 import { NETWORK_HINTS_PATTERN } from "../shared/network-hints";
 import { serveDisplays } from "../ui/api";
 
@@ -88,7 +88,7 @@ describe("prepareWidget", () => {
     writeFileSync(source, '<!doctype html><link rel="preload" href="https://exemple.test/x"><p>jamais</p>');
     const mtime = Math.round(statSync(source).mtimeMs);
     expect(await prepareWidget(root, "refus")).toBe(displayUrl("refus", mtime));
-    expect(readFileSync(copyPath(root, "refus", mtime), "utf8")).toBe(DISPLAY_DENIED);
+    expect(readFileSync(copyPath(root, "refus", mtime), "utf8")).toBe(displayDenied());
   });
 
   it("does not rewrite the copy when the source's mtime does not change", async () => {
@@ -205,20 +205,20 @@ describe("displayServed", () => {
   });
 
   it("remplace par DISPLAY_DENIED un <link>", () => {
-    expect(displayServed(html('<link rel="preload" href="https://exemple.test/x">'))).toBe(DISPLAY_DENIED);
+    expect(displayServed(html('<link rel="preload" href="https://exemple.test/x">'))).toBe(displayDenied());
   });
 
   it("replaces another http-equiv meta with DISPLAY_DENIED", () => {
-    expect(displayServed(html('<meta http-equiv="x-dns-prefetch-control" content="on">'))).toBe(DISPLAY_DENIED);
+    expect(displayServed(html('<meta http-equiv="x-dns-prefetch-control" content="on">'))).toBe(displayDenied());
   });
 
   it("replaces speculation rules with DISPLAY_DENIED", () => {
-    expect(displayServed(html('<script type="speculationrules">{"prefetch":[]}</script>'))).toBe(DISPLAY_DENIED);
+    expect(displayServed(html('<script type="speculationrules">{"prefetch":[]}</script>'))).toBe(displayDenied());
   });
 
   it("keeps intact an HTML that only talks about links and preloading", () => {
     const source = html("<p>A link can preload; speculation rules are a thing.</p>");
     expect(displayServed(source)).toContain("<p>A link can preload; speculation rules are a thing.</p>");
-    expect(displayServed(source)).not.toBe(DISPLAY_DENIED);
+    expect(displayServed(source)).not.toBe(displayDenied());
   });
 });

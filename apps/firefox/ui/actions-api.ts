@@ -19,6 +19,8 @@ export type ActionsFirefox = ApiRessac["actions"] & {
   image(id: string, execution: string, url: string): Promise<string | null>;
   serveComponent(name: string): Promise<string | null>;
   releaseComponent(name: string): void;
+  /** An action or component folder changed, or the host restarted: not a widget harvest (`home.change`), which never touches a component. */
+  onComponentChange(callback: () => void): () => void;
 };
 
 /** The recaps API, plus their images asked of the chrome. */
@@ -167,6 +169,10 @@ export function createActionsApi(o: WindowApiOptions): ActionsFirefox {
     list: () => ask("actions.list", undefined, () => [], true),
     onChange(callback) {
       const offs = [host.on("actions.change", () => callback()), host.on("home.change", () => callback()), afterRestart(() => callback())];
+      return o.untilUnload(() => offs.forEach((f) => f()));
+    },
+    onComponentChange(callback) {
+      const offs = [host.on("actions.change", () => callback()), afterRestart(() => callback())];
       return o.untilUnload(() => offs.forEach((f) => f()));
     },
     // Read without launching, check private again, open the page, then launch: in two host calls.

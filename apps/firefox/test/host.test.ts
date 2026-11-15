@@ -514,7 +514,8 @@ describe("history", { timeout: 30_000 }, () => {
   });
 
   it("search_history finds a non-private visit, never a private one", async () => {
-    const h = startHost();
+    // The history card, accepted.
+    const h = startHost({}, undefined, { handlers: { askWidgetData: () => true } });
     await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
     visit(h, "https://a.test/", "Alpha");
     visit(h, "https://b.test/", "Alpha privé", { private: true });
@@ -526,7 +527,8 @@ describe("history", { timeout: 30_000 }, () => {
   });
 
   it("retained text is found by the agent, never for a loopback URL", async () => {
-    const h = startHost();
+    // The history card, accepted.
+    const h = startHost({}, undefined, { handlers: { askWidgetData: () => true } });
     await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
     visit(h, "https://a.test/", "Alpha");
     h.rpc.notify("history.keep", { url: "https://a.test/", spaceId: "e1", title: "Alpha", text: "Le chat dort" });

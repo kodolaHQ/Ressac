@@ -27,7 +27,7 @@ describe("updater configuration", () => {
 
   it("update prefs", () => {
     const prefs = read("src/browser/app/profile/ressac.js");
-    expect(prefs).toContain('pref("app.update.url.manual", "https://updates.getressac.app/download/Ressac.dmg");');
+    expect(prefs).toContain('pref("app.update.url.manual", "");');
     expect(prefs).toContain('pref("app.update.url.details", "");');
     expect(prefs).toContain('pref("app.update.noWindowAutoRestart.enabled", false);');
     expect(prefs).toContain('pref("app.update.interval", 43200);');

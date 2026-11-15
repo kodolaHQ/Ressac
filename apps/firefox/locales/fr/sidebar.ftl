@@ -278,3 +278,4 @@ sidebar-emoji-world = Monde
 sidebar-emoji-favorites = Favoris
 sidebar-emoji-private = Privé
 sidebar-emoji-commuting = Déplacements
+sidebar-handle = Largeur de la barre des onglets

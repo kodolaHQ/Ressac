@@ -1,7 +1,8 @@
 import { unwrapLink, withoutHash } from "./links.js";
 
-export const SEEN_MAX = 100_000;
-const URL_MAX = 4096;
+// 20 000 addresses of 2000 characters at most: a long session on hostile pages stays under ~100 MB.
+export const SEEN_MAX = 20_000;
+const URL_MAX = 2000;
 
 const web = (url: string) => url.length <= URL_MAX && URL.canParse(url) && /^https?:$/.test(new URL(url).protocol);
 

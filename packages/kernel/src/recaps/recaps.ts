@@ -90,7 +90,23 @@ export function createRecaps(o: { folder: string; now?: () => Date }): Recaps {
     }
   }
 
-  const allowedIn = async (id: string, url: string, httpsOnly: boolean) => openable(url, httpsOnly) && !!(await read(id))?.allowed.includes(url);
+  /** Per recap, its allowed addresses as a set, while its file stays the same: a page's 100 images read it once. */
+  const sets = new Map<string, { key: string; allowed: Set<string> }>();
+  async function allowedSet(id: string): Promise<Set<string> | null> {
+    if (!ID_RECAP.test(id)) return null;
+    const st = await stat(path(id)).catch(() => null);
+    if (!st) return null;
+    const key = `${st.ino}:${st.size}:${st.mtimeMs}`;
+    const hit = sets.get(id);
+    if (hit?.key === key) return hit.allowed;
+    const f = await read(id);
+    if (!f) return null;
+    if (sets.size >= 50) sets.clear();
+    const allowed = new Set(f.allowed);
+    sets.set(id, { key, allowed });
+    return allowed;
+  }
+  const allowedIn = async (id: string, url: string, httpsOnly: boolean) => openable(url, httpsOnly) && !!(await allowedSet(id))?.has(url);
 
   return {
     read,

@@ -12,8 +12,10 @@
   let { window: win }: { window: WindowState } = $props();
   let nav: HTMLElement;
   // The row scrolls when full: keep the active space in view (⌃1…, ⌃Tab, another window's switch).
+  // A primitive: `win` is a new object at each broadcast, the row would jump back under a scrolling user.
+  const activeSpace = $derived(win.activeSpace);
   $effect(() => {
-    void win.activeSpace;
+    void activeSpace;
     nav.querySelector('[aria-current="true"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
   });
   /** Space to delete awaiting confirmation (it contains tabs, or it takes sign-ins with it). */

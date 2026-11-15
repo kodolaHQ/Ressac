@@ -82,7 +82,7 @@ export class Questions {
    * The « donnees-widget » card: the agent wants a widget's, an
    * action's or a site app's data, read with the user's account. False after QUESTION_DELAY_MS or on `signal`.
    */
-  askWidgetData(o: { id: string; name: string; agent: string; kind?: "action" | "site" }, windowId: WindowId, signal?: AbortSignal): Promise<boolean> {
+  askWidgetData(o: { id: string; name: string; agent: string; kind?: "action" | "site" | "history" }, windowId: WindowId, signal?: AbortSignal): Promise<boolean> {
     const tabId = activeTabOf(this.store.state, windowId)?.id ?? null;
     const fields = { tabId: tabId, windowId: windowId, permissions: ["widget-data" as const], title: o.name, agent: o.agent };
     const target =
@@ -90,7 +90,9 @@ export class Questions {
         ? { origin: `ressac://action/${o.id}`, action: o.id }
         : o.kind === "site"
           ? { origin: `${SCHEMA_SITE}://${o.id}`, site: o.id }
-          : { origin: `${SCHEMA_WIDGET}://${o.id}`, widget: o.id };
+          : o.kind === "history"
+            ? { origin: "ressac://history", history: true }
+            : { origin: `${SCHEMA_WIDGET}://${o.id}`, widget: o.id };
     return waitForResponse((reply) => this.post({ ...fields, ...target }, reply), QUESTION_DELAY_MS, signal);
   }
 

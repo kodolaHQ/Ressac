@@ -65,7 +65,7 @@
       );
     };
     serve();
-    const off = actions.onChange(serve);
+    const off = actions.onComponentChange(serve);
     return () => {
       alive = false;
       off();

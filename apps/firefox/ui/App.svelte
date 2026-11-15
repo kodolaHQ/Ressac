@@ -109,9 +109,15 @@
   $effect(() => api.onPanel(togglePanel));
   $effect(() => api.design.onChange(() => void rereadDesign()));
   // ZoneContenu's design mode: it follows the tab shown and its address (the chrome stops the mode if it changes).
+  // Primitives: activeTab is a new object at each broadcast, the effect would run (and ask the host) every time. The end
+  // of a load counts: the address is known before its page serves, when the project cannot be told yet.
+  const activeId = $derived(activeTab?.id);
+  const activeUrl = $derived(activeTab?.url);
+  const activeLoading = $derived(activeTab?.loading);
   $effect(() => {
-    void activeTab?.id;
-    void activeTab?.url;
+    void activeId;
+    void activeUrl;
+    void activeLoading;
     void rereadDesign();
   });
   /** The cart column: while the design mode is on, or asked by « Panier ». */
@@ -131,7 +137,6 @@
     }),
   );
   // The command bar targets the tab active when it opened: if another one shows, it closes.
-  const activeId = $derived(activeTab?.id);
   $effect(() => {
     void activeId;
     untrack(() => {
@@ -278,11 +283,11 @@
     {:else}
       <aside data-testid="sidebar"></aside>
     {/if}
-    <div class="edge" data-testid="sidebar-handle" role="separator" aria-orientation="vertical" aria-label="Largeur de la barre des onglets" onpointerdown={dragEdge}></div>
+    <div class="edge" data-testid="sidebar-handle" role="separator" aria-orientation="vertical" aria-label={t("sidebar-handle")} onpointerdown={dragEdge}></div>
     <!-- The welcome stepped aside for an install page: the way back, under the sidebar (the only place this iframe
          covers beside a web page). -->
     {#if unfinished && welcomeStep.aside}
-      <button class="resume-welcome" data-testid="welcome-resume" out:fade={{ duration: WELCOME_FADE_MS }} onclick={() => (welcomeStep.aside = false)}>Reprendre l'accueil</button>
+      <button class="resume-welcome" data-testid="welcome-resume" out:fade={{ duration: WELCOME_FADE_MS }} onclick={() => (welcomeStep.aside = false)}>{t("home-welcome-resume")}</button>
     {/if}
   </div>
   <main class="content" class:framed={(!pageWeb || !!panel) && !(winState && !activeTab && !panel)} data-testid="content-zone">

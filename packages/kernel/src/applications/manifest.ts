@@ -1,13 +1,16 @@
 import { mkdirSync } from "node:fs";
-import { readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { lstat, readdir } from "node:fs/promises";
+import { join, relative, sep } from "node:path";
 import { watch } from "chokidar";
 import { z } from "zod";
 import type { SpacePaths } from "../paths.js";
-import { LEGACY_MANIFEST_FILE, MANIFEST_FILE, readManifestFile } from "../manifest-file.js";
+import { LEGACY_MANIFEST_FILE, MANIFEST_FILE } from "../manifest-file.js";
+import { inFolder, readFiles, writeEntries } from "../workspace/confined.js";
 
 const GROUPING_MS = 150;
 const FOLDER_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const MANIFEST_MAX = 64 * 1024;
+const NAMES = [MANIFEST_FILE, LEGACY_MANIFEST_FILE];
 
 const urlWeb = z.string().refine((u) => {
   try {
@@ -38,15 +41,36 @@ export function validFolder(folder: string): boolean {
   return FOLDER_NAME.test(folder);
 }
 
-async function readProject(c: SpacePaths, folder: string): Promise<ProjectRead> {
+type Found = { name: string; text: string; mtime: number } | undefined;
+
+/** The projects folder's walk from the space root, for the confined child. */
+const projectsWalk = (c: SpacePaths) => relative(c.root, c.projects).split(sep);
+
+/**
+ * The manifest of each of `folders` (ressac.json first), read by a child that never follows a link the agent put in
+ * place of a folder or a file: a link, a device or a file over 64 KB counts as absent.
+ */
+async function readManifests(c: SpacePaths, folders: string[]): Promise<Found[]> {
+  const paths = folders.flatMap((f) => NAMES.map((n) => `${f}/${n}`));
+  const r = await inFolder(c.root, projectsWalk(c), readFiles, [paths, MANIFEST_MAX, 8 * 1024 * 1024, true]);
+  const files = r && "files" in r ? r.files : [];
+  return folders.map((_, i) => {
+    for (const [k, name] of NAMES.entries()) {
+      const f = files[i * NAMES.length + k];
+      if (f) return { name, ...f };
+    }
+    return undefined;
+  });
+}
+
+async function readProject(c: SpacePaths, folder: string, found: Found): Promise<ProjectRead> {
   const path = join(c.projects, folder);
-  const found = await readManifestFile((name) => readFile(join(path, name), "utf8").catch(() => undefined));
-  const createdAt = (await (found ? stat(join(path, found.name)).catch(() => stat(path)) : stat(path))).mtime;
+  const createdAt = found ? new Date(found.mtime) : (await lstat(path)).mtime;
   const base = { folder: folder, path: path, createdAt: createdAt.toISOString() };
   if (!validFolder(folder)) return { ...base, name: folder, noManifest: "nom de dossier non pris en charge" };
   if (!found) return { ...base, name: folder, noManifest: `pas de ${MANIFEST_FILE}` };
   try {
-    const manifest = Manifest.parse(JSON.parse(found.content));
+    const manifest = Manifest.parse(JSON.parse(found.text));
     return { ...base, name: manifest.name ?? folder, manifest: manifest };
   } catch (e) {
     return { ...base, name: folder, noManifest: `${found.name} invalide : ${(e as Error).message}` };
@@ -65,7 +89,8 @@ export async function readProjects(c: SpacePaths): Promise<ProjectRead[]> {
     .filter((e) => e.isDirectory() && !e.name.startsWith("."))
     .map((e) => e.name)
     .sort();
-  return Promise.all(folders.map((d) => readProject(c, d)));
+  const found = await readManifests(c, folders);
+  return Promise.all(folders.map((d, i) => readProject(c, d, found[i])));
 }
 
 /** Calls `rappel` after each burst of changes of the projects. Returns the stop function. */
@@ -90,14 +115,14 @@ export function watchProjects(c: SpacePaths, callback: () => void): () => Promis
   };
 }
 
-/** Changes a project's type, keeping the other fields of the manifest. */
+/** Changes a project's type, keeping the other fields of the manifest; read and written through the confined child. */
 export async function writeType(c: SpacePaths, folder: string, type: "app" | "poc"): Promise<void> {
-  const found = await readManifestFile((name) => readFile(join(c.projects, folder, name), "utf8").catch(() => undefined));
+  if (!validFolder(folder)) throw new Error("nom de dossier non pris en charge");
+  const [found] = await readManifests(c, [folder]);
   if (!found) throw new Error(`pas de ${MANIFEST_FILE}`);
   // The file read is the one rewritten: a webaios.json stays the project's only manifest.
-  const target = join(c.projects, folder, found.name);
-  const manifest = Manifest.parse(JSON.parse(found.content));
-  const temp = `${target}.${process.pid}.tmp`;
-  await writeFile(temp, JSON.stringify({ ...manifest, type }, null, 2));
-  await rename(temp, target);
+  const manifest = Manifest.parse(JSON.parse(found.text));
+  const data = Buffer.from(JSON.stringify({ ...manifest, type }, null, 2)).toString("base64");
+  const r = await inFolder(c.root, [...projectsWalk(c), folder], writeEntries, [[[found.name, data]], []]);
+  if (r !== "done") throw new Error(`${found.name} non écrit`);
 }

@@ -1,7 +1,7 @@
 import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { createWriteStream, existsSync } from "node:fs";
-import { mkdir, rename, rm } from "node:fs/promises";
+import { createWriteStream, existsSync, readdirSync } from "node:fs";
+import { mkdir, readdir, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { pipeline } from "node:stream/promises";
 import type { OllamaStatus } from "../shared/settings.ts";
@@ -64,8 +64,23 @@ export function createOllamaRuntime(o: OllamaRuntimeOptions) {
   const run = o.run ?? defaultRun;
   const launch = o.launch ?? defaultLaunch;
   const archive = o.archive ?? { url: OLLAMA_ARCHIVE, sha256: OLLAMA_SHA256 };
-  const folder = join(o.dataDir, "ollama", OLLAMA_VERSION);
+  const root = join(o.dataDir, "ollama");
+  const folder = join(root, OLLAMA_VERSION);
   const own = join(folder, "ollama");
+  /** Ressac's own copy: this version's, else the newest one an older Ressac downloaded (a version bump never strands it). */
+  function ownBinary(): string | undefined {
+    if (exists(own)) return own;
+    let names: string[] = [];
+    try {
+      names = readdirSync(root).filter((n) => !n.endsWith(".part"));
+    } catch {
+      // no copy yet
+    }
+    return names
+      .sort((a, b) => (olderThan(a, b) ? 1 : olderThan(b, a) ? -1 : 0))
+      .map((n) => join(root, n, "ollama"))
+      .find(exists);
+  }
   /** The `ollama serve` this process started (its own copy or a command-line install); stopped with Ressac. */
   let child: { kill(): void } | undefined;
   let starting: Promise<void> | undefined;
@@ -83,7 +98,7 @@ export function createOllamaRuntime(o: OllamaRuntimeOptions) {
     if (!o.managed) return { kind: "unmanaged" };
     const v = await version();
     if (v !== undefined) return olderThan(v, OLLAMA_MIN) ? { kind: "outdated", version: v, min: OLLAMA_MIN } : { kind: "ready", version: v };
-    return { kind: exists(APP) || CLIS.some(exists) || exists(own) ? "stopped" : "absent" };
+    return { kind: exists(APP) || CLIS.some(exists) || ownBinary() ? "stopped" : "absent" };
   }
 
   /** Starts the installed Ollama (the app first, then a command-line install, then Ressac's own copy) and waits for it. */
@@ -93,7 +108,7 @@ export function createOllamaRuntime(o: OllamaRuntimeOptions) {
       // shortcut: an Ollama already running keeps its own context length (its app's setting), Ressac never restarts it.
       if (exists(APP)) await run("open", ["-g", "--env", `OLLAMA_CONTEXT_LENGTH=${CONTEXT_LENGTH}`, "-a", APP]);
       else {
-        const binary = [...CLIS, own].find(exists);
+        const binary = CLIS.find(exists) ?? ownBinary();
         if (!binary) throw new Error(NOT_STARTED());
         child = launch(binary, ["serve"]);
       }
@@ -138,6 +153,8 @@ export function createOllamaRuntime(o: OllamaRuntimeOptions) {
         await rm(tgz, { force: true });
         await rm(folder, { recursive: true, force: true });
         await rename(part, folder);
+        // The copies of older versions go: only this one is ever started again.
+        for (const n of await readdir(root)) if (n !== OLLAMA_VERSION && !n.endsWith(".part")) await rm(join(root, n), { recursive: true, force: true });
       } catch (e) {
         await rm(part, { recursive: true, force: true });
         throw e;

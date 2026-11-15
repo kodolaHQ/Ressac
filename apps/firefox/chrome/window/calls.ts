@@ -27,7 +27,11 @@ export function mountCalls(win: any, store: RessacStore): { press(id: TabId, whi
       return [];
     }
   };
-  const set = (id: TabId, call: unknown) => void store.dispatch({ type: "setCall", id, call: (call as { mic: boolean; camera: boolean } | null) ?? null });
+  // The state comes from a web process: only two booleans of it enter the state, whatever it sent.
+  const set = (id: TabId, call: unknown) => {
+    const c = call && typeof call === "object" ? (call as Record<string, unknown>) : null;
+    store.dispatch({ type: "setCall", id, call: c ? { mic: c.mic === true, camera: c.camera === true } : null });
+  };
 
   const onSelect = (e: any) => {
     const [shown, left] = [idOf(e.target), idOf(e.detail?.previousTab)];

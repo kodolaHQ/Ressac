@@ -165,3 +165,4 @@ chrome-pill-hide = Hide
 # The vim mode in pages.
 chrome-vim-paused = vim paused · ⇧Esc to resume
 chrome-host-stopped = The agent kernel stopped.
+chrome-display-denied = Display refused: it contains &lt;link&gt;, &lt;meta http-equiv&gt; or speculation rules, which would send data out. See guides/widgets.md.

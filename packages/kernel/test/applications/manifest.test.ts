@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { spacePaths } from "../../src/paths.js";
@@ -73,6 +73,20 @@ test("writeType keeps the other fields", async () => {
   await writeType(c, "a", "app");
   const written = JSON.parse(await readFile(join(c.projects, "a", "ressac.json"), "utf8"));
   expect(written).toEqual({ type: "app", launch: "x", origin: "https://exemple.fr/", x: { y: 1 } });
+});
+
+// The agent owns the projects: a link it puts in place of a manifest never leads a read or a write to a file of the Mac.
+test("a linked manifest is never followed: no read, no write, no endless read of a device", async () => {
+  const c = await space();
+  const outside = join(await tempFolder(), "victim.json");
+  await writeFile(outside, '{"type":"poc","launch":"secret"}');
+  await mkdir(join(c.projects, "a"), { recursive: true });
+  await symlink(outside, join(c.projects, "a", "ressac.json"));
+  await mkdir(join(c.projects, "z"), { recursive: true });
+  await symlink("/dev/zero", join(c.projects, "z", "ressac.json"));
+  expect(await readProjects(c)).toMatchObject([{ folder: "a", noManifest: "pas de ressac.json" }, { folder: "z", noManifest: "pas de ressac.json" }]);
+  await expect(writeType(c, "a", "app")).rejects.toThrow("pas de ressac.json");
+  expect(await readFile(outside, "utf8")).toBe('{"type":"poc","launch":"secret"}');
 });
 
 test("watchProjects signals a new manifest and ignores node_modules", async () => {

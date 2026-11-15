@@ -5,7 +5,7 @@ import type { Action } from "../shared/api";
 import { dispatch, state, waitFor } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
-import { callTool } from "./mcp";
+import { answerHistory as answerMcpHistory, callTool } from "./mcp";
 import { startServer } from "./server";
 import { waitUi } from "./ui";
 
@@ -45,6 +45,7 @@ async function poll<T>(read: () => Promise<T>, ok: (v: T) => boolean, ms = 10_00
     await new Promise((r) => setTimeout(r, 100));
   }
 }
+const answerHistory = (button?: "Refuser" | "Autoriser pour cette conversation") => answerMcpHistory(m, w.dataDir, button);
 async function setActiveSpacePrivate(isPrivate: boolean): Promise<void> {
   const s = await state(m);
   const e = s.spaces.find((x) => x.id === s.windows[0]!.activeSpace)!;
@@ -216,6 +217,9 @@ it("read_tab on a tab that failed to load answers an error, not Firefox's error 
 });
 
 it("search_history finds a page by a word of its text; read_history returns it as data", async () => {
+  // History is read only after the card: refused, nothing; allowed, for the conversation.
+  expect(await answerHistory("Refuser")).toEqual({ text: "Accès refusé par l'utilisateur à son historique et à ses favoris.", error: false });
+  await answerHistory("Autoriser pour cette conversation");
   const url = `${server.url}/texte.html`;
   await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url });
   // « chat » is only in the body: neither the title nor the URL.
@@ -228,6 +232,7 @@ it("search_history finds a page by a word of its text; read_history returns it a
 });
 
 it("search_history: a page seen only in a private space is not found", async () => {
+  await answerHistory("Autoriser pour cette conversation");
   await setActiveSpacePrivate(true);
   const url = `${server.url}/texte.html`;
   const windowId = (await state(m)).windows[0]!.id;

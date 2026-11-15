@@ -1461,7 +1461,7 @@ async function withSearch(
   opts: { privateWindows?: string[]; allow?: boolean; emptySpanMs?: number; address?: boolean | "wait" | "later"; failing?: string[]; hanging?: string[]; readPageMs?: number; heartbeatMs?: number; watcher?: Watcher; withUserData?: boolean; recaps?: boolean; idleMs?: number; onActivity?: (a: { tab: string; label: string }) => void } = {},
 ) {
   const principal = generateToken();
-  const fake = new FakeBridge([github], { active: "github", allow: opts.allow ?? false, ...(opts.withUserData ? { history: { results: [] }, bookmarks: [] } : {}), search: { privateWindows: opts.privateWindows ?? [], failing: opts.failing ?? [], hanging: opts.hanging ?? [] }, ...(opts.address !== undefined ? { address: opts.address } : {}) });
+  const fake = new FakeBridge([github], { active: "github", allow: opts.allow ?? false, ...(opts.withUserData ? { history: { results: [] }, bookmarks: [], widgetData: true } : {}), search: { privateWindows: opts.privateWindows ?? [], failing: opts.failing ?? [], hanging: opts.hanging ?? [] }, ...(opts.address !== undefined ? { address: opts.address } : {}) });
   const bands: [string, Band | null][] = [];
   const search = new SearchSessions({ show: (id, band) => bands.push([id, band]), ...(opts.idleMs ? { idleMs: opts.idleMs } : {}) });
   const policy = new AccessPolicy();
@@ -2287,6 +2287,8 @@ test("a strange history read is not run: the band names it; Continuer runs it", 
     const pending = call("search_history", { query: "h" });
     await vi.waitFor(() => expect(bands.at(-1)![1]).toMatchObject({ state: "yours", text: BAND("lecture de l'historique", "but") }));
     expect(fake.calls.some((x) => x.method === "history.find")).toBe(false);
+    // Judged before the card: a paused read never puts one up.
+    expect(fake.calls.some((x) => x.method === "askWidgetData")).toBe(false);
     search.continue("search-1");
     await pending;
     expect(fake.calls.some((x) => x.method === "history.find")).toBe(true);

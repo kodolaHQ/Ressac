@@ -114,7 +114,8 @@ function merged(imported: ImportedSpaces): Map<string, ImportedSpaces["spaces"][
  * The store actions bringing `imported` in: a space of the same name (any case) is reused, unless it is private (a
  * new one is made then); a new space is normal, with the default aura, sharing the first normal space's login
  * profile. Nothing already there is added twice, nothing ever goes into a private space, and a space with neither
- * pinned nor open tabs is not created. The open tabs come after, with `planTabImport`.
+ * pinned nor open tabs is not created. Run it twice (the second on the state after the first): with only private
+ * spaces, the first pass stops at the first new space. The open tabs come after, with `planTabImport`.
  */
 export function planSpaceImport(state: BrowserState, imported: ImportedSpaces): Action[] {
   const actions: Action[] = [];
@@ -125,7 +126,12 @@ export function planSpaceImport(state: BrowserState, imported: ImportedSpaces): 
     const space = state.spaces.find((e) => !e.private && e.name.toLowerCase() === key);
     const pinned = fresh(s.pinned, space?.pinned ?? []);
     if (!space) {
-      if (pinned.length || s.tabs.length) actions.push({ type: "createSpace", name: s.name, icon: "📁", private: false, profile, pinned });
+      if (pinned.length || s.tabs.length) {
+        actions.push({ type: "createSpace", name: s.name, icon: "📁", private: false, profile, pinned });
+        // Every space private: the first new one gets a new login profile, and the plan stops there, so the second
+        // pass (planned on the state after it) shares that profile instead of making one per space.
+        if (profile === "new") return actions;
+      }
     } else if (pinned.length) actions.push({ type: "addFavorites", spaceId: space.id, favorites: pinned });
   }
   return actions;

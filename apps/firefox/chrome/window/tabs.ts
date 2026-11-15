@@ -1,5 +1,5 @@
 import type { Action } from "../../shared/api";
-import { hasView, tabProfile, type BrowserState, type WindowId, type TabId, type Tab } from "../../shared/model";
+import { FAVICON_MAX, hasView, tabProfile, type BrowserState, type WindowId, type TabId, type Tab } from "../../shared/model";
 import type { RessacStore } from "../store";
 
 export const TAB_ID = "ressac-tab-id";
@@ -87,7 +87,11 @@ export class TabSync {
     strip.addEventListener("TabAttrModified", (e: CustomEvent) => {
       const changed: string[] = e.detail.changed;
       const tab: any = e.target;
-      if (changed.includes("label") || changed.includes("image")) this.update(tab, { title: tab.label, favicon: tab.getAttribute("image") || null });
+      if (changed.includes("label") || changed.includes("image")) {
+        // A page's inline icon can weigh 100 KB+ as data: and the state is cloned and saved on every action: over 16 KB, none.
+        const icon: string = tab.getAttribute("image") || "";
+        this.update(tab, { title: tab.label, favicon: icon && icon.length <= FAVICON_MAX ? icon : null });
+      }
       if (changed.includes("soundplaying") || changed.includes("muted")) {
         this.update(tab, { sound: tab.hasAttribute("muted") ? "muted" : tab.hasAttribute("soundplaying") ? "playing" : null });
         this.watchPlayback(tab);
