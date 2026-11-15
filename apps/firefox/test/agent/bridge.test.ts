@@ -92,13 +92,14 @@ test("closedRecaps: a recap tab navigated to another address gives its id", () =
   expect(closedRecaps(before, e())).toEqual([R1]);
 });
 
-test("closedRecaps: a closed window gives the ids of its recaps", () => {
-  const { e, ag } = prepare();
+test("closedRecaps: a closed window's recaps move to the remaining window, none is closed", () => {
+  const { e, ag, F } = prepare();
   ag({ type: "openRecap", windowId: "F2", id: R1, title: "Sommets" });
   ag({ type: "openRecap", windowId: "F2", id: R2, title: "Refuges" });
   const before = e();
   ag({ type: "closeWindow", id: "F2" });
-  expect(closedRecaps(before, e()).sort()).toEqual([R1, R2].sort());
+  expect(closedRecaps(before, e())).toEqual([]);
+  expect(Object.values(e().tabs).filter((o) => o.windowId === F)).toHaveLength(4);
 });
 
 test("activeRecap and shownRecaps: the recap of a window's active tab, the recaps on screen", () => {
