@@ -7,7 +7,6 @@
     "test": "corepack pnpm -r --if-present test",
     "typecheck": "corepack pnpm -r --if-present typecheck",
     "postinstall": "node scripts/repair-node-pty.mjs",
-    "dev:kernel": "corepack pnpm --filter @ressac/kernel dev",
     "e2e": "corepack pnpm --filter firefox-ressac e2e"
   }
 }

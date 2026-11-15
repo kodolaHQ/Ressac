@@ -9,7 +9,6 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json",
-    "dev": "tsx src/dev/cli.ts",
     "locales": "node scripts/locales.mjs"
   },
   "dependencies": {

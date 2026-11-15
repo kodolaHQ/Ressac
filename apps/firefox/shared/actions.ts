@@ -7,11 +7,6 @@ export const ACTION_ALREADY_RUNNING = "L'action tourne déjà";
 export const FALLBACK_MENTION = "mise en page simple";
 export const NO_RESULT = "Aucun résultat";
 
-/** An action's result images, fetched by the chrome (chrome/store/action-media.ts). */
-export const SCHEMA_IMAGE = "ressac-image";
-
-export const urlImage = (id: string, execution: string, url: string) => `${SCHEMA_IMAGE}://${id}/${execution}?u=${encodeURIComponent(url)}`;
-
 /** An action as the « Actions » page and the suggestions show it. */
 export type ActionShown = {
   id: string;

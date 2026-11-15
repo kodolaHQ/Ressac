@@ -22,7 +22,6 @@ export * from "./pty/session.js";
 export * from "./mcp/bridge.js";
 export * from "./search/sessions.js";
 export * from "./access/policy.js";
-export * from "./mcp/fake-bridge.js";
 export * from "./mcp/server.js";
 export * from "./devtools/summaries.js";
 export * from "./devtools/tracking.js";
