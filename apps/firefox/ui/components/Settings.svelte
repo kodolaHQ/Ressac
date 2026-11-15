@@ -52,8 +52,10 @@
     if (domainsText !== null) api.dispatch({ type: "chooseAgentDomains", domains: domainLines(domainsText) });
   };
   const rawLines = (text: string) => text.split("\n").map((l) => l.trim()).filter((l) => l !== "");
-  const domainLines = (text: string) => rawLines(text).map((l) => l.toLowerCase());
-  const ignoredDomains = $derived(domainsText === null ? [] : [...new Set(rawLines(domainsText).filter((l) => !validAgentDomain(l.toLowerCase())))]);
+  /** A pasted address keeps its name only: `https://example.com/page` → `example.com`. */
+  const asDomain = (line: string) => line.toLowerCase().replace(/^[a-z][a-z0-9+.-]*:\/\//, "").replace(/[/?#:].*$/, "").replace(/\.$/, "");
+  const domainLines = (text: string) => rawLines(text).map(asDomain);
+  const ignoredDomains = $derived(domainsText === null ? [] : [...new Set(rawLines(domainsText).filter((l) => !validAgentDomain(asDomain(l))))]);
   /** Each account's sign-in in progress: null while the host starts it, then its code or its error. */
   let logins = $state<Record<string, LoginResult | null>>({});
   const loadAgents = async () => {

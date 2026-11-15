@@ -1,7 +1,8 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BrowserState } from "../shared/model";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, onTestFinished } from "vitest";
 import { dispatch, state, waitFor, waitReady } from "./firefox";
 import { SHELL_SERVICE } from "../chrome/store/settings";
 import { launchRessac, type LaunchedRessac } from "./launch";
@@ -109,6 +110,30 @@ describe("Settings page", () => {
       ['[data-testid="settings-agent-domains"]'],
     );
     await waitFor(m, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).state.settings.agentDomains)();`, (v) => JSON.stringify(v) === '["exemple.com","autre.org"]');
+  });
+
+  it("Domaines autorisés survive a restart", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "ressac-domains-"));
+    // After afterEach has closed the app.
+    onTestFinished(() => rmSync(dataDir, { recursive: true, force: true }));
+    const relaunch = async () => {
+      w = await launchRessac({ dataDir, env: { RESSAC_OLLAMA_URL: "http://127.0.0.1:9", RESSAC_KEV_URL: undefined } });
+      m = w.marionette;
+      await m.setContext("chrome");
+      await waitReady(m);
+    };
+    await relaunch();
+    await openPage();
+    await waitUi(m, "return !!doc.querySelector(arguments[0])", ['[data-testid="settings-agent-domains"]']);
+    await inUi(m, `const t = doc.querySelector(arguments[0]); t.focus(); t.value = "https://example.com/page"; t.dispatchEvent(new Event("input", { bubbles: true }));`, ['[data-testid="settings-agent-domains"]']);
+    await waitFor(m, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).state.settings.agentDomains)();`, (v) => JSON.stringify(v) === '["example.com"]');
+    await w!.close();
+    expect(JSON.parse(readFileSync(join(dataDir, "session.json"), "utf8")).settings.agentDomains).toEqual(["example.com"]);
+    await relaunch();
+    await waitFor(m, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).state.settings.agentDomains)();`, (v) => JSON.stringify(v) === '["example.com"]');
+    // The page shows it again.
+    await openPage();
+    await waitUi(m, "return doc.querySelector(arguments[0])?.value === 'example.com'", ['[data-testid="settings-agent-domains"]']);
   });
 
   it("no workshop yet: Se connecter opens the agent panel, which starts it, and the account is re-read", { timeout: 60_000 }, async () => {
