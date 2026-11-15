@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { createWriteStream, existsSync } from "node:fs";
 import { mkdir, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { pipeline } from "node:stream/promises";
 import type { OllamaStatus } from "../shared/settings.ts";
 import { hostSay } from "./locale.ts";
 
@@ -117,16 +118,21 @@ export function createOllamaRuntime(o: OllamaRuntimeOptions) {
         if (!r.ok || !r.body) throw new Error(hostSay("host-ollama-download-failed", { status: String(r.status) }));
         const total = Number(r.headers.get("content-length")) || 0;
         const tgz = join(part, "ollama.tgz");
-        const file = createWriteStream(tgz);
         const hash = createHash("sha256");
         let got = 0;
-        for await (const chunk of r.body as unknown as AsyncIterable<Uint8Array>) {
-          hash.update(chunk);
-          got += chunk.length;
-          if (!file.write(chunk)) await new Promise((ok) => file.once("drain", ok));
-          progress(total ? Math.min(100, Math.round((got / total) * 100)) : null);
-        }
-        await new Promise<void>((ok, ko) => file.end((e?: Error | null) => (e ? ko(e) : ok())));
+        // pipeline: a write error (a full disk) rejects here, instead of an uncaught error ending the host.
+        await pipeline(
+          r.body as unknown as AsyncIterable<Uint8Array>,
+          async function* (chunks: AsyncIterable<Uint8Array>) {
+            for await (const chunk of chunks) {
+              hash.update(chunk);
+              got += chunk.length;
+              progress(total ? Math.min(100, Math.round((got / total) * 100)) : null);
+              yield chunk;
+            }
+          },
+          createWriteStream(tgz),
+        );
         if (hash.digest("hex") !== archive.sha256) throw new Error(BAD_ARCHIVE());
         if ((await run("tar", ["-xzf", tgz, "-C", part])) !== 0) throw new Error(BAD_ARCHIVE());
         await rm(tgz, { force: true });

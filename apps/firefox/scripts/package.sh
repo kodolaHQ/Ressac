@@ -176,8 +176,8 @@ codesign --verify --deep --strict $app || fail "codesign --verify failed"
 
 # 9. Full update archive of the signed app, signed with our MAR key (scripts/mar-key.sh), and its update.xml. Nothing is uploaded.
 mar_p12=$HOME/.config/ressac/mar-signing.p12
-# A stale update.xml from an earlier run must not outlive this one.
-rm -f $app_dir/dist/update.xml
+# A stale update.xml, MAR or DMG from an earlier run must not outlive this one (publish would pair them).
+rm -f $app_dir/dist/update.xml $app_dir/dist/Ressac-$version.mar $app_dir/dist/Ressac-$version.dmg
 mar_pw=$(security find-generic-password -s ressac-mar-signing -w 2>/dev/null || true)
 if [[ ! -f $mar_p12 || -z $mar_pw || -z $update_key ]]; then
   print -ru2 -- "warning: no MAR key or no RESSAC_UPDATE_KEY, packaging without an update archive"

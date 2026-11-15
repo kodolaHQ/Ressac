@@ -24,6 +24,11 @@ export function scrub(text: string, home: string): string {
   return h ? t.replace(new RegExp(h.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?![\\w.-])", "g"), "~") : t;
 }
 
+// A message may name a site without a scheme (« Navigation bloquée : intranet.boite.fr »). Code file names stay.
+const BARE_HOST = /\b(?:[a-z0-9-]+\.)+([a-z]{2,})\b/gi;
+const CODE_FILE = new Set(["js", "mjs", "cjs", "ts", "svelte", "json", "html", "css", "ftl", "sqlite", "md", "txt", "log", "sys", "jsm"]);
+const scrubHosts = (t: string) => t.replace(BARE_HOST, (m, last: string) => (CODE_FILE.has(last.toLowerCase()) ? m : "<host>"));
+
 // A message may quote what it choked on (JSON.parse, a path, typed text): no quoted span leaves.
 const QUOTED = /"[^"\n]*?"|'[^'\n]*?'|`[^`\n]*?`|«[^»\n]*?»/g;
 
@@ -54,7 +59,7 @@ export function errorEnvelope(e: ReportedError, o: { release: string; home: stri
     // An explicit, unlocatable IP: Sentry keeps it instead of the sender's, so it derives no city.
     user: { ip_address: "0.0.0.0" },
     tags: { source: e.source },
-    exception: { values: [{ type: s(e.type), value: s(e.message).replace(QUOTED, '"…"').slice(0, 300), ...(frames.length ? { stacktrace: { frames } } : {}) }] },
+    exception: { values: [{ type: s(e.type), value: scrubHosts(s(e.message).replace(QUOTED, '"…"')).slice(0, 300), ...(frames.length ? { stacktrace: { frames } } : {}) }] },
   };
   return [{ event_id: o.eventId, sent_at: o.now.toISOString() }, { type: "event" }, event].map((x) => JSON.stringify(x)).join("\n");
 }

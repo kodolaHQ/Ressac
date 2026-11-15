@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { checkDataFormat } from "../core/state/format";
+import { DatabaseSync } from "node:sqlite";
 import { EXPORT_EXCLUDED, deleteBackup, exportData, listBackups } from "../host/data-folder";
 
 const tmp = async () => join(await mkdtemp(join(tmpdir(), "folder-")), "Ressac");
@@ -62,5 +63,24 @@ describe("data folder", () => {
     expect(entries).toContain("session.json");
     expect(entries).toContain("widgets/w/state.json");
     expect(entries.filter((e) => EXPORT_EXCLUDED.some((n) => e.startsWith(n)))).toEqual([]);
+  });
+
+  it("export: the live history (WAL, still open) goes in as one consistent file with its last writes", async () => {
+    const dir = await tmp();
+    await seed(dir);
+    const db = new DatabaseSync(join(dir, "history.sqlite"));
+    db.exec("PRAGMA journal_mode = WAL; CREATE TABLE t (v TEXT); INSERT INTO t VALUES ('last write');");
+    try {
+      const out = await exportData(dir, await mkdtemp(join(tmpdir(), "out-")));
+      const entries = execFileSync("unzip", ["-Z1", out], { encoding: "utf8" }).split("\n").filter(Boolean);
+      expect(entries.filter((e) => e.startsWith("history.sqlite"))).toEqual(["history.sqlite"]);
+      const back = await mkdtemp(join(tmpdir(), "back-"));
+      execFileSync("unzip", ["-q", out, "history.sqlite", "-d", back]);
+      const copy = new DatabaseSync(join(back, "history.sqlite"), { readOnly: true });
+      expect(copy.prepare("SELECT v FROM t").all()).toEqual([{ v: "last write" }]);
+      copy.close();
+    } finally {
+      db.close();
+    }
   });
 });
