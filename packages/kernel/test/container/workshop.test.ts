@@ -622,7 +622,7 @@ describe("agent network", () => {
   test("secureNetwork applies the rules with valid domains only, then probes", async () => {
     const { workshop, calls } = make([[/curl/, { code: 7 }]]);
     await workshop.secureNetwork();
-    expect(calls[0]!.args).toEqual(["exec", "-u", "root", "-i", "ressac-workshop", "node", "/opt/ressac/ressac-network.mjs", "apply"]);
+    expect(calls[0]!.args).toEqual(["exec", "-u", "root", "-w", "/", "-i", "ressac-workshop", "node", "/opt/ressac/ressac-network.mjs", "apply"]);
     expect(JSON.parse(calls[0]!.opts!.input!)).toEqual({ ports: [5281, 5282], domains: ["ok.example.com", "*.good.dev"] });
     expect(calls[1]!.args).toEqual(["exec", "ressac-workshop", "curl", "-s", "--noproxy", "*", "--max-time", "3", "https://1.1.1.1"]);
   });
@@ -630,7 +630,7 @@ describe("agent network", () => {
   test("secureNetwork fails closed: apply error, or a reachable probe", async () => {
     await expect(make([[/apply/, { code: 1, stderr: "boom\n" }]]).workshop.secureNetwork()).rejects.toThrow(/boom/);
     for (const code of [0, 35, 60, 124, 126]) await expect(make([[/curl/, { code }]]).workshop.secureNetwork(), String(code)).rejects.toThrow(/could not be secured/);
-    await make([[/curl/, { code: 28 }]]).workshop.secureNetwork();
+    await expect(make([[/curl/, { code: 28 }]]).workshop.secureNetwork()).rejects.toThrow(/could not be secured/);
   });
 
   test("concurrent secureNetwork calls share one apply", async () => {
@@ -655,6 +655,39 @@ describe("agent network", () => {
     await Promise.all([a, b, c]);
     const sent = calls.filter((x) => x.args.includes("apply")).map((x) => JSON.parse(x.opts!.input!).domains);
     expect(sent).toEqual([["old.example.com"], ["new.example.com"]]);
+  });
+
+  test("start applies the network when it ends running: from absent and from stopped", async () => {
+    let launched = false;
+    const absent = fakeRunner([
+      [/ image inspect /, { code: 0, stdout: `${dockerfileHash()}\n` }],
+      [/ inspect /, () => ({ code: launched ? 0 : 1, stdout: "true\n" })],
+      [/ run /, () => ((launched = true), { code: 0 })],
+      [/curl/, { code: 7 }],
+    ]);
+    await new Workshop({ paths: paths, docker: "docker", run: absent.run, network }).ensureStarted();
+    expect(absent.calls.some((c) => c.args.includes("apply"))).toBe(true);
+    let started = false;
+    const stopped = fakeRunner([
+      [/ inspect -f \{\{\.State/, () => ({ code: 0, stdout: started ? "true\n" : "false\n" })],
+      [/ inspect /, { code: 0, stdout: `${paths.root}|${dockerfileHash()}\n` }],
+      [/ start /, () => ((started = true), { code: 0 })],
+      [/curl/, { code: 7 }],
+    ]);
+    await new Workshop({ paths: paths, docker: "docker", run: stopped.run, network }).ensureStarted();
+    expect(stopped.calls.some((c) => c.args.includes("apply"))).toBe(true);
+  });
+
+  test("exec secures the network first; a failed apply refuses the command", async () => {
+    const ok = make([[/curl/, { code: 7 }]]);
+    await ok.workshop.exec(["claude", "auth", "status"]);
+    const names = ok.calls.map((c) => c.args.join(" "));
+    expect(names.findIndex((n) => n.includes("apply"))).toBeLessThan(names.findIndex((n) => n.endsWith("claude auth status")));
+    await ok.workshop.exec(["claude", "auth", "status"]);
+    expect(ok.calls.filter((c) => c.args.includes("apply"))).toHaveLength(1);
+    const bad = make([[/apply/, { code: 1, stderr: "boom" }]]);
+    await expect(bad.workshop.exec(["claude", "auth", "status"])).rejects.toThrow(/boom/);
+    expect(bad.calls.some((c) => c.args.includes("claude"))).toBe(false);
   });
 
   test("secureNetwork does nothing without a network option", async () => {

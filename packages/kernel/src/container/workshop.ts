@@ -207,6 +207,8 @@ export class Workshop {
   private readonly network: (() => AgentNetwork) | undefined;
   private securing: Promise<void> | null = null;
   private applying = "";
+  /** The rules are known to be in place since the container's last start. */
+  private secured = false;
   private followUp: Promise<void> | null = null;
   /** Startup in progress, shared: two windows opening an agent do not build the image twice. */
   private startup: Promise<WorkshopState> | null = null;
@@ -302,6 +304,8 @@ export class Workshop {
   /** One-off command in the container, not interactive. */
   async exec(argv: string[]): Promise<RunResult> {
     if (!this.docker) return { code: 1, stdout: "", stderr: "Docker introuvable" };
+    // The agent CLIs run as the agent-writable user: never before the rules exist.
+    if (!this.secured) await this.secureNetwork();
     return this.launch(["exec", containerName(), ...argv], PROBE_DELAY_MS);
   }
 
@@ -335,17 +339,26 @@ export class Workshop {
     this.applying = JSON.stringify(rules);
     const { ports, domains } = rules;
     const apply = await this.launch(
-      ["exec", "-u", "root", "-i", containerName(), "node", "/opt/ressac/ressac-network.mjs", "apply"],
+      ["exec", "-u", "root", "-w", "/", "-i", containerName(), "node", "/opt/ressac/ressac-network.mjs", "apply"],
       PROBE_DELAY_MS,
       JSON.stringify({ ports, domains: domains.filter(validDomain) }),
     );
     if (apply.code !== 0) fail(tail(apply.stderr) || `code ${apply.code}`);
     const probe = await this.launch(["exec", containerName(), "curl", "-s", "--noproxy", "*", "--max-time", "3", "https://1.1.1.1"], PROBE_DELAY_MS);
-    // Only « refused » (7) or « timed out » (28) proves the direct path is shut; anything else (reachable, TLS error, no curl…) is not proof.
-    if (probe.code !== 7 && probe.code !== 28) fail(say(this.locale(), "kernel-network-open", { code: probe.code }));
+    // Only « refused » (7) proves the direct path is shut; anything else (reachable, TLS error, timeout, no curl…) is not proof.
+    if (probe.code !== 7) fail(say(this.locale(), "kernel-network-open", { code: probe.code }));
+    this.secured = true;
   }
 
   private async start(o: { fresh?: boolean } = {}): Promise<WorkshopState> {
+    this.secured = false;
+    const state = await this.startContainer(o);
+    // A failed apply leaves `secured` false: exec retries it and refuses to run until it succeeds.
+    if (state === "demarre") await this.secureNetwork().catch(() => {});
+    return state;
+  }
+
+  private async startContainer(o: { fresh?: boolean }): Promise<WorkshopState> {
     let state = await this.state();
     if (state === "docker-absent") return state;
     const hash = dockerfileHash(this.dockerFolder);

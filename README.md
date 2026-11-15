@@ -36,7 +36,7 @@ Firefox under the hood, a quiet sidebar, nothing to sign up for, nothing to swit
 
 **An agent that browses with you**
 - Claude Code or Codex runs in a sandboxed container on your Mac, with **your own account**.
-- The container sees only `~/Ressac/workspace`. Its network goes through an allowlist proxy: Claude, OpenAI, npm, PyPI and GitHub, plus the domains you add in Settings › Agent. On your Mac it reaches only Ressac's own ports, and Ollama for inference only. It gets 4 GB of memory and 1024 processes.
+- The container sees only `~/Ressac/workspace`. Its network goes through an allowlist proxy: Claude, OpenAI, npm, PyPI and GitHub, plus the domains you add in Settings › Agent. On your Mac it reaches only Ressac's own ports, and Ollama for inference only. The allowlist checks names, so a site sharing a CDN with an allowed domain may still be reached by name tricks over TLS. It gets 4 GB of memory and 1024 processes.
 - Limits, plainly: this stops ordinary leaks, not a targeted and patient injection. An allowed domain can still serve as a channel (a gist with the attacker's token on `api.github.com`, `npm publish`), and Ressac's browsing tools (`open_tab`, `navigate`) open pages in the browser, outside this firewall.
 - It browses in its own tab, which you can watch; a thumbnail shows what it is doing while you keep working.
 - Before a purchase or a choice, it fills a **live recap**: criteria, independent sources, offers, sourced pros and cons.

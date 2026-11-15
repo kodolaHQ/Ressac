@@ -68,10 +68,10 @@ export function createProxy(getDomains, { ports = [443, 80], httpPort = 80 } = {
       res.writeHead(403, { "content-type": "text/plain" }).end(refusal(url?.hostname ?? "?"));
       return;
     }
-    const headers = { ...req.headers };
+    const headers = { ...req.headers, host: url.host };
     delete headers["proxy-connection"];
     const fail = () => (res.headersSent ? res.destroy() : res.writeHead(502).end());
-    const out = http.request({ host: url.hostname, port: httpPort, method: req.method, path: url.pathname + url.search, headers }, (r) => {
+    const out = http.request({ host: url.hostname, port: httpPort, method: req.method, path: url.pathname + url.search, headers, agent: new http.Agent() }, (r) => {
       r.on("error", () => res.destroy());
       res.writeHead(r.statusCode ?? 502, r.headers);
       r.pipe(res);
@@ -140,7 +140,7 @@ async function apply() {
   execFileSync("iptables-restore", [], { input: rules({ mac: address, ports }) });
   if (!(await listening())) {
     const id = (flag) => Number(execFileSync("id", [flag, PROXY_USER]).toString());
-    spawn(process.execPath, [process.argv[1], "proxy"], { uid: id("-u"), gid: id("-g"), detached: true, stdio: "ignore" }).unref();
+    spawn(process.execPath, [process.argv[1], "proxy"], { uid: id("-u"), gid: id("-g"), detached: true, stdio: "ignore", env: { PATH: process.env.PATH } }).unref();
     for (let i = 0; i < 50 && !(await listening()); i++) await new Promise((r) => setTimeout(r, 100));
     if (!(await listening())) throw new Error("proxy did not start");
   }

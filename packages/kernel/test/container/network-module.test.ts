@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { once } from "node:events";
 import { connect, createServer as createTcp } from "node:net";
 import http from "node:http";
@@ -80,6 +80,28 @@ describe("proxy", () => {
     s.resetAndDestroy();
     expect((await ask(port, "CONNECT localhost:22 HTTP/1.1\r\nHost: x\r\n\r\n")).text).toContain("403");
     server.close();
+  });
+
+  test("plain-HTTP forward goes straight upstream (no proxy loop) with Host set from the URL", async () => {
+    const up = http.createServer((q, r) => r.end(`body:${q.headers.host}`)).listen(0, "127.0.0.1");
+    await once(up, "listening");
+    const upPort = (up.address() as { port: number }).port;
+    const { server, port } = await startProxy([443], upPort);
+    vi.stubEnv("HTTP_PROXY", `http://127.0.0.1:${port}`);
+    vi.stubEnv("NODE_USE_ENV_PROXY", "1");
+    try {
+      const body = await new Promise<string>((resolve, reject) => {
+        http.get({ host: "127.0.0.1", port, path: `http://localhost:${upPort}/x`, headers: { host: "spoofed.example" }, agent: false }, (r) => {
+          let t = "";
+          r.on("data", (c) => (t += c)).on("end", () => resolve(t));
+        }).on("error", reject);
+      });
+      expect(body).toBe(`body:localhost:${upPort}`);
+    } finally {
+      vi.unstubAllEnvs();
+      server.close();
+      up.close();
+    }
   });
 
   test("plain-HTTP forward: non-80 port and relative URI get 403", async () => {
