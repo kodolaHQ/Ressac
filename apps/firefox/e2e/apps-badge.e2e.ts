@@ -141,7 +141,8 @@ describe("one Ressac, essai and autre launched in each test", () => {
     await sized(m, "essai", 48, 28);
     await clickBadge(m, "essai", '[data-testid="ressac-pill"]');
     await sized(m, "essai", 300, 320);
-    expect(await inBadge(m, "essai", `return [...doc.querySelectorAll('[role="menuitem"]')].map((e) => e.textContent.trim());`)).toEqual(["Mode design ⇧⌘D", "Panier (0)", "Voir les modifications de l'agent"]);
+    // The shortcut shows once the badge's design state is read (its basket goes through the confined child).
+    await expect.poll(() => inBadge(m, "essai", `return [...doc.querySelectorAll('[role="menuitem"]')].map((e) => e.textContent.trim());`), { timeout: 10_000 }).toEqual(["Mode design ⇧⌘D", "Panier (0)", "Voir les modifications de l'agent"]);
     await inBadge(m, "essai", `f.contentWindow.dispatchEvent(new f.contentWindow.KeyboardEvent("keydown", { key: "Escape", bubbles: true })); return 1;`);
     await sized(m, "essai", 48, 28);
     expect(await inBadge(m, "essai", `return doc.querySelectorAll('[role="menuitem"]').length;`)).toBe(0);

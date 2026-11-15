@@ -187,7 +187,8 @@ describe("design mode on a site app's home", () => {
     await inSiteBar(m, "avec-accueil", `doc.querySelector('${tid("site-menu-design")}').click(); return 1;`);
     await expect.poll(() => inSiteBar(m, "avec-accueil", `return !!doc.querySelector('${tid("site-menu-design-basket")}');`), { timeout: 10_000 }).toBe(true);
     await inSiteBar(m, "avec-accueil", `doc.querySelector('${tid("site-menu-design-basket")}').click(); return 1;`);
-    await expect.poll(() => overlayOf(m, "avec-accueil", `return !!doc.querySelector('${tid("send-remarks")}');`), { timeout: 10_000 }).toBe(true);
+    // Enabled once the basket is read (through the confined child).
+    await expect.poll(() => overlayOf(m, "avec-accueil", `return doc.querySelector('${tid("send-remarks")}')?.disabled === false;`), { timeout: 10_000 }).toBe(true);
     await overlayOf(m, "avec-accueil", `doc.querySelector('${tid("send-remarks")}').click(); return 1;`);
     await expect.poll(agentInput, { timeout: 20_000 }).toContain("les remarques [accueil] visent son écran d'accueil, à changer dans home/");
     expect(agentInput()).toContain('1) [accueil] "h1#titre" : « Titre plus gros »');
@@ -349,7 +350,7 @@ describe("design mode on a site app's home", () => {
     const errors0 = await m.execute<number>(`return Services.console.getMessageArray().filter((x) => /dead object/.test(String(x.message ?? x))).length;`);
     writeFileSync(path.join(w.dataDir, "workspace", "sites", "sonde", "home", "index.html"), HOME.replace("<title>Accueil</title>", "<title>Accueil 2</title>"));
     await expect.poll(async () => (await bar("sonde")).pressed, { timeout: 10_000 }).toBe("false");
-    expect((await state("sonde")).active).toBe(false);
+    await expect.poll(async () => (await state("sonde")).active, { timeout: 10_000 }).toBe(false);
     await expect.poll(() => inHome("sonde", "return hdoc?.readyState === 'complete' ? hdoc.title : null;"), { timeout: 15_000 }).toBe("Accueil 2");
     expect(await m.execute<number>(`return Services.console.getMessageArray().filter((x) => /dead object/.test(String(x.message ?? x))).length;`)).toBe(errors0);
     // A new arm works on the new document.
