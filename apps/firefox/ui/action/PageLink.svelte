@@ -5,7 +5,7 @@
    * A page link: a button, never an `<a href>` (the main process only opens the address if it appears as is in the
    * results). Without a permitted address, the text alone.
    */
-  let { link: link, ctx }: { link: LinkRef; ctx: PageContext } = $props();
+  let { link, ctx }: { link: LinkRef; ctx: PageContext } = $props();
 </script>
 
 {#if link.url === null}

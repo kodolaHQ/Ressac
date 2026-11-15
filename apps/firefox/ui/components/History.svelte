@@ -5,7 +5,7 @@
   import { api, appState } from "../state.svelte";
   import { t } from "../i18n.svelte";
 
-  let { window: win, close: close }: { window: WindowState; close: () => void } = $props();
+  let { window: win, close }: { window: WindowState; close: () => void } = $props();
   const locale = $derived(appState.value?.locale ?? "fr");
   let text = $state("");
   let visits = $state<Visit[]>([]);

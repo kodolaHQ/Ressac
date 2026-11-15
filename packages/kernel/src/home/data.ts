@@ -89,6 +89,6 @@ export function changeWidgetState(widgetsFolder: string, id: string, f: (state: 
 }
 
 async function currentHours(widgetsFolder: string, id: string): Promise<Pick<WidgetState, "hours">> {
-  const { hours: hours } = await readWidgetState(widgetsFolder, id);
+  const { hours } = await readWidgetState(widgetsFolder, id);
   return hours ? { hours: hours } : {};
 }

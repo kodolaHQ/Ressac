@@ -7,7 +7,7 @@
 
   // The builder page. Its own followDisappearances(api.accueil) comes second and is ignored (first call wins): the
   // Firefox home read also carries the theme.
-  let { target: target }: { target: Owner } = $props();
+  let { target }: { target: Owner } = $props();
   followDisappearances(homeListForBuilder(api));
 </script>
 

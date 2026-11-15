@@ -68,7 +68,7 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("activeSpacePrivate", () => {
   it("is false only for a window whose active space is private", () => {
-    const { F, state: state, turnPrivate, genId } = setup();
+    const { F, state, turnPrivate, genId } = setup();
     const cases: [BrowserState, string][] = [[state(), F], [state(), "inconnue"]];
     const withoutSpace = { ...state(), spaces: [] };
     cases.push([withoutSpace, F]);
@@ -154,7 +154,7 @@ describe("createActionsApi", () => {
 
   // actions.test.ts:452
   it("voirWorkflow opens the builder on the action; lancer and arreter go to the kernel", async () => {
-    const { F, api, calls, state: state } = setup({ "actions.name": (p) => (p.id === "gitlab" ? "GitLab" : null), "actions.launch": () => ({ status: "succeeded", run: "x" }) });
+    const { F, api, calls, state } = setup({ "actions.name": (p) => (p.id === "gitlab" ? "GitLab" : null), "actions.launch": () => ({ status: "succeeded", run: "x" }) });
     const a = api(F);
     await a.viewWorkflow("gitlab");
     expect(Object.values(state().tabs)[0]).toMatchObject({ url: "ressac://workflow/action/gitlab", title: "Workflow — GitLab" });
@@ -178,7 +178,7 @@ describe("createActionsApi", () => {
   });
 
   it("accorder never uses a private space's profile, read again at the grant", async () => {
-    const { F, api, calls, state: state, set, genId } = setup({ "actions.grant": () => ({ ok: true }) });
+    const { F, api, calls, state, set, genId } = setup({ "actions.grant": () => ({ ok: true }) });
     set(apply(state(), { type: "createSpace", name: "Banque", icon: "🏦", private: true, profile: "new", windowId: F }, genId));
     const bank = state().spaces.find((e) => e.private)!.profile;
     set(apply(state(), { type: "activateSpace", windowId: F, id: state().spaces[0]!.id }, genId));
@@ -216,7 +216,7 @@ describe("createActionsApi", () => {
   // Review Focus 2
   it("a private window gets no direct feed, list, page or image", async () => {
     const running = { running: [{ action: "gitlab", start: START, input: null, attempt: false, step: "workflow", blocks: {} }], waiting: [] };
-    const { F, api, calls, emit, state: state, set, genId, media } = setup({
+    const { F, api, calls, emit, state, set, genId, media } = setup({
       "actions.list": () => [{ id: "gitlab" }],
       "actions.page": () => ({ run: "x" }),
       "actions.live": () => running,
@@ -401,7 +401,7 @@ describe("createActionsApi", () => {
 
   // actions.test.ts:402
   it("ouvrir opens the action's page titled with its name, then launches it", async () => {
-    const { F, api, calls, state: state } = setup({ "actions.prepare": prepare(), "actions.launch": () => ({ status: "succeeded", run: "x" }) });
+    const { F, api, calls, state } = setup({ "actions.prepare": prepare(), "actions.launch": () => ({ status: "succeeded", run: "x" }) });
     const a = api(F);
     expect(await a.open("gitlab", null)).toEqual({ ok: true });
     const tabs = Object.values(state().tabs);
@@ -414,7 +414,7 @@ describe("createActionsApi", () => {
 
   // actions.test.ts:413
   it("ouvrir without the required input opens the page and launches nothing; an unknown action is refused", async () => {
-    const { F, api, calls, state: state } = setup({ "actions.prepare": prepare() });
+    const { F, api, calls, state } = setup({ "actions.prepare": prepare() });
     const a = api(F);
     expect(await a.open("leboncoin", null)).toEqual({ ok: true });
     expect(await a.open("leboncoin", "  ")).toEqual({ ok: true });
@@ -425,7 +425,7 @@ describe("createActionsApi", () => {
 
   // actions.test.ts:423
   it("ouvrir on a running action opens its page and launches nothing", async () => {
-    const { F, api, calls, state: state, set, genId } = setup({ "actions.prepare": prepare(["gitlab"]) });
+    const { F, api, calls, state, set, genId } = setup({ "actions.prepare": prepare(["gitlab"]) });
     const a = api(F);
     expect(await a.open("gitlab", null)).toEqual({ ok: true });
     const page = Object.values(state().tabs)[0]!;

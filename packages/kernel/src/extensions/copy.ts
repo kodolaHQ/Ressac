@@ -353,7 +353,7 @@ export async function prepareCopy(o: {
   target: string;
   keptFolder: string;
 }): Promise<{ analysis: ManifestAnalysis; hash: string; root?: RootRead }> {
-  const { files: files, denial: folderDenial, root: root } = await readFolder(o.source);
+  const { files, denial: folderDenial, root } = await readFolder(o.source);
   const raw = json(files.get("manifest.json"));
   const found = await readManifestFile((name) => files.get(name));
   const ressac = found === undefined ? undefined : (json(found.content) ?? "illisible");

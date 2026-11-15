@@ -59,7 +59,7 @@ describe("ReviewComments", () => {
   }
 
   test("file without a diff (diff null): the comment stays, attached to the file, ligneChangee true", async () => {
-    const { file: file } = await depot();
+    const { file } = await depot();
     const r = new ReviewComments(file);
     await r.add(raw);
     await r.add({ ...raw, file: "autre.txt" });
@@ -116,7 +116,7 @@ describe("ReviewComments", () => {
     expect(await r.list()).toEqual([]);
   });
   test("the file has mode 0600 and survives a re-read from disk", async () => {
-    const { file: file } = await depot();
+    const { file } = await depot();
     await new ReviewComments(file).add(raw);
     expect((await stat(file)).mode & 0o777).toBe(0o600);
     expect((await new ReviewComments(file).list())[0]!.text).toBe("à revoir");

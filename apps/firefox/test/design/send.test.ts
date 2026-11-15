@@ -32,7 +32,7 @@ function mount() {
 }
 
 test("app: prefill receives the agent's window and the text, never a \r; external: prefill is not called", async () => {
-  const { o, send: send } = mount();
+  const { o, send } = mount();
   await send({ type: "app", project: "app-essai", folder: "essai", name: "Essai" }, batch);
   expect(o.prefill).toHaveBeenCalledTimes(1);
   const [f, text] = o.prefill.mock.calls[0]!;
@@ -49,7 +49,7 @@ test("app: prefill receives the agent's window and the text, never a \r; externa
 });
 
 test("without a main window: a window is reopened and receives the text; if none opens, the send fails (never « ok » with nothing)", async () => {
-  const { o, send: send } = mount();
+  const { o, send } = mount();
   o.agentWindow.mockReturnValueOnce(undefined as never);
   const reopen = vi.fn();
   const withReopen = createSend({ ...o, reopen: reopen });
@@ -64,7 +64,7 @@ test("without a main window: a window is reopened and receives the text; if none
 });
 
 test("site: prefill receives the site app, its folder and the batch path, without \\r or \\n", async () => {
-  const { o, send: send } = mount();
+  const { o, send } = mount();
   await send({ type: "site", project: "site-tuning", id: "tuning", name: "Tuning" }, { ...batch, project: "site-tuning" });
   expect(o.prefill).toHaveBeenCalledTimes(1);
   const [f, text] = o.prefill.mock.calls[0]!;

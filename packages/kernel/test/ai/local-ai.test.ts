@@ -27,7 +27,7 @@ const clone = (folder: string) => async (): Promise<Response> => {
 describe("LocalAi", () => {
   it("kev() passes state and questions and returns answers", async () => {
     const kev = keep(await fakeKev());
-    const { run: run } = fakeRunner([]);
+    const { run } = fakeRunner([]);
     const ai = new LocalAi({ folder: await tempFolder(), run: run, kevUrl: kev.url });
     toStop.push(ai);
     const questions = { q: { type: "noul", instructions: "ok ?" } };
@@ -88,7 +88,7 @@ describe("LocalAi", () => {
 
   it("with modeleDecision, kev() asks Ollama's /v1/systemone with that model and launches nothing", async () => {
     const ollama = keep(await fakeKev());
-    const { run: run } = fakeRunner([]);
+    const { run } = fakeRunner([]);
     const launch = vi.fn();
     const ai = new LocalAi({ folder: await tempFolder(), run: run, launch: launch, ollamaUrl: ollama.url, decisionModel: "pplx-decider-flash" });
     toStop.push(ai);
@@ -102,7 +102,7 @@ describe("LocalAi", () => {
 
   it("an imposed Kev address wins over modeleDecision", async () => {
     const kev = keep(await fakeKev());
-    const { run: run } = fakeRunner([]);
+    const { run } = fakeRunner([]);
     const ai = new LocalAi({ folder: await tempFolder(), run: run, kevUrl: kev.url, ollamaUrl: await unreachableUrl(), decisionModel: "pplx-decider-flash" });
     toStop.push(ai);
     await ai.kev({ state: "texte", questions: {} });
@@ -111,7 +111,7 @@ describe("LocalAi", () => {
 
   it("gemma() sends the gemma4:e4b-mlx model, think false, and parses the JSON if requested", async () => {
     const ollama = keep(await fakeOllama('{"a":1}'));
-    const { run: run } = fakeRunner([]);
+    const { run } = fakeRunner([]);
     const ai = new LocalAi({ folder: await tempFolder(), run: run, ollamaUrl: ollama.url });
     expect(await ai.gemma({ prompt: "salut", images: ["QUJD"], json: true })).toEqual({ a: 1 });
     const chats = () => ollama.requests.filter((r) => r.url === "/api/chat");
@@ -149,7 +149,7 @@ describe("LocalAi", () => {
 
   it("gemma with a raised signal aborts the request to Ollama (fake server)", async () => {
     const ollama = keep(await fakeSilentOllama());
-    const { run: run } = fakeRunner([]);
+    const { run } = fakeRunner([]);
     const ai = new LocalAi({ folder: await tempFolder(), run: run, ollamaUrl: ollama.url });
     const controller = new AbortController();
     const call = ai.gemma({ prompt: "x", json: true, signal: controller.signal });
@@ -164,7 +164,7 @@ describe("LocalAi", () => {
 
   it("kev with a raised signal aborts the request to Kev", async () => {
     const kev = keep(await fakeSilentOllama());
-    const { run: run } = fakeRunner([]);
+    const { run } = fakeRunner([]);
     const ai = new LocalAi({ folder: await tempFolder(), run: run, kevUrl: kev.url });
     toStop.push(ai);
     const controller = new AbortController();
@@ -174,13 +174,13 @@ describe("LocalAi", () => {
   });
 
   it("Ollama unreachable: error « Ollama n'est pas lancé »", async () => {
-    const { run: run } = fakeRunner([]);
+    const { run } = fakeRunner([]);
     const ai = new LocalAi({ folder: await tempFolder(), run: run, ollamaUrl: await unreachableUrl() });
     await expect(ai.gemma({ prompt: "x" })).rejects.toThrow("Ollama n'est pas lancé");
   });
 
   it("Kev absent: « IA locale non installée »", async () => {
-    const { run: run } = fakeRunner([]);
+    const { run } = fakeRunner([]);
     const ai = new LocalAi({ folder: await tempFolder(), run: run, ...fast });
     await expect(ai.kev({ state: "", questions: {} })).rejects.toThrow("IA locale non installée");
     expect(ai.state().state).toBe("not-installed");
@@ -190,7 +190,7 @@ describe("LocalAi", () => {
     const folder = await tempFolder();
     await mkdir(join(folder, "kev", ".git"), { recursive: true });
     const kev = keep(await fakeKev());
-    const { run: run } = fakeRunner([]);
+    const { run } = fakeRunner([]);
     const launches: { cmd: string; args: string[]; cwd: string }[] = [];
     const states: string[] = [];
     let ai!: LocalAi;
@@ -215,7 +215,7 @@ describe("LocalAi", () => {
   it("Kev dead at startup: « Kev n'a pas démarré : <last lines> »", async () => {
     const folder = await tempFolder();
     await mkdir(join(folder, "kev", ".git"), { recursive: true });
-    const { run: run } = fakeRunner([]);
+    const { run } = fakeRunner([]);
     const launch = (): AiProcess => ({
       stop() {},
       onLine(r) { r("ligne 1"); r("boum"); },
@@ -230,7 +230,7 @@ describe("LocalAi", () => {
     const folder = await tempFolder();
     await mkdir(join(folder, "kev", ".git"), { recursive: true });
     const kev = keep(await fakeKev());
-    const { run: run } = fakeRunner([]);
+    const { run } = fakeRunner([]);
     let n = 0;
     let ai!: LocalAi;
     const launch = (): AiProcess => {
@@ -249,7 +249,7 @@ describe("LocalAi", () => {
   it("arreter() during startup: state arretee, no error, no timer", async () => {
     const folder = await tempFolder();
     await mkdir(join(folder, "kev", ".git"), { recursive: true });
-    const { run: run } = fakeRunner([]);
+    const { run } = fakeRunner([]);
     let output!: (c: number | null) => void;
     const launch = (): AiProcess => ({
       stop() { setTimeout(() => output(null), 1); },
@@ -271,7 +271,7 @@ describe("LocalAi", () => {
     const folder = await tempFolder();
     await mkdir(join(folder, "kev", ".git"), { recursive: true });
     const kev = keep(await fakeKev());
-    const { run: run } = fakeRunner([]);
+    const { run } = fakeRunner([]);
     let now = 1000;
     let stopped = 0;
     let ai!: LocalAi;
@@ -297,7 +297,7 @@ describe("LocalAi", () => {
     await mkdir(join(folder, "kev", ".git"), { recursive: true });
     const kev = keep(await fakeKev());
     const ollama = keep(await fakeOllama("ok"));
-    const { run: run } = fakeRunner([]);
+    const { run } = fakeRunner([]);
     let launched = 0;
     let ai!: LocalAi;
     const launch = (): AiProcess => {
@@ -325,7 +325,7 @@ describe("LocalAi", () => {
     const folder = await tempFolder();
     await mkdir(join(folder, "kev", ".git"), { recursive: true });
     const kev = keep(await fakeKev());
-    const { run: run } = fakeRunner([]);
+    const { run } = fakeRunner([]);
     let launched = 0;
     let stoppedList = 0;
     let ai!: LocalAi;
@@ -352,7 +352,7 @@ describe("LocalAi", () => {
 
   it("installer() chains uv, git clone kev-1.0, uv sync, ollama pull, and resumes a partial install", async () => {
     const folder = await tempFolder();
-    const { run: run, calls: calls } = fakeRunner([
+    const { run, calls } = fakeRunner([
       [/^uv --version/, { code: 0, stdout: "uv 0.5\n" }],
       [/^git clone/, clone(folder)],
       [/rev-parse HEAD/, { code: 0, stdout: COMMIT + "\n" }],
@@ -430,7 +430,7 @@ describe("LocalAi : quitter annule l'installation", () => {
     await expect(ai.install(() => {})).rejects.toThrow("IA locale fermée");
 
     // Next launch: new LocalAi, the install restarts from the beginning.
-    const { run: run, calls: calls } = fakeRunner([
+    const { run, calls } = fakeRunner([
       [/^git clone/, clone(folder)],
       [/rev-parse HEAD/, { code: 0, stdout: COMMIT }],
     ]);
@@ -475,7 +475,7 @@ describe("LocalAi : quitter annule l'installation", () => {
     expect(existsSync(join(folder, "kev.clone-in-progress", ".git"))).toBe(true); // the deaf process still holds its files
 
     const seenByClone: boolean[] = [];
-    const { run: run } = fakeRunner([
+    const { run } = fakeRunner([
       [/^git clone/, async () => {
         seenByClone.push(existsSync(join(folder, "kev.clone-in-progress")));
         return clone(folder)();
@@ -512,7 +512,7 @@ describe("launchAiProcess (Kev: uv launches a Python child)", () => {
   }
 
   it("arreter() also kills the children (the whole group), not only the first process", async () => {
-    const { p, pid, exited: exited } = await launchWithChild("sleep 300 & echo $!; wait");
+    const { p, pid, exited } = await launchWithChild("sleep 300 & echo $!; wait");
     expect(alive(pid)).toBe(true);
     p.stop();
     expect(await waitUntilTrue(() => !alive(pid))).toBe(true);

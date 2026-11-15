@@ -74,8 +74,8 @@ const age = (iso: string | null, now: Date) => (iso ? now.getTime() - Date.parse
  */
 export function widgetOf(w: WidgetRead, now: Date, o: { onLaunch: boolean }): boolean {
   if ("error" in w || !w.hasHarvest || !w.declaration.harvest) return false;
-  const { minutes, hours: hours } = w.declaration.harvest;
-  const { status: status, lastUpdate: lastUpdate, lastAttempt: lastAttempt } = w.state;
+  const { minutes, hours } = w.declaration.harvest;
+  const { status, lastUpdate, lastAttempt } = w.state;
   if (status === "grant-required") return false;
   const byHour = hours !== undefined && dueHour(hours, w.state.hours, lastAttempt, now);
   if (status === "running") return o.onLaunch && (minutes !== undefined || byHour);
@@ -313,7 +313,7 @@ export class WidgetsScheduler {
    * progress. The launch check still relaunches it if it is due as an en-cours widget (`du`).
    */
   private async restoreInterrupted(): Promise<void> {
-    const { widgetsFolder: widgetsFolder } = this.o;
+    const { widgetsFolder } = this.o;
     const folders = await readdir(widgetsFolder, { withFileTypes: true }).catch(() => []);
     let change = false;
     for (const d of folders) {
@@ -393,7 +393,7 @@ export class WidgetsScheduler {
     // A widget that has a request waiting or in progress, in either lane, is left for the next
     // check (a watch, in the other lane, may still write in its folder).
     const presents = new Set([...(await this.widgets()).map((w) => w.id), ...this.perWidget.keys()]);
-    const { widgetsFolder: widgetsFolder } = this.o;
+    const { widgetsFolder } = this.o;
     let change = false;
     for (const id of Object.keys(await readGrants(widgetsFolder))) {
       if (presents.has(id)) continue;
@@ -523,7 +523,7 @@ export class WidgetsScheduler {
   private async harvest(w: WidgetRead, trigger: Execution["trigger"]): Promise<WidgetState & { run?: string }> {
     const start = this.o.clock();
     this.interrupted.delete(w.id);
-    const { result: result, issue: outcome } = await this.run(w, trigger, start);
+    const { result, issue: outcome } = await this.run(w, trigger, start);
     const hours = "error" in w ? undefined : w.declaration.harvest?.hours;
     if (!hours) return result;
     const tracking = await this.noteTime(w.id, currentSlot(hours, start), outcome, this.o.clock());
@@ -552,7 +552,7 @@ export class WidgetsScheduler {
     let run: string | undefined;
     let fresh: number | undefined;
     try {
-      ({ state: state, run, newItems: fresh } = await this.follow(
+      ({ state, run, newItems: fresh } = await this.follow(
         w.id,
         "execution",
         (onTrace, ai) => this.o.harvest({ ...this.harvestOptions(w, onTrace, ai), trigger: trigger }),

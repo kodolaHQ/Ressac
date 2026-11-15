@@ -494,7 +494,7 @@ async function withWidgets(widgets: WidgetsTools, o: { widgetData?: boolean } = 
 const dataCards = () => bridge.calls.filter((a) => a.method === "askWidgetData");
 
 test("harvest_widget on a public widget returns status and data", async () => {
-  const { tools: tools, harvests: harvests } = fakeWidgets();
+  const { tools, harvests } = fakeWidgets();
   await withWidgets(tools);
   const r = await client.callTool({ name: "harvest_widget", arguments: { id: "meteo" } });
   expect(r.isError).toBeFalsy();
@@ -507,7 +507,7 @@ test("harvest_widget on a public widget returns status and data", async () => {
 });
 
 test("harvest_widget on a widget with an account, without a grant: status only, neither data nor log, no card", async () => {
-  const { tools: tools } = fakeWidgets();
+  const { tools } = fakeWidgets();
   await withWidgets(tools, { widgetData: true });
   const t = text(await client.callTool({ name: "harvest_widget", arguments: { id: "daily" } }));
   expect(t).toContain('"status": "ok"');
@@ -517,7 +517,7 @@ test("harvest_widget on a widget with an account, without a grant: status only, 
 });
 
 test("widget_data on a widget with an account asks for the card; refusal → no data; grant valid until the new conversation", async () => {
-  const { tools: tools } = fakeWidgets();
+  const { tools } = fakeWidgets();
   // Refus.
   await withWidgets(tools, { widgetData: false });
   let t = text(await client.callTool({ name: "widget_data", arguments: { id: "daily" } }));
@@ -543,7 +543,7 @@ test("widget_data on a widget with an account asks for the card; refusal → no 
 });
 
 test("widget_data on a public widget: data without a card; unknown widget: error", async () => {
-  const { tools: tools } = fakeWidgets();
+  const { tools } = fakeWidgets();
   await withWidgets(tools);
   expect(text(await client.callTool({ name: "widget_data", arguments: { id: "meteo" } }))).toContain('"t": 12');
   const r = await client.callTool({ name: "widget_data", arguments: { id: "absent" } });
@@ -552,7 +552,7 @@ test("widget_data on a public widget: data without a card; unknown widget: error
 });
 
 test("widget_data without a possible card (no askWidgetData): refusal", async () => {
-  const { tools: tools } = fakeWidgets();
+  const { tools } = fakeWidgets();
   await withWidgets(tools);
   const t = text(await client.callTool({ name: "widget_data", arguments: { id: "daily" } }));
   expect(t).not.toContain("secret du compte");
@@ -560,7 +560,7 @@ test("widget_data without a possible card (no askWidgetData): refusal", async ()
 });
 
 test("widget_data: a pending card is withdrawn by a new conversation, and its late answer grants nothing", async () => {
-  const { tools: tools } = fakeWidgets();
+  const { tools } = fakeWidgets();
   await withWidgets(tools);
   let signalReceived: AbortSignal | undefined;
   let reply!: (yes: boolean) => void;
@@ -584,7 +584,7 @@ test("without widgets: the tools do not exist", async () => {
 });
 
 test("harvest_widget on a widget with an account without a grant: an error written by the widget does not leave, the kernel's does", async () => {
-  const { tools: tools } = fakeWidgets();
+  const { tools } = fakeWidgets();
   let error = "SECRET";
   let kernelFailure: true | undefined;
   tools.harvest = async () => ({
@@ -605,7 +605,7 @@ test("harvest_widget on a widget with an account without a grant: an error writt
 });
 
 test("harvest_widget, widget with an account without a grant: a widget text that imitates the kernel does not leave, the real kernel message does", async () => {
-  const { tools: tools } = fakeWidgets();
+  const { tools } = fakeWidgets();
   let state: WidgetState = { status: "error", lastUpdate: null, lastAttempt: null };
   tools.harvest = async () => state;
   await withWidgets(tools);
@@ -635,7 +635,7 @@ test("harvest_widget, widget with an account without a grant: a widget text that
 // --- widget_runs ---
 
 test("widget_runs of a widget without an account returns durations, elements, outputs and logs", async () => {
-  const { tools: tools } = fakeWidgets();
+  const { tools } = fakeWidgets();
   await withWidgets(tools);
   const list = text(await client.callTool({ name: "widget_runs", arguments: { id: "meteo" } }));
   expect(list).toContain(WIDGET_DATA_PREFIX);
@@ -650,7 +650,7 @@ test("widget_runs of a widget without an account returns durations, elements, ou
 });
 
 test("widget_runs of a widget with an account without a grant returns only { id, statut }, no duration, no elements, no per-block status, no error", async () => {
-  const { tools: tools } = fakeWidgets();
+  const { tools } = fakeWidgets();
   await withWidgets(tools, { widgetData: true });
   const t = text(await client.callTool({ name: "widget_runs", arguments: { id: "daily" } }));
   expect(t).toContain(HIDDEN_RUNS_NOTICE);
@@ -666,7 +666,7 @@ test("widget_runs of a widget with an account without a grant returns only { id,
 });
 
 test("the detail of a run of a widget with an account puts up the card; refused, only the status leaves; accepted, everything leaves and widget_data does not ask again", async () => {
-  const { tools: tools } = fakeWidgets();
+  const { tools } = fakeWidgets();
   const args = { id: "daily", run: "2026-10-28T10-00-00-000Z" };
   await withWidgets(tools, { widgetData: false });
   let t = text(await client.callTool({ name: "widget_runs", arguments: args }));
@@ -686,7 +686,7 @@ test("the detail of a run of a widget with an account puts up the card; refused,
 });
 
 test("the detail of an unknown run of a widget with an account puts up no card", async () => {
-  const { tools: tools } = fakeWidgets();
+  const { tools } = fakeWidgets();
   await withWidgets(tools, { widgetData: false });
   const t = text(await client.callTool({ name: "widget_runs", arguments: { id: "daily", run: "2020-01-01T00-00-00-000Z" } }));
   expect(t).toBe("Aucune exécution 2020-01-01T00-00-00-000Z pour le widget daily.");
@@ -694,14 +694,14 @@ test("the detail of an unknown run of a widget with an account puts up no card",
 });
 
 test("an invalid run id is refused by the schema", async () => {
-  const { tools: tools } = fakeWidgets();
+  const { tools } = fakeWidgets();
   await withWidgets(tools);
   const r = await client.callTool({ name: "widget_runs", arguments: { id: "meteo", run: "../donnees" } });
   expect(r.isError).toBe(true);
 });
 
 test("harvest_widget reports the created run, even for a widget with an account without a grant", async () => {
-  const { tools: tools } = fakeWidgets();
+  const { tools } = fakeWidgets();
   await withWidgets(tools, { widgetData: true });
   const t = text(await client.callTool({ name: "harvest_widget", arguments: { id: "daily" } }));
   expect(t).toContain('"run": "2026-10-28T10-00-00-000Z"');
@@ -853,7 +853,7 @@ test("without actions: the action tools do not exist", async () => {
 });
 
 test("launch_action on an action without an account: status reussie and run id, no data in the answer", async () => {
-  const { tools: tools, launchedList: launched } = fakeActions();
+  const { tools, launchedList: launched } = fakeActions();
   await withActions(tools);
   const r = await client.callTool({ name: "launch_action", arguments: { id: "veille", input: "clio lyon" } });
   expect(r.isError).toBeFalsy();
@@ -863,7 +863,7 @@ test("launch_action on an action without an account: status reussie and run id, 
 });
 
 test("launch_action with an account and an error written by the code: RESERVED_ACTION_ERROR; kernel error: shown", async () => {
-  const { tools: tools, set: fixer } = fakeActions();
+  const { tools, set: fixer } = fakeActions();
   await withActions(tools);
   fixer({ status: "failed", error: "SECRET du compte" });
   let t = text(await client.callTool({ name: "launch_action", arguments: { id: "courrier" } }));
@@ -879,7 +879,7 @@ test("launch_action with an account and an error written by the code: RESERVED_A
 });
 
 test("launch_action with an account: the actions' fixed messages pass, not an identical text written by the code", async () => {
-  const { tools: tools, set: fixer } = fakeActions();
+  const { tools, set: fixer } = fakeActions();
   await withActions(tools);
   // Written in English or stored in French: both pass.
   for (const error of [...["fr", "en"].flatMap((l) => [ACTION_WITHOUT_WORKFLOW(l), ACTION_STOPPED(l), RESULT_TOO_BIG(l), INTERNAL_ACTION_ERROR(l), ACTION_UNKNOWN(l)])]) {
@@ -894,7 +894,7 @@ test("launch_action with an account: the actions' fixed messages pass, not an id
 });
 
 test("launch_action: required input missing → requiredInput error, nothing is launched", async () => {
-  const { tools: tools, launchedList: launched } = fakeActions();
+  const { tools, launchedList: launched } = fakeActions();
   await withActions(tools);
   const t = text(await client.callTool({ name: "launch_action", arguments: { id: "veille" } }));
   expect(t).toContain(requiredInput("fr", "Sujet"));
@@ -902,7 +902,7 @@ test("launch_action: required input missing → requiredInput error, nothing is 
 });
 
 test("launch_action on an unknown action: error", async () => {
-  const { tools: tools } = fakeActions();
+  const { tools } = fakeActions();
   await withActions(tools);
   const r = await client.callTool({ name: "launch_action", arguments: { id: "absente" } });
   expect(r.isError).toBe(true);
@@ -910,7 +910,7 @@ test("launch_action on an unknown action: error", async () => {
 });
 
 test("action_runs with an account without a grant: statuses only (partielle → reussie) and the notice", async () => {
-  const { tools: tools } = fakeActions();
+  const { tools } = fakeActions();
   await withActions(tools, { widgetData: true });
   const t = text(await client.callTool({ name: "action_runs", arguments: { id: "courrier" } }));
   expect(JSON.parse(t.split("\n").slice(0, -1).join("\n"))).toEqual([
@@ -923,7 +923,7 @@ test("action_runs with an account without a grant: statuses only (partielle → 
 });
 
 test("action_runs of an action without an account: full list with the prefix, without a card", async () => {
-  const { tools: tools } = fakeActions();
+  const { tools } = fakeActions();
   await withActions(tools);
   const t = text(await client.callTool({ name: "action_runs", arguments: { id: "veille" } }));
   expect(t).toContain(ACTION_DATA_PREFIX);
@@ -932,7 +932,7 @@ test("action_runs of an action without an account: full list with the prefix, wi
 });
 
 test("action_runs, detail: action-kind card, refusal → status only; grant → run and plan", async () => {
-  const { tools: tools } = fakeActions();
+  const { tools } = fakeActions();
   await withActions(tools, { widgetData: false });
   let t = text(await client.callTool({ name: "action_runs", arguments: { id: "courrier", run: "2026-10-28T10-00-00-000Z" } }));
   expect(dataCards()).toHaveLength(1);
@@ -952,7 +952,7 @@ test("action_runs, detail: action-kind card, refusal → status only; grant → 
 });
 
 test("granting the data of the action « courrier » does not grant that of the widget « courrier »", async () => {
-  const { tools: tools } = fakeActions();
+  const { tools } = fakeActions();
   await withActions(tools, { widgetData: true });
   await client.callTool({ name: "action_runs", arguments: { id: "courrier", run: "2026-10-28T10-00-00-000Z" } });
   expect(policy.actionDataGranted("courrier")).toBe(true);
@@ -1422,7 +1422,7 @@ test("list_sites: multi-line name, error and id brought back to one line, length
 });
 
 test("a session token opened with an agent name asks under that name", async () => {
-  const { tools: tools } = fakeWidgets();
+  const { tools } = fakeWidgets();
   await withWidgets(tools, { widgetData: false });
   const c = new Client({ name: "test", version: "0" });
   await c.connect(

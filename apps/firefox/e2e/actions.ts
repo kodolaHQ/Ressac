@@ -35,7 +35,7 @@ export interface TestAction {
 export async function writeAction(dataDir: string, id: string, a: TestAction): Promise<void> {
   const dir = path.join(dataDir, "workspace", "actions", id);
   await mkdir(dir, { recursive: true });
-  const { workflow, files: files, sources, ...keys } = a;
+  const { workflow, files, sources, ...keys } = a;
   const declaration = { ...keys, sources: { account: sources?.account ?? [], public: sources?.public ?? [], ...(sources?.web !== undefined ? { web: sources.web } : {}) } };
   await writeFile(path.join(dir, "action.json"), JSON.stringify(declaration));
   if (workflow !== undefined) await writeFile(path.join(dir, "workflow.json"), typeof workflow === "string" ? workflow : JSON.stringify(workflow));

@@ -12,7 +12,7 @@
   let {
     visible,
     builtin: builtIn = false,
-    resize: resize,
+    resize,
   }: {
     visible: boolean;
     /** In the builder's « Agent » tab: no width handle, always shown in its host. */

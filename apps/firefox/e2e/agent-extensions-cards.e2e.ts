@@ -190,7 +190,7 @@ describe("the grant card", () => {
     waitUi(m, `return !!doc.querySelector('${MODAL}[data-armed]') && !!doc.activeElement?.closest('${MODAL}') && document.activeElement?.id === "ressac-sidebar"`);
 
   it("an agent card without network says « Elle ne peut rien envoyer vers internet. »", async () => {
-    const { m, wait: wait } = await withCard({ otherSpaces: ["Lecture"], alsoReplaces: ["Travail", "Achats"] });
+    const { m, wait } = await withCard({ otherSpaces: ["Lecture"], alsoReplaces: ["Travail", "Achats"] });
     const c = await cardText(m);
     expect(await inUi(m, `return doc.querySelector('[data-testid="extension-card-replaces"]').textContent`)).toBe(
       "La nouvelle version remplacera aussi celle de « Travail », « Achats ».",
@@ -215,7 +215,7 @@ describe("the grant card", () => {
   });
 
   it("renforcée: Activer does nothing until the box is ticked; a « yes » without it is refused", async () => {
-    const { m, answer: response, wait: wait } = await withCard({ hardened: true, allSites: true, sites: ["<all_urls>"] });
+    const { m, answer: response, wait } = await withCard({ hardened: true, allSites: true, sites: ["<all_urls>"] });
     expect(await cardText(m)).toContain("Je comprends : elle lira toutes les pages de cet espace");
     expect(await inUi(m, `return [...doc.querySelectorAll('${CARD} button')].find((b) => b.textContent.includes("Activer")).disabled`)).toBe(true);
     await enable(m);
@@ -230,7 +230,7 @@ describe("the grant card", () => {
   });
 
   it("renforcée: the box ticked, Activer activates", async () => {
-    const { m, wait: wait } = await withCard({ hardened: true, allSites: true, sites: ["<all_urls>"] });
+    const { m, wait } = await withCard({ hardened: true, allSites: true, sites: ["<all_urls>"] });
     await click(m, '[data-testid="extension-card-confirm"]');
     await waitUi(m, `return doc.querySelector('[data-testid="extension-card-confirm"]').checked`);
     await enable(m);
@@ -238,7 +238,7 @@ describe("the grant card", () => {
   });
 
   it("Enter refuses an extension card, even renforcée and ticked", async () => {
-    const { m, wait: wait } = await withCard({ hardened: true, allSites: true, sites: ["<all_urls>"] });
+    const { m, wait } = await withCard({ hardened: true, allSites: true, sites: ["<all_urls>"] });
     await click(m, '[data-testid="extension-card-confirm"]');
     await waitUi(m, `return doc.querySelector('[data-testid="extension-card-confirm"]').checked`);
     await armed(m);
@@ -248,7 +248,7 @@ describe("the grant card", () => {
   });
 
   it("Escape refuses", async () => {
-    const { m, wait: wait } = await withCard();
+    const { m, wait } = await withCard();
     await armed(m);
     await pressKeys(m, "Escape");
     expect((await wait()).accepted).toBe(false);
@@ -256,7 +256,7 @@ describe("the grant card", () => {
   });
 
   it("the card's window closes: the card moves to another window; no window left: refused", async () => {
-    const { m, answer: response, wait: wait } = await withCard();
+    const { m, answer: response, wait } = await withCard();
     const first = (await m.command<{ value: string }>("WebDriver:GetWindowHandle")).value;
     const second = await newWindow(m);
     await m.command("WebDriver:SwitchToWindow", { handle: second, focus: false });
@@ -275,7 +275,7 @@ describe("the grant card", () => {
     const w = await launch();
     const windowId = await w.marionette.execute<string>("return window.ressacWindow.windowId");
     const reading = (await dispatch(w.marionette, { type: "createSpace", name: "Lecture", icon: "📚", private: false, profile: "default", windowId: windowId } as Action)).spaces.at(-1)!;
-    const { m, wait: wait } = await withCard({ spaceId: reading.id }, w);
+    const { m, wait } = await withCard({ spaceId: reading.id }, w);
     await dispatch(m, { type: "deleteSpace", id: reading.id } as Action);
     expect(await wait()).toMatchObject({ accepted: false, removed: true });
     await cardGone(m);

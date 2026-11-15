@@ -183,7 +183,7 @@ function checkProps(def: ComponentDefinition, raw: Record<string, unknown>, resu
   const loaded = source !== undefined && Object.hasOwn(props, source) ? values[source] : undefined;
   if (loaded) {
     const elements = elementsOf(loaded);
-    for (const { name: name, field: field } of fieldsToCheck) {
+    for (const { name, field } of fieldsToCheck) {
       if (!Object.hasOwn(props, name)) continue;
       if (elements.length > 0 && !elements.some((e) => readPath(e, field) !== undefined)) {
         throw new Gap(`${name} : champ « ${field} » absent de tous les éléments`);

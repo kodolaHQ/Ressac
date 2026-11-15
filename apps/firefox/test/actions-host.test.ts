@@ -60,7 +60,7 @@ describe("input schemas", () => {
 describe("actionImageAllowed", () => {
   // actions.test.ts:116
   it("allows an https address present as is in the results of a run of an action without account", async () => {
-    const { c, actionsFolder: actionsFolder } = space({ leboncoin: { name: "Leboncoin", sources: { web: true } } });
+    const { c, actionsFolder } = space({ leboncoin: { name: "Leboncoin", sources: { web: true } } });
     const image = "https://img.test/annonce/1.jpg?rule=ad-large";
     const ex = await run(actionsFolder, "leboncoin", { announcements: [{ title: "Clio", snapshot: image }] });
     expect(await actionImageAllowed({ actionsFolder: actionsFolder, readAction: (id) => readAction(c, id) }, "leboncoin", ex, image)).toBe(true);
@@ -68,7 +68,7 @@ describe("actionImageAllowed", () => {
 
   // actions.test.ts:202
   it("refuses an action that has an account grant, even if its declaration no longer has an account", async () => {
-    const { c, actionsFolder: actionsFolder } = space({ rewritten: { name: "Réécrite", sources: { web: true } } });
+    const { c, actionsFolder } = space({ rewritten: { name: "Réécrite", sources: { web: true } } });
     const image = "https://img.test/a.jpg";
     const ex = await run(actionsFolder, "reecrite", { snapshot: image });
     await giveGrant(actionsFolder, "reecrite", { domains: ["gitlab.com"], public: [], profile: "default" });
@@ -79,7 +79,7 @@ describe("actionImageAllowed", () => {
 describe("pure helpers", () => {
   // actions.test.ts:285
   it("linkAllowed: only an openable http(s) address present as is in the run's results", async () => {
-    const { actionsFolder: actionsFolder } = space({});
+    const { actionsFolder } = space({});
     const ex = await run(actionsFolder, "gitlab", { tickets: [{ url: "https://gitlab.com/a/-/issues/1", code: "javascript:alert(1)", local: "http://127.0.0.1:5280/" }] });
     expect(await linkAllowed(actionsFolder, "gitlab", ex, "https://gitlab.com/a/-/issues/1")).toBe(true);
     for (const url of ["https://gitlab.com/a/-/issues/2", "javascript:alert(1)", "http://127.0.0.1:5280/", "https://tiers.test/?d=https://gitlab.com/a/-/issues/1"]) {
@@ -105,7 +105,7 @@ describe("pure helpers", () => {
 
   // actions.test.ts:309
   it("readShownActions: declaration, grant, last result (not a trial), broken action flagged", async () => {
-    const { c, actionsFolder: actionsFolder } = space({
+    const { c, actionsFolder } = space({
       gitlab: { name: "GitLab", description: "Mes tickets", keywords: ["tickets"], sources: { account: ["gitlab.com"] } },
       leboncoin: { name: "Leboncoin", input: { label: "Recherche" }, sources: { web: true } },
     });
@@ -146,7 +146,7 @@ function fakeKernel(direct: ActionsState = { running: [], waiting: [] }, outcome
 }
 
 function host(o: { direct?: ActionsState; issue?: LaunchResult | Promise<LaunchResult>; noKernel?: boolean } = {}) {
-  const { c, actionsFolder: actionsFolder } = space({
+  const { c, actionsFolder } = space({
     gitlab: { name: "GitLab", sources: { account: ["gitlab.com"] } },
     leboncoin: { name: "Leboncoin", input: { label: "Recherche" }, sources: { web: true } },
   });
@@ -183,7 +183,7 @@ describe("preparer", () => {
 
 describe("lancer, refusals and deletion", () => {
   it("nom is read without the kernel; lancer and arreter go to the kernel", async () => {
-    const { h, launchedOnes: launched, stopped: stoppedList, create: create } = host();
+    const { h, launchedOnes: launched, stopped: stoppedList, create } = host();
     expect(await create(null).name("gitlab")).toBe("GitLab");
     expect(await h.name("absente")).toBeNull();
     expect(await h.launch("leboncoin", "clio")).toEqual({ status: "succeeded", run: "x" });
@@ -194,7 +194,7 @@ describe("lancer, refusals and deletion", () => {
   });
 
   it("executions and execution read the disk without the kernel and refuse bad ids; page is refused", async () => {
-    const { create: create, actionsFolder: actionsFolder } = host();
+    const { create, actionsFolder } = host();
     const ex = await run(actionsFolder, "gitlab", { a: 1 });
     const h = create(null);
     expect((await h.runs("gitlab")).map((e) => e.id)).toEqual([ex]);
@@ -210,7 +210,7 @@ describe("lancer, refusals and deletion", () => {
   // actions.test.ts:462
   it("a launch refused without a run written is shown by the list, until a more recent run", async () => {
     const outcome: LaunchResult = { status: "failed", error: "Docker n'est pas démarré", kernelError: true };
-    const { h, actionsFolder: actionsFolder, changes, forward: advance } = host({ issue: outcome });
+    const { h, actionsFolder, changes, forward: advance } = host({ issue: outcome });
     await h.launch("gitlab", null);
     expect(changes()).toBe(1);
     expect((await h.list()).find((a) => a.id === "gitlab")?.denial).toBe("Docker n'est pas démarré");
@@ -223,7 +223,7 @@ describe("lancer, refusals and deletion", () => {
   // actions.test.ts:476
   it("a launch refusal survives a restart; launching again clears it from the disk too", async () => {
     const outcome: LaunchResult = { status: "failed", error: "Docker n'est pas démarré", kernelError: true };
-    const { h, create: create } = host({ issue: outcome });
+    const { h, create } = host({ issue: outcome });
     await h.launch("gitlab", null);
     await expect.poll(async () => (await h.list()).find((a) => a.id === "gitlab")?.denial).toBe("Docker n'est pas démarré");
     const after = create(fakeKernel(undefined, { status: "succeeded", run: "x" }).kernel);
@@ -235,7 +235,7 @@ describe("lancer, refusals and deletion", () => {
   // actions.test.ts:491
   it("deleting also clears the refusal from the disk: an action made again has none at the next start", async () => {
     const outcome: LaunchResult = { status: "failed", error: "Docker n'est pas démarré", kernelError: true };
-    const { h, c, create: create } = host({ issue: outcome });
+    const { h, c, create } = host({ issue: outcome });
     await h.launch("gitlab", null);
     await expect.poll(async () => (await h.list()).find((a) => a.id === "gitlab")?.denial).toBe("Docker n'est pas démarré");
     const declaration = readFileSync(join(c.actions, "gitlab", "action.json"));
@@ -264,7 +264,7 @@ describe("lancer, refusals and deletion", () => {
 
   // actions.test.ts:523
   it("deleting and removing the grant stop the running action first", async () => {
-    const { h, calls: calls } = host();
+    const { h, calls } = host();
     await h.denyGrant("gitlab");
     expect(calls).toEqual(["arreter:gitlab", "refuserAccord:gitlab"]);
     calls.length = 0;
@@ -287,7 +287,7 @@ describe("lancer, refusals and deletion", () => {
   });
 
   it("accorder answers the kernel's refusal as an error", async () => {
-    const { h, create: create } = host();
+    const { h, create } = host();
     expect(await h.grant({ id: "gitlab", profile: "default", account: ["gitlab.com"], public: [] })).toEqual({ ok: true });
     expect(await create(null).grant({ id: "gitlab", profile: "default", account: [], public: [] })).toEqual({ ok: false, error: NO_KERNEL_MESSAGE() });
   });

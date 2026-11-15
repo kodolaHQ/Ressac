@@ -787,7 +787,7 @@ describe("executerWorkflow: web search and open reads", () => {
   });
 
   it("without web: WEB_REQUIRED, no call to the bridge", async () => {
-    const { b, bridge: bridge } = await webBench(afterwards([`w.searchWeb("x")`]), { html: { [searchUrl("x", BASE)]: page("results.html") } });
+    const { b, bridge } = await webBench(afterwards([`w.searchWeb("x")`]), { html: { [searchUrl("x", BASE)]: page("results.html") } });
     const r = await runWorkflow(b.ctx, b.infra);
     expect(value(r)).toEqual([`erreur: ${WEB_REQUIRED("fr")}`]);
     expect(bridge.calls).toEqual([]);
@@ -806,7 +806,7 @@ describe("executerWorkflow: web search and open reads", () => {
   });
 
   it("31e recherche : SEARCHES_CAP, 30 lectures de HTML seulement", async () => {
-    const { pacing: pacing, waits: waits } = fakePacing();
+    const { pacing, waits } = fakePacing();
     const { b, html } = await webBench(afterwards(Array.from({ length: 31 }, () => `w.searchWeb("clio", { count: 1 })`)), {
       web: true,
       pacing: pacing,
@@ -832,7 +832,7 @@ describe("executerWorkflow: web search and open reads", () => {
   });
 
   it("a queued search when the refusal arrives does not leave, and does not consume the search gap", async () => {
-    const { pacing: pacing, waits: waits } = fakePacing();
+    const { pacing, waits } = fakePacing();
     const { b, html } = await webBench(
       `const essai = (p) => p.then((x) => x, (e) => "erreur: " + e.message);
       export default async (e, w) => Promise.all([essai(w.searchWeb("a")), essai(w.searchWeb("b"))]);`,
@@ -857,9 +857,9 @@ describe("executerWorkflow: web search and open reads", () => {
 
   it("web widget: the 101st open read (pages and feeds) throws TOO_MANY_READS", async () => {
     const web = await webServer({ "/f": (res) => res.end("<rss><channel><item><title>T</title><link>https://x.example/</link></item></channel></rss>") });
-    const { pacing: pacing, waits: waits } = fakePacing();
+    const { pacing, waits } = fakePacing();
     const spy = vi.spyOn(pacing, "read");
-    const { b, bridge: bridge } = await webBench(
+    const { b, bridge } = await webBench(
       `const essai = (p) => p.then(() => "ok", (e) => "erreur: " + e.message);
       export default async (e, w) => {
         const r = [];
@@ -887,7 +887,7 @@ describe("executerWorkflow: web search and open reads", () => {
   });
 
   it("web widget: a read redirected to another site waits for that site's throttle", async () => {
-    const { pacing: pacing, waits: waits } = fakePacing();
+    const { pacing, waits } = fakePacing();
     const bridge = new FakeBridge([], {
       active: null,
       allow: false,
@@ -928,7 +928,7 @@ describe("executerWorkflow: web search and open reads", () => {
       },
     });
     elsewhere = `http://localhost:${web.port}/f`;
-    const { pacing: pacing, waits: waits } = fakePacing();
+    const { pacing, waits } = fakePacing();
     const read = vi.spyOn(pacing, "read");
     const { b } = await webBench(
       `export default async (e, w) => [await w.fetch("${elsewhere}"), await w.fetch("${web.url}/vers-localhost")];`,
@@ -978,7 +978,7 @@ describe("executerWorkflow: web search and open reads", () => {
     const spy = new Pacing({ wait: async () => { throw new Error("aucune attente attendue"); } });
     const read = vi.spyOn(spy, "read");
     const search = vi.spyOn(spy, "search");
-    const { b, bridge: bridge } = await webBench(
+    const { b, bridge } = await webBench(
       `export default async (e, w) => { for (let i = 0; i < 150; i++) await w.readPage("https://pages.example/" + i); return "fini"; };`,
       { pacing: spy },
     );
@@ -993,7 +993,7 @@ describe("executerWorkflow: web search and open reads", () => {
     let t = 0;
     const pending: (() => void)[] = [];
     const pacing = new Pacing({ now: () => t, wait: () => new Promise<void>((ok) => pending.push(ok)) });
-    const { b, bridge: bridge } = await webBench(
+    const { b, bridge } = await webBench(
       `export default async (e, w) => { await w.readPage("https://pages.example/1"); return w.readPage("https://pages.example/2"); };`,
       { web: true, pacing: pacing, delayMs: 300 },
     );
@@ -1238,7 +1238,7 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
     const b = await bench(watch(), {}, { launch: launcherSteps([{ t: "end", data: null }], { received: received }) });
     const timeout = connectWorkshop(b);
     const delays = await delaysDuring(() => runWorkflow(b.ctx, b.infra));
-    const { workflow, order: order } = b.ctx.valid;
+    const { workflow, order } = b.ctx.valid;
     expect(received.join("").split("\n")[0]).toBe(
       JSON.stringify({ t: "start", previous: null, now: NOW.toISOString(), config: { interests: "rust" }, workflow: { blocks: workflow.blocks, links: workflow.links, order: order } }),
     );
@@ -1261,7 +1261,7 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
     const delays = await delaysDuring(async () => {
       outcome = (await runWorkflow(b.ctx, b.infra)).issue;
     });
-    const { workflow, order: order } = b.ctx.valid;
+    const { workflow, order } = b.ctx.valid;
     expect(received.join("").split("\n")[0]).toBe(
       JSON.stringify({ t: "start", previous: null, now: NOW.toISOString(), config: { interests: "rust" }, workflow: { blocks: workflow.blocks, links: workflow.links, order: order } }),
     );

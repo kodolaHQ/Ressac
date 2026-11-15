@@ -8,7 +8,7 @@ export default async (page) => {
   for (const l of page?.links ?? []) {
     const title = String(l?.text ?? "").replace(/\s+/g, " ").trim();
     const url = String(l?.url ?? "");
-    if (!/^https:\/\/app\.daily\.dev\/posts\//.test(url) || title.length < 15 || seen.has(url)) continue;
+    if (!url.startsWith("https://app.daily.dev/posts/") || title.length < 15 || seen.has(url)) continue;
     seen.add(url);
     items.push({ title, url, source: HOST });
   }

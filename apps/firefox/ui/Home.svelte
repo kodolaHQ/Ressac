@@ -134,7 +134,7 @@
   }
   function finish(cancelled: boolean) {
     if (!gesture) return;
-    const { start: start } = gesture;
+    const { start } = gesture;
     const final = preview;
     gesture = null;
     inGesture = false;

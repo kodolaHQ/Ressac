@@ -81,7 +81,7 @@ describe("prepareCopy", () => {
       }),
     });
     const c = await target();
-    const { analysis: analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
+    const { analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
     expect(analysis.denial).toEqual([]);
     const m = await readJson(join(c, "manifest.json"));
     expect(m.content_security_policy).toEqual({ extension_pages: cspAgent([]) });
@@ -93,7 +93,7 @@ describe("prepareCopy", () => {
   it("with ressac.json { reseau: [\"api.exemple.com\"] }: connect-src contains https:// and wss://api.exemple.com, ressac.json absent from the copy", async () => {
     const src = await source({ "manifest.json": baseManifest(), "ressac.json": { network: ["api.exemple.com"] } });
     const c = await target();
-    const { analysis: analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
+    const { analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
     expect(analysis.scope.network).toEqual(["api.exemple.com"]);
     const m = await readJson(join(c, "manifest.json"));
     expect(m.content_security_policy.extension_pages).toContain("connect-src 'self' https://api.exemple.com wss://api.exemple.com;");
@@ -142,7 +142,7 @@ describe("prepareCopy", () => {
       "lisez-moi.txt": "x",
     });
     const c = await target();
-    const { analysis: analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
+    const { analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
     expect(analysis.denial).toEqual([]);
     const m = await readJson(join(c, "manifest.json"));
     // Table: each .js and .css file of the agent, sorted; one marker each.
@@ -237,7 +237,7 @@ describe("prepareCopy", () => {
       "a.js": "1",
     });
     const c = await target();
-    const { analysis: analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
+    const { analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
     expect(analysis.denial).toEqual(["Script de contenu introuvable : absent.js", "Script de contenu introuvable : ../a.js"]);
     expect(existsSync(c)).toBe(false);
   });
@@ -307,7 +307,7 @@ describe("prepareCopy", () => {
     for (const ext of ["xhtml", "xht", "xml", "xsl", "xslt", "mht", "mhtml", "XHTML"]) {
       const src = await source({ "manifest.json": baseManifest(), [`p.${ext}`]: "<x/>" });
       const c = await target();
-      const { analysis: analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
+      const { analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
       expect(analysis.denial.some((r) => r.includes(`p.${ext}`)), ext).toBe(true);
       expect(existsSync(c)).toBe(false);
     }
@@ -321,12 +321,12 @@ describe("prepareCopy", () => {
       '<svg><a\nONCLICK="x()"/></svg>',
     ]) {
       const src = await source({ "manifest.json": baseManifest(), "i/icone.svg": svg });
-      const { analysis: analysis } = await prepareCopy({ source: src, target: await target(), keptFolder: DEFAULT_GUARDS });
+      const { analysis } = await prepareCopy({ source: src, target: await target(), keptFolder: DEFAULT_GUARDS });
       expect(analysis.denial.some((r) => r.includes("i/icone.svg")), svg).toBe(true);
     }
     const src = await source({ "manifest.json": baseManifest(), "icone.svg": '<svg><path d="M0 0"/></svg>' });
     const c = await target();
-    const { analysis: analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
+    const { analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
     expect(analysis.denial).toEqual([]);
     expect(existsSync(join(c, "icone.svg"))).toBe(true);
   });
@@ -347,7 +347,7 @@ describe("prepareCopy", () => {
       const src = await source({ "manifest.json": baseManifest() });
       await writeFile(join(src, name), content);
       const c = await target();
-      const { analysis: analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
+      const { analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
       const r = analysis.denial.find((x) => x.includes(name));
       expect(r, name).toBeDefined();
       expect(r, name).toContain(pattern);
@@ -367,7 +367,7 @@ describe("prepareCopy", () => {
       const src = await source({ "manifest.json": baseManifest() });
       await writeFile(join(src, "popup.html"), Buffer.concat([Buffer.from(bom), Buffer.from("<p>x</p>", "utf16le")]));
       const c = await target();
-      const { analysis: analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
+      const { analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
       expect(analysis.denial.some((r) => r.includes("popup.html")), String(bom)).toBe(true);
       expect(existsSync(c)).toBe(false);
     }
@@ -377,7 +377,7 @@ describe("prepareCopy", () => {
     for (const background of [{ scripts: ["a.js"] }, { page: "fond.html" }, { service_worker: "sw.js", scripts: ["a.js"] }]) {
       const src = await source({ "manifest.json": baseManifest({ background }), "a.js": "", "sw.js": "", "fond.html": "" });
       const c = await target();
-      const { analysis: analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
+      const { analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
       expect(analysis.denial.length, JSON.stringify(background)).toBeGreaterThan(0);
       expect(existsSync(c)).toBe(false);
     }
@@ -387,7 +387,7 @@ describe("prepareCopy", () => {
     const deep = Array.from({ length: 33 }, (_, i) => `d${i}`).join("/");
     const src = await source({ "manifest.json": baseManifest(), [`${deep}/f.js`]: "" });
     const c = await target();
-    const { analysis: analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
+    const { analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
     expect(analysis.denial.some((r) => r.includes("32"))).toBe(true);
     expect(existsSync(c)).toBe(false);
     const ok = await source({ "manifest.json": baseManifest(), [`${Array.from({ length: 31 }, (_, i) => `d${i}`).join("/")}/f.js`]: "" });
@@ -398,7 +398,7 @@ describe("prepareCopy", () => {
     const src = await source({ "manifest.json": baseManifest() });
     for (let i = 0; i < MAX_ENTRIES; i++) await mkdir(join(src, `v${i}`));
     const c = await target();
-    const { analysis: analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
+    const { analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
     expect(analysis.denial.some((r) => r.includes(String(MAX_ENTRIES)))).toBe(true);
     expect(existsSync(c)).toBe(false);
   });
@@ -412,7 +412,7 @@ describe("prepareCopy", () => {
 
     const src = await source({ "manifest.json": baseManifest(), "a.js": "nouveau" });
     await symlink(outside, join(src, "lien.txt"));
-    const { analysis: analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
+    const { analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
     expect(analysis.denial.some((r) => r.includes("lien.txt"))).toBe(true);
     expect(await readFile(join(c, "a.js"), "utf8")).toBe("ancien");
     expect(existsSync(join(c, "lien.txt"))).toBe(false);
@@ -424,7 +424,7 @@ describe("prepareCopy", () => {
     for (let i = 0; i < FILES_MAX; i++) files[`f/${i}.txt`] = "x";
     const src = await source(files);
     const c = await target();
-    const { analysis: analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
+    const { analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
     expect(analysis.denial.length).toBeGreaterThan(0);
     expect(existsSync(c)).toBe(false);
     expect(existsSync(dirname(c)) ? await readdir(dirname(c)) : []).toEqual([]);
@@ -433,7 +433,7 @@ describe("prepareCopy", () => {
   it("an analysis with refusals writes nothing and returns the refusals", async () => {
     const src = await source({ "manifest.json": baseManifest({ permissions: ["debugger"] }) });
     const c = await target();
-    const { analysis: analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
+    const { analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
     expect(analysis.denial).toEqual(["Droit refusé : debugger"]);
     expect(existsSync(c)).toBe(false);
     expect(existsSync(dirname(c)) ? await readdir(dirname(c)) : []).toEqual([]);
@@ -448,7 +448,7 @@ describe("prepareCopy", () => {
       "regles/r.json": [{ id: 1, action: { type: "redirect", redirect: { url: "https://x.example" } }, condition: {} }],
     });
     const c = await target();
-    const { analysis: analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
+    const { analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
     expect(analysis.denial).toEqual(["Règle DNR refusée (redirect) dans regles/r.json, règle 1"]);
     expect(existsSync(c)).toBe(false);
   });
@@ -456,7 +456,7 @@ describe("prepareCopy", () => {
   it("a file name reserved for Ressac is refused, whatever the case", async () => {
     for (const name of ["ressac-background.js", "Ressac-Fond.js", "RESSAC-GARDE-PAGE.JS", "ressac-files/0.js", "ressac-scope.js", "Ressac-Env/a.js"]) {
       const src = await source({ "manifest.json": baseManifest(), [name]: "1" });
-      const { analysis: analysis } = await prepareCopy({ source: src, target: await target(), keptFolder: DEFAULT_GUARDS });
+      const { analysis } = await prepareCopy({ source: src, target: await target(), keptFolder: DEFAULT_GUARDS });
       expect(analysis.denial.some((r) => r.includes(name)), name).toBe(true);
     }
   });
@@ -467,7 +467,7 @@ describe("prepareCopy", () => {
     const src = await source({ "manifest.json": baseManifest(), "a/b/c.js": "" });
     await symlink(outside, join(src, "a/b/lien.js"));
     const c = await target();
-    const { analysis: analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
+    const { analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
     expect(analysis.denial.some((r) => r.includes("a/b/lien.js"))).toBe(true);
     expect(existsSync(c)).toBe(false);
   });
@@ -478,7 +478,7 @@ describe("prepareCopy", () => {
     const src = await source({ "manifest.json": baseManifest() });
     await symlink(outside, join(src, "ssh"));
     const c = await target();
-    const { analysis: analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
+    const { analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
     expect(analysis.denial.some((r) => r.includes("ssh"))).toBe(true);
     expect(existsSync(c)).toBe(false);
 
@@ -496,7 +496,7 @@ describe("prepareCopy", () => {
     const src = await source({ "manifest.json": baseManifest() });
     await link(outside, join(src, "physique.txt"));
     const c = await target();
-    const { analysis: analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
+    const { analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
     expect(analysis.denial.some((r) => r.includes("physique.txt"))).toBe(true);
     expect(existsSync(c)).toBe(false);
   });
@@ -513,7 +513,7 @@ describe("prepareCopy", () => {
       }
     };
     const c = await target();
-    const { analysis: analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
+    const { analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
     expect(analysis.denial.some((r) => r.includes("a.js"))).toBe(true);
     expect(existsSync(c)).toBe(false);
   });
@@ -527,7 +527,7 @@ describe("prepareCopy", () => {
         await rename(join(src, "b.tmp"), p);
       }
     };
-    const { analysis: analysis } = await prepareCopy({ source: src, target: await target(), keptFolder: DEFAULT_GUARDS });
+    const { analysis } = await prepareCopy({ source: src, target: await target(), keptFolder: DEFAULT_GUARDS });
     expect(analysis.denial.some((r) => r.includes("a.js"))).toBe(true);
   });
 
@@ -543,7 +543,7 @@ describe("prepareCopy", () => {
       }
     };
     const c = await target();
-    const { analysis: analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
+    const { analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
     expect(analysis.denial.some((r) => r.includes("sous"))).toBe(true);
     expect(existsSync(c)).toBe(false);
   });
@@ -620,7 +620,7 @@ describe("localized names (_locales)", () => {
       "_locales/en/messages.json": { extName: { message: "Name" } },
       "_locales/fr/messages.json": { extname: { message: "Nom" } },
     });
-    const { analysis: analysis } = await prepareCopy({ source: src, target: await target(), keptFolder: DEFAULT_GUARDS });
+    const { analysis } = await prepareCopy({ source: src, target: await target(), keptFolder: DEFAULT_GUARDS });
     expect(analysis.name).toBe("Nom");
   });
 });

@@ -172,7 +172,7 @@ export class TabCycle {
 
   private sendPanel(windowId: WindowId, c: InProgress): void {
     const state = this.o.state();
-    const { start: start, end: end } = visibleWindow(c.p);
+    const { start, end } = visibleWindow(c.p);
     const cards = c.p.list.slice(start, end).map((id) => {
       const o = state.tabs[id];
       return { id, title: o?.title ?? "", favicon: o?.favicon ?? null, preview: this.o.preview(id) };

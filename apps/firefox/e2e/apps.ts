@@ -66,7 +66,7 @@ export function writeProject(dataDir: string, folder: string, o: { manifest?: ob
 
 /** Launches app « essai » with the agent's tool; returns its port. */
 export async function launchAttempt(dataDir: string): Promise<number> {
-  const { text: text } = await callTool(dataDir, "launch_app", { folder: "essai" });
+  const { text } = await callTool(dataDir, "launch_app", { folder: "essai" });
   expect(text).toMatch(/en marche sur http:\/\/localhost:\d+/);
   return Number(/localhost:(\d+)/.exec(text)![1]);
 }

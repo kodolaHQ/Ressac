@@ -1,8 +1,7 @@
 import fs from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
-import type { BrowserState } from "../../shared/model";
-import { APPEARANCES, LANGUAGE_SETTING } from "../../shared/model";
+import { APPEARANCES, LANGUAGE_SETTING, type BrowserState } from "../../shared/model";
 import { AURA_IDS, DEFAULT_AURA } from "../../shared/aura";
 import { CUSTOM_ENGINE_MAX, SEARCH_ENGINE_IDS, customEngineError } from "../../shared/search";
 import { ClaudeEngineSchema, CodexEngineSchema, DEFAULT_CLAUDE_ENGINE, DEFAULT_CODEX_ENGINE } from "../../shared/settings";
@@ -213,7 +212,7 @@ export class SessionRecorder {
 
   private async write(state: BrowserState): Promise<void> {
     const tabs = Object.fromEntries(
-      Object.entries(state.tabs).map(([id, { loading: load, canGoBack: canGoBack, canGoForward: canAdvance, crashed: crashes, error: error, agentSearch: _band, call: _call, sound: _sound, playback: _playback, unloaded: _unloaded, ...rest }]) => [id, rest]),
+      Object.entries(state.tabs).map(([id, { loading: _load, canGoBack: _back, canGoForward: _forward, crashed: _crashed, error: _error, agentSearch: _band, call: _call, sound: _sound, playback: _playback, unloaded: _unloaded, ...rest }]) => [id, rest]),
     );
     const target = join(this.folder, FILE);
     const { update: _update, locale: _locale, aiSetup: _aiSetup, welcomeReplay: _welcomeReplay, ...saved } = state;

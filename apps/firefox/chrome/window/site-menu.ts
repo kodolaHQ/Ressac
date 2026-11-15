@@ -3,8 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { format } from "../../shared/i18n";
-import type { WindowId } from "../../shared/model";
-import { tabProfile } from "../../shared/model";
+import { tabProfile, type WindowId } from "../../shared/model";
 import type { RessacStore } from "../store";
 
 /**

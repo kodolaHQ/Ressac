@@ -59,8 +59,8 @@ const ready = (d: DesignHost) => until(() => list(d), (e) => e.server.state !== 
 
 /** Connects a real MCP client with the token of « Brancher » and calls a tool, like a Claude Code would. */
 async function callTool(d: DesignHost, name: string, args: Record<string, unknown>) {
-  const { server: server } = await ready(d);
-  const { command: command } = (await d.handlers["external.connect"]!({ name: "Claude Code" })) as { command: string };
+  const { server } = await ready(d);
+  const { command } = (await d.handlers["external.connect"]!({ name: "Claude Code" })) as { command: string };
   const token = /Bearer (\S+)"/.exec(command)![1]!;
   const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
   const { StreamableHTTPClientTransport } = await import("@modelcontextprotocol/sdk/client/streamableHttp.js");
@@ -340,7 +340,7 @@ describe("design host, the carts", { timeout: 20_000 }, () => {
   });
 
   it("ajouter puts the remark and its PNG in the cart; a blank text gives EMPTY_REMARK; 4001 characters, a non-PNG capture or a bad context give INVALID_REQUEST, nothing written", async () => {
-    const { h, paths: paths } = await withProjects();
+    const { h, paths } = await withProjects();
     const folder = join(paths.internal, "remarks", "demo-15283");
     const add = (o: Record<string, unknown>) => h["design.add"]!({ project: "demo-15283", text: "Plus grand", context: context(), capture: PNG.toString("base64"), ...o });
     const refused = [
@@ -371,7 +371,7 @@ describe("design host, the carts", { timeout: 20_000 }, () => {
   });
 
   it("envoyer of a demo writes the lot under the space and asks the agent's window; of an external project without client gives NO_CLIENT", async () => {
-    const { h, paths: paths, chrome, calls, ext, design, dataDir } = await withProjects();
+    const { h, paths, chrome, calls, ext, design, dataDir } = await withProjects();
     await h["design.add"]!({ project: "demo-15283", text: "Plus grand", context: context(), capture: null });
     expect(await h["design.send"]!({ project: "demo-15283" })).toEqual({ ok: true });
     const folder = join(paths.internal, "remarks", "demo-15283");

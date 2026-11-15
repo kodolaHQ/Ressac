@@ -10,8 +10,8 @@
   let {
     runs: executions,
     selection,
-    output: output,
-    replayable: replayable,
+    output,
+    replayable,
   }: {
     runs: Executions;
     /** The block selected on the canvas. */

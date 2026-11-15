@@ -143,7 +143,7 @@ describe("one Ressac, the app launched in each test", () => {
 
   // applications.spec.ts:93
   it("after launch_app, the agent reads and captures the app's window without asking", async () => {
-    const { text: text } = await callTool(i.dataDir, "launch_app", { folder: "essai" });
+    const { text } = await callTool(i.dataDir, "launch_app", { folder: "essai" });
     expect(text).toContain("(onglet app:essai)");
     await expect.poll(async () => (await callTool(i.dataDir, "list_tabs")).text, { timeout: 10_000 }).toContain("app:essai");
     await expect.poll(async () => (await callTool(i.dataDir, "read_tab", { id: "app:essai" })).text, { timeout: 10_000 }).toContain("Titre : Essai essai");
@@ -236,7 +236,7 @@ describe("one Ressac, the app launched in each test", () => {
 
   // applications.spec.ts:227
   it("a crashing app opens no window", async () => {
-    const { text: text } = await callTool(i.dataDir, "launch_app", { folder: "plante" });
+    const { text } = await callTool(i.dataDir, "launch_app", { folder: "plante" });
     expect(text).toContain("en erreur");
     expect(text).toContain("boum");
     expect(await appWindows(m)).toBe(0);
@@ -264,7 +264,7 @@ describe("one Ressac, the app launched in each test", () => {
     const read = "return { cookie: document.cookie, local: localStorage.k ?? null, session: sessionStorage.k ?? null };";
     const none = { cookie: "", local: null, session: null };
     // Another app, on another port.
-    const { text: text } = await callTool(i.dataDir, "launch_app", { folder: "autre" });
+    const { text } = await callTool(i.dataDir, "launch_app", { folder: "autre" });
     const other = Number(/localhost:(\d+)/.exec(text)![1]);
     const otherWin = appWindowExpr("autre");
     await waitFor(m, `const b = ${otherWin}?.gBrowser.selectedBrowser; return !!b && b.currentURI.spec === "http://localhost:${other}/" && !b.webProgress.isLoadingDocument;`, (v) => v === true, 15_000);

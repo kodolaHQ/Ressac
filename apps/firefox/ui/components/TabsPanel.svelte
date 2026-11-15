@@ -9,7 +9,7 @@
    * ⌃Tab panel: recent tabs as preview cards, the selection outlined. The main process holds the traversal (order,
    * selection, ⌃ release); the panel only displays it and sends back mouse, Escape and ⌃ release.
    */
-  let { panel: panel }: { panel: TabsPanel } = $props();
+  let { panel }: { panel: TabsPanel } = $props();
 
   const send = api.tabCycle;
   const spaceOf = (id: string) => {

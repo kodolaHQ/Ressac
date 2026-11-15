@@ -3,13 +3,13 @@
   import { t } from "../i18n.svelte";
 
   let {
-    subject: subject,
-    name: name,
-    domains: domains,
+    subject,
+    name,
+    domains,
     public: publics,
-    profilesForGrant: profilesForGrant,
-    allow: allow,
-    close: close,
+    profilesForGrant,
+    allow,
+    close,
   }: {
     /** What asks for the grant: a home widget or an action. */
     subject: "widget" | "action";

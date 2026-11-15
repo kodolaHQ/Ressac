@@ -6,7 +6,7 @@
    * `parent.postMessage` reaches the chrome as a `ressac-component` event (the copy's bridge), listened on the window
    * root. It can only ask for its height; anything else, a `ressacOpen` link included, is ignored.
    */
-  let { name: name, props }: { name: string; props: Record<string, unknown> } = $props();
+  let { name, props }: { name: string; props: Record<string, unknown> } = $props();
 
   const MIN_HEIGHT = 20;
   const MAX_HEIGHT = 2000;

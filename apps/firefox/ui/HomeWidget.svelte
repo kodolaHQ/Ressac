@@ -11,14 +11,14 @@
   let {
     widget,
     placement,
-    gesture: gesture,
-    warning: warning,
-    denied: denied,
+    gesture,
+    warning,
+    denied,
     start: beginGesture,
-    remove: remove,
-    allow: allow,
-    deny: deny,
-    harvest: harvest,
+    remove,
+    allow,
+    deny,
+    harvest,
     viewWorkflow: seeWorkflow,
   }: {
     widget: ShownWidget;

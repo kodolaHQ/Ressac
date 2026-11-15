@@ -25,7 +25,7 @@ const pause = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
 
 describe("Remarks", () => {
   test("ajouterAuPanier then a new instance: the cart is re-read from disk with the capture <id>.png", async () => {
-    const { folders: folders, r } = await frame();
+    const { folders, r } = await frame();
     const e = await r.addToBasket("app-essai", { text: "Plus grand", context: ctx(), capture: PNG });
     expect(e.id).toMatch(/^e-[0-9a-f]{8}$/);
     const r2 = new Remarks({ folders: folders });
@@ -46,7 +46,7 @@ describe("Remarks", () => {
   });
 
   test("retirerDuPanier erases the item and its capture", async () => {
-    const { folders: folders, r } = await frame();
+    const { folders, r } = await frame();
     const e = await r.addToBasket("app-essai", { text: "a", context: ctx(), capture: PNG });
     await r.removeFromBasket("app-essai", e.id);
     expect(await r.basket("app-essai")).toEqual([]);
@@ -54,7 +54,7 @@ describe("Remarks", () => {
   });
 
   test("envoyerPanier: batch.json with both items, captures moved, cart empty; empty cart → EMPTY_BASKET", async () => {
-    const { folders: folders, r } = await frame();
+    const { folders, r } = await frame();
     await expect(r.sendBasket("app-essai", { destination: "agent" })).rejects.toThrow(EMPTY_BASKET);
     const a = await r.addToBasket("app-essai", { text: "a", context: ctx(), capture: PNG });
     const b = await r.addToBasket("app-essai", { text: "b", context: ctx(), capture: null });
@@ -72,7 +72,7 @@ describe("Remarks", () => {
   });
 
   test("app-essai writes under remarquesEspace/app-essai; ext-… under prive/remarks/ext-…", async () => {
-    const { folders: folders, r } = await frame();
+    const { folders, r } = await frame();
     const ext = "ext-0123456789abcdef";
     await r.addToBasket("app-essai", { text: "a", context: ctx(), capture: null });
     await r.addToBasket(ext, { text: "b", context: ctx(), capture: PNG });
@@ -189,7 +189,7 @@ describe("Remarks", () => {
   });
 
   test("purger (+31 d) only deletes the fully processed batch; at +29 d keeps everything", async () => {
-    const { folders: folders, clock: clock, r } = await frame();
+    const { folders, clock, r } = await frame();
     const mk = async (p: string, texts: string[]) => {
       for (const text of texts) await r.addToBasket(p, { text: text, context: ctx(), capture: PNG });
       const batch = await r.sendBasket(p, { destination: "mcp" });
@@ -223,7 +223,7 @@ describe("Remarks", () => {
   });
 
   test("tampered basket.json: capture outside the folder ignored, no outside file moved", async () => {
-    const { folders: folders, r } = await frame();
+    const { folders, r } = await frame();
     const folder = remarksFolder(folders, "app-essai");
     await mkdir(folder, { recursive: true });
     const victim = join(folders.spaceRemarks, "victime.txt");
@@ -239,7 +239,7 @@ describe("Remarks", () => {
   });
 
   test("tampered batch.json: id and project imposed by the folder; purge and writes stay within the batch", async () => {
-    const { folders: folders, clock: clock, r } = await frame();
+    const { folders, clock, r } = await frame();
     const ext = "ext-0123456789abcdef";
     await r.addToBasket(ext, { text: "secret", context: ctx(), capture: null });
     const extBatch = await r.sendBasket(ext, { destination: "mcp" });
@@ -273,7 +273,7 @@ describe("Remarks", () => {
   });
 
   test("oublier erases the project; onChange notifies cart and batches", async () => {
-    const { folders: folders, r } = await frame();
+    const { folders, r } = await frame();
     const seen: string[] = [];
     const stop = r.onChange((p) => seen.push(p));
     await r.addToBasket("app-essai", { text: "a", context: ctx(), capture: null });
@@ -288,7 +288,7 @@ describe("Remarks", () => {
   });
 
   test("remarques folder, of a project or of a batch set as a symbolic link (the container writes there): nothing is written at the end of the link", async () => {
-    const { folders: folders, r } = await frame();
+    const { folders, r } = await frame();
     const outside = join(folders.private, "..", "dehors");
     await mkdir(outside, { recursive: true });
     // A project's folder is a link.

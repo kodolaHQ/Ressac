@@ -1,7 +1,6 @@
 import { listOllamaModels } from "./ollama-models.ts";
 import { PULLABLE_MODELS, pullOllamaModel, UNSUPPORTED_MODEL } from "./ollama-pull.ts";
-import { readGrants, readSiteGrants } from "../../../packages/kernel/src/index.ts";
-import type { LocalAi, Workshop } from "../../../packages/kernel/src/index.ts";
+import { readGrants, readSiteGrants, type LocalAi, type Workshop } from "../../../packages/kernel/src/index.ts";
 import type { LocalAiStateShown } from "../shared/api.ts";
 import { startDeviceLogin } from "./device-login.ts";
 import { INVALID_KEY, type AmoKeychain, type Keychain } from "./keychain.ts";

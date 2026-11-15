@@ -14,7 +14,7 @@
    * erase the block's memory). A single history entry per edited field.
    * Without a gesture from the user, nothing is written (selecting a block saves nothing).
    */
-  let { editing: edit, block: block, catalog: catalog, available: available }: { editing: Edit; block: DraftBlock; catalog: BlockCatalogEntry; available: string[] | null } =
+  let { editing: edit, block, catalog, available }: { editing: Edit; block: DraftBlock; catalog: BlockCatalogEntry; available: string[] | null } =
     $props();
 
   const NAME = "#nom";

@@ -17,7 +17,7 @@
    * Creation or settings of a space: the `spaceSettings` draft, mounted as long as it exists. `ongletId`: the page
    * shown at opening, captured for the background (null: none, or a panel hides it).
    */
-  let { windowId: windowId, tabId: tabId }: { windowId: WindowId; tabId: TabId | null } = $props();
+  let { windowId, tabId }: { windowId: WindowId; tabId: TabId | null } = $props();
   // The draft is shared state: the fields modify it in place.
   const draft = untrack(() => spaceSettings.draft)!;
 
@@ -127,7 +127,7 @@
     if (!valid) return;
     const name = draft.name.trim();
     const icon = draft.icon.trim() || "📁";
-    const { id, private: isPrivate, profile: profile, aura } = draft;
+    const { id, private: isPrivate, profile, aura } = draft;
     if (id === null) api.dispatch({ type: "createSpace", name: name, icon: icon, private: isPrivate, profile: profile, aura, windowId: windowId });
     else api.dispatch({ type: "updateSpace", id, name: name, icon: icon, private: isPrivate, profile: profile, aura });
     close();

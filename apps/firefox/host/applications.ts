@@ -178,7 +178,7 @@ export function createApplicationsHost(o: {
       return {
         workshop: docker?.value() ?? "ok",
         apps: applications.map((a) => {
-          const { favicon, lastLaunch: lastLaunch } = memory.read(a.folder);
+          const { favicon, lastLaunch } = memory.read(a.folder);
           return { ...a, ...(favicon ? { favicon } : {}), ...(lastLaunch ? { lastLaunch: lastLaunch } : {}) };
         }),
       };

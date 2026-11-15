@@ -50,7 +50,7 @@ const httpUrl = (s: string) => {
   }
 };
 const urlField = z.string().max(2048).refine((s) => s === "" || httpUrl(s));
-export const modelField = z.string().regex(/^([\w.:\/@+][\w.:\/@+-]{0,127})?$/);
+export const modelField = z.string().regex(/^([\w.:/@+][\w.:/@+-]{0,127})?$/);
 export type ClaudeEngineKind = "subscription" | "ollama" | "api";
 export interface ClaudeEngine {
   kind: ClaudeEngineKind;

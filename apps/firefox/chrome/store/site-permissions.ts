@@ -1,5 +1,4 @@
-import type { Decision, WindowId, TabId, ProfileId, Outcome, Permission } from "../../shared/model";
-import { DEFAULT_PROFILE } from "../../shared/model";
+import { DEFAULT_PROFILE, type Decision, type WindowId, type TabId, type ProfileId, type Outcome, type Permission } from "../../shared/model";
 
 export type SitePermission = Permission | "screen-share" | "drm" | "midi";
 
@@ -136,7 +135,7 @@ export function createSitePermissions(o: {
     async handle(r) {
       await ready;
       if (NO_REQUEST.has(r.kind)) return true;
-      const { tabId: tabId, windowId: windowId, origin: origin, signal } = r;
+      const { tabId, windowId, origin, signal } = r;
       // Handing a link to another application: asked every time, with the link in view.
       if (r.kind === "openExternal") {
         if (!r.link) return false;

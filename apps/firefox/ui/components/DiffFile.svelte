@@ -10,11 +10,11 @@
    * opens a comment on a hunk line (Shift+click or drag extend the range, within the hunk).
    */
   let {
-    project: project,
-    token: token,
+    project,
+    token,
     diff,
-    comments: comments,
-    onChange: onChange,
+    comments,
+    onChange,
   }: { project: string; token: string; diff: DiffFile; comments: DiffComment[]; onChange: () => void } = $props();
 
   type Block = DiffFile["blocks"][number];

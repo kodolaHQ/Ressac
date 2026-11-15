@@ -84,7 +84,7 @@ export function summarizeProfile(p: CpuProfile, metrics: Record<string, number>,
     .filter((e) => e.us > 0)
     .sort((a, b) => b.us - a.us)
     .slice(0, n)
-    .map(({ node: node, us }) => {
+    .map(({ node, us }) => {
       const { functionName, url, lineNumber } = node.callFrame;
       const where = url ? ` (${url}:${lineNumber + 1})` : "";
       const pct = total > 0 ? (us / total) * 100 : 0;

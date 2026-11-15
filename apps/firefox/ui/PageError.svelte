@@ -4,7 +4,7 @@
   import { api } from "./state.svelte";
   import { t } from "./i18n.svelte";
 
-  let { tab: tab }: { tab: Tab } = $props();
+  let { tab }: { tab: Tab } = $props();
 </script>
 
 {#if tab.error}

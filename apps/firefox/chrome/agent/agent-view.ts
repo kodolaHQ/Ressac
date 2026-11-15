@@ -1,6 +1,5 @@
 import type { AgentViewState } from "../../shared/api";
-import type { AccessState } from "../../shared/model";
-import { privateTab } from "../../shared/model";
+import { privateTab, type AccessState } from "../../shared/model";
 import { createActivity } from "../../core/agent/activity";
 import type { Store } from "../store/store";
 import type { WindowRegistry } from "../store/windows";

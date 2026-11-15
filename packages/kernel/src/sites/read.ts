@@ -1,5 +1,4 @@
-import { mkdirSync } from "node:fs";
-import { constants } from "node:fs";
+import { mkdirSync, constants } from "node:fs";
 import { lstat, open, readdir, realpath } from "node:fs/promises";
 import { join, sep } from "node:path";
 import { watch } from "chokidar";

@@ -8,10 +8,10 @@
    * comes from a page or the agent's code: shown as text, never as HTML.
    */
   let {
-    block: block,
-    chosen: chosen,
+    block,
+    chosen,
     run: execution,
-    notFound: notFound,
+    notFound,
   }: { block: string; chosen: ResumeExecution | null; run: Execution | null; notFound: boolean } = $props();
 
   const LABELS = ["succeeded", "partial", "failed", "interrupted", "not-run", "resumed"];

@@ -72,7 +72,7 @@ export class ReviewComments {
   // Serialized read-modify-write: two simultaneous calls do not overwrite each other.
   private transform<T>(f: (list: Comment[]) => { list: Comment[]; result: T }): Promise<T> {
     const task = this.writes.then(async () => {
-      const { list: list, result: result } = f(await this.read());
+      const { list, result } = f(await this.read());
       await writePrivateJson(this.file, list);
       return result;
     });

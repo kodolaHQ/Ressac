@@ -203,7 +203,7 @@ function builtIn(name: string, p: Record<string, unknown>, ctx: Context): Record
         const l = valueFor(p.items, ctx).value;
         if (!Array.isArray(l)) throw new Unreadable();
         const field = fieldOf(p.field);
-        ({ values: items, others: others } = textsOf(l, ctx, (e) => readPath(e, field)));
+        ({ values: items, others } = textsOf(l, ctx, (e) => readPath(e, field)));
       }
       const level = literal(p, "level", true);
       if (!["info", "notice", "warning"].includes(level)) throw new Unreadable();

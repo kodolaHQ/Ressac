@@ -70,7 +70,7 @@ function forme(root: unknown, depth: number): Dict {
   }
   const stack: { v: Dict; prefix: string; level: number }[] = [{ v: root, prefix: "", level: 1 }];
   while (stack.length > 0) {
-    const { v, prefix: prefix, level: level } = stack.shift()!;
+    const { v, prefix, level } = stack.shift()!;
     for (const k of Object.keys(v).slice(0, KEYS_MAX)) {
       const path = prefix + k;
       const e = v[k];

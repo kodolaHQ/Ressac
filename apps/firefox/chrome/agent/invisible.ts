@@ -192,7 +192,7 @@ async function load<T>(
   screens: number,
   waitHost?: WaitHost,
 ): Promise<T> {
-  const { profile: profile, domains: domains } = o;
+  const { profile, domains } = o;
   const allowLocal = o.localAddresses === true;
   const allowed = (u: string) => allowedUrl(u, domains, true) && (allowLocal || !localLiteral(hostOf(u)));
   const checkProfile = () => {

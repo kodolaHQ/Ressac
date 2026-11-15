@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { createHmac, randomUUID } from "node:crypto";
+import { createHmac } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -78,7 +78,7 @@ async function firefoxCopy(o: { id: string; n: number; extra?: Record<string, un
   const dir = await mkdtemp(path.join(os.tmpdir(), "ressac-spike-copy-"));
   await writeTree(path.join(dir, "source"), { ...SOURCE, ...o.files });
   const target = path.join(dir, "copy");
-  const { analysis: analysis } = await prepareCopy({ source: path.join(dir, "source"), target: target, keptFolder: DEFAULT_GUARDS });
+  const { analysis } = await prepareCopy({ source: path.join(dir, "source"), target: target, keptFolder: DEFAULT_GUARDS });
   if (analysis.denial.length) throw new Error(`copy refused: ${analysis.denial.join("; ")}`);
   const manifest = JSON.parse(await readFile(path.join(target, "manifest.json"), "utf8"));
   const gecko = { id: o.id, ...((o.extra?.gecko as object) ?? {}) };

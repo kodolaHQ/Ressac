@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { constants } from "node:fs";
+import { readFileSync, constants } from "node:fs";
 import fs, { lstat, mkdir, open, readdir, realpath, rename } from "node:fs/promises";
 import { extname, join, sep } from "node:path";
 import {
@@ -454,7 +453,7 @@ export function createSites(o: {
   }
 
   const memoryMessage = async (id: string, m: SiteMemory): Promise<MessageToHome & { type: "memory" }> => {
-    const { values: values, positions } = m.content();
+    const { values, positions } = m.content();
     return { type: "memory", values: values, positions, domain: await currentDomain(id) };
   };
 

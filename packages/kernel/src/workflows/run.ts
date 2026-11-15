@@ -230,7 +230,7 @@ export async function runWorkflow(
   const locale = () => infra.locale?.() ?? "en";
   const localUrls = infra.localAddresses ?? false;
   const start = clock().toISOString();
-  const { workflow, order: order } = ctx.valid;
+  const { workflow, order } = ctx.valid;
   const replay = ctx.replay ?? null;
   // For a try, only the rerun blocks send traces, in run order.
   const relaunches = replay ? new Set(replay.reruns) : null;
@@ -261,7 +261,7 @@ export async function runWorkflow(
   let stoppedBySignal = false;
 
   const conclude = (outcome: WorkflowOutcome) => {
-    const blocks: BlockTrace[] = [...traces.values()].map(({ started: started, done: finished, cut: cuts, ...t }) => {
+    const blocks: BlockTrace[] = [...traces.values()].map(({ started, done: finished, cut: cuts, ...t }) => {
       const b: BlockTrace = { ...t };
       // Started without an end: the container stopped during the block (or was stopped on request).
       if (started && !finished) b.status = stoppedBySignal ? "interrupted" : "failed";
@@ -444,7 +444,7 @@ export async function runWorkflow(
   };
 
   const readPage = async (a: unknown): Promise<unknown> => {
-    const { url, account: account, scroll: scroll } = args(ReadPageArgs, a, "readPage");
+    const { url, account, scroll } = args(ReadPageArgs, a, "readPage");
     const scrolling = scroll ? { scroll: scroll } : {};
     const read = infra.bridge.readPageInvisible?.bind(infra.bridge);
     if (!read) throw new Error("Lecture de pages indisponible");
@@ -481,7 +481,7 @@ export async function runWorkflow(
   };
 
   const searchWeb = async (a: unknown): Promise<unknown> => {
-    const { query: request, count: count } = args(SearchWebArgs, a, "searchWeb");
+    const { query: request, count } = args(SearchWebArgs, a, "searchWeb");
     // Refused here even if the validation let it through: a `code` block or a harvest.mjs may call searchWeb.
     if (!web) throw new Error(WEB_REQUIRED(locale()));
     if (searchDenied) throw new Error(SEARCHES_STOPPED);

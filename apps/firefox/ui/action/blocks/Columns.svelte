@@ -2,7 +2,7 @@
   import type { Snippet } from "svelte";
 
   /** Two columns, stacked when the page is under 640 px (page.css). */
-  let { left: left, right: right }: { left: Snippet; right: Snippet } = $props();
+  let { left, right }: { left: Snippet; right: Snippet } = $props();
 </script>
 
 <div class="pa-columns" data-testid="block-columns">

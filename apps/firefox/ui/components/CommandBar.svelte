@@ -31,9 +31,9 @@
    */
   let {
     window: win,
-    activeTab: activeTab,
-    yields: yields,
-    closePanel: closePanel,
+    activeTab,
+    yields,
+    closePanel,
   }: {
     window: WindowState;
     activeTab: Tab | undefined;

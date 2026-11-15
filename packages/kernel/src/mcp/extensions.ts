@@ -126,7 +126,7 @@ export function registerExtensionsTools(
   server: McpServer,
   c: { tools: ExtensionsTools; agent: string; window: string | null; policy: AccessPolicy; heartbeatMs?: number },
 ): void {
-  const { tools: tools } = c;
+  const { tools } = c;
   /**
    * An MCP client gives up on a tool that stays silent too long (Claude Code: 300 s); an AMO signature or a card that
    * waits for the user sometimes takes longer: these tools send a progress notification at this pace. Not the others: a call to the
@@ -181,7 +181,7 @@ export function registerExtensionsTools(
         "Une extension déjà accordée et active dans cet espace : rien n'est redemandé.",
       inputSchema: { id: ID_EXTENSION, space: z.string().max(200).optional() },
     },
-    beating(protect(async ({ id, space: space }: { id: string; space?: string | undefined }) => {
+    beating(protect(async ({ id, space }: { id: string; space?: string | undefined }) => {
       const r = conversationRemoval(c.policy);
       try {
         const rep = await tools.ask(id, { ...(space !== undefined ? { space: space } : {}), window: c.window, agent: c.agent, signal: r.signal });
@@ -252,7 +252,7 @@ export function registerExtensionsTools(
         "Jamais pour une extension du Store.",
       inputSchema: { id: ID_EXTENSION, reason: z.string() },
     },
-    beating(protect(async ({ id, reason: reason }: { id: string; reason: string }) => {
+    beating(protect(async ({ id, reason }: { id: string; reason: string }) => {
       if (isFromStore(id)) return text(AGENT_ONLY);
       const bounded = reason.length > CONSOLE_REASON_LENGTH ? reason.slice(0, CONSOLE_REASON_LENGTH) : reason;
       const r = conversationRemoval(c.policy);

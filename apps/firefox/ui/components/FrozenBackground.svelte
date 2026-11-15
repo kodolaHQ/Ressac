@@ -8,7 +8,7 @@
    * Background of a window modal: the page shown at opening (`ongletId`, null: none, or a panel hides it), frozen
    * and blurred, under a veil. `surPret`: the capture is taken (or abandoned), the modal can show.
    */
-  let { tabId: tabId, onReady: onReady }: { tabId: TabId | null; onReady: () => void } = $props();
+  let { tabId, onReady }: { tabId: TabId | null; onReady: () => void } = $props();
 
   /** Beyond that, the page fades without a capture: the modal must not wait. */
   const PREVIEW_WAIT_MS = 1000;

@@ -52,7 +52,7 @@ describe("source.page", () => {
     expect(withAccount.terminal).toEqual({ t: "end", data: page("https://app.daily.dev/") });
 
     // Without an account: exactly today's call, `readPage(url)`.
-    const { block: src, files: files } = list([{ link: "https://a.fr/1" }, { link: "https://a.fr/2", guard: true }]);
+    const { block: src, files } = list([{ link: "https://a.fr/1" }, { link: "https://a.fr/2", guard: true }]);
     const r = await launch({
       workflow: {
         version: 1,
@@ -85,7 +85,7 @@ describe("source.page", () => {
   });
 
   it("source.page per element: an absent URL leaves the element without champ, without a call or error", async () => {
-    const { block: src, files: files } = list([{ link: "https://a.fr/1" }, { other: 1 }, { link: "" }]);
+    const { block: src, files } = list([{ link: "https://a.fr/1" }, { other: 1 }, { link: "" }]);
     const r = await launch({
       workflow: {
         version: 1,
@@ -180,7 +180,7 @@ describe("source.fetch", () => {
   });
 
   it("source.recuperer per element stores the content under champ (text by default)", async () => {
-    const { block: src, files: files } = list([{ id: 1 }, { id: 2 }]);
+    const { block: src, files } = list([{ id: 1 }, { id: 2 }]);
     const r = await launch({
       workflow: {
         version: 1,

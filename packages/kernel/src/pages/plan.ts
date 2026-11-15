@@ -214,7 +214,7 @@ function apply(op: Operation, entry: unknown): unknown {
       return keys.map((c) => c.e);
     }
     case "filter": {
-      const { field: field, comparison: comparison, value: value } = op;
+      const { field, comparison, value } = op;
       const searches = comparison === "~" ? normalize(String(value)) : "";
       return entry.filter((e) => {
         const v = readPath(e, field);

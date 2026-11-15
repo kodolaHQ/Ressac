@@ -17,7 +17,7 @@ import { SessionAgent } from "./pty/session.js";
 import { AccessPolicy } from "./access/policy.js";
 import { SearchSessions } from "./search/sessions.js";
 import { createWatcher } from "./search/watcher.js";
-import type { TabInfo, BrowserBridge } from "./mcp/bridge.js";
+import type { BrowserBridge } from "./mcp/bridge.js";
 import type { ExtensionsTools } from "./mcp/extensions.js";
 import { startMcpServer, generateToken, type ActionsTools, type AppsTools, type SitesTools, type WidgetsTools, type OpenWorkflow, type AgentActivity } from "./mcp/server.js";
 import { createRecaps, type Recaps } from "./recaps/recaps.js";
@@ -25,7 +25,7 @@ import type { ProfileFiles } from "./mcp/devtools.js";
 import { DevToolsTracking } from "./devtools/tracking.js";
 import type { LocalAi } from "./ai/local-ai.js";
 import { createAiDispatcher } from "./ai/dispatcher.js";
-import { ID_EXECUTION, listRuns, readRun, type Execution } from "./workflows/executions.js";
+import { ID_EXECUTION, listRuns, readRun, type Execution, type ResumeExecution } from "./workflows/executions.js";
 import { DEFAULT_PACING } from "./workflows/run.js";
 import { WidgetsScheduler, type DirectState, type AttemptResult } from "./widgets/scheduler.js";
 import type { NotificationWidget } from "./widgets/novelties.js";
@@ -38,7 +38,6 @@ import { ID_ACTION } from "./actions/schemas.js";
 import { BUILTIN_COMPONENTS } from "./pages/catalog.js";
 import { readAgentComponents } from "./pages/agent-components.js";
 import { resolvePage, type RenderedPage } from "./pages/resolve.js";
-import type { ResumeExecution } from "./workflows/executions.js";
 
 export class WorkshopError extends Error {
   constructor(readonly state: WorkshopState, detail?: string) {
@@ -339,8 +338,8 @@ export async function createKernel(o: {
 
   const policy = new AccessPolicy(o.portBuilt ? { portBuilt: o.portBuilt } : {});
   const search = new SearchSessions({ show: (tabId, band) => void o.bridge.search?.band(tabId, band).catch((e) => console.error("[ressac] search band:", e)) });
-  const { widgetsFolder: widgetsFolder } = o;
-  const { actionsFolder: actionsFolder } = o;
+  const { widgetsFolder } = o;
+  const { actionsFolder } = o;
   // An action deleted (or put in the trash) since the last launch: its data and grant go.
   await forgetGoneActions(paths, actionsFolder).catch((e) => console.error("[ressac] forgetting gone actions:", e));
   const ai = o.ai ?? null;
@@ -575,7 +574,7 @@ export async function createKernel(o: {
       const a = await readAction(paths, id);
       if (!a) throw new Error(say(loc(), "kernel-grant-action-unknown", { id }));
       if ("error" in a) throw new Error(say(loc(), "kernel-grant-action-unreadable", { error: a.error }));
-      const { account: account, public: publics } = a.declaration.sources;
+      const { account, public: publics } = a.declaration.sources;
       if (!account.length) throw new Error(say(loc(), "kernel-grant-action-no-account", { id }));
       if (!sameLists(account, shown) || !sameLists(publics, shownPublic)) {
         throw new Error(say(loc(), "kernel-grant-action-changed", { id }));
@@ -681,7 +680,7 @@ export async function createKernel(o: {
       const w = await widget(id);
       if (!w) throw new Error(say(loc(), "kernel-grant-widget-unknown", { id }));
       if ("error" in w) throw new Error(say(loc(), "kernel-grant-widget-unreadable", { error: w.error }));
-      const { account: account, public: publics } = w.declaration.sources;
+      const { account, public: publics } = w.declaration.sources;
       if (!account.length) throw new Error(say(loc(), "kernel-grant-widget-no-account", { id }));
       if (!sameLists(account, shown) || !sameLists(publics, shownPublic)) {
         throw new Error(say(loc(), "kernel-grant-widget-changed", { id }));

@@ -86,7 +86,7 @@ export async function startExternals(o: {
     connect: async (name) => {
       if (serverState.state !== "ready") throw new Error(serverState.reason);
       const clean = name.trim().slice(0, NAME_MAX) || DEFAULT_NAME;
-      const { token: token } = await o.registry.connect(clean);
+      const { token } = await o.registry.connect(clean);
       return { command: pluggedCommand(serverState.port, token) };
     },
     revoke: (id) => o.registry.revoke(id),

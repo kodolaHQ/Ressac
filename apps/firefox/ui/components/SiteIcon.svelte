@@ -1,7 +1,7 @@
 <script lang="ts">
   import { iconUrl } from "../../shared/icon";
 
-  let { favicon, title: title, size: size = 16 }: { favicon: string | null; title: string; size?: number } = $props();
+  let { favicon, title, size = 16 }: { favicon: string | null; title: string; size?: number } = $props();
   let error = $state(false);
   // The UI has no network: an http(s) favicon goes through ressac-icone: (shared/icon.ts).
   const source = $derived(favicon ? iconUrl(favicon) : null);

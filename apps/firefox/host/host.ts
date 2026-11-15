@@ -881,7 +881,7 @@ const design = createDesignHost({
   dataDir,
   paths: paths,
   port: externalMcpPort(process.env.RESSAC_PORT_MCP_EXTERNAL),
-  sites: () => sites.list().then((l) => l.map(({ id, name: name }) => ({ id, name: name }))),
+  sites: () => sites.list().then((l) => l.map(({ id, name }) => ({ id, name: name }))),
   // Every app (apps.liste() keeps the running ones only).
   siteApps: () => apps.manager.list(),
   // Remarks from the cart and comments from the review: already reviewed by the user, so sent right away.

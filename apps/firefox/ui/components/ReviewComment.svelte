@@ -4,7 +4,7 @@
   import { t } from "../i18n.svelte";
 
   /** A review comment under its lines: its text as is (Markdown not rendered), its state, its actions. */
-  let { project: project, comment: c, onChange: onChange }: { project: string; comment: DiffComment; onChange: () => void } = $props();
+  let { project, comment: c, onChange }: { project: string; comment: DiffComment; onChange: () => void } = $props();
 
   let edit = $state<string | null>(null);
   let error = $state<string | null>(null);

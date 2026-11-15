@@ -10,8 +10,8 @@
    */
   let {
     widget,
-    data: data,
-    size: size,
+    data,
+    size,
     state: appState,
   }: {
     widget: { id: string; name: string; src: string | null };

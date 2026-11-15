@@ -40,7 +40,7 @@ export class RemoteBridge implements BrowserBridge {
     if (h)
       this.history = {
         // The kernel checked the ISO dates and bounded the limit.
-        find: async ({ query: request, since: from, until: until, limit: limit }) =>
+        find: async ({ query: request, since: from, until, limit }) =>
           h.searchForAgent({
             query: request,
             limit: limit,
@@ -153,7 +153,7 @@ export class RemoteBridge implements BrowserBridge {
   private readonly pacedReads = new Map<string, ChangeHost>();
 
   readPageInvisible = async (url: string, o: PageReadOptions): Promise<ReadPage> => {
-    const { signal, changeHost: changeHost, ...options } = o;
+    const { signal, changeHost, ...options } = o;
     if (!changeHost) return this.call<ReadPage>("readPageInvisible", [url, options], signal);
     const id = crypto.randomUUID();
     this.pacedReads.set(id, changeHost);

@@ -5,7 +5,7 @@
   import { t } from "../i18n.svelte";
 
   // Everything from the manifest (name, version, sites, domains) is shown as text, never interpreted.
-  let { request: request, card: card }: { request: PendingRequest; card: ExtensionCard } = $props();
+  let { request, card }: { request: PendingRequest; card: ExtensionCard } = $props();
 
   // Strengthened grant: « Activer » (and Enter, which clicks the primary button) has no effect until the box is checked.
   let included = $state(false);

@@ -276,7 +276,7 @@ export class FakeBridge implements BrowserBridge {
           signal?.addEventListener("abort", cancel, { once: true });
         });
       };
-      this.readPageInvisible = async (url, { signal, changeHost: changeHost, ...l }) => {
+      this.readPageInvisible = async (url, { signal, changeHost, ...l }) => {
         this.note("readPageInvisible", url, { ...l });
         await wait(url, signal);
         if (l.profile !== null && reading.deny?.includes(l.profile)) throw new ProfileDenied(l.profile);

@@ -1,6 +1,5 @@
 import { navigationOutsideSite, TabNotFound, PrivateTab, SiteChanged, type DevRight, type TabInfo, type PageReadOptions } from "../shims/kernel";
-import type { BrowserState, WindowId, Tab, Band } from "../../shared/model";
-import { privateTab, recapOfUrl, WORKFLOW_PREFIX, AGENT_PROFILE } from "../../shared/model";
+import { privateTab, recapOfUrl, WORKFLOW_PREFIX, AGENT_PROFILE, type BrowserState, type WindowId, type Tab, type Band } from "../../shared/model";
 import { searchTemplate } from "../../shared/search";
 import { boundCapture, boundLinks, policyChanges, closedRecaps, activeRecap, shownRecaps, tabInfos, activeTabOf, appTab, siteTab, originOf, SITE_PREFIX, resolveSpace } from "../../core/agent/bridge";
 import type { Handler } from "../../shared/rpc";
@@ -257,7 +256,7 @@ export function trackState(store: Store, host: AgentHost, windows: WindowRegistr
   };
   store.subscribe((state, previous) => {
     refresh();
-    const { navigated: navigated, closed: closed } = policyChanges(previous, state);
+    const { navigated, closed } = policyChanges(previous, state);
     for (const n of navigated) host.notify("policy.navigated", n);
     for (const id of closed) host.notify("policy.closed", { id });
     // Quitting keeps every tab for the restore: no recap goes then.

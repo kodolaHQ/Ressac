@@ -8,16 +8,16 @@
    * workflow », the time of the shown result and the menu of previous results. Nothing is launched without a click (or Enter).
    */
   let {
-    name: name,
-    input: input = $bindable(""),
-    inputLabel: inputLabel,
-    start: start,
-    busy: busy,
-    alreadyLaunched: alreadyLaunched,
-    previous: previous,
-    launch: launch,
+    name,
+    input = $bindable(""),
+    inputLabel,
+    start,
+    busy,
+    alreadyLaunched,
+    previous,
+    launch,
     viewWorkflow: seeWorkflow,
-    choose: choose,
+    choose,
   }: {
     name: string;
     /** The field's text, pre-filled with the shown result's input. */

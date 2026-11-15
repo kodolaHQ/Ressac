@@ -19,7 +19,7 @@
     widget,
     editing: edit,
     runs: executions,
-    catalog: catalog,
+    catalog,
     selection,
   }: { widget: string; editing: Edit; runs: Executions; catalog: Map<string, BlockCatalogEntry>; selection: string | null } = $props();
 
