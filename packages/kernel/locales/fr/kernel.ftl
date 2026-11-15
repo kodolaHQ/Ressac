@@ -69,3 +69,4 @@ kernel-replay-block-absent = Rejeu impossible : le bloc « { $id } » n'est pas 
 kernel-replay-output-missing = Rejeu impossible : la sortie de « { $id } » manque dans cette exécution
 kernel-replay-output-truncated = Rejeu impossible : la sortie de « { $id } » a été tronquée dans cette exécution
 kernel-replay-too-big = Rejeu impossible : les sorties à reprendre dépassent 4 Mo
+kernel-network-failed = Le réseau de l'agent n'a pas pu être sécurisé : { $error }

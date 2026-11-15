@@ -585,3 +585,57 @@ describe("the container from before the rename to Ressac", () => {
     expect(calls.some((c) => c.args[0] === "rm")).toBe(false);
   });
 });
+
+describe("agent network", () => {
+  const network = () => ({ ports: [5281, 5282], domains: ["ok.example.com", "evil.com/x", "1.2.3.4", "*.com", "-a.com", "Up.com", "*.good.dev"] });
+  const make = (rules: Parameters<typeof fakeRunner>[0], withNetwork = true) => {
+    const { run, calls } = fakeRunner(rules);
+    return { calls, workshop: new Workshop({ paths: paths, docker: "docker", run, ...(withNetwork ? { network } : {}) }) };
+  };
+
+  test("docker run carries the network, memory and proxy flags once each", async () => {
+    let launched = false;
+    const { run, calls } = fakeRunner([
+      [/ image inspect /, { code: 1 }],
+      [/ inspect /, () => ({ code: launched ? 0 : 1, stdout: "true\n" })],
+      [/ run /, () => ((launched = true), { code: 0 })],
+    ]);
+    await new Workshop({ paths: paths, docker: "docker", run }).ensureStarted();
+    const args = calls.find((a) => a.args[0] === "run")!.args;
+    const count = (x: string) => args.filter((a) => a === x).length;
+    for (const f of ["--cap-add", "--memory", "--pids-limit", "--sysctl"]) expect(count(f)).toBe(1);
+    expect(args.join(" ")).toContain("--cap-add NET_ADMIN --memory 4g --pids-limit 1024 --sysctl net.ipv6.conf.all.disable_ipv6=1");
+    for (const e of [
+      "HTTPS_PROXY=http://127.0.0.1:3128", "https_proxy=http://127.0.0.1:3128", "HTTP_PROXY=http://127.0.0.1:3128", "http_proxy=http://127.0.0.1:3128",
+      "NO_PROXY=localhost,127.0.0.1,host.docker.internal", "no_proxy=localhost,127.0.0.1,host.docker.internal",
+      "NODE_USE_ENV_PROXY=1", "DISABLE_AUTOUPDATER=1", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1",
+    ]) expect(args.filter((a) => a === e), e).toHaveLength(1);
+  });
+
+  test("secureNetwork applies the rules with valid domains only, then probes", async () => {
+    const { workshop, calls } = make([[/curl/, { code: 7 }]]);
+    await workshop.secureNetwork();
+    expect(calls[0]!.args).toEqual(["exec", "-u", "root", "-i", "ressac-workshop", "node", "/opt/ressac/ressac-network.mjs", "apply"]);
+    expect(JSON.parse(calls[0]!.opts!.input!)).toEqual({ ports: [5281, 5282], domains: ["ok.example.com", "*.good.dev"] });
+    expect(calls[1]!.args).toEqual(["exec", "ressac-workshop", "curl", "-s", "--noproxy", "*", "--max-time", "3", "https://1.1.1.1"]);
+  });
+
+  test("secureNetwork fails closed: apply error, or a reachable probe", async () => {
+    await expect(make([[/apply/, { code: 1, stderr: "boom\n" }]]).workshop.secureNetwork()).rejects.toThrow(/boom/);
+    await expect(make([[/curl/, { code: 0 }]]).workshop.secureNetwork()).rejects.toThrow(/could not be secured/);
+  });
+
+  test("secureNetwork does nothing without a network option", async () => {
+    const { workshop, calls } = make([], false);
+    await workshop.secureNetwork();
+    expect(calls).toEqual([]);
+  });
+
+  test("the kernel's domain validator agrees with the image's", async () => {
+    // @ts-expect-error plain .mjs without declarations
+    const image = (await import("../../docker/ressac-network.mjs")) as { validDomain: (d: string) => boolean };
+    const { validDomain } = await import("../../src/container/workshop.js");
+    for (const d of ["a.com", "*.a.com", "a.b-c.io", "evil.com/x", "1.2.3.4", "*.com", "com", "-a.com", "a-.com", "Up.com", "a b.com", "a.com:80", "", "*.", "x".repeat(254) + ".com", "a..com"])
+      expect(validDomain(d), d).toBe(image.validDomain(d));
+  });
+});

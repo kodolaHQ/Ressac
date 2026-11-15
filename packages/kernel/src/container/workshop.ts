@@ -94,6 +94,19 @@ function appFolder(folder: string): string {
   return folder;
 }
 
+/** Same syntax as docker/ressac-network.mjs, which runs as root in the image (a test keeps both in agreement). */
+export function validDomain(d: string): boolean {
+  if (typeof d !== "string" || d.length === 0 || d.length > 253) return false;
+  const name = d.startsWith("*.") ? d.slice(2) : d;
+  const labels = name.split(".");
+  return labels.length >= 2 && labels.every((l) => /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(l) && l.length <= 63) && !/^[0-9.]+$/.test(name);
+}
+
+export interface AgentNetwork {
+  ports: number[];
+  domains: string[];
+}
+
 export type WorkshopState = "docker-absent" | "absent" | "arrete" | "demarre";
 
 /** Looks for the docker CLI in the PATH then at known locations (Finder does not have the shell's PATH). */
@@ -172,6 +185,7 @@ export class Workshop {
   }
   private readonly dockerFolder: string;
   private readonly locale: () => string;
+  private readonly network: (() => AgentNetwork) | undefined;
   /** Startup in progress, shared: two windows opening an agent do not build the image twice. */
   private startup: Promise<WorkshopState> | null = null;
   /** Rebuild in progress, shared: two rebuilds at once build once. */
@@ -180,7 +194,8 @@ export class Workshop {
   private progress: BuildProgress | null = null;
   private readonly listeners = new Set<(p: BuildProgress) => void>();
 
-  constructor(o: { paths: SpacePaths; run?: Runner; docker?: string | null; findDocker?: () => string | null; dockerFolder?: string; locale?: () => string }) {
+  constructor(o: { paths: SpacePaths; run?: Runner; docker?: string | null; findDocker?: () => string | null; dockerFolder?: string; locale?: () => string; network?: () => AgentNetwork }) {
+    this.network = o.network;
     this.locale = o.locale ?? (() => "en");
     this.dockerFolder = o.dockerFolder ?? DEFAULT_DOCKER_FOLDER;
     this.paths = o.paths;
@@ -188,8 +203,8 @@ export class Workshop {
     this.lookup = o.docker === undefined ? (o.findDocker ?? findDocker) : () => o.docker ?? null;
   }
 
-  private launch(args: string[], delayMs?: number) {
-    return this.run(this.docker!, args, delayMs ? { delayMs: delayMs } : undefined);
+  private launch(args: string[], delayMs?: number, input?: string) {
+    return this.run(this.docker!, args, delayMs || input !== undefined ? { ...(delayMs ? { delayMs } : {}), ...(input !== undefined ? { input } : {}) } : undefined);
   }
 
   /** Every window waiting on the shared start hears the build's steps. Returns the unsubscribe. */
@@ -268,6 +283,26 @@ export class Workshop {
     return this.launch(["exec", containerName(), ...argv], PROBE_DELAY_MS);
   }
 
+  /**
+   * Installs the network rules and the proxy (as root, JSON on stdin) then checks the web is really closed.
+   * Called before every agent session: a restarted container has no rules. Throws if either step fails.
+   */
+  async secureNetwork(): Promise<void> {
+    if (!this.network) return;
+    const fail = (error: string): never => {
+      throw new Error(say(this.locale(), "kernel-network-failed", { error }));
+    };
+    const { ports, domains } = this.network();
+    const apply = await this.launch(
+      ["exec", "-u", "root", "-i", containerName(), "node", "/opt/ressac/ressac-network.mjs", "apply"],
+      PROBE_DELAY_MS,
+      JSON.stringify({ ports, domains: domains.filter(validDomain) }),
+    );
+    if (apply.code !== 0) fail(tail(apply.stderr) || `code ${apply.code}`);
+    const probe = await this.launch(["exec", containerName(), "curl", "-s", "--noproxy", "*", "--max-time", "3", "https://1.1.1.1"], PROBE_DELAY_MS);
+    if (probe.code === 0) fail("direct access still open");
+  }
+
   private async start(o: { fresh?: boolean } = {}): Promise<WorkshopState> {
     let state = await this.state();
     if (state === "docker-absent") return state;
@@ -302,6 +337,16 @@ export class Workshop {
       "-p", `127.0.0.1:${ports}:${ports}`,
       // AGENTS.md tells the agent to keep its hand-run servers in this range.
       "-e", `RESSAC_PORTS=${ports}`,
+      // The agent reaches the web only through the allowlist proxy (see secureNetwork); the rules need NET_ADMIN.
+      "--cap-add", "NET_ADMIN",
+      "--memory", "4g",
+      "--pids-limit", "1024",
+      "--sysctl", "net.ipv6.conf.all.disable_ipv6=1",
+      ...["HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"].flatMap((k) => ["-e", `${k}=http://127.0.0.1:3128`]),
+      ...["NO_PROXY", "no_proxy"].flatMap((k) => ["-e", `${k}=localhost,127.0.0.1,host.docker.internal`]),
+      "-e", "NODE_USE_ENV_PROXY=1",
+      "-e", "DISABLE_AUTOUPDATER=1",
+      "-e", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1",
       "-w", CONTAINER_PATH,
       IMAGE,
       "sleep", "infinity",

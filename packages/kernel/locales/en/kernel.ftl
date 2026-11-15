@@ -69,3 +69,4 @@ kernel-replay-block-absent = Replay impossible: block « { $id } » is not in th
 kernel-replay-output-missing = Replay impossible: the output of « { $id } » is missing from this run
 kernel-replay-output-truncated = Replay impossible: the output of « { $id } » was truncated in this run
 kernel-replay-too-big = Replay impossible: the outputs to resume exceed 4 MB
+kernel-network-failed = The agent's network could not be secured: { $error }

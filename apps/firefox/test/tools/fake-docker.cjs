@@ -168,6 +168,13 @@ function launchApp(options, command) {
 if (args[0] === "exec") {
   const options = args.slice(1, args.indexOf("ressac-workshop"));
   let command = args.slice(args.indexOf("ressac-workshop") + 1);
+  // Network securing (Workshop.secureNetwork): the rules apply (stdin drained), the direct probe is blocked (curl exit 7).
+  if (command[0] === "node" && command[1] === "/opt/ressac/ressac-network.mjs") {
+    process.stdin.resume();
+    process.stdin.on("end", () => quit(0));
+    return;
+  }
+  if (command[0] === "curl" && command.includes("https://1.1.1.1")) quit(7);
   if (options.some((o) => o.startsWith("RESSAC_APP="))) {
     launchApp(options, command);
     return;
