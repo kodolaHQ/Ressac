@@ -134,9 +134,11 @@
   // A pull started elsewhere (the welcome, another window) shows here until it ends.
   $effect(() => {
     let timer: ReturnType<typeof setInterval> | undefined;
+    let stopped = false;
     if (!aiOn()) return;
     void s.pullProgress().then((p) => {
-      if (!p || pulling) return;
+      // Cleaned up before the answer came: no poll left behind.
+      if (!p || pulling || stopped) return;
       pulling = p;
       timer = setInterval(() => void s.pullProgress().then((q) => {
         if (q) return void (pulling = q);
@@ -145,7 +147,10 @@
         reloadAi();
       }), 700);
     });
-    return () => clearInterval(timer);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
   });
   const pullLabel = (p: PullProgress) => (p.percent === null ? t("settings-pull-progress-unknown") : t("settings-pull-progress", { percent: p.percent }));
 

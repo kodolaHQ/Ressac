@@ -86,8 +86,11 @@ export function mountSearchBand(win: Window, store: RessacStore, windowId: Windo
       tick = undefined;
     }
     doc.documentElement.toggleAttribute("ressac-search-band", !!b);
-    resize();
+    // The observer follows its size; a layout only when it appears or goes.
+    if (!!b !== was) resize();
+    was = !!b;
   };
+  let was: boolean | undefined;
   // Its room: its height and the 8 px gap under it, as the page has to the window's edge.
   const resize = () => doc.documentElement.style.setProperty("--ressac-search-band", shown ? `${band.getBoundingClientRect().height + 8}px` : "0px");
   const observer = new ResizeObserver(resize);

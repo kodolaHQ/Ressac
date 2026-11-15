@@ -181,7 +181,11 @@ export function bridgeHandlers(
       const t = tab(searchTab);
       return openTabIn(t.windowId, url, t.spaceId, { profile: AGENT_PROFILE, background: true });
     },
-    "search.close": ([id]: [string]) => void store.dispatch({ type: "closeTab", id }),
+    // Only a page the search opened (agent profile, not private): never a tab of the user's.
+    "search.close": ([id]: [string]) => {
+      const o = store.state.tabs[id];
+      if (o?.profile === AGENT_PROFILE && !privateTab(store.state, o)) store.dispatch({ type: "closeTab", id });
+    },
     // The band of the search tab: the window draws it (window/search-band.ts) from the tab's state.
     "search.band": ([id, band]: [string, Band | null]) => {
       const handing = band?.state === "yours" && store.state.tabs[id]?.agentSearch?.state !== "yours";
@@ -199,7 +203,8 @@ export function bridgeHandlers(
       return "opened";
     },
     "recaps.close": ([id]: [string]) => {
-      for (const o of Object.values(store.state.tabs)) if (recapOfUrl(o.url) === id) store.dispatch({ type: "closeTab", id: o.id });
+      for (const o of Object.values(store.state.tabs))
+        if (recapOfUrl(o.url) === id && !privateTab(store.state, o)) store.dispatch({ type: "closeTab", id: o.id });
     },
     "recaps.active": ([win]: [WindowId | null]) => activeRecap(store.state, win ?? windows.active()),
     "recaps.visible": () => shownRecaps(store.state),

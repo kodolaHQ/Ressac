@@ -22,7 +22,8 @@ export function mountSiteMenu(win: Window, store: RessacStore, windowId: WindowI
     item.setAttribute("label", format(store.state.locale, "chrome-menu-forget-permissions"));
   };
   label();
-  store.subscribe((s, p) => s.locale !== p.locale && label());
+  // The store outlives the window: its listener goes with it.
+  win.addEventListener("unload", store.subscribe((s, p) => s.locale !== p.locale && label()), { once: true });
   item.addEventListener("command", () => {
     const f = store.state.windows.find((x) => x.id === windowId);
     const tab = f && store.state.tabs[f.active[f.activeSpace] ?? ""];
