@@ -69,8 +69,8 @@ it("open_tab opens an active agent tab, readable and capturable", async () => {
   const s = await state(m);
   expect(s.tabs[id]?.openedByAgent).toBe(true);
   expect(s.windows[0]!.active[s.windows[0]!.activeSpace]).toBe(id);
-  // Its sidebar row is the current one and carries the agent's ✦.
-  await waitUi(m, "const li = doc.querySelector(arguments[0]); return li?.getAttribute('aria-current') === 'page' && li.querySelector('.agent')?.textContent === '✦'", [`[data-testid="tab-${id}"]`]);
+  // Its sidebar row is the current one, in the « Agent » section, and carries the agent's ✦.
+  await waitUi(m, "const li = doc.querySelector(arguments[0]); return li?.getAttribute('aria-current') === 'page' && li.querySelector('.agent')?.textContent === '✦' && !!li.closest('[aria-label=\"' + arguments[1] + '\"]')", [`[data-testid="tab-${id}"]`, "Onglets de l'agent"]);
   const parsed = await call("read_tab", { id });
   expect(parsed.text).toContain(`URL : ${server.url}/texte.html`);
   expect(parsed.text).toContain("Le chat dort");

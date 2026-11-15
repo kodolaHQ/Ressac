@@ -310,6 +310,13 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       else delete o.call;
       return true;
     }
+    case "keepTab": {
+      const o = d.tabs[a.id];
+      // The agent's own profile is not the user's: those tabs are kept as a copy (TabList).
+      if (!o?.openedByAgent || o.profile === AGENT_PROFILE) return false;
+      o.openedByAgent = false;
+      return true;
+    }
     case "setAgentSearch": {
       const o = d.tabs[a.id];
       if (!o || (a.band === null ? !o.agentSearch : JSON.stringify(o.agentSearch) === JSON.stringify(a.band))) return false;

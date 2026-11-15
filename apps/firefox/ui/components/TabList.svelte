@@ -9,16 +9,21 @@
   import { openMenu } from "./menu.svelte";
   import { t } from "../i18n.svelte";
 
-  /** `agent`: the agent's browsing tabs (its own login profile), in their section; otherwise the user's tabs. */
+  /** `agent`: every tab the agent opened (its search tabs in its own login profile, the pages it opened for the user in theirs), in their section; otherwise the user's tabs. */
   let { window: win, agent = false }: { window: WindowState; agent?: boolean } = $props();
   const all = $derived(win.order[win.activeSpace] ?? []);
-  const agentTab = (id: string) => appState.value?.tabs[id]?.profile === AGENT_PROFILE;
+  const agentTab = (id: string) => {
+    const tab = appState.value?.tabs[id];
+    return tab?.profile === AGENT_PROFILE || !!tab?.openedByAgent;
+  };
   const order = $derived(all.filter((id) => agentTab(id) === agent));
   let folded = $state(false);
-  /** Keeping an agent tab opens its page among the user's tabs, in the space's own profile: the agent's closes with its search. */
+  /** Keeping a tab in the agent's profile opens a copy among the user's tabs, in the space's own profile (the agent's closes with its search); one already in the user's profile just moves there. */
   const keep = (id: string, after?: string) => {
-    const url = appState.value?.tabs[id]?.url;
-    if (url) api.dispatch({ type: "openTab", windowId: win.id, url, ...(after ? { after } : {}) });
+    const tab = appState.value?.tabs[id];
+    if (!tab) return;
+    if (tab.profile !== AGENT_PROFILE) return void api.dispatch({ type: "keepTab", id });
+    api.dispatch({ type: "openTab", windowId: win.id, url: tab.url, ...(after ? { after } : {}) });
   };
   const active = $derived(win.active[win.activeSpace]);
   /** Drop point: before or after the hovered tab, depending on the half under the mouse (the line shows it). */

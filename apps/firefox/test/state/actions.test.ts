@@ -1082,6 +1082,17 @@ test("a space cannot be created with the agent's profile", () => {
   expect(e.spaces.length).toBe(before);
 });
 
+test("keepTab hands a tab the agent opened in the user's profile to the user; never one in the agent's profile", () => {
+  const a = open("https://a.test/", { openedByAgent: true });
+  const s = open("https://s.test/", { openedByAgent: true, profile: AGENT_PROFILE });
+  ag({ type: "keepTab", id: a });
+  expect(e.tabs[a]!.openedByAgent).toBe(false);
+  const before = e;
+  expect(apply(e, { type: "keepTab", id: a }, genId)).toBe(before);
+  expect(apply(e, { type: "keepTab", id: s }, genId)).toBe(before);
+  expect(apply(e, { type: "keepTab", id: "nope" }, genId)).toBe(before);
+});
+
 test("setAgentSearch sets and clears the tab's band; unknown id or no change → same reference", () => {
   const a = open("https://a.test/");
   const band = { state: "yours" as const, text: "x", pages: 2, startedAt: 5 };

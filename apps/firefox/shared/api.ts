@@ -34,6 +34,8 @@ export const SchemaAction = z.discriminatedUnion("type", [
     title: z.string().optional(),
   }),
   z.object({ type: z.literal("closeTab"), id }),
+  /** A tab the agent opened in the user's profile leaves the « Agent » section for the user's tabs. */
+  z.object({ type: z.literal("keepTab"), id }),
   z.object({ type: z.literal("setCall"), id, call: z.object({ mic: z.boolean(), camera: z.boolean() }).nullable() }),
   z.object({
     type: z.literal("setAgentSearch"),
