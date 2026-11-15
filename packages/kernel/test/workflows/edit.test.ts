@@ -222,6 +222,16 @@ test("readCodeFile / storeCode refuse ../x.mjs, x.js, an outgoing link, over 256
   expect((await readdir(files)).filter((n) => n.endsWith(".tmp"))).toEqual([]);
 });
 
+test("storeCode and saveWorkflow never write through a widget folder that is a link", async () => {
+  const mac = join(root, "mac-ecrit");
+  await mkdir(mac);
+  const linked = join(root, "lien-ecrit");
+  await symlink(mac, linked);
+  expect(await storeCode(linked, "x.mjs", "export default 1")).toMatchObject({ ok: false });
+  expect(await saveWorkflow({ filesFolder: linked, dataFolder: data, raw: wf() })).toMatchObject({ ok: false });
+  expect(await readdir(mac)).toEqual([]);
+});
+
 test("readCodeFile never reads through a widget folder swapped for a link, nor a named pipe", async () => {
   const mac = join(root, "mac");
   await mkdir(mac);

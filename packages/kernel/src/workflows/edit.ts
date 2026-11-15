@@ -1,8 +1,7 @@
 import { realpath, stat } from "node:fs/promises";
 import { basename, dirname, join, sep } from "node:path";
-import { inFolder as inConfinedFolder, readFiles, type ReadFiles } from "../workspace/confined.js";
+import { inFolder as inConfinedFolder, readFiles, writeEntries, type ReadFiles } from "../workspace/confined.js";
 import { say } from "../i18n.js";
-import { writeAtomic } from "./executions.js";
 import { exists, readRawWorkflow } from "./read.js";
 import { withMemory, writeMemory, paramsHash, canonicalJson, readMemory } from "./memory.js";
 import { WORKFLOW_MAX_SIZE } from "./schema.js";
@@ -43,6 +42,16 @@ async function inFolder(folder: string, name: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * `text` written atomically as `name` in `folder` by the confined child: the folder entered from its parent, never through
+ * a link even one swapped in meanwhile. False if the folder was refused; throws if the write failed.
+ */
+async function writeConfined(folder: string, name: string, text: string): Promise<boolean> {
+  const r = await inConfinedFolder(dirname(folder), [basename(folder)], writeEntries, [[[name, Buffer.from(text).toString("base64")]], []]);
+  if (r === "failed") throw new Error(`${name} not written`);
+  return r === "done";
 }
 
 async function folderExists(folder: string): Promise<boolean> {
@@ -138,7 +147,7 @@ export async function saveWorkflow(o: {
       })
     : [];
 
-  await writeAtomic(target, text);
+  if (!(await writeConfined(o.filesFolder, "workflow.json", text))) return { ok: false, error: say(locale, "workflows-file-leaves-folder") };
   return { ok: true, written: true, memoryErased: erasedMemory };
 }
 
@@ -162,7 +171,7 @@ export async function storeCode(filesFolder: string, name: string, text: string,
   const path = join(filesFolder, name);
   if ((await exists(path)) && !(await inFolder(filesFolder, name))) return { ok: false, error: say(locale, "workflows-code-leaves-folder") };
   try {
-    await writeAtomic(path, text);
+    if (!(await writeConfined(filesFolder, name, text))) return { ok: false, error: say(locale, "workflows-code-leaves-folder") };
   } catch {
     return { ok: false, error: say(locale, "workflows-code-write-failed") };
   }
