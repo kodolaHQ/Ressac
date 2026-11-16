@@ -612,12 +612,16 @@ describe("openAgentSession with a profile", () => {
         await n.openAgentSession({ cols: 80, rows: 24, window: "f5", profile: "codex", mode: "workshop" }),
       ];
       const [browser, workshop, none, codex, codexWorkshop] = start.mock.calls.map((x) => x[0].join(" "));
-      expect(browser).toContain("--disallowedTools Bash,mcp__ressac__launch_app --strict-mcp-config --disallowedTools WebSearch,WebFetch");
-      expect(start.mock.calls[0]![0].at(-2)).toBe("--mcp-config");
-      expect(workshop).not.toMatch(/Bash|launch_app|strict-mcp-config/);
+      const claudeArgs = start.mock.calls[0]![0];
+      const sources = claudeArgs.indexOf("--setting-sources");
+      expect(claudeArgs.slice(sources, sources + 6)).toEqual(["--setting-sources", "", "--settings", '{"skipDangerousModePermissionPrompt":true}', "--append-system-prompt-file", "/workspace/AGENTS.md"]);
+      expect(browser).toContain("--disallowedTools Bash,mcp__ressac__launch_app --strict-mcp-config --setting-sources");
+      expect(browser).toContain("/workspace/AGENTS.md --disallowedTools WebSearch,WebFetch");
+      expect(claudeArgs.at(-2)).toBe("--mcp-config");
+      expect(workshop).not.toMatch(/Bash|launch_app|strict-mcp-config|setting-sources|AGENTS/);
       expect(none).toContain("--disallowedTools Bash,mcp__ressac__launch_app");
-      expect(codex).toContain(`--disable shell_tool -c mcp_servers.ressac.disabled_tools=["launch_app"] -c notify=[] -m x`);
-      expect(codexWorkshop).not.toMatch(/shell_tool|launch_app|notify/);
+      expect(codex).toContain(`--disable shell_tool -c mcp_servers.ressac.disabled_tools=["launch_app"] -c notify=[] -c model_provider="openai" -m x`);
+      expect(codexWorkshop).not.toMatch(/shell_tool|launch_app|notify|model_provider/);
       for (const s of opened) await s.stop();
     });
   });

@@ -17,8 +17,9 @@ RUN useradd --system --no-create-home --shell /usr/sbin/nologin ressac-proxy
 COPY ressac-network.mjs /opt/ressac/ressac-network.mjs
 
 # Only root-owned (managed) hooks run: a hook the agent writes in a settings or config file it owns is ignored.
+# Claude: no hook nor status line at all (Ressac ships none).
 RUN mkdir -p /etc/claude-code /etc/codex \
- && echo '{"allowManagedHooksOnly": true}' > /etc/claude-code/managed-settings.json \
+ && echo '{"allowManagedHooksOnly": true, "disableAllHooks": true}' > /etc/claude-code/managed-settings.json \
  && echo 'allow_managed_hooks_only = true' > /etc/codex/requirements.toml \
  && chmod 644 /etc/claude-code/managed-settings.json /etc/codex/requirements.toml
 

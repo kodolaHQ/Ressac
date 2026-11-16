@@ -691,9 +691,15 @@ export async function createKernel(o: {
         // Browser mode, shipped programs only: no shell, and no `launch_app` (it runs `ressac.json`'s command, a shell by another door).
         // Claude's go first (its MCP config stays last); Codex's after its `-c mcp_servers.ressac={…}`, which would reset the table.
         // Only the session's MCP config, and no `notify`: a server or a notify command the agent writes into its own config runs commands.
+        // Claude reads no user, project or local settings, skills or agents (statusLine, apiKeyHelper… run commands; managed and
+        // --settings still apply), so AGENTS.md, which it then skips as CLAUDE.md's import, comes as a system prompt file.
+        // Codex: the built-in provider, so no `auth.command` of a provider the agent defines (Ressac's engines set theirs after).
         const browser = mode === "browser";
-        const claudeNoShell = browser && program === "claude" ? ["--disallowedTools", "Bash,mcp__ressac__launch_app", "--strict-mcp-config"] : [];
-        const codexNoShell = browser && program === "codex" ? ["--disable", "shell_tool", "-c", 'mcp_servers.ressac.disabled_tools=["launch_app"]', "-c", "notify=[]"] : [];
+        const claudeNoShell =
+          browser && program === "claude"
+            ? ["--disallowedTools", "Bash,mcp__ressac__launch_app", "--strict-mcp-config", "--setting-sources", "", "--settings", '{"skipDangerousModePermissionPrompt":true}', "--append-system-prompt-file", `${CONTAINER_PATH}/AGENTS.md`]
+            : [];
+        const codexNoShell = browser && program === "codex" ? ["--disable", "shell_tool", "-c", 'mcp_servers.ressac.disabled_tools=["launch_app"]', "-c", "notify=[]", "-c", 'model_provider="openai"'] : [];
         const command = [built[0]!, ...language, ...claudeNoShell, ...built.slice(1), ...codexNoShell, ...(extra?.args ?? [])];
         const session = SessionAgent.start(workshop.sessionCommand(id, command, Object.keys(env)), { cols, rows, env: env, stopRemote: () => workshop.stopSession(id) });
         openSessions.add(clean);
