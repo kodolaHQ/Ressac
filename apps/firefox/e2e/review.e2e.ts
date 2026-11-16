@@ -255,7 +255,8 @@ it("at start the site app's first photo exists under <dataDir>/design/review/sit
   });
   await expect.poll(() => existsSync(reviewedRef(w!.dataDir, "site-essai")), { timeout: 15_000 }).toBe(true);
   writeAppJs(path.join(w!.dataDir, "workspace", "sites", "essai"), modified(15));
-  await click(m, tid("site-essai-review"));
+  await click(m, tid("site-essai-more"));
+    await click(m, '[role="menuitem"]', { text: "Modifications" });
   await waitUi(m, `return !!doc.querySelector('${PAGE}')`);
   expect((await reviewTabs("site-essai")).map((o) => o.title)).toEqual(["Relecture — Essai"]);
   await waitCount(tid("review-file"), 1);

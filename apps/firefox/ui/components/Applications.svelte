@@ -268,10 +268,26 @@
                   <button data-testid="site-{s.id}-open" onclick={() => actSite(s, "open")}>{t("home-apps-open")}</button>
                 {/if}
                 <button data-testid="site-{s.id}-edit" onclick={() => actSite(s, "edit")}>{t("home-apps-site-edit")}</button>
-                <button data-testid="site-{s.id}-forget" onclick={() => (siteToForget = s)}>{t("home-apps-site-forget")}</button>
-                <button data-testid="site-{s.id}-folder" onclick={() => actSite(s, "folder")}>{t("home-apps-folder")}</button>
-                <button data-testid="site-{s.id}-review" onclick={() => actSite(s, "review")}>{t("home-apps-changes")}</button>
-                <button data-testid="site-{s.id}-delete" onclick={() => (siteToDelete = s)}>{t("home-delete")}</button>
+                <!-- The rest in a menu, as for the apps: a row of six buttons wrapped into a column in a narrow window. -->
+                <button
+                  class="options"
+                  data-testid="site-{s.id}-more"
+                  aria-label={t("home-apps-more")}
+                  title={t("home-apps-more")}
+                  onclick={(e) => {
+                    e.stopPropagation(); // the window would close the menu right away
+                    openMenu(
+                      e,
+                      [
+                        { label: t("home-apps-site-forget"), dispatch: () => (siteToForget = s) },
+                        { label: t("home-apps-folder"), dispatch: () => actSite(s, "folder") },
+                        { label: t("home-apps-changes"), dispatch: () => actSite(s, "review") },
+                        { label: t("home-delete"), dispatch: () => (siteToDelete = s) },
+                      ],
+                      { free: true },
+                    );
+                  }}><Icon name="options" /></button
+                >
               </div>
               {/if}
             </li>
