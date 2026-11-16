@@ -22,5 +22,8 @@ RUN mkdir -p /etc/claude-code /etc/codex \
  && echo 'allow_managed_hooks_only = true' > /etc/codex/requirements.toml \
  && chmod 644 /etc/claude-code/managed-settings.json /etc/codex/requirements.toml
 
+# npm install scripts off by default (global npmrc, root-owned; ~/.npmrc or a project .npmrc can still override it).
+RUN echo 'ignore-scripts=true' > /usr/local/etc/npmrc
+
 USER node
 WORKDIR /workspace
