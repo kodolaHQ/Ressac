@@ -154,7 +154,14 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
           } catch {
             return { id: a.id, name: a.name, login: a.login.kind, state: "error", error: tail(r.stderr || r.stdout) };
           }
-          return { id: a.id, name: a.name, login: a.login.kind, state: s.loggedIn ? "logged-in" : "logged-out", ...(s.account ? { account: s.account } : {}) };
+          return {
+            id: a.id,
+            name: a.name,
+            login: a.login.kind,
+            state: s.loggedIn ? "logged-in" : "logged-out",
+            ...(s.account ? { account: s.account } : {}),
+            ...(a.login.kind === "device" && signIn ? { signingIn: true as const } : {}),
+          };
         } catch (e) {
           return { id: a.id, name: a.name, login: a.login.kind, state: "error", error: failure(e) };
         }
@@ -207,11 +214,16 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
       try {
         // The login runs the agent's CLI as node: never before the network rules are in place.
         await o.workshop.secureNetwork();
-        signIn = startDeviceLogin(o.deviceCommand(a.login.argv), { origin: a.login.origin });
+        const started = startDeviceLogin(o.deviceCommand(a.login.argv), { origin: a.login.origin });
+        signIn = started;
+        // Ended on its own (signed in, code expired) or stopped: Réglages then stops showing the code.
+        void started.ended.then(() => {
+          if (signIn === started) signIn = undefined;
+        });
       } catch (e) {
         return { kind: "error", error: failure(e) };
       }
-      const r = await signIn.result;
+      const r = await signIn!.result;
       // A workshop built before Codex has no `codex` yet (docker exec: exit 127).
       if (r.kind === "error" && /executable file not found|command not found|codex: not found/.test(r.error)) return { kind: "error", error: hostSay("host-codex-missing") };
       return r;

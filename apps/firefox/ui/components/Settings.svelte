@@ -62,6 +62,8 @@
     agents = await s.agents();
     // A finished sign-in forgets its code: after a logout, the row offers Se connecter again.
     for (const a of agents) if (a.state === "logged-in") delete logins[a.id];
+    // A code still shown whose sign-in ended without signing in (expired, or stopped before an agent session): say so, offer it again.
+    else if (logins[a.id]?.kind === "device" && !a.signingIn) logins[a.id] = { kind: "error", error: t("settings-agent-device-interrupted") };
   };
   // AI off: Agents, IA locale and Atelier show the asleep card and ask nothing of the host.
   $effect(() => void (aiOn() && loadAgents()));

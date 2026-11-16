@@ -25,6 +25,7 @@ settings-agent-docker-absent = Docker n'est pas lancé : voir Conteneur.
 settings-agent-no-container = L'atelier de l'agent n'est pas démarré : voir Conteneur.
 settings-agent-device-code = Ouvrez la page de connexion et saisissez le code
 settings-agent-device-waiting = En attente de la connexion…
+settings-agent-device-interrupted = la connexion par code s'est interrompue, recommencez
 settings-agent-panel-login = Claude Code vous demande de vous connecter dans le panneau de l'agent ; sinon, tapez /login.
 settings-agent-codex-login = Connexion avec votre abonnement ChatGPT : un code à saisir sur le site d'OpenAI.
 settings-agent-open-chats = Les conversations déjà ouvertes continuent jusqu'à leur relance.

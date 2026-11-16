@@ -25,6 +25,7 @@ settings-agent-docker-absent = Docker is not running: see Container.
 settings-agent-no-container = The agent's workshop is not started: see Container.
 settings-agent-device-code = Open the sign-in page and enter the code
 settings-agent-device-waiting = Waiting for sign-in…
+settings-agent-device-interrupted = the sign-in by code was interrupted, start again
 settings-agent-panel-login = Claude Code asks you to sign in in the agent panel; otherwise, type /login.
 settings-agent-codex-login = Sign in with your ChatGPT subscription: a code to enter on OpenAI's site.
 settings-agent-open-chats = Conversations that are already open keep going until they restart.

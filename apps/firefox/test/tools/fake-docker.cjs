@@ -216,7 +216,10 @@ if (args[0] === "exec") {
     process.stderr.write("Follow these steps to sign in:\n1. Open https://auth.openai.com/codex/device\n2. Enter this code: ABCD-12345\n");
     // <RESSAC_ROOT>/fake-codex-device-delay-ms: how long the code takes to be "entered" (1 s by default); a test changes it between sign-ins.
     const delayFile = join(env.RESSAC_ROOT, "fake-codex-device-delay-ms");
+    // <RESSAC_ROOT>/fake-codex-device-expires: the code is never entered, the CLI gives up (as at its 15 min).
+    const expires = existsSync(join(env.RESSAC_ROOT, "fake-codex-device-expires"));
     setTimeout(() => {
+      if (expires) process.exit(1);
       writeFileSync(codexAuth, "");
       process.exit(0);
     }, existsSync(delayFile) ? Number(readFileSync(delayFile, "utf8")) : 1_000);

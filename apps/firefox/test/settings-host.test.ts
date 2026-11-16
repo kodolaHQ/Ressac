@@ -151,11 +151,15 @@ describe("settings host", () => {
   });
 
   it("loginEnded waits at most maxMs, then ends a sign-in that never finishes", async () => {
-    const { h, alive } = setup();
+    const { h, alive } = setup({ exec: async (argv: string[]) => ({ code: 1, stdout: argv[0] === "codex" ? "Not logged in" : '{"loggedIn":false}', stderr: "" }) });
     expect(await h["settings.login"]!({ id: "codex" })).toMatchObject({ kind: "device" });
     await vi.waitFor(() => expect(alive()).toEqual([true]));
+    const codex = async () => ((await h["settings.agents"]!({})) as any[]).find((x) => x.id === "codex");
+    expect(await codex()).toMatchObject({ signingIn: true });
     await h.loginEnded(100);
     await vi.waitFor(() => expect(alive()).toEqual([false]));
+    // Réglages reads that it ended: the code gives way to « interrompue » and Se connecter.
+    await vi.waitFor(async () => expect((await codex()).signingIn).toBeUndefined());
   });
 
   it("login refused while the agent's network cannot be secured: the CLI never runs", async () => {

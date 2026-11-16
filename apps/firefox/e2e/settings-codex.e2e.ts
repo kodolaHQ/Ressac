@@ -113,6 +113,15 @@ describe("Codex in Settings", () => {
     await waitFor<BrowserState>(m, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).state)();`, (st) => Object.values(st.tabs).some((t) => t.url === "https://auth.openai.com/codex/device"));
   });
 
+  it("a sign-in by code that ends unsigned says it was interrupted and offers Se connecter again", { timeout: 60_000 }, async () => {
+    await launch();
+    writeFileSync(join(w!.dataDir, "workspace", "fake-codex-device-expires"), "");
+    await click(m, '[data-testid="agent-codex"] [data-testid="agent-login"]');
+    await shows("device-code", "ABCD-12345");
+    await shows("agent-codex", "la connexion par code s'est interrompue, recommencez", 10_000);
+    await waitUi(m, `return !!doc.querySelector('[data-testid="agent-codex"] [data-testid="agent-login"]') && !doc.querySelector('[data-testid="device-code"]')`);
+  });
+
   it("engine persists; an invalid field says so and changes nothing", async () => {
     await launch();
     await shows("codex-engine", "Moteur de Codex");

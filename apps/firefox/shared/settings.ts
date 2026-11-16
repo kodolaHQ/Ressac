@@ -25,6 +25,8 @@ export interface AgentAccount {
   login: "panel" | "device";
   account?: string;
   error?: string;
+  /** A sign-in by code is running in the workshop: absent once it ended (signed in, expired or stopped). */
+  signingIn?: true;
 }
 export type LoginResult = { kind: "panel" } | { kind: "device"; url: string; code: string } | { kind: "error"; error: string };
 export type GrantKind = "site" | "widget" | "action" | "siteApp" | "external";
