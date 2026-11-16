@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { createWriteStream, existsSync, readdirSync } from "node:fs";
 import { mkdir, readdir, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { OllamaStatus } from "../shared/settings.ts";
 import { hostSay } from "./locale.ts";
@@ -43,6 +44,8 @@ export interface OllamaRuntimeOptions {
   startDelayMs?: number;
   pollMs?: number;
   archive?: { url: string; sha256: string };
+  /** The download is dropped after this long without a byte (default 60 s). */
+  idleMs?: number;
 }
 
 /** Claude Code's prompt, its tools and AGENTS.md fill a third or more of the 32k Ollama picks on a 48 GB Mac: a local agent needs room to work. */
@@ -128,8 +131,16 @@ export function createOllamaRuntime(o: OllamaRuntimeOptions) {
       const part = `${folder}.part`;
       await rm(part, { recursive: true, force: true });
       await mkdir(part, { recursive: true });
+      // A network gone without a reset (sleep, Wi-Fi change) would hang the read forever, and every later download with it.
+      const idle = new AbortController();
+      let timer: NodeJS.Timeout | undefined;
+      const wait = () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => idle.abort(), o.idleMs ?? 60_000);
+      };
       try {
-        const r = await f(archive.url);
+        wait();
+        const r = await f(archive.url, { signal: idle.signal });
         if (!r.ok || !r.body) throw new Error(hostSay("host-ollama-download-failed", { status: String(r.status) }));
         const total = Number(r.headers.get("content-length")) || 0;
         const tgz = join(part, "ollama.tgz");
@@ -137,9 +148,11 @@ export function createOllamaRuntime(o: OllamaRuntimeOptions) {
         let got = 0;
         // pipeline: a write error (a full disk) rejects here, instead of an uncaught error ending the host.
         await pipeline(
-          r.body as unknown as AsyncIterable<Uint8Array>,
+          // A Node stream: aborting the pipeline cancels its read (a bare web stream's pending read would stay).
+          Readable.fromWeb(r.body as import("node:stream/web").ReadableStream<Uint8Array>),
           async function* (chunks: AsyncIterable<Uint8Array>) {
             for await (const chunk of chunks) {
+              wait();
               hash.update(chunk);
               got += chunk.length;
               progress(total ? Math.min(100, Math.round((got / total) * 100)) : null);
@@ -147,7 +160,9 @@ export function createOllamaRuntime(o: OllamaRuntimeOptions) {
             }
           },
           createWriteStream(tgz),
+          { signal: idle.signal },
         );
+        clearTimeout(timer);
         if (hash.digest("hex") !== archive.sha256) throw new Error(BAD_ARCHIVE());
         if ((await run("tar", ["-xzf", tgz, "-C", part])) !== 0) throw new Error(BAD_ARCHIVE());
         await rm(tgz, { force: true });
@@ -156,8 +171,9 @@ export function createOllamaRuntime(o: OllamaRuntimeOptions) {
         // The copies of older versions go: only this one is ever started again.
         for (const n of await readdir(root)) if (n !== OLLAMA_VERSION && !n.endsWith(".part")) await rm(join(root, n), { recursive: true, force: true });
       } catch (e) {
+        clearTimeout(timer);
         await rm(part, { recursive: true, force: true });
-        throw e;
+        throw idle.signal.aborted ? new Error(hostSay("host-download-interrupted")) : e;
       }
     }
     await start();

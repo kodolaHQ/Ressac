@@ -24,7 +24,7 @@ const temp = () => (dirs.push(mkdtempSync(join(tmpdir(), "ollama-runtime-"))), d
 const APP = "/Applications/Ollama.app";
 
 /** A fake machine: `version` is what /api/version answers (undefined: nothing listens), `paths` what exists. */
-function machine(o: { version?: string; paths?: string[]; managed?: boolean; archive?: Buffer; sha256?: string; startsAfterLaunch?: boolean }) {
+function machine(o: { version?: string; paths?: string[]; managed?: boolean; archive?: Buffer; sha256?: string; startsAfterLaunch?: boolean; stalls?: true }) {
   const dataDir = temp();
   const state = { version: o.version, ran: [] as string[], launched: [] as string[], killed: 0 };
   const paths = new Set(o.paths ?? []);
@@ -35,12 +35,15 @@ function machine(o: { version?: string; paths?: string[]; managed?: boolean; arc
     managed: o.managed ?? true,
     pollMs: 1,
     startDelayMs: 50,
+    idleMs: 200,
     exists: (p) => paths.has(p) || existsSync(p) && p.startsWith(dataDir),
     fetch: (async (url: string) => {
       if (String(url).endsWith("/api/version")) {
         if (state.version === undefined) throw new Error("refused");
         return new Response(JSON.stringify({ version: state.version }));
       }
+      // A network gone silent: one chunk, then nothing, ever.
+      if (o.stalls) return new Response(new ReadableStream({ start: (c) => c.enqueue(new Uint8Array(10)) }), { headers: { "content-length": "100" } });
       return new Response(o.archive && new Uint8Array(o.archive), { headers: { "content-length": String(o.archive?.length ?? 0) } });
     }) as typeof fetch,
     run: async (cmd, args) => {
@@ -144,6 +147,12 @@ describe("the Ollama runtime", () => {
     expect(uncaught).toEqual([]);
     expect(existsSync(join(m.dataDir, "ollama", `${OLLAMA_VERSION}.part`))).toBe(false);
     expect(m.state.launched).toEqual([]);
+  });
+
+  it("a download that stalls is dropped after the idle delay and leaves nothing behind", async () => {
+    const m = machine({ stalls: true });
+    await expect(m.runtime.install(() => {})).rejects.toThrow("Le téléchargement s'est interrompu");
+    expect(existsSync(join(m.dataDir, "ollama", `${OLLAMA_VERSION}.part`))).toBe(false);
   });
 
   it("install refuses an archive whose hash differs and leaves nothing behind", async () => {
