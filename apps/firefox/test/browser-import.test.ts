@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { pruneBookmarks, summary, visitBatches } from "../chrome/store/import/importer";
+import { isAccessDenied, pruneBookmarks, summary, visitBatches } from "../chrome/store/import/importer";
 import { chromiumProfiles, detectSources, firefoxProfiles } from "../chrome/store/import/sources";
 
 let home = "";
@@ -88,5 +88,17 @@ describe("end notification", () => {
     const p = summary({ source: "chrome", done: true, counts: { bookmarks: 1, history: 0 }, failed: { passwords: "accès refusé" } }, "fr");
     expect(p.title).toBe("Import terminé en partie");
     expect(p.text).toBe("1 favori, 0 page d'historique. Non importé : mots de passe (accès refusé)");
+  });
+});
+
+describe("access refused by macOS", () => {
+  it("tells IOUtils' refusal (the tester's copy error) from a lock or a bad file", () => {
+    const denied = Object.assign(new Error("Could not copy `/u/Library/Application Support/Google/Chrome/Local State` to `/d/import-tmp/chrome/Local State' (NS_ERROR_FILE_ACCESS_DENIED)"), { name: "NotAllowedError" });
+    expect(isAccessDenied(denied)).toBe(true);
+    expect(isAccessDenied({ name: "NotAllowedError", message: "Could not open the file" })).toBe(true);
+    expect(isAccessDenied(new Error("x (NS_ERROR_FILE_ACCESS_DENIED)"))).toBe(true);
+    expect(isAccessDenied(new Error("database is locked"))).toBe(false);
+    expect(isAccessDenied(Object.assign(new Error("gone"), { name: "NotFoundError" }))).toBe(false);
+    expect(isAccessDenied(null)).toBe(false);
   });
 });

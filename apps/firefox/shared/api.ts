@@ -478,13 +478,18 @@ export interface ApiRessac {
 export type ImportSourceId = "arc" | "chrome" | "brave" | "edge" | "vivaldi" | "opera" | "safari" | "firefox" | "zen";
 export type ImportType = "bookmarks" | "history" | "passwords" | "spaces" | "tabs";
 export interface ImportSource { id: ImportSourceId; name: string; /** The installed app's icon; null when the app is not found. */ icon: string | null; types: ImportType[]; passwordsByCsv: boolean }
-export interface ImportProgress { source: ImportSourceId; done: boolean; counts: Partial<Record<ImportType, number>>; failed: Partial<Record<ImportType, string>> }
+/** denied: macOS refused a read, which the person can allow in Réglages Système › Fichiers et dossiers. */
+export interface ImportProgress { source: ImportSourceId; done: boolean; counts: Partial<Record<ImportType, number>>; failed: Partial<Record<ImportType, string>>; denied?: boolean }
 /** Import from another browser on this Mac: one run at a time, in the background; a notification tells the end. */
 export interface BrowserImportApi {
   /** Only the browsers whose data folder exists (no file of theirs is read). */
   sources(): Promise<ImportSource[]>;
   /** A source's profiles, the last used first: read only once the person picks that source. */
   profiles(source: ImportSourceId): Promise<{ id: string; name: string }[]>;
+  /** ask: macOS 26+ wants the person's consent before Ressac reads that browser's data (nothing is read to know it). */
+  access(source: ImportSourceId): Promise<"ready" | "ask">;
+  /** The macOS folder picker on that browser's folder; denied: picked but still refused (Réglages Système can allow it). */
+  grantAccess(source: ImportSourceId): Promise<{ ok: true } | { ok: false; error: string; denied: boolean }>;
   /** Answers at once; the import goes on in the background. */
   start(o: { source: ImportSourceId; profile: string | null; types: ImportType[] }): Promise<{ ok: true } | { ok: false; error: string }>;
   /** The run in progress, or the last one; null before any. */
@@ -557,6 +562,7 @@ export interface SettingsApi {
   openNotificationSettings(): void;
   /** macOS's System Settings › Privacy & Security › Full Disk Access. */
   openFullDiskAccessSettings(): void;
+  openFilesAndFoldersSettings(): void;
   /** Asks Firefox's updater now; the answer arrives in the state's `update`. */
   checkForUpdate(): void;
   /** Quits and reopens Ressac on the downloaded update. */

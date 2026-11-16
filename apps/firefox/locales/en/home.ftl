@@ -107,6 +107,8 @@ home-import-done = Import finished.
 home-import-started = Import started: a notification will tell you when it is done.
 home-import-failed = { $type }: { $why }
 home-import-disk-access = Open settings
+home-import-access = macOS protects { $name }'s data. Click “Allow access”, then “Open” in the window that appears: it is already on the right folder.
+home-import-access-grant = Allow access
 
 ## Release notes page
 

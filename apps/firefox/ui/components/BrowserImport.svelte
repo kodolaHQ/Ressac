@@ -23,19 +23,44 @@
   let progress = $state<ImportProgress | null>(null);
   let refusal = $state<string | null>(null);
   let csv = $state<string | null>(null);
+  /** ask: macOS wants the person's consent first (nothing of that browser is read before). */
+  let access = $state<"ready" | "ask" | null>(null);
+  let accessNote = $state<{ text: string; denied: boolean } | null>(null);
+  /** The macOS picker is open: a second click would open another. */
+  let granting = $state(false);
 
   const source = $derived(sources?.find((s) => s.id === chosen));
   const types = $derived(source?.types.filter((t) => !(t === "passwords" && source.passwordsByCsv)) ?? []);
   const failures = $derived(progress?.done ? (Object.entries(progress.failed) as [ImportType, string][]) : []);
   // Every Safari failure is the missing Full Disk Access (the importer says so whatever the language).
   const diskAccess = $derived(progress?.source === "safari" && failures.length > 0);
+  // macOS 26+ refused another app's data: the person allows it in Fichiers et dossiers.
+  const filesAccess = $derived(!diskAccess && (!!accessNote?.denied || (!!progress?.done && !!progress.denied)));
 
   function choose(s: ImportSource) {
-    [chosen, profile, profiles, unchecked] = [s.id, null, [], []];
+    [chosen, profile, profiles, unchecked, access, accessNote] = [s.id, null, [], [], null, null];
+    void bi.access(s.id).then((a) => {
+      if (chosen !== s.id) return;
+      access = a;
+      if (a === "ready") readProfiles(s.id);
+    }, () => (access = "ready"));
+  }
+  function readProfiles(id: ImportSourceId) {
     // null until read: the host then takes the last used profile.
-    void bi.profiles(s.id).then((list) => {
-      if (chosen === s.id) [profiles, profile] = [list, list[0]?.id ?? null];
+    void bi.profiles(id).then((list) => {
+      if (chosen === id) [profiles, profile] = [list, list[0]?.id ?? null];
     }, () => {});
+  }
+  async function grant() {
+    if (!source) return;
+    const id = source.id;
+    granting = true;
+    const r = await bi.grantAccess(id).finally(() => (granting = false));
+    if (chosen !== id) return;
+    accessNote = r.ok ? null : { text: r.error, denied: r.denied };
+    if (!r.ok) return;
+    [access, refusal] = ["ready", null];
+    readProfiles(id);
   }
   /** Bumped by each start: a progress answer asked before it belongs to an older run and is dropped. */
   let generation = 0;
@@ -113,6 +138,15 @@
             </label>
           {/each}
         </div>
+        {#if access === "ask"}
+          <div class="guide" data-testid="import-access" out:fade={{ duration: 150 }}>
+            <span>{t("home-import-access", { name: source.name })}</span>
+            <div class="row">
+              <button type="button" data-testid="import-access-grant" disabled={granting} onclick={() => void grant()}>{t("home-import-access-grant")}</button>
+            </div>
+            {#if accessNote}<span class="note" data-testid="import-access-note" role="status">{accessNote.text}</span>{/if}
+          </div>
+        {/if}
         {#if source.passwordsByCsv}
           <div class="guide" data-testid="import-guide" out:fade={{ duration: 150 }}>
             <b>{t("home-import-passwords")}</b>
@@ -128,7 +162,7 @@
       </div>
     {/if}
     <div class="row">
-      <button type="button" data-testid="import-start" disabled={!types.some((t) => !unchecked.includes(t))} onclick={() => void start()}>{t("home-import-start")}</button>
+      <button type="button" data-testid="import-start" disabled={access !== "ready" || !types.some((t) => !unchecked.includes(t))} onclick={() => void start()}>{t("home-import-start")}</button>
     </div>
     {#if refusal}{@render status("import-refusal", "warn", refusal)}{/if}
     {#if watching && progress?.done}{@render status("import-done", "ok", t("home-import-done"))}
@@ -137,6 +171,10 @@
     {#if diskAccess}
       <div class="row" out:fade={{ duration: 150 }}>
         <button type="button" data-testid="import-disk-access" onclick={() => api.settings.openFullDiskAccessSettings()}>{t("home-import-disk-access")}</button>
+      </div>
+    {:else if filesAccess}
+      <div class="row" out:fade={{ duration: 150 }}>
+        <button type="button" data-testid="import-files-access" onclick={() => api.settings.openFilesAndFoldersSettings()}>{t("home-import-disk-access")}</button>
       </div>
     {/if}
   {/if}

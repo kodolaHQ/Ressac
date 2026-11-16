@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { DatabaseSync } from "node:sqlite";
 import os from "node:os";
@@ -92,7 +92,7 @@ beforeAll(async () => {
   dataDir = await mkdtemp(join(os.tmpdir(), "ressac-data-"));
   mkdirSync(join(dataDir, "import-tmp/chrome/Default"), { recursive: true });
   writeFileSync(join(dataDir, "import-tmp/chrome/Default/Login Data"), "copie");
-  w = await launchRessac({ dataDir, env: { RESSAC_TEST_IMPORT_HOME: home, RESSAC_TEST_IMPORT_CSV: csv, RESSAC_TEST_REVEAL: join(home, "opened.txt") } });
+  w = await launchRessac({ dataDir, env: { RESSAC_TEST_IMPORT_HOME: home, RESSAC_TEST_IMPORT_CSV: csv, RESSAC_TEST_REVEAL: join(home, "opened.txt"), RESSAC_TEST_IMPORT_ACCESS: "brave", RESSAC_TEST_IMPORT_PICK: join(home, "pick.txt") } });
   m = w.marionette;
   await m.setContext("chrome");
 });
@@ -332,5 +332,51 @@ describe("import from another browser", () => {
     await shows("release-notes", "Import depuis un autre navigateur");
     if (process.env.RESSAC_SHOT) await new Promise((r) => setTimeout(r, 1_000));
     if (process.env.RESSAC_SHOT) writeFileSync(process.env.RESSAC_SHOT + ".notes.png", Buffer.from((await m.command<{ value: string }>("WebDriver:TakeScreenshot", { full: false, hash: false })).value, "base64"));
+  });
+
+  // A beta tester on macOS 26+: « Accès aux données bloqué », then raw engine errors. Brave stands for a protected browser.
+  it("macOS 26+: access is asked before any read; cancelled, refused and granted picks; a refused read is told plainly", async () => {
+    const brave = join(home, "Library/Application Support/BraveSoftware/Brave-Browser");
+    cpSync(join(home, "Library/Application Support/Google/Chrome"), brave, { recursive: true });
+    const [pick, opened] = [join(home, "pick.txt"), join(home, "opened.txt")];
+    try {
+      await openSettings();
+      await click(m, '[data-testid="settings-nav-data"]');
+      if (!(await there("browser-import"))) await click(m, '[data-testid="data-import"]');
+      expect(await api("access(arguments[0])", ["brave"])).toBe("ask");
+      expect(await api("profiles(arguments[0])", ["brave"])).toEqual([]);
+      expect(await api("start(arguments[0])", [{ source: "brave", profile: null, types: ["bookmarks"] }])).toEqual({ ok: false, error: "Autorisez d'abord l'accès aux données de Brave" });
+      await click(m, '[data-testid="import-source-brave"]');
+      await shows("import-access", "macOS protège les données de Brave.");
+      expect(await inUi(m, `return doc.querySelector('[data-testid="import-start"]').disabled`)).toBe(true);
+      writeFileSync(pick, "cancel");
+      await click(m, '[data-testid="import-access-grant"]');
+      await shows("import-access-note", "Accès non accordé : sans lui, Ressac ne peut pas lire les données de Brave.");
+      expect(await there("import-files-access")).toBe(false);
+      // Picked, but macOS still refuses (here: unreadable for its owner): the way to Réglages Système.
+      writeFileSync(pick, "");
+      chmodSync(join(brave, "Local State"), 0o000);
+      await click(m, '[data-testid="import-access-grant"]');
+      await shows("import-access-note", "macOS refuse encore l'accès aux données de Brave.");
+      await click(m, '[data-testid="import-files-access"]');
+      await expect.poll(() => (existsSync(opened) ? readFileSync(opened, "utf8") : "")).toContain("x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders\n");
+      chmodSync(join(brave, "Local State"), 0o644);
+      await click(m, '[data-testid="import-access-grant"]');
+      await gone("import-access");
+      expect(await api("access(arguments[0])", ["brave"])).toBe("ready");
+      // The tester's case: a file macOS refuses during the run, and its copy too. Told plainly, never the engine's text.
+      chmodSync(join(brave, "Default/History"), 0o000);
+      await click(m, '[data-testid="import-type-passwords"]');
+      await click(m, '[data-testid="import-start"]');
+      await shows("import-failed-history", "Historique : macOS a refusé l'accès : autorisez Ressac dans Réglages Système › Confidentialité et sécurité › Fichiers et dossiers");
+      expect(await inUi(m, `return doc.querySelector('[data-testid="browser-import"]').textContent.includes("NS_ERROR")`)).toBe(false);
+      // The bookmarks came in on the first pass: the refused copy fails only History.
+      expect(await there("import-failed-bookmarks")).toBe(false);
+      expect((await finished()).counts.bookmarks).toBeTypeOf("number");
+      await waitUi(m, `return !!doc.querySelector('[data-testid="import-files-access"]')`);
+    } finally {
+      chmodSync(join(brave, "Local State"), 0o644);
+      chmodSync(join(brave, "Default/History"), 0o644);
+    }
   });
 });

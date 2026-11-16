@@ -16,6 +16,8 @@ export interface SettingsChrome {
   openNotificationSettings(): void;
   /** System Settings › Privacy & Security › Full Disk Access: Safari's bookmarks and history are behind it. */
   openFullDiskAccessSettings(): void;
+  /** System Settings › Privacy & Security › Files and Folders: macOS 26+ asks there before Ressac reads another app's data. */
+  openFilesAndFoldersSettings(): void;
   /** Whether macOS opens web links with Ressac. */
   defaultBrowser(): boolean;
   /** Asks macOS, which shows its own confirmation: the answer comes later, in `defaultBrowser()`. */
@@ -87,6 +89,7 @@ export function createSettingsChrome(dataDir: string, telemetryActive: boolean, 
     },
     openNotificationSettings: () => openSystemSettings("x-apple.systempreferences:com.apple.Notifications-Settings.extension"),
     openFullDiskAccessSettings: () => openSystemSettings("x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"),
+    openFilesAndFoldersSettings: () => openSystemSettings("x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders"),
     defaultBrowser() {
       if (test) return testDefault;
       try {

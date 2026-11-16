@@ -81,6 +81,9 @@ export function summary(p: ImportProgress, locale: string): { title: string; tex
   return { title, text: [got, failed && format(locale, "chrome-import-not-imported", { failed })].filter(Boolean).join(". ") };
 }
 
+/** macOS refused the read (another app's data, macOS 26+): the person can allow it, unlike a lock or a bad file. */
+export const isAccessDenied = (e: unknown) => (e as { name?: unknown } | null)?.name === "NotAllowedError" || /NS_ERROR_FILE_ACCESS_DENIED/.test(String((e as { message?: unknown } | null)?.message ?? e));
+
 /** Why a type could not be read when no error says it: the engine's migrators only say that it failed. */
 function reason(locale: string, def: SourceDef, type: ImportType, unreadableFile: boolean): string {
   if (def.kind === "safari") return format(locale, "chrome-import-safari-denied");
@@ -113,6 +116,34 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
   let progress: ImportProgress | null = null;
   let running = false;
   const say = (id: string, args?: Record<string, string>) => format(store.state.locale, id, args);
+  /** An error's text for the screen, and whether macOS refused the read. */
+  const failure = (e: unknown) => ({ text: isAccessDenied(e) ? say("chrome-import-access-denied") : e instanceof Error ? e.message : String(e), denied: isAccessDenied(e) });
+
+  // Since macOS 26, reading another app's data needs the person's consent: a folder picker on that folder gives it
+  // (the engine's getPermissions does the same). Firefox and Zen are not asked, as in the engine.
+  // shortcut: granted for this launch only (any check is a read that macOS would block); upgrade if testers mind the picker per launch.
+  const testAccess = (Services.env.get("RESSAC_TEST_IMPORT_ACCESS") || "").split(",");
+  const granted = new Set<string>();
+  // Read once: a run switches the engine's answer off while it reads, which must not open other browsers.
+  const protectedData = MigratorBase.needsFolderSelectionToReadData();
+  const asks = (def: SourceDef) => def.kind === "chromium" && !granted.has(def.id) && (testHome ? testAccess.includes(def.id) : protectedData);
+  /** The folder to pick: Arc's sidebar file sits next to its `User Data`, so its parent. */
+  const accessFolder = (def: SourceDef) => (def.id === "arc" ? sourceRoot(home, def).replace(/\/User Data$/, "") : sourceRoot(home, def));
+  const findSource = async (id: unknown) => (await detectSources(home, (path) => IOUtils.exists(path))).find((d) => d.id === id);
+
+  /** The macOS folder picker opened on `folder`: false when cancelled. Tests answer from RESSAC_TEST_IMPORT_PICK. */
+  async function pickFolder(folder: string): Promise<boolean> {
+    const test = Services.env.get("RESSAC_TEST_IMPORT_PICK");
+    if (testHome) return !test || (await IOUtils.readUTF8(test).catch(() => "")).trim() !== "cancel";
+    const fp = Cc["@mozilla.org/filepicker;1"].createInstance(Ci.nsIFilePicker);
+    // No title, as the engine: macOS open panels do not show one (the import screen explains the step).
+    fp.init(Services.wm.getMostRecentBrowserWindow()?.browsingContext, "", Ci.nsIFilePicker.modeGetFolder);
+    // ~/Library is hidden in the picker: it opens where the person only has to choose « Ouvrir ».
+    const dir = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
+    dir.initWithPath(folder);
+    fp.displayDirectory = dir;
+    return (await new Promise((done) => fp.open(done))) !== Ci.nsIFilePicker.returnCancel;
+  }
 
   async function profilesOf(def: SourceDef): Promise<{ id: string; name: string }[]> {
     const root = sourceRoot(home, def);
@@ -165,8 +196,8 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
     let json: unknown;
     try {
       json = await IOUtils.readJSON(path, { decompress: !arc });
-    } catch {
-      throw new Error(reason(store.state.locale, def, "spaces", true));
+    } catch (e) {
+      throw isAccessDenied(e) ? e : new Error(reason(store.state.locale, def, "spaces", true));
     }
     const read = arc ? parseArcSidebar(json) : parseZenSpaces(json);
     if (!read) throw new Error(say("chrome-import-format", { name: def.name }));
@@ -199,7 +230,11 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
     if (sidebar.length)
       await importSpaces(def, profile, types).then(
         (n) => sidebar.forEach((t) => (p.counts[t] = n[t as "spaces" | "tabs"])),
-        (e) => sidebar.forEach((t) => (p.failed[t] = e instanceof Error ? e.message : String(e))),
+        (e) => {
+          const f = failure(e);
+          sidebar.forEach((t) => (p.failed[t] = f.text));
+          if (f.denied) p.denied = true;
+        },
       );
     const savedPrefs = RUN_PREFS.map(([name, value]) => {
       const saved = Services.prefs.prefHasUserValue(name) ? Services.prefs.getIntPref(name) : null;
@@ -208,9 +243,8 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
     });
     const visits = MigrationUtils.insertVisitsWrapper;
     const bookmarks = MigrationUtils.insertManyBookmarksWrapper;
-    // Firefox 160 reads a Chromium browser's data on macOS 26+ only after a folder picker (getPermissions), which our
-    // import does not show: during the run, it reads as on 159.
-    // shortcut: macOS 27 may show « Data Access Blocked »; upgrade to getPermissions' picker if testers meet it.
+    // Firefox 160 reads a Chromium browser's data on macOS 26+ only after its own folder picker: ours ran before the
+    // run (grantAccess), so during the run it reads as on 159.
     const needsFolder = MigratorBase.needsFolderSelectionToReadData;
     MigratorBase.needsFolderSelectionToReadData = () => false;
     let existing: Set<string> | null = null;
@@ -289,15 +323,26 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
       const retry = failed.filter((t) => !(t === "passwords" && reported.get(t) === false));
       if (retry.length && def.kind === "chromium" && profile) {
         const copy = PathUtils.join(tmp, def.id);
-        await copyChromium(root, profile.id, copy);
-        for (const t of retry) {
-          reported.delete(t);
-          unreadableTypes.delete(t);
-          errors.delete(t);
-          delete counts[t];
+        // A copy macOS refuses fails only the types retried: the others came in on the first pass.
+        const copied = await copyChromium(root, profile.id, copy).then(
+          () => true,
+          (e) => {
+            if (!isAccessDenied(e)) throw e;
+            for (const t of retry) errors.set(t, say("chrome-import-access-denied"));
+            p.denied = true;
+            return false;
+          },
+        );
+        if (copied) {
+          for (const t of retry) {
+            reported.delete(t);
+            unreadableTypes.delete(t);
+            errors.delete(t);
+            delete counts[t];
+          }
+          await migrate(make(copy), retry);
+          failed = [...failed.filter((t) => !retry.includes(t)), ...(await bad(retry, `${copy}/${profile.id}`))];
         }
-        await migrate(make(copy), retry);
-        failed = [...failed.filter((t) => !retry.includes(t)), ...(await bad(retry, `${copy}/${profile.id}`))];
       }
       for (const t of asked) {
         if (failed.includes(t)) p.failed[t] = errors.get(t) ?? reason(store.state.locale, def, t, unreadableTypes.has(t));
@@ -306,7 +351,9 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
       }
     } catch (e) {
       console.error("[import] failed:", e);
-      for (const t of types) if (p.counts[t] === undefined) p.failed[t] ??= e instanceof Error ? e.message : String(e);
+      const f = failure(e);
+      for (const t of types) if (p.counts[t] === undefined) p.failed[t] ??= f.text;
+      if (f.denied) p.denied = true;
     } finally {
       for (const [name, saved] of savedPrefs) saved === null ? Services.prefs.clearUserPref(name) : Services.prefs.setIntPref(name, saved);
       MigrationUtils.insertVisitsWrapper = visits;
@@ -329,15 +376,36 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
       return Promise.all((await detectSources(home, exists)).map(async (d): Promise<ImportSource> => ({ id: d.id, name: d.name, icon: await sourceApp(realHome, d, exists).then((app) => app && appIcon(app)), types: [...d.types], passwordsByCsv: d.passwordsByCsv })));
     },
     async profiles(source) {
-      const def = (await detectSources(home, (path) => IOUtils.exists(path))).find((d) => d.id === source);
-      return def ? profilesOf(def) : [];
+      const def = await findSource(source);
+      // Not before macOS lets us: the read itself would be blocked, with its notification.
+      return def && !asks(def) ? profilesOf(def) : [];
+    },
+    async access(source) {
+      const def = await findSource(source);
+      return def && asks(def) ? "ask" : "ready";
+    },
+    async grantAccess(source) {
+      const def = await findSource(source);
+      if (!def || !asks(def)) return { ok: true };
+      if (!(await pickFolder(accessFolder(def)))) return { ok: false, error: say("chrome-import-access-cancelled", { name: def.name }), denied: false };
+      // The engine's check: one byte of `Local State`, and Arc's sidebar next to `User Data` (an absent file is no refusal).
+      const files = [`${sourceRoot(home, def)}/Local State`, ...(def.id === "arc" ? [`${accessFolder(def)}/StorableSidebar.json`] : [])];
+      for (const file of files)
+        try {
+          await IOUtils.read(file, { maxBytes: 1 });
+        } catch (e) {
+          if (isAccessDenied(e)) return { ok: false, error: say("chrome-import-access-wrong", { name: def.name }), denied: true };
+        }
+      granted.add(def.id);
+      return { ok: true };
     },
     async start(o) {
       if (running) return { ok: false, error: say("chrome-import-running") };
       running = true;
       try {
-        const def = (await detectSources(home, (path) => IOUtils.exists(path))).find((d) => d.id === o?.source);
+        const def = await findSource(o?.source);
         if (!def) throw new Error(say("chrome-import-no-browser"));
+        if (asks(def)) throw new Error(say("chrome-import-access-first", { name: def.name }));
         const types = Array.isArray(o.types) ? def.types.filter((t) => o.types.includes(t)) : [];
         if (!types.length) throw new Error(say("chrome-import-nothing"));
         const profiles = await profilesOf(def);
