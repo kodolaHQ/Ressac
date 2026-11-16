@@ -58,12 +58,14 @@ export function enter(top: string, names: string[], create: boolean): void {
   }
 }
 
-export type ReadFiles = { files: ({ text: string; mtime: number } | null)[] } | { failed: number; why: "absent" | "refused" | "big" };
+export type ReadFiles =
+  | { files: ({ text: string; mtime: number } | null)[]; skipped?: Record<number, "absent" | "refused" | "big"> }
+  | { failed: number; why: "absent" | "refused" | "big" };
 
 /**
  * Child side (after `enter`): the files at `paths` (relative, `/`-separated), each folder on the way entered and checked
  * by dev/ino, each file opened by bare name with O_NOFOLLOW, at most `max` bytes each and `totalMax` in all. The first
- * failure stops the reads: its index and why; with `skip`, a file that fails is null instead. `encoding` "base64" for
+ * failure stops the reads: its index and why; with `skip`, a file that fails is null instead (why in `skipped`). `encoding` "base64" for
  * binary files (an image).
  */
 export function readFiles(paths: string[], max: number, totalMax: number, skip = false, encoding: "utf8" | "base64" = "utf8"): ReadFiles {
@@ -107,12 +109,14 @@ export function readFiles(paths: string[], max: number, totalMax: number, skip =
     }
   };
   const files: ({ text: string; mtime: number } | null)[] = [];
+  const skipped: Record<number, "absent" | "refused" | "big"> = {};
   for (let i = 0; i < paths.length; i++) {
     const r = one(paths[i]!);
     if (typeof r === "string" && !skip) return { failed: i, why: r };
+    if (typeof r === "string") skipped[i] = r;
     files.push(typeof r === "string" ? null : r);
   }
-  return { files };
+  return { files, skipped };
 }
 
 /** Child side (after `enter`): the names in the working folder. */

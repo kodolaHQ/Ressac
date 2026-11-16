@@ -359,16 +359,22 @@ test("stageHarvest copies the code files into .ressac, and refuses a widget fold
   const widgets = join(root, "home", "widgets");
   mkdirSync(join(widgets, "w"), { recursive: true });
   writeFileSync(join(widgets, "w", "harvest.mjs"), "export default () => 1;");
+  writeFileSync(join(widgets, "w", "villes.csv"), "Lyon\nNantes\n");
   writeFileSync(join(widgets, "w", "data.json"), "{}");
+  mkdirSync(join(widgets, "w", "sub"));
   symlinkSync(join(outside, "secret.json"), join(widgets, "w", "link.json"));
   const workshop = new Workshop({ paths: spacePaths(root), docker: "docker" });
   const staged = await workshop.stageHarvest("w", join(widgets, "w"));
   expect(staged).toBe(join(root, ".ressac", "harvests", "ressac-harvest-w"));
-  // A link inside is left out, like the widget's data.
-  expect(readdirSync(staged)).toEqual(["harvest.mjs"]);
+  // Every regular file, whatever its type; a link, a folder and the widget's data are left out.
+  expect(readdirSync(staged).sort()).toEqual(["harvest.mjs", "villes.csv"]);
+  expect(readFileSync(join(staged, "villes.csv"), "utf8")).toBe("Lyon\nNantes\n");
+  // A file over the cap is named, never dropped silently.
+  writeFileSync(join(widgets, "w", "lib.mjs"), "x".repeat(1024 * 1024 + 1));
+  await expect(workshop.stageHarvest("w", join(widgets, "w"))).rejects.toThrow("lib.mjs");
   symlinkSync(outside, join(widgets, "x"));
-  await expect(workshop.stageHarvest("x", join(widgets, "x"))).rejects.toThrow(/refused/);
-  await expect(workshop.stageHarvest("w", join(outside, ".."))).rejects.toThrow(/outside/);
+  await expect(workshop.stageHarvest("x", join(widgets, "x"))).rejects.toThrow(/is a link, or is gone/);
+  await expect(workshop.stageHarvest("w", join(outside, ".."))).rejects.toThrow(/is a link, or is gone/);
 });
 
 test("harvestCommand with delaiS 1830: timeout -k 5 1830", () => {

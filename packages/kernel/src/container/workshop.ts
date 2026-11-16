@@ -469,23 +469,27 @@ export class Workshop {
   }
 
   /**
-   * The owner's top-level code files (`.mjs`, `.js`, `.json` but the widget's `data.json`), read by the confined child (never through a link), copied
+   * The owner's top-level files (every regular one but the widget's `data.json`; folders and links left out), read by the
+   * confined child (never through a link), copied
    * into a kernel folder under `.ressac` (read-only to the agent); the run mounts that copy. Docker resolves links in a
    * mount source on the Mac at `docker run`, and the agent can rename any folder of the path in between: a check before
    * it, even of the real path, would leave that race open.
    */
   async stageHarvest(owner: string | Owner, filesFolder: string): Promise<string> {
     const names = relative(this.paths.root, filesFolder).split(sep);
-    if (names.some((n) => n === "" || n === "..")) throw new Error(`folder outside the space: ${filesFolder}`);
+    if (names.some((n) => n === "" || n === "..")) throw new Error(say(this.locale(), "kernel-harvest-folder-refused"));
     const listed = await inFolder<string[]>(this.paths.root, names, listFolder, []);
-    if (!listed) throw new Error(`folder refused (a link, or gone): ${filesFolder}`);
-    const wanted = listed.filter((n) => /\.(mjs|js|json)$/.test(n) && n !== "data.json");
-    const r = await inFolder<ReadFiles>(this.paths.root, names, readFiles, [wanted, STAGED_FILE_MAX, STAGED_TOTAL_MAX, true]);
-    if (!r || !("files" in r)) throw new Error(`folder refused (a link, or gone): ${filesFolder}`);
+    if (!listed) throw new Error(say(this.locale(), "kernel-harvest-folder-refused"));
+    const wanted = listed.filter((n) => n !== "data.json");
+    const r = await inFolder<ReadFiles>(this.paths.root, names, readFiles, [wanted, STAGED_FILE_MAX, STAGED_TOTAL_MAX, true, "base64"]);
+    if (!r || !("files" in r)) throw new Error(say(this.locale(), "kernel-harvest-folder-refused"));
+    // Never left out silently: the code would then fail on a missing file, a misleading error.
+    const big = Object.entries(r.skipped ?? {}).find(([, why]) => why === "big");
+    if (big) throw new Error(say(this.locale(), "kernel-harvest-file-too-big", { name: wanted[Number(big[0])]! }));
     const staged = join(this.paths.internal, "harvests", harvestName(owner));
     await rm(staged, { recursive: true, force: true });
     await mkdir(staged, { recursive: true });
-    await Promise.all(r.files.map((f, i) => f && writeFile(join(staged, wanted[i]!), f.text)));
+    await Promise.all(r.files.map((f, i) => f && writeFile(join(staged, wanted[i]!), Buffer.from(f.text, "base64"))));
     return staged;
   }
 
