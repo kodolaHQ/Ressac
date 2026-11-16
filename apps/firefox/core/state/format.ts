@@ -44,9 +44,10 @@ export async function checkDataFormat(dataDir: string, now: Date = new Date()): 
     }
     await fs.mkdir(backup, { recursive: true });
     // workspace/ never moves, nor Ressac's own Ollama (a program, not data: it would be downloaded again), and dataDir
-    // always exists; the reset request goes and the format marker comes only once all else has moved, so a partial failure
-    // re-runs, as a reset still, on the next start.
-    for (const name of await fs.readdir(dataDir)) if (!STAYS.includes(name)) await fs.rename(join(dataDir, name), join(backup, name));
+    // always exists. An entry that cannot move stays in place, logged: the rest still lands in this backup, which the
+    // marker and the notice name (a rerun at the next start would set the new, empty session aside under another name).
+    for (const name of await fs.readdir(dataDir))
+      if (!STAYS.includes(name)) await fs.rename(join(dataDir, name), join(backup, name)).catch((e) => console.error(`[data] ${name} not set aside:`, e));
   }
   await fs.rm(join(dataDir, RESET_FILE), { force: true });
   await fs.mkdir(dataDir, { recursive: true });

@@ -72,32 +72,30 @@ describe("checkDataFormat", () => {
     expect(await readFile(join(backup!, "session.json"), "utf8")).toBe("{}");
     expect(await readdir(dir)).toEqual([FORMAT_FILE]);
   });
-  it("partial failure leaves workspace in place and the next call completes", async () => {
+  it("an entry that cannot move stays in place; the rest is set aside and the backup is still named", async () => {
     const dir = await tmp();
     await seed(dir, "{");
     await mkdir(join(dir, "stuck"));
     await chmod(join(dir, "stuck"), 0o555); // a directory without write permission cannot be renamed across parents
-    await expect(checkDataFormat(dir)).rejects.toThrow();
-    expect(await readFile(join(dir, "workspace/projects/a.txt"), "utf8")).toBe("a");
-    expect(await readdir(dir)).not.toContain(FORMAT_FILE); // never written on failure
+    const r = await checkDataFormat(dir);
     await chmod(join(dir, "stuck"), 0o755);
-    const backup = await checkDataFormat(dir);
-    expect(backup).not.toBeNull();
+    expect(r?.reason).toBe("format");
+    expect(await readFile(join(r!.backup, "session.json"), "utf8")).toBe("{}");
     expect(await readFile(join(dir, "workspace/projects/a.txt"), "utf8")).toBe("a");
-    expect((await readdir(dir)).sort()).toEqual([FORMAT_FILE, "ollama", "workspace"]);
+    expect((await readdir(dir)).sort()).toEqual([FORMAT_FILE, "ollama", "stuck", "workspace"]);
     expect(await readFile(join(dir, FORMAT_FILE), "utf8")).toBe(NEW);
   });
-  it("partial failure during a reset keeps the request for the next start", async () => {
+  it("the same during a reset: the request is honoured once, under one backup", async () => {
     const dir = await tmp();
     await seed(dir, NEW);
     await writeFile(join(dir, RESET_FILE), "");
     await mkdir(join(dir, "stuck"));
     await chmod(join(dir, "stuck"), 0o555);
-    await expect(checkDataFormat(dir)).rejects.toThrow();
-    expect(await readdir(dir)).toContain(RESET_FILE);
+    const r = await checkDataFormat(dir);
     await chmod(join(dir, "stuck"), 0o755);
-    expect((await checkDataFormat(dir))?.reason).toBe("reset");
-    expect((await readdir(dir)).sort()).toEqual([FORMAT_FILE, "ollama", "workspace"]);
+    expect(r?.reason).toBe("reset");
+    expect(await readdir(dir)).not.toContain(RESET_FILE);
+    expect(await checkDataFormat(dir)).toBeNull();
   });
   it("reset requested", async () => {
     const dir = await tmp();
