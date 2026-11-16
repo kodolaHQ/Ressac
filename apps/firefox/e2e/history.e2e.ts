@@ -87,6 +87,27 @@ describe("history noted in the kernel", () => {
     expect(await until(urls, (u) => u.length === 2)).toEqual([`${base}/a.html`, `${base}/a.html#x`]);
   });
 
+  it("a page calling pushState in a loop notes its first URL, then only its latest one", async () => {
+    const s = await open(`${base}/a.html`);
+    await loaded("/a.html");
+    await until(urls, (u) => u.length === 1);
+    const id = Object.keys(s.tabs).at(-1)!;
+    const handle = await m.execute<string>(
+      `const t = gBrowser.tabs.find((t) => t.getAttribute("ressac-tab-id") === arguments[0]);
+       return ChromeUtils.importESModule("${NAVIGABLES}").NavigableManager.getIdForBrowser(t.linkedBrowser);`,
+      [id],
+    );
+    await m.command("WebDriver:SwitchToWindow", { handle, focus: false });
+    await m.setContext("content");
+    try {
+      await m.execute('for (let i = 0; i < 20; i++) history.pushState(null, "", "?p=" + i)');
+    } finally {
+      await m.setContext("chrome");
+    }
+    const pushed = async () => (await urls()).filter((u) => u.includes("?p="));
+    expect(await until(pushed, (u) => u.length === 2)).toEqual([`${base}/a.html?p=0`, `${base}/a.html?p=19`]);
+  });
+
   it("a private space's visit is marked; a space turned private marks its earlier visits", async () => {
     await open(`${base}/a.html`);
     await loaded("/a.html");

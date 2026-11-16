@@ -6,6 +6,8 @@ const { LOCATION_CHANGE_ERROR_PAGE, LOCATION_CHANGE_SAME_DOCUMENT, STATE_START, 
 
 /** The page's text is read this long after it settled. */
 const CAPTURE_DELAY_MS = 1500;
+/** A page's own URL changes (pushState, #) are noted at most this often per tab, then its latest one. */
+const SAME_DOCUMENT_GAP_MS = 3000;
 
 type Context = { spaceId: string; private: boolean } | null;
 
@@ -39,6 +41,17 @@ export function trackVisits(gBrowser: any, history: History, context: (id: strin
   // Per browser, whether its last top-level document response was authenticated. Separate from `skipped`: the response
   // comes before the parent's STATE_START, which resets `skipped`.
   const authenticated = new WeakSet<object>();
+  // Per browser: when a same-document change was last noted, and the one held for the end of the gap.
+  const sameDocumentAt = new WeakMap<object, number>();
+  const sameDocumentHeld = new WeakMap<object, number>();
+  /** A page calling pushState in a loop would otherwise add a visit per call (Firefox allows 20 a second). */
+  const noteSameDocument = (browser: any, note: () => void) => {
+    window.clearTimeout(sameDocumentHeld.get(browser));
+    const now = () => (sameDocumentAt.set(browser, Date.now()), note());
+    const wait = (sameDocumentAt.get(browser) ?? -Infinity) + SAME_DOCUMENT_GAP_MS - Date.now();
+    if (wait <= 0) now();
+    else sameDocumentHeld.set(browser, window.setTimeout(now, wait));
+  };
   const cancel = (browser: any) => {
     window.clearTimeout(timers.get(browser));
     timers.delete(browser);
@@ -93,7 +106,9 @@ export function trackVisits(gBrowser: any, history: History, context: (id: strin
       if (!progress.isTopLevel || flags & LOCATION_CHANGE_ERROR_PAGE) return;
       const tab = gBrowser.getTabForBrowser(browser);
       const id = idOf(tab);
-      if (id) history.visit(id, location.spec, tab.label);
+      if (!id) return;
+      if (flags & LOCATION_CHANGE_SAME_DOCUMENT) noteSameDocument(browser, () => history.visit(id, location.spec, tab.label));
+      else history.visit(id, location.spec, tab.label);
     },
   });
   gBrowser.tabContainer.addEventListener("TabAttrModified", (e: CustomEvent) => {
