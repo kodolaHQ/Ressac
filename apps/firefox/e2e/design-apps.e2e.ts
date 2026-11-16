@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { reviewUrl } from "../shared/model";
 import { testActor } from "./agent-extensions";
-import { agentInput, APPS_ENV, appWindowExpr, inAppView, killFakeApps, launchAttempt, rowButton, rowMenu, rowState, writeProject } from "./apps";
+import { agentInput, APPS_ENV, appWindowExpr, inAppView, killFakeApps, launchAttempt, rowButton, rowMenu, rowState, writeProject, waitFirstSweep } from "./apps";
 import { startDesignServers, trustedMouse } from "./design";
 import { dispatch, inWindow, state, waitFor, waitReady, windowHandles } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
@@ -55,6 +55,7 @@ beforeAll(async () => {
   // Not expect.poll: run from beforeAll.
   for (const end = Date.now() + 15_000; !existsSync(join(dataDir, "workspace", ".ressac", "mcp.json")); await sleep(100))
     if (Date.now() > end) throw new Error("the MCP server did not start");
+  await waitFirstSweep(dataDir);
 }, 120_000);
 afterAll(async () => {
   await w?.close();
@@ -338,11 +339,15 @@ describe("no main window", () => {
     await click(m, tid("send-remarks"), { frame: "overlay" });
     await expect.poll(() => agentInput(dataDir).slice(before.length), { timeout: 30_000 }).toContain("appli Essai (/workspace/projects/essai)");
     await expect.poll(() => agentInput(dataDir), { timeout: 5_000 }).toMatch(/\] [^\r]*\r$/);
-    // The new main window, its agent panel open: the next tests act in it.
+    // The new main window, its agent panel open: the next tests act in it. Its session is the first one, so its sweep
+    // stops the app (« arrêtée ») and closes the app window Marionette was in: no switching back to it.
     let opened: string | undefined;
+    const isMain = async (h: string) => {
+      await m.command("WebDriver:SwitchToWindow", { handle: h, focus: false });
+      return m.execute<boolean>("return !!window.ressacWindow;");
+    };
     for (const end = Date.now() + 10_000; !opened && Date.now() < end; await sleep(100))
-      for (const h of await windowHandles(m))
-        if (h !== app && (await inWindow(m, h, () => m.execute<boolean>("return !!window.ressacWindow;")).catch(() => false))) opened = h;
+      for (const h of await windowHandles(m)) if (h !== app && (await isMain(h).catch(() => false))) opened = h;
     expect(opened).toBeTruthy();
     await m.command("WebDriver:SwitchToWindow", { handle: opened!, focus: false });
     await waitReady(m);

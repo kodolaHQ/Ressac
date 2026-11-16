@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
-import { spacePaths, type Workshop } from "../../../../packages/kernel/src/index.ts";
+import { ApplicationManager, spacePaths, type Workshop } from "../../../../packages/kernel/src/index.ts";
 import { createApplicationsHost } from "../../host/applications";
 
 let root: string;
@@ -50,17 +50,24 @@ test("« Supprimer » never deletes a Mac folder through a projects folder that 
   expect(existsSync(join(mac, "essai", "precieux.txt"))).toBe(true);
 });
 
-test("an app running before the sweep is stopped cleanly around it and launched again after", async () => {
+test("during the sweep an agent launch is refused, a user's click waits for it, and no app comes back on its own", async () => {
   root = realpathSync(mkdtempSync(join(tmpdir(), "ressac-app-sweep-")));
   const h = createApplicationsHost({
     paths: spacePaths(join(root, "data", "workspace")), dataDir: join(root, "data"), workshop: {} as Workshop,
     chrome: { open: async () => {}, close: async () => {}, show: async () => true, erase: async () => {} },
     debug: () => {}, policy: () => null, broadcast: () => {},
   });
-  const order: string[] = [];
-  vi.spyOn(h.manager, "list").mockResolvedValue([{ folder: "essai", state: "running" }, { folder: "autre", state: "stopped" }] as never);
-  vi.spyOn(h.manager, "stopAll").mockImplementation(async () => void order.push("stopAll"));
-  vi.spyOn(h.manager, "launch").mockImplementation(async (f) => (order.push(`launch ${f}`), {}) as never);
-  await h.whileStopped(async () => void order.push("sweep"));
-  expect(order).toEqual(["stopAll", "sweep", "launch essai"]);
+  const stopAll = vi.spyOn(h.manager, "stopAll").mockResolvedValue();
+  const launched = vi.spyOn(ApplicationManager.prototype, "launch").mockResolvedValue({ folder: "essai", state: "running", port: 15280 } as never);
+  let release!: () => void;
+  const swept = h.whileStopped(() => new Promise<void>((r) => (release = r)));
+  await vi.waitFor(() => expect(stopAll).toHaveBeenCalled());
+  await expect(h.manager.launch("essai")).rejects.toThrow(/Lancement refusé/);
+  h.handlers["apps.act"]!({ folder: "essai", action: "launch", window: "w" });
+  await new Promise((r) => setTimeout(r, 20));
+  expect(launched).not.toHaveBeenCalled();
+  release();
+  await swept;
+  await vi.waitFor(() => expect(launched).toHaveBeenCalledTimes(1));
+  expect(launched).toHaveBeenCalledWith("essai");
 });

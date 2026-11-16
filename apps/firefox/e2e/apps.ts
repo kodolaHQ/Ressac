@@ -79,6 +79,15 @@ export const appWindowExpr = (folder: string) =>
 export const inAppView = <T>(m: Marionette, folder: string, script: string, o: { frame?: number; gesture?: boolean } = {}): Promise<T> =>
   inBrowser<T>(m, `${appWindowExpr(folder)}.gBrowser.selectedBrowser`, script, o);
 
+/**
+ * The window's agent session opens at launch, after a sweep that stops every app and refuses agent launches while it
+ * runs: tests launch their apps after it.
+ */
+export async function waitFirstSweep(dataDir: string): Promise<void> {
+  for (const end = Date.now() + 15_000; !stopsLog(dataDir).includes("kill -KILL -1"); await new Promise((r) => setTimeout(r, 100)))
+    if (Date.now() > end) throw new Error("the first session's sweep did not run");
+}
+
 /** The fake docker's stop scripts so far (`<dataDir>/workspace/fake-docker-stops.log`). */
 export const stopsLog = (dataDir: string): string => {
   const f = join(dataDir, "workspace", "fake-docker-stops.log");
@@ -145,6 +154,8 @@ export async function openAppsPage(
   await m.setContext("chrome");
   await waitReady(m);
   await expect.poll(() => existsSync(join(dataDir, "workspace", ".ressac", "mcp.json")), { timeout: 15_000 }).toBe(true);
+  // Docker absent or slow: no session opens before the tests, so no sweep to wait for.
+  if (!o.env?.FAKE_DOCKER_ABSENT && !o.env?.FAKE_DOCKER_SLOW) await waitFirstSweep(dataDir);
   if (o.page ?? true) {
     await dispatch(m, { type: "openApps", windowId: (await state(m)).windows[0]!.id });
     await waitUi(m, "return !!doc.querySelector('[data-testid=\"page-applications\"]')");

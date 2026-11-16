@@ -301,7 +301,7 @@ export async function createKernel(o: {
   workshop?: Workshop;
   /** MCP tools of the applications (launch, stop, log). */
   apps?: AppsTools;
-  /** Wraps the sweep before a first session (stopAgentProcesses): the host stops its apps around it and launches them again. */
+  /** Wraps the sweep before a first session (stopAgentProcesses): the host stops its apps cleanly around it. */
   aroundSweep?: (sweep: () => Promise<void>) => Promise<void>;
   /** Ports on which a local demo opened by the agent is « built » (by default those of the container, containerPortRange). */
   portBuilt?: (port: number) => boolean;

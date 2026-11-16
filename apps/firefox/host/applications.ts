@@ -32,7 +32,7 @@ export interface ApplicationsHost {
   wake(): void;
   /** toutArreter, arreterSurveillance, then the memory written. */
   stop(): Promise<void>;
-  /** Runs `run` with every app stopped cleanly (« arrêtée », not an error), then launches again those that were running. */
+  /** Runs `run` (the sweep before a first session) with every app stopped cleanly (« arrêtée », not an error); the user relaunches them. */
   whileStopped(run: () => Promise<void>): Promise<void>;
 }
 
@@ -69,12 +69,10 @@ export function createApplicationsHost(o: {
     windows.delete(folder);
     void o.chrome.close(folder).catch(report(folder, "closed"));
   };
-  /** The sweep around a first session (whileStopped): a launch asked meanwhile waits for it, else the sweep would kill it. */
+  /** The sweep around a first session (whileStopped), while it runs. */
   let sweeping: Promise<void> | null = null;
   /** Closes the window of an app that is no longer running, except during a launch (which will decide at its end). */
   const followState = (folder: string) => {
-    // Stopped by the sweep, launched again right after: its window stays and reloads on the new port.
-    if (sweeping) return;
     const state = manager.stateOf(folder);
     if ((state === "stopped" || state === "error") && !running.get(folder) && windows.has(folder)) close(folder);
   };
@@ -82,7 +80,9 @@ export function createApplicationsHost(o: {
   // Launches come from the agent (MCP tool) as from the apps page: all go through here.
   class Manager extends ApplicationManager {
     override launch(folder: string): Promise<Application> {
-      if (sweeping) return sweeping.then(() => this.launch(folder));
+      // No session is open during the sweep: an agent launch then can only come from a leftover process holding a token,
+      // which the launched command would bring back. Refused; the user's own clicks wait for the sweep (act).
+      if (sweeping) return Promise.reject(new Error("Lancement refusé : l'agent démarre une nouvelle conversation, réessaie dans un instant."));
       running.set(folder, (running.get(folder) ?? 0) + 1);
       const end = super.launch(folder);
       last.set(folder, end);
@@ -164,7 +164,7 @@ export function createApplicationsHost(o: {
       // Relaunch = launch a running or errored app: the manager first stops the running instance.
       case "launch":
       case "relaunch":
-        void manager.launch(folder).catch(report(folder, "launched"));
+        void (sweeping ?? Promise.resolve()).then(() => manager.launch(folder)).catch(report(folder, "launched"));
         return;
       case "stop":
         void manager.stop(folder).catch(report(folder, "stopped"));
@@ -247,12 +247,8 @@ export function createApplicationsHost(o: {
       manager.start().catch((e) => console.error("[applications] start failed:", e));
     },
     async whileStopped(run) {
-      let was: string[] = [];
       const sweep = (async () => {
         try {
-          // Launches already asked end first: their caller (launch_app) gets its port, then the app stops with the others.
-          await Promise.all([...last.values()].map((p) => p.catch(() => {})));
-          was = (await manager.list()).filter((a) => a.state === "running" || a.state === "launching" || a.state === "preparing").map((a) => a.folder);
           await manager.stopAll();
           await run();
         } finally {
@@ -260,11 +256,7 @@ export function createApplicationsHost(o: {
         }
       })();
       sweeping = sweep.catch(() => {});
-      try {
-        await sweep;
-      } finally {
-        for (const folder of was) void manager.launch(folder).catch(report(folder, "launched again"));
-      }
+      await sweep;
     },
     async stop() {
       docker = undefined;

@@ -4,7 +4,7 @@ import os from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { reviewUrl } from "../shared/model";
-import { APPS_ENV, appRow, appWindowExpr, closeAppsPage, inAppView, launchAttempt, rowButton, rowMenuItems, writeProject, type AppsPage } from "./apps";
+import { APPS_ENV, appRow, appWindowExpr, closeAppsPage, inAppView, launchAttempt, rowButton, rowMenuItems, writeProject, type AppsPage, waitFirstSweep } from "./apps";
 import { dispatch, state, waitFor, waitReady } from "./firefox";
 import { launchRessac } from "./launch";
 import type { Marionette } from "./marionette";
@@ -67,6 +67,7 @@ describe("one Ressac, essai and autre launched in each test", () => {
     // Not expect.poll: run from beforeAll.
     for (const end = Date.now() + 15_000; !existsSync(join(dataDir, "workspace", ".ressac", "mcp.json")); await sleep(100))
       if (Date.now() > end) throw new Error("the MCP server did not start");
+    await waitFirstSweep(dataDir);
   }, 90_000);
   afterAll(() => closeAppsPage(p));
   afterEach(async () => {
