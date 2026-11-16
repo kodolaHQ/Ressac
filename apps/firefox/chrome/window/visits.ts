@@ -43,14 +43,25 @@ export function trackVisits(gBrowser: any, history: History, context: (id: strin
   const authenticated = new WeakSet<object>();
   // Per browser: when a same-document change was last noted, and the one held for the end of the gap.
   const sameDocumentAt = new WeakMap<object, number>();
-  const sameDocumentHeld = new WeakMap<object, number>();
+  const held = new WeakMap<object, { timer: number; note: () => void }>();
+  /** Notes the held change now (end of the gap, or a new page loads: it is older than that page). */
+  const flushHeld = (browser: any) => {
+    const h = held.get(browser);
+    if (!h) return;
+    window.clearTimeout(h.timer);
+    held.delete(browser);
+    sameDocumentAt.set(browser, Date.now());
+    h.note();
+  };
   /** A page calling pushState in a loop would otherwise add a visit per call (Firefox allows 20 a second). */
   const noteSameDocument = (browser: any, note: () => void) => {
-    window.clearTimeout(sameDocumentHeld.get(browser));
-    const now = () => (sameDocumentAt.set(browser, Date.now()), note());
+    window.clearTimeout(held.get(browser)?.timer);
+    held.delete(browser);
     const wait = (sameDocumentAt.get(browser) ?? -Infinity) + SAME_DOCUMENT_GAP_MS - Date.now();
-    if (wait <= 0) now();
-    else sameDocumentHeld.set(browser, window.setTimeout(now, wait));
+    if (wait <= 0) {
+      sameDocumentAt.set(browser, Date.now());
+      note();
+    } else held.set(browser, { timer: window.setTimeout(() => flushHeld(browser), wait), note });
   };
   const cancel = (browser: any) => {
     window.clearTimeout(timers.get(browser));
@@ -107,8 +118,13 @@ export function trackVisits(gBrowser: any, history: History, context: (id: strin
       const tab = gBrowser.getTabForBrowser(browser);
       const id = idOf(tab);
       if (!id) return;
-      if (flags & LOCATION_CHANGE_SAME_DOCUMENT) noteSameDocument(browser, () => history.visit(id, location.spec, tab.label));
-      else history.visit(id, location.spec, tab.label);
+      // The title as the change comes: a held note must not take a later page's.
+      const [url, title] = [location.spec, tab.label];
+      if (flags & LOCATION_CHANGE_SAME_DOCUMENT) noteSameDocument(browser, () => history.visit(id, url, title));
+      else {
+        flushHeld(browser);
+        history.visit(id, url, title);
+      }
     },
   });
   gBrowser.tabContainer.addEventListener("TabAttrModified", (e: CustomEvent) => {

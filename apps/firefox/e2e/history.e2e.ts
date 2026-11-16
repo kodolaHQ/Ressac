@@ -108,6 +108,31 @@ describe("history noted in the kernel", () => {
     expect(await until(pushed, (u) => u.length === 2)).toEqual([`${base}/a.html?p=0`, `${base}/a.html?p=19`]);
   });
 
+  it("a held URL change is noted before the next page loads, with its own title", async () => {
+    const s = await open(`${base}/a.html`);
+    await loaded("/a.html");
+    await until(urls, (u) => u.length === 1);
+    const id = Object.keys(s.tabs).at(-1)!;
+    const handle = await m.execute<string>(
+      `const t = gBrowser.tabs.find((t) => t.getAttribute("ressac-tab-id") === arguments[0]);
+       return ChromeUtils.importESModule("${NAVIGABLES}").NavigableManager.getIdForBrowser(t.linkedBrowser);`,
+      [id],
+    );
+    await m.command("WebDriver:SwitchToWindow", { handle, focus: false });
+    await m.setContext("content");
+    try {
+      // ?p=1 comes within the gap: held; then a new page loads before the gap ends.
+      await m.execute(`history.pushState(null, "", "?p=0"); history.pushState(null, "", "?p=1"); location.href = ${JSON.stringify(`${base}/b.html`)};`);
+    } finally {
+      await m.setContext("chrome");
+    }
+    const v = await until(recents, (r) => r.some((x) => x.url.endsWith("?p=1")) && r.some((x) => x.url.endsWith("/b.html") && x.title === "Page B"));
+    const order = v.map((x) => x.url.slice(base.length));
+    // Most recent first: the new page after the held change, which keeps the first page's title.
+    expect(order.indexOf("/b.html")).toBeLessThan(order.indexOf("/a.html?p=1"));
+    expect(v.find((x) => x.url.endsWith("?p=1"))!.title).toBe("Page A");
+  });
+
   it("a private space's visit is marked; a space turned private marks its earlier visits", async () => {
     await open(`${base}/a.html`);
     await loaded("/a.html");
