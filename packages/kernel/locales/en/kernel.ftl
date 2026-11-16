@@ -19,11 +19,9 @@ kernel-app-exit-unknown = Stopped with an unknown code
 
 kernel-ai-install-cancelled = Installation cancelled
 kernel-ai-install-running = Installation already in progress
-kernel-ai-install-uv = install uv: brew install uv
-kernel-ai-git-clone-failed = git clone failed: { $error }
-kernel-ai-commit-mismatch = Kev's commit is not the expected one ({ $expected }): { $found }
-kernel-ai-uv-sync-failed = uv sync failed: { $error }
-kernel-ai-pull-failed = ollama pull failed: { $error }
+kernel-ai-download-failed = The model download failed: { $error }
+kernel-ai-hash-mismatch = The downloaded model is corrupt: it was deleted, start the download again.
+kernel-ai-llama-server-missing = llama-server not found
 
 # Errors the kernel writes into widget and action runs (shown on the cards). Stored texts stay in their language.
 kernel-err-timeout = Timed out

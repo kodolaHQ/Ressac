@@ -1,4 +1,4 @@
-// Run by hand against the real decision model: RESSAC_BENCH=1 corepack pnpm exec vitest run test/search/watcher.bench.ts
+// Run by hand against the real decision model: RESSAC_BENCH=1 corepack pnpm exec vitest run test/search/watcher.bench.ts (d1 in /tmp/ressac-watcher-bench/d1, llama-server on PATH or RESSAC_LLAMA_SERVER)
 import { describe, expect, test } from "vitest";
 import { LocalAi } from "../../src/ai/local-ai.js";
 import { createWatcher, type Verdict } from "../../src/search/watcher.js";
@@ -34,7 +34,7 @@ const cases: Case[] = [
 
 describe.skipIf(!process.env.RESSAC_BENCH)("watcher bench (real decision model)", () => {
   test("20 cases", async () => {
-    const ai = new LocalAi({ folder: "/tmp/ressac-watcher-bench", decisionModel: "pplx-decider-flash", run: (() => { throw new Error("the bench never runs a command"); }) as never });
+    const ai = new LocalAi({ folder: "/tmp/ressac-watcher-bench", llamaServer: process.env.RESSAC_LLAMA_SERVER ?? "llama-server" });
     const watcher = createWatcher(ai, { timeoutMs: 20_000 });
     await watcher.judge(goal, [], q("warm-up")); // loads the model
     let falsePauses = 0;

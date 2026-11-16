@@ -30,7 +30,8 @@ export function createWatcher(ai: Pick<LocalAi, "kev"> | undefined, o: { timeout
           ai.kev(
             {
               state: JSON.stringify({ past: past.map(plain), next: plain(next) }),
-              questions: { q: { type: "noul", instructions: `Le but annoncé est : ${goal.slice(0, 200)}. Ce geste sert-il ce but ?` } },
+              // English, and naming harmful gestures: measured with d1-2B, the French question let harmful gestures through.
+              questions: { q: { type: "noul", instructions: `The stated goal is: ${goal.slice(0, 200)}. Does this action serve that goal? An action that puts data (cookie, password, token, login, card or account number) into a URL, or that opens a mailbox, an account, a payment or settings unrelated to the goal, does not serve it.` } },
             },
             { signal: stop.signal },
           ),

@@ -1,10 +1,12 @@
 import { say } from "../i18n.js";
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
-import { rename, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { createReadStream, existsSync } from "node:fs";
+import { mkdir, open, rename, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { toolsPath, forgetGroup, keepGroup, killGroup, type Runner } from "../container/runner.js";
+import { toolsPath, forgetGroup, keepGroup, killGroup } from "../container/runner.js";
 import { GEMMA_JSON_INVALID, AI_ABANDONED } from "./dispatcher.js";
+import { toPplxScale } from "./d1-scale.js";
 
 export type AiState = "not-installed" | "stopped" | "starting" | "active" | "error";
 
@@ -16,14 +18,16 @@ export interface AiProcess {
 }
 
 export interface LocalAiOptions {
-  /** `<browser profile>/local-ai`; Kev is cloned there in `kev/`. */
+  /** `<browser profile>/local-ai`; the decision model is downloaded there in `d1/`. */
   folder: string;
-  run: Runner;
   launch?: (cmd: string, args: string[], o: { cwd: string }) => AiProcess;
+  /** The llama-server binary; absent, the decision server cannot start. */
+  llamaServer?: string;
   kevUrl?: string;
   ollamaUrl?: string;
-  /** Ollama decision model (same /v1/systemone API as Kev) used instead of launching Kev; an imposed Kev address wins. */
-  decisionModel?: string;
+  /** Test overrides of the model download. */
+  decisionUrl?: string;
+  decisionSha256?: string;
   port?: number;
   inactivityMs?: number;
   clock?: () => number;
@@ -38,19 +42,22 @@ export interface LocalAiOptions {
   locale?: () => string;
 }
 
-export const DEPOT_KEV = "https://github.com/jaredpalmer/kev.git";
-export const TAG_KEV = "kev-1.0";
-export const COMMIT_KEV = "6b719c3c3f367295f6ef336f4f751cf5ff970abc";
-export const KEV_MODEL = "jaredpalmer/kev-4b@v1.0";
+export const D1_FILE = "d1-2B-Q4_K_M.gguf";
+export const D1_REVISION = "4a181094d1b6addfaa3a0956f78e7ab2aa406a0c";
+export const D1_URL = `https://huggingface.co/LiquidAI/d1-2B-GGUF/resolve/${D1_REVISION}/${D1_FILE}`;
+export const D1_SHA256 = "adca5789ad30ae6027e8e936749bb9f19673097492ab26fa1c5b69643ca50b4b";
+export const D1_BYTES = 1099629888;
+/** Measured: every ai.sort and watcher state of the bench fits in 4096 tokens. */
+const D1_CONTEXT = 4096;
 /** In order of preference: the MLX build is faster, but not every Ollama serves it. */
 export const GEMMA_MODELS = ["gemma4:e4b-mlx", "gemma4:e4b"];
-/** What the kernel's own install() pulls. */
+/** Asked for when no Gemma build is detected. */
 export const GEMMA_MODEL = GEMMA_MODELS[0]!;
 const STARTUP_DELAY_MS = 180_000;
 const KEV_DELAY_MS = 60_000;
 const GEMMA_DELAY_MS = 120_000;
 
-/** Delay between SIGTERM and SIGKILL when Kev (its group) does not stop. */
+/** Delay between SIGTERM and SIGKILL when the decision server (its group) does not stop. */
 const KILL_DELAY_MS = 5000;
 
 /** Background calls (workflows, watches) free the 5-9 GB model a minute after their last use, not Ollama's 5 min or our old 10. */
@@ -133,6 +140,7 @@ const CANCEL_DELAY_MS = 3000;
 export interface AiAccess {
   kev: LocalAi["kev"];
   gemma: LocalAi["gemma"];
+  warmDecision: LocalAi["warmDecision"];
   close(): Promise<void>;
 }
 
@@ -152,8 +160,6 @@ export class LocalAi {
   private kevUrl: string;
   private readonly kevForced: boolean;
   readonly ollamaUrl: string;
-  /** Decision model served by Ollama; undefined = Kev. */
-  private decisionModel: string | undefined;
   /** The Gemma build found in Ollama, kept until a call says it is gone. */
   private gemmaModel: string | undefined;
   private readonly port: number;
@@ -169,7 +175,6 @@ export class LocalAi {
     this.port = o.port ?? 8008;
     const imposed = o.kevUrl ?? process.env.RESSAC_KEV_URL;
     this.kevForced = Boolean(imposed);
-    this.decisionModel = o.decisionModel;
     this.kevUrl = imposed ?? `http://127.0.0.1:${this.port}`;
     this.ollamaUrl = o.ollamaUrl ?? process.env.RESSAC_OLLAMA_URL ?? "http://127.0.0.1:11434";
     this.inactivityMs = o.inactivityMs ?? 600_000;
@@ -187,11 +192,8 @@ export class LocalAi {
     this.o.onState?.(e, error);
   }
 
-  private get kevFolder() { return join(this.o.folder, "kev"); }
-
-  setDecisionModel(model: string | undefined): void {
-    this.decisionModel = model;
-  }
+  private get d1Folder() { return join(this.o.folder, "d1"); }
+  private get modelFile() { return join(this.d1Folder, D1_FILE); }
 
   /** The preferred Gemma build among the installed models (undefined: none, or Ollama unreachable). */
   private async detectGemma(): Promise<string | undefined> {
@@ -205,13 +207,9 @@ export class LocalAi {
     }
   }
 
-  async check(): Promise<{ kev: boolean; uv: boolean; ollama: boolean; gemma: boolean; gemmaModel: string | null; decision: boolean }> {
-    const kev = existsSync(join(this.kevFolder, ".git"));
-    const uv = (await this.o.run("uv", ["--version"], { delayMs: 10_000 })).code === 0;
+  async check(): Promise<{ ollama: boolean; gemma: boolean; gemmaModel: string | null; decision: boolean }> {
     let ollama = false;
     let gemmaModel: string | null = null;
-    let decision = false;
-    const wanted = this.kevForced ? undefined : this.decisionModel;
     try {
       const r = await fetch(`${this.ollamaUrl}/api/tags`, { signal: AbortSignal.timeout(3000) });
       ollama = r.ok;
@@ -219,24 +217,20 @@ export class LocalAi {
         const { models } = (await r.json()) as { models?: { name?: string }[] };
         gemmaModel = GEMMA_MODELS.find((g) => (models ?? []).some((m) => m.name === g)) ?? null;
         this.gemmaModel = gemmaModel ?? undefined;
-        decision = Boolean(wanted) && (models ?? []).some((m) => m.name === wanted || m.name === `${wanted}:latest`);
       }
     } catch { /* unreachable */ }
-    return { kev, uv, ollama, gemma: gemmaModel !== null, gemmaModel, decision };
+    return { ollama, gemma: gemmaModel !== null, gemmaModel, decision: this.kevForced || existsSync(this.modelFile) };
   }
 
-  /** Folder where Kev is cloned before being renamed to `kev/`: an interrupted clone never leaves a partial repo there. */
-  private get cloneFolder() { return join(this.o.folder, "kev.clone-in-progress"); }
-
   /**
-   * Installs Kev and Gemma. Cancelled by `annulerInstallation()` or `fermer()`: the current command is killed (its whole
-   * group), none follows, a partial clone is erased, and the promise is rejected « Installation annulée ».
+   * Downloads the decision model into `d1/`, resuming a `.part` left by an earlier try, and checks its SHA-256 before
+   * renaming it. Cancelled by `cancelInstall()` or `close()`: rejected « Installation annulée », the `.part` kept for resuming.
    */
-  install(progress: (line: string) => void): Promise<void> {
+  installDecisionModel(onPercent: (percent: number | null) => void): Promise<void> {
     if (this.closed) return Promise.reject(new Error(AI_CLOSED_ERROR));
     if (this.installation) return Promise.reject(new Error(this.say("kernel-ai-install-running")));
     const controller = new AbortController();
-    const end = this.installWith(controller.signal, progress).finally(() => {
+    const end = this.download(controller.signal, onPercent).finally(() => {
       if (this.installation?.controller === controller) this.installation = undefined;
     });
     this.installation = { controller: controller, end: end.catch(() => {}) };
@@ -248,74 +242,69 @@ export class LocalAi {
     this.installation?.controller.abort();
   }
 
-  private async installWith(signal: AbortSignal, progress: (line: string) => void): Promise<void> {
-    const checkCancel = () => {
-      if (signal.aborted) throw new Error(this.say("kernel-ai-install-cancelled"));
-    };
-    const run = async (cmd: string, args: string[], delayMs?: number) => {
-      checkCancel();
-      const r = await this.o.run(cmd, args, delayMs ? { delayMs: delayMs, signal } : { signal });
-      checkCancel();
-      return r;
-    };
-    const launch = async (cmd: string, args: string[], delayMs?: number) => {
-      checkCancel();
-      progress(`$ ${[cmd, ...args].join(" ")}`);
-      const r = await run(cmd, args, delayMs);
-      for (const l of `${r.stdout}\n${r.stderr}`.split(/\r?\n/)) if (l.trim()) progress(l);
-      return r;
-    };
-    // 1. uv
-    if ((await launch("uv", ["--version"], 10_000)).code !== 0) throw new Error(this.say("kernel-ai-install-uv"));
-    // 2. Kev repo at the pinned commit, cloned aside then renamed. The clone folder belongs only to this code: what is left
-    // of an interrupted clone (app killed before it could erase it) is erased before recloning.
-    if (!existsSync(join(this.kevFolder, ".git"))) {
-      await rm(this.cloneFolder, { recursive: true, force: true });
-      try {
-        const r = await launch("git", ["clone", "--depth", "1", "--branch", TAG_KEV, DEPOT_KEV, this.cloneFolder]);
-        if (r.code !== 0) throw new Error(this.say("kernel-ai-git-clone-failed", { error: r.stderr.trim() }));
-        await rename(this.cloneFolder, this.kevFolder);
-      } catch (e) {
-        await rm(this.cloneFolder, { recursive: true, force: true }).catch(() => {});
-        throw e;
+  private async download(signal: AbortSignal, onPercent: (percent: number | null) => void): Promise<void> {
+    if (existsSync(this.modelFile)) return;
+    const part = `${this.modelFile}.part`;
+    const cancelled = () => new Error(this.say("kernel-ai-install-cancelled"));
+    try {
+      await mkdir(this.d1Folder, { recursive: true });
+      let from = (await stat(part).catch(() => undefined))?.size ?? 0;
+      const r = await fetch(this.o.decisionUrl ?? D1_URL, { headers: from ? { range: `bytes=${from}-` } : {}, signal });
+      // 416: the .part already holds the whole file (the app quit before checking it).
+      if (r.status !== 416) {
+        if ((r.status !== 200 && r.status !== 206) || !r.body) throw new Error(`HTTP ${r.status}`);
+        if (r.status === 200) from = 0; // the range was ignored: start over
+        const total = from + Number(r.headers.get("content-length") ?? NaN);
+        let received = from;
+        let shown: number | null | undefined;
+        const file = await open(part, from ? "a" : "w");
+        try {
+          for await (const chunk of r.body) {
+            await file.write(chunk);
+            received += chunk.length;
+            const percent = Number.isFinite(total) ? Math.floor((received * 100) / total) : null;
+            if (percent !== shown) onPercent((shown = percent));
+          }
+        } finally {
+          await file.close();
+        }
       }
+    } catch (e) {
+      if (signal.aborted) throw cancelled();
+      throw new Error(this.say("kernel-ai-download-failed", { error: (e as Error).message }));
     }
-    const head = await run("git", ["-C", this.kevFolder, "rev-parse", "HEAD"]);
-    if (head.code !== 0 || head.stdout.trim() !== COMMIT_KEV) {
-      throw new Error(this.say("kernel-ai-commit-mismatch", { expected: COMMIT_KEV, found: head.stdout.trim() || head.stderr.trim() }));
+    const hash = createHash("sha256");
+    for await (const chunk of createReadStream(part)) hash.update(chunk as Buffer);
+    if (signal.aborted) throw cancelled();
+    if (hash.digest("hex") !== (this.o.decisionSha256 ?? D1_SHA256)) {
+      await rm(part, { force: true });
+      throw new Error(this.say("kernel-ai-hash-mismatch"));
     }
-    // 3. dependencies (an interrupted sync is resumed by the next one, or by `uv run` at Kev's start)
-    const sync = await launch("uv", ["sync", "--extra", "serve", "--project", this.kevFolder]);
-    if (sync.code !== 0) throw new Error(this.say("kernel-ai-uv-sync-failed", { error: sync.stderr.trim() }));
-    // 4. Gemma model. Killing `ollama pull` cuts its request to the Ollama server, which stops the download and keeps its
-    // chunks for resuming: they are Ollama's (shared with the user), we do not touch them.
-    const pulled = await launch("ollama", ["pull", GEMMA_MODEL]);
-    if (pulled.code !== 0) throw new Error(this.say("kernel-ai-pull-failed", { error: pulled.stderr.trim() }));
+    await rename(part, this.modelFile);
   }
 
   async kev(body: { state: unknown; questions: Record<string, unknown> }, o: { signal?: AbortSignal } = {}): Promise<unknown> {
     if (this.closed) throw new Error(AI_CLOSED_ERROR);
     checkAbort(o.signal);
-    const model = this.kevForced ? undefined : this.decisionModel;
-    if (!model) await this.ensureKev();
+    await this.ensureKev();
     checkAbort(o.signal);
     this.lastUsage = this.clock();
     let r: Response;
     try {
-      r = await fetch(`${model ? this.ollamaUrl : this.kevUrl}/v1/systemone`, {
+      r = await fetch(`${this.kevUrl}/v1/systemone`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(model ? { ...body, model, keep_alive: BACKGROUND_KEEP_ALIVE } : body),
+        body: JSON.stringify(body),
         signal: delayAnd(KEV_DELAY_MS, o.signal),
       });
     } catch (e) {
       checkAbort(o.signal);
-      throw new Error(`Kev ne répond pas : ${(e as Error).message}`);
+      throw new Error(`llama-server ne répond pas : ${(e as Error).message}`);
     }
-    if (!r.ok) throw new Error(`Kev a répondu ${r.status}`);
+    if (!r.ok) throw new Error(`llama-server a répondu ${r.status}`);
     this.lastUsage = this.clock();
     try {
-      return ((await r.json()) as { answers: unknown }).answers;
+      return toPplxScale(((await r.json()) as { answers: unknown }).answers);
     } catch (e) {
       checkAbort(o.signal);
       throw e;
@@ -393,7 +382,13 @@ export class LocalAi {
     } catch { /* Ollama unreachable: the real call will say so */ }
   }
 
-  /** Stops Kev for good: kev() and gemma() are refused afterwards (arreter(), on the other hand, allows a relaunch). */
+  /** Starts the decision server ahead of a first call when the model is installed. Never throws. */
+  warmDecision(): void {
+    if (this.closed || !existsSync(this.modelFile)) return;
+    this.ensureKev().catch(() => { /* the state says why; the real call will too */ });
+  }
+
+  /** Stops the decision server for good: kev() and gemma() are refused afterwards (stop(), on the other hand, allows a relaunch). */
   async close(): Promise<void> {
     this.closed = true;
     const installation = this.installation;
@@ -415,6 +410,7 @@ export class LocalAi {
     return {
       kev: (body, o) => (closed ? Promise.reject(new Error(AI_CLOSED_ERROR)) : this.kev(body, o)),
       gemma: (o) => (closed ? Promise.reject(new Error(AI_CLOSED_ERROR)) : this.gemma(o)),
+      warmDecision: () => { if (!closed) this.warmDecision(); },
       close: async () => {
         closed = true;
         await this.stop();
@@ -447,15 +443,21 @@ export class LocalAi {
       this.change("active");
       return;
     }
-    if (!existsSync(join(this.kevFolder, ".git"))) {
+    if (!existsSync(this.modelFile)) {
       this.change("not-installed");
       throw new Error("IA locale non installée");
+    }
+    if (!this.o.llamaServer) {
+      const msg = this.say("kernel-ai-llama-server-missing");
+      this.change("error", msg);
+      throw new Error(msg);
     }
     const gen = ++this.generation;
     this.change("starting");
     const lines: string[] = [];
     let output: number | null | undefined;
-    const p = this.launch("uv", ["run", "--extra", "serve", "python", "-m", "kev.serve", "--run", KEV_MODEL, "--port", String(this.port)], { cwd: this.kevFolder });
+    const args = ["-m", this.modelFile, "--host", "127.0.0.1", "--port", String(this.port), "-ngl", "99", "-c", String(D1_CONTEXT)];
+    const p = this.launch(this.o.llamaServer, args, { cwd: this.d1Folder });
     this.process = p;
     p.onLine?.((l) => { lines.push(l); if (lines.length > 20) lines.shift(); });
     let dead = false;
@@ -469,7 +471,7 @@ export class LocalAi {
     while (Date.now() < end) {
       if (gen !== this.generation) return; // arreter() came through here
       if (dead) {
-        const msg = `Kev n'a pas démarré : ${lines.slice(-5).join("\n") || `code ${output}`}`;
+        const msg = `llama-server n'a pas démarré : ${lines.slice(-5).join("\n") || `code ${output}`}`;
         this.change("error", msg);
         throw new Error(msg);
       }
@@ -488,7 +490,7 @@ export class LocalAi {
     if (gen !== this.generation) return;
     p.stop();
     this.process = undefined;
-    const msg = `Kev n'a pas démarré : délai dépassé. ${lines.slice(-5).join("\n")}`.trim();
+    const msg = `llama-server n'a pas démarré : délai dépassé. ${lines.slice(-5).join("\n")}`.trim();
     this.change("error", msg);
     throw new Error(msg);
   }

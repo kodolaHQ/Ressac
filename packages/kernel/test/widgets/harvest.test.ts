@@ -12,6 +12,7 @@ import { Workshop, IMAGE } from "../../src/container/workshop.js";
 import { DeclarationWidget, type WidgetRead } from "../../src/home/schemas.js";
 import { writeData, writeWidgetState, readWidgetState, deleteData } from "../../src/home/data.js";
 import { LocalAi } from "../../src/ai/local-ai.js";
+import { toPplxScale } from "../../src/ai/d1-scale.js";
 import { FakeBridge } from "../../src/mcp/fake-bridge.js";
 import { giveGrant, readGrants, removeGrant } from "../../src/widgets/grants.js";
 import { approveReads, readReads, seedReads } from "../../src/widgets/reads.js";
@@ -129,7 +130,7 @@ async function prepare(id: string, code: string, sources = { account: [] as stri
 }
 
 async function ai(o: { kev?: FakeServer; ollama?: FakeServer } = {}) {
-  const i = new LocalAi({ folder: await tempFolder(), run: fakeRunner([]).run, kevUrl: o.kev?.url ?? "http://127.0.0.1:9", ollamaUrl: o.ollama?.url ?? "http://127.0.0.1:9" });
+  const i = new LocalAi({ folder: await tempFolder(), kevUrl: o.kev?.url ?? "http://127.0.0.1:9", ollamaUrl: o.ollama?.url ?? "http://127.0.0.1:9" });
   aiToStop.push(i);
   return i;
 }
@@ -244,7 +245,7 @@ describe("runHarvest", () => {
     const expected = {
       j: { x: 42 },
       title: "Fil",
-      k: { q: { type: "noul", noul: 0.8 } },
+      k: toPplxScale({ q: { type: "noul", noul: 0.8 } }), // answers come back on pplx's scale
       g: "bonjour",
       cfg: { a: 1 },
       prev: { old: true },

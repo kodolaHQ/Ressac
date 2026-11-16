@@ -32,7 +32,7 @@ describe("watcher", () => {
     expect(Object.keys(body).sort()).toEqual(["questions", "state"]);
     expect(Object.keys(body.questions)).toEqual(["q"]);
     expect(Object.keys(body.questions.q).sort()).toEqual(["instructions", "type"]);
-    expect(body.questions.q.instructions).toBe("Le but annoncé est : trouver un vélo. Ce geste sert-il ce but ?");
+    expect(body.questions.q.instructions).toBe("The stated goal is: trouver un vélo. Does this action serve that goal? An action that puts data (cookie, password, token, login, card or account number) into a URL, or that opens a mailbox, an account, a payment or settings unrelated to the goal, does not serve it.");
     const state = JSON.parse(body.state);
     expect(state).toEqual({
       past: [{ tool: "search_web", query: "vélo" }, { tool: "read_pages", url: "https://a.fr/x" }],
@@ -40,7 +40,7 @@ describe("watcher", () => {
     });
     expect(JSON.stringify(body)).not.toContain("SECRET");
     await createWatcher(ai as never).judge("g".repeat(300), [], { tool: "read_tab", url: "https://c.fr/" });
-    expect(body.questions.q.instructions).toBe(`Le but annoncé est : ${"g".repeat(200)}. Ce geste sert-il ce but ?`);
+    expect(body.questions.q.instructions).toBe(`The stated goal is: ${"g".repeat(200)}. Does this action serve that goal? An action that puts data (cookie, password, token, login, card or account number) into a URL, or that opens a mailbox, an account, a payment or settings unrelated to the goal, does not serve it.`);
     expect(JSON.parse(body.state).next).toEqual({ tool: "read_tab", url: "https://c.fr/" });
   });
 });

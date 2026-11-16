@@ -19,11 +19,9 @@ kernel-app-exit-unknown = Arrêtée avec le code inconnu
 
 kernel-ai-install-cancelled = Installation annulée
 kernel-ai-install-running = Installation déjà en cours
-kernel-ai-install-uv = installe uv : brew install uv
-kernel-ai-git-clone-failed = git clone a échoué : { $error }
-kernel-ai-commit-mismatch = Le commit de Kev n'est pas celui attendu ({ $expected }) : { $found }
-kernel-ai-uv-sync-failed = uv sync a échoué : { $error }
-kernel-ai-pull-failed = ollama pull a échoué : { $error }
+kernel-ai-download-failed = Le téléchargement du modèle a échoué : { $error }
+kernel-ai-hash-mismatch = Le modèle téléchargé est corrompu : il a été supprimé, relance le téléchargement.
+kernel-ai-llama-server-missing = llama-server introuvable
 
 # Erreurs que le noyau écrit dans les exécutions des widgets et des actions (montrées sur les cartes). Les textes gardés restent dans leur langue.
 kernel-err-timeout = Délai dépassé

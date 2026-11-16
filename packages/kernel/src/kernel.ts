@@ -436,6 +436,8 @@ export async function createKernel(o: {
   const sweeper = recaps ? setInterval(() => void sweepRecaps(), Math.min(3600_000, dayMs)) : null;
   sweeper?.unref();
   if (recaps) void sweepRecaps();
+  // The watcher judges the agent's first gestures: its server starts now rather than on the first one.
+  aiAccess?.warmDecision();
   const server = await startMcpServer({
     bridge: o.bridge,
     policy: policy,

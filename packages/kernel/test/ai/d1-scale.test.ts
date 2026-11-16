@@ -10,7 +10,7 @@ describe("toPplxScale", () => {
 
   it("is increasing between anchors", () => {
     const out = Array.from({ length: 101 }, (_, i) => noul(i / 100));
-    for (let i = 1; i < out.length; i++) expect(out[i]).toBeGreaterThanOrEqual(out[i - 1]);
+    for (let i = 1; i < out.length; i++) expect(out[i]).toBeGreaterThanOrEqual(out[i - 1]!);
     expect(out[0]).toBe(0);
     expect(out[100]).toBe(1);
   });
