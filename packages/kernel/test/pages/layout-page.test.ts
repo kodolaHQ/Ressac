@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WRITER_JSON_INVALID } from "../../src/ai/dispatcher.js";
 import { BUILTIN_COMPONENTS } from "../../src/pages/catalog.js";
-import { LAYOUT_DELAY_MS, layOut, pageLayoutPrompt, type GemmaAccess } from "../../src/pages/layout-page.js";
+import { LAYOUT_DELAY_MS, layOut, pageLayoutPrompt, type WriterAccess } from "../../src/pages/layout-page.js";
 
 const results = { tickets: [{ title: "Panne", priority: "haute" }, { title: "Doc", priority: "basse" }] };
 const validPlan = { blocks: [{ component: "figure", props: { value: "count(tickets)", label: "Tickets" } }] };
 const invalidPlan = { blocks: [{ component: "title", props: { text: "Seul" } }] };
 
 type Call = { prompt: string; signal?: AbortSignal };
-function fake(responses: (() => Promise<unknown> | unknown)[], calls: Call[] = []): GemmaAccess {
+function fake(responses: (() => Promise<unknown> | unknown)[], calls: Call[] = []): WriterAccess {
   let i = 0;
   return {
     async gemma(g, o) {
@@ -18,7 +18,7 @@ function fake(responses: (() => Promise<unknown> | unknown)[], calls: Call[] = [
     },
   };
 }
-const launch = (ai: GemmaAccess | null, extra: Partial<Parameters<typeof layOut>[0]> = {}) =>
+const launch = (ai: WriterAccess | null, extra: Partial<Parameters<typeof layOut>[0]> = {}) =>
   layOut({ results: results, prompt: "Montre les tickets", catalog: BUILTIN_COMPONENTS, ai: ai, ...extra });
 
 beforeEach(() => vi.useFakeTimers());
@@ -92,7 +92,7 @@ describe("layOut", () => {
   });
 
   it("Gemma waits 60 s in the queue then answers in 40 s: no fallback (the delay starts at startup)", async () => {
-    const ai: GemmaAccess = {
+    const ai: WriterAccess = {
       gemma: (_g, o) =>
         new Promise((res) => {
           setTimeout(() => {

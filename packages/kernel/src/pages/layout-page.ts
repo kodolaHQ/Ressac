@@ -12,16 +12,16 @@ import { validatePlan } from "./validate.js";
 
 export const LAYOUT_DELAY_MS = 90_000;
 
-export type GemmaAccess = {
+export type WriterAccess = {
   gemma(g: { prompt: string; json: true }, o?: { onStartup?: () => void; signal?: AbortSignal }): Promise<unknown>;
 };
 
 export type PageLayout = { plan: PlanPage | null; fallback: boolean; empty: boolean; attempts: 0 | 1 | 2; reason?: string };
 
-const NO_AI_REASON = "Gemma n'est pas disponible";
-const TIMEOUT_REASON = "Gemma n'a pas répondu à temps";
+const NO_AI_REASON = "L'IA n'est pas disponible";
+const TIMEOUT_REASON = "L'IA n'a pas répondu à temps";
 const STOP_REASON = "mise en page interrompue";
-const FAILURE_REASON = "Gemma n'a pas pu répondre";
+const FAILURE_REASON = "L'IA n'a pas pu répondre";
 const NON_JSON = "la réponse n'est pas du JSON valide";
 
 const MARKS = (s: string) => s.replaceAll(">>>", "›››").replaceAll("<<<", "‹‹‹");
@@ -67,7 +67,7 @@ function readJson(response: unknown): { value: unknown } | null {
 }
 
 export async function layOut(o: {
-  results: unknown; prompt: string | null; catalog: ComponentDefinition[]; ai: GemmaAccess | null;
+  results: unknown; prompt: string | null; catalog: ComponentDefinition[]; ai: WriterAccess | null;
   signal?: AbortSignal; delayMs?: number; locale?: string;
 }): Promise<PageLayout> {
   if (emptyResults(o.results)) return { plan: null, fallback: false, empty: true, attempts: 0 };
