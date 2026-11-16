@@ -119,6 +119,42 @@ it("« Atelier » relaunches the agent with its shell, the choice is saved, anot
   await waitUi(m, "return !doc.querySelector('[data-testid=\"agent-engine-changed\"]')", [], 10_000, "agent");
 });
 
+it("« Navigateur » relaunches the Atelier session of another window in Navigateur too", async () => {
+  await launch();
+  await shown();
+  await terminalShows("fake agent ready>");
+  const root = join(w!.dataDir, "workspace");
+  /** Every agent session the fake docker started, in order: its id and whether it runs in Navigateur (no shell). */
+  const sessions = () =>
+    read(join(root, "fake-docker-all.log"))
+      .split("\n")
+      .filter((l) => l.includes("ressac-session"))
+      .map((l) => ({ id: /RESSAC_SESSION=([0-9a-f]+)/.exec(l)?.[1], browser: l.includes("Bash,mcp__ressac__launch_app") }));
+  const first = (await m.command<{ value: string }>("WebDriver:GetWindowHandle")).value;
+  await click(m, '[data-testid="agent-mode-workshop"]', { frame: "agent" });
+  await expect.poll(() => sessions().at(-1)?.browser, { timeout: 20_000 }).toBe(false);
+  const before = sessions().length;
+  const second = await newWindow(m);
+  await inWindow(m, second, async () => {
+    await shown();
+    await terminalShows("fake agent ready>");
+  });
+  await expect.poll(() => sessions().length, { timeout: 20_000 }).toBeGreaterThan(before);
+  // Its terminal is ready: the last session started is the one it runs.
+  const at = sessions().length - 1;
+  const other = sessions()[at]!;
+  expect(other.browser).toBe(false);
+  await m.command("WebDriver:SwitchToWindow", { handle: first, focus: true });
+  await click(m, '[data-testid="agent-mode-browser"]', { frame: "agent" });
+  // The other window's Atelier session stops, and both windows run a new session in Navigateur.
+  await expect.poll(() => read(join(root, "fake-docker-stops.log")), { timeout: 20_000 }).toContain(`RESSAC_SESSION=${other.id}`);
+  await expect.poll(() => sessions().slice(at + 1).filter((s) => s.browser).length, { timeout: 20_000 }).toBeGreaterThanOrEqual(2);
+  await inWindow(m, second, async () => {
+    await terminalShows("fake agent ready>");
+    expect(await inUi(m, "return !!doc.querySelector('[data-testid=\"agent-engine-changed\"]')", [], "agent")).toBe(false);
+  });
+});
+
 it("a huge output does not freeze the UI", async () => {
   await launch();
   await homeAgent();
