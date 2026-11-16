@@ -644,6 +644,18 @@ describe("agent network", () => {
     await expect(make([[/curl/, { code: 28 }]]).workshop.secureNetwork()).rejects.toThrow(/could not be secured/);
   });
 
+  test("a failed re-apply (domain removed) makes exec apply the rules again before it runs", async () => {
+    let fails = false;
+    const { run, calls } = fakeRunner([[/ apply$/, () => ({ code: fails ? 1 : 0, stderr: "timeout" })], [/curl/, { code: 7 }]]);
+    const workshop = new Workshop({ paths: paths, docker: "docker", run, network: () => ({ ports: [1], domains: [] }) });
+    await workshop.secureNetwork();
+    fails = true;
+    await expect(workshop.secureNetwork()).rejects.toThrow(/timeout/);
+    fails = false;
+    await workshop.exec(["true"]);
+    expect(calls.filter((c) => c.args.includes("apply"))).toHaveLength(3);
+  });
+
   test("concurrent secureNetwork calls share one apply", async () => {
     const { workshop, calls } = make([[/curl/, { code: 7 }]]);
     await Promise.all([workshop.secureNetwork(), workshop.secureNetwork()]);

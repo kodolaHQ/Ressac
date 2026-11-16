@@ -447,7 +447,13 @@ const rpc = createRpc({
     },
     "agent.current": (p: { window: string }) => sessions.profileOf(p.window),
     "agent.mode": (p: { mode: unknown }) => {
+      const was = agentMode;
       agentMode = p?.mode === "workshop" ? "workshop" : "browser";
+      // To Navigateur: no session (custom profiles too) keeps its shell, and no running app keeps running agent-written code.
+      if (was === "workshop" && agentMode === "browser") {
+        void apps.manager.stopAll().catch((e) => console.error("[ressac] the apps did not stop:", e));
+        return sessions.relaunchActive();
+      }
       sessions.engineChanged("claude");
       sessions.engineChanged("codex");
     },
@@ -468,7 +474,14 @@ const rpc = createRpc({
       // New connections follow the list; a running session is not killed. A stopped container has no rules to refresh.
       // AI off: Docker is never touched; turning AI on starts the workshop, which applies the list then.
       if (!aiOn) return;
-      void workshop.state().then((s) => (s === "demarre" ? workshop.secureNetwork() : undefined)).catch((e) => console.error("[ressac] agent domains not applied:", e));
+      // Not applied: the running sessions start again, so each one applies the list or shows why it cannot.
+      void workshop
+        .state()
+        .then((s) => (s === "demarre" ? workshop.secureNetwork() : undefined))
+        .catch((e) => {
+          console.error("[ressac] agent domains not applied:", e);
+          return sessions.relaunchActive();
+        });
     },
     "agent.claudeEngine": (p: { engine: unknown }) => {
       const r = ClaudeEngineSchema.safeParse(p?.engine);

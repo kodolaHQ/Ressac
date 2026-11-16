@@ -356,6 +356,8 @@ export class Workshop {
     const fail = (error: string): never => {
       throw new Error(say(this.locale(), "kernel-network-failed", { error }));
     };
+    // The rules in place are unknown until this run succeeds: exec applies them again first.
+    this.secured = false;
     const rules = this.network!();
     this.applying = JSON.stringify(rules);
     const { ports, domains } = rules;

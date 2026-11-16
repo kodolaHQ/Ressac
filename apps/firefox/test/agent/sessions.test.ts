@@ -418,4 +418,15 @@ describe("engine change (Réglages › Agents)", () => {
     w.manager.engineChanged("claude");
     expect(w.states().at(-1)).toEqual({ state: "active" });
   });
+
+  test("relaunchActive: every running session, whatever its profile, starts again and resumes; an ended one does not", async () => {
+    const w = withEngine();
+    await w.manager.start("F", size);
+    await w.manager.switchProfile("G", "mine");
+    await w.manager.start("H", size);
+    w.sessions[2]!.finish(0);
+    await w.manager.relaunchActive();
+    expect(w.sessions.slice(0, 2).map((s) => s.stopped)).toEqual([true, true]);
+    expect(w.opens.slice(3)).toEqual([{ profile: "claude", resume: true }, { profile: "mine", resume: true }]);
+  });
 });

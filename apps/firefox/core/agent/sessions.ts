@@ -258,6 +258,11 @@ export class SessionsAgent {
     void s?.stop();
   }
 
+  /** Every window whose agent runs gets a new session of the same profile, resuming its conversation (a mode change, a network not applied). */
+  async relaunchActive(): Promise<void> {
+    await Promise.all([...this.inputs].filter(([, e]) => e.session?.active).map(([f]) => this.relaunch(f)));
+  }
+
   /** Workshop restart: every window that had an agent gets a new one of its own profile, at the same size, without resuming. */
   async relaunchAll(): Promise<void> {
     const olds = [...this.inputs];
