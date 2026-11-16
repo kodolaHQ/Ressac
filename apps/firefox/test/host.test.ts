@@ -1344,10 +1344,11 @@ createServer((req, res) => {
     expect(h.stderr()).toContain("simulated apps stop");
   });
 
-  it("portRange, the app tab and SchemaActionApplication", async () => {
-    const { portRange, appTab } = await import("../host/applications");
+  it("appPortRange, the app tab and SchemaActionApplication", async () => {
+    const { appPortRange, appTab } = await import("../host/applications");
     const { SchemaActionApplication } = await import("../shared/api");
-    expect(portRange("15280-15284")).toEqual([15280, 15284]);
+    expect(appPortRange("15280-15284")).toEqual([15280, 15284]);
+    expect(appPortRange(undefined)).toBeUndefined();
     expect(appTab({ folder: "essai", title: "T", url: "http://localhost:15280/" })).toEqual({ id: "app:essai", title: "T", url: "http://localhost:15280/", space: "", app: "essai" });
     const accepted = (folder: unknown, action: string) => SchemaActionApplication.safeParse({ folder: folder, action }).success;
     expect([["essai", "launch"], ["../x", "delete"], ["My Project", "delete"], ["My Project", "launch"], [".", "debug"], ["essai", "autre"], [3, "launch"]].map(([d, a]) => accepted(d, a as string))).toEqual([true, false, true, false, false, false, false]);
