@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { claudeWriterArgv, codexWriterArgv, createAgentWriter, type WriterAgent } from "../../src/ai/agent-writer.js";
+import { CODEX_DISABLED_FEATURES, claudeWriterArgv, codexWriterArgv, createAgentWriter, type WriterAgent } from "../../src/ai/agent-writer.js";
 import { WRITER_JSON_INVALID } from "../../src/ai/dispatcher.js";
 
 const NONE = "Connectez Claude Code ou Codex dans Réglages › Agents pour les résumés";
@@ -18,14 +18,11 @@ function make(res: ReturnType<typeof ok>, agent: WriterAgent | null = "claude") 
 describe("argv", () => {
   it("claude: exact list, no --bare, empty tools", () => {
     const a = claudeWriterArgv(false);
-    expect(a.slice(0, 6)).toEqual(["claude", "-p", "--model", "haiku", "--output-format", "json"]);
-    expect(a[a.indexOf("--tools") + 1]).toBe("");
-    expect(a[a.indexOf("--setting-sources") + 1]).toBe("");
-    expect(a).toContain("--strict-mcp-config");
-    expect(a).toContain("--no-session-persistence");
-    expect(a).toContain("--disable-slash-commands");
-    expect(a).not.toContain("--bare");
-    expect(a).not.toContain("--mcp-config");
+    expect(a).toEqual([
+      "claude", "-p", "--model", "haiku", "--output-format", "json", "--system-prompt", a[7], "--tools", "",
+      "--strict-mcp-config", "--setting-sources", "", "--no-session-persistence", "--disable-slash-commands",
+    ]);
+    expect(a[7]).toMatch(/^You are a writer/);
     expect(claudeWriterArgv(true)[a.indexOf("--system-prompt") + 1]).toMatch(/JSON only/);
   });
   it("codex: read-only, ephemeral, reads stdin", () => {
@@ -33,6 +30,9 @@ describe("argv", () => {
     expect(a[a.indexOf("-s") + 1]).toBe("read-only");
     expect(a).toEqual(expect.arrayContaining(["--ephemeral", "--ignore-user-config", "--skip-git-repo-check"]));
     expect(a.at(-1)).toBe("-");
+    expect(a).toContain("--ignore-rules");
+    expect(a[a.indexOf("-c") + 1]).toBe('web_search="disabled"');
+    for (const f of CODEX_DISABLED_FEATURES) expect(a[a.indexOf(f) - 1]).toBe("--disable");
   });
 });
 
@@ -93,5 +93,36 @@ describe("codex", () => {
     const { w, signedOut } = make(ok("", 1, "Not logged in. Run codex login"), "codex");
     await expect(w({ prompt: "P" })).rejects.toThrow(NONE);
     expect(signedOut).toHaveBeenCalledWith("codex");
+  });
+  it("timeout: failed with the runner's localized stderr", async () => {
+    const { w } = make(ok("", 124, "Délai dépassé"), "codex");
+    await expect(w({ prompt: "P" })).rejects.toThrow(/L'IA n'a pas pu rédiger : \W*Délai dépassé/);
+  });
+});
+
+describe("claude timeout and switching", () => {
+  it("timeout: failed", async () => {
+    const { w } = make(ok("", 124, "Délai dépassé"));
+    await expect(w({ prompt: "P" })).rejects.toThrow(/L'IA n'a pas pu rédiger : \W*Délai dépassé/);
+  });
+  it("signed out: switches once to the other agent", async () => {
+    const exec = vi.fn(async (argv: string[]) => (argv[0] === "claude" ? ok(claudeOut("Not logged in", true), 1) : ok("Via codex")));
+    const agents: WriterAgent[] = ["claude", "codex"];
+    const log = vi.fn();
+    const w = createAgentWriter({ exec, agent: async () => agents.shift() ?? null, signedOut: vi.fn(), log, locale: () => "fr" });
+    expect(await w({ prompt: "P" })).toBe("Via codex");
+    expect(exec).toHaveBeenCalledTimes(2);
+    expect(log).toHaveBeenCalledTimes(2);
+  });
+  it("signed out and the same agent again: none, one exec", async () => {
+    const exec = vi.fn(async () => ok(claudeOut("Not logged in", true), 1));
+    const w = createAgentWriter({ exec, agent: async () => "claude", locale: () => "fr" });
+    await expect(w({ prompt: "P" })).rejects.toThrow(NONE);
+    expect(exec).toHaveBeenCalledTimes(1);
+  });
+  it("logs failures too", async () => {
+    const { w, log } = make(ok(claudeOut("Claude AI usage limit reached", true), 1));
+    await expect(w({ prompt: "P" })).rejects.toThrow();
+    expect(log.mock.calls[0]?.[0]).toMatch(/claude haiku \d+ms limit/);
   });
 });

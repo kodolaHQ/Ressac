@@ -1,6 +1,5 @@
 import { say } from "../i18n.js";
 import type { RunResult } from "../container/runner.js";
-import { CODE_CANCELLED, CODE_TIMEOUT_EXCEEDED } from "../container/runner.js";
 import { WRITER_JSON_INVALID } from "./dispatcher.js";
 import type { Writer } from "./writer.js";
 
@@ -24,14 +23,24 @@ export function claudeWriterArgv(json: boolean): string[] {
   ];
 }
 
-// shortcut: never run against a real ChatGPT account, run it with a tester's account
+/** Codex features switched off so the writer is inert: `-s read-only` alone still lets the shell tool read files (auth.json) into the answer. */
+export const CODEX_DISABLED_FEATURES = [
+  "shell_tool", "unified_exec", "apps", "plugins", "browser_use", "browser_use_external",
+  "in_app_browser", "image_generation", "view_image", "tool_suggest", "skill_search", "sleep_tool",
+];
+
+// shortcut: inertness and the model are unverified without a ChatGPT account, run it with a tester's account
 // `-o out` is relative: the command runs in a fresh temp dir and the host prints ./out afterwards, so stdout is the last message.
 export function codexWriterArgv(_json: boolean): string[] {
-  return ["codex", "exec", "-m", CODEX_WRITER_MODEL, "-s", "read-only", "--skip-git-repo-check", "--ephemeral", "--ignore-user-config", "-o", "out", "-"];
+  return [
+    "codex", "exec", "-m", CODEX_WRITER_MODEL, "-s", "read-only", "--skip-git-repo-check", "--ephemeral",
+    "--ignore-user-config", "--ignore-rules", "-c", 'web_search="disabled"',
+    ...CODEX_DISABLED_FEATURES.flatMap((f) => ["--disable", f]), "-o", "out", "-",
+  ];
 }
 
 /** Substring checks on the CLIs' error texts: loose on purpose, a miss only makes the error generic. */
-const SIGNED_OUT = /not logged in|not signed in|\/login|invalid api key|401/i;
+const SIGNED_OUT = /not logged in|not signed in|\/login|invalid api key|401 unauthorized/i;
 const LIMIT = /usage limit|rate limit|limit reached|quota/i;
 
 export function createAgentWriter(o: {
@@ -45,49 +54,68 @@ export function createAgentWriter(o: {
   const t = (id: string, args?: Record<string, string>) => new Error(say(o.locale?.() ?? "en", id, args));
   return async (r) => {
     if (r.images?.length) throw t("kernel-writer-images");
-    const agent = await o.agent();
-    if (!agent) throw t("kernel-writer-none");
     const json = !!r.json;
     const signal = r.signal ?? new AbortController().signal;
-    const argv = agent === "claude" ? claudeWriterArgv(json) : codexWriterArgv(json);
-    // Codex has no system prompt flag: the instruction leads the input.
-    const input = agent === "claude" ? r.prompt : `${systemPrompt(json)}\n\n${r.prompt}`;
-    const started = Date.now();
-    const res = await o.exec(argv, { input, signal, delayMs: WRITER_TIMEOUT_MS });
-    if (signal.aborted) throw signal.reason ?? new Error("aborted");
-    const failed = (reason: string) => t("kernel-writer-failed", { reason: reason.trim().slice(-300) || `code ${res.code}` });
-    const signedOut = () => { o.signedOut?.(agent); return t("kernel-writer-none"); };
-    let text: string;
-    let tokens = "";
-    if (agent === "claude") {
-      let out: { is_error?: boolean; result?: unknown; usage?: Record<string, number> };
-      try { out = JSON.parse(res.stdout); } catch { throw failed(res.stderr || res.stdout); }
-      const result = typeof out.result === "string" ? out.result : "";
-      if (out.is_error || res.code !== 0) {
-        if (SIGNED_OUT.test(result)) throw signedOut();
-        if (LIMIT.test(result)) throw t("kernel-writer-limit");
-        throw failed(result || res.stderr);
-      }
-      text = result;
-      const u = out.usage ?? {};
-      tokens = ` in=${u.input_tokens ?? "?"} cache=${u.cache_read_input_tokens ?? "?"} out=${u.output_tokens ?? "?"}`;
-    } else {
-      if (res.code !== 0) {
-        if (res.code === CODE_TIMEOUT_EXCEEDED) throw failed("timeout");
-        if (res.code === CODE_CANCELLED) throw failed("cancelled");
-        if (SIGNED_OUT.test(res.stderr)) throw signedOut();
-        if (LIMIT.test(res.stderr)) throw t("kernel-writer-limit");
-        throw failed(res.stderr);
-      }
-      text = res.stdout;
+    let tried: WriterAgent | null = null;
+    for (;;) {
+      const agent = await o.agent();
+      if (!agent || agent === tried) throw t("kernel-writer-none");
+      const outcome = await runOnce(agent);
+      if (outcome !== "signed-out") return outcome.value;
+      o.signedOut?.(agent);
+      tried = agent; // one switch at most: the other agent, never the same one twice
     }
-    o.log?.(`writer ${agent} ${agent === "claude" ? CLAUDE_WRITER_MODEL : CODEX_WRITER_MODEL} ${Date.now() - started}ms${tokens}`);
-    text = text.trim();
-    if (!json) return text;
-    try {
-      return JSON.parse(text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, ""));
-    } catch {
-      throw new Error(WRITER_JSON_INVALID);
+
+    async function runOnce(agent: WriterAgent): Promise<{ value: unknown } | "signed-out"> {
+      const model = agent === "claude" ? CLAUDE_WRITER_MODEL : CODEX_WRITER_MODEL;
+      const argv = agent === "claude" ? claudeWriterArgv(json) : codexWriterArgv(json);
+      // Codex has no system prompt flag: the instruction leads the input.
+      const input = agent === "claude" ? r.prompt : `${systemPrompt(json)}\n\n${r.prompt}`;
+      const started = Date.now();
+      let outcome = "ok";
+      let tokens = "";
+      try {
+        const res = await o.exec(argv, { input, signal, delayMs: WRITER_TIMEOUT_MS });
+        if (signal.aborted) { outcome = "aborted"; throw signal.reason ?? new Error("aborted"); }
+        const failed = (reason: string) => { outcome = "failed"; return t("kernel-writer-failed", { reason: reason.trim().slice(-300) || `code ${res.code}` }); };
+        const limit = () => { outcome = "limit"; return t("kernel-writer-limit"); };
+        let text: string;
+        if (agent === "claude") {
+          let out: { is_error?: boolean; result?: unknown; usage?: Record<string, number> };
+          try { out = JSON.parse(res.stdout); } catch { throw failed(res.stderr || res.stdout); }
+          const u = out.usage ?? {};
+          tokens = ` in=${u.input_tokens ?? "?"} cache=${u.cache_read_input_tokens ?? "?"} out=${u.output_tokens ?? "?"}`;
+          const result = typeof out.result === "string" ? out.result : "";
+          if (out.is_error || res.code !== 0) {
+            if (SIGNED_OUT.test(result)) { outcome = "signed-out"; return "signed-out"; }
+            if (LIMIT.test(result)) throw limit();
+            throw failed(result || res.stderr);
+          }
+          text = result;
+        } else {
+          if (res.code !== 0) {
+            // Codex echoes the prompt in stderr: only its tail is matched.
+            const tail = res.stderr.slice(-300);
+            if (SIGNED_OUT.test(tail)) { outcome = "signed-out"; return "signed-out"; }
+            if (LIMIT.test(tail)) throw limit();
+            throw failed(res.stderr);
+          }
+          text = res.stdout;
+        }
+        text = text.trim();
+        if (!json) return { value: text };
+        try {
+          return { value: JSON.parse(text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "")) };
+        } catch {
+          outcome = "invalid-json";
+          throw new Error(WRITER_JSON_INVALID);
+        }
+      } catch (e) {
+        if (outcome === "ok") outcome = "error";
+        throw e;
+      } finally {
+        o.log?.(`writer ${agent} ${model} ${Date.now() - started}ms ${outcome}${tokens}`);
+      }
     }
   };
 }
