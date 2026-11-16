@@ -173,7 +173,7 @@ describe("one Ressac, the app launched in each test", () => {
   // applications.spec.ts:136
   it("an external link of the app opens in a tab of the main window", async () => {
     await launched();
-    await inAppView(m, "essai", 'document.querySelector("a").click(); return 1;');
+    await inAppView(m, "essai", 'document.querySelector("a").click(); return 1;', { gesture: true });
     await expect.poll(() => tabUrls(m), { timeout: 10_000 }).toContain("https://exemple.invalide/");
     expect(await viewUrl(m)).toBe(attempt);
   });
@@ -195,11 +195,19 @@ describe("one Ressac, the app launched in each test", () => {
   });
 
   // applications.spec.ts:177
-  it("a server redirect of the app to another site opens in a tab", async () => {
+  it("a server redirect of the app to another site opens in a tab after a click", async () => {
     await launched();
-    await inAppView(m, "essai", 'location.href = "/redirige"; return 1;');
+    await inAppView(m, "essai", 'location.href = "/redirige"; return 1;', { gesture: true });
     await expect.poll(() => tabUrls(m), { timeout: 10_000 }).toContain("https://exemple.invalide/redirige");
     expect(await viewUrl(m)).toBe(attempt);
+  });
+
+  it("without a click, the app's script or redirect to another site opens nothing", async () => {
+    await launched();
+    await inAppView(m, "essai", 'location.href = "/redirige?d=secret"; return 1;');
+    await inAppView(m, "essai", 'location.href = "https://exemple.invalide/script?d=secret"; return 1;');
+    await sleep(1500);
+    expect((await tabUrls(m)).filter((u) => u.includes("secret"))).toEqual([]);
   });
 
   // applications.spec.ts:147
@@ -417,7 +425,7 @@ describe("one Ressac, the app launched in each test", () => {
     expect(await m.execute(`return ${app}.ressacMark;`)).toBe(1);
     expect(await appWindows(m)).toBe(1);
     await inAppView(m, "essai", "window.marque = 7; return 1;");
-    await inAppView(m, "essai", `location.href = ${JSON.stringify(`${old}page2`)}; return 1;`);
+    await inAppView(m, "essai", `location.href = ${JSON.stringify(`${old}page2`)}; return 1;`, { gesture: true });
     await expect.poll(() => tabUrls(m), { timeout: 10_000 }).toContain(`${old}page2`);
     await stays(m, next, "old port");
   });

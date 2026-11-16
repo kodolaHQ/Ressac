@@ -270,7 +270,7 @@ export const apps = {
   /**
    * The request guard's part for agent apps (sites.ts's observer, top-level documents): true if the channel is of an app
    * container, handled here. The view loads only its app's origin (a redirect too); anything else is cancelled before it
-   * is sent, then opened in a main window tab. Any other <browser> of the container (window.open with features) is
+   * is sent, then opened in a main window tab if the user clicked. Any other <browser> of the container (window.open with features) is
    * closed, its address in a tab. The container of an app not open loads nothing.
    */
   request(ch: any, li: any): boolean {
@@ -290,7 +290,9 @@ export const apps = {
     ch.cancel(Cr.NS_BINDING_ABORTED);
     // Before the view is attached nothing of the container may load, and no browser can be told from the view yet.
     if (!inView && a.view) closeStray(bc?.top?.embedderElement);
-    toTab(url);
+    // Only a user's click reopens it in a tab: a page script, a 302 or a <meta refresh> would carry the agent's data there.
+    if (li.hasValidUserGestureActivation) toTab(url);
+    else console.warn("[apps] navigation without a click blocked: " + url.slice(0, 80));
     return true;
   },
   /**
