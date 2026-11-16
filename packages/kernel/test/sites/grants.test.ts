@@ -29,6 +29,12 @@ test("granted then tweaks code changed: still covers", () => {
   expect(grantCovers(null, base)).toBe(false);
 });
 
+test("a domain address tracking moved the app to is not covered until granted", () => {
+  const tracked = [...base.domains, "netflix-login.evil.example"];
+  expect(grantCovers(rightsOf(base), base, tracked)).toBe(false);
+  expect(grantCovers(rightsOf(base, tracked), base, tracked)).toBe(true);
+});
+
 test("domain, login domain, frame pattern added, or reprise set to true: no longer covers", () => {
   const a = rightsOf(base);
   expect(grantCovers(a, { ...base, domains: ["vidola-a.example", "autre.example"] })).toBe(false);

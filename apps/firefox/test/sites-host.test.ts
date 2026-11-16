@@ -143,6 +143,17 @@ describe("lookupAddress", () => {
     expect(m.sites.openSites.get("suivi")!.request.tracked).toEqual(["vidola-b.example"]);
   });
 
+  it("a granted app moved to a new domain shows the grant card again before its view goes there", async () => {
+    const m = mount(undefined, async () => ["https://vidola-b.example/"]);
+    const d = DeclarationSite.parse({ ...declaration, domains: ["vidola-a.example"], urlTracking: { page: "https://adresses.example/", pattern: "vidola" } });
+    await storeSiteGrant(m.dataDir, "suivi", d);
+    await m.sites.openById("suivi");
+    expect(m.sites.openSites.get("suivi")!.grantRequired).toBe(false);
+    await m.sites.lookupAddress("suivi", null);
+    expect(m.calls.updates.at(-1)).toMatchObject({ grantRequired: true, domains: ["vidola-a.example", "vidola-b.example"] });
+    expect(m.sites.openSites.get("suivi")!.grantRequired).toBe(true);
+  });
+
   it("nothing to follow (no addressTracking, not open, deleting): no reading", async () => {
     const readLinks = vi.fn(async () => ["https://vidola-b.example/"]);
     const m = mount(undefined, readLinks);
@@ -555,7 +566,7 @@ describe("site rights, card and memory", () => {
       files: ["a.js", "cacher.css"],
       matches: ["/serie/*"],
       tracked: ["vidola-c.example"],
-      hash: rightsHash(d),
+      hash: rightsHash(d, ["vidola-a.example", "VIDOLA-C.example"]),
     });
   });
 

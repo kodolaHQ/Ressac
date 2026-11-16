@@ -47,9 +47,9 @@ export type SiteChrome = OpenableSite & { request: SiteGrantRequest; hash: strin
 
 const uniques = (l: string[]) => [...new Set(l)];
 
-/** The hash of the rights the declaration asks for. */
-export function rightsHash(d: DeclarationSite): string {
-  return createHash("sha256").update(JSON.stringify(rightsOf(d))).digest("hex");
+/** The hash of the rights the declaration asks for, on `domains` (the declared ones plus the tracked ones). */
+export function rightsHash(d: DeclarationSite, domains: string[] = d.domains): string {
+  return createHash("sha256").update(JSON.stringify(rightsOf(d, domains))).digest("hex");
 }
 
 /** What the grant card shows. */
@@ -65,7 +65,7 @@ export function grantRequest(s: OpenableSite): SiteGrantRequest {
     files: uniques(d.tweaks.flatMap((r) => [...r.js, ...r.css])),
     matches: uniques(d.tweaks.flatMap((r) => r.matches)),
     tracked: uniques(s.domains.map((x) => x.toLowerCase()).filter((x) => !declares.has(x))),
-    hash: rightsHash(d),
+    hash: rightsHash(d, s.domains),
   };
 }
 
@@ -287,14 +287,7 @@ export function createSites(o: {
     const d = parsed.declaration;
     const state = await readUrlState(sitesFolder, id);
     if (!still()) return null;
-    let grant: SiteRights | null = null;
-    try {
-      const grants = await readSiteGrants(o.dataDir);
-      grant = Object.hasOwn(grants, id) ? (grants[id] ?? null) : null;
-    } catch (e) {
-      // Unreadable grants: the grant is asked again (nothing is injected without it).
-      console.error("[sites] accords illisibles :", e);
-    }
+    const grant = await grantOf(id);
     if (!still()) return null;
     const files = await tweakFiles(parsed);
     if (!still()) return null;
@@ -304,9 +297,20 @@ export function createSites(o: {
       hasHome: parsed.hasHome,
       domains: effectiveDomains(d, state),
       start: startUrl(d, state),
-      grantRequired: grantNeeded(d) && !grantCovers(grant, d),
+      grantRequired: grantNeeded(d) && !grantCovers(grant, d, effectiveDomains(d, state)),
     };
     return { site: { ...site, request: grantRequest(site), hash: siteReadHash(d) }, tweaks: files };
+  }
+
+  async function grantOf(id: string): Promise<SiteRights | null> {
+    try {
+      const grants = await readSiteGrants(o.dataDir);
+      return Object.hasOwn(grants, id) ? (grants[id] ?? null) : null;
+    } catch (e) {
+      // Unreadable grants: the grant is asked again (nothing is injected without it).
+      console.error("[sites] accords illisibles :", e);
+      return null;
+    }
   }
 
   /** The tweak files; none if one of them is missing or exceeds the bounds (the error is written). */
@@ -361,8 +365,13 @@ export function createSites(o: {
         const relative = url ? relativeUrl(url, domains) : null;
         const to = (relative && urlOnDomain(relative, r.domain, domains, start, reading)) || start;
         changes.set(id, (changes.get(id) ?? 0) + 1);
-        const site = { ...current, domains: domains, start: start };
-        openSites.set(id, { ...site, request: grantRequest(site) });
+        // A domain the user never approved (the reference page is hostile): the tweaks wait for the card's « Autoriser ».
+        const grantRequired = grantNeeded(decl) && !grantCovers(await grantOf(id), decl, domains);
+        const site = { ...current, domains: domains, start: start, grantRequired };
+        const next = { ...site, request: grantRequest(site) };
+        openSites.set(id, next);
+        // The card first: once it shows, the view loads nothing before the choice.
+        if (grantRequired) await o.chrome.update(next, tweaks.get(id) ?? { js: {}, css: {} });
         o.chrome.urlChanged(id, domains, start, to);
         notify({ kind: "url-changed", text: urlChanged(d.name, r.domain) });
         // The home shows the new domain.
@@ -663,15 +672,15 @@ export function createSites(o: {
       if (!yes) return o.chrome.afterGrant(id, null);
       // Granted only if its rights are the clicked card's (the agent picks its moment).
       const d = shown.declaration;
-      if (rightsHash(d) !== hash) return o.chrome.rebroadcast(id);
+      if (rightsHash(d, shown.domains) !== hash) return o.chrome.rebroadcast(id);
       // A reading already under way read the grant from before: it is dropped (and redone once the grant is written).
       reviews.set(id, (reviews.get(id) ?? 0) + 1);
-      await storeSiteGrant(o.dataDir, id, d);
+      await storeSiteGrant(o.dataDir, id, d, shown.domains);
       const s = openSites.get(id);
       // During a deletion nothing is granted (the grant would be that of an app that is leaving).
       if (!s || deletions.has(id)) return;
-      const granted = rightsOf(d);
-      const after = { ...s, grantRequired: grantNeeded(s.declaration) && !grantCovers(granted, s.declaration) };
+      const granted = rightsOf(d, shown.domains);
+      const after = { ...s, grantRequired: grantNeeded(s.declaration) && !grantCovers(granted, s.declaration, s.domains) };
       // The chrome's copy is this one: the reading below finds nothing changed and does not reload a second time.
       openSites.set(id, after);
       await o.chrome.afterGrant(id, after);

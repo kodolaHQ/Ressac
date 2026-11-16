@@ -50,9 +50,10 @@ export function grantNeeded(d: DeclarationSite): boolean {
   return d.tweaks.length > 0 || d.resume;
 }
 
-export function rightsOf(d: DeclarationSite): SiteRights {
+/** `domains`: where the tweaks run, the declared ones plus those address tracking moved the app to (effectiveDomains). */
+export function rightsOf(d: DeclarationSite, domains: string[] = d.domains): SiteRights {
   return {
-    domains: unique(d.domains.map((x) => x.toLowerCase())),
+    domains: unique(domains.map((x) => x.toLowerCase())),
     login: unique(d.login.map((x) => x.toLowerCase())),
     frames: unique(d.tweaks.flatMap((r) => (r.frames === false ? [] : r.frames))),
     resume: d.resume,
@@ -60,9 +61,9 @@ export function rightsOf(d: DeclarationSite): SiteRights {
 }
 
 /** The grant covers the declaration if it asks for nothing more than what was granted. */
-export function grantCovers(a: SiteRights | null, d: DeclarationSite): boolean {
+export function grantCovers(a: SiteRights | null, d: DeclarationSite, domains: string[] = d.domains): boolean {
   if (!a) return false;
-  const wanted = rightsOf(d);
+  const wanted = rightsOf(d, domains);
   const inside = (x: string[], y: string[]) => x.every((v) => y.includes(v));
   const granted = {
     domains: a.domains.map((x) => x.toLowerCase()),
@@ -109,9 +110,9 @@ function modify(profile: string, change: (a: Record<string, SiteRights>) => void
   });
 }
 
-export async function storeSiteGrant(profile: string, id: string, d: DeclarationSite): Promise<void> {
+export async function storeSiteGrant(profile: string, id: string, d: DeclarationSite, domains: string[] = d.domains): Promise<void> {
   checkId(id);
-  const rights = rightsOf(d);
+  const rights = rightsOf(d, domains);
   return modify(profile, (grants) => {
     grants[id] = rights;
   });
