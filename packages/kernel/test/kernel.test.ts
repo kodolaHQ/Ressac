@@ -136,9 +136,10 @@ test("at launch, once the container is ready, the agents of a previous app are s
   kernel = await createKernel({ locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: runUpToDate, workshop: workshop });
   await kernel.openAgentSession({ cols: 80, rows: 24 }).then((s) => s.stop(), () => {});
   const execs = calls.filter((a) => a.args[0] === "exec").map((a) => a.args.join(" "));
-  // The cleanup (all marked sessions) runs before the open session is stopped here.
+  // The cleanup (all marked sessions), then the sweep before the first session, then this session's own stop.
   expect(execs[0]).toContain("/tmp/ressac-session-*.pid");
-  expect(execs[1]).toMatch(/ressac-session-[0-9a-f]+\.pid/);
+  expect(execs[1]).toContain("kill -KILL -1");
+  expect(execs[2]).toMatch(/ressac-session-[0-9a-f]+\.pid/);
 });
 
 test("createKernel reads models and Dockerfile from resources", async () => {
@@ -378,6 +379,26 @@ test("a session opened for a window writes its own MCP config, deleted when the 
   expect((await (await import("node:fs/promises")).stat(join(folder, files[0]!))).mode & 0o777).toBe(0o600);
   await session.stop();
   await vi.waitFor(async () => expect(await readdir(folder)).toEqual([]));
+});
+
+test("a session opened while none runs first kills what the agent left in the container; one opened beside it does not", async () => {
+  const n = await createReady();
+  const { Workshop } = await import("../src/container/workshop.js");
+  const sweep = vi.spyOn(Workshop.prototype, "stopAgentProcesses").mockResolvedValue();
+  try {
+    await mkdir(join(n.paths.internal, "sessions"), { recursive: true });
+    const [a, b] = await Promise.all([n.openAgentSession({ cols: 80, rows: 24, window: "F1" }), n.openAgentSession({ cols: 80, rows: 24, window: "F2" })]);
+    expect(sweep).toHaveBeenCalledTimes(1);
+    await a.stop();
+    const c = await n.openAgentSession({ cols: 80, rows: 24, window: "F1" });
+    expect(sweep).toHaveBeenCalledTimes(1);
+    await Promise.all([b.stop(), c.stop()]);
+    await vi.waitFor(async () => expect(await readdir(join(n.paths.internal, "sessions"))).toEqual([]));
+    (await n.openAgentSession({ cols: 80, rows: 24, window: "F3" })).stop();
+    expect(sweep).toHaveBeenCalledTimes(2);
+  } finally {
+    sweep.mockRestore();
+  }
 });
 
 test("at kernel startup, session configs left behind by a crash are purged", async () => {

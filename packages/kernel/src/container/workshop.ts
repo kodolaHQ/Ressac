@@ -480,6 +480,17 @@ export class Workshop {
   }
 
   /**
+   * Before a session when none runs: every process of the agent's user but the container's PID 1 is killed. A process the
+   * agent detached with a new group and an empty environment (`setsid env -i …`) escapes both marks of `stopSession` and
+   * would keep reading `.ressac` tokens for later conversations. The apps it launched go too.
+   */
+  async stopAgentProcesses(): Promise<void> {
+    if (!this.docker) return;
+    const r = await this.launch(["exec", "-u", "node", containerName(), "sh", "-c", "kill -KILL -1 2>/dev/null; true"], PROBE_DELAY_MS);
+    if (r.code !== 0) throw new Error(`Arrêt des processus de l'agent impossible : ${tail(r.stderr) || `code ${r.code}`}`);
+  }
+
+  /**
    * At app launch: the agents (and their servers) of a previous app that could not stop them (killed outright,
    * crashed) have no window anymore. Only one app runs at a time on the workshop.
    */

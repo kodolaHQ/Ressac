@@ -621,6 +621,9 @@ export async function createKernel(o: {
 
   // Cleanups of the sessions with a window still open, also done at the kernel's shutdown.
   const openSessions = new Set<() => Promise<void>>();
+  // Sessions being opened, and the sweep the first of them started: the others wait for it, never run after it.
+  let opening = 0;
+  let sweep: Promise<void> = Promise.resolve();
 
   return {
     paths: paths,
@@ -658,6 +661,9 @@ export async function createKernel(o: {
       }
       policy.reset();
       search.reset();
+      // No session running: nothing the agent left behind keeps running into this conversation (stopAgentProcesses).
+      if (openSessions.size === 0 && opening === 0) sweep = workshop.stopAgentProcesses();
+      opening++;
       const id = randomBytes(8).toString("hex");
       // With a window: its own token and config, so that `open_workflow` knows which one speaks (without a window,
       // dev CLI: the main config).
@@ -670,6 +676,7 @@ export async function createKernel(o: {
         return rm(configSession, { force: true }).catch((e) => console.error("[ressac] session config deletion:", e));
       };
       try {
+        await sweep;
         if (win !== undefined) sessionToken = server.openSession(win, chosen.name);
         let mcpConfig: string;
         let env: Record<string, string> = {};
@@ -711,6 +718,8 @@ export async function createKernel(o: {
       } catch (e) {
         await clean();
         throw e;
+      } finally {
+        opening--;
       }
     },
     readHome: () => readHome(paths, widgetsFolder, loc()),
