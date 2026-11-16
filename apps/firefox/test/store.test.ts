@@ -12,14 +12,14 @@ describe("createStore", () => {
     expect(listener).not.toHaveBeenCalled();
   });
 
-  it("applies an action and passes (new, previous) to subscribers", () => {
+  it("applies an action and passes (new, previous, action) to subscribers", () => {
     const initial = initialState();
     const store = createStore(initial);
     const listener = vi.fn();
     store.subscribe(listener);
     store.dispatch({ type: "openTab", windowId: initial.windows[0]!.id, url: "https://a.test" }, () => "t1");
     expect(store.state.tabs["t1"]?.url).toBe("https://a.test");
-    expect(listener).toHaveBeenCalledWith(store.state, initial);
+    expect(listener).toHaveBeenCalledWith(store.state, initial, { type: "openTab", windowId: initial.windows[0]!.id, url: "https://a.test" });
   });
 
   it("clones the action: mutating it afterwards changes nothing", () => {

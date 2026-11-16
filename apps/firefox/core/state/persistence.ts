@@ -8,6 +8,7 @@ import { ClaudeEngineSchema, CodexEngineSchema, DEFAULT_CLAUDE_ENGINE, DEFAULT_C
 import { FIRST_TIME, HINT_IDS, type HintId } from "../../shared/hints";
 import { SHORTCUTS, SHORTCUT_IDS, bindingProblem, effectiveBindings, isBinding, pickBinding, type Binding, type ShortcutId } from "../../shared/shortcuts";
 import { initialState } from "./initial-state";
+import type { Action } from "../../shared/api";
 
 const FILE = "session.json";
 
@@ -197,10 +198,14 @@ export async function loadSession(folder: string, kept?: (path: string) => void)
   }
 }
 
-/** Saves the session at most once per `delaiMs`, atomically (temporary file + rename). */
+/** A change only a tab's title, icon or volatile fields make: a ticking title (unread count) is saved on the slow timer. */
+export const lazySave = (a: Action): boolean => a.type === "updateTab" && !("url" in a.fields) && !("zoom" in a.fields);
+
+/** Saves the session `delayMs` after a change (`lazyMs` after a lazy one), atomically (temporary file + rename). */
 export class SessionRecorder {
   private waiting: BrowserState | null = null;
   private timer: NodeJS.Timeout | undefined;
+  private due = 0;
   /** Chained writes, never simultaneous. */
   private writing: Promise<void> = Promise.resolve();
   private number = 0;
@@ -210,11 +215,17 @@ export class SessionRecorder {
   constructor(
     private readonly folder: string,
     private readonly delayMs = 500,
+    private readonly lazyMs = 5000,
   ) {}
 
-  schedule(state: BrowserState): void {
+  schedule(state: BrowserState, lazy = false): void {
     this.waiting = state;
-    this.timer ??= setTimeout(() => void this.clear(), this.delayMs);
+    const due = Date.now() + (lazy ? this.lazyMs : this.delayMs);
+    // A pending write already sooner keeps its time; a real change brings a lazy one forward.
+    if (this.timer && this.due <= due) return;
+    clearTimeout(this.timer);
+    this.due = due;
+    this.timer = setTimeout(() => void this.clear(), due - Date.now());
   }
 
   /** Writes the pending state; always waits for the end of the writes in progress (the app's exit depends on it). */
@@ -241,7 +252,7 @@ export class SessionRecorder {
     );
     const target = join(this.folder, FILE);
     const { update: _update, locale: _locale, aiSetup: _aiSetup, welcomeReplay: _welcomeReplay, ...saved } = state;
-    const text = JSON.stringify({ ...saved, tabs: tabs }, null, 2);
+    const text = JSON.stringify({ ...saved, tabs: tabs });
     this.onDisk ??= await fs.readFile(target, "utf8").catch(() => null);
     if (text === this.onDisk) return;
     const temp = `${target}.${process.pid}.${++this.number}.tmp`;

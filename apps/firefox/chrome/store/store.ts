@@ -2,7 +2,7 @@ import type { Action } from "../../shared/api";
 import type { BrowserState } from "../../shared/model";
 import { apply } from "../../core/state/actions";
 
-export type Listener = (state: BrowserState, previous: BrowserState) => void;
+export type Listener = (state: BrowserState, previous: BrowserState, action: Action) => void;
 
 export interface Store {
   readonly state: BrowserState;
@@ -21,12 +21,13 @@ export function createStore(initial: BrowserState): Store {
     dispatch(action, genId) {
       const previous = state;
       // structuredClone: an action from another realm (Marionette, a window) must not alias our state.
-      state = apply(previous, structuredClone(action), genId);
+      const own = structuredClone(action);
+      state = apply(previous, own, genId);
       if (state !== previous)
         for (const l of [...listeners]) {
           // One failing listener (a closing window…) must not skip the others nor fail the dispatch.
           try {
-            l(state, previous);
+            l(state, previous, own);
           } catch (e) {
             console.error("[store] listener failed:", e);
           }

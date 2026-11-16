@@ -3,7 +3,7 @@ import { DEFAULT_AURA } from "../../shared/aura";
 import { privateTab, tabProfile, profilesInUse, type Decision, type AccessState, type WindowId, type ProfileId, type Appearance } from "../../shared/model";
 import type { ReportedError } from "../../shared/telemetry";
 import { checkDataFormat } from "../../core/state/format";
-import { loadSession, SessionRecorder } from "../../core/state/persistence";
+import { lazySave, loadSession, SessionRecorder } from "../../core/state/persistence";
 import { withEssentials } from "../../core/state/actions";
 import { bridgeHandlers, sendMirror, trackState } from "../agent/bridge";
 import { createHost, HOST_EXITED, type AgentHost } from "../agent/host";
@@ -218,8 +218,8 @@ async function start(): Promise<RessacStore> {
   });
   const recorder = new SessionRecorder(dataDir);
   const flush = () => recorder.clear();
-  store.subscribe((state, previous) => {
-    recorder.schedule(state);
+  store.subscribe((state, previous, action) => {
+    recorder.schedule(state, lazySave(action));
     const used = profilesInUse(state);
     for (const id of profilesInUse(previous)) if (!used.has(id)) {
         try {

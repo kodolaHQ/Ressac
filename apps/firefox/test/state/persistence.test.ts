@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { apply } from "../../core/state/actions";
 import { initialState } from "../../core/state/initial-state";
-import { loadSession, SessionRecorder } from "../../core/state/persistence";
+import { lazySave, loadSession, SessionRecorder } from "../../core/state/persistence";
 import type { BrowserState } from "../../shared/model";
 import { DEFAULT_CLAUDE_ENGINE, DEFAULT_CODEX_ENGINE } from "../../shared/settings";
 
@@ -598,4 +598,18 @@ test("a corrupt session that cannot be renamed aside is copied aside, never left
   } finally {
     vi.restoreAllMocks();
   }
+});
+
+test("a title-only change is saved on the slow timer; a real change brings it forward", async () => {
+  expect(lazySave({ type: "updateTab", id: "t", fields: { title: "(3) Inbox" } })).toBe(true);
+  expect(lazySave({ type: "updateTab", id: "t", fields: { url: "https://a.example/", title: "A" } })).toBe(false);
+  expect(lazySave({ type: "closeTab", id: "t" })).toBe(false);
+  const d = folder();
+  const recorder = new SessionRecorder(d, 20, 400);
+  recorder.schedule(richState(), true);
+  await wait(150);
+  expect(existsSync(join(d, "session.json"))).toBe(false);
+  recorder.schedule(richState());
+  await wait(150);
+  expect(readFileSync(join(d, "session.json"), "utf8")).not.toContain("\n");
 });
