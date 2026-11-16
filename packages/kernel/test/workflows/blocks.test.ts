@@ -316,7 +316,7 @@ describe("ai.write", () => {
       { ...elements[2], resume: "ancien résumé" },
     ]);
     expect(r.blockEnd("resumes").status).toBe("partial");
-    expect(logOf(r, "resumes")).toEqual(["élément 2 : Gemma n'a rien répondu"]);
+    expect(logOf(r, "resumes")).toEqual(["élément 2 : L'IA n'a rien répondu"]);
     const memory = r.lines.find((l) => l.t === "memory").memory;
     expect([...memory.resumes.value.reused].sort()).toEqual([
       ["https://a.fr/1", "résumé 1", "2026-10-29T10:00:00.000Z"],

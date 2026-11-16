@@ -1,4 +1,4 @@
-// The widget's articles: the best of the sort (block `top`), with Gemma's summary when there is one (block
+// The widget's articles: the best of the sort (block `top`), with the AI's summary when there is one (block
 // `resumes`, taken by URL). Fields: title, url, source, score, summary.
 export default async ({ top, resumes }) => {
   const byUrl = new Map((resumes ?? []).filter((a) => typeof a?.summary === "string" && a.summary).map((a) => [a.url, a.summary]));

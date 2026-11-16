@@ -90,7 +90,7 @@
     {
       "id": "resumes",
       "type": "ai.write",
-      "name": "Résumé par Gemma",
+      "name": "Résumé par l'IA",
       "position": {
         "x": 1300,
         "y": 160

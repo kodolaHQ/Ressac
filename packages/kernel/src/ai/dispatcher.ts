@@ -4,8 +4,8 @@ import type { LocalAi } from "./local-ai.js";
 export const AI_SIMULTANEOUS = 4;
 /** Denial of a call from a finished run (abandoned, killed, kernel shutdown): it no longer goes to the AI. */
 export const AI_ABANDONED = "Appel à l'IA abandonné : l'exécution est terminée";
-/** Gemma called with `json: true` answered with a text that is not JSON (the layout then retries once). */
-export const GEMMA_JSON_INVALID = "Gemma n'a pas rendu du JSON valide";
+/** A writing call made with `json: true` answered with a text that is not JSON (the layout then retries once). */
+export const WRITER_JSON_INVALID = "L'IA n'a pas rendu du JSON valide";
 
 type AiAccess = Pick<LocalAi, "kev" | "gemma">;
 /** `auDemarrage`: called when the call really goes to the AI. `signal` raised in the queue: denied without leaving; in flight: forwarded. */

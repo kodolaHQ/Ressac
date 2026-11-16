@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { GEMMA_JSON_INVALID } from "../../src/ai/dispatcher.js";
+import { WRITER_JSON_INVALID } from "../../src/ai/dispatcher.js";
 import { BUILTIN_COMPONENTS } from "../../src/pages/catalog.js";
 import { LAYOUT_DELAY_MS, layOut, pageLayoutPrompt, type GemmaAccess } from "../../src/pages/layout-page.js";
 
@@ -60,14 +60,14 @@ describe("layOut", () => {
 
   it("the local AI throws « JSON invalide » (json: true) then returns a plan: attempts 2, the second instruction contains the reason", async () => {
     const calls: Call[] = [];
-    const r = await launch(fake([() => Promise.reject(new Error(GEMMA_JSON_INVALID)), () => validPlan], calls));
+    const r = await launch(fake([() => Promise.reject(new Error(WRITER_JSON_INVALID)), () => validPlan], calls));
     expect(r).toMatchObject({ attempts: 2, fallback: false });
     expect(calls[1]!.prompt).toContain("pas du JSON");
   });
 
   it("the local AI throws « JSON invalide » twice: fallback after two attempts", async () => {
     const calls: Call[] = [];
-    const raise = () => Promise.reject(new Error(GEMMA_JSON_INVALID));
+    const raise = () => Promise.reject(new Error(WRITER_JSON_INVALID));
     const r = await launch(fake([raise, raise], calls));
     expect(r).toMatchObject({ fallback: true, attempts: 2 });
     expect(calls).toHaveLength(2);

@@ -22,7 +22,7 @@ sinon elle échoue ; garde les exemples et les captures ailleurs.
   la lecture avec son compte, et `web` est refusé. **Une action qui cherche sur le web (`web.search`,
   `ressac.searchWeb`) doit déclarer `"web": true` dans `sources`**, sinon le bloc `web.search` est refusé
   à la validation et `searchWeb` échoue à l'exécution.
-- `layout` (1 000 caractères au plus) : ta consigne de présentation pour Gemma (voir plus bas).
+- `layout` (1 000 caractères au plus) : ta consigne de présentation pour l'IA (voir plus bas).
 - `maxDurationMinutes` (1 à 60) : comme pour une récolte (voir « Veilles » dans `/workspace/guides/widgets.md`).
 - **Pas de planification** (ni `harvest`, ni `config`) : une action ne tourne que lancée.
 - Ses données, exécutions, résultats, mémoire et accords sont gardés hors de ton espace.
@@ -41,16 +41,16 @@ Le `workflow.json` d'une action :
   action avec `account` demande l'accord de l'utilisateur (clé `action:<id>`), et sans lui tu ne vois que les statuts.
 - `open_workflow` rend `{ action, block }` quand le constructeur montre une action.
 
-### La page : Gemma la compose à chaque lancement
+### La page : l'IA la compose à chaque lancement
 
-À la fin du workflow, Ressac demande à Gemma (locale) de **composer la page** à partir de tes résultats : elle
+À la fin du workflow, Ressac demande à l'IA (le compte Claude Code ou Codex de l'utilisateur) de **composer la page** à partir de tes résultats : elle
 choisit des composants et les remplit **par référence** aux résultats, Ressac vérifie, calcule et dessine.
-Sans Gemma, ou si son plan est refusé, une mise en page simple de secours est utilisée (mention « mise en page
+Sans l'IA, ou si son plan est refusé, une mise en page simple de secours est utilisée (mention « mise en page
 simple »). Ce qui compte pour toi : **rends des résultats propres**.
 
 - Des champs simples (textes, nombres, listes d'objets plats), des noms clairs (`title`, `prix`, `ville`,
   `project`, `url`), des **URL entières** (`https://…`, jamais relatives). Les listes sont coupées à 200 éléments.
-- `layout` dit à Gemma ce que l'utilisateur veut voir (« un chiffre clé, les tickets par priorité, les trois plus
+- `layout` dit à l'IA ce que l'utilisateur veut voir (« un chiffre clé, les tickets par priorité, les trois plus
   urgents en encadré »). Elle reste une consigne de présentation, pas de donnée.
 - Un calcul plus riche que les opérations ci-dessous (moyenne, jointure, formatage) se fait dans un bloc `code`
   du workflow, pas dans la page.
@@ -125,7 +125,7 @@ Exemple complet, un graphique en barres en SVG sans bibliothèque (`components/b
 </script>
 ```
 
-Gemma voit tes composants (nom, description, propriétés) et les pose comme les intégrés ; une propriété
+L'IA voit tes composants (nom, description, propriétés) et les pose comme les intégrés ; une propriété
 `reference` arrive résolue dans `props`. Un composant cassé est signalé à l'utilisateur, il n'arrête pas la page.
 
 ### Deux exemples d'actions

@@ -22,7 +22,7 @@ run fails; keep samples and captures elsewhere.
   reading with their account, and `web` is refused. **An action that searches the web (`web.search`,
   `ressac.searchWeb`) must declare `"web": true` in `sources`**, otherwise the `web.search` block is refused
   at validation and `searchWeb` fails at run time.
-- `layout` (1,000 characters at most): your presentation instruction for Gemma (see below).
+- `layout` (1,000 characters at most): your presentation instruction for the AI (see below).
 - `maxDurationMinutes` (1 to 60): as for a harvest (see « Watches » in `/workspace/guides/widgets.md`).
 - **No scheduling** (neither `harvest` nor `config`): an action only runs when launched.
 - Its data, runs, results, memory and grants are kept outside your workspace.
@@ -41,16 +41,16 @@ An action's `workflow.json`:
   action with `account` asks for the user's grant (key `action:<id>`), and without it you only see the statuses.
 - `open_workflow` returns `{ action, block }` when the builder shows an action.
 
-### The page: Gemma composes it at each launch
+### The page: the AI composes it at each launch
 
-At the end of the workflow, Ressac asks Gemma (local) to **compose the page** from your results: it
+At the end of the workflow, Ressac asks the AI (the user's Claude Code or Codex account) to **compose the page** from your results: it
 picks components and fills them **by reference** to the results, Ressac checks, computes and draws.
-Without Gemma, or if its plan is refused, a simple fallback layout is used (labelled « simple
+Without the AI, or if its plan is refused, a simple fallback layout is used (labelled « simple
 layout »). What matters for you: **return clean results**.
 
 - Simple fields (texts, numbers, lists of flat objects), clear names (`title`, `prix`, `ville`,
   `project`, `url`), **full URLs** (`https://…`, never relative). Lists are cut at 200 items.
-- `layout` tells Gemma what the user wants to see (« a key figure, the tickets by priority, the three most
+- `layout` tells the AI what the user wants to see (« a key figure, the tickets by priority, the three most
   urgent ones in a box »). It stays a presentation instruction, not data.
 - A computation richer than the operations below (average, join, formatting) is done in a `code` block
   of the workflow, not in the page.
@@ -125,7 +125,7 @@ Full example, an SVG bar chart without a library (`components/barres/component.h
 </script>
 ```
 
-Gemma sees your components (name, description, properties) and places them like the built-in ones; a
+The AI sees your components (name, description, properties) and places them like the built-in ones; a
 `reference` property arrives resolved in `props`. A broken component is reported to the user, it does not stop the page.
 
 ### Two action examples

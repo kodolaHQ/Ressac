@@ -120,6 +120,19 @@ describe("LocalAi", () => {
     expect(chats()[1]!.body.format).toBeUndefined();
   });
 
+  it("access().gemma goes to the writer when there is one, never to Ollama, and is refused once the access is closed", async () => {
+    const ollama = keep(await fakeOllama('{"a":1}'));
+    const writer = vi.fn().mockResolvedValue({ a: 1 });
+    const ai = new LocalAi({ folder: await tempFolder(), ollamaUrl: ollama.url, writer });
+    const access = ai.access();
+    expect(await access.gemma({ prompt: "p", json: true })).toEqual({ a: 1 });
+    expect(writer).toHaveBeenCalledWith({ prompt: "p", json: true, images: undefined, signal: undefined });
+    expect(ollama.requests.filter((r) => r.url === "/api/chat")).toHaveLength(0);
+    await access.close();
+    await expect(access.gemma({ prompt: "p" })).rejects.toThrow("IA locale fermée");
+    expect(writer).toHaveBeenCalledTimes(1);
+  });
+
   it("hasGemma() reads only Ollama's tags: true with a Gemma build, false without one or when Ollama is down", async () => {
     const yes = new LocalAi({ folder: await tempFolder(), ollamaUrl: keep(await fakeOllama("", ["gemma4:e4b"])).url });
     expect(await yes.hasGemma()).toBe(true);

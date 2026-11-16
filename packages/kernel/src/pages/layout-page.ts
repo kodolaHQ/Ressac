@@ -1,4 +1,4 @@
-import { GEMMA_JSON_INVALID } from "../ai/dispatcher.js";
+import { WRITER_JSON_INVALID } from "../ai/dispatcher.js";
 import { resultsPreview, emptyResults } from "./preview.js";
 import { catalogText, type ComponentDefinition } from "./catalog.js";
 import type { PlanPage } from "./plan.js";
@@ -6,8 +6,8 @@ import { lastResortLayout, fallbackLayout } from "./fallback.js";
 import { englishLanguageName } from "../i18n.js";
 import { validatePlan } from "./validate.js";
 
-// The layout of an action: Gemma chooses components and fills them in by reference, Ressac validates. A second
-// try receives the reasons for the denial; without Gemma, too slow, or off twice, the fallback layout.
+// The layout of an action: the AI chooses components and fills them in by reference, Ressac validates. A second
+// try receives the reasons for the denial; without the AI, too slow, or off twice, the fallback layout.
 // The delay starts from the real start of the first call (not the request, which may wait in the queue) and covers both.
 
 export const LAYOUT_DELAY_MS = 90_000;
@@ -105,7 +105,7 @@ export async function layOut(o: {
         response = await ai.gemma({ prompt, json: true }, { onStartup: atStartup, signal: ctl.signal });
       } catch (e) {
         // The local AI throws an answer that is not JSON (`json: true`): an off answer, not an outage.
-        if (!ctl.signal.aborted && e instanceof Error && e.message === GEMMA_JSON_INVALID) {
+        if (!ctl.signal.aborted && e instanceof Error && e.message === WRITER_JSON_INVALID) {
           errors = [NON_JSON];
           continue;
         }

@@ -5,8 +5,9 @@ import { createReadStream, existsSync } from "node:fs";
 import { mkdir, open, rename, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { toolsPath, forgetGroup, keepGroup, killGroup } from "../container/runner.js";
-import { GEMMA_JSON_INVALID, AI_ABANDONED } from "./dispatcher.js";
+import { WRITER_JSON_INVALID, AI_ABANDONED } from "./dispatcher.js";
 import { toPplxScale } from "./d1-scale.js";
+import type { Writer } from "./writer.js";
 
 export type AiState = "not-installed" | "stopped" | "starting" | "active" | "error";
 
@@ -42,6 +43,8 @@ export interface LocalAiOptions {
   cancelDelayMs?: number;
   /** The shown language, read when an install error is written (default: English). */
   locale?: () => string;
+  /** Writes for the kernels (workflow `ai.write`, action layouts); absent, they go to Gemma. ⌘T always calls gemma() directly. */
+  writer?: Writer;
 }
 
 export const D1_FILE = "d1-2B-Q4_K_M.gguf";
@@ -362,7 +365,7 @@ export class LocalAi {
     try {
       return JSON.parse(content);
     } catch {
-      throw new Error(GEMMA_JSON_INVALID);
+      throw new Error(WRITER_JSON_INVALID);
     }
   }
 
@@ -414,7 +417,11 @@ export class LocalAi {
     // Checked before the call: kev() launches llama-server synchronously, before its first await; close() stops it afterwards.
     return {
       kev: (body, o) => (closed ? Promise.reject(new Error(AI_CLOSED_ERROR)) : this.kev(body, o)),
-      gemma: (o) => (closed ? Promise.reject(new Error(AI_CLOSED_ERROR)) : this.gemma(o)),
+      gemma: (o) => {
+        if (closed) return Promise.reject(new Error(AI_CLOSED_ERROR));
+        const w = this.o.writer;
+        return w ? w({ prompt: o.prompt, images: o.images, json: o.json, signal: o.signal }) : this.gemma(o);
+      },
       close: async () => {
         closed = true;
         await this.stop();

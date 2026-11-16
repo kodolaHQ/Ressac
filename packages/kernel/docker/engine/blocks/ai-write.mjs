@@ -1,5 +1,5 @@
-// ai.write: Gemma writes from a prompt (template), on the whole input or item by item, through today's
-// `gemma` call. Each inserted value is cut to `maxText`. What comes from a page, and Gemma's answer, are
+// ai.write: the user's agent writes from a prompt (template), on the whole input or item by item, through the
+// `gemma` call (its API name). Each inserted value is cut to `maxText`. What comes from a page, and the AI's answer, are
 // data: the prompt is filled in only once, never read again, and it always ends with
 // the framing sentence of the starter widgets.
 
@@ -12,11 +12,11 @@ async function write({ params, fill, ressac }) {
   // Without json, exactly today's call: `gemma(prompt)`.
   const r = await ressac.gemma(prompt, params.json === true ? { json: true } : {});
   if (params.json === true) {
-    if (r === undefined || r === null) throw new Error("Gemma n'a rien répondu");
+    if (r === undefined || r === null) throw new Error("L'IA n'a rien répondu");
     return r;
   }
   const text = String(r ?? "").trim();
-  if (!text) throw new Error("Gemma n'a rien répondu");
+  if (!text) throw new Error("L'IA n'a rien répondu");
   return text;
 }
 
