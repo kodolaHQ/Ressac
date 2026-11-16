@@ -572,6 +572,23 @@ describe("openAgentSession with a profile", () => {
     });
   });
 
+  test("codex: the requirements pin the session's MCP server before the session starts, claude leaves them", async () => {
+    const { Workshop } = await import("../src/container/workshop.js");
+    const restrict = vi.spyOn(Workshop.prototype, "restrictCodex");
+    await started(async (n, start) => {
+      const c = await n.openAgentSession({ cols: 80, rows: 24, window: "f1", profile: "claude" });
+      expect(restrict).not.toHaveBeenCalled();
+      const s = await n.openAgentSession({ cols: 80, rows: 24, window: "f2", profile: "codex" });
+      expect(restrict).toHaveBeenCalledTimes(1);
+      const url = /url="([^"]+)"/.exec(start.mock.calls[1]![0].find((a) => a.startsWith("mcp_servers."))!)![1];
+      expect(restrict).toHaveBeenCalledWith(url);
+      expect(restrict.mock.invocationCallOrder[0]).toBeLessThan(start.mock.invocationCallOrder[1]!);
+      await c.stop();
+      await s.stop();
+    });
+    restrict.mockRestore();
+  });
+
   test("codex resume with extra args and env", async () => {
     await started(async (n, start) => {
       const s = await n.openAgentSession({ cols: 80, rows: 24, window: "f1", profile: "codex", resume: true, extra: { args: ["-m", "x"], env: { RESSAC_ENGINE_TOKEN: "t" } } });

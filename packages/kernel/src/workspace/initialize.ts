@@ -325,6 +325,8 @@ export async function initSpace(c: SpacePaths, locale = FALLBACK, models = DEFAU
     }
   }
   await mkdir(c.projects, { recursive: true });
+  // Mounted read-write over the read-only .ressac in the workshop: it must exist before docker run.
+  await mkdir(c.logs, { recursive: true });
   await mkdir(c.extensions, { recursive: true });
   await mkdir(c.actions, { recursive: true });
   await mkdir(c.components, { recursive: true });

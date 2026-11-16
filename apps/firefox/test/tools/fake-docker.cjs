@@ -182,6 +182,12 @@ if (args[0] === "exec") {
     return;
   }
   if (command[0] === "curl" && command.includes("https://1.1.1.1")) quit(7);
+  // Codex's requirements (Workshop.restrictCodex), written as root from stdin: drained, not a stop.
+  if (command[0] === "sh" && command[2].includes("/etc/codex/requirements.toml")) {
+    process.stdin.resume();
+    process.stdin.on("end", () => quit(0));
+    return;
+  }
   // An app's log (ApplicationManager.log): tail -n <lines> -- /workspace/<path>, read from the mounted folder.
   if (command[0] === "tail" && command[3] === "--" && command[4].startsWith("/workspace/")) {
     const file = join(env.RESSAC_ROOT, command[4].slice("/workspace/".length));

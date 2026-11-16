@@ -39,6 +39,7 @@ test("creates the full space in an empty folder", async () => {
   const { created: crees } = await initSpace(c);
   for (const f of expectedList) expect(existsSync(join(c.root, f)), f).toBe(true);
   expect(existsSync(c.projects)).toBe(true);
+  expect(existsSync(c.logs)).toBe(true);
   expect(existsSync(c.extensions)).toBe(true);
   expect(existsSync(c.actions)).toBe(true);
   expect(existsSync(c.sites)).toBe(true);

@@ -76,14 +76,14 @@ test("ensureStarted on absent: build if the image is missing then run with the r
     "ressac-workshop:1",
   ]));
   expect(run.args.slice(-2)).toEqual(["sleep", "infinity"]);
-  // What restricts the agent stays read-only, mounted over the read-write workspace.
-  const w = run.args.indexOf("/Users/t/Ressac:/workspace");
-  const ro = [
-    "-v", "/Users/t/Ressac/.ressac/profiles:/workspace/.ressac/profiles:ro",
-    "-v", "/Users/t/Ressac/AGENTS.md:/workspace/AGENTS.md:ro",
-    "-v", "/Users/t/Ressac/CLAUDE.md:/workspace/CLAUDE.md:ro",
-  ];
-  expect(run.args.slice(w + 1, w + 1 + ro.length)).toEqual(ro);
+  // .ressac (launch profiles…) read-only, so it cannot be renamed away; only the logs, which the container writes, on top.
+  const w = run.args.indexOf("-v");
+  expect(run.args.slice(w, w + 8)).toEqual([
+    "-v", "/Users/t/Ressac:/workspace",
+    "-v", "/Users/t/Ressac/.ressac:/workspace/.ressac:ro",
+    "-v", "/Users/t/Ressac/.ressac/logs:/workspace/.ressac/logs",
+    "-v", "webaios-home:/home/node",
+  ]);
 });
 
 test("ensureStarted on arrete → docker start", async () => {
@@ -713,5 +713,25 @@ describe("agent network", () => {
     const { validDomain } = await import("../../src/container/workshop.js");
     for (const d of ["a.com", "*.a.com", "a.b-c.io", "evil.com/x", "1.2.3.4", "*.com", "com", "-a.com", "a-.com", "Up.com", "a b.com", "a.com:80", "", "*.", "x".repeat(254) + ".com", "a..com"])
       expect(validDomain(d), d).toBe(image.validDomain(d));
+  });
+});
+
+describe("Codex requirements", () => {
+  test("only managed hooks, and only the ressac MCP server at the session's URL", async () => {
+    const { codexRequirements } = await import("../../src/container/workshop.js");
+    expect(codexRequirements("http://host.docker.internal:4567/mcp")).toBe(
+      'allow_managed_hooks_only = true\n\n[mcp_servers.ressac.identity]\nurl = "http://host.docker.internal:4567/mcp"\n',
+    );
+  });
+
+  test("restrictCodex writes them as root, by rename, and throws when it fails", async () => {
+    const { run, calls } = fakeRunner([]);
+    const workshop = new Workshop({ paths: paths, docker: "docker", run });
+    await workshop.restrictCodex("http://host.docker.internal:4567/mcp");
+    expect(calls[0]!.args.slice(0, 7)).toEqual(["exec", "-u", "root", "-w", "/", "-i", "ressac-workshop"]);
+    expect(calls[0]!.args.at(-1)).toMatch(/^umask 022 && .* && mv /);
+    expect(calls[0]!.opts!.input).toContain('url = "http://host.docker.internal:4567/mcp"');
+    const failing = new Workshop({ paths: paths, docker: "docker", run: fakeRunner([[/ exec /, { code: 1, stderr: "nope" }]]).run });
+    await expect(failing.restrictCodex("http://x/mcp")).rejects.toThrow("nope");
   });
 });

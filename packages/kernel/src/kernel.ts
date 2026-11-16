@@ -674,6 +674,7 @@ export async function createKernel(o: {
         let mcpConfig: string;
         let env: Record<string, string> = {};
         if (chosen.mcpConfig === "codex-toml") {
+          await workshop.restrictCodex(server.containerUrl);
           mcpConfig = mcpArgument({ url: server.containerUrl });
           env = { [MCP_TOKEN_VARIABLE]: sessionToken ?? token, ...extra?.env };
         } else {

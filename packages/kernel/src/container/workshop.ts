@@ -57,6 +57,12 @@ export function parseBuildStep(line: string, locale: string): Pick<BuildProgress
   return { step: Number(m[1]), of: Number(m[2]), label };
 }
 
+const CODEX_REQUIREMENTS = "/etc/codex/requirements.toml";
+/** Codex's managed requirements (root-owned): the URL must match exactly, port included, so it is written per session. */
+export function codexRequirements(url: string): string {
+  return `allow_managed_hooks_only = true\n\n[mcp_servers.ressac.identity]\nurl = ${JSON.stringify(url)}\n`;
+}
+
 /** Bumped with any change to RUN_FLAGS: it goes into the image hash, so the container is recreated (the fake docker of the e2e tests repeats it). */
 export const RUN_FLAGS_VERSION = "3";
 /** The network, memory and proxy flags of `docker run` (the part after the ports). */
@@ -311,6 +317,17 @@ export class Workshop {
     return this.launch(["exec", containerName(), ...argv], PROBE_DELAY_MS);
   }
 
+  /** Before each Codex session: only managed hooks, and no MCP server but Ressac's at `url` (a stdio server runs a command). */
+  async restrictCodex(url: string): Promise<void> {
+    // umask: docker exec runs with 000, which would leave the file writable by the agent.
+    const r = await this.launch(
+      ["exec", "-u", "root", "-w", "/", "-i", containerName(), "sh", "-c", `umask 022 && cat > ${CODEX_REQUIREMENTS}.$$ && mv ${CODEX_REQUIREMENTS}.$$ ${CODEX_REQUIREMENTS}`],
+      PROBE_DELAY_MS,
+      codexRequirements(url),
+    );
+    if (r.code !== 0) throw new Error(`Restriction de Codex impossible : ${tail(r.stderr) || `code ${r.code}`}`);
+  }
+
   /** One run at a time, shared: two sessions opening together apply the rules once. */
   secureNetwork(): Promise<void> {
     if (!this.network) return Promise.resolve();
@@ -390,10 +407,11 @@ export class Workshop {
       "--name", containerName(),
       "--add-host", "host.docker.internal:host-gateway",
       "-v", `${this.paths.root}:${CONTAINER_PATH}`,
-      // What Ressac relies on to restrict the agent (launch profiles, instructions): read-only over the workspace.
-      // initSpace has created them before the first start; it rewrites them in place, so these file mounts follow.
-      "-v", `${this.paths.profiles}:${CONTAINER_PATH}/.ressac/profiles:ro`,
-      ...["AGENTS.md", "CLAUDE.md"].flatMap((f) => ["-v", `${join(this.paths.root, f)}:${CONTAINER_PATH}/${f}:ro`]),
+      // .ressac holds what restricts the agent (launch profiles, MCP configs): read-only, and a mount point cannot be renamed
+      // away. Only the logs, which the apps write from the container, are writable (initSpace creates both folders).
+      // The instruction files stay writable on purpose: the CLIs load many override files the agent could write anyway.
+      "-v", `${this.paths.internal}:${CONTAINER_PATH}/.ressac:ro`,
+      "-v", `${this.paths.logs}:${CONTAINER_PATH}/.ressac/logs`,
       "-v", `${VOLUME_HOME}:/home/node`,
       "-p", `127.0.0.1:${ports}:${ports}`,
       // AGENTS.md tells the agent to keep its hand-run servers in this range.
