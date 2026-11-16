@@ -7,6 +7,7 @@ import type { Workshop } from "../container/workshop.js";
 import type { LocalAi } from "../ai/local-ai.js";
 import type { BrowserBridge } from "../mcp/bridge.js";
 import { grantValid, readGrants, removeGrant } from "./grants.js";
+import { readReads, readsCovered } from "./reads.js";
 import { message, truncate } from "../workflows/access.js";
 import {
   MAX_ERROR,
@@ -82,8 +83,13 @@ export type HarvestResult = { state: WidgetState; data?: unknown; run?: string; 
 const ID = /^[a-z0-9-]+$/;
 const loc = (o: Pick<HarvestOptions, "locale">) => o.locale?.() ?? "en";
 
-export const grantRequired = (d: Pick<DeclarationWidget, "sources">, locale: string) =>
-  say(locale, "kernel-err-grant-required", { domains: d.sources.account.join(", ") });
+/** The grant an owner waits for: its account, or (without one) the approval of what it reads. */
+export const grantRequired = (d: { sources: { account: string[]; public: string[]; web?: boolean } }, locale: string) => {
+  const { account, public: publics, web } = d.sources;
+  if (account.length) return say(locale, "kernel-err-grant-required", { domains: account.join(", ") });
+  if (!web) return say(locale, "kernel-err-reads-required", { domains: publics.join(", ") });
+  return publics.length ? say(locale, "kernel-err-reads-required-web", { domains: publics.join(", ") }) : say(locale, "kernel-err-reads-required-web-only");
+};
 export const WORKSHOP_STOPPED_ERROR = (locale: string) => say(locale, "kernel-err-workshop-stopped");
 export const INTERNAL_HARVEST_ERROR = (locale: string) => say(locale, "kernel-err-internal-harvest");
 export const NO_WORKFLOW_ERROR = (locale: string) => say(locale, "kernel-err-no-workflow");
@@ -94,7 +100,7 @@ export const INTERRUPTED_ERROR = (locale: string) => say(locale, "kernel-err-int
  * written in); any other error text may have been written by the widget.
  */
 const FIXED_ERRORS = new Set([
-  ...["kernel-err-timeout", "kernel-err-response-too-big", "kernel-err-profile-denied", "kernel-err-workshop-stopped", "kernel-err-internal-harvest", "kernel-err-no-workflow", "kernel-err-interrupted"].flatMap((id) => inEveryLanguage(id)),
+  ...["kernel-err-timeout", "kernel-err-response-too-big", "kernel-err-profile-denied", "kernel-err-workshop-stopped", "kernel-err-internal-harvest", "kernel-err-no-workflow", "kernel-err-interrupted", "kernel-err-reads-required-web-only"].flatMap((id) => inEveryLanguage(id)),
   // Old message, still in states written before the workflows.
   "Ce widget n'a pas de harvest.mjs",
   ...inEveryLanguage("kernel-err-data-too-big"),
@@ -140,7 +146,7 @@ async function widgetWorkflow(widget: WidgetRead, locale: string): Promise<Widge
 /**
  * A grant that no longer holds for the current declaration (domains changed, account removed) is withdrawn, and what was
  * read with it erased (data, runs, memory): nothing passes to the next harvest nor, later, to the agent.
- * `peut`: the widget may run (without account, or with a valid grant, which also covers its public domains);
+ * `peut`: the widget may run (without account, with its reads approved; or with a valid grant, which also covers its public domains);
  * `retire`: an expired grant has just been withdrawn.
  */
 async function validGrant(widgetsFolder: string, id: string, declaration: DeclarationWidget): Promise<{ can: boolean; removed: boolean }> {
@@ -151,7 +157,10 @@ async function validGrant(widgetsFolder: string, id: string, declaration: Declar
     await deleteData(widgetsFolder, id);
     await removeGrant(widgetsFolder, id);
   }
-  const can = declaration.sources.account.length === 0 || grantValid(declaration, (await readGrants(widgetsFolder))[id]);
+  const can =
+    declaration.sources.account.length === 0
+      ? readsCovered(declaration, (await readReads(widgetsFolder))[id])
+      : grantValid(declaration, (await readGrants(widgetsFolder))[id]);
   return { can: can, removed: removed };
 }
 

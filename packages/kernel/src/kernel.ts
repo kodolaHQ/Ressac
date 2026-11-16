@@ -1,6 +1,6 @@
 import { say, replyLanguageLine } from "./i18n.js";
 import { randomBytes } from "node:crypto";
-import { constants } from "node:fs";
+import { constants, existsSync } from "node:fs";
 import { lstat, mkdir, open, realpath, rm, unlink, writeFile } from "node:fs/promises";
 import { basename, join, posix } from "node:path";
 import { CONTAINER_PATH, sessionConfigPath, pathInContainer, sessionsFolder, spacePaths, type SpacePaths } from "./paths.js";
@@ -31,6 +31,7 @@ import { WidgetsScheduler, type DirectState, type AttemptResult } from "./widget
 import type { NotificationWidget } from "./widgets/novelties.js";
 import { grantRequired } from "./widgets/harvest.js";
 import { giveGrant, readGrants, removeGrant } from "./widgets/grants.js";
+import { approveReads, removeReads, seedReads } from "./widgets/reads.js";
 import { readAction, readActions, type ReadAction } from "./actions/read.js";
 import { lastResult, readResult, forgetGoneActions, deleteDataAction } from "./actions/data.js";
 import { FileActions, type ActionsState, type ActionLaunch } from "./actions/file.js";
@@ -212,7 +213,9 @@ export interface KernelActions {
   page(id: string, execution: string | null): Promise<PageAction | null>;
   /** As for a widget, but nothing is launched: the user relaunches from the page. */
   grant(o: { id: string; profile: string; account: string[]; public: string[] }): Promise<void>;
-  /** Withdraws the grant and erases runs, results and memory. */
+  /** An action without account may read its `public` domains and the web shown; nothing is launched, like `grant`. */
+  approveReads(o: { id: string; public: string[]; web: boolean }): Promise<void>;
+  /** Withdraws the grant (or the approved reads) and erases runs, results and memory. */
   denyGrant(id: string): Promise<void>;
   /** Builder try: a « -attempt » run that does not become the last result. */
   replay(id: string, origin: string, start: string): ActionLaunch;
@@ -271,7 +274,12 @@ export interface Kernel {
    * longer exactly those of the declaration (the agent rewrote it meanwhile). A harvest follows.
    */
   grant(o: { id: string; profile: string; account: string[]; public: string[] }): Promise<void>;
-  /** Withdraws the grant and erases the data read with it: the widget waits for a new grant (`accord-requis`). */
+  /**
+   * The user lets a widget without account read the `public` domains and the web shown: refused if they are no longer those of
+   * the declaration. A harvest follows.
+   */
+  approveReads(o: { id: string; public: string[]; web: boolean }): Promise<void>;
+  /** Withdraws the grant (or the approved reads) and erases the data read with it: the widget waits for a new grant (`accord-requis`). */
   denyGrant(id: string): Promise<void>;
   stop(): Promise<void>;
 }
@@ -349,6 +357,8 @@ export async function createKernel(o: {
   const { actionsFolder } = o;
   // An action deleted (or put in the trash) since the last launch: its data and grant go.
   await forgetGoneActions(paths, actionsFolder).catch((e) => console.error("[ressac] forgetting gone actions:", e));
+  // Once, before any harvest or run: the owners that exist at the update keep reading what they declare.
+  await seedSpaceReads(paths, widgetsFolder, actionsFolder, loc()).catch((e) => console.error("[ressac] reads seeding:", e));
   const ai = o.ai ?? null;
   // Access specific to this kernel, closed with it: a harvest still in flight at shutdown does not relaunch Kev.
   const aiAccess = ai?.access() ?? null;
@@ -587,10 +597,19 @@ export async function createKernel(o: {
       }
       await giveGrant(actionsFolder, id, { domains: [...account].sort(), public: [...publics].sort(), profile: profileName });
     },
+    async approveReads({ id, public: shownPublic, web: shownWeb }) {
+      const a = await readAction(paths, id);
+      if (!a) throw new Error(say(loc(), "kernel-grant-action-unknown", { id }));
+      if ("error" in a) throw new Error(say(loc(), "kernel-grant-action-unreadable", { error: a.error }));
+      const { account, public: publics, web } = a.declaration.sources;
+      if (account.length || !sameLists(publics, shownPublic) || web !== shownWeb) throw new Error(say(loc(), "kernel-grant-action-changed", { id }));
+      await approveReads(actionsFolder, id, { public: publics, web });
+    },
     async denyGrant(id) {
       // Data first: until it is gone, the grant still guards it.
       await deleteDataAction(actionsFolder, id);
       await removeGrant(actionsFolder, id);
+      await removeReads(actionsFolder, id);
     },
     replay: (id, origin, start) => fileActions.try(id, origin, start),
     deleteData: (id) => deleteDataAction(actionsFolder, id),
@@ -703,12 +722,24 @@ export async function createKernel(o: {
       // The harvest takes time: it follows in the background and reports its own changes.
       scheduler.harvestNow(id).catch((e) => console.error("[ressac] harvest after grant:", e));
     },
+    async approveReads({ id, public: shownPublic, web: shownWeb }) {
+      const w = await widget(id);
+      if (!w) throw new Error(say(loc(), "kernel-grant-widget-unknown", { id }));
+      if ("error" in w) throw new Error(say(loc(), "kernel-grant-widget-unreadable", { error: w.error }));
+      const { account, public: publics, web } = w.declaration.sources;
+      if (account.length || !sameLists(publics, shownPublic) || web !== shownWeb) throw new Error(say(loc(), "kernel-grant-widget-changed", { id }));
+      await approveReads(widgetsFolder, id, { public: publics, web });
+      report();
+      scheduler.harvestNow(id).catch((e) => console.error("[ressac] harvest after reads approval:", e));
+    },
     async denyGrant(id) {
       // The data read with this account goes with the grant, and first: without the grant, nothing protects it any more (account removed…).
       await deleteData(widgetsFolder, id);
       await removeGrant(widgetsFolder, id);
+      await removeReads(widgetsFolder, id);
       const w = await widget(id);
-      if (w && !("error" in w) && w.declaration.sources.account.length) {
+      const s = w && !("error" in w) ? w.declaration.sources : null;
+      if (w && !("error" in w) && s && (s.account.length || s.public.length || s.web)) {
         const before = await readWidgetState(widgetsFolder, id);
         await writeWidgetState(widgetsFolder, id, {
           status: "grant-required",
@@ -734,4 +765,16 @@ export async function createKernel(o: {
       owner?.release();
     },
   };
+}
+
+/** Seeds `reads.json` of the widgets and of the actions from the owners on disk (a folder not found seeds nothing yet). */
+async function seedSpaceReads(paths: SpacePaths, widgetsFolder: string, actionsFolder: string, locale: string): Promise<void> {
+  if (existsSync(paths.widgets)) {
+    const widgets = (await readHome(paths, widgetsFolder, locale)).widgets;
+    await seedReads(widgetsFolder, widgets.flatMap((w) => ("error" in w ? [] : [{ id: w.id, sources: w.declaration.sources }])));
+  }
+  if (existsSync(paths.actions)) {
+    const actions = await readActions(paths);
+    await seedReads(actionsFolder, actions.flatMap((a) => ("error" in a ? [] : [{ id: a.id, sources: a.declaration.sources }])));
+  }
 }

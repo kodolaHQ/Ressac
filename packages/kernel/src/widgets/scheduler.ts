@@ -11,6 +11,7 @@ import { createAiDispatcher, type AiDispatcher } from "../ai/dispatcher.js";
 import type { BrowserBridge } from "../mcp/bridge.js";
 import { say } from "../i18n.js";
 import { readGrants, removeGrant } from "./grants.js";
+import { readReads, removeReads } from "./reads.js";
 import { currentSlot, dueHour, trackingAfter, type HourOutcome, type HoursTracking } from "./hours.js";
 import type { DirectTrace } from "../workflows/run.js";
 import { readRun, type Execution } from "../workflows/executions.js";
@@ -406,6 +407,9 @@ export class WidgetsScheduler {
       if (presents.has(id)) continue;
       await removeGrant(widgetsFolder, id);
       change = true;
+    }
+    for (const id of Object.keys(await readReads(widgetsFolder))) {
+      if (!presents.has(id)) await removeReads(widgetsFolder, id);
     }
     if (change) this.o.onChange?.();
   }

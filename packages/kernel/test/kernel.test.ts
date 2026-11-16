@@ -10,6 +10,7 @@ import { createKernel, WorkshopError, type Kernel } from "../src/kernel.js";
 import type { LocalAi } from "../src/ai/local-ai.js";
 import { WidgetsScheduler } from "../src/widgets/scheduler.js";
 import { giveGrant, readGrants } from "../src/widgets/grants.js";
+import { readReads } from "../src/widgets/reads.js";
 import { writeRun, idExecution, type Execution } from "../src/workflows/executions.js";
 import { writeResult } from "../src/actions/data.js";
 import { writeData, readData, readWidgetState } from "../src/home/data.js";
@@ -489,6 +490,47 @@ test("kernel.actions: accorder records the grant without running anything; refus
   await n.actions.denyGrant("gitlab");
   expect((await readGrants(actionsFolder)).gitlab).toBeUndefined();
   expect(await n.actions.runs("gitlab")).toEqual([]);
+});
+
+test("kernel: the owners on disk at start get their reads approved once; one written after start does not; approveReads checks what was shown", async () => {
+  const root = await tempFolder();
+  const widgetsFolder = `${root}-widgets`;
+  const decl = (publics: string[], web = false) => declarationWidget(undefined, { harvest: { minutes: 60 }, sources: { account: [], public: publics, web } });
+  await writeWidget(spacePaths(root), "old", decl(["a.fr"]), { "harvest.mjs": "export default () => 1" });
+  const { n, actionsFolder } = await (async () => {
+    const actionsFolder = await tempFolder();
+    const folder = join(spacePaths(root).actions, "pub");
+    await mkdir(folder, { recursive: true });
+    await writeFile(join(folder, "action.json"), JSON.stringify({ name: "P", sources: { public: ["x.fr"], web: true } }));
+    const { run } = fakeRunner([[/ info$/, { code: 1 }]]);
+    kernel = await createKernel({ locale: () => "fr", widgetsFolder, actionsFolder, bridge: new FakeBridge([], { active: null, allow: false }), root, run });
+    return { n: kernel, actionsFolder };
+  })();
+  expect((await readReads(widgetsFolder)).old).toEqual({ public: ["a.fr"], web: false });
+  expect((await readReads(actionsFolder)).pub).toEqual({ public: ["x.fr"], web: true });
+
+  await writeWidget(n.paths, "fresh", decl(["b.fr"], true), { "harvest.mjs": "export default () => 1" });
+  expect((await readReads(widgetsFolder)).fresh).toBeUndefined();
+  await expect(n.approveReads({ id: "fresh", public: ["b.fr"], web: false })).rejects.toThrow(/a changé/);
+  await expect(n.approveReads({ id: "fresh", public: [], web: true })).rejects.toThrow(/a changé/);
+  await n.approveReads({ id: "fresh", public: ["b.fr"], web: true });
+  expect((await readReads(widgetsFolder)).fresh).toEqual({ public: ["b.fr"], web: true });
+  // Docker absent: the started harvest ends with « atelier arrêté », past the gate.
+  await vi.waitFor(async () => expect((await readWidgetState(widgetsFolder, "fresh")).status).toBe("workshop-stopped"));
+
+  await n.denyGrant("fresh");
+  expect((await readReads(widgetsFolder)).fresh).toBeUndefined();
+  expect(await readWidgetState(widgetsFolder, "fresh")).toMatchObject({ status: "grant-required", error: "Accord requis pour lire : b.fr et le web" });
+
+  // An account owner is not approved this way.
+  await writeWidget(n.paths, "acc", declarationWidget(undefined, { harvest: { minutes: 60 }, sources: { account: ["a.dev"], public: [] } }));
+  await expect(n.approveReads({ id: "acc", public: [], web: false })).rejects.toThrow(/a changé/);
+
+  await expect(n.actions.approveReads({ id: "pub", public: ["x.fr"], web: false })).rejects.toThrow(/changé/);
+  await n.actions.denyGrant("pub");
+  expect((await readReads(actionsFolder)).pub).toBeUndefined();
+  await n.actions.approveReads({ id: "pub", public: ["x.fr"], web: true });
+  expect((await readReads(actionsFolder)).pub).toEqual({ public: ["x.fr"], web: true });
 });
 
 describe("openAgentSession with a profile", () => {

@@ -1148,7 +1148,9 @@ function registerWidgetsTools(
       description:
         "Lance tout de suite la récolte d'un widget (accueil/widgets/<id>) et rend { status, error?, log?, data?, run? } " +
         "(run : l'id de l'exécution écrite, absent s'il n'y en a pas ; voir widget_runs). " +
-        "Données et journal d'un widget qui lit avec le compte de l'utilisateur : seulement s'il les a montrés (widget_data).",
+        "Données et journal d'un widget qui lit avec le compte de l'utilisateur : seulement s'il les a montrés (widget_data). " +
+        "Un widget sans compte dont les domaines publics (ou le web) n'ont pas encore été acceptés rend grant-required : " +
+        "l'utilisateur l'autorise sur l'accueil, une seule fois (et à nouveau si la liste s'allonge).",
       inputSchema: { id: ID_WIDGET },
     },
     protect(async ({ id }) => {
@@ -1265,7 +1267,9 @@ function registerActionsTools(
       description:
         "Lance une action (actions/<id>) tout de suite, ou rejoint son exécution en cours, et attend sa fin. Rend { status, run?, error? } " +
         "sans jamais les résultats (action_runs les lui demande pour une action qui lit avec son compte). `input` : le texte que " +
-        "l'action demande, s'il y en a un. L'utilisateur voit la page dans les résultats précédents de l'action.",
+        "l'action demande, s'il y en a un. L'utilisateur voit la page dans les résultats précédents de l'action. " +
+        "Une action sans compte dont les domaines publics (ou le web) n'ont pas encore été acceptés rend grant-required : " +
+        "l'utilisateur l'autorise sur sa page, une seule fois (et à nouveau si la liste s'allonge).",
       inputSchema: { id: ID_WIDGET, input: z.string().max(200).optional() },
     },
     protect(async ({ id, input }) => {

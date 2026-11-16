@@ -14,6 +14,7 @@ import { writeData, writeWidgetState, readWidgetState, deleteData } from "../../
 import { LocalAi } from "../../src/ai/local-ai.js";
 import { FakeBridge } from "../../src/mcp/fake-bridge.js";
 import { giveGrant, readGrants, removeGrant } from "../../src/widgets/grants.js";
+import { approveReads } from "../../src/widgets/reads.js";
 import { kernelError, runAttempt, runHarvest, WORKSHOP_STOPPED_ERROR, INTERRUPTED_ERROR, type ProcessLauncher } from "../../src/widgets/harvest.js";
 import { PROFILE_DENIED } from "../../src/workflows/run.js";
 import { writeRun, attemptId, readRun, listRuns, type Execution } from "../../src/workflows/executions.js";
@@ -176,6 +177,20 @@ const optionsOf = (ctx: Context) => ({
 const readJson = async (path: string) => JSON.parse(await readFile(path, "utf8"));
 
 describe("runHarvest", () => {
+  it("without account: a public domain not approved stops before the container, the approval lets it run, a lost domain still runs", async () => {
+    const ctx = await prepare("pub", `export default async () => [1];`, { account: [], public: ["a.example"] });
+    const r = await runHarvest(optionsOf(ctx));
+    expect(r.state).toMatchObject({ status: "grant-required", error: "Accord requis pour lire : a.example", kernelError: true });
+    expect(kernelError(r.state.error!)).toBe(true);
+    expect(ctx.commands).toEqual([]);
+    await approveReads(ctx.widgetsFolder, "pub", { public: ["a.example", "b.example"], web: false });
+    expect((await runHarvest(optionsOf(ctx))).state.status).toBe("ok");
+    ctx.widget.declaration.sources.public = ["c.example"];
+    expect((await runHarvest(optionsOf(ctx))).state.status).toBe("grant-required");
+    ctx.widget.declaration.sources.public = ["b.example"];
+    expect((await runHarvest(optionsOf(ctx))).state.status).toBe("ok");
+  });
+
   it("a successful harvest writes data.json and the ok state in widgetsFolder", async () => {
     const web = await webServer({ "/flux.json": (res) => { res.writeHead(200, { "content-type": "application/json" }); res.end('{"x":42}'); } });
     const kev = await fakeKev({ q: { type: "noul", noul: 0.8 } });
@@ -1537,6 +1552,7 @@ describe("runHarvest, watch (publications as it goes, memory kept, novelties)", 
     const html = `<div class="result"><a class="result__a" href="https://a.example/1">Titre</a><a class="result__snippet">Extrait</a></div>`;
     const ctx = await prepare("veille", `export default async (w) => w.searchWeb("clio", { nombre: 1 });`);
     ctx.widget.declaration.sources.web = true;
+    await approveReads(ctx.widgetsFolder, "veille", { public: [], web: true });
     const pacing = new Pacing({ wait: async () => {} });
     const search = vi.spyOn(pacing, "search");
     const bridge = new FakeBridge([], { active: null, allow: false, read: { pages: [], html: { [searchUrl("clio", BASE)]: html } } });

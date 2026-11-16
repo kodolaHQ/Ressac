@@ -8,6 +8,7 @@ import { BUILTIN_COMPONENTS } from "../pages/catalog.js";
 import { readAgentComponents } from "../pages/agent-components.js";
 import { layOut } from "../pages/layout-page.js";
 import { grantValid, readGrants, removeGrant } from "../widgets/grants.js";
+import { readReads, readsCovered } from "../widgets/reads.js";
 import { originChain, markInterrupted, grantRequired } from "../widgets/harvest.js";
 import { message, truncate } from "../workflows/access.js";
 import {
@@ -87,7 +88,7 @@ export function cutInput(input: string | null | undefined): string | null {
 
 const denial = (error: string, kernel = true): LaunchResult => ({ status: "invalid", error: error, ...(kernel ? { kernelError: true as const } : {}) });
 
-/** Like the widgets' `accordEnRegle`: a stale grant is withdrawn, and what was read with it erased. */
+/** Like the widgets' `validGrant`: a stale grant is withdrawn, and what was read with it erased. Without account: the approved reads. */
 async function validGrant(actionsFolder: string, id: string, d: DeclarationAction): Promise<boolean> {
   const saved = (await readGrants(actionsFolder))[id];
   if (saved !== undefined && !grantValid(d, saved)) {
@@ -95,7 +96,8 @@ async function validGrant(actionsFolder: string, id: string, d: DeclarationActio
     await deleteDataAction(actionsFolder, id);
     await removeGrant(actionsFolder, id);
   }
-  return d.sources.account.length === 0 || grantValid(d, (await readGrants(actionsFolder))[id]);
+  if (d.sources.account.length === 0) return readsCovered(d, (await readReads(actionsFolder))[id]);
+  return grantValid(d, (await readGrants(actionsFolder))[id]);
 }
 
 /**
