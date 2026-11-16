@@ -70,16 +70,16 @@ export async function readsUnrestricted(folder: string, id: string, declaration:
 }
 
 /**
- * The migration, once per folder: every current owner without account gets its declared public domains and `web`, so it
- * keeps reading any host as before the gate (owners that existed at the update, starters of a new space); entries already
- * there are kept. A marker records it, so a `reads.json` the user removed later is
+ * The migration, once per folder: every owner without account that was on disk before this start gets its declared public
+ * domains and `web`, so it keeps reading any host as before the gate. A `fresh` one (a starter just copied) gets exactly what
+ * it declares. Entries already there are kept. A marker records it, so a `reads.json` the user removed later is
  * not seeded again.
  */
-export async function seedReads(folder: string, owners: { id: string; sources: { account: string[]; public: string[] } }[]): Promise<void> {
+export async function seedReads(folder: string, owners: { id: string; sources: { account: string[]; public: string[]; web?: boolean }; fresh?: boolean }[]): Promise<void> {
   const marker = join(folder, "reads.seeded");
   if (await stat(marker).then(() => true, () => false)) return;
   await modify(folder, (all) => {
-    for (const o of owners) if (ID.test(o.id) && o.sources.account.length === 0) all[o.id] ??= { public: [...o.sources.public].sort(), web: true };
+    for (const o of owners) if (ID.test(o.id) && o.sources.account.length === 0) all[o.id] ??= { public: [...o.sources.public].sort(), web: !o.fresh || o.sources.web === true };
   });
   await writeAtomic(marker, "");
 }

@@ -242,6 +242,7 @@ async function swapWidget(c: SpacePaths, models: string, lang: string, langs: st
     if (!content) return [];
     const shipped =
       (await currentHashes(models, langs, join("widgets", id, name))).includes(hash(content)) ||
+      (OLD_TEMPLATES[`widgets/${id}/${name}`]?.has(hash(content)) ?? false) ||
       (name === "display.html" && (DISPLAYS_SHIPPED[id as keyof typeof DISPLAYS_SHIPPED]?.has(hash(content)) ?? false));
     if (!shipped) return [];
     if (target && !content.equals(target)) toWrite.push([source, file]);
@@ -274,6 +275,11 @@ const OLD_TEMPLATES: Readonly<Record<string, ReadonlySet<string>>> = {
     // Before the card in front of harvest_widget.
     "6e4dc72d2c29b5e7815bb31d7c2c3b1ce12896dc563ede9f3ca0ef3247ce7223",
     "dc07b4c371b3662618656495fd2ed1868bc0da37f9a27c2a775ec22cbdc57599",
+  ]),
+  // Before it declared `web` (it reads each article's own site): fr, en.
+  "widgets/actus-tech/widget.json": new Set([
+    "4ff80b95ebfed67f690c6efd116d513e8ecabd5de2762bcba06e4cc52c2bc985",
+    "5f58a3c91e4e65fbc6a4fd1970626b1071cdfdb5ebabed972ba9ec171fbb74a5",
   ]),
   // The version that still listed `cookies` among the working rights.
   "guides/extensions.md": new Set(["ab3d59cd7ee04a33e9c29ee43a1bd086d16ca5b038e582b8fb2f756b7135ac9b", "bb0ef51c03aaa9bfc5788348376f42aef8555eb35536f429b30ad7cc92844436"]),

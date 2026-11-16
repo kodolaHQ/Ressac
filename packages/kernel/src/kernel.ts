@@ -343,7 +343,7 @@ export async function createKernel(o: {
   const paths = spacePaths(o.root);
   const loc = () => o.locale?.() ?? "en";
   const templates = o.resources ? join(o.resources, "templates") : undefined;
-  await initSpace(paths, loc(), templates);
+  const { created } = await initSpace(paths, loc(), templates);
   let relocalizing: Promise<void> = Promise.resolve();
 
   const run = o.run ?? createRunner(loc);
@@ -358,7 +358,7 @@ export async function createKernel(o: {
   // An action deleted (or put in the trash) since the last launch: its data and grant go.
   await forgetGoneActions(paths, actionsFolder).catch((e) => console.error("[ressac] forgetting gone actions:", e));
   // Once, before any harvest or run: the owners that exist at the update keep reading what they declare.
-  await seedSpaceReads(paths, widgetsFolder, actionsFolder, loc()).catch((e) => console.error("[ressac] reads seeding:", e));
+  await seedSpaceReads(paths, widgetsFolder, actionsFolder, loc(), created).catch((e) => console.error("[ressac] reads seeding:", e));
   const ai = o.ai ?? null;
   // Access specific to this kernel, closed with it: a harvest still in flight at shutdown does not relaunch Kev.
   const aiAccess = ai?.access() ?? null;
@@ -768,9 +768,11 @@ export async function createKernel(o: {
 }
 
 /** Seeds `reads.json` of the widgets and of the actions from the owners on disk (a folder not found seeds nothing, marker written). */
-async function seedSpaceReads(paths: SpacePaths, widgetsFolder: string, actionsFolder: string, locale: string): Promise<void> {
+async function seedSpaceReads(paths: SpacePaths, widgetsFolder: string, actionsFolder: string, locale: string, created: string[]): Promise<void> {
   const widgets = (await readHome(paths, widgetsFolder, locale)).widgets;
-  await seedReads(widgetsFolder, widgets.flatMap((w) => ("error" in w ? [] : [{ id: w.id, sources: w.declaration.sources }])));
+  // A starter whose declaration initSpace just copied was not on disk before: it gets what it declares, not any host.
+  const fresh = new Set(created);
+  await seedReads(widgetsFolder, widgets.flatMap((w) => ("error" in w ? [] : [{ id: w.id, sources: w.declaration.sources, fresh: fresh.has(join(paths.widgets, w.id, "widget.json")) }])));
   const actions = await readActions(paths);
   await seedReads(actionsFolder, actions.flatMap((a) => ("error" in a ? [] : [{ id: a.id, sources: a.declaration.sources }])));
 }

@@ -26,7 +26,8 @@
       "www.theverge.com",
       "next.ink",
       "hnrss.org"
-    ]
+    ],
+    "web": true
   },
   "config": {
     "interets": "IA et modèles de langage, IA locale, agents de code, Svelte, Electron, TypeScript, développement web, navigateurs, sécurité informatique"

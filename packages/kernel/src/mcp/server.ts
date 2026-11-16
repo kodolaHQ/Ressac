@@ -973,7 +973,8 @@ function createToolsServer(
                 if (!sessions.owns(id)) return;
                 const now = (await bridge.listTabs()).find((x) => x.id === t!.id) ?? t;
                 sessions.pageRead(id, now.url, readUrls(r.links));
-                seen.add([now.url, ...readUrls(r.links), ...photos(r.links)]);
+                // A local page is the agent's own writing: its links never become free outside the search.
+                if (!isLocal(now.url)) seen.add([now.url, ...readUrls(r.links), ...photos(r.links)]);
                 const state = pageState(r, now.url, now.title);
                 const body = state !== "introuvable" && state !== "bloquée" && state !== "connexion demandée" ? reducedPage(r, sessions.current(key)?.goal ?? "", READ_PAGES_PAGE_MAX).text : "";
                 sections.set(u, [`Titre : ${now.title}`, `URL : ${now.url}`, stateLine(r, now.url, now.title), "", body].join("\n"));

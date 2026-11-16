@@ -2484,6 +2484,20 @@ test("outside a search, a composed address asks its card once per conversation; 
   }, { address: true });
 });
 
+test("read_pages of a local page in a search does not make its links seen: outside the search, they still ask the card", async () => {
+  await withSearch(async ({ call, fake, search }) => {
+    const far = { text: "Loin", url: "https://loin.fr/x" };
+    fake.linkSequence = [[far]];
+    // Without a search, the first address opens the search tab: only the local page is read.
+    expect((await call("read_pages", { urls: ["http://localhost:5300/demo.html"] })).isError).toBe(false);
+    expect(fake.calls.filter((x) => x.method === "readText").length).toBeGreaterThan(0);
+    search.reset();
+    const before = fake.calls.filter((x) => x.method === "askAddress").length;
+    await call("open_tab", { url: far.url });
+    expect(fake.calls.filter((x) => x.method === "askAddress")).toHaveLength(before + 1);
+  }, { address: true });
+});
+
 test("while a hand is open, the agent's tools refuse the search tab: nothing read, navigated, captured or logged", async () => {
   await withSearch(async ({ call, fake, search }) => {
     fake.linkSequence = [[a]];

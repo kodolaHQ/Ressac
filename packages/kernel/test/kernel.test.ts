@@ -10,7 +10,7 @@ import { createKernel, WorkshopError, type Kernel } from "../src/kernel.js";
 import type { LocalAi } from "../src/ai/local-ai.js";
 import { WidgetsScheduler } from "../src/widgets/scheduler.js";
 import { giveGrant, readGrants } from "../src/widgets/grants.js";
-import { readReads } from "../src/widgets/reads.js";
+import { readReads, readsCovered } from "../src/widgets/reads.js";
 import { writeRun, idExecution, type Execution } from "../src/workflows/executions.js";
 import { writeResult } from "../src/actions/data.js";
 import { writeData, readData, readWidgetState } from "../src/home/data.js";
@@ -531,6 +531,21 @@ test("kernel: the owners on disk at start get their reads approved once; one wri
   expect((await readReads(actionsFolder)).pub).toBeUndefined();
   await n.actions.approveReads({ id: "pub", public: ["x.fr"], web: true });
   expect((await readReads(actionsFolder)).pub).toEqual({ public: ["x.fr"], web: true });
+});
+
+test("kernel: a fresh space seeds its starters with exactly what they declare, and none waits for a card", async () => {
+  const root = await tempFolder();
+  const widgetsFolder = `${root}-widgets`;
+  const { run } = fakeRunner([[/ info$/, { code: 1 }]]);
+  kernel = await createKernel({ locale: () => "fr", widgetsFolder, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root, run });
+  const reads = await readReads(widgetsFolder);
+  expect(reads.meteo).toEqual({ public: ["api.open-meteo.com", "geocoding-api.open-meteo.com"], web: false });
+  expect(reads["actus-tech"]?.web).toBe(true);
+  expect(reads["daily-dev"]).toBeUndefined();
+  for (const w of (await kernel.readHome()).widgets) {
+    if ("error" in w || w.declaration.sources.account.length) continue;
+    expect(readsCovered(w.declaration, reads[w.id]), w.id).toBe(true);
+  }
 });
 
 describe("openAgentSession with a profile", () => {
