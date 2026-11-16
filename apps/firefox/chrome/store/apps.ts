@@ -8,6 +8,7 @@ import { HOST_EXITED, type AgentHost } from "../agent/host";
 import type { DesignService } from "./design";
 import { appContainer, isAppContainer, removeAppContainer } from "./containers";
 import { frameFeatures, frameOf, installGuard, openInContainer } from "./sites";
+import { agentPorts, installAgentPageGuard } from "../agent/page-guard";
 
 /** The window.arguments[1] key that marks an agent app window from its creation (read before anything claims it). */
 export const APP_WINDOW_KEY = "ressac-app";
@@ -398,6 +399,7 @@ export function bindApps(agent: AgentHost, openInTab: (url: string) => void, dir
   design = o.design;
   // From the start, not with the first window: an app container left from a previous run loads nothing either.
   installGuard();
+  installAgentPageGuard(agentPorts);
   Services.obs.addObserver(redirects, "http-on-examine-response");
   Services.obs.addObserver({ observe: () => (quitting = true) }, "quit-application-granted");
 }

@@ -60,3 +60,6 @@ pref("general.useragent.compatMode.firefox", true);
 // Crash and error reports (chrome/store/telemetry.ts): on unless turned off; the first-run notice says so once.
 pref("ressac.telemetry.enabled", true);
 pref("ressac.telemetry.noticeShown", false);
+
+// A <link rel=dns-prefetch> would reach the web through DNS past the request guard of agent pages (chrome/agent/page-guard.ts).
+pref("network.dns.disablePrefetch", true);
