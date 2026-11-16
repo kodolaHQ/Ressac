@@ -69,8 +69,12 @@ export function createApplicationsHost(o: {
     windows.delete(folder);
     void o.chrome.close(folder).catch(report(folder, "closed"));
   };
+  /** The sweep around a first session (whileStopped): a launch asked meanwhile waits for it, else the sweep would kill it. */
+  let sweeping: Promise<void> | null = null;
   /** Closes the window of an app that is no longer running, except during a launch (which will decide at its end). */
   const followState = (folder: string) => {
+    // Stopped by the sweep, launched again right after: its window stays and reloads on the new port.
+    if (sweeping) return;
     const state = manager.stateOf(folder);
     if ((state === "stopped" || state === "error") && !running.get(folder) && windows.has(folder)) close(folder);
   };
@@ -78,6 +82,7 @@ export function createApplicationsHost(o: {
   // Launches come from the agent (MCP tool) as from the apps page: all go through here.
   class Manager extends ApplicationManager {
     override launch(folder: string): Promise<Application> {
+      if (sweeping) return sweeping.then(() => this.launch(folder));
       running.set(folder, (running.get(folder) ?? 0) + 1);
       const end = super.launch(folder);
       last.set(folder, end);
@@ -242,10 +247,21 @@ export function createApplicationsHost(o: {
       manager.start().catch((e) => console.error("[applications] start failed:", e));
     },
     async whileStopped(run) {
-      const was = (await manager.list()).filter((a) => a.state === "running" || a.state === "launching" || a.state === "preparing").map((a) => a.folder);
-      await manager.stopAll();
+      let was: string[] = [];
+      const sweep = (async () => {
+        try {
+          // Launches already asked end first: their caller (launch_app) gets its port, then the app stops with the others.
+          await Promise.all([...last.values()].map((p) => p.catch(() => {})));
+          was = (await manager.list()).filter((a) => a.state === "running" || a.state === "launching" || a.state === "preparing").map((a) => a.folder);
+          await manager.stopAll();
+          await run();
+        } finally {
+          sweeping = null;
+        }
+      })();
+      sweeping = sweep.catch(() => {});
       try {
-        await run();
+        await sweep;
       } finally {
         for (const folder of was) void manager.launch(folder).catch(report(folder, "launched again"));
       }

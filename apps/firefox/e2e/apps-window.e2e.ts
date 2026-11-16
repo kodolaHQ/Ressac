@@ -44,6 +44,9 @@ async function start(o: { server?: "ok" | "crashed" } = {}): Promise<Instance> {
   // Not expect.poll: also run from beforeAll.
   for (const end = Date.now() + 15_000; !existsSync(path.join(dataDir, "workspace", ".ressac", "mcp.json")); await sleep(100))
     if (Date.now() > end) throw new Error("the MCP server did not start");
+  // The window's agent session opens at launch, after a sweep that stops and relaunches the apps: tests launch theirs after it.
+  for (const end = Date.now() + 15_000; !stopsLog(dataDir).includes("kill -KILL -1"); await sleep(100))
+    if (Date.now() > end) throw new Error("the first session's sweep did not run");
   return { w, m, dataDir };
 }
 async function stop(i: Instance | undefined): Promise<void> {
