@@ -280,7 +280,7 @@ describe("tweaks", () => {
         expect(await m.execute<string>(`return ${siteWindowExpr("vidola")}.gBrowser.selectedBrowser.currentURI.spec;`)).toBe("about:blank");
         expect(server.requests.filter((r) => r.host === "vidola-a.localhost")).toEqual([]);
         // « Ouvrir sans retouches »: the page loads, and nothing of the agent is in it.
-        await inSiteBar(m, "vidola", `doc.querySelector('[data-testid="refuse-site"]').click(); return true;`);
+        await inSiteBar(m, "vidola", `for (let i = 0; i < 50 && !doc.querySelector('[data-testid="site-grant-card"][data-armed]'); i++) await new Promise((r) => setTimeout(r, 100)); doc.querySelector('[data-testid="refuse-site"]').click(); return true;`);
         await expect.poll(() => viewUrl("vidola"), { timeout: 15_000 }).toBe(url("/serie/the-bear"));
         await expect.poll(() => view("document.readyState")).toBe("complete");
         await sleep(300);
