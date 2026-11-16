@@ -52,6 +52,12 @@ describe("validatePlan", () => {
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.errors).toContain("le plan ne référence rien");
+    expect(r.errors.join("\n")).toContain('"object": "criteres"');
+  });
+
+  it("the opening recap plan given in AGENTS.md is accepted", () => {
+    const plan = { blocks: [{ component: "title", props: { text: "…" } }, { component: "fields", props: { object: "criteres" } }] };
+    expect(validate(plan, { criteres: { budget: "…", usage: "…" } }).ok).toBe(true);
   });
 
   it("JSON that is not an object: ok false", () => {

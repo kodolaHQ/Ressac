@@ -113,7 +113,7 @@ aucun autre moyen (curl, script, API) pour atteindre le web à sa place.
   jamais ce que l'utilisateur a tapé ou fait dans un formulaire : tu ne reçois que les adresses parcourues.
 - **Le récap.** Quand la recherche va sûrement ramener plusieurs résultats à comparer, ouvre le récap **tout de
   suite**, avant ta première recherche : `show_recap(title, results, plan, live: true)` avec le titre et les critères
-  de l'étape 1 (mêmes résultats JSON et même plan de page qu'une action, mêmes composants). L'utilisateur suit ta
+  de l'étape 1 (mêmes résultats JSON et même plan de page qu'une action, mêmes composants). Un plan qui ne montre aucun résultat est refusé : dès cette première publication, montre les critères, par exemple `results` `{ "criteres": { "budget": "…", "usage": "…" } }` et plan `{ "blocks": [{ "component": "title", "props": { "text": "…" } }, { "component": "fields", "props": { "object": "criteres" } }] }`. L'utilisateur suit ta
   navigation depuis le récap. Ne laisse qu'une ligne dans le terminal. Republie-le (même `id`, `live: true`) après
   tes sources, avec ce qui compte pour ce choix et la liste des sources lues. Lis ensuite les fiches **deux par
   deux** (`read_pages`) et republie le récap **juste après chaque `read_pages`**, même la dernière et même pour une

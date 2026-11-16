@@ -112,7 +112,7 @@ no other means (curl, script, API) to reach the web in its place.
   there what the user typed or did in a form: you only receive the addresses visited.
 - **The recap.** When the search will surely bring back several results to compare, open the recap **right
   away**, before your first search: `show_recap(title, results, plan, live: true)` with the title and the criteria
-  of step 1 (same JSON results and same page plan as an action, same components). The user follows your
+  of step 1 (same JSON results and same page plan as an action, same components). A plan that shows no result is refused: from this first publish, show the criteria, for example `results` `{ "criteria": { "budget": "…", "use": "…" } }` and plan `{ "blocks": [{ "component": "title", "props": { "text": "…" } }, { "component": "fields", "props": { "object": "criteria" } }] }`. The user follows your
   browsing from the recap. Leave only one line in the terminal. Publish it again (same `id`, `live: true`) after
   your sources, with what matters for this choice and the list of sources read. Then read the pages **two by
   two** (`read_pages`) and publish the recap again **right after each `read_pages`**, even the last one and even for a

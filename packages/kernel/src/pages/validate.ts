@@ -6,6 +6,8 @@ import { PlanPage, evaluate, readReference, readPath, type PlanBlock, type Group
 // names of properties, fields and paths, written by the plan itself).
 
 export const PLAN_REFERENCES_NOTHING = "le plan ne référence rien";
+// A weak model resends the same title-only plan when the error does not say how to fix it.
+const REFERENCE_HINT = 'ajoute au moins un bloc qui montre les résultats par une référence, par exemple { "component": "fields", "props": { "object": "criteres" } } pour l\'objet `criteres` des résultats';
 /** Bounds of the raw JSON, checked before zod (which overflows the stack on a plan nested thousands of levels deep). */
 const RAW_DEPTH_MAX = 64;
 const RAW_NODES_MAX = 50_000;
@@ -282,7 +284,7 @@ export function validatePlan(raw: unknown, o: { catalog: ComponentDefinition[]; 
     }
     const ctx: Context = { defs: new Map(o.catalog.map((d) => [d.name, d])), results: o.results, discarded: [], n: 0, references: 0, highlight: false };
     const blocks = validateBlocks(r.data.blocks, ctx);
-    if (ctx.references === 0) return { ok: false, errors: [PLAN_REFERENCES_NOTHING, ...ctx.discarded] };
+    if (ctx.references === 0) return { ok: false, errors: [PLAN_REFERENCES_NOTHING, REFERENCE_HINT, ...ctx.discarded] };
     return { ok: true, plan: { blocks: blocks }, discarded: ctx.discarded };
   } catch {
     return { ok: false, errors: ["plan illisible"] };
