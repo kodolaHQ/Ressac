@@ -176,6 +176,10 @@ describe("site app address follow", () => {
     await openSite("t59");
     await expect.poll(() => homeFrame("t59", `return home.contentDocument.getElementById("series").textContent;`), { timeout: 15_000 }).toContain("The Bear");
     await barClick("t59", "site-enter");
+    // vidola-b was never approved: the grant card names it, and the view goes there only on « Autoriser ».
+    await expect.poll(() => inSiteBar(m, "t59", `return doc.querySelector('[data-testid="site-grant-tracking"]')?.textContent ?? null;`), { timeout: 20_000 }).toBe("vidola-b.localhost");
+    expect(await viewUrl("t59")).not.toBe(b("/serie/the-bear"));
+    await inSiteBar(m, "t59", `for (let i = 0; i < 100 && !doc.querySelector('[data-testid="site-grant-card"][data-armed]'); i++) await new Promise((r) => setTimeout(r, 100)); doc.querySelector('[data-testid="grant-site"]').click(); return true;`);
     await viewAt("t59", b("/serie/the-bear"));
     await expectText("t59", "site-notice", NOTICE_CHANGED);
     await expect.poll(() => inSiteView(m, "t59", 'return getComputedStyle(document.getElementById("shorts")).display;').catch(() => null), { timeout: 15_000 }).toBe("none");

@@ -305,6 +305,9 @@ describe("end to end (AGENTS.md's examples)", () => {
     await openSite("vidola");
     await waitSeriesCard(/^data:image\/png;base64,/);
     await barClick("vidola", "site-enter");
+    // vidola-b was never approved: the card names it, the view goes there on « Autoriser ».
+    await expect.poll(() => text("vidola", "site-grant-tracking"), { timeout: 30_000 }).toBe("vidola-b.localhost");
+    await inSiteBar(m, "vidola", `for (let i = 0; i < 100 && !doc.querySelector('[data-testid="site-grant-card"][data-armed]'); i++) await new Promise((r) => setTimeout(r, 100)); doc.querySelector('[data-testid="grant-site"]').click(); return true;`);
     await expect.poll(() => viewUrl(), { timeout: 30_000 }).toBe(url("vidola-b.localhost", "/"));
     // vidola-a failed first, the reference page was read once and without a cookie, then vidola-b was reached without the sign-in.
     const names = server.requests.map((r) => `${r.host}${r.path}`);
