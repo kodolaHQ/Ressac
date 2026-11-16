@@ -423,6 +423,15 @@ describe("findPages: every group must match, title and URL before kept text", ()
     expect(urls({ groups: [["ete"], ["bordeaux"]], limit: 3 })).toEqual(["https://a.fr/"]);
     expect(() => h.findPages({ groups: [['a" OR "b'], ["NEAR("]], limit: 3 })).not.toThrow();
   });
+
+  test("a big history is not grouped and folded whole: 150k visits answer in under 200 ms (370 ms before)", () => {
+    const now = Date.now();
+    h.importVisits(Array.from({ length: 150_000 }, (_, i) => ({ url: `https://s${i % 3000}.fr/p${i}`, title: `Article ${i}`, date: new Date(now - (i % 100) * 3_600_000) })));
+    visit("https://a.fr/", "Le mascaret", null, new Date());
+    const start = performance.now();
+    expect(urls({ groups: [["mascaret"]], limit: 3 })).toEqual(["https://a.fr/"]);
+    expect(performance.now() - start).toBeLessThan(200);
+  });
 });
 
 describe("site favicons", () => {

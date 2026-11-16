@@ -350,15 +350,26 @@ export class History {
     const escape = (w: string) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const patterns = groups.map((g) => new RegExp(`(?:^|[^\\p{L}\\p{N}])(?:${g.map(escape).join("|")})`, "u"));
     const fts = groups.map((g) => `(${g.map((w) => `"${w.replaceAll('"', '""')}"`).join(" OR ")})`).join(" AND ");
+    const likes = groups.flat().map((w) => `%${w.replace(/[\\%_]/g, (c) => `\\${c}`)}%`);
     const rows = this.db
       .prepare(`
+        WITH found AS MATERIALIZED (
+          SELECT t.url, t.id, bm25(texts_fts) AS score FROM texts_fts JOIN texts t ON t.id = texts_fts.rowid WHERE texts_fts MATCH :fts
+        ),
+        -- One text per URL, the best ranked (the bare id comes from the MIN row).
+        m AS (SELECT url, id, MIN(score) AS score FROM found GROUP BY url),
+        -- Only the URLs that can match: their text, or a word in the title or URL of a non-private row (a substring here,
+        -- checked at a word start below), so a big history is not grouped and folded whole.
+        candidates AS (
+          SELECT url FROM m UNION SELECT url FROM visits WHERE private = 0 AND (${likes.map((_, i) => `url_fold LIKE :l${i} ESCAPE '\\' OR title_fold LIKE :l${i} ESCAPE '\\'`).join(" OR ")})
+        )
         SELECT v.url, MAX(v.last_visit) AS lastVisit, SUM(v.visits) AS visits,
           (SELECT title FROM visits w WHERE w.url = v.url AND w.private = 0 ORDER BY w.last_visit DESC LIMIT 1) AS title,
-          (SELECT t.id FROM texts_fts JOIN texts t ON t.id = texts_fts.rowid WHERE texts_fts MATCH :fts AND t.url = v.url LIMIT 1) AS id,
-          (SELECT bm25(texts_fts) FROM texts_fts JOIN texts t ON t.id = texts_fts.rowid WHERE texts_fts MATCH :fts AND t.url = v.url LIMIT 1) AS score
-        FROM visits v WHERE v.private = 0 AND v.last_visit >= :since AND v.last_visit <= :until
+          m.id, m.score
+        FROM visits v LEFT JOIN m ON m.url = v.url
+        WHERE v.url IN candidates AND v.private = 0 AND v.last_visit >= :since AND v.last_visit <= :until
         GROUP BY v.url`)
-      .all({ ...period, fts }) as { url: string; lastVisit: string; visits: number; title: string; id: number | null; score: number | null }[];
+      .all({ ...period, fts, ...Object.fromEntries(likes.map((l, i) => [`l${i}`, l])) }) as { url: string; lastVisit: string; visits: number; title: string; id: number | null; score: number | null }[];
     // A small model often adds one idea too many: from 3 groups on, a title may miss one.
     const needed = groups.length >= 3 ? groups.length - 1 : groups.length;
     const inTitle = (r: (typeof rows)[number]) => {
