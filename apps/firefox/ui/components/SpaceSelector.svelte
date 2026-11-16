@@ -82,7 +82,11 @@
         e.preventDefault();
         api.dispatch({ type: "moveSpace", id, index });
       }}
-      onkeydown={(e) => (e.key === "Enter" || e.key === " ") && api.dispatch({ type: "activateSpace", windowId: win.id, id: space.id })}
+      onkeydown={(e) => {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        e.preventDefault();
+        api.dispatch({ type: "activateSpace", windowId: win.id, id: space.id });
+      }}
       data-testid="space-{space.id}"
       aria-current={space.id === win.activeSpace ? "true" : undefined}
       title={space.private ? t("sidebar-space-private", { name: space.name }) : space.name}
@@ -109,6 +113,8 @@
   .spaces :is(button, .space):active { transform: scale(0.97); }
   .spaces :is(button, .space)[aria-current="true"] { background: var(--glass-hi); box-shadow: inset 0 0 0 1px var(--border), var(--lift); color: var(--text); }
   /* Under a dragged space: the drop lands here. */
+  /* Its icon and padlock never take the pointer: a drag over them stays a drag over the chip, no highlight flicker. */
+  .spaces .space > :global(*) { pointer-events: none; }
   .spaces .space.over { box-shadow: inset 0 0 0 1.5px var(--accent); transform: scale(1.06); }
   .padlock { position: absolute; left: -2px; bottom: -3px; padding: 2px; border-radius: 999px; background: var(--glass-dense); color: var(--text); box-shadow: 0 0 0 1px var(--glass-edge); }
   .confirmation { flex: 1 0 100%; box-sizing: border-box; padding: 10px; border-radius: 12px; background: var(--glass-hi); box-shadow: inset 0 0 0 1px var(--glass-edge); color: var(--text); -webkit-app-region: no-drag; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
