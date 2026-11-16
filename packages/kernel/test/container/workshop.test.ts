@@ -626,7 +626,7 @@ describe("agent network", () => {
   test("the image hash covers the network module and the run flags version", async () => {
     const { RUN_FLAGS, RUN_FLAGS_VERSION } = await import("../../src/container/workshop.js");
     // Changing a flag must bump RUN_FLAGS_VERSION (and the fake docker's copy of it).
-    expect(RUN_FLAGS_VERSION).toBe("3");
+    expect(RUN_FLAGS_VERSION).toBe("4");
     expect(RUN_FLAGS.join(" ")).toMatchInlineSnapshot(`"--cap-add NET_ADMIN --security-opt no-new-privileges --memory 4g --pids-limit 1024 --sysctl net.ipv6.conf.all.disable_ipv6=1 -e HTTPS_PROXY=http://127.0.0.1:3128 -e https_proxy=http://127.0.0.1:3128 -e HTTP_PROXY=http://127.0.0.1:3128 -e http_proxy=http://127.0.0.1:3128 -e NO_PROXY=localhost,127.0.0.1,host.docker.internal -e no_proxy=localhost,127.0.0.1,host.docker.internal -e NODE_USE_ENV_PROXY=1 -e DISABLE_AUTOUPDATER=1 -e CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1"`);
   });
 

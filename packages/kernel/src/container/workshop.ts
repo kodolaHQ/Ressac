@@ -63,8 +63,11 @@ export function codexRequirements(url: string): string {
   return `allow_managed_hooks_only = true\n\n[mcp_servers.ressac.identity]\nurl = ${JSON.stringify(url)}\n`;
 }
 
-/** Bumped with any change to RUN_FLAGS: it goes into the image hash, so the container is recreated (the fake docker of the e2e tests repeats it). */
-export const RUN_FLAGS_VERSION = "3";
+/**
+ * Bumped with any change to RUN_FLAGS or to the `docker run` mounts: it goes into the image hash, so the container is
+ * recreated (the fake docker of the e2e tests repeats it).
+ */
+export const RUN_FLAGS_VERSION = "4";
 /** The network, memory and proxy flags of `docker run` (the part after the ports). */
 export const RUN_FLAGS = [
   "--cap-add", "NET_ADMIN",
