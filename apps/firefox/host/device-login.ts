@@ -9,9 +9,14 @@ const ANSI = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
 /**
  * Runs a sign-in command that prints a page address and a code, then waits for the user to enter it (no TTY).
  * Resolves as soon as both are seen (the process keeps running), or with an error if it ends or is too slow first.
+ * `ended`: the process is gone (signed in, refused, expired or stopped).
  */
-export function startDeviceLogin(command: string[], o: { origin: string; delayMs?: number }): { result: Promise<LoginResult>; stop(): void } {
+export function startDeviceLogin(command: string[], o: { origin: string; delayMs?: number }): { result: Promise<LoginResult>; ended: Promise<void>; stop(): void } {
   const child = spawn(command[0]!, command.slice(1), { stdio: ["ignore", "pipe", "pipe"] });
+  const ended = new Promise<void>((resolve) => {
+    child.on("close", () => resolve());
+    child.on("error", () => resolve());
+  });
   let text = "";
   let timer: NodeJS.Timeout;
   const result = new Promise<LoginResult>((resolve) => {
@@ -47,5 +52,5 @@ export function startDeviceLogin(command: string[], o: { origin: string; delayMs
     });
     timer = setTimeout(fail, o.delayMs ?? DEVICE_CODE_DELAY_MS);
   });
-  return { result, stop: () => void child.kill() };
+  return { result, ended, stop: () => void child.kill() };
 }

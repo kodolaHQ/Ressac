@@ -112,7 +112,7 @@ export interface SettingsOptions {
   notify(n: { title: string; text: string }): void;
 }
 
-export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTINGS_METHODS)[number], (p: any) => unknown> & { stopLogins(): void } {
+export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTINGS_METHODS)[number], (p: any) => unknown> & { stopLogins(): void; loginEnded(): Promise<void> } {
   /** The sign-in by code in progress; one at a time. */
   let signIn: ReturnType<typeof startDeviceLogin> | undefined;
   const stopLogins = () => {
@@ -184,6 +184,8 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
 
   return {
     stopLogins,
+    // The sign-in runs as the agent's user: the sweep before a first session would kill it while the user types the code.
+    loginEnded: () => signIn?.ended ?? Promise.resolve(),
     "settings.agents": agents,
     "settings.login": async (p: { id?: unknown }): Promise<LoginResult> => {
       const a = AGENT_ACCOUNTS.find((x) => x.id === p?.id);

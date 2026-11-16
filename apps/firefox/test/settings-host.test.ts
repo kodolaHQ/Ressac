@@ -138,6 +138,18 @@ describe("settings host", () => {
     expect(o.workshop.secureNetwork).toHaveBeenCalled();
   });
 
+  it("loginEnded waits for a sign-in by code still running, so the sweep never kills it", async () => {
+    const { h } = setup();
+    await h.loginEnded();
+    expect(await h["settings.login"]!({ id: "codex" })).toMatchObject({ kind: "device" });
+    let ended = false;
+    void h.loginEnded().then(() => (ended = true));
+    await new Promise((r) => setTimeout(r, 100));
+    expect(ended).toBe(false);
+    h.stopLogins();
+    await vi.waitFor(() => expect(ended).toBe(true));
+  });
+
   it("login refused while the agent's network cannot be secured: the CLI never runs", async () => {
     const { h, o } = setup();
     o.workshop.secureNetwork.mockRejectedValueOnce(new Error("no rules"));
