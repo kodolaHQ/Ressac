@@ -324,7 +324,7 @@ describe("ai.write", () => {
     ]);
   });
 
-  it("ia.rediger: Gemma unavailable (call error) skips the element and notes it in the block's log", async () => {
+  it("ia.rediger: the writer unavailable (call error) skips the element and notes it in the block's log", async () => {
     const elements = [{ title: "un" }, { title: "deux" }];
     const r = await launch({
       workflow: {
@@ -340,7 +340,7 @@ describe("ai.write", () => {
     expect(r.terminal.data).toEqual([{ title: "un" }, { title: "deux", text: "ok" }]);
   });
 
-  it("ia.rediger: Gemma failing for all elements, the block ends partial and the elements pass without text", async () => {
+  it("ia.rediger: the writer failing for all elements, the block ends partial and the elements pass without text", async () => {
     const elements = [{ title: "un" }, { title: "deux" }];
     const r = await launch({
       workflow: {

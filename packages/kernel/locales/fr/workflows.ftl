@@ -83,8 +83,8 @@ workflows-warn-config = config.{ $key } absent de la configuration du widget
 # Blocs : noms et descriptions.
 workflows-block-ai-sort = Trier avec Kev
 workflows-block-ai-sort-desc = Note chaque élément avec Kev et garde ceux qui passent le seuil.
-workflows-block-ai-write = Rédiger avec Gemma
-workflows-block-ai-write-desc = Fait écrire un texte à Gemma à partir d'une consigne.
+workflows-block-ai-write = Rédiger avec l'IA
+workflows-block-ai-write-desc = Fait écrire un texte à l'IA à partir d'une consigne.
 workflows-block-code = Code
 workflows-block-code-desc = Exécute un fichier .mjs du widget sur l'entrée reçue.
 workflows-block-list-dedupe = Dédoublonner

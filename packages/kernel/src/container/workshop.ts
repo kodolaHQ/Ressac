@@ -339,8 +339,7 @@ export class Workshop {
   }
 
   /**
-   * One-shot command with `input` on standard input, in a fresh temp dir (its cwd, removed afterwards). Prints `./out`
-   * after the command when it exists (Codex `-o out`). On abort the process is killed in the container, not only the client.
+   * One-shot command with `input` on standard input, in a fresh temp dir (its cwd, removed afterwards). On abort the process is killed in the container, not only the client.
    * shortcut: a killed run leaves its temp dir in /tmp, cleared with the container.
    */
   async execWrite(argv: string[], o: { input: string; signal: AbortSignal; delayMs: number }): Promise<RunResult> {
@@ -353,7 +352,6 @@ export class Workshop {
       `d=$(mktemp -d) && cd "$d" || exit 1`,
       `echo $$ > ${f}`,
       `"$@"; c=$?`,
-      `[ -f out ] && cat out`,
       `cd /; rm -rf "$d" ${f}; exit $c`,
     ].join("\n");
     const r = await this.launch(["exec", "-i", "-u", "node", "-w", "/", "-e", `${VARIABLE_SESSION}=${id}`, containerName(), "sh", "-c", script, "ressac-write", id, ...argv], o.delayMs, o.input, o.signal);

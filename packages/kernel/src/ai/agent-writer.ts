@@ -30,12 +30,11 @@ export const CODEX_DISABLED_FEATURES = [
 ];
 
 // shortcut: inertness and the model are unverified without a ChatGPT account, run it with a tester's account
-// `-o out` is relative: the command runs in a fresh temp dir and the host prints ./out afterwards, so stdout is the last message.
 export function codexWriterArgv(_json: boolean): string[] {
   return [
     "codex", "exec", "-m", CODEX_WRITER_MODEL, "-s", "read-only", "--skip-git-repo-check", "--ephemeral",
     "--ignore-user-config", "--ignore-rules", "-c", 'web_search="disabled"',
-    ...CODEX_DISABLED_FEATURES.flatMap((f) => ["--disable", f]), "-o", "out", "-",
+    ...CODEX_DISABLED_FEATURES.flatMap((f) => ["--disable", f]), "-",
   ];
 }
 
@@ -82,7 +81,13 @@ export function createAgentWriter(o: {
         let text: string;
         if (agent === "claude") {
           let out: { is_error?: boolean; result?: unknown; usage?: Record<string, number> };
-          try { out = JSON.parse(res.stdout); } catch { throw failed(res.stderr || res.stdout); }
+          try { out = JSON.parse(res.stdout); } catch {
+            // Not JSON (e.g. a plain "Please run /login"): the tail still tells signed out or limit.
+            const tail = (res.stderr || res.stdout).slice(-300);
+            if (SIGNED_OUT.test(tail)) { outcome = "signed-out"; return "signed-out"; }
+            if (LIMIT.test(tail)) throw limit();
+            throw failed(tail);
+          }
           const u = out.usage ?? {};
           tokens = ` in=${u.input_tokens ?? "?"} cache=${u.cache_read_input_tokens ?? "?"} out=${u.output_tokens ?? "?"}`;
           const result = typeof out.result === "string" ? out.result : "";
@@ -94,11 +99,11 @@ export function createAgentWriter(o: {
           text = result;
         } else {
           if (res.code !== 0) {
-            // Codex echoes the prompt in stderr: only its tail is matched.
-            const tail = res.stderr.slice(-300);
+            // Codex echoes the prompt in stderr: only its last line counts.
+            const tail = res.stderr.trim().split("\n").at(-1) ?? "";
             if (SIGNED_OUT.test(tail)) { outcome = "signed-out"; return "signed-out"; }
             if (LIMIT.test(tail)) throw limit();
-            throw failed(res.stderr);
+            throw failed(tail);
           }
           text = res.stdout;
         }

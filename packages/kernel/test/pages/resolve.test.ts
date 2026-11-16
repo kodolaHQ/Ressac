@@ -41,7 +41,7 @@ describe("resolvePage", () => {
     expect(t.props.link).toEqual({ text: "Le projet", url: "https://gitlab.com/p" });
   });
 
-  it("literal link written by Gemma: property refused at validation", () => {
+  it("literal link written by the writer: property refused at validation", () => {
     for (const url of ["https://tiers.example/?d=x", '"https://tiers.example/?d=" + name', "javascript:alert(1)"]) {
       const r = validatePlan({ blocks: [{ component: "link", props: { object: "project", url } }, { component: "figure", props: { value: "count(announcements)", label: "n" } }] }, { catalog: catalog, results: results });
       expect(r.ok).toBe(true);

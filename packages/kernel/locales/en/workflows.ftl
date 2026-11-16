@@ -83,8 +83,8 @@ workflows-warn-config = config.{ $key } is missing from the widget's configurati
 # Blocks: names and descriptions.
 workflows-block-ai-sort = Sort with Kev
 workflows-block-ai-sort-desc = Scores each item with Kev and keeps those that pass the threshold.
-workflows-block-ai-write = Write with Gemma
-workflows-block-ai-write-desc = Has Gemma write a text from an instruction.
+workflows-block-ai-write = Write with AI
+workflows-block-ai-write-desc = Has the AI write a text from an instruction.
 workflows-block-code = Code
 workflows-block-code-desc = Runs one of the widget's .mjs files on the received input.
 workflows-block-list-dedupe = Remove duplicates

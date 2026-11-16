@@ -3,7 +3,7 @@ import { resultsPreview, emptyResults } from "./preview.js";
 import { catalogText, type ComponentDefinition } from "./catalog.js";
 import type { PlanPage } from "./plan.js";
 import { lastResortLayout, fallbackLayout } from "./fallback.js";
-import { englishLanguageName } from "../i18n.js";
+import { englishLanguageName, say } from "../i18n.js";
 import { validatePlan } from "./validate.js";
 
 // The layout of an action: the AI chooses components and fills them in by reference, Ressac validates. A second
@@ -109,7 +109,9 @@ export async function layOut(o: {
           errors = [NON_JSON];
           continue;
         }
-        return { failure: FAILURE_REASON };
+        // The writer's "no account" / "limit" texts are fixed and safe to show; any other error stays generic.
+        const known = e instanceof Error && ["kernel-writer-none", "kernel-writer-limit"].flatMap((k) => [say("fr", k), say("en", k)]).includes(e.message);
+        return { failure: known ? (e as Error).message : FAILURE_REASON };
       }
       const parsed = readJson(response);
       if (!parsed) {

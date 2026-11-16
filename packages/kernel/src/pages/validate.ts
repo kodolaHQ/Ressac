@@ -72,7 +72,7 @@ function checkReference(text: unknown, expected: "list" | "object" | "simple" | 
   return { text: text, value: v, grouped: ref.ops.at(-1)?.op === "group" };
 }
 
-/** A field: a path relative to an item, never a reference nor a free text (an address written by Gemma fails here). */
+/** A field: a path relative to an item, never a reference nor a free text (an address written by the writer fails here). */
 function readField(text: unknown): string {
   if (typeof text !== "string") throw new Gap("nom de champ attendu");
   const ref = readReference(text);

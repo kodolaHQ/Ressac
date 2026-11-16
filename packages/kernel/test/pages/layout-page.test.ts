@@ -86,12 +86,18 @@ describe("layOut", () => {
     expect(r.plan!.blocks.length).toBeGreaterThan(0);
   });
 
-  it("Gemma failing: fallback", async () => {
+  it("writer failing: fallback", async () => {
     const r = await launch(fake([() => Promise.reject(new Error("hors ligne"))]));
     expect(r).toMatchObject({ fallback: true, attempts: 1 });
   });
 
-  it("Gemma waits 60 s in the queue then answers in 40 s: no fallback (the delay starts at startup)", async () => {
+  it("no account or limit: the fixed text is the reason, any other error stays generic", async () => {
+    const none = "Connectez Claude Code ou Codex dans Réglages › Agents pour les résumés";
+    expect((await launch(fake([() => Promise.reject(new Error(none))]))).reason).toBe(none);
+    expect((await launch(fake([() => Promise.reject(new Error("secret"))]))).reason).not.toMatch(/secret/);
+  });
+
+  it("the writer waits 60 s in the queue then answers in 40 s: no fallback (the delay starts at startup)", async () => {
     const ai: WriterAccess = {
       gemma: (_g, o) =>
         new Promise((res) => {
@@ -106,7 +112,7 @@ describe("layOut", () => {
     expect(await p).toMatchObject({ fallback: false, attempts: 1 });
   });
 
-  it("Gemma starts and does not answer in 90 s: fallback at 90 s, the call's signal raised", async () => {
+  it("the writer starts and does not answer in 90 s: fallback at 90 s, the call's signal raised", async () => {
     const calls: Call[] = [];
     const ai = fake([() => new Promise(() => {})], calls);
     let finished = false;

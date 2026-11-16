@@ -101,7 +101,7 @@ async function validGrant(actionsFolder: string, id: string, d: DeclarationActio
 }
 
 /**
- * Launches an action: its workflow in the container, then the layout of its result by Gemma (a fallback without
+ * Launches an action: its workflow in the container, then the layout of its result by the writer (a fallback without
  * it). Kept, in order: the run, the result, the memory (never for a trial). Nothing is written when
  * the action could not run. For an action with an account, the grant is re-read after each write: withdrawn, everything
  * read with it goes. An action whose folder disappeared meanwhile keeps nothing.

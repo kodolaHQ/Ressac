@@ -84,4 +84,5 @@ kernel-network-open = direct access is not closed (probe code { $code })
 kernel-writer-none = Connect Claude Code or Codex in Settings › Agents for summaries
 kernel-writer-limit = Your subscription limit is reached: summaries will resume later
 kernel-writer-images = Images are not supported by writing
+kernel-writer-failed-badge = AI writing failed: see the widget log
 kernel-writer-failed = The AI could not write: { $reason }

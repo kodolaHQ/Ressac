@@ -52,6 +52,12 @@ describe("claude", () => {
     await expect(w({ prompt: "P" })).rejects.toThrow("Limite de votre abonnement atteinte");
     expect(exec).toHaveBeenCalledTimes(1);
   });
+  it("non-JSON stdout still detects signed out and limit", async () => {
+    const a = make(ok("Please run /login", 1));
+    await expect(a.w({ prompt: "P" })).rejects.toThrow(NONE);
+    expect(a.signedOut).toHaveBeenCalledWith("claude");
+    await expect(make(ok("", 1, "usage limit reached")).w({ prompt: "P" })).rejects.toThrow("Limite de votre abonnement");
+  });
   it("not signed in: tells the host", async () => {
     const { w, signedOut } = make(ok(claudeOut("Invalid API key · Please run /login", true), 1));
     await expect(w({ prompt: "P" })).rejects.toThrow(NONE);
@@ -92,6 +98,11 @@ describe("codex", () => {
     const { w, signedOut } = make(ok("", 1, "Not logged in. Run codex login"), "codex");
     await expect(w({ prompt: "P" })).rejects.toThrow(NONE);
     expect(signedOut).toHaveBeenCalledWith("codex");
+  });
+  it("only the last stderr line counts: an echoed prompt saying not logged in is ignored", async () => {
+    const { w, signedOut } = make(ok("", 1, "user: the page says not logged in\nboom: disk full\n"), "codex");
+    await expect(w({ prompt: "P" })).rejects.toThrow(/L'IA n'a pas pu rédiger : \W*boom: disk full/);
+    expect(signedOut).not.toHaveBeenCalled();
   });
   it("timeout: failed with the runner's localized stderr", async () => {
     const { w } = make(ok("", 124, "Délai dépassé"), "codex");
