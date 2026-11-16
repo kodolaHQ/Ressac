@@ -163,7 +163,7 @@ export interface InfraWorkflow {
   locale?: () => string;
   /** Folder of the engine on the Mac (`docker/engine`), mounted read-only. */
   engine: string;
-  workshop: Pick<Workshop, "harvestCommand" | "deleteHarvest">;
+  workshop: Pick<Workshop, "stageHarvest" | "harvestCommand" | "deleteHarvest">;
   launch?: ProcessLauncher;
   /** null: no local AI, `kev` and `gemma` answer with an error. */
   ai: Pick<LocalAi, "kev" | "gemma"> | null;
@@ -344,7 +344,8 @@ export async function runWorkflow(
 
   let process: HarvestProcess;
   try {
-    const [cmd, ...argv] = infra.workshop.harvestCommand(ctx.owner, ctx.filesFolder, infra.engine, delays.containerS);
+    const staged = await infra.workshop.stageHarvest(ctx.owner, ctx.filesFolder);
+    const [cmd, ...argv] = infra.workshop.harvestCommand(ctx.owner, staged, infra.engine, delays.containerS);
     process = (infra.launch ?? defaultLaunch)(cmd!, argv);
   } catch (e) {
     return conclude({ t: "stop", status: "error", error: say(locale(), "kernel-err-cannot-launch", { error: message(e) }) });

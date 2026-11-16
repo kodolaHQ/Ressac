@@ -55,7 +55,7 @@ export interface OptionsAction {
   /** Runs, results, memory and grants of actions, outside the workspace (`<profile>/actions`). */
   actionsFolder: string;
   engine: string;
-  workshop: Pick<Workshop, "harvestCommand" | "deleteHarvest">;
+  workshop: Pick<Workshop, "stageHarvest" | "harvestCommand" | "deleteHarvest">;
   launch?: ProcessLauncher;
   bridge: BrowserBridge;
   /** This run's access to the local AI (priority), for blocks and layout; null without AI. */

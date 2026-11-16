@@ -90,7 +90,7 @@ async function prepare(o: { workshop?: WorkshopState; status?: WidgetState["stat
     return { ok: true, run: attemptId(clock().toISOString()), status: "succeeded" };
   });
   const directs: DirectState[] = [];
-  const workshop = { state: async () => workshopState, harvestCommand: () => ["docker"], deleteHarvest: async (_id: string) => {} };
+  const workshop = { state: async () => workshopState, stageHarvest: async (_p: unknown, d: string) => d, harvestCommand: () => ["docker"], deleteHarvest: async (_id: string) => {} };
   const options = (): SchedulerOptions => ({
     paths: c,
     locale: () => "fr",

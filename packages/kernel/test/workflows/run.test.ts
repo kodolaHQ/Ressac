@@ -128,6 +128,7 @@ async function bench(
     infra: {
       engine: ENGINE,
       workshop: {
+        stageHarvest: async (_p, d) => d,
         harvestCommand: (p, d, m) => ["docker", "run", nameOf(p), d, m],
         deleteHarvest: async (p) => {
           b.deleted.push(nameOf(p));
@@ -744,7 +745,7 @@ describe("executerWorkflow", () => {
 
   it("the container impossible to launch: erreur stop, failed run without a launched block", async () => {
     const b = await bench(chain("a"));
-    b.infra.workshop = { harvestCommand: () => { throw new Error("Docker introuvable"); }, deleteHarvest: async () => {} };
+    b.infra.workshop = { stageHarvest: async (_p, d) => d, harvestCommand: () => { throw new Error("Docker introuvable"); }, deleteHarvest: async () => {} };
     const r = await runWorkflow(b.ctx, b.infra);
     expect(r.issue).toEqual({ t: "stop", status: "error", error: "Récolte impossible à lancer : Docker introuvable" });
     expect(r.run.status).toBe("failed");
@@ -1237,6 +1238,7 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
     const workshop = new Workshop({ paths: spacePaths("/Users/t/Ressac"), docker: "/usr/local/bin/docker" });
     const commands: string[][] = [];
     b.infra.workshop = {
+      stageHarvest: async (_p, d) => d,
       harvestCommand: (id, d, m, s) => {
         const c = workshop.harvestCommand(id, d, m, s);
         commands.push(c);

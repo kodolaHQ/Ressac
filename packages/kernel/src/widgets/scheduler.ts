@@ -96,7 +96,7 @@ export interface SchedulerOptions {
   widgetsFolder: string;
   /** Folder of the workflow engine (`docker/engine`), mounted read-only in the container. */
   engine: string;
-  workshop: Pick<Workshop, "state" | "harvestCommand" | "deleteHarvest">;
+  workshop: Pick<Workshop, "state" | "stageHarvest" | "harvestCommand" | "deleteHarvest">;
   bridge: BrowserBridge;
   ai: Pick<LocalAi, "kev" | "gemma"> | null;
   /** The dispatcher of AI calls, shared with the actions; absent: the scheduler creates its own on `ia`. */

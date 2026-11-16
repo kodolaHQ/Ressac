@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { Workshop, BUILD_DELAY_MS, parseBuildStep, IMAGE, dockerfileHash, harvestName, containerPortRange, sessionStopScript, findDocker } from "../../src/container/workshop.js";
 import { execFile, spawn } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { TOOLS_FOLDERS } from "../../src/container/runner.js";
 import { fakeRunner } from "../helpers/fake-runner.js";
@@ -350,6 +350,25 @@ test("harvestCommand of an action names the container ressac-action-<id>; of a w
   await deleter.deleteHarvest({ type: "action", id: "gitlab" });
   await deleter.deleteHarvest("meteo");
   expect(calls).toEqual([["rm", "-f", "ressac-action-gitlab"], ["rm", "-f", "ressac-harvest-meteo"]]);
+});
+
+test("stageHarvest copies the code files into .ressac, and refuses a widget folder swapped for a link", async () => {
+  const root = mkdtempSync(join(tmpdir(), "ressac-stage-"));
+  const outside = mkdtempSync(join(tmpdir(), "ressac-outside-"));
+  writeFileSync(join(outside, "secret.json"), "{}");
+  const widgets = join(root, "home", "widgets");
+  mkdirSync(join(widgets, "w"), { recursive: true });
+  writeFileSync(join(widgets, "w", "harvest.mjs"), "export default () => 1;");
+  writeFileSync(join(widgets, "w", "data.json"), "{}");
+  symlinkSync(join(outside, "secret.json"), join(widgets, "w", "link.json"));
+  const workshop = new Workshop({ paths: spacePaths(root), docker: "docker" });
+  const staged = await workshop.stageHarvest("w", join(widgets, "w"));
+  expect(staged).toBe(join(root, ".ressac", "harvests", "ressac-harvest-w"));
+  // A link inside is left out, like the widget's data.
+  expect(readdirSync(staged)).toEqual(["harvest.mjs"]);
+  symlinkSync(outside, join(widgets, "x"));
+  await expect(workshop.stageHarvest("x", join(widgets, "x"))).rejects.toThrow(/refused/);
+  await expect(workshop.stageHarvest("w", join(outside, ".."))).rejects.toThrow(/outside/);
 });
 
 test("harvestCommand with delaiS 1830: timeout -k 5 1830", () => {

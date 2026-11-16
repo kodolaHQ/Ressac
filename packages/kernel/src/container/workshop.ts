@@ -1,12 +1,14 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
-import { join } from "node:path";
+import { mkdir, rm, writeFile } from "node:fs/promises";
+import { join, relative, sep } from "node:path";
 import { validFolder } from "../applications/manifest.js";
 import { CONTAINER_PATH, KERNEL_ROOT, type SpacePaths } from "../paths.js";
 import type { Owner } from "../workflows/schema.js";
 import { say } from "../i18n.js";
 import { portRange } from "./ports.js";
 import { createRunner, type RunResult, type Runner } from "./runner.js";
+import { inFolder, listFolder, readFiles, type ReadFiles } from "../workspace/confined.js";
 
 export const CONTAINER_NAME = "ressac-workshop";
 // Read on every call so a second app (Firefox build) can run its own container.
@@ -113,6 +115,10 @@ export function harvestName(p: string | Owner): string {
   if (!/^[a-z0-9-]+$/.test(id)) throw new Error(`id ${type === "widget" ? "de widget" : "d'action"} invalide : ${id}`);
   return type === "widget" ? `ressac-harvest-${id}` : `ressac-action-${id}`;
 }
+
+/** Caps of the files copied for a run (`stageHarvest`); a bigger file is left out. */
+const STAGED_FILE_MAX = 1024 * 1024;
+const STAGED_TOTAL_MAX = 4 * 1024 * 1024;
 
 /** Maximum duration of a harvest in its container (seconds), before SIGTERM then SIGKILL 5 s later. */
 export const HARVEST_DELAY_S = 180;
@@ -460,6 +466,27 @@ export class Workshop {
       "timeout", "-k", "5", String(delayS),
       "node", "/opt/ressac/engine/harvester.mjs", "/widget",
     ];
+  }
+
+  /**
+   * The owner's top-level code files (`.mjs`, `.js`, `.json` but the widget's `data.json`), read by the confined child (never through a link), copied
+   * into a kernel folder under `.ressac` (read-only to the agent); the run mounts that copy. Docker resolves links in a
+   * mount source on the Mac at `docker run`, and the agent can rename any folder of the path in between: a check before
+   * it, even of the real path, would leave that race open.
+   */
+  async stageHarvest(owner: string | Owner, filesFolder: string): Promise<string> {
+    const names = relative(this.paths.root, filesFolder).split(sep);
+    if (names.some((n) => n === "" || n === "..")) throw new Error(`folder outside the space: ${filesFolder}`);
+    const listed = await inFolder<string[]>(this.paths.root, names, listFolder, []);
+    if (!listed) throw new Error(`folder refused (a link, or gone): ${filesFolder}`);
+    const wanted = listed.filter((n) => /\.(mjs|js|json)$/.test(n) && n !== "data.json");
+    const r = await inFolder<ReadFiles>(this.paths.root, names, readFiles, [wanted, STAGED_FILE_MAX, STAGED_TOTAL_MAX, true]);
+    if (!r || !("files" in r)) throw new Error(`folder refused (a link, or gone): ${filesFolder}`);
+    const staged = join(this.paths.internal, "harvests", harvestName(owner));
+    await rm(staged, { recursive: true, force: true });
+    await mkdir(staged, { recursive: true });
+    await Promise.all(r.files.map((f, i) => f && writeFile(join(staged, wanted[i]!), f.text)));
+    return staged;
   }
 
   /** Killing the `docker run` client is not enough: the container is force-deleted. */

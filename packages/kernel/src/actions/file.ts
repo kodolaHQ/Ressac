@@ -35,7 +35,7 @@ export interface OptionsFileActions {
   paths: SpacePaths;
   actionsFolder: string;
   engine: string;
-  workshop: Pick<Workshop, "state" | "harvestCommand" | "deleteHarvest">;
+  workshop: Pick<Workshop, "state" | "stageHarvest" | "harvestCommand" | "deleteHarvest">;
   launch?: ProcessLauncher;
   bridge: BrowserBridge;
   /** The dispatcher shared with the widgets; null without local AI. */

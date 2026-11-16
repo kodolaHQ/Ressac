@@ -110,6 +110,7 @@ const options = (b: Bench, id: string, o: Partial<OptionsAction> = {}): OptionsA
   actionsFolder: b.actionsFolder,
   engine: ENGINE,
   workshop: {
+    stageHarvest: async (_p, d) => d,
     harvestCommand: (p, d, m) => ["docker", "run", JSON.stringify(p), d, m],
     deleteHarvest: async (p) => void b.deleted.push(p),
   },

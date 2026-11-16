@@ -43,7 +43,7 @@ export interface HarvestOptions {
   widgetsFolder: string;
   /** Folder of the workflow engine on the Mac (`docker/engine`), mounted read-only in the container. */
   engine: string;
-  workshop: Pick<Workshop, "harvestCommand" | "deleteHarvest">;
+  workshop: Pick<Workshop, "stageHarvest" | "harvestCommand" | "deleteHarvest">;
   launch?: ProcessLauncher;
   /** null: no local AI, `kev` and `gemma` answer with an error. */
   ai: Pick<LocalAi, "kev" | "gemma"> | null;

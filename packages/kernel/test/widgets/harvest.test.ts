@@ -263,8 +263,9 @@ describe("runHarvest", () => {
     // Nothing is written in the space.
     expect(existsSync(join(ctx.widget.folder, "data.json"))).toBe(false);
     expect(existsSync(join(ctx.widget.folder, "state.json"))).toBe(false);
-    // The launcher receives the workshop's docker command.
-    expect(ctx.commands[0]).toEqual(ctx.workshop.harvestCommand("meteo", ctx.widget.folder, ENGINE));
+    // The launcher receives the workshop's docker command, on the kernel's copy of the widget's files.
+    expect(ctx.commands[0]).toEqual(ctx.workshop.harvestCommand("meteo", join(ctx.space, ".ressac", "harvests", "ressac-harvest-meteo"), ENGINE));
+    expect(existsSync(join(ctx.space, ".ressac", "harvests", "ressac-harvest-meteo", "harvest.mjs"))).toBe(true);
   });
 
   it("harvestCommand mounts the widget as :ro, cuts the network (--network none) and mounts nothing else from the space", async () => {
