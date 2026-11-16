@@ -30,7 +30,10 @@ const PIXEL = "data:image/gif;base64,R0lGODlhAQABAAAAACw=";
 const RIESE = "https://exemple.invalide/velo-3";
 const PHOTO_RIESE = "https://exemple.invalide/photos/riese.png";
 const RIESE_CARD = `<article style="position:relative;width:500px;height:140px"><div style="position:relative;width:160px;height:120px"><img src="${PHOTO_RIESE}" width="160" height="120" alt=""><a style="position:absolute;inset:0" aria-hidden="true" href="${RIESE}"></a></div><p>Riese & Müller Load 75, 2 900 €</p><a style="position:absolute;inset:0" aria-label="Voir l’annonce" href="${RIESE}"><span aria-hidden="true" style="position:absolute;inset:0;opacity:0" title="Voir l’annonce: Riese & Müller Load 75"></span></a></article>`;
-const PREFS = { "network.dns.localDomains": "exemple.invalide" };
+// recherche.invalide: the search page is served by the test server but must not look local, as a real engine's is not
+// (a local page's web links never become free to open).
+const PREFS = { "network.dns.localDomains": "exemple.invalide,recherche.invalide" };
+const searchUrl = () => `${server.url.replace(/\/\/[^:/]+/, "//recherche.invalide")}/annonces.html?q=%s`;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 let server: Awaited<ReturnType<typeof startServer>>;
@@ -96,7 +99,7 @@ describe("recap tab", () => {
   let q: ReturnType<typeof uiQueries>;
   let id: string;
   beforeAll(async () => {
-    w = await launchRessac({ env: { RESSAC_MEMORY_LOOP: "1", RESSAC_TEST_SEARCH_URL: `${server.url}/annonces.html?q=%s`, RESSAC_TEST_ACTION_IMAGES: server.url }, prefs: PREFS });
+    w = await launchRessac({ env: { RESSAC_MEMORY_LOOP: "1", RESSAC_TEST_SEARCH_URL: searchUrl(), RESSAC_TEST_ACTION_IMAGES: server.url }, prefs: PREFS });
     m = await ready(w);
     q = uiQueries(m);
   }, 60_000);
@@ -245,7 +248,7 @@ describe("recap after a restart", () => {
 
 describe("forgotten recap", () => {
   it("a recap not shown during 7 days of use closes by itself", async () => {
-    const w = await launchRessac({ env: { RESSAC_MEMORY_LOOP: "1", RESSAC_TEST_RECAP_DAY_MS: "300", RESSAC_TEST_SEARCH_URL: `${server.url}/annonces.html?q=%s`, RESSAC_TEST_ACTION_IMAGES: server.url }, prefs: PREFS });
+    const w = await launchRessac({ env: { RESSAC_MEMORY_LOOP: "1", RESSAC_TEST_RECAP_DAY_MS: "300", RESSAC_TEST_SEARCH_URL: searchUrl(), RESSAC_TEST_ACTION_IMAGES: server.url }, prefs: PREFS });
     try {
       const m = await ready(w);
       const q = uiQueries(m);

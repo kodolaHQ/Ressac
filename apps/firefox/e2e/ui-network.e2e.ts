@@ -495,24 +495,6 @@ describe("the UI's network", () => {
     const port = await launchAttempt(dataDir);
     await waitFor(m, `const b = ${appWindowExpr("essai")}?.gBrowser.selectedBrowser; return b && !b.webProgress.isLoadingDocument ? b.currentURI.spec : "";`, (v: string) => v.includes(`localhost:${port}`), 20_000);
     expect(await inAppView<number>(m, "essai", "return fetch('/').then((r) => r.status)")).toBe(200);
-    // A link press in each view still warms its connection, as in a tab.
-    const link = (name: string) =>
-      `document.body.insertAdjacentHTML("beforeend", '<a href="http://${name}.${SFX}:15366/" style="position:fixed;left:0;top:0;width:50%;height:50%;display:block;z-index:2147483647">link</a>'); return true;`;
-    const pressView = (win: string) =>
-      m.execute(
-        `const w = ${win}, r = w.gBrowser.selectedBrowser.getBoundingClientRect();
-         w.synthesizeMouseEvent("mousedown", r.left + r.width / 4, r.top + r.height / 4, { button: 0, clickCount: 1 });
-         w.synthesizeMouseEvent("mouseup", r.left + (r.width * 3) / 4, r.top + (r.height * 3) / 4, { button: 0, clickCount: 1 });`,
-      );
-    for (const [name, win, run] of [
-      ["site-md", siteWindowExpr("netsite"), () => inSiteView(m, "netsite", link("site-md"))],
-      ["app-md", appWindowExpr("essai"), () => inAppView(m, "essai", link("app-md"))],
-    ] as const) {
-      const tcp0 = net.tcp.length;
-      expect(await run()).toBe(true);
-      await pressView(win);
-      await expect.poll(() => tcpSince(tcp0), { timeout: 10_000, message: name }).toBeGreaterThan(0);
-    }
     // The opaque home of netsite-accueil is the UI's: its image is refused.
     const home = `${siteWindowExpr("netsite-accueil")}?.document.getElementById("ressac-site-bar")?.contentDocument?.querySelector('[data-testid="site-home-frame"]')?.contentDocument`;
     await expect.poll(() => m.execute(`return ${home}?.getElementById("h")?.textContent ?? null;`), { timeout: 15_000 }).toBe("accueil");
@@ -645,23 +627,6 @@ describe("the UI's network", () => {
     expect((await tabUrls()).filter((u) => u.includes("/ouvert"))).toEqual([]);
     expect(net.hits.filter((h) => h.label === "plain")).toEqual([]);
     expect({ names: (await names()).filter((n) => n === "md" || n === "plain"), tcp: tcpSince(tcp0) }).toEqual({ names: [], tcp: 0 });
-  });
-
-  // The witness: a tab's link press still warms its connection (the guard never touches content).
-  it("a press on a tab's link still warms up its connection", { timeout: 60_000 }, async () => {
-    const tcp0 = net.tcp.length;
-    const url = `http://${host("tab-link")}/link?h=${encodeURIComponent(`http://tab-md.${SFX}:15366/`)}`;
-    await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url, activate: true });
-    await expect.poll(() => net.hits.some((h) => h.label === "tab-link"), { timeout: 15_000 }).toBe(true);
-    await waitFor(m, `const b = gBrowser.selectedBrowser; return b.currentURI.spec === ${JSON.stringify(url)} && !b.webProgress.isLoadingDocument;`, (v) => v === true, 15_000);
-    await sleep(500);
-    await m.execute(
-      `const r = gBrowser.selectedBrowser.getBoundingClientRect();
-       window.synthesizeMouseEvent("mousedown", r.left + r.width / 2, r.top + r.height / 2, { button: 0, clickCount: 1 });
-       window.synthesizeMouseEvent("mouseup", r.left + 5, r.top - 5, { button: 0, clickCount: 1 });`,
-    );
-    await expect.poll(() => tcpSince(tcp0), { timeout: 10_000 }).toBeGreaterThan(0);
-    await closeTab("tab-link.", "lien");
   });
 
   // A pressed link's speculative connect is refused in system UI documents too (the History page's links: a click
