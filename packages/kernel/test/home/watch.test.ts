@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { writeFile, mkdir } from "node:fs/promises";
+import { writeFile, mkdir, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { spacePaths } from "../../src/paths.js";
@@ -35,4 +35,19 @@ test("watchActions follows ~/Ressac/actions and components, once per burst", asy
   await sleep(500);
   await stop();
   expect(calls).toBe(2);
+});
+
+test("watchHome does not follow a link the agent puts in home/", async () => {
+  const c = spacePaths(await tempFolder());
+  const outside = await tempFolder();
+  await mkdir(c.home, { recursive: true });
+  await symlink(outside, join(c.home, "x"));
+  await sleep(300); // the link's own creation event must not reach the watcher
+  let calls = 0;
+  const stop = watchHome(c, () => calls++);
+  await sleep(300);
+  await writeFile(join(outside, "file.txt"), "changed");
+  await sleep(500);
+  await stop();
+  expect(calls).toBe(0);
 });

@@ -8,7 +8,8 @@ const GROUPING_MS = 150;
 function watchDirs(folders: string[], callback: () => void): () => Promise<void> {
   for (const d of folders) mkdirSync(d, { recursive: true });
   let timer: NodeJS.Timeout | undefined;
-  const observer = watch(folders, { ignoreInitial: true, ignored: (p) => p.endsWith(".tmp") || p.endsWith(".nouveau") });
+  // Never through a link: the agent writes these folders, and one link to ~ would make the host watch the whole home.
+  const observer = watch(folders, { ignoreInitial: true, followSymlinks: false, ignored: (p) => p.endsWith(".tmp") || p.endsWith(".nouveau") });
   // Chokidar emits its errors rather than throwing them: without a listener, they would be lost.
   observer.on("error", (e) => console.error("[ressac] the folder watch failed:", e));
   observer.on("all", () => {
