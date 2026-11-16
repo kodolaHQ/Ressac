@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { CODEX_DISABLED_FEATURES, claudeWriterArgv, codexWriterArgv, createAgentWriter, type WriterAgent } from "../../src/ai/agent-writer.js";
+import { CODEX_DISABLED_FEATURES, SYSTEM_PROMPT, claudeWriterArgv, codexWriterArgv, createAgentWriter, type WriterAgent } from "../../src/ai/agent-writer.js";
 import { WRITER_JSON_INVALID } from "../../src/ai/dispatcher.js";
 
 const NONE = "Connectez Claude Code ou Codex dans Réglages › Agents pour les résumés";
@@ -19,10 +19,9 @@ describe("argv", () => {
   it("claude: exact list, no --bare, empty tools", () => {
     const a = claudeWriterArgv(false);
     expect(a).toEqual([
-      "claude", "-p", "--model", "haiku", "--output-format", "json", "--system-prompt", a[7], "--tools", "",
+      "claude", "-p", "--model", "haiku", "--output-format", "json", "--system-prompt", SYSTEM_PROMPT, "--tools", "",
       "--strict-mcp-config", "--setting-sources", "", "--no-session-persistence", "--disable-slash-commands",
     ]);
-    expect(a[7]).toMatch(/^You are a writer/);
     expect(claudeWriterArgv(true)[a.indexOf("--system-prompt") + 1]).toMatch(/JSON only/);
   });
   it("codex: read-only, ephemeral, reads stdin", () => {
@@ -119,6 +118,13 @@ describe("claude timeout and switching", () => {
     const w = createAgentWriter({ exec, agent: async () => "claude", locale: () => "fr" });
     await expect(w({ prompt: "P" })).rejects.toThrow(NONE);
     expect(exec).toHaveBeenCalledTimes(1);
+  });
+  it("both agents signed out, agent() alternating: two execs, none", async () => {
+    const exec = vi.fn(async (argv: string[]) => (argv[0] === "claude" ? ok(claudeOut("Not logged in", true), 1) : ok("", 1, "Not logged in")));
+    let n = 0;
+    const w = createAgentWriter({ exec, agent: async () => (n++ % 2 ? "codex" : "claude"), locale: () => "fr" });
+    await expect(w({ prompt: "P" })).rejects.toThrow(NONE);
+    expect(exec).toHaveBeenCalledTimes(2);
   });
   it("logs failures too", async () => {
     const { w, log } = make(ok(claudeOut("Claude AI usage limit reached", true), 1));
