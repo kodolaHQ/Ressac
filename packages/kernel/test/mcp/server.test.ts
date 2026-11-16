@@ -2620,6 +2620,14 @@ describe("recaps", () => {
   const results = { items: [{ name: "A", url: "https://exemple.fr/a" }] };
   const plan = { blocks: [{ component: "cards", props: { items: "items", title: "name", link: "url" } }] };
 
+  test("show_recap takes plan and results sent as JSON text (local models)", async () => {
+    const folder = await startRecaps();
+    const r = text(await client.callTool({ name: "show_recap", arguments: { title: "Vélos", results: JSON.stringify(results), plan: JSON.stringify(plan) } }));
+    const id = /Récap ([0-9a-f-]{36}) ouvert/.exec(r)![1];
+    const file = JSON.parse(await readFile(join(folder, `${id}.json`), "utf8"));
+    expect(file.results).toEqual(results);
+  });
+
   test("show_recap publishes, opens in the session window and updates in place", async () => {
     const folder = await startRecaps();
     await client.callTool({ name: "read_tab", arguments: { id: "github" } });

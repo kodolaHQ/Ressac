@@ -61,6 +61,16 @@ export interface Recaps {
   stale(days: number, dayMs?: number): Promise<string[]>;
 }
 
+/** A string holding a JSON object or array becomes that value; anything else is kept as is. */
+function fromJsonText(v: unknown): unknown {
+  if (typeof v !== "string" || !/^\s*[[{]/.test(v)) return v;
+  try {
+    return JSON.parse(v);
+  } catch {
+    return v;
+  }
+}
+
 /** Same rule as a link opened from an action page: http(s), no credentials, no local address. */
 function openable(url: string, httpsOnly: boolean): boolean {
   if (!URL.canParse(url)) return false;
@@ -113,6 +123,8 @@ export function createRecaps(o: { folder: string; now?: () => Date }): Recaps {
     async publish(p) {
       const before = p.id === undefined ? null : await read(p.id);
       if (p.id !== undefined && !before) return { ok: false, errors: [RECAP_UNKNOWN] };
+      // Local models (Codex on Ollama) often send these objects as JSON text.
+      p = { ...p, plan: fromJsonText(p.plan), results: fromJsonText(p.results) };
       const v = validatePlan(p.plan, { catalog: BUILTIN_COMPONENTS, results: p.results });
       if (!v.ok) return v;
       // Seen now, or allowed before (a republish keeps what was read for the first version).
