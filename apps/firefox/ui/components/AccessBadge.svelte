@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { TabAccessState } from "@ressac/kernel";
   import AccessBubble from "./AccessBubble.svelte";
+  import Icon from "./Icon.svelte";
   import { t } from "../i18n.svelte";
 
   let { id, state: appState }: { id: string; state: TabAccessState } = $props();
@@ -30,14 +31,14 @@
       opened = !opened;
     }}
     onkeydown={(e) => e.stopPropagation()}
-    ondblclick={(e) => e.stopPropagation()}>{level === "act" ? "⚡" : "👁"}</button
+    ondblclick={(e) => e.stopPropagation()}><Icon name={level === "act" ? "actions" : "eye"} size={12} /></button
   >
   {#if opened && root}<AccessBubble {id} state={appState} anchor={root} />{/if}
 </span>
 
 <style>
   .root { display: inline-flex; flex: none; -webkit-app-region: no-drag; }
-  .pill { all: unset; display: inline-flex; align-items: center; border-radius: 999px; padding: 1px 7px; font-size: 11px; font-weight: 600; cursor: pointer; box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 22%, transparent); transition: transform var(--tap); }
+  .pill { all: unset; display: inline-flex; align-items: center; border-radius: 999px; padding: 2px 7px; font-size: 11px; font-weight: 600; cursor: pointer; box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 22%, transparent); transition: transform var(--tap); }
   .pill:active { transform: scale(0.97); }
   .pill[data-level="read"] { background: var(--access-read-bg); color: var(--access-read); }
   .pill[data-level="act"] { background: var(--access-act-bg); color: var(--access-act); }

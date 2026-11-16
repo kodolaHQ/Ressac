@@ -305,8 +305,9 @@ describe("history panel", () => {
     await panelOpen(true);
     const text = (sel: string) => inUi<string[]>(m, `return [...doc.querySelectorAll(arguments[0])].map((l) => l.textContent)`, [sel]);
     expect(await text(`${PANEL} [data-private="true"]`)).toHaveLength(2);
-    expect((await text(`${PANEL} [data-private="true"]`)).find((t) => t.includes("Page B"))).toContain("🔒");
-    expect((await text(`${PANEL} [data-private="false"]`)).filter((t) => t.includes("🔒"))).toEqual([]);
+    const padlocked = (sel: string) => inUi<string[]>(m, `return [...doc.querySelectorAll(arguments[0])].filter((l) => l.querySelector(".padlock")).map((l) => l.textContent)`, [sel]);
+    expect((await padlocked(`${PANEL} [data-private="true"]`)).some((t) => t.includes("Page B"))).toBe(true);
+    expect(await padlocked(`${PANEL} [data-private="false"]`)).toEqual([]);
   });
 
   it("switching tab closes the panel", async () => {

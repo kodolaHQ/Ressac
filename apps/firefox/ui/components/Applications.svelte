@@ -245,7 +245,7 @@
           {#each siteRows as s (s.id)}
             <li data-testid="site-{s.id}" data-open={s.open}>
               <span class="icon">
-                {#if s.icon}<img src={s.icon} alt="" width="16" height="16" />{:else}🌐{/if}
+                {#if s.icon}<img src={s.icon} alt="" width="16" height="16" />{:else}<Icon name="globe" size={16} />{/if}
               </span>
               <div class="name">
                 <b>{s.name}</b>

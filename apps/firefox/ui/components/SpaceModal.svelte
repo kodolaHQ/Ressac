@@ -12,6 +12,9 @@
   import { spaceSettings } from "./spaceSettings.svelte";
   import { fade } from "svelte/transition";
   import { t } from "../i18n.svelte";
+  import AuraEmoji from "./AuraEmoji.svelte";
+  import Icon from "./Icon.svelte";
+  import { SPACE_ICONS } from "./spaceIcons";
 
   /**
    * Creation or settings of a space: the `spaceSettings` draft, mounted as long as it exists. `ongletId`: the page
@@ -23,24 +26,15 @@
 
   let card: HTMLElement;
   let nameField: HTMLInputElement;
-  let iconField: HTMLInputElement;
+  let iconField: HTMLButtonElement;
   let picker = $state<HTMLElement>();
   /** The emoji grid under the icon field is open. */
   let picking = $state(false);
   const COLUMNS = 8;
-  const EMOJIS: [string, string][] = [
-    ["🏠", "sidebar-emoji-home"], ["💼", "sidebar-emoji-work"], ["🎓", "sidebar-emoji-school"], ["📚", "sidebar-emoji-reading"], ["✏️", "sidebar-emoji-writing"], ["💻", "sidebar-emoji-code"], ["🧪", "sidebar-emoji-science"], ["💡", "sidebar-emoji-ideas"],
-    ["🎮", "sidebar-emoji-games"], ["🎵", "sidebar-emoji-music"], ["🎬", "sidebar-emoji-movies"], ["📺", "sidebar-emoji-tv-shows"], ["📷", "sidebar-emoji-photo"], ["🎨", "sidebar-emoji-art"], ["🧶", "sidebar-emoji-crafts"], ["🎲", "sidebar-emoji-board-games"],
-    ["✈️", "sidebar-emoji-travel"], ["🗺️", "sidebar-emoji-map"], ["🏖️", "sidebar-emoji-holidays"], ["🚗", "sidebar-emoji-car"], ["🛒", "sidebar-emoji-groceries"], ["🛍️", "sidebar-emoji-shopping"], ["🍳", "sidebar-emoji-cooking"], ["☕", "sidebar-emoji-coffee"],
-    ["💰", "sidebar-emoji-money"], ["📈", "sidebar-emoji-stocks"], ["🏦", "sidebar-emoji-bank"], ["🧾", "sidebar-emoji-bills"], ["📅", "sidebar-emoji-calendar"], ["📌", "sidebar-emoji-projects"], ["📁", "sidebar-emoji-folder"], ["📰", "sidebar-emoji-news"],
-    ["❤️", "sidebar-emoji-health"], ["🏃", "sidebar-emoji-sport"], ["🧘", "sidebar-emoji-wellbeing"], ["🌱", "sidebar-emoji-garden"], ["🐾", "sidebar-emoji-pets"], ["👪", "sidebar-emoji-family"], ["👶", "sidebar-emoji-baby"], ["🎁", "sidebar-emoji-gifts"],
-    ["⚽", "sidebar-emoji-football"], ["🚀", "sidebar-emoji-side-project"], ["🔧", "sidebar-emoji-diy"], ["🏡", "sidebar-emoji-real-estate"], ["🌍", "sidebar-emoji-world"], ["⭐", "sidebar-emoji-favorites"], ["🔒", "sidebar-emoji-private"], ["🧳", "sidebar-emoji-commuting"],
-  ];
   function pick(emoji: string) {
     draft.icon = emoji;
     picking = false;
     iconField.focus();
-    iconField.select();
   }
   /** Arrows move across the grid (row-wise), Home / End to its ends; ↑ from the first row goes back to the field. */
   function gridKeys(e: KeyboardEvent) {
@@ -55,7 +49,7 @@
   }
   /** A click or focus anywhere outside the field and its grid closes the grid. */
   function outside(e: Event) {
-    if (picking && e.target instanceof Node && e.target !== iconField && !picker?.contains(e.target)) picking = false;
+    if (picking && e.target instanceof Node && !iconField.contains(e.target) && !picker?.contains(e.target)) picking = false;
   }
   let ready = $state(false);
 
@@ -176,34 +170,28 @@
       <h2 id="space-title">{t(fresh ? "sidebar-space-new" : "sidebar-space-settings-title")}</h2>
       <div class="field">
         <div class="icon-pick">
-          <!-- Typing any emoji replaces the current one (selected on focus); the grid offers common ones. -->
-          <input
+          <button
+            type="button"
             class="icon"
             bind:this={iconField}
-            bind:value={draft.icon}
+            value={draft.icon}
             aria-label={t("sidebar-space-icon")}
-            maxlength="4"
+            title={t(SPACE_ICONS.find(([e]) => e === draft.icon)?.[1] ?? "sidebar-space-icon")}
             aria-haspopup="true"
             aria-expanded={picking}
             aria-controls="space-emojis"
-            onfocus={(e) => e.currentTarget.select()}
-            onclick={(e) => {
-              // Selected on click too: the release would otherwise drop the selection made on focus.
-              e.currentTarget.select();
-              picking = true;
-            }}
-            oninput={() => (picking = false)}
+            onclick={() => (picking = !picking)}
             onkeydown={(e) => {
               if (e.key !== "ArrowDown") return;
               e.preventDefault();
               picking = true;
               requestAnimationFrame(() => picker?.querySelector("button")?.focus());
-            }}
-          />
+            }}><AuraEmoji icon={draft.icon} aura={draft.aura} /></button
+          >
           {#if picking}
             <div class="emojis" id="space-emojis" role="group" aria-label={t("sidebar-space-icons")} data-testid="emoji-grid" bind:this={picker} out:fade={{ duration: 120 }}>
-              {#each EMOJIS as [emoji, id] (emoji)}
-                <button type="button" aria-label={t(id)} title={t(id)} aria-pressed={draft.icon === emoji} onkeydown={gridKeys} onclick={() => pick(emoji)}>{emoji}</button>
+              {#each SPACE_ICONS as [emoji, id, icon] (emoji)}
+                <button type="button" aria-label={t(id)} title={t(id)} aria-pressed={draft.icon === emoji} onkeydown={gridKeys} onclick={() => pick(emoji)}><Icon name={icon} size={18} /></button>
               {/each}
             </div>
           {/if}
@@ -317,8 +305,7 @@
   }
   .field input { flex: 1; }
   .icon-pick { position: relative; flex: none; display: flex; }
-  /* Wide enough for any emoji (a variation selector widens some): never clipped. */
-  .field .icon { flex: none; width: 44px; padding: 0; text-align: center; font-size: 18px; cursor: pointer; }
+  .field .icon { flex: none; width: 44px; display: grid; place-items: center; padding: 0; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font-size: 18px; cursor: pointer; }
   /* The emoji grid: a popover dropping under the field on the spring. */
   .emojis {
     position: absolute;
@@ -341,7 +328,7 @@
   @media (prefers-reduced-motion: reduce) {
     @keyframes emojis-in { from { opacity: 0; } }
   }
-  .emojis button { width: 32px; height: 32px; padding: 0; border: none; border-radius: 8px; background: none; font: 18px/1 var(--font-ui); display: grid; place-items: center; }
+  .emojis button { width: 32px; height: 32px; padding: 0; border: none; border-radius: 8px; background: none; color: var(--text); display: grid; place-items: center; }
   .emojis button:hover:not(:disabled) { background: var(--glass-hi); }
   .emojis button:active:not(:disabled) { transform: scale(0.9); }
   .emojis button[aria-pressed="true"] { background: var(--bg-active); box-shadow: inset 0 0 0 1px var(--accent); }

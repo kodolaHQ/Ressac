@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from "../components/Icon.svelte";
   import type { BlockCatalogEntry } from "@ressac/kernel";
   import { t } from "../i18n.svelte";
   import { availableFields } from "./fields";
@@ -46,7 +47,7 @@
       {#if error}<p class="error" data-testid="validation-error">{error}</p>{/if}
       {#if warnings.length > 0}
         <ul class="warnings" data-testid="warning-{block.id}">
-          {#each warnings as a, i (i)}<li>⚠ {a.message}</li>{/each}
+          {#each warnings as a, i (i)}<li><Icon name="warning" size={12} /> {a.message}</li>{/each}
         </ul>
       {/if}
       {#if c}
@@ -72,5 +73,7 @@
   h3 code { font: 400 10.5px var(--font-mono); padding: 1px 6px; border-radius: 6px; background: var(--glass-hi); color: var(--text-muted); }
   .error { margin: 0 0 6px; color: var(--in-error); font-size: 12px; white-space: pre-wrap; word-break: break-word; }
   .warnings { list-style: none; margin: 0 0 6px; padding: 0; color: var(--in-progress); font-size: 12px; word-break: break-word; }
+  .warnings li { display: flex; align-items: flex-start; gap: 5px; }
+  .warnings li :global(svg) { margin-top: 2px; }
   .muted { color: var(--text-muted); font-size: 12px; }
 </style>

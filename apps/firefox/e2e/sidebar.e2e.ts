@@ -102,15 +102,15 @@ describe("the sidebar's layout", () => {
   });
 
   it("shows the extensions inside the address pill and the space above the tabs", async () => {
-    const shown = await inUi<{ menuIn: boolean; pill: number; space: string; gap: number }>(
+    const shown = await inUi<{ menuIn: boolean; pill: number; space: string; icon: boolean; gap: number }>(
       m,
       `const pill = doc.querySelector(".line").getBoundingClientRect(), menu = doc.querySelector('[data-testid="menu-extensions"]').getBoundingClientRect();
        const tiles = doc.querySelector('[data-testid="essentials"]').getBoundingClientRect();
        return { menuIn: menu.right <= pill.right && menu.top >= pill.top && menu.bottom <= pill.bottom, pill: pill.height, gap: tiles.top - pill.bottom,
-         space: doc.querySelector('[data-testid="space-title"]').textContent };`,
+         space: doc.querySelector('[data-testid="space-title"]').textContent, icon: !!doc.querySelector('[data-testid="space-title"] svg') };`,
     );
     const space = (await state(m)).spaces[0]!;
-    expect(shown).toEqual({ menuIn: true, pill: 34, gap: 14, space: `${space.icon} ${space.name}` });
+    expect(shown).toEqual({ menuIn: true, pill: 34, gap: 14, space: space.name, icon: true });
     // The panel opens under the pill, which keeps its height.
     await click(m, '[data-testid="menu-extensions"]');
     const panel = await waitUi<{ top: number; bottom: number } | null>(
@@ -350,7 +350,7 @@ describe("Ressac sidebar", () => {
     const a = await open("/a.html");
     await waitTitle(a, "Page A");
     await click(m, `[data-testid="tab-${a}"]`, { button: 2 });
-    await click(m, '[role="menuitem"]', { text: "Envoyer vers 🏠 Perso" });
+    await click(m, '[role="menuitem"]', { text: "Envoyer vers Perso" });
     await waitUi(m, "return !doc.querySelector(arguments[0])", [`[data-testid="tab-${a}"]`]);
     const s = await state(m);
     expect(s.tabs[a]!.spaceId).toBe(home);

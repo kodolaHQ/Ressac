@@ -3,15 +3,16 @@
   import type { DevRight, TabAccessState } from "@ressac/kernel";
   import { access, accessApi } from "../access.svelte";
   import { t } from "../i18n.svelte";
+  import Icon, { type IconName } from "./Icon.svelte";
 
   let { id, state: appState, anchor }: { id: string; state: TabAccessState; anchor: HTMLElement } = $props();
 
   const MARGIN = 8;
-  const RIGHTS: Record<DevRight, { icon: string; name: string }> = {
-    console: { icon: "👁", name: "sidebar-access-console" },
-    network: { icon: "👁", name: "sidebar-access-network" },
-    performance: { icon: "👁", name: "sidebar-access-performance" },
-    act: { icon: "⚡", name: "sidebar-access-act" },
+  const RIGHTS: Record<DevRight, { icon: IconName; name: string }> = {
+    console: { icon: "eye", name: "sidebar-access-console" },
+    network: { icon: "eye", name: "sidebar-access-network" },
+    performance: { icon: "eye", name: "sidebar-access-performance" },
+    act: { icon: "actions", name: "sidebar-access-act" },
   };
 
   // The web page (a native view) always covers the interface: the bubble stays in the sidebar column, under the
@@ -48,11 +49,11 @@
   <h4>{t("sidebar-access-title", { agent: access.agent })}</h4>
   <ul>
     {#if appState.read}
-      <li data-line="read"><span>👁 {t("sidebar-access-read")}</span></li>
+      <li data-line="read"><span><Icon name="eye" size={12} /> {t("sidebar-access-read")}</span></li>
     {/if}
     {#each appState.rights as d (d)}
       <li data-line={d}>
-        <span>{RIGHTS[d].icon} {t(RIGHTS[d].name)}</span>
+        <span><Icon name={RIGHTS[d].icon} size={12} /> {t(RIGHTS[d].name)}</span>
         <button class="cut-right" data-right={d} onclick={() => accessApi.access.cut(id, d)}>{t("sidebar-access-cut")}</button>
       </li>
     {/each}
@@ -68,6 +69,7 @@
   ul { list-style: none; margin: 0 0 8px; padding: 0; }
   li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 0; }
   li + li { border-top: 1px solid var(--border); }
+  li > span { display: inline-flex; align-items: center; gap: 5px; }
   p { margin: 0 0 10px; color: var(--text-muted); font-size: 11.5px; }
   button { padding: 3px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font-size: 11.5px; font-weight: 600; transition: transform var(--tap), background var(--tap); }
   button:hover { background: var(--bg-hover); }

@@ -68,7 +68,7 @@
           { label: t("sidebar-space-settings"), dispatch: () => set(space) },
           ...((appState.value?.spaces.length ?? 0) > 1 ? [{ label: t("sidebar-delete"), dispatch: () => remove(space) }] : []),
         ])}
-      ><AuraEmoji icon={space.icon} aura={space.aura} size={28} />{#if space.private}<span class="padlock" aria-hidden="true">🔒</span>{/if}</button
+      ><AuraEmoji icon={space.icon} aura={space.aura} size={28} />{#if space.private}<span class="padlock" aria-hidden="true"><Icon name="lock" size={9} /></span>{/if}</button
     >
   {/each}
   <button data-testid="new-space" title={t("sidebar-space-new")} onclick={create}><Icon name="plus" /></button>
@@ -83,7 +83,7 @@
   .spaces button:hover { background: color-mix(in srgb, var(--glass-hi) 60%, transparent); color: var(--text); }
   .spaces button:active { transform: scale(0.97); }
   .spaces button[aria-current="true"] { background: var(--glass-hi); box-shadow: inset 0 0 0 1px var(--border), var(--lift); color: var(--text); }
-  .padlock { position: absolute; left: -2px; bottom: -3px; font-size: 9px; line-height: 1; }
+  .padlock { position: absolute; left: -2px; bottom: -3px; padding: 2px; border-radius: 999px; background: var(--glass-dense); color: var(--text); box-shadow: 0 0 0 1px var(--glass-edge); }
   .confirmation { flex: 1 0 100%; box-sizing: border-box; padding: 10px; border-radius: 12px; background: var(--glass-hi); box-shadow: inset 0 0 0 1px var(--glass-edge); color: var(--text); -webkit-app-region: no-drag; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   .confirmation p { margin: 0 0 8px; }
   .buttons { display: flex; justify-content: flex-end; gap: 6px; }

@@ -4,16 +4,17 @@
   import { siteOf, type PendingRequest } from "../../shared/model";
   import { api } from "../state.svelte";
   import { t } from "../i18n.svelte";
+  import Icon, { type IconName } from "./Icon.svelte";
 
   let { request }: { request: PendingRequest } = $props();
 
   // The four rights, in the card's order. `sensible`: the warning shown below.
   // Texts: home-devtools-<right>, -detail and (when `sensitive`) -sensitive.
-  const RIGHTS: { right: DevRight; icon: string; sensitive?: boolean }[] = [
-    { right: "console", icon: "👁" },
-    { right: "network", icon: "👁", sensitive: true },
-    { right: "performance", icon: "👁" },
-    { right: "act", icon: "⚡", sensitive: true },
+  const RIGHTS: { right: DevRight; icon: IconName; sensitive?: boolean }[] = [
+    { right: "console", icon: "eye" },
+    { right: "network", icon: "eye", sensitive: true },
+    { right: "performance", icon: "eye" },
+    { right: "act", icon: "actions", sensitive: true },
   ];
 
   // Pre-checked: what the agent asked for; the user can add or remove some.
@@ -27,15 +28,15 @@
 
 <div data-testid="devtools-request">
   <h3>{t("home-devtools-title", { agent: request.agent ?? t("home-agent-cap") })}</h3>
-  <div class="site">🔒 {t("home-devtools-site", { site, tab: request.title ?? site })}</div>
+  <div class="site"><Icon name="lock" size={12} /> {t("home-devtools-site", { site, tab: request.title ?? site })}</div>
   <div class="reason">{t("home-quoted", { name: request.reason ?? "" })}</div>
   {#each RIGHTS as d (d.right)}
     <label class="right-side">
       <input type="checkbox" data-right={d.right} checked={checked.includes(d.right)} onchange={(e) => check(d.right, e.currentTarget.checked)} />
       <div>
-        <b>{d.icon} {t(`home-devtools-${d.right}`)}</b>
+        <b><Icon name={d.icon} size={12} /> {t(`home-devtools-${d.right}`)}</b>
         <span>{t(`home-devtools-${d.right}-detail`)}</span>
-        {#if d.sensitive}<div class="sensitive">⚠ {t(`home-devtools-${d.right}-sensitive`)}</div>{/if}
+        {#if d.sensitive}<div class="sensitive"><Icon name="warning" size={12} /> {t(`home-devtools-${d.right}-sensitive`)}</div>{/if}
       </div>
     </label>
   {/each}
@@ -48,11 +49,13 @@
 
 <style>
   h3 { margin: 0 0 4px; font: 600 17px/1.2 var(--font-display); letter-spacing: -0.01em; }
+  .site, .sensitive { display: flex; align-items: flex-start; gap: 5px; }
+  .site :global(svg), .sensitive :global(svg) { margin-top: 2px; }
   .site { color: var(--text-muted); font-size: 12px; margin-bottom: 10px; overflow-wrap: anywhere; }
   .reason { background: var(--glass-hi); border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; font-size: 12px; margin-bottom: 10px; overflow-wrap: anywhere; }
   .right-side { display: flex; gap: 10px; align-items: flex-start; padding: 7px 0; border-top: 1px solid var(--border); }
   .right-side input { margin-top: 3px; }
-  .right-side b { display: block; font-size: 13px; }
+  .right-side b { display: flex; align-items: center; gap: 5px; font-size: 13px; }
   .right-side span { color: var(--text-muted); font-size: 11.5px; }
   .sensitive { color: var(--access-act); font-size: 11px; font-weight: 600; }
   .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }

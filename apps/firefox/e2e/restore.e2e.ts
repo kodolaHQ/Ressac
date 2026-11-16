@@ -98,11 +98,11 @@ describe("restore at startup", () => {
         await inWindow(m, handle, async () => {
           await waitReady(m);
           const id = await m.execute<string>("return window.ressacWindow.windowId");
-          const pair = await inUi(m, `return [doc.querySelector('[data-testid^="space-"][aria-current="true"]')?.textContent.trim(), doc.querySelectorAll('[data-testid^="tab-"]').length]`);
+          const pair = await inUi(m, `return [doc.querySelector('[data-testid^="space-"][aria-current="true"]')?.title, doc.querySelectorAll('[data-testid^="tab-"]').length]`);
           return { handle, id, pair };
         }),
       );
-    expect(seen.map((x) => x.pair)).toContainEqual(["💼", 1]);
+    expect(seen.map((x) => x.pair)).toContainEqual(["Boulot", 1]);
     // The checks below are on the first state window, whichever window Marionette started on.
     await m.command("WebDriver:SwitchToWindow", { handle: seen.find((x) => x.id === after.windows[0]!.id)!.handle, focus: false });
     expect(after.spaces.map((e) => [e.name, e.icon, e.pinned.length])).toEqual(before.spaces.map((e) => [e.name, e.icon, e.pinned.length]));

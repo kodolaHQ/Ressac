@@ -457,7 +457,7 @@ it("read granted (Autoriser une fois): 👁 badge on the tab and in the address 
 it("act granted: ⚡ badge", async () => {
   const id = await openThird();
   await grant(id, ["act"]);
-  await waitUi(m, `const p = doc.querySelector(arguments[0]); return p?.dataset.level === "act" && p.textContent.includes("⚡")`, [tabBadge(id)]);
+  await waitUi(m, `const p = doc.querySelector(arguments[0]); return p?.dataset.level === "act" && !!p.querySelector("svg")`, [tabBadge(id)]);
 });
 
 it("click on the badge: the bubble lists the rights; Couper on « console » removes that right (read_console asks again)", async () => {

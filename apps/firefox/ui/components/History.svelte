@@ -93,9 +93,9 @@
         <li data-private={v.private ? "true" : undefined} data-kept={v.kept ? "true" : undefined}>
           <a href={v.url} onclick={(e) => open(e, v.url)} oncontextmenu={(e) => visitMenu(e, v)}>
             <span class="time">{new Date(v.lastVisit).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })}</span>
-            {#if v.private}<span class="padlock" title={t("sidebar-history-private")} aria-label={t("sidebar-history-private")}>🔒</span>{/if}
+            {#if v.private}<span class="padlock" title={t("sidebar-history-private")} aria-label={t("sidebar-history-private")}><Icon name="lock" size={12} /></span>{/if}
             <span class="title">{v.title}</span>
-            {#if v.kept}<span class="kept" title={t("sidebar-history-kept")} aria-label={t("sidebar-history-kept")}>🧠</span>{/if}
+            {#if v.kept}<span class="kept" title={t("sidebar-history-kept")} aria-label={t("sidebar-history-kept")}><Icon name="agent" size={12} /></span>{/if}
             <span class="url">{v.url}</span>
           </a>
         </li>
@@ -122,7 +122,8 @@
   a { display: flex; gap: 12px; padding: 7px 10px; border-radius: 10px; color: inherit; text-decoration: none; }
   a:hover { background: var(--bg-hover); }
   .time { color: var(--text-muted); font-variant-numeric: tabular-nums; }
-  .kept { font-size: 11px; opacity: 0.7; }
+  .padlock, .kept { display: flex; align-items: center; }
+  .kept { opacity: 0.7; }
   .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .url { margin-left: auto; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40%; }
   .empty { color: var(--text-muted); }
