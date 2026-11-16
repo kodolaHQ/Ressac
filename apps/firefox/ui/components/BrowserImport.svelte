@@ -27,7 +27,8 @@
   const source = $derived(sources?.find((s) => s.id === chosen));
   const types = $derived(source?.types.filter((t) => !(t === "passwords" && source.passwordsByCsv)) ?? []);
   const failures = $derived(progress?.done ? (Object.entries(progress.failed) as [ImportType, string][]) : []);
-  const diskAccess = $derived(progress?.source === "safari" && failures.some(([, why]) => why.includes("complet au disque")));
+  // Every Safari failure is the missing Full Disk Access (the importer says so whatever the language).
+  const diskAccess = $derived(progress?.source === "safari" && failures.length > 0);
 
   function choose(s: ImportSource) {
     [chosen, profile, profiles, unchecked] = [s.id, null, [], []];

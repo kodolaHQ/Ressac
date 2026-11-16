@@ -313,6 +313,15 @@ describe("import from another browser", () => {
     await click(m, '[data-testid="import-disk-access"]');
     const opened = join(home, "opened.txt");
     await expect.poll(() => (existsSync(opened) ? readFileSync(opened, "utf8") : "")).toBe("x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles\n");
+    // In English too: the help follows a Safari failure, not its French text.
+    await dispatch(m, { type: "setLocale", locale: "en" });
+    try {
+      await click(m, '[data-testid="import-start"]');
+      await shows("import-failed-bookmarks", "Full Disk Access");
+      await waitUi(m, `return !!doc.querySelector('[data-testid="import-disk-access"]')`);
+    } finally {
+      await dispatch(m, { type: "setLocale", locale: "fr" });
+    }
   });
   it("a found app shows its icon; Réglages › À propos opens « Nouveautés »", async () => {
     // Safari is on every Mac: its icon is drawn by macOS.
