@@ -162,6 +162,14 @@ describe("settings host", () => {
     await vi.waitFor(async () => expect((await codex()).signingIn).toBeUndefined());
   });
 
+  it("a status check that fails during a sign-in by code keeps signingIn: the code stays shown", async () => {
+    const { h } = setup({ exec: async () => ({ code: 2, stdout: "", stderr: "docker hiccup" }) });
+    expect(await h["settings.login"]!({ id: "codex" })).toMatchObject({ kind: "device" });
+    const codex = ((await h["settings.agents"]!({})) as any[]).find((x) => x.id === "codex");
+    expect(codex).toMatchObject({ state: "error", signingIn: true });
+    h.stopLogins();
+  });
+
   it("login refused while the agent's network cannot be secured: the CLI never runs", async () => {
     const { h, o } = setup();
     o.workshop.secureNetwork.mockRejectedValueOnce(new Error("no rules"));

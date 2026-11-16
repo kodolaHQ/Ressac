@@ -146,13 +146,15 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
       return AGENT_ACCOUNTS.map((a) => ({ id: a.id, name: a.name, login: a.login.kind, state: state === "docker-absent" ? "docker-absent" : "no-container" }));
     return Promise.all(
       AGENT_ACCOUNTS.map(async (a): Promise<AgentAccount> => {
+        // Also on an error row: one failed check does not end the sign-in, so the code stays shown.
+        const signing = a.login.kind === "device" && signIn ? { signingIn: true as const } : {};
         try {
           const r = await o.workshop.exec(a.status);
           let s: ReturnType<typeof a.parse>;
           try {
             s = a.parse(r);
           } catch {
-            return { id: a.id, name: a.name, login: a.login.kind, state: "error", error: tail(r.stderr || r.stdout) };
+            return { id: a.id, name: a.name, login: a.login.kind, state: "error", error: tail(r.stderr || r.stdout), ...signing };
           }
           return {
             id: a.id,
@@ -160,10 +162,10 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
             login: a.login.kind,
             state: s.loggedIn ? "logged-in" : "logged-out",
             ...(s.account ? { account: s.account } : {}),
-            ...(a.login.kind === "device" && signIn ? { signingIn: true as const } : {}),
+            ...signing,
           };
         } catch (e) {
-          return { id: a.id, name: a.name, login: a.login.kind, state: "error", error: failure(e) };
+          return { id: a.id, name: a.name, login: a.login.kind, state: "error", error: failure(e), ...signing };
         }
       }),
     );
