@@ -397,6 +397,44 @@ describe("Ressac sidebar", () => {
     expect((await state(m)).spaces).toHaveLength(before + 1);
   });
 
+  it("deleting a space: nothing pinned goes at once; pinned sites and a folder without a tab ask first, with their count", async () => {
+    const created = async (name: string, pinned: { url: string; title: string }[] = []) => {
+      const before = new Set((await state(m)).spaces.map((s) => s.id));
+      await dispatch(m, { type: "createSpace", name, icon: "💼", private: false, profile: "default", pinned });
+      const id = (await state(m)).spaces.find((s) => !before.has(s.id))!.id;
+      await waitUi(m, "return !!doc.querySelector(arguments[0])", [`[data-testid="space-${id}"]`]);
+      return id;
+    };
+    const remove = async (id: string) => {
+      await click(m, `[data-testid="space-${id}"]`, { button: 2 });
+      await click(m, '[role="menuitem"]', { text: "Supprimer" });
+    };
+    const dialog = '[role="alertdialog"]';
+    const gone = (id: string) => waitState((s) => s.spaces.some((e) => e.id === id), (has) => !has);
+
+    const empty = await created("Vide");
+    await remove(empty);
+    await gone(empty);
+    expect(await count(dialog)).toBe(0);
+
+    const work = await created("Boulot", [
+      { url: `${server.url}/a.html`, title: "A" },
+      { url: `${server.url}/b.html`, title: "B" },
+    ]);
+    await dispatch(m, { type: "createFolder", spaceId: work, name: "Docs" });
+    expect(Object.values((await state(m)).tabs).filter((t) => t.spaceId === work)).toHaveLength(0);
+    await remove(work);
+    const text = await waitUi<string>(m, "return doc.querySelector(arguments[0])?.textContent.replace(/\\s+/g, ' ').trim()", [dialog]);
+    expect(text).toContain("Supprimer l'espace « Boulot » ?");
+    expect(text).toContain("2 sites épinglés et 1 dossier seront perdus.");
+    await click(m, `${dialog} button`, { text: "Annuler" });
+    await waitUi(m, "return !doc.querySelector(arguments[0])", [dialog]);
+    expect((await state(m)).spaces.some((s) => s.id === work)).toBe(true);
+    await remove(work);
+    await click(m, `${dialog} button.danger`);
+    await gone(work);
+  });
+
   it("a page's big icon (over 16 KB) shows redrawn small, not as the page's initial", async () => {
     const id = await open("/big-icon.html");
     const icon = await waitState((s) => s.tabs[id]?.favicon ?? null, (f) => !!f);
