@@ -50,6 +50,16 @@ test("the data and the state come from widgetsFolder, never from the space", asy
   expect("state" in w1 && w1.state).toEqual(state);
 });
 
+test("readHome without data leaves data.json unread, the state still read", async () => {
+  const { c, widgetsFolder } = await space();
+  await writeWidget(c, "w");
+  await mkdir(join(widgetsFolder, "w"), { recursive: true });
+  await writeFile(join(widgetsFolder, "w", "data.json"), '{"n":1}');
+  const w = (await readHome(c, widgetsFolder, "en", false)).widgets[0]!;
+  expect("data" in w && w.data).toBeNull();
+  expect("state" in w && w.state.status).toBe("ok");
+});
+
 test("example.json is read; hasHarvest and hasDisplay reflect the files present", async () => {
   const { c, widgetsFolder } = await space();
   await writeWidget(c, "nu");

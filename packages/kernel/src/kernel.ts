@@ -795,7 +795,7 @@ export async function createKernel(o: {
 
 /** Seeds `reads.json` of the widgets and of the actions from the owners on disk (a folder not found seeds nothing, marker written). */
 async function seedSpaceReads(paths: SpacePaths, widgetsFolder: string, actionsFolder: string, locale: string, created: string[]): Promise<void> {
-  const widgets = (await readHome(paths, widgetsFolder, locale)).widgets;
+  const widgets = (await readHome(paths, widgetsFolder, locale, false)).widgets;
   // A starter whose declaration initSpace just copied was not on disk before: it gets what it declares, not any host.
   const fresh = new Set(created);
   await seedReads(widgetsFolder, widgets.flatMap((w) => ("error" in w ? [] : [{ id: w.id, sources: w.declaration.sources, fresh: fresh.has(join(paths.widgets, w.id, "widget.json")) }])));

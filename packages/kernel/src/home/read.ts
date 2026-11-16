@@ -22,7 +22,7 @@ async function readJsonIn(folder: string, name: string): Promise<unknown> {
   return JSON.parse(await readFile(real, "utf8"));
 }
 
-async function readWidget(c: SpacePaths, widgetsFolder: string, id: string, locale: string): Promise<WidgetRead> {
+async function readWidget(c: SpacePaths, widgetsFolder: string, id: string, locale: string, withData = true): Promise<WidgetRead> {
   const folder = join(c.widgets, id);
   let declaration: DeclarationWidget;
   try {
@@ -36,7 +36,7 @@ async function readWidget(c: SpacePaths, widgetsFolder: string, id: string, loca
   } catch {
     // example.json absent or damaged: no example.
   }
-  const [data, state] = await Promise.all([readData(widgetsFolder, id), readWidgetState(widgetsFolder, id)]);
+  const [data, state] = await Promise.all([withData ? readData(widgetsFolder, id) : null, readWidgetState(widgetsFolder, id)]);
   const hasWorkflow = existsSync(join(folder, "workflow.json"));
   return {
     id,
@@ -133,11 +133,12 @@ export async function readOneWidget(c: SpacePaths, widgetsFolder: string, id: st
 }
 
 /** Reads the home page. A broken widget is reported, it does not prevent reading the others. */
-export async function readHome(c: SpacePaths, widgetsFolder: string, locale = "en"): Promise<HomeState> {
+/** `withData` false: every `data` is null, for a caller that never shows it (a data.json is up to 2 MB to parse). */
+export async function readHome(c: SpacePaths, widgetsFolder: string, locale = "en", withData = true): Promise<HomeState> {
   if (!existsSync(c.widgets)) return { widgets: [] };
   const ids = (await readdir(c.widgets, { withFileTypes: true }))
     .filter((e) => e.isDirectory() && ID_WIDGET.test(e.name))
     .map((e) => e.name)
     .sort();
-  return { widgets: await Promise.all(ids.map((id) => readWidget(c, widgetsFolder, id, locale))) };
+  return { widgets: await Promise.all(ids.map((id) => readWidget(c, widgetsFolder, id, locale, withData))) };
 }

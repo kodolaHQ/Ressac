@@ -279,7 +279,8 @@ export class WidgetsScheduler {
   }
 
   private async widgets(): Promise<WidgetRead[]> {
-    return (await readHome(this.o.paths, this.o.widgetsFolder, this.locale())).widgets;
+    // Several times a minute: without the data, which each harvest reads itself.
+    return (await readHome(this.o.paths, this.o.widgetsFolder, this.locale(), false)).widgets;
   }
 
   /** The widget's lane from its declaration read now (short if unknown or unreadable). */
