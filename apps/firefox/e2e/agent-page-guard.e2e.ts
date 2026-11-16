@@ -24,6 +24,7 @@ beforeAll(async () => {
         `<title>leak</title><img src="${to}/pixel.png?d=1">` +
           `<script>fetch("${to}/fetch?d=1").catch(() => {}); setTimeout(() => { location = "${to}/away?d=1"; }, 500)</script>`,
       ),
+      "/beacon": html(`<title>beacon</title><script>addEventListener("pagehide", () => navigator.sendBeacon("${to}/beacon?d=1", "x"))</script>`),
       "/link": html(`<title>link</title><a id="out" href="${to}/arrive">out</a>`),
     },
   });
@@ -58,4 +59,23 @@ it("a link the user clicks on an agent page leaves it", async () => {
   await inBrowser(m, "gBrowser.selectedBrowser", 'document.getElementById("out").click(); return 0', { gesture: true });
   await waitFor(m, "return gBrowser.selectedBrowser.currentURI.spec", (v: string) => v === `${web.url}/arrive`);
   expect(web.paths).toContain("/arrive");
+});
+
+it("an agent page's service worker never reaches the web", async () => {
+  await open(`http://localhost:${agent.port}/travailleur?vers=${encodeURIComponent(web.url)}`);
+  await waitFor(m, "return 0", () => agent.paths.includes("/sw.js"));
+  // The worker fetches 4 s after it installs.
+  await sleep(6000);
+  expect(web.paths).not.toContain("/sw");
+});
+
+it("a beacon an agent page sends as it unloads never reaches the web", async () => {
+  await open(`http://localhost:${agent.port}/beacon`);
+  await m.execute(
+    "gBrowser.selectedBrowser.loadURI(Services.io.newURI(arguments[0]), { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() })",
+    [`${web.url}/arrive`],
+  );
+  await waitFor(m, "return gBrowser.selectedBrowser.currentURI.spec", (v: string) => v === `${web.url}/arrive`);
+  await sleep(1000);
+  expect(web.paths).not.toContain("/beacon");
 });

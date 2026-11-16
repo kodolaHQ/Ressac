@@ -12,17 +12,17 @@ function parse(url: string): URL | null {
   }
 }
 
-/** A page served on a local host, on a port of the agent's range. */
+/** A page on a port of the agent's range, whatever its host: a public name can resolve to 127.0.0.1 (fails closed). */
 function agentPage(url: string, [min, max]: [number, number]): boolean {
   const u = parse(url);
-  if (!u || (u.protocol !== "http:" && u.protocol !== "https:") || !localLiteral(u.hostname)) return false;
+  if (!u || (u.protocol !== "http:" && u.protocol !== "https:")) return false;
   const port = Number(u.port);
   return port >= min && port <= max;
 }
 
 /**
  * A request `to`, made while the top-level page is `from`: an agent page's requests stay local, or GET a known CDN;
- * its top-level navigation leaves only on a user gesture (a click on a link).
+ * its top-level navigation leaves only with a user activation on the page (a click, a key press).
  */
 export function agentPageDecision(o: { from: string; to: string; document: boolean; gesture: boolean; method: string }, ports: [number, number]): "allow" | "cancel" {
   if (!agentPage(o.from, ports)) return "allow";
@@ -47,15 +47,16 @@ const principalSpec = (p: any): string => (p?.isNullPrincipal ? p.precursorPrinc
 
 /**
  * Before any request connects (http-on-modify-request). A top-level load is judged by the page that started it (its
- * triggering principal); any other request by the tab's top-level page, its address and its principal (an about:blank
- * window an agent page opened and writes into has the agent page's principal). What Ressac itself loads (the system
- * principal: the address bar, its own fetches) is never judged.
- * shortcut: preconnects, WebRTC, WebSocket upgrades and shared workers (no browsing context) are not guarded; upgrade if
- * agent pages must never open a socket to the web.
+ * triggering principal). Any other request by its own principals (a service worker has no browsing context; a beacon
+ * sent on pagehide may run under the next page) and by the tab's top-level page, its address and its principal (an
+ * about:blank window an agent page opened and writes into has the agent page's principal). What Ressac itself loads
+ * (the system principal: the address bar, its own fetches) is never judged. The port range is read once.
+ * shortcut: WebRTC is not guarded (no HTTP request); upgrade if agent pages must never open a socket to the web.
  */
 export function installAgentPageGuard(ports: () => [number, number]): void {
   if (observing) return;
   observing = true;
+  const range = ports();
   Services.obs.addObserver(
     {
       observe(subject: any) {
@@ -66,10 +67,15 @@ export function installAgentPageGuard(ports: () => [number, number]): void {
         const top = (li.browsingContext ?? li.workerAssociatedBrowsingContext)?.top;
         const froms: string[] = document
           ? [principalSpec(li.triggeringPrincipal)]
-          : [top?.currentURI?.spec ?? "", principalSpec(top?.currentWindowGlobal?.documentPrincipal)];
+          : [
+              principalSpec(li.triggeringPrincipal),
+              principalSpec(li.loadingPrincipal),
+              top?.currentURI?.spec ?? "",
+              principalSpec(top?.currentWindowGlobal?.documentPrincipal),
+            ];
         const to: string = ch.URI.spec;
         const o = { to, document, gesture: li.hasValidUserGestureActivation, method: ch.requestMethod };
-        if (froms.every((from) => agentPageDecision({ ...o, from }, ports()) === "allow")) return;
+        if (froms.every((from) => agentPageDecision({ ...o, from }, range) === "allow")) return;
         ch.cancel(Cr.NS_ERROR_ABORT);
         console.warn("[agent-page] blocked: " + to.slice(0, 80));
       },

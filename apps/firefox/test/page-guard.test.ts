@@ -33,3 +33,8 @@ it("only agent pages are guarded", () => {
   expect(req({ from: "https://example.com/" })).toBe("allow");
   expect(req({ from: "" })).toBe("allow");
 });
+
+it("an agent port under a public name is an agent page too", () => {
+  expect(req({ from: "http://127.0.0.1.nip.io:5301/" })).toBe("cancel");
+  expect(req({ from: "http://localtest.me:5301/" })).toBe("cancel");
+});

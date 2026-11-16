@@ -63,3 +63,6 @@ pref("ressac.telemetry.noticeShown", false);
 
 // A <link rel=dns-prefetch> would reach the web through DNS past the request guard of agent pages (chrome/agent/page-guard.ts).
 pref("network.dns.disablePrefetch", true);
+// So would a <link rel=preconnect> or a speculative connection (DNS and TCP, no HTTP request to cancel).
+pref("network.preconnect", false);
+pref("network.http.speculative-parallel-limit", 0);
