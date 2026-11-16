@@ -198,6 +198,33 @@ if (args[0] === "exec") {
     launchApp(options, command);
     return;
   }
+  // The writer (Workshop.execWrite): sh -c <script> ressac-write <id> <agent argv…>, the prompt on stdin. The script is emulated:
+  // the PID file (RESSAC_ROOT stands for /tmp) lives while the call is pending, the prompt goes to the e2e's fake Ollama.
+  if (command[0] === "sh" && command[3] === "ressac-write") {
+    const [id, agent] = [command[4], command[5]];
+    const pidFile = join(env.RESSAC_ROOT, `ressac-write-${id}.pid`);
+    writeFileSync(pidFile, String(process.pid));
+    for (const signal of ["SIGHUP", "SIGTERM", "SIGINT"])
+      process.on(signal, () => {
+        rmSync(pidFile, { force: true });
+        process.exit(143);
+      });
+    let input = "";
+    process.stdin.on("data", (c) => (input += c));
+    process.stdin.on("end", async () => {
+      try {
+        const res = await fetch(`${env.RESSAC_OLLAMA_URL}/api/chat`, { method: "POST", body: JSON.stringify({ messages: [{ role: "user", content: input }] }) });
+        const content = (await res.json()).message.content;
+        const usage = { input_tokens: 10, output_tokens: 5 };
+        rmSync(pidFile, { force: true });
+        quit(0, agent === "claude" ? JSON.stringify({ type: "result", is_error: false, result: content, usage }) : content);
+      } catch (e) {
+        rmSync(pidFile, { force: true });
+        quit(1, "", String(e));
+      }
+    });
+    return;
+  }
   // Claude Code's account (settings page): <RESSAC_ROOT>/fake-claude-auth.json is the signed-in account.
   const auth = join(env.RESSAC_ROOT, "fake-claude-auth.json");
   if (command.join(" ") === "claude auth status --json") quit(0, existsSync(auth) ? readFileSync(auth, "utf8") : '{"loggedIn":false}\n');
@@ -229,6 +256,19 @@ if (args[0] === "exec") {
   // tests; the targeted apps are killed beforehand, the log is the proof of the stop.
   if (command[0] === "sh" && !command[2].includes('exec "$@"')) {
     stopApps(command[2]);
+    // The writer's stop script: its PID file is under /tmp in the container, under RESSAC_ROOT here.
+    const writer = /\/tmp\/(ressac-write-[\w-]+\.pid)/.exec(command[2])?.[1];
+    if (writer) {
+      const f = join(env.RESSAC_ROOT, writer);
+      if (existsSync(f)) {
+        try {
+          process.kill(Number(readFileSync(f, "utf8")), "SIGTERM");
+        } catch {
+          // already finished
+        }
+        rmSync(f, { force: true });
+      }
+    }
     appendFileSync(join(env.RESSAC_ROOT, "fake-docker-stops.log"), `${command[2]}\n`);
     // <RESSAC_ROOT>/fake-docker-sweep-hold: the sweep before a first session (`kill -KILL -1`) lasts until the test removes it.
     const hold = join(env.RESSAC_ROOT, "fake-docker-sweep-hold");

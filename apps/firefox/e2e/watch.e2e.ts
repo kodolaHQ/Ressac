@@ -128,9 +128,10 @@ const notifications = (): { title: string; text: string }[] =>
   existsSync(notificationsFile()) ? readFileSync(notificationsFile(), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)) : [];
 
 /** Launches on `dataDir` (kept), tall enough for every widget to show; waits for the home page. */
-async function launchWatch(): Promise<Marionette> {
+async function launchWatch(writer: "claude" | null = "claude"): Promise<Marionette> {
   const l = await launchRessac({
     dataDir,
+    ...(writer ? { writer } : {}),
     height: 1400,
     env: {
       RESSAC_KEV_URL: kev.url,
@@ -387,6 +388,16 @@ it("a listing whose page fails comes back at the next run", async () => {
   expect(back[0]!.fiche?.text).toContain("5 900 €");
   expect(back[0]!.fiabilite?.length).toBeGreaterThan(0);
   expect(back[0]!.avis).toBe("Bonne affaire.");
+}, 120_000);
+
+it("without a Claude Code or Codex account the opinions fail with the connect message, and the run is partial", async () => {
+  await writeWatch();
+  const m = await launchWatch(null);
+  const run = await runWatch(m);
+  expect(run.status).toBe("partial");
+  expect(blockStatus(run, "avis")).not.toBe("succeeded");
+  expect(JSON.stringify(run)).toContain("Connectez Claude Code ou Codex dans Réglages › Agents pour les résumés");
+  expect(watchData()!.every((a) => a.avis === undefined)).toBe(true);
 }, 120_000);
 
 it("a long watch in progress does not prevent a short widget from updating", async () => {

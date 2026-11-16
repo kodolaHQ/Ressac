@@ -216,6 +216,21 @@ describe("Settings page", () => {
     await shows("docker-start", "Démarrer OrbStack");
   });
 
+  it("Rédaction: Claude when signed in, Codex with only Codex, none otherwise", async () => {
+    for (const [files, wanted] of [
+      [{ "fake-claude-auth.json": JSON.stringify({ loggedIn: true, email: "ami@example.com" }) }, "Claude Haiku, avec votre compte Claude Code"],
+      [{ "fake-codex-auth": "" }, "Codex, avec votre compte ChatGPT"],
+      [{}, "Aucun compte connecté"],
+    ] as const) {
+      await launch({}, files);
+      await openPage();
+      await go("ai");
+      await shows("ai-writer", wanted);
+      await w!.close();
+      w = undefined;
+    }
+  });
+
   it("local AI: an absent Ollama offers its download, a stopped one « Démarrer », an old one « Mettre à jour Ollama »", async () => {
     for (const [kind, id, label] of [["absent", "pull-ollama", "Télécharger Ollama (190 Mo)"], ["stopped", "ollama-start", "Démarrer"], ["outdated", "ollama-update", "Mettre à jour Ollama"]] as const) {
       await launch({ RESSAC_TEST_OLLAMA_KIND: kind });

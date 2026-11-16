@@ -1,3 +1,5 @@
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { openAction, runsOnDisk, startActionServers, tid, uiQueries, waitKernel, writeAction, writePagesAction, writeResult, writeRunnableAction } from "./actions";
 import { waitFor, waitReady } from "./firefox";
@@ -21,7 +23,7 @@ const disabled = (selector: string) => inUi<boolean>(m, "return doc.querySelecto
 
 beforeAll(async () => {
   servers = await startActionServers();
-  w = await launchRessac({ env: { RESSAC_OLLAMA_URL: servers.ollama.url, RESSAC_KEV_URL: servers.kev.url, RESSAC_TEST_LOCAL_ADDRESSES: "1" } });
+  w = await launchRessac({ writer: "claude", env: { RESSAC_OLLAMA_URL: servers.ollama.url, RESSAC_KEV_URL: servers.kev.url, RESSAC_TEST_LOCAL_ADDRESSES: "1" } });
   m = w.marionette;
   q = uiQueries(m);
   await m.setContext("chrome");
@@ -73,6 +75,20 @@ describe("action runs", () => {
     await q.waitContains(tid("action-progress"), "Lecture de 127.0.0.1…", 30_000);
     await click(m, tid("stop-action"));
     await q.waitText(tid("action-error"), "Arrêtée à ta demande", 30_000);
+    await q.waitCount(tid("action-progress"), 0);
+  });
+
+  it("Stop during a slow write: the writer's process is killed in the container, the fallback layout shows", { timeout: 90_000 }, async () => {
+    servers.settings.gemmaSlownessMs = 20_000;
+    await writePagesAction(w.dataDir, servers.site.url, "pages-w");
+    await openAction(m, "pages-w", "Pages");
+    await click(m, tid("relaunch-action"));
+    await q.waitContains(tid("action-progress"), "Mise en page", 30_000);
+    const pidFiles = () => readdirSync(join(w.dataDir, "workspace")).filter((f) => /^ressac-write-.*\.pid$/.test(f));
+    await waitFor(m, "return true", () => pidFiles().length === 1, 15_000);
+    await click(m, tid("stop-action"));
+    await waitFor(m, "return true", () => pidFiles().length === 0, 15_000);
+    await q.waitText(`${tid("page-render")} ${tid("fallback-mention")}`, "mise en page simple", 30_000);
     await q.waitCount(tid("action-progress"), 0);
   });
 

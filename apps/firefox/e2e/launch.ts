@@ -71,9 +71,9 @@ async function waitFor<T>(read: () => Promise<T | undefined>, ms: number, what: 
  * Launches Ressac headless (`headed` shows its window). Folders passed in are reused and kept (to restart on the same data); the others
  * are temporary and deleted on close. `prefs` are appended to the profile's user.js (reduced motion is on unless `prefs` sets `ui.prefersReducedMotion` to 0). RESSAC_DATA_DIR is always set, so tests never touch the real data folder.
  * A data folder without a space's widgets folder gets the starter widgets without their harvest (`starterHarvests` keeps
- * them, and their real-web reads: prefer a local server). `firstTimeNotes` leaves the one-time notes unseen (a new session has them seen). `output`: a file that gets the browser's stdout and stderr.
+ * them, and their real-web reads: prefer a local server). `firstTimeNotes` leaves the one-time notes unseen (a new session has them seen). `writer` signs the fake Claude Code or Codex in (widgets and actions write through it). `output`: a file that gets the browser's stdout and stderr.
  */
-export async function launchRessac(o: { headed?: boolean; width?: number; height?: number; dataDir?: string; profile?: string; env?: Record<string, string | undefined>; prefs?: Record<string, string | number | boolean>; starterHarvests?: boolean; firstTimeNotes?: boolean; output?: string; realTools?: boolean; ai?: boolean } = {}): Promise<LaunchedRessac> {
+export async function launchRessac(o: { headed?: boolean; width?: number; height?: number; dataDir?: string; profile?: string; env?: Record<string, string | undefined>; prefs?: Record<string, string | number | boolean>; starterHarvests?: boolean; firstTimeNotes?: boolean; output?: string; realTools?: boolean; ai?: boolean; writer?: "claude" | "codex" } = {}): Promise<LaunchedRessac> {
   const profile = o.profile ?? (await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-")));
   const dataDir = o.dataDir ?? (await mkdtemp(path.join(os.tmpdir(), "ressac-data-")));
   const cleanup = () =>
@@ -83,6 +83,11 @@ export async function launchRessac(o: { headed?: boolean; width?: number; height
   await writeFile(path.join(dataDir, ".format-version"), JSON.stringify({ format: DATA_FORMAT }));
   if (!o.starterHarvests) await seedStarterWidgets(dataDir);
   if (!o.firstTimeNotes) await seedFirstTimeNotesSeen(dataDir);
+  // The account the writing goes through (the fake docker's `claude auth status` / `codex login status`).
+  if (o.writer) {
+    await mkdir(path.join(dataDir, "workspace"), { recursive: true });
+    await writeFile(path.join(dataDir, "workspace", o.writer === "claude" ? "fake-claude-auth.json" : "fake-codex-auth"), o.writer === "claude" ? '{"loggedIn":true,"email":"test@example.com"}' : "");
+  }
   // A reused profile may hold the previous run's port file.
   await rm(path.join(profile, "MarionetteActivePort"), { force: true });
   // Port 0: Firefox picks a free port and writes it to MarionetteActivePort, so parallel launches never collide.
