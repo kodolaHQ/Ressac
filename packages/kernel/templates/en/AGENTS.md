@@ -42,6 +42,9 @@ the URL by other means).
 - `launch` listens on `0.0.0.0` and on `{port}`, for example
   `npx vite --host 0.0.0.0 --port {port} --strictPort`. An app that has a front end and an API serves
   everything through this port (Vite's proxy).
+- Your apps' pages reach only localhost and, with GET, `fonts.googleapis.com`, `fonts.gstatic.com`,
+  `cdnjs.cloudflare.com`, `cdn.jsdelivr.net` and `unpkg.com`; any other call fails silently. Call any other web API
+  from the app's server (its access goes through the proxy, see « Network »).
 - To show an app, call `launch_app("<folder>")` instead of launching the server
   yourself. On an error, read `app_log("<folder>")` or
   `/workspace/.ressac/logs/<folder>.log`.

@@ -43,6 +43,9 @@ l'URL par un autre moyen).
 - `launch` écoute sur `0.0.0.0` et sur `{port}`, par exemple
   `npx vite --host 0.0.0.0 --port {port} --strictPort`. Une appli qui a un front et une API sert
   tout par ce port (proxy de Vite).
+- Les pages de tes applis ne joignent que localhost et, en GET, `fonts.googleapis.com`, `fonts.gstatic.com`,
+  `cdnjs.cloudflare.com`, `cdn.jsdelivr.net` et `unpkg.com` ; tout autre appel échoue sans bruit. Appelle toute autre
+  API web depuis le serveur de l'appli (son accès passe par le proxy, voir « Réseau »).
 - Pour montrer une appli, appelle `launch_app("<folder>")` au lieu de lancer le serveur
   toi-même. En cas d'erreur, lis `app_log("<folder>")` ou
   `/workspace/.ressac/logs/<folder>.log`.
