@@ -12,6 +12,7 @@
   import CallBar from "./CallBar.svelte";
   import UpdateCard from "./UpdateCard.svelte";
   import SpaceSelector from "./SpaceSelector.svelte";
+  import { spaceIcon } from "./spaceIcons";
   import { t } from "../i18n.svelte";
   import { createSwipe } from "./swipe";
   import { toNextSpace } from "../../core/shortcuts";
@@ -111,7 +112,7 @@
     <div class="space-content" bind:this={list}>
     {#if space}<Pinned bind:this={pinned} window={win} {space} {activeLink} />{/if}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="space" data-testid="space-title" oncontextmenu={(e) => openMenu(e, [{ label: t("sidebar-new-folder"), dispatch: () => pinned?.newFolder() }])}>{space?.icon} {space?.name}</div>
+    <div class="space" data-testid="space-title" oncontextmenu={(e) => openMenu(e, [{ label: t("sidebar-new-folder"), dispatch: () => pinned?.newFolder() }])}>{#if space}{@const line = spaceIcon(space.icon)}{#if line}<Icon name={line} size={13} />{:else}<span>{space.icon}</span>{/if}<span class="name">{space.name}</span>{/if}</div>
     <TabList window={win} />
     <button class="new" data-testid="new-tab" onclick={() => api.dispatch({ type: "showBlankPage", windowId: win.id })}
       ><Icon name="plus" size={14} /> {t("sidebar-new-tab")}<kbd>{key("command")}</kbd></button
@@ -222,7 +223,8 @@
   .tool:hover, .downloads:hover { background: var(--glass-hi); color: var(--text); }
   .tool[aria-pressed="true"], .tool.on { color: var(--accent); background: var(--glass-hi); }
   .pill { position: absolute; inset: 3px; border-radius: 50%; background: conic-gradient(var(--accent) calc(var(--p) * 360deg), transparent 0); mask: radial-gradient(circle, transparent 55%, currentColor 56%); }
-  .space { padding: 10px 10px 2px; font: 600 13px/1.2 var(--font-display); letter-spacing: -0.01em; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: none; }
+  .space { display: flex; align-items: center; gap: 6px; padding: 10px 10px 2px; font: 600 13px/1.2 var(--font-display); letter-spacing: -0.01em; color: var(--text-muted); flex: none; }
+  .space .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .new { all: unset; display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 10px; border-radius: 10px; color: var(--text-muted); transition: transform var(--tap), background var(--tap), color var(--tap); }
   .new kbd { margin-left: auto; opacity: 0; transition: opacity var(--tap); }
   .new:hover { background: color-mix(in srgb, var(--glass-hi) 55%, transparent); color: var(--text); }

@@ -5,7 +5,7 @@ import { dispatch, state, waitFor } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
-import { click, inUi, missingApi, pressKeys, typeText, waitUi } from "./ui";
+import { click, inUi, missingApi, pressKeys, waitUi } from "./ui";
 
 let server: Awaited<ReturnType<typeof startServer>>;
 let w: LaunchedRessac;
@@ -96,7 +96,8 @@ describe("space settings", () => {
       submit: false,
     });
     expect(await inUi(m, "return [...doc.querySelectorAll(arguments[0] + ' button')].some((b) => b.textContent === 'Annuler')", [MODAL])).toBe(true);
-    await fill("Icône", "🎮");
+    await click(m, `${MODAL} [aria-label="Icône"]`);
+    await click(m, '[data-testid="emoji-grid"] [aria-label="Jeux"]');
     await fill("Nom de l'espace", "Jeux");
     // No profile chosen: Enter does nothing.
     await pressKeys(m, "Enter");
@@ -122,7 +123,7 @@ describe("space settings", () => {
     expect([work.profile, "default", "new"]).not.toContain(fresh);
   });
 
-  it("the icon field opens a grid of emojis: a click or Enter picks at once, Escape closes only the grid, typing replaces the icon", async () => {
+  it("the icon field opens a grid of emojis: a click or Enter picks at once, Escape closes only the grid", async () => {
     const GRID = '[data-testid="emoji-grid"]';
     const gridOpen = (open: boolean) => waitUi(m, "return !!doc.querySelector(arguments[0]) === arguments[1]", [GRID, open]);
     const focused = () => inUi<string | null>(m, "return doc.activeElement?.getAttribute('aria-label') ?? null");
@@ -161,12 +162,8 @@ describe("space settings", () => {
     await click(m, `${MODAL} h2`);
     await gridOpen(false);
 
-    // Typing replaces the icon, no need to erase it first.
-    await click(m, `${MODAL} [aria-label="Nom de l'espace"]`);
-    await click(m, `${MODAL} [aria-label="Icône"]`);
-    await typeText(m, "Z");
-    await gridOpen(false);
-    expect((await fields()).icon).toBe("Z");
+    // The field shows the picked icon as a line drawing.
+    expect(await inUi(m, "return !!doc.querySelector(arguments[0] + ' [aria-label=\"Icône\"] svg')", [MODAL])).toBe(true);
   });
 
   it("a new space gets the aura chosen in the modal", async () => {
@@ -242,10 +239,10 @@ describe("space settings", () => {
     const secret = await create("Secret", "🕵️", true, "default");
     const home = (await spaces())[0]!;
     await waitUi(m, "return doc.querySelector(arguments[0])?.dataset.private === 'true'", [button(secret.id)]);
-    expect(await inUi(m, "return doc.querySelector(arguments[0]).textContent", [button(secret.id)])).toContain("🔒");
-    expect(await inUi(m, "return [doc.querySelector(arguments[0]).dataset.private ?? null, doc.querySelector(arguments[0]).textContent]", [button(home.id)])).toEqual([
+    expect(await inUi(m, "return !!doc.querySelector(arguments[0]).querySelector('.padlock svg')", [button(secret.id)])).toBe(true);
+    expect(await inUi(m, "return [doc.querySelector(arguments[0]).dataset.private ?? null, !!doc.querySelector(arguments[0]).querySelector('.padlock')]", [button(home.id)])).toEqual([
       null,
-      "🏠",
+      false,
     ]);
   });
 

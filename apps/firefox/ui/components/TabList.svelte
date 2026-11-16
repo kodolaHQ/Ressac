@@ -8,6 +8,7 @@
   import SoundButton from "./SoundButton.svelte";
   import { openMenu } from "./menu.svelte";
   import { t } from "../i18n.svelte";
+  import { spaceIcon } from "./spaceIcons";
 
   /** `agent`: every tab the agent opened (its search tabs in its own login profile, the pages it opened for the user in theirs), in their section; otherwise the user's tabs. */
   let { window: win, agent = false }: { window: WindowState; agent?: boolean } = $props();
@@ -102,7 +103,7 @@
           ] : [
             { label: t("sidebar-tab-pin"), dispatch: () => api.dispatch({ type: "pinTab", id }) },
             { label: t("sidebar-tab-essential"), dispatch: () => api.dispatch({ type: "addEssential", id }) },
-            ...(appState.value?.spaces ?? []).filter((s) => s.id !== win.activeSpace).map((s) => ({ label: t("sidebar-tab-send", { space: `${s.icon} ${s.name}` }), dispatch: () => api.dispatch({ type: "moveTabToSpace", id, spaceId: s.id }) })),
+            ...(appState.value?.spaces ?? []).filter((s) => s.id !== win.activeSpace).map((s) => ({ label: t("sidebar-tab-send", { space: spaceIcon(s.icon) ? s.name : `${s.icon} ${s.name}` }), dispatch: () => api.dispatch({ type: "moveTabToSpace", id, spaceId: s.id }) })),
             ...(order.length > 1 ? [{ label: t("sidebar-tab-new-window"), dispatch: () => api.dispatch({ type: "moveTabToNewWindow", id }) }] : []),
             { label: t("sidebar-tab-close-menu"), dispatch: () => closeTab(id) },
           ])}

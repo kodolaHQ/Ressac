@@ -28,6 +28,7 @@
 </script>
 
 <script lang="ts">
+  import Icon from "../components/Icon.svelte";
   import { Handle, Position, type NodeProps } from "@xyflow/svelte";
   import { t } from "../i18n.svelte";
 
@@ -55,7 +56,7 @@
   <div class="line muted">
     <code>{data.type}</code>
     {#if data.error !== null}<span class="mark" aria-label={t("builder-node-error")}>!</span>
-    {:else if data.warnings.length}<span class="mark" aria-label={t("builder-node-warning")}>⚠</span>{/if}
+    {:else if data.warnings.length}<span class="mark" aria-label={t("builder-node-warning")}><Icon name="warning" size={12} /></span>{/if}
   </div>
   {#if data.output}<Handle type="source" position={Position.Right} />{/if}
 </div>
