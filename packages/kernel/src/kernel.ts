@@ -301,6 +301,8 @@ export async function createKernel(o: {
   workshop?: Workshop;
   /** MCP tools of the applications (launch, stop, log). */
   apps?: AppsTools;
+  /** Wraps the sweep before a first session (stopAgentProcesses): the host stops its apps around it and launches them again. */
+  aroundSweep?: (sweep: () => Promise<void>) => Promise<void>;
   /** Ports on which a local demo opened by the agent is « built » (by default those of the container, containerPortRange). */
   portBuilt?: (port: number) => boolean;
   /**
@@ -662,7 +664,7 @@ export async function createKernel(o: {
       policy.reset();
       search.reset();
       // No session running: nothing the agent left behind keeps running into this conversation (stopAgentProcesses).
-      if (openSessions.size === 0 && opening === 0) sweep = workshop.stopAgentProcesses();
+      if (openSessions.size === 0 && opening === 0) sweep = o.aroundSweep ? o.aroundSweep(() => workshop.stopAgentProcesses()) : workshop.stopAgentProcesses();
       opening++;
       const id = randomBytes(8).toString("hex");
       // With a window: its own token and config, so that `open_workflow` knows which one speaks (without a window,

@@ -32,6 +32,8 @@ export interface ApplicationsHost {
   wake(): void;
   /** toutArreter, arreterSurveillance, then the memory written. */
   stop(): Promise<void>;
+  /** Runs `run` with every app stopped cleanly (« arrêtée », not an error), then launches again those that were running. */
+  whileStopped(run: () => Promise<void>): Promise<void>;
 }
 
 export function createApplicationsHost(o: {
@@ -238,6 +240,15 @@ export function createApplicationsHost(o: {
       docker = new DockerProbe({ probe: () => o.workshop.state(), onChange: o.broadcast });
       // In the background: windows never wait for Docker.
       manager.start().catch((e) => console.error("[applications] start failed:", e));
+    },
+    async whileStopped(run) {
+      const was = (await manager.list()).filter((a) => a.state === "running" || a.state === "launching" || a.state === "preparing").map((a) => a.folder);
+      await manager.stopAll();
+      try {
+        await run();
+      } finally {
+        for (const folder of was) void manager.launch(folder).catch(report(folder, "launched again"));
+      }
     },
     async stop() {
       docker = undefined;

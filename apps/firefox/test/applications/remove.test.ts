@@ -49,3 +49,18 @@ test("« Supprimer » never deletes a Mac folder through a projects folder that 
   expect(await remove("essai")).toBe("refused");
   expect(existsSync(join(mac, "essai", "precieux.txt"))).toBe(true);
 });
+
+test("an app running before the sweep is stopped cleanly around it and launched again after", async () => {
+  root = realpathSync(mkdtempSync(join(tmpdir(), "ressac-app-sweep-")));
+  const h = createApplicationsHost({
+    paths: spacePaths(join(root, "data", "workspace")), dataDir: join(root, "data"), workshop: {} as Workshop,
+    chrome: { open: async () => {}, close: async () => {}, show: async () => true, erase: async () => {} },
+    debug: () => {}, policy: () => null, broadcast: () => {},
+  });
+  const order: string[] = [];
+  vi.spyOn(h.manager, "list").mockResolvedValue([{ folder: "essai", state: "running" }, { folder: "autre", state: "stopped" }] as never);
+  vi.spyOn(h.manager, "stopAll").mockImplementation(async () => void order.push("stopAll"));
+  vi.spyOn(h.manager, "launch").mockImplementation(async (f) => (order.push(`launch ${f}`), {}) as never);
+  await h.whileStopped(async () => void order.push("sweep"));
+  expect(order).toEqual(["stopAll", "sweep", "launch essai"]);
+});

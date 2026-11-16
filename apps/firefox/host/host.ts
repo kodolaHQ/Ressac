@@ -227,6 +227,8 @@ const launchKernel = (profileId: string): Promise<Kernel | null> => {
     sites: sites.tools,
     workshop: workshop,
     apps: apps.manager,
+    // The sweep before a first session kills every process of the agent's user: the apps stop cleanly and come back after.
+    aroundSweep: (sweep) => apps.whileStopped(sweep),
     openWorkflow: (f) => workflowOpen(actives.get(f), selections.get(f)),
     // Widgets and actions wrote something, or a grant changed: the page reads again.
     onChange: () => rpc.notify("home.change"),
