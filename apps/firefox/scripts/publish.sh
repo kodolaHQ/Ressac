@@ -74,4 +74,11 @@ put $prefix/releases/$version/Ressac-$version.dmg --file $dmg --content-type app
 put $prefix/Ressac.dmg --file $dmg --content-type application/x-apple-diskimage --cache-control "public, max-age=300"
 # Last: update.xml then never points at a file not uploaded yet.
 put $prefix/browser/Darwin_aarch64-gcc3/ressac/update.xml --file $xml --content-type text/xml --cache-control no-cache
+# Tag the commit that set this version (not HEAD, which may be later), so GitHub lists every published release.
+if [[ -z ${RESSAC_PUBLISH_DRY_RUN:-} ]]; then
+  release=$(git log --reverse --format=%H -S"\"version\": \"$version\"" -- package.json | head -1)
+  if [[ -z $release ]]; then print -r -- "warning: no commit sets version $version, not tagged"
+  else git rev-parse -q --verify "refs/tags/v$version" >/dev/null || git tag "v$version" $release
+    git push -q origin "v$version" || print -r -- "warning: tag v$version not pushed"; fi
+fi
 print -r -- "==> Ressac $version published. A tester's download link: pnpm run release:invite"
