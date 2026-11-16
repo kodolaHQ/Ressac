@@ -429,4 +429,23 @@ describe("engine change (Réglages › Agents)", () => {
     expect(w.sessions.slice(0, 2).map((s) => s.stopped)).toEqual([true, true]);
     expect(w.opens.slice(3)).toEqual([{ profile: "claude", resume: true }, { profile: "mine", resume: true }]);
   });
+
+  test("relaunchActive: a session still starting is relaunched too, and the one it was starting stops on arrival", async () => {
+    let release!: (s: FakeSession) => void;
+    const opens: boolean[] = [];
+    const late = new FakeSession();
+    const manager = new SessionsAgent({
+      open: (_f, _t, s) => (opens.push(s.resume), opens.length === 1 ? new Promise((r) => (release = r)) : Promise.resolve(new FakeSession())),
+      defaultProfile: () => "claude",
+      send: () => {},
+    });
+    const first = manager.start("F", size);
+    await new Promise((r) => setTimeout(r, 0));
+    const relaunched = manager.relaunchActive();
+    release(late);
+    await Promise.all([first, relaunched]);
+    expect(opens).toHaveLength(2);
+    expect(late.stopped).toBe(true);
+    expect(manager.active("F")).toBe(true);
+  });
 });
