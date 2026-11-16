@@ -112,7 +112,10 @@ export interface SettingsOptions {
   notify(n: { title: string; text: string }): void;
 }
 
-export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTINGS_METHODS)[number], (p: any) => unknown> & { stopLogins(): void; loginEnded(): Promise<void> } {
+/** How long a first agent session waits for a sign-in by code in progress. */
+const LOGIN_WAIT_MS = 120_000;
+
+export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTINGS_METHODS)[number], (p: any) => unknown> & { stopLogins(): void; loginEnded(maxMs?: number): Promise<void> } {
   /** The sign-in by code in progress; one at a time. */
   let signIn: ReturnType<typeof startDeviceLogin> | undefined;
   const stopLogins = () => {
@@ -185,7 +188,15 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
   return {
     stopLogins,
     // The sign-in runs as the agent's user: the sweep before a first session would kill it while the user types the code.
-    loginEnded: () => signIn?.ended ?? Promise.resolve(),
+    // It waits for the sign-in, at most `maxMs` (abandoned, or stopped by a leftover process), then ends it: Réglages shows the error.
+    loginEnded: async (maxMs = LOGIN_WAIT_MS) => {
+      const s = signIn;
+      if (!s) return;
+      let timer: NodeJS.Timeout | undefined;
+      await Promise.race([s.ended, new Promise((r) => (timer = setTimeout(r, maxMs)))]);
+      clearTimeout(timer);
+      if (signIn === s) stopLogins();
+    },
     "settings.agents": agents,
     "settings.login": async (p: { id?: unknown }): Promise<LoginResult> => {
       const a = AGENT_ACCOUNTS.find((x) => x.id === p?.id);

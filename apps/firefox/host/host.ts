@@ -228,7 +228,7 @@ const launchKernel = (profileId: string): Promise<Kernel | null> => {
     workshop: workshop,
     apps: apps.manager,
     // The sweep before a first session kills every process of the agent's user: a sign-in by code in progress ends first
-    // (the session waits for it), then the apps stop cleanly (« arrêtée »).
+    // (the session waits for it, 2 min at most), then the apps stop cleanly (« arrêtée »).
     // shortcut: a sign-in started in the few ms between its end and the sweep is still killed; serialize them if it shows.
     aroundSweep: (sweep) => settings.loginEnded().then(() => apps.whileStopped(sweep)),
     openWorkflow: (f) => workflowOpen(actives.get(f), selections.get(f)),

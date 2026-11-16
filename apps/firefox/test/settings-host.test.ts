@@ -150,6 +150,14 @@ describe("settings host", () => {
     await vi.waitFor(() => expect(ended).toBe(true));
   });
 
+  it("loginEnded waits at most maxMs, then ends a sign-in that never finishes", async () => {
+    const { h, alive } = setup();
+    expect(await h["settings.login"]!({ id: "codex" })).toMatchObject({ kind: "device" });
+    await vi.waitFor(() => expect(alive()).toEqual([true]));
+    await h.loginEnded(100);
+    await vi.waitFor(() => expect(alive()).toEqual([false]));
+  });
+
   it("login refused while the agent's network cannot be secured: the CLI never runs", async () => {
     const { h, o } = setup();
     o.workshop.secureNetwork.mockRejectedValueOnce(new Error("no rules"));
