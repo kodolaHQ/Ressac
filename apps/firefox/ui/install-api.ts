@@ -26,6 +26,8 @@ if (params.has("site")) {
   const win = window.parent.ressacWindow;
   if (!win) throw new Error("Ressac UI loaded before its window controller");
   window.ressac = createApi(win);
+  // Its aura and the window's key and mouse listeners: the controller does not see this frame's load.
+  win.uiStarted(window);
 }
 
 // Gecko's macOS widget still fires keypress for a printable key whose keydown was consumed when the document is in the
