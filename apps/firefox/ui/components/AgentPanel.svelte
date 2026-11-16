@@ -86,7 +86,7 @@
     id === "codex" ? browserState.value?.settings.codexEngine.kind === "chatgpt" : id === "claude" ? (browserState.value?.settings.claudeEngine.kind ?? "subscription") === "subscription" : true;
   const signedOutCodex = $derived(current === "codex" && onSubscription("codex") && account("codex")?.state === "logged-out");
   const profileChoice = $derived(profiles.length >= 2);
-  // Every profile: the kernel applies the mode to any profile whose program is claude or codex (the panel does not know the program).
+  // Every profile: Navigateur runs only Claude Code and Codex, a custom profile asks for Atelier (the kernel says so).
   const modeChoice = $derived(current !== null);
   const mode = $derived(browserState.value?.settings.agentMode ?? "browser");
   function chooseMode(m: "browser" | "workshop") {

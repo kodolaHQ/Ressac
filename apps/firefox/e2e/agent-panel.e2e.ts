@@ -161,8 +161,13 @@ it("a second profile in .ressac/profiles appears in the panel; choosing it resta
       "Claude Code (non connecté)",
       "Codex (non connecté)",
     ]);
-    await inUi(m, "const s = doc.querySelector(arguments[0]); s.value = 'autre'; s.dispatchEvent(new ui.Event('change', { bubbles: true }));", [select], "agent");
+    // A custom profile runs only in Atelier mode.
+    await click(m, '[data-testid="agent-mode-workshop"]', { frame: "agent" });
     await waitFor(m, "return 1", () => read(pidFile) !== "" && read(pidFile) !== first, 20_000);
+    const workshop = read(pidFile);
+    await terminalShows("fake agent ready>");
+    await inUi(m, "const s = doc.querySelector(arguments[0]); s.value = 'autre'; s.dispatchEvent(new ui.Event('change', { bubbles: true }));", [select], "agent");
+    await waitFor(m, "return 1", () => read(pidFile) !== "" && read(pidFile) !== workshop, 20_000);
     expect(JSON.parse(read(join(dataDir, "workspace", "fake-agent-args.json")))).toEqual(["autre-agent", "--mcp", expect.stringMatching(SESSION_CONFIG)]);
     await terminalShows("fake agent ready>");
     expect(await inUi(m, "return doc.querySelector('[data-testid=\"agent-panel\"]').textContent", [], "agent")).not.toContain("L'agent s'est arrêté.");

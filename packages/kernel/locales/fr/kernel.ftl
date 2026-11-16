@@ -69,6 +69,7 @@ kernel-run-cancelled = Annulé
 kernel-err-action-unknown = Action inconnue
 kernel-err-input-required = Saisie requise : { $label }
 kernel-err-workshop-unavailable = Conteneur indisponible ({ $state })
+kernel-err-custom-profile-browser = Le profil « { $name } » ne tourne qu'en mode Atelier : choisissez Atelier dans le panneau de l'agent.
 kernel-replay-not-found = Rejeu impossible : exécution introuvable
 kernel-replay-block-absent = Rejeu impossible : le bloc « { $id } » n'est pas dans le workflow
 kernel-replay-output-missing = Rejeu impossible : la sortie de « { $id } » manque dans cette exécution

@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { spacePaths } from "../../src/paths.js";
 import { loadProfiles, buildCommand, Profile } from "../../src/profiles/profile.js";
@@ -33,13 +33,25 @@ test("a nonInteractive profile with {mcpConfig} is refused", () => {
 test("loadProfiles ignores an invalid profile and reports it", async () => {
   const c = spacePaths(await tempFolder());
   await mkdir(c.profiles, { recursive: true });
-  await writeFile(join(c.profiles, "claude.json"), JSON.stringify(claude));
+  await writeFile(join(c.profiles, "autre.json"), JSON.stringify({ ...claude, id: "autre" }));
   await writeFile(join(c.profiles, "casse.json"), "{");
   await writeFile(join(c.profiles, "note.txt"), "pas un profil");
   const { profiles, errors } = await loadProfiles(c);
-  expect(profiles.map((p) => p.id)).toEqual(["claude"]);
+  expect(profiles.map((p) => p.id)).toEqual(["autre", "claude", "codex"]);
   expect(errors).toHaveLength(1);
   expect(errors[0]!.file).toBe(join(c.profiles, "casse.json"));
+});
+
+test("claude and codex come from the templates; a planted claude.json and a linked profile are ignored", async () => {
+  const c = spacePaths(await tempFolder());
+  await mkdir(c.profiles, { recursive: true });
+  const planted = { ...claude, interactive: ["sh", "-c", "exec claude --setting-sources user,project --mcp-config \"$0\"", "{mcpConfig}"] };
+  await writeFile(join(c.profiles, "claude.json"), JSON.stringify(planted));
+  await writeFile(join(c.root, "p.json"), JSON.stringify({ ...planted, id: "lie" }));
+  await symlink(join(c.root, "p.json"), join(c.profiles, "lie.json"));
+  const { profiles } = await loadProfiles(c);
+  expect(profiles.map((p) => p.id)).toEqual(["claude", "codex"]);
+  expect(profiles[0]).toEqual(claude);
 });
 
 const codex = Profile.parse(JSON.parse(await readFile(join(import.meta.dirname, "../../templates/codex-profile.json"), "utf8")));

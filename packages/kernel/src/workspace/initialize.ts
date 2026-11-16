@@ -153,10 +153,6 @@ async function matches(c: SpacePaths, models: string, lang: string, langs: strin
     const known = new Set([...(OLD_TEMPLATES[f] ?? []), ...(await currentHashes(models, langs, f))]);
     pairs.push([localized(models, lang, f), join(c.root, f), known]);
   }
-  pairs.push(
-    [join(models, "agent-profile.json"), join(c.profiles, "claude.json"), OLD_AGENT_PROFILE],
-    [join(models, "codex-profile.json"), join(c.profiles, "codex.json"), OLD_CODEX_PROFILE],
-  );
   if (!existsSync(c.widgets)) {
     const files = new Set([...(await filesOf(join(models, lang, "widgets"))), ...(await filesOf(join(models, FALLBACK, "widgets")))]);
     for (const f of files) pairs.push([localized(models, lang, join("widgets", f)), join(c.widgets, f), undefined]);
@@ -255,19 +251,12 @@ async function swapWidget(c: SpacePaths, models: string, lang: string, langs: st
   return toWrite.map(([, file]) => file);
 }
 
-/** sha256 of old shipped versions of the `CLAUDE.md` and agent profile templates: a copy left as shipped is replaced. */
+/** sha256 of old shipped versions of the `CLAUDE.md` template: a copy left as shipped is replaced. */
 // The old ones only asked the agent to read AGENTS.md: it skipped it when the first message was a task.
 export const OLD_CLAUDE_MD: ReadonlySet<string> = new Set([
   "11baa6aab5848a8fff974dabc5e78e9ccc69b8d2a53a91d23fa9a3f0ca73632b",
   "4690fb441d1ffb32d9e9915a8fc65545f25de774d368c48041e86de43d7a8cab",
 ]);
-export const OLD_AGENT_PROFILE: ReadonlySet<string> = new Set([
-  "2e20e733cc7c9aa30c807e227a6547824afbfc1f6a8ffe0c005cc9f51c039085",
-  "0fb830fc421a5c48f8de042d8e7e722a4e8c4ef38c6c2e4738ac8b389b4f4816",
-  "4bedd62a30db9f408bd8ada622b5bc415cd7ac1fdcd7d9e1b52eda1bc1d2fc35",
-]);
-export const OLD_CODEX_PROFILE: ReadonlySet<string> = new Set<string>();
-
 /** The hashes of every old shipped version of the language texts (browsing-notes.md and the other guides: none, only the current ones). */
 const OLD_TEMPLATES: Readonly<Record<string, ReadonlySet<string>>> = {
   "AGENTS.md": OLD_AGENTS,
@@ -299,7 +288,7 @@ const OLD_TEMPLATES: Readonly<Record<string, ReadonlySet<string>>> = {
  * (`.ressac -> ..`, `harvests -> ~`) that the workshop's mounts and the kernel's writes would follow. `rm` takes a link,
  * never its target.
  */
-async function realInternal(c: SpacePaths): Promise<void> {
+export async function realInternal(c: SpacePaths): Promise<void> {
   if (!(await lstat(c.internal).catch(() => null))?.isDirectory()) await rm(c.internal, { force: true });
   await mkdir(c.internal, { recursive: true });
   for (const e of await readdir(c.internal, { withFileTypes: true })) if (e.isSymbolicLink()) await rm(join(c.internal, e.name), { force: true });
@@ -308,7 +297,7 @@ async function realInternal(c: SpacePaths): Promise<void> {
 /**
  * Creates the workspace from the templates of `locale` (English when the templates lack it), without overwriting an
  * existing file, except a copy left at a shipped version: AGENTS.md, CLAUDE.md, browsing-notes.md and the starter
- * widgets follow the language while untouched, AGENTS.md, CLAUDE.md and the agent profiles are refreshed when old.
+ * widgets follow the language while untouched, AGENTS.md and CLAUDE.md are refreshed when old.
  * Run again on a language change.
  */
 export async function initSpace(c: SpacePaths, locale = FALLBACK, models = DEFAULT_TEMPLATES): Promise<{ created: string[] }> {

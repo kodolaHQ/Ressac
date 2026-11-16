@@ -69,6 +69,7 @@ kernel-run-cancelled = Cancelled
 kernel-err-action-unknown = Unknown action
 kernel-err-input-required = Input required: { $label }
 kernel-err-workshop-unavailable = Container unavailable ({ $state })
+kernel-err-custom-profile-browser = The « { $name } » profile only runs in Workshop mode: choose Workshop in the agent panel.
 kernel-replay-not-found = Replay impossible: run not found
 kernel-replay-block-absent = Replay impossible: block « { $id } » is not in the workflow
 kernel-replay-output-missing = Replay impossible: the output of « { $id } » is missing from this run

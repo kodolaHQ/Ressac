@@ -9,7 +9,7 @@ import { readHome, readOneWidget } from "./home/read.js";
 import type { HomeState, WidgetState, WidgetRead } from "./home/schemas.js";
 import { writeWidgetState, readData, readWidgetState, deleteData } from "./home/data.js";
 import { watchHome } from "./home/watch.js";
-import { loadProfiles, buildCommand } from "./profiles/profile.js";
+import { loadProfiles, buildCommand, SHIPPED_PROFILES } from "./profiles/profile.js";
 import { writeMcpConfig, writeSessionConfig, mcpArgument, MCP_TOKEN_VARIABLE } from "./profiles/config-mcp.js";
 import { Workshop, DEFAULT_DOCKER_FOLDER, type BuildProgress, type WorkshopState } from "./container/workshop.js";
 import { createRunner, type Runner } from "./container/runner.js";
@@ -352,7 +352,7 @@ export async function createKernel(o: {
 
   const run = o.run ?? createRunner(loc);
   const profileId = o.profileId ?? "claude";
-  const profile = (await loadProfiles(paths)).profiles.find((p) => p.id === profileId);
+  const profile = (await loadProfiles(paths, templates)).profiles.find((p) => p.id === profileId);
   if (!profile) throw new Error(`Profil d'agent inconnu : ${profileId}`);
 
   const policy = new AccessPolicy(o.portBuilt ? { portBuilt: o.portBuilt } : {});
@@ -639,8 +639,10 @@ export async function createKernel(o: {
     // Serialized: two quick changes never run two swaps at once (each run reads loc() when it starts, the last one wins).
     relocalize: () => (relocalizing = relocalizing.catch(() => {}).then(() => initSpace(paths, loc(), templates)).then(() => {})),
     async openAgentSession({ cols, rows, window: win, profile: profileChoice, resume, extra, mode = "browser", onBuildProgress }) {
-      const chosen = profileChoice === undefined ? profile : (await loadProfiles(paths)).profiles.find((p) => p.id === profileChoice);
+      const chosen = profileChoice === undefined ? profile : (await loadProfiles(paths, templates)).profiles.find((p) => p.id === profileChoice);
       if (!chosen) throw new Error(`Profil d'agent inconnu : ${profileChoice}`);
+      // A custom profile's command is not held to Navigateur's limits, and one may have been planted while `.ressac` was writable.
+      if (mode === "browser" && !(chosen.id in SHIPPED_PROFILES)) throw new Error(say(loc(), "kernel-err-custom-profile-browser", { name: chosen.name }));
       const first = startup;
       startup = null;
       const attempt = first ? first.then(() => workshop.ensureStarted()) : workshop.ensureStarted();

@@ -661,8 +661,10 @@ describe("openAgentSession with a profile", () => {
       expect(first![first!.indexOf("--append-system-prompt") + 1]).toBe(line("English"));
       expect(second![second!.indexOf("--append-system-prompt") + 1]).toBe(line("French"));
       expect(third).toContain(`developer_instructions=${JSON.stringify(line("French"))}`);
+      await mkdir(n.paths.profiles, { recursive: true });
       await writeFile(join(n.paths.profiles, "custom.json"), JSON.stringify({ id: "custom", name: "Custom", interactive: ["mytool", "{mcpConfig}"], nonInteractive: ["mytool", "{prompt}"], mcpConfig: "claude-json" }));
-      const d = await n.openAgentSession({ cols: 80, rows: 24, window: "f4", profile: "custom" });
+      await expect(n.openAgentSession({ cols: 80, rows: 24, window: "f4", profile: "custom" })).rejects.toThrow("« Custom » ne tourne qu'en mode Atelier");
+      const d = await n.openAgentSession({ cols: 80, rows: 24, window: "f4", profile: "custom", mode: "workshop" });
       const fourth = start.mock.calls[3]![0];
       expect(fourth.join(" ")).not.toMatch(/reply to the user|developer_instructions|append-system-prompt/);
       for (const s of [a, b, c, d]) await s.stop();

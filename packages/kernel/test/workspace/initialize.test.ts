@@ -3,7 +3,7 @@ import { existsSync, lstatSync, readdirSync } from "node:fs";
 import { mkdir, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { spacePaths } from "../../src/paths.js";
-import { initSpace, DEFAULT_TEMPLATES, DISPLAYS_SHIPPED, OLD_AGENTS, OLD_AGENT_PROFILE, OLD_CLAUDE_MD } from "../../src/workspace/initialize.js";
+import { initSpace, DEFAULT_TEMPLATES, DISPLAYS_SHIPPED, OLD_AGENTS, OLD_CLAUDE_MD } from "../../src/workspace/initialize.js";
 import { createHash } from "node:crypto";
 import { DeclarationWidget } from "../../src/home/schemas.js";
 import { DeclarationSite, checkSiteDeclaration } from "../../src/sites/schemas.js";
@@ -30,8 +30,6 @@ const expectedList = [
   "guides/actions.md",
   "guides/site-apps.md",
   ...Object.entries(START_FILES).flatMap(([w, files]) => files.map((f) => `home/widgets/${w}/${f}`)),
-  ".ressac/profiles/claude.json",
-  ".ressac/profiles/codex.json",
 ];
 
 test("creates the full space in an empty folder", async () => {
@@ -62,7 +60,7 @@ test(".ressac swapped for a link, or a link at its top, is made a real folder ag
 });
 
 test("the widgets and actions guides give the caps of the harvest's copy, in each language", async () => {
-  for (const [lang, caps] of [["en", "1 MB per file, 4 MB in all"], ["fr", "1 Mo par fichier"]])
+  for (const [lang, caps] of [["en", "1 MB per file, 4 MB in all"], ["fr", "1 Mo par fichier"]] as const)
     for (const guide of ["widgets.md", "actions.md"]) expect(await readFile(join(DEFAULT_TEMPLATES, lang, "guides", guide), "utf8")).toContain(caps);
 });
 
@@ -133,14 +131,12 @@ test("a deleted starter widget does not come back at the next launch", async () 
   expect(existsSync(join(c.widgets, "meteo"))).toBe(false);
 });
 
-test("AGENTS.md, CLAUDE.md and the profile are recreated if missing", async () => {
+test("AGENTS.md is recreated if missing", async () => {
   const c = spacePaths(await tempFolder());
   await initSpace(c);
   await rm(join(c.root, "AGENTS.md"));
-  await rm(join(c.profiles, "claude.json"));
   await initSpace(c);
   expect(existsSync(join(c.root, "AGENTS.md"))).toBe(true);
-  expect(existsSync(join(c.profiles, "claude.json"))).toBe(true);
 });
 
 test("two simultaneous initializations create each file only once", async () => {
@@ -174,29 +170,21 @@ test("an AGENTS.md edited by the user is kept", async () => {
   expect(await readFile(join(c.root, "AGENTS.md"), "utf8")).toBe(edited);
 });
 
-test("CLAUDE.md and the agent profile are rewritten only when identical to an old template", async () => {
+test("CLAUDE.md is rewritten only when identical to an old template", async () => {
   const c = spacePaths(await tempFolder());
-  const oldProfile = '{"id":"ancien"}\n';
   const oldClaude = "Lis l'ancien AGENTS.md.\n";
-  const added = [sha256(oldProfile), sha256(oldClaude)];
-  (OLD_AGENT_PROFILE as Set<string>).add(added[0]!);
-  (OLD_CLAUDE_MD as Set<string>).add(added[1]!);
+  const added = sha256(oldClaude);
+  (OLD_CLAUDE_MD as Set<string>).add(added);
   try {
-    await mkdir(c.profiles, { recursive: true });
-    await writeFile(join(c.profiles, "claude.json"), oldProfile);
     await writeFile(join(c.root, "CLAUDE.md"), oldClaude);
     await initSpace(c, "fr");
-    expect(await readFile(join(c.profiles, "claude.json"), "utf8")).toBe(await readFile(join(DEFAULT_TEMPLATES, "agent-profile.json"), "utf8"));
     expect(await readFile(join(c.root, "CLAUDE.md"), "utf8")).toBe(await readFile(join(FR, "CLAUDE.md"), "utf8"));
     // edited by the user: kept
-    await writeFile(join(c.profiles, "claude.json"), '{"id":"claude","mine":true}');
     await writeFile(join(c.root, "CLAUDE.md"), "Mes règles.\n");
     await initSpace(c, "en");
-    expect(await readFile(join(c.profiles, "claude.json"), "utf8")).toBe('{"id":"claude","mine":true}');
     expect(await readFile(join(c.root, "CLAUDE.md"), "utf8")).toBe("Mes règles.\n");
   } finally {
-    (OLD_AGENT_PROFILE as Set<string>).delete(added[0]!);
-    (OLD_CLAUDE_MD as Set<string>).delete(added[1]!);
+    (OLD_CLAUDE_MD as Set<string>).delete(added);
   }
 });
 
@@ -210,21 +198,7 @@ test("initSpace creates browsing-notes.md and never overwrites it", async () => 
   expect(await readFile(notes, "utf8")).toBe("my lessons\n");
 });
 
-test("a profile left at the previous shipped version is replaced", async () => {
-  expect(OLD_AGENT_PROFILE.has("4bedd62a30db9f408bd8ada622b5bc415cd7ac1fdcd7d9e1b52eda1bc1d2fc35")).toBe(true);
-  const c = spacePaths(await tempFolder());
-  await mkdir(c.profiles, { recursive: true });
-  await writeFile(
-    join(c.profiles, "claude.json"),
-    '{\n  "id": "claude",\n  "name": "Claude Code",\n  "interactive": ["claude", "--dangerously-skip-permissions", "--mcp-config", "{mcpConfig}"],\n  "resume": ["claude", "--dangerously-skip-permissions", "--continue", "--mcp-config", "{mcpConfig}"],\n  "nonInteractive": ["claude", "--dangerously-skip-permissions", "-p", "{prompt}"],\n  "mcpConfig": "claude-json"\n}\n',
-  );
-  expect(sha256(await readFile(join(c.profiles, "claude.json")))).toBe("4bedd62a30db9f408bd8ada622b5bc415cd7ac1fdcd7d9e1b52eda1bc1d2fc35");
-  await initSpace(c);
-  expect(await readFile(join(c.profiles, "claude.json"), "utf8")).toBe(await readFile(join(DEFAULT_TEMPLATES, "agent-profile.json"), "utf8"));
-});
-
-test("the profile shipped before the English formats (profil-claude.json) is a known old template", () => {
-  expect(OLD_AGENT_PROFILE.has("2e20e733cc7c9aa30c807e227a6547824afbfc1f6a8ffe0c005cc9f51c039085")).toBe(true);
+test("the CLAUDE.md and AGENTS.md shipped before the English formats are known old templates", () => {
   expect(OLD_CLAUDE_MD.has("11baa6aab5848a8fff974dabc5e78e9ccc69b8d2a53a91d23fa9a3f0ca73632b")).toBe(true);
   // the AGENTS.md shipped before the English formats
   expect(OLD_AGENTS.has("1adea27921eb609aca3b73c58b690fe912c78a3eeba08a4c930f400862b6be36")).toBe(true);
@@ -332,23 +306,6 @@ test("a starter display modified by the user is left alone", async () => {
   const { created: crees } = await initSpace(c, "fr");
   expect(await readFile(join(c.widgets, "meteo", "display.html"), "utf8")).toBe(modified);
   expect(crees).toEqual([]);
-});
-
-test("a space with only the old claude.json gets codex.json and an updated claude.json; edited ones are kept", async () => {
-  const c = spacePaths(await tempFolder());
-  await mkdir(c.profiles, { recursive: true });
-  // The profile shipped before `resume` (hash 0fb830fc...).
-  const shipped = '{\n  "id": "claude",\n  "name": "Claude Code",\n  "interactive": ["claude", "--dangerously-skip-permissions", "--mcp-config", "{mcpConfig}"],\n  "nonInteractive": ["claude", "--dangerously-skip-permissions", "-p", "{prompt}"],\n  "mcpConfig": "claude-json"\n}\n';
-  expect(OLD_AGENT_PROFILE.has(sha256(shipped))).toBe(true);
-  await writeFile(join(c.profiles, "claude.json"), shipped);
-  await initSpace(c);
-  expect(existsSync(join(c.profiles, "codex.json"))).toBe(true);
-  expect(await readFile(join(c.profiles, "claude.json"), "utf8")).toContain("--continue");
-  await writeFile(join(c.profiles, "codex.json"), '{"id":"codex","mine":true}');
-  await writeFile(join(c.profiles, "claude.json"), '{"id":"claude","mine":true}');
-  await initSpace(c);
-  expect(await readFile(join(c.profiles, "codex.json"), "utf8")).toBe('{"id":"codex","mine":true}');
-  expect(await readFile(join(c.profiles, "claude.json"), "utf8")).toBe('{"id":"claude","mine":true}');
 });
 
 // ——— Templates per language and the swap on a language change ———
