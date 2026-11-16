@@ -5,6 +5,7 @@ import { validFolder } from "../applications/manifest.js";
 import { CONTAINER_PATH, KERNEL_ROOT, type SpacePaths } from "../paths.js";
 import type { Owner } from "../workflows/schema.js";
 import { say } from "../i18n.js";
+import { portRange } from "./ports.js";
 import { createRunner, type RunResult, type Runner } from "./runner.js";
 
 export const CONTAINER_NAME = "ressac-workshop";
@@ -25,9 +26,7 @@ export const VOLUME_HOME = "webaios-home";
  * Read on every call, like containerName().
  */
 export function containerPortRange(): [number, number] {
-  const m = /^(\d{4,5})-(\d{4,5})$/.exec(process.env.RESSAC_CONTAINER_PORTS ?? "");
-  const [min, max] = m ? [Number(m[1]), Number(m[2])] : [0, 0];
-  return min >= 1024 && max <= 65535 && min <= max ? [min, max] : [5280, 5299];
+  return portRange(process.env.RESSAC_CONTAINER_PORTS);
 }
 /** The docker probes must not block if Docker Desktop is stuck at startup. */
 const PROBE_DELAY_MS = 30_000;

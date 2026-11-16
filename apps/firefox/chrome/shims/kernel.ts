@@ -1,6 +1,7 @@
 // Pure helpers of the kernel, re-exported from their files (never from index.ts, which pulls in Node-only code).
 export * from "../../../../packages/kernel/src/mcp/bridge";
 export { localUrl } from "../../../../packages/kernel/src/workflows/access";
+export { portRange } from "../../../../packages/kernel/src/container/ports";
 export { relativeUrl, matchesPattern, hostInSite, tweaksFor } from "../../../../packages/kernel/src/sites/urls";
 // Copied: it lives in mcp/server.ts, which imports the MCP SDK.
 export const navigationOutsideSite = (url: string) => `L'appli de site ne va que sur ses domaines : ${url} refusée.`;

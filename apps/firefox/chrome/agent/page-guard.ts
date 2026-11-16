@@ -1,5 +1,7 @@
 // Pages the agent serves on its container's ports run code the agent wrote, maybe from what it read: they reach only
-// local addresses and a few known CDNs, so that such a page cannot send what it holds to the web.
+// the agent's own ports on the loopback and a few known CDNs, so that such a page cannot send what it holds to the web,
+// nor through another local service (Ollama pulls a model from any registry it is given).
+import { portRange } from "../shims/kernel";
 import { localLiteral } from "./local-guard";
 
 const CDN_HOSTS = new Set(["fonts.googleapis.com", "fonts.gstatic.com", "cdnjs.cloudflare.com", "cdn.jsdelivr.net", "unpkg.com"]);
@@ -20,25 +22,25 @@ function agentPage(url: string, [min, max]: [number, number]): boolean {
   return port >= min && port <= max;
 }
 
+/** The machine itself by its literal name (not a LAN address, nor `[::ffff:8.8.8.8]`, which is any IPv4 host). */
+const loopback = (host: string): boolean => localLiteral(host) && (host === "localhost" || host === "[::1]" || /^127\.\d+\.\d+\.\d+$/.test(host));
+
 /**
- * A request `to`, made while the top-level page is `from`: an agent page's requests stay local, or GET a known CDN;
+ * A request `to`, made while the top-level page is `from`: an agent page's requests stay on the agent's own ports, or GET a known CDN;
  * its top-level navigation leaves only with a user activation on the page (a click, a key press).
  */
 export function agentPageDecision(o: { from: string; to: string; document: boolean; gesture: boolean; method: string }, ports: [number, number]): "allow" | "cancel" {
   if (!agentPage(o.from, ports)) return "allow";
   const to = parse(o.to);
   if (!to) return "cancel";
-  if (localLiteral(to.hostname)) return "allow";
+  if (loopback(to.hostname) && agentPage(o.to, ports)) return "allow";
   if (o.document && o.gesture) return "allow";
   return CDN_HOSTS.has(to.hostname) && o.method === "GET" ? "allow" : "cancel";
 }
 
-/** The container's ports, as the host reads them (host/host.ts defaults to 5300-5319, containerPortRange parses). */
-export function agentPorts(): [number, number] {
-  const m = /^(\d{4,5})-(\d{4,5})$/.exec(Services.env.get("RESSAC_CONTAINER_PORTS"));
-  const [min, max] = m ? [Number(m[1]), Number(m[2])] : [0, 0];
-  return min >= 1024 && max <= 65535 && min <= max ? [min, max] : [5300, 5319];
-}
+/** The container's ports from the variable's raw value, as the kernel reads them; unset is host/host.ts's default. */
+export const agentPortRange = (raw: string): [number, number] => portRange(raw || "5300-5319");
+export const agentPorts = (): [number, number] => agentPortRange(Services.env.get("RESSAC_CONTAINER_PORTS"));
 
 let observing = false;
 
@@ -46,12 +48,15 @@ let observing = false;
 const principalSpec = (p: any): string => (p?.isNullPrincipal ? p.precursorPrincipal : p)?.spec ?? "";
 
 /**
- * Before any request connects (http-on-modify-request). A top-level load is judged by the page that started it (its
+ * Before any request connects (http-on-modify-request). The channel's own DNS prefetch would come first: it is off
+ * (network.dns.disablePrefetch, ressac.js; e2e/agent-page-guard.e2e.ts checks no name is resolved). A top-level load is judged by the page that started it (its
  * triggering principal). Any other request by its own principals (a service worker has no browsing context; a beacon
  * sent on pagehide may run under the next page) and by the tab's top-level page, its address and its principal (an
  * about:blank window an agent page opened and writes into has the agent page's principal). What Ressac itself loads
  * (the system principal: the address bar, its own fetches) is never judged. The port range is read once.
  * shortcut: WebRTC is not guarded (no HTTP request); upgrade if agent pages must never open a socket to the web.
+ * shortcut: a WebSocket resolves its host (WebSocketChannel::DoAdmissionDNS) before its HTTP channel exists, so the name
+ * reaches DNS before the cancel; closing it needs an engine patch or a content policy in each content process.
  */
 export function installAgentPageGuard(ports: () => [number, number]): void {
   if (observing) return;
