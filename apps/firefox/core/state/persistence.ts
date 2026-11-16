@@ -190,10 +190,9 @@ export async function loadSession(folder: string, kept?: (path: string) => void)
       tabs: Object.fromEntries(Object.entries(parsed.tabs).map(([id, o]) => [id, { ...o, ...VOLATILE }])),
     };
   } catch {
+    // Neither moved nor copied: the folder takes no write, so no save will overwrite it either.
     const name = (await setAside(path, "corrupt")) ?? (await keepCopy(path, text));
-    // Neither moved nor copied: starting empty would overwrite it at the first save, so the start fails instead.
-    if (!name) throw new Error(`[session] ${path} is unreadable and could not be kept aside`);
-    kept?.(name);
+    if (name) kept?.(name);
     return known(initialState(), text);
   }
 }

@@ -585,7 +585,7 @@ test("an icon saved over 16 KB loads as none; a small one is kept", async () => 
   expect([loaded.tabs[a!]!.favicon, loaded.tabs[b!]!.favicon]).toEqual([null, "data:image/png;base64,AAAA"]);
 });
 
-test("a corrupt session that cannot be renamed aside is copied aside, never left for the next save to overwrite", async () => {
+test("a corrupt session that cannot be renamed aside is copied aside; if even that fails, it starts empty and leaves the file", async () => {
   const d = folder();
   writeFileSync(join(d, "session.json"), "{ abîmé");
   const spy = vi.spyOn(fsp, "rename").mockRejectedValue(new Error("EBUSY"));
@@ -594,7 +594,8 @@ test("a corrupt session that cannot be renamed aside is copied aside, never left
     expect(set_aside(d, ".corrupt").map((f) => readFileSync(join(d, f), "utf8"))).toEqual(["{ abîmé"]);
     vi.spyOn(fsp, "writeFile").mockRejectedValueOnce(new Error("EROFS"));
     rmSync(join(d, set_aside(d, ".corrupt")[0]!));
-    await expect(loadSession(d)).rejects.toThrow(/could not be kept aside/);
+    expect((await loadSession(d)).settings.onboarded).toBe(true);
+    expect(readFileSync(join(d, "session.json"), "utf8")).toBe("{ abîmé");
   } finally {
     vi.restoreAllMocks();
   }
