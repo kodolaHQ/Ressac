@@ -6,7 +6,7 @@
   import { api, appState } from "../state.svelte";
   import { openMenu } from "./menu.svelte";
   import { t } from "../i18n.svelte";
-  import { losesConnections, PROFILE_TO_CHOOSE } from "./spaceProfiles";
+  import { deletionLosses, PROFILE_TO_CHOOSE } from "./spaceProfiles";
   import { spaceSettings } from "./spaceSettings.svelte";
 
   let { window: win }: { window: WindowState } = $props();
@@ -21,13 +21,13 @@
     void activeSpace;
     nav.querySelector('[aria-current="true"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
   });
-  /** Space to delete awaiting confirmation (it contains tabs, or it takes sign-ins with it). */
-  let toDelete = $state<{ space: Space; tabs: number; logins: boolean } | null>(null);
+  /** Space to delete awaiting confirmation (it contains tabs or pinned sites, or it takes sign-ins with it). */
+  let toDelete = $state<({ space: Space } & NonNullable<ReturnType<typeof deletionLosses>>) | null>(null);
 
   function remove(space: Space) {
     const n = Object.values(appState.value?.tabs ?? {}).filter((o) => o.spaceId === space.id).length;
-    const logins = losesConnections(appState.value?.spaces ?? [], space);
-    if (n > 0 || logins) toDelete = { space: space, tabs: n, logins };
+    const lost = deletionLosses(appState.value?.spaces ?? [], space, n);
+    if (lost) toDelete = { space, ...lost };
     else api.dispatch({ type: "deleteSpace", id: space.id });
   }
 
@@ -40,10 +40,11 @@
 </script>
 
 {#if toDelete}
-  {@const { space: space, tabs: tabs, logins: connexions } = toDelete}
+  {@const { space: space, tabs: tabs, logins: connexions, pinned, folders } = toDelete}
   <div class="confirmation" role="alertdialog" aria-label={t("sidebar-space-delete-title")}>
     <p>
       {#if tabs > 0}{t("sidebar-space-delete-tabs", { name: space.name, tabs })}{:else}{t("sidebar-space-delete", { name: space.name })}{/if}
+      {#if pinned > 0 || folders > 0}{t("sidebar-space-delete-pinned", { pinned, folders })}{/if}
       {#if connexions}{t("sidebar-space-delete-logins")}{/if}
     </p>
     <div class="buttons">

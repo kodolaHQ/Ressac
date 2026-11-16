@@ -46,6 +46,14 @@ sidebar-space-delete-tabs =
         [one] { $tabs } onglet
        *[other] { $tabs } onglets
     } ?
+sidebar-space-delete-pinned =
+    { $pinned ->
+        [one] { $pinned } site épinglé
+       *[other] { $pinned } sites épinglés
+    } et { $folders ->
+        [one] { $folders } dossier
+       *[other] { $folders } dossiers
+    } seront perdus.
 sidebar-space-delete-logins = Les connexions de cet espace seront perdues.
 sidebar-space-icon = Icône
 sidebar-space-icons = Icônes proposées

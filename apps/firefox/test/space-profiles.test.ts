@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
 import type { Space } from "../shared/model";
-import { choiceLosesConnections, profileOptions, losesConnections, PROFILE_TO_CHOOSE } from "../ui/components/spaceProfiles";
+import { format } from "../shared/i18n";
+import { choiceLosesConnections, deletionLosses, profileOptions, losesConnections, PROFILE_TO_CHOOSE } from "../ui/components/spaceProfiles";
 
 const space = (id: string, name: string, profile: string): Space => ({ id, name: name, icon: "📁", pinned: [], folders: [], private: false, profile: profile, aura: "aube" });
 const profiles = [{ id: "default" }, { id: "p1" }, { id: "p2" }];
@@ -64,4 +65,13 @@ test("new space: no preselected profile, and « à choisir » is never an option
   expect(PROFILE_TO_CHOOSE).toBe("");
   expect(profileOptions(spaces, profiles, null, "fr").map((o) => o.value)).not.toContain(PROFILE_TO_CHOOSE);
   expect(choiceLosesConnections(spaces, null, PROFILE_TO_CHOOSE)).toBe(false);
+});
+
+test("deleting a space with pinned sites or folders but no open tab asks first, and says how many", () => {
+  const a = space("a", "Perso", "default");
+  const b = { ...space("b", "Lectures", "default"), pinned: [{ id: "f1", url: "https://a.example/", title: "A", favicon: null, folder: "d1" }], folders: [{ id: "d1", name: "Presse", collapsed: false }] };
+  expect(deletionLosses([a, b], b, 0)).toEqual({ tabs: 0, logins: false, pinned: 1, folders: 1 });
+  expect(deletionLosses([a, b], a, 0)).toBeNull();
+  expect(format("fr", "sidebar-space-delete-pinned", { pinned: 3, folders: 1 })).toBe("3 sites épinglés et 1 dossier seront perdus.");
+  expect(format("en", "sidebar-space-delete-pinned", { pinned: 1, folders: 2 })).toBe("1 pinned site and 2 folders will be lost.");
 });

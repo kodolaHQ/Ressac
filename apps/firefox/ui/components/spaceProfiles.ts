@@ -34,6 +34,12 @@ export function losesConnections(spaces: Space[], space: Space): boolean {
   return space.profile !== DEFAULT_PROFILE && !spaces.some((e) => e.id !== space.id && e.profile === space.profile);
 }
 
+/** What deleting `space` (with `tabs` open tabs) loses, or null when it loses nothing and needs no confirmation. */
+export function deletionLosses(spaces: Space[], space: Space, tabs: number): { tabs: number; logins: boolean; pinned: number; folders: number } | null {
+  const lost = { tabs, logins: losesConnections(spaces, space), pinned: space.pinned.length, folders: space.folders.length };
+  return lost.tabs > 0 || lost.logins || lost.pinned > 0 || lost.folders > 0 ? lost : null;
+}
+
 /** Setting space `espaceId` to profile `choix` erases its sign-ins: it leaves a profile it was the last one on. */
 export function choiceLosesConnections(spaces: Space[], spaceId: SpaceId | null, choice: ProfileChoice): boolean {
   const space = spaces.find((e) => e.id === spaceId);

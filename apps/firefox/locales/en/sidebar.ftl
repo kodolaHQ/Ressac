@@ -46,6 +46,14 @@ sidebar-space-delete-tabs =
         [one] { $tabs } tab
        *[other] { $tabs } tabs
     }?
+sidebar-space-delete-pinned =
+    { $pinned ->
+        [one] { $pinned } pinned site
+       *[other] { $pinned } pinned sites
+    } and { $folders ->
+        [one] { $folders } folder
+       *[other] { $folders } folders
+    } will be lost.
 sidebar-space-delete-logins = This space's sign-ins will be lost.
 sidebar-space-icon = Icon
 sidebar-space-icons = Suggested icons
