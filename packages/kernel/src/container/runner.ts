@@ -62,7 +62,7 @@ export const toolsPath = (): string => [process.env.PATH ?? "", ...TOOLS_FOLDERS
 
 /** A runner whose own texts (timeout, cancel, command not found) are in the language of `locale()`. */
 export const createRunner = (locale: () => string = () => "en"): Runner => (command, args, opts = {}) => {
-  if (opts.signal) return runCancelable(command, args, opts.signal, opts.delayMs, locale);
+  if (opts.signal) return runCancelable(command, args, opts.signal, opts.delayMs, locale, opts.input);
   return new Promise((resolve) => {
     const PATH = toolsPath();
     const child = execFile(
@@ -92,10 +92,12 @@ export const defaultRunner: Runner = createRunner();
  * compilations; execFile cannot create one). Cancelling, or exceeding the timeout, sends SIGTERM to the group, then
  * SIGKILL after 2 s if it is still alive; if Node exits before, the group is killed at exit.
  */
-function runCancelable(command: string, args: string[], signal: AbortSignal, delayMs: number | undefined, locale: () => string): Promise<RunResult> {
+function runCancelable(command: string, args: string[], signal: AbortSignal, delayMs: number | undefined, locale: () => string, input?: string): Promise<RunResult> {
   return new Promise((resolve) => {
     if (signal.aborted) return resolve({ code: CODE_CANCELLED, stdout: "", stderr: say(locale(), "kernel-run-cancelled") });
-    const child = spawn(command, args, { env: { ...process.env, PATH: toolsPath() }, stdio: ["ignore", "pipe", "pipe"], detached: true });
+    const child = spawn(command, args, { env: { ...process.env, PATH: toolsPath() }, stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"], detached: true });
+    // A command that exits without reading its input closes the pipe: EPIPE is not an error here.
+    if (input !== undefined) child.stdin?.on("error", () => {}).end(input);
     const pid = child.pid;
     if (pid !== undefined) keepGroup(pid);
     const sorties = { stdout: "", stderr: "" };

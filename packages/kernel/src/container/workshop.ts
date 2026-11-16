@@ -7,7 +7,7 @@ import { CONTAINER_PATH, KERNEL_ROOT, type SpacePaths } from "../paths.js";
 import type { Owner } from "../workflows/schema.js";
 import { say } from "../i18n.js";
 import { portRange } from "./ports.js";
-import { createRunner, type RunResult, type Runner } from "./runner.js";
+import { CODE_TIMEOUT_EXCEEDED, createRunner, type RunResult, type Runner } from "./runner.js";
 import { inFolder, listFolder, readFiles, type ReadFiles } from "../workspace/confined.js";
 import { realInternal } from "../workspace/initialize.js";
 
@@ -357,7 +357,7 @@ export class Workshop {
       `cd /; rm -rf "$d" ${f}; exit $c`,
     ].join("\n");
     const r = await this.launch(["exec", "-i", "-u", "node", "-w", "/", "-e", `${VARIABLE_SESSION}=${id}`, containerName(), "sh", "-c", script, "ressac-write", id, ...argv], o.delayMs, o.input, o.signal);
-    if (o.signal.aborted) await this.launch(["exec", containerName(), "sh", "-c", sessionStopScript(f, id)], PROBE_DELAY_MS);
+    if (o.signal.aborted || r.code === CODE_TIMEOUT_EXCEEDED) await this.launch(["exec", containerName(), "sh", "-c", sessionStopScript(f, id)], PROBE_DELAY_MS);
     return r;
   }
 

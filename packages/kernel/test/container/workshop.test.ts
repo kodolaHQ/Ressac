@@ -836,6 +836,14 @@ describe("execWrite", () => {
     expect(stop).toContain("kill -$1");
   });
 
+  test("a timeout also runs the in-container stop", async () => {
+    const { run, calls } = fakeRunner([[/ressac-write/, { code: 124 }]]);
+    const workshop = new Workshop({ paths: paths, docker: "docker", run });
+    const r = await workshop.execWrite(["claude"], { input: "p", signal: ac().signal, delayMs: 1 });
+    expect(r.code).toBe(124);
+    expect(calls.at(-1)!.args.at(-1)).toContain("kill -$1");
+  });
+
   test("no Docker: code 1", async () => {
     const r = await new Workshop({ paths: paths, docker: null }).execWrite(["x"], { input: "", signal: ac().signal, delayMs: 1 });
     expect(r.code).toBe(1);

@@ -72,3 +72,15 @@ test("the runner's own texts follow its locale getter", async () => {
   expect((await fr("sleep", ["5"], { signal })).stderr).toBe("Annulé");
   expect((await en("sleep", ["5"], { signal })).stderr).toBe("Cancelled");
 });
+
+test("input with a signal reaches the command's stdin", async () => {
+  const r = await defaultRunner("cat", [], { input: "hello", signal: new AbortController().signal });
+  expect(r).toEqual({ code: 0, stdout: "hello", stderr: "" });
+});
+
+test("input with a signal: cancelling a running command gives CODE_CANCELLED", async () => {
+  const c = new AbortController();
+  const p = defaultRunner("sh", ["-c", "cat; sleep 5"], { input: "x", signal: c.signal });
+  setTimeout(() => c.abort(), 200);
+  expect((await p).code).toBe(CODE_CANCELLED);
+});
