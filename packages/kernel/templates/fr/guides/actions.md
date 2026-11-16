@@ -8,6 +8,8 @@ Les actions n'existent pas dans un espace privé.
 Une action est un dossier `/workspace/actions/<id>/` (`<id>` : minuscules, chiffres et tirets, 60 au plus) :
 `action.json`, `workflow.json` et les `.mjs` de ses blocs `code` (même format que le workflow d'un widget :
 mêmes blocs, mêmes règles, mêmes gabarits, voir « Workflows des widgets » dans `/workspace/guides/widgets.md`).
+Chaque exécution reçoit une copie des fichiers du dossier, sans ses sous-dossiers : 1 Mo par fichier, 4 Mo en tout,
+sinon elle échoue ; garde les exemples et les captures ailleurs.
 
 `action.json` (jamais écrit par Ressac, que toi et l'utilisateur) :
 `{ "name": "Tickets GitLab", "description": "…", "keywords": ["gitlab", "tickets"], "input": { "label": "Recherche" }, "sources": { "account": [], "public": [], "web": false }, "layout": "…", "maxDurationMinutes": 5 }`

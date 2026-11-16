@@ -8,6 +8,8 @@ Actions do not exist in a private space.
 An action is a `/workspace/actions/<id>/` folder (`<id>`: lowercase letters, digits and hyphens, 60 at most):
 `action.json`, `workflow.json` and the `.mjs` files of its `code` blocks (same format as a widget's workflow:
 same blocks, same rules, same templates, see « Widget workflows » in `/workspace/guides/widgets.md`).
+Each run gets a copy of the folder's top-level files (no subfolders): 1 MB per file, 4 MB in all, otherwise the
+run fails; keep samples and captures elsewhere.
 
 `action.json` (never written by Ressac, only by you and the user):
 `{ "name": "GitLab tickets", "description": "…", "keywords": ["gitlab", "tickets"], "input": { "label": "Search" }, "sources": { "account": [], "public": [], "web": false }, "layout": "…", "maxDurationMinutes": 5 }`

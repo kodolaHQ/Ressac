@@ -61,6 +61,11 @@ test(".ressac swapped for a link, or a link at its top, is made a real folder ag
   expect(readdirSync(outside)).toEqual(["secret"]);
 });
 
+test("the widgets and actions guides give the caps of the harvest's copy, in each language", async () => {
+  for (const [lang, caps] of [["en", "1 MB per file, 4 MB in all"], ["fr", "1 Mo par fichier"]])
+    for (const guide of ["widgets.md", "actions.md"]) expect(await readFile(join(DEFAULT_TEMPLATES, lang, "guides", guide), "utf8")).toContain(caps);
+});
+
 test("never overwrites an existing file", async () => {
   const c = spacePaths(await tempFolder());
   await writeFile(join(c.root, "AGENTS.md"), "perso");

@@ -140,6 +140,8 @@ afficher « Workflow invalide : … » au widget, qui garde ses données.
 - **`code`** : seulement quand aucun bloc ne convient (mettre en forme les données pour
   `display.html`, par exemple). Écris un fichier `.mjs` dans le dossier du widget (nom simple,
   pas de chemin) : `export default async (input, ressac) => output`, avec l'API `ressac` plus bas.
+  Chaque exécution reçoit une copie des fichiers du widget, sans ses sous-dossiers : 1 Mo par fichier,
+  4 Mo en tout, sinon elle échoue ; garde les exemples et les captures ailleurs.
   La sortie doit être du JSON (objets, listes, textes, nombres, booléens, `null` : pas de fonction,
   de `Map` ni de `undefined` seul), sinon le bloc échoue. Il tourne dans le même conteneur sans
   réseau. Le gros du travail reste dans les autres blocs.

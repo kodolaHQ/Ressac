@@ -279,7 +279,12 @@ const OLD_TEMPLATES: Readonly<Record<string, ReadonlySet<string>>> = {
     // Before the card in front of harvest_widget.
     "6e4dc72d2c29b5e7815bb31d7c2c3b1ce12896dc563ede9f3ca0ef3247ce7223",
     "dc07b4c371b3662618656495fd2ed1868bc0da37f9a27c2a775ec22cbdc57599",
+    // Before the caps of the harvest's copy: fr, en.
+    "c910bac82910915de8a5195d408ee02f820194ce1a651a34aa042205808d4aa3",
+    "252bd9b2eeb4ac280e68b49a833ffcad0ece1bb2f67fb2343d9ff3dffaa6caa7",
   ]),
+  // Before the caps of the harvest's copy: fr, en.
+  "guides/actions.md": new Set(["f2e7637484158ec1c8747311bf6c03c303fcf58f9afcfcf67678c29b0bf9f43b", "24cfeffac0bbeada14f8fa7dae02a89db6a89f41ed9ee360baffb8661bd7aa29"]),
   // Before it declared `web` (it reads each article's own site): fr, en.
   "widgets/actus-tech/widget.json": new Set([
     "4ff80b95ebfed67f690c6efd116d513e8ecabd5de2762bcba06e4cc52c2bc985",
@@ -289,12 +294,6 @@ const OLD_TEMPLATES: Readonly<Record<string, ReadonlySet<string>>> = {
   "guides/extensions.md": new Set(["ab3d59cd7ee04a33e9c29ee43a1bd086d16ca5b038e582b8fb2f756b7135ac9b", "bb0ef51c03aaa9bfc5788348376f42aef8555eb35536f429b30ad7cc92844436"]),
 };
 
-/**
- * Creates the workspace from the templates of `locale` (English when the templates lack it), without overwriting an
- * existing file, except a copy left at a shipped version: AGENTS.md, CLAUDE.md, browsing-notes.md and the starter
- * widgets follow the language while untouched, AGENTS.md, CLAUDE.md and the agent profiles are refreshed when old.
- * Run again on a language change.
- */
 /**
  * `.ressac` as a real folder with no link at its top. Until 0.1.8 the agent could rename it and plant a link
  * (`.ressac -> ..`, `harvests -> ~`) that the workshop's mounts and the kernel's writes would follow. `rm` takes a link,
@@ -306,6 +305,12 @@ async function realInternal(c: SpacePaths): Promise<void> {
   for (const e of await readdir(c.internal, { withFileTypes: true })) if (e.isSymbolicLink()) await rm(join(c.internal, e.name), { force: true });
 }
 
+/**
+ * Creates the workspace from the templates of `locale` (English when the templates lack it), without overwriting an
+ * existing file, except a copy left at a shipped version: AGENTS.md, CLAUDE.md, browsing-notes.md and the starter
+ * widgets follow the language while untouched, AGENTS.md, CLAUDE.md and the agent profiles are refreshed when old.
+ * Run again on a language change.
+ */
 export async function initSpace(c: SpacePaths, locale = FALLBACK, models = DEFAULT_TEMPLATES): Promise<{ created: string[] }> {
   // First, before anything writes under .ressac or a container mounts it.
   await realInternal(c);

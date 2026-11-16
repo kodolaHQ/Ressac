@@ -139,6 +139,8 @@ the widget show « Invalid workflow: … », and it keeps its data.
 - **`code`**: only when no block fits (shaping the data for
   `display.html`, for example). Write a `.mjs` file in the widget's folder (simple name,
   no path): `export default async (input, ressac) => output`, with the `ressac` API below.
+  Each run gets a copy of the widget's top-level files (no subfolders): 1 MB per file, 4 MB in all,
+  otherwise the run fails; keep samples and captures elsewhere.
   The output must be JSON (objects, lists, texts, numbers, booleans, `null`: no function,
   no `Map` and no lone `undefined`), otherwise the block fails. It runs in the same container without
   network. The bulk of the work stays in the other blocks.
