@@ -6,7 +6,7 @@ import type { BrowserState } from "../shared/model";
 import { afterEach, describe, expect, it } from "vitest";
 import { dispatch, state, waitFor, waitReady } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
-import { startServer } from "./server";
+import { startD1Server, startServer } from "./server";
 import { listen } from "./actions";
 import { inPage, openTab } from "./agent-extensions";
 import type { Marionette } from "./marionette";
@@ -36,7 +36,7 @@ afterEach(async () => {
 /** A launch that shows the welcome (unless `welcome` is false: the tests' default, which skips it). Ollama unreachable. */
 async function launch(o: { welcome?: boolean; env?: Record<string, string>; dataDir?: string; firstTimeNotes?: boolean; ai?: boolean } = {}): Promise<void> {
   // The kernel's own decision-model address: the welcome reads the decision model found in Ollama, which an imposed one hides.
-  const env = { RESSAC_OLLAMA_URL: "http://127.0.0.1:9", RESSAC_KEV_URL: undefined, ...(o.welcome === false ? {} : { RESSAC_SKIP_WELCOME: "0" }), ...o.env };
+  const env = { RESSAC_OLLAMA_URL: "http://127.0.0.1:9", RESSAC_KEV_URL: undefined, RESSAC_D1_URL: "http://127.0.0.1:9" /* never the real 1.1 GB */, ...(o.welcome === false ? {} : { RESSAC_SKIP_WELCOME: "0" }), ...o.env };
   w = await launchRessac({ env, prefs: NO_WEB, dataDir: o.dataDir, firstTimeNotes: o.firstTimeNotes, ai: o.ai });
   m = w.marionette;
   await m.setContext("chrome");
@@ -140,7 +140,8 @@ describe("welcome", () => {
     await shown("command-bar");
   });
 
-  it("ollama without its models: « Télécharger en arrière-plan » pulls both, the welcome goes on, a notification says the end", async () => {
+  it("ollama without its models: while the d1 download runs, Gemma is still offered and pulled; the welcome goes on, a notification says the end", async () => {
+    const d1 = await startD1Server({ hold: true });
     const pulled: string[] = [];
     let release!: () => void;
     const gate = new Promise<void>((ok) => (release = ok));
@@ -162,21 +163,25 @@ describe("welcome", () => {
       },
     });
     try {
-      await launch({ env: { RESSAC_OLLAMA_URL: ollama.url } });
+      await launch({ env: { RESSAC_OLLAMA_URL: ollama.url, ...d1.env } });
       await forward(1, 6);
+      await waitFor(m, "return true", () => d1.hits() > 0, 15_000); // the background d1 download (started by « Oui ») holds the pull slot
       await shows("welcome-ollama", "Ollama est prêt.");
       await shows("welcome-models", "Il manque les modèles d'IA locale (plusieurs Go).");
       await press("welcome-pull");
       await shows("welcome-models", "Téléchargement lancé");
+      expect(await inUi(m, `return !!doc.querySelector('[data-testid="welcome-models"]')?.textContent.includes("occupé")`)).toBe(false);
       // The welcome goes on while the host pulls.
       await press("welcome-next");
       await shown("welcome-7");
       release();
+      d1.release();
       const file = join(w!.dataDir, "notifications.jsonl");
       await waitFor(m, "return true", () => existsSync(file) && readFileSync(file, "utf8").includes("L'IA locale est prête"), 15_000);
-      expect(pulled).toEqual(["gemma4:e4b-mlx", "pplx-decider-flash"]);
+      expect(pulled).toEqual(["gemma4:e4b-mlx"]); // d1 came from the background download
     } finally {
       release();
+      await d1.close();
       await ollama.close();
     }
   });

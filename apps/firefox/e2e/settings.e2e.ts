@@ -7,12 +7,14 @@ import { dispatch, state, waitFor, waitReady } from "./firefox";
 import { SHELL_SERVICE } from "../chrome/store/settings";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
-import { startServer } from "./server";
+import { startD1Server, startServer } from "./server";
 import { click, inUi, missingApi, pressKeys, waitUi } from "./ui";
 
 // Plan 44 Task 6: the Settings page (agents, local AI, workshop, privacy, about).
 
 const PAGE = '[data-testid="settings-page"]';
+// Nothing listens there: the d1 download Ressac starts with AI fails at once, never the real 1.1 GB.
+const DEAD = "http://127.0.0.1:9";
 const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const activeTab = (s: BrowserState) => s.tabs[s.windows[0]!.active[s.windows[0]!.activeSpace]!];
@@ -21,7 +23,7 @@ let server: Awaited<ReturnType<typeof startServer>>;
 beforeAll(async () => {
   server = await startServer({
     routes: {
-      "/api/tags": (_req, res) => res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ models: [{ name: "gemma4:e4b-mlx" }, { name: "pplx-decider-flash:latest" }] })),
+      "/api/tags": (_req, res) => res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ models: [{ name: "gemma4:e4b-mlx" }] })),
     },
   });
 });
@@ -41,7 +43,7 @@ afterEach(async () => {
 /** Launches with `files` written under the workspace (RESSAC_ROOT). Ollama is unreachable unless the test points it elsewhere. */
 async function launch(env: Record<string, string> = {}, files: Record<string, string> = {}): Promise<void> {
   // The kernel's own decision-model address: these tests read the decision model found in Ollama, which an imposed one hides.
-  w = await launchRessac({ env: { RESSAC_OLLAMA_URL: "http://127.0.0.1:9", RESSAC_KEV_URL: undefined, ...env } });
+  w = await launchRessac({ env: { RESSAC_OLLAMA_URL: DEAD, RESSAC_KEV_URL: undefined, RESSAC_D1_URL: DEAD, ...env } });
   for (const [name, text] of Object.entries(files)) {
     mkdirSync(join(w.dataDir, "workspace"), { recursive: true });
     writeFileSync(join(w.dataDir, "workspace", name), text);
@@ -125,7 +127,7 @@ describe("Settings page", () => {
     // After afterEach has closed the app.
     onTestFinished(() => rmSync(dataDir, { recursive: true, force: true }));
     const relaunch = async () => {
-      w = await launchRessac({ dataDir, env: { RESSAC_OLLAMA_URL: "http://127.0.0.1:9", RESSAC_KEV_URL: undefined } });
+      w = await launchRessac({ dataDir, env: { RESSAC_OLLAMA_URL: DEAD, RESSAC_KEV_URL: undefined, RESSAC_D1_URL: DEAD } });
       m = w.marionette;
       await m.setContext("chrome");
       await waitReady(m);
@@ -226,7 +228,7 @@ describe("Settings page", () => {
     }
   });
 
-  it("local AI: Ollama reachable, Gemma installed, Kev unavailable", async () => {
+  it("local AI: Ollama reachable, Gemma installed, the sort model download failed", async () => {
     await launch({ RESSAC_OLLAMA_URL: server.url });
     await openPage();
     await go("ai");
@@ -235,7 +237,22 @@ describe("Settings page", () => {
     expect(await text("ai-ollama")).not.toContain("injoignable");
     await shows("ai-gemma", "installé");
     expect(await text("ai-gemma")).toContain("Gemma (gemma4:e4b-mlx)");
-    expect(await inUi(m, `return doc.querySelector('[data-testid="ai-decision-model"] option[value="kev"]').disabled`)).toBe(true);
+    await shows("ai-decision", "absent");
+    await shows("ai-decision-error", "Téléchargement échoué");
+  });
+
+  it("local AI: the sort model downloads by itself, shows a percentage, then installed", async () => {
+    const d1 = await startD1Server({ hold: true });
+    try {
+      await launch({ ...d1.env });
+      await openPage();
+      await go("ai");
+      await shows("ai-decision", "Téléchargement 50 %");
+      d1.release();
+      await shows("ai-decision", "installé");
+    } finally {
+      await d1.close();
+    }
   });
 
   it("local AI: Download pulls the missing Gemma through Ollama, shows a percentage, then installed", async () => {
@@ -244,7 +261,7 @@ describe("Settings page", () => {
     const gate = new Promise<void>((ok) => (release = ok));
     const ollama = await startServer({
       routes: {
-        "/api/tags": (_req, res) => res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ models: [{ name: "pplx-decider-flash:latest" }, ...(pulled ? [{ name: "gemma4:e4b-mlx" }] : [])] })),
+        "/api/tags": (_req, res) => res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ models: [...(pulled ? [{ name: "gemma4:e4b-mlx" }] : [])] })),
         "/api/pull": (_req, res) => {
           res.writeHead(200, { "Content-Type": "application/x-ndjson" });
           res.write('{"status":"pulling manifest"}\n{"status":"downloading","total":100,"completed":40}\n');
@@ -261,7 +278,6 @@ describe("Settings page", () => {
       await go("ai");
       await shows("ai-gemma", "absent");
       expect(await text("settings-ai")).toContain("Plusieurs Go : le téléchargement peut prendre un moment.");
-      expect(await inUi(m, `return doc.querySelectorAll('[data-testid="pull-decision"]').length`)).toBe(0); // installed: no button
       await click(m, '[data-testid="pull-gemma"]');
       await shows("ai-gemma", "Téléchargement 40 %");
       if (process.env.RESSAC_SHOT) writeFileSync(process.env.RESSAC_SHOT, Buffer.from((await m.command<{ value: string }>("WebDriver:TakeScreenshot", { full: false, hash: false })).value, "base64"));

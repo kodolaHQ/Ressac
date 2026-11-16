@@ -106,7 +106,9 @@ Ressac repose sur le travail d'autres projets :
 - [surfer](https://github.com/zen-browser/surfer) de l'équipe de Zen Browser (MPL 2.0), l'outil de build.
 - [Node.js](https://nodejs.org) et [node-pty](https://github.com/microsoft/node-pty) (MIT), embarqués pour l'hôte de l'agent.
 - [Ollama](https://ollama.com) (MIT), pour les modèles locaux, téléchargé à la demande.
-- [Gemma 4](https://ai.google.dev/gemma) de Google et pplx-decider-flash de Perplexity (Apache 2.0), modèles locaux téléchargés à la demande.
+- [Gemma 4](https://ai.google.dev/gemma) de Google (Apache 2.0), modèle local téléchargé à la demande via Ollama.
+- [d1-2B](https://huggingface.co/LiquidAI/d1-2B-GGUF) de Liquid AI (LFM Open License v1.0), le petit modèle qui trie les articles des widgets et surveille l'agent ; Ressac le télécharge lui-même, il n'est pas inclus.
+- [llama.cpp](https://github.com/ggml-org/llama.cpp) (MIT), son `llama-server` est livré dans l'app et fait tourner d1-2B.
 - [Claude Code](https://claude.com/claude-code) d'Anthropic et [Codex](https://github.com/openai/codex) d'OpenAI, les agents, installés dans le conteneur et utilisés avec ton propre compte.
 - [Svelte](https://svelte.dev), [Vite](https://vite.dev), et les polices [Geist](https://vercel.com/font) et [Funnel Display](https://fonts.google.com/specimen/Funnel+Display) (OFL).
 

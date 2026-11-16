@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -135,5 +136,36 @@ export async function startServer(o: { host?: string; port?: number; routes?: Re
         server.close(() => ok());
         server.closeAllConnections(); // Firefox keeps connections alive
       }),
+  };
+}
+
+/**
+ * A fake d1 model host for RESSAC_D1_URL / RESSAC_D1_SHA256: serves 1000 bytes, the first half at once, the rest once
+ * `release()` is called (`hold: false` serves it all at once). `hits` counts the requests. Never the real 1.1 GB model.
+ */
+export async function startD1Server(o: { hold?: boolean } = {}): Promise<{ env: Record<string, string>; hits(): number; release(): void; close(): Promise<void> }> {
+  const data = Buffer.alloc(1000, 7);
+  let release!: () => void;
+  const gate = new Promise<void>((ok) => (release = ok));
+  if (!o.hold) release();
+  let hits = 0;
+  const server = await startServer({
+    routes: {
+      "/d1.gguf": (_req, res) => {
+        hits++;
+        res.writeHead(200, { "Content-Type": "application/octet-stream", "Content-Length": String(data.length) });
+        res.write(data.subarray(0, 500));
+        void gate.then(() => res.end(data.subarray(500)));
+      },
+    },
+  });
+  return {
+    env: { RESSAC_D1_URL: `${server.url}/d1.gguf`, RESSAC_D1_SHA256: createHash("sha256").update(data).digest("hex") },
+    hits: () => hits,
+    release,
+    close: async () => {
+      release();
+      await server.close();
+    },
   };
 }
