@@ -32,6 +32,8 @@ const PAGE_GUARD = "ressac-page-guard.js";
 const KEEP_BACKGROUND = "ressac-background-guard.js";
 const BACKGROUND = "ressac-background.js";
 const GUARDS = [PAGE_FIXES, PAGE_GUARD, KEEP_BACKGROUND];
+/** Bumped with any change to what prepareCopy writes (file filter, CSP, manifest rewrite): installed copies are redone. */
+const COPY_FORMAT = "2";
 /** The scope of the copy (`reseau`, `hotes`) for the page guard: injected by executeScript and registerContentScripts. */
 const SCOPE = "ressac-scope.js";
 /**
@@ -266,7 +268,12 @@ function insertPageGuard(page: Buffer): Buffer {
   return Buffer.concat([page.subarray(0, position), TAG_GUARD, page.subarray(position)]);
 }
 
-const DOCUMENTS_REFUSES = /\.(xhtml|xht|xml|xsl|xslt|mht|mhtml|svgz)$/i;
+/**
+ * The file types an agent extension may carry: pages (guarded), scripts, styles, data, images (SVG checked), fonts, text.
+ * Everything else is left out of the copy: Firefox renders more types than a deny list can name as documents where a
+ * script runs unguarded (.rdf, .mml, .xbl as XML; .ehtml as HTML).
+ */
+const ALLOWED_FILES = /\.(html?|shtml|m?js|css|json|map|wasm|png|jpe?g|gif|webp|avif|ico|bmp|svg|woff2?|ttf|otf|txt|md)$/i;
 const PAGES = /\.(html?|shtml)$/i;
 const SVG_WORDS = ["javascript:", "script", "foreignobject", "<!entity"];
 
@@ -303,8 +310,6 @@ function filesDenial(files: Map<string, Buffer>): string[] {
     // Any top-level name in « ressac- »: guards, scope, markers (ressac-files/).
     const first = path.split("/")[0]!.normalize("NFC").toLowerCase();
     if (reserved.has(first) || first.startsWith("ressac-")) denial.push(`Nom de fichier réservé à Ressac : ${path}`);
-    const document = DOCUMENTS_REFUSES.exec(path);
-    if (document) denial.push(`Type de fichier refusé (.${document[1]!.toLowerCase()}) : ${path}`);
     if (/\.svg$/i.test(path)) {
       const reason = svgDenial(content);
       if (reason) denial.push(`Image SVG refusée (${reason}) : ${path}`);
@@ -353,14 +358,19 @@ export async function prepareCopy(o: {
   target: string;
   keptFolder: string;
 }): Promise<{ analysis: ManifestAnalysis; hash: string; root?: RootRead }> {
-  const { files, denial: folderDenial, root } = await readFolder(o.source);
+  const { files: all, denial: folderDenial, root } = await readFolder(o.source);
+  // Other types (LICENSE, .DS_Store, .git/, .rdf…) stay out of the copy: never served, never a refusal.
+  const files = new Map([...all].filter(([path]) => ALLOWED_FILES.test(path)));
   const raw = json(files.get("manifest.json"));
   const found = await readManifestFile((name) => files.get(name));
   const ressac = found === undefined ? undefined : (json(found.content) ?? "illisible");
   const messages = messageFiles(raw).map((f) => json(files.get(f)));
   const analysis = parseManifest(raw, { source: "agent", ressac, ressacFile: found?.name, rules: rulesOf(raw, files), messages });
   analysis.denial = [...folderDenial, ...filesDenial(files), ...analysis.denial];
-  const hash = hashOf(files);
+  // The guards and the copy format count too: a Ressac update that changes them re-signs the installed copies.
+  const h = createHash("sha256").update(`${COPY_FORMAT}\0${hashOf(files)}`);
+  for (const g of GUARDS) h.update(await readFile(join(o.keptFolder, g)));
+  const hash = h.digest("hex");
   const loaded = root ? { root: root } : {};
   if (analysis.denial.length > 0) return { analysis: analysis, hash: hash, ...loaded };
 

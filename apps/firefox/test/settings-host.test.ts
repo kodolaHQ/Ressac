@@ -46,7 +46,7 @@ function setup(over: { state?: string; exec?: (argv: string[]) => unknown; ollam
     // A fake CLI that prints a code then waits.
     deviceCommand: vi.fn((argv: string[]) => {
       void argv;
-      return [process.execPath, "-e", `require("fs").appendFileSync(${JSON.stringify(pids)}, process.pid + "\\n");console.log("https://auth.example/device B3MH-2FT21");setTimeout(()=>{},60000)`];
+      return [process.execPath, "-e", `require("fs").appendFileSync(${JSON.stringify(pids)}, process.pid + "\\n");console.log("https://auth.openai.com/codex/device B3MH-2FT21");setTimeout(()=>{},60000)`];
     }),
     keychain: { read: vi.fn(async () => null), has: vi.fn(async () => true), write: vi.fn(async (k: string) => void (k.includes(" ") && (() => { throw new Error("Clé invalide : x"); })())), remove: vi.fn(async () => {}) },
     claudeKeychain: { read: vi.fn(async () => null), has: vi.fn(async () => false), write: vi.fn(async () => {}), remove: vi.fn(async () => {}) },
@@ -129,7 +129,7 @@ describe("settings host", () => {
   it("one login at a time", async () => {
     const { h, alive, o } = setup();
     expect(await h["settings.login"]!({ id: "claude" })).toEqual({ kind: "panel" });
-    expect(await h["settings.login"]!({ id: "codex" })).toEqual({ kind: "device", url: "https://auth.example/device", code: "B3MH-2FT21" });
+    expect(await h["settings.login"]!({ id: "codex" })).toEqual({ kind: "device", url: "https://auth.openai.com/codex/device", code: "B3MH-2FT21" });
     expect(await h["settings.login"]!({ id: "codex" })).toMatchObject({ kind: "device" });
     await vi.waitFor(() => expect(alive()).toEqual([false, true]));
     h.stopLogins();

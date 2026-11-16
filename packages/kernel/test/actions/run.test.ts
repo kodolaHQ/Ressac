@@ -7,6 +7,7 @@ import { PassThrough } from "node:stream";
 import { spacePaths, type SpacePaths } from "../../src/paths.js";
 import { FakeBridge } from "../../src/mcp/fake-bridge.js";
 import { giveGrant, removeGrant } from "../../src/widgets/grants.js";
+import { approveReads } from "../../src/widgets/reads.js";
 import { ACTION_STOPPED, readRun, listRuns } from "../../src/workflows/executions.js";
 import { withMemory, readMemory } from "../../src/workflows/memory.js";
 import type { ProcessLauncher } from "../../src/workflows/run.js";
@@ -68,7 +69,8 @@ const workflow = () =>
     links: [{ from: "lire", to: "sortie" }],
   });
 
-async function prepare(id: string, declaration: unknown, code: string, o: { suspended?: string[] } = {}): Promise<Bench> {
+/** Without `unapproved`, an action without account has its declared reads approved (like one seeded at the update). */
+async function prepare(id: string, declaration: unknown, code: string, o: { suspended?: string[]; unapproved?: true } = {}): Promise<Bench> {
   const root = await tempFolder();
   const c = spacePaths(root);
   const folder = join(c.actions, id);
@@ -79,6 +81,8 @@ async function prepare(id: string, declaration: unknown, code: string, o: { susp
   await writeFile(join(folder, "lire.mjs"), code);
   const actionsFolder = await tempFolder();
   toClean.push(root, actionsFolder);
+  const d = DeclarationAction.safeParse(declaration);
+  if (!o.unapproved && d.success && d.data.sources.account.length === 0) await approveReads(actionsFolder, id, { public: d.data.sources.public, web: d.data.sources.web });
   const bridge = new FakeBridge([], {
     active: null,
     allow: false,
@@ -161,6 +165,19 @@ describe("runAction", () => {
     expect(r.error).toBe("Accord requis pour lire avec ton compte : gitlab.com");
     expect(b.commands).toEqual([]);
     expect(existsSync(join(b.actionsFolder, "gitlab"))).toBe(false);
+  });
+
+  it("without account, an unapproved public domain stops before the container; approved, it runs; a lost domain still runs", async () => {
+    const declaration = { name: "P", sources: { public: ["gitlab.com"] } };
+    const code = `export default async (e, w) => ({ tickets: [{ title: (await w.readPage("https://gitlab.com/tickets")).titre }] });`;
+    const b = await prepare("public", declaration, code, { unapproved: true });
+    const r = await runAction(options(b, "public"));
+    expect(r).toEqual({ status: "grant-required", error: "Accord requis pour lire : gitlab.com", kernelError: true });
+    expect(b.commands).toEqual([]);
+    await approveReads(b.actionsFolder, "public", { public: ["gitlab.com", "x.fr"], web: false });
+    expect((await runAction(options(b, "public"))).status).toBe("succeeded");
+    await writeFile(join(b.folder, "action.json"), JSON.stringify({ name: "P", sources: { public: ["gitlab.com"], web: true } }));
+    expect((await runAction(options(b, "public"))).error).toBe("Accord requis pour lire : gitlab.com et le web");
   });
 
   it("a stale grant (domains changed) is removed, the data erased", async () => {

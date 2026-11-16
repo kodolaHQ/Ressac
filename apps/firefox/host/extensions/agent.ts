@@ -570,7 +570,7 @@ export class ExtensionsAgent {
     const alsoReplace = nav.spaces.filter((e) => !e.private && otherProfiles.includes(e.profile)).map((e) => e.name);
     const card = cardOf(p.analysis, { key: key, space: space, spaces: nav.spaces, alsoReplaces: alsoReplace });
     const r = await this.askGrant(key, card, win, signal);
-    if (!(r.accepted && r.hash === card.hash)) {
+    if (!r.accepted) {
       await clear();
       return { ok: false, error: r.removed ? ACTIVATION_REMOVED : ACTIVATION_DENIED };
     }
@@ -604,7 +604,7 @@ export class ExtensionsAgent {
       const signals = [removal.signal, this.stopSignal.signal, ...(signal ? [signal] : [])];
       return await this.o.rpc.request<GrantResponse>("extensions.grant", { card: card, window: win }, AbortSignal.any(signals));
     } catch {
-      return { accepted: false, hash: card.hash, removed: true };
+      return { accepted: false, removed: true };
     } finally {
       if (this.cards.get(key) === removal) this.cards.delete(key);
     }
@@ -861,8 +861,8 @@ export class ExtensionsAgent {
   ): Promise<SendResult> {
     const p = prepare ?? (await this.prepare(id));
     if (!p.ok) {
-      // Only a missing folder stops the running version.
-      if (p.denial.includes(FOLDER_ABSENT)) await this.o.rpc.request("extensions.enable", { addonId: addonIdOf(id), active: false });
+      // A missing folder stops the running version; at startup any refusal does (a rule Ressac added since its signing).
+      if (o.startup || p.denial.includes(FOLDER_ABSENT)) await this.o.rpc.request("extensions.enable", { addonId: addonIdOf(id), active: false });
       return { ok: false, error: p.denial.map((r) => (r === FOLDER_ABSENT ? folderAbsent(id) : r)).join(" ; "), denial: p.denial };
     }
     const { analysis, hash, staging } = p;

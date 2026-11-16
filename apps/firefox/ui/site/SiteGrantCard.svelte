@@ -8,9 +8,20 @@
    */
   let { grant, onGrant: giveGrant }: { grant: SiteGrantRequest; onGrant: (yes: boolean, hash: string) => Promise<void> } = $props();
   let running = $state(false);
+  // The card can replace the app under the pointer (the agent rewrote site.json): it takes a click only after ARM_MS,
+  // re-armed for each new set of rights.
+  const ARM_MS = 500;
+  let armed = $state(false);
+  const rights = $derived(grant.hash);
+  $effect(() => {
+    void rights;
+    armed = false;
+    const t = setTimeout(() => (armed = true), ARM_MS);
+    return () => clearTimeout(t);
+  });
 
   const choose = (yes: boolean) => {
-    if (running) return;
+    if (running || !armed) return;
     running = true;
     // The hash of the rights shown: the main process only grants those.
     void giveGrant(yes, grant.hash).finally(() => (running = false));
@@ -18,7 +29,7 @@
 </script>
 
 <section class="zone" data-testid="site-grant-zone">
-  <div class="card" role="dialog" aria-labelledby="site-grant-title" data-testid="site-grant-card">
+  <div class="card" role="dialog" aria-labelledby="site-grant-title" data-testid="site-grant-card" data-armed={armed || undefined}>
     <h2 id="site-grant-title">{ts("chrome-grant-title", { name: grant.name })}</h2>
     <dl>
       <dt>{ts("chrome-grant-domains")}</dt>
@@ -68,4 +79,5 @@
   .buttons button:active:not(:disabled) { transform: scale(0.97); }
   .buttons .main { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
   .buttons button:disabled { opacity: 0.5; }
+  .card:not([data-armed]) .buttons button { pointer-events: none; }
 </style>

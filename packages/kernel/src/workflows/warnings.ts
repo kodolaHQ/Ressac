@@ -32,7 +32,7 @@ function hostOf(url: string): string | null {
  */
 export function warnWorkflow(
   workflow: Workflow,
-  ctx: { sources: { account: readonly string[]; public: readonly string[] }; config: unknown;
+  ctx: { sources: { account: readonly string[]; public: readonly string[]; web?: boolean }; config: unknown;
     maxDurationMinutes?: number | null;
     /** An action without `input` receives nothing in `{input}`. */
     owner?: "widget" | "action";
@@ -46,8 +46,10 @@ export function warnWorkflow(
   const locale = ctx.locale ?? "en";
   const hasAccount = ctx.sources.account.length > 0;
   const config = ctx.config !== null && typeof ctx.config === "object" ? (ctx.config as Record<string, unknown>) : {};
+  // Only `web` (never with an account) reads any host; an owner seeded at the update may too, but should declare them.
+  const restricted = hasAccount || ctx.sources.web !== true;
   for (const b of workflow.blocks) {
-    if (hasAccount) {
+    if (restricted) {
       let urls: string[] = [];
       let allowed: readonly string[] = ctx.sources.public;
       const p = b.params;

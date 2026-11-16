@@ -24,8 +24,13 @@
   let width = $state(0);
   let height = $state(0);
 
+  /** The frame shows the served copy (CSP, guard): never a page it navigated to (a data: URL has neither). */
+  // Without the fragment: a widget that sets its own #hash stays on its copy.
+  const ours = () => !!widget.src && iframe?.contentDocument?.documentURI.split("#")[0] === widget.src;
+
   function send() {
     attachGesture();
+    if (!ours()) return;
     // The frame has an opaque origin (sandbox without allow-same-origin): « * » is the only possible target.
     iframe?.contentWindow?.postMessage(
       {
@@ -60,7 +65,7 @@
 
   function onMessage(e: MessageEvent) {
     // The origin of a sandboxed frame is opaque (« null »): the source, never the origin, identifies it.
-    if (!iframe || e.source !== iframe.contentWindow) return;
+    if (!iframe || e.source !== iframe.contentWindow || !ours()) return;
     const d: unknown = e.data;
     if (typeof d !== "object" || d === null) return;
     const { type, url } = d as { type?: unknown; url?: unknown };
@@ -79,6 +84,7 @@
   // The widget's link: `ressacOpen` (provided by the guard in the page's world) emits this event, which the
   // parent chrome listens to (an opaque origin cannot post it a message). The request stays subject to the gesture.
   function link(e: Event) {
+    if (!ours()) return;
     api.home.open(String((e as CustomEvent).detail), widget.id);
   }
   function detachGesture() {
@@ -101,6 +107,11 @@
   onDestroy(detachGesture);
 
   function onLoad() {
+    // Navigated away from its copy: sent back to it, with nothing given to the other page.
+    if (!ours()) {
+      if (iframe && widget.src) iframe.src = widget.src;
+      return;
+    }
     send();
     attachGesture();
   }

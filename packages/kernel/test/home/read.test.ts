@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import { mkdir, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { spacePaths } from "../../src/paths.js";
-import { readHome } from "../../src/home/read.js";
+import { readHome, readOneWidget } from "../../src/home/read.js";
 import { tempFolder } from "../helpers/temp.js";
 import { declarationWidget, writeWidget } from "../helpers/home.js";
 
@@ -85,4 +85,16 @@ test("a widget.json that is a symbolic link outside the folder is refused", asyn
 test("widgets folder absent → empty home", async () => {
   const c = spacePaths(await tempFolder());
   expect(await readHome(c, await tempFolder())).toEqual({ widgets: [] });
+});
+
+test("readOneWidget reads one widget; a link named like a widget, or an unknown id, is none", async () => {
+  const { c, widgetsFolder } = await space();
+  await writeWidget(c, "ok");
+  const elsewhere = await tempFolder();
+  await writeWidget(spacePaths(elsewhere), "mac");
+  await symlink(join(spacePaths(elsewhere).widgets, "mac"), join(c.widgets, "lien"));
+  expect((await readOneWidget(c, widgetsFolder, "ok"))?.id).toBe("ok");
+  expect(await readOneWidget(c, widgetsFolder, "lien")).toBeUndefined();
+  expect(await readOneWidget(c, widgetsFolder, "absent")).toBeUndefined();
+  expect(await readOneWidget(c, widgetsFolder, "../ok")).toBeUndefined();
 });

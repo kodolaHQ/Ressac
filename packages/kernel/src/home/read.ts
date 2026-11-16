@@ -1,5 +1,5 @@
 import { say } from "../i18n.js";
-import { readdir, readFile, realpath } from "node:fs/promises";
+import { lstat, readdir, readFile, realpath } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, sep } from "node:path";
 import type { SpacePaths } from "../paths.js";
@@ -123,6 +123,13 @@ export function placeMissingFree(
     kept.push({ id, ...firstFreeSlot(kept, w, h), w, h });
   }
   return kept;
+}
+
+/** One widget of the home page, without reading the others (undefined: no such widget folder). */
+export async function readOneWidget(c: SpacePaths, widgetsFolder: string, id: string, locale = "en"): Promise<WidgetRead | undefined> {
+  // lstat, as readHome's readdir: a link named like a widget is not one.
+  if (!ID_WIDGET.test(id) || !(await lstat(join(c.widgets, id)).then((s) => s.isDirectory(), () => false))) return undefined;
+  return readWidget(c, widgetsFolder, id, locale);
 }
 
 /** Reads the home page. A broken widget is reported, it does not prevent reading the others. */

@@ -7,6 +7,7 @@ import type { Workshop } from "../container/workshop.js";
 import type { LocalAi } from "../ai/local-ai.js";
 import type { BrowserBridge } from "../mcp/bridge.js";
 import { grantValid, readGrants, removeGrant } from "./grants.js";
+import { readReads, readsCovered, readsUnrestricted } from "./reads.js";
 import { message, truncate } from "../workflows/access.js";
 import {
   MAX_ERROR,
@@ -82,8 +83,13 @@ export type HarvestResult = { state: WidgetState; data?: unknown; run?: string; 
 const ID = /^[a-z0-9-]+$/;
 const loc = (o: Pick<HarvestOptions, "locale">) => o.locale?.() ?? "en";
 
-export const grantRequired = (d: Pick<DeclarationWidget, "sources">, locale: string) =>
-  say(locale, "kernel-err-grant-required", { domains: d.sources.account.join(", ") });
+/** The grant an owner waits for: its account, or (without one) the approval of what it reads. */
+export const grantRequired = (d: { sources: { account: string[]; public: string[]; web?: boolean } }, locale: string) => {
+  const { account, public: publics, web } = d.sources;
+  if (account.length) return say(locale, "kernel-err-grant-required", { domains: account.join(", ") });
+  if (!web) return say(locale, "kernel-err-reads-required", { domains: publics.join(", ") });
+  return publics.length ? say(locale, "kernel-err-reads-required-web", { domains: publics.join(", ") }) : say(locale, "kernel-err-reads-required-web-only");
+};
 export const WORKSHOP_STOPPED_ERROR = (locale: string) => say(locale, "kernel-err-workshop-stopped");
 export const INTERNAL_HARVEST_ERROR = (locale: string) => say(locale, "kernel-err-internal-harvest");
 export const NO_WORKFLOW_ERROR = (locale: string) => say(locale, "kernel-err-no-workflow");
@@ -94,7 +100,7 @@ export const INTERRUPTED_ERROR = (locale: string) => say(locale, "kernel-err-int
  * written in); any other error text may have been written by the widget.
  */
 const FIXED_ERRORS = new Set([
-  ...["kernel-err-timeout", "kernel-err-response-too-big", "kernel-err-profile-denied", "kernel-err-workshop-stopped", "kernel-err-internal-harvest", "kernel-err-no-workflow", "kernel-err-interrupted"].flatMap((id) => inEveryLanguage(id)),
+  ...["kernel-err-timeout", "kernel-err-response-too-big", "kernel-err-profile-denied", "kernel-err-workshop-stopped", "kernel-err-internal-harvest", "kernel-err-no-workflow", "kernel-err-interrupted", "kernel-err-reads-required-web-only"].flatMap((id) => inEveryLanguage(id)),
   // Old message, still in states written before the workflows.
   "Ce widget n'a pas de harvest.mjs",
   ...inEveryLanguage("kernel-err-data-too-big"),
@@ -140,17 +146,21 @@ async function widgetWorkflow(widget: WidgetRead, locale: string): Promise<Widge
 /**
  * A grant that no longer holds for the current declaration (domains changed, account removed) is withdrawn, and what was
  * read with it erased (data, runs, memory): nothing passes to the next harvest nor, later, to the agent.
- * `peut`: the widget may run (without account, or with a valid grant, which also covers its public domains);
+ * `peut`: the widget may run (without account, with its reads approved; or with a valid grant, which also covers its public domains);
  * `retire`: an expired grant has just been withdrawn.
  */
 async function validGrant(widgetsFolder: string, id: string, declaration: DeclarationWidget): Promise<{ can: boolean; removed: boolean }> {
   const grantSaved = (await readGrants(widgetsFolder))[id];
   const removed = grantSaved !== undefined && !grantValid(declaration, grantSaved);
   if (removed) {
-    await removeGrant(widgetsFolder, id);
+    // Data first: until it is gone, the grant still guards it (a crash in between leaves it guarded).
     await deleteData(widgetsFolder, id);
+    await removeGrant(widgetsFolder, id);
   }
-  const can = declaration.sources.account.length === 0 || grantValid(declaration, (await readGrants(widgetsFolder))[id]);
+  const can =
+    declaration.sources.account.length === 0
+      ? readsCovered(declaration, (await readReads(widgetsFolder))[id])
+      : grantValid(declaration, (await readGrants(widgetsFolder))[id]);
   return { can: can, removed: removed };
 }
 
@@ -187,8 +197,9 @@ function grantContext(
     // The grant is withdrawn before the stop: when the run concludes, it no longer exists. What was read with this account goes
     // with it (the widget shows its example until the new grant).
     async onProfileDenied() {
-      await removeGrant(widgetsFolder, id);
+      // Data first: until it is gone, the grant still guards it (a crash in between leaves it guarded).
       await deleteData(widgetsFolder, id);
+      await removeGrant(widgetsFolder, id);
     },
     grantRequiredMessage: grantRequired(declaration, locale),
   };
@@ -368,6 +379,7 @@ export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
       previous: dataBefore,
       memory: await readMemory(dataFolder),
       ...grantContext(widgetsFolder, id, declaration, loc(o)),
+      unrestricted: await readsUnrestricted(widgetsFolder, id, declaration),
       trigger: trigger,
       ...(maxDurationMinutes !== undefined ? { maxDurationMinutes: maxDurationMinutes } : {}),
     },
@@ -402,9 +414,11 @@ export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
     try {
       if (outcome.output.to === "widget") await writeData(widgetsFolder, id, outcome.output.value, loc(o));
     } catch (e) {
-      // Data refused (too big…): the previous ones stay, the run fails kernel-side.
+      // Data refused (too big…): the previous ones stay, the run fails kernel-side. A disk error names Mac paths: logged, a fixed text goes out.
+      const disk = typeof (e as NodeJS.ErrnoException)?.code === "string";
+      if (disk) console.error("[ressac] widget data write:", e);
       execution.status = "failed";
-      execution.error = truncate(message(e), MAX_ERROR);
+      execution.error = disk ? say(loc(o), "kernel-err-internal-harvest") : truncate(message(e), MAX_ERROR);
       execution.kernelError = true;
       return concludeWithoutData(execution, { status: "error", error: execution.error, log: log });
     }
@@ -498,6 +512,7 @@ export async function runAttempt(o: HarvestOptions & { origin: string; start: st
       // A try neither receives nor keeps any memory.
       memory: {},
       ...grantContext(widgetsFolder, id, declaration, loc(o)),
+      unrestricted: await readsUnrestricted(widgetsFolder, id, declaration),
       trigger: "replay",
       replay: { ...replay, resumed: plan.resumed },
       ...(maxDurationMinutes !== undefined ? { maxDurationMinutes: maxDurationMinutes } : {}),

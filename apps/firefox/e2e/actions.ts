@@ -5,6 +5,7 @@ import path from "node:path";
 import { dispatch, state } from "./firefox";
 import type { Marionette } from "./marionette";
 import { inUi, waitUi } from "./ui";
+import { approveFixtureReads } from "./workflows";
 
 // Action helpers. Declarations live in the space
 // (`<dataDir>/workspace/actions/<id>/`, `<dataDir>/workspace/components/<nom>/`); runs, results and agreements outside it.
@@ -38,6 +39,7 @@ export async function writeAction(dataDir: string, id: string, a: TestAction): P
   const { workflow, files, sources, ...keys } = a;
   const declaration = { ...keys, sources: { account: sources?.account ?? [], public: sources?.public ?? [], ...(sources?.web !== undefined ? { web: sources.web } : {}) } };
   await writeFile(path.join(dir, "action.json"), JSON.stringify(declaration));
+  await approveFixtureReads(actionsDataDir(dataDir), id, declaration.sources);
   if (workflow !== undefined) await writeFile(path.join(dir, "workflow.json"), typeof workflow === "string" ? workflow : JSON.stringify(workflow));
   for (const [name, text] of Object.entries(files ?? {})) await writeFile(path.join(dir, name), text);
 }

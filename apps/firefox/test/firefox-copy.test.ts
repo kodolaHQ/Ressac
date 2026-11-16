@@ -32,7 +32,7 @@ describe("Firefox copy", () => {
 
   it("refusals: a right agent extensions cannot use, or a manifest key that grants a power", () => {
     const right = (n: string) => `Droit non pris en charge par Ressac : ${n}`;
-    const allowed = ["scripting", "storage", "unlimitedStorage", "tabs", "contextMenus", "cookies", "webNavigation", "alarms", "offscreen", "clipboardRead", "clipboardWrite", "declarativeNetRequest", "declarativeNetRequestWithHostAccess", "declarativeNetRequestFeedback"];
+    const allowed = ["scripting", "storage", "unlimitedStorage", "tabs", "contextMenus", "webNavigation", "alarms", "offscreen", "clipboardRead", "clipboardWrite", "declarativeNetRequest", "declarativeNetRequestWithHostAccess", "declarativeNetRequestFeedback"];
     expect(firefoxDenial({ version: "1", permissions: allowed }, [])).toEqual([]);
     expect(firefoxDenial({ version: "1", permissions: ["storage", "identity", "notifications", "dns", "find", "activeTab", "https://x.test/*"] }, [])).toEqual(
       ["identity", "notifications", "dns", "find", "activeTab", "https://x.test/*"].map(right),

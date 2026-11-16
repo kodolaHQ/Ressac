@@ -101,7 +101,11 @@ async function modeOn() {
   await expect.poll(() => inBrowser<number>(m, B, "return innerWidth;"), { timeout: 10_000 }).toBeLessThan(width);
 }
 async function modeOff() {
-  if ((await state()).active) await svc("await d.stop(t); return 1;");
+  if (!(await state()).active) return;
+  const narrowed = await inBrowser<number>(m, B, "return innerWidth;");
+  await svc("await d.stop(t); return 1;");
+  // The column closes with a transition: the next test measures the page without it (the agent panel may stay).
+  await expect.poll(() => inBrowser<number>(m, B, "return innerWidth;"), { timeout: 10_000 }).toBeGreaterThan(narrowed);
 }
 
 /** A trusted click on `sel`, its bubble labelled `label`, `text` typed, then « Ajouter au panier »: the cart grows by one. */

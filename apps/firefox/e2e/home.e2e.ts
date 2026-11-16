@@ -266,7 +266,7 @@ describe("the home page", () => {
     );
     expect(titles).toEqual(["Alpha", "Beta", "Refus", "Lien", "Compte", "Sans accord", "Lent", "Échec", "Veille", "Retrait"]);
     const src = await inUi(m, `return doc.querySelector('[data-testid="widget-alpha"] iframe')?.getAttribute("src") ?? "";`);
-    expect(src).toMatch(/^resource:\/\/ressac-widget-alpha\/display-\d+\.html$/);
+    expect(src).toMatch(/^resource:\/\/ressac-widget-alpha\/display-\d+-\d+\.html$/);
     // The frame is isolated: the widget's document does not have the sidebar's system principal (opaque origin, sandbox).
     const system = await waitUi<string>(
       m,
@@ -438,6 +438,25 @@ describe("the home page", () => {
     await wait(() => readGrants(dataDir), (a) => a["sans-accord"] === undefined, "le retrait de l'accord refusé");
     await wait(async () => existsSync(DATA(dataDir, "sans-accord")), (present) => !present, "le retrait des données du refus");
     expect(await readJson<{ status: string }>(STATE(dataDir, "sans-accord"))).toMatchObject({ status: "grant-required" });
+  });
+
+  it("a widget without account written after start, with a public domain: the banner asks once, nothing is harvested before « Autoriser »", async () => {
+    await writeWidget(dataDir, "lecture", {
+      name: "Lecture",
+      display: DISPLAY_DATA,
+      declaration: { harvest: { minutes: 60 }, sources: { account: [], public: ["exemple.invalid"], web: false } },
+    });
+    await writeHarvest(dataDir, "lecture", `export default async () => ({ vu: "public" });`);
+    await waitUi(m, `return !!doc.querySelector('[data-testid="widget-lecture"]');`, [], 15_000);
+    await harvest(m, "lecture");
+    await waitUi(m, `return !!doc.querySelector('[data-testid="widget-lecture"] [data-testid="grant-banner"]');`, [], 15_000);
+    expect(await widgetText(m, "lecture")).toContain("Ce widget lira : exemple.invalid");
+    expect(existsSync(DATA(dataDir, "lecture"))).toBe(false);
+    // No card: the click approves exactly what the banner showed, then the harvest runs.
+    await click(m, '[data-testid="widget-lecture"] [data-testid="grant-banner"] button', { text: "Autoriser" });
+    await wait(() => (existsSync(DATA(dataDir, "lecture")) ? readJson<unknown>(DATA(dataDir, "lecture")) : Promise.resolve(null)), (d) => d !== null, "les données de la récolte", 20_000);
+    expect(await readJson(path.join(WIDGETS(dataDir), "reads.json"))).toMatchObject({ lecture: { public: ["exemple.invalid"], web: false } });
+    expect(await waitUi(m, `return !doc.querySelector('[data-testid="widget-lecture"] [data-testid="grant-banner"]');`)).toBe(true);
   });
 
   it("a grant that names an invalid profile asks again: the harvest refuses it, the grant and its data go away", async () => {

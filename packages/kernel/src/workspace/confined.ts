@@ -63,9 +63,10 @@ export type ReadFiles = { files: ({ text: string; mtime: number } | null)[] } | 
 /**
  * Child side (after `enter`): the files at `paths` (relative, `/`-separated), each folder on the way entered and checked
  * by dev/ino, each file opened by bare name with O_NOFOLLOW, at most `max` bytes each and `totalMax` in all. The first
- * failure stops the reads: its index and why; with `skip`, a file that fails is null instead.
+ * failure stops the reads: its index and why; with `skip`, a file that fails is null instead. `encoding` "base64" for
+ * binary files (an image).
  */
-export function readFiles(paths: string[], max: number, totalMax: number, skip = false): ReadFiles {
+export function readFiles(paths: string[], max: number, totalMax: number, skip = false, encoding: "utf8" | "base64" = "utf8"): ReadFiles {
   const fs = process.getBuiltinModule("node:fs");
   const { O_RDONLY, O_NOFOLLOW, O_NONBLOCK } = fs.constants;
   type Id = { dev: number; ino: number };
@@ -100,7 +101,7 @@ export function readFiles(paths: string[], max: number, totalMax: number, skip =
       for (let n; size <= max && (n = fs.readSync(fd, buffer, size, max + 1 - size, null)) > 0; ) size += n;
       // A file that grew since lstat is refused, never cut.
       if (size > max || (total += size) > totalMax) return "big";
-      return { text: buffer.subarray(0, size).toString("utf8"), mtime: st.mtimeMs };
+      return { text: buffer.subarray(0, size).toString(encoding), mtime: st.mtimeMs };
     } finally {
       fs.closeSync(fd);
     }

@@ -95,7 +95,7 @@ const EXTENSION_NETWORK = {
     manifest_version: 3,
     name: "Réseau de l'agent",
     version: "1.0.0",
-    permissions: ["cookies", "declarativeNetRequest", "storage", "tabs"],
+    permissions: ["declarativeNetRequest", "storage", "tabs"],
     host_permissions: ["https://hote.test/*"],
     background: { service_worker: "fond.js" },
     action: { default_popup: "page.html" },
@@ -374,7 +374,7 @@ document.title = JSON.stringify(vu);
 };
 
 const NETWORK_GRANT = {
-  permissions: ["cookies", "declarativeNetRequest", "storage", "tabs"],
+  permissions: ["declarativeNetRequest", "storage", "tabs"],
   hosts: ["https://hote.test/*"],
   network: ["accorde.test"],
   allSites: false,
@@ -758,10 +758,10 @@ describe("agent extensions: network guard", () => {
   });
 
   // Firefox has rights the guard must refuse too (review probe): refused at the copy, before any card or signature.
-  it("an agent extension asking identity, notifications, dns or find is refused at the copy: nothing signed, nothing installed", async () => {
+  it("an agent extension asking cookies, identity, notifications, dns or find is refused at the copy: nothing signed, nothing installed", async () => {
     const f = { dataDir: mkdtempSync(path.join(os.tmpdir(), "ressac-data-")), profile: mkdtempSync(path.join(os.tmpdir(), "ressac-firefox-")) };
     dirs.push(f.dataDir, f.profile);
-    const perms = ["cookies", "declarativeNetRequest", "storage", "tabs", "identity", "notifications", "dns", "find"];
+    const perms = ["declarativeNetRequest", "storage", "tabs", "cookies", "identity", "notifications", "dns", "find"];
     writeAgentExtension(path.join(f.dataDir, "workspace"), "reseau", { ...EXTENSION_NETWORK, "manifest.json": { ...EXTENSION_NETWORK["manifest.json"], permissions: perms } });
     grant(f.dataDir, "reseau", { ...NETWORK_GRANT, permissions: perms });
     const w = await launchWithAmo(f);

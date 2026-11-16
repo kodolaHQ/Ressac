@@ -61,6 +61,7 @@ export function toShownWidgets(o: {
         state: w.state,
         account: w.declaration.sources.account,
         public: w.declaration.sources.public,
+        web: w.declaration.sources.web,
         hasHarvest: w.hasHarvest,
         hours: w.declaration.harvest?.hours ?? [],
         minutes: w.declaration.harvest?.minutes ?? null,

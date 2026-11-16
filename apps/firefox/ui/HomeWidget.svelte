@@ -117,11 +117,17 @@
     {#if widget.state.status === "grant-required" && !denied}
       <div class="banner" data-testid="grant-banner">
         <span
-          >{widget.public.length
-            ? t("home-widget-grant-public", { account: widget.account.join(", "), public: widget.public.join(", ") })
-            : t("home-widget-grant-private", { account: widget.account.join(", ") })}</span
+          >{widget.account.length === 0
+            ? widget.web
+              ? widget.public.length
+                ? t("home-widget-reads-public-web", { public: widget.public.join(", ") })
+                : t("home-widget-reads-web")
+              : t("home-widget-reads-public", { public: widget.public.join(", ") })
+            : widget.public.length
+              ? t("home-widget-grant-public", { account: widget.account.join(", "), public: widget.public.join(", ") })
+              : t("home-widget-grant-private", { account: widget.account.join(", ") })}</span
         >
-        <button onclick={allow}>{t("home-widget-allow")}</button>
+        <button onclick={allow}>{t(widget.account.length ? "home-widget-allow" : "home-widget-reads-allow")}</button>
         <button onclick={deny}>{t("home-deny")}</button>
       </div>
     {/if}

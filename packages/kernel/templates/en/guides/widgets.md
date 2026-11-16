@@ -23,12 +23,13 @@ A widget is a `home/widgets/<id>/` folder (`<id>`: lowercase letters, digits and
     - `notify: true`: at the end of a real harvest that finishes (successful or partial) and
       brings new items, the user gets a macOS notification (see « Watches » below).
   - `sources.account`: the domains read with the user's account. `sources.public`: the
-    domains allowed for `fetch` and `readPage` in public. Without `account`, they restrict
-    nothing; with `account`, they are **mandatory** (empty list = no public reading).
+    domains allowed for `fetch` and `readPage` in public: any other host is refused (« Domaine non
+    déclaré »), redirects included, empty list = no public reading. Without `account`, the user
+    approves them once on the home page (and again when the list grows); until then the widget
+    waits (`grant-required`).
   - `sources.web: true`: allows the `web.search` block and `ressac.searchWeb` (search on
-    DuckDuckGo), and paces the reads (see « Watches » below). A widget without `account`
-    could already read any public site: `web` only adds search, and in exchange
-    the reads are spaced out and counted. **Impossible with an account**: the widget is then
+    DuckDuckGo), lets the widget read any public site, and paces the reads (see « Watches »
+    below): they are spaced out and counted. The user approves it once, like the domains. **Impossible with an account**: the widget is then
     invalid, with the message « web : impossible avec un compte (les données d'un compte ne
     doivent pas pouvoir partir vers un site inconnu) » (an account's data must never be able to leave for an unknown site).
   - `config` is free (JSON) and passed to the harvest: this is where you change the
@@ -377,9 +378,8 @@ saved on its own in `workflow.json`. So:
    to see where it gets stuck. On an error, also read the `log` it returns.
 3. **Privacy**: only ask for the real data of a widget that reads an account
    (`widget_data`) if you cannot move forward otherwise; work with
-   `example.json` first. Without the user's grant, `harvest_widget` only returns, for such a widget, the
-   status and a fixed message: neither the error, nor the log, nor the data. `widget_data`
-   then shows the user a grant card, valid for the conversation.
+   `example.json` first. For such a widget, `harvest_widget` and `widget_data` first show the user
+   a grant card, valid for the conversation; refused, nothing is run or shown.
    Same for `widget_runs`: the list only gives `{ id, status }` per run (a
    partial harvest looks successful there), and asking for the detail shows the user the same grant
    card as `widget_data`; a single grant covers both.

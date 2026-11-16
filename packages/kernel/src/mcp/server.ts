@@ -430,8 +430,8 @@ function createToolsServer(
 
   /** `view`: a search read's state line and, unless the whole text is asked, its reduced page. `full`: every link read. */
   const present = (o: TabInfo, r: TabRead, withLinks: boolean, head: string[] = [], view?: { state: string; text?: string; shown?: number; total?: number }, full = false): Result => {
-    // Every link read counts as seen, shown or not.
-    seen.add([o.url, ...(r.links ?? []).map((l) => l.url), ...photos(r.links)]);
+    // Every link read counts as seen, shown or not; never a local page's: the agent writes those (its demos).
+    if (!isLocal(o.url)) seen.add([o.url, ...(r.links ?? []).map((l) => l.url), ...photos(r.links)]);
     const ranked = withLinks ? rankLinks(r.links ?? [], o.url) : [];
     const top = full ? ranked : ranked.slice(0, LINKS_SHOWN);
     if (withLinks) {
@@ -586,6 +586,24 @@ function createToolsServer(
     return (await judge(g, false))?.strange ? { opinion: OPINION_TEXT } : {};
   }
 
+  /**
+   * Outside a search, a web address is free when it is local, was read (a page, its links, a search's results), is the address
+   * of a tab the agent may read, or was approved in this conversation. Otherwise the user decides on the « agent-address » card.
+   * Returns the refusal's text, null when it may open.
+   */
+  async function composedRefusal(tool: "open_tab" | "navigate", url: string, reason: string | undefined, signal?: AbortSignal): Promise<string | null> {
+    if (isLocal(url) || seen.has(url) || policy.addressGranted(url)) return null;
+    if ((await bridge.listTabs()).some((t) => t.url === url && policy.canRead(t))) return null;
+    if (url.length > URL_MAX) return TOO_LONG_TEXT;
+    if (!bridge.askAddress) return DENIAL_TEXT;
+    const view = await opinion({ tool, url, composed: true });
+    const card = { url, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", ...view };
+    const yes = await askAddressCard(bridge, policy, requests, card, `address:${url}`, win ?? undefined, () => () => {}, signal);
+    if (!yes) return DENIAL_TEXT;
+    policy.grantAddress(url);
+    return null;
+  }
+
   /** The search tab `id` is the user's for now (a hand is open on it). */
   const handing = (id: string | undefined) => !!id && !!searching?.sessions.handing(id);
 
@@ -663,7 +681,8 @@ function createToolsServer(
     "open_tab",
     {
       description:
-        "Ouvre un onglet (par exemple une démo locale servie par le conteneur) et renvoie son id. Pendant une recherche, une adresse web que tu as écrite toi-même demande l'accord de l'utilisateur : donne alors `reason`.",
+        "Ouvre un onglet (par exemple une démo locale servie par le conteneur) et renvoie son id. Une adresse web que tu as écrite toi-même " +
+        "(jamais lue dans une page ni rendue par une recherche) demande l'accord de l'utilisateur : donne alors `reason`. Une adresse locale reste libre.",
       inputSchema: { url: z.string(), space: z.string().optional(), reason: z.string().optional() },
     },
     protect(async ({ url, space, reason }, extra) => {
@@ -686,6 +705,9 @@ function createToolsServer(
           if (!sessions.owns(cur.tabId)) return text(sessions.takeStop(key, cur.tabId) ? STOP_TEXT : CLOSED_TEXT);
           if (!yes) return text(DENIAL_TEXT);
         }
+      } else {
+        const refusal = await composedRefusal("open_tab", url, reason, extra?.signal);
+        if (refusal) return text(refusal);
       }
       const o = await bridge.openTab(target, space);
       policy.tabOpenedByAgent(o);
@@ -698,7 +720,8 @@ function createToolsServer(
     {
       description:
         "Change l'URL d'un onglet, ou recharge une démo. Donne `url`, ou `link` : le numéro d'un lien de la dernière lecture de l'onglet (read_tab avec links, search_web). " +
-        "Dans l'onglet d'une recherche, une adresse que tu as écrite toi-même demande l'accord de l'utilisateur : donne alors `reason`.",
+        "Une adresse `url` que tu as écrite toi-même (jamais lue dans une page ni rendue par une recherche) demande l'accord de l'utilisateur : " +
+        "donne alors `reason`. `link` reste libre.",
       inputSchema: { id: z.string(), url: z.string().optional(), link: z.number().int().min(0).optional(), reason: z.string().optional() },
     },
     protect(async ({ id, url: given, link, reason }, extra) => {
@@ -745,6 +768,9 @@ function createToolsServer(
         return text(`Appli de site ${id} → ${url}`);
       }
       if (!(await access(o))) return text(DENIAL_TEXT);
+      // A link of a local page is the agent's own writing: it counts as composed.
+      const refusal = link === undefined || isLocal(o.url) ? await composedRefusal("navigate", url, reason, extra?.signal) : null;
+      if (refusal) return text(refusal);
       // An app's window never leaves its origin (it has no address bar): another site opens
       // in a tab, as with open_tab, and the agent keeps access to the window.
       if (o.app && originOf(url) !== originOf(o.url)) {
@@ -947,7 +973,8 @@ function createToolsServer(
                 if (!sessions.owns(id)) return;
                 const now = (await bridge.listTabs()).find((x) => x.id === t!.id) ?? t;
                 sessions.pageRead(id, now.url, readUrls(r.links));
-                seen.add([now.url, ...readUrls(r.links), ...photos(r.links)]);
+                // A local page is the agent's own writing: its links never become free outside the search.
+                if (!isLocal(now.url)) seen.add([now.url, ...readUrls(r.links), ...photos(r.links)]);
                 const state = pageState(r, now.url, now.title);
                 const body = state !== "introuvable" && state !== "bloquée" && state !== "connexion demandée" ? reducedPage(r, sessions.current(key)?.goal ?? "", READ_PAGES_PAGE_MAX).text : "";
                 sections.set(u, [`Titre : ${now.title}`, `URL : ${now.url}`, stateLine(r, now.url, now.title), "", body].join("\n"));
@@ -1148,11 +1175,15 @@ function registerWidgetsTools(
       description:
         "Lance tout de suite la récolte d'un widget (accueil/widgets/<id>) et rend { status, error?, log?, data?, run? } " +
         "(run : l'id de l'exécution écrite, absent s'il n'y en a pas ; voir widget_runs). " +
-        "Données et journal d'un widget qui lit avec le compte de l'utilisateur : seulement s'il les a montrés (widget_data).",
+        "Données et journal d'un widget qui lit avec le compte de l'utilisateur : seulement s'il les a montrés (widget_data). " +
+        "Un widget sans compte dont les domaines publics (ou le web) n'ont pas encore été acceptés rend grant-required : " +
+        "l'utilisateur l'autorise sur l'accueil, une seule fois (et à nouveau si la liste s'allonge).",
       inputSchema: { id: ID_WIDGET },
     },
     protect(async ({ id }) => {
       const before = await read(id);
+      // A run with the account answers with its status and duration, which its code can shape from the account's data: card first.
+      if (!(await askIfNeeded(id, before))) return text(`L'utilisateur a refusé de lancer le widget ${id}, qui lit avec son compte.`);
       const state = await w.tools.harvest(id);
       const after = (await w.tools.read(id)) ?? before;
       // A declaration that loses its account during the harvest frees nothing: the strictest rule applies.
@@ -1263,7 +1294,9 @@ function registerActionsTools(
       description:
         "Lance une action (actions/<id>) tout de suite, ou rejoint son exécution en cours, et attend sa fin. Rend { status, run?, error? } " +
         "sans jamais les résultats (action_runs les lui demande pour une action qui lit avec son compte). `input` : le texte que " +
-        "l'action demande, s'il y en a un. L'utilisateur voit la page dans les résultats précédents de l'action.",
+        "l'action demande, s'il y en a un. L'utilisateur voit la page dans les résultats précédents de l'action. " +
+        "Une action sans compte dont les domaines publics (ou le web) n'ont pas encore été acceptés rend grant-required : " +
+        "l'utilisateur l'autorise sur sa page, une seule fois (et à nouveau si la liste s'allonge).",
       inputSchema: { id: ID_WIDGET, input: z.string().max(200).optional() },
     },
     protect(async ({ id, input }) => {
@@ -1271,6 +1304,8 @@ function registerActionsTools(
       if (before.input !== null && (input === undefined || input.trim() === "")) {
         return text(json({ status: "invalid", error: requiredInput("fr", before.input) }));
       }
+      // Same rule as harvest_widget: the end and the duration of a run with the account are its data.
+      if (!(await askIfNeeded(id, before))) return text(`L'utilisateur a refusé de lancer l'action ${id}, qui lit avec son compte.`);
       const end = await a.tools.launch(id, input);
       const after = (await a.tools.read(id)) ?? before;
       // A declaration that loses its account during the run frees nothing: the strictest rule applies.

@@ -141,7 +141,7 @@ describe("video resume", () => {
     await start({ grant: false, positions: { "/episode/4": { t: 70, duration: 90 } } });
     await openSite("vidola");
     await expect.poll(() => inStore<string | null>(`return store.sites.viewOf("vidola");`), { timeout: 15_000 }).toBe("grant");
-    await inSiteBar(m, "vidola", `doc.querySelector('[data-testid="refuse-site"]').click(); return true;`);
+    await inSiteBar(m, "vidola", `for (let i = 0; i < 50 && !doc.querySelector('[data-testid="site-grant-card"][data-armed]'); i++) await new Promise((r) => setTimeout(r, 100)); doc.querySelector('[data-testid="refuse-site"]').click(); return true;`);
     await expect.poll(() => viewUrl("vidola"), { timeout: 20_000 }).toBe(url("/episode/4"));
     await waitDuration(90);
     await sleep(1000);

@@ -18,7 +18,7 @@ export const AGENT_ACCOUNTS: {
   name: string;
   status: string[];
   logout: string[];
-  login: { kind: "panel" } | { kind: "device"; argv: string[] };
+  login: { kind: "panel" } | { kind: "device"; argv: string[]; origin: string };
   /** Throws when the output is unreadable. */
   parse(r: { code: number; stdout: string; stderr: string }): { loggedIn: boolean; account?: string };
 }[] = [
@@ -39,7 +39,7 @@ export const AGENT_ACCOUNTS: {
     name: "Codex",
     status: ["codex", "login", "status"],
     logout: ["codex", "logout"],
-    login: { kind: "device", argv: ["codex", "login", "--device-auth"] },
+    login: { kind: "device", argv: ["codex", "login", "--device-auth"], origin: "https://auth.openai.com" },
     parse({ stdout, stderr }) {
       const t = stdout + stderr;
       if (t.includes("Logged in using ChatGPT")) return { loggedIn: true, account: "ChatGPT" };
@@ -194,7 +194,7 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
       try {
         // The login runs the agent's CLI as node: never before the network rules are in place.
         await o.workshop.secureNetwork();
-        signIn = startDeviceLogin(o.deviceCommand(a.login.argv));
+        signIn = startDeviceLogin(o.deviceCommand(a.login.argv), { origin: a.login.origin });
       } catch (e) {
         return { kind: "error", error: failure(e) };
       }

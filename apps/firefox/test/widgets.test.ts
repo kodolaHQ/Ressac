@@ -48,6 +48,7 @@ describe("toShownWidgets", () => {
         state: { ...DEFAULT_WIDGET_STATE, status: "running" },
         account: [],
         public: [],
+        web: false,
         hasHarvest: false,
         hours: [],
         minutes: null,

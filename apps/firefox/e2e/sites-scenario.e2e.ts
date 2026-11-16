@@ -273,6 +273,8 @@ describe("end to end (AGENTS.md's examples)", () => {
     await openSite("vidola");
     await expect.poll(() => text("vidola", "site-grant-card"), { timeout: 15_000 }).not.toBeNull();
     expect(await text("vidola", "site-grant-domains")).toContain("images.localhost");
+    // The card takes a click once armed.
+    await expect.poll(() => inSiteBar(m, "vidola", `return !!doc.querySelector('[data-testid="site-grant-card"][data-armed]');`), { timeout: 5_000 }).toBe(true);
     await inSiteBar(m, "vidola", `doc.querySelector('[data-testid="grant-site"]').click(); return true;`);
     await expect.poll(homeList, { timeout: 15_000 }).toBe("Aucune série en cours.");
     expect(await seriesCards()).toEqual([]);
@@ -335,6 +337,8 @@ describe("end to end (AGENTS.md's examples)", () => {
       );
     await openSite("youtube");
     await expect.poll(() => text("youtube", "site-grant-card"), { timeout: 15_000 }).not.toBeNull();
+    // The card takes a click once armed.
+    await expect.poll(() => inSiteBar(m, "youtube", `return !!doc.querySelector('[data-testid="site-grant-card"][data-armed]');`), { timeout: 5_000 }).toBe(true);
     await inSiteBar(m, "youtube", `doc.querySelector('[data-testid="grant-site"]').click(); return true;`);
     await waitUrl(url("youtube.localhost", "/"), "youtube");
     await expect.poll(shelves, { timeout: 10_000 }).toEqual(["none", "none", "retiré", true]);

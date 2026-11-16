@@ -139,6 +139,11 @@ export class FileActions {
 
   private ask(id: string, o: Pick<Request, "input" | "trigger" | "attempt">): ActionLaunch {
     const existing = this.perAction.get(id);
+    // A builder try never stands for a real run: the run starts once the try has ended (it is not visible to stop
+    // meanwhile; the next ask, after the try, sees a stop or a deleted action). A try during a run is « already running ».
+    if (existing && existing.attempt !== null && o.attempt === null) {
+      return { already: false, end: existing.end.catch(() => undefined).then(() => this.ask(id, o).end) };
+    }
     if (existing) return { already: true, end: existing.end };
     if (this.isStopped) return { already: false, end: Promise.resolve(this.stopped()) };
     const d: Request = { id, ...o, ctl: new AbortController(), end: Promise.resolve(this.stopped()), since: this.o.clock().toISOString() };

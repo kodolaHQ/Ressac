@@ -20,26 +20,33 @@ const alive = () => {
 
 describe("startDeviceLogin", () => {
   it("code found", async () => {
-    const l = startDeviceLogin(fake(`console.error("\\x1b[94mhttps://auth.openai.com/codex/device\\x1b[0m");console.error("\\x1b[94mB3MH-2FT21\\x1b[0m");setTimeout(()=>{},60000)`));
+    const l = startDeviceLogin(fake(`console.error("\\x1b[94mhttps://auth.openai.com/codex/device\\x1b[0m");console.error("\\x1b[94mB3MH-2FT21\\x1b[0m");setTimeout(()=>{},60000)`), { origin: "https://auth.openai.com" });
     expect(await l.result).toEqual({ kind: "device", url: "https://auth.openai.com/codex/device", code: "B3MH-2FT21" });
     expect(alive()).toBe(true);
     l.stop();
     await vi.waitFor(() => expect(alive()).toBe(false));
   });
 
+  it("an address of another origin printed first is never the one offered", async () => {
+    const l = startDeviceLogin(fake(`console.error("https://auth.openai.com.evil.example/codex/device");console.error("https://auth.openai.com/codex/device");console.error("B3MH-2FT21");setTimeout(()=>{},60000)`), { origin: "https://auth.openai.com" });
+    expect(await l.result).toEqual({ kind: "device", url: "https://auth.openai.com/codex/device", code: "B3MH-2FT21" });
+    l.stop();
+    await vi.waitFor(() => expect(alive()).toBe(false));
+  });
+
   it("reads whole lines only", async () => {
-    const l = startDeviceLogin(fake(`console.log("https://auth.example/device");process.stdout.write("B3MH-2FT2");setTimeout(()=>{process.stdout.write("1\\n");setTimeout(()=>{},60000)},150)`));
+    const l = startDeviceLogin(fake(`console.log("https://auth.example/device");process.stdout.write("B3MH-2FT2");setTimeout(()=>{process.stdout.write("1\\n");setTimeout(()=>{},60000)},150)`), { origin: "https://auth.example" });
     expect(await l.result).toEqual({ kind: "device", url: "https://auth.example/device", code: "B3MH-2FT21" });
     l.stop();
   });
 
   it("exits first", async () => {
-    const l = startDeviceLogin(fake(`console.error("Error logging in: boom");process.exit(1)`));
+    const l = startDeviceLogin(fake(`console.error("Error logging in: boom");process.exit(1)`), { origin: "https://auth.example" });
     expect(await l.result).toEqual({ kind: "error", error: "Error logging in: boom" });
   });
 
   it("too slow", async () => {
-    const l = startDeviceLogin(fake(`setTimeout(()=>{},60000)`), { delayMs: 100 });
+    const l = startDeviceLogin(fake(`setTimeout(()=>{},60000)`), { origin: "https://auth.example", delayMs: 100 });
     expect(await l.result).toMatchObject({ kind: "error" });
     await vi.waitFor(() => expect(alive()).toBe(false));
   });

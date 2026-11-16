@@ -11,6 +11,8 @@ const action = (id: string, name: string, o: Partial<ActionShown> = {}): ActionS
   account: [],
   public: [],
   grant: true,
+  web: false,
+  readsNeeded: false,
   last: null,
   ...o,
 });

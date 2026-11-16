@@ -85,7 +85,7 @@ describe.skipIf(!process.env.RESSAC_SPIKE)("actions spike", () => {
   it("S1: AGENTS.md's « barres » draws with its props; its height reaches the chrome on the window root", async () => {
     const r = await mount("barres", { title: "Ventes", values: [{ label: "Lundi", value: 3 }, { label: "Mardi", value: 5 }] }, 500);
     note("S1 barres", r);
-    expect(r.src).toMatch(/^resource:\/\/ressac-component-barres\/component-\d+\.html$/);
+    expect(r.src).toMatch(/^resource:\/\/ressac-component-barres\/component-\d+-\d+\.html$/);
     expect(r.origin).toBe("null");
     expect(r.titre).toBe("Ventes");
     expect(r.rects).toBe(2);

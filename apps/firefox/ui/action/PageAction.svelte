@@ -107,6 +107,8 @@
   const pending = $derived(direct.waiting.some((a) => a.action === id));
   const running = $derived(current !== null || pending);
   const grantNeed = $derived(!!action && action.account.length > 0 && !action.grant);
+  /** Without account: its public domains or the web wait for the user's approval (no card, one click). */
+  const readsNeed = $derived(!!action && action.account.length === 0 && action.readsNeeded);
   /** The outcome of a launch refused without writing anything: this page's, otherwise a suggestion's or « Lancer »'s. */
   const shownError = $derived(launchError ?? action?.denial ?? null);
   // A run just finished (seen through direct): its result is re-read.
@@ -154,6 +156,20 @@
     if (action && !grantNeed && (!action.input || input.trim())) void launchAction();
   }
 
+  async function approveReads() {
+    if (!action) return;
+    // Exactly what the message showed.
+    const r = await api.actions.approveReads({ id, public: [...action.public], web: action.web });
+    if (!r.ok) {
+      launchError = t("builder-grant-error", { reason: r.error });
+      await load();
+      return;
+    }
+    launchError = null;
+    await load();
+    if (action && !readsNeed && (!action.input || input.trim())) void launchAction();
+  }
+
   const choose = (e: string) => action && api.dispatch({ type: "openAction", windowId: api.windowId, id, name: action.name, run: e });
 </script>
 
@@ -182,6 +198,17 @@
           <p>{t("action-grant-required", { domains: action.account.join(", ") })}</p>
           <button onclick={() => (cardOpen = true)}>{t("action-authorize")}</button>
         </div>
+      {:else if readsNeed}
+        <div class="message grant" data-testid="reads-required">
+          <p>
+            {action.web
+              ? action.public.length
+                ? t("action-reads-public-web", { public: action.public.join(", ") })
+                : t("action-reads-web")
+              : t("action-reads-public", { public: action.public.join(", ") })}
+          </p>
+          <button onclick={() => void approveReads()}>{t("action-reads-allow")}</button>
+        </div>
       {/if}
       {#if shownError}
         <p class="message error" data-testid="action-error">{shownError}</p>
@@ -195,7 +222,7 @@
             <button data-testid="show-latest-result" onclick={() => choose(previous![0]!.id)}>{t("action-show-latest")}</button>
           {/if}
         </div>
-      {:else if loaded === null && !lastWithoutResult && !action.input && !grantNeed && !shownError}
+      {:else if loaded === null && !lastWithoutResult && !action.input && !grantNeed && !readsNeed && !shownError}
         <p class="message" data-testid="nothing-found">{t("action-not-yet")}</p>
       {:else if loaded?.page?.empty}
         <p class="message" data-testid="no-result">{t("action-no-result")}</p>

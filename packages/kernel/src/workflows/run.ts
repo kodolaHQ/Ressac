@@ -122,6 +122,8 @@ export interface WorkflowContext {
    * allowed and paced open reads (never with an account).
    */
   sources: { account: readonly string[]; public: readonly string[]; web?: boolean };
+  /** Without account: may read any host (it declares `web`, or its approved reads have `web`, as seeded at the update). */
+  unrestricted?: boolean;
   /** Re-read at each read with an account; null = grant gone. */
   grant(): Promise<{ profile: string } | null>;
   /** The browser refuses the grant's profile (deleted, became private). */
@@ -302,9 +304,9 @@ export async function runWorkflow(
   };
   const failure = (error: string, codeError: boolean): WorkflowOutcome => ({ t: "failure", error: truncate(error, MAX_ERROR), codeError: codeError });
 
-  // For an owner with an account, public reads are limited to the declared domains (empty: none).
+  // Public reads are limited to the declared domains (empty: none), except for an unrestricted owner without account.
   const hasAccount = ctx.sources.account.length > 0;
-  const publicDomains = hasAccount ? ctx.sources.public : null;
+  const publicDomains = !hasAccount && (ctx.sources.web === true || ctx.unrestricted === true) ? null : ctx.sources.public;
   // Paced web searches and open reads: only for a widget that declares `web`, never with an account.
   const web = ctx.sources.web === true && !hasAccount;
   const pacing = infra.pacing ?? DEFAULT_PACING;
@@ -423,23 +425,24 @@ export async function runWorkflow(
     process.stdin.write(line);
   };
 
-  /** Read options: for an owner with an account, the bridge receives the list of domains where it may navigate. */
+  /** Read options: for a restricted owner, the bridge receives the list of domains where it may navigate (redirects included). */
   // Tests only: the bridge then also allows local addresses (it refuses them otherwise, redirects included).
   const withDomains = (profile: string | null, domains: readonly string[] | null) => ({
     profile: profile,
-    ...(hasAccount && domains ? { domains: [...domains] } : {}),
+    ...(domains ? { domains: [...domains] } : {}),
     ...(localUrls ? { localAddresses: true } : {}),
     signal: runEnd.signal,
   });
 
   /**
-   * An open read (page without account, fetch, feed): for a `web` widget, counted (100 per run) and
-   * paced per host, redirects to another site included (`changeHost`); otherwise, done right away as before.
+   * An open read (page without account, fetch, feed): counted (100 per run) for every owner, so a loop cannot hammer a
+   * site from the user's address all run long; for a `web` widget also paced per host, redirects to another site
+   * included (`changeHost`).
    */
   const openRead = <T>(u: URL, f: (changeHost?: ChangeHost) => Promise<T>): Promise<T> => {
-    if (!web) return f();
     if (openReads >= MAX_OPEN_READS) throw new Error(TOO_MANY_READS);
     openReads++;
+    if (!web) return f();
     return pacing.read(u.hostname, f, runEnd.signal);
   };
 
@@ -521,7 +524,6 @@ export async function runWorkflow(
         const { url, format } = args(FetchArgs, a, "fetch");
         const u = checkUrl(url, publicDomains, localUrls);
         reportRead(u);
-        if (!web) return fetch(url, format ?? "text", publicDomains, localUrls, runEnd.signal);
         return openRead(u, (changeHost) => fetch(u.href, format ?? "text", publicDomains, localUrls, runEnd.signal, changeHost));
       }
       case "searchWeb":

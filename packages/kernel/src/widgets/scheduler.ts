@@ -11,6 +11,7 @@ import { createAiDispatcher, type AiDispatcher } from "../ai/dispatcher.js";
 import type { BrowserBridge } from "../mcp/bridge.js";
 import { say } from "../i18n.js";
 import { readGrants, removeGrant } from "./grants.js";
+import { readReads, removeReads } from "./reads.js";
 import { currentSlot, dueHour, trackingAfter, type HourOutcome, type HoursTracking } from "./hours.js";
 import type { DirectTrace } from "../workflows/run.js";
 import { readRun, type Execution } from "../workflows/executions.js";
@@ -395,16 +396,20 @@ export class WidgetsScheduler {
     const presents = new Set([...(await this.widgets()).map((w) => w.id), ...this.perWidget.keys()]);
     const { widgetsFolder } = this.o;
     let change = false;
-    for (const id of Object.keys(await readGrants(widgetsFolder))) {
-      if (presents.has(id)) continue;
-      await removeGrant(widgetsFolder, id);
-      change = true;
-    }
     const folders = await readdir(widgetsFolder, { withFileTypes: true }).catch(() => []);
     for (const d of folders) {
       if (!d.isDirectory() || !ID_WIDGET.test(d.name) || presents.has(d.name)) continue;
       await rm(join(widgetsFolder, d.name), { recursive: true, force: true });
       change = true;
+    }
+    // The grants after the data they guard.
+    for (const id of Object.keys(await readGrants(widgetsFolder))) {
+      if (presents.has(id)) continue;
+      await removeGrant(widgetsFolder, id);
+      change = true;
+    }
+    for (const id of Object.keys(await readReads(widgetsFolder))) {
+      if (!presents.has(id)) await removeReads(widgetsFolder, id);
     }
     if (change) this.o.onChange?.();
   }

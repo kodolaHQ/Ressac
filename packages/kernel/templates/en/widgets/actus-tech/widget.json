@@ -25,7 +25,8 @@
       "lobste.rs",
       "www.theverge.com",
       "hnrss.org"
-    ]
+    ],
+    "web": true
   },
   "config": {
     "interets": "AI and language models, local AI, coding agents, Svelte, Electron, TypeScript, web development, browsers, computer security"

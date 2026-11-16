@@ -6,9 +6,10 @@ export const inEveryLanguage = (id: string, args?: Record<string, string | numbe
 /** Matches the grant-required error whatever its language (the text before the domains is the language's own). */
 export function grantRequiredPatterns(): RegExp[] {
   const mark = "\u0000";
-  return KERNEL_LOCALES.map((l) => {
-    const prefix = say(l, "kernel-err-grant-required", { domains: mark }).split(mark)[0]!;
+  // The reads message's « et le web » / « and the web » suffix fits the domains' characters.
+  return ["kernel-err-grant-required", "kernel-err-reads-required"].flatMap((id) => KERNEL_LOCALES.map((l) => {
+    const prefix = say(l, id, { domains: mark }).split(mark)[0]!;
     // The declared domains only have [a-z0-9.-]; the message may have been truncated (« … »).
     return new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[a-z0-9., -]*…?$`);
-  });
+  }));
 }

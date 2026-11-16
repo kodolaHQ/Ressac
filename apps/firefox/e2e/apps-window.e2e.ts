@@ -12,6 +12,7 @@ import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
 import { inBrowser } from "./sites";
+import { click } from "./ui";
 
 // Plan 35a Task 3: the agent app's window, its container, its origin guard and the agent's `app:<dossier>`, plus
 // the security checks of spike S8 on the real code.
@@ -180,7 +181,10 @@ describe("one Ressac, the app launched in each test", () => {
   // applications.spec.ts:161
   it("navigating the app to another site opens it in a tab; the window stays on the app", async () => {
     await launched();
-    const r = await callTool(i.dataDir, "navigate", { id: "app:essai", url: "https://exemple.invalide/ailleurs" });
+    // An address the agent composed: the user's card first.
+    const navigating = callTool(i.dataDir, "navigate", { id: "app:essai", url: "https://exemple.invalide/ailleurs", reason: "test" });
+    await click(m, '[data-testid="address-request"] button', { text: "Autoriser" });
+    const r = await navigating;
     expect(r.error).toBe(false);
     await expect.poll(() => tabUrls(m), { timeout: 10_000 }).toContain("https://exemple.invalide/ailleurs");
     expect(await viewUrl(m)).toBe(attempt);

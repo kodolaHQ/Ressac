@@ -14,6 +14,8 @@ import { writeData, writeWidgetState, readWidgetState, deleteData } from "../../
 import { LocalAi } from "../../src/ai/local-ai.js";
 import { FakeBridge } from "../../src/mcp/fake-bridge.js";
 import { giveGrant, readGrants, removeGrant } from "../../src/widgets/grants.js";
+import { approveReads, readReads, seedReads } from "../../src/widgets/reads.js";
+import { initSpace } from "../../src/workspace/initialize.js";
 import { kernelError, runAttempt, runHarvest, WORKSHOP_STOPPED_ERROR, INTERRUPTED_ERROR, type ProcessLauncher } from "../../src/widgets/harvest.js";
 import { PROFILE_DENIED } from "../../src/workflows/run.js";
 import { writeRun, attemptId, readRun, listRuns, type Execution } from "../../src/workflows/executions.js";
@@ -72,7 +74,8 @@ interface Context {
 }
 
 /** Creates a widget `id` (widget.json + harvest.mjs) and a launcher that runs the harvester locally, without docker. */
-async function prepare(id: string, code: string, sources = { account: [] as string[], public: [] as string[] }, config: unknown = { a: 1 }): Promise<Context> {
+/** Without `unapproved`, a widget without account is approved as seeded at the update (any host). */
+async function prepare(id: string, code: string, sources = { account: [] as string[], public: [] as string[] }, config: unknown = { a: 1 }, o: { unapproved?: true } = {}): Promise<Context> {
   const space = await tempFolder();
   const folder = join(space, "home", "widgets", id);
   await mkdir(folder, { recursive: true });
@@ -86,6 +89,8 @@ async function prepare(id: string, code: string, sources = { account: [] as stri
   await writeFile(join(folder, "widget.json"), JSON.stringify(raw));
   await writeFile(join(folder, "harvest.mjs"), code);
   const declaration = DeclarationWidget.parse(raw);
+  const widgetsFolder = await tempFolder();
+  if (!o.unapproved && sources.account.length === 0) await approveReads(widgetsFolder, id, { public: sources.public, web: true });
   const run = fakeRunner([]);
   const ctx: Context = {
     widget: {
@@ -99,7 +104,7 @@ async function prepare(id: string, code: string, sources = { account: [] as stri
       hasWorkflow: false,
       hasDisplay: true,
     },
-    widgetsFolder: await tempFolder(),
+    widgetsFolder: widgetsFolder,
     space: space,
     commands: [],
     killed: 0,
@@ -176,6 +181,46 @@ const optionsOf = (ctx: Context) => ({
 const readJson = async (path: string) => JSON.parse(await readFile(path, "utf8"));
 
 describe("runHarvest", () => {
+  it("fresh space: a starter is held to what it declares (meteo's code swapped to an undeclared host is refused), actus-tech (web) still reads any host", async () => {
+    const web = await webServer({ "/": (res) => res.end("lu") });
+    const space = await tempFolder();
+    const c = spacePaths(space);
+    const { created } = await initSpace(c, "fr");
+    const widgetsFolder = await tempFolder();
+    const starters = (await readHome(c, widgetsFolder, "fr")).widgets.flatMap((w) => ("error" in w ? [] : [w]));
+    await seedReads(widgetsFolder, starters.map((w) => ({ id: w.id, sources: w.declaration.sources, fresh: created.includes(join(c.widgets, w.id, "widget.json")) })));
+    expect((await readReads(widgetsFolder)).meteo!.web).toBe(false);
+    expect((await readReads(widgetsFolder))["actus-tech"]!.web).toBe(true);
+    const run = async (id: string, code: string) => {
+      const folder = join(c.widgets, id);
+      await writeFile(join(folder, "workflow.json"), JSON.stringify({ version: 1, blocks: [{ id: "a", type: "code", params: { source: "a.mjs" } }, { id: "s", type: "output", params: { to: "widget" } }], links: [{ from: "a", to: "s" }] }));
+      await writeFile(join(folder, "a.mjs"), code);
+      const widget = (await readHome(c, widgetsFolder, "fr")).widgets.find((w) => w.id === id)!;
+      const launch: ProcessLauncher = () => {
+        const e = spawn(process.execPath, [SCRIPT, folder], { stdio: ["pipe", "pipe", "pipe"] });
+        return { stdin: e.stdin, stdout: e.stdout, stderr: e.stderr, kill: () => void e.kill("SIGKILL"), end: new Promise((ok) => e.on("close", (x) => ok(x))) };
+      };
+      return runHarvest({ id, widget, widgetsFolder, engine: ENGINE, workshop: new Workshop({ paths: c, docker: "docker", run: fakeRunner([]).run }), launch, ai: null, bridge: readBridge(), clock, locale: () => "fr", localAddresses: true });
+    };
+    const code = `export default async (_e, w) => w.fetch("${web.url}/");`;
+    expect((await run("meteo", code)).state).toMatchObject({ status: "error", error: expect.stringContaining("Domaine non déclaré : 127.0.0.1") });
+    expect(await run("actus-tech", code)).toMatchObject({ state: { status: "ok" }, data: "lu" });
+  });
+
+  it("without account: a public domain not approved stops before the container, the approval lets it run, a lost domain still runs", async () => {
+    const ctx = await prepare("pub", `export default async () => [1];`, { account: [], public: ["a.example"] }, undefined, { unapproved: true });
+    const r = await runHarvest(optionsOf(ctx));
+    expect(r.state).toMatchObject({ status: "grant-required", error: "Accord requis pour lire : a.example", kernelError: true });
+    expect(kernelError(r.state.error!)).toBe(true);
+    expect(ctx.commands).toEqual([]);
+    await approveReads(ctx.widgetsFolder, "pub", { public: ["a.example", "b.example"], web: false });
+    expect((await runHarvest(optionsOf(ctx))).state.status).toBe("ok");
+    ctx.widget.declaration.sources.public = ["c.example"];
+    expect((await runHarvest(optionsOf(ctx))).state.status).toBe("grant-required");
+    ctx.widget.declaration.sources.public = ["b.example"];
+    expect((await runHarvest(optionsOf(ctx))).state.status).toBe("ok");
+  });
+
   it("a successful harvest writes data.json and the ok state in widgetsFolder", async () => {
     const web = await webServer({ "/flux.json": (res) => { res.writeHead(200, { "content-type": "application/json" }); res.end('{"x":42}'); } });
     const kev = await fakeKev({ q: { type: "noul", noul: 0.8 } });
@@ -235,6 +280,9 @@ describe("runHarvest", () => {
       "-v", "/app/docker/engine:/opt/ressac/engine:ro",
       "--memory", "512m",
       "--pids-limit", "128",
+      "--cpus", "1",
+      "--cap-drop", "ALL",
+      "--security-opt", "no-new-privileges",
       IMAGE,
       "timeout", "-k", "5", "180",
       "node", "/opt/ressac/engine/harvester.mjs", "/widget",

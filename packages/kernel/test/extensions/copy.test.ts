@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { link, mkdir, readdir, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
+import { copyFile, link, mkdir, readdir, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import { dirname, join } from "node:path";
@@ -276,6 +276,15 @@ describe("prepareCopy", () => {
     expect([...background.matchAll(/importScripts\(/g)]).toHaveLength(1);
   });
 
+  it("only passive file types are copied: .rdf, .mml, .xbl, .ehtml, .xhtml, LICENSE and .DS_Store stay out, without refusing the extension", async () => {
+    const src = await source({ "manifest.json": baseManifest(), "p.rdf": "<x/>", "m.mml": "<x/>", "b.xbl": "<x/>", "e.ehtml": "<p>", "d.xhtml": "<x/>", "LICENSE": "MIT", ".DS_Store": "x", "ok.png": "x", "_locales/fr/messages.json": "{}" });
+    const c = await target();
+    const { analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
+    expect(analysis.denial).toEqual([]);
+    for (const f of ["p.rdf", "m.mml", "b.xbl", "e.ehtml", "d.xhtml", "LICENSE", ".DS_Store"]) expect(existsSync(join(c, f)), f).toBe(false);
+    expect(existsSync(join(c, "ok.png"))).toBe(true);
+  });
+
   it("the background guard is prefixed to each HTML page (raw bytes, absolute path), the existing scripts stay after", async () => {
     const GUARD = '<script src="/ressac-background-guard.js"></script>';
     const src = await source({
@@ -303,13 +312,13 @@ describe("prepareCopy", () => {
     );
   });
 
-  it("files that make a non-HTML document are refused", async () => {
-    for (const ext of ["xhtml", "xht", "xml", "xsl", "xslt", "mht", "mhtml", "XHTML"]) {
+  it("files that make a non-HTML document (or a compressed SVG) stay out of the copy", async () => {
+    for (const ext of ["xhtml", "xht", "xml", "xsl", "xslt", "mht", "mhtml", "XHTML", "svgz"]) {
       const src = await source({ "manifest.json": baseManifest(), [`p.${ext}`]: "<x/>" });
       const c = await target();
       const { analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
-      expect(analysis.denial.some((r) => r.includes(`p.${ext}`)), ext).toBe(true);
-      expect(existsSync(c)).toBe(false);
+      expect(analysis.denial, ext).toEqual([]);
+      expect(existsSync(join(c, `p.${ext}`)), ext).toBe(false);
     }
   });
 
@@ -331,7 +340,7 @@ describe("prepareCopy", () => {
     expect(existsSync(join(c, "icone.svg"))).toBe(true);
   });
 
-  it("SVG: closed rule (namespace prefix, UTF-16, javascript:, entity, invalid bytes), .svgz refused", async () => {
+  it("SVG: closed rule (namespace prefix, UTF-16, javascript:, entity, invalid bytes)", async () => {
     const cas: [string, Buffer | string, string][] = [
       ["s.svg", '<svg xmlns:s="http://www.w3.org/2000/svg"><s:script href="x.js"/></svg>', "script"],
       ["u16.svg", Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('<svg><script href="x.js"/></svg>', "utf16le")]), "UTF-16"],
@@ -341,7 +350,6 @@ describe("prepareCopy", () => {
       ["fo.svg", "<svg><FOREIGNOBJECT/></svg>", "foreignobject"],
       ["on.svg", '<svg><a onfocus="x()"/></svg>', "on…="],
       ["bad.svg", Buffer.from([0x3c, 0x73, 0x76, 0x67, 0xff, 0x2f, 0x3e]), "UTF-8"],
-      ["image.svgz", Buffer.from([0x1f, 0x8b, 0x08]), ".svgz"],
     ];
     for (const [name, content, pattern] of cas) {
       const src = await source({ "manifest.json": baseManifest() });
@@ -561,10 +569,24 @@ describe("prepareCopy", () => {
     expect(await readdir(dirname(c))).toEqual(["essai"]);
   });
 
+  it("the hash changes with the guards: a Ressac update that changes them redoes the installed copies", async () => {
+    const src = await source({ "manifest.json": baseManifest(), "a.js": "" });
+    const guards = join(await tempFolder(), "guards");
+    await mkdir(guards);
+    for (const g of GUARDS) await copyFile(join(DEFAULT_GUARDS, g), join(guards, g));
+    const before = (await prepareCopy({ source: src, target: await target(), keptFolder: guards })).hash;
+    expect((await prepareCopy({ source: src, target: await target(), keptFolder: guards })).hash).toBe(before);
+    await writeFile(join(guards, "ressac-page-guard.js"), "// new guard\n", { flag: "a" });
+    expect((await prepareCopy({ source: src, target: await target(), keptFolder: guards })).hash).not.toBe(before);
+  });
+
   it("the temporary folder is deleted after a write error", async () => {
     const c = await target();
     const src = await source({ "manifest.json": baseManifest(), "a.js": "" });
-    await expect(prepareCopy({ source: src, target: c, keptFolder: join(src, "absent") })).rejects.toThrow();
+    brackets.beforeRename = (from) => {
+      if (from.endsWith(".tmp")) throw new Error("disque plein");
+    };
+    await expect(prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS })).rejects.toThrow("disque plein");
     expect(existsSync(c)).toBe(false);
     expect(await readdir(dirname(c))).toEqual([]);
   });

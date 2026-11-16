@@ -225,6 +225,8 @@
 
 <style>
   .modal { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 16px; -webkit-app-region: no-drag; }
+  /* Same delay for the pointer as for Enter: a click meant for the page, landing where the card appears, grants nothing. */
+  .modal:not([data-armed]) .card :global(:is(button, input, label, a)) { pointer-events: none; }
   .card {
     position: relative;
     width: min(440px, 100%);

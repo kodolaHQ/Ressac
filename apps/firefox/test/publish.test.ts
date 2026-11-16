@@ -15,6 +15,8 @@ let host = "";
 const published: Record<string, string> = {
   [`/updates/${KEY}/releases/0.9.9/Ressac-0.9.9.mar`]: "mar",
   [`/updates/${KEY}/releases/0.9.8/Ressac-0.9.8.mar`]: "other",
+  // The live feed: 0.9.9 and later go on, older stops.
+  [`/updates/${KEY}/browser/Darwin_aarch64-gcc3/ressac/update.xml`]: `<updates><update displayVersion="0.9.9" appVersion="160.0"/></updates>`,
 };
 const server = createServer((req, res) => {
   const body = published[new URL(req.url ?? "/", "http://x").pathname];
@@ -63,6 +65,13 @@ async function publish(root: string, extra: Record<string, string | undefined> =
 describe("publish.sh", () => {
   it("never waits forever on the already-published check", () => {
     expect(readFileSync(new URL("../scripts/publish.sh", import.meta.url), "utf8")).toMatch(/curl --max-time 30 /);
+  });
+
+  it("refuses a version older than the live feed's; the same or a newer one goes on", async () => {
+    const older = await publish(fixture({ version: "0.9.7" }));
+    expect(older.code).not.toBe(0);
+    expect(older.stderr).toContain("0.9.9 is live, newer than 0.9.7");
+    expect((await publish(fixture({ version: "0.10.0" }))).code).toBe(0);
   });
 
   it("is the release:publish script, not pnpm's own publish", () => {

@@ -187,6 +187,8 @@ test("reinforced: scripts everywhere, or all sites with scripting", () => {
   expect(grantStrengthened({ ...p, allSitesScripts: true, allSites: true }, "agent")).toBe(true);
   expect(grantStrengthened({ ...p, allSites: true, permissions: ["scripting"] }, "agent")).toBe(true);
   expect(grantStrengthened({ ...p, allSites: true }, "agent")).toBe(false);
+  // One content script on one site: the copy adds `scripting`, which reaches every granted site.
+  expect(grantStrengthened({ ...p, allSites: true, scripts: true }, "agent")).toBe(true);
   expect(grantStrengthened({ ...p, permissions: ["scripting"] }, "agent")).toBe(false);
   expect(grantStrengthened({ ...p, allSitesScripts: true, allSites: true }, "store")).toBe(false);
 });

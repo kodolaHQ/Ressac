@@ -46,16 +46,19 @@ WebRTC (`RTCPeerConnection`…) is absent.
 
 - Working: content scripts and CSS, `scripting` (`executeScript` with `files` or a `func`,
   `insertCSS`, `registerContentScripts`), `declarativeNetRequest`, `storage`, `alarms`, `offscreen`,
-  `action` (button, popup), `contextMenus`, `cookies`, `webNavigation`, `notifications`, `tabs`, `windows`.
-- Missing: `userScripts`, `sidePanel`, `history`, `bookmarks`, `identity`, `tabGroups`,
+  `action` (button, popup), `contextMenus`, `webNavigation`, `notifications`, `tabs`, `windows`.
+- Missing: `cookies` (refused: the API would reach the other spaces' cookies), `userScripts`, `sidePanel`, `history`, `bookmarks`, `identity`, `tabGroups`,
   `nativeMessaging`. **`activeTab` is not supported**: ask for `host_permissions`.
   `storage.sync` is the same store as `storage.local`.
+- The copy only takes these file types: `.html` `.htm` `.shtml` `.js` `.mjs` `.css` `.json` `.map`
+  `.wasm` `.png` `.jpg` `.jpeg` `.gif` `.webp` `.avif` `.ico` `.bmp` `.svg` `.woff` `.woff2` `.ttf` `.otf`
+  `.txt` `.md`. Others (`.xml`, `.xhtml`, sounds, `LICENSE`…) stay out of the copy.
 - `tabs.create`, `tabs.update` and `windows.create` only open granted sites (so does the navigation of an
-  extension page); cookies are limited to the granted sites. `tabs.query` and `tabs.get`
+  extension page). `tabs.query` and `tabs.get`
   only give `url`, `title` and favicon with the `tabs` permission or access to the site (as in
   Chrome); `webNavigation` requires its permission. The popup is an extension page, nothing else.
 - The copy receives `scripting` and, as sites, the `matches` of your content scripts: for these sites
-  only, that gives the tabs' `url` and `title` without `tabs`, and the cookies (with `cookies`).
+  only, that gives the tabs' `url` and `title` without `tabs`.
 - **Content scripts**: they start after a round trip to your service worker (Ressac asks
   it whether the tab is a real tab of the user), so **`document_start` arrives later
   than announced**: do not count on it. If the service worker does not answer, the scripts are abandoned

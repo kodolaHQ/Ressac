@@ -5,7 +5,7 @@ import type { Visit } from "../shared/model";
 import type { ShownSite } from "../shared/sites";
 import { projectSiteApp, siteSiteApp, paramRequest, commandLines, defaultParam, titleBefore, sectionOf, type SiteApp, type SourceTab, type CommandSources } from "../ui/components/command";
 
-const action = (id: string, name: string): ActionShown => ({ id, name: name, description: "", keywords: [], input: null, account: [], public: [], grant: true, last: null });
+const action = (id: string, name: string): ActionShown => ({ id, name: name, description: "", keywords: [], input: null, account: [], public: [], grant: true, web: false, readsNeeded: false, last: null });
 const tab = (id: string, title: string, url = `https://${id}.fr/`): SourceTab => ({ id, title: title, url, favicon: null });
 const visit = (url: string, title = url): Visit => ({ url, title: title, lastVisit: "2026-01-01T00:00:00Z", visits: 1, spaceId: "e", private: false, kept: false, favicon: null });
 const app = (id: string, name: string): SiteApp => ({ kind: "site", id, name: name, action: "open", favicon: null });

@@ -131,10 +131,11 @@ export function serveComponent(dataDir: string, name: string, copy: ComponentCop
       const token = crypto.randomUUID().replace(/-/g, "");
       const mtime = await copy(name, token);
       if (mtime === null) return null;
-      const file = `component-${Math.round(mtime)}.html`;
+      const bytes = await IOUtils.read(PathUtils.join(copies, `source-${token}.html`));
+      // Keyed on mtime and size: a rewrite that keeps the old mtime (cp -p, touch -r, a tar) still makes a new copy.
+      const file = `component-${Math.round(mtime)}-${bytes.length}.html`;
       const target = PathUtils.join(copies, file);
       if (!(await IOUtils.exists(target))) {
-        const bytes = await IOUtils.read(PathUtils.join(copies, `source-${token}.html`));
         // Atomic: a frame never reads a half-written copy.
         const tmp = `${target}.${crypto.randomUUID()}.tmp`;
         await IOUtils.writeUTF8(tmp, displayServed(new TextDecoder().decode(bytes), CSP_WIDGET, COMPONENT_BRIDGE + (await componentFonts())));

@@ -316,6 +316,9 @@ test("harvestCommand mounts the engine read-only and launches /opt/ressac/engine
     "-v", "/app/docker/engine:/opt/ressac/engine:ro",
     "--memory", "512m",
     "--pids-limit", "128",
+    "--cpus", "1",
+    "--cap-drop", "ALL",
+    "--security-opt", "no-new-privileges",
     IMAGE,
     "timeout", "-k", "5", "180",
     "node", "/opt/ressac/engine/harvester.mjs", "/widget",
@@ -604,7 +607,7 @@ describe("agent network", () => {
     const args = calls.find((a) => a.args[0] === "run")!.args;
     const count = (x: string) => args.filter((a) => a === x).length;
     for (const f of ["--cap-add", "--memory", "--pids-limit", "--sysctl"]) expect(count(f)).toBe(1);
-    expect(args.join(" ")).toContain("--cap-add NET_ADMIN --memory 4g --pids-limit 1024 --sysctl net.ipv6.conf.all.disable_ipv6=1");
+    expect(args.join(" ")).toContain("--cap-add NET_ADMIN --security-opt no-new-privileges --memory 4g --pids-limit 1024 --sysctl net.ipv6.conf.all.disable_ipv6=1");
     for (const e of [
       "HTTPS_PROXY=http://127.0.0.1:3128", "https_proxy=http://127.0.0.1:3128", "HTTP_PROXY=http://127.0.0.1:3128", "http_proxy=http://127.0.0.1:3128",
       "NO_PROXY=localhost,127.0.0.1,host.docker.internal", "no_proxy=localhost,127.0.0.1,host.docker.internal",
@@ -615,8 +618,8 @@ describe("agent network", () => {
   test("the image hash covers the network module and the run flags version", async () => {
     const { RUN_FLAGS, RUN_FLAGS_VERSION } = await import("../../src/container/workshop.js");
     // Changing a flag must bump RUN_FLAGS_VERSION (and the fake docker's copy of it).
-    expect(RUN_FLAGS_VERSION).toBe("1");
-    expect(RUN_FLAGS.join(" ")).toMatchInlineSnapshot(`"--cap-add NET_ADMIN --memory 4g --pids-limit 1024 --sysctl net.ipv6.conf.all.disable_ipv6=1 -e HTTPS_PROXY=http://127.0.0.1:3128 -e https_proxy=http://127.0.0.1:3128 -e HTTP_PROXY=http://127.0.0.1:3128 -e http_proxy=http://127.0.0.1:3128 -e NO_PROXY=localhost,127.0.0.1,host.docker.internal -e no_proxy=localhost,127.0.0.1,host.docker.internal -e NODE_USE_ENV_PROXY=1 -e DISABLE_AUTOUPDATER=1 -e CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1"`);
+    expect(RUN_FLAGS_VERSION).toBe("2");
+    expect(RUN_FLAGS.join(" ")).toMatchInlineSnapshot(`"--cap-add NET_ADMIN --security-opt no-new-privileges --memory 4g --pids-limit 1024 --sysctl net.ipv6.conf.all.disable_ipv6=1 -e HTTPS_PROXY=http://127.0.0.1:3128 -e https_proxy=http://127.0.0.1:3128 -e HTTP_PROXY=http://127.0.0.1:3128 -e http_proxy=http://127.0.0.1:3128 -e NO_PROXY=localhost,127.0.0.1,host.docker.internal -e no_proxy=localhost,127.0.0.1,host.docker.internal -e NODE_USE_ENV_PROXY=1 -e DISABLE_AUTOUPDATER=1 -e CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1"`);
   });
 
   test("secureNetwork applies the rules with valid domains only, then probes", async () => {

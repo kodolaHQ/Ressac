@@ -6,6 +6,7 @@ import { DATA_MAX_SIZE } from "../workflows/protocol.js";
 import { writeAtomic, ID_EXECUTION, listRuns } from "../workflows/executions.js";
 import { withMemory, clearRunsAndMemory } from "../workflows/memory.js";
 import { removeGrant } from "../widgets/grants.js";
+import { readReads, removeReads } from "../widgets/reads.js";
 import { PlanPage } from "../pages/plan.js";
 import { ID_ACTION } from "./schemas.js";
 
@@ -115,5 +116,9 @@ export async function forgetGoneActions(c: SpacePaths, actionsFolder: string): P
     if (present) continue;
     await deleteDataAction(actionsFolder, e.name);
     await removeGrant(actionsFolder, e.name);
+  }
+  // An action that never ran has no data folder, only its approved reads.
+  for (const id of Object.keys(await readReads(actionsFolder))) {
+    if (!(await lstat(join(c.actions, id)).then((s) => s.isDirectory(), () => false))) await removeReads(actionsFolder, id);
   }
 }

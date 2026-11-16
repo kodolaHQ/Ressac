@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
-import { readFileSync, constants } from "node:fs";
-import fs, { lstat, mkdir, open, readdir, realpath, rename } from "node:fs/promises";
-import { extname, join, sep } from "node:path";
+import { readFileSync } from "node:fs";
+import fs, { lstat, mkdir, readdir, rename } from "node:fs/promises";
+import { basename, dirname, extname, join } from "node:path";
 import {
   grantCovers,
   relativeUrl,
@@ -28,6 +28,9 @@ import {
   type SitesTools,
   type TweaksRead,
   type SiteRead,
+  inFolder,
+  readFiles,
+  type ReadFiles,
 } from "../../../packages/kernel/src/index.ts";
 import { urlChanged, urlUnchanged, urlNotFound, ICON_MAX, editWithAgent, type ActionSite, type BarNotice, type SiteGrantRequest, type MessageToHome, type ShownSite } from "../shared/sites.ts";
 import type { FrameBounds } from "../shared/model.ts";
@@ -204,32 +207,15 @@ const ICON_TYPES: Record<string, string> = { ".png": "image/png", ".svg": "image
 
 /**
  * The icon declared by the app (`icone`, relative path to an image), as `data:`; null if it is missing, leaves the folder
- * (link, `..`), is a link, a pipe or exceeds `ICONE_MAX`.
+ * (link on the way, `..`), is a link, a pipe or exceeds `ICON_MAX`. Read by the confined child: no folder swapped for a
+ * link between a check and the read.
  */
 export async function readIcon(folder: string, path: string): Promise<string | null> {
   const type = ICON_TYPES[extname(path).toLowerCase()];
   if (!type) return null;
-  try {
-    const file = join(folder, path);
-    // An ordinary file, not a link nor a named pipe: lstat before any open.
-    if (!(await lstat(file)).isFile()) return null;
-    // No folder of the path is a link that leaves the app's folder.
-    const root = await realpath(folder);
-    if (!(await realpath(file)).startsWith(root + sep)) return null;
-    // Without following a link that became one since the lstat, and without waiting for a pipe.
-    const f = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
-    try {
-      const st = await f.stat();
-      if (!st.isFile() || st.size > ICON_MAX) return null;
-      const buffer = Buffer.alloc(st.size);
-      const { bytesRead } = await f.read(buffer, 0, st.size, 0);
-      return `data:${type};base64,${buffer.subarray(0, bytesRead).toString("base64")}`;
-    } finally {
-      await f.close();
-    }
-  } catch {
-    return null;
-  }
+  const r = await inFolder<ReadFiles>(dirname(folder), [basename(folder)], readFiles, [[path.replace(/^\.\//, "")], ICON_MAX, ICON_MAX, false, "base64"]).catch(() => null);
+  const file = r && "files" in r ? r.files[0] : null;
+  return file ? `data:${type};base64,${file.text}` : null;
 }
 
 export function createSites(o: {

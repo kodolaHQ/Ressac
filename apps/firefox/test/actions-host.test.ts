@@ -16,6 +16,7 @@ import {
   type ActionLaunch,
   type Kernel,
   type LaunchResult,
+  approveReads,
 } from "../../../packages/kernel/src/index";
 import { actionImageAllowed, createActionsHost, linkAllowed, NO_KERNEL_MESSAGE, readShownActions, trashAction } from "../host/actions";
 import { GrantSchema, SchemaIdAction, ActionInputSchema } from "../shared/api";
@@ -116,8 +117,11 @@ describe("pure helpers", () => {
     expect(list.map((a) => a.id)).toEqual(["cassee", "gitlab", "leboncoin"]);
     expect(list[0]).toMatchObject({ id: "cassee", name: "cassee", keywords: [], input: null, account: [], grant: false, last: null });
     expect(list[0]!.error).toBeTruthy();
-    expect(list[1]).toEqual({ id: "gitlab", name: "GitLab", description: "Mes tickets", keywords: ["tickets"], input: null, account: ["gitlab.com"], public: [], grant: false, last: null });
-    expect(list[2]).toEqual({ id: "leboncoin", name: "Leboncoin", description: "", keywords: [], input: { label: "Recherche" }, account: [], public: [], grant: false, last: { run: ex, start: START, status: "succeeded" } });
+    expect(list[1]).toEqual({ id: "gitlab", name: "GitLab", description: "Mes tickets", keywords: ["tickets"], input: null, account: ["gitlab.com"], public: [], grant: false, web: false, readsNeeded: false, last: null });
+    expect(list[2]).toEqual({ id: "leboncoin", name: "Leboncoin", description: "", keywords: [], input: { label: "Recherche" }, account: [], public: [], grant: false, web: true, readsNeeded: true, last: { run: ex, start: START, status: "succeeded" } });
+    // Approved reads (or seeded at the update): nothing waits any more.
+    await approveReads(actionsFolder, "leboncoin", { public: [], web: true });
+    expect((await readShownActions(c, actionsFolder))[2]!.readsNeeded).toBe(false);
   });
 });
 

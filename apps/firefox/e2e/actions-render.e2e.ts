@@ -297,7 +297,7 @@ describe("action page rendering", () => {
         "const f = doc.querySelector(arguments[0]); const d = f.contentDocument; return { src: f.src, uri: d.documentURI, title: d.getElementById('titre').textContent, body: d.body.className, texts: [...d.querySelectorAll('text')].map((t) => t.textContent) };",
         [FRAME],
       );
-      expect(frame.src).toMatch(/^resource:\/\/ressac-component-barres\/component-\d+\.html$/);
+      expect(frame.src).toMatch(/^resource:\/\/ressac-component-barres\/component-\d+-\d+\.html$/);
       expect(frame.uri).toBe(frame.src);
       expect(frame).toMatchObject({ title: "Ventes", body: "sombre" });
       expect(frame.texts.slice(0, 4)).toEqual(["Lundi", "1", "Mardi", "2"]);
@@ -345,7 +345,7 @@ describe("action page rendering", () => {
     await utimes(html, later, later);
     await waitUi(m, "const f = doc.querySelector(arguments[0]); return f.contentDocument?.documentURI !== arguments[1] && Math.round(f.getBoundingClientRect().height) === 400;", [FRAME, first], 15_000);
     const second = await inUi<string>(m, "return doc.querySelector(arguments[0]).contentDocument.documentURI;", [FRAME]);
-    expect(second).toMatch(/^resource:\/\/ressac-component-ecrit\/component-\d+\.html$/);
+    expect(second).toMatch(/^resource:\/\/ressac-component-ecrit\/component-\d+-\d+\.html$/);
     const copies = path.join(w.dataDir, "ressac-components", "ecrit");
     expect(readdirSync(copies)).toEqual([path.basename(second)]);
     // Its link was not opened: components open none.

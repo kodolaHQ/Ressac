@@ -46,10 +46,9 @@ export interface ExtensionCard {
   hash: string;
 }
 
-/** The card's answer: `empreinte` is that of the shown scope (the first card, if the request joined it). */
+/** The card's answer. */
 export interface GrantResponse {
   accepted: boolean;
-  hash: string;
   /** The card dropped (or was not shown) without an answer from the user. */
   removed?: boolean;
 }

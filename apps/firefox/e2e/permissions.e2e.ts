@@ -125,8 +125,13 @@ describe("site permissions", () => {
   /** The banner's text in the current window, or null when it is not shown. */
   const banner = () => m.execute<string | null>(`const b = document.querySelector('${BANNER}'); return b?.checkVisibility() ? b.querySelector("span").textContent : null;`);
   const waitBanner = (ok: (t: string | null) => boolean) => waitFor(m, `const b = document.querySelector('${BANNER}'); return b?.checkVisibility() ? b.querySelector("span").textContent : null;`, ok);
-  const answer = (label: "Refuser" | "Autoriser") =>
+  const press = (label: "Refuser" | "Autoriser") =>
     m.execute(`[...document.querySelector('${BANNER}').querySelectorAll("button")].find((b) => b.textContent === arguments[0]).click();`, [label]);
+  /** « Autoriser » takes a click only once armed (ARM_MS after the request shows), as for a person. */
+  const answer = async (label: "Refuser" | "Autoriser") => {
+    if (label === "Autoriser") await waitFor(m, `return document.querySelector('${BANNER} button.allow')?.dataset.armed !== undefined;`, (x) => x === true);
+    await press(label);
+  };
   const pending = () => chrome<unknown[]>(`return (await ChromeUtils.importESModule("${STORE}").ready).questions.pending();`);
   /** The decisions kept for the default profile (permissions.json). */
   const saved = () => readFile(path.join(dirs.dataDir, "permissions.json"), "utf8").then((t) => JSON.parse(t) as Record<string, string>, () => ({}));
@@ -182,6 +187,9 @@ describe("site permissions", () => {
     const base = await origin();
     const id = await open(base, "notif");
     expect(await waitBanner((t) => t !== null)).toMatch(/^127\.0\.0\.1:\d+ veut vous envoyer des notifications$/);
+    // Right as it shows, a click meant for the page grants nothing.
+    await press("Autoriser");
+    expect(await banner()).not.toBeNull();
     await answer("Autoriser");
     await waitBanner((t) => t === null);
     expect(await result(id)).toEqual({ ok: "granted" });
@@ -322,6 +330,9 @@ describe("site permissions", () => {
     const profile = s.spaces.find((e) => e.name === "Privé")!.profile;
     const id = await open(base, "notif");
     expect(await waitBanner((t) => t !== null)).toMatch(/^127\.0\.0\.1:\d+ veut vous envoyer des notifications$/);
+    // Right as it shows, a click meant for the page grants nothing.
+    await press("Autoriser");
+    expect(await banner()).not.toBeNull();
     await answer("Autoriser");
     expect(await result(id)).toEqual({ ok: "granted" });
     await reload(id);
@@ -535,13 +546,15 @@ describe("site permissions", () => {
     expect(url).toContain(`/GMP/${await m.execute<string>("return Services.appinfo.platformVersion;")}/`);
   });
 
-  it("fullscreen: granted without a question, without a Firefox warning on the page", { timeout: 60_000 }, async () => {
+  it("fullscreen: granted without a question; Firefox's warning names the page, then goes", { timeout: 60_000 }, async () => {
     const id = await open(await origin(), "fs", {});
     await clickGo(id);
+    const onScreen = () => m.execute<boolean>(`const w = document.getElementById("fullscreen-warning"); return !!w && !w.hidden && w.hasAttribute("onscreen");`);
     try {
       expect(await result(id)).toEqual({ ok: "full" });
-      await new Promise((r) => setTimeout(r, 500));
-      expect(await m.execute(`const w = document.getElementById("fullscreen-warning"); return !w || w.hidden || !w.hasAttribute("onscreen");`)).toBe(true);
+      await waitFor(m, `const w = document.getElementById("fullscreen-warning"); return !!w && !w.hidden && w.hasAttribute("onscreen");`, (x) => x === true, 5_000);
+      await waitFor(m, `const w = document.getElementById("fullscreen-warning"); return !w || w.hidden || !w.hasAttribute("onscreen");`, (x) => x === true, 10_000);
+      expect(await onScreen()).toBe(false);
       expect(await banner()).toBeNull();
     } finally {
       await chrome(`if (document.fullscreenElement) await document.exitFullscreen(); window.fullScreen = false;`);

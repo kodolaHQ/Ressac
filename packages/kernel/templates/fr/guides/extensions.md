@@ -46,16 +46,19 @@ WebRTC (`RTCPeerConnection`…) est absent.
 
 - Marchent : scripts de contenu et CSS, `scripting` (`executeScript` avec des `files` ou une `func`,
   `insertCSS`, `registerContentScripts`), `declarativeNetRequest`, `storage`, `alarms`, `offscreen`,
-  `action` (bouton, popup), `contextMenus`, `cookies`, `webNavigation`, `notifications`, `tabs`, `windows`.
-- Manquent : `userScripts`, `sidePanel`, `history`, `bookmarks`, `identity`, `tabGroups`,
+  `action` (bouton, popup), `contextMenus`, `webNavigation`, `notifications`, `tabs`, `windows`.
+- Manquent : `cookies` (refusé : l'API atteindrait les cookies des autres espaces), `userScripts`, `sidePanel`, `history`, `bookmarks`, `identity`, `tabGroups`,
   `nativeMessaging`. **`activeTab` n'est pas pris en charge** : demande des `host_permissions`.
   `storage.sync` est le même magasin que `storage.local`.
+- La copie ne prend que ces types de fichiers : `.html` `.htm` `.shtml` `.js` `.mjs` `.css` `.json` `.map`
+  `.wasm` `.png` `.jpg` `.jpeg` `.gif` `.webp` `.avif` `.ico` `.bmp` `.svg` `.woff` `.woff2` `.ttf` `.otf`
+  `.txt` `.md`. Les autres (`.xml`, `.xhtml`, sons, `LICENSE`…) restent hors de la copie.
 - `tabs.create`, `tabs.update` et `windows.create` n'ouvrent que des sites accordés (la navigation d'une
-  page de l'extension aussi) ; les cookies sont limités aux sites accordés. `tabs.query` et `tabs.get`
+  page de l'extension aussi). `tabs.query` et `tabs.get`
   ne donnent `url`, `title` et favicon qu'avec la permission `tabs` ou un accès au site (comme dans
   Chrome) ; `webNavigation` exige sa permission. La popup est une page de l'extension, rien d'autre.
 - La copie reçoit `scripting` et, comme sites, les `matches` de tes scripts de contenu : pour ces sites
-  seulement, cela donne `url` et `title` des onglets sans `tabs`, et les cookies (avec `cookies`).
+  seulement, cela donne `url` et `title` des onglets sans `tabs`.
 - **Scripts de contenu** : ils démarrent après un aller-retour vers ton service worker (Ressac lui
   demande si l'onglet est un vrai onglet de l'utilisateur), donc **`document_start` arrive plus tard
   qu'annoncé** : ne compte pas dessus. Si le service worker ne répond pas, les scripts sont abandonnés

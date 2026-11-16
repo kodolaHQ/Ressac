@@ -59,7 +59,7 @@ const card = (testid?: string, id = "vidola") =>
 const heading = () => inSiteBar<string | null>(m, "vidola", `return doc.querySelector('[data-testid="site-grant-card"] :is(h1,h2,h3)')?.textContent ?? null;`);
 /** A click on a bar button, once there. */
 const click = (testid: string, id = "vidola") =>
-  inSiteBar(m, id, `for (let i = 0; i < 100 && !doc.querySelector('[data-testid="' + arguments[0] + '"]'); i++) await new Promise((r) => setTimeout(r, 100)); doc.querySelector('[data-testid="' + arguments[0] + '"]').click(); return true;`, [testid]);
+  inSiteBar(m, id, `const ready = () => { const b = doc.querySelector('[data-testid="' + arguments[0] + '"]'); const card = b?.closest('[data-testid="site-grant-card"]'); return b && (!card || card.hasAttribute("data-armed")) ? b : null; }; for (let i = 0; i < 100 && !ready(); i++) await new Promise((r) => setTimeout(r, 100)); (ready() ?? doc.querySelector('[data-testid="' + arguments[0] + '"]')).click(); return true;`, [testid]);
 const barApi = <T>(body: string, args: unknown[] = []) => inSiteBar<T>(m, "vidola", `const site = doc.defaultView.ressac.site; ${body}`, args);
 const rewriteDeclaration = (d: object) => writeFileSync(path.join(dataDir, "workspace", "sites", "vidola", "site.json"), JSON.stringify(d));
 

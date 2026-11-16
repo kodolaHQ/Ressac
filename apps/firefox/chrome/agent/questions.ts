@@ -105,7 +105,7 @@ export class Questions {
     const outcome = staleQuestion({ id: "", ...fields }, this.store.state)
       ? "withdrawn"
       : await waitForOutcome((reply) => this.post(fields, reply), QUESTION_DELAY_MS, signal);
-    return { accepted: outcome === "allow", hash: card.hash, ...(outcome === "withdrawn" ? { removed: true } : {}) };
+    return { accepted: outcome === "allow", ...(outcome === "withdrawn" ? { removed: true } : {}) };
   }
 
   /** The console unlock card of an agent extension: Refuser is the default; it falls after QUESTION_DELAY_MS or on `signal`. */

@@ -23,9 +23,10 @@ test("undeclared domain for a widget with an account (page with an account, publ
   ]);
 });
 
-test("no domain warning for a widget without an account", () => {
+test("without an account: an undeclared domain is flagged unless the widget declares web", () => {
   const w = wf(block("p", "source.page", { url: "https://n-importe.où/x" }), block("f", "source.feed", { urls: ["https://z.fr/rss"] }));
-  expect(warnWorkflow(w, { sources: { account: [], public: [] }, config: {} })).toEqual([]);
+  expect(warnWorkflow(w, { sources: { account: [], public: ["z.fr"] }, config: {} })).toEqual([{ block: "p", message: "domaine non déclaré : n-importe.xn--o-7ga" }]);
+  expect(warnWorkflow(w, { sources: { account: [], public: [], web: true }, config: {} })).toEqual([]);
 });
 
 test("a URL whose host is a template is not judged", () => {
@@ -40,10 +41,10 @@ test("a URL whose host is a template is not judged", () => {
 
 test("{config.city} without a city in the config is flagged, a present {config.city} is not", () => {
   const w = wf(block("r", "source.fetch", { url: "https://hn.algolia.com/{config.city.name}?q={config.word}" }));
-  const without = warnWorkflow(w, { sources: { account: [], public: [] }, config: { word: "x" } });
+  const without = warnWorkflow(w, { sources: { account: [], public: [], web: true }, config: { word: "x" } });
   expect(without).toEqual([{ block: "r", message: "config.city absent de la configuration du widget" }]);
-  expect(warnWorkflow(w, { sources: { account: [], public: [] }, config: { city: { name: "Lyon" }, word: "x" } })).toEqual([]);
-  expect(warnWorkflow(w, { sources: { account: [], public: [] }, config: null })).toHaveLength(2);
+  expect(warnWorkflow(w, { sources: { account: [], public: [], web: true }, config: { city: { name: "Lyon" }, word: "x" } })).toEqual([]);
+  expect(warnWorkflow(w, { sources: { account: [], public: [], web: true }, config: null })).toHaveLength(2);
 });
 
 test("live behind list.keep: STREAMING_WARNING on the output; behind a chain: none", () => {
@@ -57,7 +58,7 @@ test("live behind list.keep: STREAMING_WARNING on the output; behind a chain: no
     ],
     links: [{ from: "f", to: "top" }, { from: "top", to: before.id }, { from: before.id, to: "s" }],
   });
-  const without = { sources: { account: [], public: [] }, config: {} };
+  const without = { sources: { account: [], public: [], web: true }, config: {} };
   const warn = (b: unknown) => {
     const r = validateWorkflow(b);
     if (!r.ok) throw new Error(r.error);
@@ -70,7 +71,7 @@ test("live behind list.keep: STREAMING_WARNING on the output; behind a chain: no
 
 test("web.search without a declared maximum duration: warning (not an error); with one, or without the context, nothing", () => {
   const w = wf(block("c", "web.search", { query: "x" }), block("p", "source.page", { url: "https://a.fr" }));
-  const withoutAccount = { sources: { account: [], public: [] }, config: {} };
+  const withoutAccount = { sources: { account: [], public: [], web: true }, config: {} };
   expect(WEB_WITHOUT_DURATION_WARNING("fr")).toBe("sans maxDurationMinutes, ce widget peut être coupé à 150 s : demande à l'agent de déclarer maxDurationMinutes");
   expect(warnWorkflow(w, { ...withoutAccount, maxDurationMinutes: null })).toEqual([{ block: "c", message: WEB_WITHOUT_DURATION_WARNING("fr") }]);
   expect(warnWorkflow(w, { ...withoutAccount, maxDurationMinutes: 30 })).toEqual([]);
@@ -79,12 +80,12 @@ test("web.search without a declared maximum duration: warning (not an error); wi
 
 test("optional {config.ville?}: never flagged, even absent from the config", () => {
   const w = wf(block("r", "source.fetch", { url: "https://hn.algolia.com/x?v={config.ville?}&q={config.mot}" }));
-  expect(warnWorkflow(w, { sources: { account: [], public: [] }, config: {} })).toEqual([{ block: "r", message: "config.mot absent de la configuration du widget" }]);
+  expect(warnWorkflow(w, { sources: { account: [], public: [], web: true }, config: {} })).toEqual([{ block: "r", message: "config.mot absent de la configuration du widget" }]);
 });
 
 test("{input} in source.page of an action without input: INPUT_WARNING; with input: none; in a widget: none", () => {
   const w = wf(block("p", "source.page", { url: "https://x.fr/?q={input}" }), block("q", "source.page", { url: "https://x.fr/?q={input?}" }), block("r", "source.page", { url: "https://x.fr/" }));
-  const base = { sources: { account: [], public: [] }, config: {} };
+  const base = { sources: { account: [], public: [], web: true }, config: {} };
   expect(INPUT_WARNING("fr")).toBe("{input} : l'action ne déclare pas de saisie (input)");
   expect(warnWorkflow(w, { ...base, owner: "action", input: false })).toEqual([
     { block: "p", message: INPUT_WARNING("fr") },
@@ -97,10 +98,10 @@ test("{input} in source.page of an action without input: INPUT_WARNING; with inp
 
 test("the warnings follow the language of the context", () => {
   const w = wf(block("c", "web.search", { query: "q" }));
-  expect(warnIn(w, { sources: { account: [], public: [] }, config: {}, maxDurationMinutes: null, locale: "en" })).toEqual([
+  expect(warnIn(w, { sources: { account: [], public: [], web: true }, config: {}, maxDurationMinutes: null, locale: "en" })).toEqual([
     { block: "c", message: "without maxDurationMinutes, this widget may be cut off at 150 s: ask the agent to declare maxDurationMinutes" },
   ]);
-  expect(warnIn(wf(block("r", "source.page", { url: "{config.mot}" })), { sources: { account: [], public: [] }, config: {}, locale: "en" })).toEqual([
+  expect(warnIn(wf(block("r", "source.page", { url: "{config.mot}" })), { sources: { account: [], public: [], web: true }, config: {}, locale: "en" })).toEqual([
     { block: "r", message: "config.mot is missing from the widget's configuration" },
   ]);
   expect(INPUT_WARNING("en")).toBe("{input}: the action does not declare an input (input)");
