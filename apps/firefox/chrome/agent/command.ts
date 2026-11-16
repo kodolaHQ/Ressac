@@ -5,8 +5,8 @@ export async function hostCommand(
 ): Promise<{ command: string; arguments: string[]; environment: Record<string, string> }> {
   const dir = `${resourcesDir}/ressac-host`;
   if (await exists(`${dir}/host.mjs`)) {
-    return { command: `${dir}/node`, arguments: [`${dir}/host.mjs`], environment: { RESSAC_KERNEL_RESOURCES: `${dir}/kernel` } };
+    return { command: `${dir}/node`, arguments: [`${dir}/host.mjs`], environment: { RESSAC_KERNEL_RESOURCES: `${dir}/kernel`, RESSAC_LLAMA_SERVER: `${dir}/llama/llama-server` } };
   }
   if (!__RESSAC_HOST__) throw new Error("the agent host is missing from this app");
-  return { command: __RESSAC_NODE__, arguments: ["--import", __RESSAC_TSX__, __RESSAC_HOST__], environment: {} };
+  return { command: __RESSAC_NODE__, arguments: ["--import", __RESSAC_TSX__, __RESSAC_HOST__], environment: { RESSAC_LLAMA_SERVER: __RESSAC_LLAMA__ } };
 }

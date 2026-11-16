@@ -5,7 +5,7 @@ import type { LocalAiStateShown } from "../shared/api.ts";
 import { startDeviceLogin } from "./device-login.ts";
 import { INVALID_KEY, type AmoKeychain, type Keychain } from "./keychain.ts";
 import { deleteBackup, exportData, listBackups } from "./data-folder.ts";
-import { OLLAMA_ITSELF, type AgentAccount, type DecisionModel, type LoginResult, type WorkshopOperation, type GrantKind, type GrantRow, type SettingsResult, type PullProgress } from "../shared/settings.ts";
+import { DECISION_MODEL, OLLAMA_ITSELF, type AgentAccount, type LoginResult, type WorkshopOperation, type GrantKind, type GrantRow, type SettingsResult, type PullProgress } from "../shared/settings.ts";
 import type { OllamaRuntime } from "./ollama-runtime.ts";
 import type { DockerRuntime } from "./docker-runtime.ts";
 import { hostSay } from "./locale.ts";
@@ -79,7 +79,6 @@ export const SETTINGS_METHODS = [
   "settings.pullProgress",
   "settings.pullInBackground",
   "settings.startOllama",
-  "ai.decisionModel",
 ] as const;
 
 const KEY = /^[a-z0-9-]{1,100}$/;
@@ -89,7 +88,7 @@ const failure = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export interface SettingsOptions {
   workshop: Pick<Workshop, "state" | "exec" | "restart" | "rebuild" | "secureNetwork">;
-  ai: Pick<LocalAi, "state" | "check" | "ollamaUrl" | "setDecisionModel">;
+  ai: Pick<LocalAi, "state" | "check" | "ollamaUrl" | "installDecisionModel" | "cancelInstall">;
   ollama: Pick<OllamaRuntime, "status" | "start" | "install">;
   docker: DockerRuntime;
   stopApps(): Promise<void>;
@@ -115,7 +114,14 @@ export interface SettingsOptions {
 /** How long a first agent session waits for a sign-in by code in progress. */
 const LOGIN_WAIT_MS = 120_000;
 
-export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTINGS_METHODS)[number], (p: any) => unknown> & { stopLogins(): void; loginEnded(maxMs?: number): Promise<void> } {
+export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTINGS_METHODS)[number], (p: any) => unknown> & {
+  stopLogins(): void;
+  loginEnded(maxMs?: number): Promise<void>;
+  /** Starts the decision model's download in the pull slot, unless a pull already runs (AI start, model missing). */
+  downloadDecision(): void;
+  /** Cancels the decision model's download (AI off); its partial file stays for the next try. */
+  cancelDecision(): void;
+} {
   /** The sign-in by code in progress; one at a time. */
   let signIn: ReturnType<typeof startDeviceLogin> | undefined;
   const stopLogins = () => {
@@ -127,12 +133,26 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
    * shortcut: no cancel button in v1; quitting stops it and Ollama resumes from its kept chunks next time.
    */
   let pull: PullProgress | null = null;
+  /** The last failed download of the decision model, cleared by a success; a cancel (AI off) is not a failure. */
+  let decisionError: string | undefined;
+  let decisionCancelled = false;
+  const installDecision = async () => {
+    decisionCancelled = false;
+    try {
+      await o.ai.installDecisionModel((percent) => (pull = { name: DECISION_MODEL, percent, status: "" }));
+      decisionError = undefined;
+    } catch (e) {
+      if (!decisionCancelled) decisionError = failure(e);
+      throw e;
+    }
+  };
   /** One model at a time, from any window; `pull` is set before the first await, so a second caller sees it. */
   const pullOne = async (name: string) => {
     if (pull) throw new Error(PULL_BUSY());
     pull = { name, percent: null, status: "" };
     try {
       if (name === OLLAMA_ITSELF) await o.ollama.install((percent) => (pull = { name, percent, status: "" }));
+      else if (name === DECISION_MODEL) await installDecision();
       else await pullOllamaModel(o.ai.ollamaUrl, name, (e) => (pull = e));
     } finally {
       pull = null;
@@ -205,6 +225,12 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
       await Promise.race([s.ended, new Promise((r) => (timer = setTimeout(r, maxMs)))]);
       clearTimeout(timer);
       if (signIn === s) stopLogins();
+    },
+    // The failure is already in decisionError (shown in Réglages): nothing else to say here.
+    downloadDecision: () => void (pull ? undefined : pullOne(DECISION_MODEL).catch(() => {})),
+    cancelDecision: () => {
+      decisionCancelled = true;
+      o.ai.cancelInstall();
     },
     "settings.agents": agents,
     "settings.login": async (p: { id?: unknown }): Promise<LoginResult> => {
@@ -331,7 +357,7 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
     "settings.pullInBackground": (p: { names?: unknown }): SettingsResult => {
       if (pull) return { ok: false, error: PULL_BUSY() };
       const names = Array.isArray(p?.names) ? p.names.map(String) : [];
-      if (!names.length || names.some((n) => n !== OLLAMA_ITSELF && !PULLABLE_MODELS.includes(n))) return { ok: false, error: UNSUPPORTED_MODEL() };
+      if (!names.length || names.some((n) => n !== OLLAMA_ITSELF && n !== DECISION_MODEL && !PULLABLE_MODELS.includes(n))) return { ok: false, error: UNSUPPORTED_MODEL() };
       void (async () => {
         try {
           for (const n of names) await pullOne(n);
@@ -354,10 +380,7 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
     "ai.state": async (): Promise<LocalAiStateShown> => {
       const v = await o.ai.check().catch(() => undefined);
       const ollama = await o.ollama.status().catch(() => undefined);
-      return { ...o.ai.state(), ...(v ? { verification: v } : {}), ollamaUrl: o.ai.ollamaUrl, ...(ollama ? { ollama } : {}) };
-    },
-    "ai.decisionModel": (p: { model?: DecisionModel }) => {
-      if (p?.model === "kev" || p?.model === "pplx-decider-flash") o.ai.setDecisionModel(p.model === "kev" ? undefined : p.model);
+      return { ...o.ai.state(), ...(v ? { verification: v } : {}), ollamaUrl: o.ai.ollamaUrl, ...(ollama ? { ollama } : {}), ...(decisionError ? { decisionError } : {}) };
     },
   };
 }

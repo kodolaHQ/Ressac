@@ -4,7 +4,7 @@ let hostCommand: typeof import("../chrome/agent/command").hostCommand;
 
 beforeAll(async () => {
   // Build-time defines in the real bundle; plain globals under vitest.
-  Object.assign(globalThis, { __RESSAC_NODE__: "/dev/node", __RESSAC_TSX__: "/dev/tsx", __RESSAC_HOST__: "/dev/host.ts" });
+  Object.assign(globalThis, { __RESSAC_NODE__: "/dev/node", __RESSAC_TSX__: "/dev/tsx", __RESSAC_HOST__: "/dev/host.ts", __RESSAC_LLAMA__: "/dev/llama-server" });
   ({ hostCommand } = await import("../chrome/agent/command"));
 });
 
@@ -16,7 +16,7 @@ describe("hostCommand", () => {
     expect(c).toEqual({
       command: "/App/Resources/ressac-host/node",
       arguments: ["/App/Resources/ressac-host/host.mjs"],
-      environment: { RESSAC_KERNEL_RESOURCES: "/App/Resources/ressac-host/kernel" },
+      environment: { RESSAC_KERNEL_RESOURCES: "/App/Resources/ressac-host/kernel", RESSAC_LLAMA_SERVER: "/App/Resources/ressac-host/llama/llama-server" },
     });
   });
 
@@ -24,7 +24,7 @@ describe("hostCommand", () => {
     expect(await hostCommand("/App/Resources", async () => false)).toEqual({
       command: "/dev/node",
       arguments: ["--import", "/dev/tsx", "/dev/host.ts"],
-      environment: {},
+      environment: { RESSAC_LLAMA_SERVER: "/dev/llama-server" },
     });
   });
 

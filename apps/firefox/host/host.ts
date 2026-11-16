@@ -22,7 +22,7 @@ const { createInterface } = await import("node:readline");
 const { appendFileSync } = await import("node:fs");
 const { stat } = await import("node:fs/promises");
 // Imported after the env is set and stdout redirected: nothing in the kernel can write to stdout at load time.
-const { ACTION_UNKNOWN, Workshop, blockCatalog, loadProfiles, spacePaths, createKernel, createRunner, LocalAi, readHome, readFreeLayout, readTheme, Pacing, contextPrefix, handOffText, removeGrant, deleteData, watchActions, createRecaps, ID_RECAP, removeReads } = await import("../../../packages/kernel/src/index.ts");
+const { ACTION_UNKNOWN, Workshop, blockCatalog, loadProfiles, spacePaths, createKernel, LocalAi, readHome, readFreeLayout, readTheme, Pacing, contextPrefix, handOffText, removeGrant, deleteData, watchActions, createRecaps, ID_RECAP, removeReads } = await import("../../../packages/kernel/src/index.ts");
 const { SessionsAgent } = await import("../core/agent/sessions.ts");
 const { History } = await import("../core/history.ts");
 const { createRpc } = await import("../shared/rpc.ts");
@@ -157,9 +157,15 @@ const broadcastAccess = () => {
   accessTimer ??= setTimeout(() => notifyAccess(), 50);
 };
 
-// The local AI for harvests: Gemma and the decision model both run in Ollama (same
-// /v1/systemone answers). Nothing is installed here: a missing model fails with Ollama's answer.
-const ai = new LocalAi({ folder: join(dataDir, "local-ai"), run: createRunner(() => hostLocale()), decisionModel: "pplx-decider-flash", locale: () => hostLocale() });
+// The local AI for harvests: Gemma runs in Ollama, the decision model (d1-2B) in the llama-server shipped with Ressac
+// (RESSAC_LLAMA_SERVER, set by chrome/agent/command.ts). RESSAC_D1_URL / RESSAC_D1_SHA256: tests only.
+const ai = new LocalAi({
+  folder: join(dataDir, "local-ai"),
+  llamaServer: process.env.RESSAC_LLAMA_SERVER,
+  decisionUrl: process.env.RESSAC_D1_URL,
+  decisionSha256: process.env.RESSAC_D1_SHA256,
+  locale: () => hostLocale(),
+});
 
 // The ⌘T bar's Demander mode: calls Gemma directly, outside the workflows' dispatcher queue.
 const ask = createAsk({ ai, history: () => hist ?? null });
@@ -180,10 +186,12 @@ const docker = fakeDocker
 let aiOn = false;
 let aiWoken = false;
 // Once per off → on: an installed Ollama or container app that is not running is started, and left running at quit
-// (nothing is ever downloaded without a click).
+// (nothing of theirs is downloaded without a click). The decision model, small and needed by the agent's watch, is
+// downloaded at once when missing; a failure shows in Réglages and is retried at the next launch.
 const wakeAi = () => {
   if (aiWoken) return;
   aiWoken = true;
+  void ai.check().then((v) => aiOn && !v.decision && settings.downloadDecision(), () => {});
   void ollama.status().then((s) => (s.kind === "stopped" ? ollama.start() : undefined)).catch((e) => console.error("[ressac] Ollama did not start:", e));
   void docker.status().then((s) => (s.kind === "stopped" ? docker.start() : undefined)).catch((e) => console.error("[ressac] Docker did not start:", e));
 };
@@ -371,6 +379,7 @@ const applyAi = async () => {
   if (!aiWoken && !kernelLaunched) return;
   aiWoken = false;
   kernelLaunched = false;
+  settings.cancelDecision();
   // The kernel first: its widget scheduler must not start a harvest while the sessions and apps stop. Its stop only
   // drops the sessions' MCP tokens (idempotent with their own end); the sessions themselves stop below.
   ready = ready.then(async (n) => (await stopKernel(n), null));
@@ -444,7 +453,11 @@ const rpc = createRpc({
     },
     // Only new windows take the new default: open agents stay.
     changeProfile: (p: { agentProfile: string }) => void (defaultProfile = p.agentProfile),
-    "agent.start": (p: { window: string; size: TerminalSize }) => sessions.start(p.window, p.size),
+    // The decision server loads (1.1 GB) as a session starts, ready for the watch's first question; it stops after 10 min idle.
+    "agent.start": (p: { window: string; size: TerminalSize }) => {
+      if (aiOn) ai.warmDecision();
+      return sessions.start(p.window, p.size);
+    },
     "agent.relaunch": (p: { window: string }) => sessions.relaunch(p.window),
     "agent.switch": async (p: { window: string; profile: unknown }) => {
       if (typeof p.profile === "string" && /^[\w-]{1,64}$/.test(p.profile)) await sessions.switchProfile(p.window, p.profile);

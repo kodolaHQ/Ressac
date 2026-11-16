@@ -69,6 +69,8 @@ declare class JSWindowActorChild {
 declare const __RESSAC_NODE__: string;
 declare const __RESSAC_TSX__: string;
 declare const __RESSAC_HOST__: string;
+/** The dev build's llama-server (dist/cache, fetched by scripts/ui.sh); "" in a packaged build. */
+declare const __RESSAC_LLAMA__: string;
 declare const __RESSAC_SENTRY_DSN__: string;
 declare const __RESSAC_VERSION__: string;
 // Vite's raw imports (a file's text, bundled).

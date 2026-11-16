@@ -753,15 +753,6 @@ test("openSettings opens or activates the Réglages page, once for the window", 
   expect(fen().activeSpace).not.toBe(P);
 });
 
-test("chooseDecisionModel changes the setting; the same model again changes nothing", () => {
-  expect(e.settings.decisionModel).toBe("pplx-decider-flash");
-  ag({ type: "chooseDecisionModel", model: "kev" });
-  expect(e.settings.decisionModel).toBe("kev");
-  const before = e;
-  ag({ type: "chooseDecisionModel", model: "kev" });
-  expect(e).toBe(before);
-});
-
 test("chooseCodexEngine changes the setting; the same engine again changes nothing; a bad model is refused by the schema", () => {
   const api = { ...e.settings.codexEngine, kind: "api" as const };
   ag({ type: "chooseCodexEngine", engine: api });

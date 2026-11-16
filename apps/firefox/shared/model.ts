@@ -3,7 +3,7 @@ import type { HintId } from "./hints";
 import type { DevRight, TabAccessState, Owner } from "@ressac/kernel";
 import type { Binding, ShortcutId } from "./shortcuts";
 import type { ExtensionCard } from "./extensions";
-import type { ClaudeEngine, CodexEngine, DecisionModel } from "./settings";
+import type { ClaudeEngine, CodexEngine } from "./settings";
 
 /** The look: the Mac's, light or dark (Réglages and the welcome, in this order). */
 export const APPEARANCES = ["system", "light", "dark"] as const;
@@ -223,8 +223,6 @@ export interface BrowserState {
     agentPanelWidth: number;
     /** Width of the tab sidebar (px), dragged by its inner edge. */
     sidebarWidth: number;
-    /** The model that decides the workflows' watch notices. */
-    decisionModel: DecisionModel;
     /** The engine Codex runs on (account, local Ollama or compatible API). */
     codexEngine: CodexEngine;
     claudeEngine: ClaudeEngine;

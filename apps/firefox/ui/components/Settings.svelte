@@ -21,7 +21,7 @@
 <script lang="ts">
   import { fade } from "svelte/transition";
   import type { LocalAiStateShown, SettingsApi } from "../../shared/api";
-  import { OLLAMA_ITSELF, validAgentDomain, type DockerStatus, type AgentAccount, type DecisionModel, type LoginResult, type PullProgress, type WorkshopOperation } from "../../shared/settings";
+  import { DECISION_MODEL, OLLAMA_ITSELF, validAgentDomain, type DockerStatus, type AgentAccount, type LoginResult, type PullProgress, type WorkshopOperation } from "../../shared/settings";
   import { updateStatusText } from "../../core/update";
   import { aiOn, api, appState } from "../state.svelte";
   import AiAsleep from "./AiAsleep.svelte";
@@ -102,12 +102,8 @@
   }
 
   let ai = $state<LocalAiStateShown | null>(null);
-  const model = $derived<DecisionModel>(appState.value?.settings.decisionModel ?? "pplx-decider-flash");
   const v = $derived(ai?.verification);
-  const kevReady = $derived(!!v?.kev && !!v?.uv);
-  // Re-read on a model change too: the host checks the model it was told to use.
   $effect(() => {
-    void model;
     if (aiOn()) void api.ai.state().then((r) => (ai = r));
   });
 
@@ -238,7 +234,7 @@
   };
 </script>
 
-<!-- The pill of a local model: « installé », or « absent » with a download button once Ollama answers. -->
+<!-- The pill of a local model: « installé », or « absent » with a download button once Ollama answers (Ressac downloads Ollama and the decision model itself). -->
 {#snippet pullPill(name: string, installed: boolean, id: string, action = "settings-pull-download")}
   {#if installed}
     <span class="pill" data-tone="ok">{t("settings-pill-installed")}</span>
@@ -246,7 +242,7 @@
     <span class="pill" data-tone="warn" data-testid="pull-progress-{id}">{pullLabel(pulling)}</span>
   {:else}
     <span class="pill" data-tone="off">{t("settings-pill-absent")}</span>
-    {#if v?.ollama || name === OLLAMA_ITSELF}<button data-testid="pull-{id}" disabled={!!pulling} onclick={() => void pullModel(name)}>{t(action)}</button>{/if}
+    {#if v?.ollama || name === OLLAMA_ITSELF || name === DECISION_MODEL}<button data-testid="pull-{id}" disabled={!!pulling} onclick={() => void pullModel(name)}>{t(action)}</button>{/if}
   {/if}
 {/snippet}
 
@@ -389,20 +385,15 @@
               <div class="grow"><b>Gemma</b><span class="muted">{v?.gemmaModel ? t("settings-ai-gemma-present", { model: v.gemmaModel }) : t("settings-ai-gemma-absent")}</span></div>
               {@render pullPill("gemma4:e4b-mlx", !!v?.gemma, "gemma")}
             </div>
-            <div class="row">
-              <label class="grow" for="decision-model"><b>{t("settings-ai-decision-model")}</b></label>
-              <select id="decision-model" data-testid="ai-decision-model" value={model} onchange={(e) => s.chooseDecisionModel(e.currentTarget.value as DecisionModel)}>
-                <option value="pplx-decider-flash">pplx-decider-flash (Ollama)</option>
-                <option value="kev" disabled={!kevReady}>Kev (local)</option>
-              </select>
-              {#if model === "kev"}
-                <span class="pill" data-tone={kevReady ? "ok" : "off"}>{kevReady ? t("settings-pill-installed") : t("settings-pill-absent")}</span>
-              {:else}
-                {@render pullPill("pplx-decider-flash", !!v?.decision, "decision")}
-              {/if}
+            <div class="row" data-testid="ai-decision">
+              <div class="grow"><b>{t("settings-ai-decision-model")}</b><span class="muted">{t("settings-ai-decision-detail")}</span></div>
+              {@render pullPill(DECISION_MODEL, !!v?.decision, "decision")}
             </div>
+            {#if ai.decisionError && !v?.decision && pulling?.name !== DECISION_MODEL}
+              <div class="row"><span class="pill" data-tone="error" data-testid="ai-decision-error">{t("settings-ai-decision-failed", { reason: ai.decisionError })}</span></div>
+            {/if}
             {#if pullError}<div class="row"><span class="pill" data-tone="error" data-testid="pull-error">{pullError}</span></div>{/if}
-            {#if v?.ollama && (!v.gemma || (model !== "kev" && !v.decision))}
+            {#if v?.ollama && !v.gemma}
               <div class="row"><span class="muted">{t("settings-ai-large-download")}</span></div>
             {/if}
           </div>

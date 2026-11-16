@@ -254,10 +254,6 @@ describe("LocalAi", () => {
     ai.warmDecision();
     expect(launch).toHaveBeenCalledTimes(1);
     expect(ai.state().state).toBe("starting");
-    const access = ai.access();
-    await access.close();
-    access.warmDecision(); // a closed access warms nothing
-    expect(launch).toHaveBeenCalledTimes(1);
   });
 
   it("arreter() during startup: state arretee, no error, no timer", async () => {

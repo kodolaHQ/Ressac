@@ -218,11 +218,10 @@ test("kernel: arreter() stops the scheduler and the local AI", async () => {
     order.push("planificateur");
   });
   // The kernel closes its own access to the AI (a late harvest does not restart Kev), not the shared AI.
-  const access = { kev: vi.fn(), gemma: vi.fn(), warmDecision: vi.fn(), close: vi.fn(async () => void order.push("ia")) };
+  const access = { kev: vi.fn(), gemma: vi.fn(), close: vi.fn(async () => void order.push("ia")) };
   const ai = { access: () => access, stop: vi.fn() } as unknown as LocalAi;
   const n = await createKernel({ locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run, ai: ai });
   expect(n.ai).toBe(ai);
-  expect(access.warmDecision).toHaveBeenCalledTimes(1); // the watcher's server starts with the kernel
   await n.stop();
   expect(order).toEqual(["planificateur", "ia"]);
   expect(ai.stop).not.toHaveBeenCalled();

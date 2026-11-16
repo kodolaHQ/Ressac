@@ -2,7 +2,7 @@
   import { untrack } from "svelte";
   import { AURA_IDS, AURAS, auraVariables, type AuraId } from "../../shared/aura";
   import type { ImportSource, SettingsApi } from "../../shared/api";
-  import { OLLAMA_ITSELF, type DockerStatus, type OllamaStatus } from "../../shared/settings";
+  import { DECISION_MODEL, OLLAMA_ITSELF, type DockerStatus, type OllamaStatus } from "../../shared/settings";
   import { SEARCH_ENGINES, type SearchEngine } from "../../shared/search";
   import { APPEARANCES } from "../../shared/model";
   import { shortcutLabel } from "../../shared/shortcuts";
@@ -74,7 +74,7 @@
     const v = ai?.verification;
     runtime = ai?.ollama;
     ollama = !!v?.ollama;
-    missing = v ? [!v.gemma && "gemma4:e4b-mlx", !v.decision && "pplx-decider-flash"].filter((n): n is string => !!n) : [];
+    missing = v ? [!v.gemma && "gemma4:e4b-mlx", !v.decision && DECISION_MODEL].filter((n): n is string => !!n) : [];
     pulling = !!running;
   }
   async function startOllama() {

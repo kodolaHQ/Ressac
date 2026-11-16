@@ -5,7 +5,7 @@ import { SHORTCUT_IDS } from "./shortcuts";
 import { CUSTOM_ENGINE_MAX, SEARCH_ENGINE_IDS, customEngineError } from "./search";
 import { APPEARANCES, LANGUAGE_SETTING, type Decision, type PendingRequest, type AccessState, type BrowserState, type SpaceId, type WindowId, type TabId, type Download, type Visit, type AskHit, type AskResult } from "./model";
 import { validFolder, ID_EXECUTION, ID_SITE, PROJECT_ID, type Application, type Warning, type BlockCatalogEntry, type DeclarationWidget, type DirectState, type DraftRead, type SaveResult, type AttemptResult, type DevRight, type AiState, type WidgetState, type Execution, type ResumeExecution, type ActionsState, type PageAction, type LaunchResult, type Owner, type RenderedPage, type BatchState, type ProjectId, type ExternalProject, type TrackedProject, type Comment, type DiffFile, type ModifiedFile } from "@ressac/kernel";
-import { ClaudeEngineSchema, CodexEngineSchema, type OllamaStatus, type DockerStatus, type AgentAccount, type Backup, type CodexEngine, type ClaudeEngine, type DecisionModel, type LoginResult, type GrantKind, type GrantRow, type SettingsResult, type WorkshopOperation, type PullProgress } from "./settings";
+import { ClaudeEngineSchema, CodexEngineSchema, type OllamaStatus, type DockerStatus, type AgentAccount, type Backup, type CodexEngine, type ClaudeEngine, type LoginResult, type GrantKind, type GrantRow, type SettingsResult, type WorkshopOperation, type PullProgress } from "./settings";
 import type { WorkshopState } from "../../../packages/kernel/src/container/workshop.ts";
 import type { ActionShown } from "./actions";
 import type { ActionSite, SiteWindowState, MessageToHome, ShownSite } from "./sites";
@@ -113,7 +113,6 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("openExtensions"), windowId: id }),
   /** Activates this window's Settings page, or opens it (like Applications). */
   z.object({ type: z.literal("openSettings"), windowId: id }),
-  z.object({ type: z.literal("chooseDecisionModel"), model: z.enum(["pplx-decider-flash", "kev"]) }),
   /** Activates the « Voir le workflow » page of widget `id` in this window, or opens it. */
   z.object({
     type: z.literal("openWorkflow"),
@@ -509,7 +508,6 @@ export interface SettingsApi {
   /** Refused while another restart or rebuild runs (from any page or window). */
   restartWorkshop(fresh: boolean): Promise<SettingsResult>;
   workshopOperation(): Promise<WorkshopOperation>;
-  chooseDecisionModel(model: DecisionModel): void;
   codexKeySaved(): Promise<boolean>;
   setCodexKey(key: string): Promise<SettingsResult>;
   deleteCodexKey(): Promise<SettingsResult>;
@@ -761,7 +759,9 @@ export interface ProfileForGrant {
 export interface LocalAiStateShown {
   state: AiState;
   error?: string;
-  verification?: { kev: boolean; uv: boolean; ollama: boolean; gemma: boolean; gemmaModel?: string | null; decision: boolean };
+  verification?: { ollama: boolean; gemma: boolean; gemmaModel?: string | null; decision: boolean };
+  /** The last failed download of the decision model, until one succeeds (retried at the next launch). */
+  decisionError?: string;
   ollamaUrl?: string;
   /** What was found of Ollama on this machine (absent from an older host). */
   ollama?: OllamaStatus;

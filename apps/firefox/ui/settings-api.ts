@@ -57,7 +57,6 @@ export function createSettingsApi(o: {
     workshop: () => ask("settings.workshop", undefined, null),
     restartWorkshop: (fresh) => ask<SettingsResult>("settings.restartWorkshop", { fresh }, silent()),
     workshopOperation: () => ask<WorkshopOperation>("settings.workshopOperation", undefined, null),
-    chooseDecisionModel: (model) => o.dispatch({ type: "chooseDecisionModel", model }),
     codexKeySaved: () => ask<boolean>("settings.codexKeySaved", undefined, false),
     setCodexKey: (key) => ask<SettingsResult>("settings.codexKey", { key }, silent()),
     deleteCodexKey: () => ask<SettingsResult>("settings.codexKeyDelete", undefined, silent()),

@@ -18,6 +18,7 @@ node_sha256=61130f394c1630d211dd50aecc4353d379480f36d3ac913cd85dbba1aed585c6
 # Under dist/ (git-ignored), outside $work: neither the cleanup, the leak check nor the DMG touch it.
 node_cache=$app_dir/dist/cache
 sentry_cli=@sentry/cli@2.58.6
+source $app_dir/scripts/llama-server.sh
 
 step() { print -r -- "==> $*" }
 fail() { print -u2 -- "package: $*"; exit 1 }
@@ -99,6 +100,9 @@ fi
 print -r -- "$node_sha256  $node_cache/$node_tar" | shasum -a 256 -c - >/dev/null || fail "$node_tar does not match its SHA-256, delete it from $node_cache and retry"
 node_x=$(mktemp -d)
 tar -xzf $node_cache/$node_tar -C $node_x node-$node_version-darwin-arm64/bin/node node-$node_version-darwin-arm64/LICENSE
+step "llama-server $llama_version"
+fetch_llama $node_cache || fail "could not fetch llama-server"
+llama_src=$node_cache/llama-$llama_version
 
 # 5. The bundled host: the layout chrome/agent/command.ts expects (see test/host-bundle.test.ts).
 step "ressac-host"
@@ -106,6 +110,10 @@ pty=$(realpath $kernel/node_modules/node-pty)
 mkdir -p $host/node_modules/node-pty/prebuilds $host/kernel $host/LICENSES
 cp $node_x/node-$node_version-darwin-arm64/bin/node $host/node
 cp $node_x/node-$node_version-darwin-arm64/LICENSE $host/LICENSES/node-LICENSE
+# llama-server and its dylibs, side by side (its rpath is @loader_path); the decision model is downloaded at first use.
+mkdir -p $host/llama
+cp $llama_src/llama-server $llama_src/*.dylib $host/llama/
+cp $llama_src/LICENSE $host/LICENSES/llama.cpp-LICENSE
 cp $app_dir/dist-host/host.mjs $host/host.mjs
 cp -R $pty/package.json $pty/lib $pty/LICENSE $host/node_modules/node-pty/
 cp -R $pty/prebuilds/darwin-arm64 $host/node_modules/node-pty/prebuilds/
@@ -171,6 +179,9 @@ else
   pty_bin=$host/node_modules/node-pty/prebuilds/darwin-arm64
   codesign --force --timestamp --options runtime --sign "$identity" $pty_bin/pty.node $pty_bin/spawn-helper
   codesign --force --timestamp --options runtime --entitlements $app_dir/scripts/node-entitlements.plist --sign "$identity" $host/node
+  # The dylibs before the binary that loads them; no entitlement: llama-server only maps the model and serves on 127.0.0.1.
+  codesign --force --timestamp --options runtime --sign "$identity" $host/llama/*.dylib
+  codesign --force --timestamp --options runtime --sign "$identity" $host/llama/llama-server
   codesign -d --entitlements - --xml $app > $node_x/app-entitlements.plist
   codesign --force --timestamp --options runtime --entitlements $node_x/app-entitlements.plist --sign "$identity" $app
 fi

@@ -438,7 +438,6 @@ async function start(): Promise<RessacStore> {
     },
     onStart: (notify) => {
       sendMirror(store, windows, notify);
-      notify("ai.decisionModel", { model: store.state.settings.decisionModel });
       notify("agent.codexEngine", { engine: store.state.settings.codexEngine });
       notify("agent.claudeEngine", { engine: store.state.settings.claudeEngine });
       notify("agent.mode", { mode: store.state.settings.agentMode });

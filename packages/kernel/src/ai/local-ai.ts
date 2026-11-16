@@ -140,7 +140,6 @@ const CANCEL_DELAY_MS = 3000;
 export interface AiAccess {
   kev: LocalAi["kev"];
   gemma: LocalAi["gemma"];
-  warmDecision: LocalAi["warmDecision"];
   close(): Promise<void>;
 }
 
@@ -410,7 +409,6 @@ export class LocalAi {
     return {
       kev: (body, o) => (closed ? Promise.reject(new Error(AI_CLOSED_ERROR)) : this.kev(body, o)),
       gemma: (o) => (closed ? Promise.reject(new Error(AI_CLOSED_ERROR)) : this.gemma(o)),
-      warmDecision: () => { if (!closed) this.warmDecision(); },
       close: async () => {
         closed = true;
         await this.stop();

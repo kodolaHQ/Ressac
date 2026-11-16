@@ -49,12 +49,12 @@ describe("pullOllamaModel", () => {
 
   it("passes Ollama's error through (a line, an HTTP body), and rejects a stream cut before success", async () => {
     const line = await fake((_b, res) => res.end('{"status":"pulling manifest"}\n{"error":"pull model manifest: file does not exist"}\n'));
-    await expect(events(line.url, "pplx-decider-flash").done).rejects.toThrow("pull model manifest: file does not exist");
+    await expect(events(line.url, "gemma4:e4b-mlx").done).rejects.toThrow("pull model manifest: file does not exist");
     const http = await fake((_b, res) => res.writeHead(500).end("disk full"));
-    await expect(events(http.url, "pplx-decider-flash").done).rejects.toThrow("disk full");
+    await expect(events(http.url, "gemma4:e4b-mlx").done).rejects.toThrow("disk full");
     const cut = await fake((_b, res) => res.end('{"status":"downloading","total":10,"completed":1}\n'));
-    await expect(events(cut.url, "pplx-decider-flash").done).rejects.toThrow("interrompu");
+    await expect(events(cut.url, "gemma4:e4b-mlx").done).rejects.toThrow("interrompu");
     const junk = await fake((_b, res) => res.end("<html>proxy error</html>\n"));
-    await expect(events(junk.url, "pplx-decider-flash").done).rejects.toThrow("Réponse inattendue d'Ollama : <html>proxy error</html>");
+    await expect(events(junk.url, "gemma4:e4b-mlx").done).rejects.toThrow("Réponse inattendue d'Ollama : <html>proxy error</html>");
   });
 });

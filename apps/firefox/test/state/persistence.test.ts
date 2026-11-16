@@ -297,16 +297,13 @@ test("a session saved without codexEngine loads with the default; an unknown one
   expect((await loadSession(d)).settings.codexEngine).toEqual(DEFAULT_CODEX_ENGINE);
 });
 
-test("a session saved without decisionModel loads with pplx-decider-flash; an unknown value too", async () => {
+test("a session saved with the old decisionModel loads, and the field is gone", async () => {
   const d = folder();
   const old = structuredClone(initialState()) as unknown as { settings: Record<string, unknown> };
-  delete old.settings.decisionModel;
-  writeFileSync(join(d, "session.json"), JSON.stringify(old));
-  expect((await loadSession(d)).settings.decisionModel).toBe("pplx-decider-flash");
-  old.settings.decisionModel = "inconnu";
+  old.settings.decisionModel = "pplx-decider-flash";
   writeFileSync(join(d, "session.json"), JSON.stringify(old));
   const e = await loadSession(d);
-  expect(e.settings.decisionModel).toBe("pplx-decider-flash");
+  expect("decisionModel" in e.settings).toBe(false);
   expect(set_aside(d, ".corrupt")).toEqual([]);
 });
 

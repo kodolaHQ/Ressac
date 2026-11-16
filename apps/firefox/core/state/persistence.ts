@@ -55,7 +55,7 @@ const SchemaSession = z.object({
       }),
     )
     .min(1),
-  settings: z.object({ engine: z.enum(SEARCH_ENGINE_IDS).catch("google"), customEngine: z.string().max(CUSTOM_ENGINE_MAX).refine((u) => !customEngineError(u)).nullable().catch(null).default(null), agentProfile: z.string().min(1).default("claude"), agentMode: z.enum(["browser", "workshop"]).catch("browser"), agentPanelWidth: z.number().default(420), sidebarWidth: z.number().default(240), decisionModel: z.enum(["pplx-decider-flash", "kev"]).catch("pplx-decider-flash"), codexEngine: CodexEngineSchema.catch(() => ({ ...DEFAULT_CODEX_ENGINE })), claudeEngine: ClaudeEngineSchema.catch(() => ({ ...DEFAULT_CLAUDE_ENGINE })),
+  settings: z.object({ engine: z.enum(SEARCH_ENGINE_IDS).catch("google"), customEngine: z.string().max(CUSTOM_ENGINE_MAX).refine((u) => !customEngineError(u)).nullable().catch(null).default(null), agentProfile: z.string().min(1).default("claude"), agentMode: z.enum(["browser", "workshop"]).catch("browser"), agentPanelWidth: z.number().default(420), sidebarWidth: z.number().default(240), codexEngine: CodexEngineSchema.catch(() => ({ ...DEFAULT_CODEX_ENGINE })), claudeEngine: ClaudeEngineSchema.catch(() => ({ ...DEFAULT_CLAUDE_ENGINE })),
     // A session saved before the welcome existed never welcomes.
     onboarded: z.boolean().default(true),
     // A session saved before the release notes existed comes from an older version: its next launch shows them.

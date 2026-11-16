@@ -15,7 +15,6 @@ export type Backup = { path: string; date: string; bytes: number };
 
 /** The workshop restart or rebuild in progress, if any. */
 export type WorkshopOperation = "restart" | "rebuild" | null;
-export type DecisionModel = "pplx-decider-flash" | "kev";
 export type AgentAccountState = "docker-absent" | "no-container" | "logged-out" | "logged-in" | "error";
 export interface AgentAccount {
   id: string;
@@ -111,6 +110,8 @@ export type DockerStatus = { kind: "ready" | "absent" | "unmanaged" } | { kind: 
 export type OllamaStatus = { kind: "ready"; version: string } | { kind: "outdated"; version: string; min: string } | { kind: "stopped" | "absent" | "unmanaged" };
 /** The name the download of Ollama itself goes under, next to the model names. */
 export const OLLAMA_ITSELF = "ollama";
+/** The name the decision model's download (d1-2B, run by llama-server) goes under, next to the Ollama models. */
+export const DECISION_MODEL = "d1-2B";
 
 /** The progress of an Ollama model download (or of Ollama itself) shown in Settings. */
 export interface PullProgress {

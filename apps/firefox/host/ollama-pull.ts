@@ -1,7 +1,7 @@
 import type { PullProgress } from "../shared/settings.ts";
 import { hostSay } from "./locale.ts";
 
-export const PULLABLE_MODELS = ["gemma4:e4b-mlx", "pplx-decider-flash"];
+export const PULLABLE_MODELS = ["gemma4:e4b-mlx"];
 export const UNSUPPORTED_MODEL = () => hostSay("host-unsupported-model");
 
 /**

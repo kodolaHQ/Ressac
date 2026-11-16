@@ -24,9 +24,10 @@ function setup(over: { state?: string; exec?: (argv: string[]) => unknown; ollam
     },
     ai: {
       state: () => ({ state: "stopped" as const }),
-      check: async () => ({ kev: true, uv: true, ollama: true, gemma: false, gemmaModel: null, decision: true }),
+      check: async () => ({ ollama: true, gemma: false, gemmaModel: null, decision: true }),
       ollamaUrl: "http://127.0.0.1:11434",
-      setDecisionModel: vi.fn(),
+      installDecisionModel: vi.fn(async (onPercent: (p: number | null) => void): Promise<void> => (onPercent(30), void calls.push("installDecisionModel"))),
+      cancelInstall: vi.fn(),
     },
     ollama: {
       status: async () => (over.ollama ?? { kind: "unmanaged" }) as any,
@@ -306,13 +307,13 @@ describe("settings host", () => {
     try {
       const first = h["settings.pullModel"]!({ name: "gemma4:e4b-mlx" }) as Promise<unknown>;
       await vi.waitFor(async () => expect(await h["settings.pullProgress"]!({})).toEqual({ name: "gemma4:e4b-mlx", status: "downloading", percent: 50 }));
-      expect(await h["settings.pullModel"]!({ name: "pplx-decider-flash" })).toMatchObject({ ok: false });
+      expect(await h["settings.pullModel"]!({ name: "d1-2B" })).toMatchObject({ ok: false });
       finish();
       expect(await first).toEqual({ ok: true });
       expect(await h["settings.pullProgress"]!({})).toBeNull();
       expect(o.ai.ollamaUrl).toBe("http://127.0.0.1:11434");
       globalThis.fetch = (async () => new Response("no space", { status: 500 })) as any;
-      expect(await h["settings.pullModel"]!({ name: "pplx-decider-flash" })).toEqual({ ok: false, error: "no space" });
+      expect(await h["settings.pullModel"]!({ name: "gemma4:e4b-mlx" })).toEqual({ ok: false, error: "no space" });
     } finally {
       globalThis.fetch = real;
     }
@@ -329,12 +330,13 @@ describe("settings host", () => {
       return new Response('{"status":"success"}\n');
     }) as any;
     try {
-      expect(await h["settings.pullInBackground"]!({ names: ["gemma4:e4b-mlx", "pplx-decider-flash"] })).toEqual({ ok: true });
+      expect(await h["settings.pullInBackground"]!({ names: ["gemma4:e4b-mlx", "d1-2B"] })).toEqual({ ok: true });
       await vi.waitFor(() => expect(o.notify).toHaveBeenCalledWith(expect.objectContaining({ title: "L'IA locale est prête" })));
-      expect(pulled).toEqual(["gemma4:e4b-mlx", "pplx-decider-flash"]);
+      expect(pulled).toEqual(["gemma4:e4b-mlx"]);
+      expect(o.ai.installDecisionModel).toHaveBeenCalledTimes(1);
       expect(await h["settings.pullProgress"]!({})).toBeNull();
       globalThis.fetch = (async () => new Response("no space", { status: 500 })) as any;
-      expect(await h["settings.pullInBackground"]!({ names: ["pplx-decider-flash"] })).toEqual({ ok: true });
+      expect(await h["settings.pullInBackground"]!({ names: ["gemma4:e4b-mlx"] })).toEqual({ ok: true });
       await vi.waitFor(() => expect(o.notify).toHaveBeenLastCalledWith({ title: "Le téléchargement de l'IA locale a échoué", text: "no space. Réessayez depuis Réglages › IA locale." }));
     } finally {
       globalThis.fetch = real;
@@ -357,12 +359,42 @@ describe("settings host", () => {
     expect(calls).toEqual(["docker.start"]);
   });
 
-  it("ai.state and decision model", async () => {
-    const { h, o } = setup();
+  it("ai.state", async () => {
+    const { h } = setup();
     expect(await h["ai.state"]!({})).toMatchObject({ state: "stopped", verification: { decision: true }, ollamaUrl: "http://127.0.0.1:11434" });
-    h["ai.decisionModel"]!({ model: "kev" });
-    expect(o.ai.setDecisionModel).toHaveBeenLastCalledWith(undefined);
-    h["ai.decisionModel"]!({ model: "pplx-decider-flash" });
-    expect(o.ai.setDecisionModel).toHaveBeenLastCalledWith("pplx-decider-flash");
   });
+
+  it("the decision model downloads through LocalAi, in the single pull slot; pplx is no longer pullable", async () => {
+    const { h, o, calls } = setup();
+    expect(await h["settings.pullModel"]!({ name: "pplx-decider-flash" })).toEqual({ ok: false, error: "Modèle non pris en charge" });
+    expect(await h["settings.pullModel"]!({ name: "d1-2B" })).toEqual({ ok: true });
+    expect(calls).toEqual(["installDecisionModel"]);
+    expect(o.ai.installDecisionModel).toHaveBeenCalledTimes(1);
+    expect(await h["settings.pullProgress"]!({})).toBeNull();
+  });
+
+  it("a failed decision download stays in ai.state as decisionError until a later success", async () => {
+    const { h, o } = setup();
+    o.ai.installDecisionModel.mockImplementationOnce(async () => {
+      throw new Error("HTTP 503");
+    });
+    h.downloadDecision();
+    await vi.waitFor(async () => expect(await h["ai.state"]!({})).toMatchObject({ decisionError: "HTTP 503" }));
+    expect(await h["settings.pullModel"]!({ name: "d1-2B" })).toEqual({ ok: true });
+    expect(await h["ai.state"]!({})).not.toHaveProperty("decisionError");
+  });
+
+  it("cancels the decision download when AI goes off, without keeping an error", async () => {
+    const { h, o } = setup();
+    let fail!: (e: Error) => void;
+    o.ai.installDecisionModel.mockImplementationOnce(() => new Promise<void>((_ok, ko) => (fail = ko)));
+    o.ai.cancelInstall.mockImplementation(() => fail(new Error("Installation annulée")));
+    h.downloadDecision();
+    await vi.waitFor(async () => expect(await h["settings.pullProgress"]!({})).toMatchObject({ name: "d1-2B" }));
+    h.cancelDecision();
+    expect(o.ai.cancelInstall).toHaveBeenCalledTimes(1);
+    await vi.waitFor(async () => expect(await h["settings.pullProgress"]!({})).toBeNull());
+    expect(await h["ai.state"]!({})).not.toHaveProperty("decisionError");
+  });
+
 });

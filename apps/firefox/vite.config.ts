@@ -2,7 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { defineConfig } from "vite";
-import { hostPath, nodePath, tsxPath } from "./scripts/paths";
+import { hostPath, llamaPath, nodePath, tsxPath } from "./scripts/paths";
 
 const shim = (name: string) => fileURLToPath(new URL(`chrome/shims/${name}.ts`, import.meta.url));
 // Privileged bundles never let Zod try eval (chrome/shims/zod-jitless.ts). Exact match: the shim's own `zod/v4` is Zod.
@@ -31,6 +31,7 @@ export default defineConfig(({ mode }) => {
         __RESSAC_NODE__: JSON.stringify(packaged ? "" : nodePath),
         __RESSAC_TSX__: JSON.stringify(packaged ? "" : tsxPath),
         __RESSAC_HOST__: JSON.stringify(packaged ? "" : hostPath),
+        __RESSAC_LLAMA__: JSON.stringify(packaged ? "" : llamaPath),
         // Where error reports go (chrome/store/telemetry.ts): only a packaged build bakes it in, a dev build sends nothing.
         __RESSAC_SENTRY_DSN__: JSON.stringify(packaged ? (process.env.RESSAC_SENTRY_DSN ?? "") : ""),
         // The Ressac version (package.json), outside the compiled engine: bumping it costs a build:ui, not a Gecko rebuild.
