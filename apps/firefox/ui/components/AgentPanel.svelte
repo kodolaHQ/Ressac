@@ -86,8 +86,8 @@
     id === "codex" ? browserState.value?.settings.codexEngine.kind === "chatgpt" : id === "claude" ? (browserState.value?.settings.claudeEngine.kind ?? "subscription") === "subscription" : true;
   const signedOutCodex = $derived(current === "codex" && onSubscription("codex") && account("codex")?.state === "logged-out");
   const profileChoice = $derived(profiles.length >= 2);
-  // Only the shipped agents know how to run without their shell (kernel's openAgentSession).
-  const modeChoice = $derived(current === "claude" || current === "codex");
+  // Every profile: the kernel applies the mode to any profile whose program is claude or codex (the panel does not know the program).
+  const modeChoice = $derived(current !== null);
   const mode = $derived(browserState.value?.settings.agentMode ?? "browser");
   function chooseMode(m: "browser" | "workshop") {
     if (m === mode) return;
