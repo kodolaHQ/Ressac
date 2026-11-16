@@ -135,7 +135,7 @@ agent-panel-mode = Agent mode
 agent-panel-mode-browser = Browser
 agent-panel-mode-browser-title = Search and recaps, no terminal
 agent-panel-mode-workshop = Workshop
-agent-panel-mode-workshop-title = Can run commands: apps, widgets, design mode
+agent-panel-mode-workshop-title = Can run commands: install and launch project apps
 
 ## Review
 

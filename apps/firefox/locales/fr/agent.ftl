@@ -135,7 +135,7 @@ agent-panel-mode = Mode de l'agent
 agent-panel-mode-browser = Navigateur
 agent-panel-mode-browser-title = Recherche et récaps, sans terminal
 agent-panel-mode-workshop = Atelier
-agent-panel-mode-workshop-title = Peut lancer des commandes : applis, widgets, mode design
+agent-panel-mode-workshop-title = Peut lancer des commandes : installer et lancer les applis de projet
 
 ## Relecture
 
