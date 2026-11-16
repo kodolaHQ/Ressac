@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, rm, writeFile } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 import { validFolder } from "../applications/manifest.js";
 import { CONTAINER_PATH, KERNEL_ROOT, type SpacePaths } from "../paths.js";
@@ -486,7 +486,10 @@ export class Workshop {
     // Never left out silently: the code would then fail on a missing file, a misleading error.
     const big = Object.entries(r.skipped ?? {}).find(([, why]) => why === "big");
     if (big) throw new Error(say(this.locale(), "kernel-harvest-file-too-big", { name: wanted[Number(big[0])]! }));
-    const staged = join(this.paths.internal, "harvests", harvestName(owner));
+    const harvests = join(this.paths.internal, "harvests");
+    // A link planted there while .ressac was still writable to the agent: removed (rm takes the link, not its target).
+    if (!(await lstat(harvests).catch(() => null))?.isDirectory()) await rm(harvests, { force: true });
+    const staged = join(harvests, harvestName(owner));
     await rm(staged, { recursive: true, force: true });
     await mkdir(staged, { recursive: true });
     await Promise.all(r.files.map((f, i) => f && writeFile(join(staged, wanted[i]!), Buffer.from(f.text, "base64"))));
