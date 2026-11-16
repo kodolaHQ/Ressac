@@ -1,6 +1,18 @@
 /** What changed for the user, newest first. Add an entry when bumping `version` in package.json: its page opens once after the update. */
 export const RELEASE_NOTES: { version: string; date: string; items: string[] }[] = [
   {
+    version: "0.1.8",
+    date: "novembre 2026",
+    items: [
+      "Réordonnez vos espaces en glissant leurs pastilles, en bas de la barre latérale.",
+      "Les essentiels restent sous le champ de recherche quand vous faites défiler vos onglets, et les onglets ne passent plus par-dessus. « Nouvel onglet » se place en haut de la liste, comme dans Zen.",
+      "L'agent a deux modes : Navigateur, sans terminal, et Atelier, pour les applis de projet et les commandes.",
+      "Les icônes des sites lourdes (Gmail) s'affichent de nouveau au lieu d'une lettre. Les lettres, les menus et la barre de l'agent prennent la couleur de l'espace dès le démarrage, et une appli de site prend celle de l'espace d'où vous l'ouvrez.",
+      "Des icônes au trait remplacent les emoji, y compris pour les espaces. Les cartes des sites rangent leurs actions dans un menu « ⋯ ».",
+      "Sécurité : un widget ou une action que l'agent crée ne lit que les sites qu'il déclare, et vous l'autorisez une fois. L'agent demande votre accord avant d'ouvrir une adresse qu'il a écrite lui-même. Les cartes d'accord ignorent un clic trop rapide, et l'alerte plein écran de Firefox revient.",
+    ],
+  },
+  {
     version: "0.1.7",
     date: "novembre 2026",
     items: [
