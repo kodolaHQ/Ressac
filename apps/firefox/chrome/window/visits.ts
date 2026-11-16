@@ -118,9 +118,11 @@ export function trackVisits(gBrowser: any, history: History, context: (id: strin
       const tab = gBrowser.getTabForBrowser(browser);
       const id = idOf(tab);
       if (!id) return;
-      // The title as the change comes: a held note must not take a later page's.
+      // A held note takes the tab's title if the tab still shows its URL (a single-page site sets it after pushState), else
+      // the title it had then: flushed by a new page, it must not take that page's.
       const [url, title] = [location.spec, tab.label];
-      if (flags & LOCATION_CHANGE_SAME_DOCUMENT) noteSameDocument(browser, () => history.visit(id, url, title));
+      if (flags & LOCATION_CHANGE_SAME_DOCUMENT)
+        noteSameDocument(browser, () => history.visit(id, url, browser.currentURI?.spec === url ? tab.label : title));
       else {
         flushHeld(browser);
         history.visit(id, url, title);

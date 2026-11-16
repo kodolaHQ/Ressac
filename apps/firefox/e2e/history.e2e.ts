@@ -108,6 +108,28 @@ describe("history noted in the kernel", () => {
     expect(await until(pushed, (u) => u.length === 2)).toEqual([`${base}/a.html?p=0`, `${base}/a.html?p=19`]);
   });
 
+  it("a held URL change takes the title a single-page site sets after pushState", async () => {
+    const s = await open(`${base}/a.html`);
+    await loaded("/a.html");
+    await until(urls, (u) => u.length === 1);
+    const id = Object.keys(s.tabs).at(-1)!;
+    const handle = await m.execute<string>(
+      `const t = gBrowser.tabs.find((t) => t.getAttribute("ressac-tab-id") === arguments[0]);
+       return ChromeUtils.importESModule("${NAVIGABLES}").NavigableManager.getIdForBrowser(t.linkedBrowser);`,
+      [id],
+    );
+    await m.command("WebDriver:SwitchToWindow", { handle, focus: false });
+    await m.setContext("content");
+    try {
+      // ?v=1 comes within the gap: held; its title is set just after, as a single-page site does.
+      await m.execute(`history.pushState(null, "", "?v=0"); history.pushState(null, "", "?v=1"); document.title = "Video B";`);
+    } finally {
+      await m.setContext("chrome");
+    }
+    const v = await until(recents, (r) => r.some((x) => x.url.endsWith("?v=1")));
+    expect(v.find((x) => x.url.endsWith("?v=1"))!.title).toBe("Video B");
+  });
+
   it("a held URL change is noted before the next page loads, with its own title", async () => {
     const s = await open(`${base}/a.html`);
     await loaded("/a.html");
