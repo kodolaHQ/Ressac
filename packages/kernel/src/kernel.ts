@@ -1,6 +1,6 @@
 import { say, replyLanguageLine } from "./i18n.js";
 import { randomBytes } from "node:crypto";
-import { constants, existsSync } from "node:fs";
+import { constants } from "node:fs";
 import { lstat, mkdir, open, realpath, rm, unlink, writeFile } from "node:fs/promises";
 import { basename, join, posix } from "node:path";
 import { CONTAINER_PATH, sessionConfigPath, pathInContainer, sessionsFolder, spacePaths, type SpacePaths } from "./paths.js";
@@ -767,14 +767,10 @@ export async function createKernel(o: {
   };
 }
 
-/** Seeds `reads.json` of the widgets and of the actions from the owners on disk (a folder not found seeds nothing yet). */
+/** Seeds `reads.json` of the widgets and of the actions from the owners on disk (a folder not found seeds nothing, marker written). */
 async function seedSpaceReads(paths: SpacePaths, widgetsFolder: string, actionsFolder: string, locale: string): Promise<void> {
-  if (existsSync(paths.widgets)) {
-    const widgets = (await readHome(paths, widgetsFolder, locale)).widgets;
-    await seedReads(widgetsFolder, widgets.flatMap((w) => ("error" in w ? [] : [{ id: w.id, sources: w.declaration.sources }])));
-  }
-  if (existsSync(paths.actions)) {
-    const actions = await readActions(paths);
-    await seedReads(actionsFolder, actions.flatMap((a) => ("error" in a ? [] : [{ id: a.id, sources: a.declaration.sources }])));
-  }
+  const widgets = (await readHome(paths, widgetsFolder, locale)).widgets;
+  await seedReads(widgetsFolder, widgets.flatMap((w) => ("error" in w ? [] : [{ id: w.id, sources: w.declaration.sources }])));
+  const actions = await readActions(paths);
+  await seedReads(actionsFolder, actions.flatMap((a) => ("error" in a ? [] : [{ id: a.id, sources: a.declaration.sources }])));
 }

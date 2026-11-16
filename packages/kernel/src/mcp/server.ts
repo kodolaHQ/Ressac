@@ -430,8 +430,8 @@ function createToolsServer(
 
   /** `view`: a search read's state line and, unless the whole text is asked, its reduced page. `full`: every link read. */
   const present = (o: TabInfo, r: TabRead, withLinks: boolean, head: string[] = [], view?: { state: string; text?: string; shown?: number; total?: number }, full = false): Result => {
-    // Every link read counts as seen, shown or not.
-    seen.add([o.url, ...(r.links ?? []).map((l) => l.url), ...photos(r.links)]);
+    // Every link read counts as seen, shown or not; never a local page's: the agent writes those (its demos).
+    if (!isLocal(o.url)) seen.add([o.url, ...(r.links ?? []).map((l) => l.url), ...photos(r.links)]);
     const ranked = withLinks ? rankLinks(r.links ?? [], o.url) : [];
     const top = full ? ranked : ranked.slice(0, LINKS_SHOWN);
     if (withLinks) {
@@ -589,16 +589,19 @@ function createToolsServer(
   /**
    * Outside a search, a web address is free when it is local, was read (a page, its links, a search's results), is the address
    * of a tab the agent may read, or was approved in this conversation. Otherwise the user decides on the « agent-address » card.
+   * Returns the refusal's text, null when it may open.
    */
-  async function composedAllowed(tool: "open_tab" | "navigate", url: string, reason: string | undefined, signal?: AbortSignal): Promise<boolean> {
-    if (isLocal(url) || seen.has(url) || policy.addressGranted(url)) return true;
-    if ((await bridge.listTabs()).some((t) => t.url === url && policy.canRead(t))) return true;
-    if (!bridge.askAddress) return false;
+  async function composedRefusal(tool: "open_tab" | "navigate", url: string, reason: string | undefined, signal?: AbortSignal): Promise<string | null> {
+    if (isLocal(url) || seen.has(url) || policy.addressGranted(url)) return null;
+    if ((await bridge.listTabs()).some((t) => t.url === url && policy.canRead(t))) return null;
+    if (url.length > URL_MAX) return TOO_LONG_TEXT;
+    if (!bridge.askAddress) return DENIAL_TEXT;
     const view = await opinion({ tool, url, composed: true });
     const card = { url, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", ...view };
     const yes = await askAddressCard(bridge, policy, requests, card, `address:${url}`, win ?? undefined, () => () => {}, signal);
-    if (yes) policy.grantAddress(url);
-    return yes;
+    if (!yes) return DENIAL_TEXT;
+    policy.grantAddress(url);
+    return null;
   }
 
   /** The search tab `id` is the user's for now (a hand is open on it). */
@@ -702,7 +705,10 @@ function createToolsServer(
           if (!sessions.owns(cur.tabId)) return text(sessions.takeStop(key, cur.tabId) ? STOP_TEXT : CLOSED_TEXT);
           if (!yes) return text(DENIAL_TEXT);
         }
-      } else if (!(await composedAllowed("open_tab", url, reason, extra?.signal))) return text(DENIAL_TEXT);
+      } else {
+        const refusal = await composedRefusal("open_tab", url, reason, extra?.signal);
+        if (refusal) return text(refusal);
+      }
       const o = await bridge.openTab(target, space);
       policy.tabOpenedByAgent(o);
       return text(o.id);
@@ -762,7 +768,9 @@ function createToolsServer(
         return text(`Appli de site ${id} → ${url}`);
       }
       if (!(await access(o))) return text(DENIAL_TEXT);
-      if (link === undefined && !(await composedAllowed("navigate", url, reason, extra?.signal))) return text(DENIAL_TEXT);
+      // A link of a local page is the agent's own writing: it counts as composed.
+      const refusal = link === undefined || isLocal(o.url) ? await composedRefusal("navigate", url, reason, extra?.signal) : null;
+      if (refusal) return text(refusal);
       // An app's window never leaves its origin (it has no address bar): another site opens
       // in a tab, as with open_tab, and the agent keeps access to the window.
       if (o.app && originOf(url) !== originOf(o.url)) {

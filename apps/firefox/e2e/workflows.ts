@@ -7,14 +7,15 @@ import { click, inUi, waitUi } from "./ui";
 export const widgetDir = (dataDir: string, id: string) => path.join(dataDir, "workspace", "home", "widgets", id);
 
 /**
- * The user's approval of what a fixture without account reads (`<folder>/reads.json`, as the kernel writes it): a widget or
- * action written after the browser started would otherwise wait for « Autoriser ».
+ * A fixture without account is approved as the kernel seeds an owner present at the update (`<folder>/reads.json`): its
+ * domains, and any host (`web: true`). One written after the browser started would otherwise wait for « Autoriser », or be
+ * held to its declared domains.
  */
 export async function approveFixtureReads(folder: string, id: string, sources: { account?: string[]; public?: string[]; web?: boolean }): Promise<void> {
-  if (sources.account?.length || (!sources.public?.length && !sources.web)) return;
+  if (sources.account?.length) return;
   const file = path.join(folder, "reads.json");
   const all: Record<string, unknown> = await readFile(file, "utf8").then((t) => JSON.parse(t), () => ({}));
-  all[id] = { public: [...(sources.public ?? [])].sort(), web: sources.web === true };
+  all[id] = { public: [...(sources.public ?? [])].sort(), web: true };
   await mkdir(folder, { recursive: true });
   await writeFile(file, JSON.stringify(all));
 }

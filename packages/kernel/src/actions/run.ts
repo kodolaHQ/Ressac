@@ -8,7 +8,7 @@ import { BUILTIN_COMPONENTS } from "../pages/catalog.js";
 import { readAgentComponents } from "../pages/agent-components.js";
 import { layOut } from "../pages/layout-page.js";
 import { grantValid, readGrants, removeGrant } from "../widgets/grants.js";
-import { readReads, readsCovered } from "../widgets/reads.js";
+import { readReads, readsCovered, readsUnrestricted } from "../widgets/reads.js";
 import { originChain, markInterrupted, grantRequired } from "../widgets/harvest.js";
 import { message, truncate } from "../workflows/access.js";
 import {
@@ -176,6 +176,7 @@ export async function runAction(o: OptionsAction): Promise<LaunchResult> {
       // A trial neither receives nor keeps any memory.
       memory: plan ? {} : await readMemory(dataFolder),
       ...grantContext,
+      unrestricted: await readsUnrestricted(actionsFolder, id, declaration),
       trigger: o.trigger,
       ...(plan ? { replay: { reruns: plan.reruns, outputs: plan.outputs, resumed: plan.resumed } } : {}),
       ...(maxDurationMinutes !== undefined ? { maxDurationMinutes: maxDurationMinutes } : {}),

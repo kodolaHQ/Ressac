@@ -23,12 +23,14 @@ Un widget est un dossier `home/widgets/<id>/` (`<id>` : minuscules, chiffres et 
     - `notify: true` : à la fin d'une vraie récolte qui finit (réussie ou partielle) et
       apporte de nouveaux éléments, l'utilisateur reçoit une notification macOS (voir « Veilles » plus bas).
   - `sources.account` : les domaines lus avec le compte de l'utilisateur. `sources.public` : les
-    domaines permis à `fetch` et `readPage` en public. Sans `account`, ils ne restreignent
-    rien ; avec `account`, ils sont **obligatoires** (liste vide = aucune lecture publique).
+    domaines permis à `fetch` et `readPage` en public : tout autre hôte est refusé (« Domaine non
+    déclaré »), redirections comprises, liste vide = aucune lecture publique. Sans `account`,
+    l'utilisateur les accepte une fois sur l'accueil (et de nouveau si la liste s'allonge) ;
+    d'ici là le widget attend (`grant-required`).
   - `sources.web: true` : permet le bloc `web.search` et `ressac.searchWeb` (recherche sur
-    DuckDuckGo), et ménage les lectures (voir « Veilles » plus bas). Un widget sans `account`
-    pouvait déjà lire n'importe quel site public : `web` n'ajoute que la recherche, et en échange
-    les lectures sont espacées et comptées. **Impossible avec un compte** : le widget est alors
+    DuckDuckGo), laisse le widget lire n'importe quel site public, et ménage les lectures (voir
+    « Veilles » plus bas) : elles sont espacées et comptées. L'utilisateur l'accepte une fois,
+    comme les domaines. **Impossible avec un compte** : le widget est alors
     invalide, avec le message « web : impossible avec un compte (les données d'un compte ne
     doivent pas pouvoir partir vers un site inconnu) ».
   - `config` est libre (JSON) et transmis à la récolte : c'est là que tu changes la

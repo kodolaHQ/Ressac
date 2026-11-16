@@ -506,7 +506,7 @@ test("kernel: the owners on disk at start get their reads approved once; one wri
     kernel = await createKernel({ locale: () => "fr", widgetsFolder, actionsFolder, bridge: new FakeBridge([], { active: null, allow: false }), root, run });
     return { n: kernel, actionsFolder };
   })();
-  expect((await readReads(widgetsFolder)).old).toEqual({ public: ["a.fr"], web: false });
+  expect((await readReads(widgetsFolder)).old).toEqual({ public: ["a.fr"], web: true });
   expect((await readReads(actionsFolder)).pub).toEqual({ public: ["x.fr"], web: true });
 
   await writeWidget(n.paths, "fresh", decl(["b.fr"], true), { "harvest.mjs": "export default () => 1" });

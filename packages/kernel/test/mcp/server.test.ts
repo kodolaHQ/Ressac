@@ -2462,6 +2462,16 @@ test("outside a search, a composed address asks its card once per conversation; 
     expect((await call("open_tab", { url: "https://exemple.fr/a" })).isError).toBe(false);
     expect((await call("open_tab", { url: github.url })).isError).toBe(false);
     expect(fake.calls.filter((x) => x.method === "askAddress")).toHaveLength(2);
+    // A local page's links are the agent's own writing: never seen, never free (open_tab or navigate by number).
+    const demo = (await call("open_tab", { url: "http://localhost:3001/" })).text.trim();
+    fake.linkSequence = [[{ text: "Annonce", url: "https://exemple.fr/b" }]];
+    expect((await call("read_tab", { id: demo, links: true })).text).toContain("0. Annonce — https://exemple.fr/b");
+    expect((await call("open_tab", { url: "https://exemple.fr/b" })).text).toBe(DENIAL_TEXT);
+    expect((await call("navigate", { id: demo, link: 0 })).text).toBe(DENIAL_TEXT);
+    expect(fake.calls.filter((x) => x.method === "askAddress")).toHaveLength(4);
+    // Too long for a card.
+    expect((await call("open_tab", { url: `https://ailleurs.fr/${"x".repeat(600)}` })).text).toBe("Adresse trop longue (500 caractères au plus).");
+    expect(fake.calls.filter((x) => x.method === "askAddress")).toHaveLength(4);
   }, { address: false, allow: true });
   await withSearch(async ({ call, fake, policy }) => {
     expect((await call("open_tab", { url: "https://ailleurs.fr/x", reason: "r" })).isError).toBe(false);

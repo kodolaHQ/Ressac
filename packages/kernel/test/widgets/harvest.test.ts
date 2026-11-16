@@ -73,7 +73,8 @@ interface Context {
 }
 
 /** Creates a widget `id` (widget.json + harvest.mjs) and a launcher that runs the harvester locally, without docker. */
-async function prepare(id: string, code: string, sources = { account: [] as string[], public: [] as string[] }, config: unknown = { a: 1 }): Promise<Context> {
+/** Without `unapproved`, a widget without account is approved as seeded at the update (any host). */
+async function prepare(id: string, code: string, sources = { account: [] as string[], public: [] as string[] }, config: unknown = { a: 1 }, o: { unapproved?: true } = {}): Promise<Context> {
   const space = await tempFolder();
   const folder = join(space, "home", "widgets", id);
   await mkdir(folder, { recursive: true });
@@ -87,6 +88,8 @@ async function prepare(id: string, code: string, sources = { account: [] as stri
   await writeFile(join(folder, "widget.json"), JSON.stringify(raw));
   await writeFile(join(folder, "harvest.mjs"), code);
   const declaration = DeclarationWidget.parse(raw);
+  const widgetsFolder = await tempFolder();
+  if (!o.unapproved && sources.account.length === 0) await approveReads(widgetsFolder, id, { public: sources.public, web: true });
   const run = fakeRunner([]);
   const ctx: Context = {
     widget: {
@@ -100,7 +103,7 @@ async function prepare(id: string, code: string, sources = { account: [] as stri
       hasWorkflow: false,
       hasDisplay: true,
     },
-    widgetsFolder: await tempFolder(),
+    widgetsFolder: widgetsFolder,
     space: space,
     commands: [],
     killed: 0,
@@ -178,7 +181,7 @@ const readJson = async (path: string) => JSON.parse(await readFile(path, "utf8")
 
 describe("runHarvest", () => {
   it("without account: a public domain not approved stops before the container, the approval lets it run, a lost domain still runs", async () => {
-    const ctx = await prepare("pub", `export default async () => [1];`, { account: [], public: ["a.example"] });
+    const ctx = await prepare("pub", `export default async () => [1];`, { account: [], public: ["a.example"] }, undefined, { unapproved: true });
     const r = await runHarvest(optionsOf(ctx));
     expect(r.state).toMatchObject({ status: "grant-required", error: "Accord requis pour lire : a.example", kernelError: true });
     expect(kernelError(r.state.error!)).toBe(true);
@@ -1552,7 +1555,6 @@ describe("runHarvest, watch (publications as it goes, memory kept, novelties)", 
     const html = `<div class="result"><a class="result__a" href="https://a.example/1">Titre</a><a class="result__snippet">Extrait</a></div>`;
     const ctx = await prepare("veille", `export default async (w) => w.searchWeb("clio", { nombre: 1 });`);
     ctx.widget.declaration.sources.web = true;
-    await approveReads(ctx.widgetsFolder, "veille", { public: [], web: true });
     const pacing = new Pacing({ wait: async () => {} });
     const search = vi.spyOn(pacing, "search");
     const bridge = new FakeBridge([], { active: null, allow: false, read: { pages: [], html: { [searchUrl("clio", BASE)]: html } } });

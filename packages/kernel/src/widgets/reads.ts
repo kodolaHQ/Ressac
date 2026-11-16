@@ -63,16 +63,23 @@ export function readsCovered(declaration: { sources: { public: string[]; web?: b
   return publics.every((d) => approved.public.includes(d)) && (!web || approved.web);
 }
 
+/** May this owner read any host? Never with an account; without one, when it declares `web` or its approval has `web`. */
+export async function readsUnrestricted(folder: string, id: string, declaration: { sources: { account: string[]; web?: boolean } }): Promise<boolean> {
+  if (declaration.sources.account.length) return false;
+  return declaration.sources.web === true || (await readReads(folder))[id]?.web === true;
+}
+
 /**
- * The migration, once per folder: every current owner's declared reads are approved (owners that existed before the gate,
- * starters of a new space); entries already there are kept. A marker records it, so a `reads.json` the user removed later is
+ * The migration, once per folder: every current owner without account gets its declared public domains and `web`, so it
+ * keeps reading any host as before the gate (owners that existed at the update, starters of a new space); entries already
+ * there are kept. A marker records it, so a `reads.json` the user removed later is
  * not seeded again.
  */
-export async function seedReads(folder: string, owners: { id: string; sources: { public: string[]; web?: boolean } }[]): Promise<void> {
+export async function seedReads(folder: string, owners: { id: string; sources: { account: string[]; public: string[] } }[]): Promise<void> {
   const marker = join(folder, "reads.seeded");
   if (await stat(marker).then(() => true, () => false)) return;
   await modify(folder, (all) => {
-    for (const o of owners) if (ID.test(o.id)) all[o.id] ??= { public: [...o.sources.public].sort(), web: o.sources.web === true };
+    for (const o of owners) if (ID.test(o.id) && o.sources.account.length === 0) all[o.id] ??= { public: [...o.sources.public].sort(), web: true };
   });
   await writeAtomic(marker, "");
 }

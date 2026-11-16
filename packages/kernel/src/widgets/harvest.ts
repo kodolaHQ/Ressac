@@ -7,7 +7,7 @@ import type { Workshop } from "../container/workshop.js";
 import type { LocalAi } from "../ai/local-ai.js";
 import type { BrowserBridge } from "../mcp/bridge.js";
 import { grantValid, readGrants, removeGrant } from "./grants.js";
-import { readReads, readsCovered } from "./reads.js";
+import { readReads, readsCovered, readsUnrestricted } from "./reads.js";
 import { message, truncate } from "../workflows/access.js";
 import {
   MAX_ERROR,
@@ -379,6 +379,7 @@ export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
       previous: dataBefore,
       memory: await readMemory(dataFolder),
       ...grantContext(widgetsFolder, id, declaration, loc(o)),
+      unrestricted: await readsUnrestricted(widgetsFolder, id, declaration),
       trigger: trigger,
       ...(maxDurationMinutes !== undefined ? { maxDurationMinutes: maxDurationMinutes } : {}),
     },
@@ -511,6 +512,7 @@ export async function runAttempt(o: HarvestOptions & { origin: string; start: st
       // A try neither receives nor keeps any memory.
       memory: {},
       ...grantContext(widgetsFolder, id, declaration, loc(o)),
+      unrestricted: await readsUnrestricted(widgetsFolder, id, declaration),
       trigger: "replay",
       replay: { ...replay, resumed: plan.resumed },
       ...(maxDurationMinutes !== undefined ? { maxDurationMinutes: maxDurationMinutes } : {}),
