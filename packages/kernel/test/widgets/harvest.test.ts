@@ -866,6 +866,15 @@ describe("runHarvest, through the widget's workflow", () => {
     }
   });
 
+  it("the same invalid workflow.json again: no new failed run, the last one stands in", async () => {
+    const ctx = await prepare("casse", "");
+    await toWorkflow(ctx, '{"version":1,"blocs":[');
+    const first = await harvest(ctx);
+    const second = await runHarvest({ ...optionsOf(ctx), clock: () => new Date(NOW.getTime() + 900_000) });
+    expect(second.run).toBe(first.run);
+    expect((await listRuns(dataOf(ctx))).map((e) => e.id)).toEqual([first.run]);
+  });
+
   it("the workflow is validated according to the widget: budgetSeconds 600 refused without a maximum duration, accepted with maxDurationMinutes 30", async () => {
     const LONG = {
       version: 1,

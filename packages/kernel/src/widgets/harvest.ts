@@ -312,7 +312,12 @@ export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
   if (parsed.t === "unreadable") return conclude({ status: "error", error: parsed.error, widgetError: true });
   if (parsed.t === "absent") return conclude({ status: "error", error: NO_WORKFLOW_ERROR(loc(o)) });
   // workflow.json half-written, unknown block, cycle…: no container is launched, the data stays.
-  if (parsed.t === "invalid") return conclude({ status: "error", error: parsed.error, run: await withoutContainer("failed", parsed.error, []) });
+  // The same invalid workflow retried every 15 min: the last run stands in, the real runs stay in the history.
+  if (parsed.t === "invalid") {
+    const last = (await listRuns(dataFolder)).find((e) => !e.attempt);
+    const same = last?.status === "failed" && last.blocks.length === 0 && (await readRun(dataFolder, last.id))?.error === parsed.error;
+    return conclude({ status: "error", error: parsed.error, run: same ? last.id : await withoutContainer("failed", parsed.error, []) });
+  }
   const { valid, declaration } = parsed;
   // A widget that reads with the user's account only runs with their grant (an expired grant is withdrawn, with its data).
   if (!(await validGrant(widgetsFolder, id, declaration)).can) {
