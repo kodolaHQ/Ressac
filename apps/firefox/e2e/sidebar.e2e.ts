@@ -358,6 +358,19 @@ describe("Ressac sidebar", () => {
     expect(s.windows[0]!.order[home]).toContain(a);
   });
 
+  it("two rows of essentials above a long tab list keep their height: the tabs start below them", async () => {
+    const ids: string[] = [];
+    for (let i = 0; i < 6; i++) ids.push(await open(`/a.html?e=${i}`));
+    for (const id of ids) await dispatch(m, { type: "addEssential", id });
+    for (let i = 0; i < 40; i++) await open(`/b.html?t=${i}`);
+    await waitUi(m, "return doc.querySelectorAll('[data-testid=\"essentials\"] [data-testid^=\"favorite-\"]').length === 6");
+    const gap = await inUi<number>(
+      m,
+      "return doc.querySelector('.space-content').getBoundingClientRect().top - doc.querySelector('[data-testid=\"essentials\"]').getBoundingClientRect().bottom",
+    );
+    expect(gap).toBeGreaterThanOrEqual(0);
+  });
+
   it("an essential is visible in every space", async () => {
     const a = await open("/a.html");
     await waitTitle(a, "Page A");

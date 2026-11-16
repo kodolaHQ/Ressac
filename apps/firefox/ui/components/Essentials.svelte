@@ -77,7 +77,8 @@
 </div>
 
 <style>
-  .essentials { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; min-height: 8px; }
+  /* No shrink: with a long tab list the scrolling column would squash the grid to its min-height, its rows drawn over the tabs. */
+  .essentials { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; min-height: 8px; flex-shrink: 0; }
   .cell { display: grid; place-content: center; height: 44px; border-radius: 12px; background: color-mix(in srgb, var(--glass-hi) 60%, transparent); box-shadow: inset 0 0 0 1px var(--glass-edge); transition: transform var(--tap), background var(--tap), box-shadow var(--tap), opacity var(--tap); }
   /* Unloaded by the user: dimmed until opened again. */
   .cell.unloaded { opacity: 0.45; }
