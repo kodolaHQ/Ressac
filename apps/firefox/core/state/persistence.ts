@@ -139,6 +139,15 @@ async function setAside(path: string, reason: "corrupt" | "unreadable"): Promise
   }
 }
 
+/** The damaged text, written next to it under a set-aside name, when the file itself could not be moved. */
+async function keepCopy(path: string, text: string): Promise<string | null> {
+  const name = `${path}.${new Date().toISOString().replace(/[:.]/g, "-")}.copy.corrupt`;
+  return fs.writeFile(name, text).then(
+    () => name,
+    (e) => (console.error(`[session] could not copy ${path} aside:`, e), null),
+  );
+}
+
 /** A user who already had a session (even a damaged one) is not welcomed again. */
 function known(s: BrowserState, text?: string): BrowserState {
   s.settings.onboarded = true;
@@ -180,8 +189,10 @@ export async function loadSession(folder: string, kept?: (path: string) => void)
       tabs: Object.fromEntries(Object.entries(parsed.tabs).map(([id, o]) => [id, { ...o, ...VOLATILE }])),
     };
   } catch {
-    const name = await setAside(path, "corrupt");
-    if (name) kept?.(name);
+    const name = (await setAside(path, "corrupt")) ?? (await keepCopy(path, text));
+    // Neither moved nor copied: starting empty would overwrite it at the first save, so the start fails instead.
+    if (!name) throw new Error(`[session] ${path} is unreadable and could not be kept aside`);
+    kept?.(name);
     return known(initialState(), text);
   }
 }
