@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
-import { existsSync, readdirSync } from "node:fs";
-import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { existsSync, lstatSync, readdirSync } from "node:fs";
+import { mkdir, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { spacePaths } from "../../src/paths.js";
 import { initSpace, DEFAULT_TEMPLATES, DISPLAYS_SHIPPED, OLD_AGENTS, OLD_AGENT_PROFILE, OLD_CLAUDE_MD } from "../../src/workspace/initialize.js";
@@ -45,6 +45,20 @@ test("creates the full space in an empty folder", async () => {
   expect(existsSync(c.sites)).toBe(true);
   expect(existsSync(c.components)).toBe(true);
   expect(crees.length).toBe(expectedList.length);
+});
+
+test(".ressac swapped for a link, or a link at its top, is made a real folder again; the targets are untouched", async () => {
+  const c = spacePaths(await tempFolder());
+  const outside = await tempFolder();
+  await writeFile(join(outside, "secret"), "1");
+  await mkdir(c.root, { recursive: true });
+  await symlink(outside, c.internal);
+  await initSpace(c);
+  expect(lstatSync(c.internal).isDirectory()).toBe(true);
+  await symlink(outside, join(c.internal, "harvests"));
+  await initSpace(c);
+  expect(existsSync(join(c.internal, "harvests"))).toBe(false);
+  expect(readdirSync(outside)).toEqual(["secret"]);
 });
 
 test("never overwrites an existing file", async () => {

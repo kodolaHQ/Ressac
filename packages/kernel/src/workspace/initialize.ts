@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { constants, existsSync } from "node:fs";
-import { copyFile, lstat, mkdir, readdir, readFile } from "node:fs/promises";
+import { copyFile, lstat, mkdir, readdir, readFile, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { KERNEL_ROOT, type SpacePaths } from "../paths.js";
 
@@ -295,7 +295,20 @@ const OLD_TEMPLATES: Readonly<Record<string, ReadonlySet<string>>> = {
  * widgets follow the language while untouched, AGENTS.md, CLAUDE.md and the agent profiles are refreshed when old.
  * Run again on a language change.
  */
+/**
+ * `.ressac` as a real folder with no link at its top. Until 0.1.8 the agent could rename it and plant a link
+ * (`.ressac -> ..`, `harvests -> ~`) that the workshop's mounts and the kernel's writes would follow. `rm` takes a link,
+ * never its target.
+ */
+async function realInternal(c: SpacePaths): Promise<void> {
+  if (!(await lstat(c.internal).catch(() => null))?.isDirectory()) await rm(c.internal, { force: true });
+  await mkdir(c.internal, { recursive: true });
+  for (const e of await readdir(c.internal, { withFileTypes: true })) if (e.isSymbolicLink()) await rm(join(c.internal, e.name), { force: true });
+}
+
 export async function initSpace(c: SpacePaths, locale = FALLBACK, models = DEFAULT_TEMPLATES): Promise<{ created: string[] }> {
+  // First, before anything writes under .ressac or a container mounts it.
+  await realInternal(c);
   const langs = await languagesOf(models);
   // Only a language the templates have: `locale` never builds a path out of the templates folder.
   const lang = langs.includes(locale) ? locale : FALLBACK;

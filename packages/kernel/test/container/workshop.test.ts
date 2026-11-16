@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { Workshop, BUILD_DELAY_MS, parseBuildStep, IMAGE, dockerfileHash, harvestName, containerPortRange, sessionStopScript, findDocker } from "../../src/container/workshop.js";
 import { execFile, spawn } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { TOOLS_FOLDERS } from "../../src/container/runner.js";
 import { fakeRunner } from "../helpers/fake-runner.js";
@@ -375,15 +375,6 @@ test("stageHarvest copies the code files into .ressac, and refuses a widget fold
   symlinkSync(outside, join(widgets, "x"));
   await expect(workshop.stageHarvest("x", join(widgets, "x"))).rejects.toThrow(/is a link, or is gone/);
   await expect(workshop.stageHarvest("w", join(outside, ".."))).rejects.toThrow(/is a link, or is gone/);
-  // A harvests link planted while .ressac was writable: dropped, the copy lands in .ressac, the target is untouched.
-  writeFileSync(join(widgets, "w", "lib.mjs"), "export {};");
-  rmSync(join(root, ".ressac", "harvests"), { recursive: true });
-  mkdirSync(join(outside, "ressac-harvest-w"));
-  writeFileSync(join(outside, "ressac-harvest-w", "keep"), "1");
-  symlinkSync(outside, join(root, ".ressac", "harvests"));
-  await workshop.stageHarvest("w", join(widgets, "w"));
-  expect(lstatSync(join(root, ".ressac", "harvests")).isDirectory()).toBe(true);
-  expect(readFileSync(join(outside, "ressac-harvest-w", "keep"), "utf8")).toBe("1");
 });
 
 test("harvestCommand with delaiS 1830: timeout -k 5 1830", () => {
