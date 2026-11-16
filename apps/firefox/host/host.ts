@@ -377,7 +377,8 @@ const applyAi = async () => {
 
 const sessions = new SessionsAgent({
   defaultProfile: () => defaultProfile,
-  engineOf: (p) => (p === "claude" ? JSON.stringify(claudeEngine) : p === "codex" ? JSON.stringify(engine) : ""),
+  // The mode counts as part of the engine: a change offers « Relancer » in the other windows' panels.
+  engineOf: (p) => (p === "claude" ? JSON.stringify([claudeEngine, agentMode]) : p === "codex" ? JSON.stringify([engine, agentMode]) : ""),
   async open(f, t, { profile, resume, onBuildProgress }) {
     if (!aiOn) throw new Error("ai-off");
     await aiSwitch;
@@ -445,7 +446,11 @@ const rpc = createRpc({
       if (typeof p.profile === "string" && /^[\w-]{1,64}$/.test(p.profile)) await sessions.switchProfile(p.window, p.profile);
     },
     "agent.current": (p: { window: string }) => sessions.profileOf(p.window),
-    "agent.mode": (p: { mode: unknown }) => void (agentMode = p?.mode === "workshop" ? "workshop" : "browser"),
+    "agent.mode": (p: { mode: unknown }) => {
+      agentMode = p?.mode === "workshop" ? "workshop" : "browser";
+      sessions.engineChanged("claude");
+      sessions.engineChanged("codex");
+    },
     "agent.codexEngine": (p: { engine: unknown }) => {
       const r = CodexEngineSchema.safeParse(p?.engine);
       if (r.success) engine = r.data;

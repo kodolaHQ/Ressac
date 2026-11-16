@@ -689,9 +689,10 @@ export async function createKernel(o: {
         // Right after the program: the profile's own arguments keep their order (the MCP config stays last).
         // Browser mode, shipped programs only: no shell, and no `launch_app` (it runs `ressac.json`'s command, a shell by another door).
         // Claude's go first (its MCP config stays last); Codex's after its `-c mcp_servers.ressac={…}`, which would reset the table.
+        // Only the session's MCP config, and no `notify`: a server or a notify command the agent writes into its own config runs commands.
         const browser = mode === "browser";
-        const claudeNoShell = browser && program === "claude" ? ["--disallowedTools", "Bash,mcp__ressac__launch_app"] : [];
-        const codexNoShell = browser && program === "codex" ? ["--disable", "shell_tool", "-c", 'mcp_servers.ressac.disabled_tools=["launch_app"]'] : [];
+        const claudeNoShell = browser && program === "claude" ? ["--disallowedTools", "Bash,mcp__ressac__launch_app", "--strict-mcp-config"] : [];
+        const codexNoShell = browser && program === "codex" ? ["--disable", "shell_tool", "-c", 'mcp_servers.ressac.disabled_tools=["launch_app"]', "-c", "notify=[]"] : [];
         const command = [built[0]!, ...language, ...claudeNoShell, ...built.slice(1), ...codexNoShell, ...(extra?.args ?? [])];
         const session = SessionAgent.start(workshop.sessionCommand(id, command, Object.keys(env)), { cols, rows, env: env, stopRemote: () => workshop.stopSession(id) });
         openSessions.add(clean);
