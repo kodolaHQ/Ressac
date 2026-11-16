@@ -1,12 +1,12 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { answers, APPS_ENV, waitFirstSweep, appWindowExpr, inAppView, killFakeApps, launchAttempt, stopsLog, writeProject } from "./apps";
-import { state, waitFor, waitReady } from "./firefox";
+import { answers, APPS_ENV, waitFirstSweep, appWindowExpr, inAppView, killFakeApps, launchAttempt, rowButton, stopsLog, writeProject } from "./apps";
+import { dispatch, state, waitFor, waitReady } from "./firefox";
 import { installAddon, type Fixture } from "./addons";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
@@ -554,6 +554,37 @@ describe("each with its own Ressac", () => {
     expect(ms).toBeLessThan(8000);
     expect(stopsLog(i.dataDir)).toContain("RESSAC_APP=essai");
     expect(await answers(port)).toBe(false);
+  });
+
+  it("a first agent session stops the running app (« arrêtée », window closed); during its sweep launch_app is refused and a click waits", async () => {
+    i = await start();
+    const m = i.m;
+    const root = path.join(i.dataDir, "workspace");
+    const port = await launchAttempt(i.dataDir);
+    await viewAt(m, `http://localhost:${port}/`);
+    const sweeps = () => stopsLog(i!.dataDir).split("\n").filter((l) => l.includes("kill -KILL -1")).length;
+    const essai = async () => (await list(m)).apps.find((a) => a.folder === "essai")?.state;
+    expect(sweeps()).toBe(1);
+    // The window's agent ends (its session config goes): the next session is a first one again.
+    process.kill(Number(readFileSync(path.join(root, "fake-agent-pid"), "utf8")), "SIGKILL");
+    const sessions = path.join(root, ".ressac", "sessions");
+    await expect.poll(() => (existsSync(sessions) ? readdirSync(sessions).filter((f) => f.endsWith(".json")) : []), { timeout: 10_000 }).toEqual([]);
+    // The fake docker holds the next sweep open until the test removes this file.
+    const hold = path.join(root, "fake-docker-sweep-hold");
+    writeFileSync(hold, "");
+    await inStore(m, 'void store.agent.request("agent.relaunch", { window: arguments[0] });', [await win(m)]);
+    await expect.poll(sweeps, { timeout: 15_000 }).toBe(2);
+    await expect.poll(essai, { timeout: 10_000 }).toBe("stopped");
+    await expect.poll(() => appWindows(m), { timeout: 10_000 }).toBe(0);
+    expect(await answers(port)).toBe(false);
+    const refused = await callTool(i.dataDir, "launch_app", { folder: "essai" });
+    expect(refused.text).toContain("Lancement refusé");
+    // The user's click on the Applications page waits for the sweep's end, then launches.
+    await dispatch(m, { type: "openApps", windowId: await win(m) });
+    await rowButton(m, "essai", "Lancer");
+    expect(await essai()).toBe("stopped");
+    rmSync(hold);
+    await expect.poll(essai, { timeout: 15_000 }).toBe("running");
   });
 
   it("host killed: the app window closes, the restarted host stops the orphan", async () => {

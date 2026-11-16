@@ -230,6 +230,12 @@ if (args[0] === "exec") {
   if (command[0] === "sh" && !command[2].includes('exec "$@"')) {
     stopApps(command[2]);
     appendFileSync(join(env.RESSAC_ROOT, "fake-docker-stops.log"), `${command[2]}\n`);
+    // <RESSAC_ROOT>/fake-docker-sweep-hold: the sweep before a first session (`kill -KILL -1`) lasts until the test removes it.
+    const hold = join(env.RESSAC_ROOT, "fake-docker-sweep-hold");
+    if (command[2].includes("kill -KILL -1") && existsSync(hold)) {
+      setInterval(() => existsSync(hold) || quit(0), 50);
+      return;
+    }
     quit(0);
   }
   // Interactive session (Workshop.sessionCommand): sh -c '<notes the PID>; exec "$@"' ressac-session <agent…>
