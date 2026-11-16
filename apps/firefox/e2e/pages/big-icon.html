@@ -1,0 +1,15 @@
+<!doctype html>
+<title>Grosse icône</title>
+<script>
+  // A noisy 160 px PNG: its data: URL weighs well over 16 KB, like Gmail's icon.
+  const c = document.createElement("canvas");
+  c.width = c.height = 160;
+  const x = c.getContext("2d"), img = x.createImageData(160, 160);
+  for (let i = 0; i < img.data.length; i++) img.data[i] = i % 4 === 3 ? 255 : (i * 2654435761) % 256;
+  x.putImageData(img, 0, 0);
+  const link = document.createElement("link");
+  link.rel = "icon";
+  link.href = c.toDataURL("image/png");
+  document.head.append(link);
+</script>
+<p>Une page avec une grosse icône.</p>

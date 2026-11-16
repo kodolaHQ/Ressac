@@ -43,6 +43,20 @@ describe("the window's aura", () => {
     await waitFor(m, variable("--a1"), (v: string[]) => v.every((x) => x === "rgb(255, 122, 69)"));
   });
 
+  it("a tab with no favicon shows its initial on the active space's aura", async () => {
+    const m = await launch();
+    server = await startServer();
+    const s = await state(m);
+    const space = s.spaces.find((x) => x.id === s.windows[0]!.activeSpace)!;
+    await dispatch(m, { type: "updateSpace", id: space.id, name: space.name, icon: space.icon, private: space.private, profile: space.profile, aura: "lagon" });
+    await dispatch(m, { type: "openTab", windowId: s.windows[0]!.id, url: server.url + "/a.html" });
+    const letter = () =>
+      waitUi(m, `const l = doc.querySelector('[data-testid^="tab-"] .letter'); return l ? doc.defaultView.getComputedStyle(l).backgroundImage : null;`, [], 10_000);
+    await waitUi(m, "return !!doc.querySelector('[data-testid^=\"tab-\"] .letter')");
+    await new Promise((r) => setTimeout(r, 1200));
+    expect(await letter()).toContain("rgb(59, 139, 235)");
+  });
+
   it("the page is framed by the aura, not in fullscreen", async () => {
     const m = await launch();
     const box = `const s = getComputedStyle(document.getElementById("tabbrowser-tabbox")); return { radius: s.borderTopLeftRadius, margin: s.marginBottom, right: s.marginRight };`;
