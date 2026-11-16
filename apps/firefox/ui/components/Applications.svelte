@@ -386,16 +386,18 @@
   li:first-child { border-top: none; }
   ul:not(:has(li)) { display: none; }
   .icon { width: 30px; height: 30px; flex: none; display: grid; place-content: center; border-radius: 9px; background: color-mix(in oklab, var(--a1) 16%, var(--glass-hi)); color: var(--accent); }
-  .name { flex: 1; min-width: 140px; }
-  .name b { display: block; font-weight: 600; }
+  /* A narrow window shrinks the name and the state, never wraps the buttons: they stay on one row. */
+  .name { flex: 1; min-width: 0; }
+  .name b { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .name span { display: block; font-size: 12px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .state { display: flex; align-items: center; gap: 6px; width: 170px; flex: none; font-size: 12px; white-space: nowrap; }
+  .state { display: flex; align-items: center; gap: 6px; flex: 0 1 170px; min-width: 0; overflow: hidden; font-size: 12px; white-space: nowrap; }
   .pill { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--stopped); }
   .pill.running { background: var(--running); }
   .pill.launching, .pill.preparing { background: var(--in-progress); }
   .pill.error { background: var(--in-error); }
   /* Many buttons (a site has six): they wrap instead of crushing the name. */
-  .actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; flex: 0 1 auto; }
+  .actions { display: flex; justify-content: flex-end; gap: 6px; flex: none; }
+  .actions button { white-space: nowrap; }
   .actions button { padding: 5px 11px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: 600 12px var(--font-ui); transition: transform var(--tap), background var(--tap); }
   .actions button:hover:not(:disabled) { background: var(--bg-active); }
   .actions button:active:not(:disabled) { transform: scale(0.97); }
