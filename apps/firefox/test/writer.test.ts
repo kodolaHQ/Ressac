@@ -36,6 +36,17 @@ describe("writer choice", () => {
     expect(await s.choice.agent()).toBeNull();
     expect(s.calls).toEqual([]);
   });
+  it("does not keep a failed check, and shares one exec between parallel calls", async () => {
+    let n = 0;
+    const choice = createWriterChoice({
+      workshop: { state: async () => "demarre" as never, exec: async (argv) => { if (argv[0] === "codex") return { code: 0, stdout: "Not logged in", stderr: "" }; n++; if (n === 1) throw new Error("boom"); return { code: 0, stdout: JSON.stringify({ loggedIn: true }), stderr: "" }; } },
+      preferred: () => "claude",
+    });
+    expect(await choice.agent()).toBeNull();
+    const two = await Promise.all([choice.agent(), choice.agent()]);
+    expect(two).toEqual(["claude", "claude"]);
+    expect(n).toBe(2);
+  });
   it("caches 5 minutes, then reset or signedOut check again", async () => {
     const s = setup("demarre", { claude: true });
     await s.choice.agent();

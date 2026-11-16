@@ -162,6 +162,8 @@ const broadcastAccess = () => {
 // (RESSAC_LLAMA_SERVER, set by chrome/agent/command.ts). RESSAC_D1_URL / RESSAC_D1_SHA256: tests only.
 // The agent that writes (Claude Haiku or Codex, in the workshop): the default profile's, else the other if signed in.
 const profileAgents = new Map<string, "claude" | "codex">();
+// Best effort (the space may not exist yet): a profile read late leaves the default "claude" until agent.profiles runs.
+const refreshProfileAgents = () => void loadProfiles(paths).then(({ profiles }) => { for (const x of profiles) profileAgents.set(x.id, x.mcpConfig === "codex-toml" ? "codex" : "claude"); }, () => {});
 const writerChoice = createWriterChoice({
   workshop,
   preferred: () => profileAgents.get(defaultProfile) ?? (defaultProfile === "codex" ? "codex" : "claude"),
@@ -457,6 +459,7 @@ const rpc = createRpc({
     // Sets the default profile and AI's state; with AI on the kernel starts once (its sessions stay).
     start: (p: StartParams) => {
       defaultProfile = p.agentProfile;
+      refreshProfileAgents();
       if (typeof p.locale === "string") setHostLocale(p.locale);
       aiOn = p.aiEnabled === true;
       return serialAi(async () => {
@@ -470,7 +473,10 @@ const rpc = createRpc({
       return serialAi(applyAi).catch((e) => console.error(`[ressac] AI ${aiOn ? "on" : "off"} failed:`, e));
     },
     // Only new windows take the new default: open agents stay.
-    changeProfile: (p: { agentProfile: string }) => void (defaultProfile = p.agentProfile),
+    changeProfile: (p: { agentProfile: string }) => {
+      defaultProfile = p.agentProfile;
+      refreshProfileAgents();
+    },
     // The decision server loads (1.1 GB) as a session starts, ready for the watch's first question; it stops after 10 min idle.
     "agent.start": (p: { window: string; size: TerminalSize }) => {
       if (aiOn) ai.warmDecision();
@@ -529,7 +535,7 @@ const rpc = createRpc({
       await ready;
       try {
         const { profiles } = await loadProfiles(paths);
-        for (const x of profiles) profileAgents.set(x.id, x.mcpConfig === "codex-toml" ? "codex" : "claude");
+        refreshProfileAgents();
         return profiles.map((x) => ({ id: x.id, name: x.name }));
       } catch {
         return [];

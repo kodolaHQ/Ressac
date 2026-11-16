@@ -6,17 +6,17 @@ const TTL_MS = 5 * 60_000;
 /** Which agent writes: the preferred one if signed in, else the other, else none. Never starts the workshop. */
 export function createWriterChoice(o: { workshop: Pick<Workshop, "state" | "exec">; preferred(): WriterAgent; now?(): number }) {
   const now = o.now ?? Date.now;
-  const cache = new Map<WriterAgent, { at: number; in: boolean }>();
-  const signedIn = async (a: WriterAgent): Promise<boolean> => {
+  // The in-flight promise is cached, so parallel cold calls share one status exec; a failed check is not kept.
+  const cache = new Map<WriterAgent, { at: number; in: Promise<boolean> }>();
+  const signedIn = (a: WriterAgent): Promise<boolean> => {
     const hit = cache.get(a);
     if (hit && now() - hit.at < TTL_MS) return hit.in;
     const account = AGENT_ACCOUNTS.find((x) => x.id === a)!;
-    let ok = false;
-    try {
-      ok = account.parse(await o.workshop.exec(account.status)).loggedIn;
-    } catch {}
-    cache.set(a, { at: now(), in: ok });
-    return ok;
+    const entry = { at: now(), in: o.workshop.exec(account.status).then((r) => account.parse(r).loggedIn) };
+    cache.set(a, entry);
+    const forget = () => void (cache.get(a) === entry && cache.delete(a));
+    entry.in = entry.in.catch(() => (forget(), false));
+    return entry.in;
   };
   return {
     async agent(): Promise<WriterAgent | null> {
