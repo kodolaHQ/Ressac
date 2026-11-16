@@ -39,7 +39,7 @@ const fold = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCas
 export class History {
   private db: DatabaseSync;
   private req: Record<
-    | "note" | "updateTitle" | "search" | "searchDistinct" | "recents" | "eraseSince" | "clearAll" | "makePrivate"
+    | "note" | "updateTitle" | "search" | "recents" | "eraseSince" | "clearAll" | "makePrivate"
     | "keep" | "updateTitleText" | "isPrivate" | "forgetText" | "forgetSpaceTexts" | "eraseTextsSince"
     | "eraseOrphanTexts" | "clearAllTexts" | "purgeBefore" | "purgeVisitsBefore" | "totalBytes" | "oldTexts" | "forgetTextId"
     | "keptText" | "visitsOf" | "excerpt" | "importVisit" | "noteIcon" | "icon" | "clearIcons" | "eraseOrphanIcons",
@@ -52,30 +52,22 @@ export class History {
     mkdirSync(dirname(path), { recursive: true });
     this.db = new DatabaseSync(path);
     this.db.exec("PRAGMA journal_mode = WAL;");
-    this.createTables();
     this.db.function("fold", { deterministic: true }, (s) => fold(String(s)));
+    this.createTables();
     this.req = {
       note: this.db.prepare(`
-        INSERT INTO visits (url, space_id, title, last_visit, private) VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT (url, space_id) DO UPDATE SET title = excluded.title, last_visit = excluded.last_visit,
+        INSERT INTO visits (url, space_id, title, last_visit, private, url_fold, title_fold) VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT (url, space_id) DO UPDATE SET title = excluded.title, title_fold = excluded.title_fold, last_visit = excluded.last_visit,
           visits = CASE WHEN private = 1 AND excluded.private = 0 THEN 1 ELSE visits + 1 END, private = excluded.private`),
       // Re-importing never counts a new visit: the row only moves forward in time.
       importVisit: this.db.prepare(`
-        INSERT INTO visits (url, space_id, title, last_visit, private) VALUES (?, '${IMPORTED_SPACE}', ?, ?, 0)
-        ON CONFLICT (url, space_id) DO UPDATE SET title = excluded.title, last_visit = excluded.last_visit
+        INSERT INTO visits (url, space_id, title, last_visit, private, url_fold, title_fold) VALUES (?, '${IMPORTED_SPACE}', ?, ?, 0, ?, ?)
+        ON CONFLICT (url, space_id) DO UPDATE SET title = excluded.title, title_fold = excluded.title_fold, last_visit = excluded.last_visit
         WHERE excluded.last_visit > last_visit`),
-      updateTitle: this.db.prepare("UPDATE visits SET title = ? WHERE url = ? AND space_id = ?"),
+      updateTitle: this.db.prepare("UPDATE visits SET title = ?, title_fold = ? WHERE url = ? AND space_id = ?"),
       search: this.db.prepare(`
         SELECT ${COLUMNS} FROM visits
-        WHERE fold(url) LIKE ? ESCAPE '\\' OR fold(title) LIKE ? ESCAPE '\\'
-        ORDER BY visits DESC, last_visit DESC LIMIT ?`),
-      // A single row per URL, the best ranked, chosen in SQL so that the LIMIT counts URLs.
-      searchDistinct: this.db.prepare(`
-        SELECT ${COLUMNS} FROM (
-          SELECT *, ROW_NUMBER() OVER (PARTITION BY url ORDER BY visits DESC, last_visit DESC) AS rank_ FROM visits
-          WHERE fold(url) LIKE ? ESCAPE '\\' OR fold(title) LIKE ? ESCAPE '\\'
-        ) AS visits
-        WHERE rank_ = 1
+        WHERE url_fold LIKE ? ESCAPE '\\' OR title_fold LIKE ? ESCAPE '\\'
         ORDER BY visits DESC, last_visit DESC LIMIT ?`),
       recents: this.db.prepare(`SELECT ${COLUMNS} FROM visits ORDER BY last_visit DESC LIMIT ?`),
       eraseSince: this.db.prepare("DELETE FROM visits WHERE last_visit >= ?"),
@@ -137,6 +129,14 @@ export class History {
           private INTEGER NOT NULL DEFAULT 0,
           PRIMARY KEY (url, space_id)
         )`);
+      // fold(url) and fold(title), stored: the search runs LIKE on them, never a JS call per row (150k rows: 200 ms).
+      const columns = (this.db.prepare("PRAGMA table_info(visits)").all() as { name: string }[]).map((c) => c.name);
+      if (!columns.includes("url_fold")) {
+        this.db.exec(`
+          ALTER TABLE visits ADD COLUMN url_fold TEXT NOT NULL DEFAULT '';
+          ALTER TABLE visits ADD COLUMN title_fold TEXT NOT NULL DEFAULT '';
+          UPDATE visits SET url_fold = fold(url), title_fold = fold(title);`);
+      }
       this.db.exec("CREATE INDEX IF NOT EXISTS visits_date ON visits (last_visit)");
       // Kept text: one row per URL and per space. The FTS5 index reads its content from `texts` (nothing is stored
       // twice); the triggers keep it up to date whichever method writes or erases.
@@ -177,7 +177,7 @@ export class History {
 
   note(v: { url: string; title: string; spaceId: string; private: boolean; date?: Date }): void {
     if (!this.db.isOpen) return; // a page can still navigate during the exit
-    this.req.note.run(v.url, v.spaceId, v.title, (v.date ?? new Date()).toISOString(), v.private ? 1 : 0);
+    this.req.note.run(v.url, v.spaceId, v.title, (v.date ?? new Date()).toISOString(), v.private ? 1 : 0, fold(v.url), fold(v.title));
   }
 
   /** Imported visits (http(s) only, within RETENTION_DAYS) in one transaction; returns the rows written or updated. */
@@ -189,7 +189,8 @@ export class History {
       for (const v of visits) {
         const t = v.date.getTime();
         if (!/^https?:\/\//i.test(v.url) || !(t >= oldest)) continue;
-        count += Number(this.req.importVisit.run(v.url, v.title || v.url, v.date.toISOString()).changes);
+        const title = v.title || v.url;
+        count += Number(this.req.importVisit.run(v.url, title, v.date.toISOString(), fold(v.url), fold(title)).changes);
       }
     });
     return count;
@@ -198,7 +199,7 @@ export class History {
   /** The title often arrives after the navigation: it completes the visit without counting a new one. */
   updateTitle(url: string, spaceId: string, title: string): void {
     if (!this.db.isOpen) return;
-    this.req.updateTitle.run(title, url, spaceId);
+    this.req.updateTitle.run(title, fold(title), url, spaceId);
     this.req.updateTitleText.run(title, url, spaceId, title);
   }
 
@@ -288,7 +289,7 @@ export class History {
     const patterns = Object.fromEntries(words.map((m, i) => [`m${i}`, `%${fold(m).replace(/[\\%_]/g, (c) => `\\${c}`)}%`]));
     const inPeriod = "v.private = 0 AND v.last_visit >= :since AND v.last_visit <= :until";
     const byTitleOrUrl = words.length
-      ? words.map((_, i) => `fold(v.url) LIKE :m${i} ESCAPE '\\' OR fold(v.title) LIKE :m${i} ESCAPE '\\'`).join(" OR ")
+      ? words.map((_, i) => `v.url_fold LIKE :m${i} ESCAPE '\\' OR v.title_fold LIKE :m${i} ESCAPE '\\'`).join(" OR ")
       : "1";
     const found = words.length
       ? `SELECT t.url, t.id, bm25(texts_fts) AS score FROM texts_fts
@@ -385,7 +386,15 @@ export class History {
   search(text: string, limit = 50, distinct = false): Visit[] {
     if (!this.db.isOpen) return [];
     const pattern = `%${fold(text).replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
-    return this.lines(this.req[distinct ? "searchDistinct" : "search"].all(pattern, pattern, limit));
+    if (!distinct) return this.lines(this.req.search.all(pattern, pattern, limit));
+    // A single row per URL, the best ranked: the first one in the search's order. Fetched in growing pages, so the
+    // limit counts URLs without ranking every match (a window over 150k rows took 160 ms).
+    for (let n = limit * 4; ; n *= 4) {
+      const rows = this.req.search.all(pattern, pattern, n);
+      const seen = new Set<unknown>();
+      const best = rows.filter((r) => !seen.has(r.url) && seen.add(r.url));
+      if (best.length >= limit || rows.length < n) return this.lines(best.slice(0, limit));
+    }
   }
 
   recents(limit = 100): Visit[] {

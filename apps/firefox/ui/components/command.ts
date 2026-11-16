@@ -18,6 +18,8 @@ export type CommandLine =
   | { type: "bookmark"; url: string; title: string };
 
 export const LIMITS = { actions: 3, tabs: 3, siteApps: 3, history: 5, bookmarks: 5 } as const;
+/** Pause in typing before the history and bookmarks are searched: a query per keystroke would queue on the host. */
+export const SEARCH_PAUSE_MS = 120;
 /** Empty field: what the bar offers before any keystroke. */
 export const EMPTY_LIMITS = { actions: 4, tabs: 5 } as const;
 

@@ -4,6 +4,7 @@
   import type { WindowState, Visit } from "../../shared/model";
   import { api, appState } from "../state.svelte";
   import { t } from "../i18n.svelte";
+  import { SEARCH_PAUSE_MS } from "./command";
 
   let { window: win, close }: { window: WindowState; close: () => void } = $props();
   const locale = $derived(appState.value?.locale ?? "fr");
@@ -19,9 +20,11 @@
     if (n === request) visits = r;
   }
 
+  // Searched once typing pauses: every query holds the host's database while it runs.
   $effect(() => {
     void text;
-    void load();
+    const timer = setTimeout(load, text.trim() ? SEARCH_PAUSE_MS : 0);
+    return () => clearTimeout(timer);
   });
   $effect(() => field.focus());
 

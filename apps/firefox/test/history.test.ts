@@ -1,4 +1,5 @@
 import { mkdtempSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
@@ -137,6 +138,33 @@ test("search in distinct mode keeps per URL the most visited row, then the most 
   note("https://c.fr/", "A", 1, "2026-10-09T00:00:00Z");
   expect(h.search("page", 2, true).map((v) => [v.url, v.spaceId])).toEqual([["https://a.fr/", "B"], ["https://b.fr/", "B"]]);
   expect(h.search("page", 50, true).map((v) => v.url)).toEqual(["https://a.fr/", "https://b.fr/", "https://c.fr/"]);
+});
+
+test("search in distinct mode reads further when one URL fills the first page", () => {
+  for (let i = 0; i < 9; i++) for (let k = 0; k < 2; k++) h.note({ url: "https://a.fr/", title: "page", spaceId: `S${i}`, private: false });
+  h.note({ url: "https://b.fr/", title: "page", spaceId: "A", private: false });
+  expect(h.search("page", 2, true).map((v) => v.url)).toEqual(["https://a.fr/", "https://b.fr/"]);
+});
+
+test("the folded url and title are stored, kept up to date, and filled in an older database", () => {
+  h.close();
+  const old = new DatabaseSync(path);
+  old.exec("DELETE FROM visits; ALTER TABLE visits DROP COLUMN url_fold; ALTER TABLE visits DROP COLUMN title_fold;");
+  old.exec("INSERT INTO visits (url, space_id, title, last_visit) VALUES ('https://É.fr/', '', 'Été', '2026-10-01T00:00:00Z')");
+  old.close();
+  h = new History(path);
+  h.note({ spaceId: "", private: false, url: "https://b.fr/Ça", title: "Noël" });
+  h.updateTitle("https://b.fr/Ça", "", "Crème brûlée");
+  h.importVisits([{ url: "https://c.fr/", title: "Ölçü", date: new Date() }]);
+  const raw = new DatabaseSync(path);
+  const rows = raw.prepare("SELECT url_fold, title_fold FROM visits ORDER BY url_fold").all();
+  raw.close();
+  expect(rows).toEqual([
+    { url_fold: "https://b.fr/ca", title_fold: "creme brulee" },
+    { url_fold: "https://c.fr/", title_fold: "olcu" },
+    { url_fold: "https://e.fr/", title_fold: "ete" },
+  ]);
+  expect(h.search("brulee").map((v) => v.title)).toEqual(["Crème brûlée"]);
 });
 
 test("a private row that becomes non-private restarts at one visit, with a fresh title and date", () => {

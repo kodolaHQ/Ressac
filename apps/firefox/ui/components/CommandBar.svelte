@@ -6,6 +6,7 @@
   import { closeCommand, command, focusEmptyPage } from "./command.svelte";
   import {
     LIMITS,
+    SEARCH_PAUSE_MS,
     PARAM_MAX,
     projectSiteApp,
     siteSiteApp,
@@ -98,7 +99,7 @@
   let denial = $state("");
   let request = 0;
 
-  // History is requested again on each keystroke; a reply that arrives after a more recent keystroke is ignored.
+  // History is requested again after each keystroke; a reply that arrives after a more recent keystroke is ignored.
   $effect(() => {
     const t = text.trim();
     const n = ++request;
@@ -108,14 +109,18 @@
       marks = [];
       return;
     }
-    api.bookmarks.search(t, LIMITS.bookmarks * 2).then(
-      (v) => n === request && (marks = v),
-      () => n === request && (marks = []),
-    );
-    api.history.search(t, LIMITS.history, true).then(
-      (v) => n === request && (hist = v),
-      () => n === request && (hist = []),
-    );
+    // Searched once typing pauses: every query holds the host's database while it runs.
+    const timer = setTimeout(() => {
+      api.bookmarks.search(t, LIMITS.bookmarks * 2).then(
+        (v) => n === request && (marks = v),
+        () => n === request && (marks = []),
+      );
+      api.history.search(t, LIMITS.history, true).then(
+        (v) => n === request && (hist = v),
+        () => n === request && (hist = []),
+      );
+    }, SEARCH_PAUSE_MS);
+    return () => clearTimeout(timer);
   });
 
   let rawChosen = $state(0);
