@@ -200,15 +200,12 @@ if (args[0] === "exec") {
   }
   // The writer (Workshop.execWrite): sh -c <script> ressac-write <id> <agent argv…>, the prompt on stdin. The script is emulated:
   // the PID file (RESSAC_ROOT stands for /tmp) lives while the call is pending, the prompt goes to the e2e's fake Ollama.
-  if (command[0] === "sh" && command[3] === "ressac-write") {
-    const [id, agent] = [command[4], command[5]];
+  if (command[0] === "sh" && command.includes("ressac-write")) {
+    const at = command.indexOf("ressac-write");
+    const [id, agent] = [command[at + 1], command[at + 2].split("/").pop()];
     const pidFile = join(env.RESSAC_ROOT, `ressac-write-${id}.pid`);
     writeFileSync(pidFile, String(process.pid));
-    for (const signal of ["SIGHUP", "SIGTERM", "SIGINT"])
-      process.on(signal, () => {
-        rmSync(pidFile, { force: true });
-        process.exit(143);
-      });
+    // No signal handler: killing this client leaves the "container" process, only the stop script removes the PID file.
     let input = "";
     process.stdin.on("data", (c) => (input += c));
     process.stdin.on("end", async () => {

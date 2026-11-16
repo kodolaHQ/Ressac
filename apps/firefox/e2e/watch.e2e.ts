@@ -128,7 +128,7 @@ const notifications = (): { title: string; text: string }[] =>
   existsSync(notificationsFile()) ? readFileSync(notificationsFile(), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)) : [];
 
 /** Launches on `dataDir` (kept), tall enough for every widget to show; waits for the home page. */
-async function launchWatch(writer: "claude" | null = "claude"): Promise<Marionette> {
+async function launchWatch(writer: "claude" | "codex" | null = "claude"): Promise<Marionette> {
   const l = await launchRessac({
     dataDir,
     ...(writer ? { writer } : {}),
@@ -396,8 +396,17 @@ it("without a Claude Code or Codex account the opinions fail with the connect me
   const run = await runWatch(m);
   expect(run.status).toBe("partial");
   expect(blockStatus(run, "avis")).not.toBe("succeeded");
+  // The run record is the only surface that carries the error: the widget shows the published items, not the run's errors.
   expect(JSON.stringify(run)).toContain("Connectez Claude Code ou Codex dans Réglages › Agents pour les résumés");
   expect(watchData()!.every((a) => a.avis === undefined)).toBe(true);
+}, 120_000);
+
+it("with only Codex signed in, the opinions come back through codex exec", async () => {
+  await writeWatch();
+  const m = await launchWatch("codex");
+  const run = await runWatch(m);
+  expect(blockStatus(run, "avis")).toBe("succeeded");
+  expect(watchData()!.every((a) => a.avis === "Bonne affaire.")).toBe(true);
 }, 120_000);
 
 it("a long watch in progress does not prevent a short widget from updating", async () => {

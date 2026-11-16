@@ -1,4 +1,4 @@
-import { readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { openAction, runsOnDisk, startActionServers, tid, uiQueries, waitKernel, writeAction, writePagesAction, writeResult, writeRunnableAction } from "./actions";
@@ -90,6 +90,7 @@ describe("action runs", () => {
     await waitFor(m, "return true", () => pidFiles().length === 0, 15_000);
     await q.waitText(`${tid("page-render")} ${tid("fallback-mention")}`, "mise en page simple", 30_000);
     await q.waitCount(tid("action-progress"), 0);
+    expect(readFileSync(join(w.dataDir, "workspace", "fake-docker-stops.log"), "utf8")).toContain("ressac-write-");
   });
 
   // actions.spec.ts:509
