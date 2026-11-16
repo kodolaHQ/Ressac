@@ -339,6 +339,8 @@ export function createSites(o: {
       if (searches.get(id) === control) searches.delete(id);
       if (!control.signal.aborted) o.chrome.search(id, false);
     }
+    // Read before the checks below: no wait between them and the writes, so a newer reread or a closed window is never undone.
+    const grant = r.t === "change" ? await grantOf(id) : null;
     // Window closed (or app deleted) during the reading: what comes after is ignored.
     const current = opened.has(id) ? openSites.get(id) : undefined;
     if (control.signal.aborted || !current) return;
@@ -366,7 +368,7 @@ export function createSites(o: {
         const to = (relative && urlOnDomain(relative, r.domain, domains, start, reading)) || start;
         changes.set(id, (changes.get(id) ?? 0) + 1);
         // A domain the user never approved (the reference page is hostile): the tweaks wait for the card's « Autoriser ».
-        const grantRequired = grantNeeded(decl) && !grantCovers(await grantOf(id), decl, domains);
+        const grantRequired = grantNeeded(decl) && !grantCovers(grant, decl, domains);
         const site = { ...current, domains: domains, start: start, grantRequired };
         const next = { ...site, request: grantRequest(site) };
         openSites.set(id, next);
