@@ -114,10 +114,11 @@
     {#if space}<Pinned bind:this={pinned} window={win} {space} {activeLink} />{/if}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="space" data-testid="space-title" oncontextmenu={(e) => openMenu(e, [{ label: t("sidebar-new-folder"), dispatch: () => pinned?.newFolder() }])}>{#if space}{@const line = spaceIcon(space.icon)}{#if line}<Icon name={line} size={13} />{:else}<span>{space.icon}</span>{/if}<span class="name">{space.name}</span>{/if}</div>
-    <TabList window={win} />
+    <!-- First, as in Zen: always at the same place, however long the list. -->
     <button class="new" data-testid="new-tab" onclick={() => api.dispatch({ type: "showBlankPage", windowId: win.id })}
       ><Icon name="plus" size={14} /> {t("sidebar-new-tab")}<kbd>{key("command")}</kbd></button
     >
+    <TabList window={win} />
     <TabList window={win} agent />
     </div>
   </div>
