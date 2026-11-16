@@ -44,7 +44,7 @@ Le *ressac*, c'est la vague qui revient vers le rivage. Tu envoies l'agent sur l
 <p align="center"><img src="docs/images/live-recap-fr.gif" alt="L'agent compare les plus grands mascarets du monde et remplit un récap en direct"></p>
 
 **L'IA locale**
-- Des **workflows** et des **veilles** qui tournent sur ton Mac avec Ollama : un petit modèle décide, un autre écrit.
+- Des **workflows** et des **veilles** qui tournent sur ton Mac avec Ollama : un petit modèle local décide, et ton compte Claude Code ou Codex écrit (ça compte dans les limites de ton abonnement).
 - Une page d'accueil avec des widgets.
 
 <table>
@@ -77,7 +77,7 @@ Ressac est en bêta fermée, avec un petit groupe de testeurs. Ils reçoivent un
 
 - **Pour naviguer** : macOS 14 ou plus récent, puce Apple.
 - **Pour l'agent** : Docker ([OrbStack](https://orbstack.dev) ou Docker Desktop) et un compte Claude ou ChatGPT (ou une clé d'API). Ressac démarre lui-même l'app de conteneurs si elle est installée.
-- **Pour l'IA locale** : [Ollama](https://ollama.com). Ressac le démarre, ou le télécharge pour toi (190 Mo).
+- **Pour l'IA locale** : [Ollama](https://ollama.com). Ressac le démarre, ou le télécharge pour toi (190 Mo). Les résumés des widgets et les pages d'actions sont écrits par ton compte Claude Code ou Codex, il faut donc que l'un des deux soit connecté.
 
 Tu viens de WebAiOs, l'ancien nom de Ressac ? Quitte-le d'abord : au premier lancement, Ressac reprend tes données, ton profil, tes mots de passe et tes extensions.
 
@@ -106,7 +106,7 @@ Ressac repose sur le travail d'autres projets :
 - [surfer](https://github.com/zen-browser/surfer) de l'équipe de Zen Browser (MPL 2.0), l'outil de build.
 - [Node.js](https://nodejs.org) et [node-pty](https://github.com/microsoft/node-pty) (MIT), embarqués pour l'hôte de l'agent.
 - [Ollama](https://ollama.com) (MIT), pour les modèles locaux, téléchargé à la demande.
-- [Gemma 4](https://ai.google.dev/gemma) de Google (Apache 2.0), modèle local téléchargé à la demande via Ollama.
+- [Gemma 4](https://ai.google.dev/gemma) de Google (Apache 2.0), modèle local téléchargé à la demande via Ollama, utilisé pour la barre ⌘T.
 - [d1-2B](https://huggingface.co/LiquidAI/d1-2B-GGUF) de Liquid AI (LFM Open License v1.0), le petit modèle qui trie les articles des widgets et surveille l'agent ; Ressac le télécharge lui-même, il n'est pas inclus.
 - [llama.cpp](https://github.com/ggml-org/llama.cpp) (MIT), son `llama-server` est livré dans l'app et fait tourner d1-2B.
 - [Claude Code](https://claude.com/claude-code) d'Anthropic et [Codex](https://github.com/openai/codex) d'OpenAI, les agents, installés dans le conteneur et utilisés avec ton propre compte.
