@@ -585,6 +585,26 @@ describe("openAgentSession with a profile", () => {
     });
   });
 
+  test("mode: browser (the default) takes the shell away, workshop keeps it", async () => {
+    await started(async (n, start) => {
+      const opened = [
+        await n.openAgentSession({ cols: 80, rows: 24, window: "f1", profile: "claude", mode: "browser" }),
+        await n.openAgentSession({ cols: 80, rows: 24, window: "f2", profile: "claude", mode: "workshop" }),
+        await n.openAgentSession({ cols: 80, rows: 24, window: "f3", profile: "claude" }),
+        await n.openAgentSession({ cols: 80, rows: 24, window: "f4", profile: "codex", extra: { args: ["-m", "x"], env: {} } }),
+        await n.openAgentSession({ cols: 80, rows: 24, window: "f5", profile: "codex", mode: "workshop" }),
+      ];
+      const [browser, workshop, none, codex, codexWorkshop] = start.mock.calls.map((x) => x[0].join(" "));
+      expect(browser).toContain("--disallowedTools Bash,mcp__ressac__launch_app --disallowedTools WebSearch,WebFetch");
+      expect(start.mock.calls[0]![0].at(-2)).toBe("--mcp-config");
+      expect(workshop).not.toMatch(/Bash|launch_app/);
+      expect(none).toContain("--disallowedTools Bash,mcp__ressac__launch_app");
+      expect(codex).toContain(`--disable shell_tool -c mcp_servers.ressac.disabled_tools=["launch_app"] -m x`);
+      expect(codexWorkshop).not.toMatch(/shell_tool|launch_app/);
+      for (const s of opened) await s.stop();
+    });
+  });
+
   test("reply language: claude and codex get it at session open, an open session keeps its own, a custom command is untouched", async () => {
     let lang = "en";
     const n = await createReady(() => lang);

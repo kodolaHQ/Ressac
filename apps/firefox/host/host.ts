@@ -290,6 +290,8 @@ const denyWidget = async (w: string) => {
 
 // The profile of windows that have not chosen their agent. One kernel serves every profile: it starts once.
 let defaultProfile = "claude";
+// Settings: « browser » takes the agent's shell away at its next session (the panel relaunches it on a change).
+let agentMode: "browser" | "workshop" = "browser";
 let kernelLaunched = false;
 
 // Codex's and Claude's engines (Settings › Agents) and the relay that adds each one's compatible API key, which stays on the Mac.
@@ -386,7 +388,7 @@ const sessions = new SessionsAgent({
     // A container app Ressac is starting (or can start): the panel stays on « Préparation » until Docker answers.
     await docker.start().catch(() => {});
     if (!aiOn) throw new Error("ai-off");
-    if (profile !== "codex" && profile !== "claude") return n.openAgentSession({ ...t, window: f, profile, resume, onBuildProgress });
+    if (profile !== "codex" && profile !== "claude") return n.openAgentSession({ ...t, window: f, profile, resume, mode: agentMode, onBuildProgress });
     const e = profile === "claude" ? claudeEngine : engine; // one snapshot: the env must match the relay token
     const claude = profile === "claude";
     // Ollama is relayed without a key: the agent reaches inference paths only, never /api/pull. Codex's target ends in /v1.
@@ -399,7 +401,7 @@ const sessions = new SessionsAgent({
     try {
       const relayed = token ? { url: relay.containerUrl, token } : null;
       const extra = profile === "claude" ? claudeEngineEnv(e as ClaudeEngine, relayed) : codexEngineArgs(e as CodexEngine, relayed);
-      const session = await n.openAgentSession({ ...t, window: f, profile, resume, extra, onBuildProgress });
+      const session = await n.openAgentSession({ ...t, window: f, profile, resume, extra, mode: agentMode, onBuildProgress });
       if (token) session.onEnd(() => relay.closeSession(token));
       return session;
     } catch (err) {
@@ -443,6 +445,7 @@ const rpc = createRpc({
       if (typeof p.profile === "string" && /^[\w-]{1,64}$/.test(p.profile)) await sessions.switchProfile(p.window, p.profile);
     },
     "agent.current": (p: { window: string }) => sessions.profileOf(p.window),
+    "agent.mode": (p: { mode: unknown }) => void (agentMode = p?.mode === "workshop" ? "workshop" : "browser"),
     "agent.codexEngine": (p: { engine: unknown }) => {
       const r = CodexEngineSchema.safeParse(p?.engine);
       if (r.success) engine = r.data;

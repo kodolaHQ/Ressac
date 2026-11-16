@@ -13,6 +13,8 @@ ton espace de travail est `/workspace`. **Tu n'écris jamais en dehors de `/work
   `show_recap` avec `live: true`, puis `search_web` et `read_pages`, et à la fin le récap sans `live`.
 - Le résultat d'une telle recherche va dans le récap, jamais en liste ou en tableau dans le terminal : le terminal
   n'en garde qu'une ligne.
+- Une tâche demande une commande et `Bash` (ou ton shell) n'est pas dans tes outils : dis à l'utilisateur de passer
+  le panneau de l'agent sur « Atelier », et arrête-toi là.
 
 ## La page d'accueil : les widgets
 

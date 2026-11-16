@@ -131,6 +131,11 @@ agent-panel-done = The agent has stopped.
 agent-panel-retry = Try again
 agent-panel-restart = Restart
 agent-panel-engine-changed = The engine changed in Settings. Restart to use it: the conversation resumes.
+agent-panel-mode = Agent mode
+agent-panel-mode-browser = Browser
+agent-panel-mode-browser-title = Search and recaps, no terminal
+agent-panel-mode-workshop = Workshop
+agent-panel-mode-workshop-title = Can run commands: apps, widgets, design mode
 
 ## Review
 

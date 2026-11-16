@@ -131,6 +131,11 @@ agent-panel-done = L'agent s'est arrêté.
 agent-panel-retry = Réessayer
 agent-panel-restart = Relancer
 agent-panel-engine-changed = Le moteur a changé dans Réglages. Relancez pour l'utiliser : la conversation reprend.
+agent-panel-mode = Mode de l'agent
+agent-panel-mode-browser = Navigateur
+agent-panel-mode-browser-title = Recherche et récaps, sans terminal
+agent-panel-mode-workshop = Atelier
+agent-panel-mode-workshop-title = Peut lancer des commandes : applis, widgets, mode design
 
 ## Relecture
 

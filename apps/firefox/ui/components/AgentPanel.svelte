@@ -86,6 +86,15 @@
     id === "codex" ? browserState.value?.settings.codexEngine.kind === "chatgpt" : id === "claude" ? (browserState.value?.settings.claudeEngine.kind ?? "subscription") === "subscription" : true;
   const signedOutCodex = $derived(current === "codex" && onSubscription("codex") && account("codex")?.state === "logged-out");
   const profileChoice = $derived(profiles.length >= 2);
+  // Only the shipped agents know how to run without their shell (kernel's openAgentSession).
+  const modeChoice = $derived(current === "claude" || current === "codex");
+  const mode = $derived(browserState.value?.settings.agentMode ?? "browser");
+  function chooseMode(m: "browser" | "workshop") {
+    if (m === mode) return;
+    // Dispatch is synchronous: the host gets the new mode before the relaunch request.
+    api.dispatch({ type: "chooseAgentMode", mode: m });
+    void api.agent.relaunch();
+  }
   async function choose(id: string) {
     reads++;
     current = id;
@@ -184,6 +193,13 @@
     {:else}
       <span class="name">{profiles.find((p) => p.id === current)?.name ?? t("agent-panel-label")}</span>
     {/if}
+    {#if modeChoice}
+      <div class="mode" data-testid="agent-mode" role="radiogroup" aria-label={t("agent-panel-mode")} out:fade={{ duration: 150 }}>
+        {#each ["browser", "workshop"] as const as m (m)}
+          <button role="radio" aria-checked={mode === m} data-testid="agent-mode-{m}" title={t(`agent-panel-mode-${m}-title`)} onclick={() => chooseMode(m)}>{t(`agent-panel-mode-${m}`)}</button>
+        {/each}
+      </div>
+    {/if}
   </header>
   {#if signedOutCodex}
     <p class="message">{t("agent-panel-codex-signed-out")}</p>
@@ -244,6 +260,10 @@
   .terminal { position: relative; flex: 1; min-height: 0; margin: 0 6px 6px; border-radius: 11px; background: var(--sheet); box-shadow: inset 0 0 0 1px var(--border); }
   .built-in .terminal { margin: 0; border-radius: 0; box-shadow: none; }
   .terminal.masked { visibility: hidden; }
+  /* Two options in one glass pill, the chosen one lifted (like the Applications filters). */
+  .mode { display: flex; gap: 2px; padding: 2px; margin-left: auto; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); -moz-window-dragging: no-drag; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
+  .mode button { margin: 0; padding: 4px 10px; border-radius: 8px; background: transparent; color: var(--text-muted); font: 600 12px/1.2 var(--font-ui); transition: transform var(--tap), background var(--tap), color var(--tap); }
+  .mode button[aria-checked="true"] { background: var(--glass); color: var(--text); box-shadow: var(--lift), inset 0 0 0 1px var(--glass-edge); }
   .engine-changed { display: flex; flex-direction: column; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   .terminal[hidden] { display: none; }
 </style>

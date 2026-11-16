@@ -248,6 +248,8 @@ export interface Kernel {
     resume?: boolean;
     /** Appended to the command, and passed by name to the container (values go to the local `docker exec` only). */
     extra?: { args: string[]; env: Record<string, string> };
+    /** « browser » (default): Claude and Codex run without their shell nor `launch_app` (the command of `ressac.json`). */
+    mode?: "browser" | "workshop";
     /** The first image build's steps, while this call waits for the shared start. */
     onBuildProgress?: (p: BuildProgress) => void;
   }): Promise<SessionAgent>;
@@ -631,7 +633,7 @@ export async function createKernel(o: {
     locale: loc,
     // Serialized: two quick changes never run two swaps at once (each run reads loc() when it starts, the last one wins).
     relocalize: () => (relocalizing = relocalizing.catch(() => {}).then(() => initSpace(paths, loc(), templates)).then(() => {})),
-    async openAgentSession({ cols, rows, window: win, profile: profileChoice, resume, extra, onBuildProgress }) {
+    async openAgentSession({ cols, rows, window: win, profile: profileChoice, resume, extra, mode = "browser", onBuildProgress }) {
       const chosen = profileChoice === undefined ? profile : (await loadProfiles(paths)).profiles.find((p) => p.id === profileChoice);
       if (!chosen) throw new Error(`Profil d'agent inconnu : ${profileChoice}`);
       const first = startup;
@@ -685,7 +687,12 @@ export async function createKernel(o: {
         const language = program === "claude" ? ["--append-system-prompt", reply] : program === "codex" ? ["-c", `developer_instructions=${JSON.stringify(reply)}`] : [];
         const built = buildCommand(chosen, resume && chosen.resume ? "resume" : "interactive", { mcpConfig: mcpConfig });
         // Right after the program: the profile's own arguments keep their order (the MCP config stays last).
-        const command = [built[0]!, ...language, ...built.slice(1), ...(extra?.args ?? [])];
+        // Browser mode, shipped programs only: no shell, and no `launch_app` (it runs `ressac.json`'s command, a shell by another door).
+        // Claude's go first (its MCP config stays last); Codex's after its `-c mcp_servers.ressac={…}`, which would reset the table.
+        const browser = mode === "browser";
+        const claudeNoShell = browser && program === "claude" ? ["--disallowedTools", "Bash,mcp__ressac__launch_app"] : [];
+        const codexNoShell = browser && program === "codex" ? ["--disable", "shell_tool", "-c", 'mcp_servers.ressac.disabled_tools=["launch_app"]'] : [];
+        const command = [built[0]!, ...language, ...claudeNoShell, ...built.slice(1), ...codexNoShell, ...(extra?.args ?? [])];
         const session = SessionAgent.start(workshop.sessionCommand(id, command, Object.keys(env)), { cols, rows, env: env, stopRemote: () => workshop.stopSession(id) });
         openSessions.add(clean);
         session.onEnd(() => {

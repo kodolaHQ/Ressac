@@ -632,6 +632,11 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       d.settings.agentProfile = a.profile;
       return true;
     }
+    case "chooseAgentMode": {
+      if (d.settings.agentMode === a.mode) return false;
+      d.settings.agentMode = a.mode;
+      return true;
+    }
     case "chooseDecisionModel": {
       if (d.settings.decisionModel === a.model) return false;
       d.settings.decisionModel = a.model;

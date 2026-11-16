@@ -144,6 +144,7 @@ export const SchemaAction = z.discriminatedUnion("type", [
   /** `custom`: the user's own address (https, `%s` for the words); `engine: "custom"` without it reuses the one kept. */
   z.object({ type: z.literal("chooseEngine"), engine: engine, custom: z.string().max(CUSTOM_ENGINE_MAX).refine((u) => !customEngineError(u)).optional() }),
   z.object({ type: z.literal("chooseAgentProfile"), profile: z.string().regex(/^[\w-]+$/).max(64) }),
+  z.object({ type: z.literal("chooseAgentMode"), mode: z.enum(["browser", "workshop"]) }),
   z.object({ type: z.literal("chooseCodexEngine"), engine: CodexEngineSchema }),
   z.object({ type: z.literal("chooseClaudeEngine"), engine: ClaudeEngineSchema }),
   z.object({ type: z.literal("finishOnboarding"), ai: z.boolean().optional() }),

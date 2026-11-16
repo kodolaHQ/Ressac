@@ -440,6 +440,7 @@ async function start(): Promise<RessacStore> {
       notify("ai.decisionModel", { model: store.state.settings.decisionModel });
       notify("agent.codexEngine", { engine: store.state.settings.codexEngine });
       notify("agent.claudeEngine", { engine: store.state.settings.claudeEngine });
+      notify("agent.mode", { mode: store.state.settings.agentMode });
       notify("settings.locale", { locale: store.state.locale });
       notify("settings.agentDomains", { domains: store.state.settings.agentDomains });
       // A rendrePrive sent while no host ran was dropped: replayed (idempotent) so no private space stays searchable.

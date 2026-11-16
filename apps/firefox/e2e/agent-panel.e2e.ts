@@ -79,11 +79,27 @@ it("the home page's panel runs the real CLI with the session's MCP config", asyn
     "--append-system-prompt",
     "Always reply to the user in French, whatever language the instructions are written in.",
     "--disallowedTools",
+    "Bash,mcp__ressac__launch_app",
+    "--disallowedTools",
     "WebSearch,WebFetch",
     "--dangerously-skip-permissions",
     "--mcp-config",
     expect.stringMatching(SESSION_CONFIG),
   ]);
+});
+
+it("« Atelier » relaunches the agent with its shell, and the choice is saved", async () => {
+  await launch();
+  await shown();
+  await terminalShows("fake agent ready>");
+  const args = () => read(join(w!.dataDir, "workspace", "fake-agent-args.json"));
+  expect(args()).toContain("Bash");
+  await click(m, '[data-testid="agent-mode-workshop"]', { frame: "agent" });
+  await waitUi(m, "return doc.querySelector('[data-testid=\"agent-mode-workshop\"]').getAttribute('aria-checked') === 'true'", [], 10_000, "agent");
+  // The relaunch resumes the conversation, now with the shell.
+  await expect.poll(args, { timeout: 20_000 }).toContain("--continue");
+  expect(args()).not.toMatch(/Bash|launch_app/);
+  expect((await state(m)).settings.agentMode).toBe("workshop");
 });
 
 it("a huge output does not freeze the UI", async () => {

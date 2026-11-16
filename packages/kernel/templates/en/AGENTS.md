@@ -12,6 +12,8 @@ your workspace is `/workspace`. **You never write outside `/workspace`.** Answer
   then `search_web` and `read_pages`, and at the end the recap without `live`.
 - The result of such a search goes in the recap, never as a list or a table in the terminal: the terminal keeps one
   line of it.
+- A task needs a command and `Bash` (or your shell) is not in your tools: tell the user to switch the agent panel to
+  « Workshop », and stop there.
 
 ## The home page: widgets
 
