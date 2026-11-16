@@ -189,7 +189,7 @@ group(tickets, priorite)
 | `search_web(query, goal)` | Cherche sur le web dans un onglet à toi, visible, avec le moteur de l'utilisateur : id de l'onglet, texte et liens des résultats |
 | `read_pages(urls, reason?)` | Lit jusqu'à 6 pages web à la fois (adresses http(s)) |
 | `hand_over(id, reason, kind)` | Rend la main à l'utilisateur sur ton onglet (`verification` ou `lost`) et attend son retour |
-| `open_tab(url, space?, reason?)` | Ouvre un onglet, par exemple sur une démo `http://localhost:<port de $RESSAC_PORTS>` ; pendant une recherche, une adresse web que tu as écrite toi-même demande l'accord de l'utilisateur (`reason`) |
+| `open_tab(url, space?, reason?)` | Ouvre un onglet, par exemple sur une démo `http://localhost:<port de $RESSAC_PORTS>` ; une adresse web que tu as écrite toi-même (jamais lue dans une page ni rendue par une recherche) demande l'accord de l'utilisateur une fois par conversation (`reason`) ; une adresse locale reste libre |
 | `navigate(id, url, reason?)` | Change l'URL d'un onglet (y compris recharger une démo) ; une adresse composée par toi demande l'accord de l'utilisateur, donne un `reason` |
 | `show_recap(title, results, plan, id?, live?)` | Publie un récap (résultats + plan de page) dans un onglet de ta fenêtre ; avec `id`, le met à jour sur place ; rend son id |
 | `read_recap(id?)` | Relit un récap (id, titre, résultats, plan) ; sans `id`, celui de l'onglet actif |

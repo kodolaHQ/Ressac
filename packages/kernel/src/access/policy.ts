@@ -305,6 +305,16 @@ export class AccessPolicy {
     return this.widgetsData.has("history:");
   }
 
+  /** The user lets the agent open a web address it composed, outside a search, until the next conversation. */
+  grantAddress(url: string): void {
+    this.widgetsData.add(`address:${url}`);
+    this.change();
+  }
+
+  addressGranted(url: string): boolean {
+    return this.widgetsData.has(`address:${url}`);
+  }
+
   /**
    * The user opens the site app `id` to the agent (its pages and memory), until the next conversation, as
    * the card showed it (`empreinte` of its declaration): a different hash afterwards does not count.

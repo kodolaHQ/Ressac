@@ -188,7 +188,7 @@ group(tickets, priorite)
 | `search_web(query, goal)` | Searches the web in a tab of your own, visible, with the user's engine: the tab's id, text and links of the results |
 | `read_pages(urls, reason?)` | Reads up to 6 web pages at once (http(s) addresses) |
 | `hand_over(id, reason, kind)` | Hands control back to the user on your tab (`verification` or `lost`) and waits for them to come back |
-| `open_tab(url, space?, reason?)` | Opens a tab, for example on a demo `http://localhost:<port from $RESSAC_PORTS>`; during a search, a web address you wrote yourself asks for the user's grant (`reason`) |
+| `open_tab(url, space?, reason?)` | Opens a tab, for example on a demo `http://localhost:<port from $RESSAC_PORTS>`; a web address you wrote yourself (never read in a page nor returned by a search) asks for the user's grant once per conversation (`reason`); a local address is free |
 | `navigate(id, url, reason?)` | Changes a tab's URL (including reloading a demo); an address you composed asks for the user's grant, give a `reason` |
 | `show_recap(title, results, plan, id?, live?)` | Publishes a recap (results + page plan) in a tab of your window; with `id`, updates it in place; returns its id |
 | `read_recap(id?)` | Reads a recap again (id, title, results, plan); without `id`, the active tab's |

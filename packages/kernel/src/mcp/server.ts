@@ -586,6 +586,21 @@ function createToolsServer(
     return (await judge(g, false))?.strange ? { opinion: OPINION_TEXT } : {};
   }
 
+  /**
+   * Outside a search, a web address is free when it is local, was read (a page, its links, a search's results), is the address
+   * of a tab the agent may read, or was approved in this conversation. Otherwise the user decides on the « agent-address » card.
+   */
+  async function composedAllowed(tool: "open_tab" | "navigate", url: string, reason: string | undefined, signal?: AbortSignal): Promise<boolean> {
+    if (isLocal(url) || seen.has(url) || policy.addressGranted(url)) return true;
+    if ((await bridge.listTabs()).some((t) => t.url === url && policy.canRead(t))) return true;
+    if (!bridge.askAddress) return false;
+    const view = await opinion({ tool, url, composed: true });
+    const card = { url, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", ...view };
+    const yes = await askAddressCard(bridge, policy, requests, card, `address:${url}`, win ?? undefined, () => () => {}, signal);
+    if (yes) policy.grantAddress(url);
+    return yes;
+  }
+
   /** The search tab `id` is the user's for now (a hand is open on it). */
   const handing = (id: string | undefined) => !!id && !!searching?.sessions.handing(id);
 
@@ -663,7 +678,8 @@ function createToolsServer(
     "open_tab",
     {
       description:
-        "Ouvre un onglet (par exemple une démo locale servie par le conteneur) et renvoie son id. Pendant une recherche, une adresse web que tu as écrite toi-même demande l'accord de l'utilisateur : donne alors `reason`.",
+        "Ouvre un onglet (par exemple une démo locale servie par le conteneur) et renvoie son id. Une adresse web que tu as écrite toi-même " +
+        "(jamais lue dans une page ni rendue par une recherche) demande l'accord de l'utilisateur : donne alors `reason`. Une adresse locale reste libre.",
       inputSchema: { url: z.string(), space: z.string().optional(), reason: z.string().optional() },
     },
     protect(async ({ url, space, reason }, extra) => {
@@ -686,7 +702,7 @@ function createToolsServer(
           if (!sessions.owns(cur.tabId)) return text(sessions.takeStop(key, cur.tabId) ? STOP_TEXT : CLOSED_TEXT);
           if (!yes) return text(DENIAL_TEXT);
         }
-      }
+      } else if (!(await composedAllowed("open_tab", url, reason, extra?.signal))) return text(DENIAL_TEXT);
       const o = await bridge.openTab(target, space);
       policy.tabOpenedByAgent(o);
       return text(o.id);
@@ -698,7 +714,8 @@ function createToolsServer(
     {
       description:
         "Change l'URL d'un onglet, ou recharge une démo. Donne `url`, ou `link` : le numéro d'un lien de la dernière lecture de l'onglet (read_tab avec links, search_web). " +
-        "Dans l'onglet d'une recherche, une adresse que tu as écrite toi-même demande l'accord de l'utilisateur : donne alors `reason`.",
+        "Une adresse `url` que tu as écrite toi-même (jamais lue dans une page ni rendue par une recherche) demande l'accord de l'utilisateur : " +
+        "donne alors `reason`. `link` reste libre.",
       inputSchema: { id: z.string(), url: z.string().optional(), link: z.number().int().min(0).optional(), reason: z.string().optional() },
     },
     protect(async ({ id, url: given, link, reason }, extra) => {
@@ -745,6 +762,7 @@ function createToolsServer(
         return text(`Appli de site ${id} → ${url}`);
       }
       if (!(await access(o))) return text(DENIAL_TEXT);
+      if (link === undefined && !(await composedAllowed("navigate", url, reason, extra?.signal))) return text(DENIAL_TEXT);
       // An app's window never leaves its origin (it has no address bar): another site opens
       // in a tab, as with open_tab, and the agent keeps access to the window.
       if (o.app && originOf(url) !== originOf(o.url)) {
