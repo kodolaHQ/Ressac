@@ -1,0 +1,47 @@
+name: Build macOS
+# Measures whether a full engine build fits the free macOS runner (6 h job limit). No signing, no publishing.
+on:
+  push:
+    branches: [ci-macos]
+  workflow_dispatch:
+
+permissions: read-all
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Machine
+        run: sysctl -n hw.ncpu hw.memsize machdep.cpu.brand_string; sw_vers; df -h /; xcrun --show-sdk-path; xcrun --show-sdk-version; node --version
+      - name: Tools
+        run: |
+          brew install gnu-tar
+          command -v corepack || npm install -g corepack
+          corepack enable
+      # The local scripts pin the Command Line Tools SDK 26.5; the runner has Xcode's.
+      - name: SDK path
+        run: |
+          sdk="$(xcrun --show-sdk-path)"
+          sed -i '' "s|/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk|$sdk|" apps/firefox/scripts/env.sh apps/firefox/configs/macos/mozconfig
+      - name: Install
+        run: corepack pnpm install --frozen-lockfile
+      - name: Download Firefox
+        working-directory: apps/firefox
+        run: time zsh scripts/env.sh ./node_modules/.bin/surfer download
+      - name: Import patches
+        working-directory: apps/firefox
+        run: time (echo N | corepack pnpm run engine:import)
+      - name: Bootstrap
+        working-directory: apps/firefox
+        run: time corepack pnpm run engine:bootstrap
+      - name: Build
+        working-directory: apps/firefox
+        run: time (echo N | corepack pnpm run build)
+      - name: Result
+        if: always()
+        working-directory: apps/firefox
+        run: df -h /; du -sh engine 2>/dev/null; ls -la engine/obj-aarch64-apple-darwin/dist/Ressac.app/Contents/MacOS/ressac 2>/dev/null || echo "no binary"
