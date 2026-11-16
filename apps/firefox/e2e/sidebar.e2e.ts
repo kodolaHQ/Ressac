@@ -370,6 +370,11 @@ describe("Ressac sidebar", () => {
       "return doc.querySelector('.space-content').getBoundingClientRect().top - Math.max(...[...doc.querySelectorAll('[data-testid=\"essentials\"] [data-testid^=\"favorite-\"]')].map((c) => c.getBoundingClientRect().bottom))",
     );
     expect(gap).toBeGreaterThanOrEqual(0);
+    // Scrolling the tabs leaves the essentials under the address field.
+    const top = () => inUi<number>(m, "return doc.querySelector('[data-testid=\"essentials\"]').getBoundingClientRect().top");
+    const before = await top();
+    expect(await inUi<number>(m, "const s = doc.querySelector('.scrolling'); s.scrollTop = s.scrollHeight; return s.scrollTop")).toBeGreaterThan(0);
+    expect(await top()).toBe(before);
   });
 
   it("a space dragged onto another takes its place, in the row and the state", async () => {

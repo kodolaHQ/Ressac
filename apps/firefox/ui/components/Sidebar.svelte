@@ -96,6 +96,8 @@
 
 <aside class="bar" data-testid="sidebar" hidden={hidden} use:swipeArea>
   <UrlBar window={win} />
+  <!-- Outside the scrolling list: the essentials stay under the address field while the tabs scroll. -->
+  <div class="fixed"><Essentials window={win} /></div>
   <!-- An essential dragged out of its grid and dropped anywhere below is no longer one: its open tab joins the list. -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
@@ -107,7 +109,6 @@
       if (favoriteId) api.dispatch({ type: "removeEssential", favoriteId });
     }}
   >
-    <Essentials window={win} />
     <!-- What belongs to the space: it alone slides on a space change, the shared essentials stay put. -->
     <div class="space-content" bind:this={list}>
     {#if space}<Pinned bind:this={pinned} window={win} {space} {activeLink} />{/if}
@@ -206,7 +207,8 @@
   }
   .bar[hidden] { display: none; }
   .space-content { display: flex; flex-direction: column; gap: 6px; }
-  .scrolling { flex: 1; overflow-x: clip; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; margin-top: 14px; -webkit-app-region: no-drag; }
+  .fixed { margin-top: 14px; -webkit-app-region: no-drag; }
+  .scrolling { flex: 1; overflow-x: clip; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; margin-top: 6px; -webkit-app-region: no-drag; }
   .bar :global(nav) { -webkit-app-region: no-drag; }
   .new:active, .tool:active, .downloads:active { transform: scale(0.97); }
   /* One row: the spaces take what the tools leave and scroll past it; a space deletion confirmation gets the full width. */
