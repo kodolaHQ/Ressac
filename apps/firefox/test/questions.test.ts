@@ -40,18 +40,18 @@ it("an extension card: Activer answers accepte with the card's empreinte; a renf
   let answer = questions.askExtension(card, win);
   expect(questions.pending()).toMatchObject([{ windowId: win, tabId: null, permissions: ["extension"], extension: card }]);
   questions.answer(questions.pending()[0]!.id, "allow");
-  expect(await answer).toEqual({ accepted: true, hash: card.hash });
+  expect(await answer).toEqual({ accepted: true });
 
   answer = questions.askExtension({ ...card, hardened: true }, win);
   questions.answer(questions.pending()[0]!.id, "allow");
-  expect(await answer).toEqual({ accepted: false, hash: card.hash });
+  expect(await answer).toEqual({ accepted: false });
 
   answer = questions.askExtension({ ...card, hardened: true }, win);
   questions.answer(questions.pending()[0]!.id, "allow", { confirmed: true });
-  expect(await answer).toEqual({ accepted: true, hash: card.hash });
+  expect(await answer).toEqual({ accepted: true });
 
   // Its space gone: the card falls, « retirée ».
-  expect(await questions.askExtension({ ...card, spaceId: "gone" }, win)).toEqual({ accepted: false, hash: card.hash, removed: true });
+  expect(await questions.askExtension({ ...card, spaceId: "gone" }, win)).toEqual({ accepted: false, removed: true });
   expect(questions.pending()).toEqual([]);
 });
 
