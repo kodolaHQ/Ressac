@@ -397,6 +397,14 @@ describe("Ressac sidebar", () => {
     expect((await state(m)).spaces).toHaveLength(before + 1);
   });
 
+  it("a page's big icon (over 16 KB) shows redrawn small, not as the page's initial", async () => {
+    const id = await open("/big-icon.html");
+    const icon = await waitState((s) => s.tabs[id]?.favicon ?? null, (f) => !!f);
+    expect(icon).toMatch(/^data:image\/png;base64,/);
+    expect(icon!.length).toBeLessThanOrEqual(16 * 1024);
+    await waitUi(m, `return !!doc.querySelector('[data-testid="tab-${id}"] img')`);
+  });
+
   it("an essential is visible in every space", async () => {
     const a = await open("/a.html");
     await waitTitle(a, "Page A");

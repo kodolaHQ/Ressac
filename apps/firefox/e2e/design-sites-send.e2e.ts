@@ -247,7 +247,8 @@ it("Supprimer with a remark in the cart and a batch sent: remarks and review rep
   await modeOn();
   await remark("#films", "li.affiche", "affiches plus grandes", "1");
   await openApplications(m);
-  await click(m, tid(`site-${ID}-delete`));
+  await click(m, tid(`site-${ID}-more`));
+    await click(m, '[role="menuitem"]', { text: "Supprimer" });
   await click(m, tid("confirm-site-delete"));
   await waitUi(m, `return !doc.querySelector('${tid(`site-${ID}`)}')`, [], 15_000);
   await expect.poll(() => existsSync(remarksDir()), { timeout: 15_000 }).toBe(false);

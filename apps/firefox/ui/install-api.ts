@@ -14,6 +14,8 @@ if (params.has("site")) {
   const site = window.parent.ressacSiteWindow;
   if (!site) throw new Error("Ressac site bar loaded before its window controller");
   window.ressac = inertRessac({ site: createSiteApi(site) }) as ApiFirefox;
+  // Its aura and the window's keys: the controller does not see this frame's load.
+  window.parent.ressacSiteBarStarted?.(window);
 } else if (params.has("badge")) {
   const overlay = (window.frameElement as (Element & { ressacOverlay?: { api: BadgeChrome } }) | null)?.ressacOverlay;
   if (!overlay) throw new Error("Ressac badge loaded before its window controller");
@@ -26,6 +28,8 @@ if (params.has("site")) {
   const win = window.parent.ressacWindow;
   if (!win) throw new Error("Ressac UI loaded before its window controller");
   window.ressac = createApi(win);
+  // Its aura and the window's key and mouse listeners: the controller does not see this frame's load.
+  win.uiStarted(window);
 }
 
 // Gecko's macOS widget still fires keypress for a printable key whose keydown was consumed when the document is in the

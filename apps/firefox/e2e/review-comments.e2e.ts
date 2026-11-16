@@ -123,7 +123,8 @@ async function siteOnAppJs(): Promise<void> {
   await launch({ prepare: (d) => writeSite(d, "essai", SITE) });
   await expect.poll(() => existsSync(path.join(w!.dataDir, "design", "review", "site-essai.git", "refs", "ressac", "relu")), { timeout: 15_000 }).toBe(true);
   writeAppJs(path.join(w!.dataDir, "workspace", "sites", "essai"), modified(15));
-  await click(m, tid("site-essai-review"));
+  await click(m, tid("site-essai-more"));
+    await click(m, '[role="menuitem"]', { text: "Modifications" });
   await waitUi(m, `return !!doc.querySelector('${PAGE}')`);
   await openFile("app.js");
   await waitCount(ADDED, 1);
@@ -318,7 +319,8 @@ it("deleting the site app erases its review repo and comments", { timeout: 60_00
   const review = path.join(w!.dataDir, "design", "review");
   await expect.poll(() => existsSync(path.join(review, "site-essai.comments.json")), { timeout: 10_000 }).toBe(true);
   await openApplications(m);
-  await click(m, tid("site-essai-delete"));
+  await click(m, tid("site-essai-more"));
+    await click(m, '[role="menuitem"]', { text: "Supprimer" });
   await click(m, tid("confirm-site-delete"));
   await expect
     .poll(() => existsSync(path.join(review, "site-essai.git")) || existsSync(path.join(review, "site-essai.comments.json")), { timeout: 15_000 })

@@ -1,4 +1,5 @@
 import { shortcutLabel } from "../../shared/shortcuts";
+import { DEFAULT_AURA } from "../../shared/aura";
 import { privateTab, tabProfile, profilesInUse, type Decision, type AccessState, type WindowId, type ProfileId, type Appearance } from "../../shared/model";
 import type { ReportedError } from "../../shared/telemetry";
 import { checkDataFormat } from "../../core/state/format";
@@ -462,7 +463,10 @@ async function start(): Promise<RessacStore> {
     toFront(windowId);
   };
   const design = createDesign({ agent, windows, apps, sites, dispatch: store.dispatch, mainWindow, toFront, shortcutLabel: () => shortcutLabel("design", store.state.settings), locale: () => store.state.locale, aiOn: () => store.state.settings.aiEnabled, giveAgent });
-  bindSites(agent, dataDir, openInTab, design, () => store.state.locale);
+  bindSites(agent, dataDir, openInTab, design, () => store.state.locale, () => {
+    const s = store.state, w = s.windows.find((x) => x.id === windows.active());
+    return s.spaces.find((x) => x.id === w?.activeSpace)?.aura ?? DEFAULT_AURA;
+  });
   design.overlays = createOverlays({ design, host: agent });
   // A remapped design shortcut: the windows re-read the label (a site app's « Mode design (⇧⌘D) » tooltip).
   store.subscribe((s, p) => {

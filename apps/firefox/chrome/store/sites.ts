@@ -3,6 +3,7 @@
 // the windows.
 import type { DesignState } from "../../shared/api";
 import type { FrameBounds } from "../../shared/model";
+import { DEFAULT_AURA, type AuraId } from "../../shared/aura";
 import { INFO_NOTICE_DURATION_MS, HOME_OPEN_GAP_MS, ICON_MAX, type BarNotice, type SiteWindowState, type MessageToHome } from "../../shared/sites";
 import type { TweakError } from "../../core/sites/injection";
 import { decisionNavigation, openDecision, type NavigationContext } from "../../core/sites/navigation";
@@ -36,6 +37,8 @@ export function publishSiteFrames(map: Map<number, string>): void {
 /** What the bar (ui/site-api.ts) drives, through `window.parent.ressacSiteWindow`. */
 export interface SiteWindowController {
   state(): SiteWindowState;
+  /** The aura of the space the app was opened from (the last main window's active space then). */
+  aura(): AuraId;
   onState(cb: (e: SiteWindowState) => void): () => void;
   /** « Autoriser » (oui) or « Ouvrir sans retouches » on the grant card; `empreinte` is the card's. */
   grant(yes: boolean, hash: string): Promise<void>;
@@ -88,6 +91,7 @@ export interface SiteDesignView {
 
 interface OpenSite {
   site: SiteChrome;
+  aura: AuraId;
   /** The app's tweaks' files, as the host last read them. */
   tweaks: TweaksRead;
   /** The tweaks' console (site-frames.ts frameError), until the window closes. */
@@ -128,6 +132,7 @@ const byContainer = new Map<number, OpenSite>();
 let host: AgentHost | null = null;
 let dataDir = "";
 let openTab: (url: string) => void = () => {};
+let activeAura: () => AuraId = () => DEFAULT_AURA;
 let design: Pick<DesignService, "state" | "toggle" | "review" | "openCart" | "onChange"> | null = null;
 /** The last real presses in each app's home (one allows one open). */
 const gestures = gestureGuard<string>();
@@ -401,6 +406,7 @@ function controllerOf(s: OpenSite): SiteWindowController {
   const id = s.site.id;
   return {
     state: () => stateOf(s),
+    aura: () => s.aura,
     onState(cb) {
       s.listeners.add(cb);
       return () => void s.listeners.delete(cb);
@@ -611,7 +617,7 @@ export const sites = {
     marker.setPropertyAsAString(SITE_WINDOW_KEY, site.id);
     const win = openInContainer(userContextId, marker, frameFeatures(frame));
     // The card first if the tweaks need their grant: the view loads nothing until it is answered (nextView).
-    const s: OpenSite = { site, tweaks: tweaks, errors: [], userContextId, window: win, view: null, viewState: site.grantRequired ? "grant" : site.hasHome ? "home" : "site", toLoad: null, agentToLoad: false, loaded: false, listeners: new Set(), small: new Set(), blocked: [], notice: blockedNotice(() => broadcast(s)), home: null, lastHomeOpen: -Infinity, target: null, searching: false, hostNotice: null, wantNext: false, wanted: false };
+    const s: OpenSite = { site, aura: activeAura(), tweaks: tweaks, errors: [], userContextId, window: win, view: null, viewState: site.grantRequired ? "grant" : site.hasHome ? "home" : "site", toLoad: null, agentToLoad: false, loaded: false, listeners: new Set(), small: new Set(), blocked: [], notice: blockedNotice(() => broadcast(s)), home: null, lastHomeOpen: -Infinity, target: null, searching: false, hostNotice: null, wantNext: false, wanted: false };
     open.set(site.id, s);
     byContainer.set(userContextId, s);
     publishOpen();
@@ -931,8 +937,9 @@ export const sites = {
 export type SiteApps = typeof sites;
 
 /** Started with the store: the host the windows report to, and where the served home copies live. */
-export function bindSites(agent: AgentHost, dir: string, openInTab: (url: string) => void, d: NonNullable<typeof design>, locale: () => string): void {
+export function bindSites(agent: AgentHost, dir: string, openInTab: (url: string) => void, d: NonNullable<typeof design>, locale: () => string, aura: () => AuraId): void {
   shownLocale = locale;
+  activeAura = aura;
   host = agent;
   dataDir = dir;
   openTab = openInTab;

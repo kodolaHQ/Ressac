@@ -1,4 +1,6 @@
 import { existsSync } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { dispatch, state, waitFor } from "./firefox";
@@ -41,6 +43,48 @@ describe("the window's aura", () => {
     const created = await dispatch(m, { type: "createSpace", name: "Braise", icon: "🔥", private: false, profile: space.profile, aura: "braise", windowId });
     await dispatch(m, { type: "activateSpace", windowId, id: created.spaces.at(-1)!.id });
     await waitFor(m, variable("--a1"), (v: string[]) => v.every((x) => x === "rgb(255, 122, 69)"));
+  });
+
+  it("a tab with no favicon shows its initial on the active space's aura", async () => {
+    const m = await launch();
+    server = await startServer();
+    const s = await state(m);
+    const space = s.spaces.find((x) => x.id === s.windows[0]!.activeSpace)!;
+    await dispatch(m, { type: "updateSpace", id: space.id, name: space.name, icon: space.icon, private: space.private, profile: space.profile, aura: "lagon" });
+    await dispatch(m, { type: "openTab", windowId: s.windows[0]!.id, url: server.url + "/a.html" });
+    const letter = () =>
+      waitUi(m, `const l = doc.querySelector('[data-testid^="tab-"] .letter'); return l ? doc.defaultView.getComputedStyle(l).backgroundImage : null;`, [], 10_000);
+    await waitUi(m, "return !!doc.querySelector('[data-testid^=\"tab-\"] .letter')");
+    await new Promise((r) => setTimeout(r, 1200));
+    expect(await letter()).toContain("rgb(59, 139, 235)");
+  });
+
+  it("relaunched on a Lagon space, the sidebar's initials take Lagon at once", async () => {
+    const dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
+    const profile = await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
+    try {
+      w = await launchRessac({ dataDir, profile, prefs: { "ui.prefersReducedMotion": 0 } });
+      let m = w.marionette;
+      await m.setContext("chrome");
+      await waitUi(m, "return !!doc.querySelector('[data-testid=\"sidebar\"]')");
+      server = await startServer();
+      const s = await state(m);
+      const space = s.spaces.find((x) => x.id === s.windows[0]!.activeSpace)!;
+      await dispatch(m, { type: "updateSpace", id: space.id, name: space.name, icon: space.icon, private: space.private, profile: space.profile, aura: "lagon" });
+      await dispatch(m, { type: "openTab", windowId: s.windows[0]!.id, url: server.url + "/a.html" });
+      await waitUi(m, "return !!doc.querySelector('[data-testid^=\"tab-\"] .letter')");
+      await new Promise((r) => setTimeout(r, 1500));
+      await w.close();
+      w = await launchRessac({ dataDir, profile, prefs: { "ui.prefersReducedMotion": 0 } });
+      m = w.marionette;
+      await m.setContext("chrome");
+      await waitUi(m, "return !!doc.querySelector('[data-testid^=\"tab-\"] .letter')", [], 20_000);
+      await new Promise((r) => setTimeout(r, 1500));
+      expect(await waitFor(m, variable("--a2"), () => true)).toEqual(["rgb(59, 139, 235)", "rgb(59, 139, 235)"]);
+    } finally {
+      await rm(dataDir, { recursive: true, force: true });
+      await rm(profile, { recursive: true, force: true });
+    }
   });
 
   it("the page is framed by the aura, not in fullscreen", async () => {

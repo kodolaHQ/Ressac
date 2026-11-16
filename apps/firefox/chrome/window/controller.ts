@@ -27,6 +27,8 @@ import { trackVisits } from "./visits";
 export interface WindowController {
   readonly windowId: WindowId;
   readonly store: RessacStore;
+  /** Called by a UI document (sidebar, agent panel) as it starts: the frame's load event does not reach this window. */
+  uiStarted(w: Window): void;
   /** The vim sheet and pill in the shown language, for the vim actor (formatted here: the actor's bundle has no Fluent). */
   vimTexts(): VimTexts;
   /** toUrl(input, moteur); a tab with a XUL tab loads it, one without gets majOnglet{url}; null opens a new tab. */
@@ -369,15 +371,16 @@ export function createController(
   };
   window.addEventListener("mousemove", onMouseMove, true);
   window.addEventListener("mouseout", onMouseOut, true);
-  // The UI documents' events stop at their own window: listen there too, on each load.
-  for (const f of [frame, agentFrame])
-    f.addEventListener("load", () => {
-      applyAura(f.contentDocument?.documentElement, auraOf(store.state));
-      f.contentWindow!.addEventListener("keydown", onKeyDown, true);
-      f.contentWindow!.addEventListener("keyup", onKeyUp, true);
-      f.contentWindow!.addEventListener("mousemove", onMouseMove, true);
-      f.contentWindow!.addEventListener("mouseout", onMouseOut, true);
-    });
+  // The UI documents' events stop at their own window: listen there too, each time one starts (uiStarted). The same
+  // functions: a second call adds nothing.
+  const uiStarted = (w: Window) => {
+    if (w !== frame.contentWindow && w !== agentFrame.contentWindow) return;
+    applyAura(w.document.documentElement, auraOf(store.state));
+    w.addEventListener("keydown", onKeyDown, true);
+    w.addEventListener("keyup", onKeyUp, true);
+    w.addEventListener("mousemove", onMouseMove, true);
+    w.addEventListener("mouseout", onMouseOut, true);
+  };
   // ⌘Tab to another app during a walk: it ends without a tab change. Not "blur": moving the keyboard from a page to the UI
   // blurs the window too.
   window.addEventListener("deactivate", () => walk.windowLeft(windowId));
@@ -448,6 +451,7 @@ export function createController(
   const controller: WindowController = {
     windowId: windowId,
     store,
+    uiStarted,
     vimTexts() {
       const l = store.state.locale;
       return {

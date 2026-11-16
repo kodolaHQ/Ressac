@@ -90,7 +90,15 @@ export class TabSync {
       if (changed.includes("label") || changed.includes("image")) {
         // A page's inline icon can weigh 100 KB+ as data: and the state is cloned and saved on every action: over 16 KB, none.
         const icon: string = tab.getAttribute("image") || "";
-        this.update(tab, { title: tab.label, favicon: icon && icon.length <= FAVICON_MAX ? icon : null });
+        if (icon.length <= FAVICON_MAX) this.update(tab, { title: tab.label, favicon: icon || null });
+        else {
+          // A big icon (Gmail's is) is drawn again at 32 px rather than dropped, which left the page's initial. None meanwhile:
+          // never the previous page's. Redrawn only when the icon itself changed, not on each title.
+          this.update(tab, { title: tab.label, ...(changed.includes("image") ? { favicon: null } : {}) });
+          if (changed.includes("image")) void shrinkIcon(icon).then((small) => {
+            if (small && small.length <= FAVICON_MAX && tab.getAttribute("image") === icon) this.update(tab, { favicon: small });
+          });
+        }
       }
       if (changed.includes("soundplaying") || changed.includes("muted")) {
         this.update(tab, { sound: tab.hasAttribute("muted") ? "muted" : tab.hasAttribute("soundplaying") ? "playing" : null });
@@ -399,5 +407,23 @@ export class TabSync {
       // Unless it was adopted before this window's sync saw it leave.
       if (this.store.state.tabs[id]?.windowId === this.windowId) this.store.dispatch({ type: "closeTab", id });
     }
+  }
+}
+
+/** `url` drawn at 32 px as a PNG data: URL; null when it does not decode. */
+async function shrinkIcon(url: string): Promise<string | null> {
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const canvas = document.createElementNS("http://www.w3.org/1999/xhtml", "canvas") as HTMLCanvasElement;
+    canvas.width = canvas.height = 32;
+    // Fitted, centred: a wide or tall icon keeps its proportions.
+    const k = 32 / Math.max(img.naturalWidth || 32, img.naturalHeight || 32);
+    const w = (img.naturalWidth || 32) * k, h = (img.naturalHeight || 32) * k;
+    canvas.getContext("2d")!.drawImage(img, (32 - w) / 2, (32 - h) / 2, w, h);
+    return canvas.toDataURL("image/png");
+  } catch {
+    return null;
   }
 }

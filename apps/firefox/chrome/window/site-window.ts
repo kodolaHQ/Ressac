@@ -1,6 +1,7 @@
 // A site app's window: browser.xhtml opened by store/sites.ts without a toolbar, marked from its creation, never a
 // Ressac main window. One <browser> (the app view, in the app's container), Firefox's tabs and toolbars hidden, the
 // bar's frame on top (sidebar.html?site=<id>, ui/SiteWindow.svelte).
+import { auraVariables } from "../../shared/aura";
 import { createHalo } from "../../core/halo";
 import { HOST_EXITED } from "../agent/host";
 import type { SiteWindowController } from "../store/sites";
@@ -18,6 +19,8 @@ declare global {
   interface Window {
     /** In a site app's window: what its bar drives (ui/site-api.ts), and its add-on buttons once Firefox's startup is done. */
     ressacSiteWindow?: SiteWindowController & { addons?: WindowAddons };
+    /** Called by the site bar's document as it starts (the frame's load event does not reach this window). */
+    ressacSiteBarStarted?: (w: Window) => void;
   }
 }
 
@@ -183,7 +186,17 @@ export function setupSiteWindow(win: Window, id: string): SiteWindowController |
     else if (s.type === "design") designShortcut(win);
   };
   win.addEventListener("keydown", onKeyDown, true);
-  bar.addEventListener("load", () => bar.contentWindow!.addEventListener("keydown", onKeyDown, true));
+  // The aura of the space the app was opened from, on the window and on its bar.
+  const aura = auraVariables(controller.aura());
+  const tint = (root: HTMLElement) => {
+    for (const [k, v] of Object.entries(aura)) root.style.setProperty(k, v);
+  };
+  tint(doc.documentElement);
+  win.ressacSiteBarStarted = (w) => {
+    if (w !== bar.contentWindow) return;
+    tint(w.document.documentElement);
+    w.addEventListener("keydown", onKeyDown, true);
+  };
   // The site's code was not reviewed: its beforeunload never keeps the app from closing.
   win.CanCloseWindow = () => true;
   win.ressacSiteWindow = controller;
