@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
@@ -245,8 +245,8 @@ export class Workshop {
     this.lookup = o.docker === undefined ? (o.findDocker ?? findDocker) : () => o.docker ?? null;
   }
 
-  private launch(args: string[], delayMs?: number, input?: string) {
-    return this.run(this.docker!, args, { ...(delayMs ? { delayMs } : {}), ...(input !== undefined ? { input } : {}) });
+  private launch(args: string[], delayMs?: number, input?: string, signal?: AbortSignal) {
+    return this.run(this.docker!, args, { ...(delayMs ? { delayMs } : {}), ...(input !== undefined ? { input } : {}), ...(signal ? { signal } : {}) });
   }
 
   /** Every window waiting on the shared start hears the build's steps. Returns the unsubscribe. */
@@ -336,6 +336,29 @@ export class Workshop {
     // The agent CLIs run as the agent-writable user: never before the rules exist.
     if (!this.secured) await this.secureNetwork();
     return this.launch(["exec", containerName(), ...argv], PROBE_DELAY_MS);
+  }
+
+  /**
+   * One-shot command with `input` on standard input, in a fresh temp dir (its cwd, removed afterwards). Prints `./out`
+   * after the command when it exists (Codex `-o out`). On abort the process is killed in the container, not only the client.
+   * shortcut: a killed run leaves its temp dir in /tmp, cleared with the container.
+   */
+  async execWrite(argv: string[], o: { input: string; signal: AbortSignal; delayMs: number }): Promise<RunResult> {
+    if (!this.docker) return { code: 1, stdout: "", stderr: "Docker introuvable" };
+    if (!this.secured) await this.secureNetwork();
+    const id = randomUUID();
+    const f = `/tmp/ressac-write-${id}.pid`;
+    const script = [
+      `id=$1; shift`,
+      `d=$(mktemp -d) && cd "$d" || exit 1`,
+      `echo $$ > ${f}`,
+      `"$@"; c=$?`,
+      `[ -f out ] && cat out`,
+      `cd /; rm -rf "$d" ${f}; exit $c`,
+    ].join("\n");
+    const r = await this.launch(["exec", "-i", "-u", "node", "-w", "/", "-e", `${VARIABLE_SESSION}=${id}`, containerName(), "sh", "-c", script, "ressac-write", id, ...argv], o.delayMs, o.input, o.signal);
+    if (o.signal.aborted) await this.launch(["exec", containerName(), "sh", "-c", sessionStopScript(f, id)], PROBE_DELAY_MS);
+    return r;
   }
 
   /** Before each Codex session: only managed hooks, and no MCP server but Ressac's at `url` (a stdio server runs a command). */

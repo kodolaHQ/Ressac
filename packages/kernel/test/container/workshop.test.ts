@@ -791,3 +791,53 @@ describe("Codex requirements", () => {
     await expect(failing.restrictCodex("http://x/mcp")).rejects.toThrow("nope");
   });
 });
+
+describe("execWrite", () => {
+  const ac = () => new AbortController();
+  const scriptOf = (args: string[]) => args[args.indexOf("ressac-write") - 1]!;
+
+  test("runs the command on stdin in a temp dir, as node", async () => {
+    const { run, calls } = fakeRunner([]);
+    const workshop = new Workshop({ paths: paths, docker: "docker", run });
+    await workshop.execWrite(["codex", "exec", "-o", "out", "-"], { input: "prompt", signal: ac().signal, delayMs: 5000 });
+    const call = calls.find((c) => c.args.includes("ressac-write"))!;
+    const i = call.args.indexOf("ressac-write");
+    expect(call.args.slice(0, 5)).toEqual(["exec", "-i", "-u", "node", "-w"]);
+    expect(call.args.slice(i + 2)).toEqual(["codex", "exec", "-o", "out", "-"]);
+    expect(call.opts).toMatchObject({ input: "prompt", delayMs: 5000 });
+    expect(scriptOf(call.args)).toContain("mktemp -d");
+  });
+
+  test("the script really runs: out is printed, stdin reaches the command, dir and pid are removed, exit code kept", async () => {
+    const { run, calls } = fakeRunner([]);
+    const workshop = new Workshop({ paths: paths, docker: "docker", run });
+    await workshop.execWrite(["x"], { input: "", signal: ac().signal, delayMs: 1 });
+    const script = scriptOf(calls.find((c) => c.args.includes("ressac-write"))!.args).replace(/\/tmp\/ressac-write-/g, `${ROOT}/pid-`);
+    const out = await new Promise<{ code: number | null; stdout: string }>((res) => {
+      const p = spawn("sh", ["-c", script, "ressac-write", "T", "sh", "-c", "echo hi > out; cat; exit 3"]);
+      let stdout = "";
+      p.stdout.on("data", (d) => (stdout += d));
+      p.stdin.end("stdin-text");
+      p.on("close", (code) => res({ code, stdout }));
+    });
+    expect(out.code).toBe(3);
+    expect(out.stdout).toBe("stdin-texthi\n");
+    expect(readdirSync(ROOT).filter((n) => n.startsWith("pid-"))).toEqual([]);
+  });
+
+  test("abort kills the process in the container and resolves cancelled", async () => {
+    const controller = ac();
+    const { run, calls } = fakeRunner([[/ressac-write/, () => (controller.abort(), { code: 143 })]]);
+    const workshop = new Workshop({ paths: paths, docker: "docker", run });
+    const r = await workshop.execWrite(["claude"], { input: "p", signal: controller.signal, delayMs: 1 });
+    expect(r.code).toBe(143);
+    const stop = calls.at(-1)!.args.at(-1)!;
+    expect(stop).toMatch(/ressac-write-.*\.pid/);
+    expect(stop).toContain("kill -$1");
+  });
+
+  test("no Docker: code 1", async () => {
+    const r = await new Workshop({ paths: paths, docker: null }).execWrite(["x"], { input: "", signal: ac().signal, delayMs: 1 });
+    expect(r.code).toBe(1);
+  });
+});
