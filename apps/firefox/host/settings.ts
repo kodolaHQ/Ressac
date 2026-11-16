@@ -147,9 +147,15 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
     }
   };
   /** One model at a time, from any window; `pull` is set before the first await, so a second caller sees it. */
-  const pullOne = async (name: string) => {
-    if (pull) throw new Error(PULL_BUSY());
+  let pulled: Promise<unknown> = Promise.resolve();
+  const pullOne = (name: string): Promise<void> => {
+    if (pull) return Promise.reject(new Error(PULL_BUSY()));
     pull = { name, percent: null, status: "" };
+    const run = pullNow(name);
+    pulled = run.catch(() => {});
+    return run;
+  };
+  const pullNow = async (name: string) => {
     try {
       if (name === OLLAMA_ITSELF) await o.ollama.install((percent) => (pull = { name, percent, status: "" }));
       else if (name === DECISION_MODEL) await installDecision();
@@ -157,6 +163,11 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
     } finally {
       pull = null;
     }
+  };
+  /** The decision download started at AI start is Ressac's, not the user's: a user's pull waits for it instead of being refused. */
+  const busy = (name?: string) => !!pull && (pull.name !== DECISION_MODEL || name === DECISION_MODEL);
+  const afterDecision = async () => {
+    while (pull?.name === DECISION_MODEL) await pulled;
   };
   /** The restart or rebuild in progress, whatever page or window asked for it. */
   let operation: WorkshopOperation = null;
@@ -345,8 +356,9 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
       }
     },
     "settings.pullModel": async (p: { name?: unknown }): Promise<SettingsResult> => {
-      if (pull) return { ok: false, error: PULL_BUSY() };
+      if (busy(String(p?.name))) return { ok: false, error: PULL_BUSY() };
       try {
+        await afterDecision();
         await pullOne(String(p?.name));
         return { ok: true };
       } catch (e) {
@@ -355,11 +367,13 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
     },
     // The welcome's download: answers at once, pulls one model after the other, and says the end in a notification.
     "settings.pullInBackground": (p: { names?: unknown }): SettingsResult => {
-      if (pull) return { ok: false, error: PULL_BUSY() };
+      if (busy()) return { ok: false, error: PULL_BUSY() };
       const names = Array.isArray(p?.names) ? p.names.map(String) : [];
       if (!names.length || names.some((n) => n !== OLLAMA_ITSELF && n !== DECISION_MODEL && !PULLABLE_MODELS.includes(n))) return { ok: false, error: UNSUPPORTED_MODEL() };
       void (async () => {
         try {
+          // A decision model installed meanwhile is a no-op for LocalAi; one that failed is tried again here.
+          await afterDecision();
           for (const n of names) await pullOne(n);
           o.notify({ title: hostSay("host-ai-ready-title"), text: hostSay("host-ai-ready-text") });
         } catch (e) {

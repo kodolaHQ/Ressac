@@ -384,6 +384,23 @@ describe("settings host", () => {
     expect(await h["ai.state"]!({})).not.toHaveProperty("decisionError");
   });
 
+  it("the welcome's pulls queue behind the background decision download instead of failing busy", async () => {
+    const { h, o, calls } = setup();
+    let finish!: () => void;
+    o.ai.installDecisionModel.mockImplementationOnce(() => new Promise<void>((ok) => (finish = () => (calls.push("decision"), ok()))));
+    h.downloadDecision();
+    await vi.waitFor(async () => expect(await h["settings.pullProgress"]!({})).toMatchObject({ name: "d1-2B" }));
+    expect(await h["settings.pullModel"]!({ name: "d1-2B" })).toMatchObject({ ok: false }); // the same download: busy
+    expect(await h["settings.pullInBackground"]!({ names: ["ollama", "d1-2B"] })).toEqual({ ok: true });
+    const single = h["settings.pullModel"]!({ name: "ollama" }) as Promise<unknown>;
+    expect(calls).toEqual([]);
+    finish();
+    await vi.waitFor(() => expect(o.notify).toHaveBeenCalledWith(expect.objectContaining({ title: "L'IA locale est prête" })));
+    expect(calls).toEqual(["decision", "ollama.install", "installDecisionModel"]);
+    // Queued behind the welcome's list, the single pull then finds the slot taken: refused, as two user pulls always were.
+    expect(await single).toMatchObject({ ok: false });
+  });
+
   it("cancels the decision download when AI goes off, without keeping an error", async () => {
     const { h, o } = setup();
     let fail!: (e: Error) => void;

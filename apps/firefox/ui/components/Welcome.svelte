@@ -74,8 +74,10 @@
     const v = ai?.verification;
     runtime = ai?.ollama;
     ollama = !!v?.ollama;
-    missing = v ? [!v.gemma && "gemma4:e4b-mlx", !v.decision && DECISION_MODEL].filter((n): n is string => !!n) : [];
-    pulling = !!running;
+    // The decision download Ressac starts with AI is not the user's: Gemma and Ollama stay offered (the host queues them behind it).
+    const background = running?.name === DECISION_MODEL;
+    missing = v ? [!v.gemma && "gemma4:e4b-mlx", !v.decision && !background && DECISION_MODEL].filter((n): n is string => !!n) : [];
+    pulling = !!running && !background;
   }
   async function startOllama() {
     ollama = undefined;
