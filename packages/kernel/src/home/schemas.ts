@@ -92,6 +92,8 @@ export const WidgetState = z.object({
    * may have been written by the widget, which can put data of the user's account in it.
    */
   kernelError: z.literal(true).optional(),
+  /** A kernel-written writer message (no account, limit reached) that failed items of the last run; never widget text. */
+  warning: z.string().optional(),
   log: z.string().optional(),
   /** Run in progress: items done out of the total. */
   progress: z.object({ done: z.number().int().min(0), total: z.number().int().min(0) }).optional(),

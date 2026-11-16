@@ -92,6 +92,8 @@
         >
       {:else if widget.state.status === "workshop-stopped"}
         <span class="badge failure">{t("home-widget-workshop-stopped")}</span>
+      {:else if widget.state.warning}
+        <span class="badge failure" data-testid="widget-warning">{widget.state.warning}</span>
       {:else if next}
         <span class="badge muted" data-testid="next-run">{t("home-widget-next", { next })}</span>
       {/if}

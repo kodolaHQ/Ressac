@@ -83,6 +83,16 @@ export type HarvestResult = { state: WidgetState; data?: unknown; run?: string; 
 const ID = /^[a-z0-9-]+$/;
 const loc = (o: Pick<HarvestOptions, "locale">) => o.locale?.() ?? "en";
 
+/**
+ * The kernel's writer message (no account / limit) that failed items of this run, in the current language, or undefined.
+ * Matched by comparing the item log lines to the localized texts, so only our own fixed text is ever returned.
+ */
+export function writerWarning(run: Execution, locale: string): string | undefined {
+  const texts = ["kernel-writer-none", "kernel-writer-limit"].flatMap((k) => [say("fr", k), say("en", k)].map((m) => [m, say(locale, k)]));
+  for (const b of run.blocks) for (const line of b.log) for (const [m, shown] of texts) if (line.endsWith(` : ${m}`)) return shown;
+  return undefined;
+}
+
 /** The grant an owner waits for: its account, or (without one) the approval of what it reads. */
 export const grantRequired = (d: { sources: { account: string[]; public: string[]; web?: boolean } }, locale: string) => {
   const { account, public: publics, web } = d.sources;
@@ -270,6 +280,7 @@ export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
     log?: string;
     data?: unknown;
     run?: string;
+    warning?: string;
   }): Promise<HarvestResult> => {
     const state: WidgetState = {
       status: r.status,
@@ -281,6 +292,7 @@ export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
       if (!r.widgetError) state.kernelError = true;
     }
     if (r.log) state.log = r.log;
+    if (r.warning) state.warning = r.warning;
     await writeWidgetState(widgetsFolder, id, state);
     o.onChange?.();
     return {
@@ -438,7 +450,7 @@ export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
     }
     await writeRun(dataFolder, execution, loc(o));
     if (await removedGrant()) return denied();
-    const ok = await conclude({ status: "ok", data: outcome.output.value, log: log, run: execution.id });
+    const ok = await conclude({ status: "ok", data: outcome.output.value, log: log, run: execution.id, warning: writerWarning(execution, loc(o)) });
     // Withdrawn during the state write: « ok » must not overwrite the accord-requis written by refuserAccord.
     if (await removedGrant()) return denied();
     // Counted against the data from before the run (those published along the way are not in it).

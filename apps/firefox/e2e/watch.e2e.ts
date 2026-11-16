@@ -396,8 +396,9 @@ it("without a Claude Code or Codex account the opinions fail with the connect me
   const run = await runWatch(m);
   expect(run.status).toBe("partial");
   expect(blockStatus(run, "avis")).not.toBe("succeeded");
-  // The run record is the only surface that carries the error: the widget shows the published items, not the run's errors.
   expect(JSON.stringify(run)).toContain("Connectez Claude Code ou Codex dans Réglages › Agents pour les résumés");
+  // The widget says it too, in clear, as a warning badge.
+  await until(() => widgetText(m, "voitures"), (t) => t.includes("Connectez Claude Code ou Codex dans Réglages › Agents pour les résumés"));
   expect(watchData()!.every((a) => a.avis === undefined)).toBe(true);
 }, 120_000);
 
