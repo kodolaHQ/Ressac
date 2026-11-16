@@ -390,7 +390,6 @@ describe("settings host", () => {
     o.ai.installDecisionModel.mockImplementationOnce(() => new Promise<void>((ok) => (finish = () => (calls.push("decision"), ok()))));
     h.downloadDecision();
     await vi.waitFor(async () => expect(await h["settings.pullProgress"]!({})).toMatchObject({ name: "d1-2B" }));
-    expect(await h["settings.pullModel"]!({ name: "d1-2B" })).toMatchObject({ ok: false }); // the same download: busy
     expect(await h["settings.pullInBackground"]!({ names: ["ollama", "d1-2B"] })).toEqual({ ok: true });
     const single = h["settings.pullModel"]!({ name: "ollama" }) as Promise<unknown>;
     expect(calls).toEqual([]);
@@ -399,6 +398,17 @@ describe("settings host", () => {
     expect(calls).toEqual(["decision", "ollama.install", "installDecisionModel"]);
     // Queued behind the welcome's list, the single pull then finds the slot taken: refused, as two user pulls always were.
     expect(await single).toMatchObject({ ok: false });
+  });
+
+  it("two clicks on the d1 row during the background download wait, none is refused busy", async () => {
+    const { h, o } = setup();
+    let finish!: () => void;
+    o.ai.installDecisionModel.mockImplementationOnce(() => new Promise<void>((ok) => (finish = ok)));
+    h.downloadDecision();
+    await vi.waitFor(async () => expect(await h["settings.pullProgress"]!({})).toMatchObject({ name: "d1-2B" }));
+    const two = Promise.all([h["settings.pullModel"]!({ name: "d1-2B" }), h["settings.pullModel"]!({ name: "d1-2B" })]);
+    finish();
+    expect(await two).toEqual([{ ok: true }, { ok: true }]);
   });
 
   it("cancels the decision download when AI goes off, without keeping an error", async () => {

@@ -22,6 +22,11 @@ kernel-ai-install-running = Installation already in progress
 kernel-ai-download-failed = The model download failed: { $error }
 kernel-ai-hash-mismatch = The downloaded model is corrupt: it was deleted, start the download again.
 kernel-ai-llama-server-missing = llama-server not found
+kernel-ai-not-installed = Local AI not installed
+kernel-ai-llama-unreachable = llama-server is not responding: { $error }
+kernel-ai-llama-status = llama-server answered { $status }
+kernel-ai-llama-start-failed = llama-server did not start: { $detail }
+kernel-ai-llama-start-timeout = llama-server did not start: timed out. { $detail }
 
 # Errors the kernel writes into widget and action runs (shown on the cards). Stored texts stay in their language.
 kernel-err-timeout = Timed out

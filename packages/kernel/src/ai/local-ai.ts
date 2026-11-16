@@ -28,6 +28,8 @@ export interface LocalAiOptions {
   /** Test overrides of the model download. */
   decisionUrl?: string;
   decisionSha256?: string;
+  /** Expected size of the model file (default: the shipped one); a longer download is aborted. */
+  decisionBytes?: number;
   port?: number;
   inactivityMs?: number;
   clock?: () => number;
@@ -49,6 +51,8 @@ export const D1_SHA256 = "adca5789ad30ae6027e8e936749bb9f19673097492ab26fa1c5b69
 export const D1_BYTES = 1099629888;
 /** Measured: every ai.sort and watcher state of the bench fits in 4096 tokens. */
 const D1_CONTEXT = 4096;
+/** llama-server splits `-c` across its parallel slots: 4 slots of D1_CONTEXT (the dispatcher sends up to 4 calls at once). */
+const D1_SLOTS = 4;
 /** In order of preference: the MLX build is faster, but not every Ollama serves it. */
 export const GEMMA_MODELS = ["gemma4:e4b-mlx", "gemma4:e4b"];
 /** Asked for when no Gemma build is detected. */
@@ -66,8 +70,8 @@ export const BACKGROUND_KEEP_ALIVE = "1m";
 export const INTERACTIVE_KEEP_ALIVE = "10m";
 
 /**
- * Launches the command in its own process group (`uv run` launches a Python child: killing uv alone would leave it
- * orphaned). `arreter` sends SIGTERM to the group, then SIGKILL after `delaiKillMs` if it is still alive. If the Node process
+ * Launches the command in its own process group (the server may launch children: killing the parent alone could leave
+ * them orphaned). `stop` sends SIGTERM to the group, then SIGKILL after `killDelayMs` if it is still alive. If the Node process
  * exits without stopping the group, it is killed at exit.
  */
 export function launchAiProcess(cmd: string, args: string[], o: { cwd: string; killDelayMs?: number }): AiProcess {
@@ -86,7 +90,7 @@ export function launchAiProcess(cmd: string, args: string[], o: { cwd: string; k
         forgetGroup(pid);
         return;
       }
-      // The group may outlive the first process (a child that ignores SIGTERM): we check the group, not `sorti`.
+      // The group may outlive the first process (a child that ignores SIGTERM): we check the group, not the exit event.
       const timer = setTimeout(() => {
         killGroup(pid, "SIGKILL");
         forgetGroup(pid);
@@ -135,7 +139,7 @@ const CANCEL_DELAY_MS = 3000;
 
 /**
  * Local AI as seen by a kernel. Once `fermer()` is called (kernel shutdown), its calls are refused: a late
- * harvest does not relaunch Kev. The next kernel (another agent profile) gets a new access.
+ * harvest does not relaunch the server. The next kernel (another agent profile) gets a new access.
  */
 export interface AiAccess {
   kev: LocalAi["kev"];
@@ -151,11 +155,11 @@ export class LocalAi {
   private timeout?: NodeJS.Timeout;
   private lastUsage = 0;
   private generation = 0;
-  /** Closed (the browser quits): nothing starts Kev or calls Ollama anymore. */
+  /** Closed (the browser quits): nothing starts llama-server or calls Ollama anymore. */
   private closed = false;
   /** Install in progress: its cancellation and its end (successful or not). */
   private installation?: { controller: AbortController; end: Promise<unknown> };
-  // Modifiable: Kev's address, imposed by RESSAC_KEV_URL or computed from the port.
+  // Modifiable: The decision server's address, imposed by RESSAC_KEV_URL or computed from the port.
   private kevUrl: string;
   private readonly kevForced: boolean;
   readonly ollamaUrl: string;
@@ -261,6 +265,7 @@ export class LocalAi {
           for await (const chunk of r.body) {
             await file.write(chunk);
             received += chunk.length;
+            if (received > (this.o.decisionBytes ?? D1_BYTES)) throw new Error("too many bytes");
             const percent = Number.isFinite(total) ? Math.floor((received * 100) / total) : null;
             if (percent !== shown) onPercent((shown = percent));
           }
@@ -270,6 +275,7 @@ export class LocalAi {
       }
     } catch (e) {
       if (signal.aborted) throw cancelled();
+      if ((e as Error).message === "too many bytes") await rm(part, { force: true });
       throw new Error(this.say("kernel-ai-download-failed", { error: (e as Error).message }));
     }
     const hash = createHash("sha256");
@@ -298,9 +304,9 @@ export class LocalAi {
       });
     } catch (e) {
       checkAbort(o.signal);
-      throw new Error(`llama-server ne répond pas : ${(e as Error).message}`);
+      throw new Error(this.say("kernel-ai-llama-unreachable", { error: (e as Error).message }));
     }
-    if (!r.ok) throw new Error(`llama-server a répondu ${r.status}`);
+    if (!r.ok) throw new Error(this.say("kernel-ai-llama-status", { status: r.status }));
     this.lastUsage = this.clock();
     try {
       return toPplxScale(((await r.json()) as { answers: unknown }).answers);
@@ -360,7 +366,7 @@ export class LocalAi {
     }
   }
 
-  /** Ollama answers and a Gemma build is installed (only Ollama's tags are read: no uv probe). Never throws. */
+  /** Ollama answers and a Gemma build is installed (only Ollama's tags are read: no extra probe). Never throws. */
   async hasGemma(): Promise<boolean> {
     this.gemmaModel = await this.detectGemma();
     return this.gemmaModel !== undefined;
@@ -405,7 +411,7 @@ export class LocalAi {
   /** An access for a kernel, closed with it (see AiAccess). */
   access(): AiAccess {
     let closed = false;
-    // Checked before the call: kev() launches Kev synchronously, before its first await; fermer() stops it afterwards.
+    // Checked before the call: kev() launches llama-server synchronously, before its first await; close() stops it afterwards.
     return {
       kev: (body, o) => (closed ? Promise.reject(new Error(AI_CLOSED_ERROR)) : this.kev(body, o)),
       gemma: (o) => (closed ? Promise.reject(new Error(AI_CLOSED_ERROR)) : this.gemma(o)),
@@ -443,7 +449,7 @@ export class LocalAi {
     }
     if (!existsSync(this.modelFile)) {
       this.change("not-installed");
-      throw new Error("IA locale non installée");
+      throw new Error(this.say("kernel-ai-not-installed"));
     }
     if (!this.o.llamaServer) {
       const msg = this.say("kernel-ai-llama-server-missing");
@@ -454,7 +460,7 @@ export class LocalAi {
     this.change("starting");
     const lines: string[] = [];
     let output: number | null | undefined;
-    const args = ["-m", this.modelFile, "--host", "127.0.0.1", "--port", String(this.port), "-ngl", "99", "-c", String(D1_CONTEXT)];
+    const args = ["-m", this.modelFile, "--host", "127.0.0.1", "--port", String(this.port), "-ngl", "99", "-np", String(D1_SLOTS), "-c", String(D1_CONTEXT * D1_SLOTS)];
     const p = this.launch(this.o.llamaServer, args, { cwd: this.d1Folder });
     this.process = p;
     p.onLine?.((l) => { lines.push(l); if (lines.length > 20) lines.shift(); });
@@ -462,21 +468,23 @@ export class LocalAi {
     p.onOutput((code) => {
       dead = true;
       output = code;
+      if (this.timeout) clearInterval(this.timeout);
       if (this.process === p) { this.process = undefined; if (this.currentState === "active") this.change("stopped"); }
     });
     const step = this.o.pollMs ?? 500;
     const end = Date.now() + STARTUP_DELAY_MS;
     while (Date.now() < end) {
-      if (gen !== this.generation) return; // arreter() came through here
+      if (gen !== this.generation) return; // stop() came through here
       if (dead) {
-        const msg = `llama-server n'a pas démarré : ${lines.slice(-5).join("\n") || `code ${output}`}`;
+        const msg = this.say("kernel-ai-llama-start-failed", { detail: lines.slice(-5).join("\n") || `code ${output}` });
         this.change("error", msg);
         throw new Error(msg);
       }
       try {
         const r = await fetch(`${this.kevUrl}/v1/models`, { signal: AbortSignal.timeout(2000) });
         if (gen !== this.generation) return;
-        if (r.ok) {
+        // Ready only if our process is alive and the answer names our model (a foreign server may hold the port).
+        if (r.ok && !dead && (await r.text()).includes(D1_FILE)) {
           this.lastUsage = this.clock();
           this.change("active");
           this.watchIdle();
@@ -488,7 +496,7 @@ export class LocalAi {
     if (gen !== this.generation) return;
     p.stop();
     this.process = undefined;
-    const msg = `llama-server n'a pas démarré : délai dépassé. ${lines.slice(-5).join("\n")}`.trim();
+    const msg = this.say("kernel-ai-llama-start-timeout", { detail: lines.slice(-5).join("\n") }).trim();
     this.change("error", msg);
     throw new Error(msg);
   }

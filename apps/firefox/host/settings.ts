@@ -165,7 +165,7 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
     }
   };
   /** The decision download started at AI start is Ressac's, not the user's: a user's pull waits for it instead of being refused. */
-  const busy = (name?: string) => !!pull && (pull.name !== DECISION_MODEL || name === DECISION_MODEL);
+  const busy = () => !!pull && pull.name !== DECISION_MODEL;
   const afterDecision = async () => {
     while (pull?.name === DECISION_MODEL) await pulled;
   };
@@ -356,9 +356,10 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
       }
     },
     "settings.pullModel": async (p: { name?: unknown }): Promise<SettingsResult> => {
-      if (busy(String(p?.name))) return { ok: false, error: PULL_BUSY() };
+      if (busy()) return { ok: false, error: PULL_BUSY() };
       try {
-        await afterDecision();
+        // Rechecked after the wait: of two d1 callers resuming together, the second finds the slot taken by the first and waits again.
+        do await afterDecision(); while (p?.name === DECISION_MODEL && pull?.name === DECISION_MODEL);
         await pullOne(String(p?.name));
         return { ok: true };
       } catch (e) {

@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { LocalAi, launchAiProcess, D1_FILE, type AiProcess } from "../../src/ai/local-ai.js";
 import { D1_ANCHORS, toPplxScale } from "../../src/ai/d1-scale.js";
 import { tempFolder } from "../helpers/temp.js";
-import { fakeKev, fakeOllama, fakeSilentOllama, unreachableUrl, type FakeServer } from "../helpers/fake-ai.js";
+import { fakeForeign, fakeKev, fakeOllama, fakeSilentOllama, unreachableUrl, type FakeServer } from "../helpers/fake-ai.js";
 
 const toClose: FakeServer[] = [];
 const toStop: LocalAi[] = [];
@@ -170,7 +170,7 @@ describe("LocalAi", () => {
   it("model absent: « IA locale non installée », nothing launched", async () => {
     const launch = vi.fn();
     const ai = new LocalAi({ folder: await tempFolder(), llamaServer: LLAMA, launch, ...fast });
-    await expect(ai.kev({ state: "", questions: {} })).rejects.toThrow("IA locale non installée");
+    await expect(ai.kev({ state: "", questions: {} })).rejects.toThrow("Local AI not installed");
     expect(ai.state().state).toBe("not-installed");
     expect(launch).not.toHaveBeenCalled();
   });
@@ -199,11 +199,21 @@ describe("LocalAi", () => {
     await ai.kev({ state: "", questions: {} });
     expect(launches).toEqual([{
       cmd: LLAMA,
-      args: ["-m", join(folder, "d1", D1_FILE), "--host", "127.0.0.1", "--port", "8008", "-ngl", "99", "-c", "4096"],
+      args: ["-m", join(folder, "d1", D1_FILE), "--host", "127.0.0.1", "--port", "8008", "-ngl", "99", "-np", "4", "-c", "16384"],
       cwd: join(folder, "d1"),
     }]);
     expect(states).toEqual(["starting", "active"]);
     expect(ai.state().state).toBe("active");
+  });
+
+  it("a foreign server on the port (no model name) is not taken as ready", async () => {
+    const foreign = keep(await fakeForeign());
+    // Our process dies after a while: a ready server would have been accepted long before.
+    const launch = (): AiProcess => ({ stop() {}, onOutput(r) { setTimeout(() => r(1), 100); } });
+    const ai = new LocalAi({ folder: await installed(), llamaServer: LLAMA, launch, port: Number(new URL(foreign.url).port), ...fast });
+    toStop.push(ai);
+    await expect(ai.kev({ state: "", questions: {} })).rejects.toThrow("did not start");
+    expect(ai.state().state).toBe("error");
   });
 
   it("a server that dies at start rejects with its last lines; the next call launches again", async () => {
@@ -362,6 +372,15 @@ describe("LocalAi: the decision model download", () => {
     expect(host.headers[0]!.range).toBeUndefined();
   });
 
+  it("rejects a download longer than expected and leaves no .part", async () => {
+    const host = await fakeFile(data);
+    const folder = await tempFolder();
+    const ai = new LocalAi({ folder, decisionUrl: host.url, decisionSha256: sha(data), decisionBytes: data.length - 1, locale: () => "en" });
+    await expect(ai.installDecisionModel(() => {})).rejects.toThrow();
+    expect(existsSync(`${final(folder)}.part`)).toBe(false);
+    expect(existsSync(final(folder))).toBe(false);
+  });
+
   it("resumes a partial download", async () => {
     const host = await fakeFile(data);
     const folder = await tempFolder();
@@ -415,7 +434,7 @@ describe("LocalAi: the decision model download", () => {
   });
 });
 
-describe("launchAiProcess (Kev: uv launches a Python child)", () => {
+describe("launchAiProcess (the server may launch a child process)", () => {
   const alive = (pid: number) => {
     try {
       process.kill(pid, 0);

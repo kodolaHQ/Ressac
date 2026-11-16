@@ -32,10 +32,13 @@ const json = (res: import("node:http").ServerResponse, code: number, o: unknown)
 /** Fake Kev: /v1/models and /v1/systemone. */
 export const fakeKev = (answers: unknown = { q: { type: "noul", noul: 0.91 } }) =>
   start((r, res) => {
-    if (r.url === "/v1/models") return json(res, 200, { data: [] });
+    if (r.url === "/v1/models") return json(res, 200, { data: [{ id: "d1-2B-Q4_K_M.gguf" }] });
     if (r.url === "/v1/systemone") return json(res, 200, { model: "kev-latest", answers, usage: {} });
     json(res, 404, {});
   });
+
+/** A server that is not llama-server: answers 200 to everything, without naming a model. */
+export const fakeForeign = () => start((_r, res) => json(res, 200, { data: [] }));
 
 /** Fake Ollama: /api/chat answers `contenu`. */
 export const fakeOllama = (content: string, models: string[] = ["gemma4:e4b-mlx"]) =>

@@ -389,6 +389,9 @@
               <div class="grow"><b>{t("settings-ai-decision-model")}</b><span class="muted">{t("settings-ai-decision-detail")}</span></div>
               {@render pullPill(DECISION_MODEL, !!v?.decision, "decision")}
             </div>
+            {#if ai.state === "error" && ai.error}
+              <div class="row"><span class="pill" data-tone="error" data-testid="ai-decision-server-error">{ai.error}</span></div>
+            {/if}
             {#if ai.decisionError && !v?.decision && pulling?.name !== DECISION_MODEL}
               <div class="row"><span class="pill" data-tone="error" data-testid="ai-decision-error">{t("settings-ai-decision-failed", { reason: ai.decisionError })}</span></div>
             {/if}
