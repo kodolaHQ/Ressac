@@ -65,15 +65,14 @@ export function readsCovered(declaration: { sources: { public: string[]; web?: b
 
 /**
  * The migration, once per folder: every current owner's declared reads are approved (owners that existed before the gate,
- * starters of a new space). A marker records it, so a `reads.json` the user removed later is not seeded again.
+ * starters of a new space); entries already there are kept. A marker records it, so a `reads.json` the user removed later is
+ * not seeded again.
  */
 export async function seedReads(folder: string, owners: { id: string; sources: { public: string[]; web?: boolean } }[]): Promise<void> {
   const marker = join(folder, "reads.seeded");
   if (await stat(marker).then(() => true, () => false)) return;
-  if (!(await stat(file(folder)).then(() => true, () => false))) {
-    await modify(folder, (all) => {
-      for (const o of owners) if (ID.test(o.id)) all[o.id] = { public: [...o.sources.public].sort(), web: o.sources.web === true };
-    });
-  }
+  await modify(folder, (all) => {
+    for (const o of owners) if (ID.test(o.id)) all[o.id] ??= { public: [...o.sources.public].sort(), web: o.sources.web === true };
+  });
   await writeAtomic(marker, "");
 }

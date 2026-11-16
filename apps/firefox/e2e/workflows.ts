@@ -6,6 +6,19 @@ import { click, inUi, waitUi } from "./ui";
 /** A widget's folder in the space: `<dataDir>/workspace/home/widgets/<id>`. */
 export const widgetDir = (dataDir: string, id: string) => path.join(dataDir, "workspace", "home", "widgets", id);
 
+/**
+ * The user's approval of what a fixture without account reads (`<folder>/reads.json`, as the kernel writes it): a widget or
+ * action written after the browser started would otherwise wait for « Autoriser ».
+ */
+export async function approveFixtureReads(folder: string, id: string, sources: { account?: string[]; public?: string[]; web?: boolean }): Promise<void> {
+  if (sources.account?.length || (!sources.public?.length && !sources.web)) return;
+  const file = path.join(folder, "reads.json");
+  const all: Record<string, unknown> = await readFile(file, "utf8").then((t) => JSON.parse(t), () => ({}));
+  all[id] = { public: [...(sources.public ?? [])].sort(), web: sources.web === true };
+  await mkdir(folder, { recursive: true });
+  await writeFile(file, JSON.stringify(all));
+}
+
 /** A display that shows the data it gets by postMessage (`#donnees`). */
 const DISPLAY = `<!doctype html><meta charset="utf-8"><pre id="donnees"></pre>
 <script>
@@ -40,6 +53,8 @@ export async function writeWidget(
   await writeFile(path.join(dir, "display.html"), DISPLAY);
   if (o.workflow !== undefined) await writeFile(path.join(dir, "workflow.json"), typeof o.workflow === "string" ? o.workflow : JSON.stringify(o.workflow));
   for (const [name, text] of Object.entries(o.files ?? {})) await writeFile(path.join(dir, name), text);
+  const declared = (o.declaration?.sources ?? {}) as { account?: string[]; public?: string[]; web?: boolean };
+  await approveFixtureReads(path.join(dataDir, "widgets"), id, declared);
   const state = path.join(dataDir, "widgets", id);
   await mkdir(state, { recursive: true });
   const now = new Date().toISOString();

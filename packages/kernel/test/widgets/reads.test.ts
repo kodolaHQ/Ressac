@@ -37,10 +37,10 @@ describe("reads", () => {
     expect(await readReads(d)).toEqual({});
   });
 
-  it("seeding leaves an existing file alone", async () => {
+  it("seeding keeps the entries already there and adds the others", async () => {
     const d = await tempFolder();
     await approveReads(d, "x", { public: ["x.fr"], web: false });
-    await seedReads(d, [{ id: "w", sources: { public: ["a.fr"], web: false } }]);
-    expect(await readReads(d)).toEqual({ x: { public: ["x.fr"], web: false } });
+    await seedReads(d, [{ id: "w", sources: { public: ["a.fr"], web: false } }, { id: "x", sources: { public: ["y.fr"], web: true } }]);
+    expect(await readReads(d)).toEqual({ x: { public: ["x.fr"], web: false }, w: { public: ["a.fr"], web: false } });
   });
 });
