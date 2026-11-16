@@ -366,7 +366,8 @@ describe("Ressac sidebar", () => {
     await waitUi(m, "return doc.querySelectorAll('[data-testid=\"essentials\"] [data-testid^=\"favorite-\"]').length === 6");
     const gap = await inUi<number>(
       m,
-      "return doc.querySelector('.space-content').getBoundingClientRect().top - doc.querySelector('[data-testid=\"essentials\"]').getBoundingClientRect().bottom",
+      // The last cell, not the grid: a squashed grid keeps its box above the tabs while its rows overflow onto them.
+      "return doc.querySelector('.space-content').getBoundingClientRect().top - Math.max(...[...doc.querySelectorAll('[data-testid=\"essentials\"] [data-testid^=\"favorite-\"]')].map((c) => c.getBoundingClientRect().bottom))",
     );
     expect(gap).toBeGreaterThanOrEqual(0);
   });
