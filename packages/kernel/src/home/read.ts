@@ -83,15 +83,19 @@ function firstFreeSlot(busy: Rectangle[], w: number, h: number): { x: number; y:
   }
 }
 
-/** Placements of layout.json in free units. Another version, a damaged file or an overlap gives []. */
-export async function readFreeLayout(c: SpacePaths): Promise<FreePlacement[]> {
+/**
+ * Placements of layout.json in free units. Another version, a damaged file or an overlap gives []. `strict` (before a
+ * write): only absent or damaged counts as empty; EMFILE, EACCES… throw, never reset the whole layout.
+ */
+export async function readFreeLayout(c: SpacePaths, strict = false): Promise<FreePlacement[]> {
   try {
     const available = FreeLayout.safeParse(JSON.parse(await readFile(c.layout, "utf8")));
     if (!available.success) return [];
     const { widgets } = available.data;
     if (widgets.some((a, i) => widgets.slice(i + 1).some((b) => overlaps(a, b)))) return [];
     return widgets;
-  } catch {
+  } catch (e) {
+    if (strict && !(e instanceof SyntaxError) && (e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
     return [];
   }
 }

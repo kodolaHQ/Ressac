@@ -116,7 +116,7 @@ const writeLayout = (c: SpacePaths, widgets: readonly FreePlacement[]) =>
 export async function removeWidget(c: SpacePaths, id: string, forget: (id: string) => Promise<void>): Promise<void> {
   if (!ID_WIDGET.test(id)) throw new Error(`id de widget invalide : ${id}`);
   await queued(c.layout, async () => {
-    const remaining = (await readFreeLayout(c)).filter((p) => p.id !== id);
+    const remaining = (await readFreeLayout(c, true)).filter((p) => p.id !== id);
     const trash = join(c.home, ".trash");
     await mkdir(trash, { recursive: true });
     await rename(join(c.widgets, id), join(trash, `${id}-${Date.now()}`));

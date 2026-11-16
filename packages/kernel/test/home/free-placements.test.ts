@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { spacePaths } from "../../src/paths.js";
 import { readFreeLayout, placeMissingFree } from "../../src/home/read.js";
 import { freeSizes, type FreePlacement } from "../../src/home/schemas.js";
@@ -35,6 +35,18 @@ test("readFreeLayout reads version 3 and returns [] for version 2, a damaged fil
     JSON.stringify({ version: 3, widgets: [{ id: "a", x: 400, y: 0, w: 500, h: 90 }, { id: "b", x: 500, y: 0, w: 500, h: 90 }] }),
   );
   expect(await readFreeLayout(c)).toEqual([]);
+});
+
+test("readFreeLayout strict: absent or damaged is empty, an unreadable file throws instead of resetting the layout", async () => {
+  const c = await space();
+  expect(await readFreeLayout(c, true)).toEqual([]);
+  await writeFile(c.layout, "{ pas du json");
+  expect(await readFreeLayout(c, true)).toEqual([]);
+  await rm(c.layout);
+  // A folder in its place: reading fails like EMFILE or EACCES would.
+  await mkdir(c.layout);
+  expect(await readFreeLayout(c)).toEqual([]);
+  await expect(readFreeLayout(c, true)).rejects.toThrow();
 });
 
 test("placeMissingFree keeps a valid wanted placement and ignores an unknown id or a duplicate", () => {
