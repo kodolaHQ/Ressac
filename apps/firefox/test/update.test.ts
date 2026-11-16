@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { apply } from "../core/state/actions";
 import { initialState } from "../core/state/initial-state";
 import { loadSession, SessionRecorder } from "../core/state/persistence";
-import { isSignatureFailure, isStaleUpdate, showUpdateCard, updateCardTitle, updateDownloadUrl, updatePhase, updateStatusText } from "../core/update";
+import { isSignatureFailure, isStaleUpdate, plistVersion, showUpdateCard, updateCardTitle, updateDownloadUrl, updatePhase, updateStatusText } from "../core/update";
 import type { BrowserState, UpdateShown } from "../shared/model";
 
 let n = 0;
@@ -67,6 +67,13 @@ describe("isStaleUpdate", () => {
     expect(isStaleUpdate("downloading", "0.1.6", "0.1.6", compare)).toBe(true);
     expect(isStaleUpdate("ready", "0.1.7", "0.1.6", compare)).toBe(false);
     expect(isStaleUpdate("ready", "0.1.10", "0.1.9", compare)).toBe(false);
+  });
+  it("the staged app's own version unmasks an old signed build offered as 9.9.9", () => {
+    const plist = `<?xml version="1.0"?><plist><dict><key>CFBundleName</key><string>Ressac</string>\n  <key>CFBundleShortVersionString</key>\n  <string>0.1.5</string></dict></plist>`;
+    expect(plistVersion(plist)).toBe("0.1.5");
+    expect(isStaleUpdate("ready", "9.9.9", "0.1.8", compare)).toBe(false);
+    expect(isStaleUpdate("ready", plistVersion(plist), "0.1.8", compare)).toBe(true);
+    expect(plistVersion("")).toBeNull();
   });
   it("an unknown version or another phase is left alone", () => {
     expect(isStaleUpdate("ready", null, "0.1.6", compare)).toBe(false);

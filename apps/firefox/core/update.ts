@@ -35,6 +35,11 @@ export const isSignatureFailure = (errorCode: number): boolean => errorCode >= 1
 export const isStaleUpdate = (phase: UpdatePhase, version: string | null, running: string, compare: (a: string, b: string) => number): boolean =>
   (phase === "downloading" || phase === "ready") && !!version && compare(version, running) <= 0;
 
+/** CFBundleShortVersionString of an Info.plist (XML): the staged app's own Ressac version, signed inside the MAR. */
+export function plistVersion(plist: string): string | null {
+  return /<key>CFBundleShortVersionString<\/key>\s*<string>([^<]+)<\/string>/.exec(plist)?.[1]?.trim() ?? null;
+}
+
 export const updateCardTitle = (version: string | null, locale: string): string =>
   version ? format(locale, "sidebar-update-title", { version }) : format(locale, "sidebar-update-title-plain");
 
