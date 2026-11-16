@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { rm, writeFile } from "node:fs/promises";
+import { chmod, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { approveReads, readReads, readsCovered, readsUnrestricted, removeReads, seedReads } from "../../src/widgets/reads.js";
 import { tempFolder } from "../helpers/temp.js";
@@ -15,6 +15,15 @@ describe("reads", () => {
     expect(readsCovered(decl([], true), { public: [], web: false })).toBe(false);
     expect(readsCovered(decl(["a.fr"], true), { public: ["a.fr"], web: true })).toBe(true);
     expect(readsCovered(decl([]), { public: [], web: false })).toBe(true);
+  });
+
+  it("an unreadable reads.json (EACCES) fails the approval and erases no other one", async () => {
+    const d = await tempFolder();
+    await approveReads(d, "a", { public: ["a.fr"], web: false });
+    await chmod(join(d, "reads.json"), 0o000);
+    await expect(approveReads(d, "b", { public: [], web: true })).rejects.toThrow(/EACCES/);
+    await chmod(join(d, "reads.json"), 0o600);
+    expect(Object.keys(await readReads(d))).toEqual(["a"]);
   });
 
   it("approveReads, removeReads, damaged entries ignored", async () => {

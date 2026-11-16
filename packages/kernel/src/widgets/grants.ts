@@ -22,11 +22,13 @@ function checkId(id: string): void {
 }
 
 /** The file's valid grants; an absent or damaged file counts as no grant. */
-export async function readGrants(widgetsFolder: string): Promise<Record<string, Grant>> {
+export async function readGrants(widgetsFolder: string, strict = false): Promise<Record<string, Grant>> {
   let raw: unknown;
   try {
     raw = JSON.parse(await readFile(file(widgetsFolder), "utf8"));
-  } catch {
+  } catch (e) {
+    // `strict` (before a write): only absent or damaged counts as empty; EMFILE, EACCES… fail the write, never erase the others.
+    if (strict && !(e instanceof SyntaxError) && (e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
     return {};
   }
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
@@ -41,7 +43,7 @@ export async function readGrants(widgetsFolder: string): Promise<Record<string, 
 /** One write at a time per folder: two simultaneous grants do not erase each other. */
 function modify(widgetsFolder: string, change: (a: Record<string, Grant>) => void): Promise<void> {
   return queued(widgetsFolder, async () => {
-    const grants = await readGrants(widgetsFolder);
+    const grants = await readGrants(widgetsFolder, true);
     change(grants);
     await writeAtomic(file(widgetsFolder), JSON.stringify(grants, null, 2));
   });

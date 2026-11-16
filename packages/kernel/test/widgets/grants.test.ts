@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { readFile, writeFile } from "node:fs/promises";
+import { chmod, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { DeclarationWidget } from "../../src/home/schemas.js";
 import { DeclarationAction } from "../../src/actions/schemas.js";
@@ -14,6 +14,15 @@ const declaration = (account: string[], publics: string[]) =>
   });
 
 describe("grants", () => {
+  it("an unreadable grants.json (EACCES) fails the grant and erases no other one", async () => {
+    const d = await tempFolder();
+    await giveGrant(d, "a", { domains: ["a.fr"], public: [], profile: "p1" });
+    await chmod(join(d, "grants.json"), 0o000);
+    await expect(giveGrant(d, "b", { domains: ["b.fr"], public: [], profile: "p1" })).rejects.toThrow(/EACCES/);
+    await chmod(join(d, "grants.json"), 0o600);
+    expect(Object.keys(await readGrants(d))).toEqual(["a"]);
+  });
+
   it("accorder then readGrants, removeGrant", async () => {
     const d = await tempFolder();
     expect(await readGrants(d)).toEqual({});

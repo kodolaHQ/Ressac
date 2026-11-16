@@ -15,11 +15,13 @@ const ID = /^[a-z0-9-]+$/;
 const file = (folder: string) => join(folder, "reads.json");
 
 /** The file's valid entries; an absent or damaged file counts as nothing approved. */
-export async function readReads(folder: string): Promise<Record<string, Reads>> {
+export async function readReads(folder: string, strict = false): Promise<Record<string, Reads>> {
   let raw: unknown;
   try {
     raw = JSON.parse(await readFile(file(folder), "utf8"));
-  } catch {
+  } catch (e) {
+    // `strict` (before a write): only absent or damaged counts as empty; EMFILE, EACCES… fail the write, never erase the others.
+    if (strict && !(e instanceof SyntaxError) && (e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
     return {};
   }
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
@@ -34,7 +36,7 @@ export async function readReads(folder: string): Promise<Record<string, Reads>> 
 /** One write at a time per file: two approvals at once do not erase each other. */
 function modify(folder: string, change: (r: Record<string, Reads>) => void): Promise<void> {
   return queued(file(folder), async () => {
-    const reads = await readReads(folder);
+    const reads = await readReads(folder, true);
     change(reads);
     await writeAtomic(file(folder), JSON.stringify(reads, null, 2));
   });
