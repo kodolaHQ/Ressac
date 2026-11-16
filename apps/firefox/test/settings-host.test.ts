@@ -163,10 +163,12 @@ describe("settings host", () => {
   });
 
   it("a status check that fails during a sign-in by code keeps signingIn: the code stays shown", async () => {
-    const { h } = setup({ exec: async () => ({ code: 2, stdout: "", stderr: "docker hiccup" }) });
+    const { h, o } = setup({ exec: async () => ({ code: 2, stdout: "", stderr: "docker hiccup" }) });
     expect(await h["settings.login"]!({ id: "codex" })).toMatchObject({ kind: "device" });
     const codex = ((await h["settings.agents"]!({})) as any[]).find((x) => x.id === "codex");
     expect(codex).toMatchObject({ state: "error", signingIn: true });
+    o.workshop.state = async () => "docker-absent" as any;
+    expect(((await h["settings.agents"]!({})) as any[]).find((x) => x.id === "codex")).toMatchObject({ state: "docker-absent", signingIn: true });
     h.stopLogins();
   });
 

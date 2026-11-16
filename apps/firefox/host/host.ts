@@ -493,7 +493,7 @@ const rpc = createRpc({
       sessions.engineChanged("claude");
     },
     "agent.profiles": async () => {
-      // The kernel writes the default profile while it starts: the panel may ask before that (or before its launch is queued).
+      // After the kernel's start (removeOutdated, initSpace): .ressac/profiles is read once no older container can move .ressac.
       await aiSwitch;
       await ready;
       try {
