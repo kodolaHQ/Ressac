@@ -9,6 +9,7 @@ import { say } from "../i18n.js";
 import { portRange } from "./ports.js";
 import { createRunner, type RunResult, type Runner } from "./runner.js";
 import { inFolder, listFolder, readFiles, type ReadFiles } from "../workspace/confined.js";
+import { realInternal } from "../workspace/initialize.js";
 
 export const CONTAINER_NAME = "ressac-workshop";
 // Read on every call so a second app (Firefox build) can run its own container.
@@ -412,13 +413,17 @@ export class Workshop {
     // The container from before the rename publishes the same ports: removed (absent: docker says so, nothing more).
     const old = legacyContainer();
     if (old) await this.launch(["rm", "-f", old], PROBE_DELAY_MS);
+    // Again here, with no older container left: a process left in one (0.1.7's .ressac was writable) may have linked .ressac
+    // again since initSpace, and an app launch or Réglages › Redémarrer starts the container without initSpace.
+    await realInternal(this.paths);
+    await mkdir(this.paths.logs, { recursive: true });
     const run = await this.launch([
       "run", "-d",
       "--name", containerName(),
       "--add-host", "host.docker.internal:host-gateway",
       "-v", `${this.paths.root}:${CONTAINER_PATH}`,
       // .ressac holds what restricts the agent (launch profiles, MCP configs): read-only, and a mount point cannot be renamed
-      // away. Only the logs, which the apps write from the container, are writable (initSpace creates both folders).
+      // away. Only the logs, which the apps write from the container, are writable (both folders are made just above).
       // The instruction files stay writable on purpose: the CLIs load many override files the agent could write anyway.
       "-v", `${this.paths.internal}:${CONTAINER_PATH}/.ressac:ro`,
       "-v", `${this.paths.logs}:${CONTAINER_PATH}/.ressac/logs`,
@@ -486,7 +491,8 @@ export class Workshop {
     // Never left out silently: the code would then fail on a missing file, a misleading error.
     const big = Object.entries(r.skipped ?? {}).find(([, why]) => why === "big");
     if (big) throw new Error(say(this.locale(), "kernel-harvest-file-too-big", { name: wanted[Number(big[0])]! }));
-    // initSpace made .ressac a real folder with no link at its top, and the agent cannot write there since 0.1.8.
+    // The harvests wait for the first ensureStarted, which removes an older container: no process is left to link .ressac again.
+    await realInternal(this.paths);
     const staged = join(this.paths.internal, "harvests", harvestName(owner));
     await rm(staged, { recursive: true, force: true });
     await mkdir(staged, { recursive: true });

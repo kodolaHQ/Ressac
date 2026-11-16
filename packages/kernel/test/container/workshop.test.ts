@@ -4,12 +4,13 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { Workshop, BUILD_DELAY_MS, parseBuildStep, IMAGE, dockerfileHash, harvestName, containerPortRange, sessionStopScript, findDocker } from "../../src/container/workshop.js";
 import { execFile, spawn } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { TOOLS_FOLDERS } from "../../src/container/runner.js";
 import { fakeRunner } from "../helpers/fake-runner.js";
 
-const paths = spacePaths("/Users/t/Ressac");
+const ROOT = mkdtempSync(join(tmpdir(), "ressac-workshop-"));
+const paths = spacePaths(ROOT);
 
 test("docker not found → docker-absent, without an exception", async () => {
   expect(await new Workshop({ paths: paths, docker: null }).state()).toBe("docker-absent");
@@ -71,7 +72,7 @@ test("ensureStarted on absent: build if the image is missing then run with the r
     "--name", "ressac-workshop",
     "127.0.0.1:5280-5299:5280-5299",
     "webaios-home:/home/node",
-    "/Users/t/Ressac:/workspace",
+    `${ROOT}:/workspace`,
     "host.docker.internal:host-gateway",
     "ressac-workshop:1",
   ]));
@@ -79,9 +80,9 @@ test("ensureStarted on absent: build if the image is missing then run with the r
   // .ressac (launch profiles…) read-only, so it cannot be renamed away; only the logs, which the container writes, on top.
   const w = run.args.indexOf("-v");
   expect(run.args.slice(w, w + 8)).toEqual([
-    "-v", "/Users/t/Ressac:/workspace",
-    "-v", "/Users/t/Ressac/.ressac:/workspace/.ressac:ro",
-    "-v", "/Users/t/Ressac/.ressac/logs:/workspace/.ressac/logs",
+    "-v", `${ROOT}:/workspace`,
+    "-v", `${ROOT}/.ressac:/workspace/.ressac:ro`,
+    "-v", `${ROOT}/.ressac/logs:/workspace/.ressac/logs`,
     "-v", "webaios-home:/home/node",
   ]);
 });
@@ -151,6 +152,24 @@ test("existing container on the right folder and the right image → kept", asyn
   const { run: runCall, calls } = fakeDocker({ source: paths.root, containerHash: e, imageHash: e });
   expect(await new Workshop({ paths: paths, docker: "docker", run: runCall }).ensureStarted()).toBe("demarre");
   expect(calls.some((a) => a.args[0] === "rm")).toBe(false);
+});
+
+test("docker run never mounts a .ressac linked again after initSpace (a process left in an older container)", async () => {
+  const outside = mkdtempSync(join(tmpdir(), "ressac-outside-"));
+  const root = mkdtempSync(join(tmpdir(), "ressac-relinked-"));
+  const c = spacePaths(root);
+  symlinkSync(outside, c.internal);
+  let internalAtRun: boolean | undefined;
+  const e = dockerfileHash();
+  const { run: runCall } = fakeRunner([
+    [/ inspect -f \{\{json \.Mounts/, { code: 1 }],
+    [/ image inspect /, { code: 0, stdout: `${e}\n` }],
+    [/ inspect /, { code: 1 }],
+    [/ run /, () => ((internalAtRun = lstatSync(c.internal).isDirectory() && existsSync(c.logs)), { code: 0 })],
+  ]);
+  await new Workshop({ paths: c, docker: "docker", run: runCall }).ensureStarted();
+  expect(internalAtRun).toBe(true);
+  expect(readdirSync(outside)).toEqual([]);
 });
 
 test("existing container mounted on another folder → removed then recreated", async () => {
@@ -313,14 +332,14 @@ test("stopApp: the dot in a folder name is not a grep wildcard", async () => {
 
 test("harvestCommand mounts the engine read-only and launches /opt/ressac/engine/harvester.mjs", () => {
   const workshop = new Workshop({ paths: paths, docker: "/usr/local/bin/docker" });
-  const c = workshop.harvestCommand("meteo", "/Users/t/Ressac/home/widgets/meteo", "/app/docker/engine");
+  const c = workshop.harvestCommand("meteo", `${ROOT}/home/widgets/meteo`, "/app/docker/engine");
   expect(c).toEqual([
     "/usr/local/bin/docker", "run", "-i", "--rm",
     "--name", "ressac-harvest-meteo",
     "--network", "none",
     "--read-only",
     "--tmpfs", "/tmp",
-    "-v", "/Users/t/Ressac/home/widgets/meteo:/widget:ro",
+    "-v", `${ROOT}/home/widgets/meteo:/widget:ro`,
     "-v", "/app/docker/engine:/opt/ressac/engine:ro",
     "--memory", "512m",
     "--pids-limit", "128",
