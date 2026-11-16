@@ -151,6 +151,21 @@ describe("site app window", () => {
     expect(await inSiteBar(m, "vidola", `return doc.defaultView.getComputedStyle(doc.querySelector('[data-testid="site-bar"]')).paddingLeft;`)).toBe("8px");
   });
 
+  it("the app takes the aura of the space it was opened from, on its window and its bar", async () => {
+    const st = await state(m);
+    const space = st.spaces.find((x) => x.id === st.windows[0]!.activeSpace)!;
+    await dispatch(m, { type: "updateSpace", id: space.id, name: space.name, icon: space.icon, private: space.private, profile: space.profile, aura: "lagon" });
+    try {
+      await openAndWait();
+      await waitBar("return !!doc.querySelector('[data-testid=\"site-bar\"]');");
+      const a2 = (root: string) => `return ${site}.${root}.ownerDocument.defaultView.getComputedStyle(${site}.${root}).getPropertyValue("--a2").trim();`;
+      await waitFor(m, a2("document.documentElement"), (v) => v === "rgb(59, 139, 235)");
+      await waitFor(m, a2('document.getElementById("ressac-site-bar").contentDocument.documentElement'), (v) => v === "rgb(59, 139, 235)");
+    } finally {
+      await dispatch(m, { type: "updateSpace", id: space.id, name: space.name, icon: space.icon, private: space.private, profile: space.profile, aura: space.aura });
+    }
+  });
+
   it("reopening makes no second window and does not reload", async () => {
     await openAndWait();
     await inSiteView(m, "vidola", "window.marque = 42; return 1;");

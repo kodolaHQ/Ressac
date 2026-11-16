@@ -14,6 +14,8 @@ if (params.has("site")) {
   const site = window.parent.ressacSiteWindow;
   if (!site) throw new Error("Ressac site bar loaded before its window controller");
   window.ressac = inertRessac({ site: createSiteApi(site) }) as ApiFirefox;
+  // Its aura and the window's keys: the controller does not see this frame's load.
+  window.parent.ressacSiteBarStarted?.(window);
 } else if (params.has("badge")) {
   const overlay = (window.frameElement as (Element & { ressacOverlay?: { api: BadgeChrome } }) | null)?.ressacOverlay;
   if (!overlay) throw new Error("Ressac badge loaded before its window controller");
