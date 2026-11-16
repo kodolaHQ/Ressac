@@ -152,6 +152,18 @@ async function noticeOnce(profile: string): Promise<void> {
   expect(await notices()).toBe(0);
 }
 
+it("before the notice has shown, neither error reports nor crash reports go out", async () => {
+  await launch();
+  await waitFor(m, `return Services.prefs.getBoolPref("ressac.telemetry.noticeShown", false)`, (v) => v === true);
+  await m.execute(`Services.prefs.setBoolPref("ressac.telemetry.noticeShown", false);`);
+  expect(await m.execute("return Services.prefs.getBoolPref('browser.tabs.crashReporting.sendReport')")).toBe(false);
+  await logError("chrome://browser/content/ressac/sidebar.js", "TypeError: before the notice");
+  await settle();
+  expect(envelopes.filter((e) => e.raw.includes("before the notice"))).toEqual([]);
+  await m.execute(`Services.prefs.setBoolPref("ressac.telemetry.noticeShown", true);`);
+  expect(await m.execute("return Services.prefs.getBoolPref('browser.tabs.crashReporting.sendReport')")).toBe(true);
+});
+
 it("no dsn: no notice, nothing sent", async () => {
   await launch({ noDsn: true });
   await logError("chrome://browser/content/ressac/sidebar.js", "TypeError: no dsn");
