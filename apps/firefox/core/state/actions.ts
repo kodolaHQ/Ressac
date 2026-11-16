@@ -467,6 +467,13 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       d.essentials.splice(to, 0, ...d.essentials.splice(from, 1));
       return true;
     }
+    case "moveSpace": {
+      const from = d.spaces.findIndex((x) => x.id === a.id);
+      const to = Math.max(0, Math.min(a.index, d.spaces.length - 1));
+      if (from < 0 || from === to) return false;
+      d.spaces.splice(to, 0, ...d.spaces.splice(from, 1));
+      return true;
+    }
     case "addFavorites": {
       const space = a.spaceId === undefined ? null : d.spaces.find((e) => e.id === a.spaceId);
       if (space === undefined || space?.private) return false;

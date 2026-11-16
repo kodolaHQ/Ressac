@@ -125,7 +125,7 @@ describe("the sidebar's layout", () => {
         m,
         `const rect = (e) => e.getBoundingClientRect();
          const navEl = doc.querySelector("footer nav"), nav = rect(navEl);
-         const chips = [...doc.querySelectorAll("footer nav button")].map(rect);
+         const chips = [...doc.querySelectorAll("footer nav :is(button, .space)")].map(rect);
          const tools = [...doc.querySelectorAll("footer > .tool, footer > .fold")].map(rect);
          const footer = rect(doc.querySelector("footer"));
          const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
@@ -143,7 +143,7 @@ describe("the sidebar's layout", () => {
     for (const total of [1, 3, 6]) {
       for (let n = (await state(m)).spaces.length; n < total; n++)
         await dispatch(m, { type: "createSpace", name: `E${n}`, icon: "📁", private: n % 2 === 0, profile: "default", windowId: (await win()).id });
-      await waitUi(m, "return doc.querySelectorAll('footer nav button[data-testid^=\"space-\"]').length === arguments[0]", [total]);
+      await waitUi(m, "return doc.querySelectorAll('footer nav [data-testid^=\"space-\"]').length === arguments[0]", [total]);
       const l = await layout();
       expect(l.centres).toHaveLength(1);
       expect(l.chipWidths).toEqual([28]);
@@ -369,6 +369,26 @@ describe("Ressac sidebar", () => {
       "return doc.querySelector('.space-content').getBoundingClientRect().top - doc.querySelector('[data-testid=\"essentials\"]').getBoundingClientRect().bottom",
     );
     expect(gap).toBeGreaterThanOrEqual(0);
+  });
+
+  it("a space dragged onto another takes its place, in the row and the state", async () => {
+    const before = (await state(m)).spaces.length;
+    await dispatch(m, { type: "createSpace", name: "Boulot", icon: "💼", private: false, profile: "default", windowId: (await win()).id });
+    const ids = (await state(m)).spaces.map((s) => s.id);
+    const last = ids[ids.length - 1]!;
+    await waitUi(m, "return !!doc.querySelector(arguments[0])", [`[data-testid="space-${last}"]`]);
+    await inUi(
+      m,
+      `const dt = new ui.DataTransfer();
+       dt.setData("application/x-ressac-space", arguments[0]);
+       const target = doc.querySelector('[data-testid="space-' + arguments[1] + '"]');
+       for (const type of ["dragover", "drop"]) target.dispatchEvent(new ui.DragEvent(type, { dataTransfer: dt, bubbles: true, cancelable: true }));`,
+      [last, ids[0]],
+    );
+    await waitState((s) => s.spaces[0]?.id, (id) => id === last);
+    const shown = await inUi<string[]>(m, `return [...doc.querySelectorAll('footer nav [data-testid^="space-"]')].map((e) => e.dataset.testid.slice(6))`);
+    expect(shown).toEqual([last, ...ids.slice(0, -1)]);
+    expect((await state(m)).spaces).toHaveLength(before + 1);
   });
 
   it("an essential is visible in every space", async () => {

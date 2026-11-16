@@ -191,6 +191,19 @@ test("moveEssential puts an essential at the given place; unknown id or same pla
   expect(e.essentials.map((x) => x.id)).toEqual([a, b, c]);
 });
 
+test("moveSpace puts a space at the given place; unknown id or same place changes nothing", () => {
+  ag({ type: "createSpace", name: "Boulot", icon: "💼", private: false, profile: "default", windowId: F });
+  ag({ type: "createSpace", name: "Perso", icon: "🏠", private: false, profile: "default", windowId: F });
+  const [a, b, c] = e.spaces.map((x) => x.id) as [string, string, string];
+  ag({ type: "moveSpace", id: c, index: 0 });
+  expect(e.spaces.map((x) => x.id)).toEqual([c, a, b]);
+  ag({ type: "moveSpace", id: c, index: 99 });
+  expect(e.spaces.map((x) => x.id)).toEqual([a, b, c]);
+  ag({ type: "moveSpace", id: "unknown", index: 0 });
+  ag({ type: "moveSpace", id: a, index: 0 });
+  expect(e.spaces.map((x) => x.id)).toEqual([a, b, c]);
+});
+
 test("essentials shared by all spaces; removing an essential", () => {
   const a = open("https://mail.google.com/");
   ag({ type: "addEssential", id: a });
