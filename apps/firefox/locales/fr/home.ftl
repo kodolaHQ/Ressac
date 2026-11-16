@@ -311,6 +311,10 @@ home-widget-workflow = Voir / modifier le workflow
 home-widget-grant-public = Ce widget veut lire { $account } avec ton compte, et pourra contacter : { $public }.
 home-widget-grant-private = Ce widget veut lire { $account } avec ton compte, et ne contactera aucun autre site.
 home-widget-allow = Autoriser…
+home-widget-reads-public = Ce widget lira : { $public }
+home-widget-reads-web = Ce widget cherche et lit le web
+home-widget-reads-public-web = Ce widget lira : { $public }, et cherche et lit le web
+home-widget-reads-allow = Autoriser
 home-widget-resize = Redimensionner
 home-widget-no-display = L'agent n'a pas encore écrit l'affichage de ce widget.
 

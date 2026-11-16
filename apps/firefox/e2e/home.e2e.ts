@@ -440,6 +440,25 @@ describe("the home page", () => {
     expect(await readJson<{ status: string }>(STATE(dataDir, "sans-accord"))).toMatchObject({ status: "grant-required" });
   });
 
+  it("a widget without account written after start, with a public domain: the banner asks once, nothing is harvested before « Autoriser »", async () => {
+    await writeWidget(dataDir, "lecture", {
+      name: "Lecture",
+      display: DISPLAY_DATA,
+      declaration: { harvest: { minutes: 60 }, sources: { account: [], public: ["exemple.invalid"], web: false } },
+    });
+    await writeHarvest(dataDir, "lecture", `export default async () => ({ vu: "public" });`);
+    await waitUi(m, `return !!doc.querySelector('[data-testid="widget-lecture"]');`, [], 15_000);
+    await harvest(m, "lecture");
+    await waitUi(m, `return !!doc.querySelector('[data-testid="widget-lecture"] [data-testid="grant-banner"]');`, [], 15_000);
+    expect(await widgetText(m, "lecture")).toContain("Ce widget lira : exemple.invalid");
+    expect(existsSync(DATA(dataDir, "lecture"))).toBe(false);
+    // No card: the click approves exactly what the banner showed, then the harvest runs.
+    await click(m, '[data-testid="widget-lecture"] [data-testid="grant-banner"] button', { text: "Autoriser" });
+    await wait(() => (existsSync(DATA(dataDir, "lecture")) ? readJson<unknown>(DATA(dataDir, "lecture")) : Promise.resolve(null)), (d) => d !== null, "les données de la récolte", 20_000);
+    expect(await readJson(path.join(WIDGETS(dataDir), "reads.json"))).toMatchObject({ lecture: { public: ["exemple.invalid"], web: false } });
+    expect(await waitUi(m, `return !doc.querySelector('[data-testid="widget-lecture"] [data-testid="grant-banner"]');`)).toBe(true);
+  });
+
   it("a grant that names an invalid profile asks again: the harvest refuses it, the grant and its data go away", async () => {
     // The grant names a sign-in profile; a profile absent from the session makes it unusable. (A profile that
     // becomes private only asks again at the widget's next scheduled harvest: see the README's limit.)

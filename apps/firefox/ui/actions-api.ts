@@ -218,6 +218,14 @@ export function createActionsApi(o: WindowApiOptions): ActionsFirefox {
       );
       return isPrivate() ? privateDenial() : r;
     },
+    async approveReads(a) {
+      if (isPrivate()) return privateDenial();
+      const r = await host.request<{ ok: true } | { ok: false; error: string }>("actions.approveReads", a).then(
+        (v) => structuredClone(v),
+        () => ({ ok: false as const, error: noKernel() }),
+      );
+      return isPrivate() ? privateDenial() : r;
+    },
     async denyGrant(id) {
       if (isPrivate()) return;
       // The host stops the run first, then erases the grant and the results.

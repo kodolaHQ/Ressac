@@ -6,6 +6,9 @@ import {
   ID_ACTION,
   ID_EXECUTION,
   readGrants,
+  readReads,
+  readsCovered,
+  removeReads,
   readAction,
   readActions,
   readRun,
@@ -23,7 +26,7 @@ import {
   type ResumeExecution,
 } from "../../../packages/kernel/src/index.ts";
 import type { ActionShown } from "../shared/actions.ts";
-import type { Grant } from "../shared/api.ts";
+import type { Grant, ReadsApproval } from "../shared/api.ts";
 import { openableUrl } from "../ui/home-profiles.ts";
 import { hostLocale, hostSay } from "./locale.ts";
 
@@ -73,12 +76,12 @@ export async function trashAction(c: SpacePaths, id: string, forget: (id: string
 
 /** The disk's actions, ready to show: declaration, grant and last real run. Read without the kernel. */
 export async function readShownActions(c: SpacePaths, actionsFolder: string): Promise<ActionShown[]> {
-  const [alreadyRead, grants] = await Promise.all([readActions(c), readGrants(actionsFolder).catch(() => ({}) as Record<string, unknown>)]);
+  const [alreadyRead, grants, reads] = await Promise.all([readActions(c), readGrants(actionsFolder).catch(() => ({}) as Record<string, unknown>), readReads(actionsFolder)]);
   return Promise.all(
     alreadyRead.map(async (a): Promise<ActionShown> => {
       const last = (await listRuns(join(actionsFolder, a.id))).find((e) => !e.attempt && !e.id.endsWith("-attempt"));
       const lastRun = last ? { run: last.id, start: last.start, status: last.status } : null;
-      if ("error" in a) return { id: a.id, name: a.id, description: "", keywords: [], input: null, account: [], public: [], grant: false, last: lastRun, error: a.error };
+      if ("error" in a) return { id: a.id, name: a.id, description: "", keywords: [], input: null, account: [], public: [], grant: false, web: false, readsNeeded: false, last: lastRun, error: a.error };
       const d = a.declaration;
       return {
         id: a.id,
@@ -89,6 +92,8 @@ export async function readShownActions(c: SpacePaths, actionsFolder: string): Pr
         account: d.sources.account,
         public: d.sources.public,
         grant: Object.hasOwn(grants, a.id),
+        web: d.sources.web,
+        readsNeeded: d.sources.account.length === 0 && !readsCovered(d, reads[a.id]),
         last: lastRun,
       };
     }),
@@ -216,6 +221,16 @@ export function createActionsHost(o: {
         return { ok: false, error: (e as Error).message };
       }
     },
+    async approveReads(a: ReadsApproval): Promise<{ ok: true } | { ok: false; error: string }> {
+      const kernel = o.kernel();
+      if (!kernel) return { ok: false, error: NO_KERNEL_MESSAGE() };
+      try {
+        await kernel.actions.approveReads(a);
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, error: (e as Error).message };
+      }
+    },
     async denyGrant(id: string): Promise<void> {
       const kernel = o.kernel();
       // A run in progress would keep its place in the queue and its priority on the AI until its end.
@@ -236,6 +251,7 @@ export function createActionsHost(o: {
         // Data first: until it is gone, the grant still guards it (a crash in between leaves it guarded).
         await deleteDataAction(o.actionsFolder, x);
         await removeGrant(o.actionsFolder, x);
+        await removeReads(o.actionsFolder, x);
       };
       try {
         await trashAction(o.paths, id, forget);

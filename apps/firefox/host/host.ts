@@ -22,7 +22,7 @@ const { createInterface } = await import("node:readline");
 const { appendFileSync } = await import("node:fs");
 const { stat } = await import("node:fs/promises");
 // Imported after the env is set and stdout redirected: nothing in the kernel can write to stdout at load time.
-const { ACTION_UNKNOWN, Workshop, blockCatalog, loadProfiles, spacePaths, createKernel, createRunner, LocalAi, readHome, readFreeLayout, readTheme, Pacing, contextPrefix, handOffText, removeGrant, deleteData, watchActions, createRecaps, ID_RECAP } = await import("../../../packages/kernel/src/index.ts");
+const { ACTION_UNKNOWN, Workshop, blockCatalog, loadProfiles, spacePaths, createKernel, createRunner, LocalAi, readHome, readFreeLayout, readTheme, Pacing, contextPrefix, handOffText, removeGrant, deleteData, watchActions, createRecaps, ID_RECAP, removeReads } = await import("../../../packages/kernel/src/index.ts");
 const { SessionsAgent } = await import("../core/agent/sessions.ts");
 const { History } = await import("../core/history.ts");
 const { createRpc } = await import("../shared/rpc.ts");
@@ -59,6 +59,7 @@ const {
 } = await import("./workflow.ts");
 const {
   GrantSchema,
+  ReadsApprovalSchema,
   SchemaActionSite,
   WorkflowBlockSchema,
   DraftSchema,
@@ -283,6 +284,7 @@ const denyWidget = async (w: string) => {
   const n = await ready;
   if (n) return n.denyGrant(w);
   await removeGrant(widgetsFolder, w);
+  await removeReads(widgetsFolder, w);
   await deleteData(widgetsFolder, w);
 };
 
@@ -536,6 +538,20 @@ const rpc = createRpc({
         return { ok: false as const, error: (e as Error).message };
       }
     },
+    "home.approveReads": async (p: unknown) => {
+      const r = ReadsApprovalSchema.safeParse(p);
+      if (!r.success) return { ok: false as const, error: hostSay("host-invalid-grant-request") };
+      const n = await ready;
+      if (!n) return { ok: false as const, error: AGENT_STOPPED_MESSAGE() };
+      try {
+        // The kernel refuses if the declaration is no longer the one the banner showed.
+        await n.approveReads(r.data);
+        return { ok: true as const };
+      } catch (e) {
+        rpc.notify("home.change");
+        return { ok: false as const, error: (e as Error).message };
+      }
+    },
     "home.denyGrant": async (p: { id?: unknown }) => {
       const n = await ready;
       if (!n || typeof p?.id !== "string") return;
@@ -660,6 +676,10 @@ const rpc = createRpc({
     "actions.grant": (p: unknown) => {
       const r = GrantSchema.safeParse(p);
       return r.success && idAction(r.data.id) ? actions.grant(r.data) : { ok: false, error: hostSay("host-invalid-grant-request") };
+    },
+    "actions.approveReads": (p: unknown) => {
+      const r = ReadsApprovalSchema.safeParse(p);
+      return r.success && idAction(r.data.id) ? actions.approveReads(r.data) : { ok: false, error: hostSay("host-invalid-grant-request") };
     },
     "actions.denyGrant": (p: { id?: unknown }) => (idAction(p?.id) ? actions.denyGrant(p.id) : undefined),
     "actions.delete": (p: { id?: unknown }) => (idAction(p?.id) ? actions.delete(p.id) : { ok: false, error: hostSay("host-invalid-request") }),

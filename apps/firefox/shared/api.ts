@@ -326,6 +326,8 @@ export interface ApiRessac {
      * card showed them; refused (with the error) if the declaration changed since.
      */
     grant(a: Grant): Promise<{ ok: true } | { ok: false; error: string }>;
+    /** A widget without account may read exactly the public domains and the web the banner showed; a harvest follows. */
+    approveReads(a: ReadsApproval): Promise<{ ok: true } | { ok: false; error: string }>;
     /** The user refuses or removes the grant: the data read with the account is erased. */
     denyGrant(id: string): void;
     /** « Mettre à jour maintenant ». */
@@ -397,6 +399,8 @@ export interface ApiRessac {
     profilesForGrant(): Promise<ProfileForGrant[]>;
     /** As for a widget; nothing is started (the user reruns from the page). */
     grant(a: Grant): Promise<{ ok: true } | { ok: false; error: string }>;
+    /** As for a widget; nothing is started (the page reruns). */
+    approveReads(a: ReadsApproval): Promise<{ ok: true } | { ok: false; error: string }>;
     /** Removes the grant and erases executions, results and memory. */
     denyGrant(id: string): Promise<void>;
     /** Puts the action in the trash (`actions/.trash`) and forgets its grant and its data. */
@@ -701,6 +705,8 @@ export const GrantSchema = z
   .object({ id: idWidget, profile: z.string().min(1).max(200), account: z.array(domain).max(100), public: z.array(domain).max(100) })
   .strict();
 export type Grant = z.infer<typeof GrantSchema>;
+export const ReadsApprovalSchema = z.object({ id: idWidget, public: z.array(domain).max(100), web: z.boolean() }).strict();
+export type ReadsApproval = z.infer<typeof ReadsApprovalSchema>;
 export const TerminalSizeSchema = z.object({ cols: z.number().int().min(2).max(1000), rows: z.number().int().min(2).max(1000) });
 export type TerminalSize = z.infer<typeof TerminalSizeSchema>;
 
@@ -729,6 +735,8 @@ export type ShownWidget =
       account: string[];
       /** Public domains the widget may contact; for a widget with an account, covered by the same grant. */
       public: string[];
+      /** The widget searches and reads the web (never with an account). */
+      web: boolean;
       /** The widget has a harvest (`workflow.json` or `harvest.mjs`): its menu offers « Voir / modifier le workflow ». */
       hasHarvest: boolean;
       /** Fixed times of the harvest (« HH:MM »), empty without them. */

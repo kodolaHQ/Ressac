@@ -177,7 +177,23 @@
             denied={!!refuses[widget.id]}
             start={(mode, e) => beginGesture(widget, mode, e)}
             remove={() => (toRemove = widget)}
-            allow={() => "account" in widget && (grantFor = widget)}
+            allow={() => {
+              if (!("account" in widget)) return;
+              if (widget.account.length) return void (grantFor = widget);
+              // No account: no card, the approval covers exactly what the banner showed.
+              const { id, public: publics, web } = widget;
+              const { [id]: _, ...rest } = refuses;
+              refuses = rest;
+              act(id, () =>
+                api.home.approveReads({ id, public: [...publics], web }).then((r) => {
+                  if (r.ok) return;
+                  clearTimeout(waits.get(id)?.timer);
+                  waits.delete(id);
+                  warnings = { ...warnings, [id]: t("home-grant-not-saved", { error: r.error }) };
+                  load();
+                }),
+              );
+            }}
             deny={() => {
               // No wait: after a refusal, the kernel rewrites the same « accord-requis » state, so nothing would change on screen.
               refuses = { ...refuses, [widget.id]: true };

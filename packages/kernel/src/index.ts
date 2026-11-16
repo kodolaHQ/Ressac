@@ -32,6 +32,7 @@ export * from "./ai/local-ai.js";
 export * from "./ai/dispatcher.js";
 export * from "./workflows/protocol.js";
 export * from "./widgets/grants.js";
+export * from "./widgets/reads.js";
 export * from "./widgets/scheduler.js";
 export * from "./widgets/hours.js";
 export { notificationText } from "./widgets/novelties.js";

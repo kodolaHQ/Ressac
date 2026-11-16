@@ -241,6 +241,11 @@ export function createApi(win: WindowController): ApiFirefox {
           (e) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) }),
         );
       },
+      approveReads: (a) =>
+        host.request<{ ok: true } | { ok: false; error: string }>("home.approveReads", a).then(
+          (r) => structuredClone(r),
+          (e) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) }),
+        ),
       denyGrant: (id) => host.notify("home.denyGrant", { id }),
       harvest: (id) => host.notify("home.harvest", { id }),
       runs: (id) =>
