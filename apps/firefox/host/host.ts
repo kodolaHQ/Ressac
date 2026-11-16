@@ -22,7 +22,7 @@ const { createInterface } = await import("node:readline");
 const { appendFileSync } = await import("node:fs");
 const { stat } = await import("node:fs/promises");
 // Imported after the env is set and stdout redirected: nothing in the kernel can write to stdout at load time.
-const { ACTION_UNKNOWN, Workshop, blockCatalog, loadProfiles, spacePaths, createKernel, LocalAi, readHome, readFreeLayout, readTheme, Pacing, contextPrefix, handOffText, removeGrant, deleteData, watchActions, createRecaps, ID_RECAP, removeReads } = await import("../../../packages/kernel/src/index.ts");
+const { ACTION_UNKNOWN, Workshop, blockCatalog, loadProfiles, spacePaths, createKernel, LocalAi, readHome, readFreeLayout, readTheme, Pacing, contextPrefix, handOffText, removeGrant, createAgentWriter, deleteData, watchActions, createRecaps, ID_RECAP, removeReads } = await import("../../../packages/kernel/src/index.ts");
 const { SessionsAgent } = await import("../core/agent/sessions.ts");
 const { History } = await import("../core/history.ts");
 const { createRpc } = await import("../shared/rpc.ts");
@@ -32,6 +32,7 @@ const { copyComponentRequest, copyHomeRequest } = await import("./home-copy.ts")
 const { createAsk } = await import("./ask.ts");
 const { createDesignHost, DESIGN_METHODS, externalMcpPort } = await import("./design.ts");
 const { createSettingsHandlers, SETTINGS_METHODS } = await import("./settings.ts");
+const { createWriterChoice } = await import("./writer.ts");
 const { createOllamaRuntime, OLLAMA_LOCAL_URL, OLLAMA_MIN } = await import("./ollama-runtime.ts");
 const { createDockerRuntime } = await import("./docker-runtime.ts");
 const { createApplicationsHost } = await import("./applications.ts");
@@ -159,7 +160,20 @@ const broadcastAccess = () => {
 
 // The local AI for harvests: Gemma runs in Ollama, the decision model (d1-2B) in the llama-server shipped with Ressac
 // (RESSAC_LLAMA_SERVER, set by chrome/agent/command.ts). RESSAC_D1_URL / RESSAC_D1_SHA256: tests only.
+// The agent that writes (Claude Haiku or Codex, in the workshop): the default profile's, else the other if signed in.
+const profileAgents = new Map<string, "claude" | "codex">();
+const writerChoice = createWriterChoice({
+  workshop,
+  preferred: () => profileAgents.get(defaultProfile) ?? (defaultProfile === "codex" ? "codex" : "claude"),
+});
 const ai = new LocalAi({
+  writer: createAgentWriter({
+    exec: (a, x) => workshop.execWrite(a, x),
+    agent: writerChoice.agent,
+    signedOut: writerChoice.signedOut,
+    log: (l) => console.log("[writer]", l),
+    locale: () => hostLocale(),
+  }),
   folder: join(dataDir, "local-ai"),
   llamaServer: process.env.RESSAC_LLAMA_SERVER,
   decisionUrl: process.env.RESSAC_D1_URL,
@@ -313,7 +327,10 @@ let relocalized = 0;
 const keys = { codex: keychain(), claude: keychain(CLAUDE_KEY) };
 const cachedKeys: { codex?: string; claude?: string } = {};
 // Called after a key is written or removed (Settings › Agents).
-const forgetKey = (kind: "codex" | "claude") => void delete cachedKeys[kind];
+const forgetKey = (kind: "codex" | "claude") => {
+  delete cachedKeys[kind];
+  writerChoice.reset();
+};
 const relay = await startRelay({
   // Only a string is kept: a failed read (Keychain locked) is tried again.
   readKey: async (kind) => {
@@ -357,6 +374,7 @@ const AI_SETTINGS = new Set<string>([
   "settings.startDocker",
   "settings.restartWorkshop",
   "ai.state",
+  "ai.writer",
   "settings.pullModel",
   "settings.pullInBackground",
   "settings.startOllama",
@@ -510,7 +528,9 @@ const rpc = createRpc({
       await aiSwitch;
       await ready;
       try {
-        return (await loadProfiles(paths)).profiles.map((x) => ({ id: x.id, name: x.name }));
+        const { profiles } = await loadProfiles(paths);
+        for (const x of profiles) profileAgents.set(x.id, x.mcpConfig === "codex-toml" ? "codex" : "claude");
+        return profiles.map((x) => ({ id: x.id, name: x.name }));
       } catch {
         return [];
       }
@@ -990,6 +1010,7 @@ try {
 }
 const settings = createSettingsHandlers({
   workshop,
+  writer: writerChoice,
   ai,
   ollama,
   docker,

@@ -1,6 +1,6 @@
 import { listOllamaModels } from "./ollama-models.ts";
 import { PULLABLE_MODELS, pullOllamaModel, UNSUPPORTED_MODEL } from "./ollama-pull.ts";
-import { readGrants, readSiteGrants, type LocalAi, type Workshop } from "../../../packages/kernel/src/index.ts";
+import { readGrants, readSiteGrants, type LocalAi, type Workshop, type WriterAgent } from "../../../packages/kernel/src/index.ts";
 import type { LocalAiStateShown } from "../shared/api.ts";
 import { startDeviceLogin } from "./device-login.ts";
 import { INVALID_KEY, type AmoKeychain, type Keychain } from "./keychain.ts";
@@ -75,6 +75,7 @@ export const SETTINGS_METHODS = [
   "settings.deleteBackup",
   "settings.export",
   "ai.state",
+  "ai.writer",
   "settings.pullModel",
   "settings.pullProgress",
   "settings.pullInBackground",
@@ -88,6 +89,8 @@ const failure = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export interface SettingsOptions {
   workshop: Pick<Workshop, "state" | "exec" | "restart" | "rebuild" | "secureNetwork">;
+  /** Who writes (the account check is cached): reset whenever an account may have changed. */
+  writer: { agent(): Promise<WriterAgent | null>; reset(): void };
   ai: Pick<LocalAi, "state" | "check" | "ollamaUrl" | "installDecisionModel" | "cancelInstall">;
   ollama: Pick<OllamaRuntime, "status" | "start" | "install">;
   docker: DockerRuntime;
@@ -172,6 +175,8 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
   /** The restart or rebuild in progress, whatever page or window asked for it. */
   let operation: WorkshopOperation = null;
   async function agents(): Promise<AgentAccount[]> {
+    // The poll of Réglages runs while an account is being signed in or out: the writer's cached check must not outlive it.
+    o.writer.reset();
     // On every row, errors and a failed Docker probe included: one failed check does not end the sign-in, so the code stays shown.
     const signing = (a: (typeof AGENT_ACCOUNTS)[number]) => (a.login.kind === "device" && signIn ? { signingIn: true as const } : {});
     const state = await o.workshop.state();
@@ -392,6 +397,7 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
         return { ok: false, error: failure(e) };
       }
     },
+    "ai.writer": async () => ({ agent: await o.writer.agent() }),
     "ai.state": async (): Promise<LocalAiStateShown> => {
       const v = await o.ai.check().catch(() => undefined);
       const ollama = await o.ollama.status().catch(() => undefined);

@@ -53,6 +53,7 @@ function setup(over: { state?: string; exec?: (argv: string[]) => unknown; ollam
     claudeKeychain: { read: vi.fn(async () => null), has: vi.fn(async () => false), write: vi.fn(async () => {}), remove: vi.fn(async () => {}) },
     amoKeychain: { issuer: vi.fn(async (): Promise<string | null> => "user:1:2"), write: vi.fn(async (i: string) => void (i === "bad" && (() => { throw new Error("Clé invalide : x"); })())), remove: vi.fn(async () => {}) },
     forgetKey: vi.fn(),
+    writer: { agent: vi.fn(async () => "claude" as const), reset: vi.fn() },
     notify: vi.fn(),
   };
   const alive = () => readFileSync(pids, "utf8").trim().split("\n").map((p) => { try { process.kill(Number(p), 0); return true; } catch { return false; } });

@@ -47,6 +47,11 @@ settings-ai-gemma-absent = Widgets and watch: Gemma missing
 settings-ai-decision-model = Sort model
 settings-ai-decision-detail = d1-2B (LiquidAI), 1.1 GB: sorts the widgets' articles and watches the agent's searches.
 settings-ai-decision-failed = Download failed: { $reason }. Another try at the next launch.
+settings-ai-writer = Writing
+settings-ai-writer-claude = Claude Haiku, with your Claude Code account
+settings-ai-writer-codex = Codex, with your ChatGPT account
+settings-ai-writer-none = No account connected
+settings-ai-writer-connect = Connect an account
 settings-ai-large-download = Several GB: the download may take a while.
 
 settings-pill-installed = installed

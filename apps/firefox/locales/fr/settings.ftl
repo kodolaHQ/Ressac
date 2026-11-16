@@ -47,6 +47,11 @@ settings-ai-gemma-absent = Widgets et veille : Gemma absent
 settings-ai-decision-model = Modèle de tri
 settings-ai-decision-detail = d1-2B (LiquidAI), 1,1 Go : trie les articles des widgets et surveille les recherches de l'agent.
 settings-ai-decision-failed = Téléchargement échoué : { $reason }. Nouvel essai au prochain lancement.
+settings-ai-writer = Rédaction
+settings-ai-writer-claude = Claude Haiku, avec votre compte Claude Code
+settings-ai-writer-codex = Codex, avec votre compte ChatGPT
+settings-ai-writer-none = Aucun compte connecté
+settings-ai-writer-connect = Connecter un compte
 settings-ai-large-download = Plusieurs Go : le téléchargement peut prendre un moment.
 
 settings-pill-installed = installé

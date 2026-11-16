@@ -111,6 +111,11 @@
   let pulling = $state<PullProgress | null>(null);
   let pullError = $state<string | null>(null);
   const reloadAi = () => void api.ai.state().then((r) => (ai = r));
+  let writer = $state<"claude" | "codex" | null | undefined>(undefined);
+  // Read when Réglages opens and after each agents refresh (a login or a logout): the host re-checks the accounts then.
+  $effect(() => {
+    if (aiOn()) void agents, void s.writer().then((r) => (writer = r.agent));
+  });
   const ollama = $derived(ai?.ollama);
   let startingOllama = $state(false);
   async function startOllama() {
@@ -388,6 +393,10 @@
             <div class="row" data-testid="ai-decision">
               <div class="grow"><b>{t("settings-ai-decision-model")}</b><span class="muted">{t("settings-ai-decision-detail")}</span></div>
               {@render pullPill(DECISION_MODEL, !!v?.decision, "decision")}
+            </div>
+            <div class="row" data-testid="ai-writer">
+              <div class="grow"><b>{t("settings-ai-writer")}</b><span class="muted">{writer === undefined ? "" : t(`settings-ai-writer-${writer ?? "none"}`)}</span></div>
+              {#if writer === null}<button data-testid="ai-writer-connect" onclick={() => (current = "agents")}>{t("settings-ai-writer-connect")}</button>{/if}
             </div>
             {#if ai.state === "error" && ai.error}
               <div class="row"><span class="pill" data-tone="error" data-testid="ai-decision-server-error">{ai.error}</span></div>

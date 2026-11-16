@@ -525,6 +525,8 @@ export interface SettingsApi {
   pullProgress(): Promise<PullProgress | null>;
   /** Starts the Ollama installed on this machine and waits for it to answer. */
   startOllama(): Promise<SettingsResult>;
+  /** The agent that writes for the AI (its account signed in, workshop running), or null. */
+  writer(): Promise<{ agent: "claude" | "codex" | null }>;
   /** Pulls the given models one after the other without waiting (`OLLAMA_ITSELF` first downloads Ollama); a system notification says the end. */
   pullInBackground(names: string[]): Promise<SettingsResult>;
   ollamaModels(url: string): Promise<{ ok: true; models: { name: string; size?: string }[] } | { ok: false; error: string }>;
