@@ -401,14 +401,27 @@ test("a session opened while none runs first kills what the agent left in the co
   }
 });
 
-test("at kernel startup, session configs left behind by a crash are purged", async () => {
+test("an out-of-date container (a 0.1.7 one could hold a process moving .ressac) is removed before the kernel writes the space", async () => {
+  const root = await tempFolder();
+  let spaceAtRemoval: boolean | undefined;
+  const { run } = fakeRunner([
+    [/ info$/, { code: 1 }],
+    [/ inspect -f \{\{\.State\.Running\}\}/, { code: 0, stdout: "true\n" }],
+    [/ inspect -f /, { code: 0, stdout: `${root}|old-hash\n` }],
+    [/ rm -f ressac-workshop$/, () => ((spaceAtRemoval = existsSync(join(root, ".ressac"))), { code: 0 })],
+  ]);
+  kernel = await createKernel({ locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run, workshop: await workshopWithoutDocker(root, run) });
+  expect(spaceAtRemoval).toBe(false);
+});
+
+test("kernel startup deletes nothing under .ressac/sessions (it could be followed through a .ressac linked again)", async () => {
   const root = await tempFolder();
   const folder = join(spacePaths(root).internal, "sessions");
   await mkdir(folder, { recursive: true });
   await writeFile(join(folder, "reste.json"), "{}");
   const { run } = fakeRunner([[/ info$/, { code: 1 }]]);
   kernel = await createKernel({ locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run });
-  expect(existsSync(join(folder, "reste.json"))).toBe(false);
+  expect(existsSync(join(folder, "reste.json"))).toBe(true);
 });
 
 test("arreter deletes the config of a still-open session", async () => {

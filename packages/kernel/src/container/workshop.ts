@@ -33,6 +33,7 @@ export function containerPortRange(): [number, number] {
 }
 /** The docker probes must not block if Docker Desktop is stuck at startup. */
 const PROBE_DELAY_MS = 30_000;
+const OUTDATED_PROBE_MS = 5_000;
 /** First build: download of the base image and install of the agent. Beyond that, it is blocked. */
 export const BUILD_DELAY_MS = 20 * 60_000;
 
@@ -289,6 +290,17 @@ export class Workshop {
     const r = await this.launch(["inspect", "-f", format, containerName()], PROBE_DELAY_MS);
     const [source = "", label = ""] = r.stdout.trim().split("|");
     return r.code === 0 && normalize(source) === normalize(this.paths.root) && label === hash;
+  }
+
+  /**
+   * Removes the container if it is not up to date, before the kernel touches `.ressac` on the Mac: a process left in a
+   * pre-0.1.8 one (whose `.ressac` was writable) could link `.ressac` again between any check and any write.
+   * shortcut: a probe slower than 5 s (Docker still starting) skips this, startContainer removes it later; fine while
+   * only 0.1.7 containers can hold such a process.
+   */
+  async removeOutdated(): Promise<void> {
+    if (!this.docker || (await this.launch(["inspect", "-f", "{{.State.Running}}", containerName()], OUTDATED_PROBE_MS)).code !== 0) return;
+    if (!(await this.containerUpToDate(dockerfileHash(this.dockerFolder)))) await this.launch(["rm", "-f", containerName()], PROBE_DELAY_MS);
   }
 
   ensureStarted(): Promise<WorkshopState> {

@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, mkdir, open, realpath, rm, unlink, writeFile } from "node:fs/promises";
 import { basename, join, posix } from "node:path";
-import { CONTAINER_PATH, sessionConfigPath, pathInContainer, sessionsFolder, spacePaths, type SpacePaths } from "./paths.js";
+import { CONTAINER_PATH, sessionConfigPath, pathInContainer, spacePaths, type SpacePaths } from "./paths.js";
 import { initSpace } from "./workspace/initialize.js";
 import { readHome, readOneWidget } from "./home/read.js";
 import type { HomeState, WidgetState, WidgetRead } from "./home/schemas.js";
@@ -347,10 +347,13 @@ export async function createKernel(o: {
   const paths = spacePaths(o.root);
   const loc = () => o.locale?.() ?? "en";
   const templates = o.resources ? join(o.resources, "templates") : undefined;
+  const run = o.run ?? createRunner(loc);
+  const workshop = o.workshop ?? new Workshop({ paths: paths, run: run, ...(o.locale ? { locale: o.locale } : {}), ...(o.resources ? { dockerFolder: join(o.resources, "docker") } : {}) });
+  // Before initSpace: no process left in an out-of-date container may move .ressac while the kernel writes there.
+  await workshop.removeOutdated();
   const { created } = await initSpace(paths, loc(), templates);
   let relocalizing: Promise<void> = Promise.resolve();
 
-  const run = o.run ?? createRunner(loc);
   const profileId = o.profileId ?? "claude";
   const profile = (await loadProfiles(paths, templates)).profiles.find((p) => p.id === profileId);
   if (!profile) throw new Error(`Profil d'agent inconnu : ${profileId}`);
@@ -477,9 +480,8 @@ export async function createKernel(o: {
       : {}),
   });
   try {
-    // Session configs left by a crash: their tokens are worth nothing any more.
-    // A failure does not prevent starting: dead tokens are harmless.
-    await rm(sessionsFolder(paths), { recursive: true, force: true }).catch((e) => console.error("[ressac] session configs purge:", e));
+    // No purge of the session configs a crash left: their tokens are dead, and a recursive delete here could follow a .ressac
+    // that a process left in a pre-0.1.8 container (not removed yet) linked again since initSpace.
     // The one config file whatever the default profile (Codex takes its server by argument): window-less sessions, tools.
     await writeMcpConfig(paths, "claude-json", { url: server.containerUrl, token: token });
   } catch (e) {
@@ -488,9 +490,8 @@ export async function createKernel(o: {
     throw e;
   }
 
-  // Navigation must never wait for Docker (spec §9): the first image build takes
+  // Navigation must never wait for Docker (spec §9, removeOutdated above only probes): the first image build takes
   // minutes, and a failure (port in use…) only concerns the agent.
-  const workshop = o.workshop ?? new Workshop({ paths: paths, run: run, ...(o.locale ? { locale: o.locale } : {}), ...(o.resources ? { dockerFolder: join(o.resources, "docker") } : {}) });
   // The container is prepared from launch. If it fails, the first session returns this failure rather than rebuilding
   // everything right away; the following ones (Réessayer) try again. Once successful, it is re-checked (quick probe).
   // Before any session, the agents left by a previous app are stopped.
