@@ -58,7 +58,7 @@ export function parseBuildStep(line: string, locale: string): Pick<BuildProgress
 }
 
 /** Bumped with any change to RUN_FLAGS: it goes into the image hash, so the container is recreated (the fake docker of the e2e tests repeats it). */
-export const RUN_FLAGS_VERSION = "2";
+export const RUN_FLAGS_VERSION = "3";
 /** The network, memory and proxy flags of `docker run` (the part after the ports). */
 export const RUN_FLAGS = [
   "--cap-add", "NET_ADMIN",
@@ -390,6 +390,10 @@ export class Workshop {
       "--name", containerName(),
       "--add-host", "host.docker.internal:host-gateway",
       "-v", `${this.paths.root}:${CONTAINER_PATH}`,
+      // What Ressac relies on to restrict the agent (launch profiles, instructions): read-only over the workspace.
+      // initSpace has created them before the first start; it rewrites them in place, so these file mounts follow.
+      "-v", `${this.paths.profiles}:${CONTAINER_PATH}/.ressac/profiles:ro`,
+      ...["AGENTS.md", "CLAUDE.md"].flatMap((f) => ["-v", `${join(this.paths.root, f)}:${CONTAINER_PATH}/${f}:ro`]),
       "-v", `${VOLUME_HOME}:/home/node`,
       "-p", `127.0.0.1:${ports}:${ports}`,
       // AGENTS.md tells the agent to keep its hand-run servers in this range.
