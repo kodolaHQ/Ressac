@@ -843,6 +843,9 @@ const rpc = createRpc({
     },
     "sites.memoryOp": (p: unknown) => sites.memoryOp(p),
     "sites.tabSite": (p: { id?: unknown }) => (typeof p?.id === "string" ? sites.tabSite(p.id) : null),
+    "sites.tabDetached": (p: { id?: unknown }) => {
+      if (typeof p?.id === "string") sites.tabDetached(p.id);
+    },
     "sites.position": (p: unknown) => sites.position(p),
     "sites.resume": (p: unknown) => sites.resume(p),
     "sites.copyHome": (p: { id?: unknown; token?: unknown }) => copyHomeRequest(dataDir, paths.sites, p),

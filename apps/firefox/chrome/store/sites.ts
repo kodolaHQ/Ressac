@@ -134,7 +134,26 @@ const byContainer = new Map<number, OpenSite>();
  * host answered (attachTab), what the frame decisions need. They get the window's frame decisions, not its guard.
  * shortcut: an app essential's tab keeps the tweaks read at attach; a site.json change applies at its next attach (tab re-created/restart), upgrade if Thomas edits apps while their tab is open.
  */
-const tabSites = new Map<any, { id: string; s?: FrameSite; ready?: Promise<void> }>();
+const tabSites = new Map<any, TabSite>();
+type TabSite = { id: string; s?: FrameSite; ready?: Promise<void> };
+
+/** The host's reading of a tab's app: its frame decisions, or the tab dropped (unknown app, being deleted). */
+function readTab(browser: any, t: TabSite): Promise<void> {
+  const read = (host ? host.request<{ site: SiteChrome; tweaks: TweaksRead } | null>("sites.tabSite", { id: t.id }) : Promise.resolve(null)).catch((e) => {
+    console.warn(`[sites] ${t.id}: tab without its app:`, e);
+    return null;
+  });
+  t.ready = read.then((p) => {
+    if (tabSites.get(browser) !== t) return;
+    if (p) t.s = { site: p.site, tweaks: p.tweaks, view: browser, errors: t.s?.errors ?? [] };
+    else {
+      tabSites.delete(browser);
+      publishOpen();
+    }
+  });
+  return t.ready;
+}
+
 /** Where the frame decisions look: the open windows' views and the attached essentials' tabs. */
 const frameSites = (): FrameSite[] => [...open.values(), ...[...tabSites.values()].flatMap((t) => (t.s ? [t.s] : []))];
 let dispatch: (a: Action) => void = () => {};
@@ -683,9 +702,9 @@ export const sites = {
   /** « Supprimer »: the app's container (cookies, storage) and its served home copies are wiped. */
   async erase(id: string): Promise<void> {
     if (typeof id !== "string" || !ID_SITE.test(id)) return;
-    // The page's « Supprimer » and the agent's both come through here: the app leaves the essentials and the bar, its
-    // essential's tab closing before its container is wiped.
-    dispatch({ type: "placeSite", id, placement: "none" });
+    // The page's « Supprimer » and the agent's both come through here: the app leaves the essentials and the bar, and
+    // every tab of its container closes before the container is wiped (TabSync would create it again).
+    dispatch({ type: "forgetSite", id });
     await removeSiteContainer(id);
     if (dataDir) await forgetHome(dataDir, id);
   },
@@ -695,27 +714,22 @@ export const sites = {
    */
   async attachTab(id: string, browser: any): Promise<void> {
     if (typeof id !== "string" || !ID_SITE.test(id) || !browser || tabSites.get(browser)?.id === id) return;
-    for (const b of tabSites.keys()) if (gone(b)) tabSites.delete(b);
-    const t: { id: string; s?: FrameSite; ready?: Promise<void> } = { id };
+    for (const b of tabSites.keys()) if (gone(b)) sites.detachTab(b);
+    const t: TabSite = { id };
     tabSites.set(browser, t);
     publishOpen();
-    const read = (host ? host.request<{ site: SiteChrome; tweaks: TweaksRead } | null>("sites.tabSite", { id }) : Promise.resolve(null)).catch((e) => {
-      console.warn(`[sites] ${id}: tab without its app:`, e);
-      return null;
-    });
-    t.ready = read.then((p) => {
-      if (tabSites.get(browser) !== t) return;
-      if (p) t.s = { site: p.site, tweaks: p.tweaks, view: browser, errors: [] };
-      else {
-        tabSites.delete(browser);
-        publishOpen();
-      }
-    });
-    await t.ready;
+    await readTab(browser, t);
   },
-  /** The essential's XUL tab closed. */
+  /** The essential's XUL tab closed; the host forgets the app's tab once its last one is gone. */
   detachTab(browser: any): void {
-    if (tabSites.delete(browser)) publishOpen();
+    const t = tabSites.get(browser);
+    if (!t || !tabSites.delete(browser)) return;
+    publishOpen();
+    if (![...tabSites.values()].some((x) => x.id === t.id)) host?.notify("sites.tabDetached", { id: t.id });
+  },
+  /** A new host knows no tab: each one is read again (its tweaks refreshed too). */
+  reattachTabs(): void {
+    for (const [b, t] of [...tabSites]) if (!gone(b)) void readTab(b, t);
   },
   /**
    * Site.json or a tweak changed, or the app is opened again. The open app takes its new

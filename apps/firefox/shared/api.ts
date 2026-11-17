@@ -25,8 +25,8 @@ const SchemaOpenTab = z.object({
   spaceId: id.optional(),
   activate: z.boolean().optional(),
   openedByAgent: z.boolean().optional(),
-  /** The tab's own login profile, instead of its space's. */
-  profile: z.string().min(1).optional(),
+  /** The tab's own login profile, instead of its space's; never a site app's (only an app essential's tab is in one). */
+  profile: z.string().min(1).refine((p) => !p.startsWith("site-")).optional(),
   after: id.optional(),
   /** Shown until the page loads (an imported tab is not loaded before it is displayed). */
   title: z.string().optional(),
@@ -90,6 +90,8 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("addEssential"), id }),
   z.object({ type: z.literal("removeEssential"), favoriteId: id }),
   /** A site app in the essentials (a tab in its own container, `url` required), in the sidebar bar, or nowhere. */
+  /** A deleted site app: out of the essentials and the bar, and every tab of its container closed. */
+  z.object({ type: z.literal("forgetSite"), id: z.string().regex(/^[a-z0-9-]{1,100}$/) }),
   z.object({ type: z.literal("placeSite"), id: z.string().regex(/^[a-z0-9-]{1,100}$/), placement: z.enum(["essentials", "bar", "none"]), url: z.string().regex(/^https?:\/\//).optional(), title: z.string().optional(), favicon: z.string().nullable().optional() }),
   /** The essential takes the place `index` in the grid. */
   z.object({ type: z.literal("moveEssential"), favoriteId: id, index: z.number().int() }),

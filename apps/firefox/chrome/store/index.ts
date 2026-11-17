@@ -469,6 +469,8 @@ async function start(): Promise<RessacStore> {
       agentExtensions.hostStarted();
       // Its sites handlers are up: the host asks which app windows are open (sites.ouvertes).
       notify("sites.ready");
+      // A respawned host lost the app essentials' tabs: they are read again.
+      sites.reattachTabs();
     },
     onUnexpectedExit: (code) => telemetry.report({ source: "host", type: "HostExit", message: `exit code ${code}` }),
   });

@@ -101,6 +101,8 @@ export interface SitesHost {
   openById(id: string): Promise<boolean>;
   /** What an app essential's tab gets (openById's site and tweaks, without a window), or null (unknown, being deleted). */
   tabSite(id: string): Promise<{ site: SiteChrome; tweaks: TweaksRead } | null>;
+  /** The app's last essential's tab closed: its grant no longer counts as an open app's. */
+  tabDetached(id: string): void;
   dispatch(id: string, action: ActionSite, win: string): Promise<void>;
   homeMemory(id: string): Promise<(MessageToHome & { type: "memory" }) | null>;
   note(id: string, x: { frame?: FrameBounds; favicon?: string }): void;
@@ -600,6 +602,9 @@ export function createSites(o: {
       const p = still() ? await prepare(id, still) : null;
       if (p) tabSites.set(id, p.site);
       return p;
+    },
+    tabDetached(id) {
+      tabSites.delete(id);
     },
     async dispatch(id, a, win) {
       if (!ID_SITE.test(id)) return;

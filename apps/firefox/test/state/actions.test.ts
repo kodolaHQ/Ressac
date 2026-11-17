@@ -1269,6 +1269,25 @@ test("placeSite none: in neither; essentials needs an http(s) address", () => {
   expect(SchemaAction.safeParse({ type: "placeSite", id: "Bad Id", placement: "none" }).success).toBe(false);
 });
 
+test("forgetSite: a deleted app leaves the essentials and the bar, and every tab of its container closes", () => {
+  place("essentials");
+  const essential = siteTabs()[0]!;
+  ag({ type: "openTab", windowId: F, url: "https://lien.example/", after: essential.id, profile: "site-whatsapp" });
+  ag({ type: "openTab", windowId: F, url: "https://autre.example/" });
+  ag({ type: "forgetSite", id: "whatsapp" });
+  expect(sitePlacement(e, "whatsapp")).toBe("none");
+  expect(Object.values(e.tabs).map((o) => o.url)).toEqual(["https://autre.example/"]);
+  const before = e;
+  ag({ type: "forgetSite", id: "whatsapp" });
+  expect(e).toBe(before);
+});
+
+test("openTab never takes a site app's container from outside (only an app essential makes one)", () => {
+  expect(SchemaAction.safeParse({ type: "openTab", windowId: F, url: "https://a.fr", profile: "site-whatsapp" }).success).toBe(false);
+  expect(SchemaAction.safeParse({ type: "openTab", windowId: F, url: "https://a.fr", profile: "boulot" }).success).toBe(true);
+  expect(SchemaAction.safeParse({ type: "openTabs", tabs: [{ type: "openTab", windowId: F, url: "https://a.fr", profile: "site-x" }] }).success).toBe(false);
+});
+
 test("openFavorite on an app essential from a private space shows the existing app tab", () => {
   place("essentials");
   const tab = siteTabs()[0]!.id;

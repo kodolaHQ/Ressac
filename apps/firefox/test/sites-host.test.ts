@@ -356,6 +356,8 @@ describe("tabSite", () => {
     expect(await m.sites.memoryOp(op)).toMatchObject({ ok: false });
     await m.sites.tabSite("vidola");
     expect(await m.sites.memoryOp(op)).toEqual({ ok: true });
+    m.sites.tabDetached("vidola");
+    expect(await m.sites.memoryOp(op)).toMatchObject({ ok: false });
   });
 });
 

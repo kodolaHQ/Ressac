@@ -467,6 +467,15 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       else if (a.placement === "bar") d.siteBar.push(a.id);
       return true;
     }
+    case "forgetSite": {
+      let changed = handle(d, { type: "placeSite", id: a.id, placement: "none" }, genId);
+      for (const o of Object.values(d.tabs))
+        if (o.profile === siteProfile(a.id)) {
+          deleteTab(d, o);
+          changed = true;
+        }
+      return changed;
+    }
     case "unloadEssential": {
       const f = win(d, a.windowId);
       const tabs = Object.values(d.tabs).filter((o) => o.windowId === a.windowId && o.link?.type === "essential" && o.link.id === a.favoriteId && !o.unloaded);
