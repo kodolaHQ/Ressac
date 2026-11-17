@@ -114,3 +114,10 @@ describe("remapped bindings", () => {
     expect(shortcutFor({ ...e, shiftKey: false }, b)).toEqual({ type: "nth", n: 1 });
   });
 });
+
+describe("Firefox's hidden items", async () => {
+  const { APP_MENU_ITEMS, FIREFOX_HIDDEN_ITEMS } = await import("../chrome/window/firefox-items");
+  it("never touch the app menu's items (changing one crashed the native menu)", () => {
+    expect(FIREFOX_HIDDEN_ITEMS.filter((id) => APP_MENU_ITEMS.includes(id))).toEqual([]);
+  });
+});

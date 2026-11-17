@@ -57,12 +57,16 @@ export const FIREFOX_HIDDEN_ITEMS = [
   // The image context menu's Firefox windows (Page Info, set as desktop background): each brings Firefox's menu bar.
   "context-viewimageinfo",
   "context-setDesktopBackground",
-  // App menu: Mozilla's referral page (already off by pref; belt and braces).
-  "menu_referralsPage",
   // The hidden window's (no window open): its Dock menu's private window, and « Ouvrir l'emplacement » in a new window.
   "macDockMenuNewPrivateWindow",
   "menu_openLocation",
 ];
+
+/**
+ * Items macOS moves into the app menu (nsMenuBarX::AquifyMenuBar). Never hidden nor collapsed here: changing one rebuilds
+ * the native app menu under AppKit, which then messages a freed menu (0.1.9 crashed on « À propos de Ressac »).
+ */
+export const APP_MENU_ITEMS = ["aboutName", "menu_preferences", "menu_settings", "menu_setAsDefault", "menu_referralsPage", "menu_mac_services", "menu_mac_hide_app", "menu_mac_hide_others", "menu_mac_show_all", "menu_FileQuitItem"];
 
 /**
  * Hides FIREFOX_HIDDEN_ITEMS now and on every popupshowing: Firefox re-shows some (nsContextMenu, profiles) while its menu

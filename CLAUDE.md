@@ -26,6 +26,7 @@ Every visual change follows `docs/DESIGN.md`. New code, comments and identifiers
 
 - The suite runs 6 files in parallel (`maxWorkers: 6`, about 8 min on an M5 Pro). At 9, time-sensitive tests break: do not raise it without making them robust.
 - **For each change**: run only the e2e files it touches or whose tested code it changes (`corepack pnpm --filter firefox-ressac exec vitest run -c vitest.e2e.config.ts e2e/<file>`).
+- **The real macOS menu bar** (headless has none): before a release, `RESSAC_NATIVE_MENU=1 corepack pnpm --filter firefox-ressac exec vitest run -c vitest.e2e.config.ts e2e/app-menu-native.e2e.ts`. It opens a visible window and needs the terminal's Accessibility access; 0.1.9 crashed as soon as the app menu opened.
 - **The full suite**: before a release, not after each feature. A test that fails there and passes when its file is run alone is a load flake: say so, do not rerun the whole suite.
 - Do not run the suite during a `build:ui`: the binary disappears and everything fails with "build missing".
 

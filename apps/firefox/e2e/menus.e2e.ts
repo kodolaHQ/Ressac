@@ -76,6 +76,9 @@ const REVIEWED: Record<string, string> = {
   menu_settings: "Ressac's Réglages",
   menu_preferences: "Ressac's Réglages",
   menu_setAsDefault: "macOS default browser",
+  // Firefox's referral page, off by its pref (browser.referrals.enabled, false): a click does nothing, and Firefox hides it
+  // once Aide opens. Never hidden by Ressac: changing an app menu item crashed the native menu (0.1.9).
+  menu_referralsPage: "nothing (Firefox's referrals pref is off)",
 };
 
 /** Not fired, and why. */
